@@ -545,7 +545,7 @@ export class PlayerControl implements PlayerControlApi {
       const crown = e.y - def.h;
       // Feet must have driven down into the foe from above (crown..feet band).
       if (player.y >= crown - 4 && player.y <= e.y + 1) {
-        ctx.enemyCtl.kill(e, player.vx * 0.4, -1.2);
+        ctx.enemyCtl.kill(e, player.vx * 0.4, -1.2, 'direct');
         player.diveT = 0;
         player.vy = -ENEMY_STOMP_BOUNCE;
         player.grounded = false;

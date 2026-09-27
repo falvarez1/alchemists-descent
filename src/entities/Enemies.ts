@@ -2,7 +2,9 @@ import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { difficultyMods } from '@/config/difficulty';
 import { RILLBACK_WET_THRESHOLD } from '@/core/enemyState';
 import { clamp } from '@/core/math';
-import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
+import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDamageSource, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
+import type { AlchemyCause } from '@/core/run';
+import { causeForCell } from '@/core/alchemyCause';
 import { tickWeaverLocomotion, weaverKnockSync, weaverLeap } from '@/entities/weaverLocomotion';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
 export { ENEMY_DEFS } from '@/content/enemyDefs';
@@ -11,7 +13,7 @@ import { createDefaultStatus, rollCatchFire, sampleAndTickStatus } from '@/entit
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { LEVIATHAN_REWARD_POOL, randomCard } from '@/content/cardRewardPools';
 import { enemyMovementPace } from '@/core/progressionPacing';
-import { blocksEntity, Cell, isConductor, isSoftGrowth } from '@/sim/CellType';
+import { blocksEntity, Cell, isConductor, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import {
   acidColor,
   ashColor,
@@ -172,11 +174,29 @@ export function enemyLethalCell(kind: EnemyKind, c: number): boolean {
   return false;
 }
 
+/** Steam SCALDS what fire can burn: per sampled body row per tick, like fire's
+ *  0.7 but a slow poach (an engulfed Weaver loses ~27 hp/s). The Works' exhale
+ *  and a boiled pool are weapons; the fireproof shrug it off. */
+const STEAM_SCALD = 0.05;
+
+function scaldedBySteam(kind: EnemyKind, c: number): boolean {
+  return c === Cell.Steam && !FIREPROOF.has(kind);
+}
+
 function directEnvironmentDamage(kind: EnemyKind, c: number): number {
   if ((c === Cell.Fire || c === Cell.Lava) && !FIREPROOF.has(kind)) return c === Cell.Lava ? 1.6 : 0.7;
   if (c === Cell.Acid && kind !== 'acidslime') return 0.9;
+  if (scaldedBySteam(kind, c)) return STEAM_SCALD;
   return 0;
 }
+
+/** Kinds that breathe water, float over it or never breathe at all. */
+const DROWN_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['rillback', 'leviathan', 'colossus', 'wisp', 'eggs']);
+/** Ticks a land creature can hold its breath with its head under liquid. */
+const BREATH_TICKS = 360;
+const BREATH_TICKS_BY_KIND: Partial<Record<EnemyKind, number>> = { imp: 90, bat: 180, bomber: 150 };
+/** Out of breath: this share of max hp per tick (a full body drowns in ~5 s). */
+const DROWN_HP_SHARE = 1 / 300;
 
 function weaverSupportGrowth(t: number): boolean {
   return isSoftGrowth(t) || t === Cell.Slime;
@@ -309,6 +329,29 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
+  /**
+   * Being struck by the alchemist ALWAYS provokes. The blow tells the creature
+   * where it came from (the pain has a direction; no omniscience beyond that):
+   * its mind gets the wizard's position as a confident fix, so a Weaver stops
+   * foraging and turns on him. Flighty kinds (low `fleeAt`) bolt instead; the
+   * threat layer carries the flee and they come back once the fright ebbs.
+   */
+  private provokeByPlayer(e: Enemy): void {
+    const p = this.ctx.player;
+    if (e.kind === 'eggs' || !p || p.dead) return;
+    const mind = ensureCreatureMind(e, this.ctx.state.worldSeed);
+    mind.targetX = p.x;
+    mind.targetY = p.y;
+    mind.targetVx = p.vx;
+    mind.confidence = Math.max(mind.confidence, 0.8);
+    mind.irritation = Math.max(mind.irritation, 0.75);
+    mind.lastHeard = this.ctx.state.frameCount;
+    const temp = TEMPERAMENT[e.kind] ?? DEFAULT_TEMPERAMENT;
+    if (temp.fleeAt < 0.5) e.fear = Math.max(e.fear ?? 0, temp.fleeAt);
+    else e.aggression = Math.max(e.aggression ?? 0, 0.6);
+    if (e.kind === 'weaver') e.cranky = Math.max(e.cranky ?? 0, 90);
+  }
+
   spawn(kind: EnemyKind, x: number, y: number, opts: EnemySpawnOptions = {}): Enemy | null {
     const ctx = this.ctx;
     const def = (this.defs as Partial<Record<EnemyKind, EnemyDef>>)[kind];
@@ -426,7 +469,7 @@ export class Enemies implements EnemyControlApi {
   /** A hazard cell (lava/fire/acid/toxic) splashes (x,y): if a foe harmed by `cell`
    *  overlaps the point, deal the matching env damage (and ignite it for
    *  fire/lava) and return true. Lets poured/sprayed material strike foes. */
-  splashHazard(x: number, y: number, cell: number): boolean {
+  splashHazard(x: number, y: number, cell: number, source?: EnemyDamageSource): boolean {
     if (this.ctx.state.mode !== 'play') return false;
     for (const e of this.ctx.enemies) {
       const def = this.defs[e.kind];
@@ -434,7 +477,8 @@ export class Enemies implements EnemyControlApi {
       if (!enemyLethalCell(e.kind, cell)) continue;
       const dmg = cell === Cell.Toxic ? 0.7 : directEnvironmentDamage(e.kind, cell);
       if (dmg <= 0) continue;
-      this.damage(e, dmg, (entityRandom() - 0.5) * 0.6, -0.3);
+      // A poured flask's material strikes as itself; the Flame Jet says 'direct'.
+      this.damage(e, dmg, (entityRandom() - 0.5) * 0.6, -0.3, source ?? causeForCell(cell));
       if (cell === Cell.Lava || cell === Cell.Fire) {
         // Same percentage-based catch as passive exposure: a single lava splash
         // is much likelier to ignite than a fire splash; a stream re-rolls each hit.
@@ -445,9 +489,14 @@ export class Enemies implements EnemyControlApi {
     return false;
   }
 
-  damage(e: Enemy, amount: number, kx: number, ky: number): void {
+  damage(e: Enemy, amount: number, kx: number, ky: number, source: EnemyDamageSource = 'direct'): void {
     const ctx = this.ctx;
-    if (amount > 0) this.alertFromDamage(e);
+    // Kill attribution: every blow reports its source before hp moves.
+    ctx.alchemy?.noteHit(e, source);
+    if (amount > 0) {
+      this.alertFromDamage(e);
+      if (source === 'direct') this.provokeByPlayer(e);
+    }
     // WATER IS THE LEVIATHAN'S ARMOR: while the body is actually in water
     // (cell census, not the wet meter) hits glance off — and SAY so, every
     // time, with a cold shimmer and a dull plink. Drain the pool.
@@ -526,6 +575,9 @@ export class Enemies implements EnemyControlApi {
     const push = strength * clamp(GUST_REF_MASS / mass, GUST_MASS_LO, GUST_MASS_HI);
     e.alerted = true;
     e.sleeping = false; // a roosting bat is knocked loose
+    // Whatever the launch delivers it to (a wall, lava, a pool) is the kick's doing.
+    this.ctx.alchemy?.noteKick(e);
+    this.provokeByPlayer(e);
     e.knockVx = (e.knockVx ?? 0) + dirX * push;
     e.knockVy = (e.knockVy ?? 0) + dirY * push - push * 0.18; // a touch of lift
     // Heavy foes get a short stagger; light ones a long, wall-smashing flight.
@@ -641,7 +693,7 @@ export class Enemies implements EnemyControlApi {
     e.vx = 0;
     e.vy = 0;
     this.gibbing = true;
-    try { this.damage(e, SLAM_DMG_BASE + speed * SLAM_DMG_PER_SPEED, -nx * 0.6, -ny * 0.6); } finally { this.gibbing = false; }
+    try { this.damage(e, SLAM_DMG_BASE + speed * SLAM_DMG_PER_SPEED, -nx * 0.6, -ny * 0.6, 'impaled'); } finally { this.gibbing = false; }
   }
 
   private removeEnemyAt(index: number): Enemy | undefined {
@@ -665,7 +717,8 @@ export class Enemies implements EnemyControlApi {
     this.finishKill(e, kx, ky);
   }
 
-  kill(e: Enemy, kx: number, ky: number): void {
+  kill(e: Enemy, kx: number, ky: number, source?: EnemyDamageSource): void {
+    if (source) this.ctx.alchemy?.noteHit(e, source);
     if (!this.removeEnemy(e)) return;
     this.finishKill(e, kx, ky);
   }
@@ -673,6 +726,8 @@ export class Enemies implements EnemyControlApi {
   private finishKill(e: Enemy, kx: number, ky: number): void {
     const ctx = this.ctx;
     const def = this.defs[e.kind];
+    // The world's kills are announced, chained and paid in gold (combat/AlchemyKills).
+    ctx.alchemy?.onKill(e);
     // Bombers go out the only way they know how
     if (e.kind === 'bomber') {
       ctx.explosions.trigger(e.x, e.y - 4, 24 + Math.floor(entityRandom() * 3), { playerDamageSource: 'bomber' });
@@ -1311,10 +1366,11 @@ export class Enemies implements EnemyControlApi {
     return false;
   }
 
-  private rillbackLiquidFooting(e: Enemy, def: EnemyDef): { wet: number; hazard: number; conductor: number } {
+  private rillbackLiquidFooting(e: Enemy, def: EnemyDef): { wet: number; hazard: number; hazardCell: number; conductor: number } {
     const w = this.ctx.world;
     let wet = 0;
     let hazard = 0;
+    let hazardCell: number = Cell.Acid;
     let conductor = 0;
     let samples = 0;
     for (let dy = 0; dy < def.h; dy += 2) {
@@ -1325,12 +1381,15 @@ export class Enemies implements EnemyControlApi {
         samples++;
         const t = w.types[w.idx(x, y)];
         if (rillbackPreferredLiquid(t)) wet++;
-        else if (t === Cell.Lava || t === Cell.Acid || t === Cell.Toxic) hazard++;
+        else if (t === Cell.Lava || t === Cell.Acid || t === Cell.Toxic) {
+          hazard++;
+          hazardCell = t;
+        }
         if (rillbackChargeableLiquid(t)) conductor++;
       }
     }
     const denom = Math.max(1, samples);
-    return { wet: wet / denom, hazard: hazard / denom, conductor };
+    return { wet: wet / denom, hazard: hazard / denom, hazardCell, conductor };
   }
 
   private findRillbackLiquidSeek(e: Enemy, def: EnemyDef, radius: number): boolean {
@@ -1788,7 +1847,9 @@ export class Enemies implements EnemyControlApi {
       for (let dx = -R; dx <= R; dx += 2) {
         const X = Math.floor(e.x) + dx;
         const Y = Math.floor(e.y) + dy;
-        if (!w.inBounds(X, Y) || !enemyLethalCell(e.kind, w.types[w.idx(X, Y)])) continue;
+        if (!w.inBounds(X, Y)) continue;
+        const hz = w.types[w.idx(X, Y)];
+        if (!enemyLethalCell(e.kind, hz) && !scaldedBySteam(e.kind, hz)) continue;
         const d = Math.hypot(dx, dy) || 1;
         hzX += -dx / d;
         hzY += -dy / d;
@@ -1988,17 +2049,27 @@ export class Enemies implements EnemyControlApi {
     const ctx = this.ctx;
     const def = this.defs[e.kind];
     let dmg = 0;
+    // The hottest cell touching the body names the cause if this is the end.
+    let worst = 0;
+    let worstCell: number = Cell.Empty;
     for (let dy = 0; dy < def.h; dy += 2) {
       let rowDmg = 0;
       for (let dx = -def.halfW; dx <= def.halfW; dx += 2) {
         const X = Math.floor(e.x) + dx,
           Y = Math.floor(e.y) - dy;
         if (!ctx.world.inBounds(X, Y)) continue;
-        rowDmg = Math.max(rowDmg, directEnvironmentDamage(e.kind, ctx.world.types[ctx.world.idx(X, Y)]));
+        const c = ctx.world.types[ctx.world.idx(X, Y)];
+        const d = directEnvironmentDamage(e.kind, c);
+        if (d > rowDmg) rowDmg = d;
+        if (d > worst) {
+          worst = d;
+          worstCell = c;
+        }
       }
       dmg += rowDmg;
     }
     if (dmg <= 0) return;
+    ctx.alchemy?.noteHit(e, causeForCell(worstCell));
     if ((e.envDamageFeedbackCd ?? 0) <= 0) {
       e.envDamageFeedbackCd = ENV_DAMAGE_FEEDBACK_COOLDOWN;
       e.flash = Math.max(e.flash, 2);
@@ -2010,6 +2081,58 @@ export class Enemies implements EnemyControlApi {
       if (index === undefined) this.kill(e, 0, 0);
       else this.killAt(index, e, 0, 0);
     }
+  }
+
+  /**
+   * Breath: a land creature whose head is under liquid holds its breath (bubbles
+   * rise off it), then drowns a little every tick until it surfaces. Floods,
+   * drained cisterns and a kick into a sump are all weapons. Sampled every 3rd
+   * tick (rates are per-sample). Returns true if the creature died.
+   */
+  private tickBreath(e: Enemy, def: EnemyDef, index: number): boolean {
+    if (DROWN_IMMUNE.has(e.kind)) return false;
+    const maxBreath = BREATH_TICKS_BY_KIND[e.kind] ?? BREATH_TICKS;
+    if (e.breath === undefined) e.breath = maxBreath;
+    if (e.timer % 3 !== 0) return false;
+    const ctx = this.ctx;
+    const w = ctx.world;
+    const top = Math.floor(e.y) - def.h + 1;
+    const x0 = Math.floor(e.x) - Math.max(0, def.halfW - 1);
+    const x1 = Math.floor(e.x) + Math.max(0, def.halfW - 1);
+    let samples = 0;
+    let wet = 0;
+    for (let y = top; y <= top + 2; y += 2) {
+      for (let x = x0; x <= x1; x += 2) {
+        if (!w.inBounds(x, y)) continue;
+        samples++;
+        if (isLiquid(w.types[w.idx(x, y)])) wet++;
+      }
+    }
+    if (samples === 0 || wet < samples * 0.6) {
+      if (e.breath < maxBreath) e.breath = Math.min(maxBreath, e.breath + 12);
+      return false;
+    }
+    e.breath = Math.max(0, e.breath - 3);
+    if (e.timer % 15 === 0) {
+      ctx.particles.spawn(e.x + (entityRandom() - 0.5) * def.halfW, top, (entityRandom() - 0.5) * 0.2, -0.45, null,
+        packRGB(200, 232, 255), 26, { grav: -0.03, glow: 0.5 });
+    }
+    if (e.breath > 0) return false;
+    // Out of air: thrash, stream bubbles, drown.
+    ctx.alchemy?.noteHit(e, 'drowned');
+    this.alertFromDamage(e);
+    e.fear = Math.max(e.fear ?? 0, 0.9);
+    e.hp -= e.maxHp * DROWN_HP_SHARE * 3;
+    e.flash = Math.max(e.flash, 2);
+    if (e.timer % 12 === 0) {
+      ctx.particles.burst(e.x, top, 4, null, () => packRGB(210, 238, 255), 0.9, { grav: -0.05, glow: 0.6 });
+      this.voice(e, () => ctx.audio.bubble());
+    }
+    if (e.hp <= 0) {
+      this.killAt(index, e, 0, 0);
+      return true;
+    }
+    return false;
   }
 
   private teleportEnemy(e: Enemy, def: EnemyDef): void {
@@ -2173,6 +2296,7 @@ export class Enemies implements EnemyControlApi {
       if (e.attackCd > 0 && !debugEnemyAttacksSuppressed) e.attackCd--;
       this.enemyEnvironmentDamage(e, i);
       if (enemies[i] !== e) continue; // died from environment
+      if (this.tickBreath(e, def, i)) continue; // drowned
       this.gumBatWingsWithSlime(e, def);
       // Body weight: read last frame's grounded/vy (before this frame's branch
       // moves them) so a landing thump lands on the same frame it touches down.
@@ -2198,7 +2322,16 @@ export class Enemies implements EnemyControlApi {
             );
           }
         }
-        if (eff.damage > 0) e.hp -= eff.damage;
+        if (eff.damage > 0) {
+          const cause: AlchemyCause =
+            eff.shockDamage >= eff.burnDamage && eff.shockDamage >= eff.toxicDamage
+              ? 'shorted'
+              : eff.toxicDamage > eff.burnDamage
+                ? 'poisoned'
+                : 'burned';
+          ctx.alchemy?.noteHit(e, cause);
+          e.hp -= eff.damage;
+        }
         if (e.hp <= 0) {
           this.killAt(i, e, 0, 0);
           continue;
@@ -2947,6 +3080,7 @@ export class Enemies implements EnemyControlApi {
           // electro-shock pattern): the full damage() path would spray blood
           // and stain walls off a stone boss EVERY wet frame.
           this.alertFromDamage(e);
+          ctx.alchemy?.noteHit(e, 'steeped');
           e.hp -= 1.4;
           e.flash = Math.max(e.flash, 2);
           if (e.hp <= 0) {
@@ -3035,6 +3169,7 @@ export class Enemies implements EnemyControlApi {
           const footing = this.rillbackLiquidFooting(e, def);
           e.rillWet = footing.wet;
           if (footing.hazard > 0) {
+            ctx.alchemy?.noteHit(e, causeForCell(footing.hazardCell));
             e.hp -= footing.hazard * 1.2;
             e.flash = Math.max(e.flash, 2);
             if (e.hp <= 0) {
@@ -3181,6 +3316,7 @@ export class Enemies implements EnemyControlApi {
         // ELECTROCUTION: the doused-kiln mirror. Direct hp (bypasses the
         // submersion shield — the water IS the delivery), visible arcs.
         if (sub && e.status.electrified > 0) {
+          ctx.alchemy?.noteHit(e, 'shorted');
           e.hp -= 1.1;
           e.flash = Math.max(e.flash, 2);
           if (e.hp <= 0) {

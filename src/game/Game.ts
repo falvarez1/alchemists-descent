@@ -15,6 +15,7 @@ import type { Ctx, FxState, GameStateData, InputState, RenderBackendMode } from 
 import { AudioEngine } from '@/audio/AudioEngine';
 import { HabitatAudio } from '@/audio/HabitatAudio';
 import { Flask } from '@/combat/Flask';
+import { AlchemyKills } from '@/combat/AlchemyKills';
 import { Lightning } from '@/combat/Lightning';
 import { WandSystem } from '@/combat/wands/WandSystem';
 import { Projectiles } from '@/combat/Projectiles';
@@ -209,6 +210,10 @@ export class Game {
     const enemyCtl = new Enemies(ctx);
     ctx.enemyCtl = enemyCtl;
     this.disposables.push(enemyCtl);
+    // Kill attribution + alchemical-kill payouts (emits `alchemyKill`).
+    const alchemy = new AlchemyKills(ctx);
+    ctx.alchemy = alchemy;
+    this.disposables.push(alchemy);
     ctx.spells = new Spells(ctx);
     ctx.simulation = new Simulation();
     ctx.worldgen = new WorldGen();

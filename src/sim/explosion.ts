@@ -3,6 +3,7 @@ import type { Ctx, Enemy, ExplosionApi } from '@/core/types';
 import { Cell, blocksEntity } from '@/sim/CellType';
 import { ashColor, crystalColor, fireColor, glassColor, smokeColor } from '@/sim/colors';
 import { chargeDeposit } from '@/sim/electrical';
+import { causeForExplosion } from '@/core/alchemyCause';
 import { fxRandom, simRandom } from '@/core/simRandom';
 
 /** Reused blast-carve scratch — see the note at its use site in trigger(). */
@@ -344,6 +345,9 @@ export class Explosions implements ExplosionApi {
     // anyone a nested blast already finished is skipped by the hp check.
     const victims: Enemy[] = [];
     const blastReach = radius * 1.6;
+    // Kill attribution: the wand's own blasts are direct; gunpowder, barrels and
+    // every other blast the player did not cast are the world detonating.
+    const source = causeForExplosion(options.playerDamageSource);
     for (const e of ctx.enemies) {
       const dx = e.x - cx;
       const dy = e.y - cy;
@@ -355,7 +359,7 @@ export class Explosions implements ExplosionApi {
       const dy = e.y - cy;
       const d = Math.sqrt(dx * dx + dy * dy);
       const dmg = Math.max(4, (1 - d / blastReach) * radius * 2.4);
-      ctx.enemyCtl.damage(e, dmg * (options.enemyDamageMul ?? 1), (dx / (d || 1)) * 2.2, -1.6);
+      ctx.enemyCtl.damage(e, dmg * (options.enemyDamageMul ?? 1), (dx / (d || 1)) * 2.2, -1.6, source);
     }
     if (ctx.state.mode === 'play' && !ctx.player.dead) {
       const dx = ctx.player.x - cx,

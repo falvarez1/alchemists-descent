@@ -651,7 +651,7 @@ export class WandSystem implements WandsApi {
       }
       for (const e of targets) {
         if (e.hp <= 0) continue;
-        ctx.enemyCtl.splashHazard(e.x, e.y - 5, Cell.Fire);
+        ctx.enemyCtl.splashHazard(e.x, e.y - 5, Cell.Fire, 'direct');
       }
       targets.length = 0;
     }

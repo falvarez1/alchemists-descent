@@ -6,6 +6,7 @@ import type { CreatureBody, CreatureMind, PlantedFoot } from '@/creatures/types'
 import type { CreatureExpression } from '@/creatures/expression';
 import type { CreatureRig } from '@/creatures/rig/types';
 import type { PlayerCostume } from '@/entities/playerCostume';
+import type { AlchemyCause, AlchemyKillInfo } from '@/core/run';
 
 /* ============================================================
  * Entity data
@@ -604,6 +605,9 @@ export interface Enemy {
   fleeDir?: number;
   /** 0..1 multiplier the arbiter folds into the per-kind chase speed when hesitating. */
   chaseScale?: number;
+  /** Frames of breath left while the head is under liquid (land kinds only;
+   *  refills in air). At 0 the creature drowns a little every tick. */
+  breath?: number;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */
@@ -1850,21 +1854,44 @@ export interface PlayerControlApi {
   update(ctx: Ctx): void;
 }
 
+/** What dealt a blow to a creature: the wand/boot/blade directly, or a material
+ *  or physical consequence (combat/AlchemyKills attributes the killing blow). */
+export type EnemyDamageSource = 'direct' | AlchemyCause;
+
 export interface EnemyControlApi {
   readonly defs: Record<EnemyKind, EnemyDef>;
   spawn(kind: EnemyKind, x: number, y: number, opts?: EnemySpawnOptions): Enemy | null;
-  damage(e: Enemy, amount: number, kx: number, ky: number): void;
+  /** `source` defaults to 'direct' (a wand, a boot, a thrown leg). */
+  damage(e: Enemy, amount: number, kx: number, ky: number, source?: EnemyDamageSource): void;
   /** A hazard cell (lava/fire/acid) splashes the point (x,y): if a foe harmed by
    *  `cell` overlaps it, deal the matching environmental damage (and ignite it for
-   *  fire/lava) and return true. Used by poured/sprayed material hitting a foe. */
-  splashHazard(x: number, y: number, cell: number): boolean;
-  kill(e: Enemy, kx: number, ky: number): void;
+   *  fire/lava) and return true. Used by poured/sprayed material hitting a foe.
+   *  `source` 'direct' marks the wand's own stream (the Flame Jet); omitted, the
+   *  blow is the material's own (a poured flask). */
+  splashHazard(x: number, y: number, cell: number, source?: EnemyDamageSource): boolean;
+  kill(e: Enemy, kx: number, ky: number, source?: EnemyDamageSource): void;
   /** Blow a foe along (dirX,dirY) with a wind-gust shove (the player's kick),
    *  mass-scaled so a bat is hurled and a golem barely rocks. Light foes enter a
    *  brief ballistic launch and SMASH into the first wall they hit. `strength` is
    *  the gust intensity at the body (≈0..1 × a push scalar). No-op on bosses. */
   gustShove(e: Enemy, dirX: number, dirY: number, strength: number): void;
   update(ctx: Ctx): void;
+}
+
+/**
+ * Kill attribution (combat/AlchemyKills): remembers what last harmed each
+ * creature and, when the world rather than the wand landed the killing blow,
+ * announces an alchemical kill, chains it and pays out in real gold.
+ */
+export interface AlchemyKillsApi {
+  /** Record a blow (every damage path reports its source just before hp changes). */
+  noteHit(e: Enemy, source: EnemyDamageSource): void;
+  /** The player's kick launched this creature (a later hazard death is credited). */
+  noteKick(e: Enemy): void;
+  /** The creature just died: classify, chain, emit `alchemyKill` and pay out. */
+  onKill(e: Enemy): AlchemyKillInfo | null;
+  /** Alchemical kills inside the current chain window (0 when it has lapsed). */
+  readonly chain: number;
 }
 
 export interface SpellsApi {
@@ -3058,4 +3085,6 @@ export interface Ctx {
   hints: HintApi;
   debug: DebugControl;
   time: TimeControlApi;
+  /** Kill attribution + alchemical-kill payouts; absent in small test contexts. */
+  alchemy?: AlchemyKillsApi;
 }
