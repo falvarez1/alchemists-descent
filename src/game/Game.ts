@@ -78,6 +78,7 @@ import { WorldGen } from '@/world/CaveGenerator';
 import { SANDBOX_FOCUS, stampSandboxArena } from '@/world/sandboxArena';
 import { reseedTickStreams } from '@/core/simRandom';
 import { DeathCinema } from '@/game/DeathCinema';
+import { Clips } from '@/app/Clips';
 
 function initialRenderBackendOverride(): RenderBackendMode | null {
   if (typeof window === 'undefined') return null;
@@ -100,6 +101,8 @@ function initialWebGpuLiveComposeOverride(): boolean {
 export class Game {
   /** Public for dev tooling and verification scripts only — not a gameplay API. */
   readonly ctx: Ctx;
+  /** Rolling clip capture (app/Clips.ts). Public for dev tooling and probes only. */
+  readonly clips: Clips;
   private readonly renderer: Renderer;
   private readonly composer: FrameComposer;
   private readonly hud: Hud;
@@ -341,6 +344,9 @@ export class Game {
     this.entry = new ExpeditionEntry(ctx);
     this.disposables.push(this.entry);
     this.disposables.push(new TeaMachineOverlay(ctx));
+    // Keeps the last ~10 s of frames for GIF clips; captures in renderFrame.
+    this.clips = new Clips(ctx, () => this.renderer.domElement);
+    this.disposables.push(this.clips);
     this.restoreSavedMode = () => {
       if (!import.meta.env.DEV) return;
       const mode = readAppMode();
@@ -638,6 +644,9 @@ export class Game {
     const tGl = performance.now();
     this.renderer.render(ctx);
     this.perfHud.mark('gl', performance.now() - tGl);
+    // Same task as the draw: without preserveDrawingBuffer this is the only
+    // moment the canvas can be read. Read-only; the frame order is unchanged.
+    this.clips.afterRender();
     this.perfHud.mark('render', performance.now() - tRender);
 
     // Dig beam fades on drawn frames, but physics lifetime is fixed-tick based.

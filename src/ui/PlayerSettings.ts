@@ -1,6 +1,7 @@
 import type { Ctx, TrickshotSettings } from '@/core/types';
 import { sanitizeTrickshot } from '@/config/trickshot';
 import { DEFAULT_BINDINGS, getBindings, keyLabel, resetBindings, setBinding, type BindingAction } from '@/input/bindings';
+import { isClipRecordingEnabled, setClipRecordingEnabled } from '@/config/clipSettings';
 
 export interface PlayerPreferences { textScale: number; reducedFlashes: boolean; cameraShake: boolean; highReadability: boolean; creatureCaptions: boolean; trickshot: TrickshotSettings }
 const KEY = 'ad-player-preferences-v1';
@@ -28,7 +29,8 @@ export class PlayerSettings {
       <label><input type="checkbox" name="reducedFlashes"> Reduce flashes and pulses</label>
       <label><input type="checkbox" name="cameraShake"> Camera shake</label>
       <label><input type="checkbox" name="highReadability"> High-readability lighting</label>
-      <label><input type="checkbox" name="creatureCaptions"> Creature sound captions</label></div>
+      <label><input type="checkbox" name="creatureCaptions"> Creature sound captions</label>
+      <label><input type="checkbox" name="recordClips"> Record clips (keeps the last ten seconds, ready to save as a GIF)</label></div>
       <fieldset class="trickshot-settings"><legend>Combat experiment</legend>
       <label><input type="checkbox" name="trickshotEnabled"> Trickshot combat</label>
       <p>Chain different enemies for a brief window of borrowed time. Take a Weaver's leg, then finish its weakened owner with it.</p>
@@ -45,7 +47,7 @@ export class PlayerSettings {
       <h3>Keyboard</h3><p>Choose an action, then press its new key. Mouse aims; left click casts; right click throws a flask. With a Weaver leg equipped: left click whips, right click throws the leg, and Carry drops it.</p>
       <div class="binding-list"></div><p id="binding-feedback" role="status"></p>
       <button type="button" id="reset-controls">Restore controls</button>
-      <h3>Controller</h3><p class="controller-help">Controller: left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. With a Weaver leg: RT whips, RB throws it, LB drops it. Start pauses.</p></form>`;
+      <h3>Controller</h3><p class="controller-help">Controller: left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. With a Weaver leg: RT whips, RB throws it, LB drops it. Start pauses; View saves a clip.</p></form>`;
     document.getElementById('canvas-holder')!.appendChild(this.dialog);
     this.dialog.addEventListener('close', () => {
       // Native close events are queued. Escape/Resume may already have released
@@ -62,6 +64,12 @@ export class PlayerSettings {
       });
     }
     this.dialog.querySelector('#reset-controls')!.addEventListener('click', () => { resetBindings(); this.renderBindings(); });
+    // Clips keep their own preference (config/clipSettings) so app/Clips never imports this dialog.
+    const recordClips = this.dialog.querySelector<HTMLInputElement>('[name="recordClips"]')!;
+    recordClips.checked = isClipRecordingEnabled();
+    recordClips.addEventListener('change', () => {
+      if (!setClipRecordingEnabled(recordClips.checked)) this.dialog.querySelector('#binding-feedback')!.textContent = 'Preferences apply for this session. Local storage is unavailable.';
+    });
     this.dialog.querySelector('[name="trickshotEnabled"]')!.addEventListener('change', e => {
       this.preferences.trickshot.enabled = (e.target as HTMLInputElement).checked; this.apply(true);
     });
@@ -89,7 +97,7 @@ export class PlayerSettings {
     for (const action of Object.keys(DEFAULT_BINDINGS) as BindingAction[]) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.innerHTML = `<span>${action === 'lure' ? 'Glowseed' : action}</span><kbd>${keyLabel(bindings[action])}</kbd>`;
+      button.innerHTML = `<span>${action === 'lure' ? 'Glowseed' : action === 'clip' ? 'Save clip' : action}</span><kbd>${keyLabel(bindings[action])}</kbd>`;
       button.setAttribute('aria-label', `Change ${action}: ${keyLabel(bindings[action])}`);
       button.addEventListener('click', () => {
         button.classList.add('listening');

@@ -116,6 +116,18 @@ const PAGES: readonly HandbookPage[] = [
       <p>The chart lists the places you have found, nearest first; click one to steer by it. A compass at the edge of
       the screen points to your waypoint and counts down the distance.</p>`,
   },
+  {
+    id: 'clips', title: 'Keeping a moment',
+    lead: 'The Works keeps the last ten seconds on a glass plate, in case something splendid happens.',
+    body: `
+      <dl class="hb-keys">
+        <dt>{clip}</dt><dd>Save the last ten seconds as a looping GIF</dd>
+        <dt>View</dt><dd>The same, from a controller</dd>
+        <dt>Death screen</dt><dd><b>Save the last seconds</b> keeps the fall itself</dd>
+      </dl>
+      <p>The clip develops in the corner while you play on: download it, or copy a still. Recording pauses with the
+      game and can be switched off in <b>Pause → Controls &amp; comfort</b>.</p>`,
+  },
 ];
 
 /**
