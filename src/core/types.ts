@@ -2833,6 +2833,9 @@ export interface PlacedPrefab {
   y0: number;
   x1: number;
   y1: number;
+  /** Where the set piece's verb applies (a flora puzzle's felling line, seed
+   *  bed or thicket mouth) — for probes, audits and the inspector. */
+  focus?: { x: number; y: number };
 }
 
 /** Player-authored navigation pin set from the full minimap. One active pin per

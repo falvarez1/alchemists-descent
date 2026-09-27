@@ -182,9 +182,9 @@ const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
   // GEN_VERSION 46 (four floors): the Drowned Cisterns inherit the old flooded
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
-  { id: 'd3', seed: 1337, hash: '880b8755' },
-  { id: 'd4', seed: 1337, hash: '90d3fc2d' }, // GEN_VERSION 50: the Kiln's ceiling tank re-sealed after its flank connector / rescue carves
-  { id: 'd2', seed: 42, hash: 'f40d531b' }, // re-recorded: gas pockets + gunpowder seams
+  { id: 'd3', seed: 1337, hash: '798f2073' }, // GEN_VERSION 51: the flora pass (puzzle rooms + dressing)
+  { id: 'd4', seed: 1337, hash: 'dc1fbff5' }, // GEN_VERSION 51: the flora pass over GEN 50 (the Kiln's ceiling tank re-sealed after its flank connector / rescue carves)
+  { id: 'd2', seed: 42, hash: '87e8fc15' }, // GEN_VERSION 51: the flora pass (over the gas pockets + gunpowder seams)
 ];
 
 describe('full generateLevel golden hashes', () => {

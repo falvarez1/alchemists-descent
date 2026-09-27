@@ -2555,6 +2555,15 @@ export class Levels implements LevelsApi {
       y: exit.sealY - 12,
     });
     const populationReach = wizardMask(makeLevelRuntime({ def, world, spawn, regions }));
+    // FLORA puzzle rooms are set pieces (a sealed cistern over a seed bed, a
+    // tree balanced at a chasm): a foe seeded inside would wreck one before
+    // the player arrives. Population keeps out of them (they still wander in).
+    for (const p of placedPrefabs) {
+      if (!p.id.startsWith('flora-')) continue;
+      for (let y = Math.max(0, p.y0); y <= Math.min(world.height - 1, p.y1); y++) {
+        populationReach.fill(0, y * world.width + Math.max(0, p.x0), y * world.width + Math.min(world.width - 1, p.x1) + 1);
+      }
+    }
     const weaverLairWebs: WeaverLairWeb[] = [];
     const population = def.id === 'd1' ? { planned: {}, placed: {}, skipped: {}, lairs: {} } : this.placePopulation(
       ctx,
