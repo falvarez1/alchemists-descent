@@ -118,6 +118,10 @@ const DEATH_LINES: Record<string, string[]> = {
     'Hostile debris introduced itself at speed.',
     'Hit by cave mail, postage due.',
   ],
+  'falling-tree': [
+    'A tree fell in the Works, and someone was around to hear it. Briefly.',
+    'Timber. The creak was, in hindsight, the warning.',
+  ],
   'colossus-slam': [
     'The Kiln Colossus stamped your ticket.',
     'A furnace with fists ended the expedition.',
@@ -226,6 +230,7 @@ const DEATH_TITLES: Record<string, string> = {
   'golem-rock': 'You were crushed.',
   'powder-mage-debris': 'You were crushed.',
   'hostile-debris': 'You were crushed.',
+  'falling-tree': 'You were felled.',
   'rillback-flop': 'You were crushed.',
   'rootloper-lash': 'You were struck down.',
   'steam-pressure': 'You were scalded.',
@@ -240,15 +245,11 @@ const DEATH_TITLES: Record<string, string> = {
 /**
  * Sources that borrow another cause's (already voiced) lines until their own
  * are recorded: every DEATH_LINES entry must have a narration clip
- * (tests/narrator.test.ts). A felled tree reads as crushing debris for now;
- * its own lines, ready for the next voice pass (scripts/audio/gen-voice.mjs):
- *   title 'You were felled.'
- *   'A tree fell in the Works, and someone was around to hear it. Briefly.'
- *   'Timber. The creak was, in hindsight, the warning.'
+ * (tests/narrator.test.ts), so a new cause can ship on an alias and get its
+ * own lines at the next voice pass (scripts/audio/gen-voice.mjs). Empty now:
+ * the felled tree has its own ('You were felled.').
  */
-const DEATH_ALIASES: Record<string, string> = {
-  'falling-tree': 'hostile-debris',
-};
+const DEATH_ALIASES: Record<string, string> = {};
 
 function normalizeDeathSource(source: string | null | undefined): string {
   if (!source) return 'unknown';
