@@ -123,6 +123,7 @@ export class Hud {
   private readonly flaskFill = el('flask-fill');
   private readonly damageVignette = el('damage-vignette');
   private readonly objectiveNode = el('objective');
+  private readonly waveNum = el('wave-num');
   private readonly interactionHintNode = el('interaction-hint');
   private readonly controlsHintNode = el('controls-hint');
   private readonly controlsHintDefaultHtml = this.controlsHintNode.innerHTML;
@@ -632,7 +633,10 @@ export class Hud {
     this.hpFill.classList.toggle('critical', !player.dead && player.hp / player.maxHp < 0.25);
     this.hpFill.parentElement?.setAttribute('aria-label', `Health ${Math.ceil(player.hp)} of ${player.maxHp}`);
     const rt = ctx.levels.current;
-    el('wave-num').textContent = rt?.living ? worksRoomAt(player.x, player.y).name : rt?.def.name ?? '';
+    // One voice for the place name: D1 names rooms in title case, so the
+    // generated floors do too ("Fungal Deep", not "FUNGAL DEEP").
+    const place = rt?.living ? worksRoomAt(player.x, player.y).name : titleCaseName(rt?.def.name ?? '');
+    if (this.waveNum.textContent !== place) this.waveNum.textContent = place;
     const bindings = getBindings();
     el('field-note').textContent = player.legClub
       ? `Weaver leg · ${player.legClub.durability} hits left · LMB/${keyLabel(bindings.kick)} ${ctx.enemies.some(e => canHumiliate(ctx, e) && Math.hypot(e.x - player.x, e.y - player.y) < 100) ? 'Finish its owner' : 'Whip'} · RMB Throw · ${keyLabel(bindings.carry)} Drop`
