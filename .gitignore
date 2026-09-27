@@ -23,3 +23,9 @@ samples/*.png
 # wrangler dev local state (Durable Object storage, workerd cache)
 .wrangler/
 servers/authorlink/.wrangler/
+
+# ElevenLabs generation cache (paid responses; regenerable) and any local key files
+scripts/audio/.cache/
+.env
+.env.*
+*api-key*.txt
