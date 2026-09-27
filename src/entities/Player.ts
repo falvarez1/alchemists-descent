@@ -1349,7 +1349,7 @@ export class PlayerControl implements PlayerControlApi {
         bodyH,
         player.perks.flameward ? { burning: true } : undefined,
         2,
-        { toxicScale: 0, healiumScale: 0 },
+        { toxicScale: 0, healiumScale: 0, frostbiteScale: 1 },
       );
       this.statusSlow = status.slowFactor;
       let damage = status.damage;
@@ -1361,7 +1361,9 @@ export class PlayerControl implements PlayerControlApi {
         if (status.maxCharge > 0) drawConductorArc(ctx, player.x, player.y, 4, bodyH);
       }
       if (damage > 0) {
-        const source = this.noteDamageSource(this.statusDamageSource(player));
+        // The Cold Store's frostbite names itself when it is most of the harm.
+        const cause = status.frostbiteDamage > 0 && status.frostbiteDamage >= damage * 0.5 ? 'frostbite' : this.statusDamageSource(player);
+        const source = this.noteDamageSource(cause);
         player.hp -= this.reduceIncomingDamage(damage);
         if (player.hp <= 0) {
           this.kill(source);

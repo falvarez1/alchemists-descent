@@ -250,7 +250,8 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
       if (n === Cell.Slime && simRandom() < 0.04) {
         w.replaceCellAt(ti, Cell.Acid, acidColor());
       }
-      if (n === Cell.Water) {
+      if (n === Cell.Water || n === Cell.Brine) {
+        // (Brine boils away the same way: the salt goes with the steam.)
         w.replaceCellAt(ci, Cell.Steam, steamColor());
         w.life[ci] = 260;
         // Water is a conductor: clear through the World helper so the cell is

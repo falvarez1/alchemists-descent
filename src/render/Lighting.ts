@@ -7,6 +7,7 @@ import { DARKNESS, LANTERN } from '@/config/darkness';
 import { DARK_H, DARK_W, darkMapFor, renderDarkness, renderOpenLut, sampleDarkMap } from '@/core/darkness';
 import type { LightField, LightSample } from '@/render/pixels';
 import { creatureLights } from '@/render/creatures/lights';
+import { BEAM_MIRROR, BEAM_PRISM, MAX_BEAM_DEPTH, MIRROR_REFLECTANCE, PRISM_SHARE, PRISM_SPLIT, mirrorNormal, reflect, rotate } from '@/sim/beam';
 
 const RUNTIME_INSPECTION_LIGHT_INTENSITY = 1.2;
 const RUNTIME_INSPECTION_LIGHT_RADIUS = 65;
@@ -142,6 +143,13 @@ export class Lighting implements LightField {
    * it" read (render/LightQuery). Zero everywhere while hooded.
    */
   readonly wandField: Float32Array;
+  /**
+   * What each texel does to the wand's beam (wave 3, sim/beam): 0 nothing
+   * special, BEAM_MIRROR reflects it, BEAM_PRISM splits it. Built with the
+   * attenuation map; the beam march reads it so a mirror turns the light
+   * (and the photocell it lands on reads the turned light).
+   */
+  readonly beamKind: Uint8Array;
   /** Camera origin of the last build: gameplay reads index the field with it. */
   originX = 0;
   originY = 0;
@@ -178,6 +186,7 @@ export class Lighting implements LightField {
     this.lightAtt = new Float32Array(this.LW * this.LH);
     this.lightOpen = new Float32Array(this.LW * this.LH).fill(1);
     this.wandField = new Float32Array(this.LW * this.LH);
+    this.beamKind = new Uint8Array(this.LW * this.LH);
     this.vignette = new Float32Array(VIEW_W * VIEW_H);
     // bakeVignette (full-res radial darkening, baked once)
     const cx = VIEW_W / 2,
@@ -319,6 +328,7 @@ export class Lighting implements LightField {
   build(ctx: Ctx): void {
     this.ctx = ctx;
     const { LW, LH, lightR, lightG, lightB, lightAtt } = this;
+    const beamKindMap = this.beamKind;
     lightR.fill(0);
     lightG.fill(0);
     lightB.fill(0);
@@ -360,6 +370,7 @@ export class Lighting implements LightField {
         if (darkMap) lightOpen[i] = openLut[darkMap[darkRow + Math.min(DARK_W - 1, Math.max(0, wx >> 1))]];
         // Translucent solids (ice, glass, crystal) pass most light through
         lightAtt[i] = MATERIAL_ATTENUATION[t] ?? 0.4;
+        beamKindMap[i] = t === Cell.Mirror ? BEAM_MIRROR : t === Cell.Crystal ? BEAM_PRISM : 0;
         if (!EMISSIVE_MATERIAL[t] && !world.charge[wi]) continue;
         if (t === Cell.Fire) {
           const f = 0.9 + Math.random() * 0.5;
@@ -860,30 +871,65 @@ export class Lighting implements LightField {
       oy = (wy - this.ctx.camera.renderY) / 2;
     if (ox < -radiusHalf || ox > LW + radiusHalf || oy < -radiusHalf || oy > LH + radiusHalf)
       return;
+    const beamKindMap = this.beamKind;
+    const camX = this.ctx.camera.renderX, camY = this.ctx.camera.renderY;
+    const world = this.ctx.world;
     for (let k = 0; k < BEAM_RAYS; k++) {
       // -1..1 across the fan; angular falloff tapers the cone edges so it reads
       // as a soft beam rather than a hard pie slice.
       const u = BEAM_RAYS > 1 ? (k / (BEAM_RAYS - 1)) * 2 - 1 : 0;
       const a = aim + u * BEAM_HALF_SPREAD;
       const edge = BEAM_EDGE_MIN + (1 - BEAM_EDGE_MIN) * (1 - u * u);
-      const dx = Math.cos(a),
+      let dx = Math.cos(a),
         dy = Math.sin(a);
       let T = 1;
-      for (let d = 0; d < radiusHalf; d++) {
-        const lx = Math.round(ox + dx * d),
-          ly = Math.round(oy + dy * d);
+      // LIGHT THAT TURNS CORNERS (sim/beam): each ray marches from its
+      // current leg's origin; a mirror texel reflects it (the face read from
+      // the mirror cells there), a prism texel bends alternate rays either way
+      // into a warm and a cool daughter beam. Falloff keeps counting the whole
+      // path, so a banked beam is dimmer than a straight one.
+      let rx = ox, ry = oy, leg = 0, bends = 0, inPrism = false;
+      let cr = sr, cg = sg, cb = sb;
+      for (let d = 0; d < radiusHalf; d++, leg++) {
+        const lx = Math.round(rx + dx * leg),
+          ly = Math.round(ry + dy * leg);
         if (lx < 0 || lx >= LW || ly < 0 || ly >= LH) break;
         const i = ly * LW + lx;
+        const kind = beamKindMap[i];
+        if (kind === BEAM_MIRROR && bends < MAX_BEAM_DEPTH && leg > 0) {
+          // Reflect off the face at the last open point, then carry on.
+          const [nx, ny] = mirrorNormal(world, camX + (lx << 1), camY + (ly << 1), dx, dy);
+          const back = leg - 1;
+          rx += dx * back; ry += dy * back;
+          [dx, dy] = reflect(dx, dy, nx, ny);
+          leg = 0;
+          bends++;
+          T *= MIRROR_REFLECTANCE;
+          continue;
+        }
+        if (kind === BEAM_PRISM) {
+          if (!inPrism && bends < MAX_BEAM_DEPTH) {
+            // Split: even rays bend one way warm, odd rays the other way cool.
+            const warm = (k & 1) === 0;
+            rx += dx * leg; ry += dy * leg;
+            [dx, dy] = rotate(dx, dy, warm ? PRISM_SPLIT : -PRISM_SPLIT);
+            leg = 0;
+            bends++;
+            T *= PRISM_SHARE * 1.35;
+            if (warm) { cr = sr * 1.25; cg = sg * 0.82; cb = sb * 0.45; } else { cr = sr * 0.55; cg = sg * 0.78; cb = sb * 1.35; }
+          }
+          inPrism = true;
+        } else inPrism = false;
         const fall = T * (1 - d / radiusHalf) * edge;
-        const vr = sr * fall,
-          vgc = sg * fall,
-          vb = sb * fall;
+        const vr = cr * fall,
+          vgc = cg * fall,
+          vb = cb * fall;
         if (vr > lightR[i]) lightR[i] = vr;
         if (vgc > lightG[i]) lightG[i] = vgc;
         if (vb > lightB[i]) lightB[i] = vb;
         if (wandGain > 0 && fall * wandGain > wandField[i]) wandField[i] = fall * wandGain;
         const att = lightAtt[i];
-        T *= att < 0.5 ? BEAM_STEP_SOLID : att < 0.83 ? BEAM_STEP_LIQ : stepAir;
+        T *= kind === BEAM_MIRROR ? BEAM_STEP_SOLID : att < 0.5 ? BEAM_STEP_SOLID : att < 0.83 ? BEAM_STEP_LIQ : stepAir;
         if (T < 0.02) break;
       }
     }

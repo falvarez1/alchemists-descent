@@ -111,6 +111,7 @@ function hasSolidNeighbor(world: World, x: number, y: number): boolean {
 /** Frost shard impact: freeze standing water, rime exposed surfaces — never inside the player. */
 function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
   const world = ctx.world;
+  let brineRefused = 0;
   cx = Math.floor(cx);
   cy = Math.floor(cy);
   for (let dy = -radius; dy <= radius; dy++) {
@@ -126,6 +127,9 @@ function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
       const t = world.types[ci];
       if (t === Cell.Water) {
         world.replaceCellAt(ci, Cell.Ice, iceColor());
+      } else if (t === Cell.Brine) {
+        // Brine refuses the frost (the Cold Store's lesson): it only smokes.
+        brineRefused++;
       } else if (t === Cell.Empty && entityRandom() < 0.35) {
         // thin rime on solid-adjacent air cells
         if (hasSolidNeighbor(world, X, Y)) {
@@ -133,6 +137,9 @@ function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
         }
       }
     }
+  }
+  if (brineRefused > 0) {
+    ctx.particles.burst(cx, cy - 2, Math.min(10, 2 + (brineRefused >> 2)), null, () => packRGB(214, 236, 240), 0.9, { grav: -0.03, glow: 0.4 });
   }
   ctx.particles.burst(cx, cy, 8, null, iceColor, 1.8, { glow: 1.6, grav: 0.03 });
   ctx.audio.sfx('spell.freeze', cx, cy);

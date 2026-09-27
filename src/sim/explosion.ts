@@ -1,7 +1,7 @@
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx, Enemy, ExplosionApi } from '@/core/types';
 import { CELL_COUNT, Cell, blocksEntity, isLiquid } from '@/sim/CellType';
-import { ashColor, crystalColor, fireColor, glassColor, smokeColor } from '@/sim/colors';
+import { ashColor, crystalColor, fireColor, glassColor, packRGB, smokeColor } from '@/sim/colors';
 import { chargeDeposit } from '@/sim/electrical';
 import { causeForExplosion } from '@/core/alchemyCause';
 import { fxRandom, simRandom } from '@/core/simRandom';
@@ -43,6 +43,7 @@ function blastDebrisCell(t: number): boolean {
     t === Cell.Ice ||
     t === Cell.Crystal ||
     t === Cell.Glass ||
+    t === Cell.Mirror ||
     t === Cell.RawOre ||
     t === Cell.Coal
   );
@@ -249,6 +250,13 @@ export class Explosions implements ExplosionApi {
               simRandom() < 0.45
             )
               continue;
+            // A mirror bursts into glinting silver shards (cosmetic: the fx
+            // stream, so no other material's sim rolls move).
+            if (orig === Cell.Mirror && fxRandom() < 0.6) {
+              const d = Math.sqrt(dx * dx + dy * dy) || 1;
+              ctx.particles.spawn(nx, ny, (dx / d) * 2.2 + (fxRandom() - 0.5) * 1.6, (dy / d) * 1.8 - 1.4 - fxRandom(),
+                null, fxRandom() < 0.3 ? packRGB(250, 252, 255) : packRGB(190, 204, 216), 70 + Math.floor(fxRandom() * 40), { glow: 1.2, grav: 0.1 });
+            }
             // Crystal shatters into a burst of glowing shards
             if (orig === Cell.Crystal && simRandom() < 0.6) {
               const d = Math.sqrt(dx * dx + dy * dy) || 1;

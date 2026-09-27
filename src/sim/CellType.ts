@@ -85,6 +85,17 @@ export const Cell = {
   // sprout a climbable root ladder (real Trunk + Wood rungs); glowseeds are the
   // Bellows' lure seeds, collected by walking over them.
   Seed: 41,
+  // BRINE (wave 3, the Cold Store): the refrigeration wing's coolant — salt
+  // water kept below freezing. It will NOT freeze (nitrogen and frost boil off
+  // it), it eats the ice it touches back to water, it sinks under fresh water,
+  // conducts like the sea, boils away under heat, and chills whoever wades in
+  // it (a frostbite slow). The Cold Store runs it in gutters and sumps.
+  Brine: 42,
+  // MIRROR (wave 3, the Glass Galleries): silvered glass from the lens-grinding
+  // halls. A static solid that REFLECTS the wand's beam (and the Lenswright's
+  // lance) off its face — game/beamTrace reads the face from the cells around
+  // the hit — and shatters like glass under a blast or a hard strike.
+  Mirror: 43,
 } as const;
 
 export type Cell = (typeof Cell)[keyof typeof Cell];
@@ -93,10 +104,10 @@ export type Cell = (typeof Cell)[keyof typeof Cell];
  * NOTE: the GPU compose path (render/ComposeShader.ts) packs each cell's type
  * into a texture byte as `type | 0x80` when the cell is charged. That is an
  * internal texture format, NOT a save format — but it means cell ids must
- * stay <= 127. Ids are append-only and top out at 41 today, so there is room
- * for 86 more materials; if id 128 is ever near, the charge bit moves first.
+ * stay <= 127. Ids are append-only and top out at 43 today, so there is room
+ * for 84 more materials; if id 128 is ever near, the charge bit moves first.
  */
-export const CELL_COUNT = 42;
+export const CELL_COUNT = 44;
 
 /**
  * Classification predicates take plain numbers so values read straight out of
@@ -119,7 +130,8 @@ export function isSolid(t: number): boolean {
     t === Cell.Moss ||
     t === Cell.RawOre ||
     t === Cell.Grass ||
-    t === Cell.Trunk
+    t === Cell.Trunk ||
+    t === Cell.Mirror
   );
 }
 
@@ -141,7 +153,7 @@ export function isSoftGrowth(t: number): boolean {
  *  conducts again as a short-lived wet gore pool, giving combat spills a real
  *  lightning-combo role beside water, molten rock, and metal. */
 export function isConductor(t: number): boolean {
-  return t === Cell.Water || t === Cell.Lava || t === Cell.Metal || t === Cell.Blood;
+  return t === Cell.Water || t === Cell.Lava || t === Cell.Metal || t === Cell.Blood || t === Cell.Brine;
 }
 
 export function isLiquid(t: number): boolean {
@@ -158,7 +170,8 @@ export function isLiquid(t: number): boolean {
     t === Cell.ElixirStone ||
     t === Cell.Toxic ||
     t === Cell.Healium ||
-    t === Cell.Teleportium
+    t === Cell.Teleportium ||
+    t === Cell.Brine
   );
 }
 

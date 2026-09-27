@@ -24,6 +24,7 @@ import { handleGunpowder, handleSand } from '@/sim/elements/powders';
 import { handleEmber, handleFire, handleIce } from '@/sim/elements/thermal';
 import { handleVines } from '@/sim/elements/vines';
 import { handleLeaf, handleSeed, handleTrunk } from '@/sim/elements/flora';
+import { handleBrine } from '@/sim/elements/brine';
 import { updateElectricalGrid } from '@/sim/electrical';
 import { runHarvesterField } from '@/sim/harvester';
 import { reseedSimSubstep, simRandom } from '@/core/simRandom';
@@ -130,7 +131,8 @@ export class Simulation implements SimulationApi {
             type === Cell.RawOre ||
             type === Cell.Grass ||
             type === Cell.Leaf ||
-            type === Cell.Trunk
+            type === Cell.Trunk ||
+            type === Cell.Mirror
           ) {
             continue;
           }
@@ -192,6 +194,7 @@ export class Simulation implements SimulationApi {
             );
           else if (type === Cell.MarshGas) handleMarshGas(ctx, x, y);
           else if (type === Cell.Seed) handleSeed(ctx, x, y);
+          else if (type === Cell.Brine) handleBrine(ctx, x, y);
         }
       }
     }

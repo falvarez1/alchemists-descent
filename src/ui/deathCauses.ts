@@ -249,7 +249,11 @@ const DEATH_TITLES: Record<string, string> = {
  * own lines at the next voice pass (scripts/audio/gen-voice.mjs). Empty now:
  * the felled tree has its own ('You were felled.').
  */
-const DEATH_ALIASES: Record<string, string> = {};
+const DEATH_ALIASES: Record<string, string> = {
+  // THE COLD STORE (wave 3): brine's frostbite borrows the frost bolt's lines
+  // until the next voice pass records its own.
+  frostbite: 'frostbolt',
+};
 
 function normalizeDeathSource(source: string | null | undefined): string {
   if (!source) return 'unknown';

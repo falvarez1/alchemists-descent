@@ -143,6 +143,23 @@ export const rawOreColor = () =>
     ? packRGB(226 + rand(24), 174 + rand(26), 46 + rand(22)) // gold fleck
     : packRGB(46 + rand(16), 42 + rand(14), 37 + rand(12)); // dark host rock
 
+/**
+ * Brine: milky, cold salt water — paler and greener than the fresh blue, with
+ * the odd white salt glint so a gutter reads as brine at a glance.
+ */
+export const brineColor = () =>
+  fxRandom() < 0.07
+    ? packRGB(214 + rand(26), 236 + rand(16), 238 + rand(14))
+    : packRGB(86 + rand(22), 158 + rand(22), 170 + rand(20));
+/**
+ * Mirror: silvered glass — cool bright silver with a faint blue cast; a few
+ * cells catch a whiter glint. (Worldgen stamps its own streaked faces.)
+ */
+export const mirrorColor = () =>
+  fxRandom() < 0.12
+    ? packRGB(236 + rand(16), 242 + rand(12), 248 + rand(7))
+    : packRGB(176 + rand(26), 190 + rand(24), 204 + rand(22));
+
 /** Fresh randomized color for a newly placed cell of the given material. */
 export const COLOR_FN: Record<number, () => number> = {
   [Cell.Empty]: emptyColor,
@@ -187,4 +204,6 @@ export const COLOR_FN: Record<number, () => number> = {
   [Cell.Leaf]: leafColor,
   [Cell.Trunk]: trunkColor,
   [Cell.Seed]: seedColor,
+  [Cell.Brine]: brineColor,
+  [Cell.Mirror]: mirrorColor,
 };
