@@ -451,6 +451,15 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   flinch on the HUD, and a sad fizzle of particles at the staff tip (throttled
   to every 14 frames while held).
 - **Recharge:** the wrap-around recharge reads on the hotbar as the bar refills.
+- **Click buffer:** a click made while the wand is cycling is remembered — one
+  buffered cast, never a queue — and fires the tick the wand is ready, if that
+  is ≤ 30 ticks (0.5 s) after the release (`CLICK_BUFFER_TICKS`, was 8); later
+  than that, or if a wand swap, level change or death intervenes, it is spent.
+  8 real taps at 450 ms on the starter: 3–6 casts before, 7 after (the 8th
+  merges — the cycle can't cast faster).
+- **Starter cycle:** the Oak Sprig's recharge is 22 ticks (was 30, 2026-09-27),
+  so a lone Spark Bolt cycles every 36 ticks = 0.60 s (was 44 = 0.73 s):
+  +22% sustained Spark DPS against a starter QA called "plinky".
 - **Hitstop:** player hurt ≥ 8 damage freezes gameplay for 3 frames
   (rendering continues). Creature hits: ≥ 7 damage (with knockback, within
   240 cells, throttled 5 ticks) freeze 2 frames (3 at ≥ 20); **direct hits of

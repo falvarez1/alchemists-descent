@@ -69,12 +69,22 @@ const GOD_CAST_DELAY = 20;
 /**
  * The click buffer: a TAP (press and release inside one tick, so `firing` is
  * already false when the tick runs) still casts once from its press edge. A tap
- * that lands while the wand is still cycling waits for it if the cast is at most
- * this many ticks away (~130 ms), so a click a hair early is not swallowed; one
- * that lands deeper in the recharge, or while casting is refused (rooted, on a
- * ladder, behind a pickup overlay), is spent and never fires late.
+ * that lands while the wand is still cycling is remembered — ONE buffered cast
+ * (`player.firePressed` is a flag, so extra taps merge into it, never a queue)
+ * — and fires the tick the wand is ready, provided that is at most this many
+ * ticks after the release. One that lands deeper in the recharge, or while
+ * casting is refused (rooted, on a ladder, behind a pickup overlay), is spent
+ * and never fires late; a wand swap, a level change and death spend it too.
+ *
+ * 30 ticks = 0.5 s (was 8, ~130 ms, which dropped every other tap of a 450 ms
+ * rhythm on the Oak Sprig — QA: 8 taps gave 4 casts). Half a second is about
+ * the longest a shot can trail its click and still read as the click's; it
+ * covers all but the first 6 ticks of the Oak Sprig's 36-tick cycle (so a
+ * steady tapper is answered on every tap the wand can physically cast), while
+ * slow frames (Bone 54, Brass 66 ticks) still spend a click made a second
+ * before they are ready instead of firing a ghost shot.
  */
-export const CLICK_BUFFER_TICKS = 8;
+export const CLICK_BUFFER_TICKS = 30;
 /** Flame card: frames of stream burst per cast / hard cap while spamming. */
 const FLAME_BURST_FRAMES = 4;
 const FLAME_BURST_CAP = 16;
@@ -194,6 +204,8 @@ export class WandSystem implements WandsApi {
       this.grantRandomCardFromPool(pool);
     }));
     this.eventDisposers.push(ctx.events.on('levelChanged', ({ depth }) => {
+      // A click buffered on the floor above is not a shot on arrival.
+      ctx.player.firePressed = false;
       if (depth < 2 || this.depthsGranted.has(depth)) return;
       this.depthsGranted.add(depth);
       this.grantRandomCardFromPool(DEPTH_PROJECTILE_POOL);
@@ -222,6 +234,9 @@ export class WandSystem implements WandsApi {
   set active(v: 0 | 1) {
     if (v === this._active) return;
     this._active = v;
+    // The buffered click was aimed with the other wand: spend it (a HELD button
+    // keeps firing through `player.firing`).
+    this.ctx.player.firePressed = false;
     if (this.ctx.state.mode === 'play') {
       this.ctx.audio.wandSwap();
       // The character sells the swap too: holster-to-aim draw arc.
