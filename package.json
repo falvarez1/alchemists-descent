@@ -35,6 +35,7 @@
     "verify:hosted-game": "node scripts/verify-hosted-game.mjs",
     "verify:combat-balance": "node scripts/verify-combat-balance.mjs",
     "verify:sandbox": "node scripts/verify-sandbox-arena.mjs",
+    "verify:audio": "node scripts/verify-audio-mix.mjs",
     "verify:peer-ghosts": "node scripts/verify-peer-ghosts.mjs",
     "verify:determinism": "node scripts/verify-sim-determinism.mjs",
     "verify:tuning-ranges": "node scripts/gen-tuning-ranges.mjs --check",
