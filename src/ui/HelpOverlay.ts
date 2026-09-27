@@ -40,9 +40,9 @@ const PAGES: readonly HandbookPage[] = [
         <dt>{jump}</dt><dd>Jump. Hold it in the air to levitate while the gold bar lasts</dd>
         <dt>{down}</dt><dd>Crouch and crawl into low tunnels. In the air: a diving slam</dd>
         <dt>{climb} + {up} {down}</dt><dd>Grab a wall and climb it</dd>
-        <dt>{kick}</dt><dd>Kick crates, creatures and loose rubble</dd>
-        <dt>{carry}</dt><dd>Pick up and throw a crate, a body or a severed limb</dd>
-        <dt>{interact}</dt><dd>Turn valves and cranks, pull levers, siphon liquid</dd>
+        <dt>{kick}</dt><dd>Kick crates, creatures, the fallen and loose rubble. Holding something on the wand: hurl it</dd>
+        <dt>{carry}</dt><dd>Swing on a vine, or carry and throw a crate or a severed limb</dd>
+        <dt>{interact}</dt><dd>Lift the body under the cursor (again to set it down), turn valves and cranks, pull levers, siphon liquid</dd>
       </dl>
       <p>Remap any of these from <b>Pause → Controls &amp; comfort</b>.</p>`,
   },
@@ -103,6 +103,24 @@ const PAGES: readonly HandbookPage[] = [
         <li>A <b>Rillback</b> is fast and electric in water and clumsy on land. Drain its pool and it flounders.</li>
         <li>A <b>Weaver</b> can lose legs to aimed shots. Pick one up with {carry} and it is a whip.</li>
         <li><b>Glowseeds</b> ({lure}) draw lantern insects, and hungry creatures follow the insects.</li>
+      </ul>`,
+  },
+  {
+    id: 'fallen', title: 'The fallen',
+    lead: 'The dead keep their bodies, and the wand can move them.',
+    body: `
+      <dl class="hb-keys">
+        <dt>{interact}</dt><dd>On a body under the cursor: lift it on the wand's brass thread. Again: set it down</dd>
+        <dt>Cursor</dt><dd>Swing it about. It hangs from where you took hold; heavy bodies lag and sag</dd>
+        <dt>{kick} · Right click</dt><dd>Hurl it at the cursor. The throw is lobbed to land there</dd>
+        <dt>{kick}</dt><dd>With nothing held, kick a body along the ground</dd>
+      </dl>
+      <ul>
+        <li>Holding a body stops the wand's recharge and costs a little more for a heavy one; a hurl costs a draught. With nothing left in the tank the grip fails and the body drops.</li>
+        <li>A body moving fast strikes whatever it meets. A creature struck down that way is <b>BOWLED</b>, and pays like any other alchemy.</li>
+        <li>The dead weigh on <b>plates</b>, burn and carry their fire into oil and brush, float, freeze stiff (and shatter), and twitch on a live current.</li>
+        <li>Carried remains draw scavengers from farther off. A snapjaw fed a body sits chewing for a good while.</li>
+        <li>The Sunken Leviathan is rather too heavy. It can be nudged.</li>
       </ul>`,
   },
   {

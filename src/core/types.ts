@@ -5,6 +5,7 @@ import type { VirtualWorldDef } from '@/authoring/virtualWorld';
 import type { CreatureBody, CreatureMind, PlantedFoot } from '@/creatures/types';
 import type { CreatureExpression } from '@/creatures/expression';
 import type { CreatureRig } from '@/creatures/rig/types';
+import type { Corpse } from '@/creatures/corpses';
 import type { BossBrain } from '@/creatures/bosses/types';
 import type { IdleLife } from '@/creatures/idle';
 import type { PlayerCostume } from '@/entities/playerCostume';
@@ -3442,6 +3443,23 @@ export interface Ctx {
   narrator?: NarratorApi;
   /** Living plants that fall (game/Flora); absent in small test contexts. */
   flora?: FloraApi;
+  /** Remains as physical objects (creatures/corpses); absent in small test contexts. */
+  corpses?: CorpsesApi;
+}
+
+/**
+ * TELEKINESIS / CORPSES: the dead as mass the world can push. The sim's
+ * blasts, the boot and the plates reach the remains through here (the list
+ * itself lives in creatures/corpses; `list` is a read-only view for probes).
+ */
+export interface CorpsesApi {
+  readonly list: readonly Corpse[];
+  /** A blast at (cx, cy): bodies in `reach` are flung by distance; frozen ones close in shatter. */
+  blast(cx: number, cy: number, reach: number, strength: number, byPlayer: boolean): void;
+  /** The boot: punt bodies in the melee cone, shove those in the gust. Returns the kick's reaction 0..1. */
+  kick(ox: number, oy: number, dirX: number, dirY: number, reach: number, cosArc: number, gustAt: GustFalloff): number;
+  /** Plate weight of the remains resting in the box (round(mass × 4) each). */
+  weightOn(x0: number, y0: number, x1: number, y1: number): number;
 }
 
 /**

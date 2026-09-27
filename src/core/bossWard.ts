@@ -11,6 +11,7 @@ import type { Enemy, EnemyDamageSource, EnemyKind } from '@/core/types';
  *
  * What counts as the player's:
  * - a DIRECT blow (his wand's bolts and blasts, his kick, a thrown leg) — always;
+ *   so is a body he threw, kicked or swung into it (BOWLED, `playerBlow`);
  * - any other harm (a blast he did not cast, fire, current, acid, a flood, a
  *   thermal shock) only while he is ENGAGED: he cast a spell, poured or threw a
  *   flask within BOSS_ACT_TICKS, at a point within BOSS_ENGAGE_CELLS of the boss.
@@ -50,6 +51,15 @@ export const KILN_QUENCH = {
 
 export function isWardedBoss(kind: EnemyKind): boolean {
   return WARDED_BOSSES.has(kind);
+}
+
+/**
+ * A blow the player dealt with his own hands, always his: the wand's direct
+ * harm, and a body he threw, kicked or swung into it (BOWLED — the thrown-leg
+ * rule, for whole carcasses: combat/Telekinesis, creatures/corpseWorld).
+ */
+export function playerBlow(source: EnemyDamageSource): boolean {
+  return source === 'direct' || source === 'bowled';
 }
 
 /**
@@ -144,7 +154,7 @@ export class BossWard {
    */
   allows(e: Enemy, source: EnemyDamageSource, frame: number): boolean {
     if (!isWardedBoss(e.kind)) return true;
-    const ok = source === 'direct' || this.engaged(e, frame);
+    const ok = playerBlow(source) || this.engaged(e, frame);
     if (ok) this.harmed.add(e);
     return ok;
   }

@@ -10,6 +10,7 @@ import type { BuilderCloseRequestDetail } from '@/app/builderCloseRequest';
 import { throwGlowseed } from '@/game/LivingExpedition';
 import { toggleLantern } from '@/game/Lantern';
 import { releaseWeaverLeg } from '@/combat/LooseWeaverLeg';
+import { telekinesisHolding, telekinesisHurl, telekinesisLift, telekinesisSetDown } from '@/combat/Telekinesis';
 import { flaskSlotKey, gameplayCode } from '@/input/bindings';
 
 type KeyboardLockApi = {
@@ -111,6 +112,8 @@ function isEditableTarget(target: EventTarget | null): boolean {
 export class InputManager {
   private readonly previousPadButtons = new Uint8Array(18);
   private padDriving = false;
+  /** X just lifted or set down a body: holding it on must not start a siphon. */
+  private padLifted = false;
 
   /** Poll on presentation frames, including while menus pause the simulation. */
   pollGamepad(): void {
@@ -173,13 +176,19 @@ export class InputManager {
           ctx.player.firing = held(7) && !ctx.player.fireBlockedUntilRelease;
           if (pressed(7)) ctx.player.firePressed = true;
           ctx.input.pourHeld = held(6);
-          if (pressed(5) && !releaseWeaverLeg(ctx, true)) ctx.flask.throwFlask(ctx);
+          if (pressed(5) && !telekinesisHurl(ctx) && !releaseWeaverLeg(ctx, true)) ctx.flask.throwFlask(ctx);
           if (pressed(4) && ctx.player.legClub) releaseWeaverLeg(ctx, false);
           else if (pressed(4)) throwGlowseed(ctx);
           if (pressed(3)) this.selectWand(ctx.wands.active === 0 ? 1 : 0);
-          if (pressed(2)) ctx.mechanisms.interact(ctx);
-          ctx.input.siphonHeld = held(2) && ctx.player.pullT <= 0;
-          if (pressed(11)) ctx.playerCtl.kick(ctx);
+          // X: set down what the wand holds, else lift the body along the aim, else interact.
+          if (pressed(2)) {
+            if (telekinesisHolding(ctx)) { telekinesisSetDown(ctx); this.padLifted = true; }
+            else if (!ctx.player.legClub && telekinesisLift(ctx, true)) this.padLifted = true;
+            else ctx.mechanisms.interact(ctx);
+          }
+          if (!held(2)) this.padLifted = false;
+          ctx.input.siphonHeld = held(2) && ctx.player.pullT <= 0 && !this.padLifted && !telekinesisHolding(ctx);
+          if (pressed(11) && !telekinesisHurl(ctx)) ctx.playerCtl.kick(ctx);
           this.padDriving = active;
         }
       } else if (this.padDriving) {
@@ -357,7 +366,8 @@ export class InputManager {
     // Right mouse: a game verb, never the browser menu.
     if (e.button === 2) {
       if (ctx.state.mode === 'play') {
-        if (!ctx.player.dead && !releaseWeaverLeg(ctx, true)) ctx.flask.throwFlask(ctx);
+        // Holding something on the wand's thread, the throw is the body's.
+        if (!ctx.player.dead && !telekinesisHurl(ctx) && !releaseWeaverLeg(ctx, true)) ctx.flask.throwFlask(ctx);
       } else {
         // Sandbox eyedropper: pick up whatever material is under the cursor.
         if (ctx.world.inBounds(coords.x, coords.y)) {
@@ -624,14 +634,16 @@ export class InputManager {
       this.setKeyHeld(code, true);
     else if (code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
     else if (code === 'KeyE' && !ctx.player.climbing) {
-      // E telekinesis (toggle): drop a levitated crate, else LIFT the crate the
-      // mouse cursor is on. If no crate's involved it falls through to the old
-      // E behaviour — a lever-pull in reach, else hold-to-siphon the flask.
-      if (!e.repeat && ctx.rigidBodies.isHolding()) {
-        ctx.rigidBodies.release(ctx, false); // set the levitated crate down
-      } else if (!e.repeat && !ctx.player.legClub && ctx.rigidBodies.grabAtCursor(ctx)) {
-        // lifted the crate under the cursor — it now levitates and tracks the hand
-      } else if (!ctx.rigidBodies.isHolding()) {
+      // E telekinesis (toggle): set down whatever the wand holds (a corpse, a
+      // crate), else LIFT the body under the cursor — the fallen or a crate;
+      // the one the cursor is ON wins (combat/Telekinesis). With nothing
+      // liftable under the cursor it falls through to the old E behaviour —
+      // a lever-pull in reach, else hold-to-siphon the flask.
+      if (!e.repeat && telekinesisHolding(ctx)) {
+        telekinesisSetDown(ctx);
+      } else if (!e.repeat && !ctx.player.legClub && telekinesisLift(ctx)) {
+        // lifted the body under the cursor — it now hangs on the wand's thread
+      } else if (!telekinesisHolding(ctx)) {
         const pulling = !e.repeat && ctx.mechanisms.interact(ctx);
         if (!pulling) ctx.input.siphonHeld = true;
       }
@@ -639,9 +651,9 @@ export class InputManager {
     else if (code === 'KeyQ' && !ctx.player.climbing) ctx.input.pourHeld = true;
     else if (code === 'KeyX' && !ctx.player.climbing) ctx.input.drinkHeld = true;
     else if (code === 'KeyF' && !ctx.player.dead && !ctx.player.climbing) {
-      // F throws a telekinetically-held crate; otherwise it's the kick gust.
-      if (ctx.rigidBodies.isHolding()) ctx.rigidBodies.release(ctx, true);
-      else ctx.playerCtl.kick(ctx);
+      // F hurls whatever the wand holds (a corpse at the cursor, a crate along
+      // the aim); otherwise it's the kick gust (which punts corpses too).
+      if (!telekinesisHurl(ctx)) ctx.playerCtl.kick(ctx);
     }
     else if (code === 'KeyG' && !e.repeat && !ctx.player.dead) {
       // hold G: latch a hanging vine to swing, else carry a body; release to let go/throw

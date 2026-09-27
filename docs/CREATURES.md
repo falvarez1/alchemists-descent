@@ -49,7 +49,10 @@ and saves are unchanged by anything here. What changed is what that body
 | `creatures/rig/*` | Physics primitives (points, chains, legs, soft bodies) and the `CreatureRig` container on `Enemy.rig` |
 | `creatures/species/*` | One body plan per file: build + tick-rate step. `index.ts` is the registry `tickCreaturePose` calls |
 | `creatures/worldTouch.ts` | Footfalls by surface (dust, spores, leaf flecks, splashes, snow prints, sand flicks, blood tracks, kicked debris, step sounds), surface splashes for any rig part, ploughed powder, gel tracks |
-| `creatures/corpses.ts` | Physical remains: limp rig falls/drapes/floats, lights gutter, flies arrive, remains melt into their gore material and leave kickable bones |
+| `creatures/corpses.ts` | Physical remains: limp rig falls/drapes/floats, lights gutter, flies arrive, remains melt into their gore material and leave kickable bones; the list, the rot rules, the blast/boot/plate API (`Ctx.corpses`) |
+| `creatures/corpseBody.ts` | One view of a dead body whatever it was built from (verlet rig, Weaver shell, serpent spine): mass, centroid/velocity, pushes, the grip point |
+| `creatures/corpseWorld.ts` | The remains as mass in the grid: the touching-cell census, fire/lava/acid/frost/current, splash, BOWLED strikes, crate shoves, the frozen shatter |
+| `combat/Telekinesis.ts` | The wand's grip (E lift / set down, F or RMB hurl) on corpses and crates; `render/sprites/TelekinesisArt` draws the thread |
 | `render/creatures/raster.ts` | The rasterizer (primitives, `shade`/`glowStamp`/`stamp` painting, lighting, sel-out, glass, `blitFine`) |
 | `render/creatures/<species>.ts` | Art per body plan: materials (OKLab ramps) and primitives from the rig |
 | `render/creatures/lights.ts` | Light seeds from rig positions (lure tips, sacs, cores), corpses included (and organisms, via `render/organisms`) |
@@ -84,6 +87,22 @@ Other systems that now see creatures, not just the wizard: vine strands and
 webs are shoved by creature body parts (`VineStrands.gatherPushers`); critters
 flee creatures, fish bolt from eels, moths drift to living lights
 (`game/Critters.ts`).
+
+## Corpses are gameplay objects now
+
+Remains used to be presentation only. They are now mass the world pushes and
+the player handles (FEEL.md "Telekinesis" and "The fallen as mass"): the wand
+lifts and hurls them, the boot punts them, blasts fling them; a fast body
+strikes creatures (BOWLED, an alchemical kill, the boss ward's own blow),
+shoves crates, splashes real water, weighs on plates; it catches fire and
+writes real flame, is consumed by lava, eaten by acid, frozen stiff (and
+shattered into real ice), and twitches on a live current. Handled remains
+keep (bounded). What is still presentation: the dead are not saved (a level
+left and re-entered has no remains; they melt with the world's change), they
+never block the alchemist or a living creature (they are not cells), and the
+pose details (curl, belly-up, a dead face) are art, not physics. A new kind's
+corpse rules: its mass in `corpseBody` `CORPSE_MASS`, and which frame
+(`corpseFrame`) its body falls under.
 
 ## The bosses
 

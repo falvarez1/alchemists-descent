@@ -160,7 +160,116 @@ A single button that is half melee, half *blast of air* — Newton both ways.
 - **Vines bend; loose cells fly.** The gust bends hanging vines
   (`applyRadialImpulse`); ash (always) + embers + gases blow into flying motes;
   loose particles ride the gust.
+- **The fallen get the boot too.** A corpse in a wider ~80° cone, or lying at
+  the boot on the kicking side, is punted at 6/√mass cells/tick along the aim
+  (+0.35 lift), each part by its distance from the boot so the body folds; a
+  heavy carcass kicks back like a wall (reaction mass/3). One held on the
+  wand's thread is kicked out of it (a punt). The gust shoves the rest.
 - Feedback: a dust arc along the kick, a low square *thud*, an airy noise *whoosh*.
+
+### Telekinesis (E) — the fallen on a thread (`combat/Telekinesis`)
+
+The same verb lifts crates and the dead. **E** on the body under the cursor
+takes hold (the one the cursor is ON wins: a corpse within 1.5 cells of the
+cursor beats a crate under it; within 4 with no crate under the cursor it
+still counts — otherwise E stays a lever-pull / siphon); **E** again sets it
+down with the momentum it has; **F**, or a right-click while holding, hurls it
+at the cursor. Controller: X lifts along the aim / sets down, RB or R3 hurls.
+
+- **It hangs from where you took it.** The pull is a damped spring on ONE
+  point (the one nearest the cursor at the grab): K 0.03/mass, damping
+  0.12/√mass, capped at 0.9/√mass cells/tick². The held point barely yields
+  to its bonds (share 0.9), the field lifts 35% of the weight off the rest,
+  so limbs trail and dangle: a lizard held by the tail swings by the tail, a
+  bat snaps to the cursor, a golem lags and sags. The body hangs 1.6 cells per
+  slime below the cursor. Gel re-inflates and hangs like a sack; a frozen body
+  is held whole (it is rigid); a serpent by its head; a Weaver by its shell,
+  legs clutched in and trailing the swing.
+- **Leash and reach.** The target is the cursor clamped to 64 cells of the
+  alchemist's chest; a body is gripped within 90 of the wand tip, in its
+  sight. 45 ticks out of sight, or 150 cells away, and the thread snaps.
+- **Mass** (slimes): bat 0.4 · wisp 0.6 · slime 1 · imp 1.2 · spitter 1.3 ·
+  mage 1.6 · rillback 1.8 · rootloper 2 · weaver 2.6 · stonemaw 3.2 · golem 4.5
+  · leviathan 14 (over the 6 limit: E only **nudges** it, 1.1/√mass for 6
+  mana, and the Works remark "Rather heavy.").
+- **Mana** (the active wand): holding cancels its regeneration and costs
+  0.08 + 0.09·mass per tick more (an Oak Sprig holds a slime ~9 s from full, a
+  golem ~3 s); taking hold 2 + 1.5·mass; a hurl 6 + 5·mass, and a short tank
+  throws at mana/cost of full power (under 25%: it fizzles and just drops).
+  Dry: the hollow click, the mana bar flinch, a fizzle at the tip. Crates stay
+  free (puzzle weights must stay fail-open).
+- **The hurl** leaves at 8/mass^0.35 cells/tick (clamped 3.5–7.5: a bat
+  flies, a golem is shoved), *lobbed*: candidate throws of the body's own
+  flight (gravity .22, air .985/tick; a Weaver .25/.995) are flown low to high
+  and the flattest that passes within 3 cells of the cursor wins. The swing
+  becomes tumble (the gripped part +18%), the thrower takes a small recoil
+  (0.35·mass·power, ≤ 1.6), displaced air streaks behind, a small bloom kick.
+- **Feel.** The grab tugs the body toward the wand (0.9/√mass) with a
+  brass-white flare; a hairline brass thread (`render/sprites/TelekinesisArt`)
+  sags under the weight and draws taut as the spring pulls, wavers along its
+  length, runs three beads of light into the body, flares on the grab
+  (reduced flashes: dimmer, no flare); motes run down it every 4 ticks and
+  orbit the body; the held body glows faint brass and lights the room a little.
+  Sounds: a taut twang and tug, the thread's hum (louder for a heavier body),
+  a slack sigh, a whip-crack and rush of air, a fizzle, a strained groan.
+- **Handled remains keep.** A body held, thrown, kicked or frozen does not rot
+  (for 240 ticks after the last touch), bounded at 1800 ticks spared in all;
+  with more than 10 remains the oldest untouched melts first, the held one never.
+- **Teach.** The first fresh corpse within 56 cells shows "E on the fallen:
+  lift · F hurls" and a one-time card; while holding, the hint line reads the
+  set-down and hurl keys.
+
+### The fallen as mass (`creatures/corpseWorld`)
+
+- **BOWLED.** A body faster than 2.2 cells/tick strikes a creature it passes
+  through for 6 + 4.5·mass^0.6·relative speed (cap 90), knocks it along its
+  flight, sheds 55% of its momentum into it; one blow per creature per
+  flight, 14-tick cooldown. Set moving by the alchemist (a hurl, a kick, a
+  swing, his own blast) within 240 ticks, a kill is **BOWLED** (an alchemical
+  kill: callout, chain, payout); a carcass falling on its own is debris
+  (FLATTENED). A bowl of 36+ holds a 4-frame hitstop. Bosses take a bowl as
+  the player's own blow (the boss ward's thrown-leg rule); a frozen victim
+  SHATTERS. A swung body clubs too (the held body strikes at speed).
+- **Only a heavy body on his head hurts him**: mass ≥ 2.5 falling at ≥ 2.2
+  onto the alchemist's head, 1 + 0.45·mass·vy, capped at 8 ("hostile debris").
+- **Blasts** fling every part by distance (reach r×1.8, strength 2.5 + .08r,
+  ÷√mass, +35% lift); the player's own blast makes what they hit his.
+- **Liquids.** Entering a pool at vy ≥ 1 swaps the surface cells up and out
+  over 2 + 1.5·mass + .6·vy columns each side (mass conserved) with cosmetic
+  spray in the pool's own colour; drag .8/tick and buoyancy −.35 float it;
+  feet rise (belly-up); a Weaver's shell bobs.
+- **Fire.** Flame or embers against a body not soaked (< 40% of it in
+  water/blood/gel) catch it: 480 ticks (oiled 780); it writes one real Fire
+  cell against itself per census (oil, grass, leaves and marsh gas go up),
+  chars .0035/tick toward soot with embers breathing through, rots 2 extra
+  ticks per tick and falls to ash and embers. Water puts it out (a sizzle).
+- **Lava** takes a body in ~1.2 s (+10 rot/tick, embers, no bones); **acid**
+  eats it (+6/tick) and is spent (a touching cell goes up as smoke, 40%/census).
+- **Frost.** Nitrogen, ice or snow freezes it stiff for 1200 ticks (refreshed
+  while touching): shape matching holds the pose, friction .06, air .99 — it
+  slides and tumbles like a plank, ice-pale. A blow of 2.4 cells/tick (the
+  sharper of one tick's Δv and three ticks' × 0.8: a long body meets a wall
+  nose first) or a close strong blast **shatters** it: up to 7 real Ice cells,
+  3 of its gore, 2 + mass frozen chunks (kickable debris), 24 glassy shards.
+  Heat thaws it fast first.
+- **Current.** A charged cell against it: a 24-tick galvanic twitch (a part
+  jerks every 3 ticks, legs kick, blue sparks); wet (≥ 25%), it carries 10 of
+  charge on into the liquid it lies in.
+- **Weight.** Plates and weight sensors count round(mass × 4) per body with a
+  part resting in their rows: a slime presses a plate (4 ≥ 3), a bat is too
+  light (2); a body the wand holds up weighs nothing.
+- **Ecology.** A carried or just-thrown body (300 ticks) lures scavengers
+  from 1.6× as far; a snapjaw snatches a carcass by its nearest part — dangle
+  one at the pod and it eats and sits chewing (780 × 1.5 ticks: safe passage).
+- **Crates and bones.** A body faster than 2.4 shoves the loose bodies it
+  passes through (momentum 12·mass·v) and keeps 70%.
+- **Landings.** An abrupt change of 1.6 cells/tick (from ≥ 1.8) is a thud:
+  dust in the colour of what it hit, a light or heavy thud by the body; a body
+  of 2+ slimes landing at 3+ shakes the view a little (0.004·Δv·√mass, local,
+  capped at .025).
+- The census of touching cells runs every 3 ticks (staggered; two rings: just
+  inside the rim and just outside it). Grid writes pick cells by a
+  deterministic hash, never the entity stream; motes use fx.
 
 ### Vine swing (G)
 
@@ -558,7 +667,8 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   the world's and the wizard set it in motion, the kill is announced, chains
   and pays out. Causes: fire/burning → burned, lava → rendered, steam →
   steeped, a shocked body → shorted, out of breath → drowned, acid →
-  dissolved, toxic → poisoned, debris/thrown bodies → flattened, a
+  dissolved, toxic → poisoned, debris/thrown crates → flattened, a corpse
+  the alchemist threw, kicked or swung → bowled, a
   kick-launched wall slam → impaled, gunpowder/barrels/a bomber's death/hostile
   blasts → detonated, any physical blow to a frozen body → shattered. The
   wand's own bolts, bombs, lightning, kick, whip, stomp and Flame Jet stream
@@ -604,7 +714,7 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   gold is already his.
 - **Callouts** (`ui/Callouts.ts`, `styles/callouts.css`): the word pops over
   the kill, rises and fades — FLAMBÉED, RENDERED, STEEPED, SHORTED, DROWNED,
-  DISSOLVED, SHATTERED, FLATTENED, DETONATED, POISONED, IMPALED — one word per
+  DISSOLVED, SHATTERED, FLATTENED, DETONATED, POISONED, IMPALED, BOWLED — one word per
   cause so it teaches the mechanic. Brass serif (Cormorant Garamond) for a
   single, with the bonus gold beneath; a chain link lands on its predecessor's
   spot and takes it (the old word bows out in 140 ms) with a ×N badge that
@@ -1169,6 +1279,8 @@ kick gust → enemies: push 5×(40/footprint), clamp 0.2–4.5× · ballistic la
 kick gust → critters scatter+startle 16–32f · vines bend (applyRadialImpulse) · saplings ≤130 cells/≤34 tall snap, bigger stands drop their pods
 felling: notch warn ≤0.55/≤0.30 of row width · hinge hold 18t @damping 26 → 1.1 → release 0.95 rad → free 0.12 · start spin 0.0055 · crush ≥1.5 c/t: foes min(160, 10+12v·massF) 'flattened', player 8–30 · impact Δv>1.1 · settle <0.08/<0.006 ×10t (water <0.25/<0.02 ×3t), timeout 720t
 thirsty seeds: soak 1 cell/substep, sprout after 48 dry substeps if bed drank ≥8 · energy min(120, 22+1.6·water+3·seeds) · rung 6×2 every 12
+telekinesis (E/F): reach 90 · leash 64 · snap 150 / 45 ticks unseen · spring K .03/m, damp .12/√m, cap .9/√m · sag 1.6/slime · field lift .35 · mana: regen + .08 + .09m /tick hold, 2 + 1.5m grab, 6 + 5m hurl (≥ 25% or fizzle) · hurl 8/m^.35 clamp 3.5–7.5, lobbed · lift ≤ 6 slimes (nudge 1.1/√m, 6 mana)
+corpses: bowl ≥ 2.2 c/t, 6 + 4.5·m^.6·v cap 90, keep 45%, cd 14, credit 240 ticks, hitstop 4 at ≥ 36 · head ≥ 2.5 slimes at vy ≥ 2.2, ≤ 8 · thud Δv 1.6 (≥ 1.8 c/t) · shatter Δv 2.4 · kick 6/√m · gust 1.6·g/√m · burn 480 (oiled 780), char .0035, rot +2 · lava +10 · acid +6 · frozen 1200, friction .06 · twitch 24, wet charge 10 · plate weight round(4m) · lure ×1.6 for 300 ticks · spare 240 after a touch, ≤ 1800 · MAX 10
 vine swing (G): reach 16, len 14–150, pump 0.16 (left=left/right=right), jump launch +2.0 up · release keeps momentum (airborne inertia, no walk clamp) · player pushes vines aside within 20 cells (strength 1.4)
 skid: trigger |svx|>1.1 on reversal, 9f · stagger 12f · recoil 5f/7f
 swap draw 12f (gleam f5-7) · fidget arms at 420f idle, routine 90f

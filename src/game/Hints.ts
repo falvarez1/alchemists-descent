@@ -3,6 +3,9 @@ import { Cell, isLiquid } from '@/sim/CellType';
 import { INTRO_REWARD_CARD } from '@/game/introObjectives';
 import { worksHint } from '@/game/LivingExpedition';
 import { getSeenHints, markHintSeen } from '@/game/hints/seenHints';
+import { corpses } from '@/creatures/corpses';
+import { heldCorpse } from '@/combat/Telekinesis';
+import { getBindings, keyLabel } from '@/input/bindings';
 
 /** A teach-once popover body, paired with a contextual hint line. */
 interface Teach {
@@ -35,6 +38,8 @@ const TEACH_CALM_FRAMES = 45;
  *  changes (after the curtain), so no lesson in the first 2 s. */
 const TEACH_ARRIVAL_HOLD_FRAMES = 120;
 const R_GOAL = 32 * 32;
+/** A fresh body this close teaches the wand's grip. */
+const R_FALLEN = 56 * 56;
 const FLASK_SCAN = 10; // half-box (cells) swept around the player for siphonables
 
 /**
@@ -334,6 +339,35 @@ export class HintSystem implements HintApi {
           dist2: hot.d2,
           info: { key: 'carried-cells', line: 'Flask: Q pours carried cells · RMB throws the bottle', world: { x: hot.x, y: hot.y } },
           teach: { title: 'Carried Cells', body: 'A flask stores exact cells from the world. Pour or throw them back out to douse, flood, weigh, or conduct.' },
+        });
+      }
+    }
+
+    // --- the fallen: remains are things the wand can lift (combat/Telekinesis) ---
+    const keys = getBindings();
+    if (heldCorpse()) {
+      consider({
+        priority: 2.6,
+        dist2: 0,
+        info: { key: 'holding-fallen', line: `${keyLabel(keys.interact)} set down · ${keyLabel(keys.kick)} or RMB hurl` },
+        teach: null,
+      });
+    } else if (!this.taught.has('lift-fallen')) {
+      let fallen: { x: number; y: number; d2: number } | null = null;
+      for (const c of corpses()) {
+        if (c.world !== w || c.gone || c.age > 600) continue;
+        const d2 = (c.e.x - px) ** 2 + (c.e.y - py) ** 2;
+        if (d2 <= R_FALLEN && (!fallen || d2 < fallen.d2)) fallen = { x: c.e.x, y: c.e.y - 4, d2 };
+      }
+      if (fallen) {
+        consider({
+          priority: 1.55,
+          dist2: fallen.d2,
+          info: { key: 'lift-fallen', line: `${keyLabel(keys.interact)} on the fallen: lift · ${keyLabel(keys.kick)} hurls`, world: { x: Math.round(fallen.x), y: Math.round(fallen.y) } },
+          teach: {
+            title: 'The Fallen',
+            body: `Press ${keyLabel(keys.interact)} on the fallen to lift them with your wand; ${keyLabel(keys.kick)} hurls. The dead are heavy, and they hit like it.`,
+          },
         });
       }
     }
