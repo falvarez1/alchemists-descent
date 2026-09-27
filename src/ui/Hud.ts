@@ -18,6 +18,7 @@ import {
 } from '@/game/introObjectives';
 import { cardIconName, makeIconCanvas } from '@/ui/icons';
 import { ToastStack } from '@/ui/ToastStack';
+import { calmCase } from '@/ui/houseText';
 import { titleCaseName } from '@/core/strings';
 import { FLOOR_LOOKS, floorLookFor } from '@/config/floorLooks';
 
@@ -301,7 +302,8 @@ export class Hud {
 
     this.disposers.push(ctx.events.on('playerDied', ({ depth, level, gold, cause }) => {
       // Prep the overlay text but DON'T show it yet — the wizard ragdolls first.
-      el('go-wave').textContent = 'D' + depth + ' - ' + level.toUpperCase();
+      // Campaign floors get "Floor 2 of 4 · The Rot Gardens" from RunHud.
+      el('go-wave').textContent = 'D' + depth + ' · ' + titleCaseName(level);
       el('go-gold').textContent = String(gold);
       el('go-cause').textContent = deathCauseLine(cause, this.ctx.state.frameCount);
       el('death-title').textContent = deathTitle(cause);
@@ -543,8 +545,12 @@ export class Hud {
 
   private renderObjective(): void {
     const text = contextualObjectiveText(this.ctx, this.objectiveBase);
+    // Shown in the house voice: a legacy SHOUTED objective (test arenas, the
+    // retired intro lines) reads in sentence case. The raw line still keys
+    // the control-hint row below.
+    const shown = calmCase(text);
     const node = this.objectiveNode;
-    if (node.textContent !== text) node.textContent = text;
+    if (node.textContent !== shown) node.textContent = shown;
     this.renderObjectiveNote();
     this.renderIntroControlHint(text);
   }
