@@ -649,6 +649,23 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   seam where they meet rock; water, lip, underside and backdrop grade (mul/lift,
   a parallax offset, optional mirror, machinery opacity ×0.7–1.2) are per floor.
   D1's values are the shipped identity. Presentation only: no cell type changes.
+- **Material by shape (floors 2–4, `FloorLook.natural`):** the 64-cell panels
+  are gone. An art plane (`render/terrainArtPlane.ts`, one byte per cell)
+  holds depth into rock (chamfer 3/4, capped 20), air distance to rock
+  (capped 15) and a sticky BUILT bit. Built = straight exposed runs ≥ 40 / 16
+  / 36 cells (Rot / Cisterns / Kiln) or any face inside a prefab or boss-arena
+  footprint, lined 7 / 12 / 8 cells deep (±3 jitter). The rest samples the
+  floor's procedural rock tile (256² per floor, two texels per cell). Cores
+  sink by `smoothstep(3, 16–18, depth)` toward aoCore ≈ 0.4–0.6, stepped in
+  4 bands whose edges shift ±1 cell with texel luminance. Tops have a lip mix
+  of 0.5–0.55 with 1–3/16 lit flecks. Faces open to the right take ×0.8, and
+  undersides streak 1–3 cells by column. Tile features (roots, seeps, ember
+  veins) show in a depth window, and Kiln veins brighten toward the depths
+  (×0.35 at the top). The backdrop's contact shadow is ×0.40–0.45 at a face,
+  easing out over 7–8 cells, with saturation ×0.5–0.55 and a 0.3 haze.
+  Small enclosed air pockets under 1500 cells are sealed and count as rock.
+  Digs re-derive at most 4 chunk regions per frame, and liquid or powder churn
+  one every other frame, so render cost stays within noise of the classic sampler.
 - **Dressing restraint:** gold powder is a mottled metal (shadowed grain /
   body / facet / 6% glint) with bloomWeight 0.07 (was 0.15) and a 0.22 light
   seed (was 0.34); marsh gas is a dim olive haze, bloomWeight 0.07 (was 0.24).
