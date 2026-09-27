@@ -4,6 +4,7 @@ import type { BiomeId } from '@/core/types';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import { loadTerrainArt, terrainAlbedo, terrainArtPixels } from '@/render/TerrainArt';
+import { TerrainArtPlane } from '@/render/terrainArtPlane';
 
 beforeAll(async () => {
   vi.stubGlobal('fetch', async (url: string) => new Response(url));
@@ -105,10 +106,68 @@ describe('floor-graded terrain albedo', () => {
     expect(seen.size).toBe(4);
   });
 
+  it('keeps the Works on the classic sampler even when an art plane exists', () => {
+    const world = slab();
+    const plane = new TerrainArtPlane(world, { builtRun: 24, lining: 8, zones: [] });
+    for (let y = 38; y < 122; y += 3) for (let x = 8; x < 192; x += 5) {
+      const i = world.idx(x, y);
+      if (world.types[i] === Cell.Empty) continue;
+      expect(terrainAlbedo(world, i, x, y, true, FLOOR_LOOKS.earthen, plane)).toBe(shippedAlbedo(world, i, x, y));
+    }
+  });
+
   it('still honours colour scars over any floor grade', () => {
     const world = slab();
     const i = world.idx(60, 80);
     world.colors[i] = 0x781223; world.colorOverrides.add(i);
     expect(terrainAlbedo(world, i, 60, 80, true, FLOOR_LOOKS.fungal)).toBe(0x781223);
+  });
+});
+
+describe('shape-aware floor looks', () => {
+  const luma = (c: number): number => ((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11;
+
+  /** Wall below row 60 with a long straight floor; a 45° rise on the right. */
+  function cave(): World {
+    const world = new World(256, 192);
+    for (let y = 0; y < 192; y++) for (let x = 0; x < 256; x++) {
+      if (y >= 60 || (x >= 160 && y >= 60 - (x - 160))) world.types[world.idx(x, y)] = Cell.Wall;
+    }
+    return world;
+  }
+
+  it('gives every spine floor below the Works a natural look, and the Works none', () => {
+    expect(FLOOR_LOOKS.earthen.natural).toBeNull();
+    const tiles = new Set<number>();
+    for (const biome of ['fungal', 'flooded', 'volcanic'] as BiomeId[]) {
+      const natural = FLOOR_LOOKS[biome].natural;
+      expect(natural).not.toBeNull();
+      tiles.add(natural!.tile);
+      expect(natural!.contact).toBeGreaterThan(0);
+      expect(natural!.contact).toBeLessThan(1);
+      expect(natural!.backdropSat).toBeLessThan(1);
+    }
+    expect(tiles.size).toBe(3);
+  });
+
+  it('dresses built faces in masonry and the cave in the floor rock, and sinks cores', () => {
+    const world = cave();
+    for (const biome of ['fungal', 'flooded', 'volcanic'] as BiomeId[]) {
+      const look = FLOOR_LOOKS[biome], natural = look.natural!;
+      const plane = new TerrainArtPlane(world, { builtRun: natural.builtRun > 30 ? 30 : natural.builtRun, lining: natural.lining, zones: [] });
+      // Built (straight floor lining) vs natural (the diagonal rise) come from different kits.
+      const builtCell = world.idx(40, 62), rockCell = world.idx(200, 24);
+      expect(plane.data[builtCell] & 0x40).toBe(0x40);
+      expect(plane.data[rockCell] & 0x40).toBe(0);
+      // A core cell is darker than the same material near its face.
+      const near = terrainAlbedo(world, world.idx(40, 64), 40, 64, true, look, plane);
+      const core = terrainAlbedo(world, world.idx(40, 150), 40, 150, true, look, plane);
+      expect(luma(core)).toBeLessThan(luma(near));
+      // The backdrop right against a face carries the darkest contact shade.
+      const air = terrainAlbedo(world, world.idx(40, 59), 40, 59, true, look, plane);
+      expect(air >> 16).toBe(Math.round(natural.contact * 255));
+      const far = terrainAlbedo(world, world.idx(40, 20), 40, 20, true, look, plane);
+      expect(far >> 16).toBe(255);
+    }
   });
 });

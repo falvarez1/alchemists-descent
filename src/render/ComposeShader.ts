@@ -28,8 +28,12 @@ import type {
 import { cloudSumGlsl, glslFloat, SKY } from '@/render/skyAtmosphere';
 import { Cell } from '@/sim/CellType';
 import type { World } from '@/sim/World';
-import { activeFloorLook, terrainArtPixels, terrainBlocksGlsl, usesTerrainArt } from '@/render/TerrainArt';
+import {
+  activeArtPlane, activeFloorLook, terrainArtPixels, terrainBlocksGlsl, terrainOpenMask, usesTerrainArt,
+} from '@/render/TerrainArt';
 import type { FloorLook } from '@/config/floorLooks';
+import { FLOOR_SHEET, FLOOR_TILE, floorTilePixels } from '@/render/floorTiles';
+import type { TerrainArtPlane } from '@/render/terrainArtPlane';
 
 /** Short alias for embedding SKY tuning numbers as GLSL float literals below. */
 const flt = glslFloat;
@@ -116,6 +120,28 @@ uniform vec3 uWaterSurface;
 uniform vec3 uWaterBody;
 uniform vec3 uBackdropTintMul;
 uniform vec3 uBackdropTintLift;
+// Shape-aware floor looks (FloorLook.natural; TerrainArt.naturalAlbedo is the
+// reference). uArt is the art plane's window (render/terrainArtPlane): solid
+// = 0x80 | built << 6 | depth, loose = 0x40 | depth, open = sealed << 5 | air
+// distance to the nearest solid or loose cell.
+uniform bool uNatural;
+uniform usampler2D uArt;
+uniform sampler2D uFloorTiles;
+uniform ivec2 uNatTile;
+uniform vec3 uNatRockGain;
+uniform vec3 uNatRockLift;
+uniform vec4 uNatAo;        // near, far (cells), steps (0 = smooth), grain (cells per luminance)
+uniform vec3 uNatAoCore;
+uniform vec4 uNatLip;       // rgb, mix
+uniform vec4 uNatSpeck;     // rgb, rate of 16
+uniform vec2 uNatSide;      // left-lip mix, right-face shade
+uniform vec4 uNatFeature;   // rgb, strength
+uniform vec3 uNatFeatureWin; // near, far, strength at the world top
+uniform vec3 uNatDrip;
+uniform vec4 uNatGlaze;     // rgb, mix (0 = off)
+uniform vec2 uNatContact;   // darkest shade, reach (cells)
+uniform vec4 uNatHaze;      // rgb, mix
+uniform float uNatSat;
 
 uniform ivec2 uCam;        // integer camera snapshot (renderCamX/Y)
 uniform ivec2 uWinOrigin;  // world coords of window texel (0,0)
@@ -199,6 +225,13 @@ bool panelSeam(int x, int y) {
   int ly = y & 63;
   return (lx == 0 && !masonryPanel(px - 1, py)) || (lx == 63 && !masonryPanel(px + 1, py))
     || (ly == 0 && !masonryPanel(px, py - 1)) || (ly == 63 && !masonryPanel(px, py + 1));
+}
+
+// TerrainArt's OPEN table: faces form against air, gas, fire and soft growth.
+bool openCell(int t) {
+  if (t < 32) return ((${terrainOpenMask[0]}u >> uint(t)) & 1u) != 0u;
+  if (t < 64) return ((${terrainOpenMask[1]}u >> uint(t - 32)) & 1u) != 0u;
+  return false;
 }
 
 vec3 gradeBackdrop(vec3 c) {
@@ -362,6 +395,16 @@ void main() {
         overBackdrop(bg, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, bvx, bvy);
         overBackdrop(bg, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, bvx, bvy);
         bg = gradeBackdrop(bg) * uBackdropTintMul + uBackdropTintLift;
+        if (uNatural) {
+          // The distance sits back: less colour, a floor haze, and a contact
+          // shadow wherever live terrain stands in front of it.
+          bg = mix(vec3(dot(bg, vec3(0.2126, 0.7152, 0.0722))), bg, uNatSat);
+          bg = mix(bg, uNatHaze.rgb, uNatHaze.w);
+          uint air = texelFetch(uArt, ivec2(lx, ly), 0).r;
+          float ad = (air & 0xC0u) != 0u ? 1.0 : float(air & 0x0Fu);
+          float cs = clamp((ad - 1.0) / max(1.0, uNatContact.y - 1.0), 0.0, 1.0);
+          bg *= uNatContact.x + (1.0 - uNatContact.x) * cs * cs * (3.0 - 2.0 * cs);
+        }
         depthShade = 0.78 + 0.22 * (1.0 - float(wy) / ${HEIGHT.toFixed(1)});
       }
       float r = bg.r * depthShade;
@@ -397,6 +440,85 @@ void main() {
           int t = int(texelFetch(uWin, ivec2(lx, min(${WIN_H - 1}, ly + 1)), 0).a & 0x7fu);
           bool supported = t == ${Cell.Water} || (${terrainBlocksGlsl});
           albedo = above == ${Cell.Empty} && lookupY > 0 && supported ? uWaterSurface : uWaterBody;
+        } else if (uNatural && (type == ${Cell.Wall} || type == ${Cell.Stone} || type == ${Cell.Wood} || type == ${Cell.Metal})) {
+          uint art = texelFetch(uArt, ivec2(lx, ly), 0).r;
+          bool artSolid = (art & 0x80u) != 0u;
+          int depth = artSolid ? int(art & 0x3fu) : 1;
+          bool built = artSolid && (art & 0x40u) != 0u;
+          float grainLum = 0.16;
+          if (type == ${Cell.Wood} || type == ${Cell.Metal} || built) {
+            int tileX = type == ${Cell.Metal} ? 128 : 0;
+            int tileY = type == ${Cell.Wood} ? 128 : 0;
+            ivec2 grain = ivec2(vec2(lookupX, lookupY) * ${PIXEL_SCALE}.0 + sub * ${PIXEL_SCALE}.0) & ivec2(127);
+            vec3 texel = texelFetch(uTerrain, ivec2(tileX, tileY) + grain, 0).rgb;
+            grainLum = (texel.r + texel.g + texel.b) / 3.0;
+            albedo = texel * 255.0 * uLookGain + uLookLift;
+          } else {
+            ivec2 grain = ivec2(vec2(lookupX, lookupY) * 2.0 + sub * 2.0) & ivec2(${FLOOR_TILE - 1});
+            vec4 rock = texelFetch(uFloorTiles, uNatTile + grain, 0);
+            grainLum = (rock.r + rock.g + rock.b) / 3.0;
+            albedo = rock.rgb * 255.0 * uNatRockGain + uNatRockLift;
+            if (rock.a > 0.0) {
+              float fd = float(depth);
+              float win = clamp((fd - uNatFeatureWin.x + 1.0) / 2.0, 0.0, 1.0) * clamp((uNatFeatureWin.y - fd) / 4.0, 0.0, 1.0);
+              float heat = uNatFeatureWin.z + (1.0 - uNatFeatureWin.z) * (float(lookupY) / ${HEIGHT.toFixed(1)});
+              albedo = mix(albedo, uNatFeature.rgb, rock.a * uNatFeature.w * win * heat);
+            }
+          }
+          // Inset: cores sink toward the floor's core tone, in pixel-art steps
+          // whose edges wander with the texture.
+          float sink = smoothstep(uNatAo.x, uNatAo.y, float(depth) - (grainLum - 0.16) * uNatAo.w);
+          if (uNatAo.z > 0.0) sink = floor(sink * uNatAo.z + 0.5) / uNatAo.z;
+          albedo *= mix(vec3(1.0), uNatAoCore, sink);
+          int t = above;
+          if (uLookCrown.w > 0.0) {
+            int reach = max(1, uLookCrownDepth - ((lookupX * 13 + (lookupX >> 2) * 7) & 3));
+            for (int k = 1; k <= 3; k++) {
+              if (k > reach || lookupY - k < 0) break;
+              t = int(texelFetch(uWin, ivec2(lx, max(0, ly - k)), 0).a & 0x7fu);
+              if (!openCell(t)) continue;
+              float w = uLookCrown.w * (1.0 - float(k - 1) / float(reach));
+              albedo *= vec3(1.0) + w * (uLookCrown.rgb / 128.0 - vec3(1.0));
+              break;
+            }
+          }
+          // Underside: a streaked band hanging from any face open below.
+          int dh = (lookupX * 7 + (lookupX >> 3) * 13) & 7;
+          int drip = dh < 3 ? 1 : (dh < 6 ? 2 : 3);
+          for (int k = 1; k <= 3; k++) {
+            if (k > drip || lookupY + k >= ${HEIGHT}) break;
+            t = int(texelFetch(uWin, ivec2(lx, min(${WIN_H - 1}, ly + k)), 0).a & 0x7fu);
+            if (!openCell(t)) continue;
+            albedo *= mix(vec3(1.0), uNatDrip, 1.0 - float(k - 1) / 3.0);
+            break;
+          }
+          bool top = lookupY > 0 && openCell(above);
+          t = int(texelFetch(uWin, ivec2(max(0, lx - 1), ly), 0).a & 0x7fu);
+          bool left = lookupX > 0 && openCell(t);
+          if (top) {
+            bool speck = ((lookupX * 13 + lookupY * 7 + (lookupX >> 2) * 5) & 15) < int(uNatSpeck.w);
+            vec3 lit = speck ? uNatSpeck.rgb : uNatLip.rgb;
+            float chip = ((lookupX * 17 + lookupY * 29) & 7) < 2 ? 0.76 : 1.0;
+            float m = uNatLip.w * ${PIXEL_SCALE === 2 ? '(sub.y < 0.5 ? 1.0 : 0.45)' : '1.0'};
+            albedo = mix(albedo, lit * chip, m);
+          } else if (left) {
+            albedo = mix(albedo, uNatLip.rgb, uNatSide.x * ${PIXEL_SCALE === 2 ? '(sub.x < 0.5 ? 1.0 : 0.45)' : '1.0'});
+          } else {
+            t = int(texelFetch(uWin, ivec2(min(${WIN_W - 1}, lx + 1), ly), 0).a & 0x7fu);
+            if (lookupX + 1 < ${WIDTH} && openCell(t)) albedo *= ${PIXEL_SCALE === 2 ? 'sub.x >= 0.5 ? uNatSide.y : 0.5 + 0.5 * uNatSide.y' : 'uNatSide.y'};
+          }
+          // Glaze: rock that touches lava is fired to a crazed amber glass.
+          if (uNatGlaze.w > 0.0) {
+            int tl = int(texelFetch(uWin, ivec2(max(0, lx - 1), ly), 0).a & 0x7fu);
+            int tr = int(texelFetch(uWin, ivec2(min(${WIN_W - 1}, lx + 1), ly), 0).a & 0x7fu);
+            int tb = int(texelFetch(uWin, ivec2(lx, min(${WIN_H - 1}, ly + 1)), 0).a & 0x7fu);
+            if ((lookupY > 0 && above == ${Cell.Lava}) || (lookupX > 0 && tl == ${Cell.Lava})
+                || (lookupX + 1 < ${WIDTH} && tr == ${Cell.Lava}) || (lookupY + 1 < ${HEIGHT} && tb == ${Cell.Lava})) {
+              float k = ((lookupX * 7 + lookupY * 11 + (lookupX >> 1) * 3) & 3) == 0 ? 0.45 : 1.0;
+              albedo = mix(albedo, uNatGlaze.rgb * k, uNatGlaze.w);
+            }
+          }
+          albedo = floor(clamp(albedo, vec3(0.0), vec3(255.0)));
         } else if (type == ${Cell.Wall} || type == ${Cell.Stone} || type == ${Cell.Wood} || type == ${Cell.Metal}) {
           bool rock = type == ${Cell.Stone} ? lookupY > uLookRockRow
             : (type == ${Cell.Wall} && uLookPanels < 16 && !masonryPanel(lookupX >> 6, lookupY >> 6));
@@ -663,6 +785,13 @@ export class GpuCompose {
   private terrainPixels: Uint8ClampedArray | null = null;
   private floorLook: FloorLook | null = null;
   private terrainTex = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+  private readonly artBytes = new Uint8Array(WIN_W * WIN_H);
+  private readonly artTex = new THREE.DataTexture(this.artBytes, WIN_W, WIN_H, THREE.RedIntegerFormat, THREE.UnsignedByteType);
+  private artPlane: TerrainArtPlane | null = null;
+  private artRevision = -1;
+  private artCamX = NaN;
+  private artCamY = NaN;
+  private floorTilesTex: THREE.DataTexture | null = null;
   private readonly scarBytes = new Uint8Array(WIN_W * WIN_H);
   private readonly scarTex = new THREE.DataTexture(this.scarBytes, WIN_W, WIN_H, THREE.RedFormat, THREE.UnsignedByteType);
   private scarsUploaded = false;
@@ -702,6 +831,10 @@ export class GpuCompose {
     this.winTex.minFilter = this.winTex.magFilter = THREE.NearestFilter;
     this.terrainTex.minFilter = this.terrainTex.magFilter = THREE.NearestFilter;
     this.scarTex.minFilter = this.scarTex.magFilter = THREE.NearestFilter;
+    this.artTex.internalFormat = 'R8UI';
+    this.artTex.minFilter = this.artTex.magFilter = THREE.NearestFilter;
+    this.artTex.unpackAlignment = 1;
+    this.artTex.needsUpdate = true;
     this.terrainTex.needsUpdate = true;
 
     // Half-res light field as raw float32 — bit-identical to the CPU arrays.
@@ -760,6 +893,24 @@ export class GpuCompose {
         uTerrain: { value: this.terrainTex },
         uScars: { value: this.scarTex },
         uTerrainEnabled: { value: false },
+        uNatural: { value: false },
+        uArt: { value: this.artTex },
+        uFloorTiles: { value: this.terrainTex },
+        uNatTile: { value: new THREE.Vector2() },
+        uNatRockGain: { value: new THREE.Vector3(1, 1, 1) },
+        uNatRockLift: { value: new THREE.Vector3() },
+        uNatAo: { value: new THREE.Vector4(2, 12, 0, 0) },
+        uNatAoCore: { value: new THREE.Vector3(1, 1, 1) },
+        uNatLip: { value: new THREE.Vector4() },
+        uNatSpeck: { value: new THREE.Vector4() },
+        uNatSide: { value: new THREE.Vector2(0, 1) },
+        uNatFeature: { value: new THREE.Vector4() },
+        uNatFeatureWin: { value: new THREE.Vector3(1, 1, 1) },
+        uNatDrip: { value: new THREE.Vector3(1, 1, 1) },
+        uNatGlaze: { value: new THREE.Vector4() },
+        uNatContact: { value: new THREE.Vector2(1, 2) },
+        uNatHaze: { value: new THREE.Vector4() },
+        uNatSat: { value: 1 },
         uLookGain: { value: new THREE.Vector3(1.28, 1.28, 1.28) },
         uLookLift: { value: new THREE.Vector3(15, 20, 21) },
         uLookLip: { value: new THREE.Vector3(115, 111, 94) },
@@ -907,6 +1058,8 @@ export class GpuCompose {
     this.lutTex.dispose();
     this.terrainTex.dispose();
     this.scarTex.dispose();
+    this.artTex.dispose();
+    this.floorTilesTex?.dispose();
     this.overlayTex.dispose();
     this.overlayUploadTex?.dispose();
     for (const tex of this.backdropTex) tex.dispose();
@@ -999,6 +1152,7 @@ export class GpuCompose {
     }
     this.material.uniforms.uTerrainEnabled.value = Boolean(pixels && usesTerrainArt(ctx));
     this.syncFloorLook(activeFloorLook(ctx));
+    this.syncArtPlane(activeArtPlane(ctx), camX, camY);
     const scars = ctx.world.colorOverrides;
     if (!this.scarsUploaded || this.scarWorld !== ctx.world || this.scarRevision !== scars.revision ||
         (scars.size > 0 && (this.scarCamX !== camX || this.scarCamY !== camY))) {
@@ -1015,6 +1169,38 @@ export class GpuCompose {
       this.scarWorld = ctx.world; this.scarRevision = scars.revision;
       this.scarCamX = camX; this.scarCamY = camY;
     }
+  }
+
+  /**
+   * Window the art plane like uWin (edge rows/columns replicate), re-filled
+   * only when the camera moves or the plane re-derives.
+   */
+  private syncArtPlane(plane: TerrainArtPlane | null, camX: number, camY: number): void {
+    const u = this.material.uniforms;
+    u.uNatural.value = plane !== null;
+    if (!plane) { this.artPlane = null; return; }
+    if (!this.floorTilesTex) {
+      const tiles = floorTilePixels();
+      this.floorTilesTex = new THREE.DataTexture(new Uint8Array(tiles.buffer, tiles.byteOffset, tiles.byteLength),
+        FLOOR_SHEET, FLOOR_SHEET, THREE.RGBAFormat, THREE.UnsignedByteType);
+      this.floorTilesTex.minFilter = this.floorTilesTex.magFilter = THREE.NearestFilter;
+      this.floorTilesTex.needsUpdate = true;
+      u.uFloorTiles.value = this.floorTilesTex;
+    }
+    if (plane === this.artPlane && plane.revision === this.artRevision && camX === this.artCamX && camY === this.artCamY) return;
+    this.artPlane = plane; this.artRevision = plane.revision; this.artCamX = camX; this.artCamY = camY;
+    const data = plane.data, out = this.artBytes;
+    const x0 = camX - COMPOSE_PAD, y0 = camY - COMPOSE_PAD;
+    const leftN = Math.min(WIN_W, Math.max(0, -x0));
+    const rightStart = Math.max(leftN, Math.min(WIN_W, WIDTH - x0));
+    for (let row = 0; row < WIN_H; row++) {
+      const wy = Math.max(0, Math.min(HEIGHT - 1, y0 + row));
+      const base = wy * WIDTH, o = row * WIN_W;
+      if (leftN > 0) out.fill(data[base], o, o + leftN);
+      if (rightStart > leftN) out.set(data.subarray(base + x0 + leftN, base + x0 + rightStart), o + leftN);
+      if (rightStart < WIN_W) out.fill(data[base + WIDTH - 1], o + rightStart, o + WIN_W);
+    }
+    this.artTex.needsUpdate = true;
   }
 
   /** Upload the per-floor grade only when the floor changes (looks are frozen objects). */
@@ -1037,6 +1223,23 @@ export class GpuCompose {
     set3('uWaterBody', look.waterBody);
     set3('uBackdropTintMul', look.backdropMul);
     set3('uBackdropTintLift', look.backdropLift);
+    const natural = look.natural;
+    if (!natural) return;
+    (u.uNatTile.value as THREE.Vector2).set((natural.tile & 1) * FLOOR_TILE, (natural.tile >> 1) * FLOOR_TILE);
+    set3('uNatRockGain', natural.rockGain);
+    set3('uNatRockLift', natural.rockLift);
+    (u.uNatAo.value as THREE.Vector4).set(natural.aoNear, natural.aoFar, natural.aoSteps, natural.aoGrain);
+    set3('uNatAoCore', natural.aoCore);
+    (u.uNatLip.value as THREE.Vector4).set(natural.lip[0], natural.lip[1], natural.lip[2], natural.lipMix);
+    (u.uNatSpeck.value as THREE.Vector4).set(natural.speck[0], natural.speck[1], natural.speck[2], natural.speckRate);
+    (u.uNatSide.value as THREE.Vector2).set(natural.sideMix, natural.rightShade);
+    (u.uNatFeature.value as THREE.Vector4).set(natural.feature[0], natural.feature[1], natural.feature[2], natural.featureStrength);
+    (u.uNatFeatureWin.value as THREE.Vector3).set(natural.featureNear, natural.featureFar, natural.featureTop);
+    set3('uNatDrip', natural.drip);
+    (u.uNatGlaze.value as THREE.Vector4).set(natural.glaze[0], natural.glaze[1], natural.glaze[2], natural.glazeMix);
+    (u.uNatContact.value as THREE.Vector2).set(natural.contact, natural.contactReach);
+    (u.uNatHaze.value as THREE.Vector4).set(natural.backdropHaze[0], natural.backdropHaze[1], natural.backdropHaze[2], natural.backdropHazeMix);
+    u.uNatSat.value = natural.backdropSat;
   }
 
   private syncBackdropTextures(): void {

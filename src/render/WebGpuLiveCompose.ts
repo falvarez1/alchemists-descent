@@ -1,5 +1,5 @@
 import { DataUtils } from 'three';
-import { activeFloorLook, prepareTerrainColors } from '@/render/TerrainArt';
+import { activeArtPlane, activeFloorLook, prepareTerrainColors } from '@/render/TerrainArt';
 import { HalfFloatType, NearestFilter, RGBAFormat, StorageTexture, WebGPURenderer } from 'three/webgpu';
 import { Fn, instanceIndex, textureStore, uint, uvec2, vec4 } from 'three/tsl';
 
@@ -56,6 +56,8 @@ const WAVE_BASE = BACKDROP_BASE + MAX_BACKDROP_LAYERS * BACKDROP_STRIDE;
 const WAVE_STRIDE = 8;
 const LENS_BASE = WAVE_BASE + COMPOSE_MAX_WAVES * WAVE_STRIDE;
 const LENS_STRIDE = 4;
+/** Shape-aware floor backdrop: on, saturation, haze rgb, haze mix (after the lenses). */
+const NATURAL_BASE = LENS_BASE + COMPOSE_MAX_LENSES * LENS_STRIDE;
 
 interface RuntimeGpuQueue {
   submit(commandBuffers: unknown[]): void;
@@ -565,6 +567,13 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
         bg = applyBackdropSample(bg, textureLoad(uBackdrop4, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 1u));
       }
       bg = gradeBackdrop(bg) * vec3<f32>(p(20u), p(21u), p(22u)) + vec3<f32>(p(23u), p(24u), p(25u));
+      if (p(${NATURAL_BASE}u) > 0.5) {
+        // Shape-aware floors: desaturate, haze, then the contact shade the
+        // terrain cache stores in an Empty cell's red byte.
+        bg = mix(vec3<f32>(dot(bg, vec3<f32>(0.2126, 0.7152, 0.0722))), bg, p(${NATURAL_BASE + 1}u));
+        bg = mix(bg, vec3<f32>(p(${NATURAL_BASE + 2}u), p(${NATURAL_BASE + 3}u), p(${NATURAL_BASE + 4}u)), p(${NATURAL_BASE + 5}u));
+        bg = bg * (f32(cell.r) / 255.0);
+      }
       let depthShade = 0.78 + 0.22 * (1.0 - f32(wy) / ${HEIGHT.toFixed(1)});
       var r = bg.r * depthShade;
       var g = bg.g * depthShade;
@@ -1295,6 +1304,13 @@ export class WebGpuLiveCompose {
     params[24] = look.backdropLift[1];
     params[25] = look.backdropLift[2];
     params[26] = look.backdropMirror ? 1 : 0;
+    const natural = activeArtPlane(ctx) ? look.natural : null;
+    params[NATURAL_BASE] = natural ? 1 : 0;
+    params[NATURAL_BASE + 1] = natural ? natural.backdropSat : 1;
+    params[NATURAL_BASE + 2] = natural ? natural.backdropHaze[0] : 0;
+    params[NATURAL_BASE + 3] = natural ? natural.backdropHaze[1] : 0;
+    params[NATURAL_BASE + 4] = natural ? natural.backdropHaze[2] : 0;
+    params[NATURAL_BASE + 5] = natural ? natural.backdropHazeMix : 0;
 
     const settings = backdropProfile.layers;
     for (let i = 0; i < MAX_BACKDROP_LAYERS; i++) {
