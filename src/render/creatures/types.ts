@@ -9,8 +9,11 @@ export interface SpeciesArt {
   materials(e: Readonly<Enemy>): CreatureMaterial[];
   /** World-space bounds [x0, y0, x1, y1] the drawing may touch. */
   bounds(e: Readonly<Enemy>, rig: CreatureRig): [number, number, number, number];
-  /** Emit primitives into the raster (it is already begun with `materials`). */
-  draw(r: CreatureRaster, ctx: Ctx, e: Enemy, rig: CreatureRig): void;
+  /**
+   * Emit primitives into the raster (it is already begun with `materials`).
+   * `life` is 1 for the living and gutters toward 0 on remains (corpses).
+   */
+  draw(r: CreatureRaster, ctx: Ctx, e: Enemy, rig: CreatureRig, life?: number): void;
   /** Light probe centre offset / radius (defaults: body centre, 10 cells). */
   lightProbe?(e: Readonly<Enemy>, rig: CreatureRig): [number, number, number];
   /** Rasterizer style overrides. */
