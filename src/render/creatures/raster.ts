@@ -39,6 +39,12 @@ export interface SceneLight {
    * resolves out of the black through an ordered dither as the beam lands.
    */
   reveal?: number;
+  /**
+   * A wash over the whole body toward a colour, [r, g, b, amount 0..1]:
+   * charred remains darken, frozen ones go ice-pale, a body in the wand's
+   * grip takes a faint brass glow (creatures/corpses → render/creatures).
+   */
+  tint?: readonly [number, number, number, number];
 }
 
 // Pixel flags.
@@ -440,7 +446,7 @@ export class CreatureRaster {
     const hl = Math.hypot(hx, hy, hz) || 1; hx /= hl; hy /= hl; hz /= hl;
     const lxy = Math.hypot(lx, ly) || 1;
     const lr = light.r, lg = light.g, lb = light.b;
-    const flash = light.flash, life = light.glow, reveal = light.reveal ?? 1;
+    const flash = light.flash, life = light.glow, reveal = light.reveal ?? 1, tint = light.tint;
     const bands = this.bands;
     const fine = out.setFinePx !== undefined && s < 1;
     const set = fine ? out.setFinePx! : out.setPx;
@@ -512,6 +518,7 @@ export class CreatureRaster {
         const em = M.emissive * life, lit = hidden ? 0 : 1 - em;
         r *= lit * lr + em; g *= lit * lg + em; b *= lit * lb + em;
         if (flash > 0) { r += (1 - r) * flash; g += (0.93 - g) * flash; b += (0.82 - b) * flash; }
+        if (tint) { const k = tint[3]; r += (tint[0] - r) * k; g += (tint[1] - g) * k; b += (tint[2] - b) * k; }
         this.outR[idx] = r; this.outG[idx] = g; this.outB[idx] = b;
       }
     }

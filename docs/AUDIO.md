@@ -5,7 +5,7 @@ from, how it is mixed and loaded, and how to change it. Music and narration
 are a separate workstream (their own buses and director); this document is
 the sound effects and ambience.
 
-- **392 cues, 751 takes, 6.5 MB** of mastered MP3 (`src/assets/audio/`),
+- **408 cues, 788 takes, 6.7 MB** of mastered MP3 (`src/assets/audio/`),
   generated with ElevenLabs text-to-sound and mastered offline.
 - **Nothing is fetched before the first gesture.** Then the core packs load in
   about two seconds; each floor's creatures and bed load with the floor; the
@@ -174,6 +174,8 @@ isopods curling in one gust is one clatter, not eighteen.
 | `organism` | snapjaw snap (and the swallow a beat later), puffer ripe/burst, glow-worm lower/retract/snare, leech latch/drink/shed, isopod curl, ash moth flare, a fish school bolting, a bat roost scattering, an imp snapping an ash moth |
 | `bossMove` | every tell as the move commits: the Colossus heaving its fists up (slam, stomp), scooping melt (throw), grinding its vents open, its phase roar, the kneel after a thermal-shock crack, the long groan as it goes down; the Leviathan's lure going dark before a lunge or a dive, the coil before a thrash |
 | `floraMoment` | a tree's whole fall, in order: a notched trunk straining (`creak`, louder when nearly through), the cut going through (`crack`, by the stand's size), the long groan of the hold and lean (`lean`), the hinge fibres tearing (`snap` ≥ 0.6) or a sapling snapping at the boot (`snap` < 0.6), the crown rushing down (`whoosh`), the canopy thrown onto the ground (`shed`), the log rolling to rest (`settle`); leaves shaken by a kick (`rustle`), pods letting go (`podDrop`); a thirsty seed drinking (`soak`), sprouting (`sprout`), its root ladder knocking up rung by rung over a creaking growth loop (`rung`) and opening its crown (`bloom`) |
+| `telekinesis` | the wand's grip (combat/Telekinesis): a taut brass twang and tug as it takes hold, the thread's steady hum while a body hangs on it (louder for a heavier one, on the body), a slack sigh as it lets go, a whip-crack and rush of air for a hurl (lower for a heavy one), a sputtering fizzle when the grip fails, a creaking groan when the wand strains at something far too heavy (a nudge); a crate keeps its own lift/throw/drop sounds and shares only the hum |
+| `corpseMoment` | the dead as mass (creatures/corpseWorld): a thud, light or heavy by the body (lighter bodies ring higher); a body bowled into a creature; a belly-flop into a pool; a carcass catching fire, or put out (the material sizzle); lava taking it; acid eating it; frost racing over it; a frozen carcass shattering; the galvanic twitch |
 | `treeLanded` | the fall itself, in the floor's own wood (the biome names the species world/floraPass planted): pale birch on the Bellows, a giant mushroom's stem in the Rot Gardens, a waterlogged mangrove in the Cisterns, charred ember-bark in the Kiln; a bounce after the first strike is the same wood, lighter |
 
 The flora call sites stay silent: the events carry the sound (a felled tree's
@@ -259,7 +261,8 @@ takes (peak under −32 dBFS: mostly noise floor), crushed takes (>8 % of
 samples at full scale — ElevenLabs masters hot, peaks of ~1.4 are normal),
 late onsets, and loops whose quarters differ by >15 dB; a refused slot is
 refilled from takes already paid for (best score first) before a new variant
-is bought. Spend so far: **41,740 credits** for 910 generations (the wave-2
+is bought. Spend so far: **43,320 credits** for 948 generations (telekinesis
+and the physical corpses were 1,580 of them; the wave-2
 pass — light, organisms, the rebuilt bosses — was 5,112 of them; the flora
 pack 3,080).
 
@@ -302,7 +305,7 @@ with the floors whose census lists it).
 | ui | 31 | 65 | hover, click, back, ledger open/close, pause/resume valve, toast, objective tube, hint, grimoire quill, card reveal/choose/pick/slot, bench drawer, coins, tally, learn, curtain, phial refill/drain, run over, summary chords; stingers: alchemy, phial crack/fill, victory, fallen, shutter |
 | player | 55 | 120 | the lantern's brass hood (down/up), steps ×5 surfaces, gear, wade, crawl, jump, landings, skid, grab, pull-up, cramped, kick, dive, slam, stomp, hurt, death, corpse wand + knell, heartbeat, sputter, levitation loop, vine, teleport, heal, drink, communion, staff, glowseed, leg club ×3; flask siphon/pour loops, throw, shatter, dry; wand swap/dry; pickups ×9 (gold, coin, heart, chest, potion, key, the brass bell…) |
 | spells | 32 | 59 | per card family: spark cast/impact, bomb cast + fuse loop, lightning, flame ignite + loop, dig loop, warp, singularity loop + implosion, vitriol/cryo/aqua loops, frost shard, ice lance, ice impact, freeze, wisp cast + loop, meteor cast + loop, conjure, vitrify, ember storm, three crits, two charge payoffs, the Trickshot whip and shell crack |
-| world | 78 | 142 | the light wave (the deep dark's hush, eyeshine, photocell hum + latch, lumen bloom open/furl/petal), fish school scatter + flop, moth swarm loop, explosions ×3, materials (zap, shatter, steam, sizzle, ignite, squelch, bubble, splashes, drip, hollow knock), material loops ×7 (fire, lava, water, acid, steam, electric, fuse), rigid bodies per material (impact, smash) + grab/lift/throw/drop/rip/tear/bash/burn-out, portal, gong, waystone, 20 mechanisms, critters, generic creature voices, hostile fireball loop |
+| world | 94 | 179 | the light wave (the deep dark's hush, eyeshine, photocell hum + latch, lumen bloom open/furl/petal), fish school scatter + flop, moth swarm loop, explosions ×3, materials (zap, shatter, steam, sizzle, ignite, squelch, bubble, splashes, drip, hollow knock), material loops ×7 (fire, lava, water, acid, steam, electric, fuse), rigid bodies per material (impact, smash) + grab/lift/throw/drop/rip/tear/bash/burn-out, portal, gong, waystone, 20 mechanisms, critters, generic creature voices, hostile fireball loop, the wand's grip (taking hold, the brass thread's hum, letting go, the whip-crack hurl, a failing fizzle, a strain at something too heavy) and the dead as mass (light and heavy thuds, a body bowled into a creature, a belly-flop, catching fire, lava taking it, acid eating it, frost racing over it, a frozen shatter, a galvanic twitch) |
 | tea | 15 | 16 | striker, percussion cap, fault, knocker, ratchet, pendulum, boulder, dominoes, spring, duck, marble, generator, magnet, counterweight, tea served |
 | creature-× (16) | 129 | 253 | every kind: alert, hurt, death, plus its own idle / movement / wind-up / attack / specials (a bat roost scattering); the Leviathan and the Colossus with boss-sized idles, alerts, attacks and deaths, and every move of the rebuilt fights: the Colossus's heave, slam, stomp + running shockwave loop, melt scoop, vent tell + blast, phase roar, plates bursting, thermal-shock crack, kneel, death groan and rubble; the Leviathan's dimming lure, tail thrash, dive, surge and shock |
 | flora | 26 | 52 | living plants: a notched trunk's strain, the crack, the lean, the hinge tearing, a sapling snapping, the crown's rush, the fall in four woods (birch, giant mushroom, mangrove, ember-bark), the canopy thrown down, the log settling; leaves shaken, pods dropping, a glowseed plucked; a seed drinking and sprouting, the root ladder's rungs, growth loop and crown; brush catching (and a Kiln bloom flaring), the brush-fire crackle loop; grass, reeds and kelp brushing past |
@@ -685,6 +688,16 @@ cue).
 | `boom.large` | explosion · fx | 1.27 | 3.24 / 2.98 | audio.boom() | A huge explosion in a vast underground cavern: a deep concussive boom, a long rumbling tail and falling rubble |
 | `boom.medium` | explosion · fx | 0.95 | 1.30 / 1.51 / 1.49 | audio.boom() | A gunpowder explosion in a stone cavern: a punchy boom with rock debris raining down, medium tail |
 | `boom.small` | explosion · fx | 0.67 | 0.75 / 0.68 / 0.74 | audio.boom() | A small explosion in a stone cave: a sharp bang with a short burst of debris patter, short tail |
+| `corpse.bowl` | impact · fx | 0.49 | 0.65 / 0.66 / 0.58 | EventCues | A dead body hurled into a creature at speed: a heavy meaty smack, a bony crunch and a grunt of air knocked out, short, punchy, dry |
+| `corpse.consume` | material · fx | 0.35 | 1.30 / 1.26 | EventCues | Flesh dropped into molten lava: a violent hiss and sizzle with popping, spitting bubbles, short |
+| `corpse.dissolve` | material · fx | 0.27 | 1.40 / 1.40 | EventCues | Flesh dissolving in strong acid: an intense fizzing, bubbling, hissing foam, short |
+| `corpse.freeze` | material · fx | 0.29 | 1.07 / 1.10 | EventCues | Frost racing over a body: quick crackling ice crystals forming, glassy creaks and a stiffening crunch, short, dry |
+| `corpse.ignite` | material · fx | 0.32 | 0.71 / 0.95 | EventCues | A carcass catching fire: a sudden soft whoomph of flame, then crackling and spitting fat, short |
+| `corpse.shatter` | impact · fx | 0.49 | 0.90 / 0.90 / 0.75 | EventCues | A frozen carcass smashed against stone: a sharp crack of ice and bone bursting apart and a shower of tinkling ice shards scattering, short, punchy |
+| `corpse.splash` | material · fx | 0.32 | 0.96 / 0.72 | EventCues | A limp body belly-flopping into a pool of water: a flat heavy slap and a burst of splashing spray falling back, short |
+| `corpse.thud.heavy` | impact · fx | 0.42 | 0.47 / 0.57 / 0.55 | EventCues | A heavy dead body slamming down onto a stone floor: a deep meaty thud with a crunch of grit and a short rattle of bones, short, punchy, dry |
+| `corpse.thud.light` | impact · fx | 0.32 | 0.50 / 0.50 / 0.50 | EventCues | A small limp dead animal dropped onto a stone floor: a soft wet flop and thump, short, close-miked, dry |
+| `corpse.twitch` | material · fx | 0.24 | 0.33 / 0.50 / 0.50 | EventCues | A dead limb jolted by electricity: a sharp crackling electric buzz and snap with a wet twitching slap, short, dry |
 | `creature.dodge` | creature · voices | 0.10 | 0.48 / 0.44 | Enemies | A quick airy whiff of a creature leaping aside, short |
 | `creature.generic.alert` | creature · voices | 0.29 | 0.48 / 0.46 | audio.alert(), creature(generic, 'alert') | A small cave creature's sharp alarmed chirp, short |
 | `creature.generic.death` | creature · voices | 0.21 | 0.71 / 0.80 | audio.deathCry(), creature(generic, 'death') | A small cave creature's dying screech fading away, short |
@@ -711,7 +724,7 @@ cue).
 | `mat.ignite` | material · fx | 0.29 | 0.63 / 0.84 | RigidBodies, audio.brazier(), audio.flame() | Fire catching with a whoosh, a brazier bursting into flame, short |
 | `mat.lava.loop` ⟲ | loop · ambience | 0.27 | 3.00 | HabitatAudio (material scan) | Continuous thick bubbling molten lava, slow heavy gloops and a low hot rumble |
 | `mat.shatter` | material · fx | 0.41 | 0.72 / 0.79 / 0.80 | audio.shatter() | Glass and ice breaking: a bright crack and a cascade of tinkling shards, short |
-| `mat.sizzle` | material · fx | 0.12 | 0.60 / 0.60 | audio.sizzle() | A small fire crackling and sizzling, short |
+| `mat.sizzle` | material · fx | 0.12 | 0.60 / 0.60 | EventCues, audio.sizzle() | A small fire crackling and sizzling, short |
 | `mat.splash.big` | material · fx | 0.22 | 0.78 / 0.80 | audio.splash() | A heavy body plunging into a deep pool, a big splash and slosh, short |
 | `mat.splash.small` | material · fx | 0.10 | 0.60 / 0.60 / 0.59 | audio.splash() | A small object splashing into water, a short splash |
 | `mat.squelch` | material · fx | 0.31 | 0.52 / 0.60 / 0.55 | audio.squelch() | A wet slimy squelch, gooey and organic, short |
@@ -743,6 +756,12 @@ cue).
 | `organism.fish.scatter` | critter · ambience | 0.15 | 0.65 / 0.51 | EventCues | A small school of fish darting away underwater: a quick muffled flurry of fins and a burst of tiny bubbles, short |
 | `organism.moth.swarm.loop` ⟲ | loop · ambience | 0.17 | 3.00 | HabitatAudio | Continuous soft papery fluttering of many small moth wings close by, delicate and dry |
 | `proj.fireball.loop` ⟲ | loop · fx | 0.24 | 3.00 | HabitatAudio (in flight) | Continuous whooshing roar of a small fireball flying through the air |
+| `tk.fizzle` | player · fx | 0.19 | 0.70 / 0.55 | EventCues | A magical grip failing: a brass wire snapping loose with a sputtering electric fizzle and a hollow click, short, dry |
+| `tk.grab` | player · fx | 0.23 | 0.70 / 0.70 | EventCues | A telekinetic seize: a quick taut brass wire twang and a soft airy tug of force pulling something heavy off the ground, a faint magical shimmer, short, close, dry |
+| `tk.hold.loop` ⟲ | loop · fx | 0.19 | 4.00 | EventCues | A soft steady resonant hum of a taut brass wire vibrating in still air, a faint glassy shimmering overtone and a low tremor of strain, quiet, continuous |
+| `tk.hurl` | player · fx | 0.28 | 0.40 / 0.54 / 0.41 | EventCues | A leather whip crack followed immediately by a heavy rushing whoosh of air, a body flung hard through the air, short, punchy, dry |
+| `tk.release` | player · fx | 0.14 | 0.60 / 0.60 | EventCues | A taut brass wire going slack: a soft descending shimmer and a small sigh of released air, short, quiet, dry |
+| `tk.strain` | player · fx | 0.21 | 1.10 / 0.72 | EventCues | A small brass instrument straining against an enormous weight: a creaking metallic groan and a trembling hum that gives up, short, dry |
 | `world.gong` | mechanism · fx | 0.90 | 2.88 / 2.88 | audio.gong() | A deep bronze gong struck once, rich overtones, a long rolling decay through caves |
 | `world.portal` | mechanism · fx | 0.70 | 2.16 | audio.portalWhoosh() | A great stone gate unlocking: a deep resonant bell ringing in a lock, then heavy stone grinding open under a rising magical whoosh |
 | `world.waystone` | stinger · ui | 0.44 | 1.00 | Levels | Two bright clear chime tones rising, a small magical confirmation, short |

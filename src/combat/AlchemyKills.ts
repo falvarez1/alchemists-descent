@@ -83,7 +83,7 @@ export interface HitMemory {
 export function killingCause(mem: HitMemory | undefined, frozen: boolean, frame: number): AlchemyCause | null {
   if (!mem || frame - mem.frame > KILLING_BLOW_TICKS) return null;
   const src = mem.source;
-  if (frozen && mem.statusBlow !== true && (src === 'direct' || src === 'flattened' || src === 'impaled')) return 'shattered';
+  if (frozen && mem.statusBlow !== true && (src === 'direct' || src === 'flattened' || src === 'impaled' || src === 'bowled')) return 'shattered';
   return src === 'direct' ? null : src;
 }
 
@@ -222,6 +222,9 @@ export class AlchemyKills implements AlchemyKillsApi {
     m.frame = frame;
     m.statusBlow = false;
     if (source === 'direct') m.touchFrame = frame;
+    // A body he threw is his hand on it, like the boot (the wand never struck:
+    // a fire it catches afterwards is not the spell's).
+    else if (source === 'bowled') { m.touchFrame = frame; m.kickFrame = frame; }
   }
 
   noteStatus(e: Enemy, blow: StatusBlow): EnemyDamageSource {

@@ -2,8 +2,10 @@ import type { Ctx, Enemy, EnemyKind } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { ensureRig } from '@/creatures/species';
 import { corpses } from '@/creatures/corpses';
+import type { Corpse } from '@/creatures/corpses';
 import { blankLight, sampleSceneLight, sharedRaster } from './raster';
 import type { SpeciesArt } from './types';
+import type { SceneLight } from './raster';
 import { lizardArt } from './lizard';
 import { eggsArt, gelArt } from './gel';
 import { batArt } from './bat';
@@ -46,7 +48,7 @@ export function hasSpeciesArt(kind: EnemyKind): boolean {
   return ART[kind] !== undefined;
 }
 
-export function drawSpecies(out: PixelSurface, light: LightField, ctx: Ctx, e: Enemy, glow = 1): boolean {
+export function drawSpecies(out: PixelSurface, light: LightField, ctx: Ctx, e: Enemy, glow = 1, tint?: SceneLight['tint']): boolean {
   const art = ART[e.kind];
   if (!art) return false;
   const rig = ensureRig(e);
@@ -73,15 +75,41 @@ export function drawSpecies(out: PixelSurface, light: LightField, ctx: Ctx, e: E
   // Light wave: in designed darkness the body resolves as the light finds it,
   // and its eyes and markings glow on top (render/creatures/eyeshine).
   LIGHT.reveal = glow >= 0.999 ? revealFor(ctx, e, LIGHT, probe[0], probe[1]) : 1;
+  LIGHT.tint = tint;
   r.resolve(out, LIGHT);
+  LIGHT.tint = undefined;
   drawEyeshine(out, ctx, e, glow);
   return true;
+}
+
+const TINT: [number, number, number, number] = [0, 0, 0, 0];
+
+/**
+ * What the world has done to the remains, as a wash over the body: frozen
+ * ice-pale, charred toward soot with embers breathing through while it burns,
+ * and a faint brass glow while the wand holds it.
+ */
+function corpseTint(ctx: Ctx, c: Corpse): SceneLight['tint'] {
+  const t = ctx.state.frameCount;
+  if (c.frozen > 0) { TINT[0] = 0.8; TINT[1] = 0.92; TINT[2] = 1; TINT[3] = 0.42; return TINT; }
+  if (c.grip) {
+    TINT[0] = 1; TINT[1] = 0.8; TINT[2] = 0.45;
+    TINT[3] = ctx.state.reduceFlashes ? 0.08 : 0.11 + 0.05 * Math.sin(t * 0.2);
+    return TINT;
+  }
+  if (c.burn > 0) {
+    const f = 0.5 + 0.5 * Math.sin(t * 0.37 + c.e.bobPhase * 9);
+    TINT[0] = 0.4 + 0.25 * f; TINT[1] = 0.12 + 0.06 * f; TINT[2] = 0.03; TINT[3] = Math.min(0.8, 0.25 + c.char * 0.55);
+    return TINT;
+  }
+  if (c.char > 0.02) { TINT[0] = 0.09; TINT[1] = 0.07; TINT[2] = 0.06; TINT[3] = Math.min(0.78, c.char * 0.8); return TINT; }
+  return undefined;
 }
 
 /** Remains of the dead: drawn under the living, their lights guttering out. */
 export function drawCorpses(out: PixelSurface, light: LightField, ctx: Ctx, inView: (e: Enemy) => boolean): void {
   for (const c of corpses()) {
     if (c.world !== ctx.world || !inView(c.e)) continue;
-    drawSpecies(out, light, ctx, c.e, c.glow);
+    drawSpecies(out, light, ctx, c.e, c.glow, corpseTint(ctx, c));
   }
 }

@@ -76,6 +76,9 @@ export function advanceRootLash(ctx: Ctx, enemy: Enemy, canDamage = true): void 
 /** How far a slime smells remains; how close it must be to feed. */
 export const SCAVENGE_RANGE = 110;
 export const SCAVENGE_REACH = 7;
+/** A carried (or just-thrown) body lures from this much farther, for this long after it was handled. */
+export const CARRIED_LURE = 1.6;
+export const CARRIED_LURE_TICKS = 300;
 /** A moth swarm is at least this many moths inside SWARM_RADIUS of each other. */
 export const SWARM_MIN = 3;
 export const SWARM_RADIUS = 22;
@@ -84,13 +87,17 @@ export const BAT_SWARM_RANGE = 170;
 
 /** Nearest remains worth eating within `radius` that the creature can see (not ghosts, not stone). */
 export function scavengeTarget(ctx: Ctx, e: Enemy, radius = SCAVENGE_RANGE): Corpse | null {
-  let best: Corpse | null = null, bd = radius;
+  let best: Corpse | null = null, bd = Infinity;
+  const now = ctx.state.frameCount;
   for (const c of corpses()) {
-    if (c.world !== ctx.world || c.age < 30 || c.e === e) continue;
+    if (c.world !== ctx.world || c.age < 30 || c.e === e || c.gone) continue;
     const k = c.e.kind;
     if (k === 'wisp' || k === 'imp' || k === 'golem' || k === 'colossus' || k === 'bomber') continue;
+    // Remains carried on the wand (or just thrown) swing their smell through
+    // the cave: they lure from farther off — bait, walked to where you want it.
+    const reach = c.grip || now - c.touchT < CARRIED_LURE_TICKS ? radius * CARRIED_LURE : radius;
     const d = Math.hypot(c.e.x - e.x, c.e.y - e.y);
-    if (d >= bd || !sightClear(ctx.world, e.x, e.y - 4, c.e.x, c.e.y - 3)) continue;
+    if (d >= reach || d >= bd || !sightClear(ctx.world, e.x, e.y - 4, c.e.x, c.e.y - 3)) continue;
     best = c; bd = d;
   }
   return best;

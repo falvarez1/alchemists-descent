@@ -3,7 +3,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { EventBus } from '@/core/events';
 import type { SfxOptions } from '@/core/types';
-import { BOSS_MOVE_CUES, FLORA_CUES, LIGHT_CUES, ORGANISM_CUES, TREE_FALL_CUES, installEventCues, treeFallCue, type EventCue } from '@/audio/EventCues';
+import { BOSS_MOVE_CUES, corpseCues, FLORA_CUES, LIGHT_CUES, ORGANISM_CUES, TELEKINESIS_CUES, TREE_FALL_CUES, installEventCues, treeFallCue, type EventCue } from '@/audio/EventCues';
 import { CORE_SFX_PACKS, SFX_CUES, type SfxId } from '@/content/audio/sfxCues';
 import { sfxCue } from '@/content/audio/sfxCatalog';
 import { FLOOR_FAUNA } from '@/game/organisms/placement';
@@ -29,6 +29,9 @@ const allCues = (): EventCue[] => [
   ...Object.values(LIGHT_CUES),
   ...Object.values(FLORA_CUES).flat(),
   ...Object.values(TREE_FALL_CUES),
+  ...Object.values(TELEKINESIS_CUES).flat(),
+  ...(['thud', 'bowl', 'splash', 'ignite', 'douse', 'consume', 'dissolve', 'freeze', 'shatter', 'twitch'] as const)
+    .flatMap((k) => [...corpseCues(k, 0.2, 0.4), ...corpseCues(k, 1, 4.5)]),
 ] as EventCue[];
 
 describe('announced moments sound (audio/EventCues)', () => {
@@ -180,6 +183,37 @@ describe('organism sounds load with their floors', () => {
         if (!ORGANISM_KINDS.has(kind as never)) continue; // plain critters (moths, fish, flies) live in the core packs
         expect(packs.has(`org-${kind}`), `${def.id}: org-${kind}`).toBe(true);
       }
+    }
+  });
+
+  it("sounds the wand's grip: the gesture unplaced, the hum on the body and heavier for a heavier one; crates keep their own", () => {
+    const { events, played } = harness();
+    events.emit('telekinesis', { phase: 'grab', x: 10, y: 20, mass: 1, target: 'corpse' });
+    expect(played.at(-1)).toMatchObject({ id: 'tk.grab', x: undefined, y: undefined });
+    events.emit('telekinesis', { phase: 'hold', x: 10, y: 20, mass: 0.4, target: 'corpse' });
+    const light = played.at(-1)!;
+    events.emit('telekinesis', { phase: 'hold', x: 10, y: 20, mass: 4.5, target: 'corpse' });
+    const heavy = played.at(-1)!;
+    expect(light).toMatchObject({ id: 'tk.hold.loop', x: 10, y: 20 });
+    expect(heavy.opts?.gain ?? 0).toBeGreaterThan(light.opts?.gain ?? 0);
+    events.emit('telekinesis', { phase: 'hurl', x: 0, y: 0, mass: 1, target: 'corpse' });
+    expect(played.at(-1)?.id).toBe('tk.hurl');
+    const n = played.length;
+    events.emit('telekinesis', { phase: 'hurl', x: 0, y: 0, mass: 1, target: 'crate' });
+    expect(played.length).toBe(n);
+    events.emit('telekinesis', { phase: 'hold', x: 0, y: 0, mass: 1, target: 'crate' });
+    expect(played.at(-1)?.id).toBe('tk.hold.loop');
+  });
+
+  it('sounds what the dead do, placed, a heavy body heavier', () => {
+    const { events, played } = harness();
+    events.emit('corpseMoment', { kind: 'thud', x: 5, y: 6, strength: 0.3, mass: 0.4, species: 'bat' });
+    expect(played.at(-1)).toMatchObject({ id: 'corpse.thud.light', x: 5, y: 6 });
+    events.emit('corpseMoment', { kind: 'thud', x: 5, y: 6, strength: 0.3, mass: 4.5, species: 'golem' });
+    expect(played.at(-1)?.id).toBe('corpse.thud.heavy');
+    for (const [kind, id] of [['bowl', 'corpse.bowl'], ['splash', 'corpse.splash'], ['shatter', 'corpse.shatter'], ['twitch', 'corpse.twitch'], ['douse', 'mat.sizzle']] as const) {
+      events.emit('corpseMoment', { kind, x: 1, y: 2, strength: 0.8, mass: 1, species: 'slime' });
+      expect(played.at(-1)).toMatchObject({ id, x: 1, y: 2 });
     }
   });
 });

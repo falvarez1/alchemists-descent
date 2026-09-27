@@ -3583,5 +3583,156 @@
   ],
   "rejected": [],
   "failed": []
+ },
+ "tk.grab": {
+  "hash": "e2aec148c03c",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "tk.hold.loop": {
+  "hash": "c58ece77d77e",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "tk.hurl": {
+  "hash": "3e355a414e08",
+  "variants": [
+   0,
+   1,
+   2
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "tk.release": {
+  "hash": "d2a43a18c701",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "tk.fizzle": {
+  "hash": "deb31e28086e",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "tk.strain": {
+  "hash": "54933c5613ee",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "corpse.thud.light": {
+  "hash": "bbcb37fe6f4c",
+  "variants": [
+   0,
+   1,
+   3
+  ],
+  "rejected": [],
+  "failed": [
+   2
+  ]
+ },
+ "corpse.thud.heavy": {
+  "hash": "32dc0f48b5c0",
+  "variants": [
+   0,
+   1,
+   2
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "corpse.bowl": {
+  "hash": "0a45f1bd1ebe",
+  "variants": [
+   0,
+   1,
+   2
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "corpse.splash": {
+  "hash": "b2b86ce6c5b5",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "corpse.ignite": {
+  "hash": "ec00d4fd7478",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "corpse.consume": {
+  "hash": "51d0ec5dc041",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "corpse.dissolve": {
+  "hash": "4e556f20c16e",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "corpse.freeze": {
+  "hash": "f7e52e2f919e",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "corpse.shatter": {
+  "hash": "65155cb518bf",
+  "variants": [
+   0,
+   1,
+   2
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "corpse.twitch": {
+  "hash": "5539cf347897",
+  "variants": [
+   0,
+   1,
+   2
+  ],
+  "rejected": [],
+  "failed": []
  }
 }

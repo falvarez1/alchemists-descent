@@ -28,6 +28,7 @@ export const CALLOUT_WORDS: Readonly<Record<AlchemyCause, string>> = {
   detonated: 'DETONATED',
   poisoned: 'POISONED',
   impaled: 'IMPALED',
+  bowled: 'BOWLED',
 };
 
 /** The dry line under a chain, in the Works' voice. Empty for a lone kill. */

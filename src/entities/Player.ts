@@ -826,6 +826,13 @@ export class PlayerControl implements PlayerControlApi {
       const g = gustAt(e.x, e.y - 5);
       if (g > 0) ctx.enemyCtl.gustShove(e, dirX, dirY, g * GUST_ENEMY_PUSH);
     }
+    // The dead: a body in the melee cone is punted (even out of the wand's
+    // grip), bodies in the gust are shoved. A heavy carcass kicks back like a wall.
+    const bodyReaction = ctx.corpses?.kick(ox, oy, dirX, dirY, lp.kickRange, cosArc, gustAt) ?? 0;
+    if (bodyReaction > Math.max(KICK_BASE_RECOIL, reaction)) {
+      const extra = lp.kickSelfRecoil * (bodyReaction - Math.max(KICK_BASE_RECOIL, reaction));
+      this.applyImpulse(-dirX * extra, -dirY * extra);
+    }
     ctx.vineStrands?.applyRadialImpulse(ox, oy, windRange * 0.9, 1.8); // bend the hanging vines in the gust
     gustHabitat(ctx, gustAt, dirX, dirY);
     ctx.flora?.gust(ctx, gustAt, dirX, dirY, ox, oy); // saplings snap, trees shake their pods loose

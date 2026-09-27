@@ -424,6 +424,9 @@ export class Explosions implements ExplosionApi {
     // base so even a small spark blast gives a satisfying shove, scaling up to a
     // proper launch for bombs.
     ctx.rigidBodies.applyRadialImpulse(cx, cy, radius * 1.8, 2.5 + radius * 0.08);
+    // ...and the remains of the dead: every part flung by distance (a frozen
+    // carcass close in shatters). The wand's own blast makes what they hit his.
+    ctx.corpses?.blast(cx, cy, radius * 1.8, 2.5 + radius * 0.08, source === 'direct');
     ctx.vineStrands?.applyRadialImpulse(cx, cy, radius * 1.8, 1.4 + radius * 0.05);
     // The blast wave scatters any ambient critters it didn't outright incinerate.
     ctx.critters?.scatter(cx, cy, radius * 2.0, 2.0 + radius * 0.06);
