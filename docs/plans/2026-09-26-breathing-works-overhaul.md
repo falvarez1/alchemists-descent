@@ -133,3 +133,61 @@ Contracts:
   GEN_VERSION and re-records goldens after merging.
 - Budget: each workstream adds ≤ ~1 ms/frame average CPU at 1600×900 on the dev
   machine, measured.
+
+## Wave 3 — depth, story and more places (2026-09-27)
+
+The owner asked for more biomes, scripted story beats in the spirit of Ori (Blind
+Forest / Will of the Wisps), Dead Cells, Nine Sols and Hollow Knight, and scenes
+with real depth (multiple parallax layers and artwork, as in Ori, Dead Cells,
+Nine Sols).
+
+### Story bible (shared by every wave-3 workstream)
+
+- **The Works.** A vast alchemical refinery the Distillers' Guild built beneath a
+  smoke-choked town to breathe its air clean. Over a century it came alive: its
+  organs became habitats — the Bellows (lungs), the Rot Gardens (gut), the
+  Drowned Cisterns (veins), the Kiln Heart (heart). The Guild sealed it and left
+  when the Heart began to fail and the Works started to exhale poison ("the Long
+  Exhale"). The town above has one more breath left.
+- **You.** The Guild's last apprentice, sent down with the regulation kit to
+  quiet the Kiln Heart before the next exhale. Silent protagonist.
+- **The Docent** (narrator, voice "Daniel"). Master Aldous Wren, the Guild's
+  old docent, who stayed behind to catalogue the Works' new life. Dry, fond,
+  unhurried. He speaks to you from the Works' speaking-pipes. Late reveal
+  (light touch): he never left — his voice is an echo the Works kept.
+- **Pell** (recurring NPC, Hollow Knight's Quirrel/Cornifer register). A Guild
+  surveyor who came down a year ago and stayed "to finish the map". Found on
+  each floor at a camp; trades a hint, a map pin or a card; has a small arc
+  across a run (worried → brave → gone ahead / waiting at the end).
+- **The Old Ones** (the Sanctum). Guild workers who breathed the Works' air
+  and became part of it: patient, half-fungal, polite traders.
+- **The Kiln Colossus.** The Works' first stoker automaton, grown into the
+  Heart's warden. Quieting it quiets the Heart; the Heart gives one last great
+  heave (an escape), then the Works breathes easy — clean air rises to the town.
+- **Tone.** Dry Victorian-industrial wit over wonder and melancholy (Ori's
+  warmth, Hollow Knight's quiet, Nine Sols' weight) — never grimdark, never
+  quippy. "Please mind the duck" is still the house style.
+
+### New biomes (branching)
+
+At each Sanctum the player chooses one of two doors (Dead Cells' biome graph):
+floor 2 is **The Rot Gardens** (fungal) *or* **The Cold Store** (frozen: the
+refrigeration wing — ice, snow, brine, freeze/shatter chemistry); floor 3 is
+**The Drowned Cisterns** (flooded, Leviathan) *or* **The Glass Galleries**
+(crystal: the lens-grinding halls — refraction, mirrors, light puzzles, a
+signature guardian). Floor 4 is always **The Kiln Heart**. Run length is
+unchanged; replayability rises.
+
+### Workstreams
+
+| WS | Branch | Owns |
+| --- | --- | --- |
+| **D — Depth & artwork** | `bw/depth` | multi-layer parallax per biome (far/mid/near background, foreground occluders), atmospheric perspective and haze, light shafts, depth particles, a per-biome layer-kit system |
+| **B — Biomes** | `bw/biomes` | the Sanctum door choice and floor graph, The Cold Store and The Glass Galleries to floor-1-level quality (looks, flora, organisms, rosters, puzzles, a signature set piece/guardian, music and ambience) |
+| **S — Story** | `bw/story` | the narrative spine, the Docent's speaking-pipes, Pell and the Old Ones as characters with dialogue, memory echoes, boss prologues, the Kiln escape sequence, the opening and ending beats, the Journal |
+
+Contracts: layer kits are looked up by `BiomeId` with a generic fallback, so new
+biomes render before D writes their kits (D adds kits for `frozen`/`crystal` after
+B merges). Narrative text for new biomes (titles, epigraphs, Pell's lines) is B's
+first draft and S's to polish. Cues and voice go through the existing ElevenLabs
+pipeline (`docs/AUDIO.md`).
