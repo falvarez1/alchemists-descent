@@ -12,6 +12,11 @@ export interface PerceivedPlayer {
   light: number;
 }
 
+/** A visible alchemist closer than this raises irritation toward a hunt. */
+export const NOTICE_ESCALATE_CELLS = 130;
+/** Irritation gained per tick at point blank is 1/this (falls off linearly to 0 at the edge). */
+export const NOTICE_ESCALATE_TICKS = 120;
+
 export function ensureCreatureMind(enemy: Enemy, seed: number): CreatureMind {
   if (enemy.mind) return enemy.mind;
   const phase = (Math.imul(Math.round(enemy.x * 31 + enemy.y * 17 + enemy.bobPhase * 1000), 2654435761) ^ seed) >>> 0;
@@ -88,6 +93,16 @@ export function tickCreatureMind(
         mind.lastHeard = cue.tick;
         mind.confidence = Math.max(mind.confidence, Math.min(0.7, cue.strength * 0.65));
       }
+    }
+  }
+  // A close, VISIBLE alchemist wears on a territorial animal's patience: a stare
+  // at arm's length boils over into a hunt in under a second, one across the
+  // room takes several, and past NOTICE_ESCALATE_CELLS it only watches. Sight is
+  // still the honest grid-occluded check above; nothing here sees through rock.
+  if (mind.visible && !enemy.sleeping && elapsed > 0) {
+    const d = Math.hypot(player.x - enemy.x, player.y - 9 - (enemy.y - 6));
+    if (d < NOTICE_ESCALATE_CELLS) {
+      mind.irritation = Math.min(1, mind.irritation + (elapsed * (1 - d / NOTICE_ESCALATE_CELLS)) / NOTICE_ESCALATE_TICKS);
     }
   }
   if (tick < mind.nextDecision && mind.irritation < 0.75) return mind;
