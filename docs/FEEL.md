@@ -440,6 +440,7 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   velocity leans — all per-kind in `render/sprites/EnemySprites.ts`.
 - Enemy bodies obey the light field (a body in shadow is a silhouette); only
   natively glowing kinds (imp, wisp) and emissive parts (eyes, cores) self-light.
+  In designed darkness they are black until light finds them (§10).
 
 ---
 
@@ -823,6 +824,119 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
 
 ---
 
+## 10. Light and dark (Breathing Works light wave)
+
+"Light is information" (principle 5) made into a mechanic. The owner's brief:
+*dark caves where you only see the creatures' eyes or some glowing phalanx
+until you shine the wand's light towards it.* Darkness is a place you enter,
+never a filter over the game: the lamp-lit Works stay readable.
+
+**Designed darkness** (`config/darkness`, `core/darkness`). Every floor has a
+base darkness (d1 0, d2/d3 0.3 "an ordinary cave", d4 0.18 — the kiln glows)
+and DEEP-DARK ZONES (ellipse or rounded rect, rim feathered over 30 cells and
+wobbling ±10 so a zone reads as a cave the light never reached). Zones are
+baked once per level into a half-res map (static data, regenerated with the
+pristine world on restore). The render uses d² × 0.965 (an ordinary cave dims
+unlit rock only ~9%); gameplay reads d linearly. Per light texel the result is
+an OPEN factor that every compose path (CPU reference, WebGL2 light-texture
+alpha, WebGPU WGSL) multiplies ambient and the 0.40 readability floor by; the
+sprite floor (0.48), the creature floor (0.42), mechanism pens (0.55, never
+below ×0.3) and D1 fixture pens scale with it too. Real light is untouched, so
+in a deep-dark zone you see exactly what the wand, a fire, lava or a glowshroom
+lights. What full dark leaves is a cold "wet slate" remainder (albedo ×
+0.012/0.016/0.026, air 0.0022/0.0032/0.0055), never an RGB zero. EYE
+ADAPTATION: the squared light law would swallow every weak light, so a linear
+term fades in with the dark (lit = lf² + 0.42·shut·lf) — failing lamps and
+glow-caps still pool — and the air's halo round a lantern is 2.4× stronger.
+**High-readability lighting** keeps half the render darkness (its 0.85 ambient
+floor then reads ~0.43 in a zone): darkness still reads as a place, nobody is
+locked out.
+
+**The lantern in the dark.** The omni spill shrinks to ×0.62 radius at full
+darkness under the player (eased 0.1 per build) — you see your footing, not
+the room — while the aimed beam keeps its reach, loses less per cell of air
+(0.976 → 0.985) and burns ×1.12: in a black cave the world is where you point.
+The non-occluded glow cone shrinks ×0.55. Floor 1: the Undertow and the west
+end of the Lower Bell (where its Weaver waits). Floors 2–4: each light-puzzle
+room plus one (Cisterns: two) big caves on the route, sampled from wizard-fit
+ground away from spawn, portal, waystones and boss.
+
+**Eyeshine and glow markings** (`render/creatures/eyeshine`). Species art
+marks its open eyes at the rig's real head anchors (`anatomy.markEye`); after
+the body resolves an additive overlay (so it composes on every path) gives each
+eye a faint glow of its own from darkness 0.18 up (0.62 at full dark, core +
+halo) and a RETROREFLECTIVE flash when the wand's light lands on a face turned
+to the lantern (gain 1.9, saturating at wandLight 0.35; the halo widens). Eyes
+blink and track with the expression rig; sleepers and corpses don't shine; the
+beam's first catch of a pair of eyes in the dark tinks (2350→2800 Hz, at most
+once per 50 ticks). Markings (0.7 at full dark): the Weaver's leg tips
+("glowing phalanges", pulsing in step order), the Rillback's lateral line, a
+slime/bomber core, the Stone Maw's jaw seams (it is blind: no eyeshine at
+all), a Root Loper's crown; lures, bells, cores and embers keep their own
+lights. Colours: Weaver silk-green, bat ember-red, slime pale green, acid slime
+acid green, Rillback cyan, Root Loper amber, mage violet, imp/golem/Colossus
+forge orange. THE REVEAL: in the dark a body resolves out of the black through
+the raster's ordered dither as the light finds it (rise 0.16/tick ≈ 6 ticks,
+fall 0.035/tick ≈ 28 ticks); unrevealed pixels keep only their own glow.
+
+**The hooded lantern** (L, rebindable, Handbook "Light and dark"). The omni
+becomes an ember (radius ×0.16, intensity ×0.3, fill ×0.45), the beam and glow
+cone go out, eased over ~16 ticks. A brass hood drops over the wand tip with
+an ember inside; hooding clicks (760→430 Hz square), hisses and curls smoke,
+unhooding clicks brighter, rings and flares. `lanternHooded` event for audio.
+A new floor or a death lifts the hood. Moths lose a hooded lantern. SIGHT: the
+alchemist's visibility is the shipped 0.7 (torch 1) unhooded, +0.3 × darkness
+(a lantern in the dark is a beacon); hooded 0.7 × (1 − darkness)². Sight range
+= vision × (0.52 + 0.48·v) for v ≥ 0.7 (unchanged), falling linearly to ×0.16
+at v = 0: hooded in a deep-dark zone a Weaver sees you at ~34 cells (crouched
+~22), not ~215 — or hears you.
+
+**Creatures answer the light** (`creatures/lightResponse`). Being lit is
+information: the aimed beam on a creature (wandLight ≥ 0.07, inside the ±0.5
+rad cone, clear line to the tip) gives it a confident fix on you (≥ 0.75).
+WEAVER: flinches (crouch 14 ticks, head snaps back) and backs off 46 ticks,
+cooldown 34 — until 150 beam ticks inside a leaky window habituate it: it goes
+cranky (150) and charges through the light. BATS: the beam on a roost wakes
+every sleeper within 40×30 cells and scatters them away from the light (flee
+60, squeak); a bat in flight breaks its dive and veers off (flee 30, cd 40);
+after ~240 beam ticks a hungry bat stops caring. ROOT LOPER (the lurker):
+frozen, eye shut, bark creaking while the wand's light (≥ 0.06) is on it, and
+22 ticks after; in the dark it creeps ×1.45 while you look away. SLIMES: an
+unaware slime within 120 cells of the beam's lit spot hops toward it (gathers
+every 38 ticks) — herd it with the beam. STONE MAW: blind, unmoved.
+
+**Light devices.** PHOTOCELL (`sensorType 'light'`): a brass lens set into
+rock; the beam on it (≥ 0.07) or any blaze beside it (level ≥ 1.05) charges it
+over 90 ticks with a rising hum and six amber pips; the dark drains 0.35/tick
+(it cools, it does not reset). Latched: a brass chime, sparks, a self-lit gold
+lens. Its stone housing is its fail-open body. LUMEN BLOOM (`game/lumenBlooms`):
+a light-drinking plant whose petals are REAL Glass cells two rows thick. Lit
+(beam ≥ 0.06 or level ≥ 1.0 at the heart) it opens +0.024/tick (full in
+~0.7 s, 3 petals/tick, a rising glass chime), holds 70 ticks, then furls
+tip-first at 0.0028/tick (a full 44-column span over ~6 s, a creak and a
+shiver as it starts). Petals only ever go into open air (never over a body, a
+crate or rock) and only its own glass is taken back; a shattered petal regrows
+on the next unfurl. Its heart breathes a faint light (0.1 + 0.26·open) and the
+bridge glows along its length.
+
+**Light puzzles** (`world/lightPuzzles`, forked 'light-puzzles' stream,
+GEN_VERSION 50). Floors 2–4 each carve THE LAMPLIGHTER'S LOCK (124×70, a metal
+strongroom behind a oneShot sliding gate; the Rot Gardens use one permanent
+lens, the Cisterns and the Kiln twin lenses on opposite walls, each latching
+260 ticks — light one, swing across the dark to the other before it cools;
+reward a tome + gold) and THE BLOOM CROSSING (178×104, degrading to 150/128
+wide, a chasm over a metal-lined acid sump with a bloom rooted on each lip,
+each spanning half the gap; reward a potion + gold, sometimes a heart). Both
+rooms are deep-dark zones, joined to the main path (connectToCaves, wizard
+gauge checked, rolled back otherwise). Floor 1: the Undertow's lamplighter's
+cache — a lens in the flank of a stone tooth hanging from the roof and a flush
+riveted lid over a metal-lined niche (gold + a Torchbearer Tonic); the critical
+route never needs it. Findability audits 'photocell' and 'lumen-bloom': some
+wizard-reachable spot within 150 cells must have light's line of sight (glass,
+ice and crystal pass it) to the lens or heart.
+
+---
+
 ## Tuning quick-reference (this codex's load-bearing numbers)
 
 ```
@@ -861,6 +975,12 @@ callouts: life 1150 ms + 180/tier · tiers ×1 brass / ×2 / ×3–4 ember / ×5
 self-shock: self-inflicted ≤240 ticks after a cast · scale charge/40 (floor .15) · cap 12 hp per 120 ticks · arc ≤16 cells up the charge gradient
 fodder rosters (SPINE_ROSTERS by biome): fungal weaver 2 rootloper 3 rillback 1 slime 4 acidslime 2 eggs 2 bat 8 (roosts) · flooded rillback 6 spitter 3 wisp 2 weaver 1 bat 4 · volcanic imp 5 bomber 4 golem 2 stonemaw 2 (× difficulty enemyCount)
 sim window camera ±60 · player 9x17 cells · staff ~11 cells, muzzle at d=9
+darkness: render d²×0.965 (readability ×0.5) · floor base d1 0 / d2 .3 / d3 .3 / d4 .18 · zone feather 30 ± rim wobble 10 · DARK_FLOOR .012/.016/.026 · DARK_ADAPT .42 · air glow ×(1+1.4·shut)
+lantern in the dark: spill radius ×.62 · beam step 0.976→0.985, ×1.12 · glow cone ×.55 · hooded: radius ×.16, intensity ×.3, fill ×.45, beam/glow off, ease .26/build
+eyeshine: base .62 from darkness .18 · retro ×1.9 at wandLight .35 · markings .7 · reveal +.16/−.035 per tick · catch tink ≤1/50 ticks
+sight by light: v = .7 (torch 1) + .3·dark unhooded, .7·(1−dark)² hooded · range ×(.52+.48v) for v≥.7, → ×.16 at v=0 · beam lit fix ≥.07 in ±.5 rad
+light responses: flinch ≥.07 · weaver crouch 14 / back off 46 / cd 34 / habit 150 → cranky 150 · bats scatter 40×30, flee 60 (flight 30, cd 40) · loper freeze ≥.06 +22, creep ×1.45 · slime lure 120 cells, gather /38
+photocell: beam ≥.07 or level ≥1.05, 90 ticks, drain .35/tick, twin latch 260 · lumen bloom: beam ≥.06 or level ≥1.0, open +.024, hold 70, furl −.0028, 3 petals/tick
 D1 sky (SKY in render/skyAtmosphere.ts): gradient base (0.36,0.53,0.78)→horizon (+0.28,+0.06,−0.28)·t · sun screen 0.72·VIEW_W,0.17·VIEW_H, halo r150 pow2.4, core 13→6 · clouds 4 octaves, parallax 0.82, drift 0.004/f, band t∈0.12–0.66, opacity 0.45 · hills far parallax 0.5 base26 / near parallax 0.32 base40 (taller+darker, drawn last)
 ```
 

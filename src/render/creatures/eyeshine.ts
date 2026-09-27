@@ -133,8 +133,8 @@ function drawMarkings(out: PixelSurface, ctx: Ctx, e: Enemy): void {
         if (missing & (1 << i)) continue;
         const foot = weaverLegGeometry(e, i)[4];
         const pulse = 0.7 + Math.sin(t * 0.09 + i * 0.8 + e.bobPhase) * 0.3;
-        glowAt(out, foot.x, foot.y, 0.9, [0.55, 1, 0.72], k * 0.9 * pulse);
-        glowAt(out, foot.x, foot.y, 2.2, [0.3, 0.9, 0.5], k * 0.16 * pulse);
+        glowAt(out, foot.x, foot.y, 1.0, [0.6, 1, 0.76], k * 1.1 * pulse);
+        glowAt(out, foot.x, foot.y, 2.6, [0.3, 0.9, 0.5], k * 0.2 * pulse);
       }
       break;
     }

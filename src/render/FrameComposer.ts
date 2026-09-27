@@ -1332,13 +1332,13 @@ export class FrameComposer implements PixelSurface {
             const cell = world.types[world.idx(cx, cy)];
             if (blocksEntity(cell) && !isSoftGrowth(cell)) continue;
           }
-          const lt = this.light.sample(x, y);
+          const lt = this.light.sample(x, y), dk = lt.open ?? 1;
           const webGlow = silk ? 0.05 : strand.web === true ? 0.22 : 0;
           const denMul = silk ? 0.3 : 1;
           const char = Math.min(1, ((a.burn ?? 0) * (1 - t) + (b.burn ?? 0) * t) * 1.6);
-          const r = baseR * (Math.max(0.16, lt.r) * 1.05 + webGlow * 0.45) * denMul;
-          const g = baseG * (Math.max(0.18, lt.g) * 1.1 + webGlow) * denMul;
-          const b2 = baseB * (Math.max(0.14, lt.b) + webGlow * 0.45) * denMul;
+          const r = baseR * (Math.max(0.16 * dk, lt.r) * 1.05 + webGlow * 0.45) * denMul;
+          const g = baseG * (Math.max(0.18 * dk, lt.g) * 1.1 + webGlow) * denMul;
+          const b2 = baseB * (Math.max(0.14 * dk, lt.b) + webGlow * 0.45) * denMul;
           for (let w = -half; w <= half + 1e-6; w += 1) {
             if (strand.denWeb === true) this.addPx(x + perpX * w, y + perpY * w, r, g, b2);
             else this.setPx(x + perpX * w, y + perpY * w, r * (1 - char * .5), g * (1 - char * .73), b2 * (1 - char * .78));
@@ -1349,13 +1349,13 @@ export class FrameComposer implements PixelSurface {
         for (const node of strand.nodes) {
           if (node.x < camX - 2 || node.x > camX + VIEW_W + 2 || node.y < camY - 2 || node.y > camY + VIEW_H + 2)
             continue;
-          const lt = this.light.sample(node.x, node.y);
+          const lt = this.light.sample(node.x, node.y), dk = lt.open ?? 1;
           this.setPx(
             node.x,
             node.y,
-            baseR * Math.max(0.16, lt.r),
-            baseG * Math.max(0.18, lt.g),
-            baseB * Math.max(0.14, lt.b),
+            baseR * Math.max(0.16 * dk, lt.r),
+            baseG * Math.max(0.18 * dk, lt.g),
+            baseB * Math.max(0.14 * dk, lt.b),
           );
         }
       }

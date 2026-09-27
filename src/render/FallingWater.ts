@@ -14,7 +14,8 @@ export function drawFallingWater(out: PixelSurface, light: LightField, ctx: Ctx)
     if (dy < .7) continue;
     const length = Math.hypot(dx, dy), samples = Math.ceil(length / step);
     const sample = light.sample(flight.x, flight.y);
-    const r = Math.min(1.4, Math.max(.55, sample.r)), g = Math.min(1.4, Math.max(.55, sample.g)), b = Math.min(1.4, Math.max(.55, sample.b));
+    const dk = sample.open ?? 1; // designed darkness (light wave) lowers the floor
+    const r = Math.min(1.4, Math.max(.55 * dk, sample.r)), g = Math.min(1.4, Math.max(.55 * dk, sample.g)), b = Math.min(1.4, Math.max(.55 * dk, sample.b));
     for (let i = 0; i <= samples; i++) {
       const t = i / samples, x = flight.previousX + dx * t, y = flight.previousY + dy * t;
       const ix = Math.floor(x), iy = Math.floor(y);

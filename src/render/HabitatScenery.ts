@@ -71,8 +71,8 @@ export function drawVineFoliage(out: PixelSurface, light: LightField, ctx: Ctx, 
     if (!length || node.x < camera.renderX - 14 || node.x > camera.renderX + VIEW_W + 14 || node.y < camera.renderY - 14 || node.y > camera.renderY + VIEW_H + 14) continue;
     const dx = node.x - previous.x, dy = node.y - previous.y, distance = Math.hypot(dx, dy) || 1;
     const tx = dx / distance, ty = dy / distance, nx = -ty, ny = tx;
-    const sample = light.sample(node.x, node.y);
-    const r = Math.max(.5, sample.r), g = Math.max(.5, sample.g), b = Math.max(.5, sample.b);
+    const sample = light.sample(node.x, node.y), dk = sample.open ?? 1;
+    const r = Math.max(.5 * dk, sample.r), g = Math.max(.5 * dk, sample.g), b = Math.max(.5 * dk, sample.b);
     for (const side of [-1, 1]) {
       const count = Math.ceil(length / step);
       for (let k = 0; k <= count; k++) {

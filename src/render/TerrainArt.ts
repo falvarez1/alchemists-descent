@@ -411,7 +411,9 @@ function prop(s: PixelSurface, light: LightField, crop: readonly [number, number
   if (!atlas) return;
   const [sx, sy, width, height] = crop;
   const sample = light.sample(x + width / 2, y + height / 2);
-  const r = Math.max(0.64, sample.r), g = Math.max(0.6, sample.g), b = Math.max(0.55, sample.b);
+  // Designed darkness (light wave) lowers the props' readability floor with the place.
+  const dk = sample.open ?? 1;
+  const r = Math.max(0.64 * dk, sample.r), g = Math.max(0.6 * dk, sample.g), b = Math.max(0.55 * dk, sample.b);
   // Bitmap props share the presentation grain through the same EPX upsample
   // as every other cell-authored sprite.
   blitCellArt(s, width, height, (px, py) => {
