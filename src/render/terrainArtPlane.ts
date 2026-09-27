@@ -31,7 +31,7 @@ import { ACTIVITY_SIZE } from '@/sim/ActivityGrid';
  * the view, so scattered fires stay cheap). Solid changes (digging, a blast,
  * burning timber) go first, a few regions per frame; loose <-> air churn
  * (falling sand, burning coal, pools settling) only moves shading and
- * trickles through one region per frame.
+ * trickles through one region every other frame.
  */
 export const ART_SOLID_BIT = 0x80;
 export const ART_BUILT_BIT = 0x40;
@@ -69,7 +69,8 @@ const INF = 30000;
 const REACH = ART_DEPTH_MAX + 2;
 /** Chunk regions re-derived per sync: solid changes first, then loose/air churn. */
 const SOLID_PER_SYNC = 4;
-const LAZY_PER_SYNC = 1;
+/** Loose/air churn: one region every LAZY_CADENCE syncs. */
+const LAZY_CADENCE = 2;
 /** Dirty rects kept apart for the CPU re-shade before they merge into one. */
 const DIRTY_RECTS = 12;
 /** An enclosed open component smaller than this is a sealed pocket (cells). */
@@ -124,6 +125,7 @@ export class TerrainArtPlane {
   private syncedEpoch = -1;
   private syncedX = NaN;
   private syncedY = NaN;
+  private syncCount = 0;
 
   constructor(private readonly world: World, readonly options: ArtPlaneOptions) {
     this.data = new Uint8Array(world.width * world.height);
@@ -193,11 +195,12 @@ export class TerrainArtPlane {
       const lazy = this.lazy.get(key);
       if (lazy && lazy.x0 >= region.x0 && lazy.x1 < region.x1 && lazy.y0 >= region.y0 && lazy.y1 < region.y1) this.lazy.delete(key);
     }
-    budget = LAZY_PER_SYNC;
-    for (const [key, rect] of this.lazy) {
-      if (budget-- <= 0) break;
-      this.lazy.delete(key);
-      this.rederive(this.expand(rect));
+    if (++this.syncCount % LAZY_CADENCE === 0) {
+      for (const [key, rect] of this.lazy) {
+        this.lazy.delete(key);
+        this.rederive(this.expand(rect));
+        break;
+      }
     }
     this.stats.syncMs += performance.now() - started;
   }

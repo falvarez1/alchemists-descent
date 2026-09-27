@@ -557,6 +557,12 @@ export class FrameComposer implements PixelSurface {
     const floorLook = activeFloorLook(ctx);
     const tintMulR = floorLook.backdropMul[0], tintMulG = floorLook.backdropMul[1], tintMulB = floorLook.backdropMul[2];
     const tintLiftR = floorLook.backdropLift[0], tintLiftG = floorLook.backdropLift[1], tintLiftB = floorLook.backdropLift[2];
+    // Shape-aware floors (FloorLook.natural): the cached colour of an Empty
+    // cell carries its backdrop contact shade (TerrainArt.naturalAlbedo).
+    const natural = cellColors !== world.colors ? floorLook.natural : null;
+    const naturalSat = natural ? natural.backdropSat : 1;
+    const hazeR = natural ? natural.backdropHaze[0] : 0, hazeG = natural ? natural.backdropHaze[1] : 0;
+    const hazeB = natural ? natural.backdropHaze[2] : 0, hazeMix = natural ? natural.backdropHazeMix : 0;
     // Reuse the pooled descriptor array + objects (reset, not reallocated) so
     // the per-frame compose path stays allocation-free (see field declaration).
     const activeBackdropLayers = this.activeBackdropLayers;
@@ -780,6 +786,19 @@ export class FrameComposer implements PixelSurface {
             r = r * tintMulR + tintLiftR;
             g = g * tintMulG + tintLiftG;
             b = b * tintMulB + tintLiftB;
+            if (natural) {
+              const l = r * 0.2126 + g * 0.7152 + b * 0.0722;
+              r = l + (r - l) * naturalSat;
+              g = l + (g - l) * naturalSat;
+              b = l + (b - l) * naturalSat;
+              r += (hazeR - r) * hazeMix;
+              g += (hazeG - g) * hazeMix;
+              b += (hazeB - b) * hazeMix;
+              const shade = ((cellColors[ci] >>> 16) & 0xff) / 255;
+              r *= shade;
+              g *= shade;
+              b *= shade;
+            }
             const depthShade = 0.78 + 0.22 * (1 - wy / HEIGHT);
             r *= depthShade;
             g *= depthShade;

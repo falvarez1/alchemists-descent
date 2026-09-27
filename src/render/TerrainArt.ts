@@ -1,11 +1,17 @@
 import type { Ctx } from '@/core/types';
 import type { World } from '@/sim/World';
 import type { LightField, PixelSurface } from '@/render/pixels';
-import { Cell, blocksEntity } from '@/sim/CellType';
+import { Cell, blocksEntity, isLiquid } from '@/sim/CellType';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { COMPOSE_PAD } from '@/render/lightingModel';
 import { blitCellArt, viewIntersects } from '@/render/sprites/FineArt';
-import { FLOOR_LOOKS, crownReach, floorLookFor, masonryPanel, type FloorLook } from '@/config/floorLooks';
+import {
+  FLOOR_LOOKS, crownReach, dripReach, floorLookFor, lipSpeck, masonryPanel, type FloorLook, type NaturalLook,
+} from '@/config/floorLooks';
+import { FLOOR_SHEET, FLOOR_TILE, floorTilePixels } from '@/render/floorTiles';
+import {
+  ART_AIR_MASK, ART_BUILT_BIT, ART_DEPTH_MASK, ART_LOOSE_BIT, ART_SOLID_BIT, existingTerrainArtPlane, terrainArtPlane, type ArtZone, type TerrainArtPlane,
+} from '@/render/terrainArtPlane';
 
 let terrain: Uint8ClampedArray | null = null;
 let props: Uint8ClampedArray | null = null;
@@ -13,6 +19,7 @@ let loading = false;
 interface TerrainCache {
   colors: Uint32Array; versions: Uint32Array; dynamic: Uint32Array;
   epoch: number; tick: number; revision: number; x: number; y: number; look: FloorLook | null;
+  plane: TerrainArtPlane | null; planeRevision: number;
 }
 const caches = new WeakMap<World, TerrainCache>();
 
@@ -21,6 +28,68 @@ export function terrainArtPixels(): Uint8ClampedArray | null { return terrain; }
 
 export const terrainBlocksGlsl = Array.from({ length: 128 }, (_, type) => type)
   .filter(type => blocksEntity(type)).map(type => `t == ${type}`).join(' || ');
+
+/**
+ * Cells a natural-look face is OPEN to (air, gas, fire, soft growth): lips,
+ * crowns and underside streaks form against these. Liquids and powders sit ON
+ * a face and cover it, so water-filled pores never outline themselves.
+ */
+const OPEN = new Uint8Array(256);
+for (let t = 0; t < 256; t++) OPEN[t] = !blocksEntity(t) && !isLiquid(t) ? 1 : 0;
+/** The OPEN table as two 32-bit masks (ids 0–63) for the shader port. */
+export const terrainOpenMask: readonly [number, number] = [openWord(0), openWord(1)];
+function openWord(word: number): number {
+  let mask = 0;
+  for (let bit = 0; bit < 32; bit++) if (OPEN[word * 32 + bit]) mask |= 1 << bit;
+  return mask >>> 0;
+}
+
+/**
+ * The art plane the compositors dress this frame's terrain with, synced
+ * around the padded view — or null for classic looks (the hand-built Works,
+ * off-spine floors, the sandbox and Builder playtests).
+ */
+export function activeArtPlane(ctx: Ctx): TerrainArtPlane | null {
+  if (!terrain || !usesTerrainArt(ctx) || !naturalEnabled) return null;
+  const natural = floorLookFor(ctx).natural;
+  if (!natural) return null;
+  const plane = terrainArtPlane(ctx.world, { builtRun: natural.builtRun, lining: natural.lining, zones: artZones(ctx) });
+  const camera = ctx.camera;
+  plane.sync(camera.renderX - COMPOSE_PAD, camera.renderY - COMPOSE_PAD,
+    camera.renderX + VIEW_W + COMPOSE_PAD, camera.renderY + VIEW_H + COMPOSE_PAD);
+  return plane;
+}
+
+/** Dev-only A/B switch for probes (the shape-aware dressing vs the classic sampler). */
+let naturalEnabled = true;
+
+const NO_ZONES: readonly ArtZone[] = [];
+const zoneCache = new WeakMap<object, readonly ArtZone[]>();
+
+/**
+ * Authored footprints whose faces are built: placed prefabs (machine rooms,
+ * vaults, shrines, galleries — not the organic encounter lairs) and the boss
+ * arena around its seat (world/structures.ts: the Kiln and the Sump).
+ */
+function artZones(ctx: Ctx): readonly ArtZone[] {
+  const runtime = ctx.levels.current;
+  if (!runtime) return NO_ZONES;
+  const cached = zoneCache.get(runtime);
+  if (cached) return cached;
+  const zones: ArtZone[] = [];
+  for (const prefab of runtime.placedPrefabs ?? []) {
+    if (prefab.id.startsWith('encounter-lair')) continue;
+    zones.push({ x0: prefab.x0, y0: prefab.y0, x1: prefab.x1, y1: prefab.y1 });
+  }
+  const boss = runtime.boss;
+  if (boss) {
+    zones.push(boss.kind === 'leviathan'
+      ? { x0: boss.x - 46, y0: boss.y - 54, x1: boss.x + 46, y1: boss.y + 12 }
+      : { x0: boss.x - 44, y0: boss.y - 48, x1: boss.x + 44, y1: boss.y + 12 });
+  }
+  zoneCache.set(runtime, zones);
+  return zones;
+}
 
 /** Rebuild changed visible chunks once, then preserve the renderer's tight
  * packed-color loops. Raster detail never adds a function call per GPU pixel. */
@@ -31,12 +100,21 @@ export function prepareTerrainColors(ctx: Ctx): Uint32Array {
   let cache = caches.get(world);
   if (!cache) {
     cache = { colors: new Uint32Array(world.colors.length), versions: new Uint32Array(activity.versions.length).fill(0xffffffff),
-      dynamic: new Uint32Array(activity.rowMasks.length), epoch: -1, tick: -1, revision: -1, x: NaN, y: NaN, look: null };
+      dynamic: new Uint32Array(activity.rowMasks.length), epoch: -1, tick: -1, revision: -1, x: NaN, y: NaN, look: null,
+      plane: null, planeRevision: -1 };
     caches.set(world, cache);
   }
   const look = floorLookFor(ctx);
-  if (cache.tick === ctx.state.frameCount && cache.revision === world.mutationVersion && cache.x === camera.renderX && cache.y === camera.renderY && cache.look === look) return cache.colors;
-  if (cache.epoch !== activity.epoch || cache.look !== look) { cache.versions.fill(0xffffffff); cache.epoch = activity.epoch; cache.look = look; }
+  // The plane syncs BEFORE the damage loop so re-shaded cells read fresh depth.
+  const plane = activeArtPlane(ctx);
+  if (cache.tick === ctx.state.frameCount && cache.revision === world.mutationVersion && cache.x === camera.renderX
+    && cache.y === camera.renderY && cache.look === look && cache.plane === plane
+    && (!plane || cache.planeRevision === plane.revision)) return cache.colors;
+  if (cache.epoch !== activity.epoch || cache.look !== look || cache.plane !== plane) {
+    cache.versions.fill(0xffffffff); cache.epoch = activity.epoch; cache.look = look;
+    cache.plane = plane; cache.planeRevision = plane ? plane.revision : -1;
+    plane?.takeDirty();
+  }
   // A freshly replaced/paused world may be edited before its first sim step.
   // Those writes advance the revision without initialized per-cell damage rows.
   if (!activity.ready && cache.revision !== world.mutationVersion) cache.versions.fill(0xffffffff);
@@ -60,7 +138,7 @@ export function prepareTerrainColors(ctx: Ctx): Uint32Array {
           changed &= changed - 1;
           if (x >= world.width) continue;
           const index = x + y * world.width;
-          cache.colors[index] = terrainAlbedo(world, index, x, y, true, look);
+          cache.colors[index] = terrainAlbedo(world, index, x, y, true, look, plane);
           const type = world.types[index];
           const bit = 1 << bitIndex;
           if (type !== Cell.Empty && type !== Cell.Wall && type !== Cell.Stone && type !== Cell.Wood && type !== Cell.Metal && type !== Cell.Water) cache.dynamic[rowIndex] |= bit;
@@ -80,11 +158,45 @@ export function prepareTerrainColors(ctx: Ctx): Uint32Array {
       }
     }
   }
+  // A re-derived art rect re-shades every cached chunk it touches (depth and
+  // air distance reach past the two-cell render damage halo).
+  if (plane && cache.planeRevision !== plane.revision) {
+    cache.planeRevision = plane.revision;
+    for (const rect of plane.takeDirty()) {
+      for (let cy = rect.y0 >> 6; cy <= (rect.y1 - 1) >> 6; cy++) for (let cx = rect.x0 >> 6; cx <= (rect.x1 - 1) >> 6; cx++) {
+        if (cache.versions[cx + cy * activity.columns] === 0xffffffff) continue;
+        const left = Math.max(rect.x0, cx * 64), right = Math.min(rect.x1, cx * 64 + 64);
+        const top = Math.max(rect.y0, cy * 64), bottom = Math.min(rect.y1, cy * 64 + 64);
+        for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
+          const index = x + y * world.width;
+          cache.colors[index] = terrainAlbedo(world, index, x, y, true, look, plane);
+        }
+      }
+    }
+  }
   for (const index of world.colorOverrides) cache.colors[index] = world.colors[index];
   cache.tick = ctx.state.frameCount; cache.revision = world.mutationVersion;
   cache.x = camera.renderX; cache.y = camera.renderY;
   return cache.colors;
 }
+
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  // In-page probe handle (never in production builds): the art plane of a world.
+  (window as unknown as { __terrainArt?: unknown }).__terrainArt = {
+    planeFor: (world: World): Uint8Array | null => caches.get(world)?.plane?.data ?? existingPlane(world),
+    setNatural: (on: boolean): void => { naturalEnabled = on; },
+    stats: (world: World): { scans: number; regions: number; cells: number; syncMs: number } | null =>
+      existingTerrainArtPlane(world)?.stats ?? null,
+    rebuildMs: (world: World): number => {
+      const plane = existingTerrainArtPlane(world);
+      if (!plane) return -1;
+      const start = performance.now();
+      plane.buildAll();
+      return performance.now() - start;
+    },
+  };
+}
+function existingPlane(world: World): Uint8Array | null { return existingTerrainArtPlane(world)?.data ?? null; }
 
 /** Presentation assets never enter material IDs, collision, or saved cell colors. */
 export function loadTerrainArt(): void {
@@ -120,11 +232,12 @@ export function activeFloorLook(ctx: Ctx): FloorLook {
  * shared material kit per floor; the earthen look is the shipped identity.
  */
 export function terrainAlbedo(world: World, index: number, x: number, y: number, enabled: boolean,
-  look: FloorLook = FLOOR_LOOKS.earthen): number {
+  look: FloorLook = FLOOR_LOOKS.earthen, plane: TerrainArtPlane | null = null): number {
   const original = world.colors[index];
   if (!enabled || !terrain) return original;
   const type = world.types[index];
   if (world.colorOverrides.has(index)) return original;
+  if (look.natural && plane) return naturalAlbedo(world, plane, index, x, y, look, look.natural, terrain);
   if (type === Cell.Water) {
     const below = world.types[index + world.width];
     const exposed = y > 0 && world.types[index - world.width] === Cell.Empty
@@ -167,6 +280,123 @@ export function terrainAlbedo(world: World, index: number, x: number, y: number,
     r = r * 0.55 + lip[0] * chip; g = g * 0.55 + lip[1] * chip; b = b * 0.55 + lip[2] * chip;
   } else if (bottom) { r *= look.under[0]; g *= look.under[1]; b *= look.under[2]; }
   return (Math.min(255, r) << 16) | (Math.min(255, g) << 8) | Math.min(255, b);
+}
+
+/**
+ * Backdrop contact shade next to terrain (0–1): darkest against a face,
+ * easing to none at contactReach cells. ComposeShader ports this exactly.
+ */
+export function contactShade(air: number, natural: NaturalLook): number {
+  const s = Math.min(1, Math.max(0, (air - 1) / Math.max(1, natural.contactReach - 1)));
+  return natural.contact + (1 - natural.contact) * s * s * (3 - 2 * s);
+}
+
+function smooth(edge0: number, edge1: number, v: number): number {
+  const t = Math.min(1, Math.max(0, (v - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * The shape-aware sampler (floor looks with `natural`): built faces wear the
+ * atlas masonry, the rest this floor's natural rock tile; cores sink by
+ * depth; tops carry a lip, a crown and sparse lit flecks; undersides streak;
+ * the shadow side falls off. Empty cells return the backdrop contact shade in
+ * the red byte (the CPU and WebGPU backdrops read it; nothing else reads an
+ * Empty cell's cached colour). ComposeShader ports this at half-cell grain.
+ */
+function naturalAlbedo(world: World, plane: TerrainArtPlane, index: number, x: number, y: number,
+  look: FloorLook, natural: NaturalLook, atlas: Uint8ClampedArray): number {
+  const types = world.types, width = world.width, type = types[index];
+  const art = plane.data[index];
+  if (type === Cell.Empty) {
+    // A byte still classed solid/loose (a class change awaiting re-derivation) sits against a face.
+    const air = art & (ART_SOLID_BIT | ART_LOOSE_BIT) ? 1 : art & ART_AIR_MASK;
+    return Math.round(contactShade(air, natural) * 255) << 16;
+  }
+  if (type === Cell.Water) {
+    const below = types[index + width];
+    const exposed = y > 0 && types[index - width] === Cell.Empty && (below === Cell.Water || blocksEntity(below));
+    const water = exposed ? look.waterSurface : look.waterBody;
+    return (water[0] << 16) | (water[1] << 8) | water[2];
+  }
+  if (type !== Cell.Wall && type !== Cell.Stone && type !== Cell.Wood && type !== Cell.Metal) return world.colors[index];
+  const solid = (art & ART_SOLID_BIT) !== 0;
+  const depth = solid ? art & ART_DEPTH_MASK : 1;
+  const built = solid && (art & ART_BUILT_BIT) !== 0;
+  let r: number, g: number, b: number, grain: number;
+  if (type === Cell.Wood || type === Cell.Metal || built) {
+    const tileX = type === Cell.Metal ? 128 : 0, tileY = type === Cell.Wood ? 128 : 0;
+    const offset = ((tileY + (y & 127)) * 256 + tileX + (x & 127)) * 4;
+    grain = (atlas[offset] + atlas[offset + 1] + atlas[offset + 2]) / 765;
+    r = atlas[offset] * look.gain[0] + look.lift[0];
+    g = atlas[offset + 1] * look.gain[1] + look.lift[1];
+    b = atlas[offset + 2] * look.gain[2] + look.lift[2];
+  } else {
+    // The fine WebGL path shows all four texels of a cell; one colour per cell
+    // averages them (and keeps the strongest feature texel).
+    const tiles = floorTilePixels();
+    const ox = (natural.tile & 1) * FLOOR_TILE, oy = (natural.tile >> 1) * FLOOR_TILE;
+    const tx = (x * 2) & (FLOOR_TILE - 1), ty = (y * 2) & (FLOOR_TILE - 1);
+    const o0 = ((oy + ty) * FLOOR_SHEET + ox + tx) * 4, o1 = o0 + FLOOR_SHEET * 4;
+    r = (tiles[o0] + tiles[o0 + 4] + tiles[o1] + tiles[o1 + 4]) * 0.25;
+    g = (tiles[o0 + 1] + tiles[o0 + 5] + tiles[o1 + 1] + tiles[o1 + 5]) * 0.25;
+    b = (tiles[o0 + 2] + tiles[o0 + 6] + tiles[o1 + 2] + tiles[o1 + 6]) * 0.25;
+    const mask = Math.max(tiles[o0 + 3], tiles[o0 + 7], tiles[o1 + 3], tiles[o1 + 7]) / 255;
+    grain = (r + g + b) / 765;
+    r = r * natural.rockGain[0] + natural.rockLift[0];
+    g = g * natural.rockGain[1] + natural.rockLift[1];
+    b = b * natural.rockGain[2] + natural.rockLift[2];
+    if (mask > 0) {
+      const window = Math.min(1, Math.max(0, (depth - natural.featureNear + 1) / 2))
+        * Math.min(1, Math.max(0, (natural.featureFar - depth) / 4));
+      const heat = natural.featureTop + (1 - natural.featureTop) * (y / world.height);
+      const w = mask * natural.featureStrength * window * heat;
+      r += (natural.feature[0] - r) * w; g += (natural.feature[1] - g) * w; b += (natural.feature[2] - b) * w;
+    }
+  }
+  // Inset: cores sink toward the floor's core tone, in pixel-art steps whose
+  // edges wander with the texture (lighter texels hold the light a little longer).
+  let sink = smooth(natural.aoNear, natural.aoFar, depth - (grain - 0.16) * natural.aoGrain);
+  if (natural.aoSteps > 0) sink = Math.round(sink * natural.aoSteps) / natural.aoSteps;
+  r *= 1 + (natural.aoCore[0] - 1) * sink; g *= 1 + (natural.aoCore[1] - 1) * sink; b *= 1 + (natural.aoCore[2] - 1) * sink;
+  // Crown: growth, silt or ash creeping down from an open top (three cells at most).
+  if (look.crownStrength > 0) {
+    const reach = crownReach(x, look.crownDepth);
+    for (let k = 1; k <= reach && y - k >= 0; k++) {
+      if (!OPEN[types[index - k * width]]) continue;
+      const w = look.crownStrength * (1 - (k - 1) / reach);
+      r *= 1 + w * (look.crown[0] / 128 - 1); g *= 1 + w * (look.crown[1] / 128 - 1); b *= 1 + w * (look.crown[2] / 128 - 1);
+      break;
+    }
+  }
+  // Underside: a streaked band hanging from any face open below.
+  const drip = dripReach(x);
+  for (let k = 1; k <= drip && y + k < world.height; k++) {
+    if (!OPEN[types[index + k * width]]) continue;
+    const w = 1 - (k - 1) / 3;
+    r *= 1 + (natural.drip[0] - 1) * w; g *= 1 + (natural.drip[1] - 1) * w; b *= 1 + (natural.drip[2] - 1) * w;
+    break;
+  }
+  const top = y > 0 && OPEN[types[index - width]] === 1;
+  const left = x > 0 && OPEN[types[index - 1]] === 1;
+  if (top) {
+    const lit = lipSpeck(x, y, natural.speckRate) ? natural.speck : natural.lip;
+    const chip = ((x * 17 + y * 29) & 7) < 2 ? 0.76 : 1;
+    const m = natural.lipMix;
+    r += (lit[0] * chip - r) * m; g += (lit[1] * chip - g) * m; b += (lit[2] * chip - b) * m;
+  } else if (left) {
+    const m = natural.sideMix;
+    r += (natural.lip[0] - r) * m; g += (natural.lip[1] - g) * m; b += (natural.lip[2] - b) * m;
+  } else if (x + 1 < width && OPEN[types[index + 1]] === 1) {
+    r *= natural.rightShade; g *= natural.rightShade; b *= natural.rightShade;
+  }
+  // Glaze: rock that touches lava is fired to a crazed amber glass.
+  if (natural.glazeMix > 0 && ((y > 0 && types[index - width] === Cell.Lava) || (x > 0 && types[index - 1] === Cell.Lava)
+    || (x + 1 < width && types[index + 1] === Cell.Lava) || (y + 1 < world.height && types[index + width] === Cell.Lava))) {
+    const k = ((x * 7 + y * 11 + (x >> 1) * 3) & 3) === 0 ? 0.45 : 1, m = natural.glazeMix;
+    r += (natural.glaze[0] * k - r) * m; g += (natural.glaze[1] * k - g) * m; b += (natural.glaze[2] * k - b) * m;
+  }
+  return (Math.min(255, Math.max(0, r)) << 16) | (Math.min(255, Math.max(0, g)) << 8) | Math.min(255, Math.max(0, b));
 }
 
 /** Masonry cells on a panel edge that borders a rock panel. */
