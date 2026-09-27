@@ -3,9 +3,9 @@ import type { World } from '@/sim/World';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { COLOR_FN } from '@/sim/colors';
 import { createChainIn, sweptNodeTarget, tickChain } from './body';
-import { makeWeaverLoco } from '@/entities/weaverLocomotion';
+import { makeWeaverLoco, WEAVER_LEG_REACH_LOCO, weaverHipWorld } from '@/entities/weaverLocomotion';
 import { ensureRig } from './species';
-import { constrain, impulse, integrate, liquidAt, solidAt } from './rig/physics';
+import { constrain, impulse, integrate, liquidAt, place, solidAt } from './rig/physics';
 import type { RigPoint } from './rig/physics';
 import { solveKnee } from './rig/limb';
 import { weaverSilhouetteBottom, weaverSilhouetteOverlap } from './weaverAnatomy';
@@ -39,6 +39,8 @@ export interface Corpse {
 
 const CORPSE_TTL = 720; // ~12s of remains
 const MAX_CORPSES = 10;
+/** A limp bond may stretch this far past its rest length, and no further. */
+const BOND_MAX_STRETCH = 1.5;
 const NO_CORPSE = new Set<Enemy['kind']>(['bomber', 'colossus', 'eggs']);
 
 const list: Corpse[] = [];
@@ -151,6 +153,22 @@ function chitin(kind: Enemy['kind']): number {
   return kind === 'weaver' ? 0x241c30 : kind === 'stonemaw' ? 0x4a4236 : 0xcfc6ad;
 }
 
+/**
+ * The soft constraints above respect terrain, so a point snagged on a ledge
+ * (or wedged in a wall) can't follow its neighbour and the bond between them
+ * stretches without limit as the rest of the body falls away. Hard-cap every
+ * bond: past BOND_MAX_STRETCH × rest the child is pulled back along the bond,
+ * through the snag if need be, with its velocity killed so it can't whip.
+ */
+export function capBonds(bonds: Corpse['bonds']): void {
+  for (const [a, b, rest] of bonds) {
+    const max = Math.max(1, rest * BOND_MAX_STRETCH);
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+    if (d <= max) continue;
+    place(b, a.x + (dx / d) * max, a.y + (dy / d) * max);
+  }
+}
+
 function stepLegs(world: World, rig: CreatureRig, age: number): void {
   for (const leg of rig.legs) {
     // Legs go slack: feet fall until they rest on something, then slide in.
@@ -230,8 +248,8 @@ function stepWeaverCorpse(world: World, c: Corpse): void {
     }
   }
   const curl = Math.min(1, age / 70), onBack = loco.ny > 0;
-  for (const leg of loco.legs) {
-    if (leg.missing) continue;
+  loco.legs.forEach((leg, i) => {
+    if (leg.missing) return;
     leg.planted = false; leg.lift = 0;
     // Feet travel with the body; upright, the legs buckle and settle on the
     // ground; on its back, a dead spider folds them in over its belly.
@@ -240,8 +258,18 @@ function stepWeaverCorpse(world: World, c: Corpse): void {
       const tx = loco.px + (leg.x - loco.px) * (1 - curl * 0.55), ty = loco.py - 6 * curl + (leg.y - loco.py) * (1 - curl * 0.7);
       leg.x += (tx - leg.x) * 0.08; leg.y += (ty - leg.y) * 0.08;
     } else if (!solidAt(world, leg.x, leg.y + 1)) leg.y += 1;
-    for (let k = 0; k < 8 && solidAt(world, leg.x, leg.y); k++) leg.y -= 1; // never inside terrain
-  }
+    // Never inside terrain: a buried foot is drawn back toward its hip. It
+    // used to be pushed straight UP, which in a shaft narrower than the leg
+    // span let each foot climb the rock face a few cells every tick while the
+    // body fell, stretching the legs up to the ceiling.
+    const hip = weaverHipWorld(loco, i), reach = WEAVER_LEG_REACH_LOCO[i] ?? 20;
+    for (let k = 0; k < 8 && solidAt(world, leg.x, leg.y); k++) {
+      leg.x += (hip.x - leg.x) * 0.3; leg.y += (hip.y - leg.y) * 0.3;
+    }
+    // …and a dead leg is still exactly as long as a living one.
+    const dx = leg.x - hip.x, dy = leg.y - hip.y, d = Math.hypot(dx, dy);
+    if (d > reach) { leg.x = hip.x + (dx / d) * reach; leg.y = hip.y + (dy / d) * reach; }
+  });
   // The anchor (melting, flies) sits where the remains touch the ground.
   e.x = Math.round(loco.px); e.y = Math.round(loco.py + weaverSilhouetteBottom(loco.nx, loco.ny, loco.face));
 }
@@ -259,6 +287,7 @@ export function updateCorpses(ctx: Ctx): void {
     if (rig) {
       for (const p of allPoints(rig)) integrate(world, p, limp);
       for (let it = 0; it < 3; it++) for (const [a, b, rest] of c.bonds) constrain(world, a, b, rest, 0.5, 0.9);
+      capBonds(c.bonds);
       if (rig.soft) {
         // Gel deflates into a spreading puddle.
         const sb = rig.soft;

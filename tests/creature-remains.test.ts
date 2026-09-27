@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Ctx, Enemy, EnemyKind } from '@/core/types';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
 import { createDefaultStatus } from '@/entities/status';
-import { makeWeaverLoco } from '@/entities/weaverLocomotion';
-import { addCorpse, clearCorpses, updateCorpses } from '@/creatures/corpses';
+import { makeWeaverLoco, WEAVER_LEG_REACH_LOCO, weaverHipWorld } from '@/entities/weaverLocomotion';
+import { addCorpse, capBonds, clearCorpses, updateCorpses } from '@/creatures/corpses';
 import { circleFree, createChain, createChainIn, tickChain } from '@/creatures/body';
 import { weaverSilhouetteOverlap } from '@/creatures/weaverAnatomy';
 import { World } from '@/sim/World';
@@ -95,5 +95,44 @@ describe('creature remains rest on the grid', () => {
     const body = createChainIn(world, 100, 76, 1, 7);
     expect(body.nodes.every(node => circleFree(world, node.x, node.y, node.radius))).toBe(true);
     expect(body.nodes[6].x).toBeGreaterThan(100);
+  });
+});
+
+describe('dead limbs keep their length', () => {
+  it('a Weaver falling dead down a shaft narrower than its legs never stretches them up the walls', () => {
+    // The reported bug: feet buried in the shaft walls were pushed straight
+    // UP out of the rock every tick while the body fell, so each foot climbed
+    // the wall and two legs ended up drawn from the floor to the ceiling.
+    for (const width of [34, 40, 50]) { // the body fits; the legs (reach 38-57) do not
+      clearCorpses();
+      const world = new World(220, 320);
+      fill(world, 0, 0, 219, 319, Cell.Stone);
+      const x0 = 110 - (width >> 1), x1 = x0 + width - 1;
+      fill(world, x0, 4, x1, 299, Cell.Empty); // the shaft
+      const e = creature('weaver', 110, 24); e.weaverLoco = makeWeaverLoco(110, 24);
+      const ctx = { world, state: { frameCount: 0, mode: 'play' }, enemyCtl: { defs: ENEMY_DEFS },
+        player: { x: -999, y: -999 } } as unknown as Ctx;
+      expect(addCorpse(ctx, e, 0, 0)).toBe(true);
+      const loco = e.weaverLoco;
+      let worst = 0;
+      for (let t = 1; t <= 400; t++) {
+        ctx.state.frameCount = t; updateCorpses(ctx);
+        loco.legs.forEach((leg, i) => {
+          if (leg.missing) return;
+          const hip = weaverHipWorld(loco, i);
+          worst = Math.max(worst, Math.hypot(leg.x - hip.x, leg.y - hip.y) / WEAVER_LEG_REACH_LOCO[i]);
+        });
+      }
+      expect(loco.py).toBeGreaterThan(200); // it really fell the shaft
+      expect(worst).toBeLessThanOrEqual(1 + 1e-9);
+    }
+  });
+
+  it('a limp bond snagged on terrain is capped at 1.5x its rest length and loses its velocity', () => {
+    const a = { x: 0, y: 0, px: 0, py: 0, r: 0.4, hit: 0, wet: 0 };
+    const b = { x: 0, y: 40, px: 0, py: 38, r: 0.4, hit: 0, wet: 0 };
+    capBonds([[a, b, 4]]);
+    expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeCloseTo(6, 9);
+    expect(b.px).toBe(b.x); expect(b.py).toBe(b.y);
   });
 });
