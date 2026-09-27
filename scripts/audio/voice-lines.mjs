@@ -99,6 +99,20 @@ function toasts(sf) {
   return out;
 }
 
+/** Every literal `emit('combatCallout', { text: '…' })` in a file (a boss's phase beats). */
+function callouts(sf) {
+  const out = [];
+  walk(sf, (n) => {
+    if (!ts.isCallExpression(n) || !n.expression.getText(sf).endsWith('.emit') || literal(n.arguments[0]) !== 'combatCallout') return;
+    const obj = n.arguments[1];
+    if (!obj || !ts.isObjectLiteralExpression(obj)) return;
+    for (const p of obj.properties) {
+      if (ts.isPropertyAssignment(p) && p.name.getText(sf) === 'text' && literal(p.initializer) !== null) out.push(literal(p.initializer));
+    }
+  });
+  return out;
+}
+
 /** String literal first arguments of calls to `this.<method>(…)` (both arms of a `cond ? 'a' : 'b'` count). */
 function callArgs(sf, method) {
   const out = [];
@@ -143,6 +157,8 @@ const TAGS = [
   [/kettle is finally allowed to boil/, 'warmly'],
   [/^Something is alive in the old refinery/, 'softly'],
   [/^The Sunken Leviathan\. It drains poorly/, 'whispers'],
+  [/The Rot Gardens are not decorative/, 'dryly'],
+  [/You were standing in the chimney/, 'dryly'],
 ];
 const tagFor = (text) => TAGS.find(([re]) => re.test(text))?.[1];
 
@@ -178,6 +194,10 @@ export async function buildCatalog() {
   const levels = await parse('game/Levels.ts');
   walk(member(levels, 'bossObjective'), (n) => { if (ts.isReturnStatement(n) && literal(n.expression)) add(literal(n.expression), 'Bosses'); });
   for (const t of toasts(await parse('entities/Enemies.ts'))) if (t.text && /SUMP|KILN/.test(t.text)) add(t.text, 'Bosses');
+  // A boss's phase beats, as the callouts over its body name them (the armour bursts, the pool shorts, the kiln cracks).
+  for (const rel of ['creatures/bosses/colossus.ts', 'creatures/bosses/leviathan.ts', 'entities/kilnQuench.ts']) {
+    for (const text of callouts(await parse(rel))) add(text, 'Bosses · phases');
+  }
 
   // The Unreasonable Bell & Tea Engine: every act's title, the first and last acts' instructions,
   // the stall, the three faults' prompts, and its toasts.

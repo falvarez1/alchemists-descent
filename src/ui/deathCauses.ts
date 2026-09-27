@@ -162,6 +162,26 @@ const DEATH_LINES: Record<string, string[]> = {
     'Scalded by a pressure vent. The gauge did warn you.',
     'Steamed open by the works.',
   ],
+  'snapjaw-bite': [
+    'A snapjaw closed on you. It had been waiting all day.',
+    'Eaten by the shrubbery. The Rot Gardens are not decorative.',
+  ],
+  leech: [
+    'Drained by leeches. Each one only had a small drink.',
+    'The Cisterns collected their toll, one sip at a time.',
+  ],
+  'colossus-stomp': [
+    'The Kiln Colossus stamped, and the floor delivered it.',
+    'Knocked flat by a shockwave you could have jumped.',
+  ],
+  'colossus-vent': [
+    'The Kiln Colossus opened its vents. You were standing in the chimney.',
+    'Roasted by a furnace letting off steam.',
+  ],
+  'leviathan-thrash': [
+    'The Leviathan slapped the pool at you, and the pool won.',
+    'Tail-whipped by the plumbing.',
+  ],
 };
 
 /**
@@ -209,6 +229,11 @@ const DEATH_TITLES: Record<string, string> = {
   'rillback-flop': 'You were crushed.',
   'rootloper-lash': 'You were struck down.',
   'steam-pressure': 'You were scalded.',
+  'snapjaw-bite': 'You were taken.',
+  leech: 'You were drained.',
+  'colossus-stomp': 'You were crushed.',
+  'colossus-vent': 'You burned.',
+  'leviathan-thrash': 'You were swept away.',
   status: 'You succumbed.',
 };
 

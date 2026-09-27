@@ -43,7 +43,8 @@ interface Speaking {
  * The narrator: a wry old docent of the refinery, voicing the lines the game
  * already shows (the title tagline, a floor's arrival, the Sanctum's look
  * below, the Tea Engine's acts and faults, a death's title and cause, the
- * ledger's verdict, a new case on the rack, a boss's name). It listens to the
+ * ledger's verdict, a new case on the rack, a boss's name and its phase
+ * beats). It listens to the
  * same events the UI does and looks each text up by narrationKey: a line with
  * no recording is simply not spoken.
  *
@@ -96,6 +97,8 @@ export class Narrator implements NarratorApi {
       }),
       on('playerRespawned', () => this.cutSource('death')),
       on('toast', ({ text }) => this.say([text], 'normal', 'toast', 2500)),
+      // A boss's phase beat (THE CORE IS BARE, SHORTED): only callouts with a recording are said.
+      on('combatCallout', ({ text }) => this.say([text], 'normal', 'callout', 2000)),
       on('objectiveChanged', ({ text }) => this.say([text], 'low', 'objective', 2500)),
     );
     const visibility = (): void => { if (document.hidden) this.silence(true); };
