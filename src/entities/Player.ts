@@ -15,6 +15,7 @@ import { playerMovementPace, playerVerticalPace } from '@/core/progressionPacing
 import { PERK_IDS } from '@/content/perks';
 import { makePickup } from '@/core/pickupDefs';
 import { startLegSwing } from '@/combat/WeaverLimbs';
+import { createSelfShockState, drawConductorArc, fairShockDamage } from '@/combat/SelfShock';
 import { getAimGuide } from '@/combat/AimGuide';
 import { resetCombatTransients } from '@/core/runtimeState';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
@@ -567,7 +568,14 @@ export class PlayerControl implements PlayerControlApi {
     player.wallGrabT = 0;
   }
 
-  constructor(private ctx: Ctx) {}
+  /** Self-shock fairness bookkeeping: the last cast and the capped damage window. */
+  private readonly selfShock = createSelfShockState();
+
+  constructor(private ctx: Ctx) {
+    ctx.events?.on('cardCast', () => {
+      this.selfShock.lastCast = ctx.state.frameCount;
+    });
+  }
 
   private tryHorizontalGroundStep(ctx: Ctx, dir: -1 | 1, bodyH: number, stepUp: number, followGround: boolean): number | null {
     const player = ctx.player;
@@ -1325,7 +1333,7 @@ export class PlayerControl implements PlayerControlApi {
     // decide what you ARE — wet, oiled, burning, frozen, electrified.
     // Sampled every 2nd frame; status DPS bypasses invuln like hazard DPS.
     if (ctx.state.frameCount % 2 === 0) {
-      const { damage, slowFactor } = sampleAndTickStatus(
+      const status = sampleAndTickStatus(
         ctx,
         player,
         4,
@@ -1334,7 +1342,15 @@ export class PlayerControl implements PlayerControlApi {
         2,
         { toxicScale: 0, healiumScale: 0 },
       );
-      this.statusSlow = slowFactor;
+      this.statusSlow = status.slowFactor;
+      let damage = status.damage;
+      if (status.shockDamage > 0) {
+        // Self-shock fairness (combat/SelfShock): your own current scales with
+        // how much of it reaches you and is capped per 2 s window; a visible arc
+        // crawls back along the conductor toward where it came from.
+        damage += fairShockDamage(this.selfShock, status.shockDamage, status.maxCharge, ctx.state.frameCount) - status.shockDamage;
+        if (status.maxCharge > 0) drawConductorArc(ctx, player.x, player.y, 4, bodyH);
+      }
       if (damage > 0) {
         const source = this.noteDamageSource(this.statusDamageSource(player));
         player.hp -= this.reduceIncomingDamage(damage);

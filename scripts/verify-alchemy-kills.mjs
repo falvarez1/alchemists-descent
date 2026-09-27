@@ -60,6 +60,8 @@ await page.evaluate(async () => {
     reset() {
       ctx.enemies.length = 0;
       ctx.projectiles.length = 0;
+      // Park the arena's own machinery: its coils answer blasts with real current.
+      if (ctx.levels.current) ctx.levels.current.mechanisms.length = 0;
       ctx.critters.clear?.();
       ctx.state.debugGodMode = false;
       ctx.fx.hitstop = 0;

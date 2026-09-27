@@ -149,7 +149,20 @@ export class FluidFlow {
         donorX = candidateX; donorY = top;
       }
       if (donorX < 0) break;
+      // A pressure hop moves WATER, not the air it trades places with. world.swap
+      // carries charge in lockstep, so a charged cell at the target (a sparked
+      // crater's flash) used to teleport to the far donor surface and shock
+      // whoever stood there. The arriving water keeps the stronger charge at the
+      // target; the air left at the donor is dead.
+      const donorIndex = world.idx(donorX, donorY);
+      const targetIndex = world.idx(targetX, y);
+      const donorCharge = world.charge[donorIndex];
+      const targetCharge = world.charge[targetIndex];
       world.swap(donorX, donorY, targetX, y);
+      if (donorCharge > 0 || targetCharge > 0) {
+        world.setChargeAt(donorIndex, 0);
+        world.setChargeAt(targetIndex, Math.max(donorCharge, targetCharge));
+      }
       if (y + 1 < world.height && open(world.type(targetX, y + 1))) {
         this.launch(world, targetX, y, direction * Math.min(1.8, .55 + Math.sqrt(head) * .12), .8);
       }
