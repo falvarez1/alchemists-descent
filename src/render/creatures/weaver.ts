@@ -4,6 +4,7 @@ import { weaverLegGeometry } from '@/creatures/weaverAnatomy';
 import { material } from './palette';
 import type { CreatureMaterial } from './palette';
 import type { CreatureRaster } from './raster';
+import { markEye } from './anatomy';
 import type { SpeciesArt } from './types';
 
 /**
@@ -127,6 +128,7 @@ export const weaverArt: SpeciesArt = {
     for (const [al, ou, rad] of eyes) {
       const [ex, ey] = hp(al, ou);
       r.stamp(ex, ey, rad, rad, 0, EYE, Math.min(2, lit * (0.7 + rad)), true);
+      markEye(ex, ey, rad);
       if (rad > 0.5) r.dot(ex - 0.2, ey - 0.25, GLINT, 1, 80);
     }
     // Hurt: a split in the carapace oozing ichor.

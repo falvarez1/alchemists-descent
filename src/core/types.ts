@@ -3028,6 +3028,8 @@ export interface CreatureLightSense {
   cd: number;
   /** Root Loper: light-frozen ticks remaining. */
   frozen: number;
+  /** Tick the beam last caught its eyes (the eyeshine catch cue's throttle). */
+  glintAt?: number;
 }
 
 /** One authored crown's persistent material condition and physical motion. */

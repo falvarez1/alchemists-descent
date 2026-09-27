@@ -46,6 +46,7 @@ import { Camera } from '@/render/Camera';
 import { FrameComposer } from '@/render/FrameComposer';
 import { Lighting } from '@/render/Lighting';
 import { LightQuery } from '@/render/LightQuery';
+import { LightDevices } from '@/game/LightDevices';
 import { Renderer } from '@/render/Renderer';
 import type { RenderBackendStatus } from '@/render/pixels';
 import { drawDecor } from '@/render/sprites/DecorSprites';
@@ -120,6 +121,8 @@ export class Game {
   private readonly perfHud = new PerfHud();
   private readonly brewing = new Brewing();
   private readonly habitatAudio = new HabitatAudio();
+  /** Light wave: lantern housekeeping, the dark-entry beat, lumen blooms. */
+  private lightDevices: LightDevices | null = null;
   private deathCinema: DeathCinema | null = null;
   private readonly grimoireInteractions = new GrimoireInteractionObserver();
   private readonly restoreSavedMode: () => void;
@@ -262,6 +265,9 @@ export class Game {
     const contraption = new TeaMachine(ctx);
     ctx.contraption = contraption;
     this.disposables.push(contraption);
+    const lightDevices = new LightDevices(ctx);
+    this.lightDevices = lightDevices;
+    this.disposables.push(lightDevices);
 
     // Rehydrate live tuning (Global Controls, player feel, worldgen look, material/
     // spell params) from localStorage BEFORE the UI seeds its sliders or the first
@@ -659,6 +665,7 @@ export class Game {
         ctx.run?.update(ctx);
         ctx.pickups.update(ctx);
         ctx.mechanisms.update(ctx);
+        this.lightDevices?.update(ctx);
         ctx.contraption?.update();
         updateLivingExpedition(ctx);
         updateHabitatMotion(ctx);

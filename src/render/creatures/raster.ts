@@ -33,6 +33,12 @@ export interface SceneLight {
   flash: number;
   /** 0..1 life in the self-lit parts (a corpse's lights gutter out). */
   glow: number;
+  /**
+   * 0..1 how much of the body the light has found (light wave). Below 1, in
+   * designed darkness, unrevealed pixels keep only their own glow: the body
+   * resolves out of the black through an ordered dither as the beam lands.
+   */
+  reveal?: number;
 }
 
 // Pixel flags.
@@ -407,7 +413,7 @@ export class CreatureRaster {
     const hl = Math.hypot(hx, hy, hz) || 1; hx /= hl; hy /= hl; hz /= hl;
     const lxy = Math.hypot(lx, ly) || 1;
     const lr = light.r, lg = light.g, lb = light.b;
-    const flash = light.flash, life = light.glow;
+    const flash = light.flash, life = light.glow, reveal = light.reveal ?? 1;
     const bands = this.bands;
     const fine = out.setFinePx !== undefined && s < 1;
     const set = fine ? out.setFinePx! : out.setPx;
@@ -473,7 +479,10 @@ export class CreatureRaster {
         let g = rgb[o0 + 1] + (rgb[o1 + 1] - rgb[o0 + 1]) * q;
         let b = rgb[o0 + 2] + (rgb[o1 + 2] - rgb[o0 + 2]) * q;
         // Scene light: emissive parts keep their own colour (while alive).
-        const em = M.emissive * life, lit = 1 - em;
+        // Unrevealed pixels (designed darkness, see SceneLight.reveal) are
+        // only their own glow until the light finds them.
+        const hidden = reveal < 1 && BAYER[((j + ay) & 3) * 4 + ((i + ax) & 3)] >= reveal;
+        const em = M.emissive * life, lit = hidden ? 0 : 1 - em;
         r *= lit * lr + em; g *= lit * lg + em; b *= lit * lb + em;
         if (flash > 0) { r += (1 - r) * flash; g += (0.93 - g) * flash; b += (0.82 - b) * flash; }
         this.outR[idx] = r; this.outG[idx] = g; this.outB[idx] = b;

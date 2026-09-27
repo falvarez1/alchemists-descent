@@ -14,6 +14,8 @@ import { mageArt } from './mage';
 import { weaverArt } from './weaver';
 import { leviathanArt, rillbackArt, stonemawArt } from './serpents';
 import { rootloperArt } from './rootloper';
+import { resetEyeMarks } from './anatomy';
+import { drawEyeshine, revealFor } from './eyeshine';
 
 /**
  * Creature art dispatcher. Species with a rig draw through the shared
@@ -58,6 +60,7 @@ export function drawSpecies(out: PixelSurface, light: LightField, ctx: Ctx, e: E
   r.bands = art.style?.bands ?? 0.72;
   r.dither = art.style?.dither ?? false;
   r.blend = art.style?.blend ?? 1.6;
+  resetEyeMarks();
   art.draw(r, ctx, e, rig);
   const probe = art.lightProbe?.(e, rig) ?? [e.x, e.y - 6, 10];
   const flash = !ctx.state.reduceFlashes && e.flash > 0 ? Math.min(0.55, e.flash / 11) : 0;
@@ -67,7 +70,11 @@ export function drawSpecies(out: PixelSurface, light: LightField, ctx: Ctx, e: E
     const lum = LIGHT.r * 0.3 + LIGHT.g * 0.5 + LIGHT.b * 0.2, k = 0.3, cap = 1.05;
     LIGHT.r = Math.min(cap, lum + (LIGHT.r - lum) * k); LIGHT.g = Math.min(cap, lum + (LIGHT.g - lum) * k); LIGHT.b = Math.min(cap, lum + (LIGHT.b - lum) * k);
   }
+  // Light wave: in designed darkness the body resolves as the light finds it,
+  // and its eyes and markings glow on top (render/creatures/eyeshine).
+  LIGHT.reveal = glow >= 0.999 ? revealFor(ctx, e, LIGHT, probe[0], probe[1]) : 1;
   r.resolve(out, LIGHT);
+  drawEyeshine(out, ctx, e, glow);
   return true;
 }
 

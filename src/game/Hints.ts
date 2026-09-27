@@ -67,6 +67,13 @@ export class HintSystem implements HintApi {
           body: 'A wand casts its cards left to right — modifiers charge the projectile that follows them. Hover a card to see exactly which slots it touches.',
         }, true);
       }),
+      // Light wave: the first time the alchemist steps into designed darkness.
+      ctx.events.on('darkZoneEntered', () => {
+        this.teachOnce(ctx, 'dark-lantern', {
+          title: 'The Dark',
+          body: 'Nothing here is lit but what you light. Your beam goes where you aim. Watch for eyes. L hoods the lantern: you see less, and you are seen less.',
+        }, true);
+      }),
       ctx.events.on('levelChanged', ({ depth }) => {
         // Taught on the first descent, not in the first 30 seconds: D2 arrival
         // is a calm beat, and by then there is ground worth remembering.

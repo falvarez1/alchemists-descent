@@ -317,7 +317,8 @@ export class Critters implements CrittersApi {
           const lightTargetY = c.y - (c.kind === 'beetle' ? 1.5 : 0);
           const wdx = c.x - wandX, wdy = lightTargetY - wandY;
           const wd2 = wdx * wdx + wdy * wdy;
-          if (wd2 > 9 && wd2 < 112 * 112) {
+          // A hooded lantern throws no beam to scatter from (light wave).
+          if (wd2 > 9 && wd2 < 112 * 112 && ctx.lightQuery?.hooded !== true) {
             const wd = Math.sqrt(wd2);
             const inBeam = (wdx * Math.cos(aim) + wdy * Math.sin(aim)) / wd > .16;
             if (inBeam && sightClear(w, wandX, wandY, c.x, lightTargetY)) {
@@ -399,7 +400,8 @@ export class Critters implements CrittersApi {
             if (d2 < 90 * 90 && d2 > 16) { c.vx += dx / Math.sqrt(d2) * 0.05; c.vy += dy / Math.sqrt(d2) * 0.05; lured = true; break; }
           }
         }
-        if (!lured && !player.dead) {
+        // The lantern draws them — unless it is hooded (light wave).
+        if (!lured && !player.dead && ctx.lightQuery?.hooded !== true) {
           const dx = player.x + Math.cos(player.aimAngle) * 9 - c.x;
           const dy = player.y - 9 + Math.sin(player.aimAngle) * 9 - c.y;
           const d2 = dx * dx + dy * dy;

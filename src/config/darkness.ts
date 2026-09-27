@@ -77,14 +77,15 @@ export const LANTERN = {
   hoodFill: 0.45,
   /** Per-light-build ease of the hood shutter (≈ 8 builds ≈ 16 ticks to settle). */
   hoodEase: 0.26,
-  /** Beam coverage below this reads as "not on it" for gameplay. */
-  beamOn: 0.08,
+  /** Beam coverage below this reads as "not on it" for gameplay (≈ where the
+   *  beam's lit patch fades out on screen, ~170 cells down a clear corridor). */
+  beamOn: 0.05,
 } as const;
 
 /** Eyeshine and glow markings (render/creatures/eyeshine). */
 export const EYESHINE = {
   /** Self-glow of an open eye at full darkness (additive, fine pixels). */
-  base: 0.42,
+  base: 0.62,
   /** Retroreflective flash gain when the wand's light lands on a facing eye. */
   retro: 1.9,
   /** wandLight at the eye that saturates the retro flash. */
@@ -92,7 +93,7 @@ export const EYESHINE = {
   /** Eyes only glow where it is at least this dark (gameplay darkness). */
   minDark: 0.18,
   /** Glow markings' extra glow at full darkness. */
-  marking: 0.55,
+  marking: 0.7,
   /** Reveal: rise per tick while lit, fall per tick when the light leaves. */
   revealRise: 0.16,
   revealFall: 0.035,
@@ -111,13 +112,13 @@ export const SIGHT = {
   /** Sight-range multiplier for a fully unseen (hooded, deep-dark) alchemist. */
   darkRange: 0.16,
   /** Beam coverage on a creature that tells it exactly where the lantern is. */
-  litFix: 0.12,
+  litFix: 0.07,
 } as const;
 
 /** Creatures answer the light (creatures/lightResponse). */
 export const LIGHT_RESPONSE = {
   /** Beam coverage that makes a photophobe flinch. */
-  flinchAt: 0.12,
+  flinchAt: 0.07,
   /** Weaver: back-off ticks after a flinch; flinch cooldown. */
   weaverRetreat: 46,
   weaverFlinch: 14,
@@ -129,7 +130,7 @@ export const LIGHT_RESPONSE = {
   /** Bats: roost wakes at this beam; a flier's panic lasts this many ticks. */
   batScatter: 60,
   /** Root Loper: wand light that freezes it; creep speed multiplier in the dark. */
-  lurkerFreeze: 0.1,
+  lurkerFreeze: 0.06,
   lurkerCreep: 1.45,
   /** Ticks a Root Loper stays frozen after the light leaves it (it listens first). */
   lurkerHold: 22,

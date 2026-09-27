@@ -48,7 +48,7 @@ export const WORKS_DARK_ZONES = [
   { x: 620, y: 947, rx: 336, ry: 118, shape: 'rect' as const },
   // The Lower Bell's west end, where the Undertow Weaver hunts; the gate's
   // lamp (x 1400) stays outside it.
-  { x: 1115, y: 947, rx: 190, ry: 118, strength: 0.92, shape: 'rect' as const },
+  { x: 1115, y: 947, rx: 190, ry: 118, shape: 'rect' as const },
 ] as const;
 
 /** The Breathing Chamber's sunken reservoir (water rows) under its grate. */

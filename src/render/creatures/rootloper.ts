@@ -1,7 +1,7 @@
 import type { Ctx, Enemy } from '@/core/types';
 import type { CreatureRig } from '@/creatures/rig/types';
 import { RL, RL_BODY, RL_WHIP } from '@/creatures/species/rootloper';
-import { chainTube } from './anatomy';
+import { chainTube, markEye } from './anatomy';
 import { material } from './palette';
 import type { CreatureMaterial } from './palette';
 import type { CreatureRaster } from './raster';
@@ -103,6 +103,7 @@ export const rootloperArt: SpeciesArt = {
     const open = Math.max(0, 1 - lid) * (1 + panic * 0.2);
     if (open > 0.2) {
       r.stamp(ex + fs * 0.2, ey, 1.7, 1.45 * Math.min(1, open), 0, EYE, 2 + alert * 0.8, true, 2);
+      markEye(ex + fs * 0.2, ey, 1.5 * Math.min(1, open));
       const gx = (e.expression?.gazeX ?? fs * 0.5) * 0.5, gy = (e.expression?.gazeY ?? 0) * 0.4;
       r.stamp(ex + fs * 0.2 + gx, ey + gy, 0.28 + panic * 0.4, 1.2 * Math.min(1, open), 0, PUPIL, 0, true, 2);
     } else {
