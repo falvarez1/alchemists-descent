@@ -138,13 +138,14 @@ if (freezeSeed > 0) {
 }
 
 // ---------------- LIVE CIRCUIT ----------------
-// d6 crystal / d7 scorched bias to archetype 5; d5 timber rolls it naturally.
+// The campaign's four floors roll archetype 5 naturally (the crystal/scorched
+// floors that biased it left the campaign in the four-floor cut).
 // Signature: a pair of 1x3 valves on the same row exactly 5 apart, each
 // driven by a lever — unique to the knife-switch rail (machine prefabs also
 // carry chargelatches, so coil-sniffing alone can grab the wrong machine).
 let circuit = null;
 let circuitLoadFailed = null;
-outer: for (const id of ['d6', 'd7', 'd5']) {
+outer: for (const id of ['d4', 'd3', 'd2']) {
   for (let seed = 1; seed <= 10; seed++) {
     const loaded = await loadDepth(seed, id);
     if (!loaded.ok) {

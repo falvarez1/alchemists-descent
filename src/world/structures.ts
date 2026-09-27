@@ -13,7 +13,6 @@ import type {
   Pickup,
   RegionGraph,
   RuneVault,
-  VaultArch,
   Waystone,
 } from '@/core/types';
 import {
@@ -31,8 +30,6 @@ import {
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { Cell } from '@/sim/CellType';
 import {
-  catalystColor,
-  crystalColor,
   EMPTY_COLOR,
   goldColor,
   packRGB,
@@ -66,7 +63,6 @@ export function placeStructures(
   cauldron: { x: number; y: number } | null,
   ledger: PlacementLedger,
   fits?: Uint8Array,
-  opts?: { hostArch?: boolean },
 ): {
   pickups: Pickup[];
   portal: ExitPortal | null;
@@ -77,8 +73,6 @@ export function placeStructures(
   authoredLights: AuthoredLight[];
   refuge: { x: number; y: number } | null;
   spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null;
-  vaultArch: VaultArch | null;
-  vaultHoard: { x: number; y: number } | null;
   /** Re-asserts the Sump's casing, plugs, and pool AFTER the gauge-rescue
    *  pass — rescue tunnels eat all stone and spare only metal, and one
    *  wandering carve through the arena pre-opened all three drains
@@ -94,8 +88,6 @@ export function placeStructures(
   const authoredLights: AuthoredLight[] = [];
   let refuge: { x: number; y: number } | null = null;
   let spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null = null;
-  let vaultArch: VaultArch | null = null;
-  let vaultHoard: { x: number; y: number } | null = null;
   let sumpRepair: (() => void) | null = null;
 
   const carvePocket = (cx: number, cy: number, rx: number, ry: number): void =>
@@ -466,11 +458,6 @@ export function placeStructures(
   }
 
   // ---- D1 Spell Lab: a real-cell teaching annex beside the first Refuge ----
-  // Mutually exclusive with the `if (def.branch)` hoard block below: both anchor
-  // off the spawn/refuge chamber and would overlap if a level were ever both
-  // depth-1 AND a branch. config/worldgraph.ts guarantees that never happens
-  // (the only depth-1 level is non-branch; the only branch is depth 4). If a
-  // depth-1 branch is ever added, gate one of these blocks explicitly.
   if (def.depth === 1) {
     const s = refuge ? Math.sign(refuge.x - spawn.x) || 1 : Math.sign(portalX - spawn.x) || 1;
     const rCx = refuge ? Math.floor(refuge.x) : Math.floor(clamp(spawn.x + s * 82, 34, WIDTH - 35));
@@ -1223,7 +1210,7 @@ export function placeStructures(
   // the ceiling: a metal-cased water tank sealed by a breakable stone plug.
   // Flood the kiln, thermal-shock the colossus.
   let boss: { x: number; y: number; kind?: EnemyKind } | null = null;
-  if (!def.nextLevelId && !def.branch) {
+  if (def.boss === 'colossus') {
     let cx = Math.floor(WIDTH * (0.42 + rng.next() * 0.16));
     const cy = HEIGHT - 116;
     // Reserved-ground dodge (inert while the ledger is empty); bounded, then
@@ -1284,22 +1271,22 @@ export function placeStructures(
         w.colors[i] = goldColor();
       }
     }
-    boss = { x: cx, y: cy + 14 };
+    boss = { x: cx, y: cy + 14, kind: 'colossus' };
     // both arena flanks join the cave network — the kiln must be findable
     connectToCaves(cx - 39, cy + 6);
     connectToCaves(cx + 39, cy + 6);
   }
 
-  // ---- The Sump (depth 4 only): the leviathan's cistern ----
+  // ---- The Sump (the Drowned Cisterns): the leviathan's cistern ----
   // The mid-descent boss, built as the Kiln's mirror: where the colossus
   // hides its weakness in a ceiling tank you must OPEN, the leviathan hides
   // in a basin you must EMPTY. A metal-cased pool with three stone drain
   // plugs in its floor (gold dust marks them): dig the plugs and the water
   // falls away into the caves below — a beached leviathan is just meat.
   // The pool is also one big conductor, and so is the blood it sheds into
-  // it. The cistern PERCHES above d4's flood line on purpose: every drop
+  // it. The cistern PERCHES above the flood line on purpose: every drop
   // drained runs downhill to the ocean and can never climb back.
-  if (def.depth === 4 && !def.branch) {
+  if (def.boss === 'leviathan') {
     let cx = Math.floor(WIDTH * (0.3 + rng.next() * 0.4));
     const cy = Math.floor(HEIGHT * 0.52);
     for (let a = 0; a < 24; a++) {
@@ -1445,256 +1432,6 @@ export function placeStructures(
     };
   }
 
-  // ---- The Gilded Vault's arches (the first BRANCH off the spine) ----
-  // One stamp serves both ends: two gold pillars under a brass lintel with
-  // a crystal keystone. The transition trigger (Levels.update) is the space
-  // BETWEEN the pillars; the marker itself is runtime data like the portal,
-  // so chaos can redecorate the arch but never delete the way home.
-  const stampArch = (cx2: number, feetY: number): void => {
-    for (const px of [cx2 - 6, cx2 + 6]) {
-      for (let Y = feetY - 6; Y <= feetY; Y++) {
-        if (!w.inBounds(px, Y)) continue;
-        const i = w.idx(px, Y);
-        w.types[i] = Cell.Gold;
-        w.colors[i] = goldColor();
-      }
-    }
-    for (let X = cx2 - 6; X <= cx2 + 6; X++) {
-      if (!w.inBounds(X, feetY - 7)) continue;
-      const i = w.idx(X, feetY - 7);
-      w.types[i] = Cell.Metal;
-      w.colors[i] = packRGB(148, 128, 84); // brass lintel
-    }
-    for (let X = cx2 - 1; X <= cx2 + 1; X++) {
-      const i = w.idx(X, feetY - 6);
-      w.types[i] = Cell.Crystal;
-      w.colors[i] = crystalColor();
-    }
-    authoredLights.push({
-      x: cx2,
-      y: feetY - 4,
-      r: 1.0,
-      g: 0.82,
-      b: 0.45,
-      intensity: 1.2,
-      radius: 36,
-      bloom: 0.45,
-      flicker: 0.18,
-      flickerPhase: 0.9,
-      falloff: 'soft',
-      occluded: true,
-    });
-  };
-
-  // Mutually exclusive with the depth-1 Spell Lab above (see note there): a
-  // depth-1 branch would overlap this hoard. worldgraph guarantees no such level.
-  if (def.branch) {
-    // BRANCH SIDE: the way home stands on a gold dais in the spawn chamber,
-    // far enough from the arrival spot that a fresh traveler never bounces
-    // straight back through it.
-    const ax = Math.floor(spawn.x) - 16;
-    const fy = settleY(ax, Math.floor(spawn.y));
-    // the dais runs east past the back-spot — arrivals must LAND on stone,
-    // not step off the platform's edge into whatever the chamber rolled
-    for (let X = ax - 8; X <= ax + 18; X++) {
-      for (let Y = fy + 1; Y <= fy + 2; Y++) {
-        if (!w.inBounds(X, Y)) continue;
-        const i = w.idx(X, Y);
-        if (w.types[i] !== Cell.Metal) {
-          w.types[i] = Cell.Stone;
-          w.colors[i] = stoneColor();
-        }
-      }
-    }
-    carveRectCells(w, ax - 7, fy - 20, ax + 17, fy); // headroom over the dais
-    stampArch(ax, fy);
-    vaultArch = { x: ax, y: fy, backX: ax + 14, backY: fy };
-
-    // ...and the HOARD: the farthest main-path region carries the prize —
-    // the vault's unique card, twin piles of Aurum Catalyst, and raw gold,
-    // watched by the elite golems Levels posts at the chamber flanks.
-    let best: { cx: number; cy: number } | null = null;
-    let bestD = -1;
-    for (const reg of graph.regions) {
-      if (!reg.onMainPath && reg.area < 250) continue;
-      if (ledger.intersects(reg.cx, reg.cy, reg.cx, reg.cy)) continue;
-      const d = Math.abs(reg.cx - spawn.x) + Math.abs(reg.cy - spawn.y) * 0.6;
-      if (d > bestD) {
-        bestD = d;
-        best = { cx: reg.cx, cy: reg.cy };
-      }
-    }
-    const hx = Math.floor(best ? best.cx : WIDTH - spawn.x);
-    const hyBase = Math.floor(best ? best.cy : HEIGHT * 0.5);
-    carvePocket(hx, hyBase, 14, 12);
-    for (let dx = -13; dx <= 13; dx++) {
-      const Y = hyBase + 11;
-      if (!w.inBounds(hx + dx, Y)) continue;
-      const i = w.idx(hx + dx, Y);
-      if (w.types[i] !== Cell.Metal) {
-        w.types[i] = Cell.Stone;
-        w.colors[i] = stoneColor();
-      }
-    }
-    const hy = hyBase + 10;
-    // gilded ring in the chamber's rock skin
-    for (let f = 0; f < 30; f++) {
-      const a = rng.next() * Math.PI * 2;
-      const gx = Math.floor(hx + Math.cos(a) * (13 + rng.next() * 4));
-      const gy = Math.floor(hyBase + Math.sin(a) * (10 + rng.next() * 4));
-      if (!w.inBounds(gx, gy)) continue;
-      const ii = w.idx(gx, gy);
-      if (w.types[ii] === Cell.Wall) {
-        w.types[ii] = Cell.Gold;
-        w.colors[ii] = goldColor();
-      }
-    }
-    // the catalyst strike: twin resting piles of the philosopher's dust
-    for (const side of [-8, 8]) {
-      for (let dx = -2; dx <= 2; dx++) {
-        const i = w.idx(hx + side + dx, hy);
-        w.types[i] = Cell.Catalyst;
-        w.colors[i] = catalystColor();
-      }
-      for (let dx = -1; dx <= 1; dx++) {
-        const i = w.idx(hx + side + dx, hy - 1);
-        w.types[i] = Cell.Catalyst;
-        w.colors[i] = catalystColor();
-      }
-    }
-    pickups.push(makePickup('tome', hx, hy - 1, { card: 'vitrify' }));
-    pickups.push(makePickup('chest', hx - 4, hy - 1));
-    pickups.push(makePickup('heart', hx + 12, hy - 1));
-    pickups.push(makePickup('goldpile', hx + 4, hy - 1, { amount: 60 + Math.floor(rng.next() * 60) }));
-    pickups.push(makePickup('goldpile', hx - 12, hy - 1, { amount: 60 + Math.floor(rng.next() * 60) }));
-    connectToCavesFrom(w, rng, graph, hx - 15, hyBase + 3, 12, fits, { halfW: 7, up: 21, down: 9 });
-    authoredLights.push({
-      x: hx,
-      y: hyBase + 2,
-      r: 1.0,
-      g: 0.8,
-      b: 0.4,
-      intensity: 1.1,
-      radius: 40,
-      bloom: 0.4,
-      flicker: 0.25,
-      flickerPhase: 1.3,
-      falloff: 'soft',
-      occluded: true,
-    });
-    ledger.reserve(hx - 16, hyBase - 12, hx + 16, hyBase + 12, 'vault-hoard');
-    vaultHoard = { x: hx, y: hy - 2 };
-  } else if (opts?.hostArch) {
-    // HOST SIDE: the hidden arch alcove. Deep rock off the beaten path, a
-    // walk-in gallery to the cave network — then five columns of fresh
-    // masonry sealed across the throat, flecked with gold on the gallery
-    // face. The glitter is the tell, the dig is the discovery (the
-    // secret-room grammar): stone like any other stone, no special flags.
-    let ax = -1,
-      ay = -1,
-      tries = 0;
-    while (tries < 9000) {
-      tries++;
-      const rockMin = tries < 4000 ? 0.8 : tries < 7000 ? 0.5 : 0;
-      const clearMin = tries < 4000 ? 170 : tries < 7000 ? 110 : 70;
-      const cand = 150 + Math.floor(rng.next() * (WIDTH - 300));
-      const candY = 110 + Math.floor(rng.next() * (HEIGHT - 290));
-      if (Math.abs(cand - spawn.x) < clearMin || Math.abs(cand - portalX) < clearMin * 0.75)
-        continue;
-      if (ledger.intersects(cand - 19, candY - 14, cand + 19, candY + 14)) continue;
-      let rock = 0,
-        cells = 0,
-        collide = false;
-      for (let dy = -13; dy <= 13 && !collide; dy++) {
-        for (let dx = -18; dx <= 18; dx++) {
-          if (!w.inBounds(cand + dx, candY + dy)) {
-            collide = true;
-            break;
-          }
-          const t = w.types[w.idx(cand + dx, candY + dy)];
-          if (t === Cell.Metal) {
-            collide = true;
-            break;
-          }
-          cells++;
-          if (t === Cell.Wall) rock++;
-        }
-      }
-      if (collide || rock / cells < rockMin) continue;
-      ax = cand;
-      ay = candY;
-      break;
-    }
-    if (ax < 0) {
-      let best: { cx: number; cy: number; d: number } | null = null;
-      for (const reg of graph.regions) {
-        if (reg.area < 180) continue;
-        const cx = Math.floor(clamp(reg.cx, 80, WIDTH - 80));
-        const cy = Math.floor(clamp(reg.cy, 120, HEIGHT - 100));
-        if (ledger.intersects(cx - 19, cy - 14, cx + 19, cy + 14)) continue;
-        const d = Math.abs(cx - spawn.x) + Math.abs(cy - spawn.y) * 0.6;
-        if (!best || d > best.d) best = { cx, cy, d };
-      }
-      ax = best ? best.cx : Math.floor(clamp(WIDTH - spawn.x, 80, WIDTH - 80));
-      ay = best ? best.cy : Math.floor(clamp(HEIGHT * 0.46, 120, HEIGHT - 100));
-    }
-    if (ax >= 0) {
-      carveRectCells(w, ax - 16, ay - 12, ax + 16, ay + 12);
-      for (let X = ax - 16; X <= ax + 16; X++) {
-        for (const Y of [ay + 11, ay + 12]) {
-          if (!w.inBounds(X, Y)) continue;
-          const i = w.idx(X, Y);
-          if (w.types[i] !== Cell.Metal) {
-            w.types[i] = Cell.Stone;
-            w.colors[i] = stoneColor();
-          }
-        }
-      }
-      const fy = ay + 10;
-      stampArch(ax + 8, fy);
-      // walk-in gallery: starts 24 out so its swept rect can never notch
-      // the alcove roof; the start disc blows the doorway through the wall
-      connectToCavesFrom(w, rng, graph, ax - 24, ay + 2, 12, fits, { halfW: 7, up: 21, down: 9 });
-      // the seal spans every column the start disc can reach (it carves to
-      // ax-12), so the throat closes fully — five diggable columns of stone
-      for (let X = ax - 16; X <= ax - 12; X++) {
-        for (let Y = ay - 12; Y <= ay + 12; Y++) {
-          if (!w.inBounds(X, Y)) continue;
-          const i = w.idx(X, Y);
-          if (w.types[i] !== Cell.Metal) {
-            w.types[i] = Cell.Stone;
-            w.colors[i] = stoneColor();
-          }
-        }
-      }
-      for (let f = 0; f < 12; f++) {
-        const Y = ay - 9 + Math.floor(rng.next() * 19);
-        const i = w.idx(ax - 16, Y);
-        if (w.types[i] === Cell.Stone) {
-          w.types[i] = Cell.Gold;
-          w.colors[i] = goldColor();
-        }
-      }
-      // a faint warm glint outside the seal draws the eye down the gallery
-      authoredLights.push({
-        x: ax - 19,
-        y: ay + 2,
-        r: 1.0,
-        g: 0.75,
-        b: 0.4,
-        intensity: 0.7,
-        radius: 26,
-        bloom: 0.3,
-        flicker: 0.35,
-        flickerPhase: 1.7,
-        falloff: 'soft',
-        occluded: true,
-      });
-      ledger.reserve(ax - 17, ay - 13, ax + 17, ay + 13, 'vault-arch');
-      vaultArch = { x: ax + 8, y: fy, backX: ax - 5, backY: fy, discoverX: ax - 19, discoverY: ay + 2 };
-    }
-  }
-
   return {
     pickups,
     portal,
@@ -1705,8 +1442,6 @@ export function placeStructures(
     authoredLights,
     refuge,
     spellLab,
-    vaultArch,
-    vaultHoard,
     sumpRepair,
   };
 }

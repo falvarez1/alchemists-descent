@@ -9,7 +9,7 @@ import { PROGRESSION_PACING, PROGRESSION_PACING_DEFAULTS } from '@/config/pacing
 import type { SkeletonSpec } from '@/config/gen';
 import { EXTRAS, campaignDressingRecipeForBiome } from '@/world/biomeExtras';
 import { createDefaultPostFxSettings, createDefaultWandLightSettings, GLOBAL_PARAM_DEFAULTS, MATERIAL_PARAM_DEFAULTS, PLAYER_TUNING_DEFAULTS } from '@/config/params';
-import { LEVELS, vaultHostId } from '@/config/worldgraph';
+import { LEVELS } from '@/config/worldgraph';
 import { randomSeed, fnv1aString } from '@/core/rng';
 import {
   applyWorldLayer,
@@ -6164,9 +6164,7 @@ export class Builder {
       });
       this.ctx.state.currentBiome = level.biome;
       const levelSeed = campaignLevelSeed(baseSeed, level.id);
-      const generated = this.ctx.worldgen.generateLevel(this.ctx, level, levelSeed, {
-        hostArch: level.id === vaultHostId(baseSeed),
-      });
+      const generated = this.ctx.worldgen.generateLevel(this.ctx, level, levelSeed);
       this.upsertGeneratedSpawn(generated.spawn);
       this.doc.lights = [
         ...this.doc.lights.filter((light) => !light.id.startsWith(WORLDGEN_LIGHT_PREFIX)),

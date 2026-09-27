@@ -1968,12 +1968,6 @@ export interface WorldGenApi {
     ctx: Ctx,
     def: LevelDef,
     seed: number,
-    opts?: {
-      /** This level hosts the hidden gilded arch to the vault branch
-       *  (decided by Levels from the expedition seed — deterministic, so
-       *  save-resume's pristine regeneration reproduces it). */
-      hostArch?: boolean;
-    },
   ): {
     exit: LevelExitWell;
     waystones: Waystone[];
@@ -1984,11 +1978,11 @@ export interface WorldGenApi {
     mechanisms: Mechanism[];
     runeVaults: RuneVault[];
     boss: { x: number; y: number; kind?: EnemyKind } | null;
-    /** The gilded arch (two-way branch gate) if this level carries one;
-     *  back* is the safe arrival spot for travelers stepping OUT of it. */
-    vaultArch: VaultArch | null;
-    /** Branch-level hoard center — createLevel posts the elite guards here. */
-    vaultHoard: { x: number; y: number } | null;
+    /** Retired with the Gilded Vault branch (2026-09): no generator produces
+     *  an arch or a hoard any more. Optional so authored generators that
+     *  still return null for them keep compiling. */
+    vaultArch?: VaultArch | null;
+    vaultHoard?: { x: number; y: number } | null;
     /** D1 teaching alcove with real-cell stations and a checked reward. */
     spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null;
     /** Deferred prefab enemies — createLevel spawns them; restoreLevel
@@ -2599,9 +2593,14 @@ export interface LevelDef {
   /** Level reached through this level's exit portal, or null for the last floor. */
   nextLevelId: string | null;
   /**
-   * A branch level hangs OFF the descent spine: it is entered through a
-   * hidden gilded arch in its host level and its own arch returns to that
-   * host at the same depth. Branch levels never roll the finale arena.
+   * The floor's boss arena, keyed explicitly (never inferred from depth): the
+   * Sunken Leviathan's sump or the Kiln Colossus's kiln. Killing the Colossus
+   * wins the run.
+   */
+  boss?: 'leviathan' | 'colossus';
+  /**
+   * An off-spine level (the retired Gilded Vault was the only one). Kept for
+   * authored/Builder level lists; no campaign level sets it today.
    */
   branch?: boolean;
 }

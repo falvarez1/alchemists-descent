@@ -179,9 +179,11 @@ describe('marsh-gas ceiling pockets', () => {
 
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
   { id: 'd1', seed: 1337, hash: '550ffa5a' }, // GEN_VERSION 45: contained reservoir + garden pool, west Undertow chute, reachable Heavy Charm, even refuge steps, grounded glowshrooms
-  { id: 'd4', seed: 1337, hash: '880b8755' }, // re-recorded: gas pockets + gunpowder seams
-  { id: 'd8', seed: 1337, hash: '51e6187e' }, // re-recorded: lair settle/rim + gunpowder seams
-  { id: 'vault', seed: 1337, hash: '0a76f43a' }, // re-recorded: gunpowder seams in ore/coal vugs
+  // GEN_VERSION 46 (four floors): the Drowned Cisterns inherit the old flooded
+  // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
+  // volcanic Colossus floor at depth 4.
+  { id: 'd3', seed: 1337, hash: '880b8755' },
+  { id: 'd4', seed: 1337, hash: '4ba4d0a5' },
   { id: 'd2', seed: 42, hash: 'f40d531b' }, // re-recorded: gas pockets + gunpowder seams
 ];
 
@@ -243,28 +245,14 @@ describe('generated organic encounter lairs', () => {
       minCells: 45,
     },
     {
-      id: 'd4',
+      id: 'd3',
       lair: 'encounter-lair-rillback-pool',
       kind: 'rillback',
       signature: [Cell.Water, Cell.Blood, Cell.Slime],
       minCells: 220,
     },
     {
-      id: 'd5',
-      lair: 'encounter-lair-rootloper-grove',
-      kind: 'rootloper',
-      signature: [Cell.Vines, Cell.Moss, Cell.Fungus, Cell.Glowshroom],
-      minCells: 45,
-    },
-    {
-      id: 'd6',
-      lair: 'encounter-lair-stonemaw-seam',
-      kind: 'stonemaw',
-      signature: [Cell.RawOre, Cell.Coal],
-      minCells: 45,
-    },
-    {
-      id: 'd8',
+      id: 'd4',
       lair: 'encounter-lair-stonemaw-seam',
       kind: 'stonemaw',
       signature: [Cell.RawOre, Cell.Coal],
@@ -301,7 +289,7 @@ describe('D1 bench progression geometry', () => {
   }
 
   it('does not place recurring Refuge benches below D1', () => {
-    for (const id of ['d2', 'd4', 'd8', 'vault'] as const) {
+    for (const id of ['d2', 'd3', 'd4'] as const) {
       expect(generateLevelState(LEVELS[id], 1337).refuge).toBeNull();
     }
   });
@@ -330,7 +318,7 @@ describe('D1 sheltered intake intro', () => {
   }
 
   it('keeps deeper levels underground', () => {
-    for (const id of ['d2', 'd4', 'd8', 'vault'] as const) {
+    for (const id of ['d2', 'd3', 'd4'] as const) {
       expect(generateLevelState(LEVELS[id], 1337).surfaceSpawn).toBeNull();
     }
   });

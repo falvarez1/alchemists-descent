@@ -15,7 +15,7 @@
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_TUNE_DEFAULT_SIGNATURE, GEN_VERSION, genTuneSignature } from '@/config/gen';
 import { difficultyMods } from '@/config/difficulty';
-import { LEVELS, START_LEVEL, populationForLevel, vaultHostId } from '@/config/worldgraph';
+import { FLOORS_TOTAL, LEVELS, START_LEVEL, floorDisplayName, floorOf, populationForLevel } from '@/config/worldgraph';
 import { createLivingState } from '@/game/LivingExpedition';
 import { restoreFauna, restoreLiving } from '@/game/persistence/ecology';
 import { Rng, hashSeed, randomSeed, fnv1aString } from '@/core/rng';
@@ -980,54 +980,6 @@ export class Levels implements LevelsApi {
               : 'Sealed. The gate answers to a brass bell, and only the Bell & Tea Engine above the Intake makes one.')
             : 'SEALED — THE GOLDEN KEY IS MISSING',
         });
-      }
-    }
-
-    // GILDED ARCH: the two-way branch gate. Stepping between the pillars
-    // crosses over; the destination's own arch is the way back. Arrival uses
-    // the arch's authored back-spot (outside the trigger circle), never the
-    // level spawn — "returning to the same depth" must mean the same SPOT.
-    const arch = runtime.vaultArch;
-    if (arch) {
-      const adx = player.x - arch.x;
-      const ady = player.y - arch.y;
-      if (adx * adx + ady * ady < 49) {
-        const destId = runtime.def.branch ? vaultHostId(this.activeExpeditionSeed(ctx)) : 'vault';
-        if (LEVELS[destId]) {
-          ctx.audio.portalWhoosh();
-          this.leaveLevel();
-          this.checkpointSaveSuppression++;
-          try {
-            this.enterLevel(ctx, destId);
-          } finally {
-            this.checkpointSaveSuppression--;
-          }
-          const dest = this.current;
-          if (dest?.vaultArch) {
-            player.x = dest.vaultArch.backX;
-            player.y = dest.vaultArch.backY;
-            player.vx = 0;
-            player.vy = 0;
-            player.fx = 0;
-            player.fy = 0;
-            ctx.camera.snapTo(player.x, player.y);
-          }
-          this.saveExpedition(ctx);
-          return;
-        }
-      }
-      // the arch breathes: a slow shimmer of golden motes (in-view only)
-      if (ctx.state.frameCount % 9 === 0 && Math.abs(player.x - arch.x) < 300) {
-        ctx.particles.spawn(
-          arch.x - 5 + entityRandom() * 10,
-          arch.y - 1 - entityRandom() * 5,
-          (entityRandom() - 0.5) * 0.15,
-          -0.2 - entityRandom() * 0.25,
-          null,
-          packRGB(255, 210 + Math.floor(entityRandom() * 40), 120),
-          26 + Math.floor(entityRandom() * 18),
-          { glow: 1.0, grav: -0.002 },
-        );
       }
     }
 
@@ -2161,9 +2113,7 @@ export class Levels implements LevelsApi {
 
     const expeditionSeed = this.activeExpeditionSeed(ctx);
     const seed = (expeditionSeed ^ this.hashString(def.id)) >>> 0;
-    const pristine = ctx.worldgen.generateLevel(ctx, def, seed, {
-      hostArch: def.id === vaultHostId(expeditionSeed),
-    });
+    const pristine = ctx.worldgen.generateLevel(ctx, def, seed);
 
     const savedTypes = new Uint8Array(world.types.length);
     if (!rleDecodeExact(blob.rle, savedTypes)) throw new Error(`Saved level "${def.id}" RLE length mismatch`);
@@ -2234,7 +2184,6 @@ export class Levels implements LevelsApi {
       ...(pristine.decors.length > 0 ? { decors: pristine.decors } : {}),
       ...(pristine.refuge ? { refuge: pristine.refuge } : {}),
       ...(pristine.spellLab ? { spellLab: pristine.spellLab } : {}),
-      ...(pristine.vaultArch ? { vaultArch: pristine.vaultArch } : {}),
       mapWaypoint: sanitizeMapWaypoint(blob.mapWaypoint, world),
       weaverLairWebs: sanitizeWeaverLairWebs(blob.weaverLairWebs),
     });
@@ -2319,10 +2268,10 @@ export class Levels implements LevelsApi {
     if (!def) return;
     this._transitioning = true;
 
-    this.showTransitionCurtain(ctx, {
-      title: 'Opening the descent',
-      detail: `Preparing ${def.name}.`,
-    });
+    const floor = floorOf(id);
+    this.showTransitionCurtain(ctx, floor > 0
+      ? { title: floorDisplayName(id), detail: `Floor ${floor} of ${FLOORS_TOTAL}` }
+      : { title: 'Opening the descent', detail: `Preparing ${def.name}.` });
 
     // This level is about to become CURRENT and mutate — its cached blob dies.
     this.blobCache.delete(id);
@@ -2421,9 +2370,7 @@ export class Levels implements LevelsApi {
           : 'FIND THE GOLDEN KEY'
         : runtime.boss
           ? this.bossObjective(runtime.boss.kind)
-          : def.branch
-            ? 'PLUNDER THE HOARD — THE ARCH LEADS HOME'
-            : 'THE DEPTHS END HERE — SURVIVE',
+          : 'THE DEPTHS END HERE — SURVIVE',
     });
 
     this.finishTransitionWithCurtain(ctx);
@@ -2550,13 +2497,9 @@ export class Levels implements LevelsApi {
       decors,
       refuge,
       spellLab,
-      vaultArch,
-      vaultHoard,
       surfaceSpawn,
       surfaceSkyLine,
-    } = ctx.worldgen.generateLevel(ctx, def, seed, {
-      hostArch: def.id === vaultHostId(expeditionSeed),
-    });
+    } = ctx.worldgen.generateLevel(ctx, def, seed);
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
     const regions = extractRegionGraph(ctx.world, spawn, {
@@ -2574,25 +2517,11 @@ export class Levels implements LevelsApi {
       new Rng(hashSeed(seed, 'population')),
       weaverLairWebs,
     );
-    // Boss arenas: the Kiln Colossus at the bottom of the run; the Sunken
-    // Leviathan in d4's perched cistern (the marker carries the kind).
+    // Boss arenas, keyed on the floor (LevelDef.boss): the Sunken Leviathan
+    // in the Drowned Cisterns' perched sump, the Kiln Colossus at the bottom
+    // of the Kiln Heart (the marker carries the kind).
     if (boss && !ctx.enemyCtl.spawn(boss.kind ?? 'colossus', boss.x, boss.y)) {
       ctx.telemetry.count(`population.skipped.${def.id}.${boss.kind ?? 'colossus'}`);
-    }
-    // The Gilded Vault's hoard guards: a pair of elite golems, posted at the
-    // chamber flanks (their boosted stats persist through saves — the blob
-    // roster records hp/maxHp/dmgK).
-    if (vaultHoard) {
-      for (const side of [-10, 10]) {
-        const g = ctx.enemyCtl.spawn('golem', vaultHoard.x + side, vaultHoard.y);
-        if (g && g.kind === 'golem') {
-          g.maxHp = Math.round(g.maxHp * 2.6);
-          g.hp = g.maxHp;
-          g.dmgK = (g.dmgK ?? 1) * 1.6;
-        } else {
-          ctx.telemetry.count(`population.skipped.${def.id}.golem`);
-        }
-      }
     }
     // Prefab-authored enemies (sleeping/patrol fixups applied at spawn).
     for (const rec of prefabEnemies) spawnPrefabEnemy(ctx, rec);
@@ -2620,7 +2549,6 @@ export class Levels implements LevelsApi {
       ...(decors.length > 0 ? { decors } : {}),
       ...(refuge ? { refuge } : {}),
       ...(spellLab ? { spellLab } : {}),
-      ...(vaultArch ? { vaultArch } : {}),
       ...(surfaceSpawn ? { surfaceSpawn } : {}),
       ...(surfaceSkyLine !== null ? { skyLine: surfaceSkyLine } : {}),
       weaverLairWebs,

@@ -806,7 +806,6 @@ export class WorldGen implements WorldGenApi {
     ctx: Ctx,
     def: LevelDef,
     seed: number,
-    opts?: { hostArch?: boolean },
   ): {
     exit: LevelExitWell;
     waystones: Waystone[];
@@ -824,8 +823,9 @@ export class WorldGen implements WorldGenApi {
     decors: RuntimeDecor[];
     refuge: { x: number; y: number } | null;
     spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null;
-    vaultArch: VaultArch | null;
-    vaultHoard: { x: number; y: number } | null;
+    /** Retired with the Gilded Vault branch: never produced, always null. */
+    vaultArch?: VaultArch | null;
+    vaultHoard?: { x: number; y: number } | null;
     /** D1 only: the open-air start point on the surface, above the cave mouth. */
     surfaceSpawn: { x: number; y: number } | null;
     /** D1 only: the horizon row — Empty above it renders as open sky. */
@@ -1208,8 +1208,6 @@ export class WorldGen implements WorldGenApi {
       authoredLights: structLights,
       refuge,
       spellLab,
-      vaultArch,
-      vaultHoard,
       sumpRepair,
     } = placeStructures(
       ctx,
@@ -1222,7 +1220,6 @@ export class WorldGen implements WorldGenApi {
       cauldron,
       ledger,
       fits,
-      { hostArch: opts?.hostArch === true },
     );
     stage('structures');
 
@@ -1361,8 +1358,6 @@ export class WorldGen implements WorldGenApi {
       decors: [...sink.decors, ...surfaceDecors],
       refuge,
       spellLab,
-      vaultArch,
-      vaultHoard,
       surfaceSpawn,
       surfaceSkyLine,
     };
