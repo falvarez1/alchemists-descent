@@ -430,6 +430,24 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   its ground for 52 ticks before it marches, holds its fire 110 ticks, and the
   camera leans half the way toward it (≤ 70 × 28 cells, zoom 1.06) over 40 ticks,
   holds 70 and returns over 40 — no lean at all with camera shake off.
+- **The boss ward** (`core/bossWard`): the Colossus and the Leviathan lose hp
+  only to harm the player set in motion — any direct blow, or the world's
+  (a blast he did not cast, fire, current, acid, a flood) while he is ENGAGED:
+  he cast, poured or threw within 8 s (480 ticks) at a point ≤ 360 cells from
+  the boss. A boss's own slam/fireball/death blast never hurts it and leaves no
+  live charge; no blast he did not cast breaks a lair's organ (the Kiln tank,
+  the Sump plugs), and neither does world repair. A boss the player never
+  harmed enters at full hp. (QA: the Colossus died on its own, idle player.)
+- **Kiln thermal shock is a CRACK, not a drain:** a douse he caused (credited
+  when he is engaged during it, and it stays his while the kiln stays wet)
+  cracks it for 16% of max hp at once (~75 of 468, ~83 of 520), again every
+  150 ticks while still soaked. Each crack flashes up to 24 water cells on and
+  around its body to real steam, bursts steam, glowing fissures and 10 stone
+  shards, flashes it (14), squashes it (0.3), 5-tick hitstop, +0.05 shake
+  (cap 0.09), 0.55 bloom kick (not under reduced flashes), steam hiss + shell
+  crack + 64→36 Hz saw, a "THERMAL SHOCK" finisher callout, and staggers it
+  (no attacks for 120 ticks, speed ×0.2). A full tank is 2–3 cracks. (Was
+  1.4 hp EVERY wet tick — 84 hp/s — from any water at all.)
 - **Bat roosts:** dormant folded teardrops on the ceiling; one red eye cracks
   open at your approach (< 70 cells wakes them; stirring starts at 110).
 - **Slime egg clutches** glisten with pulsing embryos; they hatch on a timer —

@@ -4,6 +4,8 @@ import { RILLBACK_WET_THRESHOLD } from '@/core/enemyState';
 import { clamp } from '@/core/math';
 import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDamageSource, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
 import { causeForCell } from '@/core/alchemyCause';
+import { BossWard } from '@/core/bossWard';
+import { kilnQuenchBurst } from '@/entities/kilnQuench';
 import { tickWeaverLocomotion, weaverKnockSync, weaverLeap } from '@/entities/weaverLocomotion';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
 export { ENEMY_DEFS } from '@/content/enemyDefs';
@@ -296,7 +298,18 @@ export class Enemies implements EnemyControlApi {
     if (onCast) this.disposers.push(onCast);
     const onSignal = ctx.events?.on('creatureSignal', ({ x, y, radius, strength, kind }) => this.cue(x, y, radius, strength, kind));
     if (onSignal) this.disposers.push(onSignal);
+    // THE BOSS WARD hears the player act: a cast (wand or its trigger payload),
+    // a pour or a throw. Only harm that follows an act near a boss lands on it.
+    const onActCast = ctx.events?.on('cardCast', ({ x, y }) => this.bossWard.noteAct(ctx.state.frameCount, x, y));
+    const onActFlask = ctx.events?.on('flaskUsed', ({ verb }) => {
+      if (verb === 'pour' || verb === 'throw') this.bossWard.noteAct(ctx.state.frameCount, ctx.player.x, ctx.player.y);
+    });
+    const onActLevel = ctx.events?.on('levelChanged', () => this.bossWard.reset());
+    for (const off of [onActCast, onActFlask, onActLevel]) if (off) this.disposers.push(off);
   }
+
+  /** Warded bosses (the Colossus, the Leviathan) take only harm the player caused — core/bossWard. */
+  private readonly bossWard = new BossWard();
 
   private readonly cues: CreatureCue[] = [];
   /** Bosses that have made their entrance (once per live creature). */
@@ -537,6 +550,10 @@ export class Enemies implements EnemyControlApi {
 
   damage(e: Enemy, amount: number, kx: number, ky: number, source: EnemyDamageSource = 'direct'): void {
     const ctx = this.ctx;
+    // THE BOSS WARD: a warded boss's hp moves only for harm the player set in
+    // motion (a direct blow, or the world's while he is engaged) — never for a
+    // blast, fire or creature that went off on its own. core/bossWard.
+    if (!this.bossWard.allows(e, source, ctx.state.frameCount)) return;
     // Kill attribution: every blow reports its source before hp moves.
     ctx.alchemy?.noteHit(e, source);
     if (amount > 0) {
@@ -1034,6 +1051,9 @@ export class Enemies implements EnemyControlApi {
   private beginEntrance(e: Enemy, def: EnemyDef, lair: BossLair): void {
     const ctx = this.ctx;
     this.introduced.add(e);
+    // A boss never meets the player already wounded by something he did not
+    // do (belt and braces behind the ward: an old save, a pre-ward scratch).
+    if (!this.bossWard.harmedByPlayer(e)) e.hp = e.maxHp;
     if (e.kind !== 'colossus') {
       // a deep churn under the surface — the pool itself announces it
       this.voice(e, () => { ctx.audio.tone(58, 30, 0.8, 'sine', 0.2); ctx.audio.groan(); }, 720);
@@ -2247,6 +2267,8 @@ export class Enemies implements EnemyControlApi {
       dmg += rowDmg;
     }
     if (dmg <= 0) return;
+    // Warded bosses: a hazard cell is only the player's doing while he is engaged.
+    if (!this.bossWard.allows(e, causeForCell(worstCell), ctx.state.frameCount)) return;
     if (worstCell === Cell.Fire && ctx.alchemy) {
       // Open flame on the body: the wand's own blast fire on the creature it was
       // cast at is the spell's; burning oil, or a fire it wandered into, is the world's.
@@ -2534,7 +2556,8 @@ export class Enemies implements EnemyControlApi {
           liquidCharge: eff.liquidCharge,
           chargeContact: eff.chargeContact,
         });
-        if (eff.damage > 0) e.hp -= eff.damage;
+        // (A warded boss's status harm lands only while the player is engaged.)
+        if (eff.damage > 0 && this.bossWard.allows(e, 'shorted', ctx.state.frameCount)) e.hp -= eff.damage;
         if (e.hp <= 0) {
           this.killAt(i, e, 0, 0);
           continue;
@@ -3271,19 +3294,24 @@ export class Enemies implements EnemyControlApi {
 
         const doused = e.status.wet > 0;
         const shocked = e.status.electrified > 0;
-        if (doused) {
-          // THERMAL SHOCK: the furnace cracks — heavy damage whose tell is the
-          // steam below plus a hurt flash. A direct decrement (the leviathan's
-          // electro-shock pattern): the full damage() path would spray blood
-          // and stain walls off a stone boss EVERY wet frame.
+        // THERMAL SHOCK: a douse the player caused CRACKS the kiln — one big,
+        // readable burst (kilnQuench: steam flash, stone shards, hitstop, a
+        // callout) worth KILN_QUENCH.share of its hp, again every 2.5 s while
+        // it stays soaked. Was a silent 1.4 hp EVERY wet tick (84 hp/s), and
+        // any water at all counted — a flood nobody caused killed it idle.
+        const crack = this.bossWard.quenchTick(e, doused, ctx.state.frameCount);
+        if (crack > 0) {
           this.alertFromDamage(e);
           ctx.alchemy?.noteHit(e, 'steeped');
-          e.hp -= 1.4;
-          e.flash = Math.max(e.flash, 2);
+          e.hp -= crack;
+          kilnQuenchBurst(ctx, e, def);
           if (e.hp <= 0) {
             this.kill(e, 0, 0);
             continue;
           }
+        }
+        if (doused) {
+          // Soaked: steam off the cooling stone, and it staggers (no attacks).
           if (ctx.state.frameCount % 4 === 0) {
             ctx.particles.burst(
               e.x + (entityRandom() - 0.5) * 20,
@@ -3515,7 +3543,7 @@ export class Enemies implements EnemyControlApi {
 
         // ELECTROCUTION: the doused-kiln mirror. Direct hp (bypasses the
         // submersion shield — the water IS the delivery), visible arcs.
-        if (sub && e.status.electrified > 0) {
+        if (sub && e.status.electrified > 0 && this.bossWard.allows(e, 'shorted', ctx.state.frameCount)) {
           ctx.alchemy?.noteHit(e, 'shorted');
           e.hp -= 1.1;
           e.flash = Math.max(e.flash, 2);

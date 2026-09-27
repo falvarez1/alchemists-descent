@@ -1,6 +1,7 @@
 import type { LevelRuntime } from '@/core/types';
 import type { World } from '@/sim/World';
 import { mechanismTriggersFor } from '@/core/mechanisms';
+import { bossOrganRect } from '@/core/bossWard';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { computeLooseRubbleBlockingMask } from '@/sim/collision';
 import { extractRegionGraph } from '@/world/regions';
@@ -345,6 +346,10 @@ function protectedRepairMask(runtime: LevelRuntime): Uint8Array {
       markProtectedPoint(runtime, protectedCells, arch.discoverX, arch.discoverY, 5);
     }
   }
+  // A boss's weakness is the PLAYER's to open (core/bossWard): a repair tunnel
+  // must never dig the Kiln's ceiling-tank seal nor the Sump's drain plugs.
+  const organ = bossOrganRect(runtime.boss);
+  if (organ) markProtectedRect(runtime, protectedCells, organ.x0, organ.y0, organ.x1, organ.y1);
   return protectedCells;
 }
 
