@@ -140,6 +140,15 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   // and never flashes across the whole ledge. Raising this toward 1.0 tips it into
   // a field-wide flashover. No bloom — grass doesn't self-glow.
   [Cell.Grass]: { name: 'Grass', flammability: 0.35 },
+  // FLORA. Leaves go up fast (a canopy flashes over in a couple of seconds —
+  // the spectacle), living wood only SMOULDERS: flammability is the per-substep
+  // chance an adjacent flame starts a trunk cell burning in place for
+  // burnDuration substeps before it chars, so a fire at the foot of a tree
+  // glows and eats through the base (then the tree comes down) instead of
+  // vanishing in one flash. Seeds are fuel too; their faint bloom is the tell.
+  [Cell.Leaf]: { name: 'Leaf', flammability: 0.4 },
+  [Cell.Trunk]: { name: 'Trunk', flammability: 0.035, burnDuration: 240, igniteChance: 0.012 },
+  [Cell.Seed]: { name: 'Seed', friction: 0.45, flammability: 0.25, bloomWeight: 0.12 },
   [Cell.Wall]: { name: 'Structural Wall' },
   [Cell.Empty]: { name: 'Eraser' },
 };

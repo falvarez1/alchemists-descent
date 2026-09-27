@@ -86,6 +86,12 @@ export const MATERIAL_INFO: Record<number, string> = {
     'Walk-through ground cover planted on cave floors and the surface. It spreads lightly along damp ground and catches fire like dry brush.',
   [Cell.MarshGas]:
     'Flammable bog vapor that rises and pools under cave ceilings. It never disperses on its own - and the faintest spark turns the whole pocket into a racing wall of flame.',
+  [Cell.Leaf]:
+    'Walk-through foliage. It holds on while it stays within a few leaves of wood or rock, then lets go and flutters down as litter. Burns fast and bright; floats on water.',
+  [Cell.Trunk]:
+    'Living wood: trunks, stems and roots you walk past. It smoulders rather than flares. Cut, burn or blast through it and whatever loses its footing is felled — it topples, crushes what it lands on, and settles as solid Wood.',
+  [Cell.Seed]:
+    'Seeds from a pod: a loose powder once shaken free. A thirsty seed drinks the water it touches and sprouts a climbable root ladder within seconds. Burns.',
 };
 
 /**

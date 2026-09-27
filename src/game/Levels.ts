@@ -1921,6 +1921,7 @@ export class Levels implements LevelsApi {
     const types = rt.world.types.slice();
     const lifeArr = rt.world.life.slice();
     this.ctx.vineStrands?.writeSnapshotCells?.(rt.world, types, lifeArr);
+    this.ctx.flora?.writeSnapshotCells?.(rt.world, types, lifeArr);
     for (let i = 0; i < lifeArr.length; i++) {
       if (lifeArr[i] === 0) continue;
       const t = types[i];
@@ -1952,6 +1953,7 @@ export class Levels implements LevelsApi {
   private snapshotLevelForWorker(id: string, rt: LevelRuntime): PendingLevelSave {
     const types = rt.world.types.slice(), life = rt.world.life.slice();
     this.ctx.vineStrands?.writeSnapshotCells?.(rt.world, types, life);
+    this.ctx.flora?.writeSnapshotCells?.(rt.world, types, life);
     return {
       metadata: structuredClone({
         id,

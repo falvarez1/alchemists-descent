@@ -175,14 +175,14 @@ export class RigidBodies implements RigidBodiesApi {
     const color = opts.color ?? matDef?.color ?? packRGB(150, 100, 55);
     const restitution = opts.restitution ?? 0.2;
     const friction = opts.friction ?? 0.6;
-    const colDesc = (
-      shape.kind === 'box' ? RAPIER.ColliderDesc.cuboid(shape.halfW, shape.halfH) : RAPIER.ColliderDesc.ball(shape.radius)
-    )
-      .setDensity(density)
-      .setRestitution(restitution)
-      .setFriction(friction);
-    if (opts.collisionGroups !== undefined) colDesc.setCollisionGroups(opts.collisionGroups);
-    this.world.createCollider(colDesc, rb);
+    const parts = opts.colliders && opts.colliders.length > 0
+      ? opts.colliders.map((c) => RAPIER.ColliderDesc.cuboid(c.halfW, c.halfH).setTranslation(c.x, c.y))
+      : [shape.kind === 'box' ? RAPIER.ColliderDesc.cuboid(shape.halfW, shape.halfH) : RAPIER.ColliderDesc.ball(shape.radius)];
+    for (const colDesc of parts) {
+      colDesc.setDensity(density).setRestitution(restitution).setFriction(friction);
+      if (opts.collisionGroups !== undefined) colDesc.setCollisionGroups(opts.collisionGroups);
+      this.world.createCollider(colDesc, rb);
+    }
     const mass = rb.mass();
 
     const body: RigidBody = {
@@ -222,6 +222,16 @@ export class RigidBodies implements RigidBodiesApi {
       this.world.createImpulseJoint(RAPIER.JointData.prismatic({ x: 0, y: 0 }, { x: 0, y: 0 }, axis), anchor, rb, true);
       this.hingeAnchors.set(body, anchor);
     }
+    if (opts.pivot && !opts.hinge) {
+      // A world-space hinge (a felled trunk's cut): the local anchor is the
+      // pivot expressed in the body's spawn frame.
+      const a = opts.angle ?? 0, dx = opts.pivot.x - x, dy = opts.pivot.y - y;
+      const local = { x: dx * Math.cos(a) + dy * Math.sin(a), y: -dx * Math.sin(a) + dy * Math.cos(a) };
+      const anchor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(opts.pivot.x, opts.pivot.y));
+      const joint = this.world.createImpulseJoint(RAPIER.JointData.revolute({ x: 0, y: 0 }, local), anchor, rb, true);
+      joint.setContactsEnabled(false);
+      this.hingeAnchors.set(body, anchor);
+    }
     if (opts.hinge) {
       const anchor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y));
       const joint = RAPIER.JointData.revolute({ x: 0, y: 0 }, { x: 0, y: 0 });
@@ -233,6 +243,23 @@ export class RigidBodies implements RigidBodiesApi {
     this.bodies.push(body);
     if (opts.tag === 'player-corpse') this.playerCorpse = body;
     return body;
+  }
+
+  setDamping(body: RigidBody, linear?: number, angular?: number): void {
+    const rb = this.handles.get(body);
+    if (!rb) return;
+    if (linear !== undefined) rb.setLinearDamping(linear);
+    if (angular !== undefined) rb.setAngularDamping(angular);
+  }
+
+  releasePivot(body: RigidBody, angularDamping?: number): void {
+    const anchor = this.hingeAnchors.get(body);
+    const rb = this.handles.get(body);
+    if (rb && angularDamping !== undefined) rb.setAngularDamping(angularDamping);
+    if (!anchor) return;
+    this.world.removeRigidBody(anchor);
+    this.hingeAnchors.delete(body);
+    rb?.wakeUp();
   }
 
   remove(body: RigidBody): void {
@@ -275,7 +302,9 @@ export class RigidBodies implements RigidBodiesApi {
   /** A body the eviction sweep must never claim: the one the player is holding, or
    *  a long-lived tagged body whose owner keeps polling it (the player corpse). */
   private evictionProtected(b: RigidBody): boolean {
-    return b === this.held || b.tag?.startsWith('player-corpse') === true || b.tag?.startsWith('tea-') === true;
+    return b === this.held || b.tag?.startsWith('player-corpse') === true || b.tag?.startsWith('tea-') === true
+      // A falling tree is polled every tick by game/Flora until it re-stamps as a log.
+      || b.tag?.startsWith('flora-') === true;
   }
 
   clear(): void {
@@ -460,7 +489,7 @@ export class RigidBodies implements RigidBodiesApi {
     let best: RigidBody | null = null;
     let bestD = Infinity;
     for (const body of this.bodies) {
-      if (body.kind !== 'dynamic') continue;
+      if (body.kind !== 'dynamic' || isFloraBody(body)) continue;
       const mass = body.invMass && body.invMass > 0 ? 1 / body.invMass : Infinity;
       if (mass > GRAB_MASS_MAX) continue;
       const dx = body.x - ox;
@@ -508,7 +537,7 @@ export class RigidBodies implements RigidBodiesApi {
         if (d2 < bestD2) { bestD2 = d2; target = body; }
       }
     }
-    if (!target || target.kind !== 'dynamic') return false;
+    if (!target || target.kind !== 'dynamic' || isFloraBody(target)) return false;
     const mass = target.invMass && target.invMass > 0 ? 1 / target.invMass : Infinity;
     if (mass > TELE_MASS_MAX) return false;
     if (Math.hypot(target.x - p.x, target.y - (p.y - 8)) > TELE_REACH) return false;
@@ -707,6 +736,8 @@ export class RigidBodies implements RigidBodiesApi {
     for (const body of this.bodies) {
       if (body.hitCd !== undefined && body.hitCd > 0) body.hitCd--;
       if (body.kind !== 'dynamic') continue; // held bodies CAN hit (the pull) — gated by speed
+      // A falling tree is a long rotated box: its AABB lies. game/Flora crushes with the true shape.
+      if (isFloraBody(body)) continue;
       if (body.hitCd !== undefined && body.hitCd > 0) continue;
       const sp = Math.hypot(body.vx, body.vy);
       if (sp < BODY_HIT_MIN_SPEED) continue;
@@ -1299,7 +1330,7 @@ export class RigidBodies implements RigidBodiesApi {
     // handles.has() check below skips anything already removed this frame.
     for (let bi = this.bodies.length - 1; bi >= 0; bi--) {
       const body = this.bodies[bi];
-      if (!body || body.kind !== 'dynamic') continue;
+      if (!body || body.kind !== 'dynamic' || isFloraBody(body)) continue;
       if (body === this.held) continue; // don't shove the player off its own carried body
       if (!this.handles.has(body)) continue; // removed (smashed) earlier this frame
       if (Math.abs(body.x - player.x) > 48 || Math.abs(body.y - player.y) > 48) continue;
@@ -1468,6 +1499,11 @@ export class RigidBodies implements RigidBodiesApi {
       }
     }
   }
+}
+
+/** A felled tree/stem owned by game/Flora (tag 'flora-*'). */
+function isFloraBody(body: RigidBody): boolean {
+  return body.tag !== undefined && body.tag.startsWith('flora-');
 }
 
 function shapeRadius(shape: RigidShape): number {

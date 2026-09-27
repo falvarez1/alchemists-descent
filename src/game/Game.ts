@@ -4,6 +4,7 @@ import { installTuningPersistence } from '@/config/tuningStore';
 import { EventBus } from '@/core/events';
 import { updateLivingExpedition } from '@/game/LivingExpedition';
 import { updateHabitatMotion } from '@/game/HabitatMotion';
+import { Flora } from '@/game/Flora';
 import { advanceTrickshotClock } from '@/combat/Trickshot';
 import { TeaMachine } from '@/game/TeaMachine';
 import { TeaMachineOverlay } from '@/ui/TeaMachineOverlay';
@@ -213,6 +214,11 @@ export class Game {
     const vineStrands = new VineStrands(ctx);
     ctx.vineStrands = vineStrands;
     this.disposables.push(vineStrands);
+    // Living plants that fall (subscribes to levelChanged AFTER the body pool,
+    // so a tree still in flight lands as a log in the world it fell in).
+    const flora = new Flora(ctx);
+    ctx.flora = flora;
+    this.disposables.push(flora);
     ctx.playerCtl = new PlayerControl(ctx);
     ctx.peers = new PeerGhosts();
     const enemyCtl = new Enemies(ctx);
@@ -645,6 +651,9 @@ export class Game {
       // sim and the kinematic entities. Impulses from later systems this frame
       // (wands, lightning, and any explosions they trigger) land next frame —
       // a one-frame lag that's imperceptible for debris.
+      // Flora first: a stand severed by this tick's sim becomes a hinged body
+      // that steps in the same solver pass (and settled logs re-stamp).
+      ctx.flora?.update(ctx);
       ctx.rigidBodies.update(ctx); // self-freezes when debug is active
       if (!debugActive) {
         ctx.vineStrands.update(ctx);

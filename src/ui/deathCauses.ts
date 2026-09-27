@@ -45,6 +45,10 @@ const DEATH_LINES: Record<string, string[]> = {
     'Self-inflicted explosion. The wand technically worked.',
     'Own spell, own crater.',
   ],
+  'falling-tree': [
+    'A tree fell in the Works, and someone was around to hear it. Briefly.',
+    'Timber. The creak was, in hindsight, the warning.',
+  ],
   'barrel-explosion': [
     'An explosive barrel fulfilled its destiny nearby.',
     'Barrel chemistry: one, alchemist: zero.',
@@ -188,6 +192,7 @@ const DEATH_TITLES: Record<string, string> = {
   explosion: 'You were blown apart.',
   'self-explosion': 'You were blown apart.',
   'barrel-explosion': 'You were blown apart.',
+  'falling-tree': 'You were felled.',
   gunpowder: 'You were blown apart.',
   bomber: 'You were blown apart.',
   'colossus-death': 'You were blown apart.',

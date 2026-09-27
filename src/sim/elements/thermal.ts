@@ -12,6 +12,7 @@ import {
   waterColor,
 } from '@/sim/colors';
 import { igniteGunpowder } from '@/sim/elements/powders';
+import { igniteTrunk } from '@/sim/elements/flora';
 // FIRE_REACTION_OFFSETS was the local name for the shared asymmetric ignition list.
 import { CARDINAL_OFFSETS, IGNITION_OFFSETS as FIRE_REACTION_OFFSETS } from '@/sim/neighborOffsets';
 import { fxRandom, simRandom } from '@/core/simRandom';
@@ -72,11 +73,13 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
       }
       return;
     }
-    if ((n === Cell.Wood || n === Cell.Vines) && simRandom() < P.igniteChance!) {
+    if ((n === Cell.Wood || n === Cell.Vines || n === Cell.Leaf || n === Cell.Seed) && simRandom() < P.igniteChance!) {
       // slow smoulder: a small, short-lived flame that grows or fizzles with the fuel
       w.replaceCellAt(ni, Cell.Fire, fireColor());
       w.life[ni] = 40 + Math.floor(simRandom() * 50);
     }
+    // living wood takes an ember as a smoulder in place (FLORA)
+    if (n === Cell.Trunk && simRandom() < P.igniteChance!) igniteTrunk(ctx, ni);
     if (n === Cell.MarshGas) {
       // even a drifting ember lights bog vapor at a touch
       w.replaceCellAt(ni, Cell.Fire, fireColor());
@@ -184,6 +187,20 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 26; // damp greenery burns short and smoky
         if (simRandom() < 0.7) spawnSmoke(ctx, x, y);
+      }
+      if (n === Cell.Leaf && simRandom() < ctx.params.materials[Cell.Leaf].flammability!) {
+        // a canopy goes up fast and bright (FLORA)
+        w.replaceCellAt(ti, Cell.Fire, fireColor());
+        w.life[ti] = 18 + Math.floor(simRandom() * 10);
+        if (simRandom() < 0.35) spawnSmoke(ctx, x, y);
+      }
+      if (n === Cell.Trunk && w.life[ti] <= 0 && simRandom() < ctx.params.materials[Cell.Trunk].flammability!) {
+        // living wood smoulders in place (handleTrunk) instead of flashing away
+        igniteTrunk(ctx, ti);
+      }
+      if (n === Cell.Seed && simRandom() < ctx.params.materials[Cell.Seed].flammability!) {
+        w.replaceCellAt(ti, Cell.Fire, fireColor());
+        w.life[ti] = 12;
       }
       if (n === Cell.Grass && simRandom() < ctx.params.materials[Cell.Grass].flammability!) {
         w.replaceCellAt(ti, Cell.Fire, fireColor());

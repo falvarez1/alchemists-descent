@@ -23,6 +23,7 @@ import {
 import { handleGunpowder, handleSand } from '@/sim/elements/powders';
 import { handleEmber, handleFire, handleIce } from '@/sim/elements/thermal';
 import { handleVines } from '@/sim/elements/vines';
+import { handleLeaf, handleSeed, handleTrunk } from '@/sim/elements/flora';
 import { updateElectricalGrid } from '@/sim/electrical';
 import { runHarvesterField } from '@/sim/harvester';
 import { reseedSimSubstep, simRandom } from '@/core/simRandom';
@@ -127,7 +128,9 @@ export class Simulation implements SimulationApi {
             type === Cell.Glowshroom ||
             type === Cell.Moss ||
             type === Cell.RawOre ||
-            type === Cell.Grass
+            type === Cell.Grass ||
+            type === Cell.Leaf ||
+            type === Cell.Trunk
           ) {
             continue;
           }
@@ -188,6 +191,7 @@ export class Simulation implements SimulationApi {
               ctx.params.materials[Cell.Smoke].dispersion!,
             );
           else if (type === Cell.MarshGas) handleMarshGas(ctx, x, y);
+          else if (type === Cell.Seed) handleSeed(ctx, x, y);
         }
       }
     }
@@ -211,6 +215,8 @@ export class Simulation implements SimulationApi {
         else if (t2 === Cell.Fungus) handleFungus(ctx, x, y);
         else if (t2 === Cell.Moss) handleMoss(ctx, x, y);
         else if (t2 === Cell.Grass) handleGrass(ctx, x, y);
+        else if (t2 === Cell.Leaf) handleLeaf(ctx, x, y);
+        else if (t2 === Cell.Trunk) handleTrunk(ctx, x, y);
       }
     }
     for (let key = 0; key < world.activity.growthChanged.length; key++) {

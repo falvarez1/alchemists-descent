@@ -11,6 +11,8 @@ import { ConsoleCommandRegistry, parseConsoleLine } from '@/game/console/registr
 import type { CompletionRequest, ConsoleCommandDefinition } from '@/game/console/registry';
 import { loadConsoleBinds, loadConsoleWatches, normalizeBindKey, saveConsoleBinds, saveConsoleWatches } from '@/game/console/prefs';
 import { loadConsoleScripts, normalizeScriptName, parseScriptLines, scriptNames } from '@/game/console/scripts';
+import { FLORA_SPECIES, groundAt, plantFlora, type FloraFloor, type FloraSpecies } from '@/world/floraKit';
+import { Rng } from '@/core/rng';
 
 type ConsoleTarget =
   | 'sandbox'
@@ -1876,6 +1878,47 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
     info: info('game.crate', 'Spawn Crate', 'crate [n] [x y] [wood|metal|stone] [small|large] [--target ...]', 'Drop rigid-body test crates (boxes that fall, tumble, collide; large ones resist kicks/blasts and shatter).', 'game'),
     run: (ctx, args) => spawnRigidTest(ctx, args, 'crate'),
     complete: (_ctx, req) => commandTargetCompletions(req),
+  });
+
+  add({
+    name: 'grow',
+    info: info('game.grow', 'Grow Plant', 'grow <species> [x y] [--pods glow|thirsty|none] [--height n] [--floor bellows|rot|cistern|kiln] [--seed n]',
+      'Grow a real-cell plant (trunk/leaf/seed cells) standing on the ground in front of you, or at x y (its foot). Cut its base to fell it.', 'game'),
+    run: (ctx, args) => {
+      const species = args[0] as FloraSpecies | undefined;
+      if (!species || !(FLORA_SPECIES as readonly string[]).includes(species)) {
+        return result(false, `Usage: grow <${FLORA_SPECIES.join('|')}> [x y] [--pods glow|thirsty|none] [--height n]`, { code: 'usage' });
+      }
+      const flag = (name: string): string | undefined => {
+        const i = args.indexOf(name);
+        return i >= 0 ? args[i + 1] : undefined;
+      };
+      const positional = args.slice(1).filter((a, i, all) => !a.startsWith('--') && !(i > 0 && all[i - 1].startsWith('--')));
+      let x = Math.floor(ctx.player.x + ctx.player.facing * 24);
+      let y = Math.floor(ctx.player.y);
+      if (positional.length >= 2) {
+        const px = resolveRelativeCoord(positional[0], ctx.player.x);
+        if (typeof px !== 'number') return px;
+        const py = resolveRelativeCoord(positional[1], ctx.player.y);
+        if (typeof py !== 'number') return py;
+        x = px; y = py;
+      } else if (species !== 'hangingroot' && species !== 'kelp' && species !== 'lilypad') {
+        const g = groundAt(ctx.world, x, y - 30, y + 60);
+        if (g >= 0) y = g;
+      }
+      const podsArg = flag('--pods');
+      const heightArg = Number(flag('--height'));
+      const seedArg = Number(flag('--seed'));
+      const plant = plantFlora(ctx.world, species, x, y, new Rng(Number.isFinite(seedArg) ? seedArg : (x * 73856093) ^ (y * 19349663) ^ ctx.state.frameCount), {
+        pods: podsArg === 'none' ? null : podsArg === 'glow' || podsArg === 'thirsty' ? podsArg : undefined,
+        height: Number.isFinite(heightArg) && heightArg > 0 ? heightArg : undefined,
+        floor: (flag('--floor') as FloraFloor | undefined),
+      });
+      if (plant) ctx.flora?.noteGrowth(plant.x0, plant.y0, plant.x1, plant.y1);
+      if (!plant) return result(false, `No room to grow a ${species} at ${x},${y}.`, { code: 'no-room' });
+      return result(true, `Grew a ${species} at ${x},${y}: ${plant.trunk} wood, ${plant.leaves} leaves, ${plant.seeds} seeds.`, { plant });
+    },
+    complete: (_ctx, req) => req.completingArg === 0 ? matching([...FLORA_SPECIES], currentToken(req)) : [],
   });
 
   add({

@@ -602,6 +602,11 @@ void main() {
         // whole meadow leans together) instead of sitting dead-flat.
         float living = 0.94 + sin(uPhaseSway + uWind + float(wx) * 0.13 + float(wy) * 0.29) * 0.08;
         g *= living;
+      } else if (type == ${Cell.Leaf}) {
+        // FLORA canopy rustle: a breeze wave rolls ACROSS the leaves (all
+        // channels, so it reads as light moving through foliage). CPU mirror.
+        float rustle = 0.9 + sin(uPhaseSway + uWind * 1.6 + float(wx) * 0.19 - float(wy) * 0.11) * 0.1;
+        r *= rustle; g *= rustle; b *= rustle * 0.96;
       }
 
       float scalar = texelFetch(uLut, ivec2(type, 0), 0).r;
