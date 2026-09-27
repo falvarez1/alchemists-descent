@@ -29,6 +29,11 @@ const FIRE_IGNITE_CHANCE = 0.03; // per Fire cell, per sample
 const LAVA_IGNITE_CHANCE = 0.16; // per Lava cell, per sample — a furnace next to open flame
 const OIL_IGNITE_MULT = 5; // an oiled body goes up fast
 const IGNITE_HOT_ENOUGH = 1; // accumulated heat ≥ this ignites with certainty
+/** Ticks a fresh catch burns (an oiled body burns longer); refreshed while in the flames. */
+export const IGNITE_TICKS = 90;
+export const IGNITE_OILED_TICKS = 300;
+/** Burning damage per status sample before any per-body scale. */
+const BURN_DAMAGE = 0.12;
 
 interface StatusBody {
   x: number;
@@ -65,6 +70,11 @@ export interface BodyCellSample {
 export interface StatusSampleOptions {
   toxicScale?: number;
   healiumScale?: number;
+  /** Multiplies the burning status's damage (creatures burn harder than the alchemist). */
+  burnScale?: number;
+  /** Ticks a fresh catch burns (default IGNITE_TICKS / IGNITE_OILED_TICKS). */
+  igniteTicks?: number;
+  igniteOiledTicks?: number;
 }
 
 export interface StatusSampleResult {
@@ -112,13 +122,20 @@ export function createDefaultStatus(): EntityStatus {
  * no-op for fire-immune bodies. Shared by passive exposure (sampleAndTickStatus)
  * and direct splash hits so the two stay consistent.
  */
-export function rollCatchFire(status: EntityStatus, fireCells: number, lavaCells: number, immune = false): boolean {
+export function rollCatchFire(
+  status: EntityStatus,
+  fireCells: number,
+  lavaCells: number,
+  immune = false,
+  igniteTicks = IGNITE_TICKS,
+  igniteOiledTicks = IGNITE_OILED_TICKS,
+): boolean {
   if (immune) return false;
   const heat = (fireCells * FIRE_IGNITE_CHANCE + lavaCells * LAVA_IGNITE_CHANCE) * (status.oiled > 0 ? OIL_IGNITE_MULT : 1);
   if (heat <= 0) return status.burning > 0;
   if (status.burning > 0 || heat >= IGNITE_HOT_ENOUGH || entityRandom() < heat) {
     // staying in the flames refreshes the burn; a fresh catch lights it.
-    status.burning = status.oiled > 0 ? 300 : 90;
+    status.burning = status.oiled > 0 ? igniteOiledTicks : igniteTicks;
     return true;
   }
   return false;
@@ -297,7 +314,7 @@ export function sampleAndTickStatus(
   if (sample.oil >= 3 && st.wet === 0 && !immune?.oiled) st.oiled = 600;
   // CATCH FIRE (percentage-based): hotter flame + more cells + oil all raise the
   // per-sample odds, and sustained exposure re-rolls until it catches.
-  if (!immune?.burning) rollCatchFire(st, sample.fire, sample.lava);
+  if (!immune?.burning) rollCatchFire(st, sample.fire, sample.lava, false, options.igniteTicks, options.igniteOiledTicks);
   if (sample.nitrogen >= 2 && !immune?.frozen) st.frozen = Math.max(st.frozen, 100);
   // Touching a live conductor electrocutes for 1-2s. While still in the current
   // it tops back up (decays to ~1s, re-rolls), so a body stuck to charged metal
@@ -430,7 +447,7 @@ export function sampleAndTickStatus(
   }
 
   const shock = ctx.params.global.shockDamage;
-  const burnDamage = st.burning > 0 ? 0.12 : 0;
+  const burnDamage = st.burning > 0 ? BURN_DAMAGE * (options.burnScale ?? 1) : 0;
   const shockDamage = (st.electrified > 0 ? shock * (st.wet > 0 ? SHOCK_WET_MULT : 1) : 0) + (justShocked ? SHOCK_ZAP : 0);
   const damage = burnDamage + shockDamage + toxicDamage;
   // Electrified bodies stutter (a mild slow), short of the deep frozen lock.

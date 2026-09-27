@@ -8,7 +8,7 @@ import { tickWeaverLocomotion, weaverKnockSync, weaverLeap } from '@/entities/we
 import { ENEMY_DEFS } from '@/content/enemyDefs';
 export { ENEMY_DEFS } from '@/content/enemyDefs';
 import { addCorpse, updateCorpses } from '@/creatures/corpses';
-import { createDefaultStatus, rollCatchFire, sampleAndTickStatus } from '@/entities/status';
+import { createDefaultStatus, rollCatchFire, sampleAndTickStatus, type StatusSampleOptions } from '@/entities/status';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { LEVIATHAN_REWARD_POOL, randomCard } from '@/content/cardRewardPools';
 import { enemyMovementPace } from '@/core/progressionPacing';
@@ -128,6 +128,16 @@ const STATUS_IMMUNE: Partial<
   // should threaten the player, not instantly shock the eel to death.
   rillback: { electrified: true },
 };
+
+/**
+ * FIRE IS A WEAPON. A creature that catches keeps burning until it is doused or
+ * burns out (5 s; 7 s oiled — was the alchemist's 1.5 s / 5 s) and burns at
+ * 2.5x the alchemist's rate: 0.30 hp per 2-tick sample = 9 hp/s (was 3.6), so a
+ * lit slime (36-48 hp) is ash in ~4-5 s unless it reaches water — and a burning
+ * body that runs sheds real fire on the way. The alchemist's own burning is a
+ * separate call and is unchanged. (Deliberate magic-number change; FEEL.md.)
+ */
+const CREATURE_BURN: StatusSampleOptions = { burnScale: 2.5, igniteTicks: 300, igniteOiledTicks: 420 };
 
 /** Per-kind TEMPERAMENT: how each foe weights the threat-aware behavior drives.
  *  - fear: how strongly sensed danger + low HP raise the fear drive (0 = fearless brute).
@@ -481,7 +491,14 @@ export class Enemies implements EnemyControlApi {
       if (cell === Cell.Lava || cell === Cell.Fire) {
         // Same percentage-based catch as passive exposure: a single lava splash
         // is much likelier to ignite than a fire splash; a stream re-rolls each hit.
-        rollCatchFire(e.status, cell === Cell.Fire ? 1 : 0, cell === Cell.Lava ? 1 : 0, STATUS_IMMUNE[e.kind]?.burning === true);
+        rollCatchFire(
+          e.status,
+          cell === Cell.Fire ? 1 : 0,
+          cell === Cell.Lava ? 1 : 0,
+          STATUS_IMMUNE[e.kind]?.burning === true,
+          CREATURE_BURN.igniteTicks,
+          CREATURE_BURN.igniteOiledTicks,
+        );
       }
       return true;
     }
@@ -2334,7 +2351,7 @@ export class Enemies implements EnemyControlApi {
       // touching the body ARE the status — damage lands straight on hp (no
       // flash), and a frozen body's horizontal speed is scaled once per sample.
       if (e.timer % 2 === 0) {
-        const eff = sampleAndTickStatus(ctx, e, def.halfW, def.h, STATUS_IMMUNE[e.kind], 2);
+        const eff = sampleAndTickStatus(ctx, e, def.halfW, def.h, STATUS_IMMUNE[e.kind], 2, CREATURE_BURN);
         if (eff.healing > 0 && e.hp < e.maxHp) {
           e.hp = Math.min(e.maxHp, e.hp + eff.healing);
           if (ctx.state.frameCount % 10 === 0) {
