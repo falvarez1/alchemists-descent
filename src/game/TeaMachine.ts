@@ -8,6 +8,7 @@ import { BATH_TRIP_WATER, TEA, TEA_BACKUP, TEA_BODIES, TEA_COMPLETE_STAGE, TEA_F
   type TeaValve, stampTeaMachine, teaRect } from '@/world/teaMachine';
 import { pullTeaValve } from '@/game/TeaMachineLinkages';
 import { attractElectromagnet, generateFromDrop } from '@/entities/Energy';
+import { teaStageSfx } from '@/content/audio/sfxCues';
 
 /** Title and caption for each director stage (indexed by TEA_STAGE). */
 const ACTS: ReadonlyArray<readonly [string, string]> = [
@@ -144,7 +145,7 @@ export class TeaMachine {
       world.replaceCellAt(i, Cell.Fire, fireColor()); world.life[i] = 240;
     }
     this.ctx.particles.burst(x, y, 8, null, () => 0xffd27a, 1.6, { glow: 2.2, grav: .08 });
-    this.ctx.audio.at(x, y, () => this.ctx.audio.zap());
+    this.ctx.audio.sfx('tea.striker', x, y);
   }
 
   /** The west-most unburnt powder of a fuse — where a re-strike belongs. */
@@ -164,7 +165,7 @@ export class TeaMachine {
     s.stage++; s.stageTicks = 0; s.assists = 0; s.faultTicks = 0;
     this.ctx.telemetry.count(`tea.stage${s.stage}`);
     const f = this.focusX(s);
-    this.ctx.audio.at(f, 200, () => this.ctx.audio.lever());
+    this.ctx.audio.sfx(teaStageSfx(s.stage), f, 200);
   }
 
   /** A pristine engine: nothing released, nothing burnt, every plate home. */
@@ -323,7 +324,7 @@ export class TeaMachine {
     if (!b) return;
     this.ctx.rigidBodies.applyImpulse(b, ix, iy);
     this.ctx.particles.burst(b.x, b.y, 6, null, () => 0xe8c58a, 1.2, { glow: 1.2, grav: .05 });
-    this.ctx.audio.at(b.x, b.y, () => this.ctx.audio.lever());
+    this.ctx.audio.sfx('tea.advance', b.x, b.y);
   }
 
   private check(s: TeaMachineState): void {
@@ -379,7 +380,7 @@ export class TeaMachine {
         s.faultTicks = (s.faultTicks ?? 0) + 1;
         if (s.faultTicks === KICK_BACKUP_TICKS && persuader) {
           ctx.rigidBodies.applyMomentumAt(persuader, 60, -12, persuader.x - 3, persuader.y);
-          ctx.audio.at(persuader.x, persuader.y, () => ctx.audio.lever());
+          ctx.audio.sfx('tea.knocker', persuader.x, persuader.y);
           ctx.particles.burst(persuader.x - 4, persuader.y, 10, null, () => 0xffe2a0, 1.5, { glow: 1.6, grav: .06 });
           ctx.events.emit('toast', { text: 'The clockwork knocker gives the Persuader a whack.' });
         }
@@ -455,7 +456,7 @@ export class TeaMachine {
           // The last powder charge can legitimately tear the thin receiver gate
           // away before the counterweight finishes its stroke: an open path.
           this.advance(s); s.completed = true;
-          ctx.audio.gong(); ctx.events.emit('objectiveChanged', { text: 'Collect the brass bell from the engine receiver.' });
+          ctx.audio.sfx('tea.served'); ctx.events.emit('objectiveChanged', { text: 'Collect the brass bell from the engine receiver.' });
           break;
         }
         this.watchdog(s, 300, n => {
@@ -487,12 +488,12 @@ export class TeaMachine {
       if (ctx.world.type(x, pan.y + pan.h - 1) === Cell.Metal) ctx.world.setChargeAt(ctx.world.idx(x, pan.y + pan.h - 1), chargeDeposit(ctx, 60));
     }
     ctx.particles.burst(pan.x + pan.w / 2, pan.y + pan.h, 16, null, () => 0xffc96a, 1.8, { glow: 2.4, grav: .1 });
-    ctx.audio.at(pan.x, pan.y, () => ctx.audio.zap());
+    ctx.audio.sfx('tea.cap', pan.x, pan.y);
     if (toast) ctx.events.emit('toast', { text: toast });
   }
 
   private fault(text: string): void {
-    this.ctx.audio.at(this.focusX(this.runtime!.living!.tea!), 220, () => this.ctx.audio.hollowKnock());
+    this.ctx.audio.sfx('tea.fault', this.focusX(this.runtime!.living!.tea!), 220);
     this.ctx.telemetry.count('tea.fault');
     if (!this.inHall()) this.ctx.events.emit('toast', { text: `Bell & Tea Engine: ${text}` });
   }

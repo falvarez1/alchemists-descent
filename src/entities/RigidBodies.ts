@@ -476,7 +476,7 @@ export class RigidBodies implements RigidBodiesApi {
     }
     if (!best) return;
     this.held = best;
-    ctx.audio.tone(320, 220, 0.06, 'square', 0.08); // grab snap
+    ctx.audio.sfx('body.grab'); // grab snap
   }
 
   /** Telekinesis: lift the body the MOUSE CURSOR is on (within reach), regardless
@@ -513,7 +513,7 @@ export class RigidBodies implements RigidBodiesApi {
     if (mass > TELE_MASS_MAX) return false;
     if (Math.hypot(target.x - p.x, target.y - (p.y - 8)) > TELE_REACH) return false;
     this.held = target;
-    ctx.audio.tone(440, 200, 0.08, 'sine', 0.07); // telekinetic lift
+    ctx.audio.sfx('body.lift'); // telekinetic lift
     return true;
   }
 
@@ -531,14 +531,14 @@ export class RigidBodies implements RigidBodiesApi {
       rb.setAngvel((entityRandom() - 0.5) * 6, true);
       held.vx = vx / PF;
       held.vy = vy / PF;
-      ctx.audio.tone(210, 90, 0.1, 'square', 0.09); // throw
+      ctx.audio.sfx('body.throw'); // throw
     } else {
       // gentle set-down: kill the tracking velocity so it just falls where it floats
       rb.setLinvel({ x: 0, y: 0 }, true);
       rb.setAngvel(0, true);
       held.vx = 0;
       held.vy = 0;
-      ctx.audio.tone(180, 80, 0.07, 'sine', 0.06); // soft drop
+      ctx.audio.sfx('body.drop'); // soft drop
     }
   }
 
@@ -644,7 +644,7 @@ export class RigidBodies implements RigidBodiesApi {
         12 + ((entityRandom() * 8) | 0),
         { grav: 0.05 },
       );
-      ctx.audio.tone(110 + this.ripCharge * 6, 45, 0.04, 'square', 0.05);
+      ctx.audio.sfx('body.rip', undefined, undefined, { pitch: this.ripCharge * 0.25 });
     }
     if (this.ripCharge >= RIP_CHARGE_FRAMES) {
       this.ripCharge = 0;
@@ -691,7 +691,7 @@ export class RigidBodies implements RigidBodiesApi {
       restitution: 0.15,
     });
     this.held = body; // the torn plank levitates straight to the hand
-    ctx.audio.tone(90, 170, 0.12, 'sawtooth', 0.1); // timber tearing free
+    ctx.audio.sfx('body.tear'); // timber tearing free
     ctx.particles.burst(cx, cy, 12, null, () => color, 1.1, { grav: 0.05 });
   }
 
@@ -734,7 +734,7 @@ export class RigidBodies implements RigidBodiesApi {
           body.vx *= 0.55;
           body.vy *= 0.55;
         }
-        ctx.audio.tone(150, 130, 0.08, 'square', 0.12);
+        ctx.audio.sfx('body.bash', body.x, body.y);
         break; // one foe per body per cooldown
       }
     }
@@ -828,7 +828,7 @@ export class RigidBodies implements RigidBodiesApi {
       this.applyImpulse(piece, (dx / dd) * 3.5, (dy / dd) * 3.5 - 1.5);
     }
     this.ctx.particles.burst(bx, by, 18, null, () => packRGB(160, 140, 110), 2.4, { grav: 0.05 });
-    this.ctx.audio.noiseBurst(0.14, 300, 0.1);
+    this.ctx.audio.sfx(`body.smash.${mat ?? 'wood'}`, bx, by);
   }
 
   /** A crate STOMPED to bits: remove it and pulverize it into its rubble cells +
@@ -859,7 +859,7 @@ export class RigidBodies implements RigidBodiesApi {
       }
     }
     this.ctx.particles.burst(bx, by, 22, null, () => packRGB(170, 140, 105), 2.8, { grav: 0.06 });
-    this.ctx.audio.noiseBurst(0.16, 250, 0.12);
+    this.ctx.audio.sfx(`body.smash.${body.material ?? 'wood'}`, bx, by);
   }
 
   /** Queue an explosive barrel to detonate next tick (idempotent). */
@@ -955,6 +955,7 @@ export class RigidBodies implements RigidBodiesApi {
 
     const strength = Math.min(1, Math.max(0.25, (delta - BODY_IMPACT_NOISE_MIN_DELTA) / 4));
     body.impactNoiseCd = BODY_IMPACT_NOISE_COOLDOWN;
+    ctx.audio.sfx(`body.impact.${body.material ?? 'wood'}`, body.x, body.y, { gain: strength });
     ctx.events.emit('groundImpact', {
       x: body.x,
       y: body.y,
@@ -1078,7 +1079,7 @@ export class RigidBodies implements RigidBodiesApi {
           if (this.scanFootprint(world, body, 1, isHotCell)) {
             // explosive barrels burn a short fuse, then blow instead of charring
             body.burnT = (body.payload === 'explosive' ? BARREL_FUSE : BURN_FRAMES) + Math.floor(entityRandom() * 40);
-            ctx.audio.noiseBurst(0.1, 480, 0.05);
+            ctx.audio.sfx('mat.ignite', body.x, body.y, { gain: 0.45 });
           }
         } else {
           body.burnT--;
@@ -1197,7 +1198,7 @@ export class RigidBodies implements RigidBodiesApi {
         { grav: 0.08, glow: 0.4 },
       );
     }
-    ctx.audio.bubble(body.x, body.y);
+    ctx.audio.splash(1, body.x, body.y);
   }
 
   /** True if any cell within `margin` of the body's footprint passes `test`. */
@@ -1255,7 +1256,7 @@ export class RigidBodies implements RigidBodiesApi {
     }
     ctx.particles.burst(body.x, body.y, 22, null, smokeColor, 2.6, { grav: -0.02 });
     ctx.particles.burst(body.x, body.y, 12, null, fireColor, 2.0, { glow: 2.6, grav: -0.01 });
-    ctx.audio.noiseBurst(0.14, 220, 0.08);
+    ctx.audio.sfx('body.burnout', body.x, body.y);
   }
 
   /** The dig beam (if active this frame) shoves bodies in its path, mass-aware. */

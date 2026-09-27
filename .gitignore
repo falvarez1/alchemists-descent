@@ -26,6 +26,8 @@ servers/authorlink/.wrangler/
 
 # ElevenLabs generation cache (paid responses; regenerable) and any local key files
 scripts/audio/.cache/
+# audition-page reject lists (inputs to scripts/audio/gen-sfx.mjs, consumed on use)
+scripts/audio/sfx-rejects*.json
 .env
 .env.*
 *api-key*.txt

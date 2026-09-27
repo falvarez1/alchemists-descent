@@ -15,7 +15,7 @@ function fixture() {
   player.legClub = { durability: 4, owner: 'original-weaver', length: 34, angle: 0, cooldown: 0, swingT: 0 };
   const ctx = { player, world: new World(300, 180), state: { mode: 'play', frameCount: 1 },
     input: { mouse: { x: 230, y: 85 } }, levels: { current: { pickups } }, enemies: [], projectiles: [],
-    audio: { noiseBurst: vi.fn(), pickup: vi.fn() }, particles: { burst: vi.fn() },
+    audio: { sfx: () => undefined, creature: () => undefined, noiseBurst: vi.fn(), pickup: vi.fn() }, particles: { burst: vi.fn() },
     telemetry: { count: vi.fn() }, events: { emit: vi.fn() }, fx: { hitstop: 0 },
     enemyCtl: { damage: vi.fn((e: Enemy, n: number) => { e.hp -= n; }) },
   } as unknown as Ctx;

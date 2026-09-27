@@ -271,12 +271,12 @@ describe('faults, backups and ordering', () => {
 
   it('treats a blast-open bell gate as a successful fail-open handoff', () => {
     const { ctx, rigid, world, director, tea } = directorFixture();
-    ctx.audio.gong = vi.fn();
+    ctx.audio.sfx = vi.fn();
     const s = tea(); s.stage = S.BELL; s.stageTicks = 0;
     teaRect(world, TEA.bellGate, Cell.Empty);
     director.update();
     expect(s.completed).toBe(true); expect(s.stage).toBe(TEA_COMPLETE_STAGE);
-    expect(ctx.audio.gong).toHaveBeenCalledOnce();
+    expect(ctx.audio.sfx).toHaveBeenCalledWith('tea.served');
     director.dispose(); rigid.dispose();
   });
 

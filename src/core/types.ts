@@ -7,6 +7,7 @@ import type { CreatureExpression } from '@/creatures/expression';
 import type { CreatureRig } from '@/creatures/rig/types';
 import type { PlayerCostume } from '@/entities/playerCostume';
 import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/run';
+import type { CreatureSfxAction, SfxId } from '@/content/audio/sfxCues';
 
 /* ============================================================
  * Entity data
@@ -1331,6 +1332,19 @@ export type VolumeChannel = 'master' | 'effects' | 'ambience' | 'music' | 'voice
 /** Short procedural cues for run events (audio/Stingers.ts subscribes them). */
 export type AudioStinger = 'alchemy' | 'phialCrack' | 'phialFill' | 'victory' | 'fallen' | 'shutter';
 export interface AudioStingerOptions { chain?: number; cause?: string; x?: number; y?: number }
+/** Per-play options for a sampled cue (`AudioApi.sfx`). */
+export interface SfxOptions {
+  /** Level multiplier on top of the cue's mix level. */
+  gain?: number;
+  /** Pitch offset in semitones (on top of the cue's random spread). */
+  pitch?: number;
+  /** Playback-rate multiplier (pitch and speed together). */
+  rate?: number;
+  /** Start delay in seconds. */
+  delay?: number;
+  /** Sustained (loop) cues: which instance this call keeps alive; default the cue id. */
+  key?: string;
+}
 
 /**
  * World-positioned presets take an optional trailing (x, y) in cells: when
@@ -1454,6 +1468,16 @@ export interface AudioApi {
   stinger(kind: AudioStinger, opts?: AudioStingerOptions): void;
   /** Set a player volume slider (0..1), applied live. */
   setVolume(channel: VolumeChannel, value: number): void;
+  /**
+   * A named sampled sound effect (content/audio/sfxCues.ts). With (x, y) it is
+   * placed in the world at the cue's range; without, it plays at the current
+   * placement (inside `at()`, where the caller put it; else centred). A loop
+   * cue SUSTAINS: keep calling to keep it alive, stop calling and it fades.
+   * Falls back to the procedural voice until its samples have loaded.
+   */
+  sfx(id: SfxId, x?: number, y?: number, opts?: SfxOptions): void;
+  /** A creature's own voice for an action (alert, hurt, death, idle, step…), at the current placement. */
+  creature(kind: EnemyKind, action: CreatureSfxAction): void;
 }
 
 /** The streamed score (audio/MusicDirector). Absent in small test contexts. */

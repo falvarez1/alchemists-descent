@@ -130,7 +130,7 @@ export class Flask implements FlaskApi {
       material: s.material,
       count: s.count,
     };
-    ctx.audio.tone(520, 320, 0.08, 'sine', 0.06);
+    ctx.audio.sfx('flask.throw');
     const thrownMaterial = s.material;
     const thrownAmount = s.count;
     if (thrownMaterial !== null) ctx.telemetry.count('flask.throw.' + this.materialName(ctx, thrownMaterial));
@@ -147,7 +147,7 @@ export class Flask implements FlaskApi {
   private refuse(ctx: Ctx): void {
     if (ctx.state.frameCount - this.lastRefuse < 30) return;
     this.lastRefuse = ctx.state.frameCount;
-    ctx.audio.dryFire();
+    ctx.audio.sfx('flask.dry');
     ctx.events.emit('flaskDry');
   }
 
@@ -198,7 +198,7 @@ export class Flask implements FlaskApi {
       ctx.particles.spawn(px, py, (dx / d) * spd, (dy / d) * spd, null, colorFn(),
         12 + Math.floor(entityRandom() * 8), { grav: 0, glow: 1.6 });
     }
-    if (ctx.state.frameCount % 8 === 0) ctx.audio.noiseBurst(0.08, 900, 0.05, true);
+    if (ctx.state.frameCount % 8 === 0) ctx.audio.sfx('flask.siphon.loop');
     ctx.telemetry.count('flask.siphon.' + this.materialName(ctx, s.material), taken);
     ctx.events.emit('flaskUsed', { verb: 'siphon', material: s.material, amount: taken });
   }
@@ -240,7 +240,7 @@ export class Flask implements FlaskApi {
       );
       if (!infinite) s.count--;
     }
-    if (ctx.state.frameCount % 8 === 0) ctx.audio.noiseBurst(0.06, 600, 0.035);
+    if (ctx.state.frameCount % 8 === 0) ctx.audio.sfx('flask.pour.loop');
     ctx.telemetry.count('flask.pour.' + this.materialName(ctx, material), n);
     if (!infinite && s.count === 0) s.material = null;
     ctx.events.emit('flaskUsed', { verb: 'pour', material, amount: n });
@@ -298,8 +298,7 @@ export class Flask implements FlaskApi {
       ctx.particles.spawn(ix, iy, Math.cos(a) * sp, Math.sin(a) * sp - 0.6, null, GLASS_COLOR,
         25 + Math.floor(entityRandom() * 15), { glow: 1.5 });
     }
-    ctx.audio.tone(1400, 300, 0.12, 'triangle', 0.18);
-    ctx.audio.noiseBurst(0.12, 2600, 0.12, true);
+    ctx.audio.sfx('flask.shatter', ix, iy);
     if (material === null || remaining === 0) return;
 
     const colorFn = COLOR_FN[material];

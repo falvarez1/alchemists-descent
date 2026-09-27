@@ -65,7 +65,7 @@ describe('projectile trigger payloads', () => {
         spawn: () => undefined,
         burst: () => undefined,
       },
-      audio: {
+      audio: { sfx: () => undefined, creature: () => undefined,
         hollowKnock: () => undefined,
         implode: () => undefined,
       },
@@ -134,7 +134,7 @@ describe('projectile trigger payloads', () => {
       player: { dead: false, crawling: false },
       params: { spells: { bomb: { explosionRadius: 10 } } },
       particles: { spawn: () => undefined, burst: () => undefined },
-      audio: { hollowKnock: () => undefined, implode: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, hollowKnock: () => undefined, implode: () => undefined },
       events: { emit: () => undefined },
       explosions: {
         trigger: (x: number, y: number, r: number, options?: { enemyDamageMul?: number }) => {
@@ -178,7 +178,7 @@ describe('projectile trigger payloads', () => {
       player: { dead: false, crawling: false },
       params: { spells: {} },
       particles: { spawn: () => undefined, burst: () => undefined },
-      audio: { hollowKnock: () => undefined, implode: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, hollowKnock: () => undefined, implode: () => undefined },
       events: { emit: () => undefined },
       explosions: {
         trigger: (x: number, y: number, r: number, options?: { enemyDamageMul?: number }) => {
@@ -230,7 +230,7 @@ describe('projectile trigger payloads', () => {
         spawn: () => undefined,
         burst: () => undefined,
       },
-      audio: {
+      audio: { sfx: () => undefined, creature: () => undefined,
         hollowKnock: () => undefined,
         implode: () => undefined,
       },
@@ -294,7 +294,7 @@ describe('projectile trigger payloads', () => {
         spawn: () => undefined,
         burst: () => undefined,
       },
-      audio: {
+      audio: { sfx: () => undefined, creature: () => undefined,
         tone: () => undefined,
         hollowKnock: () => undefined,
       },
@@ -401,7 +401,7 @@ describe('projectile trigger payloads', () => {
         spawn: () => undefined,
         burst: () => undefined,
       },
-      audio: {
+      audio: { sfx: () => undefined, creature: () => undefined,
         hollowKnock: () => undefined,
         implode: () => undefined,
       },
@@ -493,7 +493,7 @@ describe('projectile trigger payloads', () => {
         spawn: () => undefined,
         burst: () => undefined,
       },
-      audio: {
+      audio: { sfx: () => undefined, creature: () => undefined,
         tone: () => undefined,
         hollowKnock: () => undefined,
       },
@@ -555,7 +555,7 @@ describe('projectile trigger payloads', () => {
         spawn: () => undefined,
         burst: () => undefined,
       },
-      audio: {
+      audio: { sfx: () => undefined, creature: () => undefined,
         hollowKnock: () => undefined,
         implode: () => undefined,
       },
@@ -702,7 +702,7 @@ describe('projectile trigger payloads', () => {
           spawn: () => undefined,
           burst: () => undefined,
         },
-        audio: {
+        audio: { sfx: () => undefined, creature: () => undefined,
           hollowKnock: () => undefined,
           implode: () => undefined,
           tone: () => undefined,
@@ -1027,7 +1027,7 @@ function modifierCtx(
       spawn: () => undefined,
       burst: () => undefined,
     },
-    audio: {
+    audio: { sfx: () => undefined, creature: () => undefined,
       hollowKnock: () => undefined,
       implode: () => undefined,
       tone: () => undefined,

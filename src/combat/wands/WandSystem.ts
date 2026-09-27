@@ -381,7 +381,7 @@ export class WandSystem implements WandsApi {
       ctx.player.vy = Math.min(ctx.player.vy ?? 0, -2.2);
       ctx.player.grounded = false;
     }
-    ctx.audio.dig();
+    ctx.audio.sfx('player.staff');
     ctx.particles.burst(tip.x + ax * 8, tip.y + ay * 8, 4, Cell.Smoke, smokeColor, 0.5);
     return true;
   }
@@ -427,14 +427,14 @@ export class WandSystem implements WandsApi {
         ctx.projectiles.push(p);
         this.markProjectile(ctx, p, action);
       }
-      ctx.audio.zap();
+      ctx.audio.sfx('spell.spark.cast');
     } else if (action.card === 'bomb') {
       const a = jitter();
       const v = sp.bomb.velocityForce! * action.speedMul;
       const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'bomb', life: Math.floor(sp.bomb.fuseTicks!), age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
-      ctx.audio.noiseBurst(0.06, 700, 0.05);
+      ctx.audio.sfx('spell.bomb.cast');
     } else if (action.card === 'lightning') {
       // dmgMul scaling: cast the arc floor(dmgMul) times, max 2.
       const casts = Math.min(2, Math.max(1, Math.floor(action.dmgMul)));
@@ -467,7 +467,7 @@ export class WandSystem implements WandsApi {
       const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'warp', life: PROJECTILE_LIFE.warp, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
-      ctx.audio.zap();
+      ctx.audio.sfx('spell.warp.cast');
     } else if (action.card === 'blackhole') {
       // One charging singularity at a time (original rule) — extra casts fizzle.
       if (ctx.input.activeChargingBlackHole) return;
@@ -485,7 +485,7 @@ export class WandSystem implements WandsApi {
         ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd, Cell.Acid, acidColor(),
           30 + Math.floor(entityRandom() * 20), { grav: 0.05, glow: 0.8 });
       }
-      if (ctx.state.frameCount % 6 === 0) ctx.audio.noiseBurst(0.1, 1400, 0.07, true);
+      if (ctx.state.frameCount % 6 === 0) ctx.audio.sfx('spell.vitriol.loop');
     } else if (action.card === 'cryojet') {
       // Stream card: real nitrogen cells, tuned for bridge-making over pools.
       const count = 5 + Math.max(0, Math.round(action.dmgMul) - 1) * 3;
@@ -495,7 +495,7 @@ export class WandSystem implements WandsApi {
         ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd - 0.12, Cell.Nitrogen, nitrogenColor(),
           34 + Math.floor(entityRandom() * 22), { grav: 0.08, glow: 0.9, deposit: true });
       }
-      if (ctx.state.frameCount % 6 === 0) ctx.audio.noiseBurst(0.08, 1900, 0.06, true);
+      if (ctx.state.frameCount % 6 === 0) ctx.audio.sfx('spell.cryojet.loop');
     } else if (action.card === 'aquajet') {
       // Stream card: real water cells. Pools douse fire (fire + water -> steam in
       // the sim), flood basins, and leave foes WET — priming critwet / electric.
@@ -506,21 +506,21 @@ export class WandSystem implements WandsApi {
         ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd, Cell.Water, waterColor(),
           34 + Math.floor(entityRandom() * 22), { grav: 0.12, glow: 0.35, deposit: true });
       }
-      if (ctx.state.frameCount % 6 === 0) ctx.audio.splash(0.5);
+      if (ctx.state.frameCount % 6 === 0) ctx.audio.sfx('spell.aquajet.loop');
     } else if (action.card === 'frostshard') {
       const a = jitter();
       const v = 11 * action.speedMul;
       const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'iceshard', life: PROJECTILE_LIFE.iceshard, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
-      ctx.audio.tone(1100, 500, 0.08, 'sine', 0.09);
+      ctx.audio.sfx('spell.frostshard.cast');
     } else if (action.card === 'icelance') {
       const a = jitter();
       const v = 16 * action.speedMul;
       const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'icelance', life: PROJECTILE_LIFE.icelance, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
-      ctx.audio.tone(1500, 700, 0.1, 'triangle', 0.1);
+      ctx.audio.sfx('spell.icelance.cast');
     } else if (action.card === 'wisp') {
       // dmgMul >= 2 releases a pair of seekers.
       const seekers = action.dmgMul >= 2 ? 2 : 1;
@@ -531,7 +531,7 @@ export class WandSystem implements WandsApi {
         ctx.projectiles.push(p);
         this.markProjectile(ctx, p, action);
       }
-      ctx.audio.tone(700, 1200, 0.1, 'sine', 0.07);
+      ctx.audio.sfx('spell.wisp.cast');
     } else if (action.card === 'meteor') {
       // Lobbed in a heavy arc — the upward bias makes the descent count.
       const a = jitter();
@@ -539,7 +539,7 @@ export class WandSystem implements WandsApi {
       const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 2.2, type: 'meteor', life: PROJECTILE_LIFE.meteor, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
-      ctx.audio.tone(120, 40, 0.4, 'sawtooth', 0.18);
+      ctx.audio.sfx('spell.meteor.cast');
     } else if (action.card === 'conjure') {
       // Raise a disc of real stone at the cursor, clamped to casting range 130.
       const target = targetPoint();
@@ -569,7 +569,7 @@ export class WandSystem implements WandsApi {
         }
       }
       ctx.particles.burst(cxx, cyy - 4, 8, null, stoneColor, 1.2, { grav: 0.08 });
-      ctx.audio.tone(180, 60, 0.18, 'triangle', 0.2);
+      ctx.audio.sfx('spell.conjure', cxx, cyy);
     } else if (action.card === 'vitrify') {
       // The Gilded Vault's prize: transmute LIQUID into load-bearing glass
       // at the cursor (the conjure grammar, liquid-only — air stays air, so
@@ -603,8 +603,7 @@ export class WandSystem implements WandsApi {
         }
       }
       ctx.particles.burst(cxx, cyy - 3, 10, null, glassColor, 1.1, { grav: 0.06 });
-      ctx.audio.tone(1250, 300, 0.14, 'triangle', 0.14);
-      ctx.audio.tone(640, 90, 0.2, 'sine', 0.1);
+      ctx.audio.sfx('spell.vitrify', cxx, cyy);
     } else if (action.card === 'emberstorm') {
       // A fountain of real embers that smoulder where they land.
       const count = 16 + Math.max(0, Math.round(action.dmgMul) - 1) * 6;
@@ -620,7 +619,7 @@ export class WandSystem implements WandsApi {
           { grav: 0.06, glow: 1.5 },
         );
       }
-      ctx.audio.flame();
+      ctx.audio.sfx('spell.emberstorm');
     }
   }
 

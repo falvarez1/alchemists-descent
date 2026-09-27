@@ -57,7 +57,8 @@ function softClipCurve(): Float32Array<ArrayBuffer> {
 }
 
 // ===================== Procedural Audio Engine =====================
-export class AudioEngine implements AudioApi, StreamHost {
+// The sampled layer (audio/SfxEngine.ts) completes the API with `sfx` and `creature`.
+export class AudioEngine implements Omit<AudioApi, 'sfx' | 'creature'>, StreamHost {
   /** The context voices are built on: the live one, or an offline one during `debugRenderOffline`. */
   private audioCtx: BaseAudioContext | null = null;
   /** The real output context (suspend/resume/close live here). */
@@ -868,6 +869,48 @@ export class AudioEngine implements AudioApi, StreamHost {
     this.hit(0.012, 0.05, 1400, 0.035, false, 1.6); // spring whirr
     this.hit(0.075, 0.016, 2200, 0.12);
     this.note({ freq: 140, endFreq: 90, dur: 0.05, vol: 0.05, delay: 0.075 });
+  }
+
+  // ---------------------------------------------------- extension surface
+  //
+  // The sampled layer (audio/SfxEngine.ts) plays through this same graph,
+  // placement and probe trace. Additive and read-mostly on purpose: the
+  // procedural voices above stay the fail-open fallback.
+
+  /** The context voices are built on right now (live, or offline during a probe render). */
+  protected get voiceContext(): BaseAudioContext | null { return this.soundOn ? this.audioCtx : null; }
+  /** The live output context (null before the first gesture or after dispose). */
+  protected get outputContext(): AudioContext | null { return this.liveCtx; }
+  /** A bus input node of the current graph. */
+  protected busNode(bus: AudioBus): GainNode | null { return this.graph?.buses[bus] ?? null; }
+  /** The placement a voice created now would get (inside `at()`, the source's; else centred). */
+  protected currentPlacement(): { pan: number; gain: number; muffleHz: number } {
+    return { pan: this.pan, gain: this.gainScale, muffleHz: this.muffleHz };
+  }
+  /** Where a source at (x, y) sits for the current listener, or null beyond `range`. */
+  protected placementAt(x: number, y: number, range: number): ReturnType<typeof placeSound> {
+    return placeSound(x - this.listenerX, y - this.listenerY, range);
+  }
+  /** Run `fn` routed to `bus` (every voice it sinks lands there). */
+  protected routeTo(bus: AudioBus, fn: () => void): void { this.on(bus, fn); }
+  /** Terminate a voice chain on the current bus with the current placement (and trace it). */
+  protected sinkVoice(head: AudioNode, nodes: AudioNode[], vol: number): void { this.sink(head, nodes, vol); }
+  /** Schedule time for a voice starting now (offline probe renders add their lead). */
+  protected startTime(): number { return this.now(); }
+  /** Run `fn` with an explicit placement (a stinger pans with its event but is never attenuated). */
+  protected placed(pan: number, gain: number, muffleHz: number, fn: () => void): void {
+    const p = this.pan, g = this.gainScale, m = this.muffleHz;
+    this.pan = pan; this.gainScale = gain; this.muffleHz = muffleHz;
+    try { fn(); } finally { this.pan = p; this.gainScale = g; this.muffleHz = m; }
+  }
+  /** Where the ears are (the camera centre). */
+  protected listenerPos(): { x: number; y: number } { return { x: this.listenerX, y: this.listenerY }; }
+  /** `setTimeout` that keeps the placement and bus `fn` was scheduled under. */
+  protected schedule(delayMs: number, fn: () => void): void { this.later(delayMs, fn); }
+  /** Record a stinger in the probe log (the sampled stinger path bypasses the procedural one). */
+  protected noteStinger(kind: AudioStinger): void {
+    if (this.stingerLog.length >= 16) this.stingerLog.shift();
+    this.stingerLog.push(kind);
   }
 
   // ------------------------------------------------------------- probing

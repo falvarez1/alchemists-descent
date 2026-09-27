@@ -3292,8 +3292,7 @@ export class Levels implements LevelsApi {
       glow: 2.2,
       grav: 0.02,
     });
-    ctx.audio.tone(660, 660, 0.22, 'sine', 0.18);
-    setTimeout(() => ctx.audio.tone(990, 990, 0.3, 'sine', 0.16), 130);
+    ctx.audio.sfx('world.waystone');
 
     ctx.events.emit('waystoneLit');
   }
