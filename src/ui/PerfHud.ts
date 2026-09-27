@@ -31,12 +31,19 @@ const COLOR_OVER = '#ef4444';
  * the ledger budgets, plus fps derived from requestAnimationFrame intervals. Hidden by
  * default; F3 toggles. Game.step feeds it via mark(phase, ms).
  *
+ * Player builds get the compact form instead: one small house-style "60 fps"
+ * tucked in the play field's top-right corner, enough for a tester to say
+ * "it's slow" without a wall of monospace budgets. The full overlay stays in
+ * authoring/dev builds (`__AUTHORING__`).
+ *
  * Fully programmatic DOM so index.html stays untouched; pointer-events
  * none so it never eats game input.
  */
 export class PerfHud {
   private root: HTMLDivElement;
   private fpsEl: HTMLSpanElement;
+  private readonly compact: boolean;
+  private lastFpsText = '';
   private headerBtn: HTMLElement | null = null;
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (e.code === 'F3') {
@@ -59,8 +66,22 @@ export class PerfHud {
   private cadence = { interval: 0, debt: 0, dropped: 0 };
   private _visible = false;
 
-  constructor() {
+  constructor(options: { compact?: boolean } = {}) {
+    this.compact = options.compact ?? !__AUTHORING__;
     const root = document.createElement('div');
+    if (this.compact) {
+      root.id = 'perf-fps';
+      root.setAttribute('aria-hidden', 'true');
+      this.fpsEl = document.createElement('span');
+      this.fpsEl.textContent = '— fps';
+      root.appendChild(this.fpsEl);
+      // Inside the play field, so it rides the canvas in the Workshop too.
+      (document.getElementById('canvas-holder') ?? document.body).appendChild(root);
+      this.root = root;
+      this.phaseEls = { sim: this.fpsEl, entities: this.fpsEl, render: this.fpsEl, compose: this.fpsEl, gl: this.fpsEl };
+      window.addEventListener('keydown', this.onKeyDown);
+      return;
+    }
     Object.assign(root.style, {
       position: 'fixed',
       top: '56px',
@@ -119,7 +140,8 @@ export class PerfHud {
 
   setVisible(visible: boolean): boolean {
     this._visible = visible;
-    this.root.style.display = this._visible ? 'block' : 'none';
+    if (this.compact) this.root.classList.toggle('shown', visible);
+    else this.root.style.display = this._visible ? 'block' : 'none';
     this.headerBtn?.classList.toggle('lit', this._visible);
     if (this._visible) this.refresh();
     return this._visible;
@@ -184,6 +206,15 @@ export class PerfHud {
 
   private refresh(): void {
     const fps = this.intervalEma > 0 ? Math.round(1000 / this.intervalEma) : 0;
+    if (this.compact) {
+      const text = fps > 0 ? `${fps} fps` : '— fps';
+      if (text !== this.lastFpsText) {
+        this.fpsEl.textContent = text;
+        this.lastFpsText = text;
+      }
+      this.root.classList.toggle('slow', fps > 0 && fps < 45);
+      return;
+    }
     this.fpsEl.textContent = `${fps} fps · ${this.tickRate.toFixed(1)} ticks/s · debt ${this.cadence.debt.toFixed(1)}ms · lost ${Math.round(this.droppedMs)}ms`;
     const labels = { sim: 'sim', entities: 'ent', render: 'rnd', compose: 'cmp', gl: 'gl' } as const;
     for (const phase of ['sim', 'entities', 'render', 'compose', 'gl'] as const) {

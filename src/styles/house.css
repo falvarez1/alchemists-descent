@@ -205,3 +205,14 @@ body.play-active #victory-overlay .vic-title { font-family: var(--house-serif); 
 /* ---------- Chart room: repeated places fold into one counted row ---------- */
 .map-place-count { color: var(--house-brass); font-weight: 600; font-variant-numeric: tabular-nums; }
 #minimap-caption, .map-caption { font-family: var(--house-sans); }
+
+/* ---------- F3 in player builds: one quiet frame counter in the play field's corner ---------- */
+#perf-fps {
+  position: absolute; top: 6px; right: 10px; z-index: 30; pointer-events: none;
+  padding: 3px 7px 4px; background: #0f1c21c7; border-right: 2px solid #9c8458;
+  font: 600 calc(10.5px * var(--text-scale, 1))/1 var(--house-sans); letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums; color: var(--house-paper-soft);
+  opacity: 0; transform: translateY(-3px); transition: opacity 0.18s ease, transform 0.18s var(--house-ease);
+}
+#perf-fps.shown { opacity: 1; transform: none; }
+#perf-fps.slow { color: #e8b39a; border-right-color: #c9785a; }
