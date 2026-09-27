@@ -5,6 +5,8 @@ import type { VirtualWorldDef } from '@/authoring/virtualWorld';
 import type { CreatureBody, CreatureMind, PlantedFoot } from '@/creatures/types';
 import type { CreatureExpression } from '@/creatures/expression';
 import type { CreatureRig } from '@/creatures/rig/types';
+import type { BossBrain } from '@/creatures/bosses/types';
+import type { IdleLife } from '@/creatures/idle';
 import type { PlayerCostume } from '@/entities/playerCostume';
 import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/run';
 import type { CreatureSfxAction, SfxId } from '@/content/audio/sfxCues';
@@ -405,6 +407,18 @@ export interface Enemy {
   body?: CreatureBody;
   /** Physical body (verlet chunks, chains, gripping legs, soft body). Tick-owned, never saved. */
   rig?: CreatureRig;
+  /** Bosses (creatures/bosses): phase, committed move and its clock, the fight's honesty ledger. */
+  boss?: BossBrain;
+  /** Ticks until a blow may stagger it again (Enemies.flinch: no stun-lock). */
+  flinchCd?: number;
+  /** Idle life (creatures/idle): the small act a resting animal is doing. Presentation only. */
+  idle?: IdleLife;
+  /** Ecology: ticks spent feeding on remains (a scavenging slime), and where it smells them. */
+  scavengeT?: number;
+  forageX?: number;
+  /** Ecology: the moth swarm a bat is flying to (creatures/ecology.mothSwarm). */
+  swarmX?: number;
+  swarmY?: number;
   /** Last hit's knockback direction and frame: the rig answers it physically (a snapped-back
    *  head, a whipped tail, a dented gel). Presentation-only, never saved. */
   hitKx?: number;
@@ -615,7 +629,9 @@ export interface Enemy {
 
 /* ---------------- Wave F: the critter layer ---------------- */
 
-export type CritterKind = 'moth' | 'firefly' | 'fish' | 'beetle' | 'fly';
+export type CritterKind = 'moth' | 'firefly' | 'fish' | 'beetle' | 'fly'
+  // Breathing Works wave 2 (WS-N): organisms with behaviour (game/organisms/*).
+  | 'glowworm' | 'puffer' | 'snapjaw' | 'isopod' | 'leech' | 'emberbeetle' | 'ashmoth';
 
 /** Harmless habitat residents; expeditions persist them independently of the camera. */
 export interface Critter {
@@ -638,6 +654,29 @@ export interface Critter {
    *  the critter fleeing — its normal steering + heavy damping are suppressed so
    *  the shove actually carries and it visibly scatters. */
   startle?: number;
+  /** Organisms (game/organisms): the cell a sessile body is rooted to — a
+   *  glow-worm's ceiling, a snapjaw's or puffer's footing. */
+  anchorX?: number;
+  anchorY?: number;
+  /** Organisms: outward surface normal at the anchor / under a crawler (unit, grid axes). */
+  nx?: number;
+  ny?: number;
+  /** Organisms: behaviour state (per-kind small integers, see game/organisms/types). */
+  state?: number;
+  /** Organisms: ticks spent in `state`. */
+  stateT?: number;
+  /** Organisms: the one animated scalar a body reads (thread length, sac inflation, jaw gape…). */
+  extent?: number;
+  /** Organisms: this individual's full extension (a glow-worm's longest thread, a snapjaw's stalk). */
+  reach?: number;
+  /** Organisms: remaining health (snapjaw, puffer) or a meal being digested (ticks). */
+  hp?: number;
+  meal?: number;
+  /** Prey held by a snare/jaw, or the organism this critter is caught by (ids). */
+  holds?: string;
+  heldBy?: string;
+  /** Dead-in-place (a shocked fish floating belly-up, a shrivelled leech): ticks since death. */
+  dead?: number;
 }
 
 export interface CrittersApi {

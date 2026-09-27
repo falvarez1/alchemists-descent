@@ -6,6 +6,7 @@ import { material } from './palette';
 import type { CreatureMaterial } from './palette';
 import type { CreatureRaster } from './raster';
 import type { SpeciesArt } from './types';
+import { idleEnvelope } from '@/creatures/idle';
 
 /**
  * Bat: a soot-dark furred body, thin wing membranes the light glows through,
@@ -43,10 +44,16 @@ export const batArt: SpeciesArt = {
     let ux = head.x - body.x, uy = head.y - body.y;
     const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul; // body "up"
     const rx = -uy, ry = ux; // body "right"
-    const fold = F[BAT.fold];
+    const baseFold = F[BAT.fold], baseSpread = F[BAT.spread];
+    // A roosting bat stretching one wing (creatures/idle): that side unfolds.
+    const stretch = e.sleeping === true && e.idle?.act === 'stretch' ? idleEnvelope(e.idle) : 0;
     // --- Wings (behind the body) ---
     for (const side of [-1, 1]) {
+      const opening = stretch > 0 && side === e.idle?.side;
+      const fold = opening ? baseFold * (1 - stretch * 0.85) : baseFold;
+      if (opening) { F[BAT.fold] = fold; F[BAT.spread] = baseSpread + stretch * 0.95; }
       batWingTargets(F, side, body.x, body.y, WT);
+      F[BAT.fold] = baseFold; F[BAT.spread] = baseSpread;
       const shX = body.x + rx * side * 1.2 + ux * 1.0, shY = body.y + ry * side * 1.2 + uy * 1.0;
       const el = rig.pts[batTip(side, 3)];
       const wx = WT[4] + (el.x - WT[2]), wy = WT[5] + (el.y - WT[3]);
@@ -64,7 +71,7 @@ export const batArt: SpeciesArt = {
         scallop(t0, t1, 0.22); push(t1.x, t1.y); scallop(t1, t2, 0.2); push(t2.x, t2.y);
         const hx = { x: hipX, y: hipY };
         scallop(t2, hx, 0.18); push(hipX, hipY);
-        const tilt = side * (0.25 + (1 - F[BAT.spread]) * 0.3);
+        const tilt = side * (0.25 + (1 - (opening ? baseSpread + stretch * 0.95 : baseSpread)) * 0.3);
         r.poly(MEM, k / 2, -2, SKIN, 0, { group: 3 + (side > 0 ? 1 : 0) }, tilt, -0.2);
         // Arm and finger bones over the membrane.
         const o = { group: 5 + (side > 0 ? 1 : 0) };

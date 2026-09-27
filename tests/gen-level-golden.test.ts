@@ -186,7 +186,7 @@ const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
   // floor 2-4 carves a photocell strongroom and a lumen-bloom crossing on the
   // forked 'light-puzzles' stream.
   { id: 'd3', seed: 1337, hash: '92515be6' },
-  { id: 'd4', seed: 1337, hash: 'b66fa416' },
+  { id: 'd4', seed: 1337, hash: '455955ce' }, // GEN_VERSION 52: the Kiln grew with the 34-cell Colossus (three ceiling tanks re-sealed after carves, a deep footing)
   { id: 'd2', seed: 42, hash: '05a3ab4b' },
 ];
 

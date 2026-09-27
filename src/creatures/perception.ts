@@ -15,10 +15,10 @@ export interface PerceivedPlayer {
 
 /**
  * A boss watches its whole lair from head height: it has no back to sneak up on
- * and its eye is not at its knees (a 26-cell Colossus "seeing" from 6 cells up
+ * and its eye is not at its knees (a 34-cell Colossus "seeing" from 6 cells up
  * lost the alchemist behind every lip of the kiln floor). Cells above the feet.
  */
-const BOSS_EYE_LIFT: Partial<Record<Enemy['kind'], number>> = { colossus: 20, leviathan: 8 };
+const BOSS_EYE_LIFT: Partial<Record<Enemy['kind'], number>> = { colossus: 28, leviathan: 8 };
 
 /** A visible alchemist closer than this raises irritation toward a hunt. */
 export const NOTICE_ESCALATE_CELLS = 130;

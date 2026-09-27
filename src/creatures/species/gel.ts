@@ -3,6 +3,7 @@ import { makeChain, shiftChain, stepChain } from '@/creatures/rig/chain';
 import { makeSoftBody, softImpulse, stepSoftBody } from '@/creatures/rig/softbody';
 import { makeRig } from '@/creatures/rig/types';
 import type { CreatureRig } from '@/creatures/rig/types';
+import { idleEnvelope } from '@/creatures/idle';
 
 /**
  * Gel bodies: slimes, acid slimes and bombers are pressurised soft rings
@@ -50,6 +51,10 @@ export function stepGel(ctx: Ctx, e: Enemy, rig: CreatureRig): void {
   let sx = 1, sy = 1;
   const breath = Math.sin(tick * 0.06 + e.bobPhase) * 0.035;
   if (e.grounded) { sx = 1 + breath; sy = 1 - breath; }
+  // Idle life: a resting slime settles into a wide, low puddle-dome, then gathers itself again.
+  if (e.grounded && e.idle?.act === 'settle') { const k = idleEnvelope(e.idle); sx *= 1 + 0.18 * k; sy *= 1 - 0.22 * k; }
+  // Wounded: the membrane sags wide and low at rest (FEEL §4 "slimes droop").
+  if (e.grounded && e.hp < e.maxHp * 0.4) { sx *= 1.08; sy *= 0.9; }
   if (windup > 0) { const k = Math.min(1, (12 - Math.min(12, windup)) / 8 + 0.35); sx = 1 + 0.26 * k; sy = 1 - 0.3 * k; }
   if (!e.grounded) {
     const up = Math.max(-1, Math.min(1, -vy / 3));

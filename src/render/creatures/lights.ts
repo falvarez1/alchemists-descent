@@ -1,5 +1,6 @@
 import type { Ctx, Enemy } from '@/core/types';
 import { corpses } from '@/creatures/corpses';
+import { organismLights } from '@/render/organisms';
 import { BR, BR_CHEST } from '@/creatures/species/brute';
 import { GEL } from '@/creatures/species/gel';
 import { IMP, IMP_BODY } from '@/creatures/species/imp';
@@ -118,6 +119,7 @@ function lightOf(ctx: Ctx, e: Enemy, seed: SeedLight, k: number): void {
 
 export function creatureLights(ctx: Ctx, seed: SeedLight): void {
   for (const e of ctx.enemies) lightOf(ctx, e, seed, 1);
+  organismLights(ctx, seed); // WS-N organisms: beads, throats, bellies (render/organisms)
   for (const c of corpses()) if (c.world === ctx.world && c.glow > 0.02) lightOf(ctx, c.e, seed, c.glow);
   // The alchemist's dropped wand keeps a little light until it gutters out.
   if (ctx.player.dead && ctx.rigidBodies?.bodies) {

@@ -302,7 +302,8 @@ Layered, bottom to top:
 | Golem | Wall-punch wind-up + haymaker + knuckle sparks; pound rhythm 46 frames |
 | Spitter | Maw recoils 14 frames after each lob (`e.recoil`) |
 | Bomber | Fuse strobe — jiggles, then strobes white as `e.fusing` burns down |
-| Colossus | Slam/volley wind-ups; bellows when it notices you |
+| Colossus | Every move poses from the brain's own move clock (creatures/bosses/colossus): SLAM — both fists rise overhead for 30 ticks, then the blast; STOMP — it rears back 32 ticks, then both fists drive two floor waves; THROW — it reaches into its own furnace (the fist comes out dripping), cocks, lobs; VENT — the back plates lift and the seams whiten for 42 ticks before the fire |
+| Leviathan | Its lure goes DARK (22-tick douse, it sinks and coils) before a lunge or a dive; its throat swells 20 ticks before a volley; its tail rises 18 ticks before a thrash |
 
 ### Threat-aware AI — fear, dodge & flee (`entities/Enemies.ts`)
 
@@ -416,10 +417,10 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
 
 - **Notice blips** when a creature first spots you (the bosses make an entrance instead).
 - **Boss lairs** (`Enemies.watchLair`): a boss watches its whole room from head
-  height (Colossus eye 20 cells up, Leviathan 8; no facing check, so there is
-  no back to sneak up on). An alchemist inside the lair — Colossus: ±50 cells of
-  its home, 46 up / 14 down; Leviathan ±54, 58 up / 12 down — who is in sight of
-  its head or within 64 / 56 cells holds it on a confident hunt, idle or not
+  height (Colossus eye 28 cells up, Leviathan 8; no facing check, so there is
+  no back to sneak up on). An alchemist inside the lair — Colossus: ±62 cells of
+  its home, 72 up / 14 down; Leviathan ±54, 58 up / 12 down — who is in sight of
+  its head or within 80 / 56 cells holds it on a confident hunt, idle or not
   (QA: an idle wizard 60 cells into the Kiln was never noticed). The first time,
   it makes its ENTRANCE: the Leviathan churns, groans and names itself (a
   finisher-tone callout, "THE SUNKEN LEVIATHAN"). The Kiln Colossus lands as the
@@ -448,12 +449,68 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   crack + 64→36 Hz saw, a "THERMAL SHOCK" finisher callout, and staggers it
   (no attacks for 120 ticks, speed ×0.2). A full tank is 2–3 cracks. (Was
   1.4 hp EVERY wet tick — 84 hp/s — from any water at all.)
+- **The Kiln Colossus, final boss** (`creatures/bosses/colossus`, box 16×34,
+  rig ×2.3, hp 560; the arena is a 62×40 vault over a flat 116-wide floor on a
+  16-row footing, with three ceiling tanks). It closes to arm's length
+  (halfW+10) and shoulders the alchemist aside (1.4 impulse / 6 ticks) rather
+  than standing in him.
+  - SLAM (< 38 cells): 74 ticks; blast at the fist (halfW+10 out) radius
+    10/11/13 by phase at tick 30 (never harming itself); the fists stay in the
+    ground 26 ticks: a punish window (direct blows ×1.6).
+  - STOMP (< 160 cells; 45% in phase 1, always in 2+): rears 32 ticks, then
+    two shockwaves run along the REAL floor at 1.45/1.75/2.15 c/t for 62 ticks;
+    14 dmg and a pop-up (ky −3.4) to a GROUNDED alchemist within 2.5 cells —
+    jump it. A gap, a pool or a wall ends a wave; loose grains on the floor
+    jump; a running dust ridge and grit mark it.
+  - MOLTEN THROW (< 330, with a line): the gob comes out of its chest furnace,
+    released at tick 32 on a lob (g 0.02, T = |dx|/3.1 clamped 26–62): a
+    hostile fireball plus 9 real lava grains; phase 3 throws a second at 46.
+  - HEAT VENT (phase 2+, when water is near it or it is wet): a 42-tick tell,
+    then 34 ticks of real fire (10 cells per 3 ticks in a ring out to r17,
+    life 18–32) and it boils water within 26 (≤ 48 cells per 6 ticks to
+    steam); 8 dmg once to a body within 19.
+  - Phases at 66% / 33%: a roar each (72 ticks); the third bursts its plates
+    off as rigid stone chunks (90-tick own-debris grace), bare core ×1.25 on
+    direct blows, march cap 0.42 → 0.5 → 0.62, ember footprints every 20
+    ticks, recovery 84 → 62 → 44 (+≤ 30) ticks.
+  - WATER: each crack of the ward's thermal shock (below) also kneels it for
+    the 120-tick stagger with its chest split (direct blows ×1.6) and darkens
+    the furnace (heat 0.12, reheating 1/480 per tick while dry).
+  - DEATH is a 214-tick sequence: it kneels (70 ticks), cracks jet fire and
+    steam (every 9 ticks, every 4 after the 128-tick overload), bloom ramps to
+    ~1.0, at tick 196 it blows apart (r24, never harming itself) and heaps real
+    rubble (stone, 30% grit, a 7×3 lava heart, embers) plus six rigid chunks;
+    the run-complete path runs at 214. Nothing lands on a dying kiln.
+- **The Sunken Leviathan** (`creatures/bosses/leviathan`): LUNGE (< 92): a
+  22-tick dark-lure tell, then an 18-tick dart (bite 16); VOLLEY (90–320): a
+  20-tick throat swell; THRASH (phase 2+, alchemist dry within 130): an
+  18-tick tell, then up to 22 real surface water cells flung at him (4 dmg
+  each — the pool spends itself) and 9 dmg within 26; DIVE (phase 3,
+  alchemist above within 40): 34 ticks down with the lure dark, then a surge
+  (vy −3.4). A live pool the ward credits JOLTS it: 3.5% of max hp and a
+  14-tick convulsion (direct blows ×1.6), once per 24 ticks — never a drain.
+  Beached, direct blows land ×1.3. Lurking, it eats the fish its lure draws.
+- **Hit stagger** (`Enemies.flinch`): a blow ≥ 5 staggers any non-boss that
+  is not rooted or surface-bound (weaver, eggs, spitter, rillback, stone maw,
+  root loper answer with their rigs only): a ballistic shove through the
+  knock system, push = clamp(40/footprint, .3, 2) × clamp(|k|, .8, 3) × .55,
+  for 3–9 ticks (3 + dmg/maxHp·26); once per 45 ticks, so a rapid wand
+  cannot stun-lock.
+- **Idle life** (`creatures/idle`): a resting or foraging animal does one small
+  act every 170–490 ticks (deterministic per individual, no sim randomness):
+  look around (84 ticks: one way, then back over the shoulder), sniff (56,
+  head pecks), groom (90), shiver (26: the rig and the gel shake), settle
+  (110: slimes spread ×1.18 wide, ×0.78 tall; brutes sink 1.6·S), stretch (a
+  roosting bat's wing unfolds, 70). Repertoires per kind; hunting, fleeing,
+  burning or staggered animals never idle.
 - **Bat roosts:** dormant folded teardrops on the ceiling; one red eye cracks
-  open at your approach (< 70 cells wakes them; stirring starts at 110).
+  open at your approach (< 70 cells wakes them; stirring starts at 110). A roost
+  panics together: one waking (or any loud cue ≥ 0.5 within 110 cells) bursts
+  every roost-mate within 22 out in a fan, holding their attack 40 + 12·n ticks.
 - **Slime egg clutches** glisten with pulsing embryos; they hatch on a timer —
   sooner if you loom.
-- **Predation:** bats prefer a nearby moth over you; the gulp is a puff of wing
-  dust.
+- **Predation:** bats prefer a nearby moth (or firefly, or ash moth) over you;
+  the gulp is a puff of wing dust. See §7 for the wider ecology.
 - Slime landing splat, imp 3-pose wing flap + tail wag, enemy blink, smoothed
   velocity leans — all per-kind in `render/sprites/EnemySprites.ts`.
 - Enemy bodies obey the light field (a body in shadow is a silhouette); only
@@ -682,6 +739,67 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   subtly green so living surfaces do not read as static wallpaper.
 - Enemies outside the sim window (camera ± 60 cells) freeze — the world
   simulates where you are.
+
+### Organisms (WS-N, `game/organisms`) — life with behaviour
+
+Placed by worldgen per floor from their own stream (`hashSeed(seed,
+'organisms')`), ≥ 90 cells from spawn, near reachable ground, writing no cells;
+saved with the level's fauna (no respawn churn). Rot Gardens: snapjaw 12,
+puffer 18, isopod 18, glow-worm 6, moth 10, firefly 10, beetle 6, fish 8.
+Drowned Cisterns: fish 26 (schools of 4–6), glow-worm 16, leech 14, moth 6,
+firefly 8, isopod 6. Kiln Heart: ember beetle 16, ash moth 16, moth 2.
+Rooted organisms sleep off-camera. Every beat emits an `organism` event.
+
+- **Snapjaw:** a toothed pod on a 5.5–7.5-cell stalk; trigger 10 cells, a
+  12-tick TELL (it shivers, gapes to 1.25, leans in), then the SNAP (shut in 3
+  ticks, resolved at tick 2, bite reach 7.5): 11 dmg to the alchemist
+  ('snapjaw-bite'), 16 to creatures ('impaled': lure a slime in for an
+  alchemical kill). Critters and corpses are swallowed → CHEW 780 ticks (1170
+  for a corpse) with the jaw shut: the fed, safe window. Reopens over 70.
+  Flame: 10 heat ignites it, then it burns like green wood (writes real Fire
+  along itself every 6 ticks; water douses −12) to 44 char → ash. Bolts: 9 of
+  its 32 hp each (it snaps at the air).
+- **Spore puffer:** inflates 1/2100 per tick (~35 s); ripe ≥ 0.4 it bursts at a
+  body within r+1.5, a projectile within r+3, a creature, a critter, flame
+  within r+2, a kick's gust or a blast — REAL marsh gas into the empty cells
+  within 3 + 4·inflation (lattice-thinned), spores, and a creatureSignal
+  (r90). Spent 240 ticks, then it regrows. Flame lights the cloud as it leaves.
+- **Glow-worm:** a curtain of three beaded threads (×1 / .62 / .8 of its
+  8–26-cell reach) lowered at 0.05 c/t; moths, flies, fireflies and ash moths
+  that touch a thread stick, are reeled up at 0.14 c/t and eaten (the belly
+  glows 900 ticks). Light-shy: wand light > 0.42 on its body, a body through
+  the thread, or fast movement within 16 below → it hauls up at 0.9 c/t and
+  hides 260–400 ticks, and will not come down into the beam. Moths are drawn
+  to its beads.
+- **Isopod / ember beetle:** hand-on-wall crawlers (1 cell per 5 / 7 ticks) over
+  floors, walls and ceilings; they pause 50 of every 420 ticks to test the air
+  and drift to carrion within 75 to feed. Isopods curl into balls when
+  touched, shot or gusted (bounce 0.35, roll downhill), rest 170 ticks, unroll
+  and re-attach. Ember beetles graze Coal → Ash (8% per step; the belly glows
+  900 ticks), shrug off fire, fizzle in water (real steam), and die as up to
+  two real Ember cells.
+- **Leech:** swims at a wading alchemist within 56 (0.34 c/t), latches (max
+  3), drains 2 hp every 150 ticks ('leech'), is sated at 5, lets go after 300
+  ticks dry, and dies if he burns or its water is shocked. Beached leeches
+  writhe toward water and dry out in 900 ticks.
+- **Ash moth:** spirals the nearest hot glow in the updraft; one that touches
+  fire or lava flares out and leaves a real Ash cell.
+- **Lantern moths:** fly to the wand tip only while its light reaches them
+  (`lightQuery.wandLight`, or a 110-cell cone stand-in) and orbit at 9 cells;
+  hooded, they lose you. **Fish** school (cohesion .004, alignment .05,
+  separation within 3) and die belly-up in charged water (floating 1500 ticks).
+
+### Visible ecology (`creatures/ecology`)
+
+- Bats not busy with the alchemist fly to a moth swarm (≥ 3 within 22 cells)
+  they notice from 170 cells, and eat it: move the swarm (your lantern) and
+  you move the bats.
+- Idle slimes smell remains within 110 cells, hop to them (windup 9) and
+  settle to eat (+3 hp every 20 ticks; each bite takes 30 ticks off the
+  body's life).
+- Weaver lair webs (real Vines inside a lair's radius) snare fliers; the
+  weaver comes down for them. Idle imps snatch ash moths within 70. Rillbacks
+  and the Leviathan eat fish; snapjaws eat whatever is kicked into them.
 
 ---
 
@@ -998,6 +1116,8 @@ provoke on direct hit: mind fix on the shooter (confidence ≥ .8, irritation �
 creature burning (FIRE IS A WEAPON, 2026-09 deliberate change): a catch burns 300 ticks (420 oiled; was 90/300), refreshed in the flames, and deals 0.30 hp per 2-tick status sample = 9 hp/s (burnScale 2.5 over the alchemist's 0.12; was 3.6 hp/s) → a lit slime (36/43/48 hp) burns out in 4.0/4.8/4.9 s (probe) unless doused (≥ 3 water cells); the alchemist's own burning (0.12/sample, 90/300 ticks) is unchanged · open-flame contact 0.7/row/tick, lava 1.6 · steam scald 0.05/row/tick (not imp/colossus/leviathan) · drowning: head ≥ 60% liquid → breath 360 (imp 90, bat 180, bomber 150) then −maxHp/300 per tick; immune rillback/leviathan/colossus/wisp/eggs
 enemy drives: fear → sensed threat × kind-fear, decay 0.02/f · aggression +0.02 close +0.04 on-hit −0.03·fear −0.005/f · chaseScale clamp(1 − 0.7·fear + 0.15·agg, 0.25, 1)
 enemy reflex: dodge ⊥ to threat vel @2.7 ×12f, one roll/threat (dodgeCd 22) gated by kind dodge% (fliers sustain vy, grounded one hop) · flee 26f @1.7 away (toward water if burning+seekWater) · final movement integrates at 0.85x on floor 1, ramping +0.075/depth to 1.0x by floor 3 before difficulty (probe, flee drive 1.7 on flat stone: floor 1 50→78 cells/s, floor 3 67→92, floor 4 75→92) · startle "!" tell @dodgeT≥10|fleeT≥23 + airy whiff (pDist<160)
+colossus: slam r10/11/13 @30 (punish 26) · stomp waves 1.45/1.75/2.15 c/t ×62, 14 dmg grounded only · throw @32 (+46 in p3), 9 lava grains · vent tell 42, fire r17, boil r26 · roar 72 at 66%/33%, p3 bare ×1.25 · quench kneel 120 (×1.6) on the ward's 16%/150-tick crack · death 214 (overload 128, blast 196) · leviathan: lunge tell 22 (lure dark) · thrash ≤ 22 cells · jolt 3.5%/24 ticks · beached ×1.3
+organisms: snapjaw trigger 10 / tell 12 / bite 7.5 / 11 dmg / digest 780 / ignite 10, char 44 · puffer ripe .4, gas r 3+4·inf · glow-worm shy > .42 wand light, hide 260+ · leech 2 hp/150 ticks, sated 5, max 3 · hit stagger ≥ 5 dmg, 3–9 ticks, cd 45 · idle acts every 170–490 ticks
 temperament fear/dodge/fleeAt: slime .4/.12/.95 · bat 1.3/.85/.45 · imp .6/.72/.6 · wisp .9/.7/.4 · spitter .85/.55/.5 · bomber .2/.3/never · mage .9/.62/.45 · weaver .5/.5/.72 · golem .18/.28/never · colossus 0/0/never · default .7/.45/.7
 player eye seeks threats <80 cells · enemy gaze locks only when alerted
 shake falloff dead at 420 cells · hitstop 3f at ≥8 dmg (player hurt); creature hits 2f ≥7 (3f ≥20), 1f for direct 2–7 · heartbeat <25% hp

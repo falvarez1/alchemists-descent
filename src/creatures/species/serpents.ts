@@ -3,6 +3,7 @@ import { makeChain, shiftChain, stepChain } from '@/creatures/rig/chain';
 import { point, translate } from '@/creatures/rig/physics';
 import { makeRig } from '@/creatures/rig/types';
 import type { CreatureRig } from '@/creatures/rig/types';
+import { leviathanLureDim } from '@/creatures/bosses/leviathan';
 
 /**
  * Long bodies. The Rillback and Stone Maw already own a physical chain
@@ -99,5 +100,7 @@ export function stepLeviathan(ctx: Ctx, e: Enemy, rig: CreatureRig): void {
   stepChain(world, lure, head.x + fs * 2, head.y - 6.2, fs * 0.5 + Math.max(-0.4, Math.min(0.4, tx / 200)), -1, {
     gravity: 0.03, damping: 0.88, stiffness: 0.25, rootStiffness: 0.8, curl: fs * 0.22, collide: false,
   });
-  F[SRP.lure] = 0.65 + Math.sin(tick * 0.07 + e.bobPhase) * 0.35;
+  // The lure goes dark before it strikes (the lunge/dive tell), flickers when shocked.
+  const dim = leviathanLureDim(e);
+  F[SRP.lure] += ((0.65 + Math.sin(tick * 0.07 + e.bobPhase) * 0.35) * (1 - dim * 0.92) - F[SRP.lure]) * (dim > 0.5 ? 0.35 : 0.12);
 }

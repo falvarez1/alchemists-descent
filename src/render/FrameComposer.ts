@@ -1,6 +1,8 @@
 import { drawPlayerRagdollSprite } from '@/render/sprites/PlayerRagdollSprite';
 import { drawTrickshotOverlay } from '@/render/TrickshotOverlay';
 import { drawFallingWater } from '@/render/FallingWater';
+import { drawOrganism } from '@/render/organisms';
+import { isOrganism } from '@/game/organisms/types';
 import type { Ctx, Enemy, RuntimeDecor } from '@/core/types';
 import { RenderPoses, interpolateBody } from '@/render/RenderPoses';
 import { activeFloorLook, drawWorksLandmarks, prepareTerrainColors } from '@/render/TerrainArt';
@@ -1724,6 +1726,13 @@ export class FrameComposer implements PixelSurface {
         const pulse = Math.max(0, Math.sin(c.phase * 0.45));
         this.setPx(x, y, 0.20, 0.30, 0.25);
         if (pulse > 0.25) this.addPx(x, y + 1, 0.58 * pulse, 0.94 * pulse, 0.69 * pulse);
+      } else if (isOrganism(c.kind)) {
+        drawOrganism(this, this.light, ctx, c); // WS-N organisms (render/organisms)
+      } else if (c.kind === 'fish' && (c.dead ?? 0) > 0) {
+        // Belly-up: the pale underside turned to the ceiling.
+        this.setPx(x, y, 0.72, 0.72, 0.66);
+        this.setPx(x - c.facing, y, 0.6, 0.6, 0.56);
+        this.setPx(x - c.facing * 2, y - 1, 0.36, 0.4, 0.4);
       } else if (c.kind === 'fish') {
         const tail = Math.sin(c.phase * 1.6) > 0 ? 1 : 0;
         this.setPx(x, y, 0.5, 0.6, 0.62);

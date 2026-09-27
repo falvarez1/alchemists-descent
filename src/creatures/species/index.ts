@@ -11,6 +11,7 @@ import { makeRig } from '@/creatures/rig/types';
 import { impulse } from '@/creatures/rig/physics';
 import { softImpulse } from '@/creatures/rig/softbody';
 import { touchWorld } from '@/creatures/worldTouch';
+import { applyIdleToRig } from '@/creatures/idle';
 import { buildEel, buildLeviathan, stepEel, stepLeviathan } from './serpents';
 import { buildRootLoper, stepRootLoper } from './rootloper';
 
@@ -100,6 +101,9 @@ function answerHit(e: Enemy, rig: CreatureRig): void {
   }
 }
 
+/** The rig point a sniff or a groom dips (the head), per body plan; -1 = no head to dip. */
+const IDLE_HEAD: Record<string, number> = { bat: 1, lizard: 0, brute: 2, imp: 1, mage: 2 };
+
 /** Advance the rig one simulation tick. */
 export function tickRig(ctx: Ctx, e: Enemy): void {
   const s = REGISTRY[e.kind];
@@ -108,6 +112,7 @@ export function tickRig(ctx: Ctx, e: Enemy): void {
   if (!rig || rig.tick === ctx.state.frameCount) return;
   answerHit(e, rig);
   s.step(ctx, e, rig);
+  applyIdleToRig(e, rig, IDLE_HEAD[s.id] ?? -1);
   touchWorld(ctx, e, rig);
   rig.tick = ctx.state.frameCount;
 }

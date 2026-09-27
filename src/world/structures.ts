@@ -846,117 +846,109 @@ export function placeStructures(
   }
 
   // ---- The Kiln (bottom level only): the colossus arena ----
-  // A vast scorched chamber with lava moats, and the strategy hanging from
-  // the ceiling: a metal-cased water tank sealed by a breakable stone plug.
-  // Flood the kiln, thermal-shock the colossus.
+  // A vast scorched hall for a boss a head and a half taller than the
+  // alchemist: an elliptical vault (62 x 40) over a FLAT floor 116 cells wide,
+  // lava moats sunk flush into the floor at both ends (a stomp's shockwave dies
+  // at a gap — and jumping it is the counter), and the strategy hanging from
+  // the ceiling: THREE metal-cased water tanks sealed by breakable stone plugs
+  // (gold-flecked), one over the centre and one to each side — one for every
+  // phase. Flood the kiln, thermal-shock the colossus. Nothing hangs lower
+  // than the Colossus is tall: it can walk the whole floor.
+  // (GEN_VERSION 50: the arena grew with the Colossus.)
   let boss: { x: number; y: number; kind?: EnemyKind } | null = null;
   if (def.boss === 'colossus') {
+    const RX = 62, RY = 40, FLOOR = 30, HALF = 58;
     let cx = Math.floor(WIDTH * (0.42 + rng.next() * 0.16));
-    const cy = HEIGHT - 116;
+    const cy = HEIGHT - 126;
     // Reserved-ground dodge (inert while the ledger is empty); bounded, then
     // the arena is carved regardless — the kiln must exist.
-    for (let a = 0; a < 12 && ledger.intersects(cx - 40, cy - 26, cx + 40, cy + 24); a++) {
+    for (let a = 0; a < 12 && ledger.intersects(cx - RX - 2, cy - RY - 12, cx + RX + 2, cy + FLOOR + 5); a++) {
       cx = Math.floor(WIDTH * (0.42 + rng.next() * 0.16));
     }
-    carvePocket(cx, cy, 38, 24);
+    carvePocket(cx, cy, RX, RY);
+    carveRectCells(w, cx - HALF, cy, cx + HALF, cy + FLOOR - 1);
+    const stone = (X: number, Y: number): void => {
+      if (!w.inBounds(X, Y)) return;
+      const i = w.idx(X, Y);
+      w.types[i] = Cell.Stone;
+      w.colors[i] = stoneColor();
+    };
     // stone floor band
-    for (let dx = -38; dx <= 38; dx++) {
-      for (let dy = 18; dy <= 21; dy++) {
-        const X = cx + dx,
-          Y = cy + dy;
-        if (!w.inBounds(X, Y)) continue;
-        const i = w.idx(X, Y);
-        w.types[i] = Cell.Stone;
-        w.colors[i] = stoneColor();
+    for (let dx = -HALF - 2; dx <= HALF + 2; dx++) for (let dy = FLOOR; dy <= FLOOR + 3; dy++) stone(cx + dx, cy + dy);
+    // ...on a deep footing: a slam's crater must not punch the alchemist
+    // through into a void under the kiln (only empty cells are filled).
+    for (let dx = -HALF - 2; dx <= HALF + 2; dx++) {
+      for (let dy = FLOOR + 4; dy <= FLOOR + 16; dy++) {
+        const X = cx + dx, Y = cy + dy;
+        if (w.inBounds(X, Y) && Y < HEIGHT - 8 && w.types[w.idx(X, Y)] === Cell.Empty) stone(X, Y);
       }
     }
-    // lava moats at the arena edges, SUNK into the floor band: the pit's rim
-    // is the floor's own stone, so the lava is contained. (Stamped on top of
-    // the floor, as it used to be, it ran out into a one-cell burning film
-    // across most of the arena.) Surface flush with the floor; a stone keel
-    // below keeps a full-depth pit from reaching the rock underneath.
+    // lava moats sunk flush into the floor band, a stone keel under each
     for (const side of [-1, 1]) {
-      for (let dx = 26; dx <= 34; dx++) {
-        for (let dy = 18; dy <= 22; dy++) {
-          const X = cx + side * dx,
-            Y = cy + dy;
+      for (let dx = 47; dx <= 56; dx++) {
+        for (let dy = FLOOR; dy <= FLOOR + 4; dy++) {
+          const X = cx + side * dx, Y = cy + dy;
           if (!w.inBounds(X, Y)) continue;
-          const i = w.idx(X, Y);
-          if (dy <= 20) {
+          if (dy <= FLOOR + 2) {
+            const i = w.idx(X, Y);
             w.types[i] = Cell.Lava;
             w.colors[i] = packRGB(252, 60 + Math.floor(rng.next() * 60), 8);
-          } else {
-            w.types[i] = Cell.Stone;
-            w.colors[i] = stoneColor();
-          }
+          } else stone(X, Y);
         }
       }
     }
-    // ceiling water tank: metal casing, breakable stone seal at its mouth
-    const ty = cy - 24;
-    for (let dx = -9; dx <= 9; dx++) {
-      for (let dy = -8; dy <= 2; dy++) {
-        const X = cx + dx,
-          Y = ty + dy;
-        if (!w.inBounds(X, Y)) continue;
-        const i = w.idx(X, Y);
-        const casing = Math.abs(dx) > 7 || dy < -6;
-        if (casing) {
-          w.types[i] = Cell.Metal;
-          w.colors[i] = packRGB(96, 102, 112);
-        } else if (dy <= 0) {
-          w.types[i] = Cell.Water;
-          w.colors[i] = packRGB(28, 120 + Math.floor(rng.next() * 60), 220);
-        } else {
-          // the seal: two rows of breakable stone — dig it, flood the kiln
-          w.types[i] = Cell.Stone;
-          w.colors[i] = stoneColor();
-        }
-      }
-    }
-    // gold-flecked tell around the seal
-    for (let g4 = 0; g4 < 8; g4++) {
-      const gx = cx - 8 + Math.floor(rng.next() * 17);
-      const i = w.idx(gx, ty + 3);
-      if (w.types[i] === Cell.Empty) {
-        w.types[i] = Cell.Gold;
-        w.colors[i] = goldColor();
-      }
-    }
-    boss = { x: cx, y: cy + 14, kind: 'colossus' };
-    // both arena flanks join the cave network — the kiln must be findable
-    connectToCaves(cx - 39, cy + 6);
-    connectToCaves(cx + 39, cy + 6);
-    // The tank's organs, re-assertable. The right flank's connectToCaves above
-    // aims for the nearest main-path region, and on most seeds its 12-cell
-    // tunnel heads up through the arena ceiling: it eats the seal and the
-    // water, sparing only the metal (expedition seeds 1, 2 and 4 lost all 30
-    // seal cells — QA's "the Colossus dies on its own"). The gauge-rescue
-    // passes may carve again later. Idempotent: the metal casing, the two
-    // stone seal rows, and a refill of any water a carve deleted. A carve INTO
-    // the tank never carries a route (the casing is metal and the 15x7
-    // interior is no wizard space), so re-sealing it cannot cut connectivity.
-    // Fixed tint: it must not draw from the generation rng.
-    kilnRepair = (): void => {
-      for (let dx = -9; dx <= 9; dx++) {
-        for (let dy = -8; dy <= 2; dy++) {
-          const X = cx + dx,
-            Y = ty + dy;
+    // ceiling tanks: metal casing, water, a breakable two-row stone seal at the mouth
+    const tank = (tx: number, halfW: number, mouth: number, depth: number): void => {
+      for (let dx = -halfW; dx <= halfW; dx++) {
+        for (let dy = -depth - 1; dy <= 1; dy++) {
+          const X = tx + dx, Y = mouth + dy;
           if (!w.inBounds(X, Y)) continue;
           const i = w.idx(X, Y);
-          if (Math.abs(dx) > 7 || dy < -6) {
-            if (w.types[i] !== Cell.Metal) {
-              w.types[i] = Cell.Metal;
-              w.colors[i] = packRGB(96, 102, 112);
-            }
-          } else if (dy <= 0) {
-            if (w.types[i] !== Cell.Water) {
-              w.types[i] = Cell.Water;
-              w.colors[i] = packRGB(28, 150, 220);
-            }
-          } else if (w.types[i] !== Cell.Stone) {
-            w.types[i] = Cell.Stone;
-            w.colors[i] = stoneColor();
+          const casing = Math.abs(dx) >= halfW - 1 || dy <= -depth;
+          if (casing) {
+            w.types[i] = Cell.Metal;
+            w.colors[i] = packRGB(96, 102, 112);
+          } else if (dy < 0) {
+            w.types[i] = Cell.Water;
+            w.colors[i] = packRGB(28, 120 + Math.floor(rng.next() * 60), 220);
+          } else stone(X, Y);
+        }
+      }
+      // gold-flecked tell under the seal
+      for (let g4 = 0; g4 < Math.max(4, halfW - 2); g4++) {
+        const gx = tx - halfW + 2 + Math.floor(rng.next() * (halfW * 2 - 3));
+        const i = w.idx(gx, mouth + 2);
+        if (w.types[i] === Cell.Empty) {
+          w.types[i] = Cell.Gold;
+          w.colors[i] = goldColor();
+        }
+      }
+    };
+    const tanks: Array<[number, number, number, number]> = [[cx, 13, cy - RY + 1, 8], [cx - 34, 7, cy - 33, 7], [cx + 34, 7, cy - 33, 7]];
+    for (const [tx, hw, mouth, depth] of tanks) tank(tx, hw, mouth, depth);
+    boss = { x: cx, y: cy + FLOOR - 1, kind: 'colossus' };
+    ledger.reserve(cx - RX - 2, cy - RY - 12, cx + RX + 2, cy + FLOOR + 5, 'kiln-arena');
+    // both arena flanks join the cave network — the kiln must be findable
+    connectToCaves(cx - HALF - 3, cy + FLOOR - 12);
+    connectToCaves(cx + HALF + 3, cy + FLOOR - 12);
+    // The tanks' organs, re-assertable (integration fix, GEN 50: a flank
+    // connector's tunnel or a rescue carve used to eat a seal and drown the
+    // Colossus unprovoked). Idempotent: the metal casings, the two stone seal
+    // rows, and a refill of any water a carve deleted. A carve INTO a tank
+    // never carries a route (metal casing, no wizard space inside), so
+    // re-sealing cannot cut connectivity. Fixed tint: no generation rng.
+    kilnRepair = (): void => {
+      for (const [tx, hw, mouth, depth] of tanks) {
+        for (let dx = -hw; dx <= hw; dx++) {
+          for (let dy = -depth - 1; dy <= 1; dy++) {
+            const X = tx + dx, Y = mouth + dy;
+            if (!w.inBounds(X, Y)) continue;
+            const i = w.idx(X, Y);
+            if (Math.abs(dx) >= hw - 1 || dy <= -depth) {
+              if (w.types[i] !== Cell.Metal) { w.types[i] = Cell.Metal; w.colors[i] = packRGB(96, 102, 112); }
+            } else if (dy < 0) {
+              if (w.types[i] !== Cell.Water) { w.types[i] = Cell.Water; w.colors[i] = packRGB(28, 140, 224); }
+            } else if (w.types[i] !== Cell.Stone) stone(X, Y);
           }
         }
       }

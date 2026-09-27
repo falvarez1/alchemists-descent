@@ -75,7 +75,7 @@ export interface BossOrganRect {
 
 /**
  * The organ of a warded boss's arena, from its GENERATED spawn (world/structures):
- * the Kiln's ceiling tank (casing 19 wide, its seal 36-37 rows above the spawn)
+ * the Kiln's ceiling tanks (the three casings, seals 61-68 rows above the spawn)
  * or the Sump's casing floor and three drain plugs (6-9 rows below). These are
  * the PLAYER's to open: world repair never carves them (world/validate) and the
  * boss's own blasts never break them (sim/explosion) — QA watched the Colossus's
@@ -83,7 +83,10 @@ export interface BossOrganRect {
  */
 export function bossOrganRect(boss: { x: number; y: number; kind?: EnemyKind } | null | undefined): BossOrganRect | null {
   if (!boss) return null;
-  if (boss.kind === 'colossus') return { x0: boss.x - 10, y0: boss.y - 47, x1: boss.x + 10, y1: boss.y - 35 };
+  // The Kiln's three ceiling tanks (GEN 51, world/structures): the centre one
+  // 27 wide with its seal 67-68 rows above the spawn, the side ones 15 wide at
+  // ±34 with seals 61-62 rows up, gold tells two rows under each.
+  if (boss.kind === 'colossus') return { x0: boss.x - 42, y0: boss.y - 79, x1: boss.x + 42, y1: boss.y - 59 };
   if (boss.kind === 'leviathan') return { x0: boss.x - 28, y0: boss.y + 6, x1: boss.x + 28, y1: boss.y + 9 };
   return null;
 }

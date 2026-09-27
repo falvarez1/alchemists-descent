@@ -246,22 +246,26 @@ describe('the Kiln tank survives generation', () => {
       ctx.worldgen = gen;
       const level = gen.generateLevel(ctx, LEVELS.d4, seed);
       expect(level.boss?.kind).toBe('colossus');
-      const cx = level.boss!.x;
-      const ty = level.boss!.y - 14 - 24;
-      let seal = 0,
-        water = 0,
-        casing = 0;
-      for (let dx = -9; dx <= 9; dx++) {
-        for (let dy = -8; dy <= 2; dy++) {
-          const t = world.types[world.idx(cx + dx, ty + dy)];
-          if (Math.abs(dx) > 7 || dy < -6) casing += t === Cell.Metal ? 1 : 0;
-          else if (dy <= 0) water += t === Cell.Water ? 1 : 0;
-          else seal += t === Cell.Stone ? 1 : 0;
+      // GEN 51: three tanks (world/structures) — the centre one 27 wide and
+      // 8 deep, the side ones 15 wide and 7 deep at ±34, the vault centre 29
+      // rows above the spawn.
+      const cx = level.boss!.x, cy = level.boss!.y - 29;
+      const tanks: Array<[number, number, number, number]> = [[cx, 13, cy - 39, 8], [cx - 34, 7, cy - 33, 7], [cx + 34, 7, cy - 33, 7]];
+      for (const [tx, hw, mouth, depth] of tanks) {
+        let seal = 0, water = 0, casing = 0;
+        for (let dx = -hw; dx <= hw; dx++) {
+          for (let dy = -depth - 1; dy <= 1; dy++) {
+            const t = world.types[world.idx(tx + dx, mouth + dy)];
+            if (Math.abs(dx) >= hw - 1 || dy <= -depth) casing += t === Cell.Metal ? 1 : 0;
+            else if (dy < 0) water += t === Cell.Water ? 1 : 0;
+            else seal += t === Cell.Stone ? 1 : 0;
+          }
         }
+        const inner = hw * 2 - 3;
+        expect(seal, `tank at ${tx - cx}`).toBe(inner * 2);
+        expect(water, `tank at ${tx - cx}`).toBe(inner * (depth - 1));
+        expect(casing, `tank at ${tx - cx}`).toBe(4 * (depth + 3) + inner * 2);
       }
-      expect(seal).toBe(15 * 2);
-      expect(water).toBe(15 * 7);
-      expect(casing).toBe(4 * 11 + 15 * 2);
     });
   }
 });
@@ -314,10 +318,11 @@ describe('a boss never blows itself up', () => {
     const cases = [['colossus-fireball', true], ['bomber', true], ['gunpowder', true], [undefined, false]] as const;
     for (const [tag, own] of cases) {
       const world = new World(200, 120);
-      const spawn = { x: 100, y: 100, kind: 'colossus' as const };
+      const spawn = { x: 100, y: 110, kind: 'colossus' as const };
       const organ = bossOrganRect(spawn)!;
       // a stone seal row inside the organ, right where the blast lands
-      const sealY = spawn.y - 37;
+      // (the centre tank's seal, 68 rows above the spawn since GEN 51)
+      const sealY = spawn.y - 68;
       for (let x = 93; x <= 107; x++) world.types[world.idx(x, sealY)] = Cell.Stone;
       expect(sealY).toBeGreaterThanOrEqual(organ.y0);
       expect(sealY).toBeLessThanOrEqual(organ.y1);

@@ -4,10 +4,12 @@ import { blocksEntity } from '@/sim/CellType';
 import { createChainIn, tickChain } from './body';
 import { tickCreatureExpression } from './expression';
 import { tickRig } from './species';
+import { tickIdleLife } from './idle';
 
 /** All integration is simulation-owned. Rendering can sample this state any number of times. */
 export function tickCreaturePose(ctx: Ctx, e: Enemy): void {
   const frame = ctx.state.frameCount;
+  tickIdleLife(e, frame);
   tickCreatureExpression(e, frame);
   if (e.kind === 'slime' || e.kind === 'acidslime' || e.kind === 'bomber') {
     if (e.grounded && !e.prevG && Math.abs(e.vy) < 0.1) e.splat = 8;

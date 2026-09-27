@@ -1,6 +1,11 @@
 import type { CardId, EnemyKind, TimeControlStatus } from '@/core/types';
 import type { AlchemyKillInfo, RunSummary } from '@/core/run';
 
+/** What an organism just did (the `organism` event). */
+export type OrganismAction =
+  | 'snap' | 'burst' | 'snare' | 'retract' | 'eat' | 'latch' | 'shed' | 'curl' | 'zap' | 'flare'
+  | 'scatter' | 'scavenge' | 'die';
+
 /**
  * Minimal synchronous typed event bus.
  *
@@ -95,6 +100,11 @@ export interface EventMap {
   refugePing: undefined;
   /** The Kiln Colossus is slain: the expedition is complete. */
   runComplete: { gold: number };
+  /** Ambient life did something worth hearing (WS-N organisms/ecology): a snapjaw
+   *  snapped, a puffer burst, a glow-worm snared or retracted, a predator ate. */
+  organism: { kind: string; action: OrganismAction; x: number; y: number };
+  /** A boss committed to (or telegraphed) a move — audio/callouts can cue it. */
+  bossMove: { kind: EnemyKind; move: string; phase: number; x: number; y: number };
   /** A creature died (any cause), emitted from the one enemy death path before
    *  its aftermath — so a run-ending kill is counted before `runEnded`. */
   enemyKilled: { kind: EnemyKind; x: number; y: number };

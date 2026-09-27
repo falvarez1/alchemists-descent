@@ -3,6 +3,10 @@ import { findFloor, makeLeg, shiftLeg, solveKnee, stepLeg } from '@/creatures/ri
 import { integrate, point, translate } from '@/creatures/rig/physics';
 import { makeRig } from '@/creatures/rig/types';
 import type { CreatureRig } from '@/creatures/rig/types';
+import { idleEnvelope } from '@/creatures/idle';
+
+/** Pose beats of the Colossus's moves (mirrors creatures/bosses/colossus COL). */
+const COL_POSE = { SLAM_HIT: 30, STOMP_HIT: 32, THROW_HIT: 32, VENT_START: 42, VENT_END: 76, DEATH_OVERLOAD: 128 } as const;
 
 /**
  * Brutes — the golem and the Kiln Colossus. Heavy knuckle-walkers: the fists
@@ -14,6 +18,8 @@ export const BR = {
   face: 0, lastX: 1, lastY: 2, speed: 3, sway: 4, dip: 5,
   punch: 6, throwT: 7, lastCd: 8, slam: 9, heat: 10, airY: 11, land: 12, jet: 13, breath: 14,
   lookX: 15, lookY: 16,
+  // Boss poses (the Kiln Colossus reads its BossBrain; see creatures/bosses/colossus).
+  rear: 17, vent: 18, kneel: 19, overload: 20, reach: 21,
 } as const;
 export const BR_HIPS = 0, BR_CHEST = 1, BR_HEAD = 2;
 /** Legs: 0 near hind, 1 far hind, 2 near arm, 3 far arm. */
@@ -29,7 +35,8 @@ export interface BruteSpec {
 }
 
 export const GOLEM: BruteSpec = { scale: 1, hip: 8, shoulder: 12.8, body: 9.5, legU: 4.5, legL: 4.5, armU: 6.2, armL: 7.0 };
-export const COLOSSUS: BruteSpec = { scale: 1.75, hip: 14, shoulder: 22, body: 16, legU: 7.8, legL: 7.8, armU: 10.8, armL: 12.2 };
+/** The Kiln Colossus: the golem's plan at 2.3x — a head above the alchemist's reach, shoulders like a kiln roof. */
+export const COLOSSUS: BruteSpec = { scale: 2.3, hip: 18, shoulder: 29, body: 21, legU: 10.2, legL: 10.2, armU: 14, armL: 16 };
 
 export function bruteSpec(e: Enemy): BruteSpec {
   return e.kind === 'colossus' ? COLOSSUS : GOLEM;
@@ -77,13 +84,31 @@ export function stepBrute(ctx: Ctx, e: Enemy, rig: CreatureRig): void {
   // Attack reads: a wall punch, a rock throw (cooldown reset), a slam.
   const punching = Math.min(1, (e.punching ?? 0) / 16);
   F[BR.punch] += (punching - F[BR.punch]) * 0.35;
-  if (e.attackCd > F[BR.lastCd] + 30) F[BR.throwT] = 26;
+  const boss = e.boss;
+  if (boss) {
+    // A boss poses from the same clock its attacks fire on: the tell IS the timer.
+    const m = boss.move, t = boss.moveT;
+    const slamT = m === 'slam' ? (t < COL_POSE.SLAM_HIT ? t / COL_POSE.SLAM_HIT : 0) : 0;
+    F[BR.slam] += (slamT - F[BR.slam]) * (slamT > F[BR.slam] ? 0.18 : 0.55);
+    const rearT = m === 'stomp' ? (t < COL_POSE.STOMP_HIT ? t / COL_POSE.STOMP_HIT : 0) : 0;
+    F[BR.rear] += (rearT - F[BR.rear]) * (rearT > F[BR.rear] ? 0.15 : 0.6);
+    F[BR.throwT] = m === 'throw' && t >= COL_POSE.THROW_HIT - 8 && t < COL_POSE.THROW_HIT + 18 ? Math.max(0, 26 - (t - (COL_POSE.THROW_HIT - 8))) : 0;
+    F[BR.reach] += ((m === 'throw' && t < COL_POSE.THROW_HIT - 8 ? 1 : 0) - F[BR.reach]) * 0.15;
+    const ventT = m === 'vent' ? (t < COL_POSE.VENT_START ? t / COL_POSE.VENT_START : t < COL_POSE.VENT_END ? 1 : 0) : 0;
+    F[BR.vent] += (ventT - F[BR.vent]) * 0.12;
+    const kneelT = m === 'quench' ? (t < 140 ? 1 : 0) : m === 'dying' ? Math.min(1, t / 70) : 0;
+    F[BR.kneel] += (kneelT - F[BR.kneel]) * (kneelT > F[BR.kneel] ? 0.12 : 0.05);
+    F[BR.overload] = m === 'dying' ? Math.max(0, Math.min(1, (t - COL_POSE.DEATH_OVERLOAD) / 60)) : 0;
+    F[BR.heat] += (boss.heat * (0.85 + Math.sin(tick * 0.09 + e.bobPhase) * 0.15) - F[BR.heat]) * 0.08;
+  } else {
+    if (e.attackCd > F[BR.lastCd] + 30) F[BR.throwT] = 26;
+    if (F[BR.throwT] > 0) F[BR.throwT]--;
+    const windup = e.alerted === true && (e.mind?.visible ?? false) && e.attackCd > 0 && e.attackCd < 22;
+    F[BR.slam] += ((windup ? 1 - e.attackCd / 22 : 0) - F[BR.slam]) * 0.2;
+    const wet = e.status.wet > 0;
+    F[BR.heat] += ((wet ? 0.25 : 0.85 + Math.sin(tick * 0.09 + e.bobPhase) * 0.15) - F[BR.heat]) * 0.08;
+  }
   F[BR.lastCd] = e.attackCd;
-  if (F[BR.throwT] > 0) F[BR.throwT]--;
-  const windup = e.alerted === true && (e.mind?.visible ?? false) && e.attackCd > 0 && e.attackCd < 22;
-  F[BR.slam] += ((windup ? 1 - e.attackCd / 22 : 0) - F[BR.slam]) * 0.2;
-  const wet = e.status.wet > 0;
-  F[BR.heat] += ((wet ? 0.25 : 0.85 + Math.sin(tick * 0.09 + e.bobPhase) * 0.15) - F[BR.heat]) * 0.08;
   F[BR.jet] += ((e.jetFuel > 0 ? 1 : 0) - F[BR.jet]) * 0.3;
   // Gait sway: the body rolls onto whichever side is planted.
   const planted0 = rig.legs[0].planted && rig.legs[0].swing < 0, planted1 = rig.legs[1].planted && rig.legs[1].swing < 0;
@@ -95,9 +120,13 @@ export function stepBrute(ctx: Ctx, e: Enemy, rig: CreatureRig): void {
   // Body chunks.
   const floorAt = (fx: number): number => { const g = findFloor(world, fx, ground - 6 * S, ground + 4 * S); return g ? g.y : ground; };
   const gH = e.grounded ? Math.min(floorAt(hips.x), ground + 2) : ground, gC = e.grounded ? Math.min(floorAt(chest.x + fs * 3 * S), ground + 3) : ground;
-  const crouch = F[BR.land] * 2.2 * S + F[BR.dip] + F[BR.slam] * -1.5 * S;
-  const hipTX = x - fs * spec.body * 0.42, hipTY = gH - spec.hip + crouch * 0.6 + F[BR.breath] * 0.2;
-  const chTX = x + fs * spec.body * 0.58 - F[BR.punch] * fs * -1.5 * S, chTY = gC - spec.shoulder + crouch + F[BR.breath] - F[BR.throwT] / 26 * 1.5 * S;
+  // Idle life: a resting brute shifts its weight down onto its haunches and back up.
+  const settle = e.idle?.act === 'settle' ? idleEnvelope(e.idle) : 0;
+  const crouch = F[BR.land] * 2.2 * S + F[BR.dip] + F[BR.slam] * -1.5 * S + F[BR.kneel] * 4.2 * S + settle * 1.6 * S;
+  const rear = F[BR.rear] * 5 * S; // it rears back on its hind legs before a stomp
+  const hipTX = x - fs * spec.body * 0.42 - fs * F[BR.rear] * 1.5 * S, hipTY = gH - spec.hip + crouch * 0.6 + F[BR.breath] * 0.2 + F[BR.kneel] * 1.2 * S;
+  const chTX = x + fs * spec.body * (0.58 - F[BR.rear] * 0.3) - F[BR.punch] * fs * -1.5 * S,
+    chTY = gC - spec.shoulder + crouch + F[BR.breath] - F[BR.throwT] / 26 * 1.5 * S - rear;
   const heavy = { gravity: 0.1, damping: 0.78, friction: 0.6 };
   integrate(world, hips, heavy); integrate(world, chest, heavy);
   hips.x += (hipTX - hips.x) * 0.3; hips.y += (hipTY - hips.y) * 0.3;
@@ -112,7 +141,7 @@ export function stepBrute(ctx: Ctx, e: Enemy, rig: CreatureRig): void {
   const lx = sensed ? Math.max(-1, Math.min(1, (tx - chest.x) / 60)) : fs * 0.6;
   const ly = sensed ? Math.max(-1, Math.min(1, (ty - chest.y) / 60)) : Math.sin(tick * 0.013 + e.bobPhase) * 0.3;
   F[BR.lookX] += (lx - F[BR.lookX]) * 0.08; F[BR.lookY] += (ly - F[BR.lookY]) * 0.08;
-  const hx = chest.x + fs * 2.6 * S + F[BR.lookX] * 1.2 * S, hy = chest.y + 1.2 * S + F[BR.lookY] * 1.2 * S;
+  const hx = chest.x + fs * 2.6 * S + F[BR.lookX] * 1.2 * S, hy = chest.y + 1.2 * S + F[BR.lookY] * 1.2 * S + F[BR.kneel] * 1.6 * S;
   head.x += (hx - head.x) * 0.3; head.y += (hy - head.y) * 0.3;
 
   // Limbs.
@@ -124,14 +153,20 @@ export function stepBrute(ctx: Ctx, e: Enemy, rig: CreatureRig): void {
     const hx2 = anchor.x + (far ? fs * 1.2 * S : -fs * 0.4 * S), hy2 = anchor.y + (arm ? 0.5 * S : 0.8 * S);
     leg.bend = arm ? fsign : -fsign;
     // Arms busy with a punch/throw/slam leave the ground entirely.
-    const busyArm = arm && !far && (F[BR.punch] > 0.08 || F[BR.throwT] > 0 || F[BR.slam] > 0.1);
-    const busyBoth = arm && F[BR.slam] > 0.1;
+    const busyArm = arm && !far && (F[BR.punch] > 0.08 || F[BR.throwT] > 0 || F[BR.slam] > 0.1 || F[BR.reach] > 0.1);
+    const busyBoth = arm && (F[BR.slam] > 0.1 || F[BR.rear] > 0.1);
     if (busyArm || busyBoth) {
       leg.planted = false; leg.swing = -1;
       let px: number, py: number;
       if (F[BR.slam] > 0.1) {
         // Both fists rise overhead, then come down together.
         px = hx2 + fs * 2 * S; py = hy2 - (spec.armU + spec.armL) * 0.9 * F[BR.slam];
+      } else if (F[BR.rear] > 0.1) {
+        // Reared back: fists raised out front, ready to drive into the floor.
+        px = hx2 + fs * (4 + (far ? 2 : 0)) * S; py = hy2 - (spec.armU + spec.armL) * 0.55 * F[BR.rear];
+      } else if (F[BR.reach] > 0.1) {
+        // Reaching into its own furnace for the molten gob.
+        px = hx2 + fs * 1.2 * S; py = hy2 + 1.5 * S;
       } else if (F[BR.throwT] > 0) {
         const t = 1 - F[BR.throwT] / 26;
         const a = -Math.PI * 0.95 + t * Math.PI * 1.25; // overhead → forward release
