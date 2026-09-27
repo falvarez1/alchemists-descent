@@ -5,6 +5,8 @@ import { Cell, blocksEntity } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { dressWorksHabitat } from './worksHabitat';
 import { stampTeaMachine, TEA } from './teaMachine';
+import { makeValve } from '@/core/mechanismFactories';
+import { stampPhotocell } from './lightPuzzles';
 
 /** Authored encounter geometry; every ledge, reservoir and pipe below is real material. */
 export const WORKS_ROOMS = [
@@ -40,6 +42,13 @@ export function worksGateOpen(world: { type(x: number, y: number): number }): bo
   }
   return true;
 }
+
+/** The Undertow's lamplighter's cache (light wave): lens, tooth and lidded niche. */
+export const WORKS_UNDERTOW_CACHE = {
+  tooth: { x0: 770, x1: 783, bottom: 924 },
+  lens: { x: 783, y: 912 },
+  niche: { x0: 818, y0: 1012, x1: 831, y1: 1021 },
+} as const;
 
 /** Designed deep-dark zones on floor 1 (config/darkness, core/darkness). */
 export const WORKS_DARK_ZONES = [
@@ -212,6 +221,26 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   rect(244, 260, 42, 5, Cell.Wood, packRGB(100, 79, 50));
   rect(638, 950, 70, 6, Cell.Wood, packRGB(87, 72, 49));
 
+  // LIGHT WAVE: the Undertow's lamplighter's cache (mechanisms below). A stone
+  // tooth hangs from the roof with a brass lens in its east flank; a riveted
+  // lid lies flush in the floor further east over a metal-lined niche. Off
+  // the critical route: the trough walks the same whether it is ever lit.
+  const UNDERTOW_CACHE = WORKS_UNDERTOW_CACHE;
+  for (let x = UNDERTOW_CACHE.tooth.x0; x <= UNDERTOW_CACHE.tooth.x1; x++) {
+    let roof = 930;
+    while (roof > 850 && world.type(x, roof - 1) === Cell.Empty) roof--;
+    const tip = UNDERTOW_CACHE.tooth.bottom - Math.round(Math.abs(x - (UNDERTOW_CACHE.tooth.x0 + UNDERTOW_CACHE.tooth.x1) / 2) * 1.5);
+    for (let y = roof; y <= tip; y++) put(x, y, Cell.Stone, packRGB(52 + (hash(x, y) % 5), 68, 70));
+  }
+  {
+    const n = UNDERTOW_CACHE.niche;
+    for (let y = n.y0 - 2; y <= n.y1 + 2; y++) for (let x = n.x0 - 2; x <= n.x1 + 2; x++) {
+      const inside = x >= n.x0 && x <= n.x1 && y >= n.y0 && y <= n.y1;
+      if (y < n.y0) continue; // the lid rows are the valve's own cells
+      put(x, y, inside ? Cell.Empty : Cell.Metal, inside ? EMPTY_COLOR : packRGB(66, 70, 66));
+    }
+  }
+
   // TWO QUIET LESSONS IN THE INTAKE, beside the loud one (the barricade on
   // the forced route, stamped below). Neither does anything until the player
   // acts, and both answer a wand with the whole simulation at once.
@@ -278,6 +307,12 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   const pickup = (kind: Pickup['kind'], x: number, y: number, data: Pickup['data'] = {}): Pickup =>
     ({ kind, x, y, vx: 0, vy: 0, taken: false, data });
   const machineLights = stampTeaMachine(world, mechanisms);
+  // The Undertow cache's lid and its lens (geometry stamped above).
+  {
+    const c = WORKS_UNDERTOW_CACHE;
+    const lid = makeValve(ctx, mechanisms, c.niche.x0 - 1, c.niche.y0 - 2, c.niche.x1 - c.niche.x0 + 3, 2, { material: Cell.Metal, oneShot: true });
+    stampPhotocell(world, mechanisms, c.lens.x, c.lens.y, 1, { targetId: lid.id, latch: 'permanent' });
+  }
   // THE BARRICADE. The forced route from the spawn to the engine crank runs
   // through an oil-soaked timber barricade under an iron lintel: the store
   // gate's lesson, moved to where nobody can miss it. Its seams are caulked
@@ -369,7 +404,10 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
       pickup('heart', 820, 735), pickup('goldpile', 1470, 722, { amount: 60 }),
       pickup('goldpile', 1063, 978, { amount: 30 }),
       // The Intake lessons pay in gold: behind the wooden gate, and inside the sand plug.
-      pickup('goldpile', 30, 313, { amount: 45 }), pickup('goldpile', 308, 256, { amount: 40 })],
+      pickup('goldpile', 30, 313, { amount: 45 }), pickup('goldpile', 308, 256, { amount: 40 }),
+      // The Undertow cache, under its lens-locked lid.
+      pickup('goldpile', WORKS_UNDERTOW_CACHE.niche.x0 + 4, WORKS_UNDERTOW_CACHE.niche.y1, { amount: 50 }),
+      pickup('potion', WORKS_UNDERTOW_CACHE.niche.x1 - 3, WORKS_UNDERTOW_CACHE.niche.y1 - 1, { potion: 'torch' })],
     mechanisms, runeVaults: [], boss: null,
     prefabEnemies: [
       { kind: 'rillback', x: 707, y: 413, sourceId: 'works-rillback-sluice' },

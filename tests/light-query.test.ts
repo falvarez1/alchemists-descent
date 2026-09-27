@@ -44,12 +44,12 @@ describe('designed darkness map', () => {
 
   it('feathers a zone rim instead of cutting a hard edge', () => {
     const map = bakeDarkMap([UNDERTOW], { base: 0, deep: 1 });
-    const rim = sampleDarkMap(map, 400 - 120 + 6, 300);
-    const inside = sampleDarkMap(map, 400 - 120 + DARKNESS.feather + 4, 300);
+    const rim = sampleDarkMap(map, 400 - 120 + 14, 300);
+    const inside = sampleDarkMap(map, 400 - 120 + DARKNESS.feather + DARKNESS.rimNoise + 4, 300);
     expect(rim).toBeGreaterThan(0);
-    expect(rim).toBeLessThan(0.4);
+    expect(rim).toBeLessThan(0.8);
     expect(inside).toBeCloseTo(1, 2);
-    expect(sampleDarkMap(map, 400 - 130, 300)).toBe(0);
+    expect(sampleDarkMap(map, 400 - 120 - DARKNESS.rimNoise - 2, 300)).toBe(0);
   });
 
   it('combines overlapping zones by max, never by sum', () => {
@@ -59,12 +59,15 @@ describe('designed darkness map', () => {
     expect(sampleDarkMap(map, 310, 300)).toBeCloseTo(0.6, 1);
   });
 
-  it('ellipse zones fall off radially', () => {
+  it('ellipse zones fall off radially, with a wandering rim', () => {
     const z: DarkZone = { x: 500, y: 500, rx: 100, ry: 50 };
     expect(zoneInside(z, 500, 500)).toBe(1);
-    expect(zoneInside(z, 500, 551)).toBe(0);
-    expect(zoneInside(z, 595, 500)).toBeGreaterThan(0);
-    expect(zoneInside(z, 595, 500)).toBeLessThan(1);
+    expect(zoneInside(z, 500, 500 + 50 + DARKNESS.rimNoise + 1)).toBe(0);
+    expect(zoneInside(z, 588, 500)).toBeGreaterThan(0);
+    expect(zoneInside(z, 588, 500)).toBeLessThan(1);
+    // The rim is not a perfect curve: equal-radius points differ.
+    const around = [0, 1, 2, 3, 4, 5].map((k) => zoneInside(z, 500 + Math.cos(k) * 90, 500 + Math.sin(k) * 45));
+    expect(Math.max(...around) - Math.min(...around)).toBeGreaterThan(0.05);
   });
 
   it('keeps high-readability lighting meaningful: half the render darkness', () => {

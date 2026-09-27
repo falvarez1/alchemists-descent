@@ -609,6 +609,25 @@ export class Lighting implements LightField {
       // Lit braziers cast warmth past their own flames (fire cells help too)
       for (const m of runtime.mechanisms) {
         if (m.kind === 'brazier' && m.state === 1) this.seedLight(m.x, m.y - 2, 0.8, 0.5, 0.12);
+        else if (m.kind === 'sensor' && m.sensorType === 'light') {
+          // A photocell warms as it charges and burns steady gold once latched
+          // (restrained: well under its own blaze threshold, config/darkness).
+          const c = m.state > 0 ? 1 : Math.min(1, (m.reading ?? 0) / (m.threshold ?? 90));
+          if (c > 0.02) this.seedLight(m.x, m.y, 0.34 * c, 0.24 * c, 0.08 * c);
+        }
+      }
+      // Lumen blooms breathe their own faint light, brighter as they open, and
+      // their glass bridge glows along its length so it can be crossed in the dark.
+      if (runtime.lumenBlooms) {
+        const fc = ctx.state.frameCount;
+        for (const b of runtime.lumenBlooms) {
+          const k = 0.1 + b.open * 0.26 + Math.sin(fc * 0.045 + b.id * 1.7) * 0.03;
+          this.seedLight(b.x, b.y - 1, k * 0.45, k, k * 0.7);
+          for (let i = 6; i < b.shown; i += 10) {
+            const [px, py] = b.petals[i];
+            this.seedLight(px, py - 1, 0.05 * b.open, 0.13 * b.open, 0.09 * b.open);
+          }
+        }
       }
       // Designer-placed lights (Builder Phase 7).
       if (runtime.authoredLights) {

@@ -43,6 +43,7 @@ import { looseLegPose } from '@/combat/LooseWeaverLeg';
 import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/MechanismSprites';
+import { drawLumenBlooms } from '@/render/sprites/LightDeviceSprites';
 import { drawTeaMachineDecor } from '@/render/TeaMachineDecor';
 import { drawGoldPile } from '@/render/sprites/TreasureSprites';
 import { drawCorpses, hasSpeciesArt } from '@/render/creatures';
@@ -1008,6 +1009,7 @@ export class FrameComposer implements PixelSurface {
     this.drawLandmarks(ctx);
     this.drawPickupsAndPortal(ctx);
     this.drawMechanismsAndRunes(ctx);
+    drawLumenBlooms(this, this.light, ctx);
     this.drawCritters(ctx);
     this.drawFlaskEffects(ctx);
     this.drawRigidBodies(ctx);
@@ -1820,8 +1822,10 @@ export class FrameComposer implements PixelSurface {
       if (m.x < camX - pad || m.x > camX + VIEW_W + pad || m.y < camY - pad || m.y > camY + VIEW_H + pad)
         continue;
       const lt = this.light.sample(m.x, m.y - 4);
+      // Designed darkness (light wave) dims a fixture's 0.55 floor, never below ~0.17.
+      const mf = 0.55 * Math.max(0.3, lt.open ?? 1);
       drawMechanismSprite(this, m, frame, {
-        light: [Math.min(1, Math.max(0.55, lt.r)), Math.min(1, Math.max(0.55, lt.g)), Math.min(1, Math.max(0.55, lt.b))],
+        light: [Math.min(1, Math.max(mf, lt.r)), Math.min(1, Math.max(mf, lt.g)), Math.min(1, Math.max(mf, lt.b))],
         turn: m.look === 'handwheel' ? turn : undefined,
       });
     }

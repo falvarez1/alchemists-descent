@@ -11,6 +11,7 @@ import {
   setValveCells,
 } from '@/core/mechanismFactories';
 import { entityRandom } from '@/core/simRandom';
+import { PHOTOCELL } from '@/config/darkness';
 export {
   BUOY_LATCH_FRAMES,
   DEFAULT_TRIGGER_LATCH_FRAMES,
@@ -198,6 +199,12 @@ export class Mechanisms implements MechanismsApi {
           const frac = m.breakFrac ?? 0.5;
           if (intact <= m.body.length * (1 - frac)) this.breakPlug(ctx, m, false);
         }
+      } else if (m.kind === 'sensor' && m.sensorType === 'light') {
+        // PHOTOCELL (light wave): a brass lens that drinks light. The wand's
+        // beam on the lens (or any blaze beside it — fire counts) charges it
+        // over ~1.5 s; in the dark it cools rather than resetting. Charged,
+        // it latches like any sensor and its gate answers.
+        this.updatePhotocell(ctx, m);
       } else if (m.kind === 'sensor' && m.zone) {
         // GENERIC SENSOR: bounded zone read on a 4-frame cadence (staggered
         // by id); the latch covers the scan latency.
@@ -710,6 +717,41 @@ export class Mechanisms implements MechanismsApi {
       grav: 0.05,
     });
     if (!m.routeSeal) ctx.events.emit('toast', { text: 'A seal gives way.' });
+  }
+
+  /** Photocell charge, latch and feedback (sensorType 'light'). */
+  private updatePhotocell(ctx: Ctx, m: Mechanism): void {
+    const latch = m.latch ?? 'permanent';
+    if (latch === 'permanent' && m.state === 1) return;
+    const q = ctx.lightQuery;
+    const lit = q !== undefined && (q.wandLight(m.x, m.y) >= PHOTOCELL.beam || q.level(m.x, m.y) >= PHOTOCELL.blaze);
+    const full = m.threshold ?? PHOTOCELL.chargeTicks;
+    const before = m.reading ?? 0;
+    const reading = Math.max(0, Math.min(full, before + (lit ? 1 : -PHOTOCELL.drain)));
+    m.reading = reading;
+    // A rising hum as it fills, so a held beam is audibly "working".
+    if (lit && reading < full && ctx.state.frameCount % 9 === 0) {
+      ctx.audio.at(m.x, m.y, () => ctx.audio.tone(180 + (reading / full) * 520, 200 + (reading / full) * 560, 0.09, 'triangle', 0.022), 300);
+    }
+    const hot = reading >= full;
+    const was = this.satisfied(m);
+    if (latch === 'permanent') {
+      if (hot) m.state = 1;
+    } else if (hot) {
+      m.state = m.latchFrames ?? DEFAULT_TRIGGER_LATCH_FRAMES;
+    } else if (m.state > 0 && !lit) {
+      m.state--;
+    }
+    if (!was && this.satisfied(m)) {
+      // The lens takes: a bright brass chime, sparks off the rim.
+      ctx.audio.at(m.x, m.y, () => {
+        ctx.audio.tone(880, 1320, 0.22, 'triangle', 0.06);
+        ctx.audio.tone(1320, 1760, 0.3, 'sine', 0.035);
+      }, 360);
+      ctx.particles.burst(m.x, m.y, 10, null, () => packRGB(255, 214, 120), 1.2, { glow: 2.2, grav: 0.02 });
+      ctx.events.emit('lightDevice', { kind: 'photocell', x: m.x, y: m.y });
+      if (nearPlayer(ctx, m) && latch === 'permanent') ctx.events.emit('toast', { text: 'The lens drinks the light. Something unbolts.' });
+    }
   }
 
   /** One bounded sensor-zone read (the sensorType decides what counts). */

@@ -10,6 +10,8 @@ import { makeInstantiationSink } from '@/game/instantiate';
 import type {
   AuthoredLight,
   Ctx,
+  DarkZone,
+  LumenBloom,
   EnemyKind,
   ExitPortal,
   HazardEmitter,
@@ -52,6 +54,7 @@ import { dressWalkSurface, plantGroundCover } from '@/world/surfaceDress';
 import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
 import { placeEncounterLairs } from '@/world/encounterLairs';
+import { placeLightPuzzles, type LightPuzzleOutput } from '@/world/lightPuzzles';
 import { stampSecrets } from '@/world/secrets';
 import { computeFits, reachableMask, wizardMask } from '@/world/validate';
 import { placeStructures } from '@/world/structures';
@@ -824,6 +827,9 @@ export class WorldGen implements WorldGenApi {
     surfaceSpawn: { x: number; y: number } | null;
     /** D1 only: the horizon row — Empty above it renders as open sky. */
     surfaceSkyLine: number | null;
+    /** Light wave: designed deep-dark zones and lumen blooms. */
+    darkZones?: DarkZone[];
+    lumenBlooms?: LumenBloom[];
   } {
     if (def.id === 'd1') {
       const works = generateBreathingWorks(ctx, seed);
@@ -1145,6 +1151,27 @@ export class WorldGen implements WorldGenApi {
     }
     stage('encounter-lairs');
 
+    // 8b.8) LIGHT WAVE: two light puzzles (a photocell strongroom, a lumen-bloom
+    // crossing) carved off the caves on floors 2-4, each a room of designed
+    // black, plus darkness over a big cave or two on the main route. Forked
+    // stream; the shared ledger keeps them clear of everything placed above.
+    const lightOut: LightPuzzleOutput = { mechanisms, pickups, darkZones: [], lumenBlooms: [], placed: [] };
+    const lightAvoid = [
+      ...waystones.map((w) => ({ x: w.x, y: w.y, r: 70 })),
+      ...(portal ? [{ x: portal.x, y: portal.y, r: 90 }] : []),
+      ...(boss ? [{ x: boss.x, y: boss.y, r: 170 }] : []),
+      ...(refuge ? [{ x: refuge.x, y: refuge.y, r: 60 }] : []),
+      { x: cauldron.x, y: cauldron.y, r: 50 },
+    ];
+    placeLightPuzzles(ctx, new Rng(hashSeed(seed >>> 0, 'light-puzzles')), graph, ledger, def,
+      { spawn, wellX, avoid: lightAvoid }, fits, lightOut);
+    if (lightOut.placed.length > 0) {
+      placedPrefabs = placedPrefabs.concat(lightOut.placed);
+      graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+      fits.set(computeFits(ctx.world));
+    }
+    stage('light-puzzles');
+
     // (A GLOBAL powder settle was tried here and reverted: suspended powder
     // PLUGS are a deliberate authored primitive — the spell lab's dig-station
     // sand plug, the well plug bypass — and a world-wide settle destroys
@@ -1206,6 +1233,8 @@ export class WorldGen implements WorldGenApi {
       // D1 (the only level with a surface) is generateBreathingWorks, above.
       surfaceSpawn: null,
       surfaceSkyLine: null,
+      darkZones: lightOut.darkZones,
+      lumenBlooms: lightOut.lumenBlooms,
     };
   }
 }

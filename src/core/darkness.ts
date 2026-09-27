@@ -23,16 +23,30 @@ function smoothstep(e0: number, e1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/**
+ * A slow, deterministic wobble (−1…1) that breaks a zone's rim so the dark
+ * reads as a cave the light never reached, not a box drawn on the map.
+ */
+function rimWobble(x: number, y: number): number {
+  return Math.sin(x * 0.061 + Math.sin(y * 0.047) * 1.3) * 0.55 + Math.sin(y * 0.053 - x * 0.021 + 1.7) * 0.45;
+}
+
 /** How far inside a zone a cell sits, 0 (outside/rim) … 1 (past the feather). */
 export function zoneInside(zone: DarkZone, x: number, y: number, feather: number = DARKNESS.feather): number {
+  let depth: number;
   if (zone.shape === 'rect') {
-    const edge = Math.min(x - (zone.x - zone.rx), zone.x + zone.rx - x, y - (zone.y - zone.ry), zone.y + zone.ry - y);
-    return edge <= 0 ? 0 : smoothstep(0, feather, edge);
+    // Rounded-box depth: straight walls, softened corners.
+    const rc = Math.min(zone.rx, zone.ry) * 0.45;
+    const qx = Math.abs(x - zone.x) - (zone.rx - rc), qy = Math.abs(y - zone.y) - (zone.ry - rc);
+    const outside = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - rc;
+    depth = -outside;
+  } else {
+    const dx = (x - zone.x) / zone.rx, dy = (y - zone.y) / zone.ry;
+    const r = Math.sqrt(dx * dx + dy * dy);
+    depth = (1 - r) * Math.min(zone.rx, zone.ry);
   }
-  const dx = (x - zone.x) / zone.rx, dy = (y - zone.y) / zone.ry;
-  const r = Math.sqrt(dx * dx + dy * dy);
-  if (r >= 1) return 0;
-  return smoothstep(0, feather, (1 - r) * Math.min(zone.rx, zone.ry));
+  depth += rimWobble(x, y) * DARKNESS.rimNoise;
+  return depth <= 0 ? 0 : smoothstep(0, feather, depth);
 }
 
 /**

@@ -45,7 +45,8 @@ describe('Breathing Works encounter contracts', () => {
     let hash = 0x811c9dc5;
     for (const byte of a.runtime.world.types) hash = Math.imul(hash ^ byte, 0x01000193);
     // GEN_VERSION 48: barricade on the spawn route (cold lock gone), sealed shaft hatch, Lower Bell floor gate.
-    expect((hash >>> 0).toString(16)).toBe('703dc49e');
+    // GEN_VERSION 50 (light wave): the Undertow's lens tooth and lidded cache niche.
+    expect((hash >>> 0).toString(16)).toBe('a0195232');
   });
 
   it('puts an oil-soaked barricade on the forced route to the crank, and nothing card-locked', () => {

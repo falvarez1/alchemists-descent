@@ -1,7 +1,7 @@
 import type { Mechanism, RuneVault } from '@/core/types';
 import type { PixelSurface } from '@/render/pixels';
 import { hash2 } from '@/core/math';
-import { BRASS, BRASS_L, INK, IRON, IRON_D, Pen, STEEL, STEEL_D, type RGB } from './FineArt';
+import { BRASS, BRASS_D, BRASS_L, INK, IRON, IRON_D, Pen, STEEL, STEEL_D, type RGB } from './FineArt';
 
 /**
  * Procedural mechanism overlays (extracted from FrameComposer so the Builder
@@ -114,6 +114,47 @@ function drawLever(p: Pen, m: Mechanism, frame: number): void {
   p.raw(tipX, tipY, lamp, pulling ? 1 : g);
   p.raw(tipX - p.step, tipY, lamp, (pulling ? 1 : g) * 0.6);
   p.raw(tipX, tipY - p.step, lamp, (pulling ? 1 : g) * 0.6);
+}
+
+/**
+ * The photocell (light wave): a brass-collared lens under a small hood. The
+ * glass is dark and faintly glinting at rest (so the beam can find it), warms
+ * amber around a ring of six charge pips as light is held on it, and burns a
+ * steady gold once it has latched.
+ */
+function drawPhotocell(p: Pen, m: Mechanism, frame: number): void {
+  const x = m.x, y = m.y;
+  const full = m.threshold ?? 90;
+  const latched = m.state > 0;
+  const charge = latched ? 1 : Math.min(1, (m.reading ?? 0) / full);
+  p.disc(x, y, 3.3, BRASS_D, INK);
+  p.disc(x, y, 2.5, BRASS, INK, p.step, true);
+  for (const a of [0.5, 2.1, 3.7, 5.3]) p.rivet(x + Math.cos(a) * 2.9, y + Math.sin(a) * 2.9);
+  // The hood: a brass eyebrow shading the lens from above.
+  p.rod(x - 3.4, y - 3.4, x + 3.4, y - 3.4, BRASS_L, 0.9);
+  p.rod(x - 3.4, y - 3.4, x - 3.8, y - 1.6, BRASS_D, 0.7);
+  p.rod(x + 3.4, y - 3.4, x + 3.8, y - 1.6, BRASS_D, 0.7);
+  const glass: RGB = latched
+    ? [1.45, 1.12, 0.46]
+    : [0.1 + charge * 1.25, 0.13 + charge * 0.82, 0.2 - charge * 0.08];
+  p.disc(x, y, 1.7, glass, INK, p.step, true);
+  // Charged glass is its own light: paint it self-lit so it reads in the dark.
+  if (charge > 0.02) {
+    const k = latched ? 1 : 0.35 + charge * 0.65;
+    for (let dy = -1.4; dy <= 1.4 + 1e-6; dy += p.step) for (let dx = -1.4; dx <= 1.4 + 1e-6; dx += p.step) {
+      if (dx * dx + dy * dy <= 1.7) p.raw(x + dx, y + dy, glass, k);
+    }
+  }
+  // A faint idle glint so a sweeping beam can find it in the dark.
+  const glint = latched ? 1 : 0.35 + Math.max(0, Math.sin(frame * 0.05 + m.id)) * 0.35;
+  p.raw(x - 0.6, y - 0.6, [0.9, 0.95, 1], glint);
+  p.raw(x - 0.6 + p.step, y - 0.6, [0.7, 0.8, 0.9], glint * 0.6);
+  for (let k = 0; k < 6; k++) {
+    const a = -Math.PI / 2 + (k / 6) * Math.PI * 2;
+    const on = charge * 6 > k + 0.5;
+    p.raw(x + Math.cos(a) * 2.4, y + Math.sin(a) * 2.4, on ? [1.3, 0.9, 0.3] : [0.22, 0.18, 0.12], on ? 1 : 0.8);
+  }
+  if (charge > 0.02) p.glow(x, y, [1, 0.72, 0.28], (latched ? 0.45 + Math.sin(frame * 0.08) * 0.1 : 0.15 + charge * 0.5));
 }
 
 function drawGauge(p: Pen, x: number, y: number, frac: number, lit: RGB, dim: RGB): void {
@@ -243,6 +284,8 @@ export function drawMechanismSprite(s: PixelSurface, m: Mechanism, frame: number
         p.glow(m.x + (m.w >> 1), m.y - 1, [0.4, 0.3, 0.2]);
       }
     }
+  } else if (m.kind === 'sensor' && m.sensorType === 'light') {
+    drawPhotocell(p, m, frame);
   } else if (m.kind === 'sensor') {
     // a tuned crystal node: teal idle, ramping AMBER as the reading climbs
     // toward the threshold, steady green once satisfied

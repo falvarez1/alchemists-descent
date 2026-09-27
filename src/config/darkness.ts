@@ -47,7 +47,9 @@ export const DARKNESS = {
    *  darkness still reads as a place, but nobody is locked out by it. */
   readabilityScale: 0.5,
   /** Soft edge of a zone, in cells (smoothstep from the rim inward). */
-  feather: 26,
+  feather: 30,
+  /** The rim wanders this many cells in and out (core/darkness rimWobble). */
+  rimNoise: 10,
   /** Dark-map resolution: one texel per this many cells (the light field's own grain). */
   mapCell: 2,
   /** Per-build smoothing of the darkness under the player (light builds every 2 frames). */
