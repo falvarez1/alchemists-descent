@@ -236,15 +236,7 @@ export class RunSummary {
   }
 
   private playReveal(victory: boolean): void {
-    const audio = this.ctx.audio;
-    if (victory) {
-      audio.tone(392, 392, 1.4, 'sine', 0.05);
-      this.later(() => audio.tone(494, 494, 1.2, 'sine', 0.04), 140);
-      this.later(() => audio.tone(587, 587, 1.4, 'triangle', 0.035), 300);
-    } else {
-      audio.tone(147, 147, 1.6, 'sine', 0.05);
-      this.later(() => audio.tone(220, 196, 1.4, 'sine', 0.03), 220);
-    }
+    this.ctx.audio.sfx(victory ? 'ui.summary.victory' : 'ui.summary.fallen');
   }
 
   private renderFloors(result: RunResult): void {
@@ -357,7 +349,7 @@ export class RunSummary {
             this.frame(step);
           } else {
             node.textContent = row.format(row.value);
-            if (row.value > 0) this.ctx.audio.tone(1480 - i * 40, 1320 - i * 40, 0.04, 'triangle', 0.012);
+            if (row.value > 0) this.ctx.audio.sfx('ui.tally', undefined, undefined, { pitch: -i * 0.5 });
           }
         };
         this.frame(step);

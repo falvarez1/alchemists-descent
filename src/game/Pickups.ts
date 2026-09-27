@@ -129,20 +129,20 @@ export class Pickups implements PickupsApi {
       player.firing = false; player.firePressed = false; player.fireBlockedUntilRelease = true; player.recoilT = 0;
       cancelChargingBlackHole(ctx, { removeProjectile: true });
       ctx.events.emit('toast', { text: `Weaver leg equipped · LMB whip · RMB throw · ${keyLabel(getBindings().carry)} drop` });
-      ctx.audio.pickup();
+      ctx.audio.sfx('pickup.leg');
     } else if (p.kind === 'goldpile') {
       const amount = p.data.amount ?? 25;
       ctx.state.score += amount;
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
       ctx.events.emit('toast', { text: `+${amount} oz gold` });
-      ctx.audio.pickup();
+      ctx.audio.sfx('pickup.gold');
     } else if (p.kind === 'heart') {
       // The vessel grows at once; refilling it is a COMMUNION — the alchemist
       // roots in place, glowing, while ~20 HP charges in (see Player.update).
       player.maxHp += 20;
       player.recharge = 110;
       ctx.events.emit('toast', { text: '+20 max HP. Hold still while it takes.' });
-      ctx.audio.chest();
+      ctx.audio.sfx('pickup.heart');
       ctx.particles.burst(p.x, p.y - 2, 14, null, () => packRGB(255, 90, 120), 1.8, {
         glow: 1.8,
         grav: -0.02,
@@ -176,7 +176,7 @@ export class Pickups implements PickupsApi {
       if (runtime) runtime.keyTaken = true;
       ctx.events.emit('toast', { text: runtime?.living ? 'The brass bell is yours.' : 'The golden key is yours.' });
       ctx.events.emit('objectiveChanged', { text: runtime?.living ? 'Follow the undertow to the lower gate.' : INTRO_OBJECTIVE.returnPortal });
-      ctx.audio.keyJingle();
+      ctx.audio.sfx(runtime?.living ? 'pickup.bell' : 'pickup.key');
       ctx.particles.burst(p.x, p.y - 2, 16, null, () => packRGB(255, 230, 90), 2.0, {
         glow: 2.2,
         grav: -0.01,

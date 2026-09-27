@@ -43,7 +43,7 @@ function makeCtx(): { ctx: Ctx; list: Mechanism[]; world: World; toasts: string[
     enemies: [],
     player: { x: -500, y: -500, dead: false, pullT: 0, pullDir: 1, facing: 1 },
     state: { mode: 'play', paused: false, frameCount: 1, currentBiome: 'earthen' },
-    audio: {
+    audio: { sfx: () => undefined, creature: () => undefined,
       tone: noop, groan: noop, zap: noop, bubble: noop, brazier: noop,
       lever: noop, doorGrind: noop, boom: noop,
     },

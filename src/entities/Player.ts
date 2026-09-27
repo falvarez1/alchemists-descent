@@ -472,7 +472,7 @@ export class PlayerControl implements PlayerControlApi {
         this.jumpNeedsRelease = true; // W got him up here; W must not hop him off
         this.stopClimb(player);
         ctx.particles.burst(nx, ny - 2, 7, null, () => packRGB(150, 140, 120), 1.2, { grav: 0.05 });
-        ctx.audio.noiseBurst(0.05, 300, 0.08, true);
+        ctx.audio.sfx('player.pullup');
         return true;
       }
     }
@@ -501,7 +501,7 @@ export class PlayerControl implements PlayerControlApi {
     if (clearance.ok) this.brushClimbDebris(ctx, clearance.brush, side);
     player.hat.vx += side * 0.9;
     player.hat.vy -= 1.0;
-    ctx.audio.noiseBurst(0.04, 420, 0.06, true);
+    ctx.audio.sfx('player.grab');
   }
 
   private stopClimb(player: PlayerState): void {
@@ -552,7 +552,7 @@ export class PlayerControl implements PlayerControlApi {
         player.grounded = false;
         player.stretchT = 6;
         ctx.fx.hitstop = Math.max(ctx.fx.hitstop, 3); // a crunchy little freeze
-        ctx.audio.landThud(0.85);
+        ctx.audio.sfx('player.stomp');
         return; // one kill per frame; the bounce carries you onward
       }
     }
@@ -834,8 +834,7 @@ export class PlayerControl implements PlayerControlApi {
       const spread = a + (entityRandom() - 0.5) * lp.kickArc * 1.6;
       ctx.particles.spawn(ox + dirX * 4, oy + dirY * 4, Math.cos(spread) * 1.6, Math.sin(spread) * 1.6, null, packRGB(190, 178, 158), 12, { grav: 0.05 });
     }
-    ctx.audio.tone(150, 90, 0.14, 'square', 0.09);
-    ctx.audio.noiseBurst(0.12, 220, 0.09); // whoosh
+    ctx.audio.sfx('player.kick'); // thud + whoosh
   }
 
   /** Latch onto the nearest hanging vine for a pendulum swing; true if latched. */
@@ -852,7 +851,7 @@ export class PlayerControl implements PlayerControlApi {
     this.swingLen = Math.max(SWING_MIN_LEN, Math.min(g.length, SWING_MAX_LEN));
     this.swingJumpPrev = ctx.input.keys.jump; // don't insta-launch if jump is already held
     ctx.vineStrands.driveSwing(player.x, player.y - 8);
-    ctx.audio.tone(260, 160, 0.06, 'sine', 0.06);
+    ctx.audio.sfx('player.vine');
     return true;
   }
 
@@ -1030,11 +1029,11 @@ export class PlayerControl implements PlayerControlApi {
           density: 0.45, friction: 0.6, restitution: 0.35, angle: ang,
           vx: player.vx * 0.9 + player.facing * 0.9, vy: Math.min(player.vy, 0) - 1.9, va: player.facing * 0.32,
           tag: 'player-corpse-wand', color: packRGB(92, 58, 30),
-          onTerrainHit: (_b, speed) => { if (speed > 0.8) ctx.audio.tone(1500 + speed * 90, 900, 0.05, 'triangle', 0.05); },
+          onTerrainHit: (_b, speed) => { if (speed > 0.8) ctx.audio.sfx('player.corpse.wand', undefined, undefined, { gain: Math.min(1, speed / 3) }); },
         });
       }
     }
-    ctx.audio.squelch();
+    ctx.audio.sfx('player.death');
     ctx.audio.boom(10);
     ctx.fx.screenShake = 0.05;
     // A beat of freeze, then slow-mo: the death reads as a moment, and the camera
@@ -1062,7 +1061,7 @@ export class PlayerControl implements PlayerControlApi {
     if (!this.corpseSettled && ((quiet && this.corpseT > 40) || this.corpseT > 180)) {
       this.corpseSettled = true;
       corpse.data = { settled: true };
-      ctx.audio.tone(150, 320, 0.32, 'sine', 0.09); // a low knell
+      ctx.audio.sfx('player.corpse.knell'); // a low knell
       ctx.events.emit('playerCorpseSettled');
     }
   }
@@ -1232,14 +1231,14 @@ export class PlayerControl implements PlayerControlApi {
           { glow: 2.2, grav: -0.01 },
         );
       }
-      if (player.recharge % 24 === 0) ctx.audio.tone(520 + (110 - player.recharge) * 3, 660, 0.1, 'sine', 0.05);
+      if (player.recharge % 24 === 0) ctx.audio.sfx('player.recharge', undefined, undefined, { pitch: (110 - player.recharge) * 0.075 });
       if (player.recharge === 0) {
         // communion complete: a rose-gold ring blooms off the alchemist
         ctx.particles.burst(player.x, player.y - 8, 22, null, () => packRGB(255, 150, 170), 2.6, {
           glow: 2.6,
           grav: -0.005,
         });
-        ctx.audio.chest();
+        ctx.audio.sfx('player.recharge.done');
       }
     }
     if (player.invuln > 0) player.invuln--;
@@ -1932,7 +1931,7 @@ export class PlayerControl implements PlayerControlApi {
         player.diveT = 1;
         player.vy = Math.max(player.vy, 5.6);
         player.hat.vy -= 2.6; // the hat objects to the decision
-        ctx.audio.noiseBurst(0.12, 320, 0.1);
+        ctx.audio.sfx('player.dive');
       }
       if (player.diveT > 0) {
         player.diveT++;
@@ -2107,7 +2106,7 @@ export class PlayerControl implements PlayerControlApi {
           if (++absorbed >= 3) break outerGoo;
         }
       }
-      if (absorbed > 0 && ctx.state.frameCount % 9 === 0) ctx.audio.tone(620 + player.hp * 3, 70, 0.08, 'sine', 0.05);
+      if (absorbed > 0 && ctx.state.frameCount % 9 === 0) ctx.audio.sfx('player.heal');
     }
 
     // Wave D: play-mode casting runs the wand's compiled card program
@@ -2144,7 +2143,7 @@ export class PlayerControl implements PlayerControlApi {
       s.count -= sips;
       if (s.count === 0) s.material = null;
     }
-    if (ctx.state.frameCount % 10 === 0) ctx.audio.tone(300, 180, 0.08, 'sine', 0.12);
+    if (ctx.state.frameCount % 10 === 0) ctx.audio.sfx('player.drink');
     ctx.events.emit('flaskUsed', { verb: 'drink', material: m, amount: sips });
   }
 
@@ -2172,7 +2171,7 @@ export class PlayerControl implements PlayerControlApi {
       glow: 2.4,
       grav: 0,
     });
-    ctx.audio.tone(660, 1320, 0.18, 'sine', 0.18);
+    ctx.audio.sfx('player.teleport');
   }
 
   private safeTeleportTarget(ctx: Ctx): { x: number; y: number } | null {
@@ -2364,7 +2363,7 @@ export class PlayerControl implements PlayerControlApi {
       player.skidT = 9;
       player.skidDir = Math.sign(player._svx);
       player.hat.vx += player.skidDir * 2.0; // hat keeps going the old way
-      ctx.audio.noiseBurst(0.05, 700, 0.07, true);
+      ctx.audio.sfx('player.skid');
       ctx.particles.burst(player.x + player.skidDir * 2, player.y, 4, null, () => {
         const g = 120 + Math.floor(entityRandom() * 60);
         return packRGB(g, g, g - 10);
@@ -2393,7 +2392,7 @@ export class PlayerControl implements PlayerControlApi {
       player.diveT = 0;
       player.landTimer = 10;
       player.fallPeak = 0; // the slam IS the landing — no second thud/impact below
-      ctx.audio.landThud(1);
+      ctx.audio.sfx('player.slam');
       ctx.events.emit('groundImpact', { x: player.x, y: player.y, radius: 54, strength: 1 });
       ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.014, 0.04);
       for (const dir of [-1, 1]) {

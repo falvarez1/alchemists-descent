@@ -35,12 +35,12 @@ export function strikeWeaverLeg(ctx: Ctx, e: Enemy, index: number, damage: numbe
     pickup.vx = clamp(vx * .28, -2.4, 2.4); pickup.vy = -1.8 + Math.min(.5, vy * .12);
     ctx.levels.current?.pickups.push(pickup);
     ctx.particles.burst(hip.x, hip.y, 5, null, () => packRGB(157, 185, 147), 1.5, { grav: .12 });
-    ctx.audio.noiseBurst(.06, 1700, .09, true); ctx.audio.tone(270, 65, .12, 'triangle', .065);
+    ctx.audio.sfx('creature.weaver.sever', hip.x, hip.y);
     ctx.fx.hitstop = Math.max(ctx.fx.hitstop ?? 0, 4);
     ctx.telemetry.count('weaver.legSevered');
     recordTrickshot(ctx, e, 'sever');
   } else {
-    ctx.audio.tone(480, 230, .05, 'triangle', .04);
+    ctx.audio.sfx('creature.weaver.limbhit', e.x, e.y);
   }
   ctx.enemyCtl.damage(e, damage * .25, vx * .12, vy * .1);
   return true;
@@ -77,7 +77,7 @@ export function startLegSwing(ctx: Ctx): boolean {
   club.angle = p.aimAngle; club.swingT = LEG_SWING_TICKS; club.cooldown = 26;
   club.hitThisSwing = false;
   p.facing = Math.cos(club.angle) < 0 ? -1 : 1;
-  ctx.audio.noiseBurst(.06, 680, .065, true);
+  ctx.audio.sfx('player.club.swing');
   const victim = finisherOpportunity(ctx);
   if (victim) beginFinisher(ctx, victim);
   return true;
@@ -121,7 +121,7 @@ export function updateLegSwing(ctx: Ctx): void {
   rig.vx *= .3; rig.vy *= .3; rig.wristVelocity *= .4;
   club.durability--;
   ctx.fx.hitstop = Math.max(ctx.fx.hitstop ?? 0, 4);
-  ctx.audio.noiseBurst(.07, 420, .12, true); ctx.audio.tone(120, 42, .1, 'triangle', .08);
+  ctx.audio.sfx('player.club.hit');
   ctx.telemetry.count('weaver.legClubHit');
   if (club.durability <= 0) {
     ctx.particles.burst(ox + dx * 18, oy + dy * 18, 10, null, () => packRGB(158, 183, 144), 2.5, { grav: .15 });

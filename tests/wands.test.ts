@@ -592,7 +592,7 @@ describe('WandSystem runtime snapshots', () => {
     const ctx = {
       events,
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'build' },
       player: {},
     } as unknown as Ctx;
@@ -621,7 +621,7 @@ describe('WandSystem runtime snapshots', () => {
     const ctx = {
       events,
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'build' },
       player: {},
     } as unknown as Ctx;
@@ -647,7 +647,7 @@ describe('WandSystem runtime snapshots', () => {
     const ctx = {
       events,
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'build' },
       player: {},
     } as unknown as Ctx;
@@ -738,8 +738,8 @@ describe('WandSystem runtime snapshots', () => {
     const ctx = makeCastCtx();
     let eroded: { x: number; y: number; rad: number } | null = null;
     let dug = 0;
-    ctx.audio.dig = () => {
-      dug++;
+    ctx.audio.sfx = (id) => {
+      if (id === 'player.staff') dug++;
     };
     ctx.player.aimAngle = Math.PI / 2;
     ctx.player.vy = 1.4;
@@ -784,7 +784,7 @@ describe('WandSystem metaprogression', () => {
     const ctx = {
       events: new EventBus(),
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'play' },
       player: {},
     } as unknown as Ctx;
@@ -816,7 +816,7 @@ describe('WandSystem metaprogression', () => {
     const ctx = {
       events: new EventBus(),
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'play' },
       player: {},
     } as unknown as Ctx;
@@ -861,7 +861,7 @@ function makeCastCtx(): Ctx & { spawned: Array<{ x: number; y: number; type: num
     world: new World(),
     events: new EventBus(),
     telemetry: { count: () => undefined },
-    audio: {
+    audio: { sfx: () => undefined, creature: () => undefined,
       zap: () => undefined,
       noiseBurst: () => undefined,
       tone: () => undefined,
@@ -1114,7 +1114,7 @@ describe('WandSystem bench transfers', () => {
     const ctx = {
       events,
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'build' },
       player: {},
     } as unknown as Ctx;

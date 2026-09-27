@@ -738,7 +738,7 @@ describe('weaver encounter contract', () => {
       impulse: 0,
       scatter: 0,
       chirr: 0,
-      tone: 0,
+      sfx: 0,
       webShot: 0,
     };
     const countVines = () => {
@@ -767,8 +767,8 @@ describe('weaver encounter contract', () => {
         chirr: () => {
           calls.chirr++;
         },
-        tone: () => {
-          calls.tone++;
+        sfx: () => {
+          calls.sfx++;
         },
       }),
       particles: {
@@ -809,7 +809,7 @@ describe('weaver encounter contract', () => {
     expect(calls.scatter).toBe(1);
     expect(calls.impulse).toBe(1);
     expect(calls.chirr).toBeGreaterThan(0);
-    expect(calls.tone).toBeGreaterThan(0);
+    expect(calls.sfx).toBeGreaterThan(0);
     expect(calls.burst).toBeGreaterThanOrEqual(2);
     expect(ctx.fx.screenShake).toBeGreaterThan(0);
 
