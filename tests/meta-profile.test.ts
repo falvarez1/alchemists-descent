@@ -187,6 +187,27 @@ describe('run bookkeeping', () => {
     expect(end.profile.dailyBests['2026-09-26']).toEqual({ floor: 4, timeMs: 900_000, victory: true });
   });
 
+  it('records daily bests only for runs that ended by death or victory (QA: abandoned daily said "New best")', () => {
+    // An abandoned daily on a fresh date sets nothing and claims nothing.
+    let end = recordRunEnded(defaultMetaProfile(), summary({ daily: '2026-09-27', outcome: 'abandoned', floor: 1, timeMs: 20_000 }));
+    expect(end.newDailyBest).toBe(false);
+    expect(end.dailyBest).toBeNull();
+    expect(end.profile.dailyBests).toEqual({});
+    // A fallen run sets the date's best...
+    end = recordRunEnded(end.profile, summary({ daily: '2026-09-27', outcome: 'fallen', floor: 2, timeMs: 400_000 }));
+    expect(end.newDailyBest).toBe(true);
+    // ...and a DEEPER abandoned run still cannot beat it; it reports the standing best.
+    const standing = end.profile.dailyBests['2026-09-27'];
+    end = recordRunEnded(end.profile, summary({ daily: '2026-09-27', outcome: 'abandoned', floor: 3, timeMs: 300_000 }));
+    expect(end.newDailyBest).toBe(false);
+    expect(end.dailyBest).toEqual(standing);
+    expect(end.profile.dailyBests['2026-09-27']).toEqual(standing);
+    // Victory still counts.
+    end = recordRunEnded(end.profile, summary({ daily: '2026-09-27', outcome: 'victory', floor: 4, timeMs: 900_000 }));
+    expect(end.newDailyBest).toBe(true);
+    expect(end.profile.dailyBests['2026-09-27']).toEqual({ floor: 4, timeMs: 900_000, victory: true });
+  });
+
   it('keeps only the most recent sixty daily dates', () => {
     let p = defaultMetaProfile();
     for (let day = 0; day < 70; day++) {
