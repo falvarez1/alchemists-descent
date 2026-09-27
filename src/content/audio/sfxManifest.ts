@@ -110,6 +110,8 @@ export interface AuditionEntry {
   prompt: string;
   urls: string[];
   loop?: boolean;
+  /** Optional: the linear gain the game plays this cue at (the page's "at mix level"). */
+  gain?: number;
 }
 
 function buildAuditionEntries(): AuditionEntry[] {
@@ -123,6 +125,7 @@ function buildAuditionEntries(): AuditionEntry[] {
       prompt: SFX_PROMPTS[id]?.p ?? '',
       urls: [...sfxUrls(id)],
       loop: cue.loop || undefined,
+      gain: cue.gain,
     };
   });
 }
