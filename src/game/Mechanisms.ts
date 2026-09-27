@@ -35,6 +35,13 @@ export {
 
 /* ---------------- the runtime system ---------------- */
 
+/** Within roughly a screen of the player: close enough to have seen it happen. */
+const WITNESS_RADIUS = 360;
+function nearPlayer(ctx: Ctx, m: Mechanism): boolean {
+  const dx = m.x - ctx.player.x, dy = m.y - ctx.player.y;
+  return dx * dx + dy * dy <= WITNESS_RADIUS * WITNESS_RADIUS;
+}
+
 export class Mechanisms implements MechanismsApi {
   private readonly sequenceScratch: Mechanism[] = [];
   private readonly edgeScratch: boolean[] = [];
@@ -77,7 +84,10 @@ export class Mechanisms implements MechanismsApi {
         if (intact < m.body.length / 2) {
           m.broken = 1800; // 30 seconds of groaning
           ctx.audio.groan();
-          ctx.events.emit('toast', { text: 'THE MECHANISM GROANS — SOMETHING GIVES WAY' });
+          // Announce only what the player can witness: generation/settling can
+          // wreck several far-off mechanisms on arrival, and a stack of
+          // identical groans about machines you have never seen is noise.
+          if (nearPlayer(ctx, m)) ctx.events.emit('toast', { text: 'A mechanism groans. Something gives way.' });
         }
       }
       if (m.broken !== undefined && m.broken > 0) {
@@ -88,8 +98,8 @@ export class Mechanisms implements MechanismsApi {
             grav: 0.06,
           });
         }
-        if (m.broken === 0) {
-          ctx.events.emit('toast', { text: 'THE BROKEN GATE FALLS OPEN' });
+        if (m.broken === 0 && nearPlayer(ctx, m)) {
+          ctx.events.emit('toast', { text: 'The broken gate falls open.' });
         }
         continue; // a dying mechanism no longer senses
       }
@@ -171,7 +181,7 @@ export class Mechanisms implements MechanismsApi {
               glow: 2.4,
               grav: -0.01,
             });
-            ctx.events.emit('toast', { text: 'THE COIL DRINKS THE SPARK — LATCHED' });
+            ctx.events.emit('toast', { text: 'The coil drinks the spark and latches.' });
           }
         }
       } else if (m.kind === 'plug') {
@@ -236,7 +246,7 @@ export class Mechanisms implements MechanismsApi {
               grav: 0.05,
               glow: 0.9,
             });
-            ctx.events.emit('toast', { text: 'THE COUNTERWEIGHT SETTLES — SOMETHING SHIFTS' });
+            ctx.events.emit('toast', { text: 'The counterweight settles. Something shifts.' });
           }
         }
       } else if (m.kind === 'brazier') {
@@ -259,7 +269,7 @@ export class Mechanisms implements MechanismsApi {
               glow: 2.2,
               grav: -0.02,
             });
-            ctx.events.emit('toast', { text: 'A BRAZIER ROARS TO LIFE' });
+            ctx.events.emit('toast', { text: 'A brazier roars to life.' });
           }
         } else if (ctx.state.frameCount % 6 === 0) {
           // keep it burning: re-seed a flame in the bowl
@@ -683,7 +693,7 @@ export class Mechanisms implements MechanismsApi {
     ctx.particles.burst(m.x + m.w / 2, m.y + m.h / 2, 8, null, () => packRGB(180, 150, 110), 1.2, {
       grav: 0.05,
     });
-    ctx.events.emit('toast', { text: 'A SEAL GIVES WAY' });
+    ctx.events.emit('toast', { text: 'A seal gives way.' });
   }
 
   /** One bounded sensor-zone read (the sensorType decides what counts). */
@@ -803,7 +813,7 @@ export class Mechanisms implements MechanismsApi {
         dy = v.ry - y;
       if (dx * dx + dy * dy <= radius * radius) {
         v.active = true;
-        ctx.events.emit('toast', { text: 'ANCIENT RUNE STRUCK — A VAULT RUMBLES OPEN' });
+        ctx.events.emit('toast', { text: 'Rune struck. Somewhere, a vault rumbles open.' });
         ctx.audio.tone(220, 500, 0.5, 'sine', 0.18);
         setTimeout(() => ctx.audio.tone(330, 400, 0.4, 'sine', 0.14), 240);
         ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.012, 0.05);

@@ -235,11 +235,11 @@ const resetAfterReward = await page.evaluate(() => {
     heavySlotted: ctx.wands.wands.some((wand) => wand.cards.includes('heavy')),
   };
 });
-check('intro reset after slotted Heavy stays on the key loop', resetAfterReward.heavySlotted && /FIND THE GOLDEN KEY/.test(resetAfterReward.objective), JSON.stringify(resetAfterReward));
+check('intro reset after slotted Heavy stays on the key loop', resetAfterReward.heavySlotted && /find the golden key/i.test(resetAfterReward.objective), JSON.stringify(resetAfterReward));
 
 const events = await page.evaluate(() => window.__introProbe);
 check('intro teach cards fired for the core stages', ['intro-surface', 'intro-movement', 'intro-spark', 'intro-dig', 'intro-flask', 'intro-spellLab', 'intro-bench'].every((key) => events.teaches.includes(key)), JSON.stringify(events.teaches));
-check('intro releases to the golden-key loop after Heavy is slotted', events.objectives.includes('FIND THE GOLDEN KEY'), JSON.stringify(events.objectives));
+check('intro releases to the golden-key loop after Heavy is slotted', events.objectives.some((text) => /find the golden key/i.test(text)), JSON.stringify(events.objectives));
 check('lab station objectives were observed', ['SPELL LAB: EXCAVATE THE SAND', 'SPELL LAB: POUR WATER ON HEAT', 'SPELL LAB: SPARK THE COIL', 'SPELL LAB: CLAIM THE TOME'].every((text) => events.objectives.includes(text)), JSON.stringify(events.objectives));
 check('wand and flask gameplay events were observed', events.casts.filter((c) => c === 'wand:spark').length >= 2 && events.casts.filter((c) => c === 'wand:dig').length >= 2 && events.flasks.some((f) => f.startsWith('pour:')), JSON.stringify(events));
 check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));

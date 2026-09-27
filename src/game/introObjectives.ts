@@ -26,9 +26,11 @@ export const INTRO_OBJECTIVE = {
   labSpark: 'SPELL LAB: SPARK THE COIL',
   labTome: 'SPELL LAB: CLAIM THE TOME',
   bench: 'WAND BENCH: SLOT HEAVY',
-  benchAvailable: 'WAND BENCH READY — PRESS B',
-  returnPortal: 'RETURN TO THE PORTAL',
-  findKey: 'FIND THE GOLDEN KEY',
+  // The generated floors' loop, in the house tone (sentence case, imperative,
+  // dry) so it reads like the Works' own objectives.
+  benchAvailable: 'A new card is in the satchel. Seat it at the wand bench (B).',
+  returnPortal: 'Carry the golden key back to the portal.',
+  findKey: 'Find the golden key. The portal will not wake without it.',
 } as const;
 
 /**

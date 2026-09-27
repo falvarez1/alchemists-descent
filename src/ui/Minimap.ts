@@ -9,6 +9,7 @@ import { PopoverHost, type RectLike } from '@/ui/editor/PopoverHost';
 import { fillMaterialPopover } from '@/ui/materialInfo';
 import { resetHeldSpellInputs } from '@/core/runtimeState';
 import { WORKS_ROOMS } from '@/world/breathingWorks';
+import { INTRO_OBJECTIVE } from '@/game/introObjectives';
 
 /** Fog color for unexplored map cells (#0a0a10). */
 const UNEXPLORED = packRGB(10, 10, 16);
@@ -1020,7 +1021,7 @@ export class Minimap {
     // Key in hand -> the portal dot pings on the corner map for a few
     // seconds: "now go THERE."
     this.disposers.push(ctx.events.on('objectiveChanged', ({ text }) => {
-      if (text === 'REACH THE PORTAL' || text === 'RETURN TO THE PORTAL') this.portalPing = 300;
+      if (text === 'REACH THE PORTAL' || text === INTRO_OBJECTIVE.returnPortal) this.portalPing = 300;
     }));
     this.disposers.push(ctx.events.on('refugePing', () => {
       this.refugePing = 300;

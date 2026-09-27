@@ -98,6 +98,8 @@ import { ExpeditionStorage } from '@/game/persistence/ExpeditionStorage';
 import type { PendingLevelSave } from '@/game/persistence/codec';
 import type { CreatureMind } from '@/creatures/types';
 import { ensureCreatureMind } from '@/creatures/perception';
+import { INTRO_OBJECTIVE } from '@/game/introObjectives';
+import { titleCaseName } from '@/core/strings';
 
 /** Frames the transition curtain stays down after the (synchronous) swap. */
 const CURTAIN_HOLD_MS = 450;
@@ -834,7 +836,7 @@ export class Levels implements LevelsApi {
     const prefix = mode === 'test' ? 'Test run' : 'Fresh expedition';
     const diff = difficultyMods(ctx.state);
     ctx.events.emit('toast', {
-      text: `${prefix.toUpperCase()}: ${label} — ${diff.roman} ${diff.name.toUpperCase()}`,
+      text: `${prefix}: ${titleCaseName(label)} · ${diff.roman} ${diff.name}`,
     });
     return {
       ok: true,
@@ -909,11 +911,11 @@ export class Levels implements LevelsApi {
     const resolved = kind ?? 'colossus';
     switch (resolved) {
       case 'leviathan':
-        return 'DRAIN THE SUNKEN LEVIATHAN';
+        return 'Drain the Sunken Leviathan.';
       case 'colossus':
-        return 'SLAY THE KILN COLOSSUS';
+        return 'Bring down the Kiln Colossus.';
       default:
-        return `SLAY THE ${resolved.toUpperCase()}`;
+        return `Bring down the ${resolved}.`;
     }
   }
 
@@ -933,7 +935,7 @@ export class Levels implements LevelsApi {
     const surfaceSpawn = runtime.surfaceSpawn;
     if (surfaceSpawn && !runtime.surfaceDescended && player.y > surfaceSpawn.y + SURFACE_DESCENT_DROP) {
       runtime.surfaceDescended = true;
-      ctx.events.emit('toast', { text: 'INTO THE DEPTHS' });
+      ctx.events.emit('toast', { text: 'Into the depths.' });
     }
 
     // Floor safety: terrain no longer opens into a hidden descent shaft.
@@ -956,7 +958,7 @@ export class Levels implements LevelsApi {
         if (!portal.open) {
           portal.open = true;
           ctx.audio.portalWhoosh();
-          ctx.events.emit('toast', { text: runtime.living ? 'The bell rings in the lock. The lower gate opens.' : 'THE PORTAL AWAKENS' });
+          ctx.events.emit('toast', { text: runtime.living ? 'The bell rings in the lock. The lower gate opens.' : 'The key turns. The portal wakes.' });
         }
         const next = runtime.def.nextLevelId;
         if (next) {
@@ -978,7 +980,7 @@ export class Levels implements LevelsApi {
             ? (runtime.living.tea?.completed
               ? 'Sealed. Bring the brass bell from the end of the engine’s catwalk.'
               : 'Sealed. The gate answers to a brass bell, and only the Bell & Tea Engine above the Intake makes one.')
-            : 'SEALED — THE GOLDEN KEY IS MISSING',
+            : 'Sealed. It wants the golden key.',
         });
       }
     }
@@ -2417,13 +2419,13 @@ export class Levels implements LevelsApi {
         ? 'STUDY THE WEAVER LAIR'
         : runtime.portal
         ? runtime.keyTaken
-          ? 'RETURN TO THE PORTAL'
-          : 'FIND THE GOLDEN KEY'
+          ? INTRO_OBJECTIVE.returnPortal
+          : INTRO_OBJECTIVE.findKey
         : runtime.boss
           ? this.bossObjective(runtime.boss.kind)
           : def.branch
-            ? 'PLUNDER THE HOARD — THE ARCH LEADS HOME'
-            : 'THE DEPTHS END HERE — SURVIVE',
+            ? 'Plunder the hoard. The arch leads home.'
+            : 'The Works end here. Survive them.',
     });
 
     this.finishTransitionWithCurtain(ctx);
@@ -2484,7 +2486,7 @@ export class Levels implements LevelsApi {
     }
     if (findability.repaired.length > 0) {
       this.blobCache.delete(runtime.def.id);
-      ctx.events.emit('toast', { text: 'A SAFE ROUTE TEARS OPEN' });
+      ctx.events.emit('toast', { text: 'Somewhere below, rock shifts. A way opens.' });
     }
     return findability.repaired.length > 0;
   }

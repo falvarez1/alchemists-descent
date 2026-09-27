@@ -15,6 +15,7 @@ import { updateLooseWeaverLeg } from '@/combat/LooseWeaverLeg';
 import { sightClear } from '@/creatures/perception';
 import { cancelChargingBlackHole } from '@/core/runtimeState';
 import { getBindings, keyLabel } from '@/input/bindings';
+import { INTRO_OBJECTIVE } from '@/game/introObjectives';
 
 /**
  * World pickups (upgrade-port meta layer): hearts, spell tomes, chests,
@@ -131,14 +132,14 @@ export class Pickups implements PickupsApi {
       const amount = p.data.amount ?? 25;
       ctx.state.score += amount;
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
-      ctx.events.emit('toast', { text: `+${amount} oz GOLD` });
+      ctx.events.emit('toast', { text: `+${amount} oz gold` });
       ctx.audio.pickup();
     } else if (p.kind === 'heart') {
       // The vessel grows at once; refilling it is a COMMUNION — the alchemist
       // roots in place, glowing, while ~20 HP charges in (see Player.update).
       player.maxHp += 20;
       player.recharge = 110;
-      ctx.events.emit('toast', { text: '+20 MAX HP — COMMUNION, HOLD FAST' });
+      ctx.events.emit('toast', { text: '+20 max HP. Hold still while it takes.' });
       ctx.audio.chest();
       ctx.particles.burst(p.x, p.y - 2, 14, null, () => packRGB(255, 90, 120), 1.8, {
         glow: 1.8,
@@ -160,7 +161,7 @@ export class Pickups implements PickupsApi {
         const potion = POTION_KINDS[Math.floor(entityRandom() * POTION_KINDS.length)];
         runtime?.pickups.push(makePickup('potion', p.x, p.y - 8, { potion }));
       }
-      ctx.events.emit('toast', { text: 'CHEST OPENED' });
+      ctx.events.emit('toast', { text: 'The chest gives up its contents.' });
       ctx.audio.chest();
     } else if (p.kind === 'potion') {
       const def = POTION_DEFS[potionIdOrRandom(p.data.potion)] ?? POTION_DEFS.vigor;
@@ -171,8 +172,8 @@ export class Pickups implements PickupsApi {
     } else if (p.kind === 'key') {
       const runtime = ctx.levels.current;
       if (runtime) runtime.keyTaken = true;
-      ctx.events.emit('toast', { text: runtime?.living ? 'The brass bell is yours.' : 'GOLDEN KEY ACQUIRED' });
-      ctx.events.emit('objectiveChanged', { text: runtime?.living ? 'Follow the undertow to the lower gate.' : 'RETURN TO THE PORTAL' });
+      ctx.events.emit('toast', { text: runtime?.living ? 'The brass bell is yours.' : 'The golden key is yours.' });
+      ctx.events.emit('objectiveChanged', { text: runtime?.living ? 'Follow the undertow to the lower gate.' : INTRO_OBJECTIVE.returnPortal });
       ctx.audio.keyJingle();
       ctx.particles.burst(p.x, p.y - 2, 16, null, () => packRGB(255, 230, 90), 2.0, {
         glow: 2.2,
