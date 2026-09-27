@@ -6,6 +6,7 @@ import '@/styles/run.css';
 import { Game } from '@/game/Game';
 import { installAuthorLink, resolveAuthorLinkConfig } from '@/app/AuthorLink';
 import { AuthorLinkIndicator } from '@/app/AuthorLinkIndicator';
+import { PlayerWorkshop } from '@/ui/PlayerWorkshop';
 import { initRapier } from '@/entities/rapierInit';
 import { readAppMode } from '@/game/modePersist';
 import { drawCounts, resetDrawCounts, restoreStreams, snapshotStreams } from '@/core/simRandom';
@@ -66,6 +67,9 @@ requestAnimationFrame(() =>
         // the GPU/WGSL A-B toggles are authoring tools, not player features.
         // Removing the nodes is enough — every owner looks them up optionally.
         for (const el of document.querySelectorAll('[data-authoring]')) el.remove();
+        // The Sandbox a player reaches from the title is the Workshop: house
+        // chrome, the palette and a few toys, none of the studio's panels.
+        new PlayerWorkshop(game.ctx);
       }
       // The entry screen covers the boot world, so the Sandbox workshop is built
       // on first use. A dev reload restoring play or the Builder skips the entry

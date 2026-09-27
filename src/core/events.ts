@@ -107,6 +107,10 @@ export interface EventMap {
   clipRequested: { reason: 'hotkey' | 'death' | 'summary' | 'button' };
   /** A clip finished encoding; `url` is an object URL the UI may offer for download. */
   clipSaved: { url: string; filename: string; bytes: number; frames: number; durationMs: number };
+  /** A clip request came to nothing (refused, or the encode spoiled); `message` is player-facing. */
+  clipFailed: { message: string };
+  /** The run ledger (ui/RunSummary) opened or closed; transient cards (a clip) bow out. */
+  runLedger: { open: boolean };
   /** Crawler wants to stand but the ceiling says no — HUD CRAMPED glyph. */
   crampedChanged: { cramped: boolean };
   /** A cast was refused for lack of mana (HUD flashes the mana bar). */

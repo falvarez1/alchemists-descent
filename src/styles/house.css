@@ -125,6 +125,29 @@ body.play-active #toast-stack {
 #wave-banner.title-card.level.show .big { animation: house-title-in 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 #wave-banner.title-card.level.show .small { animation: house-fade-up 1s ease both 0.7s; font-style: italic; font-family: var(--house-serif); font-size: calc(19px * var(--text-scale)); letter-spacing: 0.01em; }
 #wave-banner.title-card:not(.level).show .big { animation: house-fade-up 0.5s var(--house-ease) both; }
+/* Event notice (waystone lit, a first brew, a card found): the title's quieter
+   sibling. Sentence case, no tracking, a short rule; it queues behind arrivals. */
+#wave-banner.title-card.notice .title-card-kicker {
+  display: block; margin-bottom: 8px; font: 600 calc(10.5px * var(--text-scale))/1 var(--house-sans);
+  letter-spacing: 0.22em; text-transform: uppercase; color: var(--house-brass); text-shadow: 0 1px 6px #000;
+}
+#wave-banner.title-card.notice .big {
+  font: 500 clamp(26px, 2.5vw, 36px)/1.12 var(--house-serif); letter-spacing: 0.01em; text-transform: none;
+  color: var(--house-brass-strong);
+}
+#wave-banner.title-card.notice .title-card-rule { margin: 9px auto 8px; }
+#wave-banner.title-card.notice.show .title-card-rule { width: min(120px, 40%); }
+#wave-banner.title-card.notice.show .title-card-kicker { animation: house-fade-up 0.45s var(--house-ease) both; }
+#wave-banner.title-card.notice.show .small { animation: house-fade-up 0.6s var(--house-ease) both 0.18s; }
+
+/* The objective's second line: a found card's bench cue, never the objective itself. */
+#objective-note {
+  max-height: 0; margin-top: 0; overflow: hidden; opacity: 0; text-align: right;
+  font: 400 calc(11.5px * var(--text-scale))/1.45 var(--house-sans); color: var(--house-brass);
+  text-shadow: var(--house-shadow);
+  transition: opacity 0.4s ease, max-height 0.4s var(--house-ease), margin-top 0.4s var(--house-ease);
+}
+#objective-note.shown { max-height: 3em; margin-top: 4px; opacity: 1; }
 @keyframes house-title-in { from { opacity: 0; letter-spacing: 0.34em; filter: blur(3px); } to { opacity: 1; letter-spacing: 0.16em; filter: blur(0); } }
 @keyframes house-fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
@@ -182,3 +205,14 @@ body.play-active #victory-overlay .vic-title { font-family: var(--house-serif); 
 /* ---------- Chart room: repeated places fold into one counted row ---------- */
 .map-place-count { color: var(--house-brass); font-weight: 600; font-variant-numeric: tabular-nums; }
 #minimap-caption, .map-caption { font-family: var(--house-sans); }
+
+/* ---------- F3 in player builds: one quiet frame counter in the play field's corner ---------- */
+#perf-fps {
+  position: absolute; top: 6px; right: 10px; z-index: 30; pointer-events: none;
+  padding: 3px 7px 4px; background: #0f1c21c7; border-right: 2px solid #9c8458;
+  font: 600 calc(10.5px * var(--text-scale, 1))/1 var(--house-sans); letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums; color: var(--house-paper-soft);
+  opacity: 0; transform: translateY(-3px); transition: opacity 0.18s ease, transform 0.18s var(--house-ease);
+}
+#perf-fps.shown { opacity: 1; transform: none; }
+#perf-fps.slow { color: #e8b39a; border-right-color: #c9785a; }

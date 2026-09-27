@@ -68,13 +68,16 @@
             <button class="sound-btn" data-authoring id="runtime-inspector-toggle" title="Inspect the active Play runtime" disabled>RUNTIME</button>
             <button class="sound-btn" data-authoring id="gpu-compose-toggle" title="GPU frame composition: A/B the terrain shader live (full controls are in the Builder Post Processing panel)">GPU FX</button>
             <button class="sound-btn" data-authoring id="webgpu-compose-toggle" title="WebGPU raw WGSL compose: toggles the diagnostic live compose path when booted with WebGPU">WGSL</button>
-            <button class="sound-btn" id="perf-hud-toggle" title="Performance overlay: fps + per-phase frame timings (F3)">PERF</button>
-            <button class="sound-btn" id="immersive-play-btn" title="Enter fullscreen play with keyboard lock when the browser supports it">FULLSCREEN PLAY</button>
-            <div class="mode-switch">
+            <!-- data-workshop-dev: the studio chrome a player build's Workshop hides
+                 (ui/PlayerWorkshop.ts). Unlike data-authoring these stay in the DOM:
+                 their owners bind them strictly, and hiding is all a player needs. -->
+            <button class="sound-btn" data-workshop-dev id="perf-hud-toggle" title="Performance overlay: fps + per-phase frame timings (F3)">PERF</button>
+            <button class="sound-btn" data-workshop-dev id="immersive-play-btn" title="Enter fullscreen play with keyboard lock when the browser supports it">FULLSCREEN PLAY</button>
+            <div class="mode-switch" data-workshop-dev>
                 <button data-mode="build" class="active" id="mode-build-btn">SANDBOX</button>
                 <button data-mode="play" id="mode-play-btn">PLAY</button>
             </div>
-            <button class="sound-btn" id="sound-toggle">SND ON</button>
+            <button class="sound-btn" data-workshop-dev id="sound-toggle">SND ON</button>
         </div>
     </header>
 

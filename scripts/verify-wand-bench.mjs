@@ -226,15 +226,21 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(180);
 
-const objectiveCue = await page.evaluate(() => {
-  const ctx = window.__game.ctx;
-  ctx.events.emit('cardGranted', { id: 'speed', name: 'Swift Charm' });
+const objectiveBefore = await page.evaluate(() => {
+  window.__game.ctx.events.emit('cardGranted', { id: 'speed', name: 'Swift Charm' });
   return document.getElementById('objective')?.textContent ?? '';
 });
+// The bench cue rides under the objective once the card's notice shows (it
+// queues behind any centre card); the objective itself never changes for it.
+const objectiveCue = await page
+  .waitForFunction(() => document.querySelector('#objective-note.shown')?.textContent ?? '', null, { timeout: 8000 })
+  .then((handle) => handle.jsonValue())
+  .catch(() => '');
+const objectiveAfter = await page.evaluate(() => document.getElementById('objective')?.textContent ?? '');
 check(
-  'Card grants point the objective row back to the Refuge bench',
-  objectiveCue.includes('BENCH AVAILABLE IN REFUGE'),
-  JSON.stringify(objectiveCue),
+  'A card grant cues the wand bench under the objective, leaving the objective alone',
+  /Swift Charm at the wand bench \(B\)/.test(objectiveCue) && objectiveAfter === objectiveBefore,
+  JSON.stringify({ objectiveCue, objectiveBefore, objectiveAfter }),
 );
 
 const keyObjective = await page.evaluate(() => {

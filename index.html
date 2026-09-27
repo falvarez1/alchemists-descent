@@ -79,21 +79,24 @@
             <button class="sound-btn" data-authoring id="runtime-inspector-toggle" title="Inspect the active Play runtime" disabled>RUNTIME</button>
             <button class="sound-btn" data-authoring id="gpu-compose-toggle" title="GPU frame composition: A/B the terrain shader live (full controls are in the Builder Post Processing panel)">GPU FX</button>
             <button class="sound-btn" data-authoring id="webgpu-compose-toggle" title="WebGPU raw WGSL compose: toggles the diagnostic live compose path when booted with WebGPU">WGSL</button>
-            <button class="sound-btn" id="perf-hud-toggle" title="Performance overlay: fps + per-phase frame timings (F3)">PERF</button>
-            <button class="sound-btn" id="immersive-play-btn" title="Enter fullscreen play with keyboard lock when the browser supports it">FULLSCREEN PLAY</button>
-            <div class="mode-switch">
+            <!-- data-workshop-dev: the studio chrome a player build's Workshop hides
+                 (ui/PlayerWorkshop.ts). Unlike data-authoring these stay in the DOM:
+                 their owners bind them strictly, and hiding is all a player needs. -->
+            <button class="sound-btn" data-workshop-dev id="perf-hud-toggle" title="Performance overlay: fps + per-phase frame timings (F3)">PERF</button>
+            <button class="sound-btn" data-workshop-dev id="immersive-play-btn" title="Enter fullscreen play with keyboard lock when the browser supports it">FULLSCREEN PLAY</button>
+            <div class="mode-switch" data-workshop-dev>
                 <button data-mode="build" class="active" id="mode-build-btn">SANDBOX</button>
                 <button data-mode="play" id="mode-play-btn">PLAY</button>
             </div>
-            <button class="sound-btn" id="sound-toggle">SND ON</button>
+            <button class="sound-btn" data-workshop-dev id="sound-toggle">SND ON</button>
         </div>
     </header>
 
     <div id="workbench">
         <div id="left-toolbar">
             <input id="toolbar-filter" type="text" placeholder="&#9906; filter tools&hellip;" spellcheck="false">
-            <div class="section-title">World Generation</div>
-            <select id="biome-select" class="biome-select">
+            <div class="section-title" data-workshop-dev>World Generation</div>
+            <select id="biome-select" class="biome-select" data-workshop-dev>
                 <option value="earthen" selected>Biome: Earthen Hollows</option>
                 <option value="frozen">Biome: Frozen Depths</option>
                 <option value="flooded">Biome: Flooded Caverns</option>
@@ -101,9 +104,9 @@
                 <option value="scorched">Biome: Scorched Wastes</option>
             </select>
             <button class="action-btn" id="btn-sandbox">Fresh Workshop</button>
-            <button class="action-btn" id="btn-caves">Generate Caves</button>
-            <button class="action-btn" id="btn-fortress">Spawn Fortress</button>
-            <details id="worldgen-tune-wrap" class="wg-tune-wrap">
+            <button class="action-btn" data-workshop-dev id="btn-caves">Generate Caves</button>
+            <button class="action-btn" data-workshop-dev id="btn-fortress">Spawn Fortress</button>
+            <details id="worldgen-tune-wrap" class="wg-tune-wrap" data-workshop-dev>
                 <summary>Look tuning <span class="wg-tune-hint">tweak &rarr; Generate Caves</span></summary>
                 <div id="worldgen-tune" class="wg-tune"></div>
                 <button class="action-btn" id="btn-worldgen-reset">Reset look</button>
@@ -132,23 +135,23 @@
             <button class="tool-btn spell-mode" data-mode="spell" data-id="meteor"><span class="color-indicator" style="background:#ff5a1e"></span>Meteor</button>
             <button class="tool-btn spell-mode" data-mode="spell" data-id="blackhole"><span class="color-indicator" style="background:#a855f7"></span>Black Hole</button>
 
-            <div class="section-title">Hostiles (Sandbox)</div>
-            <button class="action-btn dropper-slime" id="btn-spawn-slime">Drop Slime</button>
-            <button class="action-btn dropper-imp" id="btn-spawn-imp">Drop Fire Imp</button>
-            <button class="action-btn dropper-golem" id="btn-spawn-golem">Drop Stone Golem</button>
+            <div class="section-title" data-workshop-dev>Hostiles (Sandbox)</div>
+            <button class="action-btn dropper-slime" data-workshop-dev id="btn-spawn-slime">Drop Slime</button>
+            <button class="action-btn dropper-imp" data-workshop-dev id="btn-spawn-imp">Drop Fire Imp</button>
+            <button class="action-btn dropper-golem" data-workshop-dev id="btn-spawn-golem">Drop Stone Golem</button>
 
-            <div class="section-title">Level Library</div>
-            <button class="action-btn" id="btn-level-save">Save Level</button>
-            <select id="level-select" class="biome-select" disabled></select>
-            <button class="action-btn" id="btn-level-load">Load Level</button>
-            <button class="action-btn" id="btn-level-delete">Delete Level</button>
-            <button class="action-btn" id="btn-level-export">Export .json</button>
-            <label class="action-btn" for="level-import" style="text-align:center;cursor:pointer;">Import .json</label>
+            <div class="section-title" data-workshop-dev>Level Library</div>
+            <button class="action-btn" data-workshop-dev id="btn-level-save">Save Level</button>
+            <select id="level-select" class="biome-select" data-workshop-dev disabled></select>
+            <button class="action-btn" data-workshop-dev id="btn-level-load">Load Level</button>
+            <button class="action-btn" data-workshop-dev id="btn-level-delete">Delete Level</button>
+            <button class="action-btn" data-workshop-dev id="btn-level-export">Export .json</button>
+            <label class="action-btn" data-workshop-dev for="level-import" style="text-align:center;cursor:pointer;">Import .json</label>
             <input type="file" id="level-import" accept=".json" style="display:none">
-            <button class="action-btn" id="btn-level-playtest" style="border-color:#78350f;color:#fcd34d;background:#1d1407;">Playtest Level</button>
+            <button class="action-btn" data-workshop-dev id="btn-level-playtest" style="border-color:#78350f;color:#fcd34d;background:#1d1407;">Playtest Level</button>
 
-            <div class="section-title">Expedition</div>
-            <button class="action-btn" id="btn-expedition-abandon">Abandon Saved Expedition</button>
+            <div class="section-title" data-workshop-dev>Expedition</div>
+            <button class="action-btn" data-workshop-dev id="btn-expedition-abandon">Abandon Saved Expedition</button>
         </div>
 
         <div id="viewport-container">

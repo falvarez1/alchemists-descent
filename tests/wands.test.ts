@@ -517,14 +517,16 @@ function objectiveCtx(opts: {
 }
 
 describe('HUD contextual objectives', () => {
-  it('prioritizes short card-to-bench guidance when spare cards can be slotted', () => {
+  it('keeps the floor goal as the objective while a spare card waits in the satchel', () => {
+    // The bench cue is a secondary line under the objective now (Hud's
+    // objective note); a found card must never replace the floor's goal.
     const ctx = objectiveCtx({
       collection: ['speed'],
       refuge: { x: 120, y: 100 },
       portal: { x: 500, y: 100, open: false },
     });
 
-    expect(contextualObjectiveText(ctx, INTRO_OBJECTIVE.findKey, 60)).toBe(INTRO_OBJECTIVE.benchAvailable);
+    expect(contextualObjectiveText(ctx, INTRO_OBJECTIVE.findKey)).toBe(INTRO_OBJECTIVE.findKey);
   });
 
   it('shows portal and key state with plan wording', () => {
@@ -554,9 +556,10 @@ describe('HUD contextual objectives', () => {
   it('points a card grant at the bench (B), which opens anywhere now', () => {
     // Position no longer matters — the bench is the alchemist's own kit, so the
     // cue is the same far from (or without) any Refuge.
-    const cue = 'A new spell card. Seat it at the wand bench (B).';
-    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 60, y: 150 } }))).toBe(cue);
-    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 9000, y: 9000 } }))).toBe(cue);
+    const cue = 'Seat Cryo Jet at the wand bench (B).';
+    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 60, y: 150 } }), 'Cryo Jet')).toBe(cue);
+    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 9000, y: 9000 } }), 'Cryo Jet')).toBe(cue);
+    expect(cardGrantBenchCue(objectiveCtx({}))).toBe('Seat the new card at the wand bench (B).');
   });
 });
 

@@ -123,9 +123,15 @@ export class Clips {
         this.deathCause = cause;
         this.deathFrame = ctx.state.frameCount;
       }),
-      ctx.events.on('playerRespawned', () => this.afterDeath()),
+      ctx.events.on('playerRespawned', () => { this.afterDeath(); this.card.dismiss(); }),
       ctx.events.on('playerDeathCleared', () => this.afterDeath()),
-      ctx.events.on('modeChanged', () => this.cadence.reset()),
+      ctx.events.on('modeChanged', () => { this.cadence.reset(); this.card.dismiss(); }),
+      // A clip card belongs to its moment: the run ending, its ledger opening
+      // and a fresh run starting all close it (a plate still developing will
+      // still arrive; the player asked for that one).
+      ctx.events.on('runEnded', () => this.card.dismiss()),
+      ctx.events.on('runLedger', ({ open }) => { if (open) this.card.dismiss(); }),
+      ctx.events.on('phialsChanged', ({ reason }) => { if (reason === 'start') this.card.dismiss(); }),
       onClipRecordingChanged((on) => this.setEnabled(on)),
     );
     window.addEventListener('keydown', this.onKeyDown);
@@ -313,13 +319,19 @@ export class Clips {
     return placeLabel(level?.def.name ?? null, level?.def.depth ?? null, GAME_TITLE);
   }
 
+  /** A request that cannot be met: said in the HUD, and to whoever asked (the ledger). */
+  private refuse(message: string): void {
+    this.ctx.events.emit('toast', { text: message });
+    this.ctx.events.emit('clipFailed', { message });
+  }
+
   private request(reason: ClipReason): void {
     if (!this.supported || !this.worker) {
-      this.ctx.events.emit('toast', { text: 'This browser cannot keep clips. Try a current Chrome, Edge, Firefox or Safari.' });
+      this.refuse('This browser cannot keep clips. Try a current Chrome, Edge, Firefox or Safari.');
       return;
     }
     if (!this.enabled) {
-      this.ctx.events.emit('toast', { text: 'Clip recording is off. Switch it on in Controls & comfort.' });
+      this.refuse('Clip recording is off. Switch it on in Controls & comfort.');
       return;
     }
     if (this.encoding) {
@@ -327,7 +339,7 @@ export class Clips {
       return;
     }
     if (this.held < Math.min(8, CLIP_CAPACITY)) {
-      this.ctx.events.emit('toast', { text: 'Nothing on the plate yet. Give it a few seconds.' });
+      this.refuse('Nothing on the plate yet. Give it a few seconds.');
       return;
     }
     // Freeze first: from this line no new frame enters the ring until the
@@ -417,6 +429,7 @@ export class Clips {
     this.encoding = false;
     this.cadence.reset();
     this.card.failed(reason);
+    this.ctx.events.emit('clipFailed', { message: 'The plate spoiled. Try again in a moment.' });
   }
 
   private clearEncodeTimer(): void {

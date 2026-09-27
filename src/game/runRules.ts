@@ -133,8 +133,19 @@ export function formatRunTime(ms: number): string {
 }
 
 /**
+ * A best chain as the ledger and the share line both print it: `×3`, or an
+ * em dash when no chain was ever strung together. One formatter, so the two
+ * can never disagree.
+ */
+export function formatChain(chain: number): string {
+  const n = Math.round(Number.isFinite(chain) ? chain : 0);
+  return n <= 0 ? '—' : `×${n}`;
+}
+
+/**
  * The one line a player pastes to a friend:
- * `Breathing Works — daily 2026-09-26 — Floor 3/4 in 14:02 · 9 alchemical kills · best chain 3`
+ * `Breathing Works — daily 2026-09-26 — Floor 3/4 in 14:02 · 9 alchemical kills · best chain ×3`
+ * (a run without a chain leaves the chain out rather than boasting of zero).
  */
 export function shareLine(summary: RunSummary, title = GAME_TITLE): string {
   const parts = [title];
@@ -145,7 +156,7 @@ export function shareLine(summary: RunSummary, title = GAME_TITLE): string {
   const tail = [
     reach,
     `${summary.alchemicalKills} alchemical kill${summary.alchemicalKills === 1 ? '' : 's'}`,
-    `best chain ${summary.bestChain}`,
+    ...(Math.round(summary.bestChain) > 0 ? [`best chain ${formatChain(summary.bestChain)}`] : []),
   ].join(' · ');
   parts.push(tail);
   return parts.join(' — ');
