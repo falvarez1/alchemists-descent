@@ -54,6 +54,10 @@ export const DARKNESS = {
   mapCell: 2,
   /** Per-build smoothing of the darkness under the player (light builds every 2 frames). */
   playerEase: 0.1,
+  /** Darkness under the player that counts as having stepped into the dark, and
+   *  the level it must fall back under before it counts as having left (hysteresis). */
+  enterDark: 0.72,
+  leaveDark: 0.4,
 } as const;
 
 /**

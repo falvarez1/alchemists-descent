@@ -1,10 +1,11 @@
 import type { Ctx } from '@/core/types';
+import { DARKNESS } from '@/config/darkness';
 import { setLanternHooded } from '@/game/Lantern';
 import { updateLumenBlooms } from '@/game/lumenBlooms';
 
 /** Darkness under the player that counts as having stepped into the dark (hysteresis below). */
-const DARK_ENTER = 0.72;
-const DARK_LEAVE = 0.4;
+const DARK_ENTER = DARKNESS.enterDark;
+const DARK_LEAVE = DARKNESS.leaveDark;
 
 /**
  * The light wave's per-tick housekeeping, run beside the mechanisms: the
