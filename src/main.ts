@@ -65,7 +65,10 @@ requestAnimationFrame(() =>
         // Removing the nodes is enough — every owner looks them up optionally.
         for (const el of document.querySelectorAll('[data-authoring]')) el.remove();
       }
-      game.start();
+      // The entry screen covers the boot world, so the Sandbox workshop is built
+      // on first use. A dev reload restoring play or the Builder skips the entry
+      // and keeps the old eager build.
+      game.start({ deferWorkshop: savedMode !== 'play' && savedMode !== 'builder' });
       if (import.meta.env.DEV && savedMode === 'builder') builderLauncher?.open();
 
       if (import.meta.env.DEV) {

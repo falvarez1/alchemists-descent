@@ -43,6 +43,16 @@ page.on('pageerror', (e) => errs.push(String(e)));
 try {
   await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
   await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 30000 });
+  // The workshop is built on first use, not behind the entry screen: go in the
+  // way a player does (real clicks), which also proves the lazy build fires.
+  await page.waitForFunction(() => document.body.classList.contains('entry-active'), null, { timeout: 30000 });
+  const clickReal = async (selector) => {
+    const box = await page.locator(selector).boundingBox();
+    if (!box) throw new Error(`no visible ${selector}`);
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  };
+  await clickReal('#expedition-entry .entry-workshops summary');
+  await clickReal('#expedition-entry [data-entry="sandbox"]');
   await page.waitForFunction(() => window.__game.ctx.state.frameCount > 5, { timeout: 20000 });
 
   await page.evaluate((C) => {
