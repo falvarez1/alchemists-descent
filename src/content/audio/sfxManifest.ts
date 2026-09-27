@@ -56,7 +56,9 @@ export interface AuditionEntry {
 function buildAuditionEntries(): AuditionEntry[] {
   return SFX_IDS.map((id) => {
     const cue = sfxCue(id);
-    const group = cue.pack.startsWith('creature-') ? `Creature · ${cue.pack.slice(9)}` : cue.pack.startsWith('amb') ? 'Ambience' : cue.pack;
+    const group = cue.pack.startsWith('creature-') ? `Creature · ${cue.pack.slice(9)}`
+      : cue.pack.startsWith('org-') ? `Organism · ${cue.pack.slice(4)}`
+      : cue.pack.startsWith('amb') ? 'Ambience' : cue.pack;
     return {
       id,
       group: `SFX · ${group}`,

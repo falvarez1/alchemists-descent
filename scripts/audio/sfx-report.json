@@ -10430,5 +10430,1588 @@
     "bytes": 6731
    }
   ]
+ },
+ "light.dark": {
+  "pack": "world",
+  "cat": "material",
+  "prompt": "Stepping into a pitch-black cave: a low hollow hush as the air goes still and close, a faint deep sub rumble and one distant water drip, subtle, no music",
+  "dur": 2.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2.48,
+    "peakDb": -9.4,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 9.9,
+    "limitDb": -1.4,
+    "sec": 2.45,
+    "truncated": false,
+    "bytes": 20106
+   }
+  ]
+ },
+ "light.eyeshine": {
+  "pack": "world",
+  "cat": "mechanism",
+  "prompt": "Two small animal eyes catching lamplight in the dark: a tiny bright glassy glint with a faint cold shimmer, very short, quiet",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -8.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 2.1,
+    "limitDb": 0,
+    "sec": 0.48,
+    "truncated": true,
+    "bytes": 4432
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -3.2,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 3.8,
+    "limitDb": -1.5,
+    "sec": 0.48,
+    "truncated": false,
+    "bytes": 4432
+   }
+  ]
+ },
+ "light.lantern.hood": {
+  "pack": "player",
+  "cat": "player",
+  "prompt": "A small brass hood snapped down over a lantern: a dry low metallic click, then a tiny flame's last breath hissing out to a smoulder, close-miked, short, dry",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": -1.3,
+    "onsetSec": 0.17,
+    "pinnedPct": 0,
+    "gainDb": -3,
+    "limitDb": 0,
+    "sec": 0.481,
+    "truncated": false,
+    "bytes": 4432
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.8,
+    "peakDb": 4.4,
+    "onsetSec": 0.007,
+    "pinnedPct": 0.32,
+    "gainDb": -8,
+    "limitDb": 0,
+    "sec": 0.317,
+    "truncated": false,
+    "bytes": 3178
+   }
+  ]
+ },
+ "light.lantern.unhood": {
+  "pack": "player",
+  "cat": "player",
+  "prompt": "A small brass lantern hood flipped open: a bright crisp metallic click and a soft warm whoomph of a small flame taking the air, close-miked, short, dry",
+  "dur": 0.7,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.68,
+    "peakDb": -11.6,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 5.9,
+    "limitDb": 0,
+    "sec": 0.68,
+    "truncated": false,
+    "bytes": 6104
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.68,
+    "peakDb": -2.8,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -3,
+    "limitDb": 0,
+    "sec": 0.45,
+    "truncated": false,
+    "bytes": 4223
+   }
+  ]
+ },
+ "light.photocell.loop": {
+  "pack": "world",
+  "cat": "loop",
+  "prompt": "Continuous soft warm electrical hum of a brass lens gathering light, a faint singing glassy resonance, steady",
+  "dur": 3,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 3,
+    "peakDb": -4.4,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "quarterSpreadDb": 3.4,
+    "gainDb": -5.8,
+    "limitDb": 0,
+    "sec": 3,
+    "bytes": 24494
+   }
+  ]
+ },
+ "light.photocell.latch": {
+  "pack": "world",
+  "cat": "mechanism",
+  "prompt": "A brass lens clicking home as it fills with light: a crisp metallic latch, a bright glassy chime ringing out and a tiny crackle of sparks, short",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": -2.9,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -3.8,
+    "limitDb": 0,
+    "sec": 0.54,
+    "truncated": false,
+    "bytes": 4850
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.2,
+    "peakDb": -2.5,
+    "onsetSec": 0.18,
+    "pinnedPct": 0,
+    "gainDb": -3.9,
+    "limitDb": 0,
+    "sec": 0.362,
+    "truncated": false,
+    "bytes": 3387
+   }
+  ]
+ },
+ "light.bloom.open": {
+  "pack": "world",
+  "cat": "mechanism",
+  "prompt": "Glass flower petals growing and unfurling: delicate crystalline tinkling rising and a soft airy shimmer blooming open, short",
+  "dur": 1.4,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.36,
+    "peakDb": -9.8,
+    "onsetSec": 0.087,
+    "pinnedPct": 0,
+    "gainDb": 3.9,
+    "limitDb": 0,
+    "sec": 1.027,
+    "truncated": false,
+    "bytes": 8821
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.36,
+    "peakDb": -13.3,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 7.4,
+    "limitDb": 0,
+    "sec": 1.29,
+    "truncated": false,
+    "bytes": 10910
+   }
+  ]
+ },
+ "light.bloom.furl": {
+  "pack": "world",
+  "cat": "mechanism",
+  "prompt": "Delicate glass petals folding shut: a dry crystalline creak and a soft descending tinkle, quiet, short",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": -23.2,
+    "onsetSec": 0.003,
+    "pinnedPct": 0,
+    "gainDb": 25.2,
+    "limitDb": -3,
+    "sec": 1.027,
+    "truncated": false,
+    "bytes": 8821
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.2,
+    "peakDb": -27.9,
+    "onsetSec": 0.147,
+    "pinnedPct": 0,
+    "gainDb": 27.8,
+    "limitDb": -0.8,
+    "sec": 0.933,
+    "truncated": false,
+    "bytes": 7985
+   }
+  ]
+ },
+ "light.bloom.petal": {
+  "pack": "world",
+  "cat": "mechanism",
+  "prompt": "A single tiny glass bell tink, delicate and bright, very short, dry",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 0.3,
+    "limitDb": 0,
+    "sec": 0.35,
+    "truncated": false,
+    "bytes": 3387
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -7.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 5.1,
+    "limitDb": 0,
+    "sec": 0.35,
+    "truncated": false,
+    "bytes": 3387
+   },
+   {
+    "take": 3,
+    "variant": 2,
+    "rawSec": 0.48,
+    "peakDb": 1.5,
+    "onsetSec": 0,
+    "pinnedPct": 0.01,
+    "gainDb": -6,
+    "limitDb": 0,
+    "sec": 0.35,
+    "truncated": true,
+    "bytes": 3387
+   }
+  ]
+ },
+ "organism.fish.flop": {
+  "pack": "world",
+  "cat": "critter",
+  "prompt": "A small fish flopping once on wet stone, a tiny wet slap, short, close-miked",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -11.7,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 12.2,
+    "limitDb": -1.5,
+    "sec": 0.3,
+    "truncated": false,
+    "bytes": 2969
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": 3,
+    "onsetSec": 0,
+    "pinnedPct": 0.34,
+    "gainDb": -5.4,
+    "limitDb": 0,
+    "sec": 0.3,
+    "truncated": false,
+    "bytes": 2969
+   }
+  ]
+ },
+ "organism.fish.scatter": {
+  "pack": "world",
+  "cat": "critter",
+  "prompt": "A small school of fish darting away underwater: a quick muffled flurry of fins and a burst of tiny bubbles, short",
+  "dur": 0.7,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.68,
+    "peakDb": -4.3,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -0.6,
+    "limitDb": 0,
+    "sec": 0.65,
+    "truncated": false,
+    "bytes": 5686
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.68,
+    "peakDb": 2.6,
+    "onsetSec": 0,
+    "pinnedPct": 0.03,
+    "gainDb": -3.6,
+    "limitDb": 0,
+    "sec": 0.51,
+    "truncated": false,
+    "bytes": 4641
+   }
+  ]
+ },
+ "organism.moth.swarm.loop": {
+  "pack": "world",
+  "cat": "loop",
+  "prompt": "Continuous soft papery fluttering of many small moth wings close by, delicate and dry",
+  "dur": 3,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 3,
+    "peakDb": -8.3,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "quarterSpreadDb": 11.3,
+    "gainDb": 13.3,
+    "limitDb": -6.1,
+    "sec": 3,
+    "bytes": 24494
+   }
+  ]
+ },
+ "organism.snapjaw.tell": {
+  "pack": "org-snapjaw",
+  "cat": "creature",
+  "prompt": "A carnivorous plant pod quivering open to strike: a wet fibrous creak and a low rattling hiss of tension, short",
+  "dur": 0.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.6,
+    "peakDb": -14.6,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 16.6,
+    "limitDb": -3,
+    "sec": 0.6,
+    "truncated": false,
+    "bytes": 5268
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.6,
+    "peakDb": -4,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 6,
+    "limitDb": -3,
+    "sec": 0.6,
+    "truncated": false,
+    "bytes": 5268
+   }
+  ]
+ },
+ "organism.snapjaw.gulp": {
+  "pack": "org-snapjaw",
+  "cat": "creature",
+  "prompt": "A plant pod swallowing something whole: a thick wet gulp and a muffled squelch, short",
+  "dur": 0.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.6,
+    "peakDb": -21.8,
+    "onsetSec": 0.036,
+    "pinnedPct": 0,
+    "gainDb": 20.9,
+    "limitDb": 0,
+    "sec": 0.468,
+    "truncated": false,
+    "bytes": 4223
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.6,
+    "peakDb": -13.8,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 13.2,
+    "limitDb": -0.4,
+    "sec": 0.6,
+    "truncated": false,
+    "bytes": 5268
+   }
+  ]
+ },
+ "organism.snapjaw.snap": {
+  "pack": "org-snapjaw",
+  "cat": "creature",
+  "prompt": "Huge carnivorous plant jaws slamming shut: a sharp wet woody clack with a fibrous whip crack, short, punchy",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -3.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 3.1,
+    "limitDb": -0.6,
+    "sec": 0.33,
+    "truncated": false,
+    "bytes": 3178
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -1.4,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -0.5,
+    "limitDb": 0,
+    "sec": 0.25,
+    "truncated": false,
+    "bytes": 2551
+   }
+  ]
+ },
+ "organism.snapjaw.burn": {
+  "pack": "org-snapjaw",
+  "cat": "creature",
+  "prompt": "A green plant stalk burning through: wet sap hissing and popping in a crackling flare of flame, then a dry crumble of ash, short",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": -3.3,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -2.5,
+    "limitDb": 0,
+    "sec": 1.2,
+    "truncated": true,
+    "bytes": 10075
+   }
+  ]
+ },
+ "organism.snapjaw.tear": {
+  "pack": "org-snapjaw",
+  "cat": "creature",
+  "prompt": "A fleshy plant pod torn apart: a wet fibrous rip and a spatter of sap, short",
+  "dur": 0.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.6,
+    "peakDb": -20.6,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 17.9,
+    "limitDb": 0,
+    "sec": 0.6,
+    "truncated": false,
+    "bytes": 5268
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.6,
+    "peakDb": 0.1,
+    "onsetSec": 0.003,
+    "pinnedPct": 0,
+    "gainDb": -1.7,
+    "limitDb": 0,
+    "sec": 0.28,
+    "truncated": false,
+    "bytes": 2760
+   }
+  ]
+ },
+ "organism.snapjaw.chew": {
+  "pack": "org-snapjaw",
+  "cat": "creature",
+  "prompt": "A closed plant pod slowly digesting: a muffled wet churn and a soft sap gurgle, quiet, short",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": -10.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 8.9,
+    "limitDb": 0,
+    "sec": 0.8,
+    "truncated": false,
+    "bytes": 6940
+   },
+   {
+    "take": 2,
+    "variant": 2,
+    "rawSec": 0.8,
+    "peakDb": -30.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 30.4,
+    "limitDb": -0.9,
+    "sec": 0.8,
+    "truncated": false,
+    "bytes": 6940
+   }
+  ]
+ },
+ "organism.puffer.burst": {
+  "pack": "org-puffer",
+  "cat": "creature",
+  "prompt": "A swollen fungal spore sac bursting: a wet rubbery pop and a soft rushing hiss of gas spilling out, short",
+  "dur": 0.9,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.88,
+    "peakDb": -8.2,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 5.2,
+    "limitDb": 0,
+    "sec": 0.66,
+    "truncated": false,
+    "bytes": 5895
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.88,
+    "peakDb": 1.5,
+    "onsetSec": 0,
+    "pinnedPct": 0.02,
+    "gainDb": -0.4,
+    "limitDb": -2.1,
+    "sec": 0.449,
+    "truncated": false,
+    "bytes": 4223
+   }
+  ]
+ },
+ "organism.glowworm.lower": {
+  "pack": "org-glowworm",
+  "cat": "critter",
+  "prompt": "A fine luminous silk thread paying out slowly: a soft thin stretching creak and a faint glassy twinkle, quiet, short",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": -23.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 22.2,
+    "limitDb": -0.1,
+    "sec": 0.774,
+    "truncated": false,
+    "bytes": 6731
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.8,
+    "peakDb": -7,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -1.9,
+    "limitDb": 0,
+    "sec": 0.79,
+    "truncated": false,
+    "bytes": 6940
+   }
+  ]
+ },
+ "organism.puffer.swell": {
+  "pack": "org-puffer",
+  "cat": "creature",
+  "prompt": "A fungal bladder swelling tight: a soft rubbery stretching creak and a faint wheezing hiss, quiet, short",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": -13.8,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 9.9,
+    "limitDb": 0,
+    "sec": 0.74,
+    "truncated": false,
+    "bytes": 6522
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.8,
+    "peakDb": -10.6,
+    "onsetSec": 0.009,
+    "pinnedPct": 0,
+    "gainDb": 12.6,
+    "limitDb": -3,
+    "sec": 0.768,
+    "truncated": false,
+    "bytes": 6731
+   }
+  ]
+ },
+ "organism.glowworm.retract": {
+  "pack": "org-glowworm",
+  "cat": "creature",
+  "prompt": "A sticky beaded thread reeled up fast: a quick high silky zip and a faint glassy rattle of beads, short",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -10.7,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 4.1,
+    "limitDb": 0,
+    "sec": 0.48,
+    "truncated": false,
+    "bytes": 4432
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -1.9,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -6,
+    "limitDb": 0,
+    "sec": 0.471,
+    "truncated": false,
+    "bytes": 4432
+   }
+  ]
+ },
+ "organism.leech.drink": {
+  "pack": "org-leech",
+  "cat": "creature",
+  "prompt": "A leech drinking: a small wet sucking slurp, quiet, close-miked, short",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": 2.7,
+    "onsetSec": 0,
+    "pinnedPct": 0.11,
+    "gainDb": -3,
+    "limitDb": -0.7,
+    "sec": 0.48,
+    "truncated": false,
+    "bytes": 4432
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -4.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 4.8,
+    "limitDb": -1.7,
+    "sec": 0.448,
+    "truncated": false,
+    "bytes": 4223
+   }
+  ]
+ },
+ "organism.leech.latch": {
+  "pack": "org-leech",
+  "cat": "creature",
+  "prompt": "A leech fastening onto skin: a wet sucking smack, close-miked, short",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -5.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 1.1,
+    "limitDb": 0,
+    "sec": 0.42,
+    "truncated": false,
+    "bytes": 4014
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": 1.2,
+    "onsetSec": 0,
+    "pinnedPct": 0.05,
+    "gainDb": -5.1,
+    "limitDb": 0,
+    "sec": 0.346,
+    "truncated": false,
+    "bytes": 3387
+   }
+  ]
+ },
+ "organism.glowworm.snare": {
+  "pack": "org-glowworm",
+  "cat": "critter",
+  "prompt": "A small moth stuck on a sticky thread: a tiny frantic wing flutter and a faint glassy tick, short",
+  "dur": 0.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.6,
+    "peakDb": -8.4,
+    "onsetSec": 0.014,
+    "pinnedPct": 0,
+    "gainDb": 10.4,
+    "limitDb": -3,
+    "sec": 0.557,
+    "truncated": false,
+    "bytes": 5059
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.6,
+    "peakDb": -6.7,
+    "onsetSec": 0.007,
+    "pinnedPct": 0,
+    "gainDb": 8.7,
+    "limitDb": -3,
+    "sec": 0.587,
+    "truncated": false,
+    "bytes": 5268
+   }
+  ]
+ },
+ "organism.leech.shed": {
+  "pack": "org-leech",
+  "cat": "creature",
+  "prompt": "A swollen leech letting go: a wet slurping pop and a soft plop into water, short",
+  "dur": 0.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.6,
+    "peakDb": -9.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 8.8,
+    "limitDb": -0.3,
+    "sec": 0.583,
+    "truncated": false,
+    "bytes": 5268
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.6,
+    "peakDb": 0.7,
+    "onsetSec": 0.01,
+    "pinnedPct": 0.03,
+    "gainDb": -0.3,
+    "limitDb": -1.4,
+    "sec": 0.304,
+    "truncated": false,
+    "bytes": 2969
+   }
+  ]
+ },
+ "organism.isopod.roll": {
+  "pack": "org-isopod",
+  "cat": "critter",
+  "prompt": "A small hard armoured ball bouncing on stone: a light hollow chitin tap, short, dry",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": 2.9,
+    "onsetSec": 0.198,
+    "pinnedPct": 0.26,
+    "gainDb": -3,
+    "limitDb": -0.8,
+    "sec": 0.146,
+    "truncated": false,
+    "bytes": 1715
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": 2.8,
+    "onsetSec": 0.009,
+    "pinnedPct": 0.06,
+    "gainDb": -0.8,
+    "limitDb": -3,
+    "sec": 0.23,
+    "truncated": false,
+    "bytes": 2342
+   }
+  ]
+ },
+ "organism.isopod.curl": {
+  "pack": "org-isopod",
+  "cat": "creature",
+  "prompt": "A pill bug curling into an armoured ball: a quick dry clicking of chitin plates folding tight, short",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": 1.7,
+    "onsetSec": 0,
+    "pinnedPct": 0.01,
+    "gainDb": -4.2,
+    "limitDb": 0,
+    "sec": 0.4,
+    "truncated": false,
+    "bytes": 3805
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -2.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -1.3,
+    "limitDb": 0,
+    "sec": 0.4,
+    "truncated": false,
+    "bytes": 3805
+   }
+  ]
+ },
+ "organism.emberbeetle.pop": {
+  "pack": "org-emberbeetle",
+  "cat": "creature",
+  "prompt": "A tiny ember-filled beetle popping: a small crackling pop and a spray of sizzling sparks, short",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -2.9,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 3.9,
+    "limitDb": -2,
+    "sec": 0.48,
+    "truncated": false,
+    "bytes": 4432
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": 2.5,
+    "onsetSec": 0.025,
+    "pinnedPct": 0.04,
+    "gainDb": -0.5,
+    "limitDb": -3,
+    "sec": 0.329,
+    "truncated": false,
+    "bytes": 3178
+   }
+  ]
+ },
+ "organism.emberbeetle.crunch": {
+  "pack": "org-emberbeetle",
+  "cat": "critter",
+  "prompt": "A small beetle crunching a lump of coal: a dry gritty crunch with a faint ember crackle, quiet, short",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -13.7,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 15.7,
+    "limitDb": -3,
+    "sec": 0.48,
+    "truncated": false,
+    "bytes": 4432
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -18,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 20,
+    "limitDb": -3,
+    "sec": 0.48,
+    "truncated": false,
+    "bytes": 4432
+   }
+  ]
+ },
+ "organism.ashmoth.flare": {
+  "pack": "org-ashmoth",
+  "cat": "critter",
+  "prompt": "A moth flying into a flame: a tiny bright fizzing flare and a papery crackle, short",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -14.3,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 8,
+    "limitDb": 0,
+    "sec": 0.48,
+    "truncated": true,
+    "bytes": 4432
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -15.6,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 8,
+    "limitDb": 0,
+    "sec": 0.48,
+    "truncated": false,
+    "bytes": 4432
+   }
+  ]
+ },
+ "creature.bat.scatter": {
+  "pack": "creature-bat",
+  "cat": "creature",
+  "prompt": "A whole roost of bats bursting off a cave ceiling at once: a flurry of many leathery wings and a scatter of high squeaks, short",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": -1.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -1.6,
+    "limitDb": 0,
+    "sec": 0.81,
+    "truncated": false,
+    "bytes": 7149
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.2,
+    "peakDb": -12.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 11.4,
+    "limitDb": 0,
+    "sec": 1.2,
+    "truncated": false,
+    "bytes": 10075
+   }
+  ]
+ },
+ "creature.leviathan.dim": {
+  "pack": "creature-leviathan",
+  "cat": "boss",
+  "prompt": "A glowing lure snuffed out deep underwater: a soft descending glassy hum fading into a muffled bubble, eerie, quiet, short",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": -11.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 4.7,
+    "limitDb": 0,
+    "sec": 0.97,
+    "truncated": false,
+    "bytes": 8403
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1,
+    "peakDb": -17.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 11.2,
+    "limitDb": 0,
+    "sec": 1,
+    "truncated": false,
+    "bytes": 8612
+   }
+  ]
+ },
+ "creature.leviathan.thrash": {
+  "pack": "creature-leviathan",
+  "cat": "boss",
+  "prompt": "A giant sea serpent's tail slamming the water surface: a huge flat thwack and a heavy sheet of water flung through the air, splattering down",
+  "dur": 1.4,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.36,
+    "peakDb": 2.8,
+    "onsetSec": 0,
+    "pinnedPct": 0.28,
+    "gainDb": -7.5,
+    "limitDb": 0,
+    "sec": 0.52,
+    "truncated": false,
+    "bytes": 4641
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.36,
+    "peakDb": 4.3,
+    "onsetSec": 0,
+    "pinnedPct": 1.93,
+    "gainDb": -10.6,
+    "limitDb": 0,
+    "sec": 0.9,
+    "truncated": false,
+    "bytes": 7776
+   }
+  ]
+ },
+ "creature.leviathan.dive": {
+  "pack": "creature-leviathan",
+  "cat": "boss",
+  "prompt": "A huge sea creature diving deep: a heavy churning plunge and a long descending rush of bubbles, muffled",
+  "dur": 1.4,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.36,
+    "peakDb": 3,
+    "onsetSec": 0,
+    "pinnedPct": 0.94,
+    "gainDb": -7.8,
+    "limitDb": 0,
+    "sec": 1.27,
+    "truncated": false,
+    "bytes": 10701
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.36,
+    "peakDb": 2.4,
+    "onsetSec": 0,
+    "pinnedPct": 1.22,
+    "gainDb": -10.1,
+    "limitDb": 0,
+    "sec": 1.26,
+    "truncated": false,
+    "bytes": 10701
+   }
+  ]
+ },
+ "creature.leviathan.surge": {
+  "pack": "creature-leviathan",
+  "cat": "boss",
+  "prompt": "A colossal sea serpent erupting straight up out of deep water: a rising underwater roar bursting into a massive geyser splash",
+  "dur": 1.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.6,
+    "peakDb": 2.7,
+    "onsetSec": 0,
+    "pinnedPct": 1.15,
+    "gainDb": -8.3,
+    "limitDb": 0,
+    "sec": 1.54,
+    "truncated": false,
+    "bytes": 12791
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.6,
+    "peakDb": 0.7,
+    "onsetSec": 0,
+    "pinnedPct": 0.05,
+    "gainDb": -4.8,
+    "limitDb": 0,
+    "sec": 1.47,
+    "truncated": false,
+    "bytes": 12373
+   }
+  ]
+ },
+ "creature.leviathan.shock": {
+  "pack": "creature-leviathan",
+  "cat": "boss",
+  "prompt": "A giant sea creature electrocuted: a crackling electric buzz and a strangled deep wet groan as it convulses, short",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": 0.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -3.7,
+    "limitDb": 0,
+    "sec": 0.77,
+    "truncated": false,
+    "bytes": 6731
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1,
+    "peakDb": 1.6,
+    "onsetSec": 0,
+    "pinnedPct": 0.01,
+    "gainDb": -5.4,
+    "limitDb": 0,
+    "sec": 0.88,
+    "truncated": false,
+    "bytes": 7567
+   }
+  ]
+ },
+ "creature.colossus.heave": {
+  "pack": "creature-colossus",
+  "cat": "boss",
+  "prompt": "A colossal stone giant rearing up with both fists raised: a deep grinding creak of rock, gravel sifting down and a rising furnace roar",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": 0.2,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -0.4,
+    "limitDb": -0.8,
+    "sec": 0.9,
+    "truncated": false,
+    "bytes": 7776
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1,
+    "peakDb": 2.2,
+    "onsetSec": 0,
+    "pinnedPct": 0.13,
+    "gainDb": -3.4,
+    "limitDb": 0,
+    "sec": 0.9,
+    "truncated": false,
+    "bytes": 7776
+   }
+  ]
+ },
+ "creature.colossus.wave.loop": {
+  "pack": "creature-colossus",
+  "cat": "loop",
+  "prompt": "Continuous low gritty rumble of rock and gravel rippling fast along a stone floor",
+  "dur": 3,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 3,
+    "peakDb": -0.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "quarterSpreadDb": 7.5,
+    "gainDb": 4.5,
+    "limitDb": -5,
+    "sec": 3,
+    "bytes": 24494
+   }
+  ]
+ },
+ "creature.colossus.slam": {
+  "pack": "creature-colossus",
+  "cat": "boss",
+  "prompt": "Two gigantic stone fists smashing into a rock floor: a massive crunching impact, cracking stone and a spray of rubble",
+  "dur": 1.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.48,
+    "peakDb": -9.4,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 11.4,
+    "limitDb": -3,
+    "sec": 1.02,
+    "truncated": false,
+    "bytes": 8821
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.48,
+    "peakDb": -1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 3,
+    "limitDb": -3,
+    "sec": 0.866,
+    "truncated": false,
+    "bytes": 7567
+   }
+  ]
+ },
+ "creature.colossus.stomp": {
+  "pack": "creature-colossus",
+  "cat": "boss",
+  "prompt": "A giant stamping the ground: a deep earth-shaking thud and a rolling rumble of rock racing away along the floor",
+  "dur": 1.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.6,
+    "peakDb": 2.1,
+    "onsetSec": 0,
+    "pinnedPct": 0.28,
+    "gainDb": -5,
+    "limitDb": 0,
+    "sec": 1.4,
+    "truncated": false,
+    "bytes": 11746
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.6,
+    "peakDb": 3.8,
+    "onsetSec": 0,
+    "pinnedPct": 1.29,
+    "gainDb": -7.6,
+    "limitDb": 0,
+    "sec": 1.31,
+    "truncated": false,
+    "bytes": 11119
+   }
+  ]
+ },
+ "creature.colossus.vent.tell": {
+  "pack": "creature-colossus",
+  "cat": "boss",
+  "prompt": "Heavy iron furnace plates grinding open with a deep rising inhale of air, steam hissing and building",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": 0,
+    "onsetSec": 0,
+    "pinnedPct": 0.01,
+    "gainDb": -5.6,
+    "limitDb": 0,
+    "sec": 1,
+    "truncated": false,
+    "bytes": 8612
+   }
+  ]
+ },
+ "creature.colossus.plates": {
+  "pack": "creature-colossus",
+  "cat": "boss",
+  "prompt": "Heavy stone armour plates bursting off a giant's back: a sharp cracking detonation of rock, then stone slabs clattering and tumbling onto a stone floor",
+  "dur": 2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2,
+    "peakDb": 3.4,
+    "onsetSec": 0,
+    "pinnedPct": 0.5,
+    "gainDb": -10.6,
+    "limitDb": 0,
+    "sec": 2,
+    "truncated": false,
+    "bytes": 16553
+   }
+  ]
+ },
+ "creature.colossus.scoop": {
+  "pack": "creature-colossus",
+  "cat": "boss",
+  "prompt": "A magma giant tearing a molten gob out of its own furnace chest: a thick wet lava slurp and a hiss of heat, short",
+  "dur": 0.9,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.88,
+    "peakDb": 2.9,
+    "onsetSec": 0,
+    "pinnedPct": 0.81,
+    "gainDb": -8.6,
+    "limitDb": 0,
+    "sec": 0.75,
+    "truncated": false,
+    "bytes": 6522
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.88,
+    "peakDb": 3.2,
+    "onsetSec": 0,
+    "pinnedPct": 0.57,
+    "gainDb": -10.2,
+    "limitDb": 0,
+    "sec": 0.7,
+    "truncated": false,
+    "bytes": 6104
+   }
+  ]
+ },
+ "creature.colossus.quench": {
+  "pack": "creature-colossus",
+  "cat": "boss",
+  "prompt": "Cold water flung onto a white-hot furnace: an explosive steam hiss and the loud crack of superheated stone splitting",
+  "dur": 1.4,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.36,
+    "peakDb": 2.6,
+    "onsetSec": 0,
+    "pinnedPct": 0.12,
+    "gainDb": -9.5,
+    "limitDb": 0,
+    "sec": 1.36,
+    "truncated": false,
+    "bytes": 11537
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.36,
+    "peakDb": 3.3,
+    "onsetSec": 0,
+    "pinnedPct": 0.17,
+    "gainDb": -10.3,
+    "limitDb": 0,
+    "sec": 1.36,
+    "truncated": false,
+    "bytes": 11537
+   }
+  ]
+ },
+ "creature.colossus.vent": {
+  "pack": "creature-colossus",
+  "cat": "boss",
+  "prompt": "A furnace giant venting: a huge roaring blast of fire and steam bursting from its seams, crackling flames",
+  "dur": 2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 2,
+    "rawSec": 2,
+    "peakDb": 4.2,
+    "onsetSec": 0,
+    "pinnedPct": 7.83,
+    "gainDb": -12.2,
+    "limitDb": 0,
+    "sec": 1.68,
+    "truncated": false,
+    "bytes": 14045
+   },
+   {
+    "take": 2,
+    "variant": 3,
+    "rawSec": 2,
+    "peakDb": 4.5,
+    "onsetSec": 0,
+    "pinnedPct": 5.88,
+    "gainDb": -10.8,
+    "limitDb": 0,
+    "sec": 1.62,
+    "truncated": false,
+    "bytes": 13627
+   }
+  ]
+ },
+ "creature.colossus.kneel": {
+  "pack": "creature-colossus",
+  "cat": "boss",
+  "prompt": "A wounded stone giant dropping to one knee: a heavy grinding thud, then its chest cracking open with a glowing molten hiss",
+  "dur": 1.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.48,
+    "peakDb": -10.4,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 7.6,
+    "limitDb": 0,
+    "sec": 1.194,
+    "truncated": false,
+    "bytes": 10075
+   }
+  ]
+ },
+ "creature.colossus.death.crack": {
+  "pack": "creature-colossus",
+  "cat": "boss",
+  "prompt": "A dying stone giant sinking down: a long deep groan of grinding rock as fissures split open with hissing jets of fire",
+  "dur": 2.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2.48,
+    "peakDb": 3,
+    "onsetSec": 0,
+    "pinnedPct": 1.19,
+    "gainDb": -9.9,
+    "limitDb": 0,
+    "sec": 2.03,
+    "truncated": false,
+    "bytes": 16762
+   }
+  ]
+ },
+ "creature.colossus.death.rubble": {
+  "pack": "creature-colossus",
+  "cat": "boss",
+  "prompt": "A colossal furnace bursting apart: a huge detonation of stone, then a long cascade of rocks and slabs tumbling and settling, embers hissing",
+  "dur": 4,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 4,
+    "peakDb": 3.5,
+    "onsetSec": 0,
+    "pinnedPct": 0.64,
+    "gainDb": -8,
+    "limitDb": 0,
+    "sec": 3.14,
+    "truncated": false,
+    "bytes": 25748
+   }
+  ]
+ },
+ "creature.colossus.roar": {
+  "pack": "creature-colossus",
+  "cat": "boss",
+  "prompt": "A wounded stone giant's long, low bellowing roar echoing in a cavern, slow and deep, rock cracking and a soft whoosh of flame, clean, not distorted",
+  "dur": 2.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2.48,
+    "peakDb": 0.9,
+    "onsetSec": 0,
+    "pinnedPct": 0.04,
+    "gainDb": -5.5,
+    "limitDb": 0,
+    "sec": 1.56,
+    "truncated": false,
+    "bytes": 13000
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 2.48,
+    "peakDb": 1.7,
+    "onsetSec": 0,
+    "pinnedPct": 0.13,
+    "gainDb": -5.2,
+    "limitDb": 0,
+    "sec": 1.64,
+    "truncated": false,
+    "bytes": 13627
+   }
+  ]
  }
 }
