@@ -57,6 +57,11 @@ const EMPTY_OPTS: PrimOpts = {};
 /** 4×4 Bayer thresholds in 0..1 for soft band edges. */
 const BAYER = new Float32Array([0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16));
 
+/** Drawing window half-size around the creature's anchor (world cells). */
+const RASTER_MAX_HALF_SPAN = 192;
+/** Hard ceiling on scratch pixels (≈ 34 MB across the planes at the cap). */
+const RASTER_MAX_PIXELS = 1 << 20;
+
 export class CreatureRaster {
   /** World units per canvas pixel (0.5 on the fine surface, 1 on legacy surfaces). */
   step = 1;
@@ -99,6 +104,14 @@ export class CreatureRaster {
 
   /** Start a creature: world-space bounds it may draw into and its material table. */
   begin(step: number, x0: number, y0: number, x1: number, y1: number, mats: CreatureMaterial[], anchorX = x0, anchorY = y0): void {
+    // Runaway guard (QA "Array buffer allocation failed"): the bounds come
+    // from simulated rig points. Non-finite bounds draw nothing this frame;
+    // a limb flung across the map is clipped to a window around the anchor
+    // (the largest real creature — the leviathan — spans < 200 cells).
+    if (!(step > 0) || !Number.isFinite(step) || !Number.isFinite(x0 + y0 + x1 + y1)) { this.beginEmpty(step, mats); return; }
+    const cx = Number.isFinite(anchorX) ? anchorX : x0, cy = Number.isFinite(anchorY) ? anchorY : y0;
+    x0 = Math.max(x0, cx - RASTER_MAX_HALF_SPAN); x1 = Math.min(x1, cx + RASTER_MAX_HALF_SPAN);
+    y0 = Math.max(y0, cy - RASTER_MAX_HALF_SPAN); y1 = Math.min(y1, cy + RASTER_MAX_HALF_SPAN);
     this.step = step;
     this.inv = 1 / step;
     this.ox = Math.floor(x0 / step) * step - step;
@@ -106,18 +119,22 @@ export class CreatureRaster {
     this.w = Math.max(1, Math.ceil((x1 - this.ox) / step) + 2);
     this.h = Math.max(1, Math.ceil((y1 - this.oy) / step) + 2);
     const n = this.w * this.h;
+    if (!(n <= RASTER_MAX_PIXELS)) { this.beginEmpty(step, mats); return; }
     if (n > this.cap) {
-      this.cap = Math.max(n, this.cap * 2, 4096);
-      this.z = new Float32Array(this.cap);
-      this.nx = new Float32Array(this.cap);
-      this.ny = new Float32Array(this.cap);
-      this.tone = new Float32Array(this.cap);
-      this.mat = new Uint8Array(this.cap);
-      this.grp = new Uint8Array(this.cap);
-      this.flags = new Uint8Array(this.cap);
-      this.outR = new Float32Array(this.cap);
-      this.outG = new Float32Array(this.cap);
-      this.outB = new Float32Array(this.cap);
+      // Allocate first, commit after: a failed allocation must not leave
+      // `cap` claiming buffers that were never made.
+      const cap = Math.max(n, Math.min(this.cap * 2, RASTER_MAX_PIXELS), 4096);
+      try {
+        const z = new Float32Array(cap), nx = new Float32Array(cap), ny = new Float32Array(cap);
+        const tone = new Float32Array(cap), mat = new Uint8Array(cap), grp = new Uint8Array(cap);
+        const flags = new Uint8Array(cap), outR = new Float32Array(cap), outG = new Float32Array(cap), outB = new Float32Array(cap);
+        this.z = z; this.nx = nx; this.ny = ny; this.tone = tone; this.mat = mat; this.grp = grp;
+        this.flags = flags; this.outR = outR; this.outG = outG; this.outB = outB;
+        this.cap = cap;
+      } catch {
+        this.beginEmpty(step, mats);
+        return;
+      }
     }
     this.mat.fill(0, 0, n);
     this.dx0 = this.w; this.dy0 = this.h; this.dx1 = -1; this.dy1 = -1;
@@ -125,6 +142,16 @@ export class CreatureRaster {
     this.mats = mats;
     this.ax = Math.round(anchorX * this.inv);
     this.ay = Math.round(anchorY * this.inv);
+  }
+
+  /** A zero-size canvas: every primitive clips to nothing and resolve() is a no-op. */
+  private beginEmpty(step: number, mats: CreatureMaterial[]): void {
+    this.step = step > 0 && Number.isFinite(step) ? step : 1;
+    this.inv = 1 / this.step;
+    this.ox = 0; this.oy = 0; this.w = 0; this.h = 0;
+    this.dx0 = 0; this.dy0 = 0; this.dx1 = -1; this.dy1 = -1;
+    this.mats = mats;
+    this.ax = 0; this.ay = 0;
   }
 
   private write(i: number, height: number, nx: number, ny: number, mat: number, o: PrimOpts): void {
