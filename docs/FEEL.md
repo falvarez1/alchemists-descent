@@ -748,7 +748,12 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   undersides streak 1–3 cells by column. Tile features (roots, seeps, ember
   veins) show in a depth window, and Kiln veins brighten toward the depths
   (×0.35 at the top). The backdrop's contact shadow is ×0.40–0.45 at a face,
-  easing out over 7–8 cells, with saturation ×0.5–0.55 and a 0.3 haze.
+  easing out over 7–8 cells, with saturation ×0.5–0.55 and a 0.3 haze. The
+  Kiln Heart's backdrop is ember-lit rather than stepped back (QA: "floating
+  slabs on a flat black backdrop"): mul (1.6, 0.88, 0.56) + lift (0.03, 0.01,
+  0.002), copper machinery ×1.75, saturation ×0.9 and a warm smoke haze
+  (0.12, 0.045, 0.02) at only 0.18 — and a deeper contact shadow (×0.30,
+  easing out over 10 cells) so the rock stands in front of the warm refinery.
   Small enclosed air pockets under 1500 cells are sealed and count as rock.
   Digs re-derive at most 4 chunk regions per frame, and liquid or powder churn
   one every other frame, so render cost stays within noise of the classic sampler.
