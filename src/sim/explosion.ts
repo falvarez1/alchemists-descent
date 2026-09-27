@@ -1,6 +1,6 @@
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx, Enemy, ExplosionApi } from '@/core/types';
-import { Cell, blocksEntity } from '@/sim/CellType';
+import { CELL_COUNT, Cell, blocksEntity, isLiquid } from '@/sim/CellType';
 import { ashColor, crystalColor, fireColor, glassColor, smokeColor } from '@/sim/colors';
 import { chargeDeposit } from '@/sim/electrical';
 import { causeForExplosion } from '@/core/alchemyCause';
@@ -9,6 +9,11 @@ import { blastAuthor, bossOrganRect } from '@/core/bossWard';
 
 /** Reused blast-carve scratch — see the note at its use site in trigger(). */
 let blastTouchedScratch = new Uint8Array(0);
+
+/** Liquids a blast throws instead of unmaking (see trigger): every liquid but
+ *  Oil, which is fuel and still catches. */
+const DISPLACED_BY_BLAST = new Uint8Array(CELL_COUNT);
+for (let t = 0; t < CELL_COUNT; t++) if (isLiquid(t) && t !== Cell.Oil) DISPLACED_BY_BLAST[t] = 1;
 
 const BLAST_DEBRIS_MARGIN = 8;
 const BLAST_DEBRIS_DUST_CAP = 28;
@@ -258,14 +263,26 @@ export class Explosions implements ExplosionApi {
                 { glow: 1.8 },
               );
             }
+            // A blast in a pool THROWS the pool: every cell of a displaced liquid
+            // flies as a spray that lands again (deposit: conserved even if its
+            // arc runs out). It used to be unmade — 30% fire, 20% smoke, the rest
+            // nothing — so each spark bolt that struck the Sunken Leviathan's
+            // pool deleted ~60 of its ~790 cells, and firing at the fish emptied
+            // its armour in seconds. (The rolls below are still drawn, so the sim
+            // stream is unchanged for every other material.)
+            const thrown = DISPLACED_BY_BLAST[orig] === 1;
             // Launch a fraction of destroyed material as ballistic debris
-            if (
+            const debrisRoll =
               orig !== Cell.Empty &&
               orig !== Cell.Fire &&
               orig !== Cell.Smoke &&
               orig !== Cell.Steam &&
-              simRandom() < 0.22
-            ) {
+              simRandom() < 0.22;
+            if (thrown) {
+              const d = Math.sqrt(dx * dx + dy * dy) || 1;
+              const force = (1.2 - d / radius) * 2.6 + fxRandom();
+              ctx.particles.spawn(nx, ny, (dx / d) * force + (fxRandom() - 0.5), (dy / d) * force - 1.2 - fxRandom(), orig, world.colors[ni], 90, { deposit: true });
+            } else if (debrisRoll) {
               const d = Math.sqrt(dx * dx + dy * dy) || 1;
               const force = (1.2 - d / radius) * 2.6 + simRandom();
               ctx.particles.spawn(
@@ -280,11 +297,19 @@ export class Explosions implements ExplosionApi {
               );
             }
             if (simRandom() < 0.3) {
-              world.replaceCellAt(ni, Cell.Fire, fireColor());
-              world.life[ni] = Math.floor(simRandom() * 25) + 10;
+              const life = Math.floor(simRandom() * 25) + 10;
+              if (thrown) world.clearCellAt(ni);
+              else {
+                world.replaceCellAt(ni, Cell.Fire, fireColor());
+                world.life[ni] = life;
+              }
             } else if (simRandom() < 0.2) {
-              world.replaceCellAt(ni, Cell.Smoke, smokeColor());
-              world.life[ni] = Math.floor(simRandom() * 30) + 20;
+              const life = Math.floor(simRandom() * 30) + 20;
+              if (thrown) world.clearCellAt(ni);
+              else {
+                world.replaceCellAt(ni, Cell.Smoke, smokeColor());
+                world.life[ni] = life;
+              }
             } else {
               world.clearCellAt(ni);
             }

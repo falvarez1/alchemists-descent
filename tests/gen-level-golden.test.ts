@@ -182,7 +182,7 @@ const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
   // GEN_VERSION 46 (four floors): the Drowned Cisterns inherit the old flooded
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
-  { id: 'd3', seed: 1337, hash: 'b59d0a7a' }, // GEN_VERSION 53: light puzzles + organism census + the flora pass
+  { id: 'd3', seed: 1337, hash: '541a1626' }, // GEN_VERSION 54: the Sump's stone rim (shores + plinth) and upper-flank connectors, over v53's light puzzles + organism census + flora pass
   { id: 'd4', seed: 1337, hash: 'fdcb1d67' }, // GEN_VERSION 53: the grown Kiln (v52) + light puzzles + the flora pass
   { id: 'd2', seed: 42, hash: 'e75d9c7b' }, // GEN_VERSION 53: light puzzles + organism census + the flora pass
 ];

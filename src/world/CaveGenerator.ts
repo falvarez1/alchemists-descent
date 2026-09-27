@@ -1230,6 +1230,10 @@ export class WorldGen implements WorldGenApi {
     // ...and the final rescue may carve again: the Kiln's seal is the player's
     // to dig, so re-assert its tank once more (idempotent; no-op off the Kiln).
     kilnRepair?.();
+    // Likewise the Sump's casing, plugs and pool (a final rescue tunnel through
+    // the basin took a column of its water on d3 seed 11) — but not its rock
+    // rim: a tunnel the final rescue needed through it stays open.
+    sumpRepair?.(false);
     // FLORA puzzles re-assert what the rescue tunnels took (a tree, a cistern)
     // — writing only into open cells, so no route the rescue opened is closed.
     flora.repair();
