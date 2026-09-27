@@ -34,6 +34,9 @@ export class PauseOverlay {
     // Player builds: the run launcher (test levels, god kits) is an authoring
     // tool, not a pause-menu door.
     if (!__AUTHORING__) document.getElementById('pause-launcher')?.remove();
+    // Same for the playtest report (build, seeds, counters as JSON): a tester's
+    // tool, not something a player should meet in the pause menu.
+    if (!__AUTHORING__) document.getElementById('pause-copy-report')?.remove();
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('game-pause-request', this.onPauseRequest);
     document.getElementById('expedition-pause')?.addEventListener('click', this.onPauseRequest);

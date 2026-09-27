@@ -183,7 +183,7 @@ const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
   { id: 'd3', seed: 1337, hash: '880b8755' },
-  { id: 'd4', seed: 1337, hash: '22a4e80d' }, // GEN_VERSION 49: the Kiln's lava moats sunk into the floor
+  { id: 'd4', seed: 1337, hash: '90d3fc2d' }, // GEN_VERSION 50: the Kiln's ceiling tank re-sealed after its flank connector / rescue carves
   { id: 'd2', seed: 42, hash: 'f40d531b' }, // re-recorded: gas pockets + gunpowder seams
 ];
 

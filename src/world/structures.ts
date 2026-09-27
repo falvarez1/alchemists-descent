@@ -79,6 +79,12 @@ export function placeStructures(
    *  (observed). The casing is metal and survives; this puts back what
    *  can't be armored. */
   sumpRepair: (() => void) | null;
+  /** Re-asserts the Kiln's ceiling tank (casing, stone seal, water) after the
+   *  gauge-rescue passes. Stone-eating carves (the arena's own flank connector,
+   *  then rescue tunnels) opened its seal at generation on most seeds (QA seed
+   *  4), flooding the Colossus before the player ever arrived. The seal is the
+   *  player's to dig. */
+  kilnRepair: (() => void) | null;
 } {
   const w = ctx.world;
   const pickups: Pickup[] = [];
@@ -89,6 +95,7 @@ export function placeStructures(
   const refuge: { x: number; y: number } | null = null;
   const spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null = null;
   let sumpRepair: (() => void) | null = null;
+  let kilnRepair: (() => void) | null = null;
 
   const carvePocket = (cx: number, cy: number, rx: number, ry: number): void =>
     carvePocketCells(w, cx, cy, rx, ry);
@@ -920,6 +927,41 @@ export function placeStructures(
     // both arena flanks join the cave network — the kiln must be findable
     connectToCaves(cx - 39, cy + 6);
     connectToCaves(cx + 39, cy + 6);
+    // The tank's organs, re-assertable. The right flank's connectToCaves above
+    // aims for the nearest main-path region, and on most seeds its 12-cell
+    // tunnel heads up through the arena ceiling: it eats the seal and the
+    // water, sparing only the metal (expedition seeds 1, 2 and 4 lost all 30
+    // seal cells — QA's "the Colossus dies on its own"). The gauge-rescue
+    // passes may carve again later. Idempotent: the metal casing, the two
+    // stone seal rows, and a refill of any water a carve deleted. A carve INTO
+    // the tank never carries a route (the casing is metal and the 15x7
+    // interior is no wizard space), so re-sealing it cannot cut connectivity.
+    // Fixed tint: it must not draw from the generation rng.
+    kilnRepair = (): void => {
+      for (let dx = -9; dx <= 9; dx++) {
+        for (let dy = -8; dy <= 2; dy++) {
+          const X = cx + dx,
+            Y = ty + dy;
+          if (!w.inBounds(X, Y)) continue;
+          const i = w.idx(X, Y);
+          if (Math.abs(dx) > 7 || dy < -6) {
+            if (w.types[i] !== Cell.Metal) {
+              w.types[i] = Cell.Metal;
+              w.colors[i] = packRGB(96, 102, 112);
+            }
+          } else if (dy <= 0) {
+            if (w.types[i] !== Cell.Water) {
+              w.types[i] = Cell.Water;
+              w.colors[i] = packRGB(28, 150, 220);
+            }
+          } else if (w.types[i] !== Cell.Stone) {
+            w.types[i] = Cell.Stone;
+            w.colors[i] = stoneColor();
+          }
+        }
+      }
+    };
+    kilnRepair(); // the flank connectors just now
   }
 
   // ---- The Sump (the Drowned Cisterns): the leviathan's cistern ----
@@ -1088,5 +1130,6 @@ export function placeStructures(
     refuge,
     spellLab,
     sumpRepair,
+    kilnRepair,
   };
 }

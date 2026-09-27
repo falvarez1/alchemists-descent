@@ -14,6 +14,7 @@
     "test": "node scripts/run-vitest-quiet.mjs run --silent",
     "test:watch": "node scripts/run-vitest-quiet.mjs --silent",
     "verify:findability": "node scripts/verify-findability-suite.mjs",
+    "verify:boss-ward": "node scripts/verify-boss-ward.mjs",
     "verify:population": "node scripts/verify-population-placement.mjs",
     "verify:organic-enemies": "node scripts/verify-organic-enemy-trio.mjs",
     "verify:organic-sprites": "node scripts/verify-organic-enemy-trio-sprites.mjs",

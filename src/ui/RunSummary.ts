@@ -301,7 +301,9 @@ export class RunSummary {
       ? best.victory
         ? `Today’s best: the Kiln quieted in ${formatRunTime(best.timeMs)}`
         : `Today’s best: Floor ${best.floor}/${summary.floorsTotal} in ${formatRunTime(best.timeMs)}`
-      : 'Today’s descent is not recorded (practice run).';
+      : summary.outcome === 'abandoned' && result.recorded
+        ? 'An abandoned descent sets no daily best.'
+        : 'Today’s descent is not recorded (practice run).';
     this.daily.append(document.createTextNode(line));
     if (newDailyBest) {
       const badge = document.createElement('b');
