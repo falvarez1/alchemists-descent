@@ -64,6 +64,7 @@ import { HelpOverlay } from '@/ui/HelpOverlay';
 import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
 import { Hud } from '@/ui/Hud';
+import { Callouts } from '@/ui/Callouts';
 import { CellInspector } from '@/ui/CellInspector';
 import { Grimoire } from '@/ui/Grimoire';
 import { Inspector } from '@/ui/Inspector';
@@ -307,6 +308,8 @@ export class Game {
     this.disposables.push(this.hud);
     this.minimap = new Minimap(ctx);
     this.disposables.push(this.minimap);
+    // World-anchored alchemical-kill words (listens to `alchemyKill`/`combatCallout`).
+    this.disposables.push(new Callouts(ctx));
     this.disposables.push(new CardOfferOverlay(ctx));
     this.disposables.push(new WaystonePromptOverlay(ctx));
     this.disposables.push(new HintTeachOverlay(ctx));
