@@ -178,7 +178,7 @@ describe('marsh-gas ceiling pockets', () => {
 });
 
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '779d234d' }, // GEN_VERSION 48: the opening (cold lock removed, spawn-route barricade, Lower Bell floor grate) over the played Bell & Tea Engine
+  { id: 'd1', seed: 1337, hash: '91d91e17' }, // GEN_VERSION 51: hand-planted flora (birches, tree-ferns, the Seed Cellar) over the GEN 48 opening (cold lock removed, spawn-route barricade, Lower Bell floor grate) and the played Bell & Tea Engine
   // GEN_VERSION 46 (four floors): the Drowned Cisterns inherit the old flooded
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
