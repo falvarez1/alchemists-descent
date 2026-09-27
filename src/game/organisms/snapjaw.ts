@@ -2,6 +2,8 @@ import type { Critter, Ctx, Enemy } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 import { corpses, removeCorpse } from '@/creatures/corpses';
+import type { Corpse } from '@/creatures/corpses';
+import { forEachBodyPoint } from '@/creatures/corpseBody';
 import type { OrganismHost } from './common';
 import { critterWithin, enemyWithin, hotNear, organismEvent, playerGap, projectileWithin, solidAt } from './common';
 import {
@@ -64,10 +66,18 @@ function findTarget(ctx: Ctx, c: Critter, host: OrganismHost, x: number, y: numb
   const list = corpses();
   for (let i = 0; i < list.length; i++) {
     const k = list[i];
-    if (k.world !== ctx.world || k.age < 20) continue;
-    if (Math.hypot(k.e.x - x, k.e.y - 3 - y) <= r) return { kind: 'corpse', i };
+    if (k.world !== ctx.world || k.age < 20 || k.gone) continue;
+    // The nearest part of the body, not its anchor: a carcass tossed past
+    // the pod (or dangled at it) is snatched by whatever limb comes close.
+    if (nearestBodyGap(k, x, y) <= r) return { kind: 'corpse', i };
   }
   return null;
+}
+
+function nearestBodyGap(k: Corpse, x: number, y: number): number {
+  let best = Infinity;
+  forEachBodyPoint(k.e, (px, py, pr) => { best = Math.min(best, Math.hypot(px - x, py - y) - Math.min(2, pr)); });
+  return best;
 }
 
 function targetPoint(ctx: Ctx, t: Target): { x: number; y: number } {

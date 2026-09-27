@@ -106,6 +106,8 @@ export interface IntegrateOpts {
   buoyancy?: number;
   /** Tangential velocity lost on the ground (0..1). */
   friction?: number;
+  /** Per-tick travel cap (cells). Default 6; movePoint sub-steps safely to 8. */
+  maxSpeed?: number;
 }
 
 /** One verlet step with collision, liquid drag/buoyancy and ground friction. */
@@ -121,8 +123,9 @@ export function integrate(world: World, p: RigPoint, o: IntegrateOpts, ax = 0, a
   const sp = Math.hypot(vx, vy);
   // A NaN/Infinity velocity (poisoned history) would slip past the cap below
   // (Infinity × 0 is NaN): it just loses its velocity instead.
+  const cap = Math.min(8, o.maxSpeed ?? 6);
   if (!Number.isFinite(sp)) { vx = 0; vy = 0; }
-  else if (sp > 6) { vx *= 6 / sp; vy *= 6 / sp; }
+  else if (sp > cap) { vx *= cap / sp; vy *= cap / sp; }
   const g = o.gravity * (1 + ((o.buoyancy ?? 0.2) - 1) * p.wet);
   p.px = p.x; p.py = p.y;
   p.hit = 0;

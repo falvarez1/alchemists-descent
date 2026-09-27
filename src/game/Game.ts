@@ -9,6 +9,7 @@ import { advanceTrickshotClock } from '@/combat/Trickshot';
 import { TeaMachine } from '@/game/TeaMachine';
 import { TeaMachineOverlay } from '@/ui/TeaMachineOverlay';
 import { updateLegSwing } from '@/combat/WeaverLimbs';
+import { createCorpsesApi } from '@/creatures/corpses';
 import { ExpeditionEntry } from '@/ui/ExpeditionEntry';
 import { randomSeed } from '@/core/rng';
 import { Telemetry } from '@/core/telemetry';
@@ -242,6 +243,8 @@ export class Game {
     const alchemy = new AlchemyKills(ctx);
     ctx.alchemy = alchemy;
     this.disposables.push(alchemy);
+    // The dead as mass: the sim's blasts, the boot and the plates reach the remains.
+    ctx.corpses = createCorpsesApi(ctx);
     ctx.spells = new Spells(ctx);
     ctx.simulation = new Simulation();
     ctx.worldgen = new WorldGen();

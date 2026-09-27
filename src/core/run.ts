@@ -23,7 +23,8 @@ export type AlchemyCause =
   | 'flattened'   // crushed by falling debris, a rigid body or a collapse
   | 'detonated'   // gunpowder, marsh gas or another explosion the player did not cast
   | 'poisoned'    // toxic material
-  | 'impaled';    // kicked or knocked into a hazard at speed
+  | 'impaled'     // kicked or knocked into a hazard at speed
+  | 'bowled';     // struck down by a body the alchemist threw, kicked or swung (combat/Telekinesis)
 
 /** Where a run ended. `abandoned` = the player started a new run over it. */
 export type RunOutcome = 'victory' | 'fallen' | 'abandoned';

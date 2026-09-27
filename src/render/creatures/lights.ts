@@ -1,5 +1,6 @@
 import type { Ctx, Enemy } from '@/core/types';
 import { corpses } from '@/creatures/corpses';
+import { emptySample, sampleBody } from '@/creatures/corpseBody';
 import { organismLights } from '@/render/organisms';
 import { BR, BR_CHEST } from '@/creatures/species/brute';
 import { GEL } from '@/creatures/species/gel';
@@ -8,6 +9,8 @@ import { LZ, LZ_HEAD } from '@/creatures/species/lizard';
 import { MG, MG_HEAD } from '@/creatures/species/mage';
 import { SRP } from '@/creatures/species/serpents';
 import { WSP, WSP_BELL } from '@/creatures/species/wisp';
+
+const LIGHT_SAMPLE = emptySample();
 
 export type SeedLight = (x: number, y: number, r: number, g: number, b: number) => void;
 
@@ -120,7 +123,16 @@ function lightOf(ctx: Ctx, e: Enemy, seed: SeedLight, k: number): void {
 export function creatureLights(ctx: Ctx, seed: SeedLight): void {
   for (const e of ctx.enemies) lightOf(ctx, e, seed, 1);
   organismLights(ctx, seed); // WS-N organisms: beads, throats, bellies (render/organisms)
-  for (const c of corpses()) if (c.world === ctx.world && c.glow > 0.02) lightOf(ctx, c.e, seed, c.glow);
+  for (const c of corpses()) {
+    if (c.world !== ctx.world) continue;
+    if (c.glow > 0.02) lightOf(ctx, c.e, seed, c.glow);
+    // A burning carcass lights the room; one in the wand's grip glows faint brass.
+    if (c.burn > 0 || c.grip) {
+      const s = sampleBody(c.e, LIGHT_SAMPLE);
+      if (c.burn > 0) { const f = 0.8 + Math.sin(ctx.state.frameCount * 0.4 + c.e.bobPhase * 7) * 0.2; seed(s.x, s.y - 2, 1.3 * f, 0.6 * f, 0.14 * f); }
+      else seed(s.x, s.y, 0.42, 0.33, 0.16);
+    }
+  }
   // The alchemist's dropped wand keeps a little light until it gutters out.
   if (ctx.player.dead && ctx.rigidBodies?.bodies) {
     const t = ctx.fx.deathTime ?? 0, k = Math.max(0, Math.min(1, 1 - (t - 0.5) / 1.4));

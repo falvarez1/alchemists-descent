@@ -4,7 +4,7 @@ import { RILLBACK_WET_THRESHOLD } from '@/core/enemyState';
 import { clamp } from '@/core/math';
 import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDamageSource, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
 import { causeForCell } from '@/core/alchemyCause';
-import { BossWard } from '@/core/bossWard';
+import { BossWard, playerBlow } from '@/core/bossWard';
 import { tickWeaverLocomotion, weaverKnockSync, weaverLeap } from '@/entities/weaverLocomotion';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
 import type { BossHost } from '@/creatures/bosses/types';
@@ -585,7 +585,7 @@ export class Enemies implements EnemyControlApi {
     if (BOSS_LAIRS[e.kind]) {
       const brain = ensureBossBrain(e);
       if (brain.move === 'dying' || brain.finished) return;
-      if (source === 'direct') engageBoss(brain, ctx.state.frameCount);
+      if (playerBlow(source)) engageBoss(brain, ctx.state.frameCount);
       else if (ctx.state.frameCount < brain.selfHarmUntil) return;
       // The windows sharpen the player's own blows; the world's harm lands as the ward allows it.
       if (source === 'direct') amount *= e.kind === 'colossus' ? colossusDamageScale(e) : leviathanDamageScale(e);
@@ -595,7 +595,7 @@ export class Enemies implements EnemyControlApi {
     ctx.alchemy?.noteHit(e, source);
     if (amount > 0) {
       this.alertFromDamage(e);
-      if (source === 'direct') this.provokeByPlayer(e);
+      if (playerBlow(source)) this.provokeByPlayer(e);
     }
     // WATER IS THE LEVIATHAN'S ARMOR: while the body is actually in water
     // (cell census, not the wet meter) hits glance off — and SAY so, every

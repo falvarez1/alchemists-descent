@@ -811,6 +811,8 @@ export class Mechanisms implements MechanismsApi {
         }
       }
     }
+    // A weight sensor feels the dead lying in its zone as well as the cells.
+    if (type === 'weight') n += ctx.corpses?.weightOn(z.x0, z.y0, z.x1, z.y1) ?? 0;
     return n;
   }
 
@@ -882,6 +884,8 @@ export class Mechanisms implements MechanismsApi {
       if (e.y >= m.y - 3 && e.y <= m.y + 1 && e.x + def.halfW >= m.x && e.x - def.halfW <= m.x + m.w)
         weight += 4;
     }
+    // The dead weigh too: remains lying on the sill press it (a slime's 4, a bat's 2).
+    weight += ctx.corpses?.weightOn(m.x - 1, m.y - 5, m.x + m.w + 1, m.y + 1) ?? 0;
     return weight >= 3;
   }
 

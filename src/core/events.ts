@@ -10,6 +10,13 @@ export type OrganismAction =
   /** A glow-worm lets its lure back down after hiding. */
   | 'lower';
 
+/** What a corpse just did as a physical object (creatures/corpseWorld). */
+export type CorpseMomentKind =
+  | 'thud' | 'bowl' | 'splash' | 'ignite' | 'douse' | 'consume' | 'dissolve' | 'freeze' | 'shatter' | 'twitch';
+
+/** A phase of the wand's telekinetic grip (combat/Telekinesis). */
+export type TelekinesisPhase = 'grab' | 'hold' | 'release' | 'hurl' | 'fizzle' | 'strain';
+
 /**
  * Minimal synchronous typed event bus.
  *
@@ -137,6 +144,15 @@ export interface EventMap {
   };
   /** A creature died to a material/physical consequence (combat/AlchemyKills). */
   alchemyKill: AlchemyKillInfo;
+  /**
+   * TELEKINESIS: the wand's grip on a body (a corpse or a crate). grab = it
+   * lifts; hold = every tick it is held (audio keeps its hum alive); release =
+   * set down or let go; hurl = flung; fizzle = the grip failed (out of mana,
+   * out of reach, out of sight) or was refused; strain = too heavy to lift (a nudge).
+   */
+  telekinesis: { phase: TelekinesisPhase; x: number; y: number; mass: number; target: 'corpse' | 'crate' };
+  /** CORPSES: remains did something physical worth hearing (strength 0..1; audio/EventCues). */
+  corpseMoment: { kind: CorpseMomentKind; x: number; y: number; strength: number; mass: number; species: EnemyKind };
   /** A world-anchored combat word (ui/Callouts): the Trickshot finisher's line, etc. */
   combatCallout: { x: number; y: number; text: string; tone?: 'brass' | 'finisher' };
   /** The run is over (victory, out of return phials, or replaced). Summary UI, meta profile and share text listen. */
