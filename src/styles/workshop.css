@@ -35,6 +35,7 @@ body.player-build .workshop-heading { display: flex; align-items: baseline; gap:
 .workshop-btn:disabled { opacity: 0.4; cursor: default; }
 .workshop-btn-arrow { display: inline-block; color: var(--house-brass); transition: transform 0.18s var(--house-ease); }
 .workshop-btn:hover .workshop-btn-arrow { transform: translateX(-3px); }
+.workshop-btn kbd.key { margin-left: 4px; }
 
 /* ---------- Left rail: the palette ---------- */
 body.player-build #left-toolbar {

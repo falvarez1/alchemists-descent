@@ -46,6 +46,10 @@ export class PlayerWorkshop {
       ctx.events.on('timeControlsChanged', () => this.syncTime()),
       ctx.events.on('modeChanged', ({ mode }) => { if (mode !== 'build') this.putToysAway(); }),
     );
+    // Capture, so the in-run pause menu (which also listens for Escape) never
+    // opens over the Workshop: here Escape is the way out.
+    window.addEventListener('keydown', this.onKeyDown, true);
+    this.disposers.push(() => window.removeEventListener('keydown', this.onKeyDown, true));
     this.syncTime();
   }
 
@@ -67,11 +71,11 @@ export class PlayerWorkshop {
     back.type = 'button';
     back.id = 'workshop-title-btn';
     back.className = 'workshop-btn';
-    back.innerHTML = '<span class="workshop-btn-arrow" aria-hidden="true">←</span>Back to the title';
+    back.innerHTML = '<span class="workshop-btn-arrow" aria-hidden="true">←</span>Back to the title<kbd class="key">Esc</kbd>';
+    back.setAttribute('aria-keyshortcuts', 'Escape');
     back.addEventListener('click', () => {
       back.blur();
-      this.putToysAway();
-      window.dispatchEvent(new CustomEvent('expedition-title-request'));
+      this.leave();
     });
     header.querySelector('.hud-wrapper')?.prepend(back);
   }
@@ -164,6 +168,27 @@ export class PlayerWorkshop {
     resetCombatTransients(ctx, { simulationAccumulator: true });
     ctx.fx.screenShake = 0;
   }
+
+  private leave(): void {
+    this.putToysAway();
+    window.dispatchEvent(new CustomEvent('expedition-title-request'));
+  }
+
+  /** Escape leaves the Workshop (after first letting go of the filter field). */
+  private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (e.code !== 'Escape' || e.defaultPrevented || e.repeat || this.ctx.state.mode !== 'build') return;
+    const body = document.body.classList;
+    if (body.contains('entry-active') || body.contains('builder-open') || body.contains('run-summary-open')) return;
+    // Anything open over the bench owns its own Escape.
+    if (document.querySelector('.app-dialog-root, #player-settings[open], #help-overlay.visible, #pause-overlay.visible')) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.target instanceof HTMLInputElement) {
+      e.target.blur();
+      return;
+    }
+    this.leave();
+  };
 
   /** Leave nothing behind for play: an unpaused clock. */
   private putToysAway(): void {
