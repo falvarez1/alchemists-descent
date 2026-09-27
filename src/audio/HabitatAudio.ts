@@ -2,6 +2,7 @@ import type { Ctx, Enemy, Projectile } from '@/core/types';
 import type { SfxId } from '@/content/audio/sfxCues';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { Cell, isLiquid } from '@/sim/CellType';
+import { audioFault } from '@/audio/failSafe';
 
 /** Sustained cues for projectiles in flight. */
 const TRAVEL: Partial<Record<Projectile['type'], SfxId>> = {
@@ -51,7 +52,16 @@ export class HabitatAudio {
   private readonly waveKey = new WeakMap<object, string>();
   private travelSerial = 0;
 
+  /** Runs inside the game tick: an audio error is reported (audio/failSafe) and never aborts it. */
   update(ctx: Ctx): void {
+    try {
+      this.hear(ctx);
+    } catch (error) {
+      audioFault('HabitatAudio', error);
+    }
+  }
+
+  private hear(ctx: Ctx): void {
     // The ears sit at the camera centre in every mode: a sound on the left of
     // the screen is in the left ear, and a cinematic pan to the engine room
     // brings its clatter to the centre with it. The wizard is near the centre

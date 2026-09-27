@@ -1,6 +1,7 @@
 import type { AudioApi, EnemyKind } from '@/core/types';
 import type { EventBus, OrganismAction } from '@/core/events';
 import type { SfxId } from '@/content/audio/sfxCues';
+import { listen } from '@/audio/failSafe';
 
 /**
  * The world's announced moments, turned into sound (events outward, calls
@@ -112,12 +113,12 @@ export function installEventCues(events: EventBus, audio: Pick<AudioApi, 'sfx'>)
     if (cues) for (const cue of cues) play(cue, x, y);
   };
   const off = [
-    events.on('lanternHooded', ({ hooded, x, y, quiet }) => { if (!quiet) play(hooded ? LIGHT_CUES.hood : LIGHT_CUES.unhood, x, y); }),
-    events.on('darkZoneEntered', ({ x, y }) => play(LIGHT_CUES.dark, x, y)),
-    events.on('eyeshineCaught', ({ x, y }) => play(LIGHT_CUES.eyeshine, x, y)),
-    events.on('lightDevice', ({ kind, x, y }) => play(LIGHT_CUES[kind], x, y)),
-    events.on('organism', ({ kind, action, x, y }) => playAll(ORGANISM_CUES[kind]?.[action], x, y)),
-    events.on('bossMove', ({ kind, move, x, y }) => playAll(BOSS_MOVE_CUES[kind]?.[move], x, y - 10)),
+    listen(events, 'lanternHooded', ({ hooded, x, y, quiet }) => { if (!quiet) play(hooded ? LIGHT_CUES.hood : LIGHT_CUES.unhood, x, y); }),
+    listen(events, 'darkZoneEntered', ({ x, y }) => play(LIGHT_CUES.dark, x, y)),
+    listen(events, 'eyeshineCaught', ({ x, y }) => play(LIGHT_CUES.eyeshine, x, y)),
+    listen(events, 'lightDevice', ({ kind, x, y }) => play(LIGHT_CUES[kind], x, y)),
+    listen(events, 'organism', ({ kind, action, x, y }) => playAll(ORGANISM_CUES[kind]?.[action], x, y)),
+    listen(events, 'bossMove', ({ kind, move, x, y }) => playAll(BOSS_MOVE_CUES[kind]?.[move], x, y - 10)),
   ];
   return () => { for (const dispose of off) dispose(); };
 }

@@ -4,6 +4,7 @@ import { LoopVoice } from '@/audio/LoopVoice';
 import { SampleBank, type PackState } from '@/audio/SampleBank';
 import { CATEGORY_FALLBACKS, SFX_FALLBACKS, type ProceduralKit } from '@/audio/sfxFallbacks';
 import { chainPitch } from '@/audio/mix';
+import { audioFault } from '@/audio/failSafe';
 import { CORE_SFX_PACKS, isSfxId, type CreatureSfxAction, type SfxId } from '@/content/audio/sfxCues';
 import { sfxCue, type ResolvedSfxCue } from '@/content/audio/sfxCatalog';
 
@@ -155,31 +156,43 @@ export class SfxAudioEngine extends AudioEngine {
 
   // ------------------------------------------------------------- the API
 
+  /**
+   * Play a cue. Gameplay calls this from inside its tick, so it is fail-safe:
+   * an audio error is reported (audio/failSafe) and never reaches the caller.
+   */
   sfx(id: SfxId, x?: number, y?: number, opts: SfxOptions = {}): void {
-    const cue = sfxCue(id);
-    if (cue.loop) { this.sustain(cue, x, y, opts); return; }
-    if (x !== undefined && y !== undefined && cue.range > 0) {
-      this.at(x, y, () => this.play(cue, opts), cue.range);
-      return;
+    try {
+      const cue = sfxCue(id);
+      if (cue.loop) { this.sustain(cue, x, y, opts); return; }
+      if (x !== undefined && y !== undefined && cue.range > 0) {
+        this.at(x, y, () => this.play(cue, opts), cue.range);
+        return;
+      }
+      this.play(cue, opts);
+    } catch (error) {
+      audioFault(`sfx ${id}`, error);
     }
-    this.play(cue, opts);
   }
 
   creature(kind: EnemyKind, action: CreatureSfxAction): void {
-    const own = `creature.${kind}.${action}`;
-    const generic = `creature.generic.${action}`;
-    const id = isSfxId(own) ? own : isSfxId(generic) ? generic : null;
-    if (id && this.bank.has(id)) { this.sfx(id); return; }
-    if (!this.voiceContext) return;
-    // Loading (or no sample at all): the procedural voice this kind always had.
-    this.fellBack++;
-    this.routeTo('voices', () => this.creatureFallback(kind, action));
+    try {
+      const own = `creature.${kind}.${action}`;
+      const generic = `creature.generic.${action}`;
+      const id = isSfxId(own) ? own : isSfxId(generic) ? generic : null;
+      if (id && this.bank.has(id)) { this.sfx(id); return; }
+      if (!this.voiceContext) return;
+      // Loading (or no sample at all): the procedural voice this kind always had.
+      this.fellBack++;
+      this.routeTo('voices', () => this.creatureFallback(kind, action));
+    } catch (error) {
+      audioFault(`creature ${kind}.${action}`, error);
+    }
   }
 
   /** The floor's ambience bed (null = none); crossfades from whatever was playing. */
   setAmbience(id: SfxId | null): void {
     this.wantedBed = id;
-    this.syncBed();
+    try { this.syncBed(); } catch (error) { audioFault('ambience', error); }
   }
 
   /** True while a sustained cue instance is alive. */
@@ -366,11 +379,12 @@ export class SfxAudioEngine extends AudioEngine {
 
   // ----------------------------------------------- sampled AudioApi presets
 
-  /** Play `id` if it has decoded, else the procedural preset it replaced. */
+  /** Play `id` if it has decoded, else the procedural preset it replaced (fail-safe, like `sfx`). */
   private mapped(id: SfxId, x: number | undefined, y: number | undefined, fallback: () => void, opts?: SfxOptions): void {
     if (!this.voiceContext) return;
-    if (!this.bank.has(id)) { this.fellBack++; fallback(); return; }
-    this.sfx(id, x, y, opts);
+    if (this.bank.has(id)) { this.sfx(id, x, y, opts); return; }
+    this.fellBack++;
+    try { fallback(); } catch (error) { audioFault(`fallback ${id}`, error); }
   }
 
   override worldSound(kind: 'stone' | 'metal' | 'water' | 'weaver' | 'rillback' | 'pressure', x: number, y: number): void {
@@ -494,6 +508,14 @@ export class SfxAudioEngine extends AudioEngine {
 
   // ---- stingers ----
   override stinger(kind: AudioStinger, opts: AudioStingerOptions = {}): void {
+    try {
+      this.playStinger(kind, opts);
+    } catch (error) {
+      audioFault(`stinger ${kind}`, error);
+    }
+  }
+
+  private playStinger(kind: AudioStinger, opts: AudioStingerOptions): void {
     const id: SfxId = `stinger.${kind}`;
     if (!this.voiceContext || !this.bank.has(id)) { super.stinger(kind, opts); return; }
     this.noteStinger(kind);

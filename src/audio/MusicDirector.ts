@@ -3,8 +3,10 @@ import type { StreamHost } from '@/audio/streamHost';
 import type { ScoreTrack } from '@/content/audio/scoreTypes';
 import { SCORE_TRACKS } from '@/content/audio/score.generated';
 import { TEA_COMPLETE_STAGE } from '@/world/teaMachine';
+import { failSafe } from '@/audio/failSafe';
+import { equalPowerRamp } from '@/audio/paramRamps';
 import {
-  BossGate, TensionGate, bossAlive, chooseCue, cueLevel, dipFor, engagedBoss, equalPowerCurve, fadeSeconds,
+  BossGate, TensionGate, bossAlive, chooseCue, cueLevel, dipFor, engagedBoss, fadeSeconds,
   floorForLevel, inDeepDark, loopFadeSeconds, phaseDipActive, rampValue, threatScore, type DirectorInput, type Ramp, type Verdict,
 } from '@/audio/musicRules';
 
@@ -48,6 +50,10 @@ interface Voice {
  *   loops wrap by crossfading their tail into their head at measured points
  *   (score.generated.ts headSec/tailSec), never by a gapless-MP3 jump.
  * - A hidden tab fades out and pauses; showing it again resumes and fades in.
+ * - Fail-safe: its listeners, timers and ramps can never throw into the game
+ *   (audio/failSafe), and its fades are overlap-proof linear segments
+ *   (audio/paramRamps) — a stale or frozen audio clock (a suspended context, a
+ *   blocked main thread, a hidden tab) cannot make two of them collide.
  */
 export class MusicDirector implements MusicApi {
   private readonly tracks = new Map<string, ScoreTrack>();
@@ -79,7 +85,9 @@ export class MusicDirector implements MusicApi {
 
   constructor(private readonly ctx: Ctx, private readonly host: StreamHost, tracks: readonly ScoreTrack[] = SCORE_TRACKS) {
     for (const t of tracks) this.tracks.set(t.id, t);
-    const on = ctx.events.on.bind(ctx.events);
+    // Every listener runs fail-safe: the director is reached from inside the game tick
+    // (a playerDied emit), and a sound must never abort the tick that asked for it.
+    const on: typeof ctx.events.on = (event, handler) => ctx.events.on(event, failSafe(`MusicDirector on ${String(event)}`, handler));
     this.disposers.push(
       on('runEnded', ({ outcome }) => {
         if (outcome !== 'victory' && outcome !== 'fallen') return;
@@ -103,13 +111,13 @@ export class MusicDirector implements MusicApi {
       on('modeChanged', () => this.update()),
     );
     // Autoplay policy: the first real gesture unlocks the score (and the engine's context with it).
-    const gesture = (): void => this.onGesture();
+    const gesture = failSafe('MusicDirector gesture', () => this.onGesture());
     for (const type of ['pointerdown', 'keydown', 'touchend'] as const) window.addEventListener(type, gesture, { capture: true });
     this.disposers.push(() => { for (const type of ['pointerdown', 'keydown', 'touchend'] as const) window.removeEventListener(type, gesture, { capture: true }); });
-    const visibility = (): void => this.update();
-    document.addEventListener('visibilitychange', visibility);
-    this.disposers.push(() => document.removeEventListener('visibilitychange', visibility));
-    this.timer = window.setInterval(() => this.update(), TICK_MS);
+    const look = failSafe('MusicDirector update', () => this.update());
+    document.addEventListener('visibilitychange', look);
+    this.disposers.push(() => document.removeEventListener('visibilitychange', look));
+    this.timer = window.setInterval(look, TICK_MS);
   }
 
   /** The cue playing (or fading in) now. */
@@ -135,7 +143,7 @@ export class MusicDirector implements MusicApi {
     this.gestured = true;
     // Inside the gesture: create/resume the engine's context. The score starts on the next look.
     this.host.ensure();
-    queueMicrotask(() => this.update());
+    queueMicrotask(failSafe('MusicDirector update', () => this.update()));
   }
 
   private track(id: string): ScoreTrack | undefined { return this.tracks.get(id); }
@@ -240,12 +248,13 @@ export class MusicDirector implements MusicApi {
     this.schedule(this.master.gain, from, target, t, seconds);
   }
 
-  /** Equal-power ramp on the audio clock. */
+  /**
+   * Equal-power ramp on the audio clock, as linear segments (audio/paramRamps):
+   * a value curve here could overlap one scheduled from a stale clock reading
+   * and throw inside whichever listener asked for the fade.
+   */
   private schedule(param: AudioParam, from: number, to: number, t: number, seconds: number): void {
-    param.cancelScheduledValues(t);
-    if (seconds <= 0.01) { param.setValueAtTime(to, t); return; }
-    param.setValueAtTime(from, t);
-    param.setValueCurveAtTime(equalPowerCurve(from, to), t, seconds);
+    equalPowerRamp(param, from, to, t, seconds);
   }
 
   private transition(ac: AudioContext, from: string | null, to: string | null): void {
@@ -290,11 +299,11 @@ export class MusicDirector implements MusicApi {
     const level = cueLevel(track.id);
     const voice: Voice = { track, el, src, gain, ramp: { from: 0, to: 0, t0: ac.currentTime, t1: ac.currentTime }, stopping: false, wrapped: false, started: false, offset };
     this.voices.push(voice);
-    el.addEventListener('ended', () => {
+    el.addEventListener('ended', failSafe('MusicDirector ended', () => {
       if (voice.track.id === 'victory' || voice.track.id === 'fallen') { if (this.verdict && this.verdict.id === voice.track.id) this.verdict.done = true; }
       this.drop(voice);
       this.update();
-    });
+    }));
     // The fade starts when sound actually flows, so a slow first byte never becomes a gap in the crossfade.
     void el.play().then(() => {
       voice.started = true;

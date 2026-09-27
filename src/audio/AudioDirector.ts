@@ -2,6 +2,7 @@ import type { Ctx, EnemyKind } from '@/core/types';
 import type { SfxAudioEngine } from '@/audio/SfxEngine';
 import { LEVELS, SPINE_ROSTERS } from '@/config/worldgraph';
 import { FLOOR_FAUNA } from '@/game/organisms/placement';
+import { failSafe } from '@/audio/failSafe';
 import { BIOME_BEDS, CORE_SFX_PACKS, FLOOR_BEDS, SFX_CUES, type SfxId } from '@/content/audio/sfxCues';
 
 /**
@@ -95,7 +96,8 @@ export function installAudioDirector(ctx: Ctx, engine: SfxAudioEngine): () => vo
     engine.tickAmbience();
   };
 
-  tick();
-  const timer = setInterval(tick, CADENCE_MS);
+  const look = failSafe('AudioDirector', tick);
+  look();
+  const timer = setInterval(look, CADENCE_MS);
   return () => clearInterval(timer);
 }

@@ -55,6 +55,8 @@ src/audio/AudioEngine.ts   the procedural engine: mix graph, placement, trace �
 src/audio/SfxEngine.ts     SfxAudioEngine extends it: every AudioApi preset plays samples; sfx(), creature()
 src/audio/SampleBank.ts    lazy fetch + decode per pack, released when unneeded
 src/audio/LoopVoice.ts     crossfaded loops (MP3 is not gapless)
+src/audio/paramRamps.ts    overlap-proof gain automation (equal-power segments, loop-pass envelopes)
+src/audio/failSafe.ts      no audio error reaches the game: failSafe(), listen(), audioFault()
 src/audio/sfxFallbacks.ts  the original procedural recipes, per cue
 src/audio/AudioDirector.ts which packs and which bed, per floor; Sanctum prefetch; release
 src/audio/UiSounds.ts      hover/click on every button, overlay open/close, run-event cues
@@ -93,10 +95,27 @@ lowest). The existing glue compressor → limiter → soft clip still sits on th
 master: eighty sampled blasts at once peak at 0.60.
 
 **Loops** (`LoopVoice`): each pass starts before the previous one ends and the
-two cross with equal-power curves (0.35 s for sustained sounds, 2.5 s for
+two cross with equal-power fades (0.35 s for sustained sounds, 2.5 s for
 beds). A loop cue played through `sfx()` fades in on the first call, follows
 level/pan/muffle on each call, and fades out ~0.2 s after the calls stop
-(`keepAliveMs`). Beds crossfade when the floor changes.
+(`keepAliveMs`). Beds crossfade when the floor changes. Passes are scheduled
+~1.2 s ahead by a 200 ms timer; if the timer could not run while the audio
+clock did (a blocked main thread — a probe stepping hundreds of ticks in one
+task — or a throttled hidden tab), the schedule resyncs to "now" and fades
+back in rather than scheduling in the past.
+
+**Fail-safe** (`audio/failSafe.ts`). Audio is reached from inside the game
+tick, so no audio error may escape into it: `sfx()`, `creature()`,
+`stinger()`, the sampled presets' fallbacks, `HabitatAudio.update`, every
+audio event listener (`listen()`), and the score's and narrator's timers
+catch, report once to the console (`[audio] …`) and carry on without that
+sound. Gain automation never uses `setValueCurveAtTime`: Chromium clamps a
+curve's start to the live clock, so two curves computed from a stale clock
+reading collide and throw ("overlaps"). Fades are chains of short linear
+segments instead (`audio/paramRamps.ts`: `equalPowerRamp` for the score,
+`passEnvelope` for loop passes), which cannot overlap anything. Tests:
+`tests/audio-safety.test.ts` drives LoopVoice, the MusicDirector and a
+`playerDied` emit against a fake AudioParam that enforces Chromium's rules.
 
 ## 3. The world's own voices (HabitatAudio)
 
