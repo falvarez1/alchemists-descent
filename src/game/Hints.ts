@@ -172,7 +172,8 @@ export class HintSystem implements HintApi {
       if (d2 <= R_GOAL) {
         let line = runtime.living ? 'The lower gate is sealed. Bring the brass bell.' : 'The portal is sealed — bring it the Golden Key';
         if (portal.open || runtime.keyTaken) {
-          line = 'The portal is open — step in to descend';
+          // D1's way down is a floor grate, not a portal: say what is true.
+          line = runtime.living ? 'The grate is open — drop through.' : 'The portal is open — step in to descend';
         }
         consider({
           priority: 3,

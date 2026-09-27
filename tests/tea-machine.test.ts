@@ -18,6 +18,8 @@ import { chargeDeposit, updateElectricalGrid } from '@/sim/electrical';
 import { Camera } from '@/render/Camera';
 import { createGameParams } from '@/config/params';
 import { Levels } from '@/game/Levels';
+import { Physics } from '@/entities/physics';
+import { WORKS_GATE } from '@/world/breathingWorks';
 import { Pickups, makePickup } from '@/game/Pickups';
 import { waterColor } from '@/sim/colors';
 
@@ -352,6 +354,35 @@ describe('camera, control and state', () => {
     runtime.keyTaken = false; levels.update(ctx); expect(runtime.portal.open).toBe(false);
     runtime.keyTaken = true; levels.update(ctx);
     expect(runtime.portal.open).toBe(true); expect(ctx.sanctum.open).toHaveBeenCalledOnce();
+    rigid.dispose();
+  });
+
+  it('the open grate takes a player standing on its lip (QA: he stood beside the drop)', () => {
+    const { ctx, rigid, runtime, world } = fixture();
+    ctx.physics = new Physics(ctx);
+    ctx.audio.portalWhoosh = vi.fn(); ctx.sanctum = { open: vi.fn() } as unknown as Ctx['sanctum'];
+    const levels = new Levels(ctx);
+    const internals = levels as unknown as { currentId: string; levels: Map<string, typeof runtime> };
+    internals.currentId = 'd1'; internals.levels.set('d1', runtime); ctx.levels = levels;
+    const G = WORKS_GATE;
+    // the Lower Bell floor with its pit open (leaves withdrawn)
+    for (let y = G.floor + 1; y <= G.pit.y1 + 4; y++) {
+      for (let x = G.pit.x0 - 30; x <= G.pit.x1 + 30; x++) {
+        const inPit = x >= G.pit.x0 && x <= G.pit.x1 && y <= G.pit.y1;
+        world.types[world.idx(x, y)] = inPit ? Cell.Empty : Cell.Stone;
+      }
+    }
+    runtime.portal = { x: G.x, y: 1008, open: true };
+    runtime.keyTaken = true;
+    runtime.living!.tea = { stage: TEA_COMPLETE_STAGE, ticks: 1000, stageTicks: 0, completed: true, stalled: false, bodies: [] };
+    // on the right lip: half the body over the pit, feet on the floor beside it
+    ctx.player.x = G.pit.x1 + 3; ctx.player.y = G.floor; (ctx.player as { grounded?: boolean }).grounded = true;
+    const x0 = ctx.player.x;
+    for (let t = 0; t < 8; t++) { ctx.state.frameCount++; levels.update(ctx); }
+    expect(ctx.player.x).toBeLessThan(x0 - 3); // slid off the lip toward the drop
+    expect(ctx.sanctum.open).not.toHaveBeenCalled(); // not yet: his feet are still up
+    ctx.player.y = G.floor + 8; ctx.state.frameCount++; levels.update(ctx); // falling into the pit
+    expect(ctx.sanctum.open).toHaveBeenCalledOnce();
     rigid.dispose();
   });
 

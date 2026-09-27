@@ -53,7 +53,7 @@ import type {
   WeaverLairWeb,
   Waystone,
 } from '@/core/types';
-import { PICKUP_KINDS } from '@/core/types';
+import { PICKUP_KINDS, PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { createPlayer, grantFullReviewKit } from '@/entities/Player';
 import { PERK_IDS } from '@/content/perks';
 import { createDefaultStatus } from '@/entities/status';
@@ -63,7 +63,7 @@ import { makeLevelRuntime } from '@/game/runtime';
 import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
-import { worksGateOpen } from '@/world/breathingWorks';
+import { WORKS_GATE, worksGateOpen } from '@/world/breathingWorks';
 import { blocksEntity, Cell, CELL_COUNT, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import {
   COLOR_FN,
@@ -969,10 +969,25 @@ export class Levels implements LevelsApi {
     if (portal) {
       const pdx = player.x - portal.x;
       const pdy = player.y - 6 - portal.y;
-      const near = pdx * pdx + pdy * pdy < 100;
+      let near = pdx * pdx + pdy * pdy < 100;
       // D1: the engine made the bell, and the bell has opened the floor grate
       // (LivingExpedition slides its real leaves aside), so the player drops in.
       const engineReady = !runtime.living || (runtime.living.tea?.completed === true && worksGateOpen(ctx.world));
+      // The open grate takes whoever steps onto it. QA stood on its lip — the
+      // body half over the pit, feet on the floor beside it — and nothing
+      // happened: a body overlapping the open pit slides off the lip into it,
+      // and the descent fires once its feet are down in the pit.
+      if (runtime.living && runtime.keyTaken && engineReady && !player.dead) {
+        const G = WORKS_GATE;
+        const overPit = player.x + PLAYER_HALF_W >= G.pit.x0 && player.x - PLAYER_HALF_W <= G.pit.x1 &&
+          player.y >= G.floor - 3 && player.y <= G.pit.y1 + 6;
+        if (overPit && player.y <= G.floor + 1) {
+          const dir = Math.sign(G.x - player.x);
+          const nx = player.x + dir * 0.6;
+          if (dir !== 0 && ctx.physics.entityFree(Math.floor(nx), Math.floor(player.y), PLAYER_HALF_W, PLAYER_H)) player.x = nx;
+        }
+        if (overPit && player.y > G.floor + 1) near = true;
+      }
       if (near && runtime.keyTaken && engineReady) {
         if (!portal.open) {
           portal.open = true;
