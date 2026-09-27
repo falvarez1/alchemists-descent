@@ -1,6 +1,44 @@
-# Alchemist's Descent — Game Design
+# Breathing Works (An Alchemist's Descent) — Game Design
 
-## Current contract: The Living Descent
+## Current contract: the run (Breathing Works, 2026-09)
+
+The game is a free web roguelite: **a ~20-minute run through a living refinery, four floors, and death costs you something.** The plan is [plans/2026-09-26-breathing-works-overhaul.md](plans/2026-09-26-breathing-works-overhaul.md). Player-facing names come from `config/brand.ts`; save keys and storage prefixes deliberately keep the old names.
+
+**Four floors** (`config/worldgraph.ts`), the refinery read as an organism:
+
+| Floor | id | Name | Biome | Signature | Boss |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `d1` | The Bellows | earthen (hand-built Works) | water, steam, the breathing cycle | — |
+| 2 | `d2` | The Rot Gardens | fungal | growth, spores, marsh gas that ignites | — |
+| 3 | `d3` | The Drowned Cisterns | flooded | water and electricity | the Sunken Leviathan (`boss: 'leviathan'`) |
+| 4 | `d4` | The Kiln Heart | volcanic | lava, fire, steam, glass | the Kiln Colossus (`boss: 'colossus'`, final) |
+
+Bosses are keyed on `LevelDef.boss`, never inferred from depth. Floors five to eight and the Gilded Vault branch are cut from the campaign (their biomes remain for the Builder). The transition curtain, the arrival banner, the Sanctum, the death screen and the ledger all say "Floor N of 4".
+
+**Return phials.** A run carries three. A death spends one and the alchemist returns to the last checkpoint with the world intact (ragdoll, gold spill, waystone respawn — unchanged). The D1 refuge rest and every Sanctum between floors pour one back (never above three; the refuge re-arms once you have walked away from it). Dying with none left ends the run. The HUD shows three phial glyphs above the vitals that drain and refill; the death screen shows the same row and reads "Return with a phial (2 left)", or, on the last death, "Read the ledger". Phials and the run's counters live in the expedition save (`ExpeditionSave.run`).
+
+**The run ends** on the Colossus (victory), on a death with no phial (fallen), or when the player abandons it from the pause menu. `game/RunDirector.ts` then writes the meta profile, retires the expedition save and emits `runEnded` with a `RunSummary` (`core/run.ts`). A run replaced by a new one is recorded as abandoned without a ledger. The **run ledger** (`ui/RunSummary.ts`) shows the outcome headline ("The Kiln is quiet." / "You fell in the Rot Gardens."), the epitaph, the four floors, play time without pauses, kills, alchemical kills and the best chain (counted from `alchemyKill`), deaths, gold and cards found, any kit the run unlocked, and four buttons: **Descend again** (focused; a fresh seed with the chosen kit, playing in about a second, no page reload), **Save clip** (`clipRequested`), **Copy share line**, **Title**. Victory no longer reloads the page.
+
+**Starting kits** (`content/kits.ts`). A fresh run starts with its kit only:
+
+| Kit | Wand I | Wand II | Satchel | Flasks | Unlock |
+| --- | --- | --- | --- | --- | --- |
+| spark (the Sparkwright's case) | Spark Bolt | Excavate Ray | Twin Cast, Swift Charm | water, nitrogen, oil | always |
+| frost (the Rime case) | Frost Shard | Excavate Ray | Spark Bolt, Shatter Frozen | nitrogen, water, snow | reach floor 2 |
+| ember (the Ember case) | Flame Jet | Excavate Ray | Spark Bolt, Oil Wick | oil, gunpowder, water | slay the Leviathan |
+| storm (the Storm case) | Chain Lightning | Excavate Ray | Spark Bolt, Water Trail | water, nitrogen, oil | win a run |
+
+**Discovered cards feed the reward pool, not the starting hand**: every card ever found joins the pools of tomes, waystones and depth grants (unowned cards first); D1's authored tomes keep their fixed pages.
+
+**Meta profile** (`game/MetaProfile.ts`, localStorage `alchemists-descent-meta`, versioned, corrupt-safe, never overwrites a newer version): runs started and ended, best floor, victories, Leviathans slain, fastest victory, unlocked kits, the last kit chosen, `workshopUnlocked` (after the first run ends) and daily bests. The discovered-card list stays in its own store.
+
+**The daily descent.** "Today's descent" on the title seeds the run from the UTC date (`dailySeed`), always with the spark kit, and keeps the best result per date (deeper, then victory, then the faster victory). The ledger shows today's best and a share line: `Breathing Works — daily 2026-09-26 — Floor 3/4 in 14:02 · 9 alchemical kills · best chain 3`.
+
+**Title and pause.** The title shows Continue / Begin / the case picker (locked cases say how to earn them; the last choice is remembered) / Today's descent / Controls & comfort, and after a first run ends, **The Workshop** (the material sandbox). The Builder and the advanced run launcher stay authoring-only. The pause menu gains **Quit to title** (the descent is kept for Continue) and **Abandon run**; "Set up a run" is gone from player builds, and "Restart level" only appears for disposable test runs.
+
+**The Sanctum** between floors pours back a phial and names the floor below — its line, its signature reaction and its resident (`content/floorLore.ts`), in the house voice: dry Victorian-industrial wit.
+
+## The Living Descent (the first floor)
 
 The September 2026 overhaul replaces the former opening and its mandatory bench lesson with **The Breathing Works**, eight connected rooms inside a corroded refinery. This contract supersedes the historical expansion proposal below. The implementation record is [living-descent-implementation.md](living-descent-implementation.md); the accepted proposal is [2026-09-04-engine-and-game-overhaul.md](2026-09-04-engine-and-game-overhaul.md).
 
@@ -37,6 +75,8 @@ doesn't ship.**
 
 ## The expedition model (resolves metroidvania vs roguelite)
 
+- (Superseded in part by the run contract above: a death now spends a return
+  phial, and discovered cards feed reward pools instead of the starting shop.)
 - **Within an expedition** the world is persistent: snapshots preserve every scar
   (drained lakes, burned scaffolds, stone bridges you cast); waystones stay lit;
   shortcut wells stay open. Death = respawn at your last lit waystone, world intact,
@@ -56,7 +96,7 @@ physics lock at the chokepoint → break the floor seal, drop down the well.
 
 ## Pillar systems (what we're building, from which proposal)
 
-1. **Depth graph + wells + snapshots** (P1) — `worldgraph.ts` data: Surface Camp →
+1. **Depth graph + wells + snapshots** (P1; the campaign is now the four-floor run above) — `worldgraph.ts` data: Surface Camp →
    D1 Earthen → D2 Fungal Deep → D3 Frozen → D4 Flooded Caverns → D5 Timberworks →
    D6 Crystal Hollows → D7 Scorched Wastes → D8 Volcanic Maw, plus the Gilded Vault
    branch hosted by one mid-descent level. One live World at a time; RLE snapshots

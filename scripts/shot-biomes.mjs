@@ -7,7 +7,7 @@ import { startConsoleTestRun } from './run-helpers.mjs';
 
 const seed = Number(process.argv[2] ?? 7);
 const url = process.argv[3] ?? 'http://localhost:5173/';
-const DEPTHS = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8'];
+const DEPTHS = ['d1', 'd2', 'd3', 'd4'];
 mkdirSync('verify-out', { recursive: true });
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });

@@ -15,8 +15,10 @@
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_TUNE_DEFAULT_SIGNATURE, GEN_VERSION, genTuneSignature } from '@/config/gen';
 import { difficultyMods } from '@/config/difficulty';
-import { LEVELS, START_LEVEL, populationForLevel, vaultHostId } from '@/config/worldgraph';
+import { FLOORS_TOTAL, LEVELS, START_LEVEL, floorDisplayName, floorOf, populationForLevel } from '@/config/worldgraph';
 import { createLivingState } from '@/game/LivingExpedition';
+import { DEFAULT_KIT, KIT_DEFS } from '@/content/kits';
+import type { KitId } from '@/core/run';
 import { restoreFauna, restoreLiving } from '@/game/persistence/ecology';
 import { Rng, hashSeed, randomSeed, fnv1aString } from '@/core/rng';
 import { base64ToBytes, bytesToBase64, rleDecodeExact, rleEncode } from '@/core/rle';
@@ -39,6 +41,7 @@ import type {
   PrefabEnemy,
   CardId,
   RunLoadoutPreset,
+  RunSaveState,
   RunStartConfig,
   RunStartResult,
   RunStatus,
@@ -130,8 +133,6 @@ const WAYSTONE_HEAT_GRACE = 3;
 const WAYSTONE_FIRE_CARDS: readonly CardId[] = ['flame', 'emberstorm', 'meteor'];
 /** Cells: walking this close to an unlit waystone raises the help prompt once. */
 const WAYSTONE_PROMPT_RADIUS = 26;
-/** D1 starter water: enough for a first experiment, below a full flask. */
-const FRESH_STARTER_WATER_CELLS = 300;
 /** Campaign Weaver lair webs are background dressing; the authored test arena can go larger. */
 const WEAVER_LAIR_WEB_RADIUS_MIN = 24;
 const WEAVER_LAIR_WEB_RADIUS_MAX = 34;
@@ -295,6 +296,8 @@ export interface ExpeditionSave {
   wands?: WandRuntimeSnapshot;
   /** Material flask belt inventory. Absent in v1 legacy saves. */
   flasks?: FlaskInventorySave;
+  /** The run's phials and ledger (RunDirector). Absent in saves from before runs. */
+  run?: RunSaveState;
   levels: SavedLevelBlob[];
 }
 
@@ -820,7 +823,8 @@ export class Levels implements LevelsApi {
     ) {
       ctx.state.debugGodMode = true;
     }
-    this.applyLoadoutPreset(ctx, preset);
+    const starterKit: KitId = config.starterKit ?? DEFAULT_KIT;
+    this.applyLoadoutPreset(ctx, preset, starterKit);
     // Difficulty cushion: scale the loadout's max HP, then top off (the kit can
     // still override below). Level 3 = ×1.0, so the shipped game is untouched.
     const hpScale = difficultyMods(ctx.state).playerHp;
@@ -829,6 +833,8 @@ export class Levels implements LevelsApi {
       ctx.player.hp = ctx.player.maxHp;
     }
     if (config.kit) this.applyTestKit(ctx, config.kit);
+    // The run begins before the first checkpoint so the save carries its phials.
+    ctx.run?.beginRun(ctx, { seed, kit: starterKit, daily: config.daily ?? null, tracked: mode === 'normal' });
     this.enterLevel(ctx, levelId);
 
     const runtime = this.current;
@@ -904,6 +910,12 @@ export class Levels implements LevelsApi {
     }
     if (this.tryResumeExpedition(ctx)) return;
     this.expeditionSeed = ctx.state.worldSeed >>> 0;
+    ctx.run?.beginRun(ctx, {
+      seed: this.expeditionSeed,
+      kit: DEFAULT_KIT,
+      daily: null,
+      tracked: ctx.state.playtestSource === null,
+    });
     this.enterLevel(ctx, START_LEVEL);
   }
 
@@ -982,54 +994,6 @@ export class Levels implements LevelsApi {
               : 'Sealed. The gate answers to a brass bell, and only the Bell & Tea Engine above the Intake makes one.')
             : 'Sealed. It wants the golden key.',
         });
-      }
-    }
-
-    // GILDED ARCH: the two-way branch gate. Stepping between the pillars
-    // crosses over; the destination's own arch is the way back. Arrival uses
-    // the arch's authored back-spot (outside the trigger circle), never the
-    // level spawn — "returning to the same depth" must mean the same SPOT.
-    const arch = runtime.vaultArch;
-    if (arch) {
-      const adx = player.x - arch.x;
-      const ady = player.y - arch.y;
-      if (adx * adx + ady * ady < 49) {
-        const destId = runtime.def.branch ? vaultHostId(this.activeExpeditionSeed(ctx)) : 'vault';
-        if (LEVELS[destId]) {
-          ctx.audio.portalWhoosh();
-          this.leaveLevel();
-          this.checkpointSaveSuppression++;
-          try {
-            this.enterLevel(ctx, destId);
-          } finally {
-            this.checkpointSaveSuppression--;
-          }
-          const dest = this.current;
-          if (dest?.vaultArch) {
-            player.x = dest.vaultArch.backX;
-            player.y = dest.vaultArch.backY;
-            player.vx = 0;
-            player.vy = 0;
-            player.fx = 0;
-            player.fy = 0;
-            ctx.camera.snapTo(player.x, player.y);
-          }
-          this.saveExpedition(ctx);
-          return;
-        }
-      }
-      // the arch breathes: a slow shimmer of golden motes (in-view only)
-      if (ctx.state.frameCount % 9 === 0 && Math.abs(player.x - arch.x) < 300) {
-        ctx.particles.spawn(
-          arch.x - 5 + entityRandom() * 10,
-          arch.y - 1 - entityRandom() * 5,
-          (entityRandom() - 0.5) * 0.15,
-          -0.2 - entityRandom() * 0.25,
-          null,
-          packRGB(255, 210 + Math.floor(entityRandom() * 40), 120),
-          26 + Math.floor(entityRandom() * 18),
-          { glow: 1.0, grav: -0.002 },
-        );
       }
     }
 
@@ -1205,6 +1169,8 @@ export class Levels implements LevelsApi {
     if (!this.currentId || this.currentId === 'custom') return;
     if (!LEVELS[this.currentId]) return;
     if (ctx.state.playtestSource !== null) return;
+    // A finished run has nothing left to resume; its save was retired.
+    if (ctx.run?.over) return;
     if (this.debugTainted(ctx)) return;
     const currentId = this.currentId;
     // Sync the live hostile roster into the current runtime before reading it.
@@ -1249,6 +1215,7 @@ export class Levels implements LevelsApi {
       loadout: ctx.wands.snapshotLoadout(),
       wands: this.snapshotWandsForSave(ctx),
       flasks: this.snapshotFlasks(ctx),
+      run: ctx.run?.snapshotForSave() ?? undefined,
       levels: blobs,
     };
     if (asynchronous) {
@@ -1427,12 +1394,15 @@ export class Levels implements LevelsApi {
     ctx.wands.resetLoadout();
   }
 
-  private applyLoadoutPreset(ctx: Ctx, preset: RunLoadoutPreset): void {
+  private applyLoadoutPreset(ctx: Ctx, preset: RunLoadoutPreset, kitId: KitId = DEFAULT_KIT): void {
     ctx.wands.resetLoadout();
     if (preset === 'fresh') {
-      ctx.flask.setSlot(0, Cell.Water, FRESH_STARTER_WATER_CELLS);
-      ctx.flask.setSlot(1, Cell.Nitrogen, 180);
-      ctx.flask.setSlot(2, Cell.Oil, 180);
+      // A fresh run starts with its kit and nothing else: previously
+      // discovered cards feed the reward pools, never the starting hand.
+      const kit = KIT_DEFS[kitId] ?? KIT_DEFS[DEFAULT_KIT];
+      ctx.wands.applyStarterLoadout(kit.wands, kit.collection);
+      ctx.flask.clearSlots();
+      kit.flasks.forEach((flask, index) => ctx.flask.setSlot(index, flask.material, flask.count));
       ctx.flask.selectSlot(0);
       return;
     }
@@ -2115,6 +2085,7 @@ export class Levels implements LevelsApi {
         ctx.wands.markDepthGrantsThrough(LEVELS[save.currentId].depth);
       }
       this.restoreFlasks(ctx, save.flasks);
+      ctx.run?.restoreFromSave(ctx, save.run);
 
       this.checkpointSaveSuppression++;
       try {
@@ -2163,9 +2134,7 @@ export class Levels implements LevelsApi {
 
     const expeditionSeed = this.activeExpeditionSeed(ctx);
     const seed = (expeditionSeed ^ this.hashString(def.id)) >>> 0;
-    const pristine = ctx.worldgen.generateLevel(ctx, def, seed, {
-      hostArch: def.id === vaultHostId(expeditionSeed),
-    });
+    const pristine = ctx.worldgen.generateLevel(ctx, def, seed);
 
     const savedTypes = new Uint8Array(world.types.length);
     if (!rleDecodeExact(blob.rle, savedTypes)) throw new Error(`Saved level "${def.id}" RLE length mismatch`);
@@ -2236,7 +2205,6 @@ export class Levels implements LevelsApi {
       ...(pristine.decors.length > 0 ? { decors: pristine.decors } : {}),
       ...(pristine.refuge ? { refuge: pristine.refuge } : {}),
       ...(pristine.spellLab ? { spellLab: pristine.spellLab } : {}),
-      ...(pristine.vaultArch ? { vaultArch: pristine.vaultArch } : {}),
       mapWaypoint: sanitizeMapWaypoint(blob.mapWaypoint, world),
       weaverLairWebs: sanitizeWeaverLairWebs(blob.weaverLairWebs),
     });
@@ -2321,10 +2289,10 @@ export class Levels implements LevelsApi {
     if (!def) return;
     this._transitioning = true;
 
-    this.showTransitionCurtain(ctx, {
-      title: 'Opening the descent',
-      detail: `Preparing ${def.name}.`,
-    });
+    const floor = floorOf(id);
+    this.showTransitionCurtain(ctx, floor > 0
+      ? { title: floorDisplayName(id), detail: `Floor ${floor} of ${FLOORS_TOTAL}` }
+      : { title: 'Opening the descent', detail: `Preparing ${def.name}.` });
 
     // This level is about to become CURRENT and mutate — its cached blob dies.
     this.blobCache.delete(id);
@@ -2423,9 +2391,7 @@ export class Levels implements LevelsApi {
           : INTRO_OBJECTIVE.findKey
         : runtime.boss
           ? this.bossObjective(runtime.boss.kind)
-          : def.branch
-            ? 'Plunder the hoard. The arch leads home.'
-            : 'The Works end here. Survive them.',
+          : 'The Works end here. Survive them.',
     });
 
     this.finishTransitionWithCurtain(ctx);
@@ -2552,13 +2518,9 @@ export class Levels implements LevelsApi {
       decors,
       refuge,
       spellLab,
-      vaultArch,
-      vaultHoard,
       surfaceSpawn,
       surfaceSkyLine,
-    } = ctx.worldgen.generateLevel(ctx, def, seed, {
-      hostArch: def.id === vaultHostId(expeditionSeed),
-    });
+    } = ctx.worldgen.generateLevel(ctx, def, seed);
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
     const regions = extractRegionGraph(ctx.world, spawn, {
@@ -2576,25 +2538,11 @@ export class Levels implements LevelsApi {
       new Rng(hashSeed(seed, 'population')),
       weaverLairWebs,
     );
-    // Boss arenas: the Kiln Colossus at the bottom of the run; the Sunken
-    // Leviathan in d4's perched cistern (the marker carries the kind).
+    // Boss arenas, keyed on the floor (LevelDef.boss): the Sunken Leviathan
+    // in the Drowned Cisterns' perched sump, the Kiln Colossus at the bottom
+    // of the Kiln Heart (the marker carries the kind).
     if (boss && !ctx.enemyCtl.spawn(boss.kind ?? 'colossus', boss.x, boss.y)) {
       ctx.telemetry.count(`population.skipped.${def.id}.${boss.kind ?? 'colossus'}`);
-    }
-    // The Gilded Vault's hoard guards: a pair of elite golems, posted at the
-    // chamber flanks (their boosted stats persist through saves — the blob
-    // roster records hp/maxHp/dmgK).
-    if (vaultHoard) {
-      for (const side of [-10, 10]) {
-        const g = ctx.enemyCtl.spawn('golem', vaultHoard.x + side, vaultHoard.y);
-        if (g && g.kind === 'golem') {
-          g.maxHp = Math.round(g.maxHp * 2.6);
-          g.hp = g.maxHp;
-          g.dmgK = (g.dmgK ?? 1) * 1.6;
-        } else {
-          ctx.telemetry.count(`population.skipped.${def.id}.golem`);
-        }
-      }
     }
     // Prefab-authored enemies (sleeping/patrol fixups applied at spawn).
     for (const rec of prefabEnemies) spawnPrefabEnemy(ctx, rec);
@@ -2622,7 +2570,6 @@ export class Levels implements LevelsApi {
       ...(decors.length > 0 ? { decors } : {}),
       ...(refuge ? { refuge } : {}),
       ...(spellLab ? { spellLab } : {}),
-      ...(vaultArch ? { vaultArch } : {}),
       ...(surfaceSpawn ? { surfaceSpawn } : {}),
       ...(surfaceSkyLine !== null ? { skyLine: surfaceSkyLine } : {}),
       weaverLairWebs,

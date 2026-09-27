@@ -108,3 +108,22 @@ function ensureOfferKind(
   if (replaceAt < 0) return;
   result[replaceAt] = replacement;
 }
+
+/** Cards with their own grant path; discovery never feeds them to random rewards. */
+const DISCOVERY_EXCLUDED: ReadonlySet<CardId> = new Set<CardId>(['infuser']);
+
+/**
+ * Discovered cards feed the reward pool, not the starting hand: a card found
+ * in any earlier run may be offered by a tome, a waystone or a depth grant in
+ * this one. The base pool keeps its order; discoveries append once each.
+ */
+export function withDiscoveredCards(base: readonly CardId[], discovered: readonly CardId[]): CardId[] {
+  const out = [...base];
+  const seen = new Set<CardId>(base);
+  for (const card of discovered) {
+    if (seen.has(card) || DISCOVERY_EXCLUDED.has(card)) continue;
+    seen.add(card);
+    out.push(card);
+  }
+  return out;
+}

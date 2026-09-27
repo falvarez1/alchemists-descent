@@ -121,7 +121,8 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 45; // 45: Breathing Works liquids stay put (sunken steam reservoir under a grate, sunken garden pool, west Undertow chute) the Heavy Charm leaves the drip tray, even refuge steps and grounded glowshrooms
+export const GEN_VERSION = 46; // 46: four floors (Bellows, Rot Gardens, Drowned Cisterns, Kiln Heart): d3 is flooded + the Leviathan's sump, d4 volcanic + the Kiln Colossus, bosses keyed on LevelDef.boss, the Gilded Vault arch/hoard no longer generate
+// 45: 45: Breathing Works liquids stay put (sunken steam reservoir under a grate, sunken garden pool, west Undertow chute) the Heavy Charm leaves the drip tray, even refuge steps and grounded glowshrooms
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

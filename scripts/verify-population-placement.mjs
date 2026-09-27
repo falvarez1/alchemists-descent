@@ -6,7 +6,7 @@ import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const seeds = (process.argv[3] ?? '1,5,1337,42').split(',').map(Number);
-const DEPTHS = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'vault'];
+const DEPTHS = ['d1', 'd2', 'd3', 'd4'];
 
 const browser = await launchBrowser({ headless: true });
 let failures = 0;

@@ -45,6 +45,7 @@ function makeFlaskCtx(flask = new Flask()): Ctx {
       collection: [],
       wands: [],
       resetLoadout: () => undefined,
+      applyStarterLoadout: () => undefined,
       grantCard: () => undefined,
     },
   } as unknown as Ctx;

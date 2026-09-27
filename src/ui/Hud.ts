@@ -4,6 +4,7 @@ import { canHumiliate } from '@/combat/Trickshot';
 import { worksRoomAt } from '@/world/breathingWorks';
 import { getBindings, keyLabel } from '@/input/bindings';
 import { VIEW_H, VIEW_W } from '@/config/constants';
+import { floorLabel } from '@/config/worldgraph';
 import { CARD_DEFS } from '@/combat/wands/cards';
 import { PERK_DEFS, isPerkActive, togglePerkActive } from '@/content/perks';
 import { nextWandSentence } from '@/combat/wands/sentenceView';
@@ -208,9 +209,11 @@ export class Hud {
     // plays in view rather than behind the veil (with a fallback if no
     // curtain comes down, e.g. an in-place restore).
     this.disposers.push(ctx.events.on('levelChanged', ({ depth, name }) => {
-      el('wave-num').textContent = 'D' + depth;
+      // Campaign floors read "Floor 2 of 4"; off-spine arenas keep the depth code.
+      const floor = floorLabel(ctx.levels.current?.def.id);
+      el('wave-num').textContent = floor || 'D' + depth;
       const look = ctx.levels.current ? floorLookFor(ctx) : FLOOR_LOOKS.earthen;
-      const card = { big: titleCaseName(name), small: look.epigraph, kicker: levelTitleKicker(depth) };
+      const card = { big: titleCaseName(name), small: look.epigraph, kicker: floor || levelTitleKicker(depth) };
       this.pendingTitle = card;
       window.clearTimeout(this.titleFallback);
       this.titleFallback = this.setHudTimeout(() => this.revealPendingTitle(), 1600);
@@ -247,18 +250,8 @@ export class Hud {
       this.renderObjective();
     }));
 
-    // The Kiln Colossus is slain: roll victory after the explosion lands.
-    this.disposers.push(ctx.events.on('runComplete', ({ gold }) => {
-      this.setHudTimeout(() => {
-        el('vic-gold').textContent = String(gold);
-        el('victory-overlay').classList.add('visible');
-        ctx.state.paused = true;
-        ctx.audio.learn();
-      }, 1400);
-    }));
-    const onVictoryReturn = (): void => window.location.reload();
-    el('vic-return').addEventListener('click', onVictoryReturn);
-    this.disposers.push(() => el('vic-return').removeEventListener('click', onVictoryReturn));
+    // Victory (the Kiln Colossus) is the run ledger's job now (ui/RunSummary):
+    // no overlay here, and no page reload to start again.
     this.disposers.push(ctx.events.on('toast', ({ text }) => this.toastStack.push(text)));
 
     // The hotbar mirrors the active wand; any loadout change rebuilds it.

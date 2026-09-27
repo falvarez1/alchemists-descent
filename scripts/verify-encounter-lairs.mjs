@@ -17,28 +17,14 @@ const CASES = [
     minCells: 45,
   },
   {
-    id: 'd4',
+    id: 'd3',
     lair: 'encounter-lair-rillback-pool',
     kind: 'rillback',
     signature: ['Water', 'Blood', 'Slime'],
     minCells: 180,
   },
   {
-    id: 'd5',
-    lair: 'encounter-lair-rootloper-grove',
-    kind: 'rootloper',
-    signature: ['Vines', 'Moss', 'Fungus', 'Glowshroom'],
-    minCells: 45,
-  },
-  {
-    id: 'd6',
-    lair: 'encounter-lair-stonemaw-seam',
-    kind: 'stonemaw',
-    signature: ['RawOre', 'Coal'],
-    minCells: 45,
-  },
-  {
-    id: 'd8',
+    id: 'd4',
     lair: 'encounter-lair-stonemaw-seam',
     kind: 'stonemaw',
     signature: ['RawOre', 'Coal'],
@@ -99,6 +85,21 @@ try {
                 y: Math.round(e.y),
                 hp: Math.round(e.hp ?? 0),
                 rillWet: e.rillWet ?? 0,
+                // Water around the body. A resident outside the player's sim
+                // window is frozen, so its rillWet can still read the spawn
+                // default while it sits in the pool; the cells cannot lie.
+                bodyWater: (() => {
+                  const world = w();
+                  let n = 0;
+                  for (let dy = -6; dy <= 1; dy++) {
+                    for (let dx = -5; dx <= 5; dx++) {
+                      const X = Math.round(e.x) + dx;
+                      const Y = Math.round(e.y) + dy;
+                      if (world.inBounds(X, Y) && world.types[world.idx(X, Y)] === cellId('Water')) n++;
+                    }
+                  }
+                  return n;
+                })(),
               }));
           };
           const near = (mask, x, y, r) => {
@@ -206,7 +207,7 @@ try {
             if (lair && c.kind === 'rillback' && !residentCellReachable) issues.push('rillback resident not cell-reachable');
             if (lair && c.kind !== 'rillback' && !residentWizardReachable) issues.push(`${c.kind} resident not wizard-reachable`);
             if (c.kind === 'rillback' && nearbyLiquid < 120) issues.push(`rillback pool drained or absent ${nearbyLiquid}`);
-            if (c.kind === 'rillback' && !settledResidents.some((e) => e.rillWet >= 0.28)) {
+            if (c.kind === 'rillback' && !settledResidents.some((e) => e.rillWet >= 0.28 || e.bodyWater >= 24)) {
               issues.push(`rillback dry after settle ${JSON.stringify(settledResidents)}`);
             }
             for (const issue of findabilityErrors) issues.push(`findability ${issue}`);

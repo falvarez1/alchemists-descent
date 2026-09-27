@@ -148,13 +148,13 @@ async function measureEnemyStep(levelId) {
 }
 
 const d1Run = await measureRun('d1');
-const d5Run = await measureRun('d5');
+const d5Run = await measureRun('d3');
 const d1SwiftRun = await measureRun('d1', `
   ctx.player.status.swift = 600;
   ctx.player.perks.swiftfoot = true;
 `);
 const d1Enemy = await measureEnemyStep('d1');
-const d6Enemy = await measureEnemyStep('d6');
+const d6Enemy = await measureEnemyStep('d4');
 
 console.log(`  ..    player run vx: D1=${d1Run.vx}, D5=${d5Run.vx}, D1+mobility=${d1SwiftRun.vx}`);
 console.log(`  ..    enemy integration dx: D1=${d1Enemy.dx}, D6=${d6Enemy.dx}`);

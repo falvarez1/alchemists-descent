@@ -494,10 +494,8 @@ describe('weaver encounter contract', () => {
 
     expect(populationForLevel(LEVELS.d1, EXTRAS.earthen.foes)).toEqual({ weaver: 2, rillback: 2 });
     expect(populationForLevel(LEVELS.d2, EXTRAS.fungal.foes)).toEqual({ weaver: 3, rootloper: 4, rillback: 2 });
-    expect(populationForLevel(LEVELS.d4, EXTRAS.flooded.foes).rillback).toBe(5);
-    expect(populationForLevel(LEVELS.d5, EXTRAS.timber.foes)).toEqual({ weaver: 4, rootloper: 4, stonemaw: 2 });
-    expect(populationForLevel(LEVELS.d6, EXTRAS.crystal.foes).stonemaw).toBe(4);
-    expect(populationForLevel(LEVELS.d8, EXTRAS.volcanic.foes).stonemaw).toBe(4);
+    expect(populationForLevel(LEVELS.d3, EXTRAS.flooded.foes)).toEqual({ stonemaw: 3, weaver: 2, rillback: 2 });
+    expect(populationForLevel(LEVELS.d4, EXTRAS.volcanic.foes).rillback).toBe(5);
     expect(LEVELS['weaver-test']).toMatchObject({
       id: 'weaver-test',
       biome: 'fungal',

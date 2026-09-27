@@ -1,29 +1,23 @@
 import type { EnemyKind, LevelDef } from '@/core/types';
+import { titleCaseName } from '@/core/strings';
 
 /**
- * The descent: a vertical stack of persistent levels connected by explicit
- * exit portals — plus the first BRANCH: the Gilded Vault, a secret
- * level off the spine. Its hidden arch generates in one mid-descent host
- * (d2-d4, picked per expedition seed — vaultHostId) and its own arch leads
- * back to that host at the same depth. No descent portal reaches it; no portal leaves it.
+ * The descent: four floors of one living refinery, stacked and connected by
+ * explicit exit portals (Breathing Works, 2026-09). The refinery reads as an
+ * organism — bellows (lungs) → rot gardens (gut) → cisterns (veins) → kiln
+ * (heart). Bosses are keyed on the floor, never on a depth number: the Sunken
+ * Leviathan waits in the Drowned Cisterns, the Kiln Colossus at the bottom of
+ * the Kiln Heart, and killing the Colossus wins the run.
+ *
+ * The Gilded Vault branch and floors five to eight left the campaign with this
+ * cut. The biome table still carries their looks for the Builder and the dev
+ * arenas below.
  */
 export const LEVELS: Record<string, LevelDef> = {
-  d1: { id: 'd1', name: 'THE BREATHING WORKS', biome: 'earthen', depth: 1, nextLevelId: 'd2' },
-  d2: { id: 'd2', name: 'FUNGAL DEEP', biome: 'fungal', depth: 2, nextLevelId: 'd3' },
-  d3: { id: 'd3', name: 'FROZEN DEPTHS', biome: 'frozen', depth: 3, nextLevelId: 'd4' },
-  d4: { id: 'd4', name: 'FLOODED CAVERNS', biome: 'flooded', depth: 4, nextLevelId: 'd5' },
-  d5: { id: 'd5', name: 'TIMBERWORKS', biome: 'timber', depth: 5, nextLevelId: 'd6' },
-  d6: { id: 'd6', name: 'CRYSTAL HOLLOWS', biome: 'crystal', depth: 6, nextLevelId: 'd7' },
-  d7: { id: 'd7', name: 'SCORCHED WASTES', biome: 'scorched', depth: 7, nextLevelId: 'd8' },
-  d8: { id: 'd8', name: 'VOLCANIC MAW', biome: 'volcanic', depth: 8, nextLevelId: null },
-  vault: {
-    id: 'vault',
-    name: 'THE GILDED VAULT',
-    biome: 'gilded',
-    depth: 4,
-    nextLevelId: null,
-    branch: true,
-  },
+  d1: { id: 'd1', name: 'THE BELLOWS', biome: 'earthen', depth: 1, nextLevelId: 'd2' },
+  d2: { id: 'd2', name: 'THE ROT GARDENS', biome: 'fungal', depth: 2, nextLevelId: 'd3' },
+  d3: { id: 'd3', name: 'THE DROWNED CISTERNS', biome: 'flooded', depth: 3, nextLevelId: 'd4', boss: 'leviathan' },
+  d4: { id: 'd4', name: 'THE KILN HEART', biome: 'volcanic', depth: 4, nextLevelId: null, boss: 'colossus' },
   // Dev/test arena for the rigid-body physics (selectable from the level
   // dropdown in test mode). Not part of the campaign spine; never autosaved.
   'physics-test': {
@@ -65,13 +59,28 @@ export const LEVELS: Record<string, LevelDef> = {
 
 export const START_LEVEL = 'd1';
 
-/**
- * Which spine level hides the Gilded Vault's arch this expedition. Pure
- * function of the expedition seed so save-resume's pristine regeneration
- * reproduces the same host without storing anything new in the save.
- */
-export function vaultHostId(expeditionSeed: number): string {
-  return 'd' + (2 + ((expeditionSeed >>> 0) % 3));
+/** The campaign spine, top to bottom. Floor N is `CAMPAIGN_FLOORS[N - 1]`. */
+export const CAMPAIGN_FLOORS: readonly string[] = ['d1', 'd2', 'd3', 'd4'];
+
+/** How many floors a run descends. */
+export const FLOORS_TOTAL = CAMPAIGN_FLOORS.length;
+
+/** 1-based floor number of a campaign level id, or 0 for anything off the spine. */
+export function floorOf(levelId: string | null | undefined): number {
+  if (!levelId) return 0;
+  return CAMPAIGN_FLOORS.indexOf(levelId) + 1;
+}
+
+/** The floor's player-facing name: 'THE ROT GARDENS' becomes 'The Rot Gardens'. */
+export function floorDisplayName(levelId: string | null | undefined): string {
+  const def = levelId ? LEVELS[levelId] : undefined;
+  return def ? titleCaseName(def.name) : 'the Works';
+}
+
+/** "Floor 2 of 4" for campaign floors, '' elsewhere. */
+export function floorLabel(levelId: string | null | undefined): string {
+  const floor = floorOf(levelId);
+  return floor > 0 ? `Floor ${floor} of ${FLOORS_TOTAL}` : '';
 }
 
 /**
