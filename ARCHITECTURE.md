@@ -76,6 +76,7 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
   particles/
     Particles.ts          Ballistic free-pixel system (debris, gore, homing coins)
   combat/
+    Telekinesis.ts        The wand's grip (E lift / set down, F or RMB hurl) on corpses and crates
     AlchemyKills.ts       Kill attribution (Ctx.alchemy): last blow per creature, alchemical
                           kills, chains, grid-honest payout; emits `alchemyKill`
     SelfShock.ts          Self-shock fairness: falloff at the body, capped window, conductor arc
@@ -94,7 +95,11 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     species/              Per-body-plan rigs (lizard, gel, bat, imp, wisp, brute, mage,
                           serpents, rootloper) + the registry tickCreaturePose steps
     worldTouch.ts         Footfalls, surface splashes, ploughed powder, tracks, kicked debris
-    corpses.ts            Limp remains that fall, settle and melt back into grid cells
+    corpses.ts            Limp remains that fall, settle and melt back into grid cells;
+                          the rot rules and Ctx.corpses (blasts, the boot, plate weight)
+    corpseBody.ts         One view of any dead body (rig / Weaver shell / spine): mass, pushes, grip
+    corpseWorld.ts        Remains as mass: fire, lava, acid, frost + shatter, current, splash,
+                          BOWLED strikes, crate shoves (reads and writes real cells)
   game/
     Game.ts               Composition root: builds Ctx, owns the frame order
     Flora.ts              Felling: watches living wood (chunk support fingerprints),

@@ -66,7 +66,8 @@ a body plan in creatures/species (reuse a rig: lizard, gel, brute, serpent…;
 register it in species/index) → its art in render/creatures (register in
 render/creatures/index; every kind must have one — tests/creature-art.test.ts)
 → its light in render/creatures/lights.ts if it glows → mass/sound in
-creatures/worldTouch → corpse rules in creatures/corpses → biome `foes`
+creatures/worldTouch → corpse rules in creatures/corpses (its mass in
+corpseBody CORPSE_MASS: how it lifts, flies and strikes) → biome `foes`
 weights (world/biomeExtras) → status immunities map if needed. Iterate the
 look with `node scripts/creature-studio.mjs --kind <k> --scenes idle,walk,...`
 (docs/CREATURES.md).
