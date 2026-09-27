@@ -107,6 +107,21 @@ try {
   const loaded = await waitFor((p) => p.every((k) => window.__game.ctx.audio.debugSamples().packs[k] === 'ready'), packs, 60000);
   check('the new packs load and decode (organisms, bosses, bats, light in the core)', loaded, JSON.stringify((await samples()).packs));
   await hookPlays();
+  // The director releases a pack nobody has asked for in 30 s, and it never wants a boss or
+  // another floor's organisms on floor 1: keep asking for this probe's packs (each ask
+  // restarts their grace) and wait for any that went before a check needs it.
+  await page.evaluate((p) => {
+    window.__ensureCues = async (ids) => {
+      const a = window.__game.ctx.audio;
+      a.requestPacks(p);
+      const t0 = performance.now();
+      while (!ids.every((id) => a.bank.has(id)) && performance.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 100));
+    };
+  }, packs);
+  const ensurePacks = async () => {
+    await page.evaluate((p) => window.__game.ctx.audio.requestPacks(p), packs);
+    await waitFor((p) => p.every((k) => window.__game.ctx.audio.debugSamples().packs[k] === 'ready'), packs, 30000);
+  };
 
   // ------------------------------------------------ 1. announced moments
   const moments = [
@@ -147,6 +162,7 @@ try {
     const a = ctx.audio;
     const out = [];
     for (const [event, payload, ids, bus, placed] of list) {
+      await window.__ensureCues(ids);
       const { x: lx, y: ly } = a.debugSnapshot().listener;
       const before = a.debugSamples();
       const sunk = a.debugSnapshot().sunk;
@@ -190,6 +206,7 @@ try {
   // A crowd does not machine-gun: 18 isopods curl in one gust.
   const crowd = await page.evaluate(async () => {
     const { ctx } = window.__game;
+    await window.__ensureCues(['organism.isopod.curl']);
     const { x: lx, y: ly } = ctx.audio.debugSnapshot().listener;
     await new Promise((r) => setTimeout(r, 400));
     const b = ctx.audio.debugSamples();
@@ -211,6 +228,7 @@ try {
   check('L again flips the hood open (light.lantern.unhood)', h.ok, h.got.join(','));
 
   // Organisms on the real floor, beside the alchemist.
+  await ensurePacks();
   const spot = await page.evaluate(() => ({ x: window.__game.ctx.player.x, y: window.__game.ctx.player.y }));
   const stand = await standAt(spot.x, spot.y);
   check('found open floor beside the alchemist for the organism checks', Boolean(stand), JSON.stringify(stand));

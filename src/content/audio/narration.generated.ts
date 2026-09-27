@@ -343,6 +343,18 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/3ee85252.mp3",
   seconds: 2.72
  },
+ "c3162e5f": {
+  url: "audio/voice/c3162e5f.mp3",
+  seconds: 1.28
+ },
+ "b0a8ad39": {
+  url: "audio/voice/b0a8ad39.mp3",
+  seconds: 4.83
+ },
+ "238fd6b4": {
+  url: "audio/voice/238fd6b4.mp3",
+  seconds: 5.82
+ },
  "47c8959e": {
   url: "audio/voice/47c8959e.mp3",
   seconds: 4.24
@@ -1539,6 +1551,36 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 2.72,
   urls: [
    "audio/voice/3ee85252.mp3"
+  ]
+ },
+ {
+  key: "c3162e5f",
+  text: "You were felled.",
+  say: "You were felled.",
+  group: "Death · titles",
+  seconds: 1.28,
+  urls: [
+   "audio/voice/c3162e5f.mp3"
+  ]
+ },
+ {
+  key: "b0a8ad39",
+  text: "A tree fell in the Works, and someone was around to hear it. Briefly.",
+  say: "A tree fell in the Works, and someone was around to hear it. Briefly.",
+  group: "Death · causes",
+  seconds: 4.83,
+  urls: [
+   "audio/voice/b0a8ad39.mp3"
+  ]
+ },
+ {
+  key: "238fd6b4",
+  text: "Timber. The creak was, in hindsight, the warning.",
+  say: "[dryly] Timber. The creak was, in hindsight, the warning.",
+  group: "Death · causes",
+  seconds: 5.82,
+  urls: [
+   "audio/voice/238fd6b4.mp3"
   ]
  },
  {

@@ -279,6 +279,35 @@ export const SFX_PROMPTS = {
   'organism.emberbeetle.pop': { p: "A tiny ember-filled beetle popping: a small crackling pop and a spray of sizzling sparks, short", d: 0.5, t: 2, i: 0.6 },
   'organism.ashmoth.flare': { p: "A moth flying into a flame: a tiny bright fizzing flare and a papery crackle, short", d: 0.5, t: 2, i: 0.6 },
 
+  // ---------------------------------------------------------------- flora
+  // Living wood: green, fibrous and close. Never a lumberyard's saw, never a forest's birdsong.
+  'flora.creak': { p: "A living tree trunk straining at a deep axe notch: a slow tight groaning creak of green wood fibres under load, a few tiny splinter ticks, close, dry, no reverb", d: 1.2, t: 2, i: 0.6, max: 1.1 },
+  'flora.lean': { p: "A tall tree beginning to topple: a long deep groaning creak of wood fibres stretching and tearing slowly as the trunk leans, leaves shivering, dry, no reverb", d: 2, t: 2, i: 0.55, soft: true, max: 1.8 },
+  'flora.crack': { p: "A tree trunk cut through: a loud sharp crack of living wood splitting, a burst of splinters and a short fibrous rip, close, punchy, dry", d: 1, t: 2, i: 0.6, max: 0.9 },
+  'flora.hinge': { p: "The last fibres of a falling tree's hinge tearing apart: a quick stringy wooden rip ending in a snap, short, dry", d: 0.8, t: 2, i: 0.6, max: 0.7 },
+  'flora.sapling': { p: "A thin green sapling stem snapped by a boot: a small crisp woody snap with a leafy rustle, short, close-miked, dry", d: 0.6, t: 2, i: 0.65, max: 0.5 },
+  'flora.whoosh': { p: "A leafy tree crown rushing down through the air: a heavy swelling whoosh of branches and thousands of leaves, short", d: 1.2, t: 2, i: 0.55, soft: true, max: 1.0 },
+  'flora.fall.birch': { p: "A slender pale birch tree crashing down onto a stone floor: a heavy hollow wooden thud with a sharp crack of snapping branches and a hiss of leaves, short tail, no reverb", d: 1.6, t: 2, i: 0.55, max: 1.4 },
+  'flora.fall.mushroom': { p: "A giant mushroom stalk toppling onto wet ground: a dull heavy spongy thump, a wet fleshy slap of the cap and a soft patter of spores, short tail, no reverb", d: 1.6, t: 2, i: 0.55, max: 1.4 },
+  'flora.fall.mangrove': { p: "A waterlogged mangrove tree falling in a flooded stone cistern: a deep heavy wooden thud, a big slap of water and roots cracking, short tail, no reverb", d: 1.6, t: 2, i: 0.55, max: 1.4 },
+  'flora.fall.emberbark': { p: "A charred smouldering tree trunk crashing onto hot stone: a heavy brittle wooden thud, a crunch of charcoal and a burst of crackling sparks, short tail, no reverb", d: 1.6, t: 2, i: 0.55, max: 1.4 },
+  'flora.canopy': { p: "A tree's leafy crown smashing onto the ground: a thick rushing crash of leaves and small twigs snapping, settling into a soft rustle, short", d: 1.4, t: 2, i: 0.55, max: 1.2 },
+  'flora.settle': { p: "A heavy log rolling a little and settling to rest on stone: a low wooden rumble, a soft knock and a last quiet creak, short, dry", d: 1.2, t: 2, i: 0.55, max: 1.1 },
+  'flora.rustle': { p: "A leafy branch shaken hard: a brisk rustle of many leaves with a few falling away, short, close, dry", d: 0.9, t: 2, i: 0.6, max: 0.8 },
+  'flora.pod.drop': { p: "A small seed pod snapping off a branch and dropping onto stone: a light woody pop, a soft papery burst as it splits and a patter of tiny seeds, short, dry", d: 0.8, t: 2, i: 0.6, max: 0.7 },
+  'flora.glowseed': { p: "Plucking a glowing seed pod: a soft organic pop and a faint rising glassy twinkle, gentle and magical, short, dry", d: 0.8, t: 2, i: 0.6, max: 0.7 },
+  'flora.seed.soak': { p: "A dry seed drinking water: a few quiet thirsty sipping gulps and a soft wet swelling creak, close-miked, short", d: 1, t: 2, i: 0.55, max: 0.9 },
+  'flora.seed.sprout': { p: "A swollen seed bursting open and sprouting fast: a wet fibrous pop, a quick rising creak of a green shoot pushing up and a soft leafy flick, short", d: 1.2, t: 2, i: 0.55, max: 1.0 },
+  'flora.ladder.rung': { p: "A green wooden branch shooting out of a growing stalk: a quick firm creaking knock of fresh wood, short, dry, close", d: 0.5, t: 3, i: 0.65, max: 0.35 },
+  'flora.ladder.grow.loop': { p: "Continuous creaking and stretching of green wood and roots growing quickly, fibrous squeaks and soft cracks, steady", d: 3, t: 1, i: 0.5 },
+  'flora.ladder.bloom': { p: "A plant's crown of leaves unfurling all at once: a soft rustling bloom and a gentle leafy flutter settling, short, dry", d: 1.4, t: 2, i: 0.55, max: 1.2 },
+  'flora.catch': { p: "A dry bramble thicket catching fire: a sudden soft whoomph and a rising burst of crackling, popping twigs and dry leaves, short", d: 1.4, t: 2, i: 0.55, max: 1.3 },
+  'flora.firelily.flare': { p: "A dry flower bloom flaring alight: a small bright fwoomph of petals catching flame and a quick papery crackle, short, dry", d: 1, t: 2, i: 0.55, max: 0.8 },
+  'flora.burn.loop': { p: "Continuous dense, steady crackling of dry brambles and leaves burning, an even unbroken fizzing crackle thick with tiny twig pops, constant level, no roar", d: 3, t: 1, i: 0.5 },
+  'flora.brush.grass': { p: "Walking through tall grass: one soft swishing sweep of long blades brushing past a leg, quiet, close-miked, short", d: 0.6, t: 3, i: 0.6, max: 0.45 },
+  'flora.brush.reeds': { p: "Pushing through stiff reeds at a pond's edge: a dry clattering swish of hollow stems knocking together, quiet, close-miked, short", d: 0.7, t: 2, i: 0.6, max: 0.55 },
+  'flora.brush.kelp': { p: "Kelp fronds brushing past a swimmer underwater: a slick muffled rubbery swish and a few tiny bubbles, quiet, short", d: 0.7, t: 2, i: 0.6, max: 0.55 },
+
   // ------------------------------------------------------------ creatures
   // Weaver: an eight-legged lair guardian of ivory chitin.
   'creature.weaver.step': { p: "Dry chitinous spider legs tapping quickly on stone, two or three light clicks, short", d: 0.5, t: 4, i: 0.6, max: 0.3 },

@@ -159,6 +159,7 @@ const TAGS = [
   [/^The Sunken Leviathan\. It drains poorly/, 'whispers'],
   [/The Rot Gardens are not decorative/, 'dryly'],
   [/You were standing in the chimney/, 'dryly'],
+  [/^Timber\. The creak was/, 'dryly'],
 ];
 const tagFor = (text) => TAGS.find(([re]) => re.test(text))?.[1];
 

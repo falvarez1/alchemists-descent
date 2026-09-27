@@ -1,6 +1,7 @@
 import type { AudioApi } from '@/core/types';
 import type { EventBus } from '@/core/events';
 import type { SfxId } from '@/content/audio/sfxCues';
+import { failSafe, listen } from '@/audio/failSafe';
 
 /**
  * The interface's sounds, without touching any UI module:
@@ -46,14 +47,14 @@ export function installUiSounds(events: EventBus, audio: Pick<AudioApi, 'sfx'>, 
     audio.sfx(id);
   };
   const off = [
-    events.on('toast', () => eventCue('ui.toast', true)),
-    events.on('objectiveChanged', () => eventCue('ui.objective')),
-    events.on('hintTeach', () => eventCue('ui.hint')),
-    events.on('grimoireEntryDiscovered', () => eventCue('ui.grimoire')),
-    events.on('cardOfferRequested', () => eventCue('ui.card.reveal')),
-    events.on('benchOpened', () => eventCue('ui.bench')),
-    events.on('runLedger', ({ open }) => eventCue(open ? 'ui.open' : 'ui.close')),
-    events.on('levelCurtain', ({ visible }) => { if (visible) eventCue('ui.curtain'); }),
+    listen(events, 'toast', () => eventCue('ui.toast', true)),
+    listen(events, 'objectiveChanged', () => eventCue('ui.objective')),
+    listen(events, 'hintTeach', () => eventCue('ui.hint')),
+    listen(events, 'grimoireEntryDiscovered', () => eventCue('ui.grimoire')),
+    listen(events, 'cardOfferRequested', () => eventCue('ui.card.reveal')),
+    listen(events, 'benchOpened', () => eventCue('ui.bench')),
+    listen(events, 'runLedger', ({ open }) => eventCue(open ? 'ui.open' : 'ui.close')),
+    listen(events, 'levelCurtain', ({ visible }) => { if (visible) eventCue('ui.curtain'); }),
   ];
   if (!doc) return () => { for (const dispose of off) dispose(); };
 
@@ -64,22 +65,22 @@ export function installUiSounds(events: EventBus, audio: Pick<AudioApi, 'sfx'>, 
     if (el.closest(QUIET_ZONES)) return null;
     return el;
   };
-  const onOver = (e: Event): void => {
+  const onOver = failSafe('UiSounds hover', (e: Event): void => {
     const el = buttonAt(e.target);
     if (!el || el === hovered) return;
     hovered = el;
     if (!el.matches('[data-sfx="none"]')) audio.sfx('ui.hover');
-  };
+  });
   const onOut = (e: Event): void => {
     if (hovered && !(e instanceof MouseEvent && e.relatedTarget instanceof Node && hovered.contains(e.relatedTarget))) hovered = null;
   };
-  const onClick = (e: Event): void => {
+  const onClick = failSafe('UiSounds click', (e: Event): void => {
     const el = buttonAt(e.target);
     if (!el) return;
     if (el.matches('.card-offer-card')) { audio.sfx('ui.card.choose'); return; }
     if (el.closest(OWN_SOUND)) return;
     audio.sfx(el.matches(BACKISH) ? 'ui.back' : 'ui.click');
-  };
+  });
   doc.addEventListener('pointerover', onOver, { passive: true });
   doc.addEventListener('pointerout', onOut, { passive: true });
   doc.addEventListener('click', onClick, true);
@@ -92,12 +93,12 @@ export function installUiSounds(events: EventBus, audio: Pick<AudioApi, 'sfx'>, 
       if (!el || (el as HTMLElement).dataset.sfxWatched) continue;
       (el as HTMLElement).dataset.sfxWatched = '1';
       let open = w.isOpen(el);
-      const mo = new MutationObserver(() => {
+      const mo = new MutationObserver(failSafe('UiSounds overlay', () => {
         const now = w.isOpen(el);
         if (now === open) return;
         open = now;
         audio.sfx(now ? w.open : w.close);
-      });
+      }));
       mo.observe(el, { attributes: true, attributeFilter: ['class', 'open', 'hidden'] });
       observers.push(mo);
     }

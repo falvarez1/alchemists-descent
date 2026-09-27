@@ -1,3 +1,6 @@
+import { audioFault } from '@/audio/failSafe';
+import { passEnvelope } from '@/audio/paramRamps';
+
 /**
  * A seamless loop built from overlapping one-shot sources with equal-power
  * crossfades. MP3 is not gapless (encoder delay and padding put a few ms of
@@ -6,15 +9,21 @@
  * the two are faded across each other. Used for ambience beds (long
  * crossfades) and for sustained sounds — a flame stream, a steam jet, a lava
  * pool — that live only while something keeps them alive.
+ *
+ * The passes are scheduled ahead on the audio clock by a 200 ms timer. When
+ * that timer could not run for a while (the main thread blocked — a probe
+ * stepping hundreds of ticks in one task — or a throttled hidden tab) the
+ * next pass would start in the past; the schedule instead resyncs to "now"
+ * and the loop fades back in. Pass envelopes are linear segments
+ * (audio/paramRamps.ts), never value curves, so a late pass can never
+ * "overlap" another automation event and throw.
  */
-const CURVE_POINTS = 64;
-const FADE_IN = new Float32Array(CURVE_POINTS);
-const FADE_OUT = new Float32Array(CURVE_POINTS);
-for (let i = 0; i < CURVE_POINTS; i++) {
-  const t = i / (CURVE_POINTS - 1);
-  FADE_IN[i] = Math.sin(t * Math.PI / 2);
-  FADE_OUT[i] = Math.cos(t * Math.PI / 2);
-}
+/** A pass due earlier than this (s) is late: resync instead of scheduling in the past. */
+const LATE = 0.005;
+/** How far ahead of the clock a (re)started pass is placed (s). */
+const LEAD = 0.02;
+/** Keep this much audio (s) scheduled ahead of the clock. */
+const AHEAD = 1.2;
 
 export interface LoopVoiceOptions {
   /** Crossfade between passes, seconds. */
@@ -34,6 +43,8 @@ export class LoopVoice {
   private nextOffset: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
+  /** Times the schedule found itself behind the clock and resynced (probes read it). */
+  resyncs = 0;
   /** performance.now() of the last keep-alive; 0 = held until stop(). */
   lastRefresh = 0;
   keepAliveMs = 0;
@@ -56,7 +67,7 @@ export class LoopVoice {
     this.lowpass.connect(this.panner);
     this.panner.connect(destination);
     const xf = this.crossfade();
-    this.nextStart = ac.currentTime + 0.02;
+    this.nextStart = ac.currentTime + LEAD;
     this.nextOffset = opts.randomStart ? Math.random() * Math.max(0, buffer.duration - xf * 2) : 0;
     this.schedule(true);
     this.timer = setInterval(() => this.tick(), 200);
@@ -86,13 +97,17 @@ export class LoopVoice {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    const t = this.ac.currentTime;
-    const g = this.level.gain;
-    g.cancelScheduledValues(t);
-    g.setValueAtTime(g.value, t);
-    g.linearRampToValueAtTime(0, t + Math.max(0.02, fade));
-    for (const pass of this.passes) {
-      try { pass.src.stop(t + fade + 0.05); } catch { /* already stopped */ }
+    try {
+      const t = this.ac.currentTime;
+      const g = this.level.gain;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(g.value, t);
+      g.linearRampToValueAtTime(0, t + Math.max(0.02, fade));
+      for (const pass of this.passes) {
+        try { pass.src.stop(t + fade + 0.05); } catch { /* already stopped */ }
+      }
+    } catch (error) {
+      audioFault('LoopVoice.stop', error);
     }
     setTimeout(() => {
       this.level.disconnect(); this.lowpass.disconnect(); this.panner.disconnect();
@@ -106,11 +121,31 @@ export class LoopVoice {
     this.schedule(false);
   }
 
-  /** Keep about a second of passes scheduled ahead. */
+  /** Keep about a second of passes scheduled ahead. A voice that cannot schedule fades out rather than throwing every tick. */
   private schedule(first: boolean): void {
-    const ac = this.ac, xf = this.crossfade();
-    while (this.passes.length && this.passes[0].end < ac.currentTime - 0.1) this.passes.shift();
-    while (this.nextStart < ac.currentTime + 1.2) {
+    try {
+      this.scheduleAhead(first);
+    } catch (error) {
+      audioFault('LoopVoice.schedule', error);
+      this.stop(0.05);
+    }
+  }
+
+  private scheduleAhead(first: boolean): void {
+    const ac = this.ac, xf = this.crossfade(), now = ac.currentTime;
+    while (this.passes.length && this.passes[0].end < now - 0.1) this.passes.shift();
+    let fresh = first && this.passes.length === 0;
+    if (this.nextStart < now + LATE) {
+      // The timer fell behind the audio clock: whatever was scheduled has run
+      // out. Pick the loop up where it would be now, and fade it back in.
+      const lag = now + LEAD - this.nextStart;
+      const span = Math.max(xf, this.buffer.duration - xf * 2);
+      this.nextOffset = (this.nextOffset + lag) % span;
+      this.nextStart = now + LEAD;
+      this.resyncs++;
+      fresh = true;
+    }
+    while (this.nextStart < now + AHEAD) {
       const offset = this.nextOffset;
       const length = this.buffer.duration - offset;
       if (length <= xf * 2) { this.nextOffset = 0; continue; }
@@ -119,10 +154,8 @@ export class LoopVoice {
       src.buffer = this.buffer;
       const env = ac.createGain();
       env.gain.value = 0;
-      const fadeIn = first && this.passes.length === 0 ? Math.max(xf, this.opts.fadeIn) : xf;
-      // (No setValueAtTime at `start`: a value curve may not overlap another event.)
-      env.gain.setValueCurveAtTime(FADE_IN, start, Math.min(fadeIn, length * 0.5));
-      env.gain.setValueCurveAtTime(FADE_OUT, start + length - xf, xf);
+      const fadeIn = fresh ? Math.max(xf, this.opts.fadeIn) : xf;
+      passEnvelope(env.gain, start, Math.min(fadeIn, length * 0.5), start + length, xf);
       src.connect(env);
       env.connect(this.level);
       src.start(start, offset);
@@ -131,7 +164,7 @@ export class LoopVoice {
       this.passes.push({ src, env, end: start + length });
       this.nextStart = start + length - xf;
       this.nextOffset = 0;
-      first = false;
+      fresh = false;
     }
   }
 }

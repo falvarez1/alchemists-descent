@@ -5,7 +5,7 @@ from, how it is mixed and loaded, and how to change it. Music and narration
 are a separate workstream (their own buses and director); this document is
 the sound effects and ambience.
 
-- **366 cues, 699 takes, 6.1 MB** of mastered MP3 (`src/assets/audio/`),
+- **392 cues, 751 takes, 6.5 MB** of mastered MP3 (`src/assets/audio/`),
   generated with ElevenLabs text-to-sound and mastered offline.
 - **Nothing is fetched before the first gesture.** Then the core packs load in
   about two seconds; each floor's creatures and bed load with the floor; the
@@ -55,6 +55,8 @@ src/audio/AudioEngine.ts   the procedural engine: mix graph, placement, trace �
 src/audio/SfxEngine.ts     SfxAudioEngine extends it: every AudioApi preset plays samples; sfx(), creature()
 src/audio/SampleBank.ts    lazy fetch + decode per pack, released when unneeded
 src/audio/LoopVoice.ts     crossfaded loops (MP3 is not gapless)
+src/audio/paramRamps.ts    overlap-proof gain automation (equal-power segments, loop-pass envelopes)
+src/audio/failSafe.ts      no audio error reaches the game: failSafe(), listen(), audioFault()
 src/audio/sfxFallbacks.ts  the original procedural recipes, per cue
 src/audio/AudioDirector.ts which packs and which bed, per floor; Sanctum prefetch; release
 src/audio/UiSounds.ts      hover/click on every button, overlay open/close, run-event cues
@@ -93,10 +95,27 @@ lowest). The existing glue compressor → limiter → soft clip still sits on th
 master: eighty sampled blasts at once peak at 0.60.
 
 **Loops** (`LoopVoice`): each pass starts before the previous one ends and the
-two cross with equal-power curves (0.35 s for sustained sounds, 2.5 s for
+two cross with equal-power fades (0.35 s for sustained sounds, 2.5 s for
 beds). A loop cue played through `sfx()` fades in on the first call, follows
 level/pan/muffle on each call, and fades out ~0.2 s after the calls stop
-(`keepAliveMs`). Beds crossfade when the floor changes.
+(`keepAliveMs`). Beds crossfade when the floor changes. Passes are scheduled
+~1.2 s ahead by a 200 ms timer; if the timer could not run while the audio
+clock did (a blocked main thread — a probe stepping hundreds of ticks in one
+task — or a throttled hidden tab), the schedule resyncs to "now" and fades
+back in rather than scheduling in the past.
+
+**Fail-safe** (`audio/failSafe.ts`). Audio is reached from inside the game
+tick, so no audio error may escape into it: `sfx()`, `creature()`,
+`stinger()`, the sampled presets' fallbacks, `HabitatAudio.update`, every
+audio event listener (`listen()`), and the score's and narrator's timers
+catch, report once to the console (`[audio] …`) and carry on without that
+sound. Gain automation never uses `setValueCurveAtTime`: Chromium clamps a
+curve's start to the live clock, so two curves computed from a stale clock
+reading collide and throw ("overlaps"). Fades are chains of short linear
+segments instead (`audio/paramRamps.ts`: `equalPowerRamp` for the score,
+`passEnvelope` for loop passes), which cannot overlap anything. Tests:
+`tests/audio-safety.test.ts` drives LoopVoice, the MusicDirector and a
+`playerDied` emit against a fake AudioParam that enforces Chromium's rules.
 
 ## 3. The world's own voices (HabitatAudio)
 
@@ -122,11 +141,26 @@ level/pan/muffle on each call, and fades out ~0.2 s after the calls stop
   along the real floor and thins as it dies: the jump can be timed by ear.
 - **A photocell under a held beam** hums, swelling as it fills; it latches
   with a brass click and a glass chime.
+- **Fire in the brush.** The scanner also counts flame within two cells of a
+  leaf, a vine, a pod or living wood (and a trunk smouldering in place). The
+  moment a thicket, a fallen crown or a bed of grass catches is a dry
+  whoomph (`flora.catch`; in the Kiln its blooms flare, `flora.firelily.flare`),
+  once per fire — it re-arms after a second with none. Then a brushy crackle
+  (`flora.burn.loop`) rides over the fire's own roar while plants burn, held
+  a moment past the last leaf (leaves go up in a flash; the scan only looks
+  every 8 ticks). When only the bramble wood is left, the bonfire loop alone
+  carries it.
+- **Brushing past plants.** Every 14 cells walked, and never closer than
+  a third of a second, the cells his body is pushing through decide the
+  sweep: under water, kelp; thin stems standing in the Cisterns, reeds;
+  anything else leafy (grass tufts, fern beds, fire-lilies, fallen crowns,
+  litter), a soft sweep of blades. Level follows how much foliage and how
+  fast. A meadow is a hush, not a drum.
 
 ### Announced moments (EventCues)
 
-The light devices, the organisms and the bosses announce what they do on the
-event bus and never touch audio; `audio/EventCues.ts` is the one table that
+The light devices, the organisms, the bosses and the plants announce what
+they do on the event bus and never touch audio; `audio/EventCues.ts` is the one table that
 decides how each moment sounds, placed at the event's position (the cue's own
 range) and held in check by each cue's cooldown and instance cap, so a floor of
 isopods curling in one gust is one clatter, not eighteen.
@@ -139,8 +173,14 @@ isopods curling in one gust is one clatter, not eighteen.
 | `lightDevice` | a photocell's latch and chime; a lumen bloom's glass petals unfurling, or folding shut |
 | `organism` | snapjaw snap (and the swallow a beat later), puffer ripe/burst, glow-worm lower/retract/snare, leech latch/drink/shed, isopod curl, ash moth flare, a fish school bolting, a bat roost scattering, an imp snapping an ash moth |
 | `bossMove` | every tell as the move commits: the Colossus heaving its fists up (slam, stomp), scooping melt (throw), grinding its vents open, its phase roar, the kneel after a thermal-shock crack, the long groan as it goes down; the Leviathan's lure going dark before a lunge or a dive, the coil before a thrash |
+| `floraMoment` | a tree's whole fall, in order: a notched trunk straining (`creak`, louder when nearly through), the cut going through (`crack`, by the stand's size), the long groan of the hold and lean (`lean`), the hinge fibres tearing (`snap` ≥ 0.6) or a sapling snapping at the boot (`snap` < 0.6), the crown rushing down (`whoosh`), the canopy thrown onto the ground (`shed`), the log rolling to rest (`settle`); leaves shaken by a kick (`rustle`), pods letting go (`podDrop`); a thirsty seed drinking (`soak`), sprouting (`sprout`), its root ladder knocking up rung by rung over a creaking growth loop (`rung`) and opening its crown (`bloom`) |
+| `treeLanded` | the fall itself, in the floor's own wood (the biome names the species world/floraPass planted): pale birch on the Bellows, a giant mushroom's stem in the Rot Gardens, a waterlogged mangrove in the Cisterns, charred ember-bark in the Kiln; a bounce after the first strike is the same wood, lighter |
 
-The blows themselves sound at the tick they land, in the boss and organism
+The flora call sites stay silent: the events carry the sound (a felled tree's
+rigid body skips the generic crate knock, and a glowseed pod plucked from the
+ground and a trunk flexing under the boot, which have no event, call
+`flora.glowseed` and `flora.creak` directly). The blows themselves sound at
+the tick they land, in the boss and organism
 modules (a slam's stone-on-stone over the blast, a stomp's thud, the vent's
 roar, the plates bursting off, the rubble; the tail's sheet of water, the
 surge, the shock; a snapjaw's tell, chew and death, an ember beetle's crunch
@@ -187,7 +227,7 @@ layer). To re-tune: edit a target in the calibration script, run it with
 | page load, title screen | no audio and no URL table: only the engine code (+14 KB gzipped of JS; same 14 requests as before this layer) | 0 audio bytes |
 | first gesture | the lazy `sfxManifest` chunk (the URL table, 64 KB) | |
 | first gesture + 0.3 s | `ui`, `player`, `spells`, `world` (3 lanes, ~2 s) | 3.1 MB MP3 → ~42 MB PCM |
-| a floor loads | its bed (`amb-dN`), a pack per creature kind living there + its boss, a pack per organism kind in its census (`org-<kind>`, game/organisms FLOOR_FAUNA, plus any organism actually present), `tea` on floor 1 | 0.3–1.1 MB MP3 |
+| a floor loads | its bed (`amb-dN`), a pack per creature kind living there + its boss, a pack per organism kind in its census (`org-<kind>`, game/organisms FLOOR_FAUNA, plus any organism actually present), `flora` (every floor grows plants), `tea` on floor 1 | 0.7–1.5 MB MP3 |
 | the Sanctum opens | the next floor's bed, roster and organisms (prefetch) | |
 | 30 s after a pack is last needed | released | |
 
@@ -195,9 +235,10 @@ Decoded PCM is the cost of sampled audio, so buffers decode at the rate their
 family needs: 44.1 kHz for the sparkly ones (UI, pickups, spells, glass,
 sizzle), 32 kHz for bodies (the MP3s are band-limited near 15 kHz, so nothing
 audible is lost), 24 kHz for the long stereo beds. Measured
-(`verify:audio-sfx`): ~50 MB on floor 1 (core + bed + Tea Engine + creatures),
-~58 MB steady on floor 4 (its organisms included), 94 MB peak while racing through all four floors
-before the releases land.
+(`verify:audio-sfx`): ~50 MB for the core packs alone, ~66 MB on floor 1
+(core + bed + Tea Engine + creatures + plants), ~64 MB steady on floor 4 (its
+organisms and plants included), 101 MB peak while racing through all four
+floors before the releases land.
 
 ## 6. Workflow
 
@@ -218,8 +259,9 @@ takes (peak under −32 dBFS: mostly noise floor), crushed takes (>8 % of
 samples at full scale — ElevenLabs masters hot, peaks of ~1.4 are normal),
 late onsets, and loops whose quarters differ by >15 dB; a refused slot is
 refilled from takes already paid for (best score first) before a new variant
-is bought. Spend so far: **38,660 credits** for 851 generations (the wave-2
-pass — light, organisms, the rebuilt bosses — was 5,112 of them).
+is bought. Spend so far: **41,740 credits** for 910 generations (the wave-2
+pass — light, organisms, the rebuilt bosses — was 5,112 of them; the flora
+pack 3,080).
 
 **Audition** (dev server running): open `/audition.html`. Every cue from every
 `src/content/audio/*Manifest.ts` that exports `AUDITION_ENTRIES` (the score
@@ -236,7 +278,11 @@ then with the dev server up `npm run verify:audio-sfx` (sampled layer),
 event plays its own cue, placed, sampled; the L key, spawned organisms, a
 photocell, the Colossus's stomp, phases and long death, the Leviathan's
 thrash and surge, each floor's organism packs, the score's phase dip and dark
-thinning).
+thinning) and `npm run verify:audio-flora -- <url>` (every plant moment's own
+cue; in the Rot Gardens a tree felled by the dig beam, a pod tree kicked, the
+seed bed watered, the thicket lit, leaves walked through; a death with the
+AudioContext suspended running its whole flow to the respawn; a 6.5 s
+main-thread block with loops sustained).
 
 **Add a cue:** add it to `sfxCues.ts` (pack, family, overrides) and
 `sfx-prompts.mjs` (prompt, duration, takes), run the generator with
@@ -259,6 +305,7 @@ with the floors whose census lists it).
 | world | 78 | 142 | the light wave (the deep dark's hush, eyeshine, photocell hum + latch, lumen bloom open/furl/petal), fish school scatter + flop, moth swarm loop, explosions ×3, materials (zap, shatter, steam, sizzle, ignite, squelch, bubble, splashes, drip, hollow knock), material loops ×7 (fire, lava, water, acid, steam, electric, fuse), rigid bodies per material (impact, smash) + grab/lift/throw/drop/rip/tear/bash/burn-out, portal, gong, waystone, 20 mechanisms, critters, generic creature voices, hostile fireball loop |
 | tea | 15 | 16 | striker, percussion cap, fault, knocker, ratchet, pendulum, boulder, dominoes, spring, duck, marble, generator, magnet, counterweight, tea served |
 | creature-× (16) | 129 | 253 | every kind: alert, hurt, death, plus its own idle / movement / wind-up / attack / specials (a bat roost scattering); the Leviathan and the Colossus with boss-sized idles, alerts, attacks and deaths, and every move of the rebuilt fights: the Colossus's heave, slam, stomp + running shockwave loop, melt scoop, vent tell + blast, phase roar, plates bursting, thermal-shock crack, kneel, death groan and rubble; the Leviathan's dimming lure, tail thrash, dive, surge and shock |
+| flora | 26 | 52 | living plants: a notched trunk's strain, the crack, the lean, the hinge tearing, a sapling snapping, the crown's rush, the fall in four woods (birch, giant mushroom, mangrove, ember-bark), the canopy thrown down, the log settling; leaves shaken, pods dropping, a glowseed plucked; a seed drinking and sprouting, the root ladder's rungs, growth loop and crown; brush catching (and a Kiln bloom flaring), the brush-fire crackle loop; grass, reeds and kelp brushing past |
 | org-× (7) | 19 | 37 | the organisms, per kind: snapjaw tell/snap/gulp/chew/burn/tear, puffer swell/burst, glow-worm lower/retract/snare, leech latch/drink/shed, isopod curl/roll, ember beetle crunch/pop, ash moth flare |
 | amb-d1…d4 | 7 | 7 | the Bellows, the Rot Gardens, the Drowned Cisterns, the Kiln Heart (28 s stereo beds); the Breathing Chamber's inhale, exhale and jet loop |
 
@@ -430,6 +477,33 @@ cue).
 | `creature.wisp.death` | creature · voices | 0.21 | 0.86 / 1.00 | creature(wisp, 'death') | A frost wisp shattering: bursting ice crystals and a fading glassy chime, short |
 | `creature.wisp.hurt` | creature · voices | 0.21 | 0.48 / 0.48 | creature(wisp, 'hurt') | A frost wisp flickering: a crackling icy glitch and a thin glassy whine, short |
 | `creature.wisp.idle` | creature · voices | 0.10 | 0.96 / 1.00 | creature(wisp, 'idle') | A frost wisp humming: a soft icy crystalline shimmer, quiet, short |
+| **flora** | | | | | |
+| `flora.brush.grass` | step · fx | 0.11 | 0.45 / 0.45 / 0.45 | HabitatAudio | Walking through tall grass: one soft swishing sweep of long blades brushing past a leg, quiet, close-miked, short |
+| `flora.brush.kelp` | step · fx | 0.07 | 0.52 / 0.55 | HabitatAudio | Kelp fronds brushing past a swimmer underwater: a slick muffled rubbery swish and a few tiny bubbles, quiet, short |
+| `flora.brush.reeds` | step · fx | 0.08 | 0.55 / 0.55 | HabitatAudio | Pushing through stiff reeds at a pond's edge: a dry clattering swish of hollow stems knocking together, quiet, close-miked, short |
+| `flora.burn.loop` ⟲ | loop · fx | 0.31 | 3.00 | HabitatAudio (material scan) | Continuous dense, steady crackling of dry brambles and leaves burning, an even unbroken fizzing crackle thick with tiny twig pops, constant level, no roar |
+| `flora.canopy` | material · fx | 0.24 | 1.18 / 1.09 | EventCues | A tree's leafy crown smashing onto the ground: a thick rushing crash of leaves and small twigs snapping, settling into a soft rustle, short |
+| `flora.catch` | material · fx | 0.22 | 0.72 / 0.79 | HabitatAudio | A dry bramble thicket catching fire: a sudden soft whoomph and a rising burst of crackling, popping twigs and dry leaves, short |
+| `flora.crack` | impact · fx | 0.81 | 0.66 / 0.68 | EventCues | A tree trunk cut through: a loud sharp crack of living wood splitting, a burst of splinters and a short fibrous rip, close, punchy, dry |
+| `flora.creak` | material · fx | 0.14 | 1.10 / 1.10 | EventCues, Flora | A living tree trunk straining at a deep axe notch: a slow tight groaning creak of green wood fibres under load, a few tiny splinter ticks, close, dry, no reverb |
+| `flora.fall.birch` | impact · fx | 0.60 | 1.38 / 1.19 | EventCues | A slender pale birch tree crashing down onto a stone floor: a heavy hollow wooden thud with a sharp crack of snapping branches and a hiss of leaves, short tail, no reverb |
+| `flora.fall.emberbark` | impact · fx | 0.85 | 1.05 / 0.80 | EventCues | A charred smouldering tree trunk crashing onto hot stone: a heavy brittle wooden thud, a crunch of charcoal and a burst of crackling sparks, short tail, no reverb |
+| `flora.fall.mangrove` | impact · fx | 0.55 | 1.38 / 1.15 | EventCues | A waterlogged mangrove tree falling in a flooded stone cistern: a deep heavy wooden thud, a big slap of water and roots cracking, short tail, no reverb |
+| `flora.fall.mushroom` | impact · fx | 0.62 | 1.02 / 1.15 | EventCues | A giant mushroom stalk toppling onto wet ground: a dull heavy spongy thump, a wet fleshy slap of the cap and a soft patter of spores, short tail, no reverb |
+| `flora.firelily.flare` | material · fx | 0.19 | 0.41 / 0.45 | HabitatAudio | A dry flower bloom flaring alight: a small bright fwoomph of petals catching flame and a quick papery crackle, short, dry |
+| `flora.glowseed` | pickup · ui | 0.36 | 0.70 / 0.70 | Flora | Plucking a glowing seed pod: a soft organic pop and a faint rising glassy twinkle, gentle and magical, short, dry |
+| `flora.hinge` | impact · fx | 0.34 | 0.68 / 0.70 | EventCues | The last fibres of a falling tree's hinge tearing apart: a quick stringy wooden rip ending in a snap, short, dry |
+| `flora.ladder.bloom` | material · fx | 0.26 | 1.20 / 1.20 | EventCues | A plant's crown of leaves unfurling all at once: a soft rustling bloom and a gentle leafy flutter settling, short, dry |
+| `flora.ladder.grow.loop` ⟲ | loop · fx | 0.27 | 3.00 | EventCues | Continuous creaking and stretching of green wood and roots growing quickly, fibrous squeaks and soft cracks, steady |
+| `flora.ladder.rung` | impact · fx | 0.12 | 0.35 / 0.35 / 0.35 | EventCues | A green wooden branch shooting out of a growing stalk: a quick firm creaking knock of fresh wood, short, dry, close |
+| `flora.lean` | impact · fx | 0.29 | 1.80 / 1.80 | EventCues | A tall tree beginning to topple: a long deep groaning creak of wood fibres stretching and tearing slowly as the trunk leans, leaves shivering, dry, no reverb |
+| `flora.pod.drop` | material · fx | 0.09 | 0.47 / 0.59 | EventCues | A small seed pod snapping off a branch and dropping onto stone: a light woody pop, a soft papery burst as it splits and a patter of tiny seeds, short, dry |
+| `flora.rustle` | material · fx | 0.15 | 0.78 / 0.80 | EventCues | A leafy branch shaken hard: a brisk rustle of many leaves with a few falling away, short, close, dry |
+| `flora.sapling` | impact · fx | 0.14 | 0.50 / 0.34 | EventCues | A thin green sapling stem snapped by a boot: a small crisp woody snap with a leafy rustle, short, close-miked, dry |
+| `flora.seed.soak` | material · fx | 0.08 | 0.90 / 0.90 | EventCues | A dry seed drinking water: a few quiet thirsty sipping gulps and a soft wet swelling creak, close-miked, short |
+| `flora.seed.sprout` | material · fx | 0.16 | 1.00 / 0.99 | EventCues | A swollen seed bursting open and sprouting fast: a wet fibrous pop, a quick rising creak of a green shoot pushing up and a soft leafy flick, short |
+| `flora.settle` | impact · fx | 0.11 | 1.08 / 1.07 | EventCues | A heavy log rolling a little and settling to rest on stone: a low wooden rumble, a soft knock and a last quiet creak, short, dry |
+| `flora.whoosh` | impact · fx | 0.40 | 0.88 / 0.87 | EventCues | A leafy tree crown rushing down through the air: a heavy swelling whoosh of branches and thousands of leaves, short |
 | **org-ashmoth** | | | | | |
 | `organism.ashmoth.flare` | critter · ambience | 0.21 | 0.48 / 0.48 | EventCues | A moth flying into a flame: a tiny bright fizzing flare and a papery crackle, short |
 | **org-emberbeetle** | | | | | |

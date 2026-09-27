@@ -11,6 +11,7 @@ import { FLOOR_LORE } from '@/content/floorLore';
 import { TEA_COMPLETE_STAGE } from '@/world/teaMachine';
 import { deathCauseLine, deathTitle } from '@/ui/deathCauses';
 import { runHeadline } from '@/game/runRules';
+import { failSafe } from '@/audio/failSafe';
 
 /** The HUD reveals a floor's title card this long after the curtain lifts (ui/Hud), or after this fallback. */
 const TITLE_CARD_AFTER_CURTAIN_MS = 120;
@@ -70,7 +71,8 @@ export class Narrator implements NarratorApi {
   private talking = false;
 
   constructor(private readonly ctx: Ctx, private readonly host: StreamHost, private readonly clips: Readonly<Record<string, NarrationClip>> = NARRATION_CLIPS) {
-    const on = ctx.events.on.bind(ctx.events);
+    // Fail-safe listeners: the narrator hears playerDied, toasts and callouts from inside the game tick.
+    const on: typeof ctx.events.on = (event, handler) => ctx.events.on(event, failSafe(`Narrator on ${String(event)}`, handler));
     this.disposers.push(
       on('musicCue', ({ cue, previous }) => this.onCue(cue, previous)),
       on('levelChanged', () => this.onLevelChanged()),
@@ -101,11 +103,11 @@ export class Narrator implements NarratorApi {
       on('combatCallout', ({ text }) => this.say([text], 'normal', 'callout', 2000)),
       on('objectiveChanged', ({ text }) => this.say([text], 'low', 'objective', 2500)),
     );
-    const visibility = (): void => { if (document.hidden) this.silence(true); };
+    const visibility = failSafe('Narrator visibility', () => { if (document.hidden) this.silence(true); });
     document.addEventListener('visibilitychange', visibility);
     this.disposers.push(() => document.removeEventListener('visibilitychange', visibility));
     // The Sanctum has no event of its own; a light look at its state is enough.
-    const poll = window.setInterval(() => this.watchSanctum(), 300);
+    const poll = window.setInterval(failSafe('Narrator sanctum', () => this.watchSanctum()), 300);
     this.disposers.push(() => window.clearInterval(poll));
   }
 
