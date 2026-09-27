@@ -75,6 +75,9 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
   particles/
     Particles.ts          Ballistic free-pixel system (debris, gore, homing coins)
   combat/
+    AlchemyKills.ts       Kill attribution (Ctx.alchemy): last blow per creature, alchemical
+                          kills, chains, grid-honest payout; emits `alchemyKill`
+    SelfShock.ts          Self-shock fairness: falloff at the body, capped window, conductor arc
     Lightning.ts          Chain lightning raycast + arc visuals
     Projectiles.ts        Spell projectiles, bombs, black holes, gravity wells
     Spells.ts             Wand tip, dig ray, warp, tactical spell dispatch
@@ -148,6 +151,7 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     Toolbar.ts            Left panel: materials, spells, world gen, enemy droppers
     Inspector.ts          Right panel: global/PostFx sliders + dynamic per-material/spell params
     Hud.ts                In-canvas HUD: vitals, hotbar, banners, game-over overlay
+    Callouts.ts           World-anchored combat words (alchemyKill / combatCallout), chains
     WandBench.ts          Card slotting plus debug-only potion/elixir/power controls
     ConsoleOverlay.ts     Backquote dev-console shell backed by game/console commands
 ```
