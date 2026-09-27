@@ -91,6 +91,19 @@ export function bossOrganRect(boss: { x: number; y: number; kind?: EnemyKind } |
   return null;
 }
 
+/**
+ * A boss's whole ARENA, from its generated spawn — the ledger rect world/structures
+ * reserves for it: the Kiln (RX 62, RY 40, FLOOR 30: spawn at cy+29) or the Sump
+ * (the 84x52 pocket, rim and plinth: spawn at cy+26). Findability repair routes
+ * around it and only cuts it as a last resort (world/validate, world/repairRoute).
+ */
+export function bossArenaRect(boss: { x: number; y: number; kind?: EnemyKind } | null | undefined): BossOrganRect | null {
+  if (!boss) return null;
+  if (boss.kind === 'colossus') return { x0: boss.x - 64, y0: boss.y - 81, x1: boss.x + 64, y1: boss.y + 6 };
+  if (boss.kind === 'leviathan') return { x0: boss.x - 44, y0: boss.y - 52, x1: boss.x + 44, y1: boss.y + 10 };
+  return null;
+}
+
 interface QuenchState {
   /** Ticks until a still-soaked kiln may crack again. */
   cd: number;

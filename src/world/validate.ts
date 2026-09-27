@@ -1,11 +1,11 @@
 import type { LevelRuntime } from '@/core/types';
 import type { World } from '@/sim/World';
 import { mechanismTriggersFor } from '@/core/mechanisms';
-import { bossOrganRect } from '@/core/bossWard';
+import { bossArenaRect, bossOrganRect } from '@/core/bossWard';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { BLOCKS_ENTITY_LUT, computeLooseRubbleBlockingMask } from '@/sim/collision';
 import { extractRegionGraph } from '@/world/regions';
-import { protectedRepairRoute } from '@/world/repairRoute';
+import { bodyFitsAt, protectedRepairRoute, type RepairRoom } from '@/world/repairRoute';
 
 /**
  * Findability validation: mechanism-correct is NOT player-findable.
@@ -304,34 +304,66 @@ function markRepairInterior(runtime: LevelRuntime, interior: Uint8Array, cx: num
   }
 }
 
-function markStableRepairPathInterior(runtime: LevelRuntime, interior: Uint8Array, protectedCells: Uint8Array, issue: FindabilityIssue): void {
+function issueKey(issue: FindabilityIssue): string {
+  return `${issue.what}@${issue.x},${issue.y}`;
+}
+
+function markStableRepairPathInterior(
+  runtime: LevelRuntime, interior: Uint8Array, protectedCells: Uint8Array, rooms: readonly RepairRoom[], issue: FindabilityIssue,
+  finalApproach = false,
+): void {
   const fromX = Math.floor(runtime.spawn.x);
   const fromY = Math.floor(runtime.spawn.y - 2);
   const toX = Math.max(2, Math.min(runtime.world.width - 3, Math.floor(issue.x)));
   const toY = Math.max(2, Math.min(runtime.world.height - 3, Math.floor(issue.y)));
+  // The cheapest standing route (world/repairRoute): through caves that are
+  // already open, around authored rooms, carving only where the body does not
+  // already fit. Nodes where it fits carve nothing, so a route that walks
+  // through a room's open interior leaves the room exactly as it was.
+  const route = protectedRepairRoute(runtime.world, protectedCells, { x: fromX, y: fromY }, { x: toX, y: toY }, rooms);
+  if (route) {
+    for (const point of route) {
+      if (!bodyFitsAt(runtime.world, point.x, point.y)) markRepairInterior(runtime, interior, point.x, point.y);
+    }
+    if (finalApproach) {
+      const last = route[route.length - 1];
+      const ax = toX - last.x, ay = toY - last.y;
+      const n = Math.max(1, Math.ceil(Math.hypot(ax, ay) / REPAIR_STEP));
+      for (let step = 1; step <= n; step++) markRepairInterior(runtime, interior, last.x + (ax * step) / n, last.y + (ay * step) / n);
+    }
+    return;
+  }
+  // Every way is shut by protected machinery: the old straight bore, which
+  // clears everything but the protected cells themselves (fail-open).
   const dx = toX - fromX;
   const dy = toY - fromY;
   const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / REPAIR_STEP));
-  let obstructed = false;
-  for (let step = 0; step <= steps && !obstructed; step++) {
-    const x = Math.round(fromX + dx * step / steps), y = Math.round(fromY + dy * step / steps);
-    for (let py = Math.max(0, y - PH + 1); py <= Math.min(runtime.world.height - 1, y); py++) {
-      for (let px = Math.max(0, x - PW); px <= Math.min(runtime.world.width - 1, x + PW); px++) {
-        const i = px + py * runtime.world.width;
-        if (protectedCells[i] && blocksEntity(runtime.world.types[i])) obstructed = true;
-      }
-    }
-  }
-  if (obstructed) {
-    const route = protectedRepairRoute(runtime.world, protectedCells, { x: fromX, y: fromY }, { x: toX, y: toY });
-    if (route) {
-      for (const point of route) markRepairInterior(runtime, interior, point.x, point.y);
-      return;
-    }
-  }
   for (let step = 0; step <= steps; step++) {
     markRepairInterior(runtime, interior, fromX + (dx * step) / steps, fromY + (dy * step) / steps);
   }
+}
+
+/** Placement margin a repair keeps off an authored room's footprint (its walls). */
+const ROOM_MARGIN = 3;
+
+/**
+ * The authored rooms a repair must walk around, not dig through: every placed
+ * set piece (prefabs, machine rooms, encounter lairs, light puzzles, flora
+ * puzzles — their cells ARE the puzzle) and the boss's arena. The spawn
+ * chamber is never one (a repair starts there).
+ */
+function repairRooms(runtime: LevelRuntime): RepairRoom[] {
+  const rooms: RepairRoom[] = [];
+  const sx = runtime.spawn.x, sy = runtime.spawn.y;
+  const add = (r: { x0: number; y0: number; x1: number; y1: number }): void => {
+    const room = { x0: r.x0 - ROOM_MARGIN, y0: r.y0 - ROOM_MARGIN, x1: r.x1 + ROOM_MARGIN, y1: r.y1 + ROOM_MARGIN };
+    if (sx >= room.x0 && sx <= room.x1 && sy >= room.y0 && sy <= room.y1) return;
+    rooms.push(room);
+  };
+  for (const p of runtime.placedPrefabs ?? []) add(p);
+  const arena = bossArenaRect(runtime.boss);
+  if (arena) add(arena);
+  return rooms;
 }
 
 function markProtectedRect(runtime: LevelRuntime, protectedCells: Uint8Array, x0: number, y0: number, x1: number, y1: number): void {
@@ -395,14 +427,15 @@ function protectedRepairMask(runtime: LevelRuntime): Uint8Array {
   return protectedCells;
 }
 
-function carveStableRepairPaths(runtime: LevelRuntime, issues: readonly FindabilityIssue[]): void {
+function carveStableRepairPaths(runtime: LevelRuntime, issues: readonly FindabilityIssue[], stubborn: ReadonlySet<string> = new Set()): void {
   const world = runtime.world;
   const interior = new Uint8Array(world.width * world.height);
   const protectedCells = protectedRepairMask(runtime);
+  const rooms = repairRooms(runtime);
   // Brace only material that was already blocking. Painting the shell into open
   // air creates permanent diagonal rails through playable space.
   const originalTypes = world.types.slice();
-  for (const issue of issues) markStableRepairPathInterior(runtime, interior, protectedCells, issue);
+  for (const issue of issues) markStableRepairPathInterior(runtime, interior, protectedCells, rooms, issue, stubborn.has(issueKey(issue)));
   for (let i = 0; i < interior.length; i++) {
     if (interior[i] && !protectedCells[i]) world.clearCellAt(i);
   }
@@ -442,12 +475,21 @@ export function failOpenFindability(
   issues = validateFindability(runtime),
 ): FindabilityRepairResult {
   const repairMap = new Map<string, FindabilityIssue>();
+  // Issues a routed repair did not settle: the next pass also digs the final
+  // approach, up to the target itself (a latch behind a skin of rock is
+  // judged by a clear LINE from reachable air, which a route ending six cells
+  // off never draws).
+  const stubborn = new Set<string>();
   let remaining = issues;
   for (let pass = 0; pass < 5; pass++) {
     const errors = remaining.filter((issue) => issue.severity === 'error');
     if (errors.length === 0) break;
-    for (const issue of errors) repairMap.set(`${issue.what}@${issue.x},${issue.y}`, issue);
-    carveStableRepairPaths(runtime, [...repairMap.values()]);
+    for (const issue of errors) {
+      const key = issueKey(issue);
+      if (repairMap.has(key)) stubborn.add(key);
+      repairMap.set(key, issue);
+    }
+    carveStableRepairPaths(runtime, [...repairMap.values()], stubborn);
     runtime.regions = extractRegionGraph(runtime.world, runtime.spawn, regionExitAnchor(runtime));
     remaining = validateFindability(runtime);
   }
