@@ -20,8 +20,10 @@ import { spawnSync } from 'node:child_process';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const API = 'https://api.elevenlabs.io';
-export const CACHE_DIR = join(HERE, '.cache');
-export const LOG_FILE = join(HERE, 'generation-log.jsonl');
+// AUDIO_CACHE_DIR lets several worktrees share one paid cache.
+export const CACHE_DIR = process.env.AUDIO_CACHE_DIR ?? join(HERE, '.cache');
+// One log per generator (AUDIO_LOG_NAME) keeps parallel branches merge-friendly.
+export const LOG_FILE = join(HERE, process.env.AUDIO_LOG_NAME ?? 'generation-log.jsonl');
 
 let cachedKey = null;
 export function loadApiKey() {
