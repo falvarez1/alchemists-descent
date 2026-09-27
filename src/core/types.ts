@@ -2956,7 +2956,11 @@ export interface TeaMachineState {
   completed: boolean;
   stalled: boolean;
   /** Ratcheted valve travel in cells; the grid contains the actual moving plates. */
-  travel?: Partial<Record<'spring' | 'water' | 'acid' | 'lava' | 'oil' | 'bell', number>>;
+  travel?: Partial<Record<'gate' | 'spring' | 'tap' | 'pin' | 'bell', number>>;
+  /** Watchdog nudges spent on the current stage (each one is a visible physical assist). */
+  assists?: number;
+  /** Ticks the current fault has waited for the player; drives its slow backup. */
+  faultTicks?: number;
   bodies: Array<{ key: string; x: number; y: number; vx: number; vy: number; angle: number; va: number; rope: boolean; tether?: boolean }>;
 }
 
@@ -3158,9 +3162,7 @@ export interface RunApi {
 export interface Ctx {
   /** Optional authored spectacle director; absent in small test contexts. */
   contraption?: {
-    readonly watching: boolean;
     update(): void;
-    skip(): void;
     interact(): boolean;
     includeSimulation(): void;
   };

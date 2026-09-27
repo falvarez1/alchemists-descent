@@ -18,8 +18,9 @@ const PAGES: readonly HandbookPage[] = [
     body: `
       <p>You start in <b>the Breathing Works</b>, a flooded refinery. Its lower gate answers only to a <b>brass bell</b>,
       and the only thing that makes one is the <b>Bell &amp; Tea Engine</b>. Its crank sits caged in the Intake behind a
-      cold lock; find a way to open it, run the engine, collect the bell from the end of its catwalk and carry it down
-      to the lower gate.</p>
+      cold lock; find a way to open it and pull the crank. Walk the catwalk under the engine as it runs: three of its
+      stations stick, and a wand shot, a kick or your water flask sets each going again (left alone, each has a slow
+      backup). Collect the bell from the end of the catwalk and carry it down to the lower gate.</p>
       <p>Deeper depths are wilder caves. Each hides a <b>key</b> that opens its exit portal, and between depths the
       <b>Sanctum</b> trades boons and provisions for the gold you carry.</p>
       <h4>Resting and dying</h4>

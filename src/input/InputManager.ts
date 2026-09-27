@@ -112,6 +112,7 @@ export class InputManager {
 
   /** Poll on presentation frames, including while menus pause the simulation. */
   pollGamepad(): void {
+    this.refreshPointerWorld();
     if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
     const pad = Array.from(navigator.getGamepads()).find(p => p?.connected && p.mapping === 'standard');
     if (!pad) {
@@ -150,8 +151,7 @@ export class InputManager {
           else window.dispatchEvent(new Event('game-pause-request'));
         }
       }
-      if (ctx.contraption?.watching && pressed(1)) ctx.contraption.skip();
-      if (!ctx.state.paused && !ctx.contraption?.watching && !document.querySelector(KEYBOARD_UI_BLOCK_SELECTOR)) {
+      if (!ctx.state.paused && !document.querySelector(KEYBOARD_UI_BLOCK_SELECTOR)) {
         const ax = pad.axes[0] ?? 0, ay = pad.axes[1] ?? 0;
         const aimX = pad.axes[2] ?? 0, aimY = pad.axes[3] ?? 0;
         const active = Math.hypot(ax, ay) > 0.2 || Math.hypot(aimX, aimY) > 0.25 || pad.buttons.some(b => b.pressed);
@@ -297,7 +297,25 @@ export class InputManager {
     this.canvas.dataset.inputAttached = 'true';
   }
 
-  private getMouseGridCoords(e: MouseEvent): { x: number; y: number } {
+  /** Last pointer position on screen; the world point under it is re-derived every frame. */
+  private pointerClient: { clientX: number; clientY: number } | null = null;
+
+  /**
+   * The cursor is a point on the SCREEN. Stored only in world coordinates, it
+   * stayed behind whenever the camera panned under a still mouse: running
+   * right with the cursor ahead of you, the camera caught up, the alchemist
+   * overtook that stale world point and turned round to face it, running
+   * backwards. Re-project the last screen position through the current
+   * camera every frame (the gamepad writes its own aim point).
+   */
+  private refreshPointerWorld(): void {
+    if (!this.pointerClient || this.padDriving || this.ctx.state.mode !== 'play') return;
+    const coords = this.getMouseGridCoords(this.pointerClient);
+    this.ctx.input.mouse.x = coords.x;
+    this.ctx.input.mouse.y = coords.y;
+  }
+
+  private getMouseGridCoords(e: { clientX: number; clientY: number }): { x: number; y: number } {
     const rect = this.canvas.getBoundingClientRect();
     const u = (e.clientX - rect.left) / rect.width;
     const v = (e.clientY - rect.top) / rect.height;
@@ -320,8 +338,8 @@ export class InputManager {
 
   private onMouseDown(e: MouseEvent): void {
     const { ctx } = this;
-    if (ctx.contraption?.watching) return;
     ctx.audio.ensure();
+    this.pointerClient = { clientX: e.clientX, clientY: e.clientY };
     const coords = this.getMouseGridCoords(e);
     ctx.input.mouse.x = coords.x;
     ctx.input.mouse.y = coords.y;
@@ -380,6 +398,7 @@ export class InputManager {
 
   private onMouseMove(e: MouseEvent): void {
     const { ctx } = this;
+    this.pointerClient = { clientX: e.clientX, clientY: e.clientY };
     const coords = this.getMouseGridCoords(e);
     ctx.input.mouse.x = coords.x;
     ctx.input.mouse.y = coords.y;
@@ -525,7 +544,6 @@ export class InputManager {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
-    if (this.ctx.contraption?.watching && e.code !== 'Escape') return;
     if (e.defaultPrevented) return;
     if (this.shouldIgnoreKeyboard(e)) return;
     const { ctx } = this;

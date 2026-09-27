@@ -9,7 +9,11 @@ import type { AlchemyKillInfo, RunSummary } from '@/core/run';
  * score subscribe without the sim knowing they exist.
  */
 export interface EventMap {
-  contraptionView: { visible: boolean; watching: boolean; title: string; detail: string; stage: number; stalled: boolean };
+  contraptionView: {
+    visible: boolean; title: string; detail: string; stage: number; stalled: boolean;
+    /** A station that is waiting on the player: what to do, the verb, and the backup's progress 0..1. */
+    fault: { verb: 'spark' | 'kick' | 'pour'; prompt: string; backup: number; backupLabel: string } | null;
+  };
   habitatSound: { kind: 'weaver' | 'rillback'; x: number; y: number };
   creatureSignal: { x: number; y: number; radius: number; strength: number; kind: 'sound' | 'vibration' | 'lure' };
   /** Gold total changed — HUD score readouts re-render. */

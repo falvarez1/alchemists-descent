@@ -2,10 +2,13 @@ import type { Ctx, Enemy } from '@/core/types';
 import type { World } from '@/sim/World';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { COLOR_FN } from '@/sim/colors';
-import { tickChain } from './body';
+import { createChainIn, sweptNodeTarget, tickChain } from './body';
+import { makeWeaverLoco } from '@/entities/weaverLocomotion';
+import { ensureRig } from './species';
 import { constrain, impulse, integrate, liquidAt, solidAt } from './rig/physics';
 import type { RigPoint } from './rig/physics';
 import { solveKnee } from './rig/limb';
+import { weaverSilhouetteBottom, weaverSilhouetteOverlap } from './weaverAnatomy';
 import type { CreatureRig } from './rig/types';
 import { BAT } from './species/bat';
 
@@ -28,6 +31,10 @@ export interface Corpse {
   /** 1 alive-bright → 0 dark: emissive parts gutter out. */
   glow: number;
   world: World;
+  /** A Weaver's remains: ticks lain still, whether it has kicked over, and the flip window. */
+  restT?: number;
+  rolled?: boolean;
+  flipT?: number;
 }
 
 const CORPSE_TTL = 720; // ~12s of remains
@@ -54,7 +61,14 @@ function allPoints(rig: CreatureRig): RigPoint[] {
 /** Keep the body: called from the kill path for creatures that leave remains. */
 export function addCorpse(ctx: Ctx, e: Enemy, kx: number, ky: number): boolean {
   if (NO_CORPSE.has(e.kind) || ctx.state.mode !== 'play') return false;
-  const rig = e.rig;
+  // Killed before its body was ever posed (frozen outside the simulated
+  // window, or on the tick it spawned): build the body now, or the remains
+  // hang in the air where it stood.
+  if (e.kind === 'weaver') e.weaverLoco ??= makeWeaverLoco(e.x, e.y);
+  if ((e.kind === 'rillback' || e.kind === 'stonemaw') && !e.body) {
+    e.body = createChainIn(ctx.world, e.x, e.y - 4, e.mind?.facing ?? 1, e.kind === 'rillback' ? 9 : 7);
+  }
+  const rig = e.rig ?? ensureRig(e) ?? undefined;
   const bonds: Corpse['bonds'] = [];
   if (rig) {
     // Bond each body chunk to its neighbours, each chain root to its nearest chunk.
@@ -152,29 +166,84 @@ function stepLegs(world: World, rig: CreatureRig, age: number): void {
   }
 }
 
-function stepWeaverCorpse(world: World, e: Enemy, age: number): void {
-  const loco = e.weaverLoco;
+/**
+ * A dead Weaver is its drawn silhouette, not a point: it falls, slides and
+ * tips over as that shape against the grid, in sub-cell sweeps (so a thin
+ * plank still catches it). Remains that start in terrain (killed against a
+ * wall, buried by sand) only ever work their way up or sideways out of it —
+ * never deeper.
+ */
+function stepWeaverCorpse(world: World, c: Corpse): void {
+  const e = c.e, loco = e.weaverLoco, age = c.age;
   if (!loco) return;
-  // Fall until the body rests, then roll onto its back and draw the legs in.
-  loco.vy = Math.min(3, loco.vy + 0.25);
-  loco.vx *= 0.94;
-  const nx = loco.px + loco.vx, ny = loco.py + loco.vy;
-  if (!solidAt(world, nx, ny + 5)) { loco.px = nx; loco.py = ny; }
-  else { loco.vy = 0; loco.vx *= 0.6; }
-  const roll = Math.min(1, age / 50);
-  loco.nx += (0 - loco.nx) * 0.1;
-  loco.ny += (-1 + roll * 1.6 - loco.ny) * 0.08; // tips toward belly-up
-  const l = Math.hypot(loco.nx, loco.ny) || 1; loco.nx /= l; loco.ny /= l;
-  const curl = Math.min(1, age / 70);
+  const overlap = (x: number, y: number, nx = loco.nx, ny = loco.ny, face: number = loco.face): number =>
+    weaverSilhouetteOverlap(world, x, y, nx, ny, face);
+  const x0 = loco.px, y0 = loco.py;
+  if (overlap(loco.px, loco.py) > 0) {
+    // Squeezed by terrain: slide toward the nearest clear pose above or beside.
+    loco.vx = 0; loco.vy = 0; c.restT = 0;
+    search: for (let r = 1; r <= 12; r++) {
+      for (const [dx, dy] of [[0, -r], [-r, 0], [r, 0], [-r, -r], [r, -r]] as const) {
+        if (overlap(loco.px + dx, loco.py + dy) > 0) continue;
+        loco.px += Math.max(-1.5, Math.min(1.5, dx)); loco.py += Math.max(-1.5, Math.min(1.5, dy));
+        break search;
+      }
+    }
+  } else {
+    loco.vy = Math.min(3, loco.vy + 0.25);
+    loco.vx *= 0.94;
+    const steps = Math.max(1, Math.ceil(Math.max(Math.abs(loco.vx), Math.abs(loco.vy)) / 0.5));
+    let sx = loco.vx / steps, sy = loco.vy / steps, landed = false;
+    for (let k = 0; k < steps && (sx !== 0 || sy !== 0); k++) {
+      if (sx !== 0) {
+        if (overlap(loco.px + sx, loco.py) === 0) loco.px += sx;
+        else { sx = 0; loco.vx *= -0.2; }
+      }
+      if (sy !== 0) {
+        if (overlap(loco.px, loco.py + sy) === 0) loco.py += sy;
+        else { landed = sy > 0; sy = 0; loco.vy = 0; }
+      }
+    }
+    if (landed) { loco.vx *= 0.6; c.restT = (c.restT ?? 0) + 1; } else if (loco.vy > 0.3) c.restT = 0;
+    // Tip over onto the nearer of back or belly, pivoting clear of the ground.
+    const angle = Math.atan2(loco.ny, loco.nx), level = loco.ny < 0 ? -Math.PI / 2 : Math.PI / 2;
+    const tip = Math.max(-0.08, Math.min(0.08, level - angle));
+    if (Math.abs(tip) > 1e-3) {
+      const nx = Math.cos(angle + tip), ny = Math.sin(angle + tip);
+      for (let lift = 0; lift <= 3; lift += 0.5) {
+        if (overlap(loco.px, loco.py - lift, nx, ny) > 0) continue;
+        loco.nx = nx; loco.ny = ny; loco.py -= lift;
+        break;
+      }
+    }
+    // Settled upright: a last kick flips it onto its back, mirrored about
+    // its spine at the top of the hop so the head stays where it was.
+    if (!c.rolled && (c.restT ?? 0) > 14 && loco.ny < -0.98) { c.rolled = true; c.flipT = 12; loco.vy = -1.5; loco.vx += loco.face * 0.2; }
+    if ((c.flipT ?? 0) > 0 && loco.vy >= 0) {
+      const face = loco.face === 1 ? -1 : 1;
+      for (let lift = 0; lift <= 3; lift += 0.5) {
+        if (overlap(loco.px, loco.py - lift, loco.nx, -loco.ny, face) > 0) continue;
+        loco.ny = -loco.ny; loco.face = face; loco.py -= lift; c.flipT = 0;
+        break;
+      }
+      if (c.flipT) c.flipT--;
+    }
+  }
+  const curl = Math.min(1, age / 70), onBack = loco.ny > 0;
   for (const leg of loco.legs) {
     if (leg.missing) continue;
-    leg.planted = false;
-    // Dead spiders fold their legs over the body.
-    const tx = loco.px + (leg.x - loco.px) * (1 - curl * 0.55), ty = loco.py - 6 * curl + (leg.y - loco.py) * (1 - curl * 0.7);
-    leg.x += (tx - leg.x) * 0.08; leg.y += (ty - leg.y) * 0.08;
-    leg.lift = 0;
+    leg.planted = false; leg.lift = 0;
+    // Feet travel with the body; upright, the legs buckle and settle on the
+    // ground; on its back, a dead spider folds them in over its belly.
+    leg.x += loco.px - x0; leg.y += loco.py - y0;
+    if (onBack) {
+      const tx = loco.px + (leg.x - loco.px) * (1 - curl * 0.55), ty = loco.py - 6 * curl + (leg.y - loco.py) * (1 - curl * 0.7);
+      leg.x += (tx - leg.x) * 0.08; leg.y += (ty - leg.y) * 0.08;
+    } else if (!solidAt(world, leg.x, leg.y + 1)) leg.y += 1;
+    for (let k = 0; k < 8 && solidAt(world, leg.x, leg.y); k++) leg.y -= 1; // never inside terrain
   }
-  e.x = Math.round(loco.px); e.y = Math.round(loco.py + 9);
+  // The anchor (melting, flies) sits where the remains touch the ground.
+  e.x = Math.round(loco.px); e.y = Math.round(loco.py + weaverSilhouetteBottom(loco.nx, loco.ny, loco.face));
 }
 
 export function updateCorpses(ctx: Ctx): void {
@@ -207,13 +276,14 @@ export function updateCorpses(ctx: Ctx): void {
       const anchor = rig.pts[0] ?? rig.soft?.pts[0] ?? rig.chains[0]?.pts[0];
       if (anchor) { e.x = Math.round(anchor.x); e.y = Math.round(anchor.y + 4); }
     }
-    if (e.kind === 'weaver') stepWeaverCorpse(world, e, c.age);
+    if (e.kind === 'weaver') stepWeaverCorpse(world, c);
     if (e.body) {
       // Chain bodies: the head drops (or floats up, belly-first) and the spine follows.
+      // The head is swept as its full circle: sliding on its momentum it used
+      // to pass into a wall, pinning the spine behind it across the gap.
       const head = e.body.nodes[0];
-      const hx = head.x + (head.x - head.previousX) * 0.9, hy = head.y + (wet ? -0.15 : 0.5);
-      const hy2 = solidAt(world, hx, hy + head.radius) ? head.y : hy;
-      tickChain(world, e.body, hx, hy2, wet, ctx.state.frameCount, e.kind === 'rillback' && wet);
+      const to = sweptNodeTarget(world, head, head.x + (head.x - head.previousX) * 0.9, head.y + (wet ? -0.15 : 0.5));
+      tickChain(world, e.body, to.x, to.y, wet, ctx.state.frameCount, e.kind === 'rillback' && wet);
       e.x = Math.round(head.x); e.y = Math.round(head.y + 4);
     }
     // Flies find the dead within a few seconds (within sight of the wizard).

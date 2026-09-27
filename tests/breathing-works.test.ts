@@ -42,7 +42,7 @@ describe('Breathing Works encounter contracts', () => {
     let hash = 0x811c9dc5;
     for (const byte of a.runtime.world.types) hash = Math.imul(hash ^ byte, 0x01000193);
     // GEN_VERSION 45: contained reservoir and garden pool, west Undertow chute.
-    expect((hash >>> 0).toString(16)).toBe('a8750545');
+    expect((hash >>> 0).toString(16)).toBe('107a76db');
   });
 
   it('makes Frost Shard a real out-and-back gate before the engine crank', () => {

@@ -28,6 +28,37 @@ function moveNode(world: World, node: BodyNode, x: number, y: number): void {
   }
 }
 
+/** A spine link may give this much before it is pulled taut regardless of terrain. */
+const MAX_LINK_STRETCH = 1.5;
+
+/**
+ * A follower pulled along its taut link. A node whose circle already overlaps
+ * terrain — sand spoil or powder settling onto it, ice or a door closing on
+ * it, its box lifted clear of rock — can be swept nowhere (every neighbouring
+ * position overlaps the same cells), so it pinned the spine while the head
+ * walked on: a Stone Maw buried by its own chew spoil drew a 40-cell glowing
+ * neck. The link drags it out instead. Only a taut link drags; compression,
+ * gravity and momentum still collide, so an embedded node never goes deeper.
+ */
+function dragNode(world: World, node: BodyNode, x: number, y: number): void {
+  if (circleFree(world, node.x, node.y, node.radius)) { moveNode(world, node, x, y); return; }
+  node.x = x; node.y = y; node.contact = true;
+}
+
+/** Last line: no link ever exceeds its give, whatever held a node back. The
+ * dragged node carries no velocity out of the correction. */
+function capLinks(body: CreatureBody): void {
+  const nodes = body.nodes, max = body.spacing * MAX_LINK_STRETCH;
+  for (let i = 1; i < nodes.length; i++) {
+    const a = nodes[i - 1], b = nodes[i];
+    const dx = b.x - a.x, dy = b.y - a.y, distance = Math.hypot(dx, dy);
+    if (distance <= max) continue;
+    const x = a.x + dx * max / distance, y = a.y + dy * max / distance;
+    b.previousX += x - b.x; b.previousY += y - b.y;
+    b.x = x; b.y = y;
+  }
+}
+
 const chainPositions = new WeakMap<CreatureBody, Float64Array>();
 
 /** Let contact at either end carry tension through the whole animal. The
@@ -51,6 +82,19 @@ export function createChain(x: number, y: number, facing = 1, count = 9, spacing
       radius: Math.max(1, 3.8 - i * 0.32), contact: false,
     })),
   };
+}
+
+/** A new spine laid behind the head where it fits: trailing back, else
+ * forward, else coiled on the head — never built into the rock behind a
+ * creature that spawned facing out of a wall. */
+export function createChainIn(world: World, x: number, y: number, facing = 1, count = 9): CreatureBody {
+  for (const dir of [facing, -facing]) {
+    const body = createChain(x, y, dir, count);
+    if (body.nodes.every(node => circleFree(world, node.x, node.y, node.radius))) return body;
+  }
+  const body = createChain(x, y, facing, count);
+  for (const node of body.nodes) { node.x = node.previousX = x; node.y = node.previousY = y; }
+  return body;
 }
 
 /** Position constraints plus swept cell contact; only the head is steered by AI. */
@@ -102,6 +146,7 @@ export function tickChain(world: World, body: CreatureBody, x: number, y: number
         node.x = node.previousX = positions![i * 2]; node.y = node.previousY = positions![i * 2 + 1];
       }
     }
+    capLinks(body);
     return;
   }
   for (let pass = 0; pass < 4; pass++) {
@@ -118,10 +163,19 @@ export function tickChain(world: World, body: CreatureBody, x: number, y: number
       const dx = b.x - a.x, dy = b.y - a.y;
       const distance = Math.hypot(dx, dy) || 0.001;
       const correction = (distance - body.spacing) / distance;
-      moveNode(world, b, b.x - dx * correction * 0.82, b.y - dy * correction * 0.82);
+      if (correction > 0) dragNode(world, b, b.x - dx * correction * 0.82, b.y - dy * correction * 0.82);
+      else moveNode(world, b, b.x - dx * correction * 0.82, b.y - dy * correction * 0.82);
       if (i > 1) moveNode(world, a, a.x + dx * correction * 0.18, a.y + dy * correction * 0.18);
     }
   }
+  capLinks(body);
+}
+
+/** Where a node would come to rest sweeping toward (x, y) — without moving it. */
+export function sweptNodeTarget(world: World, node: BodyNode, x: number, y: number): { x: number; y: number } {
+  const probe: BodyNode = { ...node };
+  moveNode(world, probe, x, y);
+  return { x: probe.x, y: probe.y };
 }
 
 export function nodeImmersion(world: World, x: number, y: number, radius = 3): number {

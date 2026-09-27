@@ -2,6 +2,8 @@
 // world (floor, ledge, wall, pool, a directional lamp), rendered as frame
 // strips at zoom. Iterate on look and motion without playing to the monster.
 // Usage: node scripts/creature-studio.mjs [url] --kind spitter [--scenes idle,walk,aim] [--zoom 3] [--frames 4] [--every 12] [--out dir]
+// Scenes also include die (the remains fall, settle and curl) and buried (sand
+// pours over the body behind the head, which walks on — a spine must follow).
 import { mkdirSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
 import { waitForConsoleApi } from './run-helpers.mjs';
@@ -38,6 +40,7 @@ try {
       const { tickCreaturePose } = await import('/src/creatures/pose.ts');
       const { ENEMY_DEFS } = await import('/src/content/enemyDefs.ts');
       const { tickWeaverLocomotion } = await import('/src/entities/weaverLocomotion.ts');
+      const { addCorpse, updateCorpses } = await import('/src/creatures/corpses.ts');
       const source = window.__game.ctx;
       const CW = cw, CH = ch; // crop in cells
       const W = 360, H = 170, FLOOR = 130;
@@ -86,12 +89,23 @@ try {
           e.alerted = on; mind.visible = on; mind.confidence = on ? 1 : 0; mind.intent = on ? 'hunt' : 'forage';
           mind.targetX = ctx.player.x; mind.targetY = ctx.player.y;
         };
+        let dead = false;
         const step = (t) => {
           ctx.state.frameCount = t;
+          // die: killed by a blow from the left at t=36, then only the remains move.
+          if (scene === 'die' && t === 36) { dead = addCorpse(ctx, e, 1.6, -1.2); }
+          if (dead) { updateCorpses(ctx); return; }
+          // buried: sand pours over everything behind the head, which walks on out.
+          if (scene === 'buried' && t === 30) {
+            for (let y = FLOOR - 16; y <= FLOOR; y++) for (let x = e.x - 44; x <= e.x - 3; x++) {
+              if (world.types[world.idx(x, y)] === 0) world.replaceCellAt(world.idx(x, y), Cell.Sand, 0xc2a060 - ((x + y) % 3) * 0x080808);
+            }
+          }
           e.timer = t;
           if (e.flash > 0) e.flash--;
           switch (scene) {
-            case 'idle': setAlert(false); e.vx = 0; break;
+            case 'idle': case 'die': setAlert(false); e.vx = 0; break;
+            case 'buried': setAlert(false); e.vx = t < 30 ? 0 : 0.45; break;
             case 'walk': setAlert(false); e.vx = 0.42; break;
             case 'run': setAlert(true); e.vx = 0.9; break;
             case 'turn': setAlert(false); e.vx = t % 120 < 60 ? 0.35 : -0.35; mind.facing = e.vx > 0 ? 1 : -1; break;

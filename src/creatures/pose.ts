@@ -1,7 +1,7 @@
 import type { Ctx, Enemy } from '@/core/types';
 import { clamp, lerp } from '@/core/math';
 import { blocksEntity } from '@/sim/CellType';
-import { createChain, tickChain } from './body';
+import { createChainIn, tickChain } from './body';
 import { tickCreatureExpression } from './expression';
 import { tickRig } from './species';
 
@@ -27,7 +27,7 @@ export function tickCreaturePose(ctx: Ctx, e: Enemy): void {
   }
   if (e.kind === 'rillback' || e.kind === 'stonemaw') {
     const facing = e.mind?.facing ?? Math.sign(e.vx || 1);
-    e.body ??= createChain(e.x, e.y - 4, facing, e.kind === 'rillback' ? 9 : 7);
+    e.body ??= createChainIn(ctx.world, e.x, e.y - 4, facing, e.kind === 'rillback' ? 9 : 7);
     const swimming = (e.rillWet ?? 0) >= 0.28;
     // Only a swimming eel is a water-coupled chain. Beached, it is a body
     // draped behind a flopping head: its box falls and hops under ordinary

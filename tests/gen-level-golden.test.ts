@@ -178,7 +178,7 @@ describe('marsh-gas ceiling pockets', () => {
 });
 
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '550ffa5a' }, // GEN_VERSION 45: contained reservoir + garden pool, west Undertow chute, reachable Heavy Charm, even refuge steps, grounded glowshrooms
+  { id: 'd1', seed: 1337, hash: 'd1dcb248' }, // GEN_VERSION 47: the played Bell & Tea Engine (low stations, fault fixtures, grated duck bath, marble run)
   // GEN_VERSION 46 (four floors): the Drowned Cisterns inherit the old flooded
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.

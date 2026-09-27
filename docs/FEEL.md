@@ -679,6 +679,15 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   sand scale, sluice, and charge coil read raw cells as their sensors.
 - **Fail-open groan:** wreck a mechanism's trigger body and its gate groans
   open ~30 s later — physics never locks you out.
+- **The Bell & Tea Engine is played, not watched** (docs/BELL-TEA-ENGINE.md):
+  the player keeps control; the camera frames hall + catwalk at 1.2× on the
+  active station, clamped so the player is always in shot (the duck's station
+  frames 46 cells lower). A waiting station's fixture pulses a brass halo, an
+  expanding ripple every 70 frames plus a steady ring. A hollow knock plays
+  when it jams, and the caption card gains a brass border, the verb's live key
+  and a copper backup meter. Backups: slow match 540 ticks, clockwork knocker
+  600 ticks, seep 1 cell / 6 ticks. Watchdog nudges fire at 180–300-tick
+  intervals, with sparks and a lever click.
 - **Sequence doors** (Builder-authored): each correct step chimes a rising
   triangle tone (300 + 90·step Hz); a wrong-order firing breaks the chain
   with a sour 120 Hz sawtooth and audibly spits the resettable mechanisms

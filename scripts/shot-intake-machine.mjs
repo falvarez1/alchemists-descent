@@ -52,11 +52,14 @@ try {
   await frame(700, 208, 1, 'handwheel-bottom-of-view'); // clear of the HUD caption
   await frame(524, 360, 3.5, 'handwheel-closeup');
   // Machine bays at rest.
-  await frame(560, 110, 1.6, 'bay-fuse-pendulum');
-  await frame(780, 160, 1.6, 'bay-dominoes-spring');
-  await frame(960, 170, 1.6, 'bay-duck-acid');
-  await frame(1200, 140, 1.6, 'bay-sugar-kettle');
-  await frame(1420, 150, 1.6, 'bay-finale');
+  await frame(505, 245, 2.4, 'bay-fuse-coupling-pan');
+  await frame(640, 150, 1.6, 'bay-pendulum-ramp');
+  await frame(748, 235, 2, 'bay-tollgate-persuader');
+  await frame(845, 172, 1.8, 'bay-dominoes-spring');
+  await frame(1005, 235, 1.5, 'bay-tank-pipe-duck');
+  await frame(1160, 185, 1.4, 'bay-marble-run');
+  await frame(1420, 205, 1.6, 'bay-charges');
+  await frame(1470, 150, 1.4, 'bay-finale');
   // The crank half-way through a pull (the sweep is simulated by setting the
   // pull timer the Use key would have started). Last, because the live loop
   // finishes the pull and starts the engine — the --run pass presses E itself.
@@ -75,7 +78,7 @@ try {
     await page.keyboard.press('KeyE');
     for (let i = 0; i < 12; i++) { await page.waitForTimeout(70); await shot(`pull-${String(i).padStart(2, '0')}`); }
     await page.evaluate(() => { const ctx = window.__game.ctx; ctx.camera.clearInspectionFocus(); ctx.camera.zoomLock = null; });
-    await page.waitForFunction(() => window.__game.ctx.contraption.watching, null, { timeout: 10000 });
+    await page.waitForFunction(() => (window.__game.ctx.levels.current.living.tea?.stage ?? 0) >= 1, null, { timeout: 10000 });
     let previous = -1;
     for (let i = 0; i < 160; i++) {
       const s = await page.evaluate(() => { const t = window.__game.ctx.levels.current.living.tea; return { stage: t.stage, completed: t.completed, stalled: t.stalled }; });
