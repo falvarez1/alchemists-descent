@@ -1,6 +1,6 @@
 import type { Ctx, RunResult } from '@/core/types';
 import type { KitId } from '@/core/run';
-import { CAMPAIGN_FLOORS, floorDisplayName } from '@/config/worldgraph';
+import { FLOOR_DOORS, doorTaken, floorDisplayName } from '@/config/worldgraph';
 import { KIT_DEFS } from '@/content/kits';
 import { formatChain, formatRunTime, runHeadline, shareLine } from '@/game/runRules';
 import { KitPicker } from '@/ui/KitPicker';
@@ -242,8 +242,13 @@ export class RunSummary {
   private renderFloors(result: RunResult): void {
     const { summary } = result;
     this.floors.replaceChildren();
-    CAMPAIGN_FLOORS.forEach((id, i) => {
+    // The route: each reached floor names the door this run took; a floor
+    // not reached names both of its doors.
+    FLOOR_DOORS.forEach((doors, i) => {
       const n = i + 1;
+      const reachedFloor = n <= summary.floor;
+      const id = reachedFloor ? doorTaken(summary.path, n) : doors[0];
+      const label = !reachedFloor && doors.length > 1 ? doors.map(floorDisplayName).join(' or ') : floorDisplayName(id);
       const li = document.createElement('li');
       li.className = 'rs-floor';
       li.style.setProperty('--i', String(i));
@@ -255,9 +260,10 @@ export class RunSummary {
       no.textContent = String(n);
       const name = document.createElement('span');
       name.className = 'rs-floor-name';
-      name.textContent = floorDisplayName(id);
+      name.textContent = label;
+      if (doors.length > 1 && reachedFloor) li.classList.add('branch');
       li.append(no, name);
-      li.setAttribute('aria-label', `Floor ${n}, ${floorDisplayName(id)}${reached ? ', reached' : ''}`);
+      li.setAttribute('aria-label', `Floor ${n}, ${label}${reached ? ', reached' : ''}`);
       this.floors.appendChild(li);
     });
   }

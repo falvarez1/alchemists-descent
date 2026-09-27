@@ -33,4 +33,22 @@ export const FLOOR_LORE: Record<string, FloorLore> = {
     signature: 'Lava meets water and stone happens. Steam happens faster.',
     resident: 'The Kiln Colossus. Stopping it is the whole point.',
   },
+  // The second doors (wave 3: the branching descent). First drafts; the Story
+  // workstream polishes the voice.
+  d2b: {
+    line: 'The refrigeration wing. The Guild kept its reagents here, and the cold kept everything else. It still does.',
+    signature: 'Water freezes, ice shatters, and the brine refuses both. Heat undoes the lot.',
+    resident: 'The Rime Warden. It kept its watch so long it froze to the post.',
+  },
+  d3b: {
+    line: 'The lens-grinding halls, where the Guild made the Works its eyes. The light down here is always on its way somewhere else.',
+    signature: 'Mirrors turn your wand’s beam, crystal splits it, and glass breaks when struck. The lenses still want feeding.',
+    resident: 'The Lenswright. It grinds its own light, and aims it well.',
+  },
 };
+
+/**
+ * What the Docent says when the floor below has two doors (the Sanctum shows
+ * both teasers side by side; choosing one reads that floor's own line).
+ */
+export const TWO_DOORS_LINE = 'Two stairs go down from here. The old ones will not say which is kinder, which is a sort of answer.';

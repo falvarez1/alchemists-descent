@@ -6,8 +6,8 @@ import { arrivalLine, narrationKey } from '@/audio/narrationText';
 import { NARRATION_LINE_GAP_MS, NarrationGate, type NarrationPriority } from '@/audio/narrationRules';
 import { GAME_TAGLINE } from '@/config/brand';
 import { FLOOR_LOOKS } from '@/config/floorLooks';
-import { LEVELS, floorDisplayName, floorOf } from '@/config/worldgraph';
-import { FLOOR_LORE } from '@/content/floorLore';
+import { LEVELS, floorDisplayName, floorOf, nextDoors } from '@/config/worldgraph';
+import { FLOOR_LORE, TWO_DOORS_LINE } from '@/content/floorLore';
 import { TEA_COMPLETE_STAGE } from '@/world/teaMachine';
 import { deathCauseLine, deathTitle } from '@/ui/deathCauses';
 import { runHeadline } from '@/game/runRules';
@@ -67,6 +67,8 @@ export class Narrator implements NarratorApi {
   private arrival: { text: string; timer: number } | null = null;
   private teaView = '';
   private sanctumWasOpen = false;
+  /** The Sanctum door last spoken for (the branching descent reads the chosen floor's line). */
+  private doorSpoken: string | null = null;
   private lastPreview = 0;
   private talking = false;
 
@@ -187,9 +189,19 @@ export class Narrator implements NarratorApi {
   private watchSanctum(): void {
     const open = this.ctx.sanctum?.isOpen === true;
     if (open && !this.sanctumWasOpen) {
-      const next = this.ctx.levels.current?.def.nextLevelId;
+      this.doorSpoken = null;
+      const doors = nextDoors(this.ctx.levels.current?.def.id);
+      const next = doors[0] ?? this.ctx.levels.current?.def.nextLevelId;
       const lore = next ? FLOOR_LORE[next] : undefined;
-      if (lore) this.later(1200, () => this.say([lore.line], 'normal', 'sanctum', 15000, () => this.ctx.sanctum.isOpen));
+      // Two doors: the Docent names the choice; picking one reads its floor.
+      const line = doors.length > 1 ? TWO_DOORS_LINE : lore?.line;
+      if (line) this.later(1200, () => this.say([line], 'normal', 'sanctum', 15000, () => this.ctx.sanctum.isOpen));
+    }
+    const door = open ? this.ctx.sanctum?.chosenDoor ?? null : null;
+    if (door && door !== this.doorSpoken && nextDoors(this.ctx.levels.current?.def.id).length > 1) {
+      this.doorSpoken = door;
+      const lore = FLOOR_LORE[door];
+      if (lore) this.say([lore.line], 'normal', 'sanctum', 12000, () => this.ctx.sanctum.isOpen && this.ctx.sanctum.chosenDoor === door);
     }
     this.sanctumWasOpen = open;
   }

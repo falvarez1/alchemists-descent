@@ -9,11 +9,12 @@ import type {
 } from '@/core/types';
 import type { AlchemyKillInfo, KitId, RunOutcome } from '@/core/run';
 import { randomSeed } from '@/core/rng';
-import { FLOORS_TOTAL, floorDisplayName, floorOf } from '@/config/worldgraph';
+import { FLOORS_TOTAL, doorTaken, floorDisplayName, floorOf } from '@/config/worldgraph';
 import { DEFAULT_KIT, KIT_DEFS, isKitId } from '@/content/kits';
 import {
   MetaProfileStore,
   recordFloorReached,
+  recordLevelSeen,
   recordLeviathanSlain,
   recordRunEnded,
   recordRunStarted,
@@ -22,6 +23,7 @@ import {
   PHIALS_PER_RUN,
   buildRunSummary,
   clampPhials,
+  cleanRunPath,
   dailySeed,
   isDateKey,
   restorePhial,
@@ -55,6 +57,7 @@ function freshState(opts: RunBeginOptions, recorded: boolean): RunSaveState {
     maxFloor: 0,
     leviathanSlain: false,
     recorded,
+    path: [],
   };
 }
 
@@ -76,8 +79,12 @@ function sanitizeSave(save: RunSaveState): RunSaveState | null {
     maxFloor: Math.min(FLOORS_TOTAL, whole(save.maxFloor)),
     leviathanSlain: save.leviathanSlain === true,
     recorded: save.recorded !== false,
+    path: cleanRunPath(Array.isArray(save.path) ? save.path : []),
   };
 }
+
+/** The floor-3 wardens: either one slain is the ember kit's milestone. */
+const FLOOR3_WARDENS = new Set<string>(['leviathan', 'lenswright']);
 
 /**
  * The run lifecycle (Breathing Works): one run is up to four floors and three
@@ -232,6 +239,7 @@ export class RunDirector implements RunApi {
       victories: profile.victories,
       today,
       todayBest: profile.dailyBests[today] ?? null,
+      levelsSeen: [...profile.levelsSeen],
     };
   }
 
@@ -293,12 +301,15 @@ export class RunDirector implements RunApi {
     this.killedSinceTick = false;
 
     const runtime = ctx.levels.current;
-    this.watchLeviathan(ctx, runtime?.def.id ?? null, runtime?.def.boss === 'leviathan', killed);
+    const warden = runtime?.def.boss && FLOOR3_WARDENS.has(runtime.def.boss) ? runtime.def.boss : null;
+    this.watchLeviathan(ctx, runtime?.def.id ?? null, warden, killed);
     this.watchRefuge(ctx);
   }
 
-  private watchLeviathan(ctx: Ctx, levelId: string | null, bossFloor: boolean, killed: boolean): void {
-    const present = bossFloor && ctx.enemies.some((e) => e.kind === 'leviathan');
+  /** A floor-3 warden (the Leviathan, or the Lenswright behind the Galleries' door) died on its floor. */
+  private watchLeviathan(ctx: Ctx, levelId: string | null, warden: string | null, killed: boolean): void {
+    const bossFloor = warden !== null;
+    const present = bossFloor && ctx.enemies.some((e) => e.kind === warden);
     const sameFloor = levelId !== null && levelId === this.leviathanLevel;
     if (bossFloor && sameFloor && this.leviathanPresent && !present && killed && !ctx.levels.transitioning) {
       this.onLeviathanSlain(ctx);
@@ -339,10 +350,21 @@ export class RunDirector implements RunApi {
     const ctx = this.ctx;
     const state = this.state;
     if (!this.active || !state) return;
-    const floor = floorOf(ctx.levels.current?.def.id);
-    if (floor <= 0 || floor <= state.maxFloor) return;
+    const id = ctx.levels.current?.def.id;
+    const floor = floorOf(id);
+    if (floor <= 0 || !id) return;
+    // The route: the first door taken on each floor (a return trip up a floor
+    // never rewrites which door the run chose).
+    const path = state.path ?? (state.path = []);
+    if (!path.some((p) => floorOf(p) === floor)) path.push(id);
+    const recordable = state.recorded && !this.tainted(ctx);
+    if (recordable) {
+      const seen = recordLevelSeen(this.meta.profile, id);
+      if (seen !== this.meta.profile) this.meta.commit(seen);
+    }
+    if (floor <= state.maxFloor) return;
     state.maxFloor = floor;
-    if (!state.recorded || this.tainted(ctx)) return;
+    if (!recordable) return;
     const next = recordFloorReached(this.meta.profile, floor);
     this.meta.commit(next.profile);
     this.announceUnlocks(ctx, next.unlocked);
@@ -385,7 +407,9 @@ export class RunDirector implements RunApi {
     if (!state || this.finished) return;
     const levelId = ctx.levels.current?.def.id ?? null;
     const floor = floorOf(levelId) || Math.max(1, state.maxFloor);
-    const floorId = floorOf(levelId) > 0 ? levelId : `d${floor}`;
+    // Off the spine (a playtest, a test arena) the ledger names the door this
+    // run took on the floor it reached.
+    const floorId = floorOf(levelId) > 0 ? levelId : doorTaken(state.path, floor);
     const recorded = state.recorded && !this.tainted(ctx);
     const summary = buildRunSummary({
       outcome,
@@ -403,6 +427,7 @@ export class RunDirector implements RunApi {
       gold: present ? ctx.state.score : this.lastGold,
       cardsFound: state.cardsFound,
       causeLine: outcome === 'fallen' ? deathCauseLine(this.lastCause, state.seed) : undefined,
+      path: state.path ?? [],
     });
     let unlocked = [...this.runUnlocks];
     let record: Pick<RunResult, 'dailyBest' | 'newDailyBest' | 'newBestFloor'> = { dailyBest: null, newDailyBest: false, newBestFloor: false };

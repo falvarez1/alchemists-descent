@@ -15,13 +15,13 @@
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_TUNE_DEFAULT_SIGNATURE, GEN_VERSION, genTuneSignature } from '@/config/gen';
 import { difficultyMods } from '@/config/difficulty';
-import { FLOORS_TOTAL, LEVELS, START_LEVEL, floorDisplayName, floorOf, populationForLevel } from '@/config/worldgraph';
+import { FLOORS_TOTAL, LEVELS, START_LEVEL, floorDisplayName, floorOf, levelSeedFor, nextDoors, populationForLevel } from '@/config/worldgraph';
 import { createLivingState } from '@/game/LivingExpedition';
 import { placeOrganisms } from '@/game/organisms/placement';
 import { DEFAULT_KIT, KIT_DEFS } from '@/content/kits';
 import type { KitId } from '@/core/run';
 import { restoreFauna, restoreLiving } from '@/game/persistence/ecology';
-import { Rng, hashSeed, randomSeed, fnv1aString } from '@/core/rng';
+import { Rng, hashSeed, randomSeed } from '@/core/rng';
 import { base64ToBytes, bytesToBase64, rleDecodeExact, rleEncode } from '@/core/rle';
 import type {
   Ctx,
@@ -998,10 +998,13 @@ export class Levels implements LevelsApi {
         }
         const next = runtime.def.nextLevelId;
         if (next) {
-          // The Sanctum opens between depths: boon draft + shop, then descend.
-          ctx.sanctum.open(ctx, () => {
+          // The Sanctum opens between depths: boon draft + shop and, where the
+          // floor below has two doors, the choice of door; then descend.
+          const doors = nextDoors(runtime.def.id);
+          ctx.sanctum.open(ctx, (chosen) => {
+            const id = chosen && doors.includes(chosen) && LEVELS[chosen] ? chosen : next;
             this.leaveLevel();
-            this.enterLevel(ctx, next);
+            this.enterLevel(ctx, id);
           });
         } else if (ctx.state.frameCount % 240 === 0) {
           ctx.events.emit('toast', {
@@ -2160,7 +2163,7 @@ export class Levels implements LevelsApi {
     ctx.enemies.length = 0;
 
     const expeditionSeed = this.activeExpeditionSeed(ctx);
-    const seed = (expeditionSeed ^ this.hashString(def.id)) >>> 0;
+    const seed = levelSeedFor(expeditionSeed, def.id);
     const pristine = ctx.worldgen.generateLevel(ctx, def, seed);
 
     const savedTypes = new Uint8Array(world.types.length);
@@ -2536,7 +2539,7 @@ export class Levels implements LevelsApi {
     ctx.enemies.length = 0;
 
     const expeditionSeed = this.activeExpeditionSeed(ctx);
-    const seed = (expeditionSeed ^ this.hashString(def.id)) >>> 0;
+    const seed = levelSeedFor(expeditionSeed, def.id);
     const {
       exit,
       waystones,
@@ -3426,12 +3429,5 @@ export class Levels implements LevelsApi {
         if (dx * dx + dy * dy <= 36) runtime.explored[X + Y * MINIMAP_W] = 1;
       }
     }
-  }
-
-  /** Tiny FNV-1a over the level id — folds it into the expedition seed.
-   *  Shared with Builder's campaign playtest seed (core/rng.fnv1aString) so the
-   *  two cannot silently diverge. */
-  private hashString(s: string): number {
-    return fnv1aString(s);
   }
 }

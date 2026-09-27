@@ -3,6 +3,7 @@ import type { KitId, RunSummary } from '@/core/run';
 import { DEFAULT_KIT, KIT_ORDER, isKitId } from '@/content/kits';
 import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
 import { betterDailyResult, isDateKey } from '@/game/runRules';
+import { CAMPAIGN_LEVELS } from '@/config/worldgraph';
 
 /**
  * The meta profile: what persists ACROSS runs (Breathing Works). Runs begun
@@ -36,7 +37,11 @@ export interface MetaProfileData {
   victories: number;
   /** Deepest floor reached in any recorded run (0 = never played). */
   bestFloor: number;
-  /** Times the Sunken Leviathan has been slain. */
+  /**
+   * Times a floor-3 warden has been slain: the Sunken Leviathan or, behind the
+   * Galleries' door, the Lenswright (the field keeps its first name: it is a
+   * stored key).
+   */
   leviathansSlain: number;
   /** Fastest victory, or null before the first. */
   fastestVictoryMs: number | null;
@@ -46,6 +51,12 @@ export interface MetaProfileData {
   workshopUnlocked: boolean;
   /** Best result per daily date (YYYY-MM-DD). */
   dailyBests: Record<string, DailyBest>;
+  /**
+   * Campaign levels ever walked into (recorded runs only), in first-visit
+   * order. The Sanctum marks a door nobody has opened yet. Absent on profiles
+   * from before the branching descent; migration reads it as empty.
+   */
+  levelsSeen: string[];
 }
 
 export type MetaParseStatus = 'fresh' | 'ok' | 'migrated' | 'corrupt' | 'future';
@@ -63,7 +74,15 @@ export function defaultMetaProfile(): MetaProfileData {
     lastKit: DEFAULT_KIT,
     workshopUnlocked: false,
     dailyBests: {},
+    levelsSeen: [],
   };
+}
+
+function sanitizeLevelsSeen(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const id of value) if (typeof id === 'string' && CAMPAIGN_LEVELS.includes(id) && !out.includes(id)) out.push(id);
+  return out;
 }
 
 function count(value: unknown): number {
@@ -121,6 +140,7 @@ export function migrateMetaProfile(value: unknown): { profile: MetaProfileData; 
     lastKit,
     workshopUnlocked: raw.workshopUnlocked === true || count(raw.runsEnded) > 0,
     dailyBests: sanitizeDaily(raw.dailyBests),
+    levelsSeen: sanitizeLevelsSeen(raw.levelsSeen),
   };
   return { profile, status: version === META_VERSION ? 'ok' : 'migrated' };
 }
@@ -163,8 +183,15 @@ export function recordFloorReached(profile: MetaProfileData, floor: number): { p
   return withUnlocks({ ...profile, bestFloor: Math.floor(floor) });
 }
 
+/** A floor-3 warden fell (the Leviathan or the Lenswright): the ember kit's milestone. */
 export function recordLeviathanSlain(profile: MetaProfileData): { profile: MetaProfileData; unlocked: KitId[] } {
   return withUnlocks({ ...profile, leviathansSlain: profile.leviathansSlain + 1 });
+}
+
+/** A campaign level walked into for the first time (a door nobody had opened). */
+export function recordLevelSeen(profile: MetaProfileData, levelId: string): MetaProfileData {
+  if (!CAMPAIGN_LEVELS.includes(levelId) || profile.levelsSeen.includes(levelId)) return profile;
+  return { ...profile, levelsSeen: [...profile.levelsSeen, levelId] };
 }
 
 export interface RunEndRecord {

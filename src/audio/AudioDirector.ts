@@ -1,6 +1,6 @@
 import type { Ctx, EnemyKind } from '@/core/types';
 import type { SfxAudioEngine } from '@/audio/SfxEngine';
-import { LEVELS, SPINE_ROSTERS } from '@/config/worldgraph';
+import { LEVELS, SPINE_ROSTERS, nextDoors } from '@/config/worldgraph';
 import { FLOOR_FAUNA } from '@/game/organisms/placement';
 import { failSafe } from '@/audio/failSafe';
 import { BIOME_BEDS, CORE_SFX_PACKS, FLOOR_BEDS, SFX_CUES, type SfxId } from '@/content/audio/sfxCues';
@@ -75,12 +75,15 @@ export function installAudioDirector(ctx: Ctx, engine: SfxAudioEngine): () => vo
       // Plants grow on every floor (world/floraPass): their felling, seeds, fires and brush.
       wanted.add(FLORA_PACK);
       // Between floors: fetch the next one before the player gets there.
-      if (ctx.sanctum?.isOpen && def.nextLevelId) {
-        const next = LEVELS[def.nextLevelId];
-        const nb = bedPack(levelBed(next?.id, next?.biome));
-        if (nb) wanted.add(nb);
-        for (const p of rosterPacks(def.nextLevelId)) wanted.add(p);
-        for (const p of faunaPacks(def.nextLevelId)) wanted.add(p);
+      // Two doors below: fetch both while the choice is open.
+      if (ctx.sanctum?.isOpen) {
+        for (const nextId of nextDoors(def.id)) {
+          const next = LEVELS[nextId];
+          const nb = bedPack(levelBed(next?.id, next?.biome));
+          if (nb) wanted.add(nb);
+          for (const p of rosterPacks(nextId)) wanted.add(p);
+          for (const p of faunaPacks(nextId)) wanted.add(p);
+        }
       }
     }
     // Only real packs (a kind with no creature cues has no pack).
