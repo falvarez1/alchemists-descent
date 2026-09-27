@@ -91,9 +91,15 @@ describe('the sampled sound catalog', () => {
     }
   });
 
-  it('keeps the payload inside budget (≲ 6 MB of sfx + ambience)', () => {
+  it('keeps the payload inside budget (≲ 6.75 MB of sfx + ambience)', () => {
+    // A guard against runaway takes (a long take, a stray stereo encode, a third take nobody
+    // needs), not a first-load cost: nothing here is fetched before the first gesture, and
+    // everything past the core packs loads with its floor (audio/AudioDirector). Raised from
+    // 6.3 MB for the flora pack (26 cues, 412 KB of short mono one-shots and two loops at the
+    // established 72/64 kbps), leaving ~290 KB of headroom: a wave that needs more should
+    // shorten takes before it moves this line again.
     const bytes = [...filesOnDisk.values()].flat().reduce((n, f) => n + statSync(f).size, 0);
-    expect(bytes).toBeLessThan(6.3 * 1024 * 1024);
+    expect(bytes).toBeLessThan(6.75 * 1024 * 1024);
   });
 });
 

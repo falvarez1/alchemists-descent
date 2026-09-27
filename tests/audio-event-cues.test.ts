@@ -3,7 +3,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { EventBus } from '@/core/events';
 import type { SfxOptions } from '@/core/types';
-import { BOSS_MOVE_CUES, LIGHT_CUES, ORGANISM_CUES, installEventCues, type EventCue } from '@/audio/EventCues';
+import { BOSS_MOVE_CUES, FLORA_CUES, LIGHT_CUES, ORGANISM_CUES, TREE_FALL_CUES, installEventCues, treeFallCue, type EventCue } from '@/audio/EventCues';
 import { CORE_SFX_PACKS, SFX_CUES, type SfxId } from '@/content/audio/sfxCues';
 import { sfxCue } from '@/content/audio/sfxCatalog';
 import { FLOOR_FAUNA } from '@/game/organisms/placement';
@@ -16,10 +16,10 @@ const walk = (dir: string): string[] =>
 const onDisk = new Set(walk(ASSETS).map((f) => /[\\/]([^\\/]+)-\d+\.mp3$/.exec(f)?.[1]).filter(Boolean));
 
 interface Played { id: SfxId; x?: number; y?: number; opts?: SfxOptions }
-function harness(): { events: EventBus; played: Played[] } {
+function harness(biome?: string): { events: EventBus; played: Played[] } {
   const events = new EventBus();
   const played: Played[] = [];
-  installEventCues(events, { sfx: (id, x, y, opts) => { played.push({ id, x, y, opts }); } });
+  installEventCues(events, { sfx: (id, x, y, opts) => { played.push({ id, x, y, opts }); } }, { biome: () => biome });
   return { events, played };
 }
 
@@ -27,6 +27,8 @@ const allCues = (): EventCue[] => [
   ...Object.values(ORGANISM_CUES).flatMap((a) => Object.values(a).flat()),
   ...Object.values(BOSS_MOVE_CUES).flatMap((m) => Object.values(m ?? {}).flat()),
   ...Object.values(LIGHT_CUES),
+  ...Object.values(FLORA_CUES).flat(),
+  ...Object.values(TREE_FALL_CUES),
 ] as EventCue[];
 
 describe('announced moments sound (audio/EventCues)', () => {
@@ -89,6 +91,59 @@ describe('announced moments sound (audio/EventCues)', () => {
     }
   });
 
+  it('sounds every plant moment at the plant, each with its own flora cue', () => {
+    const { events, played } = harness('earthen');
+    const kinds = ['creak', 'lean', 'crack', 'snap', 'whoosh', 'rustle', 'shed', 'podDrop', 'soak', 'sprout', 'rung', 'bloom', 'settle'] as const;
+    for (const kind of kinds) {
+      expect(FLORA_CUES[kind].length, kind).toBeGreaterThan(0);
+      const n = played.length;
+      events.emit('floraMoment', { kind, x: 30, y: 40, strength: 1 });
+      expect(played.length, kind).toBeGreaterThan(n);
+      for (const p of played.slice(n)) {
+        expect(p.id.startsWith('flora.'), `${kind} → ${p.id}`).toBe(true);
+        expect(p).toMatchObject({ x: 30, y: 40 });
+      }
+    }
+    // No two moments share a one-shot (the growth loop is shared on purpose: it runs under the ladder).
+    const oneShots = Object.values(FLORA_CUES).flat().map((c) => c.sfx).filter((id) => !id.endsWith('.loop'));
+    expect(new Set(oneShots).size).toBe(oneShots.length);
+  });
+
+  it('tells the hinge tearing from a sapling snapping, and scales a moment by its strength', () => {
+    const { events, played } = harness();
+    events.emit('floraMoment', { kind: 'snap', x: 0, y: 0, strength: 0.8 });
+    expect(played.map((p) => p.id)).toEqual(['flora.hinge']);
+    events.emit('floraMoment', { kind: 'snap', x: 0, y: 0, strength: 0.4 });
+    expect(played.at(-1)?.id).toBe('flora.sapling');
+    events.emit('floraMoment', { kind: 'creak', x: 0, y: 0, strength: 0.6 });
+    const soft = played.at(-1)?.opts?.gain ?? 1;
+    events.emit('floraMoment', { kind: 'creak', x: 0, y: 0, strength: 1 });
+    const hard = played.at(-1)?.opts?.gain ?? 1;
+    expect(soft).toBeLessThan(hard);
+    expect(soft).toBeGreaterThan(0.5);
+  });
+
+  it("fells a tree in the floor's own wood, and a bounce is the same wood, lighter", () => {
+    const woods: Array<[string, SfxId]> = [
+      ['earthen', 'flora.fall.birch'], ['fungal', 'flora.fall.mushroom'], ['flooded', 'flora.fall.mangrove'], ['volcanic', 'flora.fall.emberbark'],
+    ];
+    for (const [biome, id] of woods) {
+      const { events, played } = harness(biome);
+      events.emit('treeLanded', { x: 50, y: 60, strength: 0.9, first: true });
+      expect(played.at(-1)).toMatchObject({ id, x: 50, y: 60 });
+      const first = played.at(-1)?.opts?.gain ?? 0;
+      events.emit('treeLanded', { x: 52, y: 60, strength: 0.5, first: false });
+      expect(played.at(-1)?.id).toBe(id);
+      expect(played.at(-1)?.opts?.gain ?? 1).toBeLessThan(first);
+      const n = played.length;
+      events.emit('treeLanded', { x: 52, y: 60, strength: 0.2, first: false });
+      expect(played.length).toBe(n); // a nudge is not a bounce
+    }
+    // A level with no species of its own (a test arena, the frozen biome) falls as birch.
+    expect(treeFallCue(undefined).sfx).toBe('flora.fall.birch');
+    expect(treeFallCue('frozen').sfx).toBe('flora.fall.birch');
+  });
+
   it('disposes cleanly', () => {
     const events = new EventBus();
     const played: string[] = [];
@@ -96,6 +151,15 @@ describe('announced moments sound (audio/EventCues)', () => {
     dispose();
     events.emit('organism', { kind: 'snapjaw', action: 'snap', x: 0, y: 0 });
     expect(played).toEqual([]);
+  });
+});
+
+describe('plant sounds load with every floor', () => {
+  it('files every flora cue in the flora pack, which is never a first-load pack', () => {
+    const flora = (Object.keys(SFX_CUES) as SfxId[]).filter((id) => id.startsWith('flora.'));
+    expect(flora.length).toBeGreaterThanOrEqual(20);
+    for (const id of flora) expect(sfxCue(id).pack, id).toBe('flora');
+    expect(CORE_SFX_PACKS).not.toContain('flora');
   });
 });
 

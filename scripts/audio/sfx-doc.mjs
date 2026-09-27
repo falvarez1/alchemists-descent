@@ -45,7 +45,7 @@ for (const [stage, id] of Object.entries(TEA_STAGE_SFX)) add(id, `Tea Engine sta
 for (const [floor, id] of Object.entries(FLOOR_BEDS)) add(id, `${floor} bed (AudioDirector)`);
 const habitat = readFileSync(join(ROOT, 'src', 'audio', 'HabitatAudio.ts'), 'utf8');
 for (const m of habitat.matchAll(/'((?:spell|proj)\.[a-z.]+\.loop)'/g)) add(m[1], 'HabitatAudio (in flight)');
-for (const m of habitat.matchAll(/id: '(mat\.[a-z]+\.loop)'/g)) add(m[1], 'HabitatAudio (material scan)');
+for (const m of habitat.matchAll(/id: '((?:mat|flora)\.[a-z]+\.loop)'/g)) add(m[1], 'HabitatAudio (material scan)');
 const ui = readFileSync(join(ROOT, 'src', 'audio', 'UiSounds.ts'), 'utf8');
 for (const m of ui.matchAll(/'(ui\.[a-z.]+)'/g)) add(m[1], 'UiSounds');
 

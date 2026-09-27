@@ -12013,5 +12013,889 @@
     "bytes": 13627
    }
   ]
+ },
+ "flora.hinge": {
+  "pack": "flora",
+  "cat": "impact",
+  "prompt": "The last fibres of a falling tree's hinge tearing apart: a quick stringy wooden rip ending in a snap, short, dry",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": 3.7,
+    "onsetSec": 0.011,
+    "pinnedPct": 0.35,
+    "gainDb": -7.4,
+    "limitDb": 0,
+    "sec": 0.683,
+    "truncated": false,
+    "bytes": 6104
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.8,
+    "peakDb": 3.1,
+    "onsetSec": 0.01,
+    "pinnedPct": 0.08,
+    "gainDb": -7.5,
+    "limitDb": 0,
+    "sec": 0.7,
+    "truncated": false,
+    "bytes": 6104
+   }
+  ]
+ },
+ "flora.crack": {
+  "pack": "flora",
+  "cat": "impact",
+  "prompt": "A tree trunk cut through: a loud sharp crack of living wood splitting, a burst of splinters and a short fibrous rip, close, punchy, dry",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": 4.5,
+    "onsetSec": 0,
+    "pinnedPct": 2.2,
+    "gainDb": -13,
+    "limitDb": 0,
+    "sec": 0.66,
+    "truncated": false,
+    "bytes": 5895
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1,
+    "peakDb": 4.2,
+    "onsetSec": 0,
+    "pinnedPct": 1.68,
+    "gainDb": -12.7,
+    "limitDb": 0,
+    "sec": 0.68,
+    "truncated": false,
+    "bytes": 6104
+   }
+  ]
+ },
+ "flora.creak": {
+  "pack": "flora",
+  "cat": "material",
+  "prompt": "A living tree trunk straining at a deep axe notch: a slow tight groaning creak of green wood fibres under load, a few tiny splinter ticks, close, dry, no reverb",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": 3.1,
+    "onsetSec": 0,
+    "pinnedPct": 0.08,
+    "gainDb": -3.1,
+    "limitDb": -0.9,
+    "sec": 1.1,
+    "truncated": false,
+    "bytes": 9448
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.2,
+    "peakDb": 3.2,
+    "onsetSec": 0,
+    "pinnedPct": 0.25,
+    "gainDb": -3.6,
+    "limitDb": -0.6,
+    "sec": 1.1,
+    "truncated": false,
+    "bytes": 9448
+   }
+  ]
+ },
+ "flora.lean": {
+  "pack": "flora",
+  "cat": "impact",
+  "prompt": "A tall tree beginning to topple: a long deep groaning creak of wood fibres stretching and tearing slowly as the trunk leans, leaves shivering, dry, no reverb",
+  "dur": 2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2,
+    "peakDb": -1.8,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -2.2,
+    "limitDb": 0,
+    "sec": 1.8,
+    "truncated": false,
+    "bytes": 14881
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 2,
+    "peakDb": 2.4,
+    "onsetSec": 0,
+    "pinnedPct": 0.09,
+    "gainDb": -4.5,
+    "limitDb": 0,
+    "sec": 1.8,
+    "truncated": false,
+    "bytes": 14881
+   }
+  ]
+ },
+ "flora.whoosh": {
+  "pack": "flora",
+  "cat": "impact",
+  "prompt": "A leafy tree crown rushing down through the air: a heavy swelling whoosh of branches and thousands of leaves, short",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": 1.8,
+    "onsetSec": 0,
+    "pinnedPct": 0.01,
+    "gainDb": -7,
+    "limitDb": 0,
+    "sec": 0.88,
+    "truncated": false,
+    "bytes": 7567
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.2,
+    "peakDb": 2.2,
+    "onsetSec": 0,
+    "pinnedPct": 0.02,
+    "gainDb": -8.8,
+    "limitDb": 0,
+    "sec": 0.87,
+    "truncated": false,
+    "bytes": 7567
+   }
+  ]
+ },
+ "flora.fall.birch": {
+  "pack": "flora",
+  "cat": "impact",
+  "prompt": "A slender pale birch tree crashing down onto a stone floor: a heavy hollow wooden thud with a sharp crack of snapping branches and a hiss of leaves, short tail, no reverb",
+  "dur": 1.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.6,
+    "peakDb": -6,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 7.8,
+    "limitDb": -2.8,
+    "sec": 1.38,
+    "truncated": false,
+    "bytes": 11537
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.6,
+    "peakDb": -5.7,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 7.3,
+    "limitDb": -2.5,
+    "sec": 1.191,
+    "truncated": false,
+    "bytes": 10075
+   }
+  ]
+ },
+ "flora.sapling": {
+  "pack": "flora",
+  "cat": "impact",
+  "prompt": "A thin green sapling stem snapped by a boot: a small crisp woody snap with a leafy rustle, short, close-miked, dry",
+  "dur": 0.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.6,
+    "peakDb": 3.1,
+    "onsetSec": 0.007,
+    "pinnedPct": 0.03,
+    "gainDb": -1.1,
+    "limitDb": -3,
+    "sec": 0.5,
+    "truncated": false,
+    "bytes": 4641
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.6,
+    "peakDb": 3,
+    "onsetSec": 0.075,
+    "pinnedPct": 0.12,
+    "gainDb": -3.9,
+    "limitDb": -0.1,
+    "sec": 0.339,
+    "truncated": false,
+    "bytes": 3178
+   }
+  ]
+ },
+ "flora.fall.mushroom": {
+  "pack": "flora",
+  "cat": "impact",
+  "prompt": "A giant mushroom stalk toppling onto wet ground: a dull heavy spongy thump, a wet fleshy slap of the cap and a soft patter of spores, short tail, no reverb",
+  "dur": 1.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.6,
+    "peakDb": -2.7,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 2.3,
+    "limitDb": -0.6,
+    "sec": 1.02,
+    "truncated": false,
+    "bytes": 8821
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.6,
+    "peakDb": 0,
+    "onsetSec": 0,
+    "pinnedPct": 0.01,
+    "gainDb": -4.3,
+    "limitDb": 0,
+    "sec": 1.15,
+    "truncated": false,
+    "bytes": 9866
+   }
+  ]
+ },
+ "flora.fall.mangrove": {
+  "pack": "flora",
+  "cat": "impact",
+  "prompt": "A waterlogged mangrove tree falling in a flooded stone cistern: a deep heavy wooden thud, a big slap of water and roots cracking, short tail, no reverb",
+  "dur": 1.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.6,
+    "peakDb": -1.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 0.1,
+    "limitDb": -0.1,
+    "sec": 1.38,
+    "truncated": false,
+    "bytes": 11537
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.6,
+    "peakDb": 0.6,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -0.2,
+    "limitDb": -1.4,
+    "sec": 1.15,
+    "truncated": false,
+    "bytes": 9866
+   }
+  ]
+ },
+ "flora.fall.emberbark": {
+  "pack": "flora",
+  "cat": "impact",
+  "prompt": "A charred smouldering tree trunk crashing onto hot stone: a heavy brittle wooden thud, a crunch of charcoal and a burst of crackling sparks, short tail, no reverb",
+  "dur": 1.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.6,
+    "peakDb": 3.6,
+    "onsetSec": 0.028,
+    "pinnedPct": 0.56,
+    "gainDb": -9.3,
+    "limitDb": 0,
+    "sec": 1.046,
+    "truncated": false,
+    "bytes": 9030
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.6,
+    "peakDb": 3.5,
+    "onsetSec": 0,
+    "pinnedPct": 0.88,
+    "gainDb": -9.1,
+    "limitDb": 0,
+    "sec": 0.8,
+    "truncated": false,
+    "bytes": 6940
+   }
+  ]
+ },
+ "flora.canopy": {
+  "pack": "flora",
+  "cat": "material",
+  "prompt": "A tree's leafy crown smashing onto the ground: a thick rushing crash of leaves and small twigs snapping, settling into a soft rustle, short",
+  "dur": 1.4,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.36,
+    "peakDb": -12.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 14.1,
+    "limitDb": -3,
+    "sec": 1.181,
+    "truncated": false,
+    "bytes": 10075
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.36,
+    "peakDb": -14.4,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 15.1,
+    "limitDb": -1.7,
+    "sec": 1.09,
+    "truncated": false,
+    "bytes": 9239
+   }
+  ]
+ },
+ "flora.settle": {
+  "pack": "flora",
+  "cat": "impact",
+  "prompt": "A heavy log rolling a little and settling to rest on stone: a low wooden rumble, a soft knock and a last quiet creak, short, dry",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": 0,
+    "onsetSec": 0,
+    "pinnedPct": 0.01,
+    "gainDb": -1.2,
+    "limitDb": 0,
+    "sec": 1.08,
+    "truncated": false,
+    "bytes": 9239
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.2,
+    "peakDb": -0.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 2,
+    "limitDb": -2.6,
+    "sec": 1.066,
+    "truncated": false,
+    "bytes": 9030
+   }
+  ]
+ },
+ "flora.pod.drop": {
+  "pack": "flora",
+  "cat": "material",
+  "prompt": "A small seed pod snapping off a branch and dropping onto stone: a light woody pop, a soft papery burst as it splits and a patter of tiny seeds, short, dry",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": 3.5,
+    "onsetSec": 0.019,
+    "pinnedPct": 0.1,
+    "gainDb": -1.5,
+    "limitDb": -3,
+    "sec": 0.465,
+    "truncated": false,
+    "bytes": 4223
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.8,
+    "peakDb": -15.6,
+    "onsetSec": 0.008,
+    "pinnedPct": 0,
+    "gainDb": 17.6,
+    "limitDb": -3,
+    "sec": 0.587,
+    "truncated": false,
+    "bytes": 5268
+   }
+  ]
+ },
+ "flora.rustle": {
+  "pack": "flora",
+  "cat": "material",
+  "prompt": "A leafy branch shaken hard: a brisk rustle of many leaves with a few falling away, short, close, dry",
+  "dur": 0.9,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.88,
+    "peakDb": -1.9,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -4.6,
+    "limitDb": 0,
+    "sec": 0.78,
+    "truncated": false,
+    "bytes": 6731
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.88,
+    "peakDb": 1.5,
+    "onsetSec": 0,
+    "pinnedPct": 0.01,
+    "gainDb": -3.8,
+    "limitDb": 0,
+    "sec": 0.8,
+    "truncated": false,
+    "bytes": 6940
+   }
+  ]
+ },
+ "flora.seed.soak": {
+  "pack": "flora",
+  "cat": "material",
+  "prompt": "A dry seed drinking water: a few quiet thirsty sipping gulps and a soft wet swelling creak, close-miked, short",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": -13.1,
+    "onsetSec": 0.002,
+    "pinnedPct": 0,
+    "gainDb": 12.5,
+    "limitDb": -0.4,
+    "sec": 0.9,
+    "truncated": false,
+    "bytes": 7776
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1,
+    "peakDb": -21,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 18.3,
+    "limitDb": 0,
+    "sec": 0.9,
+    "truncated": false,
+    "bytes": 7776
+   }
+  ]
+ },
+ "flora.glowseed": {
+  "pack": "flora",
+  "cat": "pickup",
+  "prompt": "Plucking a glowing seed pod: a soft organic pop and a faint rising glassy twinkle, gentle and magical, short, dry",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 1,
+    "rawSec": 0.8,
+    "peakDb": -18.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 10.5,
+    "limitDb": 0,
+    "sec": 0.7,
+    "truncated": false,
+    "bytes": 6104
+   },
+   {
+    "take": 2,
+    "variant": 2,
+    "rawSec": 0.8,
+    "peakDb": -23.7,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 18.3,
+    "limitDb": 0,
+    "sec": 0.7,
+    "truncated": false,
+    "bytes": 6104
+   }
+  ]
+ },
+ "flora.seed.sprout": {
+  "pack": "flora",
+  "cat": "material",
+  "prompt": "A swollen seed bursting open and sprouting fast: a wet fibrous pop, a quick rising creak of a green shoot pushing up and a soft leafy flick, short",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": 3.9,
+    "onsetSec": 0,
+    "pinnedPct": 0.65,
+    "gainDb": -5.1,
+    "limitDb": 0,
+    "sec": 1,
+    "truncated": false,
+    "bytes": 8612
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.2,
+    "peakDb": 3,
+    "onsetSec": 0,
+    "pinnedPct": 0.11,
+    "gainDb": -4.5,
+    "limitDb": 0,
+    "sec": 0.99,
+    "truncated": false,
+    "bytes": 8403
+   }
+  ]
+ },
+ "flora.ladder.grow.loop": {
+  "pack": "flora",
+  "cat": "loop",
+  "prompt": "Continuous creaking and stretching of green wood and roots growing quickly, fibrous squeaks and soft cracks, steady",
+  "dur": 3,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 3,
+    "peakDb": 1.3,
+    "onsetSec": 0,
+    "pinnedPct": 0.01,
+    "quarterSpreadDb": 3.7,
+    "gainDb": 0.3,
+    "limitDb": -2.6,
+    "sec": 3,
+    "bytes": 24494
+   }
+  ]
+ },
+ "flora.ladder.bloom": {
+  "pack": "flora",
+  "cat": "material",
+  "prompt": "A plant's crown of leaves unfurling all at once: a soft rustling bloom and a gentle leafy flutter settling, short, dry",
+  "dur": 1.4,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.36,
+    "peakDb": -11.9,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 9.8,
+    "limitDb": 0,
+    "sec": 1.2,
+    "truncated": false,
+    "bytes": 10075
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.36,
+    "peakDb": -11.8,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 6.8,
+    "limitDb": 0,
+    "sec": 1.2,
+    "truncated": false,
+    "bytes": 10075
+   }
+  ]
+ },
+ "flora.firelily.flare": {
+  "pack": "flora",
+  "cat": "material",
+  "prompt": "A dry flower bloom flaring alight: a small bright fwoomph of petals catching flame and a quick papery crackle, short, dry",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": 2.6,
+    "onsetSec": 0.225,
+    "pinnedPct": 0.01,
+    "gainDb": -1.2,
+    "limitDb": -2.4,
+    "sec": 0.406,
+    "truncated": false,
+    "bytes": 3805
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1,
+    "peakDb": -6.1,
+    "onsetSec": 0.393,
+    "pinnedPct": 0,
+    "gainDb": 4.3,
+    "limitDb": 0,
+    "sec": 0.452,
+    "truncated": false,
+    "bytes": 4223
+   }
+  ]
+ },
+ "flora.catch": {
+  "pack": "flora",
+  "cat": "material",
+  "prompt": "A dry bramble thicket catching fire: a sudden soft whoomph and a rising burst of crackling, popping twigs and dry leaves, short",
+  "dur": 1.4,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.36,
+    "peakDb": 1.7,
+    "onsetSec": 0.049,
+    "pinnedPct": 0.01,
+    "gainDb": 0.3,
+    "limitDb": -3,
+    "sec": 0.725,
+    "truncated": false,
+    "bytes": 6313
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.36,
+    "peakDb": -7.1,
+    "onsetSec": 0.217,
+    "pinnedPct": 0,
+    "gainDb": 9.1,
+    "limitDb": -3,
+    "sec": 0.787,
+    "truncated": false,
+    "bytes": 6940
+   }
+  ]
+ },
+ "flora.ladder.rung": {
+  "pack": "flora",
+  "cat": "impact",
+  "prompt": "A green wooden branch shooting out of a growing stalk: a quick firm creaking knock of fresh wood, short, dry, close",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -28.6,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 30.6,
+    "limitDb": -3,
+    "sec": 0.35,
+    "truncated": false,
+    "bytes": 3387
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -23.2,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 25.2,
+    "limitDb": -3,
+    "sec": 0.35,
+    "truncated": false,
+    "bytes": 3387
+   },
+   {
+    "take": 3,
+    "variant": 3,
+    "rawSec": 0.48,
+    "peakDb": -30,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 32,
+    "limitDb": -3,
+    "sec": 0.35,
+    "truncated": false,
+    "bytes": 3387
+   }
+  ]
+ },
+ "flora.brush.reeds": {
+  "pack": "flora",
+  "cat": "step",
+  "prompt": "Pushing through stiff reeds at a pond's edge: a dry clattering swish of hollow stems knocking together, quiet, close-miked, short",
+  "dur": 0.7,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.68,
+    "peakDb": 2.5,
+    "onsetSec": 0.009,
+    "pinnedPct": 1.95,
+    "gainDb": -0.5,
+    "limitDb": -3,
+    "sec": 0.55,
+    "truncated": false,
+    "bytes": 5059
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.68,
+    "peakDb": -7.6,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 9.6,
+    "limitDb": -3,
+    "sec": 0.55,
+    "truncated": false,
+    "bytes": 5059
+   }
+  ]
+ },
+ "flora.brush.kelp": {
+  "pack": "flora",
+  "cat": "step",
+  "prompt": "Kelp fronds brushing past a swimmer underwater: a slick muffled rubbery swish and a few tiny bubbles, quiet, short",
+  "dur": 0.7,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.68,
+    "peakDb": 3.9,
+    "onsetSec": 0.001,
+    "pinnedPct": 0.42,
+    "gainDb": -5.4,
+    "limitDb": 0,
+    "sec": 0.517,
+    "truncated": false,
+    "bytes": 4641
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.68,
+    "peakDb": 3.1,
+    "onsetSec": 0,
+    "pinnedPct": 1.53,
+    "gainDb": -5.6,
+    "limitDb": 0,
+    "sec": 0.55,
+    "truncated": false,
+    "bytes": 5059
+   }
+  ]
+ },
+ "flora.brush.grass": {
+  "pack": "flora",
+  "cat": "step",
+  "prompt": "Walking through tall grass: one soft swishing sweep of long blades brushing past a leg, quiet, close-miked, short",
+  "dur": 0.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.6,
+    "peakDb": -12.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 10,
+    "limitDb": 0,
+    "sec": 0.45,
+    "truncated": false,
+    "bytes": 4223
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.6,
+    "peakDb": -20.2,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 18.5,
+    "limitDb": 0,
+    "sec": 0.45,
+    "truncated": false,
+    "bytes": 4223
+   },
+   {
+    "take": 3,
+    "variant": 2,
+    "rawSec": 0.6,
+    "peakDb": -21.8,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 21.4,
+    "limitDb": -0.6,
+    "sec": 0.45,
+    "truncated": false,
+    "bytes": 4223
+   }
+  ]
+ },
+ "flora.burn.loop": {
+  "pack": "flora",
+  "cat": "loop",
+  "prompt": "Continuous dense, steady crackling of dry brambles and leaves burning, an even unbroken fizzing crackle thick with tiny twig pops, constant level, no roar",
+  "dur": 3,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 3,
+    "peakDb": -0.2,
+    "onsetSec": 0.002,
+    "pinnedPct": 0,
+    "quarterSpreadDb": 9,
+    "gainDb": 10.1,
+    "limitDb": -11,
+    "sec": 3,
+    "bytes": 24494
+   }
+  ]
  }
 }

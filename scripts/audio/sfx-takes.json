@@ -3345,5 +3345,243 @@
   ],
   "rejected": [],
   "failed": []
+ },
+ "flora.creak": {
+  "hash": "bc504d910031",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.lean": {
+  "hash": "b49414c74f87",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.crack": {
+  "hash": "b6bc095f41c3",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.hinge": {
+  "hash": "5210de400edd",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.sapling": {
+  "hash": "b7c2465c1a46",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.whoosh": {
+  "hash": "d8c435162220",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.fall.birch": {
+  "hash": "f7c60d9383ef",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.fall.mushroom": {
+  "hash": "7c967e42f2e4",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.fall.mangrove": {
+  "hash": "7512226f97a9",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.fall.emberbark": {
+  "hash": "5b84d84d3ef4",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.canopy": {
+  "hash": "316ad8d43c59",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.settle": {
+  "hash": "e4e654f50317",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.rustle": {
+  "hash": "154a5beb8be9",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.pod.drop": {
+  "hash": "92f58f3dbd30",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.glowseed": {
+  "hash": "f11b7746c8ed",
+  "variants": [
+   1,
+   2
+  ],
+  "rejected": [],
+  "failed": [
+   0
+  ]
+ },
+ "flora.seed.soak": {
+  "hash": "a40674b5bc03",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.seed.sprout": {
+  "hash": "5d776bc160c6",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.ladder.rung": {
+  "hash": "8de338408ff7",
+  "variants": [
+   0,
+   1,
+   3
+  ],
+  "rejected": [],
+  "failed": [
+   2
+  ]
+ },
+ "flora.ladder.grow.loop": {
+  "hash": "ff6fb89ac6e3",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.ladder.bloom": {
+  "hash": "eb9c100834d9",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.catch": {
+  "hash": "a1963b73f658",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.firelily.flare": {
+  "hash": "f1b11c7c2010",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.burn.loop": {
+  "hash": "ca5de14d6ac9",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.brush.grass": {
+  "hash": "8e7de77177ac",
+  "variants": [
+   0,
+   1,
+   2
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.brush.reeds": {
+  "hash": "fb752fa36808",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "flora.brush.kelp": {
+  "hash": "80fabb654171",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
  }
 }

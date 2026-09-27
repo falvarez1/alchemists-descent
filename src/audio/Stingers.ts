@@ -1,5 +1,6 @@
 import type { EventBus } from '@/core/events';
 import type { AudioApi } from '@/core/types';
+import { listen } from '@/audio/failSafe';
 
 /**
  * Run-event stingers. Events outward, calls inward: the combat, run and clip
@@ -13,24 +14,25 @@ import type { AudioApi } from '@/core/types';
  *   (the player started another) gets neither.
  * - `clipSaved` → a camera shutter.
  *
+ * Listeners are fail-safe (audio/failSafe): a sound never aborts the emit.
  * Returns a disposer that unsubscribes everything.
  */
 export function installAudioStingers(events: EventBus, audio: Pick<AudioApi, 'stinger'>): () => void {
   let phials: number | null = null;
   const off = [
-    events.on('alchemyKill', ({ chain, cause, x, y }) => audio.stinger('alchemy', { chain, cause, x, y })),
-    events.on('phialsChanged', ({ phials: next, reason }) => {
+    listen(events, 'alchemyKill', ({ chain, cause, x, y }) => audio.stinger('alchemy', { chain, cause, x, y })),
+    listen(events, 'phialsChanged', ({ phials: next, reason }) => {
       const previous = phials;
       phials = next;
       if (reason === 'start') return;
       if (reason === 'death' || (previous !== null && next < previous)) audio.stinger('phialCrack');
       else if (previous === null || next > previous) audio.stinger('phialFill');
     }),
-    events.on('runEnded', ({ outcome }) => {
+    listen(events, 'runEnded', ({ outcome }) => {
       if (outcome === 'victory') audio.stinger('victory');
       else if (outcome === 'fallen') audio.stinger('fallen');
     }),
-    events.on('clipSaved', () => audio.stinger('shutter')),
+    listen(events, 'clipSaved', () => audio.stinger('shutter')),
   ];
   return () => { for (const dispose of off) dispose(); };
 }

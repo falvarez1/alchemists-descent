@@ -120,15 +120,17 @@ export interface EventMap {
   treeLanded: { x: number; y: number; strength: number; first: boolean };
   /** FLORA: a fallen stand came to rest and re-stamped as a log of `cells` Wood. */
   treeSettled: { x: number; y: number; cells: number };
-  /** FLORA: a plant moment that wants its own sound (the audio workstream maps
-   *  kinds to cues; each call site also plays the nearest existing cue now).
+  /** FLORA: a plant moment that wants its own sound (audio/EventCues plays it;
+   *  the call sites stay silent).
    *  creak = a notched trunk strains; lean = the hold before the fall; crack =
    *  the cut goes through; snap = the hinge wood / a sapling breaks; whoosh =
-   *  the crown rushing down; rustle = leaves shaken; podDrop = a pod lets go;
+   *  the crown rushing down; rustle = leaves shaken; shed = a falling crown
+   *  strikes the ground and throws its leaves; podDrop = a pod lets go;
    *  soak = a thirsty seed starts drinking; sprout = it sprouts; rung = a
-   *  ladder rung grows; bloom = the ladder's crown opens; settle = a log at rest. */
+   *  ladder rung grows; bloom = the ladder's crown opens; settle = a log at rest.
+   *  (audio/EventCues FLORA_CUES is the map.) */
   floraMoment: {
-    kind: 'creak' | 'lean' | 'crack' | 'snap' | 'whoosh' | 'rustle' | 'podDrop' | 'soak' | 'sprout' | 'rung' | 'bloom' | 'settle';
+    kind: 'creak' | 'lean' | 'crack' | 'snap' | 'whoosh' | 'rustle' | 'shed' | 'podDrop' | 'soak' | 'sprout' | 'rung' | 'bloom' | 'settle';
     x: number;
     y: number;
     strength: number;
@@ -203,7 +205,19 @@ export class EventBus {
   ): boolean {
     const set = this.handlers.get(event);
     if (!set || set.size === 0) return false;
-    for (const h of set) (h as Handler<EventMap[K] | undefined>)(payload[0]);
+    for (const h of set) {
+      // One broken listener must not silence the others or abort the tick that
+      // emitted (an audio scheduling error inside `playerDied` once skipped the
+      // rest of a game tick). The error is re-thrown on a microtask, so it still
+      // reaches the console, page-error probes and the test runner.
+      try {
+        (h as Handler<EventMap[K] | undefined>)(payload[0]);
+      } catch (error) {
+        queueMicrotask(() => {
+          throw error;
+        });
+      }
+    }
     return true;
   }
 
