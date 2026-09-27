@@ -78,7 +78,9 @@ export function placeStructures(
    *  wandering carve through the arena pre-opened all three drains
    *  (observed). The casing is metal and survives; this puts back what
    *  can't be armored. */
-  sumpRepair: (() => void) | null;
+  /** Re-asserts the Sump's organs; `rim: false` skips the rock rim (after the
+   *  final gauge rescue, whose tunnels may need their way through it). */
+  sumpRepair: ((rim?: boolean) => void) | null;
   /** Re-asserts the Kiln's ceiling tank (casing, stone seal, water) after the
    *  gauge-rescue passes. Stone-eating carves (the arena's own flank connector,
    *  then rescue tunnels) opened its seal at generation on most seeds (QA seed
@@ -94,7 +96,7 @@ export function placeStructures(
   const authoredLights: AuthoredLight[] = [];
   const refuge: { x: number; y: number } | null = null;
   const spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null = null;
-  let sumpRepair: (() => void) | null = null;
+  let sumpRepair: ((rim?: boolean) => void) | null = null;
   let kilnRepair: (() => void) | null = null;
 
   const carvePocket = (cx: number, cy: number, rx: number, ry: number): void =>
@@ -968,11 +970,26 @@ export function placeStructures(
   if (def.boss === 'leviathan') {
     let cx = Math.floor(WIDTH * (0.3 + rng.next() * 0.4));
     const cy = Math.floor(HEIGHT * 0.52);
+    // Nothing built before the arena may stand inside it (GEN 54): the pocket
+    // carve spares Metal, so a treasure alcove placed earlier on this pass (not
+    // in the ledger) survived as a floating metal frame over the pool, its loot
+    // on a bar in the water (d3 seed 7). The last pick still stands if all 24
+    // are refused, as before.
+    const builtOver = (x: number): boolean => {
+      for (const p of pickups) if (Math.abs(p.x - x) <= 44 && p.y >= cy - 26 && p.y <= cy + 36) return true;
+      for (let Y = cy - 26; Y <= cy + 36; Y++) {
+        for (let X = x - 44; X <= x + 44; X++) {
+          if (w.inBounds(X, Y) && w.types[w.idx(X, Y)] === Cell.Metal) return true;
+        }
+      }
+      return false;
+    };
     for (let a = 0; a < 24; a++) {
       const clear =
         Math.abs(cx - spawn.x) > 200 &&
         Math.abs(cx - portalX) > 160 &&
-        !ledger.intersects(cx - 44, cy - 26, cx + 44, cy + 36);
+        !ledger.intersects(cx - 44, cy - 26, cx + 44, cy + 36) &&
+        !builtOver(cx);
       if (clear) break;
       cx = Math.floor(WIDTH * (0.3 + rng.next() * 0.4));
     }
@@ -1085,18 +1102,60 @@ export function placeStructures(
     });
     boss = { x: cx, y: cy + 26, kind: 'leviathan' };
     ledger.reserve(cx - 44, cy - 26, cx + 44, cy + 36, 'sump-arena');
-    connectToCaves(cx - 38, cy + 12);
-    connectToCaves(cx + 38, cy + 12);
+    // THE RIM (GEN 54): the bowl the basin sits in — the pocket's lower wall,
+    // the dry shores beside the casing, and a plinth under the casing floor.
+    // Every seed used to lose it: the flank connectors (radius 12 from the
+    // shore row), then rescue and puzzle tunnels ate the shores and the rock
+    // under the tub, leaving a one-cell metal bathtub floating in a void —
+    // nowhere to stand, and every drop the Leviathan threw at the shore fell
+    // away forever. The rim is the designed ROCK: only Empty cells are filled
+    // (never a Metal casing, a plant, or water), the basin, its casing/plugs and
+    // the three drain shafts are left to their own stampers, and nothing above
+    // cy+12 is touched, so the connectors' mouths (below) stay open. Water that
+    // splashes onto a shore runs down the rim into the casing gutter and spills
+    // back into the pool — a bowl, not a cliff.
+    const stampSumpRim = (): void => {
+      for (let Y = cy + 12; Y <= cy + 36; Y++) {
+        for (let X = cx - 44; X <= cx + 44; X++) {
+          if (!w.inBounds(X, Y)) continue;
+          const dx = X - cx, dy = Y - cy;
+          const inPocket = (dx * dx) / (42 * 42) + (dy * dy) / (26 * 26) <= 1;
+          const shore = dy >= 17 && dy <= 20 && Math.abs(dx) >= 28;
+          if (inPocket && !shore) continue;
+          // A bowl, not a crate: the plinth's flanks curve in toward the casing
+          // (44 wide at cy+12, 30 at cy+36, just past the ±27 casing) with a
+          // fixed wobble (no rng: this also runs after the stream closes).
+          const t = (dy - 12) / 24;
+          if (Math.abs(dx) > 44 - t * t * 14 + Math.sin(Y * 0.9 + X * 0.13) * 1.2) continue;
+          if (Math.abs(dx) <= 27 && dy >= 15 && dy <= 34) continue; // the basin: shell + water
+          if (Y >= cy + 35 && (Math.abs(dx + 16) <= 1 || Math.abs(dx) <= 1 || Math.abs(dx - 16) <= 1)) continue; // drain shafts
+          const i = w.idx(X, Y);
+          if (w.types[i] !== Cell.Empty) continue;
+          w.types[i] = Cell.Stone;
+          w.colors[i] = stoneColor();
+        }
+      }
+    };
+    // Connectors leave from the pocket's upper flanks (their first disc stops
+    // at cy+8, above the rim) instead of the shore row, which they used to
+    // excavate on their very first step.
+    connectToCaves(cx - 36, cy - 4);
+    connectToCaves(cx + 36, cy - 4);
+    stampSumpRim();
     // The arena's fragile organs, re-assertable after the gauge-rescue pass
     // (whose stone-eating tunnels pre-opened all three drains on seed 1).
-    // Idempotent: casing, plugs, gold tells, and a refill of whatever water
-    // a wandering carve deleted. Shores stay as the rescue left them — a
-    // tunnel through a shore is connectivity, not vandalism.
-    sumpRepair = (): void => {
+    // Idempotent: casing, plugs, gold tells, the rim (shores + plinth), and a
+    // refill of whatever water a wandering carve deleted. (The rim used to be
+    // left as the rescue had it — and no seed kept a shore.)
+    sumpRepair = (rim = true): void => {
       // Reseal the casing, plug slots, and gold tells (the shell stamper);
       // the rescue's stone-eating tunnels never re-dig the drains, so the
       // construction-only shaft loop is deliberately NOT replayed here.
       stampSumpShell();
+      // The rim a rescue or puzzle tunnel took (see stampSumpRim): later
+      // tunnels that still need a way through re-carve it (the final gauge
+      // rescue runs after this; the runtime repair routes around the arena).
+      if (rim) stampSumpRim();
       // ...then refill whatever water a wandering carve deleted. Fixed tint
       // (no rng jitter) — the repair runs after generation's rng stream closes.
       for (let X = cx - 26; X <= cx + 26; X++) {

@@ -842,6 +842,16 @@ and flutters: 42% fall / 10% drift per step, floats on water as a pad) and
   (≤ 70 cells) and grows with energy `min(120, 22 + water·1.6 + seeds·3)`:
   two cells wide, a Wood rung (6×2) every 12 cells on alternating sides,
   leaves at the mid-points, a crown when it ends.
+- **Kiln glow (fix3).** Ember-bark fissures (living wood the colour of a coal)
+  seed 0.34–0.44 red light, breathing out of step down the trunk; fire-lily
+  blooms light their own cup (petal 0.36, gold heart 0.46, slow shimmer) —
+  under a loose Ember cell's 0.55, so they read as embers and flowers you can
+  find in the dark, not lamps. Char bark [60,46,40] (was [44,36,32]: black
+  cut-outs on basalt). The Kiln's dressing budget is 18 stands / 72 small
+  (was 14/46), 65% of the small ones fire-lilies (was 55%).
+- **Stand footing.** A rock/wood/ice footing is anchored only by static
+  neighbours (loose powder leaves on its own); gold is never footing (the
+  harvester lifts it from under anything within 30 of the player).
 - **Cost.** Stands are re-flooded only when a chunk's support fingerprint
   moves (≤ 48 fingerprints, ≤ 10 floods per tick): Flora.update ~0.16–0.24
   ms/tick in the densest views, A/B tick+render +0.27 ms with ~7k plant cells
@@ -1032,7 +1042,14 @@ base darkness (d1 0, d2/d3 0.3 "an ordinary cave", d4 0.18 — the kiln glows)
 and DEEP-DARK ZONES (ellipse or rounded rect, rim feathered over 30 cells and
 wobbling ±10 so a zone reads as a cave the light never reached). Zones are
 baked once per level into a half-res map (static data, regenerated with the
-pristine world on restore). The render uses d² × 0.965 (an ordinary cave dims
+pristine world on restore). The bake FOLLOWS THE ROCK (fix3): the dark starts
+in a zone's core air and travels only through what connects to it — along air
+it holds 8 cells of feathered depth then fades over 40 (a doorway dims, never
+meets a drawn edge), into rock 3× slower (a room's walls go dark a few cells
+deep; the rock beyond and any cave the zone's box merely overlaps keep their
+light), rim wobble ±10 in air / ±18 in rock, a 1-2-1 blur over the texel steps.
+(Before, the zone box was painted over whatever lay under it: light-puzzle
+rooms read as black rectangles cut through rock and lit caves.) The render uses d² × 0.965 (an ordinary cave dims
 unlit rock only ~9%); gameplay reads d linearly. Per light texel the result is
 an OPEN factor that every compose path (CPU reference, WebGL2 light-texture
 alpha, WebGPU WGSL) multiplies ambient and the 0.40 readability floor by; the
@@ -1175,7 +1192,7 @@ callouts: life 1150 ms + 180/tier · tiers ×1 brass / ×2 / ×3–4 ember / ×5
 self-shock: self-inflicted ≤240 ticks after a cast · scale charge/40 (floor .15) · cap 12 hp per 120 ticks · arc ≤16 cells up the charge gradient
 fodder rosters (SPINE_ROSTERS by biome): fungal weaver 2 rootloper 3 rillback 1 slime 4 acidslime 2 eggs 2 bat 8 (roosts) · flooded rillback 6 spitter 3 wisp 2 weaver 1 bat 4 · volcanic imp 5 bomber 4 golem 2 stonemaw 2 (× difficulty enemyCount)
 sim window camera ±60 · player 9x17 cells · staff ~11 cells, muzzle at d=9
-darkness: render d²×0.965 (readability ×0.5) · floor base d1 0 / d2 .3 / d3 .3 / d4 .18 · zone feather 30 ± rim wobble 10 · DARK_FLOOR .012/.016/.026 · DARK_ADAPT .42 · air glow ×(1+1.4·shut)
+darkness: render d²×0.965 (readability ×0.5) · floor base d1 0 / d2 .3 / d3 .3 / d4 .18 · zone feather 30 ± rim wobble 10 · follows the rock: air hold 8 + fade 40, rock soak ×3 · DARK_FLOOR .012/.016/.026 · DARK_ADAPT .42 · air glow ×(1+1.4·shut)
 lantern in the dark: spill radius ×.62 · beam step 0.976→0.985, ×1.12 · glow cone ×.55 · hooded: radius ×.16, intensity ×.3, fill ×.45, beam/glow off, ease .26/build
 eyeshine: base .62 from darkness .18 · retro ×1.9 at wandLight .35 · markings .7 · reveal +.16/−.035 per tick · catch tink ≤1/50 ticks
 sight by light: v = .7 (torch 1) + .3·dark unhooded, .7·(1−dark)² hooded · range ×(.52+.48v) for v≥.7, → ×.16 at v=0 · beam lit fix ≥.07 in ±.5 rad

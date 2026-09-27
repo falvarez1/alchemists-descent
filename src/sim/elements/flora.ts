@@ -86,32 +86,52 @@ export function standSupport(t: number): boolean {
   return (isSolid(t) && !isSoftGrowth(t)) || blocksEntity(t);
 }
 
+/** Load-bearing rock that stays where it is: a static solid, not soft growth. */
+function staticSupport(t: number): boolean {
+  return isSolid(t) && !isSoftGrowth(t);
+}
+
 /**
  * Support that is really there: a standSupport cell that is itself embedded
  * (at least two load-bearing neighbours). A lone speck — a splinter the dig
  * beam threw, a grain of sand that settled against the bark — holds nothing up.
+ *
+ * What embeds it depends on what it is. A powder grain is embedded by its bed
+ * (sand in sand, gold in a heap). A static cell — rock, wood, ice — is embedded
+ * only by static neighbours: loose powder leaves on its own (the wizard's
+ * harvester field lifts every gold cell within 30 of him; sand slides; beetles
+ * graze coal to ash), and a rock "anchored" by powder turns into a lone speck
+ * the moment the powder goes, with nothing having touched it. That is how a
+ * 16-cell kelp stem on a Wall cell set in a gold pocket (D3 seed 1) passed the
+ * generation check and then fell by itself as the player walked by.
  */
 export function anchoredSupport(world: World, x: number, y: number): boolean {
   const W = world.width, H = world.height, types = world.types;
   if (x < 0 || y < 0 || x >= W || y >= H) return true;
-  if (!standSupport(types[x + y * W])) return false;
+  const t = types[x + y * W];
+  if (!standSupport(t)) return false;
+  const embeds = staticSupport(t) ? staticSupport : standSupport;
   let n = 0;
   for (let k = 0; k < 4; k++) {
     const nx = x + N4[k][0], ny = y + N4[k][1];
-    if (nx < 0 || ny < 0 || nx >= W || ny >= H || standSupport(types[nx + ny * W])) n++;
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H || embeds(types[nx + ny * W])) n++;
   }
   return n >= 2;
 }
 
 /**
  * Support a stand really rests on at (x, y): anchored ground, and — for a
- * powder (sand, gold, snow, coal) — only from underneath. Grains that settle
+ * powder (sand, snow, coal) — only from underneath; gold not at all. Grains that settle
  * on a branch or heap against the bark load a tree; they never hold it up
  * (a gold seam spilling onto a Kiln ember-bark kept a cut trunk standing).
  */
 export function holdsUp(world: World, x: number, y: number, below: boolean): boolean {
   if (x < 0 || y < 0 || x >= world.width || y >= world.height) return true;
-  if (!below && !isSolid(world.types[x + y * world.width])) return false;
+  const t = world.types[x + y * world.width];
+  if (!below && !isSolid(t)) return false;
+  // Gold is never footing: the harvester field lifts it out from under
+  // whatever stands on it as soon as the alchemist is near.
+  if (t === Cell.Gold) return false;
   return anchoredSupport(world, x, y);
 }
 

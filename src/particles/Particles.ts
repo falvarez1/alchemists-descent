@@ -30,6 +30,10 @@ const COIN_CATCH_R = 3;
 const COIN_TARGET_LIFT = 6;
 /** Loot cascade window: coins landing within this many ticks of each other climb the scale. */
 const COIN_STREAK_GAP = 24;
+/** Where a liquid that struck the player lands: the strike cell, then around it (up first — he stands in the rest). */
+const SPILL_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [0, 0], [0, -1], [-1, 0], [1, 0], [-1, -1], [1, -1], [0, -2], [-2, 0], [2, 0], [0, 1],
+];
 
 /** Squared distance from (px,py) to the segment (ax,ay)→(bx,by). */
 function segmentDist2(ax: number, ay: number, bx: number, by: number, px: number, py: number): number {
@@ -130,6 +134,19 @@ export class Particles implements ParticlesApi {
     if (ctx.state.mode === 'play') {
       ctx.state.score += GOLD_CELL_VALUE;
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
+    }
+  }
+
+  /** Land a carried liquid cell in the first open (or gas) cell at or beside (gx, gy). */
+  private spillNear(world: Ctx['world'], gx: number, gy: number, type: number, color: number): void {
+    for (const [dx, dy] of SPILL_OFFSETS) {
+      const x = gx + dx, y = gy + dy;
+      if (!world.inBounds(x, y)) continue;
+      const i = world.idx(x, y);
+      if (world.types[i] === Cell.Empty || isGas(world.types[i])) {
+        world.replaceCellAt(i, type, color);
+        return;
+      }
     }
   }
 
@@ -336,6 +353,10 @@ export class Particles implements ParticlesApi {
         }
         if (struckPlayer) {
           ctx.playerCtl.damage(p.hostileDmg, p.vx * 1.5, -1, p.hostileSource ?? 'hostile-debris');
+          // A thrown LIQUID (the Leviathan's volleys and tail-slams are its own
+          // pool) splashes off him and lands, rather than vanishing on contact:
+          // every hit used to delete the water it was made of.
+          if (p.type !== null && isLiquid(p.type)) this.spillNear(world, Math.floor(p.x), Math.floor(p.y), p.type, p.color);
           this.removeAt(i);
           continue;
         }

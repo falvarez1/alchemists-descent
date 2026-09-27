@@ -830,7 +830,9 @@ function emberbark(p: Planter, x: number, y: number, o: PlantOptions): PlantResu
   const rng = p.rng;
   const H = o.height ?? 28 + rng.int(18);
   const w = 4 + rng.int(2);
-  const bark: RGB = [44, 36, 32];
+  // Char with a little warmth left in it (was [44,36,32]: on the Kiln's dark
+  // basalt the trunks read as black cut-outs); the fissures glow (render/Lighting).
+  const bark: RGB = [60, 46, 40];
   const ember: RGB = [196, 84, 34];
   const spine: Array<[number, number]> = [];
   let cx = x;
@@ -852,7 +854,7 @@ function emberbark(p: Planter, x: number, y: number, o: PlantOptions): PlantResu
     const [sx, sy] = spine[Math.floor(H * (0.45 + rng.next() * 0.5))];
     const side = rng.next() < 0.5 ? -1 : 1;
     const pts = limb(p, sx + side, sy, -Math.PI / 2 + side * (0.5 + rng.next() * 0.7), 5 + rng.int(9), side * (rng.next() - 0.3) * 0.12,
-      () => jitter([56, 44, 38], rng, 8));
+      () => jitter([68, 52, 44], rng, 8));
     const [tx, ty] = pts[pts.length - 1] ?? [sx, sy];
     if (rng.next() < 0.6) p.blob(tx, ty - 1, 3 + rng.int(2), 2, 0.45, [150, 84, 52], [86, 44, 34]);
   }

@@ -103,3 +103,32 @@ describe('explosion debris cleanup', () => {
     expect(ctx.physics.cellBlocks(41, 29)).toBe(true);
   });
 });
+
+describe('a blast in a pool throws the pool', () => {
+  it('launches every displaced water cell as a depositing spray instead of unmaking it', () => {
+    mockRandom().mockReturnValue(0); // the fire / smoke rolls would claim every cell
+    const world = new World(80, 60);
+    let water = 0;
+    for (let y = 30; y <= 45; y++) {
+      for (let x = 20; x <= 60; x++) {
+        set(world, x, y, Cell.Water);
+        water++;
+      }
+    }
+    const ctx = makeCtx(world);
+
+    new Explosions(ctx).trigger(40, 30, 6);
+
+    let left = 0, fire = 0;
+    for (let i = 0; i < world.types.length; i++) {
+      if (world.types[i] === Cell.Water) left++;
+      // (the air above the pool still catches: only the pool's own rows count)
+      if (Math.floor(i / world.width) >= 30 && (world.types[i] === Cell.Fire || world.types[i] === Cell.Smoke)) fire++;
+    }
+    const spawn = ctx.particles.spawn as unknown as ReturnType<typeof vi.fn>;
+    const thrown = spawn.mock.calls.filter((c) => c[4] === Cell.Water && (c[7] as { deposit?: boolean } | undefined)?.deposit === true).length;
+    expect(water - left).toBeGreaterThan(20); // the blast really displaced the surface
+    expect(thrown).toBe(water - left); // ...and every displaced cell is in the air, coming back down
+    expect(fire).toBe(0); // no water turned to flame or smoke
+  });
+});
