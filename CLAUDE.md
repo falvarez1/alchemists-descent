@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 Purple Llama Studio's "Alchemist's Descent" — a falling-sand action roguelite: a cellular-automata
-material simulation, a Three.js pixel renderer with dynamic 2D lighting and bloom, procedural
-audio, and a platformer-wizard action game (a four-floor run with return phials, starting kits and a
+material simulation, a Three.js pixel renderer with dynamic 2D lighting (designed darkness, eyeshine,
+a hooded lantern) and bloom, ElevenLabs-generated audio (sampled SFX, a score, a narrator — generated
+offline by `scripts/audio/*`, audition at `/audition.html`), and a platformer-wizard action game (a four-floor run with return phials, starting kits and a
 daily seed — player-facing name "Breathing Works", `config/brand.ts`; wand/spell-card system,
 brewing, mechanisms) layered on top. Originally a single 3,818-line HTML file (kept at the repo
 root as `noita-sandbox.html` for reference — behavior fidelity to it matters); now a modular
@@ -110,7 +111,8 @@ dev server. `scripts/verify-*.mjs` show the pattern.
 ## Hard invariants
 
 1. **Cell IDs are append-only forever** (save-format ABI). `CELL_COUNT` in `sim/CellType.ts`
-   must match (currently 39; MarshGas=38 is the highest taken id). Never renumber or reuse.
+   must match (currently 42; Seed=41 is the highest taken id — Leaf 39, Trunk 40, Seed 41 were
+   appended by the flora wave). Never renumber or reuse.
    The marker palette in `sim/cellPalette.ts` is the same kind of ABI (it identifies
    materials in every exported terrain PNG): one appended color per new cell type,
    ≥12 Manhattan RGB from every existing entry, never edited (test-enforced).
