@@ -26,21 +26,46 @@ function el(id: string): HTMLElement {
   return document.getElementById(id)!;
 }
 
-const BENCH_OBJECTIVE_FRAMES = 720;
+/** How long the "seat it at the bench" line lingers under the objective (ticks). */
+const BENCH_NOTE_FRAMES = 720;
 const WAYSTONE_OBJECTIVE_RADIUS_SQ = 72 * 72;
+
+/** Centre-card timing: an arrival title holds longer than an event notice. */
+const TITLE_HOLD_MS = 3600;
+const NOTICE_HOLD_MS = 2600;
+/** The card's fade-out (main.css #wave-banner transition) plus a breath before the next. */
+const BANNER_GAP_MS = 750;
+const MAX_QUEUED_NOTICES = 3;
+
+/**
+ * One centre card. Arrival titles always play first and uninterrupted; event
+ * notices (waystone lit, first brew, a card found) queue behind them and each
+ * other, lowest `priority` first, so nothing stomps anything.
+ */
+interface BannerCard {
+  big: string;
+  small: string;
+  kicker: string;
+  kind: 'title' | 'notice';
+  priority: number;
+  onShow?: () => void;
+}
 
 function introCompletionCardSlotted(ctx: Ctx): boolean {
   const wands = ctx.wands.wands;
   return Array.isArray(wands) && wands.some((wand) => wand.cards.includes(INTRO_REWARD_CARD));
 }
 
-export function contextualObjectiveText(ctx: Ctx, fallback: string, benchNudgeFrames = 0): string {
+/**
+ * The objective line. A found card never takes it over: the floor's goal stays
+ * the goal, and the bench cue rides underneath it (Hud's objective note).
+ */
+export function contextualObjectiveText(ctx: Ctx, fallback: string): string {
   if (ctx.state.mode !== 'play') return fallback;
   const runtime = ctx.levels.current;
   if (!runtime) return fallback;
   const living = livingObjective(ctx);
   if (living) return living;
-  if (benchNudgeFrames > 0 && ctx.wands.collection.length > 0) return INTRO_OBJECTIVE.benchAvailable;
   const nearUnlitWaystone = runtime.waystones.some((waystone) => {
     if (waystone.lit) return false;
     const dx = waystone.x - ctx.player.x;
@@ -57,10 +82,11 @@ export function contextualObjectiveText(ctx: Ctx, fallback: string, benchNudgeFr
   return fallback;
 }
 
-export function cardGrantBenchCue(ctx: Ctx): string {
+/** The secondary line under the objective after a card is found. */
+export function cardGrantBenchCue(ctx: Ctx, name?: string): string {
   if (ctx.state.mode !== 'play') return 'A new spell card';
   // The bench opens anywhere now — just slot it whenever you like.
-  return 'A new spell card. Seat it at the wand bench (B).';
+  return `Seat ${name ? name : 'the new card'} at the wand bench (B).`;
 }
 
 /** Near an unlit waystone on a generated floor (house tone; see introObjectives). */
@@ -107,9 +133,17 @@ export class Hud {
   private objectiveBase: string = INTRO_OBJECTIVE.findKey;
   private bannerTimer = 0;
   /** An arrival title waiting for the transition curtain to lift. */
-  private pendingTitle: { big: string; small: string; kicker: string } | null = null;
+  private pendingTitle: BannerCard | null = null;
   private titleFallback = 0;
-  private benchObjectiveUntil = 0;
+  /** Notices waiting for the centre card to come free. */
+  private readonly bannerQueue: BannerCard[] = [];
+  /** performance.now() at which the card on screen has faded and the next may enter. */
+  private bannerFreeAt = 0;
+  private bannerPump = 0;
+  /** Secondary line under the objective (the bench cue after a card is found). */
+  private readonly objectiveNote = document.createElement('div');
+  private objectiveNoteUntil = 0;
+  private objectiveNoteCard: string | null = null;
 
   // Static HUD nodes resolved once (all exist in index.html). update() runs
   // every other tick (~30Hz), so caching these avoids repeated getElementById
@@ -136,6 +170,9 @@ export class Hud {
     el('canvas-holder').appendChild(this.trickshotReadout);
     this.soundCaption.id = 'sound-caption'; this.soundCaption.setAttribute('aria-live', 'polite');
     el('objective').closest('.wave-readout')!.appendChild(this.soundCaption);
+    this.objectiveNote.id = 'objective-note';
+    this.objectiveNote.setAttribute('aria-live', 'polite');
+    el('objective').closest('.objective-row')!.insertAdjacentElement('afterend', this.objectiveNote);
     // Toasts are the right-hand event log: they flow beneath the objective and
     // its caption, so no length of objective can ever overlap them.
     const toastHost = el('toast-stack');
@@ -213,8 +250,9 @@ export class Hud {
       const floor = floorLabel(ctx.levels.current?.def.id);
       el('wave-num').textContent = floor || 'D' + depth;
       const look = ctx.levels.current ? floorLookFor(ctx) : FLOOR_LOOKS.earthen;
-      const card = { big: titleCaseName(name), small: look.epigraph, kicker: floor || levelTitleKicker(depth) };
-      this.pendingTitle = card;
+      this.pendingTitle = {
+        big: titleCaseName(name), small: look.epigraph, kicker: floor || levelTitleKicker(depth), kind: 'title', priority: 0,
+      };
       window.clearTimeout(this.titleFallback);
       this.titleFallback = this.setHudTimeout(() => this.revealPendingTitle(), 1600);
     }));
@@ -224,24 +262,28 @@ export class Hud {
       this.titleFallback = this.setHudTimeout(() => this.revealPendingTitle(), holdMs + 120);
     }));
 
+    // Event notices: sentence case, smaller than a title, queued behind it.
     this.disposers.push(ctx.events.on('waystoneLit', () => {
-      this.showBanner('WAYSTONE LIT', 'CHECKPOINT SET — VITALS RESTORED');
+      this.queueNotice({ kicker: 'Checkpoint', big: 'Waystone lit', small: 'You will return here. Vitals restored.', priority: 1 });
     }));
 
     this.disposers.push(ctx.events.on('recipeDiscovered', ({ name, bounty }) => {
-      this.showBanner(name + ' BREWED', 'GRIMOIRE UPDATED — +' + bounty + ' oz');
+      this.queueNotice({ kicker: 'A first brew', big: titleCaseName(name), small: `Written into the Grimoire. +${bounty} oz`, priority: 2 });
     }));
 
-    // Wandsmith: a found card announces itself; the bench (B) slots it.
-    // The satchel chip flashes so the income lands in the treasure row too.
+    // Wandsmith: a found card announces itself once the centre is free; the
+    // bench cue rides under the objective (never replacing it) while the card
+    // waits in the satchel. The satchel chip flashes so the income lands in
+    // the treasure row too.
     this.disposers.push(ctx.events.on('cardGranted', ({ name }) => {
-      this.showBanner(name + ' ACQUIRED', cardGrantBenchCue(this.ctx));
-      this.benchObjectiveUntil = this.ctx.state.frameCount + BENCH_OBJECTIVE_FRAMES;
-      this.renderObjective();
       const chip = el('cards-chip');
       chip.classList.remove('flash');
       void chip.offsetWidth; // restart the one-shot animation
       chip.classList.add('flash');
+      this.queueNotice({
+        kicker: 'A new spell card', big: name, small: 'Tucked into the satchel.', priority: 3,
+        onShow: () => this.showObjectiveNote(cardGrantBenchCue(this.ctx, name), name),
+      });
     }));
 
     // Descent meta layer: the objective line + short center toasts.
@@ -310,6 +352,9 @@ export class Hud {
 
   dispose(): void {
     this.soundCaption.remove();
+    this.objectiveNote.remove();
+    this.bannerQueue.length = 0;
+    this.pendingTitle = null;
     this.toastStack.clear();
     this.vitalsAside.remove();
     for (const { ghost } of this.vitalGhosts.splice(0)) ghost.remove();
@@ -357,29 +402,91 @@ export class Hud {
     }
   }
 
+  /** The arrival title plays now, uninterrupted; queued notices wait for it. */
   private revealPendingTitle(): void {
     const card = this.pendingTitle;
     if (!card) return;
     this.pendingTitle = null;
-    this.showBanner(card.big, card.small, { kicker: card.kicker, title: true });
+    this.showBanner(card);
+  }
+
+  /**
+   * Queue an event notice. Pumped on a fresh task, never synchronously: a card
+   * granted inside the same `levelChanged` dispatch as an arrival must still
+   * see the arrival's title first (WandSystem hears that event before the Hud).
+   */
+  private queueNotice(notice: Omit<BannerCard, 'kind'>): void {
+    if (this.bannerQueue.some((queued) => queued.big === notice.big && queued.kicker === notice.kicker)) return;
+    this.bannerQueue.push({ ...notice, kind: 'notice' });
+    // Stable by priority: a checkpoint reads before the card it paid out.
+    this.bannerQueue.sort((a, b) => a.priority - b.priority);
+    if (this.bannerQueue.length > MAX_QUEUED_NOTICES) this.bannerQueue.length = MAX_QUEUED_NOTICES;
+    this.scheduleBannerPump(0);
+  }
+
+  private scheduleBannerPump(ms: number): void {
+    window.clearTimeout(this.bannerPump);
+    this.bannerPump = this.setHudTimeout(() => this.pumpBanners(), Math.max(0, ms));
+  }
+
+  private pumpBanners(): void {
+    // An arrival waiting on its curtain goes first; its reveal pumps after it.
+    if (this.pendingTitle || this.bannerQueue.length === 0) return;
+    const wait = this.bannerFreeAt - performance.now();
+    if (wait > 0) {
+      this.scheduleBannerPump(wait);
+      return;
+    }
+    const next = this.bannerQueue.shift();
+    if (next) this.showBanner(next);
   }
 
   /**
    * The centre card. Level arrivals get the full title treatment (kicker,
-   * tracked serif name, copper rule, epigraph) and hold longer; event
-   * banners (waystone lit, card found) reuse the same house style, smaller.
+   * tracked serif name, copper rule, epigraph) and hold longer; event notices
+   * (waystone lit, a first brew, a card found) use the same house style,
+   * smaller and in sentence case.
    */
-  private showBanner(big: string, small: string, opts: { kicker?: string; title?: boolean } = {}): void {
-    el('banner-big').textContent = big;
-    el('banner-small').textContent = small;
-    this.bannerKicker.textContent = opts.kicker ?? '';
+  private showBanner(card: BannerCard): void {
+    const title = card.kind === 'title';
+    el('banner-big').textContent = card.big;
+    el('banner-small').textContent = card.small;
+    this.bannerKicker.textContent = card.kicker;
     const banner = el('wave-banner');
     banner.classList.remove('show');
-    banner.classList.toggle('level', opts.title === true);
+    banner.classList.toggle('level', title);
+    banner.classList.toggle('notice', !title);
     void banner.offsetWidth; // restart the entrance choreography
     banner.classList.add('show');
+    const hold = title ? TITLE_HOLD_MS : NOTICE_HOLD_MS;
+    this.bannerFreeAt = performance.now() + hold + BANNER_GAP_MS;
     window.clearTimeout(this.bannerTimer);
-    this.bannerTimer = this.setHudTimeout(() => banner.classList.remove('show'), opts.title ? 3600 : 2200);
+    this.bannerTimer = this.setHudTimeout(() => {
+      banner.classList.remove('show');
+      if (this.bannerQueue.length > 0) this.scheduleBannerPump(BANNER_GAP_MS);
+    }, hold);
+    card.onShow?.();
+  }
+
+  /** A quiet second line under the objective; the objective itself never changes for it. */
+  private showObjectiveNote(text: string, card: string | null): void {
+    this.objectiveNote.textContent = text;
+    this.objectiveNoteCard = card;
+    this.objectiveNoteUntil = this.ctx.state.frameCount + BENCH_NOTE_FRAMES;
+    this.objectiveNote.classList.remove('shown');
+    void this.objectiveNote.offsetWidth;
+    this.objectiveNote.classList.add('shown');
+  }
+
+  private renderObjectiveNote(): void {
+    if (!this.objectiveNote.classList.contains('shown')) return;
+    // Seated already (it left the satchel), or its moment has passed.
+    const seated = this.objectiveNoteCard !== null &&
+      !this.ctx.wands.collection.some((id) => CARD_DEFS[id]?.name === this.objectiveNoteCard);
+    if (seated || this.ctx.state.frameCount > this.objectiveNoteUntil || this.ctx.state.mode !== 'play') {
+      this.objectiveNote.classList.remove('shown');
+      this.objectiveNoteCard = null;
+    }
   }
 
   private buildGodTools(): void {
@@ -435,10 +542,10 @@ export class Hud {
   }
 
   private renderObjective(): void {
-    const left = Math.max(0, this.benchObjectiveUntil - this.ctx.state.frameCount);
-    const text = contextualObjectiveText(this.ctx, this.objectiveBase, left);
+    const text = contextualObjectiveText(this.ctx, this.objectiveBase);
     const node = this.objectiveNode;
     if (node.textContent !== text) node.textContent = text;
+    this.renderObjectiveNote();
     this.renderIntroControlHint(text);
   }
 
