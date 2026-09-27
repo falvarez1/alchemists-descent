@@ -279,6 +279,28 @@ export const SFX_FALLBACKS: Partial<Record<SfxId, SfxFallback>> = {
   'light.bloom.open': (p) => { p.tone(880, 1760, 0.4, 'sine', 0.03); p.later(120, () => p.tone(1320, 2093, 0.4, 'triangle', 0.02)); },
   'light.bloom.furl': (p) => p.tone(1400, 700, 0.35, 'triangle', 0.02),
   'light.bloom.petal': (p, o) => p.tone(1568 * semis(o), 1568 * semis(o), 0.12, 'sine', 0.02),
+  // ---- flora (game/Flora, sim/elements/flora): the stand-ins the flora wave played at each call site ----
+  'flora.creak': (p, o) => p.creak(0.8 * (o.gain ?? 1)),
+  'flora.lean': (p) => p.creak(1),
+  'flora.crack': (p) => { p.tone(90, 170, 0.12, 'sawtooth', 0.1); p.noiseBurst(0.16, 250, 0.066); p.creak(1.2); },
+  'flora.hinge': (p) => p.tone(140, 45, 0.04, 'square', 0.07),
+  'flora.sapling': (p) => p.tone(140, 45, 0.04, 'square', 0.05),
+  'flora.whoosh': (p) => p.noiseBurst(0.35, 900, 0.04),
+  'flora.fall.birch': (p, o) => { p.boom(4 + 8 * (o.gain ?? 1)); p.landThud(Math.min(1, 0.4 + (o.gain ?? 1))); },
+  'flora.fall.mushroom': (p, o) => { p.boom(4 + 8 * (o.gain ?? 1)); p.landThud(Math.min(1, 0.4 + (o.gain ?? 1))); p.squelch(); },
+  'flora.fall.mangrove': (p, o) => { p.boom(4 + 8 * (o.gain ?? 1)); p.landThud(Math.min(1, 0.4 + (o.gain ?? 1))); p.splash(0.8); },
+  'flora.fall.emberbark': (p, o) => { p.boom(4 + 8 * (o.gain ?? 1)); p.landThud(Math.min(1, 0.4 + (o.gain ?? 1))); p.sizzle(); },
+  'flora.canopy': (p) => p.noiseBurst(0.3, 2600, 0.035, true),
+  'flora.settle': (p) => p.creak(0.35),
+  'flora.rustle': (p) => p.noiseBurst(0.18, 3000, 0.03, true),
+  'flora.pod.drop': (p) => p.tone(1200, 900, 0.05, 'sine', 0.025),
+  'flora.glowseed': (p) => p.pickup(),
+  'flora.seed.soak': (p) => p.bubble(),
+  'flora.seed.sprout': (p) => p.bubble(),
+  'flora.ladder.rung': (p) => p.noiseBurst(0.04, 600, 0.03),
+  'flora.ladder.bloom': (p) => p.tone(260, 160, 0.06, 'sine', 0.05),
+  'flora.catch': (p) => p.brazier(),
+  'flora.firelily.flare': (p) => p.sizzle(),
 };
 
 /**

@@ -61,7 +61,7 @@ export const SFX_CATEGORIES: Readonly<Record<SfxCategory, SfxCategoryDef>> = {
 };
 
 export interface SfxCueDef {
-  /** Lazy-load group: `ui`, `player`, `spells`, `world`, `tea`, `creature-<kind>`, `amb-<floor>`. */
+  /** Lazy-load group: `ui`, `player`, `spells`, `world`, `tea`, `flora`, `creature-<kind>`, `org-<kind>`, `amb-<floor>`. */
   pack: string;
   cat: SfxCategory;
   /** Multiplies the category gain. */
@@ -92,6 +92,8 @@ const boss = (kind: EnemyKind, o?: Omit<SfxCueDef, 'pack' | 'cat'>): SfxCueDef =
 const tea = (o?: Omit<SfxCueDef, 'pack' | 'cat'>): SfxCueDef => c('tea', 'tea', o);
 /** Ambient life with behaviour (game/organisms): one pack per kind, loaded with the floors it lives on. */
 const org = (kind: string, cat: SfxCategory, o?: Omit<SfxCueDef, 'pack' | 'cat'>): SfxCueDef => c(`org-${kind}`, cat, o);
+/** Living plants (felling, seeds, brush fires, brushing past): the `flora` pack, loaded with every floor. */
+const fl = (cat: SfxCategory, o?: Omit<SfxCueDef, 'pack' | 'cat'>): SfxCueDef => c('flora', cat, o);
 
 export const SFX_CUES = {
   // ------------------------------------------------------------------ UI
@@ -353,6 +355,42 @@ export const SFX_CUES = {
   'organism.emberbeetle.crunch': org('emberbeetle', 'critter', { gain: 1.0, cooldownMs: 300 }),
   'organism.emberbeetle.pop': org('emberbeetle', 'creature', { gain: 0.7 }),
   'organism.ashmoth.flare': org('ashmoth', 'critter', { gain: 2.0, cooldownMs: 120 }),
+
+  // ---------------------------------------------------- flora (every floor)
+  // Living plants (game/Flora, sim/elements/flora, audio/HabitatAudio): the
+  // felling, the seeds, the fires and the brush underfoot. One pack, loaded
+  // with any floor in play (they all grow them). Announced moments map in
+  // audio/EventCues (floraMoment, treeLanded).
+  'flora.creak': fl('material', { gain: 0.46, range: 420, voices: 2, cooldownMs: 220 }),
+  'flora.lean': fl('impact', { gain: 0.77, range: 480, voices: 2, cooldownMs: 400, pitchCents: 60 }),
+  'flora.crack': fl('impact', { gain: 2.12, range: 620, voices: 3, cooldownMs: 120, priority: 4 }),
+  'flora.hinge': fl('impact', { gain: 0.9, range: 520, voices: 2 }),
+  'flora.sapling': fl('impact', { gain: 0.36, range: 380 }),
+  'flora.whoosh': fl('impact', { gain: 1.05, range: 560, voices: 2, cooldownMs: 200 }),
+  // The fall, in the floor's own wood (world/floraPass plants its species): birch, a giant
+  // mushroom's stem, a waterlogged mangrove, charred ember-bark.
+  'flora.fall.birch': fl('impact', { gain: 1.58, range: 760, voices: 2, cooldownMs: 90, priority: 4 }),
+  'flora.fall.mushroom': fl('impact', { gain: 1.63, range: 760, voices: 2, cooldownMs: 90, priority: 4 }),
+  'flora.fall.mangrove': fl('impact', { gain: 1.46, range: 760, voices: 2, cooldownMs: 90, priority: 4 }),
+  'flora.fall.emberbark': fl('impact', { gain: 2.23, range: 760, voices: 2, cooldownMs: 90, priority: 4 }),
+  'flora.canopy': fl('material', { gain: 0.83, range: 560, voices: 2, cooldownMs: 200 }),
+  'flora.settle': fl('impact', { gain: 0.3, range: 420, cooldownMs: 300 }),
+  'flora.rustle': fl('material', { gain: 0.51, range: 380, cooldownMs: 180 }),
+  'flora.pod.drop': fl('material', { gain: 0.3, range: 380, cooldownMs: 150 }),
+  'flora.glowseed': fl('pickup', { gain: 1.46 }),
+  'flora.seed.soak': fl('material', { gain: 0.26, range: 380, voices: 2, cooldownMs: 250 }),
+  'flora.seed.sprout': fl('material', { gain: 0.55, range: 420, cooldownMs: 300 }),
+  'flora.ladder.rung': fl('impact', { gain: 0.31, range: 420, voices: 3, cooldownMs: 90, pitchCents: 150 }),
+  'flora.ladder.grow.loop': loop('flora', { gain: 0.8, range: 420, keepAliveMs: 450 }),
+  'flora.ladder.bloom': fl('material', { gain: 0.89, range: 420, cooldownMs: 400 }),
+  // Fire in the brush: the catch (in the Kiln, its blooms flare), then the crackle while it burns.
+  'flora.catch': fl('material', { gain: 0.76, range: 480, cooldownMs: 1500 }),
+  'flora.firelily.flare': fl('material', { gain: 0.65, range: 420, cooldownMs: 1200 }),
+  'flora.burn.loop': loop('flora', { gain: 0.9, range: 480 }),
+  // Underfoot: restrained on purpose (a sweep, never a machine-gun; audio/HabitatAudio paces it).
+  'flora.brush.grass': fl('step', { gain: 1.57, cooldownMs: 300, voices: 1 }),
+  'flora.brush.reeds': fl('step', { gain: 1.14, cooldownMs: 300, voices: 1 }),
+  'flora.brush.kelp': fl('step', { gain: 1.06, cooldownMs: 300, voices: 1 }),
 
   // ------------------------------------------------------------ creatures
   'creature.weaver.step': cr('weaver', { gain: 0.45, voices: 4, cooldownMs: 60 }),

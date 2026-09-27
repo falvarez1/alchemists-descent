@@ -47,6 +47,13 @@ const TARGETS = {
   'organism.snapjaw.tell': 0.073, 'organism.snapjaw.snap': 0.095, 'organism.puffer.burst': 0.098, 'organism.leech.latch': 0.076,
   'organism.isopod.curl': 0.035, 'creature.bat.scatter': 0.076, 'creature.colossus.stomp': 0.29, 'creature.colossus.roar': 0.265,
   'creature.leviathan.surge': 0.216,
+  // Flora: a notch's strain reads like a tell, the crack like a hard hit, the fall under a medium
+  // blast; leaves and seeds sit with the drips and splashes; brushing past is a footstep's weight.
+  'flora.creak': 0.06, 'flora.lean': 0.08, 'flora.crack': 0.16, 'flora.hinge': 0.1, 'flora.sapling': 0.06, 'flora.whoosh': 0.08,
+  'flora.fall.birch': 0.22, 'flora.fall.mushroom': 0.22, 'flora.fall.mangrove': 0.22, 'flora.fall.emberbark': 0.22,
+  'flora.canopy': 0.08, 'flora.settle': 0.05, 'flora.rustle': 0.04, 'flora.pod.drop': 0.04, 'flora.glowseed': 0.065,
+  'flora.seed.soak': 0.03, 'flora.seed.sprout': 0.07, 'flora.ladder.rung': 0.05, 'flora.ladder.bloom': 0.07,
+  'flora.catch': 0.09, 'flora.firelily.flare': 0.08, 'flora.brush.grass': 0.03, 'flora.brush.reeds': 0.035, 'flora.brush.kelp': 0.03,
 };
 
 const browser = await launchBrowser({ args: ['--autoplay-policy=no-user-gesture-required'] });
@@ -59,7 +66,7 @@ try {
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForFunction(() => window.__game.ctx.state.mode === 'play' && window.__game.ctx.levels.current, null, { timeout: 60000 });
   const packs = ['ui', 'player', 'spells', 'world', 'creature-weaver', 'creature-rillback', 'creature-rootloper', 'creature-stonemaw', 'creature-bat',
-    'creature-colossus', 'creature-leviathan', 'org-snapjaw', 'org-puffer', 'org-leech', 'org-isopod'];
+    'creature-colossus', 'creature-leviathan', 'org-snapjaw', 'org-puffer', 'org-leech', 'org-isopod', 'flora'];
   await page.evaluate((p) => window.__game.ctx.audio.requestPacks(p), packs);
   await page.waitForFunction((p) => p.every((k) => window.__game.ctx.audio.debugSamples().packs[k] === 'ready'), packs, { timeout: 60000, polling: 250 });
   rows = await page.evaluate(async (targets) => {
