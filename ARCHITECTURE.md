@@ -81,9 +81,19 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
   entities/
     physics.ts            Entity-vs-grid collision with the loose-rubble cluster rule
     Player.ts             Player state/factory, review kit, damage/death/respawn, movement, animation
-    Enemies.ts            Enemy defs, spawn/damage/kill, slime/imp/golem AI
+    playerPose.ts         Pure player-state → skeleton (every action; also read off the ragdoll)
+    playerCostume.ts      Presentation cloth: coat tails, mantle hem, hat crown (docs/PLAYER-ART.md)
+    Enemies.ts            Enemy defs, spawn/damage/kill, per-kind AI
+  creatures/              Creature mind, pose and the Rain World body layer (docs/CREATURES.md)
+    rig/                  Verlet chunks with cell collision + liquid drag, chains, gripping
+                          IK legs, pressurised soft bodies — tick-owned, never saved
+    species/              Per-body-plan rigs (lizard, gel, bat, imp, wisp, brute, mage,
+                          serpents, rootloper) + the registry tickCreaturePose steps
+    worldTouch.ts         Footfalls, surface splashes, ploughed powder, tracks, kicked debris
+    corpses.ts            Limp remains that fall, settle and melt back into grid cells
   game/
     Game.ts               Composition root: builds Ctx, owns the frame order
+    DeathCinema.ts        The directed death: push-in, grade, heartbeats, letterbox, title beat
     WaveDirector.ts       createWaveState() — the small kill/counter state that
                           outlived the retired wave-survival director
     surfaceIntro.ts       D1 Noita-style surface-intro arrival predicates
@@ -118,7 +128,10 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
                           FrameComposer and ComposeShader read (the latter
                           interpolates it into GLSL) so the CPU/GPU sky (gradient,
                           sun, drifting clouds, parallax hills) can never drift
-    sprites/              Procedural pixel sprites (player wizard, enemies)
+    sprites/              Procedural pixel sprites (player wizard; CreatureArt dispatches creatures)
+    creatures/            Creature rasterizer: z-buffered 2.5D volumes with analytic
+                          normals, OKLab ramps, field-derived key light, sel-out, glass
+                          (blendFinePx/blitFine) + one art module per species + rig lights
     sprites/FineArt.ts    Presentation-resolution kit: Pen primitives (rods,
                           wheels, cables, plates, rivets), the EPX cell-capture
                           upsample with a one-pixel rim, bitmap blit, view

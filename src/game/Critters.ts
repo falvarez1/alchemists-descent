@@ -268,10 +268,11 @@ export class Critters implements CrittersApi {
         c.vy += Math.max(-0.025, Math.min(0.025, (targetY - c.y) * 0.0007));
         c.energy = Math.max(0.2, Math.min(1, (c.energy ?? 1) + (Math.hypot(targetX - c.x, targetY - c.y) < 25 ? 0.001 : -0.0002)));
         for (const predator of ctx.enemies) {
-          if (predator.hp <= 0 || predator.kind !== 'weaver') continue;
+          if (predator.hp <= 0 || Math.abs(predator.x - c.x) > 60 || Math.abs(predator.y - c.y) > 60) continue;
+          const reach = predator.kind === 'weaver' ? 42 : 26 + ctx.enemyCtl.defs[predator.kind].halfW * 1.5;
           const dx = c.x - predator.x, dy = c.y - predator.y + 8;
           const d = Math.hypot(dx, dy);
-          if (d > 1 && d < 42 && sightClear(w, c.x, c.y, predator.x, predator.y - 8)) {
+          if (d > 1 && d < reach && sightClear(w, c.x, c.y, predator.x, predator.y - 8)) {
             c.vx += dx / d * 0.06; c.vy += dy / d * 0.06;
           }
         }
@@ -327,6 +328,18 @@ export class Critters implements CrittersApi {
             }
           }
         }
+        // Any creature bearing down on them is a looming bulk too, not only the wizard.
+        for (const e of ctx.enemies) {
+          if (e.hp <= 0 || Math.abs(e.x - c.x) > 48 || Math.abs(e.y - c.y) > 48) continue;
+          const def = ctx.enemyCtl.defs[e.kind];
+          const ex = e.x, ey = e.y - def.h * 0.5;
+          const dx = c.x - ex, dy = c.y - ey, d2 = dx * dx + dy * dy, R = 16 + def.halfW * 1.6;
+          const moving = Math.abs(e.vx) + Math.abs(e.vy) > 0.15 || def.halfW >= 7;
+          if (moving && d2 > 1 && d2 < R * R) {
+            const d = Math.sqrt(d2), k = 1 - d / R;
+            ax += dx / d * (0.8 + k); ay += dy / d * (0.8 + k); threatened = true;
+          }
+        }
         for (let s = 0; s < 4; s++) {
           const sx = xi + ((entityRandom() * 29) | 0) - 14;
           const sy = yi + ((entityRandom() * 29) | 0) - 14;
@@ -376,6 +389,16 @@ export class Critters implements CrittersApi {
             lured = true;
           }
         }
+        if (!lured) {
+          // Living lights draw moths too: an angler's lure, a jelly's bell, an imp's embers.
+          for (const e of ctx.enemies) {
+            if (e.hp <= 0 || (e.kind !== 'leviathan' && e.kind !== 'wisp' && e.kind !== 'imp' && !(e.kind === 'mage' && e.blink > 0))) continue;
+            const lure = e.kind === 'leviathan' ? e.rig?.chains[1]?.pts.at(-1) : undefined;
+            const lx = lure?.x ?? e.x, ly = lure?.y ?? e.y - 7;
+            const dx = lx - c.x, dy = ly - c.y, d2 = dx * dx + dy * dy;
+            if (d2 < 90 * 90 && d2 > 16) { c.vx += dx / Math.sqrt(d2) * 0.05; c.vy += dy / Math.sqrt(d2) * 0.05; lured = true; break; }
+          }
+        }
         if (!lured && !player.dead) {
           const dx = player.x + Math.cos(player.aimAngle) * 9 - c.x;
           const dy = player.y - 9 + Math.sin(player.aimAngle) * 9 - c.y;
@@ -400,6 +423,18 @@ export class Critters implements CrittersApi {
             pdy = c.y - player.y;
           const close = !player.dead && pdx * pdx + pdy * pdy < 30 * 30;
           c.vx += (close ? Math.sign(pdx) * 0.12 : Math.sin(c.phase * 0.4) * 0.02);
+          // Eels and the Leviathan are what fish are afraid of; an angler's lure is what they can't resist.
+          for (const e of ctx.enemies) {
+            if (e.hp <= 0 || (e.kind !== 'rillback' && e.kind !== 'leviathan')) continue;
+            const hx = e.body?.nodes[0]?.x ?? e.rig?.pts[0]?.x ?? e.x, hy = e.body?.nodes[0]?.y ?? e.rig?.pts[0]?.y ?? e.y - 6;
+            const dx = c.x - hx, dy = c.y - hy, d2 = dx * dx + dy * dy;
+            const moving = Math.abs(e.vx) + Math.abs(e.vy) > 0.35 || (e.swoop ?? 0) > 0;
+            if (d2 < 40 * 40 && moving) { const d = Math.sqrt(d2) || 1; c.vx += dx / d * 0.16; c.vy += dy / d * 0.08; }
+            else if (e.kind === 'leviathan' && !moving) {
+              const lure = e.rig?.chains[1]?.pts.at(-1);
+              if (lure) { const lx = lure.x - c.x, ly = lure.y + 3 - c.y, ld = Math.hypot(lx, ly); if (ld < 110 && ld > 4) { c.vx += lx / ld * 0.03; c.vy += ly / ld * 0.02; } }
+            }
+          }
           c.vy += (entityRandom() - 0.5) * 0.02;
           // stay submerged: nudge down if surface is right above
           if (w.inBounds(xi, yi - 1) && w.types[w.idx(xi, yi - 1)] === Cell.Empty) c.vy += 0.04;

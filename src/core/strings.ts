@@ -64,3 +64,12 @@ export function stepDecimals(step: number): number {
 export function formatStep(value: number, step: number): string {
   return value.toFixed(stepDecimals(step));
 }
+
+/** Names stored in capitals for the HUD ("THE BREATHING WORKS") read as a
+ *  name on menus ("The Breathing Works"). Mixed-case input is returned as-is. */
+export function titleCaseName(name: string): string {
+  if (name !== name.toUpperCase()) return name;
+  const small = new Set(['of', 'the', 'and', 'a', 'an', 'in', 'on', 'to']);
+  return name.toLowerCase().split(' ').map((word, i) =>
+    i > 0 && small.has(word) ? word : word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+}

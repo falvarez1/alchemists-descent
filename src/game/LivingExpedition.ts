@@ -1,5 +1,6 @@
-import type { Ctx, LivingExpeditionState } from '@/core/types';
-import { WORKS_COLD_LOCK, worksRoomAt } from '@/world/breathingWorks';
+import type { Ctx, HintInfo, LivingExpeditionState } from '@/core/types';
+import { WORKS_COLD_LOCK, WORKS_RESERVOIR, worksRoomAt } from '@/world/breathingWorks';
+import { TEA } from '@/world/teaMachine';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 
@@ -27,16 +28,87 @@ export function livingObjective(ctx: Ctx): string | null {
   if (!coldLockOpen && !living.tea?.completed && (!living.tea || living.tea.stage === 0)) {
     const frostShardTaken = rt.pickups.some(pickup => pickup.kind === 'tome' && pickup.data.card === 'frostshard' && pickup.taken);
     if (frostShardTaken) return 'Return to the Intake. Freeze its shallow cistern to release the engine crank.';
-    if (living.room === 'intake') return 'The crank is cold-locked. Descend the return shaft and find a source of frost.';
+    if (living.room === 'intake') return 'The crank is cold-locked: its cistern probes count ice. Descend the return shaft and find a source of frost.';
     if (living.room === 'refuge') return 'Claim Frost Shard in the Warm Refuge, then climb back to the Intake.';
     return 'Find a source of frost below, then backtrack to the sealed engine crank.';
   }
   if (!living.tea?.completed) return living.tea?.stalled
     ? 'The engine stalled. Use its crank again to recharge the workshop.'
     : living.tea && living.tea.stage > 0 ? 'The Bell & Tea Engine is running. Its receiver is at the far end of the catwalk.'
-    : 'Start the Bell & Tea Engine. Follow the upper walkway right to its crank.';
+    : 'The cold lock is open. Pull the engine crank inside the cage.';
   if (!rt.keyTaken) return 'Collect the brass bell at the far end of the engine’s catwalk.';
-  return 'The bell is yours. Follow the undertow to the lower gate.';
+  return 'The bell is yours. Carry it down through the Silt Garden’s west chute and the Undertow to the lower gate.';
+}
+
+/**
+ * The cold census, said out loud where the player stands. Two probes in the
+ * Intake cistern count ICE cells (not water, not charge); the caged crank's
+ * portcullises lift once both read enough. The hint names what the probes
+ * read, how far along they are, and the one thing missing — Frost Shard, or
+ * water to freeze if the cistern was drained.
+ */
+export function coldLockHint(ctx: Ctx): HintInfo | null {
+  const rt = ctx.levels.current;
+  if (!rt?.living) return null;
+  const doors = rt.mechanisms.filter(m => m.id === WORKS_COLD_LOCK.leftDoorId || m.id === WORKS_COLD_LOCK.rightDoorId);
+  if (doors.length !== 2 || doors.every(door => door.state === 1)) return null;
+  const { basin } = WORKS_COLD_LOCK;
+  const bx = (basin.x0 + basin.x1) / 2, by = basin.y0;
+  const px = ctx.player.x, py = ctx.player.y;
+  const nearBasin = Math.hypot(px - bx, py - by) < 72;
+  const nearCage = Math.hypot(px - 432, py - 300) < 58;
+  if (!nearBasin && !nearCage) return null;
+  const sensors = rt.mechanisms.filter(m => m.id === WORKS_COLD_LOCK.leftSensorId || m.id === WORKS_COLD_LOCK.rightSensorId);
+  const need = Math.max(1, ...sensors.map(m => m.threshold ?? 32));
+  const ice = sensors.length ? Math.min(...sensors.map(m => (m.state === 1 ? need : m.reading ?? 0))) : 0;
+  let water = 0;
+  for (let y = basin.y0; y <= basin.y1; y++) for (let x = basin.x0; x <= basin.x1; x++) {
+    const t = ctx.world.type(x, y);
+    if (t === Cell.Water || t === Cell.Ice) water++;
+  }
+  const frost = rt.pickups.some(p => p.kind === 'tome' && p.data.card === 'frostshard' && p.taken)
+    || ctx.wands.collection.includes('frostshard') || ctx.wands.wands.some(w => w.cards.includes('frostshard'));
+  const world = { x: Math.round(bx), y: by - 2 };
+  let line: string;
+  if (ice > 0) line = `Freezing — the probes read ${Math.min(ice, need)}/${need} ice. Keep it cold.`;
+  else if (water < need) line = 'The cistern is too shallow to freeze. Pour water back in (Q) first.';
+  else if (frost) line = 'Cold lock: its probes count ICE. Cast Frost Shard into the cistern.';
+  else line = 'Cold lock: its probes count ICE, not water. Frost Shard waits in the Warm Refuge below.';
+  return { key: 'works-cold-lock', line, world };
+}
+
+/**
+ * Breadcrumbs for the long authored route: each milestone points the compass
+ * at the next place the objective names. A waypoint the player set by hand
+ * (any other label) is left alone.
+ */
+function updateMilestoneWaypoint(ctx: Ctx): void {
+  const rt = ctx.levels.current;
+  const living = rt?.living;
+  if (!rt || !living) return;
+  const doors = rt.mechanisms.filter(m => m.id === WORKS_COLD_LOCK.leftDoorId || m.id === WORKS_COLD_LOCK.rightDoorId);
+  const coldOpen = doors.length === 2 && doors.every(door => door.state === 1);
+  const frost = rt.pickups.some(p => p.kind === 'tome' && p.data.card === 'frostshard' && p.taken);
+  const b = WORKS_COLD_LOCK.basin;
+  if (!living.coldLockSeen && Math.hypot(ctx.player.x - (b.x0 + b.x1) / 2, ctx.player.y - b.y0) < 90) living.coldLockSeen = true;
+  let goal: { label: string; x: number; y: number } | null = null;
+  if (rt.keyTaken && rt.portal) goal = { label: 'The Lower Gate', x: rt.portal.x, y: rt.portal.y };
+  else if (living.tea?.completed) {
+    const bell = rt.pickups.find(p => p.kind === 'key' && !p.taken);
+    if (bell) goal = { label: 'Brass Bell', x: Math.round(bell.x), y: Math.round(bell.y) };
+  } else if (coldOpen && !(living.tea && living.tea.stage > 0)) goal = { label: 'Engine Crank', x: TEA.lever.x, y: TEA.lever.y };
+  else if (frost && !coldOpen) goal = { label: 'Cold-lock Cistern', x: Math.round((b.x0 + b.x1) / 2), y: b.y0 - 4 };
+  // Having met the lock, the way to the frost that opens it: the refuge below.
+  else if (!frost && !coldOpen && living.coldLockSeen) {
+    const tome = rt.pickups.find(p => p.kind === 'tome' && p.data.card === 'frostshard');
+    if (tome) goal = { label: 'Warm Refuge', x: Math.round(tome.x), y: Math.round(tome.y) };
+  }
+  if (!goal || living.autoWaypoint === goal.label) return;
+  const current = rt.mapWaypoint;
+  if (current && current.label !== living.autoWaypoint) return;
+  rt.mapWaypoint = { x: goal.x, y: goal.y, label: goal.label };
+  living.autoWaypoint = goal.label;
+  ctx.events.emit('toast', { text: 'Compass: ' + goal.label });
 }
 
 /** Throws a physical lure; creatures respond to its position and the prey it gathers. */
@@ -60,6 +132,7 @@ export function updateLivingExpedition(ctx: Ctx): void {
   const state = runtime?.living;
   if (!runtime || !state || ctx.state.mode !== 'play' || ctx.player.dead) return;
   state.ticks++;
+  if (state.ticks % 20 === 0) updateMilestoneWaypoint(ctx);
   const openValve = runtime.mechanisms.find(m => m.kind === 'valve')?.state === 1;
   const turn = openValve ? Math.PI * 1.5 : 0;
   state.valveTurn ??= turn; state.valveAngularVelocity ??= 0;
@@ -98,9 +171,9 @@ export function updateLivingExpedition(ctx: Ctx): void {
     // The flow stops when the player drains or freezes the supply.
     for (const x of [1180, 1315, 1450]) {
       for (let j = 0; j < 4; j++) {
-        const sx = 1190 + ((state.ticks * 3 + x + j * 13) % 215);
+        const sx = WORKS_RESERVOIR.x0 + 5 + ((state.ticks * 3 + x + j * 13) % (WORKS_RESERVOIR.x1 - WORKS_RESERVOIR.x0 - 10));
         let source = -1;
-        for (let y = 682; y < 727; y++) {
+        for (let y = WORKS_RESERVOIR.y0; y <= WORKS_RESERVOIR.y1; y++) {
           const i = ctx.world.idx(sx, y);
           if (ctx.world.types[i] === Cell.Water) { source = i; break; }
         }

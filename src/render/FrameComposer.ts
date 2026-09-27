@@ -36,6 +36,7 @@ import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/MechanismSprites';
 import { drawTeaMachineDecor } from '@/render/TeaMachineDecor';
+import { drawCorpses, hasSpeciesArt } from '@/render/creatures';
 import { BRASS, BRASS_D, BRASS_L, INK, IRON, IRON_D, Pen, STEEL, STEEL_D, STEEL_L, cameraView } from '@/render/sprites/FineArt';
 import {
   drawDigBeam,
@@ -209,6 +210,80 @@ export class FrameComposer implements PixelSurface {
     const pi = (height - 1 - vy) * width + vx, idx = pi * 4;
     overlay.data[idx] = r; overlay.data[idx + 1] = g; overlay.data[idx + 2] = b; overlay.data[idx + 3] = 1;
     overlay.mark(pi);
+  }
+
+  /**
+   * Premultiplied alpha-over. On the GPU overlay the result keeps a partial
+   * alpha, stored as a*0.5 (the shaders read ov.a in (0, 0.5] as "terrain
+   * shows through by 1 - 2a"; 0 stays additive, >0.5 stays opaque). On the
+   * CPU path the terrain is already in the buffer, so blend it directly.
+   */
+  blendFinePx(x: number, y: number, r: number, g: number, b: number, a: number): void {
+    if (a >= 0.999) { this.setFinePx(x, y, r, g, b); return; }
+    if (a <= 0.001) { this.addFinePx(x, y, r, g, b); return; }
+    const overlay = this.overlay, scale = overlay?.scale ?? 1;
+    if (!overlay) {
+      const vx = Math.round(x + this.drawOffsetX) - this.renderCamX,
+        vy = Math.round(y + this.drawOffsetY) - this.renderCamY;
+      if (vx < 0 || vx >= VIEW_W || vy < 0 || vy >= VIEW_H) return;
+      const idx = ((VIEW_H - 1 - vy) * VIEW_W + vx) * 4, d = this.target.pixelData, k = 1 - a;
+      d[idx] = d[idx] * k + r; d[idx + 1] = d[idx + 1] * k + g; d[idx + 2] = d[idx + 2] * k + b; d[idx + 3] = 1;
+      return;
+    }
+    const vx = Math.round((x + this.drawOffsetX - this.renderCamX) * scale);
+    const vy = Math.round((y + this.drawOffsetY - this.renderCamY) * scale);
+    const width = VIEW_W * scale, height = VIEW_H * scale;
+    if (vx < 0 || vx >= width || vy < 0 || vy >= height) return;
+    const pi = (height - 1 - vy) * width + vx, idx = pi * 4, d = overlay.data, k = 1 - a;
+    const dstA = d[idx + 3] > 0.5 ? 1 : d[idx + 3] * 2;
+    const outA = a + dstA * k;
+    d[idx] = r + d[idx] * k; d[idx + 1] = g + d[idx + 1] * k; d[idx + 2] = b + d[idx + 2] * k;
+    d[idx + 3] = outA >= 0.999 ? 1 : outA * 0.5;
+    overlay.mark(pi);
+  }
+
+  /**
+   * One call per creature instead of thousands: the creature rasterizer's
+   * grid is exactly the overlay's, so each block pixel maps to one overlay
+   * pixel with a single rounded origin (identical to per-pixel setFinePx).
+   */
+  blitFine(x0: number, y0: number, w: number, h: number, rgb: Float32Array, a: Float32Array, glow: Float32Array | null): void {
+    const overlay = this.overlay, scale = overlay?.scale ?? 1;
+    if (!overlay || scale === 1) {
+      const s = 1 / scale;
+      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+        const k = j * w + i, al = a[k];
+        const x = x0 + i * s, y = y0 + j * s;
+        if (al >= 0.999) this.setFinePx(x, y, rgb[k * 3], rgb[k * 3 + 1], rgb[k * 3 + 2]);
+        else if (al > 0) this.blendFinePx(x, y, rgb[k * 3], rgb[k * 3 + 1], rgb[k * 3 + 2], al);
+        if (glow && (glow[k * 3] > 0 || glow[k * 3 + 1] > 0 || glow[k * 3 + 2] > 0)) this.addFinePx(x, y, glow[k * 3], glow[k * 3 + 1], glow[k * 3 + 2]);
+      }
+      return;
+    }
+    const vx0 = Math.round((x0 + this.drawOffsetX - this.renderCamX) * scale);
+    const vy0 = Math.round((y0 + this.drawOffsetY - this.renderCamY) * scale);
+    const width = VIEW_W * scale, height = VIEW_H * scale, d = overlay.data;
+    const i0 = Math.max(0, -vx0), i1 = Math.min(w, width - vx0);
+    for (let j = 0; j < h; j++) {
+      const vy = vy0 + j;
+      if (vy < 0 || vy >= height) continue;
+      const row = (height - 1 - vy) * width + vx0;
+      for (let i = i0; i < i1; i++) {
+        const k = j * w + i, al = a[k];
+        const hasGlow = glow !== null && (glow[k * 3] > 0 || glow[k * 3 + 1] > 0 || glow[k * 3 + 2] > 0);
+        if (al <= 0 && !hasGlow) continue;
+        const pi = row + i, idx = pi * 4;
+        if (al >= 0.999) {
+          d[idx] = rgb[k * 3]; d[idx + 1] = rgb[k * 3 + 1]; d[idx + 2] = rgb[k * 3 + 2]; d[idx + 3] = 1;
+        } else if (al > 0) {
+          const kk = 1 - al, dstA = d[idx + 3] > 0.5 ? 1 : d[idx + 3] * 2, outA = al + dstA * kk;
+          d[idx] = rgb[k * 3] + d[idx] * kk; d[idx + 1] = rgb[k * 3 + 1] + d[idx + 1] * kk; d[idx + 2] = rgb[k * 3 + 2] + d[idx + 2] * kk;
+          d[idx + 3] = outA >= 0.999 ? 1 : outA * 0.5;
+        }
+        if (hasGlow) { d[idx] += glow![k * 3]; d[idx + 1] += glow![k * 3 + 1]; d[idx + 2] += glow![k * 3 + 2]; }
+        overlay.mark(pi);
+      }
+    }
   }
 
   addFinePx(x: number, y: number, r: number, g: number, b: number): void {
@@ -903,6 +978,9 @@ export class FrameComposer implements PixelSurface {
       this.positionSprite(ctx.player);
       this.drawContactShadow(ctx, ctx.player.x, ctx.player.y, PLAYER_HALF_W + 1, 0.58);
     }
+    // The dead lie under the living (they are not interpolated: they barely move).
+    this.drawOffsetX = 0; this.drawOffsetY = 0;
+    if (ctx.state.mode === 'play') drawCorpses(this, this.light, ctx, e => this.enemyInRenderView(ctx, e));
     for (const e of ctx.enemies) {
       this.positionSprite(e);
       if (this.enemyInRenderView(ctx, e)) this.drawEnemy(this, this.light, ctx, e);
@@ -1019,6 +1097,9 @@ export class FrameComposer implements PixelSurface {
   /** Per-enemy contact-shadow params: bigger, softer bodies read as heavier
    *  shadows; self-lit fliers (imp/wisp) cast a touch fainter. */
   private drawEnemyContactShadow(ctx: Ctx, e: Enemy): void {
+    // Rigged creatures are grounded by their own planted feet, tails and
+    // bellies; a shadow disc under the body read as a hole between the legs.
+    if (hasSpeciesArt(e.kind)) return;
     const def = ctx.enemyCtl.defs[e.kind];
     const halfW = def?.halfW ?? 10;
     const faint = e.kind === 'imp' || e.kind === 'wisp' ? 0.72 : 1;

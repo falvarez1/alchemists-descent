@@ -20,6 +20,7 @@ import { resetCombatTransients } from '@/core/runtimeState';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { bloodColor, packRGB, smokeColor } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
+import { stepPlayerCostume } from '@/entities/playerCostume';
 
 const REVIEW_STATUS_FRAMES = 3600;
 const CLIMB_FACE_REACHES = [PLAYER_HALF_W + 1, PLAYER_HALF_W + 2, PLAYER_HALF_W + 3, PLAYER_HALF_W + 4];
@@ -256,6 +257,8 @@ export class PlayerControl implements PlayerControlApi {
   private prevGrabHeld = false;
   /** Sustained levitation frames (drives the thrust response curve). */
   private levitFrames = 0;
+  /** The wand dropped at death (a rigid body), removed with the corpse. */
+  private deathWand: RigidBody | null = null;
   /** Last half-turn of the stride wheel that produced a footstep. */
   private lastStrideStep = 0;
   /** Consecutive frames standing still (arms the idle fidget). */
@@ -1009,6 +1012,19 @@ export class PlayerControl implements PlayerControlApi {
       });
       this.corpseSettled = false;
       this.corpseT = 0;
+      // The wand leaves his hand: a real stick that clatters, rolls, and whose
+      // light gutters out (render/player/AlchemistArt drawDroppedWand).
+      const tip = ctx.spells?.wandTip?.();
+      if (tip && ctx.rigidBodies.spawn) {
+        const hx = player.x + player.facing * 3.5, hy = player.y - 7;
+        const ang = Math.atan2(tip.y - hy, tip.x - hx);
+        this.deathWand = ctx.rigidBodies.spawn({ kind: 'box', halfW: 5.4, halfH: 0.45 }, hx + Math.cos(ang) * 3, hy + Math.sin(ang) * 3, {
+          density: 0.45, friction: 0.6, restitution: 0.35, angle: ang,
+          vx: player.vx * 0.9 + player.facing * 0.9, vy: Math.min(player.vy, 0) - 1.9, va: player.facing * 0.32,
+          tag: 'player-corpse-wand', color: packRGB(92, 58, 30),
+          onTerrainHit: (_b, speed) => { if (speed > 0.8) ctx.audio.tone(1500 + speed * 90, 900, 0.05, 'triangle', 0.05); },
+        });
+      }
     }
     ctx.audio.squelch();
     ctx.audio.boom(10);
@@ -1045,6 +1061,9 @@ export class PlayerControl implements PlayerControlApi {
 
   /** Remove every connected death part and the hat on respawn / death-clear. */
   private clearCorpse(ctx: Ctx): void {
+    if (this.deathWand) ctx.rigidBodies.remove(this.deathWand);
+    this.deathWand = null;
+    ctx.player.costume = undefined;
     if (this.corpse) ctx.rigidBodies.remove(this.corpse);
     this.corpse = null;
     this.corpseSettled = false;
@@ -1161,7 +1180,9 @@ export class PlayerControl implements PlayerControlApi {
     const player = ctx.player;
     const world = ctx.world;
     this.tickCorpse(ctx); // runs while dead too (watches the ragdoll settle)
+    stepPlayerCostume(ctx, player, ctx.rigidBodies?.playerRagdoll ?? null); // cloth + hat, alive or fallen
     if (ctx.state.mode !== 'play' || player.dead) return;
+    player.levitating = false;
     if (this.swinging) { this.updateSwing(ctx); return; } // pendulum replaces normal movement
     if (this.kickCooldownT > 0) this.kickCooldownT--;
 
@@ -1877,6 +1898,7 @@ export class PlayerControl implements PlayerControlApi {
         }
       }
       if (!levitating) this.levitFrames = 0;
+      player.levitating = levitating;
       if (player.grounded || player.inLiquid) player.levit = Math.min(player.maxLevit, player.levit + 1.7);
 
       // DIVE SLAM (press S in the air): commit to the fall. The body locks
@@ -2436,6 +2458,7 @@ export class PlayerControl implements PlayerControlApi {
     if (player.kickT > 0) player.kickT--;
     if (player.staggerT > 0) player.staggerT--;
     if (player.swapT > 0) player.swapT--;
+    if ((player.throwT ?? 0) > 0) player.throwT = (player.throwT ?? 0) - 1;
     player.prevGrounded = player.grounded;
 
     // Occasional blink

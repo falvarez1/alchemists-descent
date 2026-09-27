@@ -28,6 +28,11 @@ export const WORKS_COLD_LOCK = {
   basin: { x0: 302, y0: 333, x1: 327, y1: 341 },
 } as const;
 
+/** The Breathing Chamber's sunken reservoir (water rows) under its grate. */
+export const WORKS_RESERVOIR = { x0: 1185, y0: 732, x1: 1409, y1: 766 } as const;
+/** The Silt Garden's sunken pool (water rows). */
+export const WORKS_GARDEN_POOL = { x0: 418, y0: 826, x1: 550, y1: 849 } as const;
+
 export function worksRoomAt(x: number, y: number): (typeof WORKS_ROOMS)[number] {
   let best: (typeof WORKS_ROOMS)[number] = WORKS_ROOMS[0];
   let distance = Infinity;
@@ -96,7 +101,10 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   tunnel(1432, 450, 1415, 590);
   tunnel(1105, 715, 990, 760);
   tunnel(700, 760, 575, 825);
-  tunnel(430, 815, 490, 1008);
+  // The garden's way down to the Undertow opens at its far west end, past the
+  // return shaft. Its old mouth sat under the garden pool, which drained the
+  // pool (beaching its Rillback) and flooded the Undertow within seconds.
+  tunnel(190, 815, 330, 1008);
   tunnel(875, 1008, 980, 1008);
   // A return climb reconnects the refuge to the intake; alternating landings
   // keep it traversable with the starting jump, climb and levitation budget.
@@ -133,30 +141,46 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
     rect(x, 480, 8, 90);
     rect(x - 38, 650, 60, 8, Cell.Metal, copper);
   }
-  rect(1185, 683, 225, 44, Cell.Water, packRGB(40, 83, 90));
+  // The vents drink from a sunken reservoir under a riveted grate. Water
+  // stamped loose on the chamber floor ran down the refuge tunnel as soon as
+  // the simulation woke: the "warm, dry" refuge flooded (its crate and the
+  // alchemist were swept west) and the vents soon ran dry. The grate's gaps
+  // still let Frost Shard, a flask or a thrown bottle reach the water.
+  rect(WORKS_RESERVOIR.x0, WORKS_RESERVOIR.y0 - 1, WORKS_RESERVOIR.x1 - WORKS_RESERVOIR.x0 + 1, WORKS_RESERVOIR.y1 - WORKS_RESERVOIR.y0 + 2);
+  rect(WORKS_RESERVOIR.x0, WORKS_RESERVOIR.y0, WORKS_RESERVOIR.x1 - WORKS_RESERVOIR.x0 + 1, WORKS_RESERVOIR.y1 - WORKS_RESERVOIR.y0 + 1,
+    Cell.Water, packRGB(40, 83, 90));
+  for (let x = WORKS_RESERVOIR.x0; x <= WORKS_RESERVOIR.x1; x++) {
+    if ((x - WORKS_RESERVOIR.x0) % 8 < 6) put(x, WORKS_RESERVOIR.y0 - 2, Cell.Metal, packRGB(78, 84, 80));
+    else put(x, WORKS_RESERVOIR.y0 - 2, Cell.Empty, EMPTY_COLOR);
+  }
   // The refuge is a deliberate patch of warm, dry, readable ground.
   rect(767, 744, 160, 16, Cell.Stone, packRGB(73, 70, 57));
-  // Two worn steps on each side turn the refuge plinth into an invitation.
-  // A sheer body-height curb at both entrances used to snag ordinary running
-  // and made the safe room feel less safe than the pressure chamber outside.
-  rect(753, 750, 14, 10, Cell.Stone, packRGB(69, 68, 57));
-  rect(739, 755, 14, 5, Cell.Stone, packRGB(66, 66, 56));
-  rect(927, 750, 14, 10, Cell.Stone, packRGB(69, 68, 57));
-  rect(941, 755, 14, 5, Cell.Stone, packRGB(66, 66, 56));
+  // Worn steps on each side turn the refuge plinth into an invitation: four
+  // even 4-cell rises from the floor (760) to the plinth top (744). The old
+  // pair ended with a 6-cell riser, one more than a walking body steps up, so
+  // running in from either side stopped dead at the plinth edge.
+  for (const [x, top, color] of [[757, 748, packRGB(70, 69, 58)], [747, 752, packRGB(69, 68, 57)], [737, 756, packRGB(66, 66, 56)],
+    [927, 748, packRGB(70, 69, 58)], [937, 752, packRGB(69, 68, 57)], [947, 756, packRGB(66, 66, 56)]] as const) {
+    rect(x, top, 10, 760 - top, Cell.Stone, color);
+  }
   rect(807, 743, 9, 2, Cell.Wood, packRGB(117, 79, 41));
   // Pale, walk-through moss marks the required tome without putting a tiny
   // collision curb in the safe room's main path.
   rect(885, 743, 15, 1, Cell.Moss, packRGB(124, 174, 183));
-  rect(280, 794, 210, 30, Cell.Water, packRGB(48, 98, 93));
-  // The garden pool is stamped after the shaft and would otherwise erase its
-  // lowest rung. A broad, dry dock makes the start of the backtrack explicit.
+  // The garden pool is a sunken basin between the dry foot of the return shaft
+  // and the refuge tunnel, so it keeps its water (and its Rillback). Standing
+  // loose on the floor it spread across the room and poured into the old
+  // Undertow chute beneath it.
+  rect(WORKS_GARDEN_POOL.x0, WORKS_GARDEN_POOL.y0 - 1, WORKS_GARDEN_POOL.x1 - WORKS_GARDEN_POOL.x0 + 1, WORKS_GARDEN_POOL.y1 - WORKS_GARDEN_POOL.y0 + 2);
+  rect(WORKS_GARDEN_POOL.x0, WORKS_GARDEN_POOL.y0, WORKS_GARDEN_POOL.x1 - WORKS_GARDEN_POOL.x0 + 1, WORKS_GARDEN_POOL.y1 - WORKS_GARDEN_POOL.y0 + 1,
+    Cell.Water, packRGB(48, 98, 93));
+  // A broad, dry dock at the shaft foot makes the start of the backtrack explicit.
   rect(330, 788, 29, 5, Cell.Metal, packRGB(90, 75, 53));
   rect(267, 780, 42, 7, Cell.Stone, packRGB(78, 89, 80));
   rect(1030, 983, 65, 27, Cell.Sand, packRGB(126, 110, 74));
   rect(1130, 996, 125, 14, Cell.Wood, packRGB(85, 64, 40));
   // Visible detours offer new spell verbs before the refuge's wand workbench.
   rect(244, 260, 42, 5, Cell.Wood, packRGB(100, 79, 50));
-  rect(1090, 278, 70, 6, Cell.Stone, packRGB(64, 87, 78));
   rect(638, 950, 70, 6, Cell.Wood, packRGB(87, 72, 49));
 
   // TWO QUIET LESSONS IN THE INTAKE. Neither is on the forced route and
@@ -208,8 +232,13 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
       }
     }
   }
-  for (const [x, y] of [[275, 311], [505, 390], [992, 447], [1330, 386], [929, 738], [236, 820]]) {
-    rect(x, y - 3, 6, 3, Cell.Glowshroom, packRGB(105, 175, 140));
+  // Glowshroom clumps grow ON something: each settles onto the first solid
+  // surface under its spot (several authored heights had drifted 3-12 cells
+  // above floors that later passes moved, leaving clumps hanging in the air).
+  for (const [x, y] of [[275, 311], [505, 396], [992, 447], [1330, 386], [918, 741], [262, 820]]) {
+    let floor = y - 3;
+    while (floor < HEIGHT - 9 && !blocksEntity(world.type(x + 2, floor))) floor++;
+    rect(x, floor - 3, 6, 3, Cell.Glowshroom, packRGB(105, 175, 140));
   }
   dressWorksHabitat(world, seed);
   const valveBody: Array<[number, number]> = [];
@@ -297,7 +326,7 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
     waystones: [{ x: 192, y: 314, lit: true }, { x: 857, y: 743, lit: true }],
     portal: { x: 1400, y: 1008, open: false }, cauldron: null,
     pickups: [pickup('key', TEA.receiver.x, TEA.receiver.y), pickup('tome', 892, 735, { card: 'frostshard' }),
-      pickup('tome', 265, 252, { card: 'bounce' }), pickup('tome', 1125, 270, { card: 'heavy' }),
+      pickup('tome', 265, 252, { card: 'bounce' }), pickup('tome', 1402, 407, { card: 'heavy' }),
       pickup('tome', 672, 942, { card: 'double' }),
       pickup('heart', 820, 735), pickup('goldpile', 1470, 722, { amount: 60 }),
       pickup('goldpile', 1063, 978, { amount: 30 }),
@@ -308,8 +337,8 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
       { kind: 'rillback', x: 707, y: 413, sourceId: 'works-rillback-sluice' },
       { kind: 'weaver', x: 1280, y: 386, sourceId: 'works-weaver-gallery' },
       { kind: 'weaver', x: 1170, y: 995, sourceId: 'works-weaver-undertow' },
-      { kind: 'rillback', x: 405, y: 810, sourceId: 'works-rillback-garden' },
-      { kind: 'rootloper', x: 542, y: 816, sourceId: 'works-rootloper-garden' },
+      { kind: 'rillback', x: 484, y: 842, sourceId: 'works-rillback-garden' },
+      { kind: 'rootloper', x: 610, y: 818, sourceId: 'works-rootloper-garden' },
       { kind: 'stonemaw', x: 755, y: 1008, sourceId: 'works-stonemaw-undertow' },
     ],
     placedPrefabs: [...WORKS_ROOMS.map(r => ({ id: `works-${r.id}`, x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.floor })),

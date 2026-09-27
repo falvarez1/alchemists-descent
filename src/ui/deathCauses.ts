@@ -142,6 +142,74 @@ const DEATH_LINES: Record<string, string[]> = {
     'A status effect finished the job quietly.',
     'The aftereffect got the last word.',
   ],
+  'stonemaw-bite': [
+    'The Stone Maw closed its jaw. The cave digests slowly.',
+    'Swallowed by a mouth that looked like the floor.',
+  ],
+  'rillback-bite': [
+    'A Rillback came out of the water with its mouth open.',
+    'The pool had teeth after all.',
+  ],
+  'rillback-flop': [
+    'Flattened by a Rillback flailing on dry stone.',
+    'A stranded Rillback thrashed and you were in the way.',
+  ],
+  'rootloper-lash': [
+    'A Rootloper whipped its roots through you.',
+    'The undergrowth lashed back.',
+  ],
+  'steam-pressure': [
+    'Scalded by a pressure vent. The gauge did warn you.',
+    'Steamed open by the works.',
+  ],
+};
+
+/**
+ * The title card's headline, by cause. "You fell." only when the ground did
+ * it; everything else names what actually happened.
+ */
+const DEATH_TITLES: Record<string, string> = {
+  unknown: 'You died.',
+  probe: 'Experiment over.',
+  impact: 'You fell.',
+  fire: 'You burned.',
+  burning: 'You burned.',
+  'oiled-fire': 'You burned.',
+  'hostile-fireball': 'You burned.',
+  'colossus-fireball': 'You burned.',
+  lava: 'You melted.',
+  acid: 'You dissolved.',
+  acidglob: 'You dissolved.',
+  'acidslime-bite': 'You dissolved.',
+  toxic: 'You were poisoned.',
+  electrocution: 'The current took you.',
+  'wet-electrocution': 'The current took you.',
+  lightning: 'Struck down.',
+  explosion: 'You were blown apart.',
+  'self-explosion': 'You were blown apart.',
+  'barrel-explosion': 'You were blown apart.',
+  gunpowder: 'You were blown apart.',
+  bomber: 'You were blown apart.',
+  'colossus-death': 'You were blown apart.',
+  frostbolt: 'You froze.',
+  'slime-bite': 'You were taken.',
+  'bat-bite': 'You were taken.',
+  'weaver-bite': 'You were taken.',
+  'leviathan-bite': 'You were taken.',
+  'leviathan-graze': 'You were taken.',
+  'stonemaw-bite': 'You were taken.',
+  'rillback-bite': 'You were taken.',
+  'weaver-needle': 'You were pinned.',
+  'leviathan-water': 'You were swept away.',
+  'golem-slam': 'You were crushed.',
+  'colossus-slam': 'You were crushed.',
+  'golem-rock': 'You were crushed.',
+  'powder-mage-debris': 'You were crushed.',
+  'hostile-debris': 'You were crushed.',
+  'rillback-flop': 'You were crushed.',
+  'rootloper-lash': 'You were struck down.',
+  'steam-pressure': 'You were scalded.',
+  status: 'You succumbed.',
 };
 
 function normalizeDeathSource(source: string | null | undefined): string {
@@ -153,6 +221,10 @@ export function deathCauseLine(source: string | null | undefined, frame = 0): st
   const key = normalizeDeathSource(source);
   const lines = DEATH_LINES[key] ?? DEATH_LINES.unknown;
   return lines[Math.abs(Math.floor(frame)) % lines.length];
+}
+
+export function deathTitle(source: string | null | undefined): string {
+  return DEATH_TITLES[normalizeDeathSource(source)] ?? DEATH_TITLES.unknown;
 }
 
 export function knownDeathCauseSources(): string[] {

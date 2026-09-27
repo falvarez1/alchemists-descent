@@ -49,6 +49,20 @@ describe('living creature perception', () => {
     expect(mind.intent).toBe('investigate');
   });
 
+  it('a Stone Maw feels a still, dark player a few body lengths away, but not through rock', () => {
+    const world = new World(240, 120);
+    const enemy = creature('stonemaw');
+    ensureCreatureMind(enemy, 7).facing = -1; // facing away
+    const still = { x: 85, y: 64, vx: 0, dead: false, crouching: true, light: 0 };
+    for (let tick = 0; tick <= 40; tick++) tickCreatureMind(world, enemy, still, [], tick, 7);
+    expect(enemy.mind?.visible).toBe(true);
+    expect(enemy.mind?.intent).toBe('hunt');
+    const hidden = creature('stonemaw');
+    for (let y = 0; y < world.height; y++) world.replaceCellAt(world.idx(62, y), Cell.Stone, 0);
+    for (let tick = 0; tick <= 40; tick++) tickCreatureMind(world, hidden, still, [], tick, 7);
+    expect(hidden.mind?.visible).toBe(false);
+  });
+
   it('retains individual identity and satiation through a save without stale clock deadlines', () => {
     const enemy = creature();
     const mind = ensureCreatureMind(enemy, 123);
@@ -92,6 +106,43 @@ describe('articulated body and render ownership', () => {
     swim(60);
     expect(enemy.y + enemy.fy).toBeGreaterThan(trappedY + 20);
     expect(maxLink).toBeLessThanOrEqual(4.24);
+  });
+
+  it('a beached eel hangs from nothing: out of water its box, not its chain, is authoritative', () => {
+    // The reported bug: the sluice drained, the eel's chain was pinned against
+    // the reservoir wall, and the head write-back held its box in mid-air.
+    const world = new World(200, 160), enemy = creature('rillback');
+    for (let y = 0; y < world.height; y++) for (let x = 60; x < 66; x++) world.replaceCellAt(world.idx(x, y), Cell.Metal, 0);
+    enemy.x = 73; enemy.y = 80; enemy.rillWet = 0;
+    // A vertical chain snagged along the wall, head high.
+    enemy.body = createChain(73, 60, 1);
+    enemy.body.nodes.forEach((node, i) => { node.x = node.previousX = 70; node.y = node.previousY = 60 + i * 4; });
+    const ctx = { world, state: { frameCount: 0 } } as unknown as Ctx;
+    for (let tick = 0; tick < 30; tick++) {
+      enemy.y += 1; ctx.state.frameCount++;
+      tickCreaturePose(ctx, enemy);
+      expect(enemy.y).toBe(81 + tick);
+      expect(enemy.x).toBe(73);
+    }
+    // The chain came down with it.
+    expect(enemy.body.nodes[0].y).toBeCloseTo(enemy.y - 4, 5);
+  });
+
+  it('a swimming eel is never written into terrain by its tethered head', () => {
+    const world = new World(200, 160), enemy = creature('rillback');
+    for (let y = 1; y < 159; y++) for (let x = 1; x < 199; x++) world.replaceCellAt(world.idx(x, y), Cell.Water, 0);
+    enemy.x = 100; enemy.y = 84; enemy.rillWet = 1; enemy.body = createChain(100, 80);
+    const tail = enemy.body.nodes.at(-1)!;
+    for (let y = tail.y - 3; y <= tail.y + 3; y++) for (let x = tail.x - 3; x <= tail.x + 3; x++) world.replaceCellAt(world.idx(Math.floor(x), Math.floor(y)), Cell.Ice, 0);
+    // Pretend the box cannot fit anywhere the head is held.
+    const ctx = { world, state: { frameCount: 0 }, enemyCtl: { defs: ENEMY_DEFS },
+      physics: { entityFree: () => false } } as unknown as Ctx;
+    for (let tick = 0; tick < 60; tick++) {
+      enemy.vx = .65; enemy.fx += enemy.vx; ctx.state.frameCount++;
+      while (enemy.fx >= 1) { enemy.x++; enemy.fx--; }
+      tickCreaturePose(ctx, enemy);
+    }
+    expect(enemy.x).toBeGreaterThan(125);
   });
 
   it('expresses remembered attention, feeding and injury without an omniscient target', () => {

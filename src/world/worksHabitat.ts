@@ -125,7 +125,7 @@ export function dressWorksHabitat(world: World, seed: number): void {
     }
   }
   // Soft fungal shelves turn the garden bank into a habitat for the Root Loper.
-  for (let x = 476; x < 598; x++) for (let y = 816; y < 826; y++) {
+  for (let x = 556; x < 640; x++) for (let y = 816; y < 826; y++) {
     if (world.type(x, y) === Cell.Empty && y > 819 + Math.sin(x * .13) * 3) put(x, y, Cell.Fungus, packRGB(79, 105, 66));
   }
 }

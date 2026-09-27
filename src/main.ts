@@ -1,5 +1,6 @@
 import '@/styles/main.css';
 import '@/styles/living-descent.css';
+import '@/styles/menus.css';
 import { Game } from '@/game/Game';
 import { installAuthorLink, resolveAuthorLinkConfig } from '@/app/AuthorLink';
 import { AuthorLinkIndicator } from '@/app/AuthorLinkIndicator';

@@ -258,7 +258,9 @@ describe('minimap POI markers', () => {
     expect(pois.map((poi) => poi.id)).toEqual(expect.arrayContaining(['mechanism:3', 'mechanism:4']));
 
     const leverPoi = pois.find((poi) => poi.id === 'mechanism:3')!;
-    expect(leverPoi.title).toBe('Lever #3');
+    // Player-facing names; the id stays in the popover's fields.
+    expect(leverPoi.title).toBe('Lever');
+    expect(leverPoi.fields).toEqual(expect.arrayContaining([{ label: 'id', value: '3' }]));
     expect(leverPoi.fields).toEqual(expect.arrayContaining([{ label: 'target', value: '2' }]));
 
     const sensorPoi = pois.find((poi) => poi.id === 'mechanism:4')!;

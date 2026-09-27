@@ -18,21 +18,27 @@ try {
   await page.locator('[data-view="creatures"]').click();
   assert.equal(await page.locator('.capture').count(), 16);
   report.creatures = await page.locator('#library-data').evaluate(e => JSON.parse(e.textContent).creatures);
-  assert.ok(report.creatures.every(c => c.frames > 20 && c.loop === 0 && c.poses.length >= 2));
+  assert.ok(report.creatures.every(c => c.frames > 20 && c.loop === 0 && c.poses.length >= 2 && c.actions?.length === c.poses.length));
   for (const creature of report.creatures) {
     const response = await page.request.head(new URL(`screenshots/living-descent/${creature.gif}`, base).href);
     assert.equal(response.status(), 200, `${creature.name} has a downloadable GIF`);
+    for (const action of creature.actions) {
+      const clip = await page.request.head(new URL(`screenshots/living-descent/${action.gif}`, base).href);
+      assert.equal(clip.status(), 200, `${creature.name} · ${action.name} has its own GIF`);
+    }
   }
   await page.screenshot({ path: `${output}/gallery-index-creatures.png` });
   await page.locator('#search').fill('weaver');
   assert.equal(await page.locator('.capture').count(), 1);
-  await page.getByRole('button', { name: 'Play poses for Weaver', exact: true }).click();
-  await page.locator('#media img').evaluate(img => img.decode());
-  assert.match(await page.locator('#media img').getAttribute('src'), /weaver\.gif$/);
+  await page.getByRole('button', { name: 'Play actions for Weaver', exact: true }).click();
+  const weaver = report.creatures.find(c => c.id === 'weaver');
+  assert.equal(await page.locator('#media .action-grid img').count(), weaver.actions.length, 'Every Weaver action plays at once');
+  await page.locator('#media img').first().evaluate(img => img.decode());
+  assert.match(await page.locator('#media img').first().getAttribute('src'), /weaver\/idle\.gif$/);
   await page.screenshot({ path: `${output}/gallery-index-player.png` });
   await page.keyboard.press('Escape');
   // Native dialog close events are queued after the key's default action.
-  await page.locator('#media img').waitFor({ state: 'detached', timeout: 2000 });
+  await page.locator('#media img').first().waitFor({ state: 'detached', timeout: 2000 });
   assert.equal(await page.locator('#media img').count(), 0, 'Closing releases the playing GIF');
   await page.locator('#search').fill('nothing-matches-this');
   assert.match(await page.locator('.empty').innerText(), /No matches/);

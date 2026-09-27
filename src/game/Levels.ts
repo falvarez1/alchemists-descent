@@ -956,7 +956,7 @@ export class Levels implements LevelsApi {
         if (!portal.open) {
           portal.open = true;
           ctx.audio.portalWhoosh();
-          ctx.events.emit('toast', { text: 'THE PORTAL AWAKENS' });
+          ctx.events.emit('toast', { text: runtime.living ? 'The bell rings in the lock. The lower gate opens.' : 'THE PORTAL AWAKENS' });
         }
         const next = runtime.def.nextLevelId;
         if (next) {
@@ -974,7 +974,11 @@ export class Levels implements LevelsApi {
       }
       if (near && (!runtime.keyTaken || !engineReady) && ctx.state.frameCount % 90 === 0) {
         ctx.events.emit('toast', {
-          text: runtime.living ? 'Restart the Bell & Tea Engine above the Intake. Bring its brass bell here.' : 'SEALED — THE GOLDEN KEY IS MISSING',
+          text: runtime.living
+            ? (runtime.living.tea?.completed
+              ? 'Sealed. Bring the brass bell from the end of the engine’s catwalk.'
+              : 'Sealed. The gate answers to a brass bell, and only the Bell & Tea Engine above the Intake makes one.')
+            : 'SEALED — THE GOLDEN KEY IS MISSING',
         });
       }
     }
@@ -3144,7 +3148,9 @@ export class Levels implements LevelsApi {
     if (runtime.living) {
       // Authored supplies sit beyond the safe movement apron. Random crates
       // beside the intake stone could overlap the arrival body and trap it.
-      drop(290, 314, 5); drop(1325, 389, 5); drop(904, 743, 4);
+      // (The refuge keeps no crate: on the plinth it blocked the east entrance
+      // and the frost shrine, and the refuge waystone is lit from the start.)
+      drop(290, 314, 5); drop(1325, 389, 5);
       return;
     }
     // 1-2 crates beside each waystone — guaranteed checkpoint fuel

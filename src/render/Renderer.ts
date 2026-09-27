@@ -7,6 +7,7 @@ import { RENDER_H, RENDER_W, VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx, RenderSettings } from '@/core/types';
 import { chooseRenderBackend } from '@/render/backendSelection';
 import { GpuCompose } from '@/render/ComposeShader';
+import { readWebGlGpu, type GpuInfo } from '@/render/gpuInfo';
 import { PostFx } from '@/render/PostFx';
 import { cameraPresentationOffset } from '@/render/presentation';
 import { WebGpuRenderBackend } from '@/render/WebGpuRenderBackend';
@@ -53,6 +54,7 @@ class WebGLRenderBackend implements RendererBackend {
   private gpu: GpuCompose | null = null;
   /** True while the current frame was composed by the shader path. */
   private gpuFrame = false;
+  private gpuInfo: GpuInfo | null = null;
 
   constructor(
     holder: HTMLElement,
@@ -261,6 +263,7 @@ class WebGLRenderBackend implements RendererBackend {
         lostCount: this.contextLostCount,
         restoredCount: this.contextRestoredCount,
       },
+      gpu: this.gpuInfo ??= readWebGlGpu(this.renderer.getContext()),
     };
   }
 

@@ -1,4 +1,5 @@
 import type { BackdropLayerId, Ctx, RenderBackendMode, RenderSettings } from '@/core/types';
+import type { GpuInfo } from '@/render/gpuInfo';
 
 /**
  * Render-layer interfaces. Sprites, the frame composer, lighting, background,
@@ -116,6 +117,8 @@ export interface RenderBackendStatus {
   features: RenderBackendFeatureFlags;
   webgpu: RenderBackendWebGpuStatus;
   webgl: RenderBackendWebGlStatus;
+  /** The adapter the browser actually gave us (integrated vs discrete). */
+  gpu?: GpuInfo;
 }
 
 /** The two pixel primitives every sprite/particle/beam renderer draws with. */
@@ -126,6 +129,19 @@ export interface PixelSurface {
   setFinePx?(wx: number, wy: number, r: number, g: number, b: number): void;
   /** Add light at the same fine presentation resolution. */
   addFinePx?(wx: number, wy: number, r: number, g: number, b: number): void;
+  /**
+   * Premultiplied alpha-over at fine resolution: the terrain (and anything
+   * already drawn) shows through by (1 - a). Gel, jelly bells and wing
+   * membranes use it; surfaces without it fall back to an opaque setFinePx.
+   */
+  blendFinePx?(wx: number, wy: number, r: number, g: number, b: number, a: number): void;
+  /**
+   * Bulk write of a fine-resolution block whose pixel grid is exactly the
+   * surface's (`pixelStep`): origin (x0, y0) in world units, `w`×`h` pixels.
+   * `rgb` holds premultiplied colour, `a` the coverage (0 skip, 1 opaque,
+   * between = alpha-over), `glow` optional additive light (or null).
+   */
+  blitFine?(x0: number, y0: number, w: number, h: number, rgb: Float32Array, a: Float32Array, glow: Float32Array | null): void;
   /** Write one RGB pixel (alpha 1) at world coords; camera-relative, view-culled. */
   setPx(wx: number, wy: number, r: number, g: number, b: number): void;
   /** Additively blend RGB at world coords (alpha untouched). */

@@ -470,10 +470,12 @@ void main() {
     }
   }
 
-  // Overlay combine: setPx (a=1) replaced terrain above; addPx is additive.
+  // Overlay combine: setPx (a=1) replaced terrain above; addPx is additive
+  // (a=0); blendFinePx stores a premultiplied partial alpha as a*0.5 in
+  // (0, 0.5], so the terrain shows through by 1 - 2a (creature gel/jelly).
   // Re-apply the world-floor mask after overlay combine so sprites/particles
   // cannot leak into the camera void below small or chunked worlds.
-  vec3 outColor = c + ov.rgb;
+  vec3 outColor = c * (1.0 - clamp(ov.a * 2.0, 0.0, 1.0)) + ov.rgb;
   if (uCam.y + vy >= ${HEIGHT}) outColor = vec3(0.0);
   gl_FragColor = vec4(outColor, 1.0);
 

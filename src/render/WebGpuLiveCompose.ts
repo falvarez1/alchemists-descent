@@ -626,7 +626,8 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
     }
   }
 
-  var outColor = c + ov.rgb;
+  // Partial overlay alpha (0, 0.5] = premultiplied alpha-over (see ComposeShader).
+  var outColor = c * (1.0 - clamp(ov.a * 2.0, 0.0, 1.0)) + ov.rgb;
   if (camY + vy >= ${HEIGHT}) {
     outColor = vec3<f32>(0.0);
   }

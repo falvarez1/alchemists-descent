@@ -46,6 +46,7 @@ import type {
 } from '@/render/pixels';
 import { WebGpuComposeBridge, webGpuComposeUnrequestedStatus } from '@/render/WebGpuComposeBridge';
 import { WebGpuDeviceLifecycle } from '@/render/WebGpuDeviceLifecycle';
+import { describeGpu, type GpuInfo } from '@/render/gpuInfo';
 import { cameraPresentationOffset } from '@/render/presentation';
 import { WebGpuLiveCompose } from '@/render/WebGpuLiveCompose';
 
@@ -63,6 +64,7 @@ interface ThreeGpuBackendProbe {
     features?: Set<string>;
     limits?: Record<string, number>;
     lost?: Promise<{ reason?: string; message?: string }>;
+    adapterInfo?: { vendor?: string; architecture?: string; description?: string };
     destroy?(): void;
     queue?: { onSubmittedWorkDone?(): Promise<void> };
   };
@@ -694,7 +696,15 @@ export class WebGpuRenderBackend implements RendererBackend {
         lostCount: 0,
         restoredCount: 0,
       },
+      gpu: this.gpuInfo(),
     };
+  }
+
+  /** GPUDevice.adapterInfo names the adapter the browser picked (Chrome 131+). */
+  private gpuInfo(): GpuInfo | undefined {
+    const info = (this.renderer.backend as unknown as ThreeGpuBackendProbe).device?.adapterInfo;
+    if (!info) return undefined;
+    return describeGpu([info.vendor, info.description || info.architecture].filter(Boolean).join(' '));
   }
 
   render(ctx: Ctx): void {

@@ -6,6 +6,7 @@ import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDef, Enemy
 import { tickWeaverLocomotion, weaverKnockSync, weaverLeap } from '@/entities/weaverLocomotion';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
 export { ENEMY_DEFS } from '@/content/enemyDefs';
+import { addCorpse, updateCorpses } from '@/creatures/corpses';
 import { createDefaultStatus, rollCatchFire, sampleAndTickStatus } from '@/entities/status';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { LEVIATHAN_REWARD_POOL, randomCard } from '@/content/cardRewardPools';
@@ -243,6 +244,8 @@ export class Enemies implements EnemyControlApi {
   }
 
   private readonly cues: CreatureCue[] = [];
+  /** A wall-slam in progress: whatever dies now is paste, not a corpse. */
+  private gibbing = false;
   private lastImpactFeedback = -1000;
 
   private cue(x: number, y: number, radius: number, strength: number, kind: CreatureCue['kind']): void {
@@ -460,6 +463,11 @@ export class Enemies implements EnemyControlApi {
     e.flash = 6;
     e.vx += kx || 0;
     e.vy += ky || 0;
+    // The rig answers the blow physically on its next tick (creatures/species).
+    e.hitKx = kx || 0;
+    e.hitKy = ky || 0;
+    e.hitAt = ctx.state.frameCount;
+    e.hitAmount = amount;
     if (amount >= 7 && Math.abs(kx) + Math.abs(ky) > .25 && ctx.state.frameCount - this.lastImpactFeedback >= 5 &&
         Math.hypot(e.x - ctx.player.x, e.y - ctx.player.y) < 240) {
       this.lastImpactFeedback = ctx.state.frameCount;
@@ -632,7 +640,8 @@ export class Enemies implements EnemyControlApi {
     e.fy = 0;
     e.vx = 0;
     e.vy = 0;
-    this.damage(e, SLAM_DMG_BASE + speed * SLAM_DMG_PER_SPEED, -nx * 0.6, -ny * 0.6);
+    this.gibbing = true;
+    try { this.damage(e, SLAM_DMG_BASE + speed * SLAM_DMG_PER_SPEED, -nx * 0.6, -ny * 0.6); } finally { this.gibbing = false; }
   }
 
   private removeEnemyAt(index: number): Enemy | undefined {
@@ -686,6 +695,7 @@ export class Enemies implements EnemyControlApi {
       });
       splatterStain(ctx.world, e.x, e.y - 5, 12);
       this.seedGorePool(e.x, e.y - 2, 8);
+      addCorpse(ctx, e, kx, ky);
       this.dropBounty(e, def);
       const runtime = ctx.levels.current;
       if (runtime && ctx.state.mode === 'play') {
@@ -779,10 +789,12 @@ export class Enemies implements EnemyControlApi {
       // ...and a real wet pool at the feet that the spray keeps feeding
       this.seedGorePool(e.x, e.y - 2, e.kind === 'golem' ? 5 : e.kind === 'bat' ? 1 : 3);
     }
-    // Substantial bodies leave physical remains: a few gore-coloured chunks
-    // tumble off with the death impulse, bounce, and settle (Rain World's
-    // physical death). Bosses/bombers returned early with their own deaths.
-    this.spawnDeathChunks(e, def, kx, ky);
+    // Rain World's physical death: the body stays — the rig goes limp, falls,
+    // drapes and later melts back into the grid (creatures/corpses). A foe
+    // smashed to paste against a wall leaves no body; the old gore chunks
+    // remain the fallback when there is no corpse to keep.
+    const kept = !this.gibbing && addCorpse(ctx, e, kx, ky);
+    if (!kept) this.spawnDeathChunks(e, def, kx, ky);
     // A felled foe goes out in the colour of whatever was killing it.
     this.elementalDeathFlourish(e, def);
     this.dropBounty(e, def);
@@ -1629,6 +1641,35 @@ export class Enemies implements EnemyControlApi {
 
   /** True if the cell just ahead of a grounded walker (foot ±1, in dir) is lethal
    *  to it — used so it refuses to voluntarily step into lava/fire/acid. */
+  /** True when the ground ends just ahead (a drop deeper than a hop). */
+  private ledgeAhead(e: Enemy, def: EnemyDef, dir: number): boolean {
+    const x = e.x + dir * (def.halfW + 2);
+    for (let dy = 1; dy <= 7; dy++) if (!this.ctx.physics.entityFree(x, e.y + dy, 0, 1)) return false;
+    return true;
+  }
+
+  /**
+   * A box that ends up inside terrain — a door or ice closing on it, powder
+   * settling into it, water draining out from under a pinned body — can never
+   * move again: tryMoveEntity refuses every step, so it hangs in the air or in
+   * the wall forever. After a short grace (a creature squeezing past settling
+   * sand should not teleport) lift it to the nearest place it fits, up first.
+   */
+  private unembed(e: Enemy, def: EnemyDef): void {
+    const physics = this.ctx.physics;
+    if (physics.entityFree(e.x, e.y, def.halfW, def.h)) { e.embedT = 0; return; }
+    e.embedT = (e.embedT ?? 0) + 1;
+    if (e.embedT < 12) return;
+    for (let r = 1; r <= 18; r++) {
+      for (const [dx, dy] of [[0, -r], [-r, 0], [r, 0], [-r, -r], [r, -r], [0, r], [-r, r], [r, r]] as const) {
+        if (!physics.entityFree(e.x + dx, e.y + dy, def.halfW, def.h)) continue;
+        e.x += dx; e.y += dy; e.fx = 0; e.fy = 0;
+        e.vx *= 0.3; e.vy = 0; e.embedT = 0;
+        return;
+      }
+    }
+  }
+
   private lethalAhead(e: Enemy, def: EnemyDef, dir: number): boolean {
     const w = this.ctx.world;
     const X = Math.floor(e.x) + dir * (def.halfW + 1);
@@ -2069,6 +2110,11 @@ export class Enemies implements EnemyControlApi {
     if (ctx.player.grounded && !observedPlayer.crouching && Math.abs(ctx.player.vx) > 0.7 && ctx.state.frameCount % 14 === 0) {
       this.cue(ctx.player.x, ctx.player.y, 115, 0.5, 'vibration');
     }
+    // Water carries a wader further than rock carries a footstep, and even a
+    // slow paddle makes waves; only a body holding still stays quiet.
+    if (ctx.player.inLiquid && Math.abs(ctx.player.vx) + Math.abs(ctx.player.vy) > 0.25 && ctx.state.frameCount % 12 === 0) {
+      this.cue(ctx.player.x, ctx.player.y, 150, 0.6, 'vibration');
+    }
     const debugEnemyAttacksSuppressed = ctx.debug?.active === true;
     // The player's active Flame Jet cone this frame, sampled once so every foe's
     // threat scan can sidestep out of it (the stream is the same for all of them).
@@ -2407,6 +2453,23 @@ export class Enemies implements EnemyControlApi {
         e.vx *= 0.4;
         this.spitterRootHabitat(e, def);
         if ((e.recoil ?? 0) > 0) e.recoil = (e.recoil ?? 0) - 1;
+        // A lizard, not a turret: it stalks into range, holds a spitting
+        // distance, backs off when crowded and prowls its patch when unaware.
+        // It never walks off a ledge and stands still while its throat fills.
+        if (e.timer % 10 === 0) e.sightLine = targetAlive && this.hasAttackLine(e, def, true) ? 1 : 0;
+        if (e.grounded && (e.recoil ?? 0) <= 0 && e.attackCd > 18) {
+          let want = 0;
+          if (targetAlive && e.alerted) {
+            if (pDist > 230 || e.sightLine === 0) want = Math.sign(pdx) || 1;
+            else if (pDist < 64) want = -(Math.sign(pdx) || 1);
+          } else if (!e.alerted) {
+            const leg = Math.floor((e.timer + e.bobPhase * 97) / 150);
+            const pick = (leg * 2654435761 + Math.floor(e.bobPhase * 1000)) >>> 0;
+            want = pick % 3 === 0 ? 0 : (pick & 4 ? 1 : -1);
+          }
+          if (want !== 0 && this.ledgeAhead(e, def, want)) want = 0;
+          e.vx += want * 0.19;
+        }
         // Ranged openers are gated on `alerted` so the notice blip always
         // precedes the first shot (attack ranges exceed the sense radius at
         // low difficulties — nothing may fire on a player it hasn't clocked).
@@ -2823,7 +2886,16 @@ export class Enemies implements EnemyControlApi {
           if (e.blink === 0 && canAttackTarget && (!this.hasAttackLine(e, def, true) || !this.mageVolley(e)))
             e.attackCd = Math.max(e.attackCd, 95);
         } else {
-          if (targetAlive) e.vx += Math.sign(pdx) * 0.04;
+          // A caster keeps its distance: close to spell range, then give ground.
+          if (targetAlive) {
+            const away = -(Math.sign(pdx) || 1);
+            const want = pDist > 150 ? -away : pDist < 88 && !this.ledgeAhead(e, def, away) ? away : 0;
+            e.vx += want * 0.04;
+            if (want === 0) e.vx *= 0.9;
+          } else if (!e.alerted && e.timer % 240 < 90) {
+            const dir = ((Math.floor(e.timer / 240) + Math.floor(e.bobPhase * 7)) & 1) ? 1 : -1;
+            if (!this.ledgeAhead(e, def, dir)) e.vx += dir * 0.02;
+          }
           e.vx = clamp(e.vx, -0.45, 0.45);
           if (canAttackTarget && e.alerted && e.attackCd === 0 && pDist < 340 && this.hasAttackLine(e, def, true)) {
             e.blink = 20; // begin the 20-frame telegraph
@@ -3269,20 +3341,25 @@ export class Enemies implements EnemyControlApi {
         } else {
           const dir = Math.sign(pdx || e.mawDir || 1);
           e.mawDir = dir;
-          if (targetAlive && e.timer % 3 === 0) e.vx += dir * 0.055;
+          // Deliberate while it listens, then a surge once the prey is close
+          // enough to feel: a burrower that never commits reads as broken.
+          if (targetAlive) {
+            const surge = mind.intent === 'hunt' ? 0.075 : Math.abs(pdx) < 110 ? 0.05 : 0.03;
+            e.vx += dir * surge;
+          }
           e.vx *= e.grounded ? 0.88 : 0.96;
-          const blockedAhead =
-            !ctx.physics.entityFree(e.x + dir * (def.halfW + 2), e.y, def.halfW, def.h) ||
-            (!e.grounded && Math.abs(pdy) < 24 && Math.abs(pdx) < 80);
+          const wallAhead = !ctx.physics.entityFree(e.x + dir * (def.halfW + 2), e.y, def.halfW, def.h);
+          const blockedAhead = wallAhead || (!e.grounded && Math.abs(pdy) < 24 && Math.abs(pdx) < 80);
           if (
             (e.mawChewCd ?? 0) <= 0 &&
             (e.mawChewT ?? 0) <= 0 &&
             (blockedAhead || (targetAlive && pDist < 92 && e.timer % 46 === 0))
           ) {
             const chewed = this.stoneMawChewBrush(e, def);
+            // Jaws closing on metal jar it; snapping at open water just misses.
             if (chewed === 0) {
               e.mawChewCd = 26;
-              e.mawStun = Math.max(e.mawStun ?? 0, 8);
+              if (wallAhead) e.mawStun = Math.max(e.mawStun ?? 0, 8);
             }
           }
         }
@@ -3543,6 +3620,7 @@ export class Enemies implements EnemyControlApi {
           tickWeaverLocomotion(ctx, e, def, intent);
         }
       } else {
+        this.unembed(e, def);
         const stepUp =
           e.kind === 'colossus'
             ? 3
@@ -3612,5 +3690,6 @@ export class Enemies implements EnemyControlApi {
       if (enemy.x < sim.x0 - 60 || enemy.x > sim.x1 + 60 || enemy.y < sim.y0 - 60 || enemy.y > sim.y1 + 60) continue;
       tickCreaturePose(ctx, enemy);
     }
+    updateCorpses(ctx);
   }
 }

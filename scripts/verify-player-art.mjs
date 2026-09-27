@@ -60,7 +60,7 @@ try {
         facing: 1, grounded: true, dead: false, invuln: 0, crawling: false, climbing: false, wallGrabT: 0, crouchT: 0,
         landTimer: 0, stretchT: 0, skidT: 0, staggerT: 0, kickT: 0, pullT: 0,
         firing: false, recoilT: 0, swapT: 0, bloodStain: 0, blinkTimer: 0, aimAngle: -.35,
-        hat: { ...source.player.hat, ox: -1.1, oy: .2 }, robe: { ...source.player.robe, ox: -1.2 },
+        hat: { ...source.player.hat, ox: -1.1, oy: .2 }, robe: { ...source.player.robe, ox: -1.2 }, costume: undefined,
         status: { ...source.player.status }, ...patch };
       const ctx = { ...source, player, state: { ...source.state, mode: 'play', frameCount: 92, reduceFlashes: false },
         input: { ...source.input, bombCharge: -1 }, physics: { ...source.physics, entityFree: () => true },

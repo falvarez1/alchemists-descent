@@ -178,7 +178,7 @@ describe('marsh-gas ceiling pockets', () => {
 });
 
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '99cea986' }, // GEN_VERSION 44: Frost backtrack, living habitat, and safer engine gallery
+  { id: 'd1', seed: 1337, hash: '550ffa5a' }, // GEN_VERSION 45: contained reservoir + garden pool, west Undertow chute, reachable Heavy Charm, even refuge steps, grounded glowshrooms
   { id: 'd4', seed: 1337, hash: '880b8755' }, // re-recorded: gas pockets + gunpowder seams
   { id: 'd8', seed: 1337, hash: '51e6187e' }, // re-recorded: lair settle/rim + gunpowder seams
   { id: 'vault', seed: 1337, hash: '0a76f43a' }, // re-recorded: gunpowder seams in ore/coal vugs

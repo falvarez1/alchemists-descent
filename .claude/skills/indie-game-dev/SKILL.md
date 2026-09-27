@@ -61,10 +61,14 @@ worldgen placement if natural (biomeExtras/CaveGenerator).
 
 **New enemy:** `EnemyKind` union (types.ts) → `ENEMY_DEFS` + AI branch +
 movement-integration routing (flyer vs walker) in entities/Enemies.ts →
-procedural sprite branch (render/sprites/EnemySprites — sprites may mutate
-animation fields, that's the established pattern) → living-light seed if it
-glows (Lighting) → biome `foes` weights (world/biomeExtras) → status immunities
-map if needed.
+a body plan in creatures/species (reuse a rig: lizard, gel, brute, serpent…;
+register it in species/index) → its art in render/creatures (register in
+render/creatures/index; every kind must have one — tests/creature-art.test.ts)
+→ its light in render/creatures/lights.ts if it glows → mass/sound in
+creatures/worldTouch → corpse rules in creatures/corpses → biome `foes`
+weights (world/biomeExtras) → status immunities map if needed. Iterate the
+look with `node scripts/creature-studio.mjs --kind <k> --scenes idle,walk,...`
+(docs/CREATURES.md).
 
 **New spell card:** `CardId` union (types.ts) → `CARD_DEFS` (combat/wands/
 cards.ts) → execution branch in `WandSystem.castActionAt` (set `p.mul` from

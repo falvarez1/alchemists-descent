@@ -1,4 +1,4 @@
-import { FLASK_SLOT_COUNT, type CardId, type Ctx, type FlaskState } from '@/core/types';
+import { FLASK_SLOT_COUNT, type CardId, type Ctx, type FlaskState, type WandFrame } from '@/core/types';
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
 import { REVIEW_WAND_LOADOUTS, WAND_FRAMES, type BuiltInWandLoadout } from '@/combat/wands/wandCatalog';
 import { buildWandSentenceView, type WandSentenceView, type WandSlotLinkKind } from '@/combat/wands/sentenceView';
@@ -132,7 +132,15 @@ export class WandBench {
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (e.repeat) return;
     if (e.code === 'KeyB' && this.ctx.state.mode === 'play') this.toggleFromKey();
-    else if (e.code === 'Escape' && this.visible) this.setVisible(false);
+    else if (e.code === 'Escape' && this.visible) {
+      // Consumed here: Pause ignores a handled Escape instead of opening
+      // itself the moment the bench closes (and unpauses) beneath it.
+      e.preventDefault();
+      if (this.heldIdx >= 0) {
+        this.heldIdx = -1;
+        this.render();
+      } else this.setVisible(false);
+    }
   };
 
   dispose(): void {
@@ -144,9 +152,17 @@ export class WandBench {
     }
   }
 
+  /** Keyboard users keep their place across the bench's full re-render. */
+  private refocus(selector: string): void {
+    el('wand-bench').querySelector<HTMLElement>(selector)?.focus();
+  }
+
   private setVisible(on: boolean): void {
     if (on === this.visible) return;
     this.visible = on;
+    const root = el('wand-bench');
+    if (on) root.addEventListener('mousemove', this.onPointerMove);
+    else root.removeEventListener('mousemove', this.onPointerMove);
     this.heldIdx = -1;
     this.inspectedCard = null;
     el('wand-bench').classList.toggle('visible', on);
@@ -156,6 +172,7 @@ export class WandBench {
       this.wasPaused = this.ctx.state.paused;
       this.ctx.state.paused = true;
       this.render();
+      root.querySelector<HTMLElement>('.bench-wand.active .bench-slot')?.focus({ preventScroll: true });
       this.ctx.events.emit('benchOpened');
     } else {
       this.ctx.state.paused = this.wasPaused;
@@ -175,71 +192,192 @@ export class WandBench {
   private render(): void {
     const root = el('wand-bench');
     root.innerHTML = '';
+    root.classList.toggle('holding', this.heldIdx >= 0);
     const wands = this.ctx.wands;
 
-    const title = document.createElement('div');
-    title.className = 'bench-title';
-    title.textContent = "WANDSMITH'S BENCH";
-    root.appendChild(title);
+    const shell = document.createElement('div');
+    shell.className = 'wb-shell';
+    shell.setAttribute('role', 'dialog');
+    shell.setAttribute('aria-modal', 'true');
+    shell.setAttribute('aria-labelledby', 'wb-title');
+
+    const head = document.createElement('div');
+    head.className = 'wb-head';
+    const titles = document.createElement('div');
+    const title = document.createElement('h2');
+    title.className = 'menu-title bench-title';
+    title.id = 'wb-title';
+    title.textContent = "Wandsmith's Bench";
+    const sub = document.createElement('p');
+    sub.className = 'menu-sub';
+    sub.textContent = 'Each click of the wand fires its next group of cards, left to right. Modifiers change the spell after them.';
+    titles.append(title, sub);
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'menu-close';
+    close.innerHTML = '<kbd class="key">B</kbd>Close';
+    close.addEventListener('click', () => this.setVisible(false));
+    head.append(titles, close);
+    shell.appendChild(head);
+
+    const scroll = document.createElement('div');
+    scroll.className = 'wb-scroll';
 
     wands.wands.forEach((wand, i) => {
       const w = i as 0 | 1;
-      const row = document.createElement('div');
-      row.className = 'bench-wand' + (wands.active === w ? ' active' : '');
+      const active = wands.active === w;
+      const row = document.createElement('section');
+      row.className = 'bench-wand' + (active ? ' active' : '');
+      row.setAttribute('aria-label', 'Wand ' + (w + 1) + ': ' + wand.frame.name);
 
-      const head = document.createElement('div');
-      head.className = 'bench-wand-head';
+      const wandHead = document.createElement('div');
+      wandHead.className = 'bench-wand-head';
+      const id = document.createElement('div');
+      id.className = 'wb-wand-id';
+      const numeral = document.createElement('span');
+      numeral.className = 'wb-numeral';
+      numeral.textContent = w === 0 ? 'I' : 'II';
       const name = document.createElement('span');
-      name.className = 'wand-label';
-      name.textContent = wand.frame.name + (wands.active === w ? ' · ACTIVE' : '');
-      const f = wand.frame;
-      const stats = document.createElement('span');
-      stats.className = 'bench-stats';
-      stats.textContent =
-        f.capacity + ' slots · delay ' + f.castDelay + 'f · recharge ' + f.recharge +
-        'f · mana ' + f.manaMax + ' (+' + f.manaRegen + '/f) · spread ' + f.spread.toFixed(2);
-      head.appendChild(name);
-      head.appendChild(stats);
-      row.appendChild(head);
+      name.className = 'wb-wand-name';
+      name.textContent = wand.frame.name;
+      id.append(numeral, name);
+      if (active) {
+        const pill = document.createElement('span');
+        pill.className = 'wb-in-hand';
+        pill.textContent = 'In hand';
+        id.appendChild(pill);
+      } else {
+        const swap = document.createElement('button');
+        swap.type = 'button';
+        swap.className = 'wb-swap';
+        swap.textContent = 'Hold this wand';
+        swap.addEventListener('click', () => {
+          this.ctx.wands.active = w;
+          this.ctx.audio.cardPick();
+          this.ctx.events.emit('wandChanged');
+          this.render();
+        });
+        id.appendChild(swap);
+      }
+      wandHead.append(id, this.makeWandStats(wand.frame));
+      row.appendChild(wandHead);
 
       const sentence = buildWandSentenceView(wand.cards, wand.castIndex);
+      const slotsRow = document.createElement('div');
+      slotsRow.className = 'wb-slots-row';
       const slots = document.createElement('div');
       slots.className = 'bench-slots';
-      wand.cards.forEach((id, s) => slots.appendChild(this.makeSlotTile(w, s, id, sentence)));
-      row.appendChild(slots);
-      row.appendChild(this.makeSentencePreview(sentence, wand.mana));
-      root.appendChild(row);
+      wand.cards.forEach((card, s) => slots.appendChild(this.makeSlotTile(w, s, card, sentence)));
+      slotsRow.append(slots, this.makeSentencePreview(sentence, wand.mana));
+      row.appendChild(slotsRow);
+      scroll.appendChild(row);
     });
 
-    const section = document.createElement('div');
-    section.className = 'bench-section';
-    section.textContent = 'COLLECTION';
-    root.appendChild(section);
-    root.appendChild(this.makeCollectionFilters());
+    const collectionSection = document.createElement('section');
+    collectionSection.className = 'wb-collection';
+    const collectionHead = document.createElement('div');
+    collectionHead.className = 'wb-collection-head';
+    const collectionTitle = document.createElement('div');
+    collectionTitle.className = 'wb-collection-title';
+    const h3 = document.createElement('h3');
+    h3.textContent = 'Collection';
+    const count = document.createElement('span');
+    count.textContent = wands.collection.length === 1 ? '1 spare card' : wands.collection.length + ' spare cards';
+    collectionTitle.append(h3, count);
+    collectionHead.append(collectionTitle, this.makeCollectionFilters());
+    collectionSection.appendChild(collectionHead);
 
     const grid = document.createElement('div');
     grid.className = 'bench-collection bench-card-collection';
-    this.installCollectionDropTarget(grid);
+    // The whole section takes a returned card, not just the tiles' grid.
+    this.installCollectionDropTarget(collectionSection, grid);
     const collection = wands.collection
       .map((id, index) => ({ id, index }))
       .filter(({ id }) => cardMatchesBenchFilter(id, this.collectionFilter));
     if (wands.collection.length === 0 || collection.length === 0) {
       const none = document.createElement('div');
       none.className = 'bench-empty';
-      none.textContent = wands.collection.length === 0 ? 'no spare cards - the caves hold more' : 'no cards match this filter';
+      none.textContent = wands.collection.length === 0
+        ? 'Every card you own is in a wand. Tomes in the caves teach new ones.'
+        : 'No spare cards of this kind. Try All.';
       grid.appendChild(none);
     }
     collection.forEach(({ id, index }) => grid.appendChild(this.makeCollectionTile(id, index)));
-    root.appendChild(grid);
-    this.appendCardInspect(root);
+    collectionSection.appendChild(grid);
+    scroll.appendChild(collectionSection);
 
-    if (this.ctx.state.debugGodMode) this.appendReviewTools(root);
+    if (this.ctx.state.debugGodMode) this.appendReviewTools(scroll);
+    shell.appendChild(scroll);
 
-    const hint = document.createElement('div');
-    hint.className = 'bench-hint';
-    hint.textContent =
-      'CLICK A CARD, THEN A SLOT · CLICK A FILLED SLOT TO UNSLOT · B / ESC CLOSES · THE CAVES DO NOT WAIT';
-    root.appendChild(hint);
+    const foot = document.createElement('div');
+    foot.className = 'wb-foot';
+    foot.innerHTML =
+      '<span><kbd class="key">Click</kbd>a card, then a slot</span>' +
+      '<span><kbd class="key">Drag</kbd>to move or reorder</span>' +
+      '<span><kbd class="key">Right-click</kbd>a slot to take its card out</span>' +
+      '<span><kbd class="key">Esc</kbd>close</span>';
+    const status = document.createElement('span');
+    status.className = 'wb-status';
+    status.setAttribute('aria-live', 'polite');
+    const held = this.heldIdx >= 0 ? wands.collection[this.heldIdx] : undefined;
+    status.textContent = held ? 'Holding ' + CARD_DEFS[held].name + ' — choose a slot' : '';
+    foot.appendChild(status);
+    shell.appendChild(foot);
+    root.appendChild(shell);
+
+    // The detail popover and the held-card ghost live on the bench root so they
+    // can sit beside whatever tile you point at.
+    const pop = document.createElement('div');
+    pop.className = 'menu-pop bench-inspect';
+    pop.setAttribute('role', 'tooltip');
+    pop.id = 'wb-inspect';
+    root.appendChild(pop);
+    if (held) {
+      const ghost = document.createElement('div');
+      ghost.className = 'wb-held-ghost';
+      const icon = makeIconCanvas(cardIconName(held), 2);
+      if (icon) ghost.appendChild(icon);
+      ghost.appendChild(document.createTextNode(CARD_DEFS[held].name));
+      ghost.style.left = this.pointer.x + 16 + 'px';
+      ghost.style.top = this.pointer.y + 14 + 'px';
+      ghost.hidden = this.pointer.x < 0;
+      root.appendChild(ghost);
+    }
+  }
+
+  /** Last pointer position inside the bench, for the held-card ghost. */
+  private pointer = { x: -1, y: -1 };
+  private readonly onPointerMove = (event: MouseEvent): void => {
+    const root = el('wand-bench');
+    const rect = root.getBoundingClientRect();
+    this.pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    const ghost = root.querySelector<HTMLElement>('.wb-held-ghost');
+    if (!ghost) return;
+    ghost.hidden = false;
+    ghost.style.left = Math.min(rect.width - ghost.offsetWidth - 8, this.pointer.x + 16) + 'px';
+    ghost.style.top = Math.min(rect.height - ghost.offsetHeight - 8, this.pointer.y + 14) + 'px';
+  };
+
+  private makeWandStats(frame: WandFrame): HTMLElement {
+    const list = document.createElement('ul');
+    list.className = 'bench-stats';
+    const seconds = (frames: number): string => (frames / 60).toFixed(2) + 's';
+    const stat = (label: string, value: string, hint: string): void => {
+      const item = document.createElement('li');
+      item.title = hint;
+      item.append(label + ' ');
+      const b = document.createElement('b');
+      b.textContent = value;
+      item.appendChild(b);
+      list.appendChild(item);
+    };
+    stat('Slots', String(frame.capacity), 'How many cards this wand holds');
+    stat('Cast', seconds(frame.castDelay), 'Pause between groups while the wand still has cards to fire');
+    stat('Recharge', seconds(frame.recharge), 'Pause after the last card, before the wand starts over');
+    stat('Mana', String(frame.manaMax), 'Mana tank');
+    stat('Regen', Math.round(frame.manaRegen * 60) + '/s', 'Mana refilled per second');
+    stat('Spread', (frame.spread * 180 / Math.PI).toFixed(1) + '°', 'Aim wobble of every shot');
+    return list;
   }
 
   private makeSentencePreview(view: WandSentenceView, mana: number): HTMLElement {
@@ -270,24 +408,8 @@ export class WandBench {
     return wrap;
   }
 
-  private appendCardInspect(root: HTMLElement): void {
-    const panel = document.createElement('div');
-    panel.className = 'bench-inspect';
-    this.populateCardInspect(panel);
-    root.appendChild(panel);
-  }
-
-  private populateCardInspect(panel: HTMLElement): void {
+  private populateCardInspect(panel: HTMLElement, id: CardId, extra: readonly string[] = [], action = ''): void {
     panel.innerHTML = '';
-    const id = this.cardForInspect();
-    if (id === null) {
-      const name = document.createElement('div');
-      name.className = 'bench-inspect-name';
-      name.textContent = 'NO CARD SELECTED';
-      panel.appendChild(name);
-      return;
-    }
-
     const def = CARD_DEFS[id];
     const iconWrap = document.createElement('div');
     iconWrap.className = 'bench-inspect-icon';
@@ -303,20 +425,33 @@ export class WandBench {
     const meta = document.createElement('div');
     meta.className = 'bench-inspect-meta';
     meta.textContent = def.kind.toUpperCase() + ' - ' + def.manaCost + ' MANA';
+    copy.append(name, meta);
+    panel.appendChild(copy);
+
     const blurb = document.createElement('div');
     blurb.className = 'bench-inspect-blurb';
     blurb.textContent = def.blurb;
-    copy.appendChild(name);
-    copy.appendChild(meta);
-    copy.appendChild(blurb);
-    const tags = document.createElement('div');
-    tags.className = 'bench-inspect-tags';
-    def.tags.forEach((tag) => {
-      const chip = document.createElement('span');
-      chip.textContent = tag;
-      tags.appendChild(chip);
-    });
-    copy.appendChild(tags);
+    panel.appendChild(blurb);
+    if (def.tags.length > 0) {
+      const tags = document.createElement('div');
+      tags.className = 'bench-inspect-tags';
+      def.tags.forEach((tag) => {
+        const chip = document.createElement('span');
+        chip.textContent = tag;
+        tags.appendChild(chip);
+      });
+      panel.appendChild(tags);
+    }
+    if (extra.length > 0) {
+      const links = document.createElement('div');
+      links.className = 'wb-inspect-links';
+      extra.forEach((line) => {
+        const row = document.createElement('div');
+        row.textContent = line;
+        links.appendChild(row);
+      });
+      panel.appendChild(links);
+    }
     const hints = recipeHintsForCard(id);
     if (hints.length > 0) {
       const hintWrap = document.createElement('div');
@@ -326,33 +461,52 @@ export class WandBench {
         row.textContent = hint;
         hintWrap.appendChild(row);
       });
-      copy.appendChild(hintWrap);
+      panel.appendChild(hintWrap);
     }
-    panel.appendChild(copy);
+    if (action) {
+      const row = document.createElement('div');
+      row.className = 'wb-inspect-action';
+      row.innerHTML = action;
+      panel.appendChild(row);
+    }
   }
 
-  private cardForInspect(): CardId | null {
-    if (this.inspectedCard && this.cardStillVisible(this.inspectedCard)) return this.inspectedCard;
-    const held = this.heldIdx >= 0 ? this.ctx.wands.collection[this.heldIdx] : undefined;
-    if (held) return held;
-    const active = this.ctx.wands.wands[this.ctx.wands.active].cards.find((id): id is CardId => id !== null);
-    if (active) return active;
-    const anyWandCard = this.ctx.wands.wands.flatMap((wand) => wand.cards).find((id): id is CardId => id !== null);
-    return anyWandCard ?? this.ctx.wands.collection[0] ?? null;
-  }
-
-  private cardStillVisible(id: CardId): boolean {
-    return this.ctx.wands.wands.some((wand) => wand.cards.includes(id)) ||
-      (this.ctx.wands.collection.includes(id) && cardMatchesBenchFilter(id, this.collectionFilter));
-  }
-
-  private inspectCard(id: CardId): void {
+  /** Show a card's details beside the tile it belongs to. */
+  private inspectCard(id: CardId, anchor: HTMLElement, extra: readonly string[] = [], action = ''): void {
     this.inspectedCard = id;
-    const panel = document.querySelector<HTMLElement>('#wand-bench .bench-inspect');
-    if (panel) this.populateCardInspect(panel);
+    const root = el('wand-bench');
+    const pop = root.querySelector<HTMLElement>('.bench-inspect');
+    if (!pop) return;
+    this.populateCardInspect(pop, id, extra, action);
+    const box = root.getBoundingClientRect(), tile = anchor.getBoundingClientRect();
+    pop.style.left = '0px';
+    pop.style.top = '0px';
+    pop.classList.add('shown');
+    const w = pop.offsetWidth, h = pop.offsetHeight, gap = 10;
+    let left = tile.left - box.left + tile.width / 2 - w / 2;
+    left = Math.max(12, Math.min(box.width - w - 12, left));
+    const below = tile.bottom - box.top + gap;
+    const above = tile.top - box.top - gap - h;
+    const top = below + h <= box.height - 12 || above < 12 ? Math.min(below, box.height - h - 12) : above;
+    pop.style.left = Math.round(left) + 'px';
+    pop.style.top = Math.round(top) + 'px';
   }
 
-  private appendReviewTools(root: HTMLElement): void {
+  private hideInspect(): void {
+    el('wand-bench').querySelector('.bench-inspect')?.classList.remove('shown');
+  }
+
+  private reviewOpen = true;
+
+  private appendReviewTools(parent: HTMLElement): void {
+    const root = document.createElement('details');
+    root.className = 'wb-review';
+    root.open = this.reviewOpen;
+    root.addEventListener('toggle', () => { this.reviewOpen = root.open; });
+    const summary = document.createElement('summary');
+    summary.textContent = 'Playtest tools (god mode)';
+    root.appendChild(summary);
+    parent.appendChild(root);
     this.appendSection(root, 'REVIEW LOADOUTS');
     const loadouts = document.createElement('div');
     loadouts.className = 'bench-loadouts';
@@ -435,10 +589,17 @@ export class WandBench {
   private makeCollectionFilters(): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'bench-card-filters';
+    wrap.classList.add('menu-tabs');
     for (const filter of BENCH_CARD_FILTERS) {
       const btn = document.createElement('button');
       btn.type = 'button';
+      btn.className = 'menu-tab';
       btn.textContent = filter.label;
+      const total = this.ctx.wands.collection.filter((id) => cardMatchesBenchFilter(id, filter.id)).length;
+      const count = document.createElement('span');
+      count.className = 'count';
+      count.textContent = String(total);
+      btn.appendChild(count);
       btn.dataset.benchCardFilter = filter.id;
       btn.setAttribute('aria-pressed', String(this.collectionFilter === filter.id));
       btn.addEventListener('click', () => {
@@ -614,16 +775,16 @@ export class WandBench {
     return tile;
   }
 
-  private installCollectionDropTarget(grid: HTMLElement): void {
-    grid.addEventListener('dragover', (event) => {
+  private installCollectionDropTarget(zone: HTMLElement, grid: HTMLElement): void {
+    zone.addEventListener('dragover', (event) => {
       if (!this.dragSource) return;
       event.preventDefault();
       grid.classList.add('drag-over');
     });
-    grid.addEventListener('dragleave', (event) => {
-      if (!grid.contains(event.relatedTarget as Node | null)) grid.classList.remove('drag-over');
+    zone.addEventListener('dragleave', (event) => {
+      if (!zone.contains(event.relatedTarget as Node | null)) grid.classList.remove('drag-over');
     });
-    grid.addEventListener('drop', (event) => {
+    zone.addEventListener('drop', (event) => {
       event.preventDefault();
       grid.classList.remove('drag-over');
       if (this.dragSource?.kind !== 'slot') {
@@ -665,15 +826,19 @@ export class WandBench {
     if (this.flashSlot && this.flashSlot.w === w && this.flashSlot.s === s) {
       tile.classList.add('just-slotted');
     }
+    const number = document.createElement('span');
+    number.className = 'wb-slot-no';
+    number.textContent = String(s + 1);
+    tile.appendChild(number);
+    tile.tabIndex = 0;
+    tile.setAttribute('role', 'button');
     if (id === null) {
-      tile.title = 'Empty slot';
+      tile.setAttribute('aria-label', 'Wand ' + (w + 1) + ' slot ' + (s + 1) + ', empty');
     } else {
       const slotLinks = this.describeSlotLinks(w, s, view);
       const warningLines = view.slotWarnings[s] ?? [];
       const titleParts = [cardTitle(id), ...(slotLinks?.titleLines ?? []), ...warningLines];
-      tile.title = titleParts.join('\n');
-      tile.setAttribute('aria-label', titleParts.join(' - '));
-      tile.tabIndex = 0;
+      tile.setAttribute('aria-label', 'Slot ' + (s + 1) + ': ' + titleParts.join(' - '));
       if (this.inspectedCard === id) tile.classList.add('inspected');
       const icon = makeIconCanvas(cardIconName(id), 3);
       if (icon) tile.appendChild(icon);
@@ -685,17 +850,39 @@ export class WandBench {
       tile.draggable = true;
       tile.addEventListener('dragstart', (event) => this.onDragStart(event, { kind: 'slot', wand: w, slot: s, id }));
       tile.addEventListener('dragend', () => this.onDragEnd());
-      tile.addEventListener('mouseenter', () => {
-        this.inspectCard(id);
+      const lines = [...(slotLinks?.titleLines ?? []), ...warningLines];
+      const action = this.heldIdx >= 0
+        ? '<b>Click</b> to swap in the card you are holding'
+        : '<b>Click</b> or <b>right-click</b> to take it out · <b>drag</b> to reorder';
+      const show = (): void => {
+        this.inspectCard(id, tile, lines, action);
         this.highlightRelatedSlots(w, s);
+      };
+      tile.addEventListener('mouseenter', show);
+      tile.addEventListener('focus', show);
+      tile.addEventListener('mouseleave', () => { this.clearSentenceHighlights(); this.hideInspect(); });
+      tile.addEventListener('blur', () => { this.clearSentenceHighlights(); this.hideInspect(); });
+      tile.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        this.heldIdx = -1;
+        this.ctx.wands.slotCard(w, s, null);
+        this.ctx.audio.cardPick();
+        this.render();
       });
-      tile.addEventListener('focus', () => {
-        this.inspectCard(id);
-        this.highlightRelatedSlots(w, s);
-      });
-      tile.addEventListener('mouseleave', () => this.clearSentenceHighlights());
-      tile.addEventListener('blur', () => this.clearSentenceHighlights());
     }
+    tile.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        this.onSlotClick(w, s, id);
+        this.refocus('[data-bench-wand="' + w + '"][data-bench-slot="' + s + '"]');
+      } else if ((event.key === 'Delete' || event.key === 'Backspace') && id !== null) {
+        event.preventDefault();
+        this.ctx.wands.slotCard(w, s, null);
+        this.ctx.audio.cardPick();
+        this.render();
+        this.refocus('[data-bench-wand="' + w + '"][data-bench-slot="' + s + '"]');
+      }
+    });
     tile.addEventListener('dragover', (event) => {
       if (!this.dragSource) return;
       event.preventDefault();
@@ -817,18 +1004,39 @@ export class WandBench {
     tile.dataset.benchCardId = id;
     tile.dataset.benchCardKind = CARD_DEFS[id].kind;
     tile.dataset.benchCardTags = CARD_DEFS[id].tags.join(' ');
-    tile.title = cardTitle(id);
     tile.tabIndex = 0;
+    tile.setAttribute('role', 'button');
     tile.setAttribute('aria-label', cardTitle(id));
+    tile.setAttribute('aria-pressed', String(i === this.heldIdx));
     if (this.inspectedCard === id) tile.classList.add('inspected');
+    const kind = document.createElement('span');
+    kind.className = 'wb-card-kind wb-kind-' + CARD_DEFS[id].kind;
+    kind.setAttribute('aria-hidden', 'true');
+    tile.appendChild(kind);
     const icon = makeIconCanvas(cardIconName(id), 3);
     if (icon) tile.appendChild(icon);
+    const name = document.createElement('span');
+    name.className = 'wb-card-name';
+    name.textContent = CARD_DEFS[id].name;
+    tile.appendChild(name);
     const cost = document.createElement('div');
     cost.className = 'cost';
     cost.textContent = String(CARD_DEFS[id].manaCost);
     tile.appendChild(cost);
-    tile.addEventListener('mouseenter', () => this.inspectCard(id));
-    tile.addEventListener('focus', () => this.inspectCard(id));
+    const action = i === this.heldIdx
+      ? '<b>Click a slot</b> to seat it · click this card again to put it down'
+      : '<b>Click</b> to pick up, then click a slot · or <b>drag</b> it onto a slot';
+    const show = (): void => this.inspectCard(id, tile, [], action);
+    tile.addEventListener('mouseenter', show);
+    tile.addEventListener('focus', show);
+    tile.addEventListener('mouseleave', () => this.hideInspect());
+    tile.addEventListener('blur', () => this.hideInspect());
+    tile.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      tile.click();
+      this.refocus('[data-bench-collection-index="' + i + '"]');
+    });
     tile.addEventListener('dragstart', (event) => this.onDragStart(event, { kind: 'collection', index: i, id }));
     tile.addEventListener('dragend', () => this.onDragEnd());
     // Click toggles 'held' — clicking the held card again puts it down.

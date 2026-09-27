@@ -4,10 +4,11 @@ import { MATERIAL_PARAMS } from '@/config/params';
 import { CELL_COUNT, Cell } from '@/sim/CellType';
 import { COLOR_FN, packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { PICKUP_COLOR, POTION_DEFS } from '@/core/pickupDefs';
-import { humanizeIdentifier } from '@/core/strings';
+import { humanizeIdentifier, titleCaseName } from '@/core/strings';
 import { PopoverHost, type RectLike } from '@/ui/editor/PopoverHost';
 import { fillMaterialPopover } from '@/ui/materialInfo';
 import { resetHeldSpellInputs } from '@/core/runtimeState';
+import { WORKS_ROOMS } from '@/world/breathingWorks';
 
 /** Fog color for unexplored map cells (#0a0a10). */
 const UNEXPLORED = packRGB(10, 10, 16);
@@ -245,7 +246,20 @@ function mechanismStateLabel(mechanism: Mechanism): string {
   return mechanism.state > 0 ? 'satisfied' : 'waiting';
 }
 
+/** What a player would call it: a cold-lock gate, a sluice valve, a lever. */
+function mechanismPlaceName(mechanism: Mechanism): string {
+  if (mechanism.kind === 'door' && mechanism.requiresCard === 'frostshard') return 'Cold-lock gate';
+  if (mechanism.kind === 'door') return mechanism.state === 1 ? 'Open gate' : 'Sealed gate';
+  if (mechanism.kind === 'lever' && mechanism.look === 'crank') return 'Engine crank';
+  if (mechanism.kind === 'lever' && mechanism.look === 'handwheel') return 'Sluice handwheel';
+  if (mechanism.kind === 'sensor' && mechanism.materialFilter?.length) return 'Ice probe';
+  return mechanismKindTitle(mechanism.kind);
+}
+
 function mechanismDescription(mechanism: Mechanism): string {
+  if (mechanism.kind === 'door' && mechanism.requiresCard === 'frostshard') {
+    return 'Lifts when both probes in the Intake cistern read ice. Freeze the water with Frost Shard.';
+  }
   if (mechanism.kind === 'door') return 'A real-cell gate driven by linked plates, levers, braziers, or sensors.';
   if (mechanism.kind === 'plate') return 'A brass sill that reads real bodies and material weight.';
   if (mechanism.kind === 'lever') return 'A switch that flips from a pull, projectile, blast, or structure strike.';
@@ -288,6 +302,7 @@ function mechanismGlyph(mechanism: Mechanism): string {
 
 function mechanismFields(mechanism: Mechanism): Array<{ label: string; value: string }> {
   const fields: Array<{ label: string; value: string }> = [
+    { label: 'id', value: String(mechanism.id) },
     { label: 'kind', value: mechanism.kind },
     { label: 'state', value: mechanismStateLabel(mechanism) },
     { label: 'size', value: `${mechanism.w} x ${mechanism.h}` },
@@ -448,13 +463,16 @@ export function collectMinimapPois(ctx: Ctx, level: NonNullable<Ctx['levels']['c
   }));
 
   if (level.portal) {
+    const works = !!level.living;
     pois.push(makePoi({
       id: 'portal',
       kind: 'portal',
-      title: 'Exit Portal',
-      description: level.keyTaken
-        ? 'The key is yours. Return here to open the way down.'
-        : 'Find the golden key before this gate will carry you onward.',
+      title: works ? 'The Lower Gate' : 'Exit Portal',
+      description: works
+        ? (level.keyTaken ? 'The bell is yours. Ring it at this gate to open the way down.' : 'Sealed. It answers only to the brass bell the Bell & Tea Engine makes.')
+        : level.keyTaken
+          ? 'The key is yours. Return here to open the way down.'
+          : 'Find the golden key before this gate will carry you onward.',
       tags: ['portal', level.keyTaken ? 'key held' : 'key needed', level.portal.open ? 'open' : 'sealed'],
       fields: [{ label: 'objective', value: level.keyTaken ? 'return' : 'find key' }],
       worldX: level.portal.x,
@@ -469,7 +487,7 @@ export function collectMinimapPois(ctx: Ctx, level: NonNullable<Ctx['levels']['c
     }));
   }
 
-  if (level.exit) {
+  if (level.exit && !level.living) {
     pois.push(makePoi({
       id: 'exit-well',
       kind: 'exit',
@@ -681,7 +699,13 @@ export function collectMinimapPois(ctx: Ctx, level: NonNullable<Ctx['levels']['c
 
   level.pickups.forEach((pickup, index) => {
     if (!shouldShowPickupPoi(level, pickup)) return;
-    const info = PICKUP_POI_INFO[pickup.kind];
+    // In the Works the 'key' is the brass bell, and it does not exist until the
+    // Bell & Tea Engine has cast it (the world hides it until then, too).
+    const bell = pickup.kind === 'key' && !!level.living;
+    if (bell && !level.living?.tea?.completed) return;
+    const info = bell
+      ? { title: 'Brass Bell', description: 'Cast by the Bell & Tea Engine. Carry it to the lower gate.', glyph: 'K' }
+      : PICKUP_POI_INFO[pickup.kind];
     pois.push(makePoi({
       id: `pickup:${index}:${pickup.kind}`,
       kind: 'pickup',
@@ -707,7 +731,7 @@ export function collectMinimapPois(ctx: Ctx, level: NonNullable<Ctx['levels']['c
     pois.push(makePoi({
       id: `mechanism:${mechanism.id}`,
       kind: 'mechanism',
-      title: `${mechanismKindTitle(mechanism.kind)} #${mechanism.id}`,
+      title: mechanismPlaceName(mechanism),
       description: mechanismDescription(mechanism),
       tags: ['mechanism', mechanism.kind, state, ...(mechanism.logic ? [`logic ${mechanism.logic}`] : [])],
       fields: mechanismFields(mechanism),
@@ -883,6 +907,17 @@ function poiPreviewCanvas(poi: MinimapPoi): HTMLCanvasElement {
   return canvas;
 }
 
+const LEGEND_LABELS: Partial<Record<MinimapPoiKind, string>> = {
+  spawn: 'Entry', portal: 'Exit portal', exit: 'Lower gate', waystone: 'Waystone', cauldron: 'Cauldron',
+  refuge: 'Warm refuge', spellLab: 'Spell lab', vaultArch: 'Vault', encounter: 'Lair', prefab: 'Structure',
+  scene: 'Landmark', boss: 'Guardian', waypoint: 'Your waypoint', mechanism: 'Mechanism', runeVault: 'Rune glyph',
+};
+
+function legendLabel(poi: MinimapPoi): string {
+  if (poi.kind === 'pickup') return poi.title.split(/[:·—-]/)[0].trim() || 'Treasure';
+  return LEGEND_LABELS[poi.kind] ?? poi.title;
+}
+
 // ===================== Minimap =====================
 /**
  * The material-colored descent map (M, play mode): a 1:8 downsample of the
@@ -907,6 +942,17 @@ export class Minimap {
   private readonly waypointRange: HTMLDivElement;
   /** One representative packed 0xRRGGBB per cell type, frozen at construction. */
   private readonly palette: Uint32Array;
+  /** Cell type sampled at each map cell on the last repaint (edge pass). */
+  private readonly mapTypes = new Uint8Array(MINIMAP_W * MINIMAP_H);
+  private readonly titleEl: HTMLElement;
+  private readonly subEl: HTMLElement;
+  private readonly objectiveEl: HTMLElement;
+  private readonly placesEl: HTMLUListElement;
+  private readonly legendEl: HTMLUListElement;
+  private readonly labelsEl: HTMLElement;
+  private placesKey = '';
+  private legendKey = '';
+  private labelsKey = '';
   private visible = false;
   /**
    * POI list cached from the most recent terrain repaint. The hover hit-test
@@ -942,6 +988,13 @@ export class Minimap {
     this.waypointArrow = this.waypointEl.querySelector('.waypoint-arrow') as HTMLDivElement;
     this.waypointRange = this.waypointEl.querySelector('.waypoint-range') as HTMLDivElement;
     this.canvas.title = 'Click explored map cells or markers to set a waypoint. Right-click clears it.';
+    const shell = this.buildShell();
+    this.titleEl = shell.title;
+    this.subEl = shell.sub;
+    this.objectiveEl = shell.objective;
+    this.placesEl = shell.places;
+    this.legendEl = shell.legend;
+    this.labelsEl = shell.labels;
     this.wirePoiPopovers(this.canvas);
     this.wirePoiPopovers(this.cornerEl);
     this.wireWaypointControls();
@@ -972,6 +1025,72 @@ export class Minimap {
     this.disposers.push(ctx.events.on('refugePing', () => {
       this.refugePing = 300;
     }));
+  }
+
+  /**
+   * The chart room: the map framed on the left; what you are after, the places
+   * you have found (click one to set a waypoint) and a legend on the right.
+   * Built around the static canvas so its id and listeners stay put.
+   */
+  private buildShell(): {
+    title: HTMLElement; sub: HTMLElement; objective: HTMLElement;
+    places: HTMLUListElement; legend: HTMLUListElement; labels: HTMLElement;
+  } {
+    const overlay = el('minimap-overlay');
+    const caption = el('minimap-caption');
+    const make = <K extends keyof HTMLElementTagNameMap>(tag: K, className = ''): HTMLElementTagNameMap[K] => {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      return node;
+    };
+    const shell = make('div', 'map-shell');
+    shell.setAttribute('role', 'dialog');
+    shell.setAttribute('aria-labelledby', 'map-title');
+    const head = make('div', 'map-head');
+    const titles = make('div');
+    const title = make('h2', 'menu-title');
+    title.id = 'map-title';
+    const sub = make('p', 'menu-sub');
+    titles.append(title, sub);
+    const close = make('button', 'menu-close');
+    close.type = 'button';
+    close.innerHTML = '<kbd class="key">M</kbd>Close';
+    close.addEventListener('click', () => this.setVisible(false));
+    head.append(titles, close);
+
+    const body = make('div', 'map-body');
+    const stage = make('div', 'map-stage');
+    const frame = make('div', 'map-frame');
+    const labels = make('div', 'map-labels');
+    labels.setAttribute('aria-hidden', 'true');
+    frame.append(this.canvas, labels);
+    stage.appendChild(frame);
+    const side = make('div', 'map-side');
+    const section = (label: string, content: HTMLElement): void => {
+      const wrap = make('section', 'map-section');
+      const heading = make('p', 'menu-label');
+      heading.textContent = label;
+      wrap.append(heading, content);
+      side.appendChild(wrap);
+    };
+    const objective = make('p', 'map-objective');
+    section('Current goal', objective);
+    const places = make('ul', 'map-places');
+    section('Places you have found', places);
+    const legend = make('ul', 'map-legend');
+    section('Legend', legend);
+    body.append(stage, side);
+
+    const foot = make('div', 'map-foot');
+    foot.innerHTML =
+      '<span><kbd class="key">Click</kbd>a place or charted ground to set a waypoint</span>' +
+      '<span><kbd class="key">Right-click</kbd>clear the waypoint</span>' +
+      '<span><kbd class="key">M</kbd><kbd class="key">Esc</kbd>close</span>';
+    shell.append(head, body, foot);
+    caption.classList.add('map-caption');
+    caption.setAttribute('aria-live', 'polite');
+    overlay.replaceChildren(shell, caption);
+    return { title, sub, objective, places, legend, labels };
   }
 
   dispose(): void {
@@ -1187,6 +1306,99 @@ export class Minimap {
     const poiCount = this.cachedPois.filter((poi) => poi.kind !== 'player').length;
     el('minimap-caption').textContent =
       'D' + level.def.depth + ' · ' + level.def.name + ' — ' + pct + '% explored · ' + poiCount + ' markers' + waypointText;
+    this.refreshChartPanel(ctx, level, pct);
+  }
+
+  private refreshChartPanel(ctx: Ctx, level: NonNullable<Ctx['levels']['current']>, pct: number): void {
+    this.titleEl.textContent = titleCaseName(level.def.name);
+    const waypoint = level.mapWaypoint;
+    this.subEl.textContent = 'Depth ' + level.def.depth + ' · ' + pct + '% charted' +
+      (waypoint ? ' · waypoint “' + waypoint.label + '”, ' + Math.round(Math.hypot(waypoint.x - ctx.player.x, waypoint.y - ctx.player.y)) + ' cells away' : '');
+    const goal = document.getElementById('objective')?.textContent?.trim();
+    this.objectiveEl.textContent = goal || 'Explore. Every chamber you enter is charted here.';
+
+    // Places: what you have found, nearest first; click to steer by it.
+    const places = this.cachedPois
+      .filter((poi) => poi.kind !== 'player' && poi.kind !== 'waypoint')
+      .map((poi) => ({ poi, distance: Math.hypot(poi.worldX - ctx.player.x, poi.worldY - ctx.player.y) }))
+      .sort((a, b) => a.distance - b.distance);
+    const placesKey = places.map(({ poi, distance }) => poi.id + ':' + Math.round(distance / 10)).join('|') +
+      '#' + (waypoint ? waypoint.x + ',' + waypoint.y : '');
+    if (placesKey !== this.placesKey) {
+      this.placesKey = placesKey;
+      this.placesEl.replaceChildren();
+      if (places.length === 0) {
+        const empty = document.createElement('li');
+        empty.className = 'map-empty';
+        empty.textContent = 'Nothing charted yet. Waystones, gates and treasure appear here once seen.';
+        this.placesEl.appendChild(empty);
+      }
+      for (const { poi, distance } of places.slice(0, 14)) {
+        const item = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'map-place';
+        const active = !!waypoint && Math.abs(waypoint.x - poi.worldX) < 2 && Math.abs(waypoint.y - poi.worldY) < 2;
+        if (active) button.setAttribute('aria-current', 'true');
+        button.title = poi.description;
+        const swatch = document.createElement('span');
+        swatch.className = 'map-swatch';
+        swatch.style.background = poi.color;
+        const name = document.createElement('span');
+        name.className = 'map-place-name';
+        name.textContent = poi.title;
+        const dist = document.createElement('span');
+        dist.className = 'map-dist';
+        dist.textContent = distance < 14 ? 'here' : Math.round(distance) + '';
+        button.append(swatch, name, dist);
+        button.addEventListener('click', () => this.setMapWaypoint(level, poi.worldX, poi.worldY, poi.title));
+        item.appendChild(button);
+        this.placesEl.appendChild(item);
+      }
+    }
+
+    // Legend: only the marks this chart actually shows.
+    const legend = new Map<string, string>();
+    legend.set('You', '#ffffff');
+    for (const poi of this.cachedPois) {
+      if (poi.kind === 'player') continue;
+      const label = legendLabel(poi);
+      if (!legend.has(label)) legend.set(label, poi.color);
+    }
+    const legendKey = [...legend.entries()].join('|');
+    if (legendKey !== this.legendKey) {
+      this.legendKey = legendKey;
+      this.legendEl.replaceChildren(...[...legend.entries()].map(([label, color]) => {
+        const item = document.createElement('li');
+        const swatch = document.createElement('span');
+        swatch.className = 'map-swatch';
+        swatch.style.background = color;
+        item.append(swatch, document.createTextNode(label));
+        return item;
+      }));
+    }
+
+    // Room names over charted rooms (the authored Works has named chambers).
+    const rooms = level.living ? WORKS_ROOMS : [];
+    const here = level.living?.room ?? '';
+    const shown = rooms.filter((room) => {
+      for (let y = room.y; y <= room.floor; y += 24) {
+        for (let x = room.x; x <= room.x + room.w; x += 24) if (isWorldExplored(level, x, y)) return true;
+      }
+      return false;
+    });
+    const labelsKey = shown.map((room) => room.id).join('|') + '#' + here;
+    if (labelsKey !== this.labelsKey) {
+      this.labelsKey = labelsKey;
+      this.labelsEl.replaceChildren(...shown.map((room) => {
+        const label = document.createElement('span');
+        label.className = 'map-room' + (room.id === here ? ' current' : '');
+        label.textContent = room.name;
+        label.style.left = ((room.x + room.w / 2) / level.world.width * 100).toFixed(2) + '%';
+        label.style.top = ((room.y + 18) / level.world.height * 100).toFixed(2) + '%';
+        return label;
+      }));
+    }
   }
 
   private wirePoiPopovers(canvas: HTMLCanvasElement): void {
@@ -1304,10 +1516,12 @@ export class Minimap {
       for (let x = 0; x < MINIMAP_W; x++) {
         const i = x + y * MINIMAP_W;
         let color = UNEXPLORED;
+        this.mapTypes[i] = 255;
         if (explored[i] > 0) {
           exploredCount++;
           // Single sample at the 8x8 block center is plenty at this scale.
           const t = world.types[x * 8 + 4 + (y * 8 + 4) * world.width];
+          this.mapTypes[i] = t;
           color = palette[t];
         }
         const o = i * 4;
@@ -1315,6 +1529,20 @@ export class Minimap {
         data[o + 1] = unpackG(color);
         data[o + 2] = unpackB(color);
         data[o + 3] = 255;
+      }
+    }
+    // Readability: rock that faces charted open air gets a pale lip, the way
+    // the world itself chalks its ledges, so passages read at a glance.
+    const types = this.mapTypes;
+    for (let y = 1; y < MINIMAP_H - 1; y++) {
+      for (let x = 1; x < MINIMAP_W - 1; x++) {
+        const i = x + y * MINIMAP_W, t = types[i];
+        if (t === 255 || t === Cell.Empty) continue;
+        if (types[i - 1] !== Cell.Empty && types[i + 1] !== Cell.Empty && types[i - MINIMAP_W] !== Cell.Empty && types[i + MINIMAP_W] !== Cell.Empty) continue;
+        const o = i * 4;
+        data[o] = Math.min(255, data[o] * 1.45 + 26);
+        data[o + 1] = Math.min(255, data[o + 1] * 1.45 + 24);
+        data[o + 2] = Math.min(255, data[o + 2] * 1.4 + 18);
       }
     }
     return exploredCount;
@@ -1359,6 +1587,10 @@ export class Minimap {
         g.fillRect(poi.drawX - 1, poi.drawY - 1, poi.width + 2, poi.height + 2);
         g.fillStyle = poi.color;
         g.fillRect(poi.drawX, poi.drawY, poi.width, poi.height);
+        const pulse = (ctx.state.frameCount % 60) / 60;
+        g.strokeStyle = `rgba(242, 227, 182, ${(0.75 * (1 - pulse)).toFixed(3)})`;
+        const r = 2 + pulse * 4;
+        g.strokeRect(poi.drawX + poi.width / 2 - r - 0.5, poi.drawY + poi.height / 2 - r - 0.5, r * 2 + 1, r * 2 + 1);
       } else {
         g.fillStyle = poi.color;
         g.fillRect(poi.drawX, poi.drawY, poi.width, poi.height);

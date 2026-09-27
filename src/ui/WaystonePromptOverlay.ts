@@ -53,9 +53,9 @@ export class WaystonePromptOverlay {
     panel.setAttribute('aria-modal', 'true');
     panel.setAttribute('aria-label', 'Waystone');
 
-    const title = document.createElement('div');
-    title.className = 'waystone-prompt-title';
-    title.textContent = 'WAYSTONE';
+    const title = document.createElement('h2');
+    title.className = 'waystone-prompt-title menu-title';
+    title.textContent = 'An unlit waystone';
     panel.appendChild(title);
 
     const body = document.createElement('div');
@@ -66,16 +66,17 @@ export class WaystonePromptOverlay {
 
     if (request.card) {
       const name = CARD_DEFS[request.card].name;
-      body.textContent =
-        'This checkpoint lights when you fill the stone bowl at its base with fire. You carry the ' +
-        name +
-        ' card — seat it on your wand, then hold its flame on the bowl until the brazier catches? This replaces the wand’s current spells.';
-      row.appendChild(this.button('EQUIP ' + name.toUpperCase(), true, () => this.close('equip')));
-      row.appendChild(this.button('NOT NOW', false, () => this.close('dismiss')));
+      body.innerHTML =
+        '<p>A waystone lights when fire fills the stone bowl at its base, and from then on it is where you wake after dying.</p>' +
+        '<p>Your <b>' + name + '</b> card makes fire. Equip it, then hold its flame on the bowl until the brazier catches.</p>' +
+        '<p class="waystone-prompt-warn">Equipping replaces the spells on the wand in your hand.</p>';
+      row.appendChild(this.button('Equip ' + name, true, () => this.close('equip')));
+      row.appendChild(this.button('Not now', false, () => this.close('dismiss')));
     } else {
-      body.textContent =
-        'This checkpoint lights when you fill the stone bowl at its base with fire, but your wand can’t make fire yet. Bring fire to it: siphon lava with the flask (E) and pour it into the bowl (Q), push something burning onto it, or find a fire spell card.';
-      row.appendChild(this.button('GOT IT', true, () => this.close('dismiss')));
+      body.innerHTML =
+        '<p>A waystone lights when fire fills the stone bowl at its base, and from then on it is where you wake after dying.</p>' +
+        '<p>Your wand cannot make fire yet. Bring fire to it: siphon lava into a flask and pour it into the bowl, push something burning onto it, or find a fire spell card.</p>';
+      row.appendChild(this.button('Got it', true, () => this.close('dismiss')));
     }
 
     panel.appendChild(body);
@@ -90,7 +91,7 @@ export class WaystonePromptOverlay {
   private button(label: string, primary: boolean, onClick: () => void): HTMLButtonElement {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'waystone-prompt-btn' + (primary ? ' primary' : '');
+    button.className = 'waystone-prompt-btn menu-btn' + (primary ? ' primary' : '');
     button.textContent = label;
     button.addEventListener('click', onClick);
     return button;

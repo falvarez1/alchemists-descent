@@ -139,6 +139,7 @@ export class Flask implements FlaskApi {
       s.count = 0;
     }
     ctx.events.emit('flaskUsed', { verb: 'throw', material: thrownMaterial, amount: thrownAmount });
+    ctx.player.throwT = 14; // presentation: the arm follows through
   }
 
   /** Refused flask verb: hollow click + the FLSK bar flinches (throttled). */

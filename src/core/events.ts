@@ -21,6 +21,8 @@ export interface EventMap {
   playerRespawned: undefined;
   /** Death UI should clear without triggering gameplay respawn side effects. */
   playerDeathCleared: undefined;
+  /** The directed death (game/DeathCinema): letterbox in, title card, and out. */
+  deathCinema: { phase: 'begin' | 'title' | 'end' };
   /** Build/play switch — UI swaps panels and HUD visibility. */
   modeChanged: { mode: 'build' | 'play' };
   /** A global/material tuning param changed (a slider, the console `param`

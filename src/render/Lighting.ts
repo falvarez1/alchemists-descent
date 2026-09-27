@@ -4,6 +4,7 @@ import { renderAmbient, VIGNETTE_BASE } from '@/render/lightingModel';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import type { AuthoredLight, Ctx } from '@/core/types';
 import type { LightField, LightSample } from '@/render/pixels';
+import { creatureLights } from '@/render/creatures/lights';
 
 const RUNTIME_INSPECTION_LIGHT_INTENSITY = 1.2;
 const RUNTIME_INSPECTION_LIGHT_RADIUS = 65;
@@ -237,6 +238,8 @@ export class Lighting implements LightField {
     this.authoredFalloffCache.set(key, cells);
     return cells;
   }
+
+  private readonly seedCreature = (x: number, y: number, r: number, g: number, b: number): void => this.seedLight(x, y, r, g, b);
 
   private seedLight(wx: number, wy: number, r: number, g: number, b: number): void {
     const lx = (Math.floor(wx) - this.ctx.camera.renderX) >> 1,
@@ -546,42 +549,9 @@ export class Lighting implements LightField {
     if (ctx.state.editorLights && ctx.state.mode === 'build') {
       this.seedAuthoredSet(ctx, ctx.state.editorLights, renderCamX, renderCamY);
     }
-    // Living light: golem cores pulse (synced to the sprite), imps smoulder,
-    // wisps carry their own cold halo, mage hands throb purple
-    for (const e of ctx.enemies) {
-      if (e.kind === 'colossus') {
-        // The kiln lights its own arena — dimming hard when doused
-        const heat =
-          e.status.wet > 0 ? 0.3 : 0.85 + Math.sin(ctx.state.frameCount * 0.09 + e.bobPhase) * 0.25;
-        this.seedLight(e.x, e.y - 12, heat * 2.0, heat * 1.2, heat * 0.25);
-        this.seedLight(e.x, e.y - 22, heat * 0.9, heat * 0.55, heat * 0.12);
-      } else if (e.kind === 'leviathan') {
-        // the angler's lamp: a cold pulse that betrays it through the water
-        const lure = 0.65 + Math.sin(ctx.state.frameCount * 0.07 + e.bobPhase) * 0.35;
-        this.seedLight(e.x, e.y - 14, lure * 0.4, lure * 1.1, lure * 1.4);
-      } else if (e.kind === 'golem') {
-        const pulse = 0.7 + Math.sin(ctx.state.frameCount * 0.12 + e.bobPhase) * 0.3;
-        this.seedLight(e.x, e.y - 10, pulse * 1.25, pulse * 0.95, pulse * 0.2);
-        if (e.jetFuel > 0) this.seedLight(e.x, e.y + 2, 1.5, 0.9, 0.22);
-      } else if (e.kind === 'imp') {
-        const f = 0.55 + Math.random() * 0.2;
-        this.seedLight(e.x, e.y - 6, f, f * 0.45, f * 0.08);
-      } else if (e.kind === 'wisp') {
-        this.seedLight(e.x, e.y - 4, 0.5, 0.9, 1.1);
-      } else if (e.kind === 'mage') {
-        const pulse = 0.8 + Math.sin(ctx.state.frameCount * 0.1 + e.bobPhase) * 0.2;
-        this.seedLight(e.x, e.y - 6, 0.8 * pulse, 0.3 * pulse, 1.0 * pulse);
-      } else if (e.kind === 'weaver') {
-        const pulse = 0.55 + Math.sin(ctx.state.frameCount * 0.11 + e.bobPhase) * 0.25;
-        const attack = (e.windup ?? 0) > 0 || e.blink > 0 ? 0.45 : 0;
-        this.seedLight(e.x, e.y - 14, 0.35 + attack, 0.30 + attack * 0.7, 0.17 + attack * 0.25);
-        this.seedLight(e.x, e.y - 6, pulse * 0.2, pulse * 0.17, pulse * 0.1);
-      } else if (e.kind === 'rillback' && (e.blink > 0 || (e.rillChargeWindup ?? 0) > 0)) {
-        const windup = e.rillChargeWindup ?? 0;
-        const flash = 0.35 + Math.max(e.blink, windup) * 0.06;
-        this.seedLight(e.x, e.y - 5, flash * 0.25, flash * 0.8, flash);
-      }
-    }
+    // Living light, read from the creatures' own bodies (render/creatures/lights):
+    // lures where they dangle, sacs as they swell, cores as they heat; corpses gutter.
+    creatureLights(ctx, this.seedCreature);
 
     propagateLight(LW, LH, lightR, lightG, lightB, lightAtt);
 

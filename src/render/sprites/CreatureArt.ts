@@ -5,6 +5,7 @@ import { looseLegGeometry, weaverLegGeometry } from '@/creatures/weaverAnatomy';
 import type { LimbPoint } from '@/creatures/weaverAnatomy';
 import { createChain } from '@/creatures/body';
 import type { CreatureExpression } from '@/creatures/expression';
+import { drawSpecies } from '@/render/creatures';
 
 type Color = readonly [number, number, number];
 const INK: Color = [.055, .09, .10], SHELL: Color = [.71, .78, .68];
@@ -599,6 +600,8 @@ function drawInhabitant(p: CreaturePen, ctx: Ctx, e: Readonly<Enemy>): void {
 }
 
 export function drawCreatureSprite(out: PixelSurface, light: LightField, ctx: Ctx, e: Readonly<Enemy>): void {
+  // Migrated species (the rig + rasterizer pipeline) draw themselves.
+  if (drawSpecies(out, light, ctx, e as Enemy)) return;
   const pen = new CreaturePen(out, light, ctx, e);
   if (e.kind === 'weaver') drawWeaver(pen, ctx, e);
   else if (e.kind === 'rillback' || e.kind === 'stonemaw') drawRibbon(pen, ctx, e, e.kind === 'stonemaw');

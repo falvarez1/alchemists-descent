@@ -48,6 +48,7 @@ export class Grimoire {
       e.preventDefault();
       this.toggle();
     } else if (e.code === 'Escape' && this.open) {
+      e.preventDefault();
       this.toggle();
     }
   };

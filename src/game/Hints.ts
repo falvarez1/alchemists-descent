@@ -1,6 +1,7 @@
 import type { Ctx, HintApi, HintInfo } from '@/core/types';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { INTRO_REWARD_CARD } from '@/game/introObjectives';
+import { coldLockHint } from '@/game/LivingExpedition';
 import { getSeenHints, markHintSeen } from '@/game/hints/seenHints';
 
 /** A teach-once popover body, paired with a contextual hint line. */
@@ -230,6 +231,11 @@ export class HintSystem implements HintApi {
         }, teach: spec.teach });
       }
     }
+
+    // D1's cold census outranks the flask line: beside a cistern of water,
+    // "siphon · pour" reads as the solution, and it isn't.
+    const cold = coldLockHint(ctx);
+    if (cold) consider({ priority: 3, dist2: 0, info: cold, teach: null });
 
     if (runtime.def.depth === 1 && !runtime.keyTaken) {
       // One hot-cell scan serves both the burn-wood and carried-cells hints.

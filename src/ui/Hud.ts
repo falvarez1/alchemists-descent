@@ -8,7 +8,7 @@ import { CARD_DEFS } from '@/combat/wands/cards';
 import { PERK_DEFS, isPerkActive, togglePerkActive } from '@/content/perks';
 import { nextWandSentence } from '@/combat/wands/sentenceView';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
-import { deathCauseLine } from '@/ui/deathCauses';
+import { deathCauseLine, deathTitle } from '@/ui/deathCauses';
 import {
   INTRO_OBJECTIVE,
   INTRO_PRE_KEY_OBJECTIVES,
@@ -226,19 +226,37 @@ export class Hud {
       el('go-wave').textContent = 'D' + depth + ' - ' + level.toUpperCase();
       el('go-gold').textContent = String(gold);
       el('go-cause').textContent = deathCauseLine(cause, this.ctx.state.frameCount);
+      el('death-title').textContent = deathTitle(cause);
+    }));
+    // The directed death (game/DeathCinema): letterbox bars slide in and the
+    // HUD recedes; the title card waits for its beat AND a body at rest. A
+    // failsafe still offers the way back if the cinema never reaches its title.
+    const letterbox = document.createElement('div');
+    letterbox.id = 'death-letterbox';
+    letterbox.setAttribute('aria-hidden', 'true');
+    el('canvas-holder').appendChild(letterbox);
+    this.disposers.push(() => letterbox.remove());
+    const revealDeath = (): void => {
+      const overlay = el('gameover-overlay');
+      if (overlay.classList.contains('visible')) return;
+      overlay.classList.add('visible', 'cine');
+      el('respawn-btn').focus({ preventScroll: true });
+    };
+    const clearDeath = (): void => {
+      document.body.classList.remove('death-cine');
+      el('gameover-overlay').classList.remove('visible', 'cine');
+    };
+    this.disposers.push(ctx.events.on('deathCinema', ({ phase }) => {
+      if (phase === 'begin') document.body.classList.add('death-cine');
+      else if (phase === 'title') revealDeath();
+      else clearDeath();
     }));
     this.disposers.push(ctx.events.on('playerCorpseSettled', () => {
-      // Keep the resting body visible while offering the return journey.
-      el('gameover-overlay').classList.add('visible');
-      el('respawn-btn').focus({ preventScroll: true });
+      this.setHudTimeout(() => { if (this.ctx.player.dead) revealDeath(); }, 6000);
     }));
 
-    this.disposers.push(ctx.events.on('playerRespawned', () => {
-      el('gameover-overlay').classList.remove('visible');
-    }));
-    this.disposers.push(ctx.events.on('playerDeathCleared', () => {
-      el('gameover-overlay').classList.remove('visible');
-    }));
+    this.disposers.push(ctx.events.on('playerRespawned', clearDeath));
+    this.disposers.push(ctx.events.on('playerDeathCleared', clearDeath));
 
     this.disposers.push(ctx.events.on('modeChanged', ({ mode }) => {
       el('mode-build-btn').classList.toggle('active', mode === 'build');
@@ -393,18 +411,20 @@ export class Hud {
   /** Tier-2 contextual hint: the nearest interactable's "what to do" line. */
   private renderInteractionHint(ctx: Ctx): void {
     const hint = ctx.hints.current;
-    const anchored = hint?.key === 'works-valve' && hint.world;
-    const controller = anchored && Array.from(navigator.getGamepads?.() ?? []).some(pad => pad?.connected);
-    const text = anchored ? `${controller ? 'X' : keyLabel(getBindings().interact)} · Turn valve` : hint?.line ?? '';
+    const note = hint?.key === 'works-cold-lock';
+    const anchored = (hint?.key === 'works-valve' || note) && hint.world;
+    const controller = anchored && !note && Array.from(navigator.getGamepads?.() ?? []).some(pad => pad?.connected);
+    const text = anchored && !note ? `${controller ? 'X' : keyLabel(getBindings().interact)} · Turn valve` : hint?.line ?? '';
     const node = this.interactionHintNode;
     if (node.textContent !== text) node.textContent = text;
     node.classList.toggle('visible', text !== '');
     node.classList.toggle('world-anchor', Boolean(anchored));
+    node.classList.toggle('wide', Boolean(anchored && note));
     if (anchored) {
       const width = node.parentElement!.clientWidth, height = node.parentElement!.clientHeight;
       const x = (anchored.x - ctx.camera.renderX + 26) / VIEW_W * width;
       const y = (anchored.y - ctx.camera.renderY - 25) / VIEW_H * height;
-      node.style.left = `${Math.max(10, Math.min(width - 165, x))}px`;
+      node.style.left = `${Math.max(10, Math.min(width - (note ? 275 : 165), x))}px`;
       node.style.top = `${Math.max(70, Math.min(height - 90, y))}px`;
     } else { node.style.removeProperty('left'); node.style.removeProperty('top'); }
   }

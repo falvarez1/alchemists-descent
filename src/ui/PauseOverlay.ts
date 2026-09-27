@@ -2,6 +2,8 @@ import type { Ctx } from '@/core/types';
 import { isRunLauncherOpen } from '@/ui/RunLauncher';
 import { appDialog } from '@/ui/AppDialog';
 import { BUILD_STAMP, buildPlaytestReport } from '@/ui/playtestReport';
+import { WORKS_ROOMS } from '@/world/breathingWorks';
+import { titleCaseName } from '@/core/strings';
 
 /**
  * ESC pause. Owns its own pause claim so it never fights the Sanctum, the
@@ -21,6 +23,8 @@ export class PauseOverlay {
     document.getElementById('pause-resume')?.addEventListener('click', this.onResumeClick);
     document.getElementById('pause-launcher')?.addEventListener('click', this.onLauncherClick);
     document.getElementById('pause-copy-report')?.addEventListener('click', this.onCopyReportClick);
+    document.getElementById('pause-overlay')?.addEventListener('click', this.onMenuClick);
+    document.getElementById('pause-overlay')?.addEventListener('keydown', this.onMenuKeys);
     const build = document.getElementById('pause-build');
     if (build) build.textContent = `build ${BUILD_STAMP}`;
     document.addEventListener('fullscreenchange', this.onFullscreenChange);
@@ -89,7 +93,65 @@ export class PauseOverlay {
     document.getElementById('pause-resume')?.removeEventListener('click', this.onResumeClick);
     document.getElementById('pause-launcher')?.removeEventListener('click', this.onLauncherClick);
     document.getElementById('pause-copy-report')?.removeEventListener('click', this.onCopyReportClick);
+    document.getElementById('pause-overlay')?.removeEventListener('click', this.onMenuClick);
+    document.getElementById('pause-overlay')?.removeEventListener('keydown', this.onMenuKeys);
     document.removeEventListener('fullscreenchange', this.onFullscreenChange);
+  }
+
+  /**
+   * The pause menu's doors to the other menus: resume, then press the same
+   * key the player would (each menu owns its own toggle and pause claim).
+   */
+  private readonly onMenuClick = (event: MouseEvent): void => {
+    const button = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-pause-open]');
+    if (!button) return;
+    const code = button.dataset.pauseOpen ?? '';
+    this.resume();
+    window.dispatchEvent(new KeyboardEvent('keydown', { code, key: code.replace('Key', '').toLowerCase(), bubbles: true }));
+  };
+
+  /** Arrow keys walk the menu; the list wraps. */
+  private readonly onMenuKeys = (event: KeyboardEvent): void => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const items = [...document.querySelectorAll<HTMLElement>('#pause-overlay #pause-resume, #pause-overlay .pause-menu button')]
+      .filter((node) => node.offsetParent !== null);
+    if (items.length === 0) return;
+    event.preventDefault();
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const next = at < 0 ? 0 : (at + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[next].focus();
+  };
+
+  /** Where you are: level, room, the current goal, and what you carry. */
+  private fillStatus(): void {
+    const ctx = this.ctx;
+    const level = ctx.levels.current;
+    const place = document.getElementById('pause-place');
+    const goal = document.getElementById('pause-goal');
+    const stats = document.getElementById('pause-stats');
+    if (!place || !goal || !stats) return;
+    if (!level) { place.textContent = ''; goal.textContent = ''; stats.replaceChildren(); return; }
+    const room = level.living ? WORKS_ROOMS.find((r) => r.id === level.living?.room)?.name : undefined;
+    const name = titleCaseName(level.def.name);
+    place.textContent = room ? room + ' · ' + name : name;
+    goal.textContent = document.getElementById('objective')?.textContent?.trim() || '';
+    let charted = 0;
+    for (let i = 0; i < level.explored.length; i++) if (level.explored[i] > 0) charted++;
+    const rows: Array<[string, string]> = [
+      ['Depth', String(level.def.depth)],
+      ['Health', Math.ceil(Math.max(0, ctx.player.hp)) + ' / ' + ctx.player.maxHp],
+      ['Gold carried', ctx.state.score + ' oz'],
+      ['Charted', Math.round(charted / Math.max(1, level.explored.length) * 100) + '%'],
+      ['Spell cards', String(ctx.wands.collection.length + ctx.wands.wands.reduce((n, w) => n + w.cards.filter(Boolean).length, 0))],
+    ];
+    if (level.living) rows.push(['Glowseeds', String(level.living.glowseeds)]);
+    stats.replaceChildren(...rows.flatMap(([label, value]) => {
+      const dt = document.createElement('dt');
+      dt.textContent = label;
+      const dd = document.createElement('dd');
+      dd.textContent = value;
+      return [dt, dd];
+    }));
   }
 
   /** Release the ESC pause (if this overlay owns it) before handing off to a run action. */
@@ -162,7 +224,10 @@ export class PauseOverlay {
     const hint = document.getElementById('pause-input-hint');
     if (hint) hint.textContent = Array.from(navigator.getGamepads?.() ?? []).some(p => p?.connected)
       ? 'Start to resume · A to choose' : 'Escape to resume · H for the handbook';
-    if (this.active) document.getElementById('pause-resume')?.focus();
+    if (this.active) {
+      this.fillStatus();
+      document.getElementById('pause-resume')?.focus();
+    }
     this.syncFullscreenButton();
   }
 

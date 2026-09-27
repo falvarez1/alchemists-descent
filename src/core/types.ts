@@ -4,6 +4,8 @@ import type { Cell } from '@/sim/CellType';
 import type { VirtualWorldDef } from '@/authoring/virtualWorld';
 import type { CreatureBody, CreatureMind, PlantedFoot } from '@/creatures/types';
 import type { CreatureExpression } from '@/creatures/expression';
+import type { CreatureRig } from '@/creatures/rig/types';
+import type { PlayerCostume } from '@/entities/playerCostume';
 
 /* ============================================================
  * Entity data
@@ -183,6 +185,12 @@ export interface PlayerState {
    * body in proportion. Purely cosmetic — cleared on respawn.
    */
   bloodStain: number;
+  /** Presentation: the levitation jet is lit this tick (set by PlayerControl, read by art). */
+  levitating?: boolean;
+  /** Presentation: frames left of the flask-throw arm swing. */
+  throwT?: number;
+  /** Presentation-only cloth/hat physics (entities/playerCostume). Never saved. */
+  costume?: PlayerCostume;
 }
 
 export const PLAYER_HALF_W = 4;
@@ -393,6 +401,16 @@ export interface Enemy {
   expression?: CreatureExpression;
   mind?: CreatureMind;
   body?: CreatureBody;
+  /** Physical body (verlet chunks, chains, gripping legs, soft body). Tick-owned, never saved. */
+  rig?: CreatureRig;
+  /** Last hit's knockback direction and frame: the rig answers it physically (a snapped-back
+   *  head, a whipped tail, a dented gel). Presentation-only, never saved. */
+  hitKx?: number;
+  hitKy?: number;
+  hitAt?: number;
+  hitAmount?: number;
+  /** Throttled line-of-fire memo for ranged walkers (1 clear, 0 blocked). */
+  sightLine?: number;
   feet?: PlantedFoot[];
   kind: EnemyKind;
   x: number;
@@ -415,6 +433,8 @@ export interface Enemy {
   jetFuel: number;
   jetCd: number;
   stuckT: number;
+  /** Consecutive ticks the box has been inside terrain (Enemies.unembed). */
+  embedT?: number;
   /** Teleportium contact cooldown; prevents liquid pools from strobe-warping enemies. */
   tpCool?: number;
   // lazily-added smoothed displacement trackers (sprite animation)
@@ -1283,6 +1303,8 @@ export interface FxState {
   /** Death slow-motion timer (game ticks). >0 slows the sim cadence; render is
    *  unaffected, so the ragdoll tumbles in slow-mo. Decrements each tick. */
   deathSlowMo: number;
+  /** Real-time seconds since the alchemist fell (0 while alive): drives the death cinematic. */
+  deathTime?: number;
 }
 
 export interface WaveState {
@@ -2901,6 +2923,11 @@ export interface LivingExpeditionState {
   lures: Array<{ id: number; x: number; y: number; vx: number; vy: number; life: number }>;
   rested: boolean;
   restTicks: number;
+  /** Label of the waypoint the expedition itself last set (a milestone
+   *  breadcrumb); a player-set waypoint with another label is never replaced. */
+  autoWaypoint?: string;
+  /** The player has stood by the Intake cistern and met the cold lock. */
+  coldLockSeen?: boolean;
 }
 
 export interface LevelsApi {

@@ -561,7 +561,64 @@ export class VineStrands implements VineStrandsApi {
     }
   }
 
+  /** Creature body parts that shove strands this tick: x, y, radius triples. */
+  private readonly pushers = new Float64Array(3 * 160);
+  private pusherCount = 0;
+
+  /**
+   * Every creature near the view is a pusher, not just the wizard: torsos,
+   * tails and feet part hanging vines and set webs trembling as they pass.
+   */
+  private gatherPushers(ctx: Ctx): void {
+    this.pusherCount = 0;
+    if (ctx.state.mode !== 'play' || !ctx.enemies?.length) return;
+    const px = ctx.player.x, py = ctx.player.y, cap = this.pushers.length / 3;
+    const add = (x: number, y: number, r: number): void => {
+      if (this.pusherCount >= cap) return;
+      const k = this.pusherCount++ * 3;
+      this.pushers[k] = x; this.pushers[k + 1] = y; this.pushers[k + 2] = r;
+    };
+    for (const e of ctx.enemies) {
+      if (Math.abs(e.x - px) > VIEW_W || Math.abs(e.y - py) > VIEW_H) continue;
+      const rig = e.rig;
+      if (e.weaverLoco) {
+        add(e.weaverLoco.px, e.weaverLoco.py, 9);
+        for (const l of e.weaverLoco.legs) if (!l.missing) add(l.x, l.y, 2.5);
+      } else if (rig && (rig.pts.length || rig.soft || rig.chains.length)) {
+        for (const p of rig.pts) add(p.x, p.y, 3.5);
+        for (const l of rig.legs) add(l.x, l.y, 2.5);
+        for (const c of rig.chains) for (let i = 1; i < c.pts.length; i += 2) add(c.pts[i].x, c.pts[i].y, c.radius[i] + 1.5);
+        if (rig.soft) add(rig.soft.cx, rig.soft.cy, 6);
+      }
+      if (e.body) for (const n of e.body.nodes) add(n.x, n.y, n.radius + 1.2);
+      if (!rig && !e.body && !e.weaverLoco) {
+        const def = ctx.enemyCtl.defs[e.kind];
+        add(e.x, e.y - def.h / 2, Math.max(def.halfW, def.h / 2));
+      }
+    }
+  }
+
+  private pushFromCreatures(strand: VineStrand): void {
+    const n = this.pusherCount;
+    if (n === 0) return;
+    const b = strand.bounds;
+    const P = this.pushers;
+    for (let k = 0; k < n; k++) {
+      const cx = P[k * 3], cy = P[k * 3 + 1], r = P[k * 3 + 2];
+      if (b && (cx + r < b.minX || cx - r > b.maxX || cy + r < b.minY || cy - r > b.maxY)) continue;
+      for (const node of strand.nodes) {
+        const dx = node.x - cx, dy = node.y - cy, d = Math.hypot(dx, dy);
+        if (d <= 0.001 || d > r) continue;
+        const push = (r - d) / r * 0.9;
+        const ix = dx / d * push, iy = dy / d * push;
+        node.x += ix; node.y += iy;
+        node.px -= ix * 0.5; node.py -= iy * 0.35;
+      }
+    }
+  }
+
   update(ctx: Ctx): void {
+    this.gatherPushers(ctx);
     this.manageHangingVines(ctx); // lift on-screen cell-vines; re-settle far ones
     this.shakeSway(ctx.fx?.screenShake ?? 0); // the world shakes → live vines quiver
     const burnedThrough: Array<{ x: number; y: number }> = [];
@@ -957,6 +1014,8 @@ export class VineStrands implements VineStrandsApi {
       if (playerActive) this.pushFromPlayer(node, px, py);
       if (this.resolveTerrain(ctx.world, node)) contacts++;
     }
+
+    this.pushFromCreatures(strand);
 
     for (let iter = 0; iter < SOLVER_ITERATIONS; iter++) {
       for (const segment of strand.segments) this.solveSegment(strand, segment);

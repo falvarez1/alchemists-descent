@@ -17,6 +17,8 @@ const PostFxShader = {
     uGrain: { value: 0.028 },
     /** 0..1 — red edge pulse as the alchemist nears death. */
     uHurt: { value: 0 },
+    /** 0..1 — the death grade: colour drains (reds hold), the vignette closes. */
+    uDeath: { value: 0 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -31,6 +33,7 @@ const PostFxShader = {
     uniform float uAberration;
     uniform float uGrain;
     uniform float uHurt;
+    uniform float uDeath;
     varying vec2 vUv;
 
     // Cheap animated hash noise for film grain.
@@ -64,6 +67,17 @@ const PostFxShader = {
         col = mix(col, vec3(0.45, 0.02, 0.04), uHurt * edge * pulse * 0.6);
       }
 
+      // Death grade: the world drains to a cold grey — blood keeps its red —
+      // and the dark closes in from the edges around the body.
+      if (uDeath > 0.001) {
+        float lum = dot(col, vec3(0.299, 0.587, 0.114));
+        float red = clamp((col.r - max(col.g, col.b)) * 3.0, 0.0, 1.0);
+        vec3 grey = vec3(lum) * vec3(0.93, 0.97, 1.06);
+        col = mix(col, grey, uDeath * 0.88 * (1.0 - red * 0.8));
+        float vig = smoothstep(0.06, 0.42, r2);
+        col *= 1.0 - vig * uDeath * 0.72;
+      }
+
       gl_FragColor = vec4(col, 1.0);
     }
   `,
@@ -90,6 +104,9 @@ export class PostFx {
         ? Math.max(0, 0.35 - ctx.player.hp / ctx.player.maxHp) / 0.35
         : 0;
     u.uHurt.value = hurt * post.hurtPulse;
+    const t = ctx.state.mode === 'play' && ctx.player.dead ? ctx.fx.deathTime ?? 0 : 0;
+    const d = Math.max(0, Math.min(1, (t - 0.1) / 2.4));
+    u.uDeath.value = d * d * (3 - 2 * d);
   }
 
   dispose(): void {

@@ -63,7 +63,10 @@ export function tickCreatureMind(
     const vision = enemy.kind === 'stonemaw' ? 26 : enemy.kind === 'weaver' ? 215 : 265;
     const range = vision * senseScale * (0.52 + player.light * 0.48) * (player.crouching ? 0.65 : 1);
     const facing = dx * mind.facing > -18 || distance < 42 || mind.irritation > 0.3;
-    mind.visible = !player.dead && !enemy.sleeping && distance < range && facing && sightClear(world, enemy.x, enemy.y - 6, player.x, player.y - 9);
+    // A Stone Maw is blind but not numb: a body within a few lengths presses
+    // on the rock and water around it, lit or dark, in front or behind.
+    const felt = enemy.kind === 'stonemaw' && distance < 64 * senseScale;
+    mind.visible = !player.dead && !enemy.sleeping && (felt || (distance < range && facing)) && sightClear(world, enemy.x, enemy.y - 6, player.x, player.y - 9);
     if (mind.visible) {
       mind.targetX = player.x;
       mind.targetY = player.y;
@@ -93,7 +96,7 @@ export function tickCreatureMind(
   const organic = enemy.kind === 'weaver' || enemy.kind === 'rillback' || enemy.kind === 'rootloper' || enemy.kind === 'stonemaw';
   const alarm = enemy.status.burning > 0 || enemy.hp < enemy.maxHp * 0.25;
   const homeDistance = Math.hypot(enemy.x - mind.homeX, enemy.y - mind.homeY);
-  const intrusion = mind.visible && distance < (enemy.kind === 'rillback' ? 38 : 52);
+  const intrusion = mind.visible && distance < (enemy.kind === 'rillback' ? 38 : enemy.kind === 'stonemaw' ? 64 : 52);
   let next: CreatureMind['intent'];
   if (alarm) next = 'retreat';
   else if (mind.confidence > 0.12 && (!organic || mind.irritation > 0.22 || intrusion || mind.hunger > 0.82)) next = mind.visible ? 'hunt' : 'investigate';

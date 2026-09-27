@@ -58,6 +58,7 @@ import { World } from '@/sim/World';
 import { CardOfferOverlay } from '@/ui/CardOfferOverlay';
 import { WaystonePromptOverlay } from '@/ui/WaystonePromptOverlay';
 import { HintTeachOverlay } from '@/ui/HintTeachOverlay';
+import { GpuNotice } from '@/ui/GpuNotice';
 import { HelpOverlay } from '@/ui/HelpOverlay';
 import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
@@ -76,6 +77,7 @@ import { WandBench } from '@/ui/WandBench';
 import { WorldGen } from '@/world/CaveGenerator';
 import { SANDBOX_FOCUS, stampSandboxArena } from '@/world/sandboxArena';
 import { reseedTickStreams } from '@/core/simRandom';
+import { DeathCinema } from '@/game/DeathCinema';
 
 function initialRenderBackendOverride(): RenderBackendMode | null {
   if (typeof window === 'undefined') return null;
@@ -110,6 +112,7 @@ export class Game {
   private readonly perfHud = new PerfHud();
   private readonly brewing = new Brewing();
   private readonly habitatAudio = new HabitatAudio();
+  private deathCinema: DeathCinema | null = null;
   private readonly grimoireInteractions = new GrimoireInteractionObserver();
   private readonly restoreSavedMode: () => void;
   private modePersistDisposer: (() => void) | null = null;
@@ -302,6 +305,7 @@ export class Game {
     this.disposables.push(new CardOfferOverlay(ctx));
     this.disposables.push(new WaystonePromptOverlay(ctx));
     this.disposables.push(new HintTeachOverlay(ctx));
+    this.disposables.push(new GpuNotice(ctx, () => this.renderer.getBackendStatus().gpu));
     // Self-binds the B key; lives for the page lifetime.
     this.disposables.push(new WandBench(ctx));
     // Authoring/debug surface. Not constructed at all in a play build — the
@@ -470,8 +474,11 @@ export class Game {
     // Death slow-mo: stretch the wall-clock cost of a tick so the sim advances
     // in slow motion (the ramp eases back to real-time as the timer runs out).
     // Render still fires every rAF, so the ragdoll tumble is smooth, not choppy.
-    const trickshotScale = advanceTrickshotClock(this.ctx, this.trickshotLastTime ? now - this.trickshotLastTime : 0);
+    const frameDt = this.trickshotLastTime ? now - this.trickshotLastTime : 0;
+    const trickshotScale = advanceTrickshotClock(this.ctx, frameDt);
     this.trickshotLastTime = now;
+    if (!this.deathCinema) { this.deathCinema = new DeathCinema(this.ctx); this.disposables.push(this.deathCinema); }
+    this.deathCinema.update(frameDt / 1000);
     let stepBudget = Game.STEP_MS / trickshotScale;
     const slowMo = this.ctx.fx.deathSlowMo;
     if (slowMo > 0 && !this.ctx.state.paused) {

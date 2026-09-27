@@ -4,6 +4,7 @@ import { clamp } from '@/core/math';
 import { PLAYER_PALETTE } from './playerPalette';
 import { CellCapture, finePixelStep } from './FineArt';
 import { drawAlchemistSprite } from './AlchemistSprite';
+import { drawAlchemist } from '@/render/player/AlchemistArt';
 
 type RGB = readonly [number, number, number];
 
@@ -58,6 +59,7 @@ export function drawPlayerSprite(out: PixelSurface, light: LightField, ctx: Ctx)
   if (!ctx.state.reduceFlashes && player.invuln > 0 && frameCount % 6 < 3) return;
   // The game surface has half-cell pixels and uses the joint-driven art pass.
   // Classic cell surfaces retain the legacy sprite for Builder compatibility.
+  if (drawAlchemist(out, light, ctx)) return;
   if (!player.legClub && drawAlchemistSprite(out, light, ctx)) return;
 
   // Silhouette pass: every BODY pixel is recorded so a near-black rim can be

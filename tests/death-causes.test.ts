@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { deathCauseLine, knownDeathCauseSources } from '@/ui/deathCauses';
+import { deathCauseLine, deathTitle, knownDeathCauseSources } from '@/ui/deathCauses';
 
 describe('death cause copy', () => {
   it('has witty lines for key lethal sources', () => {
@@ -26,5 +26,25 @@ describe('death cause copy', () => {
       'weaver-needle',
       'wet-electrocution',
     ]));
+  });
+
+  it('titles the card by what actually killed you', () => {
+    expect(deathTitle('wet-electrocution')).toBe('The current took you.');
+    expect(deathTitle('electrocution')).toBe('The current took you.');
+    expect(deathTitle('lava')).toBe('You melted.');
+    expect(deathTitle('impact')).toBe('You fell.');
+    expect(deathTitle(null)).toBe('You died.');
+    expect(deathTitle('something-new')).toBe('You died.');
+    // Only the ground earns "You fell."
+    for (const source of knownDeathCauseSources()) {
+      if (source !== 'impact') expect(deathTitle(source)).not.toBe('You fell.');
+    }
+  });
+
+  it('writes a line and a title for every creature that can kill', () => {
+    for (const source of ['stonemaw-bite', 'rillback-bite', 'rillback-flop', 'rootloper-lash', 'steam-pressure']) {
+      expect(knownDeathCauseSources()).toContain(source);
+      expect(deathTitle(source)).not.toBe('You died.');
+    }
   });
 });

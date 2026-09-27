@@ -29,6 +29,11 @@ const CAMERA_BOTTOM_VOID = Math.floor(VIEW_H / 2);
  * aim-distance lookahead; in build mode the WASD keys pan it. Also derives the
  * active simulation window and leans in (idle zoom) when the wizard stands still.
  */
+/** Death push-in curve: holds a beat, then eases in over ~2.2s. */
+function deathPush(t: number): number {
+  return smoothstep(clamp((t - 0.15) / 2.2, 0, 1));
+}
+
 export class Camera implements CameraApi {
   x = 0;
   y = 0;
@@ -91,12 +96,15 @@ export class Camera implements CameraApi {
       this.tx += this.cineDx;
       this.ty += this.cineDy;
     } else if (state.mode === 'play' && player.dead) {
-      // Death: ride the tumbling ragdoll down (don't freeze on the death spot).
+      // Death: ride the tumbling ragdoll down (don't freeze on the death spot),
+      // lifting the body into the upper frame as the cinematic pushes in, so the
+      // title card can rise beneath it.
       const corpse = ctx.rigidBodies.playerCorpse;
       const fx = corpse ? corpse.x : player.x;
       const fy = corpse ? corpse.y : player.y - 9;
+      const push = deathPush(ctx.fx.deathTime ?? 0);
       this.tx = fx - VIEW_W / 2;
-      this.ty = fy - VIEW_H / 2;
+      this.ty = fy - VIEW_H / 2 + push * 17;
     } else if (state.mode === 'build') {
       // pan in SCREEN distance: zoomed in, the world moves proportionally less
       const pan = 9 / this.zoom;
@@ -105,8 +113,11 @@ export class Camera implements CameraApi {
       if (input.keys.jump) this.ty -= pan;
       if (input.keys.down) this.ty += pan;
     }
-    const padX = action ? VIEW_W * (1 - 1 / Math.max(1, this.zoom)) / 2 : 0;
-    const padY = action ? VIEW_H * (1 - 1 / Math.max(1, this.zoom)) / 2 : 0;
+    // A zoomed frame hides a margin, so it may pan past the world edge by that
+    // much (the action camera and the death push-in both zoom about the body).
+    const zoomedFrame = action !== null || (state.mode === 'play' && player.dead);
+    const padX = zoomedFrame ? VIEW_W * (1 - 1 / Math.max(1, this.zoom)) / 2 : 0;
+    const padY = zoomedFrame ? VIEW_H * (1 - 1 / Math.max(1, this.zoom)) / 2 : 0;
     this.tx = clamp(this.tx, -padX, WIDTH - VIEW_W + padX);
     this.ty = clamp(this.ty, -padY, HEIGHT - VIEW_H + CAMERA_BOTTOM_VOID);
     const actionDistance = Math.hypot(this.tx - this.x, this.ty - this.y);
@@ -134,8 +145,9 @@ export class Camera implements CameraApi {
       !player.grounded ||
       player.firing;
     this.idleFrames = busy ? 0 : this.idleFrames + 1;
-    const zTarget = action ? actionCameraZoom(action.zoom, actionDistance) : this.zoomLock ?? this.cineZoom;
-    this.zoom += (zTarget - this.zoom) * (action ? .035 : this.zoomLock !== null ? 0.16 : this.cineZoom !== 1 ? 0.09 : 0.035);
+    const dying = state.mode === 'play' && player.dead && !action && this.zoomLock === null;
+    const zTarget = action ? actionCameraZoom(action.zoom, actionDistance) : this.zoomLock ?? (dying ? 1 + 0.85 * deathPush(ctx.fx.deathTime ?? 0) : this.cineZoom);
+    this.zoom += (zTarget - this.zoom) * (action ? .035 : this.zoomLock !== null ? 0.16 : dying ? 0.06 : this.cineZoom !== 1 ? 0.09 : 0.035);
   }
 
   updateSimBounds(world: World): void {

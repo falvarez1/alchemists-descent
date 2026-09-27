@@ -41,8 +41,8 @@ describe('Breathing Works encounter contracts', () => {
     // GEN_VERSION 39 reclaimed habitat and optional spell detours.
     let hash = 0x811c9dc5;
     for (const byte of a.runtime.world.types) hash = Math.imul(hash ^ byte, 0x01000193);
-    // GEN_VERSION 44: cold-lock backtrack, return hatch and living habitat.
-    expect((hash >>> 0).toString(16)).toBe('e3131c67');
+    // GEN_VERSION 45: contained reservoir and garden pool, west Undertow chute.
+    expect((hash >>> 0).toString(16)).toBe('a8750545');
   });
 
   it('makes Frost Shard a real out-and-back gate before the engine crank', () => {

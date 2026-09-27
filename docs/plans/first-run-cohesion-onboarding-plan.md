@@ -1,6 +1,7 @@
 # First-Run Cohesion And Onboarding Plan
 
-Status: superseded in structure, implemented in spirit (2026-07-11 audit).
+Status: superseded (2026-09-26). D1 is now the Breathing Works, and IntroProgression returns early for its living runtime; teaching there is the objective line, the cold-lock hint and the milestone compass in LivingExpedition.ts. The notes below describe the retired surface intro.
+Previous status: superseded in structure, implemented in spirit (2026-07-11 audit).
 `src/game/IntroProgression.ts` + `src/game/introObjectives.ts` + `src/game/Hints.ts`
 now own the D1 teaching spine this plan proposed — do NOT build the separate
 FirstRunDirector below; it would double-fire objectives and popovers. The intro

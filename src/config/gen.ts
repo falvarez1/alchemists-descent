@@ -121,7 +121,7 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 44; // 44: Breathing Works cold-lock backtrack, return hatch, living habitat and failed-light corridor
+export const GEN_VERSION = 45; // 45: Breathing Works liquids stay put (sunken steam reservoir under a grate, sunken garden pool, west Undertow chute) the Heavy Charm leaves the drip tray, even refuge steps and grounded glowshrooms
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox

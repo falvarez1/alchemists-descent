@@ -286,8 +286,10 @@ try {
   await followChute({ x: 1432, y: 450 }, { x: 1415, y: 590 }, 'pressure chute return');
   await moveTo(1115, 'cross the pressure shelters again');
   await waitForGameplay(() => window.__game.ctx.player.y >= 705);
-  await moveTo(430, 'refuge and garden to lower chute');
-  await followChute({ x: 430, y: 815 }, { x: 490, y: 1008 }, 'undertow arrival');
+  // GEN_VERSION 45: the Undertow chute opens at the garden's far west end,
+  // past the return shaft, clear of the sunken garden pool.
+  await moveTo(196, 'refuge and garden to the west chute');
+  await followChute({ x: 190, y: 815 }, { x: 330, y: 1008 }, 'undertow arrival');
   await moveTo(1400, 'undertow to lower gate');
   await settleAt(1400, 'touch the lower gate');
   await page.locator('#perk-row .perk-card').first().waitFor({ state: 'visible' });

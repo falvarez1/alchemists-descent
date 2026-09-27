@@ -3,6 +3,7 @@ import { clamp, lerp } from '@/core/math';
 import { blocksEntity } from '@/sim/CellType';
 import { createChain, tickChain } from './body';
 import { tickCreatureExpression } from './expression';
+import { tickRig } from './species';
 
 /** All integration is simulation-owned. Rendering can sample this state any number of times. */
 export function tickCreaturePose(ctx: Ctx, e: Enemy): void {
@@ -27,18 +28,31 @@ export function tickCreaturePose(ctx: Ctx, e: Enemy): void {
   if (e.kind === 'rillback' || e.kind === 'stonemaw') {
     const facing = e.mind?.facing ?? Math.sign(e.vx || 1);
     e.body ??= createChain(e.x, e.y - 4, facing, e.kind === 'rillback' ? 9 : 7);
-    tickChain(ctx.world, e.body, e.x + e.fx, e.y - 4 + e.fy, (e.rillWet ?? 0) >= 0.28, frame, e.kind === 'rillback');
-    if (e.kind === 'rillback') {
+    const swimming = (e.rillWet ?? 0) >= 0.28;
+    // Only a swimming eel is a water-coupled chain. Beached, it is a body
+    // draped behind a flopping head: its box falls and hops under ordinary
+    // collision, and the chain follows it rather than holding it up.
+    const aquatic = e.kind === 'rillback' && swimming;
+    tickChain(ctx.world, e.body, e.x + e.fx, e.y - 4 + e.fy, swimming, frame, aquatic);
+    if (aquatic) {
       const head = e.body.nodes[0], dx = head.x - e.x - e.fx, dy = head.y - e.y + 4 - e.fy;
       // A tail wedged in terrain carries a reaction force back to the swimmer.
-      // Keep the AI/collision origin on that constrained head on the next tick.
+      // Keep the AI/collision origin on that constrained head on the next tick
+      // — but only where the box itself fits. The head is a small circle; the
+      // box is not, and a box written into rock can never move again.
       const reaction = Math.hypot(dx, dy);
-      if (reaction > .001) {
+      const hx = Math.floor(head.x), hy = Math.floor(head.y + 4);
+      const def = ctx.enemyCtl?.defs?.[e.kind];
+      const fits = !def || !ctx.physics?.entityFree || ctx.physics.entityFree(hx, hy, def.halfW, def.h);
+      if (reaction > .001 && fits) {
         const nx = dx / reaction, ny = dy / reaction;
         const outward = e.vx * nx + e.vy * ny;
         if (outward < 0) { const impulse = Math.min(reaction, -outward); e.vx += nx * impulse; e.vy += ny * impulse; }
-        e.x = Math.floor(head.x); e.fx = head.x - e.x;
-        e.y = Math.floor(head.y + 4); e.fy = head.y + 4 - e.y;
+        e.x = hx; e.fx = head.x - e.x;
+        e.y = hy; e.fy = head.y + 4 - e.y;
+      } else if (reaction > .001) {
+        // The box cannot stand where the head was held: let the head rejoin it.
+        head.x = head.previousX = e.x + e.fx; head.y = head.previousY = e.y - 4 + e.fy;
       }
     }
     e.rillSegments = e.body.nodes;
@@ -66,6 +80,7 @@ export function tickCreaturePose(ctx: Ctx, e: Enemy): void {
     e.rootSupport = Math.min(e.rootSupport ?? 1, contacts / 4);
     if (contacts >= 3 && e.vy > 0 && e.vy < 1.5) e.vy *= 0.65;
   }
+  tickRig(ctx, e);
   if (e.kind !== 'weaver') return;
   const loco = e.weaverLoco;
   const asleep = e.sleeping === true;

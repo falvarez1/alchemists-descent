@@ -23,8 +23,8 @@ export class PlayerSettings {
   constructor(private readonly ctx: Ctx) {
     this.dialog.id = 'player-settings';
     this.dialog.setAttribute('aria-labelledby', 'player-settings-title');
-    this.dialog.innerHTML = `<form method="dialog"><div class="settings-heading"><h2 id="player-settings-title">Make yourself at home</h2><button value="close" aria-label="Close settings">Close</button></div>
-      <div class="settings-options"><label>Text size<select name="textScale"><option value="1">Standard</option><option value="1.15">Large</option><option value="1.3">Larger</option></select></label>
+    this.dialog.innerHTML = `<form method="dialog"><div class="settings-heading"><h2 id="player-settings-title">Make yourself at home</h2><button value="close" class="menu-close" aria-label="Close settings"><kbd class="key">Esc</kbd>Close</button></div>
+      <h3>Comfort</h3><div class="settings-options"><label>Text size<select name="textScale"><option value="1">Standard</option><option value="1.15">Large</option><option value="1.3">Larger</option></select></label>
       <label><input type="checkbox" name="reducedFlashes"> Reduce flashes and pulses</label>
       <label><input type="checkbox" name="cameraShake"> Camera shake</label>
       <label><input type="checkbox" name="highReadability"> High-readability lighting</label>
@@ -45,7 +45,7 @@ export class PlayerSettings {
       <h3>Keyboard</h3><p>Choose an action, then press its new key. Mouse aims; left click casts; right click throws a flask. With a Weaver leg equipped: left click whips, right click throws the leg, and Carry drops it.</p>
       <div class="binding-list"></div><p id="binding-feedback" role="status"></p>
       <button type="button" id="reset-controls">Restore controls</button>
-      <p class="controller-help">Controller: left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. With a Weaver leg: RT whips, RB throws it, LB drops it. Start pauses.</p></form>`;
+      <h3>Controller</h3><p class="controller-help">Controller: left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. With a Weaver leg: RT whips, RB throws it, LB drops it. Start pauses.</p></form>`;
     document.getElementById('canvas-holder')!.appendChild(this.dialog);
     this.dialog.addEventListener('close', () => {
       // Native close events are queued. Escape/Resume may already have released

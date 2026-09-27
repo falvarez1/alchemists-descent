@@ -52,7 +52,7 @@ on contact changes; burning oil and neighboring charge remain active, including
 across chunk seams. Generated established vegetation begins dormant; newly created growth
 retains its vigor. Vine-body promotion follows the player rather than the camera.
 
-`GEN_VERSION` is 38. The active frontier deliberately changes random-number draw
+`GEN_VERSION` was 38 at this record; it is now 45 (cold lock, contained liquids; see DESIGN.md). The active frontier deliberately changes random-number draw
 order; simulation goldens document that policy. Generation type goldens cover the
 new first level. Saves preserve ecology and gameplay metadata; incompatible
 expeditions are archived rather than silently discarded. Sandbox raw grids,
@@ -110,7 +110,7 @@ Browser probes archive screenshots into separate runs under the ignored root
 shared browser launcher preserves previous runs instead of overwriting them.
 The traversal probe completes the first level from its actual spawn using normal
 movement, jumping/levitation, a glowseed and the handwheel: sluice, gallery,
-pressure shelters, refuge rest, garden bell, undertow, boon choice and arrival
+pressure shelters, refuge rest and Frost Shard, the return climb and cold lock, the engine and its catwalk bell, the garden's west chute, undertow, boon choice and arrival
 in D2 alive. It makes no position, health, inventory or terrain changes. Its
 authored steering is evidence of traversability, not an unfamiliar-player test.
 

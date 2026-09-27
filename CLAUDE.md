@@ -39,6 +39,13 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # shot-blueprint.mjs <levelId...> (FULL-level HUD-free blueprint PNG with
 # labeled inspection markers + spawn/player/enemy dots - THE way to judge
 # any authored level's layout; camera crops cannot show the big picture)
+# Creatures (dev server running; docs/CREATURES.md): creature-studio.mjs
+# --kind <k> --scenes idle,walk,... (real rig + art in a staged mini-world,
+# zoomed frame strips — THE way to iterate creature look/motion),
+# shot-enemies.mjs (whole roster in-game), probe-corpses.mjs, probe-alive.mjs
+# (footfalls/splashes/tracks/vines/critters), bench-creatures.mjs,
+# perf-creatures-live.mjs. Player (docs/PLAYER-ART.md): player-studio.mjs
+# (every action posed + costume-ticked, zoomed), probe-player-death.mjs
 # Gameplay/runtime probes (dev server running): verify-intro-progression.mjs
 # (D1 surface intro → descent → onboarding spine), verify-descent-progression.mjs,
 # verify-progression-pacing.mjs, verify-bat-slime.mjs, verify-death-causes.mjs,

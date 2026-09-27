@@ -26,6 +26,7 @@ const result = await page.evaluate(async () => {
   const ctx = window.__game.ctx;
   const tick = (n) => { for (let f = 0; f < n; f++) window.__game.tick(); };
   const causeText = () => document.getElementById('go-cause')?.textContent ?? '';
+  const titleText = () => document.getElementById('death-title')?.textContent ?? '';
   const overlayVisible = () => document.getElementById('gameover-overlay')?.classList.contains('visible') ?? false;
   const reset = () => {
     ctx.events.emit('playerDeathCleared');
@@ -61,8 +62,11 @@ const result = await page.evaluate(async () => {
   ctx.playerCtl.damage(999, 0, 0, 'weaver-bite');
   tick(2);
   ctx.events.emit('playerCorpseSettled');
+  // The overlay now rises on the directed death's title beat (game/DeathCinema).
+  ctx.events.emit('deathCinema', { phase: 'title' });
   const weaver = {
     text: causeText(),
+    title: titleText(),
     visible: overlayVisible(),
     source: ctx.player.lastDamageSource,
     dead: ctx.player.dead,
@@ -74,8 +78,11 @@ const result = await page.evaluate(async () => {
   ctx.player.status.electrified = 90;
   tick(8);
   ctx.events.emit('playerCorpseSettled');
+  // The overlay now rises on the directed death's title beat (game/DeathCinema).
+  ctx.events.emit('deathCinema', { phase: 'title' });
   const shock = {
     text: causeText(),
+    title: titleText(),
     visible: overlayVisible(),
     source: ctx.player.lastDamageSource,
     dead: ctx.player.dead,
@@ -86,8 +93,11 @@ const result = await page.evaluate(async () => {
   ctx.playerCtl.damage(999, 0, 0, 'colossus-fireball');
   tick(2);
   ctx.events.emit('playerCorpseSettled');
+  // The overlay now rises on the directed death's title beat (game/DeathCinema).
+  ctx.events.emit('deathCinema', { phase: 'title' });
   const colossus = {
     text: causeText(),
+    title: titleText(),
     visible: overlayVisible(),
     source: ctx.player.lastDamageSource,
     dead: ctx.player.dead,
@@ -99,6 +109,7 @@ const result = await page.evaluate(async () => {
 check('Weaver death shows a Weaver obituary', result.weaver.visible && result.weaver.dead && /Weaver/.test(result.weaver.text), JSON.stringify(result.weaver));
 check('wet electrocution status death shows the water/electricity obituary', result.shock.visible && result.shock.dead && /electrocution|Wet, shocked/.test(result.shock.text), JSON.stringify(result.shock));
 check('Colossus projectile death shows Colossus copy', result.colossus.visible && result.colossus.dead && /Colossus|Molten/.test(result.colossus.text), JSON.stringify(result.colossus));
+check('the title card names the death, not a fall', result.weaver.title === 'You were taken.' && result.shock.title === 'The current took you.' && result.colossus.title === 'You burned.', JSON.stringify(result));
 check('sources are recorded on the player', result.weaver.source === 'weaver-bite' && result.shock.source === 'wet-electrocution' && result.colossus.source === 'colossus-fireball', JSON.stringify(result));
 check('no page errors', errs.length === 0, errs.join(' | '));
 

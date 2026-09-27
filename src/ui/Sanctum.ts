@@ -89,12 +89,12 @@ export class Sanctum implements SanctumApi {
     let perkTaken = false;
     const armDescend = (): void => {
       dBtn.disabled = false;
-      dBtn.textContent = 'DESCEND TO DEPTH ' + depth;
+      dBtn.textContent = 'Descend to depth ' + depth;
     };
     if (offer.length === 0) armDescend();
     else {
       dBtn.disabled = true;
-      dBtn.textContent = 'CHOOSE A BOON TO DESCEND';
+      dBtn.textContent = 'Choose a boon to descend';
     }
     const cards: HTMLButtonElement[] = [];
     for (const pk of offer) {
@@ -141,9 +141,9 @@ export class Sanctum implements SanctumApi {
     el('sanc-gold').textContent = String(ctx.state.score);
     const dBtn = el('descend-btn') as HTMLButtonElement;
     dBtn.disabled = false;
-    dBtn.textContent = 'RETURN TO THE DEPTHS';
+    dBtn.textContent = 'Return to the depths';
     el('perk-row').innerHTML =
-      '<div class="sanc-note">THE OLD ONES ONLY TRADE HERE — BOONS ARE BARGAINED AT THE PORTAL.</div>';
+      '<div class="sanc-note">The old ones only trade here. Boons are bargained at the exit portal, between depths.</div>';
     this.buildShop(ctx);
     el('sanctum-overlay').classList.add('visible');
   }
@@ -153,8 +153,8 @@ export class Sanctum implements SanctumApi {
     shop.innerHTML = '';
     const items: Array<{ name: string; desc: string; cost: number; act(purchase: () => boolean): void }> = [
       {
-        name: 'MEND WOUNDS',
-        desc: 'Restore to full HP',
+        name: 'Mend wounds',
+        desc: 'Restore your health to full',
         cost: 40,
         act: (purchase) => {
           if (!purchase()) return;
@@ -162,8 +162,8 @@ export class Sanctum implements SanctumApi {
         },
       },
       {
-        name: 'TOUGHEN UP',
-        desc: '+15 max HP',
+        name: 'Toughen up',
+        desc: '+15 maximum health, and healed by as much',
         cost: 90,
         act: (purchase) => {
           if (!purchase()) return;
@@ -172,8 +172,8 @@ export class Sanctum implements SanctumApi {
         },
       },
       {
-        name: 'MYSTERY BREW',
-        desc: 'Drink a random potent draught',
+        name: 'Mystery brew',
+        desc: 'Drink a random potent draught, right now',
         cost: 60,
         act: (purchase) => {
           if (!purchase()) return;
@@ -191,8 +191,8 @@ export class Sanctum implements SanctumApi {
         ? []
         : [
             {
-              name: 'WANDWRIGHT: BRASS INJECTOR',
-              desc: 'Refit wand I — 5 slots, fast cycle, deep tanks',
+              name: 'Wandwright: Brass Injector',
+              desc: 'Refit wand I: 5 slots, a fast cycle and a deep mana tank',
               cost: 240,
               act: (purchase: () => boolean): void => {
                 if (!purchase()) return;
@@ -205,8 +205,8 @@ export class Sanctum implements SanctumApi {
         ? []
         : [
             {
-              name: 'WANDWRIGHT: VOID LATTICE',
-              desc: 'Refit wand II — 5 slots, perfect aim, vast mana',
+              name: 'Wandwright: Void Lattice',
+              desc: 'Refit wand II: 5 slots, perfect aim and vast mana',
               cost: 380,
               act: (purchase: () => boolean): void => {
                 if (!purchase()) return;
@@ -216,15 +216,15 @@ export class Sanctum implements SanctumApi {
             },
           ]),
       {
-        name: 'LOST PAGES',
-        desc: 'Choose one of three unknown spell cards',
+        name: 'Lost pages',
+        desc: 'Choose one of three spell cards you do not own',
         cost: 160,
         act: (purchase) => {
           const cards = buildCardOffer(SANCTUM_LOST_PAGES_POOL, collectOwnedCards(ctx.wands), { ensureKind: 'projectile' });
           requestCardOffer(ctx, {
             source: 'sanctum',
-            title: 'LOST PAGES',
-            prompt: 'Choose one page',
+            title: 'Lost pages',
+            prompt: 'Choose one page to keep. You pay only if you take one.',
             cards,
             onChoose: (card: CardId) => {
               if (!purchase()) return;
@@ -239,14 +239,15 @@ export class Sanctum implements SanctumApi {
       const rowEl = document.createElement('div');
       rowEl.className = 'shop-row';
       const canAfford = ctx.state.score >= it.cost;
+      rowEl.classList.toggle('unaffordable', !canAfford);
       rowEl.innerHTML =
         '<div class="sh-info"><div class="sh-name">' +
         it.name +
         '</div><div class="sh-desc">' +
         it.desc +
         '</div></div><button' +
-        (canAfford ? '' : ' disabled') +
-        '>' +
+        (canAfford ? '' : ' disabled title="Not enough gold"') +
+        ' aria-label="Buy ' + it.name + ' for ' + it.cost + ' gold">' +
         it.cost +
         ' oz</button>';
       rowEl.querySelector('button')!.addEventListener('click', () => {
