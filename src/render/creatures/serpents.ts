@@ -335,9 +335,17 @@ export const leviathanArt: SpeciesArt = {
       r.capsule(a.x, a.y, 0.55 - i * 0.05, b.x, b.y, 0.5 - i * 0.05, 4, 4, L_STALK, { group: 9 });
     }
     const tip = lure.pts[lure.pts.length - 1];
-    const lr = 1.5 + F[SRP.lure] * 0.5;
-    r.ellipse(tip.x, tip.y + 0.8, lr, lr * 1.1, 0, 5, L_LURE, { group: 10, noOutline: true });
-    r.glowStamp(tip.x, tip.y + 0.8, lr, lr * 1.1, 0, L_LURE, 1.5 + F[SRP.lure] * 1.5, 0.8, 10);
+    // The lure goes dark before it strikes (creatures/bosses/leviathan): a
+    // doused lure is a dim bulb on its stalk, not a lamp.
+    const lit = F[SRP.lure];
+    const lr = 1.2 + lit * 0.8;
+    if (lit > 0.3) {
+      r.ellipse(tip.x, tip.y + 0.8, lr, lr * 1.1, 0, 5, L_LURE, { group: 10, noOutline: true });
+      r.glowStamp(tip.x, tip.y + 0.8, lr, lr * 1.1, 0, L_LURE, 0.4 + lit * 2.6, 0.8, 10);
+    } else {
+      r.ellipse(tip.x, tip.y + 0.8, lr, lr * 1.1, 0, 5, L_STALK, { group: 10 });
+      if (lit > 0.06) r.glowStamp(tip.x, tip.y + 0.8, lr * 0.6, lr * 0.6, 0, L_LURE, lit * 2.5, 0.8, 10);
+    }
   },
 };
 

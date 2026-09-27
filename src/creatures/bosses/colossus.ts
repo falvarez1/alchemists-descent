@@ -31,7 +31,7 @@ import { kilnQuenchBurst, QUENCH_STAGGER_TICKS } from '@/entities/kilnQuench';
 
 export const COL = {
   /** Slam: telegraph (fists overhead) then the blow; recovery with fists in the ground. */
-  SLAM_DUR: 74, SLAM_HIT: 30, SLAM_R: [12, 13, 15] as const, SLAM_REACH: 38,
+  SLAM_DUR: 74, SLAM_HIT: 30, SLAM_R: [10, 11, 13] as const, SLAM_REACH: 38,
   /** Stomp: rear up, then both fists down; waves along the floor. */
   STOMP_DUR: 66, STOMP_HIT: 32, WAVE_SPEED: [1.45, 1.75, 2.15] as const, WAVE_LIFE: 62, WAVE_DMG: 14,
   /** Molten throw: the arm reaches into its own furnace, cocks, lobs. */
@@ -115,7 +115,12 @@ function stepWaves(ctx: Ctx, e: Enemy, b: BossBrain): void {
       w.clearCellAt(gi);
       ctx.particles.spawn(xi + 0.5, surf, wv.dir * 0.3, -1.2 - entityRandom() * 0.8, g, color, 60, { grav: 0.08 });
     }
-    ctx.particles.spawn(wv.x, surf, wv.dir * 0.2 + (entityRandom() - 0.5) * 0.4, -0.7 - entityRandom() * 0.9, null, packRGB(150, 132, 110), 24, { grav: 0.06 });
+    // A running ridge of dust and grit you can read (and time a jump to).
+    for (let k = 0; k < 3; k++) {
+      ctx.particles.spawn(wv.x - wv.dir * k * 0.6, surf - k * 0.8, wv.dir * 0.25 + (entityRandom() - 0.5) * 0.5, -0.9 - entityRandom() * 1.2 - k * 0.2,
+        null, k === 0 ? packRGB(196, 176, 146) : packRGB(150, 132, 110), 22 + k * 4, { grav: 0.07 });
+    }
+    if ((wv.life & 7) === 0) ctx.particles.spawn(wv.x, surf, wv.dir * 0.6, -2 - entityRandom(), Cell.Sand, sandColor(), 60, { grav: 0.12 });
     if (b.phase >= 3 && (wv.life & 1) === 0) ctx.particles.spawn(wv.x, surf, 0, -0.8, null, emberColor(), 18, { glow: 2, grav: -0.01 });
     // It knocks the feet out from under anyone standing on it — jump it.
     if (!wv.hit && !p.dead && p.grounded && Math.abs(p.x - wv.x) < PLAYER_HALF_W + 2.5 && Math.abs(p.y - surf) < 5) {

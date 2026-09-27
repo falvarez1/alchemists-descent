@@ -52,7 +52,11 @@ and saves are unchanged by anything here. What changed is what that body
 | `creatures/corpses.ts` | Physical remains: limp rig falls/drapes/floats, lights gutter, flies arrive, remains melt into their gore material and leave kickable bones |
 | `render/creatures/raster.ts` | The rasterizer (primitives, `shade`/`glowStamp`/`stamp` painting, lighting, sel-out, glass, `blitFine`) |
 | `render/creatures/<species>.ts` | Art per body plan: materials (OKLab ramps) and primitives from the rig |
-| `render/creatures/lights.ts` | Light seeds from rig positions (lure tips, sacs, cores), corpses included |
+| `render/creatures/lights.ts` | Light seeds from rig positions (lure tips, sacs, cores), corpses included (and organisms, via `render/organisms`) |
+| `creatures/bosses/*` | Boss brains (phase, committed move and its clock, exposure windows, the death sequence) on top of `core/bossWard`; the rigs pose from the same clock the attacks fire on |
+| `creatures/idle.ts` | Idle life: a deterministic per-individual clock picks look / sniff / groom / shiver / settle / stretch; generic effects on the rig and gaze, species pose their own |
+| `creatures/ecology.ts` | Predation, scavenging, lures (moth swarms), roost scatter |
+| `game/organisms/*`, `render/organisms.ts` | Organisms (snapjaw, puffer, glow-worm, isopod, ember beetle, leech, ash moth) on the critter layer, their worldgen census and their art |
 
 The Weaver keeps its own surface-crawler locomotion (`entities/weaverLocomotion`);
 its rig is a stub and its art reads `e.weaverLoco`. The Rillback and Stone Maw
@@ -79,6 +83,25 @@ webs are shoved by creature body parts (`VineStrands.gatherPushers`); critters
 flee creatures, fish bolt from eels, moths drift to living lights
 (`game/Critters.ts`).
 
+## The bosses
+
+The Colossus and the Leviathan keep their per-kind branch in `Enemies.ts` as a
+single call into `creatures/bosses`. A boss brain commits to a move for a known
+number of ticks and the rig reads that clock, so every tell (fists overhead,
+the rear-up, the dripping reach into the furnace, the lifted plates, the dark
+lure) is exactly as long as the attack's windup. The honesty rules are
+`core/bossWard`'s (only harm the player set in motion); the brain adds that
+nothing lands on a dying boss, its own tumbling debris is not a blow, and
+exposure windows sharpen only the player's direct blows. Move sets and
+numbers: FEEL.md §4.
+
+## Idle life and hit stagger
+
+Animals with nothing to do are not statues (`creatures/idle`): every few
+seconds they do one small thing from their own repertoire, presentation only.
+A real blow staggers the body through the knock system (`Enemies.flinch`),
+mass-scaled and rate-limited so a fast wand never stun-locks.
+
 ## Invariants
 
 - The rig is presentation-physics: never saved, rebuilt from the body on load,
@@ -95,7 +118,11 @@ flee creatures, fish bolt from eels, moths drift to living lights
   frame strips at zoom. Scenes: idle, walk, run, turn, alert, aim, spit, hurt,
   fall, swim, swimhunt, swimlunge, sleep, hop, fuse, fly, dart, roost, tumble,
   cast, punch, throw, slam, telek, chew, charge, lash, die (the remains fall,
-  settle and curl), buried (sand pours over the body; the spine must follow).
+  settle and curl), buried (sand pours over the body; the spine must follow),
+  and `boss-<move>[-bare]` (a boss posed from its brain's move clock:
+  boss-slam, boss-stomp, boss-throw, boss-vent, boss-quench, boss-dying,
+  boss-march-bare…). Idle acts show in any calm scene given enough frames
+  (`--frames 8 --every 30`).
 - `node scripts/shot-enemies.mjs` — the roster in-game (physics-test arena).
 - `node scripts/probe-corpses.mjs`, `node scripts/probe-alive.mjs` — remains and
   world interaction in-game.

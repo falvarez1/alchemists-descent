@@ -875,6 +875,14 @@ export function placeStructures(
     };
     // stone floor band
     for (let dx = -HALF - 2; dx <= HALF + 2; dx++) for (let dy = FLOOR; dy <= FLOOR + 3; dy++) stone(cx + dx, cy + dy);
+    // ...on a deep footing: a slam's crater must not punch the alchemist
+    // through into a void under the kiln (only empty cells are filled).
+    for (let dx = -HALF - 2; dx <= HALF + 2; dx++) {
+      for (let dy = FLOOR + 4; dy <= FLOOR + 16; dy++) {
+        const X = cx + dx, Y = cy + dy;
+        if (w.inBounds(X, Y) && Y < HEIGHT - 8 && w.types[w.idx(X, Y)] === Cell.Empty) stone(X, Y);
+      }
+    }
     // lava moats sunk flush into the floor band, a stone keel under each
     for (const side of [-1, 1]) {
       for (let dx = 47; dx <= 56; dx++) {
