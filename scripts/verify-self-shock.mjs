@@ -56,6 +56,9 @@ for (const dist of [8, 18, 30, 60]) {
     ctx.enemies.length = 0; ctx.projectiles.length = 0;
     // Park the arena's own machinery: its coils answer blasts with real current.
     if (ctx.levels.current) ctx.levels.current.mechanisms.length = 0;
+    // ...and its loose pickups: a tome underfoot opens a card offer, which pauses the world.
+    if (ctx.levels.current) ctx.levels.current.pickups.length = 0;
+    ctx.state.paused = false;
     for (const w of ctx.wands.wands) { w.mana = w.frame.manaMax; w.cooldown = 0; }
     Object.assign(p, { x: 292, y: F - 1, vx: 0, vy: 0, fx: 0, fy: 0, dead: false, hp: 100, maxHp: 100, invuln: 0 });
     p.status.electrified = 0; p.status.wet = 0;

@@ -49,6 +49,8 @@ await page.evaluate(async () => {
   const FLOOR = 690;
   window.__arena = {
     FLOOR,
+    still: [],
+    holdAt: null,
     rect(x0, y0, x1, y1, type, color = 0x808080) {
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
         if (!W.inBounds(x, y)) continue;
@@ -62,6 +64,9 @@ await page.evaluate(async () => {
       ctx.projectiles.length = 0;
       // Park the arena's own machinery: its coils answer blasts with real current.
       if (ctx.levels.current) ctx.levels.current.mechanisms.length = 0;
+      // ...and its loose pickups: a tome underfoot opens a card offer, which pauses the world.
+      if (ctx.levels.current) ctx.levels.current.pickups.length = 0;
+      ctx.state.paused = false;
       ctx.critters.clear?.();
       ctx.state.debugGodMode = false;
       ctx.fx.hitstop = 0;
@@ -79,6 +84,8 @@ await page.evaluate(async () => {
       this.rect(901, 560, 906, FLOOR + 6, 13, 0x6f7479);
       for (let y = 560; y <= FLOOR + 6; y++) for (let x = 254; x <= 906; x++) if (W.inBounds(x, y)) W.setChargeAt(W.idx(x, y), 0);
       p.x = 420; p.y = FLOOR - 1;
+      this.holdAt = null;
+      this.still = [];
       window.__ak.length = 0;
     },
     spawn(kind, x, y = FLOOR - 1, hp) {
@@ -92,7 +99,10 @@ await page.evaluate(async () => {
     tick(n, hold = true) {
       const p = ctx.player;
       for (let f = 0; f < n; f++) {
-        if (hold) { p.x = 420; p.y = FLOOR - 1; p.vx = 0; }
+        if (hold) { p.x = this.holdAt?.x ?? 420; p.y = this.holdAt?.y ?? FLOOR - 1; p.vx = 0; p.vy = 0; }
+        // Slimes held still: their hop windup keys off timer % 50 / % 130, so a
+        // timer parked at 1 never gathers (no teleporting, physics untouched).
+        for (const e of this.still) if (ctx.enemies.includes(e)) { e.timer = 1; e.windup = 0; }
         window.__game.tick();
       }
     },
@@ -104,6 +114,7 @@ await page.evaluate(async () => {
       this.tick(1);
       ctx.player.firing = false;
     },
+    callouts() { return [...document.querySelectorAll('#callout-layer .callout')].map((c) => c.textContent); },
     goldCells(x0, y0, x1, y1) {
       let n = 0;
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (W.inBounds(x, y) && W.types[W.idx(x, y)] === 17) n++;
@@ -112,13 +123,15 @@ await page.evaluate(async () => {
   };
 });
 
-async function shoot(name) {
-  // Callouts animate in real time: let the page run ~260 ms, then capture.
+async function shoot(name, live = []) {
+  // Callouts animate in real time: let the page run ~260 ms, then capture. The
+  // DOM check also accepts the words the scenario saw live at the kill (slow
+  // headless ticks can outlast a callout's 1.2 s life before the screenshot).
   await page.waitForTimeout(260);
   const path = join(outDir, name + '.png');
   await page.screenshot({ path });
   const dom = await page.evaluate(() => [...document.querySelectorAll('#callout-layer .callout')].map((c) => c.textContent));
-  return { path, dom };
+  return { path, dom: [...new Set([...live, ...dom])] };
 }
 
 // (a) SPARK: a direct kill is the wand's, not the world's.
@@ -134,7 +147,7 @@ async function shoot(name) {
       A.cast(slime.x, slime.y - 4); casts++;
       for (let f = 0; f < 24; f++) { A.tick(1); if (ctx.fx.hitstop > 0) hitstops++; }
     }
-    return { dead: !ctx.enemies.includes(slime), casts, hitstops, ak: window.__ak.slice() };
+    return { dead: !ctx.enemies.includes(slime), casts, hitstops, ak: window.__ak.slice(), live: A.callouts() };
   });
   check('(a) spark bolts kill a slime', r.dead, `${r.casts} casts, hitstop on ${r.hitstops} ticks`);
   check('(a) a direct spark kill is not alchemical', r.ak.length === 0, JSON.stringify(r.ak));
@@ -150,15 +163,21 @@ async function shoot(name) {
     A.rect(580, F - 34, 583, F - 1, 13, 0x6f7479);
     A.rect(504, F - 3, 579, F - 1, 6, 0x3b3222);
     const slime = A.spawn('slime', 548, F - 4, 60);
+    A.still.push(slime); // it sits in the slick instead of hopping out of the trough
     for (let f = 0; f < 10; f++) A.tick(1);
     A.cast(566, F - 3);
     let t = 0;
-    while (t < 900 && ctx.enemies.includes(slime)) { A.tick(10); t += 10; }
-    return { dead: !ctx.enemies.includes(slime), t, ak: window.__ak.slice() };
+    const fire = () => { let n = 0; for (let y = F - 30; y < F; y++) for (let x = 504; x < 580; x++) if (ctx.world.types[ctx.world.idx(x, y)] === 5) n++; return n; };
+    while (t < 900 && ctx.enemies.includes(slime)) {
+      A.tick(10); t += 10;
+      // A bolt that caught the slime instead of the slick gets a second try.
+      if (t === 60 && fire() === 0) A.cast(572, F - 2);
+    }
+    return { dead: !ctx.enemies.includes(slime), t, ak: window.__ak.slice(), live: A.callouts() };
   });
   check('(b) oil fire kills the slime', r.dead, `after ${r.t} ticks`);
   check('(b) cause burned, chain 1', r.ak.length === 1 && r.ak[0].cause === 'burned' && r.ak[0].chain === 1, JSON.stringify(r.ak));
-  const s = await shoot('b-flambeed');
+  const s = await shoot('b-flambeed', r.live);
   check('(b) callout FLAMBÉED rendered', s.dom.some((t) => t.includes('FLAMBÉED')), JSON.stringify(s.dom) + ' ' + s.path);
 }
 
@@ -170,19 +189,38 @@ async function shoot(name) {
     A.rect(560, F - 34, 563, F - 1, 13, 0x6f7479);
     A.rect(660, F - 34, 663, F - 1, 13, 0x6f7479);
     A.rect(564, F - 5, 659, F - 1, 2, 0x2a6fb0);
-    const slime = A.spawn('slime', 620, F - 1, 50);
+    // The alchemist sparks the pool from a stone ledge above it, well clear of the water.
+    A.rect(574, F - 44, 596, F - 42, 12, 0x77736c);
+    A.holdAt = { x: 585, y: F - 45 };
+    ctx.player.x = 585; ctx.player.y = F - 45;
+    const slime = A.spawn('slime', 620, F - 1, 24);
+    A.still.push(slime); // it stays in the pool instead of hopping onto the ledge
     for (let f = 0; f < 20; f++) A.tick(1);
     let t = 0, casts = 0;
+    const trace = [];
     while (t < 1200 && ctx.enemies.includes(slime)) {
-      if (t % 90 === 0) { A.cast(585, F - 3); casts++; }
+      if (t % 90 === 0) trace.push([t, Math.round(slime.x), Math.round(slime.y), +slime.hp.toFixed(1), slime.status.electrified, ctx.projectiles.length]);
+      // Spark the pool a dozen cells short of the slime: the current reaches it
+      // through the water (charge fades each hop, so the strike must be near).
+      // Each bolt blasts a crater, so the pool is topped back up first.
+      if (t % 90 === 0) {
+        for (let y = F - 5; y < F; y++) for (let x = 564; x <= 659; x++) {
+          const i = ctx.world.idx(x, y);
+          if (ctx.world.types[i] === 0) ctx.world.replaceCellAt(i, 2, 0x2a6fb0);
+        }
+        // ~15 cells short: past the bolt's own blast (9.6 cells), inside the current's reach.
+        A.cast(Math.max(566, slime.x - 15), F - 3); casts++;
+        const wd = ctx.wands.wands[ctx.wands.active];
+        trace.push(['cast', ctx.projectiles.map((q) => q.type + '@' + Math.round(q.x)).join(' '), Math.round(wd.mana), wd.cooldown, !!ctx.player.fireBlockedUntilRelease, ctx.state.paused, Math.round(ctx.player.x)]);
+      }
       A.tick(10); t += 10;
     }
     const gold = A.goldCells(540, F - 60, 700, F);
-    return { dead: !ctx.enemies.includes(slime), t, casts, ak: window.__ak.slice(), gold, hp: ctx.player.hp };
+    return { dead: !ctx.enemies.includes(slime), t, casts, ak: window.__ak.slice(), gold, hp: ctx.player.hp, live: A.callouts(), trace };
   });
-  check('(c) the shorted pool kills the slime', r.dead, `after ${r.t} ticks, ${r.casts} casts`);
+  check('(c) the shorted pool kills the slime', r.dead, `after ${r.t} ticks, ${r.casts} casts` + (r.dead ? '' : ' trace ' + JSON.stringify(r.trace)));
   check('(c) cause shorted', r.ak.length === 1 && r.ak[0].cause === 'shorted', JSON.stringify(r.ak));
-  const s = await shoot('c-shorted');
+  const s = await shoot('c-shorted', r.live);
   check('(c) callout SHORTED rendered', s.dom.some((t) => t.includes('SHORTED')), JSON.stringify(s.dom) + ' ' + s.path);
 }
 
@@ -199,11 +237,11 @@ async function shoot(name) {
     ctx.playerCtl.kick(ctx);
     let t = 0;
     while (t < 400 && ctx.enemies.includes(slime)) { A.tick(5); t += 5; }
-    return { dead: !ctx.enemies.includes(slime), t, ak: window.__ak.slice() };
+    return { dead: !ctx.enemies.includes(slime), t, ak: window.__ak.slice(), live: A.callouts() };
   });
   check('(d) a slime kicked into a lava pit dies', r.dead, `after ${r.t} ticks`);
   check('(d) cause rendered', r.ak.length === 1 && r.ak[0].cause === 'rendered', JSON.stringify(r.ak));
-  const s = await shoot('d-rendered');
+  const s = await shoot('d-rendered', r.live);
   check('(d) callout RENDERED rendered', s.dom.some((t) => t.includes('RENDERED')), JSON.stringify(s.dom) + ' ' + s.path);
 }
 
@@ -220,11 +258,11 @@ async function shoot(name) {
     ctx.playerCtl.kick(ctx);
     let t = 0;
     while (t < 200 && ctx.enemies.includes(bat)) { A.tick(2); t += 2; }
-    return { dead: !ctx.enemies.includes(bat), t, ak: window.__ak.slice() };
+    return { dead: !ctx.enemies.includes(bat), t, ak: window.__ak.slice(), live: A.callouts() };
   });
   check('(d2) a bat kicked into rock dies', r.dead, `after ${r.t} ticks`);
   check('(d2) cause impaled', r.ak.length === 1 && r.ak[0].cause === 'impaled', JSON.stringify(r.ak));
-  const s = await shoot('d2-impaled');
+  const s = await shoot('d2-impaled', r.live);
   check('(d2) callout IMPALED rendered', s.dom.some((t) => t.includes('IMPALED')), JSON.stringify(s.dom));
 }
 
@@ -236,25 +274,35 @@ async function shoot(name) {
     // The huddle sits just past a packed charge; the spark lands on the charge's
     // near face, so no slime stands in the bolt's path.
     const foes = [A.spawn('slime', 582, F - 1, 30), A.spawn('slime', 598, F - 1, 30), A.spawn('slime', 614, F - 1, 30)];
-    for (const e of foes) e.timer = 1; // no hop for ~50 ticks
+    A.still.push(...foes); // the huddle stays huddled
     A.rect(556, F - 6, 578, F - 1, 8, 0x383838);
     for (let f = 0; f < 4; f++) A.tick(1);
     A.cast(557, F - 4);
-    let t = 0;
+    let t = 0, fuseLit = false;
     // Stop soon after the blast so the callouts are still up for the screenshot.
     let firstKill = -1;
     while (t < 300 && foes.some((e) => ctx.enemies.includes(e))) {
       A.tick(5); t += 5;
+      // If the bolt's own blast scattered the charge into a loose fuse, the
+      // alchemist lights the packed remainder by hand (still his doing).
+      if (t === 40 && window.__ak.length === 0) {
+        fuseLit = true;
+        for (let y = F - 6; y < F; y++) for (let x = 556; x <= 578; x++) {
+          const i = ctx.world.idx(x, y);
+          if (ctx.world.types[i] === 0) ctx.world.replaceCellAt(i, 8, 0x383838);
+        }
+        ctx.world.replaceCellAt(ctx.world.idx(555, F - 1), 5, 0xff8a2a);
+      }
       if (firstKill < 0 && window.__ak.length > 0) firstKill = t;
       if (firstKill >= 0 && t - firstKill > 40) break;
     }
-    return { dead: foes.filter((e) => !ctx.enemies.includes(e)).length, t, ak: window.__ak.slice() };
+    return { dead: foes.filter((e) => !ctx.enemies.includes(e)).length, t, fuseLit, ak: window.__ak.slice(), live: A.callouts() };
   });
-  check('(e) the gunpowder charge kills the huddle', r.dead >= 2, `${r.dead} dead after ${r.t} ticks`);
+  check('(e) the gunpowder charge kills the huddle', r.dead >= 2, `${r.dead} dead after ${r.t} ticks${r.fuseLit ? ' (fuse relit by hand)' : ''}`);
   // The bolt's own flash can light the nearest slime first (FLAMBÉED); the charge does the rest.
   check('(e) causes detonated', r.ak.filter((k) => k.cause === 'detonated').length >= 2, JSON.stringify(r.ak.map((k) => [k.cause, k.chain])));
   check('(e) the chain counts up', r.ak.map((k) => k.chain).join(',').startsWith('1,2'), JSON.stringify(r.ak.map((k) => k.chain)));
-  const s = await shoot('e-detonated-chain');
+  const s = await shoot('e-detonated-chain', r.live);
   check('(e) chain callouts render with a ×badge', s.dom.some((t) => t.includes('×')), JSON.stringify(s.dom) + ' ' + s.path);
 }
 
@@ -269,11 +317,11 @@ async function shoot(name) {
     const slime = A.spawn('slime', 582, F - 1, 40);
     let t = 0;
     while (t < 1500 && ctx.enemies.includes(slime)) { A.tick(10); t += 10; }
-    return { dead: !ctx.enemies.includes(slime), t, ak: window.__ak.slice() };
+    return { dead: !ctx.enemies.includes(slime), t, ak: window.__ak.slice(), live: A.callouts() };
   });
   check('(f) the slime drowns', r.dead, `after ${r.t} ticks`);
   check('(f) cause drowned', r.ak.length === 1 && r.ak[0].cause === 'drowned', JSON.stringify(r.ak));
-  const s = await shoot('f-drowned');
+  const s = await shoot('f-drowned', r.live);
   check('(f) callout DROWNED rendered', s.dom.some((t) => t.includes('DROWNED')), JSON.stringify(s.dom));
 }
 
@@ -296,11 +344,11 @@ async function shoot(name) {
       }
       A.tick(4); t += 4;
     }
-    return { dead: !ctx.enemies.includes(slime), t, ak: window.__ak.slice() };
+    return { dead: !ctx.enemies.includes(slime), t, ak: window.__ak.slice(), live: A.callouts() };
   });
   check('(g) steam kills the slime', r.dead, `after ${r.t} ticks`);
   check('(g) cause steeped', r.ak.length === 1 && r.ak[0].cause === 'steeped', JSON.stringify(r.ak));
-  const s = await shoot('g-steeped');
+  const s = await shoot('g-steeped', r.live);
   check('(g) callout STEEPED rendered', s.dom.some((t) => t.includes('STEEPED')), JSON.stringify(s.dom));
 }
 
@@ -329,7 +377,7 @@ async function shoot(name) {
   check('payout: bonus gold settles as real Gold cells', !!r.info && r.gold * 10 >= r.info.bonusGold * 0.6, `${r.gold} cells for ${r.info?.bonusGold} oz`);
   check('payout: the wand drinks mana', r.mana >= r.manaMax * 0.3, `${r.mana.toFixed(1)}/${r.manaMax}`);
   check('payout: a sip of life', r.hp >= 53, `hp ${r.hp}`);
-  const s = await shoot('payout-gold');
+  const s = await shoot('payout-gold', r.live);
   console.log('        payout screenshot ' + s.path);
 }
 

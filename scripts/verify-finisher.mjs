@@ -46,6 +46,9 @@ const setup = await page.evaluate(async () => {
     if (y >= F) W.replaceCellAt(i, 12, 0x77736c); else W.clearCellAt(i);
   }
   ctx.enemies.length = 0;
+  // Park the arena's own machinery and loose pickups (a tome underfoot opens a card offer, which pauses the world).
+  if (ctx.levels.current) { ctx.levels.current.mechanisms.length = 0; ctx.levels.current.pickups.length = 0; }
+  ctx.state.paused = false;
   const p = ctx.player;
   const w = ctx.enemyCtl.spawn('weaver', 540, F - 1, { exact: true });
   w.attackCd = 9999;
