@@ -168,15 +168,21 @@ body.play-active #respawn-btn:focus-visible { outline: 2px solid #a8d3bb; outlin
 .trickshot-settings legend { color: #dbbd80; padding: 0 6px; }
 .trickshot-settings > label { display: flex; gap: 9px; align-items: center; }
 .trickshot-settings p { margin: 10px 0; color: #b8c6bc; font-size: 13px; }
-#trickshot-tuning { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+#trickshot-tuning { display: grid; gap: 4px; }
 #trickshot-tuning[hidden] { display: none; }
-#trickshot-tuning label { display: grid; grid-template-columns: 1fr auto; gap: 5px; font-size: calc(13px * var(--text-scale)); }
-#trickshot-tuning input { grid-column: 1 / -1; width: 100%; accent-color: #d5b57b; }
-#trickshot-tuning p { grid-column: 1 / -1; }
+#trickshot-tuning label { display: flex; gap: 9px; align-items: center; font-size: calc(13px * var(--text-scale)); }
+/* Volume: name | slider | value, one row each. */
+.settings-volume label { display: grid; grid-template-columns: minmax(6.5em, auto) 1fr 3.2em; gap: 14px; align-items: center; }
+.settings-volume input[type="range"] { width: 100%; height: 18px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
+.settings-volume input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, #d5b57b var(--fill, 80%), #2e3f3c var(--fill, 80%)); }
+.settings-volume input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: #e6dfca; border: 2px solid #d5b57b; }
+.settings-volume input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; background: #2e3f3c; }
+.settings-volume input[type="range"]::-moz-range-progress { height: 4px; border-radius: 2px; background: #d5b57b; }
+.settings-volume input[type="range"]::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: #e6dfca; border: 2px solid #d5b57b; }
+.settings-volume output { text-align: right; font-variant-numeric: tabular-nums; color: var(--works-muted); }
 #trickshot-readout { position: absolute; top: 16%; left: 50%; transform: translateX(-50%); padding: 6px 14px; pointer-events: none; color: #d9dfc8; background: #10232cbd; border-block: 1px solid #809d83; font: 600 13px/1.4 system-ui, sans-serif; letter-spacing: .08em; }
 #trickshot-readout[hidden] { display: none; }
 #trickshot-readout.finisher { color: #f0d096; border-color: #bd9352; }
-@media(max-width: 580px) { #trickshot-tuning { grid-template-columns: 1fr; } }
 @media(max-height: 600px) {
   body.play-active .go-panel { max-height: 36vh; padding: 12px 18px; }
   body.play-active #gameover-overlay .go-title { font-size: 28px; margin-bottom: 5px; }
