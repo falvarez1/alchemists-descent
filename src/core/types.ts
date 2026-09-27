@@ -1318,24 +1318,36 @@ export interface WaveState {
  * Service APIs (implemented by systems, wired by Game)
  * ============================================================ */
 
+/** Player-facing volume sliders (audio/mix.ts owns the curves and bus routing). */
+export type VolumeChannel = 'master' | 'effects' | 'ambience';
+/** Short procedural cues for run events (audio/Stingers.ts subscribes them). */
+export type AudioStinger = 'alchemy' | 'phialCrack' | 'phialFill' | 'victory' | 'fallen' | 'shutter';
+export interface AudioStingerOptions { chain?: number; cause?: string; x?: number; y?: number }
+
+/**
+ * World-positioned presets take an optional trailing (x, y) in cells: when
+ * given, the sound is panned by its bearing from the camera centre, fades
+ * with distance and loses its top end far away (audio/mix.ts `placeSound`).
+ */
 export interface AudioApi {
-  worldSound?(kind: 'stone' | 'metal' | 'water' | 'weaver' | 'rillback' | 'pressure', x: number, y: number, listenerX: number, listenerY: number): void;
+  /** Local, bounded cues placed relative to the listener (the listener args are legacy and ignored). */
+  worldSound?(kind: 'stone' | 'metal' | 'water' | 'weaver' | 'rillback' | 'pressure', x: number, y: number, listenerX?: number, listenerY?: number): void;
   readonly enabled: boolean;
   /** Create/resume the AudioContext. Must be called from a user gesture. */
   ensure(): void;
   /** Flip sound on/off; returns the new enabled state. */
   toggle(): boolean;
-  tone(freq: number, endFreq: number, dur: number, type: OscillatorType, vol: number): void;
-  noiseBurst(dur: number, filterFreq: number, vol: number, highpass?: boolean): void;
-  boom(size: number): void;
-  zap(): void;
-  lightning(): void;
+  tone(freq: number, endFreq: number, dur: number, type: OscillatorType, vol: number, x?: number, y?: number): void;
+  noiseBurst(dur: number, filterFreq: number, vol: number, highpass?: boolean, x?: number, y?: number): void;
+  boom(size: number, x?: number, y?: number): void;
+  zap(x?: number, y?: number): void;
+  lightning(x?: number, y?: number): void;
   /** Low resonant impact: a thin wall with open space behind it. */
-  hollowKnock(): void;
+  hollowKnock(x?: number, y?: number): void;
   /** Cauldron simmer blub. */
-  bubble(): void;
+  bubble(x?: number, y?: number): void;
   /** Glass/ice breaking: bright crack + falling ring. */
-  shatter(): void;
+  shatter(x?: number, y?: number): void;
   /** Small treasure chime (gold piles, generic pickups). */
   pickup(): void;
   /** Chest-opening three-note arpeggio. */
@@ -1351,21 +1363,21 @@ export interface AudioApi {
   /** Lever clack (two square clicks). */
   lever(): void;
   /** Heavy metal door grinding open or shut. */
-  doorGrind(): void;
+  doorGrind(x?: number, y?: number): void;
   /** A brazier catching: whoosh + rising triangle. */
-  brazier(): void;
+  brazier(x?: number, y?: number): void;
   /** A soft, throttled fire crackle for a body that is alight (status.burning). */
-  sizzle(): void;
+  sizzle(x?: number, y?: number): void;
   /** The airy hiss of water flashing to steam on lava. */
-  steam(): void;
+  steam(x?: number, y?: number): void;
   /** A broken mechanism groaning before its gate falls open. */
-  groan(): void;
+  groan(x?: number, y?: number): void;
   /** Tiny cave-life chirp (crickets, moths near the lamp). */
-  chirp(): void;
+  chirp(x?: number, y?: number): void;
   /** A beetle's dry tick-tick skitter. */
-  skitter(): void;
+  skitter(x?: number, y?: number): void;
   /** A single water drop falling from the ceiling into a pool. */
-  drip(): void;
+  drip(x?: number, y?: number): void;
   /** Hollow click: the wand asked for mana the tank doesn't have. */
   dryFire(): void;
   /** Quick whick of drawing the other wand. */
@@ -1387,10 +1399,10 @@ export interface AudioApi {
   /** Landing thud scaled by fall hardness (0..1). */
   landThud(intensity: number): void;
   /** Breaking the surface of a pool (0..1 by entry speed). */
-  splash(intensity: number): void;
+  splash(intensity: number, x?: number, y?: number): void;
   /** A foe notices you: one short rising blip. */
   alert(): void;
-  /** Where the ears are this tick (the wizard in play, the camera otherwise). */
+  /** Where the ears are this tick: the camera centre, so what you hear matches what you see. */
   setListener(x: number, y: number): void;
   /**
    * Run `fn` as a sound placed at (x, y): panned and attenuated by distance to
@@ -1425,12 +1437,16 @@ export interface AudioApi {
   coin(streak?: number): void;
   hurt(): void;
   jump(): void;
-  squelch(): void;
-  flame(): void;
-  dig(): void;
+  squelch(x?: number, y?: number): void;
+  flame(x?: number, y?: number): void;
+  dig(x?: number, y?: number): void;
   waveHorn(): void;
   levitate(): void;
-  implode(): void;
+  implode(x?: number, y?: number): void;
+  /** A run-event stinger (alchemy chime, phial crack/fill, run verdict, shutter). */
+  stinger(kind: AudioStinger, opts?: AudioStingerOptions): void;
+  /** Set a player volume slider (0..1), applied live. */
+  setVolume(channel: VolumeChannel, value: number): void;
 }
 
 export interface ParticlesApi {

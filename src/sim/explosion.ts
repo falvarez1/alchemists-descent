@@ -193,7 +193,7 @@ export class Explosions implements ExplosionApi {
       ctx.fx.bloomKick = Math.min(0.95, ctx.fx.bloomKick + radius * 0.026 * k);
       ctx.fx.screenShake = Math.min(ctx.fx.screenShake + radius * 0.0022 * k, 0.045);
       // distant booms arrive smaller, the way thunder does
-      ctx.audio.boom(radius * (0.35 + 0.65 * k));
+      ctx.audio.boom(radius * (0.35 + 0.65 * k), cx, cy);
     }
     // Concussion is a valid puzzle input: levers and rune switches listen.
     ctx.events.emit('structureStrike', { x: cx, y: cy, radius: radius + 4 });

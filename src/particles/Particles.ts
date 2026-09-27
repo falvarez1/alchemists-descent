@@ -101,7 +101,7 @@ export class Particles implements ParticlesApi {
         { grav: 0.22 },
       );
     }
-    if (particleRandom() < 0.12) ctx.audio.splash(0.4 + particleRandom() * 0.3);
+    if (particleRandom() < 0.12) ctx.audio.splash(0.4 + particleRandom() * 0.3, x, y);
   }
 
   /**

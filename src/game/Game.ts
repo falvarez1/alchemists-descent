@@ -14,6 +14,7 @@ import { Telemetry } from '@/core/telemetry';
 import type { Ctx, FxState, GameStateData, InputState, RenderBackendMode } from '@/core/types';
 import { AudioEngine } from '@/audio/AudioEngine';
 import { HabitatAudio } from '@/audio/HabitatAudio';
+import { installAudioStingers } from '@/audio/Stingers';
 import { Flask } from '@/combat/Flask';
 import { Lightning } from '@/combat/Lightning';
 import { WandSystem } from '@/combat/wands/WandSystem';
@@ -189,6 +190,8 @@ export class Game {
       waves: createWaveState(),
     } as unknown as Ctx;
     this.disposables.push(audio);
+    // Run-event stingers (alchemy chime, phial crack/fill, run verdict, clip shutter).
+    this.disposables.push({ dispose: installAudioStingers(ctx.events, audio) });
     ctx.events.on('paramsChanged', () => {
       this.composeDirty = true;
     });

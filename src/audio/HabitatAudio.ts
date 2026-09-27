@@ -8,10 +8,12 @@ export class HabitatAudio {
   private stride = 0;
 
   update(ctx: Ctx): void {
-    // The ears sit on the wizard in play and on the camera otherwise, so a
-    // positional voice in the Sandbox or Builder still comes from the right side.
-    if (ctx.state.mode === 'play' && !ctx.player.dead) ctx.audio.setListener(ctx.player.x, ctx.player.y - 8);
-    else ctx.audio.setListener(ctx.camera.x + VIEW_W / 2, ctx.camera.y + VIEW_H / 2);
+    // The ears sit at the camera centre in every mode: a sound on the left of
+    // the screen is in the left ear, and a cinematic pan to the engine room
+    // brings its clatter to the centre with it. The wizard is near the centre
+    // (the camera leads him by a few dozen cells), inside the full-volume
+    // plateau of audio/mix.ts, so his neighbourhood never fades.
+    ctx.audio.setListener(ctx.camera.x + VIEW_W / 2, ctx.camera.y + VIEW_H / 2);
     if (ctx.state.mode !== 'play' || ctx.player.dead) return;
     const { player, world } = ctx;
     const distance = Math.hypot(player.x - this.lastX, player.y - this.lastY);
@@ -23,14 +25,14 @@ export class HabitatAudio {
       const type = world.inBounds(x, y) ? world.type(x, y) : Cell.Stone;
       const torso = world.inBounds(x, y - 5) ? world.type(x, y - 5) : Cell.Empty;
       const kind = isLiquid(torso) ? 'water' : type === Cell.Metal ? 'metal' : 'stone';
-      ctx.audio.worldSound?.(kind, player.x, player.y, player.x, player.y);
+      ctx.audio.worldSound?.(kind, player.x, player.y);
     }
     if (ctx.state.frameCount % 12 !== 0) return;
     for (const enemy of ctx.enemies) {
       if (enemy.hp <= 0 || Math.abs(enemy.vx) + Math.abs(enemy.vy) < 0.1) continue;
       if (enemy.kind !== 'weaver' && enemy.kind !== 'rillback') continue;
       if ((ctx.state.frameCount + (enemy.mind?.phase ?? 0)) % 48 >= 12) continue;
-      ctx.audio.worldSound?.(enemy.kind, enemy.x, enemy.y, player.x, player.y);
+      ctx.audio.worldSound?.(enemy.kind, enemy.x, enemy.y);
       if (Math.hypot(enemy.x - player.x, enemy.y - player.y) < 330) {
         ctx.events.emit('habitatSound', { kind: enemy.kind, x: enemy.x, y: enemy.y });
       }

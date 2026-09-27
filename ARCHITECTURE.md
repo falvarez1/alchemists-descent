@@ -140,7 +140,13 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     TeaMachineLinkages.ts Bell & Tea Engine linkage drawings: wheels, cables
                           and rods follow solver poses + real plate travel
   audio/
-    AudioEngine.ts        Procedural WebAudio SFX synthesis
+    AudioEngine.ts        Procedural WebAudio SFX synthesis; mix buses -> glue
+                          compressor -> limiter -> soft clip -> master
+    mix.ts                Pure mix math: volume taper, bus levels, placeSound
+                          (pan / distance / air-absorption from the camera centre)
+    Stingers.ts           Run-event stingers (alchemyKill, phialsChanged,
+                          runEnded, clipSaved) — events in, audio calls out
+    HabitatAudio.ts       Listener placement + footfall / creature-movement cues
   input/
     InputManager.ts       Mouse/keyboard handlers, mode switching
   ui/

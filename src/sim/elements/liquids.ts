@@ -561,7 +561,7 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
             26 + Math.floor(fxRandom() * 16),
             { grav: -0.04, glow: 0.5 },
           );
-          ctx.audio.steam();
+          ctx.audio.steam(tx, ty);
         }
         return;
       }

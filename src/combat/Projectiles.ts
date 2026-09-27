@@ -134,7 +134,7 @@ function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
     }
   }
   ctx.particles.burst(cx, cy, 8, null, iceColor, 1.8, { glow: 1.6, grav: 0.03 });
-  ctx.audio.shatter();
+  ctx.audio.shatter(cx, cy);
 }
 
 /** Deposit a disc of liquid cells (glob splashes, future flask spills). */
@@ -285,7 +285,7 @@ function elementalCritFeedback(ctx: Ctx, x: number, y: number, fx: ElementalCrit
   }
   ctx.fx.bloomKick = Math.min(1.1, ctx.fx.bloomKick + 0.5);
   ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.008, 0.05);
-  ctx.audio.tone(fx.toneFreq, fx.toneEnd, fx.toneDur, fx.toneType, fx.toneVol);
+  ctx.audio.tone(fx.toneFreq, fx.toneEnd, fx.toneDur, fx.toneType, fx.toneVol, x, y);
 }
 
 function wetCritFeedback(ctx: Ctx, x: number, y: number): void {
@@ -305,7 +305,7 @@ function electricFeedback(ctx: Ctx, x: number, y: number): void {
     glow: 2.3,
     grav: 0,
   });
-  ctx.audio.tone(1500, 300, 0.08, 'square', 0.06);
+  ctx.audio.tone(1500, 300, 0.08, 'square', 0.06, x, y);
 }
 
 function pruneProjectileMods(p: Projectile, mods: ProjectileModState): void {
@@ -358,7 +358,7 @@ function frostChargeFeedback(ctx: Ctx, x: number, y: number): void {
     glow: 1.8,
     grav: 0.03,
   });
-  ctx.audio.tone(940, 180, 0.1, 'sine', 0.07);
+  ctx.audio.tone(940, 180, 0.1, 'sine', 0.07, x, y);
 }
 
 function applyFrostChargeToEnemy(ctx: Ctx, p: Projectile, enemy: Ctx['enemies'][number]): void {
@@ -645,7 +645,7 @@ export class Projectiles implements ProjectilesApi {
     ctx.particles.burst(cx, cy, 10, null, () => packRGB(240, 220, 255), 0.8, { glow: 3.0, grav: 0 });
     ctx.fx.bloomKick = Math.min(1.1, ctx.fx.bloomKick + 0.85);
     ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.03, 0.05);
-    ctx.audio.implode();
+    ctx.audio.implode(cx, cy);
   }
 
   private updateSingularityGravityWells(ctx: Ctx): void {
@@ -900,7 +900,7 @@ export class Projectiles implements ProjectilesApi {
               if (wetCrit) wetCritFeedback(ctx, e.x, e.y);
               if (shatterCrit) shatterCritFeedback(ctx, e.x, e.y);
               if (pyreCrit) pyreCritFeedback(ctx, e.x, e.y);
-              ctx.audio.tone(900 + entityRandom() * 300, 130, 0.12, 'sine', 0.08);
+              ctx.audio.tone(900 + entityRandom() * 300, 130, 0.12, 'sine', 0.08, e.x, e.y);
             }
           }
           // freeze water in the wake
@@ -1065,7 +1065,7 @@ export class Projectiles implements ProjectilesApi {
           ) {
             const behind = probeHollow(ctx.world, gx, gy, p.vx, p.vy);
             if (behind) {
-              ctx.audio.hollowKnock();
+              ctx.audio.hollowKnock(gx, gy);
               for (let d = 0; d < 2; d++) {
                 ctx.particles.spawn(
                   gx,
@@ -1123,7 +1123,7 @@ export class Projectiles implements ProjectilesApi {
               glow: 2.0,
               grav: 0.06,
             });
-            ctx.audio.tone(1600, 160, 0.14, 'triangle', 0.1);
+            ctx.audio.tone(1600, 160, 0.14, 'triangle', 0.1, gx, gy);
             this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'pellet') {
@@ -1172,7 +1172,7 @@ export class Projectiles implements ProjectilesApi {
               }
             }
             ctx.particles.burst(gx, gy, 10, null, iceColor, 1.3, { glow: 1.5, grav: 0.02 });
-            ctx.audio.tone(900, 400, 0.1, 'sine', 0.1);
+            ctx.audio.tone(900, 400, 0.1, 'sine', 0.1, gx, gy);
             this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'warp') {

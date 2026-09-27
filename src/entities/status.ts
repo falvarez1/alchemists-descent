@@ -270,7 +270,7 @@ export function sampleAndTickStatus(
   }
   // The instant a body goes live (0 -> charged) gets a one-time zap + a crack.
   const justShocked = electrifiedBefore === 0 && st.electrified > 0;
-  if (justShocked) ctx.audio.zap();
+  if (justShocked) ctx.audio.zap(body.x, body.y - h / 2);
 
   // --- Tick every timer ---
   if (st.wet > 0) st.wet = Math.max(0, st.wet - tickFrames);

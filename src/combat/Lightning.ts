@@ -128,7 +128,7 @@ export class Lightning implements LightningApi {
       this.arcs.push({ pts: bpts, life: 6, intensity: 0.55 });
     }
     ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.012, 0.045);
-    ctx.audio.lightning();
+    ctx.audio.lightning(x, y);
   }
 
   /** A single short discharge arc between two points (the status system crawls
