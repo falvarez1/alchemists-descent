@@ -44,9 +44,9 @@ describe('Breathing Works encounter contracts', () => {
     expect(Buffer.from(a.runtime.world.colors.buffer).equals(Buffer.from(b.runtime.world.colors.buffer))).toBe(true);
     let hash = 0x811c9dc5;
     for (const byte of a.runtime.world.types) hash = Math.imul(hash ^ byte, 0x01000193);
-    // GEN_VERSION 48: barricade on the spawn route (cold lock gone), sealed shaft hatch, Lower Bell floor gate.
-    // GEN_VERSION 51 (light wave): the Undertow's lens tooth and lidded cache niche.
-    expect((hash >>> 0).toString(16)).toBe('a0195232');
+    // GEN_VERSION 53: the light wave's Undertow cache and the flora wave's hand-planted stands and Seed Cellar,
+    // over GEN 48's spawn-route barricade (cold lock gone), sealed shaft hatch and Lower Bell floor gate.
+    expect((hash >>> 0).toString(16)).toBe('dc38197a');
   });
 
   it('puts an oil-soaked barricade on the forced route to the crank, and nothing card-locked', () => {

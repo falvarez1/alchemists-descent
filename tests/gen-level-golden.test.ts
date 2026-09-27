@@ -178,16 +178,13 @@ describe('marsh-gas ceiling pockets', () => {
 });
 
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '1f6cf199' }, // GEN_VERSION 51 (light wave): the Undertow's lens-locked cache over v48's opening
+  { id: 'd1', seed: 1337, hash: '2a4357d3' }, // GEN_VERSION 53: the Undertow's lens-locked cache (light) + hand-planted flora and the Seed Cellar, over the GEN 48 opening and the played Bell & Tea Engine
   // GEN_VERSION 46 (four floors): the Drowned Cisterns inherit the old flooded
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
-  // GEN_VERSION 51 (light wave, over v50's re-sealed Kiln ceiling tank): every
-  // floor 2-4 carves a photocell strongroom and a lumen-bloom crossing on the
-  // forked 'light-puzzles' stream.
-  { id: 'd3', seed: 1337, hash: '92515be6' },
-  { id: 'd4', seed: 1337, hash: '455955ce' }, // GEN_VERSION 52: the Kiln grew with the 34-cell Colossus (three ceiling tanks re-sealed after carves, a deep footing)
-  { id: 'd2', seed: 42, hash: '05a3ab4b' },
+  { id: 'd3', seed: 1337, hash: 'b59d0a7a' }, // GEN_VERSION 53: light puzzles + organism census + the flora pass
+  { id: 'd4', seed: 1337, hash: 'fdcb1d67' }, // GEN_VERSION 53: the grown Kiln (v52) + light puzzles + the flora pass
+  { id: 'd2', seed: 42, hash: 'e75d9c7b' }, // GEN_VERSION 53: light puzzles + organism census + the flora pass
 ];
 
 describe('full generateLevel golden hashes', () => {

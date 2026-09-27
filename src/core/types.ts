@@ -1706,6 +1706,12 @@ export interface SpawnBodyOpts {
   guideAxis?: 'vertical' | 'horizontal';
   /** Pivot at the spawn position, with mechanical angular stops in radians. */
   hinge?: { minAngle: number; maxAngle: number };
+  /** A free revolute joint to a fixed WORLD point (e.g. the hinge wood of a
+   *  felled tree's cut). Released with RigidBodiesApi.releasePivot. */
+  pivot?: { x: number; y: number };
+  /** Compound shape: these local-frame boxes REPLACE the default collider
+   *  (`shape` then stays the overall bounds used for queries/extents). */
+  colliders?: ReadonlyArray<{ halfW: number; halfH: number; x: number; y: number }>;
   kind?: RigidBodyKind;
   vx?: number;
   vy?: number;
@@ -1835,6 +1841,11 @@ export interface RigidBodiesApi {
    *  barrel alight directly instead of waiting for a fire cell to drift into its
    *  footprint. Returns how many bodies were newly lit. */
   igniteArea(x: number, y: number, radius: number): number;
+  /** Break a body's `pivot` joint (the hinge wood snaps; the body falls free),
+   *  optionally resetting its angular damping (the hinge's friction goes with it). */
+  releasePivot?(body: RigidBody, angularDamping?: number): void;
+  /** Retune a body's damping mid-flight (a hinge that loosens as it goes). */
+  setDamping?(body: RigidBody, linear?: number, angular?: number): void;
 }
 
 export interface VineStrandNodeView {
@@ -2869,6 +2880,9 @@ export interface PlacedPrefab {
   y0: number;
   x1: number;
   y1: number;
+  /** Where the set piece's verb applies (a flora puzzle's felling line, seed
+   *  bed or thicket mouth) — for probes, audits and the inspector. */
+  focus?: { x: number; y: number };
 }
 
 /** Player-authored navigation pin set from the full minimap. One active pin per
@@ -3410,6 +3424,49 @@ export interface Ctx {
   music?: MusicApi;
   /** The narrator; absent in small test contexts. */
   narrator?: NarratorApi;
+  /** Living plants that fall (game/Flora); absent in small test contexts. */
+  flora?: FloraApi;
+}
+
+/**
+ * FLORA (wave 2): a felled stand in flight. A read-only render mirror — the
+ * lifted cells (sprite, in the world frame at the moment of felling) ride a
+ * Rapier body; draw them at the body's pose.
+ */
+export interface FloraFallView {
+  readonly id: number;
+  readonly body: RigidBody;
+  /** Spawn pose of the body (the sprite's frame). */
+  readonly cx0: number;
+  readonly cy0: number;
+  readonly a0: number;
+  readonly sprite: {
+    readonly x0: number;
+    readonly y0: number;
+    readonly w: number;
+    readonly h: number;
+    /** 0 empty, 1 wood, 2 leaf, 3 seed, 4 smouldering wood, 5 glowseed. */
+    readonly kind: Uint8Array;
+    readonly color: Uint32Array;
+  };
+  /** 0..1 while the trunk is alight (it comes down burning). */
+  readonly burning: number;
+}
+
+/** The kick's gust falloff: 0 outside the cone, up to 1 at the boot. */
+export type GustFalloff = (x: number, y: number) => number;
+
+export interface FloraApi {
+  /** Felled stands currently falling/settling (render mirror, mutated in place). */
+  readonly falling: readonly FloraFallView[];
+  /** Fixed tick: detect severed stands, fell them, drive falls, re-stamp logs. */
+  update(ctx: Ctx): void;
+  /** The player's kick: snap a sapling at the boot, shake a tree (pods drop). */
+  gust(ctx: Ctx, gustAt: GustFalloff, dirX: number, dirY: number, ox: number, oy: number): void;
+  /** Living wood appeared at (x, y) — or over the rect to (x1, y1): watch those chunks. */
+  noteGrowth(x: number, y: number, x1?: number, y1?: number): void;
+  /** Include wood still in flight in copied save buffers (the log it will become). */
+  writeSnapshotCells?(world: World, types: Uint8Array, life: Int16Array): void;
 }
 
 /**

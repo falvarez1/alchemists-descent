@@ -65,6 +65,7 @@ import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
 import { WORKS_GATE, worksGateOpen } from '@/world/breathingWorks';
+import { dropStrandedStands } from '@/world/floraPass';
 import { blocksEntity, Cell, CELL_COUNT, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import {
   COLOR_FN,
@@ -1937,6 +1938,7 @@ export class Levels implements LevelsApi {
     const types = rt.world.types.slice();
     const lifeArr = rt.world.life.slice();
     this.ctx.vineStrands?.writeSnapshotCells?.(rt.world, types, lifeArr);
+    this.ctx.flora?.writeSnapshotCells?.(rt.world, types, lifeArr);
     for (let i = 0; i < lifeArr.length; i++) {
       if (lifeArr[i] === 0) continue;
       const t = types[i];
@@ -1968,6 +1970,7 @@ export class Levels implements LevelsApi {
   private snapshotLevelForWorker(id: string, rt: LevelRuntime): PendingLevelSave {
     const types = rt.world.types.slice(), life = rt.world.life.slice();
     this.ctx.vineStrands?.writeSnapshotCells?.(rt.world, types, life);
+    this.ctx.flora?.writeSnapshotCells?.(rt.world, types, life);
     return {
       metadata: structuredClone({
         id,
@@ -2480,6 +2483,9 @@ export class Levels implements LevelsApi {
     }
     if (findability.repaired.length > 0) {
       this.blobCache.delete(runtime.def.id);
+      // FLORA: an arrival repair tunnel can cut the ground from under a plant;
+      // take the stranded stand away rather than drop it on the arrival.
+      if (phase === 'initial') dropStrandedStands(runtime.world);
       // World repair is silent: it runs on arrival and afterwards, on rock the
       // player never touched ("Somewhere below, rock shifts…" narrated a change
       // he never made — QA). The DEV console line above still reports it.
@@ -2560,6 +2566,15 @@ export class Levels implements LevelsApi {
       y: exit.sealY - 12,
     });
     const populationReach = wizardMask(makeLevelRuntime({ def, world, spawn, regions }));
+    // FLORA puzzle rooms are set pieces (a sealed cistern over a seed bed, a
+    // tree balanced at a chasm): a foe seeded inside would wreck one before
+    // the player arrives. Population keeps out of them (they still wander in).
+    for (const p of placedPrefabs) {
+      if (!p.id.startsWith('flora-')) continue;
+      for (let y = Math.max(0, p.y0); y <= Math.min(world.height - 1, p.y1); y++) {
+        populationReach.fill(0, y * world.width + Math.max(0, p.x0), y * world.width + Math.min(world.width - 1, p.x1) + 1);
+      }
+    }
     const weaverLairWebs: WeaverLairWeb[] = [];
     const population = def.id === 'd1' ? { planned: {}, placed: {}, skipped: {}, lairs: {} } : this.placePopulation(
       ctx,

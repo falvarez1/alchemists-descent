@@ -46,6 +46,7 @@ import {
 } from '@/sim/colors';
 import { applyBiomeExtras, applyCampaignDressing, fillMineralVugs, goldPocketBudgetForBiome } from '@/world/biomeExtras';
 import { PlacementLedger, carveRect, tunnelTo } from '@/world/connect';
+import { applyFloraPass } from '@/world/floraPass';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
 import type { SkeletonIO } from '@/world/skeleton';
@@ -1172,6 +1173,21 @@ export class WorldGen implements WorldGenApi {
       fits.set(computeFits(ctx.world));
     }
     stage('light-puzzles');
+    // 8b.8) FLORA (wave 2): the floor's puzzle rooms (fell a tree across a
+    // chasm or lava moat, water a thirsty seed into a root ladder, burn a
+    // bramble thicket) carved into rock and joined to the main path, then the
+    // floor's own plants on real ground. Its own forked stream: every earlier
+    // placement stays byte-identical per seed. Floor 1 is hand-planted.
+    const flora = applyFloraPass(ctx.world, new Rng(hashSeed(seed >>> 0, 'flora')), def.biome, ledger,
+      { spawn, wellX, pickups, graph, fits });
+    if (flora.puzzles.length > 0) {
+      pickups.push(...flora.pickups);
+      sink.enemies.push(...flora.enemies);
+      placedPrefabs = placedPrefabs.concat(flora.puzzles.map((p) => ({ id: `flora-${p.kind}`, x0: p.x0, y0: p.y0, x1: p.x1, y1: p.y1, focus: p.focus })));
+      graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+      fits.set(computeFits(ctx.world));
+    }
+    stage('flora');
 
     // (A GLOBAL powder settle was tried here and reverted: suspended powder
     // PLUGS are a deliberate authored primitive — the spell lab's dig-station
@@ -1214,6 +1230,9 @@ export class WorldGen implements WorldGenApi {
     // ...and the final rescue may carve again: the Kiln's seal is the player's
     // to dig, so re-assert its tank once more (idempotent; no-op off the Kiln).
     kilnRepair?.();
+    // FLORA puzzles re-assert what the rescue tunnels took (a tree, a cistern)
+    // — writing only into open cells, so no route the rescue opened is closed.
+    flora.repair();
     stage('final-gauge-rescue');
 
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.

@@ -68,6 +68,23 @@ export const Cell = {
   // biomes (applyBiomeExtras) - mining or a stray fireball writes the set
   // piece. Fail-open: a blast only ever OPENS terrain.
   MarshGas: 38,
+  // FLORA (Breathing Works wave 2). LEAF: canopy foliage, fern fronds, lily
+  // pads and leaf litter. Walk-through growth that holds on while it is within
+  // a few leaf-steps of wood or rock (its life plane stores that distance) and
+  // otherwise lets go and flutters down (handleLeaf). Burns fast and bright;
+  // floats on water.
+  Leaf: 39,
+  // TRUNK: living wood — tree trunks, branches, giant-fungus stems and caps,
+  // root columns. Walk-past (a 2D forest never walls the route) but real: it
+  // smoulders, digs and blasts, and a cluster that loses every contact with
+  // load-bearing ground is FELLED (game/Flora: a hinged Rapier topple that
+  // re-stamps as solid Wood where it lands).
+  Trunk: 40,
+  // SEED: a pod's seeds. Held on the plant until it is kicked, shaken or
+  // felled, then a loose powder. Thirsty seeds drink the water they touch and
+  // sprout a climbable root ladder (real Trunk + Wood rungs); glowseeds are the
+  // Bellows' lure seeds, collected by walking over them.
+  Seed: 41,
 } as const;
 
 export type Cell = (typeof Cell)[keyof typeof Cell];
@@ -76,10 +93,10 @@ export type Cell = (typeof Cell)[keyof typeof Cell];
  * NOTE: the GPU compose path (render/ComposeShader.ts) packs each cell's type
  * into a texture byte as `type | 0x80` when the cell is charged. That is an
  * internal texture format, NOT a save format — but it means cell ids must
- * stay <= 127. Ids are append-only and top out at 37 today, so there is room
- * for 90 more materials; if id 128 is ever near, the charge bit moves first.
+ * stay <= 127. Ids are append-only and top out at 41 today, so there is room
+ * for 86 more materials; if id 128 is ever near, the charge bit moves first.
  */
-export const CELL_COUNT = 39;
+export const CELL_COUNT = 42;
 
 /**
  * Classification predicates take plain numbers so values read straight out of
@@ -101,7 +118,8 @@ export function isSolid(t: number): boolean {
     t === Cell.Glowshroom ||
     t === Cell.Moss ||
     t === Cell.RawOre ||
-    t === Cell.Grass
+    t === Cell.Grass ||
+    t === Cell.Trunk
   );
 }
 
@@ -112,7 +130,9 @@ export function isSoftGrowth(t: number): boolean {
     t === Cell.Moss ||
     t === Cell.Fungus ||
     t === Cell.Glowshroom ||
-    t === Cell.Grass
+    t === Cell.Grass ||
+    t === Cell.Leaf ||
+    t === Cell.Trunk
   );
 }
 

@@ -7,6 +7,7 @@ import { dressWorksHabitat } from './worksHabitat';
 import { stampTeaMachine, TEA } from './teaMachine';
 import { makeValve } from '@/core/mechanismFactories';
 import { stampPhotocell } from './lightPuzzles';
+import { carveSeedCellar, plantWorksFlora, WORKS_SEED_CELLAR } from '@/world/worksFlora';
 
 /** Authored encounter geometry; every ledge, reservoir and pipe below is real material. */
 export const WORKS_ROOMS = [
@@ -273,6 +274,9 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   for (const [x, y] of [[303, 261], [304, 261], [305, 261], [311, 261], [312, 261], [308, 260], [317, 261]]) put(x, y, Cell.RawOre, packRGB(214, 176, 62));
   rect(305, 312, 6, 3, Cell.Glowshroom, packRGB(105, 175, 140));
 
+  // FLORA: the Seed Cellar off the Undertow's west end (worksFlora).
+  carveSeedCellar(world);
+
   // Chalk lips face walkable space. Sparse oxidation faces the walls.
   for (let y = 12; y < HEIGHT - 9; y++) {
     for (let x = 10; x < WIDTH - 10; x++) {
@@ -389,6 +393,10 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   failingFixture(614, hash(614, 860) % 600, 76);
   failingFixture(854, hash(854, 860) % 600, 88);
 
+  // FLORA: the floor's trees, ferns and the Seed Cellar's fittings, planted
+  // last so they grow only into cells every fixture above left open.
+  plantWorksFlora(world);
+
   const lamp = (x: number, y: number, warm = false, radius = 120, flicker = .04, intensity = .65): AuthoredLight => ({
     x, y, r: warm ? 1 : 0.46, g: warm ? 0.66 : 0.81, b: warm ? 0.30 : 0.75,
     intensity, radius, bloom: 0.12, flicker, flickerPhase: hash(x, y) % 600,
@@ -407,7 +415,9 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
       pickup('goldpile', 30, 313, { amount: 45 }), pickup('goldpile', 308, 256, { amount: 40 }),
       // The Undertow cache, under its lens-locked lid.
       pickup('goldpile', WORKS_UNDERTOW_CACHE.niche.x0 + 4, WORKS_UNDERTOW_CACHE.niche.y1, { amount: 50 }),
-      pickup('potion', WORKS_UNDERTOW_CACHE.niche.x1 - 3, WORKS_UNDERTOW_CACHE.niche.y1 - 1, { potion: 'torch' })],
+      pickup('potion', WORKS_UNDERTOW_CACHE.niche.x1 - 3, WORKS_UNDERTOW_CACHE.niche.y1 - 1, { potion: 'torch' }),
+      // The Seed Cellar's shelf: grow the root ladder to reach it.
+      pickup('goldpile', WORKS_SEED_CELLAR.reward.x, WORKS_SEED_CELLAR.reward.y, { amount: 40 })],
     mechanisms, runeVaults: [], boss: null,
     prefabEnemies: [
       { kind: 'rillback', x: 707, y: 413, sourceId: 'works-rillback-sluice' },

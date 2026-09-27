@@ -828,6 +828,7 @@ export class PlayerControl implements PlayerControlApi {
     }
     ctx.vineStrands?.applyRadialImpulse(ox, oy, windRange * 0.9, 1.8); // bend the hanging vines in the gust
     gustHabitat(ctx, gustAt, dirX, dirY);
+    ctx.flora?.gust(ctx, gustAt, dirX, dirY, ox, oy); // saplings snap, trees shake their pods loose
 
     // Feedback: a dust arc along the kick + a low thud + an airy whoosh.
     for (let k = 0; k < 8; k++) {

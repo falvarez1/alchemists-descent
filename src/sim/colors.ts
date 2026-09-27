@@ -126,6 +126,15 @@ export const catalystColor = () =>
   fxRandom() < 0.12
     ? packRGB(255, 235 + rand(20), 200 + rand(40))
     : packRGB(240 + rand(15), 140 + rand(40), 70 + rand(30));
+// FLORA. Generic paint for the sandbox brush; worldgen species (world/floraKit)
+// write their own bark/leaf palettes per floor. Restrained on purpose: the
+// Works are wet slate and chalk, not a jungle poster.
+export const leafColor = () => packRGB(70 + rand(34), 118 + rand(40), 58 + rand(22));
+export const trunkColor = () => packRGB(104 + rand(26), 84 + rand(20), 62 + rand(16));
+/** A thirsty seed: dull amber grain. */
+export const seedColor = () => packRGB(168 + rand(24), 118 + rand(22), 48 + rand(16));
+/** A glowseed: the pale luminous lure seed of the Bellows. */
+export const glowseedColor = () => packRGB(200 + rand(26), 234 + rand(20), 128 + rand(36));
 // raw ore: dark host rock veined with golden flecks. It carries NO light of its
 // own (Lighting seeds nothing for it), so it sits dark as plain rock until the
 // wizard's beam falls on it and the ~22% gold grains catch the light.
@@ -175,4 +184,7 @@ export const COLOR_FN: Record<number, () => number> = {
   [Cell.RawOre]: rawOreColor,
   [Cell.Grass]: grassColor,
   [Cell.MarshGas]: marshGasColor,
+  [Cell.Leaf]: leafColor,
+  [Cell.Trunk]: trunkColor,
+  [Cell.Seed]: seedColor,
 };

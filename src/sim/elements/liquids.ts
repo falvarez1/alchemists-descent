@@ -1,5 +1,6 @@
 import type { Ctx } from '@/core/types';
 import { Cell, isGas, isSoftGrowth, isSolid } from '@/sim/CellType';
+import { igniteTrunk } from '@/sim/elements/flora';
 import {
   EMPTY_COLOR,
   fireColor,
@@ -582,6 +583,11 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 35;
       }
+      if (n === Cell.Leaf || n === Cell.Seed) {
+        w.replaceCellAt(ti, Cell.Fire, fireColor());
+        w.life[ti] = 20;
+      }
+      if (n === Cell.Trunk) igniteTrunk(ctx, ti); // living wood smoulders (FLORA)
       if (n === Cell.Coal && w.life[ti] === 0 && simRandom() < 0.15) {
         // lava lights coal into a burning ember bed (burns in place — handleCoal)
         w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration! + Math.floor(simRandom() * 40);

@@ -16,11 +16,15 @@ const RUNTIME_INSPECTION_LIGHT_RADIUS = 65;
 const MATERIAL_ATTENUATION = new Float32Array(256);
 for (let type = 0; type < MATERIAL_ATTENUATION.length; type++) {
   MATERIAL_ATTENUATION[type] = type === Cell.Empty || isGas(type) ? 0.86
-    : type === Cell.Crystal || type === Cell.Glass || type === Cell.Ice ? 0.84 : isLiquid(type) ? 0.8 : 0.4;
+    : type === Cell.Crystal || type === Cell.Glass || type === Cell.Ice ? 0.84 : isLiquid(type) ? 0.8
+      // FLORA: a canopy is dappled, not a rock slab — light filters through leaves.
+      : type === Cell.Leaf ? 0.74 : 0.4;
 }
 const EMISSIVE_MATERIAL = new Uint8Array(256);
 for (const type of [Cell.Fire, Cell.Lava, Cell.Ember, Cell.Acid, Cell.Gold, Cell.Fungus,
-  Cell.Crystal, Cell.Catalyst, Cell.Glowshroom, Cell.Moss, Cell.Healium, Cell.Toxic, Cell.Teleportium]) EMISSIVE_MATERIAL[type] = 1;
+  Cell.Crystal, Cell.Catalyst, Cell.Glowshroom, Cell.Moss, Cell.Healium, Cell.Toxic, Cell.Teleportium,
+  // FLORA: seeds glow faintly (glowseeds brightly); smouldering living wood glows.
+  Cell.Seed, Cell.Trunk]) EMISSIVE_MATERIAL[type] = 1;
 
 // Wand "beam": a narrow directional cone cast along the aim, on top of (never
 // instead of) the omni wand light. It reaches further so corridors read deeper
@@ -418,6 +422,27 @@ export class Lighting implements LightField {
             lightR[i] = Math.max(lightR[i], 0.05);
             lightG[i] = 0.18;
             lightB[i] = Math.max(lightB[i], 0.03);
+          }
+        } else if (t === Cell.Trunk) {
+          // Living wood only glows while it smoulders (life = burn countdown).
+          if (world.life[wi] > 0) {
+            const f = 0.42 + Math.random() * 0.18;
+            if (lightR[i] < f) {
+              lightR[i] = f;
+              lightG[i] = Math.max(lightG[i], f * 0.36);
+              lightB[i] = Math.max(lightB[i], f * 0.06);
+            }
+          }
+        } else if (t === Cell.Seed) {
+          // A glowseed (life -2/-4) is a small lamp; a thirsty seed barely a warm speck;
+          // a sprouting tip (life > 0) glows green as it climbs.
+          const life = world.life[wi];
+          const glowseed = life === -2 || life === -4;
+          const f = glowseed ? 0.34 + Math.sin(ctx.state.frameCount * 0.06 + wx * 0.4) * 0.06 : life > 0 ? 0.3 : 0.1;
+          if (lightG[i] < f) {
+            lightR[i] = Math.max(lightR[i], f * (glowseed || life > 0 ? 0.7 : 0.9));
+            lightG[i] = f;
+            lightB[i] = Math.max(lightB[i], f * (glowseed ? 0.42 : 0.2));
           }
         } else if (t === Cell.Teleportium) {
           const f = 0.28 + Math.random() * 0.08;

@@ -112,6 +112,27 @@ export interface EventMap {
   /** A creature died (any cause), emitted from the one enemy death path before
    *  its aftermath — so a run-ending kill is counted before `runEnded`. */
   enemyKilled: { kind: EnemyKind; x: number; y: number };
+  /** FLORA: a stand of living wood lost its footing and began to fall (the
+   *  crack). `dir` is the topple side (-1/1, 0 = a straight drop); `cause` is
+   *  what cut it. Audio adds its proper cues here. */
+  treeFelled: { x: number; y: number; height: number; dir: number; cause: 'dig' | 'fire' | 'blast' | 'kick' | 'acid' | 'unknown'; cells: number };
+  /** FLORA: a falling stand struck the ground (strength 0..1; the first strike is the big one). */
+  treeLanded: { x: number; y: number; strength: number; first: boolean };
+  /** FLORA: a fallen stand came to rest and re-stamped as a log of `cells` Wood. */
+  treeSettled: { x: number; y: number; cells: number };
+  /** FLORA: a plant moment that wants its own sound (the audio workstream maps
+   *  kinds to cues; each call site also plays the nearest existing cue now).
+   *  creak = a notched trunk strains; lean = the hold before the fall; crack =
+   *  the cut goes through; snap = the hinge wood / a sapling breaks; whoosh =
+   *  the crown rushing down; rustle = leaves shaken; podDrop = a pod lets go;
+   *  soak = a thirsty seed starts drinking; sprout = it sprouts; rung = a
+   *  ladder rung grows; bloom = the ladder's crown opens; settle = a log at rest. */
+  floraMoment: {
+    kind: 'creak' | 'lean' | 'crack' | 'snap' | 'whoosh' | 'rustle' | 'podDrop' | 'soak' | 'sprout' | 'rung' | 'bloom' | 'settle';
+    x: number;
+    y: number;
+    strength: number;
+  };
   /** A creature died to a material/physical consequence (combat/AlchemyKills). */
   alchemyKill: AlchemyKillInfo;
   /** A world-anchored combat word (ui/Callouts): the Trickshot finisher's line, etc. */

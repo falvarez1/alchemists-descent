@@ -7,6 +7,7 @@ import type { Ctx, Enemy, RuntimeDecor } from '@/core/types';
 import { RenderPoses, interpolateBody } from '@/render/RenderPoses';
 import { activeFloorLook, drawWorksLandmarks, prepareTerrainColors } from '@/render/TerrainArt';
 import { drawHabitatScenery, drawVineFoliage } from '@/render/HabitatScenery';
+import { drawFallingFlora } from '@/render/FloraArt';
 import { PLAYER_HALF_W } from '@/core/types';
 import type {
   CompositorLens,
@@ -897,6 +898,12 @@ export class FrameComposer implements PixelSurface {
           // whole patch leans together instead of shimmering per-cell). Matches the shader.
           const living = 0.94 + Math.sin(frameCount * 0.035 + wind + wx * 0.13 + wy * 0.29) * 0.08;
           g *= living;
+        } else if (type === Cell.Leaf) {
+          // FLORA canopy rustle: a breeze wave rolls across the leaves. Matches the shader.
+          const rustle = 0.9 + Math.sin(frameCount * 0.035 + wind * 1.6 + wx * 0.19 - wy * 0.11) * 0.1;
+          r *= rustle;
+          g *= rustle;
+          b *= rustle * 0.96;
         }
 
         let scalar = 0.0;
@@ -1015,6 +1022,7 @@ export class FrameComposer implements PixelSurface {
     this.drawCritters(ctx);
     this.drawFlaskEffects(ctx);
     this.drawRigidBodies(ctx);
+    drawFallingFlora(this, this.light, ctx, this.alpha);
     drawTeaMachineDecor(this, this.light, ctx, this.alpha);
     this.drawVineStrands(ctx, 'foreground');
 
@@ -1182,6 +1190,7 @@ export class FrameComposer implements PixelSurface {
         ropePen.cable(points, 0, { material: rope.material === 'chain' ? 'chain' : 'rope', sag: 0 });
       }
       if (b.tag?.startsWith('player-corpse')) continue; // drawn as a limp wizard in drawPlayerRagdoll
+      if (b.tag?.startsWith('flora-')) continue; // a felled stand: drawn cell-for-cell by FloraArt
       let r = ((b.color >> 16) & 0xff) / 255;
       let g = ((b.color >> 8) & 0xff) / 255;
       let bl = (b.color & 0xff) / 255;

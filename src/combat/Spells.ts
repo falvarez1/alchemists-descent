@@ -77,10 +77,13 @@ export class Spells implements SpellsApi {
           this.ctx.particles.spawn(X, Y, (entityRandom() - 0.5) * 1.4, -0.8 - entityRandom(),
             null, goldColor(), 200, { homing: true, glow: 2.2, grav: 0 });
           world.clearCellAt(i); chewed++; oreCells++;
-        } else if (c === Cell.Wall || c === Cell.Sand || c === Cell.Wood || c === Cell.Ice || c === Cell.Vines || c === Cell.Stone || c === Cell.Gunpowder) {
+        } else if (c === Cell.Wall || c === Cell.Sand || c === Cell.Wood || c === Cell.Ice || c === Cell.Vines || c === Cell.Stone || c === Cell.Gunpowder
+          || c === Cell.Trunk || c === Cell.Leaf) {
           if (debris < 2 && entityRandom() < 0.16) {
+            // Living wood throws splinters (visual only: a deposited speck must never
+            // prop up the trunk being cut); leaves flutter off as real leaves.
             this.ctx.particles.spawn(X, Y, (entityRandom() - 0.5) * 1.6, -0.7 - entityRandom() * 0.9,
-              c === Cell.Wood ? Cell.Wood : Cell.Sand, world.colors[i], 55);
+              c === Cell.Wood ? Cell.Wood : c === Cell.Trunk ? null : c === Cell.Leaf ? Cell.Leaf : Cell.Sand, world.colors[i], 55);
             debris++;
           }
           world.clearCellAt(i); chewed++;

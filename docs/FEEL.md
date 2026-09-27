@@ -800,6 +800,52 @@ Rooted organisms sleep off-camera. Every beat emits an `organism` event.
 - Weaver lair webs (real Vines inside a lair's radius) snare fliers; the
   weaver comes down for them. Idle imps snatch ash moths within 70. Rillbacks
   and the Leviathan eat fish; snapjaws eat whatever is kicked into them.
+### Flora — trees that fall, seeds that climb (`game/Flora.ts`, `sim/elements/flora.ts`)
+
+Living wood is real cells: **Trunk** (40, walk-past soft growth, burns slow),
+**Leaf** (39, held within `LEAF_REACH` 9 steps of wood/rock, else it lets go
+and flutters: 42% fall / 10% drift per step, floats on water as a pad) and
+**Seed** (41: thirsty or glow; held in a pod until shaken).
+
+- **The warning.** A trunk notched to ≤ 55% of its typical row width creaks
+  (level 1), ≤ 30% creaks harder, sifts dust from the notch, shivers leaves
+  loose and nudges the shake (+0.004, cap 0.03). Cooldown 80 ticks per spot.
+- **The crack.** When a stand's last contact with anchored ground goes (a
+  powder holds it only from underneath; a lone speck never), it lifts out of
+  the grid onto a Rapier body (≤ 4 fitted boxes, wood density 0.7, so logs
+  float). It falls AWAY from the dig beam / blast / boot (hints live 150
+  ticks), else toward its crown's lean.
+- **The lean.** Hinged at the cut on the back edge (then 1.5 cells behind
+  the centre of mass, clamped to 6), starting at 0.0055 rad/tick: 18 ticks
+  near-locked (angular damping 26) while it groans, then the hinge fibres
+  hold at damping 1.1 until 0.95 rad, then free fall (0.12). A stand with no
+  ground under its foot tips at 0.032 rad/tick.
+- **The fall.** Leaves shed from the crown as it goes; whoosh once the tip
+  passes 3.2 cells/tick; a burning stand trails flame.
+- **The crush.** Contact ≥ 1.5 cells/tick hurts. Creatures:
+  `min(160, 10 + v·12·massF)` as 'flattened' (+3 hitstop, thud + squelch),
+  massF = √clamp(mass/150, 0.3, 3). The alchemist: `clamp(4 + v·4.2·min(1.4,
+  massF), 8, 30)`, knocked away from the trunk, shake +0.02.
+- **The thud.** Δv > 1.1 cells/tick is an impact: dust along the contact,
+  glass/ice/snow it lands on shatter, boom scaled by size, shake up to 0.045.
+- **The log.** Settles at speed < 0.08 and spin < 0.006 for 10 ticks (in
+  water: < 0.25 / < 0.02 for 3 — buoyancy never gets quieter), or after 720
+  ticks regardless; re-stamps as Wood (bark darkened ×0.86–0.9) in its final
+  pose, bottom-up, displacing any liquid upward (a log dams a pool).
+- **Kick (F).** A stand ≤ 130 cells and ≤ 34 tall snaps at the boot; a bigger
+  one shakes: every held pod within its crown lets go, a few leaves fall.
+- **Glowseeds (floor 1).** Walking over a loose glowseed puts it in the
+  pouch (cap 3, "pouch is full" toast at most every 600 ticks).
+- **Thirsty seeds.** A wetted seed soaks one water cell per substep; the bed
+  (±4 × ±3) sprouts when no seed has drunk for 48 substeps and the bed took
+  ≥ 8 cells (a drip dries off). The stalk takes the bed's seeds and puddle
+  (≤ 70 cells) and grows with energy `min(120, 22 + water·1.6 + seeds·3)`:
+  two cells wide, a Wood rung (6×2) every 12 cells on alternating sides,
+  leaves at the mid-points, a crown when it ends.
+- **Cost.** Stands are re-flooded only when a chunk's support fingerprint
+  moves (≤ 48 fingerprints, ≤ 10 floods per tick): Flora.update ~0.16–0.24
+  ms/tick in the densest views, A/B tick+render +0.27 ms with ~7k plant cells
+  in view (D2, 1600×900).
 
 ---
 
@@ -1103,7 +1149,9 @@ dive: entry 5.6, floor 4.6, terminal 6.4 (normal 5.0), drift x0.86/f
 slam: 26-cell knock radius, 1 dmg, ≤12 powder cells popped
 kick (F): melee cone range 22 / ±52° / 8 dmg / cd 22 · gust cone range 32 (1.5× fan) · kickImpulse 75 (mass-aware) · self-recoil 3.0×max(0.5,reaction), down=stomp-launch
 kick gust → enemies: push 5×(40/footprint), clamp 0.2–4.5× · ballistic launch if mass≤26 (bat/eggs) → wall SMASH (12+2.4·speed dmg, blood-paints stone); heavier foes thud · bosses immune
-kick gust → critters scatter+startle 16–32f · vines bend (applyRadialImpulse)
+kick gust → critters scatter+startle 16–32f · vines bend (applyRadialImpulse) · saplings ≤130 cells/≤34 tall snap, bigger stands drop their pods
+felling: notch warn ≤0.55/≤0.30 of row width · hinge hold 18t @damping 26 → 1.1 → release 0.95 rad → free 0.12 · start spin 0.0055 · crush ≥1.5 c/t: foes min(160, 10+12v·massF) 'flattened', player 8–30 · impact Δv>1.1 · settle <0.08/<0.006 ×10t (water <0.25/<0.02 ×3t), timeout 720t
+thirsty seeds: soak 1 cell/substep, sprout after 48 dry substeps if bed drank ≥8 · energy min(120, 22+1.6·water+3·seeds) · rung 6×2 every 12
 vine swing (G): reach 16, len 14–150, pump 0.16 (left=left/right=right), jump launch +2.0 up · release keeps momentum (airborne inertia, no walk clamp) · player pushes vines aside within 20 cells (strength 1.4)
 skid: trigger |svx|>1.1 on reversal, 9f · stagger 12f · recoil 5f/7f
 swap draw 12f (gleam f5-7) · fidget arms at 420f idle, routine 90f
