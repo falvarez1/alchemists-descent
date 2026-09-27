@@ -1,7 +1,7 @@
 import type { Ctx, PerkId } from '@/core/types';
 import { livingObjective } from '@/game/LivingExpedition';
 import { canHumiliate } from '@/combat/Trickshot';
-import { worksRoomAt } from '@/world/breathingWorks';
+import { worksPlaceName } from '@/world/breathingWorks';
 import { getBindings, keyLabel } from '@/input/bindings';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { floorLabel } from '@/config/worldgraph';
@@ -494,10 +494,11 @@ export class Hud {
   /** Tier-2 contextual hint: the nearest interactable's "what to do" line. */
   private renderInteractionHint(ctx: Ctx): void {
     const hint = ctx.hints.current;
-    const note = hint?.key === 'works-cold-lock';
-    const anchored = (hint?.key === 'works-valve' || note) && hint.world;
+    const note = hint?.key.startsWith('works-note') === true;
+    const verb = hint?.key === 'works-valve' ? 'Turn valve' : hint?.key === 'works-crank' ? 'Pull crank' : null;
+    const anchored = (verb !== null || note) && hint?.world;
     const controller = anchored && !note && Array.from(navigator.getGamepads?.() ?? []).some(pad => pad?.connected);
-    const text = anchored && !note ? `${controller ? 'X' : keyLabel(getBindings().interact)} · Turn valve` : hint?.line ?? '';
+    const text = anchored && verb ? `${controller ? 'X' : keyLabel(getBindings().interact)} · ${verb}` : hint?.line ?? '';
     const node = this.interactionHintNode;
     if (node.textContent !== text) node.textContent = text;
     node.classList.toggle('visible', text !== '');
@@ -508,7 +509,7 @@ export class Hud {
       const x = (anchored.x - ctx.camera.renderX + 26) / VIEW_W * width;
       const y = (anchored.y - ctx.camera.renderY - 25) / VIEW_H * height;
       node.style.left = `${Math.max(10, Math.min(width - (note ? 275 : 165), x))}px`;
-      node.style.top = `${Math.max(70, Math.min(height - 90, y))}px`;
+      node.style.top = `${Math.max(104, Math.min(height - 90, y))}px`; // clear of the objective line
     } else { node.style.removeProperty('left'); node.style.removeProperty('top'); }
   }
 
@@ -618,7 +619,7 @@ export class Hud {
     const rt = ctx.levels.current;
     // One voice for the place name: D1 names rooms in title case, so the
     // generated floors do too ("Fungal Deep", not "FUNGAL DEEP").
-    const place = rt?.living ? worksRoomAt(player.x, player.y).name : titleCaseName(rt?.def.name ?? '');
+    const place = rt?.living ? worksPlaceName(player.x, player.y) : titleCaseName(rt?.def.name ?? '');
     if (this.waveNum.textContent !== place) this.waveNum.textContent = place;
     const bindings = getBindings();
     el('field-note').textContent = player.legClub

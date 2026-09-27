@@ -249,6 +249,7 @@ function mechanismStateLabel(mechanism: Mechanism): string {
 
 /** What a player would call it: a cold-lock gate, a sluice valve, a lever. */
 function mechanismPlaceName(mechanism: Mechanism): string {
+  if (mechanism.kind === 'plug' && mechanism.routeSeal) return 'Barricade';
   if (mechanism.kind === 'door' && mechanism.requiresCard === 'frostshard') return 'Cold-lock gate';
   if (mechanism.kind === 'door') return mechanism.state === 1 ? 'Open gate' : 'Sealed gate';
   if (mechanism.kind === 'lever' && mechanism.look === 'crank') return 'Engine crank';

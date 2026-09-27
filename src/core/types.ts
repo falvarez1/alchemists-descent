@@ -2253,6 +2253,10 @@ export interface Mechanism {
    * this tells findability that initial inaccessibility is deliberate and
    * makes the corresponding tome a hard progression requirement. */
   requiresCard?: CardId;
+  /** plug: an authored seal ON a traversal route that the starting kit always
+   *  opens (it burns, or Excavate digs it). Findability treats its intact body
+   *  as open ground instead of carving a rescue tunnel through it. */
+  routeSeal?: boolean;
   /** valve: force-close N frames after opening; reopens only on a fresh
    *  rising edge of its trigger aggregate (ignored when oneShot). */
   autoCloseFrames?: number;
@@ -2981,8 +2985,11 @@ export interface LivingExpeditionState {
   /** Label of the waypoint the expedition itself last set (a milestone
    *  breadcrumb); a player-set waypoint with another label is never replaced. */
   autoWaypoint?: string;
-  /** The player has stood by the Intake cistern and met the cold lock. */
+  /** Retired with the cold lock (GEN 48); old saves may still carry it. */
   coldLockSeen?: boolean;
+  /** Consecutive grounded ticks inside the room the player is standing in;
+   *  its name is announced only after a real arrival, never a fall-through. */
+  roomDwell?: { id: string; ticks: number };
 }
 
 export interface LevelsApi {

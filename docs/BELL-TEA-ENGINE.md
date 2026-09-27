@@ -1,6 +1,6 @@
 # The Unreasonable Bell & Tea Engine
 
-The first level's required bell-making workshop occupies the hall above the Intake's inspection catwalk. Its crank sits caged in the Intake behind the cold lock (both cistern probes must read ice; see DESIGN.md). Pulling it (E by default) starts a physical chain reaction that casts the brass bell the lower descent gate requires. Walking past the machine cannot clear the level.
+The first level's required bell-making workshop occupies the hall above the Intake's inspection catwalk. Its crank stands on the balcony at the end of the Intake, behind the oil-soaked timber barricade a new alchemist burns with a Spark Bolt in the first few seconds (see DESIGN.md); there is no other lock. While the barricade stands, the engine's caption card stays hidden, so the only instruction on screen is the barricade's. Pulling it (E by default) starts a physical chain reaction that casts the brass bell the lower descent gate requires. Walking past the machine cannot clear the level.
 
 ## Played, not watched
 
@@ -10,7 +10,7 @@ Three stations are **built to stop**. Each has a service fixture hanging into th
 
 | Station | What stops | The verb | The backup |
 |---|---|---|---|
-| Ignition | The first fuse always dies at a cracked metal coupling | **A wand shot** at the brass priming pan under the floor. The pan's percussion cap fires on any projectile strike (the `structureStrike` every impact announces), and its current runs through the floor into the coupling and lights the powder beyond it. A Spark Bolt's own blast current does the same, and a player who slotted Frost Shard over Spark Bolt for the cold lock still has the verb | A slow match creeps along the catwalk ceiling from the striker to the pan (9 s) |
+| Ignition | The first fuse always dies at a cracked metal coupling | **A wand shot** at the brass priming pan under the floor. The pan's percussion cap fires on any projectile strike (the `structureStrike` every impact announces), and its current runs through the floor into the coupling and lights the powder beyond it. A Spark Bolt's own blast current does the same, so a player who slotted another card over Spark Bolt still has the verb | A slow match creeps along the catwalk ceiling from the striker to the pan (9 s) |
 | Tollgate | The boulder fetches up against a gate that will not lift | **Kick** (F) the Persuader, a brass weight on a chain. The chain runs up through the floor over two pulleys to the ratcheted gate | A clockwork knocker beside it winds up, then whacks the Persuader (10 s) |
 | Downpipe | The header tank drains into a clogged downpipe | **Pour water** (Q, starting flask) through the grate into the duck's bath under the catwalk. The floating duck's rod lifts the marble's pin | The clog seeps: one real water cell every 6 ticks moves from the pipe to the nozzle over the bath (~9 s) |
 
@@ -35,7 +35,7 @@ A player who answers each fault within a second or two finishes in about 24 s. N
 - **Every stage advances on physical evidence.** Examples: fire in the fuse's tail, a cut cord, a body's travel, plate travel, a charge's powder gone, current at the magnet's terminal. Linkage plates move one cell at a time by `World.swap` (`pullTeaValve`), ratcheted, and jam on obstruction. No material is conjured: the seep moves existing water cells, and the tank is sized so the bath can never overflow onto the route.
 - **Linkages engage in causal order.** The duck's rod only lifts the pin once the engine reaches the duck, so a bath filled early cannot fire the finale out of order.
 - **Never hard-locks.** Every non-fault stage has a watchdog. After a few seconds without progress it applies a visible nudge to the stuck body (the striker re-strikes, the boulder or a domino gets a shove, the marble a flick). After repeated nudges it forces the linkage (a plate pulled home, a cord cut, the reserve cell discharged into the wire, the bell gate opened). A blast-open bell gate counts as success.
-- **A disturbed engine recharges on the crank.** The fuse can be sparked, or the Persuader kicked, before the crank is pulled (the catwalk is reachable from below). In that case, pulling the crank first re-stamps the hall and re-spawns its props, so the cold lock still gates the engine and every run starts whole. The labelled maintenance recharge still exists for a stalled save. Neither touches the rest of the level.
+- **A disturbed engine recharges on the crank.** The fuse can be sparked, or the Persuader kicked, before the crank is pulled (the catwalk is reachable from below). In that case, pulling the crank first re-stamps the hall and re-spawns its props, so every run starts whole. The labelled maintenance recharge still exists for a stalled save. Neither touches the rest of the level.
 - Plates wake any sleeping body resting beside them when they move (a marble asleep against its pin would otherwise never roll).
 
 ## Implementation
@@ -45,7 +45,8 @@ A player who answers each fault within a second or two finishes in about 24 s. N
 - **Linkage drawings:** `src/render/TeaMachineLinkages.ts` draws cables, rods, pulleys, the slow match, the knocker, halos and the rails. `src/render/TeaMachineDecor.ts` draws the duck.
 - **Caption card:** `src/ui/TeaMachineOverlay.ts`, fed by the `contraptionView` event (title, detail, and `fault` with its verb, prompt and backup progress).
 - **Saves:** expedition saves keep every surviving prop's pose and velocity, rope and tether flags, plate travel, the watchdog and fault counters, and the stage. Restores are bounded (`restoreTeaMachine`) and cannot manufacture completion.
-- **Generation:** `GEN_VERSION` 46 records this layout. Earlier-generation expeditions are retired as usual.
+- **Lower Bell gate:** the bell opens a real floor grate (`WORKS_GATE` in `src/world/breathingWorks.ts`; `LivingExpedition` slides its two metal leaves into their slots with `World.swap` once the bell is carried within 95 cells), and `Levels` starts the descent only once the pit is clear. `render/WorksFixtures.ts` draws its archway, lock bell and bars, and the barricade's straps and sign.
+- **Generation:** `GEN_VERSION` 48 records this layout (47: the engine; 48: the opening's barricade, the cold lock's removal and the floor grate). Earlier-generation expeditions are retired as usual.
 
 ## Validation
 

@@ -257,7 +257,7 @@ export class HintSystem implements HintApi {
         consider({ priority: 2, dist2: d2, info: {
           key: handwheel ? 'works-valve' : crank ? 'works-crank' : spec.key,
           line: handwheel ? 'Turn valve' : crank ? 'Pull crank' : spec.line, world: { x: m.x, y: m.y },
-        }, teach: crank ? CRANK_TEACH : spec.teach });
+        }, teach: crank ? null : spec.teach }); // the engine's own card teaches the crank
       }
     }
 
@@ -337,12 +337,6 @@ export class HintSystem implements HintApi {
     if (best && best.teach) this.teachOnce(ctx, best.info.key, best.teach);
   }
 }
-
-/** D1's engine crank: what it does, and that nothing is taken from the player. */
-const CRANK_TEACH: Teach = {
-  title: 'The Engine Crank',
-  body: 'Pull it (E) and the Bell & Tea Engine starts its chain reaction. Your hands stay free: follow it along the catwalk and mend whatever fails.',
-};
 
 /** Per-mechanism-kind hint copy (only the kinds the player directly actuates). */
 const MECHANISM_HINTS: Partial<Record<string, { key: string; line: string; teach: Teach }>> = {

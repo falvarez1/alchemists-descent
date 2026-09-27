@@ -3,7 +3,7 @@ import type { Ctx } from '@/core/types';
 import { createLivingState, livingObjective, pressurePhase, updateLivingExpedition } from '@/game/LivingExpedition';
 import { makeLevelRuntime } from '@/game/runtime';
 import { generateBreathingWorks, WORKS_BARRICADE, WORKS_GATE, WORKS_ROOMS, worksGateOpen, worksPlaceName } from '@/world/breathingWorks';
-import { TEA, TEA_COMPLETE_STAGE } from '@/world/teaMachine';
+import { TEA, TEA_COMPLETE_STAGE, TEA_STAGE } from '@/world/teaMachine';
 import { LEVELS } from '@/config/worldgraph';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
@@ -44,8 +44,8 @@ describe('Breathing Works encounter contracts', () => {
     expect(Buffer.from(a.runtime.world.colors.buffer).equals(Buffer.from(b.runtime.world.colors.buffer))).toBe(true);
     let hash = 0x811c9dc5;
     for (const byte of a.runtime.world.types) hash = Math.imul(hash ^ byte, 0x01000193);
-    // GEN_VERSION 46: barricade on the spawn route, sealed shaft hatch, engine fault stations, Lower Bell floor gate.
-    expect((hash >>> 0).toString(16)).toBe('ab575fcb');
+    // GEN_VERSION 48: barricade on the spawn route (cold lock gone), sealed shaft hatch, Lower Bell floor gate.
+    expect((hash >>> 0).toString(16)).toBe('703dc49e');
   });
 
   it('puts an oil-soaked barricade on the forced route to the crank, and nothing card-locked', () => {
@@ -97,14 +97,17 @@ describe('Breathing Works encounter contracts', () => {
     Object.assign(ctx.player, { x: 424, y: 311 });
     runtime.mechanisms.find(m => m.id === WORKS_BARRICADE.id)!.state = 1;
     expect(livingObjective(ctx)).toBe('Pull the engine crank.');
-    runtime.living!.tea = { stage: 1, ticks: 10, stageTicks: 10, completed: false, stalled: false, bodies: [] };
+    runtime.living!.tea = { stage: TEA_STAGE.FUSE, ticks: 10, stageTicks: 10, completed: false, stalled: false, bodies: [] };
     expect(livingObjective(ctx)).toBe('Follow the engine along the catwalk.');
-    runtime.living!.tea.fault = { id: 'rubble', ticks: 1, backup: 0 };
-    expect(livingObjective(ctx)).toBe('Dig the pendulum free.');
-    runtime.living!.tea.fault = { id: 'dry', ticks: 1, backup: 0 };
-    expect(livingObjective(ctx)).toBe('Fill the duck’s well with water.');
-    runtime.living!.tea.fault = { id: 'wire', ticks: 1, backup: 0 };
-    expect(livingObjective(ctx)).toBe('Spark the magnet coil.');
+    // The three stations built to stop: each names its verb as an order.
+    runtime.living!.tea.stage = TEA_STAGE.SPARK;
+    expect(livingObjective(ctx)).toBe('Shoot the priming pan.');
+    runtime.living!.tea.stage = TEA_STAGE.KICK;
+    expect(livingObjective(ctx)).toBe('Kick the Persuader.');
+    runtime.living!.tea.stage = TEA_STAGE.POUR;
+    expect(livingObjective(ctx)).toBe('Pour water into the duck’s bath.');
+    runtime.living!.tea.stage = TEA_STAGE.MARBLE;
+    expect(livingObjective(ctx)).toBe('Follow the engine along the catwalk.');
     runtime.living!.tea = { stage: TEA_COMPLETE_STAGE, ticks: 900, stageTicks: 1, completed: true, stalled: false, bodies: [] };
     expect(livingObjective(ctx)).toBe('Collect the brass bell.');
     runtime.keyTaken = true;

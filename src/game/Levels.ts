@@ -63,6 +63,7 @@ import { makeLevelRuntime } from '@/game/runtime';
 import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
+import { worksGateOpen } from '@/world/breathingWorks';
 import { blocksEntity, Cell, CELL_COUNT, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import {
   COLOR_FN,
@@ -967,7 +968,9 @@ export class Levels implements LevelsApi {
       const pdx = player.x - portal.x;
       const pdy = player.y - 6 - portal.y;
       const near = pdx * pdx + pdy * pdy < 100;
-      const engineReady = !runtime.living || runtime.living.tea?.completed === true;
+      // D1: the engine made the bell, and the bell has opened the floor grate
+      // (LivingExpedition slides its real leaves aside), so the player drops in.
+      const engineReady = !runtime.living || (runtime.living.tea?.completed === true && worksGateOpen(ctx.world));
       if (near && runtime.keyTaken && engineReady) {
         if (!portal.open) {
           portal.open = true;
@@ -988,12 +991,13 @@ export class Levels implements LevelsApi {
         }
         return;
       }
-      if (near && (!runtime.keyTaken || !engineReady) && ctx.state.frameCount % 90 === 0) {
+      // Carrying the bell, the grate is already ringing open: no "Sealed" nag.
+      if (near && (!runtime.keyTaken || !engineReady) && !(runtime.living && runtime.keyTaken) && ctx.state.frameCount % 90 === 0) {
         ctx.events.emit('toast', {
           text: runtime.living
             ? (runtime.living.tea?.completed
               ? 'Sealed. Bring the brass bell from the end of the engine’s catwalk.'
-              : 'Sealed. The gate answers to a brass bell, and only the Bell & Tea Engine above the Intake makes one.')
+              : 'Sealed. The grate answers to a brass bell, and only the Bell & Tea Engine above the Intake makes one.')
             : 'Sealed. It wants the golden key.',
         });
       }
@@ -3315,7 +3319,9 @@ export class Levels implements LevelsApi {
       this.waystonePromptArmed = true;
       return;
     }
-    if (!this.waystonePromptArmed) return;
+    // Never pause the game mid-fall: a modal that pops while the player is
+    // dropping past a waystone steals the landing. It waits for solid ground.
+    if (!this.waystonePromptArmed || !ctx.player.grounded) return;
     const active = ctx.wands.wands[ctx.wands.active];
     // The wand can already make fire — no need to nag.
     if (WAYSTONE_FIRE_CARDS.some((c) => active.cards.includes(c))) return;
