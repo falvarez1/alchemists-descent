@@ -32,7 +32,6 @@ import { Critters } from '@/game/Critters';
 import { DebugTool } from '@/game/DebugTool';
 import { GrimoireInteractionObserver } from '@/game/GrimoireInteractions';
 import { HintSystem } from '@/game/Hints';
-import { IntroProgression } from '@/game/IntroProgression';
 import { Levels } from '@/game/Levels';
 import { Mechanisms } from '@/game/Mechanisms';
 import { Pickups } from '@/game/Pickups';
@@ -109,7 +108,6 @@ export class Game {
   private readonly minimap: Minimap;
   private readonly toolbar: Toolbar;
   private readonly inspector: Inspector;
-  private readonly introProgression: IntroProgression;
   private readonly perfHud = new PerfHud();
   private readonly brewing = new Brewing();
   private readonly habitatAudio = new HabitatAudio();
@@ -238,8 +236,6 @@ export class Game {
     const hints = new HintSystem(ctx);
     ctx.hints = hints;
     this.disposables.push(hints);
-    this.introProgression = new IntroProgression(ctx);
-    this.disposables.push(this.introProgression);
     ctx.debug = new DebugTool(ctx);
     ctx.time = new TimeControls(ctx);
     ctx.perf = this.perfHud;
@@ -642,7 +638,6 @@ export class Game {
       if (!debugActive) {
         this.brewing.update(ctx);
         ctx.hints.update(ctx);
-        this.introProgression.update(ctx);
         ctx.wands.update(ctx);
         ctx.particles.update(ctx);
         ctx.lightning.update();

@@ -46,10 +46,12 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # (footfalls/splashes/tracks/vines/critters), bench-creatures.mjs,
 # perf-creatures-live.mjs. Player (docs/PLAYER-ART.md): player-studio.mjs
 # (every action posed + costume-ticked, zoomed), probe-player-death.mjs
-# Gameplay/runtime probes (dev server running): verify-intro-progression.mjs
-# (D1 surface intro → descent → onboarding spine), verify-descent-progression.mjs,
+# Gameplay/runtime probes (dev server running): verify-descent-progression.mjs,
 # verify-progression-pacing.mjs, verify-bat-slime.mjs, verify-death-causes.mjs,
 # verify-god-mode-qa.mjs
+# Audio (dev server running): verify-audio-mix.mjs — buses/limiter/pan/attenuation,
+# volume sliders + persistence, stingers, lazy Grimoire art (we cannot listen:
+# ctx.audio.debugSnapshot() / debugRenderOffline() are the instruments)
 node scripts/gen-builtin-prefabs.mjs   # regenerate src/world/prefabs/builtin/*.json
 node scripts/gen-machine-prefabs.mjs   # regenerate the machine-*.json structure prefabs
 ```

@@ -97,9 +97,9 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     DeathCinema.ts        The directed death: push-in, grade, heartbeats, letterbox, title beat
     WaveDirector.ts       createWaveState() — the small kill/counter state that
                           outlived the retired wave-survival director
-    surfaceIntro.ts       D1 Noita-style surface-intro arrival predicates
-                          (isOnIntroSurface / introArrivalSpawn), shared by
-                          Levels and IntroProgression
+    surfaceIntro.ts       Surface-intro arrival predicates (isOnIntroSurface /
+                          introArrivalSpawn) for Levels; no generated level has
+                          a surface since D1 became the Breathing Works
   world/
     CaveGenerator.ts      Generation pipeline host: skeleton dispatch + paint + decorations
     carve.ts              Pure carve primitives over the work buffer (incl. ensureConnectivity)

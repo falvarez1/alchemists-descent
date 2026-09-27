@@ -26,7 +26,6 @@ import type {
   WorldGenApi,
 } from '@/core/types';
 import { Cell } from '@/sim/CellType';
-import type { World } from '@/sim/World';
 import {
   COLOR_FN,
   EMPTY_COLOR,
@@ -36,7 +35,6 @@ import {
   iceColor,
   oilColor,
   packRGB,
-  sandColor,
   stoneColor,
   unpackB,
   unpackG,
@@ -69,19 +67,6 @@ const N4: ReadonlyArray<readonly [number, number]> = [
   [0, 1],
   [0, -1],
 ];
-
-// D1 surface geometry. The same values reserve protected placement space before
-// prefabs and later carve the visible intro surface.
-const INTRO_SURFACE_RISE = 96;
-const INTRO_SURFACE_GROUND_MIN = 110;
-const INTRO_SURFACE_GROUND_MAX = HEIGHT - 240;
-const INTRO_SURFACE_GROUND_NOISE_FREQ = 0.014;
-const INTRO_SURFACE_GROUND_WAVE = 26;
-const INTRO_SURFACE_SOIL = 14;
-const INTRO_SURFACE_SHAFT_HALF = 4;
-const INTRO_SURFACE_MOUTH_TIMBER = 12;
-const INTRO_SURFACE_SPAWN_OFFSET = 210;
-const INTRO_SURFACE_CABIN_OFFSET = 26;
 
 function shouldLogDevDiagnostics(): boolean {
   if (!import.meta.env.DEV || import.meta.env.MODE === 'test') return false;
@@ -991,15 +976,10 @@ export class WorldGen implements WorldGenApi {
     const ledger = new PlacementLedger();
     ledger.reserve(spawn.x - 60, spawn.y - 60, spawn.x + 60, spawn.y + 60, 'spawn');
     ledger.reserve(wellX - halfW - 6, 0, wellX + halfW + 6, HEIGHT - 1, 'exit-well');
-    if (def.depth === 1 && !def.branch) this.reserveIntroSurfaceFootprint(ledger, spawn);
     for (let n = 0; n < waystones.length; n++) {
       const ws = waystones[n];
       const rx = n === 0 ? 34 : 12; // ws[0]'s wider margin also covers the cauldron site
       ledger.reserve(ws.x - rx, ws.y - 12, ws.x + rx, ws.y + 12, 'waystone');
-    }
-    if (def.depth === 1) {
-      // the two onboarding lessons sweep spawn±(120..124)x / ±84y for sites
-      ledger.reserve(spawn.x - 140, spawn.y - 100, spawn.x + 140, spawn.y + 100, 'onboarding');
     }
     const sink = makeInstantiationSink();
     const genDef = GEN[def.biome] || GEN.earthen;
@@ -1067,134 +1047,7 @@ export class WorldGen implements WorldGenApi {
     }
     const cauldron = { x: cauldronX, y: cauldronBaseY - 1 };
 
-    // 7) D1 onboarding (depth 1 only): two staged lessons in sim literacy near
-    //    spawn — fire eats wood, sand obeys gravity. Both are plain cells.
-    if (def.depth === 1) {
-      const isWallAt = (x: number, y: number): boolean =>
-        x > 1 && x < WIDTH - 2 && y > 2 && y < HEIGHT - 7 && world.types[x + y * WIDTH] === Cell.Wall;
-      const isOpenAt = (x: number, y: number): boolean =>
-        world.inBounds(x, y) && world.types[x + y * WIDTH] === Cell.Empty;
-
-      // (i) The wooden seal: a 12x8 pocket carved into a wall face, its throat
-      // sealed with 4-thick wood, 40 gold inside, and a campfire smouldering
-      // 10-14 cells outside as the hint that fire opens it.
-      const trySeal = (ex: number, ey: number, dir: number, needFire: boolean): boolean => {
-        if (!isOpenAt(ex, ey) || !isOpenAt(ex - dir, ey)) return false;
-        for (let d = 1; d <= 16; d++) {
-          for (let dy = -4; dy <= 3; dy++) {
-            if (!isWallAt(ex + dir * d, ey + dy)) return false;
-          }
-        }
-        let fireX = -1,
-          fireY = -1;
-        for (let out = 10; out <= 14 && fireX < 0; out++) {
-          const px = ex - dir * out;
-          if (px < 6 || px >= WIDTH - 6) continue;
-          for (let py = Math.max(3, ey - 6); py < Math.min(HEIGHT - 7, ey + 24); py++) {
-            if (world.types[px + py * WIDTH] === Cell.Empty && world.types[px + (py + 1) * WIDTH] === Cell.Wall) {
-              fireX = px;
-              fireY = py;
-              break;
-            }
-          }
-        }
-        if (fireX < 0 && needFire) return false;
-        for (let d = 1; d <= 16; d++) {
-          for (let dy = -4; dy <= 3; dy++) {
-            if (d <= 4) setCell(ex + dir * d, ey + dy, Cell.Wood, woodColor());
-            else setCell(ex + dir * d, ey + dy, Cell.Empty, EMPTY_COLOR);
-          }
-        }
-        let goldLeft = 40;
-        for (let dy = 3; dy >= -4 && goldLeft > 0; dy--) {
-          for (let d = 5; d <= 16 && goldLeft > 0; d++) {
-            setCell(ex + dir * d, ey + dy, Cell.Gold, goldColor());
-            goldLeft--;
-          }
-        }
-        if (fireX >= 0) {
-          // same pattern as the generator's campfires, burning a touch longer
-          for (let dx = -4; dx <= 4; dx++) {
-            if (isOpenAt(fireX + dx, fireY)) setCell(fireX + dx, fireY, Cell.Wood, woodColor());
-            if (Math.abs(dx) <= 3 && isOpenAt(fireX + dx, fireY - 1))
-              setCell(fireX + dx, fireY - 1, Cell.Wood, woodColor());
-            if (Math.abs(dx) <= 3 && isOpenAt(fireX + dx, fireY - 2)) {
-              setCell(fireX + dx, fireY - 2, Cell.Fire, fireColor());
-              world.life[fireX + dx + (fireY - 2) * WIDTH] = 260 + Math.floor(this.rng.next() * 80);
-            }
-          }
-        }
-        return true;
-      };
-      let sealDone = false;
-      for (let attempt = 0; attempt < 240 && !sealDone; attempt++) {
-        const ex = spawn.x + Math.floor((this.rng.next() - 0.5) * 240);
-        const ey = spawn.y + Math.floor((this.rng.next() - 0.5) * 170);
-        const dir = this.rng.next() < 0.5 ? -1 : 1;
-        sealDone = trySeal(ex, ey, dir, true) || trySeal(ex, ey, -dir, true);
-      }
-      // guaranteed fallback: systematic sweep of the spawn surroundings
-      for (let dy = -84; dy <= 84 && !sealDone; dy += 3) {
-        for (let dx = -120; dx <= 120 && !sealDone; dx += 2) {
-          sealDone =
-            trySeal(spawn.x + dx, spawn.y + dy, dx >= 0 ? 1 : -1, false) ||
-            trySeal(spawn.x + dx, spawn.y + dy, dx >= 0 ? -1 : 1, false);
-        }
-      }
-
-      // (ii) The sand plug: an 8x14 pit in the spawn region's floor — six rows
-      // of cap sand over a hollow drop with 30 gold waiting at the bottom.
-      const tryPlug = (px: number, relaxed: boolean): boolean => {
-        if (px < 6 || px >= WIDTH - 8) return false;
-        const yLo = Math.max(4, spawn.y - 70);
-        const yHi = Math.min(HEIGHT - 26, spawn.y + 90);
-        // natural floors are never perfectly flat: each column's surface may
-        // sit up to `lead` cells below the shared top row
-        const lead = relaxed ? 3 : 1;
-        for (let y = yLo; y < yHi; y++) {
-          let ok = true;
-          for (let dx = -3; dx <= 4 && ok; dx++) {
-            const col = px + dx;
-            if (world.types[col + y * WIDTH] !== Cell.Empty) {
-              ok = false;
-              break;
-            }
-            let d = 1;
-            while (d <= lead && world.types[col + (y + d) * WIDTH] === Cell.Empty) d++;
-            for (; d <= 14 && ok; d++) {
-              const t = world.types[col + (y + d) * WIDTH];
-              if (relaxed ? t === Cell.Empty || t === Cell.Metal : t !== Cell.Wall) ok = false;
-            }
-          }
-          if (!ok) continue;
-          let goldLeft = 30;
-          for (let d = 14; d >= 1; d--) {
-            for (let dx = -3; dx <= 4; dx++) {
-              if (d <= 6) setCell(px + dx, y + d, Cell.Sand, sandColor());
-              else if (goldLeft > 0) {
-                setCell(px + dx, y + d, Cell.Gold, goldColor());
-                goldLeft--;
-              } else setCell(px + dx, y + d, Cell.Empty, EMPTY_COLOR);
-            }
-          }
-          return true;
-        }
-        return false;
-      };
-      let plugDone = false;
-      for (let attempt = 0; attempt < 160 && !plugDone; attempt++) {
-        const off = (12 + this.rng.int(110)) * (this.rng.next() < 0.5 ? -1 : 1);
-        plugDone = tryPlug(spawn.x + off, false);
-      }
-      for (let off = 12; off <= 124 && !plugDone; off++) {
-        plugDone = tryPlug(spawn.x + off, false) || tryPlug(spawn.x - off, false);
-      }
-      for (let off = 12; off <= 124 && !plugDone; off++) {
-        plugDone = tryPlug(spawn.x + off, true) || tryPlug(spawn.x - off, true);
-      }
-    }
-
-    stage('cauldron+onboarding');
+    stage('cauldron');
 
     // 8) Landmark structures (upgrade-port meta layer): the exit portal above
     //    the seal plug, the golden key vault, hearts, tomes, chests, gold.
@@ -1319,23 +1172,6 @@ export class WorldGen implements WorldGenApi {
       }
     }
 
-    // 9.5) D1 ONLY — the Noita-style surface intro: cap the cave with open sky,
-    // grass, a cabin, and a timbered cave mouth the wizard descends to reach the
-    // cave proper. (Only depth-1 non-branch is D1; the structures pass already
-    // relies on this identity.)
-    let surfaceSpawn: { x: number; y: number } | null = null;
-    let surfaceSkyLine: number | null = null;
-    let surfaceLights: AuthoredLight[] = [];
-    let surfaceDecors: RuntimeDecor[] = [];
-    if (def.depth === 1 && !def.branch) {
-      const surf = this.dressIntroSurface(world, spawn);
-      surfaceSpawn = surf.surfaceSpawn;
-      surfaceSkyLine = surf.skyLine;
-      surfaceLights = surf.lights;
-      surfaceDecors = surf.decors;
-    }
-    stage('intro-surface');
-
     // Final terrain dressing can invalidate a route that was clean during the
     // main rescue pass (D1's surface cap is the usual culprit). Validate the
     // finished cell field before handing it to Levels/runtime repair.
@@ -1356,258 +1192,16 @@ export class WorldGen implements WorldGenApi {
       boss,
       prefabEnemies: sink.enemies,
       placedPrefabs,
-      authoredLights: [...sink.authoredLights, ...structLights, ...surfaceLights],
+      authoredLights: [...sink.authoredLights, ...structLights],
       emitters: [...sink.emitters, ...structEmitters],
-      decors: [...sink.decors, ...surfaceDecors],
+      decors: [...sink.decors],
       refuge,
       spellLab,
       vaultArch,
       vaultHoard,
-      surfaceSpawn,
-      surfaceSkyLine,
+      // D1 (the only level with a surface) is generateBreathingWorks, above.
+      surfaceSpawn: null,
+      surfaceSkyLine: null,
     };
-  }
-
-  private reserveIntroSurfaceFootprint(ledger: PlacementLedger, spawn: { x: number; y: number }): void {
-    const groundBase = Math.floor(clamp(spawn.y - INTRO_SURFACE_RISE, INTRO_SURFACE_GROUND_MIN, INTRO_SURFACE_GROUND_MAX));
-    const protectedY = Math.ceil(groundBase + INTRO_SURFACE_GROUND_WAVE + INTRO_SURFACE_SOIL + 6);
-    ledger.reserve(0, 0, WIDTH - 1, protectedY, 'intro-surface');
-
-    const mouthX = Math.floor(clamp(spawn.x, 90, WIDTH - 90));
-    const shaftPad = INTRO_SURFACE_SHAFT_HALF + 10;
-    ledger.reserve(mouthX - shaftPad, 0, mouthX + shaftPad, spawn.y + 8, 'intro-surface-shaft');
-  }
-
-  /**
-   * D1 Noita-style surface intro. Caps the top of the cave with open daylight
-   * sky, a gently rolling grass surface, a starter cabin, and a timbered mine
-   * mouth whose shaft drops into the existing spawn chamber. The wizard starts
-   * out here (see LevelRuntime.surfaceSpawn) and descends into the cave — the
-   * first thing the game asks of you, taught by the level itself. Deterministic
-   * (this.rng / paintSeed only), so the golden hash stays replayable.
-   */
-  private dressIntroSurface(
-    world: World,
-    spawn: { x: number; y: number },
-  ): { surfaceSpawn: { x: number; y: number }; skyLine: number; lights: AuthoredLight[]; decors: RuntimeDecor[] } {
-    const seed = this.paintSeed ?? 0;
-
-    // D1 surface geometry — all values preserve the locked generation (gen-golden).
-    // Named here so the landscape is tunable in one place rather than as magic
-    // numbers buried in the carving loops below.
-    // Surface scatter — deterministic per-column hash thresholds (hash2 is pure,
-    // so these read as plain probabilities).
-    const TUFT_CHANCE = 0.55; // a grass blade stands on this column …
-    const FLOWER_PINK = 0.045; // … recolored a pink wildflower below this …
-    const FLOWER_YELLOW = 0.08; // … a yellow one below this
-    const TALL_BLADE = 0.2; // and an occasional second, taller blade
-    const STONE_CHANCE = 0.05; // a field stone …
-    const STONE_PAIR = 0.4; // … sometimes paired with one beside it
-    const PINK_FLOWER = packRGB(214, 96, 150);
-    const YELLOW_FLOWER = packRGB(206, 186, 84);
-
-    // Trees framing the scene — kept clear of the mouth, cabin, and start.
-    const TREE_TARGET = 5;
-    const TREE_TRIES = 70;
-    const TREE_CLEAR_MOUTH = 44;
-    const TREE_CLEAR_CABIN = 24;
-    const TREE_CLEAR_SPAWN = 26;
-
-    const set = (x: number, y: number, t: Cell, color: number): void => {
-      if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return;
-      const i = x + y * WIDTH;
-      world.types[i] = t;
-      world.colors[i] = color;
-      world.life[i] = 0;
-      world.charge[i] = 0;
-    };
-    const grassColor = (x: number, y: number): number => {
-      const j = (hash2(x, y, seed + 71) * 26) | 0;
-      return packRGB(58 + j, 132 + ((hash2(x, y, seed + 72) * 30) | 0), 48 + ((j / 2) | 0));
-    };
-    const dirtColor = (x: number, y: number): number => {
-      const j = (hash2(x, y, seed + 73) * 18) | 0;
-      return packRGB(92 + j, 62 + ((j * 2) / 3) | 0, 40 + ((j / 2) | 0));
-    };
-
-    // Surface line: ~96 cells above the cave spawn so there is generous sky but a
-    // short, readable descent. Gently rolling, not a dead-flat shelf.
-    const groundBase = Math.floor(clamp(spawn.y - INTRO_SURFACE_RISE, INTRO_SURFACE_GROUND_MIN, INTRO_SURFACE_GROUND_MAX));
-    const groundAt = (x: number): number =>
-      groundBase + Math.round((valueNoise(x, 13, INTRO_SURFACE_GROUND_NOISE_FREQ, seed + 61) - 0.5) * INTRO_SURFACE_GROUND_WAVE);
-
-    // Sky overhead, a grass crown, and a packed soil layer dividing surface from cave.
-    for (let x = 0; x < WIDTH; x++) {
-      const gy = groundAt(x);
-      for (let y = 0; y < gy; y++) set(x, y, Cell.Empty, EMPTY_COLOR);
-      set(x, gy, Cell.Grass, grassColor(x, gy));
-      for (let y = gy + 1; y <= gy + INTRO_SURFACE_SOIL; y++) {
-        set(x, y, y >= gy + INTRO_SURFACE_SOIL - 4 ? Cell.Stone : Cell.Wall, dirtColor(x, y));
-      }
-    }
-
-    // The cave mouth: a timbered shaft straight down into the spawn chamber.
-    const mouthX = Math.floor(clamp(spawn.x, 90, WIDTH - 90));
-    const mouthGy = groundAt(mouthX);
-    for (let y = mouthGy - 1; y <= spawn.y + 2; y++) {
-      for (let dx = -INTRO_SURFACE_SHAFT_HALF; dx <= INTRO_SURFACE_SHAFT_HALF; dx++) set(mouthX + dx, y, Cell.Empty, EMPTY_COLOR);
-    }
-    for (let dy = 0; dy <= INTRO_SURFACE_MOUTH_TIMBER; dy++) {
-      set(mouthX - INTRO_SURFACE_SHAFT_HALF - 1, mouthGy - dy, Cell.Wood, woodColor());
-      set(mouthX + INTRO_SURFACE_SHAFT_HALF + 1, mouthGy - dy, Cell.Wood, woodColor());
-    }
-    for (let dx = -INTRO_SURFACE_SHAFT_HALF - 1; dx <= INTRO_SURFACE_SHAFT_HALF + 1; dx++) set(mouthX + dx, mouthGy - INTRO_SURFACE_MOUTH_TIMBER - 1, Cell.Wood, woodColor());
-    for (let dx = -INTRO_SURFACE_SHAFT_HALF - 1; dx <= INTRO_SURFACE_SHAFT_HALF + 1; dx++) set(mouthX + dx, mouthGy - INTRO_SURFACE_MOUTH_TIMBER, Cell.Wood, woodColor());
-
-    // Start the wizard out on the grass, off to the open side of the mouth.
-    const side = mouthX > WIDTH / 2 ? -1 : 1;
-    const spawnX = Math.floor(clamp(mouthX + side * INTRO_SURFACE_SPAWN_OFFSET, 60, WIDTH - 60));
-    const spawnGy = groundAt(spawnX);
-    const surfaceSpawn = { x: spawnX, y: spawnGy - 1 };
-
-    // A starter cabin behind the spawn — shelter at your back, the cave mouth ahead.
-    const cabinX = Math.floor(clamp(spawnX + side * INTRO_SURFACE_CABIN_OFFSET, 30, WIDTH - 30));
-    this.stampStarterCabin(world, set, cabinX, groundAt(cabinX));
-
-    // Grass tufts, wildflowers, and scattered field stones for a living surface.
-    for (let x = 6; x < WIDTH - 6; x += 2) {
-      const gy = groundAt(x);
-      const r = hash2(x, gy, seed + 81);
-      if (r < TUFT_CHANCE) {
-        if (r < FLOWER_PINK) set(x, gy - 1, Cell.Grass, PINK_FLOWER);
-        else if (r < FLOWER_YELLOW) set(x, gy - 1, Cell.Grass, YELLOW_FLOWER);
-        else set(x, gy - 1, Cell.Grass, grassColor(x, gy - 1));
-        if (r < TALL_BLADE) set(x, gy - 2, Cell.Grass, grassColor(x, gy - 2)); // a taller blade
-      }
-      if (hash2(x, gy, seed + 82) < STONE_CHANCE) {
-        set(x, gy - 1, Cell.Stone, stoneColor());
-        if (hash2(x, gy, seed + 83) < STONE_PAIR) set(x + 1, gy - 1, Cell.Stone, stoneColor());
-      }
-    }
-
-    // A few trees — real wood trunks, leafy mossy canopies — clear of the cabin,
-    // the mouth, and the start so they frame the scene without blocking it.
-    let trees = 0;
-    for (let attempt = 0; attempt < TREE_TRIES && trees < TREE_TARGET; attempt++) {
-      const tx = 70 + Math.floor(hash2(attempt, 3, seed + 91) * (WIDTH - 140));
-      if (
-        Math.abs(tx - mouthX) < TREE_CLEAR_MOUTH ||
-        Math.abs(tx - cabinX) < TREE_CLEAR_CABIN ||
-        Math.abs(tx - spawnX) < TREE_CLEAR_SPAWN
-      ) {
-        continue;
-      }
-      this.stampSurfaceTree(set, tx, groundAt(tx), 9 + Math.floor(hash2(tx, 5, seed + 92) * 7), seed + tx);
-      trees++;
-    }
-
-    // A signpost on the approach to the cave mouth — "the way down".
-    const signColumn = mouthX + side * (INTRO_SURFACE_SHAFT_HALF + 12);
-    this.stampSignpost(set, Math.floor(clamp(signColumn, 20, WIDTH - 20)), groundAt(signColumn));
-
-    // skyLine: the surface horizon. Empty cells above it render as open daytime
-    // sky (FrameComposer) instead of the distant-cave backdrop.
-    return { surfaceSpawn, skyLine: groundBase, lights: this.buildSurfaceDaylight(groundAt, groundBase), decors: [] };
-  }
-
-  /**
-   * The D1 surface daylight rig: two stacked rows of overlapping NON-occluded
-   * fill disks. Non-occluded lights paint their whole falloff disk into the light
-   * field (occluded ones only seed a point), so the overlapping disks flood the
-   * surface evenly. A contained radius keeps the bright band hugging the grass so
-   * the deep cave below still goes dark — just a soft glow down the mine shaft.
-   * The sky gradient itself now carries the sky's brightness, so these fills only
-   * need to lift the terrain and horizon.
-   */
-  private buildSurfaceDaylight(groundAt: (x: number) => number, groundBase: number): AuthoredLight[] {
-    const lights: AuthoredLight[] = [];
-    const COUNT = 16;
-    for (let i = 0; i < COUNT; i++) {
-      const lx = Math.floor((WIDTH * (i + 0.5)) / COUNT);
-      const surf = groundAt(lx);
-      // bright ground-hugging fill
-      lights.push({
-        x: lx, y: surf - 44, r: 1, g: 0.95, b: 0.82,
-        intensity: 1.9, radius: 124, bloom: 0.12, flicker: 0, flickerPhase: 0, falloff: 'soft', occluded: false,
-      });
-      // softer high sky glow
-      lights.push({
-        x: lx, y: Math.max(18, groundBase - 118), r: 0.96, g: 0.93, b: 0.86,
-        intensity: 1.15, radius: 178, bloom: 0.06, flicker: 0, flickerPhase: 0, falloff: 'soft', occluded: false,
-      });
-    }
-    return lights;
-  }
-
-  /** A surface tree: a real wood trunk (it burns) crowned by a mossy canopy. */
-  private stampSurfaceTree(
-    set: (x: number, y: number, t: Cell, color: number) => void,
-    tx: number,
-    baseY: number,
-    trunkH: number,
-    seed: number,
-  ): void {
-    for (let dy = 0; dy < trunkH; dy++) {
-      set(tx, baseY - 1 - dy, Cell.Wood, woodColor());
-      // an occasional fork gives the trunk some character
-      if (dy > 2 && dy < trunkH - 3 && hash2(tx, dy, seed + 4) < 0.22) {
-        set(tx + (hash2(tx, dy, seed + 5) < 0.5 ? 1 : -1), baseY - 1 - dy, Cell.Wood, woodColor());
-      }
-    }
-    const cyTop = baseY - trunkH;
-    const cr = 5 + ((seed >> 3) & 2);
-    for (let dy = -cr; dy <= cr - 1; dy++) {
-      for (let dx = -cr; dx <= cr; dx++) {
-        if (dx * dx + dy * dy > cr * cr) continue;
-        if (hash2(tx + dx, cyTop + dy, seed + 7) > 0.82) continue; // ragged edge
-        const g = (hash2(tx + dx, cyTop + dy, seed + 9) * 44) | 0;
-        set(tx + dx, cyTop + dy, Cell.Moss, packRGB(46 + ((g / 2) | 0), 118 + g, 44 + ((g / 3) | 0)));
-      }
-    }
-  }
-
-  /** A weathered wooden signpost — a post and a board — pointing the way down. */
-  private stampSignpost(
-    set: (x: number, y: number, t: Cell, color: number) => void,
-    x: number,
-    baseY: number,
-  ): void {
-    for (let dy = 1; dy <= 7; dy++) set(x, baseY - dy, Cell.Wood, woodColor());
-    for (let dx = -3; dx <= 3; dx++) {
-      set(x + dx, baseY - 6, Cell.Wood, woodColor());
-      set(x + dx, baseY - 7, Cell.Wood, woodColor());
-    }
-  }
-
-  /** A small wooden hut on the surface: floor, two walls, a peaked roof, an open
-   *  doorway facing the cave mouth. Pure cells — it really burns. */
-  private stampStarterCabin(
-    world: World,
-    set: (x: number, y: number, t: Cell, color: number) => void,
-    cx: number,
-    groundY: number,
-  ): void {
-    const HW = 6;
-    const H = 9;
-    const floor = groundY;
-    // floor plank + side walls
-    for (let dx = -HW; dx <= HW; dx++) set(cx + dx, floor, Cell.Wood, woodColor());
-    for (let dy = 1; dy <= H; dy++) {
-      set(cx - HW, floor - dy, Cell.Wood, woodColor());
-      set(cx + HW, floor - dy, Cell.Wood, woodColor());
-    }
-    // peaked roof
-    for (let dx = -HW - 1; dx <= HW + 1; dx++) {
-      const peak = H + 1 + Math.round((HW + 1 - Math.abs(dx)) * 0.6);
-      set(cx + dx, floor - peak, Cell.Wood, woodColor());
-      set(cx + dx, floor - peak + 1, Cell.Wood, woodColor());
-    }
-    // doorway: clear a 3-wide x 5-tall opening in the near wall and the interior
-    for (let dy = 1; dy <= H; dy++) {
-      for (let dx = -HW + 1; dx <= HW - 1; dx++) {
-        if (dy <= 5 && Math.abs(dx) <= 1) set(cx + dx, floor - dy, Cell.Empty, EMPTY_COLOR);
-        else if (world.types[cx + dx + (floor - dy) * WIDTH] !== Cell.Wood) set(cx + dx, floor - dy, Cell.Empty, EMPTY_COLOR);
-      }
-    }
   }
 }
