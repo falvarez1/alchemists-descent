@@ -6,7 +6,7 @@
 //
 //   node scripts/probe-telekinesis.mjs [url] [--scenes lift,hurl,...] [--out dir]
 //
-// Scenes: lift, hurl, kick-water, oil-fire, lava, freeze, plate, snapjaw, shock, blast.
+// Scenes: lift, hurl, kick-water, oil-fire, lava, freeze, plate, snapjaw, shock, blast, audio.
 // Writes PNG frames + strips and probe.json to --out (verify-out/telekinesis).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
@@ -16,7 +16,7 @@ import { execConsoleCommand, waitForConsoleApi, waitForRunReady } from './run-he
 const args = process.argv.slice(2);
 const url = args[0] && !args[0].startsWith('--') ? args[0] : 'http://localhost:5173/';
 const opt = (n, f) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : f; };
-const scenes = opt('scenes', 'lift,hurl,kick-water,oil-fire,lava,freeze,plate,snapjaw,shock,blast').split(',');
+const scenes = opt('scenes', 'lift,hurl,kick-water,oil-fire,lava,freeze,plate,snapjaw,shock,blast,audio').split(',');
 const out = opt('out', 'verify-out/telekinesis');
 mkdirSync(out, { recursive: true });
 
@@ -449,6 +449,49 @@ const SCENES = {
     await strip(frames, 'strip-blast');
     const after = await Promise.all(['spitter', 'slime', 'weaver'].map(k => corpseInfo(page, k)));
     return { moved: before.map((b, i) => b && after[i] ? Math.round(Math.hypot(after[i].x - b.x, after[i].y - b.y)) : null) };
+  },
+
+  async audio(page) {
+    await arena(page);
+    await page.keyboard.press('KeyL'); await page.keyboard.press('KeyL'); // a gesture: the audio context wakes
+    return page.evaluate(async () => {
+      const ctx = window.__game.ctx, a = ctx.audio;
+      a.ensure?.();
+      a.requestPacks?.(['world']);
+      const ids = ['tk.grab', 'tk.hold.loop', 'tk.hurl', 'tk.release', 'tk.fizzle', 'tk.strain', 'corpse.thud.light', 'corpse.thud.heavy',
+        'corpse.bowl', 'corpse.splash', 'corpse.ignite', 'corpse.consume', 'corpse.dissolve', 'corpse.freeze', 'corpse.shatter', 'corpse.twitch'];
+      const t0 = performance.now();
+      while (!ids.every(id => a.bank.has(id)) && performance.now() - t0 < 20000) await new Promise(r => setTimeout(r, 100));
+      const L = a.debugSnapshot().listener;
+      const list = [
+        ['telekinesis', { phase: 'grab', mass: 1, target: 'corpse' }, 'tk.grab'],
+        ['telekinesis', { phase: 'hold', mass: 2.6, target: 'corpse' }, 'tk.hold.loop'],
+        ['telekinesis', { phase: 'hurl', mass: 1, target: 'corpse' }, 'tk.hurl'],
+        ['telekinesis', { phase: 'release', mass: 1, target: 'corpse' }, 'tk.release'],
+        ['telekinesis', { phase: 'fizzle', mass: 1, target: 'corpse' }, 'tk.fizzle'],
+        ['telekinesis', { phase: 'strain', mass: 14, target: 'corpse' }, 'tk.strain'],
+        ['corpseMoment', { kind: 'thud', strength: 0.3, mass: 0.4, species: 'bat' }, 'corpse.thud.light'],
+        ['corpseMoment', { kind: 'thud', strength: 0.9, mass: 4.5, species: 'golem' }, 'corpse.thud.heavy'],
+        ['corpseMoment', { kind: 'bowl', strength: 1, mass: 2.6, species: 'weaver' }, 'corpse.bowl'],
+        ['corpseMoment', { kind: 'splash', strength: 0.8, mass: 1.3, species: 'spitter' }, 'corpse.splash'],
+        ['corpseMoment', { kind: 'ignite', strength: 0.6, mass: 1.3, species: 'spitter' }, 'corpse.ignite'],
+        ['corpseMoment', { kind: 'consume', strength: 0.6, mass: 1.3, species: 'spitter' }, 'corpse.consume'],
+        ['corpseMoment', { kind: 'dissolve', strength: 0.6, mass: 1.3, species: 'spitter' }, 'corpse.dissolve'],
+        ['corpseMoment', { kind: 'freeze', strength: 0.6, mass: 1.3, species: 'spitter' }, 'corpse.freeze'],
+        ['corpseMoment', { kind: 'shatter', strength: 0.8, mass: 1.3, species: 'spitter' }, 'corpse.shatter'],
+        ['corpseMoment', { kind: 'twitch', strength: 0.6, mass: 1.3, species: 'spitter' }, 'corpse.twitch'],
+      ];
+      const out = [];
+      for (const [ev, payload, id] of list) {
+        const before = a.debugSamples();
+        ctx.events.emit(ev, { ...payload, x: L.x + 80, y: L.y });
+        const after = a.debugSamples();
+        const fresh = after.lastPlayed.slice(-Math.max(1, after.played - before.played));
+        out.push(`${id}:${fresh.includes(id) ? 'sampled' : 'MISSING'}${after.fellBack > before.fellBack ? ':fallback' : ''}`);
+        await new Promise(r => setTimeout(r, 350));
+      }
+      return { loaded: ids.filter(id => a.bank.has(id)).length + '/' + ids.length, out };
+    });
   },
 };
 

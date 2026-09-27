@@ -1,5 +1,5 @@
 import type { AudioApi, EnemyKind } from '@/core/types';
-import type { EventBus, EventMap, OrganismAction } from '@/core/events';
+import type { CorpseMomentKind, EventBus, EventMap, OrganismAction, TelekinesisPhase } from '@/core/events';
 import type { SfxId } from '@/content/audio/sfxCues';
 import { listen } from '@/audio/failSafe';
 
@@ -26,6 +26,15 @@ import { listen } from '@/audio/failSafe';
  *   crown's rush, the fall in the floor's own wood, the canopy thrown down,
  *   the log settling; leaves shaken, pods dropping; a thirsty seed drinking,
  *   sprouting, its root ladder creaking up rung by rung and opening its crown.
+ *
+ * - Telekinesis (combat/Telekinesis): the wand's grip taking hold, the hum
+ *   of the brass thread while a body hangs on it (louder for a heavier one),
+ *   the letting go, the whip-crack of a hurl, the fizzle of a failing grip
+ *   and the groan of a wand straining at something far too heavy.
+ * - Corpses (creatures/corpseWorld): the dead as mass — a thud (light or
+ *   heavy by the body), a body bowled into a creature, a belly-flop, catching
+ *   fire and being put out, lava taking it, acid eating it, frost racing over
+ *   it, shattering frozen, and the galvanic twitch.
  *
  * Every cue is placed at the event's position (the cue's own range), so a
  * crowd far off is quiet and a snap beside you is in your ear; each cue's
@@ -161,6 +170,50 @@ export const LIGHT_CUES = {
   'bloom-furl': { sfx: 'light.bloom.furl' },
 } as const satisfies Record<string, EventCue>;
 
+/**
+ * The wand's grip. The gesture is the alchemist's own (centred); the hum sits
+ * on the held body. A crate keeps its own lift/throw/drop sounds
+ * (entities/RigidBodies) and shares only the hum.
+ */
+export const TELEKINESIS_CUES: Readonly<Record<TelekinesisPhase, readonly EventCue[]>> = {
+  grab: [{ sfx: 'tk.grab', centred: true }],
+  hold: [{ sfx: 'tk.hold.loop' }],
+  release: [{ sfx: 'tk.release', centred: true }],
+  hurl: [{ sfx: 'tk.hurl', centred: true }],
+  fizzle: [{ sfx: 'tk.fizzle', centred: true }],
+  strain: [{ sfx: 'tk.strain', centred: true }],
+};
+
+/** How a telekinesis phase sounds for a body of `mass` (the hum grows with weight; a heavy hurl is lower). */
+export function telekinesisCues(phase: TelekinesisPhase, mass: number, target: 'corpse' | 'crate'): readonly EventCue[] {
+  if (target === 'crate' && phase !== 'hold') return [];
+  const k = Math.min(4, Math.max(0.3, Number.isFinite(mass) ? mass : 1));
+  if (phase === 'hold') return [{ ...TELEKINESIS_CUES.hold[0], gain: 0.55 + 0.12 * k }];
+  if (phase === 'hurl') return [{ ...TELEKINESIS_CUES.hurl[0], pitch: Math.max(-3, Math.min(2, (1.2 - k) * 1.5)) }];
+  return TELEKINESIS_CUES[phase];
+}
+
+/** What remains sound like when they do something physical (strength 0..1; lighter bodies ring higher). */
+export function corpseCues(kind: CorpseMomentKind, strength: number, mass: number): readonly EventCue[] {
+  const s = Math.max(0, Math.min(1, Number.isFinite(strength) ? strength : 1));
+  const m = Number.isFinite(mass) ? mass : 1;
+  const pitch = Math.max(-4, Math.min(3, (1.2 - m) * 2));
+  switch (kind) {
+    case 'thud': return m >= 2 || s > 0.75
+      ? [{ sfx: 'corpse.thud.heavy', gain: 0.45 + 0.55 * s, pitch }]
+      : [{ sfx: 'corpse.thud.light', gain: 0.45 + 0.55 * s, pitch }];
+    case 'bowl': return [{ sfx: 'corpse.bowl', gain: 0.6 + 0.4 * s, pitch }];
+    case 'splash': return [{ sfx: 'corpse.splash', gain: 0.4 + 0.6 * s }];
+    case 'ignite': return [{ sfx: 'corpse.ignite', gain: 0.6 + 0.4 * s }];
+    case 'douse': return [{ sfx: 'mat.sizzle' }];
+    case 'consume': return [{ sfx: 'corpse.consume', gain: 0.7 + 0.3 * s }];
+    case 'dissolve': return [{ sfx: 'corpse.dissolve', gain: 0.6 + 0.4 * s }];
+    case 'freeze': return [{ sfx: 'corpse.freeze', gain: 0.6 + 0.4 * s }];
+    case 'shatter': return [{ sfx: 'corpse.shatter', gain: 0.7 + 0.3 * s, pitch: pitch * 0.5 }];
+    case 'twitch': return [{ sfx: 'corpse.twitch', gain: 0.5 + 0.5 * s }];
+  }
+}
+
 export function installEventCues(events: EventBus, audio: Pick<AudioApi, 'sfx'>, world: EventCueWorld = {}): () => void {
   const play = (cue: EventCue, x: number, y: number): void => {
     const opts = cue.gain !== undefined || cue.pitch !== undefined || cue.delay !== undefined
@@ -188,6 +241,8 @@ export function installEventCues(events: EventBus, audio: Pick<AudioApi, 'sfx'>,
     listen(events, 'organism', ({ kind, action, x, y }) => playAll(ORGANISM_CUES[kind]?.[action], x, y)),
     listen(events, 'bossMove', ({ kind, move, x, y }) => playAll(BOSS_MOVE_CUES[kind]?.[move], x, y - 10)),
     listen(events, 'floraMoment', ({ kind, x, y, strength }) => playFlora(kind, x, y, strength)),
+    listen(events, 'telekinesis', ({ phase, x, y, mass, target }) => playAll(telekinesisCues(phase, mass, target), x, y)),
+    listen(events, 'corpseMoment', ({ kind, x, y, strength, mass }) => playAll(corpseCues(kind, strength, mass), x, y)),
     // The fall: the first strike is the big one; a bounce after it is the same wood, lighter.
     listen(events, 'treeLanded', ({ x, y, strength, first }) => {
       const cue = treeFallCue(world.biome?.());
