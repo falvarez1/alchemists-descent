@@ -44,6 +44,8 @@ export interface BodyCellSample {
   acid: number;
   nitrogen: number;
   charged: number;
+  /** Strongest charge on any sampled cell (0 when none): how hot the current is HERE. */
+  maxCharge: number;
   toxic: number;
   healium: number;
   teleportium: number;
@@ -62,6 +64,12 @@ export interface StatusSampleOptions {
 export interface StatusSampleResult {
   damage: number;
   toxicDamage: number;
+  /** The burning share of `damage` (kill attribution reads the parts). */
+  burnDamage: number;
+  /** The electrical share of `damage`, one-time zap included. */
+  shockDamage: number;
+  /** Strongest charge touching the body this sample (0 = none). */
+  maxCharge: number;
   healing: number;
   teleportTouch: boolean;
   slowFactor: number;
@@ -130,6 +138,7 @@ export function sampleBodyCells(
     acid: 0,
     nitrogen: 0,
     charged: 0,
+    maxCharge: 0,
     toxic: 0,
     healium: 0,
     teleportium: 0,
@@ -180,7 +189,10 @@ export function sampleBodyCells(
         if (t === Cell.Water || t === Cell.Blood) sample.waterOrBlood++;
       }
       if (t === Cell.Fungus || t === Cell.Glowshroom) sample.fungus++;
-      if (world.charge[i] > 0) sample.charged++;
+      if (world.charge[i] > 0) {
+        sample.charged++;
+        if (world.charge[i] > sample.maxCharge) sample.maxCharge = world.charge[i];
+      }
     }
   }
   // Standing on a charged conductor (a zapped metal floor / electrified water)
@@ -188,7 +200,12 @@ export function sampleBodyCells(
   for (let dx = -halfW; dx <= halfW; dx += 2) {
     const X = bx + dx;
     const Y = by + 1;
-    if (world.inBounds(X, Y) && world.charge[world.idx(X, Y)] > 0) sample.charged++;
+    if (!world.inBounds(X, Y)) continue;
+    const c = world.charge[world.idx(X, Y)];
+    if (c > 0) {
+      sample.charged++;
+      if (c > sample.maxCharge) sample.maxCharge = c;
+    }
   }
   return sample;
 }
@@ -393,16 +410,17 @@ export function sampleAndTickStatus(
   }
 
   const shock = ctx.params.global.shockDamage;
-  const damage =
-    (st.burning > 0 ? 0.12 : 0) +
-    (st.electrified > 0 ? shock * (st.wet > 0 ? SHOCK_WET_MULT : 1) : 0) +
-    (justShocked ? SHOCK_ZAP : 0) +
-    toxicDamage;
+  const burnDamage = st.burning > 0 ? 0.12 : 0;
+  const shockDamage = (st.electrified > 0 ? shock * (st.wet > 0 ? SHOCK_WET_MULT : 1) : 0) + (justShocked ? SHOCK_ZAP : 0);
+  const damage = burnDamage + shockDamage + toxicDamage;
   // Electrified bodies stutter (a mild slow), short of the deep frozen lock.
   const slowFactor = st.frozen > 0 ? 0.55 : st.electrified > 0 ? 0.82 : 1;
   return {
     damage,
     toxicDamage,
+    burnDamage,
+    shockDamage,
+    maxCharge: sample.maxCharge,
     healing,
     teleportTouch: !immune?.teleportium && sample.teleportium > 0,
     slowFactor,

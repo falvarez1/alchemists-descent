@@ -4,6 +4,15 @@ Enable **Controls & comfort → Combat experiment → Trickshot combat**. It def
 off and persists on this browser. The four sliders deliberately remain exposed
 while the pace and assistance are being playtested.
 
+**Breathing Works (2026-09-26):** the humiliation finisher (*Return with
+interest*, below) now ships **on by default** and no longer needs the master
+switch; only its own "Humiliation finisher" checkbox turns it off
+(`finisherEnabled` in `combat/Trickshot.ts`). Its line rises over the victim as
+a world-anchored brass callout (`ui/Callouts.ts`). The slow-motion chain beats
+and the aim assistance stay behind the experiment toggle, off by default.
+Verified by `node scripts/verify-finisher.mjs` (default preferences, a real F
+press: approach → landed finisher → the owner dies → the callout renders).
+
 The requested cinematic anticipation and synchronized multi-target volley are
 planned separately in [Cinematic Trickshots](plans/2026-09-05-cinematic-trickshots.md).
 That proposal is not implemented by the current toggle.
@@ -38,7 +47,7 @@ and does not advance the wand deck.
 with **LMB** or the mapped melee key (**F** by default). When its owner is below 30% health
 (capped at 40 HP), a small brass diamond and the melee hint identify the finishing
 opportunity. A landed swing finishes it with stronger recoil, a slower beat and
-“RETURNED WITH INTEREST.” The leg must belong to that Weaver: enemy identity,
+“RETURNED WITH INTEREST” rising over the victim. The leg must belong to that Weaver: enemy identity,
 pickup ownership and carried ownership survive saving. Another Weaver's leg and
 healthy targets retain ordinary 24-damage melee. Cover and committed swing
 direction still matter; missed swings do not spend durability.

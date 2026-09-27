@@ -23,7 +23,7 @@ describe('progression pacing', () => {
 
     expect(playerMovementPace(ctx)).toBeCloseTo(1);
     expect(playerVerticalPace(ctx)).toBeCloseTo(1);
-    expect(enemyMovementPace(ctx)).toBeCloseTo(0.55);
+    expect(enemyMovementPace(ctx)).toBeCloseTo(0.85);
   });
 
   it('keeps player traversal consistent while depth raises creature pressure', () => {
@@ -31,9 +31,10 @@ describe('progression pacing', () => {
     expect(playerMovementPace(ctxAtDepth(3))).toBeCloseTo(1);
     expect(playerMovementPace(ctxAtDepth(5))).toBeCloseTo(1);
 
-    expect(enemyMovementPace(ctxAtDepth(2))).toBeCloseTo(0.64);
-    expect(enemyMovementPace(ctxAtDepth(4))).toBeCloseTo(0.82);
-    expect(enemyMovementPace(ctxAtDepth(6))).toBeCloseTo(1);
+    // The four-floor spine: 0.85 on floor 1, full speed from floor 3 on.
+    expect(enemyMovementPace(ctxAtDepth(2))).toBeCloseTo(0.925);
+    expect(enemyMovementPace(ctxAtDepth(3))).toBeCloseTo(1);
+    expect(enemyMovementPace(ctxAtDepth(4))).toBeCloseTo(1);
   });
 
   it('lets mobility upgrades extend baseline movement up to the tuned cap', () => {
@@ -46,7 +47,7 @@ describe('progression pacing', () => {
 
     expect(playerMovementPace(ctx)).toBeCloseTo(1.08);
     expect(playerVerticalPace(ctx)).toBeCloseTo(1.06);
-    expect(enemyMovementPace(ctx)).toBeCloseTo(0.55);
+    expect(enemyMovementPace(ctx)).toBeCloseTo(0.85);
   });
 
   it('reads live Builder pacing tuning from the canonical singleton', () => {

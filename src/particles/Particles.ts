@@ -260,7 +260,9 @@ export class Particles implements ParticlesApi {
         // Deposit at last free position behind us
         if (p.type !== null) {
           const blockingDebris = blocksEntity(p.type);
-          if (!(hitLiquid && blockingDebris)) {
+          // Gold still settles on a pool: the powder sim sinks it to the bed
+          // (an alchemical kill in a cistern pays out into the water, honestly).
+          if (!(hitLiquid && blockingDebris) || p.type === Cell.Gold) {
             const bx = Math.floor(p.x - p.vx),
               by = Math.floor(p.y - p.vy);
             let placed = false;

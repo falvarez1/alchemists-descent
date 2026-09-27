@@ -1,0 +1,103 @@
+/* World-anchored combat callouts (ui/Callouts.ts). Brass for a single, heat for
+   a chain. Positioned per frame by the camera; animated with transform/opacity
+   only. The layer never takes input. */
+#callout-layer {
+  --callout-scale: 1;
+  --callout-ink: #1d140a;
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+}
+#callout-layer .callout-anchor {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  white-space: nowrap;
+  will-change: left, top;
+}
+#callout-layer .callout {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-items: center;
+  column-gap: calc(6px * var(--callout-scale));
+  opacity: 0;
+  transform-origin: 50% 80%;
+  will-change: transform, opacity;
+}
+#callout-layer .callout-word {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-weight: 700;
+  font-size: calc(27px * var(--callout-scale));
+  line-height: 1;
+  letter-spacing: 0.1em;
+  padding: 0 0.04em;
+  background: linear-gradient(180deg, #fff4cf 0%, #f2d289 42%, #c9974a 78%, #9c6f33 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 var(--callout-ink)) drop-shadow(0 0 1px var(--callout-ink))
+    drop-shadow(0 0 9px rgba(255, 186, 92, 0.42));
+}
+#callout-layer .callout-badge {
+  font: 700 calc(13px * var(--callout-scale)) / 1 ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  letter-spacing: 0.02em;
+  padding: calc(3px * var(--callout-scale)) calc(6px * var(--callout-scale));
+  border-radius: 999px;
+  color: #231709;
+  background: linear-gradient(180deg, #f6e2ab, #cf9f55);
+  box-shadow: 0 0 0 1px var(--callout-ink), 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+#callout-layer .callout-sub {
+  grid-column: 1 / -1;
+  margin-top: calc(3px * var(--callout-scale));
+  font: 600 calc(10.5px * var(--callout-scale)) / 1.1 ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  letter-spacing: 0.08em;
+  color: #eadfc4;
+  text-shadow: 0 1px 0 var(--callout-ink), 0 0 2px var(--callout-ink), 0 0 6px rgba(0, 0, 0, 0.7);
+}
+
+/* Chain heat: ×2 warms, ×3–4 turns copper-to-ember, ×5+ burns white-gold. */
+#callout-layer .callout-tier-1 .callout-word { font-size: calc(29px * var(--callout-scale)); }
+#callout-layer .callout-tier-2 .callout-word {
+  font-size: calc(31px * var(--callout-scale));
+  background-image: linear-gradient(180deg, #fff0d0 0%, #f7b765 45%, #d1662c 82%, #8e3a16 100%);
+  filter: drop-shadow(0 1px 0 var(--callout-ink)) drop-shadow(0 0 1px var(--callout-ink))
+    drop-shadow(0 0 12px rgba(255, 140, 60, 0.55));
+}
+#callout-layer .callout-tier-2 .callout-badge {
+  font-size: calc(15px * var(--callout-scale));
+  background: linear-gradient(180deg, #ffd9a0, #e07a3a);
+}
+#callout-layer .callout-tier-3 .callout-word {
+  font-size: calc(34px * var(--callout-scale));
+  background-image: linear-gradient(180deg, #ffffff 0%, #fff1b8 38%, #ffc35a 70%, #e0762e 100%);
+  filter: drop-shadow(0 1px 0 var(--callout-ink)) drop-shadow(0 0 1px var(--callout-ink))
+    drop-shadow(0 0 16px rgba(255, 214, 120, 0.75));
+}
+#callout-layer .callout-tier-3 .callout-badge {
+  font-size: calc(17px * var(--callout-scale));
+  color: #2a1606;
+  background: linear-gradient(180deg, #ffffff, #ffcf6a 55%, #ef8a3c);
+  box-shadow: 0 0 0 1px var(--callout-ink), 0 0 12px rgba(255, 200, 110, 0.7);
+}
+
+/* The Trickshot finisher: a longer, italic brass line with a copper rule. */
+#callout-layer .callout-finisher .callout-word {
+  font-style: italic;
+  font-weight: 600;
+  font-size: calc(24px * var(--callout-scale));
+  letter-spacing: 0.06em;
+  padding-bottom: calc(3px * var(--callout-scale));
+  border-bottom: 1px solid rgba(189, 148, 96, 0.8);
+}
+
+/* Reduced flashes: keep the ink outline, drop every glow. */
+#callout-layer .callout-calm .callout-word,
+#callout-layer .callout-calm.callout-tier-2 .callout-word,
+#callout-layer .callout-calm.callout-tier-3 .callout-word {
+  filter: drop-shadow(0 1px 0 var(--callout-ink)) drop-shadow(0 0 1px var(--callout-ink));
+}
+#callout-layer .callout-calm .callout-badge { box-shadow: 0 0 0 1px var(--callout-ink); }

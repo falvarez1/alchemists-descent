@@ -1,4 +1,5 @@
 import type { Ctx, Enemy, FinisherPhase, TrickshotRuntime } from '@/core/types';
+import { TRICKSHOT_DEFAULTS } from '@/config/trickshot';
 import { packRGB } from '@/sim/colors';
 
 /**
@@ -21,6 +22,17 @@ const FINISHER_TRAIL = 14;
 const FINISHER_ZOOM = 1.06;
 const FINISHER_LEAN_CELLS = 22;
 const FINISHER_VIGNETTE_LIFT = 0.16;
+
+/**
+ * The humiliation finisher ships ON by default and no longer needs the
+ * Trickshot experiment's master switch: the slow-motion chain beats and the
+ * aim assistance (the "cinematic" half) stay behind `enabled`, off by default,
+ * while the finisher answers only to its own `finisher` flag.
+ */
+export function finisherEnabled(ctx: Ctx): boolean {
+  const settings = ctx.state.trickshot;
+  return settings ? settings.finisher !== false : TRICKSHOT_DEFAULTS.finisher;
+}
 
 function runtime(ctx: Ctx): TrickshotRuntime {
   return ctx.fx.trickshot ??= { remainingMs: 0, elapsedMs: 0, scale: 1, chainMs: 0, chain: 0,
@@ -86,7 +98,10 @@ function updateFinisherPresentation(ctx: Ctx, r: TrickshotRuntime): void {
 /** Presentation time owns the short dramatic beat. Pausing never spends it,
  * and the material/AI/physics systems still take unchanged fixed-size ticks. */
 export function advanceTrickshotClock(ctx: Ctx, elapsedMs: number): number {
-  if (!ctx.state.trickshot?.enabled || ctx.player.dead || ctx.state.mode !== 'play') {
+  const chainOn = ctx.state.trickshot?.enabled === true;
+  // With the experiment off, the runtime only lives while a finisher is in flight.
+  const finishing = finisherEnabled(ctx) && (ctx.fx.trickshot?.phase ?? 'idle') !== 'idle';
+  if ((!chainOn && !finishing) || ctx.player.dead || ctx.state.mode !== 'play') {
     // Death and transitions cancel everything, including the framing.
     if (ctx.fx.trickshot) endFinisherPresentation(ctx);
     ctx.fx.trickshot = undefined; return 1;
@@ -115,7 +130,7 @@ export function advanceTrickshotClock(ctx: Ctx, elapsedMs: number): number {
       if (r.phaseMs > FINISHER_APPROACH_BUDGET_MS || !r.target || r.target.hp <= 0) missFinisher(ctx);
     } else if (r.phase === 'impact') {
       phaseScale = FINISHER_APPROACH_SCALE;
-      if (r.phaseMs >= (ctx.state.trickshot.impactPauseMs ?? 50)) { r.phase = 'release'; r.phaseMs = 0; }
+      if (r.phaseMs >= (ctx.state.trickshot?.impactPauseMs ?? TRICKSHOT_DEFAULTS.impactPauseMs)) { r.phase = 'release'; r.phaseMs = 0; }
     }
     if (r.phase === 'release') {
       const t = Math.min(1, r.phaseMs / FINISHER_RELEASE_MS);
@@ -153,7 +168,7 @@ export function recordTrickshot(ctx: Ctx, enemy: Enemy, kind: 'hit' | 'kill' | '
 
 export function canHumiliate(ctx: Ctx, enemy: Enemy): boolean {
   const owner = ctx.player.legClub?.owner;
-  return ctx.state.trickshot?.enabled === true && enemy.kind === 'weaver' && enemy.hp > 0 &&
+  return finisherEnabled(ctx) && enemy.kind === 'weaver' && enemy.hp > 0 &&
     enemy.hp <= Math.min(40, enemy.maxHp * .3) && !!owner && owner === enemy.weaverSalvageId;
 }
 
@@ -168,8 +183,7 @@ export function finisherPhase(ctx: Ctx): FinisherPhase {
  * the hit: contact drives the phase change, and a miss just costs the moment.
  */
 export function beginFinisher(ctx: Ctx, enemy: Enemy): void {
-  const settings = ctx.state.trickshot;
-  if (!settings?.enabled || !settings.finisher || ctx.player.dead || ctx.state.mode !== 'play') return;
+  if (!finisherEnabled(ctx) || ctx.player.dead || ctx.state.mode !== 'play') return;
   const r = runtime(ctx);
   if (r.phase !== 'idle' || r.recoveryMs > 0) return;
   r.phase = 'approach'; r.phaseMs = 0; r.target = enemy; r.trail.length = 0;
@@ -195,6 +209,8 @@ export function confirmFinisher(ctx: Ctx, enemy: Enemy, x: number, y: number, di
   ctx.particles.burst(x, y, 9, null, () => packRGB(222, 184, 92), 2.6, { glow: 1.6, grav: 0.05 });
   ctx.particles.burst(x + dirX * 3, y + dirY * 3, 7, null, () => packRGB(157, 185, 147), 2.2, { grav: 0.14 });
   ctx.audio.at(x, y, () => ctx.audio.shellCrack());
+  // The line lands over the victim, world-anchored in brass (ui/Callouts).
+  ctx.events?.emit('combatCallout', { x, y: y - 12, text: 'RETURNED WITH INTEREST', tone: 'finisher' });
   ctx.telemetry.count('trickshot.finisherLanded');
 }
 

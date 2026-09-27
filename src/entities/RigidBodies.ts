@@ -718,7 +718,8 @@ export class RigidBodies implements RigidBodiesApi {
         const mass = body.invMass && body.invMass > 0 ? 1 / body.invMass : REFERENCE_MASS;
         const massF = Math.sqrt(Math.min(3, mass / REFERENCE_MASS));
         const dmg = Math.min(70, Math.round(sp * BODY_HIT_DMG_K * massF) + 4);
-        ctx.enemyCtl.damage(e, dmg, body.vx * 0.8, body.vy * 0.45 - 0.4);
+        // Debris, a thrown crate, a collapse: the world FLATTENS (combat/AlchemyKills).
+        ctx.enemyCtl.damage(e, dmg, body.vx * 0.8, body.vy * 0.45 - 0.4, 'flattened');
         body.hitCd = BODY_HIT_COOLDOWN;
         // A THROWN body sheds momentum into the foe (slow the Rapier handle so it
         // thuds in instead of ghosting through). A body being PULLED toward the

@@ -3,7 +3,7 @@ import { makePickup } from '@/core/pickupDefs';
 import { clamp } from '@/core/math';
 import { weaverLegGeometry } from '@/creatures/weaverAnatomy';
 import { packRGB } from '@/sim/colors';
-import { beginFinisher, canHumiliate, confirmFinisher, finisherPhase, missFinisher, recordTrickshot } from '@/combat/Trickshot';
+import { beginFinisher, canHumiliate, confirmFinisher, finisherEnabled, finisherPhase, missFinisher, recordTrickshot } from '@/combat/Trickshot';
 import { heldLegContact, updateHeldLeg } from '@/combat/HeldLeg';
 import { sightClear } from '@/creatures/perception';
 
@@ -53,8 +53,8 @@ export function strikeWeaverLeg(ctx: Ctx, e: Enemy, index: number, damage: numbe
  */
 function finisherOpportunity(ctx: Ctx): Enemy | null {
   const p = ctx.player, club = p.legClub;
-  // No owner on record, or the experiment off: there is nobody to humiliate.
-  if (!club || !club.owner || ctx.state.trickshot?.enabled !== true || ctx.state.trickshot.finisher !== true) return null;
+  // No owner on record, or the finisher switched off: there is nobody to humiliate.
+  if (!club || !club.owner || !finisherEnabled(ctx)) return null;
   const ox = p.x, oy = p.y - (p.crawling ? 4 : 10);
   const dx = Math.cos(club.angle), dy = Math.sin(club.angle);
   for (const e of ctx.enemies) {

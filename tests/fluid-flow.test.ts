@@ -47,6 +47,23 @@ describe('Hydraulic material transport', () => {
     world.replaceCellAt(index, Cell.Ice, 0); expect(world.flow.falling.size).toBe(0);
   });
 
+  it('a pressure hop moves water, never the charge on the air it trades places with', () => {
+    // A sparked crater's flash (charged air at the pool's foot) used to ride the
+    // long-range swap up to the far surface and shock whoever stood there.
+    const world = new World(60, 40);
+    for (let x = 0; x < 60; x++) world.replaceCellAt(world.idx(x, 30), Cell.Metal, 0);
+    for (let y = 10; y < 30; y++) for (let x = 1; x <= 20; x++) world.replaceCellAt(world.idx(x, y), Cell.Water, 0);
+    const target = world.idx(21, 29);
+    world.setChargeAt(target, 50);
+    world.flow.beginStep(world);
+    expect(world.flow.discharge(world, 20, 29)).toBe(true);
+    expect(world.types[target]).toBe(Cell.Water);
+    expect(world.charge[target]).toBe(50);
+    let strayCharge = 0;
+    for (let i = 0; i < world.charge.length; i++) if (i !== target && world.charge[i] > 0) strayCharge++;
+    expect(strayCharge).toBe(0);
+  });
+
   it('sweeps fast water against a one-cell floor and clears flight history when the world changes', () => {
     const world = new World(80, 80);
     for (let x = 0; x < 80; x++) world.replaceCellAt(world.idx(x, 55), Cell.Metal, 0);

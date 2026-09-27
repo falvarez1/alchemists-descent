@@ -379,6 +379,39 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   scramble, body roll, sinking — then recover.
 - All wounded enemies already shed **gore drips** as they move.
 
+### Provocation & notice (Breathing Works, `Enemies.provokeByPlayer`, `creatures/perception.ts`)
+
+- **Being struck always provokes.** A direct blow (wand bolt, kick, whip,
+  stomp, the Flame Jet's own stream) gives the creature's mind a confident fix
+  on the wizard's position at that moment (confidence ≥ 0.8, irritation
+  ≥ 0.75, re-sense + re-decide now): the pain has a direction, nothing more.
+  A Weaver goes cranky (90 ticks) and hunts instead of foraging; flighty kinds
+  (`fleeAt` < 0.5: bat, wisp, mage) bolt instead (fear raised to their
+  `fleeAt`, the threat layer carries the flee); everyone else gains
+  aggression ≥ 0.6. A leg severed by the bolt still flinches a Weaver back
+  ~2 s (WeaverLimbs) before it returns.
+- **A close, visible alchemist wears on a creature's patience.** While the
+  honest sight check passes (grid-occluded, facing-gated, light-scaled range)
+  and the wizard is within 130 cells, irritation rises by
+  `(1 − d/130)/120` per tick against the 1/800 decay: at arm's length a stare
+  boils over into a hunt in under a second (Root Loper at 60 cells: ~80
+  ticks), across the room it takes several, past 130 it only observes.
+  Territorial kinds (Weaver, Rillback, Root Loper, Stone Maw) used to watch
+  indefinitely unless intruded upon (38–64 cells).
+
+### New grid rules for creatures (Breathing Works)
+
+- **Steam scalds** what fire can burn: 0.05 per sampled body row per tick
+  (an engulfed Weaver ~27 hp/s; imps, the Colossus and the Leviathan shrug it
+  off). The threat layer flees steam; the wary step gate does not (a plume
+  is transient). The Works' exhale and a boiled pool are weapons: STEEPED.
+- **Land creatures drown.** A head (top rows of the box, ≥ 60% liquid) under
+  water/oil/blood/slime holds its breath 360 ticks (imp 90, bat 180, bomber
+  150; bubbles every 15 ticks), then loses 1/300 of max hp per tick with a
+  bubble burst and a thrash (fear 0.9) until it surfaces. Rillback,
+  Leviathan, Colossus, wisp and egg clutches are immune; population never
+  seeds a land kind with its head under liquid.
+
 ### Other living touches
 
 - **Notice blips** when a creature first spots you (the colossus bellows instead).
@@ -403,8 +436,66 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   flinch on the HUD, and a sad fizzle of particles at the staff tip (throttled
   to every 14 frames while held).
 - **Recharge:** the wrap-around recharge reads on the hotbar as the bar refills.
-- **Hitstop:** hits ≥ 8 damage freeze gameplay for 3 frames (rendering
-  continues).
+- **Hitstop:** player hurt ≥ 8 damage freezes gameplay for 3 frames
+  (rendering continues). Creature hits: ≥ 7 damage (with knockback, within
+  240 cells, throttled 5 ticks) freeze 2 frames (3 at ≥ 20); **direct hits of
+  2–7 freeze 1 frame** with a lighter squash (0.1) — pellets and chip damage
+  land too; sub-2 streams (the Flame Jet's 0.7 ticks) never stutter.
+- **The Spark Bolt** (`FxSprites.drawSparkBolt`, `Projectiles.sparkImpactFx`):
+  a white-hot 1.25-cell bead with a cyan rim, a 14-cell electric streak that
+  tapers from 1.5 cells to a thread and jitters a half-cell sideways per frame
+  like a live wire, a 3-cell additive halo; it seeds 1.1/2.5/3.0 light with a
+  4-step wake. On impact: 12 cyan-white sparks sprayed back off the struck
+  face, 3 streakers carried through, a tiny arc at the contact, a bloom kick
+  (0.34 flesh / 0.2 stone; none under reduced flashes) and a dry high tick
+  (noise 3.4 kHz + a 2.1 kHz→760 Hz square blip). A struck creature staggers
+  4 ticks, mass-scaled (1.4 × 40/footprint, clamped 0.35–2.6 cells/tick: bat
+  2.6, slime 1.4, golem 0.4 — always under the 3.5 wall-slam speed); Weavers
+  keep their grip, bosses and clutches do not budge. It ignites flammables
+  exactly as before (the blast and charge rules are untouched).
+- **Alchemical kills** (`combat/AlchemyKills.ts`, `alchemyKill` event): every
+  damage path reports its source before hp moves; when the killing blow was
+  the world's and the wizard set it in motion, the kill is announced, chains
+  and pays out. Causes: fire/burning → burned, lava → rendered, steam →
+  steeped, a shocked body → shorted, out of breath → drowned, acid →
+  dissolved, toxic → poisoned, debris/thrown bodies → flattened, a
+  kick-launched wall slam → impaled, gunpowder/barrels/a bomber's death/hostile
+  blasts → detonated, any physical blow to a frozen body → shattered. The
+  wand's own bolts, bombs, lightning, kick, whip, stomp and Flame Jet stream
+  stay direct (ordinary bounty). Credit is generous: within 280 cells of the
+  wizard, or struck by him in the last 20 s, or kick-launched in the last 3 s.
+  Kills within 3 s (180 ticks) chain; the chain resets on a level change.
+  **Payout, grid-honest:** bonus gold = 10 + 35% of bounty, ×1 / ×1.5 / ×2 /
+  ×2.5 / ×3 by chain, rounded to whole 10-oz grains; that many real Gold
+  cells fountain out of the body (deposit particles; gold settles into a pool
+  and sinks) for the harvester field to pull in; the active wand refills 35%
+  of its tank (cyan motes run to the staff), the wizard gets +3 hp (rose
+  motes), a bloom kick (0.45 + 0.12/chain, none under reduced flashes) and a
+  brass dyad whose top note climbs two semitones per link (capped at a fifth).
+- **Callouts** (`ui/Callouts.ts`, `styles/callouts.css`): the word pops over
+  the kill, rises and fades — FLAMBÉED, RENDERED, STEEPED, SHORTED, DROWNED,
+  DISSOLVED, SHATTERED, FLATTENED, DETONATED, POISONED, IMPALED — one word per
+  cause so it teaches the mechanic. Brass serif (Cormorant Garamond) for a
+  single, with the bonus gold beneath; a chain link lands on its predecessor's
+  spot and takes it (the old word bows out in 140 ms) with a ×N badge that
+  grows and heats brass → copper-ember (×3–4) → white-gold (×5+), and a dry
+  line: "and another", "a chain reaction", "most irregular", "the Works
+  approve", "please mind the duck". Life 1150 ms + 180 per heat tier;
+  pop (0.55 → 1.16 → 1.0 over the first 20%), rise 40 px, fade in the last
+  third; reduced flashes drops every glow, prefers-reduced-motion drops the
+  pop and the rise. The Trickshot finisher's "RETURNED WITH INTEREST" speaks
+  through the same layer (`combatCallout`).
+- **Self-shock fairness** (`combat/SelfShock.ts`): for 240 ticks after any
+  card cast, electrical damage to the wizard scales with the current actually
+  at his body (charge / 40, floor 0.15 — charge loses 3 per water hop, so
+  distance through the pool is the falloff) and shares a 12-hp cap per
+  120-tick window; anyone else's current (a Rillback pulse, a live rail) keeps
+  its full bite. While a current reaches him, a short arc crawls back up the
+  charge gradient (≤ 16 cells, re-rolled each status sample) toward its
+  source. A pressure hop in the water (FluidFlow) no longer teleports a
+  sparked crater's charge across the pool: a wet wizard sparking the water
+  8/18/30 cells away lost 48/25/32 hp over 3 s before, ~7–13 (≤ 12 of it
+  electrical) / ≤ 5 / ≤ 5 after.
 - **Screen shake is earned and local:** *all* ambient shake writes are
   viewport-gated and fall off quadratically with distance — dead at 420 cells.
   Explosion boom audio scales the same way (distant thunder). A quake next
@@ -426,7 +517,8 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   active, long potion timers, stocked potion pickups, and bench-only potion
   refresh / elixir flask-fill tiles. Normal starts remain progression-driven,
   and debug-modified runs are not autosaved.
-- **Humiliation finisher (Trickshot experiment, `combat/Trickshot.ts`):** with
+- **Humiliation finisher (`combat/Trickshot.ts`, on by default since Breathing
+  Works; the Trickshot chain experiment is no longer required):** with
   a Weaver's own leg in hand and its owner under 30% HP, the whip commits into
   a directed beat — time eases to 25% for the approach (≤1.1 s real, then it
   expires), the ambience ducks under a rising whip, the victim recoils, and
@@ -435,7 +527,8 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   heavier lateral impulse so the corpse rolls, the shell crack and an
   embarrassed chirr, "RETURNED WITH INTEREST", then a 180 ms smooth return.
   A miss or an intercepting body releases time with a 500 ms recovery and no
-  cue. Framing is one small camera lean and a 6% zoom (`cineDx/cineDy/
+  cue. The line rises over the victim as a world-anchored brass callout
+  (`ui/Callouts.ts`, via the `combatCallout` event). Framing is one small camera lean and a 6% zoom (`cineDx/cineDy/
   cineZoom`, off with the camera-motion setting) plus a vignette lift (off
   under reduced flashes); the chain slow-motion and the finisher never
   multiply — the deeper one wins.
@@ -670,11 +763,18 @@ patrol: advance <14 cells (slime) / <10 (golem) · de-alert 300f beyond 300 cell
 sequence chime 300+90·step Hz / break 120 Hz saw · emitter rate clamp ≥2f
 bat flare 8f at <64 cells · swoop 12f cap 2.6 · tumble 14f, ~1.2%/f at <40% hp
 enemy threat-sense (in-window foes, tick rate): hazard box halfW+9 (per-kind enemyLethalCell) · fast body dist<60 tti<26 toward>0.4 (imminent tti<14) · projectile dist<70 tti<22 toward>0.6 (imminent tti<12) · flame-cone reach 36 / half-angle 0.5 +0.3 slack · self: burning .85, hp<35% ramps
+provoke on direct hit: mind fix on the shooter (confidence ≥ .8, irritation ≥ .75); fleeAt < .5 kinds bolt (fear → fleeAt), others aggression ≥ .6; weaver cranky 90 · notice escalation: visible & < 130 cells → irritation += (1 − d/130)/120 per tick (decay 1/800)
+steam scald 0.05/row/tick (not imp/colossus/leviathan) · drowning: head ≥ 60% liquid → breath 360 (imp 90, bat 180, bomber 150) then −maxHp/300 per tick; immune rillback/leviathan/colossus/wisp/eggs
 enemy drives: fear → sensed threat × kind-fear, decay 0.02/f · aggression +0.02 close +0.04 on-hit −0.03·fear −0.005/f · chaseScale clamp(1 − 0.7·fear + 0.15·agg, 0.25, 1)
-enemy reflex: dodge ⊥ to threat vel @2.7 ×12f, one roll/threat (dodgeCd 22) gated by kind dodge% (fliers sustain vy, grounded one hop) · flee 26f @1.7 away (toward water if burning+seekWater) · final movement integrates at 0.55x on D1, ramping +0.09/depth to 1.0x by D6 before difficulty · startle "!" tell @dodgeT≥10|fleeT≥23 + airy whiff (pDist<160)
+enemy reflex: dodge ⊥ to threat vel @2.7 ×12f, one roll/threat (dodgeCd 22) gated by kind dodge% (fliers sustain vy, grounded one hop) · flee 26f @1.7 away (toward water if burning+seekWater) · final movement integrates at 0.85x on floor 1, ramping +0.075/depth to 1.0x by floor 3 before difficulty (probe, flee drive 1.7 on flat stone: floor 1 50→78 cells/s, floor 3 67→92, floor 4 75→92) · startle "!" tell @dodgeT≥10|fleeT≥23 + airy whiff (pDist<160)
 temperament fear/dodge/fleeAt: slime .4/.12/.95 · bat 1.3/.85/.45 · imp .6/.72/.6 · wisp .9/.7/.4 · spitter .85/.55/.5 · bomber .2/.3/never · mage .9/.62/.45 · weaver .5/.5/.72 · golem .18/.28/never · colossus 0/0/never · default .7/.45/.7
 player eye seeks threats <80 cells · enemy gaze locks only when alerted
-shake falloff dead at 420 cells · hitstop 3f at ≥8 dmg · heartbeat <25% hp
+shake falloff dead at 420 cells · hitstop 3f at ≥8 dmg (player hurt); creature hits 2f ≥7 (3f ≥20), 1f for direct 2–7 · heartbeat <25% hp
+spark bolt: 14-cell streak, 1.25-cell core, 3-cell halo · light 1.1/2.5/3.0 wake 4 · impact 12+3 sparks, bloom .34/.2 · knock 1.4×40/footprint clamp .35–2.6 ×4 ticks (no weaver/boss/eggs)
+alchemy: chain 180 ticks · credit ≤280 cells | touched ≤1200 ticks | kicked ≤180 ticks · bonus (10 + .35·bounty)×(1 + .5·min(4, chain−1)) → whole 10-oz Gold cells · mana +35% active tank · +3 hp
+callouts: life 1150 ms + 180/tier · tiers ×1 brass / ×2 / ×3–4 ember / ×5+ white-gold · word 27/29/31/34 px × holder/1280 · chain link takes the spot (140 ms bow-out) · max 6 live
+self-shock: self-inflicted ≤240 ticks after a cast · scale charge/40 (floor .15) · cap 12 hp per 120 ticks · arc ≤16 cells up the charge gradient
+fodder rosters (SPINE_ROSTERS by biome): fungal weaver 2 rootloper 3 rillback 1 slime 4 acidslime 2 eggs 2 bat 8 (roosts) · flooded rillback 6 spitter 3 wisp 2 weaver 1 bat 4 · volcanic imp 5 bomber 4 golem 2 stonemaw 2 (× difficulty enemyCount)
 sim window camera ±60 · player 9x17 cells · staff ~11 cells, muzzle at d=9
 D1 sky (SKY in render/skyAtmosphere.ts): gradient base (0.36,0.53,0.78)→horizon (+0.28,+0.06,−0.28)·t · sun screen 0.72·VIEW_W,0.17·VIEW_H, halo r150 pow2.4, core 13→6 · clouds 4 octaves, parallax 0.82, drift 0.004/f, band t∈0.12–0.66, opacity 0.45 · hills far parallax 0.5 base26 / near parallax 0.32 base40 (taller+darker, drawn last)
 ```

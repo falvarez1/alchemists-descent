@@ -20,7 +20,7 @@ import { acidColor, COLOR_FN, EMPTY_COLOR, fireColor, iceColor, packRGB } from '
 import { chargeDeposit } from '@/sim/electrical';
 import { probeHollow } from '@/sim/hollow';
 import type { World } from '@/sim/World';
-import { entityRandom } from '@/core/simRandom';
+import { entityRandom, fxRandom } from '@/core/simRandom';
 
 /**
  * Per-type impulse a player projectile imparts to a rigid body it strikes —
@@ -300,6 +300,55 @@ function pyreCritFeedback(ctx: Ctx, x: number, y: number): void {
   elementalCritFeedback(ctx, x, y, PYRE_CRIT_FX);
 }
 
+/** Spark Bolt knockback: a mass-scaled stagger (bat ~2.6, slime ~1.4, golem ~0.4
+ *  cells/tick for 4 ticks), always under the wall-slam speed so a bolt never gibs
+ *  anything against rock. Weavers keep their surface grip (their rig answers the
+ *  blow); bosses do not budge. */
+const SPARK_KNOCK = 1.4;
+const SPARK_KNOCK_TICKS = 4;
+
+function sparkKnock(ctx: Ctx, e: Ctx['enemies'][number], vx: number, vy: number): void {
+  if (e.hp <= 0 || e.kind === 'weaver' || e.kind === 'colossus' || e.kind === 'leviathan' || e.kind === 'eggs') return;
+  const def = ctx.enemyCtl.defs[e.kind];
+  const push = clamp((SPARK_KNOCK * 40) / Math.max(1, def.halfW * def.h), 0.35, 2.6);
+  const spd = Math.hypot(vx, vy) || 1;
+  e.knockVx = (e.knockVx ?? 0) + (vx / spd) * push;
+  e.knockVy = (e.knockVy ?? 0) + (vy / spd) * push * 0.5 - push * 0.35;
+  e.knockT = Math.max(e.knockT ?? 0, SPARK_KNOCK_TICKS);
+}
+
+/**
+ * Spark Bolt impact: a crisp electric crack. A white-hot flash, a spray of cyan
+ * sparks thrown back off the struck face, a few streakers carried on through, a
+ * tiny arc at the contact and a dry high tick. Cosmetic motes only (null-typed,
+ * fx stream): the bolt's blast, charge and ignition rules are untouched.
+ */
+function sparkImpactFx(ctx: Ctx, x: number, y: number, vx: number, vy: number, flesh: boolean): void {
+  const spd = Math.hypot(vx, vy) || 1;
+  const ux = vx / spd;
+  const uy = vy / spd;
+  const back = Math.atan2(-uy, -ux);
+  for (let i = 0; i < 12; i++) {
+    const a = back + (fxRandom() - 0.5) * 2.4;
+    const s = 1.1 + fxRandom() * 2.5;
+    ctx.particles.spawn(x, y, Math.cos(a) * s, Math.sin(a) * s - 0.35, null,
+      i < 4 ? packRGB(238, 250, 255) : packRGB(105, 218, 255), 6 + ((fxRandom() * 9) | 0), { glow: 2.7, grav: 0.07 });
+  }
+  for (let i = 0; i < 3; i++) {
+    const s = 2.2 + fxRandom() * 2;
+    ctx.particles.spawn(x, y, ux * s + (fxRandom() - 0.5) * 0.9, uy * s + (fxRandom() - 0.5) * 0.9 - 0.3, null,
+      packRGB(170, 238, 255), 9 + ((fxRandom() * 6) | 0), { glow: 2.3, grav: 0.03 });
+  }
+  const jx = (fxRandom() - 0.5) * 4;
+  const jy = (fxRandom() - 0.5) * 4;
+  ctx.lightning?.spark?.(x - ux * 3 + jx, y - uy * 3 + jy, x + ux * 2 - jy, y + uy * 2 + jx);
+  if (!ctx.state.reduceFlashes) ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick ?? 0, flesh ? 0.34 : 0.2);
+  ctx.audio.at?.(x, y, () => {
+    ctx.audio.noiseBurst(0.035, 3400, flesh ? 0.06 : 0.045, true);
+    ctx.audio.tone(2100, 760, 0.05, 'square', flesh ? 0.045 : 0.03);
+  }, 420);
+}
+
 function electricFeedback(ctx: Ctx, x: number, y: number): void {
   ctx.particles.burst(x, y - 4, 10, null, () => packRGB(150, 230, 255), 1.7, {
     glow: 2.3,
@@ -518,6 +567,7 @@ export class Projectiles implements ProjectilesApi {
         p.y += p.vy;
         return 'bounce';
       case 'bolt':
+        sparkImpactFx(ctx, p.x, p.y, p.vx, p.vy, false);
         this.triggerExplosion(ctx, p.x, p.y, ctx.params.spells.bolt.explosionRadius!);
         break;
       case 'pellet':
@@ -994,7 +1044,9 @@ export class Projectiles implements ProjectilesApi {
               const explosionMul = critMul;
               applyElectricChargeToEnemy(ctx, p, e);
               if (p.type === 'bolt') {
+                sparkImpactFx(ctx, p.x, p.y, p.vx, p.vy, true);
                 this.damageEnemy(ctx, e, 18 * damageMul, p.vx * 0.8, -1.6);
+                sparkKnock(ctx, e, p.vx, p.vy);
                 this.triggerExplosion(ctx, p.x, p.y, ctx.params.spells.bolt.explosionRadius!, explosionMul);
               } else if (p.type === 'pellet') {
                 this.damageEnemy(ctx, e, 8 * damageMul, p.vx * 0.6, -1.0);
@@ -1147,6 +1199,7 @@ export class Projectiles implements ProjectilesApi {
             this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'bolt') {
+            sparkImpactFx(ctx, p.x, p.y, p.vx, p.vy, false);
             this.triggerExplosion(ctx, gx, gy, ctx.params.spells.bolt.explosionRadius!);
             world.setChargeAt(world.idx(gx, gy), chargeDeposit(ctx, 20));
             this.removeAt(projectiles, i);

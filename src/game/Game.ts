@@ -16,6 +16,7 @@ import { AudioEngine } from '@/audio/AudioEngine';
 import { HabitatAudio } from '@/audio/HabitatAudio';
 import { installAudioStingers } from '@/audio/Stingers';
 import { Flask } from '@/combat/Flask';
+import { AlchemyKills } from '@/combat/AlchemyKills';
 import { Lightning } from '@/combat/Lightning';
 import { WandSystem } from '@/combat/wands/WandSystem';
 import { Projectiles } from '@/combat/Projectiles';
@@ -63,6 +64,7 @@ import { HelpOverlay } from '@/ui/HelpOverlay';
 import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
 import { Hud } from '@/ui/Hud';
+import { Callouts } from '@/ui/Callouts';
 import { CellInspector } from '@/ui/CellInspector';
 import { Grimoire } from '@/ui/Grimoire';
 import { Inspector } from '@/ui/Inspector';
@@ -216,6 +218,10 @@ export class Game {
     const enemyCtl = new Enemies(ctx);
     ctx.enemyCtl = enemyCtl;
     this.disposables.push(enemyCtl);
+    // Kill attribution + alchemical-kill payouts (emits `alchemyKill`).
+    const alchemy = new AlchemyKills(ctx);
+    ctx.alchemy = alchemy;
+    this.disposables.push(alchemy);
     ctx.spells = new Spells(ctx);
     ctx.simulation = new Simulation();
     ctx.worldgen = new WorldGen();
@@ -315,6 +321,8 @@ export class Game {
     this.disposables.push(new RunHud(ctx, () => runSummary.showLast()));
     this.minimap = new Minimap(ctx);
     this.disposables.push(this.minimap);
+    // World-anchored alchemical-kill words (listens to `alchemyKill`/`combatCallout`).
+    this.disposables.push(new Callouts(ctx));
     this.disposables.push(new CardOfferOverlay(ctx));
     this.disposables.push(new WaystonePromptOverlay(ctx));
     this.disposables.push(new HintTeachOverlay(ctx));

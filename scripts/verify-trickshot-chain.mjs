@@ -6,7 +6,7 @@ import { archiveGameplayClip, finishGameplayCapture, startGameplayCapture } from
 
 const output = 'verify-out/living-descent'; mkdirSync(output, { recursive: true });
 const browser = await launchBrowser(), page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-const report = { errors: [], shots: [], setup: 'Canonical D1 seed 777, starter wand, 9999 HP, two console-spawned slimes on opposite sides in the Intake; god off after positioning. Real aiming and firing; no hit, combo, timing or projectile injection.' };
+const report = { errors: [], shots: [], setup: 'Canonical D1 seed 777, starter wand, 9999 HP, three console-spawned slimes (two on opposite sides) in the Intake; god off after positioning. Real aiming and firing; no hit, combo, timing or projectile injection.' };
 page.on('pageerror', e => report.errors.push(String(e)));
 const settings = async () => { await page.locator('#expedition-pause').click(); await page.locator('#pause-settings').click(); };
 const close = async () => { await page.getByRole('button', { name: 'Close settings', exact: true }).click(); await page.keyboard.press('Escape'); };
@@ -16,18 +16,29 @@ try {
   await page.waitForFunction(() => window.__game.ctx.levels.findabilityReady, null, { timeout: 60000 });
   await settings(); await page.locator('[name="trickshotEnabled"]').check(); await close();
   await execConsoleCommand(page, 'tp 205 314');
-  await execConsoleCommand(page, 'spawn slime 1 260 313'); await execConsoleCommand(page, 'spawn slime 1 165 313');
+  // Three slimes, ~95 cells out: floor-1 creatures now close at 0.85x (was 0.55x),
+  // a hit provokes them and a spark staggers them, so a pair often closed in, fell
+  // off the Intake lip or died before a second distinct shot could chain.
+  await execConsoleCommand(page, 'spawn slime 1 300 313'); await execConsoleCommand(page, 'spawn slime 1 120 313');
+  await execConsoleCommand(page, 'spawn slime 1 250 313');
   await execConsoleCommand(page, 'god off');
   await page.evaluate(() => {
-    const c = window.__game.ctx; window.__chainTargets = c.enemies.slice(-2); window.__chainCadence = [];
+    const c = window.__game.ctx; window.__chainTargets = c.enemies.slice(-3); window.__chainCadence = [];
     const sample = () => { const r = c.fx.trickshot; window.__chainCadence.push({ time: performance.now(), tick: c.state.frameCount,
       label: r?.label, chain: r?.chain ?? 0, remaining: r?.remainingMs ?? 0, scale: r?.scale ?? 1 });
       if (window.__chainCadence.length < 900) window.__chainCadenceFrame = requestAnimationFrame(sample); };
     sample();
   });
   await startGameplayCapture(page);
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 30; i++) {
     await page.waitForFunction(() => { const w = window.__game.ctx.wands.wands[0]; return w.cooldown <= 0 && w.mana >= 10; }, null, { timeout: 8000 });
+    // Floor-1 slimes now hop at 0.85x (was 0.55x): take the shot while the next
+    // target is planted, not mid-hop, as a player would (real aim, real click).
+    await page.waitForFunction(() => {
+      const c = window.__game.ctx, targets = window.__chainTargets.filter(e => c.enemies.includes(e));
+      const e = targets.find(e => !c.fx.trickshot?.seen.has(e)) ?? targets[0];
+      return !e || (e.grounded && !e.windup && (e.knockT ?? 0) <= 0);
+    }, null, { timeout: 3000 }).catch(() => undefined);
     const target = await page.evaluate(() => {
       const c = window.__game.ctx, targets = window.__chainTargets.filter(e => c.enemies.includes(e));
       if (!targets.length) return null;

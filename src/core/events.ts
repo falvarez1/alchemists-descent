@@ -93,6 +93,8 @@ export interface EventMap {
   runComplete: { gold: number };
   /** A creature died to a material/physical consequence (combat/AlchemyKills). */
   alchemyKill: AlchemyKillInfo;
+  /** A world-anchored combat word (ui/Callouts): the Trickshot finisher's line, etc. */
+  combatCallout: { x: number; y: number; text: string; tone?: 'brass' | 'finisher' };
   /** The run is over (victory, out of return phials, or replaced). Summary UI, meta profile and share text listen. */
   runEnded: RunSummary;
   /** Return phials changed (death spent one, a refuge/Sanctum restored one). */

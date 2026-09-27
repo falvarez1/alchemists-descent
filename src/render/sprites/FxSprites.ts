@@ -48,6 +48,56 @@ export function drawLightningArcs(s: PixelSurface, ctx: Ctx): void {
   }
 }
 
+/**
+ * The Spark Bolt: a white-hot core with a cyan rim, a tapering electric streak
+ * ~14 cells back along its flight that flickers sideways like a live wire, and
+ * a soft additive halo the bloom picks up. Drawn at the surface's presentation
+ * step (half a cell on the fine surface), so it reads as a bolt of lightning,
+ * not a stray pixel.
+ */
+function drawSparkBolt(s: PixelSurface, x: number, y: number, vx: number, vy: number, boost: number, frame: number): void {
+  const set = (s.setFinePx ?? s.setPx).bind(s);
+  const add = (s.addFinePx ?? s.addPx).bind(s);
+  const step = s.pixelStep ?? 1;
+  const spd = Math.hypot(vx, vy) || 1;
+  const ux = vx / spd;
+  const uy = vy / spd;
+  const px = -uy;
+  const py = ux;
+  const TAIL = 14;
+  // Halo first (additive, falls off over 3 cells).
+  for (let oy = -3; oy <= 3; oy += step) {
+    for (let ox = -3; ox <= 3; ox += step) {
+      const r = Math.hypot(ox, oy);
+      if (r > 3 || r < 1) continue;
+      const f = 1 - r / 3;
+      add(x + ox, y + oy, 0.05 * f * boost, 0.24 * f * boost, 0.38 * f * boost);
+    }
+  }
+  // The streak: tapers from 1.5 cells wide at the head to a thread, and jitters
+  // a half-cell sideways per frame like a live wire.
+  for (let d = step; d <= TAIL; d += step) {
+    const f = 1 - d / (TAIL + 1);
+    const half = 0.25 + 0.5 * f;
+    const j = ((((frame * 7 + Math.round(d / step) * 13) % 5) - 2) * 0.22) * Math.min(1, d / 3);
+    const cx = x - ux * d + px * j;
+    const cy = y - uy * d + py * j;
+    for (let w = -half; w <= half + 1e-6; w += step) {
+      const edge = 1 - Math.abs(w) / (half + step);
+      add(cx + px * w, cy + py * w, 0.1 * f * boost * edge, (0.7 * f * f + 0.12 * f) * boost * edge, 1.0 * f * boost * edge);
+    }
+  }
+  // Core: a white-hot bead with a cyan rim.
+  for (let oy = -1.25; oy <= 1.25; oy += step) {
+    for (let ox = -1.25; ox <= 1.25; ox += step) {
+      const r = Math.hypot(ox, oy);
+      if (r > 1.3) continue;
+      if (r < 0.6) set(x + ox, y + oy, 1.2 * boost, 1.25 * boost, 1.3 * boost);
+      else set(x + ox, y + oy, 0.5 * boost, 0.95 * boost, 1.1 * boost);
+    }
+  }
+}
+
 /** Every live projectile, drawn per-type (bolt trails, fuses, singularities...). */
 export function drawProjectiles(s: PixelSurface, ctx: Ctx): void {
   const world = ctx.world;
@@ -58,12 +108,7 @@ export function drawProjectiles(s: PixelSurface, ctx: Ctx): void {
       gy = Math.floor(p.y);
     if (world.inBounds(gx, gy)) {
       if (p.type === 'bolt') {
-        const nx = p.vx / (Math.abs(p.vx) + Math.abs(p.vy) + 0.001),
-          ny = p.vy / (Math.abs(p.vx) + Math.abs(p.vy) + 0.001);
-        s.setPx(gx, gy, 0.4 * boost, 0.95 * boost, 1.0 * boost);
-        s.setPx(gx - nx * 2, gy - ny * 2, 0.0, 0.55 * boost, 0.75 * boost);
-        s.setPx(gx - nx * 4, gy - ny * 4, 0.0, 0.28 * boost, 0.42 * boost);
-        s.setPx(gx - nx * 6, gy - ny * 6, 0.0, 0.12 * boost, 0.2 * boost);
+        drawSparkBolt(s, p.x, p.y, p.vx, p.vy, boost, frameCount);
       } else if (p.type === 'bomb') {
         const fuse = p.life < 30 && frameCount % 8 < 4 ? 1.8 : 1.0;
         s.setPx(gx, gy, 0.16, 0.17, 0.22);
