@@ -13,6 +13,8 @@ import {
 } from '@/core/darkness';
 import type { Ctx, DarkZone, LevelRuntime } from '@/core/types';
 import { LightQuery, type QueryableLightField } from '@/render/LightQuery';
+import { Cell } from '@/sim/CellType';
+import { World } from '@/sim/World';
 
 function field(originX = 100, originY = 200, LW = 40, LH = 30): QueryableLightField & {
   lightR: Float32Array; lightG: Float32Array; lightB: Float32Array; wandField: Float32Array; lightOpen: Float32Array;
@@ -87,6 +89,74 @@ describe('designed darkness map', () => {
     // The Bellows has no base darkness: the lamp-lit Works stay readable.
     expect(FLOOR_DARKNESS.d1.base).toBe(0);
     expect(a![Math.floor(300 / DARK_CELL) * DARK_W + Math.floor(400 / DARK_CELL)]).toBe(255);
+  });
+});
+
+/**
+ * DARKNESS FOLLOWS THE ROCK (fix3): the dark zones read as rectangles — a light
+ * puzzle room's zone box (the room plus a 20-cell margin, feathered 30) was
+ * drawn over whatever lay under it, so its straight edges ran through lit
+ * caves and across solid rock. Given the level's grid, a zone's dark now
+ * travels only through what connects to its own air.
+ */
+describe('designed darkness follows the rock', () => {
+  const ROOM = { x0: 300, y0: 260, x1: 500, y1: 340 };
+  const ZONE: DarkZone = { x: 400, y: 300, rx: 120, ry: 90, shape: 'rect' };
+  function grid(): World {
+    const w = new World();
+    w.types.fill(Cell.Stone);
+    const open = (x0: number, y0: number, x1: number, y1: number): void => {
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) w.types[w.idx(x, y)] = Cell.Empty;
+    };
+    open(ROOM.x0, ROOM.y0, ROOM.x1, ROOM.y1);
+    open(501, 296, 700, 312); // a corridor out of the room's east side, through the zone's edge
+    open(290, 212, 480, 224); // a separate cave inside the zone's box (in its feathered rim), 35 cells of rock above the room
+    return w;
+  }
+
+  it('keeps a separate cave inside the zone box lit', () => {
+    const map = bakeDarkMap([ZONE], { base: 0, deep: 1 }, undefined, grid());
+    expect(sampleDarkMap(map, 400, 300)).toBeCloseTo(1, 2); // the room is black
+    // The geometric shape shades that cave (it lies inside the box's rim)…
+    let geometric = 0, followed = 0;
+    const box = bakeDarkMap([ZONE], { base: 0, deep: 1 });
+    for (let x = 300; x <= 470; x += 2) { geometric += sampleDarkMap(box, x, 222); followed += sampleDarkMap(map, x, 222); }
+    expect(geometric).toBeGreaterThan(1);
+    // …the rock-following dark does not reach it at all.
+    expect(followed).toBe(0);
+  });
+
+  it('fades along a corridor out of the zone instead of stopping at a drawn edge', () => {
+    const map = bakeDarkMap([ZONE], { base: 0, deep: 1 }, undefined, grid());
+    const along: number[] = [];
+    for (let x = 500; x <= 640; x += 2) along.push(sampleDarkMap(map, x, 304));
+    expect(along[0]).toBeGreaterThan(0.9);
+    expect(along[along.length - 1]).toBeLessThan(0.02);
+    // No cliff: the largest texel-to-texel drop is a small fraction of the fall.
+    let steepest = 0;
+    for (let i = 1; i < along.length; i++) steepest = Math.max(steepest, along[i - 1] - along[i]);
+    expect(steepest).toBeLessThan(0.15);
+    // ...and it is not a straight line across the corridor: the fade wanders
+    // with height as well as distance (compare the corridor's top and bottom rows).
+    let skew = 0;
+    for (let x = 500; x <= 560; x += 2) skew = Math.max(skew, Math.abs(sampleDarkMap(map, x, 297) - sampleDarkMap(map, x, 311)));
+    expect(skew).toBeGreaterThan(0.01);
+  });
+
+  it('soaks only a few cells into solid rock, so the zone box never shows in it', () => {
+    const map = bakeDarkMap([ZONE], { base: 0, deep: 1 }, undefined, grid());
+    // Rock just past the room's floor darkens; rock 18 cells in (still inside
+    // the zone box) keeps its light.
+    expect(sampleDarkMap(map, 360, 344)).toBeGreaterThan(0.5);
+    expect(sampleDarkMap(map, 360, 358)).toBeLessThan(0.15);
+  });
+
+  it('gameplay reads the same map the renderer draws', () => {
+    const rt = { def: { id: 'd2' }, darkZones: [ZONE], world: grid() };
+    const q = new LightQuery(ctxWith(rt as unknown as LevelRuntime), field());
+    expect(q.darkness(400, 300)).toBeCloseTo(1, 2);
+    expect(q.darkness(400, 222)).toBeCloseTo(FLOOR_DARKNESS.d2.base, 2);
+    expect(q.darkness(400, 222)).toBe(sampleDarkMap(darkMapFor(rt), 400, 222));
   });
 });
 

@@ -50,6 +50,20 @@ export const DARKNESS = {
   feather: 30,
   /** The rim wanders this many cells in and out (core/darkness rimWobble). */
   rimNoise: 10,
+  /**
+   * FOLLOWING THE ROCK (core/darkness bakeZoneFollowingRock): from a zone's
+   * core the dark travels only through what connects it. Along open air it
+   * holds full for this many cells of (feathered) depth…
+   */
+  airHold: 8,
+  /** …then fades over this many more, so a doorway or a cave mouth dims
+   *  gradually (the zone's rim sits ~22 cells into the fade: no larger than
+   *  the old shape, only never a straight drawn edge)… */
+  airFade: 40,
+  /** …and into rock this many times slower, so a room's walls go dark a few
+   *  cells deep while the rock beyond, and any cave the zone's box merely
+   *  overlaps, keep their light. */
+  rockSoak: 3,
   /** Dark-map resolution: one texel per this many cells (the light field's own grain). */
   mapCell: 2,
   /** Per-build smoothing of the darkness under the player (light builds every 2 frames). */
