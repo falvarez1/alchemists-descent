@@ -1,6 +1,7 @@
 /* The speaker in the corner (ui/SoundQuickControl): mute + volume sliders.
+   z-index 90: above the title screen (88) and the HUD, under the clip card (95) and modal dialogs.
    Shown on the title screen and in play; everywhere else it stays out of the way. */
-#sound-quick { position: absolute; z-index: 60; display: none; align-items: center; gap: 2px; pointer-events: auto;
+#sound-quick { position: absolute; z-index: 90; display: none; align-items: center; gap: 2px; pointer-events: auto;
   font: 400 calc(12px * var(--text-scale, 1))/1.3 ui-sans-serif, system-ui, sans-serif; color: #d1d8c7; }
 body.play-active #sound-quick, body.entry-active #sound-quick { display: flex; }
 /* In play it sits just left of "Pause · Esc"; on the title screen, top right. */
@@ -26,7 +27,14 @@ body.entry-active #sound-panel { bottom: auto; top: calc(100% + 8px); transform-
 #sound-panel .sound-panel-title { margin: 0 0 2px; font: 500 18px/1 'Cormorant Garamond', Georgia, serif; color: #efe6cc; }
 #sound-panel label { display: grid; grid-template-columns: 72px 1fr 44px; align-items: center; gap: 8px; }
 #sound-panel output { text-align: right; color: #bdc9bb; font-variant-numeric: tabular-nums; }
-#sound-panel input[type='range'] { width: 100%; accent-color: #e9d49c; height: 18px; margin: 0; }
+/* Same brass sliders as Controls & comfort (living-descent.css .settings-volume). */
+#sound-panel input[type='range'] { width: 100%; height: 18px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
+#sound-panel input[type='range']::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, #d5b57b var(--fill, 80%), #2e3f3c var(--fill, 80%)); }
+#sound-panel input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: #e6dfca; border: 2px solid #d5b57b; }
+#sound-panel input[type='range']::-moz-range-track { height: 4px; border-radius: 2px; background: #2e3f3c; }
+#sound-panel input[type='range']::-moz-range-progress { height: 4px; border-radius: 2px; background: #d5b57b; }
+#sound-panel input[type='range']::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: #e6dfca; border: 2px solid #d5b57b; }
+#sound-quick.muted #sound-panel input[data-channel='master']::-webkit-slider-runnable-track { background: #2e3f3c; }
 @keyframes sound-panel-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { #sound-panel { animation: none; } #sound-quick .sound-caret svg { transition: none; } }
 @media (max-width: 720px) { body.play-active #sound-quick { right: calc(24px + var(--pause-w, 104px)); bottom: 12px; } }
