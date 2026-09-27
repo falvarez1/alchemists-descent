@@ -27,7 +27,8 @@ export { causeForCell, causeForExplosion } from '@/core/alchemyCause';
  * spell's own, so a spark that sets a slime alight or leaves it crackling on dry
  * stone is still a spell kill. The world's fire has fuel (oil on the body, oil
  * or lava touching it) or was walked into; the world's current came through a
- * conductor (a wet body, charged water or metal) or was never cast at it.
+ * conductor (a wet body, charged water or metal), or crossed another liquid
+ * (blood, slime) to reach a creature the wand never struck.
  */
 
 /** Alchemical kills within 3 s (ticks) of the last one stack into a chain. */
@@ -98,9 +99,11 @@ export function spellTouched(mem: HitMemory, frame: number): boolean {
  *   through water, metal or a wet body): the world's.
  * - Once the world's, it stays the world's while it lasts — a bolt into a
  *   creature already burning in an oil fire does not take the fire over.
- * - Newly taken hold, or (re)lit by fresh contact: the wand's if the wand struck
- *   within SPELL_STATUS_TICKS (its own blast fire and live air), else the world's
- *   (a fire it walked into, a current nobody cast at it, blood the charge crossed).
+ * - Newly taken hold, or (re)lit/recharged by fresh contact: the wand's if the
+ *   wand struck within SPELL_STATUS_TICKS (its own blast fire and live air);
+ *   otherwise the world's when `strayIsWorld` (a fire walked into; a current
+ *   that crossed some other liquid — blood, slime, oil — to reach it), else the
+ *   wand's (bare blast residue in air or stone cannot travel: it is the bolt's).
  * - Otherwise it keeps its origin.
  */
 export function resolveStatusOrigin(
@@ -108,36 +111,51 @@ export function resolveStatusOrigin(
   active: boolean,
   worldForced: boolean,
   contact: boolean,
+  strayIsWorld: boolean,
   touched: boolean,
 ): StatusOrigin | null {
   if (!active) return null;
   if (worldForced || prev === 'world') return 'world';
-  if (prev === null || contact) return touched ? 'spell' : 'world';
+  if (prev === null || contact) return touched || !strayIsWorld ? 'spell' : 'world';
   return prev;
 }
 
 /**
- * What a harm tick counts as: the largest share the WORLD dealt names the cause
- * (toxic sludge is always the world's); when every share is the wand's own fire
- * or current, it is a direct blow — the spell kill pays the ordinary bounty.
+ * What a harm tick counts as — who dealt the killing blow when fire, current
+ * and sludge all land at once. The WORLD's shares (toxic sludge always; fire or
+ * current whose origin is the world's) are weighed against the WAND's own: if
+ * the world dealt at least as much, its largest share names the cause (a slime
+ * burning in oil the spark lit is FLAMBÉED although the spark's current still
+ * crackles on it); if the wand dealt more (its zap landing the killing tick, a
+ * speck of cooked-gore sludge beside a body its own fire is eating), the tick is
+ * a direct blow — the spell kill pays the ordinary bounty.
  */
 export function statusBlowCause(
   blow: Pick<StatusBlow, 'burn' | 'shock' | 'toxic'>,
   burn: StatusOrigin | null,
   shock: StatusOrigin | null,
 ): EnemyDamageSource {
+  let world = 0;
+  let spell = 0;
   let cause: EnemyDamageSource = 'direct';
   let best = 0;
-  if (blow.toxic > best) {
+  if (blow.toxic > 0) {
+    world += blow.toxic;
     best = blow.toxic;
     cause = 'poisoned';
   }
-  if (burn === 'world' && blow.burn > best) {
-    best = blow.burn;
-    cause = 'burned';
-  }
-  if (shock === 'world' && blow.shock > best) cause = 'shorted';
-  return cause;
+  if (burn === 'world') {
+    world += blow.burn;
+    if (blow.burn > best) {
+      best = blow.burn;
+      cause = 'burned';
+    }
+  } else spell += blow.burn;
+  if (shock === 'world') {
+    world += blow.shock;
+    if (blow.shock > best) cause = 'shorted';
+  } else spell += blow.shock;
+  return world > 0 && world >= spell ? cause : 'direct';
 }
 
 /** Did the alchemist set this death in motion? Generous: engagement range, a recent touch or kick. */
@@ -210,12 +228,12 @@ export class AlchemyKills implements AlchemyKillsApi {
     const frame = this.ctx.state.frameCount;
     const m = this.remember(e);
     const touched = spellTouched(m, frame);
-    m.burnOrigin = resolveStatusOrigin(m.burnOrigin ?? null, blow.burning, blow.fueled, blow.heatContact, touched);
-    m.shockOrigin = resolveStatusOrigin(m.shockOrigin ?? null, blow.electrified, blow.conducted, blow.chargeContact, touched);
+    m.burnOrigin = resolveStatusOrigin(m.burnOrigin ?? null, blow.burning, blow.fueled, blow.heatContact, true, touched);
+    m.shockOrigin = resolveStatusOrigin(m.shockOrigin ?? null, blow.electrified, blow.conducted, blow.chargeContact, blow.liquidCharge, touched);
     // A share with no status behind it (flame licking a body that has not
     // caught) is judged on the spot by the same rule.
-    const burn = m.burnOrigin ?? (blow.burn > 0 ? resolveStatusOrigin(null, true, blow.fueled, true, touched) : null);
-    const shock = m.shockOrigin ?? (blow.shock > 0 ? resolveStatusOrigin(null, true, blow.conducted, true, touched) : null);
+    const burn = m.burnOrigin ?? (blow.burn > 0 ? resolveStatusOrigin(null, true, blow.fueled, true, true, touched) : null);
+    const shock = m.shockOrigin ?? (blow.shock > 0 ? resolveStatusOrigin(null, true, blow.conducted, true, blow.liquidCharge, touched) : null);
     const cause = statusBlowCause(blow, burn, shock);
     if (blow.burn + blow.shock + blow.toxic > 0) {
       m.source = cause;

@@ -160,7 +160,7 @@ async function shoot(name, live = []) {
 // crackling or alight a few ticks after the last bolt. That is still the
 // spell's kill: no callout, no bonus (QA: 5 of 8 were SHORTED/FLAMBÉED).
 {
-  const reps = 8;
+  const reps = 10;
   const rows = [];
   let live = [];
   for (let rep = 0; rep < reps; rep++) {
@@ -168,11 +168,23 @@ async function shoot(name, live = []) {
       const A = window.__arena, ctx = window.__game.ctx;
       A.reset();
       const slime = A.spawn('slime', 500 + (rep % 4) * 20, A.FLOOR - 1);
+      // Real chemistry this case keeps out: the bolt's fire cooks the slime's
+      // spilled goo into acid, and acid digests goo into toxic sludge — a slime
+      // dying in a POOL of that is honestly POISONED. Swept each tick so the case
+      // isolates the spark's own fire and current.
+      const W = ctx.world;
+      const sweep = () => {
+        for (let y = A.FLOOR - 40; y < A.FLOOR; y++) for (let x = 262; x < 899; x++) {
+          const i = W.idx(x, y);
+          if (W.types[i] === 7 || W.types[i] === 24) W.clearCellAt(i);
+        }
+      };
       let casts = 0, lingering = 0;
       for (let k = 0; k < 30 && ctx.enemies.includes(slime); k++) {
         A.cast(slime.x, slime.y - 4); casts++;
         for (let f = 0; f < 40 && ctx.enemies.includes(slime); f++) {
           const hadStatus = slime.status.electrified > 0 || slime.status.burning > 0;
+          sweep();
           A.tick(1);
           if (!ctx.enemies.includes(slime) && hadStatus) lingering++;
         }

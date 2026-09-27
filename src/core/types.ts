@@ -1923,6 +1923,9 @@ export interface StatusBlow {
   heatContact: boolean;
   /** Charge reached the body through a conductor: it is wet, or charged water/metal touches it. */
   conducted: boolean;
+  /** Charge reached it through another liquid (blood, slime, oil): the world's
+   *  unless the wand just struck this creature (its own spatter conducts too). */
+  liquidCharge: boolean;
   /** Any charged cell touches the body this sample. */
   chargeContact: boolean;
 }

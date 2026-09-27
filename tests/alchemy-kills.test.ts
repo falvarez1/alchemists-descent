@@ -144,33 +144,41 @@ describe('alchemical kill classification', () => {
 function blow(overrides: Partial<StatusBlow> = {}): StatusBlow {
   return {
     burn: 0, shock: 0, toxic: 0, burning: false, electrified: false,
-    fueled: false, heatContact: false, conducted: false, chargeContact: false, ...overrides,
+    fueled: false, heatContact: false, conducted: false, liquidCharge: false, chargeContact: false, ...overrides,
   };
 }
 
 describe('whose fire, whose current: the attribution rule', () => {
   it('names a status origin from the grid and the wand’s last strike', () => {
+    // (prev, active, worldForced, contact, strayIsWorld, touched)
     // gone out: forgotten
-    expect(resolveStatusOrigin('world', false, true, true, false)).toBeNull();
+    expect(resolveStatusOrigin('world', false, true, true, true, false)).toBeNull();
     // fuel or a conductor makes it the world's, whoever struck
-    expect(resolveStatusOrigin(null, true, true, true, true)).toBe('world');
-    expect(resolveStatusOrigin('spell', true, true, false, true)).toBe('world');
-    // new, right after the wand struck: the spell's own
-    expect(resolveStatusOrigin(null, true, false, true, true)).toBe('spell');
-    // new with no strike behind it: the world's (a fire walked into, a current nobody cast)
-    expect(resolveStatusOrigin(null, true, false, true, false)).toBe('world');
+    expect(resolveStatusOrigin(null, true, true, true, false, true)).toBe('world');
+    expect(resolveStatusOrigin('spell', true, true, false, false, true)).toBe('world');
+    // new, right after the wand struck: the spell's own (even across its own spatter)
+    expect(resolveStatusOrigin(null, true, false, true, true, true)).toBe('spell');
+    // new with no strike behind it: a fire walked into, a current across blood — the world's
+    expect(resolveStatusOrigin(null, true, false, true, true, false)).toBe('world');
+    // ...but bare blast residue in air or stone cannot travel: it is the bolt's
+    expect(resolveStatusOrigin(null, true, false, true, false, false)).toBe('spell');
     // the world's stays the world's; the spell's keeps unless relit outside the window
-    expect(resolveStatusOrigin('world', true, false, true, true)).toBe('world');
-    expect(resolveStatusOrigin('spell', true, false, false, false)).toBe('spell');
-    expect(resolveStatusOrigin('spell', true, false, true, false)).toBe('world');
+    expect(resolveStatusOrigin('world', true, false, true, false, true)).toBe('world');
+    expect(resolveStatusOrigin('spell', true, false, false, true, false)).toBe('spell');
+    expect(resolveStatusOrigin('spell', true, false, true, true, false)).toBe('world');
   });
 
-  it('lets the largest WORLD share name the cause, else the tick is the wand’s', () => {
-    expect(statusBlowCause({ burn: 0.12, shock: 3.2, toxic: 0 }, 'spell', 'spell')).toBe('direct');
-    // the QA case: an oil fire lit by a spark, the spark's zap landing the same tick
-    expect(statusBlowCause({ burn: 0.12, shock: 3.2, toxic: 0 }, 'world', 'spell')).toBe('burned');
-    expect(statusBlowCause({ burn: 0.12, shock: 0.6, toxic: 0 }, 'world', 'world')).toBe('shorted');
-    expect(statusBlowCause({ burn: 0.3, shock: 0, toxic: 0.2 }, 'spell', null)).toBe('poisoned');
+  it('weighs the world’s shares against the wand’s; the larger dealt the blow', () => {
+    // all the wand's own fire and current: a direct blow
+    expect(statusBlowCause({ burn: 0.3, shock: 3.2, toxic: 0 }, 'spell', 'spell')).toBe('direct');
+    // the QA case: a slime burning in oil the spark lit, the spark's current still on it
+    expect(statusBlowCause({ burn: 0.3, shock: 0.2, toxic: 0 }, 'world', 'spell')).toBe('burned');
+    // ...but the tick the spark's zap lands (3 hp) is the spark's blow
+    expect(statusBlowCause({ burn: 0.3, shock: 3.2, toxic: 0 }, 'world', 'spell')).toBe('direct');
+    expect(statusBlowCause({ burn: 0.3, shock: 0.6, toxic: 0 }, 'world', 'world')).toBe('shorted');
+    // a pool of sludge poisons; a speck of cooked gore beside the wand's own fire does not
+    expect(statusBlowCause({ burn: 0.3, shock: 0, toxic: 1.2 }, 'spell', null)).toBe('poisoned');
+    expect(statusBlowCause({ burn: 0.3, shock: 0.2, toxic: 0.4 }, 'spell', 'spell')).toBe('direct');
   });
 
   it('counts a strike as the wand’s only when it was not the boot', () => {
@@ -209,12 +217,14 @@ describe('AlchemyKills.noteStatus: spell kills stay spell kills', () => {
     expect(kills).toHaveLength(0);
   });
 
-  it('a spark into oil the slime sits in is FLAMBÉED, even when its zap lands the killing tick', () => {
+  it('a spark into oil the slime sits in is FLAMBÉED while its current still crackles on it', () => {
     const { ctx, alchemy, kills } = harness(7000);
     const e = enemy('slime');
     alchemy.noteHit(e, 'direct');
     ctx.state.frameCount += 2;
     alchemy.noteStatus(e, blow({ burn: 0.3, shock: 3.2, burning: true, electrified: true, fueled: true, heatContact: true, chargeContact: true }));
+    ctx.state.frameCount += 2;
+    alchemy.noteStatus(e, blow({ burn: 0.3, shock: 0.2, burning: true, electrified: true, fueled: true, heatContact: true }));
     expect(alchemy.onKill(e)?.cause).toBe('burned');
     expect(kills).toHaveLength(1);
   });
@@ -226,11 +236,26 @@ describe('AlchemyKills.noteStatus: spell kills stay spell kills', () => {
     ctx.state.frameCount += 2;
     expect(alchemy.noteStatus(wet, blow({ shock: 0.6, electrified: true, conducted: true, chargeContact: true }))).toBe('shorted');
     expect(alchemy.onKill(wet)?.cause).toBe('shorted');
-    // nobody cast at this one: a live rail, a Rillback's pulse, blood the current crossed
+    // nobody cast at this one: the current crossed a blood pool to reach it
     const bystander = enemy('slime');
-    alchemy.noteStatus(bystander, blow({ shock: 3.2, electrified: true, chargeContact: true }));
+    alchemy.noteStatus(bystander, blow({ shock: 3.2, electrified: true, liquidCharge: true, chargeContact: true }));
     expect(alchemy.onKill(bystander)?.cause).toBe('shorted');
     expect(kills.map((k) => k.cause)).toEqual(['shorted', 'shorted']);
+  });
+
+  it('a slime that hops into a missed bolt’s live air is still the spell’s, not SHORTED', () => {
+    const { ctx, alchemy, kills } = harness(8500);
+    const e = enemy('slime');
+    alchemy.noteHit(e, 'direct');
+    ctx.state.frameCount += SPELL_STATUS_TICKS + 20; // the next bolt missed; its air is still live
+    expect(alchemy.noteStatus(e, blow({ shock: 3.2, electrified: true, chargeContact: true }))).toBe('direct');
+    expect(alchemy.onKill(e)).toBeNull();
+    // its own spatter under it, charged by the wand's hit, is not a pool it was shorted in
+    const bled = enemy('slime');
+    alchemy.noteHit(bled, 'direct');
+    ctx.state.frameCount += 2;
+    expect(alchemy.noteStatus(bled, blow({ shock: 0.2, electrified: true, liquidCharge: true, chargeContact: true }))).toBe('direct');
+    expect(kills).toHaveLength(0);
   });
 
   it('a fire walked into, or relit long after the wand’s strike, is the world’s', () => {

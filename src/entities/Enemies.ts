@@ -2092,6 +2092,7 @@ export class Enemies implements EnemyControlApi {
         fueled: oilTouch || e.status.oiled > 0,
         heatContact: true,
         conducted: false,
+        liquidCharge: false,
         chargeContact: false,
       });
     } else {
@@ -2362,6 +2363,7 @@ export class Enemies implements EnemyControlApi {
           fueled: eff.fueled,
           heatContact: eff.heatContact,
           conducted: eff.conducted,
+          liquidCharge: eff.liquidCharge,
           chargeContact: eff.chargeContact,
         });
         if (eff.damage > 0) e.hp -= eff.damage;

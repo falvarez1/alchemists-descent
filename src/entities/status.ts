@@ -6,7 +6,7 @@
 // rewrite of entity-vs-cell rules.
 
 import type { Ctx, EntityStatus } from '@/core/types';
-import { Cell } from '@/sim/CellType';
+import { Cell, isLiquid } from '@/sim/CellType';
 import { fireColor, packRGB, steamColor } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
 
@@ -48,6 +48,8 @@ export interface BodyCellSample {
    *  that reached it through a conductor (blood is left out — a creature's own
    *  spatter from the wand's hit must not turn the wand's current into the world's). */
   conductorCharged: number;
+  /** Charged cells of any OTHER liquid (blood, slime, oil, acid...) touching or underfoot. */
+  liquidCharged: number;
   /** Strongest charge on any sampled cell (0 when none): how hot the current is HERE. */
   maxCharge: number;
   toxic: number;
@@ -78,6 +80,7 @@ export interface StatusSampleResult {
   fueled: boolean;
   heatContact: boolean;
   conducted: boolean;
+  liquidCharge: boolean;
   chargeContact: boolean;
   healing: number;
   teleportTouch: boolean;
@@ -148,6 +151,7 @@ export function sampleBodyCells(
     nitrogen: 0,
     charged: 0,
     conductorCharged: 0,
+    liquidCharged: 0,
     maxCharge: 0,
     toxic: 0,
     healium: 0,
@@ -202,6 +206,7 @@ export function sampleBodyCells(
       if (world.charge[i] > 0) {
         sample.charged++;
         if (t === Cell.Water || t === Cell.Metal || t === Cell.Lava) sample.conductorCharged++;
+        else if (isLiquid(t)) sample.liquidCharged++;
         if (world.charge[i] > sample.maxCharge) sample.maxCharge = world.charge[i];
       }
     }
@@ -218,6 +223,7 @@ export function sampleBodyCells(
       sample.charged++;
       const ut = world.types[ui];
       if (ut === Cell.Water || ut === Cell.Metal || ut === Cell.Lava) sample.conductorCharged++;
+      else if (isLiquid(ut)) sample.liquidCharged++;
       if (c > sample.maxCharge) sample.maxCharge = c;
     }
   }
@@ -438,6 +444,7 @@ export function sampleAndTickStatus(
     fueled: st.oiled > 0 || sample.oil > 0 || sample.lava > 0,
     heatContact: sample.fire > 0 || sample.lava > 0,
     conducted: st.wet > 0 || sample.conductorCharged > 0,
+    liquidCharge: sample.liquidCharged > 0,
     chargeContact: sample.charged > 0,
     healing,
     teleportTouch: !immune?.teleportium && sample.teleportium > 0,

@@ -467,14 +467,17 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   striking that creature is the spell's (`AlchemyKills.noteStatus`), so a spark
   that leaves a dry slime crackling or alight on stone is a spell kill however
   long it burns. It becomes the WORLD's — and the kill alchemical — when the
-  fire has fuel (oiled body, oil or lava touching: FLAMBÉED even if the spark's
-  zap lands the killing tick), when the current came through a conductor (a wet
-  body, charged water or metal touching or underfoot: SHORTED), when it was
-  (re)lit or charged with no wand strike behind it (a fire walked into, a live
-  rail, blood a current crossed), and once the world's it stays the world's
-  while it lasts. A lethal status tick is named by its largest world share
-  (toxic is always the world's); with none, it is direct. A status tick never
-  SHATTERS a frozen body. Credit is generous: within 280 cells of the
+  fire has fuel (oiled body, oil or lava touching: FLAMBÉED although the spark's
+  current still crackles on it), when the current came through a conductor (a
+  wet body, charged water or metal touching or underfoot: SHORTED), when it was
+  (re)lit with no wand strike behind it (a fire walked into), or charged
+  through another liquid (a blood pool, spilled goo) the wand had not just struck;
+  bare blast residue in air or stone cannot travel, so it stays the bolt's even
+  after a miss. Once the world's it stays the world's while it lasts. A lethal
+  status tick weighs the world's shares (toxic sludge always counts) against
+  the wand's: if the world dealt at least as much, its largest share names the
+  cause; if the wand's own zap or fire dealt more, the tick is direct. A status
+  tick never SHATTERS a frozen body. Credit is generous: within 280 cells of the
   wizard, or struck by him in the last 20 s, or kick-launched in the last 3 s.
   Kills within 3 s (180 ticks) chain; the chain resets on a level change.
   **Payout, grid-honest:** bonus gold = 10 + 35% of bounty, ×1 / ×1.5 / ×2 /
