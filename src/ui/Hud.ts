@@ -16,6 +16,9 @@ import {
   introControlHintForObjective,
 } from '@/game/introObjectives';
 import { cardIconName, makeIconCanvas } from '@/ui/icons';
+import { ToastStack } from '@/ui/ToastStack';
+import { titleCaseName } from '@/core/strings';
+import { FLOOR_LOOKS, floorLookFor } from '@/config/floorLooks';
 
 /** Non-null getElementById — all HUD elements exist statically in index.html. */
 function el(id: string): HTMLElement {
@@ -43,7 +46,7 @@ export function contextualObjectiveText(ctx: Ctx, fallback: string, benchNudgeFr
     const dy = waystone.y - ctx.player.y;
     return dx * dx + dy * dy <= WAYSTONE_OBJECTIVE_RADIUS_SQ;
   });
-  if (nearUnlitWaystone && !runtime.keyTaken) return 'LIGHT WAYSTONE: BRING FIRE';
+  if (nearUnlitWaystone && !runtime.keyTaken) return FLOOR_OBJECTIVE_WAYSTONE;
   if (runtime.portal) {
     if (runtime.keyTaken) return INTRO_OBJECTIVE.returnPortal;
     return INTRO_PRE_KEY_OBJECTIVES.has(fallback) && !introCompletionCardSlotted(ctx)
@@ -54,9 +57,17 @@ export function contextualObjectiveText(ctx: Ctx, fallback: string, benchNudgeFr
 }
 
 export function cardGrantBenchCue(ctx: Ctx): string {
-  if (ctx.state.mode !== 'play') return 'NEW SPELL CARD';
+  if (ctx.state.mode !== 'play') return 'A new spell card';
   // The bench opens anywhere now — just slot it whenever you like.
-  return 'NEW SPELL CARD — PRESS B TO SLOT';
+  return 'A new spell card. Seat it at the wand bench (B).';
+}
+
+/** Near an unlit waystone on a generated floor (house tone; see introObjectives). */
+export const FLOOR_OBJECTIVE_WAYSTONE = 'Bring fire to the waystone to set your return point.';
+
+/** Level title card kicker. A generic hook: the run layer may say "Floor 2 of 4". */
+export function levelTitleKicker(depth: number): string {
+  return 'Depth ' + depth;
 }
 
 // ===================== HUD =====================
@@ -72,6 +83,13 @@ export class Hud {
   private flaskMaterial: number | null | undefined = undefined;
   private readonly flaskSlots: Array<{ root: HTMLElement; fill: HTMLElement; count: HTMLElement; name: HTMLElement }> = [];
   private readonly soundCaption = document.createElement('div');
+  private readonly toastStack: ToastStack;
+  /** Empty slot beside the vitals, reserved for the run layer's return-phial row. */
+  private readonly vitalsAside = document.createElement('div');
+  /** Trailing "loss" bars behind HP/mana: the chunk you just lost lingers, then drains. */
+  private readonly vitalGhosts: Array<{ ghost: HTMLElement; fraction: number; dropAt: number }> = [];
+  private readonly bannerKicker = document.createElement('div');
+  private readonly bannerRule = document.createElement('div');
   private readonly trickshotReadout = document.createElement('div');
   private captionUntil = 0;
   /** Filled hotbar tiles of the ACTIVE wand (+ costs and slot positions). */
@@ -85,7 +103,11 @@ export class Hud {
   private displayedGold = 0;
   /** Frame the last dry-fire flash started (clears the class after it). */
   private dryFlashUntil = 0;
-  private objectiveBase = 'FIND THE GOLDEN KEY';
+  private objectiveBase: string = INTRO_OBJECTIVE.findKey;
+  private bannerTimer = 0;
+  /** An arrival title waiting for the transition curtain to lift. */
+  private pendingTitle: { big: string; small: string; kicker: string } | null = null;
+  private titleFallback = 0;
   private benchObjectiveUntil = 0;
 
   // Static HUD nodes resolved once (all exist in index.html). update() runs
@@ -112,6 +134,31 @@ export class Hud {
     el('canvas-holder').appendChild(this.trickshotReadout);
     this.soundCaption.id = 'sound-caption'; this.soundCaption.setAttribute('aria-live', 'polite');
     el('objective').closest('.wave-readout')!.appendChild(this.soundCaption);
+    // Toasts are the right-hand event log: they flow beneath the objective and
+    // its caption, so no length of objective can ever overlap them.
+    const toastHost = el('toast-stack');
+    el('objective').closest('.wave-readout')!.appendChild(toastHost);
+    this.toastStack = new ToastStack(toastHost);
+    this.vitalsAside.id = 'vitals-aside';
+    this.vitalsAside.className = 'vitals-aside';
+    el('hud-left').appendChild(this.vitalsAside);
+    for (const id of ['hp-fill', 'mana-fill']) {
+      const fill = el(id);
+      const ghost = document.createElement('div');
+      ghost.className = 'vital-ghost';
+      ghost.setAttribute('aria-hidden', 'true');
+      fill.parentElement!.insertBefore(ghost, fill);
+      this.vitalGhosts.push({ ghost, fraction: 1, dropAt: 0 });
+    }
+    // Title card: a kicker above the name and a copper rule under it.
+    const banner = el('wave-banner');
+    banner.classList.add('title-card');
+    this.bannerKicker.className = 'title-card-kicker';
+    this.bannerKicker.id = 'banner-kicker';
+    this.bannerRule.className = 'title-card-rule';
+    this.bannerRule.setAttribute('aria-hidden', 'true');
+    banner.insertBefore(this.bannerKicker, el('banner-big'));
+    banner.insertBefore(this.bannerRule, el('banner-small'));
     this.disposers.push(ctx.events.on('habitatSound', ({ kind, x, y }) => {
       if (!ctx.state.creatureCaptions || performance.now() < this.captionUntil) return;
       const direction = Math.abs(x - ctx.player.x) < 35 ? (y < ctx.player.y - 30 ? 'above' : 'nearby') : x < ctx.player.x ? 'left' : 'right';
@@ -160,10 +207,23 @@ export class Hud {
 
     this.disposers.push(ctx.events.on('waveBanner', ({ big, small }) => this.showBanner(big, small)));
 
-    // The descent: depth readout + arrival banner whenever a level is entered.
+    // The descent: depth readout + one house-style title card on every arrival
+    // (the hand-built Works included), with the floor's own epigraph.
+    // The card waits for the transition curtain to lift, so its entrance
+    // plays in view rather than behind the veil (with a fallback if no
+    // curtain comes down, e.g. an in-place restore).
     this.disposers.push(ctx.events.on('levelChanged', ({ depth, name }) => {
       el('wave-num').textContent = 'D' + depth;
-      if (!ctx.levels.current?.living) this.showBanner('D' + depth + ' — ' + name, 'THE DESCENT CONTINUES');
+      const look = ctx.levels.current ? floorLookFor(ctx) : FLOOR_LOOKS.earthen;
+      const card = { big: titleCaseName(name), small: look.epigraph, kicker: levelTitleKicker(depth) };
+      this.pendingTitle = card;
+      window.clearTimeout(this.titleFallback);
+      this.titleFallback = this.setHudTimeout(() => this.revealPendingTitle(), 1600);
+    }));
+    this.disposers.push(ctx.events.on('levelCurtain', ({ visible, holdMs = 0 }) => {
+      if (visible || !this.pendingTitle) return;
+      window.clearTimeout(this.titleFallback);
+      this.titleFallback = this.setHudTimeout(() => this.revealPendingTitle(), holdMs + 120);
     }));
 
     this.disposers.push(ctx.events.on('waystoneLit', () => {
@@ -204,15 +264,7 @@ export class Hud {
     const onVictoryReturn = (): void => window.location.reload();
     el('vic-return').addEventListener('click', onVictoryReturn);
     this.disposers.push(() => el('vic-return').removeEventListener('click', onVictoryReturn));
-    this.disposers.push(ctx.events.on('toast', ({ text }) => {
-      const stack = el('toast-stack');
-      const node = document.createElement('div');
-      node.className = 'toast';
-      node.textContent = text;
-      stack.appendChild(node);
-      while (stack.children.length > 4) stack.removeChild(stack.firstChild!);
-      this.setHudTimeout(() => node.remove(), 2700);
-    }));
+    this.disposers.push(ctx.events.on('toast', ({ text }) => this.toastStack.push(text)));
 
     // The hotbar mirrors the active wand; any loadout change rebuilds it.
     this.disposers.push(ctx.events.on('wandChanged', () => this.buildHotbar()));
@@ -274,6 +326,12 @@ export class Hud {
 
   dispose(): void {
     this.soundCaption.remove();
+    this.toastStack.clear();
+    this.vitalsAside.remove();
+    for (const { ghost } of this.vitalGhosts.splice(0)) ghost.remove();
+    this.bannerKicker.remove();
+    this.bannerRule.remove();
+    el('wave-banner').classList.remove('title-card', 'level', 'show');
     this.trickshotReadout.remove();
     for (const dispose of this.disposers.splice(0)) dispose();
     for (const timeout of this.timeouts) window.clearTimeout(timeout);
@@ -315,12 +373,29 @@ export class Hud {
     }
   }
 
-  private showBanner(big: string, small: string): void {
+  private revealPendingTitle(): void {
+    const card = this.pendingTitle;
+    if (!card) return;
+    this.pendingTitle = null;
+    this.showBanner(card.big, card.small, { kicker: card.kicker, title: true });
+  }
+
+  /**
+   * The centre card. Level arrivals get the full title treatment (kicker,
+   * tracked serif name, copper rule, epigraph) and hold longer; event
+   * banners (waystone lit, card found) reuse the same house style, smaller.
+   */
+  private showBanner(big: string, small: string, opts: { kicker?: string; title?: boolean } = {}): void {
     el('banner-big').textContent = big;
     el('banner-small').textContent = small;
+    this.bannerKicker.textContent = opts.kicker ?? '';
     const banner = el('wave-banner');
+    banner.classList.remove('show');
+    banner.classList.toggle('level', opts.title === true);
+    void banner.offsetWidth; // restart the entrance choreography
     banner.classList.add('show');
-    this.setHudTimeout(() => banner.classList.remove('show'), 2200);
+    window.clearTimeout(this.bannerTimer);
+    this.bannerTimer = this.setHudTimeout(() => banner.classList.remove('show'), opts.title ? 3600 : 2200);
   }
 
   private buildGodTools(): void {
@@ -406,6 +481,30 @@ export class Hud {
     });
     node.dataset.introHint = 'true';
     node.dataset.introHintKey = key;
+  }
+
+  /**
+   * The loss ghost holds a lost chunk for a beat, then drains (house.css
+   * transition). Only losses animate; gains (regen, drinks) snap the ghost up
+   * under the fill once any drain in flight has finished, so a trickle of
+   * regeneration never restarts — and stalls — the drain.
+   */
+  private updateVitalGhost(index: number, fraction: number): void {
+    const entry = this.vitalGhosts[index];
+    if (!entry) return;
+    const next = Math.max(0, Math.min(1, fraction));
+    const now = performance.now();
+    if (next < entry.fraction - 0.002) {
+      entry.fraction = next;
+      entry.dropAt = now;
+      entry.ghost.classList.remove('snap');
+    } else if (next > entry.fraction + 0.002 && now - entry.dropAt > 900) {
+      entry.fraction = next;
+      entry.ghost.classList.add('snap');
+    } else {
+      return;
+    }
+    entry.ghost.style.width = `calc((100% - 4px) * ${next.toFixed(4)})`;
   }
 
   /** Tier-2 contextual hint: the nearest interactable's "what to do" line. */
@@ -525,6 +624,8 @@ export class Hud {
     // the mana bar tracks the wand with no extra wiring here.
     this.manaFill.style.width = Math.max(0, (player.mana / player.maxMana) * 100) + '%';
     this.levitFill.style.width = Math.max(0, (player.levit / player.maxLevit) * 100) + '%';
+    this.updateVitalGhost(0, player.hp / player.maxHp);
+    this.updateVitalGhost(1, player.mana / player.maxMana);
 
     // Critical-state bar language: HP pulses near death, LEV blinks on fumes,
     // the mana track recovers from its dry-fire flinch.
