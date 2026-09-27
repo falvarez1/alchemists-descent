@@ -42,6 +42,7 @@ import {
 import { SKY } from '@/render/skyAtmosphere';
 import { PICKUP_COLOR } from '@/core/pickupDefs';
 import { drawHeldLeg, drawLooseLeg } from '@/render/sprites/CreatureArt';
+import { drawTelekinesis } from '@/render/sprites/TelekinesisArt';
 import { looseLegPose } from '@/combat/LooseWeaverLeg';
 import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
@@ -1055,6 +1056,7 @@ export class FrameComposer implements PixelSurface {
     }
     this.drawOffsetX = 0; this.drawOffsetY = 0;
     drawHeldLeg(this, this.light, ctx, this.alpha);
+    drawTelekinesis(this, ctx);
     drawPlayerRagdollSprite(this, this.light, ctx, this.alpha);
     drawTrickshotOverlay(this, ctx);
   }

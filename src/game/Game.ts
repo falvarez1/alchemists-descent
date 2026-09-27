@@ -9,6 +9,7 @@ import { advanceTrickshotClock } from '@/combat/Trickshot';
 import { TeaMachine } from '@/game/TeaMachine';
 import { TeaMachineOverlay } from '@/ui/TeaMachineOverlay';
 import { updateLegSwing } from '@/combat/WeaverLimbs';
+import { clearTelekinesis, updateTelekinesis } from '@/combat/Telekinesis';
 import { createCorpsesApi } from '@/creatures/corpses';
 import { ExpeditionEntry } from '@/ui/ExpeditionEntry';
 import { randomSeed } from '@/core/rng';
@@ -243,8 +244,9 @@ export class Game {
     const alchemy = new AlchemyKills(ctx);
     ctx.alchemy = alchemy;
     this.disposables.push(alchemy);
-    // The dead as mass: the sim's blasts, the boot and the plates reach the remains.
+    // The dead as mass (blasts, the boot, plates) and the wand's grip on them.
     ctx.corpses = createCorpsesApi(ctx);
+    this.disposables.push({ dispose: ctx.events.on('levelChanged', () => clearTelekinesis()) });
     ctx.spells = new Spells(ctx);
     ctx.simulation = new Simulation();
     ctx.worldgen = new WorldGen();
@@ -673,7 +675,7 @@ export class Game {
       this.perfHud.mark('sim', simMs);
 
       const tEnt = performance.now();
-      if (!dbg.frozenPlayer()) { ctx.playerCtl.update(ctx); if (!ctx.player.dead) updateLegSwing(ctx); }
+      if (!dbg.frozenPlayer()) { ctx.playerCtl.update(ctx); if (!ctx.player.dead) updateLegSwing(ctx); updateTelekinesis(ctx); }
       if (!debugActive) ctx.flask.update(ctx);
       const enemyStart = performance.now();
       ctx.enemyCtl.update(ctx); // self-gates per enemy via ctx.debug.frozenEnemy

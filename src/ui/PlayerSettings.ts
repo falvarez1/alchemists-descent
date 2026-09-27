@@ -11,8 +11,8 @@ const KEY = 'ad-player-preferences-v1';
 /** What each rebindable action is called on the keyboard list (sentence case). */
 export const BINDING_LABELS: Readonly<Record<BindingAction, string>> = {
   left: 'Move left', right: 'Move right', up: 'Up (climb)', down: 'Down (crouch, climb)',
-  jump: 'Jump / levitate', climb: 'Grab a wall', interact: 'Interact / siphon', pour: 'Pour',
-  drink: 'Drink', kick: 'Kick', carry: 'Carry', lure: 'Throw a glowseed', clip: 'Save a clip', mute: 'Mute all sound',
+  jump: 'Jump / levitate', climb: 'Grab a wall', interact: 'Interact / lift / siphon', pour: 'Pour',
+  drink: 'Drink', kick: 'Kick / hurl', carry: 'Swing on vines / carry', lure: 'Throw a glowseed', clip: 'Save a clip', mute: 'Mute all sound',
   lantern: 'Hood the lantern',
 };
 
