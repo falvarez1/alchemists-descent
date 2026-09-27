@@ -79,6 +79,8 @@ import { SANDBOX_FOCUS, stampSandboxArena } from '@/world/sandboxArena';
 import { reseedTickStreams } from '@/core/simRandom';
 import { DeathCinema } from '@/game/DeathCinema';
 import { RunDirector } from '@/game/RunDirector';
+import { RunSummary } from '@/ui/RunSummary';
+import { RunHud } from '@/ui/RunHud';
 
 function initialRenderBackendOverride(): RenderBackendMode | null {
   if (typeof window === 'undefined') return null;
@@ -306,6 +308,10 @@ export class Game {
 
     this.hud = new Hud(ctx);
     this.disposables.push(this.hud);
+    // The run ledger, and the return phials beside the vitals / on the death screen.
+    const runSummary = new RunSummary(ctx);
+    this.disposables.push(runSummary);
+    this.disposables.push(new RunHud(ctx, () => runSummary.showLast()));
     this.minimap = new Minimap(ctx);
     this.disposables.push(this.minimap);
     this.disposables.push(new CardOfferOverlay(ctx));

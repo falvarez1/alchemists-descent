@@ -4,6 +4,7 @@ import { appDialog } from '@/ui/AppDialog';
 import { BUILD_STAMP, buildPlaytestReport } from '@/ui/playtestReport';
 import { WORKS_ROOMS } from '@/world/breathingWorks';
 import { titleCaseName } from '@/core/strings';
+import { FLOORS_TOTAL, floorOf } from '@/config/worldgraph';
 
 /**
  * ESC pause. Owns its own pause claim so it never fights the Sanctum, the
@@ -13,8 +14,26 @@ import { titleCaseName } from '@/core/strings';
 export class PauseOverlay {
   private active = false;
   private restarting = false;
+  private ending = false;
+  private readonly abandonButton = document.createElement('button');
+  private readonly titleButton = document.createElement('button');
 
   constructor(private ctx: Ctx) {
+    // The run's two ways out: end it here (the ledger follows), or step back
+    // to the title with the descent saved for Continue.
+    this.titleButton.type = 'button';
+    this.titleButton.id = 'pause-title-btn';
+    this.titleButton.innerHTML = '<span>Quit to title</span>';
+    this.abandonButton.type = 'button';
+    this.abandonButton.id = 'pause-abandon';
+    this.abandonButton.innerHTML = '<span>Abandon run</span>';
+    const restart = document.getElementById('pause-restart');
+    restart?.after(this.titleButton, this.abandonButton);
+    this.titleButton.addEventListener('click', this.onTitleClick);
+    this.abandonButton.addEventListener('click', this.onAbandonClick);
+    // Player builds: the run launcher (test levels, god kits) is an authoring
+    // tool, not a pause-menu door.
+    if (!__AUTHORING__) document.getElementById('pause-launcher')?.remove();
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('game-pause-request', this.onPauseRequest);
     document.getElementById('expedition-pause')?.addEventListener('click', this.onPauseRequest);
@@ -40,7 +59,7 @@ export class PauseOverlay {
     if (isRunLauncherOpen()) return;
     if (this.ctx.sanctum.isOpen) return;
     if (document.getElementById('help-overlay')?.classList.contains('visible')) return;
-    if (document.getElementById('victory-overlay')?.classList.contains('visible')) return;
+    if (document.getElementById('run-summary')?.classList.contains('visible')) return;
     if (!this.active && this.ctx.state.paused) return; // someone else paused
     e.preventDefault();
     e.stopPropagation();
@@ -62,6 +81,8 @@ export class PauseOverlay {
   };
 
   private readonly onRestartClick = (): void => void this.restartLevel();
+  private readonly onTitleClick = (): void => this.quitToTitle();
+  private readonly onAbandonClick = (): void => void this.abandonRun();
   private readonly onResumeClick = (): void => this.resume();
 
   private readonly onLauncherClick = (): void => this.openLauncher();
@@ -96,6 +117,37 @@ export class PauseOverlay {
     document.getElementById('pause-overlay')?.removeEventListener('click', this.onMenuClick);
     document.getElementById('pause-overlay')?.removeEventListener('keydown', this.onMenuKeys);
     document.removeEventListener('fullscreenchange', this.onFullscreenChange);
+    this.titleButton.removeEventListener('click', this.onTitleClick);
+    this.abandonButton.removeEventListener('click', this.onAbandonClick);
+    this.titleButton.remove();
+    this.abandonButton.remove();
+  }
+
+  /** Pause -> title. The descent is checkpointed first so Continue picks it up. */
+  private quitToTitle(): void {
+    if (document.body.classList.contains('builder-open')) return;
+    this.resume();
+    if (this.ctx.run?.active && !this.ctx.player.dead) this.ctx.levels.saveExpedition(this.ctx);
+    window.dispatchEvent(new CustomEvent('expedition-title-request'));
+  }
+
+  /** Pause -> end the run by choice. Confirmed, then the ledger takes over. */
+  private async abandonRun(): Promise<void> {
+    const run = this.ctx.run;
+    if (this.ending || !run?.active) return;
+    this.ending = true;
+    try {
+      const ok = await appDialog.confirm('Abandon this descent? It ends here, and the ledger is written up as it stands.', {
+        title: 'Abandon run',
+        confirmText: 'Abandon',
+        tone: 'danger',
+      });
+      if (!ok) return;
+      this.resume();
+      run.abandon(this.ctx);
+    } finally {
+      this.ending = false;
+    }
   }
 
   /**
@@ -137,14 +189,16 @@ export class PauseOverlay {
     goal.textContent = document.getElementById('objective')?.textContent?.trim() || '';
     let charted = 0;
     for (let i = 0; i < level.explored.length; i++) if (level.explored[i] > 0) charted++;
+    const floor = floorOf(level.def.id);
     const rows: Array<[string, string]> = [
-      ['Depth', String(level.def.depth)],
+      floor > 0 ? ['Floor', `${floor} of ${FLOORS_TOTAL}`] : ['Depth', String(level.def.depth)],
       ['Health', Math.ceil(Math.max(0, ctx.player.hp)) + ' / ' + ctx.player.maxHp],
       ['Gold carried', ctx.state.score + ' oz'],
       ['Charted', Math.round(charted / Math.max(1, level.explored.length) * 100) + '%'],
       ['Spell cards', String(ctx.wands.collection.length + ctx.wands.wands.reduce((n, w) => n + w.cards.filter(Boolean).length, 0))],
     ];
     if (level.living) rows.push(['Glowseeds', String(level.living.glowseeds)]);
+    if (ctx.run?.active) rows.splice(2, 0, ['Return phials', `${ctx.run.phials} of ${ctx.run.maxPhials}`]);
     stats.replaceChildren(...rows.flatMap(([label, value]) => {
       const dt = document.createElement('dt');
       dt.textContent = label;
@@ -226,9 +280,19 @@ export class PauseOverlay {
       ? 'Start to resume · A to choose' : 'Escape to resume · H for the handbook';
     if (this.active) {
       this.fillStatus();
+      this.syncRunButtons();
       document.getElementById('pause-resume')?.focus();
     }
     this.syncFullscreenButton();
+  }
+
+  /** A tracked run offers Abandon + Quit to title; Restart stays for disposable test runs. */
+  private syncRunButtons(): void {
+    const tracked = this.ctx.run?.active === true;
+    this.abandonButton.hidden = !tracked;
+    this.titleButton.hidden = this.ctx.state.mode !== 'play';
+    const restart = document.getElementById('pause-restart');
+    if (restart) restart.hidden = tracked;
   }
 
   private syncFullscreenButton(): void {

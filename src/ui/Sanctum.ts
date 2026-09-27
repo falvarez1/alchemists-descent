@@ -3,10 +3,15 @@ import {
   collectOwnedCards,
   requestCardOffer,
   SANCTUM_LOST_PAGES_POOL,
+  withDiscoveredCards,
 } from '@/combat/wands/rewardPools';
+import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
 import type { CardId, Ctx, PerkId, SanctumApi } from '@/core/types';
 import { POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
 import { SANCTUM_PERK_DEFS } from '@/content/perks';
+import { FLOOR_LORE } from '@/content/floorLore';
+import { FLOORS_TOTAL, LEVELS, floorDisplayName, floorOf } from '@/config/worldgraph';
+import { PhialRow } from '@/ui/phialGlyph';
 
 /**
  * The Sanctum (upgrade-port meta layer): a paused rest stop between depths.
@@ -53,13 +58,83 @@ export class Sanctum implements SanctumApi {
   private readonly onDescendClick = (): void => this.close();
   /** Pause state we found on open, so close() restores it rather than force-resuming a pause we didn't take. */
   private wasPaused = false;
+  /** Between floors: a look at the floor below, and the phial the old ones pour. */
+  private readonly teaser = document.createElement('section');
+  private readonly phials = new PhialRow(3, 'phial-row sanc-phial-row');
+  private readonly phialNote = document.createElement('p');
+  private phialTimer: number | null = null;
 
   constructor(private ctx: Ctx) {
     el('descend-btn').addEventListener('click', this.onDescendClick);
+    this.teaser.className = 'sanc-teaser';
+    this.teaser.hidden = true;
+    document.querySelector('#sanctum-overlay .sanc-body')?.prepend(this.teaser);
   }
 
   dispose(): void {
     el('descend-btn').removeEventListener('click', this.onDescendClick);
+    if (this.phialTimer !== null) window.clearTimeout(this.phialTimer);
+    this.phials.dispose();
+    this.teaser.remove();
+  }
+
+  /**
+   * The floor below, in the house voice, and the return phials: the old ones
+   * top one up on the way down (RunDirector owns the count; this shows it).
+   */
+  private renderTeaser(ctx: Ctx, nextId: string | null): void {
+    const lore = nextId ? FLOOR_LORE[nextId] : undefined;
+    const floor = floorOf(nextId);
+    this.teaser.hidden = !lore || floor <= 0;
+    if (!lore || !nextId || floor <= 0) return;
+    const below = document.createElement('div');
+    below.className = 'sanc-below';
+    const label = document.createElement('p');
+    label.className = 'menu-label';
+    label.textContent = `Below · Floor ${floor} of ${FLOORS_TOTAL}`;
+    const name = document.createElement('h3');
+    name.className = 'sanc-below-name';
+    name.textContent = floorDisplayName(nextId);
+    const line = document.createElement('p');
+    line.className = 'sanc-below-line';
+    line.textContent = lore.line;
+    const facts = document.createElement('dl');
+    facts.className = 'sanc-below-facts';
+    for (const [term, text] of [['Signature', lore.signature], ['In residence', lore.resident]] as const) {
+      const dt = document.createElement('dt');
+      dt.textContent = term;
+      const dd = document.createElement('dd');
+      dd.textContent = text;
+      facts.append(dt, dd);
+    }
+    below.append(label, name, line, facts);
+
+    const run = ctx.run;
+    const vial = document.createElement('div');
+    vial.className = 'sanc-phials';
+    const vialLabel = document.createElement('p');
+    vialLabel.className = 'menu-label';
+    vialLabel.textContent = 'Return phials';
+    this.phialNote.className = 'sanc-phial-note';
+    vial.append(vialLabel, this.phials.root, this.phialNote);
+    vial.hidden = !run?.active;
+    this.teaser.replaceChildren(below, vial);
+    if (!run?.active) return;
+    const restored = run.restorePhial(ctx, 'sanctum');
+    const max = run.maxPhials;
+    if (this.phialTimer !== null) window.clearTimeout(this.phialTimer);
+    if (restored) {
+      // The glass shows as it was, then the old ones pour.
+      this.phials.set(run.phials - 1, max);
+      this.phialNote.textContent = 'The old ones top up a return phial. No charge; they insist.';
+      this.phialTimer = window.setTimeout(() => {
+        this.phialTimer = null;
+        this.phials.fill(run.phials - 1, run.phials, max);
+      }, 260);
+    } else {
+      this.phials.set(run.phials, max);
+      this.phialNote.textContent = 'Your phials are full. The old ones nod, approvingly.';
+    }
   }
 
   get isOpen(): boolean {
@@ -73,9 +148,13 @@ export class Sanctum implements SanctumApi {
     this.wasPaused = ctx.state.paused;
     ctx.state.paused = true;
 
-    const depth = (ctx.levels.current?.def.depth ?? 0) + 1;
-    el('sanc-depth').textContent = String(depth);
+    const nextId = ctx.levels.current?.def.nextLevelId ?? null;
+    const nextFloor = floorOf(nextId);
+    const depth = nextFloor > 0 ? nextFloor : (ctx.levels.current?.def.depth ?? 0) + 1;
+    const nextName = nextId && LEVELS[nextId] ? floorDisplayName(nextId) : `depth ${depth}`;
+    el('sanc-depth').textContent = nextFloor > 0 ? `${nextFloor} of ${FLOORS_TOTAL}` : String(depth);
     el('sanc-gold').textContent = String(ctx.state.score);
+    this.renderTeaser(ctx, nextId);
 
     const dBtn = el('descend-btn') as HTMLButtonElement;
     const row = el('perk-row');
@@ -89,7 +168,7 @@ export class Sanctum implements SanctumApi {
     let perkTaken = false;
     const armDescend = (): void => {
       dBtn.disabled = false;
-      dBtn.textContent = 'Descend to depth ' + depth;
+      dBtn.textContent = 'Descend to ' + (nextName.startsWith('The ') ? 'the ' + nextName.slice(4) : nextName);
     };
     if (offer.length === 0) armDescend();
     else {
@@ -137,7 +216,9 @@ export class Sanctum implements SanctumApi {
     this.onDescend = null;
     this.wasPaused = ctx.state.paused;
     ctx.state.paused = true;
-    el('sanc-depth').textContent = String(ctx.levels.current?.def.depth ?? 1);
+    this.teaser.hidden = true;
+    const here = floorOf(ctx.levels.current?.def.id);
+    el('sanc-depth').textContent = here > 0 ? `${here} of ${FLOORS_TOTAL}` : String(ctx.levels.current?.def.depth ?? 1);
     el('sanc-gold').textContent = String(ctx.state.score);
     const dBtn = el('descend-btn') as HTMLButtonElement;
     dBtn.disabled = false;
@@ -220,7 +301,8 @@ export class Sanctum implements SanctumApi {
         desc: 'Choose one of three spell cards you do not own',
         cost: 160,
         act: (purchase) => {
-          const cards = buildCardOffer(SANCTUM_LOST_PAGES_POOL, collectOwnedCards(ctx.wands), { ensureKind: 'projectile' });
+          const pool = withDiscoveredCards(SANCTUM_LOST_PAGES_POOL, getDiscoveredCards());
+          const cards = buildCardOffer(pool, collectOwnedCards(ctx.wands), { ensureKind: 'projectile' });
           requestCardOffer(ctx, {
             source: 'sanctum',
             title: 'Lost pages',

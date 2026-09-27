@@ -4,6 +4,7 @@ import { canHumiliate } from '@/combat/Trickshot';
 import { worksRoomAt } from '@/world/breathingWorks';
 import { getBindings, keyLabel } from '@/input/bindings';
 import { VIEW_H, VIEW_W } from '@/config/constants';
+import { floorLabel } from '@/config/worldgraph';
 import { CARD_DEFS } from '@/combat/wands/cards';
 import { PERK_DEFS, isPerkActive, togglePerkActive } from '@/content/perks';
 import { nextWandSentence } from '@/combat/wands/sentenceView';
@@ -162,8 +163,10 @@ export class Hud {
 
     // The descent: depth readout + arrival banner whenever a level is entered.
     this.disposers.push(ctx.events.on('levelChanged', ({ depth, name }) => {
-      el('wave-num').textContent = 'D' + depth;
-      if (!ctx.levels.current?.living) this.showBanner('D' + depth + ' — ' + name, 'THE DESCENT CONTINUES');
+      // Campaign floors read "FLOOR 2 OF 4"; off-spine arenas keep the depth code.
+      const floor = floorLabel(ctx.levels.current?.def.id);
+      el('wave-num').textContent = floor || 'D' + depth;
+      if (!ctx.levels.current?.living) this.showBanner(floor ? name : 'D' + depth + ' — ' + name, floor ? floor.toUpperCase() : 'THE DESCENT CONTINUES');
     }));
 
     this.disposers.push(ctx.events.on('waystoneLit', () => {
@@ -192,18 +195,8 @@ export class Hud {
       this.renderObjective();
     }));
 
-    // The Kiln Colossus is slain: roll victory after the explosion lands.
-    this.disposers.push(ctx.events.on('runComplete', ({ gold }) => {
-      this.setHudTimeout(() => {
-        el('vic-gold').textContent = String(gold);
-        el('victory-overlay').classList.add('visible');
-        ctx.state.paused = true;
-        ctx.audio.learn();
-      }, 1400);
-    }));
-    const onVictoryReturn = (): void => window.location.reload();
-    el('vic-return').addEventListener('click', onVictoryReturn);
-    this.disposers.push(() => el('vic-return').removeEventListener('click', onVictoryReturn));
+    // Victory (the Kiln Colossus) is the run ledger's job now (ui/RunSummary):
+    // no overlay here, and no page reload to start again.
     this.disposers.push(ctx.events.on('toast', ({ text }) => {
       const stack = el('toast-stack');
       const node = document.createElement('div');
