@@ -462,7 +462,19 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   kick-launched wall slam → impaled, gunpowder/barrels/a bomber's death/hostile
   blasts → detonated, any physical blow to a frozen body → shattered. The
   wand's own bolts, bombs, lightning, kick, whip, stomp and Flame Jet stream
-  stay direct (ordinary bounty). Credit is generous: within 280 cells of the
+  stay direct (ordinary bounty) — and so do the statuses the wand applies
+  directly: a status that takes hold within 45 ticks of the wand (not the boot)
+  striking that creature is the spell's (`AlchemyKills.noteStatus`), so a spark
+  that leaves a dry slime crackling or alight on stone is a spell kill however
+  long it burns. It becomes the WORLD's — and the kill alchemical — when the
+  fire has fuel (oiled body, oil or lava touching: FLAMBÉED even if the spark's
+  zap lands the killing tick), when the current came through a conductor (a wet
+  body, charged water or metal touching or underfoot: SHORTED), when it was
+  (re)lit or charged with no wand strike behind it (a fire walked into, a live
+  rail, blood a current crossed), and once the world's it stays the world's
+  while it lasts. A lethal status tick is named by its largest world share
+  (toxic is always the world's); with none, it is direct. A status tick never
+  SHATTERS a frozen body. Credit is generous: within 280 cells of the
   wizard, or struck by him in the last 20 s, or kick-launched in the last 3 s.
   Kills within 3 s (180 ticks) chain; the chain resets on a level change.
   **Payout, grid-honest:** bonus gold = 10 + 35% of bounty, ×1 / ×1.5 / ×2 /

@@ -44,6 +44,10 @@ export interface BodyCellSample {
   acid: number;
   nitrogen: number;
   charged: number;
+  /** Charged WATER / METAL / LAVA cells touching the body or underfoot: a current
+   *  that reached it through a conductor (blood is left out — a creature's own
+   *  spatter from the wand's hit must not turn the wand's current into the world's). */
+  conductorCharged: number;
   /** Strongest charge on any sampled cell (0 when none): how hot the current is HERE. */
   maxCharge: number;
   toxic: number;
@@ -70,6 +74,11 @@ export interface StatusSampleResult {
   shockDamage: number;
   /** Strongest charge touching the body this sample (0 = none). */
   maxCharge: number;
+  /** Kill attribution's grid facts (see StatusBlow in core/types). */
+  fueled: boolean;
+  heatContact: boolean;
+  conducted: boolean;
+  chargeContact: boolean;
   healing: number;
   teleportTouch: boolean;
   slowFactor: number;
@@ -138,6 +147,7 @@ export function sampleBodyCells(
     acid: 0,
     nitrogen: 0,
     charged: 0,
+    conductorCharged: 0,
     maxCharge: 0,
     toxic: 0,
     healium: 0,
@@ -191,6 +201,7 @@ export function sampleBodyCells(
       if (t === Cell.Fungus || t === Cell.Glowshroom) sample.fungus++;
       if (world.charge[i] > 0) {
         sample.charged++;
+        if (t === Cell.Water || t === Cell.Metal || t === Cell.Lava) sample.conductorCharged++;
         if (world.charge[i] > sample.maxCharge) sample.maxCharge = world.charge[i];
       }
     }
@@ -201,9 +212,12 @@ export function sampleBodyCells(
     const X = bx + dx;
     const Y = by + 1;
     if (!world.inBounds(X, Y)) continue;
-    const c = world.charge[world.idx(X, Y)];
+    const ui = world.idx(X, Y);
+    const c = world.charge[ui];
     if (c > 0) {
       sample.charged++;
+      const ut = world.types[ui];
+      if (ut === Cell.Water || ut === Cell.Metal || ut === Cell.Lava) sample.conductorCharged++;
       if (c > sample.maxCharge) sample.maxCharge = c;
     }
   }
@@ -421,6 +435,10 @@ export function sampleAndTickStatus(
     burnDamage,
     shockDamage,
     maxCharge: sample.maxCharge,
+    fueled: st.oiled > 0 || sample.oil > 0 || sample.lava > 0,
+    heatContact: sample.fire > 0 || sample.lava > 0,
+    conducted: st.wet > 0 || sample.conductorCharged > 0,
+    chargeContact: sample.charged > 0,
     healing,
     teleportTouch: !immune?.teleportium && sample.teleportium > 0,
     slowFactor,

@@ -3,7 +3,6 @@ import { difficultyMods } from '@/config/difficulty';
 import { RILLBACK_WET_THRESHOLD } from '@/core/enemyState';
 import { clamp } from '@/core/math';
 import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDamageSource, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
-import type { AlchemyCause } from '@/core/run';
 import { causeForCell } from '@/core/alchemyCause';
 import { tickWeaverLocomotion, weaverKnockSync, weaverLeap } from '@/entities/weaverLocomotion';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
@@ -2062,6 +2061,7 @@ export class Enemies implements EnemyControlApi {
     // The hottest cell touching the body names the cause if this is the end.
     let worst = 0;
     let worstCell: number = Cell.Empty;
+    let oilTouch = false;
     for (let dy = 0; dy < def.h; dy += 2) {
       let rowDmg = 0;
       for (let dx = -def.halfW; dx <= def.halfW; dx += 2) {
@@ -2069,6 +2069,7 @@ export class Enemies implements EnemyControlApi {
           Y = Math.floor(e.y) - dy;
         if (!ctx.world.inBounds(X, Y)) continue;
         const c = ctx.world.types[ctx.world.idx(X, Y)];
+        if (c === Cell.Oil) oilTouch = true;
         const d = directEnvironmentDamage(e.kind, c);
         if (d > rowDmg) rowDmg = d;
         if (d > worst) {
@@ -2079,7 +2080,23 @@ export class Enemies implements EnemyControlApi {
       dmg += rowDmg;
     }
     if (dmg <= 0) return;
-    ctx.alchemy?.noteHit(e, causeForCell(worstCell));
+    if (worstCell === Cell.Fire && ctx.alchemy) {
+      // Open flame on the body: the wand's own blast fire on the creature it was
+      // cast at is the spell's; burning oil, or a fire it wandered into, is the world's.
+      ctx.alchemy.noteStatus(e, {
+        burn: dmg,
+        shock: 0,
+        toxic: 0,
+        burning: e.status.burning > 0,
+        electrified: e.status.electrified > 0,
+        fueled: oilTouch || e.status.oiled > 0,
+        heatContact: true,
+        conducted: false,
+        chargeContact: false,
+      });
+    } else {
+      ctx.alchemy?.noteHit(e, causeForCell(worstCell));
+    }
     if ((e.envDamageFeedbackCd ?? 0) <= 0) {
       e.envDamageFeedbackCd = ENV_DAMAGE_FEEDBACK_COOLDOWN;
       e.flash = Math.max(e.flash, 2);
@@ -2332,16 +2349,22 @@ export class Enemies implements EnemyControlApi {
             );
           }
         }
-        if (eff.damage > 0) {
-          const cause: AlchemyCause =
-            eff.shockDamage >= eff.burnDamage && eff.shockDamage >= eff.toxicDamage
-              ? 'shorted'
-              : eff.toxicDamage > eff.burnDamage
-                ? 'poisoned'
-                : 'burned';
-          ctx.alchemy?.noteHit(e, cause);
-          e.hp -= eff.damage;
-        }
+        // Kill attribution hears every sample (a status that goes out forgets
+        // whose it was): the wand's own flame and live air on the creature it
+        // was cast at stay the spell's; fuel, a conductor or a fire walked into
+        // make it the world's (combat/AlchemyKills.noteStatus).
+        ctx.alchemy?.noteStatus(e, {
+          burn: eff.burnDamage,
+          shock: eff.shockDamage,
+          toxic: eff.toxicDamage,
+          burning: e.status.burning > 0,
+          electrified: e.status.electrified > 0,
+          fueled: eff.fueled,
+          heatContact: eff.heatContact,
+          conducted: eff.conducted,
+          chargeContact: eff.chargeContact,
+        });
+        if (eff.damage > 0) e.hp -= eff.damage;
         if (e.hp <= 0) {
           this.killAt(i, e, 0, 0);
           continue;
