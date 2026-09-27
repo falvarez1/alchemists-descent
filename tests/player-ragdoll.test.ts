@@ -15,7 +15,7 @@ function fixture() {
   player.x = 100; player.y = 85; player.vx = 2; player.vy = 2; player.dead = true;
   const ctx = { world, player, enemies: [], debug: { active: false }, input: { mouse: { x: 0, y: 0 }, siphonHeld: false },
     state: { mode: 'play', frameCount: 0 }, fx: { digBeam: null, screenShake: 0 },
-    events: { on: () => () => undefined, emit: vi.fn() }, audio: { landThud: vi.fn(), noiseBurst: vi.fn(), tone: vi.fn(), bubble: vi.fn() },
+    events: { on: () => () => undefined, emit: vi.fn() }, audio: { sfx: () => undefined, creature: () => undefined, landThud: vi.fn(), noiseBurst: vi.fn(), tone: vi.fn(), bubble: vi.fn() },
     particles: { spawn: vi.fn(), burst: vi.fn() },
   } as unknown as Ctx;
   const bodies = new RigidBodies(ctx); ctx.rigidBodies = bodies;

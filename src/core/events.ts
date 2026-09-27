@@ -104,6 +104,10 @@ export interface EventMap {
   combatCallout: { x: number; y: number; text: string; tone?: 'brass' | 'finisher' };
   /** The run is over (victory, out of return phials, or replaced). Summary UI, meta profile and share text listen. */
   runEnded: RunSummary;
+  /** The music director changed cue (audio/MusicDirector): the narrator and probes listen. */
+  musicCue: { cue: string | null; previous: string | null };
+  /** The narrator began a line. `captioned`: it has no on-screen text of its own, so the caption shows it. */
+  narration: { text: string; seconds: number; captioned: boolean };
   /** Return phials changed (death spent one, a refuge/Sanctum restored one). */
   phialsChanged: { phials: number; max: number; reason: 'start' | 'death' | 'refuge' | 'sanctum' | 'restore' };
   /** Something asked for the last seconds of play to be saved as a clip. */
@@ -120,6 +124,8 @@ export interface EventMap {
   lanternHooded: { hooded: boolean; x: number; y: number };
   /** The alchemist stepped into a designed deep-dark zone (once per entry; `darkness` 0..1). */
   darkZoneEntered: { x: number; y: number; darkness: number };
+  /** The wand's beam caught a creature's eyes in the dark (they flash back). Audio cue hook. */
+  eyeshineCaught: { kind: EnemyKind; x: number; y: number };
   /** A light device answered: a photocell latched, a lumen bloom unfurled/furled. Audio/HUD cues. */
   lightDevice: { kind: 'photocell' | 'bloom-open' | 'bloom-furl'; x: number; y: number };
   /** A cast was refused for lack of mana (HUD flashes the mana bar). */

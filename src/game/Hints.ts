@@ -29,6 +29,11 @@ const R_OBJECT = 24 * 24;
 /** Frames between teach-once popovers: the card auto-dismisses after 9 s, so
  *  a new one never lands on (or instantly replaces) the one being read. */
 const TEACH_GAP = 660;
+/** A centre beat just cleared: let the screen settle 0.75 s before a lesson. */
+const TEACH_CALM_FRAMES = 45;
+/** Arrival on a floor: the title card rises up to ~1.6 s after the level
+ *  changes (after the curtain), so no lesson in the first 2 s. */
+const TEACH_ARRIVAL_HOLD_FRAMES = 120;
 const R_GOAL = 32 * 32;
 const FLASK_SCAN = 10; // half-box (cells) swept around the player for siphonables
 
@@ -47,8 +52,12 @@ export class HintSystem implements HintApi {
   /** Frame the last popover was shown, and event-driven lessons waiting their turn. */
   private lastTeachFrame = -Infinity;
   private readonly pending: Array<{ key: string; teach: Teach }> = [];
+  /** The overlay's calm gate: a centre beat is on screen (setTeachHeld). */
+  private teachHeld = false;
+  /** No lesson before this frame (a beat just cleared / a floor just began). */
+  private teachCalmAt = 0;
 
-  constructor(ctx: Ctx) {
+  constructor(private readonly ctx: Ctx) {
     this.taught = new Set<string>(getSeenHints());
     // Event-driven teach-onces: knowledge-loop connections no proximity scan
     // can see — the reaction already happened, the card is already in hand.
@@ -75,6 +84,8 @@ export class HintSystem implements HintApi {
         }, true);
       }),
       ctx.events.on('levelChanged', ({ depth }) => {
+        // Arrival is the title card's beat: every lesson waits it out.
+        this.teachCalmAt = Math.max(this.teachCalmAt, ctx.state.frameCount + TEACH_ARRIVAL_HOLD_FRAMES);
         // Taught on the first descent, not in the first 30 seconds: D2 arrival
         // is a calm beat, and by then there is ground worth remembering.
         if (depth >= 2) {
@@ -101,9 +112,21 @@ export class HintSystem implements HintApi {
    * is still up waits (event lessons queue; proximity lessons simply come
    * round again the next time the player is near the thing).
    */
+  setTeachHeld(held: boolean): void {
+    if (this.teachHeld && !held) {
+      this.teachCalmAt = Math.max(this.teachCalmAt, this.ctx.state.frameCount + TEACH_CALM_FRAMES);
+    }
+    this.teachHeld = held;
+  }
+
+  /** No centre beat on screen, and it has been quiet long enough to read. */
+  private teachCalm(ctx: Ctx): boolean {
+    return !this.teachHeld && ctx.state.frameCount >= this.teachCalmAt;
+  }
+
   private teachOnce(ctx: Ctx, key: string, teach: Teach, queue = false): void {
     if (this.taught.has(key)) return;
-    if (ctx.state.frameCount - this.lastTeachFrame < TEACH_GAP) {
+    if (ctx.state.frameCount - this.lastTeachFrame < TEACH_GAP || !this.teachCalm(ctx)) {
       if (queue && !this.pending.some((p) => p.key === key)) this.pending.push({ key, teach });
       return;
     }
@@ -125,7 +148,7 @@ export class HintSystem implements HintApi {
     const py = ctx.player.y;
     const w = ctx.world;
     const waiting = this.pending[0];
-    if (waiting && ctx.state.frameCount - this.lastTeachFrame >= TEACH_GAP) {
+    if (waiting && ctx.state.frameCount - this.lastTeachFrame >= TEACH_GAP && this.teachCalm(ctx)) {
       this.pending.shift();
       this.teachOnce(ctx, waiting.key, waiting.teach);
     }
@@ -156,7 +179,8 @@ export class HintSystem implements HintApi {
       if (d2 <= R_GOAL) {
         let line = runtime.living ? 'The lower gate is sealed. Bring the brass bell.' : 'The portal is sealed — bring it the Golden Key';
         if (portal.open || runtime.keyTaken) {
-          line = 'The portal is open — step in to descend';
+          // D1's way down is a floor grate, not a portal: say what is true.
+          line = runtime.living ? 'The grate is open — drop through.' : 'The portal is open — step in to descend';
         }
         consider({
           priority: 3,

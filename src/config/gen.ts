@@ -121,8 +121,8 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 50; // 50: light wave — floors 2-4 carve a photocell strongroom and a lumen-bloom crossing (forked 'light-puzzles' stream) plus designed dark zones; D1 gains the Undertow's lens-locked cache
-// 49: the Kiln's lava moats are sunk into the arena floor (flush pits with a stone keel) instead of stamped on top of it, where they ran out into a burning film
+export const GEN_VERSION = 51; // 51: light wave — floors 2-4 carve a photocell strongroom and a lumen-bloom crossing (forked 'light-puzzles' stream) plus designed dark zones; D1 gains the Undertow's lens-locked cache
+// 50: the Kiln's ceiling tank (seal + water) is re-asserted after its right-flank connector and the gauge-rescue passes, which had pre-opened it on most seeds (the Colossus drowned unprovoked). 49: the Kiln's lava moats are sunk into the arena floor (flush pits with a stone keel) instead of stamped on top of it, where they ran out into a burning film
 // 48: the opening: the Intake's cold lock is gone (the crank is open from the start; Frost Shard stays a refuge reward), an oil-soaked barricade seals the spawn-to-crank route, and the Lower Bell is a real floor grate whose leaves slide open for the bell
 // 47: the living-descent played Bell & Tea Engine (low stations over the catwalk, fault fixtures, the duck's grated bath, the marble run; acid, lava and the boiler removed) merged into the four-floor spine
 // 46: four floors (Bellows, Rot Gardens, Drowned Cisterns, Kiln Heart): d3 is flooded + the Leviathan's sump, d4 volcanic + the Kiln Colossus, bosses keyed on LevelDef.boss, the Gilded Vault arch/hoard no longer generate

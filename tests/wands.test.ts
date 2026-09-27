@@ -592,7 +592,7 @@ describe('WandSystem runtime snapshots', () => {
     const ctx = {
       events,
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'build' },
       player: {},
     } as unknown as Ctx;
@@ -621,7 +621,7 @@ describe('WandSystem runtime snapshots', () => {
     const ctx = {
       events,
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'build' },
       player: {},
     } as unknown as Ctx;
@@ -647,7 +647,7 @@ describe('WandSystem runtime snapshots', () => {
     const ctx = {
       events,
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'build' },
       player: {},
     } as unknown as Ctx;
@@ -783,6 +783,65 @@ describe('WandSystem runtime snapshots', () => {
       expect(ctx.projectiles.length).toBe(shots);
     });
 
+    it('answers a 450 ms tap rhythm on the starter wand (QA: 8 taps gave 4 casts)', () => {
+      const { ctx, wands } = tapWand();
+      const TAP_EVERY = 27; // 450 ms at the 60 Hz tick
+      const tapTicks: number[] = [];
+      const castTicks: number[] = [];
+      let last = 0;
+      for (let t = 0; t < TAP_EVERY * 8 + 60; t++) {
+        if (t % TAP_EVERY === 0 && tapTicks.length < 8) { tap(ctx); tapTicks.push(t); }
+        tick(ctx, wands);
+        if (ctx.projectiles.length > last) { castTicks.push(t); last = ctx.projectiles.length; }
+      }
+      const f = WAND_FRAMES.oak;
+      // Every tap the wand's cycle can physically answer is answered: a 27-tick
+      // rhythm against a longer cycle merges at most the taps that fall while
+      // one is already waiting — never every other one.
+      const cycle = f.castDelay + f.recharge;
+      const span = tapTicks[tapTicks.length - 1] + CLICK_BUFFER_TICKS;
+      expect(castTicks.length).toBe(Math.min(8, Math.floor(span / cycle) + 1));
+      expect(castTicks.length).toBeGreaterThanOrEqual(7);
+      // ...and no buffered shot trails its tap by more than the window.
+      for (const c of castTicks) {
+        const tapAt = Math.max(...tapTicks.filter((tt) => tt <= c));
+        expect(c - tapAt).toBeLessThanOrEqual(CLICK_BUFFER_TICKS);
+      }
+    });
+
+    it('buffers ONE cast, not a queue: taps during a cooldown merge', () => {
+      const { ctx, wands } = tapWand();
+      tap(ctx);
+      wands.fire(ctx);
+      const shots = ctx.projectiles.length;
+      while (cooldown(wands) > CLICK_BUFFER_TICKS) wands.update(ctx);
+      for (let k = 0; k < 3; k++) { tap(ctx); tick(ctx, wands); }
+      for (let t = 0; t < 200; t++) tick(ctx, wands);
+      // exactly one more cast (one group's worth of projectiles), then silence
+      expect(ctx.projectiles.length).toBe(shots * 2);
+    });
+
+    it('a wand swap or a level change spends the buffered click', () => {
+      const { ctx, wands } = tapWand();
+      tap(ctx);
+      wands.fire(ctx);
+      const shots = ctx.projectiles.length;
+      while (cooldown(wands) > CLICK_BUFFER_TICKS) wands.update(ctx);
+      tap(ctx);
+      wands.fire(ctx);
+      expect(ctx.player.firePressed).toBe(true); // buffered
+      wands.active = 1;
+      expect(ctx.player.firePressed).toBe(false);
+      wands.active = 0;
+      tap(ctx);
+      wands.fire(ctx);
+      expect(ctx.player.firePressed).toBe(true);
+      ctx.events.emit('levelChanged', { depth: 1, name: 'x' });
+      expect(ctx.player.firePressed).toBe(false);
+      for (let t = 0; t < 120; t++) tick(ctx, wands);
+      expect(ctx.projectiles.length).toBe(shots);
+    });
+
     it('leaves held automatic fire on its own cadence', () => {
       const { ctx, wands } = tapWand();
       ctx.player.firing = true;
@@ -820,8 +879,8 @@ describe('WandSystem runtime snapshots', () => {
     const ctx = makeCastCtx();
     let eroded: { x: number; y: number; rad: number } | null = null;
     let dug = 0;
-    ctx.audio.dig = () => {
-      dug++;
+    ctx.audio.sfx = (id) => {
+      if (id === 'player.staff') dug++;
     };
     ctx.player.aimAngle = Math.PI / 2;
     ctx.player.vy = 1.4;
@@ -866,7 +925,7 @@ describe('WandSystem metaprogression', () => {
     const ctx = {
       events: new EventBus(),
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'play' },
       player: {},
     } as unknown as Ctx;
@@ -898,7 +957,7 @@ describe('WandSystem metaprogression', () => {
     const ctx = {
       events: new EventBus(),
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'play' },
       player: {},
     } as unknown as Ctx;
@@ -943,7 +1002,7 @@ function makeCastCtx(): Ctx & { spawned: Array<{ x: number; y: number; type: num
     world: new World(),
     events: new EventBus(),
     telemetry: { count: () => undefined },
-    audio: {
+    audio: { sfx: () => undefined, creature: () => undefined,
       zap: () => undefined,
       noiseBurst: () => undefined,
       tone: () => undefined,
@@ -1196,7 +1255,7 @@ describe('WandSystem bench transfers', () => {
     const ctx = {
       events,
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'build' },
       player: {},
     } as unknown as Ctx;

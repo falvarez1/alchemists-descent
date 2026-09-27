@@ -109,13 +109,16 @@ export function updateLumenBlooms(ctx: Ctx, blooms: LumenBloom[]): void {
     if (want > b.shown) {
       const n = unfurlTo(ctx, b, want, 3);
       if (wasOpen <= 0.001 && b.open > 0) {
-        // Waking: a rising glass chime, and pollen-light spilling off the heart.
-        ctx.audio.tone(660, 1320, 0.32, 'sine', 0.035, b.x, b.y);
-        ctx.audio.tone(990, 1480, 0.22, 'triangle', 0.018, b.x, b.y);
+        // Waking: a crystalline growth (glass petals forming), and pollen-light
+        // spilling off the heart. The lightDevice event is the proper cue hook.
+        ctx.audio.sfx('spell.freeze', b.x, b.y, { gain: 0.45, pitch: 5 });
         ctx.particles.burst(b.x, b.y, 6, null, () => packRGB(190, 255, 214), 0.8, { glow: 1.6, grav: -0.01 });
         ctx.events.emit('lightDevice', { kind: 'bloom-open', x: b.x, y: b.y });
       }
-      if (n > 0 && (b.shown & 7) === 0) ctx.audio.tone(1300 + b.shown * 6, 1600, 0.05, 'sine', 0.012, b.x, b.y);
+      if (n > 0 && (b.shown & 15) === 0) {
+        const [px, py] = b.petals[Math.max(0, b.shown - 1)];
+        ctx.audio.sfx('mech.sensor', px, py, { gain: 0.22, pitch: 6 + Math.min(10, b.shown / 10) });
+      }
     } else if (want < b.shown) {
       const n = furlTo(ctx, b, want, 1);
       if (n > 0 && (b.shown & 3) === 0) {

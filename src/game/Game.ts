@@ -12,9 +12,14 @@ import { ExpeditionEntry } from '@/ui/ExpeditionEntry';
 import { randomSeed } from '@/core/rng';
 import { Telemetry } from '@/core/telemetry';
 import type { Ctx, FxState, GameStateData, InputState, RenderBackendMode } from '@/core/types';
-import { AudioEngine } from '@/audio/AudioEngine';
+import { SfxAudioEngine } from '@/audio/SfxEngine';
+import { installAudioDirector } from '@/audio/AudioDirector';
+import { installUiSounds } from '@/audio/UiSounds';
 import { HabitatAudio } from '@/audio/HabitatAudio';
 import { installAudioStingers } from '@/audio/Stingers';
+import { MusicDirector } from '@/audio/MusicDirector';
+import { Narrator } from '@/audio/Narrator';
+import { NarrationCaption } from '@/ui/NarrationCaption';
 import { Flask } from '@/combat/Flask';
 import { AlchemyKills } from '@/combat/AlchemyKills';
 import { Lightning } from '@/combat/Lightning';
@@ -183,7 +188,7 @@ export class Game {
 
     // Assembled in two steps: data first, then services that close over ctx.
     // Services only USE ctx at runtime, after wiring completes.
-    const audio = new AudioEngine();
+    const audio = new SfxAudioEngine();
     const ctx = {
       world: new World(),
       events: new EventBus(),
@@ -202,6 +207,8 @@ export class Game {
     this.disposables.push(audio);
     // Run-event stingers (alchemy chime, phial crack/fill, run verdict, clip shutter).
     this.disposables.push({ dispose: installAudioStingers(ctx.events, audio) });
+    // Sampled layer: per-floor packs and beds, and the interface's own sounds.
+    this.disposables.push({ dispose: installAudioDirector(ctx, audio) }, { dispose: installUiSounds(ctx.events, audio) });
     ctx.events.on('paramsChanged', () => {
       this.composeDirty = true;
     });
@@ -268,6 +275,13 @@ export class Game {
     const lightDevices = new LightDevices(ctx);
     this.lightDevices = lightDevices;
     this.disposables.push(lightDevices);
+    // The score and the narrator: streamed recordings on the engine's music and
+    // voice buses. Both stay silent (and fetch nothing) until the first gesture.
+    const music = new MusicDirector(ctx, audio);
+    ctx.music = music;
+    const narrator = new Narrator(ctx, audio);
+    ctx.narrator = narrator;
+    this.disposables.push(music, narrator, new NarrationCaption(ctx));
 
     // Rehydrate live tuning (Global Controls, player feel, worldgen look, material/
     // spell params) from localStorage BEFORE the UI seeds its sliders or the first

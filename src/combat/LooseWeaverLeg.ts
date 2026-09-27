@@ -60,7 +60,7 @@ export function releaseWeaverLeg(ctx: Ctx, throwIt: boolean): boolean {
   ctx.levels.current.pickups.push(leg);
   p.legClub = undefined; p.firing = false; p.firePressed = false; p.fireBlockedUntilRelease = true; p.swapT = 12;
   ctx.telemetry.count(throwIt ? 'weaver.legThrown' : 'weaver.legDropped');
-  if (throwIt) ctx.audio.noiseBurst(.09, 850, .09, true);
+  if (throwIt) ctx.audio.sfx('player.club.throw');
   ctx.events.emit('toast', { text: throwIt ? 'Leg thrown' : 'Leg dropped' });
   return true;
 }
@@ -128,7 +128,7 @@ export function updateLooseWeaverLeg(ctx: Ctx, p: Pickup): void {
       p.data.legDurability = Math.max(0, (p.data.legDurability ?? 6) - 1);
       nodes.forEach(node => { node.vx *= -.22; node.vy = -Math.abs(node.vy) * .2 - .4; });
       ctx.fx.hitstop = Math.max(ctx.fx.hitstop ?? 0, 3);
-      ctx.audio.noiseBurst(.07, 420, .12, true); ctx.telemetry.count('weaver.legThrowHit');
+      ctx.audio.sfx('player.club.hit'); ctx.telemetry.count('weaver.legThrowHit');
       if (p.data.legDurability === 0) {
         p.taken = true; ctx.particles.burst(rig.knee.x, rig.knee.y, 10, null, () => packRGB(158, 183, 144), 2, { grav: .15 });
       }

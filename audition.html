@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sound Audition — Breathing Works</title>
+    <link rel="icon" href="data:," />
+    <!--
+      Dev-only (not a Vite build input, so a production build never emits it).
+      Open http://localhost:<port>/audition.html with the dev server running.
+      Lists every entry exported as AUDITION_ENTRIES by src/content/audio/*Manifest.ts.
+    -->
+    <style>
+      :root {
+        --bg: #14110e; --panel: #1d1914; --line: #3a3024; --ink: #e9dfcf; --dim: #a8997f;
+        --brass: #d6a54a; --copper: #b9683d; --glass: #8fc9c4; --reject: #d0584a;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 Georgia, 'Times New Roman', serif; }
+      header { position: sticky; top: 0; z-index: 2; background: linear-gradient(#211b14, #1a150f); border-bottom: 1px solid var(--line); padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+      header h1 { margin: 0 12px 0 0; font-size: 18px; color: var(--brass); letter-spacing: 0.04em; font-weight: normal; }
+      header .stat { color: var(--dim); font-size: 13px; }
+      input[type="search"] { background: #0f0d0a; color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; min-width: 240px; font: inherit; }
+      button, label.toggle { background: #2a2219; color: var(--ink); border: 1px solid #5a4630; border-radius: 4px; padding: 5px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+      button:hover { border-color: var(--brass); color: #fff; }
+      button.primary { background: #5a3f1c; border-color: var(--brass); }
+      button.play { min-width: 34px; padding: 3px 8px; }
+      button.play.playing { background: var(--brass); color: #1a140c; }
+      label.toggle { display: inline-flex; gap: 6px; align-items: center; }
+      main { padding: 12px 20px 60px; max-width: 1280px; margin: 0 auto; }
+      details.group { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); margin: 10px 0; }
+      details.group > summary { cursor: pointer; padding: 9px 14px; font-size: 15px; color: var(--brass); list-style: none; display: flex; justify-content: space-between; }
+      details.group > summary::-webkit-details-marker { display: none; }
+      details.group > summary .count { color: var(--dim); font-size: 13px; }
+      .entry { display: grid; grid-template-columns: minmax(200px, 280px) 1fr auto; gap: 6px 14px; padding: 9px 14px; border-top: 1px solid #2c251c; align-items: start; }
+      .entry.rejected { background: rgba(208, 88, 74, 0.08); }
+      .entry .id { font-family: Consolas, 'Courier New', monospace; font-size: 13px; color: var(--glass); word-break: break-all; }
+      .entry .meta { color: var(--dim); font-size: 12px; }
+      .entry .prompt { color: #d8ccb8; font-style: italic; }
+      .takes { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+      .take { display: inline-flex; gap: 4px; align-items: center; border: 1px solid #3a3024; border-radius: 4px; padding: 2px 4px 2px 2px; }
+      .take.rejected { border-color: var(--reject); }
+      .take input { accent-color: var(--reject); }
+      .take .x { color: var(--dim); font-size: 11px; }
+      .loop-badge { color: var(--copper); font-size: 12px; margin-left: 6px; }
+      footer { color: var(--dim); font-size: 12px; padding: 20px; text-align: center; }
+      .empty { color: var(--dim); padding: 20px; }
+      @media (max-width: 760px) { .entry { grid-template-columns: 1fr; } .takes { justify-content: flex-start; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Sound Audition</h1>
+      <input id="filter" type="search" placeholder="Filter: id, group or prompt…" />
+      <label class="toggle"><input id="mix-level" type="checkbox" /> at mix level</label>
+      <label class="toggle"><input id="loop-all" type="checkbox" /> loop</label>
+      <button id="stop">Stop all (Esc)</button>
+      <button id="export" class="primary">Export rejects</button>
+      <button id="copy">Copy JSON</button>
+      <button id="clear">Clear rejects</button>
+      <span id="stats" class="stat"></span>
+    </header>
+    <main id="list"><div class="empty">Loading manifests…</div></main>
+    <footer>
+      Tick the box beside a take to reject it, export, save as <code>scripts/audio/sfx-rejects.json</code>, then run
+      <code>npm run gen:sfx</code> (with the key/cache env) to replace exactly those takes. Rejects persist in this browser.
+    </footer>
+    <script type="module" src="/src/app/audition.ts"></script>
+  </body>
+</html>

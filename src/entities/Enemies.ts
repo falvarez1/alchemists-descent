@@ -4,6 +4,8 @@ import { RILLBACK_WET_THRESHOLD } from '@/core/enemyState';
 import { clamp } from '@/core/math';
 import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDamageSource, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
 import { causeForCell } from '@/core/alchemyCause';
+import { BossWard } from '@/core/bossWard';
+import { kilnQuenchBurst } from '@/entities/kilnQuench';
 import { tickWeaverLocomotion, weaverKnockSync, weaverLeap } from '@/entities/weaverLocomotion';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
 export { ENEMY_DEFS } from '@/content/enemyDefs';
@@ -297,7 +299,18 @@ export class Enemies implements EnemyControlApi {
     if (onCast) this.disposers.push(onCast);
     const onSignal = ctx.events?.on('creatureSignal', ({ x, y, radius, strength, kind }) => this.cue(x, y, radius, strength, kind));
     if (onSignal) this.disposers.push(onSignal);
+    // THE BOSS WARD hears the player act: a cast (wand or its trigger payload),
+    // a pour or a throw. Only harm that follows an act near a boss lands on it.
+    const onActCast = ctx.events?.on('cardCast', ({ x, y }) => this.bossWard.noteAct(ctx.state.frameCount, x, y));
+    const onActFlask = ctx.events?.on('flaskUsed', ({ verb }) => {
+      if (verb === 'pour' || verb === 'throw') this.bossWard.noteAct(ctx.state.frameCount, ctx.player.x, ctx.player.y);
+    });
+    const onActLevel = ctx.events?.on('levelChanged', () => this.bossWard.reset());
+    for (const off of [onActCast, onActFlask, onActLevel]) if (off) this.disposers.push(off);
   }
+
+  /** Warded bosses (the Colossus, the Leviathan) take only harm the player caused — core/bossWard. */
+  private readonly bossWard = new BossWard();
 
   private readonly cues: CreatureCue[] = [];
   /** Bosses that have made their entrance (once per live creature). */
@@ -345,7 +358,7 @@ export class Enemies implements EnemyControlApi {
       e.vx *= 0.45;
       e.vy = Math.max(e.vy, 0.7);
       this.ctx.particles.burst(e.x, e.y - def.h * 0.6, 10, Cell.Slime, slimeColor, 1.4, { grav: 0.08 });
-      this.voice(e, () => this.ctx.audio.squelch());
+      this.voice(e, () => this.ctx.audio.sfx('creature.bat.slimed'));
     }
   }
 
@@ -538,6 +551,10 @@ export class Enemies implements EnemyControlApi {
 
   damage(e: Enemy, amount: number, kx: number, ky: number, source: EnemyDamageSource = 'direct'): void {
     const ctx = this.ctx;
+    // THE BOSS WARD: a warded boss's hp moves only for harm the player set in
+    // motion (a direct blow, or the world's while he is engaged) — never for a
+    // blast, fire or creature that went off on its own. core/bossWard.
+    if (!this.bossWard.allows(e, source, ctx.state.frameCount)) return;
     // Kill attribution: every blow reports its source before hp moves.
     ctx.alchemy?.noteHit(e, source);
     if (amount > 0) {
@@ -553,7 +570,7 @@ export class Enemies implements EnemyControlApi {
         glow: 1.8,
         grav: -0.01,
       });
-      this.voice(e, () => ctx.audio.tone(820, 520, 0.05, 'triangle', 0.07));
+      this.voice(e, () => ctx.audio.sfx('creature.leviathan.glance'));
     }
     e.hp -= amount;
     e.flash = 6;
@@ -569,7 +586,7 @@ export class Enemies implements EnemyControlApi {
       this.lastImpactFeedback = ctx.state.frameCount;
       ctx.fx.hitstop = Math.max(ctx.fx.hitstop ?? 0, amount >= 20 ? 3 : 2);
       e.squash = Math.max(e.squash ?? 0, .18);
-      this.voice(e, () => { ctx.audio.noiseBurst(.035, 1400, .035, true); ctx.audio.tone(145, 65, .055, 'triangle', .035); });
+      this.voice(e, () => { ctx.audio.sfx('creature.hit'); ctx.audio.creature(e.kind, 'hurt'); });
     } else if (source === 'direct' && amount >= 2 && Math.abs(kx) + Math.abs(ky) > .25 &&
         ctx.state.frameCount - this.lastImpactFeedback >= 5 && Math.hypot(e.x - ctx.player.x, e.y - ctx.player.y) < 240) {
       // Small direct hits (pellets, chip damage) still land: a 1-frame micro-hitstop
@@ -731,7 +748,7 @@ export class Enemies implements EnemyControlApi {
       );
     }
     ctx.particles.burst(e.x, e.y - 5, 10, null, () => packRGB(150, 140, 120), 1.6, { grav: 0.05 });
-    this.voice(e, () => { ctx.audio.noiseBurst(0.12, 170, 0.13); ctx.audio.tone(120, 70, 0.12, 'square', 0.08); }); // wet crunch
+    this.voice(e, () => ctx.audio.sfx('creature.gib')); // wet crunch
     // THE PUNCH: a wall-slam gib is a kill-cam moment — a beat of hitstop, a bloom
     // flash, and a small shake, all scaled a touch by how hard it hit.
     const punch = Math.min(1, speed / 12);
@@ -818,7 +835,7 @@ export class Enemies implements EnemyControlApi {
           }),
         );
       }
-      this.voice(e, () => { ctx.audio.groan(); ctx.audio.squelch(); }, 700);
+      this.voice(e, () => ctx.audio.sfx('creature.leviathan.death'), 700);
       this.shakeAt(e.x, e.y, 0.035, 0.06);
       ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 1.2);
       ctx.waves.kills++;
@@ -834,7 +851,7 @@ export class Enemies implements EnemyControlApi {
         grav: -0.01,
       });
       this.dropBounty(e, def);
-      ctx.audio.portalWhoosh();
+      ctx.audio.sfx('creature.colossus.death', e.x, e.y);
       ctx.fx.screenShake = 0.06;
       ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 1.6);
       ctx.waves.kills++;
@@ -1035,9 +1052,12 @@ export class Enemies implements EnemyControlApi {
   private beginEntrance(e: Enemy, def: EnemyDef, lair: BossLair): void {
     const ctx = this.ctx;
     this.introduced.add(e);
+    // A boss never meets the player already wounded by something he did not
+    // do (belt and braces behind the ward: an old save, a pre-ward scratch).
+    if (!this.bossWard.harmedByPlayer(e)) e.hp = e.maxHp;
     if (e.kind !== 'colossus') {
       // a deep churn under the surface — the pool itself announces it
-      this.voice(e, () => { ctx.audio.tone(58, 30, 0.8, 'sine', 0.2); ctx.audio.groan(); }, 720);
+      this.voice(e, () => ctx.audio.sfx('creature.leviathan.alert', e.x, e.y), 720);
       ctx.particles.burst(e.x, e.y - 14, 16, null, () => packRGB(150, 220, 255), 1.8, { glow: 1.4, grav: -0.03 });
       this.shakeAt(e.x, e.y, 0.02, 0.04);
       ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 10, text: lair.name, tone: 'finisher' });
@@ -1046,8 +1066,7 @@ export class Enemies implements EnemyControlApi {
     // THE KILN COLOSSUS
     ctx.audio.duck(0.4, 1500);
     this.voice(e, () => {
-      ctx.audio.tone(46, 110, 1.1, 'sawtooth', 0.24);
-      ctx.audio.tone(92, 61, 0.9, 'square', 0.07);
+      ctx.audio.sfx('creature.colossus.alert', e.x, e.y);
       ctx.audio.groan();
       ctx.audio.grind(1.4);
     }, 900);
@@ -1118,15 +1137,8 @@ export class Enemies implements EnemyControlApi {
 
   /** "I see you", in the voice of whatever is doing the seeing. */
   private alertVoice(e: Enemy): void {
-    const audio = this.ctx.audio;
-    switch (e.kind) {
-      case 'weaver': audio.chirr(0.22, 1.1, 0.06); break;
-      case 'rillback': audio.slither(1.2); break;
-      case 'rootloper': audio.creak(1); break;
-      case 'stonemaw': audio.grind(1); break;
-      case 'bat': audio.squeak(); break;
-      default: audio.alert();
-    }
+    // Each kind in its own voice (content/audio/sfxCues.ts creature.<kind>.alert).
+    this.ctx.audio.creature(e.kind, 'alert');
   }
 
   private shakeAt(x: number, y: number, amount: number, cap: number): void {
@@ -1230,7 +1242,7 @@ export class Enemies implements EnemyControlApi {
         grav: 0.015,
       });
     }
-    this.voice(e, () => ctx.audio.tone(240, 70, 0.3, 'sawtooth', 0.12));
+    this.voice(e, () => ctx.audio.sfx('creature.mage.cast'));
     this.shakeAt(e.x, e.y, 0.006, 0.04);
     return true;
   }
@@ -1270,7 +1282,7 @@ export class Enemies implements EnemyControlApi {
         grav: 0.025,
       });
     }
-    this.voice(e, () => ctx.audio.tone(180, 90, 0.22, 'sawtooth', 0.1));
+    this.voice(e, () => ctx.audio.sfx('creature.mage.shard'));
     this.shakeAt(e.x, e.y, 0.004, 0.025);
     return true;
   }
@@ -1355,7 +1367,7 @@ export class Enemies implements EnemyControlApi {
       });
     }
     if (n > 0) {
-      this.voice(e, () => ctx.audio.noiseBurst(0.14, 900, 0.1, true));
+      this.voice(e, () => ctx.audio.sfx('creature.leviathan.spit'));
       this.shakeAt(e.x, e.y, 0.005, 0.03);
     }
   }
@@ -1519,7 +1531,7 @@ export class Enemies implements EnemyControlApi {
     if (chewed > 0) {
       e.mawChewT = Math.max(e.mawChewT ?? 0, 14);
       e.mawChewCd = STONE_MAW_CHEW_COOLDOWN + Math.floor(entityRandom() * 10);
-      this.voice(e, () => ctx.audio.grind(0.9));
+      this.voice(e, () => ctx.audio.sfx('creature.stonemaw.chew'));
       ctx.particles.burst(mouthX, mouthY, Math.min(10, chewed + 2), Cell.Sand, stoneColor, 1.1);
       this.shakeAt(mouthX, mouthY, 0.004, 0.025);
     }
@@ -1620,7 +1632,7 @@ export class Enemies implements EnemyControlApi {
     if (charged > 0) {
       e.rillChargeCd = 95 + Math.floor(entityRandom() * 45);
       e.blink = Math.max(e.blink, 10);
-      this.voice(e, () => ctx.audio.zap());
+      this.voice(e, () => ctx.audio.sfx('creature.rillback.discharge'));
       ctx.particles.burst(e.x, e.y - def.h * 0.5, Math.min(10, charged + 2), null, () => packRGB(120, 230, 255), 1.3, {
         glow: 2.0,
         grav: -0.03,
@@ -1705,7 +1717,7 @@ export class Enemies implements EnemyControlApi {
       }
     }
     // Silk leaving a spinneret is a dry hiss, not a wet slap.
-    ctx.audio.at(headX, headY, () => { ctx.audio.noiseBurst(0.07, 1100, 0.07, true); ctx.audio.tone(320, 140, 0.08, 'triangle', 0.04); });
+    ctx.audio.sfx('creature.weaver.silk', headX, headY);
     ctx.particles.burst(headX, headY, Math.max(5, Math.min(10, placed + 4)), Cell.Vines, vineColor, 1.1);
   }
 
@@ -1770,7 +1782,7 @@ export class Enemies implements EnemyControlApi {
     const x = Math.floor(clamp(tx, 3, WIDTH - 4));
     const y = Math.floor(clamp(ty, 8, HEIGHT - 8));
     ctx.particles.burst(x, y, 9, Cell.Sand, stoneColor, 1.5);
-    ctx.audio.at(x, y, () => ctx.audio.hollowKnock());
+    ctx.audio.sfx('creature.weaver.strike', x, y);
     this.shakeAt(x, y, 0.008, 0.035);
     if (ctx.world.inBounds(x, y) && blocksEntity(ctx.world.types[ctx.world.idx(x, y)])) return;
     const dx = ctx.player.x - x;
@@ -1869,7 +1881,7 @@ export class Enemies implements EnemyControlApi {
       e.recoil = Math.max(e.recoil ?? 0, 10);
       e.weaverFeedT = Math.max(e.weaverFeedT ?? 0, 18);
       e.attackCd = Math.max(e.attackCd, 22);
-      this.voice(e, () => { this.ctx.audio.chitin(1.2); this.ctx.audio.noiseBurst(0.08, 420, 0.06); });
+      this.voice(e, () => this.ctx.audio.sfx('creature.weaver.feed'));
     } else if (d < 34) {
       e.weaverFeedT = Math.max(e.weaverFeedT ?? 0, 8);
     }
@@ -2190,7 +2202,7 @@ export class Enemies implements EnemyControlApi {
       e.fear = Math.max(e.fear ?? 0, 0.5);
       // a soft airy whiff on the commit — gated to near the alchemist so a
       // swarm jinking at once doesn't roar (off-screen foes are frozen anyway).
-      this.voice(e, () => this.ctx.audio.noiseBurst(0.05, 1500, 0.045, true), 180);
+      this.voice(e, () => this.ctx.audio.sfx('creature.dodge'), 180);
       }
     }
 
@@ -2248,6 +2260,8 @@ export class Enemies implements EnemyControlApi {
       dmg += rowDmg;
     }
     if (dmg <= 0) return;
+    // Warded bosses: a hazard cell is only the player's doing while he is engaged.
+    if (!this.bossWard.allows(e, causeForCell(worstCell), ctx.state.frameCount)) return;
     if (worstCell === Cell.Fire && ctx.alchemy) {
       // Open flame on the body: the wand's own blast fire on the creature it was
       // cast at is the spell's; burning oil, or a fire it wandered into, is the world's.
@@ -2349,7 +2363,7 @@ export class Enemies implements EnemyControlApi {
       e.fx = 0;
       e.fy = 0;
       ctx.particles.burst(nx, ny - def.h * 0.5, 12, null, color, 2.0, { glow: 2.2, grav: 0 });
-      ctx.audio.at(nx, ny, () => ctx.audio.tone(660, 1320, 0.14, 'sine', 0.12));
+      ctx.audio.sfx('creature.mage.blink', nx, ny);
       return;
     }
   }
@@ -2362,7 +2376,7 @@ export class Enemies implements EnemyControlApi {
     }
     if (noisy) {
       ctx.particles.burst(e.x, e.y - 3, 14, Cell.Slime, slimeColor, 2.0);
-      this.voice(e, () => ctx.audio.squelch());
+      this.voice(e, () => ctx.audio.sfx('creature.eggs.hatch'));
       ctx.events.emit('toast', { text: 'AN EGG CLUTCH HATCHES' });
     }
     this.removeEnemyAt(index);
@@ -2536,7 +2550,8 @@ export class Enemies implements EnemyControlApi {
           liquidCharge: eff.liquidCharge,
           chargeContact: eff.chargeContact,
         });
-        if (eff.damage > 0) e.hp -= eff.damage;
+        // (A warded boss's status harm lands only while the player is engaged.)
+        if (eff.damage > 0 && this.bossWard.allows(e, 'shorted', ctx.state.frameCount)) e.hp -= eff.damage;
         if (e.hp <= 0) {
           this.killAt(i, e, 0, 0);
           continue;
@@ -2666,6 +2681,7 @@ export class Enemies implements EnemyControlApi {
             e.kind === 'acidslime' ? 'acidslime-bite' : 'slime-bite',
           );
           e.attackCd = 45;
+          this.voice(e, () => ctx.audio.creature(e.kind, 'attack'));
         }
       } else if (e.kind === 'eggs') {
         // Slime egg clutch: sits glistening, then hatches — sooner if you
@@ -2689,7 +2705,7 @@ export class Enemies implements EnemyControlApi {
           if (targetAlive && pDist < 70) {
             e.sleeping = false;
             e.vy = 1.2; // drop off the ceiling
-            this.voice(e, () => ctx.audio.squeak());
+            this.voice(e, () => ctx.audio.sfx('creature.bat.wake'));
           }
           continue;
         }
@@ -2751,7 +2767,7 @@ export class Enemies implements EnemyControlApi {
             e.swoop = 12;
             e.vx = (pdx / d) * 2.5;
             e.vy = (pdy / d) * 2.5;
-            this.voice(e, () => ctx.audio.squeak());
+            this.voice(e, () => ctx.audio.sfx('creature.bat.swoop'));
           }
         } else if (!hunting && targetAlive && pDist < 320) {
           const d = pDist || 1;
@@ -2821,7 +2837,7 @@ export class Enemies implements EnemyControlApi {
             hostile: true,
             source: 'acidglob',
           });
-          this.voice(e, () => ctx.audio.flame());
+          this.voice(e, () => ctx.audio.sfx('creature.spitter.spit'));
           e.recoil = 14;
           e.attackCd = 150 + Math.floor(entityRandom() * 50);
         }
@@ -2856,7 +2872,7 @@ export class Enemies implements EnemyControlApi {
           }
           if (canAttackTarget && pDist < 34) {
             e.fusing = 36; // light the fuse
-            this.voice(e, () => ctx.audio.tone(900, 60, 0.3, 'square', 0.1));
+            this.voice(e, () => ctx.audio.sfx('creature.bomber.fuse'));
           }
         }
       } else if (e.kind === 'rootloper') {
@@ -2882,13 +2898,14 @@ export class Enemies implements EnemyControlApi {
           if (e.windup === 0) {
             e.rootLashT = 10;
             e.attackCd = 70;
+            this.voice(e, () => ctx.audio.creature(e.kind, 'attack'));
           }
         } else if (canAttackTarget && e.attackCd === 0 && pDist < 62 && Math.abs(pdy) < 36 && support > 0.12) {
           e.windup = 13;
           e.rootLashX = player.x;
           e.rootLashY = player.y - 9;
           e.attackCd = 18;
-          this.voice(e, () => ctx.audio.creak(1.2));
+          this.voice(e, () => ctx.audio.sfx('creature.rootloper.windup'));
         }
 
         if (e.grounded) {
@@ -3060,7 +3077,7 @@ export class Enemies implements EnemyControlApi {
               weaverLeap(e, player.x + clamp(player.vx * 6, -14, 14), player.y - 12);
               e.weaverPounceCd = cranky ? 55 : 95;
               e.webPulse = Math.max(e.webPulse ?? 0, 10);
-              this.voice(e, () => ctx.audio.chirr(0.22, 0.85, 0.08));
+              this.voice(e, () => ctx.audio.sfx('creature.weaver.pounce'));
               ctx.particles.burst(e.x, e.y - 6, 6, Cell.Vines, vineColor, 0.8, { grav: -0.01 });
             }
           }
@@ -3072,13 +3089,13 @@ export class Enemies implements EnemyControlApi {
               e.needleX = player.x;
               e.needleY = player.y - 8;
               e.webPulse = Math.max(e.webPulse ?? 0, 8);
-              this.voice(e, () => ctx.audio.chitin(1.3));
+              this.voice(e, () => ctx.audio.sfx('creature.weaver.windup'));
             } else if (attached && Math.abs(pdy) > 50 && pDist < 285 && readBlocked > 12) {
               // Thread-spit is the reach for prey the contour genuinely can't
               // deliver (vertically separated AND the crawl is stalled) — a
               // same-level quarry gets closed on and bitten, never stalled at.
               e.blink = e.status.burning > 0 ? 10 : cranky ? 9 : 18;
-              this.voice(e, () => ctx.audio.noiseBurst(0.08, 1300, 0.08, true));
+              this.voice(e, () => ctx.audio.sfx('creature.weaver.spit'));
             }
           }
         }
@@ -3124,7 +3141,7 @@ export class Enemies implements EnemyControlApi {
             hostile: true,
             source: 'hostile-fireball',
           });
-          this.voice(e, () => ctx.audio.zap());
+          this.voice(e, () => ctx.audio.sfx('creature.imp.cast'));
           e.attackCd = 130 + Math.floor(entityRandom() * 70);
         }
       } else if (e.kind === 'wisp') {
@@ -3165,7 +3182,7 @@ export class Enemies implements EnemyControlApi {
             hostile: true,
             source: 'frostbolt',
           });
-          this.voice(e, () => ctx.audio.tone(820, 1300, 0.12, 'sine', 0.09));
+          this.voice(e, () => ctx.audio.sfx('creature.wisp.cast'));
           e.attackCd = 140 + Math.floor(entityRandom() * 60);
         }
         // Every 8th frame the cold soaks downward: water below locks into real
@@ -3258,7 +3275,7 @@ export class Enemies implements EnemyControlApi {
               e.fx = 0;
               e.fy = 0;
               ctx.particles.burst(nx, ny - 7, 14, null, burstCol, 2.4, { glow: 2.2, grav: -0.01 });
-              ctx.audio.at(nx, ny, () => ctx.audio.zap());
+              ctx.audio.sfx('creature.mage.blink', nx, ny);
               break;
             }
           }
@@ -3274,19 +3291,24 @@ export class Enemies implements EnemyControlApi {
 
         const doused = e.status.wet > 0;
         const shocked = e.status.electrified > 0;
-        if (doused) {
-          // THERMAL SHOCK: the furnace cracks — heavy damage whose tell is the
-          // steam below plus a hurt flash. A direct decrement (the leviathan's
-          // electro-shock pattern): the full damage() path would spray blood
-          // and stain walls off a stone boss EVERY wet frame.
+        // THERMAL SHOCK: a douse the player caused CRACKS the kiln — one big,
+        // readable burst (kilnQuench: steam flash, stone shards, hitstop, a
+        // callout) worth KILN_QUENCH.share of its hp, again every 2.5 s while
+        // it stays soaked. Was a silent 1.4 hp EVERY wet tick (84 hp/s), and
+        // any water at all counted — a flood nobody caused killed it idle.
+        const crack = this.bossWard.quenchTick(e, doused, ctx.state.frameCount);
+        if (crack > 0) {
           this.alertFromDamage(e);
           ctx.alchemy?.noteHit(e, 'steeped');
-          e.hp -= 1.4;
-          e.flash = Math.max(e.flash, 2);
+          e.hp -= crack;
+          kilnQuenchBurst(ctx, e, def);
           if (e.hp <= 0) {
             this.kill(e, 0, 0);
             continue;
           }
+        }
+        if (doused) {
+          // Soaked: steam off the cooling stone, and it staggers (no attacks).
           if (ctx.state.frameCount % 4 === 0) {
             ctx.particles.burst(
               e.x + (entityRandom() - 0.5) * 20,
@@ -3311,7 +3333,7 @@ export class Enemies implements EnemyControlApi {
         e.vx = clamp(e.vx, -0.42, 0.42);
         if (e.grounded && !e.prevG) {
           this.shakeAt(e.x, e.y, 0.02, 0.05);
-          this.voice(e, () => ctx.audio.hollowKnock(), 640);
+          this.voice(e, () => ctx.audio.sfx('creature.colossus.step'), 640);
         }
         // The colossus owns its own landing edge: the renderer only writes prevG
         // for slimes/bomber, so without this the footfall would fire every grounded
@@ -3355,7 +3377,7 @@ export class Enemies implements EnemyControlApi {
                 source: 'colossus-fireball',
               });
             }
-            this.voice(e, () => ctx.audio.tone(90, 220, 0.4, 'sawtooth', 0.16), 720);
+            this.voice(e, () => ctx.audio.sfx('creature.colossus.volley'), 720);
             e.attackCd = 170 + Math.floor(entityRandom() * 50);
           }
         }
@@ -3413,7 +3435,7 @@ export class Enemies implements EnemyControlApi {
           if (canAttackTarget && e.attackCd === 0 && pDist < 72 && (e.windup ?? 0) === 0 && (e.swoop ?? 0) === 0) {
             e.windup = 18;
             e.rillStrikeAngle = Math.atan2(pdy, pdx);
-            this.voice(e, () => ctx.audio.slither(1.4));
+            this.voice(e, () => ctx.audio.sfx('creature.rillback.windup'));
           }
           if (
             canAttackTarget &&
@@ -3425,7 +3447,7 @@ export class Enemies implements EnemyControlApi {
           ) {
             e.rillChargeWindup = RILLBACK_CHARGE_WINDUP_FRAMES;
             e.blink = Math.max(e.blink, RILLBACK_CHARGE_WINDUP_FRAMES);
-            this.voice(e, () => ctx.audio.tone(280, 520, 0.18, 'sine', 0.07));
+            this.voice(e, () => ctx.audio.sfx('creature.rillback.charge'));
           }
           if (chargeReady && (e.rillChargeCd ?? 0) <= 0) {
             this.rillbackChargePulse(e, def);
@@ -3458,7 +3480,7 @@ export class Enemies implements EnemyControlApi {
             } else {
               e.vy = -1.1 - entityRandom() * 0.4;
               e.vx += (targetAlive ? Math.sign(pdx || 1) : entityRandom() < 0.5 ? -1 : 1) * 0.45;
-              this.voice(e, () => ctx.audio.hop(0.9));
+              this.voice(e, () => ctx.audio.sfx('creature.rillback.flop'));
             }
           }
         }
@@ -3472,7 +3494,7 @@ export class Enemies implements EnemyControlApi {
             e.swoop = 12;
             e.vx = Math.cos(a) * 3.4;
             e.vy = Math.sin(a) * 2.5;
-            this.voice(e, () => ctx.audio.noiseBurst(0.08, 850, 0.08, true));
+            this.voice(e, () => ctx.audio.sfx('creature.rillback.lunge'));
           }
         }
         if ((e.swoop ?? 0) > 0) {
@@ -3518,7 +3540,7 @@ export class Enemies implements EnemyControlApi {
 
         // ELECTROCUTION: the doused-kiln mirror. Direct hp (bypasses the
         // submersion shield — the water IS the delivery), visible arcs.
-        if (sub && e.status.electrified > 0) {
+        if (sub && e.status.electrified > 0 && this.bossWard.allows(e, 'shorted', ctx.state.frameCount)) {
           ctx.alchemy?.noteHit(e, 'shorted');
           e.hp -= 1.1;
           e.flash = Math.max(e.flash, 2);
@@ -3565,7 +3587,7 @@ export class Enemies implements EnemyControlApi {
           if (e.grounded && e.timer % 38 === 0) {
             e.vy = -1.8;
             e.vx = (targetAlive ? Math.sign(pdx) || 1 : entityRandom() < 0.5 ? -1 : 1) * 0.85;
-            this.voice(e, () => ctx.audio.hop(1.6), 640);
+            this.voice(e, () => ctx.audio.sfx('creature.leviathan.flop'), 640);
             this.shakeAt(e.x, e.y, 0.012, 0.04);
           }
           if (ctx.state.frameCount % 11 === 0) {
@@ -3593,7 +3615,7 @@ export class Enemies implements EnemyControlApi {
           (e.swoop ?? 0) === 0
         ) {
           e.windup = 16;
-          this.voice(e, () => ctx.audio.tone(70, 160, 0.5, 'sawtooth', 0.14), 640);
+          this.voice(e, () => ctx.audio.sfx('creature.leviathan.windup'), 640);
         }
         if ((e.windup ?? 0) > 0) {
           e.vx *= 0.8;
@@ -3604,7 +3626,7 @@ export class Enemies implements EnemyControlApi {
             const a = Math.atan2(player.y - 8 - e.y, player.x - e.x);
             e.vx = Math.cos(a) * 3.4;
             e.vy = Math.sin(a) * 2.6;
-            this.voice(e, () => ctx.audio.noiseBurst(0.18, 700, 0.12, true), 640);
+            this.voice(e, () => ctx.audio.sfx('creature.leviathan.lunge'), 640);
           }
         }
         if ((e.swoop ?? 0) > 0) {
@@ -3675,7 +3697,7 @@ export class Enemies implements EnemyControlApi {
             ctx.playerCtl.damage(18 * (e.dmgK ?? 1), Math.sign(pdx) * 4.1, -2.4, 'stonemaw-bite');
             e.attackCd = 115;
             e.mawChewT = Math.max(e.mawChewT ?? 0, 10);
-            this.voice(e, () => ctx.audio.grind(1.3));
+            this.voice(e, () => ctx.audio.sfx('creature.stonemaw.bite'));
           }
         } else {
           const dir = Math.sign(pdx || e.mawDir || 1);
@@ -3714,7 +3736,7 @@ export class Enemies implements EnemyControlApi {
           e.windup = 12;
           e.attackCd = 20;
           e.mawChewT = Math.max(e.mawChewT ?? 0, 8);
-          this.voice(e, () => ctx.audio.grind(0.8));
+          this.voice(e, () => ctx.audio.sfx('creature.stonemaw.windup'));
         }
         e.vx = clamp(e.vx, -0.82, 0.82);
       } else if (e.kind === 'golem') {
@@ -3777,7 +3799,7 @@ export class Enemies implements EnemyControlApi {
           if (perchedAbove || gapAhead || fallingHard) {
             e.jetFuel = 95 + Math.floor(entityRandom() * 50);
             e.jetCd = 190;
-            this.voice(e, () => ctx.audio.tone(110 + entityRandom() * 30, 260, 0.35, 'sawtooth', 0.11));
+            this.voice(e, () => ctx.audio.sfx('creature.golem.jet'));
           }
         }
 
@@ -3803,7 +3825,7 @@ export class Enemies implements EnemyControlApi {
               e.jetFuel = 115;
               e.jetCd = 280;
               e.stuckT = 0;
-              this.voice(e, () => ctx.audio.tone(110 + entityRandom() * 30, 260, 0.35, 'sawtooth', 0.11));
+              this.voice(e, () => ctx.audio.sfx('creature.golem.jet'));
             } else {
               e.stuckT = (e.stuckT || 0) + 1;
               if (e.stuckT > 50) {
@@ -3831,7 +3853,7 @@ export class Enemies implements EnemyControlApi {
                   e.x < camX + VIEW_W + 8 &&
                   e.y > camY - 8 &&
                   e.y < camY + VIEW_H + 8;
-                if (visible) this.voice(e, () => ctx.audio.tone(60 + entityRandom() * 25, 90, 0.2, 'square', 0.16), 640);
+                if (visible) this.voice(e, () => ctx.audio.sfx('creature.golem.punch'), 640);
                 this.shakeAt(e.x, e.y, 0.006, 0.03);
                 e.stuckT = futile ? -420 : 4; // futile: back off ~7s before retrying
               }
@@ -3876,7 +3898,7 @@ export class Enemies implements EnemyControlApi {
               { hostileDmg: 9, hostileSource: 'golem-rock' },
             );
           }
-          this.voice(e, () => ctx.audio.boom(4), 600);
+          this.voice(e, () => ctx.audio.sfx('creature.golem.throw'), 600);
           e.attackCd = 240;
         }
         if (canAttackTarget && e.attackCd < 200 && Math.abs(pdx) < 15 && Math.abs(pdy) < 22) {

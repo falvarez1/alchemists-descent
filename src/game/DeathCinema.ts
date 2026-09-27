@@ -62,8 +62,7 @@ export class DeathCinema {
     ctx.fx.deathTime = this.t;
     while (this.beat < BEATS.length && this.t >= BEATS[this.beat]) {
       const k = 1 - this.beat * 0.28;
-      ctx.audio.heartbeat?.();
-      if (this.beat === 0) ctx.audio.tone(52, 38, 0.5, 'sine', 0.16 * k);
+      ctx.audio.sfx('player.heartbeat', undefined, undefined, { gain: k });
       this.beat++;
     }
     if (!this.letterboxed && this.t >= 0.5) { this.letterboxed = true; ctx.events.emit('deathCinema', { phase: 'begin' }); }
@@ -78,7 +77,7 @@ export class DeathCinema {
     }
     if (!this.titled && this.t >= DEATH_TITLE_AT && (this.settled || this.t > 5)) {
       this.titled = true;
-      ctx.audio.tone(98, 49, 1.6, 'sine', 0.08);
+      ctx.audio.sfx('ui.curtain');
       ctx.events.emit('deathCinema', { phase: 'title' });
     }
   }

@@ -1077,6 +1077,7 @@ export class WorldGen implements WorldGenApi {
       refuge,
       spellLab,
       sumpRepair,
+      kilnRepair,
     } = placeStructures(
       ctx,
       this.rng,
@@ -1193,6 +1194,7 @@ export class WorldGen implements WorldGenApi {
     //     casing survives on its own; this puts back the parts that can't
     //     be armored (plugs, gold tells, the pool itself).
     sumpRepair?.();
+    kilnRepair?.();
     stage('sump-repair');
 
     if (shouldLogDevDiagnostics()) {
@@ -1209,6 +1211,9 @@ export class WorldGen implements WorldGenApi {
     // main rescue pass (D1's surface cap is the usual culprit). Validate the
     // finished cell field before handing it to Levels/runtime repair.
     this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron);
+    // ...and the final rescue may carve again: the Kiln's seal is the player's
+    // to dig, so re-assert its tank once more (idempotent; no-op off the Kiln).
+    kilnRepair?.();
     stage('final-gauge-rescue');
 
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.

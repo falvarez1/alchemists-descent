@@ -74,6 +74,9 @@ export function circleBlocked(world: World, x: number, y: number, r: number): bo
  * freely until it is clear, so a rig can never be welded into rock.
  */
 export function movePoint(world: World, p: RigPoint, tx: number, ty: number): void {
+  // A NaN/Infinity target would weld the point to it forever (the embedded
+  // branch below assigns without checks): refuse it and stay put.
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) return;
   let dx = tx - p.x, dy = ty - p.y;
   if (p.r <= 0 || circleBlocked(world, p.x, p.y, p.r)) { p.x = tx; p.y = ty; return; }
   const steps = Math.min(10, Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / 0.8)));
@@ -116,7 +119,10 @@ export function integrate(world: World, p: RigPoint, o: IntegrateOpts, ax = 0, a
   if (p.hit & (HIT_LEFT | HIT_RIGHT)) vy *= 1 - (o.friction ?? 0.3) * 0.5;
   // Cap per-tick travel so a rig can never tunnel or explode numerically.
   const sp = Math.hypot(vx, vy);
-  if (sp > 6) { vx *= 6 / sp; vy *= 6 / sp; }
+  // A NaN/Infinity velocity (poisoned history) would slip past the cap below
+  // (Infinity × 0 is NaN): it just loses its velocity instead.
+  if (!Number.isFinite(sp)) { vx = 0; vy = 0; }
+  else if (sp > 6) { vx *= 6 / sp; vy *= 6 / sp; }
   const g = o.gravity * (1 + ((o.buoyancy ?? 0.2) - 1) * p.wet);
   p.px = p.x; p.py = p.y;
   p.hit = 0;

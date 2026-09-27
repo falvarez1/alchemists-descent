@@ -116,10 +116,8 @@ export function respondToLight(ctx: Ctx, e: Enemy, def: EnemyDef, mind: Creature
   // tink as they flash back (render/creatures/eyeshine draws the flash).
   if (s.beam && !wasBeam && !e.sleeping && tick - (s.glintAt ?? -999) > 50 && q.darkness(at.x, at.y) >= 0.5) {
     s.glintAt = tick;
-    ctx.audio.at?.(at.x, at.y, () => {
-      ctx.audio.tone(2350, 2800, 0.1, 'sine', 0.022);
-      ctx.audio.tone(3500, 3300, 0.06, 'sine', 0.008);
-    }, 320);
+    ctx.audio.sfx?.('mech.sensor', at.x, at.y, { gain: 0.3, pitch: 14 });
+    ctx.events?.emit('eyeshineCaught', { kind: e.kind, x: at.x, y: at.y });
   }
 
   // BEING LIT IS INFORMATION: a creature looking down the beam sees the lantern.

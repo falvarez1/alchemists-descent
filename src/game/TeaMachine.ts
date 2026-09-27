@@ -3,11 +3,12 @@ import type { EventMap } from '@/core/events';
 import { Cell } from '@/sim/CellType';
 import { fireColor } from '@/sim/colors';
 import { chargeDeposit } from '@/sim/electrical';
-import { VIEW_W } from '@/config/constants';
+import { VIEW_H, VIEW_W } from '@/config/constants';
 import { BATH_TRIP_WATER, TEA, TEA_BACKUP, TEA_BODIES, TEA_COMPLETE_STAGE, TEA_FUSE_TAIL_CELLS, TEA_STAGE as S, TEA_VALVES,
   type TeaValve, stampTeaMachine, teaRect } from '@/world/teaMachine';
 import { pullTeaValve } from '@/game/TeaMachineLinkages';
 import { attractElectromagnet, generateFromDrop } from '@/entities/Energy';
+import { teaStageSfx } from '@/content/audio/sfxCues';
 
 /** Title and caption for each director stage (indexed by TEA_STAGE). */
 const ACTS: ReadonlyArray<readonly [string, string]> = [
@@ -78,6 +79,8 @@ export class TeaMachine {
   private lastView = '';
   private framing = false;
   private publishedStage = -1;
+  /** The tick the percussion cap last fired (one cap per tick). */
+  private primedFrame = -1;
   private readonly disposers: Array<() => void>;
 
   constructor(private readonly ctx: Ctx) {
@@ -144,7 +147,7 @@ export class TeaMachine {
       world.replaceCellAt(i, Cell.Fire, fireColor()); world.life[i] = 240;
     }
     this.ctx.particles.burst(x, y, 8, null, () => 0xffd27a, 1.6, { glow: 2.2, grav: .08 });
-    this.ctx.audio.at(x, y, () => this.ctx.audio.zap());
+    this.ctx.audio.sfx('tea.striker', x, y);
   }
 
   /** The west-most unburnt powder of a fuse — where a re-strike belongs. */
@@ -164,7 +167,7 @@ export class TeaMachine {
     s.stage++; s.stageTicks = 0; s.assists = 0; s.faultTicks = 0;
     this.ctx.telemetry.count(`tea.stage${s.stage}`);
     const f = this.focusX(s);
-    this.ctx.audio.at(f, 200, () => this.ctx.audio.lever());
+    this.ctx.audio.sfx(teaStageSfx(s.stage), f, 200);
   }
 
   /** A pristine engine: nothing released, nothing burnt, every plate home. */
@@ -323,7 +326,7 @@ export class TeaMachine {
     if (!b) return;
     this.ctx.rigidBodies.applyImpulse(b, ix, iy);
     this.ctx.particles.burst(b.x, b.y, 6, null, () => 0xe8c58a, 1.2, { glow: 1.2, grav: .05 });
-    this.ctx.audio.at(b.x, b.y, () => this.ctx.audio.lever());
+    this.ctx.audio.sfx('tea.advance', b.x, b.y);
   }
 
   private check(s: TeaMachineState): void {
@@ -379,7 +382,7 @@ export class TeaMachine {
         s.faultTicks = (s.faultTicks ?? 0) + 1;
         if (s.faultTicks === KICK_BACKUP_TICKS && persuader) {
           ctx.rigidBodies.applyMomentumAt(persuader, 60, -12, persuader.x - 3, persuader.y);
-          ctx.audio.at(persuader.x, persuader.y, () => ctx.audio.lever());
+          ctx.audio.sfx('tea.knocker', persuader.x, persuader.y);
           ctx.particles.burst(persuader.x - 4, persuader.y, 10, null, () => 0xffe2a0, 1.5, { glow: 1.6, grav: .06 });
           ctx.events.emit('toast', { text: 'The clockwork knocker gives the Persuader a whack.' });
         }
@@ -455,7 +458,7 @@ export class TeaMachine {
           // The last powder charge can legitimately tear the thin receiver gate
           // away before the counterweight finishes its stroke: an open path.
           this.advance(s); s.completed = true;
-          ctx.audio.gong(); ctx.events.emit('objectiveChanged', { text: 'Collect the brass bell from the engine receiver.' });
+          ctx.audio.sfx('tea.served'); ctx.events.emit('objectiveChanged', { text: 'Collect the brass bell from the engine receiver.' });
           break;
         }
         this.watchdog(s, 300, n => {
@@ -483,16 +486,21 @@ export class TeaMachine {
   /** Current on the pan runs through the floor into the coupling, igniting the powder beyond it. */
   private primePan(toast: string): void {
     const ctx = this.ctx, pan = TEA.pan;
+    // One shot strikes twice on the same tick (its projectile impact AND its
+    // blast both announce a structureStrike): the cap fires once (QA: "The
+    // percussion cap fires." ×2).
+    if (this.primedFrame === ctx.state.frameCount) return;
+    this.primedFrame = ctx.state.frameCount;
     for (let x = pan.x; x < pan.x + pan.w; x++) {
       if (ctx.world.type(x, pan.y + pan.h - 1) === Cell.Metal) ctx.world.setChargeAt(ctx.world.idx(x, pan.y + pan.h - 1), chargeDeposit(ctx, 60));
     }
     ctx.particles.burst(pan.x + pan.w / 2, pan.y + pan.h, 16, null, () => 0xffc96a, 1.8, { glow: 2.4, grav: .1 });
-    ctx.audio.at(pan.x, pan.y, () => ctx.audio.zap());
+    ctx.audio.sfx('tea.cap', pan.x, pan.y);
     if (toast) ctx.events.emit('toast', { text: toast });
   }
 
   private fault(text: string): void {
-    this.ctx.audio.at(this.focusX(this.runtime!.living!.tea!), 220, () => this.ctx.audio.hollowKnock());
+    this.ctx.audio.sfx('tea.fault', this.focusX(this.runtime!.living!.tea!), 220);
     this.ctx.telemetry.count('tea.fault');
     if (!this.inHall()) this.ctx.events.emit('toast', { text: `Bell & Tea Engine: ${text}` });
   }
@@ -509,7 +517,11 @@ export class TeaMachine {
    */
   private frame(s: TeaMachineState): void {
     const ctx = this.ctx, p = ctx.player;
-    const running = s.stage > S.IDLE && !s.stalled && (!s.completed || s.stageTicks < HOLD_AFTER_DONE);
+    // The chain completing hands the frame straight back to the player (QA:
+    // a 300-tick hold after the bell released kept the 1.2x hall framing on
+    // while he dropped to the receiver tray, showing only his hat at the
+    // bottom edge). The machine still simulates HOLD_AFTER_DONE ticks more.
+    const running = s.stage > S.IDLE && !s.stalled && !s.completed;
     if (!running || p.dead || !this.inHall()) { this.releaseCamera(); return; }
     // Close enough that a domino reads as a domino; the hall floor-to-ceiling
     // and the catwalk still fit. The duck's bath sits under the catwalk, so
@@ -517,7 +529,12 @@ export class TeaMachine {
     const zoom = ctx.state.reduceCameraShake ? 1 : 1.2;
     const half = VIEW_W / (2 * zoom) - 70;
     const x = Math.max(p.x - half, Math.min(p.x + half, this.focusX(s)));
-    ctx.camera.actionFocus = { x, y: s.stage === S.POUR ? 214 : 168, zoom };
+    // ...and never lets him leave the shot vertically either: feet 2 cells
+    // above the bottom edge, head 2 below the top (a no-op on the catwalk).
+    const halfH = VIEW_H / (2 * zoom);
+    const baseY = s.stage === S.POUR ? 214 : 168;
+    const y = Math.min(p.y - 19 + halfH, Math.max(p.y + 2 - halfH, baseY));
+    ctx.camera.actionFocus = { x, y, zoom };
     this.framing = true;
   }
 

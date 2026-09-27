@@ -85,53 +85,79 @@ export function cellBlocksEntityWithLooseRubble(
 }
 
 /**
+ * `blocksEntity` as a 256-entry table (1 = blocks), derived from the predicate
+ * itself so new cell ids stay correct automatically. Full-grid passes read it
+ * instead of calling the predicate chain once per cell.
+ */
+export const BLOCKS_ENTITY_LUT: Uint8Array = (() => {
+  const lut = new Uint8Array(256);
+  for (let t = 0; t < 256; t++) lut[t] = blocksEntity(t) ? 1 : 0;
+  return lut;
+})();
+
+// Reused scratch for the component pass (never returned). The visited plane is
+// cleared per call; the queue is written before it is read, so it needs no reset.
+let componentVisited = new Uint8Array(0);
+let componentQueue = new Int32Array(0);
+
+/**
  * Full-grid mask for validator/worldgen erosion passes. This mirrors
  * cellBlocksEntityWithLooseRubble, but labels every connected component once
  * instead of flood-counting per queried cell.
+ *
+ * PERF: one typed-array BFS per 8-connected component (the queue doubles as
+ * the member list), no per-component label/area arrays and no per-neighbour
+ * tuple destructuring. The settled findability repair calls this up to seven
+ * times in the first twelve seconds of every floor (plus worldgen's gauge
+ * rescue), and the old number[]-stack version was ~120 ms of main thread per
+ * call on a 1600x1064 cave. Output is identical: a cell blocks when it is
+ * Metal, or when it is entity-blocking and its component has at least
+ * LOOSE_RUBBLE_BLOCKING_CLUSTER cells.
  */
 export function computeLooseRubbleBlockingMask(grid: CollisionGrid): Uint8Array {
   const W = grid.width;
-  const H = grid.height;
-  const len = W * H;
-  const solid = new Uint8Array(len);
-  const metal = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    const t = grid.types[i];
-    if (!blocksEntity(t)) continue;
-    solid[i] = 1;
-    if (t === Cell.Metal) metal[i] = 1;
-  }
-
-  const comp = new Int32Array(len);
-  const areas: number[] = [0];
-  const stack: number[] = [];
-  for (let i0 = 0; i0 < len; i0++) {
-    if (!solid[i0] || comp[i0] !== 0) continue;
-    const label = areas.length;
-    let area = 0;
-    comp[i0] = label;
-    stack.push(i0);
-    while (stack.length > 0) {
-      const i = stack.pop()!;
-      area++;
-      const x = i % W;
-      const y = (i - x) / W;
-      for (const [dx, dy] of DIR8) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-        const ni = nx + ny * W;
-        if (!solid[ni] || comp[ni] !== 0) continue;
-        comp[ni] = label;
-        stack.push(ni);
-      }
-    }
-    areas.push(area);
-  }
-
+  const len = W * grid.height;
+  const types = grid.types;
+  const solid = BLOCKS_ENTITY_LUT;
+  if (componentVisited.length < len) {
+    componentVisited = new Uint8Array(len);
+    componentQueue = new Int32Array(len);
+  } else componentVisited.fill(0, 0, len);
+  const visited = componentVisited;
+  const queue = componentQueue;
   const blocks = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    if (metal[i] || (solid[i] && areas[comp[i]] >= LOOSE_RUBBLE_BLOCKING_CLUSTER)) blocks[i] = 1;
+  const lastRow = len - W;
+  for (let i0 = 0; i0 < len; i0++) {
+    if (visited[i0] || !solid[types[i0]]) continue;
+    visited[i0] = 1;
+    queue[0] = i0;
+    let head = 0;
+    let tail = 1;
+    while (head < tail) {
+      const i = queue[head++];
+      const x = i % W;
+      const left = x > 0;
+      const right = x < W - 1;
+      if (i >= W) {
+        const u = i - W;
+        if (!visited[u] && solid[types[u]]) { visited[u] = 1; queue[tail++] = u; }
+        if (left && !visited[u - 1] && solid[types[u - 1]]) { visited[u - 1] = 1; queue[tail++] = u - 1; }
+        if (right && !visited[u + 1] && solid[types[u + 1]]) { visited[u + 1] = 1; queue[tail++] = u + 1; }
+      }
+      if (i < lastRow) {
+        const d = i + W;
+        if (!visited[d] && solid[types[d]]) { visited[d] = 1; queue[tail++] = d; }
+        if (left && !visited[d - 1] && solid[types[d - 1]]) { visited[d - 1] = 1; queue[tail++] = d - 1; }
+        if (right && !visited[d + 1] && solid[types[d + 1]]) { visited[d + 1] = 1; queue[tail++] = d + 1; }
+      }
+      if (left && !visited[i - 1] && solid[types[i - 1]]) { visited[i - 1] = 1; queue[tail++] = i - 1; }
+      if (right && !visited[i + 1] && solid[types[i + 1]]) { visited[i + 1] = 1; queue[tail++] = i + 1; }
+    }
+    if (tail >= LOOSE_RUBBLE_BLOCKING_CLUSTER) {
+      for (let k = 0; k < tail; k++) blocks[queue[k]] = 1;
+    } else {
+      for (let k = 0; k < tail; k++) if (types[queue[k]] === Cell.Metal) blocks[queue[k]] = 1;
+    }
   }
   return blocks;
 }

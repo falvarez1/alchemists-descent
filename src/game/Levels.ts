@@ -53,7 +53,7 @@ import type {
   WeaverLairWeb,
   Waystone,
 } from '@/core/types';
-import { PICKUP_KINDS } from '@/core/types';
+import { PICKUP_KINDS, PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { createPlayer, grantFullReviewKit } from '@/entities/Player';
 import { PERK_IDS } from '@/content/perks';
 import { createDefaultStatus } from '@/entities/status';
@@ -63,7 +63,7 @@ import { makeLevelRuntime } from '@/game/runtime';
 import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
-import { worksGateOpen } from '@/world/breathingWorks';
+import { WORKS_GATE, worksGateOpen } from '@/world/breathingWorks';
 import { blocksEntity, Cell, CELL_COUNT, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import {
   COLOR_FN,
@@ -969,10 +969,25 @@ export class Levels implements LevelsApi {
     if (portal) {
       const pdx = player.x - portal.x;
       const pdy = player.y - 6 - portal.y;
-      const near = pdx * pdx + pdy * pdy < 100;
+      let near = pdx * pdx + pdy * pdy < 100;
       // D1: the engine made the bell, and the bell has opened the floor grate
       // (LivingExpedition slides its real leaves aside), so the player drops in.
       const engineReady = !runtime.living || (runtime.living.tea?.completed === true && worksGateOpen(ctx.world));
+      // The open grate takes whoever steps onto it. QA stood on its lip — the
+      // body half over the pit, feet on the floor beside it — and nothing
+      // happened: a body overlapping the open pit slides off the lip into it,
+      // and the descent fires once its feet are down in the pit.
+      if (runtime.living && runtime.keyTaken && engineReady && !player.dead) {
+        const G = WORKS_GATE;
+        const overPit = player.x + PLAYER_HALF_W >= G.pit.x0 && player.x - PLAYER_HALF_W <= G.pit.x1 &&
+          player.y >= G.floor - 3 && player.y <= G.pit.y1 + 6;
+        if (overPit && player.y <= G.floor + 1) {
+          const dir = Math.sign(G.x - player.x);
+          const nx = player.x + dir * 0.6;
+          if (dir !== 0 && ctx.physics.entityFree(Math.floor(nx), Math.floor(player.y), PLAYER_HALF_W, PLAYER_H)) player.x = nx;
+        }
+        if (overPit && player.y > G.floor + 1) near = true;
+      }
       if (near && runtime.keyTaken && engineReady) {
         if (!portal.open) {
           portal.open = true;
@@ -2443,7 +2458,7 @@ export class Levels implements LevelsApi {
     ctx.events.emit('toast', { text: 'REVIEW POTION BELT STOCKED' });
   }
 
-  private repairFindability(ctx: Ctx, runtime: LevelRuntime, phase: 'initial' | 'settled'): boolean {
+  private repairFindability(_ctx: Ctx, runtime: LevelRuntime, phase: 'initial' | 'settled'): boolean {
     const findability = failOpenFindability(runtime);
     if (import.meta.env.DEV) {
       if (findability.repaired.length) {
@@ -2464,7 +2479,9 @@ export class Levels implements LevelsApi {
     }
     if (findability.repaired.length > 0) {
       this.blobCache.delete(runtime.def.id);
-      ctx.events.emit('toast', { text: 'Somewhere below, rock shifts. A way opens.' });
+      // World repair is silent: it runs on arrival and afterwards, on rock the
+      // player never touched ("Somewhere below, rock shifts…" narrated a change
+      // he never made — QA). The DEV console line above still reports it.
     }
     return findability.repaired.length > 0;
   }
@@ -3300,8 +3317,7 @@ export class Levels implements LevelsApi {
       glow: 2.2,
       grav: 0.02,
     });
-    ctx.audio.tone(660, 660, 0.22, 'sine', 0.18);
-    setTimeout(() => ctx.audio.tone(990, 990, 0.3, 'sine', 0.16), 130);
+    ctx.audio.sfx('world.waystone');
 
     ctx.events.emit('waystoneLit');
   }
