@@ -56,8 +56,9 @@ export function kilnQuenchBurst(ctx: Ctx, e: Enemy, def: EnemyDef): void {
     () => {
       ctx.audio.steam();
       ctx.audio.shellCrack();
-      ctx.audio.tone(64, 36, 0.6, 'sawtooth', 0.2);
-      ctx.audio.noiseBurst(0.45, 2600, 0.12, true);
+      // the furnace groans under the shock (sampled cues, not raw synth)
+      ctx.audio.sfx('creature.colossus.hurt', e.x, e.y);
+      ctx.audio.sfx('mat.steam', e.x, e.y - 10);
     },
     900,
   );
