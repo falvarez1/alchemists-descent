@@ -308,6 +308,23 @@ describe('camera, control and state', () => {
     director.dispose(); rigid.dispose();
   });
 
+  it('hands the frame back the moment the chain completes, and never frames him out vertically', () => {
+    const { ctx, rigid, runtime, director, tea } = directorFixture();
+    ctx.camera = new Camera(); ctx.camera.snapTo(1400, 300);
+    ctx.player.x = 1530; ctx.player.y = 331; // dropped to the receiver tray below the catwalk
+    runtime.mechanisms.find(m => m.id === TEA.lever.id)!.state = 1; director.update();
+    tea().stage = S.MAGNET; director.update();
+    const focus = ctx.camera.actionFocus!;
+    expect(focus).not.toBeNull();
+    const halfH = 360 / (2 * focus.zoom);
+    expect(ctx.player.y).toBeLessThanOrEqual(focus.y + halfH - 2); // feet in the shot (QA: only his hat was)
+    expect(ctx.player.y - 17).toBeGreaterThanOrEqual(focus.y - halfH);
+    const s = tea(); s.stage = S.DONE; s.completed = true; s.stageTicks = 0;
+    director.update();
+    expect(ctx.camera.actionFocus).toBeNull(); // released at once (was held 300 ticks)
+    director.dispose(); rigid.dispose();
+  });
+
   it('keeps simulating the whole hall while running, and clears the camera on transition', () => {
     const { ctx, runtime, world, rigid, director } = directorFixture();
     ctx.player.x = 740; ctx.player.y = 311;

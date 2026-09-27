@@ -3,7 +3,7 @@ import type { EventMap } from '@/core/events';
 import { Cell } from '@/sim/CellType';
 import { fireColor } from '@/sim/colors';
 import { chargeDeposit } from '@/sim/electrical';
-import { VIEW_W } from '@/config/constants';
+import { VIEW_H, VIEW_W } from '@/config/constants';
 import { BATH_TRIP_WATER, TEA, TEA_BACKUP, TEA_BODIES, TEA_COMPLETE_STAGE, TEA_FUSE_TAIL_CELLS, TEA_STAGE as S, TEA_VALVES,
   type TeaValve, stampTeaMachine, teaRect } from '@/world/teaMachine';
 import { pullTeaValve } from '@/game/TeaMachineLinkages';
@@ -509,7 +509,11 @@ export class TeaMachine {
    */
   private frame(s: TeaMachineState): void {
     const ctx = this.ctx, p = ctx.player;
-    const running = s.stage > S.IDLE && !s.stalled && (!s.completed || s.stageTicks < HOLD_AFTER_DONE);
+    // The chain completing hands the frame straight back to the player (QA:
+    // a 300-tick hold after the bell released kept the 1.2x hall framing on
+    // while he dropped to the receiver tray, showing only his hat at the
+    // bottom edge). The machine still simulates HOLD_AFTER_DONE ticks more.
+    const running = s.stage > S.IDLE && !s.stalled && !s.completed;
     if (!running || p.dead || !this.inHall()) { this.releaseCamera(); return; }
     // Close enough that a domino reads as a domino; the hall floor-to-ceiling
     // and the catwalk still fit. The duck's bath sits under the catwalk, so
@@ -517,7 +521,12 @@ export class TeaMachine {
     const zoom = ctx.state.reduceCameraShake ? 1 : 1.2;
     const half = VIEW_W / (2 * zoom) - 70;
     const x = Math.max(p.x - half, Math.min(p.x + half, this.focusX(s)));
-    ctx.camera.actionFocus = { x, y: s.stage === S.POUR ? 214 : 168, zoom };
+    // ...and never lets him leave the shot vertically either: feet 2 cells
+    // above the bottom edge, head 2 below the top (a no-op on the catwalk).
+    const halfH = VIEW_H / (2 * zoom);
+    const baseY = s.stage === S.POUR ? 214 : 168;
+    const y = Math.min(p.y - 19 + halfH, Math.max(p.y + 2 - halfH, baseY));
+    ctx.camera.actionFocus = { x, y, zoom };
     this.framing = true;
   }
 
