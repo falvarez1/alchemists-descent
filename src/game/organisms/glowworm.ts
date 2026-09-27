@@ -30,6 +30,14 @@ export function glowThreadX(c: Critter, y: number, thread = 0): number {
   return ax + 0.5 + ox + Math.sin(c.phase * 1.3 + ph + down * 0.16) * Math.min(1.4, down / reach * 1.7);
 }
 
+/** How strongly the wand's beam falls on the worm: its body, the middle and the tip of its lure. */
+function litWorm(ctx: Ctx, c: Critter): number {
+  const ax = (c.anchorX ?? c.x) + 0.5, ay = c.anchorY ?? c.y, ext = Math.max(c.extent ?? 0, 4);
+  let lit = wandLightAt(ctx, ax, ay + 1.5);
+  for (const k of [0.5, 1]) lit = Math.max(lit, wandLightAt(ctx, glowThreadX(c, ay + ext * k), ay + ext * k));
+  return lit;
+}
+
 function pinPrey(c: Critter, prey: Critter, t: number): void {
   const ay = c.anchorY ?? c.y, tip = ay + (c.extent ?? 0);
   prey.x = glowThreadX(c, tip) + Math.sin(t * 0.9 + prey.phase) * 0.35;
@@ -65,7 +73,8 @@ export function stepGlowworm(ctx: Ctx, c: Critter, host: OrganismHost): boolean 
   // ---- disturbance: light on its body, a body through the thread, stamping below ----
   let disturbed = false;
   if ((t + ax) % 3 === 0) {
-    const lit = wandLightAt(ctx, ax + 0.5, ay + 1.5);
+    // The beam on its body or anywhere down its lure.
+    const lit = litWorm(ctx, c);
     if (lit > GLOW_LIGHT_SHY) disturbed = true;
     const tipY = ay + ext;
     const p = ctx.player;
@@ -123,7 +132,7 @@ export function stepGlowworm(ctx: Ctx, c: Critter, host: OrganismHost): boolean 
     ext = Math.max(0, ext - GLOW_RETRACT);
     if (c.holds) release(host, c);
     const hide = GLOW_HIDE + (ax * 37 + ay * 11) % 140;
-    const lit = wandLightAt(ctx, ax + 0.5, ay + 1.5);
+    const lit = litWorm(ctx, c);
     if (lit > GLOW_LIGHT_SHY) c.stateT = Math.min(c.stateT ?? 0, 60); // it will not come down into the beam
     if ((c.stateT ?? 0) > hide && !disturbed) { c.state = GLOW.FISH; c.stateT = 0; }
   }

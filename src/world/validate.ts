@@ -253,6 +253,37 @@ function nearWithLine(
   return false;
 }
 
+/**
+ * Light's line of sight (light wave): the wand's beam passes open air, liquids
+ * and translucent solids (glass, ice, crystal) and stops at anything else.
+ */
+function lightLine(world: { width: number; height: number; types: Uint8Array }, fromX: number, fromY: number, toX: number, toY: number): boolean {
+  const dx = toX - fromX, dy = toY - fromY;
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy)));
+  for (let i = 1; i < steps; i++) {
+    const x = Math.floor(fromX + (dx * i) / steps), y = Math.floor(fromY + (dy * i) / steps);
+    if (x <= 0 || y <= 0 || x >= world.width || y >= world.height) return false;
+    const t = world.types[x + y * world.width];
+    if (blocksEntity(t) && t !== Cell.Glass && t !== Cell.Ice && t !== Cell.Crystal) return false;
+  }
+  return true;
+}
+
+/** Can the alchemist stand somewhere within `r` cells and put his beam on (x, y)? */
+function beamable(wiz: Uint8Array, world: { width: number; height: number; types: Uint8Array }, x: number, y: number, r: number): boolean {
+  const W = world.width, H = world.height, tx = Math.floor(x), ty = Math.floor(y);
+  for (let d = 0; d <= r; d += 4) {
+    for (let a = 0; a < 32; a++) {
+      const ang = (a / 32) * Math.PI * 2;
+      const X = Math.floor(tx + Math.cos(ang) * d), Y = Math.floor(ty + Math.sin(ang) * d);
+      if (X <= 0 || Y <= 0 || X >= W || Y >= H || !wiz[X + Y * W]) continue;
+      // The wand rides at the shoulder, ~9 cells above the feet the mask marks.
+      if (lightLine(world, X, Y - 9, tx, ty)) return true;
+    }
+  }
+  return false;
+}
+
 const REPAIR_HALF_W = PW + 3;
 const REPAIR_HEADROOM = PH + 3;
 const REPAIR_FOOTROOM = 2;
@@ -531,6 +562,16 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
       // hands-on triggers: the WIZARD must be able to stand here
       check(near(wiz, W, H, m.x, m.y - 2, 6), m.kind, m.x, m.y - 2);
     }
+  }
+  // LIGHT WAVE: a photocell's lens and a lumen bloom's heart must be somewhere
+  // the alchemist can stand and put his beam on (grid-honest light LOS).
+  for (const m of runtime.mechanisms) {
+    if (m.kind === 'sensor' && m.sensorType === 'light' && m.state === 0 && !m.requiresCard) {
+      check(beamable(wiz, view.world, m.x, m.y, 150), 'photocell', m.x, m.y);
+    }
+  }
+  for (const b of runtime.lumenBlooms ?? []) {
+    check(beamable(wiz, view.world, b.x, b.y, 150), 'lumen-bloom', b.x, b.y);
   }
   for (const card of requiredCards) {
     const source = runtime.pickups.find(p => !p.taken && p.kind === 'tome' && p.data.card === card);

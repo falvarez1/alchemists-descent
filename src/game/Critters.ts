@@ -408,7 +408,8 @@ export class Critters implements CrittersApi {
           const lightTargetY = c.y - (c.kind === 'beetle' ? 1.5 : 0);
           const wdx = c.x - wandX, wdy = lightTargetY - wandY;
           const wd2 = wdx * wdx + wdy * wdy;
-          if (wd2 > 9 && wd2 < 112 * 112) {
+          // A hooded lantern throws no beam to scatter from (light wave).
+          if (wd2 > 9 && wd2 < 112 * 112 && ctx.lightQuery?.hooded !== true) {
             const wd = Math.sqrt(wd2);
             const inBeam = (wdx * Math.cos(aim) + wdy * Math.sin(aim)) / wd > .16;
             if (inBeam && sightClear(w, wandX, wandY, c.x, lightTargetY)) {

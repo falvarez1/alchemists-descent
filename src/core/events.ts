@@ -130,6 +130,14 @@ export interface EventMap {
   runLedger: { open: boolean };
   /** Crawler wants to stand but the ceiling says no — HUD CRAMPED glyph. */
   crampedChanged: { cramped: boolean };
+  /** The alchemist hooded (true) or unhooded (false) his lantern — the light wave's stealth verb. */
+  lanternHooded: { hooded: boolean; x: number; y: number };
+  /** The alchemist stepped into a designed deep-dark zone (once per entry; `darkness` 0..1). */
+  darkZoneEntered: { x: number; y: number; darkness: number };
+  /** The wand's beam caught a creature's eyes in the dark (they flash back). Audio cue hook. */
+  eyeshineCaught: { kind: EnemyKind; x: number; y: number };
+  /** A light device answered: a photocell latched, a lumen bloom unfurled/furled. Audio/HUD cues. */
+  lightDevice: { kind: 'photocell' | 'bloom-open' | 'bloom-furl'; x: number; y: number };
   /** A cast was refused for lack of mana (HUD flashes the mana bar). */
   dryFire: undefined;
   /** Flask verb refused (empty pour/throw, siphon into a full flask). */

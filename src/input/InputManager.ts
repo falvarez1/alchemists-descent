@@ -8,6 +8,7 @@ import { cancelChargingBlackHole, ensureSandboxWorldDetached, resetHeldSpellInpu
 import { BUILDER_REQUEST_CLOSE_EVENT } from '@/app/builderCloseRequest';
 import type { BuilderCloseRequestDetail } from '@/app/builderCloseRequest';
 import { throwGlowseed } from '@/game/LivingExpedition';
+import { toggleLantern } from '@/game/Lantern';
 import { releaseWeaverLeg } from '@/combat/LooseWeaverLeg';
 import { flaskSlotKey, gameplayCode } from '@/input/bindings';
 
@@ -46,6 +47,7 @@ const GAMEPLAY_KEY_CODES = new Set([
   'KeyF',
   'KeyG',
   'KeyV',
+  'KeyL',
   'KeyR',
   'Digit1',
   'Digit2',
@@ -556,6 +558,11 @@ export class InputManager {
     if (!e.repeat && JUMP_KEY_CODES.has(code)) ctx.input.queuedJump = code === 'Space' ? 'wall' : 'jump';
 
     if (code === 'KeyV' && ctx.state.mode === 'play' && !e.repeat && throwGlowseed(ctx)) {
+      e.preventDefault();
+      return;
+    }
+    // L (rebindable): hood / unhood the lantern — the light wave's stealth verb.
+    if (code === 'KeyL' && ctx.state.mode === 'play' && !e.repeat && toggleLantern(ctx)) {
       e.preventDefault();
       return;
     }

@@ -1,4 +1,5 @@
 import type { Critter, CritterKind } from '@/core/types';
+import { LIGHT_RESPONSE } from '@/config/darkness';
 
 /**
  * Breathing Works wave 2 (WS-N): organisms — ambient life with behaviour.
@@ -46,8 +47,9 @@ export const LEECH = { SWIM: 0, LATCHED: 1, BEACHED: 2 } as const;
 export const GLOW_LOWER = 0.05;
 export const GLOW_REEL = 0.14;
 export const GLOW_RETRACT = 0.9;
-/** Glow-worm: wand light on its body above this makes it haul its lure up. */
-export const GLOW_LIGHT_SHY = 0.42;
+/** Glow-worm: beam coverage on its body that makes it haul its lure up — the
+ *  light wave's photophobe threshold (config/darkness LIGHT_RESPONSE.flinchAt). */
+export const GLOW_LIGHT_SHY = LIGHT_RESPONSE.flinchAt;
 /** Glow-worm: ticks it stays hidden after a disturbance (plus a per-individual spread). */
 export const GLOW_HIDE = 260;
 /** Glow-worm: how long a meal glows in its belly. */

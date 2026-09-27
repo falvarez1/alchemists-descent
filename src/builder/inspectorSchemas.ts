@@ -364,7 +364,7 @@ function objectKindItems(obj: EditorObject, context: ObjectInspectorSchemaContex
   }
   if (obj.kind === 'sensor') {
     return [
-      paramSelect(obj, 'type', 'reads', ['heat', 'liquid', 'weight', 'charge', 'material'], 'heat'),
+      paramSelect(obj, 'type', 'reads', ['heat', 'liquid', 'weight', 'charge', 'material', 'light'], 'heat'),
       paramSelect(obj, 'filter', 'filter', ['', 'water', 'oil', 'acid', 'lava', 'sand', 'snow', 'gold', 'gunpowder', 'coal', 'ash', 'slime', 'healium', 'teleportium'], ''),
       paramNumber(obj, 'threshold', 'threshold', 6, { min: 1 }),
       paramNumber(obj, 'zoneW', 'zone width (cells)', 9, { min: 1 }),

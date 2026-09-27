@@ -57,6 +57,8 @@ and saves are unchanged by anything here. What changed is what that body
 | `creatures/idle.ts` | Idle life: a deterministic per-individual clock picks look / sniff / groom / shiver / settle / stretch; generic effects on the rig and gaze, species pose their own |
 | `creatures/ecology.ts` | Predation, scavenging, lures (moth swarms), roost scatter |
 | `game/organisms/*`, `render/organisms.ts` | Organisms (snapjaw, puffer, glow-worm, isopod, ember beetle, leech, ash moth) on the critter layer, their worldgen census and their art |
+| `render/creatures/eyeshine.ts` | Light wave: eyeshine at the eyes species mark (`anatomy.markEye`), glow markings (Weaver leg tips, Rillback lateral line, slime cores, Stone Maw jaw seams) and the dithered reveal in designed darkness (FEEL §10) |
+| `creatures/lightResponse.ts` | Light wave: the lit fix, photophobes (Weaver flinch/habituate, bat roost scatter), the Root Loper lurker, slime phototaxis; `playerVisibility` for sight |
 
 The Weaver keeps its own surface-crawler locomotion (`entities/weaverLocomotion`);
 its rig is a stub and its art reads `e.weaverLoco`. The Rillback and Stone Maw
@@ -109,6 +111,9 @@ mass-scaled and rate-limited so a fast wand never stun-locks.
   few grid writes — a snow print, a flicked sand grain, a track stain — draw
   no randomness).
 - Every enemy kind must have species art (`tests/creature-art.test.ts`).
+- Species art marks every OPEN eye it paints with `markEye` (the shared `eye()`
+  helper does it for you) so eyeshine sits on the real anchor; closed eyes are
+  never marked. A blind species marks none.
 - Renderers never step rigs; `tickRig` runs once per tick per creature.
 
 ## Tools

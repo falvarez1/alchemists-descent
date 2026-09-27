@@ -40,4 +40,7 @@ export function tickCreatureExpression(e: Enemy, tick: number): void {
   const blinkPhase = (tick + phase) % (185 + phase % 67);
   const blink = blinkPhase < 7 ? Math.sin(blinkPhase / 7 * Math.PI) : 0;
   rig.lid = clamp(Math.max(blink * (1 - rig.alert * .7), e.sleeping ? .95 : asleep && !feeding ? .6 : hurt * .24), 0, 1);
+  // Light wave: a Root Loper frozen in the lantern's light shuts its eye and
+  // passes for a stump (creatures/lightResponse).
+  if ((e.lightSense?.frozen ?? 0) > 0) rig.lid = 1;
 }

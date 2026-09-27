@@ -50,6 +50,8 @@ import { Background } from '@/render/Background';
 import { Camera } from '@/render/Camera';
 import { FrameComposer } from '@/render/FrameComposer';
 import { Lighting } from '@/render/Lighting';
+import { LightQuery } from '@/render/LightQuery';
+import { LightDevices } from '@/game/LightDevices';
 import { Renderer } from '@/render/Renderer';
 import type { RenderBackendStatus } from '@/render/pixels';
 import { drawDecor } from '@/render/sprites/DecorSprites';
@@ -124,6 +126,8 @@ export class Game {
   private readonly perfHud = new PerfHud();
   private readonly brewing = new Brewing();
   private readonly habitatAudio = new HabitatAudio();
+  /** Light wave: lantern housekeeping, the dark-entry beat, lumen blooms. */
+  private lightDevices: LightDevices | null = null;
   private deathCinema: DeathCinema | null = null;
   private readonly grimoireInteractions = new GrimoireInteractionObserver();
   private readonly restoreSavedMode: () => void;
@@ -268,6 +272,9 @@ export class Game {
     const contraption = new TeaMachine(ctx);
     ctx.contraption = contraption;
     this.disposables.push(contraption);
+    const lightDevices = new LightDevices(ctx);
+    this.lightDevices = lightDevices;
+    this.disposables.push(lightDevices);
     // The score and the narrator: streamed recordings on the engine's music and
     // voice buses. Both stay silent (and fetch nothing) until the first gesture.
     const music = new MusicDirector(ctx, audio);
@@ -317,9 +324,13 @@ export class Game {
     });
 
     this.renderer = new Renderer(holder, state.render);
+    // Light as a gameplay fact (light wave): creatures, plants and devices
+    // read the field the composer builds through ctx.lightQuery.
+    const lighting = new Lighting();
+    ctx.lightQuery = new LightQuery(ctx, lighting);
     this.composer = new FrameComposer(
       this.renderer,
-      new Lighting(),
+      lighting,
       new Background(),
       drawPlayerSprite,
       drawPeerGhosts,
@@ -668,6 +679,7 @@ export class Game {
         ctx.run?.update(ctx);
         ctx.pickups.update(ctx);
         ctx.mechanisms.update(ctx);
+        this.lightDevices?.update(ctx);
         ctx.contraption?.update();
         updateLivingExpedition(ctx);
         updateHabitatMotion(ctx);

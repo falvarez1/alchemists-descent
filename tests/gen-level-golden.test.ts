@@ -178,13 +178,16 @@ describe('marsh-gas ceiling pockets', () => {
 });
 
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '779d234d' }, // GEN_VERSION 48: the opening (cold lock removed, spawn-route barricade, Lower Bell floor grate) over the played Bell & Tea Engine
+  { id: 'd1', seed: 1337, hash: '1f6cf199' }, // GEN_VERSION 51 (light wave): the Undertow's lens-locked cache over v48's opening
   // GEN_VERSION 46 (four floors): the Drowned Cisterns inherit the old flooded
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
-  { id: 'd3', seed: 1337, hash: '880b8755' },
-  { id: 'd4', seed: 1337, hash: 'dbd0562f' }, // GEN_VERSION 51: the Kiln grew with the 34-cell Colossus (three ceiling tanks re-sealed after carves, a deep footing)
-  { id: 'd2', seed: 42, hash: 'f40d531b' }, // re-recorded: gas pockets + gunpowder seams
+  // GEN_VERSION 51 (light wave, over v50's re-sealed Kiln ceiling tank): every
+  // floor 2-4 carves a photocell strongroom and a lumen-bloom crossing on the
+  // forked 'light-puzzles' stream.
+  { id: 'd3', seed: 1337, hash: '92515be6' },
+  { id: 'd4', seed: 1337, hash: '455955ce' }, // GEN_VERSION 52: the Kiln grew with the 34-cell Colossus (three ceiling tanks re-sealed after carves, a deep footing)
+  { id: 'd2', seed: 42, hash: '05a3ab4b' },
 ];
 
 describe('full generateLevel golden hashes', () => {

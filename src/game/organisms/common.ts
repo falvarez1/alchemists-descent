@@ -117,6 +117,7 @@ export function wandLightAt(ctx: Ctx, x: number, y: number): number {
   const along = (dx * Math.cos(aim) + dy * Math.sin(aim)) / d;
   const omni = Math.max(0, 1 - d / 26) * 0.6;
   const beam = along > 0.16 ? (1 - d / 110) * Math.min(1, (along - 0.16) * 3) : 0;
-  const k = Math.max(omni, beam);
-  return k > 0.02 && sightClear(ctx.world, wx, wy, x, y) ? k : 0;
+  // Scaled to the light field's coverage units (a beam reads ~0.05–0.25 there).
+  const k = Math.max(omni, beam) * 0.25;
+  return k > 0.005 && sightClear(ctx.world, wx, wy, x, y) ? k : 0;
 }

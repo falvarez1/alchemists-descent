@@ -156,7 +156,7 @@ export const SENSOR_FILTER_CELLS: Record<string, number> = {
   teleportium: Cell.Teleportium,
 };
 
-const SENSOR_TYPES = new Set(['heat', 'liquid', 'weight', 'charge', 'material']);
+const SENSOR_TYPES = new Set(['heat', 'liquid', 'weight', 'charge', 'material', 'light']);
 const LATCH_MODES = new Set(['momentary', 'timed', 'permanent']);
 const RELAY_ACTIONS = new Set(['activate', 'ignite', 'break', 'strike']);
 /** Machine trigger kinds instantiated object-first, wired from their out-link. */

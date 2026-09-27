@@ -29,10 +29,11 @@ export function mothLight(ctx: Ctx, c: Critter): boolean {
   const dx = tipX - c.x, dy = tipY - c.y, d2 = dx * dx + dy * dy;
   if (d2 > MOTH_LIGHT_RANGE * MOTH_LIGHT_RANGE) return false;
   const hooded = ctx.lightQuery?.hooded ?? false;
-  const lit = hooded ? 0 : Math.max(wandLightAt(ctx, c.x, c.y), d2 < 40 * 40 ? 0.35 : 0);
-  if (lit <= 0.05) return false;
+  // Beam coverage (light-field units: ~0.05–0.25 in the beam), or the lantern's glow close by.
+  const lit = hooded ? 0 : Math.max(wandLightAt(ctx, c.x, c.y), d2 < 40 * 40 ? 0.08 : 0);
+  if (lit <= 0.012) return false;
   const d = Math.sqrt(d2) || 1;
-  const k = Math.min(1, lit * 1.6);
+  const k = Math.min(1, lit * 10);
   if (d > MOTH_ORBIT) {
     c.vx += (dx / d) * 0.05 * k;
     c.vy += (dy / d) * 0.05 * k;

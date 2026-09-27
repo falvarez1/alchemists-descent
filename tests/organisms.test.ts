@@ -163,7 +163,7 @@ describe('glow-worm', () => {
   it('hauls its lure up when the wand light falls on it', () => {
     const { ctx, host, list } = makeCtx();
     ctx.player.x = 200;
-    (ctx as { lightQuery?: unknown }).lightQuery = { hooded: false, wandLight: () => 0.9, level: () => 1, darkness: () => 0 };
+    (ctx as { lightQuery?: unknown }).lightQuery = { hooded: false, wandLight: () => 0.15, level: () => 1, darkness: () => 0 };
     const worm = critter('glowworm', 100, 20, { anchorX: 100, anchorY: 20, state: GLOW.FISH, extent: 20, reach: 20 });
     list.push(worm);
     tick(ctx, host, 60);
@@ -240,7 +240,7 @@ describe('lantern moths', () => {
     const { ctx } = makeCtx();
     ctx.player.x = 100; ctx.player.y = 100; ctx.player.aimAngle = 0;
     const moth = critter('moth', 160, 91);
-    (ctx as { lightQuery?: unknown }).lightQuery = { hooded: false, wandLight: () => 0.8, level: () => 1, darkness: () => 0 };
+    (ctx as { lightQuery?: unknown }).lightQuery = { hooded: false, wandLight: () => 0.12, level: () => 1, darkness: () => 0 };
     expect(mothLight(ctx, moth)).toBe(true);
     expect(moth.vx).toBeLessThan(0);
     const dark = critter('moth', 160, 91);

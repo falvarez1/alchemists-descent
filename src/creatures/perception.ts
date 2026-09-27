@@ -2,6 +2,7 @@ import type { Enemy } from '@/core/types';
 import type { World } from '@/sim/World';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import type { CreatureCue, CreatureMind } from './types';
+import { SIGHT } from '@/config/darkness';
 
 export interface PerceivedPlayer {
   x: number;
@@ -23,6 +24,19 @@ const BOSS_EYE_LIFT: Partial<Record<Enemy['kind'], number>> = { colossus: 28, le
 export const NOTICE_ESCALATE_CELLS = 130;
 /** Irritation gained per tick at point blank is 1/this (falls off linearly to 0 at the edge). */
 export const NOTICE_ESCALATE_TICKS = 120;
+
+/**
+ * Sight range multiplier for the alchemist's visibility v (light wave,
+ * creatures/lightResponse playerVisibility). At and above the shipped
+ * lantern (0.7) it is the original 0.52 + 0.48·v; below it — hooded, in the
+ * dark — it falls linearly to SIGHT.darkRange, so a hooded shadow in a
+ * deep-dark zone is seen only close up (or heard).
+ */
+export function sightRangeScale(v: number, darkRange = SIGHT.darkRange): number {
+  if (v >= SIGHT.lantern) return 0.52 + v * 0.48;
+  const lantern = 0.52 + SIGHT.lantern * 0.48;
+  return darkRange + (lantern - darkRange) * Math.max(0, v) / SIGHT.lantern;
+}
 
 export function ensureCreatureMind(enemy: Enemy, seed: number): CreatureMind {
   if (enemy.mind) return enemy.mind;
@@ -73,7 +87,7 @@ export function tickCreatureMind(
     const dy = player.y - 9 - (enemy.y - 6);
     const distance = Math.hypot(dx, dy);
     const vision = enemy.kind === 'stonemaw' ? 26 : enemy.kind === 'weaver' ? 215 : 265;
-    const range = vision * senseScale * (0.52 + player.light * 0.48) * (player.crouching ? 0.65 : 1);
+    const range = vision * senseScale * sightRangeScale(player.light) * (player.crouching ? 0.65 : 1);
     const bossEye = BOSS_EYE_LIFT[enemy.kind];
     const facing = bossEye !== undefined || dx * mind.facing > -18 || distance < 42 || mind.irritation > 0.3;
     // A Stone Maw is blind but not numb: a body within a few lengths presses

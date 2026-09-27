@@ -20,8 +20,8 @@ class CreaturePen {
   private readonly hit: number;
   constructor(private readonly out: PixelSurface, field: LightField, ctx: Ctx, e: Readonly<Pick<Enemy, 'x' | 'y' | 'flash'>>, maxLight = Infinity) {
     this.step = out.pixelStep ?? 1;
-    const sample = field.sample(e.x, e.y - 8);
-    this.light = [Math.min(maxLight, Math.max(.6, sample.r)), Math.min(maxLight, Math.max(.6, sample.g)), Math.min(maxLight, Math.max(.6, sample.b))];
+    const sample = field.sample(e.x, e.y - 8), floor = .6 * (sample.open ?? 1);
+    this.light = [Math.min(maxLight, Math.max(floor, sample.r)), Math.min(maxLight, Math.max(floor, sample.g)), Math.min(maxLight, Math.max(floor, sample.b))];
     this.hit = !ctx.state.reduceFlashes && e.flash > 0 ? Math.min(.2, e.flash / 30) : 0;
   }
   pixel(x: number, y: number, c: Color, shade = 1, emissive = false): void {

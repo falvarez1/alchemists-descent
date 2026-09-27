@@ -13,6 +13,7 @@ export const BINDING_LABELS: Readonly<Record<BindingAction, string>> = {
   left: 'Move left', right: 'Move right', up: 'Up (climb)', down: 'Down (crouch, climb)',
   jump: 'Jump / levitate', climb: 'Grab a wall', interact: 'Interact / siphon', pour: 'Pour',
   drink: 'Drink', kick: 'Kick', carry: 'Carry', lure: 'Throw a glowseed', clip: 'Save a clip', mute: 'Mute all sound',
+  lantern: 'Hood the lantern',
 };
 
 /**

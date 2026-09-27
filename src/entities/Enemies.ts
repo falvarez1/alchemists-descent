@@ -38,6 +38,7 @@ import {
 import { splatterStain } from '@/sim/stains';
 import { entityRandom } from '@/core/simRandom';
 import { ensureCreatureMind, sightClear, tickCreatureMind } from '@/creatures/perception';
+import { lightMotion, playerVisibility, respondToLight } from '@/creatures/lightResponse';
 import { tickCreaturePose } from '@/creatures/pose';
 import { localRoute } from '@/creatures/navigation';
 import { pointHitsCreature } from '@/creatures/body';
@@ -2510,7 +2511,8 @@ export class Enemies implements EnemyControlApi {
     const enemies = ctx.enemies;
     const observedPlayer = {
       x: ctx.player.x, y: ctx.player.y, vx: ctx.player.vx, dead: ctx.player.dead,
-      crouching: ctx.input?.keys.down === true, light: ctx.player.status.torch > 0 ? 1 : 0.7,
+      // Light wave: the lantern, the hood and the place's darkness set how far eyes reach.
+      crouching: ctx.input?.keys.down === true, light: playerVisibility(ctx),
     };
     while (this.cues.length > 0 && ctx.state.frameCount - this.cues[0].tick > 90) this.cues.shift();
     if (ctx.player.grounded && !observedPlayer.crouching && Math.abs(ctx.player.vx) > 0.7 && ctx.state.frameCount % 14 === 0) {
@@ -2638,6 +2640,7 @@ export class Enemies implements EnemyControlApi {
       if (this.tickKnock(e, def)) continue;
 
       const mind = tickCreatureMind(ctx.world, e, observedPlayer, this.cues, ctx.state.frameCount, ctx.state.worldSeed, difficultyMods(ctx.state).enemySense);
+      respondToLight(ctx, e, def, mind); // light wave: lit fix, flinch, scatter, freeze
       const lair = BOSS_LAIRS[e.kind];
       if (lair) this.watchLair(e, def, lair, mind);
       const player = { x: mind.targetX, y: mind.targetY, vx: mind.targetVx };
@@ -3774,6 +3777,7 @@ export class Enemies implements EnemyControlApi {
         }
       }
 
+      lightMotion(ctx, e, targetAlive); // light wave: the lurker freezes/creeps, slimes follow the beam
       // THREAT REFLEXES OVERRIDE the per-kind decision this frame: a committed
       // dodge twitches the body clear of an incoming hit; a flee retreats;
       // otherwise fear just scales the chase back. Fearless bosses' weights make
