@@ -107,3 +107,29 @@ additive** (`core/types.ts`, `core/events.ts`, `ui/Hud.ts`, `game/Game.ts`,
 8. Volume sliders exist; sounds pan with position; nothing clips harshly.
 9. `npx tsc --noEmit`, `npx vitest run`, `npm run build`, `npm run lint`,
    `npm run verify:findability` pass; runtime probes pass in headless Edge.
+
+## Wave 2 — a living, lit world (2026-09-27)
+
+The owner asked for more creature quality, lush and fellable vegetation, more
+interactivity and puzzles, more organisms, and light and shadow that are
+mechanics ("dark caves where you only see the creatures' eyes or some glowing
+phalanx until you shine the wand's light towards it").
+
+| WS | Branch | Owns |
+| --- | --- | --- |
+| **L — Light** | `bw/light` | deep-dark zones and the sprite/terrain darkness model, eyeshine + glow markings for every creature kind, `ctx.lightQuery` (`LightQueryApi`), the hooded lantern (stealth), creature light responses in perception, light devices (photocells, lumen blooms) and light puzzles |
+| **F — Flora** | `bw/flora` | lush vegetation per floor, trees/giant fungi with real-cell trunks that topple as rigid bodies and settle into log cells, canopies/leaves, seed pods (glowseed restock, growth seeds), felling/damming/growth puzzles |
+| **N — Fauna** | `bw/fauna` | creature quality pass (behaviour, animation, reactions, the Colossus as a final boss), new ambient organisms (entity-based), visible predator–prey ecology |
+
+Contracts:
+- `LightQueryApi` (`ctx.lightQuery?`, in `core/types.ts`) — L implements it;
+  F and N read it with optional chaining (`ctx.lightQuery?.wandLight(x, y) ?? 0`).
+- **New cell ids:** only F may add cells, ids 39–41 (append-only; `CELL_COUNT`,
+  marker palette ≥ 12 Manhattan, material palette, handlers, tests). L and N add none.
+- Organisms with behaviour (snapjaws, glow-worms, puffers, fish, moths…) are N's;
+  plants without behaviour (trees, fungi, ferns, grass, pods) are F's; light
+  plants/devices (lumen blooms, photocells) are L's.
+- Each new worldgen pass forks its own RNG stream; the integrator sets the final
+  GEN_VERSION and re-records goldens after merging.
+- Budget: each workstream adds ≤ ~1 ms/frame average CPU at 1600×900 on the dev
+  machine, measured.

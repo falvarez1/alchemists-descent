@@ -3250,4 +3250,24 @@ export interface Ctx {
   run?: RunApi;
   /** Kill attribution + alchemical-kill payouts; absent in small test contexts. */
   alchemy?: AlchemyKillsApi;
+  /** Light as a gameplay fact (render/LightQuery); absent in small test contexts. */
+  lightQuery?: LightQueryApi;
+}
+
+/**
+ * Gameplay reads of the light the player actually sees (Breathing Works light
+ * wave). Creatures, organisms, plants and devices ask "how lit is this spot?"
+ * and "is the wand's beam on it?" instead of reaching into the renderer. Values
+ * refer to the most recent light build (lighting rebuilds on even frames; the
+ * field only covers the view window — off-view points read as unlit).
+ */
+export interface LightQueryApi {
+  /** Perceived light at a world point, 0 (black) … ~1 (well lit) … up to 2 (blazing), ambient included. */
+  level(x: number, y: number): number;
+  /** How strongly the wand's beam/omni light covers this point, 0 … 1 (0 when the lantern is hooded). */
+  wandLight(x: number, y: number): number;
+  /** How dark the place is by design (a deep-dark zone reads 1; an ordinary cave ~0.3; open Works 0). */
+  darkness(x: number, y: number): number;
+  /** True while the player has hooded their lantern (stealth). */
+  readonly hooded: boolean;
 }
