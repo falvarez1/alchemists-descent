@@ -4,7 +4,7 @@ import { entityRandom } from '@/core/simRandom';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 import type { BossBrain, BossHost, BossMove, BossSense } from './types';
-import { bossPhaseFor, bossTakesWorldHarm, ensureBossBrain } from './types';
+import { bossPhaseFor, ensureBossBrain } from './types';
 
 /**
  * THE SUNKEN LEVIATHAN — the Cisterns' angler, the Kiln's mirror: WATER IS
@@ -74,7 +74,7 @@ function thrash(ctx: Ctx, e: Enemy, host: BossHost, b: BossBrain): void {
   const w = ctx.world, p = ctx.player;
   const f = e.mind?.facing ?? 1;
   const tx = e.x - f * 16, ty = e.y - 8; // the tail's side
-  if (b.moveT === 1) host.voice(e, () => { ctx.audio.tone(64, 40, 0.5, 'sine', 0.18); ctx.audio.slither(1.6); }, 700);
+  if (b.moveT === 1) host.voice(e, () => { ctx.audio.sfx('creature.leviathan.windup', e.x, e.y); ctx.audio.slither(1.6); }, 700);
   if (b.moveT === LEV.THRASH_TELL) {
     // The slam: the pool's own surface is flung at the shore as real water.
     let n = 0;
@@ -122,15 +122,15 @@ export function tickLeviathan(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost,
   const phase = bossPhaseFor(e.hp / e.maxHp);
   if (phase > b.phase) {
     b.phase = phase;
-    host.voice(e, () => { ctx.audio.groan(); ctx.audio.tone(50, 28, 0.9, 'sine', 0.2); }, 800);
+    host.voice(e, () => { ctx.audio.groan(); ctx.audio.sfx('creature.leviathan.alert', e.x, e.y); }, 800);
     ctx.particles.burst(e.x, e.y - 10, 22, null, () => packRGB(150, 220, 255), 2, { glow: 1.4, grav: -0.03 });
     host.shakeAt(e.x, e.y, 0.03, 0.06);
   }
 
   // SHORTED: the live pool jolts it — a burst of damage and a convulsion,
   // not a silent drain. Only a fight the player started counts.
-  // (A pool already live when the fight began gets a grace beat: the current must be the player's.)
-  if (sub && e.status.electrified > 0 && bossTakesWorldHarm(e, ctx.state.frameCount) && b.jolt <= 0) {
+  // (The ward decides whether the current is the player's: core/bossWard.)
+  if (sub && e.status.electrified > 0 && b.jolt <= 0 && host.worldHarm(e)) {
     b.jolt = LEV.JOLT;
     const dmg = e.maxHp * LEV.JOLT_SHARE;
     ctx.alchemy?.noteHit(e, 'shorted');
@@ -215,7 +215,7 @@ export function tickLeviathan(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost,
       const a = Math.atan2(player.y - 8 - e.y, player.x - e.x);
       e.vx = Math.cos(a) * 3.4;
       e.vy = Math.sin(a) * 2.6;
-      host.voice(e, () => ctx.audio.noiseBurst(0.18, 700, 0.12, true), 640);
+      host.voice(e, () => ctx.audio.sfx('creature.leviathan.lunge', e.x, e.y), 640);
     } else if (b.moveT < LEV.LUNGE_TELL) {
       e.vx *= 0.8; e.vy = e.vy * 0.8 + 0.05; // sinking, coiled, lure dark
       e.windup = LEV.LUNGE_TELL - b.moveT;
@@ -234,7 +234,7 @@ export function tickLeviathan(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost,
       e.swoop = 22;
       e.vx = clamp((player.x - e.x) * 0.06, -1.4, 1.4);
       e.vy = -LEV.SURGE_VY;
-      host.voice(e, () => { ctx.audio.noiseBurst(0.3, 500, 0.14, true); ctx.audio.splash(1.4, e.x, e.y); }, 800);
+      host.voice(e, () => { ctx.audio.sfx('creature.leviathan.lunge', e.x, e.y); ctx.audio.splash(1.4, e.x, e.y); }, 800);
       ctx.particles.burst(e.x, e.y - def.h, 22, null, () => packRGB(190, 230, 255), 3, { glow: 0.4, grav: 0.08 });
     }
     if (b.moveT >= LEV.DIVE_DUR) end(e, b, 110);
@@ -259,7 +259,7 @@ export function tickLeviathan(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost,
     else if (s.pDist < LEV.LUNGE_RANGE) begin(ctx, e, b, 'lunge', LEV.LUNGE_TELL + LEV.LUNGE_SWOOP);
     else if (P >= 2 && playerDry && s.pDist < LEV.THRASH_RANGE + 40 && b.lastMove !== 'thrash') begin(ctx, e, b, 'thrash', LEV.THRASH_DUR);
     else if (s.pDist >= LEV.VOLLEY_MIN && s.pDist < LEV.VOLLEY_MAX && host.hasAttackLine(e, def, true)) begin(ctx, e, b, 'volley', LEV.VOLLEY_TELL + 6);
-    if ((b.move as BossMove) === 'lunge') host.voice(e, () => ctx.audio.tone(70, 160, 0.5, 'sawtooth', 0.14), 640);
+    if ((b.move as BossMove) === 'lunge') host.voice(e, () => ctx.audio.sfx('creature.leviathan.windup', e.x, e.y), 640);
   }
 
   // Contact graze outside a committed bite.

@@ -430,6 +430,24 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   its ground for 52 ticks before it marches, holds its fire 110 ticks, and the
   camera leans half the way toward it (≤ 70 × 28 cells, zoom 1.06) over 40 ticks,
   holds 70 and returns over 40 — no lean at all with camera shake off.
+- **The boss ward** (`core/bossWard`): the Colossus and the Leviathan lose hp
+  only to harm the player set in motion — any direct blow, or the world's
+  (a blast he did not cast, fire, current, acid, a flood) while he is ENGAGED:
+  he cast, poured or threw within 8 s (480 ticks) at a point ≤ 360 cells from
+  the boss. A boss's own slam/fireball/death blast never hurts it and leaves no
+  live charge; no blast he did not cast breaks a lair's organ (the Kiln tank,
+  the Sump plugs), and neither does world repair. A boss the player never
+  harmed enters at full hp. (QA: the Colossus died on its own, idle player.)
+- **Kiln thermal shock is a CRACK, not a drain:** a douse he caused (credited
+  when he is engaged during it, and it stays his while the kiln stays wet)
+  cracks it for 16% of max hp at once (~75 of 468, ~83 of 520), again every
+  150 ticks while still soaked. Each crack flashes up to 24 water cells on and
+  around its body to real steam, bursts steam, glowing fissures and 10 stone
+  shards, flashes it (14), squashes it (0.3), 5-tick hitstop, +0.05 shake
+  (cap 0.09), 0.55 bloom kick (not under reduced flashes), steam hiss + shell
+  crack + 64→36 Hz saw, a "THERMAL SHOCK" finisher callout, and staggers it
+  (no attacks for 120 ticks, speed ×0.2). A full tank is 2–3 cracks. (Was
+  1.4 hp EVERY wet tick — 84 hp/s — from any water at all.)
 - **Bat roosts:** dormant folded teardrops on the ceiling; one red eye cracks
   open at your approach (< 70 cells wakes them; stirring starts at 110).
 - **Slime egg clutches** glisten with pulsing embryos; they hatch on a timer —
@@ -451,6 +469,15 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   flinch on the HUD, and a sad fizzle of particles at the staff tip (throttled
   to every 14 frames while held).
 - **Recharge:** the wrap-around recharge reads on the hotbar as the bar refills.
+- **Click buffer:** a click made while the wand is cycling is remembered — one
+  buffered cast, never a queue — and fires the tick the wand is ready, if that
+  is ≤ 30 ticks (0.5 s) after the release (`CLICK_BUFFER_TICKS`, was 8); later
+  than that, or if a wand swap, level change or death intervenes, it is spent.
+  8 real taps at 450 ms on the starter: 3–6 casts before, 7 after (the 8th
+  merges — the cycle can't cast faster).
+- **Starter cycle:** the Oak Sprig's recharge is 22 ticks (was 30, 2026-09-27),
+  so a lone Spark Bolt cycles every 36 ticks = 0.60 s (was 44 = 0.73 s):
+  +22% sustained Spark DPS against a starter QA called "plinky".
 - **Hitstop:** player hurt ≥ 8 damage freezes gameplay for 3 frames
   (rendering continues). Creature hits: ≥ 7 damage (with knockback, within
   240 cells, throttled 5 ticks) freeze 2 frames (3 at ≥ 20); **direct hits of
@@ -721,7 +748,12 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   undersides streak 1–3 cells by column. Tile features (roots, seeps, ember
   veins) show in a depth window, and Kiln veins brighten toward the depths
   (×0.35 at the top). The backdrop's contact shadow is ×0.40–0.45 at a face,
-  easing out over 7–8 cells, with saturation ×0.5–0.55 and a 0.3 haze.
+  easing out over 7–8 cells, with saturation ×0.5–0.55 and a 0.3 haze. The
+  Kiln Heart's backdrop is ember-lit rather than stepped back (QA: "floating
+  slabs on a flat black backdrop"): mul (1.6, 0.88, 0.56) + lift (0.03, 0.01,
+  0.002), copper machinery ×1.75, saturation ×0.9 and a warm smoke haze
+  (0.12, 0.045, 0.02) at only 0.18 — and a deeper contact shadow (×0.30,
+  easing out over 10 cells) so the rock stands in front of the warm refinery.
   Small enclosed air pockets under 1500 cells are sealed and count as rock.
   Digs re-derive at most 4 chunk regions per frame, and liquid or powder churn
   one every other frame, so render cost stays within noise of the classic sampler.

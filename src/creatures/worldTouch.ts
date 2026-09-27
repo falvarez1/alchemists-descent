@@ -100,12 +100,12 @@ export function footfall(ctx: Ctx, e: Enemy, gx: number, gy: number, nx: number,
   if (body && !body.tag?.startsWith('player')) ctx.rigidBodies.applyImpulseAt(body, dir * (0.4 + mass * 0.35), -0.3 - mass * 0.15, gx, gy - 1);
   // Weight you can hear (and, for the giant, feel).
   if (e.kind === 'colossus') {
-    voice(ctx, e, 10, () => { ctx.audio.landThud(0.8); ctx.audio.hollowKnock(); });
+    voice(ctx, e, 10, () => ctx.audio.creature(e.kind, 'step'));
     if (Math.hypot(e.x - ctx.player.x, e.y - ctx.player.y) < 220) ctx.fx.screenShake = Math.min(0.03, ctx.fx.screenShake + 0.012);
-  } else if (e.kind === 'golem') voice(ctx, e, 12, () => ctx.audio.landThud(0.35));
-  else if (e.kind === 'weaver') voice(ctx, e, 26, () => ctx.audio.chitin(0.18));
-  else if (e.kind === 'spitter') voice(ctx, e, 22, () => ctx.audio.skitter());
-  else if (e.kind === 'rootloper') voice(ctx, e, 30, () => ctx.audio.creak(0.35));
+  } else if (e.kind === 'golem') voice(ctx, e, 12, () => ctx.audio.creature(e.kind, 'step'));
+  else if (e.kind === 'weaver') voice(ctx, e, 26, () => ctx.audio.sfx('creature.weaver.step', undefined, undefined, { gain: 0.5 }));
+  else if (e.kind === 'spitter') voice(ctx, e, 22, () => ctx.audio.creature(e.kind, 'step'));
+  else if (e.kind === 'rootloper') voice(ctx, e, 30, () => ctx.audio.creature(e.kind, 'step'));
 }
 
 /** Droplets thrown where a body part breaks a liquid surface (in or out). */

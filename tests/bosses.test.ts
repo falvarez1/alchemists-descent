@@ -8,9 +8,11 @@ import { createDefaultStatus } from '@/entities/status';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import { COL, tickColossus, colossusDamageScale } from '@/creatures/bosses/colossus';
+import { QUENCH_STAGGER_TICKS } from '@/entities/kilnQuench';
 import { LEV, tickLeviathan } from '@/creatures/bosses/leviathan';
 import type { BossHost, BossSense } from '@/creatures/bosses/types';
-import { BOSS_WORLD_GRACE, bossTakesWorldHarm, engageBoss, ensureBossBrain } from '@/creatures/bosses/types';
+import { engageBoss, ensureBossBrain } from '@/creatures/bosses/types';
+import { BossWard, KILN_QUENCH } from '@/core/bossWard';
 
 const noop = (): undefined => undefined;
 
@@ -52,12 +54,15 @@ function makeCtx(): { ctx: Ctx; events: EventBus; runComplete: ReturnType<typeof
   return { ctx, events, runComplete, playerDamage };
 }
 
-function host(ctx: Ctx, finish = vi.fn()): BossHost {
+/** A boss host over a real ward; `engaged` makes the player's last act fresh and close. */
+function host(ctx: Ctx, finish = vi.fn(), ward = new BossWard(), engaged = true): BossHost {
+  const act = (): void => { if (engaged) ward.noteAct(ctx.state.frameCount, 200, 150); };
   return {
     voice: (_e, fn) => fn(), shakeAt: noop, hasAttackLine: () => true, finishDeath: finish,
     poolVolley: noop, introducing: () => false,
+    worldHarm: (e) => { act(); return ward.allows(e, 'shorted', ctx.state.frameCount); },
+    quenchTick: (e, soaked) => { act(); return ward.quenchTick(e, soaked, ctx.state.frameCount); },
   };
-  void ctx;
 }
 
 const sense = (over: Partial<BossSense> = {}): BossSense => ({
@@ -65,22 +70,32 @@ const sense = (over: Partial<BossSense> = {}): BossSense => ({
 });
 
 describe('a boss fight is honest', () => {
-  it('the world cannot hurt a boss the player has not engaged, nor inside the grace beat', () => {
-    const { ctx } = makeCtx();
+  it('the ward keeps the world off a boss until the player acts near it', () => {
+    const { ctx, events } = makeCtx();
     const enemies = new Enemies(ctx);
     const c = boss('colossus');
     ctx.enemies.push(c);
     enemies.damage(c, 50, 0, 0, 'shorted');
     enemies.damage(c, 50, 0, 0, 'flattened');
     expect(c.hp).toBe(c.maxHp);
-    const b = ensureBossBrain(c);
-    engageBoss(b, ctx.state.frameCount);
-    enemies.damage(c, 50, 0, 0, 'detonated');
-    expect(c.hp).toBe(c.maxHp);
-    ctx.state.frameCount += BOSS_WORLD_GRACE;
-    expect(bossTakesWorldHarm(c, ctx.state.frameCount)).toBe(true);
+    events.emit('cardCast', { x: c.x - 40, y: c.y - 10 } as never);
     enemies.damage(c, 50, 0, 0, 'detonated');
     expect(c.hp).toBe(c.maxHp - 50);
+  });
+
+  it('its own tumbling armour is not a blow, and nothing lands on a dying boss', () => {
+    const { ctx, events } = makeCtx();
+    const enemies = new Enemies(ctx);
+    const c = boss('colossus');
+    ctx.enemies.push(c);
+    events.emit('cardCast', { x: c.x, y: c.y } as never);
+    const b = ensureBossBrain(c);
+    b.selfHarmUntil = ctx.state.frameCount + 60;
+    enemies.damage(c, 40, 0, 0, 'flattened');
+    expect(c.hp).toBe(c.maxHp);
+    b.move = 'dying';
+    enemies.damage(c, 40, 0, 0, 'direct');
+    expect(c.hp).toBe(c.maxHp);
   });
 
   it('a direct blow always lands and starts the fight', () => {
@@ -93,55 +108,35 @@ describe('a boss fight is honest', () => {
     expect(c.boss?.engaged).toBe(true);
   });
 
-  it('its own blast is not a blow', () => {
-    const { ctx } = makeCtx();
-    const enemies = new Enemies(ctx);
-    const c = boss('colossus');
-    ctx.enemies.push(c);
-    const b = ensureBossBrain(c);
-    engageBoss(b, 0);
-    b.selfHarmUntil = ctx.state.frameCount + 3;
-    enemies.damage(c, 40, 0, 0, 'detonated');
-    expect(c.hp).toBe(c.maxHp);
-  });
 });
 
 describe('the Kiln Colossus', () => {
-  it('water on a hot kiln after the fight began is a thermal-shock burst and a kneel', () => {
+  it('a douse the player caused cracks it (the ward’s 16%), and it kneels with its chest split', () => {
     const { ctx } = makeCtx();
     const c = boss('colossus');
     const b = ensureBossBrain(c);
-    engageBoss(b, 0);
+    const h = host(ctx);
     c.status.wet = 60;
     const hp0 = c.hp;
-    tickColossus(ctx, c, ENEMY_DEFS.colossus, host(ctx), sense());
-    expect(hp0 - c.hp).toBeCloseTo(c.maxHp * COL.QUENCH_SHARE, 5);
+    tickColossus(ctx, c, ENEMY_DEFS.colossus, h, sense());
+    expect(hp0 - c.hp).toBeCloseTo(c.maxHp * KILN_QUENCH.share, 5);
     expect(b.move).toBe('quench');
-    expect(b.exposed).toBeGreaterThan(100);
+    expect(b.exposed).toBe(QUENCH_STAGGER_TICKS);
     expect(colossusDamageScale(c)).toBeCloseTo(COL.EXPOSED_MUL, 5);
-    // still wet next tick: one burst, not a drain
+    // still soaked: a crack every rearm, never a drain
     const hp1 = c.hp;
-    for (let i = 0; i < 30; i++) { ctx.state.frameCount++; tickColossus(ctx, c, ENEMY_DEFS.colossus, host(ctx), sense()); }
+    for (let i = 0; i < KILN_QUENCH.rearmTicks - 2; i++) { ctx.state.frameCount++; c.status.wet = 60; tickColossus(ctx, c, ENEMY_DEFS.colossus, h, sense()); }
     expect(c.hp).toBe(hp1);
+    for (let i = 0; i < 4; i++) { ctx.state.frameCount++; c.status.wet = 60; tickColossus(ctx, c, ENEMY_DEFS.colossus, h, sense()); }
+    expect(hp1 - c.hp).toBeCloseTo(c.maxHp * KILN_QUENCH.share, 5);
   });
 
-  it('a puddle it already stood in, or a cold kiln, does not crack it', () => {
+  it('water nobody caused never cracks it', () => {
     const { ctx } = makeCtx();
     const c = boss('colossus');
-    const b = ensureBossBrain(c);
     c.status.wet = 60;
-    tickColossus(ctx, c, ENEMY_DEFS.colossus, host(ctx), sense()); // wet before the fight
-    engageBoss(b, ctx.state.frameCount);
-    ctx.state.frameCount += 200;
-    tickColossus(ctx, c, ENEMY_DEFS.colossus, host(ctx), sense());
+    for (let i = 0; i < 300; i++) { ctx.state.frameCount++; tickColossus(ctx, c, ENEMY_DEFS.colossus, host(ctx, vi.fn(), new BossWard(), false), sense()); }
     expect(c.hp).toBe(c.maxHp);
-    const cold = boss('colossus');
-    const cb = ensureBossBrain(cold);
-    engageBoss(cb, 0);
-    cb.heat = 0.3;
-    cold.status.wet = 60;
-    tickColossus(ctx, cold, ENEMY_DEFS.colossus, host(ctx), sense());
-    expect(cold.hp).toBe(cold.maxHp);
   });
 
   it('roars into its phases and sheds its plates in the third', () => {
@@ -209,23 +204,23 @@ describe('the Sunken Leviathan', () => {
     for (let y = 100; y <= 150; y++) for (let x = 150; x <= 250; x++) ctx.world.replaceCellAt(ctx.world.idx(x, y), Cell.Water, 0x2255aa);
   }
 
-  it('a live pool jolts it in bursts, only in a fight the player started', () => {
+  it('a live pool jolts it in bursts, only when the player is engaged', () => {
     const { ctx } = makeCtx();
     pool(ctx);
     const l = boss('leviathan', 200, 148);
     l.timer = 4;
     l.status.electrified = 200;
-    tickLeviathan(ctx, l, ENEMY_DEFS.leviathan, host(ctx), sense());
+    tickLeviathan(ctx, l, ENEMY_DEFS.leviathan, host(ctx, vi.fn(), new BossWard(), false), sense());
     expect(l.submerged).toBe(true);
-    expect(l.hp).toBe(l.maxHp); // not engaged
+    expect(l.hp).toBe(l.maxHp); // nobody's current
+    const h = host(ctx);
+    ctx.state.frameCount++;
+    tickLeviathan(ctx, l, ENEMY_DEFS.leviathan, h, sense());
     const b = ensureBossBrain(l);
-    engageBoss(b, ctx.state.frameCount);
-    ctx.state.frameCount += BOSS_WORLD_GRACE;
-    tickLeviathan(ctx, l, ENEMY_DEFS.leviathan, host(ctx), sense());
     expect(l.maxHp - l.hp).toBeCloseTo(l.maxHp * LEV.JOLT_SHARE, 5);
     expect(b.move).toBe('shock');
     const hp1 = l.hp;
-    for (let i = 0; i < LEV.JOLT - 1; i++) { ctx.state.frameCount++; tickLeviathan(ctx, l, ENEMY_DEFS.leviathan, host(ctx), sense()); }
+    for (let i = 0; i < LEV.JOLT - 1; i++) { ctx.state.frameCount++; tickLeviathan(ctx, l, ENEMY_DEFS.leviathan, h, sense()); }
     expect(l.hp).toBe(hp1); // a jolt, then a beat — not a drain
   });
 

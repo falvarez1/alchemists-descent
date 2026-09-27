@@ -47,7 +47,7 @@ export function burstPuffer(ctx: Ctx, c: Critter): void {
   }
   ctx.particles.burst(x, y, 10 + Math.round(inf * 12), null, () => packRGB(150, 210, 120), 1.4 + inf, { glow: 1.1, grav: -0.02 });
   ctx.particles.burst(x, y, 6, null, () => packRGB(120, 110, 70), 0.9, { grav: 0.03 });
-  ctx.audio.at(x, y, () => { ctx.audio.noiseBurst(0.14, 700, 0.06); ctx.audio.squelch(x, y); }, 260);
+  ctx.audio.at(x, y, () => { ctx.audio.squelch(x, y); ctx.audio.steam(x, y); }, 260);
   ctx.events.emit('creatureSignal', { x, y, radius: 90, strength: 0.5, kind: 'sound' });
   organismEvent(ctx, 'puffer', 'burst', x, y);
   c.extent = 0;

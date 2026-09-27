@@ -89,6 +89,10 @@ export interface BossHost {
   finishDeath(e: Enemy): void;
   /** The Leviathan's ranged arm: its own pool thrown at the alchemist. */
   poolVolley(e: Enemy): void;
+  /** May the world's harm (current, a flood) land on this boss now? core/bossWard (player engaged). */
+  worldHarm(e: Enemy): boolean;
+  /** The ward's thermal-shock clock: this tick's crack damage (KILN_QUENCH), or 0. */
+  quenchTick(e: Enemy, soaked: boolean): number;
   /** True while this boss is still introducing itself. */
   introducing(e: Enemy): boolean;
 }
@@ -106,18 +110,4 @@ export interface BossSense {
 /** Phase for a health fraction: 1 above 66%, 2 above 33%, then 3. */
 export function bossPhaseFor(hpFrac: number): number {
   return hpFrac > 0.66 ? 1 : hpFrac > 0.33 ? 2 : 3;
-}
-
-/** Ticks after the fight begins before the world's hazards may hurt a boss (a live pool, a puddle it stood in). */
-export const BOSS_WORLD_GRACE = 90;
-
-/**
- * May a non-direct blow (a status, a hazard cell, a blast, debris) land on
- * this boss now? Only in a fight the player started, after a grace beat, never
- * from its own attacks, and never while it is dying.
- */
-export function bossTakesWorldHarm(e: Enemy, tick: number): boolean {
-  const b = e.boss;
-  if (!b || !b.engaged || b.finished || b.move === 'dying') return false;
-  return tick >= b.engagedAt + BOSS_WORLD_GRACE && tick >= b.selfHarmUntil;
 }

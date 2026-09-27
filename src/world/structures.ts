@@ -79,6 +79,12 @@ export function placeStructures(
    *  (observed). The casing is metal and survives; this puts back what
    *  can't be armored. */
   sumpRepair: (() => void) | null;
+  /** Re-asserts the Kiln's ceiling tank (casing, stone seal, water) after the
+   *  gauge-rescue passes. Stone-eating carves (the arena's own flank connector,
+   *  then rescue tunnels) opened its seal at generation on most seeds (QA seed
+   *  4), flooding the Colossus before the player ever arrived. The seal is the
+   *  player's to dig. */
+  kilnRepair: (() => void) | null;
 } {
   const w = ctx.world;
   const pickups: Pickup[] = [];
@@ -89,6 +95,7 @@ export function placeStructures(
   const refuge: { x: number; y: number } | null = null;
   const spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null = null;
   let sumpRepair: (() => void) | null = null;
+  let kilnRepair: (() => void) | null = null;
 
   const carvePocket = (cx: number, cy: number, rx: number, ry: number): void =>
     carvePocketCells(w, cx, cy, rx, ry);
@@ -913,27 +920,32 @@ export function placeStructures(
     for (const [tx, hw, mouth, depth] of tanks) tank(tx, hw, mouth, depth);
     boss = { x: cx, y: cy + FLOOR - 1, kind: 'colossus' };
     ledger.reserve(cx - RX - 2, cy - RY - 12, cx + RX + 2, cy + FLOOR + 5, 'kiln-arena');
-    // The Kiln's fragile organs (one boss arena per floor, so it shares the
-    // Sump's hook): later passes' stone-eating tunnels must not pre-open a
-    // tank — the seals, casings and water are re-asserted after the rescue
-    // pass. Idempotent; fixed water tint (the rng stream has closed).
-    sumpRepair = (): void => {
+    // both arena flanks join the cave network — the kiln must be findable
+    connectToCaves(cx - HALF - 3, cy + FLOOR - 12);
+    connectToCaves(cx + HALF + 3, cy + FLOOR - 12);
+    // The tanks' organs, re-assertable (integration fix, GEN 50: a flank
+    // connector's tunnel or a rescue carve used to eat a seal and drown the
+    // Colossus unprovoked). Idempotent: the metal casings, the two stone seal
+    // rows, and a refill of any water a carve deleted. A carve INTO a tank
+    // never carries a route (metal casing, no wizard space inside), so
+    // re-sealing cannot cut connectivity. Fixed tint: no generation rng.
+    kilnRepair = (): void => {
       for (const [tx, hw, mouth, depth] of tanks) {
         for (let dx = -hw; dx <= hw; dx++) {
           for (let dy = -depth - 1; dy <= 1; dy++) {
             const X = tx + dx, Y = mouth + dy;
             if (!w.inBounds(X, Y)) continue;
             const i = w.idx(X, Y);
-            if (Math.abs(dx) >= hw - 1 || dy <= -depth) { w.types[i] = Cell.Metal; w.colors[i] = packRGB(96, 102, 112); }
-            else if (dy < 0) { w.types[i] = Cell.Water; w.colors[i] = packRGB(28, 140, 224); }
-            else stone(X, Y);
+            if (Math.abs(dx) >= hw - 1 || dy <= -depth) {
+              if (w.types[i] !== Cell.Metal) { w.types[i] = Cell.Metal; w.colors[i] = packRGB(96, 102, 112); }
+            } else if (dy < 0) {
+              if (w.types[i] !== Cell.Water) { w.types[i] = Cell.Water; w.colors[i] = packRGB(28, 140, 224); }
+            } else if (w.types[i] !== Cell.Stone) stone(X, Y);
           }
         }
       }
     };
-    // both arena flanks join the cave network — the kiln must be findable
-    connectToCaves(cx - HALF - 3, cy + FLOOR - 12);
-    connectToCaves(cx + HALF + 3, cy + FLOOR - 12);
+    kilnRepair(); // the flank connectors just now
   }
 
   // ---- The Sump (the Drowned Cisterns): the leviathan's cistern ----
@@ -1102,5 +1114,6 @@ export function placeStructures(
     refuge,
     spellLab,
     sumpRepair,
+    kilnRepair,
   };
 }

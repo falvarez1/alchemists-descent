@@ -340,7 +340,7 @@ export class Sanctum implements SanctumApi {
           purchased = true;
           ctx.state.score -= it.cost;
           ctx.events.emit('scoreChanged', { score: ctx.state.score });
-          ctx.audio.coin();
+          ctx.audio.sfx('ui.coins');
           el('sanc-gold').textContent = String(ctx.state.score);
           this.buildShop(ctx);
           return true;

@@ -114,10 +114,7 @@ export class RunHud {
 
   /** A glassy rising chime: the phial is full again. */
   private chime(): void {
-    const audio = this.ctx.audio;
-    audio.tone(784, 1175, 0.22, 'sine', 0.045);
-    this.later(() => audio.tone(1175, 1568, 0.3, 'triangle', 0.03), 110);
-    this.later(() => audio.tone(1568, 1568, 0.45, 'sine', 0.018), 240);
+    this.ctx.audio.sfx('ui.phial.refill');
   }
 
   private onDied(): void {
@@ -166,7 +163,7 @@ export class RunHud {
     const run = this.ctx.run;
     if (!run) return;
     if (run.over) {
-      this.ctx.audio.tone(110, 55, 1.4, 'sine', 0.06);
+      this.ctx.audio.sfx('ui.run.over');
       this.later(() => this.ledgerButton.focus({ preventScroll: true }), 30);
       return;
     }
@@ -176,9 +173,7 @@ export class RunHud {
     // Let the title settle first, then the glass gives up its draught.
     this.later(() => {
       this.deathRow.drain(index, run.phials, run.maxPhials);
-      const audio = this.ctx.audio;
-      audio.tone(1760, 1320, 0.12, 'triangle', 0.035);
-      this.later(() => audio.tone(660, 330, 0.5, 'sine', 0.04), 90);
+      this.ctx.audio.sfx('ui.phial.drain');
     }, 900);
   }
 

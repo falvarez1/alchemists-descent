@@ -155,7 +155,7 @@ export function stepSnapjaw(ctx: Ctx, c: Critter, host: OrganismHost): boolean {
     c.vx = Math.max(-3, Math.min(3, c.vx)); c.vy = Math.max(-3, Math.min(3, c.vy));
     if ((c.stateT ?? 0) === 2) {
       head = snapjawHead(c);
-      ctx.audio.at(head.x, head.y, () => { ctx.audio.noiseBurst(0.05, 1800, 0.08, true); ctx.audio.tone(210, 90, 0.07, 'square', 0.05); }, 300);
+      ctx.audio.at(head.x, head.y, () => { ctx.audio.chitin(1.4); ctx.audio.sfx('trick.whip', head.x, head.y); }, 300);
       organismEvent(ctx, 'snapjaw', 'snap', head.x, head.y);
       const target = findTarget(ctx, c, host, head.x, head.y, SNAP_BITE);
       let fed = 0;

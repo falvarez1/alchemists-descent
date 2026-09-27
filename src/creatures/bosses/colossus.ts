@@ -5,7 +5,8 @@ import { entityRandom } from '@/core/simRandom';
 import { blocksEntity, Cell, isLiquid } from '@/sim/CellType';
 import { emberColor, lavaColor, packRGB, sandColor, stoneColor } from '@/sim/colors';
 import type { BossBrain, BossHost, BossMove, BossSense } from './types';
-import { BOSS_WORLD_GRACE, bossPhaseFor, ensureBossBrain } from './types';
+import { bossPhaseFor, ensureBossBrain } from './types';
+import { kilnQuenchBurst, QUENCH_STAGGER_TICKS } from '@/entities/kilnQuench';
 
 /**
  * THE KILN COLOSSUS — the final boss, a furnace that walks.
@@ -37,8 +38,8 @@ export const COL = {
   THROW_DUR: 64, THROW_HIT: 32, THROW_HIT2: 46, THROW_GRAV: 0.02,
   /** Heat vent: plates open (tell), then a ring of fire and boiling water. */
   VENT_DUR: 98, VENT_START: 42, VENT_END: 76, VENT_R: 17, BOIL_R: 26, VENT_DMG: 8,
-  /** Quench: the thermal-shock beat. Share of max health, kneel, cooldown, reheat per tick. */
-  QUENCH_DUR: 160, QUENCH_SHARE: 0.11, QUENCH_CD: 380, REHEAT: 1 / 480, QUENCH_HEAT: 0.6,
+  /** Quench: the kneel after a crack (the ward's stagger) and the furnace's reheat per tick. */
+  QUENCH_DUR: QUENCH_STAGGER_TICKS, REHEAT: 1 / 480,
   /** Damage taken while kneeling (exposed) and once the plates are gone. */
   EXPOSED_MUL: 1.6, BARE_MUL: 1.25,
   ROAR_DUR: 72,
@@ -129,7 +130,7 @@ function stepWaves(ctx: Ctx, e: Enemy, b: BossBrain): void {
 function slam(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): void {
   const t = b.moveT, f = face(e);
   if (t === 1) {
-    host.voice(e, () => { ctx.audio.tone(72, 38, 0.6, 'sawtooth', 0.16); ctx.audio.grind(1.2); }, 800);
+    host.voice(e, () => { ctx.audio.sfx('creature.colossus.idle', e.x, e.y); ctx.audio.grind(1.2); }, 800);
   }
   if (t > 1 && t < COL.SLAM_HIT && t % 6 === 0) {
     // Dust sifts off the raised fists: the tell has a sound and a shadow.
@@ -148,7 +149,7 @@ function slam(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): 
 
 function stomp(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): void {
   const t = b.moveT;
-  if (t === 1) host.voice(e, () => { ctx.audio.grind(1.4); ctx.audio.tone(55, 90, 0.55, 'sawtooth', 0.14); }, 800);
+  if (t === 1) host.voice(e, () => { ctx.audio.grind(1.4); ctx.audio.sfx('creature.colossus.idle', e.x, e.y); }, 800);
   if (t === COL.STOMP_HIT) {
     launchWave(e, b, e.x - def.halfW, -1);
     launchWave(e, b, e.x + def.halfW, 1);
@@ -180,7 +181,7 @@ function toss(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): 
   const p = ctx.player;
   if (t === 1) {
     b.aimX = p.x + p.vx * 18; b.aimY = p.y - 6;
-    host.voice(e, () => { ctx.audio.tone(90, 150, 0.5, 'sawtooth', 0.12); ctx.audio.flame?.(); }, 800);
+    host.voice(e, () => { ctx.audio.flame(e.x, e.y); }, 800);
   }
   if (t > 8 && t < COL.THROW_HIT && t % 3 === 0) {
     // The fist comes out of the furnace dripping.
@@ -190,14 +191,14 @@ function toss(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): 
   if (t === COL.THROW_HIT || (b.phase >= 3 && t === COL.THROW_HIT2)) {
     if (t === COL.THROW_HIT2) { b.aimX = p.x + p.vx * 14; b.aimY = p.y - 6; }
     lob(ctx, e, def, b, b.aimX, b.aimY);
-    host.voice(e, () => ctx.audio.noiseBurst(0.22, 500, 0.12), 800);
+    host.voice(e, () => ctx.audio.sfx('creature.colossus.volley', e.x, e.y), 800);
   }
 }
 
 function vent(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): void {
   const t = b.moveT, w = ctx.world;
   const cx = e.x, cy = e.y - def.h * 0.62;
-  if (t === 1) host.voice(e, () => { ctx.audio.steam?.(); ctx.audio.tone(48, 70, 1.3, 'sawtooth', 0.14); }, 900);
+  if (t === 1) host.voice(e, () => { ctx.audio.steam(cx, cy); ctx.audio.sfx('amb.breath.inhale', cx, cy); }, 900);
   if (t < COL.VENT_START) {
     // The tell: plates lift, the chimneys roar white.
     if (t % 3 === 0) {
@@ -208,7 +209,7 @@ function vent(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): 
   }
   if (t === COL.VENT_START) {
     host.shakeAt(e.x, e.y, 0.03, 0.06);
-    host.voice(e, () => { ctx.audio.flame?.(); ctx.audio.noiseBurst(0.5, 300, 0.16); }, 900);
+    host.voice(e, () => { ctx.audio.flame(cx, cy); ctx.audio.sfx('amb.breath.jet', cx, cy); }, 900);
     b.heat = 1;
     const p = ctx.player;
     if (!p.dead && Math.hypot(p.x - cx, p.y - 8 - cy) < COL.VENT_R + 2) {
@@ -244,35 +245,23 @@ function vent(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): 
   }
 }
 
-/** Water reached a hot kiln: the thermal-shock beat. */
-function quench(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): void {
-  const w = ctx.world;
-  const dmg = e.maxHp * COL.QUENCH_SHARE;
+/**
+ * A douse the player caused CRACKED the kiln (the damage and its cadence are
+ * the ward's: core/bossWard KILN_QUENCH, one crack per 2.5 s while soaked).
+ * The crack's presentation is entities/kilnQuench (real steam, shards, the
+ * callout, the stagger); on top of it the brain kneels — the chest split open
+ * for the length of the stagger (blows land x1.6) — and the furnace goes dark,
+ * glowing back up as it dries.
+ */
+function quench(ctx: Ctx, e: Enemy, def: EnemyDef, b: BossBrain, crack: number): void {
   ctx.alchemy?.noteHit(e, 'steeped');
-  e.hp -= dmg;
-  b.playerDamage += dmg;
-  e.flash = Math.max(e.flash, 10);
+  e.hp -= crack;
+  b.playerDamage += crack;
   b.heat = 0.12;
-  b.quenchCd = COL.QUENCH_CD;
-  b.exposed = COL.QUENCH_DUR - 10;
+  b.waves.length = 0;
+  kilnQuenchBurst(ctx, e, def);
+  b.exposed = QUENCH_STAGGER_TICKS;
   begin(ctx, e, b, 'quench', COL.QUENCH_DUR);
-  // The water on it flashes to steam; a cloud rolls off the cracked stone.
-  let n = 0;
-  for (let dy = -def.h - 4; dy <= 3; dy++) for (let dx = -def.halfW - 4; dx <= def.halfW + 4; dx++) {
-    const X = Math.floor(e.x + dx), Y = Math.floor(e.y + dy);
-    if (!w.inBounds(X, Y)) continue;
-    const i = w.idx(X, Y), c = w.types[i];
-    if (c === Cell.Water || (c === Cell.Empty && dy < -def.h * 0.5 && ((X * 5 + Y * 3) & 7) === 0 && n < 90)) {
-      w.replaceCellAt(i, Cell.Steam, packRGB(220, 226, 232));
-      w.life[i] = 160 + ((X + Y) & 31);
-      n++;
-    }
-  }
-  ctx.particles.burst(e.x, e.y - def.h * 0.6, 40, null, () => packRGB(230, 236, 240), 3.2, { glow: 0.5, grav: -0.04 });
-  ctx.particles.burst(e.x, e.y - def.h * 0.6, 16, Cell.Stone, stoneColor, 2.6);
-  host.shakeAt(e.x, e.y, 0.05, 0.08);
-  host.voice(e, () => { ctx.audio.shatter?.(); ctx.audio.sizzle(e.x, e.y); ctx.audio.groan(); ctx.audio.steam?.(); }, 900);
-  ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 8, text: 'THERMAL SHOCK', tone: 'brass' });
   e.attackCd = Math.max(e.attackCd, COL.QUENCH_DUR);
 }
 
@@ -280,7 +269,7 @@ function roar(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): 
   const t = b.moveT;
   if (t === 1) {
     ctx.audio.duck(0.5, 1100);
-    host.voice(e, () => { ctx.audio.tone(40, 104, 1.1, 'sawtooth', 0.22); ctx.audio.groan(); ctx.audio.grind(1.3); }, 900);
+    host.voice(e, () => { ctx.audio.sfx('creature.colossus.alert', e.x, e.y); ctx.audio.groan(); ctx.audio.grind(1.3); }, 900);
     host.shakeAt(e.x, e.y, 0.04, 0.07);
     ctx.particles.burst(e.x, e.y - def.h + 2, 30, null, emberColor, 2.8, { glow: 2.4, grav: -0.02 });
     if (!ctx.state.reduceFlashes) ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 0.7);
@@ -314,7 +303,7 @@ function startDeath(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBr
   b.waves.length = 0;
   b.exposed = 0;
   ctx.audio.duck(0.45, 2600);
-  host.voice(e, () => { ctx.audio.groan(); ctx.audio.tone(80, 34, 1.8, 'sawtooth', 0.2); ctx.audio.grind(1.6); }, 1000);
+  host.voice(e, () => { ctx.audio.groan(); ctx.audio.sfx('creature.colossus.hurt', e.x, e.y); ctx.audio.grind(1.6); }, 1000);
   host.shakeAt(e.x, e.y, 0.04, 0.07);
   void def;
 }
@@ -359,7 +348,7 @@ function tickDeath(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBra
     if (t % 36 === 0) host.voice(e, () => ctx.audio.sizzle(x, y), 700);
   }
   if (t === COL.DEATH_OVERLOAD) {
-    host.voice(e, () => { ctx.audio.tone(60, 260, 1.2, 'sawtooth', 0.18); ctx.audio.tone(120, 520, 1.2, 'square', 0.05); }, 1000);
+    host.voice(e, () => { ctx.audio.sfx('creature.colossus.death', e.x, e.y); ctx.audio.steam(e.x, e.y); }, 1000);
   }
   if (t > COL.DEATH_OVERLOAD && t < COL.DEATH_BLAST && !ctx.state.reduceFlashes) {
     ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 0.3 + (t - COL.DEATH_OVERLOAD) / (COL.DEATH_BLAST - COL.DEATH_OVERLOAD) * 0.7);
@@ -415,17 +404,13 @@ export function tickColossus(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, 
     begin(ctx, e, b, 'roar', COL.ROAR_DUR);
   }
 
-  // WATER on a hot kiln: the thermal shock. On a cooling one: a hiss, no harm.
+  // WATER: a douse the player caused cracks it (the ward keeps the books);
+  // while it stays soaked the cooling stone hisses and steams.
   const wet = e.status.wet > 0;
-  if (wet && !b.wasWet) b.wetStart = ctx.state.frameCount;
-  // Only water that reaches it after the fight began is the player's doing
-  // (a tank a wandering carve pre-opened must not crack it before he arrives).
-  // A puddle it was already standing in when the fight began does not count
-  // either: the soaking must start after its entrance (a fair first beat).
-  const fresh = b.engaged && b.wetStart >= b.engagedAt + BOSS_WORLD_GRACE;
+  const crack = host.quenchTick(e, wet);
   if (!wet && b.move !== 'quench') b.heat = Math.min(1, b.heat + COL.REHEAT);
-  if (wet && fresh && b.heat >= COL.QUENCH_HEAT && b.quenchCd <= 0 && b.move !== 'roar') {
-    quench(ctx, e, def, host, b);
+  if (crack > 0) {
+    quench(ctx, e, def, b, crack);
     if (e.hp <= 0) { startDeath(ctx, e, def, host, b); return; }
   } else if (wet && ctx.state.frameCount % 5 === 0) {
     ctx.particles.spawn(e.x + (entityRandom() - 0.5) * def.halfW * 2, e.y - entityRandom() * def.h, (entityRandom() - 0.5) * 0.3, -0.5,

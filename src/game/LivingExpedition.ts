@@ -172,7 +172,7 @@ export function throwGlowseed(ctx: Ctx): boolean {
   const angle = Math.atan2(ctx.input.mouse.y - (ctx.player.y - 10), ctx.input.mouse.x - ctx.player.x);
   living.lures.push({ id: living.nextLureId++, x: ctx.player.x, y: ctx.player.y - 11,
     vx: Math.cos(angle) * 4.2 + ctx.player.vx * 0.4, vy: Math.sin(angle) * 4.2 - 1.5, life: 1800 });
-  ctx.audio.tone(720, 380, 0.11, 'sine', 0.035);
+  ctx.audio.sfx('player.glowseed');
   return true;
 }
 
@@ -194,7 +194,7 @@ export function updateLivingExpedition(ctx: Ctx): void {
   const phase = pressurePhase(state.ticks);
   if (room.id === 'pressure' && state.ticks % 5400 === 3600) {
     ctx.events.emit('toast', { text: 'A low intake of air. The Works are about to exhale.' });
-    ctx.audio.tone(63, 94, 2.5, 'sine', 0.08);
+    ctx.audio.sfx('amb.breath.inhale', 1315, 600);
   }
   if (phase === 'exhale') {
     for (const nozzle of [1180, 1315, 1450]) {

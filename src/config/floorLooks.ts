@@ -239,7 +239,10 @@ const DROWNED_CISTERNS: FloorLook = {
   },
 };
 
-/** THE KILN HEART (volcanic) — the heart: soot-dark brick, ash lips, ember-warm grade. */
+/** THE KILN HEART (volcanic) — the heart: soot-dark brick, ash lips, ember-warm grade.
+ *  Its backdrop is ember-LIT, not stepped back: the far refinery and its copper
+ *  machinery glow warm through a thin smoke haze, and a deep contact shadow
+ *  stands the rock in front of it (QA: it read as floating slabs on flat black). */
 const KILN_HEART: FloorLook = {
   gain: [1.35, 1.15, 1.05],
   lift: [16, 9, 7],
@@ -252,11 +255,11 @@ const KILN_HEART: FloorLook = {
   rockRow: -1,
   waterSurface: [118, 128, 126],
   waterBody: [48, 60, 64],
-  backdropMul: [1.1, 0.64, 0.48],
-  backdropLift: [0.01, 0.002, 0],
+  backdropMul: [1.6, 0.88, 0.56],
+  backdropLift: [0.03, 0.01, 0.002],
   backdropOffsetX: 1160,
   backdropMirror: true,
-  machinery: 1.2,
+  machinery: 1.75,
   epigraph: 'The heart still burns. It would rather you did not.',
   natural: {
     tile: 2,
@@ -283,11 +286,11 @@ const KILN_HEART: FloorLook = {
     drip: [0.45, 0.38, 0.36],
     glaze: [132, 66, 30],
     glazeMix: 0.62,
-    contact: 0.42,
-    contactReach: 7,
-    backdropSat: 0.55,
-    backdropHaze: [0.035, 0.018, 0.014],
-    backdropHazeMix: 0.3,
+    contact: 0.3,
+    contactReach: 10,
+    backdropSat: 0.9,
+    backdropHaze: [0.12, 0.045, 0.02],
+    backdropHazeMix: 0.18,
   },
 };
 

@@ -183,7 +183,7 @@ export class Brewing {
       grav: -0.02,
     });
     ctx.audio.bubble(cauldron.x, cauldron.y);
-    ctx.audio.tone(360, 720, 0.22, 'sine', 0.10);
+    ctx.audio.sfx('mech.cauldron', cauldron.x, cauldron.y);
     const firstDiscovery = this.recordDiscovery(ctx, recipe);
     ctx.events.emit('recipeBrewed', { id: recipe.id, name: recipe.name, firstDiscovery });
   }

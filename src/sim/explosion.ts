@@ -5,6 +5,7 @@ import { ashColor, crystalColor, fireColor, glassColor, smokeColor } from '@/sim
 import { chargeDeposit } from '@/sim/electrical';
 import { causeForExplosion } from '@/core/alchemyCause';
 import { fxRandom, simRandom } from '@/core/simRandom';
+import { blastAuthor, bossOrganRect } from '@/core/bossWard';
 
 /** Reused blast-carve scratch — see the note at its use site in trigger(). */
 let blastTouchedScratch = new Uint8Array(0);
@@ -207,6 +208,17 @@ export class Explosions implements ExplosionApi {
     }
     const blastTouched = blastTouchedScratch;
     blastTouched.fill(0, 0, world.types.length);
+    // A warded boss's own blast (the Kiln's slam, fireballs, death) never harms
+    // it — neither the blow itself (entity loop below) nor the live charge it
+    // would leave in the floor the boss then walks through (QA: the Colossus
+    // electrified itself to death idling near an idle player). See core/bossWard.
+    const bossAuthor = blastAuthor(options.playerDamageSource);
+    // ...and a boss arena's organ (the Kiln's ceiling tank, the Sump's drain
+    // plugs) is the PLAYER's to open: a blast he did not cast — the boss's own
+    // volley, a bomber it caught, powder the lava lit — leaves those cells be
+    // (probe, seed 4: the tank burst ~3 s after the Colossus woke, before the
+    // player had done anything, and the flood was wasted).
+    const organ = causeForExplosion(options.playerDamageSource) === 'direct' ? null : bossOrganRect(ctx.levels?.current?.boss);
 
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -214,6 +226,7 @@ export class Explosions implements ExplosionApi {
           const nx = cx + dx,
             ny = cy + dy;
           if (!world.inBounds(nx, ny)) continue;
+          if (organ && nx >= organ.x0 && nx <= organ.x1 && ny >= organ.y0 && ny <= organ.y1) continue;
           const ni = world.idx(nx, ny);
           const orig = world.types[ni];
           if (orig === Cell.MarshGas) {
@@ -279,13 +292,14 @@ export class Explosions implements ExplosionApi {
             // water/metal for several frames, then fades. The base deposit is
             // scaled by chargeStrength (reach) and attenuated by chargeFalloff
             // (spread) / chargeDecay (duration).
-            if (simRandom() < 0.4) world.setChargeAt(ni, chargeDeposit(ctx, 8));
+            // (The roll is drawn first either way so the sim stream is unchanged.)
+            if (simRandom() < 0.4 && bossAuthor === null) world.setChargeAt(ni, chargeDeposit(ctx, 8));
           } else {
             // Metal doesn't shatter — but it CONDUCTS. The blast rings a strong
             // current through it that spreads across the connected metal (and up
             // into water sitting on it, and into enemies standing on it), fading
             // over ~1s. Big base deposit → metal carries the current far.
-            world.setChargeAt(ni, chargeDeposit(ctx, 60));
+            if (bossAuthor === null) world.setChargeAt(ni, chargeDeposit(ctx, 60));
           }
         }
       }
@@ -300,6 +314,7 @@ export class Explosions implements ExplosionApi {
         const nx = cx + dx,
           ny = cy + dy;
         if (!world.inBounds(nx, ny)) continue;
+        if (organ && nx >= organ.x0 && nx <= organ.x1 && ny >= organ.y0 && ny <= organ.y1) continue;
         const ni = world.idx(nx, ny);
         const t = world.types[ni];
         // Heat fuses sand at the blast rim into glass
@@ -355,6 +370,7 @@ export class Explosions implements ExplosionApi {
     }
     for (const e of victims) {
       if (e.hp <= 0) continue; // a nested blast already finished it
+      if (e.kind === bossAuthor) continue; // its own slam/fireball/death blast
       const dx = e.x - cx;
       const dy = e.y - cy;
       const d = Math.sqrt(dx * dx + dy * dy);

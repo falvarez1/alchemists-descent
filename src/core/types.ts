@@ -9,6 +9,7 @@ import type { BossBrain } from '@/creatures/bosses/types';
 import type { IdleLife } from '@/creatures/idle';
 import type { PlayerCostume } from '@/entities/playerCostume';
 import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/run';
+import type { CreatureSfxAction, SfxId } from '@/content/audio/sfxCues';
 
 /* ============================================================
  * Entity data
@@ -1366,10 +1367,23 @@ export interface WaveState {
  * ============================================================ */
 
 /** Player-facing volume sliders (audio/mix.ts owns the curves and bus routing). */
-export type VolumeChannel = 'master' | 'effects' | 'ambience';
+export type VolumeChannel = 'master' | 'effects' | 'ambience' | 'music' | 'voice';
 /** Short procedural cues for run events (audio/Stingers.ts subscribes them). */
 export type AudioStinger = 'alchemy' | 'phialCrack' | 'phialFill' | 'victory' | 'fallen' | 'shutter';
 export interface AudioStingerOptions { chain?: number; cause?: string; x?: number; y?: number }
+/** Per-play options for a sampled cue (`AudioApi.sfx`). */
+export interface SfxOptions {
+  /** Level multiplier on top of the cue's mix level. */
+  gain?: number;
+  /** Pitch offset in semitones (on top of the cue's random spread). */
+  pitch?: number;
+  /** Playback-rate multiplier (pitch and speed together). */
+  rate?: number;
+  /** Start delay in seconds. */
+  delay?: number;
+  /** Sustained (loop) cues: which instance this call keeps alive; default the cue id. */
+  key?: string;
+}
 
 /**
  * World-positioned presets take an optional trailing (x, y) in cells: when
@@ -1493,6 +1507,37 @@ export interface AudioApi {
   stinger(kind: AudioStinger, opts?: AudioStingerOptions): void;
   /** Set a player volume slider (0..1), applied live. */
   setVolume(channel: VolumeChannel, value: number): void;
+  /**
+   * A named sampled sound effect (content/audio/sfxCues.ts). With (x, y) it is
+   * placed in the world at the cue's range; without, it plays at the current
+   * placement (inside `at()`, where the caller put it; else centred). A loop
+   * cue SUSTAINS: keep calling to keep it alive, stop calling and it fades.
+   * Falls back to the procedural voice until its samples have loaded.
+   */
+  sfx(id: SfxId, x?: number, y?: number, opts?: SfxOptions): void;
+  /** A creature's own voice for an action (alert, hurt, death, idle, step…), at the current placement. */
+  creature(kind: EnemyKind, action: CreatureSfxAction): void;
+}
+
+/** The streamed score (audio/MusicDirector). Absent in small test contexts. */
+export interface MusicApi {
+  /** The cue playing or fading in now (a score.generated.ts track id), or null. */
+  readonly cue: string | null;
+  /** A settings slider moved: let the score be heard for a moment even when nothing is playing. */
+  preview(): void;
+  /** Read-only state for in-page probes. */
+  debugSnapshot(): Record<string, unknown>;
+}
+
+/** The narrator (audio/Narrator). Absent in small test contexts. */
+export interface NarratorApi {
+  readonly enabled: boolean;
+  /** The Narration setting: off stops any line and keeps the narrator quiet. */
+  setEnabled(on: boolean): void;
+  /** Play a short line at the current Voice level (the Voice slider's preview). */
+  preview(): void;
+  /** Read-only state for in-page probes. */
+  debugSnapshot(): Record<string, unknown>;
 }
 
 export interface ParticlesApi {
@@ -2424,6 +2469,10 @@ export interface HintApi {
   /** The current best hint, or null when nothing relevant is in reach. */
   readonly current: HintInfo | null;
   update(ctx: Ctx): void;
+  /** The teach popover's calm gate (ui/HintTeachOverlay): while a centre beat
+   *  (the engine caption, a title card, the Sanctum, a notice) is on screen no
+   *  teach-once fires; lessons wait, unspent, for a calm moment. */
+  setTeachHeld?(held: boolean): void;
 }
 
 export interface MechanismsApi {
@@ -3291,6 +3340,10 @@ export interface Ctx {
   alchemy?: AlchemyKillsApi;
   /** Light as a gameplay fact (render/LightQuery); absent in small test contexts. */
   lightQuery?: LightQueryApi;
+  /** The streamed score; absent in small test contexts. */
+  music?: MusicApi;
+  /** The narrator; absent in small test contexts. */
+  narrator?: NarratorApi;
 }
 
 /**

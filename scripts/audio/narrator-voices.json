@@ -1,0 +1,38 @@
+{
+  "description": "A wry old British naturalist and museum docent in his late sixties, leading a quiet tour of a vast Victorian steam refinery that happens to be alive. Warm, unhurried baritone with a little gravel, received pronunciation softened by age, dry understated wit, the faint amusement of a man who has seen every accident twice and catalogued both. Close, intimate microphone in a quiet room, no reverb. Measured pace with natural pauses.",
+  "design": {
+    "model": "eleven_ttv_v3",
+    "sample": "The Bellows. The Works draw breath. Mind the pressure. And please, do mind the duck: it has been here longer than you have, and it knows where the tea is kept.",
+    "previews": [
+      {
+        "generatedVoiceId": "wDEizdgDLVqrhb4cMuN4",
+        "file": "audio/voice/candidates/design-1.mp3",
+        "seconds": 14.97
+      },
+      {
+        "generatedVoiceId": "5OdCER4yTJq3nqipmWDu",
+        "file": "audio/voice/candidates/design-2.mp3",
+        "seconds": 15.11
+      },
+      {
+        "generatedVoiceId": "Yd3Cqxgu0pFzOerUXcsu",
+        "file": "audio/voice/candidates/design-3.mp3",
+        "seconds": 15.96
+      }
+    ],
+    "chosen": 2,
+    "rule": "longest read of the sample (the most unhurried)"
+  },
+  "voices": {
+    "docent": {
+      "voiceId": "Yd3Cqxgu0pFzOerUXcsu",
+      "name": "The Docent (designed for Breathing Works)",
+      "source": "designed; preview 3 of 3"
+    },
+    "daniel": {
+      "voiceId": "htZQqY7WtacRNV7s62Iy",
+      "name": "Daniel — the gruff old British wizard",
+      "source": "ElevenLabs library voice; chosen 2026-09-27 over the Docent, whose designed voice lisps its S sounds"
+    }
+  }
+}
