@@ -1,5 +1,6 @@
 import type { AlchemyCause, AlchemyKillInfo } from '@/core/run';
 import type { AlchemyKillsApi, Ctx, Enemy, EnemyDamageSource } from '@/core/types';
+import { GOLD_CELL_VALUE } from '@/config/constants';
 import { Cell } from '@/sim/CellType';
 import { goldColor, packRGB } from '@/sim/colors';
 import { fxRandom } from '@/core/simRandom';
@@ -38,7 +39,7 @@ export const ALCHEMY_MANA_REFILL = 0.35;
 /** Hit points restored per alchemical kill (a sip, not a potion). */
 export const ALCHEMY_HEAL = 3;
 /** Each gold grain the body coughs up is one real Gold cell, worth this much when harvested. */
-export const GOLD_PER_GRAIN = 10;
+export const GOLD_PER_GRAIN = GOLD_CELL_VALUE;
 
 export interface HitMemory {
   source: EnemyDamageSource;
@@ -178,13 +179,17 @@ export class AlchemyKills implements AlchemyKillsApi {
       if (t === Cell.Empty) break;
       sy--;
     }
+    // A low fountain (apex ~10-36 cells, a few dozen wide): the pile must land
+    // where walking over the kill brings it inside the harvester's 30-cell pull.
+    // The old 66-cell geyser parked grains on ledges no one would ever climb to,
+    // which read as a promised bonus that never arrived.
     const grains = Math.round(info.bonusGold / GOLD_PER_GRAIN);
     for (let i = 0; i < grains; i++) {
       ctx.particles.spawn(
         x + (fxRandom() - 0.5) * 4,
         sy,
-        (fxRandom() - 0.5) * 3.2,
-        -2.4 - fxRandom() * 2.2,
+        (fxRandom() - 0.5) * 2.2,
+        -1.8 - fxRandom() * 1.6,
         Cell.Gold,
         goldColor(),
         240,

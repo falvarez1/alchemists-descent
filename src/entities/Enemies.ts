@@ -986,9 +986,16 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
-  /** Gold coin shower (homing in play mode) + build-mode direct score credit. */
+  /**
+   * The bounty lands in the purse the instant the creature dies; the coin shower
+   * (homing to the wizard in play mode) is the payment's animation and chime, not
+   * the payment — see Particles' COIN FLIGHT. A coin a wall, a death or a
+   * run-ending blow interrupts can no longer take the gold with it.
+   */
   private dropBounty(e: Enemy, def: EnemyDef): void {
     const ctx = this.ctx;
+    ctx.state.score += def.bounty;
+    ctx.events.emit('scoreChanged', { score: ctx.state.score });
     const coins = Math.max(1, Math.ceil(def.bounty / 10));
     const baseValue = Math.floor(def.bounty / coins);
     let remainder = def.bounty - baseValue * coins;
@@ -1009,10 +1016,6 @@ export class Enemies implements EnemyControlApi {
           grav: ctx.state.mode === 'play' ? 0 : 0.14,
         },
       );
-    }
-    if (ctx.state.mode !== 'play') {
-      ctx.state.score += def.bounty;
-      ctx.events.emit('scoreChanged', { score: ctx.state.score });
     }
   }
 

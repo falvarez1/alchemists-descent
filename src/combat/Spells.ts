@@ -72,7 +72,8 @@ export class Spells implements SpellsApi {
         if (c === Cell.RawOre) {
           // Mining the hidden ore spills its gold: a homing grain flies to the
           // wizard (the same tell as the gold harvester). Score + chime aggregate
-          // after the loop so a radius dig pays once, not per cell.
+          // after the loop so a radius dig pays once, not per cell; the grain is
+          // only the animation (a coin in flight never pays — Particles: COIN FLIGHT).
           this.ctx.particles.spawn(X, Y, (entityRandom() - 0.5) * 1.4, -0.8 - entityRandom(),
             null, goldColor(), 200, { homing: true, glow: 2.2, grav: 0 });
           world.clearCellAt(i); chewed++; oreCells++;

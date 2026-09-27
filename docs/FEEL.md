@@ -467,11 +467,26 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   Kills within 3 s (180 ticks) chain; the chain resets on a level change.
   **Payout, grid-honest:** bonus gold = 10 + 35% of bounty, ×1 / ×1.5 / ×2 /
   ×2.5 / ×3 by chain, rounded to whole 10-oz grains; that many real Gold
-  cells fountain out of the body (deposit particles; gold settles into a pool
-  and sinks) for the harvester field to pull in; the active wand refills 35%
+  cells fountain out of the body in a low arc (vx ±1.1, vy −1.8…−3.4 cells/tick:
+  apex ~10–36 cells, so walking over the kill brings the pile inside the 30-cell
+  harvester pull; gold settles into a pool and sinks) for the harvester field to
+  pull in. A grain is never deleted by its flight: no room where it lands → the
+  nearest open cell within 6, walled in → straight into the purse; a full
+  particle pool retires a cosmetic mote to make room. The active wand refills 35%
   of its tank (cyan motes run to the staff), the wizard gets +3 hp (rose
   motes), a bloom kick (0.45 + 0.12/chain, none under reduced flashes) and a
   brass dyad whose top note climbs two semitones per link (capped at a fifth).
+- **Coin flight** (`particles/Particles.ts`): gold is only ever a real Gold
+  cell or the purse. Whoever moves it — a kill's bounty, the harvester lifting a
+  grain (10 oz a cell), mined ore — credits `state.score` at that instant; the
+  homing mote is the payment's animation. It steers to ARRIVE: desired speed
+  min(5.2, √(2·0.45·d) + 1.2) cells/tick with 0.45 cells/tick² of steering, so
+  the burst-out arc bends into a landing instead of the old 3.75-vs-2.5-cell
+  overshoot orbit; the 3-cell catch is swept along each step (no tunnelling);
+  rock does not stop it (a magnet pull). A landing rings the loot cascade (coins
+  within 24 ticks climb the scale) and pops a sparkle at the belt (6 cells up).
+  If the wizard dies mid-flight the mote gutters out as a falling glint — the
+  gold is already his.
 - **Callouts** (`ui/Callouts.ts`, `styles/callouts.css`): the word pops over
   the kill, rises and fades — FLAMBÉED, RENDERED, STEEPED, SHORTED, DROWNED,
   DISSOLVED, SHATTERED, FLATTENED, DETONATED, POISONED, IMPALED — one word per

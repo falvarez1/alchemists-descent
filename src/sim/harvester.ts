@@ -1,4 +1,5 @@
 import type { Ctx } from '@/core/types';
+import { GOLD_CELL_VALUE } from '@/config/constants';
 import { Cell } from '@/sim/CellType';
 import { goldColor } from '@/sim/colors';
 import { simRandom } from '@/core/simRandom';
@@ -46,13 +47,17 @@ export function runHarvesterField(ctx: Ctx): void {
     const rad = ctx.player.perks.goldmagnet ? 48 : 30,
       mx = Math.round(ctx.player.x),
       my = Math.round(ctx.player.y) - 7;
+    let lifted = 0;
     for (const { dx, dy } of diskOffsets(rad)) {
       const px = mx + dx,
         py = my + dy;
       if (!w.inBounds(px, py)) continue;
       const i = w.idx(px, py);
       if (w.types[i] === Cell.Gold) {
+        // The cell leaves the grid and enters the purse in the same breath; the
+        // homing mote that follows is the chime, not the money (Particles: COIN FLIGHT).
         w.clearCellAt(i);
+        lifted++;
         ctx.particles.spawn(
           px,
           py,
@@ -64,6 +69,10 @@ export function runHarvesterField(ctx: Ctx): void {
           { homing: true, glow: 2.2, grav: 0 },
         );
       }
+    }
+    if (lifted > 0) {
+      ctx.state.score += lifted * GOLD_CELL_VALUE;
+      ctx.events.emit('scoreChanged', { score: ctx.state.score });
     }
     return;
   }
@@ -77,7 +86,7 @@ export function runHarvesterField(ctx: Ctx): void {
       if (dx === 0 && dy === 0) {
         const i = w.idx(px, py);
         w.clearCellAt(i);
-        ctx.state.score += 10;
+        ctx.state.score += GOLD_CELL_VALUE;
         ctx.events.emit('scoreChanged', { score: ctx.state.score });
       } else {
         const sx = px - Math.sign(dx),

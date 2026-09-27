@@ -71,7 +71,9 @@ export class Physics implements PhysicsApi {
         const i = world.idx(X, Y);
         const t = world.types[i];
         if (!blocksEntity(t) || isLiquid(t) || isGas(t)) continue;
-        // it's inside the body, so it must be loose — kick it out
+        // it's inside the body, so it must be loose — kick it out. Gold stays
+        // real gold: it pops free and re-settles as a cell (Particles conserves
+        // it) for the harvester field to lift when the alchemist comes near.
         ctx.particles.spawn(
           X,
           Y,
@@ -80,7 +82,7 @@ export class Physics implements PhysicsApi {
           t === Cell.Gold ? Cell.Gold : null,
           world.colors[i],
           t === Cell.Gold ? 200 : 40,
-          t === Cell.Gold ? { homing: ctx.state.mode === 'play', glow: 2.0, grav: 0 } : undefined,
+          t === Cell.Gold ? { glow: 2.0 } : undefined,
         );
         world.clearCellAt(i);
         crushed++;
