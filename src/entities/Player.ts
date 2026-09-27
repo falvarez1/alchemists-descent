@@ -572,7 +572,8 @@ export class PlayerControl implements PlayerControlApi {
   private readonly selfShock = createSelfShockState();
 
   constructor(private ctx: Ctx) {
-    ctx.events?.on('cardCast', () => {
+    // `?.` twice: minimal test contexts carry an events stub without `on`.
+    ctx.events?.on?.('cardCast', () => {
       this.selfShock.lastCast = ctx.state.frameCount;
     });
   }
