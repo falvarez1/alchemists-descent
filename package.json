@@ -36,6 +36,8 @@
     "verify:combat-balance": "node scripts/verify-combat-balance.mjs",
     "verify:sandbox": "node scripts/verify-sandbox-arena.mjs",
     "verify:audio": "node scripts/verify-audio-mix.mjs",
+    "verify:audio-score": "node scripts/verify-audio-score.mjs",
+    "verify:audio-bundle": "node scripts/verify-audio-bundle.mjs",
     "verify:peer-ghosts": "node scripts/verify-peer-ghosts.mjs",
     "verify:determinism": "node scripts/verify-sim-determinism.mjs",
     "verify:tuning-ranges": "node scripts/gen-tuning-ranges.mjs --check",

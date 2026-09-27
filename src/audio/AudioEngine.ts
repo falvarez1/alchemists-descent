@@ -4,6 +4,7 @@ import {
   BUS_CHANNEL,
   DEFAULT_VOLUMES,
   MIX_TRIM,
+  TALK_DUCK,
   busGain,
   chainPitch,
   placeSound,
@@ -11,6 +12,7 @@ import {
   type AudioBus,
   type VolumeSettings,
 } from '@/audio/mix';
+import type { StreamHost } from '@/audio/streamHost';
 
 /** Legacy WebKit prefix fallback (original: `window.AudioContext || window.webkitAudioContext`). */
 type WebkitWindow = Window & { webkitAudioContext?: typeof AudioContext };
@@ -20,6 +22,9 @@ interface MixGraph {
   buses: Record<AudioBus, GainNode>;
   /** World buses (fx/voices/ambience) pass through here; UI stingers do not, so a duck never swallows its own cue. */
   duck: GainNode;
+  /** Narration ducking (mix.ts TALK_DUCK): the score and the ambience bed dip under the narrator. */
+  talkMusic: GainNode;
+  talkAmbience: GainNode;
   trim: GainNode;
   glue: DynamicsCompressorNode;
   makeup: GainNode;
@@ -52,7 +57,7 @@ function softClipCurve(): Float32Array<ArrayBuffer> {
 }
 
 // ===================== Procedural Audio Engine =====================
-export class AudioEngine implements AudioApi {
+export class AudioEngine implements AudioApi, StreamHost {
   /** The context voices are built on: the live one, or an offline one during `debugRenderOffline`. */
   private audioCtx: BaseAudioContext | null = null;
   /** The real output context (suspend/resume/close live here). */
@@ -139,6 +144,7 @@ export class AudioEngine implements AudioApi {
     const buses = {} as Record<AudioBus, GainNode>;
     for (const bus of AUDIO_BUSES) buses[bus] = gain(busGain(bus, this.volumes));
     const duck = gain(1), trim = gain(MIX_TRIM), makeup = gain(1.2);
+    const talkMusic = gain(this.talking ? TALK_DUCK.music : 1), talkAmbience = gain(this.talking ? TALK_DUCK.ambience : 1);
     // Glue: a gentle bus compressor so a blast leans on the room around it
     // (the cave "breathes in" under an explosion) instead of simply summing.
     const glue = ac.createDynamicsCompressor();
@@ -148,11 +154,15 @@ export class AudioEngine implements AudioApi {
     limiter.threshold.value = -2; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = 0.001; limiter.release.value = 0.08;
     const clipper = ac.createWaveShaper(); clipper.curve = softClipCurve(); clipper.oversample = 'none';
     const master = gain(volumeToGain(this.volumes.master));
-    buses.fx.connect(duck); buses.voices.connect(duck); buses.ambience.connect(duck);
+    buses.fx.connect(duck); buses.voices.connect(duck); buses.ambience.connect(talkAmbience); talkAmbience.connect(duck);
     duck.connect(trim); buses.ui.connect(trim);
+    // The score and the narrator skip the world duck (a cinematic dip is the
+    // director's call, and a verdict must not swallow the line that names it)
+    // but share the glue and the limiter, so nothing can clip the sum.
+    buses.music.connect(talkMusic); talkMusic.connect(trim); buses.voice.connect(trim);
     trim.connect(glue); glue.connect(makeup); makeup.connect(limiter); limiter.connect(clipper); clipper.connect(master);
     master.connect(ac.destination);
-    return { buses, duck, trim, glue, makeup, limiter, clipper, master };
+    return { buses, duck, talkMusic, talkAmbience, trim, glue, makeup, limiter, clipper, master };
   }
 
   /**
@@ -267,6 +277,35 @@ export class AudioEngine implements AudioApi {
     this.liveCtx = null;
     this.graph = null;
     if (ac && ac.state !== 'closed') void ac.close();
+  }
+
+  // -------------------------------------------------------- stream host
+  //
+  // The score and the narrator stream real recordings (audio/MusicDirector,
+  // audio/Narrator). They join the mix here and never create a context of
+  // their own: before the first gesture there is none, and they stay silent.
+
+  private talking = false;
+
+  streamContext(): AudioContext | null {
+    return this.soundOn && this.liveCtx && this.audioCtx === this.liveCtx ? this.liveCtx : null;
+  }
+
+  streamBus(bus: 'music' | 'voice'): AudioNode | null {
+    return this.streamContext() && this.graph ? this.graph.buses[bus] : null;
+  }
+
+  /** Narrator on/off: ease the score and the bed down under the line, and back after it. */
+  talkDuck(active: boolean): void {
+    this.talking = active;
+    const ac = this.liveCtx, graph = this.graph;
+    if (!ac || !graph || this.audioCtx !== ac) return;
+    const t = ac.currentTime, tc = active ? TALK_DUCK.attackSec / 3 : TALK_DUCK.releaseSec / 3;
+    for (const [param, level] of [[graph.talkMusic.gain, TALK_DUCK.music], [graph.talkAmbience.gain, TALK_DUCK.ambience]] as const) {
+      param.cancelScheduledValues(t);
+      param.setValueAtTime(param.value, t);
+      param.setTargetAtTime(active ? level : 1, t, tc);
+    }
   }
 
   // --------------------------------------------------------------- volume
@@ -841,6 +880,7 @@ export class AudioEngine implements AudioApi {
     running: boolean; volumes: VolumeSettings; buses: Record<AudioBus, number> | null; master: number | null;
     nodeGains: Record<AudioBus | 'master', number> | null;
     duck: number | null; limiter: { threshold: number; ratio: number; reduction: number } | null;
+    talk: { active: boolean; music: number; ambience: number } | null;
     chain: string[]; voices: number; sunk: number; trace: VoiceTrace[]; stingers: string[]; listener: { x: number; y: number };
   } {
     const g = this.graph;
@@ -852,7 +892,8 @@ export class AudioEngine implements AudioApi {
       volumes: { ...this.volumes }, buses, master: g ? volumeToGain(this.volumes.master) : null, duck: g ? g.duck.gain.value : null,
       nodeGains: g ? { ...(Object.fromEntries(AUDIO_BUSES.map(b => [b, g.buses[b].gain.value])) as Record<AudioBus, number>), master: g.master.gain.value } : null,
       limiter: g ? { threshold: g.limiter.threshold.value, ratio: g.limiter.ratio.value, reduction: g.limiter.reduction } : null,
-      chain: g ? ['buses', 'duck', 'trim', 'glue', 'makeup', 'limiter', 'clipper', 'master', 'destination'] : [],
+      talk: g ? { active: this.talking, music: g.talkMusic.gain.value, ambience: g.talkAmbience.gain.value } : null,
+      chain: g ? ['buses', 'duck', 'talk', 'trim', 'glue', 'makeup', 'limiter', 'clipper', 'master', 'destination'] : [],
       voices: this.voices, sunk: this.sunk, trace: this.trace.map(t => ({ ...t })), stingers: [...this.stingerLog],
       listener: { x: this.listenerX, y: this.listenerY },
     };

@@ -1327,7 +1327,7 @@ export interface WaveState {
  * ============================================================ */
 
 /** Player-facing volume sliders (audio/mix.ts owns the curves and bus routing). */
-export type VolumeChannel = 'master' | 'effects' | 'ambience';
+export type VolumeChannel = 'master' | 'effects' | 'ambience' | 'music' | 'voice';
 /** Short procedural cues for run events (audio/Stingers.ts subscribes them). */
 export type AudioStinger = 'alchemy' | 'phialCrack' | 'phialFill' | 'victory' | 'fallen' | 'shutter';
 export interface AudioStingerOptions { chain?: number; cause?: string; x?: number; y?: number }
@@ -1454,6 +1454,27 @@ export interface AudioApi {
   stinger(kind: AudioStinger, opts?: AudioStingerOptions): void;
   /** Set a player volume slider (0..1), applied live. */
   setVolume(channel: VolumeChannel, value: number): void;
+}
+
+/** The streamed score (audio/MusicDirector). Absent in small test contexts. */
+export interface MusicApi {
+  /** The cue playing or fading in now (a score.generated.ts track id), or null. */
+  readonly cue: string | null;
+  /** A settings slider moved: let the score be heard for a moment even when nothing is playing. */
+  preview(): void;
+  /** Read-only state for in-page probes. */
+  debugSnapshot(): Record<string, unknown>;
+}
+
+/** The narrator (audio/Narrator). Absent in small test contexts. */
+export interface NarratorApi {
+  readonly enabled: boolean;
+  /** The Narration setting: off stops any line and keeps the narrator quiet. */
+  setEnabled(on: boolean): void;
+  /** Play a short line at the current Voice level (the Voice slider's preview). */
+  preview(): void;
+  /** Read-only state for in-page probes. */
+  debugSnapshot(): Record<string, unknown>;
 }
 
 export interface ParticlesApi {
@@ -3252,6 +3273,10 @@ export interface Ctx {
   alchemy?: AlchemyKillsApi;
   /** Light as a gameplay fact (render/LightQuery); absent in small test contexts. */
   lightQuery?: LightQueryApi;
+  /** The streamed score; absent in small test contexts. */
+  music?: MusicApi;
+  /** The narrator; absent in small test contexts. */
+  narrator?: NarratorApi;
 }
 
 /**

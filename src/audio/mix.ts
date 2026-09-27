@@ -4,30 +4,41 @@
  * every number is unit-testable (tests/audio-mix.test.ts).
  */
 
-/** Where a sound is summed before the master chain. */
-export type AudioBus = 'fx' | 'voices' | 'ambience' | 'ui';
+/**
+ * Where a sound is summed before the master chain. `voices` are the
+ * creatures'; `voice` is the narrator's (audio/Narrator); `music` is the
+ * streamed score (audio/MusicDirector).
+ */
+export type AudioBus = 'fx' | 'voices' | 'ambience' | 'ui' | 'music' | 'voice';
 
-/** The three player-facing volume sliders. */
-export type VolumeChannel = 'master' | 'effects' | 'ambience';
+/** The player-facing volume sliders. */
+export type VolumeChannel = 'master' | 'effects' | 'ambience' | 'music' | 'voice';
 
 /** Slider positions, 0..1 each (the UI shows them as percentages). */
 export interface VolumeSettings {
   master: number;
   effects: number;
   ambience: number;
+  music: number;
+  voice: number;
 }
 
-export const DEFAULT_VOLUMES: Readonly<VolumeSettings> = Object.freeze({ master: 0.8, effects: 1, ambience: 0.8 });
+export const DEFAULT_VOLUMES: Readonly<VolumeSettings> = Object.freeze({ master: 0.8, effects: 1, ambience: 0.8, music: 0.7, voice: 0.9 });
 
-export const AUDIO_BUSES: readonly AudioBus[] = ['fx', 'voices', 'ambience', 'ui'];
+export const VOLUME_CHANNELS: readonly VolumeChannel[] = ['master', 'effects', 'ambience', 'music', 'voice'];
+
+export const AUDIO_BUSES: readonly AudioBus[] = ['fx', 'voices', 'ambience', 'ui', 'music', 'voice'];
 
 /**
  * Designed level of each bus at full slider. Creature voices sit just under
  * the player's own effects so a wand shot always reads over a chirr; the
  * cave's own life is a bed, not a lead; UI stingers are rewards and cut
- * through, but never louder than a blast.
+ * through, but never louder than a blast. The score (mastered to -16 LUFS)
+ * lands near -28 LUFS calm and -26.5 hunted at the default slider, its peaks
+ * just under the glue's threshold, so it never pumps against the effects; the
+ * narrator (mastered to -17 LUFS) sits about 5 dB above it before the duck.
  */
-export const BUS_BASE: Readonly<Record<AudioBus, number>> = Object.freeze({ fx: 1, voices: 0.9, ambience: 0.72, ui: 0.85 });
+export const BUS_BASE: Readonly<Record<AudioBus, number>> = Object.freeze({ fx: 1, voices: 0.9, ambience: 0.72, ui: 0.85, music: 1.1, voice: 1.15 });
 
 /** Which slider scales each bus. Creature voices and stingers are effects. */
 export const BUS_CHANNEL: Readonly<Record<AudioBus, Exclude<VolumeChannel, 'master'>>> = Object.freeze({
@@ -35,7 +46,16 @@ export const BUS_CHANNEL: Readonly<Record<AudioBus, Exclude<VolumeChannel, 'mast
   voices: 'effects',
   ambience: 'ambience',
   ui: 'effects',
+  music: 'music',
+  voice: 'voice',
 });
+
+/**
+ * Narration ducking: while the narrator speaks, the score dips about 5 dB and
+ * the cave's own bed about 3 dB, easing down fast enough to clear the first
+ * word and back up slowly enough that the room does not "pump" between lines.
+ */
+export const TALK_DUCK = Object.freeze({ music: 0.56, ambience: 0.7, attackSec: 0.22, releaseSec: 0.9 });
 
 /**
  * Pre-compressor trim. The sum used to hit the speakers at 0.4; the glue
@@ -58,6 +78,8 @@ export function sanitizeVolumes(value: unknown): VolumeSettings {
     master: volumeOr(v.master, DEFAULT_VOLUMES.master),
     effects: volumeOr(v.effects, DEFAULT_VOLUMES.effects),
     ambience: volumeOr(v.ambience, DEFAULT_VOLUMES.ambience),
+    music: volumeOr(v.music, DEFAULT_VOLUMES.music),
+    voice: volumeOr(v.voice, DEFAULT_VOLUMES.voice),
   };
 }
 

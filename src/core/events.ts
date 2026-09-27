@@ -104,6 +104,10 @@ export interface EventMap {
   combatCallout: { x: number; y: number; text: string; tone?: 'brass' | 'finisher' };
   /** The run is over (victory, out of return phials, or replaced). Summary UI, meta profile and share text listen. */
   runEnded: RunSummary;
+  /** The music director changed cue (audio/MusicDirector): the narrator and probes listen. */
+  musicCue: { cue: string | null; previous: string | null };
+  /** The narrator began a line. `captioned`: it has no on-screen text of its own, so the caption shows it. */
+  narration: { text: string; seconds: number; captioned: boolean };
   /** Return phials changed (death spent one, a refuge/Sanctum restored one). */
   phialsChanged: { phials: number; max: number; reason: 'start' | 'death' | 'refuge' | 'sanctum' | 'restore' };
   /** Something asked for the last seconds of play to be saved as a clip. */

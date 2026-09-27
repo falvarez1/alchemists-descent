@@ -4,6 +4,7 @@ import {
   DEFAULT_VOLUMES,
   MAX_PAN,
   PAN_SPAN,
+  TALK_DUCK,
   busGain,
   chainPitch,
   placeSound,
@@ -70,17 +71,35 @@ describe('volumes', () => {
   });
 
   it('routes buses to their slider: effects drives fx/voices/ui, ambience only the bed', () => {
-    const v = { master: 1, effects: 0.5, ambience: 0 };
+    const v = { master: 1, effects: 0.5, ambience: 0, music: 1, voice: 1 };
     expect(busGain('fx', v)).toBeCloseTo(BUS_BASE.fx * 0.25);
     expect(busGain('voices', v)).toBeCloseTo(BUS_BASE.voices * 0.25);
     expect(busGain('ui', v)).toBeCloseTo(BUS_BASE.ui * 0.25);
     expect(busGain('ambience', v)).toBe(0);
   });
 
+  it('gives the score and the narrator their own sliders, independent of effects', () => {
+    const v = { master: 1, effects: 0, ambience: 0, music: 0.5, voice: 1 };
+    expect(busGain('music', v)).toBeCloseTo(BUS_BASE.music * 0.25);
+    expect(busGain('voice', v)).toBeCloseTo(BUS_BASE.voice);
+    expect(busGain('fx', v)).toBe(0);
+    expect(busGain('music', { ...v, music: 0 })).toBe(0);
+  });
+
+  it('ducks the score harder than the bed under narration, a few dB each', () => {
+    const db = (g: number): number => 20 * Math.log10(g);
+    expect(db(TALK_DUCK.music)).toBeLessThan(-3);
+    expect(db(TALK_DUCK.music)).toBeGreaterThan(-8);
+    expect(db(TALK_DUCK.ambience)).toBeLessThan(-1.5);
+    expect(TALK_DUCK.ambience).toBeGreaterThan(TALK_DUCK.music);
+    expect(TALK_DUCK.releaseSec).toBeGreaterThan(TALK_DUCK.attackSec);
+  });
+
   it('sanitizes persisted volumes per channel', () => {
     expect(sanitizeVolumes(undefined)).toEqual(DEFAULT_VOLUMES);
     expect(sanitizeVolumes('loud')).toEqual(DEFAULT_VOLUMES);
-    expect(sanitizeVolumes({ master: 0.3, effects: 7, ambience: Number.NaN })).toEqual({ master: 0.3, effects: 1, ambience: DEFAULT_VOLUMES.ambience });
+    expect(sanitizeVolumes({ master: 0.3, effects: 7, ambience: Number.NaN })).toEqual({ ...DEFAULT_VOLUMES, master: 0.3, effects: 1 });
+    expect(sanitizeVolumes({ music: 0.25, voice: 'loud' })).toEqual({ ...DEFAULT_VOLUMES, music: 0.25 });
     expect(sanitizeVolumes({ master: -2 }).master).toBe(0);
   });
 
@@ -89,7 +108,10 @@ describe('volumes', () => {
     const storage = { getItem: (k: string) => store.get(k) ?? null };
     expect(readPlayerPreferences(storage).volume).toEqual(DEFAULT_VOLUMES);
     store.set('ad-player-preferences-v1', JSON.stringify({ volume: { master: 0.42, effects: 0.1, ambience: 0 } }));
-    expect(readPlayerPreferences(storage).volume).toEqual({ master: 0.42, effects: 0.1, ambience: 0 });
+    expect(readPlayerPreferences(storage).volume).toEqual({ ...DEFAULT_VOLUMES, master: 0.42, effects: 0.1, ambience: 0 });
+    store.set('ad-player-preferences-v1', JSON.stringify({ volume: { music: 0.3, voice: 0 }, narration: false }));
+    expect(readPlayerPreferences(storage).volume).toEqual({ ...DEFAULT_VOLUMES, music: 0.3, voice: 0 });
+    expect(readPlayerPreferences(storage).narration).toBe(false);
     store.set('ad-player-preferences-v1', '{not json');
     expect(readPlayerPreferences(storage).volume).toEqual(DEFAULT_VOLUMES);
   });
