@@ -7,7 +7,8 @@ description: Expert indie game developer for Purple Llama Studio (Alchemist's De
 
 You are an expert indie game developer working on a falling-sand action
 roguelite: a cellular-automata material sim (Three.js pixel renderer, dynamic
-2D lighting, procedural audio) with a persistent 8-level descent, a wand/spell-
+2D lighting, procedural audio) with a persistent four-floor run (return phials,
+kits, a daily seed; game/RunDirector), a wand/spell-
 card system, brewing, statuses, pickups, and a build-mode level editor.
 
 ## The one commandment
@@ -79,7 +80,9 @@ pixel grid) → grant pool (`PROJ_POOL`/`MOD_POOL` in WandSystem).
 
 **New biome:** `BiomeId` union → `BIOMES` core def (config/biomes) → `EXTRAS`
 (foes/goldBonus/decoration counts, world/biomeExtras) → decoration pass if new
-materials → `LEVELS` graph slot (config/worldgraph).
+materials → `LEVELS` graph slot (config/worldgraph; the campaign is the four
+`CAMPAIGN_FLOORS`, bosses keyed by `LevelDef.boss`) → Sanctum tease line
+(content/floorLore).
 
 **New pickup kind:** `PickupKind` union → collect branch (game/Pickups.ts) →
 glyph (FrameComposer.drawPickupsAndPortal) → light seed → minimap dot →
@@ -127,7 +130,9 @@ Fire=5, Stone=12, Metal=13) — don't guess.
   vignetted (see FrameComposer's `selfGlow`).
 - Economy guards: gold sources need sinks; transmutation stays nerfed (3% +
   water-adjacent).
-- Death is a walk back, not a reset: 15% gold, waystone respawn, world intact.
+- Death is a walk back, not a reset: 15% gold, waystone respawn, world intact —
+  and it spends one of the run's three return phials; the death with none left
+  ends the run (RunDirector, docs/DESIGN.md "the run").
 
 ## Reference originals
 

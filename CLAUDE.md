@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Purple Llama Studio's "Alchemist's Descent" — a falling-sand action roguelite: a cellular-automata
 material simulation, a Three.js pixel renderer with dynamic 2D lighting and bloom, procedural
-audio, and a platformer-wizard action game (8-level persistent descent, wand/spell-card system,
+audio, and a platformer-wizard action game (a four-floor run with return phials, starting kits and a
+daily seed — player-facing name "Breathing Works", `config/brand.ts`; wand/spell-card system,
 brewing, mechanisms) layered on top. Originally a single 3,818-line HTML file (kept at the repo
 root as `noita-sandbox.html` for reference — behavior fidelity to it matters); now a modular
 TypeScript + Vite project.
