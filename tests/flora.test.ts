@@ -12,8 +12,10 @@ import {
   igniteTrunk,
   LEAF_LITTER,
   leafAttachedLife,
+  isSoakingLife,
   SEED_GLOW_HELD,
   SEED_THIRSTY_LOOSE,
+  SOAK_IDLE_SPROUT,
 } from '@/sim/elements/flora';
 import {
   anchoredSupport,
@@ -35,7 +37,8 @@ function ctxFor(world: World): Ctx {
     world,
     params: createGameParams(),
     particles: { list: [], spawn: vi.fn(), burst: vi.fn() },
-    audio: { at: vi.fn(), tone: vi.fn(), bubble: vi.fn(), creak: vi.fn() },
+    audio: { at: vi.fn(), sfx: vi.fn(), bubble: vi.fn(), creak: vi.fn() },
+    events: { emit: vi.fn() },
   } as unknown as Ctx;
 }
 
@@ -257,21 +260,28 @@ describe('leaf, trunk and seed rules', () => {
     expect(world.life[world.idx(8, 10)]).toBe(-1);
   });
 
-  it('sprouts a thirsty seed into a real stalk with Wood rungs when watered', () => {
-    const world = flatWorld(60, 120, 110);
+  it('soaks a pour, then sprouts a thirsty seed into a real stalk with Wood rungs', () => {
+    const world = flatWorld(60, 140, 130);
     const ctx = ctxFor(world);
-    const sx = 30, sy = 109;
+    const sx = 30, sy = 129;
     world.replaceCellAt(world.idx(sx, sy), Cell.Seed, 0xb08040);
     world.life[world.idx(sx, sy)] = SEED_THIRSTY_LOOSE;
-    for (let x = 25; x < 30; x++) world.replaceCellAt(world.idx(x, sy), Cell.Water, 0x2266ff);
-    handleSeed(ctx, sx, sy);
+    // a pour: water keeps arriving on the seed for 30 substeps
+    for (let n = 0; n < 30; n++) {
+      world.replaceCellAt(world.idx(sx, sy - 1), Cell.Water, 0x2266ff);
+      handleSeed(ctx, sx, sy);
+    }
+    expect(isSoakingLife(world.life[world.idx(sx, sy)])).toBe(true);
+    // a little puddle beside it, drunk whole when it sprouts
+    for (let x = 22; x < 29; x++) world.replaceCellAt(world.idx(x, sy), Cell.Water, 0x2266ff);
+    // the pour stops: after the idle window it sprouts
+    for (let n = 0; n < SOAK_IDLE_SPROUT + 2 && world.life[world.idx(sx, sy)] <= 0; n++) handleSeed(ctx, sx, sy);
     const energy = world.life[world.idx(sx, sy)];
-    expect(energy).toBeGreaterThan(25);
+    expect(energy).toBeGreaterThan(60);
     let water = 0;
     for (const t of world.types) if (t === Cell.Water) water++;
-    expect(water).toBe(0); // it drank the puddle
+    expect(water).toBeLessThanOrEqual(1); // it drank the pour and the puddle
     mockRandom().mockReturnValue(0.5);
-    // step the tip until it finishes
     for (let n = 0; n < 400; n++) {
       let tip = -1;
       for (let i = 0; i < world.types.length; i++) if (world.types[i] === Cell.Seed && world.life[i] > 0) { tip = i; break; }
@@ -285,7 +295,18 @@ describe('leaf, trunk and seed rules', () => {
       if (world.types[i] === Cell.Wood) rungs++;
     }
     expect(stalk).toBeGreaterThan(energy);
-    expect(rungs).toBeGreaterThanOrEqual(12);
+    expect(rungs).toBeGreaterThanOrEqual(24);
+  });
+
+  it('lets a seed that only caught a drip dry out instead of sprouting a stub', () => {
+    const world = flatWorld(40, 60, 50);
+    const ctx = ctxFor(world);
+    world.replaceCellAt(world.idx(20, 49), Cell.Seed, 0xb08040);
+    world.life[world.idx(20, 49)] = SEED_THIRSTY_LOOSE;
+    world.replaceCellAt(world.idx(20, 48), Cell.Water, 0x2266ff);
+    for (let n = 0; n < SOAK_IDLE_SPROUT + 4; n++) handleSeed(ctx, 20, 49);
+    expect(world.life[world.idx(20, 49)]).toBe(SEED_THIRSTY_LOOSE);
+    expect(world.types[world.idx(20, 49)]).toBe(Cell.Seed);
   });
 });
 

@@ -83,7 +83,7 @@ const FALL_TIMEOUT = 720;
 /** Hints (the dig beam, a blast, a kick) older than this do not steer a fall. */
 const HINT_TTL = 150;
 /** Most dirty chunks examined per tick (the rest wait a tick). */
-const CHUNKS_PER_TICK = 8;
+const CHUNKS_PER_TICK = 10;
 /** Notch warning: a row this thin vs the trunk's typical row creaks (levels 1, 2). */
 const WARN_RATIO_1 = 0.55;
 const WARN_RATIO_2 = 0.3;
@@ -109,6 +109,8 @@ interface FloraIndex {
   seen: Uint32Array;
   /** Round-robin cursor for the slow presence refresh. */
   cursor: number;
+  /** Where the dirty-chunk scan resumes next tick (fairness). */
+  scanFrom: number;
   /** Last notch warning tick by spatial bucket. */
   warned: Map<number, { t: number; level: number }>;
 }
@@ -182,7 +184,7 @@ export class Flora implements FloraApi {
     let idx = this.index.get(world);
     if (idx) return idx;
     const cols = Math.ceil(world.width / ACTIVITY_SIZE), rows = Math.ceil(world.height / ACTIVITY_SIZE);
-    idx = { chunkTrunk: new Uint8Array(cols * rows), seen: new Uint32Array(cols * rows), cursor: 0, warned: new Map() };
+    idx = { chunkTrunk: new Uint8Array(cols * rows), seen: new Uint32Array(cols * rows), cursor: 0, scanFrom: 0, warned: new Map() };
     // One full sweep per world instance: which chunks hold living wood.
     const types = world.types, W = world.width;
     for (let i = 0; i < types.length; i++) {
@@ -253,17 +255,20 @@ export class Flora implements FloraApi {
     }
     this.scratch.ensure(world.types.length);
     const epoch = this.scratch.next();
+    // Round-robin from where the last tick stopped: a chunk that changes every
+    // tick (leaves drifting, a stream) must never starve the rest of the view.
+    const spanX = cx1 - cx0 + 1, spanY = cy1 - cy0 + 1, total = Math.max(0, spanX * spanY);
     let examined = 0;
-    for (let cy = cy0; cy <= cy1 && examined < CHUNKS_PER_TICK; cy++) {
-      for (let cx = cx0; cx <= cx1 && examined < CHUNKS_PER_TICK; cx++) {
-        const key = cx + cy * cols;
-        if (!idx.chunkTrunk[key]) continue;
-        const v = act.versions[key];
-        if (idx.seen[key] === v && v !== 0) continue;
-        idx.seen[key] = v;
-        examined++;
-        if (!this.examineChunk(ctx, world, idx, key, cols, epoch)) idx.chunkTrunk[key] = 0;
-      }
+    for (let n = 0; n < total && examined < CHUNKS_PER_TICK; n++) {
+      const k = (idx.scanFrom + n) % total;
+      const key = cx0 + (k % spanX) + (cy0 + Math.floor(k / spanX)) * cols;
+      if (!idx.chunkTrunk[key]) continue;
+      const v = act.versions[key];
+      if (idx.seen[key] === v && v !== 0) continue;
+      idx.seen[key] = v;
+      examined++;
+      if (!this.examineChunk(ctx, world, idx, key, cols, epoch)) idx.chunkTrunk[key] = 0;
+      if (examined === CHUNKS_PER_TICK) idx.scanFrom = (idx.scanFrom + n + 1) % Math.max(1, total);
     }
   }
 
@@ -339,6 +344,7 @@ export class Flora implements FloraApi {
     }
     const notchX = nc ? nx / nc : (stand.x0 + stand.x1) / 2;
     ctx.audio.at(notchX, thinRow, () => ctx.audio.creak(level === 2 ? 1 : 0.6), 420);
+    ctx.events.emit('floraMoment', { kind: 'creak', x: notchX, y: thinRow, strength: level === 2 ? 1 : 0.6 });
     ctx.particles.burst(notchX, thinRow, level === 2 ? 10 : 5, null, () => packRGB(140, 118, 88), 0.5, { grav: 0.05 });
     this.shakeLeaves(world, stand.x0 - LEAF_REACH, stand.y0 - LEAF_REACH, stand.x1 + LEAF_REACH, stand.y0 + Math.floor(height * 0.5), level === 2 ? 10 : 4);
     if (level === 2) ctx.fx.screenShake = Math.min(0.03, ctx.fx.screenShake + 0.004);
@@ -374,30 +380,43 @@ export class Flora implements FloraApi {
       return;
     }
     const fit = fitFellBody(sprite, WOOD_DENSITY);
-    // The foot of the wood: mean x of its lowest rows (world), and its bottom row.
-    let footX = 0, footN = 0, bottom = -1, comX = 0, comN = 0, leafX = 0, leafN = 0;
-    for (let y = sprite.h - 1; y >= 0; y--) {
-      for (let x = 0; x < sprite.w; x++) {
+    // The foot of the wood: the bottom of its MAIN column (the trunk — a prop
+    // root or a hanging leg tip is not where it stands), and its mean x there.
+    const colCount = new Int32Array(sprite.w);
+    let comX = 0, comN = 0, leafX = 0, leafN = 0;
+    for (let y = 0; y < sprite.h; y++) for (let x = 0; x < sprite.w; x++) {
+      const k = sprite.kind[x + y * sprite.w];
+      if (k === FELL_WOOD || k === FELL_EMBER) { colCount[x]++; comX += x; comN++; }
+      else if (k === FELL_LEAF) { leafX += x; leafN++; }
+    }
+    let mainCol = 0;
+    for (let x = 1; x < sprite.w; x++) if (colCount[x] > colCount[mainCol]) mainCol = x;
+    let bottom = -1;
+    for (let y = sprite.h - 1; y >= 0 && bottom < 0; y--) {
+      for (let x = Math.max(0, mainCol - 2); x <= Math.min(sprite.w - 1, mainCol + 2); x++) {
         const k = sprite.kind[x + y * sprite.w];
-        if (k === FELL_WOOD || k === FELL_EMBER) {
-          if (bottom < 0) bottom = y;
-          if (y >= bottom - 2) { footX += x; footN++; }
-          comX += x; comN++;
-        } else if (k === FELL_LEAF) { leafX += x; leafN++; }
+        if (k === FELL_WOOD || k === FELL_EMBER) { bottom = y; break; }
       }
     }
-    footX = sprite.x0 + (footN ? footX / footN : sprite.w / 2) + 0.5;
+    let footX = 0, footN = 0;
+    for (let x = Math.max(0, mainCol - 4); x <= Math.min(sprite.w - 1, mainCol + 4); x++) {
+      for (let y = Math.max(0, bottom - 2); y <= bottom; y++) {
+        const k = sprite.kind[x + y * sprite.w];
+        if (k === FELL_WOOD || k === FELL_EMBER) { footX += x; footN++; }
+      }
+    }
+    footX = sprite.x0 + (footN ? footX / footN : mainCol) + 0.5;
     const footY = sprite.y0 + bottom + 1;
     comX = sprite.x0 + (comN ? comX / comN : sprite.w / 2) + 0.5;
     const crownX = leafN ? sprite.x0 + leafX / leafN + 0.5 : comX;
     // Standing (a cut below it: stump or ground within reach) topples on a hinge;
-    // hanging or sideways wood simply drops.
+    // hanging or sideways wood simply drops (a tall one still goes over).
     let standing = false;
-    const upright = Math.abs(fit.angle) < 0.7 && fit.halfH > fit.halfW * 1.6;
+    const upright = Math.abs(fit.angle) < 0.7 && sprite.h > sprite.w * 0.9 && sprite.h > 14;
     if (upright) {
-      for (let d = 0; d <= 6 && !standing; d++) {
+      for (let d = 0; d <= 12 && !standing; d++) {
         const yy = footY + d;
-        for (let dx = -2; dx <= 2; dx++) {
+        for (let dx = -3; dx <= 3; dx++) {
           const xx = Math.floor(footX) + dx;
           if (!world.inBounds(xx, yy)) continue;
           const t = world.types[world.idx(xx, yy)];
@@ -452,6 +471,10 @@ export class Flora implements FloraApi {
       const lx = foot.x - dir * foot.halfW * 0.85, ly = foot.y + foot.halfH;
       const c = Math.cos(fit.angle), s = Math.sin(fit.angle);
       pivot = { x: fit.cx + lx * c - ly * s, y: fit.cy + lx * s + ly * c };
+      // ...and behind the wood's own centre of mass (a crown heavier on the far
+      // side must not swing it back): never more than 6 cells behind the trunk.
+      const behind = comX - dir * 1.5;
+      pivot.x = dir > 0 ? Math.max(pivot.x - 6, Math.min(pivot.x, behind)) : Math.min(pivot.x + 6, Math.max(pivot.x, behind));
     }
     const body = ctx.rigidBodies.spawn({ kind: 'box', halfW: fit.halfW, halfH: fit.halfH }, fit.cx, fit.cy, {
       angle: fit.angle,
@@ -463,7 +486,7 @@ export class Flora implements FloraApi {
       angularDamping: pivot ? HOLD_DAMPING : FREE_DAMPING,
       // Hinged: a nudge (gravity does the rest). Dropping upright with nothing
       // under the cut: it still goes over as it falls, toward its lean.
-      va: standing ? dir * TOPPLE_START_SPIN : upright ? dir * 0.02 : (entityRandom() - 0.5) * 0.008,
+      va: standing ? dir * TOPPLE_START_SPIN : upright ? dir * 0.032 : (entityRandom() - 0.5) * 0.008,
       pivot,
       tag: 'flora-fell',
     });
@@ -500,11 +523,10 @@ export class Flora implements FloraApi {
     };
     this.falling.push(fall);
     // The crack: a dry snap, splinters at the cut, a groan as it starts to go.
-    ctx.audio.at(footX, footY, () => {
-      ctx.audio.noiseBurst(0.09, 2400, 0.14, true);
-      ctx.audio.tone(150, 62, 0.16, 'square', 0.07);
-      ctx.audio.creak(1);
-    }, 520);
+    ctx.audio.sfx('body.tear', footX, footY, { gain: 1.2, pitch: -3 });
+    ctx.audio.sfx('body.smash.wood', footX, footY, { gain: 0.55, pitch: -5 });
+    ctx.audio.at(footX, footY, () => ctx.audio.creak(1.2), 520);
+    ctx.events.emit('floraMoment', { kind: 'crack', x: footX, y: footY, strength: Math.min(1, sprite.woodCount / 300) });
     const bark = sprite.bark;
     for (let k = 0; k < 10; k++) {
       ctx.particles.spawn(footX + (entityRandom() - 0.5) * 4, footY - 1 - entityRandom() * 2, (entityRandom() - 0.5) * 1.6 + dir * 0.4,
@@ -538,6 +560,7 @@ export class Flora implements FloraApi {
         // The fibres give: the lean begins in earnest.
         ctx.rigidBodies.setDamping?.(b, undefined, HINGE_DAMPING);
         ctx.audio.at(b.x, b.y, () => ctx.audio.creak(1), 460);
+        ctx.events.emit('floraMoment', { kind: 'lean', x: b.x, y: b.y, strength: 1 });
       }
       if (f.hinged && f.dir !== 0 && f.age >= HOLD_TICKS && f.age < HOLD_TICKS + 14) {
         // Steer the first degrees the way it was cut: a curved trunk's own lean
@@ -557,14 +580,16 @@ export class Flora implements FloraApi {
         if (lean > HINGE_RELEASE_ANGLE || (f.age > 90 && spin < 0.0015)) {
           ctx.rigidBodies.releasePivot?.(b, FREE_DAMPING);
           f.hinged = false;
-          ctx.audio.at(b.x, b.y, () => ctx.audio.noiseBurst(0.06, 1800, 0.08, true), 420);
+          ctx.audio.sfx('body.rip', b.x, b.y, { gain: 1.4, pitch: -2 });
+          ctx.events.emit('floraMoment', { kind: 'snap', x: b.x, y: b.y, strength: 0.8 });
         } else if (f.age % 26 === 13 && lean < 0.35) {
           ctx.audio.at(b.x, b.y, () => ctx.audio.creak(0.7 + lean), 420);
         }
       }
       if (!f.whooshed && tipSpeed > 3.2) {
         f.whooshed = true;
-        ctx.audio.at(b.x, b.y, () => ctx.audio.noiseBurst(0.42, 520, 0.09), 480);
+        ctx.audio.sfx('trick.whip', b.x, b.y, { gain: 0.7, pitch: -9, rate: 0.7 });
+        ctx.events.emit('floraMoment', { kind: 'whoosh', x: b.x, y: b.y, strength: Math.min(1, tipSpeed / 6) });
       }
       this.shedLeaves(ctx, f, Math.min(4, Math.floor(spin * 26 + speed * 0.25)), false);
       if (f.burning > 0) this.burnTrail(ctx, f);
@@ -574,9 +599,11 @@ export class Flora implements FloraApi {
       if (dv > IMPACT_DV && f.age > 3) this.impact(ctx, f, Math.min(1, (dv - IMPACT_DV) / 5 + 0.15));
       f.pvx = b.vx; f.pvy = b.vy; f.pva = b.va;
       // Settle → the log.
-      if (!f.hinged && speed < SETTLE_SPEED && spin < SETTLE_SPIN) f.still++;
+      // A log afloat never quite sleeps: slow and bobbing in a pool counts as at rest.
+      const calm = b.inWater ? speed < 0.25 && spin < 0.02 : speed < SETTLE_SPEED && spin < SETTLE_SPIN;
+      if (!f.hinged && calm) f.still++;
       else f.still = 0;
-      if (f.still >= SETTLE_TICKS || b.sleeping && !f.hinged && f.age > 20 || f.age > FALL_TIMEOUT) {
+      if (f.still >= (b.inWater ? SETTLE_TICKS * 3 : SETTLE_TICKS) || b.sleeping && !f.hinged && f.age > 20 || f.age > FALL_TIMEOUT) {
         if (f.hinged) ctx.rigidBodies.releasePivot?.(b, FREE_DAMPING);
         this.restamp(f, b.x, b.y, b.angle, true);
         ctx.rigidBodies.remove(b);
@@ -709,11 +736,10 @@ export class Flora implements FloraApi {
     const size = Math.min(1, strength * (0.6 + f.mass / 500));
     if (first) {
       this.shedLeaves(ctx, f, Math.ceil(f.leaves.length * 0.28), true);
-      ctx.audio.at(ix, iy, () => {
-        ctx.audio.boom(4 + size * 8, ix, iy);
-        ctx.audio.landThud(Math.min(1, 0.4 + size));
-        ctx.audio.noiseBurst(0.3, 3000, 0.05 + size * 0.05, true);
-      }, 560);
+      ctx.audio.boom(4 + size * 8, ix, iy);
+      ctx.audio.sfx('body.impact.wood', ix, iy, { gain: 1.3, pitch: -6 });
+      ctx.audio.at(ix, iy, () => ctx.audio.landThud(Math.min(1, 0.4 + size)), 560);
+      ctx.events.emit('floraMoment', { kind: 'rustle', x: ix, y: iy - 6, strength: size });
       const camDx = ix - (ctx.camera.x + 320), camDy = iy - (ctx.camera.y + 180);
       const near = Math.max(0, 1 - Math.hypot(camDx, camDy) / 460);
       ctx.fx.screenShake = Math.min(0.045, ctx.fx.screenShake + (0.01 + size * 0.025) * near);
@@ -777,6 +803,7 @@ export class Flora implements FloraApi {
     const cx = (res.bounds.x0 + res.bounds.x1) / 2, cy = res.bounds.y1;
     ctx.particles.burst(cx, cy, 6, null, () => packRGB(130, 118, 100), 0.6, { grav: 0.03 });
     ctx.audio.at(cx, cy, () => ctx.audio.creak(0.35), 380);
+    ctx.events.emit('floraMoment', { kind: 'settle', x: cx, y: cy, strength: Math.min(1, res.wood / 250) });
     ctx.events.emit('treeSettled', { x: cx, y: cy, cells: res.wood });
   }
 
@@ -822,7 +849,8 @@ export class Flora implements FloraApi {
     this.shakeLeaves(world, x0, y0, x1, y1, Math.min(14, 3 + extraLeaves + Math.floor(r / 10)));
     if (pods > 0) {
       const ctx = this.ctx;
-      ctx.audio.at(x, y, () => ctx.audio.tone(760, 420, 0.12, 'sine', 0.03), 360);
+      ctx.audio.sfx('mat.drip', x, y, { pitch: 4, gain: 0.8 });
+      ctx.events.emit('floraMoment', { kind: 'podDrop', x, y, strength: Math.min(1, pods / 6) });
     }
   }
 
@@ -865,7 +893,10 @@ export class Flora implements FloraApi {
     this.scratch.ensure(world.types.length);
     const stand = floodStand(world, hitX, hitY, this.scratch, this.scratch.next());
     const height = stand.y1 - stand.y0 + 1;
-    const rustle = (): void => ctx.audio.at(hitX, hitY, () => ctx.audio.noiseBurst(0.24, 2800, 0.05, true), 360);
+    const rustle = (): void => {
+      ctx.audio.sfx('player.vine', hitX, hitY, { gain: 0.9 });
+      ctx.events.emit('floraMoment', { kind: 'rustle', x: hitX, y: hitY, strength: 0.5 });
+    };
     if (stand.supported && !stand.capped && stand.count <= SAPLING_MAX_CELLS && height <= SAPLING_MAX_HEIGHT) {
       // A sapling snaps at the boot: its footing rows break into splinters.
       let snapped = 0;
@@ -883,7 +914,8 @@ export class Flora implements FloraApi {
         }
         if (row > 0) snapped++;
       }
-      ctx.audio.at(hitX, hitY, () => { ctx.audio.noiseBurst(0.05, 2600, 0.1, true); ctx.audio.tone(210, 120, 0.06, 'square', 0.05); }, 360);
+      ctx.audio.sfx('body.rip', hitX, hitY, { pitch: 3 });
+      ctx.events.emit('floraMoment', { kind: 'snap', x: hitX, y: hitY, strength: 0.4 });
       rustle();
       return;
     }

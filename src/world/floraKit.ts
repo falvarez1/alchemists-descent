@@ -1,7 +1,7 @@
 import type { Rng } from '@/core/rng';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
-import { LEAF_LITTER, LEAF_REACH, leafAnchor, leafAttachedLife, SEED_GLOW_HELD, SEED_THIRSTY_HELD } from '@/sim/elements/flora';
+import { anchoredSupport, LEAF_LITTER, LEAF_REACH, leafAnchor, leafAttachedLife, SEED_GLOW_HELD, SEED_THIRSTY_HELD } from '@/sim/elements/flora';
 import type { World } from '@/sim/World';
 
 /* ============================================================
@@ -62,6 +62,9 @@ export interface PlantResult {
   footY: number;
   /** Top of the trunk. */
   topY: number;
+  /** The felling line: cut clean through the wood at this row and everything
+   *  above it comes down (above a mangrove's prop roots, a flare's root). */
+  cutY: number;
 }
 
 type RGB = readonly [number, number, number];
@@ -92,6 +95,10 @@ function openForGrowth(t: number): boolean {
  */
 class Planter {
   trunk = 0;
+  /** Every living-wood cell written (for the support audit). */
+  readonly woodCells: number[] = [];
+  /** Every leaf and seed written (cleared with an unsupported stand). */
+  readonly softCells: number[] = [];
   /** Leaves still to settle (placed fresh, life 0). */
   leaves: number[] = [];
   /** Every leaf written (fresh or pre-settled). */
@@ -126,6 +133,7 @@ class Planter {
     this.world.replaceCellAt(i, Cell.Trunk, color);
     this.world.life[i] = -1;
     this.trunk++;
+    this.woodCells.push(i);
     this.note(x, y);
     return true;
   }
@@ -137,6 +145,7 @@ class Planter {
     this.world.replaceCellAt(i, Cell.Leaf, color);
     this.world.life[i] = life;
     this.leafCount++;
+    this.softCells.push(i);
     if (life === 0) this.leaves.push(i);
     this.note(x, y);
     return true;
@@ -149,6 +158,7 @@ class Planter {
     this.world.replaceCellAt(i, Cell.Seed, color);
     this.world.life[i] = life;
     this.seeds++;
+    this.softCells.push(i);
     this.note(x, y);
     return true;
   }
@@ -228,77 +238,112 @@ class Planter {
    * it. Stray pieces are joined to the nearest reached wood (a short graft
    * through open air), or pruned when nothing is near.
    */
-  joinWood(footX: number, footY: number): void {
+  joinWood(): void {
     const w = this.world;
     if (this.x1 < this.x0) return;
     const x0 = Math.max(1, this.x0 - 2), y0 = Math.max(1, this.y0 - 2), x1 = Math.min(w.width - 2, this.x1 + 2), y1 = Math.min(w.height - 2, this.y1 + 2);
     const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
-    const seen = new Uint8Array(bw * bh);
+    const comp = new Int32Array(bw * bh).fill(-1);
     const at = (x: number, y: number): number => (x - x0) + (y - y0) * bw;
     const wood = (x: number, y: number): boolean => x >= x0 && y >= y0 && x <= x1 && y <= y1 && w.types[w.idx(x, y)] === Cell.Trunk;
-    // seed: the wood nearest the foot
-    let sx = -1, sy = -1, best = Infinity;
+    // Label every piece of wood (8-connected); the largest piece is the stand.
+    const pieces: Array<Array<[number, number]>> = [];
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      if (!wood(x, y)) continue;
-      const d = Math.abs(x - footX) + Math.abs(y - footY) * 2;
-      if (d < best) { best = d; sx = x; sy = y; }
-    }
-    if (sx < 0) return;
-    const flood = (fx: number, fy: number): void => {
-      const q: Array<[number, number]> = [[fx, fy]];
-      seen[at(fx, fy)] = 1;
-      for (let h = 0; h < q.length; h++) {
-        const [cx, cy] = q[h];
+      if (!wood(x, y) || comp[at(x, y)] >= 0) continue;
+      const id = pieces.length;
+      const cells: Array<[number, number]> = [[x, y]];
+      comp[at(x, y)] = id;
+      for (let h = 0; h < cells.length; h++) {
+        const [cx, cy] = cells[h];
         for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
           const nx = cx + dx, ny = cy + dy;
-          if (!wood(nx, ny) || seen[at(nx, ny)]) continue;
-          seen[at(nx, ny)] = 1;
-          q.push([nx, ny]);
+          if (!wood(nx, ny) || comp[at(nx, ny)] >= 0) continue;
+          comp[at(nx, ny)] = id;
+          cells.push([nx, ny]);
         }
       }
-    };
-    flood(sx, sy);
-    for (let pass = 0; pass < 12; pass++) {
-      let fx = -1, fy = -1;
-      for (let y = y0; y <= y1 && fx < 0; y++) for (let x = x0; x <= x1; x++) if (wood(x, y) && !seen[at(x, y)]) { fx = x; fy = y; break; }
-      if (fx < 0) return;
-      // nearest reached wood within a short graft
-      let tx = -1, ty = -1, bd = Infinity;
-      for (let y = Math.max(y0, fy - 4); y <= Math.min(y1, fy + 4); y++) for (let x = Math.max(x0, fx - 4); x <= Math.min(x1, fx + 4); x++) {
-        if (!wood(x, y) || !seen[at(x, y)]) continue;
-        const d = Math.hypot(x - fx, y - fy);
-        if (d < bd) { bd = d; tx = x; ty = y; }
+      pieces.push(cells);
+    }
+    if (pieces.length <= 1) return;
+    let main = 0;
+    for (let k = 1; k < pieces.length; k++) if (pieces[k].length > pieces[main].length) main = k;
+    // Graft each smaller piece onto the stand (a short line through open air)
+    // or, with nothing within reach, prune it.
+    for (let k = 0; k < pieces.length; k++) {
+      if (k === main) continue;
+      let best = Infinity, fx = 0, fy = 0, tx = 0, ty = 0;
+      for (const [px, py] of pieces[k]) {
+        for (let y = Math.max(y0, py - 4); y <= Math.min(y1, py + 4); y++) for (let x = Math.max(x0, px - 4); x <= Math.min(x1, px + 4); x++) {
+          if (comp[at(x, y)] !== main) continue;
+          const d = Math.hypot(x - px, y - py);
+          if (d < best) { best = d; fx = px; fy = py; tx = x; ty = y; }
+        }
       }
-      if (tx >= 0) {
-        const n = Math.ceil(bd);
-        const c = w.colors[w.idx(fx, fy)];
-        for (let k = 1; k < n; k++) this.wood(fx + ((tx - fx) * k) / n, fy + ((ty - fy) * k) / n, c);
-        flood(fx, fy);
+      if (best < Infinity) {
+        const n = Math.ceil(best), c = w.colors[w.idx(fx, fy)];
+        for (let s2 = 1; s2 < n; s2++) this.wood(fx + ((tx - fx) * s2) / n, fy + ((ty - fy) * s2) / n, c);
+        for (const [px, py] of pieces[k]) comp[at(px, py)] = main;
       } else {
-        // nothing to graft onto: prune the stray piece
-        const q: Array<[number, number]> = [[fx, fy]];
-        w.clearCellAt(w.idx(fx, fy));
-        for (let h = 0; h < q.length; h++) {
-          const [cx, cy] = q[h];
-          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-            if (!wood(cx + dx, cy + dy)) continue;
-            if (seen[at(cx + dx, cy + dy)]) continue;
-            w.clearCellAt(w.idx(cx + dx, cy + dy));
-            q.push([cx + dx, cy + dy]);
-          }
-        }
+        for (const [px, py] of pieces[k]) { w.clearCellAt(w.idx(px, py)); this.trunk--; }
       }
     }
   }
 
-  result(species: FloraSpecies, footX: number, footY: number, topY: number): PlantResult | null {
-    if (species !== 'reeds' && species !== 'firelily' && species !== 'rootcolumn') this.joinWood(footX, footY);
+  /**
+   * The support audit: every separate stand of wood this plant grew must touch
+   * anchored ground, or the simulation would fell it the moment it looked (a
+   * reed stem that missed its own bed, a kelp frond over a hole). Unsupported
+   * stands are not grown; their leaves and pods go with them.
+   */
+  pruneUnsupported(): void {
+    const w = this.world, W = w.width;
+    const seen = new Set<number>();
+    let pruned = false;
+    for (const start of this.woodCells) {
+      if (seen.has(start) || w.types[start] !== Cell.Trunk) continue;
+      const comp = [start];
+      seen.add(start);
+      let supported = false;
+      for (let h = 0; h < comp.length; h++) {
+        const i = comp[h], y = (i / W) | 0, x = i - y * W;
+        if (!supported) for (const [dx, dy] of [[0, 1], [1, 0], [-1, 0], [0, -1]]) if (anchoredSupport(w, x + dx, y + dy)) { supported = true; break; }
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const ni = i + dx + dy * W;
+          if (seen.has(ni) || w.types[ni] !== Cell.Trunk) continue;
+          seen.add(ni);
+          comp.push(ni);
+        }
+      }
+      if (supported) continue;
+      for (const i of comp) { w.clearCellAt(i); this.trunk--; }
+      pruned = true;
+    }
+    if (!pruned) return;
+    // leaves and pods left holding nothing are dropped with it (settleLeaves
+    // handles fresh leaves; pre-settled pads and pods are checked here)
+    for (const i of this.softCells) {
+      const t = w.types[i];
+      if (t !== Cell.Seed) continue;
+      const y = (i / W) | 0, x = i - y * W;
+      let held = false;
+      for (let dy = -1; dy <= 1 && !held; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nt = w.types[w.idx(x + dx, y + dy)];
+        if (nt === Cell.Trunk || nt === Cell.Leaf) { held = true; break; }
+      }
+      if (!held) { w.clearCellAt(i); this.seeds--; }
+    }
+  }
+
+  result(species: FloraSpecies, footX: number, footY: number, topY: number, cutY = footY - 3): PlantResult | null {
+    if (species !== 'reeds' && species !== 'firelily' && species !== 'rootcolumn') this.joinWood();
+    this.pruneUnsupported();
     const dropped = this.settleLeaves();
     const leaves = this.leafCount - dropped;
     if (this.trunk === 0 && leaves <= 0) return null;
     return {
       species, x0: this.x0, y0: this.y0, x1: this.x1, y1: this.y1, trunk: this.trunk,
-      leaves, seeds: this.seeds, footX, footY, topY,
+      leaves, seeds: this.seeds, footX, footY, topY, cutY,
     };
   }
 }
@@ -592,7 +637,7 @@ function mushroom(p: Planter, x: number, y: number, o: PlantOptions): PlantResul
     }
   }
   if (o.pods) hangPods(p, topX - capR + 2, topX + capR - 2, capBase - 1, capBase + 1, o.pods, 2);
-  return p.result('mushroom', x, y, capBase - 2 - capH);
+  return p.result('mushroom', x, y, capBase - 2 - capH, y - 5);
 }
 
 function rootcolumn(p: Planter, x: number, y: number, o: PlantOptions): PlantResult | null {
@@ -681,6 +726,12 @@ function mangrove(p: Planter, x: number, y: number, o: PlantOptions): PlantResul
       p.wood(px, py, jitter([96, 82, 60], rng, 8));
       if (t > 0.6 && reach > 9) p.wood(px + side, py, jitter([80, 68, 50], rng, 8));
     }
+    // and on down into its own footing (a leg ending over a hole would dangle)
+    const w = p.world;
+    for (let d = 1; d <= 12; d++) {
+      if (!w.inBounds(ex, ey + d) || blocksEntity(w.types[w.idx(ex, ey + d)])) break;
+      p.wood(ex, ey + d, jitter([80, 68, 50], rng, 8));
+    }
   }
   const top = spine[spine.length - 1];
   const light: RGB = [88, 132, 84], dark: RGB = [40, 76, 56];
@@ -693,21 +744,26 @@ function mangrove(p: Planter, x: number, y: number, o: PlantOptions): PlantResul
     p.blob(bx + side * 2, by - 1, 6 + rng.int(3), 4 + rng.int(2), 0.84, light, dark);
   }
   if (o.pods) hangPods(p, top[0] - 12, top[0] + 12, top[1] - 4, top[1] + 10, o.pods, 2);
-  return p.result('mangrove', x, y, top[1]);
+  return p.result('mangrove', x, y, top[1], baseY - 3);
 }
 
 function reeds(p: Planter, x: number, y: number, o: PlantOptions): PlantResult | null {
   const rng = p.rng;
   const n = 4 + rng.int(6);
+  const w = p.world;
   for (let s = 0; s < n; s++) {
     const sx = x + s * 2 - n + rng.int(2);
-    const h = o.height ?? 8 + rng.int(13);
+    // each stem stands on ITS OWN bed (the bottom is never flat)
+    let base = y - 3;
+    while (base < y + 14 && w.inBounds(sx, base + 1) && !blocksEntity(w.types[w.idx(sx, base + 1)])) base++;
+    if (!w.inBounds(sx, base + 1) || !blocksEntity(w.types[w.idx(sx, base + 1)])) continue;
+    const h = (o.height ?? 8 + rng.int(13)) + (base - y);
     const bend = (rng.next() - 0.5) * 0.12;
-    let top = y;
+    let top = base;
     for (let i = 0; i < h; i++) {
       const px = sx + Math.round(bend * i * i * 0.1);
-      p.wood(px, y - i, jitter([112, 120, 70], rng, 10, i < 3 ? 0.8 : 1));
-      top = y - i;
+      p.wood(px, base - i, jitter([112, 120, 70], rng, 10, i < 3 ? 0.8 : 1));
+      top = base - i;
     }
     if (rng.next() < 0.55) {
       // a cattail head
@@ -717,7 +773,7 @@ function reeds(p: Planter, x: number, y: number, o: PlantOptions): PlantResult |
     }
     if (rng.next() < 0.6) {
       const side = rng.next() < 0.5 ? -1 : 1;
-      for (let k = 1; k <= 3 + rng.int(3); k++) p.leaf(sx + side * k, y - Math.floor(h * 0.4) - k, mix([126, 146, 84], [70, 96, 60], rng.next()));
+      for (let k = 1; k <= 3 + rng.int(3); k++) p.leaf(sx + side * k, base - Math.floor(h * 0.4) - k, mix([126, 146, 84], [70, 96, 60], rng.next()));
     }
   }
   return p.result('reeds', x, y, y - 20);
@@ -728,6 +784,11 @@ function kelp(p: Planter, x: number, y: number, o: PlantOptions): PlantResult | 
   const rng = p.rng;
   const H = o.height ?? 12 + rng.int(18);
   const phase = rng.next() * 6.28;
+  const w = p.world;
+  const x0 = x + Math.round(Math.sin(phase) * 1.4);
+  let base = y - 2;
+  while (base < y + 10 && w.inBounds(x0, base + 1) && !blocksEntity(w.types[w.idx(x0, base + 1)])) base++;
+  y = base;
   for (let i = 0; i < H; i++) {
     const px = x + Math.round(Math.sin(i * 0.35 + phase) * 1.4);
     if (!p.wood(px, y - i, jitter([56, 86, 60], rng, 8))) break;

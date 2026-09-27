@@ -1,5 +1,6 @@
 import type { Ctx } from '@/core/types';
-import { Cell, isGas, isLiquid, isSoftGrowth, isSolid } from '@/sim/CellType';
+import { blocksEntity, Cell, isGas, isLiquid, isSoftGrowth, isSolid } from '@/sim/CellType';
+import type { World } from '@/sim/World';
 import { ashColor, emberColor, fireColor, packRGB, steamColor, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { fxRandom, simRandom } from '@/core/simRandom';
 
@@ -35,6 +36,28 @@ export const SEED_GLOW_LOOSE = -4;
 export function isGlowseedLife(life: number): boolean {
   return life === SEED_GLOW_HELD || life === SEED_GLOW_LOOSE;
 }
+/**
+ * A thirsty seed that has been wetted SOAKS before it sprouts: each substep
+ * it drinks one adjacent water cell, and once the water stops coming (or it
+ * is full) it sprouts with everything it drank. life = -(SOAK_BASE +
+ * absorbed * 64 + idle), idle = substeps since its last drink (0..63).
+ */
+export const SEED_SOAK_BASE = 100;
+/** Substeps without a drink before a soaking seed sprouts: long enough that a
+ *  pour arriving in drops (a spout, a flask) is drunk whole, ~0.6 s. */
+export const SOAK_IDLE_SPROUT = 48;
+/** Fewest cells a seed must drink before it will sprout (a drip dries off). */
+export const SOAK_MIN = 8;
+export function isSoakingLife(life: number): boolean {
+  return life <= -SEED_SOAK_BASE;
+}
+function soakLife(absorbed: number, idle: number): number {
+  return -(SEED_SOAK_BASE + Math.min(SPROUT_DRINK_MAX, absorbed) * 64 + Math.min(63, idle));
+}
+function soakState(life: number): { absorbed: number; idle: number } {
+  const v = -life - SEED_SOAK_BASE;
+  return { absorbed: v >> 6, idle: v & 63 };
+}
 
 /** Cap on the sprout energy (cells of ladder) one drink can buy. */
 export const SPROUT_MAX_ENERGY = 120;
@@ -54,6 +77,31 @@ const N8: ReadonlyArray<readonly [number, number]> = [
   [-1, 1], [0, 1], [1, 1],
 ];
 const N4: ReadonlyArray<readonly [number, number]> = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+
+/** Ground a stand of living wood can stand on: any load-bearing solid or packed
+ *  powder that is not itself soft growth (leaves, vines and other trunks never
+ *  hold one up). */
+export function standSupport(t: number): boolean {
+  if (t === Cell.Trunk) return false;
+  return (isSolid(t) && !isSoftGrowth(t)) || blocksEntity(t);
+}
+
+/**
+ * Support that is really there: a standSupport cell that is itself embedded
+ * (at least two load-bearing neighbours). A lone speck — a splinter the dig
+ * beam threw, a grain of sand that settled against the bark — holds nothing up.
+ */
+export function anchoredSupport(world: World, x: number, y: number): boolean {
+  const W = world.width, H = world.height, types = world.types;
+  if (x < 0 || y < 0 || x >= W || y >= H) return true;
+  if (!standSupport(types[x + y * W])) return false;
+  let n = 0;
+  for (let k = 0; k < 4; k++) {
+    const nx = x + N4[k][0], ny = y + N4[k][1];
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H || standSupport(types[nx + ny * W])) n++;
+  }
+  return n >= 2;
+}
 
 /** What a leaf can hang from: wood (living or dead), vines, or load-bearing rock. */
 export function leafAnchor(t: number): boolean {
@@ -281,36 +329,105 @@ function hasPlantNeighbor(ctx: Ctx, x: number, y: number): boolean {
   return false;
 }
 
-const DRINK_QX = new Int32Array(SPROUT_DRINK_MAX + 8);
-const DRINK_QY = new Int32Array(SPROUT_DRINK_MAX + 8);
+/** Drink ONE water cell touching (x, y) (sides first, then diagonals). */
+function sip(ctx: Ctx, x: number, y: number): boolean {
+  const w = ctx.world;
+  for (let pass = 0; pass < 2; pass++) {
+    const list = pass === 0 ? N4 : N8;
+    for (let k = 0; k < list.length; k++) {
+      const nx = x + list[k][0], ny = y + list[k][1];
+      if (!w.inBounds(nx, ny)) continue;
+      const ni = w.idx(nx, ny);
+      if (w.types[ni] !== Cell.Water) continue;
+      w.clearCellAt(ni);
+      return true;
+    }
+  }
+  return false;
+}
 
-/** Drink the water connected to (x,y) — bounded — and return how much went down. */
-function drink(ctx: Ctx, x: number, y: number): number {
+/** What the other seeds of this bed have soaked up between them. */
+function bedAbsorbed(ctx: Ctx, x: number, y: number): number {
+  const w = ctx.world;
+  let total = 0;
+  for (let dy = -3; dy <= 3; dy++) for (let dx = -4; dx <= 4; dx++) {
+    if ((dx === 0 && dy === 0) || !w.inBounds(x + dx, y + dy)) continue;
+    const ni = w.idx(x + dx, y + dy);
+    if (w.types[ni] === Cell.Seed && isSoakingLife(w.life[ni])) total += soakState(w.life[ni]).absorbed;
+  }
+  return total;
+}
+
+/** True while another soaking seed of this bed has drunk recently. */
+function bedStillDrinking(ctx: Ctx, x: number, y: number): boolean {
+  const w = ctx.world;
+  for (let dy = -3; dy <= 3; dy++) for (let dx = -4; dx <= 4; dx++) {
+    if ((dx === 0 && dy === 0) || !w.inBounds(x + dx, y + dy)) continue;
+    const ni = w.idx(x + dx, y + dy);
+    if (w.types[ni] !== Cell.Seed) continue;
+    const nl = w.life[ni];
+    if (isSoakingLife(nl) && soakState(nl).idle < SOAK_IDLE_SPROUT - 1) return true;
+  }
+  return false;
+}
+
+const PUDDLE_Q = new Int32Array(256);
+
+/** Drink the puddle the bed stands in: connected water within reach, bounded. */
+function drinkPuddle(ctx: Ctx, x: number, y: number, max: number): number {
   const w = ctx.world;
   let head = 0, tail = 0, drunk = 0;
-  for (let k = 0; k < 4; k++) {
-    const nx = x + N4[k][0], ny = y + N4[k][1];
-    if (w.inBounds(nx, ny) && w.types[w.idx(nx, ny)] === Cell.Water && tail < DRINK_QX.length) {
-      DRINK_QX[tail] = nx; DRINK_QY[tail] = ny; tail++;
-    }
-  }
-  while (head < tail && drunk < SPROUT_DRINK_MAX) {
-    const qx = DRINK_QX[head], qy = DRINK_QY[head];
-    head++;
-    if (!w.inBounds(qx, qy)) continue;
-    const qi = w.idx(qx, qy);
-    if (w.types[qi] !== Cell.Water) continue;
-    if (Math.abs(qx - x) > 10 || Math.abs(qy - y) > 10) continue;
-    w.clearCellAt(qi);
+  const push = (px: number, py: number): void => {
+    if (tail >= PUDDLE_Q.length || !w.inBounds(px, py)) return;
+    if (Math.abs(px - x) > 14 || Math.abs(py - y) > 8) return;
+    const i = w.idx(px, py);
+    if (w.types[i] !== Cell.Water) return;
+    w.clearCellAt(i); // taken as it is found: no cell is counted twice
     drunk++;
-    for (let k = 0; k < 4 && tail < DRINK_QX.length; k++) {
-      const nx = qx + N4[k][0], ny = qy + N4[k][1];
-      if (w.inBounds(nx, ny) && w.types[w.idx(nx, ny)] === Cell.Water) {
-        DRINK_QX[tail] = nx; DRINK_QY[tail] = ny; tail++;
-      }
-    }
+    PUDDLE_Q[tail++] = i;
+  };
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -5; dx <= 5; dx++) push(x + dx, y + dy);
+  while (head < tail && drunk < max) {
+    const i = PUDDLE_Q[head++];
+    const py = (i / w.width) | 0, px = i - py * w.width;
+    for (let k = 0; k < 4 && drunk < max; k++) push(px + N4[k][0], py + N4[k][1]);
   }
   return drunk;
+}
+
+/** Sprout: this seed becomes the growing tip, taking up the thirsty seeds of
+ *  its bed (one ladder per bed), everything they drank, and the puddle the
+ *  bed is standing in. */
+function sprout(ctx: Ctx, x: number, y: number, absorbed: number): void {
+  const w = ctx.world;
+  let water = absorbed + drinkPuddle(ctx, x, y, SPROUT_DRINK_MAX), taken = 0, sumX = x, sumY = y;
+  for (let dy = -3; dy <= 3; dy++) for (let dx = -4; dx <= 4; dx++) {
+    if ((dx === 0 && dy === 0) || !w.inBounds(x + dx, y + dy)) continue;
+    const ni = w.idx(x + dx, y + dy);
+    if (w.types[ni] !== Cell.Seed) continue;
+    const nl = w.life[ni];
+    if (nl > 0 || isGlowseedLife(nl)) continue;
+    if (isSoakingLife(nl)) water += soakState(nl).absorbed;
+    w.clearCellAt(ni);
+    taken++;
+    sumX += x + dx; sumY += y + dy;
+  }
+  // The ladder rises from the middle of the bed, whichever seed woke first.
+  const mx = Math.round(sumX / (taken + 1)), my = Math.round(sumY / (taken + 1));
+  if ((mx !== x || my !== y) && w.inBounds(mx, my) && w.types[w.idx(mx, my)] === Cell.Empty) {
+    const color = w.colors[w.idx(x, y)];
+    w.clearCellAt(w.idx(x, y));
+    w.replaceCellAt(w.idx(mx, my), Cell.Seed, color);
+    x = mx; y = my;
+  }
+  const ci = w.idx(x, y);
+  const energy = Math.min(SPROUT_MAX_ENERGY, Math.round(SPROUT_BASE + water * SPROUT_PER_WATER + taken * 3));
+  w.life[ci] = energy;
+  w.colors[ci] = packRGB(182, 214, 116);
+  w.activity.touchIndex(ci);
+  ctx.particles.burst(x, y - 1, 10, null, () => packRGB(150, 220, 120), 1, { glow: 1.4, grav: -0.02 });
+  ctx.audio.sfx('mat.bubble', x, y, { pitch: 5 });
+  ctx.events?.emit('floraMoment', { kind: 'sprout', x, y, strength: Math.min(1, energy / SPROUT_MAX_ENERGY) });
 }
 
 /** Stalk / rung / crown palette of a sprouted root ladder. */
@@ -357,7 +474,8 @@ function growTip(ctx: Ctx, x: number, y: number, energy: number): void {
     w.life[ci] = -1;
     w.colorOverrides.add(ci);
     crownSprout(ctx, x, y - 1);
-    ctx.audio.at(x, y, () => ctx.audio.tone(330, 520, 0.18, 'sine', 0.035));
+    ctx.audio.sfx('player.vine', x, y, { gain: 0.7, pitch: 3 });
+    ctx.events?.emit('floraMoment', { kind: 'bloom', x, y, strength: 1 });
   };
   if (energy <= 1 || !w.inBounds(x, y - 1)) { finish(); return; }
   const ai = w.idx(x, y - 1);
@@ -388,7 +506,8 @@ function growTip(ctx: Ctx, x: number, y: number, energy: number): void {
       putGrowth(ctx, x0 + dx, y, Cell.Wood, RUNG(true), 0, true);
       putGrowth(ctx, x0 + dx, y + 1, Cell.Wood, RUNG(false), 0, true);
     }
-    ctx.audio.at(x, y, () => ctx.audio.tone(170 + (energy % 5) * 20, 120, 0.06, 'triangle', 0.05));
+    ctx.audio.sfx('body.impact.wood', x, y, { gain: 0.35, pitch: 4 + (energy % 5) });
+    ctx.events?.emit('floraMoment', { kind: 'rung', x, y, strength: 0.4 });
   } else if (rung === 6 && simRandom() < 0.7) {
     const side = simRandom() < 0.5 ? -1 : 2;
     putGrowth(ctx, x + side, y, Cell.Leaf, SPROUT_LEAF(), leafAttachedLife(0));
@@ -413,18 +532,40 @@ export function handleSeed(ctx: Ctx, x: number, y: number): void {
     w.life[ci] = life;
   }
   if (!glow) {
-    // A thirsty seed that touches water drinks it and sprouts.
-    for (let k = 0; k < 4; k++) {
-      const nx = x + N4[k][0], ny = y + N4[k][1];
-      if (!w.inBounds(nx, ny) || w.types[w.idx(nx, ny)] !== Cell.Water) continue;
-      const drunk = drink(ctx, x, y);
-      const energy = Math.min(SPROUT_MAX_ENERGY, Math.round(SPROUT_BASE + drunk * SPROUT_PER_WATER));
-      w.life[ci] = energy;
-      w.colors[ci] = packRGB(182, 214, 116);
+    // A thirsty seed that touches water starts to SOAK: it drinks the pour one
+    // cell a substep, swelling greener, and sprouts once the water stops.
+    const soaking = isSoakingLife(life);
+    if (sip(ctx, x, y)) {
+      const st = soaking ? soakState(life) : { absorbed: 0, idle: 0 };
+      if (!soaking) {
+        ctx.audio.bubble(x, y);
+        ctx.events?.emit('floraMoment', { kind: 'soak', x, y, strength: 0.3 });
+      }
+      const absorbed = st.absorbed + 1;
+      if (absorbed >= SPROUT_DRINK_MAX) { sprout(ctx, x, y, absorbed); return; }
+      w.life[ci] = soakLife(absorbed, 0);
+      const k = Math.min(1, absorbed / 40);
+      w.colors[ci] = packRGB(Math.round(176 - k * 30), Math.round(128 + k * 70), Math.round(56 + k * 40));
       w.activity.touchIndex(ci);
-      ctx.particles.burst(x, y - 1, 8, null, () => packRGB(150, 220, 120), 0.9, { glow: 1.4, grav: -0.02 });
-      ctx.audio.at(x, y, () => { ctx.audio.bubble(); ctx.audio.tone(220, 440, 0.25, 'sine', 0.04); });
       return;
+    }
+    if (soaking) {
+      const st = soakState(life);
+      // The bed sprouts together: only once NONE of its seeds is still drinking.
+      if (st.idle + 1 >= SOAK_IDLE_SPROUT && !bedStillDrinking(ctx, x, y)) {
+        // A stray drip is not a soaking: a seed that got only a few drops
+        // dries out again and waits for a real pour.
+        if (st.absorbed + bedAbsorbed(ctx, x, y) < SOAK_MIN) {
+          w.life[ci] = SEED_THIRSTY_LOOSE;
+          w.colors[ci] = packRGB(176, 128, 56);
+          w.activity.touchIndex(ci);
+          return;
+        }
+        sprout(ctx, x, y, st.absorbed);
+        return;
+      }
+      w.life[ci] = soakLife(st.absorbed, Math.min(SOAK_IDLE_SPROUT, st.idle + 1));
+      w.activity.touchIndex(ci);
     }
   }
   // Loose: a light powder. Sinks slowly through water, piles on the ground.

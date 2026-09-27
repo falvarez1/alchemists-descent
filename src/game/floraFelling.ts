@@ -1,5 +1,7 @@
-import { blocksEntity, Cell, isGas, isLiquid, isSoftGrowth, isSolid } from '@/sim/CellType';
-import { LEAF_LITTER, LEAF_REACH, SEED_GLOW_HELD, SEED_GLOW_LOOSE, SEED_THIRSTY_LOOSE } from '@/sim/elements/flora';
+import { Cell, isGas, isLiquid } from '@/sim/CellType';
+import { anchoredSupport, LEAF_LITTER, LEAF_REACH, SEED_GLOW_HELD, SEED_GLOW_LOOSE, SEED_THIRSTY_LOOSE, standSupport } from '@/sim/elements/flora';
+
+export { anchoredSupport, standSupport };
 import { packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
 import type { World } from '@/sim/World';
 
@@ -30,31 +32,10 @@ export const FELL_MIN_CELLS = 10;
 /** Flood cap: a stand bigger than this is treated as supported (safe). */
 export const STAND_MAX_CELLS = 14000;
 
-/** Ground a stand can stand on: any load-bearing solid or packed powder that
- *  is not itself soft growth (so leaves, vines and other trunks never hold one up). */
-export function standSupport(t: number): boolean {
-  if (t === Cell.Trunk) return false;
-  return (isSolid(t) && !isSoftGrowth(t)) || blocksEntity(t);
-}
 
 const N4X = [0, 1, 0, -1], N4Y = [-1, 0, 1, 0];
 
-/**
- * Support that is really there: a standSupport cell that is itself embedded
- * (at least two load-bearing neighbours). A lone speck — a splinter the dig
- * beam threw, a grain of sand that settled against the bark — holds nothing up.
- */
-export function anchoredSupport(world: World, x: number, y: number): boolean {
-  const W = world.width, H = world.height, types = world.types;
-  if (x < 0 || y < 0 || x >= W || y >= H) return true;
-  if (!standSupport(types[x + y * W])) return false;
-  let n = 0;
-  for (let k = 0; k < 4; k++) {
-    const nx = x + N4X[k], ny = y + N4Y[k];
-    if (nx < 0 || ny < 0 || nx >= W || ny >= H || standSupport(types[nx + ny * W])) n++;
-  }
-  return n >= 2;
-}
+
 const N8X = [-1, 0, 1, -1, 1, -1, 0, 1], N8Y = [-1, -1, -1, 0, 0, 1, 1, 1];
 
 /** Reusable flood scratch (cell indices + an epoch-stamped visit plane). */

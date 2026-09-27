@@ -45,10 +45,6 @@ const DEATH_LINES: Record<string, string[]> = {
     'Self-inflicted explosion. The wand technically worked.',
     'Own spell, own crater.',
   ],
-  'falling-tree': [
-    'A tree fell in the Works, and someone was around to hear it. Briefly.',
-    'Timber. The creak was, in hindsight, the warning.',
-  ],
   'barrel-explosion': [
     'An explosive barrel fulfilled its destiny nearby.',
     'Barrel chemistry: one, alchemist: zero.',
@@ -192,7 +188,6 @@ const DEATH_TITLES: Record<string, string> = {
   explosion: 'You were blown apart.',
   'self-explosion': 'You were blown apart.',
   'barrel-explosion': 'You were blown apart.',
-  'falling-tree': 'You were felled.',
   gunpowder: 'You were blown apart.',
   bomber: 'You were blown apart.',
   'colossus-death': 'You were blown apart.',
@@ -217,9 +212,23 @@ const DEATH_TITLES: Record<string, string> = {
   status: 'You succumbed.',
 };
 
+/**
+ * Sources that borrow another cause's (already voiced) lines until their own
+ * are recorded: every DEATH_LINES entry must have a narration clip
+ * (tests/narrator.test.ts). A felled tree reads as crushing debris for now;
+ * its own lines, ready for the next voice pass (scripts/audio/gen-voice.mjs):
+ *   title 'You were felled.'
+ *   'A tree fell in the Works, and someone was around to hear it. Briefly.'
+ *   'Timber. The creak was, in hindsight, the warning.'
+ */
+const DEATH_ALIASES: Record<string, string> = {
+  'falling-tree': 'hostile-debris',
+};
+
 function normalizeDeathSource(source: string | null | undefined): string {
   if (!source) return 'unknown';
-  return DEATH_LINES[source] ? source : 'unknown';
+  const key = DEATH_ALIASES[source] ?? source;
+  return DEATH_LINES[key] ? key : 'unknown';
 }
 
 export function deathCauseLine(source: string | null | undefined, frame = 0): string {

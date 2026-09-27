@@ -106,6 +106,19 @@ export interface EventMap {
   treeLanded: { x: number; y: number; strength: number; first: boolean };
   /** FLORA: a fallen stand came to rest and re-stamped as a log of `cells` Wood. */
   treeSettled: { x: number; y: number; cells: number };
+  /** FLORA: a plant moment that wants its own sound (the audio workstream maps
+   *  kinds to cues; each call site also plays the nearest existing cue now).
+   *  creak = a notched trunk strains; lean = the hold before the fall; crack =
+   *  the cut goes through; snap = the hinge wood / a sapling breaks; whoosh =
+   *  the crown rushing down; rustle = leaves shaken; podDrop = a pod lets go;
+   *  soak = a thirsty seed starts drinking; sprout = it sprouts; rung = a
+   *  ladder rung grows; bloom = the ladder's crown opens; settle = a log at rest. */
+  floraMoment: {
+    kind: 'creak' | 'lean' | 'crack' | 'snap' | 'whoosh' | 'rustle' | 'podDrop' | 'soak' | 'sprout' | 'rung' | 'bloom' | 'settle';
+    x: number;
+    y: number;
+    strength: number;
+  };
   /** A creature died to a material/physical consequence (combat/AlchemyKills). */
   alchemyKill: AlchemyKillInfo;
   /** A world-anchored combat word (ui/Callouts): the Trickshot finisher's line, etc. */
