@@ -106,18 +106,21 @@ describe('Weaver anatomy and salvage', () => {
     expect(ctx.player.legClub).toBeUndefined();
   });
 
-  it('executes the owner finish only while the experiment is enabled', () => {
-    for (const enabled of [false, true]) {
+  it('executes the owner finish whenever the finisher is on, with or without the experiment', () => {
+    // The finisher ships on by default; only its own flag turns it off. The
+    // slow-motion chain experiment (`enabled`) stays off by default.
+    for (const [enabled, finisher] of [[false, false], [false, true], [true, true]] as const) {
       const { ctx, e } = fixture();
-      ctx.state.trickshot = { ...TRICKSHOT_DEFAULTS, enabled };
+      ctx.state.trickshot = { ...TRICKSHOT_DEFAULTS, enabled, finisher };
       e.hp = 35; e.weaverSalvageId = 'saved-owner';
       ctx.player.legClub = { owner: 'saved-owner', durability: 6, length: 34, swingT: 0, cooldown: 0, angle: 0 };
       startLegSwing(ctx); for (let i = 0; i < 9; i++) updateLegSwing(ctx);
-      expect(e.hp <= 0).toBe(enabled);
+      expect(e.hp <= 0).toBe(finisher);
       expect(ctx.player.legClub.durability).toBe(5);
       if (enabled) expect(ctx.fx.trickshot?.label).toBe('RETURNED WITH INTEREST');
-      else { expect(e.hp).toBe(11); expect(ctx.fx.trickshot).toBeUndefined(); }
+      if (!finisher) { expect(e.hp).toBe(11); expect(ctx.fx.trickshot).toBeUndefined(); }
     }
+    expect(TRICKSHOT_DEFAULTS).toMatchObject({ enabled: false, finisher: true });
   });
 
   it('hits an exposed ceiling Weaver at its actual body instead of testing cover toward its floor-based anchor', () => {

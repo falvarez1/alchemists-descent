@@ -1,11 +1,15 @@
 import type { Ctx } from '@/core/types';
 import type { PixelSurface } from './pixels';
 import { getAimGuide } from '@/combat/AimGuide';
-import { canHumiliate } from '@/combat/Trickshot';
+import { canHumiliate, finisherEnabled } from '@/combat/Trickshot';
 
 export function drawTrickshotOverlay(out: PixelSurface, ctx: Ctx): void {
-  if (!ctx.state.trickshot?.enabled || ctx.player.dead || ctx.state.mode !== 'play') return;
-  const guide = getAimGuide(ctx);
+  if (ctx.player.dead || ctx.state.mode !== 'play') return;
+  // The aim guide belongs to the (opt-in) experiment; the finisher's diamond and
+  // brass trail ship on by default with the finisher itself.
+  const chainOn = ctx.state.trickshot?.enabled === true;
+  if (!chainOn && !finisherEnabled(ctx)) return;
+  const guide = chainOn ? getAimGuide(ctx) : null;
   const pixel = (x: number, y: number, gold: boolean, strength = 1) =>
     (out.setFinePx ?? out.setPx).call(out, x, y, (gold ? .96 : .65) * strength, (gold ? .72 : .86) * strength, (gold ? .35 : .77) * strength);
   if (guide) {

@@ -3,7 +3,7 @@ import type { Ctx, Enemy } from '@/core/types';
 import { createPlayer } from '@/entities/Player';
 import { createGameParams } from '@/config/params';
 import { sanitizeTrickshot, TRICKSHOT_DEFAULTS } from '@/config/trickshot';
-import { advanceTrickshotClock, canHumiliate, recordTrickshot } from '@/combat/Trickshot';
+import { advanceTrickshotClock, beginFinisher, canHumiliate, confirmFinisher, finisherEnabled, finisherPhase, recordTrickshot } from '@/combat/Trickshot';
 import { getAimGuide } from '@/combat/AimGuide';
 import { compileWand } from '@/combat/wands/compiler';
 import { World } from '@/sim/World';
@@ -53,6 +53,39 @@ describe('Trickshot experiment', () => {
     ctx.player.legClub = { owner: 'b', length: 34, durability: 6, swingT: 0, cooldown: 0, angle: 0 };
     expect(canHumiliate(ctx, e)).toBe(false); ctx.player.legClub.owner = 'a';
     expect(canHumiliate(ctx, e)).toBe(true); e.hp = 80; expect(canHumiliate(ctx, e)).toBe(false);
+  });
+
+  it('ships the finisher on by default without the experiment, and names it over the victim', () => {
+    const ctx = fixture();
+    ctx.state.trickshot = { ...TRICKSHOT_DEFAULTS }; // the experiment itself stays off
+    expect(TRICKSHOT_DEFAULTS.enabled).toBe(false);
+    expect(finisherEnabled(ctx)).toBe(true);
+    const e = { kind: 'weaver', hp: 30, maxHp: 122, weaverSalvageId: 'a', x: 60, y: 70 } as Enemy;
+    ctx.player.legClub = { owner: 'a', length: 34, durability: 6, swingT: 0, cooldown: 0, angle: 0 };
+    expect(canHumiliate(ctx, e)).toBe(true);
+    const callouts: Array<{ text: string; tone?: string }> = [];
+    Object.assign(ctx, {
+      audio: { finisherWhip: vi.fn(), duck: vi.fn(), at: vi.fn(), shellCrack: vi.fn() },
+      particles: { burst: vi.fn() },
+      camera: { cineDx: 0, cineDy: 0, cineZoom: 1 },
+      events: { emit: (name: string, payload: { text: string; tone?: string }) => { if (name === 'combatCallout') callouts.push(payload); } },
+    });
+    ctx.state.postFx = { vignette: 0 } as Ctx['state']['postFx'];
+    // No chain slow motion without the experiment...
+    recordTrickshot(ctx, e, 'hit');
+    expect(advanceTrickshotClock(ctx, 16)).toBe(1);
+    // ...but the finisher's directed beat runs.
+    beginFinisher(ctx, e);
+    expect(finisherPhase(ctx)).toBe('approach');
+    expect(advanceTrickshotClock(ctx, 16)).toBeCloseTo(0.25);
+    confirmFinisher(ctx, e, 60, 60, 1, 0);
+    expect(callouts).toEqual([{ x: 60, y: 48, text: 'RETURNED WITH INTEREST', tone: 'finisher' }]);
+    for (let i = 0; i < 20; i++) advanceTrickshotClock(ctx, 50);
+    expect(finisherPhase(ctx)).toBe('idle');
+    expect(advanceTrickshotClock(ctx, 16)).toBe(1);
+    // The player can still switch the finisher off.
+    ctx.state.trickshot.finisher = false;
+    expect(canHumiliate(ctx, e)).toBe(false);
   });
 
   it('shows the actual first wall contact and keeps the aim guide read-only', () => {

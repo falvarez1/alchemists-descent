@@ -426,7 +426,8 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   active, long potion timers, stocked potion pickups, and bench-only potion
   refresh / elixir flask-fill tiles. Normal starts remain progression-driven,
   and debug-modified runs are not autosaved.
-- **Humiliation finisher (Trickshot experiment, `combat/Trickshot.ts`):** with
+- **Humiliation finisher (`combat/Trickshot.ts`, on by default since Breathing
+  Works; the Trickshot chain experiment is no longer required):** with
   a Weaver's own leg in hand and its owner under 30% HP, the whip commits into
   a directed beat — time eases to 25% for the approach (≤1.1 s real, then it
   expires), the ambience ducks under a rising whip, the victim recoils, and
@@ -435,7 +436,8 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   heavier lateral impulse so the corpse rolls, the shell crack and an
   embarrassed chirr, "RETURNED WITH INTEREST", then a 180 ms smooth return.
   A miss or an intercepting body releases time with a 500 ms recovery and no
-  cue. Framing is one small camera lean and a 6% zoom (`cineDx/cineDy/
+  cue. The line rises over the victim as a world-anchored brass callout
+  (`ui/Callouts.ts`, via the `combatCallout` event). Framing is one small camera lean and a 6% zoom (`cineDx/cineDy/
   cineZoom`, off with the camera-motion setting) plus a vignette lift (off
   under reduced flashes); the chain slow-motion and the finisher never
   multiply — the deeper one wins.
