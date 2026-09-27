@@ -1,5 +1,10 @@
 @font-face {
-  font-family: 'Cormorant Garamond'; src: url('/assets/fonts/cormorant-garamond.ttf') format('truetype');
+  /* Latin subset of the variable (wght 300-700) OFL font, 45 KB instead of 1.2 MB:
+     pyftsubset cormorant-garamond.ttf --flavor=woff2 --layout-features=kern,liga,calt,ccmp,locl,mark,mkmk,lnum,tnum,onum,pnum,smcp,c2sc,case
+     --unicodes=U+0020-007E,U+00A0-00FF,U+0131,U+0152-0153,U+0160-0161,U+0178,U+017D-017E,U+0192,U+02C6,U+02DA,U+02DC,U+0394,U+03C0,
+     U+2013-2014,U+2018-201A,U+201C-201E,U+2020-2022,U+2026,U+2030,U+2032-2033,U+2039-203A,U+2044,U+20AC,U+2122,U+2190-2194,U+2212,
+     U+2248,U+2260,U+2264-2265,U+25CB,U+25CF   (anything else falls back to Georgia) */
+  font-family: 'Cormorant Garamond'; src: url('/assets/fonts/cormorant-garamond-latin.woff2') format('woff2');
   font-style: normal; font-weight: 300 700; font-display: swap;
 }
 :root { --text-scale: 1; --works-ink: #111c20; --works-paper: #e6dfca; --works-muted: #b8c1b3; --works-copper: #bd9460; }
