@@ -5,6 +5,12 @@ import { blocksEntity, Cell, isLiquid, isSolid } from '@/sim/CellType';
 import { packRGB, waterColor } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
 import { sightClear } from '@/creatures/perception';
+import type { OrganismHost } from '@/game/organisms';
+import { isOrganism, SESSILE_KINDS, stepOrganism } from '@/game/organisms';
+import { burstPuffer } from '@/game/organisms/puffer';
+import { emberDeath, shoveCrawler } from '@/game/organisms/crawler';
+import { driftDeadFish, glowLure, mothLight, schoolFish } from '@/game/organisms/ambient';
+import { GLOW, LEECH, PUFF, PUFF_RIPE, SNAP } from '@/game/organisms/types';
 
 /**
  * Wave F "The Caves Breathe": the critter layer + ambient cave biology.
@@ -19,7 +25,11 @@ import { sightClear } from '@/creatures/perception';
  * Other modes use transient local ambience. Weather remains active in both.
  */
 
-const CAPS: Record<CritterKind, number> = { moth: 6, firefly: 8, fish: 6, beetle: 4, fly: 5 };
+const CAPS: Record<CritterKind, number> = {
+  moth: 6, firefly: 8, fish: 6, beetle: 4, fly: 5,
+  // Organisms are placed by worldgen (game/organisms/placement), never auto-spawned.
+  glowworm: 0, puffer: 0, snapjaw: 0, isopod: 0, leech: 0, emberbeetle: 0, ashmoth: 0,
+};
 
 /** Cells that read as "glow" to a moth (sampled, not the light field). */
 function isLure(t: number): boolean {
@@ -42,12 +52,25 @@ function isHotGlow(t: number): boolean {
  *  the moth's light-seeking (moths and fish have their own rules). */
 const LIGHT_SHY: ReadonlySet<CritterKind> = new Set<CritterKind>(['beetle', 'fly', 'firefly']);
 
+/** A gusted snapjaw skips most of its tell: it bites at the wind. */
+const SNAP_TELL_SKIP = 8;
+/** Resident fish killed in place (a shocked pool) float this long before they are gone. */
+const DEAD_FISH_TICKS = 1500;
+
 export class Critters implements CrittersApi {
   private readonly pool = new EntityPool<Critter>();
   private readonly eventDisposers: Array<() => void> = [];
   readonly list = this.pool.list;
+  /** What organisms may ask of this layer (remove prey, resolve a held id). */
+  private readonly host: OrganismHost = {
+    list: this.pool.list,
+    remove: (c: Critter) => { this.pool.remove(c); },
+    find: (id: string | undefined) => (id === undefined ? undefined : this.pool.list.find(c => c.id === id)),
+  };
+  private readonly ctx: Ctx;
 
   constructor(ctx: Ctx) {
+    this.ctx = ctx;
     this.eventDisposers.push(
       ctx.events.on('structureStrike', ({ x, y, radius }) =>
         this.killAt(ctx, x, y, radius + 4),
@@ -104,6 +127,9 @@ export class Critters implements CrittersApi {
       const dx = c.x - x,
         dy = c.y - y;
       if (dx * dx + dy * dy <= radius * radius) {
+        // A ripe puffer caught in a blast lets its gas go into the blast (which lights it).
+        if (c.kind === 'puffer' && (c.extent ?? 0) > 0.2) burstPuffer(ctx, c);
+        else if (c.kind === 'emberbeetle') emberDeath(ctx, c, false);
         ctx.particles.burst(c.x, c.y, 3, null, () => packRGB(120, 110, 90), 0.9, {
           grav: 0.05,
         });
@@ -115,18 +141,34 @@ export class Critters implements CrittersApi {
   scatter(x: number, y: number, radius: number, strength: number): void {
     if (radius <= 0 || strength === 0) return;
     const r2 = radius * radius;
-    for (const c of this.list) {
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      const c = this.list[i];
       const dx = c.x - x;
       const dy = c.y - y;
       const d2 = dx * dx + dy * dy;
       if (d2 > r2) continue;
       const d = Math.sqrt(d2) || 1;
       const f = (1 - d / radius) * strength;
+      if (isOrganism(c.kind)) {
+        this.gustOrganism(c, dx / d * f, dy / d * f);
+        continue;
+      }
       c.vx += (dx / d) * f;
       c.vy += (dy / d) * f - f * 0.3; // a touch of lift into the scatter
       c.startle = Math.max(c.startle ?? 0, Math.round(16 + f * 4));
       c.facing = c.vx < 0 ? -1 : 1;
     }
+  }
+
+  /** A gust or near-miss blast meets an organism: each answers in character. */
+  private gustOrganism(c: Critter, fx: number, fy: number): void {
+    const ctx = this.ctx;
+    if (c.kind === 'puffer') { if ((c.extent ?? 0) >= PUFF_RIPE && c.state !== PUFF.SPENT) burstPuffer(ctx, c); }
+    else if (c.kind === 'glowworm') { if (c.state !== GLOW.RETRACT) { c.state = GLOW.RETRACT; c.stateT = 0; } }
+    else if (c.kind === 'snapjaw') { if (c.state === SNAP.OPEN || c.state === SNAP.REOPEN) { c.state = SNAP.TELL; c.stateT = SNAP_TELL_SKIP; } }
+    else if (c.kind === 'isopod' || c.kind === 'emberbeetle') shoveCrawler(ctx, c, fx, fy - Math.abs(fx) * 0.3);
+    else if (c.kind === 'leech' && c.state === LEECH.LATCHED) { c.state = LEECH.BEACHED; c.stateT = 0; c.vx = fx; c.vy = fy; }
+    else { c.vx += fx; c.vy += fy; c.startle = Math.max(c.startle ?? 0, 18); }
   }
 
   remove(critter: Critter): Critter | undefined {
@@ -164,7 +206,7 @@ export class Critters implements CrittersApi {
     const w = ctx.world;
     const camX = Math.floor(ctx.camera.x),
       camY = Math.floor(ctx.camera.y);
-    const counts: Record<CritterKind, number> = { moth: 0, firefly: 0, fish: 0, beetle: 0, fly: 0 };
+    const counts = Object.fromEntries(Object.keys(CAPS).map(k => [k, 0])) as Record<CritterKind, number>;
     for (const c of this.list) counts[c.kind]++;
 
     // Despawn the far-drifted (margin well past the view)
@@ -255,8 +297,20 @@ export class Critters implements CrittersApi {
     for (let idx = this.list.length - 1; idx >= 0; idx--) {
       const c = this.list[idx];
       if (ctx.debug.frozenCritter(c)) continue; // posed/dragged in debug mode
+      // Held in a snare or a jaw: the holder moves it. A holder that is gone lets go.
+      if (c.heldBy) {
+        const holder = this.host.find(c.heldBy);
+        if (holder && holder.holds === c.id) { c.phase += 0.3; continue; }
+        c.heldBy = undefined;
+      }
       const far = Math.abs(c.x - player.x) > VIEW_W || Math.abs(c.y - player.y) > VIEW_H;
+      // Rooted organisms sleep off-camera entirely: nothing reaches them there.
+      if (far && SESSILE_KINDS.has(c.kind)) continue;
       if (c.id && far && (ctx.state.frameCount + idx) % 12 !== 0) continue;
+      if (isOrganism(c.kind)) {
+        if (!stepOrganism(ctx, c, this.host)) this.remove(c);
+        continue;
+      }
       if (c.id && c.homeX !== undefined && c.homeY !== undefined && c.kind !== 'fish') {
         let targetX = c.homeX, targetY = c.homeY;
         for (const lure of ctx.levels.current?.living?.lures ?? []) {
@@ -399,15 +453,11 @@ export class Critters implements CrittersApi {
             if (d2 < 90 * 90 && d2 > 16) { c.vx += dx / Math.sqrt(d2) * 0.05; c.vy += dy / Math.sqrt(d2) * 0.05; lured = true; break; }
           }
         }
-        if (!lured && !player.dead) {
-          const dx = player.x + Math.cos(player.aimAngle) * 9 - c.x;
-          const dy = player.y - 9 + Math.sin(player.aimAngle) * 9 - c.y;
-          const d2 = dx * dx + dy * dy;
-          if (d2 < 100 * 100 && d2 > 12 * 12) {
-            c.vx += (dx / Math.sqrt(d2)) * 0.045;
-            c.vy += (dy / Math.sqrt(d2)) * 0.045;
-          }
-        }
+        // Wave 2: the wand is a lure only while its light actually reaches the
+        // moth (hood the lantern and the swarm loses you); a glow-worm's beaded
+        // thread in the dark pulls them in too — into the snare.
+        if (!lured) lured = mothLight(ctx, c);
+        if (!lured) lured = glowLure(c, this.list);
         c.vx *= 0.93;
         c.vy *= 0.93;
       } else if (c.kind === 'firefly') {
@@ -416,8 +466,24 @@ export class Critters implements CrittersApi {
         c.vx *= 0.96;
         c.vy *= 0.96;
       } else if (c.kind === 'fish') {
+        if ((c.dead ?? 0) > 0) {
+          // Belly-up at the surface: carrion now (a rillback will still take it).
+          c.dead = (c.dead ?? 0) + 1;
+          driftDeadFish(ctx, c);
+          if ((c.dead ?? 0) > DEAD_FISH_TICKS) this.remove(c);
+          continue;
+        }
+        if (isLiquid(here) && w.charge[w.idx(xi, yi)] > 0) {
+          // A shocked pool kills what swims in it: a jolt, a flash, belly-up.
+          c.dead = 1;
+          c.vy = -0.3;
+          ctx.particles.burst(c.x, c.y, 3, null, () => packRGB(150, 235, 255), 0.9, { glow: 2.2, grav: 0 });
+          ctx.events.emit('organism', { kind: 'fish', action: 'zap', x: c.x, y: c.y });
+          continue;
+        }
         if (isLiquid(here)) {
           c.gasp = 0;
+          schoolFish(ctx, c, this.list);
           // cruise + flee the splashing alchemist
           const pdx = c.x - player.x,
             pdy = c.y - player.y;

@@ -77,6 +77,14 @@ const DEATH_LINES: Record<string, string[]> = {
     'An acid slime turned a hug into a hazard.',
     'Acid slime contact. Sticky, sour, final.',
   ],
+  'snapjaw-bite': [
+    'Mistook a snapjaw for a houseplant. It did not return the courtesy.',
+    'Fed a snapjaw. The snapjaw considered the matter closed.',
+  ],
+  leech: [
+    'Drained, a sip at a time, by the smallest tax collectors in the Cisterns.',
+    'The leeches were thorough. One must admire the paperwork.',
+  ],
   'bat-bite': [
     'A bat cashed in the smallest possible assassination.',
     'Bitten out of the air by a flying nuisance.',
@@ -194,6 +202,8 @@ const DEATH_TITLES: Record<string, string> = {
   frostbolt: 'You froze.',
   'slime-bite': 'You were taken.',
   'bat-bite': 'You were taken.',
+  'snapjaw-bite': 'You were eaten.',
+  leech: 'You were drained.',
   'weaver-bite': 'You were taken.',
   'leviathan-bite': 'You were taken.',
   'leviathan-graze': 'You were taken.',

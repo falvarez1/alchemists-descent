@@ -53,6 +53,23 @@ export function clearCorpses(): void {
   list.length = 0;
 }
 
+/** Eaten whole (a snapjaw's meal): the remains leave the world without melting into it. */
+export function removeCorpse(c: Corpse): void {
+  const i = list.indexOf(c);
+  if (i >= 0) list.splice(i, 1);
+}
+
+/**
+ * Scavenged: something is feeding on the remains. Each bite hastens the melt a
+ * little (the body is literally being taken away) and returns true while there
+ * is still something left worth eating.
+ */
+export function scavengeCorpse(c: Corpse, bite: number): boolean {
+  if (list.indexOf(c) < 0) return false;
+  c.age = Math.min(c.ttl, c.age + bite);
+  return c.age < c.ttl - 1;
+}
+
 function allPoints(rig: CreatureRig): RigPoint[] {
   const pts: RigPoint[] = [...rig.pts];
   for (const c of rig.chains) pts.push(...c.pts);

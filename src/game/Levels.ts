@@ -17,6 +17,7 @@ import { GEN_TUNE_DEFAULT_SIGNATURE, GEN_VERSION, genTuneSignature } from '@/con
 import { difficultyMods } from '@/config/difficulty';
 import { FLOORS_TOTAL, LEVELS, START_LEVEL, floorDisplayName, floorOf, populationForLevel } from '@/config/worldgraph';
 import { createLivingState } from '@/game/LivingExpedition';
+import { placeOrganisms } from '@/game/organisms/placement';
 import { DEFAULT_KIT, KIT_DEFS } from '@/content/kits';
 import type { KitId } from '@/core/run';
 import { restoreFauna, restoreLiving } from '@/game/persistence/ecology';
@@ -2591,6 +2592,13 @@ export class Levels implements LevelsApi {
     // there's nothing to make reachable — and its Metal rescue sleeves would only
     // be wiped by the rebuild anyway.
     if (!AUTHORED_TEST_ARENAS.has(def.id)) this.repairFindability(ctx, runtime, 'initial');
+    // Ambient life (WS-N organisms): a finite resident census per floor from its
+    // own RNG stream; writes no cells. Floors without a recipe keep the old
+    // runtime seeding in Critters.
+    if (def.id !== 'd1' && !AUTHORED_TEST_ARENAS.has(def.id)) {
+      const fauna = placeOrganisms(world, def, spawn, populationReach, new Rng(hashSeed(seed, 'organisms')));
+      if (fauna) runtime.fauna = fauna;
+    }
 
     return runtime;
   }
