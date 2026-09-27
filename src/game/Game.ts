@@ -209,8 +209,8 @@ export class Game {
     this.disposables.push(audio);
     // Run-event stingers (alchemy chime, phial crack/fill, run verdict, clip shutter).
     this.disposables.push({ dispose: installAudioStingers(ctx.events, audio) });
-    // Announced moments: the light devices, organisms and boss moves (audio/EventCues).
-    this.disposables.push({ dispose: installEventCues(ctx.events, audio) });
+    // Announced moments: the light devices, organisms, boss moves and plants (audio/EventCues).
+    this.disposables.push({ dispose: installEventCues(ctx.events, audio, { biome: () => ctx.levels?.current?.def.biome }) });
     // Sampled layer: per-floor packs and beds, and the interface's own sounds.
     this.disposables.push({ dispose: installAudioDirector(ctx, audio) }, { dispose: installUiSounds(ctx.events, audio) });
     ctx.events.on('paramsChanged', () => {

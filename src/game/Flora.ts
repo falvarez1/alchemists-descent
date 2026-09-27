@@ -398,7 +398,6 @@ export class Flora implements FloraApi {
       if (visit[i] === epoch && types[i] === Cell.Trunk) { nx += x; nc++; }
     }
     const notchX = nc ? nx / nc : (stand.x0 + stand.x1) / 2;
-    ctx.audio.at(notchX, thinRow, () => ctx.audio.creak(level === 2 ? 1 : 0.6), 420);
     ctx.events.emit('floraMoment', { kind: 'creak', x: notchX, y: thinRow, strength: level === 2 ? 1 : 0.6 });
     ctx.particles.burst(notchX, thinRow, level === 2 ? 10 : 5, null, () => packRGB(140, 118, 88), 0.5, { grav: 0.05 });
     this.shakeLeaves(world, stand.x0 - LEAF_REACH, stand.y0 - LEAF_REACH, stand.x1 + LEAF_REACH, stand.y0 + Math.floor(height * 0.5), level === 2 ? 10 : 4);
@@ -577,10 +576,7 @@ export class Flora implements FloraApi {
       debug: { standing, upright, angle: fit.angle, halfW: fit.halfW, halfH: fit.halfH, boxes: fit.boxes.length, footX, footY }, length: Math.max(fit.halfH, fit.halfW) * 2, cause,
     };
     this.falling.push(fall);
-    // The crack: a dry snap, splinters at the cut, a groan as it starts to go.
-    ctx.audio.sfx('body.tear', footX, footY, { gain: 1.2, pitch: -3 });
-    ctx.audio.sfx('body.smash.wood', footX, footY, { gain: 0.55, pitch: -5 });
-    ctx.audio.at(footX, footY, () => ctx.audio.creak(1.2), 520);
+    // The crack: a dry snap, splinters at the cut (the sound is audio/EventCues').
     ctx.events.emit('floraMoment', { kind: 'crack', x: footX, y: footY, strength: Math.min(1, sprite.woodCount / 300) });
     const bark = sprite.bark;
     for (let k = 0; k < 10; k++) {
@@ -614,7 +610,6 @@ export class Flora implements FloraApi {
       if (f.hinged && f.age === HOLD_TICKS) {
         // The fibres give: the lean begins in earnest.
         ctx.rigidBodies.setDamping?.(b, undefined, HINGE_DAMPING);
-        ctx.audio.at(b.x, b.y, () => ctx.audio.creak(1), 460);
         ctx.events.emit('floraMoment', { kind: 'lean', x: b.x, y: b.y, strength: 1 });
       }
       if (f.hinged && f.dir !== 0 && f.age >= HOLD_TICKS && f.age < HOLD_TICKS + 14) {
@@ -635,15 +630,13 @@ export class Flora implements FloraApi {
         if (lean > HINGE_RELEASE_ANGLE || (f.age > 90 && spin < 0.0015)) {
           ctx.rigidBodies.releasePivot?.(b, FREE_DAMPING);
           f.hinged = false;
-          ctx.audio.sfx('body.rip', b.x, b.y, { gain: 1.4, pitch: -2 });
           ctx.events.emit('floraMoment', { kind: 'snap', x: b.x, y: b.y, strength: 0.8 });
         } else if (f.age % 26 === 13 && lean < 0.35) {
-          ctx.audio.at(b.x, b.y, () => ctx.audio.creak(0.7 + lean), 420);
+          ctx.audio.sfx('flora.creak', b.x, b.y, { gain: 0.35 + lean });
         }
       }
       if (!f.whooshed && tipSpeed > 3.2) {
         f.whooshed = true;
-        ctx.audio.sfx('trick.whip', b.x, b.y, { gain: 0.7, pitch: -9, rate: 0.7 });
         ctx.events.emit('floraMoment', { kind: 'whoosh', x: b.x, y: b.y, strength: Math.min(1, tipSpeed / 6) });
       }
       this.shedLeaves(ctx, f, Math.min(4, Math.floor(spin * 26 + speed * 0.25)), false);
@@ -791,10 +784,7 @@ export class Flora implements FloraApi {
     const size = Math.min(1, strength * (0.6 + f.mass / 500));
     if (first) {
       this.shedLeaves(ctx, f, Math.ceil(f.leaves.length * 0.28), true);
-      ctx.audio.boom(4 + size * 8, ix, iy);
-      ctx.audio.sfx('body.impact.wood', ix, iy, { gain: 1.3, pitch: -6 });
-      ctx.audio.at(ix, iy, () => ctx.audio.landThud(Math.min(1, 0.4 + size)), 560);
-      ctx.events.emit('floraMoment', { kind: 'rustle', x: ix, y: iy - 6, strength: size });
+      ctx.events.emit('floraMoment', { kind: 'shed', x: ix, y: iy - 6, strength: size });
       const camDx = ix - (ctx.camera.x + 320), camDy = iy - (ctx.camera.y + 180);
       const near = Math.max(0, 1 - Math.hypot(camDx, camDy) / 460);
       ctx.fx.screenShake = Math.min(0.045, ctx.fx.screenShake + (0.01 + size * 0.025) * near);
@@ -806,9 +796,8 @@ export class Flora implements FloraApi {
         this.emittingImpact = false;
       }
       this.shakeNear(world, ix, iy, 30 + size * 30, 0);
-    } else if (strength > 0.25) {
-      ctx.audio.at(ix, iy, () => ctx.audio.landThud(Math.min(0.7, strength * 0.6)), 420);
     }
+    // The thud, in the floor's own wood (and a lighter one for a bounce), is audio/EventCues'.
     ctx.events.emit('treeLanded', { x: ix, y: iy, strength, first });
   }
 
@@ -857,7 +846,6 @@ export class Flora implements FloraApi {
     // Settling puff and a last groan of the wood.
     const cx = (res.bounds.x0 + res.bounds.x1) / 2, cy = res.bounds.y1;
     ctx.particles.burst(cx, cy, 6, null, () => packRGB(130, 118, 100), 0.6, { grav: 0.03 });
-    ctx.audio.at(cx, cy, () => ctx.audio.creak(0.35), 380);
     ctx.events.emit('floraMoment', { kind: 'settle', x: cx, y: cy, strength: Math.min(1, res.wood / 250) });
     ctx.events.emit('treeSettled', { x: cx, y: cy, cells: res.wood });
   }
@@ -904,7 +892,6 @@ export class Flora implements FloraApi {
     this.shakeLeaves(world, x0, y0, x1, y1, Math.min(14, 3 + extraLeaves + Math.floor(r / 10)));
     if (pods > 0) {
       const ctx = this.ctx;
-      ctx.audio.sfx('mat.drip', x, y, { pitch: 4, gain: 0.8 });
       ctx.events.emit('floraMoment', { kind: 'podDrop', x, y, strength: Math.min(1, pods / 6) });
     }
   }
@@ -949,7 +936,6 @@ export class Flora implements FloraApi {
     const stand = floodStand(world, hitX, hitY, this.scratch, this.scratch.next());
     const height = stand.y1 - stand.y0 + 1;
     const rustle = (): void => {
-      ctx.audio.sfx('player.vine', hitX, hitY, { gain: 0.9 });
       ctx.events.emit('floraMoment', { kind: 'rustle', x: hitX, y: hitY, strength: 0.5 });
     };
     if (stand.supported && !stand.capped && stand.count <= SAPLING_MAX_CELLS && height <= SAPLING_MAX_HEIGHT) {
@@ -969,7 +955,6 @@ export class Flora implements FloraApi {
         }
         if (row > 0) snapped++;
       }
-      ctx.audio.sfx('body.rip', hitX, hitY, { pitch: 3 });
       ctx.events.emit('floraMoment', { kind: 'snap', x: hitX, y: hitY, strength: 0.4 });
       rustle();
       return;
@@ -977,7 +962,7 @@ export class Flora implements FloraApi {
     // A grown tree: the boot shakes it. Pods drop, the crown sheds.
     const cx = (stand.x0 + stand.x1) / 2;
     this.shakeNear(world, cx, stand.y0 + Math.min(height, 40) * 0.4, Math.max(16, (stand.x1 - stand.x0) / 2 + LEAF_REACH), 4);
-    ctx.audio.at(hitX, hitY, () => ctx.audio.creak(0.35), 360);
+    ctx.audio.sfx('flora.creak', hitX, hitY, { gain: 0.4 });
     rustle();
   }
 
@@ -1018,7 +1003,7 @@ export class Flora implements FloraApi {
         for (const ci of pod) world.clearCellAt(ci);
         living.glowseeds = Math.min(3, living.glowseeds + 1);
         ctx.particles.burst(x + 0.5, y, 10, null, () => packRGB(214, 244, 150), 1.2, { glow: 2, grav: -0.02 });
-        ctx.audio.pickup();
+        ctx.audio.sfx('flora.glowseed');
         ctx.events.emit('toast', { text: `A glowseed pod. ${living.glowseeds} in the pouch.` });
         return;
       }

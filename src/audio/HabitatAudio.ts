@@ -1,3 +1,4 @@
+import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import type { Ctx, Enemy, Projectile } from '@/core/types';
 import type { SfxId } from '@/content/audio/sfxCues';
 import { VIEW_H, VIEW_W } from '@/config/constants';
@@ -27,10 +28,33 @@ const ACID: MaterialBed = { id: 'mat.acid.loop', full: 70 };
 const STEAM: MaterialBed = { id: 'mat.steam.loop', full: 80 };
 const SPARK: MaterialBed = { id: 'mat.electric.loop', full: 40 };
 const FUSE: MaterialBed = { id: 'mat.fuse.loop', full: 6 };
+/** Fire in living plants (flame at a leaf, a vine or living wood; a smouldering trunk): the brush crackles over the roar. */
+const PLANT_FIRE: MaterialBed = { id: 'flora.burn.loop', full: 30 };
 const BEDS = [FIRE, LAVA, WATER, ACID, STEAM, SPARK, FUSE];
 /** The scan samples every STRIDE-th cell of the view in x and y. */
 const STRIDE = 3;
 const SCAN_EVERY = 8;
+/** Scans with no plant fire before the brush can "catch" again (8 scans ≈ 1 s). */
+const PLANT_FIRE_REARM = 8;
+/** Leaves go up in a flash: the brush crackle rings on, fading by this much per scan, after the last leaf burns. */
+const PLANT_FIRE_TAIL = 0.78;
+
+/**
+ * Brushing through plants: which sweep, by what he is pushing through. Under
+ * water it is kelp; thin stems standing in the Cisterns are reeds; anything
+ * else leafy (grass tufts, fern beds, fire-lilies, fallen crowns, litter) is a
+ * soft sweep of blades. Restrained: one sweep per BRUSH_EVERY cells walked
+ * and never closer than BRUSH_GAP ticks, so a meadow is a hush, not a drum.
+ */
+const BRUSH = {
+  grass: { sfx: 'flora.brush.grass' },
+  reeds: { sfx: 'flora.brush.reeds' },
+  kelp: { sfx: 'flora.brush.kelp' },
+} as const satisfies Record<string, { sfx: SfxId }>;
+const BRUSH_EVERY = 14;
+const BRUSH_GAP = 20;
+/** Foliage cells (sampled every 2nd cell of his body) before it counts as pushing through. */
+const BRUSH_MIN = 3;
 
 /**
  * The world's own voices, derived each tick from what is actually there:
@@ -38,9 +62,10 @@ const SCAN_EVERY = 8;
  * sloshes), creatures breathing and hopping where you can hear them, the roar
  * of a meteor or a fizzing fuse following the projectile, and the materials on
  * screen — a lava lake bubbles, a spreading fire roars, a running stream
- * trickles, a live wire crackles — at a level set by how much of each the
- * camera sees and panned to where it is. If the grid can't explain it, it
- * doesn't sound.
+ * trickles, a live wire crackles, a burning thicket snaps and pops — at a
+ * level set by how much of each the camera sees and panned to where it is;
+ * and the plants he pushes through (grass, reeds, kelp) sweep past him. If
+ * the grid can't explain it, it doesn't sound.
  */
 export class HabitatAudio {
   private lastX = 0;
@@ -51,6 +76,17 @@ export class HabitatAudio {
   private readonly travelKey = new WeakMap<Projectile, string>();
   private readonly waveKey = new WeakMap<object, string>();
   private travelSerial = 0;
+  private brushX = 0;
+  private brushY = 0;
+  private brushTravel = 0;
+  private brushWait = 0;
+  /** Plant fire on screen (armed = the next fire in the brush "catches" audibly), and quiet scans since. */
+  private plantFireLit = false;
+  private plantFireQuiet = 0;
+  /** The brush crackle's level and place, held a moment past the last burning leaf. */
+  private plantFireLevel = 0;
+  private plantFireX = 0;
+  private plantFireY = 0;
 
   /** Runs inside the game tick: an audio error is reported (audio/failSafe) and never aborts it. */
   update(ctx: Ctx): void {
@@ -71,6 +107,7 @@ export class HabitatAudio {
     if (ctx.state.frameCount % SCAN_EVERY === 0) this.scanMaterials(ctx);
     if (ctx.state.mode !== 'play' || ctx.player.dead) return;
     this.strideLayer(ctx);
+    this.brushLayer(ctx);
     this.travelLoops(ctx);
     this.creatureLife(ctx);
     this.shockWaves(ctx);
@@ -124,6 +161,38 @@ export class HabitatAudio {
     const torso = world.inBounds(x, y - 5) ? world.type(x, y - 5) : Cell.Empty;
     const kind = isLiquid(torso) ? 'water' : type === Cell.Metal ? 'metal' : 'stone';
     ctx.audio.worldSound?.(kind, player.x, player.y);
+  }
+
+  /** Pushing through grass, reeds, kelp or fallen leaves: a soft sweep now and then, never every step. */
+  private brushLayer(ctx: Ctx): void {
+    const { player, world } = ctx;
+    this.brushTravel += Math.min(10, Math.hypot(player.x - this.brushX, player.y - this.brushY));
+    this.brushX = player.x; this.brushY = player.y;
+    if (this.brushWait > 0) this.brushWait--;
+    const speed = Math.hypot(player.vx, player.vy);
+    if (speed < 0.35 || this.brushTravel < BRUSH_EVERY || this.brushWait > 0) return;
+    const x0 = Math.floor(player.x - PLAYER_HALF_W), x1 = Math.floor(player.x + PLAYER_HALF_W);
+    const y0 = Math.floor(player.y - PLAYER_H + 1), y1 = Math.floor(player.y);
+    const types = world.types;
+    let leaves = 0, stems = 0;
+    for (let y = y0; y <= y1; y += 2) {
+      for (let x = x0; x <= x1; x += 2) {
+        if (!world.inBounds(x, y)) continue;
+        const i = world.idx(x, y), t = types[i];
+        if (t === Cell.Leaf) leaves++;
+        // A stem is living wood one cell wide (a reed, a kelp stalk, a lily's stalk) — never a trunk.
+        else if (t === Cell.Trunk && types[i - 1] !== Cell.Trunk && types[i + 1] !== Cell.Trunk) stems++;
+      }
+    }
+    const n = leaves + stems;
+    if (n < BRUSH_MIN) return;
+    this.brushTravel = 0;
+    this.brushWait = BRUSH_GAP;
+    const tx = Math.floor(player.x), ty = Math.floor(player.y - 6);
+    const underwater = world.inBounds(tx, ty) && isLiquid(world.types[world.idx(tx, ty)]);
+    const brush = underwater ? BRUSH.kelp : ctx.levels?.current?.def.biome === 'flooded' && stems >= leaves ? BRUSH.reeds : BRUSH.grass;
+    const gain = Math.min(1, 0.35 + n / 16) * Math.min(1, 0.4 + speed / 2);
+    ctx.audio.sfx(brush.sfx, undefined, undefined, { gain });
   }
 
   private travelLoops(ctx: Ctx): void {
@@ -184,7 +253,7 @@ export class HabitatAudio {
     const world = ctx.world;
     const x0 = Math.max(0, Math.floor(ctx.camera.x)), y0 = Math.max(0, Math.floor(ctx.camera.y));
     const x1 = Math.min(world.width - 2, x0 + VIEW_W), y1 = Math.min(world.height - 2, y0 + VIEW_H);
-    const types = world.types, charge = world.charge, moved = world.moved, tick = world.movedTick, W = world.width;
+    const types = world.types, charge = world.charge, life = world.life, moved = world.moved, tick = world.movedTick, W = world.width;
     const count = new Map<MaterialBed, { n: number; sx: number; sy: number }>();
     const add = (bed: MaterialBed, x: number, y: number): void => {
       const c = count.get(bed);
@@ -200,7 +269,10 @@ export class HabitatAudio {
           add(FIRE, x, y);
           // Fire eating black powder is a fuse.
           if (types[i + 1] === Cell.Gunpowder || types[i - 1] === Cell.Gunpowder || types[i + W] === Cell.Gunpowder) add(FUSE, x, y);
-        } else if (t === Cell.Lava) add(LAVA, x, y);
+          // Fire in the brush: a flame at (or a cell from) a leaf, a vine or living wood.
+          else if (nearPlant(types, i, W)) add(PLANT_FIRE, x, y);
+        } else if (t === Cell.Trunk && life[i] > 0) add(PLANT_FIRE, x, y); // a trunk smouldering in place
+        else if (t === Cell.Lava) add(LAVA, x, y);
         else if (t === Cell.Water) { if (moved[i] === tick) add(WATER, x, y); }
         else if (t === Cell.Acid) add(ACID, x, y);
         else if (t === Cell.Steam) add(STEAM, x, y);
@@ -218,5 +290,45 @@ export class HabitatAudio {
       // view is "here"), so only bearing, not height, moves it.
       ctx.audio.sfx(bed.id, c.sx / c.n, ly, { gain: level });
     }
+    this.plantFire(ctx, count.get(PLANT_FIRE), ly);
   }
+
+  /**
+   * Fire in the brush. The moment it catches — a thicket, a fallen crown, a
+   * bed of grass going up — is a whoomph before it is a crackle (in the Kiln
+   * its blooms flare), once per fire: it re-arms after a second with none.
+   * Then the brushy crackle, over the fire's own roar, while leaves and
+   * living wood burn — held a moment past the last of them, because leaves
+   * go up in a flash and the scan only looks every few frames.
+   */
+  private plantFire(ctx: Ctx, c: { n: number; sx: number; sy: number } | undefined, ly: number): void {
+    if (c && c.n >= 2) {
+      this.plantFireQuiet = 0;
+      this.plantFireLevel = Math.max(this.plantFireLevel, Math.min(1, Math.sqrt(c.n / PLANT_FIRE.full)));
+      this.plantFireX = c.sx / c.n;
+      this.plantFireY = c.sy / c.n;
+      if (!this.plantFireLit) {
+        this.plantFireLit = true;
+        const kiln = ctx.levels?.current?.def.biome === 'volcanic';
+        ctx.audio.sfx(kiln ? 'flora.firelily.flare' : 'flora.catch', this.plantFireX, this.plantFireY, { gain: Math.min(1, 0.5 + c.n / 12) });
+      }
+    } else {
+      if (this.plantFireLit && ++this.plantFireQuiet >= PLANT_FIRE_REARM) this.plantFireLit = false;
+      this.plantFireLevel *= PLANT_FIRE_TAIL;
+    }
+    if (this.plantFireLevel < 0.06) { this.plantFireLevel = 0; return; }
+    ctx.audio.sfx(PLANT_FIRE.id, this.plantFireX, ly, { gain: this.plantFireLevel });
+  }
+}
+
+/** What a brush fire eats: foliage, vines, pods and living wood (sim/elements/flora). */
+function isPlant(t: number | undefined): boolean {
+  return t === Cell.Leaf || t === Cell.Trunk || t === Cell.Vines || t === Cell.Seed;
+}
+
+/** A plant cell within two cells of i (the cross, and the diagonals): leaves go up faster than a scan looks. */
+function nearPlant(types: Uint8Array, i: number, W: number): boolean {
+  return isPlant(types[i + 1]) || isPlant(types[i - 1]) || isPlant(types[i + W]) || isPlant(types[i - W])
+    || isPlant(types[i + 2]) || isPlant(types[i - 2]) || isPlant(types[i + 2 * W]) || isPlant(types[i - 2 * W])
+    || isPlant(types[i + W + 1]) || isPlant(types[i + W - 1]) || isPlant(types[i - W + 1]) || isPlant(types[i - W - 1]);
 }

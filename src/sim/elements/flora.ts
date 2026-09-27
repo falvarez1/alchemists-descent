@@ -438,7 +438,6 @@ function sprout(ctx: Ctx, x: number, y: number, absorbed: number): void {
   w.colors[ci] = packRGB(182, 214, 116);
   w.activity.touchIndex(ci);
   ctx.particles.burst(x, y - 1, 10, null, () => packRGB(150, 220, 120), 1, { glow: 1.4, grav: -0.02 });
-  ctx.audio.sfx('mat.bubble', x, y, { pitch: 5 });
   ctx.events?.emit('floraMoment', { kind: 'sprout', x, y, strength: Math.min(1, energy / SPROUT_MAX_ENERGY) });
 }
 
@@ -486,7 +485,6 @@ function growTip(ctx: Ctx, x: number, y: number, energy: number): void {
     w.life[ci] = -1;
     w.colorOverrides.add(ci);
     crownSprout(ctx, x, y - 1);
-    ctx.audio.sfx('player.vine', x, y, { gain: 0.7, pitch: 3 });
     ctx.events?.emit('floraMoment', { kind: 'bloom', x, y, strength: 1 });
   };
   if (energy <= 1 || !w.inBounds(x, y - 1)) { finish(); return; }
@@ -518,7 +516,6 @@ function growTip(ctx: Ctx, x: number, y: number, energy: number): void {
       putGrowth(ctx, x0 + dx, y, Cell.Wood, RUNG(true), 0, true);
       putGrowth(ctx, x0 + dx, y + 1, Cell.Wood, RUNG(false), 0, true);
     }
-    ctx.audio.sfx('body.impact.wood', x, y, { gain: 0.35, pitch: 4 + (energy % 5) });
     ctx.events?.emit('floraMoment', { kind: 'rung', x, y, strength: 0.4 });
   } else if (rung === 6 && simRandom() < 0.7) {
     const side = simRandom() < 0.5 ? -1 : 2;
@@ -550,7 +547,6 @@ export function handleSeed(ctx: Ctx, x: number, y: number): void {
     if (sip(ctx, x, y)) {
       const st = soaking ? soakState(life) : { absorbed: 0, idle: 0 };
       if (!soaking) {
-        ctx.audio.bubble(x, y);
         ctx.events?.emit('floraMoment', { kind: 'soak', x, y, strength: 0.3 });
       }
       const absorbed = st.absorbed + 1;

@@ -41,6 +41,7 @@
     "verify:audio-bundle": "node scripts/verify-audio-bundle.mjs",
     "verify:audio-sfx": "node scripts/verify-audio-sfx.mjs",
     "verify:audio-life": "node scripts/verify-audio-life.mjs",
+    "verify:audio-flora": "node scripts/verify-audio-flora.mjs",
     "gen:sfx": "node scripts/audio/gen-sfx.mjs",
     "verify:peer-ghosts": "node scripts/verify-peer-ghosts.mjs",
     "verify:determinism": "node scripts/verify-sim-determinism.mjs",

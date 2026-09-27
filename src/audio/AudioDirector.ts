@@ -12,8 +12,8 @@ import { BIOME_BEDS, CORE_SFX_PACKS, FLOOR_BEDS, SFX_CUES, type SfxId } from '@/
  *   gesture (SfxAudioEngine queues them at construction).
  * - Entering a floor requests that floor's ambience bed, a pack per creature
  *   kind actually living there (plus its boss), a pack per organism kind
- *   in its census (game/organisms FLOOR_FAUNA), and the Bell & Tea Engine on
- *   floor 1.
+ *   in its census (game/organisms FLOOR_FAUNA), the Bell & Tea Engine on
+ *   floor 1, and the plants' pack (`flora`: every floor grows them).
  * - At the Sanctum between floors the NEXT floor's roster and bed are
  *   prefetched, so the descent arrives already sounding right.
  * - Packs nobody has needed for a while are released (decoded PCM is the
@@ -29,6 +29,8 @@ const RELEASE_AFTER_MS = 30_000;
 const bedPack = (id: SfxId | null): string | null => (id ? SFX_CUES[id].pack : null);
 const creaturePack = (kind: EnemyKind): string => `creature-${kind}`;
 const organismPack = (kind: string): string => `org-${kind}`;
+/** Living plants: loaded with whatever floor is in play, never on first load. */
+const FLORA_PACK = 'flora';
 
 /** The organism packs a level's census wants (a kind with no cues simply has no pack). */
 function faunaPacks(levelId: string | undefined): string[] {
@@ -71,6 +73,8 @@ export function installAudioDirector(ctx: Ctx, engine: SfxAudioEngine): () => vo
       for (const p of faunaPacks(def.id)) wanted.add(p);
       for (const c of ctx.critters?.list ?? []) wanted.add(organismPack(c.kind));
       if (runtime.living) wanted.add('tea');
+      // Plants grow on every floor (world/floraPass): their felling, seeds, fires and brush.
+      wanted.add(FLORA_PACK);
       // Between floors: fetch the next one before the player gets there.
       if (ctx.sanctum?.isOpen && def.nextLevelId) {
         const next = LEVELS[def.nextLevelId];

@@ -986,7 +986,8 @@ export class RigidBodies implements RigidBodiesApi {
 
     const strength = Math.min(1, Math.max(0.25, (delta - BODY_IMPACT_NOISE_MIN_DELTA) / 4));
     body.impactNoiseCd = BODY_IMPACT_NOISE_COOLDOWN;
-    ctx.audio.sfx(`body.impact.${body.material ?? 'wood'}`, body.x, body.y, { gain: strength });
+    // A felled tree sounds its own strikes in its own wood (game/Flora → treeLanded → audio/EventCues).
+    if (body.tag !== 'flora-fell') ctx.audio.sfx(`body.impact.${body.material ?? 'wood'}`, body.x, body.y, { gain: strength });
     ctx.events.emit('groundImpact', {
       x: body.x,
       y: body.y,
