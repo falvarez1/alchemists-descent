@@ -978,6 +978,7 @@ export class PlayerControl implements PlayerControlApi {
     player.dead = true;
     player.hp = 0;
     player.recharge = 0;
+    player.firePressed = false; // a click buffered as you fell is not a shot at your checkpoint
     clearElementalStatus(player.status);
     this.resetClimbState(player);
     ctx.particles.burst(player.x, player.y - 7, 56, Cell.Blood, bloodColor, 4.2);
@@ -1192,7 +1193,7 @@ export class PlayerControl implements PlayerControlApi {
     stepPlayerCostume(ctx, player, ctx.rigidBodies?.playerRagdoll ?? null); // cloth + hat, alive or fallen
     if (ctx.state.mode !== 'play' || player.dead) return;
     player.levitating = false;
-    if (this.swinging) { this.updateSwing(ctx); return; } // pendulum replaces normal movement
+    if (this.swinging) { player.firePressed = false; this.updateSwing(ctx); return; } // pendulum replaces normal movement (and the wand)
     if (this.kickCooldownT > 0) this.kickCooldownT--;
 
     // Near death, you hear it: a slow heartbeat under 25% HP, urgent under 12%.
@@ -2112,8 +2113,10 @@ export class PlayerControl implements PlayerControlApi {
 
     // Wave D: play-mode casting runs the wand's compiled card program
     // (update() already gates on mode === 'play'; build-mode sandbox spells
-    // keep the legacy ctx.spells dispatch).
-    if (player.firing) ctx.wands.fire(ctx);
+    // keep the legacy ctx.spells dispatch). A click whose press and release
+    // both fell inside one tick left only its press edge: it still casts, once
+    // (WandSystem.fire's click buffer decides when).
+    if (player.firing || player.firePressed) ctx.wands.fire(ctx);
     this.updatePlayerAnimation(ctx);
   }
 

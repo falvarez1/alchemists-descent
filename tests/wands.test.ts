@@ -4,7 +4,7 @@ import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
 import { compileWand } from '@/combat/wands/compiler';
 import { DEPTH_PROJECTILE_POOL } from '@/combat/wands/rewardPools';
 import { buildWandSentenceView, nextWandSentence } from '@/combat/wands/sentenceView';
-import { REVIEW_WAND_LOADOUTS, WAND_FRAMES, WandSystem } from '@/combat/wands/WandSystem';
+import { CLICK_BUFFER_TICKS, REVIEW_WAND_LOADOUTS, WAND_FRAMES, WandSystem } from '@/combat/wands/WandSystem';
 import { TRIGGERED, TRIGGER_SOURCE_SPREAD } from '@/combat/wands/projectileMarks';
 import { createDefaultWandLightSettings, createGameParams } from '@/config/params';
 import { EventBus } from '@/core/events';
@@ -714,6 +714,88 @@ describe('WandSystem runtime snapshots', () => {
     ctx.player.firePressed = true;
     wands.fire(ctx);
     expect(ctx.projectiles.length).toBeGreaterThan(shots);
+  });
+
+  describe('the click buffer (a tap released inside one tick)', () => {
+    const tapWand = () => {
+      const ctx = makeCastCtx();
+      const wands = new WandSystem(ctx);
+      wands.loadLoadout({ active: 0, collection: ['spark'], wands: [{ frameId: 'oak', cards: ['spark', null, null], mana: 90 }] });
+      return { ctx, wands };
+    };
+    const tap = (ctx: Ctx) => {
+      ctx.player.firing = false; // released before the tick ran
+      ctx.player.firePressed = true;
+    };
+    const cooldown = (wands: WandSystem) => wands.snapshotRuntimeState().wands[0].cooldown;
+    // One game tick as PlayerControl drives it: the wand is asked to fire while
+    // the button is held OR a press edge is waiting.
+    const tick = (ctx: Ctx, wands: WandSystem) => {
+      wands.update(ctx);
+      if (ctx.player.firing || ctx.player.firePressed) wands.fire(ctx);
+    };
+
+    it('casts a tap exactly once', () => {
+      const { ctx, wands } = tapWand();
+      tap(ctx);
+      wands.fire(ctx);
+      const shots = ctx.projectiles.length;
+      expect(shots).toBeGreaterThan(0);
+      expect(ctx.player.firePressed).toBe(false);
+      for (let t = 0; t < 60; t++) tick(ctx, wands);
+      expect(ctx.projectiles.length).toBe(shots);
+    });
+
+    it('holds a tap a hair early until the wand cycles, then casts it once', () => {
+      const { ctx, wands } = tapWand();
+      tap(ctx);
+      wands.fire(ctx);
+      const shots = ctx.projectiles.length;
+      while (cooldown(wands) > CLICK_BUFFER_TICKS) wands.update(ctx);
+      tap(ctx);
+      let t = 0;
+      for (; t < 40 && ctx.projectiles.length === shots; t++) tick(ctx, wands);
+      expect(ctx.projectiles.length).toBeGreaterThan(shots);
+      expect(t).toBeLessThanOrEqual(CLICK_BUFFER_TICKS + 1);
+      const after = ctx.projectiles.length;
+      for (let k = 0; k < 60; k++) tick(ctx, wands);
+      expect(ctx.projectiles.length).toBe(after);
+    });
+
+    it('spends a tap that lands deep in the recharge, or while casting is refused', () => {
+      const { ctx, wands } = tapWand();
+      tap(ctx);
+      wands.fire(ctx);
+      const shots = ctx.projectiles.length;
+      expect(cooldown(wands)).toBeGreaterThan(CLICK_BUFFER_TICKS);
+      tap(ctx);
+      wands.fire(ctx);
+      expect(ctx.player.firePressed).toBe(false);
+      for (let t = 0; t < 120; t++) tick(ctx, wands);
+      expect(ctx.projectiles.length).toBe(shots);
+      // rooted by heart communion: the tap is refused, not saved for later
+      ctx.player.recharge = 30;
+      tap(ctx);
+      wands.fire(ctx);
+      expect(ctx.player.firePressed).toBe(false);
+      ctx.player.recharge = 0;
+      for (let t = 0; t < 30; t++) tick(ctx, wands);
+      expect(ctx.projectiles.length).toBe(shots);
+    });
+
+    it('leaves held automatic fire on its own cadence', () => {
+      const { ctx, wands } = tapWand();
+      ctx.player.firing = true;
+      ctx.player.firePressed = true;
+      let casts = 0;
+      let last = 0;
+      for (let t = 0; t < 240; t++) {
+        tick(ctx, wands);
+        if (ctx.projectiles.length > last) { casts++; last = ctx.projectiles.length; }
+      }
+      const f = WAND_FRAMES.oak;
+      expect(casts).toBeGreaterThanOrEqual(Math.floor(240 / (f.castDelay + f.recharge + 1)));
+    });
   });
 
   it('removes shot spread in god mode — the bolt flies dead on the aim', () => {

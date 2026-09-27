@@ -1,4 +1,4 @@
-import type { CardId, TimeControlStatus } from '@/core/types';
+import type { CardId, EnemyKind, TimeControlStatus } from '@/core/types';
 import type { AlchemyKillInfo, RunSummary } from '@/core/run';
 
 /**
@@ -95,6 +95,9 @@ export interface EventMap {
   refugePing: undefined;
   /** The Kiln Colossus is slain: the expedition is complete. */
   runComplete: { gold: number };
+  /** A creature died (any cause), emitted from the one enemy death path before
+   *  its aftermath — so a run-ending kill is counted before `runEnded`. */
+  enemyKilled: { kind: EnemyKind; x: number; y: number };
   /** A creature died to a material/physical consequence (combat/AlchemyKills). */
   alchemyKill: AlchemyKillInfo;
   /** A world-anchored combat word (ui/Callouts): the Trickshot finisher's line, etc. */

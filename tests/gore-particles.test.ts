@@ -49,7 +49,78 @@ describe('loot cascade', () => {
     grabCoin(); // after the gap → resets to 1
 
     expect(streaks).toEqual([1, 2, 1]);
-    expect(ctx.state.score).toBe(30);
+    // The purse was paid at harvest: a landing coin rings, it never pays twice.
+    expect(ctx.state.score).toBe(0);
+  });
+});
+
+describe('coin flight', () => {
+  const flightCtx = (world: World, player: { x: number; y: number; dead: boolean }) => {
+    const rings: number[] = [];
+    const ctx = {
+      world,
+      player,
+      state: { mode: 'play', score: 0, frameCount: 0 },
+      events: { emit: () => undefined },
+      audio: { coin: (s = 0) => rings.push(s) },
+    } as unknown as Ctx;
+    return { ctx, rings };
+  };
+
+  it('lands every coin of a burst through rock, without orbiting', () => {
+    const world = new World(200, 120);
+    // A stone slab between the kill and the wizard: the magnet pull ignores it.
+    for (let y = 40; y < 120; y++) for (let x = 90; x < 100; x++) world.replaceCellAt(world.idx(x, y), Cell.Stone, 0x777777);
+    const { ctx, rings } = flightCtx(world, { x: 30, y: 100, dead: false });
+    const particles = new Particles();
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      particles.spawn(160, 95, Math.cos(a) * 2.1, -2.2 - (i % 3), null, 0xffe078, 300, { homing: true, glow: 2, grav: 0 });
+    }
+    let t = 0;
+    while (particles.list.some((p) => p.homing) && t < 240) {
+      particles.update(ctx);
+      ctx.state.frameCount = ++t;
+    }
+    expect(rings).toHaveLength(12);
+    expect(t).toBeLessThan(90); // ~130 cells in well under 1.5 s
+    expect(ctx.state.score).toBe(0);
+  });
+
+  it('catches a coin moving faster than the catch radius (swept, no tunnelling)', () => {
+    const world = new World(200, 60);
+    const { ctx, rings } = flightCtx(world, { x: 100, y: 36, dead: false });
+    const particles = new Particles();
+    // Fired straight through the purse at top speed.
+    particles.spawn(80, 30, 5.2, 0, null, 0xffe078, 300, { homing: true });
+    for (let t = 0; t < 30 && rings.length === 0; t++) particles.update(ctx);
+    expect(rings).toHaveLength(1);
+  });
+
+  it('lets a coin gutter out when the wizard dies mid-flight', () => {
+    const world = new World(200, 60);
+    const player = { x: 100, y: 50, dead: false };
+    const { ctx, rings } = flightCtx(world, player);
+    const particles = new Particles();
+    particles.spawn(20, 20, 0, 0, null, 0xffe078, 300, { homing: true });
+    particles.update(ctx);
+    player.dead = true;
+    for (let t = 0; t < 60; t++) particles.update(ctx);
+    expect(particles.list).toHaveLength(0);
+    expect(rings).toHaveLength(0);
+  });
+
+  it('never deletes a gold grain: a walled-in landing settles nearby or pays the purse', () => {
+    const world = new World(40, 40);
+    for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) world.replaceCellAt(world.idx(x, y), Cell.Stone, 0x777777);
+    world.clearCellAt(world.idx(20, 20)); // a one-cell void the grain flies through
+    const { ctx } = flightCtx(world, { x: 0, y: 0, dead: false });
+    const particles = new Particles();
+    particles.spawn(20.5, 20.5, 0, 1.2, Cell.Gold, 0xffd040, 240, { deposit: true, grav: 0 });
+    particles.update(ctx);
+    let gold = 0;
+    for (let i = 0; i < world.types.length; i++) if (world.types[i] === Cell.Gold) gold++;
+    expect(gold * 10 + ctx.state.score).toBe(10);
   });
 });
 

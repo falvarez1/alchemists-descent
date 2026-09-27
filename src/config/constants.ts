@@ -41,3 +41,7 @@ export const MINIMAP_H = 133;
  *  not stutter. */
 export const DEATH_SLOWMO_FRAMES = 60;
 export const DEATH_SLOWMO_MIN = 0.32;
+
+/** What one real Gold cell is worth in the purse when the harvester lifts it
+ *  (an alchemical payout's grains are minted at this rate, too). */
+export const GOLD_CELL_VALUE = 10;

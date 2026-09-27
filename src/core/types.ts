@@ -1902,9 +1902,40 @@ export interface EnemyControlApi {
  * creature and, when the world rather than the wand landed the killing blow,
  * announces an alchemical kill, chains it and pays out in real gold.
  */
+/**
+ * One sim-sampled harm tick on a creature (its status sample, or flame cells it
+ * touches), broken into shares, with the grid facts kill attribution needs to
+ * tell the wand's own fire and current from the world's (combat/AlchemyKills).
+ */
+export interface StatusBlow {
+  /** Hit points from fire this tick (the burning status, or flame touching the body). */
+  burn: number;
+  /** Hit points from electricity this tick. */
+  shock: number;
+  /** Hit points from toxic sludge this tick. */
+  toxic: number;
+  /** The body is alight / electrified after the sample (a status that has gone out forgets its origin). */
+  burning: boolean;
+  electrified: boolean;
+  /** Oil on the body, or oil/lava touching it: the fire has the world's fuel. */
+  fueled: boolean;
+  /** Flame or lava touches the body this sample (the burn was lit or relit here). */
+  heatContact: boolean;
+  /** Charge reached the body through a conductor: it is wet, or charged water/metal touches it. */
+  conducted: boolean;
+  /** Charge reached it through another liquid (blood, slime, oil): the world's
+   *  unless the wand just struck this creature (its own spatter conducts too). */
+  liquidCharge: boolean;
+  /** Any charged cell touches the body this sample. */
+  chargeContact: boolean;
+}
+
 export interface AlchemyKillsApi {
   /** Record a blow (every damage path reports its source just before hp changes). */
   noteHit(e: Enemy, source: EnemyDamageSource): void;
+  /** Record a sim-sampled harm tick and return what it counts as: the world's
+   *  cause, or 'direct' when it is the wand's own fire/current doing the work. */
+  noteStatus(e: Enemy, blow: StatusBlow): EnemyDamageSource;
   /** The player's kick launched this creature (a later hazard death is credited). */
   noteKick(e: Enemy): void;
   /** The creature just died: classify, chain, emit `alchemyKill` and pay out. */
@@ -2517,7 +2548,8 @@ export interface WandsApi {
   active: 0 | 1;
   /** Owned cards not currently slotted in either wand. */
   readonly collection: CardId[];
-  /** Per-frame while player.firing (play mode): advance + cast the program. */
+  /** Per-frame while player.firing, or while a tap's press edge waits (play
+   *  mode): advance + cast the program; answering a press clears firePressed. */
   fire(ctx: Ctx): void;
   /** The active Flame Jet stream this frame (wand tip + aim + reach/half-angle),
    *  or null. A read-only sense so the enemy AI can sidestep out of the cone. */

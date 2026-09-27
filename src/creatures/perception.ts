@@ -12,6 +12,13 @@ export interface PerceivedPlayer {
   light: number;
 }
 
+/**
+ * A boss watches its whole lair from head height: it has no back to sneak up on
+ * and its eye is not at its knees (a 26-cell Colossus "seeing" from 6 cells up
+ * lost the alchemist behind every lip of the kiln floor). Cells above the feet.
+ */
+const BOSS_EYE_LIFT: Partial<Record<Enemy['kind'], number>> = { colossus: 20, leviathan: 8 };
+
 /** A visible alchemist closer than this raises irritation toward a hunt. */
 export const NOTICE_ESCALATE_CELLS = 130;
 /** Irritation gained per tick at point blank is 1/this (falls off linearly to 0 at the edge). */
@@ -67,11 +74,12 @@ export function tickCreatureMind(
     const distance = Math.hypot(dx, dy);
     const vision = enemy.kind === 'stonemaw' ? 26 : enemy.kind === 'weaver' ? 215 : 265;
     const range = vision * senseScale * (0.52 + player.light * 0.48) * (player.crouching ? 0.65 : 1);
-    const facing = dx * mind.facing > -18 || distance < 42 || mind.irritation > 0.3;
+    const bossEye = BOSS_EYE_LIFT[enemy.kind];
+    const facing = bossEye !== undefined || dx * mind.facing > -18 || distance < 42 || mind.irritation > 0.3;
     // A Stone Maw is blind but not numb: a body within a few lengths presses
     // on the rock and water around it, lit or dark, in front or behind.
     const felt = enemy.kind === 'stonemaw' && distance < 64 * senseScale;
-    mind.visible = !player.dead && !enemy.sleeping && (felt || (distance < range && facing)) && sightClear(world, enemy.x, enemy.y - 6, player.x, player.y - 9);
+    mind.visible = !player.dead && !enemy.sleeping && (felt || (distance < range && facing)) && sightClear(world, enemy.x, enemy.y - (bossEye ?? 6), player.x, player.y - 9);
     if (mind.visible) {
       mind.targetX = player.x;
       mind.targetY = player.y;

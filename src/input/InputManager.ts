@@ -380,7 +380,10 @@ export class InputManager {
       if (!ctx.player.dead) {
         ctx.player.fireBlockedUntilRelease = false;
         ctx.player.firing = true;
-        ctx.player.firePressed = true; // press edge: god mode fires this click instantly
+        // Press edge: god mode fires this click instantly, and a tap released
+        // before the next tick still casts from it. A click on a paused world is
+        // not a shot waiting for the resume.
+        ctx.player.firePressed = !ctx.state.paused;
       }
       return;
     }

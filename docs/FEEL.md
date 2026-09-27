@@ -414,7 +414,22 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
 
 ### Other living touches
 
-- **Notice blips** when a creature first spots you (the colossus bellows instead).
+- **Notice blips** when a creature first spots you (the bosses make an entrance instead).
+- **Boss lairs** (`Enemies.watchLair`): a boss watches its whole room from head
+  height (Colossus eye 20 cells up, Leviathan 8; no facing check, so there is
+  no back to sneak up on). An alchemist inside the lair — Colossus: ±50 cells of
+  its home, 46 up / 14 down; Leviathan ±54, 58 up / 12 down — who is in sight of
+  its head or within 64 / 56 cells holds it on a confident hunt, idle or not
+  (QA: an idle wizard 60 cells into the Kiln was never noticed). The first time,
+  it makes its ENTRANCE: the Leviathan churns, groans and names itself (a
+  finisher-tone callout, "THE SUNKEN LEVIATHAN"). The Kiln Colossus lands as the
+  final boss: the mix ducks to 0.4 for 1.5 s under a furnace roar (46→110 Hz saw,
+  92→61 Hz square, groan, stone grind), embers pour off its shoulders with a
+  0.8 bloom kick (not under reduced flashes), "THE KILN COLOSSUS" rises over it
+  at tick 10, it stomps at ticks 22 and 46 (boom + knock + dust + shake) standing
+  its ground for 52 ticks before it marches, holds its fire 110 ticks, and the
+  camera leans half the way toward it (≤ 70 × 28 cells, zoom 1.06) over 40 ticks,
+  holds 70 and returns over 40 — no lean at all with camera shake off.
 - **Bat roosts:** dormant folded teardrops on the ceiling; one red eye cracks
   open at your approach (< 70 cells wakes them; stirring starts at 110).
 - **Slime egg clutches** glisten with pulsing embryos; they hatch on a timer —
@@ -462,16 +477,46 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   kick-launched wall slam → impaled, gunpowder/barrels/a bomber's death/hostile
   blasts → detonated, any physical blow to a frozen body → shattered. The
   wand's own bolts, bombs, lightning, kick, whip, stomp and Flame Jet stream
-  stay direct (ordinary bounty). Credit is generous: within 280 cells of the
+  stay direct (ordinary bounty) — and so do the statuses the wand applies
+  directly: a status that takes hold within 45 ticks of the wand (not the boot)
+  striking that creature is the spell's (`AlchemyKills.noteStatus`), so a spark
+  that leaves a dry slime crackling or alight on stone is a spell kill however
+  long it burns. It becomes the WORLD's — and the kill alchemical — when the
+  fire has fuel (oiled body, oil or lava touching: FLAMBÉED although the spark's
+  current still crackles on it), when the current came through a conductor (a
+  wet body, charged water or metal touching or underfoot: SHORTED), when it was
+  (re)lit with no wand strike behind it (a fire walked into), or charged
+  through another liquid (a blood pool, spilled goo) the wand had not just struck;
+  bare blast residue in air or stone cannot travel, so it stays the bolt's even
+  after a miss. Once the world's it stays the world's while it lasts. A lethal
+  status tick weighs the world's shares (toxic sludge always counts) against
+  the wand's: if the world dealt at least as much, its largest share names the
+  cause; if the wand's own zap or fire dealt more, the tick is direct. A status
+  tick never SHATTERS a frozen body. Credit is generous: within 280 cells of the
   wizard, or struck by him in the last 20 s, or kick-launched in the last 3 s.
   Kills within 3 s (180 ticks) chain; the chain resets on a level change.
   **Payout, grid-honest:** bonus gold = 10 + 35% of bounty, ×1 / ×1.5 / ×2 /
   ×2.5 / ×3 by chain, rounded to whole 10-oz grains; that many real Gold
-  cells fountain out of the body (deposit particles; gold settles into a pool
-  and sinks) for the harvester field to pull in; the active wand refills 35%
+  cells fountain out of the body in a low arc (vx ±1.1, vy −1.8…−3.4 cells/tick:
+  apex ~10–36 cells, so walking over the kill brings the pile inside the 30-cell
+  harvester pull; gold settles into a pool and sinks) for the harvester field to
+  pull in. A grain is never deleted by its flight: no room where it lands → the
+  nearest open cell within 6, walled in → straight into the purse; a full
+  particle pool retires a cosmetic mote to make room. The active wand refills 35%
   of its tank (cyan motes run to the staff), the wizard gets +3 hp (rose
   motes), a bloom kick (0.45 + 0.12/chain, none under reduced flashes) and a
   brass dyad whose top note climbs two semitones per link (capped at a fifth).
+- **Coin flight** (`particles/Particles.ts`): gold is only ever a real Gold
+  cell or the purse. Whoever moves it — a kill's bounty, the harvester lifting a
+  grain (10 oz a cell), mined ore — credits `state.score` at that instant; the
+  homing mote is the payment's animation. It steers to ARRIVE: desired speed
+  min(5.2, √(2·0.45·d) + 1.2) cells/tick with 0.45 cells/tick² of steering, so
+  the burst-out arc bends into a landing instead of the old 3.75-vs-2.5-cell
+  overshoot orbit; the 3-cell catch is swept along each step (no tunnelling);
+  rock does not stop it (a magnet pull). A landing rings the loot cascade (coins
+  within 24 ticks climb the scale) and pops a sparkle at the belt (6 cells up).
+  If the wizard dies mid-flight the mote gutters out as a falling glint — the
+  gold is already his.
 - **Callouts** (`ui/Callouts.ts`, `styles/callouts.css`): the word pops over
   the kill, rises and fades — FLAMBÉED, RENDERED, STEEPED, SHORTED, DROWNED,
   DISSOLVED, SHATTERED, FLATTENED, DETONATED, POISONED, IMPALED — one word per
@@ -787,7 +832,7 @@ sequence chime 300+90·step Hz / break 120 Hz saw · emitter rate clamp ≥2f
 bat flare 8f at <64 cells · swoop 12f cap 2.6 · tumble 14f, ~1.2%/f at <40% hp
 enemy threat-sense (in-window foes, tick rate): hazard box halfW+9 (per-kind enemyLethalCell) · fast body dist<60 tti<26 toward>0.4 (imminent tti<14) · projectile dist<70 tti<22 toward>0.6 (imminent tti<12) · flame-cone reach 36 / half-angle 0.5 +0.3 slack · self: burning .85, hp<35% ramps
 provoke on direct hit: mind fix on the shooter (confidence ≥ .8, irritation ≥ .75); fleeAt < .5 kinds bolt (fear → fleeAt), others aggression ≥ .6; weaver cranky 90 · notice escalation: visible & < 130 cells → irritation += (1 − d/130)/120 per tick (decay 1/800)
-steam scald 0.05/row/tick (not imp/colossus/leviathan) · drowning: head ≥ 60% liquid → breath 360 (imp 90, bat 180, bomber 150) then −maxHp/300 per tick; immune rillback/leviathan/colossus/wisp/eggs
+creature burning (FIRE IS A WEAPON, 2026-09 deliberate change): a catch burns 300 ticks (420 oiled; was 90/300), refreshed in the flames, and deals 0.30 hp per 2-tick status sample = 9 hp/s (burnScale 2.5 over the alchemist's 0.12; was 3.6 hp/s) → a lit slime (36/43/48 hp) burns out in 4.0/4.8/4.9 s (probe) unless doused (≥ 3 water cells); the alchemist's own burning (0.12/sample, 90/300 ticks) is unchanged · open-flame contact 0.7/row/tick, lava 1.6 · steam scald 0.05/row/tick (not imp/colossus/leviathan) · drowning: head ≥ 60% liquid → breath 360 (imp 90, bat 180, bomber 150) then −maxHp/300 per tick; immune rillback/leviathan/colossus/wisp/eggs
 enemy drives: fear → sensed threat × kind-fear, decay 0.02/f · aggression +0.02 close +0.04 on-hit −0.03·fear −0.005/f · chaseScale clamp(1 − 0.7·fear + 0.15·agg, 0.25, 1)
 enemy reflex: dodge ⊥ to threat vel @2.7 ×12f, one roll/threat (dodgeCd 22) gated by kind dodge% (fliers sustain vy, grounded one hop) · flee 26f @1.7 away (toward water if burning+seekWater) · final movement integrates at 0.85x on floor 1, ramping +0.075/depth to 1.0x by floor 3 before difficulty (probe, flee drive 1.7 on flat stone: floor 1 50→78 cells/s, floor 3 67→92, floor 4 75→92) · startle "!" tell @dodgeT≥10|fleeT≥23 + airy whiff (pDist<160)
 temperament fear/dodge/fleeAt: slime .4/.12/.95 · bat 1.3/.85/.45 · imp .6/.72/.6 · wisp .9/.7/.4 · spitter .85/.55/.5 · bomber .2/.3/never · mage .9/.62/.45 · weaver .5/.5/.72 · golem .18/.28/never · colossus 0/0/never · default .7/.45/.7

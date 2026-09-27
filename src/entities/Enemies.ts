@@ -3,13 +3,12 @@ import { difficultyMods } from '@/config/difficulty';
 import { RILLBACK_WET_THRESHOLD } from '@/core/enemyState';
 import { clamp } from '@/core/math';
 import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDamageSource, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
-import type { AlchemyCause } from '@/core/run';
 import { causeForCell } from '@/core/alchemyCause';
 import { tickWeaverLocomotion, weaverKnockSync, weaverLeap } from '@/entities/weaverLocomotion';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
 export { ENEMY_DEFS } from '@/content/enemyDefs';
 import { addCorpse, updateCorpses } from '@/creatures/corpses';
-import { createDefaultStatus, rollCatchFire, sampleAndTickStatus } from '@/entities/status';
+import { createDefaultStatus, rollCatchFire, sampleAndTickStatus, type StatusSampleOptions } from '@/entities/status';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { LEVIATHAN_REWARD_POOL, randomCard } from '@/content/cardRewardPools';
 import { enemyMovementPace } from '@/core/progressionPacing';
@@ -38,7 +37,7 @@ import { tickCreaturePose } from '@/creatures/pose';
 import { localRoute } from '@/creatures/navigation';
 import { pointHitsCreature } from '@/creatures/body';
 import { advanceRootLash, carryRillback, feedRillback, rillbackPrey } from '@/creatures/ecology';
-import type { CreatureCue } from '@/creatures/types';
+import type { CreatureCue, CreatureMind } from '@/creatures/types';
 
 // ===================== Enemies =====================
 interface CellCandidate {
@@ -129,6 +128,42 @@ const STATUS_IMMUNE: Partial<
   // should threaten the player, not instantly shock the eel to death.
   rillback: { electrified: true },
 };
+
+/**
+ * FIRE IS A WEAPON. A creature that catches keeps burning until it is doused or
+ * burns out (5 s; 7 s oiled — was the alchemist's 1.5 s / 5 s) and burns at
+ * 2.5x the alchemist's rate: 0.30 hp per 2-tick sample = 9 hp/s (was 3.6), so a
+ * lit slime (36-48 hp) is ash in ~4-5 s unless it reaches water — and a burning
+ * body that runs sheds real fire on the way. The alchemist's own burning is a
+ * separate call and is unchanged. (Deliberate magic-number change; FEEL.md.)
+ */
+const CREATURE_BURN: StatusSampleOptions = { burnScale: 2.5, igniteTicks: 300, igniteOiledTicks: 420 };
+
+/**
+ * A boss's LAIR, relative to its home (where it was placed): the room it
+ * watches. An alchemist inside it who is in sight of the boss's head, or
+ * within `near` cells, wakes it — facing or not, lit or dark, idle or not.
+ * Sized to the carved arenas (world/structures: the Kiln pocket is 38 x 24
+ * about a centre 14 cells above the boss; the Sump 42 x 26, 26 above).
+ */
+export interface BossLair { halfW: number; up: number; down: number; near: number; eye: number; name: string }
+export const BOSS_LAIRS: Partial<Record<EnemyKind, BossLair>> = {
+  colossus: { halfW: 50, up: 46, down: 14, near: 64, eye: 20, name: 'THE KILN COLOSSUS' },
+  leviathan: { halfW: 54, up: 58, down: 12, near: 56, eye: 8, name: 'THE SUNKEN LEVIATHAN' },
+};
+/** The Kiln's entrance beat, in ticks: roar, name card, two stomps, the camera leans and returns. */
+const ENTRANCE_CARD_T = 10;
+const ENTRANCE_STOMP_T: readonly number[] = [22, 46];
+const ENTRANCE_LEAN_IN = 40;
+const ENTRANCE_HOLD = 70;
+const ENTRANCE_LEAN_OUT = 40;
+const ENTRANCE_LEAN_X = 70;
+const ENTRANCE_LEAN_Y = 28;
+const ENTRANCE_ZOOM = 1.06;
+/** The Colossus stands its ground through the roar and both stomps, then marches. */
+const ENTRANCE_ROAR_TICKS = 52;
+/** ...and holds its fire while it introduces itself (a fair first beat). */
+const ENTRANCE_GRACE_TICKS = 110;
 
 /** Per-kind TEMPERAMENT: how each foe weights the threat-aware behavior drives.
  *  - fear: how strongly sensed danger + low HP raise the fear drive (0 = fearless brute).
@@ -264,6 +299,10 @@ export class Enemies implements EnemyControlApi {
   }
 
   private readonly cues: CreatureCue[] = [];
+  /** Bosses that have made their entrance (once per live creature). */
+  private readonly introduced = new WeakSet<Enemy>();
+  /** The entrance beat in progress (the Kiln Colossus's): who, and the tick it began. */
+  private entrance: { e: Enemy; start: number; lean: boolean } | null = null;
   /** A wall-slam in progress: whatever dies now is paste, not a corpse. */
   private gibbing = false;
   private lastImpactFeedback = -1000;
@@ -482,7 +521,14 @@ export class Enemies implements EnemyControlApi {
       if (cell === Cell.Lava || cell === Cell.Fire) {
         // Same percentage-based catch as passive exposure: a single lava splash
         // is much likelier to ignite than a fire splash; a stream re-rolls each hit.
-        rollCatchFire(e.status, cell === Cell.Fire ? 1 : 0, cell === Cell.Lava ? 1 : 0, STATUS_IMMUNE[e.kind]?.burning === true);
+        rollCatchFire(
+          e.status,
+          cell === Cell.Fire ? 1 : 0,
+          cell === Cell.Lava ? 1 : 0,
+          STATUS_IMMUNE[e.kind]?.burning === true,
+          CREATURE_BURN.igniteTicks,
+          CREATURE_BURN.igniteOiledTicks,
+        );
       }
       return true;
     }
@@ -735,6 +781,9 @@ export class Enemies implements EnemyControlApi {
     const def = this.defs[e.kind];
     // The world's kills are announced, chained and paid in gold (combat/AlchemyKills).
     ctx.alchemy?.onKill(e);
+    // Every death is a fact first (the run ledger counts it), THEN its aftermath —
+    // a bomber's blast, the Colossus ending the run.
+    ctx.events.emit('enemyKilled', { kind: e.kind, x: e.x, y: e.y });
     // Bombers go out the only way they know how
     if (e.kind === 'bomber') {
       ctx.explosions.trigger(e.x, e.y - 4, 24 + Math.floor(entityRandom() * 3), { playerDamageSource: 'bomber' });
@@ -945,6 +994,123 @@ export class Enemies implements EnemyControlApi {
    * the same quake across the cavern is a tremor; off-screen it is nothing.
    */
   /** A creature's sound comes from where the creature is: panned, attenuated, silent past `range`. */
+  /**
+   * THE LAIR WATCH. A boss is not a patrol animal that might glance the other
+   * way: its room is its body. While the alchemist stands inside the lair — in
+   * sight of its head, or close — it holds a confident fix on him (so it
+   * marches and attacks), and the first time, it makes its entrance.
+   */
+  private watchLair(e: Enemy, def: EnemyDef, lair: BossLair, mind: CreatureMind): void {
+    const ctx = this.ctx;
+    const p = ctx.player;
+    if (p.dead || e.hp <= 0) return;
+    const dx = p.x - mind.homeX;
+    const dy = p.y - mind.homeY;
+    if (Math.abs(dx) > lair.halfW || dy < -lair.up || dy > lair.down) return;
+    const near = Math.hypot(p.x - e.x, p.y - e.y) <= lair.near;
+    if (!near && !sightClear(ctx.world, e.x, e.y - lair.eye, p.x, p.y - 9)) return;
+    mind.targetX = p.x;
+    mind.targetY = p.y;
+    mind.targetVx = p.vx;
+    mind.lastSeen = ctx.state.frameCount;
+    mind.confidence = 1;
+    if (mind.irritation < 1) {
+      mind.irritation = 1;
+      mind.nextSense = 0;
+      mind.nextDecision = 0;
+    }
+    e.alerted = true;
+    if (!this.introduced.has(e)) this.beginEntrance(e, def, lair);
+  }
+
+  /**
+   * A boss introduces itself once. The Leviathan: the pool churns, it groans,
+   * its name surfaces. The Kiln Colossus lands as the final boss: the mix ducks
+   * under a furnace roar and a stone grind, its name card rises over it, two
+   * stomps shake the kiln, the camera leans in to take it in and returns — and
+   * it holds its fire for the ~2 s that takes. Camera motion honours the camera
+   * shake setting; glow honours reduced flashes.
+   */
+  private beginEntrance(e: Enemy, def: EnemyDef, lair: BossLair): void {
+    const ctx = this.ctx;
+    this.introduced.add(e);
+    if (e.kind !== 'colossus') {
+      // a deep churn under the surface — the pool itself announces it
+      this.voice(e, () => { ctx.audio.tone(58, 30, 0.8, 'sine', 0.2); ctx.audio.groan(); }, 720);
+      ctx.particles.burst(e.x, e.y - 14, 16, null, () => packRGB(150, 220, 255), 1.8, { glow: 1.4, grav: -0.03 });
+      this.shakeAt(e.x, e.y, 0.02, 0.04);
+      ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 10, text: lair.name, tone: 'finisher' });
+      return;
+    }
+    // THE KILN COLOSSUS
+    ctx.audio.duck(0.4, 1500);
+    this.voice(e, () => {
+      ctx.audio.tone(46, 110, 1.1, 'sawtooth', 0.24);
+      ctx.audio.tone(92, 61, 0.9, 'square', 0.07);
+      ctx.audio.groan();
+      ctx.audio.grind(1.4);
+    }, 900);
+    // the furnace flares: embers pour off its shoulders
+    ctx.particles.burst(e.x, e.y - def.h + 2, 30, null, () => packRGB(255, 120 + Math.floor(entityRandom() * 110), 30), 2.6, {
+      glow: 2.4,
+      grav: -0.02,
+    });
+    if (!ctx.state.reduceFlashes) ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 0.8);
+    this.shakeAt(e.x, e.y, 0.03, 0.05);
+    e.attackCd = Math.max(e.attackCd, ENTRANCE_GRACE_TICKS);
+    this.entrance = { e, start: ctx.state.frameCount, lean: !ctx.state.reduceCameraShake };
+  }
+
+  /** Drive the Kiln entrance once per tick (even with the boss off-window), then hand the camera back. */
+  private tickEntrance(): void {
+    const run = this.entrance;
+    if (!run) return;
+    const ctx = this.ctx;
+    const e = run.e;
+    const t = ctx.state.frameCount - run.start;
+    const total = ENTRANCE_LEAN_IN + ENTRANCE_HOLD + ENTRANCE_LEAN_OUT;
+    if (!ctx.enemies.includes(e) || e.hp <= 0 || ctx.player.dead || t > total) {
+      this.endEntrance();
+      return;
+    }
+    const def = this.defs[e.kind];
+    if (t === ENTRANCE_CARD_T) {
+      ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 10, text: BOSS_LAIRS[e.kind]?.name ?? '', tone: 'finisher' });
+    }
+    if (ENTRANCE_STOMP_T.includes(t)) {
+      this.voice(e, () => { ctx.audio.boom(12); ctx.audio.hollowKnock(); }, 900);
+      this.shakeAt(e.x, e.y, 0.03, 0.05);
+      ctx.particles.burst(e.x, e.y - 1, 14, null, () => packRGB(150, 138, 120), 1.6, { grav: 0.05 });
+      if (t === ENTRANCE_STOMP_T[ENTRANCE_STOMP_T.length - 1]) {
+        ctx.particles.burst(e.x, e.y - def.h + 2, 18, null, () => packRGB(255, 150 + Math.floor(entityRandom() * 80), 40), 2.2, {
+          glow: 2.2,
+          grav: -0.02,
+        });
+      }
+    }
+    if (!run.lean || ctx.state.reduceCameraShake) return;
+    // Lean the frame toward the colossus (both of you in it), hold, return.
+    const k = t < ENTRANCE_LEAN_IN ? t / ENTRANCE_LEAN_IN
+      : t < ENTRANCE_LEAN_IN + ENTRANCE_HOLD ? 1
+        : 1 - (t - ENTRANCE_LEAN_IN - ENTRANCE_HOLD) / ENTRANCE_LEAN_OUT;
+    const ease = k * k * (3 - 2 * k);
+    const p = ctx.player;
+    const cam = ctx.camera;
+    cam.cineDx = clamp((e.x - p.x) * 0.5, -ENTRANCE_LEAN_X, ENTRANCE_LEAN_X) * ease;
+    cam.cineDy = clamp((e.y - def.h * 0.5 - (p.y - 9)) * 0.5, -ENTRANCE_LEAN_Y, ENTRANCE_LEAN_Y) * ease;
+    cam.cineZoom = 1 + (ENTRANCE_ZOOM - 1) * ease;
+  }
+
+  private endEntrance(): void {
+    const run = this.entrance;
+    this.entrance = null;
+    if (!run?.lean) return;
+    const cam = this.ctx.camera;
+    cam.cineDx = 0;
+    cam.cineDy = 0;
+    cam.cineZoom = 1;
+  }
+
   private voice(e: Enemy, fn: () => void, range = 380): void {
     this.ctx.audio.at(e.x, e.y - 6, fn, range);
   }
@@ -986,9 +1152,16 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
-  /** Gold coin shower (homing in play mode) + build-mode direct score credit. */
+  /**
+   * The bounty lands in the purse the instant the creature dies; the coin shower
+   * (homing to the wizard in play mode) is the payment's animation and chime, not
+   * the payment — see Particles' COIN FLIGHT. A coin a wall, a death or a
+   * run-ending blow interrupts can no longer take the gold with it.
+   */
   private dropBounty(e: Enemy, def: EnemyDef): void {
     const ctx = this.ctx;
+    ctx.state.score += def.bounty;
+    ctx.events.emit('scoreChanged', { score: ctx.state.score });
     const coins = Math.max(1, Math.ceil(def.bounty / 10));
     const baseValue = Math.floor(def.bounty / coins);
     let remainder = def.bounty - baseValue * coins;
@@ -1009,10 +1182,6 @@ export class Enemies implements EnemyControlApi {
           grav: ctx.state.mode === 'play' ? 0 : 0.14,
         },
       );
-    }
-    if (ctx.state.mode !== 'play') {
-      ctx.state.score += def.bounty;
-      ctx.events.emit('scoreChanged', { score: ctx.state.score });
     }
   }
 
@@ -2059,6 +2228,7 @@ export class Enemies implements EnemyControlApi {
     // The hottest cell touching the body names the cause if this is the end.
     let worst = 0;
     let worstCell: number = Cell.Empty;
+    let oilTouch = false;
     for (let dy = 0; dy < def.h; dy += 2) {
       let rowDmg = 0;
       for (let dx = -def.halfW; dx <= def.halfW; dx += 2) {
@@ -2066,6 +2236,7 @@ export class Enemies implements EnemyControlApi {
           Y = Math.floor(e.y) - dy;
         if (!ctx.world.inBounds(X, Y)) continue;
         const c = ctx.world.types[ctx.world.idx(X, Y)];
+        if (c === Cell.Oil) oilTouch = true;
         const d = directEnvironmentDamage(e.kind, c);
         if (d > rowDmg) rowDmg = d;
         if (d > worst) {
@@ -2076,7 +2247,24 @@ export class Enemies implements EnemyControlApi {
       dmg += rowDmg;
     }
     if (dmg <= 0) return;
-    ctx.alchemy?.noteHit(e, causeForCell(worstCell));
+    if (worstCell === Cell.Fire && ctx.alchemy) {
+      // Open flame on the body: the wand's own blast fire on the creature it was
+      // cast at is the spell's; burning oil, or a fire it wandered into, is the world's.
+      ctx.alchemy.noteStatus(e, {
+        burn: dmg,
+        shock: 0,
+        toxic: 0,
+        burning: e.status.burning > 0,
+        electrified: e.status.electrified > 0,
+        fueled: oilTouch || e.status.oiled > 0,
+        heatContact: true,
+        conducted: false,
+        liquidCharge: false,
+        chargeContact: false,
+      });
+    } else {
+      ctx.alchemy?.noteHit(e, causeForCell(worstCell));
+    }
     if ((e.envDamageFeedbackCd ?? 0) <= 0) {
       e.envDamageFeedbackCd = ENV_DAMAGE_FEEDBACK_COOLDOWN;
       e.flash = Math.max(e.flash, 2);
@@ -2249,6 +2437,7 @@ export class Enemies implements EnemyControlApi {
     // The player's active Flame Jet cone this frame, sampled once so every foe's
     // threat scan can sidestep out of it (the stream is the same for all of them).
     this.flameStream = ctx.wands?.streamFlameInfo?.(ctx) ?? null;
+    this.tickEntrance();
 
     const sim = ctx.world.simBounds;
     for (let i = enemies.length - 1; i >= 0; i--) {
@@ -2313,7 +2502,7 @@ export class Enemies implements EnemyControlApi {
       // touching the body ARE the status — damage lands straight on hp (no
       // flash), and a frozen body's horizontal speed is scaled once per sample.
       if (e.timer % 2 === 0) {
-        const eff = sampleAndTickStatus(ctx, e, def.halfW, def.h, STATUS_IMMUNE[e.kind], 2);
+        const eff = sampleAndTickStatus(ctx, e, def.halfW, def.h, STATUS_IMMUNE[e.kind], 2, CREATURE_BURN);
         if (eff.healing > 0 && e.hp < e.maxHp) {
           e.hp = Math.min(e.maxHp, e.hp + eff.healing);
           if (ctx.state.frameCount % 10 === 0) {
@@ -2329,16 +2518,23 @@ export class Enemies implements EnemyControlApi {
             );
           }
         }
-        if (eff.damage > 0) {
-          const cause: AlchemyCause =
-            eff.shockDamage >= eff.burnDamage && eff.shockDamage >= eff.toxicDamage
-              ? 'shorted'
-              : eff.toxicDamage > eff.burnDamage
-                ? 'poisoned'
-                : 'burned';
-          ctx.alchemy?.noteHit(e, cause);
-          e.hp -= eff.damage;
-        }
+        // Kill attribution hears every sample (a status that goes out forgets
+        // whose it was): the wand's own flame and live air on the creature it
+        // was cast at stay the spell's; fuel, a conductor or a fire walked into
+        // make it the world's (combat/AlchemyKills.noteStatus).
+        ctx.alchemy?.noteStatus(e, {
+          burn: eff.burnDamage,
+          shock: eff.shockDamage,
+          toxic: eff.toxicDamage,
+          burning: e.status.burning > 0,
+          electrified: e.status.electrified > 0,
+          fueled: eff.fueled,
+          heatContact: eff.heatContact,
+          conducted: eff.conducted,
+          liquidCharge: eff.liquidCharge,
+          chargeContact: eff.chargeContact,
+        });
+        if (eff.damage > 0) e.hp -= eff.damage;
         if (e.hp <= 0) {
           this.killAt(i, e, 0, 0);
           continue;
@@ -2352,6 +2548,8 @@ export class Enemies implements EnemyControlApi {
       if (this.tickKnock(e, def)) continue;
 
       const mind = tickCreatureMind(ctx.world, e, observedPlayer, this.cues, ctx.state.frameCount, ctx.state.worldSeed, difficultyMods(ctx.state).enemySense);
+      const lair = BOSS_LAIRS[e.kind];
+      if (lair) this.watchLair(e, def, lair, mind);
       const player = { x: mind.targetX, y: mind.targetY, vx: mind.targetVx };
       const targetAlive = !ctx.player.dead && mind.confidence > 0.1 && (mind.intent === 'hunt' || mind.intent === 'investigate');
       const pdx = player.x - e.x,
@@ -2364,17 +2562,9 @@ export class Enemies implements EnemyControlApi {
       // rather more thoroughly.
       if (!e.alerted && mind.confidence > 0.55 && e.kind !== 'eggs' && !e.sleeping) {
         e.alerted = true;
-        if (e.kind === 'colossus') {
-          this.voice(e, () => { ctx.audio.tone(46, 110, 0.9, 'sawtooth', 0.22); ctx.audio.groan(); }, 720);
-          this.shakeAt(e.x, e.y, 0.025, 0.04);
-        } else if (e.kind === 'leviathan') {
-          // a deep churn under the surface — the pool itself announces it
-          this.voice(e, () => { ctx.audio.tone(58, 30, 0.8, 'sine', 0.2); ctx.audio.groan(); }, 720);
-          ctx.particles.burst(e.x, e.y - 14, 16, null, () => packRGB(150, 220, 255), 1.8, {
-            glow: 1.4,
-            grav: -0.03,
-          });
-          this.shakeAt(e.x, e.y, 0.02, 0.04);
+        if (lair) {
+          // A boss seen from outside its lair still makes its entrance.
+          if (!this.introduced.has(e)) this.beginEntrance(e, def, lair);
         } else {
           this.voice(e, () => this.alertVoice(e));
           ctx.particles.burst(e.x, e.y - def.h - 3, 3, null, () => packRGB(255, 245, 200), 0.8, {
@@ -3108,8 +3298,11 @@ export class Enemies implements EnemyControlApi {
         }
         if (shocked) e.attackCd = Math.max(e.attackCd, 30);
 
-        // March: slow, implacable, screen-shaking footfalls
-        if (targetAlive && !doused && e.timer % 2 === 0) {
+        // March: slow, implacable, screen-shaking footfalls — but not while it
+        // is still rising to its full height and roaring (the entrance beat).
+        const roaring = this.entrance?.e === e && ctx.state.frameCount - this.entrance.start < ENTRANCE_ROAR_TICKS;
+        if (roaring) e.vx *= 0.6;
+        else if (targetAlive && !doused && e.timer % 2 === 0) {
           e.vx += Math.sign(pdx) * 0.06;
         }
         e.vx = clamp(e.vx, -0.42, 0.42);

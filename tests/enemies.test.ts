@@ -53,10 +53,12 @@ function makeEnemy(kind: Enemy['kind'], overrides: Partial<Enemy> = {}): Enemy {
 }
 
 describe('enemy bounty economy', () => {
-  it('splits non-multiple bounties into exact-value homing coins', () => {
+  it('pays the bounty into the purse at the kill and splits it across exact-value homing coins', () => {
     const values: number[] = [];
+    const scores: number[] = [];
     const ctx = {
       state: { mode: 'play', score: 0 },
+      events: { on: () => () => undefined, emit: (name: string, p: { score: number }) => { if (name === 'scoreChanged') scores.push(p.score); } },
       particles: {
         spawn: (
           _x: number,
@@ -81,6 +83,9 @@ describe('enemy bounty economy', () => {
 
     expect(values.reduce((sum, value) => sum + value, 0)).toBe(ENEMY_DEFS.bat.bounty);
     expect(values).toHaveLength(2);
+    // Credited exactly once, at the kill — the coins only animate it.
+    expect(ctx.state.score).toBe(ENEMY_DEFS.bat.bounty);
+    expect(scores).toEqual([ENEMY_DEFS.bat.bounty]);
   });
 });
 

@@ -66,6 +66,15 @@ const STACK_JITTER = 0.06;
  * still fire as fast as you can click.
  */
 const GOD_CAST_DELAY = 20;
+/**
+ * The click buffer: a TAP (press and release inside one tick, so `firing` is
+ * already false when the tick runs) still casts once from its press edge. A tap
+ * that lands while the wand is still cycling waits for it if the cast is at most
+ * this many ticks away (~130 ms), so a click a hair early is not swallowed; one
+ * that lands deeper in the recharge, or while casting is refused (rooted, on a
+ * ladder, behind a pickup overlay), is spent and never fires late.
+ */
+export const CLICK_BUFFER_TICKS = 8;
 /** Flame card: frames of stream burst per cast / hard cap while spamming. */
 const FLAME_BURST_FRAMES = 4;
 const FLAME_BURST_CAP = 16;
@@ -224,21 +233,35 @@ export class WandSystem implements WandsApi {
   /* ---------------- the cast cycle ---------------- */
 
   fire(ctx: Ctx): void {
-    if (ctx.state.mode !== 'play' || ctx.player.dead) return;
-    if (ctx.player.fireBlockedUntilRelease) return;
+    const player = ctx.player;
+    if (ctx.state.mode !== 'play' || player.dead) return;
+    // A tap's button is already up; only its press edge is left (CLICK_BUFFER_TICKS).
+    const tap = !player.firing && player.firePressed === true;
     // Heart communion roots the wand arm; so does hauling on a lever.
-    if (ctx.player.recharge > 0 || ctx.player.pullT > 0 || ctx.player.climbing) return;
+    if (player.fireBlockedUntilRelease || player.recharge > 0 || player.pullT > 0 || player.climbing) {
+      if (tap) player.firePressed = false;
+      return;
+    }
     if (startLegSwing(ctx)) return;
-    if (ctx.input.activeChargingBlackHole) return;
+    if (ctx.input.activeChargingBlackHole) {
+      if (tap) player.firePressed = false;
+      return;
+    }
     const wand = this.wands[this._active];
     // God mode: a wand never runs dry. A fresh CLICK (the press edge) fires
     // instantly — fire as fast as you can click — while a HELD button is throttled
     // to the quick GOD_CAST_DELAY interval set below, so shots don't pile up.
     const godMode = ctx.state.debugGodMode === true;
     if (godMode) wand.mana = wand.frame.manaMax;
-    const freshClick = ctx.player.firePressed === true;
-    ctx.player.firePressed = false;
-    if (wand.cooldown > 0 && !(godMode && freshClick)) return;
+    const freshClick = player.firePressed === true;
+    if (wand.cooldown > 0 && !(godMode && freshClick)) {
+      // Still cycling: a held press waits with the button; a tap waits only if
+      // the cast is a hair away, otherwise it is spent (no late ghost shots).
+      if (tap && wand.cooldown > CLICK_BUFFER_TICKS) player.firePressed = false;
+      return;
+    }
+    // From here the press is answered — a cast, a dry-fire fizzle or a pick strike.
+    player.firePressed = false;
     const program = this.program(this._active);
     if (program.length === 0) {
       this.tryPickStrike(ctx);

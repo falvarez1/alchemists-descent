@@ -187,6 +187,25 @@ describe('catch fire (percentage-based)', () => {
     expect(body.status.burning).toBeGreaterThan(0);
   });
 
+  it('burns a creature longer and harder than the alchemist (burn options)', () => {
+    const world = new World(40, 40);
+    fillBox(world, Cell.Fire, 20, 30, 4, 17);
+    const alchemist = { x: 20, y: 30, status: createDefaultStatus() };
+    const creature = { x: 20, y: 30, status: createDefaultStatus() };
+    const plain = sampleAndTickStatus(plainCtx(world), alchemist, 4, 17, undefined, 2);
+    const hot = sampleAndTickStatus(plainCtx(world), creature, 4, 17, undefined, 2, {
+      burnScale: 2.5,
+      igniteTicks: 300,
+      igniteOiledTicks: 420,
+    });
+    // the alchemist's own burning is unchanged: 0.12 a sample, a 90-tick catch
+    expect(plain.burnDamage).toBeCloseTo(0.12);
+    expect(alchemist.status.burning).toBe(90 - 2);
+    // a creature: 0.30 a sample (9 hp/s at the 2-tick cadence), a 300-tick catch
+    expect(hot.burnDamage).toBeCloseTo(0.3);
+    expect(creature.status.burning).toBe(300 - 2);
+  });
+
   it('never ignites a fire-immune body (imp / flameward)', () => {
     const world = new World(40, 40);
     fillBox(world, Cell.Lava, 20, 30, 4, 17);

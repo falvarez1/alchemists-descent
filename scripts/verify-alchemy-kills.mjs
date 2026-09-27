@@ -1,5 +1,7 @@
 // Alchemical kills, end to end in the real game: fodder killed by a spark bolt
-// (direct: no callout), oil + spark fire (FLAMBÉED), water + electricity
+// (direct: no callout — including full-hp slimes that die crackling or alight
+// from the bolt's own blast on dry stone), oil + spark fire (FLAMBÉED, also when
+// the bolt strikes the oiled slime itself), water + electricity
 // (SHORTED), a kick into lava (RENDERED), a gunpowder blast (DETONATED, chained),
 // flooding (DROWNED) and a steam bath (STEEPED). Asserts the `alchemyKill`
 // event's cause and chain, real Gold cells in the grid, the callout DOM, and
@@ -151,6 +153,74 @@ async function shoot(name, live = []) {
   });
   check('(a) spark bolts kill a slime', r.dead, `${r.casts} casts, hitstop on ${r.hitstops} ticks`);
   check('(a) a direct spark kill is not alchemical', r.ak.length === 0, JSON.stringify(r.ak));
+}
+
+// (a2) PLAIN SPARK ON DRY STONE, full-hp slimes: the bolt's own blast leaves
+// flame and live air on the body it was cast at, so the slime often dies
+// crackling or alight a few ticks after the last bolt. That is still the
+// spell's kill: no callout, no bonus (QA: 5 of 8 were SHORTED/FLAMBÉED).
+{
+  const reps = 10;
+  const rows = [];
+  let live = [];
+  for (let rep = 0; rep < reps; rep++) {
+    const r = await page.evaluate((rep) => {
+      const A = window.__arena, ctx = window.__game.ctx;
+      A.reset();
+      const slime = A.spawn('slime', 500 + (rep % 4) * 20, A.FLOOR - 1);
+      // Real chemistry this case keeps out: the bolt's fire cooks the slime's
+      // spilled goo into acid, and acid digests goo into toxic sludge — a slime
+      // dying in a POOL of that is honestly POISONED. Swept each tick so the case
+      // isolates the spark's own fire and current.
+      const W = ctx.world;
+      const sweep = () => {
+        for (let y = A.FLOOR - 40; y < A.FLOOR; y++) for (let x = 262; x < 899; x++) {
+          const i = W.idx(x, y);
+          if (W.types[i] === 7 || W.types[i] === 24) W.clearCellAt(i);
+        }
+      };
+      let casts = 0, lingering = 0;
+      for (let k = 0; k < 30 && ctx.enemies.includes(slime); k++) {
+        A.cast(slime.x, slime.y - 4); casts++;
+        for (let f = 0; f < 40 && ctx.enemies.includes(slime); f++) {
+          const hadStatus = slime.status.electrified > 0 || slime.status.burning > 0;
+          sweep();
+          A.tick(1);
+          if (!ctx.enemies.includes(slime) && hadStatus) lingering++;
+        }
+      }
+      return { dead: !ctx.enemies.includes(slime), casts, lingering, ak: window.__ak.map((a) => a.cause), live: A.callouts() };
+    }, rep);
+    rows.push(r);
+    live = r.live;
+  }
+  const killed = rows.filter((r) => r.dead).length;
+  const credited = rows.filter((r) => r.ak.length > 0);
+  check('(a2) plain sparks kill full-hp slimes on dry stone', killed === reps, `${killed}/${reps}; ${rows.filter((r) => r.lingering).length} died with the bolt's status still on them`);
+  check('(a2) none of those spell kills is alchemical', credited.length === 0, JSON.stringify(credited.map((r) => r.ak)));
+  const s = await shoot('a2-plain-spark-no-callout', live);
+  check('(a2) no callout on screen after a plain spark kill', s.dom.length === 0, JSON.stringify(s.dom) + ' ' + s.path);
+}
+
+// (b2) SPARK STRAIGHT INTO AN OILED SLIME: the zap and the oil fire land together;
+// the fire has the world's fuel, so it is FLAMBÉED — never SHORTED.
+{
+  const r = await page.evaluate(() => {
+    const A = window.__arena, ctx = window.__game.ctx, F = A.FLOOR;
+    A.reset();
+    A.rect(500, F - 34, 503, F - 1, 13, 0x6f7479);
+    A.rect(580, F - 34, 583, F - 1, 13, 0x6f7479);
+    A.rect(504, F - 3, 579, F - 1, 6, 0x3b3222);
+    const slime = A.spawn('slime', 548, F - 4, 60);
+    A.still.push(slime);
+    for (let f = 0; f < 10; f++) A.tick(1);
+    A.cast(slime.x, slime.y - 4);
+    let t = 0;
+    while (t < 900 && ctx.enemies.includes(slime)) { A.tick(10); t += 10; }
+    return { dead: !ctx.enemies.includes(slime), t, ak: window.__ak.slice() };
+  });
+  check('(b2) the oiled slime dies', r.dead, `after ${r.t} ticks`);
+  check('(b2) cause burned (FLAMBÉED), not shorted', r.ak.length === 1 && r.ak[0].cause === 'burned', JSON.stringify(r.ak));
 }
 
 // (b) OIL + SPARK: the bolt lights the slick, the fire does the killing.
@@ -374,7 +444,8 @@ async function shoot(name, live = []) {
     return { info, gold, mana, manaMax: wand.frame.manaMax, hp };
   });
   check('payout: the kill is announced', !!r.info, JSON.stringify(r.info));
-  check('payout: bonus gold settles as real Gold cells', !!r.info && r.gold * 10 >= r.info.bonusGold * 0.6, `${r.gold} cells for ${r.info?.bonusGold} oz`);
+  // Every grain lands as a real cell (Particles never deletes gold in flight).
+  check('payout: bonus gold settles as real Gold cells, every grain', !!r.info && r.gold * 10 === r.info.bonusGold, `${r.gold} cells for ${r.info?.bonusGold} oz`);
   check('payout: the wand drinks mana', r.mana >= r.manaMax * 0.3, `${r.mana.toFixed(1)}/${r.manaMax}`);
   check('payout: a sip of life', r.hp >= 53, `hp ${r.hp}`);
   const s = await shoot('payout-gold', r.live);
