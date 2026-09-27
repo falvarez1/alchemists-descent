@@ -126,6 +126,18 @@ const DEATH_LINES: Record<string, string[]> = {
     'Hostile debris introduced itself at speed.',
     'Hit by cave mail, postage due.',
   ],
+  'colossus-stomp': [
+    "The floor itself was the Colossus's argument. You neglected to jump.",
+    'A shockwave through the kiln floor, and through the alchemist on it.',
+  ],
+  'colossus-vent': [
+    'Stood too near a furnace as it exhaled. It does that.',
+    'The Colossus let off some steam, most of it through you.',
+  ],
+  'leviathan-thrash': [
+    'Slapped from the shore by a tail and most of a cistern.',
+    'The Leviathan threw its own pool at you. The pool won.',
+  ],
   'colossus-slam': [
     'The Kiln Colossus stamped your ticket.',
     'A furnace with fists ended the expedition.',
@@ -213,6 +225,9 @@ const DEATH_TITLES: Record<string, string> = {
   'leviathan-water': 'You were swept away.',
   'golem-slam': 'You were crushed.',
   'colossus-slam': 'You were crushed.',
+  'colossus-stomp': 'You were crushed.',
+  'colossus-vent': 'You burned.',
+  'leviathan-thrash': 'You were swept away.',
   'golem-rock': 'You were crushed.',
   'powder-mage-debris': 'You were crushed.',
   'hostile-debris': 'You were crushed.',

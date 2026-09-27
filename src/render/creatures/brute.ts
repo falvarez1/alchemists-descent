@@ -74,7 +74,12 @@ export const bruteArt: SpeciesArt = {
     r.capsule(midX, midY, 5.0 * S, chest.x, chest.y, 4.6 * S, 0.5, 1, STONE, { group: 1 });
     // The furnace heart: seen through a split in the chest, cracks radiating.
     const coreX = chest.x + ux * 1.6 * S + upx * 0.4 * S, coreY = chest.y + uy * 1.6 * S + upy * 0.4 * S;
-    const pulse = heat * (0.85 + Math.sin(tick * 0.12 + e.bobPhase) * 0.15);
+    // Boss reads (the Kiln Colossus): venting lifts the plates and whitens the
+    // seams; a dying kiln's core overloads; without its plates the furnace is bare.
+    const vent = colossus ? F[BR.vent] : 0, over = colossus ? F[BR.overload] : 0;
+    const bare = colossus && (e.boss?.plates ?? 6) <= 0;
+    const flicker = over > 0 ? 0.7 + Math.sin(tick * 0.9) * 0.3 : 1;
+    const pulse = (heat * (0.85 + Math.sin(tick * 0.12 + e.bobPhase) * 0.15) + vent * 0.7) * (1 + over * 2.6) * flicker;
     r.glowStamp(coreX, coreY, (colossus ? 3.8 : 2.6) * S * 0.8, (colossus ? 3.2 : 2.3) * S * 0.8, Math.atan2(dy, dx), HOT, 0.8 + pulse * 2.8, 0.2, 1);
     for (let c = 0; c < (colossus ? 7 : 5); c++) {
       const a = c * 1.1 + 0.6 + e.bobPhase;
@@ -89,12 +94,21 @@ export const bruteArt: SpeciesArt = {
         r.stroke(gx, coreY - 2.4 * S, gx, coreY + 2.4 * S, IRON, 1, true);
       }
     }
+    if (bare) {
+      // The plates are gone: the furnace runs molten down its whole back.
+      for (let k = 0; k <= 6; k++) {
+        const t = 0.08 + k / 6 * 0.9;
+        const bx = hips.x + dx * t + upx * (3.2 + Math.sin(t * Math.PI) * 1.4) * S, by = hips.y + dy * t + upy * (3.2 + Math.sin(t * Math.PI) * 1.4) * S;
+        r.glowStamp(bx, by, (1.6 + Math.sin(t * Math.PI)) * S, 1.1 * S, Math.atan2(dy, dx), HOT, 0.6 + pulse * 2.2, 0.35, 1);
+      }
+    }
     // Back plates: overlapping slabs down the spine, lichen in the seams.
-    const plates = colossus ? 6 : 4;
+    const plates = bare ? 0 : colossus ? 6 : 4;
+    const lift = vent * 1.4 * S;
     for (let p = 0; p < plates; p++) {
       const t = 0.05 + p / (plates - 1) * 0.95;
-      const bx = hips.x + dx * t + upx * (3.6 + Math.sin(t * Math.PI) * 1.6) * S;
-      const by = hips.y + dy * t + upy * (3.6 + Math.sin(t * Math.PI) * 1.6) * S;
+      const bx = hips.x + dx * t + upx * ((3.6 + Math.sin(t * Math.PI) * 1.6) * S + lift);
+      const by = hips.y + dy * t + upy * ((3.6 + Math.sin(t * Math.PI) * 1.6) * S + lift);
       const rw = (2.8 + Math.sin(t * Math.PI) * 1.4) * S, rh = (1.9 + Math.sin(t * Math.PI) * 0.6) * S;
       r.ellipse(bx, by, rw, rh, Math.atan2(dy, dx) + (p % 2 ? 0.18 : -0.12), 3 * S + p * 0.3, PLATE, { group: 2 + p });
       r.shade(bx - upx * rh * 0.5, by - upy * rh * 0.5, rw * 0.8, rh * 0.45, Math.atan2(dy, dx), -0.8, 2 + p);
@@ -103,6 +117,7 @@ export const bruteArt: SpeciesArt = {
         const sx0 = bx - upx * rh * 0.85 - ux * rw * 0.7, sy0 = by - upy * rh * 0.85 - uy * rw * 0.7;
         const sx1 = bx - upx * rh * 0.85 + ux * rw * 0.5, sy1 = by - upy * rh * 0.85 + uy * rw * 0.5;
         r.stroke(sx0, sy0, sx1, sy1, HOT, Math.max(0, pulse * 2.2 - 0.3), true);
+        if (vent > 0.2) r.glowStamp((sx0 + sx1) / 2 + upx * lift * 0.5, (sy0 + sy1) / 2 + upy * lift * 0.5, rw * 0.6, 0.6 * S, Math.atan2(dy, dx), EYE, vent * 2.4, 0.4, 2 + p);
       }
       if ((p + (colossus ? 1 : 0)) % 2 === 0) r.stamp(bx + upx * rh * 0.55 - ux * rw * 0.3, by + upy * rh * 0.55, rw * 0.55, rh * 0.35, Math.atan2(dy, dx), MOSS, 1, false, 2 + p);
     }
@@ -137,10 +152,21 @@ export const bruteArt: SpeciesArt = {
     else r.stroke(hx + fs * 0.6 * S, hy + 1.1 * S, hx + fs * 2.4 * S, hy + 1.3 * S, DARK, 0, true);
     // Near arm last: it swings in front of everything.
     { const [x, y] = hipAt(2); limb(r, rig, 2, x, y, 12 * S, false, S, true); }
+    if (colossus && (F[BR.reach] > 0.25 || F[BR.throwT] > 0)) {
+      // The molten gob in its fist, dripping, brightest just before the throw.
+      const fist = rig.legs[2], k = Math.max(F[BR.reach], F[BR.throwT] / 26);
+      const gr = 1.7 * S * (0.55 + k * 0.45);
+      r.ellipse(fist.x + fs * 0.6 * S, fist.y - 3.4 * S, gr, gr * 0.9, 0, 14 * S, HOT, { group: 41 });
+      r.glowStamp(fist.x + fs * 0.6 * S, fist.y - 3.4 * S, gr, gr * 0.9, 0, HOT, 1.6 + k * 2.4, 0.3, 41);
+    }
     if (e.hp < e.maxHp * 0.5) {
       // Wounds: fresh fractures across the shoulder plate.
       r.stroke(chest.x - 1 * S, chest.y - 2 * S, chest.x + 1.5 * S, chest.y + 0.5 * S, DARK, 0, true);
       r.stroke(chest.x + 1.5 * S, chest.y + 0.5 * S, chest.x + 0.5 * S, chest.y + 2 * S, DARK, 0, true);
+    }
+    if (colossus && (e.boss?.exposed ?? 0) > 0) {
+      // Quenched: the chest has split — the opening every blow should aim for.
+      r.glowStamp(coreX, coreY, 2.6 * S, 2.1 * S, Math.atan2(dy, dx), EYE, 1.2 + Math.sin(tick * 0.3) * 0.4, 0.3, 1);
     }
   },
 };

@@ -5,6 +5,7 @@ import type { VirtualWorldDef } from '@/authoring/virtualWorld';
 import type { CreatureBody, CreatureMind, PlantedFoot } from '@/creatures/types';
 import type { CreatureExpression } from '@/creatures/expression';
 import type { CreatureRig } from '@/creatures/rig/types';
+import type { BossBrain } from '@/creatures/bosses/types';
 import type { PlayerCostume } from '@/entities/playerCostume';
 import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/run';
 
@@ -404,6 +405,8 @@ export interface Enemy {
   body?: CreatureBody;
   /** Physical body (verlet chunks, chains, gripping legs, soft body). Tick-owned, never saved. */
   rig?: CreatureRig;
+  /** Bosses (creatures/bosses): phase, committed move and its clock, the fight's honesty ledger. */
+  boss?: BossBrain;
   /** Last hit's knockback direction and frame: the rig answers it physically (a snapped-back
    *  head, a whipped tail, a dented gel). Presentation-only, never saved. */
   hitKx?: number;

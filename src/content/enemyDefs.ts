@@ -30,7 +30,7 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   // box doesn't shrink how readily player shots connect.
   weaver: { hp: 135, halfW: 9, h: 18, bounty: 110, gore: Cell.Blood, goreFn: bloodColor },
   // The Kiln Colossus: the run's final door. Water is the strategy.
-  colossus: { hp: 520, halfW: 13, h: 26, bounty: 600, gore: Cell.Stone, goreFn: stoneColor },
+  colossus: { hp: 560, halfW: 16, h: 34, bounty: 600, gore: Cell.Stone, goreFn: stoneColor },
   // Wave F: slime egg clutch - destroy it now or fight what hatches later.
   eggs: { hp: 14, halfW: 4, h: 5, bounty: 25, gore: Cell.Slime, goreFn: slimeColor },
   // The Sunken Leviathan: d4's mid-boss. Water is its armor - drain the

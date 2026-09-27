@@ -138,7 +138,19 @@ try {
             case 'charge': setAlert(true); e.vx = 0.3; e.rillChargeWindup = 18 - (t % 40) > 0 ? 18 - (t % 40) : 0; e.blink = e.rillChargeWindup; break;
             case 'lash': setAlert(true); { const ph = t % 50; e.windup = ph < 13 ? 13 - ph : 0; e.rootLashT = ph >= 13 && ph < 23 ? 23 - ph : 0; e.rootLashX = e.x + 26; e.rootLashY = e.y - 14; } break;
             case 'fuse': setAlert(true); e.fusing = 36 - (t % 44) > 0 ? 36 - (t % 44) : 0; break;
-            default: break;
+            default:
+              // boss-<move>[-bare]: a boss posed from its brain's move clock (creatures/bosses).
+              if (scene.startsWith('boss-')) {
+                setAlert(true); e.vx = 0;
+                const [, move, mod] = scene.split('-');
+                const dur = { slam: 74, stomp: 66, throw: 64, vent: 98, quench: 160, dying: 214, lunge: 40, dive: 70, thrash: 40 }[move] ?? 80;
+                e.boss ??= { phase: 1, heat: 1, plates: 6, exposed: 0, move: 'march', moveT: 0, waves: [], said: [] };
+                e.boss.move = move === 'march' ? 'march' : move; e.boss.moveT = move === 'dying' ? Math.min(t, dur) : t % dur;
+                e.boss.heat = move === 'quench' ? 0.15 : 1; e.boss.exposed = move === 'quench' ? 30 : 0;
+                e.boss.plates = mod === 'bare' ? 0 : 6;
+                if (move === 'march') e.vx = 0.4;
+              }
+              break;
           }
           if (e.windup > 0) e.windup--;
           // Minimal integration: walkers slide along the floor, fallers fall.

@@ -6,6 +6,10 @@ import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDamageSour
 import { causeForCell } from '@/core/alchemyCause';
 import { tickWeaverLocomotion, weaverKnockSync, weaverLeap } from '@/entities/weaverLocomotion';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
+import type { BossHost } from '@/creatures/bosses/types';
+import { bossTakesWorldHarm, engageBoss, ensureBossBrain } from '@/creatures/bosses/types';
+import { colossusBeginDeath, colossusDamageScale, tickColossus } from '@/creatures/bosses/colossus';
+import { leviathanDamageScale, tickLeviathan } from '@/creatures/bosses/leviathan';
 export { ENEMY_DEFS } from '@/content/enemyDefs';
 import { addCorpse, updateCorpses } from '@/creatures/corpses';
 import { createDefaultStatus, rollCatchFire, sampleAndTickStatus, type StatusSampleOptions } from '@/entities/status';
@@ -121,7 +125,8 @@ const STATUS_IMMUNE: Partial<
   wisp: { frozen: true },
   spitter: { toxic: true },
   // The kiln cannot burn or freeze — but it CAN be doused (wet = thermal shock)
-  colossus: { burning: true, frozen: true, teleportium: true },
+  // (and its own slam's residual charge must never shock it: no electrified)
+  colossus: { burning: true, frozen: true, teleportium: true, electrified: true },
   // A soaked hide never catches — but cold stiffens it and charge cooks it
   leviathan: { burning: true, teleportium: true },
   // Rillbacks are the living conductor in their pool; their own charge pulse
@@ -143,12 +148,12 @@ const CREATURE_BURN: StatusSampleOptions = { burnScale: 2.5, igniteTicks: 300, i
  * A boss's LAIR, relative to its home (where it was placed): the room it
  * watches. An alchemist inside it who is in sight of the boss's head, or
  * within `near` cells, wakes it — facing or not, lit or dark, idle or not.
- * Sized to the carved arenas (world/structures: the Kiln pocket is 38 x 24
- * about a centre 14 cells above the boss; the Sump 42 x 26, 26 above).
+ * Sized to the carved arenas (world/structures: the Kiln is a 62 x 40 pocket
+ * with a flat 116-wide floor 29 below its centre; the Sump 42 x 26, 26 above).
  */
 export interface BossLair { halfW: number; up: number; down: number; near: number; eye: number; name: string }
 export const BOSS_LAIRS: Partial<Record<EnemyKind, BossLair>> = {
-  colossus: { halfW: 50, up: 46, down: 14, near: 64, eye: 20, name: 'THE KILN COLOSSUS' },
+  colossus: { halfW: 62, up: 72, down: 14, near: 80, eye: 28, name: 'THE KILN COLOSSUS' },
   leviathan: { halfW: 54, up: 58, down: 12, near: 56, eye: 8, name: 'THE SUNKEN LEVIATHAN' },
 };
 /** The Kiln's entrance beat, in ticks: roar, name card, two stomps, the camera leans and returns. */
@@ -279,6 +284,16 @@ export class Enemies implements EnemyControlApi {
     urgency: 0,
     stance: 'normal',
     speedScale: 1,
+  };
+
+  /** What a boss module may ask of this system (creatures/bosses). */
+  private readonly bossHost: BossHost = {
+    voice: (e, fn, range) => this.voice(e, fn, range),
+    shakeAt: (x, y, amount, cap) => this.shakeAt(x, y, amount, cap),
+    hasAttackLine: (e, def, lob) => this.hasAttackLine(e, def, lob),
+    finishDeath: (e) => this.kill(e, 0, 0),
+    poolVolley: (e) => this.poolVolley(e),
+    introducing: (e) => this.entrance?.e === e && this.ctx.state.frameCount - this.entrance.start < ENTRANCE_ROAR_TICKS,
   };
 
   constructor(private ctx: Ctx) {
@@ -537,6 +552,18 @@ export class Enemies implements EnemyControlApi {
 
   damage(e: Enemy, amount: number, kx: number, ky: number, source: EnemyDamageSource = 'direct'): void {
     const ctx = this.ctx;
+    // A boss fight is honest: only what the player caused lands on a boss (a
+    // direct blow engages the fight), never its own blast, and nothing lands
+    // on one that is already dying. Exposure windows make blows land harder.
+    if (BOSS_LAIRS[e.kind]) {
+      const brain = ensureBossBrain(e);
+      if (brain.move === 'dying' || brain.finished) return;
+      if (source === 'direct') engageBoss(brain, ctx.state.frameCount);
+      else if (!bossTakesWorldHarm(e, ctx.state.frameCount)) return;
+      if (e.kind === 'colossus') amount *= colossusDamageScale(e);
+      else if (e.kind === 'leviathan') amount *= leviathanDamageScale(e);
+      brain.playerDamage += amount;
+    }
     // Kill attribution: every blow reports its source before hp moves.
     ctx.alchemy?.noteHit(e, source);
     if (amount > 0) {
@@ -587,8 +614,12 @@ export class Enemies implements EnemyControlApi {
       2.1,
       e.kind === 'imp' ? { glow: 1.8, grav: 0.06 } : undefined,
     );
-    // Wounds bleed: a directional spray that pools where it lands
-    if (e.kind !== 'imp') {
+    // Wounds bleed: a directional spray that pools where it lands. The Kiln
+    // Colossus is stone and fire: it sheds chips and sparks, never blood.
+    if (e.kind === 'colossus') {
+      ctx.particles.burst(e.x + Math.sign(kx || 0) * 4, e.y - def.h * 0.5, Math.min(10, 3 + Math.floor(amount * 0.3)), null,
+        () => packRGB(255, 150 + ((entityRandom() * 80) | 0), 40), 2.2, { glow: 2.2, grav: 0.05 });
+    } else if (e.kind !== 'imp') {
       if (entityRandom() < 0.6) splatterStain(ctx.world, e.x - Math.sign(kx || 0) * 3, e.y - 5, 4);
       const n = this.goreCount(e, Math.min(22, 5 + Math.floor(amount * 0.8)), Cell.Blood);
       for (let i = 0; i < n; i++) {
@@ -765,13 +796,21 @@ export class Enemies implements EnemyControlApi {
   }
 
   private killAt(index: number, e: Enemy, kx: number, ky: number): void {
+    if (this.deferBossDeath(e)) return;
     const removed = this.ctx.enemies[index] === e ? this.removeEnemyAt(index) : this.removeEnemy(e);
     if (!removed) return;
     this.finishKill(e, kx, ky);
   }
 
+  /** The Kiln Colossus dies as a sequence (creatures/bosses); the kill path runs when it ends. */
+  private deferBossDeath(e: Enemy): boolean {
+    if (e.kind !== 'colossus' || e.boss?.finished) return false;
+    return colossusBeginDeath(this.ctx, e, this.defs[e.kind], this.bossHost);
+  }
+
   kill(e: Enemy, kx: number, ky: number, source?: EnemyDamageSource): void {
     if (source) this.ctx.alchemy?.noteHit(e, source);
+    if (this.deferBossDeath(e)) return;
     if (!this.removeEnemy(e)) return;
     this.finishKill(e, kx, ky);
   }
@@ -826,7 +865,9 @@ export class Enemies implements EnemyControlApi {
     }
     // The Kiln Colossus: the run ends here, loudly.
     if (e.kind === 'colossus') {
-      ctx.explosions.trigger(e.x, e.y - 10, 28, { playerDamageSource: 'colossus-death' });
+      // The death sequence (creatures/bosses/colossus) already brought the kiln
+      // down in its own blast and heaped its rubble; only a bare kill blows here.
+      if (!e.boss?.finished) ctx.explosions.trigger(e.x, e.y - 10, 28, { playerDamageSource: 'colossus-death' });
       ctx.particles.burst(e.x, e.y - 12, this.goreCount(e, 40, Cell.Stone), Cell.Stone, stoneColor, 4.5);
       ctx.particles.burst(e.x, e.y - 12, 24, null, () => packRGB(255, 170, 40), 3.8, {
         glow: 2.6,
@@ -1034,6 +1075,11 @@ export class Enemies implements EnemyControlApi {
   private beginEntrance(e: Enemy, def: EnemyDef, lair: BossLair): void {
     const ctx = this.ctx;
     this.introduced.add(e);
+    // The fight starts here, and it starts fair: whatever the world did to the
+    // boss before the player arrived is undone.
+    const brain = ensureBossBrain(e);
+    engageBoss(brain, ctx.state.frameCount);
+    if (brain.playerDamage <= 0) e.hp = e.maxHp;
     if (e.kind !== 'colossus') {
       // a deep churn under the surface — the pool itself announces it
       this.voice(e, () => { ctx.audio.tone(58, 30, 0.8, 'sine', 0.2); ctx.audio.groan(); }, 720);
@@ -2223,6 +2269,8 @@ export class Enemies implements EnemyControlApi {
 
   private enemyEnvironmentDamage(e: Enemy, index?: number): void {
     const ctx = this.ctx;
+    // The world does not soften a boss up before the player arrives.
+    if (BOSS_LAIRS[e.kind] && (!e.boss?.engaged || !bossTakesWorldHarm(e, ctx.state.frameCount))) return;
     const def = this.defs[e.kind];
     let dmg = 0;
     // The hottest cell touching the body names the cause if this is the end.
@@ -2534,7 +2582,7 @@ export class Enemies implements EnemyControlApi {
           liquidCharge: eff.liquidCharge,
           chargeContact: eff.chargeContact,
         });
-        if (eff.damage > 0) e.hp -= eff.damage;
+        if (eff.damage > 0 && (!BOSS_LAIRS[e.kind] || bossTakesWorldHarm(e, ctx.state.frameCount))) e.hp -= eff.damage;
         if (e.hp <= 0) {
           this.killAt(i, e, 0, 0);
           continue;
@@ -3261,101 +3309,10 @@ export class Enemies implements EnemyControlApi {
           }
         }
       } else if (e.kind === 'colossus') {
-        // ===== THE KILN COLOSSUS =====
-        // A slow furnace of living stone. Stomps, slams, lobs molten rock.
-        // Water is the strategy: a doused kiln takes thermal-shock damage and
-        // staggers; lightning also stuns it. The arena ceiling holds a sealed
-        // water tank for exactly this reason.
-        e.vy += 0.36;
-        e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
-
-        const doused = e.status.wet > 0;
-        const shocked = e.status.electrified > 0;
-        if (doused) {
-          // THERMAL SHOCK: the furnace cracks — heavy damage whose tell is the
-          // steam below plus a hurt flash. A direct decrement (the leviathan's
-          // electro-shock pattern): the full damage() path would spray blood
-          // and stain walls off a stone boss EVERY wet frame.
-          this.alertFromDamage(e);
-          ctx.alchemy?.noteHit(e, 'steeped');
-          e.hp -= 1.4;
-          e.flash = Math.max(e.flash, 2);
-          if (e.hp <= 0) {
-            this.kill(e, 0, 0);
-            continue;
-          }
-          if (ctx.state.frameCount % 4 === 0) {
-            ctx.particles.burst(
-              e.x + (entityRandom() - 0.5) * 20,
-              e.y - 10 - entityRandom() * 14,
-              2,
-              Cell.Steam,
-              () => packRGB(220, 228, 236),
-              1.4,
-            );
-          }
-          e.attackCd = Math.max(e.attackCd, 36); // staggered: no attacks
-        }
-        if (shocked) e.attackCd = Math.max(e.attackCd, 30);
-
-        // March: slow, implacable, screen-shaking footfalls — but not while it
-        // is still rising to its full height and roaring (the entrance beat).
-        const roaring = this.entrance?.e === e && ctx.state.frameCount - this.entrance.start < ENTRANCE_ROAR_TICKS;
-        if (roaring) e.vx *= 0.6;
-        else if (targetAlive && !doused && e.timer % 2 === 0) {
-          e.vx += Math.sign(pdx) * 0.06;
-        }
-        e.vx = clamp(e.vx, -0.42, 0.42);
-        if (e.grounded && !e.prevG) {
-          this.shakeAt(e.x, e.y, 0.02, 0.05);
-          this.voice(e, () => ctx.audio.hollowKnock(), 640);
-        }
-        // The colossus owns its own landing edge: the renderer only writes prevG
-        // for slimes/bomber, so without this the footfall would fire every grounded
-        // frame instead of once per landing. Keep this gating in the sim.
-        e.prevG = e.grounded;
-
-        // Furnace breath: embers rise off the shoulders
-        if (ctx.state.frameCount % 5 === 0 && !doused) {
-          ctx.particles.spawn(
-            e.x + (entityRandom() - 0.5) * 18,
-            e.y - def.h + 2,
-            (entityRandom() - 0.5) * 0.4,
-            -0.6 - entityRandom() * 0.5,
-            null,
-            packRGB(255, 120 + Math.floor(entityRandom() * 100), 20),
-            18,
-            { glow: 2.0, grav: -0.01 },
-          );
-        }
-
-        if (canAttackTarget && e.attackCd === 0) {
-          if (Math.abs(pdx) < 32 && Math.abs(pdy) < 32) {
-            // GROUND SLAM: a real explosion at the fist — far enough out that
-            // the blast radius (r*1.5) cannot reach the colossus's own body
-            ctx.explosions.trigger(e.x + Math.sign(pdx) * 18, e.y - 2, 11, { playerDamageSource: 'colossus-slam' });
-            ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.03, 0.06);
-            e.attackCd = 150 + Math.floor(entityRandom() * 40);
-          } else if (Math.abs(pdx) < 300 && this.hasAttackLine(e, def, true)) {
-            // MOLTEN VOLLEY: three lobbed gobs of kiln-fire
-            for (let v = -1; v <= 1; v++) {
-              ctx.projectiles.push({
-                x: e.x + Math.sign(pdx) * 8,
-                y: e.y - def.h + 4,
-                vx: pdx * 0.014 + v * 0.5 + (entityRandom() - 0.5) * 0.4,
-                vy: -1.3 - entityRandom() * 0.5,
-                type: 'fireball',
-                life: 240,
-                age: 0,
-                charging: false,
-                hostile: true,
-                source: 'colossus-fireball',
-              });
-            }
-            this.voice(e, () => ctx.audio.tone(90, 220, 0.4, 'sawtooth', 0.16), 720);
-            e.attackCd = 170 + Math.floor(entityRandom() * 50);
-          }
-        }
+        // ===== THE KILN COLOSSUS ===== (creatures/bosses/colossus: phases,
+        // telegraphed slam / stomp waves / molten throw / heat vent, the
+        // thermal-shock quench and the death sequence).
+        tickColossus(ctx, e, def, this.bossHost, { targetAlive, canAttack: canAttackTarget, pdx, pdy, pDist, debugSuppressed: debugEnemyAttacksSuppressed });
       } else if (e.kind === 'rillback') {
         // Rillback Silt Eel: a small pool predator. Wet body = fluid S-curve
         // steering and a short living-conductor pulse; dry body = weak flops.
@@ -3492,158 +3449,10 @@ export class Enemies implements EnemyControlApi {
         e.vy = clamp(e.vy, lunging ? -2.5 : swimming ? -1.2 : -1.7, lunging ? 2.5 : swimming ? 1.2 : 2.4);
         carryRillback(ctx, e);
       } else if (e.kind === 'leviathan') {
-        // ===== THE SUNKEN LEVIATHAN =====
-        // d4's mid-boss, the Kiln's mirror: WATER IS ITS ARMOR. Submerged it
-        // shrugs off hits (damage() reads e.submerged), swims fast, lunges,
-        // and throws its own pool at you. The cistern floor carries three
-        // sealed drain plugs — empty the basin and it is just meat gasping
-        // on the tiles. The pool is also one big conductor (so is the blood
-        // it sheds into it): a spark in the water cooks it from inside.
-        if (e.timer % 4 === 0) {
-          let waterN = 0;
-          for (let dy = 0; dy < def.h; dy += 3) {
-            for (let dx = -def.halfW; dx <= def.halfW; dx += 3) {
-              const X = e.x + dx,
-                Y = e.y - dy;
-              if (ctx.world.inBounds(X, Y) && ctx.world.types[ctx.world.idx(X, Y)] === Cell.Water)
-                waterN++;
-            }
-          }
-          e.submerged = waterN >= 8;
-        }
-        const sub = e.submerged === true;
-
-        // ELECTROCUTION: the doused-kiln mirror. Direct hp (bypasses the
-        // submersion shield — the water IS the delivery), visible arcs.
-        if (sub && e.status.electrified > 0) {
-          ctx.alchemy?.noteHit(e, 'shorted');
-          e.hp -= 1.1;
-          e.flash = Math.max(e.flash, 2);
-          if (e.hp <= 0) {
-            this.killAt(i, e, 0, 0);
-            continue;
-          }
-          e.attackCd = Math.max(e.attackCd, 30);
-        }
-
-        if (sub) {
-          // weightless pursuit; a slow patrol sway when unaware
-          e.vx *= 0.96;
-          e.vy = e.vy * 0.9;
-          if (targetAlive && e.alerted && (e.windup ?? 0) === 0) {
-            if (e.timer % 2 === 0) {
-              e.vx += Math.sign(pdx) * 0.09;
-              e.vy += Math.sign(player.y - 6 - e.y) * 0.07;
-            }
-          } else {
-            e.vx += Math.cos(e.timer * 0.02 + e.bobPhase) * 0.02;
-            e.vy += Math.sin(e.timer * 0.05 + e.bobPhase) * 0.015;
-          }
-          e.vx = clamp(e.vx, -1.5, 1.5);
-          e.vy = clamp(e.vy, -0.9, 0.9);
-          // wake bubbles when it moves with intent
-          if (ctx.state.frameCount % 7 === 0 && Math.abs(e.vx) > 0.5) {
-            ctx.particles.spawn(
-              e.x - Math.sign(e.vx) * def.halfW,
-              e.y - 6 - entityRandom() * 6,
-              -e.vx * 0.2,
-              -0.3 - entityRandom() * 0.3,
-              null,
-              packRGB(170, 220, 250),
-              14,
-              { grav: -0.04 },
-            );
-          }
-        } else {
-          // BEACHED: gravity owns it. Heaving flops, each one a dying gasp.
-          e.vy += 0.34;
-          e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
-          e.vx *= 0.92;
-          if (e.grounded && e.timer % 38 === 0) {
-            e.vy = -1.8;
-            e.vx = (targetAlive ? Math.sign(pdx) || 1 : entityRandom() < 0.5 ? -1 : 1) * 0.85;
-            this.voice(e, () => ctx.audio.hop(1.6), 640);
-            this.shakeAt(e.x, e.y, 0.012, 0.04);
-          }
-          if (ctx.state.frameCount % 11 === 0) {
-            ctx.particles.spawn(
-              e.x + (entityRandom() - 0.5) * 10,
-              e.y - def.h + 2,
-              (entityRandom() - 0.5) * 0.4,
-              -0.4,
-              null,
-              packRGB(150, 200, 230),
-              16,
-              { grav: -0.02 },
-            );
-          }
-        }
-
-        // LUNGE: a coiled flare, then a committed dart (can breach the
-        // surface — gravity reels the leap back into the pool)
-        if (
-          sub &&
-          canAttackTarget &&
-          e.attackCd === 0 &&
-          pDist < 90 &&
-          (e.windup ?? 0) === 0 &&
-          (e.swoop ?? 0) === 0
-        ) {
-          e.windup = 16;
-          this.voice(e, () => ctx.audio.tone(70, 160, 0.5, 'sawtooth', 0.14), 640);
-        }
-        if ((e.windup ?? 0) > 0) {
-          e.vx *= 0.8;
-          e.vy *= 0.8;
-          if (!debugEnemyAttacksSuppressed) e.windup = (e.windup ?? 1) - 1;
-          if (e.windup === 0 && canAttackTarget) {
-            e.swoop = 18;
-            const a = Math.atan2(player.y - 8 - e.y, player.x - e.x);
-            e.vx = Math.cos(a) * 3.4;
-            e.vy = Math.sin(a) * 2.6;
-            this.voice(e, () => ctx.audio.noiseBurst(0.18, 700, 0.12, true), 640);
-          }
-        }
-        if ((e.swoop ?? 0) > 0) {
-          if (!debugEnemyAttacksSuppressed) e.swoop = (e.swoop ?? 1) - 1;
-          if (!sub) e.vy += 0.12; // a breaching arc falls back home
-          if (canAttackTarget && e.attackCd === 0 && Math.abs(pdx) < 12 && Math.abs(pdy) < 16) {
-            // THE BITE
-            ctx.playerCtl.damage(16 * (e.dmgK ?? 1), Math.sign(pdx) * -4.2, -2.8, 'leviathan-bite');
-            e.attackCd = 140;
-            e.swoop = 0;
-          } else if (e.swoop === 0) {
-            e.attackCd = Math.max(e.attackCd, 90 + Math.floor(entityRandom() * 40));
-          }
-        }
-
-        // POOL VOLLEY: the ranged arm — only while it HAS a pool
-        if (
-          sub &&
-          canAttackTarget &&
-          e.alerted &&
-          e.attackCd === 0 &&
-          pDist >= 90 &&
-          pDist < 320 &&
-          this.hasAttackLine(e, def, true) &&
-          (e.windup ?? 0) === 0 &&
-          (e.swoop ?? 0) === 0
-        ) {
-          this.poolVolley(e);
-          e.attackCd = 150 + Math.floor(entityRandom() * 40);
-        }
-
-        // contact graze outside the committed bite
-        if (
-          canAttackTarget &&
-          (e.swoop ?? 0) === 0 &&
-          e.attackCd < 100 &&
-          Math.abs(pdx) < 11 &&
-          Math.abs(pdy) < 14
-        ) {
-          ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx) * -3.0, -2.0, 'leviathan-graze');
-          e.attackCd = Math.max(e.attackCd, 120);
-        }
+        // ===== THE SUNKEN LEVIATHAN ===== (creatures/bosses/leviathan: the
+        // lure douses before a lunge, pool volleys, tail thrash, dive-surge,
+        // electrocution jolts, beached exposure).
+        if (!tickLeviathan(ctx, e, def, this.bossHost, { targetAlive, canAttack: canAttackTarget, pdx, pdy, pDist, debugSuppressed: debugEnemyAttacksSuppressed })) continue;
       } else if (e.kind === 'stonemaw') {
         // Stone Maw: listens through the rock, commits to tiny chew bursts,
         // and only opens terrain. It never writes blockers or eats Metal/Glass.
