@@ -203,7 +203,19 @@ export class EventBus {
   ): boolean {
     const set = this.handlers.get(event);
     if (!set || set.size === 0) return false;
-    for (const h of set) (h as Handler<EventMap[K] | undefined>)(payload[0]);
+    for (const h of set) {
+      // One broken listener must not silence the others or abort the tick that
+      // emitted (an audio scheduling error inside `playerDied` once skipped the
+      // rest of a game tick). The error is re-thrown on a microtask, so it still
+      // reaches the console, page-error probes and the test runner.
+      try {
+        (h as Handler<EventMap[K] | undefined>)(payload[0]);
+      } catch (error) {
+        queueMicrotask(() => {
+          throw error;
+        });
+      }
+    }
     return true;
   }
 
