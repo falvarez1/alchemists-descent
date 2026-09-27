@@ -422,7 +422,13 @@ export class Lighting implements LightField {
         lg = 0,
         lb = 0,
         wake = 0;
-      if (p.type === 'bolt' || p.type === 'pellet') {
+      if (p.type === 'bolt') {
+        // The Spark Bolt rakes brighter light and a longer wake than a pellet.
+        lr = 1.1;
+        lg = 2.5;
+        lb = 3.0;
+        wake = 4;
+      } else if (p.type === 'pellet') {
         lr = 0.85;
         lg = 2.0;
         lb = 2.45;

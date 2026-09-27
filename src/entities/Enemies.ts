@@ -523,6 +523,13 @@ export class Enemies implements EnemyControlApi {
       ctx.fx.hitstop = Math.max(ctx.fx.hitstop ?? 0, amount >= 20 ? 3 : 2);
       e.squash = Math.max(e.squash ?? 0, .18);
       this.voice(e, () => { ctx.audio.noiseBurst(.035, 1400, .035, true); ctx.audio.tone(145, 65, .055, 'triangle', .035); });
+    } else if (source === 'direct' && amount >= 2 && Math.abs(kx) + Math.abs(ky) > .25 &&
+        ctx.state.frameCount - this.lastImpactFeedback >= 5 && Math.hypot(e.x - ctx.player.x, e.y - ctx.player.y) < 240) {
+      // Small direct hits (pellets, chip damage) still land: a 1-frame micro-hitstop
+      // and a lighter squash. Sub-2 streams (the Flame Jet's 0.7 ticks) never stutter.
+      this.lastImpactFeedback = ctx.state.frameCount;
+      ctx.fx.hitstop = Math.max(ctx.fx.hitstop ?? 0, 1);
+      e.squash = Math.max(e.squash ?? 0, .1);
     }
     const def = this.defs[e.kind];
     ctx.particles.burst(
