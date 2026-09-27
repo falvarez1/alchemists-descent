@@ -1,11 +1,13 @@
 import type { SfxCategory, SfxId } from '@/content/audio/sfxCues';
-import { packCues, sfxCue, sfxUrls } from '@/content/audio/sfxManifest';
+import { packCues, sfxCue } from '@/content/audio/sfxCatalog';
 
 /**
  * Decoded sound-effect buffers, loaded lazily in packs.
  *
  * Nothing is fetched before `start()` — the engine calls it on the first user
- * gesture — so the first page load transfers no audio at all. Packs load in
+ * gesture — so the first page load transfers no audio at all: not a file,
+ * and not even the URL table (content/audio/sfxManifest.ts is a lazy chunk
+ * this imports on start). Packs load in
  * request order (the core packs first, then the current floor's creatures and
  * bed, then the next floor's when the Sanctum prefetches it), a few files at a
  * time. A pack that is no longer needed can be released to give its decoded
@@ -45,8 +47,10 @@ const DECODE_RATE: Readonly<Record<SfxCategory, number>> = {
 
 export class SampleBank {
   private context: BaseAudioContext | null = null;
-  /** Fetching has begun (START_GRACE_MS after `start`). */
+  /** Fetching has begun (the URL table has arrived and START_GRACE_MS has passed). */
   private pumping = false;
+  /** Take URLs per cue, from the lazily imported manifest. */
+  private urlsOf: ((id: SfxId) => readonly string[]) | null = null;
   /** One silent offline context per decode rate (decodeAudioData resamples to its context's rate). */
   private readonly decoders = new Map<number, BaseAudioContext>();
   private readonly buffers = new Map<SfxId, AudioBuffer[]>();
@@ -70,10 +74,16 @@ export class SampleBank {
   start(context: BaseAudioContext): void {
     if (this.context) return;
     this.context = context;
-    setTimeout(() => {
+    const grace = new Promise<void>((resolve) => setTimeout(resolve, START_GRACE_MS));
+    const manifest = import('@/content/audio/sfxManifest').then(({ sfxUrls }) => sfxUrls);
+    void Promise.all([manifest, grace]).then(([sfxUrls]) => {
+      this.urlsOf = sfxUrls;
       this.pumping = true;
       for (const pack of [...this.queue]) this.load(pack);
-    }, START_GRACE_MS);
+    }, () => {
+      // Fail-open: without the manifest every cue keeps its procedural voice.
+      this.filesFailed++;
+    });
   }
 
   /** Ask for packs (queued until `start`). Already requested packs are left as they are. */
@@ -126,7 +136,7 @@ export class SampleBank {
     const epoch = this.epoch.get(pack) ?? 0;
     const jobs: Array<Promise<boolean>> = [];
     for (const id of packCues(pack)) {
-      for (const url of sfxUrls(id)) jobs.push(this.schedule(() => this.fetchOne(id, url, pack, epoch)));
+      for (const url of this.urlsOf?.(id) ?? []) jobs.push(this.schedule(() => this.fetchOne(id, url, pack, epoch)));
     }
     void Promise.all(jobs).then((results) => {
       if ((this.epoch.get(pack) ?? 0) !== epoch) return;

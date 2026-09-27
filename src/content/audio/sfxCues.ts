@@ -3,7 +3,7 @@
  * load pack, mix category and runtime overrides. Prompts and generation
  * settings live beside the generator (scripts/audio/sfx-prompts.mjs); the
  * files themselves are `src/assets/audio/{sfx,ambience}/<pack>/<id>-<n>.mp3`
- * (content/audio/sfxManifest.ts resolves them).
+ * (content/audio/sfxManifest.ts finds them; sfxCatalog.ts resolves the defaults).
  *
  * This module is plain data with type-only imports so the Node generator can
  * import it directly (type stripping) — keep it free of runtime imports.

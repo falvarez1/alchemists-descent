@@ -11,7 +11,8 @@ import {
   isSfxId,
   type SfxId,
 } from '@/content/audio/sfxCues';
-import { AUDITION_ENTRIES, SFX_IDS, SFX_PACKS, packCues, sfxCue, sfxUrls } from '@/content/audio/sfxManifest';
+import { AUDITION_ENTRIES, sfxUrls } from '@/content/audio/sfxManifest';
+import { SFX_IDS, SFX_PACKS, packCues, sfxCue } from '@/content/audio/sfxCatalog';
 import { SFX_PROMPTS } from '../scripts/audio/sfx-prompts.mjs';
 import { ENEMY_KINDS } from '@/core/types';
 import { SPINE_ROSTERS } from '@/config/worldgraph';

@@ -9,7 +9,8 @@ import type { SfxId } from '@/content/audio/sfxCues';
  *   click (delegated listeners on the document), a close/back button a
  *   softer knock, a card in the offer overlay its own decisive "chosen".
  *   Elements that already sound their own action (the wand bench's card
- *   tiles) or opt out with `data-sfx="none"` stay quiet.
+ *   tiles) or opt out with `data-sfx="none"` stay quiet, and so does the
+ *   Builder (an authoring tool, not the game's interface).
  * - Overlays announce themselves: the pause menu closes a steam valve and
  *   opens it again on resume; the Grimoire, Handbook and settings open and
  *   close like a ledger (a MutationObserver watches their visibility).
@@ -21,6 +22,8 @@ import type { SfxId } from '@/content/audio/sfxCues';
  * first click there is simply nothing to hear.
  */
 const BUTTONISH = 'button, [role="button"], a[href], summary, select, input[type="checkbox"], input[type="range"], .menu-item';
+/** The Builder is an authoring tool: its panels stay quiet. */
+const QUIET_ZONES = '#builder-root';
 /** Clicks that already make their own sound. */
 const OWN_SOUND = '[data-sfx="none"], .wb-shell button:not(.menu-close), .wb-shell [role="button"], .card-offer-card';
 const BACKISH = '.menu-close, [id*="close"], [id*="cancel"], [class*="close"], [aria-label*="close" i], [data-sfx="back"]';
@@ -58,6 +61,7 @@ export function installUiSounds(events: EventBus, audio: Pick<AudioApi, 'sfx'>, 
   const buttonAt = (target: EventTarget | null): Element | null => {
     const el = target instanceof Element ? target.closest(BUTTONISH) : null;
     if (!el || (el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true') return null;
+    if (el.closest(QUIET_ZONES)) return null;
     return el;
   };
   const onOver = (e: Event): void => {

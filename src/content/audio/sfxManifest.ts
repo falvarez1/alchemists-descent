@@ -1,24 +1,18 @@
 /**
- * Where every sampled cue's files are, and its resolved mix settings.
+ * Where every sampled cue's files are.
  *
  * The files are discovered with an eager `import.meta.glob(..., '?url')`: the
- * build hashes and emits them, and this module only holds their URLs — nothing
- * is fetched until audio/SampleBank.ts asks, after the first user gesture.
+ * build hashes and emits them, and this module only holds their URLs.
  * `no-inline` keeps Vite from base64-inlining the tiny clicks into the JS.
+ * The game never imports this module statically — audio/SampleBank.ts loads
+ * it on the first gesture — so neither the URL table nor any audio byte is in
+ * the first-load transfer.
  *
  * `AUDITION_ENTRIES` feeds the dev-only audition page (audition.html), which
  * discovers every `src/content/audio/*Manifest.ts` exporting it.
  */
-import {
-  CORE_SFX_PACKS,
-  SFX_CATEGORIES,
-  SFX_CUES,
-  type SfxBus,
-  type SfxCategory,
-  type SfxCategoryDef,
-  type SfxCueDef,
-  type SfxId,
-} from '@/content/audio/sfxCues';
+import type { SfxId } from '@/content/audio/sfxCues';
+import { SFX_IDS, sfxCue } from '@/content/audio/sfxCatalog';
 import { SFX_PROMPTS } from '../../../scripts/audio/sfx-prompts.mjs';
 
 const FILES = import.meta.glob('/src/assets/audio/{sfx,ambience}/**/*.mp3', {
@@ -44,61 +38,6 @@ const URLS = new Map<string, string[]>();
 export function sfxUrls(id: SfxId): readonly string[] {
   return URLS.get(id) ?? [];
 }
-
-/** A cue with its category defaults folded in. */
-export interface ResolvedSfxCue extends SfxCategoryDef {
-  id: SfxId;
-  pack: string;
-  cat: SfxCategory;
-  bus: SfxBus;
-  loop: boolean;
-  keepAliveMs: number;
-}
-
-const RESOLVED = new Map<SfxId, ResolvedSfxCue>();
-export function sfxCue(id: SfxId): ResolvedSfxCue {
-  let r = RESOLVED.get(id);
-  if (!r) {
-    const def: SfxCueDef = SFX_CUES[id];
-    const cat = SFX_CATEGORIES[def.cat];
-    r = {
-      ...cat,
-      id,
-      pack: def.pack,
-      cat: def.cat,
-      gain: cat.gain * (def.gain ?? 1),
-      range: def.range ?? cat.range,
-      voices: def.voices ?? cat.voices,
-      cooldownMs: def.cooldownMs ?? cat.cooldownMs,
-      pitchCents: def.pitchCents ?? cat.pitchCents,
-      priority: def.priority ?? cat.priority,
-      bus: def.bus ?? cat.bus,
-      loop: def.loop === true,
-      keepAliveMs: def.keepAliveMs ?? 220,
-    };
-    RESOLVED.set(id, r);
-  }
-  return r;
-}
-
-export const SFX_IDS = Object.keys(SFX_CUES) as SfxId[];
-
-const PACKS = new Map<string, SfxId[]>();
-for (const id of SFX_IDS) {
-  const pack = SFX_CUES[id].pack;
-  const list = PACKS.get(pack) ?? [];
-  list.push(id);
-  PACKS.set(pack, list);
-}
-
-/** The cues in a load pack. */
-export function packCues(pack: string): readonly SfxId[] {
-  return PACKS.get(pack) ?? [];
-}
-
-/** Every pack name. */
-export const SFX_PACKS: readonly string[] = [...PACKS.keys()];
-export { CORE_SFX_PACKS };
 
 // ------------------------------------------------------------ audition
 
@@ -130,5 +69,5 @@ function buildAuditionEntries(): AuditionEntry[] {
   });
 }
 
-/** Tree-shaken out of the game bundle: only the dev audition page imports it. */
+/** Tree-shaken out of the game's lazy manifest chunk: only the dev audition page reads it. */
 export const AUDITION_ENTRIES: AuditionEntry[] = /* @__PURE__ */ buildAuditionEntries();

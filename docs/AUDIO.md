@@ -47,7 +47,8 @@ House rules:
 
 ```
 src/content/audio/sfxCues.ts      THE catalog: id → pack, family, runtime overrides
-src/content/audio/sfxManifest.ts  files (import.meta.glob ?url&no-inline), resolved cues, AUDITION_ENTRIES
+src/content/audio/sfxCatalog.ts   the catalog resolved for the runtime (family defaults folded in), packs
+src/content/audio/sfxManifest.ts  files (import.meta.glob ?url&no-inline) + AUDITION_ENTRIES — a LAZY chunk
 src/assets/audio/sfx/<pack>/<id>-<n>.mp3        one-shots and sustained loops
 src/assets/audio/ambience/<pack>/<id>-<n>.mp3   floor beds and the Breathing Chamber
 src/audio/AudioEngine.ts   the procedural engine: mix graph, placement, trace — and the fallback voices
@@ -145,7 +146,8 @@ layer). To re-tune: edit a target in the calibration script, run it with
 
 | when | what | size |
 | --- | --- | --- |
-| page load, title screen | nothing (the manifest is URL strings in the JS) | 0 audio bytes |
+| page load, title screen | no audio and no URL table: only the engine code (+14 KB gzipped of JS; same 14 requests as before this layer) | 0 audio bytes |
+| first gesture | the lazy `sfxManifest` chunk (the URL table, 64 KB) | |
 | first gesture + 0.3 s | `ui`, `player`, `spells`, `world` (3 lanes, ~2 s) | 3.0 MB MP3 → ~40 MB PCM |
 | a floor loads | its bed (`amb-dN`), a pack per creature kind living there + its boss, `tea` on floor 1 | 0.3–0.9 MB MP3 |
 | the Sanctum opens | the next floor's bed and roster (prefetch) | |

@@ -5,7 +5,7 @@ import { SampleBank, type PackState } from '@/audio/SampleBank';
 import { CATEGORY_FALLBACKS, SFX_FALLBACKS, type ProceduralKit } from '@/audio/sfxFallbacks';
 import { chainPitch } from '@/audio/mix';
 import { CORE_SFX_PACKS, isSfxId, type CreatureSfxAction, type SfxId } from '@/content/audio/sfxCues';
-import { sfxCue, type ResolvedSfxCue } from '@/content/audio/sfxManifest';
+import { sfxCue, type ResolvedSfxCue } from '@/content/audio/sfxCatalog';
 
 /**
  * The game's sound: ElevenLabs-generated samples through the procedural
