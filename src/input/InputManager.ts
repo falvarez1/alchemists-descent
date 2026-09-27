@@ -130,6 +130,7 @@ export class InputManager {
       if (pressed(0) && document.activeElement instanceof HTMLButtonElement) document.activeElement.click();
     } else if (ctx.state.mode === 'play') {
       if (pressed(9)) window.dispatchEvent(new Event('game-pause-request'));
+      if (pressed(8)) ctx.events.emit('clipRequested', { reason: 'hotkey' }); // View/Back: save the last seconds
       const overlay = document.querySelector<HTMLDialogElement>('#player-settings[open]') ?? document.querySelector<HTMLElement>('#pause-overlay.visible');
       if (overlay) {
         const controls = Array.from(overlay.querySelectorAll<HTMLButtonElement | HTMLSelectElement | HTMLInputElement>('button, select, input')).filter(el => el.getClientRects().length > 0 && !el.disabled);
