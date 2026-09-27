@@ -463,10 +463,12 @@ export class VineStrands implements VineStrandsApi {
       addSeg(0, nodeAt(1, spoke), 1.02);
       for (let ring = 1; ring < rings; ring++) addSeg(nodeAt(ring, spoke), nodeAt(ring + 1, spoke), 1.04);
     }
+    // Radials + sagging capture rings only: the old diagonal cross-braces
+    // triangulated the lattice into something that read as a debug wireframe
+    // mesh (an icosahedron in the Scorched Wastes), not an orb web.
     for (let ring = 1; ring <= rings; ring++) {
       for (let spoke = 0; spoke < radials; spoke++) {
         addSeg(nodeAt(ring, spoke), nodeAt(ring, spoke + 1), ring % 2 === 0 ? 1.03 : 1.08);
-        if (ring < rings && spoke % 2 === ring % 2) addSeg(nodeAt(ring, spoke), nodeAt(ring + 1, spoke + 1), 1.1);
       }
     }
 

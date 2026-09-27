@@ -49,7 +49,7 @@ import { PlacementLedger, carveRect, tunnelTo } from '@/world/connect';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
 import type { SkeletonIO } from '@/world/skeleton';
-import { polishCaveTerrain, consolidateRock, fillEnclosedHoles, solidifyRock } from '@/world/terrainPolish';
+import { polishCaveTerrain, consolidateRock, fillEnclosedHoles, solidifyRock, type PolishTarget } from '@/world/terrainPolish';
 import { dressWalkSurface, plantGroundCover } from '@/world/surfaceDress';
 import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
@@ -500,20 +500,29 @@ export class WorldGen implements WorldGenApi {
     // Gilded Vault and timber scaffold routes keep their original thin-route
     // topology because generated locks are tuned tightly around them.
     if (ctx.state.currentBiome !== 'gilded' && ctx.state.currentBiome !== 'timber') {
+      // Polish fills and walk-surface dressing are PRISTINE paint — a restore
+      // regenerates them from the seed — not scars. Registering them as
+      // colorOverrides told the renderer to show their raw biome paint instead
+      // of the terrain atlas (the camouflage blotches on every procedural
+      // floor) and bloated each save. Hand the passes a view without the
+      // override set, exactly like the chunked generator's scratch adapter.
+      const pristine: PolishTarget = {
+        types: world.types, colors: world.colors, life: world.life, charge: world.charge, width: WIDTH, height: HEIGHT,
+      };
       if (GEN_TUNE.rockFillPasses > 0) {
-        consolidateRock(world, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.rockFillPasses, GEN_TUNE.rockFillThreshold);
+        consolidateRock(pristine, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.rockFillPasses, GEN_TUNE.rockFillThreshold);
       }
       // De-speckle: a morphological close packs every CONNECTED open feature
       // thinner than 2*radius (the porous-noise speckle the player walks over),
       // leaving caverns/tunnels wider than the radius untouched. Then mop up any
       // remaining SEALED pockets. Both are connectivity-safe by construction.
       if (GEN_TUNE.rockCloseRadius > 0) {
-        solidifyRock(world, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.rockCloseRadius);
+        solidifyRock(pristine, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.rockCloseRadius);
       }
       if (GEN_TUNE.holeFillMax > 0) {
-        fillEnclosedHoles(world, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.holeFillMax);
+        fillEnclosedHoles(pristine, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.holeFillMax);
       }
-      polishCaveTerrain(world, {
+      polishCaveTerrain(pristine, {
         seed,
         minY: MIN_Y,
         floorBand: FLOOR_BAND,
@@ -526,7 +535,7 @@ export class WorldGen implements WorldGenApi {
       // flowers on the ledges the player walks (runs after polish so it dresses the
       // filled surface). See world/surfaceDress.ts.
       const dressOpts = { seed, minY: MIN_Y, floorBand: FLOOR_BAND, crown: B.crown, flowerChance: B.flowerChance };
-      dressWalkSurface(world, dressOpts);
+      dressWalkSurface(pristine, dressOpts);
       // Living, walk-through ground cover (grass blades + sparse mushroom tufts) on
       // the dressed surface — real soft-growth cells that sway-spread, burn, and
       // wither on their own. See world/surfaceDress.plantGroundCover.

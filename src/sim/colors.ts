@@ -39,7 +39,14 @@ const rand = (n: number) => Math.floor(fxRandom() * n);
 export const EMPTY_COLOR = packRGB(8, 8, 12);
 
 export const emptyColor = () => EMPTY_COLOR;
-export const sandColor = () => packRGB(225 + rand(25), 180 + rand(25), 90 + rand(20));
+// Sand reads as packed grains, not a flat block: mostly warm tan, with darker
+// grains and pale quartz specks scattered through (same three fx draws).
+export const sandColor = () => {
+  const v = fxRandom(), t = fxRandom(), u = fxRandom();
+  if (v < 0.16) return packRGB(156 + Math.floor(t * 22), 118 + Math.floor(t * 18), 68 + Math.floor(u * 14));
+  if (v < 0.9) return packRGB(190 + Math.floor(t * 26), 150 + Math.floor(t * 24), 86 + Math.floor(u * 20));
+  return packRGB(226 + Math.floor(t * 18), 204 + Math.floor(t * 20), 146 + Math.floor(u * 26));
+};
 export const waterColor = () => packRGB(35 + rand(15), 105 + rand(25), 240 + rand(15));
 export const wallColor = () => packRGB(60 + rand(10), 60 + rand(10), 65 + rand(10));
 export const woodColor = () => packRGB(110 + rand(15), 70 + rand(10), 35 + rand(10));
@@ -71,7 +78,15 @@ export const smokeColor = () => {
   return packRGB(s, s, s + 5);
 };
 export const vineColor = () => packRGB(35 + rand(15), 165 + rand(25), 55 + rand(15));
-export const goldColor = () => packRGB(245 + rand(10), 195 + rand(20), 30);
+// Gold dust: a pile reads as metal — shadowed grains, a warm body, bright facets
+// and the odd white-gold glint — instead of one flat saturated yellow.
+export const goldColor = () => {
+  const v = fxRandom(), t = fxRandom();
+  if (v < 0.06) return packRGB(255, 238 + Math.floor(t * 17), 168 + Math.floor(t * 50)); // glint
+  if (v < 0.3) return packRGB(234 + Math.floor(t * 18), 186 + Math.floor(t * 22), 62 + Math.floor(t * 18)); // facet
+  if (v < 0.74) return packRGB(200 + Math.floor(t * 22), 144 + Math.floor(t * 20), 40 + Math.floor(t * 12)); // body
+  return packRGB(146 + Math.floor(t * 26), 98 + Math.floor(t * 18), 28 + Math.floor(t * 10)); // shadowed grain
+};
 export const nitrogenColor = () => packRGB(210 + rand(30), 245, 255);
 export const bloodColor = () => packRGB(160 + rand(50), 12 + rand(18), 25 + rand(12));
 export const slimeColor = () => packRGB(80 + rand(25), 200 + rand(30), 50 + rand(20));
@@ -104,7 +119,8 @@ export const mossColor = () => packRGB(38 + rand(20), 96 + rand(44), 42 + rand(1
 // dry lawn grass — yellow-green blades, lighter than moss so a tuft reads against
 // the dressed dirt surface (and warmer, so it visibly catches fire).
 export const grassColor = () => packRGB(96 + rand(40), 160 + rand(40), 52 + rand(28));
-export const marshGasColor = () => packRGB(148 + rand(30), 164 + rand(30), 84 + rand(24));
+// marsh gas: a dim olive haze (the pocket stays visible without glittering)
+export const marshGasColor = () => packRGB(88 + rand(26), 108 + rand(24), 62 + rand(18));
 // philosopher's dust: rose-gold grains with the occasional white-hot glint
 export const catalystColor = () =>
   fxRandom() < 0.12

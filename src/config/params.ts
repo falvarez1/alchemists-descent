@@ -99,11 +99,15 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Acid]: { name: 'Acid', flowRate: 0.65, corrosiveSpeed: 0.8, bloomWeight: 0.3 },
   [Cell.Fire]: { name: 'Fire', particleLife: 300, upwardSpread: 0.55, bloomWeight: 0.85 },
   [Cell.Smoke]: { name: 'Smoke', floatSpeed: 0.5, dispersion: 0.05, bloomWeight: 0.1 },
-  [Cell.MarshGas]: { name: 'Marsh Gas', floatSpeed: 0.42, dispersion: 0.45, bloomWeight: 0.24 },
+  // bloomWeight 0.24 -> 0.07 (Breathing Works look pass): a pocket reads as a dim
+  // sickly haze you can still see, not a field of glitter competing with threats.
+  [Cell.MarshGas]: { name: 'Marsh Gas', floatSpeed: 0.42, dispersion: 0.45, bloomWeight: 0.07 },
   [Cell.Steam]: { name: 'Steam', bloomWeight: 0.15 },
   [Cell.Ice]: { name: 'Ice', insulationRating: 0.85 },
   [Cell.Metal]: { name: 'Metal', conductivity: 0.95 },
-  [Cell.Gold]: { name: 'Gold Powder', friction: 0.55, densityWeight: 0.98, bloomWeight: 0.15 },
+  // bloomWeight 0.15 -> 0.07 (Breathing Works look pass): gold catches the light
+  // and glints; it is no longer a lamp in every wall.
+  [Cell.Gold]: { name: 'Gold Powder', friction: 0.55, densityWeight: 0.98, bloomWeight: 0.07 },
   [Cell.Blood]: { name: 'Blood', flowRate: 0.55, coagulation: 0.002, conductivity: 0.35 },
   [Cell.Slime]: { name: 'Slime', flowRate: 0.15, bloomWeight: 0.2 },
   [Cell.Ember]: { name: 'Ember', fallChance: 0.4, igniteChance: 0.015, bloomWeight: 0.35 },
