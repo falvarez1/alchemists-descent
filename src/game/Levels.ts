@@ -60,7 +60,7 @@ import { makeLevelRuntime } from '@/game/runtime';
 import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
-import { blocksEntity, Cell, CELL_COUNT, isSoftGrowth } from '@/sim/CellType';
+import { blocksEntity, Cell, CELL_COUNT, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import {
   COLOR_FN,
   bloodColor,
@@ -145,6 +145,8 @@ const WEAVER_LAIR_WEB_JITTER_MAX = 0.12;
 const POPULATION_SPAWN_CLEARANCE = 220;
 const POPULATION_CLEARANCE_STEPS = [POPULATION_SPAWN_CLEARANCE, 150, 80, 0] as const;
 const POPULATION_ATTEMPTS_PER_PASS = 36;
+/** Kinds that may be seeded with their heads under liquid (swimmers, floaters, fliers). */
+const POPULATION_WATER_BREATHERS: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['rillback', 'leviathan', 'wisp', 'bat', 'imp', 'colossus', 'eggs']);
 const ROOST_ATTEMPTS_PER_PASS = 160;
 const VIRTUAL_PICKUP_KINDS = new Set<PickupKind>(PICKUP_KINDS);
 
@@ -2653,12 +2655,15 @@ export class Levels implements LevelsApi {
     const foes = EXTRAS[def.biome].foes;
     const pop = populationForLevel(def, foes);
     const countScale = difficultyMods(ctx.state).enemyCount;
+    // Spine floors roster their bats as roosts (below), not scattered in the air.
+    const spineRoster = def.depth > 0 && !def.branch;
     const report: NonNullable<LevelRuntime['population']> = { planned: {}, placed: {}, skipped: {}, lairs: {} };
     const markSkipped = (kind: EnemyKind): void => {
       report.skipped[kind] = (report.skipped[kind] ?? 0) + 1;
       ctx.telemetry.count(`population.skipped.${def.id}.${kind}`);
     };
     for (const [kind, count] of Object.entries(pop) as Array<[EnemyKind, number]>) {
+      if (spineRoster && kind === 'bat') continue;
       const enemyDef = ctx.enemyCtl.defs[kind];
       const scaled = Math.round(count * countScale);
       report.planned[kind] = scaled;
@@ -2682,13 +2687,24 @@ export class Levels implements LevelsApi {
     }
 
     // Wave F nests — life that implies more life.
-    // Bat roosts: sleeping clusters hanging from cave ceilings.
-    if (def.depth === 0 && foes.bat) {
-      const roosts = 1 + rng.int(2);
+    // Bat roosts: sleeping clusters hanging from cave ceilings. Test arenas roll
+    // their own; a spine roster's `bat` count hangs as broods of up to four.
+    const rosterBats = spineRoster ? Math.round((pop.bat ?? 0) * countScale) : 0;
+    if ((def.depth === 0 && foes.bat) || rosterBats > 0) {
+      const roosts = rosterBats > 0 ? Math.ceil(rosterBats / 4) : 1 + rng.int(2);
+      let batsLeft = rosterBats;
       for (let r = 0; r < roosts; r++) {
         const roost = this.findRoostSpot(ctx, rng, spawn, regions, reachable);
-        if (!roost) continue;
-        const brood = 3 + rng.int(2);
+        const rosterBrood = Math.min(4, batsLeft);
+        batsLeft -= rosterBrood;
+        if (!roost) {
+          for (let b = 0; b < rosterBrood; b++) {
+            report.planned.bat = (report.planned.bat ?? 0) + 1;
+            markSkipped('bat');
+          }
+          continue;
+        }
+        const brood = rosterBats > 0 ? rosterBrood : 3 + rng.int(2);
         report.planned.bat = (report.planned.bat ?? 0) + brood;
         for (let b = 0; b < brood; b++) {
           const bat = this.spawnSeededEnemy(ctx, 'bat', roost.x + (b - 1) * 5, roost.y + 4, rng);
@@ -2765,6 +2781,26 @@ export class Levels implements LevelsApi {
   }
 
   private populationHabitatOptions(ctx: Ctx, kind: EnemyKind): PopulationSpotOptions {
+    const options = this.populationHabitatOptionsFor(ctx, kind);
+    if (POPULATION_WATER_BREATHERS.has(kind)) return options;
+    // Land creatures drown (Enemies.tickBreath): never seed one with its head
+    // under water, however open the flooded cistern looks to the spot finder.
+    const h = ctx.enemyCtl.defs[kind].h;
+    const inner = options.extra;
+    return { ...options, extra: (x, y) => this.headInAir(ctx, x, y, h) && (!inner || inner(x, y)) };
+  }
+
+  private headInAir(ctx: Ctx, x: number, y: number, h: number): boolean {
+    const world = ctx.world;
+    for (const dy of [h - 1, h - 3]) {
+      const hx = Math.floor(x);
+      const hy = Math.floor(y) - dy;
+      if (world.inBounds(hx, hy) && isLiquid(world.types[world.idx(hx, hy)])) return false;
+    }
+    return true;
+  }
+
+  private populationHabitatOptionsFor(ctx: Ctx, kind: EnemyKind): PopulationSpotOptions {
     if (kind === 'rootloper') {
       return {
         attempts: POPULATION_ATTEMPTS_PER_PASS * 3,
@@ -2848,7 +2884,10 @@ export class Levels implements LevelsApi {
         const clearanceSq = clearance * clearance;
         for (let attempt = 0; attempt < ROOST_ATTEMPTS_PER_PASS; attempt++) {
           const x = 40 + rng.int(WIDTH - 80);
-          const y = 50 + rng.int(Math.max(1, HEIGHT - 200));
+          let y = 50 + rng.int(Math.max(1, HEIGHT - 200));
+          // A sample in open air climbs to the ceiling above it (a random point
+          // almost never lands exactly under rock; this finds the roof it is under).
+          for (let up = 0; up < 80 && y > 51 && world.inBounds(x, y - 1) && world.types[world.idx(x, y - 1)] === Cell.Empty; up++) y--;
           const footY = y + 4;
           const dx = x - spawn.x;
           const dy = footY - spawn.y;

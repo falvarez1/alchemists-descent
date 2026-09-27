@@ -1,4 +1,4 @@
-import type { EnemyKind, LevelDef } from '@/core/types';
+import type { BiomeId, EnemyKind, LevelDef } from '@/core/types';
 
 /**
  * The descent: a vertical stack of persistent levels connected by explicit
@@ -75,9 +75,34 @@ export function vaultHostId(expeditionSeed: number): string {
 }
 
 /**
+ * The Breathing Works spine rosters, keyed by the floor's biome (WS-B owns which
+ * biome each floor is). A few habitat predators hold the rooms; CROWDS of cheap
+ * fodder give the chemistry something to chew on (a lit marsh-gas pocket in a
+ * bat roost, a shorted cistern full of eels, a bomber that takes the huddle
+ * with it). Bosses are structure-placed, never rostered. `bat` counts hang as
+ * sleeping roosts of up to four (Levels.placePopulation); `eggs` are clutches.
+ */
+export const SPINE_ROSTERS: Partial<Record<BiomeId, Readonly<Partial<Record<EnemyKind, number>>>>> = {
+  // Floor 1, THE BELLOWS: hand-built; its foes are authored (this roster is unused there).
+  earthen: { weaver: 2, rillback: 2 },
+  // Floor 2, THE ROT GARDENS: gut flora. Slime and acid-slime fodder, egg
+  // clutches that promise more, two bat roosts over the marsh gas.
+  fungal: { weaver: 2, rootloper: 3, rillback: 1, slime: 4, acidslime: 2, eggs: 2, bat: 8 },
+  // Floor 3, THE DROWNED CISTERNS: eels in every pool (short them), spitters on
+  // the shores, frost wisps that ice the water (then shatter what they froze).
+  // The Sunken Leviathan is structure-placed.
+  flooded: { rillback: 6, spitter: 3, wisp: 2, weaver: 1, bat: 4 },
+  // Floor 4, THE KILN HEART: fire-born imps (water, steam and a sump undo
+  // them), bombers that detonate the crowd they die in, golems and stone maws
+  // in the slag. The Kiln Colossus is structure-placed.
+  volcanic: { imp: 5, bomber: 4, golem: 2, stonemaw: 2 },
+};
+
+/**
  * Biome-weighted population: the total count follows the depth curve, but the
  * kind mix comes from the biome's foes table (biomeExtras), with a seasoning
  * of our Wave C kinds (acid slimes, wisps, mages) at the depths they unlock.
+ * Spine floors use their biome's SPINE_ROSTERS entry.
  */
 export function populationForLevel(
   def: LevelDef,
@@ -85,8 +110,10 @@ export function populationForLevel(
 ): Partial<Record<EnemyKind, number>> {
   const depth = def.depth;
   if (depth > 0 && !def.branch) {
-    // A small habitat roster replaces the crowd curve. Species enter through
-    // terrain suited to their bodies; authored elites and bosses remain separate.
+    const roster = SPINE_ROSTERS[def.biome];
+    if (roster) return { ...roster };
+    // Legacy spine floors (biomes the four-floor spine no longer uses) keep the
+    // small habitat roster they had.
     if (depth === 1) return { weaver: 2, rillback: 2 };
     if (depth === 2) return { weaver: 3, rootloper: 4, rillback: 2 };
     if (depth === 3) return { stonemaw: 3, weaver: 2, rillback: 2 };

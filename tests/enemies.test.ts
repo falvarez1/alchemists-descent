@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { LEVELS, populationForLevel } from '@/config/worldgraph';
+import { LEVELS, populationForLevel, SPINE_ROSTERS } from '@/config/worldgraph';
 import { EventBus } from '@/core/events';
 import { Rng } from '@/core/rng';
-import type { Critter, Ctx, Enemy, EnemyDef, EnemySpawnOptions, WeaverLairWeb } from '@/core/types';
+import type { Critter, Ctx, Enemy, EnemyDef, EnemySpawnOptions, LevelDef, WeaverLairWeb } from '@/core/types';
 import { ENEMY_KINDS as BUILDER_ENEMY_KINDS, PATROL_KINDS } from '@/builder/inspectorSchemas';
 import { Enemies, ENEMY_DEFS, enemyLethalCell } from '@/entities/Enemies';
 import { spawnPrefabEnemy } from '@/game/instantiate';
@@ -492,12 +492,24 @@ describe('weaver encounter contract', () => {
     expect(ENEMY_DEFS.stonemaw).toMatchObject({ hp: 150, halfW: 8, h: 10 });
     expect(ENEMY_DEFS.rillback).toMatchObject({ hp: 78, halfW: 7, h: 8 });
 
+    // Spine rosters are keyed by biome (the four-floor Breathing Works spine).
+    const floor = (biome: LevelDef['biome'], depth: number): LevelDef => ({ id: 'x', name: 'X', biome, depth, nextLevelId: null });
     expect(populationForLevel(LEVELS.d1, EXTRAS.earthen.foes)).toEqual({ weaver: 2, rillback: 2 });
-    expect(populationForLevel(LEVELS.d2, EXTRAS.fungal.foes)).toEqual({ weaver: 3, rootloper: 4, rillback: 2 });
-    expect(populationForLevel(LEVELS.d4, EXTRAS.flooded.foes).rillback).toBe(5);
+    expect(populationForLevel(floor('fungal', 2), EXTRAS.fungal.foes)).toEqual(SPINE_ROSTERS.fungal);
+    expect(populationForLevel(floor('flooded', 3), EXTRAS.flooded.foes)).toEqual(SPINE_ROSTERS.flooded);
+    expect(populationForLevel(floor('volcanic', 4), EXTRAS.volcanic.foes)).toEqual(SPINE_ROSTERS.volcanic);
+    // Rot Gardens fodder, Drowned Cistern eels, Kiln Heart imps and bombers.
+    expect(SPINE_ROSTERS.fungal).toMatchObject({ slime: 4, acidslime: 2, bat: 8, eggs: 2 });
+    expect(SPINE_ROSTERS.flooded?.rillback).toBe(6);
+    expect(SPINE_ROSTERS.volcanic).toMatchObject({ imp: 5, bomber: 4, golem: 2 });
+    // No spine roster places a boss: the Leviathan and the Colossus are structure-placed.
+    for (const roster of Object.values(SPINE_ROSTERS)) {
+      expect(roster?.leviathan).toBeUndefined();
+      expect(roster?.colossus).toBeUndefined();
+    }
+    // Legacy biomes the spine no longer uses keep their habitat roster.
     expect(populationForLevel(LEVELS.d5, EXTRAS.timber.foes)).toEqual({ weaver: 4, rootloper: 4, stonemaw: 2 });
     expect(populationForLevel(LEVELS.d6, EXTRAS.crystal.foes).stonemaw).toBe(4);
-    expect(populationForLevel(LEVELS.d8, EXTRAS.volcanic.foes).stonemaw).toBe(4);
     expect(LEVELS['weaver-test']).toMatchObject({
       id: 'weaver-test',
       biome: 'fungal',
@@ -522,8 +534,10 @@ describe('weaver encounter contract', () => {
       if (def.branch) {
         expect(base + reserved).toBeLessThanOrEqual(70);
       } else {
+        // Predators stay few; the fodder crowd (bats hang in roosts) keeps a floor under ~24.
         expect(base).toBeGreaterThanOrEqual(4);
-        expect(base).toBeLessThanOrEqual(12);
+        expect(base).toBeLessThanOrEqual(24);
+        expect(base - (pop.bat ?? 0)).toBeLessThanOrEqual(16);
       }
     }
   });
