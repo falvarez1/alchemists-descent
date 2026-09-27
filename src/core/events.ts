@@ -1,4 +1,5 @@
 import type { CardId, TimeControlStatus } from '@/core/types';
+import type { AlchemyKillInfo, RunSummary } from '@/core/run';
 
 /**
  * Minimal synchronous typed event bus.
@@ -94,6 +95,16 @@ export interface EventMap {
   refugePing: undefined;
   /** The Kiln Colossus is slain: the expedition is complete. */
   runComplete: { gold: number };
+  /** A creature died to a material/physical consequence (combat/AlchemyKills). */
+  alchemyKill: AlchemyKillInfo;
+  /** The run is over (victory, out of return phials, or replaced). Summary UI, meta profile and share text listen. */
+  runEnded: RunSummary;
+  /** Return phials changed (death spent one, a refuge/Sanctum restored one). */
+  phialsChanged: { phials: number; max: number; reason: 'start' | 'death' | 'refuge' | 'sanctum' | 'restore' };
+  /** Something asked for the last seconds of play to be saved as a clip. */
+  clipRequested: { reason: 'hotkey' | 'death' | 'summary' | 'button' };
+  /** A clip finished encoding; `url` is an object URL the UI may offer for download. */
+  clipSaved: { url: string; filename: string; bytes: number; frames: number; durationMs: number };
   /** Crawler wants to stand but the ceiling says no — HUD CRAMPED glyph. */
   crampedChanged: { cramped: boolean };
   /** A cast was refused for lack of mana (HUD flashes the mana bar). */

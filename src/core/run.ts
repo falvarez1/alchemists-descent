@@ -1,0 +1,68 @@
+import type { EnemyKind } from '@/core/types';
+
+/**
+ * Cross-workstream run contracts (Breathing Works overhaul). Types only —
+ * the run structure (game/RunDirector, meta profile), alchemical kills
+ * (combat/AlchemyKills), clips (app/Clips) and audio all meet here so none
+ * of them imports another's concrete class.
+ */
+
+/**
+ * How the world — not the wand directly — finished a creature. A kill is
+ * "alchemical" when the killing blow came from a material or physical
+ * consequence the player set up: the grid did it.
+ */
+export type AlchemyCause =
+  | 'burned'      // fire / ember / burning status
+  | 'rendered'    // lava contact
+  | 'steeped'     // steam / boiling water
+  | 'shorted'     // electricity carried by a conductor (wet body, water, metal)
+  | 'drowned'     // out of breath in liquid
+  | 'dissolved'   // acid
+  | 'shattered'   // frozen, then broken
+  | 'flattened'   // crushed by falling debris, a rigid body or a collapse
+  | 'detonated'   // gunpowder, marsh gas or another explosion the player did not cast
+  | 'poisoned'    // toxic material
+  | 'impaled';    // kicked or knocked into a hazard at speed
+
+/** Where a run ended. `abandoned` = the player started a new run over it. */
+export type RunOutcome = 'victory' | 'fallen' | 'abandoned';
+
+/** Starting kits. Unlocked across runs by the meta profile. */
+export type KitId = 'spark' | 'frost' | 'ember' | 'storm';
+
+/** What a finished run hands the summary screen, the share text and the meta profile. */
+export interface RunSummary {
+  outcome: RunOutcome;
+  seed: number;
+  /** YYYY-MM-DD when this was the daily seeded descent; null for a normal run. */
+  daily: string | null;
+  kit: KitId;
+  /** 1-based floor reached (the floor the run ended on). */
+  floor: number;
+  floorName: string;
+  floorsTotal: number;
+  /** Real play time, excluding pauses and menus. */
+  timeMs: number;
+  kills: number;
+  alchemicalKills: number;
+  /** Longest chain of alchemical kills inside one chain window. */
+  bestChain: number;
+  deaths: number;
+  gold: number;
+  cardsFound: number;
+  /** Short epitaph line: cause of the final death, or the victory line. */
+  epitaph: string;
+}
+
+/** One alchemical kill, as announced to callouts, audio, stats and clips. */
+export interface AlchemyKillInfo {
+  kind: EnemyKind;
+  cause: AlchemyCause;
+  x: number;
+  y: number;
+  /** 1 for a lone kill; n for the nth alchemical kill inside the chain window. */
+  chain: number;
+  /** Extra gold the kill paid on top of the creature's normal bounty. */
+  bonusGold: number;
+}
