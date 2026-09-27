@@ -863,13 +863,25 @@ export function placeStructures(
         w.colors[i] = stoneColor();
       }
     }
-    // lava moats at the arena edges
+    // lava moats at the arena edges, SUNK into the floor band: the pit's rim
+    // is the floor's own stone, so the lava is contained. (Stamped on top of
+    // the floor, as it used to be, it ran out into a one-cell burning film
+    // across most of the arena.) Surface flush with the floor; a stone keel
+    // below keeps a full-depth pit from reaching the rock underneath.
     for (const side of [-1, 1]) {
       for (let dx = 26; dx <= 34; dx++) {
-        for (let dy = 15; dy <= 17; dy++) {
-          const i = w.idx(cx + side * dx, cy + dy);
-          w.types[i] = Cell.Lava;
-          w.colors[i] = packRGB(252, 60 + Math.floor(rng.next() * 60), 8);
+        for (let dy = 18; dy <= 22; dy++) {
+          const X = cx + side * dx,
+            Y = cy + dy;
+          if (!w.inBounds(X, Y)) continue;
+          const i = w.idx(X, Y);
+          if (dy <= 20) {
+            w.types[i] = Cell.Lava;
+            w.colors[i] = packRGB(252, 60 + Math.floor(rng.next() * 60), 8);
+          } else {
+            w.types[i] = Cell.Stone;
+            w.colors[i] = stoneColor();
+          }
         }
       }
     }
