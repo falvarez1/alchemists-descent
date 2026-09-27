@@ -3,8 +3,10 @@ import {
   collectOwnedCards,
   requestCardOffer,
   TOME_REWARD_POOL,
+  withDiscoveredCards,
 } from '@/combat/wands/rewardPools';
 import { ALL_CARD_IDS } from '@/combat/wands/cards';
+import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
 import { makePickup, POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
 import type { CardId, Ctx, Pickup, PickupsApi } from '@/core/types';
 import { blocksEntity } from '@/sim/CellType';
@@ -198,9 +200,10 @@ export class Pickups implements PickupsApi {
       return;
     }
 
-    const pool = fixedCard && !TOME_REWARD_POOL.includes(fixedCard)
-      ? [fixedCard, ...TOME_REWARD_POOL]
-      : TOME_REWARD_POOL;
+    // Every card discovered in an earlier run joins the tome's pool; the
+    // offer still prefers pages this run does not own yet.
+    const base = withDiscoveredCards(TOME_REWARD_POOL, getDiscoveredCards());
+    const pool = fixedCard && !base.includes(fixedCard) ? [fixedCard, ...base] : base;
     const cards = buildCardOffer(pool, collectOwnedCards(ctx.wands), {
       preferred: fixedCard ? [fixedCard] : [],
       ensureKind: 'projectile',

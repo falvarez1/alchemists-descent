@@ -6,6 +6,7 @@ import type { CreatureBody, CreatureMind, PlantedFoot } from '@/creatures/types'
 import type { CreatureExpression } from '@/creatures/expression';
 import type { CreatureRig } from '@/creatures/rig/types';
 import type { PlayerCostume } from '@/entities/playerCostume';
+import type { KitId, RunSummary } from '@/core/run';
 
 /* ============================================================
  * Entity data
@@ -1142,6 +1143,10 @@ export interface RunStartConfig {
   kit?: RunTestKitConfig;
   /** Normal campaign only: resume local expedition save when one exists. */
   continueSave?: boolean;
+  /** Fresh-loadout runs: the starting kit (Breathing Works). Defaults to spark. */
+  starterKit?: KitId;
+  /** YYYY-MM-DD when this is the date-seeded daily descent. */
+  daily?: string | null;
 }
 
 export interface RunStartResult {
@@ -2499,6 +2504,12 @@ export interface WandsApi {
   castActionAt(ctx: Ctx, action: CastAction, x: number, y: number, angle: number, options?: CastActionExecutionContext): void;
   /** Start-run support: restore the launch starter wands/collection in place. */
   resetLoadout(): void;
+  /**
+   * Fresh-run kits: seat these cards on wand I and wand II (default frames)
+   * and make `collection` the whole satchel. No grant events — a kit is not
+   * a discovery.
+   */
+  applyStarterLoadout(wands: readonly [readonly CardId[], readonly CardId[]], collection: readonly CardId[]): void;
   /** QA/debug command: upgrade both wands and expose every card. */
   grantReviewLoadout(): void;
   /** QA/debug play HUD: randomize review wands without opening the bench. */
@@ -3007,6 +3018,102 @@ export interface DebugControl {
   update(): void;
 }
 
+/* ============================================================
+ * Breathing Works: the run — phials, stats, the ledger, the meta profile
+ * ============================================================ */
+
+/** A best result on one daily date. */
+export interface RunDailyBest {
+  floor: number;
+  timeMs: number;
+  victory: boolean;
+}
+
+/** The run's own slice of the expedition save (absent in older saves). */
+export interface RunSaveState {
+  v: 1;
+  phials: number;
+  kit: KitId;
+  daily: string | null;
+  seed: number;
+  timeMs: number;
+  kills: number;
+  alchemicalKills: number;
+  bestChain: number;
+  deaths: number;
+  cardsFound: number;
+  maxFloor: number;
+  leviathanSlain: boolean;
+  /** False for debug-tainted runs: they play out but never touch the meta profile. */
+  recorded: boolean;
+}
+
+/** A finished run, as the ledger screen reads it. */
+export interface RunResult {
+  summary: RunSummary;
+  /** Kits this run unlocked (floor reached, Leviathan, victory). */
+  unlocked: KitId[];
+  dailyBest: RunDailyBest | null;
+  newDailyBest: boolean;
+  newBestFloor: boolean;
+  /** False for debug-tainted runs (nothing was recorded). */
+  recorded: boolean;
+  /** False when the run was replaced by a new one: record it, show nothing. */
+  present: boolean;
+}
+
+/** What the title screen and the ledger need from the meta profile. */
+export interface RunMetaView {
+  unlockedKits: KitId[];
+  lastKit: KitId;
+  workshopUnlocked: boolean;
+  runsEnded: number;
+  bestFloor: number;
+  victories: number;
+  /** Today's UTC date key and this player's best on it. */
+  today: string;
+  todayBest: RunDailyBest | null;
+}
+
+export interface RunBeginOptions {
+  seed: number;
+  kit: KitId;
+  daily: string | null;
+  /** Normal campaign runs are tracked (phials, ledger); test runs are not. */
+  tracked: boolean;
+}
+
+/**
+ * The run lifecycle (game/RunDirector). Levels tells it when a run begins or
+ * resumes and asks it for its save slice; the Sanctum and the refuge pour
+ * phials back; menus start, abandon and read runs through it.
+ */
+export interface RunApi {
+  /** A tracked run is in progress (not over). */
+  readonly active: boolean;
+  /** The tracked run has ended; its ledger is waiting (or showing). */
+  readonly over: boolean;
+  readonly phials: number;
+  readonly maxPhials: number;
+  readonly kit: KitId;
+  readonly daily: string | null;
+  /** The last finished run, for the ledger. */
+  readonly lastResult: RunResult | null;
+  beginRun(ctx: Ctx, opts: RunBeginOptions): void;
+  snapshotForSave(): RunSaveState | null;
+  restoreFromSave(ctx: Ctx, save: RunSaveState | undefined): void;
+  /** Fixed-tick bookkeeping: play time, kills, the refuge's warmth. */
+  update(ctx: Ctx): void;
+  /** Pour one phial back (max 3); false when already full or no run. */
+  restorePhial(ctx: Ctx, reason: 'refuge' | 'sanctum'): boolean;
+  /** End the run by choice; the ledger follows. */
+  abandon(ctx: Ctx): void;
+  /** A fresh run: a new seed (or today's daily seed) with the chosen kit. */
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean }): RunStartResult;
+  metaView(): RunMetaView;
+  chooseKit(kit: KitId): void;
+}
+
 export interface Ctx {
   /** Optional authored spectacle director; absent in small test contexts. */
   contraption?: {
@@ -3057,4 +3164,6 @@ export interface Ctx {
   hints: HintApi;
   debug: DebugControl;
   time: TimeControlApi;
+  /** The run lifecycle; absent in small test contexts. */
+  run?: RunApi;
 }

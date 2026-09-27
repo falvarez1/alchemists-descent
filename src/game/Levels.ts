@@ -17,6 +17,8 @@ import { GEN_TUNE_DEFAULT_SIGNATURE, GEN_VERSION, genTuneSignature } from '@/con
 import { difficultyMods } from '@/config/difficulty';
 import { FLOORS_TOTAL, LEVELS, START_LEVEL, floorDisplayName, floorOf, populationForLevel } from '@/config/worldgraph';
 import { createLivingState } from '@/game/LivingExpedition';
+import { DEFAULT_KIT, KIT_DEFS } from '@/content/kits';
+import type { KitId } from '@/core/run';
 import { restoreFauna, restoreLiving } from '@/game/persistence/ecology';
 import { Rng, hashSeed, randomSeed, fnv1aString } from '@/core/rng';
 import { base64ToBytes, bytesToBase64, rleDecodeExact, rleEncode } from '@/core/rle';
@@ -39,6 +41,7 @@ import type {
   PrefabEnemy,
   CardId,
   RunLoadoutPreset,
+  RunSaveState,
   RunStartConfig,
   RunStartResult,
   RunStatus,
@@ -128,8 +131,6 @@ const WAYSTONE_HEAT_GRACE = 3;
 const WAYSTONE_FIRE_CARDS: readonly CardId[] = ['flame', 'emberstorm', 'meteor'];
 /** Cells: walking this close to an unlit waystone raises the help prompt once. */
 const WAYSTONE_PROMPT_RADIUS = 26;
-/** D1 starter water: enough for a first experiment, below a full flask. */
-const FRESH_STARTER_WATER_CELLS = 300;
 /** Campaign Weaver lair webs are background dressing; the authored test arena can go larger. */
 const WEAVER_LAIR_WEB_RADIUS_MIN = 24;
 const WEAVER_LAIR_WEB_RADIUS_MAX = 34;
@@ -293,6 +294,8 @@ export interface ExpeditionSave {
   wands?: WandRuntimeSnapshot;
   /** Material flask belt inventory. Absent in v1 legacy saves. */
   flasks?: FlaskInventorySave;
+  /** The run's phials and ledger (RunDirector). Absent in saves from before runs. */
+  run?: RunSaveState;
   levels: SavedLevelBlob[];
 }
 
@@ -818,7 +821,8 @@ export class Levels implements LevelsApi {
     ) {
       ctx.state.debugGodMode = true;
     }
-    this.applyLoadoutPreset(ctx, preset);
+    const starterKit: KitId = config.starterKit ?? DEFAULT_KIT;
+    this.applyLoadoutPreset(ctx, preset, starterKit);
     // Difficulty cushion: scale the loadout's max HP, then top off (the kit can
     // still override below). Level 3 = ×1.0, so the shipped game is untouched.
     const hpScale = difficultyMods(ctx.state).playerHp;
@@ -827,6 +831,8 @@ export class Levels implements LevelsApi {
       ctx.player.hp = ctx.player.maxHp;
     }
     if (config.kit) this.applyTestKit(ctx, config.kit);
+    // The run begins before the first checkpoint so the save carries its phials.
+    ctx.run?.beginRun(ctx, { seed, kit: starterKit, daily: config.daily ?? null, tracked: mode === 'normal' });
     this.enterLevel(ctx, levelId);
 
     const runtime = this.current;
@@ -902,6 +908,12 @@ export class Levels implements LevelsApi {
     }
     if (this.tryResumeExpedition(ctx)) return;
     this.expeditionSeed = ctx.state.worldSeed >>> 0;
+    ctx.run?.beginRun(ctx, {
+      seed: this.expeditionSeed,
+      kit: DEFAULT_KIT,
+      daily: null,
+      tracked: ctx.state.playtestSource === null,
+    });
     this.enterLevel(ctx, START_LEVEL);
   }
 
@@ -1155,6 +1167,8 @@ export class Levels implements LevelsApi {
     if (!this.currentId || this.currentId === 'custom') return;
     if (!LEVELS[this.currentId]) return;
     if (ctx.state.playtestSource !== null) return;
+    // A finished run has nothing left to resume; its save was retired.
+    if (ctx.run?.over) return;
     if (this.debugTainted(ctx)) return;
     const currentId = this.currentId;
     // Sync the live hostile roster into the current runtime before reading it.
@@ -1199,6 +1213,7 @@ export class Levels implements LevelsApi {
       loadout: ctx.wands.snapshotLoadout(),
       wands: this.snapshotWandsForSave(ctx),
       flasks: this.snapshotFlasks(ctx),
+      run: ctx.run?.snapshotForSave() ?? undefined,
       levels: blobs,
     };
     if (asynchronous) {
@@ -1377,12 +1392,15 @@ export class Levels implements LevelsApi {
     ctx.wands.resetLoadout();
   }
 
-  private applyLoadoutPreset(ctx: Ctx, preset: RunLoadoutPreset): void {
+  private applyLoadoutPreset(ctx: Ctx, preset: RunLoadoutPreset, kitId: KitId = DEFAULT_KIT): void {
     ctx.wands.resetLoadout();
     if (preset === 'fresh') {
-      ctx.flask.setSlot(0, Cell.Water, FRESH_STARTER_WATER_CELLS);
-      ctx.flask.setSlot(1, Cell.Nitrogen, 180);
-      ctx.flask.setSlot(2, Cell.Oil, 180);
+      // A fresh run starts with its kit and nothing else: previously
+      // discovered cards feed the reward pools, never the starting hand.
+      const kit = KIT_DEFS[kitId] ?? KIT_DEFS[DEFAULT_KIT];
+      ctx.wands.applyStarterLoadout(kit.wands, kit.collection);
+      ctx.flask.clearSlots();
+      kit.flasks.forEach((flask, index) => ctx.flask.setSlot(index, flask.material, flask.count));
       ctx.flask.selectSlot(0);
       return;
     }
@@ -2065,6 +2083,7 @@ export class Levels implements LevelsApi {
         ctx.wands.markDepthGrantsThrough(LEVELS[save.currentId].depth);
       }
       this.restoreFlasks(ctx, save.flasks);
+      ctx.run?.restoreFromSave(ctx, save.run);
 
       this.checkpointSaveSuppression++;
       try {

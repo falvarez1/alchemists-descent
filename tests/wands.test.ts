@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
 import { compileWand } from '@/combat/wands/compiler';
+import { DEPTH_PROJECTILE_POOL } from '@/combat/wands/rewardPools';
 import { buildWandSentenceView, nextWandSentence } from '@/combat/wands/sentenceView';
 import { REVIEW_WAND_LOADOUTS, WAND_FRAMES, WandSystem } from '@/combat/wands/WandSystem';
 import { TRIGGERED, TRIGGER_SOURCE_SPREAD } from '@/combat/wands/projectileMarks';
@@ -765,11 +766,11 @@ describe('WandSystem metaprogression', () => {
     vi.unstubAllGlobals();
   });
 
-  it('seeds fresh-run collection from discovered cards without duplicating starter wand cards', () => {
+  it('starts fresh runs with the kit only; discovered cards feed the reward pools', () => {
     const store = new Map<string, string>([
       [
         'alchemists-descent-card-discovery-v1',
-        JSON.stringify({ version: 1, cards: ['flame', 'spark', 'dig', 'blackhole'] }),
+        JSON.stringify({ version: 1, cards: ['flame', 'spark', 'dig', 'blackhole', 'vitrify'] }),
       ],
     ]);
     vi.stubGlobal('localStorage', {
@@ -785,19 +786,26 @@ describe('WandSystem metaprogression', () => {
     } as unknown as Ctx;
     const wands = new WandSystem(ctx);
 
-    expect(wands.collection.slice(0, 2)).toEqual(['double', 'speed']);
-    expect(wands.collection).toContain('flame');
-    expect(wands.collection).toContain('blackhole');
-    expect(wands.collection).not.toContain('spark');
-    expect(wands.collection).not.toContain('dig');
-
+    // Breathing Works: no carried-over hand.
+    expect(wands.collection).toEqual(['double', 'speed']);
     wands.collection.length = 0;
     wands.resetLoadout();
+    expect(wands.collection).toEqual(['double', 'speed']);
 
-    expect(wands.collection).toContain('flame');
-    expect(wands.collection).toContain('blackhole');
-    expect(wands.collection).not.toContain('spark');
-    expect(wands.collection).not.toContain('dig');
+    // A kit seats its own cards and satchel, nothing else.
+    wands.applyStarterLoadout([['frostshard'], ['dig']], ['spark', 'shattercrit']);
+    expect(wands.wands[0].cards).toEqual(['frostshard', null, null]);
+    expect(wands.wands[1].cards).toEqual(['dig', null, null, null]);
+    expect(wands.collection).toEqual(['spark', 'shattercrit']);
+
+    // With every depth-pool card already owned, the only unowned page left is
+    // the one this player discovered in an earlier run: the grant finds it.
+    wands.collection.length = 0;
+    wands.collection.push(...DEPTH_PROJECTILE_POOL, 'spark');
+    const granted: string[] = [];
+    ctx.events.on('cardGranted', ({ id }) => granted.push(id));
+    ctx.events.emit('levelChanged', { depth: 2, name: 'THE ROT GARDENS' });
+    expect(granted).toEqual(['vitrify']);
   });
 
   it('debug shuffle rebuilds review wands from the canonical card catalog', () => {

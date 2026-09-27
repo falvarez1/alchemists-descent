@@ -78,6 +78,7 @@ import { WorldGen } from '@/world/CaveGenerator';
 import { SANDBOX_FOCUS, stampSandboxArena } from '@/world/sandboxArena';
 import { reseedTickStreams } from '@/core/simRandom';
 import { DeathCinema } from '@/game/DeathCinema';
+import { RunDirector } from '@/game/RunDirector';
 
 function initialRenderBackendOverride(): RenderBackendMode | null {
   if (typeof window === 'undefined') return null;
@@ -219,6 +220,11 @@ export class Game {
     const levels = new Levels(ctx);
     ctx.levels = levels;
     this.disposables.push(levels);
+    // The run lifecycle (phials, ledger, meta profile). Subscribes before the
+    // HUD so its counts are settled when the death screen reads them.
+    const run = new RunDirector(ctx);
+    ctx.run = run;
+    this.disposables.push(run);
     const wands = new WandSystem(ctx);
     ctx.wands = wands;
     this.disposables.push(wands);
@@ -591,6 +597,7 @@ export class Game {
         // The descent replaced wave survival (Wave B): levels own population,
         // transitions, waystones, and the explored mask.
         ctx.levels.update(ctx);
+        ctx.run?.update(ctx);
         ctx.pickups.update(ctx);
         ctx.mechanisms.update(ctx);
         ctx.contraption?.update();

@@ -19,7 +19,7 @@ import { getDiscoveredCards, markCardDiscovered } from './cardDiscovery';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 import { BOUNCE_COUNTS, INFUSED, INFUSE_TRAIL_BUDGET, TRIGGERED, TRIGGER_SOURCE_SPREAD, ensureProjectileMods } from './projectileMarks';
 import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
-import { buildCardOffer, collectOwnedCards, DEPTH_PROJECTILE_POOL, WAYSTONE_MOD_POOL } from './rewardPools';
+import { buildCardOffer, collectOwnedCards, DEPTH_PROJECTILE_POOL, WAYSTONE_MOD_POOL, withDiscoveredCards } from './rewardPools';
 import { REVIEW_WAND_LOADOUTS, WAND_FRAMES } from '@/combat/wands/wandCatalog';
 import { entityRandom } from '@/core/simRandom';
 import { getAimGuide } from '@/combat/AimGuide';
@@ -97,16 +97,19 @@ const REVIEW_WAND_CARDS: [CardId[], CardId[]] = [
 ];
 
 const STARTING_COLLECTION: CardId[] = ['double', 'speed'];
-const STARTER_WAND_CARDS = new Set<CardId>(['spark', 'dig']);
 
+/**
+ * The launch satchel. Breathing Works: a fresh run starts with its kit only —
+ * cards discovered in earlier runs join the reward pools (see
+ * rewardPoolWithDiscoveries), never the starting hand.
+ */
 function startingCollection(): CardId[] {
-  const discovered = new Set(getDiscoveredCards());
-  const collection = [...STARTING_COLLECTION];
-  for (const id of ALL_CARD_IDS) {
-    if (!discovered.has(id) || STARTER_WAND_CARDS.has(id) || collection.includes(id)) continue;
-    collection.push(id);
-  }
-  return collection;
+  return [...STARTING_COLLECTION];
+}
+
+/** A reward pool widened by every card discovered in any earlier run. */
+function rewardPoolWithDiscoveries(pool: readonly CardId[]): CardId[] {
+  return withDiscoveredCards(pool, getDiscoveredCards());
 }
 
 function shuffledCards(cards: readonly CardId[]): CardId[] {
@@ -753,7 +756,9 @@ export class WandSystem implements WandsApi {
   /* ---------------- collection + bench ---------------- */
 
   private grantRandomCardFromPool(pool: readonly CardId[]): void {
-    const card = buildCardOffer(pool, collectOwnedCards(this), { count: 1 })[0] ?? 'spark';
+    // Unowned cards first (buildCardOffer), drawn from the pool plus every
+    // card this player has discovered in earlier runs.
+    const card = buildCardOffer(rewardPoolWithDiscoveries(pool), collectOwnedCards(this), { count: 1 })[0] ?? 'spark';
     this.grantCard(this.ctx, card);
   }
 
@@ -916,6 +921,28 @@ export class WandSystem implements WandsApi {
     this.flameBurst = 0;
     this.flameBurstAction = null;
     this.lastDryFire = -99;
+    this._active = 0;
+    this.ctx.events.emit('wandChanged');
+  }
+
+  applyStarterLoadout(wands: readonly [readonly CardId[], readonly CardId[]], collection: readonly CardId[]): void {
+    const frames = [WAND_FRAMES.oak, WAND_FRAMES.bone] as const;
+    for (let i = 0; i < this.wands.length; i++) {
+      const wand = this.wands[i];
+      const frame = frames[i];
+      wand.frame = frame;
+      wand.cards.length = 0;
+      wand.cards.push(...wands[i].filter(isCardId).slice(0, frame.capacity));
+      while (wand.cards.length < frame.capacity) wand.cards.push(null);
+      wand.mana = frame.manaMax;
+      wand.cooldown = 0;
+      wand.castIndex = 0;
+      delete wand.cooldownMax;
+      this.compiled[i as 0 | 1] = null;
+    }
+    this.collection.length = 0;
+    this.collection.push(...collection.filter(isCardId));
+    this.infuserGranted = this.collection.includes('infuser') || this.wands.some((wand) => wand.cards.includes('infuser'));
     this._active = 0;
     this.ctx.events.emit('wandChanged');
   }

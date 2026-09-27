@@ -1133,6 +1133,8 @@ export class PlayerControl implements PlayerControlApi {
   /** Original: respawnPlayer() — lines 1608-1619; descent rules added in Wave B. */
   respawn(): void {
     const ctx = this.ctx;
+    // No phial, no return: a finished run's only way on is its ledger.
+    if (ctx.run?.over) return;
     this.clearCorpse(ctx);
     this.releaseVine(ctx);
 
