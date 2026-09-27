@@ -114,6 +114,16 @@ async function cachedBinary(kind, payload, ext, estimate, budget, run) {
 const extOf = (fmt) => (fmt.startsWith('mp3') ? 'mp3' : fmt.startsWith('opus') ? 'opus' : fmt.startsWith('pcm') ? 'pcm' : 'bin');
 
 /**
+ * The cached response file for a sound-effect request, or null when it has not
+ * been bought yet. Free: lets a generator choose among takes already paid for.
+ */
+export function cachedSoundEffectFile({ text, durationSeconds, promptInfluence = 0.4, loop = false, outputFormat = 'mp3_44100_192', variant = 0 }) {
+  const payload = { text, durationSeconds: durationSeconds ?? null, promptInfluence, loop, outputFormat, variant };
+  const file = join(CACHE_DIR, `${cacheKey('sfx', payload)}.${extOf(outputFormat)}`);
+  return existsSync(file) ? file : null;
+}
+
+/**
  * Text-to-sound-effect. `variant` only salts the cache key so several takes of
  * one prompt can be generated (the API itself is non-deterministic).
  */
