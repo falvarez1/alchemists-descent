@@ -104,7 +104,7 @@ const GALLERY_NOOP_AUDIO: AudioApi = (() => {
     jump: s, squelch: s, flame: s, dig: s, levitate: s, implode: s,
     setListener: s, at: (_x: number, _y: number, fn: () => void) => fn(), duck: s,
     chitin: s, chirr: s, slither: s, creak: s, grind: s, squeak: s, hop: s, deathCry: s,
-    finisherWhip: s, shellCrack: s, stinger: s, setVolume: s,
+    finisherWhip: s, shellCrack: s, stinger: s, setVolume: s, sfx: s, creature: s,
   };
 })();
 

@@ -6,7 +6,11 @@ import type { CardId, WandFrame } from '@/core/types';
  * path.
  */
 export const WAND_FRAMES: Record<string, WandFrame> = {
-  oak: { id: 'oak', name: 'Oak Sprig', capacity: 3, castDelay: 14, recharge: 30, manaMax: 90, manaRegen: 0.5, spread: 0.02 },
+  // Oak recharge 30 -> 22 (2026-09-27, deliberate balance change): the starting
+  // Spark cycle drops from 44 ticks (0.73 s) to 36 (0.60 s), +22% sustained
+  // Spark DPS (18 dmg: 24.5 -> 30 dps). QA found the starter "plinky"; 10 mana
+  // per 36 ticks (16.7/s) still sits well under the 30/s regen. See FEEL.md §5.
+  oak: { id: 'oak', name: 'Oak Sprig', capacity: 3, castDelay: 14, recharge: 22, manaMax: 90, manaRegen: 0.5, spread: 0.02 },
   bone: { id: 'bone', name: 'Bone Crook', capacity: 4, castDelay: 9, recharge: 45, manaMax: 120, manaRegen: 0.65, spread: 0.05 },
   brass: { id: 'brass', name: 'Brass Injector', capacity: 5, castDelay: 6, recharge: 60, manaMax: 160, manaRegen: 0.8, spread: 0.08 },
   void: { id: 'void', name: 'Void Lattice', capacity: 5, castDelay: 16, recharge: 20, manaMax: 220, manaRegen: 1.1, spread: 0 },

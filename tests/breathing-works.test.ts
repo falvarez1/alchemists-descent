@@ -15,7 +15,7 @@ function fixture(seed = 777) {
   const noop = (): void => undefined;
   const world = new World();
   const ctx = { world, state: { mode: 'play', frameCount: 0 }, player: { x: 170, y: 314, vx: 0, dead: false, hp: 70, maxHp: 110, grounded: true },
-    enemies: [], events: new EventBus(), fx: { screenShake: 0 }, audio: { tone: noop, groan: noop, zap: noop, bubble: noop, brazier: noop,
+    enemies: [], events: new EventBus(), fx: { screenShake: 0 }, audio: { sfx: () => undefined, creature: () => undefined, tone: noop, groan: noop, zap: noop, bubble: noop, brazier: noop,
       doorGrind: noop, gong: noop, keyJingle: noop, noiseBurst: noop, at: (_x: number, _y: number, fn: () => void) => fn() },
     particles: { spawn: noop, burst: noop } } as unknown as Ctx;
   const generated = generateBreathingWorks(ctx, seed);

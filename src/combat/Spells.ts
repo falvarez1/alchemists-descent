@@ -128,7 +128,7 @@ export class Spells implements SpellsApi {
       }
     }
     this.ctx.particles.burst(cx, cy - 4, 8, null, stoneColor, 1.2, { grav: 0.08 });
-    this.ctx.audio.dig();
+    this.ctx.audio.sfx('spell.conjure', cx, cy);
   }
 
   private castScatter(x: number, y: number, angle: number, mul = 1): void {
@@ -149,13 +149,12 @@ export class Spells implements SpellsApi {
         mul,
       });
     }
-    this.ctx.audio.zap();
-    this.ctx.audio.noiseBurst(0.06, 800, 0.05);
+    this.ctx.audio.sfx('spell.spark.cast');
   }
 
   private castVitriolSpray(x: number, y: number, angle: number, carryVx = 0): void {
     const sp = this.ctx.params.spells.vitriol;
-    this.ctx.audio.flame();
+    this.ctx.audio.sfx('spell.vitriol.loop');
     for (let j = 0; j < 3; j++) {
       const spreadA = angle + (entityRandom() - 0.5) * sp.spread!;
       const speed = 3.0 + entityRandom() * 2.0;
@@ -174,7 +173,7 @@ export class Spells implements SpellsApi {
 
   private castEmberStorm(x: number, y: number, angle: number): void {
     const sp = this.ctx.params.spells.emberstorm;
-    this.ctx.audio.flame();
+    this.ctx.audio.sfx('spell.emberstorm');
     for (let j = 0; j < sp.count!; j++) {
       const ea = angle + (entityRandom() - 0.5) * 0.55;
       const speed = 2.6 + entityRandom() * 2.2;
@@ -209,7 +208,7 @@ export class Spells implements SpellsApi {
             player.vx = 0; player.vy = 0; player.fx = 0; player.fy = 0;
             player.invuln = Math.max(player.invuln, 25);
             this.ctx.particles.burst(player.x, player.y - 7, 22, null, () => packRGB(225, 170, 255), 2.9, { glow: 2.6, grav: -0.01 });
-            this.ctx.audio.zap();
+            this.ctx.audio.sfx('player.teleport');
             return true;
           }
         }
@@ -233,7 +232,7 @@ export class Spells implements SpellsApi {
     if (player.spell === 'bolt') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'bolt', life: PROJECTILE_LIFE.bolt, age: 0, charging: false, hostile: false });
-      this.ctx.audio.zap();
+      this.ctx.audio.sfx('spell.spark.cast');
     } else if (player.spell === 'scatter') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       this.castScatter(tip.x, tip.y, a);
@@ -241,7 +240,7 @@ export class Spells implements SpellsApi {
       // Worms-style: holding charges the throw; release happens on mouseup
       if (input.bombCharge < 0) input.bombCharge = 0;
       else input.bombCharge = Math.min(1, input.bombCharge + 1 / 65);
-      if (input.bombCharge >= 1 && this.ctx.state.frameCount % 20 === 0) this.ctx.audio.tone(880, 35, 0.05, 'square', 0.04); // full-power tick
+      if (input.bombCharge >= 1 && this.ctx.state.frameCount % 20 === 0) this.ctx.audio.sfx('ui.tally'); // full-power tick
     } else if (player.spell === 'lightning') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       this.ctx.lightning.cast(tip.x, tip.y, a);
@@ -264,15 +263,15 @@ export class Spells implements SpellsApi {
     } else if (player.spell === 'frostshard') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'iceshard', life: PROJECTILE_LIFE.iceshard, age: 0, charging: false, hostile: false });
-      this.ctx.audio.zap();
+      this.ctx.audio.sfx('spell.frostshard.cast');
     } else if (player.spell === 'icelance') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'icelance', life: PROJECTILE_LIFE.icelance, age: 0, charging: false, hostile: false });
-      this.ctx.audio.tone(1400, 220, 0.16, 'sine', 0.10);
+      this.ctx.audio.sfx('spell.icelance.cast');
     } else if (player.spell === 'wisp') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'wisp', life: PROJECTILE_LIFE.wisp, age: 0, charging: false, hostile: false });
-      this.ctx.audio.zap();
+      this.ctx.audio.sfx('spell.wisp.cast');
     } else if (player.spell === 'dig') {
       player.mana -= sp.manaCost;
       const hit = this.digRay(tip.x, tip.y, a, sp.range!);
@@ -286,14 +285,14 @@ export class Spells implements SpellsApi {
     } else if (player.spell === 'warp') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'warp', life: PROJECTILE_LIFE.warp, age: 0, charging: false, hostile: false });
-      this.ctx.audio.zap();
+      this.ctx.audio.sfx('spell.warp.cast');
     } else if (player.spell === 'conjure') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       this.conjureStone(input.mouse.x, input.mouse.y, player.x, player.y - 9);
     } else if (player.spell === 'meteor') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce! - 1.0, type: 'meteor', life: PROJECTILE_LIFE.meteor, age: 0, charging: false, hostile: false });
-      this.ctx.audio.boom(8);
+      this.ctx.audio.sfx('spell.meteor.cast');
     } else if (player.spell === 'blackhole') {
       if (input.activeChargingBlackHole) return;
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
@@ -345,7 +344,7 @@ export class Spells implements SpellsApi {
       const startX = camera.renderX + Math.floor(VIEW_W / 2), startY = camera.renderY + VIEW_H - 14;
       const angle = Math.atan2(targetY - startY, targetX - startX);
       projectiles.push({ x: startX, y: startY, vx: Math.cos(angle) * spells.icelance.velocityForce!, vy: Math.sin(angle) * spells.icelance.velocityForce!, type: 'icelance', life: PROJECTILE_LIFE.icelance, age: 0, charging: false, hostile: false });
-      this.ctx.audio.tone(1400, 220, 0.16, 'sine', 0.10);
+      this.ctx.audio.sfx('spell.icelance.cast');
     } else if (type === 'scatter') {
       const startX = camera.renderX + Math.floor(VIEW_W / 2), startY = camera.renderY + VIEW_H - 14;
       this.castScatter(startX, startY, Math.atan2(targetY - startY, targetX - startX));
@@ -380,8 +379,8 @@ export class Spells implements SpellsApi {
         charging: false,
         hostile: false,
       });
-      if (type === 'bolt' || type === 'frostshard' || type === 'wisp') this.ctx.audio.zap();
-      if (type === 'meteor') this.ctx.audio.boom(8);
+      if (type === 'bolt' || type === 'frostshard' || type === 'wisp') this.ctx.audio.sfx(type === 'bolt' ? 'spell.spark.cast' : type === 'wisp' ? 'spell.wisp.cast' : 'spell.frostshard.cast');
+      if (type === 'meteor') this.ctx.audio.sfx('spell.meteor.cast');
     }
   }
 }

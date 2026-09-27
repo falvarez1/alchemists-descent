@@ -131,6 +131,20 @@ describe('RunDirector', () => {
     expect(a.run.over).toBe(true);
   });
 
+  it('an abandoned daily never reports a new best; a finished one does', () => {
+    const h = harness();
+    h.run.beginRun(h.ctx, { seed: 3, kit: 'spark', daily: '2031-02-03', tracked: true });
+    h.enter('d1');
+    h.run.abandon(h.ctx);
+    expect(h.ended.at(-1)).toMatchObject({ outcome: 'abandoned', daily: '2031-02-03' });
+    expect(h.run.lastResult?.newDailyBest).toBe(false);
+    h.run.beginRun(h.ctx, { seed: 3, kit: 'spark', daily: '2031-02-03', tracked: true });
+    h.enter('d1');
+    for (let i = 0; i < 4; i++) die(h);
+    expect(h.ended.at(-1)).toMatchObject({ outcome: 'fallen', daily: '2031-02-03' });
+    expect(h.run.lastResult?.newDailyBest).toBe(true);
+  });
+
   it('records a run replaced by a new one without presenting its ledger', () => {
     const h = harness();
     h.run.beginRun(h.ctx, { seed: 1, kit: 'spark', daily: null, tracked: true });

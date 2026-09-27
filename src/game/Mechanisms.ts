@@ -37,6 +37,11 @@ export {
 
 /** Within roughly a screen of the player: close enough to have seen it happen. */
 const WITNESS_RADIUS = 360;
+/** Arrival: the first 8 s on a floor belong to the sim settling what generation
+ *  left (sand filling a bucket, a plate crushed by rubble, a brazier over lava).
+ *  Those are changes the player never made — the machines still move, but the
+ *  toast stays quiet (QA: "A mechanism groans…" ×2 on arriving at floors 2/3). */
+const ARRIVAL_QUIET_FRAMES = 480;
 function nearPlayer(ctx: Ctx, m: Mechanism): boolean {
   const dx = m.x - ctx.player.x, dy = m.y - ctx.player.y;
   return dx * dx + dy * dy <= WITNESS_RADIUS * WITNESS_RADIUS;
@@ -46,10 +51,39 @@ export class Mechanisms implements MechanismsApi {
   private readonly sequenceScratch: Mechanism[] = [];
   private readonly edgeScratch: boolean[] = [];
   private readonly eventDisposers: Array<() => void> = [];
+  /** No world-driven toast before this frame (see ARRIVAL_QUIET_FRAMES). */
+  private quietUntil = 0;
+  /** Mechanisms wrecked during an arrival: their gate later falls open quietly too. */
+  private readonly quietBreaks = new WeakSet<Mechanism>();
+  /** Toasts said this tick — one line per tick, however many machines say it. */
+  private saidFrame = -1;
+  private readonly saidThisTick = new Set<string>();
 
   constructor(private ctx: Ctx) {
     // Explosions / projectile impacts / dig hits all announce themselves here.
     this.eventDisposers.push(ctx.events.on('structureStrike', ({ x, y, radius }) => this.strike(this.ctx, x, y, radius)));
+    this.eventDisposers.push(ctx.events.on('levelChanged', () => {
+      this.quietUntil = this.ctx.state.frameCount + ARRIVAL_QUIET_FRAMES;
+    }));
+  }
+
+  /** Emit a toast once per tick (two machines saying the same line on the same
+   *  tick is one event to the player). */
+  private say(ctx: Ctx, text: string): void {
+    const frame = ctx.state.frameCount;
+    if (frame !== this.saidFrame) {
+      this.saidFrame = frame;
+      this.saidThisTick.clear();
+    }
+    if (this.saidThisTick.has(text)) return;
+    this.saidThisTick.add(text);
+    ctx.events.emit('toast', { text });
+  }
+
+  /** A world-driven change (not a lever the player pulled) worth a toast: near
+   *  enough to have been seen, and not the arrival's settling. */
+  private witnessed(ctx: Ctx, m: Mechanism): boolean {
+    return nearPlayer(ctx, m) && ctx.state.frameCount >= this.quietUntil;
   }
 
   dispose(): void {
@@ -87,7 +121,8 @@ export class Mechanisms implements MechanismsApi {
           // Announce only what the player can witness: generation/settling can
           // wreck several far-off mechanisms on arrival, and a stack of
           // identical groans about machines you have never seen is noise.
-          if (nearPlayer(ctx, m)) ctx.events.emit('toast', { text: 'A mechanism groans. Something gives way.' });
+          if (ctx.state.frameCount < this.quietUntil) this.quietBreaks.add(m);
+          else if (nearPlayer(ctx, m)) this.say(ctx, 'A mechanism groans. Something gives way.');
         }
       }
       if (m.broken !== undefined && m.broken > 0) {
@@ -98,8 +133,8 @@ export class Mechanisms implements MechanismsApi {
             grav: 0.06,
           });
         }
-        if (m.broken === 0 && nearPlayer(ctx, m)) {
-          ctx.events.emit('toast', { text: 'The broken gate falls open.' });
+        if (m.broken === 0 && !this.quietBreaks.has(m) && this.witnessed(ctx, m)) {
+          this.say(ctx, 'The broken gate falls open.');
         }
         continue; // a dying mechanism no longer senses
       }
@@ -117,7 +152,7 @@ export class Mechanisms implements MechanismsApi {
         if (m.pressed) m.state = DEFAULT_TRIGGER_LATCH_FRAMES; // stays open ~7s after weight lifts
         else if (m.state > 0) m.state--;
         if (m.pressed && !was) {
-          ctx.audio.tone(140, 90, 0.1, 'square', 0.14);
+          ctx.audio.sfx('mech.plate', m.x, m.y);
           ctx.particles.burst(m.x + m.w / 2, m.y - 1, 3, null, () => packRGB(190, 160, 80), 0.45, {
             grav: 0.04,
           });
@@ -136,7 +171,7 @@ export class Mechanisms implements MechanismsApi {
         m.reading = weight;
         const enough = weight >= (m.threshold ?? 24);
         if (enough && m.state === 0) {
-          ctx.audio.tone(180, 120, 0.14, 'square', 0.15);
+          ctx.audio.sfx('mech.scale', m.x, m.y);
           ctx.particles.burst(m.x + m.w / 2, m.y - 2, 4, null, () => packRGB(220, 170, 65), 0.55, {
             grav: 0.05,
             glow: 0.8,
@@ -156,7 +191,7 @@ export class Mechanisms implements MechanismsApi {
         m.reading = liquid;
         const afloat = liquid >= (m.threshold ?? 28);
         if (afloat && m.state === 0) {
-          ctx.audio.bubble(m.x, m.y);
+          ctx.audio.sfx('mech.buoy', m.x, m.y);
           ctx.particles.burst(m.x, m.y - 3, 5, null, () => packRGB(130, 205, 255), 0.6, {
             grav: -0.02,
             glow: 0.8,
@@ -176,12 +211,12 @@ export class Mechanisms implements MechanismsApi {
           }
           if (charged) {
             m.state = 1;
-            ctx.audio.zap(m.x, m.y);
+            ctx.audio.sfx('mech.latch', m.x, m.y);
             ctx.particles.burst(m.x, m.y - 3, 12, null, () => packRGB(120, 200, 255), 2.0, {
               glow: 2.4,
               grav: -0.01,
             });
-            ctx.events.emit('toast', { text: 'The coil drinks the spark and latches.' });
+            if (this.witnessed(ctx, m)) this.say(ctx, 'The coil drinks the spark and latches.');
           }
         }
       } else if (m.kind === 'plug') {
@@ -219,7 +254,7 @@ export class Mechanisms implements MechanismsApi {
             else if (m.state > 0) m.state--;
           }
           if (!was && this.satisfied(m)) {
-            ctx.audio.tone(220, 110, 0.1, 'triangle', 0.12);
+            ctx.audio.sfx('mech.sensor', m.x, m.y);
             ctx.particles.burst(m.x, m.y - 2, 4, null, () => packRGB(140, 220, 190), 0.5, {
               grav: 0.02,
               glow: 0.9,
@@ -241,12 +276,12 @@ export class Mechanisms implements MechanismsApi {
           m.reading = weight;
           if (weight >= (m.threshold ?? 30)) {
             m.state = 1;
-            ctx.audio.tone(150, 200, 0.18, 'square', 0.16);
+            ctx.audio.sfx('mech.counterweight', m.x, m.y);
             ctx.particles.burst(m.x + m.w / 2, m.y - 2, 6, null, () => packRGB(200, 170, 90), 0.7, {
               grav: 0.05,
               glow: 0.9,
             });
-            ctx.events.emit('toast', { text: 'The counterweight settles. Something shifts.' });
+            if (this.witnessed(ctx, m)) this.say(ctx, 'The counterweight settles. Something shifts.');
           }
         }
       } else if (m.kind === 'brazier') {
@@ -269,7 +304,7 @@ export class Mechanisms implements MechanismsApi {
               glow: 2.2,
               grav: -0.02,
             });
-            ctx.events.emit('toast', { text: 'A brazier roars to life.' });
+            if (this.witnessed(ctx, m)) this.say(ctx, 'A brazier roars to life.');
           }
         } else if (ctx.state.frameCount % 6 === 0) {
           // keep it burning: re-seed a flame in the bowl
@@ -370,7 +405,7 @@ export class Mechanisms implements MechanismsApi {
           );
         }
       }
-      if (v.door.length === 0) ctx.audio.tone(520, 300, 0.3, 'triangle', 0.12);
+      if (v.door.length === 0) ctx.audio.sfx('mech.vault');
     }
 
     // Builder hazard emitters: drip `burst` real cells on their cadence —
@@ -439,7 +474,7 @@ export class Mechanisms implements MechanismsApi {
           if (edges[cursor]) {
             fired[chain[cursor].id] = true;
             cursor++;
-            ctx.audio.tone(300 + cursor * 90, 110, 0.1, 'triangle', 0.12); // step chime
+            ctx.audio.sfx('mech.sequence.step', undefined, undefined, { pitch: cursor * 2 }); // step chime
             if (cursor >= chain.length) actuator.seqDone = true;
           } else if (edges.some((e, n) => e && n > cursor)) {
             // The chain breaks: forget all progress and spit the
@@ -454,7 +489,7 @@ export class Mechanisms implements MechanismsApi {
                 if (t.kind === 'plate') t.pressed = false;
               }
             }
-            ctx.audio.tone(120, 200, 0.14, 'sawtooth', 0.1); // sour break
+            ctx.audio.sfx('mech.sequence.fail'); // sour break
           }
           actuator.seq = cursor; // derived, for HUD/probes
         }
@@ -561,7 +596,7 @@ export class Mechanisms implements MechanismsApi {
       if (triggers.length === 0) return;
       if (this.aggregateWant(ctx, m, triggers)) {
         m.fuseT = Math.max(0, Math.floor(m.delayFrames ?? 0));
-        if (m.fuseT > 0) ctx.audio.tone(260, 90, 0.08, 'triangle', 0.1); // armed tick
+        if (m.fuseT > 0) ctx.audio.sfx('mech.relay.arm', m.x, m.y); // armed tick
       }
     }
     if (m.fuseT !== undefined) {
@@ -577,7 +612,7 @@ export class Mechanisms implements MechanismsApi {
   private fireRelay(ctx: Ctx, m: Mechanism, list: Mechanism[]): void {
     m.state = 1;
     m.fuseT = undefined;
-    ctx.audio.tone(420, 140, 0.12, 'triangle', 0.14);
+    ctx.audio.sfx('mech.relay.fire', m.x, m.y);
     ctx.particles.burst(m.x, m.y - 2, 8, null, () => packRGB(255, 196, 90), 1.4, {
       glow: 1.8,
       grav: 0,
@@ -655,7 +690,7 @@ export class Mechanisms implements MechanismsApi {
     );
     bodies.push(body);
     ctx.particles.burst(m.x, m.y + 1, 6, null, () => packRGB(180, 172, 150), 1.0, { grav: 0.06 });
-    ctx.audio.tone(190, 130, 0.07, 'square', 0.1);
+    ctx.audio.sfx('mech.dispenser', m.x, m.y);
   }
 
   /**
@@ -703,13 +738,12 @@ export class Mechanisms implements MechanismsApi {
         if (entityRandom() < 0.35) ctx.particles.spawn(x, y, (entityRandom() - 0.5) * 1.1, 0.2 + entityRandom() * 0.6,
           null, emberColor(), 22 + Math.floor(entityRandom() * 18), { grav: 0.08, glow: 2 });
       }
-      ctx.audio.at(m.x + m.w / 2, m.y + m.h / 2, () => ctx.audio.noiseBurst(0.35, 420, 0.12));
     }
-    ctx.audio.tone(140, 220, 0.16, 'sawtooth', 0.14);
+    ctx.audio.sfx('mech.plug', m.x, m.y);
     ctx.particles.burst(m.x + m.w / 2, m.y + m.h / 2, 8, null, () => packRGB(180, 150, 110), 1.2, {
       grav: 0.05,
     });
-    if (!m.routeSeal) ctx.events.emit('toast', { text: 'A seal gives way.' });
+    if (!m.routeSeal) this.say(ctx, 'A seal gives way.');
   }
 
   /** One bounded sensor-zone read (the sensorType decides what counts). */
@@ -830,8 +864,7 @@ export class Mechanisms implements MechanismsApi {
       if (dx * dx + dy * dy <= radius * radius) {
         v.active = true;
         ctx.events.emit('toast', { text: 'Rune struck. Somewhere, a vault rumbles open.' });
-        ctx.audio.tone(220, 500, 0.5, 'sine', 0.18);
-        setTimeout(() => ctx.audio.tone(330, 400, 0.4, 'sine', 0.14), 240);
+        ctx.audio.sfx('mech.rune');
         ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.012, 0.05);
         ctx.particles.burst(v.rx, v.ry, 18, null, () => packRGB(140, 255, 180), 2.6, {
           glow: 2.6,
@@ -858,7 +891,7 @@ export class Mechanisms implements MechanismsApi {
         ctx.player.pullT = 26;
         ctx.player.pullDir = Math.sign(m.x - ctx.player.x) || 1;
         ctx.player.facing = ctx.player.pullDir;
-        ctx.audio.tone(180, 140, 0.08, 'square', 0.08); // the grip
+        ctx.audio.sfx('mech.grip', m.x, m.y); // the grip
         return true;
       }
     }
@@ -869,7 +902,7 @@ export class Mechanisms implements MechanismsApi {
       const dx = shrine.x - ctx.player.x,
         dy = shrine.y - (ctx.player.y - 4);
       if (dx * dx + dy * dy < 16 * 16) {
-        ctx.audio.tone(660, 220, 0.18, 'triangle', 0.1);
+        ctx.audio.sfx('mech.shrine', shrine.x, shrine.y);
         ctx.sanctum.openShop(ctx);
         return true;
       }

@@ -38,16 +38,26 @@ export function loadApiKey() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function request(path, { method = 'GET', body, query, binary = false } = {}) {
+async function request(path, { method = 'GET', body, query, binary = false, withHeaders = false } = {}) {
   const url = new URL(API + path);
   for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined) url.searchParams.set(k, String(v));
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, {
-      method,
-      headers: { 'xi-api-key': loadApiKey(), ...(body ? { 'content-type': 'application/json' } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (res.ok) return binary ? Buffer.from(await res.arrayBuffer()) : res.json();
+    let res;
+    try {
+      res = await fetch(url, {
+        method,
+        headers: { 'xi-api-key': loadApiKey(), ...(body ? { 'content-type': 'application/json' } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (error) {
+      // A dropped connection ("fetch failed") is transient too; the message never carries the key.
+      if (attempt < 3) { await sleep(2000 * 2 ** attempt); continue; }
+      throw new Error(`ElevenLabs ${method} ${path} -> network error: ${error.cause?.code ?? error.message}`);
+    }
+    if (res.ok) {
+      const out = binary ? Buffer.from(await res.arrayBuffer()) : await res.json();
+      return withHeaders ? { body: out, headers: res.headers } : out;
+    }
     const text = await res.text().catch(() => '');
     // 429 = rate/concurrency limit; 5xx = transient. Back off and retry.
     if ((res.status === 429 || res.status >= 500) && attempt < 6) {
@@ -102,16 +112,33 @@ async function cachedBinary(kind, payload, ext, estimate, budget, run) {
   mkdirSync(CACHE_DIR, { recursive: true });
   const key = cacheKey(kind, payload);
   const file = join(CACHE_DIR, `${key}.${ext}`);
-  if (existsSync(file)) return { file, bytes: readFileSync(file), cached: true, key };
+  // Response metadata worth keeping (a music `song-id`, which later plans can
+  // condition on) is cached beside the audio.
+  const metaFile = join(CACHE_DIR, `${key}.meta.json`);
+  const readMeta = () => (existsSync(metaFile) ? JSON.parse(readFileSync(metaFile, 'utf8')) : {});
+  if (existsSync(file)) return { file, bytes: readFileSync(file), cached: true, key, meta: readMeta() };
   if (budget) await budget.guard(estimate);
-  const bytes = await run();
+  const result = await run();
+  const bytes = Buffer.isBuffer(result) ? result : result.body;
+  const meta = Buffer.isBuffer(result) ? {} : { songId: result.headers.get('song-id') ?? null };
   writeFileSync(file, bytes);
+  if (meta.songId) writeFileSync(metaFile, JSON.stringify(meta));
   if (budget) budget.note(estimate);
-  appendFileSync(LOG_FILE, JSON.stringify({ at: new Date().toISOString(), kind, key, estimate, payload }) + '\n');
-  return { file, bytes, cached: false, key };
+  appendFileSync(LOG_FILE, JSON.stringify({ at: new Date().toISOString(), kind, key, estimate, payload, ...meta }) + '\n');
+  return { file, bytes, cached: false, key, meta };
 }
 
 const extOf = (fmt) => (fmt.startsWith('mp3') ? 'mp3' : fmt.startsWith('opus') ? 'opus' : fmt.startsWith('pcm') ? 'pcm' : 'bin');
+
+/**
+ * The cached response file for a sound-effect request, or null when it has not
+ * been bought yet. Free: lets a generator choose among takes already paid for.
+ */
+export function cachedSoundEffectFile({ text, durationSeconds, promptInfluence = 0.4, loop = false, outputFormat = 'mp3_44100_192', variant = 0 }) {
+  const payload = { text, durationSeconds: durationSeconds ?? null, promptInfluence, loop, outputFormat, variant };
+  const file = join(CACHE_DIR, `${cacheKey('sfx', payload)}.${extOf(outputFormat)}`);
+  return existsSync(file) ? file : null;
+}
 
 /**
  * Text-to-sound-effect. `variant` only salts the cache key so several takes of
@@ -136,11 +163,18 @@ export function soundEffect({ text, durationSeconds, promptInfluence = 0.4, loop
   );
 }
 
-/** Music. Pass either `prompt` or `compositionPlan`. Cost is measured, not documented; estimate is conservative. */
-export function music({ prompt, compositionPlan, lengthMs, modelId = 'music_v1', forceInstrumental = true, outputFormat = 'mp3_44100_192', variant = 0, estimate }, budget) {
-  const payload = { prompt: prompt ?? null, compositionPlan: compositionPlan ?? null, lengthMs: lengthMs ?? null, modelId, forceInstrumental, outputFormat, variant };
+/**
+ * Music. Pass either `prompt` or `compositionPlan`. Cost is measured, not documented; estimate is conservative.
+ * `storeForInpainting` keeps the song server-side; its id comes back as `meta.songId` (cached beside the
+ * audio), so a later plan's first chunk can name it in `conditioning_ref`.
+ */
+export function music({ prompt, compositionPlan, lengthMs, modelId = 'music_v1', forceInstrumental = true, outputFormat = 'mp3_44100_192', variant = 0, estimate, storeForInpainting = false, seed }, budget) {
+  const payload = { prompt: prompt ?? null, compositionPlan: compositionPlan ?? null, lengthMs: lengthMs ?? null, modelId, forceInstrumental, outputFormat, variant,
+    ...(storeForInpainting ? { storeForInpainting } : {}), ...(seed !== undefined ? { seed } : {}) };
   // Measured 2026-09-27: ~22 credits per second of music (15 s ≈ 338). Round up.
-  const est = estimate ?? Math.ceil(((lengthMs ?? 60000) / 1000) * 25);
+  // music_v2_5 measured ~26.5 credits/s; a plan's length is the sum of its chunks.
+  const planMs = compositionPlan?.chunks?.reduce((sum, c) => sum + c.duration_ms, 0);
+  const est = estimate ?? Math.ceil(((planMs ?? lengthMs ?? 60000) / 1000) * 28);
   return cachedBinary('music', payload, extOf(outputFormat), est, budget, () =>
     request('/v1/music', {
       method: 'POST',
@@ -149,8 +183,11 @@ export function music({ prompt, compositionPlan, lengthMs, modelId = 'music_v1',
         model_id: modelId,
         ...(compositionPlan ? { composition_plan: compositionPlan } : { prompt, force_instrumental: forceInstrumental }),
         ...(lengthMs && !compositionPlan ? { music_length_ms: lengthMs } : {}),
+        ...(storeForInpainting ? { store_for_inpainting: true } : {}),
+        ...(seed !== undefined && compositionPlan ? { seed } : {}),
       },
       binary: true,
+      withHeaders: true,
     }),
   );
 }

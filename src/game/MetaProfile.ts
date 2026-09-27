@@ -196,8 +196,11 @@ export function recordRunEnded(profile: MetaProfileData, summary: RunSummary): R
   if (summary.daily && isDateKey(summary.daily)) {
     const result: DailyBest = { floor: summary.floor, timeMs: summary.timeMs, victory };
     const previous = next.dailyBests[summary.daily];
-    newDailyBest = betterDailyResult(result, previous);
-    dailyBest = newDailyBest ? result : previous;
+    // A daily best is a descent that FINISHED — the Kiln quieted or the last
+    // phial spent. An abandoned run never sets one (QA: a 20-second abandoned
+    // daily recorded "New best"); it still reports the date's standing best.
+    newDailyBest = summary.outcome !== 'abandoned' && betterDailyResult(result, previous);
+    dailyBest = newDailyBest ? result : (previous ?? null);
     if (newDailyBest) next = { ...next, dailyBests: trimDaily({ ...next.dailyBests, [summary.daily]: result }) };
   }
   const unlocks = withUnlocks(next);

@@ -20,6 +20,7 @@ import { acidColor, COLOR_FN, EMPTY_COLOR, fireColor, iceColor, packRGB } from '
 import { chargeDeposit } from '@/sim/electrical';
 import { probeHollow } from '@/sim/hollow';
 import type { World } from '@/sim/World';
+import type { SfxId } from '@/content/audio/sfxCues';
 import { entityRandom, fxRandom } from '@/core/simRandom';
 
 /**
@@ -134,7 +135,7 @@ function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
     }
   }
   ctx.particles.burst(cx, cy, 8, null, iceColor, 1.8, { glow: 1.6, grav: 0.03 });
-  ctx.audio.shatter(cx, cy);
+  ctx.audio.sfx('spell.freeze', cx, cy);
 }
 
 /** Deposit a disc of liquid cells (glob splashes, future flask spills). */
@@ -248,24 +249,21 @@ interface ElementalCritFx {
   speed: number;
   glow: number;
   grav: number;
-  toneFreq: number;
-  toneEnd: number;
-  toneDur: number;
-  toneType: OscillatorType;
-  toneVol: number;
+  /** The payoff's sound (content/audio/sfxCues.ts). */
+  sfx: SfxId;
 }
 
 const WET_CRIT_FX: ElementalCritFx = {
   burst: 12, color: () => packRGB(100, 210, 255), speed: 2.0, glow: 2.2, grav: 0.02,
-  toneFreq: 1180, toneEnd: 120, toneDur: 0.14, toneType: 'triangle', toneVol: 0.08,
+  sfx: 'spell.crit.wet',
 };
 const SHATTER_CRIT_FX: ElementalCritFx = {
   burst: 14, color: () => packRGB(220, 245, 255), speed: 2.2, glow: 2.5, grav: 0.04,
-  toneFreq: 1640, toneEnd: 100, toneDur: 0.16, toneType: 'triangle', toneVol: 0.1,
+  sfx: 'spell.crit.shatter',
 };
 const PYRE_CRIT_FX: ElementalCritFx = {
   burst: 13, color: () => packRGB(255, 150 + ((entityRandom() * 60) | 0), 40), speed: 2.1, glow: 2.4, grav: -0.04,
-  toneFreq: 380, toneEnd: 170, toneDur: 0.13, toneType: 'sawtooth', toneVol: 0.09,
+  sfx: 'spell.crit.pyre',
 };
 
 /**
@@ -285,7 +283,7 @@ function elementalCritFeedback(ctx: Ctx, x: number, y: number, fx: ElementalCrit
   }
   ctx.fx.bloomKick = Math.min(1.1, ctx.fx.bloomKick + 0.5);
   ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.008, 0.05);
-  ctx.audio.tone(fx.toneFreq, fx.toneEnd, fx.toneDur, fx.toneType, fx.toneVol, x, y);
+  ctx.audio.sfx(fx.sfx, x, y);
 }
 
 function wetCritFeedback(ctx: Ctx, x: number, y: number): void {
@@ -343,10 +341,7 @@ function sparkImpactFx(ctx: Ctx, x: number, y: number, vx: number, vy: number, f
   const jy = (fxRandom() - 0.5) * 4;
   ctx.lightning?.spark?.(x - ux * 3 + jx, y - uy * 3 + jy, x + ux * 2 - jy, y + uy * 2 + jx);
   if (!ctx.state.reduceFlashes) ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick ?? 0, flesh ? 0.34 : 0.2);
-  ctx.audio.at?.(x, y, () => {
-    ctx.audio.noiseBurst(0.035, 3400, flesh ? 0.06 : 0.045, true);
-    ctx.audio.tone(2100, 760, 0.05, 'square', flesh ? 0.045 : 0.03);
-  }, 420);
+  ctx.audio.sfx('spell.spark.impact', x, y, { gain: flesh ? 1 : 0.72 });
 }
 
 function electricFeedback(ctx: Ctx, x: number, y: number): void {
@@ -354,7 +349,7 @@ function electricFeedback(ctx: Ctx, x: number, y: number): void {
     glow: 2.3,
     grav: 0,
   });
-  ctx.audio.tone(1500, 300, 0.08, 'square', 0.06, x, y);
+  ctx.audio.sfx('spell.charge.electric', x, y);
 }
 
 function pruneProjectileMods(p: Projectile, mods: ProjectileModState): void {
@@ -407,7 +402,7 @@ function frostChargeFeedback(ctx: Ctx, x: number, y: number): void {
     glow: 1.8,
     grav: 0.03,
   });
-  ctx.audio.tone(940, 180, 0.1, 'sine', 0.07, x, y);
+  ctx.audio.sfx('spell.charge.frost', x, y);
 }
 
 function applyFrostChargeToEnemy(ctx: Ctx, p: Projectile, enemy: Ctx['enemies'][number]): void {
@@ -950,7 +945,7 @@ export class Projectiles implements ProjectilesApi {
               if (wetCrit) wetCritFeedback(ctx, e.x, e.y);
               if (shatterCrit) shatterCritFeedback(ctx, e.x, e.y);
               if (pyreCrit) pyreCritFeedback(ctx, e.x, e.y);
-              ctx.audio.tone(900 + entityRandom() * 300, 130, 0.12, 'sine', 0.08, e.x, e.y);
+              ctx.audio.sfx('spell.ice.impact', e.x, e.y);
             }
           }
           // freeze water in the wake
@@ -1175,7 +1170,7 @@ export class Projectiles implements ProjectilesApi {
               glow: 2.0,
               grav: 0.06,
             });
-            ctx.audio.tone(1600, 160, 0.14, 'triangle', 0.1, gx, gy);
+            ctx.audio.sfx('spell.ice.impact', gx, gy);
             this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'pellet') {
@@ -1225,7 +1220,7 @@ export class Projectiles implements ProjectilesApi {
               }
             }
             ctx.particles.burst(gx, gy, 10, null, iceColor, 1.3, { glow: 1.5, grav: 0.02 });
-            ctx.audio.tone(900, 400, 0.1, 'sine', 0.1, gx, gy);
+            ctx.audio.sfx('spell.freeze', gx, gy);
             this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'warp') {

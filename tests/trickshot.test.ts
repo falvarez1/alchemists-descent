@@ -65,7 +65,7 @@ describe('Trickshot experiment', () => {
     expect(canHumiliate(ctx, e)).toBe(true);
     const callouts: Array<{ text: string; tone?: string }> = [];
     Object.assign(ctx, {
-      audio: { finisherWhip: vi.fn(), duck: vi.fn(), at: vi.fn(), shellCrack: vi.fn() },
+      audio: { sfx: () => undefined, creature: () => undefined, finisherWhip: vi.fn(), duck: vi.fn(), at: vi.fn(), shellCrack: vi.fn() },
       particles: { burst: vi.fn() },
       camera: { cineDx: 0, cineDy: 0, cineZoom: 1 },
       events: { emit: (name: string, payload: { text: string; tone?: string }) => { if (name === 'combatCallout') callouts.push(payload); } },
@@ -118,7 +118,7 @@ describe('Trickshot experiment', () => {
     ctx.projectiles = [{ ...start, vx: Math.cos(guide.angle) * ctx.params.spells.bolt.velocityForce!,
       vy: Math.sin(guide.angle) * ctx.params.spells.bolt.velocityForce!, type: 'bolt', life: 180, age: 0, charging: false, hostile: false }];
     ctx.particles = { spawn: vi.fn(), burst: vi.fn() } as unknown as Ctx['particles'];
-    ctx.audio = { hollowKnock: vi.fn(), implode: vi.fn() } as unknown as Ctx['audio'];
+    ctx.audio = { sfx: () => undefined, creature: () => undefined, hollowKnock: vi.fn(), implode: vi.fn() } as unknown as Ctx['audio'];
     ctx.events = { emit: vi.fn() } as unknown as Ctx['events'];
     ctx.explosions = { trigger: vi.fn() } as unknown as Ctx['explosions'];
     ctx.spells = { erodeAt: vi.fn() } as unknown as Ctx['spells'];
