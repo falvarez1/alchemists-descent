@@ -97,6 +97,10 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     corpses.ts            Limp remains that fall, settle and melt back into grid cells
   game/
     Game.ts               Composition root: builds Ctx, owns the frame order
+    Flora.ts              Felling: watches living wood (chunk support fingerprints),
+                          lifts a severed stand onto a hinged Rapier body, crushes,
+                          re-stamps the log as Wood; kicks, pods, glowseed pickup
+    floraFelling.ts       Pure felling geometry: stand flood, lift, box fit, restamp
     DeathCinema.ts        The directed death: push-in, grade, heartbeats, letterbox, title beat
     WaveDirector.ts       createWaveState() — the small kill/counter state that
                           outlived the retired wave-survival director
@@ -108,6 +112,9 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     carve.ts              Pure carve primitives over the work buffer (incl. ensureConnectivity)
     skeleton/             Per-biome cave topology strategies (baseline + six bespoke)
     connect.ts            connectToCaves/carvePocket + PlacementLedger (reserved rects)
+    floraKit.ts           The 14 plant species as real-cell growers (Planter: writes only open cells)
+    floraPass.ts          Floors 2-4: flora puzzle rooms + dressing on a forked 'flora' stream
+    worksFlora.ts         Floor 1's hand-planted flora and the Seed Cellar puzzle
     prefabs/              Built-in PrefabDef registry + seeded placement pass into levels
     crownPalette.ts       Transcribed crown tint math (Builder crownTint pass)
     fortress.ts           Multi-material real-cell fortress stamp
@@ -264,7 +271,9 @@ constants assume it — do not "unify" it without retuning the whole game.
 `frameCount++ → camera.update → camera.updateSimBounds → grimoireInteractions.update →
 simulation.update (substeps:
 new moved epoch → harvester → electrical → projectiles → shockwave aging → material sweep →
-ice/vines pass) → playerCtl.update → flask.update → enemyCtl.update → rigidBodies.update →
+ice/vines pass) → playerCtl.update → flask.update → enemyCtl.update → flora.update (a stand the
+sim severed becomes a hinged body that steps in the same solver pass; settled logs re-stamp) →
+rigidBodies.update →
 vineStrands.update → levels.update → pickups.update → mechanisms.update → critters.update →
 brewing.update → hints.update → introProgression.update → wands.update → particles.update → lightning.update →
 compose pixels/light → HUD update (even frames, play mode) → minimap.update →
