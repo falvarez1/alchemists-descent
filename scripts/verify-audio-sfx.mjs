@@ -89,6 +89,10 @@ try {
   check('floor 1 loads its bed (the Bellows) and the Bell & Tea Engine, and the bed plays', d1, `bed ${s.bed}; ${Object.keys(s.packs).join(',')}`);
   const d1Creatures = Object.keys(s.packs).filter((p) => p.startsWith('creature-'));
   check('floor 1 loads the packs of the creatures living there', d1Creatures.length > 0, d1Creatures.join(','));
+  const d1Flora = await waitFor(() => window.__game.ctx.audio.debugSamples().packs.flora === 'ready');
+  s = await samples();
+  check("floor 1 loads the plants' pack (flora)", d1Flora, Object.keys(s.packs).join(','));
+  console.log(`      decoded PCM on floor 1 (core, bed, Tea Engine, creatures, plants): ${mb(s.decodedBytes)}`);
 
   // ---- Every AudioApi preset plays a sample (not the procedural fallback). ----
   // (Creature presets need their kind's pack: load them all for this check.)

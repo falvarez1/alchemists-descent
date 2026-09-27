@@ -235,9 +235,10 @@ Decoded PCM is the cost of sampled audio, so buffers decode at the rate their
 family needs: 44.1 kHz for the sparkly ones (UI, pickups, spells, glass,
 sizzle), 32 kHz for bodies (the MP3s are band-limited near 15 kHz, so nothing
 audible is lost), 24 kHz for the long stereo beds. Measured
-(`verify:audio-sfx`): ~50 MB on floor 1 (core + bed + Tea Engine + creatures),
-~58 MB steady on floor 4 (its organisms included), 94 MB peak while racing through all four floors
-before the releases land.
+(`verify:audio-sfx`): ~50 MB for the core packs alone, ~66 MB on floor 1
+(core + bed + Tea Engine + creatures + plants), ~64 MB steady on floor 4 (its
+organisms and plants included), 101 MB peak while racing through all four
+floors before the releases land.
 
 ## 6. Workflow
 
