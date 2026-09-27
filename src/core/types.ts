@@ -2406,6 +2406,10 @@ export interface HintApi {
   /** The current best hint, or null when nothing relevant is in reach. */
   readonly current: HintInfo | null;
   update(ctx: Ctx): void;
+  /** The teach popover's calm gate (ui/HintTeachOverlay): while a centre beat
+   *  (the engine caption, a title card, the Sanctum, a notice) is on screen no
+   *  teach-once fires; lessons wait, unspent, for a calm moment. */
+  setTeachHeld?(held: boolean): void;
 }
 
 export interface MechanismsApi {
