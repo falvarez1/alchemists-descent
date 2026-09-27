@@ -143,7 +143,7 @@ async function basin(page, x0, x1, depth, cell, fill = depth - 3) {
     for (let y = floor - depth; y <= floor; y++) {
       for (const x of [cx + x0 - 2, cx + x0 - 1, cx + x1 + 1, cx + x1 + 2]) w.replaceCellAt(w.idx(x, y), 13, 0x6f7a88);
       for (let x = cx + x0; x <= cx + x1; x++) {
-        if (y > floor - fill) w.replaceCellAt(w.idx(x, y), cell, cell === 2 ? 0x2a5f8a : cell === 6 ? 0x3a2d23 : cell === 11 ? 0xff3010 : 0x888888);
+        if (y > floor - fill) w.replaceCellAt(w.idx(x, y), cell, cell === 2 ? 0x2a5f8a : cell === 6 ? 0x3a2d23 : cell === 11 ? 0xff3010 : cell === 7 ? 0x3cf028 : 0x888888);
       }
     }
   }, { x0, x1, depth, cell, fill });
@@ -503,7 +503,7 @@ const SCENES = {
     await basin(page, 34, 110, 10, 7, 8);
     await corpsesOf(page, [['spitter', -5]]);
     const acid0 = (await countCells(page, 34, 110, -20, 0, [7]))[7];
-    await kickAt(page, 'spitter', -10, 40, -40);
+    await kickAt(page, 'spitter', -10, 40, -26); // a flatter punt: the pool is only 76 wide
     const frames = [], t0 = Date.now();
     let goneAt = null;
     for (let i = 0; i < 24; i++) {
