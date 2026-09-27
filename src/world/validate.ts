@@ -3,7 +3,7 @@ import type { World } from '@/sim/World';
 import { mechanismTriggersFor } from '@/core/mechanisms';
 import { bossOrganRect } from '@/core/bossWard';
 import { blocksEntity, Cell } from '@/sim/CellType';
-import { computeLooseRubbleBlockingMask } from '@/sim/collision';
+import { BLOCKS_ENTITY_LUT, computeLooseRubbleBlockingMask } from '@/sim/collision';
 import { extractRegionGraph } from '@/world/regions';
 import { protectedRepairRoute } from '@/world/repairRoute';
 
@@ -42,16 +42,12 @@ const PH = 17;
 // so sharing them across calls removes the fresh Int32Array(W*H)/Uint8Array(W*H)
 // the gauge-rescue pass otherwise allocates on every wizardMask/reachableMask
 // call (dozens per tight seed → tens of MB of GC churn behind the load curtain).
-let scratchQx = new Int32Array(0);
-let scratchQy = new Int32Array(0);
-function bfsQueues(n: number): [Int32Array, Int32Array] {
-  if (scratchQx.length < n) {
-    scratchQx = new Int32Array(n);
-    scratchQy = new Int32Array(n);
-  }
+let scratchQueue = new Int32Array(0);
+function bfsQueue(n: number): Int32Array {
+  if (scratchQueue.length < n) scratchQueue = new Int32Array(n);
   // Queue cells are written at `tail` before being read at `head`, so only the
   // freshly-written prefix is ever read — no reset needed between calls.
-  return [scratchQx, scratchQy];
+  return scratchQueue;
 }
 
 let scratchHRun = new Uint8Array(0);
@@ -86,14 +82,26 @@ function fitsOf(w: { width: number; height: number; types: Uint8Array }): Uint8A
     }
   }
   const fits = new Uint8Array(W * H);
-  for (let x = 0; x < W; x++) {
-    let run = 0;
-    for (let y = 0; y < H; y++) {
-      run = hRun[x + y * W] ? run + 1 : 0;
-      if (run >= PH) fits[x + y * W] = 1; // feet row of a clear 9x17 column
+  // PERF: the vertical run walks rows (one counter per column) instead of
+  // striding a whole row per step down each column — same runs, same output,
+  // but sequential memory over the 1.7M-cell plane.
+  const vRun = vRunScratch(W);
+  for (let y = 0; y < H; y++) {
+    const row = y * W;
+    for (let x = 0; x < W; x++) {
+      const run = hRun[row + x] ? vRun[x] + 1 : 0;
+      vRun[x] = run;
+      if (run >= PH) fits[row + x] = 1; // feet row of a clear 9x17 column
     }
   }
   return fits;
+}
+
+let scratchVRun = new Int32Array(0);
+function vRunScratch(n: number): Int32Array {
+  if (scratchVRun.length < n) scratchVRun = new Int32Array(n);
+  else scratchVRun.fill(0, 0, n);
+  return scratchVRun;
 }
 
 /**
@@ -122,32 +130,34 @@ export function wizardMask(runtime: MaskInput): Uint8Array {
   const fits = fitsOf(w);
   // BFS over fitting positions (4-adjacent; levitation handles vertical)
   const seen = new Uint8Array(W * H);
-  const [qx, qy] = bfsQueues(W * H);
+  const queue = bfsQueue(W * H);
   let head = 0,
     tail = 0;
-  const push = (x: number, y: number): void => {
-    if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return;
-    const i = x + y * W;
-    if (seen[i] || !fits[i]) return;
-    seen[i] = 1;
-    qx[tail] = x;
-    qy[tail] = y;
-    tail++;
-  };
   // seed around the spawn (it stands in a 24-headroom chamber)
+  const sx = Math.floor(runtime.spawn.x),
+    sy = Math.floor(runtime.spawn.y);
   for (let dy = -8; dy <= 8; dy++) {
     for (let dx = -8; dx <= 8; dx++) {
-      push(Math.floor(runtime.spawn.x) + dx, Math.floor(runtime.spawn.y) + dy);
+      const x = sx + dx,
+        y = sy + dy;
+      if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) continue;
+      const i = x + y * W;
+      if (seen[i] || !fits[i]) continue;
+      seen[i] = 1;
+      queue[tail++] = i;
     }
   }
+  // PERF: index queue with the border test folded into the neighbour offsets
+  // (interior cells only: 1 <= x < W-1, 1 <= y < H-1) — the same flood as the
+  // old per-push closure, without the closure call or the x/y queue pair.
+  const bottom = (H - 1) * W;
   while (head < tail) {
-    const x = qx[head],
-      y = qy[head];
-    head++;
-    push(x + 1, y);
-    push(x - 1, y);
-    push(x, y + 1);
-    push(x, y - 1);
+    const i = queue[head++];
+    const x = i % W;
+    if (x + 1 < W - 1 && !seen[i + 1] && fits[i + 1]) { seen[i + 1] = 1; queue[tail++] = i + 1; }
+    if (x - 1 >= 1 && !seen[i - 1] && fits[i - 1]) { seen[i - 1] = 1; queue[tail++] = i - 1; }
+    if (i + W < bottom && !seen[i + W] && fits[i + W]) { seen[i + W] = 1; queue[tail++] = i + W; }
+    if (i - W >= W && !seen[i - W] && fits[i - W]) { seen[i - W] = 1; queue[tail++] = i - W; }
   }
   return seen;
 }
@@ -158,27 +168,28 @@ export function reachableMask(runtime: MaskInput): Uint8Array {
   const W = w.width,
     H = w.height;
   const seen = new Uint8Array(W * H);
-  const [qx, qy] = bfsQueues(W * H);
+  const queue = bfsQueue(W * H);
+  // PERF: table lookup instead of the blocksEntity predicate chain, and the
+  // index-queue flood of wizardMask — this BFS floods most of a 1.7M-cell cave
+  // on every settled repair check. Same interior-only 4-neighbour flood.
+  const types = w.types;
+  const blocks = BLOCKS_ENTITY_LUT;
   let head = 0,
     tail = 0;
-  const push = (x: number, y: number): void => {
-    if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return;
-    const i = x + y * W;
-    if (seen[i] || blocksEntity(w.types[i])) return;
-    seen[i] = 1;
-    qx[tail] = x;
-    qy[tail] = y;
-    tail++;
-  };
-  push(Math.floor(runtime.spawn.x), Math.floor(runtime.spawn.y - 2));
+  const sx = Math.floor(runtime.spawn.x),
+    sy = Math.floor(runtime.spawn.y - 2);
+  if (sx >= 1 && sy >= 1 && sx < W - 1 && sy < H - 1 && !blocks[types[sx + sy * W]]) {
+    seen[sx + sy * W] = 1;
+    queue[tail++] = sx + sy * W;
+  }
+  const bottom = (H - 1) * W;
   while (head < tail) {
-    const x = qx[head],
-      y = qy[head];
-    head++;
-    push(x + 1, y);
-    push(x - 1, y);
-    push(x, y + 1);
-    push(x, y - 1);
+    const i = queue[head++];
+    const x = i % W;
+    if (x + 1 < W - 1 && !seen[i + 1] && !blocks[types[i + 1]]) { seen[i + 1] = 1; queue[tail++] = i + 1; }
+    if (x - 1 >= 1 && !seen[i - 1] && !blocks[types[i - 1]]) { seen[i - 1] = 1; queue[tail++] = i - 1; }
+    if (i + W < bottom && !seen[i + W] && !blocks[types[i + W]]) { seen[i + W] = 1; queue[tail++] = i + W; }
+    if (i - W >= W && !seen[i - W] && !blocks[types[i - W]]) { seen[i - W] = 1; queue[tail++] = i - W; }
   }
   return seen;
 }
