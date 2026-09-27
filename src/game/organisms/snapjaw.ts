@@ -41,7 +41,7 @@ function dieBurnt(ctx: Ctx, c: Critter): void {
   const { x, y } = snapjawHead(c);
   charTo(ctx, c, Cell.Ash);
   ctx.particles.burst(x, y, 14, null, () => packRGB(255, 176, 40), 1.6, { glow: 2.2, grav: -0.03 });
-  ctx.audio.sizzle(x, y);
+  ctx.audio.sfx('organism.snapjaw.burn', x, y);
   organismEvent(ctx, 'snapjaw', 'die', x, y);
 }
 
@@ -49,7 +49,7 @@ function dieTorn(ctx: Ctx, c: Critter): void {
   const { x, y } = snapjawHead(c);
   charTo(ctx, c, Cell.Fungus);
   ctx.particles.burst(x, y, 12, Cell.Slime, () => packRGB(110, 150, 60), 2.2);
-  ctx.audio.squelch(x, y);
+  ctx.audio.sfx('organism.snapjaw.tear', x, y);
   organismEvent(ctx, 'snapjaw', 'die', x, y);
 }
 
@@ -135,7 +135,8 @@ export function stepSnapjaw(ctx: Ctx, c: Critter, host: OrganismHost): boolean {
         c.holds = target.kind === 'critter' ? target.c.id : undefined;
         c.vx = Math.max(-2, Math.min(2, (p.x - head.x) * 0.35));
         c.vy = Math.max(-2, Math.min(2, (p.y - head.y) * 0.35));
-        if (Math.abs(ax - ctx.player.x) < 220) ctx.audio.creak(0.35);
+        // The warning: the pod shivers open with a wet creak before it strikes.
+        ctx.audio.sfx('organism.snapjaw.tell', head.x, head.y);
       }
     }
   } else if (state === SNAP.TELL) {
@@ -155,8 +156,7 @@ export function stepSnapjaw(ctx: Ctx, c: Critter, host: OrganismHost): boolean {
     c.vx = Math.max(-3, Math.min(3, c.vx)); c.vy = Math.max(-3, Math.min(3, c.vy));
     if ((c.stateT ?? 0) === 2) {
       head = snapjawHead(c);
-      ctx.audio.at(head.x, head.y, () => { ctx.audio.chitin(1.4); ctx.audio.sfx('trick.whip', head.x, head.y); }, 300);
-      organismEvent(ctx, 'snapjaw', 'snap', head.x, head.y);
+      organismEvent(ctx, 'snapjaw', 'snap', head.x, head.y); // the clack: audio/EventCues
       const target = findTarget(ctx, c, host, head.x, head.y, SNAP_BITE);
       let fed = 0;
       if (target?.kind === 'player') {
@@ -184,7 +184,7 @@ export function stepSnapjaw(ctx: Ctx, c: Critter, host: OrganismHost): boolean {
   } else if (state === SNAP.CHEW) {
     gape = 0.04 + Math.max(0, Math.sin((c.stateT ?? 0) * 0.22)) * 0.06;
     c.meal = (c.meal ?? 0) - 1;
-    if ((c.stateT ?? 0) % 40 === 0 && Math.abs(ax - ctx.player.x) < 160) ctx.audio.squelch(head.x, head.y);
+    if ((c.stateT ?? 0) % 40 === 0) ctx.audio.sfx('organism.snapjaw.chew', head.x, head.y);
     if ((c.meal ?? 0) <= 0) { c.meal = 0; c.state = SNAP.REOPEN; c.stateT = 0; }
   } else {
     gape += (1 - gape) * 0.03;

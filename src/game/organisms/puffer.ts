@@ -47,9 +47,8 @@ export function burstPuffer(ctx: Ctx, c: Critter): void {
   }
   ctx.particles.burst(x, y, 10 + Math.round(inf * 12), null, () => packRGB(150, 210, 120), 1.4 + inf, { glow: 1.1, grav: -0.02 });
   ctx.particles.burst(x, y, 6, null, () => packRGB(120, 110, 70), 0.9, { grav: 0.03 });
-  ctx.audio.at(x, y, () => { ctx.audio.squelch(x, y); ctx.audio.steam(x, y); }, 260);
   ctx.events.emit('creatureSignal', { x, y, radius: 90, strength: 0.5, kind: 'sound' });
-  organismEvent(ctx, 'puffer', 'burst', x, y);
+  organismEvent(ctx, 'puffer', 'burst', x, y); // the pop and the gas: audio/EventCues
   c.extent = 0;
   c.state = PUFF.SPENT;
   c.stateT = 0;
@@ -68,12 +67,15 @@ export function stepPuffer(ctx: Ctx, c: Critter, host: OrganismHost): boolean {
   c.stateT = (c.stateT ?? 0) + 1;
   c.phase += 0.03;
   let inf = c.extent ?? 0;
+  const before = inf;
   if (c.state === PUFF.SPENT && (c.stateT ?? 0) > 240) c.state = PUFF.GROW;
   if (c.state !== PUFF.SPENT) inf = Math.min(1, inf + PUFF_GROW);
   c.extent = inf;
   const sac = pufferSac(c);
   c.x = sac.x; c.y = sac.y;
   if (inf < PUFF_RIPE) return true;
+  // The sac pulls tight: from here a touch bursts it (a stretching creak says so).
+  if (before < PUFF_RIPE) organismEvent(ctx, 'puffer', 'swell', sac.x, sac.y);
   const t = ctx.state.frameCount;
   const reach = sac.r + 1.5;
   // Flame bursts it at once (and lights what it lets out — the grid does that part).

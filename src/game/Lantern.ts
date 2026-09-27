@@ -23,18 +23,14 @@ export function setLanternHooded(ctx: Ctx, hooded: boolean, quiet = false): void
     if (hooded) {
       // The brass hood drops: a dry low click and the flame's last breath
       // hissing out, curling off the tip as a wisp of smoke and two embers.
-      // (Sampled stand-ins; the lanternHooded event below is the cue hook.)
-      ctx.audio.sfx('mech.latch', tip.x, tip.y, { gain: 0.55, pitch: -4 });
-      ctx.audio.sfx('mat.sizzle', tip.x, tip.y, { gain: 0.7 });
+      // (The sound is the lanternHooded event's: audio/EventCues.)
       ctx.particles.burst(tip.x, tip.y - 1, 3, null, () => packRGB(96, 92, 88), 0.35, { grav: -0.03 });
       ctx.particles.burst(tip.x, tip.y, 2, null, () => packRGB(255, 150, 60), 0.5, { glow: 1.4, grav: 0.02 });
     } else {
       // Unhooded: the hood swings back with a brighter click and the flame
       // takes the air again with a small warm flare.
-      ctx.audio.sfx('mech.latch', tip.x, tip.y, { gain: 0.55, pitch: 4 });
-      ctx.audio.sfx('player.staff', tip.x, tip.y, { gain: 0.7 });
       ctx.particles.burst(tip.x, tip.y, 5, null, () => packRGB(255, 214, 140), 0.9, { glow: 1.8, grav: -0.015 });
     }
   }
-  ctx.events.emit('lanternHooded', { hooded, x: tip.x, y: tip.y });
+  ctx.events.emit('lanternHooded', { hooded, x: tip.x, y: tip.y, quiet });
 }

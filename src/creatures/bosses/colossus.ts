@@ -134,9 +134,7 @@ function stepWaves(ctx: Ctx, e: Enemy, b: BossBrain): void {
 
 function slam(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): void {
   const t = b.moveT, f = face(e);
-  if (t === 1) {
-    host.voice(e, () => { ctx.audio.sfx('creature.colossus.idle', e.x, e.y); ctx.audio.grind(1.2); }, 800);
-  }
+  // (The heave of the fists going up is the bossMove event's sound: audio/EventCues.)
   if (t > 1 && t < COL.SLAM_HIT && t % 6 === 0) {
     // Dust sifts off the raised fists: the tell has a sound and a shadow.
     ctx.particles.spawn(e.x + f * def.halfW * 0.8, e.y - def.h - 4, (entityRandom() - 0.5) * 0.3, 0.3, null, packRGB(140, 126, 106), 30, { grav: 0.05 });
@@ -145,6 +143,7 @@ function slam(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): 
     const x = e.x + f * (def.halfW + 10), y = e.y - 1;
     b.selfHarmUntil = ctx.state.frameCount + 3;
     ctx.explosions.trigger(x, y, COL.SLAM_R[b.phase - 1] ?? 12, { playerDamageSource: 'colossus-slam', enemyDamageMul: 0 });
+    ctx.audio.sfx('creature.colossus.slam', x, y); // stone on stone, over the blast's own boom
     host.shakeAt(e.x, e.y, 0.04, 0.07);
     ctx.particles.burst(x, y - 2, 18, null, () => packRGB(150, 136, 116), 2.2, { grav: 0.06 });
     ctx.events.emit('creatureSignal', { x, y, radius: 240, strength: 1, kind: 'vibration' });
@@ -154,12 +153,12 @@ function slam(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): 
 
 function stomp(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): void {
   const t = b.moveT;
-  if (t === 1) host.voice(e, () => { ctx.audio.grind(1.4); ctx.audio.sfx('creature.colossus.idle', e.x, e.y); }, 800);
+  // (Rearing up is the bossMove event's sound; the waves rumble as they run: audio/HabitatAudio.)
   if (t === COL.STOMP_HIT) {
     launchWave(e, b, e.x - def.halfW, -1);
     launchWave(e, b, e.x + def.halfW, 1);
     host.shakeAt(e.x, e.y, 0.045, 0.08);
-    host.voice(e, () => { ctx.audio.boom(14); ctx.audio.hollowKnock(); }, 900);
+    ctx.audio.sfx('creature.colossus.stomp', e.x, e.y);
     for (const s of [-1, 1]) ctx.particles.burst(e.x + s * def.halfW, e.y - 1, 12, null, () => packRGB(150, 136, 116), 1.8, { grav: 0.06 });
     ctx.events.emit('creatureSignal', { x: e.x, y: e.y, radius: 300, strength: 1, kind: 'vibration' });
   }
@@ -181,12 +180,12 @@ function lob(ctx: Ctx, e: Enemy, def: EnemyDef, b: BossBrain, tx: number, ty: nu
   void b;
 }
 
-function toss(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): void {
+function toss(ctx: Ctx, e: Enemy, def: EnemyDef, b: BossBrain): void {
   const t = b.moveT;
   const p = ctx.player;
   if (t === 1) {
+    // (The fist tearing melt out of its own furnace is the bossMove event's sound.)
     b.aimX = p.x + p.vx * 18; b.aimY = p.y - 6;
-    host.voice(e, () => { ctx.audio.flame(e.x, e.y); }, 800);
   }
   if (t > 8 && t < COL.THROW_HIT && t % 3 === 0) {
     // The fist comes out of the furnace dripping.
@@ -196,14 +195,14 @@ function toss(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): 
   if (t === COL.THROW_HIT || (b.phase >= 3 && t === COL.THROW_HIT2)) {
     if (t === COL.THROW_HIT2) { b.aimX = p.x + p.vx * 14; b.aimY = p.y - 6; }
     lob(ctx, e, def, b, b.aimX, b.aimY);
-    host.voice(e, () => ctx.audio.sfx('creature.colossus.volley', e.x, e.y), 800);
+    ctx.audio.sfx('creature.colossus.volley', e.x, e.y);
   }
 }
 
 function vent(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): void {
   const t = b.moveT, w = ctx.world;
   const cx = e.x, cy = e.y - def.h * 0.62;
-  if (t === 1) host.voice(e, () => { ctx.audio.steam(cx, cy); ctx.audio.sfx('amb.breath.inhale', cx, cy); }, 900);
+  // (The plates grinding open and the furnace drawing breath: the bossMove event's sound.)
   if (t < COL.VENT_START) {
     // The tell: plates lift, the chimneys roar white.
     if (t % 3 === 0) {
@@ -214,7 +213,7 @@ function vent(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): 
   }
   if (t === COL.VENT_START) {
     host.shakeAt(e.x, e.y, 0.03, 0.06);
-    host.voice(e, () => { ctx.audio.flame(cx, cy); ctx.audio.sfx('amb.breath.jet', cx, cy); }, 900);
+    ctx.audio.sfx('creature.colossus.vent', cx, cy);
     b.heat = 1;
     const p = ctx.player;
     if (!p.dead && Math.hypot(p.x - cx, p.y - 8 - cy) < COL.VENT_R + 2) {
@@ -273,8 +272,8 @@ function quench(ctx: Ctx, e: Enemy, def: EnemyDef, b: BossBrain, crack: number):
 function roar(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): void {
   const t = b.moveT;
   if (t === 1) {
+    // The world ducks under the roar (the roar itself is the bossMove event's sound).
     ctx.audio.duck(0.5, 1100);
-    host.voice(e, () => { ctx.audio.sfx('creature.colossus.alert', e.x, e.y); ctx.audio.groan(); ctx.audio.grind(1.3); }, 900);
     host.shakeAt(e.x, e.y, 0.04, 0.07);
     ctx.particles.burst(e.x, e.y - def.h + 2, 30, null, emberColor, 2.8, { glow: 2.4, grav: -0.02 });
     if (!ctx.state.reduceFlashes) ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 0.7);
@@ -293,6 +292,7 @@ function roar(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain): 
         if (body) body.goreTtl = 900;
       }
       ctx.particles.burst(e.x, e.y - def.h + 2, 24, Cell.Stone, stoneColor, 3.2);
+      ctx.audio.sfx('creature.colossus.plates', e.x, e.y - def.h, { delay: 0.18 });
       ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 8, text: 'THE CORE IS BARE', tone: 'brass' });
     }
   }
@@ -308,7 +308,7 @@ function startDeath(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBr
   b.waves.length = 0;
   b.exposed = 0;
   ctx.audio.duck(0.45, 2600);
-  host.voice(e, () => { ctx.audio.groan(); ctx.audio.sfx('creature.colossus.hurt', e.x, e.y); ctx.audio.grind(1.6); }, 1000);
+  // (Sinking to its knees, the stone groaning open: the bossMove 'dying' event's sound.)
   host.shakeAt(e.x, e.y, 0.04, 0.07);
   void def;
 }
@@ -353,13 +353,15 @@ function tickDeath(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBra
     if (t % 36 === 0) host.voice(e, () => ctx.audio.sizzle(x, y), 700);
   }
   if (t === COL.DEATH_OVERLOAD) {
-    host.voice(e, () => { ctx.audio.sfx('creature.colossus.death', e.x, e.y); ctx.audio.steam(e.x, e.y); }, 1000);
+    ctx.audio.sfx('creature.colossus.death', e.x, e.y);
+    ctx.audio.steam(e.x, e.y);
   }
   if (t > COL.DEATH_OVERLOAD && t < COL.DEATH_BLAST && !ctx.state.reduceFlashes) {
     ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 0.3 + (t - COL.DEATH_OVERLOAD) / (COL.DEATH_BLAST - COL.DEATH_OVERLOAD) * 0.7);
   }
   if (t === COL.DEATH_BLAST) {
     ctx.explosions.trigger(e.x, e.y - def.h * 0.5, 24, { playerDamageSource: 'colossus-death', enemyDamageMul: 0 });
+    ctx.audio.sfx('creature.colossus.death.rubble', e.x, e.y - def.h * 0.5); // the kiln comes down in pieces
     heapRubble(ctx, e, def);
     for (let k = 0; k < 6; k++) {
       const s = k % 2 === 0 ? -1 : 1;
@@ -455,7 +457,7 @@ export function tickColossus(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, 
     switch (b.move) {
       case 'slam': slam(ctx, e, def, host, b); break;
       case 'stomp': stomp(ctx, e, def, host, b); break;
-      case 'throw': toss(ctx, e, def, host, b); break;
+      case 'throw': toss(ctx, e, def, b); break;
       case 'vent': vent(ctx, e, def, host, b); break;
       case 'roar': roar(ctx, e, def, host, b); break;
       default: break;

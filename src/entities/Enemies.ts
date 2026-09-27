@@ -2796,8 +2796,9 @@ export class Enemies implements EnemyControlApi {
             e.sleeping = false;
             e.vy = 1.2; // drop off the ceiling
             this.voice(e, () => ctx.audio.sfx('creature.bat.wake'));
-            // ...and the whole roost bursts out with it (creatures/ecology).
-            if (scatterRoost(ctx, e) > 0) this.voice(e, () => ctx.audio.sfx('creature.bat.swoop'));
+            // ...and the whole roost bursts out with it (creatures/ecology; its
+            // organism event is the burst of wings, audio/EventCues).
+            scatterRoost(ctx, e);
           }
           continue;
         }

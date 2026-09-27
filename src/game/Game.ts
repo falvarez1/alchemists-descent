@@ -17,6 +17,7 @@ import { installAudioDirector } from '@/audio/AudioDirector';
 import { installUiSounds } from '@/audio/UiSounds';
 import { HabitatAudio } from '@/audio/HabitatAudio';
 import { installAudioStingers } from '@/audio/Stingers';
+import { installEventCues } from '@/audio/EventCues';
 import { MusicDirector } from '@/audio/MusicDirector';
 import { Narrator } from '@/audio/Narrator';
 import { NarrationCaption } from '@/ui/NarrationCaption';
@@ -207,6 +208,8 @@ export class Game {
     this.disposables.push(audio);
     // Run-event stingers (alchemy chime, phial crack/fill, run verdict, clip shutter).
     this.disposables.push({ dispose: installAudioStingers(ctx.events, audio) });
+    // Announced moments: the light devices, organisms and boss moves (audio/EventCues).
+    this.disposables.push({ dispose: installEventCues(ctx.events, audio) });
     // Sampled layer: per-floor packs and beds, and the interface's own sounds.
     this.disposables.push({ dispose: installAudioDirector(ctx, audio) }, { dispose: installUiSounds(ctx.events, audio) });
     ctx.events.on('paramsChanged', () => {

@@ -49,19 +49,10 @@ export function kilnQuenchBurst(ctx: Ctx, e: Enemy, def: EnemyDef): void {
   ctx.fx.hitstop = Math.max(ctx.fx.hitstop ?? 0, 5);
   ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.05, 0.09);
   if (!ctx.state.reduceFlashes) ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 0.55);
-  // 4) The sound of a furnace meeting a bucket.
-  ctx.audio.at(
-    e.x,
-    e.y - 10,
-    () => {
-      ctx.audio.steam();
-      ctx.audio.shellCrack();
-      // the furnace groans under the shock (sampled cues, not raw synth)
-      ctx.audio.sfx('creature.colossus.hurt', e.x, e.y);
-      ctx.audio.sfx('mat.steam', e.x, e.y - 10);
-    },
-    900,
-  );
+  // 4) The sound of a furnace meeting a bucket: the hiss and the crack of
+  // superheated stone, and the furnace groaning under the shock.
+  ctx.audio.sfx('creature.colossus.quench', e.x, e.y - 10);
+  ctx.audio.sfx('creature.colossus.hurt', e.x, e.y);
   // 5) Say it, and stagger.
   ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 10, text: 'THERMAL SHOCK', tone: 'finisher' });
   e.attackCd = Math.max(e.attackCd, QUENCH_STAGGER_TICKS);

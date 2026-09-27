@@ -74,7 +74,7 @@ function thrash(ctx: Ctx, e: Enemy, host: BossHost, b: BossBrain): void {
   const w = ctx.world, p = ctx.player;
   const f = e.mind?.facing ?? 1;
   const tx = e.x - f * 16, ty = e.y - 8; // the tail's side
-  if (b.moveT === 1) host.voice(e, () => { ctx.audio.sfx('creature.leviathan.windup', e.x, e.y); ctx.audio.slither(1.6); }, 700);
+  // (The coil before the slam is the bossMove event's sound: audio/EventCues.)
   if (b.moveT === LEV.THRASH_TELL) {
     // The slam: the pool's own surface is flung at the shore as real water.
     let n = 0;
@@ -93,7 +93,7 @@ function thrash(ctx: Ctx, e: Enemy, host: BossHost, b: BossBrain): void {
     }
     ctx.particles.burst(tx, ty, 18, null, () => packRGB(180, 225, 250), 2.6, { glow: 0.5, grav: 0.08 });
     host.shakeAt(e.x, e.y, 0.03, 0.06);
-    host.voice(e, () => { ctx.audio.splash(1.6, tx, ty); ctx.audio.boom(8); }, 800);
+    ctx.audio.sfx('creature.leviathan.thrash', tx, ty);
     if (!p.dead && Math.hypot(p.x - e.x, p.y - e.y) < 26) {
       ctx.playerCtl.damage(LEV.THRASH_DMG * (e.dmgK ?? 1), Math.sign(p.x - e.x || 1) * 3.4, -2.6, 'leviathan-thrash');
     }
@@ -122,7 +122,7 @@ export function tickLeviathan(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost,
   const phase = bossPhaseFor(e.hp / e.maxHp);
   if (phase > b.phase) {
     b.phase = phase;
-    host.voice(e, () => { ctx.audio.groan(); ctx.audio.sfx('creature.leviathan.alert', e.x, e.y); }, 800);
+    ctx.audio.sfx('creature.leviathan.alert', e.x, e.y);
     ctx.particles.burst(e.x, e.y - 10, 22, null, () => packRGB(150, 220, 255), 2, { glow: 1.4, grav: -0.03 });
     host.shakeAt(e.x, e.y, 0.03, 0.06);
   }
@@ -142,7 +142,7 @@ export function tickLeviathan(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost,
     else b.moveT = 0;
     ctx.particles.burst(e.x, e.y - 8, 12, null, () => packRGB(150, 235, 255), 2.4, { glow: 2.6, grav: 0 });
     ctx.lightning?.spark?.(e.x - def.halfW, e.y - def.h, e.x + def.halfW, e.y - 2);
-    host.voice(e, () => { ctx.audio.zap(); ctx.audio.groan(); }, 800);
+    ctx.audio.sfx('creature.leviathan.shock', e.x, e.y);
     if (!b.said.includes('shorted')) {
       b.said.push('shorted');
       ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 8, text: 'SHORTED', tone: 'brass' });
@@ -197,7 +197,7 @@ export function tickLeviathan(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost,
     if (e.grounded && e.timer % 38 === 0) {
       e.vy = -1.8;
       e.vx = (s.targetAlive ? Math.sign(s.pdx) || 1 : entityRandom() < 0.5 ? -1 : 1) * 0.85;
-      host.voice(e, () => ctx.audio.hop(1.6), 640);
+      ctx.audio.sfx('creature.leviathan.flop', e.x, e.y);
       host.shakeAt(e.x, e.y, 0.012, 0.04);
     }
     if (ctx.state.frameCount % 11 === 0) {
@@ -215,7 +215,7 @@ export function tickLeviathan(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost,
       const a = Math.atan2(player.y - 8 - e.y, player.x - e.x);
       e.vx = Math.cos(a) * 3.4;
       e.vy = Math.sin(a) * 2.6;
-      host.voice(e, () => ctx.audio.sfx('creature.leviathan.lunge', e.x, e.y), 640);
+      ctx.audio.sfx('creature.leviathan.lunge', e.x, e.y);
     } else if (b.moveT < LEV.LUNGE_TELL) {
       e.vx *= 0.8; e.vy = e.vy * 0.8 + 0.05; // sinking, coiled, lure dark
       e.windup = LEV.LUNGE_TELL - b.moveT;
@@ -234,7 +234,7 @@ export function tickLeviathan(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost,
       e.swoop = 22;
       e.vx = clamp((player.x - e.x) * 0.06, -1.4, 1.4);
       e.vy = -LEV.SURGE_VY;
-      host.voice(e, () => { ctx.audio.sfx('creature.leviathan.lunge', e.x, e.y); ctx.audio.splash(1.4, e.x, e.y); }, 800);
+      ctx.audio.sfx('creature.leviathan.surge', e.x, e.y);
       ctx.particles.burst(e.x, e.y - def.h, 22, null, () => packRGB(190, 230, 255), 3, { glow: 0.4, grav: 0.08 });
     }
     if (b.moveT >= LEV.DIVE_DUR) end(e, b, 110);
@@ -259,7 +259,7 @@ export function tickLeviathan(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost,
     else if (s.pDist < LEV.LUNGE_RANGE) begin(ctx, e, b, 'lunge', LEV.LUNGE_TELL + LEV.LUNGE_SWOOP);
     else if (P >= 2 && playerDry && s.pDist < LEV.THRASH_RANGE + 40 && b.lastMove !== 'thrash') begin(ctx, e, b, 'thrash', LEV.THRASH_DUR);
     else if (s.pDist >= LEV.VOLLEY_MIN && s.pDist < LEV.VOLLEY_MAX && host.hasAttackLine(e, def, true)) begin(ctx, e, b, 'volley', LEV.VOLLEY_TELL + 6);
-    if ((b.move as BossMove) === 'lunge') host.voice(e, () => ctx.audio.sfx('creature.leviathan.windup', e.x, e.y), 640);
+    // (Each move's tell — the lure going dark, the coil — is its bossMove event's sound: audio/EventCues.)
   }
 
   // Contact graze outside a committed bite.

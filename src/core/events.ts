@@ -4,7 +4,11 @@ import type { AlchemyKillInfo, RunSummary } from '@/core/run';
 /** What an organism just did (the `organism` event). */
 export type OrganismAction =
   | 'snap' | 'burst' | 'snare' | 'retract' | 'eat' | 'latch' | 'shed' | 'curl' | 'zap' | 'flare'
-  | 'scatter' | 'scavenge' | 'die';
+  | 'scatter' | 'scavenge' | 'die'
+  /** A puffer's sac is ripe (tight enough to burst at a touch). */
+  | 'swell'
+  /** A glow-worm lets its lure back down after hiding. */
+  | 'lower';
 
 /**
  * Minimal synchronous typed event bus.
@@ -131,7 +135,7 @@ export interface EventMap {
   /** Crawler wants to stand but the ceiling says no — HUD CRAMPED glyph. */
   crampedChanged: { cramped: boolean };
   /** The alchemist hooded (true) or unhooded (false) his lantern — the light wave's stealth verb. */
-  lanternHooded: { hooded: boolean; x: number; y: number };
+  lanternHooded: { hooded: boolean; x: number; y: number; /** Housekeeping (a new floor, a death lifts the hood): no sound. */ quiet?: boolean };
   /** The alchemist stepped into a designed deep-dark zone (once per entry; `darkness` 0..1). */
   darkZoneEntered: { x: number; y: number; darkness: number };
   /** The wand's beam caught a creature's eyes in the dark (they flash back). Audio cue hook. */

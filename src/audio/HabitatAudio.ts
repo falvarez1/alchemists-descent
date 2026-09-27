@@ -12,6 +12,10 @@ const TRAVEL: Partial<Record<Projectile['type'], SfxId>> = {
   fireball: 'proj.fireball.loop',
 };
 const MAX_TRAVEL_LOOPS = 5;
+/** Moths this close to the wand tip are circling the lantern; this many make a swarm you hear. */
+const MOTH_EAR = 28;
+const MOTH_SWARM_MIN = 3;
+const MOTH_SWARM_FULL = 9;
 
 /** Material beds: what the scanner counts, the loop it drives, and how many sampled cells is "full". */
 interface MaterialBed { id: SfxId; full: number }
@@ -44,6 +48,7 @@ export class HabitatAudio {
   private readonly idleAt = new WeakMap<Enemy, number>();
   private readonly airborne = new WeakMap<Enemy, boolean>();
   private readonly travelKey = new WeakMap<Projectile, string>();
+  private readonly waveKey = new WeakMap<object, string>();
   private travelSerial = 0;
 
   update(ctx: Ctx): void {
@@ -58,6 +63,42 @@ export class HabitatAudio {
     this.strideLayer(ctx);
     this.travelLoops(ctx);
     this.creatureLife(ctx);
+    this.shockWaves(ctx);
+    if (ctx.state.frameCount % SCAN_EVERY === 4) this.mothSwarm(ctx);
+  }
+
+  /**
+   * A Colossus stomp's shockwaves rumble as they run along the real floor —
+   * each one a sustained grind that follows its ridge and thins as it dies, so
+   * the jump can be timed by ear as well as by eye.
+   */
+  private shockWaves(ctx: Ctx): void {
+    for (const e of ctx.enemies) {
+      if (e.kind !== 'colossus' || !e.boss) continue;
+      for (const wave of e.boss.waves) {
+        let key = this.waveKey.get(wave);
+        if (!key) { key = `creature.colossus.wave.loop#${++this.travelSerial}`; this.waveKey.set(wave, key); }
+        ctx.audio.sfx('creature.colossus.wave.loop', wave.x, wave.y, { key, gain: Math.min(1, 0.35 + wave.life / 40) });
+      }
+    }
+  }
+
+  /**
+   * Moths circling the lantern: a soft papery flutter where the swarm is,
+   * swelling with its size. Hood the lantern and the swarm drifts off — and
+   * so does the sound.
+   */
+  private mothSwarm(ctx: Ctx): void {
+    const p = ctx.player;
+    const tipX = p.x + Math.cos(p.aimAngle) * 9, tipY = p.y - 9 + Math.sin(p.aimAngle) * 9;
+    let n = 0, sx = 0, sy = 0;
+    for (const c of ctx.critters.list) {
+      if ((c.kind !== 'moth' && c.kind !== 'ashmoth') || c.heldBy || (c.dead ?? 0) > 0) continue;
+      if (Math.abs(c.x - tipX) > MOTH_EAR || Math.abs(c.y - tipY) > MOTH_EAR) continue;
+      n++; sx += c.x; sy += c.y;
+    }
+    if (n < MOTH_SWARM_MIN) return;
+    ctx.audio.sfx('organism.moth.swarm.loop', sx / n, sy / n, { gain: Math.min(1, Math.sqrt(n / MOTH_SWARM_FULL)) });
   }
 
   /** Every ~13 cells of walking: the kit on his belt, iron underfoot, or deep water. */

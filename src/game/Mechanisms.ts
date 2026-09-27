@@ -763,9 +763,10 @@ export class Mechanisms implements MechanismsApi {
     const before = m.reading ?? 0;
     const reading = Math.max(0, Math.min(full, before + (lit ? 1 : -PHOTOCELL.drain)));
     m.reading = reading;
-    // A rising hum as it fills, so a held beam is audibly "working".
-    if (lit && reading < full && ctx.state.frameCount % 9 === 0) {
-      ctx.audio.sfx('mech.sensor', m.x, m.y, { gain: 0.25, pitch: -8 + (reading / full) * 16 });
+    // A hum that swells as it fills, so a held beam is audibly "working"
+    // (a sustained cue: it lives while the beam holds and fades when it drops).
+    if (lit && reading < full) {
+      ctx.audio.sfx('light.photocell.loop', m.x, m.y, { key: `photocell#${m.id}`, gain: 0.35 + 0.65 * (reading / full) });
     }
     const hot = reading >= full;
     const was = this.satisfied(m);
@@ -777,9 +778,8 @@ export class Mechanisms implements MechanismsApi {
       m.state--;
     }
     if (!was && this.satisfied(m)) {
-      // The lens takes: a bright brass chime, sparks off the rim.
-      ctx.audio.sfx('mech.latch', m.x, m.y, { gain: 0.9 });
-      ctx.audio.sfx('mech.sensor', m.x, m.y, { gain: 0.6, pitch: 9, delay: 0.05 });
+      // The lens takes: a bright brass chime, sparks off the rim (the
+      // lightDevice event's sound: audio/EventCues).
       ctx.particles.burst(m.x, m.y, 10, null, () => packRGB(255, 214, 120), 1.2, { glow: 2.2, grav: 0.02 });
       ctx.events.emit('lightDevice', { kind: 'photocell', x: m.x, y: m.y });
       if (nearPlayer(ctx, m) && latch === 'permanent') ctx.events.emit('toast', { text: 'The lens drinks the light. Something unbolts.' });
