@@ -3,6 +3,7 @@ import { findFloor, makeLeg, shiftLeg, solveKnee, stepLeg } from '@/creatures/ri
 import { integrate, point, translate } from '@/creatures/rig/physics';
 import { makeRig } from '@/creatures/rig/types';
 import type { CreatureRig } from '@/creatures/rig/types';
+import { idleEnvelope } from '@/creatures/idle';
 
 /** Pose beats of the Colossus's moves (mirrors creatures/bosses/colossus COL). */
 const COL_POSE = { SLAM_HIT: 30, STOMP_HIT: 32, THROW_HIT: 32, VENT_START: 42, VENT_END: 76, DEATH_OVERLOAD: 128 } as const;
@@ -119,7 +120,9 @@ export function stepBrute(ctx: Ctx, e: Enemy, rig: CreatureRig): void {
   // Body chunks.
   const floorAt = (fx: number): number => { const g = findFloor(world, fx, ground - 6 * S, ground + 4 * S); return g ? g.y : ground; };
   const gH = e.grounded ? Math.min(floorAt(hips.x), ground + 2) : ground, gC = e.grounded ? Math.min(floorAt(chest.x + fs * 3 * S), ground + 3) : ground;
-  const crouch = F[BR.land] * 2.2 * S + F[BR.dip] + F[BR.slam] * -1.5 * S + F[BR.kneel] * 4.2 * S;
+  // Idle life: a resting brute shifts its weight down onto its haunches and back up.
+  const settle = e.idle?.act === 'settle' ? idleEnvelope(e.idle) : 0;
+  const crouch = F[BR.land] * 2.2 * S + F[BR.dip] + F[BR.slam] * -1.5 * S + F[BR.kneel] * 4.2 * S + settle * 1.6 * S;
   const rear = F[BR.rear] * 5 * S; // it rears back on its hind legs before a stomp
   const hipTX = x - fs * spec.body * 0.42 - fs * F[BR.rear] * 1.5 * S, hipTY = gH - spec.hip + crouch * 0.6 + F[BR.breath] * 0.2 + F[BR.kneel] * 1.2 * S;
   const chTX = x + fs * spec.body * (0.58 - F[BR.rear] * 0.3) - F[BR.punch] * fs * -1.5 * S,

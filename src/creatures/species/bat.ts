@@ -3,6 +3,7 @@ import { makeChain, shiftChain, stepChain } from '@/creatures/rig/chain';
 import { integrate, place, point, solidAt, translate } from '@/creatures/rig/physics';
 import { makeRig } from '@/creatures/rig/types';
 import type { CreatureRig } from '@/creatures/rig/types';
+import { idleEnvelope } from '@/creatures/idle';
 
 /**
  * Bat: a furred body that lags its flight line, jointed wings whose finger
@@ -114,8 +115,15 @@ export function stepBat(ctx: Ctx, e: Enemy, rig: CreatureRig): void {
     head.x += (hx - head.x) * 0.5; head.y += (hy - head.y) * 0.5;
   }
   // Wing tips: spring-driven toward the stroke targets so they lag and whip.
+  // Idle life on the roost: one wing unfolds all the way, holds, and folds back.
+  const stretch = roost && e.idle?.act === 'stretch' ? idleEnvelope(e.idle) : 0;
   for (const side of [-1, 1]) {
-    batWingTargets(F, side, body.x, body.y, WT);
+    if (stretch > 0 && side === e.idle?.side) {
+      const fo = F[BAT.fold], sp = F[BAT.spread];
+      F[BAT.fold] = fo * (1 - stretch * 0.85); F[BAT.spread] = sp + stretch * 0.95;
+      batWingTargets(F, side, body.x, body.y, WT);
+      F[BAT.fold] = fo; F[BAT.spread] = sp;
+    } else batWingTargets(F, side, body.x, body.y, WT);
     const k = roost ? 0.6 : 0.42;
     const el = rig.pts[batTip(side, 3)];
     integrate(world, el, { gravity: 0, damping: 0.55 });

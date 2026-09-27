@@ -10,7 +10,7 @@ import { isOrganism, SESSILE_KINDS, stepOrganism } from '@/game/organisms';
 import { burstPuffer } from '@/game/organisms/puffer';
 import { emberDeath, shoveCrawler } from '@/game/organisms/crawler';
 import { driftDeadFish, glowLure, mothLight, schoolFish } from '@/game/organisms/ambient';
-import { GLOW, LEECH, PUFF, PUFF_RIPE, SNAP } from '@/game/organisms/types';
+import { GLOW, LEECH, PUFF, PUFF_RIPE, SNAP, SNARE_PREY, critterKey } from '@/game/organisms/types';
 
 /**
  * Wave F "The Caves Breathe": the critter layer + ambient cave biology.
@@ -51,6 +51,22 @@ function isHotGlow(t: number): boolean {
 /** Prey species that skitter from fire and the looming player — the inverse of
  *  the moth's light-seeking (moths and fish have their own rules). */
 const LIGHT_SHY: ReadonlySet<CritterKind> = new Set<CritterKind>(['beetle', 'fly', 'firefly']);
+
+/** `heldBy` for a flier stuck in a weaver's silk (no organism holds it). */
+const WEB = 'web';
+
+function isHotAt(w: Ctx['world'], x: number, y: number): boolean {
+  const t = w.types[w.idx(x, y)];
+  return t === Cell.Fire || t === Cell.Lava || t === Cell.Ember;
+}
+
+/** Inside one of this level's weaver lair webs (the silk the lairs were stamped with). */
+function inWeaverWeb(ctx: Ctx, x: number, y: number): boolean {
+  for (const web of ctx.levels.current?.weaverLairWebs ?? []) {
+    if (Math.hypot(x - web.x, y - web.y) <= web.radius + 2) return true;
+  }
+  return false;
+}
 
 /** A gusted snapjaw skips most of its tell: it bites at the wind. */
 const SNAP_TELL_SKIP = 8;
@@ -299,9 +315,21 @@ export class Critters implements CrittersApi {
       if (ctx.debug.frozenCritter(c)) continue; // posed/dragged in debug mode
       // Held in a snare or a jaw: the holder moves it. A holder that is gone lets go.
       if (c.heldBy) {
-        const holder = this.host.find(c.heldBy);
-        if (holder && holder.holds === c.id) { c.phase += 0.3; continue; }
-        c.heldBy = undefined;
+        if (c.heldBy === WEB) {
+          // Stuck in a spider's silk: it struggles while the silk is real.
+          const xi = Math.floor(c.x), yi = Math.floor(c.y);
+          if (w.inBounds(xi, yi) && w.types[w.idx(xi, yi)] === Cell.Vines && !isHotAt(w, xi, yi)) {
+            c.phase += 0.45;
+            if ((ctx.state.frameCount + idx) % 40 === 0 && Math.abs(c.x - player.x) < 200) ctx.audio.chirp(c.x, c.y);
+            continue;
+          }
+          c.heldBy = undefined;
+          c.startle = 12;
+        } else {
+          const holder = this.host.find(c.heldBy);
+          if (holder && holder.holds === c.id) { c.phase += 0.3; continue; }
+          c.heldBy = undefined;
+        }
       }
       const far = Math.abs(c.x - player.x) > VIEW_W || Math.abs(c.y - player.y) > VIEW_H;
       // Rooted organisms sleep off-camera entirely: nothing reaches them there.
@@ -339,6 +367,15 @@ export class Critters implements CrittersApi {
         continue;
       }
       const here = w.types[w.idx(xi, yi)];
+      // ECOLOGY: a flier that blunders into a weaver's web sticks (real Vines
+      // silk inside a lair's web) — and the weaver comes down for it.
+      if (here === Cell.Vines && SNARE_PREY.has(c.kind) && (c.startle ?? 0) === 0 && inWeaverWeb(ctx, c.x, c.y)) {
+        c.heldBy = WEB;
+        c.vx = 0; c.vy = 0;
+        critterKey(c);
+        ctx.events.emit('organism', { kind: 'weaver', action: 'snare', x: c.x, y: c.y });
+        continue;
+      }
 
       // The small things die to heat and corrosion like everything else
       if (here === Cell.Fire || here === Cell.Lava || here === Cell.Acid || here === Cell.Toxic) {

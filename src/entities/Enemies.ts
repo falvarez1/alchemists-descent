@@ -40,7 +40,7 @@ import { ensureCreatureMind, sightClear, tickCreatureMind } from '@/creatures/pe
 import { tickCreaturePose } from '@/creatures/pose';
 import { localRoute } from '@/creatures/navigation';
 import { pointHitsCreature } from '@/creatures/body';
-import { advanceRootLash, carryRillback, feedRillback, rillbackPrey } from '@/creatures/ecology';
+import { advanceRootLash, impSnack, mothSwarm, scatterRoost, slimeForage, carryRillback, feedRillback, rillbackPrey } from '@/creatures/ecology';
 import type { CreatureCue, CreatureMind } from '@/creatures/types';
 
 // ===================== Enemies =====================
@@ -73,7 +73,7 @@ function addNearestCandidate(list: CellCandidate[], cap: number, x: number, y: n
 const GORE_REF_AREA = 50;
 const GORE_CHUNK_TTL = 540; // ~9s a felled foe's body chunks linger before clearing
 const ENV_DAMAGE_FEEDBACK_COOLDOWN = 12;
-const WEAVER_PREY: ReadonlySet<CritterKind> = new Set<CritterKind>(['moth', 'firefly', 'beetle', 'fly']);
+const WEAVER_PREY: ReadonlySet<CritterKind> = new Set<CritterKind>(['moth', 'firefly', 'beetle', 'fly', 'isopod', 'ashmoth']);
 const WEAVER_DISTURBANCE_WAKE_PAD = 88;
 const WEAVER_CRANKY_FRAMES = 260;
 const WEAVER_TRAIL_WEB_COOLDOWN = 18;
@@ -96,6 +96,14 @@ const SLAM_MIN_SPEED = 3.5; // ...and only above a real impact speed (cells/fram
 const SLAM_DMG_BASE = 12; // base wall-slam damage...
 const SLAM_DMG_PER_SPEED = 2.4; // ...plus this per cell/frame of impact speed (small foes gib outright)
 const BAT_SLIME_GROUNDED_FRAMES = 7 * 60;
+/** Hit stagger (Enemies.flinch): minimum blow, shove scale, stagger ticks, and the cooldown against stun-lock. */
+const FLINCH_MIN_DAMAGE = 5;
+const FLINCH_PUSH = 0.55;
+const FLINCH_T_MIN = 3;
+const FLINCH_T_MAX = 9;
+const FLINCH_CD = 45;
+/** Bodies that don't stagger: rooted, surface-bound, chain-bodied, or a clutch of eggs. */
+const NO_FLINCH: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['weaver', 'eggs', 'spitter', 'rillback', 'stonemaw', 'rootloper']);
 const MAGE_TELEKINESIS_CELLS = new Set<number>([
   Cell.Sand,
   Cell.Gold,
@@ -585,6 +593,7 @@ export class Enemies implements EnemyControlApi {
     e.flash = 6;
     e.vx += kx || 0;
     e.vy += ky || 0;
+    this.flinch(e, amount, kx || 0, ky || 0);
     // The rig answers the blow physically on its next tick (creatures/species).
     e.hitKx = kx || 0;
     e.hitKy = ky || 0;
@@ -645,6 +654,26 @@ export class Enemies implements EnemyControlApi {
       );
     }
     if (e.hp <= 0) this.kill(e, kx, ky);
+  }
+
+  /**
+   * A blow that READS (the Rain World bar): a real hit staggers the body — a
+   * short, mass-scaled ballistic shove (the knock system owns it, so the AI
+   * pauses and the shove carries) — at most once per FLINCH_CD ticks, so a
+   * rapid wand cannot stun-lock anything. Bosses, rooted and surface-bound
+   * bodies answer with their rigs alone.
+   */
+  private flinch(e: Enemy, amount: number, kx: number, ky: number): void {
+    if (amount < FLINCH_MIN_DAMAGE || e.hp <= 0 || (e.flinchCd ?? 0) > 0 || (e.knockT ?? 0) > 0) return;
+    if (BOSS_LAIRS[e.kind] || NO_FLINCH.has(e.kind) || e.sleeping) return;
+    const def = this.defs[e.kind];
+    const k = Math.hypot(kx, ky);
+    const dx = k > 0.05 ? kx / k : 0, dy = k > 0.05 ? ky / k : -1;
+    const push = clamp(GUST_REF_MASS / (def.halfW * def.h), 0.3, 2) * clamp(k, 0.8, 3) * FLINCH_PUSH;
+    e.knockVx = dx * push;
+    e.knockVy = dy * push * 0.6 - push * 0.25;
+    e.knockT = Math.round(clamp(FLINCH_T_MIN + (amount / Math.max(1, e.maxHp)) * 26, FLINCH_T_MIN, FLINCH_T_MAX));
+    e.flinchCd = FLINCH_CD;
   }
 
   /** The player's kick is a wind blast: shove a foe along (dirX,dirY), mass-scaled
@@ -2536,6 +2565,7 @@ export class Enemies implements EnemyControlApi {
       if ((e.weaverFeedT ?? 0) > 0) e.weaverFeedT = (e.weaverFeedT ?? 0) - 1;
       if ((e.slimed ?? 0) > 0 && !debugEnemyAttacksSuppressed) e.slimed = (e.slimed ?? 0) - 1;
       if ((e.tpCool ?? 0) > 0) e.tpCool = (e.tpCool ?? 0) - 1;
+      if ((e.flinchCd ?? 0) > 0) e.flinchCd = (e.flinchCd ?? 0) - 1;
       e.timer++;
       if (e.attackCd > 0 && !debugEnemyAttacksSuppressed) e.attackCd--;
       this.enemyEnvironmentDamage(e, i);
@@ -2660,12 +2690,21 @@ export class Enemies implements EnemyControlApi {
       if (e.kind === 'slime' || e.kind === 'acidslime') {
         e.vy += 0.3;
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+        // ECOLOGY: a slime with nothing to fight goes to remains it can smell,
+        // settles over them and eats (creatures/ecology.slimeForage).
+        const forage = !targetAlive && e.timer % 3 === 0 ? slimeForage(ctx, e) : null;
+        if (forage) e.forageX = forage.feeding ? undefined : forage.x;
+        else if (targetAlive) e.forageX = undefined;
+        const feeding = forage?.feeding === true || ((e.scavengeT ?? 0) > 0 && !targetAlive);
         if (e.grounded) {
           e.vx *= 0.6;
           // ANTICIPATION (Rain World): the body visibly gathers before it
           // leaps — the old instant hops now charge through a short windup.
-          if (!e.windup) {
+          if (feeding) {
+            e.windup = 0; // settled over the meal: no hopping off it
+          } else if (!e.windup) {
             if (targetAlive && pDist < 260 && e.timer % 50 === 0) e.windup = 7;
+            else if (e.forageX !== undefined && e.timer % 60 === 0) e.windup = 9; // purposeful: it smells something
             else if (e.timer % 130 === 0) e.windup = 12; // a lazy wander gathers longer
           } else {
             e.windup--;
@@ -2682,6 +2721,9 @@ export class Enemies implements EnemyControlApi {
                   e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
                 e.vx = (Math.sign(wp[0] - e.x) || 1) * (1.5 + entityRandom() * 0.7) * hurtK;
                 e.vy = (-2.6 - entityRandom() * 0.6) * hurtK;
+              } else if (e.forageX !== undefined) {
+                e.vx = (Math.sign(e.forageX - e.x) || 1) * (1.4 + entityRandom() * 0.6) * hurtK;
+                e.vy = -2.3 * hurtK;
               } else {
                 e.vx = (entityRandom() - 0.5) * 2.8 * hurtK;
                 e.vy = -2.4 * hurtK;
@@ -2731,10 +2773,15 @@ export class Enemies implements EnemyControlApi {
         if (e.sleeping && !wingsSlimed) {
           e.vx = 0;
           e.vy = 0;
-          if (targetAlive && pDist < 70) {
+          // A loud bang nearby (a blast, a stomp, a burst puffer) startles the roost too.
+          const startled = this.cues.some(cue => cue.strength >= 0.5 && ctx.state.frameCount - cue.tick < 4 &&
+            Math.hypot(cue.x - e.x, cue.y - e.y) < Math.min(110, cue.radius));
+          if ((targetAlive && pDist < 70) || startled) {
             e.sleeping = false;
             e.vy = 1.2; // drop off the ceiling
             this.voice(e, () => ctx.audio.squeak());
+            // ...and the whole roost bursts out with it (creatures/ecology).
+            if (scatterRoost(ctx, e) > 0) this.voice(e, () => { ctx.audio.squeak(); ctx.audio.noiseBurst(0.25, 1800, 0.05, true); });
           }
           continue;
         }
@@ -2748,7 +2795,7 @@ export class Enemies implements EnemyControlApi {
           const critters = ctx.critters.list;
           for (let ci2 = 0; ci2 < critters.length; ci2++) {
             const cr = critters[ci2];
-            if (cr.kind !== 'moth') continue;
+            if ((cr.kind !== 'moth' && cr.kind !== 'firefly' && cr.kind !== 'ashmoth') || cr.heldBy) continue;
             const cdx = cr.x - e.x,
               cdy = cr.y - e.y;
             if (cdx * cdx + cdy * cdy < 70 * 70) {
@@ -2767,6 +2814,20 @@ export class Enemies implements EnemyControlApi {
               // gulp: a puff of wing dust and the moth is gone
               ctx.particles.burst(prey.x, prey.y, 3, null, () => packRGB(150, 140, 110), 0.8);
               ctx.critters.remove(prey);
+              ctx.events.emit('organism', { kind: 'bat', action: 'eat', x: prey.x, y: prey.y });
+            }
+          } else if (e.timer % 12 === 0 || e.swarmX !== undefined) {
+            // A swarm circling a light is a larder: bats come to it from across
+            // the cave (lead the moths somewhere and the bats follow them).
+            if (e.timer % 12 === 0) {
+              const swarm = mothSwarm(ctx, e.x, e.y);
+              e.swarmX = swarm?.x; e.swarmY = swarm?.y;
+            }
+            if (e.swarmX !== undefined && e.swarmY !== undefined) {
+              hunting = true;
+              const sdx = e.swarmX - e.x, sdy = e.swarmY - e.y, sd = Math.hypot(sdx, sdy) || 1;
+              e.vx += (sdx / sd) * 0.12;
+              e.vy += (sdy / sd) * 0.12;
             }
           }
         }
@@ -3146,6 +3207,12 @@ export class Enemies implements EnemyControlApi {
         } else {
           e.vx += (entityRandom() - 0.5) * 0.05;
           e.vy += (entityRandom() - 0.5) * 0.05;
+          // ECOLOGY: an idle imp snaps ash moths out of the lava's glow.
+          const moth = e.timer % 4 === 0 ? impSnack(ctx, e) : null;
+          if (moth) {
+            const dx = moth.x - e.x, dy = moth.y - (e.y - 5), d = Math.hypot(dx, dy) || 1;
+            e.vx += (dx / d) * 0.28; e.vy += (dy / d) * 0.28;
+          }
         }
         e.vy += Math.sin(e.bobPhase) * 0.04;
         e.vx = clamp(e.vx, -1.3, 1.3);

@@ -6,6 +6,7 @@ import type { CreatureBody, CreatureMind, PlantedFoot } from '@/creatures/types'
 import type { CreatureExpression } from '@/creatures/expression';
 import type { CreatureRig } from '@/creatures/rig/types';
 import type { BossBrain } from '@/creatures/bosses/types';
+import type { IdleLife } from '@/creatures/idle';
 import type { PlayerCostume } from '@/entities/playerCostume';
 import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/run';
 
@@ -407,6 +408,16 @@ export interface Enemy {
   rig?: CreatureRig;
   /** Bosses (creatures/bosses): phase, committed move and its clock, the fight's honesty ledger. */
   boss?: BossBrain;
+  /** Ticks until a blow may stagger it again (Enemies.flinch: no stun-lock). */
+  flinchCd?: number;
+  /** Idle life (creatures/idle): the small act a resting animal is doing. Presentation only. */
+  idle?: IdleLife;
+  /** Ecology: ticks spent feeding on remains (a scavenging slime), and where it smells them. */
+  scavengeT?: number;
+  forageX?: number;
+  /** Ecology: the moth swarm a bat is flying to (creatures/ecology.mothSwarm). */
+  swarmX?: number;
+  swarmY?: number;
   /** Last hit's knockback direction and frame: the rig answers it physically (a snapped-back
    *  head, a whipped tail, a dented gel). Presentation-only, never saved. */
   hitKx?: number;
