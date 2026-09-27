@@ -6,6 +6,7 @@ import {
   buildRunSummary,
   clampPhials,
   dailySeed,
+  formatChain,
   formatRunTime,
   isDateKey,
   midSentence,
@@ -168,11 +169,16 @@ describe('the run ledger', () => {
 
   it('writes the share line a player pastes to a friend', () => {
     const daily = buildRunSummary(stats({ daily: '2026-09-26' }));
-    expect(shareLine(daily)).toBe('Breathing Works — daily 2026-09-26 — Floor 3/4 in 14:02 · 9 alchemical kills · best chain 3');
+    expect(shareLine(daily)).toBe('Breathing Works — daily 2026-09-26 — Floor 3/4 in 14:02 · 9 alchemical kills · best chain ×3');
     const normal = buildRunSummary(stats({ alchemicalKills: 1 }));
-    expect(shareLine(normal)).toBe('Breathing Works — Floor 3/4 in 14:02 · 1 alchemical kill · best chain 3');
+    expect(shareLine(normal)).toBe('Breathing Works — Floor 3/4 in 14:02 · 1 alchemical kill · best chain ×3');
     const won = buildRunSummary(stats({ outcome: 'victory', floor: 4, floorName: 'The Kiln Heart', timeMs: 1_120_000 }));
-    expect(shareLine(won)).toBe('Breathing Works — the Kiln quieted in 18:40 · 9 alchemical kills · best chain 3');
+    expect(shareLine(won)).toBe('Breathing Works — the Kiln quieted in 18:40 · 9 alchemical kills · best chain ×3');
+    // No chain: the ledger shows a dash, and the share line leaves it out.
+    const chainless = buildRunSummary(stats({ bestChain: 0, alchemicalKills: 0 }));
+    expect(shareLine(chainless)).toBe('Breathing Works — Floor 3/4 in 14:02 · 0 alchemical kills');
+    expect(formatChain(0)).toBe('—');
+    expect(formatChain(3)).toBe('×3');
   });
 });
 

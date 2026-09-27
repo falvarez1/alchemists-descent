@@ -241,6 +241,13 @@ export class ClipCard {
     this.show();
   }
 
+  /** Put the card away (its moment has passed). Harmless when it is already down. */
+  dismiss(): void {
+    if (this.root.hidden) return;
+    if (this.root.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+    this.hide();
+  }
+
   /** A second request while one develops: the card answers instead of queueing. */
   nudge(): void {
     this.show();

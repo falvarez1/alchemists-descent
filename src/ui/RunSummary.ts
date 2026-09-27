@@ -2,7 +2,7 @@ import type { Ctx, RunResult } from '@/core/types';
 import type { KitId } from '@/core/run';
 import { CAMPAIGN_FLOORS, floorDisplayName } from '@/config/worldgraph';
 import { KIT_DEFS } from '@/content/kits';
-import { formatRunTime, runHeadline, shareLine } from '@/game/runRules';
+import { formatChain, formatRunTime, runHeadline, shareLine } from '@/game/runRules';
 import { KitPicker } from '@/ui/KitPicker';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
 
@@ -62,6 +62,8 @@ export class RunSummary {
   private rafs = new Set<number>();
   private shown: RunResult | null = null;
   private busy = false;
+  /** A "Save clip" from the ledger is in flight; its outcome lands in the status line. */
+  private awaitingClip = false;
   private chosenKit: KitId = 'spark';
 
   constructor(private readonly ctx: Ctx) {
@@ -115,6 +117,16 @@ export class RunSummary {
 
     this.trap = createModalFocusTrap(this.root, { initialFocus: () => this.againButton, onEscape: () => this.againButton.focus() });
     this.disposers.push(ctx.events.on('runEnded', () => this.onRunEnded()));
+    this.disposers.push(ctx.events.on('clipSaved', ({ durationMs }) => {
+      if (!this.awaitingClip || !this.isOpen) return;
+      this.awaitingClip = false;
+      this.status.textContent = `Bottled: the last ${Math.max(1, Math.round(durationMs / 1000))} seconds, ready on the plate in the corner.`;
+    }));
+    this.disposers.push(ctx.events.on('clipFailed', ({ message }) => {
+      if (!this.awaitingClip || !this.isOpen) return;
+      this.awaitingClip = false;
+      this.status.textContent = message;
+    }));
     window.addEventListener('keydown', this.onKeyCapture, true);
     this.disposers.push(() => window.removeEventListener('keydown', this.onKeyCapture, true));
   }
@@ -189,6 +201,7 @@ export class RunSummary {
     const view = ctx.run?.metaView();
     this.chosenKit = view?.lastKit ?? summary.kit;
     this.kits.render(view?.unlockedKits ?? ['spark'], this.chosenKit, result.unlocked);
+    this.awaitingClip = false;
     this.status.textContent = result.recorded ? '' : 'A practice descent: debug tools were used, so the ledger keeps no record.';
     this.shareText.textContent = shareLine(summary);
     for (const b of this.actions.querySelectorAll('button')) b.disabled = false;
@@ -197,6 +210,7 @@ export class RunSummary {
     ctx.input.releaseHeldInput?.();
     this.root.hidden = false;
     document.body.classList.add('run-summary-open');
+    ctx.events.emit('runLedger', { open: true });
     // Restart the reveal keyframes on every show.
     this.root.classList.remove('visible');
     void this.root.offsetWidth;
@@ -212,10 +226,13 @@ export class RunSummary {
 
   private hide(): void {
     this.clearTimers();
+    this.awaitingClip = false;
     this.trap.deactivate({ restoreFocus: false });
+    const wasOpen = !this.root.hidden;
     this.root.hidden = true;
     this.root.classList.remove('visible');
     document.body.classList.remove('run-summary-open');
+    if (wasOpen) this.ctx.events.emit('runLedger', { open: false });
   }
 
   private playReveal(victory: boolean): void {
@@ -260,7 +277,8 @@ export class RunSummary {
       { label: 'Floor', value: s.floor, format: (n) => `${Math.round(n)} of ${s.floorsTotal}`, accent: result.newBestFloor },
       { label: 'Kills', value: s.kills, format: (n) => String(Math.round(n)) },
       { label: 'Alchemical kills', value: s.alchemicalKills, format: (n) => String(Math.round(n)) },
-      { label: 'Best chain', value: s.bestChain, format: (n) => (n <= 0 ? '—' : `×${Math.round(n)}`) },
+      // The count-up passes fractions; a chain under ×1 is still a dash.
+      { label: 'Best chain', value: s.bestChain, format: (n) => formatChain(Math.floor(n)) },
       { label: 'Deaths', value: s.deaths, format: (n) => String(Math.round(n)) },
       { label: 'Gold carried', value: s.gold, format: (n) => `${Math.round(n)} oz` },
       { label: 'Cards found', value: s.cardsFound, format: (n) => String(Math.round(n)) },
@@ -391,10 +409,14 @@ export class RunSummary {
   }
 
   private saveClip(): void {
+    // Set before emitting: a refusal answers synchronously (clipFailed).
+    this.awaitingClip = true;
+    this.status.textContent = 'Bottling the last few seconds…';
     const handled = this.ctx.events.emit('clipRequested', { reason: 'summary' });
-    this.status.textContent = handled
-      ? 'Bottling the last few seconds…'
-      : 'Clips are not available in this build.';
+    if (!handled) {
+      this.awaitingClip = false;
+      this.status.textContent = 'Clips are not available in this build.';
+    }
   }
 
   private async copyShare(): Promise<void> {
