@@ -1,6 +1,7 @@
 import { hash2 } from '@/core/math';
 import { Cell, isSoftGrowth, isSolid } from '@/sim/CellType';
 import type { World } from '@/sim/World';
+import type { PolishTarget } from '@/world/terrainPolish';
 import { fungusColor, glowshroomColor, grassColor as grassBladeColor, packRGB } from '@/sim/colors';
 
 /**
@@ -39,7 +40,12 @@ function dirtColor(x: number, y: number, seed: number): number {
   return packRGB(96 + Math.floor(v * 24) - d, 64 + Math.floor(v * 16) - d, 40 + Math.floor(v * 12) - d);
 }
 
-export function dressWalkSurface(world: World, opts: SurfaceDressOptions): void {
+/** Only the planes the dressing paints. Generation passes a view WITHOUT the
+ *  override set (pristine paint is regenerated from the seed, not a scar); the
+ *  Builder's repaint passes the live World. */
+export type DressTarget = Pick<PolishTarget, 'types' | 'colors' | 'colorOverrides' | 'width' | 'height'>;
+
+export function dressWalkSurface(world: DressTarget, opts: SurfaceDressOptions): void {
   const W = world.width;
   const H = world.height;
   const t = world.types;
@@ -58,19 +64,19 @@ export function dressWalkSurface(world: World, opts: SurfaceDressOptions): void 
       if (t[x + (y - 1) * W] !== Cell.Empty || t[x + (y - 2) * W] !== Cell.Empty) continue;
       if (crown === 'frost') {
         col[i] = packRGB(206, 220, 238); // snow cap
-        world.colorOverrides.add(i);
+        world.colorOverrides?.add(i);
         continue;
       }
       const hr = hash2(x, y, seed + 131);
       if (hr < flowerChance) col[i] = packRGB(214, 96, 150); // pink flower
       else if (hr < flowerChance + 0.06) col[i] = packRGB(206, 186, 84); // yellow flower
       else col[i] = grassColor(x, seed); // grass / moss
-      world.colorOverrides.add(i);
+      world.colorOverrides?.add(i);
       for (let d = 1; d <= 3; d++) {
         const ii = x + (y + d) * W;
         if (t[ii] !== Cell.Wall) break;
         col[ii] = dirtColor(x, y + d, seed);
-        world.colorOverrides.add(ii);
+        world.colorOverrides?.add(ii);
       }
     }
   }

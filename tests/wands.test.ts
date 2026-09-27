@@ -11,8 +11,8 @@ import type { CardId, CastAction, Ctx, Enemy } from '@/core/types';
 import { createDefaultStatus } from '@/entities/status';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
-import { introControlHintForObjective } from '@/game/introObjectives';
-import { cardGrantBenchCue, contextualObjectiveText } from '@/ui/Hud';
+import { INTRO_OBJECTIVE, introControlHintForObjective } from '@/game/introObjectives';
+import { FLOOR_OBJECTIVE_WAYSTONE, cardGrantBenchCue, contextualObjectiveText } from '@/ui/Hud';
 import { canOpenWandBench, cardMatchesBenchFilter, recipeHintsForCard } from '@/ui/WandBench';
 import { mockRandom, restoreRandom } from './helpers/randomSeam';
 
@@ -523,17 +523,17 @@ describe('HUD contextual objectives', () => {
       portal: { x: 500, y: 100, open: false },
     });
 
-    expect(contextualObjectiveText(ctx, 'FIND THE GOLDEN KEY', 60)).toBe('WAND BENCH READY — PRESS B');
+    expect(contextualObjectiveText(ctx, INTRO_OBJECTIVE.findKey, 60)).toBe(INTRO_OBJECTIVE.benchAvailable);
   });
 
   it('shows portal and key state with plan wording', () => {
     const beforeKey = objectiveCtx({ portal: { x: 500, y: 100, open: false }, keyTaken: false });
     const afterKey = objectiveCtx({ portal: { x: 500, y: 100, open: false }, keyTaken: true });
 
-    expect(contextualObjectiveText(beforeKey, 'anything')).toBe('FIND THE GOLDEN KEY');
+    expect(contextualObjectiveText(beforeKey, 'anything')).toBe(INTRO_OBJECTIVE.findKey);
     expect(contextualObjectiveText(beforeKey, 'MOVE THROUGH THE CAVE')).toBe('MOVE THROUGH THE CAVE');
     expect(contextualObjectiveText(beforeKey, 'WAND BENCH: SLOT HEAVY')).toBe('WAND BENCH: SLOT HEAVY');
-    expect(contextualObjectiveText(afterKey, 'anything')).toBe('RETURN TO THE PORTAL');
+    expect(contextualObjectiveText(afterKey, 'anything')).toBe(INTRO_OBJECTIVE.returnPortal);
   });
 
   it('calls out nearby unlit waystones before falling back to the base objective', () => {
@@ -546,15 +546,16 @@ describe('HUD contextual objectives', () => {
       waystones: [{ x: 130, y: 100, lit: true }],
     });
 
-    expect(contextualObjectiveText(nearWaystone, 'EXPLORE')).toBe('LIGHT WAYSTONE: BRING FIRE');
+    expect(contextualObjectiveText(nearWaystone, 'EXPLORE')).toBe(FLOOR_OBJECTIVE_WAYSTONE);
     expect(contextualObjectiveText(litWaystone, 'EXPLORE')).toBe('EXPLORE');
   });
 
   it('points a card grant at the bench (B), which opens anywhere now', () => {
     // Position no longer matters — the bench is the alchemist's own kit, so the
     // cue is the same far from (or without) any Refuge.
-    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 60, y: 150 } }))).toBe('NEW SPELL CARD — PRESS B TO SLOT');
-    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 9000, y: 9000 } }))).toBe('NEW SPELL CARD — PRESS B TO SLOT');
+    const cue = 'A new spell card. Seat it at the wand bench (B).';
+    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 60, y: 150 } }))).toBe(cue);
+    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 9000, y: 9000 } }))).toBe(cue);
   });
 });
 
@@ -577,7 +578,7 @@ describe('HUD intro control hints', () => {
       'LMB',
     ]);
     expect(introControlHintForObjective('WAND BENCH: SLOT HEAVY')?.map((part) => part.key)).toContain('B');
-    expect(introControlHintForObjective('FIND THE GOLDEN KEY')).toBeNull();
+    expect(introControlHintForObjective(INTRO_OBJECTIVE.findKey)).toBeNull();
   });
 });
 

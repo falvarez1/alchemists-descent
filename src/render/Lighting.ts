@@ -306,10 +306,12 @@ export class Lighting implements LightField {
             lightB[i] = Math.max(lightB[i], 0.1);
           }
         } else if (t === Cell.Gold) {
-          if (lightR[i] < 0.34) {
-            lightR[i] = 0.34;
-            lightG[i] = Math.max(lightG[i], 0.27);
-            lightB[i] = Math.max(lightB[i], 0.06);
+          // 0.34 -> 0.22 (look pass): a pocket warms its own lip, it no longer
+          // lights the surrounding rock like a lamp.
+          if (lightR[i] < 0.22) {
+            lightR[i] = 0.22;
+            lightG[i] = Math.max(lightG[i], 0.17);
+            lightB[i] = Math.max(lightB[i], 0.04);
           }
         } else if (t === Cell.Fungus) {
           const f = 0.3 + Math.sin(ctx.state.frameCount * 0.04 + wx * 0.3 + wy * 0.2) * 0.08;

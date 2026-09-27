@@ -5,13 +5,14 @@ import { Cell, blocksEntity } from '@/sim/CellType';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { COMPOSE_PAD } from '@/render/lightingModel';
 import { blitCellArt, viewIntersects } from '@/render/sprites/FineArt';
+import { FLOOR_LOOKS, crownReach, floorLookFor, masonryPanel, type FloorLook } from '@/config/floorLooks';
 
 let terrain: Uint8ClampedArray | null = null;
 let props: Uint8ClampedArray | null = null;
 let loading = false;
 interface TerrainCache {
   colors: Uint32Array; versions: Uint32Array; dynamic: Uint32Array;
-  epoch: number; tick: number; revision: number; x: number; y: number;
+  epoch: number; tick: number; revision: number; x: number; y: number; look: FloorLook | null;
 }
 const caches = new WeakMap<World, TerrainCache>();
 
@@ -30,11 +31,12 @@ export function prepareTerrainColors(ctx: Ctx): Uint32Array {
   let cache = caches.get(world);
   if (!cache) {
     cache = { colors: new Uint32Array(world.colors.length), versions: new Uint32Array(activity.versions.length).fill(0xffffffff),
-      dynamic: new Uint32Array(activity.rowMasks.length), epoch: -1, tick: -1, revision: -1, x: NaN, y: NaN };
+      dynamic: new Uint32Array(activity.rowMasks.length), epoch: -1, tick: -1, revision: -1, x: NaN, y: NaN, look: null };
     caches.set(world, cache);
   }
-  if (cache.tick === ctx.state.frameCount && cache.revision === world.mutationVersion && cache.x === camera.renderX && cache.y === camera.renderY) return cache.colors;
-  if (cache.epoch !== activity.epoch) { cache.versions.fill(0xffffffff); cache.epoch = activity.epoch; }
+  const look = floorLookFor(ctx);
+  if (cache.tick === ctx.state.frameCount && cache.revision === world.mutationVersion && cache.x === camera.renderX && cache.y === camera.renderY && cache.look === look) return cache.colors;
+  if (cache.epoch !== activity.epoch || cache.look !== look) { cache.versions.fill(0xffffffff); cache.epoch = activity.epoch; cache.look = look; }
   // A freshly replaced/paused world may be edited before its first sim step.
   // Those writes advance the revision without initialized per-cell damage rows.
   if (!activity.ready && cache.revision !== world.mutationVersion) cache.versions.fill(0xffffffff);
@@ -58,7 +60,7 @@ export function prepareTerrainColors(ctx: Ctx): Uint32Array {
           changed &= changed - 1;
           if (x >= world.width) continue;
           const index = x + y * world.width;
-          cache.colors[index] = terrainAlbedo(world, index, x, y, true);
+          cache.colors[index] = terrainAlbedo(world, index, x, y, true, look);
           const type = world.types[index];
           const bit = 1 << bitIndex;
           if (type !== Cell.Empty && type !== Cell.Wall && type !== Cell.Stone && type !== Cell.Wood && type !== Cell.Metal && type !== Cell.Water) cache.dynamic[rowIndex] |= bit;
@@ -107,8 +109,18 @@ export function usesTerrainArt(ctx: Ctx): boolean {
   return ctx.state.mode === 'play' && ctx.state.playtestSource !== 'builder';
 }
 
-/** Shared albedo sampler for CPU, WebGL and WebGPU. One atlas pixel per cell. */
-export function terrainAlbedo(world: World, index: number, x: number, y: number, enabled: boolean): number {
+/** The floor look the compositors grade with: identity outside expedition play. */
+export function activeFloorLook(ctx: Ctx): FloorLook {
+  return usesTerrainArt(ctx) ? floorLookFor(ctx) : FLOOR_LOOKS.earthen;
+}
+
+/**
+ * Shared albedo sampler for CPU and WebGPU (the WebGL2 compose shader ports it
+ * formula-for-formula). One atlas pixel per cell. The floor look grades the
+ * shared material kit per floor; the earthen look is the shipped identity.
+ */
+export function terrainAlbedo(world: World, index: number, x: number, y: number, enabled: boolean,
+  look: FloorLook = FLOOR_LOOKS.earthen): number {
   const original = world.colors[index];
   if (!enabled || !terrain) return original;
   const type = world.types[index];
@@ -119,22 +131,49 @@ export function terrainAlbedo(world: World, index: number, x: number, y: number,
       && (below === Cell.Water || blocksEntity(below));
     // Only the immediate surface changes value. Looking three cells upward
     // exceeded the two-cell mutation halo and left stale bands as pools drained.
-    return exposed ? 0x658e94 : 0x315b67;
+    const water = exposed ? look.waterSurface : look.waterBody;
+    return (water[0] << 16) | (water[1] << 8) | water[2];
   }
   if (type !== Cell.Wall && type !== Cell.Stone && type !== Cell.Wood && type !== Cell.Metal) return original;
-  const tileX = type === Cell.Metal || (type === Cell.Stone && y > 810) ? 128 : 0;
-  const tileY = type === Cell.Wood || (type === Cell.Stone && y > 810) ? 128 : 0;
+  const panels = look.masonryPanels;
+  const rock = type === Cell.Stone ? y > look.rockRow
+    : type === Cell.Wall && panels < 16 && !masonryPanel(x >> 6, y >> 6, panels);
+  const tileX = type === Cell.Metal || rock ? 128 : 0;
+  const tileY = type === Cell.Wood || rock ? 128 : 0;
   const offset = ((tileY + (y & 127)) * 256 + tileX + (x & 127)) * 4;
-  let r = terrain[offset] * 1.28 + 15, g = terrain[offset + 1] * 1.28 + 20, b = terrain[offset + 2] * 1.28 + 21;
+  const gain = look.gain, lift = look.lift;
+  let r = terrain[offset] * gain[0] + lift[0], g = terrain[offset + 1] * gain[1] + lift[1], b = terrain[offset + 2] * gain[2] + lift[2];
+  // A masonry panel set into rock is framed by a dark mortar course.
+  if (type === Cell.Wall && !rock && panels < 16 && panelSeam(x, y, panels)) { r *= 0.55; g *= 0.55; b *= 0.58; }
+  const width = world.width, types = world.types;
+  // Crown: the floor's growth/stain creeps a jagged few cells down from each
+  // exposed top (three cells at most: the renderer's dirty halo is two).
+  if (look.crownStrength > 0 && (type === Cell.Wall || type === Cell.Stone)) {
+    const reach = crownReach(x, look.crownDepth);
+    for (let k = 1; k <= reach && y - k >= 0; k++) {
+      if (blocksEntity(types[index - k * width])) continue;
+      const w = look.crownStrength * (1 - (k - 1) / reach);
+      r *= 1 + w * (look.crown[0] / 128 - 1); g *= 1 + w * (look.crown[1] / 128 - 1); b *= 1 + w * (look.crown[2] / 128 - 1);
+      break;
+    }
+  }
   // Chipped lips follow the actual terrain boundary, including freshly dug cuts.
-  const top = y > 0 && !blocksEntity(world.types[index - world.width]);
-  const left = x > 0 && !blocksEntity(world.types[index - 1]);
-  const bottom = y + 1 < world.height && !blocksEntity(world.types[index + world.width]);
+  const top = y > 0 && !blocksEntity(types[index - width]);
+  const left = x > 0 && !blocksEntity(types[index - 1]);
+  const bottom = y + 1 < world.height && !blocksEntity(types[index + width]);
   if (top || left) {
     const chip = ((x * 17 + y * 29) & 7) < 2 ? 0.76 : 1;
-    r = r * 0.55 + 115 * chip; g = g * 0.55 + 111 * chip; b = b * 0.55 + 94 * chip;
-  } else if (bottom) { r *= 0.62; g *= 0.62; b *= 0.67; }
+    const lip = look.lip;
+    r = r * 0.55 + lip[0] * chip; g = g * 0.55 + lip[1] * chip; b = b * 0.55 + lip[2] * chip;
+  } else if (bottom) { r *= look.under[0]; g *= look.under[1]; b *= look.under[2]; }
   return (Math.min(255, r) << 16) | (Math.min(255, g) << 8) | Math.min(255, b);
+}
+
+/** Masonry cells on a panel edge that borders a rock panel. */
+function panelSeam(x: number, y: number, panels: number): boolean {
+  const px = x >> 6, py = y >> 6, lx = x & 63, ly = y & 63;
+  return (lx === 0 && !masonryPanel(px - 1, py, panels)) || (lx === 63 && !masonryPanel(px + 1, py, panels))
+    || (ly === 0 && !masonryPanel(px, py - 1, panels)) || (ly === 63 && !masonryPanel(px, py + 1, panels));
 }
 
 function prop(s: PixelSurface, light: LightField, crop: readonly [number, number, number, number], x: number, y: number): void {

@@ -9,6 +9,7 @@ import { PopoverHost, type RectLike } from '@/ui/editor/PopoverHost';
 import { fillMaterialPopover } from '@/ui/materialInfo';
 import { resetHeldSpellInputs } from '@/core/runtimeState';
 import { WORKS_ROOMS } from '@/world/breathingWorks';
+import { INTRO_OBJECTIVE } from '@/game/introObjectives';
 
 /** Fog color for unexplored map cells (#0a0a10). */
 const UNEXPLORED = packRGB(10, 10, 16);
@@ -913,6 +914,18 @@ const LEGEND_LABELS: Partial<Record<MinimapPoiKind, string>> = {
   scene: 'Landmark', boss: 'Guardian', waypoint: 'Your waypoint', mechanism: 'Mechanism', runeVault: 'Rune glyph',
 };
 
+/** Fold nearest-first places that share a kind and title into one counted row. */
+export function groupPlaces<T extends { poi: Pick<MinimapPoi, 'kind' | 'title'> }>(sorted: readonly T[]): Array<T & { count: number }> {
+  const groups = new Map<string, T & { count: number }>();
+  for (const place of sorted) {
+    const key = place.poi.kind + '|' + place.poi.title.toLowerCase();
+    const group = groups.get(key);
+    if (group) group.count++;
+    else groups.set(key, { ...place, count: 1 });
+  }
+  return [...groups.values()];
+}
+
 function legendLabel(poi: MinimapPoi): string {
   if (poi.kind === 'pickup') return poi.title.split(/[:·—-]/)[0].trim() || 'Treasure';
   return LEGEND_LABELS[poi.kind] ?? poi.title;
@@ -1020,7 +1033,7 @@ export class Minimap {
     // Key in hand -> the portal dot pings on the corner map for a few
     // seconds: "now go THERE."
     this.disposers.push(ctx.events.on('objectiveChanged', ({ text }) => {
-      if (text === 'REACH THE PORTAL' || text === 'RETURN TO THE PORTAL') this.portalPing = 300;
+      if (text === 'REACH THE PORTAL' || text === INTRO_OBJECTIVE.returnPortal) this.portalPing = 300;
     }));
     this.disposers.push(ctx.events.on('refugePing', () => {
       this.refugePing = 300;
@@ -1318,11 +1331,13 @@ export class Minimap {
     this.objectiveEl.textContent = goal || 'Explore. Every chamber you enter is charted here.';
 
     // Places: what you have found, nearest first; click to steer by it.
-    const places = this.cachedPois
+    // Repeats of one kind of place ("Weaver Leg" ×4) fold into a single row
+    // that steers to the nearest of them.
+    const places = groupPlaces(this.cachedPois
       .filter((poi) => poi.kind !== 'player' && poi.kind !== 'waypoint')
       .map((poi) => ({ poi, distance: Math.hypot(poi.worldX - ctx.player.x, poi.worldY - ctx.player.y) }))
-      .sort((a, b) => a.distance - b.distance);
-    const placesKey = places.map(({ poi, distance }) => poi.id + ':' + Math.round(distance / 10)).join('|') +
+      .sort((a, b) => a.distance - b.distance));
+    const placesKey = places.map(({ poi, distance, count }) => poi.id + ':' + Math.round(distance / 10) + 'x' + count).join('|') +
       '#' + (waypoint ? waypoint.x + ',' + waypoint.y : '');
     if (placesKey !== this.placesKey) {
       this.placesKey = placesKey;
@@ -1333,7 +1348,7 @@ export class Minimap {
         empty.textContent = 'Nothing charted yet. Waystones, gates and treasure appear here once seen.';
         this.placesEl.appendChild(empty);
       }
-      for (const { poi, distance } of places.slice(0, 14)) {
+      for (const { poi, distance, count } of places.slice(0, 14)) {
         const item = document.createElement('li');
         const button = document.createElement('button');
         button.type = 'button';
@@ -1347,6 +1362,13 @@ export class Minimap {
         const name = document.createElement('span');
         name.className = 'map-place-name';
         name.textContent = poi.title;
+        if (count > 1) {
+          const tally = document.createElement('span');
+          tally.className = 'map-place-count';
+          tally.textContent = ' ×' + count;
+          name.appendChild(tally);
+          button.title = `${poi.description} (${count} found; steers to the nearest)`;
+        }
         const dist = document.createElement('span');
         dist.className = 'map-dist';
         dist.textContent = distance < 14 ? 'here' : Math.round(distance) + '';

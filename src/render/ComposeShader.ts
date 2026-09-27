@@ -28,7 +28,8 @@ import type {
 import { cloudSumGlsl, glslFloat, SKY } from '@/render/skyAtmosphere';
 import { Cell } from '@/sim/CellType';
 import type { World } from '@/sim/World';
-import { terrainArtPixels, terrainBlocksGlsl, usesTerrainArt } from '@/render/TerrainArt';
+import { activeFloorLook, terrainArtPixels, terrainBlocksGlsl, usesTerrainArt } from '@/render/TerrainArt';
+import type { FloorLook } from '@/config/floorLooks';
 
 /** Short alias for embedding SKY tuning numbers as GLSL float literals below. */
 const flt = glslFloat;
@@ -102,6 +103,19 @@ uniform sampler2D uOverlay;
 uniform sampler2D uTerrain;
 uniform sampler2D uScars;
 uniform bool uTerrainEnabled;
+// Per-floor material grade (config/floorLooks.ts; earthen is the identity).
+uniform vec3 uLookGain;
+uniform vec3 uLookLift;
+uniform vec3 uLookLip;
+uniform vec3 uLookUnder;
+uniform vec4 uLookCrown;   // rgb (128 = none), strength
+uniform int uLookCrownDepth;
+uniform int uLookPanels;   // masonry panels of 16
+uniform int uLookRockRow;  // Stone below this row samples the rock quadrant
+uniform vec3 uWaterSurface;
+uniform vec3 uWaterBody;
+uniform vec3 uBackdropTintMul;
+uniform vec3 uBackdropTintLift;
 
 uniform ivec2 uCam;        // integer camera snapshot (renderCamX/Y)
 uniform ivec2 uWinOrigin;  // world coords of window texel (0,0)
@@ -169,6 +183,22 @@ void overBackdrop(inout vec3 c, sampler2D tex, vec4 cfg, vec2 invSize, vec2 offs
   vec4 s = texture(tex, p);
   float a = clamp(s.a * cfg.y, 0.0, 1.0);
   c = mix(c, s.rgb, a);
+}
+
+// Mirrors floorLooks.masonryPanel exactly (small integer operands only).
+bool masonryPanel(int px, int py) {
+  if (uLookPanels >= 16) return true;
+  int h = (px * 37 + py * 61 + px * py * 11 + (px ^ py) * 7) & 15;
+  return h < uLookPanels;
+}
+
+bool panelSeam(int x, int y) {
+  int px = x >> 6;
+  int py = y >> 6;
+  int lx = x & 63;
+  int ly = y & 63;
+  return (lx == 0 && !masonryPanel(px - 1, py)) || (lx == 63 && !masonryPanel(px + 1, py))
+    || (ly == 0 && !masonryPanel(px, py - 1)) || (ly == 63 && !masonryPanel(px, py + 1));
 }
 
 vec3 gradeBackdrop(vec3 c) {
@@ -331,7 +361,7 @@ void main() {
         overBackdrop(bg, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, bvx, bvy);
         overBackdrop(bg, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, bvx, bvy);
         overBackdrop(bg, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, bvx, bvy);
-        bg = gradeBackdrop(bg);
+        bg = gradeBackdrop(bg) * uBackdropTintMul + uBackdropTintLift;
         depthShade = 0.78 + 0.22 * (1.0 - float(wy) / ${HEIGHT.toFixed(1)});
       }
       float r = bg.r * depthShade;
@@ -366,14 +396,30 @@ void main() {
         if (type == ${Cell.Water}) {
           int t = int(texelFetch(uWin, ivec2(lx, min(${WIN_H - 1}, ly + 1)), 0).a & 0x7fu);
           bool supported = t == ${Cell.Water} || (${terrainBlocksGlsl});
-          albedo = above == ${Cell.Empty} && lookupY > 0 && supported ? vec3(101, 142, 148) : vec3(49, 91, 103);
+          albedo = above == ${Cell.Empty} && lookupY > 0 && supported ? uWaterSurface : uWaterBody;
         } else if (type == ${Cell.Wall} || type == ${Cell.Stone} || type == ${Cell.Wood} || type == ${Cell.Metal}) {
-          bool rock = type == ${Cell.Stone} && lookupY > 810;
+          bool rock = type == ${Cell.Stone} ? lookupY > uLookRockRow
+            : (type == ${Cell.Wall} && uLookPanels < 16 && !masonryPanel(lookupX >> 6, lookupY >> 6));
           int tileX = type == ${Cell.Metal} || rock ? 128 : 0;
           int tileY = type == ${Cell.Wood} || rock ? 128 : 0;
           ivec2 grain = ivec2(vec2(lookupX, lookupY) * ${PIXEL_SCALE}.0 + sub * ${PIXEL_SCALE}.0) & ivec2(127);
-          albedo = texelFetch(uTerrain, ivec2(tileX, tileY) + grain, 0).rgb * 255.0 * 1.28 + vec3(15, 20, 21);
+          albedo = texelFetch(uTerrain, ivec2(tileX, tileY) + grain, 0).rgb * 255.0 * uLookGain + uLookLift;
+          if (type == ${Cell.Wall} && !rock && uLookPanels < 16 && panelSeam(lookupX, lookupY)) albedo *= vec3(0.55, 0.55, 0.58);
           int t = above;
+          // Crown: the floor's growth/stain creeps a jagged few cells down from
+          // each exposed top (floorLooks.crownReach; three cells at most).
+          if (uLookCrown.w > 0.0 && (type == ${Cell.Wall} || type == ${Cell.Stone})) {
+            int reach = max(1, uLookCrownDepth - ((lookupX * 13 + (lookupX >> 2) * 7) & 3));
+            for (int k = 1; k <= 3; k++) {
+              if (k > reach || lookupY - k < 0) break;
+              t = int(texelFetch(uWin, ivec2(lx, max(0, ly - k)), 0).a & 0x7fu);
+              if (${terrainBlocksGlsl}) continue;
+              float w = uLookCrown.w * (1.0 - float(k - 1) / float(reach));
+              albedo *= vec3(1.0) + w * (uLookCrown.rgb / 128.0 - vec3(1.0));
+              break;
+            }
+          }
+          t = above;
           bool top = lookupY > 0 && !(${terrainBlocksGlsl});
           t = int(texelFetch(uWin, ivec2(max(0, lx - 1), ly), 0).a & 0x7fu);
           bool left = lookupX > 0 && !(${terrainBlocksGlsl});
@@ -382,8 +428,8 @@ void main() {
           if (top || left) {
             float chip = ((lookupX * 17 + lookupY * 29) & 7) < 2 ? 0.76 : 1.0;
             float lip = ${PIXEL_SCALE === 2 ? '((top && sub.y < 0.5) || (left && sub.x < 0.5)) ? 1.0 : 0.45' : '1.0'};
-            albedo = albedo * (1.0 - 0.45 * lip) + vec3(115, 111, 94) * chip * lip;
-          } else if (bottom) albedo *= vec3(0.62, 0.62, 0.67);
+            albedo = albedo * (1.0 - 0.45 * lip) + uLookLip * chip * lip;
+          } else if (bottom) albedo *= uLookUnder;
           albedo = floor(min(vec3(255), albedo));
         }
       }
@@ -615,6 +661,7 @@ export class GpuCompose {
   private readonly backdropTex: THREE.DataTexture[] = [];
   private readonly backdropVersions = new Int32Array(5).fill(-1);
   private terrainPixels: Uint8ClampedArray | null = null;
+  private floorLook: FloorLook | null = null;
   private terrainTex = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
   private readonly scarBytes = new Uint8Array(WIN_W * WIN_H);
   private readonly scarTex = new THREE.DataTexture(this.scarBytes, WIN_W, WIN_H, THREE.RedFormat, THREE.UnsignedByteType);
@@ -713,6 +760,18 @@ export class GpuCompose {
         uTerrain: { value: this.terrainTex },
         uScars: { value: this.scarTex },
         uTerrainEnabled: { value: false },
+        uLookGain: { value: new THREE.Vector3(1.28, 1.28, 1.28) },
+        uLookLift: { value: new THREE.Vector3(15, 20, 21) },
+        uLookLip: { value: new THREE.Vector3(115, 111, 94) },
+        uLookUnder: { value: new THREE.Vector3(0.62, 0.62, 0.67) },
+        uLookCrown: { value: new THREE.Vector4(128, 128, 128, 0) },
+        uLookCrownDepth: { value: 1 },
+        uLookPanels: { value: 16 },
+        uLookRockRow: { value: 810 },
+        uWaterSurface: { value: new THREE.Vector3(101, 142, 148) },
+        uWaterBody: { value: new THREE.Vector3(49, 91, 103) },
+        uBackdropTintMul: { value: new THREE.Vector3(1, 1, 1) },
+        uBackdropTintLift: { value: new THREE.Vector3(0, 0, 0) },
         uCam: { value: new THREE.Vector2() },
         uWinOrigin: { value: new THREE.Vector2() },
         uBackdropCfg0: { value: new THREE.Vector4() },
@@ -939,6 +998,7 @@ export class GpuCompose {
       this.material.uniforms.uTerrain.value = this.terrainTex;
     }
     this.material.uniforms.uTerrainEnabled.value = Boolean(pixels && usesTerrainArt(ctx));
+    this.syncFloorLook(activeFloorLook(ctx));
     const scars = ctx.world.colorOverrides;
     if (!this.scarsUploaded || this.scarWorld !== ctx.world || this.scarRevision !== scars.revision ||
         (scars.size > 0 && (this.scarCamX !== camX || this.scarCamY !== camY))) {
@@ -955,6 +1015,28 @@ export class GpuCompose {
       this.scarWorld = ctx.world; this.scarRevision = scars.revision;
       this.scarCamX = camX; this.scarCamY = camY;
     }
+  }
+
+  /** Upload the per-floor grade only when the floor changes (looks are frozen objects). */
+  private syncFloorLook(look: FloorLook): void {
+    if (look === this.floorLook) return;
+    this.floorLook = look;
+    const u = this.material.uniforms;
+    const set3 = (name: string, v: readonly [number, number, number]): void => {
+      (u[name].value as THREE.Vector3).set(v[0], v[1], v[2]);
+    };
+    set3('uLookGain', look.gain);
+    set3('uLookLift', look.lift);
+    set3('uLookLip', look.lip);
+    set3('uLookUnder', look.under);
+    (u.uLookCrown.value as THREE.Vector4).set(look.crown[0], look.crown[1], look.crown[2], look.crownStrength);
+    u.uLookCrownDepth.value = Math.min(3, Math.max(1, Math.round(look.crownDepth)));
+    u.uLookPanels.value = look.masonryPanels;
+    u.uLookRockRow.value = look.rockRow;
+    set3('uWaterSurface', look.waterSurface);
+    set3('uWaterBody', look.waterBody);
+    set3('uBackdropTintMul', look.backdropMul);
+    set3('uBackdropTintLift', look.backdropLift);
   }
 
   private syncBackdropTextures(): void {
@@ -975,6 +1057,7 @@ export class GpuCompose {
     const u = this.material.uniforms;
     const profile = resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
     const settings = profile.layers;
+    const look = activeFloorLook(ctx);
     (u.uBackdropGrade.value as THREE.Vector4).set(
       profile.grade.exposure,
       profile.grade.brightness,
@@ -995,9 +1078,12 @@ export class GpuCompose {
       }
       const setting = settings[layer.id];
       const scale = Math.max(0.25, setting.scale);
-      cfg.set(setting.speed, setting.opacity, setting.visible ? 1 : 0, scale);
-      inv.set(1 / Math.max(1, layer.width), 1 / Math.max(1, layer.height));
-      off.set(setting.offsetX, setting.offsetY);
+      const opacity = Math.min(1, setting.opacity * (layer.id === 'second' ? look.machinery : 1));
+      cfg.set(setting.speed, opacity, setting.visible ? 1 : 0, scale);
+      // A negative inverse width mirrors the repeat-wrapped sample (FrameComposer
+      // mirrors its sample column the same way).
+      inv.set((look.backdropMirror ? -1 : 1) / Math.max(1, layer.width), 1 / Math.max(1, layer.height));
+      off.set(setting.offsetX + look.backdropOffsetX, setting.offsetY);
     }
   }
 

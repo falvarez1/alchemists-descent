@@ -269,12 +269,12 @@ const keyObjective = await page.evaluate(() => {
   if (!rt) return '';
   ctx.state.frameCount += 1000;
   rt.keyTaken = true;
-  ctx.events.emit('objectiveChanged', { text: 'RETURN TO THE PORTAL' });
+  ctx.events.emit('objectiveChanged', { text: 'Carry the golden key back to the portal.' });
   return document.getElementById('objective')?.textContent ?? '';
 });
 check(
   'Key objective uses return-to-portal wording',
-  keyObjective.includes('RETURN TO THE PORTAL'),
+  /back to the portal/i.test(keyObjective),
   JSON.stringify(keyObjective),
 );
 

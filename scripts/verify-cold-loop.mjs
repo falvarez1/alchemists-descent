@@ -16,7 +16,7 @@ const report = { errors: [], warnings: [], casts: [] };
 page.on('pageerror', error => report.errors.push(String(error)));
 page.on('console', message => {
   const text = message.text();
-  if (/findability:.*repaired|SAFE ROUTE TEARS OPEN/i.test(text)) report.warnings.push(text);
+  if (/findability:.*repaired|SAFE ROUTE TEARS OPEN|rock shifts\. A way opens/i.test(text)) report.warnings.push(text);
 });
 
 const snapshot = () => page.evaluate(async () => {

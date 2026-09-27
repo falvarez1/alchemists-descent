@@ -218,10 +218,10 @@ describe('plug', () => {
     step(h.ctx, mech, 16);
     expect(plug.state).toBe(1);
     expect(door.state).toBe(1);
-    expect(h.toasts.filter((t) => t.includes('SEAL')).length).toBe(1);
+    expect(h.toasts.filter((t) => /seal/i.test(t)).length).toBe(1);
     step(h.ctx, mech, 30); // never re-fires, never un-fires
     expect(plug.state).toBe(1);
-    expect(h.toasts.filter((t) => t.includes('SEAL')).length).toBe(1);
+    expect(h.toasts.filter((t) => /seal/i.test(t)).length).toBe(1);
   });
 
   it('transformed cells count as destroyed (wood that became fire is gone)', () => {

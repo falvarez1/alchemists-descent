@@ -1360,8 +1360,8 @@ describe('level objective labels', () => {
     const levels = new Levels({} as Ctx);
     const objective = levels as unknown as { bossObjective(kind: 'leviathan' | 'colossus' | undefined): string };
 
-    expect(objective.bossObjective('leviathan')).toBe('DRAIN THE SUNKEN LEVIATHAN');
-    expect(objective.bossObjective('colossus')).toBe('SLAY THE KILN COLOSSUS');
-    expect(objective.bossObjective(undefined)).toBe('SLAY THE KILN COLOSSUS');
+    expect(objective.bossObjective('leviathan')).toBe('Drain the Sunken Leviathan.');
+    expect(objective.bossObjective('colossus')).toBe('Bring down the Kiln Colossus.');
+    expect(objective.bossObjective(undefined)).toBe('Bring down the Kiln Colossus.');
   });
 });

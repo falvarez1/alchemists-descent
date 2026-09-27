@@ -1,5 +1,5 @@
 import { DataUtils } from 'three';
-import { prepareTerrainColors } from '@/render/TerrainArt';
+import { activeFloorLook, prepareTerrainColors } from '@/render/TerrainArt';
 import { HalfFloatType, NearestFilter, RGBAFormat, StorageTexture, WebGPURenderer } from 'three/webgpu';
 import { Fn, instanceIndex, textureStore, uint, uvec2, vec4 } from 'three/tsl';
 
@@ -431,7 +431,12 @@ fn backdropCoord(base: u32, vx: i32, vy: i32, camX: i32, camY: i32) -> vec2<i32>
   let height = max(1, i32(round(1.0 / max(0.000001, p(base + 5u)))));
   let sx = i32(floor((floor(f32(camX) * speed) + f32(vx)) / scale + p(base + 6u)));
   let sy = i32(floor((floor(f32(camY) * speed) + f32(vy)) / scale + p(base + 7u)));
-  return vec2<i32>(wrapI(sx, width), wrapI(sy, height));
+  var wx = wrapI(sx, width);
+  // Per-floor composition variant: mirror the sample column (floorLooks).
+  if (p(26u) > 0.5) {
+    wx = width - 1 - wx;
+  }
+  return vec2<i32>(wx, wrapI(sy, height));
 }
 
 fn applyBackdropSample(c: vec3<f32>, sample: vec4<f32>, opacity: f32) -> vec3<f32> {
@@ -559,7 +564,7 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
       if (p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 2u) > 0.5 && p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 1u) > 0.0) {
         bg = applyBackdropSample(bg, textureLoad(uBackdrop4, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 1u));
       }
-      bg = gradeBackdrop(bg);
+      bg = gradeBackdrop(bg) * vec3<f32>(p(20u), p(21u), p(22u)) + vec3<f32>(p(23u), p(24u), p(25u));
       let depthShade = 0.78 + 0.22 * (1.0 - f32(wy) / ${HEIGHT.toFixed(1)});
       var r = bg.r * depthShade;
       var g = bg.g * depthShade;
@@ -1281,6 +1286,15 @@ export class WebGpuLiveCompose {
     // Screen vignette strength, tracked live like the CPU FrameComposer / WebGL
     // ComposeShader uVignette (0.52 shipped) instead of a WGSL literal.
     params[19] = ctx.state.postFx.vignette;
+    // Per-floor backdrop grade + composition variant (config/floorLooks).
+    const look = activeFloorLook(ctx);
+    params[20] = look.backdropMul[0];
+    params[21] = look.backdropMul[1];
+    params[22] = look.backdropMul[2];
+    params[23] = look.backdropLift[0];
+    params[24] = look.backdropLift[1];
+    params[25] = look.backdropLift[2];
+    params[26] = look.backdropMirror ? 1 : 0;
 
     const settings = backdropProfile.layers;
     for (let i = 0; i < MAX_BACKDROP_LAYERS; i++) {
@@ -1293,12 +1307,12 @@ export class WebGpuLiveCompose {
       }
       const setting = settings[layer.id];
       params[base] = setting.speed;
-      params[base + 1] = setting.opacity;
+      params[base + 1] = Math.min(1, setting.opacity * (layer.id === 'second' ? look.machinery : 1));
       params[base + 2] = setting.visible ? 1 : 0;
       params[base + 3] = Math.max(0.25, setting.scale);
       params[base + 4] = 1 / Math.max(1, this.backdropTextures[i].width);
       params[base + 5] = 1 / Math.max(1, this.backdropTextures[i].height);
-      params[base + 6] = setting.offsetX;
+      params[base + 6] = setting.offsetX + look.backdropOffsetX;
       params[base + 7] = setting.offsetY;
     }
 

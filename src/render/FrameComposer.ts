@@ -3,7 +3,7 @@ import { drawTrickshotOverlay } from '@/render/TrickshotOverlay';
 import { drawFallingWater } from '@/render/FallingWater';
 import type { Ctx, Enemy, RuntimeDecor } from '@/core/types';
 import { RenderPoses, interpolateBody } from '@/render/RenderPoses';
-import { drawWorksLandmarks, prepareTerrainColors } from '@/render/TerrainArt';
+import { activeFloorLook, drawWorksLandmarks, prepareTerrainColors } from '@/render/TerrainArt';
 import { drawHabitatScenery, drawVineFoliage } from '@/render/HabitatScenery';
 import { PLAYER_HALF_W } from '@/core/types';
 import type {
@@ -36,6 +36,7 @@ import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/MechanismSprites';
 import { drawTeaMachineDecor } from '@/render/TeaMachineDecor';
+import { drawGoldPile } from '@/render/sprites/TreasureSprites';
 import { drawCorpses, hasSpeciesArt } from '@/render/creatures';
 import { BRASS, BRASS_D, BRASS_L, INK, IRON, IRON_D, Pen, STEEL, STEEL_D, STEEL_L, cameraView } from '@/render/sprites/FineArt';
 import {
@@ -552,6 +553,10 @@ export class FrameComposer implements PixelSurface {
     const backdropContrast = backdropGrade.contrast;
     const backdropInvGamma = 1 / backdropGrade.gamma;
     const backdropSaturation = backdropGrade.saturation;
+    // Per-floor grade + composition variant (config/floorLooks; identity on D1).
+    const floorLook = activeFloorLook(ctx);
+    const tintMulR = floorLook.backdropMul[0], tintMulG = floorLook.backdropMul[1], tintMulB = floorLook.backdropMul[2];
+    const tintLiftR = floorLook.backdropLift[0], tintLiftG = floorLook.backdropLift[1], tintLiftB = floorLook.backdropLift[2];
     // Reuse the pooled descriptor array + objects (reset, not reallocated) so
     // the per-frame compose path stays allocation-free (see field declaration).
     const activeBackdropLayers = this.activeBackdropLayers;
@@ -565,10 +570,11 @@ export class FrameComposer implements PixelSurface {
       const ySamples = this.backdropSampleY[i];
       const camX = Math.floor(renderCamX * setting.speed);
       const camY = Math.floor(renderCamY * setting.speed);
+      const offsetX = setting.offsetX + floorLook.backdropOffsetX;
       for (let vx = 0; vx < VIEW_W; vx++) {
-        let sx = Math.floor((camX + vx) / scale + setting.offsetX) % layer.width;
+        let sx = Math.floor((camX + vx) / scale + offsetX) % layer.width;
         if (sx < 0) sx += layer.width;
-        xSamples[vx] = sx;
+        xSamples[vx] = floorLook.backdropMirror ? layer.width - 1 - sx : sx;
       }
       for (let vy = 0; vy < VIEW_H; vy++) {
         let sy = Math.floor((camY + vy) / scale + setting.offsetY) % layer.height;
@@ -578,7 +584,7 @@ export class FrameComposer implements PixelSurface {
       const descriptor = this.backdropLayerPool[activeBackdropLayers.length];
       descriptor.pixels = layer.pixels;
       descriptor.width = layer.width;
-      descriptor.opacity = setting.opacity;
+      descriptor.opacity = Math.min(1, setting.opacity * (layer.id === 'second' ? floorLook.machinery : 1));
       descriptor.xSamples = xSamples;
       descriptor.ySamples = ySamples;
       activeBackdropLayers.push(descriptor);
@@ -771,6 +777,9 @@ export class FrameComposer implements PixelSurface {
             r = r <= 0 ? 0 : r >= 1 ? 1 : r ** backdropInvGamma;
             g = g <= 0 ? 0 : g >= 1 ? 1 : g ** backdropInvGamma;
             b = b <= 0 ? 0 : b >= 1 ? 1 : b ** backdropInvGamma;
+            r = r * tintMulR + tintLiftR;
+            g = g * tintMulG + tintLiftG;
+            b = b * tintMulB + tintLiftB;
             const depthShade = 0.78 + 0.22 * (1 - wy / HEIGHT);
             r *= depthShade;
             g *= depthShade;
@@ -1249,9 +1258,12 @@ export class FrameComposer implements PixelSurface {
     for (const strand of strands) {
       if ((strand.denWeb === true) !== drawDen) continue;
       if (strand.foliage) drawVineFoliage(this, this.light, ctx, strand);
-      const baseR = this.unpackR01(strand.color);
-      const baseG = this.unpackG01(strand.color);
-      const baseB = this.unpackB01(strand.color);
+      // Den webs are old silk, whatever tint a save carried: pale and faint,
+      // set dressing behind the lair rather than a glowing green cage.
+      const silk = strand.denWeb === true;
+      const baseR = silk ? 0.74 : this.unpackR01(strand.color);
+      const baseG = silk ? 0.72 : this.unpackG01(strand.color);
+      const baseB = silk ? 0.64 : this.unpackB01(strand.color);
       const half = ((strand.thickness ?? 1) - 1) / 2;
       for (const segment of strand.segments) {
         const a = strand.nodes[segment.a];
@@ -1282,8 +1294,8 @@ export class FrameComposer implements PixelSurface {
             if (blocksEntity(cell) && !isSoftGrowth(cell)) continue;
           }
           const lt = this.light.sample(x, y);
-          const webGlow = strand.web === true ? 0.22 : 0;
-          const denMul = strand.denWeb === true ? 0.42 : 1;
+          const webGlow = silk ? 0.05 : strand.web === true ? 0.22 : 0;
+          const denMul = silk ? 0.3 : 1;
           const char = Math.min(1, ((a.burn ?? 0) * (1 - t) + (b.burn ?? 0) * t) * 1.6);
           const r = baseR * (Math.max(0.16, lt.r) * 1.05 + webGlow * 0.45) * denMul;
           const g = baseG * (Math.max(0.18, lt.g) * 1.1 + webGlow) * denMul;
@@ -1796,6 +1808,11 @@ export class FrameComposer implements PixelSurface {
         drawLooseLeg(this, this.light, ctx, p, this.alpha);
         continue;
       }
+      if (p.kind === 'goldpile') {
+        // A heap sits on the ground (no glyph bob) and reads as coin metal.
+        drawGoldPile(this, this.light, cameraView(ctx.camera), p.x, p.y, frame, Math.floor(p.x * 7 + p.y * 3) & 63);
+        continue;
+      }
       const bob = Math.sin(frame * 0.08 + p.x * 0.7) * 1.4;
       const x = Math.round(p.x);
       const y = Math.round(p.y + bob) - 2;
@@ -1862,16 +1879,8 @@ export class FrameComposer implements PixelSurface {
         this.setPx(x + slosh, y, r * pulse * 1.3, g * pulse * 1.3, b * pulse * 1.3);
         this.setPx(x + 1, y, r * 0.7, g * 0.7, b * 0.7);
         this.addPx(x - slosh, y - 1, 0.1, 0.13, 0.16);
-      } else if (p.kind === 'goldpile') {
-        // coin tumble: a tiny pile flashes edge-on every few frames
-        const spin = (frame + Math.floor(p.x)) % 24;
-        const narrow = spin < 5 || spin > 18;
-        const hw = narrow ? 1 : 2;
-        for (let dx = -hw; dx <= hw; dx++) this.setPx(x + dx, y, r * pulse * 1.3, g * pulse * 1.15, b * 0.7);
-        this.setPx(x - 1, y + 1, r * 0.7, g * 0.5, b * 0.22);
-        this.setPx(x + 1, y + 1, r * 0.8, g * 0.55, b * 0.25);
       } else {
-        // diamond glyph (heart/tome/potion/goldpile)
+        // diamond glyph (any other pickup kind)
         this.setPx(x, y, r * pulse * 1.4, g * pulse * 1.4, b * pulse * 1.4);
         this.setPx(x + 1, y, r * pulse * 0.8, g * pulse * 0.8, b * pulse * 0.8);
         this.setPx(x - 1, y, r * pulse * 0.8, g * pulse * 0.8, b * pulse * 0.8);
