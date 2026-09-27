@@ -1,12 +1,11 @@
 import type { Ctx, TrickshotSettings, VolumeChannel } from '@/core/types';
 import { sanitizeTrickshot } from '@/config/trickshot';
-import { sanitizeVolumes, type VolumeSettings } from '@/audio/mix';
+import { VOLUME_CHANNELS, sanitizeVolumes, type VolumeSettings } from '@/audio/mix';
 import { DEFAULT_BINDINGS, getBindings, keyLabel, resetBindings, setBinding, type BindingAction } from '@/input/bindings';
 import { isClipRecordingEnabled, setClipRecordingEnabled } from '@/config/clipSettings';
 
-export interface PlayerPreferences { textScale: number; reducedFlashes: boolean; cameraShake: boolean; highReadability: boolean; creatureCaptions: boolean; trickshot: TrickshotSettings; volume: VolumeSettings }
+export interface PlayerPreferences { textScale: number; reducedFlashes: boolean; cameraShake: boolean; highReadability: boolean; creatureCaptions: boolean; trickshot: TrickshotSettings; volume: VolumeSettings; narration: boolean }
 const KEY = 'ad-player-preferences-v1';
-const VOLUME_CHANNELS: readonly VolumeChannel[] = ['master', 'effects', 'ambience'];
 
 /** What each rebindable action is called on the keyboard list (sentence case). */
 export const BINDING_LABELS: Readonly<Record<BindingAction, string>> = {
@@ -32,8 +31,8 @@ export function readPlayerPreferences(storage: Pick<Storage, 'getItem'> | null =
     return { textScale: [1, 1.15, 1.3].includes(saved.textScale ?? 0) ? saved.textScale! : 1,
       reducedFlashes: typeof saved.reducedFlashes === 'boolean' ? saved.reducedFlashes : defaults.reducedFlashes,
       cameraShake: saved.cameraShake !== false, highReadability: saved.highReadability === true, creatureCaptions: saved.creatureCaptions === true,
-      trickshot: playerTrickshot(saved.trickshot), volume: sanitizeVolumes(saved.volume) };
-  } catch { return { ...defaults, highReadability: false, creatureCaptions: false, trickshot: playerTrickshot(null), volume: sanitizeVolumes(null) }; }
+      trickshot: playerTrickshot(saved.trickshot), volume: sanitizeVolumes(saved.volume), narration: saved.narration !== false };
+  } catch { return { ...defaults, highReadability: false, creatureCaptions: false, trickshot: playerTrickshot(null), volume: sanitizeVolumes(null), narration: true }; }
 }
 
 export class PlayerSettings {
@@ -53,7 +52,11 @@ export class PlayerSettings {
       <section class="settings-group" aria-labelledby="settings-sound"><h3 id="settings-sound">Sound</h3><div class="settings-options settings-volume">
       <label>Master<input type="range" name="volume-master" min="0" max="100" step="1"><output id="volume-master-value"></output></label>
       <label>Effects<input type="range" name="volume-effects" min="0" max="100" step="1"><output id="volume-effects-value"></output></label>
-      <label>Ambience<input type="range" name="volume-ambience" min="0" max="100" step="1"><output id="volume-ambience-value"></output></label></div></section>
+      <label>Ambience<input type="range" name="volume-ambience" min="0" max="100" step="1"><output id="volume-ambience-value"></output></label>
+      <label>Music<input type="range" name="volume-music" min="0" max="100" step="1"><output id="volume-music-value"></output></label>
+      <label>Voice<input type="range" name="volume-voice" min="0" max="100" step="1"><output id="volume-voice-value"></output></label></div>
+      <div class="settings-options"><div class="settings-option"><label><input type="checkbox" name="narration"> Narration</label>
+      <p class="settings-note">An old docent of the Works reads the moments worth reading aloud. Everything he says is already on screen.</p></div></div></section>
       <section class="settings-group" aria-labelledby="settings-comfort"><h3 id="settings-comfort">Display & comfort</h3><div class="settings-options">
       <label>Text size<select name="textScale"><option value="1">Standard</option><option value="1.15">Large</option><option value="1.3">Larger</option></select></label>
       <label><input type="checkbox" name="reducedFlashes"> Reduce flashes and pulses</label>
@@ -84,7 +87,7 @@ export class PlayerSettings {
     this.dialog.querySelector('[name="textScale"]')!.addEventListener('change', e => {
       this.preferences.textScale = Number((e.target as HTMLSelectElement).value); this.apply(true);
     });
-    for (const name of ['reducedFlashes', 'cameraShake', 'highReadability', 'creatureCaptions'] as const) {
+    for (const name of ['reducedFlashes', 'cameraShake', 'highReadability', 'creatureCaptions', 'narration'] as const) {
       this.dialog.querySelector(`[name="${name}"]`)!.addEventListener('change', e => {
         this.preferences[name] = (e.target as HTMLInputElement).checked; this.apply(true);
       });
@@ -105,6 +108,9 @@ export class PlayerSettings {
       master: () => ctx.audio.pickup(),
       effects: () => ctx.audio.cardSlot(),
       ambience: () => ctx.audio.drip(),
+      // The score and the narrator preview themselves: a moment of music, a short line.
+      music: () => ctx.music?.preview(),
+      voice: () => ctx.narrator?.preview(),
     };
     for (const channel of VOLUME_CHANNELS) {
       const input = this.dialog.querySelector<HTMLInputElement>(`[name="volume-${channel}"]`)!;
@@ -183,9 +189,10 @@ export class PlayerSettings {
     lean.disabled = !this.preferences.trickshot.finisher;
     lean.closest('label')?.classList.toggle('disabled', lean.disabled);
     (this.dialog.querySelector('[name="textScale"]') as HTMLSelectElement).value = String(this.preferences.textScale);
-    for (const name of ['reducedFlashes', 'cameraShake', 'highReadability', 'creatureCaptions'] as const) {
+    for (const name of ['reducedFlashes', 'cameraShake', 'highReadability', 'creatureCaptions', 'narration'] as const) {
       (this.dialog.querySelector(`[name="${name}"]`) as HTMLInputElement).checked = this.preferences[name];
     }
+    this.ctx.narrator?.setEnabled(this.preferences.narration);
     if (persist) try { localStorage.setItem(KEY, JSON.stringify(this.preferences)); } catch {
       this.dialog.querySelector('#binding-feedback')!.textContent = 'Preferences apply for this session. Local storage is unavailable.';
     }

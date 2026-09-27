@@ -151,6 +151,20 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     Stingers.ts           Run-event stingers (alchemyKill, phialsChanged,
                           runEnded, clipSaved) — events in, audio calls out
     HabitatAudio.ts       Listener placement + footfall / creature-movement cues
+    MusicDirector.ts      The score: streams public/audio/music via media elements
+                          into the music bus; equal-power crossfades on the audio
+                          clock; title / floor / hunted / boss / Sanctum / Tea
+                          Engine / Workshop / verdict cues; silent until a gesture
+    musicRules.ts         Pure director rules: cue choice, threat + hysteresis,
+                          fade lengths, level dips (tests/music-director.test.ts)
+    Narrator.ts           The docent: voices shown text by narrationKey on the
+                          voice bus, ducks music + ambience; narrationRules.ts
+                          holds its manners (one line, cooldown, once a session)
+    narrationText.ts      Text normalisation + clip keys, shared with the offline
+                          generator (scripts/audio/voice-lines.mjs)
+  content/audio/          score.generated.ts + narration.generated.ts (written by
+                          scripts/audio/gen-music.mjs / gen-voice.mjs) and
+                          scoreManifest.ts (AUDITION_ENTRIES, dev audition only)
   input/
     InputManager.ts       Mouse/keyboard handlers, mode switching
   ui/

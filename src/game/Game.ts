@@ -15,6 +15,9 @@ import type { Ctx, FxState, GameStateData, InputState, RenderBackendMode } from 
 import { AudioEngine } from '@/audio/AudioEngine';
 import { HabitatAudio } from '@/audio/HabitatAudio';
 import { installAudioStingers } from '@/audio/Stingers';
+import { MusicDirector } from '@/audio/MusicDirector';
+import { Narrator } from '@/audio/Narrator';
+import { NarrationCaption } from '@/ui/NarrationCaption';
 import { Flask } from '@/combat/Flask';
 import { AlchemyKills } from '@/combat/AlchemyKills';
 import { Lightning } from '@/combat/Lightning';
@@ -261,6 +264,13 @@ export class Game {
     const contraption = new TeaMachine(ctx);
     ctx.contraption = contraption;
     this.disposables.push(contraption);
+    // The score and the narrator: streamed recordings on the engine's music and
+    // voice buses. Both stay silent (and fetch nothing) until the first gesture.
+    const music = new MusicDirector(ctx, audio);
+    ctx.music = music;
+    const narrator = new Narrator(ctx, audio);
+    ctx.narrator = narrator;
+    this.disposables.push(music, narrator, new NarrationCaption(ctx));
 
     // Rehydrate live tuning (Global Controls, player feel, worldgen look, material/
     // spell params) from localStorage BEFORE the UI seeds its sliders or the first
