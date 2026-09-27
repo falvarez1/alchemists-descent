@@ -15,20 +15,23 @@ try {
   await page.locator('#expedition-entry').waitFor({ state: 'hidden' });
   await page.keyboard.down('KeyD');
   await page.locator('#tea-view:not([hidden])').waitFor({ timeout: 12000 });
+  // The crank is behind the cold lock: this public-build probe expects a
+  // save whose cold lock is already open (or a build without one).
+  const running = () => page.evaluate(() => /First, a little powder|coupling/.test(document.querySelector('#tea-view strong')?.textContent ?? ''));
   for (let i = 0; i < 60; i++) {
     await page.keyboard.press('KeyE'); await page.waitForTimeout(80);
-    if (await page.locator('#tea-view.watching').count()) break;
+    if (await running()) break;
   }
   await page.keyboard.up('KeyD');
-  await page.locator('#tea-view.watching').waitFor();
+  assert.ok(await running(), 'the crank started the engine');
   await page.screenshot({ path: `${output}/ignition.png` });
+  // Left alone, the engine's three slow backups finish it (~47 s).
   await page.waitForFunction(() => document.querySelector('#tea-view strong')?.textContent.includes('Tea is served'), null, { timeout: 100000 });
   await page.screenshot({ path: `${output}/complete.png` });
-  await page.locator('#tea-view.watching').waitFor({ state: 'hidden', timeout: 20000 });
   assert.match(await page.locator('#objective').innerText(), /Collect the brass bell/);
   assert.deepEqual(report.errors, []);
   report.completed = true;
-  console.log('PASS: public build completed the engine through real controls and returned to the bell objective.');
+  console.log('PASS: public build completed the engine through real controls and set the bell objective.');
 } finally {
   await page.screenshot({ path: `${output}/last.png` }).catch(() => {});
   writeFileSync(`${output}/report.json`, JSON.stringify(report, null, 2));

@@ -576,8 +576,8 @@ export class Game {
       this.perfHud.mark('sim', simMs);
 
       const tEnt = performance.now();
-      if (!dbg.frozenPlayer() && !ctx.contraption?.watching) { ctx.playerCtl.update(ctx); if (!ctx.player.dead) updateLegSwing(ctx); }
-      if (!debugActive && !ctx.contraption?.watching) ctx.flask.update(ctx);
+      if (!dbg.frozenPlayer()) { ctx.playerCtl.update(ctx); if (!ctx.player.dead) updateLegSwing(ctx); }
+      if (!debugActive) ctx.flask.update(ctx);
       const enemyStart = performance.now();
       ctx.enemyCtl.update(ctx); // self-gates per enemy via ctx.debug.frozenEnemy
       let creatureMs = performance.now() - enemyStart;

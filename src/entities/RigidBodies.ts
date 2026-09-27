@@ -931,11 +931,9 @@ export class RigidBodies implements RigidBodiesApi {
     if (dead) for (const body of dead) this.remove(body);
     this.tickGoreChunks(ctx);
     this.reactBodies(ctx);
-    if (!ctx.contraption?.watching) {
-      this.trackHeld(ctx); // after reactBodies so carrying overrides buoyancy/etc.
-      this.updatePlankRip(ctx);
-      this.resolvePlayer(ctx);
-    }
+    this.trackHeld(ctx); // after reactBodies so carrying overrides buoyancy/etc.
+    this.updatePlankRip(ctx);
+    this.resolvePlayer(ctx);
     this.resolveBodyEnemyHits(ctx); // thrown/flung bodies bludgeon foes they strike
   }
 

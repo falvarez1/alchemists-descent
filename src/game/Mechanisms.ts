@@ -816,7 +816,6 @@ export class Mechanisms implements MechanismsApi {
   }
 
   interact(ctx: Ctx): boolean {
-    if (ctx.contraption?.watching) return true;
     if (ctx.contraption?.interact()) return true;
     const runtime = ctx.levels.current;
     if (!runtime || ctx.state.mode !== 'play' || ctx.player.dead) return false;

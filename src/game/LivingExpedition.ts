@@ -34,7 +34,7 @@ export function livingObjective(ctx: Ctx): string | null {
   }
   if (!living.tea?.completed) return living.tea?.stalled
     ? 'The engine stalled. Use its crank again to recharge the workshop.'
-    : living.tea && living.tea.stage > 0 ? 'The Bell & Tea Engine is running. Its receiver is at the far end of the catwalk.'
+    : living.tea && living.tea.stage > 0 ? 'The Bell & Tea Engine is running. Follow it along the catwalk; it may need a hand on the way.'
     : 'The cold lock is open. Pull the engine crank inside the cage.';
   if (!rt.keyTaken) return 'Collect the brass bell at the far end of the engine’s catwalk.';
   return 'The bell is yours. Carry it down through the Silt Garden’s west chute and the Undertow to the lower gate.';

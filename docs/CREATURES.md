@@ -62,6 +62,13 @@ box back, and only where the box fits (`entityFree`); beached, the box falls
 and hops under ordinary collision and the chain drapes behind it. Any walker
 whose box stays inside terrain for 12 ticks is lifted to the nearest spot it
 fits (`Enemies.unembed`) — a box written into rock can never move again.
+A chain spine never stretches past 1.5× its link: a node welded into terrain
+(chew spoil or sand settling on it, ice or a door closing on it) is dragged out
+by its taut link rather than pinning the spine, and a new spine is laid along
+open ground (`createChainIn`), never into the wall behind a spawn. Weaver remains
+collide as their drawn silhouette (`weaverAnatomy` `WEAVER_SILHOUETTE`) in
+sub-cell sweeps, only ever work up or sideways out of terrain, then kick onto
+their back with the knees buckling upward.
 
 The Stone Maw is blind but feels a body within 64 cells (lit or dark, facing
 or not — never through rock), hears footsteps through the rock and wading
@@ -87,9 +94,15 @@ flee creatures, fish bolt from eels, moths drift to living lights
   — real rig + art in a staged mini-world (floor, ledge, wall, pool, lamp),
   frame strips at zoom. Scenes: idle, walk, run, turn, alert, aim, spit, hurt,
   fall, swim, swimhunt, swimlunge, sleep, hop, fuse, fly, dart, roost, tumble,
-  cast, punch, throw, slam, telek, chew, charge, lash.
+  cast, punch, throw, slam, telek, chew, charge, lash, die (the remains fall,
+  settle and curl), buried (sand pours over the body; the spine must follow).
 - `node scripts/shot-enemies.mjs` — the roster in-game (physics-test arena).
 - `node scripts/probe-corpses.mjs`, `node scripts/probe-alive.mjs` — remains and
   world interaction in-game.
+- `node scripts/probe-corpse-rest.mjs` (remains on thick floors, thin planks,
+  a crater, against a wall, after a blast), `node scripts/probe-chain-stretch.mjs`
+  (a live spine buried by sand / in a pit), `node scripts/probe-undertow-remains.mjs`
+  (D1's real Stone Maw hunting, then Weaver + Maw remains) — fail on remains
+  inside terrain or a spine link past 1.5×.
 - `node scripts/bench-creatures.mjs`, `node scripts/perf-creatures-live.mjs` —
   per-kind step/draw cost and live draw cost.

@@ -251,30 +251,47 @@ try {
   report.stages.push({ label: 'cold census opened', ...await sample() });
   await page.screenshot({ path: `${output}/traversal-cold-census.png` });
   await settleAt(430, 'return to the engine crank');
-  report.machineAttempts = [];
-  let machine;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    if (attempt > 1) {
-      await page.waitForFunction(() => !window.__game.ctx.contraption.watching, null, { timeout: 20000 });
-      await page.keyboard.press('KeyE'); // maintenance recharge
-      await page.waitForFunction(() => {
-        const tea = window.__game.ctx.levels.current.living.tea;
-        return tea.stage === 0 && !tea.stalled;
-      }, null, { timeout: 6000 });
-    }
-    await page.keyboard.press('KeyE'); // deliberate crank pull
-    await page.waitForFunction(() => (window.__game.ctx.levels.current.living.tea?.stage ?? 0) >= 1, null, { timeout: 6000 });
-    await page.waitForFunction(() => {
-      const tea = window.__game.ctx.levels.current.living.tea;
-      return tea.completed || tea.stalled;
-    }, null, { timeout: 100000 });
-    machine = await page.evaluate(() => window.__game.ctx.levels.current.living.tea);
-    report.machineAttempts.push({ attempt, stage: machine.stage, completed: machine.completed, stalled: machine.stalled });
-    if (machine.completed) break;
+  // The engine is PLAYED: the probe pulls the crank, walks the catwalk under
+  // the chain and answers each of the three faults with the real verb and
+  // real input — a Spark Bolt click on the priming pan, a kick (F) at the
+  // Persuader, the water flask (Q) poured through the duck's grate.
+  const teaStage = () => page.evaluate(() => window.__game.ctx.levels.current.living.tea?.stage ?? 0);
+  const waitStage = (n, timeout = 30000) => waitForGameplay(new Function(`return (window.__game.ctx.levels.current.living.tea?.stage ?? 0) >= ${n}`), timeout);
+  await page.keyboard.press('KeyE'); // deliberate crank pull
+  await waitStage(1, 6000);
+  report.machineVerbs = [];
+  await waitStage(2);
+  await moveTo(500, 'walk under the broken coupling');
+  await settleAt(505, 'stand under the priming pan');
+  for (let shot = 0; shot < 4 && await teaStage() === 2; shot++) {
+    await pointAtWorld(523, 266, true); report.machineVerbs.push({ verb: 'spark', shot });
+    await page.waitForTimeout(700);
   }
+  await waitStage(3, 4000);
+  await moveTo(734, 'follow the boulder to the tollgate');
+  await settleAt(740, 'stand under the Persuader');
+  await waitStage(6);
+  for (let kick = 0; kick < 6 && await teaStage() === 6; kick++) {
+    if (kick > 0) await settleAt(744, 'back under the Persuader'); // each kick recoils the kicker
+    const bob = await page.evaluate(() => { const b = window.__game.ctx.rigidBodies.bodies.find(body => body.tag === 'tea-persuader'); return { x: b.x, y: b.y }; });
+    await pointAtWorld(bob.x, bob.y); await page.keyboard.press('KeyF'); report.machineVerbs.push({ verb: 'kick', kick });
+    await page.waitForTimeout(600);
+  }
+  await waitStage(7, 4000);
+  await moveTo(1026, 'follow the dominoes to the duck');
+  await settleAt(1030, 'stand beside the grate');
+  await waitStage(9);
+  await page.keyboard.press('Digit3'); // the water flask
+  await page.keyboard.down('KeyQ');
+  for (let beat = 0; beat < 12 && await teaStage() === 9; beat++) { await pointAtWorld(1000, 312); await page.waitForTimeout(250); }
+  await page.keyboard.up('KeyQ'); report.machineVerbs.push({ verb: 'pour' });
+  await waitStage(10, 4000);
+  await waitForGameplay(() => { const tea = window.__game.ctx.levels.current.living.tea; return tea.completed || tea.stalled; }, 60000);
+  const machine = await page.evaluate(() => window.__game.ctx.levels.current.living.tea);
+  report.machineResult = { stage: machine.stage, completed: machine.completed, ticks: machine.ticks };
   assert.equal(machine.stalled, false, `Bell & Tea Engine completes its chain reaction: ${JSON.stringify(machine)}`);
   assert.equal(machine.completed, true);
-  await page.waitForFunction(() => !window.__game.ctx.contraption.watching, null, { timeout: 20000 });
+  assert.ok(machine.ticks < 60 * 40, `a player who answers the faults finishes the engine inside 40 s (${machine.ticks} ticks)`);
   report.stages.push({ label: 'bell engine complete', ...await sample() });
   await moveTo(1541, 'cross the opened engine catwalk to the receiver');
   await settleAt(1541, 'land at the bell receiver tray');

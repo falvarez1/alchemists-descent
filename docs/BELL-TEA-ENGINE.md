@@ -1,25 +1,68 @@
 # The Unreasonable Bell & Tea Engine
 
-The first level's required bell-making workshop occupies over 1,100 world cells above the main inspection catwalk. Its crank sits caged in the Intake behind the cold lock (both cistern probes must read ice; see DESIGN.md), then use it (E by default). The chain produces the bell required by the lower descent gate. Walking past the machine cannot clear the level.
+The first level's required bell-making workshop occupies the hall above the Intake's inspection catwalk. Its crank sits caged in the Intake behind the cold lock (both cistern probes must read ice; see DESIGN.md). Pulling it (E by default) starts a physical chain reaction that casts the brass bell the lower descent gate requires. Walking past the machine cannot clear the level.
 
-The opening is a hands-on ignition followed by a physical demonstration. The original chemical, boulder, water, duck and boiler sequence remains, with a domino and spring section inserted before the reservoir and an electrical gallery added above the finale:
+## Played, not watched
 
-1. A thin powder trail burns the pendulum's hemp retaining cord. Its steel suspension chain survives the flame, and gravity swings the released weight into a boulder.
-2. The rolling boulder starts six rigid dominoes. The last domino pulls a visible cable that withdraws the spring crank's metal latch.
-3. Stored torsion in the coil turns a hinged crank around its fixed fulcrum. A pulley train pulls the reservoir gate sideways, releasing finite water.
-4. Rising water lifts a duck mounted on a sliding carriage. Its chain goes down around the bottom pulley, then up around the tank pulleys: lifting the duck lifts the acid gate. The guide prevents the duck tipping or beaching against the trough wall.
-5. Acid dissolves the stone pedestal that actually supports the sugar weight. The falling weight pulls its sling and lifts the lava plate. There is no hidden shelf to remove.
-6. Lava enters the water-filled kettle. Actual steam raises its piston. A crosshead lifts the oil gate and pulls a pivoting flint striker into the powder trough.
-7. Three packed charges detonate along the final fuse. The last blast burns a second hemp cord, releasing a copper tea bag into the generator coil above the cup.
-8. The falling armature supplies electricity, with opposing generator drag. Charge travels through the actual overhead metal wire to an electromagnet. A broken wire prevents the next handoff.
-9. The powered coil pulls an iron latch along roller guides. This frees a raised counterweight. An air brake slows its winding drum, and four pulley strands trade a long descent for a slow bell-latch lift. Only then can the required bell be collected.
+The engine is **played**. The alchemist keeps every control while it runs; there is no cutscene and no input lock. Every station sits in the lower half of the hall, directly over the catwalk, so the player walks east beneath the chain as it happens. While the engine runs and the player is in the hall, the camera frames the hall from the catwalk to the roof at 1.2× zoom (1× with reduced camera motion) on the active station, clamped so the player never leaves the shot. At the duck's bath the frame drops so the bath shows. Leave the hall and the normal camera returns; the chain keeps running either way (the director keeps the whole hall, the catwalk and the bath in the simulation window).
 
-The director observes actual body travel, severed cords, flowing materials, coil charge and spent powder. Ideal ratcheted linkages move their metal plates one cell at a time using `World.swap`: liquid is displaced, and neither metal nor acid is copied or deleted to open a gate. A broken plate or obstructed guide jams. Wheels, rods and cables render the same travel that moved the grid. The starter is a dressed lever (`look: 'crank'`): a brass crank wheel on an iron stand whose handle swings half a turn per pull, with a connecting rod to the striker rod's foot and a ready/started lamp. Every linkage drawing, the duck and the rigid props rasterise at presentation resolution through `render/sprites/FineArt.ts`, interpolate body poses between fixed ticks, take the room's lamps through the light field, and cull against the composed view (`scripts/shot-intake-machine.mjs` captures the crank, the handwheel from the view positions that used to cull it, each bay, the filmed pull and every act). The two sparkers are the manual crank and the piston-driven flint. No stage completes on a timer, and no valve creates a continuing material supply. A 40-second stage timeout returns control after sabotage. Using the maintenance crank recharges only the workshop; damage to the catwalk and the rest of the level persists. Repair creates no harvestable gold.
+Three stations are **built to stop**. Each has a service fixture hanging into the catwalk that a *starting verb* fixes, and each has a slow physical **backup**, so waiting is always a choice and nothing ever depends on the player:
 
-During the action camera, player movement, damage, attacks and flask input are suspended. The simulation continues over the entire workshop. Handoff shots frame both the driver and its destination. Camera movement has a vector speed cap of 2.4 world cells per tick, acceleration easing, and distance-based zoom out for long transfers. Returning to the player waits for the camera to arrive rather than ending mid-pan. Esc, the visible Return to player button, or controller B returns control while the chain keeps running. Skipping the camera never bypasses the objective. Reduced camera motion disables close zoom. Completion gives a short final hold before returning.
+| Station | What stops | The verb | The backup |
+|---|---|---|---|
+| Ignition | The first fuse always dies at a cracked metal coupling | **A wand shot** at the brass priming pan under the floor. The pan's percussion cap fires on any projectile strike (the `structureStrike` every impact announces), and its current runs through the floor into the coupling and lights the powder beyond it. A Spark Bolt's own blast current does the same, and a player who slotted Frost Shard over Spark Bolt for the cold lock still has the verb | A slow match creeps along the catwalk ceiling from the striker to the pan (9 s) |
+| Tollgate | The boulder fetches up against a gate that will not lift | **Kick** (F) the Persuader, a brass weight on a chain. The chain runs up through the floor over two pulleys to the ratcheted gate | A clockwork knocker beside it winds up, then whacks the Persuader (10 s) |
+| Downpipe | The header tank drains into a clogged downpipe | **Pour water** (Q, starting flask) through the grate into the duck's bath under the catwalk. The floating duck's rod lifts the marble's pin | The clog seeps: one real water cell every 6 ticks moves from the pipe to the nozzle over the bath (~9 s) |
 
-Rapier supplies maximum-length rope joints, secondary retaining cords, limited revolute joints, and prismatic slider guides. Hemp burns or dissolves; metal chain survives those contacts. Torsion springs apply a restoring torque and damping. Guides also constrain velocity changes from fluid flow and impulses. Floating bodies respond to actual water; piston faces receive bounded lift only from steam immediately underneath. `entities/Energy.ts` supplies a linear generator and charge-driven electromagnet. Their voltage uses game units; generation requires descending metal and applies opposing drag, and magnet force requires charge at an intact terminal. These capabilities are reusable independently of this encounter. The bell retains the existing append-only key pickup ID and artwork.
+While a station waits, its fixture pulses with a halo. The caption card at the top of the frame shows the verb with its live key binding and a meter for the backup's progress.
 
-Expedition saves retain all 15 surviving props, their poses and velocities, both rope attachments, and bounded plate travel. Grid charge uses the existing world persistence. Reopening a save rebuilds guides and spring joints without duplicating props or reclaiming the camera. Level/mode transitions relinquish the camera. Builder documents and raw Sandbox saves do not receive expedition state. GEN_VERSION 42 recorded the extended layout and moving plates (the level is now at 45: cold lock, contained liquids); earlier-generation expeditions follow the existing retirement behavior.
+## The chain
 
-Validation: `tests/tea-machine.test.ts` runs the entire chain through the real simulation across three seeds, and covers hinge stops, dry float behavior, material conservation, blocked plates, electrical input, pendulum collision, rope cutting, finite boiler steam, mandatory collection, retry isolation and camera ownership. `tests/camera.test.ts` checks pan speed, direction changes, zoom out and arrival. `scripts/verify-tea-machine.mjs [url] [seed] [--skip|--resume] [--large] [--comfort]` launches through the Developer Console (it predates the cold lock: open the gates first, e.g. with nitrogen), walks to the crank, presses the real Use key, records plate travel and camera motion, captures desktop/compact views and collects the bell through the catwalk. It never injects stage, cells, hits or body movement. Worldgen goldens and route checks cover the altered layout.
+1. **First, a little powder.** The crank's striker lights a fuse on a stone bed along the hall floor. It burns to the cracked coupling and dies. *(Fault: spark the pan.)*
+2. **The knot is the fuse.** The pendulum's hemp cord runs from the bob over a pulley and down to a cleat set in the fuse. Fire at the cleat is the cut. The steel chain survives, and the bob swings into the boulder.
+3. **Downhill, briskly.** The boulder rolls down a ramp to the tollgate. *(Fault: kick the Persuader.)*
+4. **Six dominoes and a wound spring.** Released, the boulder topples six dominoes. The last falls against a backstop (it can no longer jam the crank) and its cable draws the latch out from under the torsion-spring crank.
+5. **The spring lets go.** The crank whips round and its cable lifts the header tank's plug. The tank drains into its downpipe. *(Fault: pour water for the duck.)*
+6. **A marble of some urgency.** The duck's rod lifts a pin. A steel marble runs 260 cells of rail (slope 0.25, top guard rail) and strikes the flint at the head of the second fuse.
+7. **This is probably enough heat.** The second fuse runs past three packed charges. The last blast burns the copper tea bag's cord.
+8. **A most electrifying tea bag.** The falling copper bag is a linear generator (opposing drag). Its current runs up the real overhead wire to an electromagnet.
+9. **The magnet has opinions / Gravity gets the last word.** The coil pulls the iron latch from under the counterweight. Its braked drum and four pulley strands lift the bell latch, and the bell drops to the receiver below the catwalk's east end.
+
+A player who answers each fault within a second or two finishes in about 24 s. Nobody helping at all finishes in about 47 s.
+
+## Rules the director keeps
+
+- **Every stage advances on physical evidence.** Examples: fire in the fuse's tail, a cut cord, a body's travel, plate travel, a charge's powder gone, current at the magnet's terminal. Linkage plates move one cell at a time by `World.swap` (`pullTeaValve`), ratcheted, and jam on obstruction. No material is conjured: the seep moves existing water cells, and the tank is sized so the bath can never overflow onto the route.
+- **Linkages engage in causal order.** The duck's rod only lifts the pin once the engine reaches the duck, so a bath filled early cannot fire the finale out of order.
+- **Never hard-locks.** Every non-fault stage has a watchdog. After a few seconds without progress it applies a visible nudge to the stuck body (the striker re-strikes, the boulder or a domino gets a shove, the marble a flick). After repeated nudges it forces the linkage (a plate pulled home, a cord cut, the reserve cell discharged into the wire, the bell gate opened). A blast-open bell gate counts as success.
+- **A disturbed engine recharges on the crank.** The fuse can be sparked, or the Persuader kicked, before the crank is pulled (the catwalk is reachable from below). In that case, pulling the crank first re-stamps the hall and re-spawns its props, so the cold lock still gates the engine and every run starts whole. The labelled maintenance recharge still exists for a stalled save. Neither touches the rest of the level.
+- Plates wake any sleeping body resting beside them when they move (a marble asleep against its pin would otherwise never roll).
+
+## Implementation
+
+- **Geometry and constants:** `src/world/teaMachine.ts` holds `TEA`, `TEA_STAGE`, `TEA_VALVES` (gate, spring, tap, pin, bell), `TEA_BODIES` and `TEA_BACKUP`, plus `stampTeaMachine` (repair re-stamps only `TEA.bounds`).
+- **Director:** `src/game/TeaMachine.ts` owns the stage checks, watchdogs, backups, seep and camera framing.
+- **Linkage drawings:** `src/render/TeaMachineLinkages.ts` draws cables, rods, pulleys, the slow match, the knocker, halos and the rails. `src/render/TeaMachineDecor.ts` draws the duck.
+- **Caption card:** `src/ui/TeaMachineOverlay.ts`, fed by the `contraptionView` event (title, detail, and `fault` with its verb, prompt and backup progress).
+- **Saves:** expedition saves keep every surviving prop's pose and velocity, rope and tether flags, plate travel, the watchdog and fault counters, and the stage. Restores are bounded (`restoreTeaMachine`) and cannot manufacture completion.
+- **Generation:** `GEN_VERSION` 46 records this layout. Earlier-generation expeditions are retired as usual.
+
+## Validation
+
+- **`tests/tea-machine.test.ts`** runs the whole chain through the real cell simulation, rigid bodies and director across three seeds, in two modes:
+  - a scripted player answering each fault with the verb's real effect;
+  - nobody helping, where the backups must finish it.
+
+  It also covers:
+  - the coupling always holds and the pan relights it;
+  - recharge-on-crank;
+  - out-of-order protection;
+  - watchdog forcing;
+  - fail-open bell gate;
+  - camera framing that keeps the player in shot without taking control;
+  - simulation bounds;
+  - bell gating, resume and bounded restore;
+  - generator/magnet, hinge, plate-conservation and cord-cutting physics.
+- **`scripts/trial-tea-machine.mjs`** runs the real game tick as fast as the CPU allows. By default a scripted alchemist uses the *real* verbs: a Spark Bolt through the wand system, the player controller's kick, and the flask's pour. `--idle` runs with nobody helping, `--away` with the player elsewhere in the level, and `--enemies` keeps the level's creatures alive.
+- **`scripts/film-tea-machine.mjs`** films it in real time, with an autopilot walking the catwalk on the real movement keys.
+- **`scripts/verify-living-traversal.mjs`** plays it with real input as part of the full D1 route: it clicks the pan, presses F at the Persuader and holds Q over the grate.

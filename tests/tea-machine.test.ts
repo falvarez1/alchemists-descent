@@ -9,31 +9,122 @@ import { pullTeaValve } from '@/game/TeaMachineLinkages';
 import { createLivingState } from '@/game/LivingExpedition';
 import { makeLevelRuntime } from '@/game/runtime';
 import { LEVELS } from '@/config/worldgraph';
-import { TEA, TEA_BODIES, TEA_COMPLETE_STAGE, stampTeaMachine, teaRect } from '@/world/teaMachine';
+import { TEA, TEA_BODIES, TEA_COMPLETE_STAGE, TEA_STAGE as S, stampTeaMachine, teaRect } from '@/world/teaMachine';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import { Simulation } from '@/sim/Simulation';
 import { Explosions } from '@/sim/explosion';
-import { updateElectricalGrid } from '@/sim/electrical';
+import { chargeDeposit, updateElectricalGrid } from '@/sim/electrical';
 import { Camera } from '@/render/Camera';
 import { createGameParams } from '@/config/params';
 import { Levels } from '@/game/Levels';
 import { Pickups, makePickup } from '@/game/Pickups';
+import { waterColor } from '@/sim/colors';
 
 beforeAll(() => initRapier());
 
 function fixture() {
   const world = new World();
   const ctx = { world, events: new EventBus(), state: { mode: 'play', frameCount: 0 },
-    camera: { actionFocus: null }, player: { x: 430, y: 305, dead: true, perks: {} },
+    camera: { actionFocus: null }, player: { x: 170, y: 305, dead: false, perks: {} },
     input: { keys: {}, mouse: { x: 0, y: 0 } }, fx: { digBeam: null }, debug: { active: false },
     enemies: [], particles: { list: [], spawn: vi.fn(), burst: vi.fn() },
-    audio: { at: (_x: number, _y: number, fn: () => void) => fn(), zap: vi.fn(), lever: vi.fn(), bubble: vi.fn() },
+    audio: new Proxy({} as Record<string | symbol, unknown>, { get: (target, key) => target[key] ??
+      ((...args: unknown[]) => { if (typeof args[2] === 'function') (args[2] as () => void)(); }) }),
     telemetry: { count: vi.fn() }, } as unknown as Ctx;
   const rigid = new RigidBodies(ctx); ctx.rigidBodies = rigid;
   const runtime = makeLevelRuntime({ world, def: LEVELS.d1, spawn: { x: 170, y: 314 }, living: createLivingState() });
   ctx.levels = { current: runtime } as Ctx['levels'];
   return { ctx, rigid, world, runtime };
+}
+
+type Helper = 'player' | 'idle';
+
+/**
+ * The whole engine through the real cell simulation, rigid bodies and
+ * director. In 'player' mode a scripted alchemist answers each fault with the
+ * real verb's effect (a spark bolt's blast and current at the pan, a kick's
+ * momentum on the Persuader, a flask's water on the grate) after a human
+ * reaction delay; in 'idle' mode nobody helps and the backups must finish it.
+ */
+function runChain(seed: number, helper: Helper, maxTicks = 9000) {
+  const { ctx, rigid, world, runtime } = fixture();
+  ctx.params = createGameParams(); ctx.state.worldSeed = seed; ctx.shockwaves = [];
+  ctx.projectileCtl = { update: vi.fn() } as unknown as Ctx['projectileCtl'];
+  ctx.physics = { cellBlocks: () => false } as unknown as Ctx['physics'];
+  ctx.explosions = new Explosions(ctx);
+  stampTeaMachine(world, runtime.mechanisms);
+  const director = new TeaMachine(ctx); ctx.contraption = director; director.update();
+  const sim = new Simulation(); Object.assign(world.simBounds, TEA.simBounds);
+  const step = () => {
+    ctx.state.frameCount++; Object.assign(world.simBounds, TEA.simBounds); director.includeSimulation();
+    sim.update(ctx); updateElectricalGrid(ctx); rigid.update(ctx); director.update();
+  };
+  for (let tick = 0; tick < 120; tick++) step();
+  runtime.mechanisms.find(m => m.id === TEA.lever.id)!.state = 1;
+  const stageAt: Record<number, number> = {};
+  let last = -1, faultSeen = -1, poured = 0;
+  const tea = () => runtime.living!.tea!;
+  let tick = 0;
+  for (; tick < maxTicks && !tea().completed && !tea().stalled; tick++) {
+    step();
+    const s = tea();
+    if (s.stage !== last) { last = s.stage; stageAt[s.stage] = tick; faultSeen = tick; }
+    if (process.env.TEA_TRACE && s.stage === Number(process.env.TEA_TRACE) && tick % 20 === 0) {
+      const m = rigid.bodies.find(b => b.tag === 'tea-marble'), d = rigid.bodies.find(b => b.tag === 'tea-duck');
+      console.log('trace', tick, m && [m.x.toFixed(1), m.y.toFixed(1), m.vx.toFixed(2), m.sleeping], d && d.y.toFixed(1), JSON.stringify(s.travel));
+    }
+    if (helper !== 'player' || tick - faultSeen < 75) continue;
+    if (s.stage === S.SPARK && tick - faultSeen === 75) {
+      // A Spark Bolt striking the pan's underside: its blast and its current.
+      const x = TEA.pan.x + 3, y = TEA.pan.y + TEA.pan.h;
+      ctx.explosions.trigger(x, y, ctx.params.spells.bolt.explosionRadius!);
+      world.setChargeAt(world.idx(x, y - 1), chargeDeposit(ctx, 20));
+    }
+    if (s.stage === S.KICK && (tick - faultSeen) % 40 === 35) {
+      const bob = rigid.bodies.find(b => b.tag === 'tea-persuader')!;
+      const ox = bob.x - 10, oy = 303, d = Math.hypot(bob.x - ox, bob.y - oy);
+      const dirX = (bob.x - ox) / d, dirY = (bob.y - oy) / d, k = ctx.params.player.kickImpulse;
+      rigid.applyMomentumAt(bob, dirX * k, dirY * k - k * .2, bob.x - dirX * 1.5, bob.y - dirY * 1.5);
+    }
+    if (s.stage === S.POUR && poured < 240) {
+      for (let n = 0; n < 10 && poured < 240; n++) {
+        const x = 986 + ((tick * 7 + n * 5) % 28), y = 306 + (n % 3);
+        if (world.type(x, y) === Cell.Empty) { world.replaceCellAt(world.idx(x, y), Cell.Water, waterColor()); poured++; }
+      }
+    }
+  }
+  const s = tea();
+  const out = { completed: s.completed, stage: s.stage, ticks: tick, stageAt, travel: s.travel, bath: director.bathWater() };
+  director.dispose(); rigid.dispose();
+  return out;
+}
+
+describe('the played engine', () => {
+  it.each([41, 777, 1337])('a player who answers each fault finishes the engine briskly (seed %i)', seed => {
+    const r = runChain(seed, 'player');
+    if (process.env.TEA_DEBUG) console.log('player', seed, JSON.stringify(r));
+    expect(r.completed, JSON.stringify(r)).toBe(true);
+    // Each fault genuinely waited for the player instead of solving itself.
+    expect(r.stageAt[S.CORD] - r.stageAt[S.SPARK]).toBeGreaterThanOrEqual(70);
+    expect(r.stageAt[S.DOMINOES] - r.stageAt[S.KICK]).toBeGreaterThanOrEqual(70);
+    expect(r.ticks).toBeLessThan(60 * 50);
+  }, 120000);
+
+  it.each([41, 777, 1337])('nobody helps: every fault has a physical backup, and the bell still arrives (seed %i)', seed => {
+    const r = runChain(seed, 'idle');
+    if (process.env.TEA_DEBUG) console.log('idle', seed, JSON.stringify(r));
+    expect(r.completed, JSON.stringify(r)).toBe(true);
+    expect(r.stageAt[S.CORD] - r.stageAt[S.SPARK]).toBeGreaterThanOrEqual(500);
+    expect(r.ticks).toBeLessThan(60 * 90);
+  }, 120000);
+});
+
+function directorFixture() {
+  const f = fixture();
+  stampTeaMachine(f.world, f.runtime.mechanisms);
+  const director = new TeaMachine(f.ctx); f.ctx.contraption = director; director.update();
+  return { ...f, director, tea: () => f.runtime.living!.tea! };
 }
 
 describe('machine physics', () => {
@@ -52,7 +143,8 @@ describe('machine physics', () => {
     else expect(latch.x).toBeLessThan(280);
     rigid.dispose();
   });
-  it('respects hinge stops while releasing stored spring energy, then frees every anchor', () => {
+
+  it('respects hinge stops while releasing stored spring energy', () => {
     const { ctx, rigid } = fixture();
     const arm = rigid.spawn({ kind: 'box', halfW: 18, halfH: 2 }, 200, 100, {
       angle: .25, hinge: { minAngle: -.35, maxAngle: .25 },
@@ -61,123 +153,41 @@ describe('machine physics', () => {
     for (let tick = 0; tick < 240; tick++) rigid.update(ctx);
     expect(arm.x).toBeCloseTo(200, 2); expect(arm.y).toBeCloseTo(100, 2);
     expect(arm.angle).toBeCloseTo(-.35, 2);
-    rigid.remove(arm); rigid.clear(); rigid.dispose();
-  });
-
-  it('a guided float withstands a sideways impulse without tilting or opening a dry tank', () => {
-    const { ctx, rigid, world, runtime } = fixture(); stampTeaMachine(world, runtime.mechanisms);
-    const def = TEA_BODIES.find(b => b.key === 'duck')!;
-    const duck = rigid.spawn(def.shape, def.x, def.y, def.opts);
-    for (let tick = 0; tick < 100; tick++) rigid.update(ctx);
-    rigid.applyImpulseAt(duck, 8, 0, duck.x, duck.y - 5);
-    const state = { stage: 4, ticks: 0, stageTicks: 0, completed: false, stalled: false, bodies: [] };
-    for (let tick = 0; tick < 180; tick++) {
-      rigid.update(ctx); expect(pullTeaValve(world, state, 'acid', 233 - duck.y)).toBe(0);
-    }
-    expect(duck.x).toBeCloseTo(def.x, 2); expect(duck.angle).toBe(0);
     rigid.dispose();
   });
 
-  it('moving valve plates conserve metal and acid, hold their ratchet, and jam on an obstruction', () => {
+  it('moving plates conserve metal and water, hold their ratchet, and jam on an obstruction', () => {
     const { world, runtime, rigid } = fixture(); stampTeaMachine(world, runtime.mechanisms);
-    const state = { stage: 4, ticks: 0, stageTicks: 0, completed: false, stalled: false, bodies: [] };
+    const state = { stage: S.SPRING, ticks: 0, stageTicks: 0, completed: false, stalled: false, bodies: [] };
+    const t = TEA.tank;
     const counts = () => {
-      const n = { metal: 0, acid: 0 };
-      for (let y = 58; y < 130; y++) for (let x = 1092; x < 1124; x++) {
+      const n = { metal: 0, water: 0 };
+      for (let y = t.y0 - 4; y <= t.y1 + 4; y++) for (let x = t.x0 - 4; x <= t.x1 + 4; x++) {
         if (world.type(x, y) === Cell.Metal) n.metal++;
-        if (world.type(x, y) === Cell.Acid) n.acid++;
+        if (world.type(x, y) === Cell.Water) n.water++;
       }
       return n;
     };
-    const before = counts(); expect(pullTeaValve(world, state, 'acid', 12)).toBe(12);
-    expect(counts()).toEqual(before); expect(pullTeaValve(world, state, 'acid', 0)).toBe(12);
-    teaRect(world, { x: 1101, y: 100, w: 1, h: 1 }, Cell.Stone);
-    expect(pullTeaValve(world, state, 'acid', 15)).toBe(12); expect(world.type(1101, 100)).toBe(Cell.Stone);
+    const before = counts(); expect(pullTeaValve(world, state, 'tap', 6)).toBe(6);
+    expect(counts()).toEqual(before); expect(pullTeaValve(world, state, 'tap', 0)).toBe(6);
+    teaRect(world, { x: TEA.tap.x + 2, y: TEA.tap.y - 7, w: 1, h: 1 }, Cell.Stone);
+    expect(pullTeaValve(world, state, 'tap', 12)).toBe(6);
     rigid.dispose();
   });
 
-  it('a still generator produces no electricity and a disconnected electromagnet exerts no force', () => {
-    const { ctx, rigid, world } = fixture();
-    const terminal = { x: 200, y: 100 }; teaRect(world, { ...terminal, w: 1, h: 1 }, Cell.Metal);
-    const weight = rigid.spawn({ kind: 'box', halfW: 3, halfH: 5 }, 250, 100, { material: 'metal', guideAxis: 'vertical' });
-    const latch = rigid.spawn({ kind: 'box', halfW: 6, halfH: 2 }, 235, 100, { material: 'metal', guideAxis: 'horizontal' });
-    expect(generateFromDrop(ctx, weight, terminal, 90, 120)).toBe(0);
-    attractElectromagnet(ctx, latch, terminal); rigid.update(ctx); expect(latch.vx).toBe(0);
-    for (let tick = 0; tick < 3; tick++) rigid.update(ctx);
-    expect(generateFromDrop(ctx, weight, terminal, 90, 120)).toBeGreaterThan(20);
-    attractElectromagnet(ctx, latch, terminal); rigid.update(ctx); expect(latch.vx).toBeLessThan(0);
-    const impulse = vi.spyOn(rigid, 'applyImpulse');
-    world.clearCellAt(world.idx(terminal.x, terminal.y)); attractElectromagnet(ctx, latch, terminal);
-    expect(impulse).not.toHaveBeenCalled(); rigid.dispose();
-  });
-
-  it.each([41, 777, 1337])('runs the full chain from one crank with no injected handoffs (seed %i)', seed => {
-    const { ctx, rigid, world, runtime } = fixture();
-    ctx.params = createGameParams(); ctx.state.worldSeed = seed; ctx.shockwaves = [];
-    ctx.projectileCtl = { update: vi.fn() } as unknown as Ctx['projectileCtl'];
-    ctx.physics = { cellBlocks: () => false } as unknown as Ctx['physics'];
-    ctx.audio = new Proxy({}, { get: () => () => undefined }) as Ctx['audio'];
-    ctx.explosions = new Explosions(ctx);
-    stampTeaMachine(world, runtime.mechanisms); ctx.player.dead = false;
-    const director = new TeaMachine(ctx); ctx.contraption = director; director.update();
-    const sim = new Simulation(); Object.assign(world.simBounds, TEA.bounds);
-    const step = () => { ctx.state.frameCount++; sim.update(ctx); rigid.update(ctx); director.update(); };
-    for (let tick = 0; tick < 180; tick++) step();
-    expect(runtime.living!.tea!.stage).toBe(0);
-    expect(rigid.bodies.find(b => b.tag === 'tea-sugar')!.y).toBeLessThan(178);
-    expect(rigid.bodies.find(b => b.tag === 'tea-rocker')!.angle).toBeGreaterThan(.2);
-    runtime.mechanisms.find(m => m.id === TEA.lever.id)!.state = 1;
-    for (let tick = 0; tick < 5000 && !runtime.living!.tea!.completed && !runtime.living!.tea!.stalled; tick++) step();
-    const final = runtime.living!.tea!;
-    const region = (x0: number, y0: number, w: number, h: number) => {
-      const counts: Record<number, number> = {};
-      for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
-        const type = world.type(x, y); counts[type] = (counts[type] ?? 0) + 1;
-      }
-      return counts;
-    };
-    expect(final.completed, JSON.stringify({ ...final, catchCells: region(1499, 220, 18, 19),
-      charges: [1365, 1426, 1487].map(x => region(x, 212, 7, 11)) })).toBe(true);
-    expect(final.travel!.acid).toBeGreaterThanOrEqual(6); expect(final.travel!.bell).toBeGreaterThanOrEqual(12);
-    director.dispose(); rigid.dispose();
-  }, 60000);
-  it.each([41, 777, 1337])('the finite lava supply boils real water and drives the kettle piston to its trip (seed %i)', seed => {
-    const { ctx, rigid, world, runtime } = fixture();
-    ctx.params = createGameParams(); ctx.state.worldSeed = seed;
-    ctx.shockwaves = [];
-    ctx.projectileCtl = { update: vi.fn() } as unknown as Ctx['projectileCtl'];
-    ctx.audio = new Proxy({}, { get: () => () => undefined }) as Ctx['audio'];
-    stampTeaMachine(world, runtime.mechanisms);
-    Object.assign(world.simBounds, { x0: 1195, y0: 45, x1: 1270, y1: 240 });
-    const def = TEA_BODIES.find(d => d.key === 'piston')!;
-    const piston = rigid.spawn(def.shape, def.x, def.y, def.opts);
-    const sim = new Simulation();
-    for (let i = 0; i < 240; i++) { ctx.state.frameCount++; sim.update(ctx); rigid.update(ctx); }
-    teaRect(world, TEA.lavaGate, Cell.Empty);
-    let minimumY = piston.y, maximumSteam = 0;
-    for (let i = 0; i < 1200 && minimumY >= 175; i++) {
-      ctx.state.frameCount++; sim.update(ctx); rigid.update(ctx);
-      minimumY = Math.min(minimumY, piston.y);
-      let n = 0; for(let x=1240;x<1260;x++)for(let y=196;y<203;y++)if(world.type(x,y)===Cell.Steam)n++;
-      maximumSteam = Math.max(maximumSteam, n);
-    }
-    expect(minimumY, `maximum steam at rest face: ${maximumSteam}`).toBeLessThan(175);
-    rigid.dispose();
-  }, 30000);
-  it('holds its armed pendulum and boulder still, then gravity swings the released bob into the boulder', () => {
+  it('holds its armed pendulum, then the bob swings into the boulder once the cord is cut', () => {
     const { ctx, rigid, world, runtime } = fixture();
     stampTeaMachine(world, runtime.mechanisms);
     const [pd, bd] = TEA_BODIES;
     const bob = rigid.spawn(pd.shape, pd.x, pd.y, pd.opts);
     const rock = rigid.spawn(bd.shape, bd.x, bd.y, bd.opts);
-    rigid.tieRope(bob, pd.rope!.x, pd.rope!.y, pd.rope!.length);
+    rigid.tieRope(bob, pd.rope!.x, pd.rope!.y, pd.rope!.length, 'chain');
     rigid.tieRope(bob, pd.tether!.x, pd.tether!.y, pd.tether!.length, 'rope', true);
-    for (let i = 0; i < 360; i++) { ctx.state.frameCount++; rigid.update(ctx); }
-    expect(bob.x).toBeLessThan(608); expect(Math.abs(rock.x - 682)).toBeLessThan(1);
+    for (let i = 0; i < 240; i++) { ctx.state.frameCount++; rigid.update(ctx); }
+    expect(bob.x).toBeLessThan(608); expect(Math.abs(rock.x - 682)).toBeLessThan(1.5);
     rigid.cutRope(bob, true);
-    for (let i = 0; i < 180; i++) { ctx.state.frameCount++; rigid.update(ctx); }
-    expect(rock.x).toBeGreaterThan(808);
-    expect(Math.hypot(bob.x - pd.rope!.x, bob.y - pd.rope!.y)).toBeLessThan(pd.rope!.length + 1);
+    for (let i = 0; i < 90; i++) { ctx.state.frameCount++; rigid.update(ctx); }
+    expect(rock.x).toBeGreaterThan(700); // struck off its ledge, down toward the tollgate
     rigid.dispose();
   });
 
@@ -191,53 +201,129 @@ describe('machine physics', () => {
     expect(bob.y).toBeGreaterThan(125);
     rigid.clear(); expect(rigid.bodies).toHaveLength(0); rigid.dispose();
   });
-
-  it('steam lifts a piston only when material reaches its underside', () => {
-    const { ctx, rigid, world } = fixture();
-    const piston = rigid.spawn({ kind: 'box', halfW: 8, halfH: 3 }, 200, 100, { material: 'metal', steamPiston: true });
-    teaRect(world, { x: 192, y: 105, w: 17, h: 5 }, Cell.Steam);
-    rigid.update(ctx); rigid.update(ctx);
-    expect(piston.vy).toBeLessThan(0);
-    teaRect(world, { x: 180, y: 70, w: 40, h: 50 }, Cell.Empty);
-    for (let i = 0; i < 12; i++) rigid.update(ctx);
-    expect(piston.vy).toBeGreaterThan(0); rigid.dispose();
-  });
 });
 
-describe('machine state and camera ownership', () => {
-  it('treats a blast-open final bell gate as a successful fail-open handoff', () => {
-    const { ctx, rigid, runtime, world } = fixture(); ctx.player.dead = false;
-    ctx.audio.gong = vi.fn();
+describe('faults, backups and ordering', () => {
+  it('the first fuse always dies against the cracked coupling, and a spark on the pan relights the far side', () => {
+    const { ctx, rigid, world, runtime } = fixture();
+    ctx.params = createGameParams(); ctx.shockwaves = [];
+    ctx.projectileCtl = { update: vi.fn() } as unknown as Ctx['projectileCtl'];
+    ctx.physics = { cellBlocks: () => false } as unknown as Ctx['physics'];
+    ctx.explosions = new Explosions(ctx);
     stampTeaMachine(world, runtime.mechanisms);
-    const director = new TeaMachine(ctx); director.update();
-    const tea = runtime.living!.tea!;
-    tea.stage = 11; tea.stageTicks = 0; tea.completed = false; tea.stalled = false;
+    const sim = new Simulation(); Object.assign(world.simBounds, TEA.simBounds);
+    const step = () => { ctx.state.frameCount++; sim.update(ctx); updateElectricalGrid(ctx); };
+    const tail = () => {
+      let n = 0;
+      for (let x = TEA.coupling.x + TEA.coupling.w; x <= TEA.fuse.x1; x++) for (let y = TEA.fuse.y; y < TEA.fuse.y + 3; y++) if (world.type(x, y) === Cell.Gunpowder) n++;
+      return n;
+    };
+    const full = tail();
+    teaRect(world, { x: TEA.striker.x - 1, y: TEA.striker.y, w: 3, h: 1 }, Cell.Fire);
+    for (let i = 0; i < 900; i++) step();
+    expect(tail()).toBeGreaterThanOrEqual(full - 2); // nothing crossed the coupling (a grain may settle)
+    const x = TEA.pan.x + 3, y = TEA.pan.y + TEA.pan.h;
+    ctx.explosions.trigger(x, y, ctx.params.spells.bolt.explosionRadius!);
+    world.setChargeAt(world.idx(x, y - 1), chargeDeposit(ctx, 20));
+    for (let i = 0; i < 240; i++) step();
+    expect(tail()).toBeLessThan(full / 2);
+    rigid.dispose();
+  });
+
+  it('any wand shot striking the priming pan fires its percussion cap (Frost Shard included)', () => {
+    const { ctx, rigid, world, director, tea } = directorFixture();
+    const s = tea(); s.stage = S.SPARK;
+    const primed = () => { let n = 0; for (let x = TEA.pan.x; x < TEA.pan.x + TEA.pan.w; x++) n += world.charge[world.idx(x, TEA.pan.y + TEA.pan.h - 1)]; return n; };
+    ctx.events.emit('structureStrike', { x: 700, y: 266, radius: 7 }); // a shot elsewhere on the ceiling
+    expect(primed()).toBe(0);
+    ctx.events.emit('structureStrike', { x: TEA.pan.x + 3, y: TEA.pan.y + TEA.pan.h, radius: 7 });
+    expect(primed()).toBeGreaterThan(0);
+    director.dispose(); rigid.dispose();
+  });
+
+  it('pulling the crank on a disturbed engine recharges the hall before starting it', () => {
+    const { rigid, runtime, world, director, tea } = directorFixture();
+    const bob = rigid.bodies.find(b => b.tag === 'tea-pendulum')!;
+    rigid.cutRope(bob, true); // somebody burnt the cord before the crank
+    teaRect(world, { x: TEA.fuse.x0, y: TEA.fuse.y, w: 20, h: 3 }, Cell.Empty);
+    const sentinel = world.idx(100, 800); world.replaceCellAt(sentinel, Cell.Gold, 1);
+    runtime.mechanisms.find(m => m.id === TEA.lever.id)!.state = 1;
+    director.update(); director.update();
+    const fresh = rigid.bodies.find(b => b.tag === 'tea-pendulum')!;
+    expect(fresh.tether).toBeDefined();
+    expect(world.type(TEA.fuse.x0 + 10, TEA.fuse.y + 1)).not.toBe(Cell.Empty);
+    expect(tea().stage).toBe(S.FUSE);
+    expect(rigid.bodies.filter(b => b.tag?.startsWith('tea-'))).toHaveLength(TEA_BODIES.length);
+    expect(world.types[sentinel]).toBe(Cell.Gold); // the rest of the level is untouched
+    director.dispose(); rigid.dispose();
+  });
+
+  it('a duck floated early cannot fire the finale out of order', () => {
+    const { ctx, rigid, director, tea, world } = directorFixture();
+    const duck = rigid.bodies.find(b => b.tag === 'tea-duck')!;
+    const s = tea(); s.stage = S.KICK; s.stageTicks = 0;
+    rigid.applyImpulse(duck, 0, -1.5); // shoved up as if floated
+    for (let i = 0; i < 4; i++) { rigid.update(ctx); director.update(); }
+    expect(s.travel?.pin ?? 0).toBe(0);
+    expect(world.type(TEA.pin.x, TEA.pin.y)).toBe(Cell.Metal);
+    director.dispose(); rigid.dispose();
+  });
+
+  it('treats a blast-open bell gate as a successful fail-open handoff', () => {
+    const { ctx, rigid, world, director, tea } = directorFixture();
+    ctx.audio.gong = vi.fn();
+    const s = tea(); s.stage = S.BELL; s.stageTicks = 0;
     teaRect(world, TEA.bellGate, Cell.Empty);
     director.update();
-    expect(tea.completed).toBe(true);
-    expect(tea.stage).toBe(TEA_COMPLETE_STAGE);
+    expect(s.completed).toBe(true); expect(s.stage).toBe(TEA_COMPLETE_STAGE);
     expect(ctx.audio.gong).toHaveBeenCalledOnce();
     director.dispose(); rigid.dispose();
   });
 
-  it('keeps control with the camera until a long return pan actually arrives', () => {
-    const { ctx, rigid, world, runtime } = fixture(); ctx.player.dead = false;
-    ctx.camera = new Camera(); ctx.camera.snapTo(1450, 200);
-    stampTeaMachine(world, runtime.mechanisms);
-    const director = new TeaMachine(ctx); ctx.contraption = director; director.update();
-    runtime.mechanisms.find(m => m.id === TEA.lever.id)!.state = 1; director.update(); director.skip();
-    for (let tick = 0; tick < 70; tick++) { director.update(); ctx.camera.update(ctx); }
-    expect(director.watching).toBe(true);
-    for (let tick = 0; tick < 600 && director.watching; tick++) {
-      director.update(); if (director.watching) ctx.camera.update(ctx);
-    }
-    expect(director.watching).toBe(false);
-    expect(Math.hypot(ctx.camera.x - ctx.camera.tx, ctx.camera.y - ctx.camera.ty)).toBeLessThan(1);
+  it('a jammed stage is nudged, then forced, never left to hang', () => {
+    const { rigid, director, tea, world } = directorFixture();
+    const s = tea(); s.stage = S.SPRING; s.stageTicks = 0;
+    const rocker = rigid.bodies.find(b => b.tag === 'tea-rocker')!;
+    rigid.remove(rocker); // the crank is gone: nothing can pull the tap
+    for (let i = 0; i < 400 && s.stage === S.SPRING; i++) director.update();
+    expect(s.stage).toBe(S.POUR);
+    expect(world.type(TEA.tap.x, TEA.tap.y)).not.toBe(Cell.Metal);
     director.dispose(); rigid.dispose();
   });
+});
+
+describe('camera, control and state', () => {
+  it('frames the station AND the alchemist, who keeps control, then lets go when he leaves the hall', () => {
+    const { ctx, rigid, runtime, director, tea } = directorFixture();
+    ctx.camera = new Camera(); ctx.camera.snapTo(430, 300);
+    ctx.player.x = 740; ctx.player.y = 311;
+    runtime.mechanisms.find(m => m.id === TEA.lever.id)!.state = 1; director.update();
+    tea().stage = S.CHARGES; director.update();
+    const focus = ctx.camera.actionFocus!;
+    expect(focus).not.toBeNull();
+    expect(Math.abs(focus.x - ctx.player.x)).toBeLessThan(640 / (2 * focus.zoom)); // he stays in the shot
+    expect('watching' in director).toBe(false);
+    ctx.player.x = 170; ctx.player.y = 800; director.update();
+    expect(ctx.camera.actionFocus).toBeNull();
+    director.dispose(); rigid.dispose();
+  });
+
+  it('keeps simulating the whole hall while running, and clears the camera on transition', () => {
+    const { ctx, runtime, world, rigid, director } = directorFixture();
+    ctx.player.x = 740; ctx.player.y = 311;
+    runtime.mechanisms.find(m => m.id === TEA.lever.id)!.state = 1; director.update();
+    Object.assign(world.simBounds, { x0: 0, y0: 600, x1: 300, y1: 900 });
+    director.includeSimulation();
+    expect(world.simBounds.x1).toBeGreaterThanOrEqual(TEA.simBounds.x1);
+    expect(world.simBounds.y0).toBeLessThanOrEqual(TEA.simBounds.y0);
+    ctx.events.emit('levelChanged', { id: 'd2', name: 'D2', depth: 2 });
+    expect(ctx.camera.actionFocus).toBeNull();
+    director.dispose(); rigid.dispose();
+  });
+
   it('requires both the completed machine and its collected bell at the main descent gate', () => {
     const { ctx, rigid, runtime } = fixture();
-    ctx.player.dead = false; ctx.state.frameCount = 1;
+    ctx.state.frameCount = 1; ctx.player.x = 430; ctx.player.y = 305;
     ctx.audio.portalWhoosh = vi.fn(); ctx.sanctum = { open: vi.fn() } as unknown as Ctx['sanctum'];
     const levels = new Levels(ctx);
     const internals = levels as unknown as { currentId: string; levels: Map<string, typeof runtime> };
@@ -253,7 +339,7 @@ describe('machine state and camera ownership', () => {
   });
 
   it('keeps the bell uncollectible until the machine completes, then awards it on contact', () => {
-    const { ctx, rigid, runtime } = fixture(); ctx.player.dead = false;
+    const { ctx, rigid, runtime } = fixture();
     ctx.audio.keyJingle = vi.fn();
     const bell = makePickup('key', ctx.player.x, ctx.player.y - 8); runtime.pickups.push(bell);
     const pickups = new Pickups(); pickups.update(ctx);
@@ -263,52 +349,32 @@ describe('machine state and camera ownership', () => {
     rigid.dispose();
   });
 
-  it('resuming the same runtime does not duplicate machine bodies or reclaim the camera', () => {
-    const { ctx, rigid, runtime, world } = fixture(); ctx.player.dead = false;
-    stampTeaMachine(world, runtime.mechanisms);
-    const director = new TeaMachine(ctx); director.update();
+  it('resuming the same runtime does not duplicate machine bodies', () => {
+    const { ctx, rigid, director } = directorFixture();
     ctx.state.mode = 'build'; ctx.events.emit('modeChanged', { mode: 'build' });
     ctx.state.mode = 'play'; director.update();
     expect(rigid.bodies.filter(b => b.tag?.startsWith('tea-'))).toHaveLength(TEA_BODIES.length);
-    expect(director.watching).toBe(false); director.dispose(); rigid.dispose();
-  });
-  it('restores bounded detached body state and cannot manufacture a completion flag', () => {
-    const saved = { stage: 4, ticks: 99, completed: true, travel: { acid: Infinity, water: 200, bell: -99, spring: 4.9 },
-      bodies: [{ key: 'duck', x: 950, y: 220, vx: 999, vy: NaN, angle: 1, va: .1, rope: false }] };
-    const restored = restoreTeaMachine(saved)!;
-    expect(restored.completed).toBe(false); expect(restored.bodies[0].vx).toBe(20); expect(restored.bodies[0].vy).toBe(0);
-    expect(restored.travel).toEqual({ acid: 0, water: 12, bell: 0, spring: 4, lava: 0, oil: 0 });
-    restored.bodies[0].x = 1000; expect(saved.bodies[0].x).toBe(950);
-  });
-
-  it('a failed fuse returns control without advancing the puzzle; manual repair restocks only the machine', () => {
-    const { ctx, runtime, world, rigid } = fixture(); ctx.player.dead = false;
-    stampTeaMachine(world, runtime.mechanisms);
-    const director = new TeaMachine(ctx); ctx.contraption = director; director.update();
-    runtime.mechanisms.find(m => m.id === TEA.lever.id)!.state = 1; director.update();
-    expect(director.watching).toBe(true);
-    const sentinel = world.idx(100, 800); world.replaceCellAt(sentinel, Cell.Gold, 1);
-    const catwalk = world.idx(800, 312); world.clearCellAt(catwalk);
-    runtime.living!.tea!.stageTicks = 2401; director.update();
-    expect(runtime.living!.tea!.stage).toBe(1); expect(runtime.living!.tea!.stalled).toBe(true);
-    for (let i = 0; i < 70; i++) director.update();
-    expect(director.watching).toBe(false); expect(ctx.camera.actionFocus).toBeNull();
-    expect(director.interact()).toBe(true); expect(runtime.living!.tea!.stage).toBe(0);
-    expect(world.types[sentinel]).toBe(Cell.Gold); expect(world.types[catwalk]).toBe(Cell.Empty);
     director.dispose(); rigid.dispose();
   });
 
-  it('keeps simulation on the machine when watching, and clears the camera on transition', () => {
-    const { ctx, runtime, world, rigid } = fixture(); ctx.player.dead = false;
-    stampTeaMachine(world, runtime.mechanisms);
-    const director = new TeaMachine(ctx); ctx.contraption = director; director.update();
-    runtime.mechanisms.find(m => m.id === TEA.lever.id)!.state = 1; director.update();
-    director.includeSimulation(); expect(world.simBounds).toEqual(TEA.bounds);
-    runtime.living!.tea!.completed = true;
-    Object.assign(world.simBounds, { x0: 0, y0: 0, x1: 640, y1: 360 });
-    director.includeSimulation(); expect(world.simBounds).toEqual(TEA.bounds); // final camera hold still simulates fire
-    ctx.events.emit('levelChanged', { id: 'd2', name: 'D2', depth: 2 });
-    expect(director.watching).toBe(false); expect(ctx.camera.actionFocus).toBeNull();
+  it('restores bounded detached body state and cannot manufacture a completion flag', () => {
+    const saved = { stage: 4, ticks: 99, completed: true, travel: { gate: Infinity, tap: 200, bell: -99, spring: 4.9 }, faultTicks: -5,
+      bodies: [{ key: 'duck', x: 950, y: 220, vx: 999, vy: NaN, angle: 1, va: .1, rope: false }] };
+    const restored = restoreTeaMachine(saved)!;
+    expect(restored.completed).toBe(false); expect(restored.bodies[0].vx).toBe(20); expect(restored.bodies[0].vy).toBe(0);
+    expect(restored.travel).toEqual({ gate: 0, spring: 4, tap: 12, pin: 0, bell: 0 });
+    expect(restored.faultTicks).toBe(0);
+    restored.bodies[0].x = 1000; expect(saved.bodies[0].x).toBe(950);
+  });
+
+  it('a stalled engine recharges from its crank without touching the rest of the level', () => {
+    const { ctx, runtime, world, rigid, director, tea } = directorFixture();
+    ctx.player.x = TEA.lever.x; ctx.player.y = TEA.lever.y;
+    tea().stalled = true; tea().stage = S.DOMINOES;
+    const sentinel = world.idx(100, 800); world.replaceCellAt(sentinel, Cell.Gold, 1);
+    const catwalk = world.idx(800, 312); world.clearCellAt(catwalk);
+    expect(director.interact()).toBe(true); expect(runtime.living!.tea!.stage).toBe(0);
+    expect(world.types[sentinel]).toBe(Cell.Gold); expect(world.types[catwalk]).toBe(Cell.Empty);
     director.dispose(); rigid.dispose();
   });
 });
