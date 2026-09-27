@@ -41,6 +41,16 @@ export function worksGateOpen(world: { type(x: number, y: number): number }): bo
   return true;
 }
 
+/** Designed deep-dark zones on floor 1 (config/darkness, core/darkness). */
+export const WORKS_DARK_ZONES = [
+  // The Undertow: the whole trough and the rock that walls it (the feather
+  // runs inside the rock, so the room's own floor and roof are dark too).
+  { x: 620, y: 947, rx: 336, ry: 118, shape: 'rect' as const },
+  // The Lower Bell's west end, where the Undertow Weaver hunts; the gate's
+  // lamp (x 1400) stays outside it.
+  { x: 1115, y: 947, rx: 190, ry: 118, strength: 0.92, shape: 'rect' as const },
+] as const;
+
 /** The Breathing Chamber's sunken reservoir (water rows) under its grate. */
 export const WORKS_RESERVOIR = { x0: 1185, y0: 732, x1: 1409, y1: 766 } as const;
 /** The Silt Garden's sunken pool (water rows). */
@@ -376,5 +386,10 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
       lamp(850, 702, true, 155), lamp(285, 740), lamp(1400, 948, true, 115, .1, .48), ...failingLights, ...machineLights],
     emitters: [], decors: [], refuge: { x: 857, y: 739 }, spellLab: null,
     vaultArch: null, vaultHoard: null, surfaceSpawn: null, surfaceSkyLine: null,
+    // LIGHT WAVE: the Works' lamps never reached the Undertow. Its failing
+    // fixtures flicker over a trough of designed black, and the dark carries on
+    // into the west end of the Lower Bell where the Weaver waits; the gate's
+    // own lamp stays readable. Route-critical ground stays walkable by lantern.
+    darkZones: WORKS_DARK_ZONES.map(z => ({ ...z })),
   };
 }

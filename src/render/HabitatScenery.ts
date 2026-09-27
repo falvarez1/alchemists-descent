@@ -21,7 +21,8 @@ export function drawHabitatScenery(out: PixelSurface, light: LightField, ctx: Ct
     const x = plant?.x ?? rootX, y = plant?.y ?? worksPlantRoot(world, rootX, expectedY, false, true);
     if (x < camera.renderX - size || x > camera.renderX + VIEW_W + size || y < camera.renderY - size || y > camera.renderY + VIEW_H + size) continue;
     if (y < 0) continue;
-    const sample = light.sample(x, y), lr = Math.max(.5, sample.r), lg = Math.max(.5, sample.g), lb = Math.max(.5, sample.b);
+    const sample = light.sample(x, y), dk = sample.open ?? 1;
+    const lr = Math.max(.5 * dk, sample.r), lg = Math.max(.5 * dk, sample.g), lb = Math.max(.5 * dk, sample.b);
     const bend = plant?.angle ?? 0, burn = plant?.burn ?? 0;
     const pixel = (px: number, py: number, value: number) => {
       const ix = Math.round(px), iy = Math.round(py);

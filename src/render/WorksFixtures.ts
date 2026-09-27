@@ -18,8 +18,8 @@ const EMBER: RGB = [1.15, 0.74, 0.32];
 export function drawWorksFixtures(out: PixelSurface, light: LightField, ctx: Ctx): void {
   const view = cameraView(ctx.camera, 24);
   const penAt = (x: number, y: number): Pen => {
-    const s = light.sample(x, y);
-    return new Pen(out, view, [Math.min(1.05, Math.max(0.55, s.r)), Math.min(1.05, Math.max(0.55, s.g)), Math.min(1.05, Math.max(0.55, s.b))]);
+    const s = light.sample(x, y), floor = 0.55 * (s.open ?? 1);
+    return new Pen(out, view, [Math.min(1.05, Math.max(floor, s.r)), Math.min(1.05, Math.max(floor, s.g)), Math.min(1.05, Math.max(floor, s.b))]);
   };
   const w = ctx.world, frame = ctx.state.frameCount;
   const wood = (x: number, y: number): boolean => w.type(Math.floor(x), Math.floor(y)) === Cell.Wood;

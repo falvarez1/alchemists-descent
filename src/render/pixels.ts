@@ -152,6 +152,8 @@ export interface LightSample {
   r: number;
   g: number;
   b: number;
+  /** Designed-darkness render factor at the point (1 = readable; see Lighting.lightOpen). */
+  open?: number;
 }
 
 /**
@@ -167,6 +169,12 @@ export interface LightField {
   readonly lightAtt: Float32Array;
   /** Full-resolution radial darkening, baked once: 1 - 0.52 * r^2. */
   readonly vignette: Float32Array;
+  /**
+   * Designed darkness per light texel as a render factor (1 = shipped look,
+   * → 0 = deep dark): scales ambient and the readability floor in every
+   * compose path. Absent = all ones (builder/test fields).
+   */
+  readonly lightOpen?: Float32Array;
   build(ctx: Ctx): void;
   /**
    * Squared, clamped lit factors at a world position (original sampleSpriteLight).

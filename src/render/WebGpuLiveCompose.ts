@@ -23,6 +23,14 @@ import {
   LIGHT_KNEE_SLOPE,
   LIGHT_KNEE_START,
   LIGHT_READABILITY_FLOOR,
+  DARK_ADAPT,
+  DARK_AIR_GLOW,
+  DARK_AIR_B,
+  DARK_AIR_G,
+  DARK_AIR_R,
+  DARK_FLOOR_B,
+  DARK_FLOOR_G,
+  DARK_FLOOR_R,
   renderAmbient,
   SELF_GLOW_BASE,
   SELF_GLOW_SCALE,
@@ -419,6 +427,15 @@ fn softLit(lf: f32) -> f32 {
   return lit;
 }
 
+// softLit plus the designed-darkness eye adaptation (lightingModel DARK_ADAPT).
+fn adaptLit(lf: f32, adapt: f32) -> f32 {
+  var lit = lf * lf + adapt * lf;
+  if (lit > ${LIGHT_KNEE_START.toFixed(2)}) {
+    lit = min(${LIGHT_KNEE_MAX.toFixed(1)}, ${LIGHT_KNEE_START.toFixed(2)} + (lit - ${LIGHT_KNEE_START.toFixed(2)}) * ${LIGHT_KNEE_SLOPE.toFixed(1)});
+  }
+  return lit;
+}
+
 fn gradeBackdrop(cIn: vec3<f32>) -> vec3<f32> {
   var c = (cIn * exp2(p(14u)) + p(15u) - 0.5) * p(16u) + 0.5;
   let luma = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
@@ -540,7 +557,12 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
     let cell = textureLoad(uWin, vec2<i32>(lx, ly), 0);
     let typeId = i32(cell.a & 0x7fu);
     let charged = (cell.a & 0x80u) != 0u;
-    let light = textureLoad(uLight, vec2<i32>(vx / 2, vy / 2), 0).rgb;
+    let lightTexel = textureLoad(uLight, vec2<i32>(vx / 2, vy / 2), 0);
+    let light = lightTexel.rgb;
+    // Designed darkness (alpha): scales ambient + the readability floor.
+    let open = lightTexel.a;
+    let shut = 1.0 - open;
+    let adapt = ${DARK_ADAPT.toFixed(3)} * shut;
     let dxv = f32(vx) - ${(VIEW_W / 2).toFixed(1)};
     let dyv = f32(vy) - ${(VIEW_H / 2).toFixed(1)};
     let vg = 1.0 - p(19u) * ((dxv * dxv + dyv * dyv) / ${((VIEW_W / 2) * (VIEW_W / 2) + (VIEW_H / 2) * (VIEW_H / 2)).toFixed(1)});
@@ -579,14 +601,15 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
       var g = bg.g * depthShade;
       var b = bg.b * depthShade;
       var lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.r) * vg;
-      r = (r * 0.62 + ambient * 0.022) * vg + r * lf0 * lf0 * 0.72;
+      r = (r * 0.62 + ambient * 0.022) * vg * open + r * (lf0 * lf0 + adapt * lf0) * 0.72 + ${DARK_AIR_R.toFixed(4)} * shut;
       lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.g) * vg;
-      g = (g * 0.62 + ambient * 0.022) * vg + g * lf0 * lf0 * 0.72;
+      g = (g * 0.62 + ambient * 0.022) * vg * open + g * (lf0 * lf0 + adapt * lf0) * 0.72 + ${DARK_AIR_G.toFixed(4)} * shut;
       lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.b) * vg;
-      b = (b * 0.62 + ambient * 0.032) * vg + b * lf0 * lf0 * 0.72;
-      r = r + max(0.0, light.r - 0.25) * 0.045 * vg;
-      g = g + max(0.0, light.g - 0.25) * 0.04 * vg;
-      b = b + max(0.0, light.b - 0.25) * 0.035 * vg;
+      b = (b * 0.62 + ambient * 0.032) * vg * open + b * (lf0 * lf0 + adapt * lf0) * 0.72 + ${DARK_AIR_B.toFixed(4)} * shut;
+      let haze = vg * (1.0 + ${DARK_AIR_GLOW.toFixed(3)} * shut);
+      r = r + max(0.0, light.r - 0.25) * 0.045 * haze;
+      g = g + max(0.0, light.g - 0.25) * 0.04 * haze;
+      b = b + max(0.0, light.b - 0.25) * 0.035 * haze;
       c = vec3<f32>(r, g, b) + ringGlow * vec3<f32>(0.55, 0.42, 0.26);
     } else {
       var base = vec3<f32>(f32(cell.r), f32(cell.g), f32(cell.b)) / 255.0;
@@ -629,12 +652,13 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
         let chargeGlow = select(boost * 1.2, boost * 0.35, typeId == ${Cell.Metal});
         intensity = chargeGlow * (0.3 + flickerRand(vec2<f32>(f32(wx), f32(wy)), 2.3) * 1.1);
       }
-      let floorL = ${LIGHT_READABILITY_FLOOR.toFixed(2)} * vg;
+      let floorL = ${LIGHT_READABILITY_FLOOR.toFixed(2)} * vg * open;
+      let ambL = ambient * open;
       let selfGlow = select(0.0, ${SELF_GLOW_BASE.toFixed(2)} + scalar * ${SELF_GLOW_SCALE.toFixed(2)}, scalar > 0.0);
       c = vec3<f32>(
-        base.r * max(softLit((ambient + min(${LIGHT_CLAMP.toFixed(1)}, light.r)) * vg), selfGlow) + base.r * floorL,
-        base.g * max(softLit((ambient + min(${LIGHT_CLAMP.toFixed(1)}, light.g)) * vg), selfGlow) + base.g * floorL,
-        base.b * max(softLit((ambient + min(${LIGHT_CLAMP.toFixed(1)}, light.b)) * vg), selfGlow) + base.b * floorL
+        base.r * max(adaptLit((ambL + min(${LIGHT_CLAMP.toFixed(1)}, light.r)) * vg, adapt), selfGlow) + base.r * (floorL + ${DARK_FLOOR_R.toFixed(4)} * shut),
+        base.g * max(adaptLit((ambL + min(${LIGHT_CLAMP.toFixed(1)}, light.g)) * vg, adapt), selfGlow) + base.g * (floorL + ${DARK_FLOOR_G.toFixed(4)} * shut),
+        base.b * max(adaptLit((ambL + min(${LIGHT_CLAMP.toFixed(1)}, light.b)) * vg, adapt), selfGlow) + base.b * (floorL + ${DARK_FLOOR_B.toFixed(4)} * shut)
       ) * intensity + ringGlow * vec3<f32>(0.55, 0.42, 0.26);
     }
     }
@@ -1363,12 +1387,13 @@ export class WebGpuLiveCompose {
         `WebGPU live compose light-field size mismatch: expected ${LIGHT_W}x${LIGHT_H}, got ${light.LW}x${light.LH}`,
       );
     }
-    const { lightR, lightG, lightB } = light;
+    const { lightR, lightG, lightB, lightOpen } = light;
     for (let i = 0, offset = 0; i < LIGHT_W * LIGHT_H; i++, offset += 4) {
       this.lightData[offset] = lightR[i];
       this.lightData[offset + 1] = lightG[i];
       this.lightData[offset + 2] = lightB[i];
-      this.lightData[offset + 3] = 1;
+      // alpha = designed darkness as a render factor (1 = shipped look)
+      this.lightData[offset + 3] = lightOpen ? lightOpen[i] : 1;
     }
   }
 

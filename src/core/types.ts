@@ -563,6 +563,8 @@ export interface Enemy {
   weaverLegDamage?: number[];
   weaverFlinchT?: number;
   weaverRetreatT?: number;
+  /** How the lantern's light touches this creature (creatures/lightResponse). Tick-owned, never saved. */
+  lightSense?: CreatureLightSense;
   /** Stone Maw: committed chewing frames; sprite reads it as mouth-open pressure. */
   mawChewT?: number;
   /** Stone Maw: cooldown before another terrain bite. */
@@ -1182,6 +1184,8 @@ export interface RunStatus {
 
 export interface GameStateData {
   highReadability?: boolean;
+  /** The alchemist has hooded his lantern (stealth; the light wave's L key). Transient. */
+  lanternHooded?: boolean;
   creatureCaptions?: boolean;
   reduceCameraShake?: boolean;
   reduceFlashes?: boolean;
@@ -2078,6 +2082,10 @@ export interface WorldGenApi {
     surfaceSpawn: { x: number; y: number } | null;
     /** D1 only: horizon row — Empty cells above it render as open daytime sky. */
     surfaceSkyLine: number | null;
+    /** Designed deep-dark zones (light wave); static, regenerated on restore. */
+    darkZones?: DarkZone[];
+    /** Lumen blooms (light plants whose petals are real glass cells). */
+    lumenBlooms?: LumenBloom[];
   };
 }
 
@@ -2298,7 +2306,7 @@ export interface Mechanism {
   /** plug: fraction of body cells gone/transformed that fires it (0.5). */
   breakFrac?: number;
   /** sensor: what the zone reads. */
-  sensorType?: 'heat' | 'liquid' | 'weight' | 'charge' | 'material';
+  sensorType?: 'heat' | 'liquid' | 'weight' | 'charge' | 'material' | 'light';
   /** sensor 'material': cell ids that count toward the reading. */
   materialFilter?: number[];
   /** sensor: how a satisfied reading latches (default 'timed'). */
@@ -2964,6 +2972,62 @@ export interface LevelRuntime {
   spellLab?: { x: number; y: number; rewardX: number; rewardY: number };
   /** The gilded arch: hidden branch entrance (host) / way home (branch). */
   vaultArch?: VaultArch;
+  /** Designed deep-dark zones (core/darkness bakes them). Static: regenerated with the pristine world. */
+  darkZones?: DarkZone[];
+  /** Lumen blooms: light-drinking plants whose glass petals bridge a gap while lit. */
+  lumenBlooms?: LumenBloom[];
+}
+
+/**
+ * A designed deep-dark region: its core reads `strength` × the floor's deep
+ * darkness, feathered at the rim (config/darkness DARKNESS.feather). An
+ * ellipse by default; `rect` for a straight-walled room (rx/ry = half extents).
+ */
+export interface DarkZone {
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+  strength?: number;
+  shape?: 'ellipse' | 'rect';
+}
+
+/**
+ * A lumen bloom (game/LightDevices): a heart rooted in a wall that unfurls a
+ * run of pale glass petals — real, walkable Glass cells — while light lands on
+ * it, holds, then slowly furls in the dark. `petals` lists the cells in
+ * unfurl order (root first). `open` is transient (restores furled).
+ */
+export interface LumenBloom {
+  id: number;
+  /** The heart: the light sensor and the drawn bud. */
+  x: number;
+  y: number;
+  /** Unfurl direction along the petals (+1 right, -1 left). */
+  dir: number;
+  petals: Array<[number, number]>;
+  /** 0 furled … 1 fully open. */
+  open: number;
+  /** Ticks held open before furling begins. */
+  hold: number;
+  /** Petal cells currently stamped (count along `petals`). */
+  shown: number;
+}
+
+/** How the lantern's light touches a creature this tick (transient). */
+export interface CreatureLightSense {
+  /** Wand coverage at the creature, 0..1 (0 while hooded). */
+  wand: number;
+  /** The aimed beam, not only the omni spill, is on it. */
+  beam: boolean;
+  /** Consecutive ticks lit by the wand. */
+  litT: number;
+  /** Weaver habituation: beam ticks inside the leaky window. */
+  habit: number;
+  /** Flinch cooldown ticks. */
+  cd: number;
+  /** Root Loper: light-frozen ticks remaining. */
+  frozen: number;
 }
 
 /** One authored crown's persistent material condition and physical motion. */

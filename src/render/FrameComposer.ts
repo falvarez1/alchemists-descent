@@ -23,6 +23,14 @@ import {
   LIGHT_KNEE_SLOPE,
   LIGHT_KNEE_START,
   LIGHT_READABILITY_FLOOR,
+  DARK_ADAPT,
+  DARK_AIR_GLOW,
+  DARK_AIR_B,
+  DARK_AIR_G,
+  DARK_AIR_R,
+  DARK_FLOOR_B,
+  DARK_FLOOR_G,
+  DARK_FLOOR_R,
   renderAmbient,
   SELF_GLOW_BASE,
   SELF_GLOW_SCALE,
@@ -541,6 +549,8 @@ export class FrameComposer implements PixelSurface {
     const charge = world.charge;
     const materials = ctx.params.materials;
     const { lightR, lightG, lightB, vignette, LW } = this.light;
+    // Designed darkness per light texel (1 = shipped look); see lightingModel DARK_*.
+    const lightOpen = this.light.lightOpen;
     // The vignette[] array bakes the shipped 0.52 strength; rescale per-frame so
     // postFx.vignette tunes it (mirrors the GPU compose's uVignette uniform).
     const vigScale = ctx.state.postFx.vignette / VIGNETTE_BASE;
@@ -816,16 +826,20 @@ export class FrameComposer implements PixelSurface {
               g *= k;
               b *= k;
             } else {
+              // The distant cave sinks with the designed darkness; only real
+              // light (the lf0 term) brings it back.
+              const open = lightOpen ? lightOpen[li] : 1, shut = 1 - open, adapt = DARK_ADAPT * shut;
               let lf0 = Math.min(LIGHT_CLAMP, lightR[li]) * vg;
-              r = (r * 0.62 + ambient * 0.022) * vg + r * lf0 * lf0 * 0.72;
+              r = (r * 0.62 + ambient * 0.022) * vg * open + r * (lf0 * lf0 + adapt * lf0) * 0.72 + DARK_AIR_R * shut;
               lf0 = Math.min(LIGHT_CLAMP, lightG[li]) * vg;
-              g = (g * 0.62 + ambient * 0.022) * vg + g * lf0 * lf0 * 0.72;
+              g = (g * 0.62 + ambient * 0.022) * vg * open + g * (lf0 * lf0 + adapt * lf0) * 0.72 + DARK_AIR_G * shut;
               lf0 = Math.min(LIGHT_CLAMP, lightB[li]) * vg;
-              b = (b * 0.62 + ambient * 0.032) * vg + b * lf0 * lf0 * 0.72;
-              // air itself catches the glow near strong light
-              r += Math.max(0, lightR[li] - 0.25) * 0.045 * vg;
-              g += Math.max(0, lightG[li] - 0.25) * 0.04 * vg;
-              b += Math.max(0, lightB[li] - 0.25) * 0.035 * vg;
+              b = (b * 0.62 + ambient * 0.032) * vg * open + b * (lf0 * lf0 + adapt * lf0) * 0.72 + DARK_AIR_B * shut;
+              // air itself catches the glow near strong light (more so in the dark)
+              const haze = vg * (1 + DARK_AIR_GLOW * shut);
+              r += Math.max(0, lightR[li] - 0.25) * 0.045 * haze;
+              g += Math.max(0, lightG[li] - 0.25) * 0.04 * haze;
+              b += Math.max(0, lightB[li] - 0.25) * 0.035 * haze;
             }
           }
           if (ringGlow > 0) {
@@ -905,7 +919,11 @@ export class FrameComposer implements PixelSurface {
           // squared: compensates the sRGB output curve so darkness reads as darkness.
           // The small additive floor keeps shadowed rock readable as silhouette
           // (the BFS rim shading baked into cell colors carries the detail).
-          const floor = LIGHT_READABILITY_FLOOR * vg;
+          // Designed darkness lowers ambient and this floor together; what is
+          // left at full dark is the cold DARK_FLOOR remainder.
+          const open = lightOpen ? lightOpen[li] : 1, shut = 1 - open;
+          const floor = LIGHT_READABILITY_FLOOR * vg * open;
+          const amb = ambient * open, adapt = DARK_ADAPT * shut;
           // Emissive cells are LIGHT SOURCES: their own brightness must not be
           // crushed by the screen vignette (it sits inside the squared light
           // factor, so corners rendered at ~23% and bloom only fired near the
@@ -915,18 +933,18 @@ export class FrameComposer implements PixelSurface {
           // Soft knee on lit (non-emissive) cells: strong light keeps its REACH
           // but the top end compresses, so the wand no longer blows nearby
           // floor into a white bloom wash that swallows levers and pickups.
-          let lf = (ambient + Math.min(LIGHT_CLAMP, lightR[li])) * vg;
-          let lit = lf * lf;
+          let lf = (amb + Math.min(LIGHT_CLAMP, lightR[li])) * vg;
+          let lit = lf * lf + adapt * lf;
           if (lit > LIGHT_KNEE_START) lit = Math.min(LIGHT_KNEE_MAX, LIGHT_KNEE_START + (lit - LIGHT_KNEE_START) * LIGHT_KNEE_SLOPE);
-          r = r * Math.max(lit, selfGlow) + r * floor;
-          lf = (ambient + Math.min(LIGHT_CLAMP, lightG[li])) * vg;
-          lit = lf * lf;
+          r = r * Math.max(lit, selfGlow) + r * (floor + DARK_FLOOR_R * shut);
+          lf = (amb + Math.min(LIGHT_CLAMP, lightG[li])) * vg;
+          lit = lf * lf + adapt * lf;
           if (lit > LIGHT_KNEE_START) lit = Math.min(LIGHT_KNEE_MAX, LIGHT_KNEE_START + (lit - LIGHT_KNEE_START) * LIGHT_KNEE_SLOPE);
-          g = g * Math.max(lit, selfGlow) + g * floor;
-          lf = (ambient + Math.min(LIGHT_CLAMP, lightB[li])) * vg;
-          lit = lf * lf;
+          g = g * Math.max(lit, selfGlow) + g * (floor + DARK_FLOOR_G * shut);
+          lf = (amb + Math.min(LIGHT_CLAMP, lightB[li])) * vg;
+          lit = lf * lf + adapt * lf;
           if (lit > LIGHT_KNEE_START) lit = Math.min(LIGHT_KNEE_MAX, LIGHT_KNEE_START + (lit - LIGHT_KNEE_START) * LIGHT_KNEE_SLOPE);
-          b = b * Math.max(lit, selfGlow) + b * floor;
+          b = b * Math.max(lit, selfGlow) + b * (floor + DARK_FLOOR_B * shut);
         }
         pixelData[bufferIdx] = r * intensity + ringGlow * 0.55;
         pixelData[bufferIdx + 1] = g * intensity + ringGlow * 0.42;

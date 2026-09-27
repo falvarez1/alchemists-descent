@@ -587,10 +587,13 @@ export function sampleSceneLight(field: LightField, x: number, y: number, radius
   const l = Math.hypot(lx, ly, lz);
   lx /= l; ly /= l; lz /= l;
   into.lx = lx; into.ly = ly; into.lz = lz;
-  // Keep bodies readable in the dark, never blown out in a lamp.
-  into.r = Math.max(0.42, Math.min(1.35, cr));
-  into.g = Math.max(0.42, Math.min(1.35, cg));
-  into.b = Math.max(0.46, Math.min(1.35, cb));
+  // Keep bodies readable in the dark, never blown out in a lamp — except in
+  // DESIGNED darkness (config/darkness), where the floor falls with the place
+  // and a body is only what real light shows of it.
+  const open = c.open ?? 1;
+  into.r = Math.max(0.42 * open, Math.min(1.35, cr));
+  into.g = Math.max(0.42 * open, Math.min(1.35, cg));
+  into.b = Math.max(0.46 * open, Math.min(1.35, cb));
   into.flash = flash;
   into.glow = glow;
   return into;

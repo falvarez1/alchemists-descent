@@ -45,6 +45,7 @@ import { Background } from '@/render/Background';
 import { Camera } from '@/render/Camera';
 import { FrameComposer } from '@/render/FrameComposer';
 import { Lighting } from '@/render/Lighting';
+import { LightQuery } from '@/render/LightQuery';
 import { Renderer } from '@/render/Renderer';
 import type { RenderBackendStatus } from '@/render/pixels';
 import { drawDecor } from '@/render/sprites/DecorSprites';
@@ -303,9 +304,13 @@ export class Game {
     });
 
     this.renderer = new Renderer(holder, state.render);
+    // Light as a gameplay fact (light wave): creatures, plants and devices
+    // read the field the composer builds through ctx.lightQuery.
+    const lighting = new Lighting();
+    ctx.lightQuery = new LightQuery(ctx, lighting);
     this.composer = new FrameComposer(
       this.renderer,
-      new Lighting(),
+      lighting,
       new Background(),
       drawPlayerSprite,
       drawPeerGhosts,
