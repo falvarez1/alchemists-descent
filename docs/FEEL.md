@@ -414,7 +414,22 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
 
 ### Other living touches
 
-- **Notice blips** when a creature first spots you (the colossus bellows instead).
+- **Notice blips** when a creature first spots you (the bosses make an entrance instead).
+- **Boss lairs** (`Enemies.watchLair`): a boss watches its whole room from head
+  height (Colossus eye 20 cells up, Leviathan 8; no facing check, so there is
+  no back to sneak up on). An alchemist inside the lair — Colossus: ±50 cells of
+  its home, 46 up / 14 down; Leviathan ±54, 58 up / 12 down — who is in sight of
+  its head or within 64 / 56 cells holds it on a confident hunt, idle or not
+  (QA: an idle wizard 60 cells into the Kiln was never noticed). The first time,
+  it makes its ENTRANCE: the Leviathan churns, groans and names itself (a
+  finisher-tone callout, "THE SUNKEN LEVIATHAN"). The Kiln Colossus lands as the
+  final boss: the mix ducks to 0.4 for 1.5 s under a furnace roar (46→110 Hz saw,
+  92→61 Hz square, groan, stone grind), embers pour off its shoulders with a
+  0.8 bloom kick (not under reduced flashes), "THE KILN COLOSSUS" rises over it
+  at tick 10, it stomps at ticks 22 and 46 (boom + knock + dust + shake) standing
+  its ground for 52 ticks before it marches, holds its fire 110 ticks, and the
+  camera leans half the way toward it (≤ 70 × 28 cells, zoom 1.06) over 40 ticks,
+  holds 70 and returns over 40 — no lean at all with camera shake off.
 - **Bat roosts:** dormant folded teardrops on the ceiling; one red eye cracks
   open at your approach (< 70 cells wakes them; stirring starts at 110).
 - **Slime egg clutches** glisten with pulsing embryos; they hatch on a timer —
