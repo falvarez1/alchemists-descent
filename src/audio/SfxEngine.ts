@@ -67,6 +67,8 @@ export class SfxAudioEngine extends AudioEngine {
   private readonly lastTake = new Map<SfxId, number>();
   private readonly lastFallback = new Map<string, number>();
   private readonly loops = new Map<string, LoopVoice>();
+  /** performance.now() of the last request per pack (the director releases what nobody has asked for lately). */
+  private readonly packAskedAt = new Map<string, number>();
   private bed: { id: SfxId; voice: LoopVoice } | null = null;
   private wantedBed: SfxId | null = null;
   private lastChimeAt = -1e9;
@@ -145,9 +147,16 @@ export class SfxAudioEngine extends AudioEngine {
     super.dispose();
   }
 
-  /** Load packs (queued until the first gesture). */
+  /** Load packs (queued until the first gesture). Asking again keeps a loaded pack from being released. */
   requestPacks(packs: readonly string[]): void {
+    const now = performance.now();
+    for (const p of packs) this.packAskedAt.set(p, now);
     this.bank.request(packs);
+  }
+
+  /** When a pack was last asked for (undefined: never through requestPacks). */
+  packLastAsked(pack: string): number | undefined {
+    return this.packAskedAt.get(pack);
   }
 
   releasePack(pack: string): void {
