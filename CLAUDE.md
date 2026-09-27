@@ -174,8 +174,9 @@ loops degrade criteria progressively, never silently skip.
   enemy / spell card / biome / pickup) and the full verification playbook
 - `docs/DESIGN.md` — canonical game design; `docs/FEEL.md` — every mechanic/micro-animation
   with its tuning numbers; `docs/BUILDER.md` — Builder tool spec and phases
-- `docs/MULTIPLAYER-ARCHITECTURE.md` — the two-plane decision (SpacetimeDB for
-  durable session state, a binary stream plane for cells), why the grid is NOT a
-  database, and the `SessionTransport` seam the editor and multiplayer share
+- `docs/MULTIPLAYER-ARCHITECTURE.md` — **archived/frozen 2026-09-26** (the
+  SpacetimeDB transport lives only in git tag `archive/spacetimedb`); still the
+  reference for the determinism boundary, why the grid is NOT a database, and
+  the `SessionTransport` seam AuthorLink runs on
 - `docs/PORTING.md` — port conventions + approved deviations; `docs/INVENTORY.md` — system map
   of the original HTML; `docs/UPGRADE-DELTA.md` — what was mined from the prototype files

@@ -54,8 +54,9 @@ src/
     AuthorLinkClient.ts    Socket lifecycle, reconnect, heartbeat, echo drop
     SessionTransport.ts    The seam multiplayer plugs into: session semantics
                            (reconnect/presence/echo) stay in the client, a
-                           transport carries opaque frames. WebSocket today,
-                           SpacetimeDB next (docs/MULTIPLAYER-ARCHITECTURE.md)
+                           transport carries opaque frames. WebSocket today;
+                           the SpacetimeDB transport is archived (git tag
+                           archive/spacetimedb, docs/MULTIPLAYER-ARCHITECTURE.md)
     tuningPatch.ts         Dotted tuning paths <-> the live config singletons
                            (allowlist DERIVED from shipped defaults, never authored)
 servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node

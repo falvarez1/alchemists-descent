@@ -1,5 +1,8 @@
 # Realtime Authoring Link and Multiplayer Server Spec
 
+- **Archived / frozen (2026-09-26) for Phases 5+.** Multiplayer and the
+  SpacetimeDB spike are shelved (git tag `archive/spacetimedb` holds the
+  removed transport and module). Phases 1-4 (AuthorLink) remain live.
 - Status: **Phases 1-4 shipped** (AuthorLink: tuning, terrain, authored
   objects, console, shared-world sync, a standalone `/builder.html` route, and
   a strict hosted relay with a Cloudflare Durable Object host). Phases 5+ are
