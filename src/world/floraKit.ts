@@ -1,5 +1,5 @@
 import type { Rng } from '@/core/rng';
-import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
+import { blocksEntity, Cell, isGas, isLiquid, isSolid } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 import { anchoredSupport, LEAF_LITTER, LEAF_REACH, leafAnchor, leafAttachedLife, SEED_GLOW_HELD, SEED_THIRSTY_HELD } from '@/sim/elements/flora';
 import type { World } from '@/sim/World';
@@ -46,6 +46,8 @@ export interface PlantOptions {
   ceilY?: number;
   /** Lean of the trunk (cells of x per cell of height, ±). */
   lean?: number;
+  /** Prop roots reach at most this far right of the foot (a tree at a chasm's lip keeps its legs on the ledge). */
+  maxReachRight?: number;
 }
 
 export interface PlantResult {
@@ -714,7 +716,7 @@ function mangrove(p: Planter, x: number, y: number, o: PlantOptions): PlantResul
   const legs = 3 + rng.int(3);
   for (let k = 0; k < legs; k++) {
     const side = k % 2 === 0 ? -1 : 1;
-    const reach = 5 + rng.int(9);
+    const reach = Math.min(5 + rng.int(9), side > 0 ? o.maxReachRight ?? 99 : 99);
     const sy = baseY - rng.int(5);
     const ex = x + side * reach, ey = y;
     const mx = x + side * reach * 0.55, my = sy - 3 - rng.int(4);
@@ -756,7 +758,8 @@ function reeds(p: Planter, x: number, y: number, o: PlantOptions): PlantResult |
     // each stem stands on ITS OWN bed (the bottom is never flat)
     let base = y - 3;
     while (base < y + 14 && w.inBounds(sx, base + 1) && !blocksEntity(w.types[w.idx(sx, base + 1)])) base++;
-    if (!w.inBounds(sx, base + 1) || !blocksEntity(w.types[w.idx(sx, base + 1)])) continue;
+    // a bed of settled rock, never a powder that shifts under the stem
+    if (!w.inBounds(sx, base + 1) || !isSolid(w.types[w.idx(sx, base + 1)]) || !blocksEntity(w.types[w.idx(sx, base + 1)])) continue;
     const h = (o.height ?? 8 + rng.int(13)) + (base - y);
     const bend = (rng.next() - 0.5) * 0.12;
     let top = base;
@@ -788,6 +791,8 @@ function kelp(p: Planter, x: number, y: number, o: PlantOptions): PlantResult | 
   const x0 = x + Math.round(Math.sin(phase) * 1.4);
   let base = y - 2;
   while (base < y + 10 && w.inBounds(x0, base + 1) && !blocksEntity(w.types[w.idx(x0, base + 1)])) base++;
+  // kelp holds fast to rock; on a sand or silt bottom it would drift loose
+  if (!w.inBounds(x0, base + 1) || !isSolid(w.types[w.idx(x0, base + 1)])) return null;
   y = base;
   for (let i = 0; i < H; i++) {
     const px = x + Math.round(Math.sin(i * 0.35 + phase) * 1.4);

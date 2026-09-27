@@ -129,6 +129,8 @@ export function plantWorksFlora(world: World): number {
   box(world, k.x0, k.y0, k.x1, k.y1, Cell.Water, () => packRGB(48, 98, 93));
   // The bung: three cells of wood in the cistern's floor, at the end over the cup.
   for (let x = k.x0; x <= k.x0 + 2; x++) set(world, x, k.y1 + 1, Cell.Wood, packRGB(118, 88, 54));
+  // A low curb past where the pour lands turns the spill into the cup, not out of the door.
+  box(world, k.x0 + 5, C.floorY - 2, k.x0 + 6, C.floorY - 1, Cell.Stone, CELLAR_ROCK);
   // Five thirsty seeds in the cup.
   for (let x = C.bed.x - 2; x <= C.bed.x + 2; x++) {
     set(world, x, C.floorY + 1, Cell.Seed, packRGB(176 + rng.int(20), 126 + rng.int(14), 54), SEED_THIRSTY_LOOSE);

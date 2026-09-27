@@ -103,6 +103,18 @@ export function anchoredSupport(world: World, x: number, y: number): boolean {
   return n >= 2;
 }
 
+/**
+ * Support a stand really rests on at (x, y): anchored ground, and — for a
+ * powder (sand, gold, snow, coal) — only from underneath. Grains that settle
+ * on a branch or heap against the bark load a tree; they never hold it up
+ * (a gold seam spilling onto a Kiln ember-bark kept a cut trunk standing).
+ */
+export function holdsUp(world: World, x: number, y: number, below: boolean): boolean {
+  if (x < 0 || y < 0 || x >= world.width || y >= world.height) return true;
+  if (!below && !isSolid(world.types[x + y * world.width])) return false;
+  return anchoredSupport(world, x, y);
+}
+
 /** What a leaf can hang from: wood (living or dead), vines, or load-bearing rock. */
 export function leafAnchor(t: number): boolean {
   return t === Cell.Trunk || t === Cell.Wood || t === Cell.Vines || (isSolid(t) && !isSoftGrowth(t));

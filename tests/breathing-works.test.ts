@@ -46,7 +46,7 @@ describe('Breathing Works encounter contracts', () => {
     for (const byte of a.runtime.world.types) hash = Math.imul(hash ^ byte, 0x01000193);
     // GEN_VERSION 51: hand-planted flora and the Seed Cellar, over GEN 48's barricade on the spawn route
     // (cold lock gone), sealed shaft hatch and Lower Bell floor gate.
-    expect((hash >>> 0).toString(16)).toBe('2d8ac2e');
+    expect((hash >>> 0).toString(16)).toBe('f236caae');
   });
 
   it('puts an oil-soaked barricade on the forced route to the crank, and nothing card-locked', () => {

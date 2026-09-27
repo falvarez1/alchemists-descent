@@ -1,5 +1,5 @@
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
-import { anchoredSupport, LEAF_LITTER, LEAF_REACH, SEED_GLOW_HELD, SEED_GLOW_LOOSE, SEED_THIRSTY_LOOSE, standSupport } from '@/sim/elements/flora';
+import { anchoredSupport, holdsUp, LEAF_LITTER, LEAF_REACH, SEED_GLOW_HELD, SEED_GLOW_LOOSE, SEED_THIRSTY_LOOSE, standSupport } from '@/sim/elements/flora';
 
 export { anchoredSupport, standSupport };
 import { packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
@@ -91,7 +91,7 @@ export function floodStand(world: World, sx: number, sy: number, scratch: FloodS
     if (y < y0) y0 = y; if (y > y1) y1 = y;
     if (!supported) {
       for (let k = 0; k < 4; k++) {
-        if (anchoredSupport(world, x + N4X[k], y + N4Y[k])) { supported = true; break; }
+        if (holdsUp(world, x + N4X[k], y + N4Y[k], N4Y[k] === 1)) { supported = true; break; }
       }
     }
     for (let k = 0; k < 8; k++) {

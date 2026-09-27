@@ -3,9 +3,9 @@ import { Rng as RngCtor } from '@/core/rng';
 import type { Rng } from '@/core/rng';
 import type { BiomeId, Pickup, PrefabEnemy, RegionGraph, RuntimeInspectionMarker } from '@/core/types';
 import { makePickup } from '@/core/pickupDefs';
-import { blocksEntity, Cell, isLiquid } from '@/sim/CellType';
+import { blocksEntity, Cell, isLiquid, isSolid } from '@/sim/CellType';
 import { EMPTY_COLOR, glowshroomColor, lavaColor, packRGB, waterColor } from '@/sim/colors';
-import { SEED_THIRSTY_LOOSE } from '@/sim/elements/flora';
+import { holdsUp, LEAF_LITTER, LEAF_REACH, SEED_GLOW_HELD, SEED_THIRSTY_HELD, SEED_THIRSTY_LOOSE } from '@/sim/elements/flora';
 import type { World } from '@/sim/World';
 import { connectToCaves, type PlacementLedger } from '@/world/connect';
 import { plantFlora, type FloraFloor, type FloraSpecies, type PlantOptions, type PlantResult } from '@/world/floraKit';
@@ -51,7 +51,8 @@ export interface FloraPassResult {
   /** Run after the LAST generation pass: the gauge-rescue tunnels clear every
    *  cell but metal along their path, and through an open puzzle hall the only
    *  thing left to clear is the puzzle itself (a tree, a cistern). This puts
-   *  back what the tunnels took, writing only into open cells. */
+   *  back what the tunnels took, writing only into open cells, then removes
+   *  any stand a tunnel left hanging in the air. */
   repair: () => void;
 }
 
@@ -97,12 +98,14 @@ const ROCK_COLOR = (): number => packRGB(62, 58, 60);
  * then distance from spawn) rather than silently giving up.
  */
 function findRockSite(world: World, rng: Rng, w: number, h: number, ledger: PlacementLedger, pc: FloraPassContext,
-  taken: ReadonlyArray<{ x0: number; y0: number; x1: number; y1: number }>): { x0: number; y0: number } | null {
+  taken: ReadonlyArray<{ x0: number; y0: number; x1: number; y1: number }>, liquidRim = true): { x0: number; y0: number } | null {
   // The last two tiers drop the liquid margin around the room (the Kiln is
   // veined with lava everywhere); a site taken there is sealed by sealRim.
   const tiers = [{ share: 0.92, far: 140, margin: 8 }, { share: 0.85, far: 110, margin: 8 }, { share: 0.75, far: 90, margin: 8 },
     { share: 0.62, far: 80, margin: 8 }, { share: 0.5, far: 70, margin: 8 }, { share: 0.55, far: 70, margin: 0 }, { share: 0.42, far: 60, margin: 0 }];
   for (const tier of tiers) {
+    // a room that must stay dry (a seed bed) never takes a site beside liquid
+    if (tier.margin === 0 && !liquidRim) break;
     for (let attempt = 0; attempt < 260; attempt++) {
       const x0 = 24 + Math.floor(rng.next() * (WIDTH - w - 48));
       const y0 = 70 + Math.floor(rng.next() * (HEIGHT - h - 140));
@@ -193,6 +196,51 @@ function clearPlant(world: World, plant: PlantResult): void {
   }
 }
 
+/**
+ * The last word after every carve: a stand the late passes left hanging in
+ * the air (a rescue tunnel through the ground under its foot) is removed with
+ * its crown and pods, rather than dropped on the player's arrival. Support is
+ * the runtime's rule (holdsUp: anchored ground; powder only from underneath).
+ */
+export function dropStrandedStands(world: World): number {
+  const W = world.width, H = world.height, types = world.types;
+  const seen = new Uint8Array(types.length);
+  const queue: number[] = [];
+  let dropped = 0;
+  for (let s = 0; s < types.length; s++) {
+    if (types[s] !== Cell.Trunk || seen[s]) continue;
+    queue.length = 0;
+    queue.push(s);
+    seen[s] = 1;
+    let supported = false, x0 = W, y0 = H, x1 = -1, y1 = -1;
+    for (let h = 0; h < queue.length; h++) {
+      const i = queue[h], y = (i / W) | 0, x = i - y * W;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      if (!supported && (holdsUp(world, x, y + 1, true) || holdsUp(world, x - 1, y, false)
+        || holdsUp(world, x + 1, y, false) || holdsUp(world, x, y - 1, false))) supported = true;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if ((dx === 0 && dy === 0) || nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const ni = nx + ny * W;
+        if (!seen[ni] && types[ni] === Cell.Trunk) { seen[ni] = 1; queue.push(ni); }
+      }
+    }
+    if (supported) continue;
+    dropped++;
+    for (const i of queue) world.clearCellAt(i);
+    const r = LEAF_REACH + 2;
+    for (let y = Math.max(0, y0 - r); y <= Math.min(H - 1, y1 + r); y++) {
+      for (let x = Math.max(0, x0 - r); x <= Math.min(W - 1, x1 + r); x++) {
+        const i = x + y * W, t = types[i], life = world.life[i];
+        if ((t === Cell.Leaf && life < 0 && life !== LEAF_LITTER) || (t === Cell.Seed && (life === SEED_GLOW_HELD || life === SEED_THIRSTY_HELD))) {
+          world.clearCellAt(i);
+        }
+      }
+    }
+  }
+  return dropped;
+}
+
 /** A few small plants on a puzzle room's floor, so it belongs to the floor. */
 function dressRoom(world: World, rng: Rng, floor: FloraFloor, xa: number, xb: number, footY: number): void {
   if (xb - xa < 8) return;
@@ -252,7 +300,7 @@ function timberBridge(world: World, rng: Rng, floor: FloraFloor, ledger: Placeme
   let height = Math.min(hall - crown - 6, Math.max(span, species === 'mushroom' ? 44 : 50));
   let plant: PlantResult | null = null;
   for (let tries = 0; tries < 4; tries++) {
-    plant = plantFlora(world, species, treeX, floorY - 1, rng, { height, lean: 0.02 });
+    plant = plantFlora(world, species, treeX, floorY - 1, rng, { height, lean: 0.02, maxReachRight: 5 });
     if (!plant || standsOnFootOnly(world, plant)) break;
     clearPlant(world, plant);
     plant = null;
@@ -285,7 +333,7 @@ function timberBridge(world: World, rng: Rng, floor: FloraFloor, ledger: Placeme
       }
       const regrow = new RngCtor(salt);
       for (let h = regrowHeight, tries = 0; tries < 4; tries++, h -= 8) {
-        const again = plantFlora(world, species, treeX, floorY - 1, regrow, { height: h, lean: 0.02 });
+        const again = plantFlora(world, species, treeX, floorY - 1, regrow, { height: h, lean: 0.02, maxReachRight: 5 });
         if (!again || standsOnFootOnly(world, again)) break;
         clearPlant(world, again);
       }
@@ -308,8 +356,8 @@ function rootLadder(world: World, rng: Rng, floor: FloraFloor, ledger: Placement
   taken: FloraPuzzle[], out: FloraPassResult): void {
   const W = 84;
   let H = 124;
-  let site = findRockSite(world, rng, W, H, ledger, pc, taken);
-  if (!site) { H = 112; site = findRockSite(world, rng, W, H, ledger, pc, taken); }
+  let site = findRockSite(world, rng, W, H, ledger, pc, taken, false);
+  if (!site) { H = 112; site = findRockSite(world, rng, W, H, ledger, pc, taken, false); }
   if (!site) return;
   const { x0, y0 } = site;
   const x1 = x0 + W, y1 = y0 + H;
@@ -340,7 +388,10 @@ function rootLadder(world: World, rng: Rng, floor: FloraFloor, ledger: Placement
   if (bx0 - 1 > x0 + 6) fill(world, x0 + 6, by1 - 1, bx0 - 1, by1 + 1, Cell.Stone, () => packRGB(88, 84, 80));
   for (let y = by0; y <= by1; y++) for (let x = bx0; x <= bx1; x++) setCell(world, x, y, Cell.Water, waterColor());
   for (let x = bx1 - 2; x <= bx1; x++) setCell(world, x, by1 + 1, Cell.Wood, packRGB(118, 88, 54));
-  dressRoom(world, rng, floor, x0 + 10, bedX - 12, floorY - 1);
+  // A low stone curb just beyond where the pour lands turns the spill toward
+  // the cup instead of out through the door (a 2-cell step for the wizard).
+  fill(world, bx1 - 5, floorY - 2, bx1 - 4, floorY - 1, Cell.Wall, ROCK_COLOR);
+  dressRoom(world, rng, floor, x0 + 10, bedX - 14, floorY - 1);
   onRepair(out, () => {
     // the sealed cistern: re-seal and refill it if a tunnel opened it
     if (countIn(world, bx0, by0, bx1, by1, Cell.Water) < (bx1 - bx0 + 1) * (by1 - by0 + 1) * 0.6) {
@@ -359,7 +410,8 @@ function rootLadder(world: World, rng: Rng, floor: FloraFloor, ledger: Placement
   // Entrance: the left wall at floor height.
   carve(world, x0, floorY - 22, x0 + 8, floorY - 1);
   connectToCaves(world, rng, pc.graph, x0 - 6, floorY - 10, 12, pc.fits);
-  lamp(world, bedX - 7, floorY - 1);
+  // the bed's lamp stands past the cup (under the pour it would split the spill)
+  lamp(world, bedX + 8, floorY - 1);
   const puzzle: FloraPuzzle = { kind: 'root-ladder', x0, y0, x1, y1, reward, focus: { x: bedX, y: floorY + 1 } };
   taken.push(puzzle);
   ledger.reserve(x0 - 4, y0 - 4, x1 + 4, y1 + 4, 'flora-root-ladder');
@@ -415,11 +467,12 @@ function nearHeat(world: World, x: number, y: number, r: number): boolean {
   return false;
 }
 
-/** Firm ground three cells wide under a foot (rock, not a powder that slides). */
+/** Firm ground five cells wide under a foot: static rock, never a powder
+ *  (sand slides, a coal seam burns out from under a Kiln fire-lily) or metal. */
 function firmFooting(world: World, x: number, y: number): boolean {
   for (let dx = -2; dx <= 2; dx++) {
     const t = world.types[world.idx(x + dx, y + 1)];
-    if (!blocksEntity(t) || t === Cell.Sand || t === Cell.Gold || t === Cell.Metal || t === Cell.Snow) return false;
+    if (!blocksEntity(t) || !isSolid(t) || t === Cell.Metal) return false;
   }
   return true;
 }
@@ -578,7 +631,10 @@ function dress(world: World, rng: Rng, floor: Exclude<FloraFloor, 'bellows'>, le
  */
 export function applyFloraPass(world: World, rng: Rng, biome: BiomeId, ledger: PlacementLedger, pc: FloraPassContext): FloraPassResult {
   const repairs: Array<() => void> = [];
-  const out: FloraPassResult = { plants: 0, puzzles: [], pickups: [], enemies: [], markers: [], repair: () => { for (const r of repairs) r(); } };
+  const out: FloraPassResult = { plants: 0, puzzles: [], pickups: [], enemies: [], markers: [], repair: () => {
+    for (const r of repairs) r();
+    dropStrandedStands(world);
+  } };
   repairSinks.set(out, repairs);
   const floor = FLOOR_OF[biome];
   if (!floor || floor === 'bellows') return out;

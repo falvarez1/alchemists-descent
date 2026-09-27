@@ -4,6 +4,7 @@ import { ACTIVITY_SIZE } from '@/sim/ActivityGrid';
 import { blocksEntity, Cell, isGas } from '@/sim/CellType';
 import { fireColor, glassColor, packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
 import {
+  holdsUp,
   isGlowseedLife,
   LEAF_LITTER,
   LEAF_REACH,
@@ -84,6 +85,9 @@ const FALL_TIMEOUT = 720;
 const HINT_TTL = 150;
 /** Most dirty chunks examined per tick (the rest wait a tick). */
 const CHUNKS_PER_TICK = 10;
+/** Most dirty chunks fingerprinted per tick: the cheap check that lets gas,
+ *  water and falling leaves churn a chunk without re-flooding its stands. */
+const SIGNATURES_PER_TICK = 48;
 /** Notch warning: a row this thin vs the trunk's typical row creaks (levels 1, 2). */
 const WARN_RATIO_1 = 0.55;
 const WARN_RATIO_2 = 0.3;
@@ -111,6 +115,10 @@ interface FloraIndex {
   cursor: number;
   /** Where the dirty-chunk scan resumes next tick (fairness). */
   scanFrom: number;
+  /** Per chunk: the support fingerprint when its stands were last flooded. */
+  sig: Uint32Array;
+  /** Per chunk: sig holds a fingerprint (0 = flood on the next change). */
+  sigSet: Uint8Array;
   /** Last notch warning tick by spatial bucket. */
   warned: Map<number, { t: number; level: number }>;
 }
@@ -184,7 +192,8 @@ export class Flora implements FloraApi {
     let idx = this.index.get(world);
     if (idx) return idx;
     const cols = Math.ceil(world.width / ACTIVITY_SIZE), rows = Math.ceil(world.height / ACTIVITY_SIZE);
-    idx = { chunkTrunk: new Uint8Array(cols * rows), seen: new Uint32Array(cols * rows), cursor: 0, scanFrom: 0, warned: new Map() };
+    idx = { chunkTrunk: new Uint8Array(cols * rows), seen: new Uint32Array(cols * rows), cursor: 0, scanFrom: 0,
+      sig: new Uint32Array(cols * rows), sigSet: new Uint8Array(cols * rows), warned: new Map() };
     // One full sweep per world instance: which chunks hold living wood.
     const types = world.types, W = world.width;
     for (let i = 0; i < types.length; i++) {
@@ -199,7 +208,15 @@ export class Flora implements FloraApi {
 
   noteGrowth(x: number, y: number, x1 = x, y1 = y): void {
     const world = this.ctx.world;
-    this.flagChunks(world, this.indexFor(world), Math.min(x, x1), Math.min(y, y1), Math.max(x, x1), Math.max(y, y1));
+    const idx = this.indexFor(world);
+    const cols = Math.ceil(world.width / ACTIVITY_SIZE);
+    const ax = Math.min(x, x1), ay = Math.min(y, y1), bx = Math.max(x, x1), by = Math.max(y, y1);
+    this.flagChunks(world, idx, ax, ay, bx, by);
+    // New wood is flooded on its next change however its fingerprint reads.
+    for (let r = Math.max(0, ay >> 6); r <= by >> 6; r++) for (let c = Math.max(0, ax >> 6); c <= bx >> 6 && c < cols; c++) {
+      const key = c + r * cols;
+      if (key < idx.sigSet.length) idx.sigSet[key] = 0;
+    }
   }
 
   /** Mark every chunk a rect of living wood overlaps as worth watching. */
@@ -208,6 +225,33 @@ export class Flora implements FloraApi {
     const c0 = Math.max(0, x0 >> 6), c1 = Math.min(cols - 1, x1 >> 6);
     const r0 = Math.max(0, y0 >> 6), r1 = Math.min(rows - 1, y1 >> 6);
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) idx.chunkTrunk[c + r * cols] = 1;
+  }
+
+  /**
+   * What holds a chunk's living wood up, as one number: where its trunk cells
+   * are and, on each face not against more trunk, whether that face rests on
+   * anchored support. Equal fingerprints mean nothing that can sever or notch
+   * a stand changed here (gas drifting past, water sloshing, leaves falling),
+   * so the stand flood is skipped. Interior wood costs one read.
+   */
+  private chunkSignature(world: World, key: number, cols: number): number {
+    const x0 = (key % cols) * ACTIVITY_SIZE, y0 = Math.floor(key / cols) * ACTIVITY_SIZE;
+    const x1 = Math.min(world.width, x0 + ACTIVITY_SIZE), y1 = Math.min(world.height, y0 + ACTIVITY_SIZE);
+    const types = world.types, W = world.width, H = world.height, TRUNK = Cell.Trunk;
+    let h = 0x811c9dc5 | 0;
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0, i = x0 + y * W; x < x1; x++, i++) {
+        if (types[i] !== TRUNK) continue;
+        let bits = 0;
+        if (x === 0 || types[i - 1] !== TRUNK) bits |= holdsUp(world, x - 1, y, false) ? 1 : 2;
+        if (x === W - 1 || types[i + 1] !== TRUNK) bits |= holdsUp(world, x + 1, y, false) ? 4 : 8;
+        if (y === 0 || types[i - W] !== TRUNK) bits |= holdsUp(world, x, y - 1, false) ? 16 : 32;
+        if (y === H - 1 || types[i + W] !== TRUNK) bits |= holdsUp(world, x, y + 1, true) ? 64 : 128;
+        h = Math.imul(h ^ i, 16777619);
+        h = Math.imul(h ^ bits, 16777619);
+      }
+    }
+    return h >>> 0;
   }
 
   private trimHints(): void {
@@ -258,17 +302,28 @@ export class Flora implements FloraApi {
     // Round-robin from where the last tick stopped: a chunk that changes every
     // tick (leaves drifting, a stream) must never starve the rest of the view.
     const spanX = cx1 - cx0 + 1, spanY = cy1 - cy0 + 1, total = Math.max(0, spanX * spanY);
-    let examined = 0;
-    for (let n = 0; n < total && examined < CHUNKS_PER_TICK; n++) {
+    let examined = 0, fingerprinted = 0;
+    for (let n = 0; n < total; n++) {
       const k = (idx.scanFrom + n) % total;
       const key = cx0 + (k % spanX) + (cy0 + Math.floor(k / spanX)) * cols;
       if (!idx.chunkTrunk[key]) continue;
       const v = act.versions[key];
       if (idx.seen[key] === v && v !== 0) continue;
       idx.seen[key] = v;
-      examined++;
-      if (!this.examineChunk(ctx, world, idx, key, cols, epoch)) idx.chunkTrunk[key] = 0;
-      if (examined === CHUNKS_PER_TICK) idx.scanFrom = (idx.scanFrom + n + 1) % Math.max(1, total);
+      fingerprinted++;
+      const sig = this.chunkSignature(world, key, cols);
+      if (idx.sigSet[key] === 0 || idx.sig[key] !== sig) {
+        examined++;
+        const falls = this.falling.length;
+        if (!this.examineChunk(ctx, world, idx, key, cols, epoch)) idx.chunkTrunk[key] = 0;
+        // A stand that fell from here left different wood behind: fingerprint it afresh next time.
+        idx.sig[key] = sig;
+        idx.sigSet[key] = this.falling.length === falls ? 1 : 0;
+      }
+      if (examined >= CHUNKS_PER_TICK || fingerprinted >= SIGNATURES_PER_TICK) {
+        idx.scanFrom = (idx.scanFrom + n + 1) % Math.max(1, total);
+        break;
+      }
     }
   }
 

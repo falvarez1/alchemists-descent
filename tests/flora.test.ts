@@ -104,6 +104,21 @@ describe('felling detection', () => {
     expect(floodStand(world, 51, 60, scratch, scratch.next()).supported).toBe(true);
   });
 
+  it('never lets powder heaped on or against the wood hold a cut trunk up, only powder it stands on', () => {
+    const world = flatWorld();
+    trunk(world, 50, 70, 3, 20); // floating above the floor (rows 51..70)
+    // a heap of gold grains settled against the bark and on its top
+    for (let y = 60; y < 64; y++) for (let x = 46; x < 50; x++) world.replaceCellAt(world.idx(x, y), Cell.Gold, 0xd4a020);
+    for (let x = 49; x < 54; x++) for (let y = 48; y < 51; y++) world.replaceCellAt(world.idx(x, y), Cell.Gold, 0xd4a020);
+    expect(anchoredSupport(world, 49, 61)).toBe(true); // the grain itself is packed...
+    const scratch = new FloodScratch();
+    scratch.ensure(world.types.length);
+    expect(floodStand(world, 51, 60, scratch, scratch.next()).supported).toBe(false); // ...but it holds nothing up
+    // a trunk standing ON a sand bed is held
+    for (let x = 46; x < 56; x++) for (let y = 71; y < 74; y++) world.replaceCellAt(world.idx(x, y), Cell.Sand, 0xc0a060);
+    expect(floodStand(world, 51, 60, scratch, scratch.next()).supported).toBe(true);
+  });
+
   it('lifts a felled stand with its canopy and held pods, leaving litter behind', () => {
     const world = flatWorld();
     trunk(world, 50, 70, 3, 20);

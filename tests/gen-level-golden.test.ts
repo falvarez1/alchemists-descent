@@ -178,13 +178,13 @@ describe('marsh-gas ceiling pockets', () => {
 });
 
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '91d91e17' }, // GEN_VERSION 51: hand-planted flora (birches, tree-ferns, the Seed Cellar) over the GEN 48 opening (cold lock removed, spawn-route barricade, Lower Bell floor grate) and the played Bell & Tea Engine
+  { id: 'd1', seed: 1337, hash: '012d9e97' }, // GEN_VERSION 51: hand-planted flora (birches, tree-ferns, the Seed Cellar) over the GEN 48 opening (cold lock removed, spawn-route barricade, Lower Bell floor grate) and the played Bell & Tea Engine
   // GEN_VERSION 46 (four floors): the Drowned Cisterns inherit the old flooded
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
-  { id: 'd3', seed: 1337, hash: '798f2073' }, // GEN_VERSION 51: the flora pass (puzzle rooms + dressing)
-  { id: 'd4', seed: 1337, hash: 'dc1fbff5' }, // GEN_VERSION 51: the flora pass over GEN 50 (the Kiln's ceiling tank re-sealed after its flank connector / rescue carves)
-  { id: 'd2', seed: 42, hash: '87e8fc15' }, // GEN_VERSION 51: the flora pass (over the gas pockets + gunpowder seams)
+  { id: 'd3', seed: 1337, hash: '0e6f1735' }, // GEN_VERSION 51: the flora pass (puzzle rooms + dressing)
+  { id: 'd4', seed: 1337, hash: '8871fab8' }, // GEN_VERSION 51: the flora pass over GEN 50 (the Kiln's ceiling tank re-sealed after its flank connector / rescue carves)
+  { id: 'd2', seed: 42, hash: '321d9b09' }, // GEN_VERSION 51: the flora pass (over the gas pockets + gunpowder seams)
 ];
 
 describe('full generateLevel golden hashes', () => {

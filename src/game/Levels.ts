@@ -64,6 +64,7 @@ import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
 import { WORKS_GATE, worksGateOpen } from '@/world/breathingWorks';
+import { dropStrandedStands } from '@/world/floraPass';
 import { blocksEntity, Cell, CELL_COUNT, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import {
   COLOR_FN,
@@ -2477,6 +2478,9 @@ export class Levels implements LevelsApi {
     }
     if (findability.repaired.length > 0) {
       this.blobCache.delete(runtime.def.id);
+      // FLORA: an arrival repair tunnel can cut the ground from under a plant;
+      // take the stranded stand away rather than drop it on the arrival.
+      if (phase === 'initial') dropStrandedStands(runtime.world);
       // World repair is silent: it runs on arrival and afterwards, on rock the
       // player never touched ("Somewhere below, rock shifts…" narrated a change
       // he never made — QA). The DEV console line above still reports it.
