@@ -50,9 +50,9 @@ function replaceOnce(html, from, to, what) {
 export function deriveBuilderHtml(indexHtml) {
   let html = indexHtml.replace(/\r\n/g, '\n');
   html = replaceOnce(html, '<!DOCTYPE html>\n', '<!DOCTYPE html>\n' + BANNER, 'the doctype');
-  html = replaceOnce(html, "<title>Alchemist's Descent</title>", "<title>Builder — Alchemist's Descent</title>", 'the title');
-  html = replaceOnce(html, '<div class="boot-title">ALCHEMIST\'S DESCENT</div>', '<div class="boot-title">PURPLE LLAMA STUDIO</div>', 'the boot title');
-  html = replaceOnce(html, '<div class="boot-sub">THE BREATHING WORKS</div>', '<div class="boot-sub">BUILDER</div>', 'the boot subtitle');
+  html = replaceOnce(html, '<title>Breathing Works — An Alchemist’s Descent</title>', '<title>Builder — Breathing Works</title>', 'the title');
+  html = replaceOnce(html, '<div class="boot-title">BREATHING WORKS</div>', '<div class="boot-title">PURPLE LLAMA STUDIO</div>', 'the boot title');
+  html = replaceOnce(html, '<div class="boot-sub">AN ALCHEMIST’S DESCENT</div>', '<div class="boot-sub">BUILDER</div>', 'the boot subtitle');
   html = replaceOnce(html, '<script type="module" src="/src/main.ts"></script>', '<script type="module" src="/src/app/builderEntry.ts"></script>', 'the module entry');
 
   // The composition thesis describes the play route's first viewport; it is
