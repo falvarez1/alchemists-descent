@@ -1042,6 +1042,52 @@ and flutters: 42% fall / 10% drift per step, floats on water as a pad) and
   Small enclosed air pockets under 1500 cells are sealed and count as rock.
   Digs re-derive at most 4 chunk regions per frame, and liquid or powder churn
   one every other frame, so render cost stays within noise of the classic sampler.
+- **Depth kits (`config/depthKits.ts`, `render/depth/`):** every expedition
+  floor stands in layered scenery, looked up by biome (a generic kit graded
+  from the floor look covers any biome without its own). Far → near:
+  - *The Bellows:* the refinery plate (parallax 0.08, lit 0.12) → a hall of
+    pressure stacks, lattice towers and catwalk spans (0.14) → grate light
+    shafts on the hall's plane (breathing opacity, amp 0.35 / 420 ticks) →
+    the copper machinery (0.2, opacity 0.52) → girders, heavy chains, gears
+    and the great bellows (0.32).
+  - *The Rot Gardens:* spore murk with giant caps (0.05) → far stalks and
+    roots (0.12) → spore light (0.12) → a mid garden with shelf fungi (0.22)
+    → thick fibrous stalks and root curtains (0.34).
+  - *The Drowned Cisterns:* surface-lit murk and a faint arcade (0.05) → two
+    tiers of arcades (0.11) → light falling from above (0.11) → great arches
+    with drowned statues and kelp (0.21) → masonry columns, chains, kelp
+    forests (0.33).
+  - *The Kiln Heart:* furnace glow low on the screen behind chimneys (0.05)
+    → chimney stacks and basalt (0.12) → rising heat plumes (0.12, 240-tick
+    breath) → brick tunnel mouths with glowing hearths and crucibles (0.21)
+    → basalt columns, chains, a gear (0.33).
+  Atmospheric perspective is baked per plane (haze mix 0.04–0.34 and kept
+  contrast 0.66–1 toward the kit's haze colour), so far reads lighter, cooler
+  and flatter. Each plane has a light response: the lantern, the wand and
+  lava glow reach near planes (lit 0.9) but barely the far ones (0.1), and
+  designed darkness dims them all. Procedural planes are one texel per cell
+  (the Living Descent plates' grain), bake one per frame on floor entry.
+- **Foreground occluders:** a plane at parallax 1.4 (1.5 cells per texel,
+  opacity 0.94) of near-black silhouettes — chains, pipes with valves,
+  girders, gears (Bellows), stalks and root curtains (Rot), kelp and broken
+  columns (Cisterns), basalt and crucibles (Kiln). Floor 1's are placed to
+  frame its rooms (the Intake's riser pipe and chains, the engine hall's
+  gear and girder, the Chamber's trunk main, the Silt Garden's roots, the
+  Lower Bell's gear); generated floors scatter about one per screen.
+  **The play layer always wins:** a reveal field (8-cell texels, updated at
+  30 Hz, easing 0.26 per update) clears the screen centre (clear to 0.42 of the half-diagonal,
+  full by 0.86), and punches soft holes (0.6 → 1.35 radii) over the player
+  (46 cells), creatures (their size + 16), a held or flying corpse and the
+  telekinesis tether, projectiles, pickups, mechanisms, waystones, the portal
+  and lava/fire/acid. High-readability lighting clears a wider centre
+  (0.62 → 1.05), scales every occluder by 0.55 and opacity by 0.7.
+- **Depth particles:** stateless fields at several depths, each moving with
+  its plane's parallax — Bellows drips and mist motes behind, dust in front;
+  Rot spores at three depths; Cistern bubbles and silt behind, motes in
+  front; Kiln embers and ash behind, sparks in front. Fields behind the play
+  layer draw only over open air and dim with designed darkness; near motes
+  catch real light (they glint in the lantern). Far motes brighten up to
+  2.2–3.2× inside the kit's light shafts.
 - **Dressing restraint:** gold powder is a mottled metal (shadowed grain /
   body / facet / 6% glint) with bloomWeight 0.07 (was 0.15) and a 0.22 light
   seed (was 0.34); marsh gas is a dim olive haze, bloomWeight 0.07 (was 0.24).

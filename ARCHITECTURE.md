@@ -133,7 +133,20 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
   render/
     Renderer.ts           Three.js renderer/composer/bloom/PostFx + camera quad transforms
     Camera.ts             Lerp follow, idle zoom, sim-bounds derivation
-    Background.ts         Parallax backdrop layers (baked once)
+    Background.ts         Parallax backdrop layers (baked once): the classic two
+                          refinery plates (sandbox, Builder playtests, author overrides)
+    depth/                Layered scenery (config/depthKits, one kit per biome
+                          + a generic fallback): DepthScene is the compositors'
+                          ParallaxLayers — the kit's 3–5 planes ride the five
+                          backdrop slots (CPU/WebGL2/WebGPU draw them unchanged,
+                          each slot with a light response so the lantern skips
+                          far planes); procedural plane art (raster/motifs/kitArt,
+                          baked one plane per frame, haze = atmospheric
+                          perspective); the foreground occluder plane (a quad
+                          over the frame: ForegroundGL / the WebGPU TSL twin)
+                          faded by the reveal field (screen centre, player,
+                          creatures, pickups, hazards, the telekinesis tether);
+                          stateless depth particles drawn through the overlay
     Lighting.ts           Half-res RGB light field, directional sweeps, wand raycast
     FrameComposer.ts      Per-pixel frame composition into the GPU DataTexture
     ComposeShader.ts      GPU terrain pass (postFx.gpuCompose): the FrameComposer

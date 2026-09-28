@@ -50,7 +50,7 @@ import { createWaveState } from '@/game/WaveDirector';
 import { InputManager } from '@/input/InputManager';
 import { currentAppMode, readAppMode, saveAppMode } from '@/game/modePersist';
 import { Particles } from '@/particles/Particles';
-import { Background } from '@/render/Background';
+import { DepthScene } from '@/render/depth/DepthScene';
 import { Camera } from '@/render/Camera';
 import { FrameComposer } from '@/render/FrameComposer';
 import { Lighting } from '@/render/Lighting';
@@ -337,7 +337,10 @@ export class Game {
       else hide();
     });
 
-    this.renderer = new Renderer(holder, state.render);
+    // Layered scenery: per-biome depth kits behind the play layer and the
+    // foreground occluders in front of it (render/depth, config/depthKits).
+    const depth = new DepthScene();
+    this.renderer = new Renderer(holder, state.render, depth.foreground);
     // Light as a gameplay fact (light wave): creatures, plants and devices
     // read the field the composer builds through ctx.lightQuery.
     const lighting = new Lighting();
@@ -345,7 +348,7 @@ export class Game {
     this.composer = new FrameComposer(
       this.renderer,
       lighting,
-      new Background(),
+      depth,
       drawPlayerSprite,
       drawPeerGhosts,
       drawEnemySprite,
