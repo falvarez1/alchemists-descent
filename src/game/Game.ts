@@ -497,7 +497,13 @@ export class Game {
     this.playSystems ??= import('@/game/playSystems').then(
       ({ installPlaySystems }) => {
         if (this.disposed) return null;
-        const systems = installPlaySystems(this.ctx, this.audioEngine, this.gestured);
+        let systems: PlaySystems;
+        try {
+          systems = installPlaySystems(this.ctx, this.audioEngine, this.gestured);
+        } catch (error) {
+          console.error('[game] the play systems could not start', error);
+          return null;
+        }
         this.sanctum = systems.sanctum;
         this.disposables.push(...systems.disposables);
         this.entry.refreshStory();
