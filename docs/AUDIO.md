@@ -266,6 +266,21 @@ and the physical corpses were 1,580 of them; the wave-2
 pass — light, organisms, the rebuilt bosses — was 5,112 of them; the flora
 pack 3,080).
 
+**The story's voices** (`gen-voice.mjs`, the same catalog as the narrator):
+every story line carries a speaker. The Docent is the narrator (Daniel) and
+keys by text alone; **Pell** (ElevenLabs "Stephen": young, warm, a little
+anxious, crisp) and **Matron Ash** ("Beatrice", mastered through a soft
+three-voice chorus, `ASH_CHORUS`) key by `speaker: text` (`speakerKey`).
+Casting is `node scripts/audio/cast-voices.mjs`: each candidate reads the
+same lines, scored for pitch, pace and sibilance (frames where 3.5–12 kHz
+outweighs the band below; Daniel measures 5.8/s, the chosen Pell 3.4–3.9/s)
+in `scripts/audio/cast-report.json`, takes in `audition/voices/cast-*.mp3`.
+A story line the voice rushes gets a second take (`RETAKE`: the manifest
+plays the take nearest 13 characters a second) or its own reading
+(`STORY_SAY` in `voice-lines.mjs`). Generators budget against ALL logged
+spend of their kind (`LedgerBudget`), so `AUDIO_BUDGET_CREDITS` is prior
+spend plus the allowance.
+
 **Audition** (dev server running): open `/audition.html`. Every cue from every
 `src/content/audio/*Manifest.ts` that exports `AUDITION_ENTRIES` (the score
 workstream's music and voice too), grouped, with its prompt and every take;

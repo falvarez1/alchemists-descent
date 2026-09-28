@@ -148,6 +148,11 @@ export class Sanctum implements SanctumApi {
       door.append(head, name, epigraph);
       if (lore) door.append(Sanctum.facts(lore.signature, lore.resident));
       door.addEventListener('click', () => this.chooseDoor(ctx, id));
+      // Matron Ash has a word about each door as the apprentice looks at it.
+      if (def) {
+        door.addEventListener('pointerenter', () => { if (this._open) ctx.story?.sanctumDoor(def.biome); });
+        door.addEventListener('focus', () => { if (this._open) ctx.story?.sanctumDoor(def.biome); });
+      }
       this.doorButtons.push(door);
       row.append(door);
     });
@@ -166,6 +171,8 @@ export class Sanctum implements SanctumApi {
     }
     ctx.audio.sfx('ui.card.choose');
     ctx.telemetry.count(`sanctum.door.${id}`);
+    const def = LEVELS[id];
+    if (def) ctx.story?.sanctumDoor(def.biome);
     this.rearm?.();
   }
 
@@ -249,6 +256,9 @@ export class Sanctum implements SanctumApi {
     el('sanc-gold').textContent = String(ctx.state.score);
     this.doorButtons.length = 0;
     this.renderTeaser(ctx, doors.length > 0 ? doors : nextId ? [nextId] : []);
+    // STORY: Matron Ash greets the apprentice and says a word about the door
+    // below — where there are two, about each as he looks at it (sanctumDoor).
+    ctx.story?.sanctumOpened(doors.length <= 1 && nextId && LEVELS[nextId] ? LEVELS[nextId].biome : null);
 
     const dBtn = el('descend-btn') as HTMLButtonElement;
     const row = el('perk-row');

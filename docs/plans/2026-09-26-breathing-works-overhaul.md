@@ -191,3 +191,16 @@ biomes render before D writes their kits (D adds kits for `frozen`/`crystal` aft
 B merges). Narrative text for new biomes (titles, epigraphs, Pell's lines) is B's
 first draft and S's to polish. Cues and voice go through the existing ElevenLabs
 pipeline (`docs/AUDIO.md`).
+
+**S status (2026-09-27, `bw/story`): built and runtime-verified.** Script is data
+in `src/content/story/` (every beat has `first`/`again`/`veteran` variants; meta in
+localStorage `breathing-works-story`, per-run state in the expedition save). The
+`StoryDirector` (`src/game/story/`) runs speaking-pipes (hand-placed on floor 1,
+generated near arrivals/refuges below), Pell's camp and dialogue (`PellCamp`),
+memory echoes (`EchoStage`), boss prologues, the Kiln escape (`KilnEscape` over
+`world/kilnFlue.ts`, GEN_VERSION 55), and the opening/ending plates; Matron Ash
+speaks in the Sanctum; the Grimoire has a Journal tab. Voices: Pell = ElevenLabs
+"Stephen", Matron Ash = "Beatrice" + a chorus filter (`scripts/audio/cast-voices.mjs`
+auditions and scores sibilance). Cues `escape` and `ending` joined the score.
+Everything is keyed by biome, with first drafts already written (and voiced) for
+B's `frozen` and `crystal` floors.

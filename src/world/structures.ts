@@ -45,6 +45,8 @@ import {
 import type { PlacementLedger } from '@/world/connect';
 import { wizardMask } from '@/world/validate';
 import { buildIceHouse, buildLensRoom } from '@/world/wardenArenas';
+import type { KilnFlueSite } from '@/core/story';
+import { carveKilnFlue, planKilnFlue, repairKilnFlue } from '@/world/kilnFlue';
 
 /**
  * Landmark structures placed after generation (upgrade-port meta layer):
@@ -90,6 +92,8 @@ export function placeStructures(
   kilnRepair: (() => void) | null;
   /** Re-asserts a second-door guardian's hall (world/wardenArenas); `floor: false` after the final rescue. */
   wardenRepair: ((floor?: boolean) => void) | null;
+  /** STORY (wave 3): the old flue beside the Kiln that the escape climbs (floor 4 only). */
+  kilnFlue: KilnFlueSite | null;
 } {
   const w = ctx.world;
   const pickups: Pickup[] = [];
@@ -102,6 +106,7 @@ export function placeStructures(
   let sumpRepair: ((rim?: boolean) => void) | null = null;
   let kilnRepair: (() => void) | null = null;
   let wardenRepair: ((floor?: boolean) => void) | null = null;
+  let kilnFlue: KilnFlueSite | null = null;
 
   const carvePocket = (cx: number, cy: number, rx: number, ry: number): void =>
     carvePocketCells(w, cx, cy, rx, ry);
@@ -934,9 +939,17 @@ export function placeStructures(
     for (const [tx, hw, mouth, depth] of tanks) tank(tx, hw, mouth, depth);
     boss = { x: cx, y: cy + FLOOR - 1, kind: 'colossus' };
     ledger.reserve(cx - RX - 2, cy - RY - 12, cx + RX + 2, cy + FLOOR + 5, 'kiln-arena');
-    // both arena flanks join the cave network — the kiln must be findable
-    connectToCaves(cx - HALF - 3, cy + FLOOR - 12);
-    connectToCaves(cx + HALF + 3, cy + FLOOR - 12);
+    // STORY (GEN 55): the old flue the escape climbs, beside the Kiln behind a
+    // metal damper the Heart's last heave blows out (world/kilnFlue). No rng:
+    // its geometry follows the Kiln's, so the main stream is untouched.
+    const flue = planKilnFlue(cx, cy, ledger);
+    carveKilnFlue(w, flue);
+    ledger.reserve(flue.shaft.x0 - 6, flue.shaft.y0 - 8, flue.shaft.x1 + 6, flue.shaft.y1 + 5, 'kiln-flue');
+    kilnFlue = flue;
+    // The flank away from the flue joins the cave network — the kiln must be
+    // findable. The flue's flank is the damper: a connector there would open
+    // the shaft to the fight (a ledge to snipe from) before the heave.
+    connectToCaves(cx - flue.side * (HALF + 3), cy + FLOOR - 12);
     // The tanks' organs, re-assertable (integration fix, GEN 50: a flank
     // connector's tunnel or a rescue carve used to eat a seal and drown the
     // Colossus unprovoked). Idempotent: the metal casings, the two stone seal
@@ -958,6 +971,7 @@ export function placeStructures(
           }
         }
       }
+      repairKilnFlue(w, flue);
     };
     kilnRepair(); // the flank connectors just now
   }
@@ -1199,5 +1213,6 @@ export function placeStructures(
     sumpRepair,
     kilnRepair,
     wardenRepair,
+    kilnFlue,
   };
 }

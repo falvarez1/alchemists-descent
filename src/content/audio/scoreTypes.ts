@@ -1,5 +1,5 @@
 /** What a score cue is for; the music director picks cues by role. */
-export type ScoreRole = 'title' | 'explore' | 'tension' | 'boss' | 'sanctum' | 'tea' | 'workshop' | 'victory' | 'fallen';
+export type ScoreRole = 'title' | 'explore' | 'tension' | 'boss' | 'sanctum' | 'tea' | 'workshop' | 'victory' | 'fallen' | 'escape' | 'ending';
 
 /** One mastered track of the score (written by scripts/audio/gen-music.mjs). */
 export interface ScoreTrack {

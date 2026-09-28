@@ -983,6 +983,10 @@ export class Enemies implements EnemyControlApi {
       ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 1.6);
       ctx.waves.kills++;
       ctx.events.emit('toast', { text: 'THE KILN IS COLD' });
+      // STORY (wave 3): the Heart's last heave — the escape up the old flue;
+      // victory (runComplete) comes at the top. Without a flue (a test arena,
+      // no story) the run is complete here, as before.
+      if (ctx.story?.beginEscape()) return;
       ctx.events.emit('runComplete', { gold: ctx.state.score });
       // The run is complete — the save has nothing left to protect.
       ctx.levels.abandonExpedition();

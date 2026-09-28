@@ -50,7 +50,7 @@ import { createWaveState } from '@/game/WaveDirector';
 import { InputManager } from '@/input/InputManager';
 import { currentAppMode, readAppMode, saveAppMode } from '@/game/modePersist';
 import { Particles } from '@/particles/Particles';
-import { Background } from '@/render/Background';
+import { DepthScene } from '@/render/depth/DepthScene';
 import { Camera } from '@/render/Camera';
 import { FrameComposer } from '@/render/FrameComposer';
 import { Lighting } from '@/render/Lighting';
@@ -95,6 +95,10 @@ import { Clips } from '@/app/Clips';
 import { RunDirector } from '@/game/RunDirector';
 import { RunSummary } from '@/ui/RunSummary';
 import { RunHud } from '@/ui/RunHud';
+import { StoryDirector } from '@/game/story/StoryDirector';
+import { DialogueBox } from '@/ui/story/DialogueBox';
+import { StoryCinemaOverlay } from '@/ui/story/StoryCinema';
+import { AshVoice } from '@/ui/story/AshVoice';
 
 function initialRenderBackendOverride(): RenderBackendMode | null {
   if (typeof window === 'undefined') return null;
@@ -294,6 +298,10 @@ export class Game {
     const music = new MusicDirector(ctx, audio);
     ctx.music = music;
     const narrator = new Narrator(ctx, audio);
+    // The story (wave 3): the Docent's pipes, Pell, the echoes, the prologues, the Kiln escape.
+    const story = new StoryDirector(ctx);
+    ctx.story = story;
+    this.disposables.push(story);
     ctx.narrator = narrator;
     this.disposables.push(music, narrator, new NarrationCaption(ctx));
 
@@ -337,7 +345,10 @@ export class Game {
       else hide();
     });
 
-    this.renderer = new Renderer(holder, state.render);
+    // Layered scenery: per-biome depth kits behind the play layer and the
+    // foreground occluders in front of it (render/depth, config/depthKits).
+    const depth = new DepthScene();
+    this.renderer = new Renderer(holder, state.render, depth.foreground);
     // Light as a gameplay fact (light wave): creatures, plants and devices
     // read the field the composer builds through ctx.lightQuery.
     const lighting = new Lighting();
@@ -345,7 +356,7 @@ export class Game {
     this.composer = new FrameComposer(
       this.renderer,
       lighting,
-      new Background(),
+      depth,
       drawPlayerSprite,
       drawPeerGhosts,
       drawEnemySprite,
@@ -358,6 +369,8 @@ export class Game {
     const runSummary = new RunSummary(ctx);
     this.disposables.push(runSummary);
     this.disposables.push(new RunHud(ctx, () => runSummary.showLast()));
+    // The story's dialogue box (Pell) with its interact prompt, and the opening/ending plates.
+    this.disposables.push(new DialogueBox(ctx), new StoryCinemaOverlay(ctx), new AshVoice(ctx));
     this.minimap = new Minimap(ctx);
     this.disposables.push(this.minimap);
     // World-anchored alchemical-kill words (listens to `alchemyKill`/`combatCallout`).
@@ -694,6 +707,7 @@ export class Game {
         // transitions, waystones, and the explored mask.
         ctx.levels.update(ctx);
         ctx.run?.update(ctx);
+        ctx.story?.update();
         ctx.pickups.update(ctx);
         ctx.mechanisms.update(ctx);
         this.lightDevices?.update(ctx);

@@ -34,5 +34,17 @@
       "name": "Daniel — the gruff old British wizard",
       "source": "ElevenLabs library voice; chosen 2026-09-27 over the Docent, whose designed voice lisps its S sounds"
     }
+  },
+  "cast": {
+    "stephen": {
+      "voiceId": "RbNTU8eTHcsao6T0f1ve",
+      "name": "Stephen — well spoken, kind (Pell)",
+      "source": "ElevenLabs library voice; cast 2026-09-27 for Pell over Cameron, John, Henry and Luca (scripts/audio/cast-voices.mjs, cast-report.json): polite and kind, the youngest pitch of the five and the one that answered the [nervous] tag most (median F0 127 Hz neutral, 165 Hz nervous), crisp S (3.4-3.9 sibilant frames/s; the lisping Docent scored 0), an unhurried 12-13 characters/s"
+    },
+    "beatrice": {
+      "voiceId": "kkPJzQOWz2Oz9cUaEaQd",
+      "name": "Beatrice — mature, gentle (Matron Ash)",
+      "source": "ElevenLabs library voice; cast 2026-09-27 for Matron Ash over Maria Moody (American), Seer Morganna and Eleanor (commanding): British, warm and gentle, the softest S of the four (2.5 frames/s, whispery by nature, not a lisp), 10 characters/s; doubled offline into a faint chorus (gen-voice ASH_CHORUS)"
+    }
   }
 }

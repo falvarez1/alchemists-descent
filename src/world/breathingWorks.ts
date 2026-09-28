@@ -8,6 +8,7 @@ import { stampTeaMachine, TEA } from './teaMachine';
 import { makeValve } from '@/core/mechanismFactories';
 import { stampPhotocell } from './lightPuzzles';
 import { carveSeedCellar, plantWorksFlora, WORKS_SEED_CELLAR } from '@/world/worksFlora';
+import { carveWorksEchoNook, worksStorySites } from '@/world/worksStory';
 
 /** Authored encounter geometry; every ledge, reservoir and pipe below is real material. */
 export const WORKS_ROOMS = [
@@ -276,6 +277,8 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
 
   // FLORA: the Seed Cellar off the Undertow's west end (worksFlora).
   carveSeedCellar(world);
+  // STORY: the Guild locker nook off the return shaft, where the resonant valve waits (worksStory).
+  carveWorksEchoNook(world);
 
   // Chalk lips face walkable space. Sparse oxidation faces the walls.
   for (let y = 12; y < HEIGHT - 9; y++) {
@@ -397,6 +400,8 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   // last so they grow only into cells every fixture above left open.
   plantWorksFlora(world);
 
+  // STORY: the pipes, Pell's camp and the valve, resolved against the finished rock.
+  const story = worksStorySites(world);
   const lamp = (x: number, y: number, warm = false, radius = 120, flicker = .04, intensity = .65): AuthoredLight => ({
     x, y, r: warm ? 1 : 0.46, g: warm ? 0.66 : 0.81, b: warm ? 0.30 : 0.75,
     intensity, radius, bloom: 0.12, flicker, flickerPhase: hash(x, y) % 600,
@@ -431,7 +436,7 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
       { id: 'works-bell-tea-engine', ...TEA.bounds }],
     authoredLights: [lamp(180, 279, true, 150), lamp(30, 300, true, 70), lamp(394, 276, true, 80, .06, .7),
       lamp(WORKS_GATE.x, WORKS_GATE.arch.top + 4, true, 90, .05, .6), lamp(675, 340), lamp(1235, 325), lamp(1450, 570, true),
-      lamp(850, 702, true, 155), lamp(285, 740), lamp(1400, 948, true, 115, .1, .48), ...failingLights, ...machineLights],
+      lamp(850, 702, true, 155), lamp(285, 740), lamp(1400, 948, true, 115, .1, .48), ...failingLights, ...machineLights, ...story.lights],
     emitters: [], decors: [], refuge: { x: 857, y: 739 }, spellLab: null,
     vaultArch: null, vaultHoard: null, surfaceSpawn: null, surfaceSkyLine: null,
     // LIGHT WAVE: the Works' lamps never reached the Undertow. Its failing
@@ -439,5 +444,6 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
     // into the west end of the Lower Bell where the Weaver waits; the gate's
     // own lamp stays readable. Route-critical ground stays walkable by lantern.
     darkZones: WORKS_DARK_ZONES.map(z => ({ ...z })),
+    story: story.sites,
   };
 }

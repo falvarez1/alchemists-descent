@@ -424,6 +424,10 @@ function protectedRepairMask(runtime: LevelRuntime): Uint8Array {
   // must never dig the Kiln's ceiling-tank seal nor the Sump's drain plugs.
   const organ = bossOrganRect(runtime.boss);
   if (organ) markProtectedRect(runtime, protectedCells, organ.x0, organ.y0, organ.x1, organ.y1);
+  // STORY: the Kiln flue's damper (and the stone over it) is the heave's to open: a
+  // repair route through it would open the climb to the fight before the Colossus falls.
+  const flue = runtime.story?.flue;
+  if (flue) markProtectedRect(runtime, protectedCells, flue.damper.x0, flue.damper.y0 - 36, flue.damper.x1, flue.damper.y1);
   return protectedCells;
 }
 
@@ -691,5 +695,12 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
   if (runtime.boss) {
     check(near(wiz, W, H, runtime.boss.x, runtime.boss.y, 12), 'boss-arena', runtime.boss.x, runtime.boss.y);
   }
+  // STORY: Pell's camp and the resonant valve are talked to and turned by
+  // hand — the wizard must be able to stand there. A pipe only has to be
+  // walked past (it is on the route by construction): diagnostics only.
+  const story = runtime.story;
+  if (story?.camp) check(near(wiz, W, H, story.camp.x, story.camp.floorY, 12), 'story-camp', story.camp.x, story.camp.floorY);
+  if (story?.valve) check(near(wiz, W, H, story.valve.stageX, story.valve.floorY, 14), 'story-valve', story.valve.stageX, story.valve.floorY);
+  for (const pipe of story?.pipes ?? []) check(near(wiz, W, H, pipe.x, pipe.floorY, 10), 'story-pipe', pipe.x, pipe.floorY, 'info');
   return issues;
 }

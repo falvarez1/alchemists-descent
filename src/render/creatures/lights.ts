@@ -145,11 +145,11 @@ export function creatureLights(ctx: Ctx, seed: SeedLight): void {
   for (const c of corpses()) {
     if (c.world !== ctx.world) continue;
     if (c.glow > 0.02) lightOf(ctx, c.e, seed, c.glow);
-    // A burning carcass lights the room; one in the wand's grip glows faint brass.
-    if (c.burn > 0 || c.grip) {
+    // A burning carcass lights the room.
+    if (c.burn > 0) {
       const s = sampleBody(c.e, LIGHT_SAMPLE);
-      if (c.burn > 0) { const f = 0.8 + Math.sin(ctx.state.frameCount * 0.4 + c.e.bobPhase * 7) * 0.2; seed(s.x, s.y - 2, 1.3 * f, 0.6 * f, 0.14 * f); }
-      else seed(s.x, s.y, 0.42, 0.33, 0.16);
+      const f = 0.8 + Math.sin(ctx.state.frameCount * 0.4 + c.e.bobPhase * 7) * 0.2;
+      seed(s.x, s.y - 2, 1.3 * f, 0.6 * f, 0.14 * f);
     }
   }
   // The alchemist's dropped wand keeps a little light until it gutters out.

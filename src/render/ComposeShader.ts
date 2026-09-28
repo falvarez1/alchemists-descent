@@ -170,6 +170,7 @@ uniform vec2 uBackdropOff3;
 uniform vec2 uBackdropOff4;
 uniform vec4 uBackdropGrade; // exposure, brightness, contrast, inverse gamma
 uniform float uBackdropSaturation;
+uniform float uBackdropLit[5]; // share of real light each layer takes (render/depth kits)
 uniform float uAmbient;
 uniform float uSkyLine;    // D1 surface intro: Empty cells above this row paint as open sky (0 = none)
 uniform float uBoost;      // maxBrightness
@@ -209,7 +210,7 @@ vec2 detailSubpixel() {
   return ${PIXEL_SCALE === 2 ? `floor(fract(vec2(vUv.x, 1.0 - vUv.y) * vec2(${VIEW_W}.0, ${VIEW_H}.0)) * 2.0) * 0.5` : 'vec2(0.0)'};
 }
 
-void overBackdrop(inout vec3 c, sampler2D tex, vec4 cfg, vec2 invSize, vec2 offset, int vx, int vy) {
+void overBackdrop(inout vec3 c, inout float lw, sampler2D tex, vec4 cfg, vec2 invSize, vec2 offset, float lit, int vx, int vy) {
   if (cfg.z < 0.5 || cfg.y <= 0.0 || cfg.w <= 0.0) return;
   vec2 sub = detailSubpixel();
   vec2 samplePx = floor((floor(vec2(uCam) * cfg.x) + vec2(float(vx), float(vy)) + sub) / max(cfg.w, 0.25) + offset);
@@ -217,6 +218,7 @@ void overBackdrop(inout vec3 c, sampler2D tex, vec4 cfg, vec2 invSize, vec2 offs
   vec4 s = texture(tex, p);
   float a = clamp(s.a * cfg.y, 0.0, 1.0);
   c = mix(c, s.rgb, a);
+  lw = mix(lw, lit, a);
 }
 
 // Mirrors floorLooks.masonryPanel exactly (small integer operands only).
@@ -260,6 +262,9 @@ void main() {
   vec4 ov = texelFetch(uOverlay, clamp(ivec2(vUv * vec2(${PIXEL_W}.0, ${PIXEL_H}.0)), ivec2(0), ivec2(${PIXEL_W - 1}, ${PIXEL_H - 1})), 0);
 
   vec3 c = vec3(0.0);
+  // Frame alpha: 0 where the open backdrop shows with no sprite over it (the
+  // WebGL depth particles blend there only — render/depth/ForegroundGL).
+  float bgMask = 0.0;
   if (ov.a <= 0.5) {
     int wx = uCam.x + vx;
     int wy = uCam.y + vy;
@@ -354,6 +359,9 @@ void main() {
     if (type == ${Cell.Empty}) {
       bool isSky = (uSkyLine > 0.0 && float(wy) < uSkyLine);
       vec3 bg;
+      // How much real light the visible backdrop mix takes (depth kits: the
+      // lantern does not reach the far planes; classic layers take all of it).
+      float lw = 1.0;
       float depthShade = 1.0;
       if (isSky) {
         // OPEN DAYTIME SKY (D1 surface intro): a soft gradient — day-blue overhead
@@ -402,11 +410,11 @@ void main() {
         // shimmers behind a held (hot) object, matching the foreground warp
         int bvx = vx + hazeX;
         int bvy = vy + hazeY;
-        overBackdrop(bg, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, bvx, bvy);
-        overBackdrop(bg, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, bvx, bvy);
-        overBackdrop(bg, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, bvx, bvy);
-        overBackdrop(bg, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, bvx, bvy);
-        overBackdrop(bg, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, bvx, bvy);
+        overBackdrop(bg, lw, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, uBackdropLit[0], bvx, bvy);
+        overBackdrop(bg, lw, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, uBackdropLit[1], bvx, bvy);
+        overBackdrop(bg, lw, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, uBackdropLit[2], bvx, bvy);
+        overBackdrop(bg, lw, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, uBackdropLit[3], bvx, bvy);
+        overBackdrop(bg, lw, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, uBackdropLit[4], bvx, bvy);
         bg = gradeBackdrop(bg) * uBackdropTintMul + uBackdropTintLift;
         if (uNatural) {
           // The distance sits back: less colour, a floor haze, and a contact
@@ -419,6 +427,7 @@ void main() {
           bg *= uNatContact.x + (1.0 - uNatContact.x) * cs * cs * (3.0 - 2.0 * cs);
         }
         depthShade = 0.78 + 0.22 * (1.0 - float(wy) / ${HEIGHT.toFixed(1)});
+        bgMask = 1.0;
       }
       float r = bg.r * depthShade;
       float g = bg.g * depthShade;
@@ -433,12 +442,13 @@ void main() {
         g = bg.g * k;
         b = bg.b * k;
       } else {
+        float litK = 0.72 * lw;
         float lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.r) * vg;
-        r = (r * 0.62 + uAmbient * 0.022) * vg * open + r * (lf0 * lf0 + adapt * lf0) * 0.72 + ${DARK_AIR_R.toFixed(4)} * shut;
+        r = (r * 0.62 + uAmbient * 0.022) * vg * open + r * (lf0 * lf0 + adapt * lf0) * litK + ${DARK_AIR_R.toFixed(4)} * shut;
         lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.g) * vg;
-        g = (g * 0.62 + uAmbient * 0.022) * vg * open + g * (lf0 * lf0 + adapt * lf0) * 0.72 + ${DARK_AIR_G.toFixed(4)} * shut;
+        g = (g * 0.62 + uAmbient * 0.022) * vg * open + g * (lf0 * lf0 + adapt * lf0) * litK + ${DARK_AIR_G.toFixed(4)} * shut;
         lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.b) * vg;
-        b = (b * 0.62 + uAmbient * 0.032) * vg * open + b * (lf0 * lf0 + adapt * lf0) * 0.72 + ${DARK_AIR_B.toFixed(4)} * shut;
+        b = (b * 0.62 + uAmbient * 0.032) * vg * open + b * (lf0 * lf0 + adapt * lf0) * litK + ${DARK_AIR_B.toFixed(4)} * shut;
         // air itself catches the glow near strong light (more so in the dark)
         float haze = vg * (1.0 + ${DARK_AIR_GLOW.toFixed(3)} * shut);
         r += max(0.0, light.r - 0.25) * 0.045 * haze;
@@ -664,8 +674,8 @@ void main() {
   // Re-apply the world-floor mask after overlay combine so sprites/particles
   // cannot leak into the camera void below small or chunked worlds.
   vec3 outColor = c * (1.0 - clamp(ov.a * 2.0, 0.0, 1.0)) + ov.rgb;
-  if (uCam.y + vy >= ${HEIGHT}) outColor = vec3(0.0);
-  gl_FragColor = vec4(outColor, 1.0);
+  if (uCam.y + vy >= ${HEIGHT}) { outColor = vec3(0.0); bgMask = 0.0; }
+  gl_FragColor = vec4(outColor, bgMask > 0.5 && ov.a <= 0.0 ? 0.0 : 1.0);
 
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -962,6 +972,7 @@ export class GpuCompose {
         uBackdropOff4: { value: new THREE.Vector2() },
         uBackdropGrade: { value: new THREE.Vector4(0, 0, 1, 1) },
         uBackdropSaturation: { value: 1 },
+        uBackdropLit: { value: [1, 1, 1, 1, 1] },
         uAmbient: { value: 0 },
         uSkyLine: { value: 0 },
         uBoost: { value: 1 },
@@ -1241,8 +1252,8 @@ export class GpuCompose {
     u.uLookRockRow.value = look.rockRow;
     set3('uWaterSurface', look.waterSurface);
     set3('uWaterBody', look.waterBody);
-    set3('uBackdropTintMul', look.backdropMul);
-    set3('uBackdropTintLift', look.backdropLift);
+    // The backdrop tint and the natural floors' haze/saturation are set per
+    // frame in updateBackdropUniforms (a depth kit may substitute them).
     const natural = look.natural;
     if (!natural) return;
     (u.uNatTile.value as THREE.Vector2).set((natural.tile & 1) * FLOOR_TILE, (natural.tile >> 1) * FLOOR_TILE);
@@ -1258,8 +1269,6 @@ export class GpuCompose {
     set3('uNatDrip', natural.drip);
     (u.uNatGlaze.value as THREE.Vector4).set(natural.glaze[0], natural.glaze[1], natural.glaze[2], natural.glazeMix);
     (u.uNatContact.value as THREE.Vector2).set(natural.contact, natural.contactReach);
-    (u.uNatHaze.value as THREE.Vector4).set(natural.backdropHaze[0], natural.backdropHaze[1], natural.backdropHaze[2], natural.backdropHazeMix);
-    u.uNatSat.value = natural.backdropSat;
   }
 
   private syncBackdropTextures(): void {
@@ -1278,9 +1287,24 @@ export class GpuCompose {
 
   private updateBackdropUniforms(ctx: Ctx): void {
     const u = this.material.uniforms;
-    const profile = resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
+    const profile = this.layers.profile ?? resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
     const settings = profile.layers;
     const look = activeFloorLook(ctx);
+    // A depth kit (render/depth) bakes its own colour and substitutes the floor's backdrop grade.
+    const kit = this.layers.grade ?? null;
+    const mul = kit ? kit.mul : look.backdropMul, lift = kit ? kit.lift : look.backdropLift;
+    (u.uBackdropTintMul.value as THREE.Vector3).set(mul[0], mul[1], mul[2]);
+    (u.uBackdropTintLift.value as THREE.Vector3).set(lift[0], lift[1], lift[2]);
+    const natural = look.natural;
+    if (natural) {
+      const haze = kit ? kit.haze : natural.backdropHaze;
+      (u.uNatHaze.value as THREE.Vector4).set(haze[0], haze[1], haze[2], kit ? kit.hazeMix : natural.backdropHazeMix);
+      u.uNatSat.value = kit ? kit.sat : natural.backdropSat;
+    }
+    const mirror = kit ? kit.mirror : look.backdropMirror;
+    const offsetX = kit ? kit.offsetX : look.backdropOffsetX;
+    const machinery = kit ? kit.machinery : look.machinery;
+    const lit = u.uBackdropLit.value as number[];
     (u.uBackdropGrade.value as THREE.Vector4).set(
       profile.grade.exposure,
       profile.grade.brightness,
@@ -1297,16 +1321,18 @@ export class GpuCompose {
         cfg.set(0, 0, 0, 0);
         inv.set(1, 1);
         off.set(0, 0);
+        lit[i] = 1;
         continue;
       }
       const setting = settings[layer.id];
       const scale = Math.max(0.25, setting.scale);
-      const opacity = Math.min(1, setting.opacity * (layer.id === 'second' ? look.machinery : 1));
+      const opacity = Math.min(1, setting.opacity * (layer.id === 'second' ? machinery : 1));
       cfg.set(setting.speed, opacity, setting.visible ? 1 : 0, scale);
       // A negative inverse width mirrors the repeat-wrapped sample (FrameComposer
       // mirrors its sample column the same way).
-      inv.set((look.backdropMirror ? -1 : 1) / Math.max(1, layer.width), 1 / Math.max(1, layer.height));
-      off.set(setting.offsetX + look.backdropOffsetX, setting.offsetY);
+      inv.set((mirror ? -1 : 1) / Math.max(1, layer.width), 1 / Math.max(1, layer.height));
+      off.set(setting.offsetX + offsetX, setting.offsetY);
+      lit[i] = layer.lit ?? 1;
     }
   }
 

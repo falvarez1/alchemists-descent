@@ -317,7 +317,7 @@ const COLD_STORE: FloorLook = {
   backdropOffsetX: 540,
   backdropMirror: false,
   machinery: 0.95,
-  epigraph: 'The cold keeps everything. Including you, if you stop.',
+  epigraph: 'Brine in the gutters, frost on the pipes. Nothing here thaws on its own.',
   natural: {
     tile: 4,
     rockGain: [1.72, 1.74, 1.8],

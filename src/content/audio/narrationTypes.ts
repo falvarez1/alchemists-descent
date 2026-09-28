@@ -17,6 +17,8 @@ export interface NarrationLine {
   group: string;
   seconds: number;
   urls: string[];
+  /** Who reads it (the Docent unless the story says otherwise). */
+  speaker?: 'docent' | 'pell' | 'ash';
 }
 
 /** A narrator voice candidate reading the shared sample line. */

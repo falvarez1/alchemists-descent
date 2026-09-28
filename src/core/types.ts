@@ -11,6 +11,7 @@ import type { IdleLife } from '@/creatures/idle';
 import type { PlayerCostume } from '@/entities/playerCostume';
 import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/run';
 import type { CreatureSfxAction, SfxId } from '@/content/audio/sfxCues';
+import type { LevelStorySites, StoryApi, StorySpeakOptions, StorySpokenLine } from '@/core/story';
 
 /* ============================================================
  * Entity data
@@ -1548,6 +1549,17 @@ export interface NarratorApi {
   setEnabled(on: boolean): void;
   /** Play a short line at the current Voice level (the Voice slider's preview). */
   preview(): void;
+  /**
+   * STORY: say speaker-tagged lines (the Docent, Pell, Matron Ash) in order.
+   * A line with no recording, or with the voice off, is still published (as a
+   * silent `narration` of its reading time) so its caption shows. Returns
+   * whether anything was started or queued.
+   */
+  speak?(lines: readonly StorySpokenLine[], opts: StorySpeakOptions): boolean;
+  /** Something is being said (or queued) right now. */
+  readonly busy?: boolean;
+  /** Stop (and unqueue) the lines of one source: a dialogue closed, an echo walked away from. */
+  cutSource?(source: string): void;
   /** Read-only state for in-page probes. */
   debugSnapshot(): Record<string, unknown>;
 }
@@ -2189,6 +2201,8 @@ export interface WorldGenApi {
     darkZones?: DarkZone[];
     /** Lumen blooms (light plants whose petals are real glass cells). */
     lumenBlooms?: LumenBloom[];
+    /** STORY: pipes, Pell's camp, the resonant valve, the Kiln flue (static). */
+    story?: LevelStorySites;
   };
 }
 
@@ -3096,6 +3110,8 @@ export interface LevelRuntime {
   darkZones?: DarkZone[];
   /** Lumen blooms: light-drinking plants whose glass petals bridge a gap while lit. */
   lumenBlooms?: LumenBloom[];
+  /** STORY: the floor's speaking-pipes, Pell's camp, the resonant valve, the Kiln flue. Static: regenerated with the pristine world. */
+  story?: LevelStorySites;
 }
 
 /**
@@ -3455,6 +3471,8 @@ export interface Ctx {
   flora?: FloraApi;
   /** Remains as physical objects (creatures/corpses); absent in small test contexts. */
   corpses?: CorpsesApi;
+  /** The story: pipes, Pell, echoes, prologues, the Kiln escape (game/story); absent in small test contexts. */
+  story?: StoryApi;
 }
 
 /**

@@ -19,7 +19,8 @@ import { ICE_HOUSE, LENS_ROOM } from '@/world/wardenArenas';
  * ports), the Lenswright's Lens Room with its silvered panels. The full
  * pipeline's cell types are locked here as the spine floors' are in
  * tests/gen-level-golden.test.ts (a deliberate change re-records these AND
- * bumps GEN_VERSION), and the findability audit passes.
+ * bumps GEN_VERSION), and the findability audit passes — the story's pipes,
+ * camp and valve included.
  */
 
 const noop = (): undefined => undefined;
@@ -65,10 +66,10 @@ function count(world: World, x0: number, y0: number, x1: number, y1: number, cel
   return n;
 }
 
-/** GEN_VERSION 56: the Ice-House and the Glass Galleries (galleries skeleton, light rooms, dressing, the Lens Room). */
+/** GEN_VERSION 57: the Ice-House and the Glass Galleries (galleries skeleton, light rooms, dressing, the Lens Room), with the story's camp and valve nooks. */
 const GOLDEN: Array<{ id: 'd2b' | 'd3b'; seed: number; hash: string }> = [
-  { id: 'd2b', seed: 1337, hash: '35bcd82c' },
-  { id: 'd3b', seed: 1337, hash: '78cdf2ba' },
+  { id: 'd2b', seed: 1337, hash: '86485221' },
+  { id: 'd3b', seed: 1337, hash: '780b87c4' },
 ];
 
 describe('the second doors: golden hashes', () => {
@@ -138,9 +139,13 @@ describe('the second doors pass the findability audit', () => {
           def: LEVELS[id], world: level.world, spawn: level.spawn, regions: null, mechanisms: level.mechanisms,
           pickups: level.pickups, waystones: level.waystones, runeVaults: level.runeVaults, exit: level.exit,
           portal: level.portal, cauldron: level.cauldron, refuge: level.refuge ?? undefined, spellLab: level.spellLab ?? undefined,
-          vaultArch: level.vaultArch ?? undefined, boss: level.boss ?? undefined,
+          vaultArch: level.vaultArch ?? undefined, boss: level.boss ?? undefined, ...(level.story ? { story: level.story } : {}),
         });
         expect(validateFindability(runtime).filter((issue) => issue.severity === 'error')).toEqual([]);
+        // The story's sites land on these floors too: pipes near the arrival, Pell's camp, the valve.
+        expect(level.story?.pipes.length ?? 0).toBeGreaterThanOrEqual(1);
+        expect(level.story?.camp).toBeTruthy();
+        expect(level.story?.valve).toBeTruthy();
       });
     }
   }

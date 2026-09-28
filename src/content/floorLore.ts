@@ -36,7 +36,7 @@ export const FLOOR_LORE: Record<string, FloorLore> = {
   // The second doors (wave 3: the branching descent). First drafts; the Story
   // workstream polishes the voice.
   d2b: {
-    line: 'The refrigeration wing. The Guild kept its reagents here, and the cold kept everything else. It still does.',
+    line: 'The refrigeration wing, where the Guild cooled the Works’ temper. The ice has been keeping things ever since.',
     signature: 'Water freezes, ice shatters, and the brine refuses both. Heat undoes the lot.',
     resident: 'The Rime Warden. It kept its watch so long it froze to the post.',
   },

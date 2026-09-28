@@ -163,6 +163,8 @@ export interface DirectorInput {
   tension: boolean;
   /** A settings slider asked to hear the score while nothing else plays. */
   preview: boolean;
+  /** STORY: the cue a story moment wants (the Kiln escape, the ending), already resolved to a track that exists. */
+  story?: string | null;
 }
 
 export function chooseCue(i: DirectorInput): string | null {
@@ -171,6 +173,8 @@ export function chooseCue(i: DirectorInput): string | null {
   if (i.verdict) return i.verdict;
   const want = ((): string | null => {
     if (i.builderOpen) return null;
+    // The story's set pieces lead: the escape's urgent theme, the ending's resolution.
+    if (i.story) return i.story;
     if (i.entryActive) return 'title';
     // The Works carry on under the ledger: the theme, softly (see dipFor).
     if (i.ledgerOpen) return 'title';
@@ -240,7 +244,7 @@ export function isCalmFloorCue(id: string): boolean {
 
 /** Cue loudness relative to its master: exploration sits under the action; hunted and boss cues lead. */
 export function cueLevel(id: string): number {
-  if (id.endsWith('-tension') || id.startsWith('boss-')) return 1;
+  if (id.endsWith('-tension') || id.startsWith('boss-') || id === 'escape' || id === 'ending') return 1;
   if (id === 'victory' || id === 'fallen' || id === 'tea-engine') return 1;
   if (id === 'title') return 0.95;
   return 0.82;
@@ -257,7 +261,7 @@ export function fadeSeconds(from: string | null, to: string | null): number {
   if (!from && !to) return 0;
   if (!to) return from === 'victory' || from === 'fallen' ? 3 : 1.6;
   if (!from) return 2.5;
-  if (to.startsWith('boss-')) return 1.2;
+  if (to.startsWith('boss-') || to === 'escape') return 1.2;
   const a = floorOfCue(from), b = floorOfCue(to);
   if (a && a === b) return 1.8; // calm <-> hunted on one floor: same key, same tempo
   return 2.5;
@@ -265,7 +269,7 @@ export function fadeSeconds(from: string | null, to: string | null): number {
 
 /** Seconds of crossfade when a looping cue wraps its tail into its head. */
 export function loopFadeSeconds(id: string): number {
-  if (id.endsWith('-tension') || id.startsWith('boss-') || id === 'tea-engine') return 3;
+  if (id.endsWith('-tension') || id.startsWith('boss-') || id === 'tea-engine' || id === 'escape') return 3;
   return 5;
 }
 

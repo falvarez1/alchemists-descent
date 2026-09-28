@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { Budget, CACHE_DIR, createVoice, designVoice, measure, speech, subscription } from './elevenlabs.mjs';
+import { CACHE_DIR, LedgerBudget, createVoice, designVoice, measure, speech, subscription } from './elevenlabs.mjs';
 import { SAMPLE_LINE, buildCatalog } from './voice-lines.mjs';
 
 /**
@@ -32,6 +32,30 @@ export const NARRATOR = 'daniel';
  * { '0b348985': 2 }. A re-run (free: everything is cached) rewrites the manifest.
  */
 export const PREFERRED_TAKE = {};
+
+/**
+ * Story lines whose first take came back rushed (well over 18 characters a
+ * second, where the cast speaks at 10-13): each gets a second take, and the
+ * manifest plays whichever take sits nearer a natural 13 characters a second.
+ */
+export const RETAKE = new Set(['I’ve started leaving the kettle on for you.', 'Strange. I feel as though I’ve told you all this already.', 'Already in your satchel. I’m getting good at this.']);
+const NATURAL_CPS = 13;
+
+/**
+ * THE STORY'S CAST (wave 3): every line in the catalogue is spoken by its
+ * speaker. The Docent is the narrator (above); Pell and Matron Ash were cast
+ * with scripts/audio/cast-voices.mjs (scored for crisp S sounds, pace and
+ * range — cast-report.json) and are recorded in narrator-voices.json "cast".
+ */
+export const CAST = { pell: 'stephen', ash: 'beatrice' };
+
+/**
+ * Matron Ash speaks for the Old Ones: her recording is doubled into a faint
+ * chorus (two copies a few ms late and a few cents apart, well under the dry
+ * voice) — many throats, one voice.
+ */
+const ASH_CHORUS = 'asplit=3[a][b][c];[b]adelay=23,asetrate=44100*0.9945,aresample=44100,volume=0.34[b2];' +
+  '[c]adelay=37,asetrate=44100*1.0055,aresample=44100,volume=0.24[c2];[a][b2][c2]amix=inputs=3:normalize=0';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const OUT_DIR = join(ROOT, 'public', 'audio', 'voice');
@@ -61,10 +85,10 @@ function ffmpeg(argv) {
   return r.stderr ?? '';
 }
 
-/** Trim both ends (a breath of room kept), two-pass linear loudness to -17 LUFS, mono 64 kbps. */
-function masterSpeech(input, output) {
+/** Trim both ends (a breath of room kept), two-pass linear loudness to -17 LUFS, mono 64 kbps. `extra`: a voice's own treatment. */
+function masterSpeech(input, output, extra = '') {
   mkdirSync(dirname(output), { recursive: true });
-  const trim = 'silenceremove=start_periods=1:start_threshold=-55dB:start_silence=0.04,areverse,silenceremove=start_periods=1:start_threshold=-55dB:start_silence=0.12,areverse';
+  const trim = 'silenceremove=start_periods=1:start_threshold=-55dB:start_silence=0.04,areverse,silenceremove=start_periods=1:start_threshold=-55dB:start_silence=0.12,areverse' + (extra ? `,${extra}` : '');
   const probe = ffmpeg(['-i', input, '-af', `${trim},loudnorm=I=${TARGET_LUFS}:TP=-1.5:LRA=11:print_format=json`, '-f', 'null', '-']);
   const j = JSON.parse(probe.slice(probe.lastIndexOf('{'), probe.lastIndexOf('}') + 1));
   const norm = `loudnorm=I=${TARGET_LUFS}:TP=-1.5:LRA=11:measured_I=${j.input_i}:measured_TP=${j.input_tp}:measured_LRA=${j.input_lra}` +
@@ -121,16 +145,24 @@ async function pool(items, n, fn) {
 
 async function main() {
   const { lines } = await buildCatalog();
+  for (const line of lines) if (RETAKE.has(line.text)) line.takes = Math.max(line.takes, 2);
   const chars = lines.reduce((s, l) => s + l.say.length * l.takes, 0);
   console.log(`${lines.length} lines, ${chars} characters with takes.`);
   if (dry) return;
-  const budget = new Budget();
-  const start = await budget.init();
-  console.log(`subscription: ${start.used}/${start.limit}; session cap ${budget.cap}`);
+  // Budgeted against every voice credit this log has ever recorded: AUDIO_BUDGET_CREDITS = prior spend + allowance.
+  const budget = new LedgerBudget(['tts']);
+  console.log(`prior logged voice spend ${budget.start}; cap ${budget.cap}`);
 
   const record = await design(budget);
   const narrator = resolveVoice(record, option('voice') ?? process.env.NARRATOR ?? NARRATOR);
   console.log(`narrator: ${narrator.name} (${narrator.key})`);
+  const cast = { docent: narrator };
+  for (const [speaker, key] of Object.entries(CAST)) {
+    const v = record.cast?.[key];
+    if (!v) throw new Error(`narrator-voices.json has no cast voice "${key}" for ${speaker}`);
+    cast[speaker] = { key, ...v };
+    console.log(`${speaker}: ${v.name} (${key})`);
+  }
 
   // The audition sample, read by every saved candidate (the design previews read it already).
   const candidates = [];
@@ -148,28 +180,35 @@ async function main() {
   let fresh = 0;
   const jobs = lines.flatMap((line) => Array.from({ length: line.takes }, (_, take) => ({ line, take })));
   await pool(jobs, concurrency, async ({ line, take }) => {
-    const res = await speech({ voiceId: narrator.voiceId, text: line.say, modelId: MODEL, voiceSettings: VOICE_SETTINGS, variant: take }, budget);
+    const voice = cast[line.speaker ?? 'docent'] ?? narrator;
+    const res = await speech({ voiceId: voice.voiceId, text: line.say, modelId: MODEL, voiceSettings: VOICE_SETTINGS, variant: take }, budget);
     if (!res.cached) fresh++;
     const name = take === 0 ? `${line.key}.mp3` : `${line.key}-${take + 1}.mp3`;
-    masterSpeech(res.file, join(OUT_DIR, name));
+    masterSpeech(res.file, join(OUT_DIR, name), line.speaker === 'ash' ? ASH_CHORUS : '');
   });
   const wanted = new Set();
   for (const line of lines) {
     const urls = Array.from({ length: line.takes }, (_, t) => `audio/voice/${t === 0 ? line.key : `${line.key}-${t + 1}`}.mp3`);
     urls.forEach((u) => wanted.add(u.split('/').pop()));
-    const seconds = Number(measure(join(OUT_DIR, `${line.key}.mp3`)).duration.toFixed(2));
-    rows.push({ key: line.key, text: line.text, say: line.say, group: line.group, captioned: line.captioned, seconds, urls });
+    // The take the game plays: a preference by hand, else (a retake) the one nearest a natural pace.
+    let take = PREFERRED_TAKE[line.key] ?? 1;
+    if (!PREFERRED_TAKE[line.key] && RETAKE.has(line.text)) {
+      const pace = urls.map((u) => Math.abs(line.text.length / measure(join(OUT_DIR, u.split('/').pop())).duration - NATURAL_CPS));
+      take = pace.indexOf(Math.min(...pace)) + 1;
+    }
+    const seconds = Number(measure(join(OUT_DIR, urls[take - 1].split('/').pop())).duration.toFixed(2));
+    rows.push({ key: line.key, text: line.text, say: line.say, group: line.group, captioned: line.captioned, seconds, urls, take, speaker: line.speaker ?? 'docent' });
   }
   for (const f of readdirSync(OUT_DIR)) if (f.endsWith('.mp3') && !wanted.has(f)) rmSync(join(OUT_DIR, f));
   writeManifest(narrator, rows, candidates);
 
   const bytes = readdirSync(OUT_DIR).filter((f) => f.endsWith('.mp3')).reduce((s, f) => s + statSync(join(OUT_DIR, f)).size, 0);
   const end = await subscription();
-  console.log(`${fresh} new clips; voice payload ${(bytes / 1048576).toFixed(2)} MB (+ candidates); counter ${end.used}`);
+  console.log(`${fresh} new clips (${budget.spent} credits); voice payload ${(bytes / 1048576).toFixed(2)} MB (+ candidates); counter ${end.used}`);
 }
 
 function writeManifest(narrator, rows, candidates) {
-  const clips = Object.fromEntries(rows.map((r) => [r.key, { url: r.urls[(PREFERRED_TAKE[r.key] ?? 1) - 1] ?? r.urls[0], seconds: r.seconds, ...(r.captioned ? { captioned: true } : {}) }]));
+  const clips = Object.fromEntries(rows.map((r) => [r.key, { url: r.urls[(r.take ?? 1) - 1] ?? r.urls[0], seconds: r.seconds, ...(r.captioned ? { captioned: true } : {}) }]));
   const body = `// GENERATED by scripts/audio/gen-voice.mjs — do not edit by hand.
 // The narrator's clips, keyed by narrationKey(text) (src/audio/narrationText.ts).
 import type { NarrationCandidate, NarrationClip, NarrationLine } from '@/content/audio/narrationTypes';
@@ -183,7 +222,7 @@ export const NARRATOR_SAMPLE = ${JSON.stringify(SAMPLE_LINE)};
 export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = ${JSON.stringify(clips, null, 1)};
 
 /** Every line with its text, for the audition page (the game never reads this). */
-export const NARRATION_LINES: readonly NarrationLine[] = ${JSON.stringify(rows.map(({ key, text, say, group, seconds, urls }) => ({ key, text, say, group, seconds, urls })), null, 1)};
+export const NARRATION_LINES: readonly NarrationLine[] = ${JSON.stringify(rows.map(({ key, text, say, group, seconds, urls, speaker }) => ({ key, text, say, group, seconds, urls, speaker })), null, 1)};
 
 /** The narrator candidates reading the same sample line. */
 export const NARRATOR_CANDIDATES: readonly NarrationCandidate[] = ${JSON.stringify(candidates, null, 1)};
