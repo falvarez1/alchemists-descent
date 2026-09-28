@@ -3,7 +3,7 @@ import type { World } from '@/sim/World';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, ashColor, emberColor, smokeColor } from '@/sim/colors';
 import { circleFree, createChainIn, sweptNodeTarget, tickChain } from './body';
-import { makeWeaverLoco, WEAVER_LEG_REACH_LOCO, weaverHipWorld } from '@/entities/weaverLocomotion';
+import { makeWeaverLoco, WEAVER_LEG_REACH_LOCO, WEAVER_LOCO_REST, weaverHipWorld } from '@/entities/weaverLocomotion';
 import { ensureRig } from './species';
 import { constrain, impulse, integrate, liquidAt, movePoint, place, solidAt } from './rig/physics';
 import type { IntegrateOpts, RigPoint } from './rig/physics';
@@ -43,8 +43,10 @@ export interface Corpse {
   ttl: number;
   /** Skeleton constraints captured at death: point pairs and rest lengths. */
   bonds: Array<[RigPoint, RigPoint, number]>;
-  /** 1 alive-bright → 0 dark: emissive parts gutter out. */
+  /** 1 alive-bright → 0 dark: emissive parts gutter out (by time since death, handled or not). */
   glow: number;
+  /** Ticks since death (the rot clock may be spared; the lights' is not). */
+  deadT: number;
   world: World;
   /** A Weaver's remains: ticks lain still, whether it has kicked over, and the flip window. */
   restT?: number;
@@ -273,7 +275,7 @@ export function addCorpse(ctx: Ctx, e: Enemy, kx: number, ky: number): boolean {
   if (e.weaverLoco) { e.weaverLoco.mode = 'airborne'; e.weaverLoco.vx += (kx || 0) * 0.3; e.weaverLoco.vy += -0.8; }
   e.submerged = false;
   const c: Corpse = {
-    e, age: 0, ttl: CORPSE_TTL + ((e.bobPhase * 60) | 0), bonds, glow: 1, world: ctx.world,
+    e, age: 0, ttl: CORPSE_TTL + ((e.bobPhase * 60) | 0), bonds, glow: 1, deadT: 0, world: ctx.world,
     mass: corpseMass(e.kind), pvx: 0, pvy: 0, hvx: 0, hvy: 0, h2vx: 0, h2vy: 0, grip: null, touchT: -1e9, bowlUntil: -1e9, flight: 0, spared: 0, slump: 0,
     burn: burning && !frozen ? 240 : 0, char: 0, frozen: frozen ? FROZEN_TICKS : 0, shape: null, twitch: shocked ? 60 : 0,
     hitCd: 0, bodyCd: 0, headCd: 0, struck: [], wasWet: false, dryT: 99, moments: {}, fate: 'gore', flies: false, gone: false,
@@ -489,11 +491,17 @@ function stepWeaverCorpse(world: World, c: Corpse, now: number): void {
     // up, they dangle; frozen, they stay exactly as they froze.
     leg.x += loco.px - x0; leg.y += loco.py - y0;
     if (frozen) return;
-    if (grip) {
-      // Held up, a dead spider's legs clutch in under it and trail the swing.
+    if (grip || c.flight > 0) {
+      // Held up or flung, the dead legs hang like a marionette's: each its
+      // own length and splay, each lagging the swing by its own weight, so
+      // they trail and cross instead of standing in a parallel frame.
       const hip = weaverHipWorld(loco, i), reach = WEAVER_LEG_REACH_LOCO[i] ?? 20;
-      const tx = loco.px + (hip.x - loco.px) * 0.7 - loco.vx * 2, ty = hip.y + reach * 0.42 - loco.vy * 2;
-      leg.x += (tx - leg.x) * 0.12; leg.y += (ty - leg.y) * 0.12;
+      const side = Math.sign(WEAVER_LOCO_REST[i]?.arc ?? 1) * loco.face;
+      const k = ((i * 37) % 7) / 7;
+      const tx = hip.x + side * reach * (0.1 + 0.22 * k) - loco.vx * (2 + 2 * k);
+      const ty = hip.y + reach * (0.5 + 0.22 * (1 - k)) - loco.vy * (2 + 2 * k);
+      const ease = 0.07 + 0.08 * k;
+      leg.x += (tx - leg.x) * ease; leg.y += (ty - leg.y) * ease;
     }
     else if (onBack) {
       const tx = loco.px + (leg.x - loco.px) * (1 - curl * 0.55), ty = loco.py - 6 * curl + (leg.y - loco.py) * (1 - curl * 0.7);
@@ -605,7 +613,10 @@ function stepChainCorpse(world: World, c: Corpse, frame: number): void {
     if (grip) { const pull = pullOf(grip, frame); tx = head.x + vx * 0.94 + pull.ax; ty = head.y + vy * 0.94 + pull.ay; }
     else if (c.flight > 0) { tx = head.x + vx * 0.985; ty = head.y + vy * 0.985 + (wet ? -0.15 : 0.22); }
     else { tx = head.x + vx * 0.9; ty = head.y + (wet ? -0.15 : 0.5); }
-    const to = sweptNodeTarget(world, head, tx, ty);
+    // A head sunk in rock (a Stone Maw dies where it chews) can be swept
+    // nowhere: held or flung, the wand or the throw draws it straight out.
+    const stuck = (grip || c.flight > 0) && !circleFree(world, head.x, head.y, head.radius);
+    const to = stuck ? { x: tx, y: ty } : sweptNodeTarget(world, head, tx, ty);
     tickChain(world, body, to.x, to.y, wet, frame, e.kind === 'rillback' && wet);
   }
   e.x = Math.round(head.x); e.y = Math.round(head.y + 4);
@@ -617,7 +628,8 @@ function stepCorpse(ctx: Ctx, c: Corpse, index: number, pending: PendingBlow[]):
   const kept = c.grip !== null || now - c.touchT < SPARE_WINDOW || c.frozen > 0;
   if (kept && c.spared < SPARE_MAX) c.spared++;
   else c.age++;
-  c.glow = Math.max(0, 1 - c.age / 150);
+  c.deadT++;
+  c.glow = Math.max(0, 1 - Math.max(c.age, c.deadT) / 150);
   if (e.flash > 0) e.flash--; // the grip's brass flare fades
   if (c.hitCd > 0) c.hitCd--;
   if (c.bodyCd > 0) c.bodyCd--;

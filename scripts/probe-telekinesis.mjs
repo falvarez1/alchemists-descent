@@ -6,7 +6,8 @@
 //
 //   node scripts/probe-telekinesis.mjs [url] [--scenes lift,hurl,...] [--out dir]
 //
-// Scenes: lift, hurl, kick-water, oil-fire, lava, acid, freeze, plate, snapjaw, shock, blast, crate, audio.
+// Scenes: lift, hurl, kick-water, oil-fire, lava, acid, freeze, plate, snapjaw, shock, blast, crate, audio,
+// looks (held / flying / resting crops per kind; --kinds a,b).
 // Writes PNG frames + strips and probe.json to --out (verify-out/telekinesis).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
@@ -120,7 +121,7 @@ async function corpseInfo(page, kind) {
     let x = 0, y = 0, n = 0;
     const pts = [];
     if (c.e.weaverLoco) { x = c.e.weaverLoco.px; y = c.e.weaverLoco.py; n = 1; }
-    else if (c.e.rig) {
+    else if (c.e.rig && (c.e.rig.pts.length || c.e.rig.chains.length || c.e.rig.soft)) {
       const all = [...c.e.rig.pts, ...c.e.rig.chains.flatMap(ch => ch.pts), ...(c.e.rig.soft?.pts ?? [])];
       for (const p of all) { x += p.x; y += p.y; n++; pts.push([p.x, p.y]); }
       x /= n || 1; y /= n || 1;
@@ -533,6 +534,54 @@ const SCENES = {
     const crate1 = await page.evaluate(() => ({ x: window.__tkCrate.x, y: window.__tkCrate.y }));
     const l = await log(page);
     return { crateMoved: Math.round(Math.hypot(crate1.x - crate0.x, crate1.y - crate0.y)), moments: l.filter(x => x.ev === 'corpseMoment').map(x => x.kind) };
+  },
+
+  // Held / in flight / at rest, per kind: zoomed crops around the body, to
+  // judge the remains' look while they hang on the thread and fly.
+  async looks(page) {
+    const kinds = (opt('kinds', 'weaver,slime,bat,golem,rillback,rootloper,spitter')).split(',');
+    const res = {};
+    await page.addStyleTag({ content: '.hint-teach, #hint-teach, [class*=teach] { display: none !important; }' });
+    for (const kind of kinds) {
+      await arena(page);
+      await corpsesOf(page, [[kind, 0, kind === 'bat' ? -2 : 0]], kind === 'bat' || kind === 'rillback' ? 60 : 500);
+      const g = await grab(page, kind);
+      const { cx, floor } = await page.evaluate(() => window.__tkArena);
+      const crops = [];
+      const cropAt = async (name) => {
+        const c = await corpseInfo(page, kind);
+        if (!c) return;
+        const file = await shot(page, name);
+        const p = await worldToClient(page, c.x, c.y);
+        const canvas = await page.locator('#canvas-holder > canvas').first().boundingBox();
+        const w = 320, h = 220;
+        const left = Math.max(0, Math.min(1280 - w, Math.round(p.x - canvas.x - w / 2)));
+        const top = Math.max(0, Math.min(720 - h, Math.round(p.y - canvas.y - h / 2)));
+        const out2 = file.replace('.png', '-crop.png');
+        await sharp(file).extract({ left, top, width: w, height: h }).resize(w * 2, h * 2, { kernel: 'nearest' }).toFile(out2);
+        crops.push(out2);
+      };
+      await mouseTo(page, cx - 5, floor - 45, 4);
+      await page.waitForTimeout(700);
+      await cropAt(`look-${kind}-held`);
+      await mouseTo(page, cx + 30, floor - 55, 3);
+      await page.waitForTimeout(160);
+      await cropAt(`look-${kind}-swing`);
+      await mouseTo(page, cx + 120, floor - 20, 2);
+      await page.waitForTimeout(40);
+      await page.keyboard.press('KeyF');
+      await page.waitForTimeout(60);
+      await cropAt(`look-${kind}-flight`);
+      await page.waitForTimeout(1600);
+      await cropAt(`look-${kind}-rest`);
+      if (crops.length) {
+        const tiles = await Promise.all(crops.map(f => sharp(f).png().toBuffer()));
+        await sharp({ create: { width: 640 * tiles.length, height: 440, channels: 3, background: '#000' } })
+          .composite(tiles.map((input, i) => ({ input, left: i * 640, top: 0 }))).png().toFile(`${out}/looks-${kind}.png`);
+      }
+      res[kind] = { grabbed: g.ok, at: g.at, player: g.player, frames: crops.length };
+    }
+    return res;
   },
 };
 

@@ -165,14 +165,23 @@ export const stonemawArt: SpeciesArt = {
     const ground = e.y + 1;
     const stun = (e.mawStun ?? 0) > 0;
     // Legs: a pair per segment, rippling in a metachronal wave.
+    const dead = e.hp <= 0;
     const legPass = (far: boolean): void => {
       for (let i = 1; i < n; i++) {
-        const p = nodes[i], [dx] = frame(nodes, i);
+        const p = nodes[i], [dx, dy, ux, uy] = frame(nodes, i);
         const ph = F[SRP.walk] * 1.6 - i * 0.85 + (far ? Math.PI : 0) + (stun ? Math.sin(tick * 0.8 + i) * 2 : 0);
         const reach = Math.sin(ph) * 1.4, lift = Math.max(0, Math.cos(ph)) * 0.9;
         const bx = p.x + (far ? -dx * 0.4 : dx * 0.3), by = p.y + 0.4;
-        const fx = bx + dx * (reach + (far ? -1.2 : 1.2)), fy = ground - 0.3 - lift;
-        const kx = bx + dx * (reach * 0.5 + (far ? -2 : 2)), ky = by - 1.4;
+        let fx = bx + dx * (reach + (far ? -1.2 : 1.2)), fy = ground - 0.3 - lift;
+        let kx = bx + dx * (reach * 0.5 + (far ? -2 : 2)), ky = by - 1.4;
+        if (dead) {
+          // Dead legs curl in under each segment, whichever way the body
+          // hangs (reaching for a ground it no longer stands on, a held or
+          // flung carcass grew a fringe of stilts).
+          const s = far ? -1 : 1, curl = 0.6 + ((i * 5) % 3) * 0.25;
+          kx = bx + dx * s * 1.4 - ux * 0.9; ky = by + dy * s * 1.4 - uy * 0.9;
+          fx = bx + dx * s * curl - ux * 2.1; fy = by + dy * s * curl - uy * 2.1;
+        }
         const z = far ? -5 : 5, o = { group: 20 + i + (far ? 10 : 0), far };
         r.capsule(bx, by, 0.55, kx, ky, 0.42, z, z, S_LEG, o);
         r.capsule(kx, ky, 0.42, fx, fy, 0.22, z, z, S_LEG, o);

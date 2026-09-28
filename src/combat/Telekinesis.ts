@@ -192,9 +192,16 @@ function dryFizzle(ctx: Ctx, x: number, y: number, mass: number): void {
   emit(ctx, 'fizzle', x, y, mass);
 }
 
-/** Brass motes at the grip. */
+/**
+ * A brief brass shimmer at the grip: a few motes that flick outward and are
+ * gone in a quarter second (burst motes live 1-2 s, and a cloud of them
+ * lingering around a lifted body read as joint markers).
+ */
 function shimmer(ctx: Ctx, x: number, y: number, n: number, speed: number): void {
-  ctx.particles?.burst(x, y, n, null, () => packRGB(255, 205 + ((fxRandom() * 40) | 0), 120), speed, { glow: 2, grav: -0.01 });
+  for (let i = 0; i < n; i++) {
+    const a = fxRandom() * Math.PI * 2, s = speed * (0.5 + fxRandom() * 0.6);
+    ctx.particles?.spawn(x, y, Math.cos(a) * s, Math.sin(a) * s, null, packRGB(255, 205 + ((fxRandom() * 30) | 0), 120), 10 + ((fxRandom() * 8) | 0), { glow: 1.3, grav: 0 });
+  }
 }
 
 // ------------------------------------------------------------------ picking
@@ -298,7 +305,7 @@ function liftCorpse(ctx: Ctx, pick: CorpsePick): boolean {
   const tug = 0.9 / Math.sqrt(c.mass);
   pushBody(c.e, (dx / d) * tug, (dy / d) * tug - tug * 0.8);
   c.e.flash = Math.max(c.e.flash, 5);
-  shimmer(ctx, gx, gy, 10, 1.1);
+  shimmer(ctx, gx, gy, 5, 0.9);
   emit(ctx, 'grab', gx, gy, c.mass);
   return true;
 }
@@ -370,11 +377,12 @@ export function telekinesisHurl(ctx: Ctx): boolean {
   // Newton: a heavy throw pushes the thrower back a little.
   const recoil = Math.min(1.6, 0.35 * c.mass * power);
   ctx.playerCtl?.applyImpulse?.(-dx * recoil, -dy * recoil * 0.5);
-  // A streak of displaced air behind the throw.
-  for (let i = 0; i < 10; i++) {
+  // A faint streak of displaced air behind the throw (dim and brief: bright
+  // motes around a body read as joint markers).
+  for (let i = 0; i < 6; i++) {
     const t = fxRandom();
     ctx.particles?.spawn(gx - dx * t * 10, gy - dy * t * 10, dx * (1.5 + fxRandom() * 2), dy * (1.5 + fxRandom() * 2), null,
-      i % 3 ? packRGB(220, 214, 196) : packRGB(255, 214, 130), 8 + ((fxRandom() * 8) | 0), { glow: i % 3 ? 0 : 1.4, grav: 0 });
+      packRGB(120, 112, 98), 5 + ((fxRandom() * 5) | 0), { glow: 0, grav: 0 });
   }
   if (!ctx.state.reduceFlashes && ctx.fx) ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick ?? 0, 0.18 + power * 0.12);
   emit(ctx, 'hurl', gx, gy, c.mass);
@@ -430,15 +438,9 @@ export function updateTelekinesis(ctx: Ctx): void {
   c.touchT = now;
   c.bowlUntil = now + BOWL_CREDIT_TICKS;
   hold.heldT++;
-  // Motes run down the thread into the body; a few orbit it.
-  if (now % 4 === 0) {
-    const dx = GP.x - tip.x, dy = GP.y - tip.y, d = Math.hypot(dx, dy) || 1, sp = 2.2;
-    ctx.particles?.spawn(tip.x, tip.y, (dx / d) * sp, (dy / d) * sp, null, packRGB(255, 214, 130), Math.max(4, Math.round(d / sp)), { glow: 1.8, grav: 0 });
-  }
-  if (now % 7 === 0) {
-    const s = sampleBody(c.e, SAMPLE), ang = fxRandom() * Math.PI * 2, rr = s.r + 1.5;
-    ctx.particles?.spawn(s.x + Math.cos(ang) * rr, s.y + Math.sin(ang) * rr, -Math.sin(ang) * 0.3, Math.cos(ang) * 0.3, null, packRGB(240, 200, 120), 12 + ((fxRandom() * 8) | 0), { glow: 1.6, grav: 0 });
-  }
+  // (No motes of its own: the thread's beads and the one glint at the grip
+  // are drawn by render/sprites/TelekinesisArt — loose particles around the
+  // body read as a debug skeleton's joint dots.)
   emit(ctx, 'hold', GP.x, GP.y, c.mass);
 }
 
