@@ -87,7 +87,9 @@ function brokenColumn(p: MaskPlane, r: Rand, x: number, baseY: number, h: number
 
 /** A mushroom stalk seen too close: a thick stem with the cap's underside at the top. */
 function nearStalk(p: MaskPlane, r: Rand, x: number, baseY: number, h: number): void {
-  mushroom(p, r, x, baseY, h, Math.round(between(r, 70, 110)), M_BODY, M_BODY, M_DETAIL);
+  // Seen too close to be tidy: a thick fibrous stem and the cap's broad underside.
+  mushroom(p, r, x, baseY, h, Math.round(between(r, 120, 170)), M_BODY, M_BODY, M_DETAIL);
+  for (let k = 0; k < 3; k++) root(p, r, x + Math.round(between(r, -14, 14)), baseY - Math.round(h * between(r, 0.3, 0.7)), Math.round(between(r, 20, 50)), 3, M_BODY);
 }
 
 /** A curtain of hanging roots. */
@@ -142,23 +144,19 @@ function bellowsFg(p: MaskPlane, r: Rand, _pal: KitPalette, place: Placer, level
   // FLOOR 1, authored: each piece frames a room when the camera follows the
   // player across it (focus = the room floor, less the player's half height).
   const at = (fx: number, fy: number, sx: number, sy: number): [number, number] => [place.frameX(fx, sx), place.frameY(fy, sy)];
-  // The Intake: a riser pipe with its valve down the left edge, chains top-right.
+  // The Intake: a riser pipe with its valve down the left edge (its right
+  // side holds the barricade, the lever and the engine's first fuse: kept clear).
   {
     const [x, y] = at(280, 305, 12, -20);
     pipe(p, x, y, y + place.t(250), 18, true);
-    const [cx, cy] = at(280, 305, 590, -10);
-    heavyChain(p, cx, cy, place.t(120));
-    heavyChain(p, cx + 16, cy - 6, place.t(170));
   }
-  // The engine hall: a great gear rising in the lower-left corner, a girder across the top.
+  // The engine hall: great gears rising in the lower corners, under the
+  // catwalk. Nothing hangs into the hall: the machine is played, not watched.
   {
     const [gx, gy] = at(760, 305, 30, 350);
     gear(p, gx, gy, place.t(68), 22, 6, M_BODY);
-    const [bx, by] = at(760, 305, 360, 6);
-    beam(p, bx, by, bx + place.t(300), by - place.t(22), 9);
-    const [hx, hy] = at(1250, 305, 610, -10);
-    heavyChain(p, hx, hy, place.t(140));
-    crucible(p, hx + 26, hy, place.t(90));
+    const [hx, hy] = at(1250, 305, 616, 356);
+    gear(p, hx, hy, place.t(54), 18, 5, M_BODY);
   }
   // The Breathing Chamber: a trunk main down the right edge, a gear at its foot.
   {

@@ -9,13 +9,14 @@ import { bakeForeground, bakePlane } from '@/render/depth/bake';
 import { drawDepthParticles, type ShaftPlane } from '@/render/depth/depthParticles';
 import { foregroundExtent, pulseOpacity } from '@/render/depth/parallax';
 import type { Bitmap } from '@/render/depth/raster';
-import { type RevealPoint, RevealField } from '@/render/depth/reveal';
+import { type RevealPoint, type RevealRect, RevealField } from '@/render/depth/reveal';
 import type {
   BackdropFloorGrade, DepthParticleField, DepthParticleFrame, DepthParticlePass, ForegroundSource, LightField,
   ParallaxBitmapLayer, ParallaxLayers, PixelSurface,
 } from '@/render/pixels';
 import { usesTerrainArt } from '@/render/TerrainArt';
 import { Cell } from '@/sim/CellType';
+import { TEA } from '@/world/teaMachine';
 
 /**
  * THE DEPTH SCENE — the layered scenery around the play layer (config/depthKits).
@@ -82,6 +83,9 @@ export class DepthScene implements ParallaxLayers {
   /** Pooled reveal points (the list is rebuilt every frame without allocating). */
   private readonly points: RevealPoint[] = [];
   private readonly pointPool: RevealPoint[] = [];
+  /** Authored set pieces occluders never cover (floor 1: the Bell & Tea Engine's hall and catwalk). */
+  private readonly rects: RevealRect[] = [];
+  private readonly teaRect: RevealRect = { x0: 0, y0: 0, x1: 0, y1: 0, pad: 36 };
   private pointCount = 0;
   private lightCtx: Ctx | null = null;
   /** Light catch (G) and designed-darkness factor (B) for the reveal field (bound once). */
@@ -326,7 +330,7 @@ export class DepthScene implements ParallaxLayers {
     if (!snap && fg.reveal.version > 0 && (ctx.state.frameCount & 1) === 1) return;
     this.collectRevealPoints(ctx);
     this.lightCtx = ctx;
-    fg.reveal.update(this.points, { readable: ctx.state.highReadability === true, snap }, ctx.lightQuery ? this.lightAt : null);
+    fg.reveal.update(this.points, { readable: ctx.state.highReadability === true, snap }, ctx.lightQuery ? this.lightAt : null, this.rects);
   }
 
   private pushPoint(camX: number, camY: number, x: number, y: number, r: number): void {
@@ -346,6 +350,13 @@ export class DepthScene implements ParallaxLayers {
     this.pointCount = 0;
     const camX = ctx.camera.renderX, camY = ctx.camera.renderY;
     const push = (x: number, y: number, r: number): void => this.pushPoint(camX, camY, x, y, r);
+    // The engine is played, not watched: its whole hall stays clear.
+    this.rects.length = 0;
+    if (ctx.levels?.current?.living) {
+      const b = TEA.simBounds, t = this.teaRect;
+      t.x0 = b.x0 - camX; t.y0 = b.y0 - camY; t.x1 = b.x1 - camX; t.y1 = b.y1 - camY;
+      if (t.x1 > -t.pad && t.y1 > -t.pad && t.x0 < VIEW_W + t.pad && t.y0 < VIEW_H + t.pad) this.rects.push(t);
+    }
     const p = ctx.player;
     if (!p.dead) push(p.x, p.y - 9, 46);
     for (const e of ctx.enemies) {

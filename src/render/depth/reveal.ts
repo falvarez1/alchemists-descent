@@ -35,6 +35,21 @@ export interface RevealPoint {
   r: number;
 }
 
+/** A region occluders never cover (an authored set piece), view cells, with a soft edge of `pad` cells. */
+export interface RevealRect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  pad: number;
+}
+
+/** A rect's hole: 0 inside, easing to 1 over `pad` cells outside. */
+export function rectMask(vx: number, vy: number, r: RevealRect): number {
+  const dx = Math.max(r.x0 - vx, 0, vx - r.x1), dy = Math.max(r.y0 - vy, 0, vy - r.y1);
+  return smoothstep(0, r.pad, Math.hypot(dx, dy));
+}
+
 export interface RevealOptions {
   /** High-readability lighting: fewer/softer occluders. */
   readonly readable: boolean;
@@ -97,10 +112,19 @@ export class RevealField {
    * Ease toward the target built from `points`; `lightAt` samples how lit
    * a view point is and its designed-darkness factor. Returns the new version.
    */
-  update(points: readonly RevealPoint[], opts: RevealOptions, lightAt: RevealLightSampler | null): number {
+  update(points: readonly RevealPoint[], opts: RevealOptions, lightAt: RevealLightSampler | null,
+    rects: readonly RevealRect[] = []): number {
     const { w, h, value, light, open, bytes, target, lightSample } = this;
     const ease = opts.snap || !this.primed ? 1 : REVEAL_EASE;
     target.set(opts.readable ? this.centreReadable : this.centre);
+    for (const r of rects) {
+      const tx0 = Math.max(0, Math.floor((r.x0 - r.pad) / REVEAL_CELL)), tx1 = Math.min(w - 1, Math.ceil((r.x1 + r.pad) / REVEAL_CELL));
+      const ty0 = Math.max(0, Math.floor((r.y0 - r.pad) / REVEAL_CELL)), ty1 = Math.min(h - 1, Math.ceil((r.y1 + r.pad) / REVEAL_CELL));
+      for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+        const i = ty * w + tx;
+        if (target[i] > 0) target[i] *= rectMask(tx * REVEAL_CELL, ty * REVEAL_CELL, r);
+      }
+    }
     // Each point touches only the texels inside its hole's reach.
     for (let k = 0; k < points.length; k++) {
       const p = points[k];

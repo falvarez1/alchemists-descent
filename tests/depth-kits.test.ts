@@ -9,7 +9,7 @@ import {
   backdropTexel, cameraFor, foregroundCoord, foregroundExtent, framingAnchor, particleScreen, pulseOpacity, wrap,
 } from '@/render/depth/parallax';
 import { luma, valueStats } from '@/render/depth/raster';
-import { REVEAL_CELL, RevealField, centreMask, pointMask } from '@/render/depth/reveal';
+import { REVEAL_CELL, RevealField, centreMask, pointMask, rectMask } from '@/render/depth/reveal';
 
 const ALL_BIOMES = Object.keys(FLOOR_LOOKS) as BiomeId[];
 
@@ -233,6 +233,17 @@ describe('foreground occluder fade (the readability rule)', () => {
     const back = f.sample(corner.x, corner.y);
     expect(back).toBeGreaterThan(0.02);
     expect(back).toBeLessThan(0.5);
+  });
+
+  it('authored set pieces (the Bell & Tea Engine) stay clear of occluders', () => {
+    const rect = { x0: 100, y0: 40, x1: 500, y1: 200, pad: 36 };
+    expect(rectMask(300, 100, rect)).toBe(0);
+    expect(rectMask(500 + 10, 100, rect)).toBeLessThan(0.5);
+    expect(rectMask(500 + 40, 100, rect)).toBe(1);
+    const f = new RevealField(VIEW_W, VIEW_H);
+    f.update([], { readable: false }, null, [{ x0: -50, y0: -50, x1: 120, y1: 80, pad: 36 }]);
+    expect(f.sample(8, 8)).toBe(0);
+    expect(f.sample(VIEW_W - 8, VIEW_H - 8)).toBeGreaterThan(0.9);
   });
 
   it('high-readability lighting softens every occluder', () => {

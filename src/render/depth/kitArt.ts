@@ -271,13 +271,13 @@ function cisternNear(pal: KitPalette, w: number, h: number, seed: number): Bitma
 function kilnFar(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   const r = rng(seed);
   // Furnace glow LOW on the screen (rows ~0.55–0.8), soot above, dark past the visible rows.
-  const fill = fogFill(w, h, [[0, pal.deep], [0.22, mixRgb(pal.deep, pal.haze, 0.35)], [0.5, mixRgb(pal.deep, pal.haze, 0.8)], [0.68, pal.fog],
-    [0.8, pal.fog], [0.9, mixRgb(pal.deep, pal.haze, 0.5)], [1, pal.deep]], { color: mixRgb(pal.haze, pal.deep, 0.6), amount: 0.55, cell: 100, seed });
+  const fill = fogFill(w, h, [[0, pal.deep], [0.2, mixRgb(pal.deep, pal.haze, 0.3)], [0.45, pal.haze], [0.62, pal.fog],
+    [0.74, pal.fog], [0.86, mixRgb(pal.deep, pal.haze, 0.6)], [1, pal.deep]], { color: mixRgb(pal.haze, pal.deep, 0.6), amount: 0.5, cell: 100, seed });
   const p = new MaskPlane(w, h);
   for (const x of slots(r, w, 6, 0.6)) {
-    chimney(p, r, x, Math.round(h * between(r, 0.8, 0.9)), Math.round(between(r, 24, 42)), Math.round(between(r, 150, 280)), M_BODY, M_GLOW);
+    chimney(p, r, x, Math.round(h * between(r, 0.7, 0.8)), Math.round(between(r, 24, 42)), Math.round(between(r, 150, 260)), M_BODY, M_GLOW);
   }
-  return over(fill, shadeWith(p, pal, palMaterials(pal, 0.8, pal.shaft, 0.8), seed));
+  return over(fill, shadeWith(p, pal, palMaterials(pal, 0.6, pal.shaft, 0.8), seed));
 }
 
 function kilnStacks(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
