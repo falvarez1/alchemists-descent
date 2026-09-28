@@ -275,14 +275,37 @@ export function sampleDarkMap(map: Uint8Array | null, x: number, y: number): num
 export function fillOpenField(
   map: Uint8Array, lut: Float32Array, originX: number, originY: number, LW: number, LH: number, out: Float32Array,
 ): void {
+  // The light texels and the map share one lattice (both two cells a texel),
+  // so every sample sits on a map texel centre (even origin) or halfway
+  // between two (odd): the per-row / per-column indices and weights are
+  // precomputed and the arithmetic below is sampleDarkMap's, term for term
+  // (identical values), without its per-texel call, floors and clamps.
+  if (colA.length < LW) { colA = new Int32Array(LW); colB = new Int32Array(LW); colT = new Float64Array(LW); }
+  const xa = colA, xb = colB, xt = colT;
+  const limitX = DARK_W * DARK_CELL, limitY = DARK_H * DARK_CELL;
+  for (let lx = 0; lx < LW; lx++) {
+    const x = originX + (lx << 1) + 1;
+    if (!(x >= 0 && x < limitX)) { xa[lx] = -1; continue; }
+    const fx = x / DARK_CELL - 0.5, x0 = Math.floor(fx);
+    xt[lx] = fx - x0;
+    xa[lx] = x0 < 0 ? 0 : x0; xb[lx] = x0 + 1 >= DARK_W ? DARK_W - 1 : x0 + 1;
+  }
   for (let ly = 0; ly < LH; ly++) {
-    const wy = originY + (ly << 1) + 1, row = ly * LW;
+    const y = originY + (ly << 1) + 1, row = ly * LW;
+    if (!(y >= 0 && y < limitY)) { out.fill(lut[0], row, row + LW); continue; }
+    const fy = y / DARK_CELL - 0.5, y0 = Math.floor(fy), ty = fy - y0;
+    const ra = (y0 < 0 ? 0 : y0) * DARK_W, rb = (y0 + 1 >= DARK_H ? DARK_H - 1 : y0 + 1) * DARK_W;
     for (let lx = 0; lx < LW; lx++) {
-      const d = sampleDarkMap(map, originX + (lx << 1) + 1, wy);
-      out[row + lx] = lut[Math.round(d * 255)];
+      const a = xa[lx];
+      if (a < 0) { out[row + lx] = lut[0]; continue; }
+      const b = xb[lx], tx = xt[lx];
+      const top = map[ra + a] + (map[ra + b] - map[ra + a]) * tx;
+      const bot = map[rb + a] + (map[rb + b] - map[rb + a]) * tx;
+      out[row + lx] = lut[Math.round(((top + (bot - top) * ty) / 255) * 255)];
     }
   }
 }
+let colA = new Int32Array(0), colB = new Int32Array(0), colT = new Float64Array(0);
 
 /**
  * The open factor at view cell (vx, vy), bilinear between the centres of the

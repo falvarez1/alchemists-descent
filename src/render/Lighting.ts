@@ -165,6 +165,11 @@ export class Lighting implements LightField {
   private wandWrite = 0;
   /** lightOpen currently holds all-ones (a fully readable level skips the per-texel pass). */
   private openIsFlat = true;
+  /** What lightOpen was last filled from (the fill is skipped while none of it moved). */
+  private openMap: Uint8Array | null = null;
+  private openLut: Float32Array | null = null;
+  private openX = NaN;
+  private openY = NaN;
   /** True while lightOpen is all ones: compose paths may skip the smooth darkness read. */
   get openFlat(): boolean {
     return this.openIsFlat;
@@ -360,8 +365,13 @@ export class Lighting implements LightField {
       this.openIsFlat = false;
       // Sampled at each texel's centre so every compose path can interpolate
       // between centres (openAtCell): the dark's edge is smooth, never stepped.
-      fillOpenField(darkMap, openLut, renderCamX, renderCamY, LW, LH, lightOpen);
-    }
+      // Static data: refilled only when the map, the comfort curve or the
+      // camera origin moved.
+      if (darkMap !== this.openMap || openLut !== this.openLut || renderCamX !== this.openX || renderCamY !== this.openY) {
+        fillOpenField(darkMap, openLut, renderCamX, renderCamY, LW, LH, lightOpen);
+        this.openMap = darkMap; this.openLut = openLut; this.openX = renderCamX; this.openY = renderCamY;
+      }
+    } else this.openMap = null;
     // Reactive bioluminescence: glow-caps flare as the alchemist passes through
     // them. Off-mode/dead → park the point far away so the flare never fires.
     const glowReact = ctx.state.mode === 'play' && !ctx.player.dead;

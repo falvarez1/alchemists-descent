@@ -225,9 +225,21 @@ export class Pen {
   private readonly lg: number;
   private readonly lb: number;
 
+  /** The surface's fine (or cell) setters, resolved once: px() is the hot path of every fixture drawing. */
+  private readonly set: (x: number, y: number, r: number, g: number, b: number) => void;
+  private readonly add: (x: number, y: number, r: number, g: number, b: number) => void;
+  private readonly vx0: number;
+  private readonly vy0: number;
+  private readonly vx1: number;
+  private readonly vy1: number;
+
   constructor(readonly out: PixelSurface, readonly view: ViewRect | null = null, light: RGB = [1, 1, 1]) {
     this.step = finePixelStep(out);
     this.lr = light[0]; this.lg = light[1]; this.lb = light[2];
+    this.set = (out.setFinePx ?? out.setPx).bind(out);
+    this.add = (out.addFinePx ?? out.addPx).bind(out);
+    this.vx0 = view ? view.x0 : -Infinity; this.vy0 = view ? view.y0 : -Infinity;
+    this.vx1 = view ? view.x1 : Infinity; this.vy1 = view ? view.y1 : Infinity;
   }
 
   /** Coarse cull against the composed view; nothing off-screen is rasterised. */
@@ -238,28 +250,36 @@ export class Pen {
   }
 
   private clipped(x: number, y: number): boolean {
-    const v = this.view;
-    return v !== null && (x < v.x0 || x > v.x1 || y < v.y0 || y > v.y1);
+    return x < this.vx0 || x > this.vx1 || y < this.vy0 || y > this.vy1;
   }
 
   px(x: number, y: number, c: RGB, k = 1): void {
-    if (this.clipped(x, y)) return;
-    (this.out.setFinePx ?? this.out.setPx).call(this.out, x, y, c[0] * k * this.lr, c[1] * k * this.lg, c[2] * k * this.lb);
+    if (x < this.vx0 || x > this.vx1 || y < this.vy0 || y > this.vy1) return;
+    this.set(x, y, c[0] * k * this.lr, c[1] * k * this.lg, c[2] * k * this.lb);
   }
 
   /** Self-lit pixel (glowing knobs, sparks): ignores the pen's light. */
   raw(x: number, y: number, c: RGB, k = 1): void {
     if (this.clipped(x, y)) return;
-    (this.out.setFinePx ?? this.out.setPx).call(this.out, x, y, c[0] * k, c[1] * k, c[2] * k);
+    this.set(x, y, c[0] * k, c[1] * k, c[2] * k);
   }
 
   glow(x: number, y: number, c: RGB, k = 1): void {
     if (this.clipped(x, y)) return;
-    (this.out.addFinePx ?? this.out.addPx).call(this.out, x, y, c[0] * k, c[1] * k, c[2] * k);
+    this.add(x, y, c[0] * k, c[1] * k, c[2] * k);
   }
 
   /** A straight stroke `width` cells thick (0 = one presentation pixel). */
   line(ax: number, ay: number, bx: number, by: number, c: RGB, width = 0, k = 1): void {
+    this.stroke(ax, ay, bx, by, c, width, k, -1);
+  }
+
+  /**
+   * line(), leaving out the samples whose offset across the stroke is within
+   * `skip` of its centre line (-1 = none): rod() uses it for its ink outline,
+   * whose core samples the next pass repaints exactly.
+   */
+  private stroke(ax: number, ay: number, bx: number, by: number, c: RGB, width: number, k: number, skip: number): void {
     if (!this.inView(ax, ay, bx, by)) return;
     const dx = bx - ax, dy = by - ay, length = Math.hypot(dx, dy) || 1;
     const n = Math.max(1, Math.ceil(length / this.step));
@@ -268,7 +288,10 @@ export class Pen {
     for (let i = 0; i <= n; i++) {
       const x = ax + dx * i / n, y = ay + dy * i / n;
       if (half <= 0) { this.px(x, y, c, k); continue; }
-      for (let w = -half; w <= half + 1e-6; w += this.step) this.px(x + nx * w, y + ny * w, c, k);
+      for (let w = -half; w <= half + 1e-6; w += this.step) {
+        if (w > -skip - 1e-9 && w < skip + 1e-9) continue;
+        this.px(x + nx * w, y + ny * w, c, k);
+      }
     }
   }
 
@@ -314,7 +337,14 @@ export class Pen {
   rod(ax: number, ay: number, bx: number, by: number, c: RGB, width = 1): void {
     if (!this.inView(ax - width, ay - width, bx + width, by + width)) return;
     const dx = bx - ax, dy = by - ay, length = Math.hypot(dx, dy) || 1, nx = -dy / length, ny = dx / length;
-    this.line(ax, ay, bx, by, INK, width + this.step * 2);
+    // The core pass repaints the ink outline's inner samples at the very same
+    // points (same rows, same offsets across the stroke) whenever both passes'
+    // offsets are exact binary fractions (every rod width in eighths): the
+    // outline then draws only its rim (a machine hall of rods was a third of
+    // the Bell & Tea Engine's frame, fix4b). Same pixels, fewer writes.
+    const core = Math.max(0, width - this.step) / 2;
+    const exact = width > this.step && Number.isInteger(width * 8) && Number.isInteger(this.step * 8);
+    this.stroke(ax, ay, bx, by, INK, width + this.step * 2, 1, exact ? core : -1);
     this.line(ax, ay, bx, by, c, width);
     const lift = -Math.max(0, (width - this.step) / 2) + this.step * 0.5;
     const side = nx - ny < 0 ? 1 : -1; // the thread faces the upper-left lamp

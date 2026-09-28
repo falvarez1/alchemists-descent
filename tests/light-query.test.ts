@@ -221,6 +221,18 @@ describe('designed darkness reads smooth', () => {
     }
   });
 
+  it('fills the light field exactly as the gameplay read samples it, at any origin', () => {
+    const map = bakeDarkMap([ZONE], { base: 0.3, deep: 1 }, undefined, grid());
+    const lut = renderOpenLut(true), LW = 40, LH = 30, out = new Float32Array(LW * LH);
+    for (const [ox, oy] of [[380, 180], [381, 181], [-7, -5], [1590, 1050], [441, 262]]) {
+      fillOpenField(map, lut, ox, oy, LW, LH, out);
+      for (let ly = 0; ly < LH; ly++) for (let lx = 0; lx < LW; lx++) {
+        const d = sampleDarkMap(map, ox + lx * 2 + 1, oy + ly * 2 + 1);
+        expect(out[ly * LW + lx]).toBe(lut[Math.round(d * 255)]);
+      }
+    }
+  });
+
   it('a loose heap in a dark room goes dark with the room (only structure soaks slowly)', () => {
     const w = grid();
     // A sand dune on the room floor, 14 cells tall and 60 wide.

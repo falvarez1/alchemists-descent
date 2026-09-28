@@ -778,13 +778,21 @@ class Overlay implements OverlaySurface {
   readonly scale = PIXEL_SCALE;
   readonly data = new Float32Array(PIXEL_W * PIXEL_H * 4);
   readonly half = new Uint16Array(PIXEL_W * PIXEL_H * 4);
+  /** The staging floats' bits, for the inline f16 conversion in commit(). */
+  private readonly bits = new Uint32Array(this.data.buffer);
   private readonly touched = new Uint8Array(PIXEL_W * PIXEL_H);
   private written = new Uint32Array(8192);
   private count = 0;
-  private dirtyX0 = PIXEL_W;
-  private dirtyY0 = PIXEL_H;
-  private dirtyX1 = -1;
-  private dirtyY1 = -1;
+  /** Bounds of the pixels written this frame... */
+  private wx0 = PIXEL_W;
+  private wy0 = PIXEL_H;
+  private wx1 = -1;
+  private wy1 = -1;
+  /** ...and of last frame's, which clear() zeroed: the upload covers both. */
+  private cx0 = PIXEL_W;
+  private cy0 = PIXEL_H;
+  private cx1 = -1;
+  private cy1 = -1;
 
   mark(pixelIdx: number): void {
     if (this.touched[pixelIdx] !== 0) return;
@@ -795,13 +803,16 @@ class Overlay implements OverlaySurface {
       this.written = grown;
     }
     this.written[this.count++] = pixelIdx;
-    this.includeDirty(pixelIdx);
+    const y = (pixelIdx / PIXEL_W) | 0, x = pixelIdx - y * PIXEL_W;
+    if (x < this.wx0) this.wx0 = x;
+    if (y < this.wy0) this.wy0 = y;
+    if (x > this.wx1) this.wx1 = x;
+    if (y > this.wy1) this.wy1 = y;
   }
 
   /** Zero only last frame's written pixels (full-buffer fill was the slow path). */
   clear(): void {
     const { data, half, touched, written } = this;
-    this.resetDirty();
     for (let k = 0; k < this.count; k++) {
       const pi = written[k];
       const b = pi * 4;
@@ -814,45 +825,65 @@ class Overlay implements OverlaySurface {
       half[b + 2] = 0;
       half[b + 3] = 0;
       touched[pi] = 0;
-      this.includeDirty(pi);
     }
+    // The cleared pixels' bounds are last frame's written bounds.
+    this.cx0 = this.wx0; this.cy0 = this.wy0; this.cx1 = this.wx1; this.cy1 = this.wy1;
+    this.wx0 = PIXEL_W; this.wy0 = PIXEL_H; this.wx1 = -1; this.wy1 = -1;
     this.count = 0;
   }
 
-  /** Convert this frame's written pixels to f16. Returns the upload rect, if any. */
+  /**
+   * Convert this frame's written pixels to f16. Returns the upload rect, if any.
+   * The conversion is three's DataUtils.toHalfFloat inlined (the same tables,
+   * bit for bit) over the staging floats' bits: per call it was a third of
+   * the overlay's cost on a busy frame (the Bell & Tea Engine's linkages
+   * write ~10^5 fine pixels a frame). Magnitudes of 65536 and up (never
+   * drawn) take the library call for its clamp.
+   */
   commit(): DirtyRect | null {
-    const { data, half, written } = this;
+    const { data, half, written, bits } = this;
     for (let k = 0; k < this.count; k++) {
       const b = written[k] * 4;
-      half[b] = DataUtils.toHalfFloat(data[b]);
-      half[b + 1] = DataUtils.toHalfFloat(data[b + 1]);
-      half[b + 2] = DataUtils.toHalfFloat(data[b + 2]);
-      half[b + 3] = DataUtils.toHalfFloat(data[b + 3]);
+      for (let c = b; c < b + 4; c++) {
+        const f = bits[c], e = (f >>> 23) & 0x1ff;
+        half[c] = (e & 0xff) >= 143 ? DataUtils.toHalfFloat(data[c]) : HALF_BASE[e] + ((f & 0x007fffff) >>> HALF_SHIFT[e]);
+      }
     }
-    if (this.dirtyX1 < this.dirtyX0 || this.dirtyY1 < this.dirtyY0) return null;
-    return {
-      x: this.dirtyX0,
-      y: this.dirtyY0,
-      w: this.dirtyX1 - this.dirtyX0 + 1,
-      h: this.dirtyY1 - this.dirtyY0 + 1,
-    };
+    const x0 = Math.min(this.wx0, this.cx0), y0 = Math.min(this.wy0, this.cy0);
+    const x1 = Math.max(this.wx1, this.cx1), y1 = Math.max(this.wy1, this.cy1);
+    if (x1 < x0 || y1 < y0) return null;
+    return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
   }
+}
 
-  private includeDirty(pixelIdx: number): void {
-    const x = pixelIdx % PIXEL_W;
-    const y = (pixelIdx / PIXEL_W) | 0;
-    if (x < this.dirtyX0) this.dirtyX0 = x;
-    if (y < this.dirtyY0) this.dirtyY0 = y;
-    if (x > this.dirtyX1) this.dirtyX1 = x;
-    if (y > this.dirtyY1) this.dirtyY1 = y;
+/**
+ * float32 -> float16 tables (three's DataUtils._generateTables, "Fast Half
+ * Float Conversions", van der Zijp): the overlay's inline conversion.
+ */
+const HALF_BASE = new Uint32Array(512);
+const HALF_SHIFT = new Uint32Array(512);
+for (let i = 0; i < 256; ++i) {
+  const e = i - 127;
+  if (e < -27) {
+    HALF_BASE[i] = 0x0000; HALF_BASE[i | 0x100] = 0x8000; HALF_SHIFT[i] = 24; HALF_SHIFT[i | 0x100] = 24;
+  } else if (e < -14) {
+    HALF_BASE[i] = 0x0400 >> (-e - 14); HALF_BASE[i | 0x100] = (0x0400 >> (-e - 14)) | 0x8000;
+    HALF_SHIFT[i] = -e - 1; HALF_SHIFT[i | 0x100] = -e - 1;
+  } else if (e <= 15) {
+    HALF_BASE[i] = (e + 15) << 10; HALF_BASE[i | 0x100] = ((e + 15) << 10) | 0x8000; HALF_SHIFT[i] = 13; HALF_SHIFT[i | 0x100] = 13;
+  } else if (e < 128) {
+    HALF_BASE[i] = 0x7c00; HALF_BASE[i | 0x100] = 0xfc00; HALF_SHIFT[i] = 24; HALF_SHIFT[i | 0x100] = 24;
+  } else {
+    HALF_BASE[i] = 0x7c00; HALF_BASE[i | 0x100] = 0xfc00; HALF_SHIFT[i] = 13; HALF_SHIFT[i | 0x100] = 13;
   }
+}
 
-  private resetDirty(): void {
-    this.dirtyX0 = PIXEL_W;
-    this.dirtyY0 = PIXEL_H;
-    this.dirtyX1 = -1;
-    this.dirtyY1 = -1;
-  }
+/** The inline overlay f16 conversion (tests hold it bit-exact to DataUtils). */
+export function overlayHalf(value: number): number {
+  const view = new Float32Array(1), bits = new Uint32Array(view.buffer);
+  view[0] = value;
+  const f = bits[0], e = (f >>> 23) & 0x1ff;
+  return (e & 0xff) >= 143 ? DataUtils.toHalfFloat(value) : HALF_BASE[e] + ((f & 0x007fffff) >>> HALF_SHIFT[e]);
 }
 
 /** GLSL source, ShaderMaterial, window packer, and texture/uniform management. */
