@@ -68,6 +68,9 @@ export class Pickups implements PickupsApi {
         p.vy = Math.min(2.4, p.vy + 0.12);
       } else {
         p.vy = 0;
+        // Rest on the whole cell above the floor: a fractional y is drawn
+        // rounded, and 99.6 over a floor at row 100 drew the pickup IN it (QA).
+        p.y = Math.floor(p.y);
       }
       // Gentle magnetism when the alchemist is near — but never through
       // walls: a sealed vault's loot must not leak past its lock.
@@ -103,8 +106,21 @@ export class Pickups implements PickupsApi {
       }
       if (p.kind === 'weaverleg' && world.inBounds(Math.floor(p.x + p.vx), Math.floor(p.y)) &&
           blocksEntity(world.types[world.idx(Math.floor(p.x + p.vx), Math.floor(p.y))])) p.vx *= -.3;
+      const fromY = p.y;
       p.x += p.vx;
       p.y += p.vy;
+      // Land ON the floor, never in it: a fall of up to 2.4 cells a tick could
+      // step past the floor row and rest a pickup a row or two inside the rock.
+      if (p.vy > 0) {
+        const cx = Math.floor(p.x);
+        for (let ry = Math.floor(fromY) + 1; ry <= Math.floor(p.y); ry++) {
+          if (world.inBounds(cx, ry) && blocksEntity(world.types[world.idx(cx, ry)])) {
+            p.y = ry - 1;
+            p.vy = 0;
+            break;
+          }
+        }
+      }
 
       // Floor-resting tomes sit about eight cells below the standing body's
       // interaction focus. Give this authored, important pickup one body-width
