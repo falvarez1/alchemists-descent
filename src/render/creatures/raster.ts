@@ -1,5 +1,7 @@
+import { hash2 } from '@/core/math';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import type { CreatureMaterial, RGB } from './palette';
+import { ramp } from './palette';
 
 /**
  * The creature rasterizer: smooth 2.5D volumes at presentation resolution.
@@ -66,6 +68,31 @@ export interface PrimOpts {
 
 const EMPTY_OPTS: PrimOpts = {};
 
+/**
+ * How rime takes to a body (`CreatureRaster.frost`). Frost forms where a
+ * real body loses heat first: at the silhouette's edge, on top-facing
+ * surfaces, at the extremes (hat and boots), on the parts a species says are
+ * exposed, and in a crystalline pattern that rides the body, not the screen.
+ */
+export interface FrostOpts {
+  /** Exposure 0..1 per primitive group (the index); a negative value keeps a group bare. */
+  bias?: ArrayLike<number>;
+  /** Exposure of any group `bias` does not name. */
+  baseBias?: number;
+  /** World cells over which the silhouette edge's frost fades inward. */
+  edge?: number;
+  /** Vertical centre and half-height of the body (world cells): frost favours its extremes. */
+  cy?: number;
+  halfH?: number;
+  /** Tick for the sparkle on thick rime (omit for none: reduced flashes, previews). */
+  twinkle?: number;
+  /** 0..1 a floor on every frosted pixel's cover (a body frozen solid is ice all over). */
+  glaze?: number;
+}
+
+/** The rime's own shading ramp: blue-grey in shadow to white where the light lands. */
+const FROST_RAMP = ramp([0x1a3246, 0x44708e, 0x82b0cc, 0xbfe0f2, 0xeef8ff], 7);
+
 /** 4×4 Bayer thresholds in 0..1 for soft band edges. */
 const BAYER = new Float32Array([0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16));
 
@@ -96,6 +123,16 @@ export class CreatureRaster {
   private blkRgb = new Float32Array(0);
   private blkA = new Float32Array(0);
   private blkGlow = new Float32Array(0);
+  /** Rime cover per pixel (0..1), written by frost() and blended in resolve(). */
+  private rime = new Float32Array(0);
+  private rimeDist = new Float32Array(0);
+  private rimeOn = false;
+  private rimeTwinkle = -1;
+  /** The rect frost() scored; pixels drawn later outside it carry no rime. */
+  private rx0 = 0;
+  private rx1 = -1;
+  private ry0 = 0;
+  private ry1 = -1;
   private mats: CreatureMaterial[] = [];
   /** Dirty rectangle of covered pixels (resolve only walks this). */
   private dx0 = 0;
@@ -152,6 +189,7 @@ export class CreatureRaster {
     this.dx0 = this.w; this.dy0 = this.h; this.dx1 = -1; this.dy1 = -1;
     this.z.fill(-1e9, 0, n);
     this.mats = mats;
+    this.rimeOn = false;
     this.ax = Math.round(anchorX * this.inv);
     this.ay = Math.round(anchorY * this.inv);
   }
@@ -163,6 +201,7 @@ export class CreatureRaster {
     this.ox = 0; this.oy = 0; this.w = 0; this.h = 0;
     this.dx0 = 0; this.dy0 = 0; this.dx1 = -1; this.dy1 = -1;
     this.mats = mats;
+    this.rimeOn = false;
     this.ax = 0; this.ay = 0;
   }
 
@@ -426,6 +465,75 @@ export class CreatureRaster {
     this.mat[idx] = mat; this.tone[idx] = tone; this.grp[idx] = 255; this.flags[idx] = F_FLAT | F_NO_OUTLINE;
   }
 
+  /**
+   * RIME: frost accreted over everything drawn so far, `amount` 0..1 (the
+   * chill's rime, a frozen creature's cold). Call after the body, before
+   * resolve(). Each covered pixel scores its exposure (distance to the
+   * silhouette's edge by a chamfer transform over the drawn rect, how much it
+   * faces up, how far toward the body's extremes it sits, its group's bias)
+   * plus a two-scale crystal noise anchored to the body; as `amount` rises the
+   * threshold falls, so frost creeps in from the edges and the tops and ends
+   * as a coat. Cover is quantised (hoar 0.5, rime 0.9) so it reads as pixel
+   * frost, not a wash. resolve() shades the rime on the same volume normals.
+   */
+  frost(amount: number, o: FrostOpts = {}): void {
+    if (!(amount > 0.001) || this.dx1 < this.dx0) return;
+    if (this.rime.length < this.cap) { this.rime = new Float32Array(this.cap); this.rimeDist = new Float32Array(this.cap); }
+    const w = this.w, x0 = this.dx0, x1 = this.dx1, y0 = this.dy0, y1 = this.dy1;
+    const D = this.rimeDist, mat = this.mat, DIAG = 1.4142;
+    // Chamfer distance (pixels) to the nearest uncovered pixel; outside the drawn rect is open air.
+    for (let j = y0; j <= y1; j++) {
+      for (let i = x0; i <= x1; i++) {
+        const idx = j * w + i;
+        if (mat[idx] === 0) { D[idx] = 0; continue; }
+        const l = i > x0 ? D[idx - 1] : 0, u = j > y0 ? D[idx - w] : 0;
+        const ul = i > x0 && j > y0 ? D[idx - w - 1] : 0, ur = i < x1 && j > y0 ? D[idx - w + 1] : 0;
+        D[idx] = Math.min(l + 1, u + 1, ul + DIAG, ur + DIAG);
+      }
+    }
+    for (let j = y1; j >= y0; j--) {
+      for (let i = x1; i >= x0; i--) {
+        const idx = j * w + i;
+        if (mat[idx] === 0) continue;
+        const r = i < x1 ? D[idx + 1] : 0, dn = j < y1 ? D[idx + w] : 0;
+        const dr = i < x1 && j < y1 ? D[idx + w + 1] : 0, dl = i > x0 && j < y1 ? D[idx + w - 1] : 0;
+        D[idx] = Math.min(D[idx], r + 1, dn + 1, dr + DIAG, dl + DIAG);
+      }
+    }
+    const s = this.step, edgePx = Math.max(1, (o.edge ?? 2.2) / s);
+    const a = Math.min(1, amount), threshold = 1.0 - a * 0.87 - 0.06 * Math.sin(Math.PI * a);
+    const bias = o.bias, base = o.baseBias ?? 0.5, glaze = o.glaze ?? 0;
+    const cy = o.cy, halfH = o.halfH ?? 0;
+    const ax = this.ax, ay = this.ay, R = this.rime, mats = this.mats, grp = this.grp, nyA = this.ny;
+    for (let j = y0; j <= y1; j++) {
+      const wy = this.oy + j * s;
+      const ext = cy !== undefined && halfH > 0 ? Math.min(1, Math.abs(wy - cy) / halfH) : 0.5;
+      for (let i = x0; i <= x1; i++) {
+        const idx = j * w + i, m = mat[idx];
+        if (m === 0) { R[idx] = 0; continue; }
+        const M = mats[m - 1], g = grp[idx];
+        const b = g === 255 ? -1 : bias && g < bias.length ? bias[g] : base;
+        if (!M || M.emissive > 0.5 || b < 0) { R[idx] = 0; continue; }
+        const edge = Math.max(0, 1 - D[idx] / edgePx);
+        const up = Math.max(0, -nyA[idx]);
+        const gx = i + ax, gy = j + ay;
+        const n = hash2(gx >> 1, gy >> 1, 71) * 0.65 + hash2(gx, gy, 29) * 0.35 - 0.5;
+        const score = 0.5 * edge + 0.2 * up + 0.22 * b + 0.1 * ext + 0.28 * n;
+        let v = (score - threshold) / 0.16;
+        // The nearly bare (a face) only ever takes the stipple of the front.
+        if (b < 0.1 && v >= 0.75) v = 0.7;
+        // The front is a crisp ordered stipple of whole crystals thinning inward;
+        // behind it a solid coat. (A half blend read as mould on the teal coat.)
+        let cover = v < 0.25 ? 0 : v < 0.75 ? ((v - 0.25) * 2 > BAYER[(gy & 3) * 4 + (gx & 3)] ? 0.85 : 0) : 0.85;
+        if (glaze > 0 && cover < glaze) cover = glaze;
+        R[idx] = cover;
+      }
+    }
+    this.rimeOn = true;
+    this.rimeTwinkle = o.twinkle ?? -1;
+    this.rx0 = x0; this.rx1 = x1; this.ry0 = y0; this.ry1 = y1;
+  }
+
   /** Is there creature coverage at a world point? (for decals that must sit on the body). */
   covered(x: number, y: number): boolean {
     const i = Math.round((x - this.ox) * this.inv), j = Math.round((y - this.oy) * this.inv);
@@ -447,6 +555,7 @@ export class CreatureRaster {
     const lxy = Math.hypot(lx, ly) || 1;
     const lr = light.r, lg = light.g, lb = light.b;
     const flash = light.flash, life = light.glow, reveal = light.reveal ?? 1, tint = light.tint;
+    const rimeOn = this.rimeOn, rime = this.rime, twinkle = this.rimeTwinkle;
     const bands = this.bands;
     const fine = out.setFinePx !== undefined && s < 1;
     const set = fine ? out.setFinePx! : out.setPx;
@@ -511,14 +620,34 @@ export class CreatureRaster {
         let r = rgb[o0] + (rgb[o1] - rgb[o0]) * q;
         let g = rgb[o0 + 1] + (rgb[o1 + 1] - rgb[o0 + 1]) * q;
         let b = rgb[o0 + 2] + (rgb[o1 + 2] - rgb[o0 + 2]) * q;
+        const cover = rimeOn && i >= this.rx0 && i <= this.rx1 && j >= this.ry0 && j <= this.ry1 ? rime[idx] : 0;
+        if (cover > 0) {
+          // Rime on the same form: brighter than what it grows on, blue in the shadow.
+          const fv = Math.max(0, Math.min(1, 0.16 + 0.72 * v)) * (FROST_RAMP.steps - 1);
+          const fk = Math.min(FROST_RAMP.steps - 2, Math.floor(fv)), ff = fv - fk, f0 = fk * 3, f1 = f0 + 3, FR = FROST_RAMP.rgb;
+          r += (FR[f0] + (FR[f1] - FR[f0]) * ff - r) * cover;
+          g += (FR[f0 + 1] + (FR[f1 + 1] - FR[f0 + 1]) * ff - g) * cover;
+          b += (FR[f0 + 2] + (FR[f1 + 2] - FR[f0 + 2]) * ff - b) * cover;
+        }
         // Scene light: emissive parts keep their own colour (while alive).
         // Unrevealed pixels (designed darkness, see SceneLight.reveal) are
         // only their own glow until the light finds them.
         const hidden = reveal < 1 && BAYER[((j + ay) & 3) * 4 + ((i + ax) & 3)] >= reveal;
         const em = M.emissive * life, lit = hidden ? 0 : 1 - em;
-        r *= lit * lr + em; g *= lit * lg + em; b *= lit * lb + em;
+        if (cover > 0) {
+          // Rime keeps its cold: a warm lamp lights it, but does not turn it to cream.
+          const lum = lr * 0.3 + lg * 0.5 + lb * 0.2, k = 0.65 * cover;
+          r *= lit * (lr + (lum - lr) * k) + em; g *= lit * (lg + (lum - lg) * k) + em; b *= lit * (lb + (lum - lb) * k) + em;
+        } else {
+          r *= lit * lr + em; g *= lit * lg + em; b *= lit * lb + em;
+        }
         if (flash > 0) { r += (1 - r) * flash; g += (0.93 - g) * flash; b += (0.82 - b) * flash; }
         if (tint) { const k = tint[3]; r += (tint[0] - r) * k; g += (tint[1] - g) * k; b += (tint[2] - b) * k; }
+        if (cover >= 0.8 && twinkle >= 0 && !hidden) {
+          // A crystal in the rime catches the light for a few ticks, now and then.
+          const hh = hash2(i + ax, j + ay, 113);
+          if (hh > 0.972 && (twinkle + Math.floor(hh * 9973)) % 44 < 4) { const lit = Math.max(0.9, (lr + lg + lb) / 3); r = lit; g = lit; b = lit; }
+        }
         this.outR[idx] = r; this.outG[idx] = g; this.outB[idx] = b;
       }
     }

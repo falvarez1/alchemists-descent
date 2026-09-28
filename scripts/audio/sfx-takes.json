@@ -4061,5 +4061,70 @@
   ],
   "rejected": [],
   "failed": []
+ },
+ "player.chill.crackle": {
+  "hash": "fb02d686d200",
+  "variants": [
+   0,
+   1,
+   2
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "player.chill.wind": {
+  "hash": "db78e77bfce0",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "player.chill.shell": {
+  "hash": "898acb0741cc",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "player.chill.crack": {
+  "hash": "60f46839ce2f",
+  "variants": [
+   0,
+   1,
+   2
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "player.chill.shatter": {
+  "hash": "9e9da9636c53",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "player.chill.thaw": {
+  "hash": "e917f4b073a7",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "player.chill.breath": {
+  "hash": "f1a607f8f20b",
+  "variants": [
+   0,
+   1,
+   2
+  ],
+  "rejected": [],
+  "failed": []
  }
 }

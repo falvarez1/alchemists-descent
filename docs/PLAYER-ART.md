@@ -33,6 +33,26 @@ state and never writes back to motion or collision.
 - Presentation fields on `PlayerState`: `levitating` (set by PlayerControl),
   `throwT` (set by the flask throw), `costume`.
 
+## The chill
+
+`player.chill` (entities/chill; docs/FEEL.md "The chill") is read by the pose
+and the art, never written by them:
+
+- **Pose** (`playerPose` chillPose): the arms hug in (off hand under the
+  mantle, wand arm drawn close), the head sinks and tips down, a lean into the
+  cold; the gait stiffens (shorter stride, low knees, less bob); breathing goes
+  quick and shallow; a one-fine-pixel shiver of the upper body (never
+  mid-cast, never with reduced flashes, never inside the ice).
+- **Art** (`AlchemistArt` drawChill → `CreatureRaster.frost`): rime grows on
+  the real silhouette. It creeps in from the edges and the tops (brim, crown,
+  shoulders first, then sleeves and boots, the coat last, the face barely) as
+  a stipple of crystals ahead of a solid coat. The beard and brows frost,
+  icicles hang from the brim, and a glaze and twinkling crystals come near the
+  top. Frozen solid: rime all over inside a clear-ice shell that hugs each
+  limb, with a dark fracture per crack. There is no shape pasted over the
+  figure. The breath is a translucent wisp drawn off the mouth.
+- The studio has rows for it: `node scripts/player-studio.mjs --only chill,frozen`.
+
 ## Death
 
 - `Player.kill` → the Rapier ragdoll (unchanged joints) plus the **dropped

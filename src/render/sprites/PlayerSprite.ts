@@ -715,11 +715,19 @@ export function drawPlayerSprite(out: PixelSurface, light: LightField, ctx: Ctx)
     s.addPx(px - 2 + lean, poseY(9), sheen * 0.8, sheen * 0.7, sheen * 0.45);
     s.addPx(px + 3 + lean, poseY(6), sheen, sheen * 0.8, sheen * 0.45);
   }
-  if (st.frozen > 0) {
-    const chill = frameCount % 16 < 8 ? 1 : 0.65;
-    s.setPx(px - 4 + lean, poseY(9), 0.55 * chill, 0.82 * chill, 1.0 * chill);
-    s.setPx(px + 4 + lean, poseY(7), 0.45 * chill, 0.75 * chill, 1.0 * chill);
-    if (frameCount % 18 < 5) s.addPx(hx + f * 4, poseY(12) - 1, 0.12, 0.2, 0.26);
+  // The chill (classic surface): rime pixels on the hat brim, shoulders and boots, more as it deepens.
+  const rime = player.chill?.shell ? 1 : player.chill?.rime ?? 0;
+  if (rime > 0.2) {
+    const k = Math.min(1, rime);
+    s.setPx(hx - 3, hatY + 1, 0.62 + 0.3 * k, 0.8 + 0.15 * k, 0.95);
+    s.setPx(hx + 3, hatY + 1, 0.62 + 0.3 * k, 0.8 + 0.15 * k, 0.95);
+    if (rime > 0.45) {
+      s.setPx(px - 4 + lean, poseY(9), 0.55 + 0.3 * k, 0.82, 1.0);
+      s.setPx(px + 4 + lean, poseY(7), 0.45 + 0.35 * k, 0.75 + 0.15 * k, 1.0);
+      s.setPx(px - 2, py - 1, 0.7, 0.86, 0.98);
+      s.setPx(px + 2, py - 1, 0.7, 0.86, 0.98);
+    }
+    if (rime > 0.7 && frameCount % 18 < 5 && !ctx.state.reduceFlashes) s.addPx(hx + f * 4, poseY(12) - 1, 0.12, 0.2, 0.26);
   }
   if (st.stoneskin > 0) {
     const crust = frameCount % 20 < 10 ? 0.46 : 0.36;

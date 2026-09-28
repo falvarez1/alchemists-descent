@@ -16,6 +16,14 @@ const TICK_MS = 250;
 const VERDICT_DELAY_MS: Record<Verdict, number> = { victory: 2300, fallen: 1500 };
 /** A calm cue resumes where it left off if it comes back within this long (hunted → calm keeps the floor's place). */
 const RESUME_WINDOW_MS = 90_000;
+/** The chill's tape glides on its own quick clock (ms), so a slow-down never steps audibly. */
+const TAPE_MS = 60;
+/** Tape glide per step: running down (slow, ~1 s), warming back (~0.4 s), after a thaw beat (a snap). */
+const TAPE_COOL = 0.06;
+const TAPE_WARM = 0.14;
+const TAPE_SNAP = 0.32;
+/** Ticks after a thaw beat (or a shell bursting) that the tape snaps back. */
+const TAPE_SNAP_TICKS = 50;
 
 /** One playing copy of a track: a streamed media element on its own gain. */
 interface Voice {
@@ -50,6 +58,10 @@ interface Voice {
  *   loops wrap by crossfading their tail into their head at measured points
  *   (score.generated.ts headSec/tailSec), never by a gapless-MP3 jump.
  * - A hidden tab fades out and pauses; showing it again resumes and fades in.
+ * - THE CHILL (entities/chill): as the alchemist freezes, the score runs down
+ *   like a tape — playback rate and pitch fall together toward 0.8 — and a
+ *   lowpass closes on it toward ~1.1 kHz; warming glides it back, and a thaw
+ *   beat snaps it back. Its own 60 ms clock, so the slide never steps.
  * - Fail-safe: its listeners, timers and ramps can never throw into the game
  *   (audio/failSafe), and its fades are overlap-proof linear segments
  *   (audio/paramRamps) — a stale or frozen audio clock (a suspended context, a
@@ -65,6 +77,12 @@ export class MusicDirector implements MusicApi {
   private readonly log: Array<{ at: number; from: string | null; to: string | null; fade: number }> = [];
   private timer: number | null = null;
   private master: GainNode | null = null;
+  /** THE CHILL: the lowpass that closes on the whole score as the body freezes. */
+  private tapeFilter: BiquadFilterNode | null = null;
+  private tapeTimer: number | null = null;
+  /** The tape as it plays now (playback rate, pitch with it) and the filter's cutoff (Hz). */
+  private tapeRate = 1;
+  private tapeCut = 20000;
   private masterCtx: AudioContext | null = null;
   private masterRamp: Ramp = { from: 1, to: 1, t0: 0, t1: 0 };
   private masterTarget = 1;
@@ -118,6 +136,7 @@ export class MusicDirector implements MusicApi {
     document.addEventListener('visibilitychange', look);
     this.disposers.push(() => document.removeEventListener('visibilitychange', look));
     this.timer = window.setInterval(look, TICK_MS);
+    this.tapeTimer = window.setInterval(failSafe('MusicDirector tape', () => this.tape()), TAPE_MS);
   }
 
   /** The cue playing (or fading in) now. */
@@ -132,10 +151,14 @@ export class MusicDirector implements MusicApi {
   dispose(): void {
     if (this.timer !== null) window.clearInterval(this.timer);
     this.timer = null;
+    if (this.tapeTimer !== null) window.clearInterval(this.tapeTimer);
+    this.tapeTimer = null;
     for (const dispose of this.disposers.splice(0)) dispose();
     for (const v of this.voices.splice(0)) this.release(v);
     this.master?.disconnect();
     this.master = null;
+    this.tapeFilter?.disconnect();
+    this.tapeFilter = null;
   }
 
   /**
@@ -226,9 +249,16 @@ export class MusicDirector implements MusicApi {
     }
     if (this.masterCtx !== ac || !this.master) {
       this.master?.disconnect();
+      this.tapeFilter?.disconnect();
       this.master = ac.createGain();
       this.master.gain.value = 0;
-      this.master.connect(bus);
+      // master → the chill's lowpass → the music bus (flat at 20 kHz while warm).
+      this.tapeFilter = ac.createBiquadFilter();
+      this.tapeFilter.type = 'lowpass';
+      this.tapeFilter.Q.value = 0.707;
+      this.tapeFilter.frequency.value = this.tapeCut;
+      this.master.connect(this.tapeFilter);
+      this.tapeFilter.connect(bus);
       this.masterCtx = ac;
       this.masterRamp = { from: 0, to: 0, t0: ac.currentTime, t1: ac.currentTime };
       this.masterTarget = -1;
@@ -258,6 +288,36 @@ export class MusicDirector implements MusicApi {
     const want = chooseCue(i);
     if (want !== this.current) this.transition(ac, this.current, want);
     this.maintain(ac, now);
+  }
+
+  /**
+   * THE CHILL's tape: glide the playback rate (pitch falls with it — the
+   * elements do not preserve pitch) and the lowpass toward the body's
+   * `musicRate` / `musicCutoff`. Warm, dead, or out of play: back to 1.
+   */
+  private tape(): void {
+    const ctx = this.ctx, p = ctx.player, c = p?.chill;
+    const live = ctx.state?.mode === 'play' && p !== undefined && !p.dead && c !== undefined;
+    const rate = live ? c.musicRate : 1, cut = live ? c.musicCutoff : 20000;
+    const snap = live && c.thawAt >= 0 && ctx.state.frameCount - c.thawAt < TAPE_SNAP_TICKS;
+    const k = rate < this.tapeRate ? TAPE_COOL : snap ? TAPE_SNAP : TAPE_WARM;
+    this.tapeRate += (rate - this.tapeRate) * k;
+    if (Math.abs(rate - this.tapeRate) < 0.0015) this.tapeRate = rate;
+    const lc = Math.log(this.tapeCut), lt = Math.log(Math.max(20, cut));
+    this.tapeCut = Math.exp(lc + (lt - lc) * k);
+    if (Math.abs(lt - Math.log(this.tapeCut)) < 0.01) this.tapeCut = cut;
+    for (const v of this.voices) this.tapeVoice(v.el);
+    const f = this.tapeFilter;
+    if (f && this.masterCtx && Math.abs(f.frequency.value - this.tapeCut) > 1) {
+      f.frequency.setTargetAtTime(this.tapeCut, this.masterCtx.currentTime, TAPE_MS / 1000 / 2);
+    }
+  }
+
+  private tapeVoice(el: HTMLAudioElement): void {
+    if (Math.abs(el.playbackRate - this.tapeRate) < 5e-4) return;
+    el.preservesPitch = false;
+    el.defaultPlaybackRate = this.tapeRate;
+    el.playbackRate = this.tapeRate;
   }
 
   private setMaster(ac: AudioContext, target: number, seconds: number): void {
@@ -309,6 +369,8 @@ export class MusicDirector implements MusicApi {
     const el = new Audio();
     el.preload = 'auto';
     el.src = `${import.meta.env.BASE_URL}${track.url}`;
+    // A cue that starts while the body is cold starts on the same slowed tape.
+    this.tapeVoice(el);
     try { el.currentTime = offset; } catch { /* set again once metadata arrives */ }
     el.addEventListener('loadedmetadata', () => { if (Math.abs(el.currentTime - offset) > 0.5 && el.currentTime < 0.5) el.currentTime = offset; }, { once: true });
     const src = ac.createMediaElementSource(el);
@@ -400,8 +462,14 @@ export class MusicDirector implements MusicApi {
       teaActive: this.teaActive,
       master: ac ? rampValue(this.masterRamp, t) : null,
       masterTarget: this.masterTarget,
+      tape: {
+        rate: this.tapeRate, cutoff: Math.round(this.tapeCut),
+        filterHz: this.tapeFilter ? Math.round(this.tapeFilter.frequency.value) : null,
+        target: { rate: this.ctx.player?.chill?.musicRate ?? 1, cutoff: Math.round(this.ctx.player?.chill?.musicCutoff ?? 20000) },
+      },
       voices: this.voices.map(v => ({
         id: v.track.id, gain: rampValue(v.ramp, t), target: v.ramp.to, time: v.el.currentTime, offset: v.offset, paused: v.el.paused,
+        rate: v.el.playbackRate, preservesPitch: v.el.preservesPitch,
         stopping: v.stopping, started: v.started, wrapped: v.wrapped,
       })),
       transitions: this.log.map(e => ({ ...e })),

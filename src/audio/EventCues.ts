@@ -1,5 +1,5 @@
 import type { AudioApi, EnemyKind } from '@/core/types';
-import type { CorpseMomentKind, EventBus, EventMap, OrganismAction, TelekinesisPhase } from '@/core/events';
+import type { ChillMomentKind, CorpseMomentKind, EventBus, EventMap, OrganismAction, TelekinesisPhase } from '@/core/events';
 import type { SfxId } from '@/content/audio/sfxCues';
 import { listen } from '@/audio/failSafe';
 
@@ -35,6 +35,13 @@ import { listen } from '@/audio/failSafe';
  *   heavy by the body), a body bowled into a creature, a belly-flop, catching
  *   fire and being put out, lava taking it, acid eating it, frost racing over
  *   it, shattering frozen, and the galvanic twitch.
+ *
+ * - The chill (game/Chill): frost taking on the coat in glassy ticks (they
+ *   climb in pitch as the rime thickens), a shivering breath at deep cold,
+ *   the body seizing into an ice shell, each crack a press or the heat puts
+ *   in it, the shell bursting, and the thaw beat (the rime cracking off with
+ *   a warm sigh — and the hiss of steam when a fire did it). All centred:
+ *   they are the alchemist's own body.
  *
  * Every cue is placed at the event's position (the cue's own range), so a
  * crowd far off is quiet and a snap beside you is in your ear; each cue's
@@ -233,6 +240,25 @@ export function corpseCues(kind: CorpseMomentKind, strength: number, mass: numbe
   }
 }
 
+/** How a beat of the chill sounds (strength 0..1: how much frost; `warm` = heat did it). */
+export function chillCues(kind: ChillMomentKind, strength: number, warm: boolean): readonly EventCue[] {
+  const s = Math.max(0, Math.min(1, Number.isFinite(strength) ? strength : 1));
+  switch (kind) {
+    // Thin rime ticks high and quiet; a thick coat creaks lower and louder.
+    case 'crackle': return [{ sfx: 'player.chill.crackle', gain: 0.45 + 0.55 * s, pitch: 2 - 3 * s, centred: true }];
+    case 'breath': return s >= 0.45 ? [{ sfx: 'player.chill.breath', gain: 0.4 + 0.6 * Math.min(1, (s - 0.45) / 0.4), centred: true }] : [];
+    case 'skin': return [{ sfx: 'player.chill.crackle', gain: 0.35, pitch: 4, centred: true }];
+    case 'shell': return [{ sfx: 'player.chill.shell', centred: true }];
+    case 'crack': return [{ sfx: 'player.chill.crack', gain: 0.6 + 0.4 * s, pitch: warm ? -2 : 0, centred: true }];
+    case 'shatter': return warm
+      ? [{ sfx: 'player.chill.shatter', centred: true }, { sfx: 'mat.steam', gain: 0.8, delay: 0.08, centred: true }, { sfx: 'player.chill.thaw', gain: 0.7, delay: 0.25, centred: true }]
+      : [{ sfx: 'player.chill.shatter', centred: true }];
+    case 'thaw': return warm
+      ? [{ sfx: 'player.chill.thaw', gain: 0.6 + 0.4 * s, centred: true }, { sfx: 'mat.steam', gain: 0.5 + 0.4 * s, delay: 0.12, centred: true }]
+      : [{ sfx: 'player.chill.thaw', gain: 0.5 + 0.4 * s, centred: true }];
+  }
+}
+
 export function installEventCues(events: EventBus, audio: Pick<AudioApi, 'sfx'>, world: EventCueWorld = {}): () => void {
   const play = (cue: EventCue, x: number, y: number): void => {
     const opts = cue.gain !== undefined || cue.pitch !== undefined || cue.delay !== undefined
@@ -262,6 +288,7 @@ export function installEventCues(events: EventBus, audio: Pick<AudioApi, 'sfx'>,
     listen(events, 'floraMoment', ({ kind, x, y, strength }) => playFlora(kind, x, y, strength)),
     listen(events, 'telekinesis', ({ phase, x, y, mass, target }) => playAll(telekinesisCues(phase, mass, target), x, y)),
     listen(events, 'corpseMoment', ({ kind, x, y, strength, mass }) => playAll(corpseCues(kind, strength, mass), x, y)),
+    listen(events, 'chillMoment', ({ kind, x, y, strength, warm }) => playAll(chillCues(kind, strength, warm), x, y)),
     // The fall: the first strike is the big one; a bounce after it is the same wood, lighter.
     listen(events, 'treeLanded', ({ x, y, strength, first }) => {
       const cue = treeFallCue(world.biome?.());

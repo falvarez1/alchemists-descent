@@ -14468,5 +14468,269 @@
     "bytes": 6940
    }
   ]
+ },
+ "player.chill.wind": {
+  "pack": "player",
+  "cat": "loop",
+  "prompt": "A cold draft howling softly through old iron pipes, with the slow creak and groan of thick ice under strain and faint ice ticks, bleak and continuous, no music",
+  "dur": 6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 6,
+    "peakDb": -9.7,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "quarterSpreadDb": 13.9,
+    "gainDb": 1.4,
+    "limitDb": 0,
+    "sec": 6,
+    "bytes": 48527
+   }
+  ]
+ },
+ "player.chill.shell": {
+  "pack": "player",
+  "cat": "player",
+  "prompt": "Water freezing solid around a body in an instant: a fast rising crystalline crackle that locks into a hard glassy crunch, close, dry",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": 0.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -2.7,
+    "limitDb": 0,
+    "sec": 0.99,
+    "truncated": false,
+    "bytes": 8403
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1,
+    "peakDb": 0.9,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -2.2,
+    "limitDb": 0,
+    "sec": 0.98,
+    "truncated": false,
+    "bytes": 8403
+   }
+  ]
+ },
+ "player.chill.shatter": {
+  "pack": "player",
+  "cat": "player",
+  "prompt": "A shell of ice bursting apart off a body: a loud crystalline shatter, chunks of ice and snow thumping down, tinkling shards, close, dry",
+  "dur": 1.4,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.36,
+    "peakDb": 3.8,
+    "onsetSec": 0,
+    "pinnedPct": 0.21,
+    "gainDb": -4.3,
+    "limitDb": -0.5,
+    "sec": 1.36,
+    "truncated": false,
+    "bytes": 11537
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.36,
+    "peakDb": 2.9,
+    "onsetSec": 0,
+    "pinnedPct": 0.06,
+    "gainDb": -1.1,
+    "limitDb": -2.9,
+    "sec": 1,
+    "truncated": false,
+    "bytes": 8612
+   }
+  ]
+ },
+ "player.chill.crackle": {
+  "pack": "player",
+  "cat": "player",
+  "prompt": "Ice crystals forming on a wool coat: a few quick tiny crystalline crackles and glassy ticks, very close, delicate, dry, short",
+  "dur": 0.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.6,
+    "peakDb": -4.4,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 6.4,
+    "limitDb": -3,
+    "sec": 0.549,
+    "truncated": false,
+    "bytes": 5059
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.6,
+    "peakDb": 3.1,
+    "onsetSec": 0.012,
+    "pinnedPct": 0.02,
+    "gainDb": -1.1,
+    "limitDb": -3,
+    "sec": 0.472,
+    "truncated": false,
+    "bytes": 4432
+   },
+   {
+    "take": 3,
+    "variant": 2,
+    "rawSec": 0.6,
+    "peakDb": -7.7,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 7.5,
+    "limitDb": -0.7,
+    "sec": 0.528,
+    "truncated": false,
+    "bytes": 4850
+   }
+  ]
+ },
+ "player.chill.crack": {
+  "pack": "player",
+  "cat": "player",
+  "prompt": "A sheet of ice cracking under strain: a sharp glassy snap with a short splintering tail, close, dry",
+  "dur": 0.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.6,
+    "peakDb": 3.9,
+    "onsetSec": 0,
+    "pinnedPct": 0.36,
+    "gainDb": -4.9,
+    "limitDb": 0,
+    "sec": 0.45,
+    "truncated": false,
+    "bytes": 4223
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.6,
+    "peakDb": 2.8,
+    "onsetSec": 0.035,
+    "pinnedPct": 0.08,
+    "gainDb": -2.5,
+    "limitDb": -1.3,
+    "sec": 0.419,
+    "truncated": false,
+    "bytes": 4014
+   },
+   {
+    "take": 3,
+    "variant": 2,
+    "rawSec": 0.6,
+    "peakDb": 3.2,
+    "onsetSec": 0,
+    "pinnedPct": 0.1,
+    "gainDb": -3.7,
+    "limitDb": -0.5,
+    "sec": 0.42,
+    "truncated": false,
+    "bytes": 4014
+   }
+  ]
+ },
+ "player.chill.thaw": {
+  "pack": "player",
+  "cat": "player",
+  "prompt": "Frost cracking and sliding off a heavy coat, then a warm soft sigh of relief with meltwater dripping, gentle, close",
+  "dur": 2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2,
+    "peakDb": -8.8,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 7.4,
+    "limitDb": 0,
+    "sec": 1.915,
+    "truncated": false,
+    "bytes": 15926
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 2,
+    "peakDb": -3.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 5.5,
+    "limitDb": -3,
+    "sec": 1.986,
+    "truncated": false,
+    "bytes": 16553
+   }
+  ]
+ },
+ "player.chill.breath": {
+  "pack": "player",
+  "cat": "player",
+  "prompt": "A man's shaky shivering exhale through chattering teeth in freezing cold, quiet, close-miked, wordless",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": -3.9,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 5.9,
+    "limitDb": -3,
+    "sec": 1,
+    "truncated": false,
+    "bytes": 8612
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1,
+    "peakDb": -9.8,
+    "onsetSec": 0.007,
+    "pinnedPct": 0,
+    "gainDb": 6.5,
+    "limitDb": 0,
+    "sec": 0.987,
+    "truncated": false,
+    "bytes": 8403
+   },
+   {
+    "take": 3,
+    "variant": 2,
+    "rawSec": 1,
+    "peakDb": -13.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 9.2,
+    "limitDb": 0,
+    "sec": 1,
+    "truncated": false,
+    "bytes": 8612
+   }
+  ]
  }
 }

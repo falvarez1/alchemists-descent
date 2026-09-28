@@ -88,6 +88,8 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     Player.ts             Player state/factory, review kit, damage/death/respawn, movement, animation
     playerPose.ts         Pure player-state → skeleton (every action; also read off the ragdoll)
     playerCostume.ts      Presentation cloth: coat tails, mantle hem, hat crown (docs/PLAYER-ART.md)
+    chill.ts              THE CHILL model: the alchemist's graded body cold (0..1), its rime, the
+                          ice shell and the thaw beat, and the curves movement / lens / score read
     Enemies.ts            Enemy defs, spawn/damage/kill, per-kind AI
   creatures/              Creature mind, pose and the Rain World body layer (docs/CREATURES.md)
     rig/                  Verlet chunks with cell collision + liquid drag, chains, gripping
@@ -107,6 +109,10 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
                           re-stamps the log as Wood; kicks, pods, glowseed pickup
     floraFelling.ts       Pure felling geometry: stand flood, lift, box fit, restamp
     DeathCinema.ts        The directed death: push-in, grade, heartbeats, letterbox, title beat
+    Chill.ts              THE CHILL system: samples cold and heat cells round the body, steps the
+                          model, and makes the world answer in real cells (a rime-ice skin on
+                          waded water, hoarfrost prints, breath steam, shed snow/ice); chillMoment
+                          events; the wind loop and slowing heart (docs/FEEL.md "The chill")
     WaveDirector.ts       createWaveState() — the small kill/counter state that
                           outlived the retired wave-survival director
     surfaceIntro.ts       Surface-intro arrival predicates (isOnIntroSurface /
@@ -148,6 +154,9 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
                           creatures, pickups, hazards, the telekinesis tether);
                           stateless depth particles drawn through the overlay
     Lighting.ts           Half-res RGB light field, directional sweeps, wand raycast
+    PostFx.ts             Post pass after bloom: aberration, grain, hurt pulse, the death grade,
+                          and the chill's lens (cold grade + frost growing in from the edges;
+                          chillLens.ts is the one reading both it and the WebGPU twin share)
     FrameComposer.ts      Per-pixel frame composition into the GPU DataTexture
     ComposeShader.ts      GPU terrain pass (postFx.gpuCompose): the FrameComposer
                           loop as a fragment shader + world-window packer + sprite
@@ -289,7 +298,8 @@ constants assume it — do not "unify" it without retuning the whole game.
 `frameCount++ → camera.update → camera.updateSimBounds → grimoireInteractions.update →
 simulation.update (substeps:
 new moved epoch → harvester → electrical → projectiles → shockwave aging → material sweep →
-ice/vines pass) → playerCtl.update → flask.update → enemyCtl.update → flora.update (a stand the
+ice/vines pass) → playerCtl.update → chill.update (the body's cold follows where it now
+stands; movement reads its moveK next tick) → flask.update → enemyCtl.update → flora.update (a stand the
 sim severed becomes a hinged body that steps in the same solver pass; settled logs re-stamp) →
 rigidBodies.update →
 vineStrands.update → levels.update → pickups.update → mechanisms.update → critters.update →

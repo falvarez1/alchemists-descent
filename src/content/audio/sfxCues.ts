@@ -169,6 +169,16 @@ export const SFX_CUES = {
   'player.club.swing': pl('player', { gain: 0.8 }),
   'player.club.hit': pl('player', { gain: 1.1 }),
   'player.club.throw': pl('player', { gain: 0.8 }),
+  // THE CHILL (game/Chill, via EventCues): frost taking, freezing solid, the
+  // shell cracking and bursting, the thaw, a shivering breath; the wind and
+  // the creak of ice rise under the body's cold as a loop the chill holds up.
+  'player.chill.crackle': pl('player', { gain: 0.62, voices: 3, cooldownMs: 90, pitchCents: 180 }),
+  'player.chill.wind': loop('player', { gain: 1.0, range: 0, bus: 'ambience', keepAliveMs: 400 }),
+  'player.chill.shell': pl('player', { gain: 1.35, priority: 5 }),
+  'player.chill.crack': pl('player', { gain: 0.9, voices: 3, cooldownMs: 70, pitchCents: 120 }),
+  'player.chill.shatter': pl('player', { gain: 1.5, priority: 5 }),
+  'player.chill.thaw': pl('player', { gain: 1.0, priority: 4 }),
+  'player.chill.breath': pl('player', { gain: 0.5, cooldownMs: 2400 }),
   // The hooded lantern (light wave): the stealth verb is a brass hood.
   'light.lantern.hood': pl('player', { gain: 0.9, cooldownMs: 120, pitchCents: 30 }),
   'light.lantern.unhood': pl('player', { gain: 1.15, cooldownMs: 120, pitchCents: 30 }),

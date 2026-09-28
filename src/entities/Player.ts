@@ -266,7 +266,7 @@ export class PlayerControl implements PlayerControlApi {
   private idleFrames = 0;
   /** Was the body submerged last frame (splash edge detector). */
   private prevInLiquid = false;
-  /** Horizontal accel multiplier from the status engine (frozen = 0.55). */
+  /** Horizontal accel multiplier from the status engine (electrified 0.82; the chill slows him through the pace). */
   private statusSlow = 1;
   /** Edge detector for the CRAMPED HUD glyph (crawling, wants up, can't). */
   private prevCramped = false;
@@ -1218,7 +1218,8 @@ export class PlayerControl implements PlayerControlApi {
       player.vx *= 0.5;
     }
     const channeling = player.recharge > 0;
-    const restrained = channeling || player.pullT > 0;
+    // (The chill's ice shell locks him too — briefly: entities/chill.)
+    const restrained = channeling || player.pullT > 0 || (player.chill?.shell ?? 0) > 0;
     const queuedJump = ctx.input.queuedJump;
     ctx.input.queuedJump = undefined;
     const keys = restrained
@@ -1349,7 +1350,7 @@ export class PlayerControl implements PlayerControlApi {
         bodyH,
         player.perks.flameward ? { burning: true } : undefined,
         2,
-        { toxicScale: 0, healiumScale: 0, frostbiteScale: 1 },
+        { toxicScale: 0, healiumScale: 0, frostbiteScale: 1, gradedChill: true },
       );
       this.statusSlow = status.slowFactor;
       let damage = status.damage;
@@ -1490,8 +1491,9 @@ export class PlayerControl implements PlayerControlApi {
     // sideways far faster than it climbs. This is also the hook for future
     // levitation enhancement cards/spells.
     const lp = ctx.params.player;
-    const movePace = playerMovementPace(ctx);
-    const verticalPace = playerVerticalPace(ctx);
+    // The chill (entities/chill) costs speed and a little jump as it deepens.
+    const movePace = playerMovementPace(ctx) * (player.chill?.moveK ?? 1);
+    const verticalPace = playerVerticalPace(ctx) * (player.chill?.jumpK ?? 1);
     const levitatingMove =
       this.levitFrames > 0 && !player.grounded && !player.inLiquid && !player.climbing;
     const speedK = levitatingMove

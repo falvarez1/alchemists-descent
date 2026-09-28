@@ -90,6 +90,12 @@ export interface StatusSampleOptions {
    * creatures still take the chill (the frozen slow) but not the bite.
    */
   frostbiteScale?: number;
+  /**
+   * The body carries a GRADED chill (entities/chill: the alchemist). Its
+   * frozen timer is then only a record of cold exposure: no flat 0.55 slow and
+   * no generic frost motes — the chill's own curves, rime and breath say it.
+   */
+  gradedChill?: boolean;
 }
 
 export interface StatusSampleResult {
@@ -408,7 +414,7 @@ export function sampleAndTickStatus(
       }
     }
   }
-  if (st.frozen > 0 && frame % 6 === 0) {
+  if (st.frozen > 0 && !options.gradedChill && frame % 6 === 0) {
     const e = randomEdgeCell(body, halfW, h);
     ctx.particles.spawn(
       e.x,
@@ -478,7 +484,7 @@ export function sampleAndTickStatus(
     : 0;
   const damage = burnDamage + shockDamage + toxicDamage + frostbiteDamage;
   // Electrified bodies stutter (a mild slow), short of the deep frozen lock.
-  const slowFactor = st.frozen > 0 ? 0.55 : st.electrified > 0 ? 0.82 : 1;
+  const slowFactor = st.frozen > 0 && !options.gradedChill ? 0.55 : st.electrified > 0 ? 0.82 : 1;
   return {
     damage,
     toxicDamage,

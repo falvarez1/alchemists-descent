@@ -27,6 +27,10 @@ try {
     const { drawPlayerSprite } = await import('/src/render/sprites/PlayerSprite.ts');
     const { stepPlayerCostume } = await import('/src/entities/playerCostume.ts');
     const source = window.__game.ctx;
+    // The chill (entities/chill): a body at a given cold, its rime caught up (or held higher while it thaws).
+    const chill = (level, extra = {}) => ({ chill: { level, rime: level, shell: 0, cracks: 0, cooldown: 0, moveK: 1, jumpK: 1, screen: 0,
+      musicRate: 1, musicCutoff: 20000, thawAt: -1, crackle: 0, deep: level >= 0.6,
+      breathAt: -1, breathX: 0, breathY: 0, breathDir: 1, breathK: 0, ...extra } });
     const V = [
       ['idle', {}, {}],
       ['idle · breath', {}, { t0: 40 }],
@@ -56,6 +60,17 @@ try {
       ['commune', { recharge: 30 }, {}],
       ['wand swap', { swapT: 7 }, {}],
       ['burning', { status: { burning: 60 } }, {}],
+      ['chill 0.25', chill(0.25), {}],
+      ['chill 0.5', chill(0.5), {}],
+      ['chill 0.75', chill(0.75), {}],
+      ['chill 1', chill(1), {}],
+      ['chill · walk 0.75', { ...chill(0.75), _svx: 0.9, vx: 0.9, run: 0.9 }, {}],
+      ['chill · cast 0.75', { ...chill(0.75), firing: true, aimAngle: -0.45 }, {}],
+      ['chill · crawl 0.75', { ...chill(0.75), crawling: true, crawlT: 10, crawlSlope: -0.1, stridePhase: 1.1 }, {}],
+      ['chill · thawing', chill(0.3, { rime: 0.62 }), {}],
+      ['chill · breath', chill(0.7, { breathAt: 146, breathX: 152.6, breathY: 75.7, breathDir: 1, breathK: 0.75 }), {}],
+      ['frozen solid', chill(1, { shell: 40 }), {}],
+      ['frozen · cracked', chill(1, { shell: 20, cracks: 4 }), {}],
     ].filter(([n]) => !only || only.split(',').some(o => n.startsWith(o)));
     const COLS = 7, CW = 44, CH = 32, fw = CW * 2, fh = CH * 2;
     const rows = Math.ceil(V.length / COLS);

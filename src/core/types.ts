@@ -9,6 +9,7 @@ import type { Corpse } from '@/creatures/corpses';
 import type { BossBrain } from '@/creatures/bosses/types';
 import type { IdleLife } from '@/creatures/idle';
 import type { PlayerCostume } from '@/entities/playerCostume';
+import type { ChillTuning } from '@/config/params';
 import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/run';
 import type { CreatureSfxAction, SfxId } from '@/content/audio/sfxCues';
 import type { LevelStorySites, StoryApi, StorySpeakOptions, StorySpokenLine } from '@/core/story';
@@ -197,6 +198,61 @@ export interface PlayerState {
   throwT?: number;
   /** Presentation-only cloth/hat physics (entities/playerCostume). Never saved. */
   costume?: PlayerCostume;
+  /** THE CHILL (entities/chill): the graded body cold; absent until the chill system first ticks. Never saved. */
+  chill?: PlayerChill;
+}
+
+/**
+ * THE CHILL: the alchemist's graded body cold (entities/chill is the model,
+ * game/Chill the system that feeds it real cells). Written once a tick;
+ * movement (Player), the art (AlchemistArt, playerPose), the lens (PostFx)
+ * and the score (MusicDirector) only read it.
+ */
+export interface PlayerChill {
+  /** 0..1 how cold the body is. Everything below follows it. */
+  level: number;
+  /** 0..1 frost on the body: climbs with the chill, holds while it thaws, cracks off at the thaw beat. */
+  rime: number;
+  /** Ticks left frozen solid (0 = free). Movement and casting lock while it holds. */
+  shell: number;
+  /** Cracks the current shell has taken (a press, a blow, heat): drawn across the ice. */
+  cracks: number;
+  /** Ticks before another shell may form (the chill is held under the lock meanwhile). */
+  cooldown: number;
+  /** Speed/acceleration and jump multipliers (1 = no cost). */
+  moveK: number;
+  jumpK: number;
+  /** 0..1 the body's perception of the cold: the lens grade and the frost at the frame's edges. */
+  screen: number;
+  /** The score's tape: playback rate and lowpass cutoff (Hz) it glides toward. */
+  musicRate: number;
+  musicCutoff: number;
+  /** Frame of the last thaw beat or shell burst (the score snaps back after it); -1 = never. */
+  thawAt: number;
+  /** Accreted-rime accumulator for the crackle ticks. */
+  crackle: number;
+  /** Reached the deep chill since the last reset (the docent remarks on it once). */
+  deep: boolean;
+  /** The last breath fogging the air: its frame (-1 none), where it left the mouth, which way, how deep. */
+  breathAt: number;
+  breathX: number;
+  breathY: number;
+  breathDir: number;
+  breathK: number;
+}
+
+/** The chill system (game/Chill): the cold the grid puts into the body, and back out. */
+export interface ChillApi {
+  /** Live tuning (config/params CHILL_PARAMS). */
+  readonly tuning: ChillTuning;
+  /** Fixed tick, right after the player moves. */
+  update(ctx: Ctx): void;
+  /** A blow of cold (a frost bolt, a rime wave, a lick of frost breath): chill added at once. */
+  hit(amount: number): void;
+  /** Warm the body back to nothing (respawn, a new floor). */
+  reset(): void;
+  /** Pin the chill at a level (probes, the console); null hands it back to the grid. */
+  hold(level: number | null): void;
 }
 
 export const PLAYER_HALF_W = 4;
@@ -3473,6 +3529,8 @@ export interface Ctx {
   corpses?: CorpsesApi;
   /** The story: pipes, Pell, echoes, prologues, the Kiln escape (game/story); absent in small test contexts. */
   story?: StoryApi;
+  /** The graded body cold (game/Chill); absent in small test contexts. */
+  chill?: ChillApi;
 }
 
 /**

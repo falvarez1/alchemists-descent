@@ -176,6 +176,7 @@ isopods curling in one gust is one clatter, not eighteen.
 | `floraMoment` | a tree's whole fall, in order: a notched trunk straining (`creak`, louder when nearly through), the cut going through (`crack`, by the stand's size), the long groan of the hold and lean (`lean`), the hinge fibres tearing (`snap` ≥ 0.6) or a sapling snapping at the boot (`snap` < 0.6), the crown rushing down (`whoosh`), the canopy thrown onto the ground (`shed`), the log rolling to rest (`settle`); leaves shaken by a kick (`rustle`), pods letting go (`podDrop`); a thirsty seed drinking (`soak`), sprouting (`sprout`), its root ladder knocking up rung by rung over a creaking growth loop (`rung`) and opening its crown (`bloom`) |
 | `telekinesis` | the wand's grip (combat/Telekinesis): a taut brass twang and tug as it takes hold, the thread's steady hum while a body hangs on it (louder for a heavier one, on the body), a slack sigh as it lets go, a whip-crack and rush of air for a hurl (lower for a heavy one), a sputtering fizzle when the grip fails, a creaking groan when the wand strains at something far too heavy (a nudge); a crate keeps its own lift/throw/drop sounds and shares only the hum |
 | `corpseMoment` | the dead as mass (creatures/corpseWorld): a thud, light or heavy by the body (lighter bodies ring higher); a body bowled into a creature; a belly-flop into a pool; a carcass catching fire, or put out (the material sizzle); lava taking it; acid eating it; frost racing over it; a frozen carcass shattering; the galvanic twitch |
+| `chillMoment` | the alchemist's cold (game/Chill), all centred on him: frost taking on the coat in glassy ticks that drop from high to low creaks as the rime thickens, a shivering exhale at deep cold (at most every 2.4 s), the water skinning over behind him, seizing solid in ice, each crack a press or the heat puts in it, the shell bursting (and by a fire, a steam hiss and a warm sigh after), the thaw beat as the rime cracks off (the hiss again when heat did it). The wind-and-ice loop (`player.chill.wind`) and the slowing heartbeat are held up by the chill itself, not by events |
 | `treeLanded` | the fall itself, in the floor's own wood (the biome names the species world/floraPass planted): pale birch on the Bellows, a giant mushroom's stem in the Rot Gardens, a waterlogged mangrove in the Cisterns, charred ember-bark in the Kiln; a bounce after the first strike is the same wood, lighter |
 
 The flora call sites stay silent: the events carry the sound (a felled tree's
@@ -192,7 +193,13 @@ purpose: the hit and the creature's own idle mutter already carry them.
 The score reacts too (audio/MusicDirector, pure rules in musicRules): when a
 boss breaks into a new phase the music drops to 0.42 for 1.5 s under the roar
 and swells back, and in a designed deep-dark zone a floor's calm cue thins to
-0.62 (never a hunt or a boss theme).
+0.62 (never a hunt or a boss theme). As the alchemist freezes, the score runs
+down like a tape. Its media elements drop `preservesPitch`, so the playback
+rate and the pitch fall together toward 0.8, and a lowpass between the score's
+master and the music bus closes toward 1.1 kHz. It glides on its own 60 ms
+clock (slowly down, faster back, and a snap after the thaw beat). Measured:
+chill 0.25 → 0.986 / 15.2 kHz, 0.5 → 0.936 / 6.9 kHz, 0.75 → 0.873 / 2.85 kHz,
+1 → 0.80–0.82 / 1.1–1.4 kHz (`music.debugSnapshot().tape`).
 
 ## 4. The mix
 
@@ -318,7 +325,7 @@ with the floors whose census lists it).
 | pack | cues | takes | what |
 | --- | --- | --- | --- |
 | ui | 31 | 65 | hover, click, back, ledger open/close, pause/resume valve, toast, objective tube, hint, grimoire quill, card reveal/choose/pick/slot, bench drawer, coins, tally, learn, curtain, phial refill/drain, run over, summary chords; stingers: alchemy, phial crack/fill, victory, fallen, shutter |
-| player | 55 | 120 | the lantern's brass hood (down/up), steps ×5 surfaces, gear, wade, crawl, jump, landings, skid, grab, pull-up, cramped, kick, dive, slam, stomp, hurt, death, corpse wand + knell, heartbeat, sputter, levitation loop, vine, teleport, heal, drink, communion, staff, glowseed, leg club ×3; flask siphon/pour loops, throw, shatter, dry; wand swap/dry; pickups ×9 (gold, coin, heart, chest, potion, key, the brass bell…) |
+| player | 62 | 136 | the chill (frost crackle, a shivering breath, seizing solid, a crack, the shell bursting, the thaw, the wind-and-ice loop), the lantern's brass hood (down/up), steps ×5 surfaces, gear, wade, crawl, jump, landings, skid, grab, pull-up, cramped, kick, dive, slam, stomp, hurt, death, corpse wand + knell, heartbeat, sputter, levitation loop, vine, teleport, heal, drink, communion, staff, glowseed, leg club ×3; flask siphon/pour loops, throw, shatter, dry; wand swap/dry; pickups ×9 (gold, coin, heart, chest, potion, key, the brass bell…) |
 | spells | 32 | 59 | per card family: spark cast/impact, bomb cast + fuse loop, lightning, flame ignite + loop, dig loop, warp, singularity loop + implosion, vitriol/cryo/aqua loops, frost shard, ice lance, ice impact, freeze, wisp cast + loop, meteor cast + loop, conjure, vitrify, ember storm, three crits, two charge payoffs, the Trickshot whip and shell crack |
 | world | 94 | 179 | the light wave (the deep dark's hush, eyeshine, photocell hum + latch, lumen bloom open/furl/petal), fish school scatter + flop, moth swarm loop, explosions ×3, materials (zap, shatter, steam, sizzle, ignite, squelch, bubble, splashes, drip, hollow knock), material loops ×7 (fire, lava, water, acid, steam, electric, fuse), rigid bodies per material (impact, smash) + grab/lift/throw/drop/rip/tear/bash/burn-out, portal, gong, waystone, 20 mechanisms, critters, generic creature voices, hostile fireball loop, the wand's grip (taking hold, the brass thread's hum, letting go, the whip-crack hurl, a failing fizzle, a strain at something too heavy) and the dead as mass (light and heavy thuds, a body bowled into a creature, a belly-flop, catching fire, lava taking it, acid eating it, frost racing over it, a frozen shatter, a galvanic twitch) |
 | tea | 15 | 16 | striker, percussion cap, fault, knocker, ratchet, pendulum, boulder, dominoes, spring, duck, marble, generator, magnet, counterweight, tea served |
@@ -346,8 +353,12 @@ cue).
 | `amb.breath.jet` ⟲ | loop · fx | 0.34 | 3.00 | SfxEngine, audio.worldSound() | Continuous high-pressure steam jet blasting from a brass nozzle, a loud roaring hiss |
 | **amb-d2** | | | | | |
 | `amb.rot` ⟲ | bed · ambience | 0.50 | 28.00 | d2 bed (AudioDirector) | Ambience of a damp underground fungal garden: dense quiet insect chirrs and clicks, soft spore puffs, wet roots creaking, slow drips, a faint bubbling marsh |
+| **amb-d2b** | | | | | |
+| `amb.coldstore` ⟲ | bed · ambience | 0.50 | 28.00 | d2b bed (AudioDirector) | Ambience of an old frozen Victorian refrigeration hall: a slow distant compressor thump, cold wind whistling through iron pipes, ice creaking and ticking, faint dripping brine, a huge cold echoing room |
 | **amb-d3** | | | | | |
 | `amb.cisterns` ⟲ | bed · ambience | 0.50 | 28.00 | d3 bed (AudioDirector) | Ambience of a flooded Victorian stone cistern: gentle water lapping against stone, echoing drips in a huge vaulted chamber, a deep low rumble, distant trickles |
+| **amb-d3b** | | | | | |
+| `amb.galleries` ⟲ | bed · ambience | 0.50 | 28.00 | d3b bed (AudioDirector) | Ambience of vast dark Victorian glass galleries: a soft resonant hum of glass, faint crystal chimes tinkling in a draught, a slow distant grinding wheel, quiet airy reverb of a tall glass hall |
 | **amb-d4** | | | | | |
 | `amb.kiln` ⟲ | bed · ambience | 0.50 | 28.00 | d4 bed (AudioDirector) | Ambience inside a volcanic furnace: roaring heat, slowly bubbling lava, deep rumbling, distant rhythmic anvil strikes echoing, crackling embers |
 | **creature-acidslime** | | | | | |
@@ -376,7 +387,7 @@ cue).
 | `creature.colossus.alert` | boss · voices | 0.88 | 2.15 / 2.35 | Enemies, creature(colossus, 'alert') | A colossal magma giant's thunderous deep roar with rumbling rock and a roar of fire |
 | `creature.colossus.death` | boss · voices | 0.96 | 3.22 | colossus, Enemies, creature(colossus, 'death') | A colossal magma giant collapsing: a final deep dying roar and a huge rumbling crumble of rock and fire |
 | `creature.colossus.death.crack` | boss · voices | 0.80 | 2.03 | EventCues | A dying stone giant sinking down: a long deep groan of grinding rock as fissures split open with hissing jets of fire |
-| `creature.colossus.death.rubble` | boss · voices | 0.96 | 3.14 | colossus | A colossal furnace bursting apart: a huge detonation of stone, then a long cascade of rocks and slabs tumbling and settling, embers hissing |
+| `creature.colossus.death.rubble` | boss · voices | 0.96 | 3.14 | colossus, KilnEscape | A colossal furnace bursting apart: a huge detonation of stone, then a long cascade of rocks and slabs tumbling and settling, embers hissing |
 | `creature.colossus.heave` | boss · voices | 0.48 | 0.90 / 0.90 | EventCues | A colossal stone giant rearing up with both fists raised: a deep grinding creak of rock, gravel sifting down and a rising furnace roar |
 | `creature.colossus.hurt` | boss · voices | 0.64 | 0.75 / 0.77 | kilnQuench, creature(colossus, 'hurt') | A magma giant hit: cracking stone and a deep angry growl with hissing lava, short |
 | `creature.colossus.idle` | boss · voices | 0.64 | 2.89 | creature(colossus, 'idle') | A giant of molten rock breathing: a deep slow rumble, crackling magma and hissing heat |
@@ -411,6 +422,19 @@ cue).
 | `creature.imp.death` | creature · voices | 0.21 | 1.00 / 1.00 | creature(imp, 'death') | A fire imp snuffed out: a sizzling screech fading into a puff of steam, short |
 | `creature.imp.hurt` | creature · voices | 0.21 | 0.46 / 0.48 | creature(imp, 'hurt') | A fire imp's hissing screech like water on embers, short |
 | `creature.imp.idle` | creature · voices | 0.12 | 0.76 / 0.75 | creature(imp, 'idle') | A small fire imp's crackling wordless snicker, embers popping, short |
+| **creature-lenswright** | | | | | |
+| `creature.lenswright.alert` | boss · voices | 0.80 | 1.80 | Enemies, creature(lenswright, 'alert') | A huge brass-rimmed lens waking: a rising resonant glass drone, brass shutters clicking open, crystals chiming |
+| `creature.lenswright.dazzle` | boss · voices | 0.88 | 0.56 | lenswright | A glass lens overloading with light: a sharp crackling flash, a shutter slamming shut and a descending mechanical whine |
+| `creature.lenswright.death` | boss · voices | 0.96 | 3.00 | Enemies, creature(lenswright, 'death') | A giant glass lens shattering: a huge bright crash of breaking glass, a cascade of shards and crystal pendants tinkling to the floor |
+| `creature.lenswright.fall` | boss · voices | 0.80 | 0.77 | lenswright | A large brass-framed glass lens falling onto a stone floor: a heavy ringing clang and rattling crystal pendants |
+| `creature.lenswright.flare` | boss · voices | 0.72 | 0.76 | lenswright | A sudden blinding flash of light: a sharp whoomph of air and a bright glassy ring |
+| `creature.lenswright.glance` | boss · voices | 0.44 | 0.30 / 0.30 | lenswright | A blow glancing off a polished brass lens housing: a short bright metallic ting, very short, dry |
+| `creature.lenswright.hurt` | boss · voices | 0.64 | 0.80 | creature(lenswright, 'hurt') | A heavy blow on a thick glass lens in a brass frame: a dull ringing clang with a crack of glass, short |
+| `creature.lenswright.idle` | boss · voices | 0.48 | 2.45 | creature(lenswright, 'idle') | A great floating glass lens humming softly: a low glassy resonance, faint crystal pendants tinkling against each other |
+| `creature.lenswright.iris` | boss · voices | 0.64 | 0.90 | EventCues | A camera iris of brass leaves opening: a smooth mechanical ratcheting whir and a rising glassy hum |
+| `creature.lenswright.lance` | boss · voices | 0.88 | 1.11 | lenswright | A searing beam of focused light firing: a bright electric hiss and a roaring crackle of burning air, short and intense |
+| `creature.lenswright.lock` | boss · voices | 0.72 | 0.80 | lenswright | A precise brass mechanism locking into place with a sharp click, then a high glassy whine charging up |
+| `creature.lenswright.roar` | boss · voices | 0.80 | 1.41 | EventCues | A giant glass lens resonating like a struck bell: a deep ringing glass tone swelling, crystal pendants chiming wildly |
 | **creature-leviathan** | | | | | |
 | `creature.leviathan.alert` | boss · voices | 0.80 | 2.86 / 2.89 | leviathan, Enemies, creature(leviathan, 'alert') | A colossal sea serpent's deep bellowing roar rising from underwater, churning water and huge bubbles |
 | `creature.leviathan.death` | boss · voices | 0.88 | 2.51 | Enemies, creature(leviathan, 'death') | A colossal sea serpent dying: a long agonized deep roar sinking into gurgling water and a heavy final splash |
@@ -444,6 +468,22 @@ cue).
 | `creature.rillback.lunge` | creature · voices | 0.21 | 0.45 / 0.27 | Enemies | A fast eel lunge through water, a sharp wet whoosh and snap, short |
 | `creature.rillback.move` | creature · voices | 0.10 | 0.77 / 0.79 / 0.80 | audio.worldSound(), audio.slither() | A slippery eel wriggling through wet silt, a slithering squish, short |
 | `creature.rillback.windup` | creature · voices | 0.21 | 0.52 / 0.60 | Enemies | An eel coiling tight in water, a wet tensing slither and a low hiss, short |
+| **creature-rimewarden** | | | | | |
+| `creature.rimewarden.alert` | boss · voices | 0.88 | 1.81 | Enemies, creature(rimewarden, 'alert') | A giant frozen iron automaton waking: thick ice cracking loudly off rusted iron joints, a deep hollow metal groan rising |
+| `creature.rimewarden.breath` | boss · voices | 0.80 | 1.76 | rimeWarden | A blast of freezing breath: a roaring icy wind spraying frost, water crackling as it freezes solid |
+| `creature.rimewarden.creak` | boss · voices | 0.56 | 0.85 | EventCues | Frozen iron arms raised overhead: ice creaking and cracking under strain, a slow metallic groan building |
+| `creature.rimewarden.death` | boss · voices | 0.96 | 2.97 | Enemies, creature(rimewarden, 'death') | A giant frozen automaton collapsing: a long cascade of ice shattering and sliding off iron, a final hollow metal groan and chunks of ice clattering onto stone |
+| `creature.rimewarden.glance` | boss · voices | 0.48 | 0.35 / 0.35 | rimeWarden | A blow glancing off a thick sheet of hard ice: a short bright dull tink with a faint crystalline ring, very short, dry |
+| `creature.rimewarden.hail` | boss · voices | 0.72 | 0.71 | rimeWarden | Chunks of ice torn off a frozen giant's shoulders and hurled: a cracking rip and a sharp whoosh of hailstones flying |
+| `creature.rimewarden.hurt` | boss · voices | 0.64 | 0.57 | creature(rimewarden, 'hurt') | A frozen iron giant struck: a dull metal clank and ice cracking, a short hollow groan |
+| `creature.rimewarden.idle` | boss · voices | 0.56 | 2.45 | creature(rimewarden, 'idle') | A huge frozen iron automaton standing still: slow creaking of thick ice under strain, a faint cold wind hiss and a tiny tinkle of frost |
+| `creature.rimewarden.inhale` | boss · voices | 0.64 | 1.37 | EventCues | A huge frozen machine drawing in a long deep breath: a rising cold wind rushing inward through iron bellows, frost crackling |
+| `creature.rimewarden.roar` | boss · voices | 0.92 | 1.79 | EventCues | A giant frozen iron automaton roaring: a deep grinding metal bellow, the ceiling's icicles cracking loose and tinkling |
+| `creature.rimewarden.shatter` | boss · voices | 0.88 | 1.03 | rimeWarden | A thick plate of ice armour shattering off iron: a sharp explosive crack of ice and a spray of glassy shards tinkling onto stone |
+| `creature.rimewarden.slam` | boss · voices | 0.80 | 1.02 | rimeWarden | Two huge ice-armoured fists smashing a frozen stone floor: a heavy crunching impact and a burst of ice spikes cracking up out of the ground |
+| `creature.rimewarden.step` | boss · voices | 0.64 | 0.39 / 0.24 | creature(rimewarden, 'step') | A heavy iron foot armoured in ice stamping on a frosted stone floor: a deep thud with a crunch of ice, short |
+| `creature.rimewarden.stomp` | boss · voices | 0.88 | 0.81 | rimeWarden | A giant stamping a frozen floor: a deep thud and a crackling ripple of ice racing away across the ground |
+| `creature.rimewarden.thaw` | boss · voices | 0.72 | 1.08 | rimeWarden | A slab of ice sliding off a warm iron body: wet slushy cracking, a hiss of steam and a splash of meltwater |
 | **creature-rootloper** | | | | | |
 | `creature.rootloper.alert` | creature · voices | 0.21 | 0.77 / 0.97 | creature(rootloper, 'alert') | A wooden root creature's low groaning creak rising to a rasping hiss, short |
 | `creature.rootloper.attack` | creature · voices | 0.23 | 0.60 / 0.30 | creature(rootloper, 'attack') | A whip of wooden roots lashing out: a whooshing swipe and a fibrous crack, short |
@@ -524,9 +564,16 @@ cue).
 | `flora.whoosh` | impact · fx | 0.40 | 0.88 / 0.87 | EventCues | A leafy tree crown rushing down through the air: a heavy swelling whoosh of branches and thousands of leaves, short |
 | **org-ashmoth** | | | | | |
 | `organism.ashmoth.flare` | critter · ambience | 0.21 | 0.48 / 0.48 | EventCues | A moth flying into a flame: a tiny bright fizzing flare and a papery crackle, short |
+| **org-brineskater** | | | | | |
+| `organism.brineskater.scatter` | critter · ambience | 0.12 | 0.60 / 0.53 | EventCues | Several small water striders darting away across a still pool: a quick light patter of tiny ripples, quiet, short |
 | **org-emberbeetle** | | | | | |
 | `organism.emberbeetle.crunch` | critter · ambience | 0.10 | 0.48 / 0.48 | crawler | A small beetle crunching a lump of coal: a dry gritty crunch with a faint ember crackle, quiet, short |
 | `organism.emberbeetle.pop` | creature · voices | 0.14 | 0.48 / 0.33 | crawler | A tiny ember-filled beetle popping: a small crackling pop and a spray of sizzling sparks, short |
+| **org-frostmite** | | | | | |
+| `organism.frostmite.curl` | creature · voices | 0.12 | 0.39 / 0.40 | EventCues | A tiny frost-covered mite curling up: a quick dry clicking of icy chitin plates and a faint tinkle of frost, very short |
+| `organism.frostmite.eat` | critter · ambience | 0.09 | 0.48 | EventCues | A tiny insect nibbling rime off cold stone: a delicate crisp crunching of frost crystals, quiet, short |
+| **org-glassbeetle** | | | | | |
+| `organism.glassbeetle.curl` | creature · voices | 0.14 | 0.40 / 0.31 | EventCues | A small beetle with a glassy shell tucking up: quick bright clicks of glass plates, very short, dry |
 | **org-glowworm** | | | | | |
 | `organism.glowworm.lower` | critter · ambience | 0.12 | 0.77 / 0.79 | EventCues | A fine luminous silk thread paying out slowly: a soft thin stretching creak and a faint glassy twinkle, quiet, short |
 | `organism.glowworm.retract` | creature · voices | 0.23 | 0.48 / 0.47 | EventCues | A sticky beaded thread reeled up fast: a quick high silky zip and a faint glassy rattle of beads, short |
@@ -538,6 +585,11 @@ cue).
 | `organism.leech.drink` | creature · voices | 0.12 | 0.48 / 0.45 | EventCues | A leech drinking: a small wet sucking slurp, quiet, close-miked, short |
 | `organism.leech.latch` | creature · voices | 0.29 | 0.42 / 0.35 | EventCues | A leech fastening onto skin: a wet sucking smack, close-miked, short |
 | `organism.leech.shed` | creature · voices | 0.17 | 0.58 / 0.30 | EventCues | A swollen leech letting go: a wet slurping pop and a soft plop into water, short |
+| **org-lensmite** | | | | | |
+| `organism.lensmite.curl` | creature · voices | 0.12 | 0.35 | EventCues | A tiny mite curling up on glass: a faint dry click and a tick against a glass pane, very short |
+| `organism.lensmite.eat` | critter · ambience | 0.10 | 0.39 / 0.46 | EventCues | A tiny mite chewing a pane of glass: a fine gritty scratching of glass grinding to sand, quiet, short |
+| **org-prismmoth** | | | | | |
+| `organism.prismmoth.flare` | critter · ambience | 0.17 | 0.48 / 0.48 | EventCues | A glittering moth flying into a flame: a tiny bright crystalline fizz with a faint shimmering chime, short |
 | **org-puffer** | | | | | |
 | `organism.puffer.burst` | creature · voices | 0.29 | 0.66 / 0.45 | EventCues | A swollen fungal spore sac bursting: a wet rubbery pop and a soft rushing hiss of gas spilling out, short |
 | `organism.puffer.swell` | creature · voices | 0.12 | 0.74 / 0.77 | EventCues | A fungal bladder swelling tight: a soft rubbery stretching creak and a faint wheezing hiss, quiet, short |
@@ -548,6 +600,8 @@ cue).
 | `organism.snapjaw.snap` | creature · voices | 0.27 | 0.33 / 0.25 | EventCues | Huge carnivorous plant jaws slamming shut: a sharp wet woody clack with a fibrous whip crack, short, punchy |
 | `organism.snapjaw.tear` | creature · voices | 0.21 | 0.60 / 0.28 | snapjaw | A fleshy plant pod torn apart: a wet fibrous rip and a spatter of sap, short |
 | `organism.snapjaw.tell` | creature · voices | 0.21 | 0.60 / 0.60 | snapjaw | A carnivorous plant pod quivering open to strike: a wet fibrous creak and a low rattling hiss of tension, short |
+| **org-snowmoth** | | | | | |
+| `organism.snowmoth.flare` | critter · ambience | 0.17 | 0.48 / 0.48 | EventCues | A pale frosted moth flying into a flame: a tiny soft hiss of melting frost and a papery fizz, short |
 | **player** | | | | | |
 | `flask.dry` | player · fx | 0.14 | 0.48 / 0.48 | Flask | A hollow tap on an empty glass bottle, a dull clink, short, dry |
 | `flask.pour.loop` ⟲ | loop · fx | 0.27 | 3.00 | Flask | Continuous stream of liquid pouring out of a glass flask onto stone, glugging and splattering |
@@ -565,6 +619,13 @@ cue).
 | `pickup.key` | pickup · ui | 0.52 | 0.73 / 0.66 | Pickups, audio.keyJingle() | A heavy golden key picked up, a bright metallic jingle with a sparkle, short |
 | `pickup.leg` | pickup · ui | 0.25 | 0.49 | Pickups | Grabbing a long severed insect leg, a dry chitin rattle and a hollow knock, short |
 | `pickup.potion` | pickup · ui | 0.31 | 0.79 / 0.72 | audio.drinkPotion() | Drinking a potion in three quick gulps, then a small satisfied glassy fizz, short |
+| `player.chill.breath` | player · fx | 0.12 | 1.00 / 0.99 / 1.00 | EventCues | A man's shaky shivering exhale through chattering teeth in freezing cold, quiet, close-miked, wordless |
+| `player.chill.crack` | player · fx | 0.21 | 0.45 / 0.42 / 0.42 | EventCues | A sheet of ice cracking under strain: a sharp glassy snap with a short splintering tail, close, dry |
+| `player.chill.crackle` | player · fx | 0.15 | 0.55 / 0.47 / 0.53 | EventCues | Ice crystals forming on a wool coat: a few quick tiny crystalline crackles and glassy ticks, very close, delicate, dry, short |
+| `player.chill.shatter` | player · fx | 0.36 | 1.36 / 1.00 | EventCues | A shell of ice bursting apart off a body: a loud crystalline shatter, chunks of ice and snow thumping down, tinkling shards, close, dry |
+| `player.chill.shell` | player · fx | 0.32 | 0.99 / 0.98 | EventCues | Water freezing solid around a body in an instant: a fast rising crystalline crackle that locks into a hard glassy crunch, close, dry |
+| `player.chill.thaw` | player · fx | 0.24 | 1.92 / 1.99 | EventCues | Frost cracking and sliding off a heavy coat, then a warm soft sigh of relief with meltwater dripping, gentle, close |
+| `player.chill.wind` ⟲ | loop · ambience | 0.34 | 6.00 | Chill | A cold draft howling softly through old iron pipes, with the slow creak and groan of thick ice under strain and faint ice ticks, bleak and continuous, no music |
 | `player.club.hit` | player · fx | 0.26 | 0.37 / 0.48 | LooseWeaverLeg, WeaverLimbs | A hard chitinous club smashing into a body, a crunchy thwack with a crack, short, punchy |
 | `player.club.swing` | player · fx | 0.19 | 0.48 / 0.48 | WeaverLimbs | A long bony insect leg swung like a club, a heavy whooshing swipe through the air, short |
 | `player.club.throw` | player · fx | 0.19 | 0.60 | LooseWeaverLeg | A long object hurled end over end, a whirring spinning whoosh, short |
@@ -576,10 +637,10 @@ cue).
 | `player.dive` | player · fx | 0.21 | 0.38 / 0.46 | Player | A body dropping fast: a quick rising air whoosh with a cloak flapping, short |
 | `player.drink` | player · fx | 0.19 | 0.21 / 0.35 / 0.48 | Player | A single gulp of liquid swallowed from a glass flask, close-miked, short |
 | `player.gear` | step · fx | 0.05 | 0.45 / 0.45 / 0.45 | audio.worldSound() | Small glass phials clinking softly together in a leather satchel with a light cloak rustle, one step, short |
-| `player.glowseed` | player · fx | 0.14 | 0.48 / 0.48 | LivingExpedition | A small seed pod tossed with a soft whoosh and a faint magical twinkle, short |
+| `player.glowseed` | player · fx | 0.14 | 0.48 / 0.48 | LivingExpedition, PellCamp | A small seed pod tossed with a soft whoosh and a faint magical twinkle, short |
 | `player.grab` | player · fx | 0.14 | 0.48 / 0.48 | Player | Gloved hands slapping onto a rough rock wall and gripping, a leather scrape, short, close-miked |
-| `player.heal` | player · fx | 0.14 | 0.48 / 0.48 | Player | A soft warm magical sparkle absorbed, a gentle rising glimmer, very short |
-| `player.heartbeat` | player · fx | 0.32 | 0.72 / 0.72 | DeathCinema, audio.heartbeat() | Two deep heavy heartbeat thumps, lub-dub, muffled, close, low frequency |
+| `player.heal` | player · fx | 0.14 | 0.48 / 0.48 | Player, PellCamp | A soft warm magical sparkle absorbed, a gentle rising glimmer, very short |
+| `player.heartbeat` | player · fx | 0.32 | 0.72 / 0.72 | Chill, DeathCinema, audio.heartbeat() | Two deep heavy heartbeat thumps, lub-dub, muffled, close, low frequency |
 | `player.hurt` | player · fx | 0.51 | 0.46 / 0.48 / 0.49 | audio.hurt() | A man's short pained grunt, surprised, wordless, close-miked, dry |
 | `player.jump` | player · fx | 0.11 | 0.24 / 0.31 / 0.26 | audio.jump() | A short cloak whoosh with a light boot scuff as someone jumps, quick, close-miked, dry |
 | `player.kick` | player · fx | 0.32 | 0.60 / 0.60 | Player | A forceful kick: a sharp gust of air and a low thump of force, short, punchy |
@@ -670,6 +731,7 @@ cue).
 | `ui.close` | ui · ui | 0.10 | 0.68 / 0.24 | UiSounds | A leather-bound ledger closing with a soft padded thump and a brass clasp clicking shut, short, dry, close-miked |
 | `ui.coins` | ui · ui | 0.17 | 0.77 / 0.85 | Sanctum | A small handful of gold coins counted onto a brass counter, bright clinks settling, short, close-miked, dry |
 | `ui.curtain` | ui · ui | 0.19 | 1.45 / 1.45 | DeathCinema, UiSounds | A heavy velvet theatre curtain swept open with a deep soft whoosh and a low distant boom |
+| `ui.door.choose` | ui · ui | 0.19 | 0.87 / 0.80 | Sanctum | A heavy old wooden door latch lifting with a brass clack, and a short low resonant chime like a stairwell answering, dry |
 | `ui.grimoire` | ui · ui | 0.17 | 1.29 / 1.24 | UiSounds | A quill pen scratching a quick flourish on parchment, followed by a soft warm magical glimmer chime, short |
 | `ui.hint` | ui · ui | 0.14 | 0.50 / 0.60 | UiSounds | A single parchment page turned quickly, a soft paper flick, short, close-miked, dry |
 | `ui.hover` | ui · ui | 0.04 | 0.12 / 0.12 / 0.12 | UiSounds | A tiny soft brass tick, a fingertip lightly tapping a small brass switch, extremely short, dry, close-miked, subtle interface hover sound |
@@ -730,12 +792,13 @@ cue).
 | `light.photocell.latch` | mechanism · fx | 0.52 | 0.54 / 0.36 | EventCues | A brass lens clicking home as it fills with light: a crisp metallic latch, a bright glassy chime ringing out and a tiny crackle of sparks, short |
 | `light.photocell.loop` ⟲ | loop · fx | 0.20 | 3.00 | Mechanisms | Continuous soft warm electrical hum of a brass lens gathering light, a faint singing glassy resonance, steady |
 | `mat.acid.loop` ⟲ | loop · ambience | 0.20 | 3.00 | HabitatAudio (material scan) | Continuous acid fizzing and dissolving, a bubbling sizzle |
+| `mat.brine.fizz` | material · fx | 0.24 | 0.80 / 0.80 | brine | Salt water eating into ice: a soft wet fizzing crackle and a faint tinkle of melting ice, quiet, short |
 | `mat.bubble` | material · ambience | 0.22 | 0.36 / 0.39 / 0.48 | audio.bubble() | A single thick bubble bursting in a bubbling cauldron, blub, short |
 | `mat.drip` | critter · ambience | 0.15 | 0.66 / 0.48 / 0.71 / 0.46 | audio.drip() | A single water drop falling into a still underground pool, a clear plink with a cave echo |
 | `mat.electric.loop` ⟲ | loop · ambience | 0.20 | 3.00 | HabitatAudio (material scan) | Continuous electric crackling, arcing static buzz on metal |
 | `mat.fire.loop` ⟲ | loop · ambience | 0.27 | 3.00 | HabitatAudio (material scan) | Continuous crackling bonfire, roaring flames and popping wood |
 | `mat.fuse.loop` ⟲ | loop · fx | 0.27 | 3.00 | HabitatAudio (material scan) | Continuous black powder fuse burning, fizzing and sputtering sparks |
-| `mat.hollow` | impact · fx | 0.42 | 0.31 / 0.60 | audio.hollowKnock() | A hollow knock on a thin stone wall with an empty cavity behind it, resonant, short |
+| `mat.hollow` | impact · fx | 0.42 | 0.31 / 0.60 | KilnEscape, audio.hollowKnock() | A hollow knock on a thin stone wall with an empty cavity behind it, resonant, short |
 | `mat.ignite` | material · fx | 0.29 | 0.63 / 0.84 | RigidBodies, audio.brazier(), audio.flame() | Fire catching with a whoosh, a brazier bursting into flame, short |
 | `mat.lava.loop` ⟲ | loop · ambience | 0.27 | 3.00 | HabitatAudio (material scan) | Continuous thick bubbling molten lava, slow heavy gloops and a low hot rumble |
 | `mat.shatter` | material · fx | 0.41 | 0.72 / 0.79 / 0.80 | audio.shatter() | Glass and ice breaking: a bright crack and a cascade of tinkling shards, short |
@@ -743,7 +806,7 @@ cue).
 | `mat.splash.big` | material · fx | 0.22 | 0.78 / 0.80 | audio.splash() | A heavy body plunging into a deep pool, a big splash and slosh, short |
 | `mat.splash.small` | material · fx | 0.10 | 0.60 / 0.60 / 0.59 | audio.splash() | A small object splashing into water, a short splash |
 | `mat.squelch` | material · fx | 0.31 | 0.52 / 0.60 / 0.55 | audio.squelch() | A wet slimy squelch, gooey and organic, short |
-| `mat.steam` | material · fx | 0.20 | 0.80 / 0.80 / 0.80 | audio.steam() | Water flashing to steam on hot lava: an airy sharp hiss, short |
+| `mat.steam` | material · fx | 0.20 | 0.80 / 0.80 / 0.80 | EventCues, audio.steam() | Water flashing to steam on hot lava: an airy sharp hiss, short |
 | `mat.steam.loop` ⟲ | loop · ambience | 0.20 | 3.00 | HabitatAudio (material scan) | Continuous steam hissing from vents, a soft airy roar |
 | `mat.water.loop` ⟲ | loop · ambience | 0.24 | 3.00 | HabitatAudio (material scan) | Continuous water flowing and trickling over stones in a cave |
 | `mat.zap` | material · fx | 0.26 | 0.48 / 0.48 / 0.48 | audio.zap() | An electric arc zap: a sharp crackling buzz, short |
@@ -751,8 +814,8 @@ cue).
 | `mech.cauldron` | mechanism · fx | 0.31 | 1.20 | Brewing | A cauldron brew completing: a rich bubbling surge and a bright magical chime pop |
 | `mech.counterweight` | mechanism · fx | 0.38 | 1.00 | Mechanisms | A heavy iron counterweight dropping with a rattling chain and a deep clunk |
 | `mech.dispenser` | mechanism · fx | 0.28 | 0.42 | Mechanisms | A hatch dropping open and a crate tumbling out with a thud, short |
-| `mech.door` | mechanism · fx | 0.38 | 1.30 / 1.44 | audio.doorGrind() | A heavy iron door grinding along stone rails, a rumbling scrape ending in a clank |
-| `mech.grip` | mechanism · fx | 0.24 | 0.46 | Mechanisms | A gloved hand gripping a cold iron handle, a leather squeak and a metal tap, short |
+| `mech.door` | mechanism · fx | 0.38 | 1.30 / 1.44 | KilnEscape, audio.doorGrind() | A heavy iron door grinding along stone rails, a rumbling scrape ending in a clank |
+| `mech.grip` | mechanism · fx | 0.24 | 0.46 | Mechanisms, EchoStage | A gloved hand gripping a cold iron handle, a leather squeak and a metal tap, short |
 | `mech.groan` | mechanism · fx | 0.32 | 1.42 / 1.42 | audio.groan() | A large broken machine groaning: a deep metal creak and strained grinding, ominous |
 | `mech.latch` | mechanism · fx | 0.35 | 0.15 | Mechanisms | An electrical relay snapping shut: a metallic clack with a sharp electric zap, short |
 | `mech.lever` | mechanism · fx | 0.22 | 0.60 / 0.60 | audio.lever() | A heavy iron lever thrown with a ratcheting clunk, mechanical, short |
@@ -765,7 +828,7 @@ cue).
 | `mech.sensor` | mechanism · fx | 0.24 | 0.38 | Mechanisms | A soft brass mechanism tick engaging, short, quiet |
 | `mech.sequence.fail` | mechanism · fx | 0.35 | 0.60 | Mechanisms | A sour mechanical buzz and a clunk of gears resetting, short |
 | `mech.sequence.step` | mechanism · fx | 0.35 | 0.60 | Mechanisms | A single clear brass chime tone, bright and short |
-| `mech.shrine` | mechanism · fx | 0.24 | 1.00 | Mechanisms | A soft warm humming chime of a small shrine, gentle and quiet, short |
+| `mech.shrine` | mechanism · fx | 0.24 | 1.00 | Mechanisms, EchoStage, StoryDirector | A soft warm humming chime of a small shrine, gentle and quiet, short |
 | `mech.vault` | mechanism · fx | 0.38 | 0.84 | Mechanisms | A heavy vault door unsealing: a hiss of air, bolts retracting and a deep stone rumble |
 | `organism.fish.flop` | critter · ambience | 0.10 | 0.30 / 0.30 | Critters | A small fish flopping once on wet stone, a tiny wet slap, short, close-miked |
 | `organism.fish.scatter` | critter · ambience | 0.15 | 0.65 / 0.51 | EventCues | A small school of fish darting away underwater: a quick muffled flurry of fins and a burst of tiny bubbles, short |
