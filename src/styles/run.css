@@ -301,6 +301,16 @@ body.run-summary-open #game-hud { opacity: 0; transition: opacity 0.4s ease; }
 .sanc-door.passed { opacity: 0.55; }
 .sanc-door.passed:hover { opacity: 0.85; }
 @media (prefers-reduced-motion: reduce) { .sanc-door, .sanc-door:hover { transition: none; transform: none; } }
+@media (max-height: 820px) {
+  .sanc-teaser { padding: 11px 14px; gap: 10px 20px; }
+  .sanc-doors { margin-top: 2px; }
+  .sanc-door { padding: 10px 13px 11px; gap: 4px; }
+  .sanc-door .sanc-below-name { font-size: calc(22px * var(--text-scale, 1)); }
+  .sanc-door .sanc-below-line { font-size: calc(13.5px * var(--text-scale, 1)); line-height: 1.35; }
+  .sanc-below-facts { margin-top: 3px; gap: 2px 10px; }
+  .sanc-door .sanc-below-facts { font-size: calc(12px * var(--text-scale, 1)); }
+  .sanc-phials { gap: 6px; }
+}
 @media (max-width: 720px) {
   .sanc-teaser { grid-template-columns: 1fr; }
   .sanc-phials { padding-left: 0; border-left: 0; justify-items: start; }

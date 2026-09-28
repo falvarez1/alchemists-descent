@@ -133,6 +133,20 @@ body.play-active #interaction-hint.world-anchor.wide { max-width: 260px; white-s
   #player-settings h2 { font-size: calc(30px * var(--text-scale)); }
   #sound-caption { font-size: calc(10px * var(--text-scale)); }
 }
+/* 1280x720 and other short screens: the whole title menu fits without an inner
+   scrollbar, and the footer never sits on "Watch the trailer" (QA). */
+@media (max-height: 820px) and (min-height: 601px) {
+  .entry-content { margin-top: clamp(20px, 3.4vh, 40px); margin-bottom: 44px; }
+  .entry-content h1 { font-size: clamp(52px, 9.4vh, 96px); margin-bottom: 18px; }
+  .entry-content p { margin-bottom: 14px; }
+  .entry-content p.entry-subtitle { margin-bottom: 12px; }
+  .entry-content button, .entry-workshops summary { padding: 7px 0; }
+  .entry-content nav { gap: 4px; }
+  .entry-content .entry-kits { margin: 2px 0 6px; }
+  .entry-content nav .entry-daily, .entry-content nav .entry-workshop { padding-top: 6px; padding-bottom: 6px; }
+  .entry-content .entry-status { min-height: 20px; margin: 6px 0; }
+  .entry-workshops { margin-top: 4px; }
+}
 @media (max-height: 600px) {
   .entry-content { margin-top: 28px; margin-bottom: 70px; }
   .entry-content h1 { font-size: 56px; margin-bottom: 15px; }

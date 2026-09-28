@@ -518,6 +518,22 @@ body.play-active #descend-btn, #descend-btn {
 body.play-active #descend-btn:hover:not(:disabled), #descend-btn:hover:not(:disabled) { background: #ebddba; color: #0f1b1d; box-shadow: none; }
 body.play-active #descend-btn:disabled, #descend-btn:disabled { background: none; border-color: var(--m-line-strong); color: var(--m-muted); opacity: 1; cursor: not-allowed; }
 #descend-btn:focus-visible { outline: 2px solid var(--m-mint); outline-offset: 3px; }
+/* Short screens (1280x720 and the like): both required choices, the boon and
+   the door, and the button that waits on them sit in view without scrolling
+   (QA: at 720 p "Choose a boon" was below the fold while the button asked for one).
+   Only the optional provisions may scroll. */
+@media (max-height: 820px) {
+  body.play-active #sanctum-overlay, #sanctum-overlay { padding: 12px 5%; }
+  .sanc-head { padding: 14px 24px 10px; }
+  body.play-active #sanctum-overlay .sanc-title, #sanctum-overlay .sanc-title { font-size: calc(30px * var(--text-scale, 1)); }
+  body.play-active #sanctum-overlay .sanc-sub, #sanctum-overlay .sanc-sub { margin-top: 4px; }
+  .sanc-body { padding: 12px 24px 14px; gap: 14px; }
+  .sanc-section { gap: 8px; }
+  body.play-active #sanctum-overlay .sanc-heading, #sanctum-overlay .sanc-heading { font-size: calc(19px * var(--text-scale, 1)); }
+  body.play-active .perk-card, .perk-card { min-height: 0; padding: 10px 14px 11px; gap: 4px; }
+  body.play-active .perk-card .pk-name, .perk-card .pk-name { font-size: calc(19px * var(--text-scale, 1)); }
+  .sanc-foot { padding: 10px 24px; }
+}
 @media (max-width: 760px), (max-height: 620px) {
   .sanc-head { padding: 14px 18px 12px; }
   body.play-active #sanctum-overlay .sanc-title, #sanctum-overlay .sanc-title { font-size: calc(30px * var(--text-scale, 1)); }

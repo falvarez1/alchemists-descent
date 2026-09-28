@@ -189,6 +189,10 @@ body.runtime-inspector-open #viewport-container {
 #canvas-holder {
     border: 2px solid var(--panel-border); border-radius: 8px; box-shadow: 0 30px 70px rgba(0,0,0,0.9);
     overflow: hidden; background: #000; position: relative;
+    /* clip, not just hidden: a hidden box is still a scroll container, and the
+       parked letterbox bar below the frame let any focus()/scrollIntoView slide
+       the whole game view up 18 px for good (QA). A clipped box never scrolls. */
+    overflow: clip;
     width: min(100%, calc((100vh - 110px) * 1.4706));
     aspect-ratio: 1050 / 714;
 }
