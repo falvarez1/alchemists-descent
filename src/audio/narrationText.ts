@@ -36,3 +36,19 @@ export function narrationKey(text: string): string {
 export function arrivalLine(floorName: string, epigraph: string): string {
   return `${floorName}. ${epigraph}`;
 }
+
+/**
+ * A story line's recording key. The Docent is the narrator, so his lines key
+ * by their text alone (one recording serves a pipe and a toast alike); Pell
+ * and Matron Ash key by speaker and text, so the same words in another mouth
+ * are another recording.
+ */
+export function speakerKey(speaker: string | undefined, text: string): string {
+  return !speaker || speaker === 'docent' ? narrationKey(text) : narrationKey(`${speaker}: ${text}`);
+}
+
+/** Seconds a caption stays readable when no recording carries it (≈ 2.6 words/s, never under 2 s). */
+export function readingSeconds(text: string): number {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(2, Math.min(9, 0.9 + words * 0.38));
+}

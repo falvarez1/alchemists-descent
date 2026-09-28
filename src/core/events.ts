@@ -1,5 +1,6 @@
 import type { CardId, EnemyKind, TimeControlStatus } from '@/core/types';
 import type { AlchemyKillInfo, RunSummary } from '@/core/run';
+import type { StoryCinemaView, StoryDialogueView, StorySpeaker } from '@/core/story';
 
 /** What an organism just did (the `organism` event). */
 export type OrganismAction =
@@ -159,8 +160,13 @@ export interface EventMap {
   runEnded: RunSummary;
   /** The music director changed cue (audio/MusicDirector): the narrator and probes listen. */
   musicCue: { cue: string | null; previous: string | null };
-  /** The narrator began a line. `captioned`: it has no on-screen text of its own, so the caption shows it. */
-  narration: { text: string; seconds: number; captioned: boolean };
+  /** The narrator began a line. `captioned`: it has no on-screen text of its own, so the caption shows it.
+   *  `speaker`: a story line's voice (the caption wears its name plate); `silent`: no recording played. */
+  narration: { text: string; seconds: number; captioned: boolean; speaker?: StorySpeaker; silent?: boolean };
+  /** STORY: the dialogue box's state (game/story publishes, ui/story/DialogueBox shows). */
+  storyDialogue: StoryDialogueView;
+  /** STORY: a cinematic's plates (the opening, the ending; ui/story/StoryCinema paints them). */
+  storyCinema: StoryCinemaView;
   /** Return phials changed (death spent one, a refuge/Sanctum restored one). */
   phialsChanged: { phials: number; max: number; reason: 'start' | 'death' | 'refuge' | 'sanctum' | 'restore' };
   /** Something asked for the last seconds of play to be saved as a clip. */
