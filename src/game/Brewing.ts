@@ -36,6 +36,12 @@ const HEAT_HALF_W = 6;
 const HEAT_TOP = -2;
 const HEAT_BOTTOM = 4;
 
+/** The cauldron's notices speak to someone standing at it (QA: settling drips
+ *  into an untended basin toasted "NEEDS HEAT" every 2 s from across the floor). */
+const HINT_RADIUS = 90;
+/** The same notice again only after this long (frames); a new one at once. */
+const HINT_REPEAT_FRAMES = 720;
+
 /** Sustained heat+ingredient sampler ticks (1 tick per 4 frames) to finish a brew. */
 const BREW_TICKS_REQUIRED = 90;
 export { GRIMOIRE_KEY, loadDiscoveredRecipes } from '@/core/grimoireStore';
@@ -116,7 +122,9 @@ export class Brewing {
   }
 
   private emitHint(ctx: Ctx, text: string): void {
-    if (this.lastHintText === text && ctx.state.frameCount - this.lastHintFrame < 120) return;
+    const cauldron = ctx.levels.current?.cauldron;
+    if (cauldron && Math.hypot(ctx.player.x - cauldron.x, ctx.player.y - cauldron.y) > HINT_RADIUS) return;
+    if (this.lastHintText === text && ctx.state.frameCount - this.lastHintFrame < HINT_REPEAT_FRAMES) return;
     this.lastHintText = text;
     this.lastHintFrame = ctx.state.frameCount;
     ctx.events.emit('toast', { text });

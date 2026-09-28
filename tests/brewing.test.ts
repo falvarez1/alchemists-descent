@@ -16,6 +16,7 @@ function makeCtx(world: World, levelId = 'd1'): Ctx {
     world,
     state: { mode: 'play', frameCount: 0, score: 0 },
     levels: { current: { def: { id: levelId }, cauldron: CAULDRON } },
+    player: { x: CAULDRON.x + 12, y: CAULDRON.y }, // standing at the cauldron
     particles: {
       spawn: () => undefined,
       burst: () => undefined,
@@ -132,5 +133,27 @@ describe('brewing progress', () => {
       event: 'recipeBrewed',
       payload: { id: 'life', name: 'ELIXIR OF LIFE', firstDiscovery: false },
     });
+  });
+});
+
+describe('cauldron notices', () => {
+  it('speak to someone standing at the cauldron, and do not nag', () => {
+    const brewing = new Brewing();
+    const world = new World();
+    const toasts: string[] = [];
+    const ctx = {
+      ...makeCtx(world),
+      events: { emit: (event: string, payload: { text?: string }) => { if (event === 'toast' && payload.text) toasts.push(payload.text); } },
+    } as unknown as Ctx;
+    setBasin(world, Array<Cell>(6).fill(Cell.Water)); // settling drips over the burner: no recipe
+    const run = (frames: number): void => {
+      for (let i = 0; i < frames; i++) { ctx.state.frameCount++; brewing.update(ctx); }
+    };
+    ctx.player.x = CAULDRON.x + 400; // across the floor: nothing
+    run(1200);
+    expect(toasts).toEqual([]);
+    ctx.player.x = CAULDRON.x + 10; // at the bowl: told once, not every 2 s
+    run(600);
+    expect(toasts).toEqual(['CAULDRON: WRONG MIX']);
   });
 });
