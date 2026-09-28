@@ -182,9 +182,9 @@ const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
   // GEN_VERSION 46 (four floors): the Drowned Cisterns inherit the old flooded
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
-  { id: 'd3', seed: 1337, hash: '571e3b74' }, // GEN_VERSION 55: Pell's camp and the resonant valve's nooks (story stream), over v54's Sump rim
+  { id: 'd3', seed: 1337, hash: 'fdac9e7a' }, // GEN_VERSION 56: the story's nooks + late tunnels routed around sealed features (lair fix), over v54's Sump rim
   { id: 'd4', seed: 1337, hash: '33d82c03' }, // GEN_VERSION 55: the Kiln's old flue behind its damper (the escape) + the story nooks, over v54's Kiln flora
-  { id: 'd2', seed: 42, hash: '33672b9b' }, // GEN_VERSION 55: the story nooks (Pell's camp, the resonant valve), over v53's light puzzles + census + flora
+  { id: 'd2', seed: 42, hash: 'ea16f1fc' }, // GEN_VERSION 56: the story nooks + grove vines from real rock + late tunnels around sealed features, over v53's light puzzles + census + flora
 ];
 
 describe('full generateLevel golden hashes', () => {

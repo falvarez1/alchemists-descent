@@ -268,13 +268,24 @@ recomputes graph/fit data before downstream generation consumers. Each lair
 adds a deferred prefab enemy record plus a `placedPrefabs` footprint for tests,
 runtime inspection, and probes.
 
+A lair is a SEALED feature (GEN 55): its ledger reservation is one of the
+`sealedFootprints` every later tunnel (light-puzzle and flora connectors, both
+gauge-rescue passes) routes around at a steep cost instead of cutting through
+(a flora connector once drained the whole d3 seed-3 pool). The routing is
+fail-open, so the generator also re-asserts the Rillback pool (basin walls,
+floor, liquid) after each rescue pass, as the Leviathan sump does. Grove vines
+are hung last, straight down from the real rock ceiling, so the live sim never
+drops them on arrival.
+
 Validation coverage:
 
 - `tests/gen-level-golden.test.ts` locks the new full-level hashes and checks
   every signature depth across seeds `1`, `42`, and `1337`;
 - `scripts/verify-encounter-lairs.mjs` enters campaign levels in browser,
   checks the live footprint, resident enemy, habitat cells, no-Metal guard, and
-  shared findability errors across seeds `1`, `5`, `1337`, and `42`;
+  shared findability errors across seeds `1`, `2`, `3`, `5`, `7`, `1337`, and
+  `42`. Habitat is read at entry (the deterministic generation truth) and again
+  after a fixed 360 sim steps, counting vine material held by live soft strands;
 - `npm run verify:runtime` includes the encounter-lair probe.
 
 ## Rollout Order
