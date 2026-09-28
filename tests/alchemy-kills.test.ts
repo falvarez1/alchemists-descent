@@ -135,8 +135,8 @@ describe('alchemical kill classification', () => {
       }
       expect(alchemyBonusGold(bounty, 5)).toBe(alchemyBonusGold(bounty, 9));
     }
-    expect(alchemyBonusGold(70, 1)).toBe(30); // 10 + 24.5 -> 34.5 -> 30
-    expect(alchemyBonusGold(70, 3)).toBe(70); // x2
+    expect(alchemyBonusGold(20, 1)).toBe(12); // 4 + 8
+    expect(alchemyBonusGold(20, 3)).toBe(24); // x2
   });
 });
 
@@ -337,6 +337,24 @@ describe('AlchemyKills system', () => {
     alchemy.noteHit(far, 'rendered');
     alchemy.onKill(far);
     expect(kills[0]?.cause).toBe('rendered');
+  });
+
+  it('a death sequence keeps the verdict of the blow that crossed zero (the Colossus, BOWLED)', () => {
+    const { ctx, alchemy, kills } = harness(4000);
+    const colossus = enemy('colossus', { x: 180 });
+    alchemy.noteHit(colossus, 'bowled'); // a hurled corpse lands the killing blow
+    alchemy.sealVerdict(colossus); // ...and the kiln begins to come apart
+    ctx.state.frameCount += 300; // the sequence runs for seconds
+    alchemy.noteHit(colossus, 'burned'); // its own fire licks it meanwhile: not the kill
+    const info = alchemy.onKill(colossus);
+    expect(info?.cause).toBe('bowled');
+    expect(kills).toHaveLength(1);
+    // A wand blow that crossed zero stays the wand's kill, however long the fall.
+    const other = enemy('colossus', { x: 180 });
+    alchemy.noteHit(other, 'direct');
+    alchemy.sealVerdict(other);
+    ctx.state.frameCount += 300;
+    expect(alchemy.onKill(other)).toBeNull();
   });
 
   it('resets the chain when the level changes', () => {

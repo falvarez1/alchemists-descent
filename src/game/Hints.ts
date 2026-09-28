@@ -6,6 +6,7 @@ import { getSeenHints, markHintSeen } from '@/game/hints/seenHints';
 import { corpses } from '@/creatures/corpses';
 import { heldCorpse } from '@/combat/Telekinesis';
 import { getBindings, keyLabel } from '@/input/bindings';
+import { WAYSTONE_HELP_RADIUS, waystoneHelp } from '@/game/waystoneHelp';
 
 /** A teach-once popover body, paired with a contextual hint line. */
 interface Teach {
@@ -124,9 +125,9 @@ export class HintSystem implements HintApi {
     this.teachHeld = held;
   }
 
-  /** No centre beat on screen, and it has been quiet long enough to read. */
+  /** No centre beat on screen (nor a story beat), and it has been quiet long enough to read. */
   private teachCalm(ctx: Ctx): boolean {
-    return !this.teachHeld && ctx.state.frameCount >= this.teachCalmAt;
+    return !this.teachHeld && !ctx.story?.beatActive && ctx.state.frameCount >= this.teachCalmAt;
   }
 
   private teachOnce(ctx: Ctx, key: string, teach: Teach, queue = false): void {
@@ -143,7 +144,9 @@ export class HintSystem implements HintApi {
 
   update(ctx: Ctx): void {
     if (ctx.state.frameCount % 4 !== 0) return;
-    if (ctx.state.mode !== 'play' || ctx.state.paused || ctx.player.dead || !ctx.levels.current) {
+    // A story beat has the stage (Pell, a prologue, an echo, the escape, a cinematic,
+    // Matron Ash): no hint line under it, and no lesson either.
+    if (ctx.state.mode !== 'play' || ctx.state.paused || ctx.player.dead || !ctx.levels.current || ctx.story?.beatActive) {
       this._current = null;
       return;
     }
@@ -265,6 +268,15 @@ export class HintSystem implements HintApi {
       }
     }
 
+    // --- an unlit waystone: how to light it (its teach card is Levels' — once per waystone per floor) ---
+    for (const ws of runtime.waystones) {
+      if (ws.lit) continue;
+      const d2 = (ws.x - px) ** 2 + (ws.y - py) ** 2;
+      if (d2 > WAYSTONE_HELP_RADIUS * WAYSTONE_HELP_RADIUS) continue;
+      consider({ priority: 2.1, dist2: d2, info: { key: 'waystone', line: waystoneHelp(ctx).line, world: { x: ws.x, y: ws.y - 3 } }, teach: null });
+      break;
+    }
+
     // --- the cauldron: brewing ---
     const cauldron = runtime.cauldron;
     if (cauldron) {
@@ -376,11 +388,14 @@ export class HintSystem implements HintApi {
     // Grid scans MUST use integer cell coords: player.x/y are continuous floats,
     // and World.idx doesn't floor, so a fractional index reads undefined and the
     // hint (plus its one-time teach popover) would silently never fire.
+    // Never for a hazard: lava or acid under the boots is not a lesson in bottling
+    // (QA: the escape's rising lava raised "The Flask").
     let liquid: { x: number; y: number; d2: number } | null = null;
     for (let yy = pcy - FLASK_SCAN; yy <= pcy + 2; yy++) {
       for (let xx = pcx - FLASK_SCAN; xx <= pcx + FLASK_SCAN; xx++) {
         if (!w.inBounds(xx, yy)) continue;
-        if (!isLiquid(w.types[w.idx(xx, yy)])) continue;
+        const t = w.types[w.idx(xx, yy)];
+        if (!isLiquid(t) || t === Cell.Lava || t === Cell.Acid) continue;
         const d2 = (xx - px) ** 2 + (yy - py) ** 2;
         if (!liquid || d2 < liquid.d2) liquid = { x: xx, y: yy, d2 };
       }

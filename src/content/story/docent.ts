@@ -29,11 +29,6 @@ export const DOCENT_PIPES: Readonly<Partial<Record<StoryBiome, PipeScript>>> = {
         first: 'The Bellows. The lungs of the Works. They have breathed for a hundred years, and never once asked permission.',
         again: 'The Bellows again. They remember you. I would not take it personally.',
       },
-      sluice: {
-        id: 'pipe.bellows.sluice',
-        first: 'The creatures were not in the Guild’s plans. Then again, neither was most of what happened after.',
-        again: null,
-      },
       gallery: {
         id: 'pipe.bellows.gallery',
         first: 'The Guild built the Tea Engine to settle an argument. Nobody remembers the argument. The tea was excellent.',

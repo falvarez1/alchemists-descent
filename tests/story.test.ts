@@ -104,7 +104,7 @@ describe('the speaking-pipes: which line, once per run', () => {
   });
 
   it('floor 1 names every hand-placed pipe; every floor has something to say', () => {
-    expect(Object.keys(DOCENT_PIPES.earthen!.sites!)).toEqual(['intake', 'sluice', 'gallery', 'refuge', 'undertow', 'bell']);
+    expect(Object.keys(DOCENT_PIPES.earthen!.sites!)).toEqual(['intake', 'gallery', 'refuge', 'undertow', 'bell']);
     for (const biome of STORY_FLOOR_ORDER) expect(pipeBeats(biome).length, biome).toBeGreaterThanOrEqual(2);
   });
 });

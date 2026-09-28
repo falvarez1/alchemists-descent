@@ -27,6 +27,19 @@ const JOURNAL_STYLE = `
 .gj-hear { margin-top: 0.6vh; padding: 0.5vh 1.2vh; border: 1px solid #6a4a26; border-radius: 0.4vh; background: #d8c296; color: #3a2614; font: 600 1.35vh/1 Georgia, serif; cursor: pointer; }
 .gj-hear:hover { background: #ecdcb4; }
 .gj-missing { font-size: 1.3vh; font-style: italic; opacity: 0.6; margin-top: 0.8vh; }
+/* The Journal's pages lay out as a column: the head stays put, the list or the page's
+   lines scroll between it and the foot, and the scroll SHOWS (a fade and a "more"
+   mark) — QA found the right page clipped and "Hear it again" below the fold. */
+#grimoire-overlay.journal .grimoire-page { display: flex; flex-direction: column; overflow: hidden; height: 48%; }
+.gj-head { flex: none; }
+.gj-head .gr-head { font-size: 2.05vh; line-height: 1.15; margin-bottom: 0.5vh; }
+.gj-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 0.4vh; position: relative;
+  scrollbar-width: thin; scrollbar-color: rgba(90, 60, 30, 0.55) transparent; }
+.gj-scroll.more { -webkit-mask-image: linear-gradient(#000 82%, transparent); mask-image: linear-gradient(#000 82%, transparent); }
+.gj-foot { flex: none; display: flex; align-items: center; gap: 1vh; padding-top: 0.6vh; min-height: 3.2vh; }
+.gj-foot .gj-hear { margin-top: 0; }
+.gj-more { font-size: 1.3vh; font-style: italic; opacity: 0; transition: opacity 0.2s; margin-left: auto; white-space: nowrap; }
+.gj-more.on { opacity: 0.75; }
 `;
 
 // Bundled like the backdrop layers (new URL → Vite asset). The authored book art,
@@ -89,6 +102,11 @@ export class Grimoire {
       const item = (e.target as HTMLElement).closest<HTMLButtonElement>('.gj-item:not(.locked)');
       if (item?.dataset.page) { this.journalPick = item.dataset.page; this.render(); }
     });
+    // A scrolled page drops its "more" fade once its end is in view.
+    this.overlay.addEventListener('scroll', (e) => {
+      const el = e.target as HTMLElement;
+      if (el.classList?.contains('gj-scroll')) this.markMore(el);
+    }, true);
     // Click the dimmed backdrop (not the book) to close.
     this.overlay.addEventListener('click', (e) => {
       if (e.target === this.overlay) this.toggle();
@@ -134,6 +152,7 @@ export class Grimoire {
   }
 
   private render(): void {
+    this.overlay.classList.toggle('journal', this.tab === 'journal');
     for (const b of this.tabs.querySelectorAll<HTMLButtonElement>('button')) {
       const on = b.dataset.tab === this.tab;
       b.classList.toggle('on', on);
@@ -179,24 +198,37 @@ export class Grimoire {
     const esc = (t: string): string => t.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
     const found = pages.filter(p => p.unlocked).length;
     if (!this.journalPick || !pages.some(p => p.id === this.journalPick && p.unlocked)) this.journalPick = pages.find(p => p.unlocked)?.id ?? null;
-    let html = `<div class="gr-head">Journal</div><div class="gr-section">${found} of ${pages.length} pages found</div>`;
+    let list = '';
     let group = '';
     for (const p of pages) {
-      if (p.group !== group) { group = p.group; html += `<div class="gj-group">${esc(group)}</div>`; }
-      html += p.unlocked
+      if (p.group !== group) { group = p.group; list += `<div class="gj-group">${esc(group)}</div>`; }
+      list += p.unlocked
         ? `<button type="button" class="gj-item${p.id === this.journalPick ? ' on' : ''}" data-page="${p.id}">${esc(p.title)}${p.missing > 0 && p.kind === 'docent' ? `<small>${p.lines.length}/${p.lines.length + p.missing}</small>` : ''}</button>`
         : `<button type="button" class="gj-item locked" tabindex="-1">— an unread page —</button>`;
     }
-    this.left.innerHTML = html;
+    this.left.innerHTML = `<div class="gj-head"><div class="gr-head">Journal</div><div class="gr-section">${found} of ${pages.length} pages found</div></div>` +
+      `<div class="gj-scroll">${list}</div><div class="gj-foot"><span class="gj-more">more below ▾</span></div>`;
     const page = pages.find(p => p.id === this.journalPick);
     if (!page) {
-      this.right.innerHTML = `<div class="gr-head">Unwritten</div><div class="gr-empty">Listen at the brass speaking-pipes, turn the resonant valves, and sit a while with Pell. The Works remember; this book remembers what they tell you.</div>`;
-      return;
+      this.right.innerHTML = `<div class="gj-head"><div class="gr-head">Unwritten</div></div><div class="gj-scroll"><div class="gr-empty">Listen at the brass speaking-pipes, turn the resonant valves, and sit a while with Pell. The Works remember; this book remembers what they tell you.</div></div>`;
+    } else {
+      // The page: its title, its lines scrolling between, and "Hear it again" always in view at the foot.
+      this.right.innerHTML = `<div class="gj-head"><div class="gr-head">${esc(page.title)}</div></div>` +
+        `<div class="gj-scroll">` +
+        page.lines.map(l => `<p class="gj-line"><b>${esc(SPEAKER_NAMES[l.speaker])}</b><span>${esc(l.text)}</span></p>`).join('') +
+        (page.missing > 0 && page.kind === 'docent' ? `<div class="gj-missing">${page.missing} more ${page.missing === 1 ? 'line waits' : 'lines wait'} in the pipes of this floor.</div>` : '') +
+        `</div><div class="gj-foot"><button type="button" class="gj-hear" data-page="${page.id}">Hear it again</button><span class="gj-more">more below ▾</span></div>`;
     }
-    this.right.innerHTML = `<div class="gr-head">${esc(page.title)}</div>` +
-      page.lines.map(l => `<p class="gj-line"><b>${esc(SPEAKER_NAMES[l.speaker])}</b><span>${esc(l.text)}</span></p>`).join('') +
-      `<button type="button" class="gj-hear" data-page="${page.id}">Hear it again</button>` +
-      (page.missing > 0 && page.kind === 'docent' ? `<div class="gj-missing">${page.missing} more ${page.missing === 1 ? 'line waits' : 'lines wait'} in the pipes of this floor.</div>` : '');
+    // Keep the chosen page in view in the list, and mark whichever side has more below.
+    this.left.querySelector<HTMLElement>('.gj-item.on')?.scrollIntoView({ block: 'nearest' });
+    for (const el of this.overlay.querySelectorAll<HTMLElement>('.gj-scroll')) this.markMore(el);
+  }
+
+  /** A scrolling Journal column with more below its fold fades out at the foot and says so. */
+  private markMore(el: HTMLElement): void {
+    const more = el.scrollHeight - el.scrollTop - el.clientHeight > 4;
+    el.classList.toggle('more', more);
+    el.parentElement?.querySelector('.gj-more')?.classList.toggle('on', more);
   }
 
   dispose(): void {

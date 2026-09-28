@@ -15,6 +15,8 @@ import {
   ENDING_AGAIN,
   ENDING_FIRST,
   OPENING,
+  OPENING_BREATH_SECONDS,
+  OPENING_LEAD_SECONDS,
   OPENING_MAX_SECONDS,
   STORY_FLOOR_NAMES,
   journalEntries,
@@ -35,9 +37,19 @@ import { StoryCinema } from './StoryCinema';
 /** Pipes listen for a passer-by within this (cells, horizontally; the band above the floor below). */
 const PIPE_REACH_X = 30;
 const PIPE_REACH_UP = 64;
+/** Matron Ash's greeting and door line together, at most (s): longer and the door line waits for a look at the door. */
+const ASH_MAX_S = 11;
 /** A pipe passed while the air was taken stays armed this long, and speaks while you are within earshot. */
 const PIPE_ARMED_S = 12;
 const PIPE_EARSHOT = 150;
+/**
+ * Rest between one pipe's line and the next (s, from the end of the last): the
+ * Bellows' pipes, Pell, the echo and the engine's notes came to 17 voiced
+ * lines in three minutes of a first run. A pipe passed during the rest stays
+ * unspoken (and speaks when next passed): a quick run hears the best of them,
+ * a lingering one hears them all.
+ */
+const PIPE_REST_S = 40;
 
 /**
  * THE STORY DIRECTOR (Breathing Works wave 3, WS-S): the narrative spine, in
@@ -178,6 +190,8 @@ export class StoryDirector implements StoryApi {
   private pendingPipe: { key: string; levelId: string; pipeId: string; text: string; beat: string; biome: string; until: number } | null = null;
   /** The floor's arrival (its name, its epigraph) has the air for a moment before any pipe speaks. */
   private pipesQuietUntil = 0;
+  /** The last pipe's line and its rest (PIPE_REST_S): no pipe speaks before this. */
+  private pipeRestUntil = 0;
 
   /* ---------------- the run ---------------- */
 
@@ -210,6 +224,9 @@ export class StoryDirector implements StoryApi {
   private finishAfterEntry = false;
 
   private onLevelChanged(): void {
+    // Descend ends Matron Ash's words (the narrator fades whatever was still
+    // being said: a new floor's title card never has her over it).
+    this.ctx.narrator?.cutSource?.('sanctum-ash');
     this.pell.levelChanged();
     this.echo.levelChanged();
     this.prologue.levelChanged();
@@ -273,8 +290,9 @@ export class StoryDirector implements StoryApi {
     for (const pipe of pipes) {
       if (Math.abs(p.x - pipe.x) <= PIPE_REACH_X && p.y >= pipe.floorY - PIPE_REACH_UP && p.y <= pipe.floorY + 10) this.pipeArmed.set(pipe.id, now + PIPE_ARMED_S);
     }
-    // Never over a scripted beat: the arrival, the echo, Pell or a cinematic has the floor.
-    if (now < this.pipesQuietUntil || this.pendingPipe || this.echo.active || this.pell.talking || this.cinema.active || this.escape.active) return;
+    // Never over a scripted beat: the arrival, the echo, Pell or a cinematic has the floor;
+    // and never straight after another pipe (PIPE_REST_S).
+    if (now < this.pipesQuietUntil || now < this.pipeRestUntil || this.pendingPipe || this.echo.active || this.pell.talking || this.cinema.active || this.escape.active) return;
     if (ctx.narrator?.busy) return;
     const script = DOCENT_PIPES[biome];
     for (const pipe of pipes) {
@@ -300,6 +318,7 @@ export class StoryDirector implements StoryApi {
         this.state = { ...this.state, pipes: this.state.pipes.filter(k => k !== key), spoken: this.state.spoken.filter(b => b !== line.beat.id) };
         continue;
       }
+      this.pipeRestUntil = now + this.lineSeconds({ speaker: 'docent', text: line.text }) + PIPE_REST_S;
       ctx.audio.sfx('mech.shrine', pipe.x, pipe.floorY - 24);
       ctx.particles.burst(pipe.x, pipe.floorY - 20, 6, null, () => 0xc8b894, 0.5, { grav: -0.01 });
       break;
@@ -347,6 +366,17 @@ export class StoryDirector implements StoryApi {
 
   get cinematic(): 'opening' | 'ending' | null { return this.cinema.active; }
 
+  /**
+   * A scripted beat has the stage: lessons and hint lines wait (ui/HintTeachOverlay,
+   * game/Hints). QA watched "The Flask" pop mid-escape, land on the Leviathan's
+   * prologue, and "The Grimoire Watches" cover Pell's first line.
+   */
+  get beatActive(): boolean {
+    const src = this.ctx.narrator?.speakingSource ?? null;
+    return this.cinema.active !== null || this.escape.active || this.pell.talking || this.echo.active || this.prologue.active
+      || src === 'sanctum-ash' || src === 'prologue' || src === 'escape' || src === 'echo';
+  }
+
   /* ---------------- the escape ---------------- */
 
   get escapeActive(): boolean { return this.escape.active; }
@@ -372,7 +402,14 @@ export class StoryDirector implements StoryApi {
       // A finished run has nothing left to resume (RunDirector retires the save too).
       ctx.levels.abandonExpedition();
     };
-    void this.cinema.play('ending', plates, { pause: true }).then(finish);
+    // The Docent's climb line is never cut by the first plate: the ending waits it out (at most 9 s).
+    const start = (): void => { void this.cinema.play('ending', plates, { pause: true }).then(finish); };
+    const waitFrom = performance.now();
+    const waitForLine = (): void => {
+      if (ctx.narrator?.speakingSource === 'escape' && performance.now() - waitFrom < 9000) window.setTimeout(waitForLine, 150);
+      else start();
+    };
+    waitForLine();
   }
 
   /* ---------------- the opening ---------------- */
@@ -382,7 +419,7 @@ export class StoryDirector implements StoryApi {
   playOpening(opts: { replay?: boolean } = {}): Promise<void> {
     const inGame = this.ctx.state.mode === 'play' && !opts.replay;
     if (!opts.replay) this.updateMeta(m => ({ ...m, openingSeen: true }));
-    return this.cinema.play('opening', OPENING, { pause: inGame, maxSeconds: OPENING_MAX_SECONDS });
+    return this.cinema.play('opening', OPENING, { pause: inGame, maxSeconds: OPENING_MAX_SECONDS, breathSeconds: OPENING_BREATH_SECONDS, leadSeconds: OPENING_LEAD_SECONDS });
   }
 
   /* ---------------- the Sanctum (Matron Ash) ---------------- */
@@ -405,7 +442,16 @@ export class StoryDirector implements StoryApi {
       }
     }
     if (lines.length) {
-      this.say(lines, { priority: 'high', source: 'sanctum-ash', ttlMs: 6000, captioned: false, repeatable: true, beats });
+      // She waits for the Docent's line to finish (QA: her high priority cut his last pipe line),
+      // and says her greeting and the door's line together only when both are short: the
+      // pair ran 15-16 s and talked on into the next floor. A door line left out is said
+      // when he looks at the door (sanctumDoor).
+      if (lines.length > 1 && lines.reduce((s, l) => s + this.lineSeconds(l), 0) > ASH_MAX_S) {
+        lines.length = 1;
+        beats.length = 1;
+        if (nextBiome) this.sanctumDoors.delete(nextBiome);
+      }
+      this.say(lines, { priority: 'normal', source: 'sanctum-ash', ttlMs: 12000, captioned: false, repeatable: true, beats });
       this.updateMeta(m => withJournal(m, 'journal.ash'));
     }
   }
@@ -417,7 +463,8 @@ export class StoryDirector implements StoryApi {
     const line = beatLine(this.meta(), door);
     if (!line) return;
     this.sanctumDoors.add(biome);
-    this.say([{ speaker: 'ash', text: line.text }], { priority: 'normal', source: 'sanctum-ash', ttlMs: 3000, captioned: false, repeatable: true, beats: [door.id] });
+    // Queued behind her greeting if he looks at the door while she is still speaking.
+    this.say([{ speaker: 'ash', text: line.text }], { priority: 'normal', source: 'sanctum-ash', ttlMs: 10000, captioned: false, repeatable: true, beats: [door.id] });
   }
 
   /* ---------------- the Journal ---------------- */

@@ -6,6 +6,7 @@ import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
 import { fxRandom } from '@/core/simRandom';
 import { beatHeard, pellRecognition } from './storyMeta';
 import type { StoryHost } from './host';
+import { glowseedCap, GLOWSEED_POUCH_MAX } from '@/game/glowseeds';
 
 /**
  * PELL, at his camp (wave 3 WS-S). A figure on the story rig in a surveyor's
@@ -232,8 +233,17 @@ export class PellCamp {
     this.host.setRun({ ...run, pell: { ...run.pell, [this.levelKey]: { met: true, gift } } });
     if (!rt) return;
     if (gift === 'seeds' && rt.living) {
-      rt.living.glowseeds = Math.max(rt.living.glowseeds, 3);
-      ctx.events.emit('toast', { text: 'Pell’s glowseeds: 3 in the satchel.' });
+      // A full pouch (the Warm Refuge refills it, and his camp is beside it) used to
+      // make the gift nothing at all: then the pouch grows to take them.
+      const cap = glowseedCap(rt.living);
+      if (rt.living.glowseeds >= cap && cap < GLOWSEED_POUCH_MAX) {
+        rt.living.glowseedCap = cap + 1;
+        rt.living.glowseeds = cap + 1;
+        ctx.events.emit('toast', { text: `Pell’s glowseeds, and a bigger pouch: ${cap + 1} in it.` });
+      } else {
+        rt.living.glowseeds = Math.max(rt.living.glowseeds, cap);
+        ctx.events.emit('toast', { text: `Pell’s glowseeds: ${rt.living.glowseeds} in the pouch.` });
+      }
       ctx.audio.sfx('player.glowseed');
     } else if (gift === 'tea') {
       ctx.player.hp = ctx.player.maxHp;

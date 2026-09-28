@@ -322,7 +322,7 @@ export function placeStructures(
     if (gx < 10 || gx > WIDTH - 10) continue;
     const gy = settleY(gx, Math.floor(reg.cy));
     pickups.push(
-      makePickup('goldpile', gx, gy - 1, { amount: 15 + Math.floor(rng.next() * 30) }),
+      makePickup('goldpile', gx, gy - 1, { amount: 5 + Math.floor(rng.next() * 10) }),
     );
   }
   // A scattered potion or two
@@ -340,7 +340,7 @@ export function placeStructures(
   // Waystone-adjacent welcome: a small gold pile near waystone[1] as a lure.
   if (waystones[1]) {
     pickups.push(
-      makePickup('goldpile', waystones[1].x + 6, waystones[1].y - 2, { amount: 20 }),
+      makePickup('goldpile', waystones[1].x + 6, waystones[1].y - 2, { amount: 8 }),
     );
   }
 
@@ -603,7 +603,7 @@ export function placeStructures(
       const door = makeDoor(ctx, mechanisms, px2 + 15, py2 - 9, 3, 20);
       pickups.push(makePickup('chest', px2 + 26, py2 + 9));
       pickups.push(
-        makePickup('goldpile', px2 + 29, py2 + 9, { amount: 30 + Math.floor(rng.next() * 30) }),
+        makePickup('goldpile', px2 + 29, py2 + 9, { amount: 10 + Math.floor(rng.next() * 10) }),
       );
       pickups.push(
         makePickup('tome', px2 + 23, py2 + 9, {

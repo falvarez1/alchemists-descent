@@ -1235,6 +1235,9 @@ export interface GameStateData {
   highReadability?: boolean;
   /** The alchemist has hooded his lantern (stealth; the light wave's L key). Transient. */
   lanternHooded?: boolean;
+  /** The arrival's grace (game/arrival): until this frame nothing sees or hurts the
+   *  alchemist on a floor he just reached. Set by Levels on entry; transient. */
+  arrivalGraceUntil?: number;
   creatureCaptions?: boolean;
   reduceCameraShake?: boolean;
   reduceFlashes?: boolean;
@@ -1558,6 +1561,8 @@ export interface NarratorApi {
   speak?(lines: readonly StorySpokenLine[], opts: StorySpeakOptions): boolean;
   /** Something is being said (or queued) right now. */
   readonly busy?: boolean;
+  /** The source of the line being said right now ('sanctum-ash', 'prologue', 'pipe'...), or null. */
+  readonly speakingSource?: string | null;
   /** Stop (and unqueue) the lines of one source: a dialogue closed, an echo walked away from. */
   cutSource?(source: string): void;
   /** Read-only state for in-page probes. */
@@ -2059,6 +2064,12 @@ export interface AlchemyKillsApi {
   noteKick(e: Enemy): void;
   /** The creature just died: classify, chain, emit `alchemyKill` and pay out. */
   onKill(e: Enemy): AlchemyKillInfo | null;
+  /**
+   * The blow that crossed zero hp just landed, but the death is a sequence (the
+   * Kiln Colossus comes apart for seconds): judge the kill NOW — cause and
+   * credit — and let onKill honour that verdict whenever the body finishes.
+   */
+  sealVerdict?(e: Enemy): void;
   /** Alchemical kills inside the current chain window (0 when it has lapsed). */
   readonly chain: number;
 }
@@ -3212,6 +3223,8 @@ export interface LivingExpeditionState {
   visited: string[];
   room: string;
   glowseeds: number;
+  /** The pouch's size this run (game/glowseeds; 3 unless Pell's gift found it full). */
+  glowseedCap?: number;
   nextLureId: number;
   lures: Array<{ id: number; x: number; y: number; vx: number; vy: number; life: number }>;
   rested: boolean;

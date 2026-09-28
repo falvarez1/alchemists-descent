@@ -61,17 +61,6 @@ export interface EventMap {
   levelCurtain: { visible: boolean; holdMs?: number; title?: string; detail?: string };
   /** A waystone brazier caught fire — checkpoint set. */
   waystoneLit: undefined;
-  /**
-   * Player walked up to an unlit waystone. UI shows a prompt: if `card` is set,
-   * the player owns a fire spell that isn't on the active wand (offer to equip
-   * it); if null, they own none (explain how to bring fire by hand). Exactly one
-   * callback runs when the prompt closes.
-   */
-  waystonePrompt: {
-    card: CardId | null;
-    onEquip(): void;
-    onDismiss(): void;
-  };
   /** First-time brew of a recipe — Grimoire entry + gold bounty. */
   recipeDiscovered: { name: string; bounty: number };
   /** Any completed cauldron recipe, including recipes already known in the Grimoire. */
@@ -169,6 +158,8 @@ export interface EventMap {
   storyCinema: StoryCinemaView;
   /** STORY: a beat with weight (a boss prologue) draws the letterbox in, and out. */
   storyLetterbox: { on: boolean };
+  /** The story's own fade to black and back (the Kiln escape's quick restart after a fall). */
+  storyFade: { on: boolean };
   /** Return phials changed (death spent one, a refuge/Sanctum restored one). */
   phialsChanged: { phials: number; max: number; reason: 'start' | 'death' | 'refuge' | 'sanctum' | 'restore' };
   /** Something asked for the last seconds of play to be saved as a clip. */

@@ -39,7 +39,8 @@ const HEAT_BOTTOM = 4;
 /** Sustained heat+ingredient sampler ticks (1 tick per 4 frames) to finish a brew. */
 const BREW_TICKS_REQUIRED = 90;
 export { GRIMOIRE_KEY, loadDiscoveredRecipes } from '@/core/grimoireStore';
-const DISCOVERY_BOUNTY = 100;
+/** Oz for a recipe's first brew (30; was 100 before the 2026-09 economy pass). */
+const DISCOVERY_BOUNTY = 30;
 
 /** Loose powders count as brewable mass alongside liquids (they sink into the bowl). */
 function isBrewable(t: number): boolean {

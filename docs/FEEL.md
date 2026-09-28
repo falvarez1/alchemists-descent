@@ -600,9 +600,29 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   18-tick tell, then up to 22 real surface water cells flung at him (4 dmg
   each — the pool spends itself) and 9 dmg within 26; DIVE (phase 3,
   alchemist above within 40): 34 ticks down with the lure dark, then a surge
-  (vy −3.4). A live pool the ward credits JOLTS it: 3.5% of max hp and a
-  14-tick convulsion (direct blows ×1.6), once per 24 ticks — never a drain.
-  Beached, direct blows land ×1.3. Lurking, it eats the fish its lure draws.
+  (vy −3.4). A live pool the ward credits SHORTS it in bursts (2026-09,
+  deliberate: a burst every 24 ticks plus the per-sample status shock killed
+  it in ~7 s off one Spark Bolt): one burst of 7.5% of max hp (was 3.5%) and a
+  40-tick convulsion (direct blows ×1.6; was 14), then no burst for 210 ticks
+  (was 24) — and the burst GROUNDS the pool: every charged conductor within 40
+  cells is cleared, so the next needs a fresh spark. The generic status shock
+  no longer lands on it (the burst is its shock). Each new phase is a beat of
+  its own: the current is shed, no burst for 300 ticks, and it rages at once
+  (phase 2 THRASHES — "IT GROWS CROSS"; phase 3 DIVES — "IT GOES DEEP").
+  Submerged, a blow lands ×0.12 (was ×0.25: a held Spark Bolt ground ~10 hp/s
+  through the water); beached, direct blows land ×1.3. A mortal probe holding
+  fire at the sump's edge now needs ~40 s (was 7); a player dodging and
+  re-sparking the pool, ~60–120 s. Lurking, it eats the fish its lure draws.
+- **The Kiln escape** (`game/story/KilnEscape`, 2026-09 deliberate): the Heart's
+  heat thins the levitation in the flue — the jet burns 2.0 more LEV a tick (on
+  top of its 1.15) and a ledge takes back 1.45 of the ground's 1.7 recovery, so
+  it is hop, breathe, hop. STEAM GUSTS rise up the shaft's clear middle (15
+  wide) every 3.4 s, told 0.75 s ahead by a hiss and a boil, at 3.4 rows a
+  tick: a body caught mid-air is knocked down (vy ≥ 2.4) and its LEV cut to 15;
+  one on a ledge is spared. The lava rises 0.09 rows/tick (0.24 on a long lead,
+  0.06 close under the boots; was 0.11 / 0.3 / 0.085). A patient climber who
+  times the gusts reaches the hatch in 31–47 s (probe; was 5.6 s). A fall is a
+  0.45 s fade and a restart at 1.15 s: no death screen, no gold, no phial.
 - **Hit stagger** (`Enemies.flinch`): a blow ≥ 5 staggers any non-boss that
   is not rooted or surface-bound (weaver, eggs, spitter, rillback, stone maw,
   root loper answer with their rigs only): a ballistic shove through the
@@ -694,8 +714,9 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   tick never SHATTERS a frozen body. Credit is generous: within 280 cells of the
   wizard, or struck by him in the last 20 s, or kick-launched in the last 3 s.
   Kills within 3 s (180 ticks) chain; the chain resets on a level change.
-  **Payout, grid-honest:** bonus gold = 10 + 35% of bounty, ×1 / ×1.5 / ×2 /
-  ×2.5 / ×3 by chain, rounded to whole 10-oz grains; that many real Gold
+  **Payout, grid-honest:** bonus gold = 4 + 40% of bounty, ×1 / ×1.5 / ×2 /
+  ×2.5 / ×3 by chain, rounded to whole 1-oz grains (2026-09 economy pass; was
+  10 + 35% in 10-oz grains, on bounties ~3.3× larger); that many real Gold
   cells fountain out of the body in a low arc (vx ±1.1, vy −1.8…−3.4 cells/tick:
   apex ~10–36 cells, so walking over the kill brings the pile inside the 30-cell
   harvester pull; gold settles into a pool and sinks) for the harvester field to
@@ -707,7 +728,7 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   brass dyad whose top note climbs two semitones per link (capped at a fifth).
 - **Coin flight** (`particles/Particles.ts`): gold is only ever a real Gold
   cell or the purse. Whoever moves it — a kill's bounty, the harvester lifting a
-  grain (10 oz a cell), mined ore — credits `state.score` at that instant; the
+  grain (1 oz a cell; was 10), mined ore — credits `state.score` at that instant; the
   homing mote is the payment's animation. It steers to ARRIVE: desired speed
   min(5.2, √(2·0.45·d) + 1.2) cells/tick with 0.45 cells/tick² of steering, so
   the burst-out arc bends into a landing instead of the old 3.75-vs-2.5-cell
@@ -716,6 +737,21 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   within 24 ticks climb the scale) and pops a sparkle at the belt (6 cells up).
   If the wizard dies mid-flight the mote gutters out as a falling glint — the
   gold is already his.
+- **Gold, the economy** (2026-09 deliberate pass): QA ended a run with 15,732 oz
+  (4,533 after floor 2) against Sanctum prices of 40–380 — every choice free.
+  The floors hold ~4,500 gold cells each (seams, vugs, tells) and the harvester
+  lifted them THROUGH solid rock. Now: a gold cell is **1 oz** (was 10) and the
+  harvester lifts only gold with a face open to air, liquid or gas (a seam still
+  sealed in rock stays until it is dug to); bounties ×~0.3 (slime 10, bat 5,
+  weaver 35, rillback 20, rootloper 25, stonemaw 40, Leviathan 140, Rime Warden
+  120, Lenswright 130, Colossus 180; was 30/15/110/70/85/130/450/380/420/600),
+  paid as a coin per ~4 oz (≤ 40); gold piles ×~0.35 (chests 3–5 piles of 5–13,
+  was 15–39; floor-1 piles 10–20, puzzle rewards 12–30); a first brew 30 (was
+  100); raw ore 1 oz a cell (was 2). Sanctum prices are unchanged (mend 40,
+  toughen 90, brew 60, lost pages 160, the wandwrights 240 / 380). Measured by
+  a teleport walk (no kills): the direct route lifts ~80–230 oz a floor, a
+  completionist sweep ~870–1,030; with bounties and piles a good run earns
+  ~1,500–2,200 and, after the Sanctums, carries ~800–1,500 to the end.
 - **Callouts** (`ui/Callouts.ts`, `styles/callouts.css`): the word pops over
   the kill, rises and fades — FLAMBÉED, RENDERED, STEEPED, SHORTED, DROWNED,
   DISSOLVED, SHATTERED, FLATTENED, DETONATED, POISONED, IMPALED, BOWLED — one word per
@@ -1403,7 +1439,7 @@ provoke on direct hit: mind fix on the shooter (confidence ≥ .8, irritation �
 creature burning (FIRE IS A WEAPON, 2026-09 deliberate change): a catch burns 300 ticks (420 oiled; was 90/300), refreshed in the flames, and deals 0.30 hp per 2-tick status sample = 9 hp/s (burnScale 2.5 over the alchemist's 0.12; was 3.6 hp/s) → a lit slime (36/43/48 hp) burns out in 4.0/4.8/4.9 s (probe) unless doused (≥ 3 water cells); the alchemist's own burning (0.12/sample, 90/300 ticks) is unchanged · open-flame contact 0.7/row/tick, lava 1.6 · steam scald 0.05/row/tick (not imp/colossus/leviathan) · drowning: head ≥ 60% liquid → breath 360 (imp 90, bat 180, bomber 150) then −maxHp/300 per tick; immune rillback/leviathan/colossus/wisp/eggs
 enemy drives: fear → sensed threat × kind-fear, decay 0.02/f · aggression +0.02 close +0.04 on-hit −0.03·fear −0.005/f · chaseScale clamp(1 − 0.7·fear + 0.15·agg, 0.25, 1)
 enemy reflex: dodge ⊥ to threat vel @2.7 ×12f, one roll/threat (dodgeCd 22) gated by kind dodge% (fliers sustain vy, grounded one hop) · flee 26f @1.7 away (toward water if burning+seekWater) · final movement integrates at 0.85x on floor 1, ramping +0.075/depth to 1.0x by floor 3 before difficulty (probe, flee drive 1.7 on flat stone: floor 1 50→78 cells/s, floor 3 67→92, floor 4 75→92) · startle "!" tell @dodgeT≥10|fleeT≥23 + airy whiff (pDist<160)
-colossus: slam r10/11/13 @30 (punish 26) · stomp waves 1.45/1.75/2.15 c/t ×62, 14 dmg grounded only · throw @32 (+46 in p3), 9 lava grains · vent tell 42, fire r17, boil r26 · roar 72 at 66%/33%, p3 bare ×1.25 · quench kneel 120 (×1.6) on the ward's 16%/150-tick crack · death 214 (overload 128, blast 196) · leviathan: lunge tell 22 (lure dark) · thrash ≤ 22 cells · jolt 3.5%/24 ticks · beached ×1.3
+colossus: slam r10/11/13 @30 (punish 26) · stomp waves 1.45/1.75/2.15 c/t ×62, 14 dmg grounded only · throw @32 (+46 in p3), 9 lava grains · vent tell 42, fire r17, boil r26 · roar 72 at 66%/33%, p3 bare ×1.25 · quench kneel 120 (×1.6) on the ward's 16%/150-tick crack · death 214 (overload 128, blast 196) · leviathan: lunge tell 22 (lure dark) · thrash ≤ 22 cells · shorted burst 7.5%/210 ticks, grounds the pool within 40 · phase beat 300 · water armour ×0.12 · beached ×1.3
 organisms: snapjaw trigger 10 / tell 12 / bite 7.5 / 11 dmg / digest 780 / ignite 10, char 44 · puffer ripe .4, gas r 3+4·inf · glow-worm shy > .42 wand light, hide 260+ · leech 2 hp/150 ticks, sated 5, max 3 · hit stagger ≥ 5 dmg, 3–9 ticks, cd 45 · idle acts every 170–490 ticks
 temperament fear/dodge/fleeAt: slime .4/.12/.95 · bat 1.3/.85/.45 · imp .6/.72/.6 · wisp .9/.7/.4 · spitter .85/.55/.5 · bomber .2/.3/never · mage .9/.62/.45 · weaver .5/.5/.72 · golem .18/.28/never · colossus 0/0/never · default .7/.45/.7
 player eye seeks threats <80 cells · enemy gaze locks only when alerted

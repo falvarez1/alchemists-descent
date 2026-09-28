@@ -19,6 +19,7 @@
     "verify:organic-enemies": "node scripts/verify-organic-enemy-trio.mjs",
     "verify:organic-sprites": "node scripts/verify-organic-enemy-trio-sprites.mjs",
     "verify:encounter-lairs": "node scripts/verify-encounter-lairs.mjs",
+    "verify:camps-dry": "node scripts/verify-camps-dry.mjs",
     "verify:feel": "node scripts/verify-feel-suite.mjs",
     "verify:runtime": "node scripts/verify-runtime-suite.mjs",
     "verify:runtime-ui": "node scripts/verify-runtime-ui.mjs",

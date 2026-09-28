@@ -7,7 +7,9 @@ import { PELL_ENDING } from './pell';
  *
  * The opening plays once, on a player's first descent, and never costs the
  * "first fire within ~10 s of control" goal: control starts when it ends
- * (≤ 12 s, any key skips). The title's "The opening" replays it.
+ * (≈ 8 s — two plates, voice-paced with a short breath; any key skips). The
+ * title's "The opening" replays it. (It was three plates and 12.5 s; the third,
+ * "Welcome to the Works, apprentice.", gave way to the floor's own arrival.)
  *
  * The ending plays after the Kiln escape and before the Ledger: clean air
  * rising up the flue, Kettleby breathing, Pell (waiting at the top, or only
@@ -25,15 +27,17 @@ export interface Plate {
   line: StoryLine | null;
 }
 
-/** The opening: Kettleby, the cage lift, the mouth of the Works. */
+/** The opening: Kettleby, then the cage lift down into the Works. */
 export const OPENING: readonly Plate[] = [
   { art: 'town', seconds: 3.4, line: { speaker: 'docent', text: 'Kettleby. A town with one breath left.' } },
-  { art: 'lift', seconds: 3.6, line: { speaker: 'docent', text: 'The Guild sent what it had left. You.' } },
-  { art: 'works', seconds: 3.4, line: { speaker: 'docent', text: 'Welcome to the Works, apprentice.' } },
+  { art: 'lift', seconds: 3.4, line: { speaker: 'docent', text: 'The Guild sent what it had left. You.' } },
 ];
 
 /** Opening plates never run longer than this in total, whatever the voice does. */
-export const OPENING_MAX_SECONDS = 12;
+export const OPENING_MAX_SECONDS = 8;
+/** The opening's pace: a short breath after each line, and a brief black before the first plate. */
+export const OPENING_BREATH_SECONDS = 0.12;
+export const OPENING_LEAD_SECONDS = 0.25;
 
 export interface EndingScript {
   rise: Plate;

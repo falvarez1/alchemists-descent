@@ -15,7 +15,7 @@ import { campLight, findFloorNear, makePipe, valveLight } from '@/world/storySit
 /** Where each pipe hangs: an anchor on the room's route (snapped to the nearest standable floor). */
 export const WORKS_PIPE_ANCHORS: ReadonlyArray<{ id: string; x: number; y: number }> = [
   { id: 'intake', x: 222, y: 314 },
-  { id: 'sluice', x: 492, y: 440 },
+  // (The sluice's pipe was retired with its line: floor 1's first run said 17 voiced lines in three minutes.)
   { id: 'gallery', x: 1012, y: 446 },
   { id: 'refuge', x: 782, y: 742 },
   { id: 'undertow', x: 560, y: 1006 },

@@ -424,15 +424,15 @@ body.play-active #help-overlay .hb-page p, #help-overlay .hb-page p, .hb-page li
 }
 
 /* =====================================================================
- * Discoveries: a tome's card offer and the unlit waystone
+ * Discoveries: a tome's card offer (the unlit waystone teaches by a teach card now)
  * ===================================================================== */
-.card-offer-overlay, .waystone-prompt-overlay {
+.card-offer-overlay {
   position: fixed; inset: 0; z-index: 60; display: none; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box;
   background: rgba(7, 13, 16, 0.72); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); pointer-events: auto;
   font-family: var(--m-sans); color: var(--m-text);
 }
-.card-offer-overlay.visible, .waystone-prompt-overlay.visible { display: flex; animation: menu-fade 0.16s ease-out; }
-.card-offer-panel, .waystone-prompt-panel {
+.card-offer-overlay.visible { display: flex; animation: menu-fade 0.16s ease-out; }
+.card-offer-panel {
   box-sizing: border-box; background: var(--m-surface); border: 1px solid var(--m-line-strong); border-radius: 2px; box-shadow: var(--m-shadow);
   animation: menu-rise 0.22s var(--m-ease);
 }
@@ -455,11 +455,6 @@ body.play-active #help-overlay .hb-page p, #help-overlay .hb-page p, .hb-page li
 .card-offer-tags { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; align-self: end; }
 .card-offer-tags span { padding: 2px 6px; border: 1px solid var(--m-line); border-radius: 2px; font: 500 11px/1.3 var(--m-sans); color: var(--m-muted); }
 .card-offer-note { margin: 16px 0 0; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font: 400 calc(12.5px * var(--text-scale, 1))/1.4 var(--m-sans); color: var(--m-muted); }
-.waystone-prompt-panel { width: min(520px, 100%); padding: 22px 24px 18px; }
-.waystone-prompt-body p { margin: 10px 0 0; font: 400 calc(14px * var(--text-scale, 1))/1.55 var(--m-sans); color: var(--m-text-soft); }
-.waystone-prompt-body b { color: var(--m-text); }
-.waystone-prompt-body .waystone-prompt-warn { color: var(--m-brass); font-size: calc(13px * var(--text-scale, 1)); }
-.waystone-prompt-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 @media (max-width: 700px) {
   .card-offer-row { grid-template-columns: 1fr; }
   .card-offer-card { min-height: 0; }

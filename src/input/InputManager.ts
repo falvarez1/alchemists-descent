@@ -74,7 +74,6 @@ export const KEYBOARD_UI_BLOCK_SELECTOR = [
   '#dev-console.open',
   '#runtime-inspector.open',
   '#card-offer-overlay.visible',
-  '#waystone-prompt-overlay.visible',
   '#pause-overlay.visible',
   '#help-overlay.visible',
   '#sanctum-overlay.visible',

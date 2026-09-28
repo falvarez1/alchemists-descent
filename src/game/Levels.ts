@@ -63,6 +63,10 @@ import { spawnPrefabEnemy, toAuthoredLight } from '@/game/instantiate';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { makeLevelRuntime } from '@/game/runtime';
 import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
+import { WAYSTONE_HELP_RADIUS, wandMakesFire, waystoneHelp } from '@/game/waystoneHelp';
+import { ARRIVAL_GRACE_TICKS, ARRIVAL_SAFE_RADIUS, arrivalPickupRests, arrivalStandable, arrivalThreat, relocateCreature, settleArrival } from '@/game/arrival';
+import { bossArenaRect } from '@/core/bossWard';
+import { CAMP_HAVEN_RADIUS } from '@/config/pacing';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
 import { WORKS_GATE, worksGateOpen } from '@/world/breathingWorks';
@@ -131,10 +135,6 @@ const WAYSTONE_LIGHT_TICKS = 30;
  *  flame-jet burst gaps and re-aiming (4-frame cadence, so 3 ≈ 12 frames). A
  *  longer gutter still fully resets, so a cold bowl never shows a false "almost". */
 const WAYSTONE_HEAT_GRACE = 3;
-/** Fire spells the waystone proximity prompt can offer to equip, best-first. */
-const WAYSTONE_FIRE_CARDS: readonly CardId[] = ['flame', 'emberstorm', 'meteor'];
-/** Cells: walking this close to an unlit waystone raises the help prompt once. */
-const WAYSTONE_PROMPT_RADIUS = 26;
 /** Campaign Weaver lair webs are background dressing; the authored test arena can go larger. */
 const WEAVER_LAIR_WEB_RADIUS_MIN = 24;
 const WEAVER_LAIR_WEB_RADIUS_MAX = 34;
@@ -148,11 +148,22 @@ const WEAVER_LAIR_WEB_JITTER_MIN = 0.04;
 const WEAVER_LAIR_WEB_JITTER_MAX = 0.12;
 /** Minimum placement distance (cells) between a placed enemy and the level spawn. */
 const POPULATION_SPAWN_CLEARANCE = 220;
-const POPULATION_CLEARANCE_STEPS = [POPULATION_SPAWN_CLEARANCE, 150, 80, 0] as const;
+/** The clearance relaxes when a crowded floor needs it, but never below the
+ *  arrival's safe radius (game/arrival): no foe is seeded where he arrives. */
+const POPULATION_CLEARANCE_STEPS = [POPULATION_SPAWN_CLEARANCE, 150, ARRIVAL_SAFE_RADIUS] as const;
+/** A relocated foe (secureArrival) lands at least this far from the arrival, relaxing to the safe radius. */
+const ARRIVAL_RELOCATE_CLEARANCES = [260, 200, 160, ARRIVAL_SAFE_RADIUS] as const;
 const POPULATION_ATTEMPTS_PER_PASS = 36;
 /** Kinds that may be seeded with their heads under liquid (swimmers, floaters, fliers). */
 const POPULATION_WATER_BREATHERS: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['rillback', 'leviathan', 'wisp', 'bat', 'imp', 'colossus', 'eggs']);
 const ROOST_ATTEMPTS_PER_PASS = 160;
+/** Drain search for liquid in Pell's camp (drainCamp): cells visited, and reach from the camp (cells). */
+const CAMP_DRAIN_SEARCH = 60000;
+const CAMP_DRAIN_REACH = 220;
+/** Kept out of Pell's camp at a floor's start (secureCamp): what burns, what is molten, what eats. */
+const CAMP_HAZARDS: ReadonlySet<number> = new Set<number>([Cell.Fire, Cell.Ember, Cell.Lava, Cell.Oil, Cell.Gunpowder, Cell.Acid, Cell.Toxic, Cell.MarshGas]);
+/** Bosses keep their arenas; a camp is never placed in one. */
+const BOSS_KINDS_NEVER_MOVED: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'rimewarden', 'lenswright']);
 const VIRTUAL_PICKUP_KINDS = new Set<PickupKind>(PICKUP_KINDS);
 
 interface TransitionCurtainCopy {
@@ -664,10 +675,8 @@ export class Levels implements LevelsApi {
   private waystoneCold: number[] = [];
   /** Waystone indices per level id, in the order they were lit (last = respawn anchor). */
   private litOrder = new Map<string, number[]>();
-  /** Re-armed whenever the player is outside every unlit waystone's prompt radius. */
-  private waystonePromptArmed = true;
-  /** A waystone help prompt is open (paused) — suppresses re-triggering. */
-  private waystonePromptOpen = false;
+  /** Waystones (indices) whose help card has been shown on this floor visit (game/waystoneHelp). */
+  private waystoneTaught = new Set<number>();
   /** Last hostile count emitted via enemiesLeft. */
   private lastEnemiesEmit = -1;
   /** Levels already topped up with the review potion belt this session. */
@@ -966,6 +975,9 @@ export class Levels implements LevelsApi {
       runtime.surfaceDescended = true;
       ctx.events.emit('toast', { text: 'Into the depths.' });
     }
+
+    // The arrival's grace ends the moment he fights (game/arrival).
+    if (player.firing && ctx.state.frameCount < (ctx.state.arrivalGraceUntil ?? -1)) ctx.state.arrivalGraceUntil = ctx.state.frameCount;
 
     // Floor safety: terrain no longer opens into a hidden descent shaft.
     if (player.y >= HEIGHT - 10) {
@@ -2186,6 +2198,8 @@ export class Levels implements LevelsApi {
     const expeditionSeed = this.activeExpeditionSeed(ctx);
     const seed = levelSeedFor(expeditionSeed, def.id);
     const pristine = ctx.worldgen.generateLevel(ctx, def, seed);
+    // Settled on the pristine cells, exactly as createLevel did (game/arrival).
+    const spawn = this.settledSpawn(ctx, def, pristine.spawn, pristine.boss, pristine.pickups);
 
     const savedTypes = new Uint8Array(world.types.length);
     if (!rleDecodeExact(blob.rle, savedTypes)) throw new Error(`Saved level "${def.id}" RLE length mismatch`);
@@ -2234,8 +2248,8 @@ export class Levels implements LevelsApi {
       ...(def.id === 'd1' ? { living: restoreLiving(blob.living) } : {}),
       exit: pristine.exit,
       explored,
-      spawn: pristine.spawn,
-      regions: extractRegionGraph(ctx.world, pristine.spawn, {
+      spawn,
+      regions: extractRegionGraph(ctx.world, spawn, {
         x: pristine.exit.x,
         y: pristine.exit.sealY - 12,
       }),
@@ -2396,6 +2410,8 @@ export class Levels implements LevelsApi {
     // the wizard OUT ON THE SURFACE (the Noita-style intro) — once he has dropped
     // down the cave mouth, every later arrival/respawn uses the cave spawn.
     const player = ctx.player;
+    // The settled spawn may have lost its footing since (an arrival repair tunnel, a scar): settle again.
+    this.ensureArrivalFooting(ctx, runtime);
     const arrival = introArrivalSpawn(runtime);
     player.x = arrival.x;
     player.y = arrival.y;
@@ -2411,13 +2427,16 @@ export class Levels implements LevelsApi {
     ctx.playerCtl?.resetTransientState?.(ctx);
     clearFrameStops(ctx);
     ctx.camera.snapTo(player.x, player.y);
+    // A SAFE ARRIVAL (game/arrival): room around him, and a grace while the floor's name is up.
+    ctx.state.arrivalGraceUntil = ctx.state.frameCount + ARRIVAL_GRACE_TICKS;
+    this.secureArrival(ctx, runtime, arrival);
+    this.secureCamp(ctx, runtime);
 
     this.currentId = id;
     this.scheduleSettledFindabilityRepair(ctx, runtime);
     this.waystoneHeat = new Array<number>(runtime.waystones.length).fill(0);
     this.waystoneCold = new Array<number>(runtime.waystones.length).fill(0);
-    this.waystonePromptArmed = true;
-    this.waystonePromptOpen = false;
+    this.waystoneTaught.clear();
     this.lastEnemiesEmit = ctx.enemies.length;
     if (ctx.state.debugGodMode) {
       grantFullReviewKit(player);
@@ -2458,6 +2477,165 @@ export class Levels implements LevelsApi {
 
     // Crossing a threshold is a natural checkpoint.
     if (this.checkpointSaveSuppression === 0) this.saveExpedition(ctx);
+  }
+
+  /**
+   * The generated spawn settled onto footing (game/arrival), clear of the
+   * floor's boss arena. D1 is hand-built (its cave spawn is authored) and the
+   * test arenas rebuild their world after generation: both keep theirs.
+   */
+  private settledSpawn(
+    ctx: Ctx,
+    def: LevelDef,
+    spawn: { x: number; y: number },
+    boss: { x: number; y: number; kind?: EnemyKind } | null,
+    pickups: readonly Pickup[],
+  ): { x: number; y: number } {
+    if (def.id === 'd1' || AUTHORED_TEST_ARENAS.has(def.id)) return spawn;
+    const arena = bossArenaRect(boss);
+    const settled = settleArrival(ctx, spawn, arena ? [arena] : [], pickups.filter((p) => !p.taken));
+    if (settled.x !== spawn.x || settled.y !== spawn.y) ctx.telemetry.count(`arrival.settled.${def.id}`);
+    return settled;
+  }
+
+  /** Re-settle a spawn that no longer stands (the initial findability repair runs after the settle). */
+  private ensureArrivalFooting(ctx: Ctx, runtime: LevelRuntime): void {
+    const id = runtime.def.id;
+    if (id === 'd1' || runtime.living || AUTHORED_TEST_ARENAS.has(id) || runtime.def.id === 'custom') return;
+    const arena = bossArenaRect(runtime.boss);
+    const avoid = arena ? [arena] : [];
+    const pickups = runtime.pickups.filter((p) => !p.taken);
+    if (arrivalStandable(ctx, Math.round(runtime.spawn.x), Math.round(runtime.spawn.y), avoid, arrivalPickupRests(ctx, pickups))) return;
+    const settled = settleArrival(ctx, runtime.spawn, avoid, pickups);
+    if (settled.x === runtime.spawn.x && settled.y === runtime.spawn.y) return;
+    runtime.spawn = settled;
+    ctx.telemetry.count(`arrival.resettled.${id}`);
+  }
+
+  /**
+   * No hostile waits at the arrival (game/arrival): anything within the safe
+   * radius — with a sight line, or close behind rock — is RELOCATED to a spot
+   * its kind may live in (the population's own habitat rules and clearance,
+   * bats to a roost), never deleted. Population placement already keeps its
+   * distance; this catches what it does not own (a prefab's foe, a wanderer
+   * on a re-entry). D1 and the test arenas are authored and keep theirs.
+   */
+  private secureArrival(ctx: Ctx, runtime: LevelRuntime, at: { x: number; y: number }): void {
+    const id = runtime.def.id;
+    if (runtime.living || AUTHORED_TEST_ARENAS.has(id)) return;
+    const threats = ctx.enemies.filter((e) => arrivalThreat(ctx, e, at));
+    if (threats.length === 0) return;
+    const reach = wizardMask(runtime);
+    const rng = new Rng(hashSeed(levelSeedFor(this.activeExpeditionSeed(ctx), id), 'arrival-safety'));
+    for (const e of threats) {
+      const def = ctx.enemyCtl.defs[e.kind];
+      const roost = e.kind === 'bat' && e.sleeping ? this.findRoostSpot(ctx, rng, at, runtime.regions, reach) : null;
+      const spot = roost
+        ? { x: roost.x, y: roost.y + 4 }
+        : this.findPopulationSpot(ctx, rng, at, runtime.regions, reach, def.halfW, def.h, {
+            ...this.populationHabitatOptions(ctx, e.kind),
+            clearances: ARRIVAL_RELOCATE_CLEARANCES,
+          });
+      if (!spot) {
+        ctx.telemetry.count(`arrival.unrelocated.${id}.${e.kind}`);
+        continue;
+      }
+      relocateCreature(e, spot.x, spot.y);
+      ctx.telemetry.count(`arrival.relocated.${id}.${e.kind}`);
+    }
+  }
+
+  /**
+   * Pell's camp is a haven (config/CAMP_HAVEN_RADIUS): no creature is left
+   * living in it — relocated like the arrival's, never deleted — and no fire,
+   * ember, lava, oil, powder or acid is left in the camp itself (the cells
+   * really go; a burning plant or a lava lick beside the bedroll set him alight
+   * while he read Pell's last page). Idempotent: a camp already clear is left alone.
+   */
+  private secureCamp(ctx: Ctx, runtime: LevelRuntime): void {
+    const camp = runtime.story?.camp;
+    if (!camp || AUTHORED_TEST_ARENAS.has(runtime.def.id)) return;
+    // Every floor, the hand-built Bellows too: no one sits in a puddle.
+    this.drainCamp(ctx, runtime, camp);
+    if (runtime.living) return;
+    const hx = camp.x, hy = camp.floorY - 10;
+    const inside = ctx.enemies.filter((e) => e.hp > 0 && !BOSS_KINDS_NEVER_MOVED.has(e.kind) && (e.x - hx) ** 2 + (e.y - 6 - hy) ** 2 < CAMP_HAVEN_RADIUS ** 2);
+    if (inside.length) {
+      const reach = wizardMask(runtime);
+      const rng = new Rng(hashSeed(levelSeedFor(this.activeExpeditionSeed(ctx), runtime.def.id), 'camp-haven'));
+      const at = { x: hx, y: camp.floorY };
+      for (const e of inside) {
+        const def = ctx.enemyCtl.defs[e.kind];
+        const spot = this.findPopulationSpot(ctx, rng, at, runtime.regions, reach, def.halfW, def.h, {
+          ...this.populationHabitatOptions(ctx, e.kind),
+          clearances: [CAMP_HAVEN_RADIUS + 90, CAMP_HAVEN_RADIUS + 40],
+          extra: (x, y) => Math.hypot(x - runtime.spawn.x, y - runtime.spawn.y) >= ARRIVAL_SAFE_RADIUS,
+        });
+        if (spot) { relocateCreature(e, spot.x, spot.y); ctx.telemetry.count(`camp.relocated.${runtime.def.id}.${e.kind}`); }
+      }
+    }
+    const w = runtime.world;
+    const x0 = Math.max(1, Math.min(camp.x0, camp.x - 40) - 6), x1 = Math.min(w.width - 2, Math.max(camp.x1, camp.x + 40) + 6);
+    for (let y = Math.max(1, camp.floorY - 44); y <= Math.min(w.height - 2, camp.floorY); y++) {
+      for (let x = x0; x <= x1; x++) {
+        const i = w.idx(x, y);
+        if (CAMP_HAZARDS.has(w.types[i])) w.clearCellAt(i);
+      }
+    }
+  }
+
+  /**
+   * FAIL-OPEN: liquid that still sits in Pell's camp (placement keeps camps on
+   * dry ground, world/storySites) drains DOWNHILL — each cell is swapped
+   * (world.swap: type, colour, life, charge) into the lowest open cell below the
+   * camp's floor that the camp's air connects to, the way it would run out of
+   * an opened drain. Only liquid with nowhere lower to go is removed.
+   */
+  private drainCamp(ctx: Ctx, runtime: LevelRuntime, camp: NonNullable<NonNullable<LevelRuntime['story']>['camp']>): void {
+    const w = runtime.world;
+    const x0 = Math.max(1, Math.min(camp.x0, camp.x - 40) - 6), x1 = Math.min(w.width - 2, Math.max(camp.x1, camp.x + 40) + 6);
+    const y0 = Math.max(1, camp.floorY - 44), y1 = camp.floorY;
+    const wet: number[] = [];
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (isLiquid(w.types[w.idx(x, y)])) wet.push(w.idx(x, y));
+    if (wet.length === 0) return;
+    // The open space the camp's air and water connect to, searched outward (bounded).
+    const W = w.width;
+    const seen = new Uint8Array(W * w.height);
+    const queue: number[] = [];
+    for (const i of wet) { seen[i] = 1; queue.push(i); }
+    const sinks: number[] = [];
+    for (let q = 0; q < queue.length && q < CAMP_DRAIN_SEARCH; q++) {
+      const i = queue[q];
+      const x = i % W, y = (i - x) / W;
+      if (y > camp.floorY + 2 && w.types[i] === Cell.Empty) sinks.push(i);
+      for (const n of [i + 1, i - 1, i + W, i - W]) {
+        const nx = n % W, ny = (n - nx) / W;
+        if (seen[n] || nx < 1 || nx >= W - 1 || ny < 1 || ny >= w.height - 1) continue;
+        if (Math.abs(nx - camp.x) > CAMP_DRAIN_REACH || Math.abs(ny - camp.floorY) > CAMP_DRAIN_REACH) continue;
+        const t = w.types[n];
+        if (blocksEntity(t) && !isLiquid(t)) continue;
+        seen[n] = 1;
+        queue.push(n);
+      }
+    }
+    // The lowest sinks first: the water runs to the bottom of what it can reach.
+    sinks.sort((a, b) => b - a);
+    wet.sort((a, b) => b - a);
+    let moved = 0, removed = 0;
+    for (const i of wet) {
+      if (!isLiquid(w.types[i])) continue;
+      const dst = sinks.shift();
+      const x = i % W, y = (i - x) / W;
+      if (dst !== undefined) {
+        const dx = dst % W, dy = (dst - dx) / W;
+        w.swap(x, y, dx, dy);
+        moved++;
+      } else {
+        w.clearCellAt(i);
+        removed++;
+      }
+    }
+    ctx.telemetry.count(`camp.drained.${runtime.def.id}`, moved + removed);
   }
 
   seedReviewKit(ctx: Ctx): void {
@@ -2542,6 +2720,9 @@ export class Levels implements LevelsApi {
         this.settledFindabilityTimer = globalThis.setTimeout(() => runStep(step), 100);
         return;
       }
+      // Liquid that ran into Pell's camp while the floor settled drains downhill too.
+      const camp = runtime.story?.camp;
+      if (camp) this.drainCamp(ctx, runtime, camp);
       if (this.repairFindability(ctx, runtime, 'settled') && this.checkpointSaveSuppression === 0) {
         this.saveExpedition(ctx);
       }
@@ -2569,7 +2750,7 @@ export class Levels implements LevelsApi {
     const {
       exit,
       waystones,
-      spawn,
+      spawn: generatedSpawn,
       cauldron,
       pickups,
       portal,
@@ -2589,6 +2770,10 @@ export class Levels implements LevelsApi {
       lumenBlooms,
       story,
     } = ctx.worldgen.generateLevel(ctx, def, seed);
+    // A SAFE ARRIVAL (game/arrival): the spawn is settled onto footing before
+    // anything is placed around it, so the population keeps its distance from
+    // where the alchemist really stands (not the chamber air he falls through).
+    const spawn = this.settledSpawn(ctx, def, generatedSpawn, boss, pickups);
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
     const regions = extractRegionGraph(ctx.world, spawn, {
@@ -2761,7 +2946,7 @@ export class Levels implements LevelsApi {
       const eggsDef = ctx.enemyCtl.defs.eggs;
       for (let c = 0; c < clutches; c++) {
         const spot = this.findPopulationSpot(ctx, rng, spawn, regions, reachable, eggsDef.halfW, eggsDef.h, {
-          clearances: [180, 100, 0],
+          clearances: [180, ARRIVAL_SAFE_RADIUS],
         });
         report.planned.eggs = (report.planned.eggs ?? 0) + 1;
         if (spot && this.spawnSeededEnemy(ctx, 'eggs', spot.x, spot.y, rng)) {
@@ -2916,7 +3101,7 @@ export class Levels implements LevelsApi {
     const batDef = ctx.enemyCtl.defs.bat;
     const regionPasses = regions && regions.mainPath.length > 0 ? [true, false] : [false];
     for (const mainPathOnly of regionPasses) {
-      for (const clearance of [200, 120, 0]) {
+      for (const clearance of [200, ARRIVAL_SAFE_RADIUS]) {
         const clearanceSq = clearance * clearance;
         for (let attempt = 0; attempt < ROOST_ATTEMPTS_PER_PASS; attempt++) {
           const x = 40 + rng.int(WIDTH - 80);
@@ -3379,69 +3564,28 @@ export class Levels implements LevelsApi {
   }
 
   /**
-   * Walking up to an unlit waystone raises a one-shot help prompt: if the player
-   * owns a fire spell that isn't on the active wand, offer to seat it; if they
-   * own none, explain how to bring fire by hand. Fires once per approach
-   * (re-armed when they step away) and never when the wand can already make fire.
+   * Walking up to an unlit waystone teaches how to light it — a TEACH CARD
+   * (ui/HintTeachOverlay: non-modal, the game never pauses, it yields to the
+   * story's beats), once per waystone per floor visit and only once he has
+   * landed; the hint line (game/Hints) says the short version while he stands
+   * there. Never when the wand already makes fire. (QA counted 41 modal,
+   * game-pausing prompts in one session for a kit without fire.)
    */
   private maybeWaystonePrompt(ctx: Ctx, runtime: LevelRuntime): void {
-    if (this.waystonePromptOpen || ctx.state.paused) return;
-    const r2 = WAYSTONE_PROMPT_RADIUS * WAYSTONE_PROMPT_RADIUS;
-    let near = false;
-    for (const ws of runtime.waystones) {
-      if (ws.lit) continue;
+    if (ctx.state.paused || !ctx.player.grounded) return;
+    const r2 = WAYSTONE_HELP_RADIUS * WAYSTONE_HELP_RADIUS;
+    for (let i = 0; i < runtime.waystones.length; i++) {
+      const ws = runtime.waystones[i];
+      if (ws.lit || this.waystoneTaught.has(i)) continue;
       const dx = ws.x - ctx.player.x,
         dy = ws.y - ctx.player.y;
-      if (dx * dx + dy * dy <= r2) {
-        near = true;
-        break;
-      }
-    }
-    if (!near) {
-      this.waystonePromptArmed = true;
+      if (dx * dx + dy * dy > r2) continue;
+      if (wandMakesFire(ctx)) return;
+      this.waystoneTaught.add(i);
+      const help = waystoneHelp(ctx);
+      ctx.events.emit('hintTeach', { key: 'waystone-unlit', title: help.title, body: help.body });
       return;
     }
-    // Never pause the game mid-fall: a modal that pops while the player is
-    // dropping past a waystone steals the landing. It waits for solid ground.
-    if (!this.waystonePromptArmed || !ctx.player.grounded) return;
-    const active = ctx.wands.wands[ctx.wands.active];
-    // The wand can already make fire — no need to nag.
-    if (WAYSTONE_FIRE_CARDS.some((c) => active.cards.includes(c))) return;
-    this.waystonePromptArmed = false;
-    const owned =
-      WAYSTONE_FIRE_CARDS.find(
-        (c) => ctx.wands.collection.includes(c) || ctx.wands.wands.some((w) => w.cards.includes(c)),
-      ) ?? null;
-    this.waystonePromptOpen = true;
-    const shown = ctx.events.emit('waystonePrompt', {
-      card: owned,
-      onEquip: () => {
-        if (owned) this.equipFireCard(ctx, owned);
-        this.waystonePromptOpen = false;
-      },
-      onDismiss: () => {
-        this.waystonePromptOpen = false;
-      },
-    });
-    if (!shown) this.waystonePromptOpen = false; // no UI listening — don't wedge
-  }
-
-  /** Replace the active wand's loadout with a single fire card the player owns. */
-  private equipFireCard(ctx: Ctx, card: CardId): void {
-    const wi = ctx.wands.active;
-    const wand = ctx.wands.wands[wi];
-    // If the card is parked in the other wand, pull it back to the collection first.
-    if (!ctx.wands.collection.includes(card)) {
-      const other = wi === 0 ? 1 : 0;
-      const os = ctx.wands.wands[other].cards.indexOf(card);
-      if (os >= 0) ctx.wands.slotCard(other, os, null);
-    }
-    // Clear the active wand back to the collection, then seat the fire card.
-    for (let s = 0; s < wand.cards.length; s++) {
-      if (wand.cards[s] !== null) ctx.wands.slotCard(wi, s, null);
-    }
-    ctx.wands.slotCard(wi, 0, card);
-    ctx.events.emit('toast', { text: 'FIRE SPELL EQUIPPED' });
   }
 
   /* ---------------- cartography ---------------- */

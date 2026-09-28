@@ -179,6 +179,12 @@ export interface StoryApi {
   readonly escapeActive: boolean;
   /** A story cinematic (the opening or the ending) is on screen. */
   readonly cinematic: 'opening' | 'ending' | null;
+  /**
+   * A scripted beat has the stage — Pell's dialogue, a boss prologue, a memory
+   * echo playing, the Kiln escape, a cinematic, Matron Ash speaking. Teach cards
+   * and contextual hint lines wait (ui/HintTeachOverlay, game/Hints).
+   */
+  readonly beatActive: boolean;
   /** Play the opening now (the title's "The opening"); resolves when it ends or is skipped. */
   playOpening(opts?: { replay?: boolean }): Promise<void>;
   /** The player has seen the opening (the title offers to replay it). */

@@ -68,6 +68,8 @@ body.reduce-flashes #story-dialogue, body.reduce-flashes #story-prompt { transit
 .story-letterbox { position: absolute; left: 0; right: 0; height: 8.5%; background: #020304; z-index: 43; pointer-events: none;
   transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1); }
 .story-letterbox.top { top: 0; transform: translateY(-100%); }
+.story-fade { position: absolute; inset: 0; background: #020304; z-index: 46; pointer-events: none; opacity: 0; transition: opacity 0.5s ease; }
+.story-fade.on { opacity: 1; transition: opacity 0.32s ease-in; }
 .story-letterbox.bottom { bottom: 0; transform: translateY(100%); }
 .story-letterbox.on { transform: none; }
 `;
@@ -87,6 +89,8 @@ export class DialogueBox {
   private readonly choices = document.createElement('div');
   private readonly prompt = document.createElement('div');
   private readonly barTop = document.createElement('div');
+  /** The story's fade to black (storyFade: the escape's quick restart). */
+  private readonly fade = document.createElement('div');
   private readonly barBottom = document.createElement('div');
   private readonly off: Array<() => void> = [];
   private view: StoryDialogueView | null = null;
@@ -128,6 +132,12 @@ export class DialogueBox {
       this.barTop.classList.toggle('on', on);
       this.barBottom.classList.toggle('on', on);
     }));
+    // The escape's quick restart after a fall: a fade to black and back, no death screen.
+    this.fade.className = 'story-fade';
+    this.fade.setAttribute('aria-hidden', 'true');
+    holder.append(this.fade);
+    this.off.push(ctx.events.on('storyFade', ({ on }) => this.fade.classList.toggle('on', on)));
+    this.off.push(ctx.events.on('levelChanged', () => this.fade.classList.remove('on')));
     this.off.push(ctx.events.on('storyDialogue', (v) => this.show(v)));
     this.off.push(ctx.events.on('levelChanged', () => this.show(null)));
     window.addEventListener('keydown', this.onKey, true);
@@ -143,13 +153,13 @@ export class DialogueBox {
       this.ctx.story?.dialogueClose();
       return;
     }
-    const n = /^Digit([1-3])$/.exec(e.code);
-    if (n && v.choices.length) {
+    // Number keys belong to the box while it is open: a choice's number picks it, and
+    // any other number is swallowed (QA: "Flask 3: empty" x5 behind a two-choice box).
+    const n = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
+    if (n) {
+      e.preventDefault(); e.stopImmediatePropagation();
       const i = Number(n[1]) - 1;
-      if (i < v.choices.length) {
-        e.preventDefault(); e.stopImmediatePropagation();
-        this.ctx.story?.dialogueChoose(i);
-      }
+      if (i >= 0 && i < v.choices.length) this.ctx.story?.dialogueChoose(i);
     }
   };
 

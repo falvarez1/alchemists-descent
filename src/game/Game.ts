@@ -377,7 +377,8 @@ export class Game {
     this.disposables.push(new DialogueBox(ctx), new StoryCinemaOverlay(ctx));
     this.minimap = new Minimap(ctx);
     this.disposables.push(this.minimap);
-    // (Callouts and the card-offer, waystone and teach overlays: play systems.)
+    // (Callouts and the card-offer and teach overlays: play systems. The unlit
+    // waystone teaches by a teach card now — game/waystoneHelp — not a modal.)
     this.disposables.push(new GpuNotice(ctx, () => this.renderer.getBackendStatus().gpu));
     // Self-binds the B key; lives for the page lifetime.
     this.disposables.push(new WandBench(ctx));

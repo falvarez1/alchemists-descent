@@ -73,6 +73,11 @@ export interface HitMemory {
   burnOrigin?: StatusOrigin | null;
   /** Whose current the electrified status is (null while not electrified). */
   shockOrigin?: StatusOrigin | null;
+  /**
+   * The kill judged at the blow that crossed zero hp (sealVerdict): a death
+   * sequence outlasts KILLING_BLOW_TICKS, so the blow is judged when it lands.
+   */
+  verdict?: { cause: AlchemyCause | null; credited: boolean };
 }
 
 /**
@@ -172,12 +177,13 @@ export function nextChain(prevChain: number, lastKillFrame: number, frame: numbe
 }
 
 /**
- * Bonus gold for an alchemical kill: 10 + 35% of the creature's bounty, scaled
+ * Bonus gold for an alchemical kill: 4 + 40% of the creature's bounty, scaled
  * ×1, ×1.5, ×2, ×2.5, ×3 by the chain (capped), rounded to whole grains.
+ * (2026-09 economy pass: was 10 + 35% of bounties ~3.3x larger, in 10-oz grains.)
  */
 export function alchemyBonusGold(bounty: number, chain: number): number {
   const mult = 1 + Math.min(4, Math.max(0, chain - 1)) * 0.5;
-  const raw = (10 + Math.max(0, bounty) * 0.35) * mult;
+  const raw = (4 + Math.max(0, bounty) * 0.4) * mult;
   return Math.max(GOLD_PER_GRAIN, Math.round(raw / GOLD_PER_GRAIN) * GOLD_PER_GRAIN);
 }
 
@@ -253,17 +259,34 @@ export class AlchemyKills implements AlchemyKillsApi {
     m.touchFrame = frame;
   }
 
+  /**
+   * The killing blow landed but the death is a sequence (the Colossus's runs
+   * for seconds, far past KILLING_BLOW_TICKS — a hurled corpse took it 6→1 hp
+   * and no BOWLED ever fired): judge it now, once, from the blow that crossed
+   * zero; onKill honours this verdict whenever the body finally goes.
+   */
+  sealVerdict(e: Enemy): void {
+    const m = this.memory.get(e);
+    if (!m || m.verdict) return;
+    const ctx = this.ctx;
+    const frame = ctx.state.frameCount;
+    const cause = killingCause(m, e.status.frozen > 0, frame);
+    const distance = Math.hypot(e.x - ctx.player.x, e.y - ctx.player.y);
+    m.verdict = { cause, credited: cause !== null && creditedToPlayer(m, distance, frame, !ctx.player.dead) };
+  }
+
   onKill(e: Enemy): AlchemyKillInfo | null {
     const ctx = this.ctx;
     const mem = this.memory.get(e);
     this.memory.delete(e);
     if (ctx.state.mode !== 'play' || !mem) return null;
     const frame = ctx.state.frameCount;
-    const cause = killingCause(mem, e.status.frozen > 0, frame);
+    // A sealed verdict (a death sequence) was judged at the blow that crossed zero.
+    const cause = mem.verdict ? mem.verdict.cause : killingCause(mem, e.status.frozen > 0, frame);
     if (!cause) return null;
     const player = ctx.player;
     const distance = Math.hypot(e.x - player.x, e.y - player.y);
-    if (!creditedToPlayer(mem, distance, frame, !player.dead)) return null;
+    if (mem.verdict ? !mem.verdict.credited : !creditedToPlayer(mem, distance, frame, !player.dead)) return null;
     const chain = nextChain(this.chainCount, this.lastKillFrame, frame);
     this.chainCount = chain;
     this.lastKillFrame = frame;

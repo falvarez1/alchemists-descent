@@ -3,6 +3,7 @@ import { WORKS_BARRICADE, WORKS_GATE, WORKS_RESERVOIR, WORKS_ROOMS, worksGateOpe
 import { TEA, TEA_STAGE } from '@/world/teaMachine';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
+import { glowseedCap } from '@/game/glowseeds';
 
 export function createLivingState(): LivingExpeditionState {
   return { ticks: 0, visited: [], room: 'intake', glowseeds: 3, nextLureId: 1, lures: [], rested: false, restTicks: 0, valveTurn: 0, valveAngularVelocity: 0 };
@@ -238,7 +239,7 @@ export function updateLivingExpedition(ctx: Ctx): void {
   state.restTicks = nearRefuge && !threatened && Math.abs(ctx.player.vx) < 0.2 ? state.restTicks + 1 : 0;
   if (state.restTicks === 120) {
     ctx.player.hp = ctx.player.maxHp;
-    state.glowseeds = 3;
+    state.glowseeds = glowseedCap(state);
     state.rested = true;
     ctx.events.emit('toast', { text: 'Warmth returns. Health and glowseeds restored.' });
     ctx.levels.saveExpedition(ctx);

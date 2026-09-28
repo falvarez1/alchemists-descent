@@ -395,6 +395,10 @@ function protectedRepairMask(runtime: LevelRuntime): Uint8Array {
     if (p.kind === 'key') markProtectedPoint(runtime, protectedCells, p.x, p.y, 2);
   }
   for (const ws of runtime.waystones) markProtectedPoint(runtime, protectedCells, ws.x, ws.y, 3);
+  // The arrival's footing (game/arrival settles the spawn onto rock): a rescue
+  // route starts beside it and walks off it, never bores down through it — a
+  // settled arrival dropped 99 cells into the tunnel dug from under his boots.
+  markProtectedRect(runtime, protectedCells, runtime.spawn.x - 7, runtime.spawn.y + 1, runtime.spawn.x + 7, runtime.spawn.y + 4);
   if (runtime.exit) {
     markProtectedRect(
       runtime,
@@ -463,7 +467,16 @@ function carveStableRepairPaths(runtime: LevelRuntime, issues: readonly Findabil
       }
     }
   }
-  for (const i of shellCells) if (!protectedCells[i] && blocksEntity(originalTypes[i])) {
+  // No sleeve inside an authored room's footprint (a lair, a set piece, the boss's
+  // arena): its cells are the room's own; a rescue route that grazes one leaves
+  // them as they were (d3 seed 5: a settled camp rescue left a metal cell on the
+  // Rillback pool's edge row).
+  const footprints = [...(runtime.placedPrefabs ?? []), ...(bossArenaRect(runtime.boss) ? [bossArenaRect(runtime.boss)!] : [])];
+  const inFootprint = (i: number): boolean => {
+    const x = i % world.width, y = (i - x) / world.width;
+    return footprints.some((r) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1);
+  };
+  for (const i of shellCells) if (!protectedCells[i] && blocksEntity(originalTypes[i]) && !inFootprint(i)) {
     world.replaceCellAt(i, Cell.Metal, REPAIR_SLEEVE_COLOR);
   }
 }

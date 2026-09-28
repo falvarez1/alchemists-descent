@@ -131,7 +131,7 @@ export class Pickups implements PickupsApi {
       ctx.events.emit('toast', { text: `Weaver leg equipped · LMB whip · RMB throw · ${keyLabel(getBindings().carry)} drop` });
       ctx.audio.sfx('pickup.leg');
     } else if (p.kind === 'goldpile') {
-      const amount = p.data.amount ?? 25;
+      const amount = p.data.amount ?? 10;
       ctx.state.score += amount;
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
       ctx.events.emit('toast', { text: `+${amount} oz gold` });
@@ -140,8 +140,14 @@ export class Pickups implements PickupsApi {
       // The vessel grows at once; refilling it is a COMMUNION — the alchemist
       // roots in place, glowing, while ~20 HP charges in (see Player.update).
       player.maxHp += 20;
-      player.recharge = 110;
-      ctx.events.emit('toast', { text: '+20 max HP. Hold still while it takes.' });
+      if (ctx.story?.escapeActive) {
+        // No holding still with the lava rising: in the escape it takes at once.
+        player.hp = Math.min(player.maxHp, player.hp + 20);
+        ctx.events.emit('toast', { text: '+20 max HP.' });
+      } else {
+        player.recharge = 110;
+        ctx.events.emit('toast', { text: '+20 max HP. Hold still while it takes.' });
+      }
       ctx.audio.sfx('pickup.heart');
       ctx.particles.burst(p.x, p.y - 2, 14, null, () => packRGB(255, 90, 120), 1.8, {
         glow: 1.8,
@@ -153,7 +159,7 @@ export class Pickups implements PickupsApi {
       const piles = 3 + Math.floor(entityRandom() * 3);
       for (let i = 0; i < piles; i++) {
         const gp = makePickup('goldpile', p.x + (entityRandom() - 0.5) * 14, p.y - 4 - entityRandom() * 6, {
-          amount: 15 + Math.floor(entityRandom() * 25),
+          amount: 5 + Math.floor(entityRandom() * 9),
         });
         gp.vx = (entityRandom() - 0.5) * 1.6;
         gp.vy = -1.2 - entityRandom();

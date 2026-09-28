@@ -258,7 +258,7 @@ function placeLamplightersLock(ctx: Ctx, rng: Rng, at: Site, spec: RoomSpec, twi
   // The reward, on a small plinth.
   const rx = Math.floor((vx0 + vx1) / 2);
   out.pickups.push(makePickup('tome', rx, vy1 - 1, { card: randomCard(TOME_REWARD_POOL, () => rng.next()) }));
-  out.pickups.push(makePickup('goldpile', rx + 6, vy1, { amount: 40 + rng.int(30) }));
+  out.pickups.push(makePickup('goldpile', rx + 6, vy1, { amount: 14 + rng.int(10) }));
   // The lenses: high on the west wall, and (twin) high on the east wall above
   // the strongroom — too far apart for one cone to hold both.
   const lensY = y0 + 18 + rng.int(6);
@@ -290,7 +290,7 @@ function placeBloomCrossing(ctx: Ctx, rng: Rng, at: Site, spec: RoomSpec, out: L
   out.lumenBlooms.push(makeLumenBloom(world, base + 1, farStart + 1, floorY - 3, -1, farStart - 1, floorY, gap - half, 2));
   // The far ledge keeps something worth the crossing.
   out.pickups.push(makePickup('potion', x1 - 22, floorY - 1, { potion: POTION_KINDS[rng.int(POTION_KINDS.length)] }));
-  out.pickups.push(makePickup('goldpile', x1 - 30, floorY - 1, { amount: 35 + rng.int(35) }));
+  out.pickups.push(makePickup('goldpile', x1 - 30, floorY - 1, { amount: 12 + rng.int(12) }));
   if (rng.next() < 0.5) out.pickups.push(makePickup('heart', x1 - 14, floorY - 2));
 }
 

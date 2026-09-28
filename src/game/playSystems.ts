@@ -8,7 +8,6 @@ import { AshVoice } from '@/ui/story/AshVoice';
 import { Sanctum } from '@/ui/Sanctum';
 import { Callouts } from '@/ui/Callouts';
 import { CardOfferOverlay } from '@/ui/CardOfferOverlay';
-import { WaystonePromptOverlay } from '@/ui/WaystonePromptOverlay';
 import { HintTeachOverlay } from '@/ui/HintTeachOverlay';
 import { HelpOverlay } from '@/ui/HelpOverlay';
 import { Grimoire } from '@/ui/Grimoire';
@@ -64,7 +63,6 @@ export function installPlaySystems(ctx: Ctx, audio: StreamHost, gestured: boolea
   // World-anchored alchemical-kill words (listens to `alchemyKill`/`combatCallout`).
   disposables.push(new Callouts(ctx));
   disposables.push(new CardOfferOverlay(ctx));
-  disposables.push(new WaystonePromptOverlay(ctx));
   disposables.push(new HintTeachOverlay(ctx));
   // The Handbook (H). Its ESC yields to the pause overlay registered before it.
   disposables.push(new HelpOverlay(ctx));

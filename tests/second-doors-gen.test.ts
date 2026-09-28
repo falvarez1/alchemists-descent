@@ -68,7 +68,7 @@ function count(world: World, x0: number, y0: number, x1: number, y1: number, cel
 
 /** GEN_VERSION 57: the Ice-House and the Glass Galleries (galleries skeleton, light rooms, dressing, the Lens Room), with the story's camp and valve nooks. */
 const GOLDEN: Array<{ id: 'd2b' | 'd3b'; seed: number; hash: string }> = [
-  { id: 'd2b', seed: 1337, hash: '2c2b18a9' }, // GEN_VERSION 59: a story nook's route floor is never inside a sealed feature (its search's rng draws shift)
+  { id: 'd2b', seed: 1337, hash: '6033ebd6' }, // GEN_VERSION 60: story nooks on dry ground (no liquid level with the floor; the route at most a step above the room), over v59's sealed-feature route floors
   { id: 'd3b', seed: 1337, hash: 'd7ea111d' }, // GEN_VERSION 59: a sealed-footprint detour leaves from its true start, not the snapped grid node
 ];
 

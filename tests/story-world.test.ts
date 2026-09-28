@@ -11,7 +11,7 @@ import { makeLevelRuntime } from '@/game/runtime';
 import { extractRegionGraph } from '@/world/regions';
 import { validateFindability, wizardMask } from '@/world/validate';
 import { openKilnFlue, resetKilnFlue } from '@/world/kilnFlue';
-import { standable } from '@/world/storySites';
+import { roomIsDry, standable } from '@/world/storySites';
 
 /**
  * STORY WORLD (wave 3 WS-S): the story's sites are findable by construction,
@@ -93,7 +93,7 @@ describe('story sites', () => {
   it('floor 1: six named pipes on standable floor, Pell at the Warm Refuge, the valve in its nook — all findable', () => {
     const { runtime, out } = generate(LEVELS.d1, 1337);
     const st = out.story!;
-    expect(st.pipes.map(p => p.id)).toEqual(['intake', 'sluice', 'gallery', 'refuge', 'undertow', 'bell']);
+    expect(st.pipes.map(p => p.id)).toEqual(['intake', 'gallery', 'refuge', 'undertow', 'bell']);
     for (const p of st.pipes) expect(standable(runtime.world, p.x, p.floorY), p.id).toBe(true);
     expect(st.camp && Math.abs(st.camp.x - 1004) < 30).toBe(true);
     expect(validateFindability(runtime).filter(i => i.what.startsWith('story'))).toEqual([]);
@@ -109,4 +109,22 @@ describe('story sites', () => {
       expect(validateFindability(runtime).filter(i => i.what.startsWith('story') && i.severity === 'error')).toEqual([]);
     }, 60000);
   }
+});
+
+describe('a camp is dry ground', () => {
+  it('reads liquid level with a room floor or above it as wet, and liquid below it as harmless', () => {
+    const w = new World(200, 120);
+    for (let x = 0; x < 200; x++) for (let y = 81; y < 120; y++) w.replaceCellAt(w.idx(x, y), Cell.Stone, 0x555555);
+    expect(roomIsDry(w, 60, 140, 80, 40)).toBe(true);
+    // A pool BELOW the floor cannot run up into it.
+    for (let x = 150; x < 170; x++) w.replaceCellAt(w.idx(x, 100), Cell.Water, 0x2255aa);
+    expect(roomIsDry(w, 60, 140, 80, 40)).toBe(true);
+    // Water beside the room at floor level would settle in it.
+    w.replaceCellAt(w.idx(170, 78), Cell.Water, 0x2255aa);
+    expect(roomIsDry(w, 60, 140, 80, 40)).toBe(false);
+    // ...and so would brine or lava standing above it.
+    w.replaceCellAt(w.idx(170, 78), Cell.Empty, 0);
+    w.replaceCellAt(w.idx(100, 50), Cell.Lava, 0xff5500);
+    expect(roomIsDry(w, 60, 140, 80, 40)).toBe(false);
+  });
 });

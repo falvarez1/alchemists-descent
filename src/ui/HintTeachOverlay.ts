@@ -24,8 +24,13 @@ const CENTRE_BEATS = [
   '#grimoire-overlay',
   '#run-summary',
   '#wand-bench',
-  '#waystone-prompt-overlay',
   '#expedition-entry',
+  // The story's beats (ctx.story.beatActive covers the ones with no DOM of their own:
+  // an echo playing, the escape, Matron Ash speaking).
+  '#story-dialogue.open', // Pell talking
+  '#story-cinema.show', // the opening and the ending plates
+  '.story-letterbox.on', // a boss prologue
+  '#callout-layer .callout-finisher', // a boss's name card rising over it
 ] as const;
 
 function onScreen(el: Element | null): boolean {
@@ -77,7 +82,7 @@ export class HintTeachOverlay {
   /** Is a centre beat (or the descent's curtain / a pause) on screen right now? */
   private centreBusy(): boolean {
     const ctx = this.ctx;
-    if (ctx.state.paused || ctx.levels?.transitioning) return true;
+    if (ctx.state.paused || ctx.levels?.transitioning || ctx.story?.beatActive) return true;
     for (const sel of CENTRE_BEATS) if (onScreen(document.querySelector(sel))) return true;
     return false;
   }

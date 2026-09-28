@@ -22,6 +22,10 @@ const TITLE_CARD_AFTER_CURTAIN_MS = 120;
 const TITLE_CARD_FALLBACK_MS = 1600;
 /** Never over a title card's first second. */
 const AFTER_TITLE_CARD_MS = 1100;
+/** On a level change what was speaking fades over this (s) rather than clicking off. */
+const LEVEL_CHANGE_FADE_S = 0.45;
+/** The title card's span after a level change (curtain, rise, 3.6 s hold): only high lines speak. */
+const TITLE_QUIET_MS = 6000;
 /** Decoded clips kept (a clip is a few seconds of mono: a dozen stay under ~8 MB). */
 const BUFFER_CACHE = 12;
 /** A fetch this slow means the moment has passed. */
@@ -83,6 +87,8 @@ export class Narrator implements NarratorApi {
   private doorSpoken: string | null = null;
   private lastPreview = 0;
   private talking = false;
+  /** No low/normal line while a floor's title card is up (performance.now ms). */
+  private titleQuietUntil = 0;
 
   constructor(private readonly ctx: Ctx, private readonly host: StreamHost, private readonly clips: Readonly<Record<string, NarrationClip>> = NARRATION_CLIPS) {
     // Fail-safe listeners: the narrator hears playerDied, toasts and callouts from inside the game tick.
@@ -136,6 +142,9 @@ export class Narrator implements NarratorApi {
 
   /** Something is being said, or waits its turn. */
   get busy(): boolean { return this.speaking !== null || this.queue.length > 0; }
+
+  /** Whose line is being said right now (its source tag), or null. */
+  get speakingSource(): string | null { return this.speaking?.u.source ?? null; }
 
   /**
    * STORY lines (the Docent's pipes, Pell, Matron Ash, an echo, a prologue):
@@ -213,6 +222,11 @@ export class Narrator implements NarratorApi {
   private onLevelChanged(): void {
     if (this.arrival) window.clearTimeout(this.arrival.timer);
     this.arrival = null;
+    // A new floor's title card has the air: whatever was still being said on the
+    // floor behind (Matron Ash in the Sanctum, a pipe's last line) fades out, and
+    // what was waiting is dropped (QA: Ash talked on over the next title card).
+    this.silence(true, LEVEL_CHANGE_FADE_S);
+    this.titleQuietUntil = performance.now() + TITLE_QUIET_MS;
     this.teaView = '';
     const id = this.ctx.levels.current?.def.id;
     if (this.ctx.state.mode !== 'play' || !id || floorOf(id) <= 0) return;
@@ -273,6 +287,12 @@ export class Narrator implements NarratorApi {
    */
   say(texts: readonly string[], priority: NarrationPriority, source: string, ttlMs = 4000, guard?: () => boolean): boolean {
     if (!this.on || document.hidden || !this.host.streamContext() || (guard && !guard())) return false;
+    // A floor's title card is the arrival's to voice: a passing line waits it out (or lapses).
+    const titleWait = this.titleQuietUntil - performance.now();
+    if (priority !== 'high' && titleWait > 0) {
+      if (priority === 'normal' && titleWait + 200 < ttlMs) this.later(titleWait, () => this.say(texts, priority, source, ttlMs - titleWait, guard));
+      return priority === 'normal' && titleWait + 200 < ttlMs;
+    }
     const pairs = texts.filter(Boolean).map(t => ({ t, k: narrationKey(t) })).filter(p => this.clips[p.k]);
     const keys = this.gate.unheard(pairs.map(p => p.k));
     if (keys.length === 0) return false;
@@ -325,8 +345,9 @@ export class Narrator implements NarratorApi {
       this.speaking = null;
       // A line that never started (its moment passed) costs no cooldown.
       if (played > 0) this.gate.finished(performance.now());
-      const next = this.queue.shift();
-      if (next && this.canRun(next)) void this.run(next);
+      // The next that may still run (a lapsed one no longer blocks the lines queued behind it).
+      const next = this.nextRunnable();
+      if (next) void this.run(next);
       else this.duck(false);
     }
   }
@@ -375,8 +396,8 @@ export class Narrator implements NarratorApi {
     return p;
   }
 
-  /** Stop the current line quickly (a higher beat is taking the floor). */
-  private cut(): void {
+  /** Stop the current line (quickly when a higher beat takes the floor; a slower fade when the floor changes). */
+  private cut(fadeS = 0.12): void {
     const s = this.speaking;
     if (!s) return;
     s.cancelled = true;
@@ -386,8 +407,8 @@ export class Narrator implements NarratorApi {
     if (s.node && s.gain && ac) {
       const t = ac.currentTime;
       s.gain.gain.setValueAtTime(s.gain.gain.value, t);
-      s.gain.gain.linearRampToValueAtTime(0, t + 0.12);
-      try { s.node.stop(t + 0.13); } catch { /* already stopped */ }
+      s.gain.gain.linearRampToValueAtTime(0, t + fadeS);
+      try { s.node.stop(t + fadeS + 0.01); } catch { /* already stopped */ }
     }
   }
 
@@ -398,10 +419,16 @@ export class Narrator implements NarratorApi {
       this.cut();
       this.gate.finished(performance.now());
       // Whatever was waiting behind it (another source's line) takes its turn.
-      const next = this.queue.shift();
-      if (next && this.canRun(next)) void this.run(next);
+      const next = this.nextRunnable();
+      if (next) void this.run(next);
       else this.duck(false);
     }
+  }
+
+  /** The first waiting utterance that may still start; lapsed ones ahead of it are dropped. */
+  private nextRunnable(): Utterance | null {
+    for (let u = this.queue.shift(); u; u = this.queue.shift()) if (this.canRun(u)) return u;
+    return null;
   }
 
   /** A waiting utterance may still start: its moment has not passed, and it can be heard (or is caption-only). */
@@ -410,8 +437,8 @@ export class Narrator implements NarratorApi {
   }
 
   /** Everything stops: the setting went off or the tab was hidden. */
-  private silence(clearQueue: boolean): void {
-    this.cut();
+  private silence(clearQueue: boolean, fadeS = 0.12): void {
+    this.cut(fadeS);
     if (clearQueue) this.queue.length = 0;
     this.duck(false);
   }

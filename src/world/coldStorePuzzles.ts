@@ -130,7 +130,7 @@ function frozenFall(world: World, rng: Rng, at: Site, spec: RoomSpec, out: ColdS
   for (let y = L.floorY - 18; y <= L.floorY - 1; y++) for (let x = x1 - 30; x <= x1 - 9; x++) put(world, x, y, Cell.Empty, AIR);
   coldLamp(world, x1 - 12, L.floorY - 1);
   out.pickups.push(makePickup('tome', L.rewardX, L.floorY - 2, { card: randomCard(TOME_REWARD_POOL, () => rng.next()) }));
-  out.pickups.push(makePickup('goldpile', x1 - 30, L.floorY - 1, { amount: 50 + rng.int(40) }));
+  out.pickups.push(makePickup('goldpile', x1 - 30, L.floorY - 1, { amount: 18 + rng.int(14) }));
   // A lamp on the near ledge too, so the lake reads from the doorway.
   coldLamp(world, at.x0 + 30, L.floorY - 1);
 }

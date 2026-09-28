@@ -1,5 +1,6 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { difficultyMods } from '@/config/difficulty';
+import { CAMP_HAVEN_RADIUS } from '@/config/pacing';
 import { RILLBACK_WET_THRESHOLD } from '@/core/enemyState';
 import { clamp } from '@/core/math';
 import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDamageSource, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
@@ -92,6 +93,8 @@ const RILLBACK_CHARGE_WINDUP_FRAMES = 18;
 const GUST_REF_MASS = 40; // a slime-ish footprint (halfW·h); push scales inversely
 const GUST_MASS_LO = 0.2; // heaviest foes barely budge
 const GUST_MASS_HI = 4.5; // lightest foes (bats) get hurled
+/** Share of a blow that lands on a submerged Leviathan (its water is armour). */
+const LEVIATHAN_WATER_ARMOR = 0.12;
 const GUST_KNOCK_FRAMES_MAX = 18; // longest ballistic-launch window (AI + flight cap suppressed)
 const KNOCK_GRAV = 0.12; // gentle gravity during a launch so the arc reads
 const KNOCK_DRAG = 0.97; // per-frame air drag on a launched body
@@ -615,9 +618,11 @@ export class Enemies implements EnemyControlApi {
     }
     // WATER IS THE LEVIATHAN'S ARMOR: while the body is actually in water
     // (cell census, not the wet meter) hits glance off — and SAY so, every
-    // time, with a cold shimmer and a dull plink. Drain the pool.
+    // time, with a cold shimmer and a dull plink. Drain the pool, or short it.
+    // (×0.12, was ×0.25: a held Spark Bolt ground ~10 hp/s through the water,
+    // half the fight, whatever the pool was doing.)
     if (e.kind === 'leviathan' && e.submerged === true) {
-      amount *= 0.25;
+      amount *= LEVIATHAN_WATER_ARMOR;
       ctx.particles.burst(e.x, e.y - 7, 3, null, () => packRGB(120, 220, 255), 1.2, {
         glow: 1.8,
         grav: -0.01,
@@ -877,6 +882,10 @@ export class Enemies implements EnemyControlApi {
   /** The Kiln Colossus dies as a sequence (creatures/bosses); the kill path runs when it ends. */
   private deferBossDeath(e: Enemy): boolean {
     if (e.kind !== 'colossus' || e.boss?.finished) return false;
+    // The blow that crossed zero is judged now (combat/AlchemyKills.sealVerdict):
+    // the sequence outlasts the killing-blow window, and BOWLED or SHATTERED
+    // belongs to the blow, not to the rubble seconds later.
+    if (e.boss?.move !== 'dying') this.ctx.alchemy?.sealVerdict?.(e);
     return colossusBeginDeath(this.ctx, e, this.defs[e.kind], this.bossHost);
   }
 
@@ -1332,7 +1341,8 @@ export class Enemies implements EnemyControlApi {
     const ctx = this.ctx;
     ctx.state.score += def.bounty;
     ctx.events.emit('scoreChanged', { score: ctx.state.score });
-    const coins = Math.max(1, Math.ceil(def.bounty / 10));
+    // A coin per ~4 oz (the 2026-09 economy pass made bounties ~0.3x): the shower still reads.
+    const coins = Math.max(1, Math.min(40, Math.ceil(def.bounty / 4)));
     const baseValue = Math.floor(def.bounty / coins);
     let remainder = def.bounty - baseValue * coins;
     for (let i = 0; i < coins; i++) {
@@ -2594,8 +2604,15 @@ export class Enemies implements EnemyControlApi {
   update(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
     const enemies = ctx.enemies;
+    // The arrival's grace (game/arrival): while a floor's name is up, nothing sees him.
+    const arrivalGrace = ctx.state.frameCount < (ctx.state.arrivalGraceUntil ?? -1);
+    // Pell's camp is a haven (config/pacing): nothing sees him in it, and nothing stays in it.
+    const camp = ctx.levels?.current?.story?.camp ?? null;
+    const haven = camp ? { x: camp.x, y: camp.floorY - 10 } : null;
+    const havenR2 = CAMP_HAVEN_RADIUS * CAMP_HAVEN_RADIUS;
+    const inHaven = haven !== null && (ctx.player.x - haven.x) ** 2 + (ctx.player.y - 9 - haven.y) ** 2 < havenR2;
     const observedPlayer = {
-      x: ctx.player.x, y: ctx.player.y, vx: ctx.player.vx, dead: ctx.player.dead,
+      x: ctx.player.x, y: ctx.player.y, vx: ctx.player.vx, dead: ctx.player.dead || arrivalGrace || inHaven,
       // Light wave: the lantern, the hood and the place's darkness set how far eyes reach.
       crouching: ctx.input?.keys.down === true, light: playerVisibility(ctx),
     };
@@ -2711,7 +2728,10 @@ export class Enemies implements EnemyControlApi {
           chargeContact: eff.chargeContact,
         });
         // (A warded boss's status harm lands only while the player is engaged, and never on a dying one.)
-        if (eff.damage > 0 && this.bossWard.allows(e, 'shorted', ctx.state.frameCount) && e.boss?.move !== 'dying') e.hp -= eff.damage;
+        // The Leviathan's shock is its SHORTED burst (creatures/bosses/leviathan), never a
+        // per-sample drain on top: QA watched the two together take it in ~7 s.
+        const statusHarm = e.kind === 'leviathan' ? eff.damage - eff.shockDamage : eff.damage;
+        if (statusHarm > 0 && this.bossWard.allows(e, 'shorted', ctx.state.frameCount) && e.boss?.move !== 'dying') e.hp -= statusHarm;
         if (e.hp <= 0) {
           this.killAt(i, e, 0, 0);
           continue;
@@ -2728,6 +2748,25 @@ export class Enemies implements EnemyControlApi {
       respondToLight(ctx, e, def, mind); // light wave: lit fix, flinch, scatter, freeze
       const lair = BOSS_LAIRS[e.kind];
       if (lair) this.watchLair(e, def, lair, mind);
+      // A creature that strays into Pell's camp forgets the hunt and walks back out
+      // (its home, if the camp was it, moves to the camp's edge).
+      if (haven && !lair && e.kind !== 'eggs' && !e.sleeping) {
+        const hx = e.x - haven.x, hy = e.y - 6 - haven.y;
+        if (hx * hx + hy * hy < havenR2) {
+          const out = Math.sign(hx) || 1;
+          if (Math.abs(mind.homeX - haven.x) < CAMP_HAVEN_RADIUS + 24 && Math.abs(mind.homeY - haven.y) < CAMP_HAVEN_RADIUS + 24) {
+            mind.homeX = haven.x + out * (CAMP_HAVEN_RADIUS + 48);
+          }
+          mind.confidence = 0;
+          mind.visible = false;
+          mind.intent = 'return';
+          mind.commitUntil = ctx.state.frameCount + 90;
+          e.alerted = false;
+          // ...and it goes: the flee reflex carries it out past the camp's edge.
+          e.fleeT = Math.max(e.fleeT ?? 0, 12);
+          e.fleeDir = out;
+        }
+      }
       const player = { x: mind.targetX, y: mind.targetY, vx: mind.targetVx };
       const targetAlive = !ctx.player.dead && mind.confidence > 0.1 && (mind.intent === 'hunt' || mind.intent === 'investigate');
       const pdx = player.x - e.x,

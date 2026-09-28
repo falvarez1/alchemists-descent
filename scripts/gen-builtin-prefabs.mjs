@@ -85,7 +85,7 @@ function brazierShrine() {
     obj('door0', 'door', 50, 26, { w: 3, h: 22 }),
     obj('braz0', 'brazier', 12, 47, {}),
     obj('braz1', 'brazier', 38, 47, {}),
-    obj('gold0', 'pickup', 58, 46, { kind: 'goldpile', amount: 60 }),
+    obj('gold0', 'pickup', 58, 46, { kind: 'goldpile', amount: 20 }),
     obj('heart0', 'pickup', 63, 46, { kind: 'heart' }),
   ];
   const links = [
@@ -122,7 +122,7 @@ function plateVault() {
   const objects = [
     obj('door0', 'door', 38, 30, { w: 4, h: 22 }),
     obj('plate0', 'plate', 16, 51, { w: 7 }),
-    obj('gold0', 'pickup', 52, 50, { kind: 'goldpile', amount: 80 }),
+    obj('gold0', 'pickup', 52, 50, { kind: 'goldpile', amount: 30 }),
     obj('chest0', 'pickup', 60, 50, { kind: 'chest' }),
   ];
   const links = [{ id: 'k0', fromId: 'plate0', toId: 'door0', kind: 'triggerDoor' }];
@@ -160,8 +160,8 @@ function ruinGallery() {
   rect(g, 86, 41, 92, 43, Cell.Wood); // collapsed beam pile
 
   const objects = [
-    obj('gold0', 'pickup', 42, 42, { kind: 'goldpile', amount: 25 }),
-    obj('gold1', 'pickup', 70, 41, { kind: 'goldpile', amount: 30 }),
+    obj('gold0', 'pickup', 42, 42, { kind: 'goldpile', amount: 10 }),
+    obj('gold1', 'pickup', 70, 41, { kind: 'goldpile', amount: 10 }),
   ];
   const lights = [
     light('L0', 28, 18, '#ffb060', 1.2, 75, 0.4, 0.3),
