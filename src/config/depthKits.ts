@@ -303,7 +303,11 @@ const CISTERNS: DepthKit = {
     { label: 'near motes', parallax: 1.25, count: 42, color: [0.225, 0.325, 0.325], size: 3, drift: [0.03, -0.05], sway: 6, twinkle: 0.7,
       behind: false, light: 'light' },
   ],
-  grade: NEUTRAL_GRADE,
+  // The distance steps back behind the play layer (fix4b): the arcades matched
+  // the drowned rock in hue and value, so the rock read as one more plane.
+  // Darker, flatter and hazed toward the deep teal (keeping the teal the rock
+  // lacks), the planes sit behind; the light wells keep their pull.
+  grade: { mul: [0.72, 0.84, 0.84], lift: [0, 0.003, 0.004], sat: 0.85, haze: [0.02, 0.055, 0.058], hazeMix: 0.2 },
 };
 
 /* ------------------------------------------------------------------ *

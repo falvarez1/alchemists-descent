@@ -1043,9 +1043,28 @@ and flutters: 42% fall / 10% drift per step, floats on water as a pad) and
   0.002), copper machinery ×1.75, saturation ×0.9 and a warm smoke haze
   (0.12, 0.045, 0.02) at only 0.18 — and a deeper contact shadow (×0.30,
   easing out over 10 cells) so the rock stands in front of the warm refinery.
-  Small enclosed air pockets under 1500 cells are sealed and count as rock.
+  Small enclosed air pockets under 1500 cells are sealed and count as rock,
+  and so is a liquid body under 1500 cells that meets no exposed air (the
+  POCKET bit on its loose byte: a water pore in a flooded wall; a dig carries
+  the verdict forward and opens it where the air gets in).
   Digs re-derive at most 4 chunk regions per frame, and liquid or powder churn
   one every other frame, so render cost stays within noise of the classic sampler.
+- **Underwater readability (the Drowned Cisterns, fix4b):** rock, water and
+  backdrop were one blue-grey value (luma ~25 / 27 / 28), so the drowned
+  masonry read as one more backdrop plane. Now a reachable water body is lit
+  murk (body 40, 98, 116) that shows the kit's planes through it at 0.45 —
+  graded like the open backdrop, then 0.45 saturation and a ×(0.8, 1.25, 1.4)
+  tint, swaying ±1.6 cells (sin(y·0.19 + phase·0.35)) like refraction — so a
+  flooded hall reads as open water with drowned arches beyond it (luma ~34
+  against rock ~25). A face against a body of water (two cells of water or
+  more, never a pocket) wears a wet rim (112, 170, 180) at 0.5 on tops, 0.25
+  on sides; sealed pockets keep the old opaque (26, 66, 88) and no rim. Lips
+  0.55 → 0.62, sides 0.35 → 0.42. The kit's backdrop grade steps the distance
+  back: mul (0.72, 0.84, 0.84), saturation 0.85, a deep-teal haze (0.02,
+  0.055, 0.058) at 0.2. CPU, WebGL2 and WebGPU draw the same (`waterClarity`,
+  `waterSeen`, `waterPocket`, `wetLip` on `NaturalLook`; other floors leave
+  them unset and look as they did — floors 2, 4 and the second doors carry
+  little water and already separated rock from distance).
 - **Depth kits (`config/depthKits.ts`, `render/depth/`):** every expedition
   floor stands in layered scenery, looked up by biome (a generic kit graded
   from the floor look covers any biome without its own). Far → near:

@@ -38,6 +38,16 @@ export const ART_BUILT_BIT = 0x40;
 export const ART_LOOSE_BIT = 0x40;
 export const ART_DEPTH_MASK = 0x3f;
 export const ART_SEALED_BIT = 0x20;
+/**
+ * On a LOOSE byte (the bit an open byte uses for SEALED): this liquid lies in
+ * a sealed POCKET — a small liquid body that touches no exposed air (a
+ * water-filled pore in a flooded wall). Pockets stay part of the rock mass;
+ * the renderer draws only the water you can reach as water (fix4b: clear
+ * water and wet faces must not turn every pore into a lit hole).
+ */
+export const ART_POCKET_BIT = 0x20;
+/** Loose depth never exceeds ART_DEPTH_MAX (< 32), so it fits under the pocket bit. */
+const LOOSE_DEPTH_MASK = 0x1f;
 export const ART_AIR_MASK = 0x0f;
 /** Deepest depth the plane distinguishes (cells). */
 export const ART_DEPTH_MAX = 20;
@@ -75,6 +85,10 @@ const LAZY_CADENCE = 2;
 const DIRTY_RECTS = 12;
 /** An enclosed open component smaller than this is a sealed pocket (cells). */
 const POCKET_MAX = 1500;
+/** A liquid body touching no exposed air and smaller than this is a sealed pocket (cells). */
+const LIQUID_POCKET_MAX = 1500;
+const LIQUID = new Uint8Array(256);
+for (let t = 0; t < 256; t++) LIQUID[t] = isLiquid(t) ? 1 : 0;
 
 // Scratch shared by every plane (single-threaded; builds never interleave).
 let scratchSize = 0;
@@ -87,12 +101,14 @@ let solidMask = new Uint8Array(0);
 let queue = new Int32Array(0);
 let runLeft = new Uint16Array(0);
 let runRight = new Uint16Array(0);
+/** Full-build liquid labels: 2 = a sealed pocket (see ART_POCKET_BIT). */
+let liquidMark = new Uint8Array(0);
 function scratch(size: number): void {
   if (scratchSize >= size) return;
   scratchSize = size;
   depthUnits = new Uint16Array(size); airUnits = new Uint16Array(size); builtUnits = new Uint16Array(size);
   exposed = new Uint8Array(size); solidMask = new Uint8Array(size); queue = new Int32Array(size);
-  runLeft = new Uint16Array(size); runRight = new Uint16Array(size);
+  runLeft = new Uint16Array(size); runRight = new Uint16Array(size); liquidMark = new Uint8Array(size);
 }
 
 /** Smooth ±1 jitter from an integer lattice. */
@@ -146,6 +162,7 @@ export class TerrainArtPlane {
     const world = this.world, width = world.width, height = world.height;
     scratch(width * height);
     this.labelPockets();
+    this.labelLiquidPockets();
     this.fields(0, 0, width, height, false);
     this.classify();
     this.pack(0, 0, width, height, false);
@@ -302,6 +319,36 @@ export class TerrainArtPlane {
   }
 
   /**
+   * Full-world liquid bodies (after labelPockets: `exposed` marks exposed
+   * air): a body smaller than LIQUID_POCKET_MAX that touches no exposed air
+   * is a sealed pocket (liquidMark 2). Incremental packs carry the verdict
+   * forward cell by cell (see pack).
+   */
+  private labelLiquidPockets(): void {
+    const world = this.world, width = world.width, height = world.height, types = world.types;
+    const size = width * height, mark = liquidMark;
+    // 0 = unvisited liquid, 1 = a body, 2 = a pocket, 3 = not liquid, 4 = queued.
+    for (let i = 0; i < size; i++) mark[i] = LIQUID[types[i]] ? 0 : 3;
+    for (let start = 0; start < size; start++) {
+      if (mark[start] !== 0) continue;
+      mark[start] = 4; queue[0] = start;
+      let head = 0, tail = 1, touches = false;
+      while (head < tail) {
+        const i = queue[head++], x = i % width, y = (i - x) / width;
+        for (let n = 0; n < 4; n++) {
+          const nx = n === 0 ? x - 1 : n === 1 ? x + 1 : x;
+          const ny = n === 2 ? y - 1 : n === 3 ? y + 1 : y;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+          const j = nx + ny * width;
+          if (mark[j] === 0) { mark[j] = 4; queue[tail++] = j; } else if (exposed[j] === 1) touches = true;
+        }
+      }
+      const verdict = !touches && tail < LIQUID_POCKET_MAX ? 2 : 1;
+      for (let k = 0; k < tail; k++) mark[queue[k]] = verdict;
+    }
+  }
+
+  /**
    * Exposure inside a re-derived region: open cells reachable (within the
    * region) from an exposed open cell — one already exposed before, or on the
    * ring around the region — are exposed; the rest stay sealed. A dig into a
@@ -369,7 +416,7 @@ export class TerrainArtPlane {
         if (x < 0 || y < 0 || x >= width || y >= height) return;
         const i = x + y * width, v = data[i];
         if (storedClass(v) !== OPEN) {
-          const depth = v & ART_DEPTH_MASK;
+          const depth = v & (v & ART_SOLID_BIT ? ART_DEPTH_MASK : LOOSE_DEPTH_MASK);
           dIn[i] = depth >= ART_DEPTH_MAX ? INF : depth * 3; dOut[i] = 0;
         } else {
           const air = v & ART_AIR_MASK;
@@ -539,6 +586,32 @@ export class TerrainArtPlane {
   }
 
   /**
+   * Is the loose cell i a sealed liquid pocket? A full build reads the
+   * labels. An incremental pack (the region's `exposed` marks are fresh, the
+   * byte still holds the last verdict) carries it forward: a liquid cell that
+   * was a pocket stays one, and a cell newly turned liquid joins a pocket it
+   * touches — unless it touches exposed air, which opens it (a dig into a
+   * pore lets its water read as water where the air meets it).
+   */
+  private liquidPocket(i: number, incremental: boolean): boolean {
+    const world = this.world, types = world.types;
+    if (!LIQUID[types[i]]) return false;
+    if (!incremental) return liquidMark[i] === 2;
+    const width = world.width, size = width * world.height, data = this.data, x = i % width;
+    const l = x > 0 ? i - 1 : -1, r = x + 1 < width ? i + 1 : -1, u = i - width, d = i + width < size ? i + width : -1;
+    let pocketNear = false;
+    for (let n = 0; n < 4; n++) {
+      const j = n === 0 ? l : n === 1 ? r : n === 2 ? u : d;
+      if (j < 0) continue;
+      if (CLASS[types[j]] === OPEN && exposed[j] === 1) return false;
+      const v = data[j];
+      if (storedClass(v) === LOOSE && (v & ART_POCKET_BIT) !== 0) pocketNear = true;
+    }
+    const v = data[i];
+    return storedClass(v) === LOOSE ? (v & ART_POCKET_BIT) !== 0 : pocketNear;
+  }
+
+  /**
    * Write the plane bytes for a rect. A full pack derives BUILT from the
    * classification (a lining cell's nearest face must be the built face: its
    * built distance may exceed its face distance by at most one diagonal
@@ -560,7 +633,10 @@ export class TerrainArtPlane {
         }
         const a = dIn[i];
         const depth = a >= INF ? ART_DEPTH_MAX : Math.min(ART_DEPTH_MAX, Math.ceil(a / 3));
-        if (cls === LOOSE) { data[i] = ART_LOOSE_BIT | depth; continue; }
+        if (cls === LOOSE) {
+          data[i] = ART_LOOSE_BIT | depth | (this.liquidPocket(i, keepBuilt) ? ART_POCKET_BIT : 0);
+          continue;
+        }
         let built: boolean;
         if (keepBuilt) built = (data[i] & (ART_SOLID_BIT | ART_BUILT_BIT)) === (ART_SOLID_BIT | ART_BUILT_BIT);
         else {

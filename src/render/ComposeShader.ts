@@ -150,6 +150,10 @@ uniform vec4 uNatGlaze;     // rgb, mix (0 = off)
 uniform vec2 uNatContact;   // darkest shade, reach (cells)
 uniform vec4 uNatHaze;      // rgb, mix
 uniform float uNatSat;
+uniform vec4 uNatWet;       // wet-face rim rgb, mix (0 = off) — TerrainArt WET FACES
+uniform vec4 uWaterSeen;    // clear water: the drowned distance's tint rgb, saturation
+uniform float uWaterClarity; // clear water: share of the backdrop seen through a body (0 = opaque)
+uniform vec3 uWaterPocket;  // a sealed pocket's opaque colour (terrainArtPlane ART_POCKET_BIT)
 
 uniform ivec2 uCam;        // integer camera snapshot (renderCamX/Y)
 uniform ivec2 uWinOrigin;  // world coords of window texel (0,0)
@@ -260,6 +264,16 @@ float openAt(int vx, int vy) {
   float top = mix(texelFetch(uLight, ivec2(xa, ya), 0).a, texelFetch(uLight, ivec2(xb, ya), 0).a, tx);
   float bot = mix(texelFetch(uLight, ivec2(xa, yb), 0).a, texelFetch(uLight, ivec2(xb, yb), 0).a, tx);
   return mix(top, bot, ty);
+}
+
+// TerrainArt's WET_BODY: beyond a water-facing cell lies water or open space.
+bool wetBody(int t) {
+  return t == ${Cell.Water} || openCell(t);
+}
+
+// terrainArtPlane: a loose byte with the pocket bit is a sealed liquid pocket.
+bool artPocket(int lx, int ly) {
+  return (texelFetch(uArt, ivec2(lx, ly), 0).r & 0xE0u) == 0x60u;
 }
 
 vec3 gradeBackdrop(vec3 c) {
@@ -482,7 +496,28 @@ void main() {
         if (type == ${Cell.Water}) {
           int t = int(texelFetch(uWin, ivec2(lx, min(${WIN_H - 1}, ly + 1)), 0).a & 0x7fu);
           bool supported = t == ${Cell.Water} || (${terrainBlocksGlsl});
-          albedo = above == ${Cell.Empty} && lookupY > 0 && supported ? uWaterSurface : uWaterBody;
+          bool surface = above == ${Cell.Empty} && lookupY > 0 && supported;
+          // A sealed pocket (a pore in a flooded wall) stays part of the rock mass.
+          bool pocket = !surface && uNatural && artPocket(lx, ly);
+          albedo = surface ? uWaterSurface : pocket ? uWaterPocket : uWaterBody;
+          if (!surface && !pocket && uWaterClarity > 0.0) {
+            // CLEAR WATER (floorLooks waterClarity): the kit's planes show
+            // through the body, graded like the open backdrop, then washed
+            // toward grey and tinted by the water, with a slow refraction
+            // sway. FrameComposer (CPU) and the WebGPU compose mirror it.
+            int sway = int(floor(sin(float(wy) * 0.19 + uPhaseWater * 0.35) * 1.6));
+            int svx = clamp(vx + sway, 0, ${VIEW_W - 1});
+            vec3 seen = vec3(0.004, 0.005, 0.009);
+            float slw = 1.0;
+            overBackdrop(seen, slw, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, uBackdropLit[0], svx, vy);
+            overBackdrop(seen, slw, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, uBackdropLit[1], svx, vy);
+            overBackdrop(seen, slw, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, uBackdropLit[2], svx, vy);
+            overBackdrop(seen, slw, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, uBackdropLit[3], svx, vy);
+            overBackdrop(seen, slw, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, uBackdropLit[4], svx, vy);
+            seen = gradeBackdrop(seen) * uBackdropTintMul + uBackdropTintLift;
+            seen = mix(vec3(dot(seen, vec3(0.2126, 0.7152, 0.0722))), seen, uWaterSeen.w) * uWaterSeen.rgb;
+            albedo = mix(albedo, seen * 255.0, uWaterClarity);
+          }
         } else if (uNatural && (type == ${Cell.Wall} || type == ${Cell.Stone} || type == ${Cell.Wood} || type == ${Cell.Metal})) {
           uint art = texelFetch(uArt, ivec2(lx, ly), 0).r;
           bool artSolid = (art & 0x80u) != 0u;
@@ -549,6 +584,22 @@ void main() {
           } else {
             t = int(texelFetch(uWin, ivec2(min(${WIN_W - 1}, lx + 1), ly), 0).a & 0x7fu);
             if (lookupX + 1 < ${WIDTH} && openCell(t)) albedo *= ${PIXEL_SCALE === 2 ? 'sub.x >= 0.5 ? uNatSide.y : 0.5 + 0.5 * uNatSide.y' : 'uNatSide.y'};
+            else if (uNatWet.w > 0.0) {
+              // WET FACES (TerrainArt): a face against a body of water, not a pore.
+              float wm = 0.0;
+              if (lookupY > 1 && above == ${Cell.Water} && !artPocket(lx, max(0, ly - 1))
+                  && wetBody(int(texelFetch(uWin, ivec2(lx, max(0, ly - 2)), 0).a & 0x7fu))) {
+                wm = uNatWet.w${PIXEL_SCALE === 2 ? ' * (sub.y < 0.5 ? 1.0 : 0.45)' : ''};
+              } else {
+                int tl = int(texelFetch(uWin, ivec2(max(0, lx - 1), ly), 0).a & 0x7fu);
+                bool wl = lookupX > 1 && tl == ${Cell.Water} && !artPocket(max(0, lx - 1), ly)
+                  && wetBody(int(texelFetch(uWin, ivec2(max(0, lx - 2), ly), 0).a & 0x7fu));
+                bool wr = lookupX + 2 < ${WIDTH} && t == ${Cell.Water} && !artPocket(min(${WIN_W - 1}, lx + 1), ly)
+                  && wetBody(int(texelFetch(uWin, ivec2(min(${WIN_W - 1}, lx + 2), ly), 0).a & 0x7fu));
+                if (wl || wr) wm = uNatWet.w * 0.5${PIXEL_SCALE === 2 ? ' * ((wl && sub.x < 0.5) || (wr && sub.x >= 0.5) ? 1.0 : 0.45)' : ''};
+              }
+              albedo = mix(albedo, uNatWet.rgb, wm);
+            }
           }
           // Glaze: rock that touches lava is fired to a crazed amber glass.
           if (uNatGlaze.w > 0.0) {
@@ -960,6 +1011,10 @@ export class GpuCompose {
         uNatContact: { value: new THREE.Vector2(1, 2) },
         uNatHaze: { value: new THREE.Vector4() },
         uNatSat: { value: 1 },
+        uNatWet: { value: new THREE.Vector4(0, 0, 0, 0) },
+        uWaterSeen: { value: new THREE.Vector4(1, 1, 1, 1) },
+        uWaterClarity: { value: 0 },
+        uWaterPocket: { value: new THREE.Vector3() },
         uLookGain: { value: new THREE.Vector3(1.28, 1.28, 1.28) },
         uLookLift: { value: new THREE.Vector3(15, 20, 21) },
         uLookLip: { value: new THREE.Vector3(115, 111, 94) },
@@ -1276,6 +1331,11 @@ export class GpuCompose {
     // The backdrop tint and the natural floors' haze/saturation are set per
     // frame in updateBackdropUniforms (a depth kit may substitute them).
     const natural = look.natural;
+    const wet = natural?.wetLip ?? [0, 0, 0], seen = natural?.waterSeen ?? [1, 1, 1];
+    (u.uNatWet.value as THREE.Vector4).set(wet[0], wet[1], wet[2], natural?.wetLipMix ?? 0);
+    (u.uWaterSeen.value as THREE.Vector4).set(seen[0], seen[1], seen[2], natural?.waterSeenSat ?? 1);
+    u.uWaterClarity.value = natural?.waterClarity ?? 0;
+    set3('uWaterPocket', natural?.waterPocket ?? look.waterBody);
     if (!natural) return;
     (u.uNatTile.value as THREE.Vector2).set((natural.tile & 1) * FLOOR_TILE, (natural.tile >> 1) * FLOOR_TILE);
     set3('uNatRockGain', natural.rockGain);

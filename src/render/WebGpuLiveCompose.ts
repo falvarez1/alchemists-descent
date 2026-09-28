@@ -57,7 +57,7 @@ const GPU_BUFFER_USAGE_COPY_DST = 0x08;
 const GPU_BUFFER_USAGE_STORAGE = 0x80;
 const GPU_SHADER_STAGE_COMPUTE = 0x04;
 
-const PARAM_COUNT = 160;
+const PARAM_COUNT = 168;
 const BACKDROP_BASE = 32;
 const BACKDROP_STRIDE = 8;
 /** Per-layer light response (render/depth kits), in the free params 27–31. */
@@ -70,6 +70,8 @@ const LENS_STRIDE = 4;
 const NATURAL_BASE = LENS_BASE + COMPOSE_MAX_LENSES * LENS_STRIDE;
 /** 1 while designed darkness is present (the light alpha is not all ones). */
 const DARK_ON_PARAM = NATURAL_BASE + 6;
+/** CLEAR WATER (floorLooks waterClarity): clarity, seen tint rgb, seen saturation, body rgb (0–255). */
+const WATER_BASE = NATURAL_BASE + 7;
 
 interface RuntimeGpuQueue {
   submit(commandBuffers: unknown[]): void;
@@ -632,6 +634,27 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
       c = vec3<f32>(r, g, b) + ringGlow * vec3<f32>(0.55, 0.42, 0.26);
     } else {
       var base = vec3<f32>(f32(cell.r), f32(cell.g), f32(cell.b)) / 255.0;
+      // CLEAR WATER (ComposeShader): the kit's planes show through a body. The
+      // terrain cache paints a clear body (not a surface, not a sealed pocket)
+      // exactly the look's waterBody.
+      if (typeId == ${Cell.Water} && p(${WATER_BASE}u) > 0.0) {
+        let body = vec3<u32>(u32(p(${WATER_BASE + 5}u)), u32(p(${WATER_BASE + 6}u)), u32(p(${WATER_BASE + 7}u)));
+        if (all(cell.rgb == body)) {
+          let sway = i32(floor(sin(f32(wy) * 0.19 + p(6u) * 0.35) * 1.6));
+          let svx = clamp(vx + sway, 0, ${VIEW_W - 1});
+          var seen = vec3<f32>(0.004, 0.005, 0.009);
+          ${Array.from({ length: MAX_BACKDROP_LAYERS }, (_, i) => {
+            const b = BACKDROP_BASE + i * BACKDROP_STRIDE;
+            return `if (p(${b}u + 2u) > 0.5 && p(${b}u + 1u) > 0.0) {
+            seen = applyBackdropSample(seen, textureLoad(uBackdrop${i}, backdropCoord(${b}u, svx, vy, camX, camY), 0), p(${b}u + 1u));
+          }`;
+          }).join('\n          ')}
+          seen = gradeBackdrop(seen) * vec3<f32>(p(20u), p(21u), p(22u)) + vec3<f32>(p(23u), p(24u), p(25u));
+          seen = mix(vec3<f32>(dot(seen, vec3<f32>(0.2126, 0.7152, 0.0722))), seen, p(${WATER_BASE + 4}u))
+            * vec3<f32>(p(${WATER_BASE + 1}u), p(${WATER_BASE + 2}u), p(${WATER_BASE + 3}u));
+          base = mix(base, seen, p(${WATER_BASE}u));
+        }
+      }
       if (typeId == ${Cell.Fire}) {
         let fl = 0.75 + flickerRand(vec2<f32>(f32(wx), f32(wy)), 1.0) * 0.5;
         base = base * fl;
@@ -1361,6 +1384,15 @@ export class WebGpuLiveCompose {
     params[NATURAL_BASE + 4] = natural && haze ? haze[2] : 0;
     params[NATURAL_BASE + 5] = natural ? (kit ? kit.hazeMix : natural.backdropHazeMix) : 0;
     params[DARK_ON_PARAM] = this.darkOn ? 1 : 0;
+    const seen = natural?.waterSeen ?? [1, 1, 1];
+    params[WATER_BASE] = natural?.waterClarity ?? 0;
+    params[WATER_BASE + 1] = seen[0];
+    params[WATER_BASE + 2] = seen[1];
+    params[WATER_BASE + 3] = seen[2];
+    params[WATER_BASE + 4] = natural?.waterSeenSat ?? 1;
+    params[WATER_BASE + 5] = look.waterBody[0];
+    params[WATER_BASE + 6] = look.waterBody[1];
+    params[WATER_BASE + 7] = look.waterBody[2];
     const machinery = kit ? kit.machinery : look.machinery;
     const offsetX = kit ? kit.offsetX : look.backdropOffsetX;
 

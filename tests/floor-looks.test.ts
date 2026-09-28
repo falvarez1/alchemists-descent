@@ -170,4 +170,43 @@ describe('shape-aware floor looks', () => {
       expect(far >> 16).toBe(255);
     }
   });
+
+  /**
+   * UNDERWATER READABILITY (fix4b): in the Drowned Cisterns the rock, the
+   * water and the backdrop were one blue-grey value. A drowned face now wears
+   * a wet rim, a reachable body is painted the clear-water body colour (the
+   * compositors show the drowned distance through exactly that colour), and a
+   * pore sealed in the rock keeps the old opaque colour and no rim.
+   */
+  it('flooded: drowned faces wear a wet rim, bodies read as water, sealed pores stay rock', () => {
+    const look = FLOOR_LOOKS.flooded, natural = look.natural!;
+    expect(natural.wetLipMix ?? 0).toBeGreaterThan(0);
+    expect(natural.waterClarity ?? 0).toBeGreaterThan(0);
+    const world = cave();
+    // A flooded trench on the floor (open to the air above), and a pore deep in the rock.
+    for (let y = 40; y < 60; y++) for (let x = 20; x < 120; x++) world.types[world.idx(x, y)] = Cell.Water;
+    for (let y = 60; y < 100; y++) for (let x = 60; x < 64; x++) world.types[world.idx(x, y)] = Cell.Wall;
+    for (let y = 128; y < 134; y++) for (let x = 40; x < 46; x++) world.types[world.idx(x, y)] = Cell.Water;
+    const plane = new TerrainArtPlane(world, { builtRun: natural.builtRun, lining: natural.lining, zones: [] });
+    const rgb = (c: readonly number[]): number => (c[0] << 16) | (c[1] << 8) | c[2];
+    // The body is exactly the look's body colour; the sealed pore its pocket colour.
+    expect(terrainAlbedo(world, world.idx(90, 50), 90, 50, true, look, plane)).toBe(rgb(look.waterBody));
+    expect(terrainAlbedo(world, world.idx(42, 130), 42, 130, true, look, plane)).toBe(rgb(natural.waterPocket ?? look.waterBody));
+    // The floor under the trench wears the wet rim; the same floor dry (a
+    // copy with the water drained to stone) does not.
+    const wet = terrainAlbedo(world, world.idx(90, 60), 90, 60, true, look, plane);
+    const dryWorld = cave();
+    for (let y = 40; y < 60; y++) for (let x = 20; x < 120; x++) dryWorld.types[dryWorld.idx(x, y)] = Cell.Stone;
+    const dryPlane = new TerrainArtPlane(dryWorld, { builtRun: natural.builtRun, lining: natural.lining, zones: [] });
+    const buried = terrainAlbedo(dryWorld, dryWorld.idx(90, 60), 90, 60, true, look, dryPlane);
+    expect(luma(wet)).toBeGreaterThan(luma(buried) + 8);
+    // The rock around the sealed pore grows no rim: it is the same cell as in
+    // rock with no pore at all.
+    const solidWorld = cave();
+    const solidPlane = new TerrainArtPlane(solidWorld, { builtRun: natural.builtRun, lining: natural.lining, zones: [] });
+    for (const [x, y] of [[42, 134], [42, 127], [39, 130], [46, 130]]) {
+      expect(terrainAlbedo(world, world.idx(x, y), x, y, true, look, plane))
+        .toBe(terrainAlbedo(solidWorld, solidWorld.idx(x, y), x, y, true, look, solidPlane));
+    }
+  });
 });
