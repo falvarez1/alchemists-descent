@@ -27,7 +27,7 @@ const MATS: CreatureMaterial[] = [
   material({ keys: [0x8ab0a0, 0xd8f0e4, 0xffffff], emissive: 0.6, translucent: 0.3 }),
 ];
 
-function drawLeg(r: CreatureRaster, e: Enemy, i: number, far: boolean): void {
+function drawLeg(r: CreatureRaster, e: Enemy, i: number, far: boolean, dead: boolean): void {
   const j = weaverLegGeometry(e, i);
   const [hip, coxa, knee, ankle, foot] = j;
   const o = { group: 10 + i, far, tone: far ? -0.2 : 0.2 };
@@ -36,7 +36,13 @@ function drawLeg(r: CreatureRaster, e: Enemy, i: number, far: boolean): void {
   r.capsule(coxa.x, coxa.y, 1.1, knee.x, knee.y, 0.8, z, z + 0.5, LEG, o);
   r.capsule(knee.x, knee.y, 0.78, ankle.x, ankle.y, 0.5, z + 0.5, z + 0.8, LEG, o);
   r.capsule(ankle.x, ankle.y, 0.48, foot.x, foot.y, 0.26, z + 0.8, z + 1, LEG, o);
-  // Pale bands at the joints, tarantula-style.
+  // Pale bands at the joints, tarantula-style. On the dead they dull to a
+  // bruise (the lit bone bands read as a debug skeleton's joint dots on a
+  // body held up at the lantern).
+  if (dead) {
+    r.stamp(knee.x, knee.y, 0.7, 0.7, 0, BAND, -1.2, false, 10 + i);
+    return;
+  }
   r.stamp(knee.x, knee.y, 0.95, 0.95, 0, BAND, far ? 0 : 1, false, 10 + i);
   r.stamp(ankle.x, ankle.y, 0.62, 0.62, 0, BAND, far ? 0 : 1, false, 10 + i);
   const mx = coxa.x + (knee.x - coxa.x) * 0.55, my = coxa.y + (knee.y - coxa.y) * 0.55;
@@ -53,8 +59,10 @@ export const weaverArt: SpeciesArt = {
     return [x0, y0, x1, y1];
   },
   lightProbe: e => [e.weaverLoco?.px ?? e.x, e.weaverLoco?.py ?? e.y - 10, 14],
-  draw(r: CreatureRaster, ctx: Ctx, e: Enemy, _rig: CreatureRig) {
+  draw(r: CreatureRaster, ctx: Ctx, e: Enemy, _rig: CreatureRig, life = 1) {
     const loco = e.weaverLoco, tick = ctx.state.frameCount;
+    // Remains: eyes shut, the sigil guttering out with the body's life.
+    const dead = e.hp <= 0;
     const rig = e.expression;
     const nx = loco?.nx ?? 0, ny = loco?.ny ?? -1, tx = -ny, ty = nx, face = loco?.face ?? e.mind?.facing ?? 1;
     const bx = loco?.px ?? e.x, by = loco?.py ?? e.y - 10;
@@ -65,15 +73,15 @@ export const weaverArt: SpeciesArt = {
     const P = (along: number, out: number): [number, number] => [bx + tx * along * face + nx * out, by + ty * along * face + ny * out];
     const missing = e.weaverMissingLegs ?? 0;
     // Far legs (even sockets) behind everything.
-    for (let i = 0; i < 8; i += 2) if (!(missing & (1 << i))) drawLeg(r, e, i, true);
+    for (let i = 0; i < 8; i += 2) if (!(missing & (1 << i))) drawLeg(r, e, i, true, dead);
     // Abdomen: a big glossy bulb, lifted and coiled back when it winds up.
     const [ax, ay] = P(-8.6 - (winding ? 1.6 : 0), 2.4 + breath * 0.6 + (winding ? 1 : 0));
     r.ellipse(ax, ay, 8.6, 6.6 + breath * 0.3, angle - face * 0.12, 0, CHITIN, { group: 1 });
     // Fine setae catch a sliver of light along the top of the abdomen.
     r.shade(...P(-9, 6.2), 6.5, 1.2, angle, 0.7, 1, 0.3);
     // The sigil: stacked chevrons down the dorsal line.
-    const flare = 1 + (weaving ? 1.6 : 0) + (winding ? 1.1 : 0) + Math.min(1.2, (e.webPulse ?? 0) * 0.08) + alert * 0.4;
-    for (let c = 0; c < 4; c++) {
+    const flare = dead ? -1.4 + 2 * life : 1 + (weaving ? 1.6 : 0) + (winding ? 1.1 : 0) + Math.min(1.2, (e.webPulse ?? 0) * 0.08) + alert * 0.4;
+    for (let c = 0; c < 4 && (!dead || life > 0.05); c++) {
       const along = -4.5 - c * 2.8, out = 5.1 - c * 0.25 + breath * 0.3;
       const w = 1.4 - c * 0.18;
       const [cx, cy] = P(along, out), [lx, ly] = P(along - 1.1, out - w), [rx2, ry2] = P(along - 1.1, out + w * 0.2);
@@ -94,7 +102,7 @@ export const weaverArt: SpeciesArt = {
     // A groove down the carapace.
     r.stroke(...P(0, 3.4), ...P(5.5, 3.2), CHITIN, 0.2, false);
     // Near legs (odd sockets) over the body.
-    for (let i = 1; i < 8; i += 2) if (!(missing & (1 << i))) drawLeg(r, e, i, false);
+    for (let i = 1; i < 8; i += 2) if (!(missing & (1 << i))) drawLeg(r, e, i, false, dead);
     // Stumps where legs were torn off.
     for (let i = 0; i < 8; i++) {
       if (!(missing & (1 << i))) continue;
@@ -127,6 +135,8 @@ export const weaverArt: SpeciesArt = {
     const eyes: Array<[number, number, number]> = [[2.2, 1.1, 0.72], [2.4, -0.2, 0.62], [1.2, 2.0, 0.42], [0.4, 2.4, 0.38], [1.6, -1.1, 0.4], [-0.2, 1.6, 0.34]];
     for (const [al, ou, rad] of eyes) {
       const [ex, ey] = hp(al, ou);
+      // Dead eyes are shut: dull chitin lids, no lens, no glint, no eyeshine anchor.
+      if (dead) { r.stamp(ex, ey, rad * 0.8, rad * 0.8, 0, CHITIN, 0.6, false, 4); continue; }
       r.stamp(ex, ey, rad, rad, 0, EYE, Math.min(2, lit * (0.7 + rad)), true);
       markEye(ex, ey, rad);
       if (rad > 0.5) r.dot(ex - 0.2, ey - 0.25, GLINT, 1, 80);

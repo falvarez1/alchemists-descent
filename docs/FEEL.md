@@ -208,8 +208,12 @@ at the cursor. Controller: X lifts along the aim / sets down, RB or R3 hurls.
   brass-white flare; a hairline brass thread (`render/sprites/TelekinesisArt`)
   sags under the weight and draws taut as the spring pulls, wavers along its
   length, runs three beads of light into the body, flares on the grab
-  (reduced flashes: dimmer, no flare); motes run down it every 4 ticks and
-  orbit the body; the held body glows faint brass and lights the room a little.
+  (reduced flashes: dimmer, no flare); a quarter-second brass shimmer at the
+  grip on the grab. The body itself is NOT tinted or ringed with motes (a
+  brass wash paled dark chitin to lilac and loose motes read as joint
+  markers): remains take the room's light dully (×0.82, ≤ 0.9), their lights
+  gutter by time since death, a dead Weaver's eyes are shut and its legs hang
+  like a marionette's, a dead Stone Maw's legs curl under its segments.
   Sounds: a taut twang and tug, the thread's hum (louder for a heavier body),
   a slack sigh, a whip-crack and rush of air, a fizzle, a strained groan.
 - **Handled remains keep.** A body held, thrown, kicked or frozen does not rot
