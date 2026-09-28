@@ -17,7 +17,7 @@ import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { Budget, music, measure, subscription } from './elevenlabs.mjs';
+import { Budget, LedgerBudget, music, measure, subscription } from './elevenlabs.mjs';
 import { CUES, MUSIC_MODEL, cueSeconds, orderedCues } from './music-prompts.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -102,7 +102,9 @@ function compositionPlan(cue, songIds) {
 }
 
 async function main() {
-  const budget = new Budget();
+  // Budgeted against every music credit this log has recorded (AUDIO_BUDGET_CREDITS = prior spend + allowance),
+  // so parallel generators elsewhere cannot eat this job's allowance off the live counter.
+  const budget = new LedgerBudget(['music']);
   const cues = orderedCues(CUES);
   const total = cues.reduce((s, c) => s + cueSeconds(c), 0);
   console.log(`${cues.length} cues, ${total.toFixed(0)} s of music; estimate ~${Math.round(total * 26.5)} credits if nothing is cached.`);
@@ -110,8 +112,7 @@ async function main() {
     for (const cue of cues) console.log(`  ${cue.id.padEnd(18)} ${cueSeconds(cue).toFixed(0).padStart(4)} s  ${cue.key}, ${cue.bpm} BPM${cue.condition ? `  <- ${cue.condition.cue} (${cue.condition.strength})` : ''}`);
     return;
   }
-  const start = await budget.init();
-  console.log(`subscription: ${start.used}/${start.limit} used (${start.tier}); session cap ${budget.cap}`);
+  console.log(`prior logged music spend ${budget.start}; cap ${budget.cap}`);
 
   const songIds = new Map();
   const results = new Map();
@@ -160,7 +161,7 @@ async function main() {
   }
 
   writeManifest(cues, results);
-  const spent = await budget.refresh();
+  const spent = budget.spent;
   const end = await subscription();
   const bytes = [...results.values()].reduce((s, r) => s + (r.bytes ?? 0), 0);
   console.log(`music payload ${(bytes / 1048576).toFixed(2)} MB; counter ${end.used} (session delta ${spent}, may lag)`);

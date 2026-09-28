@@ -242,6 +242,47 @@ export const CUES = [
     ),
   },
 
+  // ------------------------------------------------------------ the story
+  // THE KILN ESCAPE (wave 3): the Heart's last heave, and the climb up the old
+  // flue ahead of the lava. The title theme, urgent: the same D minor at double
+  // time, driving strings and timpani, the four-note figure hammered on brass,
+  // then the whole ensemble carrying the theme upward. It loops (a climb that
+  // takes longer, or starts again, never runs out of music).
+  {
+    id: 'escape', label: 'The Kiln Escape — the last heave', group: 'Score · Story', role: 'escape', loop: true,
+    key: 'D minor', bpm: 144, condition: { cue: 'title', startMs: 10000, endMs: 40000, strength: 'high' },
+    summary: 'The title theme at double time: a great heave and a gasp of the bellows, then driving spiccato strings and timpani, the four-note figure hammered on low brass, and the full ensemble carrying the theme upward, climbing and climbing. No choir.',
+    chunks: plan(
+      ['instrumental only', 'urgent escape sequence music for a video game', 'D minor', '144 BPM', 'driving spiccato strings in sixteenths',
+        'timpani and big orchestral drums', 'low brass: tubas, trombones, horns', 'harmonium', 'bellows breath', 'relentless, heroic, breathless, rising',
+        'no drum kit'],
+      [
+        ['[Heave]\n{a vast low boom and a great gasp of bellows; timpani rolls; strings snap into a driving ostinato}', 8, ['huge impact', 'timpani roll']],
+        [`[Climb]\n{urgent spiccato strings race in sixteenths; low brass hammers the four-note Breathing Works theme; timpani drive every beat}`, 24, ['spiccato strings', 'low brass', 'timpani']],
+        [`[Theme, urgent]\n{the full ensemble states ${THEME} fast and defiant, horns leading, harmonium underneath}`, 24, ['full orchestra', 'horns lead', 'harmonium']],
+        ['[Rising]\n{the music climbs a step at a time, key rising, strings reaching higher, bells and brass pushing upward}', 20, ['rising modulation', 'tubular bells', 'soaring strings']],
+        ['[Loop]\n{back to the racing string ostinato and hammered brass; keep climbing; no ending}', 14, ['spiccato strings', LOOPS]],
+      ],
+    ),
+  },
+  // THE ENDING: clean air rising up the flue, Kettleby opening a window. The
+  // theme at rest at last, in D major: the music box alone, then the cello, the
+  // harmonium breathing slow and easy, one warm swell of strings.
+  {
+    id: 'ending', label: 'The Ending — the Works breathe easy', group: 'Score · Story', role: 'ending', loop: false, lufs: -17,
+    key: 'D major', bpm: 66, condition: { cue: 'title', startMs: 10000, endMs: 40000, strength: 'medium' },
+    summary: 'The theme at rest in D major: the music box alone, the cello answering, the harmonium breathing slow and easy, one warm swell of strings, a long held chord.',
+    chunks: plan(
+      ['instrumental only', 'gentle ending music for a video game', 'D major', '66 BPM', 'music box', 'bowed cello', 'harmonium', 'soft strings',
+        'glass harmonica', 'tender, relieved, bittersweet, hopeful', 'quiet hall reverb'],
+      [
+        [`[Morning]\n{a music box plays ${THEME}, slowly, in D major; the bellows breathe out, easy at last}`, 12, ['music box alone']],
+        ['[Answer]\n{the cello answers with the theme, warm and unhurried; harmonium chords breathe underneath}', 12, ['solo cello', 'harmonium']],
+        ['[Open window]\n{one warm swell of soft strings and glass harmonica; then a long held D major chord that rings out}', 12, ['soft string swell', 'held final chord', 'ending', 'long reverb tail']],
+      ],
+    ),
+  },
+
   // ------------------------------------------------------- rest and play
   {
     id: 'sanctum', label: 'The Sanctum', group: 'Score · Rest', role: 'sanctum', loop: true, lufs: -17,

@@ -26,10 +26,50 @@ const LINES = [
   { id: 'bat', label: 'Bat line (in game)', text: 'A bat cashed in the smallest possible assassination.' },
 ] as const;
 
-export const AUDITION_ENTRIES: AuditionEntry[] = VOICES.map((v) => ({
-  id: `voice-${v.id}`,
-  group: 'Narrator · voice comparison (pick one)',
-  label: `${v.name} — ${v.note}`,
-  prompt: LINES.map((l, i) => `${i + 1}. ${l.label}: “${l.text}”`).join('  '),
-  urls: LINES.map((l) => `/audition/voices/${v.id}-${l.id}.mp3`),
-}));
+/**
+ * The story's cast (2026-09-27, scripts/audio/cast-voices.mjs; the numbers are
+ * scripts/audio/cast-report.json): each candidate reads the same lines.
+ * Characters a second, then sibilant frames a second (Daniel measures 5.8).
+ */
+const CAST = {
+  pell: {
+    brief: 'Pell: young, warm, a little anxious, British, crisp',
+    lines: ['[nervous] Oh! Oh, thank goodness. You’re a person. Sorry. I’ve been talking to a duck all week.', 'Pell. Guild surveyor. I came down a year ago to finish the map, and I have very nearly finished being frightened.'],
+    ids: ['duck', 'map'],
+    voices: [
+      { id: 'stephen', name: 'Stephen — well spoken, kind (CAST)', note: '12.2/13.1 ch/s · S 3.9/3.4 · pitch lifts on [nervous]' },
+      { id: 'cameron', name: 'Cameron — young British (characters)', note: '10.0/10.7 ch/s · S 4.4/4.6' },
+      { id: 'john', name: 'John — fresh, natural, approachable', note: '13.3/16.2 ch/s · S 4.5/4.0 · hurries' },
+      { id: 'henry', name: 'Henry — expressive, character voices', note: '11.8/13.8 ch/s · S 4.3/5.0' },
+      { id: 'luca', name: 'Luca — calm, clear, 24', note: '12.0/12.4 ch/s · S 5.8/3.5 · uneven S' },
+    ],
+  },
+  ash: {
+    brief: 'Matron Ash: old, whispery, kind (the chorus is added in mastering; these are raw)',
+    lines: ['[softly] Come in, little breath. We are the Old Ones. We were the Guild, once. Now we are what the Works kept.'],
+    ids: ['greet'],
+    voices: [
+      { id: 'beatrice', name: 'Beatrice — mature, gentle, British (CAST)', note: '10.3 ch/s · S 2.5 · softest S' },
+      { id: 'maria', name: 'Maria Moody — grandmotherly storykeeper', note: '9.1 ch/s · S 3.8' },
+      { id: 'morganna', name: 'Seer Morganna — old, wise', note: '8.8 ch/s · S 4.8 · slowest, most sibilant' },
+      { id: 'eleanor', name: 'Eleanor — gracious, older British', note: '11.7 ch/s · S 4.2' },
+    ],
+  },
+} as const;
+
+export const AUDITION_ENTRIES: AuditionEntry[] = [
+  ...VOICES.map((v) => ({
+    id: `voice-${v.id}`,
+    group: 'Narrator · voice comparison (pick one)',
+    label: `${v.name} — ${v.note}`,
+    prompt: LINES.map((l, i) => `${i + 1}. ${l.label}: “${l.text}”`).join('  '),
+    urls: LINES.map((l) => `/audition/voices/${v.id}-${l.id}.mp3`),
+  })),
+  ...(['pell', 'ash'] as const).flatMap((role) => CAST[role].voices.map((v) => ({
+    id: `cast-${role}-${v.id}`,
+    group: `Story cast · ${CAST[role].brief}`,
+    label: `${v.name} — ${v.note}`,
+    prompt: CAST[role].lines.map((l, i) => `${i + 1}. “${l}”`).join('  '),
+    urls: CAST[role].ids.map((l) => `/audition/voices/cast-${role}-${v.id}-${l}.mp3`),
+  }))),
+];

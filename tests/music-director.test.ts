@@ -49,6 +49,14 @@ describe('chooseCue: the state machine', () => {
     expect(chooseCue({ ...calm, runOver: true })).toBeNull();
   });
 
+  it('lets the story lead: the Kiln escape over the boss, the ending over the ledger; a verdict still wins', () => {
+    expect(chooseCue({ ...calm, floor: 'd4', boss: 'colossus', tension: true, story: 'escape' })).toBe('escape');
+    expect(chooseCue({ ...calm, ledgerOpen: true, story: 'ending' })).toBe('ending');
+    expect(chooseCue({ ...calm, story: 'escape', verdict: 'victory' })).toBe('victory');
+    expect(chooseCue({ ...calm, story: 'escape', builderOpen: true })).toBeNull();
+    expect(chooseCue({ ...calm, story: 'escape', gestured: false })).toBeNull();
+  });
+
   it('lets a slider preview the score when nothing else would play', () => {
     expect(chooseCue({ ...calm, runOver: true, preview: true })).toBe('title');
     expect(chooseCue({ ...calm, preview: true })).toBe('bellows');
@@ -189,7 +197,8 @@ describe('the score on disk', () => {
 
   it('keeps the whole score near 20 MB, fetched a cue at a time', () => {
     const bytes = SCORE_TRACKS.reduce((s, t) => s + statSync(join('public', t.url)).size, 0);
-    expect(bytes / 1048576).toBeLessThan(21);
+    // 20 MB of floors and stings, plus the story's Kiln escape (90 s) and ending (36 s): 1.5 MB.
+    expect(bytes / 1048576).toBeLessThan(22);
   });
 
   it('lists every cue and narrator line for the audition page', () => {
