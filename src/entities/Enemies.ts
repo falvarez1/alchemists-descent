@@ -21,6 +21,7 @@ import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { LEVIATHAN_REWARD_POOL, randomCard } from '@/content/cardRewardPools';
 import { enemyMovementPace } from '@/core/progressionPacing';
 import { blocksEntity, Cell, isConductor, isLiquid, isSoftGrowth } from '@/sim/CellType';
+import { roostHeld } from '@/creatures/roost';
 import {
   acidColor,
   ashColor,
@@ -2916,6 +2917,13 @@ export class Enemies implements EnemyControlApi {
           // A loud bang nearby (a blast, a stomp, a burst puffer) startles the roost too.
           const startled = this.cues.some(cue => cue.strength >= 0.5 && ctx.state.frameCount - cue.tick < 4 &&
             Math.hypot(cue.x - e.x, cue.y - e.y) < Math.min(110, cue.radius));
+          // Nothing left to hang from (the roof burned, blew away, or was only
+          // ever a drip): it wakes as it falls, alone, without rousing the roost.
+          if ((ctx.state.frameCount + i) % 30 === 0 && !roostHeld(ctx.world, e.x, e.y)) {
+            e.sleeping = false;
+            e.vy = 1.2;
+            continue;
+          }
           if ((targetAlive && pDist < 70) || startled) {
             e.sleeping = false;
             e.vy = 1.2; // drop off the ceiling

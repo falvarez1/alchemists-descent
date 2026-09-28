@@ -72,6 +72,7 @@ import { failOpenFindability, wizardMask } from '@/world/validate';
 import { WORKS_GATE, worksGateOpen } from '@/world/breathingWorks';
 import { dropStrandedStands } from '@/world/floraPass';
 import { blocksEntity, Cell, CELL_COUNT, isLiquid, isSoftGrowth } from '@/sim/CellType';
+import { roostAir, roostPerch } from '@/creatures/roost';
 import {
   COLOR_FN,
   bloodColor,
@@ -3108,7 +3109,8 @@ export class Levels implements LevelsApi {
           let y = 50 + rng.int(Math.max(1, HEIGHT - 200));
           // A sample in open air climbs to the ceiling above it (a random point
           // almost never lands exactly under rock; this finds the roof it is under).
-          for (let up = 0; up < 80 && y > 51 && world.inBounds(x, y - 1) && world.types[world.idx(x, y - 1)] === Cell.Empty; up++) y--;
+          // Gas is air to a bat: marsh gas pools under the Rot Gardens' ceilings.
+          for (let up = 0; up < 80 && y > 51 && world.inBounds(x, y - 1) && roostAir(world.types[world.idx(x, y - 1)]); up++) y--;
           const footY = y + 4;
           const dx = x - spawn.x;
           const dy = footY - spawn.y;
@@ -3116,9 +3118,10 @@ export class Levels implements LevelsApi {
           if (!world.inBounds(x, y - 1) || !world.inBounds(x, footY)) continue;
           if (reachable[world.idx(x, footY)] === 0) continue;
           if (mainPathOnly && !this.inMainPathRegion(regions, x, footY)) continue;
-          // ceiling: solid above, open air below
-          if (world.types[world.idx(x, y - 1)] === Cell.Empty || world.types[world.idx(x, y)] !== Cell.Empty) continue;
-          if (world.types[world.idx(x, y + 1)] !== Cell.Empty || world.types[world.idx(x, footY)] !== Cell.Empty)
+          // ceiling: something a bat can grip above (QA: roosts hung 8-95 cells
+          // under a falling oil drip, a leaf or a wisp of gas), open air below
+          if (!roostPerch(world.types[world.idx(x, y - 1)]) || !roostAir(world.types[world.idx(x, y)])) continue;
+          if (!roostAir(world.types[world.idx(x, y + 1)]) || !roostAir(world.types[world.idx(x, footY)]))
             continue;
           let broodFits = true;
           for (let b = 0; b < 4; b++) {
