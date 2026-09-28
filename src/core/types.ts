@@ -1561,6 +1561,8 @@ export interface NarratorApi {
   speak?(lines: readonly StorySpokenLine[], opts: StorySpeakOptions): boolean;
   /** Something is being said (or queued) right now. */
   readonly busy?: boolean;
+  /** The source of the line being said right now ('sanctum-ash', 'prologue', 'pipe'...), or null. */
+  readonly speakingSource?: string | null;
   /** Stop (and unqueue) the lines of one source: a dialogue closed, an echo walked away from. */
   cutSource?(source: string): void;
   /** Read-only state for in-page probes. */

@@ -137,6 +137,9 @@ export class Narrator implements NarratorApi {
   /** Something is being said, or waits its turn. */
   get busy(): boolean { return this.speaking !== null || this.queue.length > 0; }
 
+  /** Whose line is being said right now (its source tag), or null. */
+  get speakingSource(): string | null { return this.speaking?.u.source ?? null; }
+
   /**
    * STORY lines (the Docent's pipes, Pell, Matron Ash, an echo, a prologue):
    * speaker-tagged, gated by the story director (never by "heard this

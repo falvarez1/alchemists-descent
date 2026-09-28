@@ -124,9 +124,9 @@ export class HintSystem implements HintApi {
     this.teachHeld = held;
   }
 
-  /** No centre beat on screen, and it has been quiet long enough to read. */
+  /** No centre beat on screen (nor a story beat), and it has been quiet long enough to read. */
   private teachCalm(ctx: Ctx): boolean {
-    return !this.teachHeld && ctx.state.frameCount >= this.teachCalmAt;
+    return !this.teachHeld && !ctx.story?.beatActive && ctx.state.frameCount >= this.teachCalmAt;
   }
 
   private teachOnce(ctx: Ctx, key: string, teach: Teach, queue = false): void {
@@ -143,7 +143,9 @@ export class HintSystem implements HintApi {
 
   update(ctx: Ctx): void {
     if (ctx.state.frameCount % 4 !== 0) return;
-    if (ctx.state.mode !== 'play' || ctx.state.paused || ctx.player.dead || !ctx.levels.current) {
+    // A story beat has the stage (Pell, a prologue, an echo, the escape, a cinematic,
+    // Matron Ash): no hint line under it, and no lesson either.
+    if (ctx.state.mode !== 'play' || ctx.state.paused || ctx.player.dead || !ctx.levels.current || ctx.story?.beatActive) {
       this._current = null;
       return;
     }
@@ -376,11 +378,14 @@ export class HintSystem implements HintApi {
     // Grid scans MUST use integer cell coords: player.x/y are continuous floats,
     // and World.idx doesn't floor, so a fractional index reads undefined and the
     // hint (plus its one-time teach popover) would silently never fire.
+    // Never for a hazard: lava or acid under the boots is not a lesson in bottling
+    // (QA: the escape's rising lava raised "The Flask").
     let liquid: { x: number; y: number; d2: number } | null = null;
     for (let yy = pcy - FLASK_SCAN; yy <= pcy + 2; yy++) {
       for (let xx = pcx - FLASK_SCAN; xx <= pcx + FLASK_SCAN; xx++) {
         if (!w.inBounds(xx, yy)) continue;
-        if (!isLiquid(w.types[w.idx(xx, yy)])) continue;
+        const t = w.types[w.idx(xx, yy)];
+        if (!isLiquid(t) || t === Cell.Lava || t === Cell.Acid) continue;
         const d2 = (xx - px) ** 2 + (yy - py) ** 2;
         if (!liquid || d2 < liquid.d2) liquid = { x: xx, y: yy, d2 };
       }

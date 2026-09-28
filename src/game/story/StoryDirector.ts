@@ -347,6 +347,17 @@ export class StoryDirector implements StoryApi {
 
   get cinematic(): 'opening' | 'ending' | null { return this.cinema.active; }
 
+  /**
+   * A scripted beat has the stage: lessons and hint lines wait (ui/HintTeachOverlay,
+   * game/Hints). QA watched "The Flask" pop mid-escape, land on the Leviathan's
+   * prologue, and "The Grimoire Watches" cover Pell's first line.
+   */
+  get beatActive(): boolean {
+    const src = this.ctx.narrator?.speakingSource ?? null;
+    return this.cinema.active !== null || this.escape.active || this.pell.talking || this.echo.active || this.prologue.active
+      || src === 'sanctum-ash' || src === 'prologue' || src === 'escape' || src === 'echo';
+  }
+
   /* ---------------- the escape ---------------- */
 
   get escapeActive(): boolean { return this.escape.active; }
