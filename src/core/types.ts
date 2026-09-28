@@ -1235,6 +1235,9 @@ export interface GameStateData {
   highReadability?: boolean;
   /** The alchemist has hooded his lantern (stealth; the light wave's L key). Transient. */
   lanternHooded?: boolean;
+  /** The arrival's grace (game/arrival): until this frame nothing sees or hurts the
+   *  alchemist on a floor he just reached. Set by Levels on entry; transient. */
+  arrivalGraceUntil?: number;
   creatureCaptions?: boolean;
   reduceCameraShake?: boolean;
   reduceFlashes?: boolean;

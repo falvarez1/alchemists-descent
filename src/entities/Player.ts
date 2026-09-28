@@ -631,6 +631,8 @@ export class PlayerControl implements PlayerControlApi {
     const ctx = this.ctx;
     const player = ctx.player;
     if (player.dead || player.invuln > 0) return;
+    // The arrival's grace (game/arrival): nothing lands while the floor's name is up.
+    if (ctx.state.frameCount < (ctx.state.arrivalGraceUntil ?? -1)) return;
     if (ctx.state.debugGodMode) {
       this.noteDamageSource(src);
       player.dead = false;

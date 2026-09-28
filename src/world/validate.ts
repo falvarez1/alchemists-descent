@@ -395,6 +395,10 @@ function protectedRepairMask(runtime: LevelRuntime): Uint8Array {
     if (p.kind === 'key') markProtectedPoint(runtime, protectedCells, p.x, p.y, 2);
   }
   for (const ws of runtime.waystones) markProtectedPoint(runtime, protectedCells, ws.x, ws.y, 3);
+  // The arrival's footing (game/arrival settles the spawn onto rock): a rescue
+  // route starts beside it and walks off it, never bores down through it — a
+  // settled arrival dropped 99 cells into the tunnel dug from under his boots.
+  markProtectedRect(runtime, protectedCells, runtime.spawn.x - 7, runtime.spawn.y + 1, runtime.spawn.x + 7, runtime.spawn.y + 4);
   if (runtime.exit) {
     markProtectedRect(
       runtime,

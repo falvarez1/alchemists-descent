@@ -2594,8 +2594,10 @@ export class Enemies implements EnemyControlApi {
   update(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
     const enemies = ctx.enemies;
+    // The arrival's grace (game/arrival): while a floor's name is up, nothing sees him.
+    const arrivalGrace = ctx.state.frameCount < (ctx.state.arrivalGraceUntil ?? -1);
     const observedPlayer = {
-      x: ctx.player.x, y: ctx.player.y, vx: ctx.player.vx, dead: ctx.player.dead,
+      x: ctx.player.x, y: ctx.player.y, vx: ctx.player.vx, dead: ctx.player.dead || arrivalGrace,
       // Light wave: the lantern, the hood and the place's darkness set how far eyes reach.
       crouching: ctx.input?.keys.down === true, light: playerVisibility(ctx),
     };

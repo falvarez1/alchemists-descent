@@ -121,7 +121,8 @@ export function respondToLight(ctx: Ctx, e: Enemy, def: EnemyDef, mind: Creature
   }
 
   // BEING LIT IS INFORMATION: a creature looking down the beam sees the lantern.
-  if (s.beam && s.wand >= SIGHT.litFix && !e.sleeping) {
+  // (Not during the arrival's grace, game/arrival: while a floor's name is up nothing sees him.)
+  if (s.beam && s.wand >= SIGHT.litFix && !e.sleeping && !(tick < (ctx.state.arrivalGraceUntil ?? -1))) {
     const tip = wandTipOf(ctx);
     if (sightClear(ctx.world, at.x, at.y, tip.x, tip.y)) {
       mind.visible = true;

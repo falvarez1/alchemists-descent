@@ -63,6 +63,8 @@ import { spawnPrefabEnemy, toAuthoredLight } from '@/game/instantiate';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { makeLevelRuntime } from '@/game/runtime';
 import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
+import { ARRIVAL_GRACE_TICKS, ARRIVAL_SAFE_RADIUS, arrivalPickupRests, arrivalStandable, arrivalThreat, relocateCreature, settleArrival } from '@/game/arrival';
+import { bossArenaRect } from '@/core/bossWard';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
 import { WORKS_GATE, worksGateOpen } from '@/world/breathingWorks';
@@ -150,7 +152,11 @@ const WEAVER_LAIR_WEB_JITTER_MIN = 0.04;
 const WEAVER_LAIR_WEB_JITTER_MAX = 0.12;
 /** Minimum placement distance (cells) between a placed enemy and the level spawn. */
 const POPULATION_SPAWN_CLEARANCE = 220;
-const POPULATION_CLEARANCE_STEPS = [POPULATION_SPAWN_CLEARANCE, 150, 80, 0] as const;
+/** The clearance relaxes when a crowded floor needs it, but never below the
+ *  arrival's safe radius (game/arrival): no foe is seeded where he arrives. */
+const POPULATION_CLEARANCE_STEPS = [POPULATION_SPAWN_CLEARANCE, 150, ARRIVAL_SAFE_RADIUS] as const;
+/** A relocated foe (secureArrival) lands at least this far from the arrival, relaxing to the safe radius. */
+const ARRIVAL_RELOCATE_CLEARANCES = [260, 200, 160, ARRIVAL_SAFE_RADIUS] as const;
 const POPULATION_ATTEMPTS_PER_PASS = 36;
 /** Kinds that may be seeded with their heads under liquid (swimmers, floaters, fliers). */
 const POPULATION_WATER_BREATHERS: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['rillback', 'leviathan', 'wisp', 'bat', 'imp', 'colossus', 'eggs']);
@@ -965,6 +971,9 @@ export class Levels implements LevelsApi {
       runtime.surfaceDescended = true;
       ctx.events.emit('toast', { text: 'Into the depths.' });
     }
+
+    // The arrival's grace ends the moment he fights (game/arrival).
+    if (player.firing && ctx.state.frameCount < (ctx.state.arrivalGraceUntil ?? -1)) ctx.state.arrivalGraceUntil = ctx.state.frameCount;
 
     // Floor safety: terrain no longer opens into a hidden descent shaft.
     if (player.y >= HEIGHT - 10) {
@@ -2176,6 +2185,8 @@ export class Levels implements LevelsApi {
     const expeditionSeed = this.activeExpeditionSeed(ctx);
     const seed = levelSeedFor(expeditionSeed, def.id);
     const pristine = ctx.worldgen.generateLevel(ctx, def, seed);
+    // Settled on the pristine cells, exactly as createLevel did (game/arrival).
+    const spawn = this.settledSpawn(ctx, def, pristine.spawn, pristine.boss, pristine.pickups);
 
     const savedTypes = new Uint8Array(world.types.length);
     if (!rleDecodeExact(blob.rle, savedTypes)) throw new Error(`Saved level "${def.id}" RLE length mismatch`);
@@ -2224,8 +2235,8 @@ export class Levels implements LevelsApi {
       ...(def.id === 'd1' ? { living: restoreLiving(blob.living) } : {}),
       exit: pristine.exit,
       explored,
-      spawn: pristine.spawn,
-      regions: extractRegionGraph(ctx.world, pristine.spawn, {
+      spawn,
+      regions: extractRegionGraph(ctx.world, spawn, {
         x: pristine.exit.x,
         y: pristine.exit.sealY - 12,
       }),
@@ -2386,6 +2397,8 @@ export class Levels implements LevelsApi {
     // the wizard OUT ON THE SURFACE (the Noita-style intro) — once he has dropped
     // down the cave mouth, every later arrival/respawn uses the cave spawn.
     const player = ctx.player;
+    // The settled spawn may have lost its footing since (an arrival repair tunnel, a scar): settle again.
+    this.ensureArrivalFooting(ctx, runtime);
     const arrival = introArrivalSpawn(runtime);
     player.x = arrival.x;
     player.y = arrival.y;
@@ -2401,6 +2414,9 @@ export class Levels implements LevelsApi {
     ctx.playerCtl?.resetTransientState?.(ctx);
     clearFrameStops(ctx);
     ctx.camera.snapTo(player.x, player.y);
+    // A SAFE ARRIVAL (game/arrival): room around him, and a grace while the floor's name is up.
+    ctx.state.arrivalGraceUntil = ctx.state.frameCount + ARRIVAL_GRACE_TICKS;
+    this.secureArrival(ctx, runtime, arrival);
 
     this.currentId = id;
     this.scheduleSettledFindabilityRepair(ctx, runtime);
@@ -2448,6 +2464,72 @@ export class Levels implements LevelsApi {
 
     // Crossing a threshold is a natural checkpoint.
     if (this.checkpointSaveSuppression === 0) this.saveExpedition(ctx);
+  }
+
+  /**
+   * The generated spawn settled onto footing (game/arrival), clear of the
+   * floor's boss arena. D1 is hand-built (its cave spawn is authored) and the
+   * test arenas rebuild their world after generation: both keep theirs.
+   */
+  private settledSpawn(
+    ctx: Ctx,
+    def: LevelDef,
+    spawn: { x: number; y: number },
+    boss: { x: number; y: number; kind?: EnemyKind } | null,
+    pickups: readonly Pickup[],
+  ): { x: number; y: number } {
+    if (def.id === 'd1' || AUTHORED_TEST_ARENAS.has(def.id)) return spawn;
+    const arena = bossArenaRect(boss);
+    const settled = settleArrival(ctx, spawn, arena ? [arena] : [], pickups.filter((p) => !p.taken));
+    if (settled.x !== spawn.x || settled.y !== spawn.y) ctx.telemetry.count(`arrival.settled.${def.id}`);
+    return settled;
+  }
+
+  /** Re-settle a spawn that no longer stands (the initial findability repair runs after the settle). */
+  private ensureArrivalFooting(ctx: Ctx, runtime: LevelRuntime): void {
+    const id = runtime.def.id;
+    if (id === 'd1' || runtime.living || AUTHORED_TEST_ARENAS.has(id) || runtime.def.id === 'custom') return;
+    const arena = bossArenaRect(runtime.boss);
+    const avoid = arena ? [arena] : [];
+    const pickups = runtime.pickups.filter((p) => !p.taken);
+    if (arrivalStandable(ctx, Math.round(runtime.spawn.x), Math.round(runtime.spawn.y), avoid, arrivalPickupRests(ctx, pickups))) return;
+    const settled = settleArrival(ctx, runtime.spawn, avoid, pickups);
+    if (settled.x === runtime.spawn.x && settled.y === runtime.spawn.y) return;
+    runtime.spawn = settled;
+    ctx.telemetry.count(`arrival.resettled.${id}`);
+  }
+
+  /**
+   * No hostile waits at the arrival (game/arrival): anything within the safe
+   * radius — with a sight line, or close behind rock — is RELOCATED to a spot
+   * its kind may live in (the population's own habitat rules and clearance,
+   * bats to a roost), never deleted. Population placement already keeps its
+   * distance; this catches what it does not own (a prefab's foe, a wanderer
+   * on a re-entry). D1 and the test arenas are authored and keep theirs.
+   */
+  private secureArrival(ctx: Ctx, runtime: LevelRuntime, at: { x: number; y: number }): void {
+    const id = runtime.def.id;
+    if (runtime.living || AUTHORED_TEST_ARENAS.has(id)) return;
+    const threats = ctx.enemies.filter((e) => arrivalThreat(ctx, e, at));
+    if (threats.length === 0) return;
+    const reach = wizardMask(runtime);
+    const rng = new Rng(hashSeed(levelSeedFor(this.activeExpeditionSeed(ctx), id), 'arrival-safety'));
+    for (const e of threats) {
+      const def = ctx.enemyCtl.defs[e.kind];
+      const roost = e.kind === 'bat' && e.sleeping ? this.findRoostSpot(ctx, rng, at, runtime.regions, reach) : null;
+      const spot = roost
+        ? { x: roost.x, y: roost.y + 4 }
+        : this.findPopulationSpot(ctx, rng, at, runtime.regions, reach, def.halfW, def.h, {
+            ...this.populationHabitatOptions(ctx, e.kind),
+            clearances: ARRIVAL_RELOCATE_CLEARANCES,
+          });
+      if (!spot) {
+        ctx.telemetry.count(`arrival.unrelocated.${id}.${e.kind}`);
+        continue;
+      }
+      relocateCreature(e, spot.x, spot.y);
+      ctx.telemetry.count(`arrival.relocated.${id}.${e.kind}`);
+    }
   }
 
   seedReviewKit(ctx: Ctx): void {
@@ -2559,7 +2641,7 @@ export class Levels implements LevelsApi {
     const {
       exit,
       waystones,
-      spawn,
+      spawn: generatedSpawn,
       cauldron,
       pickups,
       portal,
@@ -2579,6 +2661,10 @@ export class Levels implements LevelsApi {
       lumenBlooms,
       story,
     } = ctx.worldgen.generateLevel(ctx, def, seed);
+    // A SAFE ARRIVAL (game/arrival): the spawn is settled onto footing before
+    // anything is placed around it, so the population keeps its distance from
+    // where the alchemist really stands (not the chamber air he falls through).
+    const spawn = this.settledSpawn(ctx, def, generatedSpawn, boss, pickups);
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
     const regions = extractRegionGraph(ctx.world, spawn, {
@@ -2751,7 +2837,7 @@ export class Levels implements LevelsApi {
       const eggsDef = ctx.enemyCtl.defs.eggs;
       for (let c = 0; c < clutches; c++) {
         const spot = this.findPopulationSpot(ctx, rng, spawn, regions, reachable, eggsDef.halfW, eggsDef.h, {
-          clearances: [180, 100, 0],
+          clearances: [180, ARRIVAL_SAFE_RADIUS],
         });
         report.planned.eggs = (report.planned.eggs ?? 0) + 1;
         if (spot && this.spawnSeededEnemy(ctx, 'eggs', spot.x, spot.y, rng)) {
@@ -2906,7 +2992,7 @@ export class Levels implements LevelsApi {
     const batDef = ctx.enemyCtl.defs.bat;
     const regionPasses = regions && regions.mainPath.length > 0 ? [true, false] : [false];
     for (const mainPathOnly of regionPasses) {
-      for (const clearance of [200, 120, 0]) {
+      for (const clearance of [200, ARRIVAL_SAFE_RADIUS]) {
         const clearanceSq = clearance * clearance;
         for (let attempt = 0; attempt < ROOST_ATTEMPTS_PER_PASS; attempt++) {
           const x = 40 + rng.int(WIDTH - 80);
