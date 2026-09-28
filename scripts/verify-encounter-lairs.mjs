@@ -148,12 +148,27 @@ try {
             }
             return count;
           };
+          // The sim advances only as fast as frames render, and a GPU-less CI
+          // runner renders a few a second: drive it with the game's manual time
+          // (up to 60 queued ticks a frame) until `done()`, then hand time back.
+          // The same simulation — just not throttled by the renderer.
+          const driveSim = async (done, capMs = 180000) => {
+            const deadline = performance.now() + capMs;
+            const wasManual = ctx.time.manual;
+            if (!done()) ctx.time.setManual(true);
+            while (!done() && performance.now() < deadline) {
+              if (ctx.time.queuedTicks < 120) ctx.time.queueTicks(240);
+              await sleep(20);
+            }
+            if (ctx.time.manual !== wasManual) ctx.time.setManual(wasManual);
+          };
+
           const waitForFindability = async (rt) => {
             let latest = [];
             let cleanFrames = 0;
-            // Let the level's scheduled settled repair run before the heavy
-            // validator loop starts; otherwise the probe itself can delay the
-            // browser timer it is trying to observe.
+            // Let the level's own settled-repair cascade finish (it waits on sim
+            // steps) before judging convergence.
+            await driveSim(() => ctx.levels.findabilityReady);
             await sleep(700);
             // The level's own repair cascade runs through ~6.5 s after entry
             // (SETTLED_FINDABILITY_REPAIR_DELAYS_MS): a powder column can seal
@@ -177,8 +192,7 @@ try {
           // Wait on SIM steps, not the wall clock: a slow frame or a heavy
           // validator call must not move the moment the habitat is judged.
           const waitSteps = async (from, steps) => {
-            const deadline = performance.now() + 30000;
-            while (w().activity.stepSerial - from < steps && performance.now() < deadline) await sleep(10);
+            await driveSim(() => w().activity.stepSerial - from >= steps);
             return w().activity.stepSerial - from;
           };
 
