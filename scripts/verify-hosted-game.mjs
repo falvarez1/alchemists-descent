@@ -71,6 +71,16 @@ try {
   });
   check('a run starts', true);
 
+  // A first descent opens on the story's plates (~8 s), with the world held
+  // still behind them by design. Judge movement once the opening has ended —
+  // which also proves it does end.
+  const openingEnded = await page
+    .waitForFunction(() => !document.body.classList.contains('story-cinema-active'), null, { timeout: 45000 })
+    .then(() => true)
+    .catch(() => false);
+  check('the opening plates end and hand over control', openingEnded);
+  await new Promise((r) => setTimeout(r, 800));
+
   // Pixels, not state: a hosted build with a broken shader would still reach
   // 'play-active' and show a black rectangle. Read the GL canvas inside a rAF
   // (preserveDrawingBuffer is false, so anywhere else samples a cleared buffer).
