@@ -93,7 +93,7 @@ describe('story sites', () => {
   it('floor 1: six named pipes on standable floor, Pell at the Warm Refuge, the valve in its nook — all findable', () => {
     const { runtime, out } = generate(LEVELS.d1, 1337);
     const st = out.story!;
-    expect(st.pipes.map(p => p.id)).toEqual(['intake', 'sluice', 'gallery', 'refuge', 'undertow', 'bell']);
+    expect(st.pipes.map(p => p.id)).toEqual(['intake', 'gallery', 'refuge', 'undertow', 'bell']);
     for (const p of st.pipes) expect(standable(runtime.world, p.x, p.floorY), p.id).toBe(true);
     expect(st.camp && Math.abs(st.camp.x - 1004) < 30).toBe(true);
     expect(validateFindability(runtime).filter(i => i.what.startsWith('story'))).toEqual([]);

@@ -20,7 +20,7 @@ export class StoryCinema {
 
   get active(): 'opening' | 'ending' | null { return this.kind; }
 
-  play(kind: 'opening' | 'ending', plates: readonly Plate[], opts: { pause: boolean; maxSeconds?: number }): Promise<void> {
+  play(kind: 'opening' | 'ending', plates: readonly Plate[], opts: { pause: boolean; maxSeconds?: number; breathSeconds?: number; leadSeconds?: number }): Promise<void> {
     this.stop(false);
     const ctx = this.host.ctx;
     this.kind = kind;
@@ -28,7 +28,8 @@ export class StoryCinema {
     if (opts.pause) { this.wasPaused = ctx.state.paused; ctx.state.paused = true; }
     ctx.events.emit('storyCinema', { phase: 'begin', kind, count: plates.length });
     // Each plate's hold: its own time, or its voice and a breath, scaled to fit the cap.
-    const holds = plates.map(p => Math.max(p.seconds, p.line ? this.host.lineSeconds(p.line) + 0.5 : 0));
+    const breath = opts.breathSeconds ?? 0.5;
+    const holds = plates.map(p => Math.max(p.seconds, p.line ? this.host.lineSeconds(p.line) + breath : 0));
     const total = holds.reduce((a, b) => a + b, 0);
     const scale = opts.maxSeconds && total > opts.maxSeconds ? opts.maxSeconds / total : 1;
     return new Promise<void>(resolve => {
@@ -42,7 +43,7 @@ export class StoryCinema {
         this.timer = window.setTimeout(() => show(i + 1), holds[i] * scale * 1000);
       };
       // A beat of black before the first plate.
-      this.timer = window.setTimeout(() => show(0), 450);
+      this.timer = window.setTimeout(() => show(0), (opts.leadSeconds ?? 0.45) * 1000);
     });
   }
 

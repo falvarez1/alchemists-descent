@@ -15,6 +15,8 @@ import {
   ENDING_AGAIN,
   ENDING_FIRST,
   OPENING,
+  OPENING_BREATH_SECONDS,
+  OPENING_LEAD_SECONDS,
   OPENING_MAX_SECONDS,
   STORY_FLOOR_NAMES,
   journalEntries,
@@ -40,6 +42,14 @@ const ASH_MAX_S = 11;
 /** A pipe passed while the air was taken stays armed this long, and speaks while you are within earshot. */
 const PIPE_ARMED_S = 12;
 const PIPE_EARSHOT = 150;
+/**
+ * Rest between one pipe's line and the next (s, from the end of the last): the
+ * Bellows' pipes, Pell, the echo and the engine's notes came to 17 voiced
+ * lines in three minutes of a first run. A pipe passed during the rest stays
+ * unspoken (and speaks when next passed): a quick run hears the best of them,
+ * a lingering one hears them all.
+ */
+const PIPE_REST_S = 40;
 
 /**
  * THE STORY DIRECTOR (Breathing Works wave 3, WS-S): the narrative spine, in
@@ -180,6 +190,8 @@ export class StoryDirector implements StoryApi {
   private pendingPipe: { key: string; levelId: string; pipeId: string; text: string; beat: string; biome: string; until: number } | null = null;
   /** The floor's arrival (its name, its epigraph) has the air for a moment before any pipe speaks. */
   private pipesQuietUntil = 0;
+  /** The last pipe's line and its rest (PIPE_REST_S): no pipe speaks before this. */
+  private pipeRestUntil = 0;
 
   /* ---------------- the run ---------------- */
 
@@ -278,8 +290,9 @@ export class StoryDirector implements StoryApi {
     for (const pipe of pipes) {
       if (Math.abs(p.x - pipe.x) <= PIPE_REACH_X && p.y >= pipe.floorY - PIPE_REACH_UP && p.y <= pipe.floorY + 10) this.pipeArmed.set(pipe.id, now + PIPE_ARMED_S);
     }
-    // Never over a scripted beat: the arrival, the echo, Pell or a cinematic has the floor.
-    if (now < this.pipesQuietUntil || this.pendingPipe || this.echo.active || this.pell.talking || this.cinema.active || this.escape.active) return;
+    // Never over a scripted beat: the arrival, the echo, Pell or a cinematic has the floor;
+    // and never straight after another pipe (PIPE_REST_S).
+    if (now < this.pipesQuietUntil || now < this.pipeRestUntil || this.pendingPipe || this.echo.active || this.pell.talking || this.cinema.active || this.escape.active) return;
     if (ctx.narrator?.busy) return;
     const script = DOCENT_PIPES[biome];
     for (const pipe of pipes) {
@@ -305,6 +318,7 @@ export class StoryDirector implements StoryApi {
         this.state = { ...this.state, pipes: this.state.pipes.filter(k => k !== key), spoken: this.state.spoken.filter(b => b !== line.beat.id) };
         continue;
       }
+      this.pipeRestUntil = now + this.lineSeconds({ speaker: 'docent', text: line.text }) + PIPE_REST_S;
       ctx.audio.sfx('mech.shrine', pipe.x, pipe.floorY - 24);
       ctx.particles.burst(pipe.x, pipe.floorY - 20, 6, null, () => 0xc8b894, 0.5, { grav: -0.01 });
       break;
@@ -398,7 +412,7 @@ export class StoryDirector implements StoryApi {
   playOpening(opts: { replay?: boolean } = {}): Promise<void> {
     const inGame = this.ctx.state.mode === 'play' && !opts.replay;
     if (!opts.replay) this.updateMeta(m => ({ ...m, openingSeen: true }));
-    return this.cinema.play('opening', OPENING, { pause: inGame, maxSeconds: OPENING_MAX_SECONDS });
+    return this.cinema.play('opening', OPENING, { pause: inGame, maxSeconds: OPENING_MAX_SECONDS, breathSeconds: OPENING_BREATH_SECONDS, leadSeconds: OPENING_LEAD_SECONDS });
   }
 
   /* ---------------- the Sanctum (Matron Ash) ---------------- */
