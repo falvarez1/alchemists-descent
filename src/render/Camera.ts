@@ -7,6 +7,12 @@ const AIM_LOOKAHEAD_DEADZONE = 28;
 const AIM_LOOKAHEAD_FULL_DISTANCE = 150;
 const AIM_LOOKAHEAD_LERP = 0.12;
 export const ACTION_PAN_MAX_SPEED = 2.4; // world cells/tick, shared by both axes
+/**
+ * Cells at the bottom of the view the HUD's bottom band covers (the hint line
+ * sits 845–877 px of a 900 px frame: from ~22 cells above the view's bottom
+ * edge). The follow camera keeps the alchemist's feet above it (Camera.update).
+ */
+export const HUD_FLOOR_CLEARANCE = 26;
 
 /** Ease out across a handoff, then close in once the camera catches up. */
 export function actionCameraZoom(zoom: number, distance: number): number {
@@ -113,7 +119,14 @@ export class Camera implements CameraApi {
     // is only black void (it used to allow half a view of it, which showed a
     // third of a screen of nothing under D1's Undertow and floor 4's arena).
     // A zoomed-in frame may still sink by exactly its hidden margin.
-    const floorPad = VIEW_H * (1 - 1 / Math.max(1, this.zoom)) / 2;
+    // The HUD's bottom band (the hint line, flasks and pause button) covers
+    // the last HUD_FLOOR_CLEARANCE cells of the view: at the world's floor the
+    // frame sinks just far enough past it to keep the alchemist's feet above
+    // that band (a sliver of the black void shows beneath, under the HUD).
+    const hudPad = state.mode === 'play' && !player.dead && !action && this.inspectionFocus === null
+      ? Math.max(0, Math.min(HUD_FLOOR_CLEARANCE, player.y + HUD_FLOOR_CLEARANCE - HEIGHT))
+      : 0;
+    const floorPad = Math.max(hudPad, VIEW_H * (1 - 1 / Math.max(1, this.zoom)) / 2);
     this.tx = clamp(this.tx, -padX, WIDTH - VIEW_W + padX);
     this.ty = clamp(this.ty, -padY, HEIGHT - VIEW_H + floorPad);
     const actionDistance = Math.hypot(this.tx - this.x, this.ty - this.y);
