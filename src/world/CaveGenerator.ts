@@ -45,7 +45,7 @@ import {
   woodColor,
 } from '@/sim/colors';
 import { applyBiomeExtras, applyCampaignDressing, fillMineralVugs, goldPocketBudgetForBiome } from '@/world/biomeExtras';
-import { PlacementLedger, carveRect, tunnelTo } from '@/world/connect';
+import { type CarveAvoid, PlacementLedger, carveRect, sealedFootprints, tunnelTo } from '@/world/connect';
 import { applyFloraPass } from '@/world/floraPass';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
@@ -567,6 +567,7 @@ export class WorldGen implements WorldGenApi {
     pickups: Pickup[],
     waystones: Waystone[],
     cauldron: { x: number; y: number } | null,
+    sealed: readonly CarveAvoid[] = [],
   ): void {
       let wiz = wizardMask({ world: ctx.world, spawn });
       let cell = reachableMask({ world: ctx.world, spawn });
@@ -615,14 +616,24 @@ export class WorldGen implements WorldGenApi {
         }
         return false;
       };
+      // Sealed features (an encounter lair's pool, the sump, a light room) are
+      // walked around, and never the join target: their open interiors are
+      // wizard-reachable, so the nearest reachable cell is often INSIDE one,
+      // and a tunnel aimed there cut the d3 seed-20 Rillback pool in half.
+      // A feature the rescued point itself stands in is its destination, not
+      // an obstacle (a light room's own lock), and is not avoided.
+      const avoidFor = (x: number, y: number): CarveAvoid[] =>
+        sealed.filter((r) => !(x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1));
       const nearestWiz = (x: number, y: number): { x: number; y: number } | null => {
+        const avoid = avoidFor(x, y);
         let fallback: { x: number; y: number } | null = null;
         for (let r = 24; r <= 1200; r += 3) {
           for (let a = 0; a < 24; a++) {
             const ang = (a / 24) * Math.PI * 2;
             const X = Math.floor(x + Math.cos(ang) * r),
               Y = Math.floor(y + Math.sin(ang) * r);
-            if (X > 1 && Y > 1 && X < WIDTH - 1 && Y < HEIGHT - 1 && wiz[X + Y * WIDTH]) {
+            if (X > 1 && Y > 1 && X < WIDTH - 1 && Y < HEIGHT - 1 && wiz[X + Y * WIDTH]
+              && !avoid.some((q) => X >= q.x0 && X <= q.x1 && Y >= q.y0 && Y <= q.y1)) {
               if (!metalOnLine(x, y, X, Y)) return { x: X, y: Y };
               fallback ??= { x: X, y: Y };
             }
@@ -647,11 +658,12 @@ export class WorldGen implements WorldGenApi {
           x: Math.floor(spawn.x),
           y: Math.floor(spawn.y) - 4,
         };
-        tunnelTo(ctx.world, this.rng, px, py - 10, target.x, target.y, 12, SWEEP, rescueMinY);
+        const avoid = avoidFor(px, py - 10);
+        tunnelTo(ctx.world, this.rng, px, py - 10, target.x, target.y, 12, SWEEP, rescueMinY, avoid);
         wiz = wizardMask({ world: ctx.world, spawn });
         cell = reachableMask({ world: ctx.world, spawn });
         if (pass()) return true;
-        tunnelTo(ctx.world, this.rng, px, py - 10, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP, rescueMinY);
+        tunnelTo(ctx.world, this.rng, px, py - 10, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP, rescueMinY, avoid);
         wiz = wizardMask({ world: ctx.world, spawn });
         cell = reachableMask({ world: ctx.world, spawn });
         return pass();
@@ -1136,7 +1148,7 @@ export class WorldGen implements WorldGenApi {
     // organic enemy trio. They run after broad dressing/vug fill so their
     // signatures survive, but before rescue so downstream terrain audits see
     // the final cells. The encounter-lair probe owns lair reachability checks.
-    const placedEncounterLairs = placeEncounterLairs(
+    const encounterLairs = placeEncounterLairs(
       ctx,
       new Rng(hashSeed(seed >>> 0, 'encounter-lairs')),
       graph,
@@ -1146,8 +1158,8 @@ export class WorldGen implements WorldGenApi {
       { spawn, wellX },
       fits,
     );
-    if (placedEncounterLairs.length > 0) {
-      placedPrefabs = placedPrefabs.concat(placedEncounterLairs);
+    if (encounterLairs.placed.length > 0) {
+      placedPrefabs = placedPrefabs.concat(encounterLairs.placed);
       graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
       fits.set(computeFits(ctx.world));
     }
@@ -1178,8 +1190,11 @@ export class WorldGen implements WorldGenApi {
     // bramble thicket) carved into rock and joined to the main path, then the
     // floor's own plants on real ground. Its own forked stream: every earlier
     // placement stays byte-identical per seed. Floor 1 is hand-planted.
+    // Its rooms' connectors walk around the sealed features placed so far (the
+    // lairs, the sump, the light rooms): a flora connector took the whole d3
+    // seed-3 Rillback pool when they walked straight through.
     const flora = applyFloraPass(ctx.world, new Rng(hashSeed(seed >>> 0, 'flora')), def.biome, ledger,
-      { spawn, wellX, pickups, graph, fits });
+      { spawn, wellX, pickups, graph, fits, avoid: sealedFootprints(ledger) });
     if (flora.puzzles.length > 0) {
       pickups.push(...flora.pickups);
       sink.enemies.push(...flora.enemies);
@@ -1201,7 +1216,10 @@ export class WorldGen implements WorldGenApi {
     //     the spawn-connected component, verified by recomputing the masks.
     //     This closes the long tail of organic-junction rolls no static
     //     geometry can promise away.
-    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron);
+    // Rescue tunnels route around the sealed features too (fail-open: a sealed
+    // room is dear, never a wall), and each repairs after them below.
+    const sealed = sealedFootprints(ledger);
+    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed);
     stage('gauge-rescue');
 
     // 8d) The Sump self-repairs AFTER the rescue pass: rescue tunnels eat all
@@ -1211,6 +1229,8 @@ export class WorldGen implements WorldGenApi {
     //     be armored (plugs, gold tells, the pool itself).
     sumpRepair?.();
     kilnRepair?.();
+    // ...and so does a lair's pool, should a rescue have had to cut it.
+    encounterLairs.repair();
     stage('sump-repair');
 
     if (shouldLogDevDiagnostics()) {
@@ -1226,7 +1246,7 @@ export class WorldGen implements WorldGenApi {
     // Final terrain dressing can invalidate a route that was clean during the
     // main rescue pass (D1's surface cap is the usual culprit). Validate the
     // finished cell field before handing it to Levels/runtime repair.
-    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron);
+    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed);
     // ...and the final rescue may carve again: the Kiln's seal is the player's
     // to dig, so re-assert its tank once more (idempotent; no-op off the Kiln).
     kilnRepair?.();
@@ -1234,6 +1254,10 @@ export class WorldGen implements WorldGenApi {
     // the basin took a column of its water on d3 seed 11) — but not its rock
     // rim: a tunnel the final rescue needed through it stays open.
     sumpRepair?.(false);
+    // An encounter lair's pool likewise (idempotent: an intact pool is untouched).
+    // Were its basin the only way a final rescue found, the runtime repair —
+    // which routes around every placed room — reopens a way on arrival.
+    encounterLairs.repair();
     // FLORA puzzles re-assert what the rescue tunnels took (a tree, a cistern)
     // — writing only into open cells, so no route the rescue opened is closed.
     flora.repair();

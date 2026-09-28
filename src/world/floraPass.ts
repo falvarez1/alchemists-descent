@@ -7,7 +7,7 @@ import { blocksEntity, Cell, isLiquid, isSolid } from '@/sim/CellType';
 import { EMPTY_COLOR, glowshroomColor, lavaColor, packRGB, waterColor } from '@/sim/colors';
 import { holdsUp, LEAF_LITTER, LEAF_REACH, SEED_GLOW_HELD, SEED_THIRSTY_HELD, SEED_THIRSTY_LOOSE } from '@/sim/elements/flora';
 import type { World } from '@/sim/World';
-import { connectToCaves, type PlacementLedger } from '@/world/connect';
+import { type CarveAvoid, connectToCaves, type PlacementLedger } from '@/world/connect';
 import { plantFlora, type FloraFloor, type FloraSpecies, type PlantOptions, type PlantResult } from '@/world/floraKit';
 
 /* ============================================================
@@ -62,6 +62,8 @@ export interface FloraPassContext {
   pickups: readonly Pickup[];
   graph: RegionGraph;
   fits?: Uint8Array;
+  /** Sealed features the rooms' connectors route around (world/connect sealedFootprints). */
+  avoid?: readonly CarveAvoid[];
 }
 
 const FLOOR_OF: Partial<Record<BiomeId, FloraFloor>> = { fungal: 'rot', flooded: 'cistern', volcanic: 'kiln', earthen: 'bellows' };
@@ -342,7 +344,7 @@ function timberBridge(world: World, rng: Rng, floor: FloraFloor, ledger: Placeme
   // Entrance: the near wall at ledge height, joined to the main path.
   const ex = x0 + 8, ey = floorY - 10;
   carve(world, x0, floorY - 22, x0 + 8, floorY - 1);
-  connectToCaves(world, rng, pc.graph, ex - 6, ey, 12, pc.fits);
+  connectToCaves(world, rng, pc.graph, ex - 6, ey, 12, pc.fits, undefined, pc.avoid);
   const puzzle: FloraPuzzle = { kind: lava ? 'lava-bridge' : 'timber-bridge', x0, y0, x1, y1, reward, focus: { x: treeX, y: plant?.cutY ?? floorY - 4 } };
   taken.push(puzzle);
   ledger.reserve(x0 - 4, y0 - 4, x1 + 4, y1 + 4, 'flora-' + puzzle.kind);
@@ -409,7 +411,7 @@ function rootLadder(world: World, rng: Rng, floor: FloraFloor, ledger: Placement
   });
   // Entrance: the left wall at floor height.
   carve(world, x0, floorY - 22, x0 + 8, floorY - 1);
-  connectToCaves(world, rng, pc.graph, x0 - 6, floorY - 10, 12, pc.fits);
+  connectToCaves(world, rng, pc.graph, x0 - 6, floorY - 10, 12, pc.fits, undefined, pc.avoid);
   // the bed's lamp stands past the cup (under the pour it would split the spill)
   lamp(world, bedX + 8, floorY - 1);
   const puzzle: FloraPuzzle = { kind: 'root-ladder', x0, y0, x1, y1, reward, focus: { x: bedX, y: floorY + 1 } };
@@ -445,7 +447,7 @@ function thicket(world: World, rng: Rng, floor: FloraFloor, ledger: PlacementLed
     }
   }
   carve(world, x0, floorY - 22, x0 + 8, floorY - 1);
-  connectToCaves(world, rng, pc.graph, x0 - 6, floorY - 10, 12, pc.fits);
+  connectToCaves(world, rng, pc.graph, x0 - 6, floorY - 10, 12, pc.fits, undefined, pc.avoid);
   const puzzle: FloraPuzzle = { kind: 'thicket', x0, y0, x1, y1, reward, focus: { x: x0 + 17, y: floorY - 12 } };
   taken.push(puzzle);
   ledger.reserve(x0 - 4, y0 - 4, x1 + 4, y1 + 4, 'flora-thicket');

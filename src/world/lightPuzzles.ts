@@ -8,7 +8,7 @@ import { randomCard, TOME_REWARD_POOL } from '@/content/cardRewardPools';
 import { Cell } from '@/sim/CellType';
 import { acidColor, packRGB, stoneColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
-import { type PlacementLedger, carvePocket, carveRect, connectToCaves, tunnelTo } from '@/world/connect';
+import { type PlacementLedger, SEALED_LABEL, carvePocket, carveRect, connectToCaves, sealedFootprints, tunnelTo } from '@/world/connect';
 import { wizardMask } from '@/world/validate';
 
 /**
@@ -192,12 +192,16 @@ function carveRoom(
   ctx: Ctx, rng: Rng, graph: RegionGraph, fits: Uint8Array | undefined, spawn: { x: number; y: number },
   floorY: number, mouth: { x: number; y: number },
   interior: { x0: number; y0: number; x1: number; y1: number },
+  ledger: PlacementLedger,
 ): boolean {
   const world = ctx.world;
   carveRect(world, interior.x0, interior.y0, interior.x1, interior.y1);
   for (let y = floorY; y <= floorY + 4; y++) for (let x = interior.x0 - 2; x <= interior.x1 + 2; x++) setCell(world, x, y, Cell.Stone, stoneColor());
   carvePocket(world, mouth.x, mouth.y, 11, 12);
-  let steps = connectToCaves(world, rng, graph, mouth.x, mouth.y, 12, fits, { halfW: 7, up: 21, down: 9 });
+  // The connector walks AROUND sealed features (a lair's pool, the sump, the
+  // other light room) instead of being rolled back for cutting one below.
+  const avoid = sealedFootprints(ledger);
+  let steps = connectToCaves(world, rng, graph, mouth.x, mouth.y, 12, fits, { halfW: 7, up: 21, down: 9 }, avoid);
   if (steps.length === 0) {
     let best: { x: number; y: number } | null = null, bd = Infinity;
     for (const reg of graph.regions) {
@@ -205,7 +209,7 @@ function carveRoom(
       const d = Math.hypot(reg.cx - mouth.x, reg.cy - mouth.y);
       if (d < bd) { bd = d; best = { x: Math.floor(reg.cx), y: Math.floor(reg.cy) }; }
     }
-    if (best) steps = tunnelTo(world, rng, mouth.x, mouth.y, best.x, best.y, 12, { halfW: 7, up: 21, down: 9 });
+    if (best) steps = tunnelTo(world, rng, mouth.x, mouth.y, best.x, best.y, 12, { halfW: 7, up: 21, down: 9 }, 26, avoid);
   }
   if (steps.length === 0) return false;
   return roomReachable(world, spawn, interior.x0, interior.y0, interior.x1, interior.y1);
@@ -215,10 +219,11 @@ function carveRoom(
  * Did the carve cut into a SEALED feature — an encounter lair's pool, the
  * boss sump, another light room? Those hold liquid or a puzzle a tunnel would
  * drain or bypass (a connector through the d3 Rillback pool's seal emptied it).
- * Ordinary prefab footprints are joined by connectors everywhere else in
- * worldgen, so they are not guarded here.
+ * The connector now routes around them (world/connect sealedFootprints); this
+ * stays as the backstop for the fail-open case where the cheapest route still
+ * had to cut one. Ordinary prefab footprints are joined by connectors
+ * everywhere else in worldgen, so they are not guarded here.
  */
-const SEALED_LABEL = /^(encounter-lair|sump|light-)/;
 function intrudes(world: World, before: Uint8Array, ledger: PlacementLedger): boolean {
   const rects = ledger.rects().filter((r) => SEALED_LABEL.test(r.label));
   if (rects.length === 0) return false;
@@ -364,7 +369,7 @@ export function placeLightPuzzles(
         refused.push({ id: spec.id, x0: at.x0, y0: at.y0, x1, y1: at.y0 + spec.h - 1 });
         console.warn(`[light-puzzles] ${spec.id} on ${def.id}: ${why}; trying elsewhere`);
       };
-      if (!carveRoom(ctx, rng, graph, fits, site.spawn, floorY, mouth, interior)) { rollback('could not be joined to the caves'); continue; }
+      if (!carveRoom(ctx, rng, graph, fits, site.spawn, floorY, mouth, interior, ledger)) { rollback('could not be joined to the caves'); continue; }
       if (kind === 'vault') placeLamplightersLock(ctx, rng, at, spec, def.depth >= 3, out);
       else placeBloomCrossing(ctx, rng, at, spec, out);
       if (!roomReachable(ctx.world, site.spawn, interior.x0, interior.y0, x1 - 8, floorY - 1)) { rollback('lost its approach'); continue; }

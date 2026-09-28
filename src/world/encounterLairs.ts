@@ -2,7 +2,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import type { Rng } from '@/core/rng';
 import type { Ctx, EnemyKind, LevelDef, PlacedPrefab, RegionGraph } from '@/core/types';
 import type { InstantiationSink } from '@/game/instantiate';
-import { Cell } from '@/sim/CellType';
+import { Cell, isSoftGrowth, isSolid } from '@/sim/CellType';
 import {
   bloodColor,
   coalColor,
@@ -18,7 +18,7 @@ import {
   woodColor,
 } from '@/sim/colors';
 import type { World } from '@/sim/World';
-import { PlacementLedger, carvePocket, carveRect, connectToCaves, tunnelTo } from '@/world/connect';
+import { PlacementLedger, carvePocket, carveRect, connectToCaves, sealedFootprints, tunnelTo } from '@/world/connect';
 import { wizardMask } from '@/world/validate';
 
 interface LairSpec {
@@ -42,6 +42,21 @@ interface LairStamp {
 
 const LAIR_MARGIN = 12;
 
+/** The pass's placements, and the re-assert the generator runs after every later carve. */
+export interface EncounterLairs {
+  placed: PlacedPrefab[];
+  /**
+   * Re-seal what a later tunnel took from a lair's fragile organ (the
+   * Rillback's pool: basin walls, floor and liquid). Late tunnels route around
+   * lairs (world/connect sealedFootprints), but that routing is fail-open —
+   * when a lair really is the only way, the cheapest cut is taken — so, like
+   * the Leviathan sump's repair, the pool is put back afterwards. Idempotent:
+   * an intact pool is left exactly as it is (plants a flora pass grew in it
+   * included).
+   */
+  repair: () => void;
+}
+
 export function placeEncounterLairs(
   ctx: Ctx,
   rng: Rng,
@@ -51,11 +66,13 @@ export function placeEncounterLairs(
   def: LevelDef,
   site: { spawn: { x: number; y: number }; wellX: number },
   fits?: Uint8Array,
-): PlacedPrefab[] {
-  const specs = specsForLevel(def);
-  if (specs.length === 0) return [];
-
+): EncounterLairs {
   const placed: PlacedPrefab[] = [];
+  const repairs: Array<() => void> = [];
+  const out: EncounterLairs = { placed, repair: () => { for (const r of repairs) r(); } };
+  const specs = specsForLevel(def);
+  if (specs.length === 0) return out;
+
   for (const spec of specs) {
     const at = findLairSite(ctx.world, rng, graph, ledger, spec, site, placed);
     if (!at) {
@@ -66,13 +83,16 @@ export function placeEncounterLairs(
     const rollback = snapshotWorld(ctx.world);
     const stamp = stampLair(ctx.world, rng, spec, at);
     carvePocket(ctx.world, stamp.mouth.x, stamp.mouth.y, 11, 13);
-    let steps = connectToCaves(ctx.world, rng, graph, stamp.mouth.x, stamp.mouth.y, 12, fits, { halfW: 7, up: 21, down: 9 });
+    // Sealed features placed before this lair (the sump, an earlier lair) are
+    // walked around like every later tunnel walks around this one.
+    const avoid = sealedFootprints(ledger);
+    let steps = connectToCaves(ctx.world, rng, graph, stamp.mouth.x, stamp.mouth.y, 12, fits, { halfW: 7, up: 21, down: 9 }, avoid);
     if (steps.length === 0) {
       const target = nearestConnectorTarget(graph, stamp.mouth.x, stamp.mouth.y);
       if (target) {
         steps = Math.abs(stamp.mouth.x - target.x) <= 3 && Math.abs(stamp.mouth.y - target.y) <= 3
           ? [[stamp.mouth.x, stamp.mouth.y]]
-          : tunnelTo(ctx.world, rng, stamp.mouth.x, stamp.mouth.y, target.x, target.y, 12, { halfW: 7, up: 21, down: 9 });
+          : tunnelTo(ctx.world, rng, stamp.mouth.x, stamp.mouth.y, target.x, target.y, 12, { halfW: 7, up: 21, down: 9 }, 26, avoid);
       }
     }
     if (steps.length === 0) {
@@ -95,7 +115,7 @@ export function placeEncounterLairs(
     if (!lairWizardReachable(ctx.world, site.spawn, at, spec, stamp.spawn)) {
       const target = nearestWizardCell(ctx.world, site.spawn, stamp.mouth.x, stamp.mouth.y);
       if (target) {
-        tunnelTo(ctx.world, rng, stamp.mouth.x, stamp.mouth.y, target.x, target.y, 12, { halfW: 7, up: 21, down: 9 });
+        tunnelTo(ctx.world, rng, stamp.mouth.x, stamp.mouth.y, target.x, target.y, 12, { halfW: 7, up: 21, down: 9 }, 26, avoid);
       }
       if (!lairWizardReachable(ctx.world, site.spawn, at, spec, stamp.spawn)) {
         restoreWorld(ctx.world, rollback);
@@ -119,8 +139,12 @@ export function placeEncounterLairs(
       x1: at.x0 + spec.w - 1,
       y1: at.y0 + spec.h - 1,
     });
+    if (spec.kind === 'rillback') {
+      const world = ctx.world;
+      repairs.push(() => repairRillbackPool(world, at, spec));
+    }
   }
-  return placed;
+  return out;
 }
 
 function snapshotWorld(world: World): {
@@ -588,10 +612,58 @@ function sealRillbackPool(world: World, at: LairSite, spec: LairSpec): void {
         setCell(world, x, y, Cell.Stone, stoneColor());
         continue;
       }
-      const r = Math.abs((x * 31 + y * 17 + x * y) % 100);
-      if (r < 5) setCell(world, x, y, Cell.Blood, bloodColor());
-      else if (r < 12) setCell(world, x, y, Cell.Slime, slimeColor());
-      else setCell(world, x, y, Cell.Water, waterColor());
+      const [t, color] = poolLiquidAt(x, y);
+      setCell(world, x, y, t, color);
+    }
+  }
+}
+
+/** The pool's authored liquid at a cell: mostly water, a hashed fleck of blood and slime. */
+function poolLiquidAt(x: number, y: number): [Cell, number] {
+  const r = Math.abs((x * 31 + y * 17 + x * y) % 100);
+  if (r < 5) return [Cell.Blood, bloodColor()];
+  if (r < 12) return [Cell.Slime, slimeColor()];
+  return [Cell.Water, waterColor()];
+}
+
+/**
+ * The pool's re-assert (see EncounterLairs.repair). Checks the basin (both
+ * 3-wide stone walls and the 6-row floor) and the pool interior; if a carve
+ * opened any of it, the basin is re-stamped where it is no longer solid and
+ * every opened interior cell is refilled with its authored liquid. Cells that
+ * still hold something (liquid, a lily pad, kelp) are not touched. No rng: this
+ * runs after generation's streams close, and the liquid pattern is a hash.
+ */
+function repairRillbackPool(world: World, at: LairSite, spec: LairSpec): void {
+  const pool = rillbackPoolRect(at, spec);
+  // The basin: both side walls (3 wide, the pool's height) and the 6-row floor.
+  const basinCell = (x: number, y: number): boolean => x <= pool.x0 || x >= pool.x1 || y > pool.bottom;
+  // What a basin cell must be to hold the pool: rigid rock (not growth a vine could drink through).
+  const holds = (x: number, y: number): boolean => {
+    const t = world.types[world.idx(x, y)];
+    return isSolid(t) && !isSoftGrowth(t);
+  };
+  const opened = (x: number, y: number): boolean => world.types[world.idx(x, y)] === Cell.Empty;
+  let damaged = false;
+  for (let y = pool.top; y <= pool.bottom + 6 && !damaged; y++) {
+    for (let x = pool.x0 - 2; x <= pool.x1 + 2; x++) {
+      if (!world.inBounds(x, y)) continue;
+      if (basinCell(x, y) ? !holds(x, y) : opened(x, y)) {
+        damaged = true;
+        break;
+      }
+    }
+  }
+  if (!damaged) return;
+  for (let y = pool.top; y <= pool.bottom + 6; y++) {
+    for (let x = pool.x0 - 2; x <= pool.x1 + 2; x++) {
+      if (!world.inBounds(x, y)) continue;
+      if (basinCell(x, y)) {
+        if (!holds(x, y)) setCell(world, x, y, Cell.Stone, stoneColor());
+      } else if (opened(x, y)) {
+        const [t, color] = poolLiquidAt(x, y);
+        setCell(world, x, y, t, color);
+      }
     }
   }
 }
