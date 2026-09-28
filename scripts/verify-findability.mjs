@@ -42,10 +42,19 @@ async function auditSeed(seed) {
             // Wait for the actual final repair, whose callbacks can take longer
             // than their nominal delays on a loaded machine. Do not run another
             // full-grid BFS while that sequence is still working.
-            const settleDeadline = performance.now() + 60000;
+            // The cascade waits on SIM steps (up to 720), and the sim only
+            // advances as fast as frames render: a GPU-less CI runner renders
+            // a few per second. Drive it with the game's manual time instead
+            // (one frame may run up to 60 queued ticks) — the same simulation,
+            // just not throttled by the renderer — then hand time back.
+            const settleDeadline = performance.now() + 180000;
+            const wasManual = ctx.time.manual;
+            if (!ctx.levels.findabilityReady) ctx.time.setManual(true);
             while (!ctx.levels.findabilityReady && performance.now() < settleDeadline) {
-              await new Promise((r) => setTimeout(r, 100));
+              if (ctx.time.queuedTicks < 120) ctx.time.queueTicks(240);
+              await new Promise((r) => setTimeout(r, 50));
             }
+            if (ctx.time.manual !== wasManual) ctx.time.setManual(wasManual);
             if (!ctx.levels.findabilityReady) throw new Error(`Route repair did not finish for ${rt.def.id}`);
             const deadline = performance.now() + 2600;
             while (performance.now() < deadline) {

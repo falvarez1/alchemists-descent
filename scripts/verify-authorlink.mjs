@@ -51,6 +51,7 @@ for (const [name, page] of [['editor', editor], ['game', game]]) {
   page.on('console', (msg) => {
     const text = msg.text();
     if (text.includes('[authorlink]')) linkWarnings.push(`${name}: ${text}`);
+    if (process.env.AUTHORLINK_PROBE_VERBOSE && (msg.type() === 'error' || msg.type() === 'warning')) console.log(`    [${name} ${msg.type()}] ${text}`);
   });
 }
 
