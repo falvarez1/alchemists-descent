@@ -10,7 +10,8 @@ import type { CardId, Ctx, PerkId, SanctumApi } from '@/core/types';
 import { POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
 import { SANCTUM_PERK_DEFS } from '@/content/perks';
 import { FLOOR_LORE } from '@/content/floorLore';
-import { FLOORS_TOTAL, LEVELS, floorDisplayName, floorOf } from '@/config/worldgraph';
+import { FLOOR_LOOKS } from '@/config/floorLooks';
+import { FLOORS_TOTAL, LEVELS, floorDisplayName, floorOf, nextDoors } from '@/config/worldgraph';
 import { PhialRow } from '@/ui/phialGlyph';
 
 /**
@@ -52,9 +53,20 @@ function el(id: string): HTMLElement {
   return document.getElementById(id)!;
 }
 
+/** 'The Cold Store' reads 'the Cold Store' on a button. */
+function midName(name: string): string {
+  return name.startsWith('The ') ? 'the ' + name.slice(4) : name;
+}
+
 export class Sanctum implements SanctumApi {
   private _open = false;
-  private onDescend: (() => void) | null = null;
+  private onDescend: ((nextLevelId: string) => void) | null = null;
+  /** The door the alchemist has picked (the only door, where there is one). */
+  private chosen: string | null = null;
+  private fallbackNext: string | null = null;
+  private readonly doorButtons: HTMLButtonElement[] = [];
+  /** Re-arms the descend button after a boon or a door is chosen. */
+  private rearm: (() => void) | null = null;
   private readonly onDescendClick = (): void => this.close();
   /** Pause state we found on open, so close() restores it rather than force-resuming a pause we didn't take. */
   private wasPaused = false;
@@ -78,36 +90,121 @@ export class Sanctum implements SanctumApi {
     this.teaser.remove();
   }
 
-  /**
-   * The floor below, in the house voice, and the return phials: the old ones
-   * top one up on the way down (RunDirector owns the count; this shows it).
-   */
-  private renderTeaser(ctx: Ctx, nextId: string | null): void {
-    const lore = nextId ? FLOOR_LORE[nextId] : undefined;
-    const floor = floorOf(nextId);
-    this.teaser.hidden = !lore || floor <= 0;
-    if (!lore || !nextId || floor <= 0) return;
-    const below = document.createElement('div');
-    below.className = 'sanc-below';
-    const label = document.createElement('p');
-    label.className = 'menu-label';
-    label.textContent = `Below · Floor ${floor} of ${FLOORS_TOTAL}`;
-    const name = document.createElement('h3');
-    name.className = 'sanc-below-name';
-    name.textContent = floorDisplayName(nextId);
-    const line = document.createElement('p');
-    line.className = 'sanc-below-line';
-    line.textContent = lore.line;
+  private static facts(signature: string, resident: string): HTMLDListElement {
     const facts = document.createElement('dl');
     facts.className = 'sanc-below-facts';
-    for (const [term, text] of [['Signature', lore.signature], ['In residence', lore.resident]] as const) {
+    for (const [term, text] of [['Signature', signature], ['In residence', resident]] as const) {
       const dt = document.createElement('dt');
       dt.textContent = term;
       const dd = document.createElement('dd');
       dd.textContent = text;
       facts.append(dt, dd);
     }
-    below.append(label, name, line, facts);
+    return facts;
+  }
+
+  /**
+   * THE DOORS (the branching descent): the floor below offers two, side by
+   * side, each with its teaser — the name, the epigraph its title card will
+   * carry, the chemistry it is built around and who lives there. A door
+   * nobody has walked through yet says so. Choosing one lights it; the
+   * descend button waits for a boon and a door.
+   */
+  private renderDoors(ctx: Ctx, doors: readonly string[], floor: number): HTMLElement {
+    const seen = new Set(ctx.run?.metaView().levelsSeen ?? []);
+    const block = document.createElement('div');
+    block.className = 'sanc-below sanc-below-doors';
+    const label = document.createElement('p');
+    label.className = 'menu-label';
+    label.textContent = `Below · Floor ${floor} of ${FLOORS_TOTAL} · two doors`;
+    const row = document.createElement('div');
+    row.className = 'sanc-doors';
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', 'Choose a door');
+    this.doorButtons.length = 0;
+    doors.forEach((id, i) => {
+      const def = LEVELS[id];
+      const lore = FLOOR_LORE[id];
+      const door = document.createElement('button');
+      door.type = 'button';
+      door.className = 'sanc-door';
+      door.dataset.level = id;
+      door.setAttribute('aria-pressed', 'false');
+      const head = document.createElement('p');
+      head.className = 'sanc-door-label';
+      head.textContent = i === 0 ? 'Left-hand stair' : 'Right-hand stair';
+      if (!seen.has(id)) {
+        const tag = document.createElement('span');
+        tag.className = 'sanc-door-new';
+        tag.textContent = 'Unwalked';
+        head.append(tag);
+      }
+      const name = document.createElement('h3');
+      name.className = 'sanc-below-name';
+      name.textContent = floorDisplayName(id);
+      const epigraph = document.createElement('p');
+      epigraph.className = 'sanc-below-line';
+      epigraph.textContent = def ? FLOOR_LOOKS[def.biome].epigraph : '';
+      door.append(head, name, epigraph);
+      if (lore) door.append(Sanctum.facts(lore.signature, lore.resident));
+      door.addEventListener('click', () => this.chooseDoor(ctx, id));
+      // Matron Ash has a word about each door as the apprentice looks at it.
+      if (def) {
+        door.addEventListener('pointerenter', () => { if (this._open) ctx.story?.sanctumDoor(def.biome); });
+        door.addEventListener('focus', () => { if (this._open) ctx.story?.sanctumDoor(def.biome); });
+      }
+      this.doorButtons.push(door);
+      row.append(door);
+    });
+    block.append(label, row);
+    return block;
+  }
+
+  private chooseDoor(ctx: Ctx, id: string): void {
+    if (!this._open || this.chosen === id) return;
+    this.chosen = id;
+    for (const b of this.doorButtons) {
+      const on = b.dataset.level === id;
+      b.classList.toggle('chosen', on);
+      b.classList.toggle('passed', !on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+    ctx.audio.sfx('ui.door.choose');
+    ctx.telemetry.count(`sanctum.door.${id}`);
+    const def = LEVELS[id];
+    if (def) ctx.story?.sanctumDoor(def.biome);
+    this.rearm?.();
+  }
+
+  /**
+   * The floor below, in the house voice, and the return phials: the old ones
+   * top one up on the way down (RunDirector owns the count; this shows it).
+   * Where the floor below has two doors, both are shown and one is chosen.
+   */
+  private renderTeaser(ctx: Ctx, doors: readonly string[]): void {
+    const nextId = doors[0] ?? null;
+    const lore = nextId ? FLOOR_LORE[nextId] : undefined;
+    const floor = floorOf(nextId);
+    this.teaser.hidden = !lore || floor <= 0;
+    this.teaser.classList.toggle('two-doors', doors.length > 1);
+    if (!lore || !nextId || floor <= 0) return;
+    let below: HTMLElement;
+    if (doors.length > 1) {
+      below = this.renderDoors(ctx, doors, floor);
+    } else {
+      below = document.createElement('div');
+      below.className = 'sanc-below';
+      const label = document.createElement('p');
+      label.className = 'menu-label';
+      label.textContent = `Below · Floor ${floor} of ${FLOORS_TOTAL}`;
+      const name = document.createElement('h3');
+      name.className = 'sanc-below-name';
+      name.textContent = floorDisplayName(nextId);
+      const line = document.createElement('p');
+      line.className = 'sanc-below-line';
+      line.textContent = lore.line;
+      below.append(label, name, line, Sanctum.facts(lore.signature, lore.resident));
+    }
 
     const run = ctx.run;
     const vial = document.createElement('div');
@@ -141,22 +238,27 @@ export class Sanctum implements SanctumApi {
     return this._open;
   }
 
-  open(ctx: Ctx, onDescend: () => void): void {
+  open(ctx: Ctx, onDescend: (nextLevelId: string) => void): void {
     if (this._open) return;
     this._open = true;
     this.onDescend = onDescend;
     this.wasPaused = ctx.state.paused;
     ctx.state.paused = true;
 
-    const nextId = ctx.levels.current?.def.nextLevelId ?? null;
+    const currentId = ctx.levels.current?.def.id ?? null;
+    const doors = nextDoors(currentId).filter((id) => LEVELS[id]);
+    const nextId = doors[0] ?? ctx.levels.current?.def.nextLevelId ?? null;
+    this.fallbackNext = nextId;
+    this.chosen = doors.length > 1 ? null : nextId;
     const nextFloor = floorOf(nextId);
     const depth = nextFloor > 0 ? nextFloor : (ctx.levels.current?.def.depth ?? 0) + 1;
-    const nextName = nextId && LEVELS[nextId] ? floorDisplayName(nextId) : `depth ${depth}`;
     el('sanc-depth').textContent = nextFloor > 0 ? `${nextFloor} of ${FLOORS_TOTAL}` : String(depth);
     el('sanc-gold').textContent = String(ctx.state.score);
-    this.renderTeaser(ctx, nextId);
-    // STORY: Matron Ash greets the apprentice, and says a word about the door below.
-    ctx.story?.sanctumOpened(nextId && LEVELS[nextId] ? LEVELS[nextId].biome : null);
+    this.doorButtons.length = 0;
+    this.renderTeaser(ctx, doors.length > 0 ? doors : nextId ? [nextId] : []);
+    // STORY: Matron Ash greets the apprentice and says a word about the door
+    // below — where there are two, about each as he looks at it (sanctumDoor).
+    ctx.story?.sanctumOpened(doors.length <= 1 && nextId && LEVELS[nextId] ? LEVELS[nextId].biome : null);
 
     const dBtn = el('descend-btn') as HTMLButtonElement;
     const row = el('perk-row');
@@ -167,16 +269,22 @@ export class Sanctum implements SanctumApi {
     while (offer.length < 3 && pool.length) {
       offer.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
     }
-    let perkTaken = false;
+    let perkTaken = offer.length === 0;
     const armDescend = (): void => {
-      dBtn.disabled = false;
-      dBtn.textContent = 'Descend to ' + (nextName.startsWith('The ') ? 'the ' + nextName.slice(4) : nextName);
+      const target = this.chosen;
+      if (perkTaken && target) {
+        const name = LEVELS[target] ? floorDisplayName(target) : `depth ${depth}`;
+        dBtn.disabled = false;
+        dBtn.textContent = 'Descend to ' + midName(name);
+      } else {
+        dBtn.disabled = true;
+        dBtn.textContent = !perkTaken && !target
+          ? 'Choose a boon and a door'
+          : !perkTaken ? 'Choose a boon to descend' : 'Choose a door to descend';
+      }
     };
-    if (offer.length === 0) armDescend();
-    else {
-      dBtn.disabled = true;
-      dBtn.textContent = 'Choose a boon to descend';
-    }
+    this.rearm = armDescend;
+    armDescend();
     const cards: HTMLButtonElement[] = [];
     for (const pk of offer) {
       const card = document.createElement('button');
@@ -201,6 +309,7 @@ export class Sanctum implements SanctumApi {
         row.querySelectorAll('.perk-card').forEach((c) => {
           if (c !== card) c.classList.add('faded');
         });
+        perkTaken = true;
         armDescend();
       });
       cards.push(card);
@@ -216,6 +325,8 @@ export class Sanctum implements SanctumApi {
     if (this._open) return;
     this._open = true;
     this.onDescend = null;
+    this.rearm = null;
+    this.chosen = null;
     this.wasPaused = ctx.state.paused;
     ctx.state.paused = true;
     this.teaser.hidden = true;
@@ -359,7 +470,17 @@ export class Sanctum implements SanctumApi {
     el('sanctum-overlay').classList.remove('visible');
     this.ctx.state.paused = this.wasPaused;
     const go = this.onDescend;
+    const door = this.chosen ?? this.fallbackNext ?? '';
     this.onDescend = null;
-    go?.();
+    this.rearm = null;
+    this.chosen = null;
+    this.fallbackNext = null;
+    this.doorButtons.length = 0;
+    go?.(door);
+  }
+
+  /** The door picked so far (null until one is, where the floor below has two). */
+  get chosenDoor(): string | null {
+    return this._open ? this.chosen : null;
   }
 }

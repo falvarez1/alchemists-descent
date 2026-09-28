@@ -80,6 +80,12 @@ export const ORGANISM_CUES: Readonly<Record<string, ActionCues>> = {
   // A gust balls an ember beetle up too: a small dry scuttle of shell.
   emberbeetle: { curl: [{ sfx: 'critter.skitter' }] },
   ashmoth: { flare: [{ sfx: 'organism.ashmoth.flare' }] },
+  frostmite: { curl: [{ sfx: 'organism.frostmite.curl' }], eat: [{ sfx: 'organism.frostmite.eat' }] },
+  snowmoth: { flare: [{ sfx: 'organism.snowmoth.flare' }] },
+  brineskater: { scatter: [{ sfx: 'organism.brineskater.scatter' }] },
+  glassbeetle: { curl: [{ sfx: 'organism.glassbeetle.curl' }] },
+  prismmoth: { flare: [{ sfx: 'organism.prismmoth.flare' }] },
+  lensmite: { curl: [{ sfx: 'organism.lensmite.curl' }], eat: [{ sfx: 'organism.lensmite.eat' }] },
   fish: { scatter: [{ sfx: 'organism.fish.scatter' }] },
   bat: { scatter: [{ sfx: 'creature.bat.scatter' }] },
   // An idle imp snaps an ash moth out of the lava glow: a smaller flare.
@@ -97,6 +103,19 @@ export const BOSS_MOVE_CUES: Readonly<Partial<Record<EnemyKind, Readonly<Record<
     // Thermal shock: the crack is kilnQuench's; the kneel lands a beat after it.
     quench: [{ sfx: 'creature.colossus.kneel', delay: 0.28 }],
     dying: [{ sfx: 'creature.colossus.death.crack' }],
+  },
+  rimewarden: {
+    slam: [{ sfx: 'creature.rimewarden.creak' }],
+    stomp: [{ sfx: 'creature.rimewarden.creak', pitch: -3 }],
+    throw: [{ sfx: 'creature.rimewarden.creak', pitch: 2 }],
+    vent: [{ sfx: 'creature.rimewarden.inhale' }],
+    roar: [{ sfx: 'creature.rimewarden.roar' }],
+  },
+  lenswright: {
+    lance: [{ sfx: 'creature.lenswright.iris' }],
+    sweep: [{ sfx: 'creature.lenswright.iris', pitch: -2 }],
+    flare: [{ sfx: 'creature.lenswright.iris', pitch: 3 }],
+    roar: [{ sfx: 'creature.lenswright.roar' }],
   },
   leviathan: {
     lunge: [{ sfx: 'creature.leviathan.dim' }, { sfx: 'creature.leviathan.windup', delay: 0.12 }],

@@ -11,6 +11,8 @@ import type { BossHost } from '@/creatures/bosses/types';
 import { engageBoss, ensureBossBrain } from '@/creatures/bosses/types';
 import { colossusBeginDeath, colossusDamageScale, tickColossus } from '@/creatures/bosses/colossus';
 import { leviathanDamageScale, tickLeviathan } from '@/creatures/bosses/leviathan';
+import { rimeWardenDeathHeap, rimeWardenHit, tickRimeWarden } from '@/creatures/bosses/rimeWarden';
+import { lenswrightDeathShards, lenswrightHit, tickLenswright } from '@/creatures/bosses/lenswright';
 export { ENEMY_DEFS } from '@/content/enemyDefs';
 import { addCorpse, updateCorpses } from '@/creatures/corpses';
 import { createDefaultStatus, rollCatchFire, sampleAndTickStatus, type StatusSampleOptions } from '@/entities/status';
@@ -139,6 +141,11 @@ const STATUS_IMMUNE: Partial<
   colossus: { burning: true, frozen: true, teleportium: true, electrified: true },
   // A soaked hide never catches — but cold stiffens it and charge cooks it
   leviathan: { burning: true, teleportium: true },
+  // Ice cannot catch or carry a current, but it CAN freeze (brittle: creatures/bosses/rimeWarden).
+  // Heat thaws it through the cells touching it, not as a burn that would skip the rime.
+  rimewarden: { burning: true, teleportium: true, electrified: true },
+  // Glass and brass: nothing takes but a blow (and light).
+  lenswright: { burning: true, frozen: true, teleportium: true, electrified: true, toxic: true, wet: true, oiled: true },
   // Rillbacks are the living conductor in their pool; their own charge pulse
   // should threaten the player, not instantly shock the eel to death.
   rillback: { electrified: true },
@@ -165,6 +172,8 @@ export interface BossLair { halfW: number; up: number; down: number; near: numbe
 export const BOSS_LAIRS: Partial<Record<EnemyKind, BossLair>> = {
   colossus: { halfW: 62, up: 72, down: 14, near: 80, eye: 28, name: 'THE KILN COLOSSUS' },
   leviathan: { halfW: 54, up: 58, down: 12, near: 56, eye: 8, name: 'THE SUNKEN LEVIATHAN' },
+  rimewarden: { halfW: 58, up: 50, down: 12, near: 64, eye: 20, name: 'THE RIME WARDEN' },
+  lenswright: { halfW: 64, up: 70, down: 50, near: 70, eye: 11, name: 'THE LENSWRIGHT' },
 };
 /** The Kiln's entrance beat, in ticks: roar, name card, two stomps, the camera leans and returns. */
 const ENTRANCE_CARD_T = 10;
@@ -209,9 +218,12 @@ const TEMPERAMENT: Partial<Record<EnemyKind, Temperament>> = {
   golem: { fear: 0.18, dodge: 0.28, fleeAt: 1.5, seekWater: false }, // brute, shrugs it off
   colossus: { fear: 0, dodge: 0, fleeAt: 2, seekWater: false }, // fearless boss
   leviathan: { fear: 0, dodge: 0.12, fleeAt: 2, seekWater: false }, // fearless (water is its home)
+  rimewarden: { fear: 0, dodge: 0, fleeAt: 2, seekWater: false }, // frozen to its post
+  lenswright: { fear: 0, dodge: 0, fleeAt: 2, seekWater: false }, // an eye does not flinch
 };
 
-const FIREPROOF: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['imp', 'colossus', 'leviathan']);
+// (The Rime Warden: fire THAWS it — creatures/bosses/rimeWarden — it does not burn it.)
+const FIREPROOF: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['imp', 'colossus', 'leviathan', 'rimewarden', 'lenswright']);
 
 /** Does cell `c` deal environmental harm to `kind`? Single source of truth for
  *  wary look-ahead and threat scanning. Fire/lava burn everything but fireproof
@@ -241,7 +253,7 @@ function directEnvironmentDamage(kind: EnemyKind, c: number): number {
 }
 
 /** Kinds that breathe water, float over it or never breathe at all. */
-const DROWN_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['rillback', 'leviathan', 'colossus', 'wisp', 'eggs']);
+const DROWN_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['rillback', 'leviathan', 'colossus', 'rimewarden', 'lenswright', 'wisp', 'eggs']);
 /** Ticks a land creature can hold its breath with its head under liquid. */
 const BREATH_TICKS = 360;
 const BREATH_TICKS_BY_KIND: Partial<Record<EnemyKind, number>> = { imp: 90, bat: 180, bomber: 150 };
@@ -588,7 +600,11 @@ export class Enemies implements EnemyControlApi {
       if (playerBlow(source)) engageBoss(brain, ctx.state.frameCount);
       else if (ctx.state.frameCount < brain.selfHarmUntil) return;
       // The windows sharpen the player's own blows; the world's harm lands as the ward allows it.
-      if (source === 'direct') amount *= e.kind === 'colossus' ? colossusDamageScale(e) : leviathanDamageScale(e);
+      // The Rime Warden's rime glances a blow, or cracks a plate off (creatures/bosses/rimeWarden).
+      if (e.kind === 'rimewarden') amount = rimeWardenHit(ctx, e, this.defs[e.kind], this.bossHost, amount, source);
+      // ...and the Lenswright's housing glances unless its iris is open (creatures/bosses/lenswright).
+      else if (e.kind === 'lenswright') amount = lenswrightHit(ctx, e, this.defs[e.kind], this.bossHost, amount, source);
+      else if (source === 'direct') amount *= e.kind === 'colossus' ? colossusDamageScale(e) : leviathanDamageScale(e);
       brain.playerDamage += amount;
     }
     // Kill attribution: every blow reports its source before hp moves.
@@ -647,6 +663,14 @@ export class Enemies implements EnemyControlApi {
     if (e.kind === 'colossus') {
       ctx.particles.burst(e.x + Math.sign(kx || 0) * 4, e.y - def.h * 0.5, Math.min(10, 3 + Math.floor(amount * 0.3)), null,
         () => packRGB(255, 150 + ((entityRandom() * 80) | 0), 40), 2.2, { glow: 2.2, grav: 0.05 });
+    } else if (e.kind === 'lenswright') {
+      // Glass and brass: glints and chips of lens, never blood.
+      ctx.particles.burst(e.x + Math.sign(kx || 0) * 3, e.y - def.h * 0.55, Math.min(10, 3 + Math.floor(amount * 0.3)), null,
+        () => packRGB(230 + ((entityRandom() * 25) | 0), 236, 250), 2.0, { glow: 1.4, grav: 0.05 });
+    } else if (e.kind === 'rimewarden') {
+      // Iron and ice: frost chips and a rust-dark spark, never blood.
+      ctx.particles.burst(e.x + Math.sign(kx || 0) * 4, e.y - def.h * 0.5, Math.min(10, 3 + Math.floor(amount * 0.3)), null,
+        () => packRGB(200 + ((entityRandom() * 50) | 0), 230, 250), 2.0, { glow: 0.9, grav: 0.05 });
     } else if (e.kind !== 'imp') {
       if (entityRandom() < 0.6) splatterStain(ctx.world, e.x - Math.sign(kx || 0) * 3, e.y - 5, 4);
       const n = this.goreCount(e, Math.min(22, 5 + Math.floor(amount * 0.8)), Cell.Blood);
@@ -701,7 +725,7 @@ export class Enemies implements EnemyControlApi {
    *  carries — and a fast launch SMASHES into the first wall it meets, painting it. */
   gustShove(e: Enemy, dirX: number, dirY: number, strength: number): void {
     if (strength <= 0 || e.hp <= 0) return;
-    if (e.kind === 'colossus' || e.kind === 'leviathan') return; // a gust can't move a boss
+    if (BOSS_LAIRS[e.kind]) return; // a gust can't move a boss
     const def = this.defs[e.kind];
     const mass = def.halfW * def.h; // footprint proxy: bat 15, slime 40, golem 140
     const push = strength * clamp(GUST_REF_MASS / mass, GUST_MASS_LO, GUST_MASS_HI);
@@ -909,6 +933,38 @@ export class Enemies implements EnemyControlApi {
       ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 1.2);
       ctx.waves.kills++;
       ctx.events.emit('toast', { text: 'THE SUMP FALLS STILL' });
+      return;
+    }
+    // The Rime Warden: a floor's guardian — it comes apart into a heap of real
+    // ice, and the Cold Store pays a heart and a card for it.
+    if (e.kind === 'lenswright') {
+      // The Lenswright: the lens bursts into real glass and its drops fall as crystal.
+      lenswrightDeathShards(ctx, e, def);
+      this.dropBounty(e, def);
+      const runtime = ctx.levels.current;
+      if (runtime && ctx.state.mode === 'play') {
+        runtime.pickups.push(makePickup('heart', e.x - 5, e.y - 6));
+        runtime.pickups.push(makePickup('tome', e.x + 5, e.y - 6, { card: randomCard(LEVIATHAN_REWARD_POOL) }));
+      }
+      this.voice(e, () => ctx.audio.sfx('creature.lenswright.death'), 900);
+      this.shakeAt(e.x, e.y, 0.035, 0.06);
+      ctx.waves.kills++;
+      ctx.events.emit('toast', { text: 'THE GALLERIES GO DARK' });
+      return;
+    }
+    if (e.kind === 'rimewarden') {
+      rimeWardenDeathHeap(ctx, e, def);
+      this.dropBounty(e, def);
+      const runtime = ctx.levels.current;
+      if (runtime && ctx.state.mode === 'play') {
+        runtime.pickups.push(makePickup('heart', e.x - 5, e.y - 12));
+        runtime.pickups.push(makePickup('tome', e.x + 5, e.y - 12, { card: randomCard(LEVIATHAN_REWARD_POOL) }));
+      }
+      this.voice(e, () => ctx.audio.sfx('creature.rimewarden.death'), 900);
+      this.shakeAt(e.x, e.y, 0.04, 0.07);
+      ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 1.0);
+      ctx.waves.kills++;
+      ctx.events.emit('toast', { text: 'THE WARDEN STANDS DOWN' });
       return;
     }
     // The Kiln Colossus: the run ends here, loudly.
@@ -1131,6 +1187,31 @@ export class Enemies implements EnemyControlApi {
     // do (belt and braces behind the ward: an old save, a pre-ward scratch).
     if (!this.bossWard.harmedByPlayer(e)) e.hp = e.maxHp;
     engageBoss(ensureBossBrain(e), ctx.state.frameCount);
+    if (e.kind === 'lenswright') {
+      // THE LENSWRIGHT turns its eye on you: the iris opens a crack, its drops
+      // chime, its name rises — and it holds a beat before the first lance.
+      ctx.audio.duck(0.5, 1100);
+      this.voice(e, () => ctx.audio.sfx('creature.lenswright.alert', e.x, e.y), 900);
+      ctx.particles.burst(e.x, e.y - def.h * 0.55, 24, null, () => packRGB(255, 236, 190), 2.2, { glow: 2.0, grav: 0 });
+      this.shakeAt(e.x, e.y, 0.02, 0.04);
+      ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 10, text: lair.name, tone: 'finisher' });
+      e.attackCd = Math.max(e.attackCd, 100);
+      return;
+    }
+    if (e.kind === 'rimewarden') {
+      // THE RIME WARDEN stirs at its post: rime cracks off its joints in a
+      // glittering shower, its name rises, and it holds a beat before it moves.
+      ctx.audio.duck(0.5, 1200);
+      this.voice(e, () => ctx.audio.sfx('creature.rimewarden.alert', e.x, e.y), 900);
+      ctx.particles.burst(e.x, e.y - def.h + 2, 26, null, () => packRGB(210 + Math.floor(entityRandom() * 40), 234, 252), 2.4, {
+        glow: 1.2,
+        grav: 0.03,
+      });
+      this.shakeAt(e.x, e.y, 0.025, 0.05);
+      ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 10, text: lair.name, tone: 'finisher' });
+      e.attackCd = Math.max(e.attackCd, 90);
+      return;
+    }
     if (e.kind !== 'colossus') {
       // a deep churn under the surface — the pool itself announces it
       this.voice(e, () => ctx.audio.sfx('creature.leviathan.alert', e.x, e.y), 720);
@@ -3403,6 +3484,16 @@ export class Enemies implements EnemyControlApi {
         // thermal-shock quench and the death sequence). The quench's damage
         // and cadence are the ward's (core/bossWard KILN_QUENCH).
         tickColossus(ctx, e, def, this.bossHost, { targetAlive, canAttack: canAttackTarget, pdx, pdy, pDist, debugSuppressed: debugEnemyAttacksSuppressed });
+      } else if (e.kind === 'lenswright') {
+        // ===== THE LENSWRIGHT ===== (creatures/bosses/lenswright: a hovering
+        // lens; told lances traced through the real grid, banked off mirrors;
+        // dazzled by the wand's beam in its open iris; burned by its own light).
+        tickLenswright(ctx, e, def, this.bossHost, { targetAlive, canAttack: canAttackTarget, pdx, pdy, pDist, debugSuppressed: debugEnemyAttacksSuppressed });
+      } else if (e.kind === 'rimewarden') {
+        // ===== THE RIME WARDEN ===== (creatures/bosses/rimeWarden: six plates of
+        // rime that glance blows — thaw them with heat or shatter them; slam
+        // spikes, stomp rime waves, hail, frost breath, the icicle roar).
+        tickRimeWarden(ctx, e, def, this.bossHost, { targetAlive, canAttack: canAttackTarget, pdx, pdy, pDist, debugSuppressed: debugEnemyAttacksSuppressed });
       } else if (e.kind === 'rillback') {
         // Rillback Silt Eel: a small pool predator. Wet body = fluid S-curve
         // steering and a short living-conductor pulse; dry body = weak flops.
@@ -3831,7 +3922,7 @@ export class Enemies implements EnemyControlApi {
       // Integrate movement (walkers step; flyers collide and slip around small nubs).
       // Difficulty and descent pacing scale the step distance = effective speed.
       const spd = difficultyMods(ctx.state).enemySpeed * enemyMovementPace(ctx);
-      if (e.kind === 'imp' || e.kind === 'wisp' || (e.kind === 'bat' && (e.slimed ?? 0) <= 0)) {
+      if (e.kind === 'imp' || e.kind === 'wisp' || e.kind === 'lenswright' || (e.kind === 'bat' && (e.slimed ?? 0) <= 0)) {
         this.integrateFlying(e, def, spd);
       } else if (e.kind === 'weaver') {
         // The surface crawler owns Weaver movement. Threat reflexes fold into
@@ -3858,7 +3949,7 @@ export class Enemies implements EnemyControlApi {
       } else {
         this.unembed(e, def);
         const stepUp =
-          e.kind === 'colossus'
+          e.kind === 'colossus' || e.kind === 'rimewarden'
             ? 3
             : e.kind === 'golem' || e.kind === 'leviathan' || e.kind === 'stonemaw'
               ? 2

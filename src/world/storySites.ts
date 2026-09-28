@@ -5,7 +5,7 @@ import type { LevelStorySites, StoryCampSite, StoryPipeSite, StoryValveSite } fr
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 import type { World } from '@/sim/World';
-import { carveRect, tunnelTo, type PlacementLedger } from '@/world/connect';
+import { carveRect, sealedFootprints, tunnelTo, type PlacementLedger } from '@/world/connect';
 import { wizardMask } from '@/world/validate';
 
 /**
@@ -170,8 +170,10 @@ function carveNook(world: World, rng: Rng, ledger: PlacementLedger, reach: Uint8
     if (world.types[i] !== Cell.Metal) { world.types[i] = Cell.Stone; world.colors[i] = packRGB(70 + ((x * 7 + y * 3) % 9), 64, 58); }
   }
   // The connector: a swept gallery from the nook's mouth to the route's floor (gauge-guaranteed).
+  // Like every late tunnel it walks AROUND sealed features (a lair's pool, the sump, light and
+  // second-door rooms) — the story placed after them and once cut d4 seed 21's stonemaw seam.
   const mx = best.mouth < 0 ? x0 + 4 : x1 - 4;
-  tunnelTo(world, rng, mx, floorY - 9, best.tx, best.ty - 9, 10, { halfW: 6, up: 10, down: 8 });
+  tunnelTo(world, rng, mx, floorY - 9, best.tx, best.ty - 9, 10, { halfW: 6, up: 10, down: 8 }, 26, sealedFootprints(ledger));
   ledger.reserve(x0 - 6, floorY - spec.h - 4, x1 + 6, floorY + 4, spec.label);
   return { x0, x1, floorY, mouth: best.mouth };
 }

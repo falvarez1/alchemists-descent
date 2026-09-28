@@ -13,7 +13,9 @@ export type BossMove =
   // Kiln Colossus
   | 'march' | 'slam' | 'stomp' | 'throw' | 'vent' | 'quench' | 'roar' | 'dying'
   // Sunken Leviathan
-  | 'lurk' | 'lunge' | 'volley' | 'thrash' | 'dive' | 'shock' | 'beached';
+  | 'lurk' | 'lunge' | 'volley' | 'thrash' | 'dive' | 'shock' | 'beached'
+  // The Lenswright (creatures/bosses/lenswright); the Rime Warden reuses the Colossus's names
+  | 'lance' | 'sweep' | 'flare' | 'dazzled';
 
 /** A stomp's shockwave, running along the real floor. */
 export interface ShockWave {
@@ -33,6 +35,7 @@ export interface BossBrain {
   lastMove: BossMove;
   /** Colossus: furnace heat 0..1. Only a hot kiln cracks when water hits it. */
   heat: number;
+  /** Colossus: the thermal-shock re-arm. Rime Warden: ticks until its rime has re-set (no plate goes before). */
   quenchCd: number;
   /** The player has entered the fight (its entrance ran, or he struck it), and when. */
   engaged: boolean;

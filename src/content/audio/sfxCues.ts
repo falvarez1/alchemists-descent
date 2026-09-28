@@ -110,6 +110,8 @@ export const SFX_CUES = {
   'ui.grimoire': ui({ gain: 1.2, cooldownMs: 600 }),
   'ui.card.reveal': ui({ gain: 1.4 }),
   'ui.card.choose': ui({ gain: 1.4 }),
+  // The Sanctum's two doors (wave 3): a stair chosen.
+  'ui.door.choose': ui({ gain: 1.3 }),
   'ui.card.pick': ui({ gain: 0.74 }),
   'ui.card.slot': ui({ gain: 1.1 }),
   'ui.bench': ui({ gain: 1.1 }),
@@ -227,6 +229,8 @@ export const SFX_CUES = {
   'boom.large': wo('explosion', { gain: 1.13, voices: 3 }),
   'mat.zap': wo('material', { gain: 0.87, range: 450, cooldownMs: 70 }),
   'mat.shatter': wo('material', { gain: 1.4, range: 500, cooldownMs: 90 }),
+  // Brine eating ice (sim/elements/brine): the salt's soft fizz — the Cold Store's puzzles, audible.
+  'mat.brine.fizz': wo('material', { gain: 0.8, range: 320, cooldownMs: 260 }),
   'mat.steam': wo('material', { gain: 0.68, range: 360, cooldownMs: 150 }),
   'mat.sizzle': wo('material', { gain: 0.4, range: 300, cooldownMs: 240 }),
   'mat.ignite': wo('material', { gain: 1, range: 450, cooldownMs: 120 }),
@@ -344,6 +348,9 @@ export const SFX_CUES = {
   'amb.rot': c('amb-d2', 'bed', { loop: true }),
   'amb.cisterns': c('amb-d3', 'bed', { loop: true }),
   'amb.kiln': c('amb-d4', 'bed', { loop: true }),
+  // The second doors (wave 3): each floor's own bed, loaded with its floor.
+  'amb.coldstore': c('amb-d2b', 'bed', { loop: true }),
+  'amb.galleries': c('amb-d3b', 'bed', { loop: true }),
   'amb.breath.inhale': c('amb-d1', 'material', { gain: 1.3, range: 820, cooldownMs: 4000, bus: 'ambience', pitchCents: 0 }),
   'amb.breath.exhale': c('amb-d1', 'material', { gain: 1.4, range: 820, cooldownMs: 4000, bus: 'ambience', pitchCents: 0 }),
   'amb.breath.jet': loop('amb-d1', { gain: 1.0, range: 520, keepAliveMs: 260 }),
@@ -374,6 +381,15 @@ export const SFX_CUES = {
   'organism.emberbeetle.crunch': org('emberbeetle', 'critter', { gain: 1.0, cooldownMs: 300 }),
   'organism.emberbeetle.pop': org('emberbeetle', 'creature', { gain: 0.7 }),
   'organism.ashmoth.flare': org('ashmoth', 'critter', { gain: 2.0, cooldownMs: 120 }),
+  // The second doors (wave 3): the Cold Store's and the Glass Galleries' small life.
+  'organism.frostmite.curl': org('frostmite', 'creature', { gain: 0.6, voices: 2, cooldownMs: 150 }),
+  'organism.frostmite.eat': org('frostmite', 'critter', { gain: 0.9, cooldownMs: 300 }),
+  'organism.snowmoth.flare': org('snowmoth', 'critter', { gain: 1.6, cooldownMs: 120 }),
+  'organism.brineskater.scatter': org('brineskater', 'critter', { gain: 1.2, cooldownMs: 700, voices: 1 }),
+  'organism.glassbeetle.curl': org('glassbeetle', 'creature', { gain: 0.7, voices: 2, cooldownMs: 150 }),
+  'organism.prismmoth.flare': org('prismmoth', 'critter', { gain: 1.6, cooldownMs: 120 }),
+  'organism.lensmite.eat': org('lensmite', 'critter', { gain: 1.0, cooldownMs: 250 }),
+  'organism.lensmite.curl': org('lensmite', 'creature', { gain: 0.6, voices: 2, cooldownMs: 150 }),
 
   // ---------------------------------------------------- flora (every floor)
   // Living plants (game/Flora, sim/elements/flora, audio/HabitatAudio): the
@@ -543,6 +559,37 @@ export const SFX_CUES = {
   'creature.colossus.kneel': boss('colossus', { gain: 0.75 }),
   'creature.colossus.death.crack': boss('colossus', { gain: 1.0, range: 1000, priority: 5 }),
   'creature.colossus.death.rubble': boss('colossus', { gain: 1.2, range: 1200, priority: 5 }),
+  // THE RIME WARDEN (creatures/bosses/rimeWarden): the Cold Store's guardian — ice
+  // armour that glances blows, thaws or shatters; spikes, rime waves, hail, frost breath.
+  'creature.rimewarden.idle': boss('rimewarden', { gain: 0.7, cooldownMs: 3200 }),
+  'creature.rimewarden.alert': boss('rimewarden', { gain: 1.1, priority: 5 }),
+  'creature.rimewarden.step': boss('rimewarden', { gain: 0.8, cooldownMs: 160 }),
+  'creature.rimewarden.hurt': boss('rimewarden', { gain: 0.8 }),
+  'creature.rimewarden.death': boss('rimewarden', { gain: 1.2, range: 1200, priority: 5 }),
+  'creature.rimewarden.glance': boss('rimewarden', { gain: 0.6, cooldownMs: 180 }),
+  'creature.rimewarden.creak': boss('rimewarden', { gain: 0.7 }),
+  'creature.rimewarden.slam': boss('rimewarden', { gain: 1.0, priority: 5 }),
+  'creature.rimewarden.stomp': boss('rimewarden', { gain: 1.1, priority: 5 }),
+  'creature.rimewarden.hail': boss('rimewarden', { gain: 0.9 }),
+  'creature.rimewarden.inhale': boss('rimewarden', { gain: 0.8 }),
+  'creature.rimewarden.breath': boss('rimewarden', { gain: 1.0 }),
+  'creature.rimewarden.roar': boss('rimewarden', { gain: 1.15, priority: 5 }),
+  'creature.rimewarden.shatter': boss('rimewarden', { gain: 1.1, priority: 5 }),
+  'creature.rimewarden.thaw': boss('rimewarden', { gain: 0.9, priority: 5 }),
+  // THE LENSWRIGHT (creatures/bosses/lenswright): the Galleries' great lens — the
+  // iris opening (the tell), the lock, the lance, the dazzle that drops it.
+  'creature.lenswright.idle': boss('lenswright', { gain: 0.6, cooldownMs: 3400 }),
+  'creature.lenswright.alert': boss('lenswright', { gain: 1.0, priority: 5 }),
+  'creature.lenswright.hurt': boss('lenswright', { gain: 0.8 }),
+  'creature.lenswright.death': boss('lenswright', { gain: 1.2, range: 1200, priority: 5 }),
+  'creature.lenswright.glance': boss('lenswright', { gain: 0.55, cooldownMs: 180 }),
+  'creature.lenswright.iris': boss('lenswright', { gain: 0.8 }),
+  'creature.lenswright.lock': boss('lenswright', { gain: 0.9, priority: 5 }),
+  'creature.lenswright.lance': boss('lenswright', { gain: 1.1, priority: 5 }),
+  'creature.lenswright.dazzle': boss('lenswright', { gain: 1.1, priority: 5 }),
+  'creature.lenswright.fall': boss('lenswright', { gain: 1.0 }),
+  'creature.lenswright.flare': boss('lenswright', { gain: 0.9 }),
+  'creature.lenswright.roar': boss('lenswright', { gain: 1.0, priority: 5 }),
 } as const satisfies Record<string, SfxCueDef>;
 
 export type SfxId = keyof typeof SFX_CUES;
@@ -562,12 +609,15 @@ export const FLOOR_BEDS: Readonly<Record<string, SfxId>> = {
   d2: 'amb.rot',
   d3: 'amb.cisterns',
   d4: 'amb.kiln',
+  d2b: 'amb.coldstore',
+  d3b: 'amb.galleries',
 };
 export const BIOME_BEDS: Readonly<Record<string, SfxId>> = {
   earthen: 'amb.bellows',
   fungal: 'amb.rot',
   flooded: 'amb.cisterns',
-  frozen: 'amb.cisterns',
+  frozen: 'amb.coldstore',
+  crystal: 'amb.galleries',
   volcanic: 'amb.kiln',
 };
 

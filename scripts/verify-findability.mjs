@@ -2,13 +2,13 @@
 // them reachable from spawn. Runs the shared src/world/validate.ts module
 // inside the live game. Usage:
 //   node scripts/verify-findability.mjs [url] [seedCsv] [depthCsv]
-// Defaults: http://localhost:5173/  seeds 1,5,1337,42
+// Defaults: http://localhost:5173/  seeds 1,5,1337,42, every door (d1 d2 d2b d3 d3b d4)
 import { launchBrowser } from './browser-launch.mjs';
 import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const seeds = (process.argv[3] ?? '1,5,1337,42').split(',').map(Number);
-const DEPTHS = (process.argv[4] ?? 'd1,d2,d3,d4').split(',');
+const DEPTHS = (process.argv[4] ?? 'd1,d2,d2b,d3,d3b,d4').split(','); // every door of the four floors
 
 const browser = await launchBrowser({ headless: true });
 let failures = 0;

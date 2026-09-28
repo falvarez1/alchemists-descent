@@ -149,6 +149,11 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Leaf]: { name: 'Leaf', flammability: 0.4 },
   [Cell.Trunk]: { name: 'Trunk', flammability: 0.035, burnDuration: 240, igniteChance: 0.012 },
   [Cell.Seed]: { name: 'Seed', friction: 0.45, flammability: 0.25, bloomWeight: 0.12 },
+  // THE COLD STORE. Brine flows a touch slower than water (it is heavier) and
+  // eats ice at meltRange per contact check; a hard frost never takes it.
+  [Cell.Brine]: { name: 'Brine', flowRate: 0.78, meltRange: 0.035 },
+  // THE GLASS GALLERIES. Silvered glass: static; the beam tracer reads it.
+  [Cell.Mirror]: { name: 'Mirror' },
   [Cell.Wall]: { name: 'Structural Wall' },
   [Cell.Empty]: { name: 'Eraser' },
 };

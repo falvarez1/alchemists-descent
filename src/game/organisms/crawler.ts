@@ -8,7 +8,13 @@ import { isHot, organismEvent, playerGap, projectileWithin } from './common';
 import { BALL_REST, CRAWL, CRAWL_STEP_TICKS } from './types';
 
 /**
- * WALL CRAWLERS — isopods (Rot Gardens) and ember beetles (Kiln Heart). They
+ * WALL CRAWLERS — isopods (Rot Gardens) and ember beetles (Kiln Heart), and
+ * since wave 3 the second doors' crawlers: FROST MITES (the Cold Store: they
+ * curl like isopods and die in a puff of rime), GLASS BEETLES (the Galleries:
+ * scuttle like ember beetles, a clear shell that splits the light) and LENS
+ * MITES (the Galleries: they EAT glass — a lens mite on a glass surface now
+ * and then grinds the cell under it to sand, the real ground glass of a
+ * grinding hall; mirrors are silvered and they leave them be). They
  * walk the cave's real surface cell by cell with a hand on the wall (floor,
  * wall, ceiling, around every corner), stop to test the air with their
  * antennae, and drift toward carrion. Touched, shot or blasted, an isopod
@@ -80,15 +86,29 @@ function emberDeath(ctx: Ctx, c: Critter, wet: boolean): void {
   organismEvent(ctx, c.kind, 'die', c.x, c.y);
 }
 
+/** Crawlers that scuttle (never curl into a ball when touched). */
+function scuttler(kind: Critter['kind']): boolean {
+  return kind === 'emberbeetle' || kind === 'glassbeetle' || kind === 'lensmite';
+}
+
+/** A frost mite dies as a puff of rime: a pinch of real snow where it was. */
+function frostDeath(ctx: Ctx, c: Critter): void {
+  const w = ctx.world, x = Math.floor(c.x), y = Math.floor(c.y);
+  if (w.inBounds(x, y) && w.types[w.idx(x, y)] === Cell.Empty) w.replaceCellAt(w.idx(x, y), Cell.Snow, packRGB(232, 238, 246));
+  ctx.particles.burst(c.x, c.y, 4, null, () => packRGB(214, 232, 244), 0.8, { grav: 0.02, glow: 0.3 });
+}
+
 export function stepCrawler(ctx: Ctx, c: Critter, _host: OrganismHost): boolean {
   const ember = c.kind === 'emberbeetle';
+  const scuttles = scuttler(c.kind);
   const w = ctx.world, t = ctx.state.frameCount;
   const xi = Math.floor(c.x), yi = Math.floor(c.y);
   if (!w.inBounds(xi, yi)) return false;
   const here = w.types[w.idx(xi, yi)];
   // Grid deaths: lava, acid; fire for the isopod; water for the ember beetle.
   if (here === Cell.Lava || here === Cell.Acid || (!ember && (here === Cell.Fire || here === Cell.Ember))) {
-    ctx.particles.burst(c.x, c.y, 3, null, () => packRGB(140, 120, 90), 0.8, { grav: 0.04 });
+    if (c.kind === 'frostmite') frostDeath(ctx, c);
+    else ctx.particles.burst(c.x, c.y, 3, null, () => packRGB(140, 120, 90), 0.8, { grav: 0.04 });
     organismEvent(ctx, c.kind, 'die', c.x, c.y);
     return false;
   }
@@ -143,7 +163,7 @@ export function stepCrawler(ctx: Ctx, c: Critter, _host: OrganismHost): boolean 
   for (let dy = -1; dy <= 1 && !touching; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && isWall(ctx, ax + dx, ay + dy)) { touching = true; break; }
   if (!touching || isWall(ctx, ax, ay)) { curl(ctx, c, 0, 0.2); return true; }
   // Touched, or a bolt close by: an isopod curls. (Ember beetles scuttle instead.)
-  if ((t + ax) % 2 === 0 && !ember && (playerGap(ctx, c.x, c.y) < 2.5 || projectileWithin(ctx, c.x, c.y, 3.5))) {
+  if ((t + ax) % 2 === 0 && !scuttles && (playerGap(ctx, c.x, c.y) < 2.5 || projectileWithin(ctx, c.x, c.y, 3.5))) {
     curl(ctx, c, (c.x - ctx.player.x) * 0.02, -0.6);
     return true;
   }
@@ -179,7 +199,7 @@ export function stepCrawler(ctx: Ctx, c: Critter, _host: OrganismHost): boolean 
 
   // Idle life: every so often it stops and tests the air.
   const pause = ((t + (ax * 13 + ay * 7)) % 420) < 50;
-  const cadence = ember ? CRAWL_STEP_TICKS + 2 : CRAWL_STEP_TICKS;
+  const cadence = ember ? CRAWL_STEP_TICKS + 2 : c.kind === 'lensmite' ? CRAWL_STEP_TICKS + 3 : CRAWL_STEP_TICKS;
   if (!pause && (c.stateT ?? 0) % cadence === 0) {
     if (entityRandom() < 0.004) { c.facing = -hand; return true; }
     const side = hand > 0 ? rotR(d) : rotL(d), other = hand > 0 ? rotL(d) : rotR(d);
@@ -194,6 +214,26 @@ export function stepCrawler(ctx: Ctx, c: Critter, _host: OrganismHost): boolean 
       // Only a wall actually beside it redefines "down"; past a convex edge the
       // old normal holds for one more step, so the next step wraps the corner.
       if (isWall(ctx, c.anchorX + s2[0], c.anchorY + s2[1])) { c.nx = -s2[0]; c.ny = -s2[1]; }
+      // Lens mites grind the glass they walk on (never a silvered mirror).
+      if (c.kind === 'lensmite' && (c.meal ?? 0) < 200) {
+        const gx = c.anchorX - (c.nx ?? 0), gy = c.anchorY - (c.ny ?? 0);
+        if (w.inBounds(gx, gy) && w.types[w.idx(gx, gy)] === Cell.Glass && entityRandom() < 0.05) {
+          w.replaceCellAt(w.idx(gx, gy), Cell.Sand, packRGB(206, 214, 222));
+          organismEvent(ctx, c.kind, 'eat', gx + 0.5, gy + 0.5);
+          c.meal = 1400;
+          ctx.particles.spawn(gx + 0.5, gy + 0.5, 0, -0.2, null, packRGB(230, 240, 250), 18, { glow: 1, grav: 0.02 });
+        }
+      }
+      // Frost mites graze the snow they walk on (a clean track through the drift).
+      if (c.kind === 'frostmite' && (c.meal ?? 0) < 200) {
+        const gx = c.anchorX - (c.nx ?? 0), gy = c.anchorY - (c.ny ?? 0);
+        if (w.inBounds(gx, gy) && w.types[w.idx(gx, gy)] === Cell.Snow && entityRandom() < 0.06) {
+          w.clearCellAt(w.idx(gx, gy));
+          organismEvent(ctx, c.kind, 'eat', gx + 0.5, gy + 0.5);
+          c.meal = 900;
+          ctx.particles.spawn(gx + 0.5, gy + 0.5, 0, -0.2, null, packRGB(236, 244, 252), 16, { glow: 0.6, grav: 0.02 });
+        }
+      }
       // Ember beetles graze the coal they walk on.
       if (ember && (c.meal ?? 0) < 200) {
         const gx = c.anchorX - (c.nx ?? 0), gy = c.anchorY - (c.ny ?? 0);

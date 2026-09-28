@@ -14,6 +14,7 @@ import { touchWorld } from '@/creatures/worldTouch';
 import { applyIdleToRig } from '@/creatures/idle';
 import { buildEel, buildLeviathan, stepEel, stepLeviathan } from './serpents';
 import { buildRootLoper, stepRootLoper } from './rootloper';
+import { buildLens, stepLens } from './lens';
 
 /**
  * Species registry: which body plan each enemy kind wears. The rig is built
@@ -39,6 +40,7 @@ const MAGE: SpeciesRig = { id: 'mage', build: buildMage, step: stepMage };
 const EEL: SpeciesRig = { id: 'eel', build: buildEel, step: stepEel };
 const LEVIATHAN: SpeciesRig = { id: 'leviathan', build: buildLeviathan, step: stepLeviathan };
 const ROOTLOPER: SpeciesRig = { id: 'rootloper', build: buildRootLoper, step: stepRootLoper };
+const LENS: SpeciesRig = { id: 'lens', build: buildLens, step: stepLens };
 const WEAVER: SpeciesRig = { id: 'weaver', build: () => makeRig('weaver', 4), step: () => undefined };
 
 const REGISTRY: Partial<Record<EnemyKind, SpeciesRig>> = {
@@ -52,6 +54,8 @@ const REGISTRY: Partial<Record<EnemyKind, SpeciesRig>> = {
   wisp: WISPS,
   golem: BRUTE,
   colossus: BRUTE,
+  rimewarden: BRUTE,
+  lenswright: LENS,
   mage: MAGE,
   weaver: WEAVER,
   rillback: EEL,
@@ -83,7 +87,7 @@ function answerHit(e: Enemy, rig: CreatureRig): void {
   let kx = e.hitKx ?? 0, ky = e.hitKy ?? 0;
   const mag = Math.hypot(kx, ky);
   if (mag < 0.05) { kx = 0; ky = -0.4; } else { kx /= mag; ky /= mag; }
-  const heavy = e.kind === 'colossus' || e.kind === 'leviathan' ? 0.25 : e.kind === 'golem' ? 0.5 : 1;
+  const heavy = e.kind === 'colossus' || e.kind === 'leviathan' || e.kind === 'rimewarden' ? 0.25 : e.kind === 'golem' ? 0.5 : 1;
   const k = Math.min(1.4, 0.35 + (e.hitAmount ?? 8) / 22) * heavy;
   rig.pts.forEach((p, i) => impulse(p, kx * k * (i === 0 ? 1.2 : 0.8), ky * k * 0.8 - k * 0.25));
   for (const c of rig.chains) {

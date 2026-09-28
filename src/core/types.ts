@@ -256,6 +256,10 @@ export const ENEMY_KINDS = [
   'rootloper',
   'stonemaw',
   'rillback',
+  // Wave 3, the second doors' guardians: the Cold Store's Rime Warden (thaw
+  // or shatter its ice armour).
+  'rimewarden',
+  'lenswright',
 ] as const;
 
 export type EnemyKind = (typeof ENEMY_KINDS)[number];
@@ -633,7 +637,10 @@ export interface Enemy {
 
 export type CritterKind = 'moth' | 'firefly' | 'fish' | 'beetle' | 'fly'
   // Breathing Works wave 2 (WS-N): organisms with behaviour (game/organisms/*).
-  | 'glowworm' | 'puffer' | 'snapjaw' | 'isopod' | 'leech' | 'emberbeetle' | 'ashmoth';
+  | 'glowworm' | 'puffer' | 'snapjaw' | 'isopod' | 'leech' | 'emberbeetle' | 'ashmoth'
+  // Wave 3, the second doors: the Cold Store's frost mites, snow moths and
+  // brine skaters; the Glass Galleries' glass beetles, prism moths and lens mites.
+  | 'frostmite' | 'snowmoth' | 'brineskater' | 'glassbeetle' | 'prismmoth' | 'lensmite';
 
 /** Harmless habitat residents; expeditions persist them independently of the camera. */
 export interface Critter {
@@ -2423,6 +2430,9 @@ export interface Mechanism {
   latch?: 'momentary' | 'timed' | 'permanent';
   /** sensor 'timed': frames held after the reading passes (default 420). */
   latchFrames?: number;
+  /** sensor 'light': where the light must ENTER the optics that feed a sealed lens (a mirror well's
+   *  mouth — world/galleryPuzzles); findability checks the beam can reach there, not the lens. */
+  lightPort?: { x: number; y: number };
   /** relay: frames between inputs-satisfied and firing (default 0). */
   delayFrames?: number;
   /** relay: live fuse countdown once armed (undefined = not armed). */
@@ -2525,8 +2535,14 @@ export interface PickupsApi {
 
 export interface SanctumApi {
   readonly isOpen: boolean;
-  /** Open the between-depths pause: perk draft + shop. onDescend fires on close. */
-  open(ctx: Ctx, onDescend: () => void): void;
+  /**
+   * Open the between-depths pause: perk draft + shop, and — where the floor
+   * below has two doors — the door choice. onDescend fires on close with the
+   * level id of the door taken.
+   */
+  open(ctx: Ctx, onDescend: (nextLevelId: string) => void): void;
+  /** The door picked so far while open (null before a choice, or when closed). */
+  readonly chosenDoor?: string | null;
   /** Open the SHOP alone (the Refuge shrine's trade) — closing just resumes. */
   openShop(ctx: Ctx): void;
 }
@@ -2804,10 +2820,11 @@ export interface LevelDef {
   nextLevelId: string | null;
   /**
    * The floor's boss arena, keyed explicitly (never inferred from depth): the
-   * Sunken Leviathan's sump or the Kiln Colossus's kiln. Killing the Colossus
-   * wins the run.
+   * Sunken Leviathan's sump or the Kiln Colossus's kiln — or, behind the
+   * second doors (wave 3), the Rime Warden's ice-house in the Cold Store and
+   * the Lenswright's gallery. Killing the Colossus wins the run.
    */
-  boss?: 'leviathan' | 'colossus';
+  boss?: 'leviathan' | 'colossus' | 'rimewarden' | 'lenswright';
   /**
    * An off-spine level (the retired Gilded Vault was the only one). Kept for
    * authored/Builder level lists; no campaign level sets it today.
@@ -3312,9 +3329,16 @@ export interface RunSaveState {
   deaths: number;
   cardsFound: number;
   maxFloor: number;
+  /** A floor-3 warden fell this run: the Sunken Leviathan or the Lenswright (the ember kit's milestone). */
   leviathanSlain: boolean;
   /** False for debug-tainted runs: they play out but never touch the meta profile. */
   recorded: boolean;
+  /**
+   * The doors this run walked through, in order of first arrival (campaign
+   * level ids, one per floor: `['d1', 'd2b', 'd3']`). Optional: saves from
+   * before the branching descent carry none and resume on the first doors.
+   */
+  path?: string[];
 }
 
 /** A finished run, as the ledger screen reads it. */
@@ -3342,6 +3366,8 @@ export interface RunMetaView {
   /** Today's UTC date key and this player's best on it. */
   today: string;
   todayBest: RunDailyBest | null;
+  /** Campaign levels this player has ever walked into (the Sanctum marks an unwalked door). */
+  levelsSeen: string[];
 }
 
 export interface RunBeginOptions {

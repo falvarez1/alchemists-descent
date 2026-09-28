@@ -21,7 +21,7 @@ import type { CreatureRig } from './rig/types';
  */
 
 const MASS: Partial<Record<Enemy['kind'], number>> = {
-  colossus: 3, golem: 2, leviathan: 2.5, weaver: 1.2, spitter: 1, mage: 0.8, rootloper: 0.9, stonemaw: 1.4, rillback: 0.8,
+  colossus: 3, rimewarden: 2.4, golem: 2, leviathan: 2.5, weaver: 1.2, spitter: 1, mage: 0.8, rootloper: 0.9, stonemaw: 1.4, rillback: 0.8,
 };
 const massOf = (e: Enemy): number => MASS[e.kind] ?? 0.5;
 
@@ -102,6 +102,9 @@ export function footfall(ctx: Ctx, e: Enemy, gx: number, gy: number, nx: number,
   if (e.kind === 'colossus') {
     voice(ctx, e, 10, () => ctx.audio.creature(e.kind, 'step'));
     if (Math.hypot(e.x - ctx.player.x, e.y - ctx.player.y) < 220) ctx.fx.screenShake = Math.min(0.03, ctx.fx.screenShake + 0.012);
+  } else if (e.kind === 'rimewarden') {
+    voice(ctx, e, 10, () => ctx.audio.creature(e.kind, 'step'));
+    if (Math.hypot(e.x - ctx.player.x, e.y - ctx.player.y) < 180) ctx.fx.screenShake = Math.min(0.022, ctx.fx.screenShake + 0.008);
   } else if (e.kind === 'golem') voice(ctx, e, 12, () => ctx.audio.creature(e.kind, 'step'));
   else if (e.kind === 'weaver') voice(ctx, e, 26, () => ctx.audio.sfx('creature.weaver.step', undefined, undefined, { gain: 0.5 }));
   else if (e.kind === 'spitter') voice(ctx, e, 22, () => ctx.audio.creature(e.kind, 'step'));

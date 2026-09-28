@@ -195,10 +195,15 @@ describe('the score on disk', () => {
     }
   });
 
-  it('keeps the whole score near 20 MB, fetched a cue at a time', () => {
+  it('keeps the whole score near 25 MB, fetched a cue at a time', () => {
+    // Raised from 21 MB for the second doors (wave 3: the Cold Store and the
+    // Glass Galleries, a calm and a hunted cue each, ~4.4 MB). A run takes one
+    // door per floor and only the floor it stands on streams, so what a player
+    // downloads per run did not grow — only the deploy did.
     const bytes = SCORE_TRACKS.reduce((s, t) => s + statSync(join('public', t.url)).size, 0);
-    // 20 MB of floors and stings, plus the story's Kiln escape (90 s) and ending (36 s): 1.5 MB.
-    expect(bytes / 1048576).toBeLessThan(22);
+    // 20 MB of floors and stings, plus the story's Kiln escape (90 s) and ending
+    // (36 s): 1.5 MB, plus the second doors' four cues: ~4.4 MB.
+    expect(bytes / 1048576).toBeLessThan(27);
   });
 
   it('lists every cue and narrator line for the audition page', () => {

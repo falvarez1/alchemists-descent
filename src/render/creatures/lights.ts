@@ -1,3 +1,4 @@
+import { LNS, LNS_BODY } from '@/creatures/species/lens';
 import type { Ctx, Enemy } from '@/core/types';
 import { corpses } from '@/creatures/corpses';
 import { emptySample, sampleBody } from '@/creatures/corpseBody';
@@ -28,6 +29,24 @@ function lightOf(ctx: Ctx, e: Enemy, seed: SeedLight, k: number): void {
       const c = rig?.pts[BR_CHEST] ?? { x: e.x, y: e.y - 12 };
       seed(c.x, c.y, heat * 2.0 * k, heat * 1.2 * k, heat * 0.25 * k);
       seed(c.x - (F ? Math.sign(F[BR.face] || 1) : 1) * 8, c.y - 18, heat * 0.9 * k, heat * 0.55 * k, heat * 0.12 * k);
+      break;
+    }
+    case 'lenswright': {
+      // The eye behind the iris: a warm glow, a burn as the lance fires (and dark when dazzled).
+      const c = rig?.pts[LNS_BODY] ?? { x: e.x, y: e.y - 11 };
+      const iris = F ? F[LNS.iris] : 0.2, fire = F ? F[LNS.fire] : 0, daz = F ? F[LNS.dazzle] : 0;
+      const g = (0.35 + iris * 0.8 + fire * 1.6) * (1 - daz * 0.85);
+      seed(c.x, c.y, g * 1.5 * k, g * 1.25 * k, g * 0.7 * k);
+      break;
+    }
+    case 'rimewarden': {
+      // The cold lamp of its eye and the pilot light behind its grille (flaring when it kneels).
+      const c = rig?.pts[BR_CHEST] ?? { x: e.x, y: e.y - 12 };
+      const open = (e.boss?.exposed ?? 0) > 0 ? 1.8 : 1;
+      const pilot = (0.75 + Math.sin(t * 0.11 + e.bobPhase) * 0.2) * open;
+      seed(c.x, c.y, pilot * 0.35 * k, pilot * 0.85 * k, pilot * 1.5 * k);
+      const h = rig?.pts[2];
+      if (h) seed(h.x, h.y, 0.3 * k, 0.7 * k, 1.1 * k);
       break;
     }
     case 'golem': {

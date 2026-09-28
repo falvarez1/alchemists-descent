@@ -40,7 +40,7 @@ import {
   activeArtPlane, activeFloorLook, terrainArtPixels, terrainBlocksGlsl, terrainOpenMask, usesTerrainArt,
 } from '@/render/TerrainArt';
 import type { FloorLook } from '@/config/floorLooks';
-import { FLOOR_SHEET, FLOOR_TILE, floorTilePixels } from '@/render/floorTiles';
+import { FLOOR_SHEET, FLOOR_SHEET_H, FLOOR_TILE, floorTilePixels } from '@/render/floorTiles';
 import type { TerrainArtPlane } from '@/render/terrainArtPlane';
 
 /** Short alias for embedding SKY tuning numbers as GLSL float literals below. */
@@ -1213,7 +1213,7 @@ export class GpuCompose {
     if (!this.floorTilesTex) {
       const tiles = floorTilePixels();
       this.floorTilesTex = new THREE.DataTexture(new Uint8Array(tiles.buffer, tiles.byteOffset, tiles.byteLength),
-        FLOOR_SHEET, FLOOR_SHEET, THREE.RGBAFormat, THREE.UnsignedByteType);
+        FLOOR_SHEET, FLOOR_SHEET_H, THREE.RGBAFormat, THREE.UnsignedByteType);
       this.floorTilesTex.minFilter = this.floorTilesTex.magFilter = THREE.NearestFilter;
       this.floorTilesTex.needsUpdate = true;
       u.uFloorTiles.value = this.floorTilesTex;

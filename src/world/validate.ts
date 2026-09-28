@@ -603,7 +603,9 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
       // chargelatch latches on ANY spark in its zone (lightning bolt,
       // electrified water, a conducting enemy's blood) — like rune glyphs,
       // line of sight from open space suffices, so the cell mask judges it.
-      check(nearWithLine(seen, view.world, m.x, m.y - 2, 5), m.kind, m.x, m.y - 2);
+      // (A photocell is judged below, by the beam — at its optics' port when
+      // its lens is sealed behind mirrors or a prism.)
+      if (!(m.kind === 'sensor' && m.sensorType === 'light')) check(nearWithLine(seen, view.world, m.x, m.y - 2, 5), m.kind, m.x, m.y - 2);
     } else {
       // hands-on triggers: the WIZARD must be able to stand here
       check(near(wiz, W, H, m.x, m.y - 2, 6), m.kind, m.x, m.y - 2);
@@ -613,7 +615,9 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
   // the alchemist can stand and put his beam on (grid-honest light LOS).
   for (const m of runtime.mechanisms) {
     if (m.kind === 'sensor' && m.sensorType === 'light' && m.state === 0 && !m.requiresCard) {
-      check(beamable(wiz, view.world, m.x, m.y, 150), 'photocell', m.x, m.y);
+      // A lens sealed behind mirrors is judged at its optics' port (the light's way in).
+      const at = m.lightPort ?? m;
+      check(beamable(wiz, view.world, at.x, at.y, 150), 'photocell', at.x, at.y);
     }
   }
   for (const b of runtime.lumenBlooms ?? []) {

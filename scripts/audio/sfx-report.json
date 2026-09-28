@@ -13506,5 +13506,967 @@
     "bytes": 4641
    }
   ]
+ },
+ "creature.rimewarden.idle": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "A huge frozen iron automaton standing still: slow creaking of thick ice under strain, a faint cold wind hiss and a tiny tinkle of frost",
+  "dur": 2.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2.48,
+    "peakDb": -11.2,
+    "onsetSec": 0.032,
+    "pinnedPct": 0,
+    "gainDb": 13.2,
+    "limitDb": -3,
+    "sec": 2.452,
+    "truncated": false,
+    "bytes": 20106
+   }
+  ]
+ },
+ "creature.rimewarden.alert": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "A giant frozen iron automaton waking: thick ice cracking loudly off rusted iron joints, a deep hollow metal groan rising",
+  "dur": 2.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2.2,
+    "peakDb": -1.8,
+    "onsetSec": 0.007,
+    "pinnedPct": 0,
+    "gainDb": 3.8,
+    "limitDb": -3,
+    "sec": 1.807,
+    "truncated": false,
+    "bytes": 15090
+   }
+  ]
+ },
+ "creature.rimewarden.hurt": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "A frozen iron giant struck: a dull metal clank and ice cracking, a short hollow groan",
+  "dur": 0.9,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.88,
+    "peakDb": 3.3,
+    "onsetSec": 0,
+    "pinnedPct": 0.39,
+    "gainDb": -8,
+    "limitDb": 0,
+    "sec": 0.57,
+    "truncated": false,
+    "bytes": 5059
+   }
+  ]
+ },
+ "creature.rimewarden.creak": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "Frozen iron arms raised overhead: ice creaking and cracking under strain, a slow metallic groan building",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": 2.9,
+    "onsetSec": 0,
+    "pinnedPct": 0.03,
+    "gainDb": -2.8,
+    "limitDb": -1.1,
+    "sec": 0.855,
+    "truncated": false,
+    "bytes": 7358
+   }
+  ]
+ },
+ "creature.rimewarden.step": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "A heavy iron foot armoured in ice stamping on a frosted stone floor: a deep thud with a crunch of ice, short",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": 2.8,
+    "onsetSec": 0,
+    "pinnedPct": 0.22,
+    "gainDb": -4,
+    "limitDb": 0,
+    "sec": 0.39,
+    "truncated": false,
+    "bytes": 3596
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.8,
+    "peakDb": 3.2,
+    "onsetSec": 0,
+    "pinnedPct": 0.61,
+    "gainDb": -6.8,
+    "limitDb": 0,
+    "sec": 0.24,
+    "truncated": false,
+    "bytes": 2551
+   }
+  ]
+ },
+ "creature.rimewarden.death": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "A giant frozen automaton collapsing: a long cascade of ice shattering and sliding off iron, a final hollow metal groan and chunks of ice clattering onto stone",
+  "dur": 3.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 3.48,
+    "peakDb": 3.3,
+    "onsetSec": 0,
+    "pinnedPct": 0.75,
+    "gainDb": -12.4,
+    "limitDb": 0,
+    "sec": 2.97,
+    "truncated": false,
+    "bytes": 24285
+   }
+  ]
+ },
+ "creature.rimewarden.slam": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "Two huge ice-armoured fists smashing a frozen stone floor: a heavy crunching impact and a burst of ice spikes cracking up out of the ground",
+  "dur": 1.3,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.28,
+    "peakDb": 4.4,
+    "onsetSec": 0,
+    "pinnedPct": 1.54,
+    "gainDb": -10.3,
+    "limitDb": 0,
+    "sec": 1.02,
+    "truncated": false,
+    "bytes": 8821
+   }
+  ]
+ },
+ "creature.rimewarden.glance": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "A blow glancing off a thick sheet of hard ice: a short bright dull tink with a faint crystalline ring, very short, dry",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -5.3,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -4.6,
+    "limitDb": 0,
+    "sec": 0.35,
+    "truncated": false,
+    "bytes": 3387
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -12.7,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 14.7,
+    "limitDb": -3,
+    "sec": 0.35,
+    "truncated": false,
+    "bytes": 3387
+   }
+  ]
+ },
+ "creature.rimewarden.stomp": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "A giant stamping a frozen floor: a deep thud and a crackling ripple of ice racing away across the ground",
+  "dur": 1.4,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.36,
+    "peakDb": 4.9,
+    "onsetSec": 0,
+    "pinnedPct": 5.13,
+    "gainDb": -12.5,
+    "limitDb": 0,
+    "sec": 0.81,
+    "truncated": false,
+    "bytes": 7149
+   }
+  ]
+ },
+ "creature.rimewarden.hail": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "Chunks of ice torn off a frozen giant's shoulders and hurled: a cracking rip and a sharp whoosh of hailstones flying",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": 3.6,
+    "onsetSec": 0,
+    "pinnedPct": 1.19,
+    "gainDb": -10.6,
+    "limitDb": 0,
+    "sec": 0.71,
+    "truncated": false,
+    "bytes": 6313
+   }
+  ]
+ },
+ "creature.rimewarden.inhale": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "A huge frozen machine drawing in a long deep breath: a rising cold wind rushing inward through iron bellows, frost crackling",
+  "dur": 1.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.48,
+    "peakDb": 2.5,
+    "onsetSec": 0,
+    "pinnedPct": 0.14,
+    "gainDb": -8.1,
+    "limitDb": 0,
+    "sec": 1.37,
+    "truncated": false,
+    "bytes": 11537
+   }
+  ]
+ },
+ "creature.rimewarden.breath": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "A blast of freezing breath: a roaring icy wind spraying frost, water crackling as it freezes solid",
+  "dur": 1.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.76,
+    "peakDb": 0,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -5.2,
+    "limitDb": 0,
+    "sec": 1.76,
+    "truncated": false,
+    "bytes": 14672
+   }
+  ]
+ },
+ "creature.rimewarden.roar": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "A giant frozen iron automaton roaring: a deep grinding metal bellow, the ceiling's icicles cracking loose and tinkling",
+  "dur": 2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2,
+    "peakDb": 2.3,
+    "onsetSec": 0,
+    "pinnedPct": 0.23,
+    "gainDb": -7,
+    "limitDb": 0,
+    "sec": 1.79,
+    "truncated": false,
+    "bytes": 14881
+   }
+  ]
+ },
+ "creature.rimewarden.shatter": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "A thick plate of ice armour shattering off iron: a sharp explosive crack of ice and a spray of glassy shards tinkling onto stone",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": 3.6,
+    "onsetSec": 0,
+    "pinnedPct": 0.28,
+    "gainDb": -6,
+    "limitDb": 0,
+    "sec": 1.03,
+    "truncated": false,
+    "bytes": 8821
+   }
+  ]
+ },
+ "creature.rimewarden.thaw": {
+  "pack": "creature-rimewarden",
+  "cat": "boss",
+  "prompt": "A slab of ice sliding off a warm iron body: wet slushy cracking, a hiss of steam and a splash of meltwater",
+  "dur": 1.3,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.28,
+    "peakDb": -0.8,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -2.1,
+    "limitDb": 0,
+    "sec": 1.08,
+    "truncated": false,
+    "bytes": 9239
+   }
+  ]
+ },
+ "organism.frostmite.eat": {
+  "pack": "org-frostmite",
+  "cat": "critter",
+  "prompt": "A tiny insect nibbling rime off cold stone: a delicate crisp crunching of frost crystals, quiet, short",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -0.9,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 2.6,
+    "limitDb": -2.7,
+    "sec": 0.48,
+    "truncated": true,
+    "bytes": 4432
+   }
+  ]
+ },
+ "organism.brineskater.scatter": {
+  "pack": "org-brineskater",
+  "cat": "critter",
+  "prompt": "Several small water striders darting away across a still pool: a quick light patter of tiny ripples, quiet, short",
+  "dur": 0.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.6,
+    "peakDb": -22.8,
+    "onsetSec": 0.001,
+    "pinnedPct": 0,
+    "gainDb": 20.4,
+    "limitDb": 0,
+    "sec": 0.6,
+    "truncated": false,
+    "bytes": 5268
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.6,
+    "peakDb": -18.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 17.9,
+    "limitDb": -0.4,
+    "sec": 0.53,
+    "truncated": false,
+    "bytes": 4850
+   }
+  ]
+ },
+ "organism.frostmite.curl": {
+  "pack": "org-frostmite",
+  "cat": "creature",
+  "prompt": "A tiny frost-covered mite curling up: a quick dry clicking of icy chitin plates and a faint tinkle of frost, very short",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -1.4,
+    "onsetSec": 0.002,
+    "pinnedPct": 0,
+    "gainDb": 3.4,
+    "limitDb": -3,
+    "sec": 0.385,
+    "truncated": false,
+    "bytes": 3596
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": 3.3,
+    "onsetSec": 0,
+    "pinnedPct": 0.24,
+    "gainDb": -4,
+    "limitDb": -0.3,
+    "sec": 0.4,
+    "truncated": false,
+    "bytes": 3805
+   }
+  ]
+ },
+ "organism.snowmoth.flare": {
+  "pack": "org-snowmoth",
+  "cat": "critter",
+  "prompt": "A pale frosted moth flying into a flame: a tiny soft hiss of melting frost and a papery fizz, short",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -3.4,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -1.7,
+    "limitDb": 0,
+    "sec": 0.48,
+    "truncated": false,
+    "bytes": 4432
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -7.7,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 2.5,
+    "limitDb": 0,
+    "sec": 0.48,
+    "truncated": false,
+    "bytes": 4432
+   }
+  ]
+ },
+ "organism.glassbeetle.curl": {
+  "pack": "org-glassbeetle",
+  "cat": "creature",
+  "prompt": "A small beetle with a glassy shell tucking up: quick bright clicks of glass plates, very short, dry",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": 1.6,
+    "onsetSec": 0,
+    "pinnedPct": 0.05,
+    "gainDb": -1.3,
+    "limitDb": -1.3,
+    "sec": 0.4,
+    "truncated": false,
+    "bytes": 3805
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -3.8,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 2.9,
+    "limitDb": -0.1,
+    "sec": 0.31,
+    "truncated": false,
+    "bytes": 2969
+   }
+  ]
+ },
+ "organism.lensmite.curl": {
+  "pack": "org-lensmite",
+  "cat": "creature",
+  "prompt": "A tiny mite curling up on glass: a faint dry click and a tick against a glass pane, very short",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -9.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -0.7,
+    "limitDb": 0,
+    "sec": 0.35,
+    "truncated": false,
+    "bytes": 3387
+   }
+  ]
+ },
+ "organism.prismmoth.flare": {
+  "pack": "org-prismmoth",
+  "cat": "critter",
+  "prompt": "A glittering moth flying into a flame: a tiny bright crystalline fizz with a faint shimmering chime, short",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -11.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 4.3,
+    "limitDb": 0,
+    "sec": 0.48,
+    "truncated": false,
+    "bytes": 4432
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -13.2,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 3.8,
+    "limitDb": 0,
+    "sec": 0.48,
+    "truncated": false,
+    "bytes": 4432
+   }
+  ]
+ },
+ "organism.lensmite.eat": {
+  "pack": "org-lensmite",
+  "cat": "critter",
+  "prompt": "A tiny mite chewing a pane of glass: a fine gritty scratching of glass grinding to sand, quiet, short",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": 3,
+    "onsetSec": 0,
+    "pinnedPct": 0.14,
+    "gainDb": -1,
+    "limitDb": -3,
+    "sec": 0.39,
+    "truncated": false,
+    "bytes": 3596
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": 0,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 0,
+    "limitDb": -1,
+    "sec": 0.46,
+    "truncated": false,
+    "bytes": 4223
+   }
+  ]
+ },
+ "creature.lenswright.idle": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A great floating glass lens humming softly: a low glassy resonance, faint crystal pendants tinkling against each other",
+  "dur": 2.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2.48,
+    "peakDb": -1.9,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -5,
+    "limitDb": 0,
+    "sec": 2.45,
+    "truncated": false,
+    "bytes": 20106
+   }
+  ]
+ },
+ "creature.lenswright.alert": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A huge brass-rimmed lens waking: a rising resonant glass drone, brass shutters clicking open, crystals chiming",
+  "dur": 2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2,
+    "peakDb": -0.4,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -5.4,
+    "limitDb": 0,
+    "sec": 1.8,
+    "truncated": false,
+    "bytes": 14881
+   }
+  ]
+ },
+ "creature.lenswright.death": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A giant glass lens shattering: a huge bright crash of breaking glass, a cascade of shards and crystal pendants tinkling to the floor",
+  "dur": 3,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 3,
+    "peakDb": 3.4,
+    "onsetSec": 0,
+    "pinnedPct": 0.74,
+    "gainDb": -11.9,
+    "limitDb": 0,
+    "sec": 3,
+    "truncated": false,
+    "bytes": 24494
+   }
+  ]
+ },
+ "creature.lenswright.hurt": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A heavy blow on a thick glass lens in a brass frame: a dull ringing clang with a crack of glass, short",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": 3.4,
+    "onsetSec": 0,
+    "pinnedPct": 0.4,
+    "gainDb": -9.5,
+    "limitDb": 0,
+    "sec": 0.8,
+    "truncated": false,
+    "bytes": 6940
+   }
+  ]
+ },
+ "creature.lenswright.iris": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A camera iris of brass leaves opening: a smooth mechanical ratcheting whir and a rising glassy hum",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": -7.4,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 7.9,
+    "limitDb": -1.5,
+    "sec": 0.9,
+    "truncated": false,
+    "bytes": 7776
+   }
+  ]
+ },
+ "creature.lenswright.lance": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A searing beam of focused light firing: a bright electric hiss and a roaring crackle of burning air, short and intense",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": 3.3,
+    "onsetSec": 0,
+    "pinnedPct": 1.66,
+    "gainDb": -11.8,
+    "limitDb": 0,
+    "sec": 1.11,
+    "truncated": false,
+    "bytes": 9448
+   }
+  ]
+ },
+ "creature.lenswright.lock": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A precise brass mechanism locking into place with a sharp click, then a high glassy whine charging up",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": 3.3,
+    "onsetSec": 0,
+    "pinnedPct": 0.15,
+    "gainDb": -6.6,
+    "limitDb": 0,
+    "sec": 0.8,
+    "truncated": true,
+    "bytes": 6940
+   }
+  ]
+ },
+ "creature.lenswright.dazzle": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A glass lens overloading with light: a sharp crackling flash, a shutter slamming shut and a descending mechanical whine",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": 2,
+    "onsetSec": 0.003,
+    "pinnedPct": 0,
+    "gainDb": 0,
+    "limitDb": -3,
+    "sec": 0.558,
+    "truncated": false,
+    "bytes": 5059
+   }
+  ]
+ },
+ "creature.lenswright.glance": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A blow glancing off a polished brass lens housing: a short bright metallic ting, very short, dry",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": 0.2,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -7.7,
+    "limitDb": 0,
+    "sec": 0.3,
+    "truncated": false,
+    "bytes": 2969
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -1.6,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -3.5,
+    "limitDb": 0,
+    "sec": 0.3,
+    "truncated": false,
+    "bytes": 2969
+   }
+  ]
+ },
+ "creature.lenswright.fall": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A large brass-framed glass lens falling onto a stone floor: a heavy ringing clang and rattling crystal pendants",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": 3.7,
+    "onsetSec": 0,
+    "pinnedPct": 0.1,
+    "gainDb": -7.3,
+    "limitDb": 0,
+    "sec": 0.77,
+    "truncated": false,
+    "bytes": 6731
+   }
+  ]
+ },
+ "creature.lenswright.flare": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A sudden blinding flash of light: a sharp whoomph of air and a bright glassy ring",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": -0.6,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -5.6,
+    "limitDb": 0,
+    "sec": 0.763,
+    "truncated": false,
+    "bytes": 6731
+   }
+  ]
+ },
+ "creature.lenswright.roar": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A giant glass lens resonating like a struck bell: a deep ringing glass tone swelling, crystal pendants chiming wildly",
+  "dur": 1.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.76,
+    "peakDb": -8.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 4.6,
+    "limitDb": 0,
+    "sec": 1.41,
+    "truncated": false,
+    "bytes": 11746
+   }
+  ]
+ },
+ "ui.door.choose": {
+  "pack": "ui",
+  "cat": "ui",
+  "prompt": "A heavy old wooden door latch lifting with a brass clack, and a short low resonant chime like a stairwell answering, dry",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": -9.6,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 10.9,
+    "limitDb": -2.3,
+    "sec": 0.866,
+    "truncated": false,
+    "bytes": 7567
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1,
+    "peakDb": -0.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 2.1,
+    "limitDb": -3,
+    "sec": 0.795,
+    "truncated": false,
+    "bytes": 6940
+   }
+  ]
+ },
+ "amb.coldstore": {
+  "pack": "amb-d2b",
+  "cat": "bed",
+  "prompt": "Ambience of an old frozen Victorian refrigeration hall: a slow distant compressor thump, cold wind whistling through iron pipes, ice creaking and ticking, faint dripping brine, a huge cold echoing room",
+  "dur": 28,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 28,
+    "peakDb": -16,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "quarterSpreadDb": 0.8,
+    "gainDb": 16.1,
+    "limitDb": -1.1,
+    "sec": 28,
+    "bytes": 336711
+   }
+  ]
+ },
+ "amb.galleries": {
+  "pack": "amb-d3b",
+  "cat": "bed",
+  "prompt": "Ambience of vast dark Victorian glass galleries: a soft resonant hum of glass, faint crystal chimes tinkling in a draught, a slow distant grinding wheel, quiet airy reverb of a tall glass hall",
+  "dur": 28,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 28,
+    "peakDb": -11.8,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "quarterSpreadDb": 13.1,
+    "gainDb": 6.1,
+    "limitDb": 0,
+    "sec": 28,
+    "bytes": 336711
+   }
+  ]
+ },
+ "mat.brine.fizz": {
+  "pack": "world",
+  "cat": "material",
+  "prompt": "Salt water eating into ice: a soft wet fizzing crackle and a faint tinkle of melting ice, quiet, short",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 3,
+    "rawSec": 0.8,
+    "peakDb": -23.8,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 25.8,
+    "limitDb": -3,
+    "sec": 0.8,
+    "truncated": false,
+    "bytes": 6940
+   },
+   {
+    "take": 2,
+    "variant": 4,
+    "rawSec": 0.8,
+    "peakDb": -18.9,
+    "onsetSec": 0.001,
+    "pinnedPct": 0,
+    "gainDb": 20.9,
+    "limitDb": -3,
+    "sec": 0.8,
+    "truncated": false,
+    "bytes": 6940
+   }
+  ]
  }
 }

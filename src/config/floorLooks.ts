@@ -66,8 +66,8 @@ export interface FloorLook {
 }
 
 export interface NaturalLook {
-  /** Quadrant of the procedural floor tile sheet (render/floorTiles). */
-  readonly tile: 0 | 1 | 2 | 3;
+  /** Slot of the procedural floor tile sheet (render/floorTiles): two columns, three rows. */
+  readonly tile: 0 | 1 | 2 | 3 | 4 | 5;
   /** Natural rock albedo = tile texel * rockGain + rockLift (0–255 space). */
   readonly rockGain: Rgb;
   readonly rockLift: Rgb;
@@ -294,19 +294,127 @@ const KILN_HEART: FloorLook = {
   },
 };
 
+/**
+ * THE COLD STORE (frozen, wave 3) — the refrigeration wing: frost-split
+ * granite veined with blue ice, snow settled on every ledge, frost lips, and
+ * the store rooms' long straight faces dressed as cold masonry. A cold mist
+ * over a blue-stepped backdrop; the pipes of the old plant stay in view.
+ */
+const COLD_STORE: FloorLook = {
+  gain: [1.12, 1.24, 1.4],
+  lift: [14, 20, 30],
+  lip: [206, 220, 238],
+  under: [0.5, 0.58, 0.72],
+  crown: [214, 224, 244],
+  crownStrength: 0.85,
+  crownDepth: 3,
+  masonryPanels: 8,
+  rockRow: -1,
+  waterSurface: [128, 176, 200],
+  waterBody: [30, 72, 104],
+  backdropMul: [0.6, 0.78, 1.08],
+  backdropLift: [0.004, 0.012, 0.03],
+  backdropOffsetX: 540,
+  backdropMirror: false,
+  machinery: 0.95,
+  epigraph: 'Brine in the gutters, frost on the pipes. Nothing here thaws on its own.',
+  natural: {
+    tile: 4,
+    rockGain: [1.72, 1.74, 1.8],
+    rockLift: [6, 8, 12],
+    builtRun: 30,
+    lining: 8,
+    aoNear: 3,
+    aoFar: 18,
+    aoCore: [0.48, 0.55, 0.66],
+    aoSteps: 4,
+    aoGrain: 10,
+    lip: [214, 226, 240],
+    lipMix: 0.62,
+    sideMix: 0.32,
+    speck: [240, 248, 255],
+    speckRate: 3,
+    rightShade: 0.8,
+    feature: [120, 188, 240],
+    featureStrength: 0.6,
+    featureNear: 1,
+    featureFar: 14,
+    featureTop: 1,
+    drip: [0.62, 0.7, 0.82],
+    glaze: [0, 0, 0],
+    glazeMix: 0,
+    contact: 0.42,
+    contactReach: 8,
+    backdropSat: 0.45,
+    backdropHaze: [0.03, 0.05, 0.08],
+    backdropHazeMix: 0.34,
+  },
+};
+
+/**
+ * THE GLASS GALLERIES (crystal, wave 3) — the lens-grinding halls: faceted
+ * rock that is half glass, polished ground-lens disks set into the walls,
+ * violet prismatic glints along the seams, the galleries' straight runs
+ * dressed as dressed stone. Dark on purpose: light is what this floor is about.
+ */
+const GLASS_GALLERIES: FloorLook = {
+  gain: [1.1, 1.06, 1.34],
+  lift: [14, 12, 26],
+  lip: [186, 176, 224],
+  under: [0.5, 0.46, 0.64],
+  crown: [150, 140, 214],
+  crownStrength: 0.35,
+  crownDepth: 2,
+  masonryPanels: 10,
+  rockRow: -1,
+  waterSurface: [132, 150, 204],
+  waterBody: [36, 44, 88],
+  backdropMul: [0.76, 0.68, 1.08],
+  backdropLift: [0.01, 0.004, 0.024],
+  backdropOffsetX: 960,
+  backdropMirror: false,
+  machinery: 1.1,
+  epigraph: 'Every pane here is a lens. Mind where the light goes.',
+  natural: {
+    tile: 5,
+    rockGain: [1.75, 1.7, 1.9],
+    rockLift: [6, 5, 10],
+    builtRun: 22,
+    lining: 10,
+    aoNear: 3,
+    aoFar: 16,
+    aoCore: [0.44, 0.4, 0.56],
+    aoSteps: 4,
+    aoGrain: 12,
+    lip: [200, 190, 236],
+    lipMix: 0.5,
+    sideMix: 0.3,
+    speck: [250, 240, 255],
+    speckRate: 2,
+    rightShade: 0.78,
+    feature: [206, 176, 255],
+    featureStrength: 0.9,
+    featureNear: 1,
+    featureFar: 10,
+    featureTop: 1,
+    drip: [0.5, 0.46, 0.62],
+    glaze: [0, 0, 0],
+    glazeMix: 0,
+    contact: 0.44,
+    contactReach: 8,
+    backdropSat: 0.55,
+    backdropHaze: [0.03, 0.02, 0.06],
+    backdropHazeMix: 0.3,
+  },
+};
+
 /** Off-spine biomes (test arenas, the Vault, legacy floors) keep a restrained grade. */
 export const FLOOR_LOOKS: Readonly<Record<BiomeId, FloorLook>> = {
   earthen: BELLOWS,
   fungal: ROT_GARDENS,
   flooded: DROWNED_CISTERNS,
   volcanic: KILN_HEART,
-  frozen: {
-    ...BELLOWS,
-    gain: [1.14, 1.26, 1.42], lift: [16, 24, 34], lip: [206, 220, 238], under: [0.56, 0.62, 0.74],
-    crown: [150, 176, 214], crownStrength: 0.6, crownDepth: 3, masonryPanels: 8, rockRow: -1,
-    backdropMul: [0.76, 0.9, 1.14], backdropLift: [0.004, 0.01, 0.024], backdropOffsetX: 540,
-    epigraph: 'The cold keeps everything. Including you, if you stop.',
-  },
+  frozen: COLD_STORE,
   timber: {
     ...BELLOWS,
     gain: [1.28, 1.18, 1.06], lift: [18, 16, 12], lip: [140, 122, 90], crown: [110, 150, 104],
@@ -314,13 +422,7 @@ export const FLOOR_LOOKS: Readonly<Record<BiomeId, FloorLook>> = {
     backdropMul: [1.04, 0.94, 0.8], backdropOffsetX: 220, backdropMirror: true,
     epigraph: 'Timber, pitch and old scaffolding. Keep fire at arm’s length.',
   },
-  crystal: {
-    ...BELLOWS,
-    gain: [1.12, 1.08, 1.38], lift: [15, 13, 28], lip: [168, 160, 206], crown: [146, 136, 212],
-    crownStrength: 0.45, crownDepth: 3, masonryPanels: 6, rockRow: -1,
-    backdropMul: [0.88, 0.8, 1.14], backdropLift: [0.01, 0.004, 0.024], backdropOffsetX: 960,
-    epigraph: 'The rock remembers light. It hums when you pass.',
-  },
+  crystal: GLASS_GALLERIES,
   scorched: {
     ...BELLOWS,
     gain: [1.24, 1.06, 0.94], lift: [18, 12, 8], lip: [150, 128, 104], under: [0.5, 0.42, 0.4],

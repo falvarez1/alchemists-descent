@@ -54,6 +54,8 @@ export interface RunSummary {
   cardsFound: number;
   /** Short epitaph line: cause of the final death, or the victory line. */
   epitaph: string;
+  /** The doors the run took, floor by floor (campaign level ids); absent on old ledgers. */
+  path?: string[];
 }
 
 /** One alchemical kill, as announced to callouts, audio, stats and clips. */

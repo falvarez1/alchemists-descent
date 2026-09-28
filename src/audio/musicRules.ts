@@ -14,6 +14,8 @@ export const FLOOR_CUES: Readonly<Record<string, { explore: string; tension: str
   d2: { explore: 'rot', tension: 'rot-tension' },
   d3: { explore: 'cisterns', tension: 'cisterns-tension' },
   d4: { explore: 'kiln', tension: 'kiln-tension' },
+  d2b: { explore: 'coldstore', tension: 'coldstore-tension' },
+  d3b: { explore: 'galleries', tension: 'galleries-tension' },
 };
 
 /** Off-spine levels (test arenas, the Vault, authored playtests) borrow the floor whose organ they resemble. */

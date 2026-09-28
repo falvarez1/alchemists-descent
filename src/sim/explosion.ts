@@ -1,11 +1,11 @@
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx, Enemy, ExplosionApi } from '@/core/types';
 import { CELL_COUNT, Cell, blocksEntity, isLiquid } from '@/sim/CellType';
-import { ashColor, crystalColor, fireColor, glassColor, smokeColor } from '@/sim/colors';
+import { ashColor, crystalColor, fireColor, glassColor, packRGB, smokeColor } from '@/sim/colors';
 import { chargeDeposit } from '@/sim/electrical';
 import { causeForExplosion } from '@/core/alchemyCause';
 import { fxRandom, simRandom } from '@/core/simRandom';
-import { blastAuthor, bossOrganRect } from '@/core/bossWard';
+import { blastAuthor, bossFuelRect, bossOrganRect } from '@/core/bossWard';
 
 /** Reused blast-carve scratch — see the note at its use site in trigger(). */
 let blastTouchedScratch = new Uint8Array(0);
@@ -43,6 +43,7 @@ function blastDebrisCell(t: number): boolean {
     t === Cell.Ice ||
     t === Cell.Crystal ||
     t === Cell.Glass ||
+    t === Cell.Mirror ||
     t === Cell.RawOre ||
     t === Cell.Coal
   );
@@ -224,6 +225,10 @@ export class Explosions implements ExplosionApi {
     // (probe, seed 4: the tank burst ~3 s after the Colossus woke, before the
     // player had done anything, and the flood was wasted).
     const organ = causeForExplosion(options.playerDamageSource) === 'direct' ? null : bossOrganRect(ctx.levels?.current?.boss);
+    // ...and an arena's FUEL (the Ice-House's coal pits) is the player's to
+    // LIGHT: any blast there catches the coal instead of blowing it away (a
+    // spark bolt used to flash the whole pit off in a second).
+    const fuel = bossFuelRect(ctx.levels?.current?.boss);
 
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -234,6 +239,10 @@ export class Explosions implements ExplosionApi {
           if (organ && nx >= organ.x0 && nx <= organ.x1 && ny >= organ.y0 && ny <= organ.y1) continue;
           const ni = world.idx(nx, ny);
           const orig = world.types[ni];
+          if (fuel && orig === Cell.Coal && nx >= fuel.x0 && nx <= fuel.x1 && ny >= fuel.y0 && ny <= fuel.y1) {
+            if (world.life[ni] === 0) world.life[ni] = (ctx.params.materials[Cell.Coal].burnDuration ?? 240) + Math.floor(fxRandom() * 40);
+            continue;
+          }
           if (orig === Cell.MarshGas) {
             // a blast doesn't erase a gas pocket - it LIGHTS it
             world.replaceCellAt(ni, Cell.Fire, fireColor());
@@ -249,6 +258,13 @@ export class Explosions implements ExplosionApi {
               simRandom() < 0.45
             )
               continue;
+            // A mirror bursts into glinting silver shards (cosmetic: the fx
+            // stream, so no other material's sim rolls move).
+            if (orig === Cell.Mirror && fxRandom() < 0.6) {
+              const d = Math.sqrt(dx * dx + dy * dy) || 1;
+              ctx.particles.spawn(nx, ny, (dx / d) * 2.2 + (fxRandom() - 0.5) * 1.6, (dy / d) * 1.8 - 1.4 - fxRandom(),
+                null, fxRandom() < 0.3 ? packRGB(250, 252, 255) : packRGB(190, 204, 216), 70 + Math.floor(fxRandom() * 40), { glow: 1.2, grav: 0.1 });
+            }
             // Crystal shatters into a burst of glowing shards
             if (orig === Cell.Crystal && simRandom() < 0.6) {
               const d = Math.sqrt(dx * dx + dy * dy) || 1;

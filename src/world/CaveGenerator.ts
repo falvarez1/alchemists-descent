@@ -56,6 +56,10 @@ import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
 import { placeEncounterLairs } from '@/world/encounterLairs';
 import { placeLightPuzzles, type LightPuzzleOutput } from '@/world/lightPuzzles';
+import { dressColdStore } from '@/world/coldStore';
+import { placeColdStorePuzzles, type ColdStorePuzzleOutput } from '@/world/coldStorePuzzles';
+import { dressGlassGalleries } from '@/world/glassGalleries';
+import { placeGalleryPuzzles, type GalleryPuzzleOutput } from '@/world/galleryPuzzles';
 import { stampSecrets } from '@/world/secrets';
 import { computeFits, reachableMask, wizardMask } from '@/world/validate';
 import { placeStructures } from '@/world/structures';
@@ -750,7 +754,10 @@ export class WorldGen implements WorldGenApi {
           if (pass() && stable()) continue;
           recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, stable) || failOpenTargetDoor(m, stable));
         } else if (CELL_REACH.has(m.kind)) {
-          const pass = (): boolean => cellNear(m.x, m.y - 2, 5);
+          // A lens sealed behind optics (world/galleryPuzzles) is reached at its
+          // port — the rescue must never carve into the sealed lens itself.
+          const rx = m.lightPort?.x ?? m.x, ry = m.lightPort?.y ?? m.y;
+          const pass = (): boolean => cellNear(rx, ry - 2, 5);
           if (pass()) continue;
           if (labMechanism) {
             recordRescue(`spell-lab@${Math.floor(spellLab?.x ?? m.x)},${Math.floor(spellLab?.y ?? m.y)}`, () =>
@@ -758,7 +765,7 @@ export class WorldGen implements WorldGenApi {
             );
             continue;
           }
-          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, pass));
+          recordRescue(`${m.kind}@${rx},${ry}`, () => rescueAt(rx, ry, pass));
         }
       }
       for (const v of runeVaults) {
@@ -1095,6 +1102,7 @@ export class WorldGen implements WorldGenApi {
       spellLab,
       sumpRepair,
       kilnRepair,
+      wardenRepair,
       kilnFlue,
     } = placeStructures(
       ctx,
@@ -1190,6 +1198,37 @@ export class WorldGen implements WorldGenApi {
       fits.set(computeFits(ctx.world));
     }
     stage('light-puzzles');
+    // 8b.8a) THE SECOND DOORS' PUZZLE ROOMS (wave 3): the Cold Store's Frozen
+    // Fall and Ice Vault. Their own forked stream and the shared ledger, before
+    // the flora takes its ground; their tanks re-assert after the rescues.
+    const setPieceRepairs: Array<() => void> = [];
+    if (def.biome === 'frozen') {
+      const cold: ColdStorePuzzleOutput = { pickups: [], placed: [], repairs: [] };
+      placeColdStorePuzzles(ctx, new Rng(hashSeed(seed >>> 0, 'cold-store-puzzles')), graph, ledger,
+        { spawn, wellX, avoid: lightAvoid }, fits, cold);
+      pickups.push(...cold.pickups);
+      setPieceRepairs.push(...cold.repairs);
+      if (cold.placed.length > 0) {
+        placedPrefabs = placedPrefabs.concat(cold.placed);
+        graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+        fits.set(computeFits(ctx.world));
+      }
+      stage('cold-store-puzzles');
+    }
+    // ...and the Glass Galleries' Periscope and Prism Gate (the same frame).
+    if (def.biome === 'crystal') {
+      const glass: GalleryPuzzleOutput = { mechanisms, pickups: [], placed: [], repairs: [] };
+      placeGalleryPuzzles(ctx, new Rng(hashSeed(seed >>> 0, 'glass-galleries-puzzles')), graph, ledger,
+        { spawn, wellX, avoid: lightAvoid }, fits, glass);
+      pickups.push(...glass.pickups);
+      setPieceRepairs.push(...glass.repairs);
+      if (glass.placed.length > 0) {
+        placedPrefabs = placedPrefabs.concat(glass.placed);
+        graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+        fits.set(computeFits(ctx.world));
+      }
+      stage('glass-galleries-puzzles');
+    }
     // 8b.8) FLORA (wave 2): the floor's puzzle rooms (fell a tree across a
     // chasm or lava moat, water a thirsty seed into a root ladder, burn a
     // bramble thicket) carved into rock and joined to the main path, then the
@@ -1208,6 +1247,22 @@ export class WorldGen implements WorldGenApi {
       fits.set(computeFits(ctx.world));
     }
     stage('flora');
+    // 8b.9) THE SECOND DOORS' DRESSING (wave 3): the Cold Store's icicles,
+    // frozen falls, snow, frosted pipes and brine gutters — written only into
+    // open cells a body never needs, after the plants have taken their ground.
+    // Its own forked stream; no other floor draws from it.
+    if (def.biome === 'frozen') {
+      const dressed = dressColdStore(ctx.world, new Rng(hashSeed(seed >>> 0, 'cold-store-dressing')), ledger,
+        { spawn, wellX, avoid: lightAvoid });
+      if (shouldLogDevDiagnostics() && dressed.icicles < 60) console.warn(`[cold-store] only ${dressed.icicles} icicles on ${def.id}`);
+      stage('cold-store-dressing');
+    }
+    if (def.biome === 'crystal') {
+      const dressed = dressGlassGalleries(ctx.world, new Rng(hashSeed(seed >>> 0, 'glass-galleries-dressing')), ledger,
+        { spawn, wellX, avoid: lightAvoid });
+      if (shouldLogDevDiagnostics() && dressed.panels < 8) console.warn(`[glass-galleries] only ${dressed.panels} mirror panels on ${def.id}`);
+      stage('glass-galleries-dressing');
+    }
 
     // 8b.9) STORY (wave 3, GEN 55): the Docent's speaking-pipes near the
     // arrival and the waystones, Pell's lit camp nook and the resonant valve's
@@ -1257,6 +1312,7 @@ export class WorldGen implements WorldGenApi {
     kilnRepair?.();
     // ...and so does a lair's pool, should a rescue have had to cut it.
     encounterLairs.repair();
+    wardenRepair?.();
     stage('sump-repair');
 
     if (shouldLogDevDiagnostics()) {
@@ -1284,9 +1340,12 @@ export class WorldGen implements WorldGenApi {
     // Were its basin the only way a final rescue found, the runtime repair —
     // which routes around every placed room — reopens a way on arrival.
     encounterLairs.repair();
+    wardenRepair?.(false);
     // FLORA puzzles re-assert what the rescue tunnels took (a tree, a cistern)
     // — writing only into open cells, so no route the rescue opened is closed.
     flora.repair();
+    // The second doors' tanks and cisterns (casing, seal, liquid) likewise.
+    for (const repair of setPieceRepairs) repair();
     stage('final-gauge-rescue');
 
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.

@@ -326,7 +326,7 @@ describe('leaf, trunk and seed rules', () => {
 });
 
 describe('the flora kit', () => {
-  const standing: FloraSpecies[] = ['birch', 'treefern', 'sapling', 'mushroom', 'emberbark', 'mangrove'];
+  const standing: FloraSpecies[] = ['birch', 'treefern', 'sapling', 'mushroom', 'emberbark', 'mangrove', 'snowbirch', 'glasswillow'];
   it.each(standing)('grows a %s as one supported stand of real cells', (species) => {
     const world = flatWorld(200, 160, 150);
     const plant = plantFlora(world, species, 100, 149, new Rng(12345));
@@ -351,6 +351,18 @@ describe('the flora kit', () => {
   });
 
   it('knows every species', () => {
-    expect(FLORA_SPECIES.length).toBe(14);
+    // 14 from wave 2; the Cold Store's and the Glass Galleries' six (wave 3).
+    expect(FLORA_SPECIES.length).toBe(20);
+  });
+
+  it.each(['frostfern', 'icelily', 'glassreed', 'prismflower'] as FloraSpecies[])('grows a %s from real cells', (species) => {
+    const world = flatWorld(120, 100, 90);
+    // Floaters sit on the water line: give them a pond.
+    if (species === 'icelily') for (let x = 40; x < 80; x++) for (let y = 86; y < 90; y++) world.replaceCellAt(world.idx(x, y), Cell.Brine, 0x68acb8);
+    const plant = plantFlora(world, species, 50, species === 'icelily' ? 85 : 89, new Rng(777));
+    expect(plant).not.toBeNull();
+    let cells = 0;
+    for (let i = 0; i < world.types.length; i++) if (world.types[i] === Cell.Leaf || world.types[i] === Cell.Trunk) cells++;
+    expect(cells).toBeGreaterThanOrEqual(4);
   });
 });

@@ -3,13 +3,17 @@ import type { World } from '@/sim/World';
 
 export const ACTIVITY_SIZE = 64;
 const category = new Uint8Array(256).fill(3);
-for (const t of [Cell.Empty, Cell.Wall, Cell.Wood, Cell.Stone, Cell.Metal, Cell.Crystal, Cell.Glass, Cell.Glowshroom, Cell.RawOre]) category[t] = 0;
+for (const t of [Cell.Empty, Cell.Wall, Cell.Wood, Cell.Stone, Cell.Metal, Cell.Crystal, Cell.Glass, Cell.Glowshroom, Cell.RawOre, Cell.Mirror]) category[t] = 0;
 for (const t of [Cell.Ice, Cell.Vines, Cell.Fungus, Cell.Moss, Cell.Grass, Cell.Leaf, Cell.Trunk]) category[t] = 1;
-for (const t of [Cell.Water, Cell.Oil, Cell.Sand, Cell.Gold, Cell.Catalyst, Cell.Seed]) category[t] = 2;
+for (const t of [Cell.Water, Cell.Oil, Cell.Sand, Cell.Gold, Cell.Catalyst, Cell.Seed, Cell.Brine]) category[t] = 2;
 const waterRestContact = new Uint8Array(256), oilRestContact = new Uint8Array(256), urgentMaterial = new Uint8Array(256);
+// Brine at rest among brine and inert rock sleeps like still water; beside ice,
+// snow, nitrogen or fresh water it stays awake (it has salt work to do there).
+const brineRestContact = new Uint8Array(256);
+for (const t of [Cell.Brine, Cell.Wall, Cell.Wood, Cell.Stone, Cell.Metal, Cell.Crystal, Cell.Glass, Cell.RawOre, Cell.Mirror]) brineRestContact[t] = 1;
 for (const t of [Cell.Fire, Cell.Ember, Cell.Lava, Cell.Acid, Cell.Nitrogen, Cell.Steam, Cell.MarshGas]) urgentMaterial[t] = 1;
-for (const t of [Cell.Water, Cell.Wall, Cell.Wood, Cell.Stone, Cell.Metal, Cell.Crystal, Cell.Glass, Cell.RawOre]) waterRestContact[t] = 1;
-for (const t of [Cell.Oil, Cell.Wall, Cell.Wood, Cell.Stone, Cell.Metal, Cell.Crystal, Cell.Glass, Cell.RawOre]) oilRestContact[t] = 1;
+for (const t of [Cell.Water, Cell.Wall, Cell.Wood, Cell.Stone, Cell.Metal, Cell.Crystal, Cell.Glass, Cell.RawOre, Cell.Mirror]) waterRestContact[t] = 1;
+for (const t of [Cell.Oil, Cell.Wall, Cell.Wood, Cell.Stone, Cell.Metal, Cell.Crystal, Cell.Glass, Cell.RawOre, Cell.Mirror]) oilRestContact[t] = 1;
 
 /** Activity and independent render damage over the save-compatible flat grid. */
 export class ActivityGrid {
@@ -145,7 +149,8 @@ export class ActivityGrid {
             if ((old & 3) === 1 && kind !== 1) { growth.delete(i); growthEdited = true; }
             if (kind === 1 && (old & 3) !== 1) { growth.add(i); growthEdited = true; }
             let active = kind > 1;
-            const restContact = type === Cell.Water ? waterRestContact : type === Cell.Oil && !burningOil ? oilRestContact : null;
+            const restContact = type === Cell.Water ? waterRestContact : type === Cell.Oil && !burningOil ? oilRestContact
+              : type === Cell.Brine ? brineRestContact : null;
             if (restContact && !urgent && x > 0 && x + 1 < width && y > 0 && y + 1 < this.height &&
                 restContact[types[i - 1]] && restContact[types[i + 1]] &&
                 restContact[types[i - width]] && restContact[types[i + width]] &&

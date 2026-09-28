@@ -20,7 +20,7 @@ import type { CreatureRig } from './rig/types';
 export const CORPSE_MASS: Readonly<Partial<Record<EnemyKind, number>>> = {
   bat: 0.4, eggs: 0.3, wisp: 0.6, slime: 1, acidslime: 1, bomber: 1, imp: 1.2, spitter: 1.3,
   mage: 1.6, rillback: 1.8, rootloper: 2, weaver: 2.6, stonemaw: 3.2, golem: 4.5,
-  leviathan: 14, colossus: 30,
+  leviathan: 14, colossus: 30, rimewarden: 20, lenswright: 12,
 };
 
 /** The heaviest remains the wand can lift (the dead Leviathan is past it: it can only be nudged). */

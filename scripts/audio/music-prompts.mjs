@@ -16,6 +16,9 @@
 //   The Rot Gardens (gut)      woody marimba, detuned music box, spore shimmer, insects
 //   The Drowned Cisterns (veins) glass harmonica, slow low strings, drips, pressure
 //   The Kiln Heart (heart)     forge percussion, low brass swells, a heat drone
+// and the side wings a floor can open onto instead:
+//   The Cold Store (floor 2)   celesta and music box, harp harmonics, icicle pizzicato, a compressor thump
+//   The Glass Galleries (floor 3) bowed vibraphone, wine-glass harmonics, harp, the whir of grinding wheels
 
 export const MUSIC_MODEL = 'music_v2_5';
 
@@ -203,6 +206,82 @@ export const CUES = [
         ['[Stab]\n{low brass stabs a fragment of the Breathing Works theme; the bellows roar}', 24, ['low brass stabs', 'roaring bellows']],
         ['[Crucible]\n{cellos and basses churn; anvils ring off the beat}', 22, ['syncopated anvils']],
         ['[Loop]\n{return to the opening ostinato; keep the tension going}', 20, [LOOPS]],
+      ],
+    ),
+  },
+
+  // -------------------------------------------------------- the Cold Store
+  // Floor 2's frozen wing. B minor at 64 BPM: its own key, and not the Rot Gardens' 66 on the same floor.
+  {
+    id: 'coldstore', label: 'Floor 2 — The Cold Store', group: 'Score · Floors', role: 'explore', floor: 'd2b', loop: true,
+    key: 'B minor', bpm: 64, condition: { cue: 'title', startMs: 10000, endMs: 40000, strength: 'low' },
+    summary: 'The refrigeration wing. An old ammonia compressor thumping slowly on two beats, a bowed double-bass pedal on B, harp harmonics glittering like frost, the celesta carrying the theme with a music box echoing it, pizzicato violins dripping off icicles.',
+    chunks: plan(
+      ['instrumental only', 'ambient exploration underscore for a video game', 'frozen refrigeration wing of a Victorian refinery', 'B minor', '64 BPM',
+        'celesta', 'music box', 'harp harmonics', 'pizzicato violins like drips off icicles', 'low bowed double bass pedal',
+        'soft brushed and tapped metal', 'slow two-beat thump of an old refrigeration compressor', 'cold, patient, glittering, a little eerie, quiet wonder',
+        'no drum kit'],
+      [
+        ['[Frost]\n{an old refrigeration compressor thumps slowly, two soft beats and a long rest; a low bowed double bass holds B; harp harmonics glitter like frost}', 30],
+        [`[Theme, frozen]\n{a celesta plays ${THEME}; a music box echoes it an octave higher}`, 34,
+          ['celesta melody, clear and cold', 'music box echo', 'bowed double bass pedal on B', 'slow compressor thump underneath']],
+        ['[Icicles]\n{pizzicato violins drip like meltwater off icicles; brushed and tapped metal pipes shiver with frost; the compressor keeps its slow two-beat thump}', 32,
+          ['sparse pizzicato violins', 'brushed metal', 'tapped frosted pipes', 'curious']],
+        ['[Return]\n{back to the slow compressor thump, the double bass pedal and the glittering harp harmonics of the opening}', 32,
+          ['compressor thump', 'harp harmonics', 'bowed double bass', LOOPS]],
+      ],
+    ),
+  },
+  {
+    id: 'coldstore-tension', label: 'Floor 2 — The Cold Store (hunted)', group: 'Score · Tension', role: 'tension', floor: 'd2b', loop: true,
+    key: 'B minor', bpm: 64, condition: { cue: 'coldstore', startMs: 0, endMs: 30000, strength: 'medium' },
+    summary: 'The cold wakes up: the compressor thump quickening to every beat, shivering tremolo strings, col legno ticks like ice cracking, low brass growling the theme, cold celesta stabs over a sawing double bass.',
+    chunks: plan(
+      ['instrumental only', 'tense video game chase underscore', 'B minor', '64 BPM', 'tremolo strings', 'col legno ticks like ice cracking',
+        'low brass', 'refrigeration compressor thump quickening', 'celesta stabs', 'bowed double bass', 'cold, taut, restrained, never bombastic', 'no drum kit'],
+      [
+        ['[Crack]\n{the compressor thump quickens to every beat; violins shiver in tremolo; col legno strings tick like ice cracking}', 20],
+        [`[Pursuit]\n{low brass growls a fragment of ${THEME}; cold celesta stabs above}`, 18, ['low brass', 'celesta stabs', 'tremolo strings underneath']],
+        ['[Thin ice]\n{the tremolo tightens; col legno cracks all around; the double bass saws beneath the quickened compressor}', 16, ['col legno cracks', 'bowed double bass']],
+        ['[Loop]\n{return to the opening tremolo and quickened thump; keep the tension going}', 14, [LOOPS]],
+      ],
+    ),
+  },
+
+  // --------------------------------------------------- the Glass Galleries
+  // Floor 3's crystal wing. F-sharp minor at 84 BPM: brighter and quicker than the Cisterns beside it.
+  {
+    id: 'galleries', label: 'Floor 3 — The Glass Galleries', group: 'Score · Floors', role: 'explore', floor: 'd3b', loop: true,
+    key: 'F-sharp minor', bpm: 84, condition: { cue: 'title', startMs: 10000, endMs: 40000, strength: 'low' },
+    summary: 'The lens-grinding halls. The soft whir of grinding wheels, bowed vibraphone and wine-glass harmonics over a warm low string bed, the harp stating the theme with the vibraphone answering like a reflection, celesta and vibraphone arpeggios scattering like light through a prism.',
+    chunks: plan(
+      ['instrumental only', 'ambient exploration underscore for a video game', 'luminous glass lens-grinding halls of a Victorian refinery', 'F-sharp minor', '84 BPM',
+        'bowed vibraphone', 'crystal wine-glass harmonics', 'harp', 'prismatic celesta and vibraphone arpeggios', 'soft rhythmic whir of grinding wheels',
+        'warm low string bed', 'luminous, precise, a little uncanny, quiet wonder', 'bright glassy hall reverb', 'no drum kit'],
+      [
+        ['[Lenses]\n{grinding wheels whir softly in a steady rhythm; bowed vibraphone tones bloom and hang; wine-glass harmonics ring above a warm low string bed}', 30],
+        [`[Theme, refracted]\n{a harp plays ${THEME}; a bowed vibraphone answers like a mirror}`, 34,
+          ['harp melody', 'bowed vibraphone echoing each phrase a beat later', 'warm low strings']],
+        ['[Prism]\n{celesta and vibraphone arpeggios split and scatter like light through a prism, precise and interlocking; the grinding wheels keep time}', 32,
+          ['interlocking celesta and vibraphone arpeggios', 'grinding-wheel whir', 'precise']],
+        ['[Return]\n{back to the soft whir of the grinding wheels, the bowed vibraphone and the ringing glass of the opening}', 32,
+          ['grinding-wheel whir', 'bowed vibraphone', 'wine-glass harmonics', LOOPS]],
+      ],
+    ),
+  },
+  {
+    id: 'galleries-tension', label: 'Floor 3 — The Glass Galleries (hunted)', group: 'Score · Tension', role: 'tension', floor: 'd3b', loop: true,
+    key: 'F-sharp minor', bpm: 84, condition: { cue: 'galleries', startMs: 0, endMs: 30000, strength: 'medium' },
+    summary: 'The mirrors turn on you: a fast celesta-and-vibraphone arpeggio ostinato, grinding bowed-vibraphone clusters, dissonant glass harmonics, timpani and low strings driving the theme, the grinding wheels spinning faster.',
+    chunks: plan(
+      ['instrumental only', 'tense video game chase underscore', 'F-sharp minor', '84 BPM', 'fast celesta and vibraphone arpeggio ostinato',
+        'bowed vibraphone clusters', 'dissonant glass harmonics', 'timpani', 'grinding wheels spinning faster', 'low strings',
+        'uncanny, sharp, restrained, never bombastic', 'no drum kit'],
+      [
+        ['[Glare]\n{the arpeggio ostinato snaps into double time; bowed vibraphone clusters grind; the grinding wheels spin faster}', 20],
+        [`[Pursuit]\n{low strings and timpani drive a fragment of ${THEME}; glass clashes}`, 18, ['timpani', 'low strings', 'dissonant glass harmonics above']],
+        ['[Fracture]\n{the arpeggios fracture into tense cross-rhythms; glass harmonics clash; the timpani roll}', 16, ['cross-rhythm arpeggios', 'timpani roll']],
+        ['[Loop]\n{return to the opening ostinato; keep the tension going}', 14, [LOOPS]],
       ],
     ),
   },

@@ -19,6 +19,8 @@ import type { World } from '@/sim/World';
  *   floor 2  mushroom (stem + cap), rootcolumn, hangingroot, fernbed, sapling
  *   floor 3  mangrove (prop-root arches), reeds, kelp, lilypad
  *   floor 4  emberbark (charred, ember-fissured), firelily
+ *   Cold Store (wave 3)  snowbirch (rime-leaved birch), frostfern, icelily
+ *   Glass Galleries      glasswillow (weeping glass-bead willow), glassreed, prismflower
  *   any      grasstuft (tall leaf-blade grass)
  * ============================================================ */
 
@@ -26,13 +28,17 @@ export type FloraSpecies =
   | 'birch' | 'treefern' | 'sapling' | 'fernbed' | 'grasstuft'
   | 'mushroom' | 'rootcolumn' | 'hangingroot'
   | 'mangrove' | 'reeds' | 'kelp' | 'lilypad'
-  | 'emberbark' | 'firelily';
+  | 'emberbark' | 'firelily'
+  // wave 3: the Cold Store and the Glass Galleries
+  | 'snowbirch' | 'frostfern' | 'icelily'
+  | 'glasswillow' | 'glassreed' | 'prismflower';
 
-export type FloraFloor = 'bellows' | 'rot' | 'cistern' | 'kiln';
+export type FloraFloor = 'bellows' | 'rot' | 'cistern' | 'kiln' | 'cold' | 'glass';
 
 export const FLORA_SPECIES: readonly FloraSpecies[] = [
   'birch', 'treefern', 'sapling', 'fernbed', 'grasstuft', 'mushroom', 'rootcolumn', 'hangingroot',
   'mangrove', 'reeds', 'kelp', 'lilypad', 'emberbark', 'firelily',
+  'snowbirch', 'frostfern', 'icelily', 'glasswillow', 'glassreed', 'prismflower',
 ];
 
 export interface PlantOptions {
@@ -385,6 +391,10 @@ const FLOOR_LEAF: Record<FloraFloor, { light: RGB; dark: RGB; bark: RGB }> = {
   rot: { light: [150, 142, 84], dark: [78, 84, 52], bark: [106, 80, 60] },
   cistern: { light: [96, 138, 90], dark: [44, 82, 62], bark: [88, 78, 58] },
   kiln: { light: [150, 84, 52], dark: [84, 44, 34], bark: [48, 38, 34] },
+  // Rime-grey sage and blue-black shade; pale frosted bark.
+  cold: { light: [178, 200, 204], dark: [86, 110, 122], bark: [176, 180, 184] },
+  // Lilac-grey glass leaf; violet bark.
+  glass: { light: [176, 188, 222], dark: [92, 96, 138], bark: [128, 116, 146] },
 };
 
 /* --------------------------------- helpers --------------------------------- */
@@ -882,8 +892,207 @@ function firelily(p: Planter, x: number, y: number, o: PlantOptions): PlantResul
   return p.result('firelily', x, y, y - 10);
 }
 
+/* ------------------------- the Cold Store (wave 3) ------------------------- */
+
+const SNOWBIRCH_BARK: RGB = [206, 206, 200];
+const SNOWBIRCH_MARK: RGB = [52, 56, 62];
+const RIME_LEAF_LIGHT: RGB = [214, 230, 236];
+const RIME_LEAF_DARK: RGB = [110, 138, 150];
+const RIME_LEAF_DEEP: RGB = [58, 78, 94];
+
+/**
+ * A snow-birch: the cave-birch's cold cousin. Chalk-white bark with black
+ * lenticels, thin upswept limbs, and a sparse crown of rime-furred leaves —
+ * pale on top where the frost settles, blue-grey in the shade under it.
+ * Living wood like any other: it smoulders, and a cut through its foot fells it.
+ */
+function snowbirch(p: Planter, x: number, y: number, o: PlantOptions): PlantResult | null {
+  const rng = p.rng;
+  const H = o.height ?? 46 + rng.int(24);
+  const w = H >= 54 ? 4 : 3;
+  const phase = rng.next() * 6.28, amp = 0.6 + rng.next() * 1.2, lean = o.lean ?? (rng.next() - 0.5) * 0.06;
+  const spine: Array<[number, number]> = [];
+  for (let i = 0; i < H; i++) {
+    const t = i / H;
+    const cx = x + Math.round(Math.sin(t * 2.1 + phase) * amp * t + lean * i);
+    const width = i === 0 ? w + 4 : i === 1 ? w + 2 : t > 0.93 ? 1 : t > 0.78 ? Math.max(2, w - 1) : w;
+    const left = cx - Math.floor(width / 2);
+    const mark = rng.next() < 0.22;
+    const markAt = left + rng.int(Math.max(1, width));
+    for (let dx = 0; dx < width; dx++) {
+      const edge = dx === 0 ? 0.78 : dx === width - 1 ? 0.9 : 1;
+      let c = jitter(SNOWBIRCH_BARK, rng, 8, edge);
+      if (mark && (dx === markAt - left || dx === markAt - left + 1) && i > 2) c = jitter(SNOWBIRCH_MARK, rng, 8);
+      if (i < 3) c = jitter([150, 160, 170], rng, 8, edge); // a snow-wet foot
+      p.wood(left + dx, y - i, c);
+    }
+    spine.push([cx, y - i]);
+  }
+  const top = spine[spine.length - 1];
+  const nb = 6 + rng.int(4);
+  let side = rng.next() < 0.5 ? -1 : 1;
+  const branchColor = (): number => jitter([178, 180, 182], rng, 10);
+  const tips: Array<[number, number, number]> = [];
+  for (let b = 0; b < nb; b++) {
+    const i0 = Math.min(H - 3, Math.floor(H * (0.38 + 0.56 * b / nb)) + rng.int(3));
+    const [sx, sy] = spine[i0];
+    const len = Math.max(5, Math.round((8 + rng.int(10)) * (1.2 - i0 / H)));
+    const ang = -Math.PI / 2 + side * (0.55 + rng.next() * 0.5);
+    const pts = limb(p, sx + side * Math.ceil(w / 2), sy, ang, len, -side * 0.03, branchColor);
+    const [tx, ty] = pts[pts.length - 1] ?? [sx, sy];
+    tips.push([tx, ty, side]);
+    side = rng.next() < 0.8 ? -side : side;
+  }
+  // Sparse, frost-furred leaf masses (thinner than a summer birch).
+  for (const [tx, ty, sd] of tips) p.blob(tx + sd, ty - 1, 4 + rng.int(4), 3 + rng.int(2), 0.7, RIME_LEAF_LIGHT, RIME_LEAF_DARK, RIME_LEAF_DEEP);
+  p.blob(top[0], top[1] - 3, 7 + rng.int(4), 5 + rng.int(3), 0.72, RIME_LEAF_LIGHT, RIME_LEAF_DARK, RIME_LEAF_DEEP);
+  if (o.pods) hangPods(p, top[0] - 10, top[0] + 10, top[1] - 6, top[1] + Math.floor(H * 0.35), o.pods, 2);
+  return p.result('snowbirch', x, y, top[1]);
+}
+
+/** A frost-fern: low fronds furred white at the tips, blue-grey at the heart. */
+function frostfern(p: Planter, x: number, y: number, _o: PlantOptions): PlantResult | null {
+  const rng = p.rng;
+  const n = 4 + rng.int(4);
+  for (let f = 0; f < n; f++) {
+    const bx = x + rng.int(9) - 4;
+    const heading = -Math.PI / 2 + (rng.next() - 0.5) * 2.0;
+    const L = 5 + rng.int(6);
+    const curl = (heading < -Math.PI / 2 ? -1 : 1) * 0.14;
+    let px = bx, py = y, a = heading;
+    // The frond's base sits on the ground (it holds the rest on).
+    p.leaf(bx, y, mix([120, 150, 160], [72, 100, 116], rng.next() * 0.5));
+    for (let s = 0; s < L; s++) {
+      px += Math.cos(a); py += Math.sin(a); a += curl;
+      const tip = s >= L - 2;
+      p.leaf(px, py, tip ? jitter([226, 238, 244], rng, 8) : mix([150, 184, 190], [72, 100, 116], 0.2 + rng.next() * 0.4));
+      if (s > 0 && s % 2 === 0) p.leaf(px - Math.sin(a) * 1.4, py + Math.cos(a) * 1.4, mix([196, 216, 222], [96, 124, 138], 0.3 + rng.next() * 0.4));
+    }
+  }
+  return p.result('frostfern', x, y, y - 9);
+}
+
+/**
+ * An ice-lily: a floating pad on still water or brine, rimed at the edge, with
+ * a white star of a flower and a pale gold heart. Leaf litter: it floats.
+ */
+function icelily(p: Planter, x: number, y: number, _o: PlantOptions): PlantResult | null {
+  const rng = p.rng;
+  const w = 5 + rng.int(5);
+  const notch = rng.int(w - 2) + 1;
+  for (let dx = 0; dx < w; dx++) {
+    if (dx === notch) continue;
+    const rim = dx === 0 || dx === w - 1;
+    p.leaf(x + dx, y, rim ? jitter([206, 226, 232], rng, 6) : mix([118, 162, 164], [70, 110, 120], rng.next() * 0.7), LEAF_LITTER);
+  }
+  if (rng.next() < 0.6) {
+    const fx = x + Math.floor(w / 2);
+    const petal: RGB = [236, 244, 250];
+    p.leaf(fx - 1, y - 1, jitter(petal, rng, 6, 0.95), LEAF_LITTER);
+    p.leaf(fx + 1, y - 1, jitter(petal, rng, 6, 0.95), LEAF_LITTER);
+    p.leaf(fx, y - 2, jitter(petal, rng, 6), LEAF_LITTER);
+    p.leaf(fx, y - 1, jitter([240, 226, 150], rng, 8), LEAF_LITTER);
+  }
+  return p.result('icelily', x, y, y - 2);
+}
+
+/* ------------------------ the Glass Galleries (wave 3) ------------------------ */
+
+const WILLOW_BARK: RGB = [126, 114, 142];
+const GLASS_LEAF: RGB = [186, 204, 232];
+const GLASS_LEAF_DARK: RGB = [104, 116, 164];
+const GLASS_BEAD: RGB = [240, 246, 255];
+
+/**
+ * A glass-willow: grown in the grinding halls on ground glass, a weeping tree
+ * whose leaves are strings of glassy beads. Violet-grey bark, a crown that
+ * pours down in strands (each strand is Leaf held from a branch tip), a bright
+ * bead at the end of the longest. Fellable living wood.
+ */
+function glasswillow(p: Planter, x: number, y: number, o: PlantOptions): PlantResult | null {
+  const rng = p.rng;
+  const H = o.height ?? 40 + rng.int(20);
+  const w = 4;
+  let cx = x;
+  const spine: Array<[number, number]> = [];
+  for (let i = 0; i < H; i++) {
+    if (i > 4 && rng.next() < 0.12) cx += rng.next() < 0.5 ? -1 : 1;
+    const t = i / H;
+    const width = i === 0 ? w + 4 : i === 1 ? w + 2 : t > 0.85 ? 2 : w;
+    const left = cx - Math.floor(width / 2);
+    for (let dx = 0; dx < width; dx++) {
+      const fluted = ((left + dx) * 3 + i) % 5 === 0 ? 0.84 : 1;
+      p.wood(left + dx, y - i, jitter(WILLOW_BARK, rng, 8, (dx === 0 ? 0.78 : 1) * fluted));
+    }
+    spine.push([cx, y - i]);
+  }
+  const top = spine[spine.length - 1];
+  // Arching limbs from the upper third; strands of glass fall from each.
+  const limbs = 5 + rng.int(3);
+  for (let b = 0; b < limbs; b++) {
+    const side = b % 2 === 0 ? -1 : 1;
+    const [sx, sy] = spine[Math.floor(H * (0.62 + 0.36 * b / limbs))] ?? top;
+    const len = 8 + rng.int(9);
+    const pts = limb(p, sx + side * 2, sy, -Math.PI / 2 + side * (0.9 + rng.next() * 0.5), len, side * 0.09, () => jitter([140, 128, 158], rng, 8));
+    for (let k = 1; k < pts.length; k += 2) {
+      const [lx, ly] = pts[k];
+      const drop = 5 + rng.int(12) + Math.floor(k * 0.6);
+      for (let d = 1; d <= drop; d++) {
+        const sway = Math.round(Math.sin((ly + d) * 0.35 + lx) * 0.6);
+        const bead = d === drop && rng.next() < 0.5;
+        p.leaf(lx + sway, ly + d, bead ? jitter(GLASS_BEAD, rng, 6) : mix(GLASS_LEAF, GLASS_LEAF_DARK, d / drop * 0.8 + rng.next() * 0.2));
+      }
+    }
+  }
+  p.blob(top[0], top[1] - 2, 6 + rng.int(3), 3 + rng.int(2), 0.7, GLASS_LEAF, GLASS_LEAF_DARK);
+  return p.result('glasswillow', x, y, top[1]);
+}
+
+/** Glass reeds: thin grey stems in a clump, each carrying a bead of glass. */
+function glassreed(p: Planter, x: number, y: number, o: PlantOptions): PlantResult | null {
+  const rng = p.rng;
+  const n = 3 + rng.int(5);
+  for (let s = 0; s < n; s++) {
+    const sx = x + rng.int(9) - 4;
+    const h = (o.height ?? 8 + rng.int(12));
+    const bend = (rng.next() - 0.5) * 0.12;
+    let top = y;
+    for (let i = 0; i < h; i++) {
+      const px = sx + Math.round(bend * i * i * 0.1);
+      if (!p.wood(px, y - i, jitter([118, 128, 150], rng, 8, i < 2 ? 0.8 : 1))) break;
+      top = y - i;
+    }
+    const px = sx + Math.round(bend * h * h * 0.1);
+    p.leaf(px, top - 1, jitter(GLASS_BEAD, rng, 6));
+    p.leaf(px, top - 2, jitter([200, 214, 240], rng, 8));
+  }
+  return p.result('glassreed', x, y, y - 20);
+}
+
+/**
+ * Prism flowers: low cups whose petals split the light that falls on them —
+ * each bloom one hue of the spectrum (rose, amber, green-gold, cyan, violet)
+ * round a white heart. They glow faintly in their own colour (render/Lighting).
+ */
+function prismflower(p: Planter, x: number, y: number, _o: PlantOptions): PlantResult | null {
+  const rng = p.rng;
+  const hues: RGB[] = [[236, 150, 176], [240, 196, 120], [196, 230, 140], [140, 222, 236], [186, 160, 246]];
+  const n = 2 + rng.int(4);
+  for (let s = 0; s < n; s++) {
+    const sx = x + rng.int(9) - 4;
+    const h = 3 + rng.int(5);
+    for (let i = 0; i < h; i++) p.wood(sx, y - i, jitter([96, 104, 120], rng, 8));
+    const by = y - h;
+    const petal = hues[rng.int(hues.length)];
+    for (const [dx, dy] of [[-1, 0], [1, 0], [-1, -1], [1, -1], [0, 0]]) p.leaf(sx + dx, by + dy, jitter(petal, rng, 10));
+    p.leaf(sx, by - 1, jitter([248, 250, 255], rng, 5));
+  }
+  return p.result('prismflower', x, y, y - 9);
+}
+
 const GROWERS: Record<FloraSpecies, (p: Planter, x: number, y: number, o: PlantOptions) => PlantResult | null> = {
   birch, treefern, sapling, fernbed, grasstuft, mushroom, rootcolumn, hangingroot, mangrove, reeds, kelp, lilypad, emberbark, firelily,
+  snowbirch, frostfern, icelily, glasswillow, glassreed, prismflower,
 };
 
 /**

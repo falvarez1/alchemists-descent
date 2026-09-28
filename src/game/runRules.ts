@@ -1,6 +1,7 @@
 import { GAME_TITLE } from '@/config/brand';
 import type { KitId, RunOutcome, RunSummary } from '@/core/run';
 import { fnv1aString } from '@/core/rng';
+import { FLOOR_DOORS, FLOORS_TOTAL, floorDisplayName, floorOf } from '@/config/worldgraph';
 
 /**
  * The run's pure rules (Breathing Works): return phials, the daily seed, the
@@ -73,6 +74,29 @@ export interface RunStatsInput {
   cardsFound: number;
   /** Death cause line for a fall; ignored for victory and abandonment. */
   causeLine?: string;
+  /** The doors the run walked through (campaign level ids, in order). */
+  path?: readonly string[];
+}
+
+/**
+ * A run's route, cleaned for the ledger: campaign level ids only, at most one
+ * door per floor (the first arrival wins), in floor order. Anything else a
+ * save might carry (a test arena, a duplicate, a hand-edit) is dropped.
+ */
+export function cleanRunPath(path: readonly unknown[] | null | undefined): string[] {
+  const byFloor: string[] = [];
+  for (const id of path ?? []) {
+    if (typeof id !== 'string') continue;
+    const floor = floorOf(id);
+    if (floor <= 0 || byFloor[floor - 1]) continue;
+    byFloor[floor - 1] = id;
+  }
+  return byFloor.filter((id): id is string => typeof id === 'string');
+}
+
+/** The branch doors a route took (every floor that offered a choice), by name. */
+export function routeNames(path: readonly string[] | null | undefined): string[] {
+  return cleanRunPath(path ?? []).filter((id) => (FLOOR_DOORS[floorOf(id) - 1]?.length ?? 0) > 1).map(floorDisplayName);
 }
 
 export const VICTORY_EPITAPH = 'The Colossus is scrap, the Kiln is cooling, and somewhere a kettle is finally allowed to boil.';
@@ -96,6 +120,7 @@ export function buildRunSummary(input: RunStatsInput): RunSummary {
     gold: whole(input.gold),
     cardsFound: whole(input.cardsFound),
     epitaph: runEpitaph(input),
+    ...(input.path ? { path: cleanRunPath(input.path).slice(0, FLOORS_TOTAL) } : {}),
   };
 }
 
@@ -146,6 +171,8 @@ export function formatChain(chain: number): string {
  * The one line a player pastes to a friend:
  * `Breathing Works — daily 2026-09-26 — Floor 3/4 in 14:02 · 9 alchemical kills · best chain ×3`
  * (a run without a chain leaves the chain out rather than boasting of zero).
+ * A route through the branching doors names them — `via the Cold Store and
+ * the Glass Galleries` — so two players on the same daily can compare roads.
  */
 export function shareLine(summary: RunSummary, title = GAME_TITLE): string {
   const parts = [title];
@@ -153,8 +180,10 @@ export function shareLine(summary: RunSummary, title = GAME_TITLE): string {
   const reach = summary.outcome === 'victory'
     ? `the Kiln quieted in ${formatRunTime(summary.timeMs)}`
     : `Floor ${summary.floor}/${summary.floorsTotal} in ${formatRunTime(summary.timeMs)}`;
+  const route = routeNames(summary.path).map(midSentence);
   const tail = [
     reach,
+    ...(route.length > 0 ? [`via ${route.join(' and ')}`] : []),
     `${summary.alchemicalKills} alchemical kill${summary.alchemicalKills === 1 ? '' : 's'}`,
     ...(Math.round(summary.bestChain) > 0 ? [`best chain ${formatChain(summary.bestChain)}`] : []),
   ].join(' · ');

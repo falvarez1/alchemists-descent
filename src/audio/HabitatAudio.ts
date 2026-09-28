@@ -240,7 +240,7 @@ export class HabitatAudio {
       if (next === undefined) { this.idleAt.set(e, frame + 120 + Math.floor(Math.random() * 360)); continue; }
       if (frame < next) continue;
       this.idleAt.set(e, frame + 240 + Math.floor(Math.random() * 420));
-      ctx.audio.at(e.x, e.y - 6, () => ctx.audio.creature(e.kind, 'idle'), e.kind === 'leviathan' || e.kind === 'colossus' ? 720 : 380);
+      ctx.audio.at(e.x, e.y - 6, () => ctx.audio.creature(e.kind, 'idle'), e.kind === 'leviathan' || e.kind === 'colossus' || e.kind === 'rimewarden' || e.kind === 'lenswright' ? 720 : 380);
     }
   }
 

@@ -60,7 +60,7 @@ export const KIT_DEFS: Record<KitId, KitDef> = {
       { material: Cell.Water, count: 300 },
       { material: Cell.Snow, count: 200 },
     ],
-    unlockHint: 'Reach the Rot Gardens (floor 2).',
+    unlockHint: 'Reach floor 2, by either door.',
   },
   ember: {
     id: 'ember',
@@ -74,7 +74,7 @@ export const KIT_DEFS: Record<KitId, KitDef> = {
       { material: Cell.Gunpowder, count: 160 },
       { material: Cell.Water, count: 240 },
     ],
-    unlockHint: 'Slay the Sunken Leviathan.',
+    unlockHint: 'Slay a warden of floor 3: the Sunken Leviathan or the Lenswright.',
   },
   storm: {
     id: 'storm',

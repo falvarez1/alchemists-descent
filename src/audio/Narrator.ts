@@ -7,8 +7,11 @@ import { arrivalLine, narrationKey, readingSeconds, speakerKey } from '@/audio/n
 import { NARRATION_LINE_GAP_MS, NarrationGate, type NarrationPriority } from '@/audio/narrationRules';
 import { GAME_TAGLINE } from '@/config/brand';
 import { FLOOR_LOOKS } from '@/config/floorLooks';
-import { LEVELS, floorDisplayName, floorOf } from '@/config/worldgraph';
-import { FLOOR_LORE } from '@/content/floorLore';
+import { LEVELS, floorDisplayName, floorOf, nextDoors } from '@/config/worldgraph';
+import { FLOOR_LORE, TWO_DOORS_LINE } from '@/content/floorLore';
+
+/** The second doors' guardians, by the name that rises over them as they wake → their floor's lore. */
+const GUARDIAN_NAMES: Readonly<Record<string, string>> = { 'THE RIME WARDEN': 'd2b', 'THE LENSWRIGHT': 'd3b' };
 import { TEA_COMPLETE_STAGE } from '@/world/teaMachine';
 import { deathCauseLine, deathTitle } from '@/ui/deathCauses';
 import { runHeadline } from '@/game/runRules';
@@ -76,6 +79,8 @@ export class Narrator implements NarratorApi {
   private arrival: { text: string; timer: number } | null = null;
   private teaView = '';
   private sanctumWasOpen = false;
+  /** The Sanctum door last spoken for (the branching descent reads the chosen floor's line). */
+  private doorSpoken: string | null = null;
   private lastPreview = 0;
   private talking = false;
 
@@ -109,7 +114,14 @@ export class Narrator implements NarratorApi {
       on('playerRespawned', () => this.cutSource('death')),
       on('toast', ({ text }) => this.say([text], 'normal', 'toast', 2500)),
       // A boss's phase beat (THE CORE IS BARE, SHORTED): only callouts with a recording are said.
-      on('combatCallout', ({ text }) => this.say([text], 'normal', 'callout', 2000)),
+      on('combatCallout', ({ text }) => {
+        // The second doors' guardians have no boss cue of their own (they fight to
+        // the floor's hunted cue): their name rising over them is the moment.
+        const floor = GUARDIAN_NAMES[text];
+        const lore = floor ? FLOOR_LORE[floor] : undefined;
+        if (lore) this.later(700, () => this.say([lore.resident], 'high', 'boss', 5000));
+        else this.say([text], 'normal', 'callout', 2000);
+      }),
       on('objectiveChanged', ({ text }) => this.say([text], 'low', 'objective', 2500)),
     );
     const visibility = failSafe('Narrator visibility', () => { if (document.hidden) this.silence(true); });
@@ -236,9 +248,19 @@ export class Narrator implements NarratorApi {
   private watchSanctum(): void {
     const open = this.ctx.sanctum?.isOpen === true;
     if (open && !this.sanctumWasOpen) {
-      const next = this.ctx.levels.current?.def.nextLevelId;
+      this.doorSpoken = null;
+      const doors = nextDoors(this.ctx.levels.current?.def.id);
+      const next = doors[0] ?? this.ctx.levels.current?.def.nextLevelId;
       const lore = next ? FLOOR_LORE[next] : undefined;
-      if (lore) this.later(1200, () => this.say([lore.line], 'normal', 'sanctum', 15000, () => this.ctx.sanctum.isOpen));
+      // Two doors: the Docent names the choice; picking one reads its floor.
+      const line = doors.length > 1 ? TWO_DOORS_LINE : lore?.line;
+      if (line) this.later(1200, () => this.say([line], 'normal', 'sanctum', 15000, () => this.ctx.sanctum.isOpen));
+    }
+    const door = open ? this.ctx.sanctum?.chosenDoor ?? null : null;
+    if (door && door !== this.doorSpoken && nextDoors(this.ctx.levels.current?.def.id).length > 1) {
+      this.doorSpoken = door;
+      const lore = FLOOR_LORE[door];
+      if (lore) this.say([lore.line], 'normal', 'sanctum', 12000, () => this.ctx.sanctum.isOpen && this.ctx.sanctum.chosenDoor === door);
     }
     this.sanctumWasOpen = open;
   }

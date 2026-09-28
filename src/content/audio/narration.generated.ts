@@ -26,6 +26,10 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/91830607.mp3",
   seconds: 3.44
  },
+ "95396608": {
+  url: "audio/voice/95396608.mp3",
+  seconds: 1.68
+ },
  "95600347": {
   url: "audio/voice/95600347.mp3",
   seconds: 3.64
@@ -42,9 +46,17 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/0385d169.mp3",
   seconds: 7.28
  },
+ "ff09d45b": {
+  url: "audio/voice/ff09d45b.mp3",
+  seconds: 8.56
+ },
  "f038efe5": {
   url: "audio/voice/f038efe5.mp3",
   seconds: 8.32
+ },
+ "e19067bc": {
+  url: "audio/voice/e19067bc.mp3",
+  seconds: 7.36
  },
  "ba957668": {
   url: "audio/voice/ba957668.mp3",
@@ -54,13 +66,25 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/0c1c54c1.mp3",
   seconds: 8.48
  },
+ "ba269cb8": {
+  url: "audio/voice/ba269cb8.mp3",
+  seconds: 7.52
+ },
  "5e82323f": {
   url: "audio/voice/5e82323f.mp3",
   seconds: 7.84
  },
+ "a80701a0": {
+  url: "audio/voice/a80701a0.mp3",
+  seconds: 9.81
+ },
  "4832ad5f": {
   url: "audio/voice/4832ad5f.mp3",
   seconds: 6.69
+ },
+ "da6899db": {
+  url: "audio/voice/da6899db.mp3",
+  seconds: 8.72
  },
  "60a5e047": {
   url: "audio/voice/60a5e047.mp3",
@@ -72,6 +96,16 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   seconds: 4.03,
   captioned: true
  },
+ "283fffb9": {
+  url: "audio/voice/283fffb9.mp3",
+  seconds: 6.56,
+  captioned: true
+ },
+ "30ad4661": {
+  url: "audio/voice/30ad4661.mp3",
+  seconds: 5.52,
+  captioned: true
+ },
  "461853b2": {
   url: "audio/voice/461853b2.mp3",
   seconds: 2.45
@@ -80,9 +114,25 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/9c378255.mp3",
   seconds: 2.8
  },
+ "1b673a9a": {
+  url: "audio/voice/1b673a9a.mp3",
+  seconds: 2.56
+ },
+ "3188c436": {
+  url: "audio/voice/3188c436.mp3",
+  seconds: 1.66
+ },
  "2a03f631": {
   url: "audio/voice/2a03f631.mp3",
   seconds: 2.16
+ },
+ "a730d9f8": {
+  url: "audio/voice/a730d9f8.mp3",
+  seconds: 1.59
+ },
+ "b5c2b80a": {
+  url: "audio/voice/b5c2b80a.mp3",
+  seconds: 1.39
  },
  "d11f0fa0": {
   url: "audio/voice/d11f0fa0.mp3",
@@ -99,6 +149,14 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  "d440ddfa": {
   url: "audio/voice/d440ddfa.mp3",
   seconds: 1.2
+ },
+ "09178dd1": {
+  url: "audio/voice/09178dd1.mp3",
+  seconds: 1.52
+ },
+ "09c01b93": {
+  url: "audio/voice/09c01b93.mp3",
+  seconds: 0.72
  },
  "f46aa2aa": {
   url: "audio/voice/f46aa2aa.mp3",
@@ -380,6 +438,14 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/3709450e.mp3",
   seconds: 0.88
  },
+ "64ed073e": {
+  url: "audio/voice/64ed073e.mp3",
+  seconds: 3.51
+ },
+ "84e3210a": {
+  url: "audio/voice/84e3210a.mp3",
+  seconds: 4.88
+ },
  "5c4641dc": {
   url: "audio/voice/5c4641dc.mp3",
   seconds: 3.2
@@ -464,6 +530,26 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/3ca3110e.mp3",
   seconds: 4.18
  },
+ "021173e9": {
+  url: "audio/voice/021173e9.mp3",
+  seconds: 1.95
+ },
+ "d8053245": {
+  url: "audio/voice/d8053245.mp3",
+  seconds: 4.63
+ },
+ "6617b275": {
+  url: "audio/voice/6617b275.mp3",
+  seconds: 2.43
+ },
+ "3073211c": {
+  url: "audio/voice/3073211c.mp3",
+  seconds: 2.25
+ },
+ "f00f60f8": {
+  url: "audio/voice/f00f60f8.mp3",
+  seconds: 3.06
+ },
  "30486fc1": {
   url: "audio/voice/30486fc1.mp3",
   seconds: 3.19
@@ -540,9 +626,49 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/84b0b82c.mp3",
   seconds: 4.08
  },
- "021173e9": {
-  url: "audio/voice/021173e9.mp3",
-  seconds: 1.95
+ "7fabc5fa": {
+  url: "audio/voice/7fabc5fa.mp3",
+  seconds: 4.48
+ },
+ "8e2b1f78": {
+  url: "audio/voice/8e2b1f78.mp3",
+  seconds: 4
+ },
+ "33b09fa6": {
+  url: "audio/voice/33b09fa6.mp3",
+  seconds: 3.84
+ },
+ "924a46f3": {
+  url: "audio/voice/924a46f3.mp3",
+  seconds: 4
+ },
+ "7eeccf9f": {
+  url: "audio/voice/7eeccf9f.mp3",
+  seconds: 1.44
+ },
+ ceffefcf: {
+  url: "audio/voice/ceffefcf.mp3",
+  seconds: 3.75
+ },
+ "3583f334": {
+  url: "audio/voice/3583f334.mp3",
+  seconds: 2.83
+ },
+ "79121a01": {
+  url: "audio/voice/79121a01.mp3",
+  seconds: 4.96
+ },
+ "16723ff0": {
+  url: "audio/voice/16723ff0.mp3",
+  seconds: 3.52
+ },
+ "43bf54a3": {
+  url: "audio/voice/43bf54a3.mp3",
+  seconds: 4.08
+ },
+ "f4c28c2f": {
+  url: "audio/voice/f4c28c2f.mp3",
+  seconds: 4.4
  },
  "b4d1c838": {
   url: "audio/voice/b4d1c838.mp3",
@@ -692,6 +818,14 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/344e1388.mp3",
   seconds: 2.16
  },
+ "69bd6bac": {
+  url: "audio/voice/69bd6bac.mp3",
+  seconds: 1.84
+ },
+ "5e0c7b34": {
+  url: "audio/voice/5e0c7b34.mp3",
+  seconds: 2.4
+ },
  "8b69f07b": {
   url: "audio/voice/8b69f07b.mp3",
   seconds: 2.64
@@ -699,6 +833,14 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  "1a038953": {
   url: "audio/voice/1a038953.mp3",
   seconds: 2.64
+ },
+ "79c2cc9d": {
+  url: "audio/voice/79c2cc9d.mp3",
+  seconds: 2.04
+ },
+ "96183a07": {
+  url: "audio/voice/96183a07.mp3",
+  seconds: 2.48
  },
  "51bdf1b7": {
   url: "audio/voice/51bdf1b7.mp3",
@@ -1393,6 +1535,18 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "docent"
  },
  {
+  key: "ff09d45b",
+  text: "The Cold Store. Brine in the gutters, frost on the pipes. Nothing here thaws on its own.",
+  say: "The Cold Store. Brine in the gutters, frost on the pipes. Nothing here thaws on its own.",
+  group: "Floor arrivals",
+  seconds: 8.56,
+  urls: [
+   "audio/voice/ff09d45b.mp3",
+   "audio/voice/ff09d45b-2.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
   key: "f038efe5",
   text: "The Drowned Cisterns. The veins run cold. Something large keeps them company.",
   say: "The Drowned Cisterns. The veins run cold. Something large keeps them company.",
@@ -1401,6 +1555,18 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   urls: [
    "audio/voice/f038efe5.mp3",
    "audio/voice/f038efe5-2.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "e19067bc",
+  text: "The Glass Galleries. Every pane here is a lens. Mind where the light goes.",
+  say: "The Glass Galleries. Every pane here is a lens. Mind where the light goes.",
+  group: "Floor arrivals",
+  seconds: 7.36,
+  urls: [
+   "audio/voice/e19067bc.mp3",
+   "audio/voice/e19067bc-2.mp3"
   ],
   speaker: "docent"
  },
@@ -1428,6 +1594,17 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "docent"
  },
  {
+  key: "ba269cb8",
+  text: "The refrigeration wing, where the Guild cooled the Works’ temper. The ice has been keeping things ever since.",
+  say: "The refrigeration wing, where the Guild cooled the Works’ temper. The ice has been keeping things ever since.",
+  group: "Sanctum",
+  seconds: 7.52,
+  urls: [
+   "audio/voice/ba269cb8.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
   key: "5e82323f",
   text: "The veins. Several hundred tons of water and one very large tenant who never pays rent.",
   say: "The veins. Several hundred tons of water and one very large tenant who never pays rent.",
@@ -1439,6 +1616,17 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "docent"
  },
  {
+  key: "a80701a0",
+  text: "The lens-grinding halls, where the Guild made the Works its eyes. The light down here is always on its way somewhere else.",
+  say: "The lens-grinding halls, where the Guild made the Works its eyes. The light down here is always on its way somewhere else.",
+  group: "Sanctum",
+  seconds: 9.81,
+  urls: [
+   "audio/voice/a80701a0.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
   key: "4832ad5f",
   text: "The heart. Hot, loud, and under the impression that it is a volcano.",
   say: "The heart. Hot, loud, and under the impression that it is a volcano.",
@@ -1446,6 +1634,17 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 6.69,
   urls: [
    "audio/voice/4832ad5f.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "da6899db",
+  text: "Two stairs go down from here. The old ones will not say which is kinder, which is a sort of answer.",
+  say: "Two stairs go down from here. The old ones will not say which is kinder, which is a sort of answer.",
+  group: "Sanctum",
+  seconds: 8.72,
+  urls: [
+   "audio/voice/da6899db.mp3"
   ],
   speaker: "docent"
  },
@@ -1472,6 +1671,28 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "docent"
  },
  {
+  key: "283fffb9",
+  text: "The Rime Warden. It kept its watch so long it froze to the post.",
+  say: "The Rime Warden. It kept its watch so long it froze to the post.",
+  group: "Bosses · rimewarden",
+  seconds: 6.56,
+  urls: [
+   "audio/voice/283fffb9.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "30ad4661",
+  text: "The Lenswright. It grinds its own light, and aims it well.",
+  say: "The Lenswright. It grinds its own light, and aims it well.",
+  group: "Bosses · lenswright",
+  seconds: 5.52,
+  urls: [
+   "audio/voice/30ad4661.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
   key: "461853b2",
   text: "Drain the Sunken Leviathan.",
   say: "Drain the Sunken Leviathan.",
@@ -1494,6 +1715,28 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "docent"
  },
  {
+  key: "1b673a9a",
+  text: "Thaw or shatter the Rime Warden.",
+  say: "Thaw or shatter the Rime Warden.",
+  group: "Bosses",
+  seconds: 2.56,
+  urls: [
+   "audio/voice/1b673a9a.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "3188c436",
+  text: "Blind the Lenswright.",
+  say: "Blind the Lenswright.",
+  group: "Bosses",
+  seconds: 1.66,
+  urls: [
+   "audio/voice/3188c436.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
   key: "2a03f631",
   text: "THE SUMP FALLS STILL",
   say: "The sump falls still.",
@@ -1501,6 +1744,28 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 2.16,
   urls: [
    "audio/voice/2a03f631.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "a730d9f8",
+  text: "THE GALLERIES GO DARK",
+  say: "The galleries go dark.",
+  group: "Bosses",
+  seconds: 1.59,
+  urls: [
+   "audio/voice/a730d9f8.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "b5c2b80a",
+  text: "THE WARDEN STANDS DOWN",
+  say: "The warden stands down.",
+  group: "Bosses",
+  seconds: 1.39,
+  urls: [
+   "audio/voice/b5c2b80a.mp3"
   ],
   speaker: "docent"
  },
@@ -1545,6 +1810,39 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 1.2,
   urls: [
    "audio/voice/d440ddfa.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "95396608",
+  text: "THE RIME IS OFF",
+  say: "The rime is off.",
+  group: "Bosses · phases",
+  seconds: 1.68,
+  urls: [
+   "audio/voice/95396608.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "09178dd1",
+  text: "ITS OWN LIGHT",
+  say: "Its own light.",
+  group: "Bosses · phases",
+  seconds: 1.52,
+  urls: [
+   "audio/voice/09178dd1.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "09c01b93",
+  text: "DAZZLED",
+  say: "Dazzled.",
+  group: "Bosses · phases",
+  seconds: 0.72,
+  urls: [
+   "audio/voice/09c01b93.mp3"
   ],
   speaker: "docent"
  },
@@ -2330,6 +2628,28 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "docent"
  },
  {
+  key: "64ed073e",
+  text: "The brine never froze. You did.",
+  say: "The brine never froze. You did.",
+  group: "Death · causes",
+  seconds: 3.51,
+  urls: [
+   "audio/voice/64ed073e.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "84e3210a",
+  text: "Salt water below freezing, and you in it up to the knees.",
+  say: "Salt water below freezing, and you in it up to the knees.",
+  group: "Death · causes",
+  seconds: 4.88,
+  urls: [
+   "audio/voice/84e3210a.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
   key: "5c4641dc",
   text: "Frozen stiff by a hostile frostbolt.",
   say: "Frozen stiff by a hostile frostbolt.",
@@ -2561,6 +2881,61 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "docent"
  },
  {
+  key: "021173e9",
+  text: "You were struck down.",
+  say: "You were struck down.",
+  group: "Death · titles",
+  seconds: 1.95,
+  urls: [
+   "audio/voice/021173e9.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "d8053245",
+  text: "You stood too close to the Lenswright. It flashed you away.",
+  say: "You stood too close to the Lenswright. It flashed you away.",
+  group: "Death · causes",
+  seconds: 4.63,
+  urls: [
+   "audio/voice/d8053245.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "6617b275",
+  text: "A lens does not like to be crowded.",
+  say: "A lens does not like to be crowded.",
+  group: "Death · causes",
+  seconds: 2.43,
+  urls: [
+   "audio/voice/6617b275.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "3073211c",
+  text: "The Lenswright looked at you properly.",
+  say: "The Lenswright looked at you properly.",
+  group: "Death · causes",
+  seconds: 2.25,
+  urls: [
+   "audio/voice/3073211c.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "f00f60f8",
+  text: "Burned through by a lens that never blinked.",
+  say: "Burned through by a lens that never blinked.",
+  group: "Death · causes",
+  seconds: 3.06,
+  urls: [
+   "audio/voice/f00f60f8.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
   key: "30486fc1",
   text: "The Leviathan surfaced for a snack.",
   say: "[dryly] The Leviathan surfaced for a snack.",
@@ -2781,13 +3156,123 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "docent"
  },
  {
-  key: "021173e9",
-  text: "You were struck down.",
-  say: "You were struck down.",
-  group: "Death · titles",
-  seconds: 1.95,
+  key: "7fabc5fa",
+  text: "The Rime Warden breathed on you. You kept.",
+  say: "The Rime Warden breathed on you. You kept.",
+  group: "Death · causes",
+  seconds: 4.48,
   urls: [
-   "audio/voice/021173e9.mp3"
+   "audio/voice/7fabc5fa.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "8e2b1f78",
+  text: "Frozen where you stood by a very old draught.",
+  say: "Frozen where you stood by a very old draught.",
+  group: "Death · causes",
+  seconds: 4,
+  urls: [
+   "audio/voice/8e2b1f78.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "33b09fa6",
+  text: "Hailed on by the Rime Warden, with its own shoulders.",
+  say: "Hailed on by the Rime Warden, with its own shoulders.",
+  group: "Death · causes",
+  seconds: 3.84,
+  urls: [
+   "audio/voice/33b09fa6.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "924a46f3",
+  text: "The Warden threw its armour at you. It had plenty.",
+  say: "The Warden threw its armour at you. It had plenty.",
+  group: "Death · causes",
+  seconds: 4,
+  urls: [
+   "audio/voice/924a46f3.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "7eeccf9f",
+  text: "You were impaled.",
+  say: "You were impaled.",
+  group: "Death · titles",
+  seconds: 1.44,
+  urls: [
+   "audio/voice/7eeccf9f.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "ceffefcf",
+  text: "The Warden roared, and the ceiling let go of its icicles.",
+  say: "The Warden roared, and the ceiling let go of its icicles.",
+  group: "Death · causes",
+  seconds: 3.75,
+  urls: [
+   "audio/voice/ceffefcf.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "3583f334",
+  text: "An icicle finally found something to point at.",
+  say: "An icicle finally found something to point at.",
+  group: "Death · causes",
+  seconds: 2.83,
+  urls: [
+   "audio/voice/3583f334.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "79121a01",
+  text: "The Rime Warden brought its fists down, and the floor came up in ice.",
+  say: "The Rime Warden brought its fists down, and the floor came up in ice.",
+  group: "Death · causes",
+  seconds: 4.96,
+  urls: [
+   "audio/voice/79121a01.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "16723ff0",
+  text: "Speared by a floor that was flat a moment ago.",
+  say: "Speared by a floor that was flat a moment ago.",
+  group: "Death · causes",
+  seconds: 3.52,
+  urls: [
+   "audio/voice/16723ff0.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "43bf54a3",
+  text: "A rime wave ran along the floor. You were standing on it.",
+  say: "A rime wave ran along the floor. You were standing on it.",
+  group: "Death · causes",
+  seconds: 4.08,
+  urls: [
+   "audio/voice/43bf54a3.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "f4c28c2f",
+  text: "The Warden stamped, and the frost came for your ankles.",
+  say: "The Warden stamped, and the frost came for your ankles.",
+  group: "Death · causes",
+  seconds: 4.4,
+  urls: [
+   "audio/voice/f4c28c2f.mp3"
   ],
   speaker: "docent"
  },
@@ -3201,6 +3686,28 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "docent"
  },
  {
+  key: "69bd6bac",
+  text: "You fell in the Cold Store.",
+  say: "You fell in the Cold Store.",
+  group: "Ledger",
+  seconds: 1.84,
+  urls: [
+   "audio/voice/69bd6bac.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "5e0c7b34",
+  text: "You left the Cold Store early.",
+  say: "You left the Cold Store early.",
+  group: "Ledger",
+  seconds: 2.4,
+  urls: [
+   "audio/voice/5e0c7b34.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
   key: "8b69f07b",
   text: "You fell in the Drowned Cisterns.",
   say: "You fell in the Drowned Cisterns.",
@@ -3219,6 +3726,28 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 2.64,
   urls: [
    "audio/voice/1a038953.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "79c2cc9d",
+  text: "You fell in the Glass Galleries.",
+  say: "You fell in the Glass Galleries.",
+  group: "Ledger",
+  seconds: 2.04,
+  urls: [
+   "audio/voice/79c2cc9d.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "96183a07",
+  text: "You left the Glass Galleries early.",
+  say: "You left the Glass Galleries early.",
+  group: "Ledger",
+  seconds: 2.48,
+  urls: [
+   "audio/voice/96183a07.mp3"
   ],
   speaker: "docent"
  },

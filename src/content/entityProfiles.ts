@@ -286,6 +286,56 @@ export const ENEMY_ENTITY_PROFILES: Record<EnemyKind, EntityProfile> = {
       ],
     },
   },
+  rimewarden: {
+    description: 'The Rime Warden. The rime has to come off.',
+    traits: {
+      behaviors: [
+        'Wears six plates of rime; blows on intact rime glance for a third.',
+        'Slams a ring of ice spikes, stomps rime waves along the floor, and throws hail.',
+        'From the second phase it inhales, then breathes a freezing cone; its roar drops the icicles.',
+      ],
+      emotions: [
+        'A night-watchman frozen to its post: patient, stiff, dutiful.',
+        'Roused rather than enraged.',
+        'Kneels, cracking, when a plate goes.',
+      ],
+      strengths: [
+        'Rime armour turns chip damage into glances.',
+        'Controls the floor with spikes and waves, and the air with hail and breath.',
+        'Its cold freezes the water in its hall — and the player.',
+      ],
+      weaknesses: [
+        'Heat on its body thaws a plate at a time (the braziers are there for a reason).',
+        'A heavy blow shatters a plate; frozen, any honest hit does.',
+        'Brine never freezes: the gutters are the one safe water.',
+      ],
+    },
+  },
+  lenswright: {
+    description: 'The Lenswright. Meet its eye.',
+    traits: {
+      behaviors: [
+        'Hangs in the air of its gallery and burns what it looks at with a traced lance of light.',
+        'Every lance is told: the iris opens, an aim line walks onto you, locks, and fires.',
+        'Banks the lance off silvered panels to reach behind cover; sweeps from phase two, splits it in three from phase three.',
+      ],
+      emotions: [
+        'A connoisseur: unhurried, exacting.',
+        'Offended rather than angry.',
+        'Blinded and ringing when it falls.',
+      ],
+      strengths: [
+        'The brass housing glances blows while the iris is shut.',
+        'Reaches round corners off every mirror in the gallery.',
+        'Flares away anything that crowds it.',
+      ],
+      weaknesses: [
+        'It meets a straight stare, but bank the wand beam off a mirror into its open iris and it is dazzled out of the air.',
+        'Its own lance, sent back off a mirror, burns it.',
+        'Blows land whole while the iris is open, and double while it lies dazzled.',
+      ],
+    },
+  },
   eggs: {
     description: 'A clutch. It is not dormant.',
     traits: {

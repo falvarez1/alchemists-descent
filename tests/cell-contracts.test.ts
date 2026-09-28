@@ -121,8 +121,10 @@ describe('cell ABI contracts', () => {
       Leaf: 39,
       Trunk: 40,
       Seed: 41,
+      Brine: 42,
+      Mirror: 43,
     });
-    expect(CELL_COUNT).toBe(42);
+    expect(CELL_COUNT).toBe(44);
     expect(Math.max(...Object.values(Cell))).toBeLessThan(128);
   });
 
@@ -170,6 +172,8 @@ describe('cell ABI contracts', () => {
       Cell.Leaf,
       Cell.Trunk,
       Cell.Seed,
+      Cell.Brine,
+      Cell.Mirror,
     ];
     const unique = new Set(routed);
     const missing = Array.from({ length: CELL_COUNT }, (_, id) => id).filter((id) => !unique.has(id as Cell));
@@ -182,6 +186,7 @@ describe('cell ABI contracts', () => {
   it('keeps blood in the conductor set for gore-lightning combos', () => {
     expect(isConductor(Cell.Water)).toBe(true);
     expect(isConductor(Cell.Blood)).toBe(true);
+    expect(isConductor(Cell.Brine)).toBe(true);
     expect(isConductor(Cell.Acid)).toBe(false);
     expect(isConductor(Cell.Toxic)).toBe(false);
   });

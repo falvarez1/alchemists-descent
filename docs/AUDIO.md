@@ -5,7 +5,7 @@ from, how it is mixed and loaded, and how to change it. Music and narration
 are a separate workstream (their own buses and director); this document is
 the sound effects and ambience.
 
-- **408 cues, 788 takes, 6.7 MB** of mastered MP3 (`src/assets/audio/`),
+- **447 cues, 838 takes, 7.7 MB** of mastered MP3 (`src/assets/audio/`),
   generated with ElevenLabs text-to-sound and mastered offline.
 - **Nothing is fetched before the first gesture.** Then the core packs load in
   about two seconds; each floor's creatures and bed load with the floor; the

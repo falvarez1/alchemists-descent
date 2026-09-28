@@ -10,7 +10,7 @@ import { isOrganism, SESSILE_KINDS, stepOrganism } from '@/game/organisms';
 import { burstPuffer } from '@/game/organisms/puffer';
 import { emberDeath, shoveCrawler } from '@/game/organisms/crawler';
 import { driftDeadFish, glowLure, mothLight, schoolFish } from '@/game/organisms/ambient';
-import { GLOW, LEECH, PUFF, PUFF_RIPE, SNAP, SNARE_PREY, critterKey } from '@/game/organisms/types';
+import { CRAWLER_KINDS, GLOW, LEECH, PUFF, PUFF_RIPE, SNAP, SNARE_PREY, critterKey } from '@/game/organisms/types';
 
 /**
  * Wave F "The Caves Breathe": the critter layer + ambient cave biology.
@@ -29,6 +29,7 @@ const CAPS: Record<CritterKind, number> = {
   moth: 6, firefly: 8, fish: 6, beetle: 4, fly: 5,
   // Organisms are placed by worldgen (game/organisms/placement), never auto-spawned.
   glowworm: 0, puffer: 0, snapjaw: 0, isopod: 0, leech: 0, emberbeetle: 0, ashmoth: 0,
+  frostmite: 0, snowmoth: 0, brineskater: 0, glassbeetle: 0, prismmoth: 0, lensmite: 0,
 };
 
 /** Cells that read as "glow" to a moth (sampled, not the light field). */
@@ -184,7 +185,7 @@ export class Critters implements CrittersApi {
     if (c.kind === 'puffer') { if ((c.extent ?? 0) >= PUFF_RIPE && c.state !== PUFF.SPENT) burstPuffer(ctx, c); }
     else if (c.kind === 'glowworm') { if (c.state !== GLOW.RETRACT) { c.state = GLOW.RETRACT; c.stateT = 0; } }
     else if (c.kind === 'snapjaw') { if (c.state === SNAP.OPEN || c.state === SNAP.REOPEN) { c.state = SNAP.TELL; c.stateT = SNAP_TELL_SKIP; } }
-    else if (c.kind === 'isopod' || c.kind === 'emberbeetle') shoveCrawler(ctx, c, fx, fy - Math.abs(fx) * 0.3);
+    else if (CRAWLER_KINDS.has(c.kind)) shoveCrawler(ctx, c, fx, fy - Math.abs(fx) * 0.3);
     else if (c.kind === 'leech' && c.state === LEECH.LATCHED) { c.state = LEECH.BEACHED; c.stateT = 0; c.vx = fx; c.vy = fy; }
     else { c.vx += fx; c.vy += fy; c.startle = Math.max(c.startle ?? 0, 18); }
   }

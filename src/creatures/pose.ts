@@ -20,7 +20,7 @@ export function tickCreaturePose(ctx: Ctx, e: Enemy): void {
       else if ((frame + Math.floor(e.bobPhase * 100)) % 147 === 0) e.blink = 6;
     }
   }
-  if (e.kind === 'golem' || e.kind === 'colossus' || e.kind === 'leviathan') {
+  if (e.kind === 'golem' || e.kind === 'colossus' || e.kind === 'rimewarden' || e.kind === 'leviathan') {
     const x = e.x + e.fx;
     const delta = x - (e._px ?? x);
     e._px = x;

@@ -38,8 +38,13 @@ export const GOLEM: BruteSpec = { scale: 1, hip: 8, shoulder: 12.8, body: 9.5, l
 /** The Kiln Colossus: the golem's plan at 2.3x — a head above the alchemist's reach, shoulders like a kiln roof. */
 export const COLOSSUS: BruteSpec = { scale: 2.3, hip: 18, shoulder: 29, body: 21, legU: 10.2, legL: 10.2, armU: 14, armL: 16 };
 
+/** The Rime Warden (the Cold Store's guardian): the same plan at 1.75x — a head taller than the alchemist. */
+export const RIME: BruteSpec = { scale: 1.75, hip: 14, shoulder: 22.4, body: 16.6, legU: 7.9, legL: 7.9, armU: 10.8, armL: 12.2 };
+/** The Rime Warden's thaw clock (creatures/bosses/rimeWarden RIME.THAW_TICKS): its heat reads 0..1 of it. */
+const RIME_THAW_TICKS = 80;
+
 export function bruteSpec(e: Enemy): BruteSpec {
-  return e.kind === 'colossus' ? COLOSSUS : GOLEM;
+  return e.kind === 'colossus' ? COLOSSUS : e.kind === 'rimewarden' ? RIME : GOLEM;
 }
 
 export function buildBrute(e: Enemy): CreatureRig {
@@ -99,7 +104,9 @@ export function stepBrute(ctx: Ctx, e: Enemy, rig: CreatureRig): void {
     const kneelT = m === 'quench' ? (t < 140 ? 1 : 0) : m === 'dying' ? Math.min(1, t / 70) : 0;
     F[BR.kneel] += (kneelT - F[BR.kneel]) * (kneelT > F[BR.kneel] ? 0.12 : 0.05);
     F[BR.overload] = m === 'dying' ? Math.max(0, Math.min(1, (t - COL_POSE.DEATH_OVERLOAD) / 60)) : 0;
-    F[BR.heat] += (boss.heat * (0.85 + Math.sin(tick * 0.09 + e.bobPhase) * 0.15) - F[BR.heat]) * 0.08;
+    // The Warden's heat is its thaw clock (a plate melts at RIME_THAW_TICKS), read 0..1.
+    const heat = e.kind === 'rimewarden' ? boss.heat / RIME_THAW_TICKS : boss.heat * (0.85 + Math.sin(tick * 0.09 + e.bobPhase) * 0.15);
+    F[BR.heat] += (heat - F[BR.heat]) * 0.08;
   } else {
     if (e.attackCd > F[BR.lastCd] + 30) F[BR.throwT] = 26;
     if (F[BR.throwT] > 0) F[BR.throwT]--;

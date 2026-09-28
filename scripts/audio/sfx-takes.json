@@ -3734,5 +3734,332 @@
   ],
   "rejected": [],
   "failed": []
+ },
+ "creature.rimewarden.idle": {
+  "hash": "a64daa89a0a1",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.alert": {
+  "hash": "95504be620b4",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.step": {
+  "hash": "d2c62217ab01",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.hurt": {
+  "hash": "2b2d2b6c963f",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.death": {
+  "hash": "cf30823c5653",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.glance": {
+  "hash": "5b3419a3aa94",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.creak": {
+  "hash": "364b6f9f7364",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.slam": {
+  "hash": "c7054347afc8",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.stomp": {
+  "hash": "01dacfc4c75f",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.hail": {
+  "hash": "81f858285857",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.inhale": {
+  "hash": "e2881ef15165",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.breath": {
+  "hash": "3b28f8d2105d",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.roar": {
+  "hash": "7c0cbf715de0",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.shatter": {
+  "hash": "5f69049f4f01",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.rimewarden.thaw": {
+  "hash": "2709f1db410e",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "organism.frostmite.curl": {
+  "hash": "93d658b7b003",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "organism.frostmite.eat": {
+  "hash": "e2dc2854e0bf",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "organism.snowmoth.flare": {
+  "hash": "18f414d8a696",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "organism.brineskater.scatter": {
+  "hash": "0dfafbb6f576",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "organism.glassbeetle.curl": {
+  "hash": "dee397abd29c",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "organism.prismmoth.flare": {
+  "hash": "b3118c61942d",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "organism.lensmite.eat": {
+  "hash": "7bc715ffb16e",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "organism.lensmite.curl": {
+  "hash": "c46e05d75581",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.idle": {
+  "hash": "09bd8ed24ca2",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.alert": {
+  "hash": "e85e3d251028",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.hurt": {
+  "hash": "0d7813f79d61",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.death": {
+  "hash": "e1e4a5c1401b",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.glance": {
+  "hash": "93de320070d8",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.iris": {
+  "hash": "98545a5cb107",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.lock": {
+  "hash": "048321700b54",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.lance": {
+  "hash": "81ed1547a657",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.dazzle": {
+  "hash": "470a54a3188e",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.fall": {
+  "hash": "e92d9650607a",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.flare": {
+  "hash": "95e4951c3ec8",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.roar": {
+  "hash": "971cae1054a6",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "ui.door.choose": {
+  "hash": "9e7b5a0827ba",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "mat.brine.fizz": {
+  "hash": "5c935ec17040",
+  "variants": [
+   3,
+   4
+  ],
+  "rejected": [],
+  "failed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "amb.coldstore": {
+  "hash": "a876ec7c0592",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "amb.galleries": {
+  "hash": "50a80ad2942f",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
  }
 }

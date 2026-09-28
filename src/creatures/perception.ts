@@ -18,7 +18,7 @@ export interface PerceivedPlayer {
  * and its eye is not at its knees (a 34-cell Colossus "seeing" from 6 cells up
  * lost the alchemist behind every lip of the kiln floor). Cells above the feet.
  */
-const BOSS_EYE_LIFT: Partial<Record<Enemy['kind'], number>> = { colossus: 28, leviathan: 8 };
+const BOSS_EYE_LIFT: Partial<Record<Enemy['kind'], number>> = { colossus: 28, leviathan: 8, rimewarden: 20, lenswright: 11 };
 
 /** A visible alchemist closer than this raises irritation toward a hunt. */
 export const NOTICE_ESCALATE_CELLS = 130;

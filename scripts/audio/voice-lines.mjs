@@ -26,8 +26,8 @@ async function loadGameModules() {
   const entry = `
 export { GAME_TAGLINE } from '@/config/brand';
 export { FLOOR_LOOKS } from '@/config/floorLooks';
-export { LEVELS, CAMPAIGN_FLOORS, floorDisplayName } from '@/config/worldgraph';
-export { FLOOR_LORE } from '@/content/floorLore';
+export { LEVELS, CAMPAIGN_FLOORS, CAMPAIGN_LEVELS, floorDisplayName } from '@/config/worldgraph';
+export { FLOOR_LORE, TWO_DOORS_LINE } from '@/content/floorLore';
 export { knownDeathCauseSources, deathTitle, deathCauseLine } from '@/ui/deathCauses';
 export { runHeadline, buildRunSummary, VICTORY_EPITAPH } from '@/game/runRules';
 export { KIT_DEFS, KIT_ORDER, DEFAULT_KIT } from '@/content/kits';
@@ -219,23 +219,26 @@ export async function buildCatalog() {
   // The title card on the entrance.
   add(g.GAME_TAGLINE, 'Title', { takes: 2 });
 
-  // Arrivals: the floor's name and its epigraph, as the title card shows them.
-  for (const id of g.CAMPAIGN_FLOORS) {
+  // Arrivals: the floor's name and its epigraph, as the title card shows them —
+  // every door of every floor (wave 3: the Cold Store, the Glass Galleries).
+  for (const id of g.CAMPAIGN_LEVELS) {
     const look = g.FLOOR_LOOKS[g.LEVELS[id].biome];
     add(g.arrivalLine(g.floorDisplayName(id), look.epigraph), 'Floor arrivals', { takes: 2 });
   }
 
-  // The Sanctum's look at the floor below (floor 1 is never "below").
-  for (const id of g.CAMPAIGN_FLOORS.slice(1)) add(g.FLOOR_LORE[id].line, 'Sanctum');
+  // The Sanctum's look at the floor below (floor 1 is never "below"), every door,
+  // and what the Docent says when the floor below has two.
+  for (const id of g.CAMPAIGN_LEVELS) if (g.LEVELS[id].depth > 1) add(g.FLOOR_LORE[id].line, 'Sanctum');
+  add(g.TWO_DOORS_LINE, 'Sanctum');
 
   // Boss name beats: the resident line as the boss wakes (no on-screen text, so captioned),
   // the boss objective, and the toast each one leaves behind.
-  for (const [id, boss] of [['d3', 'leviathan'], ['d4', 'colossus']]) add(g.FLOOR_LORE[id].resident, `Bosses · ${boss}`, { captioned: true });
+  for (const [id, boss] of [['d3', 'leviathan'], ['d4', 'colossus'], ['d2b', 'rimewarden'], ['d3b', 'lenswright']]) add(g.FLOOR_LORE[id].resident, `Bosses · ${boss}`, { captioned: true });
   const levels = await parse('game/Levels.ts');
   walk(member(levels, 'bossObjective'), (n) => { if (ts.isReturnStatement(n) && literal(n.expression)) add(literal(n.expression), 'Bosses'); });
-  for (const t of toasts(await parse('entities/Enemies.ts'))) if (t.text && /SUMP|KILN/.test(t.text)) add(t.text, 'Bosses');
+  for (const t of toasts(await parse('entities/Enemies.ts'))) if (t.text && /SUMP|KILN|WARDEN|GALLERIES/.test(t.text)) add(t.text, 'Bosses');
   // A boss's phase beats, as the callouts over its body name them (the armour bursts, the pool shorts, the kiln cracks).
-  for (const rel of ['creatures/bosses/colossus.ts', 'creatures/bosses/leviathan.ts', 'entities/kilnQuench.ts']) {
+  for (const rel of ['creatures/bosses/colossus.ts', 'creatures/bosses/leviathan.ts', 'entities/kilnQuench.ts', 'creatures/bosses/rimeWarden.ts', 'creatures/bosses/lenswright.ts']) {
     for (const text of callouts(await parse(rel))) add(text, 'Bosses · phases');
   }
 
@@ -275,7 +278,7 @@ export async function buildCatalog() {
     floorsTotal: g.CAMPAIGN_FLOORS.length, timeMs: 0, kills: 0, alchemicalKills: 0, bestChain: 0, deaths: 0, gold: 0, cardsFound: 0, ...extra });
   add(g.runHeadline({ outcome: 'victory', floorName: g.floorDisplayName('d4') }), 'Ledger', { takes: 2 });
   add(g.VICTORY_EPITAPH, 'Ledger', { takes: 2 });
-  for (const id of g.CAMPAIGN_FLOORS) {
+  for (const id of g.CAMPAIGN_LEVELS) {
     add(g.runHeadline({ outcome: 'fallen', floorName: g.floorDisplayName(id) }), 'Ledger');
     add(g.runHeadline({ outcome: 'abandoned', floorName: g.floorDisplayName(id) }), 'Ledger');
   }

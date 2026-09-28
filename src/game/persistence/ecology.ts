@@ -12,6 +12,7 @@ const finite = (value: unknown, fallback: number, min: number, max: number): num
 const FAUNA_KINDS: ReadonlySet<string> = new Set<CritterKind>([
   'moth', 'firefly', 'fish', 'beetle', 'fly',
   'glowworm', 'puffer', 'snapjaw', 'isopod', 'leech', 'emberbeetle', 'ashmoth',
+  'frostmite', 'snowmoth', 'brineskater', 'glassbeetle', 'prismmoth', 'lensmite',
 ]);
 
 const optional = (value: unknown, min: number, max: number): number | undefined =>

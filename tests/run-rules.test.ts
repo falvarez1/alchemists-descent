@@ -210,7 +210,8 @@ describe('four floors', () => {
     expect(LEVELS.d3.boss).toBe('leviathan');
     expect(LEVELS.d4.boss).toBe('colossus');
     expect(LEVELS.d4.nextLevelId).toBeNull();
-    expect(Object.values(LEVELS).filter((def) => def.boss).map((def) => def.id)).toEqual(['d3', 'd4']);
+    // The second doors carry their own guardians (the branching descent).
+    expect(Object.values(LEVELS).filter((def) => def.boss).map((def) => def.id)).toEqual(['d3', 'd4', 'd2b', 'd3b']);
     expect(LEVELS.vault).toBeUndefined();
     expect(LEVELS.d5).toBeUndefined();
   });
