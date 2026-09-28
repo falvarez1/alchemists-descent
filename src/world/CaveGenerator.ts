@@ -56,6 +56,8 @@ import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
 import { placeEncounterLairs } from '@/world/encounterLairs';
 import { placeLightPuzzles, type LightPuzzleOutput } from '@/world/lightPuzzles';
+import { dressColdStore } from '@/world/coldStore';
+import { placeColdStorePuzzles, type ColdStorePuzzleOutput } from '@/world/coldStorePuzzles';
 import { stampSecrets } from '@/world/secrets';
 import { computeFits, reachableMask, wizardMask } from '@/world/validate';
 import { placeStructures } from '@/world/structures';
@@ -1173,6 +1175,23 @@ export class WorldGen implements WorldGenApi {
       fits.set(computeFits(ctx.world));
     }
     stage('light-puzzles');
+    // 8b.8a) THE SECOND DOORS' PUZZLE ROOMS (wave 3): the Cold Store's Frozen
+    // Fall and Ice Vault. Their own forked stream and the shared ledger, before
+    // the flora takes its ground; their tanks re-assert after the rescues.
+    const setPieceRepairs: Array<() => void> = [];
+    if (def.biome === 'frozen') {
+      const cold: ColdStorePuzzleOutput = { pickups: [], placed: [], repairs: [] };
+      placeColdStorePuzzles(ctx, new Rng(hashSeed(seed >>> 0, 'cold-store-puzzles')), graph, ledger,
+        { spawn, wellX, avoid: lightAvoid }, fits, cold);
+      pickups.push(...cold.pickups);
+      setPieceRepairs.push(...cold.repairs);
+      if (cold.placed.length > 0) {
+        placedPrefabs = placedPrefabs.concat(cold.placed);
+        graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+        fits.set(computeFits(ctx.world));
+      }
+      stage('cold-store-puzzles');
+    }
     // 8b.8) FLORA (wave 2): the floor's puzzle rooms (fell a tree across a
     // chasm or lava moat, water a thirsty seed into a root ladder, burn a
     // bramble thicket) carved into rock and joined to the main path, then the
@@ -1188,6 +1207,16 @@ export class WorldGen implements WorldGenApi {
       fits.set(computeFits(ctx.world));
     }
     stage('flora');
+    // 8b.9) THE SECOND DOORS' DRESSING (wave 3): the Cold Store's icicles,
+    // frozen falls, snow, frosted pipes and brine gutters — written only into
+    // open cells a body never needs, after the plants have taken their ground.
+    // Its own forked stream; no other floor draws from it.
+    if (def.biome === 'frozen') {
+      const dressed = dressColdStore(ctx.world, new Rng(hashSeed(seed >>> 0, 'cold-store-dressing')), ledger,
+        { spawn, wellX, avoid: lightAvoid });
+      if (shouldLogDevDiagnostics() && dressed.icicles < 60) console.warn(`[cold-store] only ${dressed.icicles} icicles on ${def.id}`);
+      stage('cold-store-dressing');
+    }
 
     // (A GLOBAL powder settle was tried here and reverted: suspended powder
     // PLUGS are a deliberate authored primitive — the spell lab's dig-station
@@ -1237,6 +1266,8 @@ export class WorldGen implements WorldGenApi {
     // FLORA puzzles re-assert what the rescue tunnels took (a tree, a cistern)
     // — writing only into open cells, so no route the rescue opened is closed.
     flora.repair();
+    // The second doors' tanks and cisterns (casing, seal, liquid) likewise.
+    for (const repair of setPieceRepairs) repair();
     stage('final-gauge-rescue');
 
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.

@@ -632,7 +632,10 @@ export interface Enemy {
 
 export type CritterKind = 'moth' | 'firefly' | 'fish' | 'beetle' | 'fly'
   // Breathing Works wave 2 (WS-N): organisms with behaviour (game/organisms/*).
-  | 'glowworm' | 'puffer' | 'snapjaw' | 'isopod' | 'leech' | 'emberbeetle' | 'ashmoth';
+  | 'glowworm' | 'puffer' | 'snapjaw' | 'isopod' | 'leech' | 'emberbeetle' | 'ashmoth'
+  // Wave 3, the second doors: the Cold Store's frost mites, snow moths and
+  // brine skaters; the Glass Galleries' glass beetles, prism moths and lens mites.
+  | 'frostmite' | 'snowmoth' | 'brineskater' | 'glassbeetle' | 'prismmoth' | 'lensmite';
 
 /** Harmless habitat residents; expeditions persist them independently of the camera. */
 export interface Critter {

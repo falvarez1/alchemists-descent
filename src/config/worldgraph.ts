@@ -157,6 +157,15 @@ export const SPINE_ROSTERS: Partial<Record<BiomeId, Readonly<Partial<Record<Enem
   // them), bombers that detonate the crowd they die in, golems and stone maws
   // in the slag. The Kiln Colossus is structure-placed.
   volcanic: { imp: 5, bomber: 4, golem: 2, stonemaw: 2 },
+  // Floor 2, THE COLD STORE (the second door): frost wisps drifting through
+  // the cold rooms (immune to the chill, not to a fire), bat roosts under the
+  // pipes, slimes gone sluggish in the cold, stonemaws chewing through the
+  // frost-split rock and a pair of golems. The Rime Warden is structure-placed.
+  frozen: { wisp: 4, bat: 6, slime: 4, stonemaw: 2, golem: 2, weaver: 1 },
+  // Floor 3, THE GLASS GALLERIES (the second door): light-shy bats in the dark
+  // halls, spitters on the grinding floors, a mage among the lenses, golems
+  // and slimes for the chemistry to chew. The Lenswright is structure-placed.
+  crystal: { bat: 6, spitter: 3, slime: 4, golem: 2, mage: 1, stonemaw: 1 },
 };
 
 /**

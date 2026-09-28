@@ -37,7 +37,7 @@ export interface LightPuzzleOutput {
   placed: PlacedPrefab[];
 }
 
-interface RoomSpec { id: string; w: number; h: number; minSpawnDist: number }
+export interface RoomSpec { id: string; w: number; h: number; minSpawnDist: number }
 
 /** Room sizes, largest first: placement degrades to a smaller room rather than skip. */
 const VAULT_ROOMS: RoomSpec[] = [
@@ -49,7 +49,7 @@ const BLOOM_ROOMS: RoomSpec[] = [
   { id: 'light-bloom-crossing', w: 150, h: 98, minSpawnDist: 160 },
   { id: 'light-bloom-crossing', w: 128, h: 92, minSpawnDist: 130 },
 ];
-const ROOM_MARGIN = 14;
+export const ROOM_MARGIN = 14;
 /** The brass-stained stone a lens is set into (the sprite draws the brass). */
 const LENS_STONE = packRGB(74, 62, 40);
 const VAULT_METAL = packRGB(66, 60, 52);
@@ -140,9 +140,9 @@ function distanceToMainPath(graph: RegionGraph, x: number, y: number): number {
   return best;
 }
 
-interface Site { x0: number; y0: number }
+export interface Site { x0: number; y0: number }
 
-function findRoomSite(
+export function findRoomSite(
   world: World, rng: Rng, graph: RegionGraph, ledger: PlacementLedger, spec: RoomSpec,
   site: { spawn: { x: number; y: number }; wellX: number; maxY: number; avoid: ReadonlyArray<{ x: number; y: number; r: number }> },
   placed: readonly PlacedPrefab[],
@@ -173,22 +173,22 @@ function findRoomSite(
   return null;
 }
 
-function roomReachable(world: World, spawn: { x: number; y: number }, x0: number, y0: number, x1: number, y1: number): boolean {
+export function roomReachable(world: World, spawn: { x: number; y: number }, x0: number, y0: number, x1: number, y1: number): boolean {
   const mask = wizardMask({ world, spawn });
   let n = 0;
   for (let y = y0; y <= y1; y += 2) for (let x = x0; x <= x1; x += 2) if (world.inBounds(x, y) && mask[world.idx(x, y)]) n++;
   return n >= 12;
 }
 
-function snapshot(world: World): { types: Uint8Array; colors: Uint32Array; life: Int16Array; charge: Uint16Array } {
+export function snapshot(world: World): { types: Uint8Array; colors: Uint32Array; life: Int16Array; charge: Uint16Array } {
   return { types: world.types.slice(), colors: world.colors.slice(), life: world.life.slice(), charge: world.charge.slice() };
 }
-function restore(world: World, s: ReturnType<typeof snapshot>): void {
+export function restore(world: World, s: ReturnType<typeof snapshot>): void {
   world.types.set(s.types); world.colors.set(s.colors); world.life.set(s.life); world.charge.set(s.charge);
 }
 
 /** Carve the room shell and join it to the main path; false (rolled back) if it cannot be joined. */
-function carveRoom(
+export function carveRoom(
   ctx: Ctx, rng: Rng, graph: RegionGraph, fits: Uint8Array | undefined, spawn: { x: number; y: number },
   floorY: number, mouth: { x: number; y: number },
   interior: { x0: number; y0: number; x1: number; y1: number },
@@ -218,8 +218,8 @@ function carveRoom(
  * Ordinary prefab footprints are joined by connectors everywhere else in
  * worldgen, so they are not guarded here.
  */
-const SEALED_LABEL = /^(encounter-lair|sump|light-)/;
-function intrudes(world: World, before: Uint8Array, ledger: PlacementLedger): boolean {
+const SEALED_LABEL = /^(encounter-lair|sump|light-|cold-|glass-|warden-)/;
+export function intrudes(world: World, before: Uint8Array, ledger: PlacementLedger): boolean {
   const rects = ledger.rects().filter((r) => SEALED_LABEL.test(r.label));
   if (rects.length === 0) return false;
   const W = world.width, types = world.types;

@@ -1,7 +1,6 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import type { SkeletonSpec } from '@/config/gen';
-import { hashSeed } from '@/core/rng';
-import type { Rng } from '@/core/rng';
+import { Rng, hashSeed } from '@/core/rng';
 import {
   carveBubbleChains,
   carveChambers,
@@ -155,6 +154,11 @@ const frozenCrevasses: SkeletonFn = (io, spec) => {
     floorBand,
     minY,
   });
+  if (p.caPasses) smoothCA(work, WIDTH, HEIGHT, p.caPasses, floorBand);
+  // THE COLD STORE's cold rooms: flat-floored store halls under a shallow
+  // vault, in tiers, on their own forked stream (the crevasse draws below
+  // keep their order whether or not a biome asks for halls).
+  if (p.halls) carveColdRooms(work, hashSeed(io.worldSeed, 'cold-rooms'), p.halls, floorBand, minY);
   // Near-vertical high-jitter crevasse tunnels spanning most of the height.
   const t = p.tunnels;
   const count = t.countMin + rng.int(t.countMax - t.countMin + 1);
@@ -186,6 +190,18 @@ const frozenCrevasses: SkeletonFn = (io, spec) => {
     carveStroke(work, WIDTH, HEIGHT, sx, sy, sx + len, sy, p.shelves.radius, minY);
   }
   const spawnHint = carveSpawnChamber(work, WIDTH / 2, Math.floor(HEIGHT * 0.35), p.spawnRadius, minY);
+  // The cold rooms and crevasses can run under the spawn chamber; give the
+  // arrival a floor (a flat sill 0.55 r below the centre) so the alchemist
+  // lands in the room he wakes in. Connectivity re-joins anything it split.
+  if (p.halls) {
+    const r = Math.floor(p.spawnRadius);
+    for (let dx = -r - 4; dx <= r + 4; dx++) {
+      for (let y = spawnHint.y + Math.round(r * 0.55); y <= spawnHint.y + r + 6 && y < floorBand; y++) {
+        const X = spawnHint.x + dx;
+        if (X > 1 && X < WIDTH - 2) work[X + y * WIDTH] = 1;
+      }
+    }
+  }
   sealBorders(work, WIDTH, floorBand, minY);
   ensureConnectivity(work, WIDTH, HEIGHT, {
     minArea: p.minArea,
@@ -195,6 +211,43 @@ const frozenCrevasses: SkeletonFn = (io, spec) => {
   });
   return { spawnHint, tunnelY: null };
 };
+
+/**
+ * The Cold Store's store rooms: each a rectangle with a flat floor, straight
+ * walls and a shallow barrel vault (the ceiling rises `vault` of the height
+ * at the middle), corners rounded so nothing wedges a body. Tiers are floor
+ * rows; halls in a tier spread across the width with a jittered gap.
+ */
+function carveColdRooms(
+  work: Uint8Array, seed: number,
+  h: NonNullable<Extract<SkeletonSpec, { kind: 'frozenCrevasses' }>['params']['halls']>,
+  floorBand: number, minY: number,
+): void {
+  const rng = new Rng(seed);
+  for (const frac of h.tiers) {
+    const n = h.perTier[0] + rng.int(h.perTier[1] - h.perTier[0] + 1);
+    const floorY = Math.min(floorBand - 8, Math.floor(HEIGHT * frac + (rng.next() - 0.5) * 30));
+    const slot = (WIDTH - 120) / n;
+    for (let k = 0; k < n; k++) {
+      const w = Math.min(slot - 30, h.wMin + rng.next() * (h.wMax - h.wMin));
+      if (w < 60) continue;
+      const hh = h.hMin + rng.next() * (h.hMax - h.hMin);
+      const cx = 60 + slot * (k + 0.5) + (rng.next() - 0.5) * Math.max(0, slot - w - 30);
+      const x0 = Math.floor(cx - w / 2), x1 = Math.floor(cx + w / 2);
+      for (let x = x0; x <= x1; x++) {
+        const u = (x - cx) / (w / 2);
+        const top = Math.floor(floorY - hh - h.vault * hh * (1 - u * u));
+        // rounded lower corners (radius 6) and upper corners (radius 10)
+        const edge = Math.min(x - x0, x1 - x);
+        const footLift = edge < 6 ? Math.round(6 - Math.sqrt(Math.max(0, 36 - (6 - edge) * (6 - edge)))) : 0;
+        const headDrop = edge < 10 ? Math.round(10 - Math.sqrt(Math.max(0, 100 - (10 - edge) * (10 - edge)))) : 0;
+        for (let y = Math.max(minY + 1, top + headDrop); y <= floorY - footLift; y++) {
+          if (x > 1 && x < WIDTH - 2 && y < floorBand) work[x + y * WIDTH] = 0;
+        }
+      }
+    }
+  }
+}
 
 const floodedGalleries: SkeletonFn = (io, spec) => {
   if (spec.kind !== 'floodedGalleries') throw new Error(`floodedGalleries skeleton got '${spec.kind}' spec`);

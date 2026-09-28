@@ -1,6 +1,6 @@
 import type { Ctx } from '@/core/types';
 import { Cell, isGas } from '@/sim/CellType';
-import { obsidianColor, packRGB, smokeColor, steamColor, waterColor } from '@/sim/colors';
+import { brineColor, obsidianColor, packRGB, smokeColor, steamColor, waterColor } from '@/sim/colors';
 import { CARDINAL_OFFSETS } from '@/sim/neighborOffsets';
 import { fxRandom, simRandom } from '@/core/simRandom';
 
@@ -18,12 +18,17 @@ import { fxRandom, simRandom } from '@/core/simRandom';
  *   faint white fizz. A flask of brine poured on an ice wall opens it; brine
  *   run under an ice bridge undermines it.
  * - It is heavier than fresh water and sinks through it, so a brine sump
- *   under a pool stays brine at the bottom.
+ *   under a pool stays brine at the bottom — and its salt creeps up into
+ *   the fresh water it touches, slowly (a meltwater layer turns brine from
+ *   the bottom up, and then the brine eats whatever froze on top).
  * - It conducts (isConductor) and quenches lava to stone, and heat boils it.
  *
  * Movement is a plain cell liquid (swap-based, like blood and slime) — brine
  * is not part of the fresh-water flow field, so it pools on its own terms.
  */
+
+/** Chance per contact check that brine salts a fresh-water neighbour (slow: a layer lasts tens of seconds). */
+const SALT_DIFFUSION = 0.0007;
 
 function brineCanPass(t: number): boolean {
   return t === Cell.Empty || t === Cell.Oil || t === Cell.Steam || t === Cell.Smoke || t === Cell.MarshGas;
@@ -47,6 +52,10 @@ function eatIce(ctx: Ctx, x: number, y: number): void {
       }
     } else if (n === Cell.Snow && simRandom() < melt * 2.5) {
       w.replaceCellAt(ni, Cell.Water, waterColor());
+    } else if (n === Cell.Water && simRandom() < SALT_DIFFUSION) {
+      // Salt creeps into the fresh water it touches: a layer of meltwater on a
+      // brine sump turns brine from the bottom up (and then eats what froze).
+      w.replaceCellAt(ni, Cell.Brine, brineColor());
     } else if (n === Cell.Nitrogen) {
       // A hard frost never takes brine: the nitrogen boils off it instead.
       w.replaceCellAt(ni, Cell.Smoke, smokeColor());

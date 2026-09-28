@@ -252,10 +252,24 @@ function drawSnapjaw(s: PixelSurface, light: LightField, ctx: Ctx, c: Critter): 
 
 /* ---------------------------------------------------------------- crawlers */
 
+/** Shell ramps (dark, light) per crawler kind. */
+const CRAWLER_SHELL: Record<string, [RGB, RGB]> = {
+  isopod: [[0.3, 0.29, 0.34], [0.8, 0.78, 0.84]],
+  emberbeetle: [[0.1, 0.06, 0.04], [0.36, 0.24, 0.14]],
+  // Frost mite: a pale, rimed, half-clear body.
+  frostmite: [[0.42, 0.52, 0.6], [0.9, 0.96, 1.0]],
+  // Glass beetle: a clear blue-violet shell over a darker body.
+  glassbeetle: [[0.16, 0.18, 0.3], [0.62, 0.7, 0.92]],
+  // Lens mite: a small amber-grey grinder with a bulging lens of a head.
+  lensmite: [[0.24, 0.2, 0.16], [0.64, 0.56, 0.44]],
+};
+
 function drawCrawler(s: PixelSurface, light: LightField, ctx: Ctx, c: Critter): void {
   const ember = c.kind === 'emberbeetle', t = ctx.state.frameCount;
   lightAt(light, c.x, c.y);
-  const shell: [RGB, RGB] = ember ? [[0.1, 0.06, 0.04], [0.36, 0.24, 0.14]] : [[0.3, 0.29, 0.34], [0.8, 0.78, 0.84]];
+  const shell: [RGB, RGB] = CRAWLER_SHELL[c.kind] ?? CRAWLER_SHELL.isopod;
+  const small = c.kind === 'frostmite' || c.kind === 'lensmite';
+  const glassy = c.kind === 'glassbeetle';
   const heat = ember ? 0.45 + Math.min(1, (c.meal ?? 0) / 500) * 0.8 + Math.sin(t * 0.09 + c.phase) * 0.12 : 0;
   if (c.state === CRAWL.BALL || c.state === CRAWL.UNCURL) {
     const r = 1.1 + (1 - (c.extent ?? 1)) * 0.5;
@@ -271,7 +285,7 @@ function drawCrawler(s: PixelSurface, light: LightField, ctx: Ctx, c: Critter): 
   // Move direction from the wall and the hand it keeps on it.
   const dx = hand > 0 ? -ny : ny, dy = hand > 0 ? nx : -nx;
   const th = Math.atan2(dy, dx);
-  const len = ember ? 1.7 : 2.2, wid = ember ? 0.95 : 1.0;
+  const len = ember ? 1.7 : small ? 1.4 : glassy ? 1.9 : 2.2, wid = ember ? 0.95 : small ? 0.8 : 1.0;
   const cx = c.x + nx * 0.2, cy = c.y + ny * 0.2;
   // Legs: little strokes to the wall, stepping.
   for (let k = -1; k <= 1; k++) {
@@ -279,11 +293,25 @@ function drawCrawler(s: PixelSurface, light: LightField, ctx: Ctx, c: Critter): 
     const lx = cx + dx * (k * 0.7 + kick), ly = cy + dy * (k * 0.7 + kick);
     line(s, lx, ly, lx - nx * 0.9 + dx * kick * 0.5, ly - ny * 0.9 + dy * kick * 0.5, [0.1, 0.09, 0.1]);
   }
-  blob(s, cx, cy, len, wid, th, shell[0], shell[1], (u) => {
-    // Plate seams across the back.
-    if (!ember && Math.abs(u * 2.5 - Math.round(u * 2.5)) < 0.12 && Math.abs(u) < 0.9) return [shell[0][0] * 1.3, shell[0][1] * 1.3, shell[0][2] * 1.3];
+  blob(s, cx, cy, len, wid, th, shell[0], shell[1], (u, v) => {
+    // Plate seams across the back (isopods and frost mites).
+    if ((c.kind === 'isopod' || c.kind === 'frostmite') && Math.abs(u * 2.5 - Math.round(u * 2.5)) < 0.12 && Math.abs(u) < 0.9) {
+      return [shell[0][0] * 1.3, shell[0][1] * 1.3, shell[0][2] * 1.3];
+    }
+    // A glass beetle's elytra: a bright specular streak down the shell.
+    if (glassy && Math.abs(v + 0.35) < 0.16 && Math.abs(u) < 0.7) return [0.95, 0.98, 1];
     return null;
   });
+  if (glassy) {
+    // The clear shell splits light: a spectral fleck that walks with it.
+    const hue = (t * 0.05 + c.phase) % 3;
+    const col: RGB = hue < 1 ? [0.9, 0.35, 0.5] : hue < 2 ? [0.4, 0.9, 0.5] : [0.4, 0.55, 1];
+    glow(s, cx + dx * 0.4 - nx * 0.4, cy + dy * 0.4 - ny * 0.4, col, 0.25 * Math.max(L.r, L.g, L.b));
+  }
+  if (c.kind === 'lensmite') {
+    // The lens it grinds with: a bright bead at the head.
+    px(s, cx + dx * len * 0.9, cy + dy * len * 0.9, [0.95, 0.92, 0.8]);
+  }
   // Antennae: they test the air, quicker when it has stopped to sniff.
   const sniff = Math.sin(t * 0.21 + c.phase) * 0.5;
   const hx = cx + dx * len, hy = cy + dy * len;
@@ -335,13 +363,66 @@ function drawAshmoth(s: PixelSurface, light: LightField, ctx: Ctx, c: Critter): 
   px(s, c.x + 0.5, c.y - (1 - beat) * 0.5, [0.44, 0.42, 0.4]);
 }
 
+/* ---------------------------------------------------------------- light moths */
+
+function drawLightMoth(s: PixelSurface, light: LightField, ctx: Ctx, c: Critter): void {
+  lightAt(light, c.x, c.y);
+  const t = ctx.state.frameCount;
+  const beat = (t + (c.phase * 10 | 0)) % 6 < 3 ? 1 : 0;
+  if (c.kind === 'snowmoth') {
+    const wing: RGB = [0.94, 0.96, 1], body: RGB = [0.7, 0.72, 0.78];
+    px(s, c.x, c.y, body);
+    px(s, c.x - 1, c.y - beat, wing); px(s, c.x + 1, c.y - (1 - beat), wing);
+    px(s, c.x - 0.5, c.y - beat * 0.5, wing); px(s, c.x + 0.5, c.y - (1 - beat) * 0.5, wing);
+    // Powder drifting off the wings now and then.
+    if ((t + (c.phase * 7 | 0)) % 23 === 0) px(s, c.x, c.y + 1, [0.8, 0.85, 0.9], 0.6);
+    return;
+  }
+  // Prism moth: its scaled wings throw back the light that falls on them as
+  // a spectrum — the brighter the light on it, the brighter the flash.
+  const lum = Math.max(L.r, L.g, L.b);
+  const hue = (t * 0.08 + c.phase * 3) % 3;
+  const a: RGB = hue < 1 ? [0.95, 0.4, 0.55] : hue < 2 ? [0.45, 0.95, 0.55] : [0.45, 0.6, 1];
+  const b: RGB = hue < 1 ? [0.45, 0.6, 1] : hue < 2 ? [0.95, 0.4, 0.55] : [0.45, 0.95, 0.55];
+  px(s, c.x, c.y, [0.5, 0.48, 0.6]);
+  px(s, c.x - 1, c.y - beat, a); px(s, c.x + 1, c.y - (1 - beat), b);
+  px(s, c.x - 0.5, c.y - beat * 0.5, [0.75, 0.75, 0.9]); px(s, c.x + 0.5, c.y - (1 - beat) * 0.5, [0.75, 0.75, 0.9]);
+  if (lum > 0.45) {
+    glow(s, c.x - 1, c.y - beat, a, (lum - 0.45) * 0.5);
+    glow(s, c.x + 1, c.y - (1 - beat), b, (lum - 0.45) * 0.5);
+  }
+}
+
+/* ---------------------------------------------------------------- brine skater */
+
+function drawSkater(s: PixelSurface, light: LightField, ctx: Ctx, c: Critter): void {
+  lightAt(light, c.x, c.y);
+  const t = ctx.state.frameCount;
+  const dir = c.facing >= 0 ? 1 : -1;
+  const stroke = Math.sin(c.phase * 1.3) * 0.4;
+  // Four long legs splayed on the film, a thin body between.
+  const leg: RGB = [0.18, 0.2, 0.22];
+  line(s, c.x, c.y, c.x + dir * (2.4 + stroke), c.y + 0.3, leg);
+  line(s, c.x, c.y, c.x + dir * (1.2 - stroke), c.y + 0.5, leg);
+  line(s, c.x, c.y, c.x - dir * (2.2 - stroke), c.y + 0.4, leg);
+  line(s, c.x, c.y, c.x - dir * (1.0 + stroke), c.y + 0.5, leg);
+  blob(s, c.x, c.y - 0.3, 1.1, 0.45, 0, [0.12, 0.13, 0.16], [0.36, 0.4, 0.46]);
+  // Dimples where its feet press the surface.
+  if ((t + (c.phase * 5 | 0)) % 20 < 12) {
+    veil(s, c.x + dir * (2.4 + stroke), c.y + 0.6, [0.8, 0.92, 0.95], 0.3);
+    veil(s, c.x - dir * (2.2 - stroke), c.y + 0.6, [0.8, 0.92, 0.95], 0.3);
+  }
+}
+
 /** Draw one organism (the critter layer calls this for organism kinds). */
 export function drawOrganism(s: PixelSurface, light: LightField, ctx: Ctx, c: Critter): void {
   switch (c.kind) {
     case 'glowworm': drawGlowworm(s, light, ctx, c); break;
     case 'puffer': drawPuffer(s, light, ctx, c); break;
     case 'snapjaw': drawSnapjaw(s, light, ctx, c); break;
-    case 'isopod': case 'emberbeetle': drawCrawler(s, light, ctx, c); break;
+    case 'isopod': case 'emberbeetle': case 'frostmite': case 'glassbeetle': case 'lensmite': drawCrawler(s, light, ctx, c); break;
+    case 'snowmoth': case 'prismmoth': drawLightMoth(s, light, ctx, c); break;
+    case 'brineskater': drawSkater(s, light, ctx, c); break;
     case 'leech': drawLeech(s, light, ctx, c); break;
     case 'ashmoth': drawAshmoth(s, light, ctx, c); break;
     default: break;

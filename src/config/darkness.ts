@@ -30,6 +30,11 @@ export const FLOOR_DARKNESS: Record<string, DarknessProfile> = {
   d3: { base: 0.3, deep: 1 },
   // The Kiln glows red from its own lava; its dark is shallower.
   d4: { base: 0.18, deep: 0.94 },
+  // The second doors (wave 3). The Cold Store's snow and ice throw back what
+  // little light there is; the Glass Galleries are dark by design — light is
+  // the floor's whole subject, and a lens wants a dark room.
+  d2b: { base: 0.12, deep: 1 },
+  d3b: { base: 0.36, deep: 1 },
 };
 
 export const DEFAULT_DARKNESS: DarknessProfile = { base: 0, deep: 0 };

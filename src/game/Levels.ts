@@ -2573,7 +2573,9 @@ export class Levels implements LevelsApi {
     // tree balanced at a chasm): a foe seeded inside would wreck one before
     // the player arrives. Population keeps out of them (they still wander in).
     for (const p of placedPrefabs) {
-      if (!p.id.startsWith('flora-')) continue;
+      // (The second doors' puzzle rooms are set pieces too: a Cold Store tank,
+      // a Galleries lens room.)
+      if (!p.id.startsWith('flora-') && !p.id.startsWith('cold-') && !p.id.startsWith('glass-')) continue;
       for (let y = Math.max(0, p.y0); y <= Math.min(world.height - 1, p.y1); y++) {
         populationReach.fill(0, y * world.width + Math.max(0, p.x0), y * world.width + Math.min(world.width - 1, p.x1) + 1);
       }

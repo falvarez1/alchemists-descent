@@ -148,7 +148,7 @@ export const rawOreColor = () =>
  * the odd white salt glint so a gutter reads as brine at a glance.
  */
 export const brineColor = () =>
-  fxRandom() < 0.07
+  fxRandom() < 0.02
     ? packRGB(214 + rand(26), 236 + rand(16), 238 + rand(14))
     : packRGB(86 + rand(22), 158 + rand(22), 170 + rand(20));
 /**

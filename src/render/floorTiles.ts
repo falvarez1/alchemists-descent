@@ -3,12 +3,14 @@
  * load (no download). Floor 1's hand-built Works keep the authored terrain
  * atlas; floors 2–4 pair that atlas's masonry (for built faces) with one of
  * these tiles (for the cave). Each tile is a 256×256 seamless torus in one
- * quadrant of a 512×512 RGBA sheet:
+ * slot of a 512×768 RGBA sheet (two columns, three rows):
  *
- *   quadrant 0  Rot Gardens   peat and root-bound soil with buried stones
- *   quadrant 1  Drowned Cisterns  bedded slate, jointed and pitted, seep streaks
- *   quadrant 2  Kiln Heart    columnar basalt, soot-dark with hairline cracks
- *   quadrant 3  spare (neutral mineral rock, for off-spine looks)
+ *   slot 0  Rot Gardens   peat and root-bound soil with buried stones
+ *   slot 1  Drowned Cisterns  bedded slate, jointed and pitted, seep streaks
+ *   slot 2  Kiln Heart    columnar basalt, soot-dark with hairline cracks
+ *   slot 3  spare (neutral mineral rock, for off-spine looks)
+ *   slot 4  Cold Store    rime-crusted granite blocks veined with blue ice
+ *   slot 5  Glass Galleries  faceted glassy rock and ground-lens masonry
  *
  * RGB is the albedo (graded again per floor by FloorLook.natural). ALPHA is a
  * feature mask the sampler colours per floor — root threads, seep streaks,
@@ -22,13 +24,16 @@
  */
 
 export const FLOOR_TILE = 256;
+/** Sheet width (two tiles); also the row stride of floorTilePixels(). */
 export const FLOOR_SHEET = FLOOR_TILE * 2;
+/** Sheet height (three rows of tiles). */
+export const FLOOR_SHEET_H = FLOOR_TILE * 3;
 
 type Ramp = readonly (readonly [number, number, number])[];
 
 let sheet: Uint8ClampedArray | null = null;
 
-/** The 512×512 RGBA sheet, painted once on first use (deterministic). */
+/** The 512×768 RGBA sheet, painted once on first use (deterministic). */
 export function floorTilePixels(): Uint8ClampedArray {
   if (!sheet) sheet = paintSheet();
   return sheet;
@@ -344,9 +349,124 @@ function paintSpare(): Tile {
   return tile;
 }
 
+// ---------------------------------------------------------------- Cold Store
+const GRANITE: Ramp = [[20, 25, 33], [30, 37, 47], [40, 48, 60], [51, 60, 73], [63, 73, 87], [78, 89, 104]];
+const RIME: Ramp = [[92, 108, 126], [118, 136, 156], [150, 168, 188], [182, 198, 214], [214, 226, 238]];
+const BLUE_ICE: Ramp = [[18, 42, 72], [26, 60, 98], [38, 84, 128], [58, 112, 158], [92, 148, 190]];
+
+function paintColdStore(): Tile {
+  const tile = newTile(), next = rng(0xc01d);
+  // Frost-split granite: blocky Voronoi masses (flattened a little, as
+  // ice-wedging splits rock along its bedding), each a quiet cold tone with a
+  // bevel, most joints closed to a tone step and a few opened into cracks.
+  const blocks = voronoi(51, 8, 9, 1.2, 0.9);
+  const skin = fbm(52, [32, 16, 8]);
+  const frost = fbm(53, [64, 32, 16]);
+  const veinField = fbm(54, [64, 32]);
+  for (let y = 0; y < FLOOR_TILE; y++) for (let x = 0; x < FLOOR_TILE; x++) {
+    const q = blocks.query(x, y);
+    const edge = q.f2 - q.f1;
+    const pair = q.id < q.id2 ? hash2(q.id, q.id2) : hash2(q.id2, q.id);
+    let t = 2 + (hash2(q.id, 5) < 0.4 ? 1 : 0);
+    const s = skin(x, y);
+    if (s > 0.66) t += 1; else if (s < 0.32) t -= 1;
+    const f = frost(x, y);
+    if (edge < 1.1 && pair < 0.5) { put(tile, x, y, tone(GRANITE, 0)); continue; }
+    // Rime: a thin crust along the TOP edge of some blocks (frost settles on
+    // the ledge of a joint), two texels at most, broken where the frost is thin.
+    const upper = y < q.sy - 2;
+    if (upper && edge >= 1.1 && edge < 3.2 && pair < 0.5 && hash2(q.id, 17) < 0.45 && f > 0.42) {
+      put(tile, x, y, tone(RIME, edge < 2.1 ? 2 : 1));
+      continue;
+    }
+    if (edge < 2.6 && pair < 0.5) t += (x - q.sx) + (y - q.sy) < 0 ? 1 : -1;
+    // Hoarfrost: broad, soft blooms across a face (clustered, never dithered).
+    if (f > 0.74) { put(tile, x, y, f > 0.8 ? tone(RIME, 0) : tone(GRANITE, Math.min(5, t + 1))); continue; }
+    put(tile, x, y, tone(GRANITE, t));
+  }
+  // Blue ice veins: meltwater that ran into the joints and froze. The mask
+  // carries them so the floor look can light them near the faces.
+  for (let n = 0; n < 34; n++) {
+    let x = next() * FLOOR_TILE, y = next() * FLOOR_TILE;
+    const len = 30 + Math.floor(next() * 90);
+    let heading = next() * Math.PI * 2;
+    for (let s = 0; s < len; s++) {
+      const w = veinField(x, y) > 0.55 ? 2 : 1;
+      for (let k = 0; k < w; k++) {
+        const ix = wrap(Math.round(x) + k), iy = wrap(Math.round(y));
+        put(tile, ix, iy, tone(BLUE_ICE, 1 + Math.floor(next() * 3)));
+        tile.mask[iy * FLOOR_TILE + ix] = Math.max(tile.mask[iy * FLOOR_TILE + ix], 200 - Math.floor((s / len) * 90));
+      }
+      heading += (next() - 0.5) * 0.7;
+      x += Math.cos(heading); y += Math.sin(heading) * 0.8 + 0.25;
+    }
+  }
+  // Frost sparkle: single bright texels, sparse.
+  for (let n = 0; n < 160; n++) put(tile, next() * FLOOR_TILE | 0, next() * FLOOR_TILE | 0, tone(RIME, 3 + (next() < 0.3 ? 1 : 0)));
+  return tile;
+}
+
+// ----------------------------------------------------------- Glass Galleries
+const LENS_STONE: Ramp = [[18, 16, 26], [27, 24, 38], [37, 33, 51], [48, 43, 64], [60, 54, 79], [74, 67, 95]];
+const GLASS: Ramp = [[40, 52, 72], [58, 76, 102], [82, 104, 136], [112, 138, 170], [150, 176, 204], [198, 216, 234]];
+
+function paintGlassGalleries(): Tile {
+  const tile = newTile(), next = rng(0x91a5);
+  // Faceted rock: sharp Voronoi facets, each lit as a flat plane (one tone per
+  // facet from a hashed normal), glassy facets brighter with a specular edge —
+  // the look of a cut stone, not a boulder.
+  const facets = voronoi(61, 12, 12, 1.0, 0.95);
+  const skin = fbm(62, [32, 16]);
+  for (let y = 0; y < FLOOR_TILE; y++) for (let x = 0; x < FLOOR_TILE; x++) {
+    const q = facets.query(x, y);
+    const edge = q.f2 - q.f1;
+    const glassy = hash2(q.id, 11) < 0.28;
+    const ang = hash2(q.id, 13) * Math.PI * 2;
+    const lit = Math.cos(ang - 2.4); // light from the upper left
+    if (edge < 0.9) {
+      // facet seams: dark on stone, a bright hairline on glass
+      put(tile, x, y, glassy ? tone(GLASS, 4) : tone(LENS_STONE, 0));
+      if (glassy) tile.mask[y * FLOOR_TILE + x] = 220;
+      continue;
+    }
+    if (glassy) {
+      let t = 2 + Math.round(lit * 1.4);
+      if (edge < 2.2 && (x - q.sx) + (y - q.sy) < 0) t += 1; // bevel catches light
+      put(tile, x, y, tone(GLASS, t));
+      if (edge < 3) tile.mask[y * FLOOR_TILE + x] = Math.max(tile.mask[y * FLOOR_TILE + x], 110);
+    } else {
+      let t = 2 + Math.round(lit * 1.2) + (skin(x, y) > 0.64 ? 1 : 0);
+      if (edge < 2) t += (x - q.sx) + (y - q.sy) < 0 ? 1 : -1;
+      put(tile, x, y, tone(LENS_STONE, t));
+    }
+  }
+  // Ground lenses: polished disks set into the rock, concentric grinding rings
+  // and a crescent of reflected light.
+  for (let n = 0; n < 9; n++) {
+    const cx = next() * FLOOR_TILE, cy = next() * FLOOR_TILE, r = 6 + next() * 9;
+    for (let dy = -r - 1; dy <= r + 1; dy++) for (let dx = -r - 1; dx <= r + 1; dx++) {
+      const d = Math.hypot(dx, dy);
+      if (d > r + 1) continue;
+      const ix = wrap(Math.round(cx + dx)), iy = wrap(Math.round(cy + dy));
+      if (d > r) { put(tile, ix, iy, tone(LENS_STONE, 0)); continue; }
+      const ring = Math.floor(d / 2.2) % 2 === 0;
+      const crescent = dx * 0.7 + dy * 0.7 < -r * 0.35 && d > r * 0.45;
+      put(tile, ix, iy, crescent ? tone(GLASS, 5) : tone(GLASS, ring ? 2 : 1));
+      tile.mask[iy * FLOOR_TILE + ix] = Math.max(tile.mask[iy * FLOOR_TILE + ix], crescent ? 255 : 90);
+    }
+  }
+  // Prismatic glints: a few single bright texels.
+  for (let n = 0; n < 80; n++) {
+    const x = next() * FLOOR_TILE | 0, y = next() * FLOOR_TILE | 0;
+    put(tile, x, y, tone(GLASS, 5));
+    tile.mask[wrap(y) * FLOOR_TILE + wrap(x)] = 255;
+  }
+  return tile;
+}
+
 function paintSheet(): Uint8ClampedArray {
-  const out = new Uint8ClampedArray(FLOOR_SHEET * FLOOR_SHEET * 4);
-  const tiles = [paintRotGardens(), paintCisterns(), paintKilnHeart(), paintSpare()];
+  const out = new Uint8ClampedArray(FLOOR_SHEET * FLOOR_SHEET_H * 4);
+  const tiles = [paintRotGardens(), paintCisterns(), paintKilnHeart(), paintSpare(), paintColdStore(), paintGlassGalleries()];
   tiles.forEach((tile, q) => {
     const ox = (q & 1) * FLOOR_TILE, oy = (q >> 1) * FLOOR_TILE;
     for (let y = 0; y < FLOOR_TILE; y++) for (let x = 0; x < FLOOR_TILE; x++) {

@@ -4,7 +4,7 @@ import type { Rng } from '@/core/rng';
 import type { BiomeId, Pickup, PrefabEnemy, RegionGraph, RuntimeInspectionMarker } from '@/core/types';
 import { makePickup } from '@/core/pickupDefs';
 import { blocksEntity, Cell, isLiquid, isSolid } from '@/sim/CellType';
-import { EMPTY_COLOR, glowshroomColor, lavaColor, packRGB, waterColor } from '@/sim/colors';
+import { crystalColor, EMPTY_COLOR, glowshroomColor, lavaColor, packRGB, waterColor } from '@/sim/colors';
 import { holdsUp, LEAF_LITTER, LEAF_REACH, SEED_GLOW_HELD, SEED_THIRSTY_HELD, SEED_THIRSTY_LOOSE } from '@/sim/elements/flora';
 import type { World } from '@/sim/World';
 import { connectToCaves, type PlacementLedger } from '@/world/connect';
@@ -64,7 +64,11 @@ export interface FloraPassContext {
   fits?: Uint8Array;
 }
 
-const FLOOR_OF: Partial<Record<BiomeId, FloraFloor>> = { fungal: 'rot', flooded: 'cistern', volcanic: 'kiln', earthen: 'bellows' };
+const FLOOR_OF: Partial<Record<BiomeId, FloraFloor>> = {
+  fungal: 'rot', flooded: 'cistern', volcanic: 'kiln', earthen: 'bellows',
+  // wave 3: the second doors
+  frozen: 'cold', crystal: 'glass',
+};
 
 /** Rock the carvers may cut into (never bedrock metal, never a liquid body). */
 function rock(t: number): boolean {
@@ -152,10 +156,14 @@ function sealRim(world: World, x0: number, y0: number, x1: number, y1: number): 
   }
 }
 
-/** A small lamp and a glint: light is information (the reward reads from afar). */
-function lamp(world: World, x: number, y: number): void {
-  for (let dx = -1; dx <= 1; dx++) setCell(world, x + dx, y, Cell.Glowshroom, glowshroomColor());
-  setCell(world, x, y - 1, Cell.Glowshroom, glowshroomColor());
+/** A small lamp and a glint: light is information (the reward reads from afar).
+ *  The cold and glass floors light theirs with a cluster of crystal instead. */
+function lamp(world: World, x: number, y: number, floor?: FloraFloor): void {
+  const cold = floor === 'cold' || floor === 'glass';
+  const t = cold ? Cell.Crystal : Cell.Glowshroom;
+  const c = cold ? crystalColor : glowshroomColor;
+  for (let dx = -1; dx <= 1; dx++) setCell(world, x + dx, y, t, c());
+  setCell(world, x, y - 1, t, c());
 }
 
 /* ------------------------------ puzzle rooms ------------------------------ */
@@ -247,7 +255,10 @@ function dressRoom(world: World, rng: Rng, floor: FloraFloor, xa: number, xb: nu
   const n = 1 + rng.int(3);
   for (let k = 0; k < n; k++) {
     const x = xa + Math.floor(rng.next() * (xb - xa));
-    const species: FloraSpecies = floor === 'kiln' ? (rng.next() < 0.6 ? 'firelily' : 'grasstuft') : rng.next() < 0.5 ? 'fernbed' : 'grasstuft';
+    const species: FloraSpecies = floor === 'kiln' ? (rng.next() < 0.6 ? 'firelily' : 'grasstuft')
+      : floor === 'cold' ? (rng.next() < 0.7 ? 'frostfern' : 'grasstuft')
+      : floor === 'glass' ? (rng.next() < 0.55 ? 'prismflower' : 'glassreed')
+      : rng.next() < 0.5 ? 'fernbed' : 'grasstuft';
     if (world.types[world.idx(x, footY)] !== Cell.Empty || !blocksEntity(world.types[world.idx(x, footY + 1)])) continue;
     plantFlora(world, species, x, footY, rng, { floor });
   }
@@ -285,11 +296,12 @@ function timberBridge(world: World, rng: Rng, floor: FloraFloor, ledger: Placeme
   // The reward niche on the far side, lit.
   const nx = x1 - 20;
   carve(world, nx - 6, floorY - 16, x1 - 4, floorY - 1);
-  lamp(world, x1 - 6, floorY - 1);
+  lamp(world, x1 - 6, floorY - 1, floor);
   const reward = { x: nx, y: floorY - 2 };
   out.pickups.push(floor === 'kiln' || floor === 'rot' ? makePickup('chest', reward.x, reward.y, { amount: 60 }) : makePickup('tome', reward.x, reward.y));
   // The tree on the near ledge, a few cells from the lip: cut it from behind and it spans the gap.
-  const species: FloraSpecies = floor === 'rot' ? 'mushroom' : floor === 'cistern' ? 'mangrove' : floor === 'kiln' ? 'emberbark' : 'birch';
+  const species: FloraSpecies = floor === 'rot' ? 'mushroom' : floor === 'cistern' ? 'mangrove' : floor === 'kiln' ? 'emberbark'
+    : floor === 'cold' ? 'snowbirch' : floor === 'glass' ? 'glasswillow' : 'birch';
   const treeX = chasmL - 7;
   const span = chasmR - treeX + 14;
   const hall = floorY - (y0 + 6);
@@ -317,7 +329,7 @@ function timberBridge(world: World, rng: Rng, floor: FloraFloor, ledger: Placeme
       chasmEnd = fits;
     }
   }
-  lamp(world, treeX - 12, floorY - 1);
+  lamp(world, treeX - 12, floorY - 1, floor);
   dressRoom(world, rng, floor, x0 + 10, chasmL - 16, floorY - 1);
   dressRoom(world, rng, floor, chasmR + 4, nx - 10, floorY - 1);
   if (plant) {
@@ -369,7 +381,7 @@ function rootLadder(world: World, rng: Rng, floor: FloraFloor, ledger: Placement
   const shelfL = x1 - 30;
   fill(world, shelfL, shelfY, x1 - 6, shelfY + 3, Cell.Wall, ROCK_COLOR);
   carve(world, x1 - 6, shelfY - 18, x1 + 2, shelfY - 1);
-  lamp(world, x1 - 2, shelfY - 1);
+  lamp(world, x1 - 2, shelfY - 1, floor);
   const reward = { x: x1 - 12, y: shelfY - 2 };
   out.pickups.push(makePickup(floor === 'kiln' ? 'chest' : 'tome', reward.x, reward.y, floor === 'kiln' ? { amount: 70 } : {}));
   // The seed bed: a shallow cup of dark soil with thirsty seeds in it, under the shelf's lip.
@@ -411,7 +423,7 @@ function rootLadder(world: World, rng: Rng, floor: FloraFloor, ledger: Placement
   carve(world, x0, floorY - 22, x0 + 8, floorY - 1);
   connectToCaves(world, rng, pc.graph, x0 - 6, floorY - 10, 12, pc.fits);
   // the bed's lamp stands past the cup (under the pour it would split the spill)
-  lamp(world, bedX + 8, floorY - 1);
+  lamp(world, bedX + 8, floorY - 1, floor);
   const puzzle: FloraPuzzle = { kind: 'root-ladder', x0, y0, x1, y1, reward, focus: { x: bedX, y: floorY + 1 } };
   taken.push(puzzle);
   ledger.reserve(x0 - 4, y0 - 4, x1 + 4, y1 + 4, 'flora-root-ladder');
@@ -431,12 +443,14 @@ function thicket(world: World, rng: Rng, floor: FloraFloor, ledger: PlacementLed
   carve(world, x0 + 26, y0 + 8, x1 - 8, floorY - 1);
   carve(world, x0 + 6, floorY - 24, x0 + 26, floorY - 1);
   fill(world, x0 + 4, floorY, x1 - 6, floorY + 4, Cell.Wall, ROCK_COLOR);
-  lamp(world, x1 - 12, floorY - 1);
+  lamp(world, x1 - 12, floorY - 1, floor);
   const reward = { x: x1 - 20, y: floorY - 2 };
   out.pickups.push(makePickup('goldpile', reward.x, reward.y, { amount: floor === 'kiln' ? 90 : floor === 'cistern' ? 75 : 60 }));
   // Brambles: a woven lattice of real Wood (it walls the mouth) laced with leaves (it catches).
-  const bramble = floor === 'kiln' ? packRGB(52, 40, 34) : floor === 'rot' ? packRGB(92, 70, 52) : packRGB(78, 70, 50);
-  const leafA = floor === 'kiln' ? packRGB(140, 76, 46) : floor === 'rot' ? packRGB(138, 132, 78) : packRGB(92, 130, 82);
+  const bramble = floor === 'kiln' ? packRGB(52, 40, 34) : floor === 'rot' ? packRGB(92, 70, 52)
+    : floor === 'cold' ? packRGB(96, 102, 110) : floor === 'glass' ? packRGB(100, 92, 118) : packRGB(78, 70, 50);
+  const leafA = floor === 'kiln' ? packRGB(140, 76, 46) : floor === 'rot' ? packRGB(138, 132, 78)
+    : floor === 'cold' ? packRGB(154, 180, 186) : floor === 'glass' ? packRGB(170, 180, 216) : packRGB(92, 130, 82);
   for (let y = floorY - 24; y <= floorY - 1; y++) {
     for (let x = x0 + 10; x <= x0 + 24; x++) {
       const weave = ((x + y) % 5 === 0) || ((x - y + 40) % 6 === 0) || rng.next() < 0.18;
@@ -506,6 +520,10 @@ const BUDGET: Record<Exclude<FloraFloor, 'bellows'>, { big: number; small: numbe
   // Kiln 14/46 -> 18/72 (fix3): its flora was sparse; the ground allows more
   // (the heat, footing and clearance tests still decide every stand).
   kiln: { big: 18, small: 72, hang: 0 },
+  // wave 3. The Cold Store's cold rooms hold a few birches; frost-fern and
+  // grass under them; roots do not hang in the cold. The Galleries grow glass.
+  cold: { big: 14, small: 70, hang: 0 },
+  glass: { big: 12, small: 80, hang: 0 },
 };
 
 function dress(world: World, rng: Rng, floor: Exclude<FloraFloor, 'bellows'>, ledger: PlacementLedger, pc: FloraPassContext, out: FloraPassResult): void {
@@ -534,7 +552,7 @@ function dress(world: World, rng: Rng, floor: Exclude<FloraFloor, 'bellows'>, le
         const below = types[x + (y + 1) * W], above = types[x + (y - 1) * W];
         if (rock(below) && above === Cell.Empty) floors.push({ x, y });
         if (rock(above) && below === Cell.Empty && types[x + (y + 2) * W] === Cell.Empty) ceilings.push({ x, y });
-      } else if (t === Cell.Water && types[x + (y - 1) * W] === Cell.Empty) surfaces.push({ x, y });
+      } else if ((t === Cell.Water || t === Cell.Brine) && types[x + (y - 1) * W] === Cell.Empty) surfaces.push({ x, y });
     }
   }
   shuffle(floors, rng); shuffle(ceilings, rng); shuffle(surfaces, rng);
@@ -553,6 +571,10 @@ function dress(world: World, rng: Rng, floor: Exclude<FloraFloor, 'bellows'>, le
       const height = Math.min(54, h - 16);
       if (height < 26 || !clearOf(x, y, 22, height)) continue;
       if (grow('mushroom', x, y, 22, { height, pods: big % 4 === 1 ? 'thirsty' : null })) big++;
+    } else if (floor === 'cold' || floor === 'glass') {
+      const height = Math.min(floor === 'cold' ? 64 : 54, h - 12);
+      if (height < 30 || !clearOf(x, y, 18, height)) continue;
+      if (grow(floor === 'cold' ? 'snowbirch' : 'glasswillow', x, y, 18, { height, pods: big % 5 === 2 ? 'thirsty' : null })) big++;
     } else if (floor === 'cistern') {
       const height = Math.min(44, h - 26);
       if (height < 22 || !clearOf(x, y, 22, height + 12)) continue;
@@ -585,6 +607,10 @@ function dress(world: World, rng: Rng, floor: Exclude<FloraFloor, 'bellows'>, le
     if (floor === 'kiln') {
       if (nearHeat(world, x, y - 4, 14)) continue;
       species = r < 0.65 ? 'firelily' : r < 0.88 ? 'grasstuft' : 'sapling'; // 0.55/0.85 before fix3: more lilies
+    } else if (floor === 'cold') {
+      species = r < 0.55 ? 'frostfern' : r < 0.85 ? 'grasstuft' : 'sapling';
+    } else if (floor === 'glass') {
+      species = r < 0.45 ? 'prismflower' : r < 0.85 ? 'glassreed' : 'sapling';
     } else {
       species = r < 0.45 ? 'fernbed' : r < 0.85 ? 'grasstuft' : 'sapling';
     }
@@ -600,6 +626,20 @@ function dress(world: World, rng: Rng, floor: Exclude<FloraFloor, 'bellows'>, le
     if (depth < 30) continue;
     if (!clearOf(x, y + 30, 7, 30)) continue;
     if (grow('hangingroot', x, y, 7, { height: Math.min(depth - 16, 14 + rng.int(26)) })) hang++;
+  }
+  // The Cold Store's still water and brine: ice-lilies on the surface.
+  if (floor === 'cold') {
+    let lily = 0;
+    for (const { x, y } of surfaces) {
+      if (lily >= 22) break;
+      if (!clearOf(x, y, 6, 4)) continue;
+      let ok = true;
+      for (let dx = 0; dx < 10 && ok; dx++) {
+        const s = types[x + dx + y * W];
+        ok = (s === Cell.Water || s === Cell.Brine) && types[x + dx + (y - 1) * W] === Cell.Empty;
+      }
+      if (ok && grow('icelily', x, y - 1, 6)) lily++;
+    }
   }
   // The Cisterns' water: lily pads on still surfaces, kelp in the deep, reeds on the banks.
   if (floor === 'cistern') {

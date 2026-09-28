@@ -121,7 +121,8 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 54; // 54 (fix3): the Sump keeps its rim — the Leviathan's arena stamps (and re-asserts) its stone shores and plinth, its flank connectors leave above the shore, it refuses sites built over earlier metal/loot, and the final rescue refills its pool; flora footing no longer counts loose powder as anchoring rock or gold as footing; the Kiln's flora budget grows 14/46 -> 18/72 with more fire-lilies
+export const GEN_VERSION = 55; // 55 (wave 3, the second doors): the Cold Store (d2b, frozen) — cold rooms in the crevasse skeleton, a floored spawn sill, brine pools (was nitrogen), the refrigeration wing's dressing (icicles, frozen falls, snow, frosted pipes, brine gutters, rime crystals; forked 'cold-store-dressing'), the Frozen Fall and Ice Vault rooms (forked 'cold-store-puzzles'), the cold and glass flora kits; d1-d4 byte-identical
+// 54: 54 (fix3): the Sump keeps its rim — the Leviathan's arena stamps (and re-asserts) its stone shores and plinth, its flank connectors leave above the shore, it refuses sites built over earlier metal/loot, and the final rescue refills its pool; flora footing no longer counts loose powder as anchoring rock or gold as footing; the Kiln's flora budget grows 14/46 -> 18/72 with more fire-lilies
 // 53: the light, fauna and flora waves together — flora's forked 'flora' pass (plants + felling / root-ladder / thicket rooms) runs after the light puzzles, and D1 carries both the Undertow's lens-locked cache and the hand-planted flora with the Seed Cellar
 // 52: the Kiln grew with a 34-cell Colossus (62x40 vault over a flat 116-wide floor, three ceiling tanks re-asserted after carves, a 16-row footing) and floors 2-4 seed a resident organism census (no cells)
 // 51: light wave — floors 2-4 carve a photocell strongroom and a lumen-bloom crossing (forked 'light-puzzles' stream) plus designed dark zones; D1 gains the Undertow's lens-locked cache. (The flora branch also called its pass 51.)
@@ -408,6 +409,16 @@ export interface CrevasseParams {
     xMargin: number;
   };
   shelves: { count: number; lenMin: number; lenMax: number; radius: number };
+  /**
+   * THE COLD STORE (wave 3): the refrigeration wing's cold rooms — wide,
+   * flat-floored store halls with a vaulted ceiling, stacked in tiers and
+   * cracked through by the crevasses. `tiers` are floor rows as world-height
+   * fractions; each tier takes `perTier` halls. Optional: absent = the old
+   * crevasse field only.
+   */
+  halls?: { tiers: number[]; perTier: [number, number]; wMin: number; wMax: number; hMin: number; hMax: number; vault: number };
+  /** CA passes over the crevasse field before anything else is carved (fattens slivers). */
+  caPasses?: number;
   spawnRadius: number;
   minArea: number;
   tunnelRadius: number;
@@ -699,20 +710,25 @@ export function fungalParams(): FungalParams {
 
 export function crevasseParams(): CrevasseParams {
   return {
-    field: { scaleX: 0.05, scaleY: 0.008, octaves: 2, threshold: 0.52 },
+    // THE COLD STORE (GEN 55): a few fat crevasses (threshold .52 -> .7, two
+    // CA passes) so the rock reads as ice-split masses, not a comb of one-cell
+    // slivers; the cold rooms below carry the level.
+    field: { scaleX: 0.05, scaleY: 0.008, octaves: 2, threshold: 0.7 },
     tunnels: {
-      countMin: 6,
-      countMax: 9,
-      radiusMin: 11,
-      radiusMax: 13,
-      turn: 0.9,
-      gravityBias: 1.3,
-      branchChance: 0.015,
-      maxBranches: 4,
-      steps: 420,
-      xMargin: 110,
+      countMin: 4,
+      countMax: 5,
+      radiusMin: 8,
+      radiusMax: 10,
+      turn: 0.55,
+      gravityBias: 2.4,
+      branchChance: 0.01,
+      maxBranches: 2,
+      steps: 300,
+      xMargin: 140,
     },
-    shelves: { count: 26, lenMin: 26, lenMax: 60, radius: 4 },
+    shelves: { count: 16, lenMin: 30, lenMax: 70, radius: 4 },
+    halls: { tiers: [0.19, 0.38, 0.57, 0.77], perTier: [2, 3], wMin: 150, wMax: 250, hMin: 44, hMax: 62, vault: 0.22 },
+    caPasses: 2,
     spawnRadius: 26,
     minArea: 500,
     tunnelRadius: 11, // a 9x17 box needs r >= 9.62 + wobble slack
@@ -970,6 +986,7 @@ export function scaleSkeletonSpec(spec: SkeletonSpec, s: number): SkeletonSpec {
             radiusMax: p.tunnels.radiusMax * s,
           },
           shelves: { ...p.shelves, radius: p.shelves.radius * s },
+          ...(p.halls ? { halls: { ...p.halls, hMin: p.halls.hMin * s, hMax: p.halls.hMax * s } } : {}),
           spawnRadius: p.spawnRadius * s,
           tunnelRadius: p.tunnelRadius * s,
         },

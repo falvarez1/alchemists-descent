@@ -16,6 +16,12 @@ import { LIGHT_RESPONSE } from '@/config/darkness';
 /** Kinds handled by game/organisms (the rest keep Critters' original rules). */
 export const ORGANISM_KINDS: ReadonlySet<CritterKind> = new Set<CritterKind>([
   'glowworm', 'puffer', 'snapjaw', 'isopod', 'leech', 'emberbeetle', 'ashmoth',
+  'frostmite', 'snowmoth', 'brineskater', 'glassbeetle', 'prismmoth', 'lensmite',
+]);
+
+/** Wall crawlers (game/organisms/crawler): the hand-on-the-wall walkers. */
+export const CRAWLER_KINDS: ReadonlySet<CritterKind> = new Set<CritterKind>([
+  'isopod', 'emberbeetle', 'frostmite', 'glassbeetle', 'lensmite',
 ]);
 
 export function isOrganism(kind: CritterKind): boolean {
@@ -26,7 +32,7 @@ export function isOrganism(kind: CritterKind): boolean {
 export const SESSILE_KINDS: ReadonlySet<CritterKind> = new Set<CritterKind>(['glowworm', 'puffer', 'snapjaw']);
 
 /** Small fliers a glow-worm thread or a spider web can hold. */
-export const SNARE_PREY: ReadonlySet<CritterKind> = new Set<CritterKind>(['moth', 'fly', 'firefly', 'ashmoth']);
+export const SNARE_PREY: ReadonlySet<CritterKind> = new Set<CritterKind>(['moth', 'fly', 'firefly', 'ashmoth', 'snowmoth', 'prismmoth']);
 
 /** What a snapjaw will close on and swallow whole. */
 export const SNAPJAW_PREY: ReadonlySet<CritterKind> = new Set<CritterKind>([

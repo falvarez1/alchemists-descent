@@ -25,6 +25,12 @@ export const FLOOR_FAUNA: Partial<Record<BiomeId, Recipe>> = {
   flooded: { fish: 26, glowworm: 16, leech: 14, moth: 6, firefly: 8, isopod: 6 },
   // THE KILN HEART: coal-grazing ember beetles on the walls, ash moths over the lava.
   volcanic: { emberbeetle: 16, ashmoth: 16, moth: 2 },
+  // THE COLD STORE (wave 3): frost mites on the ice, snow moths round the
+  // rime crystals, brine skaters on the gutters and sumps.
+  frozen: { frostmite: 18, snowmoth: 16, brineskater: 14 },
+  // THE GLASS GALLERIES (wave 3): glass beetles on the faceted walls, prism
+  // moths after the light, lens mites grinding what glass they find.
+  crystal: { glassbeetle: 16, prismmoth: 18, lensmite: 12, moth: 2 },
 };
 
 /** Organisms keep this far from the spawn (cells) — never on the player. */
@@ -146,8 +152,9 @@ export function placeOrganisms(
     });
   }, out);
 
-  // WALL CRAWLERS: any open cell touching rock; ember beetles like coal and heat.
-  for (const kind of ['isopod', 'emberbeetle'] as const) {
+  // WALL CRAWLERS: any open cell touching rock; ember beetles like coal and heat,
+  // frost mites ice and snow, glass beetles and lens mites glass and crystal.
+  for (const kind of ['isopod', 'emberbeetle', 'frostmite', 'glassbeetle', 'lensmite'] as const) {
     scatterKind(p, recipe[kind] ?? 0, 7, A, (x, y) => {
       if (!empty(w, x, y)) return null;
       let nx = 0, ny = 0;
@@ -161,6 +168,15 @@ export function placeOrganisms(
           warm = t === Cell.Coal || t === Cell.Lava || t === Cell.Ember || t === Cell.Ash;
         }
         if (!warm && rng.next() < 0.7) return null;
+      }
+      if (kind === 'frostmite' || kind === 'glassbeetle' || kind === 'lensmite') {
+        const want: readonly number[] = kind === 'frostmite' ? [Cell.Ice, Cell.Snow] : [Cell.Glass, Cell.Crystal, Cell.Mirror];
+        let near = false;
+        for (let k = 0; k < 16 && !near; k++) {
+          const X = x + ((k * 7) % 13) - 6, Y = y + ((k * 5) % 11) - 5;
+          near = w.inBounds(X, Y) && want.includes(w.types[w.idx(X, Y)]);
+        }
+        if (!near && rng.next() < 0.6) return null;
       }
       return critter(kind, id(kind), x + 0.5, y + 0.5, rng, { anchorX: x, anchorY: y, nx, ny, state: CRAWL.WALK, stateT: 0 });
     }, out);
@@ -190,8 +206,9 @@ export function placeOrganisms(
     return first;
   }, out);
 
-  // FLIERS: moths and fireflies in open air; ash moths where the lava glows.
-  for (const kind of ['moth', 'firefly', 'ashmoth'] as const) {
+  // FLIERS: moths and fireflies in open air; ash moths where the lava glows;
+  // the second doors' snow moths and prism moths anywhere open.
+  for (const kind of ['moth', 'firefly', 'ashmoth', 'snowmoth', 'prismmoth'] as const) {
     scatterKind(p, recipe[kind] ?? 0, 12, A, (x, y) => {
       if (!empty(w, x, y) || openRun(w, x, y, 0, 1, 4) < 3 || openRun(w, x, y, 0, -1, 4) < 3) return null;
       if (kind === 'ashmoth') {
@@ -206,6 +223,15 @@ export function placeOrganisms(
       return critter(kind, id(kind), x, y, rng);
     }, out);
   }
+
+  // BRINE SKATERS: on the surface film of brine (or still water), with room above.
+  scatterKind(p, recipe.brineskater ?? 0, 10, A, (x, y) => {
+    if (!empty(w, x, y) || !w.inBounds(x, y + 1)) return null;
+    const below = w.types[w.idx(x, y + 1)];
+    if (below !== Cell.Brine && below !== Cell.Water) return null;
+    if (openRun(w, x, y, 0, -1, 6) < 5 || !nearPath(p, x, y, 20)) return null;
+    return critter('brineskater', id('brineskater'), x + 0.5, y + 0.5, rng);
+  }, out);
 
   // BEETLES: grazers on the floor.
   scatterKind(p, recipe.beetle ?? 0, 12, A, (x, y) => {

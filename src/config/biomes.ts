@@ -32,7 +32,10 @@ export const BIOMES: Record<BiomeId, BiomeDef> = {
     crown: 'frost',
     flowerChance: 0.015,
     pools: 27,
-    poolElement: () => Cell.Nitrogen,
+    // THE COLD STORE (wave 3): its deep floors pool BRINE, the refrigeration
+    // wing's coolant — the frostbite pockets (was liquid nitrogen, which boiled
+    // away to smoke the moment the sim touched it).
+    poolElement: () => Cell.Brine,
     seedsOilBias: 0.85,
     beams: 18,
     fires: 9,
