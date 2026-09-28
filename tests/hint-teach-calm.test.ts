@@ -24,6 +24,7 @@ function harness(): { ctx: Ctx; hints: HintSystem; taught: string[]; tick(n: num
     events,
     state: { mode: 'play', paused: false, frameCount: 1000 },
     player: { x: 200, y: 150, dead: false },
+    enemies: [],
     levels: { current: runtime },
     wands: { collection: [], wands: [] },
     flask: { state: null },
@@ -68,5 +69,43 @@ describe('teach popovers yield to centre beats', () => {
     h.hints.setTeachHeld(false);
     h.tick(100);
     expect(h.taught).toContain('map-open');
+  });
+
+  it('a living warded boss nearby holds lessons until it falls', () => {
+    const h = harness();
+    const boss = { kind: 'colossus', hp: 500, x: 320, y: 150 };
+    (h.ctx.enemies as unknown as Array<typeof boss>).push(boss);
+    h.ctx.events.emit('worldInteractionObserved', { id: 'x', title: 'X', x: 0, y: 0 });
+    h.tick(900);
+    expect(h.taught).toEqual([]); // "The Grimoire Watches" never rises over the fight
+    boss.hp = 0;
+    h.tick(20);
+    expect(h.taught).toEqual(['grimoire-observed']);
+  });
+});
+
+describe('hint lines', () => {
+  it('a new floor clears the line the floor behind left up', () => {
+    const h = harness();
+    const runtime = h.ctx.levels.current!;
+    runtime.portal = { x: 204, y: 150, open: true } as typeof runtime.portal;
+    h.tick(4);
+    expect(h.hints.current?.key).toBe('portal');
+    h.ctx.state.paused = true; // the Sanctum: no update runs, nothing recomputes
+    h.ctx.events.emit('levelChanged', { depth: 3, name: 'The Drowned Cisterns' });
+    expect(h.hints.current).toBeNull();
+  });
+
+  it('the flask line retires once the player has siphoned for real', () => {
+    const h = harness();
+    h.ctx.world.types[h.ctx.world.idx(203, 151)] = 2; // Water, within reach
+    h.tick(4);
+    expect(h.hints.current?.key).toBe('flask');
+    h.ctx.events.emit('flaskUsed', { verb: 'siphon', material: 2, amount: 0 });
+    h.tick(4);
+    expect(h.hints.current?.key).toBe('flask'); // a dry siphon teaches nothing
+    h.ctx.events.emit('flaskUsed', { verb: 'siphon', material: 2, amount: 6 });
+    h.tick(4);
+    expect(h.hints.current).toBeNull();
   });
 });

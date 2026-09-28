@@ -7,6 +7,7 @@ import { corpses } from '@/creatures/corpses';
 import { heldCorpse } from '@/combat/Telekinesis';
 import { getBindings, keyLabel } from '@/input/bindings';
 import { WAYSTONE_HELP_RADIUS, waystoneHelp } from '@/game/waystoneHelp';
+import { isWardedBoss } from '@/core/bossWard';
 
 /** A teach-once popover body, paired with a contextual hint line. */
 interface Teach {
@@ -42,6 +43,21 @@ const R_GOAL = 32 * 32;
 /** A fresh body this close teaches the wand's grip. */
 const R_FALLEN = 56 * 56;
 const FLASK_SCAN = 10; // half-box (cells) swept around the player for siphonables
+/** Seen-hint key: the player has siphoned for real, so the flask line retires
+ *  (QA: it sat on screen almost constantly on the water and lava floors). */
+const FLASK_LEARNED = 'flask-siphoned';
+/** A living warded boss this close holds every lesson: a fight is not a classroom
+ *  (QA: "The Grimoire Watches" rose over the Colossus). The music's boss range. */
+const BOSS_HOLD_CELLS = 480;
+
+function bossNear(ctx: Ctx): boolean {
+  const px = ctx.player.x;
+  const py = ctx.player.y;
+  for (const e of ctx.enemies) {
+    if (e.hp > 0 && isWardedBoss(e.kind) && Math.hypot(e.x - px, e.y - py) <= BOSS_HOLD_CELLS) return true;
+  }
+  return false;
+}
 
 /**
  * Surfaces the single most relevant "what do I do here" hint for whatever the
@@ -89,7 +105,16 @@ export class HintSystem implements HintApi {
           body: 'Nothing here is lit but what you light. Your beam goes where you aim. Watch for eyes. L hoods the lantern: you see less, and you are seen less.',
         }, true);
       }),
+      // The flask line has done its job once the player has bottled something.
+      ctx.events.on('flaskUsed', ({ verb, amount }) => {
+        if (verb !== 'siphon' || amount <= 0 || this.taught.has(FLASK_LEARNED)) return;
+        this.taught.add(FLASK_LEARNED);
+        markHintSeen(FLASK_LEARNED);
+      }),
       ctx.events.on('levelChanged', ({ depth }) => {
+        // The line belonged to the floor behind (QA: "The portal is open" rode
+        // through the Sanctum onto the next floor's arrival).
+        this._current = null;
         // Arrival is the title card's beat: every lesson waits it out.
         this.teachCalmAt = Math.max(this.teachCalmAt, ctx.state.frameCount + TEACH_ARRIVAL_HOLD_FRAMES);
         // Taught on the first descent, not in the first 30 seconds: D2 arrival
@@ -125,9 +150,9 @@ export class HintSystem implements HintApi {
     this.teachHeld = held;
   }
 
-  /** No centre beat on screen (nor a story beat), and it has been quiet long enough to read. */
+  /** No centre beat on screen (nor a story beat, nor a boss fight), and it has been quiet long enough to read. */
   private teachCalm(ctx: Ctx): boolean {
-    return !this.teachHeld && !ctx.story?.beatActive && ctx.state.frameCount >= this.teachCalmAt;
+    return !this.teachHeld && !ctx.story?.beatActive && !bossNear(ctx) && ctx.state.frameCount >= this.teachCalmAt;
   }
 
   private teachOnce(ctx: Ctx, key: string, teach: Teach, queue = false): void {
@@ -196,7 +221,10 @@ export class HintSystem implements HintApi {
           info: { key: 'portal', line, world: { x: portal.x, y: portal.y } },
           teach: living
             ? { title: 'The Lower Gate', body: 'A riveted grate in the Lower Bell’s floor: the way down. It opens for the brass bell, and only the Bell & Tea Engine makes one.' }
-            : { title: 'The Portal', body: 'The way down. It opens once you carry the Golden Key to it.' },
+            : portal.open || runtime.keyTaken
+              // Reached with the key already in hand: the card agrees with the line.
+              ? { title: 'The Portal', body: 'The way down, and the Golden Key has opened it. Step in when you are ready; the floor behind stays as you left it.' }
+              : { title: 'The Portal', body: 'The way down. It opens once you carry the Golden Key to it.' },
         });
       }
     }
@@ -391,7 +419,8 @@ export class HintSystem implements HintApi {
     // Never for a hazard: lava or acid under the boots is not a lesson in bottling
     // (QA: the escape's rising lava raised "The Flask").
     let liquid: { x: number; y: number; d2: number } | null = null;
-    for (let yy = pcy - FLASK_SCAN; yy <= pcy + 2; yy++) {
+    const flaskLearned = this.taught.has(FLASK_LEARNED);
+    for (let yy = pcy - FLASK_SCAN; yy <= pcy + 2 && !flaskLearned; yy++) {
       for (let xx = pcx - FLASK_SCAN; xx <= pcx + FLASK_SCAN; xx++) {
         if (!w.inBounds(xx, yy)) continue;
         const t = w.types[w.idx(xx, yy)];
