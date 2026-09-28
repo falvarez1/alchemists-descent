@@ -1131,7 +1131,7 @@ textarea.app-dialog-input { min-height: 150px; resize: vertical; }
 }
 .shop-row button:hover:not(:disabled) { background: #78350f; color: #fff; }
 .shop-row button:disabled { opacity: 0.35; cursor: default; }
-/* Card offer + waystone prompt: see menus.css */
+/* Card offer: see menus.css */
 /* Hint tier 2: contextual "what to do here" line, bottom-center, just a pill. */
 #interaction-hint {
     position: absolute;

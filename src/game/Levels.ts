@@ -63,6 +63,7 @@ import { spawnPrefabEnemy, toAuthoredLight } from '@/game/instantiate';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { makeLevelRuntime } from '@/game/runtime';
 import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
+import { WAYSTONE_HELP_RADIUS, wandMakesFire, waystoneHelp } from '@/game/waystoneHelp';
 import { ARRIVAL_GRACE_TICKS, ARRIVAL_SAFE_RADIUS, arrivalPickupRests, arrivalStandable, arrivalThreat, relocateCreature, settleArrival } from '@/game/arrival';
 import { bossArenaRect } from '@/core/bossWard';
 import { resetCombatTransients } from '@/game/transients';
@@ -135,10 +136,6 @@ const WAYSTONE_LIGHT_TICKS = 30;
  *  flame-jet burst gaps and re-aiming (4-frame cadence, so 3 ≈ 12 frames). A
  *  longer gutter still fully resets, so a cold bowl never shows a false "almost". */
 const WAYSTONE_HEAT_GRACE = 3;
-/** Fire spells the waystone proximity prompt can offer to equip, best-first. */
-const WAYSTONE_FIRE_CARDS: readonly CardId[] = ['flame', 'emberstorm', 'meteor'];
-/** Cells: walking this close to an unlit waystone raises the help prompt once. */
-const WAYSTONE_PROMPT_RADIUS = 26;
 /** Campaign Weaver lair webs are background dressing; the authored test arena can go larger. */
 const WEAVER_LAIR_WEB_RADIUS_MIN = 24;
 const WEAVER_LAIR_WEB_RADIUS_MAX = 34;
@@ -672,10 +669,8 @@ export class Levels implements LevelsApi {
   private waystoneCold: number[] = [];
   /** Waystone indices per level id, in the order they were lit (last = respawn anchor). */
   private litOrder = new Map<string, number[]>();
-  /** Re-armed whenever the player is outside every unlit waystone's prompt radius. */
-  private waystonePromptArmed = true;
-  /** A waystone help prompt is open (paused) — suppresses re-triggering. */
-  private waystonePromptOpen = false;
+  /** Waystones (indices) whose help card has been shown on this floor visit (game/waystoneHelp). */
+  private waystoneTaught = new Set<number>();
   /** Last hostile count emitted via enemiesLeft. */
   private lastEnemiesEmit = -1;
   /** Levels already topped up with the review potion belt this session. */
@@ -2422,8 +2417,7 @@ export class Levels implements LevelsApi {
     this.scheduleSettledFindabilityRepair(ctx, runtime);
     this.waystoneHeat = new Array<number>(runtime.waystones.length).fill(0);
     this.waystoneCold = new Array<number>(runtime.waystones.length).fill(0);
-    this.waystonePromptArmed = true;
-    this.waystonePromptOpen = false;
+    this.waystoneTaught.clear();
     this.lastEnemiesEmit = ctx.enemies.length;
     if (ctx.state.debugGodMode) {
       grantFullReviewKit(player);
@@ -3455,69 +3449,28 @@ export class Levels implements LevelsApi {
   }
 
   /**
-   * Walking up to an unlit waystone raises a one-shot help prompt: if the player
-   * owns a fire spell that isn't on the active wand, offer to seat it; if they
-   * own none, explain how to bring fire by hand. Fires once per approach
-   * (re-armed when they step away) and never when the wand can already make fire.
+   * Walking up to an unlit waystone teaches how to light it — a TEACH CARD
+   * (ui/HintTeachOverlay: non-modal, the game never pauses, it yields to the
+   * story's beats), once per waystone per floor visit and only once he has
+   * landed; the hint line (game/Hints) says the short version while he stands
+   * there. Never when the wand already makes fire. (QA counted 41 modal,
+   * game-pausing prompts in one session for a kit without fire.)
    */
   private maybeWaystonePrompt(ctx: Ctx, runtime: LevelRuntime): void {
-    if (this.waystonePromptOpen || ctx.state.paused) return;
-    const r2 = WAYSTONE_PROMPT_RADIUS * WAYSTONE_PROMPT_RADIUS;
-    let near = false;
-    for (const ws of runtime.waystones) {
-      if (ws.lit) continue;
+    if (ctx.state.paused || !ctx.player.grounded) return;
+    const r2 = WAYSTONE_HELP_RADIUS * WAYSTONE_HELP_RADIUS;
+    for (let i = 0; i < runtime.waystones.length; i++) {
+      const ws = runtime.waystones[i];
+      if (ws.lit || this.waystoneTaught.has(i)) continue;
       const dx = ws.x - ctx.player.x,
         dy = ws.y - ctx.player.y;
-      if (dx * dx + dy * dy <= r2) {
-        near = true;
-        break;
-      }
-    }
-    if (!near) {
-      this.waystonePromptArmed = true;
+      if (dx * dx + dy * dy > r2) continue;
+      if (wandMakesFire(ctx)) return;
+      this.waystoneTaught.add(i);
+      const help = waystoneHelp(ctx);
+      ctx.events.emit('hintTeach', { key: 'waystone-unlit', title: help.title, body: help.body });
       return;
     }
-    // Never pause the game mid-fall: a modal that pops while the player is
-    // dropping past a waystone steals the landing. It waits for solid ground.
-    if (!this.waystonePromptArmed || !ctx.player.grounded) return;
-    const active = ctx.wands.wands[ctx.wands.active];
-    // The wand can already make fire — no need to nag.
-    if (WAYSTONE_FIRE_CARDS.some((c) => active.cards.includes(c))) return;
-    this.waystonePromptArmed = false;
-    const owned =
-      WAYSTONE_FIRE_CARDS.find(
-        (c) => ctx.wands.collection.includes(c) || ctx.wands.wands.some((w) => w.cards.includes(c)),
-      ) ?? null;
-    this.waystonePromptOpen = true;
-    const shown = ctx.events.emit('waystonePrompt', {
-      card: owned,
-      onEquip: () => {
-        if (owned) this.equipFireCard(ctx, owned);
-        this.waystonePromptOpen = false;
-      },
-      onDismiss: () => {
-        this.waystonePromptOpen = false;
-      },
-    });
-    if (!shown) this.waystonePromptOpen = false; // no UI listening — don't wedge
-  }
-
-  /** Replace the active wand's loadout with a single fire card the player owns. */
-  private equipFireCard(ctx: Ctx, card: CardId): void {
-    const wi = ctx.wands.active;
-    const wand = ctx.wands.wands[wi];
-    // If the card is parked in the other wand, pull it back to the collection first.
-    if (!ctx.wands.collection.includes(card)) {
-      const other = wi === 0 ? 1 : 0;
-      const os = ctx.wands.wands[other].cards.indexOf(card);
-      if (os >= 0) ctx.wands.slotCard(other, os, null);
-    }
-    // Clear the active wand back to the collection, then seat the fire card.
-    for (let s = 0; s < wand.cards.length; s++) {
-      if (wand.cards[s] !== null) ctx.wands.slotCard(wi, s, null);
-    }
-    ctx.wands.slotCard(wi, 0, card);
-    ctx.events.emit('toast', { text: 'FIRE SPELL EQUIPPED' });
   }
 
   /* ---------------- cartography ---------------- */

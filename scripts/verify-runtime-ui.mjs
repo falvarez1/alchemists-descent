@@ -100,41 +100,16 @@ check('Card offer Escape is captured without dismissing or opening Pause', cardE
 await page.keyboard.press('Enter');
 await page.waitForFunction(() => !document.getElementById('card-offer-overlay')?.classList.contains('visible'), null, { timeout: 5000 });
 
-await page.evaluate(() => {
-  window.__runtimeUiWaystoneDismissed = false;
-  window.__game.ctx.events.emit('waystonePrompt', {
-    card: null,
-    onEquip: () => {
-      window.__runtimeUiWaystoneDismissed = false;
-    },
-    onDismiss: () => {
-      window.__runtimeUiWaystoneDismissed = true;
-    },
-  });
-});
-await page.waitForSelector('#waystone-prompt-overlay.visible .waystone-prompt-btn', { timeout: 5000 });
-await page.locator('#waystone-prompt-overlay .waystone-prompt-btn').first().focus();
-await page.keyboard.press('Tab');
-const waystoneTabState = await page.evaluate(() => ({
-  activeInside: document.getElementById('waystone-prompt-overlay')?.contains(document.activeElement) ?? false,
+// The unlit waystone no longer raises a modal (it paused the game on every
+// approach): its lesson is a non-modal teach card (game/waystoneHelp).
+await page.evaluate(() => window.__game.ctx.events.emit('hintTeach', { key: 'waystone-unlit', title: 'An Unlit Waystone', body: 'A waystone lights when fire keeps burning in its bowl.' }));
+await page.waitForTimeout(400);
+const waystoneTeachState = await page.evaluate(() => ({
+  teach: document.getElementById('hint-teach-overlay')?.classList.contains('visible') ?? false,
+  paused: window.__game.ctx.state.paused,
+  modal: !!document.getElementById('waystone-prompt-overlay'),
 }));
-await page.evaluate(() => document.getElementById('runtime-inspector-toggle')?.focus());
-await page.waitForTimeout(60);
-const waystoneOutsideFocusState = await page.evaluate(() => ({
-  activeInside: document.getElementById('waystone-prompt-overlay')?.contains(document.activeElement) ?? false,
-}));
-await page.keyboard.press('Escape');
-await page.waitForFunction(() => !document.getElementById('waystone-prompt-overlay')?.classList.contains('visible'), null, { timeout: 5000 });
-const waystoneEscapeState = await page.evaluate(() => ({
-  dismissed: window.__runtimeUiWaystoneDismissed === true,
-  pauseOpen: document.getElementById('pause-overlay')?.classList.contains('visible') ?? false,
-}));
-check(
-  'Waystone prompt traps Tab and scripted outside focus',
-  waystoneTabState.activeInside && waystoneOutsideFocusState.activeInside,
-  JSON.stringify({ waystoneTabState, waystoneOutsideFocusState }),
-);
-check('Waystone prompt Escape dismisses the modal without opening Pause', waystoneEscapeState.dismissed && !waystoneEscapeState.pauseOpen, JSON.stringify(waystoneEscapeState));
+check('Waystone help is a teach card: it never pauses and no modal exists', waystoneTeachState.teach && !waystoneTeachState.paused && !waystoneTeachState.modal, JSON.stringify(waystoneTeachState));
 
 check('No page or console errors', pageErrors.length === 0 && consoleErrors.length === 0, [...pageErrors, ...consoleErrors].join('\n'));
 

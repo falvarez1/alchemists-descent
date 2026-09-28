@@ -68,7 +68,6 @@ import { Explosions } from '@/sim/explosion';
 import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
 import { CardOfferOverlay } from '@/ui/CardOfferOverlay';
-import { WaystonePromptOverlay } from '@/ui/WaystonePromptOverlay';
 import { HintTeachOverlay } from '@/ui/HintTeachOverlay';
 import { GpuNotice } from '@/ui/GpuNotice';
 import { HelpOverlay } from '@/ui/HelpOverlay';
@@ -376,7 +375,6 @@ export class Game {
     // World-anchored alchemical-kill words (listens to `alchemyKill`/`combatCallout`).
     this.disposables.push(new Callouts(ctx));
     this.disposables.push(new CardOfferOverlay(ctx));
-    this.disposables.push(new WaystonePromptOverlay(ctx));
     this.disposables.push(new HintTeachOverlay(ctx));
     this.disposables.push(new GpuNotice(ctx, () => this.renderer.getBackendStatus().gpu));
     // Self-binds the B key; lives for the page lifetime.

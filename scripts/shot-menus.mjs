@@ -66,7 +66,8 @@ try {
       await snap('card-offer'); await closeAll();
     }
     if (want('waystone')) {
-      await page.evaluate(() => window.__game.ctx.events.emit('waystonePrompt', { card: 'frostshard', onEquip() {}, onDismiss() {} }));
+      // The unlit waystone's help is a non-modal teach card (game/waystoneHelp).
+      await page.evaluate(() => window.__game.ctx.events.emit('hintTeach', { key: 'waystone-unlit', title: 'An Unlit Waystone', body: 'A waystone lights when fire keeps burning in the stone bowl at its base.' }));
       await snap('waystone'); await closeAll();
     }
     if (want('sanctum')) {

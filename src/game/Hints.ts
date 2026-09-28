@@ -6,6 +6,7 @@ import { getSeenHints, markHintSeen } from '@/game/hints/seenHints';
 import { corpses } from '@/creatures/corpses';
 import { heldCorpse } from '@/combat/Telekinesis';
 import { getBindings, keyLabel } from '@/input/bindings';
+import { WAYSTONE_HELP_RADIUS, waystoneHelp } from '@/game/waystoneHelp';
 
 /** A teach-once popover body, paired with a contextual hint line. */
 interface Teach {
@@ -265,6 +266,15 @@ export class HintSystem implements HintApi {
           });
         }
       }
+    }
+
+    // --- an unlit waystone: how to light it (its teach card is Levels' — once per waystone per floor) ---
+    for (const ws of runtime.waystones) {
+      if (ws.lit) continue;
+      const d2 = (ws.x - px) ** 2 + (ws.y - py) ** 2;
+      if (d2 > WAYSTONE_HELP_RADIUS * WAYSTONE_HELP_RADIUS) continue;
+      consider({ priority: 2.1, dist2: d2, info: { key: 'waystone', line: waystoneHelp(ctx).line, world: { x: ws.x, y: ws.y - 3 } }, teach: null });
+      break;
     }
 
     // --- the cauldron: brewing ---
