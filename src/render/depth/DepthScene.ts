@@ -17,6 +17,53 @@ import type {
 import { usesTerrainArt } from '@/render/TerrainArt';
 import { Cell } from '@/sim/CellType';
 import { TEA } from '@/world/teaMachine';
+import { ICE_HOUSE, LENS_ROOM } from '@/world/wardenArenas';
+
+/** An authored set piece the foreground never covers (world cells); `calm` also silences particles. */
+interface AuthoredZone {
+  readonly x0: number;
+  readonly y0: number;
+  readonly x1: number;
+  readonly y1: number;
+  readonly pad: number;
+  readonly calm: boolean;
+}
+
+/** Placed set pieces whose rooms stay clear (ledger labels: the second doors' puzzle rooms and halls). */
+const CLEAR_PREFAB = /^(cold|glass|warden)-/;
+
+const zoneCache = new WeakMap<LevelRuntime, readonly AuthoredZone[]>();
+
+/**
+ * The level's no-occluder zones, cached per runtime: floor 1's Bell & Tea
+ * Engine hall; the Cold Store's Frozen Fall and Ice Vault; the Glass
+ * Galleries' Periscope and Prism Gate; and the guardians' halls (the Rime
+ * Warden's Ice-House, the Lenswright's Lens Room). The Galleries' zones are
+ * CALM too: their mirror and prism puzzles own every beam, so no depth
+ * particle may glint there.
+ */
+export function authoredZones(runtime: LevelRuntime): readonly AuthoredZone[] {
+  const hit = zoneCache.get(runtime);
+  if (hit) return hit;
+  const zones: AuthoredZone[] = [];
+  if (runtime.living) {
+    const b = TEA.simBounds;
+    zones.push({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, pad: 36, calm: false });
+  }
+  for (const p of runtime.placedPrefabs ?? []) {
+    if (CLEAR_PREFAB.test(p.id)) zones.push({ x0: p.x0, y0: p.y0, x1: p.x1, y1: p.y1, pad: 30, calm: p.id.startsWith('glass-') });
+  }
+  const boss = runtime.boss;
+  if (boss?.kind === 'rimewarden') {
+    const A = ICE_HOUSE, cx = boss.x, cy = boss.y + 1 - A.FLOOR;
+    zones.push({ x0: cx - A.RX - 2, y0: cy - A.RY - 2, x1: cx + A.RX + 2, y1: cy + A.FLOOR + 6, pad: 30, calm: false });
+  } else if (boss?.kind === 'lenswright') {
+    const A = LENS_ROOM, cx = boss.x, cy = boss.y + 1 + A.HOVER - A.FLOOR;
+    zones.push({ x0: cx - A.RX - 2, y0: cy - A.RY - 2, x1: cx + A.RX + 2, y1: cy + A.FLOOR + 6, pad: 30, calm: true });
+  }
+  zoneCache.set(runtime, zones);
+  return zones;
+}
 
 /**
  * THE DEPTH SCENE — the layered scenery around the play layer (config/depthKits).
@@ -88,7 +135,7 @@ export class DepthScene implements ParallaxLayers {
   private readonly pointPool: RevealPoint[] = [];
   /** Authored set pieces occluders never cover (floor 1: the Bell & Tea Engine's hall and catwalk). */
   private readonly rects: RevealRect[] = [];
-  private readonly teaRect: RevealRect = { x0: 0, y0: 0, x1: 0, y1: 0, pad: 36 };
+  private readonly rectPool: RevealRect[] = [];
   private pointCount = 0;
   private lightCtx: Ctx | null = null;
   /** Light catch (G) and designed-darkness factor (B) for the reveal field (bound once). */
@@ -189,7 +236,8 @@ export class DepthScene implements ParallaxLayers {
 
   drawParticles(out: PixelSurface, light: LightField, ctx: Ctx, pass: DepthParticlePass): void {
     if (!particlesEnabled || this.source.kind !== 'kit' || !this.activeKit) return;
-    drawDepthParticles(out, light, ctx, this.activeKit.kit, pass, this.shaftPlane);
+    const reveal = this.foreground.reveal;
+    drawDepthParticles(out, light, ctx, this.activeKit.kit, pass, this.shaftPlane, (vx, vy) => reveal.sampleCalm(vx, vy));
   }
 
   /* ------------------------------ slots ------------------------------ */
@@ -368,10 +416,16 @@ export class DepthScene implements ParallaxLayers {
     const push = (x: number, y: number, r: number): void => this.pushPoint(camX, camY, x, y, r);
     // The engine is played, not watched: its whole hall stays clear.
     this.rects.length = 0;
-    if (ctx.levels?.current?.living) {
-      const b = TEA.simBounds, t = this.teaRect;
-      t.x0 = b.x0 - camX; t.y0 = b.y0 - camY; t.x1 = b.x1 - camX; t.y1 = b.y1 - camY;
-      if (t.x1 > -t.pad && t.y1 > -t.pad && t.x0 < VIEW_W + t.pad && t.y0 < VIEW_H + t.pad) this.rects.push(t);
+    const runtime = ctx.levels?.current;
+    if (runtime) {
+      for (const z of authoredZones(runtime)) {
+        const x0 = z.x0 - camX, y0 = z.y0 - camY, x1 = z.x1 - camX, y1 = z.y1 - camY;
+        if (x1 < -z.pad || y1 < -z.pad || x0 > VIEW_W + z.pad || y0 > VIEW_H + z.pad) continue;
+        let t = this.rectPool[this.rects.length];
+        if (!t) { t = { x0: 0, y0: 0, x1: 0, y1: 0, pad: 0 }; this.rectPool.push(t); }
+        t.x0 = x0; t.y0 = y0; t.x1 = x1; t.y1 = y1; t.pad = z.pad; t.calm = z.calm;
+        this.rects.push(t);
+      }
     }
     const p = ctx.player;
     if (!p.dead) push(p.x, p.y - 9, 46);

@@ -1,10 +1,10 @@
 import type { KitLight, KitPalette, Rgb } from '@/config/depthKits';
 import {
-  arcade, arch, basalt, bellows, chain, chimney, gear, girder, hPipe, kelp, mushroom, pipeColumn, pressureStack, root,
-  shaft, stalactites, statue, type Rand,
+  arcade, arch, basalt, bellows, chain, chimney, coilBank, displayCase, gear, girder, grate, hangingPrism, hookRail, hPipe, kelp,
+  lensRack, lightPool, mushroom, pipeColumn, pressureStack, root, shaft, stalactites, statue, tank, type Rand,
 } from '@/render/depth/motifs';
 import {
-  M_ACCENT, M_BODY, M_GLOW, M_SOFT, type SilhouetteOptions, lightField, paintLight, paintSilhouettes, paletteRamp, rampColor,
+  M_ACCENT, M_BODY, M_GLOW, M_SOFT, M_TINT, type SilhouetteOptions, lightField, paintLight, paintSilhouettes, paletteRamp, rampColor,
 } from '@/render/depth/lightArt';
 import { type Bitmap, MaskPlane, rng, smoothstep, tileFbm } from '@/render/depth/raster';
 
@@ -369,6 +369,156 @@ function kilnNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   return painter(pal, w, h, seed).paint(p, { value: 0.012, veil: 0.05, rim: 0.75, accent: { color: pal.accent, mix: 0.3 }, tone: 0.15 });
 }
 
+/* ========================== THE COLD STORE ========================== */
+
+function coldFar(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
+  // Cold light from the high vents over a hall of brine tanks lost in frost haze.
+  const r = rng(seed);
+  const P = painter(pal, w, h, seed);
+  const p = new MaskPlane(w, h);
+  for (const x of slots(r, w, 5, 0.5)) {
+    tank(p, r, x, Math.round(h * between(r, 0.8, 0.9)), Math.round(between(r, 56, 90)), Math.round(between(r, 120, 200)), M_BODY);
+  }
+  hookRail(p, r, 0, w, Math.round(h * 0.18), M_BODY);
+  return P.paint(p, { base: P.light(), value: 0.2, veil: 0.42, rim: 0.2 });
+}
+
+function coldRacks(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
+  // Cooling-coil banks and carcass rails, frost rimming every top edge.
+  const r = rng(seed);
+  const p = new MaskPlane(w, h);
+  for (const x of slots(r, w, 4, 0.5)) {
+    const cw = Math.round(between(r, 90, 150));
+    coilBank(p, x, Math.round(between(r, 0.1, 0.55) * h), cw, Math.round(between(r, 5, 9)), 12, 4, M_BODY);
+    p.vBar(x + Math.round(cw / 2), 0, p.height, 3, M_BODY, 10); // the bank's riser, full height (tiles)
+  }
+  for (let k = 0; k < 3; k++) {
+    const x0 = Math.round(r() * w), len = Math.round(between(r, 160, 300));
+    hookRail(p, r, x0, x0 + len, Math.round(between(r, 0.15, 0.85) * h), M_ACCENT);
+  }
+  return painter(pal, w, h, seed).paint(p, { value: 0.12, veil: 0.3, rim: 0.55, accent: { color: pal.accent, mix: 0.35 }, tone: 0.1 });
+}
+
+function coldShafts(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
+  // Pale light falling through the frosted vents, soft and nearly vertical.
+  const r = rng(seed);
+  const p = new MaskPlane(w, h);
+  for (let k = 0; k < 6; k++) {
+    shaft(p, M_SOFT, Math.round(r() * w), Math.round(between(r, 0, 0.25) * h), Math.round(between(r, 220, 360)), Math.round(between(r, 14, 34)),
+      between(r, -0.06, 0.06), between(r, 0.2, 0.32), Math.round(r() * 100));
+  }
+  return painter(pal, w, h, seed).paint(p, { value: 0, veil: 0, rim: 0 });
+}
+
+function coldMid(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
+  // Brine tanks with ladders, frosted vent grates, hooks on chains.
+  const r = rng(seed);
+  const p = new MaskPlane(w, h);
+  for (const x of slots(r, w, 3, 0.6)) {
+    tank(p, r, x, Math.round(between(r, 0.55, 0.95) * h), Math.round(between(r, 44, 64)), Math.round(between(r, 90, 150)), M_BODY);
+  }
+  for (let k = 0; k < 4; k++) {
+    grate(p, Math.round(r() * w), Math.round(r() * h), Math.round(between(r, 40, 70)), Math.round(between(r, 26, 44)), 6, M_ACCENT);
+  }
+  for (let k = 0; k < 4; k++) {
+    const x = Math.round(r() * w), y = Math.round(r() * h * 0.6);
+    hookRail(p, r, x, x + Math.round(between(r, 50, 110)), y, M_BODY);
+  }
+  return painter(pal, w, h, seed).paint(p, { value: 0.05, veil: 0.14, rim: 0.65, accent: { color: pal.accent, mix: 0.4 }, tone: 0.1 });
+}
+
+function coldNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
+  // Heavy frost-rimed pipe columns with icicles at their flanges, hooks on heavy chains.
+  const r = rng(seed);
+  const p = new MaskPlane(w, h);
+  for (const x of [Math.round(w * 0.1), Math.round(w * 0.58)]) {
+    pipeColumn(p, x, 18, M_BODY, r, M_ACCENT);
+    for (let y = Math.round(r() * 120); y < h; y += Math.round(between(r, 120, 200))) stalactites(p, r, x - 4, x + 24, y, 22, M_ACCENT);
+  }
+  hPipe(p, Math.round(w * 0.2), Math.round(w * 0.52), Math.round(h * 0.3), 12, M_BODY);
+  for (let k = 0; k < 3; k++) {
+    const x = Math.round(r() * w), y = Math.round(r() * h);
+    chain(p, x, y, Math.round(between(r, 60, 180)), M_BODY, 2);
+  }
+  hookRail(p, r, Math.round(w * 0.66), Math.round(w * 0.96), Math.round(h * 0.62), M_BODY, 2);
+  return painter(pal, w, h, seed).paint(p, { value: 0.015, veil: 0.05, rim: 0.6, accent: { color: pal.accent, mix: 0.5 }, tone: 0.15 });
+}
+
+/* ======================= THE GLASS GALLERIES ======================== */
+
+/** Prism spill: violet, teal and amber, low and broad (never a beam; the floor's puzzles own the beams). */
+function prismTints(pal: KitPalette): Rgb[] {
+  const t = pal.tints ?? [pal.shaft];
+  return t.map((c) => [c[0], c[1], c[2]] as Rgb);
+}
+
+function glassFar(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
+  // A dim hall of tall arcades; soft coloured light spills where prisms hang.
+  const r = rng(seed);
+  const P = painter(pal, w, h, seed);
+  const p = new MaskPlane(w, h);
+  for (let k = 0; k < 5; k++) {
+    lightPool(p, M_TINT + (k % 3), Math.round(r() * w), Math.round(h * between(r, 0.35, 0.65)), between(r, 60, 110), between(r, 70, 130), between(r, 0.14, 0.22));
+  }
+  arcade(p, Math.round(h * 0.42), 128, 96, 8, 240, M_BODY, 24);
+  return P.paint(p, { base: P.light(), value: 0.16, veil: 0.4, rim: 0.2, tints: prismTints(pal) });
+}
+
+function glassArcade(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
+  // Tall arcades glazed with dusty panes, ground lenses set into the piers.
+  const r = rng(seed);
+  const p = new MaskPlane(w, h);
+  const period = 160, span = 112, spring = Math.round(h * 0.34), pierH = 220;
+  arcade(p, spring, period, span, 12, pierH, M_BODY);
+  for (let x = period / 2; x < w + period / 2; x += period) {
+    // The pane: faint streaked glass filling the arch below its spring.
+    for (let y = spring - span / 2 + 6; y < spring + pierH; y++) for (let dx = -span / 2 + 3; dx < span / 2 - 3; dx++) {
+      if (y < spring && dx * dx + (y - spring) ** 2 > (span / 2 - 3) ** 2) continue;
+      // A faint glaze; a sheen only in the round head of the arch (short, not a beam).
+      const sheen = y < spring && ((Math.round(x + dx) + y) & 15) < 3 ? 0.12 : 0.06;
+      p.soft(Math.round(x + dx), y, M_TINT + 3, sheen);
+    }
+    // Mullions and a lens medallion on the pier.
+    p.vBar(Math.round(x), spring - span / 2 + 4, span / 2 + pierH - 6, 2, M_BODY, 0);
+    p.ring(Math.round(x + period / 2), spring - 20, 5, 8, M_ACCENT, 16);
+  }
+  for (let k = 0; k < 4; k++) chain(p, Math.round(r() * w), Math.round(r() * h * 0.4), Math.round(between(r, 30, 90)), M_BODY);
+  return painter(pal, w, h, seed).paint(p, { value: 0.1, veil: 0.3, rim: 0.45, accent: { color: pal.accent, mix: 0.45 }, tone: 0.1,
+    tints: prismTints(pal) });
+}
+
+function glassMid(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
+  // Display cases, lens racks and hanging prisms of the grinding floor.
+  const r = rng(seed);
+  const p = new MaskPlane(w, h);
+  for (const x of slots(r, w, 5, 0.5)) {
+    const base = Math.round(between(r, 0.55, 0.92) * h);
+    if (r() < 0.55) displayCase(p, r, x, base, Math.round(between(r, 36, 56)), Math.round(between(r, 34, 50)), M_BODY, M_TINT + 3);
+    else lensRack(p, x, base, Math.round(between(r, 70, 120)), M_BODY);
+  }
+  for (let k = 0; k < 4; k++) hangingPrism(p, Math.round(r() * w), Math.round(r() * h * 0.4), Math.round(between(r, 40, 120)), Math.round(between(r, 5, 9)), M_ACCENT);
+  return painter(pal, w, h, seed).paint(p, { value: 0.05, veil: 0.14, rim: 0.55, accent: { color: pal.accent, mix: 0.5 }, tone: 0.1,
+    tints: prismTints(pal) });
+}
+
+function glassNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
+  // Slender columns with glass capitals, a great lens frame, chains.
+  const r = rng(seed);
+  const p = new MaskPlane(w, h);
+  for (const x of [Math.round(w * 0.08), Math.round(w * 0.56)]) {
+    const cw = Math.round(between(r, 18, 26));
+    for (let y = 0; y < h; y++) for (let xx = 0; xx < cw; xx++) {
+      const u = (xx / (cw - 1)) * 2 - 1;
+      p.set(x + xx, y, M_BODY, (0.3 - u) * 34 + (xx % 6 === 0 ? -24 : 0));
+    }
+    const cap = Math.round(r() * h);
+    p.poly([[x - 8, cap], [x + cw + 8, cap], [x + cw, cap + 10], [x, cap + 10]], M_ACCENT, 20);
+  }
+  gear(p, Math.round(w * 0.82), Math.round(h * 0.3), 40, 0, 8, M_BODY);
+  for (let k = 0; k < 3; k++) chain(p, Math.round(r() * w), Math.round(r() * h), Math.round(between(r, 60, 180)), M_BODY, 2);
+  return painter(pal, w, h, seed).paint(p, { value: 0.015, veil: 0.05, rim: 0.55, accent: { color: pal.accent, mix: 0.5 }, tone: 0.15 });
+}
+
 /* ============================= GENERIC ============================== */
 
 function genericFar(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -428,6 +578,15 @@ export const PLANE_ART: Readonly<Record<string, PlaneArtBuilder>> = {
   'kiln-plumes': kilnHeat,
   'kiln-mid': kilnMid,
   'kiln-near': kilnNear,
+  'cold-far': coldFar,
+  'cold-racks': coldRacks,
+  'cold-shafts': coldShafts,
+  'cold-mid': coldMid,
+  'cold-near': coldNear,
+  'glass-far': glassFar,
+  'glass-arcade': glassArcade,
+  'glass-mid': glassMid,
+  'glass-near': glassNear,
   'generic-far': genericFar,
   'generic-arcade': genericArcade,
   'generic-shafts': genericShafts,

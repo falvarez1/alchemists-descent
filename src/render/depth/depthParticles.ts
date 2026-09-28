@@ -56,7 +56,8 @@ function shaftAlpha(sh: ShaftPlane, camX: number, camY: number, vx: number, vy: 
   return (b.pixels[(sy * b.width + sx) * 4 + 3] / 255) * sh.opacity;
 }
 
-function drawField(out: PixelSurface, light: LightField, ctx: Ctx, spec: DepthParticleSpec, salt: number, shafts: ShaftPlane | null): void {
+function drawField(out: PixelSurface, light: LightField, ctx: Ctx, spec: DepthParticleSpec, salt: number, shafts: ShaftPlane | null,
+  calmAt: ((vx: number, vy: number) => number) | null): void {
   const t = ctx.state.frameCount % 360000;
   const camX = ctx.camera.renderX, camY = ctx.camera.renderY;
   const presX = ctx.camera.presentationX ?? camX, presY = ctx.camera.presentationY ?? camY;
@@ -78,6 +79,7 @@ function drawField(out: PixelSurface, light: LightField, ctx: Ctx, spec: DepthPa
     k *= 1 - spec.twinkle * 0.5 * (1 + Math.sin(t * 0.045 * seeds[3] + seeds[2] * 3));
     const vx = wx - camX, vy = wy - camY;
     if (shafts && spec.inShafts && spec.inShafts > 1) k *= 1 + (spec.inShafts - 1) * Math.min(1, shaftAlpha(shafts, camX, camY, vx, vy) * 3.2);
+    if (calmAt) k *= calmAt(vx, vy);
     if (k <= 0.02) continue;
     add(wx, wy, spec.color[0] * k, spec.color[1] * k, spec.color[2] * k);
   }
@@ -85,11 +87,11 @@ function drawField(out: PixelSurface, light: LightField, ctx: Ctx, spec: DepthPa
 
 /** Draw a kit's particle fields for one pass (behind the sprites, or in front of everything). */
 export function drawDepthParticles(out: PixelSurface, light: LightField, ctx: Ctx, kit: DepthKit, pass: DepthParticlePass,
-  shafts: ShaftPlane | null): void {
+  shafts: ShaftPlane | null, calmAt: ((vx: number, vy: number) => number) | null = null): void {
   if (ctx.state.mode !== 'play') return;
   for (let k = 0; k < kit.particles.length; k++) {
     const spec = kit.particles[k];
     if ((pass === 'behind') !== spec.behind) continue;
-    drawField(out, light, ctx, spec, kit.seed + k * 131, shafts);
+    drawField(out, light, ctx, spec, kit.seed + k * 131, shafts, calmAt);
   }
 }

@@ -1065,6 +1065,17 @@ and flutters: 42% fall / 10% drift per step, floats on water as a pad) and
     → chimney stacks and basalt (0.12) → rising heat plumes (0.12, 240-tick
     breath) → brick tunnel mouths with glowing hearths and crucibles (0.21)
     → basalt columns, chains, a gear (0.33).
+  - *The Cold Store:* brine tanks in frost haze under a cold blue-white
+    light from the high vents (0.05) → cooling-coil banks and carcass rails,
+    frost rimming every top edge (0.12) → pale vent light (0.12) → brine
+    tanks with ladders, frosted grates, hooks (0.21) → frost-rimed pipe
+    columns with icicles, hooks on heavy chains (0.33); snow at three depths.
+  - *The Glass Galleries:* dark by design (darkness 0.36): a violet dusk
+    hall with broad, dim pools of prism spill (0.05) → tall glazed arcades
+    with lens medallions (0.12) → display cases, lens racks, hanging prisms
+    (0.21) → slender columns and a great lens (0.33). NO light shafts and no
+    texel brighter than luma 140: nothing may read as a beam or a bright spot
+    near the floor's mirror and prism puzzles.
   Painted planes are *lit silhouettes* (render/depth/lightArt): each kit has
   a restrained value ramp and a light (a vertical profile plus soft cores
   with a power falloff) — the Kiln's furnace cores glow low on the screen
@@ -1089,7 +1100,10 @@ and flutters: 42% fall / 10% drift per step, floats on water as a pad) and
   main, the Silt Garden's roots, the Refuge's lamp chain, the Lower Bell's
   gear and chain); generated floors scatter about one per screen. The Bell
   & Tea Engine's hall and catwalk are a no-occluder zone (36-cell soft edge):
-  the machine is played, not watched.
+  the machine is played, not watched. So are the second doors' set pieces
+  (30-cell edge): the Frozen Fall, the Ice Vault, the Rime Warden's Ice-House,
+  the Periscope, the Prism Gate and the Lenswright's Lens Room; the Galleries'
+  zones are also CALM (no depth particle glints near their optics).
   **The play layer always wins:** a reveal field (8-cell texels, updated at
   30 Hz, easing 0.26 per update) clears the screen centre (clear to 0.42 of the half-diagonal,
   full by 0.86), and punches soft holes (0.6 → 1.35 radii) over the player

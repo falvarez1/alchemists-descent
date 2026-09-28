@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { DEPTH_KITS, MAX_DEPTH_PLANES, depthKitFor, genericKit } from '@/config/depthKits';
 import { FLOOR_LOOKS } from '@/config/floorLooks';
-import type { BiomeId } from '@/core/types';
+import type { BiomeId, LevelRuntime } from '@/core/types';
 import { bakeForeground, bakePlane } from '@/render/depth/bake';
 import {
   backdropTexel, cameraFor, foregroundCoord, foregroundExtent, framingAnchor, particleScreen, pulseOpacity, wrap,
@@ -19,6 +19,9 @@ describe('depth kit lookup', () => {
     expect(depthKitFor('fungal').id).toBe('rot');
     expect(depthKitFor('flooded').id).toBe('cisterns');
     expect(depthKitFor('volcanic').id).toBe('kiln');
+    // The second doors (wave 3).
+    expect(depthKitFor('frozen').id).toBe('cold');
+    expect(depthKitFor('crystal').id).toBe('glass');
   });
 
   it('every other biome (and unknown ids) falls back to a generic kit graded from its floor look', () => {
@@ -27,13 +30,13 @@ describe('depth kit lookup', () => {
       expect(kit.planes.length).toBeGreaterThanOrEqual(3);
       if (!DEPTH_KITS[biome]) expect(kit.id).toBe('generic');
     }
-    // The Biomes workstream's new floors render before they get kits.
-    expect(depthKitFor('frozen').id).toBe('generic');
-    expect(depthKitFor('crystal').id).toBe('generic');
+    // A biome nobody has written a kit for still renders with depth.
+    expect(depthKitFor('timber').id).toBe('generic');
+    expect(depthKitFor('scorched').id).toBe('generic');
     expect(depthKitFor('not-a-biome' as BiomeId).id).toBe('generic');
     expect(depthKitFor(null).id).toBe('bellows');
     // Cached: the same object every call (bitmaps are baked once per kit).
-    expect(depthKitFor('frozen')).toBe(depthKitFor('frozen'));
+    expect(depthKitFor('timber')).toBe(depthKitFor('timber'));
   });
 
   it('generic kits take their colour from the floor look', () => {
@@ -117,6 +120,30 @@ describe('depth plane art', () => {
     const plume = depthKitFor('volcanic').planes.find((p) => p.shafts)!;
     expect(plume.scroll?.y ?? 0).toBeGreaterThan(0);
     expect(plume.pulse?.amp ?? 0).toBeGreaterThan(0);
+  });
+
+  it('the Glass Galleries add no false beams: no light shafts, no bright texels', () => {
+    const kit = depthKitFor('crystal');
+    expect(kit.planes.some((p) => p.shafts)).toBe(false);
+    for (let i = 0; i < kit.planes.length; i++) {
+      const b = bakePlane(kit, i, null)!;
+      let max = 0;
+      for (let o = 0; o < b.pixels.length; o += 4) {
+        if (b.pixels[o + 3] < 8) continue;
+        max = Math.max(max, b.pixels[o] * 0.2126 + b.pixels[o + 1] * 0.7152 + b.pixels[o + 2] * 0.0722);
+      }
+      expect(max).toBeLessThan(140);
+    }
+  });
+
+  it('the Cold Store light falls from above', () => {
+    const b = bakePlane(depthKitFor('frozen'), 0, null)!;
+    const rowMean = (y: number): number => {
+      let s = 0;
+      for (let x = 0; x < b.width; x++) { const o = (y * b.width + x) * 4; s += b.pixels[o] + b.pixels[o + 1] + b.pixels[o + 2]; }
+      return s / b.width;
+    };
+    expect(rowMean(Math.round(b.height * 0.1))).toBeGreaterThan(rowMean(Math.round(b.height * 0.7)));
   });
 
   it('backgrounds stay darker than the brightest playable values', () => {
@@ -272,6 +299,18 @@ describe('foreground occluder fade (the readability rule)', () => {
     expect(f.sample(VIEW_W - 8, VIEW_H - 8)).toBeGreaterThan(0.9);
   });
 
+  it('optics zones silence the depth particles (the Glass Galleries\' puzzles)', () => {
+    const f = new RevealField(VIEW_W, VIEW_H);
+    f.update([], { readable: false }, null, [{ x0: 40, y0: 40, x1: 160, y1: 120, pad: 30, calm: true }]);
+    expect(f.sampleCalm(100, 80)).toBe(0);
+    expect(f.sampleCalm(VIEW_W - 20, VIEW_H - 20)).toBe(1);
+    // A plain no-occluder zone (the engine hall) leaves the particles alone.
+    const g = new RevealField(VIEW_W, VIEW_H);
+    g.update([], { readable: false }, null, [{ x0: 40, y0: 40, x1: 160, y1: 120, pad: 30 }]);
+    expect(g.sampleCalm(100, 80)).toBe(1);
+    expect(g.sample(100, 80)).toBe(0);
+  });
+
   it('high-readability lighting softens every occluder', () => {
     const a = new RevealField(VIEW_W, VIEW_H), b = new RevealField(VIEW_W, VIEW_H);
     a.update([], { readable: false }, null);
@@ -290,5 +329,30 @@ describe('foreground occluder fade (the readability rule)', () => {
     // B: the designed-darkness factor the far particles dim by.
     expect(f.bytes[corner + 2]).toBe(128);
     expect(f.w).toBe(Math.ceil(VIEW_W / REVEAL_CELL) + 1);
+  });
+});
+
+describe('authored no-occluder zones', () => {
+  it('keeps the second doors\' puzzle rooms and guardian halls clear; the Galleries\' are calm', async () => {
+    const { authoredZones } = await import('@/render/depth/DepthScene');
+    const runtime = {
+      placedPrefabs: [
+        { id: 'glass-periscope', x0: 100, y0: 100, x1: 250, y1: 186 },
+        { id: 'cold-ice-vault', x0: 400, y0: 300, x1: 530, y1: 380 },
+        { id: 'flora-bramble', x0: 600, y0: 600, x1: 700, y1: 700 },
+      ],
+      boss: { x: 800, y: 500, kind: 'lenswright' },
+    } as unknown as LevelRuntime;
+    const zones = authoredZones(runtime);
+    expect(zones.map((z) => z.calm)).toEqual([true, false, true]);
+    expect(zones.some((z) => z.x0 === 600)).toBe(false);
+    // The Lens Room covers the hovering Lenswright and the floor under it.
+    const hall = zones[2];
+    expect(hall.x0).toBeLessThan(800);
+    expect(hall.x1).toBeGreaterThan(800);
+    expect(hall.y0).toBeLessThan(500);
+    expect(hall.y1).toBeGreaterThan(540);
+    // Cached per runtime.
+    expect(authoredZones(runtime)).toBe(zones);
   });
 });
