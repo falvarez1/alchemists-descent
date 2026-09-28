@@ -3317,6 +3317,17 @@ export class Levels implements LevelsApi {
       color: packRGB(66 + rng.int(24), 148 + rng.int(42), 58 + rng.int(24)),
       jitter: WEAVER_LAIR_WEB_JITTER_MIN + rng.next() * (WEAVER_LAIR_WEB_JITTER_MAX - WEAVER_LAIR_WEB_JITTER_MIN),
     });
+    // The web hangs in the chamber's air: under a low ceiling its hub landed in
+    // the rock (QA: three webs 89-100% inside rock) and the renderer, which
+    // skips rock cells, drew almost nothing. Slide it down toward the lair until
+    // its hub is open, never into the body lane (no draws: the stream is unchanged).
+    const web = weaverLairWebs[weaverLairWebs.length - 1];
+    const hubSolid = (cy: number): number => {
+      let n = 0;
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (!world.inBounds(x + dx, cy + dy) || blocksEntity(world.types[world.idx(x + dx, cy + dy)])) n++;
+      return n / 81;
+    };
+    while (web.y < y - WEAVER_LAIR_WEB_BODY_CLEARANCE - 4 && hubSolid(web.y) > 0.25) web.y++;
     for (let n = 0; n < 10; n++) {
       const ax = Math.floor(x - 46 + rng.int(93));
       let anchorY = -1;

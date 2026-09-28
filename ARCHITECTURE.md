@@ -117,6 +117,9 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     carve.ts              Pure carve primitives over the work buffer (incl. ensureConnectivity)
     skeleton/             Per-biome cave topology strategies (baseline + six bespoke)
     connect.ts            connectToCaves/carvePocket + PlacementLedger (reserved rects)
+    fixtureFooting.ts     The footing contract: fixtures' footings are sealed ground for
+                          later tunnels; after the last carve every bowl/basin/body is
+                          re-stamped and stood on ground (fail-open, never cuts a route)
     floraKit.ts           The 14 plant species as real-cell growers (Planter: writes only open cells)
     floraPass.ts          Floors 2-4: flora puzzle rooms + dressing on a forked 'flora' stream
     worksFlora.ts         Floor 1's hand-planted flora and the Seed Cellar puzzle

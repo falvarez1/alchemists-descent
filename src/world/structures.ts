@@ -45,6 +45,7 @@ import {
   tunnelTo,
 } from '@/world/connect';
 import type { PlacementLedger } from '@/world/connect';
+import { reserveFooting, runeFooting, triggerFooting } from '@/world/fixtureFooting';
 import { wizardMask } from '@/world/validate';
 import { buildIceHouse, buildLensRoom } from '@/world/wardenArenas';
 import type { KilnFlueSite } from '@/core/story';
@@ -345,9 +346,13 @@ export function placeStructures(
   }
 
   // Checkpoints are promises: every waystone (and the cauldron beside the
-  // first one) must be walkable, not an archaeology project.
-  for (const ws of waystones) connectToCaves(ws.x, ws.y - 4);
-  if (cauldron) connectToCaves(cauldron.x, cauldron.y - 4);
+  // first one) must be walkable, not an archaeology project. The connector
+  // leaves from ABOVE the bowl — its first disc stops two rows over the
+  // pillars — and walks around the reserved footing (world/fixtureFooting).
+  // It used to start AT the bowl (y - 4) and take the bowl and eight rows of
+  // floor with it: 30/30 waystones and 15/15 cauldrons floated (QA 2026-09-28).
+  for (const ws of waystones) connectToCaves(ws.x, ws.y - 14);
+  if (cauldron) connectToCaves(cauldron.x, cauldron.y - 14);
 
   // ---- Mechanism-gated treasure vault: a sealed room whose metal door obeys
   //      a pressure plate, a lever, or a fire brazier placed just outside ----
@@ -360,9 +365,14 @@ export function placeStructures(
     }
     let vy = Math.floor(HEIGHT * (0.3 + rng.next() * 0.42));
     // Reserved-ground dodge (inert while the ledger is empty): re-roll the
-    // vault site while its widest possible extent overlaps a reserved rect.
+    // vault site while its widest possible extent overlaps a reserved rect —
+    // keeping the spawn/portal clearance above, or a re-rolled vault's door
+    // slab could seal the arrival's own cave from the level (d2 expedition 24,
+    // GEN 61: a door 70 cells from the spawn cut its reach from 16068 to 4515
+    // cells, and the lair and both light puzzles found no way in).
     // Bounded, then place anyway — a vault is never silently skipped.
-    for (let a = 0; a < 24 && ledger.intersects(vx - 44, vy - 8, vx + 44, vy + 12); a++) {
+    const vaultClear = (): boolean => Math.abs(vx - spawn.x) > 220 && Math.abs(vx - portalX) > 160;
+    for (let a = 0; a < 24 && (ledger.intersects(vx - 44, vy - 8, vx + 44, vy + 12) || !vaultClear()); a++) {
       vx = 130 + Math.floor(rng.next() * (WIDTH - 260));
       vy = Math.floor(HEIGHT * (0.3 + rng.next() * 0.42));
     }
@@ -390,13 +400,18 @@ export function placeStructures(
     const mx = Math.floor(clamp(doorX + side * 22, 10, WIDTH - 11));
     carveRoomWithFloor(mx, vy, 11, 12, 10); // shelf at the pocket BOTTOM (no mid-bar)
     const my = vy + 10;
-    if (mechRoll === 0) makePlate(w, mechanisms, Math.floor(clamp(mx - 3, 4, WIDTH - 12)), my + 1, 7, door);
-    else if (mechRoll === 1) makeLever(mechanisms, mx, my, door);
-    else makeBrazier(w, mechanisms, mx, my, door);
+    const trigger =
+      mechRoll === 0 ? makePlate(w, mechanisms, Math.floor(clamp(mx - 3, 4, WIDTH - 12)), my + 1, 7, door)
+      : mechRoll === 1 ? makeLever(mechanisms, mx, my, door)
+      : makeBrazier(w, mechanisms, mx, my, door);
+    reserveFooting(ledger, triggerFooting(trigger), trigger.kind);
     // The trigger is hands-on: connect the antechamber on the trigger's side of
     // the door with the swept wizard gauge, so the nearest-main-path tunnel
     // cannot route through the door slab and leave the plate body-unreachable.
-    connectVaultTriggerAntechamber(mx + side * 6, vy + 2, side);
+    // It leaves from high in the antechamber (disc and gallery stop above the
+    // shelf at vy + 11) and walks around the trigger's footing: from vy + 2 it
+    // cut the shelf from under the lever — 18 triggers drawn in mid-air.
+    connectVaultTriggerAntechamber(mx + side * 6, vy - 2, side);
   }
 
   // ---- Sealed rune vaults: metal strongrooms opened by a distant rune glyph ----
@@ -504,7 +519,12 @@ export function placeStructures(
       w.types[i] = Cell.Metal;
       w.colors[i] = packRGB(88, 94, 104);
     }
-    connectToCaves(rx, ry - 3);
+    // The glyph hangs in open air over its pedestal, and the connector leaves
+    // from above it: from ry - 3 its first disc bored nine rows under the
+    // pedestal and left the metal bar in mid-air.
+    carveRectCells(w, rx - 2, ry - 5, rx + 2, ry - 1);
+    reserveFooting(ledger, runeFooting({ rx, ry: ry - 2 }), 'rune');
+    connectToCaves(rx, ry - 15);
     runeVaults.push({ rx, ry: ry - 2, door: doorCells, active: false });
     // approach antechamber outside the stone door, tunneled to the caves —
     // once the rune is struck and the door dissolves, you walk straight in
