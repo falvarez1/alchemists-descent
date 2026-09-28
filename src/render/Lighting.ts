@@ -4,7 +4,7 @@ import { DARK_ADAPT, renderAmbient, VIGNETTE_BASE } from '@/render/lightingModel
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import type { AuthoredLight, Ctx } from '@/core/types';
 import { DARKNESS, LANTERN } from '@/config/darkness';
-import { DARK_H, DARK_W, darkMapFor, renderDarkness, renderOpenLut, sampleDarkMap } from '@/core/darkness';
+import { darkMapFor, fillOpenField, openAtCell, renderDarkness, renderOpenLut, sampleDarkMap } from '@/core/darkness';
 import type { LightField, LightSample } from '@/render/pixels';
 import { creatureLights } from '@/render/creatures/lights';
 import { BEAM_MIRROR, BEAM_PRISM, MAX_BEAM_DEPTH, MIRROR_REFLECTANCE, PRISM_SHARE, PRISM_SPLIT, mirrorNormal, reflect, rotate } from '@/sim/beam';
@@ -165,6 +165,15 @@ export class Lighting implements LightField {
   private wandWrite = 0;
   /** lightOpen currently holds all-ones (a fully readable level skips the per-texel pass). */
   private openIsFlat = true;
+  /** What lightOpen was last filled from (the fill is skipped while none of it moved). */
+  private openMap: Uint8Array | null = null;
+  private openLut: Float32Array | null = null;
+  private openX = NaN;
+  private openY = NaN;
+  /** True while lightOpen is all ones: compose paths may skip the smooth darkness read. */
+  get openFlat(): boolean {
+    return this.openIsFlat;
+  }
   private wandFlickerTarget = 1;
   private readonly authoredFalloffCache = new Map<string, AuthoredFalloffCell[]>();
 
@@ -218,8 +227,11 @@ export class Lighting implements LightField {
       Lr = this.lightR[i];
       Lg = this.lightG[i];
       Lb = this.lightB[i];
-      open = this.lightOpen[i];
     }
+    // Designed darkness reads SMOOTH (core/darkness openAtCell), exactly as the
+    // compose paths draw it under the sprite — no texel staircase on a body
+    // walking out of the dark.
+    if (!this.openIsFlat) open = openAtCell(this.lightOpen, this.LW, this.LH, fx, fy);
     if (fx >= 0 && fx < VIEW_W && fy >= 0 && fy < VIEW_H) {
       // Rescale the baked VIGNETTE_BASE vignette by the live postFx.vignette
       // setting so sprites/debris track the slider exactly like the terrain
@@ -349,7 +361,17 @@ export class Lighting implements LightField {
       lightOpen.fill(1);
       this.openIsFlat = true;
     }
-    if (darkMap) this.openIsFlat = false;
+    if (darkMap) {
+      this.openIsFlat = false;
+      // Sampled at each texel's centre so every compose path can interpolate
+      // between centres (openAtCell): the dark's edge is smooth, never stepped.
+      // Static data: refilled only when the map, the comfort curve or the
+      // camera origin moved.
+      if (darkMap !== this.openMap || openLut !== this.openLut || renderCamX !== this.openX || renderCamY !== this.openY) {
+        fillOpenField(darkMap, openLut, renderCamX, renderCamY, LW, LH, lightOpen);
+        this.openMap = darkMap; this.openLut = openLut; this.openX = renderCamX; this.openY = renderCamY;
+      }
+    } else this.openMap = null;
     // Reactive bioluminescence: glow-caps flare as the alchemist passes through
     // them. Off-mode/dead → park the point far away so the flare never fires.
     const glowReact = ctx.state.mode === 'play' && !ctx.player.dead;
@@ -361,13 +383,11 @@ export class Lighting implements LightField {
     for (let ly = 0; ly < LH; ly++) {
       const wy = renderCamY + (ly << 1);
       const row = ly * LW;
-      const darkRow = darkMap ? Math.min(DARK_H - 1, Math.max(0, wy >> 1)) * DARK_W : 0;
       for (let lx = 0; lx < LW; lx++) {
         const wx = renderCamX + (lx << 1);
         const wi = world.idx(wx, wy);
         const t = world.types[wi];
         const i = row + lx;
-        if (darkMap) lightOpen[i] = openLut[darkMap[darkRow + Math.min(DARK_W - 1, Math.max(0, wx >> 1))]];
         // Translucent solids (ice, glass, crystal) pass most light through
         lightAtt[i] = MATERIAL_ATTENUATION[t] ?? 0.4;
         beamKindMap[i] = t === Cell.Mirror ? BEAM_MIRROR : t === Cell.Crystal ? BEAM_PRISM : 0;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { VIEW_H, VIEW_W } from '@/config/constants';
+import { HEIGHT, VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx } from '@/core/types';
-import { ACTION_PAN_MAX_SPEED, Camera } from '@/render/Camera';
+import { ACTION_PAN_MAX_SPEED, Camera, HUD_FLOOR_CLEARANCE } from '@/render/Camera';
 
 describe('action camera travel', () => {
   it('limits diagonal pan speed, eases direction changes and pulls back for a long handoff', () => {
@@ -63,6 +63,23 @@ describe('camera inspection focus', () => {
     expect(camera.tx).toBe(900 - VIEW_W / 2);
     expect(camera.ty).toBe(520 - VIEW_H / 2);
     expect(camera.x).toBeGreaterThan(startX);
+  });
+});
+
+describe('camera at the world floor (fix4b)', () => {
+  it('keeps the alchemist above the HUD bottom band at the world floor, and the floor a hard edge elsewhere', () => {
+    const camera = new Camera(), ctx = makeCtx(camera);
+    // Swimming at the very bottom of the world (floor 3's drowned sump).
+    ctx.player.y = HEIGHT - 6;
+    camera.snapTo(ctx.player.x, ctx.player.y);
+    for (let tick = 0; tick < 400; tick++) camera.update(ctx);
+    expect(camera.y + VIEW_H - ctx.player.y).toBeGreaterThanOrEqual(HUD_FLOOR_CLEARANCE - 0.01);
+    // Never more void than the band needs.
+    expect(camera.y + VIEW_H - HEIGHT).toBeLessThanOrEqual(HUD_FLOOR_CLEARANCE);
+    // A floor well above the world's bottom keeps the old hard edge: no void.
+    ctx.player.y = HEIGHT - 60;
+    for (let tick = 0; tick < 400; tick++) camera.update(ctx);
+    expect(camera.y).toBeLessThanOrEqual(HEIGHT - VIEW_H + 0.01);
   });
 });
 

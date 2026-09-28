@@ -29,7 +29,12 @@ export class ExpeditionEntry {
   private launching = false;
   private selectedKit: KitId = 'spark';
 
-  constructor(private readonly ctx: Ctx) {
+  /**
+   * `playReady` resolves once the play systems (game/playSystems: the story,
+   * the score, the Sanctum…) are installed — false if they could not load.
+   * They are fetched under the title; a launch waits for them.
+   */
+  constructor(private readonly ctx: Ctx, private readonly playReady: () => Promise<boolean> = () => Promise.resolve(true)) {
     this.settings = new PlayerSettings(ctx);
     this.root.id = 'expedition-entry';
     this.root.hidden = true;
@@ -120,6 +125,12 @@ export class ExpeditionEntry {
     if (workshop) workshop.hidden = view?.workshopUnlocked !== true;
   }
 
+  /** The story arrives with the play systems, after the title may already show: "The opening" follows it. */
+  refreshStory(): void {
+    const opening = this.root.querySelector<HTMLButtonElement>('[data-entry="opening"]');
+    if (opening) opening.hidden = this.ctx.story?.openingSeen !== true;
+  }
+
   private hide(): void { this.root.hidden = true; document.body.classList.remove('entry-active'); }
 
   private readonly onTitleRequest = (): void => {
@@ -164,6 +175,10 @@ export class ExpeditionEntry {
     this.ctx.audio.ensure();
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     try {
+      if (!(await this.playReady())) {
+        this.root.querySelector('.entry-status')!.textContent = 'The Works could not finish loading. Refresh the page to try again.';
+        return;
+      }
       const started = this.start(kind);
       if (started.ok) { this.hide(); this.ctx.state.paused = false; }
       else this.root.querySelector('.entry-status')!.textContent = started.message;

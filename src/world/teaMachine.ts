@@ -130,6 +130,24 @@ export const TEA_BODIES: ReadonlyArray<{
 export const TEA_FUSE_TAIL_CELLS = (TEA.fuse.x1 - (TEA.coupling.x + TEA.coupling.w) + 1) * 3;
 
 export function teaRect(world: World, r: { x: number; y: number; w: number; h: number }, material: Cell): void {
+  // Clearing to air skips what is already exactly air (the world ends the
+  // same, but the recharge re-stamps a 1108x236 hall that is mostly empty
+  // and touching every cell of it was a 26 ms hitch on the crank, fix4b).
+  if (material === Cell.Empty) {
+    const x0 = Math.max(0, r.x), x1 = Math.min(world.width, r.x + r.w);
+    const y0 = Math.max(0, r.y), y1 = Math.min(world.height, r.y + r.h), width = world.width;
+    const { types, colors, life, charge, flow } = world, overridden = world.colorOverrides.mask;
+    for (let y = y0; y < y1; y++) {
+      const row = y * width;
+      for (let i = row + x0, end = row + x1; i < end; i++) {
+        // Air that is not already exactly air (the common case skips the call).
+        if (types[i] !== Cell.Empty || colors[i] !== EMPTY_COLOR || life[i] !== 0 || charge[i] !== 0 || overridden[i] !== 0) {
+          world.clearCellAt(i);
+        } else flow.forget(i);
+      }
+    }
+    return;
+  }
   const color = COLOR_FN[material];
   for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) {
     if (world.inBounds(x, y)) world.replaceCellAt(world.idx(x, y), material, color?.() ?? EMPTY_COLOR);

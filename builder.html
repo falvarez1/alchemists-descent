@@ -24,6 +24,11 @@
     <meta name="twitter:description" content="Something is alive in the old refinery. Listen. Experiment. Find your way down.">
     <!-- The entry title's face: fetch it with the HTML instead of after the JS-injected CSS. -->
     <link rel="preload" href="/assets/fonts/cormorant-garamond-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <!-- The refinery plates: the entry screen paints them as CSS backgrounds and
+         the game decodes them for its backdrop; one preloaded request serves both
+         (a cold load fetched a plate twice without it). -->
+    <link rel="preload" href="/assets/living-descent/refinery-distance.png" as="image">
+    <link rel="preload" href="/assets/living-descent/refinery-machinery.png" as="image">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2307070a'/%3E%3Crect x='3' y='9' width='3' height='3' fill='%23d4af37'/%3E%3Crect x='6' y='6' width='3' height='3' fill='%23a855f7'/%3E%3Crect x='9' y='9' width='3' height='3' fill='%233a7bd5'/%3E%3C/svg%3E">
     <style>
       /* Critical boot styles, inlined on purpose: the app stylesheet loads

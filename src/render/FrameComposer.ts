@@ -41,6 +41,7 @@ import {
   VIGNETTE_BASE,
 } from '@/render/lightingModel';
 import { SKY } from '@/render/skyAtmosphere';
+import { openAtCell } from '@/core/darkness';
 import { PICKUP_COLOR } from '@/core/pickupDefs';
 import { drawHeldLeg, drawLooseLeg } from '@/render/sprites/CreatureArt';
 import { drawTelekinesis } from '@/render/sprites/TelekinesisArt';
@@ -59,6 +60,9 @@ import {
   drawParticles,
   drawProjectiles,
 } from '@/render/sprites/FxSprites';
+
+/** No tint: the neutral clear-water seen colour (a look without waterSeen). */
+const WATER_SEEN_NONE = [1, 1, 1] as const;
 
 /** Reusable per-frame descriptor for a visible backdrop layer (see activeBackdropLayers). */
 interface ActiveBackdropLayer {
@@ -134,6 +138,8 @@ export class FrameComposer implements PixelSurface {
     () => ({ pixels: EMPTY_BACKDROP_PIXELS, width: 0, opacity: 0, alphaScale: 0, lit: 1, xSamples: EMPTY_SAMPLES, ySamples: EMPTY_SAMPLES }),
   );
   private readonly activeBackdropLayers: ActiveBackdropLayer[] = [];
+  /** Scratch: the drowned distance seen through a clear water body (CLEAR WATER). */
+  private readonly waterSeenRgb = new Float32Array(3);
   private readonly poses = new RenderPoses();
   private alpha = 1;
   private drawOffsetX = 0;
@@ -562,7 +568,10 @@ export class FrameComposer implements PixelSurface {
     const materials = ctx.params.materials;
     const { lightR, lightG, lightB, vignette, LW } = this.light;
     // Designed darkness per light texel (1 = shipped look); see lightingModel DARK_*.
-    const lightOpen = this.light.lightOpen;
+    // Read SMOOTHLY per cell (core/darkness openAtCell, as the GPU shaders do);
+    // a readable level (all ones) skips the read.
+    const lightOpen = this.light.lightOpen && this.light.openFlat !== true ? this.light.lightOpen : null;
+    const LH = this.light.LH;
     // The vignette[] array bakes the shipped 0.52 strength; rescale per-frame so
     // postFx.vignette tunes it (mirrors the GPU compose's uVignette uniform).
     const vigScale = ctx.state.postFx.vignette / VIGNETTE_BASE;
@@ -628,6 +637,50 @@ export class FrameComposer implements PixelSurface {
       descriptor.ySamples = ySamples;
       activeBackdropLayers.push(descriptor);
     }
+    // CLEAR WATER (floorLooks waterClarity; ComposeShader mirrors it): a water
+    // body shows the kit's planes through it, graded like the open backdrop,
+    // washed toward grey and tinted by the water, with a slow refraction sway.
+    const waterClarity = natural?.waterClarity ?? 0;
+    const waterBodyRgb = (floorLook.waterBody[0] << 16) | (floorLook.waterBody[1] << 8) | floorLook.waterBody[2];
+    const waterSeen = natural?.waterSeen ?? WATER_SEEN_NONE, waterSeenSat = natural?.waterSeenSat ?? 1;
+    const seenPhase = ((frameCount * 0.16) % (Math.PI * 2)) * 0.35;
+    const seen = this.waterSeenRgb;
+    const sampleSeen = (svx: number, svy: number): void => {
+      let sr = 0, sg = 0, sb = 0, trans = 1;
+      for (let li = activeBackdropLayers.length - 1; li >= 0; li--) {
+        const active = activeBackdropLayers[li];
+        const px = active.pixels;
+        const si = active.ySamples[svy] + active.xSamples[svx];
+        const a = px[si + 3] * active.alphaScale;
+        if (a <= 0.001) continue;
+        const w = trans * a;
+        sr += px[si] * w;
+        sg += px[si + 1] * w;
+        sb += px[si + 2] * w;
+        trans *= 1 - a;
+        if (trans < 0.002) break;
+      }
+      sr = sr / 255 + 0.004 * trans;
+      sg = sg / 255 + 0.005 * trans;
+      sb = sb / 255 + 0.009 * trans;
+      sr = (sr * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
+      sg = (sg * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
+      sb = (sb * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
+      let l = sr * 0.2126 + sg * 0.7152 + sb * 0.0722;
+      sr = l + (sr - l) * backdropSaturation;
+      sg = l + (sg - l) * backdropSaturation;
+      sb = l + (sb - l) * backdropSaturation;
+      sr = sr <= 0 ? 0 : sr >= 1 ? 1 : sr ** backdropInvGamma;
+      sg = sg <= 0 ? 0 : sg >= 1 ? 1 : sg ** backdropInvGamma;
+      sb = sb <= 0 ? 0 : sb >= 1 ? 1 : sb ** backdropInvGamma;
+      sr = sr * tintMulR + tintLiftR;
+      sg = sg * tintMulG + tintLiftG;
+      sb = sb * tintMulB + tintLiftB;
+      l = sr * 0.2126 + sg * 0.7152 + sb * 0.0722;
+      seen[0] = (l + (sr - l) * waterSeenSat) * waterSeen[0];
+      seen[1] = (l + (sg - l) * waterSeenSat) * waterSeen[1];
+      seen[2] = (l + (sb - l) * waterSeenSat) * waterSeen[2];
+    };
     const pixelData = this.target.pixelData;
     const wavesLen = Math.min(ctx.shockwaves.length, COMPOSE_MAX_WAVES);
     const lensLen = Math.min(lenses.length, COMPOSE_MAX_LENSES);
@@ -866,7 +919,7 @@ export class FrameComposer implements PixelSurface {
             } else {
               // The distant cave sinks with the designed darkness; only real
               // light (the lf0 term) brings it back.
-              const open = lightOpen ? lightOpen[li] : 1, shut = 1 - open, adapt = DARK_ADAPT * shut;
+              const open = lightOpen ? openAtCell(lightOpen, LW, LH, vx, vy) : 1, shut = 1 - open, adapt = DARK_ADAPT * shut;
               const litK = 0.72 * litW;
               let lf0 = Math.min(LIGHT_CLAMP, lightR[li]) * vg;
               r = (r * 0.62 + ambient * 0.022) * vg * open + r * (lf0 * lf0 + adapt * lf0) * litK + DARK_AIR_R * shut;
@@ -899,6 +952,16 @@ export class FrameComposer implements PixelSurface {
         r = unpackR(rgb) / 255;
         g = unpackG(rgb) / 255;
         b = unpackB(rgb) / 255;
+        // The terrain cache paints a clear body (not a surface, not a sealed
+        // pocket, not an override) exactly the look's waterBody.
+        if (waterClarity > 0 && type === Cell.Water && rgb === waterBodyRgb) {
+          const sway = Math.floor(Math.sin(wy * 0.19 + seenPhase) * 1.6);
+          const svx = vx + sway < 0 ? 0 : vx + sway >= VIEW_W ? VIEW_W - 1 : vx + sway;
+          sampleSeen(svx, vy);
+          r += (seen[0] - r) * waterClarity;
+          g += (seen[1] - g) * waterClarity;
+          b += (seen[2] - b) * waterClarity;
+        }
 
         // Living flame: per-frame flicker on hot cells
         if (type === Cell.Fire) {
@@ -968,7 +1031,7 @@ export class FrameComposer implements PixelSurface {
           // (the BFS rim shading baked into cell colors carries the detail).
           // Designed darkness lowers ambient and this floor together; what is
           // left at full dark is the cold DARK_FLOOR remainder.
-          const open = lightOpen ? lightOpen[li] : 1, shut = 1 - open;
+          const open = lightOpen ? openAtCell(lightOpen, LW, LH, vx, vy) : 1, shut = 1 - open;
           const floor = LIGHT_READABILITY_FLOOR * vg * open;
           const amb = ambient * open, adapt = DARK_ADAPT * shut;
           // Emissive cells are LIGHT SOURCES: their own brightness must not be

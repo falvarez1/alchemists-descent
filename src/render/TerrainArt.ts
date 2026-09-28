@@ -10,7 +10,7 @@ import {
 } from '@/config/floorLooks';
 import { FLOOR_SHEET, FLOOR_TILE, floorTilePixels } from '@/render/floorTiles';
 import {
-  ART_AIR_MASK, ART_BUILT_BIT, ART_DEPTH_MASK, ART_LOOSE_BIT, ART_SOLID_BIT, existingTerrainArtPlane, terrainArtPlane, type ArtZone, type TerrainArtPlane,
+  ART_AIR_MASK, ART_BUILT_BIT, ART_DEPTH_MASK, ART_LOOSE_BIT, ART_POCKET_BIT, ART_SOLID_BIT, existingTerrainArtPlane, terrainArtPlane, type ArtZone, type TerrainArtPlane,
 } from '@/render/terrainArtPlane';
 
 let terrain: Uint8ClampedArray | null = null;
@@ -36,6 +36,9 @@ export const terrainBlocksGlsl = Array.from({ length: 128 }, (_, type) => type)
  */
 const OPEN = new Uint8Array(256);
 for (let t = 0; t < 256; t++) OPEN[t] = !blocksEntity(t) && !isLiquid(t) ? 1 : 0;
+/** What lies beyond a water-facing cell for the face to count as wet (a body, not a pore). */
+const WET_BODY = new Uint8Array(256);
+for (let t = 0; t < 256; t++) WET_BODY[t] = OPEN[t] || t === Cell.Water ? 1 : 0;
 /** The OPEN table as two 32-bit masks (ids 0–63) for the shader port. */
 export const terrainOpenMask: readonly [number, number] = [openWord(0), openWord(1)];
 function openWord(word: number): number {
@@ -316,7 +319,9 @@ function naturalAlbedo(world: World, plane: TerrainArtPlane, index: number, x: n
   if (type === Cell.Water) {
     const below = types[index + width];
     const exposed = y > 0 && types[index - width] === Cell.Empty && (below === Cell.Water || blocksEntity(below));
-    const water = exposed ? look.waterSurface : look.waterBody;
+    // A sealed pocket (a pore in a flooded wall) stays part of the rock mass.
+    const pocket = (art & (ART_SOLID_BIT | ART_LOOSE_BIT | ART_POCKET_BIT)) === (ART_LOOSE_BIT | ART_POCKET_BIT);
+    const water = exposed ? look.waterSurface : pocket ? natural.waterPocket ?? look.waterBody : look.waterBody;
     return (water[0] << 16) | (water[1] << 8) | water[2];
   }
   if (type !== Cell.Wall && type !== Cell.Stone && type !== Cell.Wood && type !== Cell.Metal) return world.colors[index];
@@ -389,6 +394,18 @@ function naturalAlbedo(world: World, plane: TerrainArtPlane, index: number, x: n
     r += (natural.lip[0] - r) * m; g += (natural.lip[1] - g) * m; b += (natural.lip[2] - b) * m;
   } else if (x + 1 < width && OPEN[types[index + 1]] === 1) {
     r *= natural.rightShade; g *= natural.rightShade; b *= natural.rightShade;
+  } else if (natural.wetLipMix && natural.wetLip) {
+    // WET FACES: a face against a body of water (the next cell out is water or
+    // open too — a one-cell pore stays part of the rock) wears a wet rim, so
+    // drowned rock reads against the water. ComposeShader mirrors this.
+    const wet = natural.wetLip, data = plane.data;
+    const POCKET = ART_SOLID_BIT | ART_LOOSE_BIT | ART_POCKET_BIT;
+    const reach = (j: number, k: number): boolean =>
+      types[j] === Cell.Water && (data[j] & POCKET) !== (ART_LOOSE_BIT | ART_POCKET_BIT) && WET_BODY[types[k]] === 1;
+    let m = 0;
+    if (y > 1 && reach(index - width, index - 2 * width)) m = natural.wetLipMix;
+    else if ((x > 1 && reach(index - 1, index - 2)) || (x + 2 < width && reach(index + 1, index + 2))) m = natural.wetLipMix * 0.5;
+    if (m > 0) { r += (wet[0] - r) * m; g += (wet[1] - g) * m; b += (wet[2] - b) * m; }
   }
   // Glaze: rock that touches lava is fired to a crazed amber glass.
   if (natural.glazeMix > 0 && ((y > 0 && types[index - width] === Cell.Lava) || (x > 0 && types[index - 1] === Cell.Lava)

@@ -7,23 +7,19 @@ import { updateHabitatMotion } from '@/game/HabitatMotion';
 import { Flora } from '@/game/Flora';
 import { advanceTrickshotClock } from '@/combat/Trickshot';
 import { TeaMachine } from '@/game/TeaMachine';
-import { TeaMachineOverlay } from '@/ui/TeaMachineOverlay';
 import { updateLegSwing } from '@/combat/WeaverLimbs';
 import { clearTelekinesis, updateTelekinesis } from '@/combat/Telekinesis';
 import { createCorpsesApi } from '@/creatures/corpses';
 import { ExpeditionEntry } from '@/ui/ExpeditionEntry';
 import { randomSeed } from '@/core/rng';
 import { Telemetry } from '@/core/telemetry';
-import type { Ctx, FxState, GameStateData, InputState, RenderBackendMode } from '@/core/types';
+import type { Ctx, FxState, GameStateData, InputState, RenderBackendMode, SanctumApi } from '@/core/types';
 import { SfxAudioEngine } from '@/audio/SfxEngine';
 import { installAudioDirector } from '@/audio/AudioDirector';
 import { installUiSounds } from '@/audio/UiSounds';
 import { HabitatAudio } from '@/audio/HabitatAudio';
 import { installAudioStingers } from '@/audio/Stingers';
 import { installEventCues } from '@/audio/EventCues';
-import { MusicDirector } from '@/audio/MusicDirector';
-import { Narrator } from '@/audio/Narrator';
-import { NarrationCaption } from '@/ui/NarrationCaption';
 import { Flask } from '@/combat/Flask';
 import { AlchemyKills } from '@/combat/AlchemyKills';
 import { Lightning } from '@/combat/Lightning';
@@ -37,7 +33,9 @@ import { RigidBodies } from '@/entities/RigidBodies';
 import { VineStrands } from '@/entities/VineStrands';
 import { Brewing } from '@/game/Brewing';
 import { FixedStepClock, type FrameCadence } from '@/game/FixedStepClock';
-import { createConsoleApi } from '@/game/console/commands';
+import { createLazyConsoleApi } from '@/game/console/lazyConsole';
+import type { PlaySystems } from '@/game/playSystems';
+import { loadVirtualWorld } from '@/game/lazyVirtualWorld';
 import { Critters } from '@/game/Critters';
 import { DebugTool } from '@/game/DebugTool';
 import { GrimoireInteractionObserver } from '@/game/GrimoireInteractions';
@@ -67,21 +65,14 @@ import { Cell } from '@/sim/CellType';
 import { Explosions } from '@/sim/explosion';
 import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
-import { CardOfferOverlay } from '@/ui/CardOfferOverlay';
-import { WaystonePromptOverlay } from '@/ui/WaystonePromptOverlay';
-import { HintTeachOverlay } from '@/ui/HintTeachOverlay';
 import { GpuNotice } from '@/ui/GpuNotice';
-import { HelpOverlay } from '@/ui/HelpOverlay';
 import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
 import { Hud } from '@/ui/Hud';
-import { Callouts } from '@/ui/Callouts';
 import { CellInspector } from '@/ui/CellInspector';
-import { Grimoire } from '@/ui/Grimoire';
 import { Inspector } from '@/ui/Inspector';
 import { LevelStore } from '@/ui/LevelStore';
 import { Minimap } from '@/ui/Minimap';
-import { Sanctum } from '@/ui/Sanctum';
 import { PerfHud } from '@/ui/PerfHud';
 import { RunLauncher } from '@/ui/RunLauncher';
 import { RuntimeInspector } from '@/ui/RuntimeInspector';
@@ -95,10 +86,11 @@ import { Clips } from '@/app/Clips';
 import { RunDirector } from '@/game/RunDirector';
 import { RunSummary } from '@/ui/RunSummary';
 import { RunHud } from '@/ui/RunHud';
-import { StoryDirector } from '@/game/story/StoryDirector';
 import { DialogueBox } from '@/ui/story/DialogueBox';
 import { StoryCinemaOverlay } from '@/ui/story/StoryCinema';
-import { AshVoice } from '@/ui/story/AshVoice';
+
+/** What unlocks audio (the score's MusicDirector listens for the same three). */
+const GESTURES = ['pointerdown', 'keydown', 'touchend'] as const;
 
 function initialRenderBackendOverride(): RenderBackendMode | null {
   if (typeof window === 'undefined') return null;
@@ -152,6 +144,14 @@ export class Game {
   private lastComposeSignature = -1;
   /** Page-lifetime UI singletons whose global listeners/timers must be torn down on HMR dispose. */
   private readonly disposables: { dispose(): void }[] = [];
+  /** The streamed layers' host (the play systems' score and narrator feed it). */
+  private readonly audioEngine: SfxAudioEngine;
+  /** The play systems chunk (game/playSystems), once asked for. */
+  private playSystems: Promise<PlaySystems | null> | null = null;
+  /** The Sanctum behind ctx.sanctum's stand-in, once the play systems land. */
+  private sanctum: SanctumApi | null = null;
+  /** A real gesture landed before the play systems did (the score unlocks on it, as it always has). */
+  private gestured = false;
 
   constructor(holder: HTMLElement) {
     const state: GameStateData = {
@@ -197,6 +197,15 @@ export class Game {
     // Assembled in two steps: data first, then services that close over ctx.
     // Services only USE ctx at runtime, after wiring completes.
     const audio = new SfxAudioEngine();
+    this.audioEngine = audio;
+    // The score's gesture unlock, watched from boot: its director arrives with
+    // the play systems, and a click on the title before then still counts.
+    const onGesture = (): void => {
+      this.gestured = true;
+      for (const type of GESTURES) window.removeEventListener(type, onGesture, { capture: true });
+    };
+    for (const type of GESTURES) window.addEventListener(type, onGesture, { capture: true });
+    this.disposables.push({ dispose: () => { for (const type of GESTURES) window.removeEventListener(type, onGesture, { capture: true }); } });
     const ctx = {
       world: new World(),
       events: new EventBus(),
@@ -273,9 +282,9 @@ export class Game {
     const mechanisms = new Mechanisms(ctx);
     ctx.mechanisms = mechanisms;
     this.disposables.push(mechanisms);
-    const sanctum = new Sanctum(ctx);
-    ctx.sanctum = sanctum;
-    this.disposables.push(sanctum);
+    // The Sanctum's UI arrives with the play systems (game/playSystems); this
+    // stand-in answers until then (no run can reach a Sanctum before it lands).
+    ctx.sanctum = this.sanctumStandIn();
     const critters = new Critters(ctx);
     ctx.critters = critters;
     this.disposables.push(critters);
@@ -285,7 +294,9 @@ export class Game {
     ctx.debug = new DebugTool(ctx);
     ctx.time = new TimeControls(ctx);
     ctx.perf = this.perfHud;
-    ctx.console = createConsoleApi(ctx);
+    // The command set loads on first use; a command waits for the play systems,
+    // so `run …` from the console (or a probe) never starts a run without them.
+    ctx.console = createLazyConsoleApi(ctx, () => this.loadPlaySystems(), { eager: __AUTHORING__ });
     this.ctx = ctx;
     const contraption = new TeaMachine(ctx);
     ctx.contraption = contraption;
@@ -293,17 +304,9 @@ export class Game {
     const lightDevices = new LightDevices(ctx);
     this.lightDevices = lightDevices;
     this.disposables.push(lightDevices);
-    // The score and the narrator: streamed recordings on the engine's music and
-    // voice buses. Both stay silent (and fetch nothing) until the first gesture.
-    const music = new MusicDirector(ctx, audio);
-    ctx.music = music;
-    const narrator = new Narrator(ctx, audio);
-    // The story (wave 3): the Docent's pipes, Pell, the echoes, the prologues, the Kiln escape.
-    const story = new StoryDirector(ctx);
-    ctx.story = story;
-    this.disposables.push(story);
-    ctx.narrator = narrator;
-    this.disposables.push(music, narrator, new NarrationCaption(ctx));
+    // The score, the narrator and the story (ctx.music / ctx.narrator /
+    // ctx.story) are PLAY SYSTEMS: their own chunk, fetched once the title
+    // shows (loadPlaySystems). Every way into a run waits for them.
 
     // Rehydrate live tuning (Global Controls, player feel, worldgen look, material/
     // spell params) from localStorage BEFORE the UI seeds its sliders or the first
@@ -370,14 +373,11 @@ export class Game {
     this.disposables.push(runSummary);
     this.disposables.push(new RunHud(ctx, () => runSummary.showLast()));
     // The story's dialogue box (Pell) with its interact prompt, and the opening/ending plates.
-    this.disposables.push(new DialogueBox(ctx), new StoryCinemaOverlay(ctx), new AshVoice(ctx));
+    // (Matron Ash's voice comes with the play systems.)
+    this.disposables.push(new DialogueBox(ctx), new StoryCinemaOverlay(ctx));
     this.minimap = new Minimap(ctx);
     this.disposables.push(this.minimap);
-    // World-anchored alchemical-kill words (listens to `alchemyKill`/`combatCallout`).
-    this.disposables.push(new Callouts(ctx));
-    this.disposables.push(new CardOfferOverlay(ctx));
-    this.disposables.push(new WaystonePromptOverlay(ctx));
-    this.disposables.push(new HintTeachOverlay(ctx));
+    // (Callouts and the card-offer, waystone and teach overlays: play systems.)
     this.disposables.push(new GpuNotice(ctx, () => this.renderer.getBackendStatus().gpu));
     // Self-binds the B key; lives for the page lifetime.
     this.disposables.push(new WandBench(ctx));
@@ -393,11 +393,13 @@ export class Game {
     // Wires the Level Library buttons; lives for the page lifetime.
     this.disposables.push(new LevelStore(ctx));
     // Header PLAY opens the canonical run launcher; Builder playtests bypass it.
-    this.disposables.push(new RunLauncher(ctx));
-    // ESC pause + the Handbook (H); pause registers FIRST so its keydown
-    // handler sees the help overlay still open and yields ESC to it.
+    // A player build never reaches it (the entry screen claims every request),
+    // so it is authoring-only and absent from that build.
+    if (__AUTHORING__) this.disposables.push(new RunLauncher(ctx));
+    // ESC pause; the Handbook (H) comes with the play systems, so pause
+    // registers FIRST and its keydown handler sees the help overlay still open
+    // and yields ESC to it.
     this.disposables.push(new PauseOverlay(ctx));
-    this.disposables.push(new HelpOverlay(ctx));
     this.inspector = new Inspector(ctx);
     this.disposables.push(this.inspector);
     this.toolbar = new Toolbar(ctx, (id, mode) => this.inspector.generateContextInspector(id, mode));
@@ -405,15 +407,14 @@ export class Game {
     // Debug cell readout under the cursor (toggle with `I`). Self-managing; lives
     // for the page lifetime like the other DOM-wiring UI modules above.
     this.disposables.push(new CellInspector(ctx));
-    // The wizard's Grimoire book (toggle with `J`), rendered on the authored art.
-    this.disposables.push(new Grimoire(ctx));
+    // (The wizard's Grimoire book, `J`, comes with the play systems.)
     // Wires its DOM listeners in the constructor; lives for the page lifetime.
     const inputManager = new InputManager(this.renderer.domElement, ctx);
     this.disposables.push(inputManager);
     this.pollInput = () => inputManager.pollGamepad();
-    this.entry = new ExpeditionEntry(ctx);
+    // Its Begin / Continue / Today's descent wait for the play systems.
+    this.entry = new ExpeditionEntry(ctx, () => this.loadPlaySystems().then((systems) => systems !== null));
     this.disposables.push(this.entry);
-    this.disposables.push(new TeaMachineOverlay(ctx));
     // Keeps the last ~10 s of frames for GIF clips; captures in renderFrame.
     this.clips = new Clips(ctx, () => this.renderer.domElement);
     this.disposables.push(this.clips);
@@ -436,6 +437,9 @@ export class Game {
     if (this.started || this.disposed) return;
     this.started = true;
 
+    // Authoring builds: the virtual-world prototype (run launcher, Builder
+    // preview) is its own chunk; have it in before anyone can pick it.
+    if (__AUTHORING__) void loadVirtualWorld();
     this.inspector.generateContextInspector(Cell.Sand, 'element');
     this.toolbar.injectToolbarIcons();
     this.hud.buildHotbar();
@@ -467,15 +471,66 @@ export class Game {
 
     // Dev-only: return to the mode we were in before a Vite full-reload,
     // instead of always falling back to the Sandbox.
-    void (this.ctx.levels.ready ?? Promise.resolve()).then(() => {
+    void (this.ctx.levels.ready ?? Promise.resolve()).then(async () => {
+      if (this.disposed) return;
+      // Dev: a reload restoring play, the dev console and the headless probes
+      // drive runs the moment the title shows, so the play systems come first.
+      if (import.meta.env.DEV) await this.loadPlaySystems();
       if (this.disposed) return;
       if (this.ctx.state.mode === 'build') this.restoreSavedMode();
       this.wireModePersistence();
       this.entry.show();
       this.entryDecided = true;
+      // Player builds: fetched under the title, long before a click needs them.
+      void this.loadPlaySystems();
     });
 
     this.animationFrameId = requestAnimationFrame(this.step);
+  }
+
+  /**
+   * Fetch and install the play systems (game/playSystems) — once; every later
+   * call returns the same promise. Resolves null if the chunk cannot arrive
+   * (the entry then says so instead of starting a run without them).
+   */
+  loadPlaySystems(): Promise<PlaySystems | null> {
+    this.playSystems ??= import('@/game/playSystems').then(
+      ({ installPlaySystems }) => {
+        if (this.disposed) return null;
+        let systems: PlaySystems;
+        try {
+          systems = installPlaySystems(this.ctx, this.audioEngine, this.gestured);
+        } catch (error) {
+          console.error('[game] the play systems could not start', error);
+          return null;
+        }
+        this.sanctum = systems.sanctum;
+        this.disposables.push(...systems.disposables);
+        this.entry.refreshStory();
+        return systems;
+      },
+      (error: unknown) => {
+        console.error('[game] the play systems could not load', error);
+        return null;
+      },
+    );
+    return this.playSystems;
+  }
+
+  /** ctx.sanctum until the play systems land: closed, and a request waits for them. */
+  private sanctumStandIn(): SanctumApi {
+    const real = (): SanctumApi | null => this.sanctum;
+    const whenReady = (act: (sanctum: SanctumApi) => void): void => {
+      const now = real();
+      if (now) act(now);
+      else void this.loadPlaySystems().then(() => { const late = real(); if (late) act(late); });
+    };
+    return {
+      get isOpen(): boolean { return real()?.isOpen ?? false; },
+      get chosenDoor(): string | null { return real()?.chosenDoor ?? null; },
+      open: (ctx, onDescend) => whenReady((sanctum) => sanctum.open(ctx, onDescend)),
+      openShop: (ctx) => whenReady((sanctum) => sanctum.openShop(ctx)),
+    };
   }
 
   private bootWorld: Ctx['world'] | null = null;

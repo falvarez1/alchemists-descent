@@ -111,6 +111,29 @@ export interface NaturalLook {
   readonly backdropSat: number;
   readonly backdropHaze: Rgb;
   readonly backdropHazeMix: number;
+  /**
+   * WET FACES (fix4b): a rock face against a body of water — two cells of
+   * water or more, never a one-cell pore — wears this rim (a top face at
+   * wetLipMix, a side at half of it), so drowned rock separates from the
+   * water around it. Absent/0 = none (the shipped look).
+   */
+  readonly wetLip?: Rgb;
+  readonly wetLipMix?: number;
+  /**
+   * CLEAR WATER (fix4b): how much of the depth kit's planes shows through a
+   * water body (absent/0 = the opaque body colour), the multiplier tint the
+   * drowned distance takes (0–1) and the saturation it keeps. The distance
+   * behind the water reads as open space, the rock around it as solid.
+   */
+  readonly waterClarity?: number;
+  readonly waterSeen?: Rgb;
+  readonly waterSeenSat?: number;
+  /**
+   * A sealed water pocket (terrainArtPlane ART_POCKET_BIT: a pore in a
+   * flooded wall no one can reach) keeps this opaque colour and grows no wet
+   * face, so it stays part of the rock mass. Absent = the look's waterBody.
+   */
+  readonly waterPocket?: Rgb;
 }
 
 /** D1 — THE BELLOWS. The identity: exactly the values the atlas shipped with. */
@@ -199,7 +222,8 @@ const DROWNED_CISTERNS: FloorLook = {
   masonryPanels: 12,
   rockRow: -1,
   waterSurface: [92, 148, 164],
-  waterBody: [26, 66, 88],
+  // Lit murk (fix4b: was [26, 66, 88], the drowned rock's own value).
+  waterBody: [40, 98, 116],
   backdropMul: [0.6, 0.82, 1.0],
   backdropLift: [0, 0.004, 0.01],
   backdropOffsetX: 760,
@@ -218,8 +242,8 @@ const DROWNED_CISTERNS: FloorLook = {
     aoSteps: 4,
     aoGrain: 10,
     lip: [165, 205, 212],
-    lipMix: 0.55,
-    sideMix: 0.35,
+    lipMix: 0.62, // fix4b: 0.55 -> 0.62, 0.35 -> 0.42: the rock's edge carries its read
+    sideMix: 0.42,
     speck: [210, 235, 240],
     speckRate: 1,
     rightShade: 0.8,
@@ -236,6 +260,15 @@ const DROWNED_CISTERNS: FloorLook = {
     backdropSat: 0.5,
     backdropHaze: [0.01, 0.03, 0.045],
     backdropHazeMix: 0.3,
+    // Underwater readability (fix4b): drowned faces wear a wet rim and the
+    // bodies show the drowned arcades, murky, through them — the rock, the
+    // water and the distance were one blue-grey value.
+    wetLip: [112, 170, 180],
+    wetLipMix: 0.5,
+    waterClarity: 0.45,
+    waterSeen: [0.8, 1.25, 1.4],
+    waterSeenSat: 0.45,
+    waterPocket: [26, 66, 88],
   },
 };
 

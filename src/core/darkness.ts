@@ -1,7 +1,7 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { DARKNESS, DEFAULT_DARKNESS, FLOOR_DARKNESS, type DarknessProfile } from '@/config/darkness';
 import type { DarkZone } from '@/core/types';
-import { blocksEntity } from '@/sim/CellType';
+import { isSoftGrowth, isSolid } from '@/sim/CellType';
 
 /**
  * The designed-darkness map: a level-sized plane (one texel per
@@ -50,6 +50,16 @@ export function zoneInside(zone: DarkZone, x: number, y: number, feather: number
   return depth <= 0 ? 0 : smoothstep(0, feather, depth);
 }
 
+/**
+ * What the dark soaks into slowly: the level's structure (rock, masonry,
+ * metal, timber, ice, glass). Loose heaps (a sand pile, a gold drift, snow)
+ * and soft growth are part of the room they lie in and go dark with it — a
+ * dune in a black cave never glows as a lit block of rock.
+ */
+function darkWall(t: number): boolean {
+  return isSolid(t) && !isSoftGrowth(t);
+}
+
 /** The grid the bake reads to follow the rock (a World satisfies it). */
 export interface DarkGrid {
   width: number;
@@ -85,7 +95,9 @@ const GEO_UNSET = 0xffff;
  */
 function bakeZoneFollowingRock(z: DarkZone, peak: number, base: number, grid: DarkGrid, out: Uint8Array): void {
   const hold = DARKNESS.airHold, fade = DARKNESS.airFade;
-  const reach = hold + fade + DARKNESS.rimNoise + 4; // cells beyond the zone the dark can travel
+  // Cells beyond the zone the dark can travel: far enough that the fade
+  // reaches zero even where its line wanders out furthest (no cut-off edge).
+  const reach = hold + fade + DARKNESS.rimNoise * Math.max(DARKNESS.airWander, DARKNESS.rockWander) + 4;
   const tx0 = Math.max(0, Math.floor((z.x - z.rx - reach) / DARK_CELL));
   const tx1 = Math.min(DARK_W - 1, Math.ceil((z.x + z.rx + reach) / DARK_CELL));
   const ty0 = Math.max(0, Math.floor((z.y - z.ry - reach) / DARK_CELL));
@@ -109,8 +121,8 @@ function bakeZoneFollowingRock(z: DarkZone, peak: number, base: number, grid: Da
       const cx = (tx0 + rx) * DARK_CELL;
       // The texel is air if either of its sampled diagonal cells is: a
       // one-cell crack still carries the dark, as it carries light.
-      const a = cx < W && cy < H ? !blocksEntity(types[cx + cy * W]) : false;
-      const b = cx + 1 < W && cy + 1 < H ? !blocksEntity(types[cx + 1 + (cy + 1) * W]) : false;
+      const a = cx < W && cy < H ? !darkWall(types[cx + cy * W]) : false;
+      const b = cx + 1 < W && cy + 1 < H ? !darkWall(types[cx + 1 + (cy + 1) * W]) : false;
       open[i] = a || b ? 1 : 0;
       dist[i] = GEO_UNSET;
       const t = open[i] ? zoneInside(z, cx + DARK_CELL * 0.5, cy + DARK_CELL * 0.5) : 0;
@@ -169,11 +181,9 @@ function bakeZoneFollowingRock(z: DarkZone, peak: number, base: number, grid: Da
       const d = dist[i];
       if (d === GEO_UNSET) { kk[i] = 0; continue; }
       const cx = (tx0 + rx) * DARK_CELL + DARK_CELL * 0.5;
-      // The rim wanders further in rock: a cell of rock is `soak` cells of
-      // travel, so without a larger wobble the edge of a straight-walled
-      // room's dark would run parallel to the wall (x1.8, not the full soak:
-      // more reads as a toothed fringe).
-      const wander = DARKNESS.rimNoise * (open[i] ? 1 : 1.8);
+      // The fade's line wanders (config/darkness airWander / rockWander), so
+      // it never runs straight across a room nor parallel to a wall.
+      const wander = DARKNESS.rimNoise * (open[i] ? DARKNESS.airWander : DARKNESS.rockWander);
       const e = d * 0.5 + rimWobble(cx, cy) * wander * 0.7 + fineWobble(cx, cy) * wander * 0.3;
       kk[i] = 1 - smoothstep(hold, hold + fade, e);
     }
@@ -235,12 +245,84 @@ export function bakeDarkMap(
   return out;
 }
 
-/** Gameplay darkness at a world point (0..1), nearest texel. */
+/**
+ * Gameplay darkness at a world point (0..1), BILINEAR between texel centres
+ * (texel k's centre is world k·DARK_CELL + DARK_CELL/2). Every compose path
+ * draws the same smooth field (openAtCell over a fillOpenField), so what a
+ * creature's sight, the eyeshine and the music read is what the player sees —
+ * and no edge of the dark ever shows the map's texel staircase.
+ */
 export function sampleDarkMap(map: Uint8Array | null, x: number, y: number): number {
   if (!map) return 0;
-  const tx = Math.floor(x / DARK_CELL), ty = Math.floor(y / DARK_CELL);
-  if (tx < 0 || ty < 0 || tx >= DARK_W || ty >= DARK_H) return 0;
-  return map[ty * DARK_W + tx] / 255;
+  if (!(x >= 0 && y >= 0 && x < DARK_W * DARK_CELL && y < DARK_H * DARK_CELL)) return 0;
+  const fx = x / DARK_CELL - 0.5, fy = y / DARK_CELL - 0.5;
+  const x0 = Math.floor(fx), y0 = Math.floor(fy);
+  const tx = fx - x0, ty = fy - y0;
+  const xa = x0 < 0 ? 0 : x0, xb = x0 + 1 >= DARK_W ? DARK_W - 1 : x0 + 1;
+  const ra = (y0 < 0 ? 0 : y0) * DARK_W, rb = (y0 + 1 >= DARK_H ? DARK_H - 1 : y0 + 1) * DARK_W;
+  const top = map[ra + xa] + (map[ra + xb] - map[ra + xa]) * tx;
+  const bot = map[rb + xa] + (map[rb + xb] - map[rb + xa]) * tx;
+  return (top + (bot - top) * ty) / 255;
+}
+
+/**
+ * The per-light-texel render "open" factor (1 = readable … → 0 deep dark) for a
+ * half-res light field whose texel (lx, ly) covers world cells
+ * (originX + 2lx, originY + 2ly) and the cell diagonal to it — sampled at that
+ * texel's centre (originX + 2lx + 1, originY + 2ly + 1) so openAtCell can
+ * interpolate between centres. `lut` is renderOpenLut for the comfort setting.
+ */
+export function fillOpenField(
+  map: Uint8Array, lut: Float32Array, originX: number, originY: number, LW: number, LH: number, out: Float32Array,
+): void {
+  // The light texels and the map share one lattice (both two cells a texel),
+  // so every sample sits on a map texel centre (even origin) or halfway
+  // between two (odd): the per-row / per-column indices and weights are
+  // precomputed and the arithmetic below is sampleDarkMap's, term for term
+  // (identical values), without its per-texel call, floors and clamps.
+  if (colA.length < LW) { colA = new Int32Array(LW); colB = new Int32Array(LW); colT = new Float64Array(LW); }
+  const xa = colA, xb = colB, xt = colT;
+  const limitX = DARK_W * DARK_CELL, limitY = DARK_H * DARK_CELL;
+  for (let lx = 0; lx < LW; lx++) {
+    const x = originX + (lx << 1) + 1;
+    if (!(x >= 0 && x < limitX)) { xa[lx] = -1; continue; }
+    const fx = x / DARK_CELL - 0.5, x0 = Math.floor(fx);
+    xt[lx] = fx - x0;
+    xa[lx] = x0 < 0 ? 0 : x0; xb[lx] = x0 + 1 >= DARK_W ? DARK_W - 1 : x0 + 1;
+  }
+  for (let ly = 0; ly < LH; ly++) {
+    const y = originY + (ly << 1) + 1, row = ly * LW;
+    if (!(y >= 0 && y < limitY)) { out.fill(lut[0], row, row + LW); continue; }
+    const fy = y / DARK_CELL - 0.5, y0 = Math.floor(fy), ty = fy - y0;
+    const ra = (y0 < 0 ? 0 : y0) * DARK_W, rb = (y0 + 1 >= DARK_H ? DARK_H - 1 : y0 + 1) * DARK_W;
+    for (let lx = 0; lx < LW; lx++) {
+      const a = xa[lx];
+      if (a < 0) { out[row + lx] = lut[0]; continue; }
+      const b = xb[lx], tx = xt[lx];
+      const top = map[ra + a] + (map[ra + b] - map[ra + a]) * tx;
+      const bot = map[rb + a] + (map[rb + b] - map[rb + a]) * tx;
+      out[row + lx] = lut[Math.round(((top + (bot - top) * ty) / 255) * 255)];
+    }
+  }
+}
+let colA = new Int32Array(0), colB = new Int32Array(0), colT = new Float64Array(0);
+
+/**
+ * The open factor at view cell (vx, vy), bilinear between the centres of the
+ * half-res light texels around the cell's centre (vx + ½, vy + ½). Mirrored
+ * exactly by the WebGL2 and WebGPU compose shaders (their openAt). An even
+ * cell sits ¾ of the way from texel (vx>>1) − 1 to vx>>1, an odd one ¼ of the
+ * way from vx>>1 to the next.
+ */
+export function openAtCell(open: Float32Array, LW: number, LH: number, vx: number, vy: number): number {
+  const x0 = ((vx + 1) >> 1) - 1, y0 = ((vy + 1) >> 1) - 1;
+  const tx = vx & 1 ? 0.25 : 0.75, ty = vy & 1 ? 0.25 : 0.75;
+  const xa = x0 < 0 ? 0 : x0 >= LW ? LW - 1 : x0, xb = x0 + 1 >= LW ? LW - 1 : x0 + 1 < 0 ? 0 : x0 + 1;
+  const ya = y0 < 0 ? 0 : y0 >= LH ? LH - 1 : y0, yb = y0 + 1 >= LH ? LH - 1 : y0 + 1 < 0 ? 0 : y0 + 1;
+  const ra = ya * LW, rb = yb * LW;
+  const top = open[ra + xa] + (open[ra + xb] - open[ra + xa]) * tx;
+  const bot = open[rb + xa] + (open[rb + xb] - open[rb + xa]) * tx;
+  return top + (bot - top) * ty;
 }
 
 /**
