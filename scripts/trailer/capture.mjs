@@ -204,13 +204,32 @@ async function captureShot(shot) {
     }, value);
     await pinTicks(200000);
     await page.evaluate(() => { try { localStorage.removeItem('noita-expedition'); } catch { /* ignore */ } });
+    // Freeze game ticks (the game's own manual-time mode) while the run
+    // starts: the async start-up and the curtain take a real-time-dependent
+    // number of frames, and any tick the new level got in that window would
+    // make the pinned state differ between re-records. Timers still fire.
+    const freeze = (on) => page.evaluate((on) => {
+      const c = window.__game.ctx;
+      if (c.time.manual !== on) c.time.setManual(on);
+      if (!on) c.time.clearHistory();
+      return c.state.frameCount;
+    }, on);
+    const frozenAt = await freeze(true);
     const run = `run test --level ${shot.level} --world campaign-level --seed ${shot.seed ?? 777} --loadout ${shot.loadout ?? 'advanced'}`;
     const started = await runJob(page, consoleJob(run), 'run');
     let readyFrames = 0;
-    for (; readyFrames < 900 && !(await page.evaluate(readyExpr)); readyFrames++) await page.evaluate(() => window.__vt.frame());
+    for (; readyFrames < 900 && !(await page.evaluate(readyExpr)); readyFrames++) {
+      await page.evaluate(() => { const c = window.__game.ctx; if (!c.time.manual) c.time.setManual(true); window.__vt.frame(); });
+    }
     if (!(await page.evaluate(readyExpr))) throw new Error('run never became ready');
+    const leakedTicks = (await freeze(false)) - frozenAt;
+    if (leakedTicks !== 0) log(`WARNING: ${leakedTicks} ticks ran during the frozen run start`);
     await pinTicks(300000);
-    if (shot.god !== false) await runJob(page, consoleJob('god'), 'god');
+    if (shot.god !== false) {
+      const god = await runJob(page, consoleJob('god'), 'god');
+      if (god.frames) log(`god pumped ${god.frames} frames`);
+    }
+    readyFrames += started.frames;
 
     await page.evaluate(installTrailerHelpers, {
       params: shot.params ?? {},
