@@ -61,6 +61,9 @@ d = await descendText();
 check(d.disabled && /Choose a boon/.test(d.text), `a door alone does not descend ("${d.text}")`);
 const pressed = await page.$eval('.sanc-door[data-level="d3b"]', (e) => e.getAttribute('aria-pressed'));
 check(pressed === 'true', 'the chosen door is pressed');
+// The story: Matron Ash has a word about the door the apprentice looked at and chose.
+const ash = await page.evaluate(() => window.__game.ctx.story?.debugSnapshot?.().run?.spoken ?? null);
+check(Array.isArray(ash) && ash.includes('ash.door.crystal'), `Matron Ash speaks the chosen door's line (${JSON.stringify(ash)})`);
 await realClick('.perk-card');
 d = await descendText();
 check(!d.disabled && d.text === 'Descend to the Glass Galleries', `a boon and a door arm the descent ("${d.text}")`);
