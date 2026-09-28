@@ -115,6 +115,10 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
+  // gifenc is only reached from the clips worker, so the dev server found it
+  // late and re-optimized mid-session — reloading a page a probe (or a
+  // playtester) had already started a run in. Pre-bundle it up front.
+  optimizeDeps: { include: ['gifenc'] },
   server: {
     open: false,
     watch: {

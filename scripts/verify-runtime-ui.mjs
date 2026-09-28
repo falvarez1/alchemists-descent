@@ -35,16 +35,27 @@ await startConsoleTestRun(page, { loadout: 'advanced', settleMs: 350 });
 // The play screen hides the header (and its RUNTIME button) for the whole run;
 // authoring builds open the inspector with F9.
 await page.keyboard.press('F9');
-await page.waitForSelector('#runtime-inspector.open [data-runtime-id]', { timeout: 5000 });
-const inspectorRows = await page.$$eval('#runtime-inspector [data-runtime-id]', (rows) =>
-  rows.map((row) => row.getAttribute('data-runtime-id')),
+// Some rows can be hidden (which ones depends on the machine — CI has no GPU),
+// and Playwright's waitForSelector judges only the FIRST match: wait for any
+// visible row, and walk the keyboard from a visible row with a visible neighbour.
+await page.waitForFunction(
+  () => [...document.querySelectorAll('#runtime-inspector.open [data-runtime-id]')].some((row) => row.getClientRects().length > 0),
+  null,
+  { timeout: 15000 },
 );
-await page.locator('#runtime-inspector [data-runtime-id]').first().focus();
+const walk = await page.evaluate(() => {
+  const rows = [...document.querySelectorAll('#runtime-inspector [data-runtime-id]')];
+  const shown = (row) => !!row && row.getClientRects().length > 0;
+  let start = rows.findIndex((row, i) => shown(row) && shown(rows[i + 1]));
+  if (start < 0) start = rows.findIndex(shown);
+  return { start, ids: rows.map((row) => row.getAttribute('data-runtime-id')) };
+});
+await page.locator('#runtime-inspector [data-runtime-id]').nth(walk.start).focus();
 await page.keyboard.press('ArrowDown');
-const arrowState = await page.evaluate((rows) => ({
+const arrowState = await page.evaluate((w) => ({
   activeId: document.activeElement?.getAttribute('data-runtime-id'),
-  expected: rows.length > 1 ? rows[1] : rows[0],
-}), inspectorRows);
+  expected: w.ids[Math.min(w.ids.length - 1, w.start + 1)],
+}), walk);
 check('Runtime Inspector ArrowDown moves row focus', arrowState.activeId === arrowState.expected, JSON.stringify(arrowState));
 
 await page.keyboard.press('End');
