@@ -34,6 +34,7 @@ import type {
   ParallaxLayers,
 } from '@/render/pixels';
 import { cloudSumGlsl, glslFloat, SKY } from '@/render/skyAtmosphere';
+import { backdropOrigin } from '@/render/depth/parallax';
 import { Cell } from '@/sim/CellType';
 import type { World } from '@/sim/World';
 import {
@@ -172,6 +173,7 @@ uniform vec2 uBackdropOff1;
 uniform vec2 uBackdropOff2;
 uniform vec2 uBackdropOff3;
 uniform vec2 uBackdropOff4;
+uniform vec2 uBackdropOrg[5]; // plane coordinate under view (0, 0) — render/depth/parallax backdropOrigin
 uniform vec4 uBackdropGrade; // exposure, brightness, contrast, inverse gamma
 uniform float uBackdropSaturation;
 uniform float uBackdropLit[5]; // share of real light each layer takes (render/depth kits)
@@ -215,10 +217,13 @@ vec2 detailSubpixel() {
   return ${PIXEL_SCALE === 2 ? `floor(fract(vec2(vUv.x, 1.0 - vUv.y) * vec2(${VIEW_W}.0, ${VIEW_H}.0)) * 2.0) * 0.5` : 'vec2(0.0)'};
 }
 
-void overBackdrop(inout vec3 c, inout float lw, sampler2D tex, vec4 cfg, vec2 invSize, vec2 offset, float lit, int vx, int vy) {
+// view: the fragment's own view position, not its cell's. The quad slides by
+// the camera's sub-cell residual, so sampling the plane where the fragment
+// really is keeps it gliding at cam·speed on screen; a cell-snapped sample
+// rode the world for a cell and then jumped back.
+void overBackdrop(inout vec3 c, inout float lw, sampler2D tex, vec4 cfg, vec2 invSize, vec2 offset, vec2 origin, float lit, vec2 view) {
   if (cfg.z < 0.5 || cfg.y <= 0.0 || cfg.w <= 0.0) return;
-  vec2 sub = detailSubpixel();
-  vec2 samplePx = floor((floor(vec2(uCam) * cfg.x) + vec2(float(vx), float(vy)) + sub) / max(cfg.w, 0.25) + offset);
+  vec2 samplePx = floor((origin + view) / max(cfg.w, 0.25) + offset);
   vec2 p = (samplePx + vec2(0.5)) * invSize;
   vec4 s = texture(tex, p);
   float a = clamp(s.a * cfg.y, 0.0, 1.0);
@@ -288,6 +293,7 @@ void main() {
   int rowB = clamp(int(vUv.y * ${VIEW_H.toFixed(1)}), 0, ${VIEW_H - 1});
   int vx = col;
   int vy = ${VIEW_H - 1} - rowB; // view y from the top (buffer rows are Y-flipped)
+  vec2 viewPos = vec2(vUv.x * ${VIEW_W.toFixed(1)}, (1.0 - vUv.y) * ${VIEW_H.toFixed(1)}); // unsnapped (vx, vy)
 
   // Overlay first: a setPx'd pixel replaces terrain outright, so all terrain
   // work can be skipped (exact CPU semantics: setPx overwrote the buffer).
@@ -441,13 +447,12 @@ void main() {
         bg = vec3(0.004, 0.005, 0.009);
         // shift the backdrop sample by the heat-haze offset so the distant cave
         // shimmers behind a held (hot) object, matching the foreground warp
-        int bvx = vx + hazeX;
-        int bvy = vy + hazeY;
-        overBackdrop(bg, lw, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, uBackdropLit[0], bvx, bvy);
-        overBackdrop(bg, lw, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, uBackdropLit[1], bvx, bvy);
-        overBackdrop(bg, lw, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, uBackdropLit[2], bvx, bvy);
-        overBackdrop(bg, lw, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, uBackdropLit[3], bvx, bvy);
-        overBackdrop(bg, lw, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, uBackdropLit[4], bvx, bvy);
+        vec2 bv = viewPos + vec2(float(hazeX), float(hazeY));
+        overBackdrop(bg, lw, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, uBackdropOrg[0], uBackdropLit[0], bv);
+        overBackdrop(bg, lw, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, uBackdropOrg[1], uBackdropLit[1], bv);
+        overBackdrop(bg, lw, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, uBackdropOrg[2], uBackdropLit[2], bv);
+        overBackdrop(bg, lw, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, uBackdropOrg[3], uBackdropLit[3], bv);
+        overBackdrop(bg, lw, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, uBackdropOrg[4], uBackdropLit[4], bv);
         bg = gradeBackdrop(bg) * uBackdropTintMul + uBackdropTintLift;
         if (uNatural) {
           // The distance sits back: less colour, a floor haze, and a contact
@@ -507,13 +512,14 @@ void main() {
             // sway. FrameComposer (CPU) and the WebGPU compose mirror it.
             int sway = int(floor(sin(float(wy) * 0.19 + uPhaseWater * 0.35) * 1.6));
             int svx = clamp(vx + sway, 0, ${VIEW_W - 1});
+            vec2 sv = vec2(viewPos.x + float(svx - vx), viewPos.y);
             vec3 seen = vec3(0.004, 0.005, 0.009);
             float slw = 1.0;
-            overBackdrop(seen, slw, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, uBackdropLit[0], svx, vy);
-            overBackdrop(seen, slw, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, uBackdropLit[1], svx, vy);
-            overBackdrop(seen, slw, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, uBackdropLit[2], svx, vy);
-            overBackdrop(seen, slw, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, uBackdropLit[3], svx, vy);
-            overBackdrop(seen, slw, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, uBackdropLit[4], svx, vy);
+            overBackdrop(seen, slw, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, uBackdropOrg[0], uBackdropLit[0], sv);
+            overBackdrop(seen, slw, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, uBackdropOrg[1], uBackdropLit[1], sv);
+            overBackdrop(seen, slw, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, uBackdropOrg[2], uBackdropLit[2], sv);
+            overBackdrop(seen, slw, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, uBackdropOrg[3], uBackdropLit[3], sv);
+            overBackdrop(seen, slw, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, uBackdropOrg[4], uBackdropLit[4], sv);
             seen = gradeBackdrop(seen) * uBackdropTintMul + uBackdropTintLift;
             seen = mix(vec3(dot(seen, vec3(0.2126, 0.7152, 0.0722))), seen, uWaterSeen.w) * uWaterSeen.rgb;
             albedo = mix(albedo, seen * 255.0, uWaterClarity);
@@ -1078,6 +1084,7 @@ export class GpuCompose {
         uBackdropGrade: { value: new THREE.Vector4(0, 0, 1, 1) },
         uBackdropSaturation: { value: 1 },
         uBackdropLit: { value: [1, 1, 1, 1, 1] },
+        uBackdropOrg: { value: Array.from({ length: 5 }, () => new THREE.Vector2()) },
         uAmbient: { value: 0 },
         uSkyLine: { value: 0 },
         uBoost: { value: 1 },
@@ -1417,6 +1424,8 @@ export class GpuCompose {
     const offsetX = kit ? kit.offsetX : look.backdropOffsetX;
     const machinery = kit ? kit.machinery : look.machinery;
     const lit = u.uBackdropLit.value as number[];
+    const origins = u.uBackdropOrg.value as THREE.Vector2[];
+    const cam = ctx.camera;
     (u.uBackdropGrade.value as THREE.Vector4).set(
       profile.grade.exposure,
       profile.grade.brightness,
@@ -1444,6 +1453,10 @@ export class GpuCompose {
       // mirrors its sample column the same way).
       inv.set((mirror ? -1 : 1) / Math.max(1, layer.width), 1 / Math.max(1, layer.height));
       off.set(setting.offsetX + offsetX, setting.offsetY);
+      origins[i].set(
+        backdropOrigin(cam.renderX, cam.presentationX ?? cam.x, setting.speed),
+        backdropOrigin(cam.renderY, cam.presentationY ?? cam.y, setting.speed),
+      );
       lit[i] = layer.lit ?? 1;
     }
   }

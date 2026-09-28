@@ -41,6 +41,7 @@ import {
   VIGNETTE_BASE,
 } from '@/render/lightingModel';
 import { SKY } from '@/render/skyAtmosphere';
+import { backdropOrigin, backdropTexel } from '@/render/depth/parallax';
 import { openAtCell } from '@/core/darkness';
 import { PICKUP_COLOR } from '@/core/pickupDefs';
 import { drawHeldLeg, drawLooseLeg } from '@/render/sprites/CreatureArt';
@@ -538,6 +539,8 @@ export class FrameComposer implements PixelSurface {
   private composeTerrainCpu(ctx: Ctx, lenses: readonly CompositorLens[]): void {
     const renderCamX = this.renderCamX;
     const renderCamY = this.renderCamY;
+    const presentationX = ctx.camera.presentationX ?? ctx.camera.x;
+    const presentationY = ctx.camera.presentationY ?? ctx.camera.y;
     const frameCount = ctx.state.frameCount;
     const ambient = renderAmbient(ctx);
     const world = ctx.world;
@@ -613,19 +616,18 @@ export class FrameComposer implements PixelSurface {
       const scale = Math.max(0.25, setting.scale);
       const xSamples = this.backdropSampleX[i];
       const ySamples = this.backdropSampleY[i];
-      const camX = Math.floor(renderCamX * setting.speed);
-      const camY = Math.floor(renderCamY * setting.speed);
+      // The plane glides with the presentation camera, not the integer one
+      // the frame is composed at (render/depth/parallax backdropOrigin).
+      const originX = backdropOrigin(renderCamX, presentationX, setting.speed);
+      const originY = backdropOrigin(renderCamY, presentationY, setting.speed);
       const offsetX = setting.offsetX + backdropOffsetX;
       for (let vx = 0; vx < VIEW_W; vx++) {
-        let sx = Math.floor((camX + vx) / scale + offsetX) % layer.width;
-        if (sx < 0) sx += layer.width;
+        const sx = backdropTexel(originX, vx, scale, offsetX, layer.width);
         // Byte offsets: the hot loop reads pixels[ySamples[vy] + xSamples[vx]].
         xSamples[vx] = (backdropMirror ? layer.width - 1 - sx : sx) * 4;
       }
       for (let vy = 0; vy < VIEW_H; vy++) {
-        let sy = Math.floor((camY + vy) / scale + setting.offsetY) % layer.height;
-        if (sy < 0) sy += layer.height;
-        ySamples[vy] = sy * layer.width * 4;
+        ySamples[vy] = backdropTexel(originY, vy, scale, setting.offsetY, layer.height) * layer.width * 4;
       }
       const descriptor = this.backdropLayerPool[activeBackdropLayers.length];
       descriptor.pixels = layer.pixels;

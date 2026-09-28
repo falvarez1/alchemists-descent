@@ -111,7 +111,8 @@ void main() {
   k *= rv.a; // calm: no glints inside an optics zone (the Glass Galleries' puzzles)
   k *= 1.0 - uTwinkle[f] * 0.5 * (1.0 + sin(uFrame * 0.045 * pace + ph * 3.0));
   if (uShaftCfg.w > 0.5 && uInShafts[f] > 1.0) {
-    vec2 sp = floor((floor(uRenderCam * uShaftCfg.x) + floor(v)) / uShaftCfg.y);
+    // The shaft plane under this mote, as the compose draws it (parallax backdropOrigin).
+    vec2 sp = floor((uCam * uShaftCfg.x + s) / uShaftCfg.y);
     ivec2 st = ivec2(mod(sp, vec2(uShaftSize)));
     float a = texelFetch(uShaft, st, 0).a * uShaftCfg.z;
     k *= 1.0 + (uInShafts[f] - 1.0) * min(1.0, a * 3.2);
