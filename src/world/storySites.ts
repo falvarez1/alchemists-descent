@@ -2,7 +2,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import type { Rng } from '@/core/rng';
 import type { AuthoredLight, RegionGraph } from '@/core/types';
 import type { LevelStorySites, StoryCampSite, StoryPipeSite, StoryValveSite } from '@/core/story';
-import { blocksEntity, Cell } from '@/sim/CellType';
+import { blocksEntity, Cell, isLiquid } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import { carveRect, inFootprint, sealedFootprints, tunnelTo, type PlacementLedger } from '@/world/connect';
@@ -42,6 +42,23 @@ export function standable(world: Pick<World, 'width' | 'height' | 'types'>, x: n
   }
   return true;
 }
+
+/**
+ * DRY GROUND for a room (Pell's camp, the echo's stage): no liquid beside or
+ * above its floor within reach — water, brine or lava standing level with the
+ * floor or higher would run in and settle there (the user found Pell sitting
+ * chest-deep in a cistern basin). Liquid lower than the floor is harmless.
+ */
+export function roomIsDry(world: Pick<World, 'width' | 'height' | 'types'>, x0: number, x1: number, floorY: number, above: number, margin = ROOM_WET_MARGIN): boolean {
+  const W = world.width;
+  for (let y = Math.max(1, floorY - above); y <= Math.min(world.height - 2, floorY + 1); y++) {
+    const row = y * W;
+    for (let x = Math.max(1, x0 - margin); x <= Math.min(W - 2, x1 + margin); x++) if (isLiquid(world.types[row + x])) return false;
+  }
+  return true;
+}
+/** How far either side of a room the dry-ground check looks for liquid that could run in. */
+const ROOM_WET_MARGIN = 48;
 
 /** The standable floor nearest (ax, ay) inside a window, or null. Ties prefer the anchor's row. */
 export function findFloorNear(
@@ -142,20 +159,24 @@ function carveNook(world: World, rng: Rng, ledger: PlacementLedger, reach: Uint8
     if (avoid.some(a => Math.hypot(cx - a.x, floorY - a.y) < a.r)) continue;
     if (ledger.intersects(x0 - 10, y0 - 8, x1 + 10, floorY + 6)) continue;
     if (solidity(world, x0 - 3, y0 - 3, x1 + 3, floorY + 4) < 0.78) continue;
+    // Dry ground only: nothing liquid level with the floor or above it nearby.
+    if (!roomIsDry(world, x0, x1, floorY, spec.h + 40)) continue;
     // The route beside it: a main-path standable floor within 90 cells along the nook's floor row.
     let target: { x: number; y: number; mouth: -1 | 1; dist: number } | null = null;
     for (const mouth of [-1, 1] as const) {
       for (let step = 6; step <= 90; step += 3) {
         const x = mouth < 0 ? x0 - step : x1 + step;
         if (x < 12 || x > WIDTH - 12) break;
-        for (let dy = -22; dy <= 22; dy += 2) {
+        // The route may sit lower than the room, or a step above it (≤ 4 rows): the room's
+        // floor is the high ground, so nothing the route carries can run down into it.
+        for (let dy = -4; dy <= 22; dy += 2) {
           const y = floorY + dy;
           if (y < 30 || y > HEIGHT - 12) continue;
           // A floor the player can already reach from the arrival (the wizard's own BFS),
           // outside every sealed feature: a tunnel is never kept out of the room it
           // ends in, so a route floor inside a lair let the connector cut the lair
           // (d2 seed 10: through the grove's west wall and floor).
-          if (reach[x + y * WIDTH] !== 1 || !standable(world, x, y) || inFootprint(sealed, x, y)) continue;
+          if (reach[x + y * WIDTH] !== 1 || !standable(world, x, y) || inFootprint(sealed, x, y) || !roomIsDry(world, x - HALF_W, x + HALF_W, y, BODY_H, 0)) continue;
           if (!target || step < target.dist) target = { x, y, mouth, dist: step };
           break;
         }
@@ -198,6 +219,7 @@ function quietFloor(world: World, rng: Rng, graph: RegionGraph, reach: Uint8Arra
       // Feet rows only: reachable, with rock underfoot.
       if (reach[i] !== 1 || reach[i + WIDTH] === 1 || !standable(world, x, y)) continue;
       if (avoid.some(a => Math.hypot(x - a.x, y - a.y) < a.r)) continue;
+      if (!roomIsDry(world, x - 34, x + 34, y, 50)) continue;
       // A flat run either side: the camp's props need somewhere to stand.
       let flat = 0;
       for (let dx = -24; dx <= 24; dx += 4) if (standable(world, x + dx, y)) flat++;

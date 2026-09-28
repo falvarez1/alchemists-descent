@@ -183,8 +183,8 @@ const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
   { id: 'd3', seed: 1337, hash: '02795e09' }, // GEN_VERSION 59: detours leave from their true start; no tunnel ends inside a sealed feature, over v56's story nooks + lair fix + v54's Sump rim
-  { id: 'd4', seed: 1337, hash: '6e8fa58a' }, // GEN_VERSION 59: the stonemaw's own connector walks around its seam, over v55's Kiln flue + story nooks + v54's Kiln flora
-  { id: 'd2', seed: 42, hash: '0258e072' }, // GEN_VERSION 59: no tunnel ends inside a sealed feature + detours from their true start, over v56's story nooks + grove vines + lair fix
+  { id: 'd4', seed: 1337, hash: 'ac166987' }, // GEN_VERSION 60: story nooks on dry ground (no liquid level with the floor, the route no higher than a step), over v59's stonemaw connector + v55's Kiln flue + v54's Kiln flora
+  { id: 'd2', seed: 42, hash: 'b7c46245' }, // GEN_VERSION 60: story nooks on dry ground, over v59's sealed-feature tunnels + v56's story nooks + grove vines + lair fix
 ];
 
 describe('full generateLevel golden hashes', () => {

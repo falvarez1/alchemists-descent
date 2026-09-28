@@ -159,6 +159,9 @@ const POPULATION_ATTEMPTS_PER_PASS = 36;
 /** Kinds that may be seeded with their heads under liquid (swimmers, floaters, fliers). */
 const POPULATION_WATER_BREATHERS: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['rillback', 'leviathan', 'wisp', 'bat', 'imp', 'colossus', 'eggs']);
 const ROOST_ATTEMPTS_PER_PASS = 160;
+/** Drain search for liquid in Pell's camp (drainCamp): cells visited, and reach from the camp (cells). */
+const CAMP_DRAIN_SEARCH = 60000;
+const CAMP_DRAIN_REACH = 220;
 /** Kept out of Pell's camp at a floor's start (secureCamp): what burns, what is molten, what eats. */
 const CAMP_HAZARDS: ReadonlySet<number> = new Set<number>([Cell.Fire, Cell.Ember, Cell.Lava, Cell.Oil, Cell.Gunpowder, Cell.Acid, Cell.Toxic, Cell.MarshGas]);
 /** Bosses keep their arenas; a camp is never placed in one. */
@@ -2541,7 +2544,10 @@ export class Levels implements LevelsApi {
    */
   private secureCamp(ctx: Ctx, runtime: LevelRuntime): void {
     const camp = runtime.story?.camp;
-    if (!camp || runtime.living || AUTHORED_TEST_ARENAS.has(runtime.def.id)) return;
+    if (!camp || AUTHORED_TEST_ARENAS.has(runtime.def.id)) return;
+    // Every floor, the hand-built Bellows too: no one sits in a puddle.
+    this.drainCamp(ctx, runtime, camp);
+    if (runtime.living) return;
     const hx = camp.x, hy = camp.floorY - 10;
     const inside = ctx.enemies.filter((e) => e.hp > 0 && !BOSS_KINDS_NEVER_MOVED.has(e.kind) && (e.x - hx) ** 2 + (e.y - 6 - hy) ** 2 < CAMP_HAVEN_RADIUS ** 2);
     if (inside.length) {
@@ -2566,6 +2572,60 @@ export class Levels implements LevelsApi {
         if (CAMP_HAZARDS.has(w.types[i])) w.clearCellAt(i);
       }
     }
+  }
+
+  /**
+   * FAIL-OPEN: liquid that still sits in Pell's camp (placement keeps camps on
+   * dry ground, world/storySites) drains DOWNHILL — each cell is swapped
+   * (world.swap: type, colour, life, charge) into the lowest open cell below the
+   * camp's floor that the camp's air connects to, the way it would run out of
+   * an opened drain. Only liquid with nowhere lower to go is removed.
+   */
+  private drainCamp(ctx: Ctx, runtime: LevelRuntime, camp: NonNullable<NonNullable<LevelRuntime['story']>['camp']>): void {
+    const w = runtime.world;
+    const x0 = Math.max(1, Math.min(camp.x0, camp.x - 40) - 6), x1 = Math.min(w.width - 2, Math.max(camp.x1, camp.x + 40) + 6);
+    const y0 = Math.max(1, camp.floorY - 44), y1 = camp.floorY;
+    const wet: number[] = [];
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (isLiquid(w.types[w.idx(x, y)])) wet.push(w.idx(x, y));
+    if (wet.length === 0) return;
+    // The open space the camp's air and water connect to, searched outward (bounded).
+    const W = w.width;
+    const seen = new Uint8Array(W * w.height);
+    const queue: number[] = [];
+    for (const i of wet) { seen[i] = 1; queue.push(i); }
+    const sinks: number[] = [];
+    for (let q = 0; q < queue.length && q < CAMP_DRAIN_SEARCH; q++) {
+      const i = queue[q];
+      const x = i % W, y = (i - x) / W;
+      if (y > camp.floorY + 2 && w.types[i] === Cell.Empty) sinks.push(i);
+      for (const n of [i + 1, i - 1, i + W, i - W]) {
+        const nx = n % W, ny = (n - nx) / W;
+        if (seen[n] || nx < 1 || nx >= W - 1 || ny < 1 || ny >= w.height - 1) continue;
+        if (Math.abs(nx - camp.x) > CAMP_DRAIN_REACH || Math.abs(ny - camp.floorY) > CAMP_DRAIN_REACH) continue;
+        const t = w.types[n];
+        if (blocksEntity(t) && !isLiquid(t)) continue;
+        seen[n] = 1;
+        queue.push(n);
+      }
+    }
+    // The lowest sinks first: the water runs to the bottom of what it can reach.
+    sinks.sort((a, b) => b - a);
+    wet.sort((a, b) => b - a);
+    let moved = 0, removed = 0;
+    for (const i of wet) {
+      if (!isLiquid(w.types[i])) continue;
+      const dst = sinks.shift();
+      const x = i % W, y = (i - x) / W;
+      if (dst !== undefined) {
+        const dx = dst % W, dy = (dst - dx) / W;
+        w.swap(x, y, dx, dy);
+        moved++;
+      } else {
+        w.clearCellAt(i);
+        removed++;
+      }
+    }
+    ctx.telemetry.count(`camp.drained.${runtime.def.id}`, moved + removed);
   }
 
   seedReviewKit(ctx: Ctx): void {
@@ -2650,6 +2710,9 @@ export class Levels implements LevelsApi {
         this.settledFindabilityTimer = globalThis.setTimeout(() => runStep(step), 100);
         return;
       }
+      // Liquid that ran into Pell's camp while the floor settled drains downhill too.
+      const camp = runtime.story?.camp;
+      if (camp) this.drainCamp(ctx, runtime, camp);
       if (this.repairFindability(ctx, runtime, 'settled') && this.checkpointSaveSuppression === 0) {
         this.saveExpedition(ctx);
       }
