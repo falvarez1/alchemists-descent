@@ -4,6 +4,7 @@
 //   node scripts/trailer/capture.mjs --all            record every shot (--priority P0 to filter)
 //   node scripts/trailer/capture.mjs --list           list the shot registry
 //   node scripts/trailer/capture.mjs --sheet          rebuild shots.json + contact-sheet.png only
+//   node scripts/trailer/capture.mjs --manifest       rebuild shots.json only
 //   node scripts/trailer/capture.mjs <id> --stills 30 staging preview: a PNG every 30 frames, no video
 //
 // Options: --url http://localhost:5330/  --out <footage dir>  --no-sheet  --headed
@@ -407,7 +408,13 @@ let selected = flag('all') ? shots.filter((s) => !s.scratch) : shots.filter((s) 
 if (priority) selected = selected.filter((s) => (s.priority ?? 'P1') === priority);
 const unknown = wanted.filter((id) => !shots.some((s) => s.id === id));
 if (unknown.length) { console.error(`unknown shot(s): ${unknown.join(', ')}`); process.exit(1); }
-if (!selected.length && !flag('sheet')) { console.error('no shots selected (ids, --all, --list, --sheet)'); process.exit(1); }
+if (flag('manifest')) {
+  const manifest = writeManifest(OUT, shots);
+  console.log(`manifest: ${manifest.length} shots -> ${join(OUT, 'shots.json')}`);
+  for (const s of manifest) console.log(`  ${s.id}`);
+  process.exit(0);
+}
+if (!selected.length && !flag('sheet')) { console.error('no shots selected (ids, --all, --list, --sheet, --manifest)'); process.exit(1); }
 
 if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true });
 const failures = [];
