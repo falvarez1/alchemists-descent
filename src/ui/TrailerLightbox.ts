@@ -1,8 +1,8 @@
 import type { Ctx } from '@/core/types';
 
 /** The launch trailer (public/trailer): a web encode of the 1080p60 master, under the host's 25 MiB file cap. */
-export const TRAILER_SRC = '/trailer/breathing-works-trailer.mp4';
-export const TRAILER_POSTER = '/trailer/poster.jpg';
+export const TRAILER_SRC = `${import.meta.env.BASE_URL}trailer/breathing-works-trailer.mp4`;
+export const TRAILER_POSTER = `${import.meta.env.BASE_URL}trailer/poster.jpg`;
 
 /**
  * Play the trailer over the title in a modal. The game's own sound holds its

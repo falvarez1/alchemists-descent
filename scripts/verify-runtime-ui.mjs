@@ -32,7 +32,9 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.console, { timeout: 20000 });
 await startConsoleTestRun(page, { loadout: 'advanced', settleMs: 350 });
 
-await page.click('#runtime-inspector-toggle');
+// The play screen hides the header (and its RUNTIME button) for the whole run;
+// authoring builds open the inspector with F9.
+await page.keyboard.press('F9');
 await page.waitForSelector('#runtime-inspector.open [data-runtime-id]', { timeout: 5000 });
 const inspectorRows = await page.$$eval('#runtime-inspector [data-runtime-id]', (rows) =>
   rows.map((row) => row.getAttribute('data-runtime-id')),
@@ -103,7 +105,9 @@ await page.waitForFunction(() => !document.getElementById('card-offer-overlay')?
 // The unlit waystone no longer raises a modal (it paused the game on every
 // approach): its lesson is a non-modal teach card (game/waystoneHelp).
 await page.evaluate(() => window.__game.ctx.events.emit('hintTeach', { key: 'waystone-unlit', title: 'An Unlit Waystone', body: 'A waystone lights when fire keeps burning in its bowl.' }));
-await page.waitForTimeout(400);
+// A teach card waits for a calm moment (no story beat, pause or centre overlay
+// — the card offer just closed), so give it the calm poll before judging.
+await page.waitForFunction(() => document.getElementById('hint-teach-overlay')?.classList.contains('visible'), null, { timeout: 6000 }).catch(() => undefined);
 const waystoneTeachState = await page.evaluate(() => ({
   teach: document.getElementById('hint-teach-overlay')?.classList.contains('visible') ?? false,
   paused: window.__game.ctx.state.paused,

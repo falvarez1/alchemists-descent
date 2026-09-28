@@ -46,7 +46,8 @@ await page.evaluate((targetX) => {
 }, GAIT_TARGET_X);
 
 // --- open the Runtime panel and flip Debug ---
-await page.click('#runtime-inspector-toggle');
+// The play screen hides the header (and its RUNTIME button); authoring builds open the inspector with F9.
+await page.keyboard.press('F9');
 await page.waitForSelector('#runtime-inspector.open', { timeout: 5000 });
 await page.click('#brt-debug');
 const active = await page.evaluate(() => window.__game.ctx.debug.active === true);
@@ -58,19 +59,29 @@ const saveProbe = await page.evaluate(() => {
   const priorPlaytestSource = ctx.state.playtestSource;
   const priorDebugGodMode = ctx.state.debugGodMode;
   const priorDebugTainted = ctx.state.debugTainted;
+  // Saves go to an IndexedDB worker when one is available (else localStorage):
+  // count real writes on either backend instead of reading one of them.
+  let writes = 0;
+  const storage = ctx.levels.storage;
+  const realSave = storage?.save?.bind(storage);
+  if (storage && realSave) storage.save = (...args) => { writes++; return realSave(...args); };
+  const realSetItem = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = (key, value) => { if (key === 'noita-expedition') writes++; return realSetItem(key, value); };
   localStorage.removeItem('noita-expedition');
   ctx.state.playtestSource = null;
   ctx.state.debugGodMode = false;
   ctx.state.debugTainted = false;
   ctx.debug.setActive(true);
   ctx.levels.saveExpedition(ctx);
-  const blockedWhileDebugActive = localStorage.getItem('noita-expedition') === null;
+  const blockedWhileDebugActive = writes === 0;
   ctx.debug.setActive(false);
   ctx.levels.saveExpedition(ctx);
-  const blockedAfterDebugOff = localStorage.getItem('noita-expedition') === null;
+  const blockedAfterDebugOff = writes === 0;
   ctx.state.debugTainted = false;
   ctx.levels.saveExpedition(ctx);
-  const savedWhenClean = localStorage.getItem('noita-expedition') !== null;
+  const savedWhenClean = writes > 0;
+  if (storage && realSave) storage.save = realSave;
+  localStorage.setItem = realSetItem;
   localStorage.removeItem('noita-expedition');
   ctx.state.playtestSource = priorPlaytestSource;
   ctx.state.debugGodMode = priorDebugGodMode;
@@ -101,7 +112,7 @@ const modeClear = await page.evaluate(async () => {
 });
 ok(!modeClear.active && modeClear.live === 0 && !modeClear.frozenPlayer, `Debug leaked after leaving Play (${JSON.stringify(modeClear)})`);
 
-await page.click('#runtime-inspector-toggle');
+await page.keyboard.press('F9');
 await page.waitForSelector('#runtime-inspector.open', { timeout: 5000 });
 await page.click('#brt-debug');
 const reactivated = await page.evaluate(() => window.__game.ctx.debug.active === true);
@@ -235,8 +246,8 @@ const attackSetup = await page.evaluate(() => {
   return { x: spitter.x, y: spitter.y, timer: spitter.timer };
 });
 ok(attackSetup !== null, 'Could not spawn a Spitter for debug attack suppression');
-await page.click('#runtime-inspector-toggle');
-await page.click('#runtime-inspector-toggle');
+await page.keyboard.press('F9');
+await page.keyboard.press('F9');
 const spitterLiveId = await page.evaluate((setup) => {
   const rows = [...document.querySelectorAll('#runtime-inspector .brt-row')];
   const row = rows

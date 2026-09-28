@@ -206,7 +206,7 @@ export function loadTerrainArt(): void {
   if (loading || typeof document === 'undefined') return;
   loading = true;
   const load = async (name: string, width: number, height: number): Promise<Uint8ClampedArray> => {
-    const response = await fetch(`/assets/living-descent/${name}.png`);
+    const response = await fetch(`${import.meta.env.BASE_URL}assets/living-descent/${name}.png`);
     if (!response.ok) throw new Error(`Unable to load ${name}`);
     const bitmap = await createImageBitmap(await response.blob());
     if (bitmap.width !== width || bitmap.height !== height) { bitmap.close(); throw new Error(`Invalid ${name} dimensions`); }

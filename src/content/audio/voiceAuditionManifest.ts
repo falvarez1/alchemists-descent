@@ -63,13 +63,13 @@ export const AUDITION_ENTRIES: AuditionEntry[] = [
     group: 'Narrator · voice comparison (pick one)',
     label: `${v.name} — ${v.note}`,
     prompt: LINES.map((l, i) => `${i + 1}. ${l.label}: “${l.text}”`).join('  '),
-    urls: LINES.map((l) => `/audition/voices/${v.id}-${l.id}.mp3`),
+    urls: LINES.map((l) => `${import.meta.env.BASE_URL}audition/voices/${v.id}-${l.id}.mp3`),
   })),
   ...(['pell', 'ash'] as const).flatMap((role) => CAST[role].voices.map((v) => ({
     id: `cast-${role}-${v.id}`,
     group: `Story cast · ${CAST[role].brief}`,
     label: `${v.name} — ${v.note}`,
     prompt: CAST[role].lines.map((l, i) => `${i + 1}. “${l}”`).join('  '),
-    urls: CAST[role].ids.map((l) => `/audition/voices/cast-${role}-${v.id}-${l}.mp3`),
+    urls: CAST[role].ids.map((l) => `${import.meta.env.BASE_URL}audition/voices/cast-${role}-${v.id}-${l}.mp3`),
   }))),
 ];

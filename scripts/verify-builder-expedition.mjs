@@ -39,7 +39,9 @@ check('expedition running on its own live world', d1.id !== 'custom' && d1.attac
 
 /* ---------- open the Builder: must detach, not adopt, the level ---------- */
 console.log('-- open builder mid-expedition');
-await page.click('#mode-builder-btn');
+// The play screen hides the header (and its BUILDER button) for the whole run;
+// authoring builds open the Builder mid-run with F10.
+await page.keyboard.press('F10');
 await page.waitForSelector('#builder-intent-modal', { timeout: 5000 });
 const modalShown = await page.locator('#builder-intent-modal').isVisible();
 check('builder asks for play-to-builder intent', modalShown);
@@ -116,7 +118,7 @@ const playSpot = await page.evaluate(() => {
   for (let y = 200; y < 240; y++) for (let x = 200; x < 240; x++) sum += w.types[w.idx(x, y)];
   return { x: Math.round(ctx.player.x), y: Math.round(ctx.player.y), sum };
 });
-await page.click('#mode-builder-btn');
+await page.keyboard.press('F10');
 await page.waitForSelector('#builder-intent-modal', { timeout: 5000 });
 await page.click('#builder-intent-modal [data-intent="current-scene"]');
 await page.waitForTimeout(400);
