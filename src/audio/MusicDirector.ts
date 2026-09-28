@@ -190,7 +190,18 @@ export class MusicDirector implements MusicApi {
       floor: level ? floorForLevel(level.def.id, level.def.biome) : null,
       tension,
       preview: now < this.previewUntil,
+      story: this.storyCue(),
     };
+  }
+
+  /** STORY: the escape's urgent theme, the ending's resolution (each falls back to a cue that exists). */
+  private storyCue(): string | null {
+    const story = this.ctx.story;
+    if (!story) return null;
+    if (story.cinematic === 'ending') return this.tracks.has('ending') ? 'ending' : 'title';
+    if (story.cinematic === 'opening') return 'title';
+    if (story.escapeActive) return this.tracks.has('escape') ? 'escape' : 'boss-colossus';
+    return null;
   }
 
   /** One look at the world: pick the cue, crossfade if it changed, keep loops wrapping, set the overall level. */
