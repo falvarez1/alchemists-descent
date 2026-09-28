@@ -97,8 +97,11 @@ export function classify(item, arrivalItem, level) {
     case 'mechanism': {
       const k = item.kind;
       if (k.startsWith('door')) { if (m.state === 0 && m.metalF < 0.6) f('ABSURD', 'P3', `closed door only ${Math.round(m.metalF * 100)}% metal`); break; }
-      if (m.liqF !== undefined && m.liqF > 0.25 && /^(lever|brazier|plate)/.test(k)) f('SUBMERGED', k.startsWith('brazier') ? 'P1' : 'P2', `${k} ${Math.round(m.liqF * 100)}% in ${liqName(m.liqT)}`);
-      if (k.startsWith('brazier') && m.bowlLiqF > 0.3 && m.state === 0 && !onlyOil(m.bowlLiqT)) f('BLOCKED', 'P1', `unlit brazier bowl holds ${liqName(m.bowlLiqT)}`);
+      // A drowned brazier fails open (game/Mechanisms keepBowlDry): once broken hits 0 its gate is
+      // open, so the flooding is scenery, not a lock.
+      const failedOpen = m.broken === 0;
+      if (m.liqF !== undefined && m.liqF > 0.25 && /^(lever|brazier|plate)/.test(k)) f('SUBMERGED', k.startsWith('brazier') && !failedOpen ? 'P1' : failedOpen ? 'P3' : 'P2', `${k} ${Math.round(m.liqF * 100)}% in ${liqName(m.liqT)}${failedOpen ? ' (drowned: failed open)' : ''}`);
+      if (k.startsWith('brazier') && m.bowlLiqF > 0.3 && m.state === 0 && !failedOpen && !onlyOil(m.bowlLiqT)) f('BLOCKED', 'P1', `unlit brazier bowl holds ${liqName(m.bowlLiqT)}`);
       if (m.blkF !== undefined && m.blkF > 0.25 && /^(lever|brazier)/.test(k)) f('BURIED', 'P2', `${k} region ${Math.round(m.blkF * 100)}% solid (${liqName(m.blkT)})`);
       if (m.blkF !== undefined && m.blkF > 0.5 && /^plate/.test(k)) f('BURIED', 'P3', `plate buried under ${liqName(m.blkT)} (${Math.round(m.blkF * 100)}%)`);
       if (m.support !== undefined && m.support < 0.4) f('FLOATING', m.gap >= 4 ? 'P1' : 'P2', `${k} drawn in mid-air (support ${Math.round(m.support * 100)}%, ${m.gap} cells above the floor)`);
