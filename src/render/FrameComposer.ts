@@ -1,3 +1,4 @@
+import { drawStoryLayer } from '@/render/story/StoryLayer';
 import { drawPlayerRagdollSprite } from '@/render/sprites/PlayerRagdollSprite';
 import { drawTrickshotOverlay } from '@/render/TrickshotOverlay';
 import { drawFallingWater } from '@/render/FallingWater';
@@ -1025,6 +1026,8 @@ export class FrameComposer implements PixelSurface {
     this.drawRigidBodies(ctx);
     drawFallingFlora(this, this.light, ctx, this.alpha);
     drawTeaMachineDecor(this, this.light, ctx, this.alpha);
+    // STORY (wave 3): the speaking-pipes, Pell's camp and Pell, the resonant valve, the echoes.
+    drawStoryLayer(this, this.light, ctx);
     this.drawVineStrands(ctx, 'foreground');
 
     // Entities on top. Contact shadows first, under everything, so a body's

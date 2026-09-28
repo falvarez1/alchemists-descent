@@ -183,6 +183,7 @@ export class InputManager {
           // X: set down what the wand holds, else lift the body along the aim, else interact.
           if (pressed(2)) {
             if (telekinesisHolding(ctx)) { telekinesisSetDown(ctx); this.padLifted = true; }
+            else if (ctx.story?.interact()) this.padLifted = true;
             else if (!ctx.player.legClub && telekinesisLift(ctx, true)) this.padLifted = true;
             else ctx.mechanisms.interact(ctx);
           }
@@ -641,6 +642,8 @@ export class InputManager {
       // a lever-pull in reach, else hold-to-siphon the flask.
       if (!e.repeat && telekinesisHolding(ctx)) {
         telekinesisSetDown(ctx);
+      } else if (!e.repeat && ctx.story?.interact()) {
+        // the story took it: Pell, a resonant valve, a page (or the next line of a conversation)
       } else if (!e.repeat && !ctx.player.legClub && telekinesisLift(ctx)) {
         // lifted the body under the cursor — it now hangs on the wand's thread
       } else if (!telekinesisHolding(ctx)) {

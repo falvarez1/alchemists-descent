@@ -155,6 +155,8 @@ export class Sanctum implements SanctumApi {
     el('sanc-depth').textContent = nextFloor > 0 ? `${nextFloor} of ${FLOORS_TOTAL}` : String(depth);
     el('sanc-gold').textContent = String(ctx.state.score);
     this.renderTeaser(ctx, nextId);
+    // STORY: Matron Ash greets the apprentice, and says a word about the door below.
+    ctx.story?.sanctumOpened(nextId && LEVELS[nextId] ? LEVELS[nextId].biome : null);
 
     const dBtn = el('descend-btn') as HTMLButtonElement;
     const row = el('perk-row');
