@@ -27,7 +27,7 @@ import type {
   Waystone,
   WorldGenApi,
 } from '@/core/types';
-import { Cell } from '@/sim/CellType';
+import { blocksEntity, Cell, isLiquid } from '@/sim/CellType';
 import {
   COLOR_FN,
   EMPTY_COLOR,
@@ -61,7 +61,16 @@ import { placeColdStorePuzzles, type ColdStorePuzzleOutput } from '@/world/coldS
 import { dressGlassGalleries } from '@/world/glassGalleries';
 import { placeGalleryPuzzles, type GalleryPuzzleOutput } from '@/world/galleryPuzzles';
 import { stampSecrets } from '@/world/secrets';
-import { computeFits, reachableMask, wizardMask } from '@/world/validate';
+import { bodyCanCollect, computeFits, reachableMask, wizardMask } from '@/world/validate';
+import {
+  type BodyRecord,
+  cauldronFooting,
+  holdFixtureFootings,
+  recordBodies,
+  reserveFooting,
+  reserveTriggerFootings,
+  waystoneFooting,
+} from '@/world/fixtureFooting';
 import { placeStructures } from '@/world/structures';
 import { placeStorySites } from '@/world/storySites';
 import type { LevelStorySites } from '@/core/story';
@@ -602,6 +611,9 @@ export class WorldGen implements WorldGenApi {
         return false;
       };
       const HANDS_ON = new Set(['plate', 'lever', 'brazier', 'scale']);
+      /** A hand-trigger's first own row: the lever's bracket, the brazier's lips, the plate, the scale's lips. */
+      const fixtureTop = (m: Mechanism): number =>
+        m.kind === 'lever' ? m.y + 1 : m.kind === 'brazier' ? m.y - 1 : m.kind === 'scale' ? m.y - 2 : m.y;
       const CELL_REACH = new Set(['sensor', 'counterweight', 'plug', 'buoy', 'chargelatch']);
       // nearest spawn-connected wizard cell whose STRAIGHT LINE from the
       // lock crosses no Metal — carvePocket spares Metal, so a tunnel aimed
@@ -654,22 +666,27 @@ export class WorldGen implements WorldGenApi {
       // tunnel from the chamber joins the spawn component; verify by
       // recomputing the mask, and fall back to a tunnel aimed at the spawn.
       const SWEEP = { halfW: 10, up: 25, down: 12 }; // gauge-guaranteed gallery
-      const rescueAt = (px: number, py: number, pass: () => boolean): boolean => {
-        carveRect(ctx.world, px - SWEEP.halfW, py - 24, px + SWEEP.halfW, py + 4);
+      // `keep`: a FIXTURE's first own row (its bowl, bracket or floor). The
+      // chamber then stops just above it and the tunnel leaves from high enough
+      // that its first disc does too — a rescue used to dig four rows under the
+      // thing it rescued and leave it floating (world/fixtureFooting).
+      const rescueAt = (px: number, py: number, pass: () => boolean, keep?: number): boolean => {
+        carveRect(ctx.world, px - SWEEP.halfW, py - 24, px + SWEEP.halfW, keep === undefined ? py + 4 : keep - 1);
+        const ty = keep === undefined ? py - 10 : Math.min(py - 10, keep - 13);
         // Let the rescue tunnel reach a chamber/target ABOVE the default row-26
         // floor (the rescue chamber's top is py-24); for deep features (every
         // case in the shipped seeds) this stays 26, so carve output is unchanged.
         const rescueMinY = Math.min(26, py - 24);
-        const target = nearestWiz(px, py - 10) ?? {
+        const target = nearestWiz(px, ty) ?? {
           x: Math.floor(spawn.x),
           y: Math.floor(spawn.y) - 4,
         };
-        const avoid = avoidFor(px, py - 10);
-        tunnelTo(ctx.world, this.rng, px, py - 10, target.x, target.y, 12, SWEEP, rescueMinY, avoid);
+        const avoid = avoidFor(px, ty);
+        tunnelTo(ctx.world, this.rng, px, ty, target.x, target.y, 12, SWEEP, rescueMinY, avoid);
         wiz = wizardMask({ world: ctx.world, spawn });
         cell = reachableMask({ world: ctx.world, spawn });
         if (pass()) return true;
-        tunnelTo(ctx.world, this.rng, px, py - 10, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP, rescueMinY, avoid);
+        tunnelTo(ctx.world, this.rng, px, ty, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP, rescueMinY, avoid);
         wiz = wizardMask({ world: ctx.world, spawn });
         cell = reachableMask({ world: ctx.world, spawn });
         return pass();
@@ -752,7 +769,7 @@ export class WorldGen implements WorldGenApi {
           const pass = (): boolean => wizNear(m.x, m.y - 2, 6);
           const stable = (): boolean => wizNearCount(m.x, m.y - 2, 6) >= 40;
           if (pass() && stable()) continue;
-          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, stable) || failOpenTargetDoor(m, stable));
+          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, stable, fixtureTop(m)) || failOpenTargetDoor(m, stable));
         } else if (CELL_REACH.has(m.kind)) {
           // A lens sealed behind optics (world/galleryPuzzles) is reached at its
           // port — the rescue must never carve into the sealed lens itself.
@@ -776,28 +793,33 @@ export class WorldGen implements WorldGenApi {
         recordRescue(`rune@${rx},${ry}`, () => rescueAt(rx, ry, pass));
       }
       // The golden key gates progression and the wizard must WALK to it —
-      // it gets the same guarantee as the hands-on locks.
+      // it gets the same guarantee as the hands-on locks, judged by the real
+      // collect rule (validate bodyCanCollect): a key sunk in the floor is ten
+      // cells from open ground and still cannot be taken. The rescue keeps the
+      // floor it rests on.
       for (const p of pickups) {
         if (p.kind !== 'key') continue;
         const kx = Math.floor(p.x),
           ky = Math.floor(p.y);
-        const pass = (): boolean => wizNear(kx, ky, 10);
+        const pass = (): boolean => bodyCanCollect(wiz, ctx.world, p.x, p.y);
         if (pass() && wizNearCount(kx, ky, 10) >= 64) continue;
-        recordRescue(`key@${kx},${ky}`, () => rescueAt(kx, ky, pass));
+        let floor = ky + 1;
+        while (floor < HEIGHT - 9 && !blocksEntity(ctx.world.types[kx + floor * WIDTH])) floor++;
+        recordRescue(`key@${kx},${ky}`, () => rescueAt(kx, ky, pass, floor));
       }
       for (const ws of waystones) {
         const wx = Math.floor(ws.x),
           wy = Math.floor(ws.y);
         const pass = (): boolean => wizNear(wx, wy, 10);
         if (pass() && wizNearCount(wx, wy, 10) >= 64) continue;
-        recordRescue(`waystone@${wx},${wy}`, () => rescueAt(wx, wy, pass));
+        recordRescue(`waystone@${wx},${wy}`, () => rescueAt(wx, wy, pass, wy - 1));
       }
       if (cauldron) {
         const cx = Math.floor(cauldron.x),
           cy = Math.floor(cauldron.y);
         const pass = (): boolean => wizNear(cx, cy, 10);
         if (!pass() || wizNearCount(cx, cy, 10) < 64) {
-          recordRescue(`cauldron@${cx},${cy}`, () => rescueAt(cx, cy, pass));
+          recordRescue(`cauldron@${cx},${cy}`, () => rescueAt(cx, cy, pass, cy - 1));
         }
       }
       for (const m of mechanisms) {
@@ -962,16 +984,28 @@ export class WorldGen implements WorldGenApi {
       }
       waystones.push({ x: cx, y: baseY - 1, lit: false });
     };
+    const wetOver = (cx: number, baseY: number): boolean => {
+      for (let y = baseY - 5; y <= baseY; y++) {
+        for (let x = cx - 3; x <= cx + 3; x++) if (isLiquid(world.types[x + y * WIDTH])) return true;
+      }
+      return false;
+    };
     for (const anchor of [WIDTH * 0.33, WIDTH * 0.66]) {
       let placed = false;
-      for (let attempt = 0; attempt < 40 && !placed; attempt++) {
+      // A checkpoint is lit with fire: its bowl is never set on the bed of a
+      // pool (the scan reads water as open, and a restored bowl fills at once).
+      // Relaxed in tiers, never skipped: dry ground on the lower artery, then
+      // dry ground from higher up (a flooded floor's water table), then any
+      // ground, as before.
+      for (let attempt = 0; attempt < 120 && !placed; attempt++) {
+        const tier = attempt < 40 ? 0 : attempt < 80 ? 1 : 2;
         const cx = Math.floor(anchor + (this.rng.next() - 0.5) * 80);
         if (cx < 12 || cx >= WIDTH - 12) continue;
         if (Math.abs(cx - wellX) < halfW + 26) continue;
         // Scan down from the lower artery's band for the first standable floor.
         let baseY = -1;
-        for (let y = Math.floor(HEIGHT * 0.56); y < HEIGHT - 6; y++) {
-          if (isOpenT(world.types[cx + y * WIDTH]) && isFloorT(world.types[cx + (y + 1) * WIDTH])) {
+        for (let y = Math.floor(HEIGHT * (tier === 1 ? 0.35 : 0.56)); y < HEIGHT - 6; y++) {
+          if (isOpenT(world.types[cx + y * WIDTH]) && isFloorT(world.types[cx + (y + 1) * WIDTH]) && (tier === 2 || !wetOver(cx, y))) {
             baseY = y;
             break;
           }
@@ -1019,7 +1053,11 @@ export class WorldGen implements WorldGenApi {
       const ws = waystones[n];
       const rx = n === 0 ? 34 : 12; // ws[0]'s wider margin also covers the cauldron site
       ledger.reserve(ws.x - rx, ws.y - 12, ws.x + rx, ws.y + 12, 'waystone');
+      // ...and its bowl's footing is sealed ground every later tunnel walks around.
+      reserveFooting(ledger, waystoneFooting(ws), 'waystone');
     }
+    // The generated bowls (a prefab's waystone keeps its authored cells).
+    const bowls = waystones.slice();
     const sink = makeInstantiationSink();
     const genDef = GEN[def.biome] || GEN.earthen;
     let placedPrefabs = placePrefabs(
@@ -1073,8 +1111,23 @@ export class WorldGen implements WorldGenApi {
     const cSide = this.rng.next() < 0.5 ? -1 : 1;
     // Set well clear of the waystone — the runestone + cauldron render large now,
     // so a tight 14-cell offset made the cauldron sit in front of the stele.
-    const cauldronX = Math.floor(clamp(ws0.x + cSide * 28, 8, WIDTH - 9));
-    const cauldronBaseY = ws0.y + 1;
+    // It stands on real ground: the side whose ground under the basin is nearer
+    // the waystone's row wins (the rolled side on a tie), and the basin settles
+    // onto the ground under its own centre. It used to be stamped on the
+    // waystone's row whatever lay under it — over a 15-row pit on d2 seed 1337.
+    const siteX = (side: number): number => Math.floor(clamp(ws0.x + side * 28, 8, WIDTH - 9));
+    const undercut = (x: number): number => {
+      let worst = 0;
+      for (let dx = -4; dx <= 4; dx++) {
+        let gap = 0;
+        while (gap < 60 && !isFloorT(world.types[x + dx + (ws0.y + 2 + gap) * WIDTH])) gap++;
+        worst = Math.max(worst, gap);
+      }
+      return worst;
+    };
+    const cauldronX = undercut(siteX(-cSide)) < undercut(siteX(cSide)) ? siteX(-cSide) : siteX(cSide);
+    let cauldronBaseY = ws0.y + 1;
+    for (let d = 0; d < 40 && !isFloorT(world.types[cauldronX + (cauldronBaseY + 1) * WIDTH]); d++) cauldronBaseY++;
     // carve clearance above the basin footprint if rock is in the way
     for (let dy = 1; dy <= 6; dy++) {
       for (let dx = -4; dx <= 4; dx++) setCell(cauldronX + dx, cauldronBaseY - dy, Cell.Empty, EMPTY_COLOR);
@@ -1085,6 +1138,7 @@ export class WorldGen implements WorldGenApi {
       setCell(cauldronX + 4, cauldronBaseY - t, Cell.Stone, stoneColor());
     }
     const cauldron = { x: cauldronX, y: cauldronBaseY - 1 };
+    reserveFooting(ledger, cauldronFooting(cauldron), 'cauldron');
 
     stage('cauldron');
 
@@ -1117,6 +1171,9 @@ export class WorldGen implements WorldGenApi {
       fits,
     );
     stage('structures');
+    // The generator's own triggers and glyphs (the prefab ones below keep their authored cells).
+    const ownTriggers = mechanisms.filter((m) => m.kind === 'lever' || m.kind === 'brazier');
+    const ownRunes = runeVaults.slice();
 
     // 8b) Merge the prefab sink into the structure outputs. Mechanism ids are
     //     list-scoped (allocId), so the two independently-built lists collide
@@ -1132,6 +1189,13 @@ export class WorldGen implements WorldGenApi {
     pickups.push(...sink.pickups);
     runeVaults.push(...sink.runeVaults);
     waystones.push(...sink.waystones);
+    // Every body as stamped, and every hand-trigger's footing sealed for the
+    // passes still to carve (world/fixtureFooting): repeated below for the
+    // set pieces that add their own.
+    const bodies: BodyRecord = new Map();
+    const footed = new Set<Mechanism>();
+    recordBodies(world, mechanisms, bodies);
+    reserveTriggerFootings(ledger, mechanisms, footed);
     stage('merge');
 
     // 8b.5) Late campaign dressing enriches terrain mass after all authored
@@ -1229,6 +1293,8 @@ export class WorldGen implements WorldGenApi {
       }
       stage('glass-galleries-puzzles');
     }
+    recordBodies(world, mechanisms, bodies);
+    reserveTriggerFootings(ledger, mechanisms, footed);
     // 8b.8) FLORA (wave 2): the floor's puzzle rooms (fell a tree across a
     // chasm or lava moat, water a thirsty seed into a root ladder, burn a
     // bramble thicket) carved into rock and joined to the main path, then the
@@ -1347,6 +1413,19 @@ export class WorldGen implements WorldGenApi {
     // The second doors' tanks and cisterns (casing, seal, liquid) likewise.
     for (const repair of setPieceRepairs) repair();
     stage('final-gauge-rescue');
+
+    // 8e) THE FOOTING CONTRACT, after the last carve: every bowl, basin, body
+    //     and glyph re-stamped, ground put back under anything a carve
+    //     undercut, the key in open air on its floor under nothing that will
+    //     fall. Fail-open: a fill that costs standing room elsewhere is undone.
+    const footing = holdFixtureFootings(world, {
+      bowls, cauldron, mechanisms, ownTriggers, runeVaults: ownRunes, pickups,
+      story: { ...storyPlaced.sites, flue: kilnFlue }, bodies, spawn,
+    });
+    if (shouldLogDevDiagnostics() && (footing.undercut.length > 0 || footing.reverted.length > 0)) {
+      console.warn(`[gen] ${def.id}: footing undercut ${footing.undercut.join(' ') || '-'}; taken back ${footing.reverted.join(' ') || '-'}`);
+    }
+    stage('footing');
 
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
     matureVegetation(ctx.world);

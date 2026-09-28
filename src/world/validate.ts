@@ -254,6 +254,41 @@ function nearWithLine(
 }
 
 /**
+ * Can the alchemist's BODY collect a pickup at (x, y)? game/Pickups' own rule:
+ * a standing position (feet = the wizard mask's cell) whose body centre, eight
+ * cells up, is within `radius` of the pickup, with its three-sample clear line.
+ * Standing "near" is not enough: a key sunk four rows into the floor, or under
+ * a slumped powder heap, is ten cells from open ground and cannot be taken
+ * (QA 2026-09-28: d2 seed 1, d2b seed 1, d3b seed 1337).
+ */
+export function bodyCanCollect(
+  wiz: Uint8Array,
+  world: { width: number; height: number; types: Uint8Array },
+  x: number,
+  y: number,
+  radius = 9,
+): boolean {
+  const W = world.width, H = world.height;
+  for (let fy = Math.floor(y + 8 - radius); fy <= Math.ceil(y + 8 + radius); fy++) {
+    for (let fx = Math.floor(x - radius); fx <= Math.ceil(x + radius); fx++) {
+      if (fx < 1 || fy < 1 || fx >= W - 1 || fy >= H - 1 || !wiz[fx + fy * W]) continue;
+      const dx = fx - x, dy = fy - 8 - y;
+      if (dx * dx + dy * dy >= radius * radius) continue;
+      let clear = true;
+      for (const t of [0.3, 0.55, 0.8]) {
+        const sx = Math.floor(x + dx * t), sy = Math.floor(y + dy * t);
+        if (sx >= 0 && sy >= 0 && sx < W && sy < H && blocksEntity(world.types[sx + sy * W])) {
+          clear = false;
+          break;
+        }
+      }
+      if (clear) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Light's line of sight (light wave): the wand's beam passes open air, liquids
  * and translucent solids (glass, ice, crystal) and stops at anything else.
  */
@@ -391,8 +426,10 @@ function protectedRepairMask(runtime: LevelRuntime): Uint8Array {
   for (const v of runtime.runeVaults) {
     for (const cell of v.door ?? []) markProtectedPoint(runtime, protectedCells, cell[0], cell[1], 1);
   }
+  // The key's FLOOR, not its cell: a repair digs a buried key out (the body
+  // must touch it, see bodyCanCollect) but never drops it through its floor.
   for (const p of runtime.pickups) {
-    if (p.kind === 'key') markProtectedPoint(runtime, protectedCells, p.x, p.y, 2);
+    if (p.kind === 'key') markProtectedRect(runtime, protectedCells, p.x - 2, p.y + 1, p.x + 2, p.y + 3);
   }
   for (const ws of runtime.waystones) markProtectedPoint(runtime, protectedCells, ws.x, ws.y, 3);
   // The arrival's footing (game/arrival settles the spawn onto rock): a rescue
@@ -652,7 +689,7 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
     // appear as minimap dots / diagnostics, so a sealed pocket is buried
     // treasure instead of a hard progression failure.
     if (p.kind === 'key') {
-      check(near(wiz, W, H, p.x, p.y, 10), p.kind, p.x, p.y);
+      check(bodyCanCollect(wiz, view.world, p.x, p.y), p.kind, p.x, p.y);
     } else if (
       p.kind === 'heart' ||
       p.kind === 'tome' ||
