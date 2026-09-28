@@ -345,8 +345,9 @@ export class Narrator implements NarratorApi {
       this.speaking = null;
       // A line that never started (its moment passed) costs no cooldown.
       if (played > 0) this.gate.finished(performance.now());
-      const next = this.queue.shift();
-      if (next && this.canRun(next)) void this.run(next);
+      // The next that may still run (a lapsed one no longer blocks the lines queued behind it).
+      const next = this.nextRunnable();
+      if (next) void this.run(next);
       else this.duck(false);
     }
   }
@@ -418,10 +419,16 @@ export class Narrator implements NarratorApi {
       this.cut();
       this.gate.finished(performance.now());
       // Whatever was waiting behind it (another source's line) takes its turn.
-      const next = this.queue.shift();
-      if (next && this.canRun(next)) void this.run(next);
+      const next = this.nextRunnable();
+      if (next) void this.run(next);
       else this.duck(false);
     }
+  }
+
+  /** The first waiting utterance that may still start; lapsed ones ahead of it are dropped. */
+  private nextRunnable(): Utterance | null {
+    for (let u = this.queue.shift(); u; u = this.queue.shift()) if (this.canRun(u)) return u;
+    return null;
   }
 
   /** A waiting utterance may still start: its moment has not passed, and it can be heard (or is caption-only). */

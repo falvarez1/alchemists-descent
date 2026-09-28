@@ -332,7 +332,7 @@ export class Hud {
       else clearDeath();
     }));
     this.disposers.push(ctx.events.on('playerCorpseSettled', () => {
-      this.setHudTimeout(() => { if (this.ctx.player.dead) revealDeath(); }, 6000);
+      this.setHudTimeout(() => { if (this.ctx.player.dead && !this.ctx.story?.escapeActive) revealDeath(); }, 6000);
     }));
 
     this.disposers.push(ctx.events.on('playerRespawned', clearDeath));

@@ -140,8 +140,14 @@ export class Pickups implements PickupsApi {
       // The vessel grows at once; refilling it is a COMMUNION — the alchemist
       // roots in place, glowing, while ~20 HP charges in (see Player.update).
       player.maxHp += 20;
-      player.recharge = 110;
-      ctx.events.emit('toast', { text: '+20 max HP. Hold still while it takes.' });
+      if (ctx.story?.escapeActive) {
+        // No holding still with the lava rising: in the escape it takes at once.
+        player.hp = Math.min(player.maxHp, player.hp + 20);
+        ctx.events.emit('toast', { text: '+20 max HP.' });
+      } else {
+        player.recharge = 110;
+        ctx.events.emit('toast', { text: '+20 max HP. Hold still while it takes.' });
+      }
       ctx.audio.sfx('pickup.heart');
       ctx.particles.burst(p.x, p.y - 2, 14, null, () => packRGB(255, 90, 120), 1.8, {
         glow: 1.8,

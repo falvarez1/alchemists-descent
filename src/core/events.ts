@@ -158,6 +158,8 @@ export interface EventMap {
   storyCinema: StoryCinemaView;
   /** STORY: a beat with weight (a boss prologue) draws the letterbox in, and out. */
   storyLetterbox: { on: boolean };
+  /** The story's own fade to black and back (the Kiln escape's quick restart after a fall). */
+  storyFade: { on: boolean };
   /** Return phials changed (death spent one, a refuge/Sanctum restored one). */
   phialsChanged: { phials: number; max: number; reason: 'start' | 'death' | 'refuge' | 'sanctum' | 'restore' };
   /** Something asked for the last seconds of play to be saved as a clip. */

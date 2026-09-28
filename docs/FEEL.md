@@ -613,6 +613,16 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   through the water); beached, direct blows land ×1.3. A mortal probe holding
   fire at the sump's edge now needs ~40 s (was 7); a player dodging and
   re-sparking the pool, ~60–120 s. Lurking, it eats the fish its lure draws.
+- **The Kiln escape** (`game/story/KilnEscape`, 2026-09 deliberate): the Heart's
+  heat thins the levitation in the flue — the jet burns 2.0 more LEV a tick (on
+  top of its 1.15) and a ledge takes back 1.45 of the ground's 1.7 recovery, so
+  it is hop, breathe, hop. STEAM GUSTS rise up the shaft's clear middle (15
+  wide) every 3.4 s, told 0.75 s ahead by a hiss and a boil, at 3.4 rows a
+  tick: a body caught mid-air is knocked down (vy ≥ 2.4) and its LEV cut to 15;
+  one on a ledge is spared. The lava rises 0.09 rows/tick (0.24 on a long lead,
+  0.06 close under the boots; was 0.11 / 0.3 / 0.085). A patient climber who
+  times the gusts reaches the hatch in 31–47 s (probe; was 5.6 s). A fall is a
+  0.45 s fade and a restart at 1.15 s: no death screen, no gold, no phial.
 - **Hit stagger** (`Enemies.flinch`): a blow ≥ 5 staggers any non-boss that
   is not rooted or surface-bound (weaver, eggs, spitter, rillback, stone maw,
   root loper answer with their rigs only): a ballistic shove through the

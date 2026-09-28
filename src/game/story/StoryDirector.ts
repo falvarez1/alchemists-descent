@@ -402,7 +402,14 @@ export class StoryDirector implements StoryApi {
       // A finished run has nothing left to resume (RunDirector retires the save too).
       ctx.levels.abandonExpedition();
     };
-    void this.cinema.play('ending', plates, { pause: true }).then(finish);
+    // The Docent's climb line is never cut by the first plate: the ending waits it out (at most 9 s).
+    const start = (): void => { void this.cinema.play('ending', plates, { pause: true }).then(finish); };
+    const waitFrom = performance.now();
+    const waitForLine = (): void => {
+      if (ctx.narrator?.speakingSource === 'escape' && performance.now() - waitFrom < 9000) window.setTimeout(waitForLine, 150);
+      else start();
+    };
+    waitForLine();
   }
 
   /* ---------------- the opening ---------------- */

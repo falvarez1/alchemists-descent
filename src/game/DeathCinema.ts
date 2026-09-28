@@ -57,6 +57,8 @@ export class DeathCinema {
   update(dt: number): void {
     const ctx = this.ctx;
     if (!ctx.player.dead || ctx.state.mode !== 'play') { if ((ctx.fx.deathTime ?? 0) > 0) this.end(); return; }
+    // A fall in the Kiln escape is not a death scene: the story fades and restarts the climb.
+    if (ctx.story?.escapeActive) { if ((ctx.fx.deathTime ?? 0) > 0) this.end(); return; }
     if (ctx.state.paused) return;
     this.t += Math.min(0.1, dt);
     ctx.fx.deathTime = this.t;

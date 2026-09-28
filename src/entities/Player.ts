@@ -998,7 +998,8 @@ export class PlayerControl implements PlayerControlApi {
     // Death is a walk back, not a reset: a small recoverable purse spills (the
     // fraction scales with difficulty — gentler on easy, harsher on Archmage).
     const runtime = ctx.levels.current;
-    const spill = Math.floor(ctx.state.score * difficultyMods(ctx.state).deathPenalty);
+    // (Not in the Kiln escape: a fall in the climb is a quick restart, never a cost.)
+    const spill = ctx.story?.escapeActive ? 0 : Math.floor(ctx.state.score * difficultyMods(ctx.state).deathPenalty);
     if (runtime && spill > 0) {
       ctx.state.score -= spill;
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
