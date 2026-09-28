@@ -142,7 +142,8 @@ export class WebSocketTransport implements SessionTransport {
 
   sendBinary(data: Uint8Array): boolean {
     if (this.closed || !this.socket || this.socket.readyState !== SOCKET_OPEN) return false;
-    this.socket.send(data);
+    // WebSocket.send takes an ArrayBuffer-backed view; copy a view over a SharedArrayBuffer.
+    this.socket.send(data.buffer instanceof ArrayBuffer ? (data as Uint8Array<ArrayBuffer>) : new Uint8Array(data));
     return true;
   }
 

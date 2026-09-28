@@ -95,7 +95,8 @@ const WEBGPU_COMPOSE_LIMIT_KEYS = [
 ] as const;
 
 type TslUvNode = NonNullable<Parameters<typeof texture>[1]>;
-type TslRgbNode = ReturnType<typeof texture>['rgb'];
+/** What `texture(...).rgb` yields: a vec3 node (three 0.186's types no longer expose the swizzle on TextureNode). */
+type TslRgbNode = ChillNode<'vec3'>;
 type TslNode<T extends string> = ChillNode<T>;
 type ToneMappingMode = typeof ACESFilmicToneMapping | typeof NoToneMapping;
 

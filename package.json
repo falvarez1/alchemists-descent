@@ -4,6 +4,9 @@
   "version": "0.2.0",
   "description": "Alchemist's Descent — a falling-sand action roguelite built on a cellular automata engine",
   "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -81,21 +84,21 @@
   "dependencies": {
     "@dimforge/rapier2d-compat": "^0.19.3",
     "gifenc": "^1.0.3",
-    "three": "0.184.0"
+    "three": "0.186.1"
   },
   "devDependencies": {
-    "@types/node": "^25.9.2",
-    "@types/three": "0.184.1",
+    "@types/node": "^26.6.3",
+    "@types/three": "0.186.0",
     "@types/ws": "^8.18.1",
-    "assemblyscript": "^0.28.19",
-    "eslint": "^9.0.0",
-    "playwright-core": "^1.60.0",
-    "prettier": "^3.3.0",
-    "typescript": "^5.6.0",
-    "typescript-eslint": "^8.0.0",
-    "vite": "^6.0.0",
-    "vitest": "^4.1.9",
-    "wrangler": "^4.114.0",
-    "ws": "^8.21.1"
+    "assemblyscript": "^0.28.20",
+    "eslint": "^10.11.0",
+    "playwright-core": "^1.63.0",
+    "prettier": "^3.9.9",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.0",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2",
+    "wrangler": "^4.143.0",
+    "ws": "^8.22.0"
   }
 }

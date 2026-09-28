@@ -21,11 +21,12 @@ publishing ANY git ref means: build that ref, then deploy `dist` with
    "Project not found". Always pass `CLOUDFLARE_ACCOUNT_ID` explicitly; the token
    spans several accounts and wrangler will otherwise ask interactively (and this
    shell has no stdin).
-2. **Do not use the repo-local wrangler** (`npm run game:deploy`, wrangler 4.114).
-   It crashes with `Host version "0.28.1" does not match binary version "0.25.12"`
-   — its nested esbuild collides with vite's. Use the standalone one:
-   `npx -y -p wrangler@4.129.0 wrangler ...` (npx caches it after the first run).
-   If you must run it from the repo, still use `-p wrangler@4.129.0`.
+2. **The repo-local wrangler works again since 4.143** (2026-09-28). Under 4.114
+   it crashed with `Host version "0.28.1" does not match binary version "0.25.12"`
+   (its nested esbuild collided with vite's). The standalone
+   `npx -y -p wrangler@4.129.0 wrangler ...` used by `deploy.mjs` still works too.
+   An expired login: `wrangler logout`, then `wrangler login` with the browser on the
+   right account; `--browser=false` prints the URL if the browser will not open.
 3. **`wrangler login` needs the browser signed into the RIGHT Cloudflare account
    before you start it.** The OAuth page auto-approves for whoever the browser is
    logged in as. If `wrangler whoami` shows the wrong email: `wrangler logout`,

@@ -56,7 +56,7 @@ export class SoundQuickControl {
     document.getElementById('canvas-holder')?.appendChild(this.root);
 
     this.toggle.addEventListener('click', () => this.setMuted(!this.host.muted()));
-    this.caret.addEventListener('click', () => this.open(this.panel.hidden));
+    this.caret.addEventListener('click', () => this.open(this.panel.hidden !== false));
     for (const input of this.panel.querySelectorAll<HTMLInputElement>('input[data-channel]')) {
       const channel = input.dataset.channel as VolumeChannel;
       input.addEventListener('input', () => {

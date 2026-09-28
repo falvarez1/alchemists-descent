@@ -34,6 +34,19 @@ function assertCanvasSample(label, sample, minNonBlackPct = 1, minAvg = 2) {
 
 console.log('navigating to', url);
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+
+// The app boots to the title screen, which covers the Workshop's toolbar. An
+// author's way into the material sandbox is Workshops > Material sandbox.
+const enterSandboxFromTitle = async () => {
+  await page.locator('#expedition-entry').waitFor({ state: 'visible', timeout: 30000 });
+  // The fold remembers being open from an earlier visit: only open it when shut.
+  if (!(await page.locator('#expedition-entry .entry-workshops').evaluate((d) => d.open))) {
+    await page.locator('#expedition-entry .entry-workshops > summary').click();
+  }
+  await page.locator('#expedition-entry [data-entry="sandbox"]').click();
+  await page.locator('#expedition-entry').waitFor({ state: 'hidden', timeout: 10000 });
+};
+await enterSandboxFromTitle();
 await page.waitForTimeout(3500); // let worldgen + a few hundred frames run
 
 // --- 1) Build mode: world rendered? ---
@@ -161,7 +174,11 @@ await page.screenshot({ path: `${outDir}/06-flamethrower.png` });
 console.log('flamethrower burst done');
 
 // --- 7) Probe: leave play through the real SANDBOX control, then resume through PLAY launcher ---
-await page.click('#mode-build-btn');
+// The play screen hides the header for the whole run: leave through
+// Pause > Quit to title, then back into the Workshop from the title.
+await page.keyboard.press('Escape');
+await page.locator('#pause-title-btn').click();
+await enterSandboxFromTitle();
 await page.waitForTimeout(400);
 const backInBuild = await page.evaluate(() => !document.body.classList.contains('play-active'));
 await page.click('#mode-play-btn');
