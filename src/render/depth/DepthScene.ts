@@ -255,8 +255,10 @@ export class DepthScene implements ParallaxLayers {
       }
       layer.speed = spec.parallax;
       layer.scale = spec.scale;
-      layer.offsetX = spec.offsetX ?? 0;
-      layer.offsetY = spec.offsetY ?? 0;
+      // A scrolling plane (heat rising) drifts its sample offset, wrapped to the bitmap.
+      const bmp = baked.planes[i]!;
+      layer.offsetX = (spec.offsetX ?? 0) + (spec.scroll ? (frame * spec.scroll.x) % bmp.width : 0);
+      layer.offsetY = (spec.offsetY ?? 0) + (spec.scroll ? (frame * spec.scroll.y) % bmp.height : 0);
       layer.visible = true;
       layer.opacity = spec.pulse ? pulseOpacity(spec.opacity, spec.pulse.amp, spec.pulse.period, frame, i) : spec.opacity;
     }
