@@ -92,6 +92,8 @@ const RILLBACK_CHARGE_WINDUP_FRAMES = 18;
 const GUST_REF_MASS = 40; // a slime-ish footprint (halfW·h); push scales inversely
 const GUST_MASS_LO = 0.2; // heaviest foes barely budge
 const GUST_MASS_HI = 4.5; // lightest foes (bats) get hurled
+/** Share of a blow that lands on a submerged Leviathan (its water is armour). */
+const LEVIATHAN_WATER_ARMOR = 0.12;
 const GUST_KNOCK_FRAMES_MAX = 18; // longest ballistic-launch window (AI + flight cap suppressed)
 const KNOCK_GRAV = 0.12; // gentle gravity during a launch so the arc reads
 const KNOCK_DRAG = 0.97; // per-frame air drag on a launched body
@@ -615,9 +617,11 @@ export class Enemies implements EnemyControlApi {
     }
     // WATER IS THE LEVIATHAN'S ARMOR: while the body is actually in water
     // (cell census, not the wet meter) hits glance off — and SAY so, every
-    // time, with a cold shimmer and a dull plink. Drain the pool.
+    // time, with a cold shimmer and a dull plink. Drain the pool, or short it.
+    // (×0.12, was ×0.25: a held Spark Bolt ground ~10 hp/s through the water,
+    // half the fight, whatever the pool was doing.)
     if (e.kind === 'leviathan' && e.submerged === true) {
-      amount *= 0.25;
+      amount *= LEVIATHAN_WATER_ARMOR;
       ctx.particles.burst(e.x, e.y - 7, 3, null, () => packRGB(120, 220, 255), 1.2, {
         glow: 1.8,
         grav: -0.01,
@@ -2713,7 +2717,10 @@ export class Enemies implements EnemyControlApi {
           chargeContact: eff.chargeContact,
         });
         // (A warded boss's status harm lands only while the player is engaged, and never on a dying one.)
-        if (eff.damage > 0 && this.bossWard.allows(e, 'shorted', ctx.state.frameCount) && e.boss?.move !== 'dying') e.hp -= eff.damage;
+        // The Leviathan's shock is its SHORTED burst (creatures/bosses/leviathan), never a
+        // per-sample drain on top: QA watched the two together take it in ~7 s.
+        const statusHarm = e.kind === 'leviathan' ? eff.damage - eff.shockDamage : eff.damage;
+        if (statusHarm > 0 && this.bossWard.allows(e, 'shorted', ctx.state.frameCount) && e.boss?.move !== 'dying') e.hp -= statusHarm;
         if (e.hp <= 0) {
           this.killAt(i, e, 0, 0);
           continue;

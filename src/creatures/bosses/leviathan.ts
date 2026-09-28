@@ -20,8 +20,15 @@ import { bossPhaseFor, ensureBossBrain } from './types';
  *
  * Its weaknesses: drain the basin (dig the plugs) and it is heavy meat on the
  * tiles — every blow lands, harder; or put a spark in the water and it is
- * SHORTED — a jolt of damage and a convulsion (an opening) every 24 ticks for
- * as long as the current lives. Only what the player caused hurts it.
+ * SHORTED — one burst of damage and a convulsion (an opening). The burst is
+ * the pool's current going to ground through its body, so it SPENDS the
+ * charge in the water around it; the next needs a fresh spark and at least
+ * JOLT_CD to pass. (QA: a burst every 24 ticks plus the status drain on top
+ * killed it in ~7 s off one Spark Bolt.) Crossing into a new phase is a beat
+ * of its own — it sheds the current and rages (phase 2 THRASHES, phase 3
+ * DIVES), and no burst lands while it does. Only what the player caused hurts
+ * it (core/bossWard), and the generic status shock does not stack on the
+ * burst (entities/Enemies).
  */
 
 export const LEV = {
@@ -29,8 +36,18 @@ export const LEV = {
   VOLLEY_TELL: 20, VOLLEY_MIN: 90, VOLLEY_MAX: 320,
   THRASH_TELL: 18, THRASH_DUR: 40, THRASH_RANGE: 90, THRASH_CELLS: 22, THRASH_DMG: 9,
   DIVE_TELL: 34, DIVE_DUR: 70, SURGE_VY: 3.4,
-  /** Electrocution: a jolt every JOLT ticks while the pool it floats in is live. */
-  JOLT: 24, JOLT_SHARE: 0.035, JOLT_STUN: 14,
+  /**
+   * Electrocution: one burst (at most JOLT_SHARE of max hp: 7.5%, ~31 of 414) no
+   * sooner than JOLT_CD ticks (3.5 s) after the last, while the pool it floats
+   * in is live; it convulses for JOLT_STUN ticks (the opening), and the burst
+   * grounds the charge in every conductor within JOLT_DRAIN_R cells.
+   * (Was JOLT 24 / SHARE 0.035 / STUN 14 plus the status drain: dead in ~7 s.
+   * A god-mode probe holding fire at the sump's edge now needs ~40 s; a player
+   * dodging its lunges, volleys and surges, and re-sparking the pool, ~60-120 s.)
+   */
+  JOLT_CD: 210, JOLT_SHARE: 0.075, JOLT_STUN: 40, JOLT_DRAIN_R: 40,
+  /** A phase change: it sheds the current and rages for this long (5 s); no burst lands. */
+  PHASE_BEAT: 300,
   /** A beached body takes blows harder; a convulsing one harder still. */
   BEACHED_MUL: 1.3, EXPOSED_MUL: 1.6,
   RECOVER: [110, 90, 70] as const,
@@ -58,6 +75,34 @@ function end(e: Enemy, b: BossBrain, cooldown: number): void {
   b.move = 'lurk';
   b.moveT = 0;
   e.attackCd = Math.max(e.attackCd, cooldown);
+}
+
+/**
+ * The burst went to ground through its body: the pool's charge is spent. Every
+ * charged conductor within `r` of the body is cleared (grid-honest — the water
+ * really goes dark, and the next burst needs a fresh spark), with a few motes
+ * where the current left the water. Returns the cells grounded.
+ */
+export function groundPool(ctx: Ctx, e: Enemy, r: number): number {
+  const w = ctx.world;
+  const cx = Math.floor(e.x);
+  const cy = Math.floor(e.y - 6);
+  const r2 = r * r;
+  let n = 0;
+  for (let y = cy - r; y <= cy + r; y++) {
+    for (let x = cx - r; x <= cx + r; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      if (dx * dx + dy * dy > r2 || !w.inBounds(x, y)) continue;
+      const i = w.idx(x, y);
+      if (w.charge[i] <= 0) continue;
+      w.clearChargeAt(i);
+      if (n++ % 9 === 0) {
+        ctx.particles.spawn(x, y, (entityRandom() - 0.5) * 0.4, -0.5 - entityRandom() * 0.5, null, packRGB(160, 235, 255), 12, { glow: 1.6, grav: -0.02 });
+      }
+    }
+  }
+  return n;
 }
 
 /** How dark the lure is (0 lit … 1 doused): the lunge and dive tells. Read by the rig. */
@@ -125,13 +170,25 @@ export function tickLeviathan(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost,
     ctx.audio.sfx('creature.leviathan.alert', e.x, e.y);
     ctx.particles.burst(e.x, e.y - 10, 22, null, () => packRGB(150, 220, 255), 2, { glow: 1.4, grav: -0.03 });
     host.shakeAt(e.x, e.y, 0.03, 0.06);
+    // A PHASE BEAT: it sheds the current (the pool goes dark), rages, and no
+    // burst lands for PHASE_BEAT ticks — phase 2 THRASHES, phase 3 DIVES.
+    b.jolt = Math.max(b.jolt, LEV.PHASE_BEAT);
+    b.exposed = 0;
+    e.status.electrified = 0;
+    groundPool(ctx, e, LEV.JOLT_DRAIN_R);
+    ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 8, text: phase >= 3 ? 'IT GOES DEEP' : 'IT GROWS CROSS', tone: 'brass' });
+    if (sub) {
+      e.windup = 0; e.swoop = 0;
+      if (phase >= 3) begin(ctx, e, b, 'dive', LEV.DIVE_DUR);
+      else begin(ctx, e, b, 'thrash', LEV.THRASH_DUR);
+    } else if (b.move === 'shock') end(e, b, 20);
   }
 
-  // SHORTED: the live pool jolts it — a burst of damage and a convulsion,
-  // not a silent drain. Only a fight the player started counts.
-  // (The ward decides whether the current is the player's: core/bossWard.)
+  // SHORTED: the live pool jolts it — ONE burst of damage and a convulsion,
+  // then the pool's charge is spent (the current went to ground through it).
+  // Only a fight the player started counts (the ward: core/bossWard).
   if (sub && e.status.electrified > 0 && b.jolt <= 0 && host.worldHarm(e)) {
-    b.jolt = LEV.JOLT;
+    b.jolt = LEV.JOLT_CD;
     const dmg = e.maxHp * LEV.JOLT_SHARE;
     ctx.alchemy?.noteHit(e, 'shorted');
     e.hp -= dmg;
@@ -140,6 +197,8 @@ export function tickLeviathan(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost,
     b.exposed = Math.max(b.exposed, LEV.JOLT_STUN + 6);
     if (b.move !== 'shock') begin(ctx, e, b, 'shock', LEV.JOLT_STUN);
     else b.moveT = 0;
+    e.status.electrified = 0;
+    groundPool(ctx, e, LEV.JOLT_DRAIN_R);
     ctx.particles.burst(e.x, e.y - 8, 12, null, () => packRGB(150, 235, 255), 2.4, { glow: 2.6, grav: 0 });
     ctx.lightning?.spark?.(e.x - def.halfW, e.y - def.h, e.x + def.halfW, e.y - 2);
     ctx.audio.sfx('creature.leviathan.shock', e.x, e.y);

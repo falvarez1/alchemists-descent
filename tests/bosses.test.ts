@@ -220,8 +220,60 @@ describe('the Sunken Leviathan', () => {
     expect(l.maxHp - l.hp).toBeCloseTo(l.maxHp * LEV.JOLT_SHARE, 5);
     expect(b.move).toBe('shock');
     const hp1 = l.hp;
-    for (let i = 0; i < LEV.JOLT - 1; i++) { ctx.state.frameCount++; tickLeviathan(ctx, l, ENEMY_DEFS.leviathan, h, sense()); }
-    expect(l.hp).toBe(hp1); // a jolt, then a beat — not a drain
+    for (let i = 0; i < LEV.JOLT_CD - 1; i++) {
+      ctx.state.frameCount++;
+      l.status.electrified = 200; // the pool re-charged at once: still a beat, not a drain
+      tickLeviathan(ctx, l, ENEMY_DEFS.leviathan, h, sense());
+    }
+    expect(l.hp).toBe(hp1);
+    ctx.state.frameCount++;
+    tickLeviathan(ctx, l, ENEMY_DEFS.leviathan, h, sense());
+    expect(hp1 - l.hp).toBeCloseTo(l.maxHp * LEV.JOLT_SHARE, 5); // the next burst, one cooldown later
+  });
+
+  it('a burst spends the charge in the pool around it', () => {
+    const { ctx } = makeCtx();
+    pool(ctx);
+    const w = ctx.world;
+    for (const [x, y] of [[200, 140], [215, 130], [185, 145]] as const) w.setChargeAt(w.idx(x, y), 60);
+    const far = w.idx(150, 100);
+    w.setChargeAt(far, 60); // beyond the drain radius
+    const l = boss('leviathan', 200, 148);
+    l.timer = 4;
+    l.status.electrified = 200;
+    tickLeviathan(ctx, l, ENEMY_DEFS.leviathan, host(ctx), sense());
+    expect(l.hp).toBeLessThan(l.maxHp);
+    expect(w.charge[w.idx(200, 140)]).toBe(0);
+    expect(w.charge[w.idx(215, 130)]).toBe(0);
+    expect(w.charge[w.idx(185, 145)]).toBe(0);
+    expect(w.charge[far]).toBe(60);
+    expect(l.status.electrified).toBe(0);
+  });
+
+  it('a new phase is a beat of its own: it rages and no burst lands', () => {
+    const { ctx, events } = makeCtx();
+    pool(ctx);
+    const callouts: string[] = [];
+    events.on('combatCallout', ({ text }) => callouts.push(text));
+    const l = boss('leviathan', 200, 148);
+    l.timer = 4;
+    const h = host(ctx);
+    tickLeviathan(ctx, l, ENEMY_DEFS.leviathan, h, sense()); // census: submerged
+    l.hp = l.maxHp * 0.6; // just crossed into phase 2
+    l.status.electrified = 200;
+    ctx.state.frameCount++;
+    tickLeviathan(ctx, l, ENEMY_DEFS.leviathan, h, sense());
+    const b = ensureBossBrain(l);
+    expect(b.phase).toBe(2);
+    expect(b.move).toBe('thrash');
+    expect(callouts).toContain('IT GROWS CROSS');
+    const hp = l.hp;
+    for (let i = 0; i < LEV.PHASE_BEAT - 2; i++) {
+      ctx.state.frameCount++;
+      l.status.electrified = 200;
+      tickLeviathan(ctx, l, ENEMY_DEFS.leviathan, h, sense());
+    }
+    expect(l.hp).toBe(hp); // the beat is not a window for the current
   });
 
   it('douses its lure before it lunges', async () => {
