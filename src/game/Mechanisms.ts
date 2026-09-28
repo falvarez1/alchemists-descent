@@ -11,6 +11,7 @@ import {
   setValveCells,
 } from '@/core/mechanismFactories';
 import { entityRandom } from '@/core/simRandom';
+import { steamOffBowl, wetCells } from '@/game/warmBowl';
 import { PHOTOCELL } from '@/config/darkness';
 export {
   BUOY_LATCH_FRAMES,
@@ -43,6 +44,8 @@ const WITNESS_RADIUS = 360;
  *  Those are changes the player never made — the machines still move, but the
  *  toast stays quiet (QA: "A mechanism groans…" ×2 on arriving at floors 2/3). */
 const ARRIVAL_QUIET_FRAMES = 480;
+/** An unlit brazier sunk in standing water this long (frames) counts as wrecked: fail-open. */
+const BRAZIER_DROWN_FRAMES = 1200;
 function nearPlayer(ctx: Ctx, m: Mechanism): boolean {
   const dx = m.x - ctx.player.x, dy = m.y - ctx.player.y;
   return dx * dx + dy * dy <= WITNESS_RADIUS * WITNESS_RADIUS;
@@ -56,6 +59,8 @@ export class Mechanisms implements MechanismsApi {
   private quietUntil = 0;
   /** Mechanisms wrecked during an arrival: their gate later falls open quietly too. */
   private readonly quietBreaks = new WeakSet<Mechanism>();
+  /** Frames each unlit brazier has sat drowned (see keepBowlDry). */
+  private readonly drowned = new WeakMap<Mechanism, number>();
   /** Toasts said this tick — one line per tick, however many machines say it. */
   private saidFrame = -1;
   private readonly saidThisTick = new Set<string>();
@@ -312,6 +317,8 @@ export class Mechanisms implements MechanismsApi {
               grav: -0.02,
             });
             if (this.witnessed(ctx, m)) this.say(ctx, 'A brazier roars to life.');
+          } else if (ctx.state.frameCount % 30 === 0) {
+            this.keepBowlDry(ctx, m);
           }
         } else if (ctx.state.frameCount % 6 === 0) {
           // keep it burning: re-seed a flame in the bowl
@@ -832,6 +839,32 @@ export class Mechanisms implements MechanismsApi {
         { glow: 2.0, grav: 0 },
       );
     }
+  }
+
+  /**
+   * The warm bowl (game/warmBowl) for an unlit brazier: water seeping into it
+   * steams off. One sunk in standing water, its bowl full and water over the
+   * rim, can never be lit (QA: a Drowned Cisterns shrine settled 93% under
+   * water): after BRAZIER_DROWN_FRAMES of that it counts as wrecked, and the
+   * fail-open rule opens its gate.
+   */
+  private keepBowlDry(ctx: Ctx, m: Mechanism): void {
+    const w = ctx.world;
+    const wet = wetCells(w, m.x - 1, m.y - 3, m.x + 1, m.y - 1);
+    const overRim = wetCells(w, m.x - 1, m.y - 5, m.x + 1, m.y - 4) >= 5;
+    if (wet >= 7 && overRim) {
+      const frames = (this.drowned.get(m) ?? 0) + 30;
+      this.drowned.set(m, frames);
+      if (frames >= BRAZIER_DROWN_FRAMES && m.broken === undefined) {
+        m.broken = 600; // ten seconds of groaning, then its gate gives way
+        ctx.audio.groan(m.x, m.y);
+        if (ctx.state.frameCount < this.quietUntil) this.quietBreaks.add(m);
+        else if (nearPlayer(ctx, m)) this.say(ctx, 'The drowned brazier gives up. Its gate gives way.');
+      }
+      return;
+    }
+    this.drowned.delete(m);
+    if (wet > 0 && steamOffBowl(w, m.x - 1, m.y - 3, m.x + 1, m.y - 1)) ctx.audio.sfx('mat.sizzle', m.x, m.y - 2, { gain: 0.3 });
   }
 
   /** One trigger's contribution to its door (fail-open: broken = satisfied). */

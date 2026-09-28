@@ -73,6 +73,7 @@ import { WORKS_GATE, worksGateOpen } from '@/world/breathingWorks';
 import { dropStrandedStands } from '@/world/floraPass';
 import { blocksEntity, Cell, CELL_COUNT, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { roostAir, roostPerch } from '@/creatures/roost';
+import { steamOffBowl } from '@/game/warmBowl';
 import {
   COLOR_FN,
   bloodColor,
@@ -3483,6 +3484,11 @@ export class Levels implements LevelsApi {
           const t = world.types[world.idx(X, Y)];
           if (t === Cell.Fire || t === Cell.Lava || t === Cell.Ember) fire++;
         }
+      }
+      // The warm bowl (game/warmBowl): water seeping into an unlit bowl steams
+      // off, two cells a second, so settling water never drowns a checkpoint.
+      if (fire === 0 && ctx.state.frameCount % 32 === 0 && steamOffBowl(world, ws.x - 2, ws.y - 2, ws.x + 2, ws.y)) {
+        ctx.audio.sfx('mat.sizzle', ws.x, ws.y - 1, { gain: 0.35 });
       }
       // `?? 0` tolerates a waystone added after enterLevel sized the arrays (the
       // physics arena pushes its checkpoint during the post-enter build).
