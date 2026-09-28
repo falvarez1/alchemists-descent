@@ -33,6 +33,7 @@ const EYE_COLOR: Partial<Record<EnemyKind, RGB>> = {
   golem: [1, 0.52, 0.16],
   colossus: [1, 0.46, 0.12],
   rimewarden: [0.6, 0.88, 1],
+  lenswright: [1, 0.86, 0.5],
   mage: [0.76, 0.42, 1],
   rillback: [0.42, 0.92, 1],
   leviathan: [0.52, 1, 0.9],

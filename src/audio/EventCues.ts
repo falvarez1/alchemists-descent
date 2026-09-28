@@ -111,6 +111,12 @@ export const BOSS_MOVE_CUES: Readonly<Partial<Record<EnemyKind, Readonly<Record<
     vent: [{ sfx: 'creature.rimewarden.inhale' }],
     roar: [{ sfx: 'creature.rimewarden.roar' }],
   },
+  lenswright: {
+    lance: [{ sfx: 'creature.lenswright.iris' }],
+    sweep: [{ sfx: 'creature.lenswright.iris', pitch: -2 }],
+    flare: [{ sfx: 'creature.lenswright.iris', pitch: 3 }],
+    roar: [{ sfx: 'creature.lenswright.roar' }],
+  },
   leviathan: {
     lunge: [{ sfx: 'creature.leviathan.dim' }, { sfx: 'creature.leviathan.windup', delay: 0.12 }],
     thrash: [{ sfx: 'creature.leviathan.windup' }],

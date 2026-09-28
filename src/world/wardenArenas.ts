@@ -2,7 +2,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import type { Rng } from '@/core/rng';
 import type { AuthoredLight, EnemyKind, Pickup } from '@/core/types';
 import { Cell } from '@/sim/CellType';
-import { brineColor, coalColor, packRGB, stoneColor } from '@/sim/colors';
+import { brineColor, coalColor, mirrorColor, packRGB, stoneColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import { carvePocket, carveRect } from '@/world/connect';
 import type { PlacementLedger } from '@/world/connect';
@@ -207,6 +207,149 @@ export function buildIceHouse(site: ArenaSite): WardenArena {
   stampFloor(true);
   return {
     boss: { x: cx, y: FY - 1, kind: 'rimewarden' },
+    repair: (floor = true): void => stampFloor(floor),
+  };
+}
+
+/** Lens Room geometry, relative to the hall's centre (cx, cy). */
+export const LENS_ROOM = {
+  RX: 62, RY: 40,
+  /** Floor surface row below the centre. */
+  FLOOR: 30,
+  HALF: 56,
+  /** The Lenswright hangs this far over the floor at its post. */
+  HOVER: 40,
+  /** Stone cover pillars on the floor (|dx| in [C0, C1]), this tall. */
+  C0: 22, C1: 29, COVER_H: 16,
+} as const;
+
+/**
+ * THE LENS ROOM (the Glass Galleries): the Lenswright's gallery. A tall vault
+ * over a flat floor with two stone pillars to stand behind — cover from a
+ * straight lance, never from a banked one — and silvered panels let into the
+ * vault walls above the doors, which the Lenswright banks its lance off and
+ * the alchemist banks his beam off, into its open eye from cover. Dim gold
+ * light; the room reads by the lens's own glow.
+ */
+export function buildLensRoom(site: ArenaSite): WardenArena {
+  const { w, rng, ledger, spawn, portalX, pickups, lights } = site;
+  const A = LENS_ROOM;
+  const x0 = (cx: number): number => cx - A.RX - 2, x1 = (cx: number): number => cx + A.RX + 2;
+  const top = (cy: number): number => cy - A.RY - 2, bot = (cy: number): number => cy + A.FLOOR + 6;
+  const pick = (): { cx: number; cy: number } => ({
+    cx: Math.floor(WIDTH * (0.28 + rng.next() * 0.44)),
+    cy: Math.floor(HEIGHT * (0.42 + rng.next() * 0.18)),
+  });
+  const builtOver = (cx: number, cy: number): boolean => {
+    for (const p of pickups) if (p.x >= x0(cx) && p.x <= x1(cx) && p.y >= top(cy) && p.y <= bot(cy)) return true;
+    for (let Y = top(cy); Y <= bot(cy); Y += 2) {
+      for (let X = x0(cx); X <= x1(cx); X += 2) if (w.inBounds(X, Y) && w.types[w.idx(X, Y)] === Cell.Metal) return true;
+    }
+    return false;
+  };
+  const solidity = (cx: number, cy: number): number => {
+    let n = 0, all = 0;
+    for (let Y = top(cy); Y <= bot(cy); Y += 4) {
+      for (let X = x0(cx); X <= x1(cx); X += 4) {
+        if (!w.inBounds(X, Y)) continue;
+        all++;
+        if (w.types[w.idx(X, Y)] !== Cell.Empty) n++;
+      }
+    }
+    return all > 0 ? n / all : 0;
+  };
+  let { cx, cy } = pick();
+  let best: { cx: number; cy: number; s: number } | null = null;
+  for (let a = 0; a < 24; a++) {
+    const clear = Math.abs(cx - spawn.x) > 220 && Math.abs(cx - portalX) > 170 &&
+      !ledger.intersects(x0(cx), top(cy), x1(cx), bot(cy)) && !builtOver(cx, cy);
+    if (clear) {
+      const sol = solidity(cx, cy);
+      if (!best || sol > best.s) best = { cx, cy, s: sol };
+      if (sol > 0.8) break;
+    }
+    ({ cx, cy } = pick());
+  }
+  if (best) ({ cx, cy } = best);
+
+  const set = (X: number, Y: number, t: number, c: number): void => {
+    if (!w.inBounds(X, Y)) return;
+    const i = w.idx(X, Y);
+    w.types[i] = t;
+    w.colors[i] = c;
+  };
+  const rockTint = (X: number, Y: number): number => {
+    for (let r = 1; r <= 16; r++) {
+      for (const [ox, oy] of [[r, 0], [-r, 0], [0, r], [0, -r]] as const) {
+        if (w.inBounds(X + ox, Y + oy) && w.types[w.idx(X + ox, Y + oy)] === Cell.Wall) return w.colors[w.idx(X + ox, Y + oy)];
+      }
+    }
+    return packRGB(48, 44, 66);
+  };
+  const FY = cy + A.FLOOR;
+  // The vault's shell (the Ice-House's: open cave across the crown walled off).
+  const SHELL = 4;
+  for (let Y = cy - A.RY - SHELL; Y < FY; Y++) {
+    for (let X = cx - A.RX - SHELL; X <= cx + A.RX + SHELL; X++) {
+      if (!w.inBounds(X, Y) || Y >= HEIGHT - 8) continue;
+      const dx = X - cx, dy = Y - cy;
+      if ((dx * dx) / ((A.RX + SHELL) ** 2) + (dy * dy) / ((A.RY + SHELL) ** 2) > 1) continue;
+      if (w.types[w.idx(X, Y)] === Cell.Empty) set(X, Y, Cell.Wall, rockTint(X, Y));
+    }
+  }
+  carvePocket(w, cx, cy, A.RX, A.RY);
+  carveRect(w, cx - A.HALF, cy, cx + A.HALF, FY - 1);
+  const stone = (X: number, Y: number): void => set(X, Y, Cell.Stone, stoneColor());
+  /** Where the silvered panels sit: the vault wall's first rock, both sides. */
+  const panelCells: Array<[number, number]> = [];
+  const stampFloor = (fill: boolean): void => {
+    for (let dx = -A.HALF - 2; dx <= A.HALF + 2; dx++) {
+      for (let dy = 0; dy <= 3; dy++) {
+        const X = cx + dx, Y = FY + dy;
+        if (!w.inBounds(X, Y)) continue;
+        const t = w.types[w.idx(X, Y)];
+        if (fill ? t !== Cell.Stone && t !== Cell.Metal : t === Cell.Empty) stone(X, Y);
+      }
+    }
+    // The cover pillars.
+    for (const side of [-1, 1]) {
+      for (let dx = A.C0; dx <= A.C1; dx++) {
+        for (let k = 1; k <= A.COVER_H; k++) {
+          const X = cx + side * dx, Y = FY - k;
+          if (!w.inBounds(X, Y)) continue;
+          const t = w.types[w.idx(X, Y)];
+          if (fill ? t !== Cell.Stone : t === Cell.Empty) stone(X, Y);
+        }
+      }
+    }
+    for (const [X, Y] of panelCells) {
+      const t = w.types[w.idx(X, Y)];
+      if (t !== Cell.Mirror && (fill || t === Cell.Empty)) set(X, Y, Cell.Mirror, mirrorColor());
+    }
+  };
+  for (let dx = -A.HALF - 2; dx <= A.HALF + 2; dx++) {
+    for (let dy = 4; dy <= 16; dy++) {
+      const X = cx + dx, Y = FY + dy;
+      if (w.inBounds(X, Y) && Y < HEIGHT - 8 && w.types[w.idx(X, Y)] === Cell.Empty) stone(X, Y);
+    }
+  }
+  // Both ends join the caves at standing height (below the panels).
+  site.connect(cx - A.HALF - 3, FY - 12);
+  site.connect(cx + A.HALF + 3, FY - 12);
+  // The silvered panels: the vault wall's face, two cells deep, above the doors.
+  for (const side of [-1, 1]) {
+    for (let Y = cy - 24; Y <= cy + 2; Y++) {
+      let X = cx;
+      while (Math.abs(X - cx) < A.RX + 6 && w.inBounds(X + side, Y) && w.types[w.idx(X + side, Y)] === Cell.Empty) X += side;
+      if (Math.abs(X - cx) >= A.RX + 6) continue;
+      panelCells.push([X + side, Y], [X + side * 2, Y]);
+    }
+  }
+  stampFloor(true);
+  lights.push({ x: cx, y: cy - A.RY + 8, r: 1.0, g: 0.82, b: 0.5, intensity: 0.6, radius: 56, bloom: 0.3, flicker: 0.06, flickerPhase: 0.3, falloff: 'soft', occluded: true });
+  ledger.reserve(x0(cx), top(cy), x1(cx), bot(cy), 'warden-arena');
+  return {
+    boss: { x: cx, y: FY - 1 - A.HOVER, kind: 'lenswright' },
     repair: (floor = true): void => stampFloor(floor),
   };
 }

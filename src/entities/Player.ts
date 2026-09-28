@@ -58,7 +58,7 @@ const TELEPORT_SEARCH_RADIUS = 260;
 // same teeth. Set pieces (bosses, egg clutches) are exempt: deleting a boss
 // would skip content, not save a life.
 const RESPAWN_CLEAR_RADIUS = 200;
-const RESPAWN_CLEAR_EXEMPT: ReadonlySet<EnemyKind> = new Set(['colossus', 'leviathan', 'rimewarden', 'eggs']);
+const RESPAWN_CLEAR_EXEMPT: ReadonlySet<EnemyKind> = new Set(['colossus', 'leviathan', 'rimewarden', 'lenswright', 'eggs']);
 /** Death respawns earn a longer invuln grace than the arrival default (90) —
  *  the prototype used 120 and it reads as "you get one clean breath". */
 const RESPAWN_DEATH_INVULN = 120;
@@ -87,7 +87,7 @@ const WADE_STAIN_GAIN = 18; // soak charge banked per frame of wading (×0.35–
 // See config/params.ts PLAYER_PARAMS and core/types.ts PlayerTuning.
 const ENEMY_STOMP_BOUNCE = 3.6; // upward pop after a Mario-style stomp kill (chains to the next foe)
 // Too big/heavy to stomp — a boot off these just bounces (handle them another way).
-const STOMP_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'rimewarden', 'golem']);
+const STOMP_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'rimewarden', 'lenswright', 'golem']);
 const SWING_REACH = 16;
 const SWING_PUMP = 0.16;
 const SWING_MIN_LEN = 14;

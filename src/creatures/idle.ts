@@ -43,6 +43,7 @@ const REPERTOIRE: Partial<Record<EnemyKind, readonly IdleAct[]>> = {
   golem: ['look', 'settle', 'shiver'],
   colossus: ['look', 'settle'],
   rimewarden: ['look', 'settle'],
+  lenswright: ['look'],
   mage: ['look', 'groom'],
   rootloper: ['look', 'sniff', 'shiver'],
   rillback: ['sniff', 'look'],

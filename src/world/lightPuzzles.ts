@@ -76,7 +76,7 @@ function nextId(list: readonly Mechanism[]): number {
  */
 export function stampPhotocell(
   world: World, list: Mechanism[], x: number, y: number, face: 1 | -1,
-  opts: { targetId: number; latch: 'permanent' | 'timed'; latchFrames?: number; id?: number },
+  opts: { targetId: number; latch: 'permanent' | 'timed'; latchFrames?: number; id?: number; port?: { x: number; y: number } },
 ): Mechanism {
   const body: Array<[number, number]> = [];
   for (let dy = -1; dy <= 1; dy++) {
@@ -93,6 +93,7 @@ export function stampPhotocell(
     latch: opts.latch, reading: 0, body,
   };
   if (opts.latch === 'timed') m.latchFrames = opts.latchFrames ?? 240;
+  if (opts.port) m.lightPort = { x: opts.port.x, y: opts.port.y };
   list.push(m);
   return m;
 }

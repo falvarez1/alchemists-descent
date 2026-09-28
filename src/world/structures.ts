@@ -44,7 +44,7 @@ import {
 } from '@/world/connect';
 import type { PlacementLedger } from '@/world/connect';
 import { wizardMask } from '@/world/validate';
-import { buildIceHouse } from '@/world/wardenArenas';
+import { buildIceHouse, buildLensRoom } from '@/world/wardenArenas';
 
 /**
  * Landmark structures placed after generation (upgrade-port meta layer):
@@ -1177,6 +1177,11 @@ export function placeStructures(
   // ---- The second doors' guardians (wave 3): their halls live in world/wardenArenas ----
   if (def.boss === 'rimewarden') {
     const arena = buildIceHouse({ w, rng, ledger, spawn, portalX, pickups, lights: authoredLights, connect: connectToCaves });
+    boss = arena.boss;
+    wardenRepair = arena.repair;
+  }
+  if (def.boss === 'lenswright') {
+    const arena = buildLensRoom({ w, rng, ledger, spawn, portalX, pickups, lights: authoredLights, connect: connectToCaves });
     boss = arena.boss;
     wardenRepair = arena.repair;
   }

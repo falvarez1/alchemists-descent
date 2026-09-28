@@ -121,7 +121,7 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 55; // 55 (wave 3, the second doors): the Cold Store (d2b, frozen) — cold rooms in the crevasse skeleton, a floored spawn sill, brine pools (was nitrogen), the refrigeration wing's dressing (icicles, frozen falls, snow, frosted pipes, brine gutters, rime crystals; forked 'cold-store-dressing'), the Frozen Fall and Ice Vault rooms (forked 'cold-store-puzzles'), the cold and glass flora kits; d1-d4 byte-identical
+export const GEN_VERSION = 56; // 56 (wave 3, the second doors, continued): the Cold Store's Ice-House (the Rime Warden's hall: coal pits, brine gutters, a walled vault; world/wardenArenas) and the Glass Galleries (d3b, crystal) — arcaded gallery halls over thinned vaults (forked 'glass-galleries'), the Periscope and the Prism Gate light rooms (forked 'glass-galleries-puzzles'; sealed lenses rescued at their optics' port), the glassworks' dressing (silvered panels, chandeliers, vitrines, windows; forked 'glass-galleries-dressing'), the Lenswright's Lens Room. v55: the Cold Store (d2b, frozen) — cold rooms in the crevasse skeleton, a floored spawn sill, brine pools, the refrigeration wing's dressing, the Frozen Fall and Ice Vault, the cold and glass flora kits; d1-d4 byte-identical
 // 54: 54 (fix3): the Sump keeps its rim — the Leviathan's arena stamps (and re-asserts) its stone shores and plinth, its flank connectors leave above the shore, it refuses sites built over earlier metal/loot, and the final rescue refills its pool; flora footing no longer counts loose powder as anchoring rock or gold as footing; the Kiln's flora budget grows 14/46 -> 18/72 with more fire-lilies
 // 53: the light, fauna and flora waves together — flora's forked 'flora' pass (plants + felling / root-ladder / thicket rooms) runs after the light puzzles, and D1 carries both the Undertow's lens-locked cache and the hand-planted flora with the Seed Cellar
 // 52: the Kiln grew with a 34-cell Colossus (62x40 vault over a flat 116-wide floor, three ceiling tanks re-asserted after carves, a 16-row footing) and floors 2-4 seed a resident organism census (no cells)
@@ -489,6 +489,14 @@ export interface VaultParams {
   };
   arteries: ArterySpec[];
   shafts: ShaftParams;
+  /**
+   * THE GLASS GALLERIES (wave 3): the glassworks' long exhibition galleries —
+   * flat-floored halls under an arcade of shallow arches (bays `bay` wide, the
+   * crown `arch` of the height above the springers), stacked in tiers at the
+   * `tiers` floor rows (world-height fractions), `perTier` to a tier. Long
+   * level sight lines for the light to travel. Optional: absent = vaults only.
+   */
+  galleries?: { tiers: number[]; perTier: [number, number]; wMin: number; wMax: number; hMin: number; hMax: number; bay: [number, number]; arch: number };
   spawnRadius: number;
   minArea: number;
   tunnelRadius: number;
@@ -807,6 +815,16 @@ export function scaffoldParams(): ScaffoldParams {
   };
 }
 
+/** The Glass Galleries' skeleton: the crystal vaults thinned, and the galleries over them. */
+export function galleriesParams(): VaultParams {
+  const p = vaultParams();
+  return {
+    ...p,
+    vaults: { ...p.vaults, countMin: 4, countMax: 6 },
+    galleries: { tiers: [0.2, 0.4, 0.6, 0.79], perTier: [1, 2], wMin: 220, wMax: 420, hMin: 40, hMax: 52, bay: [30, 44], arch: 0.3 },
+  };
+}
+
 export function vaultParams(): VaultParams {
   return {
     // denser-than-baseline rock so the tall vaults ARE the level (0.5 read
@@ -1040,6 +1058,7 @@ export function scaleSkeletonSpec(spec: SkeletonSpec, s: number): SkeletonSpec {
           },
           arteries: p.arteries.map((a) => scaleArtery(a, s)),
           shafts: scaleShaftsRadius(p.shafts, s),
+          ...(p.galleries ? { galleries: { ...p.galleries, hMin: p.galleries.hMin * s, hMax: p.galleries.hMax * s } } : {}),
           spawnRadius: p.spawnRadius * s,
           tunnelRadius: p.tunnelRadius * s,
         },
@@ -1159,9 +1178,11 @@ export const GEN: Record<BiomeId, GenDef> = {
     skeleton: { kind: 'fungalPockets', params: fungalParams() },
     machines: machineBudget(['alchemyclock']),
   },
+  // THE GLASS GALLERIES (d3b): the vaults, fewer, under tiers of long arcaded
+  // exhibition galleries (the light puzzles and the Lenswright want sight lines).
   crystal: {
     ...baselineDef(),
-    skeleton: { kind: 'crystalVaults', params: vaultParams() },
+    skeleton: { kind: 'crystalVaults', params: galleriesParams() },
     machines: machineBudget(['alchemyclock', 'crystalrelay']),
   },
   volcanic: {

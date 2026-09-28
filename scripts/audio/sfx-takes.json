@@ -3926,5 +3926,102 @@
   ],
   "rejected": [],
   "failed": []
+ },
+ "creature.lenswright.idle": {
+  "hash": "09bd8ed24ca2",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.alert": {
+  "hash": "e85e3d251028",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.hurt": {
+  "hash": "0d7813f79d61",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.death": {
+  "hash": "e1e4a5c1401b",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.glance": {
+  "hash": "93de320070d8",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.iris": {
+  "hash": "98545a5cb107",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.lock": {
+  "hash": "048321700b54",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.lance": {
+  "hash": "81ed1547a657",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.dazzle": {
+  "hash": "470a54a3188e",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.fall": {
+  "hash": "e92d9650607a",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.flare": {
+  "hash": "95e4951c3ec8",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "creature.lenswright.roar": {
+  "hash": "971cae1054a6",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
  }
 }

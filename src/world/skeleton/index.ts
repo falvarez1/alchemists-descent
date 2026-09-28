@@ -213,6 +213,46 @@ const frozenCrevasses: SkeletonFn = (io, spec) => {
 };
 
 /**
+ * The Glass Galleries' exhibition halls: long flat-floored galleries under an
+ * arcade — each bay's ceiling a shallow arch rising `arch` of the height from
+ * springers at the hall's height — with rounded ends so nothing wedges a body.
+ * Tiers are floor rows; a tier's halls spread across the width.
+ */
+function carveGalleryHalls(
+  work: Uint8Array, seed: number,
+  g: NonNullable<Extract<SkeletonSpec, { kind: 'crystalVaults' }>['params']['galleries']>,
+  floorBand: number, minY: number,
+): void {
+  const rng = new Rng(seed);
+  for (const frac of g.tiers) {
+    const n = g.perTier[0] + rng.int(g.perTier[1] - g.perTier[0] + 1);
+    const floorY = Math.min(floorBand - 8, Math.floor(HEIGHT * frac + (rng.next() - 0.5) * 24));
+    const slot = (WIDTH - 120) / n;
+    for (let k = 0; k < n; k++) {
+      const w = Math.min(slot - 30, g.wMin + rng.next() * (g.wMax - g.wMin));
+      if (w < 80) continue;
+      const hh = g.hMin + rng.next() * (g.hMax - g.hMin);
+      const cx = 60 + slot * (k + 0.5) + (rng.next() - 0.5) * Math.max(0, slot - w - 30);
+      const x0 = Math.floor(cx - w / 2), x1 = Math.floor(cx + w / 2);
+      // Bays across the hall, the last one stretched to meet the end wall.
+      const bay = g.bay[0] + rng.next() * (g.bay[1] - g.bay[0]);
+      const bays = Math.max(1, Math.round((x1 - x0) / bay));
+      const bw = (x1 - x0) / bays;
+      for (let x = x0; x <= x1; x++) {
+        const u = ((x - x0) % bw) / bw;
+        const top = Math.floor(floorY - hh - g.arch * hh * Math.sin(Math.PI * u));
+        const edge = Math.min(x - x0, x1 - x);
+        const footLift = edge < 6 ? Math.round(6 - Math.sqrt(Math.max(0, 36 - (6 - edge) * (6 - edge)))) : 0;
+        const headDrop = edge < 12 ? Math.round(12 - Math.sqrt(Math.max(0, 144 - (12 - edge) * (12 - edge)))) : 0;
+        for (let y = Math.max(minY + 1, top + headDrop); y <= floorY - footLift; y++) {
+          if (x > 1 && x < WIDTH - 2 && y < floorBand) work[x + y * WIDTH] = 0;
+        }
+      }
+    }
+  }
+}
+
+/**
  * The Cold Store's store rooms: each a rectangle with a flat floor, straight
  * walls and a shallow barrel vault (the ceiling rises `vault` of the height
  * at the middle), corners rounded so nothing wedges a body. Tiers are floor
@@ -353,9 +393,21 @@ const crystalVaults: SkeletonFn = (io, spec) => {
       px += p.pillars.spacingMin + rng.next() * (p.pillars.spacingMax - p.pillars.spacingMin);
     }
   }
+  if (p.galleries) carveGalleryHalls(work, hashSeed(io.worldSeed, 'glass-galleries'), p.galleries, floorBand, minY);
   for (const artery of p.arteries) carveSineArtery(work, WIDTH, HEIGHT, rng, artery, floorBand, minY, null);
   carveShafts(work, WIDTH, HEIGHT, rng, p.shafts, floorBand, minY);
   const spawnHint = carveSpawnChamber(work, WIDTH / 2, Math.floor(HEIGHT * 0.4), p.spawnRadius, minY);
+  // The galleries can run under the spawn chamber: the arrival gets a floor
+  // (the Cold Store's sill), and connectivity re-joins anything it split.
+  if (p.galleries) {
+    const r = Math.floor(p.spawnRadius);
+    for (let dx = -r - 4; dx <= r + 4; dx++) {
+      for (let y = spawnHint.y + Math.round(r * 0.55); y <= spawnHint.y + r + 6 && y < floorBand; y++) {
+        const X = spawnHint.x + dx;
+        if (X > 1 && X < WIDTH - 2) work[X + y * WIDTH] = 1;
+      }
+    }
+  }
   sealBorders(work, WIDTH, floorBand, minY);
   ensureConnectivity(work, WIDTH, HEIGHT, {
     minArea: p.minArea,

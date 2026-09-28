@@ -311,6 +311,31 @@ export const ENEMY_ENTITY_PROFILES: Record<EnemyKind, EntityProfile> = {
       ],
     },
   },
+  lenswright: {
+    description: 'The Lenswright. Meet its eye.',
+    traits: {
+      behaviors: [
+        'Hangs in the air of its gallery and burns what it looks at with a traced lance of light.',
+        'Every lance is told: the iris opens, an aim line walks onto you, locks, and fires.',
+        'Banks the lance off silvered panels to reach behind cover; sweeps from phase two, splits it in three from phase three.',
+      ],
+      emotions: [
+        'A connoisseur: unhurried, exacting.',
+        'Offended rather than angry.',
+        'Blinded and ringing when it falls.',
+      ],
+      strengths: [
+        'The brass housing glances blows while the iris is shut.',
+        'Reaches round corners off every mirror in the gallery.',
+        'Flares away anything that crowds it.',
+      ],
+      weaknesses: [
+        'It meets a straight stare, but bank the wand beam off a mirror into its open iris and it is dazzled out of the air.',
+        'Its own lance, sent back off a mirror, burns it.',
+        'Blows land whole while the iris is open, and double while it lies dazzled.',
+      ],
+    },
+  },
   eggs: {
     description: 'A clutch. It is not dormant.',
     traits: {

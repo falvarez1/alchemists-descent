@@ -26,7 +26,7 @@ import type { Enemy, EnemyDamageSource, EnemyKind } from '@/core/types';
  */
 
 /** The bosses the ward protects. */
-export const WARDED_BOSSES: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'rimewarden']);
+export const WARDED_BOSSES: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'rimewarden', 'lenswright']);
 
 /** A cast, pour or throw keeps the world's harm "his" for 8 s (ticks at 60 Hz). */
 export const BOSS_ACT_TICKS = 8 * 60;
@@ -114,6 +114,8 @@ export function bossArenaRect(boss: { x: number; y: number; kind?: EnemyKind } |
   if (boss.kind === 'colossus') return { x0: boss.x - 64, y0: boss.y - 81, x1: boss.x + 64, y1: boss.y + 6 };
   if (boss.kind === 'leviathan') return { x0: boss.x - 44, y0: boss.y - 52, x1: boss.x + 44, y1: boss.y + 10 };
   if (boss.kind === 'rimewarden') return { x0: boss.x - 60, y0: boss.y - 54, x1: boss.x + 60, y1: boss.y + 6 };
+  // The Lens Room (world/wardenArenas): the Lenswright's spawn hangs LENS_ROOM.HOVER over its floor.
+  if (boss.kind === 'lenswright') return { x0: boss.x - 66, y0: boss.y - 44, x1: boss.x + 66, y1: boss.y + 48 };
   return null;
 }
 

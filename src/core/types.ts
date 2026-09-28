@@ -258,6 +258,7 @@ export const ENEMY_KINDS = [
   // Wave 3, the second doors' guardians: the Cold Store's Rime Warden (thaw
   // or shatter its ice armour).
   'rimewarden',
+  'lenswright',
 ] as const;
 
 export type EnemyKind = (typeof ENEMY_KINDS)[number];
@@ -2415,6 +2416,9 @@ export interface Mechanism {
   latch?: 'momentary' | 'timed' | 'permanent';
   /** sensor 'timed': frames held after the reading passes (default 420). */
   latchFrames?: number;
+  /** sensor 'light': where the light must ENTER the optics that feed a sealed lens (a mirror well's
+   *  mouth — world/galleryPuzzles); findability checks the beam can reach there, not the lens. */
+  lightPort?: { x: number; y: number };
   /** relay: frames between inputs-satisfied and firing (default 0). */
   delayFrames?: number;
   /** relay: live fuse countdown once armed (undefined = not armed). */

@@ -569,6 +569,20 @@ export const SFX_CUES = {
   'creature.rimewarden.roar': boss('rimewarden', { gain: 1.15, priority: 5 }),
   'creature.rimewarden.shatter': boss('rimewarden', { gain: 1.1, priority: 5 }),
   'creature.rimewarden.thaw': boss('rimewarden', { gain: 0.9, priority: 5 }),
+  // THE LENSWRIGHT (creatures/bosses/lenswright): the Galleries' great lens — the
+  // iris opening (the tell), the lock, the lance, the dazzle that drops it.
+  'creature.lenswright.idle': boss('lenswright', { gain: 0.6, cooldownMs: 3400 }),
+  'creature.lenswright.alert': boss('lenswright', { gain: 1.0, priority: 5 }),
+  'creature.lenswright.hurt': boss('lenswright', { gain: 0.8 }),
+  'creature.lenswright.death': boss('lenswright', { gain: 1.2, range: 1200, priority: 5 }),
+  'creature.lenswright.glance': boss('lenswright', { gain: 0.55, cooldownMs: 180 }),
+  'creature.lenswright.iris': boss('lenswright', { gain: 0.8 }),
+  'creature.lenswright.lock': boss('lenswright', { gain: 0.9, priority: 5 }),
+  'creature.lenswright.lance': boss('lenswright', { gain: 1.1, priority: 5 }),
+  'creature.lenswright.dazzle': boss('lenswright', { gain: 1.1, priority: 5 }),
+  'creature.lenswright.fall': boss('lenswright', { gain: 1.0 }),
+  'creature.lenswright.flare': boss('lenswright', { gain: 0.9 }),
+  'creature.lenswright.roar': boss('lenswright', { gain: 1.0, priority: 5 }),
 } as const satisfies Record<string, SfxCueDef>;
 
 export type SfxId = keyof typeof SFX_CUES;

@@ -14,6 +14,7 @@ import { touchWorld } from '@/creatures/worldTouch';
 import { applyIdleToRig } from '@/creatures/idle';
 import { buildEel, buildLeviathan, stepEel, stepLeviathan } from './serpents';
 import { buildRootLoper, stepRootLoper } from './rootloper';
+import { buildLens, stepLens } from './lens';
 
 /**
  * Species registry: which body plan each enemy kind wears. The rig is built
@@ -39,6 +40,7 @@ const MAGE: SpeciesRig = { id: 'mage', build: buildMage, step: stepMage };
 const EEL: SpeciesRig = { id: 'eel', build: buildEel, step: stepEel };
 const LEVIATHAN: SpeciesRig = { id: 'leviathan', build: buildLeviathan, step: stepLeviathan };
 const ROOTLOPER: SpeciesRig = { id: 'rootloper', build: buildRootLoper, step: stepRootLoper };
+const LENS: SpeciesRig = { id: 'lens', build: buildLens, step: stepLens };
 const WEAVER: SpeciesRig = { id: 'weaver', build: () => makeRig('weaver', 4), step: () => undefined };
 
 const REGISTRY: Partial<Record<EnemyKind, SpeciesRig>> = {
@@ -53,6 +55,7 @@ const REGISTRY: Partial<Record<EnemyKind, SpeciesRig>> = {
   golem: BRUTE,
   colossus: BRUTE,
   rimewarden: BRUTE,
+  lenswright: LENS,
   mage: MAGE,
   weaver: WEAVER,
   rillback: EEL,

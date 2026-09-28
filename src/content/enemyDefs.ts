@@ -4,6 +4,7 @@ import {
   acidColor,
   bloodColor,
   fireColor,
+  glassColor,
   iceColor,
   nitrogenColor,
   slimeColor,
@@ -46,4 +47,5 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   // The Cold Store's guardian: a watchman automaton grown a hide of rime.
   // Thaw it or shatter the plates off (creatures/bosses/rimeWarden).
   rimewarden: { hp: 380, halfW: 11, h: 26, bounty: 380, gore: Cell.Ice, goreFn: iceColor },
+  lenswright: { hp: 330, halfW: 10, h: 20, bounty: 420, gore: Cell.Glass, goreFn: glassColor },
 };

@@ -92,7 +92,7 @@ export function scavengeTarget(ctx: Ctx, e: Enemy, radius = SCAVENGE_RANGE): Cor
   for (const c of corpses()) {
     if (c.world !== ctx.world || c.age < 30 || c.e === e || c.gone) continue;
     const k = c.e.kind;
-    if (k === 'wisp' || k === 'imp' || k === 'golem' || k === 'colossus' || k === 'rimewarden' || k === 'bomber') continue;
+    if (k === 'wisp' || k === 'imp' || k === 'golem' || k === 'colossus' || k === 'rimewarden' || k === 'lenswright' || k === 'bomber') continue;
     // Remains carried on the wand (or just thrown) swing their smell through
     // the cave: they lure from farther off — bait, walked to where you want it.
     const reach = c.grip || now - c.touchT < CARRIED_LURE_TICKS ? radius * CARRIED_LURE : radius;

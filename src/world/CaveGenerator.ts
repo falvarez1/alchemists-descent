@@ -58,6 +58,8 @@ import { placeEncounterLairs } from '@/world/encounterLairs';
 import { placeLightPuzzles, type LightPuzzleOutput } from '@/world/lightPuzzles';
 import { dressColdStore } from '@/world/coldStore';
 import { placeColdStorePuzzles, type ColdStorePuzzleOutput } from '@/world/coldStorePuzzles';
+import { dressGlassGalleries } from '@/world/glassGalleries';
+import { placeGalleryPuzzles, type GalleryPuzzleOutput } from '@/world/galleryPuzzles';
 import { stampSecrets } from '@/world/secrets';
 import { computeFits, reachableMask, wizardMask } from '@/world/validate';
 import { placeStructures } from '@/world/structures';
@@ -738,7 +740,10 @@ export class WorldGen implements WorldGenApi {
           if (pass() && stable()) continue;
           recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, stable) || failOpenTargetDoor(m, stable));
         } else if (CELL_REACH.has(m.kind)) {
-          const pass = (): boolean => cellNear(m.x, m.y - 2, 5);
+          // A lens sealed behind optics (world/galleryPuzzles) is reached at its
+          // port — the rescue must never carve into the sealed lens itself.
+          const rx = m.lightPort?.x ?? m.x, ry = m.lightPort?.y ?? m.y;
+          const pass = (): boolean => cellNear(rx, ry - 2, 5);
           if (pass()) continue;
           if (labMechanism) {
             recordRescue(`spell-lab@${Math.floor(spellLab?.x ?? m.x)},${Math.floor(spellLab?.y ?? m.y)}`, () =>
@@ -746,7 +751,7 @@ export class WorldGen implements WorldGenApi {
             );
             continue;
           }
-          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, pass));
+          recordRescue(`${m.kind}@${rx},${ry}`, () => rescueAt(rx, ry, pass));
         }
       }
       for (const v of runeVaults) {
@@ -1193,6 +1198,20 @@ export class WorldGen implements WorldGenApi {
       }
       stage('cold-store-puzzles');
     }
+    // ...and the Glass Galleries' Periscope and Prism Gate (the same frame).
+    if (def.biome === 'crystal') {
+      const glass: GalleryPuzzleOutput = { mechanisms, pickups: [], placed: [], repairs: [] };
+      placeGalleryPuzzles(ctx, new Rng(hashSeed(seed >>> 0, 'glass-galleries-puzzles')), graph, ledger,
+        { spawn, wellX, avoid: lightAvoid }, fits, glass);
+      pickups.push(...glass.pickups);
+      setPieceRepairs.push(...glass.repairs);
+      if (glass.placed.length > 0) {
+        placedPrefabs = placedPrefabs.concat(glass.placed);
+        graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+        fits.set(computeFits(ctx.world));
+      }
+      stage('glass-galleries-puzzles');
+    }
     // 8b.8) FLORA (wave 2): the floor's puzzle rooms (fell a tree across a
     // chasm or lava moat, water a thirsty seed into a root ladder, burn a
     // bramble thicket) carved into rock and joined to the main path, then the
@@ -1217,6 +1236,12 @@ export class WorldGen implements WorldGenApi {
         { spawn, wellX, avoid: lightAvoid });
       if (shouldLogDevDiagnostics() && dressed.icicles < 60) console.warn(`[cold-store] only ${dressed.icicles} icicles on ${def.id}`);
       stage('cold-store-dressing');
+    }
+    if (def.biome === 'crystal') {
+      const dressed = dressGlassGalleries(ctx.world, new Rng(hashSeed(seed >>> 0, 'glass-galleries-dressing')), ledger,
+        { spawn, wellX, avoid: lightAvoid });
+      if (shouldLogDevDiagnostics() && dressed.panels < 8) console.warn(`[glass-galleries] only ${dressed.panels} mirror panels on ${def.id}`);
+      stage('glass-galleries-dressing');
     }
 
     // (A GLOBAL powder settle was tried here and reverted: suspended powder

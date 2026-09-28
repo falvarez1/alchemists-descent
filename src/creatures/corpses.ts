@@ -120,7 +120,7 @@ const MAX_CORPSES = 10;
 /** A limp bond may stretch this far past its rest length, and no further. */
 const BOND_MAX_STRETCH = 1.5;
 // (The Rime Warden leaves a heap of real ice instead: creatures/bosses/rimeWarden.)
-const NO_CORPSE = new Set<Enemy['kind']>(['bomber', 'colossus', 'rimewarden', 'eggs']);
+const NO_CORPSE = new Set<Enemy['kind']>(['bomber', 'colossus', 'rimewarden', 'lenswright', 'eggs']);
 /** Handled remains (lifted, thrown, kicked) keep fresh this long after... */
 export const SPARE_WINDOW = 240;
 /** ...but no body is spared more than 30 s of rot in total (frost included). */

@@ -14093,5 +14093,270 @@
     "bytes": 4223
    }
   ]
+ },
+ "creature.lenswright.idle": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A great floating glass lens humming softly: a low glassy resonance, faint crystal pendants tinkling against each other",
+  "dur": 2.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2.48,
+    "peakDb": -1.9,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -5,
+    "limitDb": 0,
+    "sec": 2.45,
+    "truncated": false,
+    "bytes": 20106
+   }
+  ]
+ },
+ "creature.lenswright.alert": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A huge brass-rimmed lens waking: a rising resonant glass drone, brass shutters clicking open, crystals chiming",
+  "dur": 2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2,
+    "peakDb": -0.4,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -5.4,
+    "limitDb": 0,
+    "sec": 1.8,
+    "truncated": false,
+    "bytes": 14881
+   }
+  ]
+ },
+ "creature.lenswright.death": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A giant glass lens shattering: a huge bright crash of breaking glass, a cascade of shards and crystal pendants tinkling to the floor",
+  "dur": 3,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 3,
+    "peakDb": 3.4,
+    "onsetSec": 0,
+    "pinnedPct": 0.74,
+    "gainDb": -11.9,
+    "limitDb": 0,
+    "sec": 3,
+    "truncated": false,
+    "bytes": 24494
+   }
+  ]
+ },
+ "creature.lenswright.hurt": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A heavy blow on a thick glass lens in a brass frame: a dull ringing clang with a crack of glass, short",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": 3.4,
+    "onsetSec": 0,
+    "pinnedPct": 0.4,
+    "gainDb": -9.5,
+    "limitDb": 0,
+    "sec": 0.8,
+    "truncated": false,
+    "bytes": 6940
+   }
+  ]
+ },
+ "creature.lenswright.iris": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A camera iris of brass leaves opening: a smooth mechanical ratcheting whir and a rising glassy hum",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": -7.4,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 7.9,
+    "limitDb": -1.5,
+    "sec": 0.9,
+    "truncated": false,
+    "bytes": 7776
+   }
+  ]
+ },
+ "creature.lenswright.lance": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A searing beam of focused light firing: a bright electric hiss and a roaring crackle of burning air, short and intense",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": 3.3,
+    "onsetSec": 0,
+    "pinnedPct": 1.66,
+    "gainDb": -11.8,
+    "limitDb": 0,
+    "sec": 1.11,
+    "truncated": false,
+    "bytes": 9448
+   }
+  ]
+ },
+ "creature.lenswright.lock": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A precise brass mechanism locking into place with a sharp click, then a high glassy whine charging up",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": 3.3,
+    "onsetSec": 0,
+    "pinnedPct": 0.15,
+    "gainDb": -6.6,
+    "limitDb": 0,
+    "sec": 0.8,
+    "truncated": true,
+    "bytes": 6940
+   }
+  ]
+ },
+ "creature.lenswright.dazzle": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A glass lens overloading with light: a sharp crackling flash, a shutter slamming shut and a descending mechanical whine",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": 2,
+    "onsetSec": 0.003,
+    "pinnedPct": 0,
+    "gainDb": 0,
+    "limitDb": -3,
+    "sec": 0.558,
+    "truncated": false,
+    "bytes": 5059
+   }
+  ]
+ },
+ "creature.lenswright.glance": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A blow glancing off a polished brass lens housing: a short bright metallic ting, very short, dry",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": 0.2,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -7.7,
+    "limitDb": 0,
+    "sec": 0.3,
+    "truncated": false,
+    "bytes": 2969
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 0.48,
+    "peakDb": -1.6,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -3.5,
+    "limitDb": 0,
+    "sec": 0.3,
+    "truncated": false,
+    "bytes": 2969
+   }
+  ]
+ },
+ "creature.lenswright.fall": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A large brass-framed glass lens falling onto a stone floor: a heavy ringing clang and rattling crystal pendants",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": 3.7,
+    "onsetSec": 0,
+    "pinnedPct": 0.1,
+    "gainDb": -7.3,
+    "limitDb": 0,
+    "sec": 0.77,
+    "truncated": false,
+    "bytes": 6731
+   }
+  ]
+ },
+ "creature.lenswright.flare": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A sudden blinding flash of light: a sharp whoomph of air and a bright glassy ring",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": -0.6,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -5.6,
+    "limitDb": 0,
+    "sec": 0.763,
+    "truncated": false,
+    "bytes": 6731
+   }
+  ]
+ },
+ "creature.lenswright.roar": {
+  "pack": "creature-lenswright",
+  "cat": "boss",
+  "prompt": "A giant glass lens resonating like a struck bell: a deep ringing glass tone swelling, crystal pendants chiming wildly",
+  "dur": 1.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.76,
+    "peakDb": -8.5,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 4.6,
+    "limitDb": 0,
+    "sec": 1.41,
+    "truncated": false,
+    "bytes": 11746
+   }
+  ]
  }
 }

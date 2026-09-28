@@ -52,7 +52,7 @@ export function playerGap(ctx: Ctx, x: number, y: number): number {
 export function enemyWithin(ctx: Ctx, x: number, y: number, r: number, skipBosses = true): Enemy | null {
   let best: Enemy | null = null, bestGap = r;
   for (const e of ctx.enemies) {
-    if (e.hp <= 0 || (skipBosses && (e.kind === 'colossus' || e.kind === 'leviathan' || e.kind === 'rimewarden'))) continue;
+    if (e.hp <= 0 || (skipBosses && (e.kind === 'colossus' || e.kind === 'leviathan' || e.kind === 'rimewarden' || e.kind === 'lenswright'))) continue;
     if (Math.abs(e.x - x) > r + 20 || Math.abs(e.y - y) > r + 30) continue;
     const def = ctx.enemyCtl.defs[e.kind];
     const gap = boxGap(x, y, e.x, e.y, def.halfW, def.h);
