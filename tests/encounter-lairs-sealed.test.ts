@@ -72,6 +72,7 @@ function count(world: World, rect: { x0: number; y0: number; x1: number; y1: num
 }
 
 const POOL = [Cell.Water, Cell.Blood, Cell.Slime];
+const GROVE = [Cell.Vines, Cell.Moss, Cell.Fungus, Cell.Glowshroom];
 
 describe('encounter lairs survive the tunnels carved after them', () => {
   const cases = [
@@ -82,7 +83,12 @@ describe('encounter lairs survive the tunnels carved after them', () => {
     // GEN 54: a flora-room connector took all of it, 574 -> 0.
     { id: 'd3', exp: 27, lair: 'encounter-lair-rillback-pool', cells: POOL, min: 500 },
     // GEN 54: a flora-room connector bored out the ore seam, 186 -> 38 (under the audit's 45).
-    { id: 'd4', exp: 21, lair: 'encounter-lair-stonemaw-seam', cells: [Cell.RawOre, Cell.Coal], min: 150 },
+    // GEN 58 (the Kiln's flue moved the lair): the lair's OWN connector climbed through it, 175 -> 121.
+    { id: 'd4', exp: 21, lair: 'encounter-lair-stonemaw-seam', cells: [Cell.RawOre, Cell.Coal], min: 170 },
+    // GEN 58: a story nook's connector ENDED on a floor inside the grove (a tunnel is never kept
+    // out of the room it ends in) and cut the grove's west wall and floor, 142 -> 130 and 92 -> 85.
+    { id: 'd2', exp: 10, lair: 'encounter-lair-rootloper-grove', cells: GROVE, min: 140 },
+    { id: 'd2', exp: 24, lair: 'encounter-lair-rootloper-grove', cells: GROVE, min: 90 },
   ] as const;
   for (const c of cases) {
     it(`${c.id} expedition ${c.exp} keeps its ${c.lair.replace('encounter-lair-', '')}`, () => {
@@ -90,6 +96,24 @@ describe('encounter lairs survive the tunnels carved after them', () => {
       const lair = lairs.find((p) => p.id === c.lair);
       expect(lair, 'lair placed').toBeTruthy();
       expect(count(world, lair!, c.cells)).toBeGreaterThanOrEqual(c.min);
+    });
+  }
+});
+
+describe("a stonemaw's own connector leaves its seam whole", () => {
+  // A tunnel is never kept out of the room it starts in, so the lair's own
+  // connector was free to bore through the seam on its way out: at GEN 58 it
+  // cut 5-68 ore/coal cells on 20 of 32 surveyed seeds. The seam (its band, the
+  // flecks above it, the floor under it) is now the lair's ORGAN, which its own
+  // connectors walk around. These four were among the worst (47-68 cells each).
+  for (const exp of [4, 14, 21, 26]) {
+    it(`d4 expedition ${exp}`, () => {
+      const { world, lairs } = generate('d4', exp);
+      const lair = lairs.find((p) => p.id === 'encounter-lair-stonemaw-seam');
+      expect(lair, 'lair placed').toBeTruthy();
+      const floorY = lair!.y1 + 1 - 10;
+      const seam = { x0: lair!.x1 - 25, y0: lair!.y0 + 9, x1: lair!.x1 - 7, y1: floorY + 4 };
+      expect(count(world, seam, [Cell.RawOre, Cell.Coal])).toBeGreaterThanOrEqual(170);
     });
   }
 });

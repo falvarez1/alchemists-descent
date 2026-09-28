@@ -40,6 +40,8 @@ import {
   carvePocket as carvePocketCells,
   carveRect as carveRectCells,
   connectToCaves as connectToCavesFrom,
+  inFootprint,
+  sealedFootprints,
   tunnelTo,
 } from '@/world/connect';
 import type { PlacementLedger } from '@/world/connect';
@@ -147,16 +149,22 @@ export function placeStructures(
    * REACHABILITY GUARANTEE (shared primitive, see world/connect.ts): every
    * carved structure must join the cave network.
    */
+  // Like every carve after a sealed feature exists (world/connect
+  // sealedFootprints), these walk around the ones already reserved — the Sump,
+  // a warden's hall. A connector leaving from inside one is its own and is
+  // not kept out; with none reserved yet, the walk is exactly the old one.
   const connectToCaves = (fromX: number, fromY: number): void => {
-    connectToCavesFrom(w, rng, graph, fromX, fromY, 12, fits);
+    connectToCavesFrom(w, rng, graph, fromX, fromY, 12, fits, undefined, sealedFootprints(ledger));
   };
   const connectVaultTriggerAntechamber = (fromX: number, fromY: number, side: number): void => {
     const sweep = { halfW: 7, up: 21, down: 9 };
+    const sealed = sealedFootprints(ledger);
     let best: { cx: number; cy: number } | null = null;
     let bestD = Infinity;
     for (const onlyMain of [true, false]) {
       for (const reg of graph.regions) {
         if (side * (reg.cx - fromX) < 24) continue;
+        if (inFootprint(sealed, reg.cx, reg.cy)) continue;
         if (onlyMain && !reg.onMainPath) continue;
         if (!onlyMain && reg.area < 60) continue;
         const d = (reg.cx - fromX) * (reg.cx - fromX) + (reg.cy - fromY) * (reg.cy - fromY);
@@ -168,9 +176,9 @@ export function placeStructures(
       if (best) break;
     }
     if (best) {
-      tunnelTo(w, rng, fromX, fromY, Math.floor(best.cx), Math.floor(best.cy), 12, sweep);
+      tunnelTo(w, rng, fromX, fromY, Math.floor(best.cx), Math.floor(best.cy), 12, sweep, 26, sealed);
     } else {
-      connectToCavesFrom(w, rng, graph, fromX, fromY, 12, fits, sweep);
+      connectToCavesFrom(w, rng, graph, fromX, fromY, 12, fits, sweep, sealed);
     }
   };
   const vaultTriggerSide = (vx: number, vy: number, randomSide: number): number => {
@@ -255,7 +263,7 @@ export function placeStructures(
     // The key gates progression: its vault is always walkable, never a dig —
     // and it gets the SWEPT gauge gallery, because a disc-chain connector
     // only promises 9x17 clearance on its centerline
-    connectToCavesFrom(w, rng, graph, kx - 8, kyBase, 12, fits, { halfW: 7, up: 21, down: 9 });
+    connectToCavesFrom(w, rng, graph, kx - 8, kyBase, 12, fits, { halfW: 7, up: 21, down: 9 }, sealedFootprints(ledger));
   }
 
   // ---- One heart container in a quiet pocket ----
@@ -614,7 +622,7 @@ export function placeStructures(
         halfW: 7,
         up: 21,
         down: 9,
-      });
+      }, sealedFootprints(ledger));
 
       const floorY = py2 + 10;
       if (archetype === 0) {

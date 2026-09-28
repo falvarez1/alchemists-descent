@@ -5,7 +5,7 @@ import type { LevelStorySites, StoryCampSite, StoryPipeSite, StoryValveSite } fr
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 import type { World } from '@/sim/World';
-import { carveRect, sealedFootprints, tunnelTo, type PlacementLedger } from '@/world/connect';
+import { carveRect, inFootprint, sealedFootprints, tunnelTo, type PlacementLedger } from '@/world/connect';
 import { wizardMask } from '@/world/validate';
 
 /**
@@ -129,6 +129,9 @@ function solidity(world: World, x0: number, y0: number, x1: number, y1: number):
 function carveNook(world: World, rng: Rng, ledger: PlacementLedger, reach: Uint8Array,
   spawn: { x: number; y: number }, avoid: ReadonlyArray<{ x: number; y: number; r: number }>, spec: NookSpec): Nook | null {
   let best: (Nook & { score: number; tx: number; ty: number }) | null = null;
+  // Sealed features (a lair, the sump, a light or second-door room): the
+  // connector walks around them, and its route floor is never one inside them.
+  const sealed = sealedFootprints(ledger);
   for (let attempt = 0; attempt < 480; attempt++) {
     const cx = Math.floor(rng.range(90, WIDTH - 90));
     const floorY = Math.floor(rng.range(150, HEIGHT - 130));
@@ -148,8 +151,11 @@ function carveNook(world: World, rng: Rng, ledger: PlacementLedger, reach: Uint8
         for (let dy = -22; dy <= 22; dy += 2) {
           const y = floorY + dy;
           if (y < 30 || y > HEIGHT - 12) continue;
-          // A floor the player can already reach from the arrival (the wizard's own BFS).
-          if (reach[x + y * WIDTH] !== 1 || !standable(world, x, y)) continue;
+          // A floor the player can already reach from the arrival (the wizard's own BFS),
+          // outside every sealed feature: a tunnel is never kept out of the room it
+          // ends in, so a route floor inside a lair let the connector cut the lair
+          // (d2 seed 10: through the grove's west wall and floor).
+          if (reach[x + y * WIDTH] !== 1 || !standable(world, x, y) || inFootprint(sealed, x, y)) continue;
           if (!target || step < target.dist) target = { x, y, mouth, dist: step };
           break;
         }
@@ -171,9 +177,9 @@ function carveNook(world: World, rng: Rng, ledger: PlacementLedger, reach: Uint8
   }
   // The connector: a swept gallery from the nook's mouth to the route's floor (gauge-guaranteed).
   // Like every late tunnel it walks AROUND sealed features (a lair's pool, the sump, light and
-  // second-door rooms) — the story placed after them and once cut d4 seed 21's stonemaw seam.
+  // second-door rooms).
   const mx = best.mouth < 0 ? x0 + 4 : x1 - 4;
-  tunnelTo(world, rng, mx, floorY - 9, best.tx, best.ty - 9, 10, { halfW: 6, up: 10, down: 8 }, 26, sealedFootprints(ledger));
+  tunnelTo(world, rng, mx, floorY - 9, best.tx, best.ty - 9, 10, { halfW: 6, up: 10, down: 8 }, 26, sealed);
   ledger.reserve(x0 - 6, floorY - spec.h - 4, x1 + 6, floorY + 4, spec.label);
   return { x0, x1, floorY, mouth: best.mouth };
 }
