@@ -1,9 +1,11 @@
 import type { LevelRuntime } from '@/core/types';
 import type { World } from '@/sim/World';
 import { mechanismTriggersFor } from '@/core/mechanisms';
+import { bossArenaRect, bossOrganRect } from '@/core/bossWard';
 import { blocksEntity, Cell } from '@/sim/CellType';
-import { computeLooseRubbleBlockingMask } from '@/sim/collision';
+import { BLOCKS_ENTITY_LUT, computeLooseRubbleBlockingMask } from '@/sim/collision';
 import { extractRegionGraph } from '@/world/regions';
+import { bodyFitsAt, protectedRepairRoute, type RepairRoom } from '@/world/repairRoute';
 
 /**
  * Findability validation: mechanism-correct is NOT player-findable.
@@ -40,16 +42,12 @@ const PH = 17;
 // so sharing them across calls removes the fresh Int32Array(W*H)/Uint8Array(W*H)
 // the gauge-rescue pass otherwise allocates on every wizardMask/reachableMask
 // call (dozens per tight seed → tens of MB of GC churn behind the load curtain).
-let scratchQx = new Int32Array(0);
-let scratchQy = new Int32Array(0);
-function bfsQueues(n: number): [Int32Array, Int32Array] {
-  if (scratchQx.length < n) {
-    scratchQx = new Int32Array(n);
-    scratchQy = new Int32Array(n);
-  }
+let scratchQueue = new Int32Array(0);
+function bfsQueue(n: number): Int32Array {
+  if (scratchQueue.length < n) scratchQueue = new Int32Array(n);
   // Queue cells are written at `tail` before being read at `head`, so only the
   // freshly-written prefix is ever read — no reset needed between calls.
-  return [scratchQx, scratchQy];
+  return scratchQueue;
 }
 
 let scratchHRun = new Uint8Array(0);
@@ -84,14 +82,26 @@ function fitsOf(w: { width: number; height: number; types: Uint8Array }): Uint8A
     }
   }
   const fits = new Uint8Array(W * H);
-  for (let x = 0; x < W; x++) {
-    let run = 0;
-    for (let y = 0; y < H; y++) {
-      run = hRun[x + y * W] ? run + 1 : 0;
-      if (run >= PH) fits[x + y * W] = 1; // feet row of a clear 9x17 column
+  // PERF: the vertical run walks rows (one counter per column) instead of
+  // striding a whole row per step down each column — same runs, same output,
+  // but sequential memory over the 1.7M-cell plane.
+  const vRun = vRunScratch(W);
+  for (let y = 0; y < H; y++) {
+    const row = y * W;
+    for (let x = 0; x < W; x++) {
+      const run = hRun[row + x] ? vRun[x] + 1 : 0;
+      vRun[x] = run;
+      if (run >= PH) fits[row + x] = 1; // feet row of a clear 9x17 column
     }
   }
   return fits;
+}
+
+let scratchVRun = new Int32Array(0);
+function vRunScratch(n: number): Int32Array {
+  if (scratchVRun.length < n) scratchVRun = new Int32Array(n);
+  else scratchVRun.fill(0, 0, n);
+  return scratchVRun;
 }
 
 /**
@@ -109,7 +119,7 @@ function fitsOf(w: { width: number; height: number; types: Uint8Array }): Uint8A
  * structurally — so neither caller needs an `as unknown as` cast.
  */
 export interface MaskInput {
-  world: World;
+  world: Pick<World, 'width' | 'height' | 'types'>;
   spawn: { x: number; y: number };
 }
 
@@ -120,32 +130,34 @@ export function wizardMask(runtime: MaskInput): Uint8Array {
   const fits = fitsOf(w);
   // BFS over fitting positions (4-adjacent; levitation handles vertical)
   const seen = new Uint8Array(W * H);
-  const [qx, qy] = bfsQueues(W * H);
+  const queue = bfsQueue(W * H);
   let head = 0,
     tail = 0;
-  const push = (x: number, y: number): void => {
-    if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return;
-    const i = x + y * W;
-    if (seen[i] || !fits[i]) return;
-    seen[i] = 1;
-    qx[tail] = x;
-    qy[tail] = y;
-    tail++;
-  };
   // seed around the spawn (it stands in a 24-headroom chamber)
+  const sx = Math.floor(runtime.spawn.x),
+    sy = Math.floor(runtime.spawn.y);
   for (let dy = -8; dy <= 8; dy++) {
     for (let dx = -8; dx <= 8; dx++) {
-      push(Math.floor(runtime.spawn.x) + dx, Math.floor(runtime.spawn.y) + dy);
+      const x = sx + dx,
+        y = sy + dy;
+      if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) continue;
+      const i = x + y * W;
+      if (seen[i] || !fits[i]) continue;
+      seen[i] = 1;
+      queue[tail++] = i;
     }
   }
+  // PERF: index queue with the border test folded into the neighbour offsets
+  // (interior cells only: 1 <= x < W-1, 1 <= y < H-1) — the same flood as the
+  // old per-push closure, without the closure call or the x/y queue pair.
+  const bottom = (H - 1) * W;
   while (head < tail) {
-    const x = qx[head],
-      y = qy[head];
-    head++;
-    push(x + 1, y);
-    push(x - 1, y);
-    push(x, y + 1);
-    push(x, y - 1);
+    const i = queue[head++];
+    const x = i % W;
+    if (x + 1 < W - 1 && !seen[i + 1] && fits[i + 1]) { seen[i + 1] = 1; queue[tail++] = i + 1; }
+    if (x - 1 >= 1 && !seen[i - 1] && fits[i - 1]) { seen[i - 1] = 1; queue[tail++] = i - 1; }
+    if (i + W < bottom && !seen[i + W] && fits[i + W]) { seen[i + W] = 1; queue[tail++] = i + W; }
+    if (i - W >= W && !seen[i - W] && fits[i - W]) { seen[i - W] = 1; queue[tail++] = i - W; }
   }
   return seen;
 }
@@ -156,27 +168,28 @@ export function reachableMask(runtime: MaskInput): Uint8Array {
   const W = w.width,
     H = w.height;
   const seen = new Uint8Array(W * H);
-  const [qx, qy] = bfsQueues(W * H);
+  const queue = bfsQueue(W * H);
+  // PERF: table lookup instead of the blocksEntity predicate chain, and the
+  // index-queue flood of wizardMask — this BFS floods most of a 1.7M-cell cave
+  // on every settled repair check. Same interior-only 4-neighbour flood.
+  const types = w.types;
+  const blocks = BLOCKS_ENTITY_LUT;
   let head = 0,
     tail = 0;
-  const push = (x: number, y: number): void => {
-    if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return;
-    const i = x + y * W;
-    if (seen[i] || blocksEntity(w.types[i])) return;
-    seen[i] = 1;
-    qx[tail] = x;
-    qy[tail] = y;
-    tail++;
-  };
-  push(Math.floor(runtime.spawn.x), Math.floor(runtime.spawn.y - 2));
+  const sx = Math.floor(runtime.spawn.x),
+    sy = Math.floor(runtime.spawn.y - 2);
+  if (sx >= 1 && sy >= 1 && sx < W - 1 && sy < H - 1 && !blocks[types[sx + sy * W]]) {
+    seen[sx + sy * W] = 1;
+    queue[tail++] = sx + sy * W;
+  }
+  const bottom = (H - 1) * W;
   while (head < tail) {
-    const x = qx[head],
-      y = qy[head];
-    head++;
-    push(x + 1, y);
-    push(x - 1, y);
-    push(x, y + 1);
-    push(x, y - 1);
+    const i = queue[head++];
+    const x = i % W;
+    if (x + 1 < W - 1 && !seen[i + 1] && !blocks[types[i + 1]]) { seen[i + 1] = 1; queue[tail++] = i + 1; }
+    if (x - 1 >= 1 && !seen[i - 1] && !blocks[types[i - 1]]) { seen[i - 1] = 1; queue[tail++] = i - 1; }
+    if (i + W < bottom && !seen[i + W] && !blocks[types[i + W]]) { seen[i + W] = 1; queue[tail++] = i + W; }
+    if (i - W >= W && !seen[i - W] && !blocks[types[i - W]]) { seen[i - W] = 1; queue[tail++] = i - W; }
   }
   return seen;
 }
@@ -240,6 +253,72 @@ function nearWithLine(
   return false;
 }
 
+/**
+ * Can the alchemist's BODY collect a pickup at (x, y)? game/Pickups' own rule:
+ * a standing position (feet = the wizard mask's cell) whose body centre, eight
+ * cells up, is within `radius` of the pickup, with its three-sample clear line.
+ * Standing "near" is not enough: a key sunk four rows into the floor, or under
+ * a slumped powder heap, is ten cells from open ground and cannot be taken
+ * (QA 2026-09-28: d2 seed 1, d2b seed 1, d3b seed 1337).
+ */
+export function bodyCanCollect(
+  wiz: Uint8Array,
+  world: { width: number; height: number; types: Uint8Array },
+  x: number,
+  y: number,
+  radius = 9,
+): boolean {
+  const W = world.width, H = world.height;
+  for (let fy = Math.floor(y + 8 - radius); fy <= Math.ceil(y + 8 + radius); fy++) {
+    for (let fx = Math.floor(x - radius); fx <= Math.ceil(x + radius); fx++) {
+      if (fx < 1 || fy < 1 || fx >= W - 1 || fy >= H - 1 || !wiz[fx + fy * W]) continue;
+      const dx = fx - x, dy = fy - 8 - y;
+      if (dx * dx + dy * dy >= radius * radius) continue;
+      let clear = true;
+      for (const t of [0.3, 0.55, 0.8]) {
+        const sx = Math.floor(x + dx * t), sy = Math.floor(y + dy * t);
+        if (sx >= 0 && sy >= 0 && sx < W && sy < H && blocksEntity(world.types[sx + sy * W])) {
+          clear = false;
+          break;
+        }
+      }
+      if (clear) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Light's line of sight (light wave): the wand's beam passes open air, liquids
+ * and translucent solids (glass, ice, crystal) and stops at anything else.
+ */
+function lightLine(world: { width: number; height: number; types: Uint8Array }, fromX: number, fromY: number, toX: number, toY: number): boolean {
+  const dx = toX - fromX, dy = toY - fromY;
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy)));
+  for (let i = 1; i < steps; i++) {
+    const x = Math.floor(fromX + (dx * i) / steps), y = Math.floor(fromY + (dy * i) / steps);
+    if (x <= 0 || y <= 0 || x >= world.width || y >= world.height) return false;
+    const t = world.types[x + y * world.width];
+    if (blocksEntity(t) && t !== Cell.Glass && t !== Cell.Ice && t !== Cell.Crystal) return false;
+  }
+  return true;
+}
+
+/** Can the alchemist stand somewhere within `r` cells and put his beam on (x, y)? */
+function beamable(wiz: Uint8Array, world: { width: number; height: number; types: Uint8Array }, x: number, y: number, r: number): boolean {
+  const W = world.width, H = world.height, tx = Math.floor(x), ty = Math.floor(y);
+  for (let d = 0; d <= r; d += 4) {
+    for (let a = 0; a < 32; a++) {
+      const ang = (a / 32) * Math.PI * 2;
+      const X = Math.floor(tx + Math.cos(ang) * d), Y = Math.floor(ty + Math.sin(ang) * d);
+      if (X <= 0 || Y <= 0 || X >= W || Y >= H || !wiz[X + Y * W]) continue;
+      // The wand rides at the shoulder, ~9 cells above the feet the mask marks.
+      if (lightLine(world, X, Y - 9, tx, ty)) return true;
+    }
+  }
+  return false;
+}
+
 const REPAIR_HALF_W = PW + 3;
 const REPAIR_HEADROOM = PH + 3;
 const REPAIR_FOOTROOM = 2;
@@ -260,17 +339,66 @@ function markRepairInterior(runtime: LevelRuntime, interior: Uint8Array, cx: num
   }
 }
 
-function markStableRepairPathInterior(runtime: LevelRuntime, interior: Uint8Array, issue: FindabilityIssue): void {
+function issueKey(issue: FindabilityIssue): string {
+  return `${issue.what}@${issue.x},${issue.y}`;
+}
+
+function markStableRepairPathInterior(
+  runtime: LevelRuntime, interior: Uint8Array, protectedCells: Uint8Array, rooms: readonly RepairRoom[], issue: FindabilityIssue,
+  finalApproach = false,
+): void {
   const fromX = Math.floor(runtime.spawn.x);
   const fromY = Math.floor(runtime.spawn.y - 2);
   const toX = Math.max(2, Math.min(runtime.world.width - 3, Math.floor(issue.x)));
   const toY = Math.max(2, Math.min(runtime.world.height - 3, Math.floor(issue.y)));
+  // The cheapest standing route (world/repairRoute): through caves that are
+  // already open, around authored rooms, carving only where the body does not
+  // already fit. Nodes where it fits carve nothing, so a route that walks
+  // through a room's open interior leaves the room exactly as it was.
+  const route = protectedRepairRoute(runtime.world, protectedCells, { x: fromX, y: fromY }, { x: toX, y: toY }, rooms);
+  if (route) {
+    for (const point of route) {
+      if (!bodyFitsAt(runtime.world, point.x, point.y)) markRepairInterior(runtime, interior, point.x, point.y);
+    }
+    if (finalApproach) {
+      const last = route[route.length - 1];
+      const ax = toX - last.x, ay = toY - last.y;
+      const n = Math.max(1, Math.ceil(Math.hypot(ax, ay) / REPAIR_STEP));
+      for (let step = 1; step <= n; step++) markRepairInterior(runtime, interior, last.x + (ax * step) / n, last.y + (ay * step) / n);
+    }
+    return;
+  }
+  // Every way is shut by protected machinery: the old straight bore, which
+  // clears everything but the protected cells themselves (fail-open).
   const dx = toX - fromX;
   const dy = toY - fromY;
   const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / REPAIR_STEP));
   for (let step = 0; step <= steps; step++) {
     markRepairInterior(runtime, interior, fromX + (dx * step) / steps, fromY + (dy * step) / steps);
   }
+}
+
+/** Placement margin a repair keeps off an authored room's footprint (its walls). */
+const ROOM_MARGIN = 3;
+
+/**
+ * The authored rooms a repair must walk around, not dig through: every placed
+ * set piece (prefabs, machine rooms, encounter lairs, light puzzles, flora
+ * puzzles — their cells ARE the puzzle) and the boss's arena. The spawn
+ * chamber is never one (a repair starts there).
+ */
+function repairRooms(runtime: LevelRuntime): RepairRoom[] {
+  const rooms: RepairRoom[] = [];
+  const sx = runtime.spawn.x, sy = runtime.spawn.y;
+  const add = (r: { x0: number; y0: number; x1: number; y1: number }): void => {
+    const room = { x0: r.x0 - ROOM_MARGIN, y0: r.y0 - ROOM_MARGIN, x1: r.x1 + ROOM_MARGIN, y1: r.y1 + ROOM_MARGIN };
+    if (sx >= room.x0 && sx <= room.x1 && sy >= room.y0 && sy <= room.y1) return;
+    rooms.push(room);
+  };
+  for (const p of runtime.placedPrefabs ?? []) add(p);
+  const arena = bossArenaRect(runtime.boss);
+  if (arena) add(arena);
+  return rooms;
 }
 
 function markProtectedRect(runtime: LevelRuntime, protectedCells: Uint8Array, x0: number, y0: number, x1: number, y1: number): void {
@@ -298,10 +426,16 @@ function protectedRepairMask(runtime: LevelRuntime): Uint8Array {
   for (const v of runtime.runeVaults) {
     for (const cell of v.door ?? []) markProtectedPoint(runtime, protectedCells, cell[0], cell[1], 1);
   }
+  // The key's FLOOR, not its cell: a repair digs a buried key out (the body
+  // must touch it, see bodyCanCollect) but never drops it through its floor.
   for (const p of runtime.pickups) {
-    if (p.kind === 'key') markProtectedPoint(runtime, protectedCells, p.x, p.y, 2);
+    if (p.kind === 'key') markProtectedRect(runtime, protectedCells, p.x - 2, p.y + 1, p.x + 2, p.y + 3);
   }
   for (const ws of runtime.waystones) markProtectedPoint(runtime, protectedCells, ws.x, ws.y, 3);
+  // The arrival's footing (game/arrival settles the spawn onto rock): a rescue
+  // route starts beside it and walks off it, never bores down through it — a
+  // settled arrival dropped 99 cells into the tunnel dug from under his boots.
+  markProtectedRect(runtime, protectedCells, runtime.spawn.x - 7, runtime.spawn.y + 1, runtime.spawn.x + 7, runtime.spawn.y + 4);
   if (runtime.exit) {
     markProtectedRect(
       runtime,
@@ -327,44 +461,60 @@ function protectedRepairMask(runtime: LevelRuntime): Uint8Array {
       markProtectedPoint(runtime, protectedCells, arch.discoverX, arch.discoverY, 5);
     }
   }
+  // A boss's weakness is the PLAYER's to open (core/bossWard): a repair tunnel
+  // must never dig the Kiln's ceiling-tank seal nor the Sump's drain plugs.
+  const organ = bossOrganRect(runtime.boss);
+  if (organ) markProtectedRect(runtime, protectedCells, organ.x0, organ.y0, organ.x1, organ.y1);
+  // STORY: the Kiln flue's damper (and the stone over it) is the heave's to open: a
+  // repair route through it would open the climb to the fight before the Colossus falls.
+  const flue = runtime.story?.flue;
+  if (flue) markProtectedRect(runtime, protectedCells, flue.damper.x0, flue.damper.y0 - 36, flue.damper.x1, flue.damper.y1);
   return protectedCells;
 }
 
-function carveStableRepairPaths(runtime: LevelRuntime, issues: readonly FindabilityIssue[]): void {
+function carveStableRepairPaths(runtime: LevelRuntime, issues: readonly FindabilityIssue[], stubborn: ReadonlySet<string> = new Set()): void {
   const world = runtime.world;
   const interior = new Uint8Array(world.width * world.height);
   const protectedCells = protectedRepairMask(runtime);
+  const rooms = repairRooms(runtime);
   // Brace only material that was already blocking. Painting the shell into open
   // air creates permanent diagonal rails through playable space.
   const originalTypes = world.types.slice();
-  for (const issue of issues) markStableRepairPathInterior(runtime, interior, issue);
+  for (const issue of issues) markStableRepairPathInterior(runtime, interior, protectedCells, rooms, issue, stubborn.has(issueKey(issue)));
   for (let i = 0; i < interior.length; i++) {
     if (interior[i] && !protectedCells[i]) world.clearCellAt(i);
   }
 
+  const shell = new Uint8Array(interior.length), shellCells: number[] = [];
   for (let y = 1; y < world.height - 1; y++) {
     const row = y * world.width;
     for (let x = 1; x < world.width - 1; x++) {
       const i = row + x;
-      if (interior[i]) continue;
-      let nearInterior = false;
-      for (let sy = -REPAIR_SHELL; sy <= REPAIR_SHELL && !nearInterior; sy++) {
+      if (!interior[i]) continue;
+      for (let sy = -REPAIR_SHELL; sy <= REPAIR_SHELL; sy++) {
         const yy = y + sy;
         if (yy <= 0 || yy >= world.height - 1) continue;
         const shellRow = yy * world.width;
         for (let sx = -REPAIR_SHELL; sx <= REPAIR_SHELL; sx++) {
           const xx = x + sx;
           if (xx <= 0 || xx >= world.width - 1) continue;
-          if (interior[shellRow + xx]) {
-            nearInterior = true;
-            break;
-          }
+          const neighbor = shellRow + xx;
+          if (!interior[neighbor] && !shell[neighbor]) { shell[neighbor] = 1; shellCells.push(neighbor); }
         }
       }
-      if (nearInterior && !protectedCells[i] && blocksEntity(originalTypes[i])) {
-        world.replaceCellAt(i, Cell.Metal, REPAIR_SLEEVE_COLOR);
-      }
     }
+  }
+  // No sleeve inside an authored room's footprint (a lair, a set piece, the boss's
+  // arena): its cells are the room's own; a rescue route that grazes one leaves
+  // them as they were (d3 seed 5: a settled camp rescue left a metal cell on the
+  // Rillback pool's edge row).
+  const footprints = [...(runtime.placedPrefabs ?? []), ...(bossArenaRect(runtime.boss) ? [bossArenaRect(runtime.boss)!] : [])];
+  const inFootprint = (i: number): boolean => {
+    const x = i % world.width, y = (i - x) / world.width;
+    return footprints.some((r) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1);
+  };
+  for (const i of shellCells) if (!protectedCells[i] && blocksEntity(originalTypes[i]) && !inFootprint(i)) {
+    world.replaceCellAt(i, Cell.Metal, REPAIR_SLEEVE_COLOR);
   }
 }
 
@@ -379,12 +529,21 @@ export function failOpenFindability(
   issues = validateFindability(runtime),
 ): FindabilityRepairResult {
   const repairMap = new Map<string, FindabilityIssue>();
+  // Issues a routed repair did not settle: the next pass also digs the final
+  // approach, up to the target itself (a latch behind a skin of rock is
+  // judged by a clear LINE from reachable air, which a route ending six cells
+  // off never draws).
+  const stubborn = new Set<string>();
   let remaining = issues;
   for (let pass = 0; pass < 5; pass++) {
     const errors = remaining.filter((issue) => issue.severity === 'error');
     if (errors.length === 0) break;
-    for (const issue of errors) repairMap.set(`${issue.what}@${issue.x},${issue.y}`, issue);
-    carveStableRepairPaths(runtime, [...repairMap.values()]);
+    for (const issue of errors) {
+      const key = issueKey(issue);
+      if (repairMap.has(key)) stubborn.add(key);
+      repairMap.set(key, issue);
+    }
+    carveStableRepairPaths(runtime, [...repairMap.values()], stubborn);
     runtime.regions = extractRegionGraph(runtime.world, runtime.spawn, regionExitAnchor(runtime));
     remaining = validateFindability(runtime);
   }
@@ -395,9 +554,36 @@ export function failOpenFindability(
   };
 }
 
+/**
+ * The grid as the starting kit sees it: an intact ROUTE SEAL (an authored plug
+ * that always burns or digs open, e.g. D1's oil-soaked barricade) is ground the
+ * player will pass, not a wall. Returns the real world when there is none, so
+ * every other level audits byte-for-byte as before.
+ */
+function routeSealedView(runtime: LevelRuntime): MaskInput['world'] {
+  const seals = runtime.mechanisms.filter((m) => m.kind === 'plug' && m.routeSeal && m.state === 0 && m.body?.length);
+  if (seals.length === 0) return runtime.world;
+  const types = runtime.world.types.slice();
+  const W = runtime.world.width;
+  for (const seal of seals) {
+    for (const [x, y] of seal.body!) {
+      if (x >= 0 && y >= 0 && x < W && y < runtime.world.height && types[x + y * W] === (seal.material ?? Cell.Stone)) {
+        types[x + y * W] = Cell.Empty;
+      }
+    }
+  }
+  return { width: W, height: runtime.world.height, types };
+}
+
+/** The masks' input with every intact route seal opened (see routeSealedView). */
+export function routeSealedInput(runtime: LevelRuntime): MaskInput {
+  return { world: routeSealedView(runtime), spawn: runtime.spawn };
+}
+
 export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
-  const seen = reachableMask(runtime); // the crawler's view (media, treasure)
-  const wiz = wizardMask(runtime); // the PLAYER's view (9x17, walk + jump)
+  const view = routeSealedInput(runtime);
+  const seen = reachableMask(view); // the crawler's view (media, treasure)
+  const wiz = wizardMask(view); // the PLAYER's view (9x17, walk + jump)
   const W = runtime.world.width,
     H = runtime.world.height;
   const issues: FindabilityIssue[] = [];
@@ -411,7 +597,15 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
     if (!ok) issues.push({ what, x: Math.floor(x), y: Math.floor(y), severity });
   };
 
+  const requiredCards = new Set<string>();
   for (const m of runtime.mechanisms) {
+    // An authored ability lock is expected to be inaccessible from spawn.
+    // Its real gate remains in the grid; below we instead prove that the card
+    // which unlocks the route can itself be reached by a full-size wizard.
+    if (m.requiresCard) {
+      requiredCards.add(m.requiresCard);
+      continue;
+    }
     if (m.kind === 'door') {
       check(
         near(wiz, W, H, m.x - 2, m.y + m.h - 2, 8) ||
@@ -439,11 +633,18 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
       // (the prefab earnability fixpoint enforces that in CI)
       continue;
     } else if (m.kind === 'plug') {
-      if (mechanismTriggersFor(runtime, m.id).length > 0) continue;
-      check(nearWithLine(seen, runtime.world, m.x, m.y - 2, 5), m.kind, m.x, m.y - 2);
+      // A route seal is ground on the way, audited as open cells above.
+      if (m.routeSeal || mechanismTriggersFor(runtime, m.id).length > 0) continue;
+      check(nearWithLine(seen, view.world, m.x, m.y - 2, 5), m.kind, m.x, m.y - 2);
+    } else if (m.kind === 'counterweight') {
+      // Powder enters through the top of the pan. Its filled floor and raised
+      // rim are intentionally solid, so checking x,y-2 reports a solved bowl
+      // as buried and repeatedly excavates the surrounding machine.
+      const feedX = m.zone ? (m.zone.x0 + m.zone.x1) / 2 : m.x + m.w / 2;
+      const feedY = m.zone ? m.zone.y0 - 2 : m.y - 7;
+      check(nearWithLine(seen, view.world, feedX, feedY, 5), m.kind, feedX, feedY);
     } else if (
       m.kind === 'sensor' ||
-      m.kind === 'counterweight' ||
       m.kind === 'buoy' ||
       m.kind === 'chargelatch'
     ) {
@@ -452,16 +653,35 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
       // chargelatch latches on ANY spark in its zone (lightning bolt,
       // electrified water, a conducting enemy's blood) — like rune glyphs,
       // line of sight from open space suffices, so the cell mask judges it.
-      check(nearWithLine(seen, runtime.world, m.x, m.y - 2, 5), m.kind, m.x, m.y - 2);
+      // (A photocell is judged below, by the beam — at its optics' port when
+      // its lens is sealed behind mirrors or a prism.)
+      if (!(m.kind === 'sensor' && m.sensorType === 'light')) check(nearWithLine(seen, view.world, m.x, m.y - 2, 5), m.kind, m.x, m.y - 2);
     } else {
       // hands-on triggers: the WIZARD must be able to stand here
       check(near(wiz, W, H, m.x, m.y - 2, 6), m.kind, m.x, m.y - 2);
     }
   }
+  // LIGHT WAVE: a photocell's lens and a lumen bloom's heart must be somewhere
+  // the alchemist can stand and put his beam on (grid-honest light LOS).
+  for (const m of runtime.mechanisms) {
+    if (m.kind === 'sensor' && m.sensorType === 'light' && m.state === 0 && !m.requiresCard) {
+      // A lens sealed behind mirrors is judged at its optics' port (the light's way in).
+      const at = m.lightPort ?? m;
+      check(beamable(wiz, view.world, at.x, at.y, 150), 'photocell', at.x, at.y);
+    }
+  }
+  for (const b of runtime.lumenBlooms ?? []) {
+    check(beamable(wiz, view.world, b.x, b.y, 150), 'lumen-bloom', b.x, b.y);
+  }
+  for (const card of requiredCards) {
+    const source = runtime.pickups.find(p => !p.taken && p.kind === 'tome' && p.data.card === card);
+    check(!!source && near(wiz, W, H, source.x, source.y, 10), `ability-${card}`,
+      source?.x ?? runtime.spawn.x, source?.y ?? runtime.spawn.y);
+  }
   for (const v of runtime.runeVaults) {
     // glyphs answer to projectiles — line of sight from a standable spot is
     // looser than standing beside it, so the cell mask + radius suffices
-    check(nearWithLine(seen, runtime.world, v.rx, v.ry, 5), 'rune', v.rx, v.ry);
+    check(nearWithLine(seen, view.world, v.rx, v.ry, 5), 'rune', v.rx, v.ry);
   }
   for (const p of runtime.pickups) {
     if (p.taken) continue;
@@ -469,7 +689,7 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
     // appear as minimap dots / diagnostics, so a sealed pocket is buried
     // treasure instead of a hard progression failure.
     if (p.kind === 'key') {
-      check(near(wiz, W, H, p.x, p.y, 10), p.kind, p.x, p.y);
+      check(bodyCanCollect(wiz, view.world, p.x, p.y), p.kind, p.x, p.y);
     } else if (
       p.kind === 'heart' ||
       p.kind === 'tome' ||
@@ -525,5 +745,12 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
   if (runtime.boss) {
     check(near(wiz, W, H, runtime.boss.x, runtime.boss.y, 12), 'boss-arena', runtime.boss.x, runtime.boss.y);
   }
+  // STORY: Pell's camp and the resonant valve are talked to and turned by
+  // hand — the wizard must be able to stand there. A pipe only has to be
+  // walked past (it is on the route by construction): diagnostics only.
+  const story = runtime.story;
+  if (story?.camp) check(near(wiz, W, H, story.camp.x, story.camp.floorY, 12), 'story-camp', story.camp.x, story.camp.floorY);
+  if (story?.valve) check(near(wiz, W, H, story.valve.stageX, story.valve.floorY, 14), 'story-valve', story.valve.stageX, story.valve.floorY);
+  for (const pipe of story?.pipes ?? []) check(near(wiz, W, H, pipe.x, pipe.floorY, 10), 'story-pipe', pipe.x, pipe.floorY, 'info');
   return issues;
 }

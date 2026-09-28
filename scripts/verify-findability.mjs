@@ -1,14 +1,14 @@
 // Findability audit: every level on every seed must place its locks AND keep
 // them reachable from spawn. Runs the shared src/world/validate.ts module
 // inside the live game. Usage:
-//   node scripts/verify-findability.mjs [url] [seedCsv]
-// Defaults: http://localhost:5173/  seeds 1,5,1337,42
+//   node scripts/verify-findability.mjs [url] [seedCsv] [depthCsv]
+// Defaults: http://localhost:5173/  seeds 1,5,1337,42, every door (d1 d2 d2b d3 d3b d4)
 import { launchBrowser } from './browser-launch.mjs';
 import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const seeds = (process.argv[3] ?? '1,5,1337,42').split(',').map(Number);
-const DEPTHS = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'vault'];
+const DEPTHS = (process.argv[4] ?? 'd1,d2,d2b,d3,d3b,d4').split(','); // every door of the four floors
 
 const browser = await launchBrowser({ headless: true });
 let failures = 0;
@@ -16,7 +16,7 @@ let missingWaveE = 0;
 let totalPrefabs = 0;
 let missingPrefabs = 0;
 let missingMachines = 0;
-let missingSpellLabs = 0;
+let missingOpeningLandmarks = 0;
 
 async function auditSeed(seed) {
   let lastError = null;
@@ -32,18 +32,30 @@ async function auditSeed(seed) {
       await startConsoleTestRun(page, { seed, settleMs: 350 });
 
       const results = await page.evaluate(
-        async ({ IDS }) => {
+        async ({ IDS, seed }) => {
           const ctx = window.__game.ctx;
           const { validateFindability } = await import('/src/world/validate.ts');
 
           const waitForSettledFindability = async (rt) => {
             let latest = null;
             let consecutiveClean = 0;
-            // Levels schedule a settled fail-open repair shortly after entry.
-            // Running the full validator in a tight loop can monopolize the
-            // browser thread enough to delay that timer, so give the runtime a
-            // quiet window first and then sample for stable cleanliness.
-            await new Promise((r) => setTimeout(r, 700));
+            // Wait for the actual final repair, whose callbacks can take longer
+            // than their nominal delays on a loaded machine. Do not run another
+            // full-grid BFS while that sequence is still working.
+            // The cascade waits on SIM steps (up to 720), and the sim only
+            // advances as fast as frames render: a GPU-less CI runner renders
+            // a few per second. Drive it with the game's manual time instead
+            // (one frame may run up to 60 queued ticks) — the same simulation,
+            // just not throttled by the renderer — then hand time back.
+            const settleDeadline = performance.now() + 180000;
+            const wasManual = ctx.time.manual;
+            if (!ctx.levels.findabilityReady) ctx.time.setManual(true);
+            while (!ctx.levels.findabilityReady && performance.now() < settleDeadline) {
+              if (ctx.time.queuedTicks < 120) ctx.time.queueTicks(240);
+              await new Promise((r) => setTimeout(r, 50));
+            }
+            if (ctx.time.manual !== wasManual) ctx.time.setManual(wasManual);
+            if (!ctx.levels.findabilityReady) throw new Error(`Route repair did not finish for ${rt.def.id}`);
             const deadline = performance.now() + 2600;
             while (performance.now() < deadline) {
               latest = validateFindability(rt);
@@ -61,10 +73,11 @@ async function auditSeed(seed) {
           const out = [];
           for (const id of IDS) {
             if (id !== 'd1') {
-              ctx.levels.leaveLevel();
-              ctx.levels.enterLevel(ctx, id);
+              const started = await ctx.console.exec(`run test --level ${id} --world campaign-level --seed ${seed} --loadout fresh`);
+              if (!started.ok) throw new Error(started.text ?? JSON.stringify(started));
             }
             const rt = ctx.levels.current;
+            if (rt?.def.id !== id) throw new Error(`Expected ${id}, received ${rt?.def.id}`);
             const all = await waitForSettledFindability(rt);
             const issues = all
               .filter((i) => i.severity === 'error')
@@ -85,17 +98,20 @@ async function auditSeed(seed) {
               sensors > 0 ||
               Object.values(braziersByDoor).some((n) => n >= 3);
             const placedPrefabs = rt.placedPrefabs ?? [];
-            const machines = placedPrefabs.filter((p) => String(p.id ?? '').startsWith('machine-')).length;
+            const machines = rt.living ? rt.mechanisms.filter(m => m.kind === 'valve').length : placedPrefabs.filter((p) => String(p.id ?? '').startsWith('machine-')).length;
             const surfaceConflicts =
               rt.def.id === 'd1' && Number.isFinite(rt.surfaceSkyLine)
                 ? placedPrefabs.filter((p) => p.y0 <= rt.surfaceSkyLine + 44).map((p) => `${p.id}@${p.x0},${p.y0}`)
                 : [];
-            const spellLab = id !== 'd1' || !!rt.spellLab;
-            out.push({ id, waveE, spellLab, issues, buried, prefabs: placedPrefabs.length, machines, surfaceConflicts });
+            const openingLandmarks = id !== 'd1' || (!!rt.living && !!rt.refuge &&
+              placedPrefabs.some(p => p.id === 'works-bell-tea-engine') &&
+              placedPrefabs.filter(p => p.id !== 'works-bell-tea-engine').length === 8 &&
+              rt.mechanisms.some(m => m.id === 8201) && rt.pickups.some(p => p.kind === 'key'));
+            out.push({ id, waveE, openingLandmarks, issues, buried, prefabs: placedPrefabs.length, machines, surfaceConflicts });
           }
           return out;
         },
-        { IDS: DEPTHS },
+        { IDS: DEPTHS, seed },
       );
       await context.close();
       return { results, pageErrors };
@@ -116,18 +132,18 @@ for (const seed of seeds) {
   }
 
   for (const lv of results) {
-    const bad = lv.issues.length > 0 || !lv.waveE || !lv.spellLab || lv.surfaceConflicts.length > 0;
+    const bad = lv.issues.length > 0 || !lv.waveE || !lv.openingLandmarks || lv.surfaceConflicts.length > 0;
     if (lv.issues.length) failures++;
     if (lv.surfaceConflicts.length) failures++;
     if (!lv.waveE) missingWaveE++;
-    if (!lv.spellLab) missingSpellLabs++;
+    if (!lv.openingLandmarks) missingOpeningLandmarks++;
     if (lv.prefabs <= 0) missingPrefabs++;
     if (lv.machines <= 0) missingMachines++;
     totalPrefabs += lv.prefabs;
     console.log(
       `${bad || lv.prefabs <= 0 || lv.machines <= 0 ? 'FAIL' : ' ok '} seed=${seed} ${lv.id} prefabs=${lv.prefabs} machines=${lv.machines}` +
         (lv.waveE ? '' : ' [NO WAVE-E LOCK]') +
-        (lv.spellLab ? '' : ' [NO SPELL LAB]') +
+        (lv.openingLandmarks ? '' : ' [MISSING OPENING LANDMARK]') +
         (lv.prefabs <= 0 ? ' [NO PREFAB]' : '') +
         (lv.machines <= 0 ? ' [NO MACHINE]' : '') +
         (lv.surfaceConflicts.length ? ' surface-conflict: ' + lv.surfaceConflicts.join(' ') : '') +
@@ -144,8 +160,8 @@ if (totalPrefabs === 0) {
   console.error('PREFAB FLOOR FAILED: 0 prefabs placed across the entire run');
 }
 console.log(
-  failures + missingWaveE + missingPrefabs + missingMachines + missingSpellLabs === 0
+  failures + missingWaveE + missingPrefabs + missingMachines + missingOpeningLandmarks === 0
     ? `\nFINDABILITY OK: ${seeds.length} seeds x ${DEPTHS.length} depths clean, ${totalPrefabs} prefabs placed`
-    : `\nFINDABILITY FAILED: ${failures} reachability failures, ${missingWaveE} missing locks, ${missingSpellLabs} missing spell labs, ${missingPrefabs} missing prefabs, ${missingMachines} missing machines`,
+    : `\nFINDABILITY FAILED: ${failures} reachability failures, ${missingWaveE} missing locks, ${missingOpeningLandmarks} missing opening landmarks, ${missingPrefabs} missing prefabs, ${missingMachines} missing machines`,
 );
-process.exit(failures + missingWaveE + missingPrefabs + missingMachines + missingSpellLabs === 0 ? 0 : 1);
+process.exit(failures + missingWaveE + missingPrefabs + missingMachines + missingOpeningLandmarks === 0 ? 0 : 1);

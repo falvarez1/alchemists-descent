@@ -102,6 +102,7 @@ export function liftSelection(
       // clear the source — the hole IS the feedback that the block lifted
       rec.touch(wi);
       world.types[wi] = Cell.Empty;
+      world.activity.touchIndex(wi);
       world.colors[wi] = EMPTY_COLOR;
       world.life[wi] = 0;
       world.clearChargeAt(wi); // drop any charge from the sparse active index too

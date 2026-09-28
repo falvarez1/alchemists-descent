@@ -1,5 +1,6 @@
 import type { Ctx } from '@/core/types';
 import { Cell, isGas, isSoftGrowth, isSolid } from '@/sim/CellType';
+import { igniteTrunk } from '@/sim/elements/flora';
 import {
   EMPTY_COLOR,
   fireColor,
@@ -79,7 +80,8 @@ function waterFeedsLivingGrowth(ctx: Ctx, x: number, y: number): boolean {
     const nx = x + o[0];
     const ny = y + o[1];
     if (!w.inBounds(nx, ny)) continue;
-    const n = w.types[w.idx(nx, ny)];
+    const ni = w.idx(nx, ny), n = w.types[ni];
+    if ((n === Cell.Vines || n === Cell.Moss || n === Cell.Fungus) && w.life[ni] < 0) continue;
     if (n === Cell.Vines && simRandom() < 0.08) {
       w.replaceCellAt(ci, Cell.Vines, vineColor());
       w.life[ci] = 65 + Math.floor(simRandom() * 50);
@@ -118,26 +120,28 @@ export function handleWater(ctx: Ctx, x: number, y: number): void {
     }
   }
   if (waterFeedsLivingGrowth(ctx, x, y)) return;
+  if (w.flow.fall(w, x, y)) return;
+  if (w.flow.discharge(w, x, y)) return;
   if (w.inBounds(x, y + 1) && waterCanPass(w.types[w.idx(x, y + 1)])) {
-    w.swap(x, y, x, y + 1);
+    w.flow.move(w, x, y, x, y + 1);
     return;
   }
   const dir = simRandom() < 0.5 ? 1 : -1;
   if (w.inBounds(x + dir, y + 1) && waterCanPass(w.types[w.idx(x + dir, y + 1)])) {
-    w.swap(x, y, x + dir, y + 1);
+    w.flow.move(w, x, y, x + dir, y + 1);
     return;
   }
   if (w.inBounds(x - dir, y + 1) && waterCanPass(w.types[w.idx(x - dir, y + 1)])) {
-    w.swap(x, y, x - dir, y + 1);
+    w.flow.move(w, x, y, x - dir, y + 1);
     return;
   }
   if (simRandom() < ctx.params.materials[Cell.Water].flowRate!) {
     if (w.inBounds(x + dir, y) && waterCanPass(w.types[w.idx(x + dir, y)])) {
-      w.swap(x, y, x + dir, y);
+      w.flow.move(w, x, y, x + dir, y);
       return;
     }
     if (w.inBounds(x - dir, y) && waterCanPass(w.types[w.idx(x - dir, y)])) {
-      w.swap(x, y, x - dir, y);
+      w.flow.move(w, x, y, x - dir, y);
       return;
     }
   }
@@ -146,6 +150,7 @@ export function handleWater(ctx: Ctx, x: number, y: number): void {
 // Blood and slime: generic viscous liquids
 export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell): void {
   const w = ctx.world;
+  if (type === Cell.Blood && advectBlood(ctx, x, y)) return;
   // Blood soaks whatever sturdy surface it flows across or pools against — the
   // floor beneath it and the walls beside it pick up a red stain over time
   // (stainCell no-ops on non-sturdy cells, so empty space/sand is unaffected).
@@ -197,6 +202,27 @@ export function handleViscousLiquid(ctx: Ctx, x: number, y: number, type: Cell):
       w.replaceCellAt(i, Cell.Empty, EMPTY_COLOR);
     }
   }
+}
+
+/** Blood is suspended material in water, rather than an immovable obstacle to it. */
+function advectBlood(ctx: Ctx, x: number, y: number): boolean {
+  const w = ctx.world;
+  if (!CARDINAL_OFFSETS.some(([dx, dy]) => w.inBounds(x + dx, y + dy) && w.type(x + dx, y + dy) === Cell.Water)) return false;
+  const index = w.idx(x, y), age = Math.max(0, w.life[index]) + 1;
+  w.life[index] = age;
+  if (age > 180 && simRandom() < .018) { w.replaceCellAt(index, Cell.Water, waterColor()); return true; }
+  const vx = w.flow.x(x, y), vy = w.flow.y(x, y);
+  const axis = Math.abs(vx) > Math.abs(vy) ? 0 : 1;
+  const current = axis === 0 ? vx : vy;
+  let dx = 0, dy = 0;
+  if (simRandom() < Math.min(1, Math.abs(current))) {
+    if (axis === 0) dx = Math.sign(current); else dy = Math.sign(current);
+  } else if (simRandom() < .28) {
+    const direction = Math.floor(simRandom() * 4); dx = CARDINAL_OFFSETS[direction][0]; dy = CARDINAL_OFFSETS[direction][1];
+  } else return true;
+  const nx = x + dx, ny = y + dy;
+  if (w.inBounds(nx, ny) && (w.type(nx, ny) === Cell.Water || w.type(nx, ny) === Cell.Empty)) w.swap(x, y, nx, ny);
+  return true;
 }
 
 function bridgeWaterSurface(ctx: Ctx, x: number, y: number): boolean {
@@ -312,6 +338,7 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
       const ti = w.idx(tx, ty);
       if (w.types[ti] === Cell.Oil && w.life[ti] === 0 && simRandom() < P.igniteChance!) {
         w.life[ti] = P.burnDuration! + Math.floor(simRandom() * 30);
+        w.activity.touchIndex(ti);
       }
     }
     // Greasy black smoke curls off the slick — a light haze while it burns hot,
@@ -362,6 +389,7 @@ export function handleOil(ctx: Ctx, x: number, y: number): void {
       ) {
         if (simRandom() < P.igniteChance!) {
           w.life[ci] = P.burnDuration! + Math.floor(simRandom() * 30);
+          w.activity.touchIndex(ci);
           return;
         }
         break; // adjacent to flame but didn't catch this frame — let it flow, retry next tick
@@ -534,7 +562,7 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
             26 + Math.floor(fxRandom() * 16),
             { grav: -0.04, glow: 0.5 },
           );
-          ctx.audio.steam();
+          ctx.audio.steam(tx, ty);
         }
         return;
       }
@@ -555,6 +583,11 @@ export function handleLava(ctx: Ctx, x: number, y: number): void {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 35;
       }
+      if (n === Cell.Leaf || n === Cell.Seed) {
+        w.replaceCellAt(ti, Cell.Fire, fireColor());
+        w.life[ti] = 20;
+      }
+      if (n === Cell.Trunk) igniteTrunk(ctx, ti); // living wood smoulders (FLORA)
       if (n === Cell.Coal && w.life[ti] === 0 && simRandom() < 0.15) {
         // lava lights coal into a burning ember bed (burns in place — handleCoal)
         w.life[ti] = ctx.params.materials[Cell.Coal].burnDuration! + Math.floor(simRandom() * 40);

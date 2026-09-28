@@ -11,7 +11,8 @@ import type { ResolvedSprite } from '@/authoring/spriteRuntime';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import type { World } from '@/sim/World';
-import { carvePocket, connectToCaves } from '@/world/connect';
+import { type CarveAvoid, carvePocket, connectToCaves, sealedFootprints } from '@/world/connect';
+import { reserveFooting, triggerFooting } from '@/world/fixtureFooting';
 import type { PlacementLedger } from '@/world/connect';
 import { queryPrefabs } from '@/world/prefabs/registry';
 import { breachSkinCell, breachSkinColorFn } from '@/world/secrets';
@@ -105,7 +106,12 @@ export function placePrefabs(
       at.y0 + prefab.h + 1,
       'prefab:' + prefab.id,
     );
-    openAnchors(ctx, rng, graph, prefab, at.x0, at.y0, fits);
+    // Its connectors walk around the prefab itself (a mouth is on its outside:
+    // a tunnel back through the hall took the brazier shrine's floor slab and
+    // left a brazier in mid-air) and around every sealed footing so far.
+    const own: CarveAvoid = { x0: at.x0, y0: at.y0, x1: at.x0 + prefab.w - 1, y1: at.y0 + prefab.h - 1 };
+    openAnchors(ctx, rng, graph, prefab, at.x0, at.y0, fits, [...sealedFootprints(ledger), own]);
+    const mechanismsBefore = sink.mechanisms.length;
     instantiateObjects(
       ctx,
       sink,
@@ -117,6 +123,8 @@ export function placePrefabs(
       set,
       { spriteCache, spriteLookup: () => null },
     );
+    // Its hand-triggers' footings are sealed for every pass still to carve.
+    for (const m of sink.mechanisms.slice(mechanismsBefore)) reserveFooting(ledger, triggerFooting(m), m.kind);
     placed.push({
       id: prefab.id,
       x0: at.x0,
@@ -270,6 +278,7 @@ function openAnchors(
   x0: number,
   y0: number,
   fits?: Uint8Array,
+  avoid: readonly CarveAvoid[] = [],
 ): void {
   const world = ctx.world;
   for (const a of prefab.anchors ?? []) {
@@ -285,7 +294,7 @@ function openAnchors(
     carvePocket(world, mx, my, halfW, halfW + 2);
     // the connector inherits the anchor's gauge: the player's collision box
     // is 9x17, so a WALK-IN anchor (halfW >= 9) gets a walk-in tunnel
-    const steps = connectToCaves(world, rng, graph, mx, my, Math.max(4, halfW + 1), fits);
+    const steps = connectToCaves(world, rng, graph, mx, my, Math.max(4, halfW + 1), fits, undefined, avoid);
 
     if (a.kind === 'sealed') {
       const skin = breachSkinCell(ctx.state.currentBiome);

@@ -160,8 +160,9 @@ export function printBucketSummary(label, summary, keys = Object.keys(summary)) 
   console.log(`\n=== ${label.toUpperCase()} ===`);
   for (const key of keys) {
     const s = summary[key];
+    const unit = key.endsWith('MB') ? 'MB' : 'ms';
     console.log(
-      `${key.padEnd(10)} mean ${s.mean.toFixed(3)}ms  sd ${s.sd.toFixed(3)}  p50 ${s.p50.toFixed(
+      `${key.padEnd(10)} mean ${s.mean.toFixed(3)}${unit}  sd ${s.sd.toFixed(3)}  p50 ${s.p50.toFixed(
         3,
       )}  p95 ${s.p95.toFixed(3)}  max ${s.max.toFixed(1)}  n=${s.n}`,
     );

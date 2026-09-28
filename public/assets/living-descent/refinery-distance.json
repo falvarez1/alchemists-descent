@@ -1,0 +1,28 @@
+{
+  "prompt": "Use case: style-transfer.\nAsset type: production opaque background layer for a 2D pixel-art game, Alchemist's Descent, Living Descent. Target PNG canvas 1152 by 768 pixels (landscape 3:2), destined for nearest-neighbor sampling on a 575 by 391 logical-pixel game viewport.\nInput images: Image 1 (sluice) is the approved composition and material reference, Image 2 (intake) is a pressure-vessel scale reference, Image 3 (web-gallery) is a wheel and slate-depth reference. These are visual references only. Re-render a clean, original distant-background plate at asset quality; do not crop the reference or preserve its terrain/UI.\nPrimary request: re-create ONLY the distant abandoned refinery visible through the open air of these compositions. Three immense corroded pressure columns rise beyond the frame, offset at roughly 18%, 52%, and 83% width, with overlapping massive round boiler ends and restrained pipeline silhouettes. Lower two-thirds of the center remain a quiet blue-slate void in mist so live gameplay reads in front. The machinery feels enormous and far away, faded to background values, with monumental scale rather than dense tiny greeble.\nStyle/medium: restrained hand-authored pixel art, consistent coarse square pixel clusters, crisp stepped silhouettes, aligned approximately 2 by 2 pixel marks at delivery size, muted limited palette. No smooth digital painting, no photos, no line drawing.\nPalette and material: wet slate blue-black and dusty blue-gray mist, dark aged iron, muted oxidized copper edges, mineral chalk residue only as very low-contrast surface marks. Tiny localized mint patina and one very subdued amber industrial window; no luminous focal object.\nLighting/mood: dark, damp, atmospheric, low local contrast; all pixels must remain quieter and darker than the reference's interactive middle plane. Clean uninterrupted opaque dark slate background across the full canvas.\nConstraints: Distant non-collidable scenery only. Entire layer is opaque, full bleed. No foreground rock walls, no cave silhouettes closing the frame, no floor, no platforms, no walkways, no catwalks, no playable terrain, no liquids, no water surface, no falling streams, no plants, no creatures, no humanoid, no wand, no interactive valve, no web strands, no lamps near camera, no UI, no lettering, no text, no icons, no watermark, no border. Do not copy any game character. Preserve the approved references' material language and distant side-view perspective.",
+  "tool": "built-in image_gen",
+  "type": "style-transfer",
+  "requestedDimensions": [
+    1152,
+    768
+  ],
+  "referenceImages": [
+    ".impeccable/mocks/sluice.png",
+    ".impeccable/mocks/intake.png",
+    ".impeccable/mocks/web-gallery.png"
+  ],
+  "role": "opaque distant refinery background",
+  "nonCollidable": true,
+  "sourcePath": ".impeccable/assets/living-descent/sources/refinery-distance-original.png",
+  "sourceDimensions": [
+    1536,
+    1024
+  ],
+  "outputPath": "public/assets/living-descent/refinery-distance.png",
+  "outputDimensions": [
+    1150,
+    782
+  ],
+  "conversion": "Sharp CLI nearest-neighbor resize to 575x391 logical pixels, then integer 2x nearest-neighbor upscale to 1150x782. No crop; 2 percent aspect adjustment.",
+  "qaStatus": "accepted"
+}

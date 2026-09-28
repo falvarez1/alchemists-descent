@@ -99,11 +99,15 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.Acid]: { name: 'Acid', flowRate: 0.65, corrosiveSpeed: 0.8, bloomWeight: 0.3 },
   [Cell.Fire]: { name: 'Fire', particleLife: 300, upwardSpread: 0.55, bloomWeight: 0.85 },
   [Cell.Smoke]: { name: 'Smoke', floatSpeed: 0.5, dispersion: 0.05, bloomWeight: 0.1 },
-  [Cell.MarshGas]: { name: 'Marsh Gas', floatSpeed: 0.42, dispersion: 0.45, bloomWeight: 0.24 },
+  // bloomWeight 0.24 -> 0.07 (Breathing Works look pass): a pocket reads as a dim
+  // sickly haze you can still see, not a field of glitter competing with threats.
+  [Cell.MarshGas]: { name: 'Marsh Gas', floatSpeed: 0.42, dispersion: 0.45, bloomWeight: 0.07 },
   [Cell.Steam]: { name: 'Steam', bloomWeight: 0.15 },
   [Cell.Ice]: { name: 'Ice', insulationRating: 0.85 },
   [Cell.Metal]: { name: 'Metal', conductivity: 0.95 },
-  [Cell.Gold]: { name: 'Gold Powder', friction: 0.55, densityWeight: 0.98, bloomWeight: 0.15 },
+  // bloomWeight 0.15 -> 0.07 (Breathing Works look pass): gold catches the light
+  // and glints; it is no longer a lamp in every wall.
+  [Cell.Gold]: { name: 'Gold Powder', friction: 0.55, densityWeight: 0.98, bloomWeight: 0.07 },
   [Cell.Blood]: { name: 'Blood', flowRate: 0.55, coagulation: 0.002, conductivity: 0.35 },
   [Cell.Slime]: { name: 'Slime', flowRate: 0.15, bloomWeight: 0.2 },
   [Cell.Ember]: { name: 'Ember', fallChance: 0.4, igniteChance: 0.015, bloomWeight: 0.35 },
@@ -136,6 +140,20 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   // and never flashes across the whole ledge. Raising this toward 1.0 tips it into
   // a field-wide flashover. No bloom — grass doesn't self-glow.
   [Cell.Grass]: { name: 'Grass', flammability: 0.35 },
+  // FLORA. Leaves go up fast (a canopy flashes over in a couple of seconds —
+  // the spectacle), living wood only SMOULDERS: flammability is the per-substep
+  // chance an adjacent flame starts a trunk cell burning in place for
+  // burnDuration substeps before it chars, so a fire at the foot of a tree
+  // glows and eats through the base (then the tree comes down) instead of
+  // vanishing in one flash. Seeds are fuel too; their faint bloom is the tell.
+  [Cell.Leaf]: { name: 'Leaf', flammability: 0.4 },
+  [Cell.Trunk]: { name: 'Trunk', flammability: 0.035, burnDuration: 240, igniteChance: 0.012 },
+  [Cell.Seed]: { name: 'Seed', friction: 0.45, flammability: 0.25, bloomWeight: 0.12 },
+  // THE COLD STORE. Brine flows a touch slower than water (it is heavier) and
+  // eats ice at meltRange per contact check; a hard frost never takes it.
+  [Cell.Brine]: { name: 'Brine', flowRate: 0.78, meltRange: 0.035 },
+  // THE GLASS GALLERIES. Silvered glass: static; the beam tracer reads it.
+  [Cell.Mirror]: { name: 'Mirror' },
   [Cell.Wall]: { name: 'Structural Wall' },
   [Cell.Empty]: { name: 'Eraser' },
 };
@@ -198,22 +216,22 @@ export const PLAYER_PARAMS: PlayerTuning = {
   // Full thrust 0.33+0.24 = 0.57; with grav 0.28 and drag 0.92 that solves to a
   // terminal climb of ~3.3 cells/frame (well under the old -4.6 cap).
   levitThrustGain: 0.24,
-  levitRampFrames: 48,
+  levitRampFrames: 30,
   levitDrag: 0.92,
   vyCapUp: -4.6,
   // Flight legs are their own thing — base feel (1.0), immune to Swift buffs so
   // god-mode/Swift no longer makes levitation skate sideways while crawling up.
   levitHorizControl: 1.0,
-  // Airborne horizontal inertia: 0.985/frame retention means a fast run carries
-  // into a jump/levitate and a glide coasts, instead of snapping to a stop.
+  // Held-input inertia carries a run into flight. Releasing the direction
+  // applies firmer braking in PlayerControl so narrow landings stay readable.
   airDrag: 0.985,
   // Precision-platformer movement feel (was module consts in Player.ts; live here
   // so the inspector can tune jump/run/air feel without a recompile).
-  moveSoftStart: 0.55,
-  groundStopDecay: 0.6,
+  moveSoftStart: 0.8,
+  groundStopDecay: 0.48,
   groundStopSnap: 0.12,
   airGlideSpeed: 1.9,
-  airStopDecay: 0.74,
+  airStopDecay: 0.68,
   jumpCut: 0.25,
   jumpHoldWindow: 7,
   maxRunCap: 3.6,
@@ -251,19 +269,19 @@ export function createDefaultPostFxSettings(): PostFxSettings {
     // same-session A/B and fallback checks (docs/GPU-COMPOSE-PLAN.md).
     gpuCompose: true,
     bloomEnabled: true,
-    bloomStrength: 0.35,
+    bloomStrength: 0.18,
     bloomRadius: 0.2,
     bloomThreshold: 0.85,
-    bloomKickScale: 1.0,
+    bloomKickScale: 0.35,
     lensEnabled: true,
-    aberration: 0.0005,
-    aberrationKick: 0.006,
-    shakeAberration: 0.05,
-    grain: 0.028,
-    hurtPulse: 1.0,
+    aberration: 0,
+    aberrationKick: 0,
+    shakeAberration: 0,
+    grain: 0.006,
+    hurtPulse: 0.4,
     exposure: 1.05,
     tonemap: true,
-    vignette: 0.52,
+    vignette: 0.28,
   };
 }
 
@@ -279,17 +297,110 @@ export function createDefaultRenderSettings(): RenderSettings {
 
 export function createDefaultWandLightSettings(): WandLightSettings {
   return {
-    intensity: 4.6,
+    intensity: 2.4,
     radius: 112,
     r: 1.0,
     g: 0.84,
     b: 0.6,
-    flicker: 0.24,
+    flicker: 0.07,
     fillR: 0.5,
     fillG: 0.45,
     fillB: 0.36,
-    torchIntensity: 5.6,
+    torchIntensity: 3.2,
     torchRadius: 152,
     torchMinFlicker: 1.05,
   };
 }
+
+/**
+ * THE CHILL (entities/chill model, game/Chill system): the alchemist's graded
+ * body cold, 0..1, built from real cold cells and thawed by real heat. Every
+ * look, sound and slow scales with it (docs/FEEL.md "The chill"). Rates are
+ * per fixed tick (60 a second). Mutable like the rest of this file; probes
+ * reach it as `ctx.chill.tuning`.
+ */
+export interface ChillTuning {
+  /** Wading in brine (≥ 3 cells touching), plus this much more fully under. */
+  brineBase: number;
+  brineSubmerged: number;
+  /** Per liquid-nitrogen cell touching, capped. */
+  nitrogenPerCell: number;
+  nitrogenCap: number;
+  /** Fresh water in a frozen biome (× how deep), and ice or snow pressed to the body. */
+  coldWater: number;
+  iceContact: number;
+  /** A frozen biome's air keeps the body at least this cold, climbing at `ambientRate`. */
+  ambientFloor: number;
+  ambientRate: number;
+  /** Blows of cold, added at once: a frost bolt, a Rime Warden's floor wave, each lick of its breath. */
+  frostbolt: number;
+  rimeWave: number;
+  rimeBreath: number;
+  /** Warming out of the cold, and (slower) while a cold source still touches. */
+  decay: number;
+  decayInCold: number;
+  /** Heat scan: radius (cells), the weighted hot-cell count that reads as full warmth, and its thaw rate. */
+  heatRadius: number;
+  heatFull: number;
+  heatRate: number;
+  /** A body alight thaws at this rate on top. */
+  burningRate: number;
+  /** Speed/acceleration and jump velocity at full chill (1 = no cost). */
+  moveMin: number;
+  jumpMin: number;
+  /** The score's tape at full chill: playback rate (pitch drops with it) and the lowpass cutoff (Hz). */
+  musicRateMin: number;
+  musicCutoffMin: number;
+  /** Frozen solid: ticks locked, ticks a fresh press cracks off, chill left when it bursts, ticks before another. */
+  shellTicks: number;
+  shellMash: number;
+  shellAfter: number;
+  shellCooldown: number;
+  /** The rime cracks off (the thaw beat) once the chill falls this far under it, if this much is on. */
+  thawGap: number;
+  thawMin: number;
+  /** Rime melting per tick out of the heat (drips), and on top per unit of warmth. */
+  rimeMelt: number;
+  rimeMeltHeat: number;
+  /** World: the wake skins over (fresh water only) from this chill; frost prints and breath cells from these. */
+  skinMin: number;
+  printMin: number;
+  breathCellMin: number;
+}
+
+export const CHILL_PARAMS: ChillTuning = {
+  brineBase: 0.0026,
+  brineSubmerged: 0.0042,
+  nitrogenPerCell: 0.0035,
+  nitrogenCap: 0.02,
+  coldWater: 0.0014,
+  iceContact: 0.00035,
+  ambientFloor: 0.12,
+  ambientRate: 0.0008,
+  frostbolt: 0.24,
+  rimeWave: 0.2,
+  rimeBreath: 0.075,
+  decay: 0.0011,
+  decayInCold: 0.00025,
+  heatRadius: 26,
+  heatFull: 7,
+  heatRate: 0.0065,
+  burningRate: 0.02,
+  moveMin: 0.45,
+  jumpMin: 0.82,
+  musicRateMin: 0.8,
+  musicCutoffMin: 1100,
+  shellTicks: 72,
+  shellMash: 9,
+  shellAfter: 0.66,
+  shellCooldown: 420,
+  thawGap: 0.26,
+  thawMin: 0.42,
+  rimeMelt: 0.0007,
+  rimeMeltHeat: 0.0015,
+  skinMin: 0.45,
+  printMin: 0.5,
+  breathCellMin: 0.5,
+};
+
+export const CHILL_PARAM_DEFAULTS: Readonly<ChillTuning> = Object.freeze({ ...CHILL_PARAMS });

@@ -1,11 +1,55 @@
+import { propagateLight } from '@/render/propagateLight';
 import { VIEW_H, VIEW_W } from '@/config/constants';
-import { VIGNETTE_BASE } from '@/render/lightingModel';
+import { DARK_ADAPT, renderAmbient, VIGNETTE_BASE } from '@/render/lightingModel';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import type { AuthoredLight, Ctx } from '@/core/types';
+import { DARKNESS, LANTERN } from '@/config/darkness';
+import { darkMapFor, fillOpenField, openAtCell, renderDarkness, renderOpenLut, sampleDarkMap } from '@/core/darkness';
 import type { LightField, LightSample } from '@/render/pixels';
+import { creatureLights } from '@/render/creatures/lights';
+import { BEAM_MIRROR, BEAM_PRISM, MAX_BEAM_DEPTH, MIRROR_REFLECTANCE, PRISM_SHARE, PRISM_SPLIT, mirrorNormal, reflect, rotate } from '@/sim/beam';
 
 const RUNTIME_INSPECTION_LIGHT_INTENSITY = 1.2;
 const RUNTIME_INSPECTION_LIGHT_RADIUS = 65;
+
+// Most visible cells neither emit nor carry charge. Their attenuation is a
+// fixed material property, so skip the emitter branch chain for those cells.
+const MATERIAL_ATTENUATION = new Float32Array(256);
+for (let type = 0; type < MATERIAL_ATTENUATION.length; type++) {
+  MATERIAL_ATTENUATION[type] = type === Cell.Empty || isGas(type) ? 0.86
+    : type === Cell.Crystal || type === Cell.Glass || type === Cell.Ice ? 0.84 : isLiquid(type) ? 0.8
+      // FLORA: a canopy is dappled, not a rock slab — light filters through leaves.
+      : type === Cell.Leaf ? 0.74 : 0.4;
+}
+const EMISSIVE_MATERIAL = new Uint8Array(256);
+for (const type of [Cell.Fire, Cell.Lava, Cell.Ember, Cell.Acid, Cell.Gold, Cell.Fungus,
+  Cell.Crystal, Cell.Catalyst, Cell.Glowshroom, Cell.Moss, Cell.Healium, Cell.Toxic, Cell.Teleportium,
+  // FLORA: seeds glow faintly (glowseeds brightly); smouldering living wood glows;
+  // on the Kiln, ember-bark fissures and fire-lily blooms keep a coal's glow.
+  Cell.Seed, Cell.Trunk, Cell.Leaf]) EMISSIVE_MATERIAL[type] = 1;
+
+/**
+ * KILN FLORA (fix3): the Kiln's plants carry their glow in their own cells —
+ * an ember-bark fissure is living wood the colour of a coal (floraKit's ember
+ * [196,84,34]), a fire-lily bloom a red-orange petal round a gold heart — so
+ * the grid explains every lit pixel. Read from the cell's colour: hot red,
+ * green well under red (the char bark [44,36,32] and dry rust leaves
+ * [150,84,52] stay dark).
+ */
+function emberHot(c: number, minRed: number): boolean {
+  const r = (c >> 16) & 255, g = (c >> 8) & 255;
+  return r >= minRed && g * 100 < r * 62;
+}
+/** A fissure anywhere in the 2x2 block a light texel stands for (they are one cell wide). */
+function emberSeamNear(world: Ctx['world'], wx: number, wy: number): boolean {
+  for (let k = 0; k < 4; k++) {
+    const x = wx + (k & 1), y = wy + (k >> 1);
+    if (!world.inBounds(x, y)) continue;
+    const i = world.idx(x, y);
+    if (world.types[i] === Cell.Trunk && world.life[i] <= 0 && emberHot(world.colors[i], 130)) return true;
+  }
+  return false;
+}
 
 // Wand "beam": a narrow directional cone cast along the aim, on top of (never
 // instead of) the omni wand light. It reaches further so corridors read deeper
@@ -86,8 +130,50 @@ export class Lighting implements LightField {
   readonly lightB: Float32Array;
   readonly lightAtt: Float32Array;
   readonly vignette: Float32Array;
+  /**
+   * Designed darkness as a RENDER factor per light texel: 1 = the shipped
+   * look, falling toward 0 inside a deep-dark zone. Every compose path
+   * multiplies ambient and the readability floor by it (the GPU paths ship it
+   * as the light texture's alpha); real light is untouched.
+   */
+  readonly lightOpen: Float32Array;
+  /**
+   * How much of the wand's OWN occluded light (omni + beam, normalized 0..1)
+   * reached each texel on the last build: the gameplay "is the lantern on
+   * it" read (render/LightQuery). Zero everywhere while hooded.
+   */
+  readonly wandField: Float32Array;
+  /**
+   * What each texel does to the wand's beam (wave 3, sim/beam): 0 nothing
+   * special, BEAM_MIRROR reflects it, BEAM_PRISM splits it. Built with the
+   * attenuation map; the beam march reads it so a mirror turns the light
+   * (and the photocell it lands on reads the turned light).
+   */
+  readonly beamKind: Uint8Array;
+  /** Camera origin of the last build: gameplay reads index the field with it. */
+  originX = 0;
+  originY = 0;
+  /** True once the field has been built at least once. */
+  built = false;
 
   private wandFlicker = 1;
+  /** Smoothed render darkness under the player (the lantern's spill shrinks in it). */
+  private playerDark = 0;
+  /** The hood shutter, eased: 0 open ... 1 hooded. */
+  private hoodK = 0;
+  /** Normalized wand-coverage gain the running raycast writes into wandField (0 = none). */
+  private wandWrite = 0;
+  /** lightOpen currently holds all-ones (a fully readable level skips the per-texel pass). */
+  private openIsFlat = true;
+  /** What lightOpen was last filled from (the fill is skipped while none of it moved). */
+  private openMap: Uint8Array | null = null;
+  private openLut: Float32Array | null = null;
+  private openX = NaN;
+  private openY = NaN;
+  /** True while lightOpen is all ones: compose paths may skip the smooth darkness read. */
+  get openFlat(): boolean {
+    return this.openIsFlat;
+  }
   private wandFlickerTarget = 1;
   private readonly authoredFalloffCache = new Map<string, AuthoredFalloffCell[]>();
 
@@ -107,6 +193,9 @@ export class Lighting implements LightField {
     this.lightG = new Float32Array(this.LW * this.LH);
     this.lightB = new Float32Array(this.LW * this.LH);
     this.lightAtt = new Float32Array(this.LW * this.LH);
+    this.lightOpen = new Float32Array(this.LW * this.LH).fill(1);
+    this.wandField = new Float32Array(this.LW * this.LH);
+    this.beamKind = new Uint8Array(this.LW * this.LH);
     this.vignette = new Float32Array(VIEW_W * VIEW_H);
     // bakeVignette (full-res radial darkening, baked once)
     const cx = VIEW_W / 2,
@@ -123,7 +212,7 @@ export class Lighting implements LightField {
   // Sample the lit factor at a world position (for sprites & debris)
   sample(wx: number, wy: number): LightSample {
     const ctx = this.ctx;
-    const AMBIENT = ctx.params.global.ambient;
+    const AMBIENT = renderAmbient(ctx);
     const fx = Math.floor(wx) - ctx.camera.renderX,
       fy = Math.floor(wy) - ctx.camera.renderY;
     const lx = fx >> 1,
@@ -131,13 +220,18 @@ export class Lighting implements LightField {
     let Lr = 0,
       Lg = 0,
       Lb = 0,
-      vg = 1;
+      vg = 1,
+      open = 1;
     if (lx >= 0 && lx < this.LW && ly >= 0 && ly < this.LH) {
       const i = ly * this.LW + lx;
       Lr = this.lightR[i];
       Lg = this.lightG[i];
       Lb = this.lightB[i];
     }
+    // Designed darkness reads SMOOTH (core/darkness openAtCell), exactly as the
+    // compose paths draw it under the sprite — no texel staircase on a body
+    // walking out of the dark.
+    if (!this.openIsFlat) open = openAtCell(this.lightOpen, this.LW, this.LH, fx, fy);
     if (fx >= 0 && fx < VIEW_W && fy >= 0 && fy < VIEW_H) {
       // Rescale the baked VIGNETTE_BASE vignette by the live postFx.vignette
       // setting so sprites/debris track the slider exactly like the terrain
@@ -146,12 +240,17 @@ export class Lighting implements LightField {
       const vigScale = ctx.state.postFx.vignette / VIGNETTE_BASE;
       vg = 1 - vigScale * (1 - this.vignette[fy * VIEW_W + fx]);
     }
-    let f = (AMBIENT + Math.min(2.2, Lr)) * vg;
-    this.lit.r = Math.min(1.8, f * f);
-    f = (AMBIENT + Math.min(2.2, Lg)) * vg;
-    this.lit.g = Math.min(1.8, f * f);
-    f = (AMBIENT + Math.min(2.2, Lb)) * vg;
-    this.lit.b = Math.min(1.8, f * f);
+    // Designed darkness (config/darkness) lowers ambient AND the 0.48 sprite
+    // floor together, so in a deep-dark zone a body is only what light shows.
+    // Eye adaptation (lightingModel DARK_ADAPT) keeps dim light visible there.
+    const amb = AMBIENT * open, floor = 0.48 * vg * open, adapt = DARK_ADAPT * (1 - open);
+    let f = (amb + Math.min(2.2, Lr)) * vg;
+    this.lit.r = Math.max(floor, Math.min(1.8, f * f + adapt * f));
+    f = (amb + Math.min(2.2, Lg)) * vg;
+    this.lit.g = Math.max(floor, Math.min(1.8, f * f + adapt * f));
+    f = (amb + Math.min(2.2, Lb)) * vg;
+    this.lit.b = Math.max(floor, Math.min(1.8, f * f + adapt * f));
+    this.lit.open = open;
     return this.lit;
   }
 
@@ -226,6 +325,8 @@ export class Lighting implements LightField {
     return cells;
   }
 
+  private readonly seedCreature = (x: number, y: number, r: number, g: number, b: number): void => this.seedLight(x, y, r, g, b);
+
   private seedLight(wx: number, wy: number, r: number, g: number, b: number): void {
     const lx = (Math.floor(wx) - this.ctx.camera.renderX) >> 1,
       ly = (Math.floor(wy) - this.ctx.camera.renderY) >> 1;
@@ -239,6 +340,7 @@ export class Lighting implements LightField {
   build(ctx: Ctx): void {
     this.ctx = ctx;
     const { LW, LH, lightR, lightG, lightB, lightAtt } = this;
+    const beamKindMap = this.beamKind;
     lightR.fill(0);
     lightG.fill(0);
     lightB.fill(0);
@@ -246,9 +348,34 @@ export class Lighting implements LightField {
     const world = ctx.world;
     const renderCamX = ctx.camera.renderX,
       renderCamY = ctx.camera.renderY;
+    this.originX = renderCamX;
+    this.originY = renderCamY;
+    this.built = true;
+    this.wandField.fill(0);
+    // Designed darkness (core/darkness): a per-level baked map, read per texel
+    // through the comfort setting's render curve. A readable level skips it.
+    const darkMap = ctx.state.mode === 'play' ? darkMapFor(ctx.levels.current) : null;
+    const openLut = renderOpenLut(ctx.state.highReadability === true);
+    const lightOpen = this.lightOpen;
+    if (!darkMap && !this.openIsFlat) {
+      lightOpen.fill(1);
+      this.openIsFlat = true;
+    }
+    if (darkMap) {
+      this.openIsFlat = false;
+      // Sampled at each texel's centre so every compose path can interpolate
+      // between centres (openAtCell): the dark's edge is smooth, never stepped.
+      // Static data: refilled only when the map, the comfort curve or the
+      // camera origin moved.
+      if (darkMap !== this.openMap || openLut !== this.openLut || renderCamX !== this.openX || renderCamY !== this.openY) {
+        fillOpenField(darkMap, openLut, renderCamX, renderCamY, LW, LH, lightOpen);
+        this.openMap = darkMap; this.openLut = openLut; this.openX = renderCamX; this.openY = renderCamY;
+      }
+    } else this.openMap = null;
     // Reactive bioluminescence: glow-caps flare as the alchemist passes through
     // them. Off-mode/dead → park the point far away so the flare never fires.
     const glowReact = ctx.state.mode === 'play' && !ctx.player.dead;
+    const kilnFlora = ctx.state.mode === 'play' && ctx.levels?.current?.def.biome === 'volcanic';
     const px = glowReact ? ctx.player.x : -1e9;
     const py = glowReact ? ctx.player.y : -1e9;
 
@@ -262,14 +389,9 @@ export class Lighting implements LightField {
         const t = world.types[wi];
         const i = row + lx;
         // Translucent solids (ice, glass, crystal) pass most light through
-        lightAtt[i] =
-          t === Cell.Empty || isGas(t)
-            ? 0.86
-            : t === Cell.Crystal || t === Cell.Glass || t === Cell.Ice
-              ? 0.84
-              : isLiquid(t)
-                ? 0.8
-                : 0.4;
+        lightAtt[i] = MATERIAL_ATTENUATION[t] ?? 0.4;
+        beamKindMap[i] = t === Cell.Mirror ? BEAM_MIRROR : t === Cell.Crystal ? BEAM_PRISM : 0;
+        if (!EMISSIVE_MATERIAL[t] && !world.charge[wi]) continue;
         if (t === Cell.Fire) {
           const f = 0.9 + Math.random() * 0.5;
           if (f > lightR[i]) {
@@ -297,10 +419,12 @@ export class Lighting implements LightField {
             lightB[i] = Math.max(lightB[i], 0.1);
           }
         } else if (t === Cell.Gold) {
-          if (lightR[i] < 0.34) {
-            lightR[i] = 0.34;
-            lightG[i] = Math.max(lightG[i], 0.27);
-            lightB[i] = Math.max(lightB[i], 0.06);
+          // 0.34 -> 0.22 (look pass): a pocket warms its own lip, it no longer
+          // lights the surrounding rock like a lamp.
+          if (lightR[i] < 0.22) {
+            lightR[i] = 0.22;
+            lightG[i] = Math.max(lightG[i], 0.17);
+            lightB[i] = Math.max(lightB[i], 0.04);
           }
         } else if (t === Cell.Fungus) {
           const f = 0.3 + Math.sin(ctx.state.frameCount * 0.04 + wx * 0.3 + wy * 0.2) * 0.08;
@@ -355,6 +479,54 @@ export class Lighting implements LightField {
             lightG[i] = 0.18;
             lightB[i] = Math.max(lightB[i], 0.03);
           }
+        } else if (t === Cell.Trunk) {
+          // Living wood only glows while it smoulders (life = burn countdown)…
+          if (world.life[wi] > 0) {
+            const f = 0.42 + Math.random() * 0.18;
+            if (lightR[i] < f) {
+              lightR[i] = f;
+              lightG[i] = Math.max(lightG[i], f * 0.36);
+              lightB[i] = Math.max(lightB[i], f * 0.06);
+            }
+          } else if (kilnFlora && emberSeamNear(world, wx, wy)) {
+            // …and an ember-bark fissure breathes like banked coal: restrained
+            // (0.34-0.44, under a loose Ember cell's 0.55), slow, out of step
+            // down the trunk. (0.2 was tried: it did not read on the basalt.)
+            const f = 0.44 * (0.78 + 0.22 * Math.sin(ctx.state.frameCount * 0.035 + wx * 0.21 + wy * 0.13));
+            if (lightR[i] < f) {
+              lightR[i] = f;
+              lightG[i] = Math.max(lightG[i], f * 0.42);
+              lightB[i] = Math.max(lightB[i], f * 0.08);
+            }
+          }
+        } else if (t === Cell.Leaf) {
+          if (kilnFlora) {
+            const c = world.colors[wi];
+            const r = (c >> 16) & 255, g = (c >> 8) & 255;
+            // A fire-lily's gold heart, then its red-orange petals.
+            const heart = r >= 200 && g >= 150 && (c & 255) <= 130;
+            if (heart || emberHot(c, 190)) {
+              // A bloom lights its own cup (0.46 heart / 0.36 petal): the
+              // flower you can find in the dark, not a lamp that lights the cave.
+              const f = (heart ? 0.46 : 0.36) * (0.88 + 0.12 * Math.sin(ctx.state.frameCount * 0.05 + wx * 0.3));
+              if (lightR[i] < f) {
+                lightR[i] = f;
+                lightG[i] = Math.max(lightG[i], f * (heart ? 0.72 : 0.5));
+                lightB[i] = Math.max(lightB[i], f * (heart ? 0.2 : 0.12));
+              }
+            }
+          }
+        } else if (t === Cell.Seed) {
+          // A glowseed (life -2/-4) is a small lamp; a thirsty seed barely a warm speck;
+          // a sprouting tip (life > 0) glows green as it climbs.
+          const life = world.life[wi];
+          const glowseed = life === -2 || life === -4;
+          const f = glowseed ? 0.34 + Math.sin(ctx.state.frameCount * 0.06 + wx * 0.4) * 0.06 : life > 0 ? 0.3 : 0.1;
+          if (lightG[i] < f) {
+            lightR[i] = Math.max(lightR[i], f * (glowseed || life > 0 ? 0.7 : 0.9));
+            lightG[i] = f;
+            lightB[i] = Math.max(lightB[i], f * (glowseed ? 0.42 : 0.2));
+          }
         } else if (t === Cell.Teleportium) {
           const f = 0.28 + Math.random() * 0.08;
           if (lightB[i] < f) {
@@ -375,6 +547,15 @@ export class Lighting implements LightField {
 
     // A faint fill around the wizard keeps him readable even in self-shadow;
     // the wand itself is raycast after the sweeps so its shadows stay crisp
+    // The lantern's state: the hood shutter eases (a visible, audible beat;
+    // see game/Lantern) and the spill tracks how dark it is under the player.
+    const hoodTarget = ctx.state.lanternHooded === true ? 1 : 0;
+    this.hoodK += (hoodTarget - this.hoodK) * LANTERN.hoodEase;
+    if (Math.abs(hoodTarget - this.hoodK) < 0.004) this.hoodK = hoodTarget;
+    const darkHere = darkMap
+      ? renderDarkness(sampleDarkMap(darkMap, ctx.player.x, ctx.player.y - 9), ctx.state.highReadability === true)
+      : 0;
+    this.playerDark += (darkHere - this.playerDark) * DARKNESS.playerEase;
     if (ctx.state.mode === 'play' && !ctx.player.dead) {
       const wand = ctx.state.wandLight;
       this.wandFlicker += (this.wandFlickerTarget - this.wandFlicker) * 0.25;
@@ -382,7 +563,8 @@ export class Lighting implements LightField {
         const spread = Math.max(0, wand.flicker);
         this.wandFlickerTarget = spread > 0 ? 1.04 - spread + Math.random() * spread * 2 : 1;
       }
-      this.seedLight(ctx.player.x, ctx.player.y - 9, wand.fillR, wand.fillG, wand.fillB);
+      const fill = 1 + (LANTERN.hoodFill - 1) * this.hoodK;
+      this.seedLight(ctx.player.x, ctx.player.y - 9, wand.fillR * fill, wand.fillG * fill, wand.fillB * fill);
       // Active flask siphon (hold E): pulse a cool light over the drained patch
       // at the cursor so the pull reads even against the bright wand light.
       // Max-combined like every wand light (seedLight takes the max — never
@@ -413,7 +595,13 @@ export class Lighting implements LightField {
         lg = 0,
         lb = 0,
         wake = 0;
-      if (p.type === 'bolt' || p.type === 'pellet') {
+      if (p.type === 'bolt') {
+        // The Spark Bolt rakes brighter light and a longer wake than a pellet.
+        lr = 1.1;
+        lg = 2.5;
+        lb = 3.0;
+        wake = 4;
+      } else if (p.type === 'pellet') {
         lr = 0.85;
         lg = 2.0;
         lb = 2.45;
@@ -529,6 +717,25 @@ export class Lighting implements LightField {
       // Lit braziers cast warmth past their own flames (fire cells help too)
       for (const m of runtime.mechanisms) {
         if (m.kind === 'brazier' && m.state === 1) this.seedLight(m.x, m.y - 2, 0.8, 0.5, 0.12);
+        else if (m.kind === 'sensor' && m.sensorType === 'light') {
+          // A photocell warms as it charges and burns steady gold once latched
+          // (restrained: well under its own blaze threshold, config/darkness).
+          const c = m.state > 0 ? 1 : Math.min(1, (m.reading ?? 0) / (m.threshold ?? 90));
+          if (c > 0.02) this.seedLight(m.x, m.y, 0.34 * c, 0.24 * c, 0.08 * c);
+        }
+      }
+      // Lumen blooms breathe their own faint light, brighter as they open, and
+      // their glass bridge glows along its length so it can be crossed in the dark.
+      if (runtime.lumenBlooms) {
+        const fc = ctx.state.frameCount;
+        for (const b of runtime.lumenBlooms) {
+          const k = 0.1 + b.open * 0.26 + Math.sin(fc * 0.045 + b.id * 1.7) * 0.03;
+          this.seedLight(b.x, b.y - 1, k * 0.45, k, k * 0.7);
+          for (let i = 6; i < b.shown; i += 10) {
+            const [px, py] = b.petals[i];
+            this.seedLight(px, py - 1, 0.05 * b.open, 0.13 * b.open, 0.09 * b.open);
+          }
+        }
       }
       // Designer-placed lights (Builder Phase 7).
       if (runtime.authoredLights) {
@@ -540,112 +747,11 @@ export class Lighting implements LightField {
     if (ctx.state.editorLights && ctx.state.mode === 'build') {
       this.seedAuthoredSet(ctx, ctx.state.editorLights, renderCamX, renderCamY);
     }
-    // Living light: golem cores pulse (synced to the sprite), imps smoulder,
-    // wisps carry their own cold halo, mage hands throb purple
-    for (const e of ctx.enemies) {
-      if (e.kind === 'colossus') {
-        // The kiln lights its own arena — dimming hard when doused
-        const heat =
-          e.status.wet > 0 ? 0.3 : 0.85 + Math.sin(ctx.state.frameCount * 0.09 + e.bobPhase) * 0.25;
-        this.seedLight(e.x, e.y - 12, heat * 2.0, heat * 1.2, heat * 0.25);
-        this.seedLight(e.x, e.y - 22, heat * 0.9, heat * 0.55, heat * 0.12);
-      } else if (e.kind === 'leviathan') {
-        // the angler's lamp: a cold pulse that betrays it through the water
-        const lure = 0.65 + Math.sin(ctx.state.frameCount * 0.07 + e.bobPhase) * 0.35;
-        this.seedLight(e.x, e.y - 14, lure * 0.4, lure * 1.1, lure * 1.4);
-      } else if (e.kind === 'golem') {
-        const pulse = 0.7 + Math.sin(ctx.state.frameCount * 0.12 + e.bobPhase) * 0.3;
-        this.seedLight(e.x, e.y - 10, pulse * 1.25, pulse * 0.95, pulse * 0.2);
-        if (e.jetFuel > 0) this.seedLight(e.x, e.y + 2, 1.5, 0.9, 0.22);
-      } else if (e.kind === 'imp') {
-        const f = 0.55 + Math.random() * 0.2;
-        this.seedLight(e.x, e.y - 6, f, f * 0.45, f * 0.08);
-      } else if (e.kind === 'wisp') {
-        this.seedLight(e.x, e.y - 4, 0.5, 0.9, 1.1);
-      } else if (e.kind === 'mage') {
-        const pulse = 0.8 + Math.sin(ctx.state.frameCount * 0.1 + e.bobPhase) * 0.2;
-        this.seedLight(e.x, e.y - 6, 0.8 * pulse, 0.3 * pulse, 1.0 * pulse);
-      } else if (e.kind === 'weaver') {
-        const pulse = 0.55 + Math.sin(ctx.state.frameCount * 0.11 + e.bobPhase) * 0.25;
-        const attack = (e.windup ?? 0) > 0 || e.blink > 0 ? 0.45 : 0;
-        this.seedLight(e.x, e.y - 14, 0.18 + attack, 0.7 + attack, 0.28 + attack * 0.25);
-        this.seedLight(e.x, e.y - 6, pulse * 0.12, pulse * 0.35, pulse * 0.14);
-      } else if (e.kind === 'rillback' && (e.blink > 0 || (e.rillChargeWindup ?? 0) > 0)) {
-        const windup = e.rillChargeWindup ?? 0;
-        const flash = 0.35 + Math.max(e.blink, windup) * 0.06;
-        this.seedLight(e.x, e.y - 5, flash * 0.25, flash * 0.8, flash);
-      }
-    }
+    // Living light, read from the creatures' own bodies (render/creatures/lights):
+    // lures where they dangle, sacs as they swell, cores as they heat; corpses gutter.
+    creatureLights(ctx, this.seedCreature);
 
-    // Four directional sweeps (each pulls from straight + diagonal predecessors)
-    // left -> right
-    for (let y = 0; y < LH; y++) {
-      const row = y * LW;
-      const up = y > 0 ? row - LW : row,
-        dn = y < LH - 1 ? row + LW : row;
-      for (let x = 1; x < LW; x++) {
-        const i = row + x,
-          a = lightAtt[i],
-          j = i - 1;
-        let v = Math.max(lightR[j], Math.max(lightR[up + x - 1], lightR[dn + x - 1]) * 0.955) * a;
-        if (v > lightR[i]) lightR[i] = v;
-        v = Math.max(lightG[j], Math.max(lightG[up + x - 1], lightG[dn + x - 1]) * 0.955) * a;
-        if (v > lightG[i]) lightG[i] = v;
-        v = Math.max(lightB[j], Math.max(lightB[up + x - 1], lightB[dn + x - 1]) * 0.955) * a;
-        if (v > lightB[i]) lightB[i] = v;
-      }
-    }
-    // right -> left
-    for (let y = 0; y < LH; y++) {
-      const row = y * LW;
-      const up = y > 0 ? row - LW : row,
-        dn = y < LH - 1 ? row + LW : row;
-      for (let x = LW - 2; x >= 0; x--) {
-        const i = row + x,
-          a = lightAtt[i],
-          j = i + 1;
-        let v = Math.max(lightR[j], Math.max(lightR[up + x + 1], lightR[dn + x + 1]) * 0.955) * a;
-        if (v > lightR[i]) lightR[i] = v;
-        v = Math.max(lightG[j], Math.max(lightG[up + x + 1], lightG[dn + x + 1]) * 0.955) * a;
-        if (v > lightG[i]) lightG[i] = v;
-        v = Math.max(lightB[j], Math.max(lightB[up + x + 1], lightB[dn + x + 1]) * 0.955) * a;
-        if (v > lightB[i]) lightB[i] = v;
-      }
-    }
-    // top -> bottom
-    for (let y = 1; y < LH; y++) {
-      const row = y * LW,
-        prev = row - LW;
-      for (let x = 0; x < LW; x++) {
-        const i = row + x,
-          a = lightAtt[i];
-        const xl = x > 0 ? x - 1 : x,
-          xr = x < LW - 1 ? x + 1 : x;
-        let v = Math.max(lightR[prev + x], Math.max(lightR[prev + xl], lightR[prev + xr]) * 0.955) * a;
-        if (v > lightR[i]) lightR[i] = v;
-        v = Math.max(lightG[prev + x], Math.max(lightG[prev + xl], lightG[prev + xr]) * 0.955) * a;
-        if (v > lightG[i]) lightG[i] = v;
-        v = Math.max(lightB[prev + x], Math.max(lightB[prev + xl], lightB[prev + xr]) * 0.955) * a;
-        if (v > lightB[i]) lightB[i] = v;
-      }
-    }
-    // bottom -> top
-    for (let y = LH - 2; y >= 0; y--) {
-      const row = y * LW,
-        nxt = row + LW;
-      for (let x = 0; x < LW; x++) {
-        const i = row + x,
-          a = lightAtt[i];
-        const xl = x > 0 ? x - 1 : x,
-          xr = x < LW - 1 ? x + 1 : x;
-        let v = Math.max(lightR[nxt + x], Math.max(lightR[nxt + xl], lightR[nxt + xr]) * 0.955) * a;
-        if (v > lightR[i]) lightR[i] = v;
-        v = Math.max(lightG[nxt + x], Math.max(lightG[nxt + xl], lightG[nxt + xr]) * 0.955) * a;
-        if (v > lightG[i]) lightG[i] = v;
-        v = Math.max(lightB[nxt + x], Math.max(lightB[nxt + xl], lightB[nxt + xr]) * 0.955) * a;
-        if (v > lightB[i]) lightB[i] = v;
-      }
-    }
+    propagateLight(LW, LH, lightR, lightG, lightB, lightAtt);
 
     // SANDBOX WORK LAMP. Play is lit because the wizard carries a wand; the
     // sandbox has no wizard, so nothing lit it at all — a mostly-empty workshop
@@ -671,7 +777,17 @@ export class Lighting implements LightField {
 
     // The wand: a true shadow-casting light. Rays march outward from the tip;
     // rock absorbs them hard, so edges throw real shadows and nothing wraps corners.
-    if (ctx.state.mode === 'play' && !ctx.player.dead) {
+    // In the dark the omni SPILL shrinks toward your footing and the aimed beam
+    // carries further; hooded, the lantern is an ember and the beam is out.
+    const hoodK = this.hoodK, darkK = this.playerDark;
+    const spillRadius = (1 + (LANTERN.darkOmniRadius - 1) * darkK) * (1 + (LANTERN.hoodRadius - 1) * hoodK);
+    const spillIntensity = 1 + (LANTERN.hoodIntensity - 1) * hoodK;
+    this.wandWrite = ctx.state.lanternHooded === true ? 0 : 1;
+    if (ctx.state.mode === 'play' && !ctx.player.dead && ctx.player.legClub) {
+      // The stowed wand lights the belt; no detached muzzle or aiming beam.
+      this.raycastWandLight(ctx.player.x, ctx.player.y - 8, ctx.state.wandLight.intensity * .85 * spillIntensity,
+        ctx.state.wandLight.radius * spillRadius);
+    } else if (ctx.state.mode === 'play' && !ctx.player.dead) {
       // Wand muzzle: 9 cells along aimAngle from (player.x, player.y - 9) —
       // computed locally (same formula as ctx.spells.wandTip) so the render
       // layer never depends on the spells system.
@@ -684,14 +800,17 @@ export class Lighting implements LightField {
       const rawBase = torch ? wand.torchIntensity : wand.intensity;
       const baseIntensity = rawBase * flick;
       const baseRadius = torch ? wand.torchRadius : wand.radius;
-      this.raycastWandLight(tipX, tipY, baseIntensity, baseRadius);
+      this.raycastWandLight(tipX, tipY, baseIntensity * spillIntensity, baseRadius * spillRadius);
       // Directional beam down the aim — extends corridor sightlines without
       // brightening the wizard (same flicker, max-combined, dimmer at the muzzle).
       // Fired from a point closer to the wizard than the muzzle so the cone
       // reads as starting at the wand, not floating ahead of it.
       const beamX = ctx.player.x + Math.cos(ctx.player.aimAngle) * BEAM_ORIGIN_DIST;
       const beamY = ctx.player.y - 9 + Math.sin(ctx.player.aimAngle) * BEAM_ORIGIN_DIST;
-      this.raycastWandBeam(beamX, beamY, ctx.player.aimAngle, baseIntensity, baseRadius);
+      if (hoodK < 0.999) {
+        const beamK = (1 - hoodK) * (1 + (LANTERN.darkBeamIntensity - 1) * darkK);
+        this.raycastWandBeam(beamX, beamY, ctx.player.aimAngle, baseIntensity * beamK, baseRadius, darkK);
+      }
       // Third light: non-occluded ambient glow over the same cone, on its OWN
       // faster flicker (candle-like life) instead of the steady wand flicker.
       const fc = ctx.state.frameCount;
@@ -700,22 +819,26 @@ export class Lighting implements LightField {
         Math.sin(fc * 0.31) * 0.1 +
         Math.sin(fc * 0.57 + 2.1) * 0.07 +
         (Math.random() - 0.5) * 0.05;
-      this.raycastWandGlow(beamX, beamY, ctx.player.aimAngle, rawBase * glowFlick, baseRadius);
+      if (hoodK < 0.999) {
+        this.raycastWandGlow(beamX, beamY, ctx.player.aimAngle, rawBase * glowFlick * (1 - hoodK),
+          baseRadius * (1 + (LANTERN.darkGlowRadius - 1) * darkK));
+      }
     } else if (ctx.state.mode === 'build' && ctx.state.builderWandLightPreview.enabled) {
       const preview = ctx.state.builderWandLightPreview;
       const wand = ctx.state.wandLight;
       this.raycastWandLight(preview.x, preview.y, wand.intensity, wand.radius);
     }
+    this.wandWrite = 0;
 
     // Death glow: the wand goes dark with the wizard, so the corpse carries its
-    // own fading violet soul-light — the ragdoll stays readable as it tumbles.
+    // own fading warm soul-light — the ragdoll stays readable as it tumbles.
     if (ctx.state.mode === 'play' && ctx.player.dead) {
       const corpse = ctx.rigidBodies.playerCorpse;
       if (corpse) {
         const flick =
           0.82 + Math.sin(ctx.state.frameCount * 0.18) * 0.12 + (Math.random() - 0.5) * 0.06;
-        this.seedLight(corpse.x, corpse.y, 1.25 * flick, 0.82 * flick, 1.45 * flick);
-        this.seedLight(corpse.x, corpse.y - 6, 0.75 * flick, 0.5 * flick, 0.95 * flick);
+        this.seedLight(corpse.x, corpse.y, .5 * flick, .48 * flick, .38 * flick);
+        this.seedLight(corpse.x, corpse.y - 6, .3 * flick, .28 * flick, .22 * flick);
       }
     }
   }
@@ -730,6 +853,7 @@ export class Lighting implements LightField {
       s * wand.g,
       s * wand.b,
       Math.max(1, Math.round(Math.max(1, radius) * 0.5)),
+      this.wandWrite,
     );
   }
 
@@ -749,6 +873,7 @@ export class Lighting implements LightField {
     aim: number,
     intensity: number,
     radius: number,
+    darkK = 0,
   ): void {
     const wand = this.ctx.state.wandLight;
     const s = Math.max(0, intensity) * BEAM_INTENSITY_SCALE;
@@ -756,35 +881,75 @@ export class Lighting implements LightField {
     const sr = s * wand.r,
       sg = s * wand.g,
       sb = s * wand.b;
-    const { LW, LH, lightR, lightG, lightB, lightAtt } = this;
+    const { LW, LH, lightR, lightG, lightB, lightAtt, wandField } = this;
+    const wandGain = this.wandWrite;
+    // In designed darkness the beam loses less per cell of air: the one thing
+    // the wizard can see by is the thing he points.
+    const stepAir = BEAM_STEP_AIR + (LANTERN.darkBeamStepAir - BEAM_STEP_AIR) * darkK;
     const radiusHalf = Math.max(1, Math.round(Math.max(1, radius) * BEAM_RADIUS_SCALE * 0.5));
     const ox = (wx - this.ctx.camera.renderX) / 2,
       oy = (wy - this.ctx.camera.renderY) / 2;
     if (ox < -radiusHalf || ox > LW + radiusHalf || oy < -radiusHalf || oy > LH + radiusHalf)
       return;
+    const beamKindMap = this.beamKind;
+    const camX = this.ctx.camera.renderX, camY = this.ctx.camera.renderY;
+    const world = this.ctx.world;
     for (let k = 0; k < BEAM_RAYS; k++) {
       // -1..1 across the fan; angular falloff tapers the cone edges so it reads
       // as a soft beam rather than a hard pie slice.
       const u = BEAM_RAYS > 1 ? (k / (BEAM_RAYS - 1)) * 2 - 1 : 0;
       const a = aim + u * BEAM_HALF_SPREAD;
       const edge = BEAM_EDGE_MIN + (1 - BEAM_EDGE_MIN) * (1 - u * u);
-      const dx = Math.cos(a),
+      let dx = Math.cos(a),
         dy = Math.sin(a);
       let T = 1;
-      for (let d = 0; d < radiusHalf; d++) {
-        const lx = Math.round(ox + dx * d),
-          ly = Math.round(oy + dy * d);
+      // LIGHT THAT TURNS CORNERS (sim/beam): each ray marches from its
+      // current leg's origin; a mirror texel reflects it (the face read from
+      // the mirror cells there), a prism texel bends alternate rays either way
+      // into a warm and a cool daughter beam. Falloff keeps counting the whole
+      // path, so a banked beam is dimmer than a straight one.
+      let rx = ox, ry = oy, leg = 0, bends = 0, inPrism = false;
+      let cr = sr, cg = sg, cb = sb;
+      for (let d = 0; d < radiusHalf; d++, leg++) {
+        const lx = Math.round(rx + dx * leg),
+          ly = Math.round(ry + dy * leg);
         if (lx < 0 || lx >= LW || ly < 0 || ly >= LH) break;
         const i = ly * LW + lx;
+        const kind = beamKindMap[i];
+        if (kind === BEAM_MIRROR && bends < MAX_BEAM_DEPTH && leg > 0) {
+          // Reflect off the face at the last open point, then carry on.
+          const [nx, ny] = mirrorNormal(world, camX + (lx << 1), camY + (ly << 1), dx, dy);
+          const back = leg - 1;
+          rx += dx * back; ry += dy * back;
+          [dx, dy] = reflect(dx, dy, nx, ny);
+          leg = 0;
+          bends++;
+          T *= MIRROR_REFLECTANCE;
+          continue;
+        }
+        if (kind === BEAM_PRISM) {
+          if (!inPrism && bends < MAX_BEAM_DEPTH) {
+            // Split: even rays bend one way warm, odd rays the other way cool.
+            const warm = (k & 1) === 0;
+            rx += dx * leg; ry += dy * leg;
+            [dx, dy] = rotate(dx, dy, warm ? PRISM_SPLIT : -PRISM_SPLIT);
+            leg = 0;
+            bends++;
+            T *= PRISM_SHARE * 1.35;
+            if (warm) { cr = sr * 1.25; cg = sg * 0.82; cb = sb * 0.45; } else { cr = sr * 0.55; cg = sg * 0.78; cb = sb * 1.35; }
+          }
+          inPrism = true;
+        } else inPrism = false;
         const fall = T * (1 - d / radiusHalf) * edge;
-        const vr = sr * fall,
-          vgc = sg * fall,
-          vb = sb * fall;
+        const vr = cr * fall,
+          vgc = cg * fall,
+          vb = cb * fall;
         if (vr > lightR[i]) lightR[i] = vr;
         if (vgc > lightG[i]) lightG[i] = vgc;
         if (vb > lightB[i]) lightB[i] = vb;
+        if (wandGain > 0 && fall * wandGain > wandField[i]) wandField[i] = fall * wandGain;
         const att = lightAtt[i];
-        T *= att < 0.5 ? BEAM_STEP_SOLID : att < 0.83 ? BEAM_STEP_LIQ : BEAM_STEP_AIR;
+        T *= kind === BEAM_MIRROR ? BEAM_STEP_SOLID : att < 0.5 ? BEAM_STEP_SOLID : att < 0.83 ? BEAM_STEP_LIQ : stepAir;
         if (T < 0.02) break;
       }
     }
@@ -856,8 +1021,9 @@ export class Lighting implements LightField {
     sg: number,
     sb: number,
     radiusHalf: number,
+    wandGain = 0,
   ): void {
-    const { LW, LH, lightR, lightG, lightB, lightAtt } = this;
+    const { LW, LH, lightR, lightG, lightB, lightAtt, wandField } = this;
     const ox = (wx - this.ctx.camera.renderX) / 2,
       oy = (wy - this.ctx.camera.renderY) / 2;
     if (ox < -radiusHalf || ox > LW + radiusHalf || oy < -radiusHalf || oy > LH + radiusHalf)
@@ -881,6 +1047,7 @@ export class Lighting implements LightField {
         if (vr > lightR[i]) lightR[i] = vr;
         if (vgc > lightG[i]) lightG[i] = vgc;
         if (vb > lightB[i]) lightB[i] = vb;
+        if (wandGain > 0 && fall * wandGain > wandField[i]) wandField[i] = fall * wandGain;
         const att = lightAtt[i];
         T *= att < 0.5 ? STEP_SOLID : att < 0.88 ? STEP_LIQ : STEP_AIR;
         if (T < 0.02) break;

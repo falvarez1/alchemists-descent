@@ -118,8 +118,13 @@ describe('cell ABI contracts', () => {
       RawOre: 36,
       Grass: 37,
       MarshGas: 38,
+      Leaf: 39,
+      Trunk: 40,
+      Seed: 41,
+      Brine: 42,
+      Mirror: 43,
     });
-    expect(CELL_COUNT).toBe(39);
+    expect(CELL_COUNT).toBe(44);
     expect(Math.max(...Object.values(Cell))).toBeLessThan(128);
   });
 
@@ -164,6 +169,11 @@ describe('cell ABI contracts', () => {
       Cell.Moss,
       Cell.Grass,
       Cell.MarshGas,
+      Cell.Leaf,
+      Cell.Trunk,
+      Cell.Seed,
+      Cell.Brine,
+      Cell.Mirror,
     ];
     const unique = new Set(routed);
     const missing = Array.from({ length: CELL_COUNT }, (_, id) => id).filter((id) => !unique.has(id as Cell));
@@ -176,6 +186,7 @@ describe('cell ABI contracts', () => {
   it('keeps blood in the conductor set for gore-lightning combos', () => {
     expect(isConductor(Cell.Water)).toBe(true);
     expect(isConductor(Cell.Blood)).toBe(true);
+    expect(isConductor(Cell.Brine)).toBe(true);
     expect(isConductor(Cell.Acid)).toBe(false);
     expect(isConductor(Cell.Toxic)).toBe(false);
   });
@@ -483,6 +494,26 @@ describe('cell material conversions', () => {
 });
 
 describe('VineStrands', () => {
+  it('activates hanging material by player proximity independently of the camera', () => {
+    const world = new World(1000, 480);
+    world.replaceCellAt(world.idx(100, 39), Cell.Stone, 0x777777);
+    for (let y = 40; y < 47; y++) world.replaceCellAt(world.idx(100, y), Cell.Vines, 0x447755);
+    const ctx = attachVineStrands({ world, events: { on: () => undefined },
+      state: { mode: 'play', frameCount: 8 }, camera: { x: 700, y: 200 },
+      fx: { screenShake: 0 }, player: { x: 110, y: 80, dead: false } } as unknown as Ctx);
+    ctx.vineStrands.update(ctx);
+    expect(ctx.vineStrands.strands).toHaveLength(1);
+    expect(world.type(100, 43)).toBe(Cell.Empty);
+    ctx.camera.x = 0;
+    ctx.state.frameCount++;
+    ctx.vineStrands.update(ctx);
+    expect(ctx.vineStrands.strands).toHaveLength(1);
+    ctx.player.x = 850;
+    ctx.vineStrands.update(ctx);
+    expect(ctx.vineStrands.strands).toHaveLength(0);
+    expect(world.type(100, 43)).toBe(Cell.Vines);
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });

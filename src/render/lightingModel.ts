@@ -19,6 +19,12 @@
 /** Screen-vignette strength baked into the CPU `Lighting.vignette` array, used as
  *  the GPU `uVignette` uniform default, and the `FrameComposer` rescale base.
  *  `postFx.vignette` tunes it live; this is the shipped reference value. */
+import type { Ctx } from '@/core/types';
+
+export function renderAmbient(ctx: Ctx): number {
+  return ctx.state.highReadability ? Math.max(0.85, ctx.params.global.ambient) : ctx.params.global.ambient;
+}
+
 export const VIGNETTE_BASE = 0.52;
 
 /**
@@ -31,9 +37,35 @@ export const VIGNETTE_BASE = 0.52;
 export const COMPOSE_PAD = 64;
 
 export const LIGHT_CLAMP = 2.2;
-export const LIGHT_READABILITY_FLOOR = 0.06;
+export const LIGHT_READABILITY_FLOOR = 0.40;
 export const SELF_GLOW_BASE = 0.45;
 export const SELF_GLOW_SCALE = 1.55;
 export const LIGHT_KNEE_START = 1.25;
 export const LIGHT_KNEE_SLOPE = 0.3;
 export const LIGHT_KNEE_MAX = 2.0;
+
+/**
+ * Designed darkness (config/darkness): the light texture's alpha / the CPU
+ * `lightOpen` factor multiplies ambient and the readability floor. What an
+ * unlit surface keeps at FULL darkness is this cold "wet slate" remainder
+ * (an albedo multiplier per channel), so a deep-dark cave is near black with
+ * a blue-grey breath rather than a dead RGB zero; open air keeps the absolute
+ * DARK_AIR tint. Shared by all three compose paths.
+ */
+export const DARK_FLOOR_R = 0.012;
+export const DARK_FLOOR_G = 0.016;
+export const DARK_FLOOR_B = 0.026;
+export const DARK_AIR_R = 0.0022;
+export const DARK_AIR_G = 0.0032;
+export const DARK_AIR_B = 0.0055;
+/**
+ * Eye adaptation in designed darkness: the squared light law (lit = lf^2)
+ * swallows every weak light, so in a black cave a failing lamp or a
+ * glowshroom colony would light nothing. As the place darkens a linear term
+ * fades in (lit = lf^2 + DARK_ADAPT * shut * lf): dim pools become visible
+ * while the lantern's bright core is unchanged. Zero in readable places.
+ */
+export const DARK_ADAPT = 0.42;
+/** In designed darkness the air's own glow near a light (the dust a lantern
+ *  hangs in) is this many times stronger: the halo reads as a place. */
+export const DARK_AIR_GLOW = 1.4;

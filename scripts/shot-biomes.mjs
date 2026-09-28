@@ -1,13 +1,15 @@
 // Whole-world overview PNGs (1:4 downsample of the live colors plane) per
 // depth, into verify-out/ — the worldgen eyeball pass. Usage:
-//   node scripts/shot-biomes.mjs [seed] [url]
+//   node scripts/shot-biomes.mjs [seed] [url] [--levels=d1,d2,d2b,...]
 import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { startConsoleTestRun } from './run-helpers.mjs';
 
-const seed = Number(process.argv[2] ?? 7);
-const url = process.argv[3] ?? 'http://localhost:5173/';
-const DEPTHS = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8'];
+const pos = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const seed = Number(pos[0] ?? 7);
+const url = pos[1] ?? 'http://localhost:5173/';
+const levelsArg = process.argv.find((a) => a.startsWith('--levels='));
+const DEPTHS = levelsArg ? levelsArg.slice(9).split(',') : ['d1', 'd2', 'd3', 'd4'];
 mkdirSync('verify-out', { recursive: true });
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });

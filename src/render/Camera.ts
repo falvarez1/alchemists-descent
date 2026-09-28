@@ -6,16 +6,19 @@ import type { World } from '@/sim/World';
 const AIM_LOOKAHEAD_DEADZONE = 28;
 const AIM_LOOKAHEAD_FULL_DISTANCE = 150;
 const AIM_LOOKAHEAD_LERP = 0.12;
-
+export const ACTION_PAN_MAX_SPEED = 2.4; // world cells/tick, shared by both axes
 /**
- * How far the camera may travel BELOW the world floor. The world ends in solid
- * bedrock, so there is nothing to walk to down there — but letting the view drop
- * past the edge keeps the wizard (and any entities/prefabs near the floor) framed
- * instead of pinned to the bottom of the screen. Everything past the edge renders
- * as flat black void (see FrameComposer). Half a viewport lets the deepest stand
- * still center on screen.
+ * Cells at the bottom of the view the HUD's bottom band covers (the hint line
+ * sits 845–877 px of a 900 px frame: from ~22 cells above the view's bottom
+ * edge). The follow camera keeps the alchemist's feet above it (Camera.update).
  */
-const CAMERA_BOTTOM_VOID = Math.floor(VIEW_H / 2);
+export const HUD_FLOOR_CLEARANCE = 26;
+
+/** Ease out across a handoff, then close in once the camera catches up. */
+export function actionCameraZoom(zoom: number, distance: number): number {
+  return zoom + (Math.min(zoom, .82) - zoom) * smoothstep(clamp((distance - 45) / 150, 0, 1));
+}
+
 
 
 /**
@@ -23,6 +26,11 @@ const CAMERA_BOTTOM_VOID = Math.floor(VIEW_H / 2);
  * aim-distance lookahead; in build mode the WASD keys pan it. Also derives the
  * active simulation window and leans in (idle zoom) when the wizard stands still.
  */
+/** Death push-in curve: holds a beat, then eases in over ~2.2s. */
+function deathPush(t: number): number {
+  return smoothstep(clamp((t - 0.15) / 2.2, 0, 1));
+}
+
 export class Camera implements CameraApi {
   x = 0;
   y = 0;
@@ -33,15 +41,28 @@ export class Camera implements CameraApi {
   zoomLock: number | null = null;
   /** Runtime inspector/debug focus target; null means normal play follow. */
   inspectionFocus: { x: number; y: number } | null = null;
+  /** Cinematic framing written by the combat time director; see CameraApi. */
+  cineDx = 0;
+  cineDy = 0;
+  cineZoom = 1;
+  actionFocus: { x: number; y: number; zoom: number } | null = null;
   idleFrames = 0;
   private aimLookaheadX = 0;
+  private actionVx = 0;
+  private actionVy = 0;
   /** Integer camera snapshot used for the current frame's texture (set by the renderer). */
   renderX = 0;
   renderY = 0;
+  presentationX?: number;
+  presentationY?: number;
 
   update(ctx: Ctx): void {
     const { player, state, input } = ctx;
-    if (state.mode === 'play' && this.inspectionFocus !== null) {
+    const action = state.mode === 'play' ? this.actionFocus : null;
+    if (action) {
+      this.tx = action.x - VIEW_W / 2;
+      this.ty = action.y - VIEW_H / 2;
+    } else if (state.mode === 'play' && this.inspectionFocus !== null) {
       this.tx = this.inspectionFocus.x - VIEW_W / 2;
       this.ty = this.inspectionFocus.y - VIEW_H / 2;
     } else if (state.mode === 'play' && !player.dead) {
@@ -60,17 +81,27 @@ export class Camera implements CameraApi {
       // Crawl: a mild extra forward lead — you want to see down the tunnel,
       // not under your own knees (crouchT decays in a crawl, so the peek
       // below hands itself over to the lead as the stance changes).
-      this.tx = player.x - VIEW_W / 2 + this.aimLookaheadX;
+      this.tx = player.x - VIEW_W / 2 + this.aimLookaheadX + clamp(player.vx * 8, -22, 22);
       // Crouch-peek: holding the stance tilts the view below the ledge
       // (the lerp below turns the offset into a smooth glance down).
-      this.ty = player.y - 9 - VIEW_H / 2 + (player.crouchT / 10) * 48;
+      // The integer-cell mover accumulates gravity before attempting a whole
+      // cell of motion. That bookkeeping velocity is not a fall while grounded.
+      const fallLead = player.grounded ? 0 : clamp(player.vy * 8, -12, 38);
+      this.ty = player.y - 9 - VIEW_H / 2 + (player.crouchT / 10) * 48 + fallLead;
+      // A finisher leans the frame a little toward its victim. One camera
+      // transform for everything, and never enough to hide an incoming hazard.
+      this.tx += this.cineDx;
+      this.ty += this.cineDy;
     } else if (state.mode === 'play' && player.dead) {
-      // Death: ride the tumbling ragdoll down (don't freeze on the death spot).
+      // Death: ride the tumbling ragdoll down (don't freeze on the death spot),
+      // lifting the body into the upper frame as the cinematic pushes in, so the
+      // title card can rise beneath it.
       const corpse = ctx.rigidBodies.playerCorpse;
       const fx = corpse ? corpse.x : player.x;
       const fy = corpse ? corpse.y : player.y - 9;
+      const push = deathPush(ctx.fx.deathTime ?? 0);
       this.tx = fx - VIEW_W / 2;
-      this.ty = fy - VIEW_H / 2;
+      this.ty = fy - VIEW_H / 2 + push * 17;
     } else if (state.mode === 'build') {
       // pan in SCREEN distance: zoomed in, the world moves proportionally less
       const pan = 9 / this.zoom;
@@ -79,10 +110,40 @@ export class Camera implements CameraApi {
       if (input.keys.jump) this.ty -= pan;
       if (input.keys.down) this.ty += pan;
     }
-    this.tx = clamp(this.tx, 0, WIDTH - VIEW_W);
-    this.ty = clamp(this.ty, 0, HEIGHT - VIEW_H + CAMERA_BOTTOM_VOID);
-    this.x += (this.tx - this.x) * 0.085;
-    this.y += (this.ty - this.y) * 0.085;
+    // A zoomed frame hides a margin, so it may pan past the world edge by that
+    // much (the action camera and the death push-in both zoom about the body).
+    const zoomedFrame = action !== null || (state.mode === 'play' && player.dead);
+    const padX = zoomedFrame ? VIEW_W * (1 - 1 / Math.max(1, this.zoom)) / 2 : 0;
+    const padY = zoomedFrame ? VIEW_H * (1 - 1 / Math.max(1, this.zoom)) / 2 : 0;
+    // The floor is a hard edge for every frame on every level: below the world
+    // is only black void (it used to allow half a view of it, which showed a
+    // third of a screen of nothing under D1's Undertow and floor 4's arena).
+    // A zoomed-in frame may still sink by exactly its hidden margin.
+    // The HUD's bottom band (the hint line, flasks and pause button) covers
+    // the last HUD_FLOOR_CLEARANCE cells of the view: at the world's floor the
+    // frame sinks just far enough past it to keep the alchemist's feet above
+    // that band (a sliver of the black void shows beneath, under the HUD).
+    const hudPad = state.mode === 'play' && !player.dead && !action && this.inspectionFocus === null
+      ? Math.max(0, Math.min(HUD_FLOOR_CLEARANCE, player.y + HUD_FLOOR_CLEARANCE - HEIGHT))
+      : 0;
+    const floorPad = Math.max(hudPad, VIEW_H * (1 - 1 / Math.max(1, this.zoom)) / 2);
+    this.tx = clamp(this.tx, -padX, WIDTH - VIEW_W + padX);
+    this.ty = clamp(this.ty, -padY, HEIGHT - VIEW_H + floorPad);
+    const actionDistance = Math.hypot(this.tx - this.x, this.ty - this.y);
+    if (action) {
+      const scale = actionDistance > 0 ? Math.min(.065, ACTION_PAN_MAX_SPEED / actionDistance) : 0;
+      this.actionVx += ((this.tx - this.x) * scale - this.actionVx) * .12;
+      this.actionVy += ((this.ty - this.y) * scale - this.actionVy) * .12;
+      // Deceleration near the target must not overshoot it.
+      this.x += Math.sign(this.actionVx) === Math.sign(this.tx - this.x) ? Math.sign(this.actionVx) * Math.min(Math.abs(this.actionVx), Math.abs(this.tx - this.x)) : this.actionVx;
+      this.y += Math.sign(this.actionVy) === Math.sign(this.ty - this.y) ? Math.sign(this.actionVy) * Math.min(Math.abs(this.actionVy), Math.abs(this.ty - this.y)) : this.actionVy;
+    } else {
+      this.actionVx = 0; this.actionVy = 0;
+      this.x += (this.tx - this.x) * 0.12;
+      this.y += (this.ty - this.y) * 0.085;
+    }
+    if (Math.abs(this.tx - this.x) < .0001) this.x = this.tx;
+    if (Math.abs(this.ty - this.y) < .0001) this.y = this.ty;
 
     // Idle zoom: lean in when the wizard stands still, pull back the moment he moves
     const busy =
@@ -93,8 +154,9 @@ export class Camera implements CameraApi {
       !player.grounded ||
       player.firing;
     this.idleFrames = busy ? 0 : this.idleFrames + 1;
-    const zTarget = this.zoomLock ?? (this.idleFrames > 55 ? 1.13 : 1.0);
-    this.zoom += (zTarget - this.zoom) * (this.zoomLock !== null ? 0.16 : 0.035);
+    const dying = state.mode === 'play' && player.dead && !action && this.zoomLock === null;
+    const zTarget = action ? actionCameraZoom(action.zoom, actionDistance) : this.zoomLock ?? (dying ? 1 + 0.85 * deathPush(ctx.fx.deathTime ?? 0) : this.cineZoom);
+    this.zoom += (zTarget - this.zoom) * (action ? .035 : this.zoomLock !== null ? 0.16 : dying ? 0.06 : this.cineZoom !== 1 ? 0.09 : 0.035);
   }
 
   updateSimBounds(world: World): void {
@@ -121,6 +183,7 @@ export class Camera implements CameraApi {
     this.y = this.ty = clamp(y - VIEW_H / 2, 0, HEIGHT - VIEW_H);
     this.renderX = Math.floor(this.x);
     this.renderY = Math.floor(this.y);
+    this.presentationX = this.x; this.presentationY = this.y;
     // Clear the SMOOTHING STATE too, not just the position. Every level entry
     // snaps, and leaving these behind means the new level starts with the last
     // one's aim offset baked into the target (so the camera drifts a cell or
@@ -129,6 +192,7 @@ export class Camera implements CameraApi {
     // the sim window follows the camera, so a one-cell difference here changed
     // which cells were simulated at all.
     this.aimLookaheadX = 0;
+    this.actionVx = 0; this.actionVy = 0;
     this.idleFrames = 0;
   }
 }

@@ -13,6 +13,10 @@ export const MATERIAL_INFO: Record<number, string> = {
   [Cell.Empty]: 'Erases painted cells back to open air.',
   [Cell.Sand]:
     'Loose powder: falls, piles, and sinks through liquids. Fire, embers, lava, burning coal, or a strong electric charge can fuse it into Glass.',
+  [Cell.Brine]:
+    'Salt water kept below freezing. It never freezes (nitrogen boils off it), eats the ice and snow it touches back to water, sinks under fresh water and conducts. Wading in it chills and bites.',
+  [Cell.Mirror]:
+    'Silvered glass. Reflects the wand’s beam off its face, so light can be turned round corners onto a lens. Shatters under a blast.',
   [Cell.Water]:
     'Flows and pools. Quenches fire into steam, hardens lava into Stone, dilutes Toxic Sludge, feeds living growth, and conducts lightning. Drinking it snuffs any flames on you.',
   [Cell.Wall]:
@@ -86,6 +90,12 @@ export const MATERIAL_INFO: Record<number, string> = {
     'Walk-through ground cover planted on cave floors and the surface. It spreads lightly along damp ground and catches fire like dry brush.',
   [Cell.MarshGas]:
     'Flammable bog vapor that rises and pools under cave ceilings. It never disperses on its own - and the faintest spark turns the whole pocket into a racing wall of flame.',
+  [Cell.Leaf]:
+    'Walk-through foliage. It holds on while it stays within a few leaves of wood or rock, then lets go and flutters down as litter. Burns fast and bright; floats on water.',
+  [Cell.Trunk]:
+    'Living wood: trunks, stems and roots you walk past. It smoulders rather than flares. Cut, burn or blast through it and whatever loses its footing is felled — it topples, crushes what it lands on, and settles as solid Wood.',
+  [Cell.Seed]:
+    'Seeds from a pod: a loose powder once shaken free. A thirsty seed drinks the water it touches and sprouts a climbable root ladder within seconds. Burns.',
 };
 
 /**

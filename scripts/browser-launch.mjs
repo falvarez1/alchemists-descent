@@ -1,4 +1,5 @@
 import { chromium } from 'playwright-core';
+import { archiveBrowserScreenshots } from './screenshot-archive.mjs';
 
 const activeBrowsers = new Set();
 let cleanupInstalled = false;
@@ -33,6 +34,7 @@ function installCleanupHandlers() {
 }
 
 function trackBrowser(browser) {
+  archiveBrowserScreenshots(browser);
   activeBrowsers.add(browser);
   browser.on('disconnected', () => activeBrowsers.delete(browser));
   installCleanupHandlers();
@@ -61,6 +63,14 @@ export async function launchBrowser(options = {}) {
     }
   }
 
+  try {
+    // Full Chromium in new headless mode, not the old headless shell: the shell
+    // treats a second page as backgrounded and starves its frames, which stalls
+    // two-window probes (AuthorLink's pull never gets its peer's reply).
+    return trackBrowser(await chromium.launch({ ...launchOptions, channel: 'chromium' }));
+  } catch {
+    // Older Playwright installs without the full build: the headless shell.
+  }
   try {
     return trackBrowser(await chromium.launch(launchOptions));
   } catch (error) {

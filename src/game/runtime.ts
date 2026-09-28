@@ -19,6 +19,8 @@ export function makeLevelRuntime(
     Pick<
       LevelRuntime,
       | 'enemies'
+      | 'fauna'
+      | 'living'
       | 'waystones'
       | 'exit'
       | 'explored'
@@ -45,6 +47,9 @@ export function makeLevelRuntime(
       | 'vaultArch'
       | 'surfaceSpawn'
       | 'skyLine'
+      | 'darkZones'
+      | 'lumenBlooms'
+      | 'story'
     >
   >,
 ): LevelRuntime {

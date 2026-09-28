@@ -5,8 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 Purple Llama Studio's "Alchemist's Descent" — a falling-sand action roguelite: a cellular-automata
-material simulation, a Three.js pixel renderer with dynamic 2D lighting and bloom, procedural
-audio, and a platformer-wizard action game (8-level persistent descent, wand/spell-card system,
+material simulation, a Three.js pixel renderer with dynamic 2D lighting (designed darkness, eyeshine,
+a hooded lantern) and bloom, ElevenLabs-generated audio (sampled SFX, a score, a narrator — generated
+offline by `scripts/audio/*`, audition at `/audition.html`), and a platformer-wizard action game (a four-floor run with return phials, starting kits and a
+daily seed — player-facing name "Breathing Works", `config/brand.ts`; wand/spell-card system,
 brewing, mechanisms) layered on top. Originally a single 3,818-line HTML file (kept at the repo
 root as `noita-sandbox.html` for reference — behavior fidelity to it matters); now a modular
 TypeScript + Vite project.
@@ -25,6 +27,8 @@ npm run verify:authorlink  # two-browser-context probe of the cross-window edito
 npm run verify:authorlink-hosted  # production build + EXTERNAL strict relay (origin/token/ranges)
 npm run authorlink:server  # standalone AuthorLink relay (dev server hosts one already)
 npm run gen:tuning-ranges  # regenerate the relay's range table (--check in verify:tuning-ranges)
+npm run gen:builder-html   # regenerate builder.html from index.html (NEVER hand-edit builder.html;
+                           # tests/builder-html.test.ts fails when it is stale)
 npm run lint               # eslint src
 node scripts/verify-game.mjs   # headless browser smoke test (needs dev server running + Edge)
 node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs saved baseline)
@@ -37,10 +41,19 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # shot-blueprint.mjs <levelId...> (FULL-level HUD-free blueprint PNG with
 # labeled inspection markers + spawn/player/enemy dots - THE way to judge
 # any authored level's layout; camera crops cannot show the big picture)
-# Gameplay/runtime probes (dev server running): verify-intro-progression.mjs
-# (D1 surface intro → descent → onboarding spine), verify-descent-progression.mjs,
+# Creatures (dev server running; docs/CREATURES.md): creature-studio.mjs
+# --kind <k> --scenes idle,walk,... (real rig + art in a staged mini-world,
+# zoomed frame strips — THE way to iterate creature look/motion),
+# shot-enemies.mjs (whole roster in-game), probe-corpses.mjs, probe-alive.mjs
+# (footfalls/splashes/tracks/vines/critters), bench-creatures.mjs,
+# perf-creatures-live.mjs. Player (docs/PLAYER-ART.md): player-studio.mjs
+# (every action posed + costume-ticked, zoomed), probe-player-death.mjs
+# Gameplay/runtime probes (dev server running): verify-descent-progression.mjs,
 # verify-progression-pacing.mjs, verify-bat-slime.mjs, verify-death-causes.mjs,
 # verify-god-mode-qa.mjs
+# Audio (dev server running): verify-audio-mix.mjs — buses/limiter/pan/attenuation,
+# volume sliders + persistence, stingers, lazy Grimoire art (we cannot listen:
+# ctx.audio.debugSnapshot() / debugRenderOffline() are the instruments)
 node scripts/gen-builtin-prefabs.mjs   # regenerate src/world/prefabs/builtin/*.json
 node scripts/gen-machine-prefabs.mjs   # regenerate the machine-*.json structure prefabs
 ```
@@ -98,7 +111,8 @@ dev server. `scripts/verify-*.mjs` show the pattern.
 ## Hard invariants
 
 1. **Cell IDs are append-only forever** (save-format ABI). `CELL_COUNT` in `sim/CellType.ts`
-   must match (currently 39; MarshGas=38 is the highest taken id). Never renumber or reuse.
+   must match (currently 42; Seed=41 is the highest taken id — Leaf 39, Trunk 40, Seed 41 were
+   appended by the flora wave). Never renumber or reuse.
    The marker palette in `sim/cellPalette.ts` is the same kind of ABI (it identifies
    materials in every exported terrain PNG): one appended color per new cell type,
    ≥12 Manhattan RGB from every existing entry, never edited (test-enforced).
@@ -165,8 +179,9 @@ loops degrade criteria progressively, never silently skip.
   enemy / spell card / biome / pickup) and the full verification playbook
 - `docs/DESIGN.md` — canonical game design; `docs/FEEL.md` — every mechanic/micro-animation
   with its tuning numbers; `docs/BUILDER.md` — Builder tool spec and phases
-- `docs/MULTIPLAYER-ARCHITECTURE.md` — the two-plane decision (SpacetimeDB for
-  durable session state, a binary stream plane for cells), why the grid is NOT a
-  database, and the `SessionTransport` seam the editor and multiplayer share
+- `docs/MULTIPLAYER-ARCHITECTURE.md` — **archived/frozen 2026-09-26** (the
+  SpacetimeDB transport lives only in git tag `archive/spacetimedb`); still the
+  reference for the determinism boundary, why the grid is NOT a database, and
+  the `SessionTransport` seam AuthorLink runs on
 - `docs/PORTING.md` — port conventions + approved deviations; `docs/INVENTORY.md` — system map
   of the original HTML; `docs/UPGRADE-DELTA.md` — what was mined from the prototype files

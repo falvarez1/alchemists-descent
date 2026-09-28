@@ -1,7 +1,7 @@
 import type { BodyMaterial, Ctx, LevelRuntime, Mechanism, MechanismsApi } from '@/core/types';
 import { mechanismTriggersFor } from '@/core/mechanisms';
-import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
-import { COLOR_FN, EMPTY_COLOR, fireColor, packRGB } from '@/sim/colors';
+import { blocksEntity, Cell, isGas, isLiquid, isSoftGrowth } from '@/sim/CellType';
+import { COLOR_FN, EMPTY_COLOR, emberColor, fireColor, packRGB } from '@/sim/colors';
 import {
   BUOY_LATCH_FRAMES,
   DEFAULT_TRIGGER_LATCH_FRAMES,
@@ -11,6 +11,7 @@ import {
   setValveCells,
 } from '@/core/mechanismFactories';
 import { entityRandom } from '@/core/simRandom';
+import { PHOTOCELL } from '@/config/darkness';
 export {
   BUOY_LATCH_FRAMES,
   DEFAULT_TRIGGER_LATCH_FRAMES,
@@ -35,14 +36,55 @@ export {
 
 /* ---------------- the runtime system ---------------- */
 
+/** Within roughly a screen of the player: close enough to have seen it happen. */
+const WITNESS_RADIUS = 360;
+/** Arrival: the first 8 s on a floor belong to the sim settling what generation
+ *  left (sand filling a bucket, a plate crushed by rubble, a brazier over lava).
+ *  Those are changes the player never made — the machines still move, but the
+ *  toast stays quiet (QA: "A mechanism groans…" ×2 on arriving at floors 2/3). */
+const ARRIVAL_QUIET_FRAMES = 480;
+function nearPlayer(ctx: Ctx, m: Mechanism): boolean {
+  const dx = m.x - ctx.player.x, dy = m.y - ctx.player.y;
+  return dx * dx + dy * dy <= WITNESS_RADIUS * WITNESS_RADIUS;
+}
+
 export class Mechanisms implements MechanismsApi {
   private readonly sequenceScratch: Mechanism[] = [];
   private readonly edgeScratch: boolean[] = [];
   private readonly eventDisposers: Array<() => void> = [];
+  /** No world-driven toast before this frame (see ARRIVAL_QUIET_FRAMES). */
+  private quietUntil = 0;
+  /** Mechanisms wrecked during an arrival: their gate later falls open quietly too. */
+  private readonly quietBreaks = new WeakSet<Mechanism>();
+  /** Toasts said this tick — one line per tick, however many machines say it. */
+  private saidFrame = -1;
+  private readonly saidThisTick = new Set<string>();
 
   constructor(private ctx: Ctx) {
     // Explosions / projectile impacts / dig hits all announce themselves here.
     this.eventDisposers.push(ctx.events.on('structureStrike', ({ x, y, radius }) => this.strike(this.ctx, x, y, radius)));
+    this.eventDisposers.push(ctx.events.on('levelChanged', () => {
+      this.quietUntil = this.ctx.state.frameCount + ARRIVAL_QUIET_FRAMES;
+    }));
+  }
+
+  /** Emit a toast once per tick (two machines saying the same line on the same
+   *  tick is one event to the player). */
+  private say(ctx: Ctx, text: string): void {
+    const frame = ctx.state.frameCount;
+    if (frame !== this.saidFrame) {
+      this.saidFrame = frame;
+      this.saidThisTick.clear();
+    }
+    if (this.saidThisTick.has(text)) return;
+    this.saidThisTick.add(text);
+    ctx.events.emit('toast', { text });
+  }
+
+  /** A world-driven change (not a lever the player pulled) worth a toast: near
+   *  enough to have been seen, and not the arrival's settling. */
+  private witnessed(ctx: Ctx, m: Mechanism): boolean {
+    return nearPlayer(ctx, m) && ctx.state.frameCount >= this.quietUntil;
   }
 
   dispose(): void {
@@ -63,7 +105,11 @@ export class Mechanisms implements MechanismsApi {
       // Fail-open rule: a wrecked mechanism groans, then its gate falls open.
       // Physics can never hard-lock progression. Plugs are exempt: their
       // body being destroyed is their JOB — the plug branch below fires them.
-      if (m.kind !== 'plug' && m.broken === undefined && m.body && ctx.state.frameCount % 30 === 0) {
+      // An open valve has deliberately retracted every recorded body cell;
+      // that is its healthy state, not structural destruction. Closed valves
+      // and physical trigger nodes still retain the normal fail-open audit.
+      const shouldAuditBody = m.kind !== 'plug' && !(m.kind === 'valve' && m.state === 1);
+      if (shouldAuditBody && m.broken === undefined && m.body && ctx.state.frameCount % 30 === 0) {
         let intact = 0;
         for (const [bx, by] of m.body) {
           if (!world.inBounds(bx, by)) continue;
@@ -72,20 +118,24 @@ export class Mechanisms implements MechanismsApi {
         }
         if (intact < m.body.length / 2) {
           m.broken = 1800; // 30 seconds of groaning
-          ctx.audio.groan();
-          ctx.events.emit('toast', { text: 'THE MECHANISM GROANS — SOMETHING GIVES WAY' });
+          ctx.audio.groan(m.x, m.y);
+          // Announce only what the player can witness: generation/settling can
+          // wreck several far-off mechanisms on arrival, and a stack of
+          // identical groans about machines you have never seen is noise.
+          if (ctx.state.frameCount < this.quietUntil) this.quietBreaks.add(m);
+          else if (nearPlayer(ctx, m)) this.say(ctx, 'A mechanism groans. Something gives way.');
         }
       }
       if (m.broken !== undefined && m.broken > 0) {
         m.broken--;
         if (m.broken % 360 === 0) {
-          ctx.audio.groan();
+          ctx.audio.groan(m.x, m.y);
           ctx.particles.burst(m.x, m.y - 3, 4, null, () => packRGB(130, 95, 80), 0.6, {
             grav: 0.06,
           });
         }
-        if (m.broken === 0) {
-          ctx.events.emit('toast', { text: 'THE BROKEN GATE FALLS OPEN' });
+        if (m.broken === 0 && !this.quietBreaks.has(m) && this.witnessed(ctx, m)) {
+          this.say(ctx, 'The broken gate falls open.');
         }
         continue; // a dying mechanism no longer senses
       }
@@ -103,7 +153,7 @@ export class Mechanisms implements MechanismsApi {
         if (m.pressed) m.state = DEFAULT_TRIGGER_LATCH_FRAMES; // stays open ~7s after weight lifts
         else if (m.state > 0) m.state--;
         if (m.pressed && !was) {
-          ctx.audio.tone(140, 90, 0.1, 'square', 0.14);
+          ctx.audio.sfx('mech.plate', m.x, m.y);
           ctx.particles.burst(m.x + m.w / 2, m.y - 1, 3, null, () => packRGB(190, 160, 80), 0.45, {
             grav: 0.04,
           });
@@ -122,7 +172,7 @@ export class Mechanisms implements MechanismsApi {
         m.reading = weight;
         const enough = weight >= (m.threshold ?? 24);
         if (enough && m.state === 0) {
-          ctx.audio.tone(180, 120, 0.14, 'square', 0.15);
+          ctx.audio.sfx('mech.scale', m.x, m.y);
           ctx.particles.burst(m.x + m.w / 2, m.y - 2, 4, null, () => packRGB(220, 170, 65), 0.55, {
             grav: 0.05,
             glow: 0.8,
@@ -142,7 +192,7 @@ export class Mechanisms implements MechanismsApi {
         m.reading = liquid;
         const afloat = liquid >= (m.threshold ?? 28);
         if (afloat && m.state === 0) {
-          ctx.audio.bubble();
+          ctx.audio.sfx('mech.buoy', m.x, m.y);
           ctx.particles.burst(m.x, m.y - 3, 5, null, () => packRGB(130, 205, 255), 0.6, {
             grav: -0.02,
             glow: 0.8,
@@ -162,12 +212,12 @@ export class Mechanisms implements MechanismsApi {
           }
           if (charged) {
             m.state = 1;
-            ctx.audio.zap();
+            ctx.audio.sfx('mech.latch', m.x, m.y);
             ctx.particles.burst(m.x, m.y - 3, 12, null, () => packRGB(120, 200, 255), 2.0, {
               glow: 2.4,
               grav: -0.01,
             });
-            ctx.events.emit('toast', { text: 'THE COIL DRINKS THE SPARK — LATCHED' });
+            if (this.witnessed(ctx, m)) this.say(ctx, 'The coil drinks the spark and latches.');
           }
         }
       } else if (m.kind === 'plug') {
@@ -184,6 +234,12 @@ export class Mechanisms implements MechanismsApi {
           const frac = m.breakFrac ?? 0.5;
           if (intact <= m.body.length * (1 - frac)) this.breakPlug(ctx, m, false);
         }
+      } else if (m.kind === 'sensor' && m.sensorType === 'light') {
+        // PHOTOCELL (light wave): a brass lens that drinks light. The wand's
+        // beam on the lens (or any blaze beside it — fire counts) charges it
+        // over ~1.5 s; in the dark it cools rather than resetting. Charged,
+        // it latches like any sensor and its gate answers.
+        this.updatePhotocell(ctx, m);
       } else if (m.kind === 'sensor' && m.zone) {
         // GENERIC SENSOR: bounded zone read on a 4-frame cadence (staggered
         // by id); the latch covers the scan latency.
@@ -205,7 +261,7 @@ export class Mechanisms implements MechanismsApi {
             else if (m.state > 0) m.state--;
           }
           if (!was && this.satisfied(m)) {
-            ctx.audio.tone(220, 110, 0.1, 'triangle', 0.12);
+            ctx.audio.sfx('mech.sensor', m.x, m.y);
             ctx.particles.burst(m.x, m.y - 2, 4, null, () => packRGB(140, 220, 190), 0.5, {
               grav: 0.02,
               glow: 0.9,
@@ -227,12 +283,12 @@ export class Mechanisms implements MechanismsApi {
           m.reading = weight;
           if (weight >= (m.threshold ?? 30)) {
             m.state = 1;
-            ctx.audio.tone(150, 200, 0.18, 'square', 0.16);
+            ctx.audio.sfx('mech.counterweight', m.x, m.y);
             ctx.particles.burst(m.x + m.w / 2, m.y - 2, 6, null, () => packRGB(200, 170, 90), 0.7, {
               grav: 0.05,
               glow: 0.9,
             });
-            ctx.events.emit('toast', { text: 'THE COUNTERWEIGHT SETTLES — SOMETHING SHIFTS' });
+            if (this.witnessed(ctx, m)) this.say(ctx, 'The counterweight settles. Something shifts.');
           }
         }
       } else if (m.kind === 'brazier') {
@@ -250,12 +306,12 @@ export class Mechanisms implements MechanismsApi {
           }
           if (lit) {
             m.state = 1;
-            ctx.audio.brazier();
+            ctx.audio.brazier(m.x, m.y);
             ctx.particles.burst(m.x, m.y - 3, 12, Cell.Fire, fireColor, 1.6, {
               glow: 2.2,
               grav: -0.02,
             });
-            ctx.events.emit('toast', { text: 'A BRAZIER ROARS TO LIFE' });
+            if (this.witnessed(ctx, m)) this.say(ctx, 'A brazier roars to life.');
           }
         } else if (ctx.state.frameCount % 6 === 0) {
           // keep it burning: re-seed a flame in the bowl
@@ -331,7 +387,7 @@ export class Mechanisms implements MechanismsApi {
           }
         }
         setDoorCells(ctx, door, want);
-        ctx.audio.doorGrind();
+        ctx.audio.doorGrind(door.x + door.w / 2, door.y + door.h / 2);
       }
     }
 
@@ -356,7 +412,7 @@ export class Mechanisms implements MechanismsApi {
           );
         }
       }
-      if (v.door.length === 0) ctx.audio.tone(520, 300, 0.3, 'triangle', 0.12);
+      if (v.door.length === 0) ctx.audio.sfx('mech.vault');
     }
 
     // Builder hazard emitters: drip `burst` real cells on their cadence —
@@ -425,7 +481,7 @@ export class Mechanisms implements MechanismsApi {
           if (edges[cursor]) {
             fired[chain[cursor].id] = true;
             cursor++;
-            ctx.audio.tone(300 + cursor * 90, 110, 0.1, 'triangle', 0.12); // step chime
+            ctx.audio.sfx('mech.sequence.step', undefined, undefined, { pitch: cursor * 2 }); // step chime
             if (cursor >= chain.length) actuator.seqDone = true;
           } else if (edges.some((e, n) => e && n > cursor)) {
             // The chain breaks: forget all progress and spit the
@@ -440,7 +496,7 @@ export class Mechanisms implements MechanismsApi {
                 if (t.kind === 'plate') t.pressed = false;
               }
             }
-            ctx.audio.tone(120, 200, 0.14, 'sawtooth', 0.1); // sour break
+            ctx.audio.sfx('mech.sequence.fail'); // sour break
           }
           actuator.seq = cursor; // derived, for HUD/probes
         }
@@ -511,13 +567,13 @@ export class Mechanisms implements MechanismsApi {
         if (m.closeT <= 0) {
           m.closeT = undefined;
           setValveCells(ctx, m, false);
-          ctx.audio.doorGrind();
+          ctx.audio.doorGrind(m.x + m.w / 2, m.y + m.h / 2);
         }
         return;
       }
       if (!want) {
         setValveCells(ctx, m, false);
-        ctx.audio.doorGrind();
+        ctx.audio.doorGrind(m.x + m.w / 2, m.y + m.h / 2);
       }
     } else {
       const timed = m.autoCloseFrames !== undefined && m.autoCloseFrames > 0;
@@ -526,7 +582,7 @@ export class Mechanisms implements MechanismsApi {
           if (this.satisfied(t)) this.sparkLine(ctx, t.x, t.y - 2, m.x + m.w / 2, m.y + m.h / 2);
         }
         setValveCells(ctx, m, true);
-        ctx.audio.doorGrind();
+        ctx.audio.doorGrind(m.x + m.w / 2, m.y + m.h / 2);
       } else if (m.closePending === true) {
         setValveCells(ctx, m, false);
       }
@@ -547,7 +603,7 @@ export class Mechanisms implements MechanismsApi {
       if (triggers.length === 0) return;
       if (this.aggregateWant(ctx, m, triggers)) {
         m.fuseT = Math.max(0, Math.floor(m.delayFrames ?? 0));
-        if (m.fuseT > 0) ctx.audio.tone(260, 90, 0.08, 'triangle', 0.1); // armed tick
+        if (m.fuseT > 0) ctx.audio.sfx('mech.relay.arm', m.x, m.y); // armed tick
       }
     }
     if (m.fuseT !== undefined) {
@@ -563,7 +619,7 @@ export class Mechanisms implements MechanismsApi {
   private fireRelay(ctx: Ctx, m: Mechanism, list: Mechanism[]): void {
     m.state = 1;
     m.fuseT = undefined;
-    ctx.audio.tone(420, 140, 0.12, 'triangle', 0.14);
+    ctx.audio.sfx('mech.relay.fire', m.x, m.y);
     ctx.particles.burst(m.x, m.y - 2, 8, null, () => packRGB(255, 196, 90), 1.4, {
       glow: 1.8,
       grav: 0,
@@ -641,7 +697,7 @@ export class Mechanisms implements MechanismsApi {
     );
     bodies.push(body);
     ctx.particles.burst(m.x, m.y + 1, 6, null, () => packRGB(180, 172, 150), 1.0, { grav: 0.06 });
-    ctx.audio.tone(190, 130, 0.07, 'square', 0.1);
+    ctx.audio.sfx('mech.dispenser', m.x, m.y);
   }
 
   /**
@@ -655,7 +711,9 @@ export class Mechanisms implements MechanismsApi {
     const world = ctx.world;
     const mat = m.material ?? Cell.Stone;
     const fn = COLOR_FN[mat];
-    if (demolish && m.body) {
+    // A route seal that has mostly burned or been dug away collapses: the
+    // stump would still be a wall, and its level narrates its own fall.
+    if ((demolish || m.routeSeal) && m.body) {
       for (const [bx, by] of m.body) {
         if (!world.inBounds(bx, by)) continue;
         const i = world.idx(bx, by);
@@ -675,11 +733,57 @@ export class Mechanisms implements MechanismsApi {
         }
       }
     }
-    ctx.audio.tone(140, 220, 0.16, 'sawtooth', 0.14);
+    if (m.routeSeal) {
+      // Its tinder and its burning fragments come down with it: moss caulking
+      // and flame in the seal's own outline fall as a shower of embers, so the
+      // doorway is passable at once rather than burning on beside the player.
+      for (let y = m.y; y < m.y + m.h; y++) for (let x = m.x; x < m.x + m.w; x++) {
+        if (!world.inBounds(x, y)) continue;
+        const i = world.idx(x, y), t = world.types[i];
+        if (t !== Cell.Fire && !isSoftGrowth(t)) continue;
+        world.clearCellAt(i);
+        if (entityRandom() < 0.35) ctx.particles.spawn(x, y, (entityRandom() - 0.5) * 1.1, 0.2 + entityRandom() * 0.6,
+          null, emberColor(), 22 + Math.floor(entityRandom() * 18), { grav: 0.08, glow: 2 });
+      }
+    }
+    ctx.audio.sfx('mech.plug', m.x, m.y);
     ctx.particles.burst(m.x + m.w / 2, m.y + m.h / 2, 8, null, () => packRGB(180, 150, 110), 1.2, {
       grav: 0.05,
     });
-    ctx.events.emit('toast', { text: 'A SEAL GIVES WAY' });
+    if (!m.routeSeal) this.say(ctx, 'A seal gives way.');
+  }
+
+  /** Photocell charge, latch and feedback (sensorType 'light'). */
+  private updatePhotocell(ctx: Ctx, m: Mechanism): void {
+    const latch = m.latch ?? 'permanent';
+    if (latch === 'permanent' && m.state === 1) return;
+    const q = ctx.lightQuery;
+    const lit = q !== undefined && (q.wandLight(m.x, m.y) >= PHOTOCELL.beam || q.level(m.x, m.y) >= PHOTOCELL.blaze);
+    const full = m.threshold ?? PHOTOCELL.chargeTicks;
+    const before = m.reading ?? 0;
+    const reading = Math.max(0, Math.min(full, before + (lit ? 1 : -PHOTOCELL.drain)));
+    m.reading = reading;
+    // A hum that swells as it fills, so a held beam is audibly "working"
+    // (a sustained cue: it lives while the beam holds and fades when it drops).
+    if (lit && reading < full) {
+      ctx.audio.sfx('light.photocell.loop', m.x, m.y, { key: `photocell#${m.id}`, gain: 0.35 + 0.65 * (reading / full) });
+    }
+    const hot = reading >= full;
+    const was = this.satisfied(m);
+    if (latch === 'permanent') {
+      if (hot) m.state = 1;
+    } else if (hot) {
+      m.state = m.latchFrames ?? DEFAULT_TRIGGER_LATCH_FRAMES;
+    } else if (m.state > 0 && !lit) {
+      m.state--;
+    }
+    if (!was && this.satisfied(m)) {
+      // The lens takes: a bright brass chime, sparks off the rim (the
+      // lightDevice event's sound: audio/EventCues).
+      ctx.particles.burst(m.x, m.y, 10, null, () => packRGB(255, 214, 120), 1.2, { glow: 2.2, grav: 0.02 });
+      ctx.events.emit('lightDevice', { kind: 'photocell', x: m.x, y: m.y });
+      if (nearPlayer(ctx, m) && latch === 'permanent') ctx.events.emit('toast', { text: 'The lens drinks the light. Something unbolts.' });
+    }
   }
 
   /** One bounded sensor-zone read (the sensorType decides what counts). */
@@ -707,6 +811,8 @@ export class Mechanisms implements MechanismsApi {
         }
       }
     }
+    // A weight sensor feels the dead lying in its zone as well as the cells.
+    if (type === 'weight') n += ctx.corpses?.weightOn(z.x0, z.y0, z.x1, z.y1) ?? 0;
     return n;
   }
 
@@ -778,6 +884,8 @@ export class Mechanisms implements MechanismsApi {
       if (e.y >= m.y - 3 && e.y <= m.y + 1 && e.x + def.halfW >= m.x && e.x - def.halfW <= m.x + m.w)
         weight += 4;
     }
+    // The dead weigh too: remains lying on the sill press it (a slime's 4, a bat's 2).
+    weight += ctx.corpses?.weightOn(m.x - 1, m.y - 5, m.x + m.w + 1, m.y + 1) ?? 0;
     return weight >= 3;
   }
 
@@ -799,9 +907,8 @@ export class Mechanisms implements MechanismsApi {
         dy = v.ry - y;
       if (dx * dx + dy * dy <= radius * radius) {
         v.active = true;
-        ctx.events.emit('toast', { text: 'ANCIENT RUNE STRUCK — A VAULT RUMBLES OPEN' });
-        ctx.audio.tone(220, 500, 0.5, 'sine', 0.18);
-        setTimeout(() => ctx.audio.tone(330, 400, 0.4, 'sine', 0.14), 240);
+        ctx.events.emit('toast', { text: 'Rune struck. Somewhere, a vault rumbles open.' });
+        ctx.audio.sfx('mech.rune');
         ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.012, 0.05);
         ctx.particles.burst(v.rx, v.ry, 18, null, () => packRGB(140, 255, 180), 2.6, {
           glow: 2.6,
@@ -812,6 +919,7 @@ export class Mechanisms implements MechanismsApi {
   }
 
   interact(ctx: Ctx): boolean {
+    if (ctx.contraption?.interact()) return true;
     const runtime = ctx.levels.current;
     if (!runtime || ctx.state.mode !== 'play' || ctx.player.dead) return false;
     if (ctx.player.pullT > 0) return true; // already mid-pull
@@ -827,7 +935,7 @@ export class Mechanisms implements MechanismsApi {
         ctx.player.pullT = 26;
         ctx.player.pullDir = Math.sign(m.x - ctx.player.x) || 1;
         ctx.player.facing = ctx.player.pullDir;
-        ctx.audio.tone(180, 140, 0.08, 'square', 0.08); // the grip
+        ctx.audio.sfx('mech.grip', m.x, m.y); // the grip
         return true;
       }
     }
@@ -838,7 +946,7 @@ export class Mechanisms implements MechanismsApi {
       const dx = shrine.x - ctx.player.x,
         dy = shrine.y - (ctx.player.y - 4);
       if (dx * dx + dy * dy < 16 * 16) {
-        ctx.audio.tone(660, 220, 0.18, 'triangle', 0.1);
+        ctx.audio.sfx('mech.shrine', shrine.x, shrine.y);
         ctx.sanctum.openShop(ctx);
         return true;
       }

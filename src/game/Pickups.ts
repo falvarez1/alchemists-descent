@@ -3,13 +3,21 @@ import {
   collectOwnedCards,
   requestCardOffer,
   TOME_REWARD_POOL,
+  withDiscoveredCards,
 } from '@/combat/wands/rewardPools';
 import { ALL_CARD_IDS } from '@/combat/wands/cards';
+import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
 import { makePickup, POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
 import type { CardId, Ctx, Pickup, PickupsApi } from '@/core/types';
 import { blocksEntity } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
+import { LEG_CLUB_SWINGS } from '@/combat/WeaverLimbs';
+import { updateLooseWeaverLeg } from '@/combat/LooseWeaverLeg';
+import { sightClear } from '@/creatures/perception';
+import { cancelChargingBlackHole } from '@/core/runtimeState';
+import { getBindings, keyLabel } from '@/input/bindings';
+import { INTRO_OBJECTIVE } from '@/game/introObjectives';
 
 /**
  * World pickups (upgrade-port meta layer): hearts, spell tomes, chests,
@@ -43,6 +51,14 @@ export class Pickups implements PickupsApi {
 
     for (const p of runtime.pickups) {
       if (p.taken || p.data.offerPending) continue;
+      if (p.kind === 'key' && runtime.living && !runtime.living.tea?.completed) continue;
+      const handsFree = !player.legClub && !player.swinging && !ctx.rigidBodies?.isHolding?.();
+      if (p.kind === 'weaverleg' && p.data.legDurability !== undefined) {
+        updateLooseWeaverLeg(ctx, p);
+        if (!p.taken && !player.dead && handsFree && !p.data.legThrown && !p.data.legPickupBlocked &&
+            Math.hypot(player.x - p.x, player.y - 8 - p.y) < 14 && sightClear(world, player.x, player.y - 8, p.x, p.y)) this.collect(ctx, p);
+        continue;
+      }
 
       // Settle physics: fall until resting on blocking cells.
       const below = world.inBounds(Math.floor(p.x), Math.floor(p.y) + 1)
@@ -58,6 +74,12 @@ export class Pickups implements PickupsApi {
       const dx = player.x - p.x;
       const dy = player.y - 8 - p.y;
       const d2 = dx * dx + dy * dy;
+      const canCollect = p.kind !== 'weaverleg' || handsFree;
+      if (p.kind === 'weaverleg') {
+        p.data.legAge = Math.min(100000, (p.data.legAge ?? 0) + 1);
+        if (blocksEntity(below)) { p.data.legSpin = (p.data.legSpin ?? 0) * .6; p.data.legAngle = (p.data.legAngle ?? 0) * .8; }
+        else p.data.legAngle = (p.data.legAngle ?? 0) + (p.data.legSpin ?? 0);
+      }
       const magnetRange = player.perks.goldmagnet && p.kind === 'goldpile' ? 48 : 24;
       let clearLine = true;
       if (d2 < magnetRange * magnetRange) {
@@ -70,7 +92,7 @@ export class Pickups implements PickupsApi {
           }
         }
       }
-      if (!player.dead && d2 < magnetRange * magnetRange && clearLine) {
+      if (!player.dead && canCollect && d2 < magnetRange * magnetRange && clearLine) {
         const d = Math.sqrt(d2) || 1;
         p.vx += (dx / d) * 0.18;
         p.vy += (dy / d) * 0.18;
@@ -79,10 +101,16 @@ export class Pickups implements PickupsApi {
       } else {
         p.vx *= 0.8;
       }
+      if (p.kind === 'weaverleg' && world.inBounds(Math.floor(p.x + p.vx), Math.floor(p.y)) &&
+          blocksEntity(world.types[world.idx(Math.floor(p.x + p.vx), Math.floor(p.y))])) p.vx *= -.3;
       p.x += p.vx;
       p.y += p.vy;
 
-      if (!player.dead && d2 < 49 && clearLine) this.collect(ctx, p);
+      // Floor-resting tomes sit about eight cells below the standing body's
+      // interaction focus. Give this authored, important pickup one body-width
+      // of grace so walking across a spell pedestal cannot silently miss it.
+      const collectRadius = p.kind === 'tome' ? 11 : p.kind === 'weaverleg' ? 7 : 9;
+      if (!player.dead && canCollect && d2 < collectRadius * collectRadius && clearLine) this.collect(ctx, p);
     }
   }
 
@@ -95,19 +123,32 @@ export class Pickups implements PickupsApi {
     p.taken = true;
     ctx.telemetry.count('pickup.' + p.kind);
 
-    if (p.kind === 'goldpile') {
-      const amount = p.data.amount ?? 25;
+    if (p.kind === 'weaverleg') {
+      const durability = Math.max(1, Math.min(LEG_CLUB_SWINGS, p.data.legDurability ?? LEG_CLUB_SWINGS));
+      player.legClub = { durability, length: Math.max(26, Math.min(44, p.data.legLength ?? 34)), swingT: 0, angle: player.aimAngle, cooldown: 0, owner: p.data.legOwner };
+      player.firing = false; player.firePressed = false; player.fireBlockedUntilRelease = true; player.recoilT = 0;
+      cancelChargingBlackHole(ctx, { removeProjectile: true });
+      ctx.events.emit('toast', { text: `Weaver leg equipped · LMB whip · RMB throw · ${keyLabel(getBindings().carry)} drop` });
+      ctx.audio.sfx('pickup.leg');
+    } else if (p.kind === 'goldpile') {
+      const amount = p.data.amount ?? 10;
       ctx.state.score += amount;
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
-      ctx.events.emit('toast', { text: `+${amount} oz GOLD` });
-      ctx.audio.pickup();
+      ctx.events.emit('toast', { text: `+${amount} oz gold` });
+      ctx.audio.sfx('pickup.gold');
     } else if (p.kind === 'heart') {
       // The vessel grows at once; refilling it is a COMMUNION — the alchemist
       // roots in place, glowing, while ~20 HP charges in (see Player.update).
       player.maxHp += 20;
-      player.recharge = 110;
-      ctx.events.emit('toast', { text: '+20 MAX HP — COMMUNION, HOLD FAST' });
-      ctx.audio.chest();
+      if (ctx.story?.escapeActive) {
+        // No holding still with the lava rising: in the escape it takes at once.
+        player.hp = Math.min(player.maxHp, player.hp + 20);
+        ctx.events.emit('toast', { text: '+20 max HP.' });
+      } else {
+        player.recharge = 110;
+        ctx.events.emit('toast', { text: '+20 max HP. Hold still while it takes.' });
+      }
+      ctx.audio.sfx('pickup.heart');
       ctx.particles.burst(p.x, p.y - 2, 14, null, () => packRGB(255, 90, 120), 1.8, {
         glow: 1.8,
         grav: -0.02,
@@ -118,7 +159,7 @@ export class Pickups implements PickupsApi {
       const piles = 3 + Math.floor(entityRandom() * 3);
       for (let i = 0; i < piles; i++) {
         const gp = makePickup('goldpile', p.x + (entityRandom() - 0.5) * 14, p.y - 4 - entityRandom() * 6, {
-          amount: 15 + Math.floor(entityRandom() * 25),
+          amount: 5 + Math.floor(entityRandom() * 9),
         });
         gp.vx = (entityRandom() - 0.5) * 1.6;
         gp.vy = -1.2 - entityRandom();
@@ -128,7 +169,7 @@ export class Pickups implements PickupsApi {
         const potion = POTION_KINDS[Math.floor(entityRandom() * POTION_KINDS.length)];
         runtime?.pickups.push(makePickup('potion', p.x, p.y - 8, { potion }));
       }
-      ctx.events.emit('toast', { text: 'CHEST OPENED' });
+      ctx.events.emit('toast', { text: 'The chest gives up its contents.' });
       ctx.audio.chest();
     } else if (p.kind === 'potion') {
       const def = POTION_DEFS[potionIdOrRandom(p.data.potion)] ?? POTION_DEFS.vigor;
@@ -139,9 +180,9 @@ export class Pickups implements PickupsApi {
     } else if (p.kind === 'key') {
       const runtime = ctx.levels.current;
       if (runtime) runtime.keyTaken = true;
-      ctx.events.emit('toast', { text: 'GOLDEN KEY ACQUIRED' });
-      ctx.events.emit('objectiveChanged', { text: 'RETURN TO THE PORTAL' });
-      ctx.audio.keyJingle();
+      ctx.events.emit('toast', { text: runtime?.living ? 'The brass bell is yours.' : 'The golden key is yours.' });
+      ctx.events.emit('objectiveChanged', { text: runtime?.living ? 'Follow the undertow to the lower gate.' : INTRO_OBJECTIVE.returnPortal });
+      ctx.audio.sfx(runtime?.living ? 'pickup.bell' : 'pickup.key');
       ctx.particles.burst(p.x, p.y - 2, 16, null, () => packRGB(255, 230, 90), 2.0, {
         glow: 2.2,
         grav: -0.01,
@@ -166,9 +207,10 @@ export class Pickups implements PickupsApi {
       return;
     }
 
-    const pool = fixedCard && !TOME_REWARD_POOL.includes(fixedCard)
-      ? [fixedCard, ...TOME_REWARD_POOL]
-      : TOME_REWARD_POOL;
+    // Every card discovered in an earlier run joins the tome's pool; the
+    // offer still prefers pages this run does not own yet.
+    const base = withDiscoveredCards(TOME_REWARD_POOL, getDiscoveredCards());
+    const pool = fixedCard && !base.includes(fixedCard) ? [fixedCard, ...base] : base;
     const cards = buildCardOffer(pool, collectOwnedCards(ctx.wands), {
       preferred: fixedCard ? [fixedCard] : [],
       ensureKind: 'projectile',

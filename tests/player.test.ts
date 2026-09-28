@@ -67,7 +67,7 @@ describe('player death economy', () => {
       events,
       waves: { num: 1 },
       particles: { burst: () => undefined },
-      audio: { squelch: () => undefined, boom: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, squelch: () => undefined, boom: () => undefined },
       fx: { screenShake: 0 },
     } as unknown as Ctx;
 
@@ -93,7 +93,7 @@ describe('player death economy', () => {
       events: new EventBus(),
       waves: { num: 1 },
       particles: { burst: () => undefined },
-      audio: { squelch: () => undefined, boom: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, squelch: () => undefined, boom: () => undefined },
       fx: { screenShake: 0 },
     } as unknown as Ctx;
 
@@ -119,7 +119,7 @@ describe('player death economy', () => {
       events: new EventBus(),
       waves: { num: 1 },
       particles: { burst: () => undefined },
-      audio: { squelch: () => undefined, boom: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, squelch: () => undefined, boom: () => undefined },
       fx: { screenShake: 0 },
     } as unknown as Ctx;
 
@@ -150,7 +150,7 @@ describe('player death economy', () => {
       events: new EventBus(),
       telemetry: { count: () => undefined },
       particles: { burst: () => undefined },
-      audio: { squelch: () => undefined, boom: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, squelch: () => undefined, boom: () => undefined },
       fx: { screenShake: 0 },
     } as unknown as Ctx;
 
@@ -183,7 +183,7 @@ describe('player death economy', () => {
       events: new EventBus(),
       telemetry: { count: () => undefined },
       particles: { burst: () => undefined },
-      audio: { squelch: () => undefined, boom: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, squelch: () => undefined, boom: () => undefined },
       fx: { screenShake: 0, bloomKick: 0, digBeam: null, hitstop: 6, deathSlowMo: 40 },
       vineStrands: { releaseSwing: () => { vineReleaseCount++; } },
     } as unknown as Ctx;
@@ -236,7 +236,7 @@ describe('player death economy', () => {
       events: new EventBus(),
       telemetry: { count: () => undefined },
       particles: { burst: () => undefined },
-      audio: { squelch: () => undefined, boom: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, squelch: () => undefined, boom: () => undefined },
       fx: { screenShake: 0 },
     } as unknown as Ctx;
 
@@ -281,7 +281,7 @@ describe('player death economy', () => {
       },
       particles: { list: [], spawn: () => undefined },
       vineStrands: { applyRadialImpulse: () => undefined },
-      audio: { tone: () => undefined, noiseBurst: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, tone: () => undefined, noiseBurst: () => undefined },
     } as unknown as Ctx;
 
     new PlayerControl(ctx).kick(ctx);

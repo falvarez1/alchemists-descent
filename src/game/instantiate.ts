@@ -156,7 +156,7 @@ export const SENSOR_FILTER_CELLS: Record<string, number> = {
   teleportium: Cell.Teleportium,
 };
 
-const SENSOR_TYPES = new Set(['heat', 'liquid', 'weight', 'charge', 'material']);
+const SENSOR_TYPES = new Set(['heat', 'liquid', 'weight', 'charge', 'material', 'light']);
 const LATCH_MODES = new Set(['momentary', 'timed', 'permanent']);
 const RELAY_ACTIONS = new Set(['activate', 'ignite', 'break', 'strike']);
 /** Machine trigger kinds instantiated object-first, wired from their out-link. */
@@ -199,6 +199,10 @@ export function makeInstantiationSink(): InstantiationSink {
 export function spawnPrefabEnemy(ctx: Ctx, rec: PrefabEnemy): void {
   const e = ctx.enemyCtl.spawn(rec.kind, rec.x, rec.y, { exact: true });
   if (!e) return;
+  // The authored record id travels onto the entity so whoever instantiated
+  // this set can find the enemy again. AuthorLink's teardown matches on it;
+  // without it every re-publish of a document spawned another copy.
+  if (rec.sourceId !== undefined) e.sourceId = rec.sourceId;
   if (rec.sleeping === true && (e.kind === 'bat' || e.kind === 'weaver')) {
     e.sleeping = true;
   }

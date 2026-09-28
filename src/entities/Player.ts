@@ -5,6 +5,7 @@
 // DOM writes (game-over overlay) become 'playerDied' / 'playerRespawned' events.
 
 import { DEATH_SLOWMO_FRAMES, HEIGHT, WIDTH } from '@/config/constants';
+import { gustHabitat } from '@/game/HabitatMotion';
 import { difficultyMods } from '@/config/difficulty';
 import { clamp } from '@/core/math';
 import type { Ctx, EnemyKind, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
@@ -13,10 +14,14 @@ import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus, sampleB
 import { playerMovementPace, playerVerticalPace } from '@/core/progressionPacing';
 import { PERK_IDS } from '@/content/perks';
 import { makePickup } from '@/core/pickupDefs';
+import { startLegSwing } from '@/combat/WeaverLimbs';
+import { createSelfShockState, drawConductorArc, fairShockDamage } from '@/combat/SelfShock';
+import { getAimGuide } from '@/combat/AimGuide';
 import { resetCombatTransients } from '@/core/runtimeState';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { bloodColor, packRGB, smokeColor } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
+import { stepPlayerCostume } from '@/entities/playerCostume';
 
 const REVIEW_STATUS_FRAMES = 3600;
 const CLIMB_FACE_REACHES = [PLAYER_HALF_W + 1, PLAYER_HALF_W + 2, PLAYER_HALF_W + 3, PLAYER_HALF_W + 4];
@@ -53,7 +58,7 @@ const TELEPORT_SEARCH_RADIUS = 260;
 // same teeth. Set pieces (bosses, egg clutches) are exempt: deleting a boss
 // would skip content, not save a life.
 const RESPAWN_CLEAR_RADIUS = 200;
-const RESPAWN_CLEAR_EXEMPT: ReadonlySet<EnemyKind> = new Set(['colossus', 'leviathan', 'eggs']);
+const RESPAWN_CLEAR_EXEMPT: ReadonlySet<EnemyKind> = new Set(['colossus', 'leviathan', 'rimewarden', 'lenswright', 'eggs']);
 /** Death respawns earn a longer invuln grace than the arrival default (90) —
  *  the prototype used 120 and it reads as "you get one clean breath". */
 const RESPAWN_DEATH_INVULN = 120;
@@ -82,7 +87,7 @@ const WADE_STAIN_GAIN = 18; // soak charge banked per frame of wading (×0.35–
 // See config/params.ts PLAYER_PARAMS and core/types.ts PlayerTuning.
 const ENEMY_STOMP_BOUNCE = 3.6; // upward pop after a Mario-style stomp kill (chains to the next foe)
 // Too big/heavy to stomp — a boot off these just bounces (handle them another way).
-const STOMP_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'golem']);
+const STOMP_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'rimewarden', 'lenswright', 'golem']);
 const SWING_REACH = 16;
 const SWING_PUMP = 0.16;
 const SWING_MIN_LEN = 14;
@@ -181,6 +186,7 @@ export function createPlayer(): PlayerState {
     swapT: 0,
     recoilT: 0,
     kickT: 0,
+    legClub: undefined,
     kickDir: 1,
     staggerT: 0,
     staggerDir: 1,
@@ -252,13 +258,15 @@ export class PlayerControl implements PlayerControlApi {
   private prevGrabHeld = false;
   /** Sustained levitation frames (drives the thrust response curve). */
   private levitFrames = 0;
+  /** The wand dropped at death (a rigid body), removed with the corpse. */
+  private deathWand: RigidBody | null = null;
   /** Last half-turn of the stride wheel that produced a footstep. */
   private lastStrideStep = 0;
   /** Consecutive frames standing still (arms the idle fidget). */
   private idleFrames = 0;
   /** Was the body submerged last frame (splash edge detector). */
   private prevInLiquid = false;
-  /** Horizontal accel multiplier from the status engine (frozen = 0.55). */
+  /** Horizontal accel multiplier from the status engine (electrified 0.82; the chill slows him through the pace). */
   private statusSlow = 1;
   /** Edge detector for the CRAMPED HUD glyph (crawling, wants up, can't). */
   private prevCramped = false;
@@ -464,7 +472,7 @@ export class PlayerControl implements PlayerControlApi {
         this.jumpNeedsRelease = true; // W got him up here; W must not hop him off
         this.stopClimb(player);
         ctx.particles.burst(nx, ny - 2, 7, null, () => packRGB(150, 140, 120), 1.2, { grav: 0.05 });
-        ctx.audio.noiseBurst(0.05, 300, 0.08, true);
+        ctx.audio.sfx('player.pullup');
         return true;
       }
     }
@@ -493,7 +501,7 @@ export class PlayerControl implements PlayerControlApi {
     if (clearance.ok) this.brushClimbDebris(ctx, clearance.brush, side);
     player.hat.vx += side * 0.9;
     player.hat.vy -= 1.0;
-    ctx.audio.noiseBurst(0.04, 420, 0.06, true);
+    ctx.audio.sfx('player.grab');
   }
 
   private stopClimb(player: PlayerState): void {
@@ -538,13 +546,13 @@ export class PlayerControl implements PlayerControlApi {
       const crown = e.y - def.h;
       // Feet must have driven down into the foe from above (crown..feet band).
       if (player.y >= crown - 4 && player.y <= e.y + 1) {
-        ctx.enemyCtl.kill(e, player.vx * 0.4, -1.2);
+        ctx.enemyCtl.kill(e, player.vx * 0.4, -1.2, 'direct');
         player.diveT = 0;
         player.vy = -ENEMY_STOMP_BOUNCE;
         player.grounded = false;
         player.stretchT = 6;
         ctx.fx.hitstop = Math.max(ctx.fx.hitstop, 3); // a crunchy little freeze
-        ctx.audio.landThud(0.85);
+        ctx.audio.sfx('player.stomp');
         return; // one kill per frame; the bounce carries you onward
       }
     }
@@ -560,7 +568,15 @@ export class PlayerControl implements PlayerControlApi {
     player.wallGrabT = 0;
   }
 
-  constructor(private ctx: Ctx) {}
+  /** Self-shock fairness bookkeeping: the last cast and the capped damage window. */
+  private readonly selfShock = createSelfShockState();
+
+  constructor(private ctx: Ctx) {
+    // `?.` twice: minimal test contexts carry an events stub without `on`.
+    ctx.events?.on?.('cardCast', () => {
+      this.selfShock.lastCast = ctx.state.frameCount;
+    });
+  }
 
   private tryHorizontalGroundStep(ctx: Ctx, dir: -1 | 1, bodyH: number, stepUp: number, followGround: boolean): number | null {
     const player = ctx.player;
@@ -615,6 +631,8 @@ export class PlayerControl implements PlayerControlApi {
     const ctx = this.ctx;
     const player = ctx.player;
     if (player.dead || player.invuln > 0) return;
+    // The arrival's grace (game/arrival): nothing lands while the floor's name is up.
+    if (ctx.state.frameCount < (ctx.state.arrivalGraceUntil ?? -1)) return;
     if (ctx.state.debugGodMode) {
       this.noteDamageSource(src);
       player.dead = false;
@@ -670,6 +688,7 @@ export class PlayerControl implements PlayerControlApi {
   kick(ctx: Ctx): void {
     const player = ctx.player;
     if (player.dead || player.climbing || ctx.state.mode !== 'play') return;
+    if (startLegSwing(ctx)) return;
     if (this.kickCooldownT > 0) return;
     const lp = ctx.params.player;
     this.kickCooldownT = lp.kickCooldown;
@@ -809,15 +828,23 @@ export class PlayerControl implements PlayerControlApi {
       const g = gustAt(e.x, e.y - 5);
       if (g > 0) ctx.enemyCtl.gustShove(e, dirX, dirY, g * GUST_ENEMY_PUSH);
     }
+    // The dead: a body in the melee cone is punted (even out of the wand's
+    // grip), bodies in the gust are shoved. A heavy carcass kicks back like a wall.
+    const bodyReaction = ctx.corpses?.kick(ox, oy, dirX, dirY, lp.kickRange, cosArc, gustAt) ?? 0;
+    if (bodyReaction > Math.max(KICK_BASE_RECOIL, reaction)) {
+      const extra = lp.kickSelfRecoil * (bodyReaction - Math.max(KICK_BASE_RECOIL, reaction));
+      this.applyImpulse(-dirX * extra, -dirY * extra);
+    }
     ctx.vineStrands?.applyRadialImpulse(ox, oy, windRange * 0.9, 1.8); // bend the hanging vines in the gust
+    gustHabitat(ctx, gustAt, dirX, dirY);
+    ctx.flora?.gust(ctx, gustAt, dirX, dirY, ox, oy); // saplings snap, trees shake their pods loose
 
     // Feedback: a dust arc along the kick + a low thud + an airy whoosh.
     for (let k = 0; k < 8; k++) {
       const spread = a + (entityRandom() - 0.5) * lp.kickArc * 1.6;
       ctx.particles.spawn(ox + dirX * 4, oy + dirY * 4, Math.cos(spread) * 1.6, Math.sin(spread) * 1.6, null, packRGB(190, 178, 158), 12, { grav: 0.05 });
     }
-    ctx.audio.tone(150, 90, 0.14, 'square', 0.09);
-    ctx.audio.noiseBurst(0.12, 220, 0.09); // whoosh
+    ctx.audio.sfx('player.kick'); // thud + whoosh
   }
 
   /** Latch onto the nearest hanging vine for a pendulum swing; true if latched. */
@@ -834,7 +861,7 @@ export class PlayerControl implements PlayerControlApi {
     this.swingLen = Math.max(SWING_MIN_LEN, Math.min(g.length, SWING_MAX_LEN));
     this.swingJumpPrev = ctx.input.keys.jump; // don't insta-launch if jump is already held
     ctx.vineStrands.driveSwing(player.x, player.y - 8);
-    ctx.audio.tone(260, 160, 0.06, 'sine', 0.06);
+    ctx.audio.sfx('player.vine');
     return true;
   }
 
@@ -867,6 +894,7 @@ export class PlayerControl implements PlayerControlApi {
     this.jumpCutGraceFrames = 0;
     this.prevJumpHeld = false;
     this.kickCooldownT = 0;
+    if (ctx.player.legClub) { ctx.player.legClub.swingT = 0; ctx.player.legClub.cooldown = 0; ctx.player.legClub.rig = undefined; }
     this.swingAX = 0;
     this.swingAY = 0;
     this.swingLen = 0;
@@ -959,17 +987,19 @@ export class PlayerControl implements PlayerControlApi {
     player.dead = true;
     player.hp = 0;
     player.recharge = 0;
+    player.firePressed = false; // a click buffered as you fell is not a shot at your checkpoint
     clearElementalStatus(player.status);
     this.resetClimbState(player);
     ctx.particles.burst(player.x, player.y - 7, 56, Cell.Blood, bloodColor, 4.2);
-    ctx.particles.burst(player.x, player.y - 7, 10, null, () => packRGB(168, 85, 247), 3.4, {
+    ctx.particles.burst(player.x, player.y - 7, 10, null, () => packRGB(221, 209, 159), 2.4, {
       glow: 2.4,
       grav: 0.04,
     });
     // Death is a walk back, not a reset: a small recoverable purse spills (the
     // fraction scales with difficulty — gentler on easy, harsher on Archmage).
     const runtime = ctx.levels.current;
-    const spill = Math.floor(ctx.state.score * difficultyMods(ctx.state).deathPenalty);
+    // (Not in the Kiln escape: a fall in the climb is a quick restart, never a cost.)
+    const spill = ctx.story?.escapeActive ? 0 : Math.floor(ctx.state.score * difficultyMods(ctx.state).deathPenalty);
     if (runtime && spill > 0) {
       ctx.state.score -= spill;
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
@@ -987,9 +1017,9 @@ export class PlayerControl implements PlayerControlApi {
     ctx.levels.saveDeathCheckpoint?.(ctx);
     // RAGDOLL DEATH: the wizard becomes a tumbling corpse flung with his last
     // momentum (plus a death-pop + spin). The game-over overlay waits until it
-    // settles (see tickCorpse → 'playerCorpseSettled'); a tombstone rises then.
+    // settles (see tickCorpse → 'playerCorpseSettled').
     if (ctx.rigidBodies) {
-      this.corpse = ctx.rigidBodies.spawn({ kind: 'box', halfW: 3, halfH: 8 }, player.x, player.y - 8, {
+      this.corpse = ctx.rigidBodies.spawnPlayerRagdoll?.(player) ?? ctx.rigidBodies.spawn({ kind: 'box', halfW: 3, halfH: 8 }, player.x, player.y - 8, {
         density: 1,
         friction: 0.7,
         restitution: 0.28,
@@ -1001,8 +1031,21 @@ export class PlayerControl implements PlayerControlApi {
       });
       this.corpseSettled = false;
       this.corpseT = 0;
+      // The wand leaves his hand: a real stick that clatters, rolls, and whose
+      // light gutters out (render/player/AlchemistArt drawDroppedWand).
+      const tip = ctx.spells?.wandTip?.();
+      if (tip && ctx.rigidBodies.spawn) {
+        const hx = player.x + player.facing * 3.5, hy = player.y - 7;
+        const ang = Math.atan2(tip.y - hy, tip.x - hx);
+        this.deathWand = ctx.rigidBodies.spawn({ kind: 'box', halfW: 5.4, halfH: 0.45 }, hx + Math.cos(ang) * 3, hy + Math.sin(ang) * 3, {
+          density: 0.45, friction: 0.6, restitution: 0.35, angle: ang,
+          vx: player.vx * 0.9 + player.facing * 0.9, vy: Math.min(player.vy, 0) - 1.9, va: player.facing * 0.32,
+          tag: 'player-corpse-wand', color: packRGB(92, 58, 30),
+          onTerrainHit: (_b, speed) => { if (speed > 0.8) ctx.audio.sfx('player.corpse.wand', undefined, undefined, { gain: Math.min(1, speed / 3) }); },
+        });
+      }
     }
-    ctx.audio.squelch();
+    ctx.audio.sfx('player.death');
     ctx.audio.boom(10);
     ctx.fx.screenShake = 0.05;
     // A beat of freeze, then slow-mo: the death reads as a moment, and the camera
@@ -1019,22 +1062,27 @@ export class PlayerControl implements PlayerControlApi {
   }
 
   /** Watch the death ragdoll: once it sleeps (or after a timeout so the UI is
-   *  never stranded) mark it settled — the renderer raises a tombstone and the
-   *  game-over overlay reveals. Runs every frame while a corpse exists. */
+   *  never stranded) mark it settled and reveal the game-over overlay.
+   *  Runs every frame while a corpse exists. */
   private tickCorpse(ctx: Ctx): void {
     const corpse = this.corpse;
     if (!corpse) return;
     this.corpseT++;
-    if (!this.corpseSettled && (corpse.sleeping || this.corpseT > 240)) {
+    const rig = ctx.rigidBodies.playerRagdoll;
+    const quiet = rig ? Object.values(rig.parts).every(part => part.sleeping || Math.hypot(part.vx, part.vy) < .05) : corpse.sleeping;
+    if (!this.corpseSettled && ((quiet && this.corpseT > 40) || this.corpseT > 180)) {
       this.corpseSettled = true;
-      corpse.data = { settled: true }; // the renderer reads this to raise the tombstone
-      ctx.audio.tone(150, 320, 0.32, 'sine', 0.09); // a low knell
+      corpse.data = { settled: true };
+      ctx.audio.sfx('player.corpse.knell'); // a low knell
       ctx.events.emit('playerCorpseSettled');
     }
   }
 
-  /** Remove the death ragdoll + tombstone (on respawn / death-clear). */
+  /** Remove every connected death part and the hat on respawn / death-clear. */
   private clearCorpse(ctx: Ctx): void {
+    if (this.deathWand) ctx.rigidBodies.remove(this.deathWand);
+    this.deathWand = null;
+    ctx.player.costume = undefined;
     if (this.corpse) ctx.rigidBodies.remove(this.corpse);
     this.corpse = null;
     this.corpseSettled = false;
@@ -1104,7 +1152,9 @@ export class PlayerControl implements PlayerControlApi {
   /** Original: respawnPlayer() — lines 1608-1619; descent rules added in Wave B. */
   respawn(): void {
     const ctx = this.ctx;
-    this.clearCorpse(ctx); // remove the death ragdoll + tombstone
+    // No phial, no return: a finished run's only way on is its ledger.
+    if (ctx.run?.over) return;
+    this.clearCorpse(ctx);
     this.releaseVine(ctx);
 
     // Descent (Wave B): come back at the last lit waystone (or the level
@@ -1132,14 +1182,13 @@ export class PlayerControl implements PlayerControlApi {
       return;
     }
 
-    // Legacy arena path (pre-descent / safety fallback)
+    // Fail-open fallback: no level owns the respawn (a runtime that failed to
+    // start). The wave-survival arena this path once restarted is long gone, so
+    // it only puts the wizard back on his feet — a dead end would hard-lock.
     const sp = this.findSpawnPoint();
     this.resetPlayerAt(sp.x, sp.y);
-    // Clear hostile projectiles and stale charging handles, restart current wave.
     resetCombatTransients(ctx, { projectiles: 'keep-friendly', particles: false });
     ctx.enemies.length = 0;
-    ctx.waves.active = false;
-    ctx.waves.intermission = 90;
     ctx.particles.burst(sp.x, sp.y - 7, 20, null, () => packRGB(200, 160, 255), 2.7, {
       glow: 2.2,
       grav: -0.01,
@@ -1151,8 +1200,10 @@ export class PlayerControl implements PlayerControlApi {
     const player = ctx.player;
     const world = ctx.world;
     this.tickCorpse(ctx); // runs while dead too (watches the ragdoll settle)
+    stepPlayerCostume(ctx, player, ctx.rigidBodies?.playerRagdoll ?? null); // cloth + hat, alive or fallen
     if (ctx.state.mode !== 'play' || player.dead) return;
-    if (this.swinging) { this.updateSwing(ctx); return; } // pendulum replaces normal movement
+    player.levitating = false;
+    if (this.swinging) { player.firePressed = false; this.updateSwing(ctx); return; } // pendulum replaces normal movement (and the wand)
     if (this.kickCooldownT > 0) this.kickCooldownT--;
 
     // Near death, you hear it: a slow heartbeat under 25% HP, urgent under 12%.
@@ -1170,10 +1221,13 @@ export class PlayerControl implements PlayerControlApi {
       player.vx *= 0.5;
     }
     const channeling = player.recharge > 0;
-    const restrained = channeling || player.pullT > 0;
+    // (The chill's ice shell locks him too — briefly: entities/chill.)
+    const restrained = channeling || player.pullT > 0 || (player.chill?.shell ?? 0) > 0;
+    const queuedJump = ctx.input.queuedJump;
+    ctx.input.queuedJump = undefined;
     const keys = restrained
       ? { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false }
-      : ctx.input.keys;
+      : queuedJump ? { ...ctx.input.keys, jump: true, wallJump: queuedJump === 'wall' || ctx.input.keys.wallJump } : ctx.input.keys;
     if (channeling) {
       player.recharge--;
       player.hp = Math.min(player.maxHp, player.hp + 0.19);
@@ -1190,14 +1244,14 @@ export class PlayerControl implements PlayerControlApi {
           { glow: 2.2, grav: -0.01 },
         );
       }
-      if (player.recharge % 24 === 0) ctx.audio.tone(520 + (110 - player.recharge) * 3, 660, 0.1, 'sine', 0.05);
+      if (player.recharge % 24 === 0) ctx.audio.sfx('player.recharge', undefined, undefined, { pitch: (110 - player.recharge) * 0.075 });
       if (player.recharge === 0) {
         // communion complete: a rose-gold ring blooms off the alchemist
         ctx.particles.burst(player.x, player.y - 8, 22, null, () => packRGB(255, 150, 170), 2.6, {
           glow: 2.6,
           grav: -0.005,
         });
-        ctx.audio.chest();
+        ctx.audio.sfx('player.recharge.done');
       }
     }
     if (player.invuln > 0) player.invuln--;
@@ -1292,18 +1346,28 @@ export class PlayerControl implements PlayerControlApi {
     // decide what you ARE — wet, oiled, burning, frozen, electrified.
     // Sampled every 2nd frame; status DPS bypasses invuln like hazard DPS.
     if (ctx.state.frameCount % 2 === 0) {
-      const { damage, slowFactor } = sampleAndTickStatus(
+      const status = sampleAndTickStatus(
         ctx,
         player,
         4,
         bodyH,
         player.perks.flameward ? { burning: true } : undefined,
         2,
-        { toxicScale: 0, healiumScale: 0 },
+        { toxicScale: 0, healiumScale: 0, frostbiteScale: 1, gradedChill: true },
       );
-      this.statusSlow = slowFactor;
+      this.statusSlow = status.slowFactor;
+      let damage = status.damage;
+      if (status.shockDamage > 0) {
+        // Self-shock fairness (combat/SelfShock): your own current scales with
+        // how much of it reaches you and is capped per 2 s window; a visible arc
+        // crawls back along the conductor toward where it came from.
+        damage += fairShockDamage(this.selfShock, status.shockDamage, status.maxCharge, ctx.state.frameCount) - status.shockDamage;
+        if (status.maxCharge > 0) drawConductorArc(ctx, player.x, player.y, 4, bodyH);
+      }
       if (damage > 0) {
-        const source = this.noteDamageSource(this.statusDamageSource(player));
+        // The Cold Store's frostbite names itself when it is most of the harm.
+        const cause = status.frostbiteDamage > 0 && status.frostbiteDamage >= damage * 0.5 ? 'frostbite' : this.statusDamageSource(player);
+        const source = this.noteDamageSource(cause);
         player.hp -= this.reduceIncomingDamage(damage);
         if (player.hp <= 0) {
           this.kill(source);
@@ -1430,8 +1494,9 @@ export class PlayerControl implements PlayerControlApi {
     // sideways far faster than it climbs. This is also the hook for future
     // levitation enhancement cards/spells.
     const lp = ctx.params.player;
-    const movePace = playerMovementPace(ctx);
-    const verticalPace = playerVerticalPace(ctx);
+    // The chill (entities/chill) costs speed and a little jump as it deepens.
+    const movePace = playerMovementPace(ctx) * (player.chill?.moveK ?? 1);
+    const verticalPace = playerVerticalPace(ctx) * (player.chill?.jumpK ?? 1);
     const levitatingMove =
       this.levitFrames > 0 && !player.grounded && !player.inLiquid && !player.climbing;
     const speedK = levitatingMove
@@ -1446,14 +1511,15 @@ export class PlayerControl implements PlayerControlApi {
     // gentle levitation accel stay well under it and are unchanged.
     // wadeSlow (≤1) bogs both the accel and the top speed when slogging through
     // blood — a leg-deep wade trudges, a thin film barely registers.
-    const accel = Math.min((player.grounded ? 0.5 : 0.575) * this.statusSlow * pacedSpeedK * stanceK * wadeSlow, MOVE_ACCEL_CAP),
+    const accel = Math.min((player.grounded ? 0.65 : 0.575) * this.statusSlow * pacedSpeedK * stanceK * wadeSlow, MOVE_ACCEL_CAP),
       // Cap the boosted top speed (Swift/God Mode) so it stays inside the
       // precision curve; crawl/crouch then scale down from the capped run.
-      maxRun = Math.min(2.6 * pacedSpeedK, lp.maxRunCap) * stanceK * wadeSlow;
+      maxRun = Math.min(2.85 * pacedSpeedK, lp.maxRunCap) * stanceK * wadeSlow;
     // Soft-start: ease in from a standstill (a tap stays slow + precise), ramping
     // to full accel with speed. Applies in the air too, so a fresh airborne tap is
     // gentle while CARRIED speed (already near maxRun) still gets full control.
-    const stepAccel = accel * (lp.moveSoftStart + (1 - lp.moveSoftStart) * Math.min(1, Math.abs(player.vx) / maxRun));
+    const reversing = (keys.right && player.vx < -0.1) || (keys.left && player.vx > 0.1);
+    const stepAccel = accel * (reversing ? 1.5 : 1) * (lp.moveSoftStart + (1 - lp.moveSoftStart) * Math.min(1, Math.abs(player.vx) / maxRun));
     const airGlideSpeed = lp.airGlideSpeed * movePace;
     if (!player.climbing) {
       // Powered input accelerates UP TO maxRun but never drags carried momentum
@@ -1477,14 +1543,14 @@ export class PlayerControl implements PlayerControlApi {
         }
         player.vx = clamp(player.vx, -maxRun, maxRun);
       } else {
-        // Airborne / levitating: a fast run still GLIDES (carried momentum bleeds
-        // slowly through airDrag), but a quick low-speed TAP stops fast so it's a
-        // small nudge, not a 60-cell skate. The ±12 rail caps stacked recoil.
+        // Preserve momentum while steering, then brake on release. Low-speed
+        // taps settle quickly enough to land on narrow ledges. The ±12 rail
+        // caps stacked recoil without clipping ordinary run velocity.
         if (!keys.left && !keys.right && Math.abs(player.vx) < airGlideSpeed) {
           player.vx *= lp.airStopDecay;
           if (Math.abs(player.vx) < lp.groundStopSnap) player.vx = 0;
         } else {
-          player.vx *= lp.airDrag;
+          player.vx *= !keys.left && !keys.right ? Math.min(lp.airDrag, 0.95) : lp.airDrag;
         }
         player.vx = clamp(player.vx, -12, 12);
       }
@@ -1527,6 +1593,10 @@ export class PlayerControl implements PlayerControlApi {
     }
     // submersion threshold scales to the sampled body (13/45 -> 7/25 crawling)
     player.inLiquid = contact.liquid >= (player.crawling ? 7 : 13);
+    if (player.inLiquid && contact.waterOrBlood > 0) {
+      player.vx += world.flow.x(player.x, player.y - 7) * .04;
+      player.vy += world.flow.y(player.x, player.y - 7) * .03;
+    }
     // SPLASH: breaking the surface at speed throws up droplets of whatever
     // you fell into (the pool's own colors — the grid explains the splash).
     if (player.inLiquid && !this.prevInLiquid && player.vy > LIQUID_SPLASH_MIN_SPEED) {
@@ -1860,6 +1930,7 @@ export class PlayerControl implements PlayerControlApi {
         }
       }
       if (!levitating) this.levitFrames = 0;
+      player.levitating = levitating;
       if (player.grounded || player.inLiquid) player.levit = Math.min(player.maxLevit, player.levit + 1.7);
 
       // DIVE SLAM (press S in the air): commit to the fall. The body locks
@@ -1876,7 +1947,7 @@ export class PlayerControl implements PlayerControlApi {
         player.diveT = 1;
         player.vy = Math.max(player.vy, 5.6);
         player.hat.vy -= 2.6; // the hat objects to the decision
-        ctx.audio.noiseBurst(0.12, 320, 0.1);
+        ctx.audio.sfx('player.dive');
       }
       if (player.diveT > 0) {
         player.diveT++;
@@ -2030,6 +2101,7 @@ export class PlayerControl implements PlayerControlApi {
       ctx.input.mouse.y - (player.y - (player.crawling ? 4 : 9)),
       ctx.input.mouse.x - player.x,
     );
+    player.aimAngle = getAimGuide(ctx)?.angle ?? player.aimAngle;
     if (Math.cos(player.aimAngle) !== 0) player.facing = Math.cos(player.aimAngle) >= 0 ? 1 : -1;
     // Absorb glowing goo: slime residue heals on contact
     if (player.hp < player.maxHp) {
@@ -2050,13 +2122,15 @@ export class PlayerControl implements PlayerControlApi {
           if (++absorbed >= 3) break outerGoo;
         }
       }
-      if (absorbed > 0 && ctx.state.frameCount % 9 === 0) ctx.audio.tone(620 + player.hp * 3, 70, 0.08, 'sine', 0.05);
+      if (absorbed > 0 && ctx.state.frameCount % 9 === 0) ctx.audio.sfx('player.heal');
     }
 
     // Wave D: play-mode casting runs the wand's compiled card program
     // (update() already gates on mode === 'play'; build-mode sandbox spells
-    // keep the legacy ctx.spells dispatch).
-    if (player.firing) ctx.wands.fire(ctx);
+    // keep the legacy ctx.spells dispatch). A click whose press and release
+    // both fell inside one tick left only its press edge: it still casts, once
+    // (WandSystem.fire's click buffer decides when).
+    if (player.firing || player.firePressed) ctx.wands.fire(ctx);
     this.updatePlayerAnimation(ctx);
   }
 
@@ -2087,7 +2161,7 @@ export class PlayerControl implements PlayerControlApi {
       s.count -= sips;
       if (s.count === 0) s.material = null;
     }
-    if (ctx.state.frameCount % 10 === 0) ctx.audio.tone(300, 180, 0.08, 'sine', 0.12);
+    if (ctx.state.frameCount % 10 === 0) ctx.audio.sfx('player.drink');
     ctx.events.emit('flaskUsed', { verb: 'drink', material: m, amount: sips });
   }
 
@@ -2115,7 +2189,7 @@ export class PlayerControl implements PlayerControlApi {
       glow: 2.4,
       grav: 0,
     });
-    ctx.audio.tone(660, 1320, 0.18, 'sine', 0.18);
+    ctx.audio.sfx('player.teleport');
   }
 
   private safeTeleportTarget(ctx: Ctx): { x: number; y: number } | null {
@@ -2307,7 +2381,7 @@ export class PlayerControl implements PlayerControlApi {
       player.skidT = 9;
       player.skidDir = Math.sign(player._svx);
       player.hat.vx += player.skidDir * 2.0; // hat keeps going the old way
-      ctx.audio.noiseBurst(0.05, 700, 0.07, true);
+      ctx.audio.sfx('player.skid');
       ctx.particles.burst(player.x + player.skidDir * 2, player.y, 4, null, () => {
         const g = 120 + Math.floor(entityRandom() * 60);
         return packRGB(g, g, g - 10);
@@ -2336,7 +2410,7 @@ export class PlayerControl implements PlayerControlApi {
       player.diveT = 0;
       player.landTimer = 10;
       player.fallPeak = 0; // the slam IS the landing — no second thud/impact below
-      ctx.audio.landThud(1);
+      ctx.audio.sfx('player.slam');
       ctx.events.emit('groundImpact', { x: player.x, y: player.y, radius: 54, strength: 1 });
       ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.014, 0.04);
       for (const dir of [-1, 1]) {
@@ -2418,6 +2492,7 @@ export class PlayerControl implements PlayerControlApi {
     if (player.kickT > 0) player.kickT--;
     if (player.staggerT > 0) player.staggerT--;
     if (player.swapT > 0) player.swapT--;
+    if ((player.throwT ?? 0) > 0) player.throwT = (player.throwT ?? 0) - 1;
     player.prevGrounded = player.grounded;
 
     // Occasional blink

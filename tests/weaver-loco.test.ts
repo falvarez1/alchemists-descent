@@ -234,6 +234,21 @@ describe('Weaver locomotion: crawling', () => {
   });
 });
 
+describe('Weaver lost supports', () => {
+  it('never replants a severed limb and crawls more slowly on its remaining legs', () => {
+    const world = new World(400, 180); fill(world, 5, 394, 130, 140);
+    const ctx = makeCtx(world), healthy = baseWeaver(100, 126), wounded = baseWeaver(100, 126);
+    wounded.weaverMissingLegs = 0b00110010;
+    settle(ctx, healthy, 90); settle(ctx, wounded, 90);
+    const walk: WeaverIntent = { ...HOLD, move: 'toward', tx: 350, ty: 130, urgency: .5 };
+    settle(ctx, healthy, 70, walk); settle(ctx, wounded, 70, walk);
+    expect(healthy.x - wounded.x).toBeGreaterThan(10);
+    expect(wounded.x).toBeGreaterThan(110);
+    expect(wounded.weaverLoco!.legs.filter(leg => leg.missing)).toHaveLength(3);
+    expect(wounded.weaverLoco!.legs.filter(leg => leg.missing).every(leg => !leg.planted)).toBe(true);
+  });
+});
+
 describe('Weaver render: draws the tick-owned rig sanely', () => {
   it('never draws screen-length legs (all pixels near the body)', () => {
     const world = new World(320, 220);

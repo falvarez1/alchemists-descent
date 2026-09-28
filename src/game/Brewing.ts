@@ -39,7 +39,8 @@ const HEAT_BOTTOM = 4;
 /** Sustained heat+ingredient sampler ticks (1 tick per 4 frames) to finish a brew. */
 const BREW_TICKS_REQUIRED = 90;
 export { GRIMOIRE_KEY, loadDiscoveredRecipes } from '@/core/grimoireStore';
-const DISCOVERY_BOUNTY = 100;
+/** Oz for a recipe's first brew (30; was 100 before the 2026-09 economy pass). */
+const DISCOVERY_BOUNTY = 30;
 
 /** Loose powders count as brewable mass alongside liquids (they sink into the bowl). */
 function isBrewable(t: number): boolean {
@@ -92,7 +93,7 @@ export class Brewing {
     this.brewTicks++;
     // Simmer ambience: blub + a wisp or two of recipe-colored vapor rising off the bowl.
     if (ctx.state.frameCount % 8 === 0) {
-      ctx.audio.bubble();
+      ctx.audio.bubble(cauldron.x, cauldron.y);
       const colorFn = COLOR_FN[recipe.elixir];
       const wisps = 1 + (entityRandom() < 0.5 ? 1 : 0);
       for (let j = 0; j < wisps; j++) {
@@ -182,8 +183,8 @@ export class Brewing {
       glow: 2.0,
       grav: -0.02,
     });
-    ctx.audio.bubble();
-    ctx.audio.tone(360, 720, 0.22, 'sine', 0.10);
+    ctx.audio.bubble(cauldron.x, cauldron.y);
+    ctx.audio.sfx('mech.cauldron', cauldron.x, cauldron.y);
     const firstDiscovery = this.recordDiscovery(ctx, recipe);
     ctx.events.emit('recipeBrewed', { id: recipe.id, name: recipe.name, firstDiscovery });
   }

@@ -23,32 +23,6 @@ const pageErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));
 page.on('dialog', (dialog) => dialog.dismiss().catch(() => undefined));
 
-const sampleRefugeMarker = () => page.evaluate(() => {
-  const ctx = window.__game.ctx;
-  const rt = ctx.levels.current;
-  const canvas = document.getElementById('minimap-corner');
-  const g = canvas?.getContext('2d');
-  if (!rt?.refuge || !g) return { hasRefuge: false, highlighted: 0, blue: 0 };
-  const rx = rt.refuge.x >> 3;
-  const ry = rt.refuge.y >> 3;
-  const x0 = Math.max(0, rx - 3);
-  const y0 = Math.max(0, ry - 3);
-  const w = Math.min(7, canvas.width - x0);
-  const h = Math.min(7, canvas.height - y0);
-  if (w <= 0 || h <= 0) return { hasRefuge: true, highlighted: 0, blue: 0 };
-  const img = g.getImageData(x0, y0, w, h).data;
-  let highlighted = 0;
-  let blue = 0;
-  for (let i = 0; i < img.length; i += 4) {
-    const r = img[i];
-    const gg = img[i + 1];
-    const b = img[i + 2];
-    if (r > 220 && gg > 220 && b > 220) highlighted++;
-    if (b > 180 && gg > 120 && r < 120) blue++;
-  }
-  return { hasRefuge: true, highlighted, blue };
-});
-
 const sampleBenchBadgeLayout = () => page.evaluate(() => {
   const badges = [...document.querySelectorAll('#wand-bench .bench-slot-link')];
   return badges.map((badge) => {
@@ -91,91 +65,24 @@ await page.evaluate(() => {
   window.__game.ctx.state.debugGodMode = false;
 });
 
+// The bench is the alchemist's own kit: it opens anywhere in play (WandBench
+// canOpenWandBench), not only at the Refuge as an earlier design had it.
 const awayProbe = await page.evaluate(() => {
   const ctx = window.__game.ctx;
-  const rt = ctx.levels.current;
-  const anchor = rt?.refuge;
-  if (!anchor) return { hasRefuge: false, visible: false };
-  const canvas = document.getElementById('minimap-corner');
-  const rx = anchor.x >> 3;
-  const ry = anchor.y >> 3;
-  if (canvas instanceof HTMLCanvasElement) rt.explored[rx + ry * canvas.width] = 1;
-  ctx.player.x = anchor.x + 160;
-  ctx.player.y = anchor.y;
-  ctx.player.vx = 0;
-  ctx.player.vy = 0;
-  ctx.camera.snapTo(ctx.player.x, ctx.player.y);
-  return { hasRefuge: true, visible: document.getElementById('wand-bench')?.classList.contains('visible') === true };
+  const anchor = ctx.levels.current?.refuge;
+  if (anchor) { ctx.player.x = anchor.x + 160; ctx.player.y = anchor.y; ctx.camera.snapTo(ctx.player.x, ctx.player.y); }
+  return { hasRefuge: !!anchor };
 });
 await page.keyboard.press('KeyB');
 await page.waitForTimeout(150);
 const awayVisible = await page.evaluate(() => document.getElementById('wand-bench')?.classList.contains('visible') === true);
-const awayToast = await page.evaluate(() => [...document.querySelectorAll('#toast-stack .toast')].map((el) => el.textContent ?? '').at(-1) ?? '');
-check(
-  'Bench refuses to open away from the Refuge with a directional cue',
-  awayProbe.hasRefuge && !awayProbe.visible && !awayVisible && awayToast.includes('WAND BENCH IN REFUGE'),
-  JSON.stringify({ awayProbe, awayVisible, awayToast }),
-);
-
-await page.waitForTimeout(250);
-const refugeMarker = await sampleRefugeMarker();
-check(
-  'Refuge ping highlights the discovered minimap bench marker',
-  refugeMarker.hasRefuge && (refugeMarker.highlighted > 0 || refugeMarker.blue > 0),
-  JSON.stringify(refugeMarker),
-);
-
-await page.setViewportSize({ width: 900, height: 650 });
-await page.evaluate(() => window.__game.ctx.events.emit('refugePing'));
-await page.waitForTimeout(250);
-const compactRefugeMarker = await sampleRefugeMarker();
-check(
-  'Refuge marker remains readable in a mobile-ish viewport',
-  compactRefugeMarker.hasRefuge && (compactRefugeMarker.highlighted > 0 || compactRefugeMarker.blue > 0),
-  JSON.stringify(compactRefugeMarker),
-);
-await page.setViewportSize({ width: 1440, height: 900 });
+check('Bench opens away from the Refuge (the kit travels with you)', awayVisible, JSON.stringify({ awayProbe, awayVisible }));
+await page.keyboard.press('Escape');
 await page.waitForTimeout(120);
 
-const unexploredCardGrantCue = await page.evaluate(() => {
-  const ctx = window.__game.ctx;
-  const rt = ctx.levels.current;
-  const refuge = rt?.refuge;
-  if (!rt || !refuge) return { hasRefuge: false, banner: '', objective: '' };
-  const canvas = document.getElementById('minimap-corner');
-  const mapWidth = canvas instanceof HTMLCanvasElement ? canvas.width : 200;
-  const mapIndex = (refuge.x >> 3) + (refuge.y >> 3) * mapWidth;
-  if (mapIndex >= 0 && mapIndex < rt.explored.length) rt.explored[mapIndex] = 0;
-  ctx.player.x = refuge.x - 160;
-  ctx.player.y = refuge.y + 48;
-  ctx.state.frameCount += 10;
-  ctx.events.emit('cardGranted', { id: 'speed', name: 'Swift Charm' });
-  return {
-    hasRefuge: true,
-    banner: document.getElementById('banner-small')?.textContent ?? '',
-    objective: document.getElementById('objective')?.textContent ?? '',
-  };
-});
-check(
-  'Card grant gives Refuge direction text even before the map marker is explored',
-  unexploredCardGrantCue.hasRefuge &&
-    unexploredCardGrantCue.banner.includes('BENCH IN REFUGE EAST ABOVE') &&
-    unexploredCardGrantCue.objective.includes('BENCH AVAILABLE IN REFUGE'),
-  JSON.stringify(unexploredCardGrantCue),
-);
-
-await page.click('#dev-console-toggle');
-await page.waitForFunction(() => document.getElementById('dev-console')?.classList.contains('open'));
-await page.fill('#dev-console-input', 'god');
-await page.keyboard.press('Enter');
-await page.waitForFunction(
-  () => {
-    const log = document.querySelector('#dev-console .dev-console-log')?.textContent ?? '';
-    return log.includes('God mode enabled') || log.includes('God mode refreshed');
-  },
-  null,
-  { timeout: 5000 },
-);
+// The console's header button is hidden in play; drive the same command API.
+await page.evaluate(() => window.__game.ctx.console.exec('god'));
+await page.waitForFunction(() => window.__game.ctx.state.debugGodMode === true, null, { timeout: 5000 });
 const godConsoleProbe = await page.evaluate(() => {
   const ctx = window.__game.ctx;
   const collection = [...ctx.wands.collection];
@@ -197,8 +104,6 @@ check(
     godConsoleProbe.wandFrames.join(',') === 'brass,void',
   JSON.stringify(godConsoleProbe),
 );
-await page.keyboard.press('Backquote');
-await page.waitForFunction(() => !document.getElementById('dev-console')?.classList.contains('open'));
 
 const benchAnchor = await page.evaluate(() => {
   const ctx = window.__game.ctx;
@@ -321,15 +226,21 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(180);
 
-const objectiveCue = await page.evaluate(() => {
-  const ctx = window.__game.ctx;
-  ctx.events.emit('cardGranted', { id: 'speed', name: 'Swift Charm' });
+const objectiveBefore = await page.evaluate(() => {
+  window.__game.ctx.events.emit('cardGranted', { id: 'speed', name: 'Swift Charm' });
   return document.getElementById('objective')?.textContent ?? '';
 });
+// The bench cue rides under the objective once the card's notice shows (it
+// queues behind any centre card); the objective itself never changes for it.
+const objectiveCue = await page
+  .waitForFunction(() => document.querySelector('#objective-note.shown')?.textContent ?? '', null, { timeout: 8000 })
+  .then((handle) => handle.jsonValue())
+  .catch(() => '');
+const objectiveAfter = await page.evaluate(() => document.getElementById('objective')?.textContent ?? '');
 check(
-  'Card grants point the objective row back to the Refuge bench',
-  objectiveCue.includes('BENCH AVAILABLE IN REFUGE'),
-  JSON.stringify(objectiveCue),
+  'A card grant cues the wand bench under the objective, leaving the objective alone',
+  /Swift Charm at the wand bench \(B\)/.test(objectiveCue) && objectiveAfter === objectiveBefore,
+  JSON.stringify({ objectiveCue, objectiveBefore, objectiveAfter }),
 );
 
 const keyObjective = await page.evaluate(() => {
@@ -338,12 +249,12 @@ const keyObjective = await page.evaluate(() => {
   if (!rt) return '';
   ctx.state.frameCount += 1000;
   rt.keyTaken = true;
-  ctx.events.emit('objectiveChanged', { text: 'RETURN TO THE PORTAL' });
+  ctx.events.emit('objectiveChanged', { text: 'Carry the golden key back to the portal.' });
   return document.getElementById('objective')?.textContent ?? '';
 });
 check(
   'Key objective uses return-to-portal wording',
-  keyObjective.includes('RETURN TO THE PORTAL'),
+  /back to the portal/i.test(keyObjective),
   JSON.stringify(keyObjective),
 );
 
@@ -684,6 +595,7 @@ check(
 
 await page.locator('#wand-bench [data-bench-wand="0"][data-bench-slot="1"]').dragTo(
   page.locator('#wand-bench .bench-card-collection'),
+  { targetPosition: { x: 24, y: 24 } },
 );
 const afterReturn = await page.evaluate((moved) => {
   const ctx = window.__game.ctx;

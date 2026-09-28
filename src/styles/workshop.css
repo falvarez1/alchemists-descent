@@ -1,0 +1,96 @@
+/* =====================================================================
+ * The Workshop as a player build shows it (ui/PlayerWorkshop.ts).
+ * The same house as the title and the ledger: slate and brass, Cormorant
+ * for the name, the system sans for everything you operate. Authoring
+ * builds never get `body.player-build`, so the studio Sandbox is untouched.
+ * ===================================================================== */
+body.player-build [data-workshop-dev] { display: none !important; }
+
+/* ---------- The room ---------- */
+body.player-build:not(.play-active):not(.entry-active) { background: #111c20; color: var(--house-paper); }
+body.player-build:not(.play-active):not(.entry-active) #viewport-container { background: #0b1518; }
+body.player-build:not(.play-active):not(.entry-active) #canvas-holder {
+  border: 1px solid #34494b; border-radius: 2px; box-shadow: 0 0 0 1px #0a1215, 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+/* ---------- Header: the name, and the way back ---------- */
+body.player-build > header {
+  height: 32px; padding: 12px 24px; background: #0f1c21; border-bottom: 1px solid #2f4548;
+}
+body.player-build #workbench { height: calc(100vh - 57px); }
+body.player-build .workshop-heading { display: flex; align-items: baseline; gap: 16px; min-width: 0; margin: 0; font-weight: 400; letter-spacing: 0; }
+.workshop-title { font: 500 27px/1 var(--house-serif); color: var(--house-paper); letter-spacing: 0.005em; white-space: nowrap; }
+.workshop-sub { font: italic 400 16px/1 var(--house-serif); color: var(--house-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.workshop-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box;
+  min-height: 34px; padding: 7px 14px; border: 1px solid #52665b; border-radius: 2px; background: #122126;
+  color: var(--house-paper); font: 500 calc(13px * var(--text-scale, 1))/1.2 var(--house-sans); cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s var(--house-ease);
+}
+.workshop-btn:hover:not(:disabled) { border-color: var(--house-brass); color: var(--house-brass-strong); background: #1a2b2f; }
+.workshop-btn:active:not(:disabled) { transform: translateY(1px); }
+.workshop-btn:focus-visible { outline: 2px solid #bde2c7; outline-offset: 2px; }
+.workshop-btn.lit { background: #2b3226; border-color: var(--house-brass); color: var(--house-brass-strong); box-shadow: inset 0 0 0 1px #d5b98233; }
+.workshop-btn:disabled { opacity: 0.4; cursor: default; }
+.workshop-btn-arrow { display: inline-block; color: var(--house-brass); transition: transform 0.18s var(--house-ease); }
+.workshop-btn:hover .workshop-btn-arrow { transform: translateX(-3px); }
+.workshop-btn kbd.key { margin-left: 4px; }
+
+/* ---------- Left rail: the palette ---------- */
+body.player-build #left-toolbar {
+  width: 272px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; padding: 14px 14px 22px;
+  background: #0f1c21; border-right: 1px solid #2f4548; scrollbar-color: #34494b transparent;
+}
+body.player-build #left-toolbar .section-title {
+  top: -14px; margin: 10px 0 2px; padding: 9px 0 5px; background: #0f1c21;
+  font: 600 calc(10.5px * var(--text-scale, 1))/1.2 var(--house-sans); letter-spacing: 0.16em; color: var(--house-brass);
+}
+body.player-build #toolbar-filter {
+  margin-bottom: 2px; padding: 8px 10px; border: 1px solid #2f4548; border-radius: 2px; background: #16242a;
+  color: var(--house-paper); font: 400 calc(12.5px * var(--text-scale, 1))/1.3 var(--house-sans);
+}
+body.player-build #toolbar-filter::placeholder { color: #8a9a92; }
+body.player-build #toolbar-filter:focus { border-color: var(--house-brass); }
+body.player-build .tool-btn {
+  min-width: 0; padding: 7px 8px; overflow-wrap: anywhere; border: 1px solid #253a3d; border-radius: 2px; background: #15242a; color: #dcd7c4;
+  font: 500 calc(11.5px * var(--text-scale, 1))/1.25 var(--house-sans);
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+body.player-build .tool-btn:hover { background: #1b2d32; border-color: #4a615e; }
+body.player-build .tool-btn.active,
+body.player-build .tool-btn.spell-mode.active {
+  background: #242f2b; border-color: var(--house-brass); color: var(--house-brass-strong); box-shadow: inset 2px 0 0 var(--house-brass);
+}
+
+/* ---------- Right rail: the bench (brush, time, tidy) ---------- */
+body.player-build #right-inspector { background: #0f1c21; border-left: 1px solid #2f4548; padding: 20px 18px 24px; }
+body.player-build #right-inspector > :not(.workshop-bench) { display: none !important; }
+.workshop-bench { display: flex; flex-direction: column; gap: 20px; }
+.workshop-group { display: flex; flex-direction: column; gap: 10px; }
+.workshop-group + .workshop-group { padding-top: 18px; border-top: 1px solid #2a3d40; }
+.workshop-group-title {
+  margin: 0; font: 600 calc(10.5px * var(--text-scale, 1))/1.2 var(--house-sans); letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--house-brass);
+}
+.workshop-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.workshop-note { margin: 0; font: 400 calc(12px * var(--text-scale, 1))/1.5 var(--house-sans); color: var(--house-muted); }
+.workshop-brush .control-label-wrapper { align-items: baseline; margin-bottom: 8px; font: 500 calc(12.5px * var(--text-scale, 1))/1.2 var(--house-sans); color: var(--house-paper); }
+.workshop-brush .control-label-wrapper span.val-display { font: 600 calc(12px * var(--text-scale, 1))/1 var(--house-sans); font-variant-numeric: tabular-nums; color: var(--house-brass-strong); }
+.workshop-brush input[type="range"] { height: 4px; background: #2e3f3c; cursor: pointer; }
+.workshop-brush input[type="range"]::-webkit-slider-thumb { width: 14px; height: 14px; background: #e6dfca; border: 2px solid #d5b57b; box-sizing: border-box; }
+.workshop-brush input[type="range"]::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: #e6dfca; border: 2px solid #d5b57b; }
+.workshop-brush input[type="range"]::-moz-range-progress { height: 4px; background: #d5b57b; }
+
+/* Paused: a small plate on the bench so a frozen scene never reads as a hang. */
+body.player-build.workshop-paused:not(.play-active):not(.entry-active) #canvas-holder::after {
+  content: 'Paused · Step advances one tick'; position: absolute; top: 10px; left: 10px; z-index: 5; pointer-events: none;
+  padding: 5px 10px 6px; background: #0f1c21e6; border-left: 2px solid var(--house-brass);
+  font: 500 calc(12px * var(--text-scale, 1))/1.2 var(--house-sans); color: var(--house-brass-strong);
+  animation: house-fade-up 0.25s var(--house-ease) both;
+}
+
+@media (max-width: 720px) {
+  .workshop-sub { display: none; }
+  body.player-build > header { padding-left: 12px; padding-right: 12px; }
+}

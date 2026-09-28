@@ -118,6 +118,10 @@ const DEATH_LINES: Record<string, string[]> = {
     'Hostile debris introduced itself at speed.',
     'Hit by cave mail, postage due.',
   ],
+  'falling-tree': [
+    'A tree fell in the Works, and someone was around to hear it. Briefly.',
+    'Timber. The creak was, in hindsight, the warning.',
+  ],
   'colossus-slam': [
     'The Kiln Colossus stamped your ticket.',
     'A furnace with fists ended the expedition.',
@@ -142,17 +146,166 @@ const DEATH_LINES: Record<string, string[]> = {
     'A status effect finished the job quietly.',
     'The aftereffect got the last word.',
   ],
+  'stonemaw-bite': [
+    'The Stone Maw closed its jaw. The cave digests slowly.',
+    'Swallowed by a mouth that looked like the floor.',
+  ],
+  'rillback-bite': [
+    'A Rillback came out of the water with its mouth open.',
+    'The pool had teeth after all.',
+  ],
+  'rillback-flop': [
+    'Flattened by a Rillback flailing on dry stone.',
+    'A stranded Rillback thrashed and you were in the way.',
+  ],
+  'rootloper-lash': [
+    'A Rootloper whipped its roots through you.',
+    'The undergrowth lashed back.',
+  ],
+  'steam-pressure': [
+    'Scalded by a pressure vent. The gauge did warn you.',
+    'Steamed open by the works.',
+  ],
+  'snapjaw-bite': [
+    'A snapjaw closed on you. It had been waiting all day.',
+    'Eaten by the shrubbery. The Rot Gardens are not decorative.',
+  ],
+  leech: [
+    'Drained by leeches. Each one only had a small drink.',
+    'The Cisterns collected their toll, one sip at a time.',
+  ],
+  'colossus-stomp': [
+    'The Kiln Colossus stamped, and the floor delivered it.',
+    'Knocked flat by a shockwave you could have jumped.',
+  ],
+  'colossus-vent': [
+    'The Kiln Colossus opened its vents. You were standing in the chimney.',
+    'Roasted by a furnace letting off steam.',
+  ],
+  'leviathan-thrash': [
+    'The Leviathan slapped the pool at you, and the pool won.',
+    'Tail-whipped by the plumbing.',
+  ],
+  // THE SECOND DOORS (wave 3): the Cold Store's brine and its Rime Warden, the Glass Galleries' Lenswright.
+  frostbite: [
+    'The brine never froze. You did.',
+    'Salt water below freezing, and you in it up to the knees.',
+  ],
+  'rimewarden-slam': [
+    'The Rime Warden brought its fists down, and the floor came up in ice.',
+    'Speared by a floor that was flat a moment ago.',
+  ],
+  'rimewarden-wave': [
+    'A rime wave ran along the floor. You were standing on it.',
+    'The Warden stamped, and the frost came for your ankles.',
+  ],
+  'rimewarden-breath': [
+    'The Rime Warden breathed on you. You kept.',
+    'Frozen where you stood by a very old draught.',
+  ],
+  'rimewarden-icicle': [
+    'The Warden roared, and the ceiling let go of its icicles.',
+    'An icicle finally found something to point at.',
+  ],
+  'rimewarden-hail': [
+    'Hailed on by the Rime Warden, with its own shoulders.',
+    'The Warden threw its armour at you. It had plenty.',
+  ],
+  'lenswright-lance': [
+    'The Lenswright looked at you properly.',
+    'Burned through by a lens that never blinked.',
+  ],
+  'lenswright-flare': [
+    'You stood too close to the Lenswright. It flashed you away.',
+    'A lens does not like to be crowded.',
+  ],
 };
+
+/**
+ * The title card's headline, by cause. "You fell." only when the ground did
+ * it; everything else names what actually happened.
+ */
+const DEATH_TITLES: Record<string, string> = {
+  unknown: 'You died.',
+  probe: 'Experiment over.',
+  impact: 'You fell.',
+  fire: 'You burned.',
+  burning: 'You burned.',
+  'oiled-fire': 'You burned.',
+  'hostile-fireball': 'You burned.',
+  'colossus-fireball': 'You burned.',
+  lava: 'You melted.',
+  acid: 'You dissolved.',
+  acidglob: 'You dissolved.',
+  'acidslime-bite': 'You dissolved.',
+  toxic: 'You were poisoned.',
+  electrocution: 'The current took you.',
+  'wet-electrocution': 'The current took you.',
+  lightning: 'Struck down.',
+  explosion: 'You were blown apart.',
+  'self-explosion': 'You were blown apart.',
+  'barrel-explosion': 'You were blown apart.',
+  gunpowder: 'You were blown apart.',
+  bomber: 'You were blown apart.',
+  'colossus-death': 'You were blown apart.',
+  frostbolt: 'You froze.',
+  'slime-bite': 'You were taken.',
+  'bat-bite': 'You were taken.',
+  'weaver-bite': 'You were taken.',
+  'leviathan-bite': 'You were taken.',
+  'leviathan-graze': 'You were taken.',
+  'stonemaw-bite': 'You were taken.',
+  'rillback-bite': 'You were taken.',
+  'weaver-needle': 'You were pinned.',
+  'leviathan-water': 'You were swept away.',
+  'golem-slam': 'You were crushed.',
+  'colossus-slam': 'You were crushed.',
+  'golem-rock': 'You were crushed.',
+  'powder-mage-debris': 'You were crushed.',
+  'hostile-debris': 'You were crushed.',
+  'falling-tree': 'You were felled.',
+  'rillback-flop': 'You were crushed.',
+  'rootloper-lash': 'You were struck down.',
+  'steam-pressure': 'You were scalded.',
+  'snapjaw-bite': 'You were taken.',
+  leech: 'You were drained.',
+  'colossus-stomp': 'You were crushed.',
+  'colossus-vent': 'You burned.',
+  'leviathan-thrash': 'You were swept away.',
+  frostbite: 'You froze.',
+  'rimewarden-slam': 'You were impaled.',
+  'rimewarden-wave': 'You froze.',
+  'rimewarden-breath': 'You froze.',
+  'rimewarden-icicle': 'You were impaled.',
+  'rimewarden-hail': 'You froze.',
+  'lenswright-lance': 'You burned.',
+  'lenswright-flare': 'You were struck down.',
+  status: 'You succumbed.',
+};
+
+/**
+ * Sources that borrow another cause's (already voiced) lines until their own
+ * are recorded: every DEATH_LINES entry must have a narration clip
+ * (tests/narrator.test.ts), so a new cause can ship on an alias and get its
+ * own lines at the next voice pass (scripts/audio/gen-voice.mjs). Empty now:
+ * the felled tree has its own ('You were felled.').
+ */
+const DEATH_ALIASES: Record<string, string> = {};
 
 function normalizeDeathSource(source: string | null | undefined): string {
   if (!source) return 'unknown';
-  return DEATH_LINES[source] ? source : 'unknown';
+  const key = DEATH_ALIASES[source] ?? source;
+  return DEATH_LINES[key] ? key : 'unknown';
 }
 
 export function deathCauseLine(source: string | null | undefined, frame = 0): string {
   const key = normalizeDeathSource(source);
   const lines = DEATH_LINES[key] ?? DEATH_LINES.unknown;
   return lines[Math.abs(Math.floor(frame)) % lines.length];
+}
+
+export function deathTitle(source: string | null | undefined): string {
+  return DEATH_TITLES[normalizeDeathSource(source)] ?? DEATH_TITLES.unknown;
 }
 
 export function knownDeathCauseSources(): string[] {

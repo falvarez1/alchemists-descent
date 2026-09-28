@@ -60,7 +60,8 @@ check('coal bed laid in the bowl', placed.coal === 5, JSON.stringify(placed));
 check('lava tub filled (siphon source)', placed.lava >= 24, JSON.stringify(placed));
 check('oil tub filled (wick source)', placed.oil >= 18, JSON.stringify(placed));
 
-// ---- B. proximity prompt offers a fire card you own + equips it -----------
+// ---- B. walking up with a fire card you own: a teach card, never a pause ----
+// (The old modal paused the game on every approach; game/waystoneHelp.)
 const offer = await page.evaluate(() => {
   const ctx = window.__game.ctx;
   const W = ctx.wands;
@@ -70,31 +71,21 @@ const offer = await page.evaluate(() => {
   for (let wi = 0; wi < 2; wi++) { let i; while ((i = W.wands[wi].cards.indexOf('flame')) >= 0) W.slotCard(wi, i, null); }
   if (!W.collection.includes('flame')) W.grantCard(ctx, 'flame');
 
-  let captured = null;
-  const off = ctx.events.on('waystonePrompt', (p) => (captured = p));
+  const teaches = [];
+  const off = ctx.events.on('hintTeach', (p) => { if (p.key === 'waystone-unlit') teaches.push(p); });
   ctx.player.dead = false; ctx.player.x = 350; ctx.player.y = 699;
-  for (let f = 0; f < 12 && !captured; f++) window.__game.tick();
+  let pausedEver = false;
+  for (let f = 0; f < 16; f++) { window.__game.tick(); pausedEver ||= ctx.state.paused; }
+  const line = ctx.hints?.current?.line ?? '';
   off();
-
-  const overlay = document.getElementById('waystone-prompt-overlay');
-  const visibleWhileOpen = !!overlay?.classList.contains('visible');
-  const pausedWhileOpen = ctx.state.paused;
-  const btn = overlay?.querySelector('.waystone-prompt-btn.primary');
-  if (btn) btn.click();
-  return {
-    card: captured ? captured.card : 'NONE',
-    visibleWhileOpen, pausedWhileOpen,
-    equipped: W.wands[W.active].cards.includes('flame'),
-    visibleAfter: !!overlay?.classList.contains('visible'),
-    pausedAfter: ctx.state.paused,
-  };
+  return { teaches: teaches.length, body: teaches[0]?.body ?? '', pausedEver, line, modal: !!document.getElementById('waystone-prompt-overlay') };
 });
-check('approaching with an owned fire card raises the prompt (card=flame)', offer.card === 'flame', JSON.stringify(offer));
-check('prompt is a modal that pauses the game', offer.visibleWhileOpen && offer.pausedWhileOpen, JSON.stringify(offer));
-check('EQUIP seats the fire card on the active wand', offer.equipped, JSON.stringify(offer));
-check('closing the prompt hides it and unpauses', !offer.visibleAfter && !offer.pausedAfter, JSON.stringify(offer));
+check('approaching with an owned fire card teaches once (a card, not a modal)', offer.teaches === 1 && !offer.modal, JSON.stringify(offer));
+check('the teach card names the owned card and the bench', /Flame/.test(offer.body) && /bench \(B\)/.test(offer.body), JSON.stringify(offer));
+check('the game never pauses on approach', !offer.pausedEver, JSON.stringify(offer));
+check('the hint line says it too, while he stands there', /waystone/i.test(offer.line), JSON.stringify(offer));
 
-// ---- C. with no fire card, the prompt explains the by-hand paths ----------
+// ---- C. once per waystone per floor; with no fire card the line explains the by-hand paths ----
 const noCard = await page.evaluate(() => {
   const ctx = window.__game.ctx;
   const W = ctx.wands;
@@ -104,23 +95,20 @@ const noCard = await page.evaluate(() => {
   };
   ['flame', 'emberstorm', 'meteor'].forEach(strip);
 
-  // step away to re-arm, then walk back
+  // step away, then walk back: the same waystone does not teach again this floor
   ctx.player.x = 120; ctx.player.y = 699;
   for (let f = 0; f < 8; f++) window.__game.tick();
-  let captured = null;
-  const off = ctx.events.on('waystonePrompt', (p) => (captured = p));
+  const teaches = [];
+  const off = ctx.events.on('hintTeach', (p) => { if (p.key === 'waystone-unlit') teaches.push(p); });
   ctx.player.x = 350; ctx.player.y = 699;
-  for (let f = 0; f < 12 && !captured; f++) window.__game.tick();
+  for (let f = 0; f < 16; f++) window.__game.tick();
   off();
-
-  const overlay = document.getElementById('waystone-prompt-overlay');
-  const body = overlay?.querySelector('.waystone-prompt-body')?.textContent || '';
-  overlay?.querySelector('.waystone-prompt-btn')?.click();
-  return { card: captured ? captured.card : 'NONE', explainsByHand: /lava|burning|bring fire/i.test(body), pausedAfter: ctx.state.paused };
+  const line = ctx.hints?.current?.line ?? '';
+  return { teaches: teaches.length, line, paused: ctx.state.paused };
 });
-check('no owned fire card -> prompt with card=null', noCard.card === null, JSON.stringify(noCard));
-check('no-card prompt explains the by-hand paths (lava / burning)', noCard.explainsByHand, JSON.stringify(noCard));
-check('no-card prompt closes cleanly (unpaused)', !noCard.pausedAfter, JSON.stringify(noCard));
+check('the same waystone does not teach twice on a floor', noCard.teaches === 0, JSON.stringify(noCard));
+check('no owned fire card -> the hint line says it wants lasting fire', /lasts/i.test(noCard.line), JSON.stringify(noCard));
+check('still never paused', !noCard.paused, JSON.stringify(noCard));
 
 // ---- D. carried LAVA pooled in the bowl lights it (the no-fire-spell path) --
 //     also exercises the heat-array guard: a waystone pushed after enterLevel

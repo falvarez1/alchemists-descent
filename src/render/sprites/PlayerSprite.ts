@@ -1,6 +1,10 @@
 import type { Ctx } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { clamp } from '@/core/math';
+import { PLAYER_PALETTE } from './playerPalette';
+import { CellCapture, finePixelStep } from './FineArt';
+import { drawAlchemistSprite } from './AlchemistSprite';
+import { drawAlchemist } from '@/render/player/AlchemistArt';
 
 type RGB = readonly [number, number, number];
 
@@ -14,12 +18,20 @@ type RGB = readonly [number, number, number];
  */
 const CRAWL_POSE = 'prone' as 'prone' | 'allfours';
 
-// Per-frame pixel-key scratch Sets, hoisted to module scope so the hot draw
-// path reuses them instead of allocating two fresh Sets every frame. The draw
-// function is non-reentrant (one call per frame from the render path) and both
-// Sets are cleared before each use, so the rendered output is unchanged.
-const SILHOUETTE_MARKS = new Set<number>();
-const WAND_KEYS = new Set<number>();
+// Presentation layers, hoisted to module scope so the hot draw path reuses
+// them instead of allocating every frame (the draw function is non-reentrant:
+// one call per frame from the render path). The pose code keeps painting
+// whole cells; each layer re-emits at the surface's presentation step —
+// EPX-upsampled with a one-pixel rim on the fine surface, the byte-for-byte
+// cell drawing on a classic one.
+const BODY_LAYER = new CellCapture();
+const STAFF_LAYER = new CellCapture();
+const RIM: RGB = [0.02, 0.03, 0.07];
+const PUPIL: RGB = [0.06, 0.05, 0.08];
+const SOLE: RGB = [0.03, 0.03, 0.05];
+const FERRULE: RGB = [0.95, 0.82, 0.5];
+const BUCKLE: RGB = [1, 0.95, 0.7];
+const BUCKLE_D: RGB = [0.2, 0.15, 0.06];
 
 // --- Blood soak (driven by player.bloodStain, a 0..MAX soak charge that BUILDS
 // the more/longer he wades — see Player.ts). The robe hem + boots redden in
@@ -40,19 +52,40 @@ const STAIN_R = 0.5, STAIN_G = 0.06, STAIN_B = 0.09; // soaked-cloth blood (dark
  * The player is fully self-lit — the light field is not sampled here (the
  * parameter is kept for the shared sprite-drawing signature).
  */
-export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx): void {
+export function drawPlayerSprite(out: PixelSurface, light: LightField, ctx: Ctx): void {
   const player = ctx.player;
   const frameCount = ctx.state.frameCount;
   if (ctx.state.mode !== 'play' || player.dead) return;
-  if (player.invuln > 0 && frameCount % 6 < 3) return;
+  if (!ctx.state.reduceFlashes && player.invuln > 0 && frameCount % 6 < 3) return;
+  // The game surface has half-cell pixels and uses the joint-driven art pass.
+  // Classic cell surfaces retain the legacy sprite for Builder compatibility.
+  if (drawAlchemist(out, light, ctx)) return;
+  if (!player.legClub && drawAlchemistSprite(out, light, ctx)) return;
 
   // Silhouette pass: every BODY pixel is recorded so a near-black rim can be
   // stamped around the finished figure (Noita/Dead Cells readability — the
   // character cuts against any background instead of dissolving into it).
   // The wand, charge meter, and tip glow draw after recording stops.
-  const marks = SILHOUETTE_MARKS;
-  marks.clear();
   let recording = true;
+  const body = BODY_LAYER, staff = STAFF_LAYER;
+  body.reset(); staff.reset();
+  // Sub-cell placement: the pose is authored in whole cells, so the figure
+  // is nudged by the nearest presentation pixel toward his real position
+  // (vertically only while airborne — grounded feet stay on the floor row).
+  const fineOn = finePixelStep(out) < 1;
+  const subX = fineOn ? Math.round((player.x - Math.round(player.x)) * 2) / 2 : 0;
+  const subY = fineOn && !player.grounded ? Math.round((player.y - Math.round(player.y)) * 2) / 2 : 0;
+  // Presentation-only details (pupil, band stitching, pleats, soles, the
+  // staff's highlight thread) are queued per layer and stamped after that
+  // layer lands, so they sit on the upsampled art. (x, y) name the cell the
+  // pose painted; (fx, fy) pick its quadrant. No-ops on a cell surface.
+  const bodyDetail: number[] = [], staffDetail: number[] = [];
+  const fine = (x: number, y: number, fx: number, fy: number, c: RGB, k = 1): void => {
+    if (fineOn) (recording ? bodyDetail : staffDetail).push(Math.round(x) + fx, Math.round(y) + fy, c[0] * k, c[1] * k, c[2] * k);
+  };
+  const stampDetail = (queue: number[]): void => {
+    for (let i = 0; i < queue.length; i += 5) out.setFinePx!(queue[i] + subX, queue[i + 1] + subY, queue[i + 2], queue[i + 3], queue[i + 4]);
+  };
   // Soak intensity (0..1): climbs as he wades (player.bloodStain accrues),
   // saturating at BLOOD_STAIN_FULL, then eases back down as the charge drains.
   // Gated on `recording` (the body pass) so the wand shaft + tip glow — drawn
@@ -61,7 +94,6 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   const s: PixelSurface = {
     setPx(x: number, y: number, r: number, g: number, b: number): void {
       if (recording) {
-        marks.add((Math.round(x) & 0xfff) | ((Math.round(y) & 0xfff) << 12));
         if (stainK > 0) {
           const depth = player.y - y; // 0 at the boots, climbing the legs
           if (depth >= 0 && depth <= STAIN_RISE) {
@@ -72,36 +104,32 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
           }
         }
       }
-      out.setPx(x, y, r, g, b);
+      (recording ? body : staff).setPx(x, y, r, g, b);
     },
     addPx(x: number, y: number, r: number, g: number, b: number): void {
-      out.addPx(x, y, r, g, b);
+      (recording ? body : staff).addPx(x, y, r, g, b);
     },
   };
 
   const px = player.x, f = player.facing;
   // Value-contrast palette: edges run DARK (they read as outline from inside),
   // accents run bright, so the figure keeps its shape at 2-3 screen px/cell.
-  const HAT: RGB = [0.62, 0.30, 0.94], HAT_D: RGB = [0.24, 0.09, 0.42], BAND: RGB = [1.0, 0.84, 0.25];
-  const ROBE: RGB = [0.22, 0.50, 0.95], ROBE_D: RGB = [0.08, 0.16, 0.38], TRIM: RGB = [0.70, 0.85, 1.0];
-  const SKIN: RGB = [0.95, 0.80, 0.62], SKIN_D: RGB = [0.78, 0.62, 0.46], BOOT: RGB = [0.10, 0.08, 0.14], BOOT_L: RGB = [0.30, 0.24, 0.34];
+  const { HAT, HAT_D, BAND, ROBE, ROBE_D, TRIM, SKIN, SKIN_D, BOOT, BOOT_L } = PLAYER_PALETTE;
   const SHADE: RGB = [0.48, 0.38, 0.30]; // brim shadow across the brow
 
+  // The body lands with its 4-neighbour rim (skipped below the feet so the
+  // ground line stays clean) — one presentation pixel wide on the fine
+  // surface, one cell on a classic one — then its queued details.
   const stampOutline = (): void => {
     recording = false;
-    const feetY = player.y;
-    for (const key of marks) {
-      const mx = key & 0xfff;
-      const my = (key >> 12) & 0xfff;
-      // 4-neighbour rim; skip below the feet so the ground line stays clean
-      for (let n = 0; n < 4; n++) {
-        const nx = mx + (n === 0 ? 1 : n === 1 ? -1 : 0);
-        const ny = my + (n === 2 ? 1 : n === 3 ? -1 : 0);
-        if (ny > feetY) continue;
-        if (marks.has((nx & 0xfff) | ((ny & 0xfff) << 12))) continue;
-        out.setPx(nx, ny, 0.02, 0.03, 0.07);
-      }
-    }
+    body.flush(out, { rim: RIM, feetY: Math.round(player.y), subX, subY });
+    stampDetail(bodyDetail);
+  };
+  // The staff lands last, over the outlined body, with its one-sided drop
+  // shadow (underside only — pops the shaft without fattening it).
+  const finish = (): void => {
+    staff.flush(out, { shadowUnder: RIM, shadowFrom: body, subX, subY });
+    stampDetail(staffDetail);
   };
 
   const svx = player._svx || 0, svy = player._svy || 0;
@@ -119,6 +147,7 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   // Swap: the staff sweeps a quadratically-eased draw arc up into the aim.
   // Recoil: a cast kicks the WHOLE staff back along the aim for a few frames.
   const drawStaff = (gripX: number, gripY: number): void => {
+    if (player.legClub) return;
     const tipBase = ctx.spells.wandTip();
     const drawT = player.swapT > 0 ? player.swapT / 12 : 0;
     const a = Math.atan2(tipBase.y - gripY, tipBase.x - gripX) + drawT * drawT * 2.2 * f;
@@ -130,29 +159,34 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
     // staff end (the recoiled, possibly mid-draw muzzle the visuals attach to)
     const endX = wsx + Math.cos(a) * shaftLen;
     const endY = wsy + Math.sin(a) * shaftLen;
-    // One-sided drop shadow (underside only) — pops the shaft off the
-    // background without the fattening of a full outline.
-    const wandKeys = WAND_KEYS;
-    wandKeys.clear();
+    // The one-sided drop shadow (underside only) lands with the staff layer
+    // in finish() — it pops the shaft off the background without the
+    // fattening of a full outline.
     const wandPx = (d: number, r: number, g: number, b: number): void => {
-      const wx2 = wsx + Math.cos(a) * d;
-      const wy2 = wsy + Math.sin(a) * d;
-      wandKeys.add((Math.round(wx2) & 0xfff) | ((Math.round(wy2) & 0xfff) << 12));
-      s.setPx(wx2, wy2, r, g, b);
+      s.setPx(wsx + Math.cos(a) * d, wsy + Math.sin(a) * d, r, g, b);
     };
     for (let d = -buttLen; d <= shaftLen; d++) {
       if (d === 0) continue; // the hand owns this cell
       const t = (d + buttLen) / (shaftLen + buttLen); // dark butt -> bright head
       wandPx(d, 0.26 + 0.46 * t, 0.16 + 0.36 * t, 0.10 + 0.20 * t);
     }
+    // Fine surface: a highlight thread along the shaft's lit (upper) side
+    // and a brass ferrule one cell behind the head.
+    const upX = Math.cos(a) >= 0 ? Math.sin(a) : -Math.sin(a), upY = Math.cos(a) >= 0 ? -Math.cos(a) : Math.cos(a);
+    const rowMode = Math.abs(upY) >= Math.abs(upX);
+    for (let d = -buttLen + 1; d < shaftLen - 1; d++) {
+      if (d === 0) continue;
+      const t = (d + buttLen) / (shaftLen + buttLen);
+      const c: RGB = [0.26 + 0.46 * t, 0.16 + 0.36 * t, 0.10 + 0.20 * t];
+      const x = wsx + Math.cos(a) * d, y = wsy + Math.sin(a) * d;
+      if (rowMode) { const fy = upY < 0 ? 0 : 0.5; fine(x, y, 0, fy, c, 1.45); fine(x, y, 0.5, fy, c, 1.45); }
+      else { const fx = upX > 0 ? 0.5 : 0; fine(x, y, fx, 0, c, 1.45); fine(x, y, fx, 0.5, c, 1.45); }
+    }
+    const capX = wsx + Math.cos(a) * (shaftLen - 1), capY = wsy + Math.sin(a) * (shaftLen - 1);
+    fine(capX, capY, 0, 0, FERRULE); fine(capX, capY, 0.5, 0, FERRULE);
+    fine(capX, capY, 0, 0.5, FERRULE, 0.72); fine(capX, capY, 0.5, 0.5, FERRULE, 0.72);
     // the gripping hand sits over the shaft
     s.setPx(wsx, wsy, ...SKIN);
-    for (const key of wandKeys) {
-      const sx2 = key & 0xfff;
-      const sy2 = ((key >> 12) & 0xfff) + 1;
-      const skey = (sx2 & 0xfff) | ((sy2 & 0xfff) << 12);
-      if (!wandKeys.has(skey) && !marks.has(skey)) out.setPx(sx2, sy2, 0.02, 0.03, 0.07);
-    }
     if (player.swapT >= 5 && player.swapT <= 7) {
       // mid-draw gleam: the staff head catches the light as it comes up
       s.setPx(endX, endY, 1.0, 1.0, 0.85);
@@ -189,6 +223,7 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
     }
   };
 
+  const pose = (): void => {
   // ---- CRAWL pose (docs/CRAWL.md). The collision box stays an axis-aligned
   // 9x9; only the DRAWING tilts — the figure lays along the smoothed travel
   // slope (quantized to ~16 steps), so a diagonal chute reads as diagonal
@@ -520,6 +555,11 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   row(px - 3 + footA, px - 2 + footA, py - 1 + footAy, BOOT_L);
   row(px + 1 + footB, px + 3 + footB, py + footBy, BOOT);
   row(px + 2 + footB, px + 3 + footB, py - 1 + footBy, BOOT_L);
+  // Fine surface: dark soles under both boots, a toe-cap gleam in front.
+  for (let dx = -3; dx <= -1; dx++) { fine(px + dx + footA, py + footAy, 0, 0.5, SOLE); fine(px + dx + footA, py + footAy, 0.5, 0.5, SOLE); }
+  for (let dx = 1; dx <= 3; dx++) { fine(px + dx + footB, py + footBy, 0, 0.5, SOLE); fine(px + dx + footB, py + footBy, 0.5, 0.5, SOLE); }
+  if (f > 0) fine(px + 3 + footB, py - 1 + footBy, 0.5, 0.5, BOOT_L, 1.35);
+  else fine(px - 3 + footA, py - 1 + footAy, 0, 0.5, BOOT_L, 1.35);
   if (crouch > 0) {
     row(px - 2, px + 2, py - 2, ROBE_D);
     s.setPx(px - 4, py - 1, ...BOOT_L);
@@ -555,11 +595,15 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
       const edge = Math.abs(dx) === hw;
       s.setPx(px + dx + off, yy, ...(edge ? ROBE_D : ROBE));
     }
+    // Fine surface: two pleats follow the sway; the hem's underside darkens.
+    if (sRow.dy > 2) for (const k of [-2, 1]) { fine(px + off + k, yy, 0.5, 0, ROBE_D, 0.9); fine(px + off + k, yy, 0.5, 0.5, ROBE_D, 0.9); }
+    else for (let dx = -hw + 1; dx < hw; dx++) { fine(px + dx + off, yy, 0, 0.5, ROBE_D); fine(px + dx + off, yy, 0.5, 0.5, ROBE_D); }
   }
 
   // --- Belt ---
   row(px - 3 + lean, px - 1 + lean, poseY(7), ROBE_D);
   s.setPx(px + lean, poseY(7), ...BAND);
+  fine(px + lean, poseY(7), 0, 0, BUCKLE); fine(px + lean, poseY(7), 0.5, 0.5, BUCKLE_D);
   row(px + 1 + lean, px + 3 + lean, poseY(7), ROBE_D);
 
   // --- Torso with trim, leaning into the run ---
@@ -570,6 +614,8 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
       s.setPx(px + dx + lean, yy, ...c);
     }
   }
+  // Fine surface: the trim reads as embroidery (a zigzag of darker stitches).
+  for (let dy = 8; dy <= 10; dy++) fine(px + lean, poseY(dy), dy % 2 ? 0.5 : 0, dy % 2 ? 0 : 0.5, TRIM, 0.55);
   // Off-hand: swings opposite the legs; trails high in a fall; reaches up
   // to straighten the hat during the idle fidget.
   const reachUp = player.fidgetT > 58 && player.fidgetT <= 88;
@@ -592,6 +638,7 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
 
   // --- Shoulders ---
   row(px - 3 + lean, px + 3 + lean, poseY(11), ROBE);
+  for (let dx = -2; dx <= 2; dx++) { fine(px + dx + lean, poseY(11), 0, 0, ROBE, 1.22); fine(px + dx + lean, poseY(11), 0.5, 0, ROBE, 1.22); }
 
   // --- Head with blinking, directionally lit; the brim shades the brow ---
   const hx = px + lean;
@@ -623,6 +670,12 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
     const ey = poseY(13) + drop;
     s.setPx(hx + side, ey, 1.0, 1.0, 1.0);
     s.setPx(hx + side * 2, ey, 0.08, 0.08, 0.12);
+    // Fine surface: a pupil in the eye's outer-lower quadrant; the socket
+    // cell thins to a lash line on its outer edge; a nose tip below.
+    fine(hx + side, ey, side > 0 ? 0.5 : 0, 0.5, PUPIL);
+    const inner = side > 0 ? 0 : 0.5, cheek = side * f > 0 ? SKIN : SKIN_D;
+    fine(hx + side * 2, ey, inner, 0, cheek); fine(hx + side * 2, ey, inner, 0.5, cheek);
+    fine(hx + side * 2, poseY(12), side > 0 ? 0.5 : 0, 0, SKIN_D);
   }
 
   // --- The floppy hat: brim barely moves, segments lean progressively, tip whips ---
@@ -638,6 +691,9 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   s.setPx(hx - 2 + s1.x, hatY - 1 + s1.y, ...BAND);
   row(hx - 1 + s1.x, hx + 1 + s1.x, hatY - 1 + s1.y, BAND);
   s.setPx(hx + 2 + s1.x, hatY - 1 + s1.y, ...BAND);
+  // Fine surface: the band's upper edge catches the light; a small buckle.
+  for (let dx = -2; dx <= 2; dx++) { fine(hx + dx + s1.x, hatY - 1 + s1.y, 0, 0, BAND, 1.18); fine(hx + dx + s1.x, hatY - 1 + s1.y, 0.5, 0, BAND, 1.18); }
+  fine(hx + f + s1.x, hatY - 1 + s1.y, 0, 0.5, BUCKLE_D); fine(hx + f + s1.x, hatY - 1 + s1.y, 0.5, 0, BUCKLE);
   row(hx - 2 + s1.x, hx + 2 + s1.x, hatY - 2 + s1.y, HAT);
   // mid cone
   row(hx - 1 + s2.x, hx + 1 + s2.x, hatY - 3 + s2.y, HAT);
@@ -659,11 +715,19 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
     s.addPx(px - 2 + lean, poseY(9), sheen * 0.8, sheen * 0.7, sheen * 0.45);
     s.addPx(px + 3 + lean, poseY(6), sheen, sheen * 0.8, sheen * 0.45);
   }
-  if (st.frozen > 0) {
-    const chill = frameCount % 16 < 8 ? 1 : 0.65;
-    s.setPx(px - 4 + lean, poseY(9), 0.55 * chill, 0.82 * chill, 1.0 * chill);
-    s.setPx(px + 4 + lean, poseY(7), 0.45 * chill, 0.75 * chill, 1.0 * chill);
-    if (frameCount % 18 < 5) s.addPx(hx + f * 4, poseY(12) - 1, 0.12, 0.2, 0.26);
+  // The chill (classic surface): rime pixels on the hat brim, shoulders and boots, more as it deepens.
+  const rime = player.chill?.shell ? 1 : player.chill?.rime ?? 0;
+  if (rime > 0.2) {
+    const k = Math.min(1, rime);
+    s.setPx(hx - 3, hatY + 1, 0.62 + 0.3 * k, 0.8 + 0.15 * k, 0.95);
+    s.setPx(hx + 3, hatY + 1, 0.62 + 0.3 * k, 0.8 + 0.15 * k, 0.95);
+    if (rime > 0.45) {
+      s.setPx(px - 4 + lean, poseY(9), 0.55 + 0.3 * k, 0.82, 1.0);
+      s.setPx(px + 4 + lean, poseY(7), 0.45 + 0.35 * k, 0.75 + 0.15 * k, 1.0);
+      s.setPx(px - 2, py - 1, 0.7, 0.86, 0.98);
+      s.setPx(px + 2, py - 1, 0.7, 0.86, 0.98);
+    }
+    if (rime > 0.7 && frameCount % 18 < 5 && !ctx.state.reduceFlashes) s.addPx(hx + f * 4, poseY(12) - 1, 0.12, 0.2, 0.26);
   }
   if (st.stoneskin > 0) {
     const crust = frameCount % 20 < 10 ? 0.46 : 0.36;
@@ -696,4 +760,7 @@ export function drawPlayerSprite(out: PixelSurface, _light: LightField, ctx: Ctx
   }
   stampOutline();
   drawStaff(px + f * 3 + lean, poseY(10));
+  };
+  pose();
+  finish();
 }

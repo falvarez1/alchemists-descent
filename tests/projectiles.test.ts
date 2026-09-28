@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { Projectiles } from '@/combat/Projectiles';
+import { ENEMY_DEFS } from '@/content/enemyDefs';
 import type { CastAction } from '@/combat/wands/compiler';
 import { PROJECTILE_MODS, TRIGGERED, TRIGGER_SOURCE_SPREAD } from '@/combat/wands/projectileMarks';
 import type { CastActionExecutionContext, Ctx, Enemy, Projectile } from '@/core/types';
@@ -64,7 +65,7 @@ describe('projectile trigger payloads', () => {
         spawn: () => undefined,
         burst: () => undefined,
       },
-      audio: {
+      audio: { sfx: () => undefined, creature: () => undefined,
         hollowKnock: () => undefined,
         implode: () => undefined,
       },
@@ -133,7 +134,7 @@ describe('projectile trigger payloads', () => {
       player: { dead: false, crawling: false },
       params: { spells: { bomb: { explosionRadius: 10 } } },
       particles: { spawn: () => undefined, burst: () => undefined },
-      audio: { hollowKnock: () => undefined, implode: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, hollowKnock: () => undefined, implode: () => undefined },
       events: { emit: () => undefined },
       explosions: {
         trigger: (x: number, y: number, r: number, options?: { enemyDamageMul?: number }) => {
@@ -177,7 +178,7 @@ describe('projectile trigger payloads', () => {
       player: { dead: false, crawling: false },
       params: { spells: {} },
       particles: { spawn: () => undefined, burst: () => undefined },
-      audio: { hollowKnock: () => undefined, implode: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, hollowKnock: () => undefined, implode: () => undefined },
       events: { emit: () => undefined },
       explosions: {
         trigger: (x: number, y: number, r: number, options?: { enemyDamageMul?: number }) => {
@@ -229,7 +230,7 @@ describe('projectile trigger payloads', () => {
         spawn: () => undefined,
         burst: () => undefined,
       },
-      audio: {
+      audio: { sfx: () => undefined, creature: () => undefined,
         hollowKnock: () => undefined,
         implode: () => undefined,
       },
@@ -244,6 +245,7 @@ describe('projectile trigger payloads', () => {
         erodeAt: () => undefined,
       },
       enemyCtl: {
+        defs: ENEMY_DEFS,
         damage: (e: Enemy) => damaged.push(e),
       },
       playerCtl: {
@@ -292,7 +294,7 @@ describe('projectile trigger payloads', () => {
         spawn: () => undefined,
         burst: () => undefined,
       },
-      audio: {
+      audio: { sfx: () => undefined, creature: () => undefined,
         tone: () => undefined,
         hollowKnock: () => undefined,
       },
@@ -307,6 +309,7 @@ describe('projectile trigger payloads', () => {
         erodeAt: () => undefined,
       },
       enemyCtl: {
+        defs: ENEMY_DEFS,
         damage: (e: Enemy) => {
           damaged.push(e);
           e.hp = 0;
@@ -398,7 +401,7 @@ describe('projectile trigger payloads', () => {
         spawn: () => undefined,
         burst: () => undefined,
       },
-      audio: {
+      audio: { sfx: () => undefined, creature: () => undefined,
         hollowKnock: () => undefined,
         implode: () => undefined,
       },
@@ -490,7 +493,7 @@ describe('projectile trigger payloads', () => {
         spawn: () => undefined,
         burst: () => undefined,
       },
-      audio: {
+      audio: { sfx: () => undefined, creature: () => undefined,
         tone: () => undefined,
         hollowKnock: () => undefined,
       },
@@ -552,7 +555,7 @@ describe('projectile trigger payloads', () => {
         spawn: () => undefined,
         burst: () => undefined,
       },
-      audio: {
+      audio: { sfx: () => undefined, creature: () => undefined,
         hollowKnock: () => undefined,
         implode: () => undefined,
       },
@@ -699,7 +702,7 @@ describe('projectile trigger payloads', () => {
           spawn: () => undefined,
           burst: () => undefined,
         },
-        audio: {
+        audio: { sfx: () => undefined, creature: () => undefined,
           hollowKnock: () => undefined,
           implode: () => undefined,
           tone: () => undefined,
@@ -1024,7 +1027,7 @@ function modifierCtx(
       spawn: () => undefined,
       burst: () => undefined,
     },
-    audio: {
+    audio: { sfx: () => undefined, creature: () => undefined,
       hollowKnock: () => undefined,
       implode: () => undefined,
       tone: () => undefined,

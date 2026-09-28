@@ -1,4 +1,14 @@
 import type { ProjectileType } from '@/core/types';
+import { Cell } from '@/sim/CellType';
+
+export const WEAVER_LIMB_DAMAGE: Partial<Record<ProjectileType, number>> = { bolt: 18, pellet: 8, iceshard: 16, wisp: 13, icelance: 25, fireball: 14 };
+
+export function isSpentGore(type: number): boolean { return type === Cell.Blood || type === Cell.Slime; }
+
+export function projectileGravity(type: ProjectileType): number {
+  return type === 'bomb' ? .14 : type === 'fireball' ? .02 : type === 'frostbolt' ? .01 :
+    type === 'iceshard' ? .04 : type === 'meteor' ? .07 : type === 'acidglob' ? .12 : 0;
+}
 
 /**
  * Per-type projectile lifetime in frames — the single source of truth shared by

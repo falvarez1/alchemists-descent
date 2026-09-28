@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
 import { compileWand } from '@/combat/wands/compiler';
+import { DEPTH_PROJECTILE_POOL } from '@/combat/wands/rewardPools';
 import { buildWandSentenceView, nextWandSentence } from '@/combat/wands/sentenceView';
-import { REVIEW_WAND_LOADOUTS, WAND_FRAMES, WandSystem } from '@/combat/wands/WandSystem';
+import { CLICK_BUFFER_TICKS, REVIEW_WAND_LOADOUTS, WAND_FRAMES, WandSystem } from '@/combat/wands/WandSystem';
 import { TRIGGERED, TRIGGER_SOURCE_SPREAD } from '@/combat/wands/projectileMarks';
 import { createDefaultWandLightSettings, createGameParams } from '@/config/params';
 import { EventBus } from '@/core/events';
@@ -11,8 +12,8 @@ import type { CardId, CastAction, Ctx, Enemy } from '@/core/types';
 import { createDefaultStatus } from '@/entities/status';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
-import { introControlHintForObjective } from '@/game/introObjectives';
-import { cardGrantBenchCue, contextualObjectiveText } from '@/ui/Hud';
+import { INTRO_OBJECTIVE, introControlHintForObjective } from '@/game/introObjectives';
+import { FLOOR_OBJECTIVE_WAYSTONE, cardGrantBenchCue, contextualObjectiveText } from '@/ui/Hud';
 import { canOpenWandBench, cardMatchesBenchFilter, recipeHintsForCard } from '@/ui/WandBench';
 import { mockRandom, restoreRandom } from './helpers/randomSeam';
 
@@ -448,18 +449,18 @@ describe('wand sentence view', () => {
 });
 
 describe('wand light defaults', () => {
-  it('preserves the shipped player wand light look', () => {
+    it('keeps the wand glow restrained enough to read nearby materials', () => {
     expect(createDefaultWandLightSettings()).toEqual({
-      intensity: 4.6,
+        intensity: 2.4,
       radius: 112,
       r: 1.0,
       g: 0.84,
       b: 0.6,
-      flicker: 0.24,
+        flicker: 0.07,
       fillR: 0.5,
       fillG: 0.45,
       fillB: 0.36,
-      torchIntensity: 5.6,
+        torchIntensity: 3.2,
       torchRadius: 152,
       torchMinFlicker: 1.05,
     });
@@ -516,24 +517,26 @@ function objectiveCtx(opts: {
 }
 
 describe('HUD contextual objectives', () => {
-  it('prioritizes short card-to-bench guidance when spare cards can be slotted', () => {
+  it('keeps the floor goal as the objective while a spare card waits in the satchel', () => {
+    // The bench cue is a secondary line under the objective now (Hud's
+    // objective note); a found card must never replace the floor's goal.
     const ctx = objectiveCtx({
       collection: ['speed'],
       refuge: { x: 120, y: 100 },
       portal: { x: 500, y: 100, open: false },
     });
 
-    expect(contextualObjectiveText(ctx, 'FIND THE GOLDEN KEY', 60)).toBe('WAND BENCH READY — PRESS B');
+    expect(contextualObjectiveText(ctx, INTRO_OBJECTIVE.findKey)).toBe(INTRO_OBJECTIVE.findKey);
   });
 
   it('shows portal and key state with plan wording', () => {
     const beforeKey = objectiveCtx({ portal: { x: 500, y: 100, open: false }, keyTaken: false });
     const afterKey = objectiveCtx({ portal: { x: 500, y: 100, open: false }, keyTaken: true });
 
-    expect(contextualObjectiveText(beforeKey, 'anything')).toBe('FIND THE GOLDEN KEY');
+    expect(contextualObjectiveText(beforeKey, 'anything')).toBe(INTRO_OBJECTIVE.findKey);
     expect(contextualObjectiveText(beforeKey, 'MOVE THROUGH THE CAVE')).toBe('MOVE THROUGH THE CAVE');
     expect(contextualObjectiveText(beforeKey, 'WAND BENCH: SLOT HEAVY')).toBe('WAND BENCH: SLOT HEAVY');
-    expect(contextualObjectiveText(afterKey, 'anything')).toBe('RETURN TO THE PORTAL');
+    expect(contextualObjectiveText(afterKey, 'anything')).toBe(INTRO_OBJECTIVE.returnPortal);
   });
 
   it('calls out nearby unlit waystones before falling back to the base objective', () => {
@@ -546,15 +549,17 @@ describe('HUD contextual objectives', () => {
       waystones: [{ x: 130, y: 100, lit: true }],
     });
 
-    expect(contextualObjectiveText(nearWaystone, 'EXPLORE')).toBe('LIGHT WAYSTONE: BRING FIRE');
+    expect(contextualObjectiveText(nearWaystone, 'EXPLORE')).toBe(FLOOR_OBJECTIVE_WAYSTONE);
     expect(contextualObjectiveText(litWaystone, 'EXPLORE')).toBe('EXPLORE');
   });
 
   it('points a card grant at the bench (B), which opens anywhere now', () => {
     // Position no longer matters — the bench is the alchemist's own kit, so the
     // cue is the same far from (or without) any Refuge.
-    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 60, y: 150 } }))).toBe('NEW SPELL CARD — PRESS B TO SLOT');
-    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 9000, y: 9000 } }))).toBe('NEW SPELL CARD — PRESS B TO SLOT');
+    const cue = 'Seat Cryo Jet at the wand bench (B).';
+    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 60, y: 150 } }), 'Cryo Jet')).toBe(cue);
+    expect(cardGrantBenchCue(objectiveCtx({ player: { x: 9000, y: 9000 } }), 'Cryo Jet')).toBe(cue);
+    expect(cardGrantBenchCue(objectiveCtx({}))).toBe('Seat the new card at the wand bench (B).');
   });
 });
 
@@ -577,7 +582,7 @@ describe('HUD intro control hints', () => {
       'LMB',
     ]);
     expect(introControlHintForObjective('WAND BENCH: SLOT HEAVY')?.map((part) => part.key)).toContain('B');
-    expect(introControlHintForObjective('FIND THE GOLDEN KEY')).toBeNull();
+    expect(introControlHintForObjective(INTRO_OBJECTIVE.findKey)).toBeNull();
   });
 });
 
@@ -587,7 +592,7 @@ describe('WandSystem runtime snapshots', () => {
     const ctx = {
       events,
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'build' },
       player: {},
     } as unknown as Ctx;
@@ -616,7 +621,7 @@ describe('WandSystem runtime snapshots', () => {
     const ctx = {
       events,
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'build' },
       player: {},
     } as unknown as Ctx;
@@ -642,7 +647,7 @@ describe('WandSystem runtime snapshots', () => {
     const ctx = {
       events,
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'build' },
       player: {},
     } as unknown as Ctx;
@@ -711,6 +716,147 @@ describe('WandSystem runtime snapshots', () => {
     expect(ctx.projectiles.length).toBeGreaterThan(shots);
   });
 
+  describe('the click buffer (a tap released inside one tick)', () => {
+    const tapWand = () => {
+      const ctx = makeCastCtx();
+      const wands = new WandSystem(ctx);
+      wands.loadLoadout({ active: 0, collection: ['spark'], wands: [{ frameId: 'oak', cards: ['spark', null, null], mana: 90 }] });
+      return { ctx, wands };
+    };
+    const tap = (ctx: Ctx) => {
+      ctx.player.firing = false; // released before the tick ran
+      ctx.player.firePressed = true;
+    };
+    const cooldown = (wands: WandSystem) => wands.snapshotRuntimeState().wands[0].cooldown;
+    // One game tick as PlayerControl drives it: the wand is asked to fire while
+    // the button is held OR a press edge is waiting.
+    const tick = (ctx: Ctx, wands: WandSystem) => {
+      wands.update(ctx);
+      if (ctx.player.firing || ctx.player.firePressed) wands.fire(ctx);
+    };
+
+    it('casts a tap exactly once', () => {
+      const { ctx, wands } = tapWand();
+      tap(ctx);
+      wands.fire(ctx);
+      const shots = ctx.projectiles.length;
+      expect(shots).toBeGreaterThan(0);
+      expect(ctx.player.firePressed).toBe(false);
+      for (let t = 0; t < 60; t++) tick(ctx, wands);
+      expect(ctx.projectiles.length).toBe(shots);
+    });
+
+    it('holds a tap a hair early until the wand cycles, then casts it once', () => {
+      const { ctx, wands } = tapWand();
+      tap(ctx);
+      wands.fire(ctx);
+      const shots = ctx.projectiles.length;
+      while (cooldown(wands) > CLICK_BUFFER_TICKS) wands.update(ctx);
+      tap(ctx);
+      let t = 0;
+      for (; t < 40 && ctx.projectiles.length === shots; t++) tick(ctx, wands);
+      expect(ctx.projectiles.length).toBeGreaterThan(shots);
+      expect(t).toBeLessThanOrEqual(CLICK_BUFFER_TICKS + 1);
+      const after = ctx.projectiles.length;
+      for (let k = 0; k < 60; k++) tick(ctx, wands);
+      expect(ctx.projectiles.length).toBe(after);
+    });
+
+    it('spends a tap that lands deep in the recharge, or while casting is refused', () => {
+      const { ctx, wands } = tapWand();
+      tap(ctx);
+      wands.fire(ctx);
+      const shots = ctx.projectiles.length;
+      expect(cooldown(wands)).toBeGreaterThan(CLICK_BUFFER_TICKS);
+      tap(ctx);
+      wands.fire(ctx);
+      expect(ctx.player.firePressed).toBe(false);
+      for (let t = 0; t < 120; t++) tick(ctx, wands);
+      expect(ctx.projectiles.length).toBe(shots);
+      // rooted by heart communion: the tap is refused, not saved for later
+      ctx.player.recharge = 30;
+      tap(ctx);
+      wands.fire(ctx);
+      expect(ctx.player.firePressed).toBe(false);
+      ctx.player.recharge = 0;
+      for (let t = 0; t < 30; t++) tick(ctx, wands);
+      expect(ctx.projectiles.length).toBe(shots);
+    });
+
+    it('answers a 450 ms tap rhythm on the starter wand (QA: 8 taps gave 4 casts)', () => {
+      const { ctx, wands } = tapWand();
+      const TAP_EVERY = 27; // 450 ms at the 60 Hz tick
+      const tapTicks: number[] = [];
+      const castTicks: number[] = [];
+      let last = 0;
+      for (let t = 0; t < TAP_EVERY * 8 + 60; t++) {
+        if (t % TAP_EVERY === 0 && tapTicks.length < 8) { tap(ctx); tapTicks.push(t); }
+        tick(ctx, wands);
+        if (ctx.projectiles.length > last) { castTicks.push(t); last = ctx.projectiles.length; }
+      }
+      const f = WAND_FRAMES.oak;
+      // Every tap the wand's cycle can physically answer is answered: a 27-tick
+      // rhythm against a longer cycle merges at most the taps that fall while
+      // one is already waiting — never every other one.
+      const cycle = f.castDelay + f.recharge;
+      const span = tapTicks[tapTicks.length - 1] + CLICK_BUFFER_TICKS;
+      expect(castTicks.length).toBe(Math.min(8, Math.floor(span / cycle) + 1));
+      expect(castTicks.length).toBeGreaterThanOrEqual(7);
+      // ...and no buffered shot trails its tap by more than the window.
+      for (const c of castTicks) {
+        const tapAt = Math.max(...tapTicks.filter((tt) => tt <= c));
+        expect(c - tapAt).toBeLessThanOrEqual(CLICK_BUFFER_TICKS);
+      }
+    });
+
+    it('buffers ONE cast, not a queue: taps during a cooldown merge', () => {
+      const { ctx, wands } = tapWand();
+      tap(ctx);
+      wands.fire(ctx);
+      const shots = ctx.projectiles.length;
+      while (cooldown(wands) > CLICK_BUFFER_TICKS) wands.update(ctx);
+      for (let k = 0; k < 3; k++) { tap(ctx); tick(ctx, wands); }
+      for (let t = 0; t < 200; t++) tick(ctx, wands);
+      // exactly one more cast (one group's worth of projectiles), then silence
+      expect(ctx.projectiles.length).toBe(shots * 2);
+    });
+
+    it('a wand swap or a level change spends the buffered click', () => {
+      const { ctx, wands } = tapWand();
+      tap(ctx);
+      wands.fire(ctx);
+      const shots = ctx.projectiles.length;
+      while (cooldown(wands) > CLICK_BUFFER_TICKS) wands.update(ctx);
+      tap(ctx);
+      wands.fire(ctx);
+      expect(ctx.player.firePressed).toBe(true); // buffered
+      wands.active = 1;
+      expect(ctx.player.firePressed).toBe(false);
+      wands.active = 0;
+      tap(ctx);
+      wands.fire(ctx);
+      expect(ctx.player.firePressed).toBe(true);
+      ctx.events.emit('levelChanged', { depth: 1, name: 'x' });
+      expect(ctx.player.firePressed).toBe(false);
+      for (let t = 0; t < 120; t++) tick(ctx, wands);
+      expect(ctx.projectiles.length).toBe(shots);
+    });
+
+    it('leaves held automatic fire on its own cadence', () => {
+      const { ctx, wands } = tapWand();
+      ctx.player.firing = true;
+      ctx.player.firePressed = true;
+      let casts = 0;
+      let last = 0;
+      for (let t = 0; t < 240; t++) {
+        tick(ctx, wands);
+        if (ctx.projectiles.length > last) { casts++; last = ctx.projectiles.length; }
+      }
+      const f = WAND_FRAMES.oak;
+      expect(casts).toBeGreaterThanOrEqual(Math.floor(240 / (f.castDelay + f.recharge + 1)));
+    });
+  });
+
   it('removes shot spread in god mode — the bolt flies dead on the aim', () => {
     const ctx = makeCastCtx();
     ctx.state.debugGodMode = true;
@@ -733,8 +879,8 @@ describe('WandSystem runtime snapshots', () => {
     const ctx = makeCastCtx();
     let eroded: { x: number; y: number; rad: number } | null = null;
     let dug = 0;
-    ctx.audio.dig = () => {
-      dug++;
+    ctx.audio.sfx = (id) => {
+      if (id === 'player.staff') dug++;
     };
     ctx.player.aimAngle = Math.PI / 2;
     ctx.player.vy = 1.4;
@@ -765,11 +911,11 @@ describe('WandSystem metaprogression', () => {
     vi.unstubAllGlobals();
   });
 
-  it('seeds fresh-run collection from discovered cards without duplicating starter wand cards', () => {
+  it('starts fresh runs with the kit only; discovered cards feed the reward pools', () => {
     const store = new Map<string, string>([
       [
         'alchemists-descent-card-discovery-v1',
-        JSON.stringify({ version: 1, cards: ['flame', 'spark', 'dig', 'blackhole'] }),
+        JSON.stringify({ version: 1, cards: ['flame', 'spark', 'dig', 'blackhole', 'vitrify'] }),
       ],
     ]);
     vi.stubGlobal('localStorage', {
@@ -779,32 +925,39 @@ describe('WandSystem metaprogression', () => {
     const ctx = {
       events: new EventBus(),
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'play' },
       player: {},
     } as unknown as Ctx;
     const wands = new WandSystem(ctx);
 
-    expect(wands.collection.slice(0, 2)).toEqual(['double', 'speed']);
-    expect(wands.collection).toContain('flame');
-    expect(wands.collection).toContain('blackhole');
-    expect(wands.collection).not.toContain('spark');
-    expect(wands.collection).not.toContain('dig');
-
+    // Breathing Works: no carried-over hand.
+    expect(wands.collection).toEqual(['double', 'speed']);
     wands.collection.length = 0;
     wands.resetLoadout();
+    expect(wands.collection).toEqual(['double', 'speed']);
 
-    expect(wands.collection).toContain('flame');
-    expect(wands.collection).toContain('blackhole');
-    expect(wands.collection).not.toContain('spark');
-    expect(wands.collection).not.toContain('dig');
+    // A kit seats its own cards and satchel, nothing else.
+    wands.applyStarterLoadout([['frostshard'], ['dig']], ['spark', 'shattercrit']);
+    expect(wands.wands[0].cards).toEqual(['frostshard', null, null]);
+    expect(wands.wands[1].cards).toEqual(['dig', null, null, null]);
+    expect(wands.collection).toEqual(['spark', 'shattercrit']);
+
+    // With every depth-pool card already owned, the only unowned page left is
+    // the one this player discovered in an earlier run: the grant finds it.
+    wands.collection.length = 0;
+    wands.collection.push(...DEPTH_PROJECTILE_POOL, 'spark');
+    const granted: string[] = [];
+    ctx.events.on('cardGranted', ({ id }) => granted.push(id));
+    ctx.events.emit('levelChanged', { depth: 2, name: 'THE ROT GARDENS' });
+    expect(granted).toEqual(['vitrify']);
   });
 
   it('debug shuffle rebuilds review wands from the canonical card catalog', () => {
     const ctx = {
       events: new EventBus(),
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'play' },
       player: {},
     } as unknown as Ctx;
@@ -849,7 +1002,7 @@ function makeCastCtx(): Ctx & { spawned: Array<{ x: number; y: number; type: num
     world: new World(),
     events: new EventBus(),
     telemetry: { count: () => undefined },
-    audio: {
+    audio: { sfx: () => undefined, creature: () => undefined,
       zap: () => undefined,
       noiseBurst: () => undefined,
       tone: () => undefined,
@@ -896,6 +1049,24 @@ function makeCastCtx(): Ctx & { spawned: Array<{ x: number; y: number; type: num
   } as unknown as Ctx & { spawned: Array<{ x: number; y: number; type: number | null }> };
   return ctx;
 }
+
+describe('equipped leg primary action', () => {
+  it('whips instead of casting and restores the untouched wand after a fresh press', () => {
+    const ctx = makeCastCtx(), wands = new WandSystem(ctx); ctx.wands = wands;
+    wands.wands[0].cards.splice(0, wands.wands[0].cards.length, 'spark');
+    const before = { mana: wands.wands[0].mana, index: wands.wands[0].castIndex };
+    ctx.player.legClub = { durability: 4, length: 34, angle: 0, cooldown: 0, swingT: 0 };
+    ctx.player.firePressed = true;
+    wands.fire(ctx);
+    expect(ctx.player.legClub.swingT).toBe(18); expect(ctx.projectiles).toHaveLength(0);
+    expect(wands.wands[0].mana).toBe(before.mana); expect(wands.wands[0].castIndex).toBe(before.index);
+    ctx.player.legClub = undefined; ctx.player.fireBlockedUntilRelease = true;
+    wands.fire(ctx); expect(ctx.projectiles).toHaveLength(0);
+    ctx.player.fireBlockedUntilRelease = false; ctx.player.firePressed = true;
+    wands.fire(ctx); expect(ctx.projectiles).toHaveLength(1);
+    expect(wands.wands[0].mana).toBeLessThan(before.mana);
+  });
+});
 
 function makeTestEnemy(x: number, y: number): Enemy {
   return {
@@ -1084,7 +1255,7 @@ describe('WandSystem bench transfers', () => {
     const ctx = {
       events,
       telemetry: { count: () => undefined },
-      audio: { wandSwap: () => undefined },
+      audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
       state: { mode: 'build' },
       player: {},
     } as unknown as Ctx;

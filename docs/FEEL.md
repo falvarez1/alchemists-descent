@@ -135,6 +135,120 @@ blood (`updatePlayer`'s BLOOD WADE block); one count drives three things:
   the wake can never flood the sim) — plus the odd soft splash. The grid
   explains every part of it.
 
+### The chill (`entities/chill` model, `game/Chill` system)
+
+The old frozen status painted a pale ice oval over the alchemist. His cold is
+now a graded body state, `player.chill.level` 0..1, built from real cold cells
+and thawed by real heat. Every look, sound and slow follows it. Enemies keep
+their binary `status.frozen` (the Rime Warden's brittleness, shatter crits and
+frozen corpses are unchanged). The alchemist's frozen timer only records
+exposure (`gradedChill` in `entities/status`: no flat 0.55 slow, no generic
+motes). All numbers live in `CHILL_PARAMS` (`config/params.ts`, live-tunable
+as `ctx.chill.tuning`), per fixed tick.
+
+- **Cold in** (sampled every 2 ticks from the cells at the body):
+  - brine at the legs: 0.0026, plus 0.0042 × how deep (a wade freezes solid in about 4 s);
+  - liquid nitrogen: 0.0035 a cell, capped at 0.02;
+  - fresh water in a frozen biome: 0.0014 × depth;
+  - ice or snow pressed to the body: 0.00035 (it only slows the warming);
+  - a frozen biome's air holds the body at 0.12 at least, climbing 0.0008 a tick (breath, a touch of rime, no slow);
+  - blows land at once (`ctx.chill.hit`): a frost bolt 0.24, a Rime Warden rime wave 0.2, each lick of its breath 0.075.
+- **Heat out:**
+  - 0.0011 a tick out of the cold, only 0.00025 while a cold source still touches;
+  - plus 0.0065 × warmth: fire 1, lava 1.5, embers 0.7 and burning coal or oil 0.8, each weighted
+    1/(1 + d²/(0.18·26²)) within 26 cells of the chest, scanned every 4 ticks, full warmth at 7;
+  - the Warm Refuge counts as 0.6 of full warmth;
+  - a burning coat adds 0.02.
+  - Casting fire warms you because the fire is real cells beside you.
+- **Movement:** speed and acceleration × `moveK`, jump × `jumpK`; both have a dead zone under 0.08:
+
+  | chill | 0.25 | 0.5 | 0.75 | 1 |
+  |---|---|---|---|---|
+  | `moveK` | 0.94 | 0.81 | 0.64 | 0.45 |
+  | `jumpK` | 0.99 | 0.95 | 0.89 | 0.82 |
+
+  The jump falls far less than the run, because a jump that cannot clear a gutter's lip would trap a
+  freezing body in the brine. Levitation spools slower through the same pace but still climbs.
+  Stops stay crisp: ground stop decay is unchanged.
+- **Frozen solid** (fail-open):
+  - At 1.0 the body locks in an ice shell for 72 ticks. Movement and casting stop and gravity still applies.
+  - Each fresh press cracks 9 ticks off (a crack each), heat melts it faster, and a real blow (≥ 1.5 hp) bursts it at once.
+  - It bursts to 0.66, then holds under 0.94 for 420 ticks, so it cannot re-lock.
+  - Worst case (nitrogen at its cap, brine to the neck, a frost bolt a second): locked at most 72 of every 492 ticks (`tests/chill.test.ts`).
+- **The rime and the thaw beat:** `rime` is the frost on the body.
+  - It accretes after the level: up to 0.006 + 6% of the gap a tick, with a crackle per 0.045.
+  - It holds while the body warms, melting 0.0007 a tick (+0.0015 × warmth, +0.01 alight).
+  - When the level falls 0.26 under it (with ≥ 0.42 on), it cracks off at once. This is the thaw beat:
+    - real Snow and Ice tumble off (7 + 16 × strength particles, half Snow and a sixth Ice, deposited where they land; the rest glassy shards);
+    - by a fire, real Steam hisses off and the shed melts;
+    - the score snaps back.
+  - The shell bursting sheds the same way (7 + 18 × strength).
+- **The body** (`render/player/AlchemistArt` drawChill; `render/creatures/raster` frost):
+  - **Rime on the real silhouette.** Each pixel scores 0.5 × edge (a chamfer distance to the silhouette,
+    fading over 2.2 cells) + 0.2 × up-facing + 0.22 × its part's exposure + 0.1 × how far toward
+    hat or boots + 0.28 × crystal noise (two scales, anchored to the body). It frosts past
+    1 − 0.87a − 0.06 sin(πa).
+  - Exposure by part: brim 1, crown 0.86, shoulders 0.84, sleeves 0.72, boots 0.66, tails 0.52, coat 0.3,
+    face 0.08 (stipple only), vial and effects never.
+  - The front is an ordered stipple of whole crystals, the coat behind it solid, shaded on the same
+    normals by its own blue-white ramp. It keeps its cold under a warm lamp (light desaturated × 0.65 on rime).
+  - Past 0.28 the beard frosts, past 0.5 the brows. Icicles grow from the brim from 0.5
+    (six, off the eye), and cuff drips form past 0.55.
+  - Past 0.78 a glaze (to 0.22) sets in and crystals twinkle (not with reduced flashes).
+  - Frozen solid: rime all over (a 0.4 floor), a thin clear-ice shell that hugs every limb 0.8–1.1 cells
+    proud, facet lines, and a dark fracture per crack.
+  - The fallen keep their rime.
+- **The pose** (`entities/playerPose` chillPose):
+  - The hug starts at 0.3 and is full by 0.75. The off hand tucks under the mantle, the wand arm draws in,
+    the head sinks 0.6 and tips down, and he leans 0.07 into it.
+  - Stiffness starts at 0.2 and is full by 0.8: stride × (1 − 0.42), knee lift × (1 − 0.5), bob × (1 − 0.6).
+  - The breath quickens: sin(0.13 f) × 0.16.
+  - The shiver: from 0.32, a one-fine-pixel shudder of the upper body on up to 60% of tick pairs.
+    Never mid-cast, never with reduced flashes, never inside the ice.
+- **Breath:**
+  - From 0.1 (so in any frozen biome), every 150 − 90 × depth ticks.
+  - A translucent wisp billows off the mouth over 52 ticks: fine pixels, premultiplied, dimmed by the room's light.
+  - Past 0.5, every other breath also leaves a real Steam cell (life 22–38).
+- **The world answers (real cells):**
+  - Past 0.45 a chilled body wading fresh water leaves a skin of rime Ice on the surface behind him
+    (3 columns every 3 ticks at 35–100% odds). It thaws back to water after 960–1260 ticks.
+    Brine refuses: it never freezes, the Cold Store's first lesson.
+  - Past 0.5 his boots print hoarfrost on stone, wood, metal and ice, a colour stain × 0.34–0.68
+    toward (218, 234, 246). Standing still, the frost creeps round the boots out to 7 cells, and the
+    wall he clings to rimes. Prints fade after 2100–2700 ticks.
+  - Leaving a floor gives back everything the cold wrote.
+- **The lens** (`render/PostFx`, WebGPU twin; `render/chillLens`):
+  - `screen` eases toward the level: 0.035/tick in, 0.045 out, 0.09 just after a thaw. Dead under 0.14.
+  - The grade drains colour toward a cold blue-grey (× 0.52), shifts the white balance
+    (0.88, 0.97, 1.1) and adds blue to the shadows.
+  - Frost grows in from the frame's edges from screen 0.12, reaching up to a fifth of the frame's height.
+    It is milky at the rim, a lace of ridged fronds with hexagonal needles at the ragged front,
+    frosted-glass blur behind it, and a few glints at the front (none with reduced flashes).
+  - A safe ellipse (0.38 × 0.33 of the frame) is never touched.
+  - Opacity is capped at 0.55, or 0.36 with high-readability lighting.
+- **Sound** (`audio/EventCues` chillCues; `audio/MusicDirector` tape):
+  - Frost crackles climb from high ticks to low creaks as the rime thickens.
+  - A shivering exhale plays at most every 2.4 s past 0.45.
+  - Seizing solid, cracks, the burst, and the thaw (with a steam hiss when a fire did it).
+  - The wind-and-ice loop swells with the lens (gain 0.2–1).
+  - The heart slows past 0.72: 78 → 112 ticks a beat, rate 0.86 → 0.78.
+  - **The score's tape runs down.** It is dead under 0.15, and the playback rate and pitch fall together:
+
+    | chill | 0.25 | 0.5 | 0.75 | 1 |
+    |---|---|---|---|---|
+    | playback rate | 0.986 | 0.936 | 0.873 | 0.80 |
+    | lowpass cutoff (Hz) | 15.2k | 6.9k | 2.85k | 1.1–1.4k |
+
+    It glides on its own 60 ms clock: 0.06 a step cooling, 0.14 warming, 0.32 in the 50 ticks after a thaw beat.
+- **Voice:** the first deep chill of a session (≥ 0.6) brings the Docent's captioned line (it
+  waits behind a pipe line, 14 s): "Frost in the beard. Very distinguished. Find a fire before it
+  spreads to the rest of you." (Voiced, Daniel `[dryly]`; a toast where no narrator is loaded.)
+- **Creatures:** a frozen creature takes a lighter rime on its own silhouette
+  (0.55, fading over its last 40 frozen ticks). A frozen carcass takes 0.7 over a paler cast
+  (the old 0.42 wash is now 0.16).
+- **Cost:** 0.03 ms a tick for the system; the rime pass is lost in noise. Frame means are
+  5.6–6.0 ms at chill 0 and at chill 1 (d2b, measured).
+
 ### Kick / force push (F)
 
 A single button that is half melee, half *blast of air* — Newton both ways.
@@ -160,7 +274,120 @@ A single button that is half melee, half *blast of air* — Newton both ways.
 - **Vines bend; loose cells fly.** The gust bends hanging vines
   (`applyRadialImpulse`); ash (always) + embers + gases blow into flying motes;
   loose particles ride the gust.
+- **The fallen get the boot too.** A corpse in a wider ~80° cone, or lying at
+  the boot on the kicking side, is punted at 6/√mass cells/tick along the aim
+  (+0.35 lift), each part by its distance from the boot so the body folds; a
+  heavy carcass kicks back like a wall (reaction mass/3). One held on the
+  wand's thread is kicked out of it (a punt). The gust shoves the rest.
 - Feedback: a dust arc along the kick, a low square *thud*, an airy noise *whoosh*.
+
+### Telekinesis (E) — the fallen on a thread (`combat/Telekinesis`)
+
+The same verb lifts crates and the dead. **E** on the body under the cursor
+takes hold (the one the cursor is ON wins: a corpse within 1.5 cells of the
+cursor beats a crate under it; within 4 with no crate under the cursor it
+still counts — otherwise E stays a lever-pull / siphon); **E** again sets it
+down with the momentum it has; **F**, or a right-click while holding, hurls it
+at the cursor. Controller: X lifts along the aim / sets down, RB or R3 hurls.
+
+- **It hangs from where you took it.** The pull is a damped spring on ONE
+  point (the one nearest the cursor at the grab): K 0.03/mass, damping
+  0.12/√mass, capped at 0.9/√mass cells/tick². The held point barely yields
+  to its bonds (share 0.9), the field lifts 35% of the weight off the rest,
+  so limbs trail and dangle: a lizard held by the tail swings by the tail, a
+  bat snaps to the cursor, a golem lags and sags. The body hangs 1.6 cells per
+  slime below the cursor. Gel re-inflates and hangs like a sack; a frozen body
+  is held whole (it is rigid); a serpent by its head; a Weaver by its shell,
+  legs clutched in and trailing the swing.
+- **Leash and reach.** The target is the cursor clamped to 64 cells of the
+  alchemist's chest; a body is gripped within 90 of the wand tip, in its
+  sight. 45 ticks out of sight, or 150 cells away, and the thread snaps.
+- **Mass** (slimes): bat 0.4 · wisp 0.6 · slime 1 · imp 1.2 · spitter 1.3 ·
+  mage 1.6 · rillback 1.8 · rootloper 2 · weaver 2.6 · stonemaw 3.2 · golem 4.5
+  · leviathan 14 (over the 6 limit: E only **nudges** it, 1.1/√mass for 6
+  mana, and the Works remark "Rather heavy.").
+- **Mana** (the active wand): holding cancels its regeneration and costs
+  0.08 + 0.09·mass per tick more (an Oak Sprig holds a slime ~9 s from full, a
+  golem ~3 s); taking hold 2 + 1.5·mass; a hurl 6 + 5·mass, and a short tank
+  throws at mana/cost of full power (under 25%: it fizzles and just drops).
+  Dry: the hollow click, the mana bar flinch, a fizzle at the tip. Crates stay
+  free (puzzle weights must stay fail-open).
+- **The hurl** leaves at 8/mass^0.35 cells/tick (clamped 3.5–7.5: a bat
+  flies, a golem is shoved), *lobbed*: candidate throws of the body's own
+  flight (gravity .22, air .985/tick; a Weaver .25/.995) are flown low to high
+  and the flattest that passes within 3 cells of the cursor wins. The swing
+  becomes tumble (the gripped part +18%), the thrower takes a small recoil
+  (0.35·mass·power, ≤ 1.6), displaced air streaks behind, a small bloom kick.
+- **Feel.** The grab tugs the body toward the wand (0.9/√mass) with a
+  brass-white flare; a hairline brass thread (`render/sprites/TelekinesisArt`)
+  sags under the weight and draws taut as the spring pulls, wavers along its
+  length, runs three beads of light into the body, flares on the grab
+  (reduced flashes: dimmer, no flare); a quarter-second brass shimmer at the
+  grip on the grab. The body itself is NOT tinted or ringed with motes (a
+  brass wash paled dark chitin to lilac and loose motes read as joint
+  markers): remains take the room's light dully (×0.82, ≤ 0.9), their lights
+  gutter by time since death, a dead Weaver's eyes are shut and its legs hang
+  like a marionette's, a dead Stone Maw's legs curl under its segments.
+  Sounds: a taut twang and tug, the thread's hum (louder for a heavier body),
+  a slack sigh, a whip-crack and rush of air, a fizzle, a strained groan.
+- **Handled remains keep.** A body held, thrown, kicked or frozen does not rot
+  (for 240 ticks after the last touch), bounded at 1800 ticks spared in all;
+  with more than 10 remains the oldest untouched melts first, the held one never.
+- **Teach.** The first fresh corpse within 56 cells shows "E on the fallen:
+  lift · F hurls" and a one-time card; while holding, the hint line reads the
+  set-down and hurl keys.
+
+### The fallen as mass (`creatures/corpseWorld`)
+
+- **BOWLED.** A body faster than 2.2 cells/tick strikes a creature it passes
+  through for 6 + 4.5·mass^0.6·relative speed (cap 90), knocks it along its
+  flight, sheds 55% of its momentum into it; one blow per creature per
+  flight, 14-tick cooldown. Set moving by the alchemist (a hurl, a kick, a
+  swing, his own blast) within 240 ticks, a kill is **BOWLED** (an alchemical
+  kill: callout, chain, payout); a carcass falling on its own is debris
+  (FLATTENED). A bowl of 36+ holds a 4-frame hitstop. Bosses take a bowl as
+  the player's own blow (the boss ward's thrown-leg rule); a frozen victim
+  SHATTERS. A swung body clubs too (the held body strikes at speed).
+- **Only a heavy body on his head hurts him**: mass ≥ 2.5 falling at ≥ 2.2
+  onto the alchemist's head, 1 + 0.45·mass·vy, capped at 8 ("hostile debris").
+- **Blasts** fling every part by distance (reach r×1.8, strength 2.5 + .08r,
+  ÷√mass, +35% lift); the player's own blast makes what they hit his.
+- **Liquids.** Entering a pool at vy ≥ 1 swaps the surface cells up and out
+  over 2 + 1.5·mass + .6·vy columns each side (mass conserved) with cosmetic
+  spray in the pool's own colour; drag .8/tick and buoyancy −.35 float it;
+  feet rise (belly-up); a Weaver's shell bobs.
+- **Fire.** Flame or embers against a body not soaked (< 40% of it in
+  water/blood/gel) catch it: 480 ticks (oiled 780); it writes one real Fire
+  cell against itself per census (oil, grass, leaves and marsh gas go up),
+  chars .0035/tick toward soot with embers breathing through, rots 2 extra
+  ticks per tick and falls to ash and embers. Water puts it out (a sizzle).
+- **Lava** takes a body in ~1.2 s (+10 rot/tick, embers, no bones); **acid**
+  eats it (+6/tick) and is spent (a touching cell goes up as smoke, 40%/census).
+- **Frost.** Nitrogen, ice or snow freezes it stiff for 1200 ticks (refreshed
+  while touching): shape matching holds the pose, friction .06, air .99 — it
+  slides and tumbles like a plank, ice-pale. A blow of 2.4 cells/tick (the
+  sharper of one tick's Δv and three ticks' × 0.8: a long body meets a wall
+  nose first) or a close strong blast **shatters** it: up to 7 real Ice cells,
+  3 of its gore, 2 + mass frozen chunks (kickable debris), 24 glassy shards.
+  Heat thaws it fast first.
+- **Current.** A charged cell against it: a 24-tick galvanic twitch (a part
+  jerks every 3 ticks, legs kick, blue sparks); wet (≥ 25%), it carries 10 of
+  charge on into the liquid it lies in.
+- **Weight.** Plates and weight sensors count round(mass × 4) per body with a
+  part resting in their rows: a slime presses a plate (4 ≥ 3), a bat is too
+  light (2); a body the wand holds up weighs nothing.
+- **Ecology.** A carried or just-thrown body (300 ticks) lures scavengers
+  from 1.6× as far; a snapjaw snatches a carcass by its nearest part — dangle
+  one at the pod and it eats and sits chewing (780 × 1.5 ticks: safe passage).
+- **Crates and bones.** A body faster than 2.4 shoves the loose bodies it
+  passes through (momentum 12·mass·v) and keeps 70%.
+- **Landings.** An abrupt change of 1.6 cells/tick (from ≥ 1.8) is a thud:
+  dust in the colour of what it hit, a light or heavy thud by the body; a body
+  of 2+ slimes landing at 3+ shakes the view a little (0.004·Δv·√mass, local,
+  capped at .025).
+- The census of touching cells runs every 3 ticks (staggered; two rings: just
+  inside the rim and just outside it). Grid writes pick cells by a
+  deterministic hash, never the entity stream; motes use fx.
 
 ### Vine swing (G)
 
@@ -201,8 +428,36 @@ Layered, bottom to top:
 | **Hurt stagger** | Damage leans the body away from the knockback vector for 12 frames and whips the hat with the blow (on top of hitstop ≥ 8 dmg) |
 | **Idle fidgets** | ~7 s of true stillness: the off-hand reaches up and straightens the hat (the hat springs at the touch), then the staff gets a slow flourish of cyan sparks. Repeats ~6 s later. Cancelled by any action; a crouch is a stance, not boredom |
 | Blink | Random 6-frame blinks (~0.7%/frame) |
-| Lever pull | E starts a 26-frame hand-pull: rooted, staff stowed, both arms reach, strain bob; the lever arm smoothsteps across and flips at completion |
+| Lever pull | E starts a 26-frame hand-pull: rooted, staff stowed, both arms reach, strain bob; the lever arm smoothsteps across and flips at completion. A dressed lever (the engine's brass crank wheel, the sluice handwheel — `Mechanism.look`) swings its handle half a turn with the same ease instead of an arm, so its state is literally which side the handle rests on |
 | Heart communion | Refilling at a heart roots and disarms the wizard for the ~2 s channel; broken by damage (with toast) |
+
+### Fixtures and machinery (presentation resolution)
+
+- Every mechanism sprite, the Bell & Tea Engine's linkages, rigid bodies,
+  ropes and chains, bitmap decor and landmark props draw through
+  `render/sprites/FineArt.ts` at the surface's presentation step — half a
+  cell on the default fine surface, whole cells in the Builder gallery and
+  classic (`?pixelScale=1`) mode — so nothing on screen reads as "bigger
+  pixels" than the terrain, foliage and creatures beside it.
+- **Wheels** are filled brass with a dark rim, a hub, and spokes that rotate
+  with real travel only: pulleys by cable stroke, the winding drum by the
+  counterweight's drop, the handwheel by the valve's spring-damped turn, the
+  crank by the pull. The lamp highlight on the rim stays put — the fixed
+  highlight against moving spokes is what makes rotation legible.
+- **Cables** carry a two-tone twist that advances with the plate's real
+  travel, sag in proportion to their span (never on vertical drops) and a
+  dark underside thread; chains alternate lit and edge-on links; hemp ropes
+  twist in ochre.
+- **Rigid bodies** (boulder, pendulum bob, dominoes, sugar, piston, duck)
+  interpolate between fixed ticks (`interpolateBody`), so they move at frame
+  rate; a frame between ticks still composes while any body is awake.
+- Fixtures take the room's lamps through the light field, clamped to
+  [0.55, 1] so brass never blooms to white beside the staff's glow and never
+  vanishes in a dark bay. Knobs, lamps and sparks stay self-lit.
+- Landmark props cull against the composed view rectangle
+  (`viewIntersects`); the old corner-distance test made the sluice handwheel
+  pop out of existence whenever it sat in the right quarter or the bottom of
+  the view.
 
 ### Character definition (the Noita-class readability pass)
 
@@ -210,6 +465,16 @@ Layered, bottom to top:
   near-black 4-neighbour outline is stamped around the finished figure
   (skipped below the feet; the staff/meters/tip draw outside the recording).
   The figure cuts against any background.
+- **Presentation resolution:** the pose is still authored in whole cells, but
+  on the fine surface the body and staff layers are re-emitted at half-cell
+  resolution with EPX corner smoothing, the rim is one presentation pixel
+  wide, and the figure is nudged to the nearest presentation pixel of his
+  real position (vertically only while airborne). Pupil and lash, hat band
+  and buckle, robe pleats and hem shadow, boot soles and toe-cap, the trim's
+  stitching, the staff's highlight thread and brass ferrule are
+  presentation-only details stamped on top of the upsampled art
+  (`CellCapture` in `render/sprites/FineArt.ts`); a classic surface gets
+  the byte-for-byte cell drawing.
 - **Value-contrast palette:** edges run dark (near-navy robe edge, deep hat
   shade), accents run bright (gold band, trim), boots near-black, and the brim
   shades the brow (a dedicated shadow row).
@@ -264,7 +529,8 @@ Layered, bottom to top:
 | Golem | Wall-punch wind-up + haymaker + knuckle sparks; pound rhythm 46 frames |
 | Spitter | Maw recoils 14 frames after each lob (`e.recoil`) |
 | Bomber | Fuse strobe — jiggles, then strobes white as `e.fusing` burns down |
-| Colossus | Slam/volley wind-ups; bellows when it notices you |
+| Colossus | Every move poses from the brain's own move clock (creatures/bosses/colossus): SLAM — both fists rise overhead for 30 ticks, then the blast; STOMP — it rears back 32 ticks, then both fists drive two floor waves; THROW — it reaches into its own furnace (the fist comes out dripping), cocks, lobs; VENT — the back plates lift and the seams whiten for 42 ticks before the fire |
+| Leviathan | Its lure goes DARK (22-tick douse, it sinks and coils) before a lunge or a dive; its throat swells 20 ticks before a volley; its tail rises 18 ticks before a thrash |
 
 ### Threat-aware AI — fear, dodge & flee (`entities/Enemies.ts`)
 
@@ -341,19 +607,162 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   scramble, body roll, sinking — then recover.
 - All wounded enemies already shed **gore drips** as they move.
 
+### Provocation & notice (Breathing Works, `Enemies.provokeByPlayer`, `creatures/perception.ts`)
+
+- **Being struck always provokes.** A direct blow (wand bolt, kick, whip,
+  stomp, the Flame Jet's own stream) gives the creature's mind a confident fix
+  on the wizard's position at that moment (confidence ≥ 0.8, irritation
+  ≥ 0.75, re-sense + re-decide now): the pain has a direction, nothing more.
+  A Weaver goes cranky (90 ticks) and hunts instead of foraging; flighty kinds
+  (`fleeAt` < 0.5: bat, wisp, mage) bolt instead (fear raised to their
+  `fleeAt`, the threat layer carries the flee); everyone else gains
+  aggression ≥ 0.6. A leg severed by the bolt still flinches a Weaver back
+  ~2 s (WeaverLimbs) before it returns.
+- **A close, visible alchemist wears on a creature's patience.** While the
+  honest sight check passes (grid-occluded, facing-gated, light-scaled range)
+  and the wizard is within 130 cells, irritation rises by
+  `(1 − d/130)/120` per tick against the 1/800 decay: at arm's length a stare
+  boils over into a hunt in under a second (Root Loper at 60 cells: ~80
+  ticks), across the room it takes several, past 130 it only observes.
+  Territorial kinds (Weaver, Rillback, Root Loper, Stone Maw) used to watch
+  indefinitely unless intruded upon (38–64 cells).
+
+### New grid rules for creatures (Breathing Works)
+
+- **Steam scalds** what fire can burn: 0.05 per sampled body row per tick
+  (an engulfed Weaver ~27 hp/s; imps, the Colossus and the Leviathan shrug it
+  off). The threat layer flees steam; the wary step gate does not (a plume
+  is transient). The Works' exhale and a boiled pool are weapons: STEEPED.
+- **Land creatures drown.** A head (top rows of the box, ≥ 60% liquid) under
+  water/oil/blood/slime holds its breath 360 ticks (imp 90, bat 180, bomber
+  150; bubbles every 15 ticks), then loses 1/300 of max hp per tick with a
+  bubble burst and a thrash (fear 0.9) until it surfaces. Rillback,
+  Leviathan, Colossus, wisp and egg clutches are immune; population never
+  seeds a land kind with its head under liquid.
+
 ### Other living touches
 
-- **Notice blips** when a creature first spots you (the colossus bellows instead).
+- **Notice blips** when a creature first spots you (the bosses make an entrance instead).
+- **Boss lairs** (`Enemies.watchLair`): a boss watches its whole room from head
+  height (Colossus eye 28 cells up, Leviathan 8; no facing check, so there is
+  no back to sneak up on). An alchemist inside the lair — Colossus: ±62 cells of
+  its home, 72 up / 14 down; Leviathan ±54, 58 up / 12 down — who is in sight of
+  its head or within 80 / 56 cells holds it on a confident hunt, idle or not
+  (QA: an idle wizard 60 cells into the Kiln was never noticed). The first time,
+  it makes its ENTRANCE: the Leviathan churns, groans and names itself (a
+  finisher-tone callout, "THE SUNKEN LEVIATHAN"). The Kiln Colossus lands as the
+  final boss: the mix ducks to 0.4 for 1.5 s under a furnace roar (46→110 Hz saw,
+  92→61 Hz square, groan, stone grind), embers pour off its shoulders with a
+  0.8 bloom kick (not under reduced flashes), "THE KILN COLOSSUS" rises over it
+  at tick 10, it stomps at ticks 22 and 46 (boom + knock + dust + shake) standing
+  its ground for 52 ticks before it marches, holds its fire 110 ticks, and the
+  camera leans half the way toward it (≤ 70 × 28 cells, zoom 1.06) over 40 ticks,
+  holds 70 and returns over 40 — no lean at all with camera shake off.
+- **The boss ward** (`core/bossWard`): the Colossus and the Leviathan lose hp
+  only to harm the player set in motion — any direct blow, or the world's
+  (a blast he did not cast, fire, current, acid, a flood) while he is ENGAGED:
+  he cast, poured or threw within 8 s (480 ticks) at a point ≤ 360 cells from
+  the boss. A boss's own slam/fireball/death blast never hurts it and leaves no
+  live charge; no blast he did not cast breaks a lair's organ (the Kiln tank,
+  the Sump plugs), and neither does world repair. A boss the player never
+  harmed enters at full hp. (QA: the Colossus died on its own, idle player.)
+- **Kiln thermal shock is a CRACK, not a drain:** a douse he caused (credited
+  when he is engaged during it, and it stays his while the kiln stays wet)
+  cracks it for 16% of max hp at once (~75 of 468, ~83 of 520), again every
+  150 ticks while still soaked. Each crack flashes up to 24 water cells on and
+  around its body to real steam, bursts steam, glowing fissures and 10 stone
+  shards, flashes it (14), squashes it (0.3), 5-tick hitstop, +0.05 shake
+  (cap 0.09), 0.55 bloom kick (not under reduced flashes), steam hiss + shell
+  crack + 64→36 Hz saw, a "THERMAL SHOCK" finisher callout, and staggers it
+  (no attacks for 120 ticks, speed ×0.2). A full tank is 2–3 cracks. (Was
+  1.4 hp EVERY wet tick — 84 hp/s — from any water at all.)
+- **The Kiln Colossus, final boss** (`creatures/bosses/colossus`, box 16×34,
+  rig ×2.3, hp 560; the arena is a 62×40 vault over a flat 116-wide floor on a
+  16-row footing, with three ceiling tanks). It closes to arm's length
+  (halfW+10) and shoulders the alchemist aside (1.4 impulse / 6 ticks) rather
+  than standing in him.
+  - SLAM (< 38 cells): 74 ticks; blast at the fist (halfW+10 out) radius
+    10/11/13 by phase at tick 30 (never harming itself); the fists stay in the
+    ground 26 ticks: a punish window (direct blows ×1.6).
+  - STOMP (< 160 cells; 45% in phase 1, always in 2+): rears 32 ticks, then
+    two shockwaves run along the REAL floor at 1.45/1.75/2.15 c/t for 62 ticks;
+    14 dmg and a pop-up (ky −3.4) to a GROUNDED alchemist within 2.5 cells —
+    jump it. A gap, a pool or a wall ends a wave; loose grains on the floor
+    jump; a running dust ridge and grit mark it.
+  - MOLTEN THROW (< 330, with a line): the gob comes out of its chest furnace,
+    released at tick 32 on a lob (g 0.02, T = |dx|/3.1 clamped 26–62): a
+    hostile fireball plus 9 real lava grains; phase 3 throws a second at 46.
+  - HEAT VENT (phase 2+, when water is near it or it is wet): a 42-tick tell,
+    then 34 ticks of real fire (10 cells per 3 ticks in a ring out to r17,
+    life 18–32) and it boils water within 26 (≤ 48 cells per 6 ticks to
+    steam); 8 dmg once to a body within 19.
+  - Phases at 66% / 33%: a roar each (72 ticks); the third bursts its plates
+    off as rigid stone chunks (90-tick own-debris grace), bare core ×1.25 on
+    direct blows, march cap 0.42 → 0.5 → 0.62, ember footprints every 20
+    ticks, recovery 84 → 62 → 44 (+≤ 30) ticks.
+  - WATER: each crack of the ward's thermal shock (below) also kneels it for
+    the 120-tick stagger with its chest split (direct blows ×1.6) and darkens
+    the furnace (heat 0.12, reheating 1/480 per tick while dry).
+  - DEATH is a 214-tick sequence: it kneels (70 ticks), cracks jet fire and
+    steam (every 9 ticks, every 4 after the 128-tick overload), bloom ramps to
+    ~1.0, at tick 196 it blows apart (r24, never harming itself) and heaps real
+    rubble (stone, 30% grit, a 7×3 lava heart, embers) plus six rigid chunks;
+    the run-complete path runs at 214. Nothing lands on a dying kiln.
+- **The Sunken Leviathan** (`creatures/bosses/leviathan`): LUNGE (< 92): a
+  22-tick dark-lure tell, then an 18-tick dart (bite 16); VOLLEY (90–320): a
+  20-tick throat swell; THRASH (phase 2+, alchemist dry within 130): an
+  18-tick tell, then up to 22 real surface water cells flung at him (4 dmg
+  each — the pool spends itself) and 9 dmg within 26; DIVE (phase 3,
+  alchemist above within 40): 34 ticks down with the lure dark, then a surge
+  (vy −3.4). A live pool the ward credits SHORTS it in bursts (2026-09,
+  deliberate: a burst every 24 ticks plus the per-sample status shock killed
+  it in ~7 s off one Spark Bolt): one burst of 7.5% of max hp (was 3.5%) and a
+  40-tick convulsion (direct blows ×1.6; was 14), then no burst for 210 ticks
+  (was 24) — and the burst GROUNDS the pool: every charged conductor within 40
+  cells is cleared, so the next needs a fresh spark. The generic status shock
+  no longer lands on it (the burst is its shock). Each new phase is a beat of
+  its own: the current is shed, no burst for 300 ticks, and it rages at once
+  (phase 2 THRASHES — "IT GROWS CROSS"; phase 3 DIVES — "IT GOES DEEP").
+  Submerged, a blow lands ×0.12 (was ×0.25: a held Spark Bolt ground ~10 hp/s
+  through the water); beached, direct blows land ×1.3. A mortal probe holding
+  fire at the sump's edge now needs ~40 s (was 7); a player dodging and
+  re-sparking the pool, ~60–120 s. Lurking, it eats the fish its lure draws.
+- **The Kiln escape** (`game/story/KilnEscape`, 2026-09 deliberate): the Heart's
+  heat thins the levitation in the flue — the jet burns 2.0 more LEV a tick (on
+  top of its 1.15) and a ledge takes back 1.45 of the ground's 1.7 recovery, so
+  it is hop, breathe, hop. STEAM GUSTS rise up the shaft's clear middle (15
+  wide) every 3.4 s, told 0.75 s ahead by a hiss and a boil, at 3.4 rows a
+  tick: a body caught mid-air is knocked down (vy ≥ 2.4) and its LEV cut to 15;
+  one on a ledge is spared. The lava rises 0.09 rows/tick (0.24 on a long lead,
+  0.06 close under the boots; was 0.11 / 0.3 / 0.085). A patient climber who
+  times the gusts reaches the hatch in 31–47 s (probe; was 5.6 s). A fall is a
+  0.45 s fade and a restart at 1.15 s: no death screen, no gold, no phial.
+- **Hit stagger** (`Enemies.flinch`): a blow ≥ 5 staggers any non-boss that
+  is not rooted or surface-bound (weaver, eggs, spitter, rillback, stone maw,
+  root loper answer with their rigs only): a ballistic shove through the
+  knock system, push = clamp(40/footprint, .3, 2) × clamp(|k|, .8, 3) × .55,
+  for 3–9 ticks (3 + dmg/maxHp·26); once per 45 ticks, so a rapid wand
+  cannot stun-lock.
+- **Idle life** (`creatures/idle`): a resting or foraging animal does one small
+  act every 170–490 ticks (deterministic per individual, no sim randomness):
+  look around (84 ticks: one way, then back over the shoulder), sniff (56,
+  head pecks), groom (90), shiver (26: the rig and the gel shake), settle
+  (110: slimes spread ×1.18 wide, ×0.78 tall; brutes sink 1.6·S), stretch (a
+  roosting bat's wing unfolds, 70). Repertoires per kind; hunting, fleeing,
+  burning or staggered animals never idle.
 - **Bat roosts:** dormant folded teardrops on the ceiling; one red eye cracks
-  open at your approach (< 70 cells wakes them; stirring starts at 110).
+  open at your approach (< 70 cells wakes them; stirring starts at 110). A roost
+  panics together: one waking (or any loud cue ≥ 0.5 within 110 cells) bursts
+  every roost-mate within 22 out in a fan, holding their attack 40 + 12·n ticks.
 - **Slime egg clutches** glisten with pulsing embryos; they hatch on a timer —
   sooner if you loom.
-- **Predation:** bats prefer a nearby moth over you; the gulp is a puff of wing
-  dust.
+- **Predation:** bats prefer a nearby moth (or firefly, or ash moth) over you;
+  the gulp is a puff of wing dust. See §7 for the wider ecology.
 - Slime landing splat, imp 3-pose wing flap + tail wag, enemy blink, smoothed
   velocity leans — all per-kind in `render/sprites/EnemySprites.ts`.
 - Enemy bodies obey the light field (a body in shadow is a silhouette); only
   natively glowing kinds (imp, wisp) and emissive parts (eyes, cores) self-light.
+  In designed darkness they are black until light finds them (§10).
 
 ---
 
@@ -365,8 +774,122 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   flinch on the HUD, and a sad fizzle of particles at the staff tip (throttled
   to every 14 frames while held).
 - **Recharge:** the wrap-around recharge reads on the hotbar as the bar refills.
-- **Hitstop:** hits ≥ 8 damage freeze gameplay for 3 frames (rendering
-  continues).
+- **Click buffer:** a click made while the wand is cycling is remembered — one
+  buffered cast, never a queue — and fires the tick the wand is ready, if that
+  is ≤ 30 ticks (0.5 s) after the release (`CLICK_BUFFER_TICKS`, was 8); later
+  than that, or if a wand swap, level change or death intervenes, it is spent.
+  8 real taps at 450 ms on the starter: 3–6 casts before, 7 after (the 8th
+  merges — the cycle can't cast faster).
+- **Starter cycle:** the Oak Sprig's recharge is 22 ticks (was 30, 2026-09-27),
+  so a lone Spark Bolt cycles every 36 ticks = 0.60 s (was 44 = 0.73 s):
+  +22% sustained Spark DPS against a starter QA called "plinky".
+- **Hitstop:** player hurt ≥ 8 damage freezes gameplay for 3 frames
+  (rendering continues). Creature hits: ≥ 7 damage (with knockback, within
+  240 cells, throttled 5 ticks) freeze 2 frames (3 at ≥ 20); **direct hits of
+  2–7 freeze 1 frame** with a lighter squash (0.1) — pellets and chip damage
+  land too; sub-2 streams (the Flame Jet's 0.7 ticks) never stutter.
+- **The Spark Bolt** (`FxSprites.drawSparkBolt`, `Projectiles.sparkImpactFx`):
+  a white-hot 1.25-cell bead with a cyan rim, a 14-cell electric streak that
+  tapers from 1.5 cells to a thread and jitters a half-cell sideways per frame
+  like a live wire, a 3-cell additive halo; it seeds 1.1/2.5/3.0 light with a
+  4-step wake. On impact: 12 cyan-white sparks sprayed back off the struck
+  face, 3 streakers carried through, a tiny arc at the contact, a bloom kick
+  (0.34 flesh / 0.2 stone; none under reduced flashes) and a dry high tick
+  (noise 3.4 kHz + a 2.1 kHz→760 Hz square blip). A struck creature staggers
+  4 ticks, mass-scaled (1.4 × 40/footprint, clamped 0.35–2.6 cells/tick: bat
+  2.6, slime 1.4, golem 0.4 — always under the 3.5 wall-slam speed); Weavers
+  keep their grip, bosses and clutches do not budge. It ignites flammables
+  exactly as before (the blast and charge rules are untouched).
+- **Alchemical kills** (`combat/AlchemyKills.ts`, `alchemyKill` event): every
+  damage path reports its source before hp moves; when the killing blow was
+  the world's and the wizard set it in motion, the kill is announced, chains
+  and pays out. Causes: fire/burning → burned, lava → rendered, steam →
+  steeped, a shocked body → shorted, out of breath → drowned, acid →
+  dissolved, toxic → poisoned, debris/thrown crates → flattened, a corpse
+  the alchemist threw, kicked or swung → bowled, a
+  kick-launched wall slam → impaled, gunpowder/barrels/a bomber's death/hostile
+  blasts → detonated, any physical blow to a frozen body → shattered. The
+  wand's own bolts, bombs, lightning, kick, whip, stomp and Flame Jet stream
+  stay direct (ordinary bounty) — and so do the statuses the wand applies
+  directly: a status that takes hold within 45 ticks of the wand (not the boot)
+  striking that creature is the spell's (`AlchemyKills.noteStatus`), so a spark
+  that leaves a dry slime crackling or alight on stone is a spell kill however
+  long it burns. It becomes the WORLD's — and the kill alchemical — when the
+  fire has fuel (oiled body, oil or lava touching: FLAMBÉED although the spark's
+  current still crackles on it), when the current came through a conductor (a
+  wet body, charged water or metal touching or underfoot: SHORTED), when it was
+  (re)lit with no wand strike behind it (a fire walked into), or charged
+  through another liquid (a blood pool, spilled goo) the wand had not just struck;
+  bare blast residue in air or stone cannot travel, so it stays the bolt's even
+  after a miss. Once the world's it stays the world's while it lasts. A lethal
+  status tick weighs the world's shares (toxic sludge always counts) against
+  the wand's: if the world dealt at least as much, its largest share names the
+  cause; if the wand's own zap or fire dealt more, the tick is direct. A status
+  tick never SHATTERS a frozen body. Credit is generous: within 280 cells of the
+  wizard, or struck by him in the last 20 s, or kick-launched in the last 3 s.
+  Kills within 3 s (180 ticks) chain; the chain resets on a level change.
+  **Payout, grid-honest:** bonus gold = 4 + 40% of bounty, ×1 / ×1.5 / ×2 /
+  ×2.5 / ×3 by chain, rounded to whole 1-oz grains (2026-09 economy pass; was
+  10 + 35% in 10-oz grains, on bounties ~3.3× larger); that many real Gold
+  cells fountain out of the body in a low arc (vx ±1.1, vy −1.8…−3.4 cells/tick:
+  apex ~10–36 cells, so walking over the kill brings the pile inside the 30-cell
+  harvester pull; gold settles into a pool and sinks) for the harvester field to
+  pull in. A grain is never deleted by its flight: no room where it lands → the
+  nearest open cell within 6, walled in → straight into the purse; a full
+  particle pool retires a cosmetic mote to make room. The active wand refills 35%
+  of its tank (cyan motes run to the staff), the wizard gets +3 hp (rose
+  motes), a bloom kick (0.45 + 0.12/chain, none under reduced flashes) and a
+  brass dyad whose top note climbs two semitones per link (capped at a fifth).
+- **Coin flight** (`particles/Particles.ts`): gold is only ever a real Gold
+  cell or the purse. Whoever moves it — a kill's bounty, the harvester lifting a
+  grain (1 oz a cell; was 10), mined ore — credits `state.score` at that instant; the
+  homing mote is the payment's animation. It steers to ARRIVE: desired speed
+  min(5.2, √(2·0.45·d) + 1.2) cells/tick with 0.45 cells/tick² of steering, so
+  the burst-out arc bends into a landing instead of the old 3.75-vs-2.5-cell
+  overshoot orbit; the 3-cell catch is swept along each step (no tunnelling);
+  rock does not stop it (a magnet pull). A landing rings the loot cascade (coins
+  within 24 ticks climb the scale) and pops a sparkle at the belt (6 cells up).
+  If the wizard dies mid-flight the mote gutters out as a falling glint — the
+  gold is already his.
+- **Gold, the economy** (2026-09 deliberate pass): QA ended a run with 15,732 oz
+  (4,533 after floor 2) against Sanctum prices of 40–380 — every choice free.
+  The floors hold ~4,500 gold cells each (seams, vugs, tells) and the harvester
+  lifted them THROUGH solid rock. Now: a gold cell is **1 oz** (was 10) and the
+  harvester lifts only gold with a face open to air, liquid or gas (a seam still
+  sealed in rock stays until it is dug to); bounties ×~0.3 (slime 10, bat 5,
+  weaver 35, rillback 20, rootloper 25, stonemaw 40, Leviathan 140, Rime Warden
+  120, Lenswright 130, Colossus 180; was 30/15/110/70/85/130/450/380/420/600),
+  paid as a coin per ~4 oz (≤ 40); gold piles ×~0.35 (chests 3–5 piles of 5–13,
+  was 15–39; floor-1 piles 10–20, puzzle rewards 12–30); a first brew 30 (was
+  100); raw ore 1 oz a cell (was 2). Sanctum prices are unchanged (mend 40,
+  toughen 90, brew 60, lost pages 160, the wandwrights 240 / 380). Measured by
+  a teleport walk (no kills): the direct route lifts ~80–230 oz a floor, a
+  completionist sweep ~870–1,030; with bounties and piles a good run earns
+  ~1,500–2,200 and, after the Sanctums, carries ~800–1,500 to the end.
+- **Callouts** (`ui/Callouts.ts`, `styles/callouts.css`): the word pops over
+  the kill, rises and fades — FLAMBÉED, RENDERED, STEEPED, SHORTED, DROWNED,
+  DISSOLVED, SHATTERED, FLATTENED, DETONATED, POISONED, IMPALED, BOWLED — one word per
+  cause so it teaches the mechanic. Brass serif (Cormorant Garamond) for a
+  single, with the bonus gold beneath; a chain link lands on its predecessor's
+  spot and takes it (the old word bows out in 140 ms) with a ×N badge that
+  grows and heats brass → copper-ember (×3–4) → white-gold (×5+), and a dry
+  line: "and another", "a chain reaction", "most irregular", "the Works
+  approve", "please mind the duck". Life 1150 ms + 180 per heat tier;
+  pop (0.55 → 1.16 → 1.0 over the first 20%), rise 40 px, fade in the last
+  third; reduced flashes drops every glow, prefers-reduced-motion drops the
+  pop and the rise. The Trickshot finisher's "RETURNED WITH INTEREST" speaks
+  through the same layer (`combatCallout`).
+- **Self-shock fairness** (`combat/SelfShock.ts`): for 240 ticks after any
+  card cast, electrical damage to the wizard scales with the current actually
+  at his body (charge / 40, floor 0.15 — charge loses 3 per water hop, so
+  distance through the pool is the falloff) and shares a 12-hp cap per
+  120-tick window; anyone else's current (a Rillback pulse, a live rail) keeps
+  its full bite. While a current reaches him, a short arc crawls back up the
+  charge gradient (≤ 16 cells, re-rolled each status sample) toward its
+  source. A pressure hop in the water (FluidFlow) no longer teleports a
+  sparked crater's charge across the pool: a wet wizard sparking the water
+  8/18/30 cells away lost 48/25/32 hp over 3 s before, ~7–13 (≤ 12 of it
+  electrical) / ≤ 5 / ≤ 5 after.
 - **Screen shake is earned and local:** *all* ambient shake writes are
   viewport-gated and fall off quadratically with distance — dead at 420 cells.
   Explosion boom audio scales the same way (distant thunder). A quake next
@@ -388,6 +911,21 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   active, long potion timers, stocked potion pickups, and bench-only potion
   refresh / elixir flask-fill tiles. Normal starts remain progression-driven,
   and debug-modified runs are not autosaved.
+- **Humiliation finisher (`combat/Trickshot.ts`, on by default since Breathing
+  Works; the Trickshot chain experiment is no longer required):** with
+  a Weaver's own leg in hand and its owner under 30% HP, the whip commits into
+  a directed beat — time eases to 25% for the approach (≤1.1 s real, then it
+  expires), the ambience ducks under a rising whip, the victim recoils, and
+  only a swept thigh contact confirms it: a real-time hit pause (0–70 ms,
+  default 50), a brass burst and chitin shards along the actual stroke, a
+  heavier lateral impulse so the corpse rolls, the shell crack and an
+  embarrassed chirr, "RETURNED WITH INTEREST", then a 180 ms smooth return.
+  A miss or an intercepting body releases time with a 500 ms recovery and no
+  cue. The line rises over the victim as a world-anchored brass callout
+  (`ui/Callouts.ts`, via the `combatCallout` event). Framing is one small camera lean and a 6% zoom (`cineDx/cineDy/
+  cineZoom`, off with the camera-motion setting) plus a vignette lift (off
+  under reduced flashes); the chain slow-motion and the finisher never
+  multiply — the deeper one wins.
 
 ---
 
@@ -405,6 +943,45 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   chimes on pickup, bench card clicks + slot flash, door retraction grind,
   trigger→gate spark line, chirps/skitters/drips from the critter layer.
 - All one-shot presets are throttled per-key so spam can't stack them.
+- **Creature voices are placed and made of the body.** Every enemy cue runs
+  through `audio.at(x, y, fn)`: panned by bearing, attenuated to silence at
+  380 cells (bosses 640–720), so a creature three rooms away is not in your
+  ear. Each kind speaks in its own material — Weaver: dry chitin clicks and a
+  chopped `chirr`; Rillback: a wet `slither` whose filter opens and closes;
+  Root Loper: a low `creak` with a rasp; Stone Maw: `grind` over a knock;
+  bat: a falling `squeak`; small bodies launching: a soft `hop` pat. Alerts
+  and death cries use the same voices (`alertVoice`, `deathCry`), so the
+  generic wet squelch is now the slime's alone.
+- **One mix, one pair of ears.** Every voice lands on a bus — `fx` (the
+  player's world: blasts, spells, impacts), `voices` (creatures), `ambience`
+  (drips, chirps, simmer, the refinery's breath) and `ui` (pickups, cards,
+  stingers) — summed through a glue compressor (-12 dB, 2:1, 12 ms / 250 ms),
+  +1.6 dB make-up, a -2 dB 20:1 limiter and a tanh soft-clip shoulder above
+  0.8. A wall of forty simultaneous blasts peaks at ~0.6 instead of clipping;
+  a single blast still hits ~0.3 (the old unprotected sum peaked 0.24 alone
+  and 1.8 — hard clip — with eight). Sliders: Master 80 %, Effects 100 %
+  (fx/voices/ui), Ambience 80 %, squared taper, persisted with the player
+  preferences (`audio/mix.ts`).
+- **The ears are the camera centre** in every mode, so on-screen left is the
+  left ear. `placeSound` (`audio/mix.ts`): pan = dx / 320 × 0.85 (never hard);
+  full gain inside a 70-cell plateau, then (1 − t)^1.8 to silence at the
+  cue's range; vertical distance counts ×1.35; past a quarter of the range a
+  lowpass closes from 16 kHz toward 650 Hz, so a blast across the cavern
+  arrives as a thud. Explosions (900-cell range), lightning, frost/implode
+  impacts, spell hits, steam, splashes, doors, mechanism groans, cauldron
+  and critter sounds all pass their cell position; noise bursts start at a
+  random offset so two blasts in one frame do not comb-filter.
+- **Stingers** (`audio/Stingers.ts`, UI bus, never ducked): an alchemical kill
+  rings a glass bell over a brass swell that climbs a pentatonic ladder with
+  the chain (two kills in one blast arpeggiate 70 ms apart; the cause adds a
+  tiny material accent); a spent return phial cracks, a restored one pours
+  and settles on a warm third; victory is a rising fanfare into an open
+  chord, a fallen run a slow descending minor line — both duck the world for
+  ~2.7 s; a saved clip clicks like a shutter.
+- **A blocked creature stops drumming.** A beached Rillback hops toward what
+  it wants; three hops that went nowhere mean a wall, and it rests 2.5–4 s
+  before trying again instead of thudding into the rock every half second
+  until you leave.
 
 ---
 
@@ -427,6 +1004,123 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
 - Enemies outside the sim window (camera ± 60 cells) freeze — the world
   simulates where you are.
 
+### Organisms (WS-N, `game/organisms`) — life with behaviour
+
+Placed by worldgen per floor from their own stream (`hashSeed(seed,
+'organisms')`), ≥ 90 cells from spawn, near reachable ground, writing no cells;
+saved with the level's fauna (no respawn churn). Rot Gardens: snapjaw 12,
+puffer 18, isopod 18, glow-worm 6, moth 10, firefly 10, beetle 6, fish 8.
+Drowned Cisterns: fish 26 (schools of 4–6), glow-worm 16, leech 14, moth 6,
+firefly 8, isopod 6. Kiln Heart: ember beetle 16, ash moth 16, moth 2.
+Rooted organisms sleep off-camera. Every beat emits an `organism` event.
+
+- **Snapjaw:** a toothed pod on a 5.5–7.5-cell stalk; trigger 10 cells, a
+  12-tick TELL (it shivers, gapes to 1.25, leans in), then the SNAP (shut in 3
+  ticks, resolved at tick 2, bite reach 7.5): 11 dmg to the alchemist
+  ('snapjaw-bite'), 16 to creatures ('impaled': lure a slime in for an
+  alchemical kill). Critters and corpses are swallowed → CHEW 780 ticks (1170
+  for a corpse) with the jaw shut: the fed, safe window. Reopens over 70.
+  Flame: 10 heat ignites it, then it burns like green wood (writes real Fire
+  along itself every 6 ticks; water douses −12) to 44 char → ash. Bolts: 9 of
+  its 32 hp each (it snaps at the air).
+- **Spore puffer:** inflates 1/2100 per tick (~35 s); ripe ≥ 0.4 it bursts at a
+  body within r+1.5, a projectile within r+3, a creature, a critter, flame
+  within r+2, a kick's gust or a blast — REAL marsh gas into the empty cells
+  within 3 + 4·inflation (lattice-thinned), spores, and a creatureSignal
+  (r90). Spent 240 ticks, then it regrows. Flame lights the cloud as it leaves.
+- **Glow-worm:** a curtain of three beaded threads (×1 / .62 / .8 of its
+  8–26-cell reach) lowered at 0.05 c/t; moths, flies, fireflies and ash moths
+  that touch a thread stick, are reeled up at 0.14 c/t and eaten (the belly
+  glows 900 ticks). Light-shy: wand light > 0.42 on its body, a body through
+  the thread, or fast movement within 16 below → it hauls up at 0.9 c/t and
+  hides 260–400 ticks, and will not come down into the beam. Moths are drawn
+  to its beads.
+- **Isopod / ember beetle:** hand-on-wall crawlers (1 cell per 5 / 7 ticks) over
+  floors, walls and ceilings; they pause 50 of every 420 ticks to test the air
+  and drift to carrion within 75 to feed. Isopods curl into balls when
+  touched, shot or gusted (bounce 0.35, roll downhill), rest 170 ticks, unroll
+  and re-attach. Ember beetles graze Coal → Ash (8% per step; the belly glows
+  900 ticks), shrug off fire, fizzle in water (real steam), and die as up to
+  two real Ember cells.
+- **Leech:** swims at a wading alchemist within 56 (0.34 c/t), latches (max
+  3), drains 2 hp every 150 ticks ('leech'), is sated at 5, lets go after 300
+  ticks dry, and dies if he burns or its water is shocked. Beached leeches
+  writhe toward water and dry out in 900 ticks.
+- **Ash moth:** spirals the nearest hot glow in the updraft; one that touches
+  fire or lava flares out and leaves a real Ash cell.
+- **Lantern moths:** fly to the wand tip only while its light reaches them
+  (`lightQuery.wandLight`, or a 110-cell cone stand-in) and orbit at 9 cells;
+  hooded, they lose you. **Fish** school (cohesion .004, alignment .05,
+  separation within 3) and die belly-up in charged water (floating 1500 ticks).
+
+### Visible ecology (`creatures/ecology`)
+
+- Bats not busy with the alchemist fly to a moth swarm (≥ 3 within 22 cells)
+  they notice from 170 cells, and eat it: move the swarm (your lantern) and
+  you move the bats.
+- Idle slimes smell remains within 110 cells, hop to them (windup 9) and
+  settle to eat (+3 hp every 20 ticks; each bite takes 30 ticks off the
+  body's life).
+- Weaver lair webs (real Vines inside a lair's radius) snare fliers; the
+  weaver comes down for them. Idle imps snatch ash moths within 70. Rillbacks
+  and the Leviathan eat fish; snapjaws eat whatever is kicked into them.
+### Flora — trees that fall, seeds that climb (`game/Flora.ts`, `sim/elements/flora.ts`)
+
+Living wood is real cells: **Trunk** (40, walk-past soft growth, burns slow),
+**Leaf** (39, held within `LEAF_REACH` 9 steps of wood/rock, else it lets go
+and flutters: 42% fall / 10% drift per step, floats on water as a pad) and
+**Seed** (41: thirsty or glow; held in a pod until shaken).
+
+- **The warning.** A trunk notched to ≤ 55% of its typical row width creaks
+  (level 1), ≤ 30% creaks harder, sifts dust from the notch, shivers leaves
+  loose and nudges the shake (+0.004, cap 0.03). Cooldown 80 ticks per spot.
+- **The crack.** When a stand's last contact with anchored ground goes (a
+  powder holds it only from underneath; a lone speck never), it lifts out of
+  the grid onto a Rapier body (≤ 4 fitted boxes, wood density 0.7, so logs
+  float). It falls AWAY from the dig beam / blast / boot (hints live 150
+  ticks), else toward its crown's lean.
+- **The lean.** Hinged at the cut on the back edge (then 1.5 cells behind
+  the centre of mass, clamped to 6), starting at 0.0055 rad/tick: 18 ticks
+  near-locked (angular damping 26) while it groans, then the hinge fibres
+  hold at damping 1.1 until 0.95 rad, then free fall (0.12). A stand with no
+  ground under its foot tips at 0.032 rad/tick.
+- **The fall.** Leaves shed from the crown as it goes; whoosh once the tip
+  passes 3.2 cells/tick; a burning stand trails flame.
+- **The crush.** Contact ≥ 1.5 cells/tick hurts. Creatures:
+  `min(160, 10 + v·12·massF)` as 'flattened' (+3 hitstop, thud + squelch),
+  massF = √clamp(mass/150, 0.3, 3). The alchemist: `clamp(4 + v·4.2·min(1.4,
+  massF), 8, 30)`, knocked away from the trunk, shake +0.02.
+- **The thud.** Δv > 1.1 cells/tick is an impact: dust along the contact,
+  glass/ice/snow it lands on shatter, boom scaled by size, shake up to 0.045.
+- **The log.** Settles at speed < 0.08 and spin < 0.006 for 10 ticks (in
+  water: < 0.25 / < 0.02 for 3 — buoyancy never gets quieter), or after 720
+  ticks regardless; re-stamps as Wood (bark darkened ×0.86–0.9) in its final
+  pose, bottom-up, displacing any liquid upward (a log dams a pool).
+- **Kick (F).** A stand ≤ 130 cells and ≤ 34 tall snaps at the boot; a bigger
+  one shakes: every held pod within its crown lets go, a few leaves fall.
+- **Glowseeds (floor 1).** Walking over a loose glowseed puts it in the
+  pouch (cap 3, "pouch is full" toast at most every 600 ticks).
+- **Thirsty seeds.** A wetted seed soaks one water cell per substep; the bed
+  (±4 × ±3) sprouts when no seed has drunk for 48 substeps and the bed took
+  ≥ 8 cells (a drip dries off). The stalk takes the bed's seeds and puddle
+  (≤ 70 cells) and grows with energy `min(120, 22 + water·1.6 + seeds·3)`:
+  two cells wide, a Wood rung (6×2) every 12 cells on alternating sides,
+  leaves at the mid-points, a crown when it ends.
+- **Kiln glow (fix3).** Ember-bark fissures (living wood the colour of a coal)
+  seed 0.34–0.44 red light, breathing out of step down the trunk; fire-lily
+  blooms light their own cup (petal 0.36, gold heart 0.46, slow shimmer) —
+  under a loose Ember cell's 0.55, so they read as embers and flowers you can
+  find in the dark, not lamps. Char bark [60,46,40] (was [44,36,32]: black
+  cut-outs on basalt). The Kiln's dressing budget is 18 stands / 72 small
+  (was 14/46), 65% of the small ones fire-lilies (was 55%).
+- **Stand footing.** A rock/wood/ice footing is anchored only by static
+  neighbours (loose powder leaves on its own); gold is never footing (the
+  harvester lifts it from under anything within 30 of the player).
+- **Cost.** Stands are re-flooded only when a chunk's support fingerprint
+  moves (≤ 48 fingerprints, ≤ 10 floods per tick): Flora.update ~0.16–0.24
+  ms/tick in the densest views, A/B tick+render +0.27 ms with ~7k plant cells
+  in view (D2, 1600×900).
+
 ---
 
 ## 8. Camera & presentation
@@ -434,6 +1128,20 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
 - Lerp follow (0.085) with a facing lookahead (+26 cells), idle zoom-in (1.13×
   after ~1 s of stillness), hard snap on spawns/transitions.
 - Crouch-peek offset (§1). Build mode pans with WASD.
+- **Floor clamp (every level):** the view never sinks below the world's bottom
+  row; a zoomed-in frame may sink by its hidden margin only. The old half-view
+  "void allowance" (`CAMERA_BOTTOM_VOID`) showed a third of a screen of black
+  under D1's Undertow and Lower Bell and under floor 4's arena.
+- **D1 barricade:** 14 × 31 wood under an iron lintel; moss caulks every fifth
+  row (the tinder that takes a Spark Bolt's flash), sealed oil pockets sit two
+  columns deep in its core at every fifth row, and it collapses (route-seal
+  plug, `breakFrac` .55) with a shower of embers that also clears its fire and
+  moss, so the doorway is passable at once. A metal sill keeps burning spill in
+  the doorway. The note says to stand well back; from there the first fire
+  lands about 3.5 s after spawn.
+- **Lower Bell grate:** the lock rings (gong + key jingle, a light shake) when
+  the bell comes within 95 cells; each 12-cell leaf then slides one cell every
+  2 ticks into its slot, grinding every 12 ticks, dust every 6.
 - **Frame look:** half-res RGB lighting with directional sweeps, bloom with a
   uniform emissive self-glow floor (no vignetted emissives), lit-cell soft knee
   (1.25/0.3/2.0) so bright floors don't bloom-wash, PostFx chromatic
@@ -457,7 +1165,155 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   0.0005, blast split 0.0060, shake split 0.050, film grain 0.028, hurt pulse
   1.00x. These controls exist for visual inspection as much as player-facing
   tuning; turning Post FX off should show the raw pixel-composed scene.
-- Level banners rise in; overlays rise in; gameplay fonts sized for readability.
+- **Per-floor look (`config/floorLooks.ts`):** every floor shares the Works'
+  material kit — terrain atlas, chalk lip, refinery backdrop — graded per floor.
+  Albedo = atlas × gain + lift; a jagged 1–3-cell *crown* stain creeps down from
+  exposed tops (strength 0.55–0.95, capped at 3 cells because the CPU sampler's
+  dirty halo is 2); 64×64-cell wall panels draw masonry (Rot Gardens 5/16,
+  Drowned Cisterns 12/16, Kiln Heart 9/16, D1 16/16) framed by a 0.55× mortar
+  seam where they meet rock; water, lip, underside and backdrop grade (mul/lift,
+  a parallax offset, optional mirror, machinery opacity ×0.7–1.2) are per floor.
+  D1's values are the shipped identity. Presentation only: no cell type changes.
+- **Material by shape (floors 2–4, `FloorLook.natural`):** the 64-cell panels
+  are gone. An art plane (`render/terrainArtPlane.ts`, one byte per cell)
+  holds depth into rock (chamfer 3/4, capped 20), air distance to rock
+  (capped 15) and a sticky BUILT bit. Built = straight exposed runs ≥ 40 / 16
+  / 36 cells (Rot / Cisterns / Kiln) or any face inside a prefab or boss-arena
+  footprint, lined 7 / 12 / 8 cells deep (±3 jitter). The rest samples the
+  floor's procedural rock tile (256² per floor, two texels per cell). Cores
+  sink by `smoothstep(3, 16–18, depth)` toward aoCore ≈ 0.4–0.6, stepped in
+  4 bands whose edges shift ±1 cell with texel luminance. Tops have a lip mix
+  of 0.5–0.55 with 1–3/16 lit flecks. Faces open to the right take ×0.8, and
+  undersides streak 1–3 cells by column. Tile features (roots, seeps, ember
+  veins) show in a depth window, and Kiln veins brighten toward the depths
+  (×0.35 at the top). The backdrop's contact shadow is ×0.40–0.45 at a face,
+  easing out over 7–8 cells, with saturation ×0.5–0.55 and a 0.3 haze. The
+  Kiln Heart's backdrop is ember-lit rather than stepped back (QA: "floating
+  slabs on a flat black backdrop"): mul (1.6, 0.88, 0.56) + lift (0.03, 0.01,
+  0.002), copper machinery ×1.75, saturation ×0.9 and a warm smoke haze
+  (0.12, 0.045, 0.02) at only 0.18 — and a deeper contact shadow (×0.30,
+  easing out over 10 cells) so the rock stands in front of the warm refinery.
+  Small enclosed air pockets under 1500 cells are sealed and count as rock,
+  and so is a liquid body under 1500 cells that meets no exposed air (the
+  POCKET bit on its loose byte: a water pore in a flooded wall; a dig carries
+  the verdict forward and opens it where the air gets in).
+  Digs re-derive at most 4 chunk regions per frame, and liquid or powder churn
+  one every other frame, so render cost stays within noise of the classic sampler.
+- **Underwater readability (the Drowned Cisterns, fix4b):** rock, water and
+  backdrop were one blue-grey value (luma ~25 / 27 / 28), so the drowned
+  masonry read as one more backdrop plane. Now a reachable water body is lit
+  murk (body 40, 98, 116) that shows the kit's planes through it at 0.45 —
+  graded like the open backdrop, then 0.45 saturation and a ×(0.8, 1.25, 1.4)
+  tint, swaying ±1.6 cells (sin(y·0.19 + phase·0.35)) like refraction — so a
+  flooded hall reads as open water with drowned arches beyond it (luma ~34
+  against rock ~25). A face against a body of water (two cells of water or
+  more, never a pocket) wears a wet rim (112, 170, 180) at 0.5 on tops, 0.25
+  on sides; sealed pockets keep the old opaque (26, 66, 88) and no rim. Lips
+  0.55 → 0.62, sides 0.35 → 0.42. The kit's backdrop grade steps the distance
+  back: mul (0.72, 0.84, 0.84), saturation 0.85, a deep-teal haze (0.02,
+  0.055, 0.058) at 0.2. CPU, WebGL2 and WebGPU draw the same (`waterClarity`,
+  `waterSeen`, `waterPocket`, `wetLip` on `NaturalLook`; other floors leave
+  them unset and look as they did — floors 2, 4 and the second doors carry
+  little water and already separated rock from distance).
+- **Depth kits (`config/depthKits.ts`, `render/depth/`):** every expedition
+  floor stands in layered scenery, looked up by biome (a generic kit graded
+  from the floor look covers any biome without its own). Far → near:
+  - *The Bellows:* the refinery plate (parallax 0.08, lit 0.12) → a hall of
+    pressure stacks, lattice towers and catwalk spans (0.14) → grate light
+    shafts on the hall's plane (breathing opacity, amp 0.35 / 420 ticks) →
+    the copper machinery (0.2, opacity 0.52) → girders, heavy chains, gears
+    and the great bellows (0.32).
+  - *The Rot Gardens:* spore murk with giant caps (0.05) → far stalks and
+    roots (0.12) → spore light (0.12) → a mid garden with shelf fungi (0.22)
+    → thick fibrous stalks and root curtains (0.34).
+  - *The Drowned Cisterns:* surface-lit murk and a faint arcade (0.05) → two
+    tiers of arcades (0.11) → light falling from above (0.11) → great arches
+    with drowned statues and kelp (0.21) → masonry columns, chains, kelp
+    forests (0.33).
+  - *The Kiln Heart:* furnace glow low on the screen behind chimneys (0.05)
+    → chimney stacks and basalt (0.12) → rising heat plumes (0.12, 240-tick
+    breath) → brick tunnel mouths with glowing hearths and crucibles (0.21)
+    → basalt columns, chains, a gear (0.33).
+  - *The Cold Store:* brine tanks in frost haze under a cold blue-white
+    light from the high vents (0.05) → cooling-coil banks and carcass rails,
+    frost rimming every top edge (0.12) → pale vent light (0.12) → brine
+    tanks with ladders, frosted grates, hooks (0.21) → frost-rimed pipe
+    columns with icicles, hooks on heavy chains (0.33); snow at three depths.
+  - *The Glass Galleries:* dark by design (darkness 0.36): a violet dusk
+    hall with broad, dim pools of prism spill (0.05) → tall glazed arcades
+    with lens medallions (0.12) → display cases, lens racks, hanging prisms
+    (0.21) → slender columns and a great lens (0.33). NO light shafts and no
+    texel brighter than luma 140: nothing may read as a beam or a bright spot
+    near the floor's mirror and prism puzzles.
+  Painted planes are *lit silhouettes* (render/depth/lightArt): each kit has
+  a restrained value ramp and a light (a vertical profile plus soft cores
+  with a power falloff) — the Kiln's furnace cores glow low on the screen
+  and fall off to soot, the Cisterns' light wells fall from above, the Rot
+  Gardens' spore pools float at mid height. The far plane is that light;
+  nearer planes are nearly flat silhouettes that step down the ramp toward
+  the viewer, veiled by the light behind them and rimmed where it wraps
+  their edges. The Kiln's heat columns scroll upward (0.3 texels/tick) and
+  breathe (amp 0.25 / 240 ticks); embers drift at two depths.
+  Atmospheric perspective is baked per plane (haze mix 0.04–0.34 and kept
+  contrast 0.66–1 toward the kit's haze colour), so far reads lighter, cooler
+  and flatter. Each plane has a light response: the lantern, the wand and
+  lava glow reach near planes (lit 0.9) but barely the far ones (0.1), and
+  designed darkness dims them all. Procedural planes are one texel per cell
+  (the Living Descent plates' grain), bake one per frame on floor entry.
+  Every plane glides with the camera's sub-cell position: the WebGL2 compose
+  samples it where each canvas pixel sits on screen (cam · parallax + screen
+  position, `render/depth/parallax` backdropOrigin), so a slow drift slides
+  it steadily a pixel (half a cell) at a time instead of riding the world for
+  a cell and snapping back (`scripts/verify-parallax-drift.mjs`). The CPU
+  fallback and the WebGPU compose build a cell-resolution frame, so their
+  planes still step a whole cell.
+- **Foreground occluders:** a plane at parallax 1.4 (1.5 cells per texel,
+  opacity 0.94) of near-black silhouettes — chains, pipes with valves,
+  girders, gears (Bellows), stalks and root curtains (Rot), kelp and broken
+  columns (Cisterns), basalt and crucibles (Kiln). Floor 1's are placed to
+  frame its rooms where the follow camera sits (the Intake's riser pipe and
+  valve, two gears under the engine hall's catwalk, the Chamber's trunk
+  main, the Silt Garden's roots, the Refuge's lamp chain, the Lower Bell's
+  gear and chain); generated floors scatter about one per screen. The Bell
+  & Tea Engine's hall and catwalk are a no-occluder zone (36-cell soft edge):
+  the machine is played, not watched. So are the second doors' set pieces
+  (30-cell edge): the Frozen Fall, the Ice Vault, the Rime Warden's Ice-House,
+  the Periscope, the Prism Gate and the Lenswright's Lens Room; the Galleries'
+  zones are also CALM (no depth particle glints near their optics).
+  **The play layer always wins:** a reveal field (8-cell texels, updated at
+  30 Hz, easing 0.26 per update) clears the screen centre (clear to 0.42 of the half-diagonal,
+  full by 0.86), and punches soft holes (0.6 → 1.35 radii) over the player
+  (46 cells), creatures (their size + 16), a held or flying corpse and the
+  telekinesis tether, projectiles, pickups, mechanisms, waystones, the portal
+  and lava/fire/acid. High-readability lighting clears a wider centre
+  (0.62 → 1.05), scales every occluder by 0.55 and opacity by 0.7.
+- **Depth particles:** stateless fields at several depths, each moving with
+  its plane's parallax — Bellows drips and mist motes behind, dust in front;
+  Rot spores at three depths; Cistern bubbles and silt behind, motes in
+  front; Kiln embers and ash behind, sparks in front. Fields behind the play
+  layer draw only over open air and dim with designed darkness; near motes
+  catch real light (they glint in the lantern). Far motes brighten up to
+  2.2–3.2× inside the kit's light shafts.
+- **Dressing restraint:** gold powder is a mottled metal (shadowed grain /
+  body / facet / 6% glint) with bloomWeight 0.07 (was 0.15) and a 0.22 light
+  seed (was 0.34); marsh gas is a dim olive haze, bloomWeight 0.07 (was 0.24).
+  Gold piles (pickups) sit on the ground as a lit coin heap (left-lit faces,
+  coin rims, two spilled coins, a crown coin that turns every 48 frames and a
+  glint that sweeps the heap every 150).
+- **Title card:** every level arrival (D1 included) shows kicker ("Depth N"),
+  the tracked Cormorant name (letter-spacing settles 0.34em → 0.16em over
+  1.6 s), a copper rule that draws out (0.9 s), then the floor's italic
+  epigraph (0.7 s delay). It waits for the transition curtain to lift
+  (curtain hold + 120 ms; 1.6 s fallback) and holds 3.6 s. Event banners reuse
+  the style, smaller, for 2.2 s.
+- **Toasts:** a right-hand log under the objective. Identical lines within a
+  toast's 3.2 s life merge (×N badge pops 1.45 → 1 over 0.26 s, clock resets);
+  "+N …" tallies sum; at most 3 stand; shouted legacy lines are calmed to
+  sentence case. Mechanism fail-open groans only toast within 360 cells.
+- **Vitals:** 10 px tracks with a 1 px lit edge; a pale loss ghost holds a
+  lost chunk for 0.28 s then drains over 0.5 s (gains snap after 0.9 s).
+- Overlays rise in; gameplay fonts sized for readability; no monospace reaches
+  the player.
 
 ---
 
@@ -468,6 +1324,15 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   sand scale, sluice, and charge coil read raw cells as their sensors.
 - **Fail-open groan:** wreck a mechanism's trigger body and its gate groans
   open ~30 s later — physics never locks you out.
+- **The Bell & Tea Engine is played, not watched** (docs/BELL-TEA-ENGINE.md):
+  the player keeps control; the camera frames hall + catwalk at 1.2× on the
+  active station, clamped so the player is always in shot (the duck's station
+  frames 46 cells lower). A waiting station's fixture pulses a brass halo, an
+  expanding ripple every 70 frames plus a steady ring. A hollow knock plays
+  when it jams, and the caption card gains a brass border, the verb's live key
+  and a copper backup meter. Backups: slow match 540 ticks, clockwork knocker
+  600 ticks, seep 1 cell / 6 ticks. Watchdog nudges fire at 180–300-tick
+  intervals, with sparks and a lever click.
 - **Sequence doors** (Builder-authored): each correct step chimes a rising
   triangle tone (300 + 90·step Hz); a wrong-order firing breaks the chain
   with a sour 120 Hz sawtooth and audibly spits the resettable mechanisms
@@ -527,6 +1392,134 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
 
 ---
 
+## 10. Light and dark (Breathing Works light wave)
+
+"Light is information" (principle 5) made into a mechanic. The owner's brief:
+*dark caves where you only see the creatures' eyes or some glowing phalanx
+until you shine the wand's light towards it.* Darkness is a place you enter,
+never a filter over the game: the lamp-lit Works stay readable.
+
+**Designed darkness** (`config/darkness`, `core/darkness`). Every floor has a
+base darkness (d1 0, d2/d3 0.3 "an ordinary cave", d4 0.18 — the kiln glows)
+and DEEP-DARK ZONES (ellipse or rounded rect, rim feathered over 30 cells and
+wobbling ±10 so a zone reads as a cave the light never reached). Zones are
+baked once per level into a half-res map (static data, regenerated with the
+pristine world on restore). The bake FOLLOWS THE ROCK (fix3): the dark starts
+in a zone's core air and travels only through what connects to it — along air
+it holds 8 cells of feathered depth then fades over 52 (a doorway dims, never
+meets a drawn edge), into rock 2.2× slower (a room's walls go dark some cells
+deep; the rock beyond and any cave the zone's box merely overlaps keep their
+light), the fade's line wandering ±16 in air / ±18 in rock, a 1-2-1 blur over
+the texel steps. Only STRUCTURE soaks slowly (rock, masonry, metal, timber,
+ice, glass): a sand dune, a gold drift or snow in a dark room goes dark with
+the room. (Before, the zone box was painted over whatever lay under it:
+light-puzzle rooms read as black rectangles cut through rock and lit caves.
+fix4b: a fade of 40 and a soak of 3 still drew a dark room as a black
+rectangle cut out of lit walls, and a sand heap in the Undertow glowed as a lit
+block.) The map is READ SMOOTH: bilinear between texel centres for gameplay
+(`sampleDarkMap`) and per cell in every compose path and the sprite light
+(`openAtCell` over the per-light-texel field) — sampled nearest, every dark
+edge was a staircase of 2-cell steps. The render uses d² × 0.965 (an ordinary cave dims
+unlit rock only ~9%); gameplay reads d linearly. Per light texel the result is
+an OPEN factor that every compose path (CPU reference, WebGL2 light-texture
+alpha, WebGPU WGSL) multiplies ambient and the 0.40 readability floor by; the
+sprite floor (0.48), the creature floor (0.42), mechanism pens (0.55, never
+below ×0.3) and D1 fixture pens scale with it too. Real light is untouched, so
+in a deep-dark zone you see exactly what the wand, a fire, lava or a glowshroom
+lights. What full dark leaves is a cold "wet slate" remainder (albedo ×
+0.012/0.016/0.026, air 0.0022/0.0032/0.0055), never an RGB zero. EYE
+ADAPTATION: the squared light law would swallow every weak light, so a linear
+term fades in with the dark (lit = lf² + 0.42·shut·lf) — failing lamps and
+glow-caps still pool — and the air's halo round a lantern is 2.4× stronger.
+**High-readability lighting** keeps half the render darkness (its 0.85 ambient
+floor then reads ~0.43 in a zone): darkness still reads as a place, nobody is
+locked out.
+
+**The lantern in the dark.** The omni spill shrinks to ×0.62 radius at full
+darkness under the player (eased 0.1 per build) — you see your footing, not
+the room — while the aimed beam keeps its reach, loses less per cell of air
+(0.976 → 0.985) and burns ×1.12: in a black cave the world is where you point.
+The non-occluded glow cone shrinks ×0.55. Floor 1: the Undertow and the west
+end of the Lower Bell (where its Weaver waits). Floors 2–4: each light-puzzle
+room plus one (Cisterns: two) big caves on the route, sampled from wizard-fit
+ground away from spawn, portal, waystones and boss.
+
+**Eyeshine and glow markings** (`render/creatures/eyeshine`). Species art
+marks its open eyes at the rig's real head anchors (`anatomy.markEye`); after
+the body resolves an additive overlay (so it composes on every path) gives each
+eye a faint glow of its own from darkness 0.18 up (0.62 at full dark, core +
+halo) and a RETROREFLECTIVE flash when the wand's light lands on a face turned
+to the lantern (gain 1.9, saturating at wandLight 0.35; the halo widens). Eyes
+blink and track with the expression rig; sleepers and corpses don't shine; the
+beam's first catch of a pair of eyes in the dark tinks (2350→2800 Hz, at most
+once per 50 ticks). Markings (0.7 at full dark): the Weaver's leg tips
+("glowing phalanges", pulsing in step order), the Rillback's lateral line, a
+slime/bomber core, the Stone Maw's jaw seams (it is blind: no eyeshine at
+all), a Root Loper's crown; lures, bells, cores and embers keep their own
+lights. Colours: Weaver silk-green, bat ember-red, slime pale green, acid slime
+acid green, Rillback cyan, Root Loper amber, mage violet, imp/golem/Colossus
+forge orange. THE REVEAL: in the dark a body resolves out of the black through
+the raster's ordered dither as the light finds it (rise 0.16/tick ≈ 6 ticks,
+fall 0.035/tick ≈ 28 ticks); unrevealed pixels keep only their own glow.
+
+**The hooded lantern** (L, rebindable, Handbook "Light and dark"). The omni
+becomes an ember (radius ×0.16, intensity ×0.3, fill ×0.45), the beam and glow
+cone go out, eased over ~16 ticks. A brass hood drops over the wand tip with
+an ember inside; hooding clicks (760→430 Hz square), hisses and curls smoke,
+unhooding clicks brighter, rings and flares. `lanternHooded` event for audio.
+A new floor or a death lifts the hood. Moths lose a hooded lantern. SIGHT: the
+alchemist's visibility is the shipped 0.7 (torch 1) unhooded, +0.3 × darkness
+(a lantern in the dark is a beacon); hooded 0.7 × (1 − darkness)². Sight range
+= vision × (0.52 + 0.48·v) for v ≥ 0.7 (unchanged), falling linearly to ×0.16
+at v = 0: hooded in a deep-dark zone a Weaver sees you at ~34 cells (crouched
+~22), not ~215 — or hears you.
+
+**Creatures answer the light** (`creatures/lightResponse`). Being lit is
+information: the aimed beam on a creature (wandLight ≥ 0.07, inside the ±0.5
+rad cone, clear line to the tip) gives it a confident fix on you (≥ 0.75).
+WEAVER: flinches (crouch 14 ticks, head snaps back) and backs off 46 ticks,
+cooldown 34 — until 150 beam ticks inside a leaky window habituate it: it goes
+cranky (150) and charges through the light. BATS: the beam on a roost wakes
+every sleeper within 40×30 cells and scatters them away from the light (flee
+60, squeak); a bat in flight breaks its dive and veers off (flee 30, cd 40);
+after ~240 beam ticks a hungry bat stops caring. ROOT LOPER (the lurker):
+frozen, eye shut, bark creaking while the wand's light (≥ 0.06) is on it, and
+22 ticks after; in the dark it creeps ×1.45 while you look away. SLIMES: an
+unaware slime within 120 cells of the beam's lit spot hops toward it (gathers
+every 38 ticks) — herd it with the beam. STONE MAW: blind, unmoved.
+
+**Light devices.** PHOTOCELL (`sensorType 'light'`): a brass lens set into
+rock; the beam on it (≥ 0.07) or any blaze beside it (level ≥ 1.05) charges it
+over 90 ticks with a rising hum and six amber pips; the dark drains 0.35/tick
+(it cools, it does not reset). Latched: a brass chime, sparks, a self-lit gold
+lens. Its stone housing is its fail-open body. LUMEN BLOOM (`game/lumenBlooms`):
+a light-drinking plant whose petals are REAL Glass cells two rows thick. Lit
+(beam ≥ 0.06 or level ≥ 1.0 at the heart) it opens +0.024/tick (full in
+~0.7 s, 3 petals/tick, a rising glass chime), holds 70 ticks, then furls
+tip-first at 0.0028/tick (a full 44-column span over ~6 s, a creak and a
+shiver as it starts). Petals only ever go into open air (never over a body, a
+crate or rock) and only its own glass is taken back; a shattered petal regrows
+on the next unfurl. Its heart breathes a faint light (0.1 + 0.26·open) and the
+bridge glows along its length.
+
+**Light puzzles** (`world/lightPuzzles`, forked 'light-puzzles' stream,
+GEN_VERSION 51). Floors 2–4 each carve THE LAMPLIGHTER'S LOCK (124×70, a metal
+strongroom behind a oneShot sliding gate; the Rot Gardens use one permanent
+lens, the Cisterns and the Kiln twin lenses on opposite walls, each latching
+260 ticks — light one, swing across the dark to the other before it cools;
+reward a tome + gold) and THE BLOOM CROSSING (178×104, degrading to 150/128
+wide, a chasm over a metal-lined acid sump with a bloom rooted on each lip,
+each spanning half the gap; reward a potion + gold, sometimes a heart). Both
+rooms are deep-dark zones, joined to the main path (connectToCaves, wizard
+gauge checked, rolled back otherwise). Floor 1: the Undertow's lamplighter's
+cache — a lens in the flank of a stone tooth hanging from the roof and a flush
+riveted lid over a metal-lined niche (gold + a Torchbearer Tonic); the critical
+route never needs it. Findability audits 'photocell' and 'lumen-bloom': some
+wizard-reachable spot within 150 cells must have light's line of sight (glass,
+ice and crystal pass it) to the lens or heart.
+
+---
+
 ## Tuning quick-reference (this codex's load-bearing numbers)
 
 ```
@@ -537,13 +1530,18 @@ levitation horizontal: own control (levitHorizControl 1.0×) — decoupled from 
 air inertia: input caps at maxRun but never snaps carried momentum down; airborne vx *= airDrag (0.985) each frame instead of the ground 0.72 — sprint carries into jump/levitate, glide coasts (±12 sanity rail). Builder → LEVITATION → Air momentum (drag)
 gore/blood: count = baseline × global.bloodAmount × channelMul(material) × sizeFactor. sizeFactor = clamp(halfW·h / 50, 0.3, 4) (bat barely spatters, golem/colossus gushes). channelMul keys off the sprayed cell: Cell.Blood→goreBlood, Cell.Slime→goreSlime, Cell.Acid/Toxic→goreOoze, else 1 — so red blood, green slime, and glowing ooze tune discretely. bloodAmount is the master: 0 = bloodless, 1 = shipped, up to 10 = maximum gore / Tarantino mode. All in Builder → Global Controls → GORE (Overall 0–10×, channels 0–4×). Particle pool MAX_PARTICLES=4200 caps extremes gracefully; gold bounty shower is NOT scaled
 blood staining: blood particles stain (stainCell) the sturdy surface they strike (Wall/Wood/Stone/Ice), and flowing/pooling blood liquid stains the floor/walls it touches each substep (handleViscousLiquid) — red soaks in permanently (tints world.colors, not types, so golden hashes unaffected)
+chill (CHILL_PARAMS): brine .0026 + .0042·depth · nitrogen .0035/cell ≤ .02 · frozen-biome floor .12 · frost bolt +.24, rime wave +.2, breath lick +.075 · decay .0011 (.00025 in contact) + .0065·warmth (r26, full 7) + .02 alight · moveK 1→.45, jumpK 1→.82 (dead zone .08) · shell 72 ticks, press −9, burst → .66, cooldown 420 (cap .94) · thaw beat gap .26 (rime ≥ .42) · skin ≥ .45 (fresh water, 960–1260 ticks) · prints ≥ .5 · steam breath ≥ .5 · lens reach .2 of height, cap .55 (.36 readable) · score rate → .8, lowpass → 1.1 kHz (dead zone .15)
 blood wading: wet Cell.Blood at the legs (sample 9 tall × ±4) / WADE_FULL_CELLS 48 = wade01; sheds ≤0.55× of accel+maxRun (shin-deep ≈ −40%). Contact (≥4 cells) BANKS soak charge into player.bloodStain (+18/f ×0.35–1.0 by depth, cap 3600) → sprite reddens boots+hem the more/longer he wades (BLOOD_STAIN_FULL 1000 = full crimson, over 8 cells); off the blood drains 1/f, holds then fades ≈ 1 min. Moving (|vx|>0.5) shoves a crest up (world.swap) + flings the pool's own-colour cosmetic droplets + soft splash
 run accel 0.5 ground / 0.575 air · max run 2.6 paced by depth · crouch 0.38x · peek +48 cells
 dive: entry 5.6, floor 4.6, terminal 6.4 (normal 5.0), drift x0.86/f
 slam: 26-cell knock radius, 1 dmg, ≤12 powder cells popped
 kick (F): melee cone range 22 / ±52° / 8 dmg / cd 22 · gust cone range 32 (1.5× fan) · kickImpulse 75 (mass-aware) · self-recoil 3.0×max(0.5,reaction), down=stomp-launch
 kick gust → enemies: push 5×(40/footprint), clamp 0.2–4.5× · ballistic launch if mass≤26 (bat/eggs) → wall SMASH (12+2.4·speed dmg, blood-paints stone); heavier foes thud · bosses immune
-kick gust → critters scatter+startle 16–32f · vines bend (applyRadialImpulse)
+kick gust → critters scatter+startle 16–32f · vines bend (applyRadialImpulse) · saplings ≤130 cells/≤34 tall snap, bigger stands drop their pods
+felling: notch warn ≤0.55/≤0.30 of row width · hinge hold 18t @damping 26 → 1.1 → release 0.95 rad → free 0.12 · start spin 0.0055 · crush ≥1.5 c/t: foes min(160, 10+12v·massF) 'flattened', player 8–30 · impact Δv>1.1 · settle <0.08/<0.006 ×10t (water <0.25/<0.02 ×3t), timeout 720t
+thirsty seeds: soak 1 cell/substep, sprout after 48 dry substeps if bed drank ≥8 · energy min(120, 22+1.6·water+3·seeds) · rung 6×2 every 12
+telekinesis (E/F): reach 90 · leash 64 · snap 150 / 45 ticks unseen · spring K .03/m, damp .12/√m, cap .9/√m · sag 1.6/slime · field lift .35 · mana: regen + .08 + .09m /tick hold, 2 + 1.5m grab, 6 + 5m hurl (≥ 25% or fizzle) · hurl 8/m^.35 clamp 3.5–7.5, lobbed · lift ≤ 6 slimes (nudge 1.1/√m, 6 mana)
+corpses: bowl ≥ 2.2 c/t, 6 + 4.5·m^.6·v cap 90, keep 45%, cd 14, credit 240 ticks, hitstop 4 at ≥ 36 · head ≥ 2.5 slimes at vy ≥ 2.2, ≤ 8 · thud Δv 1.6 (≥ 1.8 c/t) · shatter Δv 2.4 · kick 6/√m · gust 1.6·g/√m · burn 480 (oiled 780), char .0035, rot +2 · lava +10 · acid +6 · frozen 1200, friction .06 · twitch 24, wet charge 10 · plate weight round(4m) · lure ×1.6 for 300 ticks · spare 240 after a touch, ≤ 1800 · MAX 10
 vine swing (G): reach 16, len 14–150, pump 0.16 (left=left/right=right), jump launch +2.0 up · release keeps momentum (airborne inertia, no walk clamp) · player pushes vines aside within 20 cells (strength 1.4)
 skid: trigger |svx|>1.1 on reversal, 9f · stagger 12f · recoil 5f/7f
 swap draw 12f (gleam f5-7) · fidget arms at 420f idle, routine 90f
@@ -552,12 +1550,27 @@ patrol: advance <14 cells (slime) / <10 (golem) · de-alert 300f beyond 300 cell
 sequence chime 300+90·step Hz / break 120 Hz saw · emitter rate clamp ≥2f
 bat flare 8f at <64 cells · swoop 12f cap 2.6 · tumble 14f, ~1.2%/f at <40% hp
 enemy threat-sense (in-window foes, tick rate): hazard box halfW+9 (per-kind enemyLethalCell) · fast body dist<60 tti<26 toward>0.4 (imminent tti<14) · projectile dist<70 tti<22 toward>0.6 (imminent tti<12) · flame-cone reach 36 / half-angle 0.5 +0.3 slack · self: burning .85, hp<35% ramps
+provoke on direct hit: mind fix on the shooter (confidence ≥ .8, irritation ≥ .75); fleeAt < .5 kinds bolt (fear → fleeAt), others aggression ≥ .6; weaver cranky 90 · notice escalation: visible & < 130 cells → irritation += (1 − d/130)/120 per tick (decay 1/800)
+creature burning (FIRE IS A WEAPON, 2026-09 deliberate change): a catch burns 300 ticks (420 oiled; was 90/300), refreshed in the flames, and deals 0.30 hp per 2-tick status sample = 9 hp/s (burnScale 2.5 over the alchemist's 0.12; was 3.6 hp/s) → a lit slime (36/43/48 hp) burns out in 4.0/4.8/4.9 s (probe) unless doused (≥ 3 water cells); the alchemist's own burning (0.12/sample, 90/300 ticks) is unchanged · open-flame contact 0.7/row/tick, lava 1.6 · steam scald 0.05/row/tick (not imp/colossus/leviathan) · drowning: head ≥ 60% liquid → breath 360 (imp 90, bat 180, bomber 150) then −maxHp/300 per tick; immune rillback/leviathan/colossus/wisp/eggs
 enemy drives: fear → sensed threat × kind-fear, decay 0.02/f · aggression +0.02 close +0.04 on-hit −0.03·fear −0.005/f · chaseScale clamp(1 − 0.7·fear + 0.15·agg, 0.25, 1)
-enemy reflex: dodge ⊥ to threat vel @2.7 ×12f, one roll/threat (dodgeCd 22) gated by kind dodge% (fliers sustain vy, grounded one hop) · flee 26f @1.7 away (toward water if burning+seekWater) · final movement integrates at 0.55x on D1, ramping +0.09/depth to 1.0x by D6 before difficulty · startle "!" tell @dodgeT≥10|fleeT≥23 + airy whiff (pDist<160)
+enemy reflex: dodge ⊥ to threat vel @2.7 ×12f, one roll/threat (dodgeCd 22) gated by kind dodge% (fliers sustain vy, grounded one hop) · flee 26f @1.7 away (toward water if burning+seekWater) · final movement integrates at 0.85x on floor 1, ramping +0.075/depth to 1.0x by floor 3 before difficulty (probe, flee drive 1.7 on flat stone: floor 1 50→78 cells/s, floor 3 67→92, floor 4 75→92) · startle "!" tell @dodgeT≥10|fleeT≥23 + airy whiff (pDist<160)
+colossus: slam r10/11/13 @30 (punish 26) · stomp waves 1.45/1.75/2.15 c/t ×62, 14 dmg grounded only · throw @32 (+46 in p3), 9 lava grains · vent tell 42, fire r17, boil r26 · roar 72 at 66%/33%, p3 bare ×1.25 · quench kneel 120 (×1.6) on the ward's 16%/150-tick crack · death 214 (overload 128, blast 196) · leviathan: lunge tell 22 (lure dark) · thrash ≤ 22 cells · shorted burst 7.5%/210 ticks, grounds the pool within 40 · phase beat 300 · water armour ×0.12 · beached ×1.3
+organisms: snapjaw trigger 10 / tell 12 / bite 7.5 / 11 dmg / digest 780 / ignite 10, char 44 · puffer ripe .4, gas r 3+4·inf · glow-worm shy > .42 wand light, hide 260+ · leech 2 hp/150 ticks, sated 5, max 3 · hit stagger ≥ 5 dmg, 3–9 ticks, cd 45 · idle acts every 170–490 ticks
 temperament fear/dodge/fleeAt: slime .4/.12/.95 · bat 1.3/.85/.45 · imp .6/.72/.6 · wisp .9/.7/.4 · spitter .85/.55/.5 · bomber .2/.3/never · mage .9/.62/.45 · weaver .5/.5/.72 · golem .18/.28/never · colossus 0/0/never · default .7/.45/.7
 player eye seeks threats <80 cells · enemy gaze locks only when alerted
-shake falloff dead at 420 cells · hitstop 3f at ≥8 dmg · heartbeat <25% hp
+shake falloff dead at 420 cells · hitstop 3f at ≥8 dmg (player hurt); creature hits 2f ≥7 (3f ≥20), 1f for direct 2–7 · heartbeat <25% hp
+spark bolt: 14-cell streak, 1.25-cell core, 3-cell halo · light 1.1/2.5/3.0 wake 4 · impact 12+3 sparks, bloom .34/.2 · knock 1.4×40/footprint clamp .35–2.6 ×4 ticks (no weaver/boss/eggs)
+alchemy: chain 180 ticks · credit ≤280 cells | touched ≤1200 ticks | kicked ≤180 ticks · bonus (10 + .35·bounty)×(1 + .5·min(4, chain−1)) → whole 10-oz Gold cells · mana +35% active tank · +3 hp
+callouts: life 1150 ms + 180/tier · tiers ×1 brass / ×2 / ×3–4 ember / ×5+ white-gold · word 27/29/31/34 px × holder/1280 · chain link takes the spot (140 ms bow-out) · max 6 live
+self-shock: self-inflicted ≤240 ticks after a cast · scale charge/40 (floor .15) · cap 12 hp per 120 ticks · arc ≤16 cells up the charge gradient
+fodder rosters (SPINE_ROSTERS by biome): fungal weaver 2 rootloper 3 rillback 1 slime 4 acidslime 2 eggs 2 bat 8 (roosts) · flooded rillback 6 spitter 3 wisp 2 weaver 1 bat 4 · volcanic imp 5 bomber 4 golem 2 stonemaw 2 (× difficulty enemyCount)
 sim window camera ±60 · player 9x17 cells · staff ~11 cells, muzzle at d=9
+darkness: render d²×0.965 (readability ×0.5) · floor base d1 0 / d2 .3 / d3 .3 / d4 .18 · zone feather 30 ± rim wobble 10 · follows the rock: air hold 8 + fade 40, rock soak ×3 · DARK_FLOOR .012/.016/.026 · DARK_ADAPT .42 · air glow ×(1+1.4·shut)
+lantern in the dark: spill radius ×.62 · beam step 0.976→0.985, ×1.12 · glow cone ×.55 · hooded: radius ×.16, intensity ×.3, fill ×.45, beam/glow off, ease .26/build
+eyeshine: base .62 from darkness .18 · retro ×1.9 at wandLight .35 · markings .7 · reveal +.16/−.035 per tick · catch tink ≤1/50 ticks
+sight by light: v = .7 (torch 1) + .3·dark unhooded, .7·(1−dark)² hooded · range ×(.52+.48v) for v≥.7, → ×.16 at v=0 · beam lit fix ≥.07 in ±.5 rad
+light responses: flinch ≥.07 · weaver crouch 14 / back off 46 / cd 34 / habit 150 → cranky 150 · bats scatter 40×30, flee 60 (flight 30, cd 40) · loper freeze ≥.06 +22, creep ×1.45 · slime lure 120 cells, gather /38
+photocell: beam ≥.07 or level ≥1.05, 90 ticks, drain .35/tick, twin latch 260 · lumen bloom: beam ≥.06 or level ≥1.0, open +.024, hold 70, furl −.0028, 3 petals/tick
 D1 sky (SKY in render/skyAtmosphere.ts): gradient base (0.36,0.53,0.78)→horizon (+0.28,+0.06,−0.28)·t · sun screen 0.72·VIEW_W,0.17·VIEW_H, halo r150 pow2.4, core 13→6 · clouds 4 octaves, parallax 0.82, drift 0.004/f, band t∈0.12–0.66, opacity 0.45 · hills far parallax 0.5 base26 / near parallax 0.32 base40 (taller+darker, drawn last)
 ```
 

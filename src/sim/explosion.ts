@@ -1,12 +1,19 @@
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx, Enemy, ExplosionApi } from '@/core/types';
-import { Cell, blocksEntity } from '@/sim/CellType';
-import { ashColor, crystalColor, fireColor, glassColor, smokeColor } from '@/sim/colors';
+import { CELL_COUNT, Cell, blocksEntity, isLiquid } from '@/sim/CellType';
+import { ashColor, crystalColor, fireColor, glassColor, packRGB, smokeColor } from '@/sim/colors';
 import { chargeDeposit } from '@/sim/electrical';
+import { causeForExplosion } from '@/core/alchemyCause';
 import { fxRandom, simRandom } from '@/core/simRandom';
+import { blastAuthor, bossFuelRect, bossOrganRect } from '@/core/bossWard';
 
 /** Reused blast-carve scratch — see the note at its use site in trigger(). */
 let blastTouchedScratch = new Uint8Array(0);
+
+/** Liquids a blast throws instead of unmaking (see trigger): every liquid but
+ *  Oil, which is fuel and still catches. */
+const DISPLACED_BY_BLAST = new Uint8Array(CELL_COUNT);
+for (let t = 0; t < CELL_COUNT; t++) if (isLiquid(t) && t !== Cell.Oil) DISPLACED_BY_BLAST[t] = 1;
 
 const BLAST_DEBRIS_MARGIN = 8;
 const BLAST_DEBRIS_DUST_CAP = 28;
@@ -36,6 +43,7 @@ function blastDebrisCell(t: number): boolean {
     t === Cell.Ice ||
     t === Cell.Crystal ||
     t === Cell.Glass ||
+    t === Cell.Mirror ||
     t === Cell.RawOre ||
     t === Cell.Coal
   );
@@ -193,7 +201,7 @@ export class Explosions implements ExplosionApi {
       ctx.fx.bloomKick = Math.min(0.95, ctx.fx.bloomKick + radius * 0.026 * k);
       ctx.fx.screenShake = Math.min(ctx.fx.screenShake + radius * 0.0022 * k, 0.045);
       // distant booms arrive smaller, the way thunder does
-      ctx.audio.boom(radius * (0.35 + 0.65 * k));
+      ctx.audio.boom(radius * (0.35 + 0.65 * k), cx, cy);
     }
     // Concussion is a valid puzzle input: levers and rune switches listen.
     ctx.events.emit('structureStrike', { x: cx, y: cy, radius: radius + 4 });
@@ -206,6 +214,21 @@ export class Explosions implements ExplosionApi {
     }
     const blastTouched = blastTouchedScratch;
     blastTouched.fill(0, 0, world.types.length);
+    // A warded boss's own blast (the Kiln's slam, fireballs, death) never harms
+    // it — neither the blow itself (entity loop below) nor the live charge it
+    // would leave in the floor the boss then walks through (QA: the Colossus
+    // electrified itself to death idling near an idle player). See core/bossWard.
+    const bossAuthor = blastAuthor(options.playerDamageSource);
+    // ...and a boss arena's organ (the Kiln's ceiling tank, the Sump's drain
+    // plugs) is the PLAYER's to open: a blast he did not cast — the boss's own
+    // volley, a bomber it caught, powder the lava lit — leaves those cells be
+    // (probe, seed 4: the tank burst ~3 s after the Colossus woke, before the
+    // player had done anything, and the flood was wasted).
+    const organ = causeForExplosion(options.playerDamageSource) === 'direct' ? null : bossOrganRect(ctx.levels?.current?.boss);
+    // ...and an arena's FUEL (the Ice-House's coal pits) is the player's to
+    // LIGHT: any blast there catches the coal instead of blowing it away (a
+    // spark bolt used to flash the whole pit off in a second).
+    const fuel = bossFuelRect(ctx.levels?.current?.boss);
 
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -213,8 +236,13 @@ export class Explosions implements ExplosionApi {
           const nx = cx + dx,
             ny = cy + dy;
           if (!world.inBounds(nx, ny)) continue;
+          if (organ && nx >= organ.x0 && nx <= organ.x1 && ny >= organ.y0 && ny <= organ.y1) continue;
           const ni = world.idx(nx, ny);
           const orig = world.types[ni];
+          if (fuel && orig === Cell.Coal && nx >= fuel.x0 && nx <= fuel.x1 && ny >= fuel.y0 && ny <= fuel.y1) {
+            if (world.life[ni] === 0) world.life[ni] = (ctx.params.materials[Cell.Coal].burnDuration ?? 240) + Math.floor(fxRandom() * 40);
+            continue;
+          }
           if (orig === Cell.MarshGas) {
             // a blast doesn't erase a gas pocket - it LIGHTS it
             world.replaceCellAt(ni, Cell.Fire, fireColor());
@@ -230,6 +258,13 @@ export class Explosions implements ExplosionApi {
               simRandom() < 0.45
             )
               continue;
+            // A mirror bursts into glinting silver shards (cosmetic: the fx
+            // stream, so no other material's sim rolls move).
+            if (orig === Cell.Mirror && fxRandom() < 0.6) {
+              const d = Math.sqrt(dx * dx + dy * dy) || 1;
+              ctx.particles.spawn(nx, ny, (dx / d) * 2.2 + (fxRandom() - 0.5) * 1.6, (dy / d) * 1.8 - 1.4 - fxRandom(),
+                null, fxRandom() < 0.3 ? packRGB(250, 252, 255) : packRGB(190, 204, 216), 70 + Math.floor(fxRandom() * 40), { glow: 1.2, grav: 0.1 });
+            }
             // Crystal shatters into a burst of glowing shards
             if (orig === Cell.Crystal && simRandom() < 0.6) {
               const d = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -244,14 +279,26 @@ export class Explosions implements ExplosionApi {
                 { glow: 1.8 },
               );
             }
+            // A blast in a pool THROWS the pool: every cell of a displaced liquid
+            // flies as a spray that lands again (deposit: conserved even if its
+            // arc runs out). It used to be unmade — 30% fire, 20% smoke, the rest
+            // nothing — so each spark bolt that struck the Sunken Leviathan's
+            // pool deleted ~60 of its ~790 cells, and firing at the fish emptied
+            // its armour in seconds. (The rolls below are still drawn, so the sim
+            // stream is unchanged for every other material.)
+            const thrown = DISPLACED_BY_BLAST[orig] === 1;
             // Launch a fraction of destroyed material as ballistic debris
-            if (
+            const debrisRoll =
               orig !== Cell.Empty &&
               orig !== Cell.Fire &&
               orig !== Cell.Smoke &&
               orig !== Cell.Steam &&
-              simRandom() < 0.22
-            ) {
+              simRandom() < 0.22;
+            if (thrown) {
+              const d = Math.sqrt(dx * dx + dy * dy) || 1;
+              const force = (1.2 - d / radius) * 2.6 + fxRandom();
+              ctx.particles.spawn(nx, ny, (dx / d) * force + (fxRandom() - 0.5), (dy / d) * force - 1.2 - fxRandom(), orig, world.colors[ni], 90, { deposit: true });
+            } else if (debrisRoll) {
               const d = Math.sqrt(dx * dx + dy * dy) || 1;
               const force = (1.2 - d / radius) * 2.6 + simRandom();
               ctx.particles.spawn(
@@ -266,11 +313,19 @@ export class Explosions implements ExplosionApi {
               );
             }
             if (simRandom() < 0.3) {
-              world.replaceCellAt(ni, Cell.Fire, fireColor());
-              world.life[ni] = Math.floor(simRandom() * 25) + 10;
+              const life = Math.floor(simRandom() * 25) + 10;
+              if (thrown) world.clearCellAt(ni);
+              else {
+                world.replaceCellAt(ni, Cell.Fire, fireColor());
+                world.life[ni] = life;
+              }
             } else if (simRandom() < 0.2) {
-              world.replaceCellAt(ni, Cell.Smoke, smokeColor());
-              world.life[ni] = Math.floor(simRandom() * 30) + 20;
+              const life = Math.floor(simRandom() * 30) + 20;
+              if (thrown) world.clearCellAt(ni);
+              else {
+                world.replaceCellAt(ni, Cell.Smoke, smokeColor());
+                world.life[ni] = life;
+              }
             } else {
               world.clearCellAt(ni);
             }
@@ -278,13 +333,14 @@ export class Explosions implements ExplosionApi {
             // water/metal for several frames, then fades. The base deposit is
             // scaled by chargeStrength (reach) and attenuated by chargeFalloff
             // (spread) / chargeDecay (duration).
-            if (simRandom() < 0.4) world.setChargeAt(ni, chargeDeposit(ctx, 8));
+            // (The roll is drawn first either way so the sim stream is unchanged.)
+            if (simRandom() < 0.4 && bossAuthor === null) world.setChargeAt(ni, chargeDeposit(ctx, 8));
           } else {
             // Metal doesn't shatter — but it CONDUCTS. The blast rings a strong
             // current through it that spreads across the connected metal (and up
             // into water sitting on it, and into enemies standing on it), fading
             // over ~1s. Big base deposit → metal carries the current far.
-            world.setChargeAt(ni, chargeDeposit(ctx, 60));
+            if (bossAuthor === null) world.setChargeAt(ni, chargeDeposit(ctx, 60));
           }
         }
       }
@@ -299,6 +355,7 @@ export class Explosions implements ExplosionApi {
         const nx = cx + dx,
           ny = cy + dy;
         if (!world.inBounds(nx, ny)) continue;
+        if (organ && nx >= organ.x0 && nx <= organ.x1 && ny >= organ.y0 && ny <= organ.y1) continue;
         const ni = world.idx(nx, ny);
         const t = world.types[ni];
         // Heat fuses sand at the blast rim into glass
@@ -344,6 +401,9 @@ export class Explosions implements ExplosionApi {
     // anyone a nested blast already finished is skipped by the hp check.
     const victims: Enemy[] = [];
     const blastReach = radius * 1.6;
+    // Kill attribution: the wand's own blasts are direct; gunpowder, barrels and
+    // every other blast the player did not cast are the world detonating.
+    const source = causeForExplosion(options.playerDamageSource);
     for (const e of ctx.enemies) {
       const dx = e.x - cx;
       const dy = e.y - cy;
@@ -351,11 +411,12 @@ export class Explosions implements ExplosionApi {
     }
     for (const e of victims) {
       if (e.hp <= 0) continue; // a nested blast already finished it
+      if (e.kind === bossAuthor) continue; // its own slam/fireball/death blast
       const dx = e.x - cx;
       const dy = e.y - cy;
       const d = Math.sqrt(dx * dx + dy * dy);
       const dmg = Math.max(4, (1 - d / blastReach) * radius * 2.4);
-      ctx.enemyCtl.damage(e, dmg * (options.enemyDamageMul ?? 1), (dx / (d || 1)) * 2.2, -1.6);
+      ctx.enemyCtl.damage(e, dmg * (options.enemyDamageMul ?? 1), (dx / (d || 1)) * 2.2, -1.6, source);
     }
     if (ctx.state.mode === 'play' && !ctx.player.dead) {
       const dx = ctx.player.x - cx,
@@ -379,6 +440,9 @@ export class Explosions implements ExplosionApi {
     // base so even a small spark blast gives a satisfying shove, scaling up to a
     // proper launch for bombs.
     ctx.rigidBodies.applyRadialImpulse(cx, cy, radius * 1.8, 2.5 + radius * 0.08);
+    // ...and the remains of the dead: every part flung by distance (a frozen
+    // carcass close in shatters). The wand's own blast makes what they hit his.
+    ctx.corpses?.blast(cx, cy, radius * 1.8, 2.5 + radius * 0.08, source === 'direct');
     ctx.vineStrands?.applyRadialImpulse(cx, cy, radius * 1.8, 1.4 + radius * 0.05);
     // The blast wave scatters any ambient critters it didn't outright incinerate.
     ctx.critters?.scatter(cx, cy, radius * 2.0, 2.0 + radius * 0.06);

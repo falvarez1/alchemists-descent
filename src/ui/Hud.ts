@@ -1,9 +1,15 @@
 import type { Ctx, PerkId } from '@/core/types';
+import { livingObjective } from '@/game/LivingExpedition';
+import { canHumiliate } from '@/combat/Trickshot';
+import { worksPlaceName } from '@/world/breathingWorks';
+import { flaskSlotKey, getBindings, keyLabel } from '@/input/bindings';
+import { VIEW_H, VIEW_W } from '@/config/constants';
+import { floorLabel } from '@/config/worldgraph';
 import { CARD_DEFS } from '@/combat/wands/cards';
 import { PERK_DEFS, isPerkActive, togglePerkActive } from '@/content/perks';
 import { nextWandSentence } from '@/combat/wands/sentenceView';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
-import { deathCauseLine } from '@/ui/deathCauses';
+import { deathCauseLine, deathTitle } from '@/ui/deathCauses';
 import {
   INTRO_OBJECTIVE,
   INTRO_PRE_KEY_OBJECTIVES,
@@ -11,32 +17,63 @@ import {
   introControlHintForObjective,
 } from '@/game/introObjectives';
 import { cardIconName, makeIconCanvas } from '@/ui/icons';
+import { ToastStack } from '@/ui/ToastStack';
+import { calmCase } from '@/ui/houseText';
+import { titleCaseName } from '@/core/strings';
+import { FLOOR_LOOKS, floorLookFor } from '@/config/floorLooks';
 
 /** Non-null getElementById — all HUD elements exist statically in index.html. */
 function el(id: string): HTMLElement {
   return document.getElementById(id)!;
 }
 
-const BENCH_OBJECTIVE_FRAMES = 720;
+/** How long the "seat it at the bench" line lingers under the objective (ticks). */
+const BENCH_NOTE_FRAMES = 720;
 const WAYSTONE_OBJECTIVE_RADIUS_SQ = 72 * 72;
+
+/** Centre-card timing: an arrival title holds longer than an event notice. */
+const TITLE_HOLD_MS = 3600;
+const NOTICE_HOLD_MS = 2600;
+/** The card's fade-out (main.css #wave-banner transition) plus a breath before the next. */
+const BANNER_GAP_MS = 750;
+const MAX_QUEUED_NOTICES = 3;
+
+/**
+ * One centre card. Arrival titles always play first and uninterrupted; event
+ * notices (waystone lit, first brew, a card found) queue behind them and each
+ * other, lowest `priority` first, so nothing stomps anything.
+ */
+interface BannerCard {
+  big: string;
+  small: string;
+  kicker: string;
+  kind: 'title' | 'notice';
+  priority: number;
+  onShow?: () => void;
+}
 
 function introCompletionCardSlotted(ctx: Ctx): boolean {
   const wands = ctx.wands.wands;
   return Array.isArray(wands) && wands.some((wand) => wand.cards.includes(INTRO_REWARD_CARD));
 }
 
-export function contextualObjectiveText(ctx: Ctx, fallback: string, benchNudgeFrames = 0): string {
+/**
+ * The objective line. A found card never takes it over: the floor's goal stays
+ * the goal, and the bench cue rides underneath it (Hud's objective note).
+ */
+export function contextualObjectiveText(ctx: Ctx, fallback: string): string {
   if (ctx.state.mode !== 'play') return fallback;
   const runtime = ctx.levels.current;
   if (!runtime) return fallback;
-  if (benchNudgeFrames > 0 && ctx.wands.collection.length > 0) return INTRO_OBJECTIVE.benchAvailable;
+  const living = livingObjective(ctx);
+  if (living) return living;
   const nearUnlitWaystone = runtime.waystones.some((waystone) => {
     if (waystone.lit) return false;
     const dx = waystone.x - ctx.player.x;
     const dy = waystone.y - ctx.player.y;
     return dx * dx + dy * dy <= WAYSTONE_OBJECTIVE_RADIUS_SQ;
   });
-  if (nearUnlitWaystone && !runtime.keyTaken) return 'LIGHT WAYSTONE: BRING FIRE';
+  if (nearUnlitWaystone && !runtime.keyTaken) return FLOOR_OBJECTIVE_WAYSTONE;
   if (runtime.portal) {
     if (runtime.keyTaken) return INTRO_OBJECTIVE.returnPortal;
     return INTRO_PRE_KEY_OBJECTIVES.has(fallback) && !introCompletionCardSlotted(ctx)
@@ -46,10 +83,19 @@ export function contextualObjectiveText(ctx: Ctx, fallback: string, benchNudgeFr
   return fallback;
 }
 
-export function cardGrantBenchCue(ctx: Ctx): string {
-  if (ctx.state.mode !== 'play') return 'NEW SPELL CARD';
+/** The secondary line under the objective after a card is found. */
+export function cardGrantBenchCue(ctx: Ctx, name?: string): string {
+  if (ctx.state.mode !== 'play') return 'A new spell card';
   // The bench opens anywhere now — just slot it whenever you like.
-  return 'NEW SPELL CARD — PRESS B TO SLOT';
+  return `Seat ${name ? name : 'the new card'} at the wand bench (B).`;
+}
+
+/** Near an unlit waystone on a generated floor (house tone; see introObjectives). */
+export const FLOOR_OBJECTIVE_WAYSTONE = 'Bring fire to the waystone to set your return point.';
+
+/** Level title card kicker. A generic hook: the run layer may say "Floor 2 of 4". */
+export function levelTitleKicker(depth: number): string {
+  return 'Depth ' + depth;
 }
 
 // ===================== HUD =====================
@@ -63,7 +109,17 @@ export function cardGrantBenchCue(ctx: Ctx): string {
 export class Hud {
   /** Last flask material rendered (undefined = never rendered), so the palette lookup runs once per change. */
   private flaskMaterial: number | null | undefined = undefined;
-  private readonly flaskSlots: Array<{ root: HTMLElement; fill: HTMLElement; count: HTMLElement }> = [];
+  private readonly flaskSlots: Array<{ root: HTMLElement; fill: HTMLElement; count: HTMLElement; name: HTMLElement }> = [];
+  private readonly soundCaption = document.createElement('div');
+  private readonly toastStack: ToastStack;
+  /** Empty slot beside the vitals, reserved for the run layer's return-phial row. */
+  private readonly vitalsAside = document.createElement('div');
+  /** Trailing "loss" bars behind HP/mana: the chunk you just lost lingers, then drains. */
+  private readonly vitalGhosts: Array<{ ghost: HTMLElement; fraction: number; dropAt: number }> = [];
+  private readonly bannerKicker = document.createElement('div');
+  private readonly bannerRule = document.createElement('div');
+  private readonly trickshotReadout = document.createElement('div');
+  private captionUntil = 0;
   /** Filled hotbar tiles of the ACTIVE wand (+ costs and slot positions). */
   private hotbarSlots: Array<{ tile: HTMLElement; cost: number; slotIdx: number }> = [];
   /** The active wand's recharge bar fill (rebuilt with the hotbar). */
@@ -75,8 +131,20 @@ export class Hud {
   private displayedGold = 0;
   /** Frame the last dry-fire flash started (clears the class after it). */
   private dryFlashUntil = 0;
-  private objectiveBase = 'FIND THE GOLDEN KEY';
-  private benchObjectiveUntil = 0;
+  private objectiveBase: string = INTRO_OBJECTIVE.findKey;
+  private bannerTimer = 0;
+  /** An arrival title waiting for the transition curtain to lift. */
+  private pendingTitle: BannerCard | null = null;
+  private titleFallback = 0;
+  /** Notices waiting for the centre card to come free. */
+  private readonly bannerQueue: BannerCard[] = [];
+  /** performance.now() at which the card on screen has faded and the next may enter. */
+  private bannerFreeAt = 0;
+  private bannerPump = 0;
+  /** Secondary line under the objective (the bench cue after a card is found). */
+  private readonly objectiveNote = document.createElement('div');
+  private objectiveNoteUntil = 0;
+  private objectiveNoteCard: string | null = null;
 
   // Static HUD nodes resolved once (all exist in index.html). update() runs
   // every other tick (~30Hz), so caching these avoids repeated getElementById
@@ -91,6 +159,7 @@ export class Hud {
   private readonly flaskFill = el('flask-fill');
   private readonly damageVignette = el('damage-vignette');
   private readonly objectiveNode = el('objective');
+  private readonly waveNum = el('wave-num');
   private readonly interactionHintNode = el('interaction-hint');
   private readonly controlsHintNode = el('controls-hint');
   private readonly controlsHintDefaultHtml = this.controlsHintNode.innerHTML;
@@ -98,6 +167,47 @@ export class Hud {
   private readonly timeouts = new Set<number>();
 
   constructor(private ctx: Ctx) {
+    this.trickshotReadout.id = 'trickshot-readout'; this.trickshotReadout.hidden = true;
+    el('canvas-holder').appendChild(this.trickshotReadout);
+    this.soundCaption.id = 'sound-caption'; this.soundCaption.setAttribute('aria-live', 'polite');
+    el('objective').closest('.wave-readout')!.appendChild(this.soundCaption);
+    this.objectiveNote.id = 'objective-note';
+    this.objectiveNote.setAttribute('aria-live', 'polite');
+    el('objective').closest('.objective-row')!.insertAdjacentElement('afterend', this.objectiveNote);
+    // Toasts are the right-hand event log: they flow beneath the objective and
+    // its caption, so no length of objective can ever overlap them.
+    const toastHost = el('toast-stack');
+    el('objective').closest('.wave-readout')!.appendChild(toastHost);
+    this.toastStack = new ToastStack(toastHost);
+    this.vitalsAside.id = 'vitals-aside';
+    this.vitalsAside.className = 'vitals-aside';
+    el('hud-left').appendChild(this.vitalsAside);
+    for (const id of ['hp-fill', 'mana-fill']) {
+      const fill = el(id);
+      const ghost = document.createElement('div');
+      ghost.className = 'vital-ghost';
+      ghost.setAttribute('aria-hidden', 'true');
+      fill.parentElement!.insertBefore(ghost, fill);
+      this.vitalGhosts.push({ ghost, fraction: 1, dropAt: 0 });
+    }
+    // Title card: a kicker above the name and a copper rule under it.
+    const banner = el('wave-banner');
+    banner.classList.add('title-card');
+    this.bannerKicker.className = 'title-card-kicker';
+    this.bannerKicker.id = 'banner-kicker';
+    this.bannerRule.className = 'title-card-rule';
+    this.bannerRule.setAttribute('aria-hidden', 'true');
+    banner.insertBefore(this.bannerKicker, el('banner-big'));
+    banner.insertBefore(this.bannerRule, el('banner-small'));
+    this.disposers.push(ctx.events.on('habitatSound', ({ kind, x, y }) => {
+      if (!ctx.state.creatureCaptions || performance.now() < this.captionUntil) return;
+      const direction = Math.abs(x - ctx.player.x) < 35 ? (y < ctx.player.y - 30 ? 'above' : 'nearby') : x < ctx.player.x ? 'left' : 'right';
+      this.soundCaption.textContent = `${kind === 'weaver' ? 'Dry claws tapping' : 'A body sliding through water'} · ${direction}`;
+      this.captionUntil = performance.now() + 1500;
+      this.setHudTimeout(() => { this.soundCaption.textContent = ''; }, 1500);
+    }));
+    const tools = el('expedition-tools');
+    tools.append(el('spell-hotbar'), el('flask-belt'), el('field-note'));
     // Treasure-row pixel icons (hud-gold itself rolls toward the score in
     // update() — income you can watch).
     const goldIconHost = el('gold-chip-icon');
@@ -131,36 +241,50 @@ export class Hud {
       this.setHudTimeout(() => track?.classList.remove('mana-dry'), 320);
     }));
 
-    this.disposers.push(ctx.events.on('waveStarted', ({ num }) => {
-      el('wave-num').textContent = 'WAVE ' + num;
-    }));
-
-    this.disposers.push(ctx.events.on('waveBanner', ({ big, small }) => this.showBanner(big, small)));
-
-    // The descent: depth readout + arrival banner whenever a level is entered.
+    // The descent: depth readout + one house-style title card on every arrival
+    // (the hand-built Works included), with the floor's own epigraph.
+    // The card waits for the transition curtain to lift, so its entrance
+    // plays in view rather than behind the veil (with a fallback if no
+    // curtain comes down, e.g. an in-place restore).
     this.disposers.push(ctx.events.on('levelChanged', ({ depth, name }) => {
-      el('wave-num').textContent = 'D' + depth;
-      this.showBanner('D' + depth + ' — ' + name, 'THE DESCENT CONTINUES');
+      // Campaign floors read "Floor 2 of 4"; off-spine arenas keep the depth code.
+      const floor = floorLabel(ctx.levels.current?.def.id);
+      el('wave-num').textContent = floor || 'D' + depth;
+      const look = ctx.levels.current ? floorLookFor(ctx) : FLOOR_LOOKS.earthen;
+      this.pendingTitle = {
+        big: titleCaseName(name), small: look.epigraph, kicker: floor || levelTitleKicker(depth), kind: 'title', priority: 0,
+      };
+      window.clearTimeout(this.titleFallback);
+      this.titleFallback = this.setHudTimeout(() => this.revealPendingTitle(), 1600);
+    }));
+    this.disposers.push(ctx.events.on('levelCurtain', ({ visible, holdMs = 0 }) => {
+      if (visible || !this.pendingTitle) return;
+      window.clearTimeout(this.titleFallback);
+      this.titleFallback = this.setHudTimeout(() => this.revealPendingTitle(), holdMs + 120);
     }));
 
+    // Event notices: sentence case, smaller than a title, queued behind it.
     this.disposers.push(ctx.events.on('waystoneLit', () => {
-      this.showBanner('WAYSTONE LIT', 'CHECKPOINT SET — VITALS RESTORED');
+      this.queueNotice({ kicker: 'Checkpoint', big: 'Waystone lit', small: 'You will return here. Vitals restored.', priority: 1 });
     }));
 
     this.disposers.push(ctx.events.on('recipeDiscovered', ({ name, bounty }) => {
-      this.showBanner(name + ' BREWED', 'GRIMOIRE UPDATED — +' + bounty + ' oz');
+      this.queueNotice({ kicker: 'A first brew', big: titleCaseName(name), small: `Written into the Grimoire. +${bounty} oz`, priority: 2 });
     }));
 
-    // Wandsmith: a found card announces itself; the bench (B) slots it.
-    // The satchel chip flashes so the income lands in the treasure row too.
+    // Wandsmith: a found card announces itself once the centre is free; the
+    // bench cue rides under the objective (never replacing it) while the card
+    // waits in the satchel. The satchel chip flashes so the income lands in
+    // the treasure row too.
     this.disposers.push(ctx.events.on('cardGranted', ({ name }) => {
-      this.showBanner(name + ' ACQUIRED', cardGrantBenchCue(this.ctx));
-      this.benchObjectiveUntil = this.ctx.state.frameCount + BENCH_OBJECTIVE_FRAMES;
-      this.renderObjective();
       const chip = el('cards-chip');
       chip.classList.remove('flash');
       void chip.offsetWidth; // restart the one-shot animation
       chip.classList.add('flash');
+      this.queueNotice({
+        kicker: 'A new spell card', big: name, small: 'Tucked into the satchel.', priority: 3,
+        onShow: () => this.showObjectiveNote(cardGrantBenchCue(this.ctx, name), name),
+      });
     }));
 
     // Descent meta layer: the objective line + short center toasts.
@@ -169,52 +293,50 @@ export class Hud {
       this.renderObjective();
     }));
 
-    // The Kiln Colossus is slain: roll victory after the explosion lands.
-    this.disposers.push(ctx.events.on('runComplete', ({ gold }) => {
-      this.setHudTimeout(() => {
-        el('vic-gold').textContent = String(gold);
-        el('victory-overlay').classList.add('visible');
-        ctx.state.paused = true;
-        ctx.audio.learn();
-      }, 1400);
-    }));
-    const onVictoryReturn = (): void => window.location.reload();
-    el('vic-return').addEventListener('click', onVictoryReturn);
-    this.disposers.push(() => el('vic-return').removeEventListener('click', onVictoryReturn));
-    this.disposers.push(ctx.events.on('toast', ({ text }) => {
-      const stack = el('toast-stack');
-      const node = document.createElement('div');
-      node.className = 'toast';
-      node.textContent = text;
-      stack.appendChild(node);
-      while (stack.children.length > 4) stack.removeChild(stack.firstChild!);
-      this.setHudTimeout(() => node.remove(), 2700);
-    }));
+    // Victory (the Kiln Colossus) is the run ledger's job now (ui/RunSummary):
+    // no overlay here, and no page reload to start again.
+    this.disposers.push(ctx.events.on('toast', ({ text }) => this.toastStack.push(text)));
 
     // The hotbar mirrors the active wand; any loadout change rebuilds it.
     this.disposers.push(ctx.events.on('wandChanged', () => this.buildHotbar()));
 
-    this.disposers.push(ctx.events.on('enemiesLeft', ({ count }) => {
-      el('enemies-left').textContent = String(count);
-    }));
-
     this.disposers.push(ctx.events.on('playerDied', ({ depth, level, gold, cause }) => {
       // Prep the overlay text but DON'T show it yet — the wizard ragdolls first.
-      el('go-wave').textContent = 'D' + depth + ' - ' + level.toUpperCase();
+      // Campaign floors get "Floor 2 of 4 · The Rot Gardens" from RunHud.
+      el('go-wave').textContent = 'D' + depth + ' · ' + titleCaseName(level);
       el('go-gold').textContent = String(gold);
       el('go-cause').textContent = deathCauseLine(cause, this.ctx.state.frameCount);
+      el('death-title').textContent = deathTitle(cause);
+    }));
+    // The directed death (game/DeathCinema): letterbox bars slide in and the
+    // HUD recedes; the title card waits for its beat AND a body at rest. A
+    // failsafe still offers the way back if the cinema never reaches its title.
+    const letterbox = document.createElement('div');
+    letterbox.id = 'death-letterbox';
+    letterbox.setAttribute('aria-hidden', 'true');
+    el('canvas-holder').appendChild(letterbox);
+    this.disposers.push(() => letterbox.remove());
+    const revealDeath = (): void => {
+      const overlay = el('gameover-overlay');
+      if (overlay.classList.contains('visible')) return;
+      overlay.classList.add('visible', 'cine');
+      el('respawn-btn').focus({ preventScroll: true });
+    };
+    const clearDeath = (): void => {
+      document.body.classList.remove('death-cine');
+      el('gameover-overlay').classList.remove('visible', 'cine');
+    };
+    this.disposers.push(ctx.events.on('deathCinema', ({ phase }) => {
+      if (phase === 'begin') document.body.classList.add('death-cine');
+      else if (phase === 'title') revealDeath();
+      else clearDeath();
     }));
     this.disposers.push(ctx.events.on('playerCorpseSettled', () => {
-      // The corpse has come to rest (tombstone is up) — now offer the respawn.
-      el('gameover-overlay').classList.add('visible');
+      this.setHudTimeout(() => { if (this.ctx.player.dead && !this.ctx.story?.escapeActive) revealDeath(); }, 6000);
     }));
 
-    this.disposers.push(ctx.events.on('playerRespawned', () => {
-      el('gameover-overlay').classList.remove('visible');
-    }));
-    this.disposers.push(ctx.events.on('playerDeathCleared', () => {
-      el('gameover-overlay').classList.remove('visible');
-    }));
+    this.disposers.push(ctx.events.on('playerRespawned', clearDeath));
+    this.disposers.push(ctx.events.on('playerDeathCleared', clearDeath));
 
     this.disposers.push(ctx.events.on('modeChanged', ({ mode }) => {
       el('mode-build-btn').classList.toggle('active', mode === 'build');
@@ -231,6 +353,17 @@ export class Hud {
   }
 
   dispose(): void {
+    this.soundCaption.remove();
+    this.objectiveNote.remove();
+    this.bannerQueue.length = 0;
+    this.pendingTitle = null;
+    this.toastStack.clear();
+    this.vitalsAside.remove();
+    for (const { ghost } of this.vitalGhosts.splice(0)) ghost.remove();
+    this.bannerKicker.remove();
+    this.bannerRule.remove();
+    el('wave-banner').classList.remove('title-card', 'level', 'show');
+    this.trickshotReadout.remove();
     for (const dispose of this.disposers.splice(0)) dispose();
     for (const timeout of this.timeouts) window.clearTimeout(timeout);
     this.timeouts.clear();
@@ -255,27 +388,107 @@ export class Hud {
     for (let i = 0; i < this.ctx.flask.slots.length; i++) {
       const root = document.createElement('div');
       root.className = 'flask-slot';
-      root.title = `Flask ${i + 1}`;
+      root.title = `Flask ${flaskSlotKey(i)}`;
       const fill = document.createElement('div');
       fill.className = 'flask-slot-fill';
       const key = document.createElement('div');
       key.className = 'flask-slot-key';
-      key.textContent = String(i + 3);
+      key.textContent = flaskSlotKey(i);
       const count = document.createElement('div');
       count.className = 'flask-slot-count';
       count.textContent = '0';
-      root.append(fill, key, count);
+      const name = document.createElement('div'); name.className = 'flask-slot-name';
+      root.append(fill, key, count, name);
       belt.appendChild(root);
-      this.flaskSlots.push({ root, fill, count });
+      this.flaskSlots.push({ root, fill, count, name });
     }
   }
 
-  private showBanner(big: string, small: string): void {
-    el('banner-big').textContent = big;
-    el('banner-small').textContent = small;
+  /** The arrival title plays now, uninterrupted; queued notices wait for it. */
+  private revealPendingTitle(): void {
+    const card = this.pendingTitle;
+    if (!card) return;
+    this.pendingTitle = null;
+    this.showBanner(card);
+  }
+
+  /**
+   * Queue an event notice. Pumped on a fresh task, never synchronously: a card
+   * granted inside the same `levelChanged` dispatch as an arrival must still
+   * see the arrival's title first (WandSystem hears that event before the Hud).
+   */
+  private queueNotice(notice: Omit<BannerCard, 'kind'>): void {
+    if (this.bannerQueue.some((queued) => queued.big === notice.big && queued.kicker === notice.kicker)) return;
+    this.bannerQueue.push({ ...notice, kind: 'notice' });
+    // Stable by priority: a checkpoint reads before the card it paid out.
+    this.bannerQueue.sort((a, b) => a.priority - b.priority);
+    if (this.bannerQueue.length > MAX_QUEUED_NOTICES) this.bannerQueue.length = MAX_QUEUED_NOTICES;
+    this.scheduleBannerPump(0);
+  }
+
+  private scheduleBannerPump(ms: number): void {
+    window.clearTimeout(this.bannerPump);
+    this.bannerPump = this.setHudTimeout(() => this.pumpBanners(), Math.max(0, ms));
+  }
+
+  private pumpBanners(): void {
+    // An arrival waiting on its curtain goes first; its reveal pumps after it.
+    if (this.pendingTitle || this.bannerQueue.length === 0) return;
+    const wait = this.bannerFreeAt - performance.now();
+    if (wait > 0) {
+      this.scheduleBannerPump(wait);
+      return;
+    }
+    const next = this.bannerQueue.shift();
+    if (next) this.showBanner(next);
+  }
+
+  /**
+   * The centre card. Level arrivals get the full title treatment (kicker,
+   * tracked serif name, copper rule, epigraph) and hold longer; event notices
+   * (waystone lit, a first brew, a card found) use the same house style,
+   * smaller and in sentence case.
+   */
+  private showBanner(card: BannerCard): void {
+    const title = card.kind === 'title';
+    el('banner-big').textContent = card.big;
+    el('banner-small').textContent = card.small;
+    this.bannerKicker.textContent = card.kicker;
     const banner = el('wave-banner');
+    banner.classList.remove('show');
+    banner.classList.toggle('level', title);
+    banner.classList.toggle('notice', !title);
+    void banner.offsetWidth; // restart the entrance choreography
     banner.classList.add('show');
-    this.setHudTimeout(() => banner.classList.remove('show'), 2200);
+    const hold = title ? TITLE_HOLD_MS : NOTICE_HOLD_MS;
+    this.bannerFreeAt = performance.now() + hold + BANNER_GAP_MS;
+    window.clearTimeout(this.bannerTimer);
+    this.bannerTimer = this.setHudTimeout(() => {
+      banner.classList.remove('show');
+      if (this.bannerQueue.length > 0) this.scheduleBannerPump(BANNER_GAP_MS);
+    }, hold);
+    card.onShow?.();
+  }
+
+  /** A quiet second line under the objective; the objective itself never changes for it. */
+  private showObjectiveNote(text: string, card: string | null): void {
+    this.objectiveNote.textContent = text;
+    this.objectiveNoteCard = card;
+    this.objectiveNoteUntil = this.ctx.state.frameCount + BENCH_NOTE_FRAMES;
+    this.objectiveNote.classList.remove('shown');
+    void this.objectiveNote.offsetWidth;
+    this.objectiveNote.classList.add('shown');
+  }
+
+  private renderObjectiveNote(): void {
+    if (!this.objectiveNote.classList.contains('shown')) return;
+    // Seated already (it left the satchel), or its moment has passed.
+    const seated = this.objectiveNoteCard !== null &&
+      !this.ctx.wands.collection.some((id) => CARD_DEFS[id]?.name === this.objectiveNoteCard);
+    if (seated || this.ctx.state.frameCount > this.objectiveNoteUntil || this.ctx.state.mode !== 'play') {
+      this.objectiveNote.classList.remove('shown');
+      this.objectiveNoteCard = null;
+    }
   }
 
   private buildGodTools(): void {
@@ -331,10 +544,14 @@ export class Hud {
   }
 
   private renderObjective(): void {
-    const left = Math.max(0, this.benchObjectiveUntil - this.ctx.state.frameCount);
-    const text = contextualObjectiveText(this.ctx, this.objectiveBase, left);
+    const text = contextualObjectiveText(this.ctx, this.objectiveBase);
+    // Shown in the house voice: a legacy SHOUTED objective (test arenas, the
+    // retired intro lines) reads in sentence case. The raw line still keys
+    // the control-hint row below.
+    const shown = calmCase(text);
     const node = this.objectiveNode;
-    if (node.textContent !== text) node.textContent = text;
+    if (node.textContent !== shown) node.textContent = shown;
+    this.renderObjectiveNote();
     this.renderIntroControlHint(text);
   }
 
@@ -363,12 +580,50 @@ export class Hud {
     node.dataset.introHintKey = key;
   }
 
+  /**
+   * The loss ghost holds a lost chunk for a beat, then drains (house.css
+   * transition). Only losses animate; gains (regen, drinks) snap the ghost up
+   * under the fill once any drain in flight has finished, so a trickle of
+   * regeneration never restarts — and stalls — the drain.
+   */
+  private updateVitalGhost(index: number, fraction: number): void {
+    const entry = this.vitalGhosts[index];
+    if (!entry) return;
+    const next = Math.max(0, Math.min(1, fraction));
+    const now = performance.now();
+    if (next < entry.fraction - 0.002) {
+      entry.fraction = next;
+      entry.dropAt = now;
+      entry.ghost.classList.remove('snap');
+    } else if (next > entry.fraction + 0.002 && now - entry.dropAt > 900) {
+      entry.fraction = next;
+      entry.ghost.classList.add('snap');
+    } else {
+      return;
+    }
+    entry.ghost.style.width = `calc((100% - 4px) * ${next.toFixed(4)})`;
+  }
+
   /** Tier-2 contextual hint: the nearest interactable's "what to do" line. */
   private renderInteractionHint(ctx: Ctx): void {
-    const text = ctx.hints.current?.line ?? '';
+    const hint = ctx.hints.current;
+    const note = hint?.key.startsWith('works-note') === true;
+    const verb = hint?.key === 'works-valve' ? 'Turn valve' : hint?.key === 'works-crank' ? 'Pull crank' : null;
+    const anchored = (verb !== null || note) && hint?.world;
+    const controller = anchored && !note && Array.from(navigator.getGamepads?.() ?? []).some(pad => pad?.connected);
+    const text = anchored && verb ? `${controller ? 'X' : keyLabel(getBindings().interact)} · ${verb}` : hint?.line ?? '';
     const node = this.interactionHintNode;
     if (node.textContent !== text) node.textContent = text;
     node.classList.toggle('visible', text !== '');
+    node.classList.toggle('world-anchor', Boolean(anchored));
+    node.classList.toggle('wide', Boolean(anchored && note));
+    if (anchored) {
+      const width = node.parentElement!.clientWidth, height = node.parentElement!.clientHeight;
+      const x = (anchored.x - ctx.camera.renderX + 26) / VIEW_W * width;
+      const y = (anchored.y - ctx.camera.renderY - 25) / VIEW_H * height;
+      node.style.left = `${Math.max(10, Math.min(width - (note ? 275 : 165), x))}px`;
+      node.style.top = `${Math.max(104, Math.min(height - 90, y))}px`; // clear of the objective line
+    } else { node.style.removeProperty('left'); node.style.removeProperty('top'); }
   }
 
   /**
@@ -452,7 +707,13 @@ export class Hud {
   }
 
   update(ctx: Ctx): void {
+    const trick = ctx.fx.trickshot;
+    this.trickshotReadout.hidden = !ctx.state.trickshot?.enabled || !trick || trick.labelMs <= 0 || ctx.player.dead;
+    const trickText = trick && trick.labelMs > 0 ? trick.label : '';
+    if (this.trickshotReadout.textContent !== trickText) this.trickshotReadout.textContent = trickText;
+    this.trickshotReadout.classList.toggle('finisher', trickText === 'RETURNED WITH INTEREST');
     const player = ctx.player;
+    el('spell-hotbar').style.display = player.legClub ? 'none' : '';
     this.renderObjective();
     this.renderInteractionHint(ctx);
     this.renderGodTools(ctx);
@@ -461,10 +722,24 @@ export class Hud {
     // the mana bar tracks the wand with no extra wiring here.
     this.manaFill.style.width = Math.max(0, (player.mana / player.maxMana) * 100) + '%';
     this.levitFill.style.width = Math.max(0, (player.levit / player.maxLevit) * 100) + '%';
+    this.updateVitalGhost(0, player.hp / player.maxHp);
+    this.updateVitalGhost(1, player.mana / player.maxMana);
 
     // Critical-state bar language: HP pulses near death, LEV blinks on fumes,
     // the mana track recovers from its dry-fire flinch.
     this.hpFill.classList.toggle('critical', !player.dead && player.hp / player.maxHp < 0.25);
+    this.hpFill.parentElement?.setAttribute('aria-label', `Health ${Math.ceil(player.hp)} of ${player.maxHp}`);
+    const rt = ctx.levels.current;
+    // One voice for the place name: D1 names rooms in title case, so the
+    // generated floors do too ("Fungal Deep", not "FUNGAL DEEP").
+    const place = rt?.living ? worksPlaceName(player.x, player.y) : titleCaseName(rt?.def.name ?? '');
+    if (this.waveNum.textContent !== place) this.waveNum.textContent = place;
+    const bindings = getBindings();
+    el('field-note').textContent = player.legClub
+      ? `Weaver leg · ${player.legClub.durability} hits left · LMB/${keyLabel(bindings.kick)} ${ctx.enemies.some(e => canHumiliate(ctx, e) && Math.hypot(e.x - player.x, e.y - player.y) < 100) ? 'Finish its owner' : 'Whip'} · RMB Throw · ${keyLabel(bindings.carry)} Drop`
+      : rt?.living
+      ? `${keyLabel(bindings.lure)} Glowseed · ${rt.living.glowseeds} left${rt.living.room === 'refuge' ? ' · B Wand bench' : ''}`
+      : '1 / 2 Swap wand · M Map · H Handbook';
     this.levitFill.classList.toggle('low', player.levit / player.maxLevit < 0.2);
     if (this.dryFlashUntil && ctx.state.frameCount > this.dryFlashUntil) {
       this.manaFill.parentElement?.classList.remove('mana-dry');
@@ -514,17 +789,19 @@ export class Hud {
       rendered.count.textContent = slot.count > 0 ? String(slot.count) : '';
       if (slot.material === null || slot.count === 0) {
         rendered.fill.style.backgroundColor = '';
-        rendered.root.title = `Flask ${i + 1}: Empty`;
+        rendered.root.title = `Flask ${flaskSlotKey(i)}: empty`;
+        rendered.name.textContent = 'Empty';
       } else {
         const c = COLOR_FN[slot.material]();
         rendered.fill.style.backgroundColor = 'rgb(' + unpackR(c) + ', ' + unpackG(c) + ', ' + unpackB(c) + ')';
         const name = ctx.params.materials[slot.material]?.name ?? 'Unknown material';
-        rendered.root.title = `Flask ${i + 1}: ${name} (${slot.count}/${slot.capacity})`;
+        rendered.root.title = `Flask ${flaskSlotKey(i)}: ${name} (${slot.count}/${slot.capacity})`;
+        rendered.name.textContent = name === 'Liquid Nitrogen' ? 'Nitrogen' : name;
       }
     }
 
     const hurt = 1 - (player.hp / player.maxHp);
-    this.damageVignette.style.opacity = String(player.dead ? 0.85 : Math.max(0, (hurt - 0.4) * 1.3));
+    this.damageVignette.style.opacity = String(player.dead ? 0.22 : Math.max(0, (hurt - 0.4) * 1.3));
 
     // Cast cursor: the cards the NEXT click will fire pulse amber, so the
     // left-to-right cast cycle is something you can watch, not guess at.
@@ -535,8 +812,8 @@ export class Hud {
     const groupUnaffordable = player.mana < sentence.manaCost;
     if (this.castCaption) {
       this.castCaption.textContent = groupUnaffordable
-        ? sentence.label + ' - Needs ' + sentence.manaCost + ' mana, tank has ' + Math.floor(player.mana)
-        : sentence.label + ' - ' + sentence.detail;
+        ? sentence.label.replace(/^Next: /, '') + ' · Needs ' + sentence.manaCost + ' mana'
+        : sentence.label.replace(/^Next: /, '') + ' · ' + sentence.manaCost + ' mana';
       this.castCaption.classList.toggle('overmana', groupUnaffordable);
     }
     for (const s of this.hotbarSlots) {

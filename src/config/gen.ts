@@ -121,7 +121,25 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 36; // 36: gunpowder seams laced through ore/coal vugs
+export const GEN_VERSION = 61; // 61: THE FOOTING CONTRACT — fixtures stand on their own stamp and on ground (world/fixtureFooting). Every waystone, the cauldron, each hand-trigger and rune pedestal reserves its footing as a sealed footprint that later tunnels walk around; the waystone/cauldron connectors leave from above the bowl (they started AT it and took it and eight rows of floor: 30/30 waystones floated), the vault-trigger connector from high in its antechamber (it cut the shelf from under 18 triggers), the rune connector from above its pedestal; a gauge rescue of a fixture stops above its first own row; prefab connectors walk around their own prefab; the cauldron settles onto real ground on the nearer side; a waystone is never set on a pool bed (dry ground first, relaxed in tiers); a re-rolled treasure vault keeps its spawn clearance (a door slab 70 cells from d2 expedition 24's arrival sealed it in); the key is judged by the real collect rule (validate bodyCanCollect), never rests in a crack, and its vault's loose powder rim is fused. After the last carve every bowl, basin, body and glyph is re-stamped, the rock a stele or vessel is drawn over is cleared, and ground is put back under anything undercut (a plinth up to 12 rows, else a lip hung from rock, else a trigger comes down to the nearest dry ground on its side of its door), each taken back if it costs a route.
+// 60: Pell's camp and the echo's stage are never a liquid basin — a story nook is carved only where no liquid stands level with its floor or above within 48 cells, its connector's route floor is at most a step (4 rows) above the room, and the quietFloor fallback is dry too (the user found Pell chest-deep in a Cisterns basin: d3 seeds 1 and 3 flooded their camps). 59: 59: a lair's own connectors walk around its ORGAN (the stonemaw's ore seam, the Rillback's pool + basin) — a tunnel is never kept out of the room it starts in, so the stonemaw's connector bored through its own seam (d4 seed 21: 175 -> 121; 20 of 32 seeds lost 5-68 cells); no tunnel's chosen END lies inside a sealed feature either (a story nook's route floor inside d2 seed 10's grove let its connector cut the grove) — nook, lair-fallback, light-fallback and vault-antechamber targets all skip sealed interiors; a detour leaves from its true start, not the snapped grid node; the structures' connectors pass the sealed footprints too
+// 58: everything together — the second doors (biomes v55-57), the story (v55) and the lair fix (v55/56); late tunnels also route around the Cold Store / Glass Galleries rooms and guardian halls (connect SEALED_LABEL)
+// 56: the story (55) and the lair fix (also 55) together — late tunnels route around sealed features AND the story's flue/nooks
+// 55 (story): the Kiln's old flue (a ledged shaft behind a metal damper, the escape's climb) replaces its flue-side flank connector; Pell's camp and the resonant valve nooks carved off the main path on floors 2-4 (their own 'story' stream); floor 1's Guild locker nook off the return shaft
+// 55 (lair fix): late tunnels walk AROUND sealed features — connectors and rescue tunnels carved after an encounter lair / the sump / a light room exist route round their footprints (world/connect sealedFootprints, cost-based, fail-open) instead of through them (a flora connector drained the whole d3 seed-3 Rillback pool); the Rillback pool re-asserts after the rescues; grove vines hang from the real rock ceiling (they used to be stamped in the air and dropped on arrival)
+// 54 (fix3): the Sump keeps its rim — the Leviathan's arena stamps (and re-asserts) its stone shores and plinth, its flank connectors leave above the shore, it refuses sites built over earlier metal/loot, and the final rescue refills its pool; flora footing no longer counts loose powder as anchoring rock or gold as footing; the Kiln's flora budget grows 14/46 -> 18/72 with more fire-lilies
+// 57 (merge): wave 3's second doors meet the story — the biomes' v55/v56 and the story's v55 together; goldens re-recorded
+// 56 (biomes): the Cold Store's Ice-House (the Rime Warden's hall: coal pits, brine gutters, a walled vault; world/wardenArenas) and the Glass Galleries (d3b, crystal) — arcaded gallery halls over thinned vaults (forked 'glass-galleries'), the Periscope and the Prism Gate light rooms (forked 'glass-galleries-puzzles'; sealed lenses rescued at their optics' port), the glassworks' dressing (silvered panels, chandeliers, vitrines, windows; forked 'glass-galleries-dressing'), the Lenswright's Lens Room
+// 55 (biomes): the Cold Store (d2b, frozen) — cold rooms in the crevasse skeleton, a floored spawn sill, brine pools, the refrigeration wing's dressing, the Frozen Fall and Ice Vault, the cold and glass flora kits; d1-d4 byte-identical
+// 54: 54 (fix3): the Sump keeps its rim — the Leviathan's arena stamps (and re-asserts) its stone shores and plinth, its flank connectors leave above the shore, it refuses sites built over earlier metal/loot, and the final rescue refills its pool; flora footing no longer counts loose powder as anchoring rock or gold as footing; the Kiln's flora budget grows 14/46 -> 18/72 with more fire-lilies
+// 53: the light, fauna and flora waves together — flora's forked 'flora' pass (plants + felling / root-ladder / thicket rooms) runs after the light puzzles, and D1 carries both the Undertow's lens-locked cache and the hand-planted flora with the Seed Cellar
+// 52: the Kiln grew with a 34-cell Colossus (62x40 vault over a flat 116-wide floor, three ceiling tanks re-asserted after carves, a 16-row footing) and floors 2-4 seed a resident organism census (no cells)
+// 51: light wave — floors 2-4 carve a photocell strongroom and a lumen-bloom crossing (forked 'light-puzzles' stream) plus designed dark zones; D1 gains the Undertow's lens-locked cache. (The flora branch also called its pass 51.)
+// 50: the Kiln's ceiling tank (seal + water) is re-asserted after its right-flank connector and the gauge-rescue passes, which had pre-opened it on most seeds (the Colossus drowned unprovoked). 49: the Kiln's lava moats are sunk into the arena floor (flush pits with a stone keel) instead of stamped on top of it, where they ran out into a burning film
+// 48: the opening: the Intake's cold lock is gone (the crank is open from the start; Frost Shard stays a refuge reward), an oil-soaked barricade seals the spawn-to-crank route, and the Lower Bell is a real floor grate whose leaves slide open for the bell
+// 47: the living-descent played Bell & Tea Engine (low stations over the catwalk, fault fixtures, the duck's grated bath, the marble run; acid, lava and the boiler removed) merged into the four-floor spine
+// 46: four floors (Bellows, Rot Gardens, Drowned Cisterns, Kiln Heart): d3 is flooded + the Leviathan's sump, d4 volcanic + the Kiln Colossus, bosses keyed on LevelDef.boss, the Gilded Vault arch/hoard no longer generate
+// 45: Breathing Works liquids stay put (sunken steam reservoir under a grate, sunken garden pool, west Undertow chute) the Heavy Charm leaves the drip tray, even refuge steps and grounded glowshrooms
 
 /**
  * Live-tunable worldgen LOOK knobs — MUTABLE like config/params.ts. The Sandbox
@@ -400,6 +418,16 @@ export interface CrevasseParams {
     xMargin: number;
   };
   shelves: { count: number; lenMin: number; lenMax: number; radius: number };
+  /**
+   * THE COLD STORE (wave 3): the refrigeration wing's cold rooms — wide,
+   * flat-floored store halls with a vaulted ceiling, stacked in tiers and
+   * cracked through by the crevasses. `tiers` are floor rows as world-height
+   * fractions; each tier takes `perTier` halls. Optional: absent = the old
+   * crevasse field only.
+   */
+  halls?: { tiers: number[]; perTier: [number, number]; wMin: number; wMax: number; hMin: number; hMax: number; vault: number };
+  /** CA passes over the crevasse field before anything else is carved (fattens slivers). */
+  caPasses?: number;
   spawnRadius: number;
   minArea: number;
   tunnelRadius: number;
@@ -470,6 +498,14 @@ export interface VaultParams {
   };
   arteries: ArterySpec[];
   shafts: ShaftParams;
+  /**
+   * THE GLASS GALLERIES (wave 3): the glassworks' long exhibition galleries —
+   * flat-floored halls under an arcade of shallow arches (bays `bay` wide, the
+   * crown `arch` of the height above the springers), stacked in tiers at the
+   * `tiers` floor rows (world-height fractions), `perTier` to a tier. Long
+   * level sight lines for the light to travel. Optional: absent = vaults only.
+   */
+  galleries?: { tiers: number[]; perTier: [number, number]; wMin: number; wMax: number; hMin: number; hMax: number; bay: [number, number]; arch: number };
   spawnRadius: number;
   minArea: number;
   tunnelRadius: number;
@@ -691,20 +727,25 @@ export function fungalParams(): FungalParams {
 
 export function crevasseParams(): CrevasseParams {
   return {
-    field: { scaleX: 0.05, scaleY: 0.008, octaves: 2, threshold: 0.52 },
+    // THE COLD STORE (GEN 55): a few fat crevasses (threshold .52 -> .7, two
+    // CA passes) so the rock reads as ice-split masses, not a comb of one-cell
+    // slivers; the cold rooms below carry the level.
+    field: { scaleX: 0.05, scaleY: 0.008, octaves: 2, threshold: 0.7 },
     tunnels: {
-      countMin: 6,
-      countMax: 9,
-      radiusMin: 11,
-      radiusMax: 13,
-      turn: 0.9,
-      gravityBias: 1.3,
-      branchChance: 0.015,
-      maxBranches: 4,
-      steps: 420,
-      xMargin: 110,
+      countMin: 4,
+      countMax: 5,
+      radiusMin: 8,
+      radiusMax: 10,
+      turn: 0.55,
+      gravityBias: 2.4,
+      branchChance: 0.01,
+      maxBranches: 2,
+      steps: 300,
+      xMargin: 140,
     },
-    shelves: { count: 26, lenMin: 26, lenMax: 60, radius: 4 },
+    shelves: { count: 16, lenMin: 30, lenMax: 70, radius: 4 },
+    halls: { tiers: [0.19, 0.38, 0.57, 0.77], perTier: [2, 3], wMin: 150, wMax: 250, hMin: 44, hMax: 62, vault: 0.22 },
+    caPasses: 2,
     spawnRadius: 26,
     minArea: 500,
     tunnelRadius: 11, // a 9x17 box needs r >= 9.62 + wobble slack
@@ -780,6 +821,16 @@ export function scaffoldParams(): ScaffoldParams {
     spawnRadius: 26,
     minArea: 500,
     tunnelRadius: 11, // a 9x17 box needs r >= 9.62 + wobble slack
+  };
+}
+
+/** The Glass Galleries' skeleton: the crystal vaults thinned, and the galleries over them. */
+export function galleriesParams(): VaultParams {
+  const p = vaultParams();
+  return {
+    ...p,
+    vaults: { ...p.vaults, countMin: 4, countMax: 6 },
+    galleries: { tiers: [0.2, 0.4, 0.6, 0.79], perTier: [1, 2], wMin: 220, wMax: 420, hMin: 40, hMax: 52, bay: [30, 44], arch: 0.3 },
   };
 }
 
@@ -962,6 +1013,7 @@ export function scaleSkeletonSpec(spec: SkeletonSpec, s: number): SkeletonSpec {
             radiusMax: p.tunnels.radiusMax * s,
           },
           shelves: { ...p.shelves, radius: p.shelves.radius * s },
+          ...(p.halls ? { halls: { ...p.halls, hMin: p.halls.hMin * s, hMax: p.halls.hMax * s } } : {}),
           spawnRadius: p.spawnRadius * s,
           tunnelRadius: p.tunnelRadius * s,
         },
@@ -1015,6 +1067,7 @@ export function scaleSkeletonSpec(spec: SkeletonSpec, s: number): SkeletonSpec {
           },
           arteries: p.arteries.map((a) => scaleArtery(a, s)),
           shafts: scaleShaftsRadius(p.shafts, s),
+          ...(p.galleries ? { galleries: { ...p.galleries, hMin: p.galleries.hMin * s, hMax: p.galleries.hMax * s } } : {}),
           spawnRadius: p.spawnRadius * s,
           tunnelRadius: p.tunnelRadius * s,
         },
@@ -1134,9 +1187,11 @@ export const GEN: Record<BiomeId, GenDef> = {
     skeleton: { kind: 'fungalPockets', params: fungalParams() },
     machines: machineBudget(['alchemyclock']),
   },
+  // THE GLASS GALLERIES (d3b): the vaults, fewer, under tiers of long arcaded
+  // exhibition galleries (the light puzzles and the Lenswright want sight lines).
   crystal: {
     ...baselineDef(),
-    skeleton: { kind: 'crystalVaults', params: vaultParams() },
+    skeleton: { kind: 'crystalVaults', params: galleriesParams() },
     machines: machineBudget(['alchemyclock', 'crystalrelay']),
   },
   volcanic: {

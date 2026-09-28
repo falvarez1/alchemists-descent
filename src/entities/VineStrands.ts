@@ -6,17 +6,20 @@ import type {
   VineStrandsApi,
 } from '@/core/types';
 import { blocksEntity, Cell, isSoftGrowth, isSolid } from '@/sim/CellType';
-import { ashColor, packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
+import { ashColor, emberColor, fireColor, packRGB, smokeColor, unpackB, unpackG, unpackR } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { entityRandom } from '@/core/simRandom';
+import { foliageHeatNearby, foliageTouchesHeat } from '@/game/FoliageHeat';
 
 const SUPPORT_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
   [0, 1],
   [-1, 0],
   [1, 0],
+  [-1, -1], [1, -1], [-1, 1], [1, 1],
 ];
+const VINE_EDGES = [[1, 0], [0, 1], [1, 1], [-1, 1]] as const;
 
 const SETTLE_LINE_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [0, 0],
@@ -39,12 +42,12 @@ const SETTLE_FRAMES = 38;
 const MAX_AGE_FRAMES = 720;
 const PLAYER_PUSH_RADIUS = 20;
 const PLAYER_PUSH_STRENGTH = 1.4;
-// Hanging cell-vines come ALIVE near the camera: each is lifted into a soft Verlet
+// Hanging cell-vines come ALIVE near the player: each is lifted into a soft Verlet
 // strand (so it sways like the ropes), then settles back to its cells when far.
 const LIFT_PER_PASS = 4; // most clusters lifted per scan (spreads the flood-fill cost)
 const LIFT_SCAN_CADENCE = 8; // frames between on-screen scans for new tendrils
 const TENDRIL_MIN_CELLS = 4; // shorter vine specks aren't worth a soft body
-const TENDRIL_MAX_WIDTH = 4; // only THIN hanging tendrils sway; loops/drapes stay static cover
+const TENDRIL_MAX_ROW_WIDTH = 4; // thickness, not a curved stem's total horizontal span
 const TENDRIL_FAR_MARGIN = 120; // cells past the view before a lifted vine re-settles
 const SHAKE_SWAY_MIN = 0.012; // screenShake below this doesn't stir the vines
 const SHAKE_SWAY_GAIN = 12; // shake → per-node jitter amplitude
@@ -55,6 +58,9 @@ const WEB_ASH_MAX_FLECKS = 9;
 const WEB_ASH_LIFETIME = 180;
 
 interface VineNode extends VineStrandNodeView {
+  burn?: number;
+  burning?: boolean;
+  leafLength?: number;
   x: number;
   y: number;
   px: number;
@@ -62,6 +68,8 @@ interface VineNode extends VineStrandNodeView {
   contact: boolean;
   pinX?: number;
   pinY?: number;
+  /** Material ownership survives graph reduction and cuts without regrowing a lost section. */
+  sourceCells?: number[];
 }
 
 interface VineSegment extends VineStrandSegmentView {
@@ -103,6 +111,7 @@ interface VineStrand extends VineStrandView {
   maxAge?: number;
   denWeb?: boolean;
   ashOnExpire?: boolean;
+  bounds?: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
 export class VineStrands implements VineStrandsApi {
@@ -112,9 +121,18 @@ export class VineStrands implements VineStrandsApi {
   private readonly clusterQueueY = new Int16Array(MAX_CLUSTER_CELLS);
   private readonly clusterCellIndexes = new Int32Array(MAX_CLUSTER_CELLS);
   private readonly clusterNodeByCell = new Map<number, number>();
+  /** detachCluster's visited plane: a cell is in the current flood when its
+   *  stamp equals floodSerial (no clearing between floods). */
+  private floodStamp = new Int32Array(0);
+  private floodSerial = 0;
+  private supportWorld: World | null = null;
+  private supportEpoch = -1;
+  private supportChecked = new Float64Array(0);
+  private readonly supportProofs = new Map<number, { cells: Int32Array; anchor: number; step: number; valid: boolean }>();
 
   constructor(private readonly ctx: Ctx) {
     this.eventDisposers.push(ctx.events.on('levelChanged', () => this.settleAndClear()));
+    this.eventDisposers.push(ctx.events.on('structureStrike', ({ x, y, radius }) => this.cutAt(x, y, radius)));
   }
 
   dispose(): void {
@@ -126,60 +144,114 @@ export class VineStrands implements VineStrandsApi {
     if (!world.inBounds(x, y)) return false;
     const start = world.idx(x, y);
     if (world.types[start] !== Cell.Vines) return false;
+    if (this.supportWorld !== world || this.supportEpoch !== world.activity.epoch) {
+      this.supportWorld = world; this.supportEpoch = world.activity.epoch;
+      this.supportChecked = new Float64Array(world.types.length);
+      this.supportProofs.clear();
+    }
+    const step = world.activity.stepSerial;
+    if (step > 0 && this.supportChecked[start] === step) return false;
+    const proof = this.supportProofs.get(start);
+    if (proof && step > 0) {
+      if (proof.step !== step) {
+        proof.step = step;
+        proof.valid = isLoadBearingAnchor(world.types[proof.anchor]);
+        if (proof.valid) for (const cell of proof.cells) {
+          if (world.types[cell] !== Cell.Vines) { proof.valid = false; break; }
+        }
+      }
+      if (proof.valid) return false;
+    }
 
+    // PERF: the support flood runs for every locally-unsupported vine cell
+    // that has no proof — in a big unanchored colony (the Cisterns' water-fed
+    // vines) that is a 192-cell flood per cell every step. It used a Map for
+    // membership, for..of tuple destructuring per neighbour and summed colours
+    // it only needs when the cluster actually falls. Same traversal order, same
+    // cells, same result: membership is a stamped Int32Array, the Map is filled
+    // only for the detach path below, and the colour is summed there.
     const queueX = this.clusterQueueX;
     const queueY = this.clusterQueueY;
     const cellIndexes = this.clusterCellIndexes;
-    const nodeByCell = this.clusterNodeByCell;
-    nodeByCell.clear();
+    if (this.floodStamp.length !== world.types.length) {
+      this.floodStamp = new Int32Array(world.types.length);
+      this.floodSerial = 0;
+    }
+    if (this.floodSerial >= 0x7fffffff) {
+      this.floodStamp.fill(0);
+      this.floodSerial = 0;
+    }
+    const stamp = this.floodStamp;
+    const serial = ++this.floodSerial;
+    const types = world.types;
     let head = 0;
     let count = 1;
     let anchored = false;
+    let anchorIndex = -1;
     let truncated = false;
-    let colorR = 0;
-    let colorG = 0;
-    let colorB = 0;
 
     queueX[0] = x;
     queueY[0] = y;
     cellIndexes[0] = start;
-    nodeByCell.set(start, 0);
+    stamp[start] = serial;
 
     while (head < count) {
       const cx = queueX[head];
       const cy = queueY[head];
-      const ci = cellIndexes[head];
-      const color = world.colors[ci];
-      colorR += unpackR(color);
-      colorG += unpackG(color);
-      colorB += unpackB(color);
       head++;
 
-      for (const [dx, dy] of SUPPORT_OFFSETS) {
+      for (let k = 0; k < SUPPORT_OFFSETS.length; k++) {
+        const dx = SUPPORT_OFFSETS[k][0];
+        const dy = SUPPORT_OFFSETS[k][1];
         const nx = cx + dx;
         const ny = cy + dy;
         if (!world.inBounds(nx, ny)) continue;
         const ni = world.idx(nx, ny);
-        const nt = world.types[ni];
+        const nt = types[ni];
         if (nt === Cell.Vines) {
-          if (nodeByCell.has(ni)) continue;
+          if (stamp[ni] === serial) continue;
           if (count >= MAX_CLUSTER_CELLS) {
             truncated = true;
             continue;
           }
-          nodeByCell.set(ni, count);
+          stamp[ni] = serial;
           queueX[count] = nx;
           queueY[count] = ny;
           cellIndexes[count] = ni;
           count++;
-        } else if (isLoadBearingAnchor(nt)) {
+        } else if ((dx === 0 || dy === 0) && isLoadBearingAnchor(nt)) {
           anchored = true;
+          anchorIndex = ni;
+          break;
         }
       }
+      // One real anchor supports every cell already reached through this
+      // connected cluster. Do not flood the remaining colony to prove it again.
+      if (anchored) break;
     }
 
-    if (anchored || truncated) return false;
+    if (anchored || truncated) {
+      if (anchored && step > 0) {
+        const proof = { cells: cellIndexes.slice(0, count), anchor: anchorIndex, step, valid: true };
+        for (let i = 0; i < count; i++) this.supportProofs.set(cellIndexes[i], proof);
+      }
+      if (step > 0) for (let i = 0; i < count; i++) this.supportChecked[cellIndexes[i]] = step;
+      return false;
+    }
     if (!this.reserveDetachedStrandSlot(world)) return false;
+
+    const nodeByCell = this.clusterNodeByCell;
+    nodeByCell.clear();
+    let colorR = 0;
+    let colorG = 0;
+    let colorB = 0;
+    for (let i = 0; i < count; i++) {
+      nodeByCell.set(cellIndexes[i], i);
+      const color = world.colors[cellIndexes[i]];
+      colorR += unpackR(color);
+      colorG += unpackG(color);
+      colorB += unpackB(color);
+    }
 
     const nodes: VineNode[] = [];
     for (let i = 0; i < count; i++) {
@@ -199,14 +271,12 @@ export class VineStrands implements VineStrandsApi {
     for (let i = 0; i < count; i++) {
       const cx = queueX[i];
       const cy = queueY[i];
-      for (const [dx, dy] of [
-        [1, 0],
-        [0, 1],
-      ] as const) {
+      for (const [dx, dy] of VINE_EDGES) {
         if (!world.inBounds(cx + dx, cy + dy)) continue;
         const ni = nodeByCell.get(world.idx(cx + dx, cy + dy));
         if (ni === undefined) continue;
-        segments.push({ a: i, b: ni, rest: 1 });
+        if (dx !== 0 && dy !== 0 && (nodeByCell.has(world.idx(cx + dx, cy)) || nodeByCell.has(world.idx(cx, cy + dy)))) continue;
+        segments.push({ a: i, b: ni, rest: Math.hypot(dx, dy) });
       }
     }
 
@@ -218,6 +288,7 @@ export class VineStrands implements VineStrandsApi {
       age: 0,
       settleT: 0,
       originWorld: world,
+      foliage: count >= TENDRIL_MIN_CELLS,
     });
     return true;
   }
@@ -419,10 +490,12 @@ export class VineStrands implements VineStrandsApi {
       addSeg(0, nodeAt(1, spoke), 1.02);
       for (let ring = 1; ring < rings; ring++) addSeg(nodeAt(ring, spoke), nodeAt(ring + 1, spoke), 1.04);
     }
+    // Radials + sagging capture rings only: the old diagonal cross-braces
+    // triangulated the lattice into something that read as a debug wireframe
+    // mesh (an icosahedron in the Scorched Wastes), not an orb web.
     for (let ring = 1; ring <= rings; ring++) {
       for (let spoke = 0; spoke < radials; spoke++) {
         addSeg(nodeAt(ring, spoke), nodeAt(ring, spoke + 1), ring % 2 === 0 ? 1.03 : 1.08);
-        if (ring < rings && spoke % 2 === ring % 2) addSeg(nodeAt(ring, spoke), nodeAt(ring + 1, spoke + 1), 1.1);
       }
     }
 
@@ -517,12 +590,71 @@ export class VineStrands implements VineStrandsApi {
     }
   }
 
+  /** Creature body parts that shove strands this tick: x, y, radius triples. */
+  private readonly pushers = new Float64Array(3 * 160);
+  private pusherCount = 0;
+
+  /**
+   * Every creature near the view is a pusher, not just the wizard: torsos,
+   * tails and feet part hanging vines and set webs trembling as they pass.
+   */
+  private gatherPushers(ctx: Ctx): void {
+    this.pusherCount = 0;
+    if (ctx.state.mode !== 'play' || !ctx.enemies?.length) return;
+    const px = ctx.player.x, py = ctx.player.y, cap = this.pushers.length / 3;
+    const add = (x: number, y: number, r: number): void => {
+      if (this.pusherCount >= cap) return;
+      const k = this.pusherCount++ * 3;
+      this.pushers[k] = x; this.pushers[k + 1] = y; this.pushers[k + 2] = r;
+    };
+    for (const e of ctx.enemies) {
+      if (Math.abs(e.x - px) > VIEW_W || Math.abs(e.y - py) > VIEW_H) continue;
+      const rig = e.rig;
+      if (e.weaverLoco) {
+        add(e.weaverLoco.px, e.weaverLoco.py, 9);
+        for (const l of e.weaverLoco.legs) if (!l.missing) add(l.x, l.y, 2.5);
+      } else if (rig && (rig.pts.length || rig.soft || rig.chains.length)) {
+        for (const p of rig.pts) add(p.x, p.y, 3.5);
+        for (const l of rig.legs) add(l.x, l.y, 2.5);
+        for (const c of rig.chains) for (let i = 1; i < c.pts.length; i += 2) add(c.pts[i].x, c.pts[i].y, c.radius[i] + 1.5);
+        if (rig.soft) add(rig.soft.cx, rig.soft.cy, 6);
+      }
+      if (e.body) for (const n of e.body.nodes) add(n.x, n.y, n.radius + 1.2);
+      if (!rig && !e.body && !e.weaverLoco) {
+        const def = ctx.enemyCtl.defs[e.kind];
+        add(e.x, e.y - def.h / 2, Math.max(def.halfW, def.h / 2));
+      }
+    }
+  }
+
+  private pushFromCreatures(strand: VineStrand): void {
+    const n = this.pusherCount;
+    if (n === 0) return;
+    const b = strand.bounds;
+    const P = this.pushers;
+    for (let k = 0; k < n; k++) {
+      const cx = P[k * 3], cy = P[k * 3 + 1], r = P[k * 3 + 2];
+      if (b && (cx + r < b.minX || cx - r > b.maxX || cy + r < b.minY || cy - r > b.maxY)) continue;
+      for (const node of strand.nodes) {
+        const dx = node.x - cx, dy = node.y - cy, d = Math.hypot(dx, dy);
+        if (d <= 0.001 || d > r) continue;
+        const push = (r - d) / r * 0.9;
+        const ix = dx / d * push, iy = dy / d * push;
+        node.x += ix; node.y += iy;
+        node.px -= ix * 0.5; node.py -= iy * 0.35;
+      }
+    }
+  }
+
   update(ctx: Ctx): void {
+    this.gatherPushers(ctx);
     this.manageHangingVines(ctx); // lift on-screen cell-vines; re-settle far ones
     this.shakeSway(ctx.fx?.screenShake ?? 0); // the world shakes → live vines quiver
+    const burnedThrough: Array<{ x: number; y: number }> = [];
     for (let i = this.strands.length - 1; i >= 0; i--) {
       const strand = this.strands[i];
       this.stepStrand(ctx, strand);
+      if (!strand.web) this.heatStrand(ctx, strand, burnedThrough);
       if (strand.web && strand.maxAge !== undefined && strand.age >= strand.maxAge) {
         if (strand.ashOnExpire) this.shedStrandAsh(ctx.world, strand);
         this.strands.splice(i, 1);
@@ -533,39 +665,41 @@ export class VineStrands implements VineStrandsApi {
         this.strands.splice(i, 1);
       }
     }
+    for (const point of burnedThrough) this.cutAt(point.x, point.y, .7);
   }
 
   /**
-   * Hanging cell-vines become Verlet soft bodies near the camera (so they sway to
+   * Hanging cell-vines become Verlet soft bodies near the player (so they sway to
    * your approach, the kick gust, blasts, and the world shaking) and settle back
-   * into their original cells when they drift far off-screen. The vine stays REAL
-   * grid material — it's only "soft" while you're close enough to see it move.
+   * into their original cells outside the physical interest region. Panning or
+   * shaking the camera cannot change which authoritative cells become bodies.
    */
   private manageHangingVines(ctx: Ctx): void {
-    if (ctx.state.mode !== 'play' || !ctx.camera) return;
+    if (ctx.state.mode !== 'play') return;
     const world = ctx.world;
-    const camX = Math.floor(ctx.camera.x);
-    const camY = Math.floor(ctx.camera.y);
-    // Re-settle tendrils that drifted well past the view back into cells.
+    const interestX = Math.floor(ctx.player.x - VIEW_W / 2);
+    const interestY = Math.floor(ctx.player.y - VIEW_H / 2);
+    // Re-settle tendrils that drifted well past the player back into cells.
     for (let i = this.strands.length - 1; i >= 0; i--) {
       const s = this.strands[i];
       if (!s.tendril) continue;
       const ax = s.anchorX ?? 0;
       const ay = s.anchorY ?? 0;
       if (
-        ax < camX - TENDRIL_FAR_MARGIN || ax > camX + VIEW_W + TENDRIL_FAR_MARGIN ||
-        ay < camY - TENDRIL_FAR_MARGIN || ay > camY + VIEW_H + TENDRIL_FAR_MARGIN
+        ax < interestX - TENDRIL_FAR_MARGIN || ax > interestX + VIEW_W + TENDRIL_FAR_MARGIN ||
+        ay < interestY - TENDRIL_FAR_MARGIN || ay > interestY + VIEW_H + TENDRIL_FAR_MARGIN
       ) {
         this.settleTendril(world, s);
         this.strands.splice(i, 1);
       }
     }
-    // Scan the view (throttled) for ceiling-hung vine tops and lift them.
+    // Scan the physical interest region for ceiling-hung vine tops.
     if (ctx.state.frameCount % LIFT_SCAN_CADENCE !== 0 || this.strands.length >= MAX_ACTIVE_STRANDS) return;
-    const x0 = Math.max(1, camX);
-    const y0 = Math.max(1, camY);
-    const x1 = Math.min(world.width - 2, camX + VIEW_W);
-    const y1 = Math.min(world.height - 2, camY + VIEW_H);
+    const x0 = Math.max(1, interestX);
+    // A visible tail still needs its ceiling root activated above the view.
+    const y0 = Math.max(1, interestY - TENDRIL_FAR_MARGIN);
+    const x1 = Math.min(world.width - 2, interestX + VIEW_W);
+    const y1 = Math.min(world.height - 2, interestY + VIEW_H);
     let lifted = 0;
     for (let y = y0; y <= y1 && lifted < LIFT_PER_PASS && this.strands.length < MAX_ACTIVE_STRANDS; y++) {
       const row = y * world.width;
@@ -591,7 +725,7 @@ export class VineStrands implements VineStrandsApi {
     let count = 1;
     let truncated = false;
     let hasFreeBottom = false;
-    let minX = sx, maxX = sx;
+    const rows = new Map<number, number>();
     let colorR = 0;
     let colorG = 0;
     let colorB = 0;
@@ -610,8 +744,9 @@ export class VineStrands implements VineStrandsApi {
       colorG += unpackG(color);
       colorB += unpackB(color);
       if (world.inBounds(cx, cy + 1) && world.types[world.idx(cx, cy + 1)] === Cell.Empty) hasFreeBottom = true;
-      if (cx < minX) minX = cx;
-      if (cx > maxX) maxX = cx;
+      const rowCount = (rows.get(cy) ?? 0) + 1;
+      if (rowCount > TENDRIL_MAX_ROW_WIDTH) return false;
+      rows.set(cy, rowCount);
       for (const [dx, dy] of SUPPORT_OFFSETS) {
         const nx = cx + dx;
         const ny = cy + dy;
@@ -630,21 +765,23 @@ export class VineStrands implements VineStrandsApi {
       }
     }
     if (truncated || count < TENDRIL_MIN_CELLS || !hasFreeBottom) return false;
-    if (maxX - minX > TENDRIL_MAX_WIDTH) return false; // a loop/drape/branchy clump — leave it as static cover
 
     const nodes: VineNode[] = [];
     for (let i = 0; i < count; i++) {
-      nodes.push({ x: queueX[i] + 0.5, y: queueY[i] + 0.5, px: queueX[i] + 0.5, py: queueY[i] + 0.5, contact: false });
+      nodes.push({ x: queueX[i] + 0.5, y: queueY[i] + 0.5, px: queueX[i] + 0.5, py: queueY[i] + 0.5, contact: false, sourceCells: [cellIndexes[i]] });
     }
     const segments: VineSegment[] = [];
     for (let i = 0; i < count; i++) {
-      for (const [dx, dy] of [
-        [1, 0],
-        [0, 1],
-      ] as const) {
+      for (const [dx, dy] of VINE_EDGES) {
         const ni = nodeByCell.get(world.idx(queueX[i] + dx, queueY[i] + dy));
-        if (ni !== undefined) segments.push({ a: i, b: ni, rest: 1 });
+        if (ni === undefined) continue;
+        if (dx !== 0 && dy !== 0 && (nodeByCell.has(world.idx(queueX[i] + dx, queueY[i])) || nodeByCell.has(world.idx(queueX[i], queueY[i] + dy)))) continue;
+        segments.push({ a: i, b: ni, rest: Math.hypot(dx, dy) });
       }
+    }
+    compactVineChain(nodes, segments);
+    for (let i = 2; i < nodes.length; i += nodes.length > 50 ? 5 : 2) {
+      nodes[i].leafLength = 4 + Math.sin(i / nodes.length * Math.PI) * 7;
     }
     const inv = 1 / count;
     const color = packRGB(Math.round(colorR * inv), Math.round(colorG * inv), Math.round(colorB * inv));
@@ -665,6 +802,7 @@ export class VineStrands implements VineStrandsApi {
       originCells: origin,
       originColor: color,
       originWorld: world,
+      foliage: true,
     });
     return true;
   }
@@ -676,10 +814,13 @@ export class VineStrands implements VineStrandsApi {
       return;
     }
     const color = strand.originColor ?? strand.color;
+    const residue = new Map<number, Cell>();
+    for (const node of strand.nodes) if (node.burn) for (const index of node.sourceCells ?? []) residue.set(index, node.burning ? Cell.Ember : Cell.Ash);
     for (const i of strand.originCells) {
       if (world.types[i] !== Cell.Empty) continue;
-      world.replaceCellAt(i, Cell.Vines, color);
-      world.life[i] = -1;
+      const type = residue.get(i) ?? Cell.Vines;
+      world.replaceCellAt(i, type, type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : color);
+      world.life[i] = type === Cell.Vines ? -1 : 90;
       world.moved[i] = world.movedTick;
     }
   }
@@ -712,10 +853,133 @@ export class VineStrands implements VineStrandsApi {
     for (const strand of this.strands) {
       const world = strand.originWorld;
       if (!world) continue;
-      if (strand.originCells) this.settleTendril(world, strand);
-      else if (!strand.web && !strand.persistent) this.settleStrand(world, strand);
+      if (strand.tendril && strand.originCells) this.settleTendril(world, strand);
+      else if (!strand.web) this.settleStrand(world, strand);
     }
     this.clear();
+  }
+
+  hitTest(x: number, y: number, radius: number): boolean {
+    return this.strands.some(strand => !strand.web &&
+      (!strand.bounds || (x >= strand.bounds.minX - radius && x <= strand.bounds.maxX + radius && y >= strand.bounds.minY - radius && y <= strand.bounds.maxY + radius)) &&
+      (strand.segments.some(edge => segmentDistanceSq(x, y, strand.nodes[edge.a], strand.nodes[edge.b]) <= radius * radius) ||
+        (strand.nodes.length === 1 && Math.hypot(strand.nodes[0].x - x, strand.nodes[0].y - y) <= radius)));
+  }
+
+  writeSnapshotCells(world: World, types: Uint8Array, life: Int16Array): void {
+    const put = (index: number, type: Cell = Cell.Vines) => {
+      if (index < 0 || index >= types.length || types[index] !== Cell.Empty) return;
+      types[index] = type; life[index] = type === Cell.Vines ? -1 : 90;
+    };
+    for (const strand of this.strands) {
+      if (strand.web || strand.originWorld !== world) continue;
+      if (strand.tendril && strand.originCells) {
+        const residue = new Map<number, Cell>();
+        for (const node of strand.nodes) if (node.burn) for (const index of node.sourceCells ?? []) residue.set(index, node.burning ? Cell.Ember : Cell.Ash);
+        for (const index of strand.originCells) put(index, residue.get(index) ?? Cell.Vines);
+        continue;
+      }
+      // Detached material is saved at its actual position, never at the old root.
+      for (const node of strand.nodes) put(world.idx(Math.floor(node.x), Math.floor(node.y)), vineResidue(node));
+      for (const edge of strand.segments) {
+        const a = strand.nodes[edge.a], b = strand.nodes[edge.b], count = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) * 1.6);
+        const type = vineResidue((a.burn ?? 0) > (b.burn ?? 0) ? a : b);
+        for (let i = 1; i < count; i++) put(world.idx(Math.floor(a.x + (b.x - a.x) * i / count), Math.floor(a.y + (b.y - a.y) * i / count)), type);
+      }
+    }
+  }
+
+  /** Lifted stems still own combustible material. Their leaf silhouettes also
+   * catch grid fire and flying embers, even though the cells were lifted. */
+  private heatStrand(ctx: Ctx, strand: VineStrand, cuts: Array<{ x: number; y: number }>): void {
+    const bounds = strand.bounds;
+    if (!bounds) return;
+    const cx = (bounds.minX + bounds.maxX) / 2, cy = (bounds.minY + bounds.maxY) / 2;
+    const radius = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) / 2 + 13;
+    const nearby = foliageHeatNearby(ctx, cx, cy, radius);
+    if (!nearby && !strand.nodes.some(n => n.burning)) return;
+    for (let i = 0; i < strand.nodes.length; i++) {
+      const node = strand.nodes[i], previous = strand.nodes[Math.max(0, i - 1)];
+      const touches = (water: boolean) => {
+        if (foliageTouchesHeat(ctx, node.x, node.y, node.x, node.y, water)) return true;
+        for (const edge of strand.segments) {
+          if (edge.a !== i && edge.b !== i) continue;
+          const other = strand.nodes[edge.a === i ? edge.b : edge.a];
+          if (foliageTouchesHeat(ctx, node.x, node.y, other.x, other.y, water)) return true;
+        }
+        const length = (node.leafLength ?? 0) * (1 - (node.burn ?? 0));
+        const dx = node.x - previous.x, dy = node.y - previous.y, distance = Math.hypot(dx, dy) || 1;
+        const tx = dx / distance, ty = dy / distance;
+        for (const side of [-1, 1]) {
+          let ax = node.x, ay = node.y;
+          for (let k = 1; k <= Math.ceil(length); k++) {
+            const t = k / Math.ceil(length), curl = t * t * length * .5;
+            const bx = node.x - ty * side * length * t + tx * curl, by = node.y + tx * side * length * t + ty * curl;
+            if (foliageTouchesHeat(ctx, ax, ay, bx, by, water)) return true;
+            ax = bx; ay = by;
+          }
+        }
+        return false;
+      };
+      if (!node.burning && nearby && touches(false)) node.burning = true;
+      if (!node.burning) continue;
+      if (touches(true)) { node.burning = false; continue; }
+      node.burn = Math.min(1, (node.burn ?? 0) + 1 / 140);
+      if (node.burn >= 1) {
+        cuts.push({ x: node.x, y: node.y });
+        ctx.particles?.spawn(node.x, node.y, .2, -.4, Cell.Ash, ashColor(), 80, { grav: .07, deposit: true });
+        continue;
+      }
+      if ((ctx.state.frameCount + i * 3) % 12 !== 0) continue;
+      ctx.particles?.spawn(node.x, node.y, Math.sin(i + ctx.state.frameCount) * .2, -.5, Cell.Fire, fireColor(), 16, { grav: -.03, glow: 1.1 });
+      ctx.particles?.spawn(node.x, node.y - 1, .1, -.3, Cell.Smoke, smokeColor(), 35, { grav: -.02 });
+      const x = Math.floor(node.x), y = Math.floor(node.y);
+      if (ctx.world.inBounds(x, y) && ctx.world.type(x, y) === Cell.Empty) {
+        const index = ctx.world.idx(x, y); ctx.world.replaceCellAt(index, Cell.Fire, fireColor()); ctx.world.life[index] = 18;
+      }
+    }
+  }
+
+  cutAt(x: number, y: number, radius: number): number {
+    if (!(radius > 0)) return 0;
+    let cuts = 0;
+    for (let s = this.strands.length - 1; s >= 0; s--) {
+      const strand = this.strands[s];
+      if (strand.web) continue;
+      const bounds = strand.bounds;
+      if (bounds && (x < bounds.minX - radius || x > bounds.maxX + radius || y < bounds.minY - radius || y > bounds.maxY + radius)) continue;
+      const nodes = strand.nodes;
+      const removed = nodes.map(n => (n.x - x) ** 2 + (n.y - y) ** 2 < radius * radius);
+      const edges = strand.segments.filter(edge => !removed[edge.a] && !removed[edge.b] && segmentDistanceSq(x, y, nodes[edge.a], nodes[edge.b]) > radius * radius);
+      if (edges.length === strand.segments.length && !removed.some(Boolean)) continue;
+      cuts++;
+      this.strands.splice(s, 1);
+      const neighbors = nodes.map(() => [] as number[]);
+      for (const edge of edges) { neighbors[edge.a].push(edge.b); neighbors[edge.b].push(edge.a); }
+      const seen = new Set<number>();
+      for (let first = 0; first < nodes.length; first++) {
+        if (removed[first] || seen.has(first)) continue;
+        const component = [first]; seen.add(first);
+        for (let at = 0; at < component.length; at++) for (const next of neighbors[component[at]]) {
+          if (!seen.has(next)) { seen.add(next); component.push(next); }
+        }
+        const remap = new Map(component.map((old, index) => [old, index]));
+        const keepsRoot = first === 0 && (strand.tendril || strand.persistent);
+        const fragment: VineStrand = {
+          nodes: component.map(index => nodes[index]),
+          segments: edges.filter(edge => remap.has(edge.a) && remap.has(edge.b)).map(edge => ({ a: remap.get(edge.a)!, b: remap.get(edge.b)!, rest: edge.rest })),
+          color: strand.color, thickness: strand.thickness, foliage: strand.foliage,
+          age: 0, settleT: 0, originWorld: strand.originWorld ?? this.ctx.world,
+          persistent: keepsRoot && strand.persistent, tendril: keepsRoot && strand.tendril,
+          anchorX: strand.anchorX, anchorY: strand.anchorY,
+          originCells: keepsRoot ? component.flatMap(index => nodes[index].sourceCells ?? []) : undefined,
+          originColor: strand.originColor,
+        };
+        if (this.strands.length < MAX_ACTIVE_STRANDS) this.strands.push(fragment);
+        else this.settleStrand(this.ctx.world, fragment);
+      }
+    }
+    return cuts;
   }
 
   applyRadialImpulse(cx: number, cy: number, radius: number, strength: number): void {
@@ -759,6 +1023,7 @@ export class VineStrands implements VineStrandsApi {
     if ((strand.persistent || strand.tendril) && !this.anchorSupported(ctx.world, strand)) {
       strand.persistent = false;
       strand.tendril = false; // a cut tendril becomes a normal falling strand → settles where it lands
+      strand.originCells = undefined;
     }
     let contacts = 0;
     let speedSum = 0;
@@ -772,23 +1037,30 @@ export class VineStrands implements VineStrandsApi {
       const vy = (node.y - node.py) * DAMPING;
       node.px = node.x;
       node.py = node.y;
-      node.x += vx + Math.sin((strand.age + i * 13) * 0.09) * 0.012;
+      const breeze = strand.foliage ? Math.sin(strand.age * .025 + (strand.anchorX ?? 0) * .031 + i * .06) * .008 : 0;
+      node.x += vx + breeze + Math.sin((strand.age + i * 13) * 0.09) * 0.012;
       node.y += vy + GRAVITY;
       if (playerActive) this.pushFromPlayer(node, px, py);
       if (this.resolveTerrain(ctx.world, node)) contacts++;
     }
 
+    this.pushFromCreatures(strand);
+
     for (let iter = 0; iter < SOLVER_ITERATIONS; iter++) {
-      for (const segment of strand.segments) this.solveSegment(strand.nodes, segment);
+      for (const segment of strand.segments) this.solveSegment(strand, segment);
       // Pin the anchor through the solve so the rope hangs from a fixed point.
       if (strand.persistent || strand.tendril || strand.web) this.pinAnchors(strand);
       for (const node of strand.nodes) this.resolveTerrain(ctx.world, node);
     }
     if (strand.persistent || strand.tendril || strand.web) this.pinAnchors(strand);
 
+    const bounds = strand.bounds ??= { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+    bounds.minX = bounds.minY = Infinity; bounds.maxX = bounds.maxY = -Infinity;
     for (const node of strand.nodes) {
       speedSum += Math.hypot(node.x - node.px, node.y - node.py);
       if (node.contact) contacts++;
+      bounds.minX = Math.min(bounds.minX, node.x); bounds.maxX = Math.max(bounds.maxX, node.x);
+      bounds.minY = Math.min(bounds.minY, node.y); bounds.maxY = Math.max(bounds.maxY, node.y);
     }
     const avgSpeed = speedSum / Math.max(1, strand.nodes.length);
     if (contacts > 0 && avgSpeed < 0.035) strand.settleT++;
@@ -812,19 +1084,22 @@ export class VineStrands implements VineStrandsApi {
     node.py -= iy * 0.4;
   }
 
-  private solveSegment(nodes: VineNode[], segment: VineSegment): void {
+  private solveSegment(strand: VineStrand, segment: VineSegment): void {
+    const nodes = strand.nodes;
     const a = nodes[segment.a];
     const b = nodes[segment.b];
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const dist = Math.hypot(dx, dy) || 0.0001;
-    const pull = ((dist - segment.rest) / dist) * 0.5;
+    const anchored = (strand.persistent || strand.tendril || (strand.web && !strand.freeWeb && !strand.denWeb));
+    const fixedA = (anchored && segment.a === 0) || a.pinX !== undefined;
+    const fixedB = (anchored && segment.b === 0) || b.pinX !== undefined || (strand.tailX !== undefined && segment.b === nodes.length - 1);
+    if (fixedA && fixedB) return;
+    const pull = ((dist - segment.rest) / dist) * (fixedA || fixedB ? 1 : .5);
     const ox = dx * pull;
     const oy = dy * pull;
-    a.x += ox;
-    a.y += oy;
-    b.x -= ox;
-    b.y -= oy;
+    if (!fixedA) { a.x += ox; a.y += oy; }
+    if (!fixedB) { b.x -= ox; b.y -= oy; }
   }
 
   private resolveTerrain(world: World, node: VineNode): boolean {
@@ -910,7 +1185,15 @@ export class VineStrands implements VineStrandsApi {
   }
 
   private settleStrand(world: World, strand: VineStrand): void {
-    this.settleStrandAs(world, strand, Cell.Vines, () => strand.color, 1.6);
+    if (!strand.nodes.some(node => node.burn)) { this.settleStrandAs(world, strand, Cell.Vines, () => strand.color, 1.6); return; }
+    for (const edge of strand.segments) {
+      const a = strand.nodes[edge.a], b = strand.nodes[edge.b], type = vineResidue((a.burn ?? 0) > (b.burn ?? 0) ? a : b);
+      this.paintLineAs(world, a.x, a.y, b.x, b.y, type, () => type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : strand.color, 1.6);
+    }
+    if (strand.segments.length === 0) for (const node of strand.nodes) {
+      const type = vineResidue(node);
+      this.paintCellAt(world, node.x, node.y, type, type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : strand.color);
+    }
   }
 
   private shedStrandAsh(world: World, strand: VineStrand): void {
@@ -981,7 +1264,7 @@ export class VineStrands implements VineStrandsApi {
     const i = world.idx(cx, cy);
     if (world.types[i] !== Cell.Empty) return;
     world.replaceCellAt(i, cellType, color);
-    world.life[i] = -1;
+    world.life[i] = cellType === Cell.Vines ? -1 : 90;
     world.moved[i] = world.movedTick;
   }
 
@@ -989,4 +1272,39 @@ export class VineStrands implements VineStrandsApi {
 
 function isLoadBearingAnchor(t: number): boolean {
   return isSolid(t) && !isSoftGrowth(t);
+}
+
+function vineResidue(node: VineNode): Cell { return node.burn ? node.burning ? Cell.Ember : Cell.Ash : Cell.Vines; }
+
+function segmentDistanceSq(x: number, y: number, a: VineNode, b: VineNode): number {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+  return (x - a.x - dx * t) ** 2 + (y - a.y - dy * t) ** 2;
+}
+
+/** A thin stem needs a joint every few cells, not one simulation body per pixel.
+ * Branch junctions retain the full graph; original cells remain owned exactly once. */
+function compactVineChain(nodes: VineNode[], segments: VineSegment[]): void {
+  if (nodes.length < 12) return;
+  const neighbors = nodes.map(() => [] as number[]);
+  for (const edge of segments) { neighbors[edge.a].push(edge.b); neighbors[edge.b].push(edge.a); }
+  if (neighbors[0].length !== 1 || neighbors.some(row => row.length > 2)) return;
+  const order = [0];
+  while (order.length < nodes.length) {
+    const next = neighbors[order[order.length - 1]].find(index => index !== order[order.length - 2]);
+    if (next === undefined || next === 0) return;
+    order.push(next);
+  }
+  const reduced = [nodes[0]], edges: VineSegment[] = [];
+  let rest = 0, cells: number[] = [];
+  for (let i = 1; i < order.length; i++) {
+    const node = nodes[order[i]], previous = nodes[order[i - 1]];
+    rest += Math.hypot(node.x - previous.x, node.y - previous.y);
+    cells.push(...(node.sourceCells ?? []));
+    if (i % 3 !== 0 && i !== order.length - 1) continue;
+    reduced.push({ ...node, sourceCells: cells });
+    edges.push({ a: reduced.length - 2, b: reduced.length - 1, rest });
+    rest = 0; cells = [];
+  }
+  nodes.splice(0, nodes.length, ...reduced); segments.splice(0, segments.length, ...edges);
 }

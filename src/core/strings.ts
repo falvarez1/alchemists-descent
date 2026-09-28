@@ -64,3 +64,23 @@ export function stepDecimals(step: number): number {
 export function formatStep(value: number, step: number): string {
   return value.toFixed(stepDecimals(step));
 }
+
+const TITLE_SMALL_WORDS: ReadonlySet<string> = new Set(['of', 'the', 'and', 'a', 'an', 'in', 'on', 'to']);
+let lastTitleCaseIn = '';
+let lastTitleCaseOut = '';
+
+/** Names stored in capitals for the HUD ("THE BREATHING WORKS") read as a
+ *  name on menus ("The Breathing Works"). Mixed-case input is returned as-is. */
+export function titleCaseName(name: string): string {
+  // PERF: the HUD asks for the floor name every other tick; remember the last
+  // answer (a pure function of the input) instead of re-splitting it and
+  // allocating a fresh word Set each time.
+  if (name === lastTitleCaseIn) return lastTitleCaseOut;
+  const out = name !== name.toUpperCase()
+    ? name
+    : name.toLowerCase().split(' ').map((word, i) =>
+      i > 0 && TITLE_SMALL_WORDS.has(word) ? word : word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  lastTitleCaseIn = name;
+  lastTitleCaseOut = out;
+  return out;
+}

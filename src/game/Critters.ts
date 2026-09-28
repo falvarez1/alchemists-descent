@@ -4,6 +4,13 @@ import { EntityPool } from '@/entities/ecs';
 import { blocksEntity, Cell, isLiquid, isSolid } from '@/sim/CellType';
 import { packRGB, waterColor } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
+import { sightClear } from '@/creatures/perception';
+import type { OrganismHost } from '@/game/organisms';
+import { isOrganism, SESSILE_KINDS, stepOrganism } from '@/game/organisms';
+import { burstPuffer } from '@/game/organisms/puffer';
+import { emberDeath, shoveCrawler } from '@/game/organisms/crawler';
+import { driftDeadFish, glowLure, mothLight, schoolFish } from '@/game/organisms/ambient';
+import { CRAWLER_KINDS, GLOW, LEECH, PUFF, PUFF_RIPE, SNAP, SNARE_PREY, critterKey } from '@/game/organisms/types';
 
 /**
  * Wave F "The Caves Breathe": the critter layer + ambient cave biology.
@@ -14,12 +21,16 @@ import { entityRandom } from '@/core/simRandom';
  * ceiling drips into pools, ember falls in lava caves, spore drift, dust
  * motes, heal-spring bubbles — and the quiet sounds of all of it.
  *
- * Critters are transient ambience: spawned near the camera from local cell
- * context, despawned when far, never saved. The caves simply always have
- * them, the way caves do.
+ * Expeditions keep a finite, saved population with homes and prey identity.
+ * Other modes use transient local ambience. Weather remains active in both.
  */
 
-const CAPS: Record<CritterKind, number> = { moth: 6, firefly: 8, fish: 6, beetle: 4, fly: 5 };
+const CAPS: Record<CritterKind, number> = {
+  moth: 6, firefly: 8, fish: 6, beetle: 4, fly: 5,
+  // Organisms are placed by worldgen (game/organisms/placement), never auto-spawned.
+  glowworm: 0, puffer: 0, snapjaw: 0, isopod: 0, leech: 0, emberbeetle: 0, ashmoth: 0,
+  frostmite: 0, snowmoth: 0, brineskater: 0, glassbeetle: 0, prismmoth: 0, lensmite: 0,
+};
 
 /** Cells that read as "glow" to a moth (sampled, not the light field). */
 function isLure(t: number): boolean {
@@ -42,19 +53,86 @@ function isHotGlow(t: number): boolean {
  *  the moth's light-seeking (moths and fish have their own rules). */
 const LIGHT_SHY: ReadonlySet<CritterKind> = new Set<CritterKind>(['beetle', 'fly', 'firefly']);
 
+/** `heldBy` for a flier stuck in a weaver's silk (no organism holds it). */
+const WEB = 'web';
+
+function isHotAt(w: Ctx['world'], x: number, y: number): boolean {
+  const t = w.types[w.idx(x, y)];
+  return t === Cell.Fire || t === Cell.Lava || t === Cell.Ember;
+}
+
+/** Inside one of this level's weaver lair webs (the silk the lairs were stamped with). */
+function inWeaverWeb(ctx: Ctx, x: number, y: number): boolean {
+  for (const web of ctx.levels.current?.weaverLairWebs ?? []) {
+    if (Math.hypot(x - web.x, y - web.y) <= web.radius + 2) return true;
+  }
+  return false;
+}
+
+/** A gusted snapjaw skips most of its tell: it bites at the wind. */
+const SNAP_TELL_SKIP = 8;
+/** Resident fish killed in place (a shocked pool) float this long before they are gone. */
+const DEAD_FISH_TICKS = 1500;
+
 export class Critters implements CrittersApi {
   private readonly pool = new EntityPool<Critter>();
   private readonly eventDisposers: Array<() => void> = [];
   readonly list = this.pool.list;
+  /** What organisms may ask of this layer (remove prey, resolve a held id). */
+  private readonly host: OrganismHost = {
+    list: this.pool.list,
+    remove: (c: Critter) => { this.pool.remove(c); },
+    find: (id: string | undefined) => (id === undefined ? undefined : this.pool.list.find(c => c.id === id)),
+  };
+  private readonly ctx: Ctx;
+  /** Fish bolting from a threat right now (so a school's scatter is announced once, as it starts). */
+  private readonly bolting = new WeakSet<Critter>();
 
   constructor(ctx: Ctx) {
+    this.ctx = ctx;
     this.eventDisposers.push(
       ctx.events.on('structureStrike', ({ x, y, radius }) =>
         this.killAt(ctx, x, y, radius + 4),
       ),
     );
-    // entering a new depth scatters the old fauna
-    this.eventDisposers.push(ctx.events.on('levelChanged', () => this.clear()));
+    this.eventDisposers.push(ctx.events.on('levelChanged', () => this.enterHabitat(ctx)));
+  }
+
+  private enterHabitat(ctx: Ctx): void {
+    this.clear();
+    const rt = ctx.levels.current;
+    if (!rt) return;
+    if (rt.fauna) {
+      for (const saved of rt.fauna) this.pool.add({ ...saved });
+      return;
+    }
+    const resident = (kind: CritterKind, x: number, y: number): void => {
+      const c = this.add(kind, x, y);
+      c.id = `${rt.def.id}-${kind}-${this.list.length}`;
+      c.homeX = x; c.homeY = y; c.energy = 1;
+    };
+    if (rt.def.id === 'd1') {
+      for (const [x, y] of [[290, 265], [520, 330], [1180, 342], [1350, 350], [915, 695], [290, 744]]) {
+        for (let i = 0; i < 5; i++) resident('firefly', x + Math.sin(i * 1.9) * 22, y + Math.cos(i * 2.3) * 13);
+      }
+      for (const [x, y] of [[640, 400], [680, 410], [755, 420], [355, 808]]) resident('fish', x, y);
+      // The Undertow's failed lamps shelter a finite cave-roach colony. They
+      // persist like every resident and visibly abandon their feeding line
+      // when the alchemist sweeps wand-light across it.
+      for (const [x, y] of [[352, 1007], [374, 1007], [438, 1007], [548, 1007], [576, 1007],
+        [692, 1007], [721, 1007], [828, 1007], [872, 1007]]) resident('beetle', x, y);
+      for (const [x, y] of [[410, 966], [632, 978], [803, 962]]) resident('fly', x, y);
+    } else if (rt.def.depth > 0) {
+      // Seed habitats once across the world. Looking away never replaces prey.
+      for (let i = 0; i < 180 && this.list.length < 32; i++) {
+        const x = 20 + Math.floor(entityRandom() * (WIDTH - 40));
+        const y = 25 + Math.floor(entityRandom() * (HEIGHT - 50));
+        const type = ctx.world.type(x, y);
+        if (type === Cell.Water) resident('fish', x, y);
+        else if (type === Cell.Empty) resident(i % 3 ? 'firefly' : 'moth', x, y);
+      }
+    }
+    rt.fauna = this.list.map(c => ({ ...c }));
   }
 
   dispose(): void {
@@ -68,6 +146,9 @@ export class Critters implements CrittersApi {
       const dx = c.x - x,
         dy = c.y - y;
       if (dx * dx + dy * dy <= radius * radius) {
+        // A ripe puffer caught in a blast lets its gas go into the blast (which lights it).
+        if (c.kind === 'puffer' && (c.extent ?? 0) > 0.2) burstPuffer(ctx, c);
+        else if (c.kind === 'emberbeetle') emberDeath(ctx, c, false);
         ctx.particles.burst(c.x, c.y, 3, null, () => packRGB(120, 110, 90), 0.9, {
           grav: 0.05,
         });
@@ -79,18 +160,34 @@ export class Critters implements CrittersApi {
   scatter(x: number, y: number, radius: number, strength: number): void {
     if (radius <= 0 || strength === 0) return;
     const r2 = radius * radius;
-    for (const c of this.list) {
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      const c = this.list[i];
       const dx = c.x - x;
       const dy = c.y - y;
       const d2 = dx * dx + dy * dy;
       if (d2 > r2) continue;
       const d = Math.sqrt(d2) || 1;
       const f = (1 - d / radius) * strength;
+      if (isOrganism(c.kind)) {
+        this.gustOrganism(c, dx / d * f, dy / d * f);
+        continue;
+      }
       c.vx += (dx / d) * f;
       c.vy += (dy / d) * f - f * 0.3; // a touch of lift into the scatter
       c.startle = Math.max(c.startle ?? 0, Math.round(16 + f * 4));
       c.facing = c.vx < 0 ? -1 : 1;
     }
+  }
+
+  /** A gust or near-miss blast meets an organism: each answers in character. */
+  private gustOrganism(c: Critter, fx: number, fy: number): void {
+    const ctx = this.ctx;
+    if (c.kind === 'puffer') { if ((c.extent ?? 0) >= PUFF_RIPE && c.state !== PUFF.SPENT) burstPuffer(ctx, c); }
+    else if (c.kind === 'glowworm') { if (c.state !== GLOW.RETRACT) { c.state = GLOW.RETRACT; c.stateT = 0; } }
+    else if (c.kind === 'snapjaw') { if (c.state === SNAP.OPEN || c.state === SNAP.REOPEN) { c.state = SNAP.TELL; c.stateT = SNAP_TELL_SKIP; } }
+    else if (CRAWLER_KINDS.has(c.kind)) shoveCrawler(ctx, c, fx, fy - Math.abs(fx) * 0.3);
+    else if (c.kind === 'leech' && c.state === LEECH.LATCHED) { c.state = LEECH.BEACHED; c.stateT = 0; c.vx = fx; c.vy = fy; }
+    else { c.vx += fx; c.vy += fy; c.startle = Math.max(c.startle ?? 0, 18); }
   }
 
   remove(critter: Critter): Critter | undefined {
@@ -113,7 +210,7 @@ export class Critters implements CrittersApi {
     if (ctx.state.mode !== 'play' || ctx.state.paused) return;
     const frame = ctx.state.frameCount;
 
-    if (!ctx.debug.active && frame % 30 === 0) this.trySpawn(ctx);
+    if (!ctx.debug.active && !ctx.levels.current?.fauna && frame % 30 === 0) this.trySpawn(ctx);
     this.updateCritters(ctx); // per-critter debug-freeze gate inside
     if (!ctx.debug.active) {
       this.ambientGrid(ctx, frame);
@@ -128,7 +225,7 @@ export class Critters implements CrittersApi {
     const w = ctx.world;
     const camX = Math.floor(ctx.camera.x),
       camY = Math.floor(ctx.camera.y);
-    const counts: Record<CritterKind, number> = { moth: 0, firefly: 0, fish: 0, beetle: 0, fly: 0 };
+    const counts = Object.fromEntries(Object.keys(CAPS).map(k => [k, 0])) as Record<CritterKind, number>;
     for (const c of this.list) counts[c.kind]++;
 
     // Despawn the far-drifted (margin well past the view)
@@ -219,6 +316,52 @@ export class Critters implements CrittersApi {
     for (let idx = this.list.length - 1; idx >= 0; idx--) {
       const c = this.list[idx];
       if (ctx.debug.frozenCritter(c)) continue; // posed/dragged in debug mode
+      // Held in a snare or a jaw: the holder moves it. A holder that is gone lets go.
+      if (c.heldBy) {
+        if (c.heldBy === WEB) {
+          // Stuck in a spider's silk: it struggles while the silk is real.
+          const xi = Math.floor(c.x), yi = Math.floor(c.y);
+          if (w.inBounds(xi, yi) && w.types[w.idx(xi, yi)] === Cell.Vines && !isHotAt(w, xi, yi)) {
+            c.phase += 0.45;
+            if ((ctx.state.frameCount + idx) % 40 === 0 && Math.abs(c.x - player.x) < 200) ctx.audio.chirp(c.x, c.y);
+            continue;
+          }
+          c.heldBy = undefined;
+          c.startle = 12;
+        } else {
+          const holder = this.host.find(c.heldBy);
+          if (holder && holder.holds === c.id) { c.phase += 0.3; continue; }
+          c.heldBy = undefined;
+        }
+      }
+      const far = Math.abs(c.x - player.x) > VIEW_W || Math.abs(c.y - player.y) > VIEW_H;
+      // Rooted organisms sleep off-camera entirely: nothing reaches them there.
+      if (far && SESSILE_KINDS.has(c.kind)) continue;
+      if (c.id && far && (ctx.state.frameCount + idx) % 12 !== 0) continue;
+      if (isOrganism(c.kind)) {
+        if (!stepOrganism(ctx, c, this.host)) this.remove(c);
+        continue;
+      }
+      if (c.id && c.homeX !== undefined && c.homeY !== undefined && c.kind !== 'fish') {
+        let targetX = c.homeX, targetY = c.homeY;
+        for (const lure of ctx.levels.current?.living?.lures ?? []) {
+          if (Math.hypot(lure.x - c.x, lure.y - c.y) < 160 && sightClear(w, c.x, c.y, lure.x, lure.y)) {
+            targetX = lure.x; targetY = lure.y - 9; break;
+          }
+        }
+        c.vx += Math.max(-0.025, Math.min(0.025, (targetX - c.x) * 0.0007));
+        c.vy += Math.max(-0.025, Math.min(0.025, (targetY - c.y) * 0.0007));
+        c.energy = Math.max(0.2, Math.min(1, (c.energy ?? 1) + (Math.hypot(targetX - c.x, targetY - c.y) < 25 ? 0.001 : -0.0002)));
+        for (const predator of ctx.enemies) {
+          if (predator.hp <= 0 || Math.abs(predator.x - c.x) > 60 || Math.abs(predator.y - c.y) > 60) continue;
+          const reach = predator.kind === 'weaver' ? 42 : 26 + ctx.enemyCtl.defs[predator.kind].halfW * 1.5;
+          const dx = c.x - predator.x, dy = c.y - predator.y + 8;
+          const d = Math.hypot(dx, dy);
+          if (d > 1 && d < reach && sightClear(w, c.x, c.y, predator.x, predator.y - 8)) {
+            c.vx += dx / d * 0.06; c.vy += dy / d * 0.06;
+          }
+        }
+      }
       c.phase += 0.13;
       const xi = Math.floor(c.x),
         yi = Math.floor(c.y);
@@ -227,6 +370,15 @@ export class Critters implements CrittersApi {
         continue;
       }
       const here = w.types[w.idx(xi, yi)];
+      // ECOLOGY: a flier that blunders into a weaver's web sticks (real Vines
+      // silk inside a lair's web) — and the weaver comes down for it.
+      if (here === Cell.Vines && SNARE_PREY.has(c.kind) && (c.startle ?? 0) === 0 && inWeaverWeb(ctx, c.x, c.y)) {
+        c.heldBy = WEB;
+        c.vx = 0; c.vy = 0;
+        critterKey(c);
+        ctx.events.emit('organism', { kind: 'weaver', action: 'snare', x: c.x, y: c.y });
+        continue;
+      }
 
       // The small things die to heat and corrosion like everything else
       if (here === Cell.Fire || here === Cell.Lava || here === Cell.Acid || here === Cell.Toxic) {
@@ -247,6 +399,41 @@ export class Critters implements CrittersApi {
             const pd = Math.sqrt(pd2), k = 1 - pd / 32;
             ax += (pdx / pd) * k; ay += (pdy / pd) * k; threatened = true;
           }
+          // The wand is the scene's moving key light. A clear, forward-facing
+          // cone makes the dark-corridor colony scatter before the body arrives,
+          // so the response reads as sight rather than proximity scripting.
+          const aim = player.aimAngle ?? 0;
+          const wandX = player.x + Math.cos(aim) * 9;
+          const wandY = player.y - 9 + Math.sin(aim) * 9;
+          // Ground critters sit on the first solid cell. Aim the visibility ray
+          // at their shell instead of their contact point, which is deliberately
+          // embedded a fraction into the floor by the collision solver.
+          const lightTargetY = c.y - (c.kind === 'beetle' ? 1.5 : 0);
+          const wdx = c.x - wandX, wdy = lightTargetY - wandY;
+          const wd2 = wdx * wdx + wdy * wdy;
+          // A hooded lantern throws no beam to scatter from (light wave).
+          if (wd2 > 9 && wd2 < 112 * 112 && ctx.lightQuery?.hooded !== true) {
+            const wd = Math.sqrt(wd2);
+            const inBeam = (wdx * Math.cos(aim) + wdy * Math.sin(aim)) / wd > .16;
+            if (inBeam && sightClear(w, wandX, wandY, c.x, lightTargetY)) {
+              const k = 1 - wd / 112;
+              ax += (wdx / wd) * (.65 + k * 1.4);
+              ay += (wdy / wd) * (.65 + k * 1.4);
+              threatened = true;
+            }
+          }
+        }
+        // Any creature bearing down on them is a looming bulk too, not only the wizard.
+        for (const e of ctx.enemies) {
+          if (e.hp <= 0 || Math.abs(e.x - c.x) > 48 || Math.abs(e.y - c.y) > 48) continue;
+          const def = ctx.enemyCtl.defs[e.kind];
+          const ex = e.x, ey = e.y - def.h * 0.5;
+          const dx = c.x - ex, dy = c.y - ey, d2 = dx * dx + dy * dy, R = 16 + def.halfW * 1.6;
+          const moving = Math.abs(e.vx) + Math.abs(e.vy) > 0.15 || def.halfW >= 7;
+          if (moving && d2 > 1 && d2 < R * R) {
+            const d = Math.sqrt(d2), k = 1 - d / R;
+            ax += dx / d * (0.8 + k); ay += dy / d * (0.8 + k); threatened = true;
+          }
         }
         for (let s = 0; s < 4; s++) {
           const sx = xi + ((entityRandom() * 29) | 0) - 14;
@@ -260,7 +447,7 @@ export class Critters implements CrittersApi {
           const am = Math.hypot(ax, ay) || 1;
           c.vx += (ax / am) * 0.7;
           c.vy += (ay / am) * 0.7 - 0.3; // a little hop into the scramble
-          c.startle = 8;
+          c.startle = c.kind === 'beetle' ? 18 : 10;
         }
       }
 
@@ -297,15 +484,21 @@ export class Critters implements CrittersApi {
             lured = true;
           }
         }
-        if (!lured && !player.dead) {
-          const dx = player.x + Math.cos(player.aimAngle) * 9 - c.x;
-          const dy = player.y - 9 + Math.sin(player.aimAngle) * 9 - c.y;
-          const d2 = dx * dx + dy * dy;
-          if (d2 < 100 * 100 && d2 > 12 * 12) {
-            c.vx += (dx / Math.sqrt(d2)) * 0.045;
-            c.vy += (dy / Math.sqrt(d2)) * 0.045;
+        if (!lured) {
+          // Living lights draw moths too: an angler's lure, a jelly's bell, an imp's embers.
+          for (const e of ctx.enemies) {
+            if (e.hp <= 0 || (e.kind !== 'leviathan' && e.kind !== 'wisp' && e.kind !== 'imp' && !(e.kind === 'mage' && e.blink > 0))) continue;
+            const lure = e.kind === 'leviathan' ? e.rig?.chains[1]?.pts.at(-1) : undefined;
+            const lx = lure?.x ?? e.x, ly = lure?.y ?? e.y - 7;
+            const dx = lx - c.x, dy = ly - c.y, d2 = dx * dx + dy * dy;
+            if (d2 < 90 * 90 && d2 > 16) { c.vx += dx / Math.sqrt(d2) * 0.05; c.vy += dy / Math.sqrt(d2) * 0.05; lured = true; break; }
           }
         }
+        // Wave 2: the wand is a lure only while its light actually reaches the
+        // moth (hood the lantern and the swarm loses you); a glow-worm's beaded
+        // thread in the dark pulls them in too — into the snare.
+        if (!lured) lured = mothLight(ctx, c);
+        if (!lured) lured = glowLure(c, this.list);
         c.vx *= 0.93;
         c.vy *= 0.93;
       } else if (c.kind === 'firefly') {
@@ -314,27 +507,67 @@ export class Critters implements CrittersApi {
         c.vx *= 0.96;
         c.vy *= 0.96;
       } else if (c.kind === 'fish') {
+        if ((c.dead ?? 0) > 0) {
+          // Belly-up at the surface: carrion now (a rillback will still take it).
+          c.dead = (c.dead ?? 0) + 1;
+          driftDeadFish(ctx, c);
+          if ((c.dead ?? 0) > DEAD_FISH_TICKS) this.remove(c);
+          continue;
+        }
+        if (isLiquid(here) && w.charge[w.idx(xi, yi)] > 0) {
+          // A shocked pool kills what swims in it: a jolt, a flash, belly-up.
+          c.dead = 1;
+          c.vy = -0.3;
+          ctx.particles.burst(c.x, c.y, 3, null, () => packRGB(150, 235, 255), 0.9, { glow: 2.2, grav: 0 });
+          ctx.events.emit('organism', { kind: 'fish', action: 'zap', x: c.x, y: c.y });
+          continue;
+        }
         if (isLiquid(here)) {
           c.gasp = 0;
+          schoolFish(ctx, c, this.list);
           // cruise + flee the splashing alchemist
           const pdx = c.x - player.x,
             pdy = c.y - player.y;
           const close = !player.dead && pdx * pdx + pdy * pdy < 30 * 30;
           c.vx += (close ? Math.sign(pdx) * 0.12 : Math.sin(c.phase * 0.4) * 0.02);
+          let fleeing = close;
+          // Eels and the Leviathan are what fish are afraid of; an angler's lure is what they can't resist.
+          for (const e of ctx.enemies) {
+            if (e.hp <= 0 || (e.kind !== 'rillback' && e.kind !== 'leviathan')) continue;
+            const hx = e.body?.nodes[0]?.x ?? e.rig?.pts[0]?.x ?? e.x, hy = e.body?.nodes[0]?.y ?? e.rig?.pts[0]?.y ?? e.y - 6;
+            const dx = c.x - hx, dy = c.y - hy, d2 = dx * dx + dy * dy;
+            const moving = Math.abs(e.vx) + Math.abs(e.vy) > 0.35 || (e.swoop ?? 0) > 0;
+            if (d2 < 40 * 40 && moving) { const d = Math.sqrt(d2) || 1; c.vx += dx / d * 0.16; c.vy += dy / d * 0.08; fleeing = true; }
+            else if (e.kind === 'leviathan' && !moving) {
+              const lure = e.rig?.chains[1]?.pts.at(-1);
+              if (lure) { const lx = lure.x - c.x, ly = lure.y + 3 - c.y, ld = Math.hypot(lx, ly); if (ld < 110 && ld > 4) { c.vx += lx / ld * 0.03; c.vy += ly / ld * 0.02; } }
+            }
+          }
+          // The school bolts: announced once as it starts (the cue's cooldown folds a
+          // school into one flurry), and not again until this fish has truly settled.
+          if (fleeing && !this.bolting.has(c)) {
+            this.bolting.add(c);
+            ctx.events.emit('organism', { kind: 'fish', action: 'scatter', x: c.x, y: c.y });
+          } else if (!fleeing && (player.dead || pdx * pdx + pdy * pdy > 60 * 60)) this.bolting.delete(c);
           c.vy += (entityRandom() - 0.5) * 0.02;
           // stay submerged: nudge down if surface is right above
           if (w.inBounds(xi, yi - 1) && w.types[w.idx(xi, yi - 1)] === Cell.Empty) c.vy += 0.04;
           c.vx *= 0.94;
           c.vy *= 0.9;
+          c.vx += w.flow.x(c.x, c.y) * .07;
+          c.vy += w.flow.y(c.x, c.y) * .07;
           if (Math.abs(c.vx) > 0.05) c.facing = Math.sign(c.vx);
         } else {
           // beached: flop, gasp, and eventually a sad little end
           c.gasp++;
           c.vy += 0.18;
-          if (c.gasp % 22 === 0) c.vy = -1.4 - entityRandom();
+          if (c.gasp % 22 === 0) {
+            c.vy = -1.4 - entityRandom();
+            ctx.audio.sfx('organism.fish.flop', c.x, c.y);
+          }
           if (c.gasp > 260) {
             ctx.particles.burst(c.x, c.y, 4, Cell.Blood, () => packRGB(180, 40, 50), 1.1);
-            ctx.audio.squelch(); // the arc ends audibly, not in silence
+            ctx.audio.squelch(c.x, c.y); // the arc ends audibly, not in silence
             this.removeAt(idx);
             continue;
           }
@@ -367,7 +600,7 @@ export class Critters implements CrittersApi {
               if (tt === Cell.Fungus || tt === Cell.Moss) {
                 w.clearCellAt(ti);
                 ctx.particles.burst(xi + ddx, yi + ddy, 2, null, () => packRGB(90, 160, 80), 0.6);
-                ctx.audio.skitter(); // a faint nibble — the ecology is audible
+                ctx.audio.skitter(xi, yi); // a faint nibble — the ecology is audible
                 break;
               }
             }
@@ -399,8 +632,10 @@ export class Critters implements CrittersApi {
 
   private ambientGrid(ctx: Ctx, frame: number): void {
     const w = ctx.world;
-    const camX = Math.floor(ctx.camera.x),
-      camY = Math.floor(ctx.camera.y);
+    // A persistent habitat must not disable its weather. The player's area,
+    // independent of debug-camera panning, owns these local environmental events.
+    const camX = Math.max(0, Math.floor(ctx.player.x - VIEW_W / 2)),
+      camY = Math.max(0, Math.floor(ctx.player.y - VIEW_H / 2));
     const biome = ctx.state.currentBiome;
 
     // CEILING DRIPS: an overhang above open air sheds a real water droplet
@@ -434,7 +669,7 @@ export class Critters implements CrittersApi {
           if (poolBelow) {
             const di = w.idx(x, solidY + 1);
             w.replaceCellAt(di, Cell.Water, waterColor());
-            if (entityRandom() < 0.3) ctx.audio.drip();
+            if (entityRandom() < 0.3) ctx.audio.drip(x, solidY + 1);
           }
         }
       }
@@ -485,7 +720,7 @@ export class Critters implements CrittersApi {
           glow: 1.2,
           grav: -0.01,
         });
-        if (entityRandom() < 0.15) ctx.audio.bubble();
+        if (entityRandom() < 0.15) ctx.audio.bubble(x, y);
       }
     }
   }
@@ -536,9 +771,9 @@ export class Critters implements CrittersApi {
       dy = c.y - ctx.player.y;
     if (dx * dx + dy * dy > 140 * 140) return;
     if (c.kind === 'moth' || c.kind === 'firefly') {
-      if (entityRandom() < 0.4) ctx.audio.chirp();
+      if (entityRandom() < 0.4) ctx.audio.chirp(c.x, c.y);
     } else if (c.kind === 'beetle' || c.kind === 'fly') {
-      if (entityRandom() < 0.5) ctx.audio.skitter();
+      if (entityRandom() < 0.5) ctx.audio.skitter(c.x, c.y);
     }
   }
 }

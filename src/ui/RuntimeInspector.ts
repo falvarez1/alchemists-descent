@@ -22,6 +22,15 @@ export class RuntimeInspector {
   private timeControlsDispose: (() => void) | null = null;
   private readonly eventDisposers: Array<() => void> = [];
   private readonly onButtonClick = (): void => this.toggle();
+  /**
+   * F9 (authoring builds only). The play screen hides the header — and its
+   * RUNTIME button — for the whole run, so a key is the way in during play.
+   */
+  private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (event.code !== 'F9' || event.repeat) return;
+    event.preventDefault();
+    this.toggle();
+  };
 
   constructor(private readonly ctx: Ctx) {
     const holder = document.getElementById('viewport-container') ?? document.body;
@@ -33,6 +42,7 @@ export class RuntimeInspector {
 
     this.button = document.getElementById('runtime-inspector-toggle') as HTMLButtonElement | null;
     this.button?.addEventListener('click', this.onButtonClick);
+    if (__AUTHORING__) window.addEventListener('keydown', this.onKeyDown);
     this.root.addEventListener('pointerdown', (event) => event.stopPropagation());
     this.root.addEventListener('pointerup', (event) => event.stopPropagation());
     this.root.addEventListener('pointerenter', () => {
@@ -69,6 +79,7 @@ export class RuntimeInspector {
     this.close();
     this.unmountTimeControls();
     this.button?.removeEventListener('click', this.onButtonClick);
+    window.removeEventListener('keydown', this.onKeyDown);
     this.root.remove();
     this.button?.classList.remove('lit');
     this.button?.removeAttribute('disabled');

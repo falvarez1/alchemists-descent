@@ -1,7 +1,12 @@
 import type { Ctx, HintApi, HintInfo } from '@/core/types';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { INTRO_REWARD_CARD } from '@/game/introObjectives';
+import { worksHint } from '@/game/LivingExpedition';
 import { getSeenHints, markHintSeen } from '@/game/hints/seenHints';
+import { corpses } from '@/creatures/corpses';
+import { heldCorpse } from '@/combat/Telekinesis';
+import { getBindings, keyLabel } from '@/input/bindings';
+import { WAYSTONE_HELP_RADIUS, waystoneHelp } from '@/game/waystoneHelp';
 
 /** A teach-once popover body, paired with a contextual hint line. */
 interface Teach {
@@ -25,7 +30,17 @@ interface CellHit {
 
 /** Reach (cells, squared) at which each kind of interactable starts hinting. */
 const R_OBJECT = 24 * 24;
+/** Frames between teach-once popovers: the card auto-dismisses after 9 s, so
+ *  a new one never lands on (or instantly replaces) the one being read. */
+const TEACH_GAP = 660;
+/** A centre beat just cleared: let the screen settle 0.75 s before a lesson. */
+const TEACH_CALM_FRAMES = 45;
+/** Arrival on a floor: the title card rises up to ~1.6 s after the level
+ *  changes (after the curtain), so no lesson in the first 2 s. */
+const TEACH_ARRIVAL_HOLD_FRAMES = 120;
 const R_GOAL = 32 * 32;
+/** A fresh body this close teaches the wand's grip. */
+const R_FALLEN = 56 * 56;
 const FLASK_SCAN = 10; // half-box (cells) swept around the player for siphonables
 
 /**
@@ -40,8 +55,15 @@ export class HintSystem implements HintApi {
   private _current: HintInfo | null = null;
   private readonly taught: Set<string>;
   private readonly disposers: Array<() => void> = [];
+  /** Frame the last popover was shown, and event-driven lessons waiting their turn. */
+  private lastTeachFrame = -Infinity;
+  private readonly pending: Array<{ key: string; teach: Teach }> = [];
+  /** The overlay's calm gate: a centre beat is on screen (setTeachHeld). */
+  private teachHeld = false;
+  /** No lesson before this frame (a beat just cleared / a floor just began). */
+  private teachCalmAt = 0;
 
-  constructor(ctx: Ctx) {
+  constructor(private readonly ctx: Ctx) {
     this.taught = new Set<string>(getSeenHints());
     // Event-driven teach-onces: knowledge-loop connections no proximity scan
     // can see — the reaction already happened, the card is already in hand.
@@ -50,7 +72,7 @@ export class HintSystem implements HintApi {
         this.teachOnce(ctx, 'grimoire-observed', {
           title: 'The Grimoire Watches',
           body: 'Reactions you witness are inscribed in your Grimoire. Press J to read what the cave has taught you.',
-        });
+        }, true);
       }),
       // Taught at the bench itself (not on card grant — that beat already
       // belongs to the intro's own popover, and the overlay shows one at a time).
@@ -58,16 +80,25 @@ export class HintSystem implements HintApi {
         this.teachOnce(ctx, 'wand-sentence', {
           title: 'Reading a Wand',
           body: 'A wand casts its cards left to right — modifiers charge the projectile that follows them. Hover a card to see exactly which slots it touches.',
-        });
+        }, true);
+      }),
+      // Light wave: the first time the alchemist steps into designed darkness.
+      ctx.events.on('darkZoneEntered', () => {
+        this.teachOnce(ctx, 'dark-lantern', {
+          title: 'The Dark',
+          body: 'Nothing here is lit but what you light. Your beam goes where you aim. Watch for eyes. L hoods the lantern: you see less, and you are seen less.',
+        }, true);
       }),
       ctx.events.on('levelChanged', ({ depth }) => {
+        // Arrival is the title card's beat: every lesson waits it out.
+        this.teachCalmAt = Math.max(this.teachCalmAt, ctx.state.frameCount + TEACH_ARRIVAL_HOLD_FRAMES);
         // Taught on the first descent, not in the first 30 seconds: D2 arrival
         // is a calm beat, and by then there is ground worth remembering.
         if (depth >= 2) {
           this.teachOnce(ctx, 'map-open', {
             title: 'The Map',
             body: 'Press M for the map — explored ground, waystones, and a click plants a waypoint compass.',
-          });
+          }, true);
         }
       }),
     );
@@ -81,24 +112,54 @@ export class HintSystem implements HintApi {
     return this._current;
   }
 
-  /** Mark a hint taught (persisted) and fire its one-time popover. */
-  private teachOnce(ctx: Ctx, key: string, teach: Teach): void {
+  /**
+   * Fire a lesson's one-time popover, one at a time. A lesson is only marked
+   * seen when its card is actually shown: one that arrives while another card
+   * is still up waits (event lessons queue; proximity lessons simply come
+   * round again the next time the player is near the thing).
+   */
+  setTeachHeld(held: boolean): void {
+    if (this.teachHeld && !held) {
+      this.teachCalmAt = Math.max(this.teachCalmAt, this.ctx.state.frameCount + TEACH_CALM_FRAMES);
+    }
+    this.teachHeld = held;
+  }
+
+  /** No centre beat on screen (nor a story beat), and it has been quiet long enough to read. */
+  private teachCalm(ctx: Ctx): boolean {
+    return !this.teachHeld && !ctx.story?.beatActive && ctx.state.frameCount >= this.teachCalmAt;
+  }
+
+  private teachOnce(ctx: Ctx, key: string, teach: Teach, queue = false): void {
     if (this.taught.has(key)) return;
+    if (ctx.state.frameCount - this.lastTeachFrame < TEACH_GAP || !this.teachCalm(ctx)) {
+      if (queue && !this.pending.some((p) => p.key === key)) this.pending.push({ key, teach });
+      return;
+    }
     this.taught.add(key);
     markHintSeen(key);
+    this.lastTeachFrame = ctx.state.frameCount;
     ctx.events.emit('hintTeach', { key, title: teach.title, body: teach.body });
   }
 
   update(ctx: Ctx): void {
     if (ctx.state.frameCount % 4 !== 0) return;
-    if (ctx.state.mode !== 'play' || ctx.state.paused || ctx.player.dead || !ctx.levels.current) {
+    // A story beat has the stage (Pell, a prologue, an echo, the escape, a cinematic,
+    // Matron Ash): no hint line under it, and no lesson either.
+    if (ctx.state.mode !== 'play' || ctx.state.paused || ctx.player.dead || !ctx.levels.current || ctx.story?.beatActive) {
       this._current = null;
       return;
     }
     const runtime = ctx.levels.current;
+    const living = !!runtime.living;
     const px = ctx.player.x;
     const py = ctx.player.y;
     const w = ctx.world;
+    const waiting = this.pending[0];
+    if (waiting && ctx.state.frameCount - this.lastTeachFrame >= TEACH_GAP && this.teachCalm(ctx)) {
+      this.pending.shift();
+      this.teachOnce(ctx, waiting.key, waiting.teach);
+    }
     const pcx = Math.floor(px);
     const pcy = Math.floor(py);
     const candidates: Candidate[] = [];
@@ -124,23 +185,18 @@ export class HintSystem implements HintApi {
     if (portal) {
       const d2 = (portal.x - px) ** 2 + (portal.y - py) ** 2;
       if (d2 <= R_GOAL) {
-        const heavySlotted = ctx.wands.wands.some((wand) => wand.cards.includes(INTRO_REWARD_CARD));
-        const benchBlocked = runtime.def.depth === 1 && !runtime.def.branch && runtime.keyTaken && !heavySlotted;
-        let line = 'The portal is sealed — bring it the Golden Key';
-        if (benchBlocked) {
-          if (ctx.wands.collection.includes(INTRO_REWARD_CARD)) {
-            line = 'The portal rejects you — slot Heavy at the Wand Bench';
-          } else {
-            line = 'The portal rejects you — claim Heavy from the Spell Lab';
-          }
-        } else if (portal.open || runtime.keyTaken) {
-          line = 'The portal is open — step in to descend';
+        let line = runtime.living ? 'The lower gate is sealed. Bring the brass bell.' : 'The portal is sealed — bring it the Golden Key';
+        if (portal.open || runtime.keyTaken) {
+          // D1's way down is a floor grate, not a portal: say what is true.
+          line = runtime.living ? 'The grate is open — drop through.' : 'The portal is open — step in to descend';
         }
         consider({
           priority: 3,
           dist2: d2,
           info: { key: 'portal', line, world: { x: portal.x, y: portal.y } },
-          teach: { title: 'The Portal', body: 'The way down. It opens once you carry the Golden Key to it.' },
+          teach: living
+            ? { title: 'The Lower Gate', body: 'A riveted grate in the Lower Bell’s floor: the way down. It opens for the brass bell, and only the Bell & Tea Engine makes one.' }
+            : { title: 'The Portal', body: 'The way down. It opens once you carry the Golden Key to it.' },
         });
       }
     }
@@ -152,8 +208,10 @@ export class HintSystem implements HintApi {
           consider({
             priority: 3,
             dist2: d2,
-            info: { key: 'key', line: 'Grab the Golden Key — it unseals the portal', world: { x: Math.round(pk.x), y: Math.round(pk.y) } },
-            teach: { title: 'The Golden Key', body: 'Take the key, then reach the portal to descend. No key, no exit.' },
+            info: { key: 'key', line: runtime.living ? 'Take the brass bell. It opens the lower gate.' : 'Grab the Golden Key — it unseals the portal', world: { x: Math.round(pk.x), y: Math.round(pk.y) } },
+            teach: living
+              ? { title: 'The Brass Bell', body: 'Carry it down to the Lower Bell. The floor grate there rings open for it.' }
+              : { title: 'The Golden Key', body: 'Take the key, then reach the portal to descend. No key, no exit.' },
           });
         }
       }
@@ -210,6 +268,15 @@ export class HintSystem implements HintApi {
       }
     }
 
+    // --- an unlit waystone: how to light it (its teach card is Levels' — once per waystone per floor) ---
+    for (const ws of runtime.waystones) {
+      if (ws.lit) continue;
+      const d2 = (ws.x - px) ** 2 + (ws.y - py) ** 2;
+      if (d2 > WAYSTONE_HELP_RADIUS * WAYSTONE_HELP_RADIUS) continue;
+      consider({ priority: 2.1, dist2: d2, info: { key: 'waystone', line: waystoneHelp(ctx).line, world: { x: ws.x, y: ws.y - 3 } }, teach: null });
+      break;
+    }
+
     // --- the cauldron: brewing ---
     const cauldron = runtime.cauldron;
     if (cauldron) {
@@ -230,11 +297,28 @@ export class HintSystem implements HintApi {
       if (!spec) continue;
       const d2 = (m.x - px) ** 2 + (m.y - py) ** 2;
       if (d2 <= R_OBJECT) {
-        consider({ priority: 2, dist2: d2, info: { key: spec.key, line: spec.line, world: { x: m.x, y: m.y } }, teach: spec.teach });
+        const handwheel = living && m.id === 8101;
+        const crank = living && m.id === 8201;
+        // The crank is spent while its chain runs; only a stall wants it again.
+        const tea = runtime.living?.tea;
+        if (crank && tea && tea.stage > 0 && !tea.stalled) continue;
+        consider({ priority: 2, dist2: d2, info: {
+          key: handwheel ? 'works-valve' : crank ? 'works-crank' : spec.key,
+          line: handwheel ? 'Turn valve' : crank ? 'Pull crank' : spec.line, world: { x: m.x, y: m.y },
+        }, teach: crank ? null : spec.teach }); // the engine's own card teaches the crank
       }
     }
 
-    if (runtime.def.depth === 1 && !runtime.keyTaken) {
+    // The Works' own notes (the barricade, a waiting engine fault, the lower
+    // gate) outrank generic lines: beside the duck's well, "siphon · pour" is
+    // only half the answer.
+    const works = worksHint(ctx);
+    if (works) consider({ priority: 3, dist2: 0, info: works, teach: null });
+
+    // Inside the engine's workshop and on its catwalk the machine's own notes
+    // speak; the dig's debris or the chain's fire should not start a lesson.
+    const atEngine = living && px > 444 && px < 1560 && py < 318;
+    if (runtime.def.depth === 1 && !runtime.keyTaken && !atEngine) {
       // One hot-cell scan serves both the burn-wood and carried-cells hints.
       const hot = nearestCell(18, (type) => type === Cell.Fire || type === Cell.Ember || type === Cell.Lava);
       const wood = nearestCell(14, (type) => type === Cell.Wood);
@@ -260,11 +344,42 @@ export class HintSystem implements HintApi {
       const flask = ctx.flask.state;
       const carried = flask.count > 0 && flask.material !== null;
       if (carried && hot) {
+        // Below the burning-seal lesson: beside a barricade on fire, the fire
+        // is the lesson, and the flask is the footnote.
         consider({
-          priority: 1.8,
+          priority: 1.65,
           dist2: hot.d2,
           info: { key: 'carried-cells', line: 'Flask: Q pours carried cells · RMB throws the bottle', world: { x: hot.x, y: hot.y } },
           teach: { title: 'Carried Cells', body: 'A flask stores exact cells from the world. Pour or throw them back out to douse, flood, weigh, or conduct.' },
+        });
+      }
+    }
+
+    // --- the fallen: remains are things the wand can lift (combat/Telekinesis) ---
+    const keys = getBindings();
+    if (heldCorpse()) {
+      consider({
+        priority: 2.6,
+        dist2: 0,
+        info: { key: 'holding-fallen', line: `${keyLabel(keys.interact)} set down · ${keyLabel(keys.kick)} or RMB hurl` },
+        teach: null,
+      });
+    } else if (!this.taught.has('lift-fallen')) {
+      let fallen: { x: number; y: number; d2: number } | null = null;
+      for (const c of corpses()) {
+        if (c.world !== w || c.gone || c.age > 600) continue;
+        const d2 = (c.e.x - px) ** 2 + (c.e.y - py) ** 2;
+        if (d2 <= R_FALLEN && (!fallen || d2 < fallen.d2)) fallen = { x: c.e.x, y: c.e.y - 4, d2 };
+      }
+      if (fallen) {
+        consider({
+          priority: 1.55,
+          dist2: fallen.d2,
+          info: { key: 'lift-fallen', line: `${keyLabel(keys.interact)} on the fallen: lift · ${keyLabel(keys.kick)} hurls`, world: { x: Math.round(fallen.x), y: Math.round(fallen.y) } },
+          teach: {
+            title: 'The Fallen',
+            body: `Press ${keyLabel(keys.interact)} on the fallen to lift them with your wand; ${keyLabel(keys.kick)} hurls. The dead are heavy, and they hit like it.`,
+          },
         });
       }
     }
@@ -273,11 +388,14 @@ export class HintSystem implements HintApi {
     // Grid scans MUST use integer cell coords: player.x/y are continuous floats,
     // and World.idx doesn't floor, so a fractional index reads undefined and the
     // hint (plus its one-time teach popover) would silently never fire.
+    // Never for a hazard: lava or acid under the boots is not a lesson in bottling
+    // (QA: the escape's rising lava raised "The Flask").
     let liquid: { x: number; y: number; d2: number } | null = null;
     for (let yy = pcy - FLASK_SCAN; yy <= pcy + 2; yy++) {
       for (let xx = pcx - FLASK_SCAN; xx <= pcx + FLASK_SCAN; xx++) {
         if (!w.inBounds(xx, yy)) continue;
-        if (!isLiquid(w.types[w.idx(xx, yy)])) continue;
+        const t = w.types[w.idx(xx, yy)];
+        if (!isLiquid(t) || t === Cell.Lava || t === Cell.Acid) continue;
         const d2 = (xx - px) ** 2 + (yy - py) ** 2;
         if (!liquid || d2 < liquid.d2) liquid = { x: xx, y: yy, d2 };
       }

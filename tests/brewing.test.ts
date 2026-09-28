@@ -20,7 +20,7 @@ function makeCtx(world: World, levelId = 'd1'): Ctx {
       spawn: () => undefined,
       burst: () => undefined,
     },
-    audio: {
+    audio: { sfx: () => undefined, creature: () => undefined,
       bubble: () => undefined,
       tone: () => undefined,
     },

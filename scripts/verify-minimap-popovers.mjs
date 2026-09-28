@@ -198,7 +198,7 @@ await hoverMarker('#minimap-canvas', markers.portal);
 const portalPop = await popoverState();
 check(
   'Full map hover shows portal POI details',
-  portalPop.visible && portalPop.text.includes('Exit Portal') && portalPop.text.includes('position') && portalPop.hasThumb,
+  portalPop.visible && /Exit Portal|The Lower Gate/.test(portalPop.text) && portalPop.text.includes('position') && portalPop.hasThumb,
   JSON.stringify(portalPop),
 );
 

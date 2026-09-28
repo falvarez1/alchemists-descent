@@ -2,16 +2,14 @@
 export const WIDTH = 1600;
 export const HEIGHT = 1064;
 
-// Camera window in cells, kept at the 25:17 aspect (base unit × {25,17}). Unit
-// 23 (575×391) zooms the camera out ~9.5% vs the original unit-21 (525×357) so
-// the grander caves read with more breathing room around the wizard.
-export const VIEW_W = 575;
-export const VIEW_H = 391;
+// A fixed 16:9 logical canvas keeps gameplay framing stable across displays.
+export const VIEW_W = 640;
+export const VIEW_H = 360;
 
 /** Renderer output resolution (CSS pixels of the canvas backing store).
  *  Kept at exactly 2× the camera window (2 px/cell — crisp integer scaling). */
-export const RENDER_W = 1150;
-export const RENDER_H = 782;
+export const RENDER_W = VIEW_W * 2;
+export const RENDER_H = VIEW_H * 2;
 
 /** Margin of cells simulated beyond the camera window. */
 export const SIM_MARGIN = 44;
@@ -43,3 +41,10 @@ export const MINIMAP_H = 133;
  *  not stutter. */
 export const DEATH_SLOWMO_FRAMES = 60;
 export const DEATH_SLOWMO_MIN = 0.32;
+
+/** What one real Gold cell is worth in the purse when the harvester lifts it
+ *  (an alchemical payout's grains are minted at this rate, too). 1 oz (was 10,
+ *  2026-09 economy pass): the floors hold ~4,500 gold cells each (seams, vugs,
+ *  tells), so at 10 a run ended with 15,000+ oz against Sanctum prices of
+ *  40-380. See FEEL.md "Gold". */
+export const GOLD_CELL_VALUE = 1;

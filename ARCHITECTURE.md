@@ -20,6 +20,9 @@ src/
     AuthorLinkIndicator.ts  Header LINK pill (peers, and the amber "different
                           worlds" state that pulls the peer's grid on click)
     builderEntry.ts       /builder.html entry: Game + AuthorLink, Builder opened
+                          (builder.html itself is GENERATED from index.html by
+                          scripts/gen-builder-html.mjs; the HUD resolves nodes
+                          strictly, so the two shells must not drift)
     authorLinkObjects.ts  Applies a remote authored set into the live runtime
                           through the SAME instantiateObjects the compiler uses,
                           and tears down only what it created
@@ -51,8 +54,9 @@ src/
     AuthorLinkClient.ts    Socket lifecycle, reconnect, heartbeat, echo drop
     SessionTransport.ts    The seam multiplayer plugs into: session semantics
                            (reconnect/presence/echo) stay in the client, a
-                           transport carries opaque frames. WebSocket today,
-                           SpacetimeDB next (docs/MULTIPLAYER-ARCHITECTURE.md)
+                           transport carries opaque frames. WebSocket today;
+                           the SpacetimeDB transport is archived (git tag
+                           archive/spacetimedb, docs/MULTIPLAYER-ARCHITECTURE.md)
     tuningPatch.ts         Dotted tuning paths <-> the live config singletons
                            (allowlist DERIVED from shipped defaults, never authored)
 servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
@@ -72,25 +76,59 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
   particles/
     Particles.ts          Ballistic free-pixel system (debris, gore, homing coins)
   combat/
+    Telekinesis.ts        The wand's grip (E lift / set down, F or RMB hurl) on corpses and crates
+    AlchemyKills.ts       Kill attribution (Ctx.alchemy): last blow per creature, alchemical
+                          kills, chains, grid-honest payout; emits `alchemyKill`
+    SelfShock.ts          Self-shock fairness: falloff at the body, capped window, conductor arc
     Lightning.ts          Chain lightning raycast + arc visuals
     Projectiles.ts        Spell projectiles, bombs, black holes, gravity wells
     Spells.ts             Wand tip, dig ray, warp, tactical spell dispatch
   entities/
     physics.ts            Entity-vs-grid collision with the loose-rubble cluster rule
     Player.ts             Player state/factory, review kit, damage/death/respawn, movement, animation
-    Enemies.ts            Enemy defs, spawn/damage/kill, slime/imp/golem AI
+    playerPose.ts         Pure player-state → skeleton (every action; also read off the ragdoll)
+    playerCostume.ts      Presentation cloth: coat tails, mantle hem, hat crown (docs/PLAYER-ART.md)
+    chill.ts              THE CHILL model: the alchemist's graded body cold (0..1), its rime, the
+                          ice shell and the thaw beat, and the curves movement / lens / score read
+    Enemies.ts            Enemy defs, spawn/damage/kill, per-kind AI
+  creatures/              Creature mind, pose and the Rain World body layer (docs/CREATURES.md)
+    rig/                  Verlet chunks with cell collision + liquid drag, chains, gripping
+                          IK legs, pressurised soft bodies — tick-owned, never saved
+    species/              Per-body-plan rigs (lizard, gel, bat, imp, wisp, brute, mage,
+                          serpents, rootloper) + the registry tickCreaturePose steps
+    worldTouch.ts         Footfalls, surface splashes, ploughed powder, tracks, kicked debris
+    corpses.ts            Limp remains that fall, settle and melt back into grid cells;
+                          the rot rules and Ctx.corpses (blasts, the boot, plate weight)
+    corpseBody.ts         One view of any dead body (rig / Weaver shell / spine): mass, pushes, grip
+    corpseWorld.ts        Remains as mass: fire, lava, acid, frost + shatter, current, splash,
+                          BOWLED strikes, crate shoves (reads and writes real cells)
   game/
     Game.ts               Composition root: builds Ctx, owns the frame order
+    Flora.ts              Felling: watches living wood (chunk support fingerprints),
+                          lifts a severed stand onto a hinged Rapier body, crushes,
+                          re-stamps the log as Wood; kicks, pods, glowseed pickup
+    floraFelling.ts       Pure felling geometry: stand flood, lift, box fit, restamp
+    DeathCinema.ts        The directed death: push-in, grade, heartbeats, letterbox, title beat
+    Chill.ts              THE CHILL system: samples cold and heat cells round the body, steps the
+                          model, and makes the world answer in real cells (a rime-ice skin on
+                          waded water, hoarfrost prints, breath steam, shed snow/ice); chillMoment
+                          events; the wind loop and slowing heart (docs/FEEL.md "The chill")
     WaveDirector.ts       createWaveState() — the small kill/counter state that
                           outlived the retired wave-survival director
-    surfaceIntro.ts       D1 Noita-style surface-intro arrival predicates
-                          (isOnIntroSurface / introArrivalSpawn), shared by
-                          Levels and IntroProgression
+    surfaceIntro.ts       Surface-intro arrival predicates (isOnIntroSurface /
+                          introArrivalSpawn) for Levels; no generated level has
+                          a surface since D1 became the Breathing Works
   world/
     CaveGenerator.ts      Generation pipeline host: skeleton dispatch + paint + decorations
     carve.ts              Pure carve primitives over the work buffer (incl. ensureConnectivity)
     skeleton/             Per-biome cave topology strategies (baseline + six bespoke)
     connect.ts            connectToCaves/carvePocket + PlacementLedger (reserved rects)
+    fixtureFooting.ts     The footing contract: fixtures' footings are sealed ground for
+                          later tunnels; after the last carve every bowl/basin/body is
+                          re-stamped and stood on ground (fail-open, never cuts a route)
+    floraKit.ts           The 14 plant species as real-cell growers (Planter: writes only open cells)
+    floraPass.ts          Floors 2-4: flora puzzle rooms + dressing on a forked 'flora' stream
+    worksFlora.ts         Floor 1's hand-planted flora and the Seed Cellar puzzle
     prefabs/              Built-in PrefabDef registry + seeded placement pass into levels
     crownPalette.ts       Transcribed crown tint math (Builder crownTint pass)
     fortress.ts           Multi-material real-cell fortress stamp
@@ -104,8 +142,24 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
   render/
     Renderer.ts           Three.js renderer/composer/bloom/PostFx + camera quad transforms
     Camera.ts             Lerp follow, idle zoom, sim-bounds derivation
-    Background.ts         Parallax backdrop layers (baked once)
+    Background.ts         Parallax backdrop layers (baked once): the classic two
+                          refinery plates (sandbox, Builder playtests, author overrides)
+    depth/                Layered scenery (config/depthKits, one kit per biome
+                          + a generic fallback): DepthScene is the compositors'
+                          ParallaxLayers — the kit's 3–5 planes ride the five
+                          backdrop slots (CPU/WebGL2/WebGPU draw them unchanged,
+                          each slot with a light response so the lantern skips
+                          far planes); procedural plane art (raster/motifs/kitArt,
+                          baked one plane per frame, haze = atmospheric
+                          perspective); the foreground occluder plane (a quad
+                          over the frame: ForegroundGL / the WebGPU TSL twin)
+                          faded by the reveal field (screen centre, player,
+                          creatures, pickups, hazards, the telekinesis tether);
+                          stateless depth particles drawn through the overlay
     Lighting.ts           Half-res RGB light field, directional sweeps, wand raycast
+    PostFx.ts             Post pass after bloom: aberration, grain, hurt pulse, the death grade,
+                          and the chill's lens (cold grade + frost growing in from the edges;
+                          chillLens.ts is the one reading both it and the WebGPU twin share)
     FrameComposer.ts      Per-pixel frame composition into the GPU DataTexture
     ComposeShader.ts      GPU terrain pass (postFx.gpuCompose): the FrameComposer
                           loop as a fragment shader + world-window packer + sprite
@@ -115,9 +169,41 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
                           FrameComposer and ComposeShader read (the latter
                           interpolates it into GLSL) so the CPU/GPU sky (gradient,
                           sun, drifting clouds, parallax hills) can never drift
-    sprites/              Procedural pixel sprites (player wizard, enemies)
+    sprites/              Procedural pixel sprites (player wizard; CreatureArt dispatches creatures)
+    creatures/            Creature rasterizer: z-buffered 2.5D volumes with analytic
+                          normals, OKLab ramps, field-derived key light, sel-out, glass
+                          (blendFinePx/blitFine) + one art module per species + rig lights
+    sprites/FineArt.ts    Presentation-resolution kit: Pen primitives (rods,
+                          wheels, cables, plates, rivets), the EPX cell-capture
+                          upsample with a one-pixel rim, bitmap blit, view
+                          culling. Every sprite family that is not creature
+                          art draws through it so the frame shares one grain
+    TeaMachineLinkages.ts Bell & Tea Engine linkage drawings: wheels, cables
+                          and rods follow solver poses + real plate travel
+    WorksFixtures.ts      D1 fixtures: barricade straps + sign, the Lower Bell
+                          floor grate's archway, lock bell and sliding bars
   audio/
-    AudioEngine.ts        Procedural WebAudio SFX synthesis
+    AudioEngine.ts        Procedural WebAudio SFX synthesis; mix buses -> glue
+                          compressor -> limiter -> soft clip -> master
+    mix.ts                Pure mix math: volume taper, bus levels, placeSound
+                          (pan / distance / air-absorption from the camera centre)
+    Stingers.ts           Run-event stingers (alchemyKill, phialsChanged,
+                          runEnded, clipSaved) — events in, audio calls out
+    HabitatAudio.ts       Listener placement + footfall / creature-movement cues
+    MusicDirector.ts      The score: streams public/audio/music via media elements
+                          into the music bus; equal-power crossfades on the audio
+                          clock; title / floor / hunted / boss / Sanctum / Tea
+                          Engine / Workshop / verdict cues; silent until a gesture
+    musicRules.ts         Pure director rules: cue choice, threat + hysteresis,
+                          fade lengths, level dips (tests/music-director.test.ts)
+    Narrator.ts           The docent: voices shown text by narrationKey on the
+                          voice bus, ducks music + ambience; narrationRules.ts
+                          holds its manners (one line, cooldown, once a session)
+    narrationText.ts      Text normalisation + clip keys, shared with the offline
+                          generator (scripts/audio/voice-lines.mjs)
+  content/audio/          score.generated.ts + narration.generated.ts (written by
+                          scripts/audio/gen-music.mjs / gen-voice.mjs) and
+                          scoreManifest.ts (AUDITION_ENTRIES, dev audition only)
   input/
     InputManager.ts       Mouse/keyboard handlers, mode switching
   ui/
@@ -125,6 +211,7 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     Toolbar.ts            Left panel: materials, spells, world gen, enemy droppers
     Inspector.ts          Right panel: global/PostFx sliders + dynamic per-material/spell params
     Hud.ts                In-canvas HUD: vitals, hotbar, banners, game-over overlay
+    Callouts.ts           World-anchored combat words (alchemyKill / combatCallout), chains
     WandBench.ts          Card slotting plus debug-only potion/elixir/power controls
     ConsoleOverlay.ts     Backquote dev-console shell backed by game/console commands
 ```
@@ -214,7 +301,10 @@ constants assume it — do not "unify" it without retuning the whole game.
 `frameCount++ → camera.update → camera.updateSimBounds → grimoireInteractions.update →
 simulation.update (substeps:
 new moved epoch → harvester → electrical → projectiles → shockwave aging → material sweep →
-ice/vines pass) → playerCtl.update → flask.update → enemyCtl.update → rigidBodies.update →
+ice/vines pass) → playerCtl.update → chill.update (the body's cold follows where it now
+stands; movement reads its moveK next tick) → flask.update → enemyCtl.update → flora.update (a stand the
+sim severed becomes a hinged body that steps in the same solver pass; settled logs re-stamp) →
+rigidBodies.update →
 vineStrands.update → levels.update → pickups.update → mechanisms.update → critters.update →
 brewing.update → hints.update → introProgression.update → wands.update → particles.update → lightning.update →
 compose pixels/light → HUD update (even frames, play mode) → minimap.update →

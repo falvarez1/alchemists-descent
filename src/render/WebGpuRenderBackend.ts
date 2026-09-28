@@ -2,11 +2,13 @@ import {
   ACESFilmicToneMapping,
   DataTexture,
   FloatType,
+  LinearFilter,
   NearestFilter,
   NoColorSpace,
   NoToneMapping,
   RGBAFormat,
   RenderPipeline,
+  UnsignedByteType,
   SRGBColorSpace,
   StorageTexture,
   Vector2,
@@ -15,14 +17,19 @@ import {
 import {
   Fn,
   clamp,
+  abs,
   dot,
   float,
+  floor,
   fract,
+  length,
   max,
+  min,
   mix,
   renderOutput,
   sin,
   smoothstep,
+  step,
   texture,
   uniform,
   uv,
@@ -33,8 +40,10 @@ import {
 
 import { RENDER_H, RENDER_W, VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx, RenderSettings } from '@/core/types';
+import { REVEAL_CELL } from '@/render/depth/reveal';
 import type {
   CompositorLens,
+  ForegroundSource,
   LightField,
   OverlaySurface,
   ParallaxLayers,
@@ -46,6 +55,10 @@ import type {
 } from '@/render/pixels';
 import { WebGpuComposeBridge, webGpuComposeUnrequestedStatus } from '@/render/WebGpuComposeBridge';
 import { WebGpuDeviceLifecycle } from '@/render/WebGpuDeviceLifecycle';
+import { describeGpu, type GpuInfo } from '@/render/gpuInfo';
+import { cameraPresentationOffset } from '@/render/presentation';
+import { chillLens } from '@/render/chillLens';
+import type { Node as ChillNode } from 'three/webgpu';
 import { WebGpuLiveCompose } from '@/render/WebGpuLiveCompose';
 
 interface NavigatorWithGpu {
@@ -62,6 +75,7 @@ interface ThreeGpuBackendProbe {
     features?: Set<string>;
     limits?: Record<string, number>;
     lost?: Promise<{ reason?: string; message?: string }>;
+    adapterInfo?: { vendor?: string; architecture?: string; description?: string };
     destroy?(): void;
     queue?: { onSubmittedWorkDone?(): Promise<void> };
   };
@@ -81,7 +95,9 @@ const WEBGPU_COMPOSE_LIMIT_KEYS = [
 ] as const;
 
 type TslUvNode = NonNullable<Parameters<typeof texture>[1]>;
-type TslRgbNode = ReturnType<typeof texture>['rgb'];
+/** What `texture(...).rgb` yields: a vec3 node (three 0.186's types no longer expose the swizzle on TextureNode). */
+type TslRgbNode = ChillNode<'vec3'>;
+type TslNode<T extends string> = ChillNode<T>;
 type ToneMappingMode = typeof ACESFilmicToneMapping | typeof NoToneMapping;
 
 function backendName(renderer: WebGPURenderer): 'webgpu' | 'webgl2' | 'unknown' {
@@ -222,11 +238,36 @@ export class WebGpuRenderBackend implements RendererBackend {
   private readonly aberration = uniform(0.0005);
   private readonly grain = uniform(0.028);
   private readonly hurt = uniform(0);
+  /** THE CHILL (render/chillLens): the grade and the frost's reach and ceiling — PostFx's twin. */
+  private readonly chill = uniform(0);
+  private readonly chillFrost = uniform(0);
+  private readonly chillCap = uniform(0.55);
   private readonly time = uniform(0);
   private readonly quadOffset = uniform(new Vector2(0, 0));
   private readonly quadScale = uniform(new Vector2(1 + 4 / VIEW_W, 1 + 4 / VIEW_H));
 
-  constructor(holder: HTMLElement, settings: RenderSettings) {
+  // Depth kit foreground occluders (render/depth; ForegroundLayerGL is the WebGL twin).
+  private readonly fgEnabled = uniform(0);
+  private readonly fgRenderCam = uniform(new Vector2());
+  private readonly fgCam = uniform(new Vector2());
+  private readonly fgParallax = uniform(1.4);
+  private readonly fgScale = uniform(1.5);
+  private readonly fgOpacity = uniform(0);
+  private readonly fgSize = uniform(new Vector2(1, 1));
+  private readonly fgRevealSize = uniform(new Vector2(1, 1));
+  private fgTexture: DataTexture;
+  private readonly fgRevealTexture: DataTexture;
+  private readonly fgTextureNodes: ReturnType<typeof texture>[] = [];
+  private fgVersion = -1;
+  private fgRevealVersion = -1;
+  private readonly foreground: ForegroundSource | null;
+
+  constructor(holder: HTMLElement, settings: RenderSettings, foreground: ForegroundSource | null = null) {
+    this.foreground = foreground;
+    this.fgTexture = WebGpuRenderBackend.byteTexture(new Uint8Array(4), 1, 1, NearestFilter);
+    const reveal = foreground?.reveal;
+    this.fgRevealTexture = WebGpuRenderBackend.byteTexture(reveal?.bytes ?? new Uint8Array(4), reveal?.w ?? 1, reveal?.h ?? 1, LinearFilter);
+    this.fgRevealSize.value.set(reveal?.w ?? 1, reveal?.h ?? 1);
     this.requestedBackend = settings.backend;
     this.flags = featureFlags(settings);
     this.canvas = document.createElement('canvas');
@@ -338,6 +379,64 @@ export class WebGpuRenderBackend implements RendererBackend {
     return this.disposed || generation !== this.initGeneration;
   }
 
+  private static byteTexture(data: Uint8Array, w: number, h: number, filter: typeof NearestFilter | typeof LinearFilter): DataTexture {
+    const tex = new DataTexture(data, w, h, RGBAFormat, UnsignedByteType, undefined, undefined, undefined, filter, filter,
+      undefined, NoColorSpace);
+    tex.generateMipmaps = false;
+    tex.flipY = false;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  /**
+   * The foreground occluder plane over a sampled frame colour: the same
+   * mapping as ForegroundLayerGL (plane texel = floor((renderCam + v + cam·(P−1)) / scale),
+   * alpha × reveal field). `sampleUv` is the compose-texture uv (rows bottom-first).
+   */
+  private withForeground(rgb: TslRgbNode, sampleUv: ReturnType<WebGpuRenderBackend['pixelUv']>): TslRgbNode {
+    if (!this.foreground) return rgb;
+    const view = vec2(sampleUv.x.mul(VIEW_W), float(1).sub(sampleUv.y).mul(VIEW_H));
+    const plane = this.fgRenderCam.add(view).add(this.fgCam.mul(this.fgParallax.sub(1)));
+    const t = floor(plane.div(this.fgScale));
+    const inside = step(0, t.x).mul(step(0, t.y)).mul(step(t.x, this.fgSize.x.sub(1))).mul(step(t.y, this.fgSize.y.sub(1)));
+    const s = texture(this.fgTexture, t.add(0.5).div(this.fgSize));
+    this.fgTextureNodes.push(s);
+    const rv = texture(this.fgRevealTexture, view.div(REVEAL_CELL).add(0.5).div(this.fgRevealSize));
+    const a = s.a.mul(this.fgOpacity).mul(rv.r).mul(inside).mul(this.fgEnabled);
+    return mix(rgb, s.rgb.mul(rv.g.mul(0.55).add(0.45)), a);
+  }
+
+  private syncForeground(ctx: Ctx): void {
+    const src = this.foreground;
+    const bmp = src?.bitmap ?? null;
+    this.fgEnabled.value = src && src.enabled && bmp && src.opacity > 0 ? 1 : 0;
+    if (!src || !bmp || this.fgEnabled.value === 0) return;
+    if (this.fgVersion !== src.version) {
+      this.fgVersion = src.version;
+      const data = new Uint8Array(bmp.pixels.buffer, bmp.pixels.byteOffset, bmp.pixels.byteLength);
+      const img = this.fgTexture.image as { data: Uint8Array; width: number; height: number };
+      if (img.width === bmp.width && img.height === bmp.height) {
+        img.data = data;
+        this.fgTexture.needsUpdate = true;
+      } else {
+        this.fgTexture.dispose();
+        this.fgTexture = WebGpuRenderBackend.byteTexture(data, bmp.width, bmp.height, NearestFilter);
+        for (const node of this.fgTextureNodes) node.value = this.fgTexture;
+      }
+      this.fgSize.value.set(bmp.width, bmp.height);
+    }
+    if (this.fgRevealVersion !== src.reveal.version) {
+      this.fgRevealVersion = src.reveal.version;
+      this.fgRevealTexture.needsUpdate = true;
+    }
+    const cam = ctx.camera;
+    this.fgRenderCam.value.set(cam.renderX, cam.renderY);
+    this.fgCam.value.set(cam.presentationX ?? cam.x, cam.presentationY ?? cam.y);
+    this.fgParallax.value = src.parallax;
+    this.fgScale.value = src.scale;
+    this.fgOpacity.value = src.opacity;
+  }
+
   private pixelUv() {
     const p = uv();
     const ndc = p.mul(2).sub(1);
@@ -352,7 +451,10 @@ export class WebGpuRenderBackend implements RendererBackend {
     sampleRgb: (sampleUv: TslUvNode) => TslRgbNode,
     toneMapping: ToneMappingMode = ACESFilmicToneMapping,
   ): ReturnType<typeof renderOutput> {
-    const baseColor = Fn(() => vec4(sampleRgb(this.pixelUv()), 1.0))();
+    const baseColor = Fn(() => {
+      const p = this.pixelUv();
+      return vec4(this.withForeground(sampleRgb(p), p), 1.0);
+    })();
     return renderOutput(baseColor, toneMapping, SRGBColorSpace);
   }
 
@@ -369,14 +471,15 @@ export class WebGpuRenderBackend implements RendererBackend {
 
     const postColor = Fn(() => {
       const p = this.pixelUv();
-      const base = sampleRgb(p);
+      const base = this.withForeground(sampleRgb(p), p);
       const centered = p.sub(0.5);
       const r2 = dot(centered, centered);
       const aberrationShift = centered.mul(r2.mul(this.aberration).mul(40.0));
+      const pr = p.sub(aberrationShift), pb = p.add(aberrationShift);
       const aberrated = vec3(
-        sampleRgb(p.sub(aberrationShift)).r,
+        this.withForeground(sampleRgb(pr), pr).r,
         base.g,
-        sampleRgb(p.add(aberrationShift)).b,
+        this.withForeground(sampleRgb(pb), pb).b,
       );
 
       const c0 = brightColor(base).mul(0.28);
@@ -410,12 +513,43 @@ export class WebGpuRenderBackend implements RendererBackend {
         .mul(smoothstep(0.18, 0.55, r2))
         .mul(sin(this.time.mul(0.12)).mul(0.25).add(0.75))
         .mul(0.6);
-      const lensed = mix(withGrain, vec3(0.45, 0.02, 0.04), hurtMix);
+      const hurtLensed = mix(withGrain, vec3(0.45, 0.02, 0.04), hurtMix);
+      const lensed = this.chillLensNode(hurtLensed, p);
       const post = mix(bloomBase, lensed, this.lensEnabled).mul(this.exposure);
       return vec4(post, 1.0);
     })();
 
     return renderOutput(postColor, toneMapping, SRGBColorSpace);
+  }
+
+  /**
+   * THE CHILL on the WebGPU lens: the same cold grade as render/PostFx, and a
+   * lighter frost — milky, ragged-fronted, speckled with crystals — growing in
+   * from the edges under the same reach, safe ellipse and opacity ceiling
+   * (PostFx's WebGL frost adds the ridged fronds and lattice needles).
+   */
+  private chillLensNode(col: TslRgbNode, p: ReturnType<WebGpuRenderBackend['pixelUv']>): TslRgbNode {
+    const lum = dot(col, vec3(0.299, 0.587, 0.114));
+    const cold = vec3(lum, lum, lum).mul(vec3(0.84, 0.97, 1.2));
+    const graded = mix(col, cold, this.chill.mul(0.52)).mul(mix(vec3(1, 1, 1), vec3(0.88, 0.97, 1.1), this.chill));
+    const hash = (q: TslNode<'vec2'>): TslNode<'float'> => fract(sin(dot(q, vec2(12.9898, 78.233))).mul(43758.5453));
+    const vnoise = (q: TslNode<'vec2'>): TslNode<'float'> => {
+      const i = floor(q), f = fract(q), u = f.mul(f).mul(f.mul(-2).add(3));
+      return mix(mix(hash(i), hash(i.add(vec2(1, 0))), u.x), mix(hash(i.add(vec2(0, 1))), hash(i.add(vec2(1, 1))), u.x), u.y);
+    };
+    const aspect = RENDER_W / RENDER_H;
+    const q = vec2(p.x.mul(aspect), p.y);
+    const d = min(min(p.x, float(1).sub(p.x)).mul(aspect), min(p.y, float(1).sub(p.y)));
+    const reach = this.chillFrost.mul(0.2);
+    const n = vnoise(q.mul(7)).mul(0.6).add(vnoise(q.mul(15)).mul(0.4));
+    const front = reach.mul(n.mul(0.75).add(0.55)).sub(d);
+    const age = clamp(front.div(max(reach.mul(0.55), 0.02)), 0, 1);
+    const speck = smoothstep(0.55, 0.9, vnoise(q.mul(90)).mul(float(1).sub(abs(vnoise(q.mul(34)).mul(2).sub(1)))));
+    const safe = smoothstep(1.0, 1.2, length(p.sub(0.5).div(vec2(0.38, 0.33))));
+    const frost = clamp(age.mul(age).mul(0.8).add(speck.mul(float(0.9).sub(age.mul(0.5)))), 0, 1)
+      .mul(step(0.0, front)).mul(safe).mul(step(0.001, this.chillFrost));
+    const ice = mix(graded.mul(vec3(0.9, 1.0, 1.12)).add(vec3(0.03, 0.045, 0.06)), vec3(0.72, 0.84, 0.95), age.mul(0.35).add(0.35));
+    return mix(graded, ice, frost.mul(this.chillCap));
   }
 
   private buildBaseOutputNode(toneMapping: ToneMappingMode = ACESFilmicToneMapping): ReturnType<typeof renderOutput> {
@@ -693,14 +827,23 @@ export class WebGpuRenderBackend implements RendererBackend {
         lostCount: 0,
         restoredCount: 0,
       },
+      gpu: this.gpuInfo(),
     };
+  }
+
+  /** GPUDevice.adapterInfo names the adapter the browser picked (Chrome 131+). */
+  private gpuInfo(): GpuInfo | undefined {
+    const info = (this.renderer.backend as unknown as ThreeGpuBackendProbe).device?.adapterInfo;
+    if (!info) return undefined;
+    return describeGpu([info.vendor, info.description || info.architecture].filter(Boolean).join(' '));
   }
 
   render(ctx: Ctx): void {
     if (this.disposed) return;
     if (this.initState !== 'active') return;
-    let ox = -(ctx.camera.x - Math.floor(ctx.camera.x)) * (2 / VIEW_W);
-    let oy = (ctx.camera.y - Math.floor(ctx.camera.y)) * (2 / VIEW_H);
+    const residual = cameraPresentationOffset(ctx.camera);
+    let ox = -residual.x * (2 / VIEW_W);
+    let oy = residual.y * (2 / VIEW_H);
     if (ctx.fx.screenShake > 0.0005) {
       ox += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
       oy += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
@@ -721,8 +864,13 @@ export class WebGpuRenderBackend implements RendererBackend {
       ctx.state.mode === 'play' && !ctx.player.dead
         ? (Math.max(0, 0.35 - ctx.player.hp / ctx.player.maxHp) / 0.35) * post.hurtPulse
         : 0;
+    const lens = chillLens(ctx);
+    this.chill.value = lens.grade;
+    this.chillFrost.value = lens.frost;
+    this.chillCap.value = lens.cap;
 
     this.quadOffset.value.set(ox * ctx.camera.zoom, oy * ctx.camera.zoom);
+    this.syncForeground(ctx);
     this.quadScale.value.set(
       (1 + 4 / VIEW_W) * ctx.camera.zoom,
       (1 + 4 / VIEW_H) * ctx.camera.zoom,
@@ -762,6 +910,8 @@ export class WebGpuRenderBackend implements RendererBackend {
     this.liveCompose?.dispose();
     this.liveCompose = null;
     this.texture.dispose();
+    this.fgTexture.dispose();
+    this.fgRevealTexture.dispose();
     this.renderer.dispose();
     this.canvas.remove();
   }

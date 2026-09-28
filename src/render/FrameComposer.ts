@@ -1,4 +1,14 @@
+import { drawStoryLayer } from '@/render/story/StoryLayer';
+import { drawPlayerRagdollSprite } from '@/render/sprites/PlayerRagdollSprite';
+import { drawTrickshotOverlay } from '@/render/TrickshotOverlay';
+import { drawFallingWater } from '@/render/FallingWater';
+import { drawOrganism } from '@/render/organisms';
+import { isOrganism } from '@/game/organisms/types';
 import type { Ctx, Enemy, RuntimeDecor } from '@/core/types';
+import { RenderPoses, interpolateBody } from '@/render/RenderPoses';
+import { activeFloorLook, drawWorksLandmarks, prepareTerrainColors } from '@/render/TerrainArt';
+import { drawHabitatScenery, drawVineFoliage } from '@/render/HabitatScenery';
+import { drawFallingFlora } from '@/render/FloraArt';
 import { PLAYER_HALF_W } from '@/core/types';
 import type {
   CompositorLens,
@@ -17,15 +27,34 @@ import {
   LIGHT_KNEE_SLOPE,
   LIGHT_KNEE_START,
   LIGHT_READABILITY_FLOOR,
+  DARK_ADAPT,
+  DARK_AIR_GLOW,
+  DARK_AIR_B,
+  DARK_AIR_G,
+  DARK_AIR_R,
+  DARK_FLOOR_B,
+  DARK_FLOOR_G,
+  DARK_FLOOR_R,
+  renderAmbient,
   SELF_GLOW_BASE,
   SELF_GLOW_SCALE,
   VIGNETTE_BASE,
 } from '@/render/lightingModel';
 import { SKY } from '@/render/skyAtmosphere';
+import { backdropOrigin, backdropTexel } from '@/render/depth/parallax';
+import { openAtCell } from '@/core/darkness';
 import { PICKUP_COLOR } from '@/core/pickupDefs';
+import { drawHeldLeg, drawLooseLeg } from '@/render/sprites/CreatureArt';
+import { drawTelekinesis } from '@/render/sprites/TelekinesisArt';
+import { looseLegPose } from '@/combat/LooseWeaverLeg';
 import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { drawMechanismSprite, drawRuneGlyphSprite } from '@/render/sprites/MechanismSprites';
+import { drawLumenBlooms } from '@/render/sprites/LightDeviceSprites';
+import { drawTeaMachineDecor } from '@/render/TeaMachineDecor';
+import { drawGoldPile } from '@/render/sprites/TreasureSprites';
+import { drawCorpses, hasSpeciesArt } from '@/render/creatures';
+import { BRASS, BRASS_D, BRASS_L, INK, IRON, IRON_D, Pen, STEEL, STEEL_D, STEEL_L, cameraView } from '@/render/sprites/FineArt';
 import {
   drawDigBeam,
   drawLightningArcs,
@@ -33,11 +62,18 @@ import {
   drawProjectiles,
 } from '@/render/sprites/FxSprites';
 
+/** No tint: the neutral clear-water seen colour (a look without waterSeen). */
+const WATER_SEEN_NONE = [1, 1, 1] as const;
+
 /** Reusable per-frame descriptor for a visible backdrop layer (see activeBackdropLayers). */
 interface ActiveBackdropLayer {
   pixels: Uint8ClampedArray;
   width: number;
   opacity: number;
+  /** opacity / 255: byte alpha → coverage in one multiply. */
+  alphaScale: number;
+  /** Share of real light the layer takes (depth kits: far planes little, near planes most). */
+  lit: number;
   xSamples: Int32Array;
   ySamples: Int32Array;
 }
@@ -100,9 +136,42 @@ export class FrameComposer implements PixelSurface {
   private readonly lenses: CompositorLens[] = [];
   private readonly backdropLayerPool: ActiveBackdropLayer[] = Array.from(
     { length: 5 },
-    () => ({ pixels: EMPTY_BACKDROP_PIXELS, width: 0, opacity: 0, xSamples: EMPTY_SAMPLES, ySamples: EMPTY_SAMPLES }),
+    () => ({ pixels: EMPTY_BACKDROP_PIXELS, width: 0, opacity: 0, alphaScale: 0, lit: 1, xSamples: EMPTY_SAMPLES, ySamples: EMPTY_SAMPLES }),
   );
   private readonly activeBackdropLayers: ActiveBackdropLayer[] = [];
+  /** Scratch: the drowned distance seen through a clear water body (CLEAR WATER). */
+  private readonly waterSeenRgb = new Float32Array(3);
+  private readonly poses = new RenderPoses();
+  private alpha = 1;
+  private drawOffsetX = 0;
+  private drawOffsetY = 0;
+
+  capturePoses(ctx: Ctx): void {
+    this.poses.capture(ctx.camera); this.poses.capture(ctx.player);
+    for (const enemy of ctx.enemies) this.poses.capture(enemy);
+  }
+
+  hasMovingPoses(ctx: Ctx): boolean {
+    const leg = ctx.player.legClub?.rig;
+    const legMoving = !!leg && (Math.hypot(leg.knee.x - leg.previousKnee.x, leg.knee.y - leg.previousKnee.y) > .001
+      || Math.hypot(leg.hip.x - leg.previousHip.x, leg.hip.y - leg.previousHip.y) > .001);
+    const looseMoving = ctx.levels.current?.pickups.some(p => {
+      if (p.taken || p.kind !== 'weaverleg') return false;
+      const pose = looseLegPose(p);
+      return pose && (Math.hypot(pose.hip.x - pose.previousHip.x, pose.hip.y - pose.previousHip.y) > .001
+        || Math.hypot(pose.hand.x - pose.previousHand.x, pose.hand.y - pose.previousHand.y) > .001);
+    });
+    // Awake rigid bodies are drawn interpolated, so a frame between ticks
+    // must still compose while one of them is in flight.
+    const bodyMoving = ctx.rigidBodies.bodies.some(b => !b.sleeping && b.previousX !== undefined
+      && (b.previousX !== b.x || b.previousY !== b.y || b.previousAngle !== b.angle));
+    return legMoving || looseMoving || bodyMoving || (!!ctx.rigidBodies.playerRagdoll && Object.values(ctx.rigidBodies.playerRagdoll.parts).some(b => !b.sleeping)) || this.poses.moving(ctx.camera) || this.poses.moving(ctx.player) || ctx.enemies.some(e => this.poses.moving(e));
+  }
+
+  private positionSprite(body: { x: number; y: number }): void {
+    this.drawOffsetX = this.poses.offset(body, 'x', this.alpha);
+    this.drawOffsetY = this.poses.offset(body, 'y', this.alpha);
+  }
 
   constructor(
     private readonly target: RenderTarget,
@@ -124,13 +193,22 @@ export class FrameComposer implements PixelSurface {
   // GPU path the same writes land in the overlay (a=1 tells the shader to
   // drop the terrain underneath — exactly what overwriting the buffer did).
   setPx(x: number, y: number, r: number, g: number, b: number): void {
-    const vx = Math.round(x) - this.renderCamX,
-      vy = Math.round(y) - this.renderCamY;
+    const vx = Math.round(x + this.drawOffsetX) - this.renderCamX,
+      vy = Math.round(y + this.drawOffsetY) - this.renderCamY;
     if (vx < 0 || vx >= VIEW_W || vy < 0 || vy >= VIEW_H) return;
     const pi = (VIEW_H - 1 - vy) * VIEW_W + vx;
     const idx = pi * 4;
     const overlay = this.overlay;
     if (overlay !== null) {
+      if ((overlay.scale ?? 1) > 1) {
+        const scale = overlay.scale!, width = VIEW_W * scale;
+        for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) {
+          const fine = ((VIEW_H - 1 - vy) * scale + dy) * width + vx * scale + dx, offset = fine * 4;
+          overlay.data[offset] = r; overlay.data[offset + 1] = g; overlay.data[offset + 2] = b; overlay.data[offset + 3] = 1;
+          overlay.mark(fine);
+        }
+        return;
+      }
       const d = overlay.data;
       d[idx] = r;
       d[idx + 1] = g;
@@ -146,14 +224,123 @@ export class FrameComposer implements PixelSurface {
     pixelData[idx + 3] = 1.0;
   }
 
+  get pixelStep(): number { return 1 / (this.overlay?.scale ?? 1); }
+
+  setFinePx(x: number, y: number, r: number, g: number, b: number): void {
+    const overlay = this.overlay, scale = overlay?.scale ?? 1;
+    if (!overlay || scale === 1) { this.setPx(x, y, r, g, b); return; }
+    const vx = Math.round((x + this.drawOffsetX - this.renderCamX) * scale);
+    const vy = Math.round((y + this.drawOffsetY - this.renderCamY) * scale);
+    const width = VIEW_W * scale, height = VIEW_H * scale;
+    if (vx < 0 || vx >= width || vy < 0 || vy >= height) return;
+    const pi = (height - 1 - vy) * width + vx, idx = pi * 4;
+    overlay.data[idx] = r; overlay.data[idx + 1] = g; overlay.data[idx + 2] = b; overlay.data[idx + 3] = 1;
+    overlay.mark(pi);
+  }
+
+  /**
+   * Premultiplied alpha-over. On the GPU overlay the result keeps a partial
+   * alpha, stored as a*0.5 (the shaders read ov.a in (0, 0.5] as "terrain
+   * shows through by 1 - 2a"; 0 stays additive, >0.5 stays opaque). On the
+   * CPU path the terrain is already in the buffer, so blend it directly.
+   */
+  blendFinePx(x: number, y: number, r: number, g: number, b: number, a: number): void {
+    if (a >= 0.999) { this.setFinePx(x, y, r, g, b); return; }
+    if (a <= 0.001) { this.addFinePx(x, y, r, g, b); return; }
+    const overlay = this.overlay, scale = overlay?.scale ?? 1;
+    if (!overlay) {
+      const vx = Math.round(x + this.drawOffsetX) - this.renderCamX,
+        vy = Math.round(y + this.drawOffsetY) - this.renderCamY;
+      if (vx < 0 || vx >= VIEW_W || vy < 0 || vy >= VIEW_H) return;
+      const idx = ((VIEW_H - 1 - vy) * VIEW_W + vx) * 4, d = this.target.pixelData, k = 1 - a;
+      d[idx] = d[idx] * k + r; d[idx + 1] = d[idx + 1] * k + g; d[idx + 2] = d[idx + 2] * k + b; d[idx + 3] = 1;
+      return;
+    }
+    const vx = Math.round((x + this.drawOffsetX - this.renderCamX) * scale);
+    const vy = Math.round((y + this.drawOffsetY - this.renderCamY) * scale);
+    const width = VIEW_W * scale, height = VIEW_H * scale;
+    if (vx < 0 || vx >= width || vy < 0 || vy >= height) return;
+    const pi = (height - 1 - vy) * width + vx, idx = pi * 4, d = overlay.data, k = 1 - a;
+    const dstA = d[idx + 3] > 0.5 ? 1 : d[idx + 3] * 2;
+    const outA = a + dstA * k;
+    d[idx] = r + d[idx] * k; d[idx + 1] = g + d[idx + 1] * k; d[idx + 2] = b + d[idx + 2] * k;
+    d[idx + 3] = outA >= 0.999 ? 1 : outA * 0.5;
+    overlay.mark(pi);
+  }
+
+  /**
+   * One call per creature instead of thousands: the creature rasterizer's
+   * grid is exactly the overlay's, so each block pixel maps to one overlay
+   * pixel with a single rounded origin (identical to per-pixel setFinePx).
+   */
+  blitFine(x0: number, y0: number, w: number, h: number, rgb: Float32Array, a: Float32Array, glow: Float32Array | null): void {
+    const overlay = this.overlay, scale = overlay?.scale ?? 1;
+    if (!overlay || scale === 1) {
+      const s = 1 / scale;
+      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+        const k = j * w + i, al = a[k];
+        const x = x0 + i * s, y = y0 + j * s;
+        if (al >= 0.999) this.setFinePx(x, y, rgb[k * 3], rgb[k * 3 + 1], rgb[k * 3 + 2]);
+        else if (al > 0) this.blendFinePx(x, y, rgb[k * 3], rgb[k * 3 + 1], rgb[k * 3 + 2], al);
+        if (glow && (glow[k * 3] > 0 || glow[k * 3 + 1] > 0 || glow[k * 3 + 2] > 0)) this.addFinePx(x, y, glow[k * 3], glow[k * 3 + 1], glow[k * 3 + 2]);
+      }
+      return;
+    }
+    const vx0 = Math.round((x0 + this.drawOffsetX - this.renderCamX) * scale);
+    const vy0 = Math.round((y0 + this.drawOffsetY - this.renderCamY) * scale);
+    const width = VIEW_W * scale, height = VIEW_H * scale, d = overlay.data;
+    const i0 = Math.max(0, -vx0), i1 = Math.min(w, width - vx0);
+    for (let j = 0; j < h; j++) {
+      const vy = vy0 + j;
+      if (vy < 0 || vy >= height) continue;
+      const row = (height - 1 - vy) * width + vx0;
+      for (let i = i0; i < i1; i++) {
+        const k = j * w + i, al = a[k];
+        const hasGlow = glow !== null && (glow[k * 3] > 0 || glow[k * 3 + 1] > 0 || glow[k * 3 + 2] > 0);
+        if (al <= 0 && !hasGlow) continue;
+        const pi = row + i, idx = pi * 4;
+        if (al >= 0.999) {
+          d[idx] = rgb[k * 3]; d[idx + 1] = rgb[k * 3 + 1]; d[idx + 2] = rgb[k * 3 + 2]; d[idx + 3] = 1;
+        } else if (al > 0) {
+          const kk = 1 - al, dstA = d[idx + 3] > 0.5 ? 1 : d[idx + 3] * 2, outA = al + dstA * kk;
+          d[idx] = rgb[k * 3] + d[idx] * kk; d[idx + 1] = rgb[k * 3 + 1] + d[idx + 1] * kk; d[idx + 2] = rgb[k * 3 + 2] + d[idx + 2] * kk;
+          d[idx + 3] = outA >= 0.999 ? 1 : outA * 0.5;
+        }
+        if (hasGlow) { d[idx] += glow![k * 3]; d[idx + 1] += glow![k * 3 + 1]; d[idx + 2] += glow![k * 3 + 2]; }
+        overlay.mark(pi);
+      }
+    }
+  }
+
+  addFinePx(x: number, y: number, r: number, g: number, b: number): void {
+    const overlay = this.overlay, scale = overlay?.scale ?? 1;
+    if (!overlay || scale === 1) { this.addPx(x, y, r, g, b); return; }
+    const vx = Math.round((x + this.drawOffsetX - this.renderCamX) * scale);
+    const vy = Math.round((y + this.drawOffsetY - this.renderCamY) * scale);
+    const width = VIEW_W * scale, height = VIEW_H * scale;
+    if (vx < 0 || vx >= width || vy < 0 || vy >= height) return;
+    const pi = (height - 1 - vy) * width + vx, idx = pi * 4;
+    overlay.data[idx] += r; overlay.data[idx + 1] += g; overlay.data[idx + 2] += b;
+    overlay.mark(pi);
+  }
+
   addPx(x: number, y: number, r: number, g: number, b: number): void {
-    const vx = Math.round(x) - this.renderCamX,
-      vy = Math.round(y) - this.renderCamY;
+    const vx = Math.round(x + this.drawOffsetX) - this.renderCamX,
+      vy = Math.round(y + this.drawOffsetY) - this.renderCamY;
     if (vx < 0 || vx >= VIEW_W || vy < 0 || vy >= VIEW_H) return;
     const pi = (VIEW_H - 1 - vy) * VIEW_W + vx;
     const idx = pi * 4;
     const overlay = this.overlay;
     if (overlay !== null) {
+      if ((overlay.scale ?? 1) > 1) {
+        const scale = overlay.scale!, width = VIEW_W * scale;
+        for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) {
+          const fine = ((VIEW_H - 1 - vy) * scale + dy) * width + vx * scale + dx, offset = fine * 4;
+          overlay.data[offset] += r; overlay.data[offset + 1] += g; overlay.data[offset + 2] += b;
+          overlay.mark(fine);
+        }
+        return;
+      }
       const d = overlay.data;
       d[idx] += r;
       d[idx + 1] += g;
@@ -218,11 +405,17 @@ export class FrameComposer implements PixelSurface {
     }
   }
 
-  compose(ctx: Ctx): void {
-    ctx.camera.renderX = Math.floor(ctx.camera.x);
-    ctx.camera.renderY = Math.floor(ctx.camera.y);
+  compose(ctx: Ctx, alpha = 1): void {
+    this.alpha = alpha;
+    this.drawOffsetX = 0; this.drawOffsetY = 0;
+    ctx.camera.presentationX = ctx.camera.x + this.poses.offset(ctx.camera, 'x', alpha);
+    ctx.camera.presentationY = ctx.camera.y + this.poses.offset(ctx.camera, 'y', alpha);
+    ctx.camera.renderX = Math.floor(ctx.camera.presentationX);
+    ctx.camera.renderY = Math.floor(ctx.camera.presentationY);
     this.renderCamX = ctx.camera.renderX;
     this.renderCamY = ctx.camera.renderY;
+    // Depth scene (render/depth): the floor's kit planes, foreground reveal field.
+    this.layers.sync?.(ctx);
 
     const frameCount = ctx.state.frameCount;
     // Active singularities bend the image around them (inward pull + swirl).
@@ -292,6 +485,8 @@ export class FrameComposer implements PixelSurface {
       this.composeTerrainCpu(ctx, lenses);
     }
 
+    drawWorksLandmarks(this, this.light, ctx);
+    drawHabitatScenery(this, this.light, ctx);
     this.composeOverlays(ctx);
     this.maskVoidBelowWorldFloor(ctx);
 
@@ -306,6 +501,7 @@ export class FrameComposer implements PixelSurface {
         this.overlay = null;
         this.composeTerrainCpu(ctx, lenses);
         this.compositeOverlayToCpu(failedOverlay);
+        this.maskVoidBelowWorldFloor(ctx);
         this.target.markTextureDirty();
       }
     } else {
@@ -316,11 +512,13 @@ export class FrameComposer implements PixelSurface {
   private compositeOverlayToCpu(overlay: OverlaySurface): void {
     const src = overlay.data;
     const dst = this.target.pixelData;
-    for (let i = 0; i < src.length; i += 4) {
-      const r = src[i];
-      const g = src[i + 1];
-      const b = src[i + 2];
-      if (src[i + 3] > 0.5) {
+    const scale = overlay.scale ?? 1;
+    for (let i = 0; i < dst.length; i += 4) {
+      const pixel = i / 4, source = scale === 1 ? i : (Math.floor(pixel / VIEW_W) * scale * VIEW_W * scale + pixel % VIEW_W * scale) * 4;
+      const r = src[source];
+      const g = src[source + 1];
+      const b = src[source + 2];
+      if (src[source + 3] > 0.5) {
         dst[i] = r;
         dst[i + 1] = g;
         dst[i + 2] = b;
@@ -341,8 +539,10 @@ export class FrameComposer implements PixelSurface {
   private composeTerrainCpu(ctx: Ctx, lenses: readonly CompositorLens[]): void {
     const renderCamX = this.renderCamX;
     const renderCamY = this.renderCamY;
+    const presentationX = ctx.camera.presentationX ?? ctx.camera.x;
+    const presentationY = ctx.camera.presentationY ?? ctx.camera.y;
     const frameCount = ctx.state.frameCount;
-    const ambient = ctx.params.global.ambient;
+    const ambient = renderAmbient(ctx);
     const world = ctx.world;
     const worldFloor = world.height;
     // D1 surface intro: Empty cells above this horizon paint as open daytime sky
@@ -366,15 +566,20 @@ export class FrameComposer implements PixelSurface {
     const hillFar = SKY.hillFar;
     const hillNear = SKY.hillNear;
     const types = world.types;
-    const cellColors = world.colors;
+    const cellColors = prepareTerrainColors(ctx);
     const charge = world.charge;
     const materials = ctx.params.materials;
     const { lightR, lightG, lightB, vignette, LW } = this.light;
+    // Designed darkness per light texel (1 = shipped look); see lightingModel DARK_*.
+    // Read SMOOTHLY per cell (core/darkness openAtCell, as the GPU shaders do);
+    // a readable level (all ones) skips the read.
+    const lightOpen = this.light.lightOpen && this.light.openFlat !== true ? this.light.lightOpen : null;
+    const LH = this.light.LH;
     // The vignette[] array bakes the shipped 0.52 strength; rescale per-frame so
     // postFx.vignette tunes it (mirrors the GPU compose's uVignette uniform).
     const vigScale = ctx.state.postFx.vignette / VIGNETTE_BASE;
     const backdropLayers = this.layers.backdropLayers;
-    const backdropProfile = resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
+    const backdropProfile = this.layers.profile ?? resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
     const backdropSettings = backdropProfile.layers;
     const backdropGrade = backdropProfile.grade;
     const backdropExposure = 2 ** backdropGrade.exposure;
@@ -382,6 +587,24 @@ export class FrameComposer implements PixelSurface {
     const backdropContrast = backdropGrade.contrast;
     const backdropInvGamma = 1 / backdropGrade.gamma;
     const backdropSaturation = backdropGrade.saturation;
+    // Per-floor grade + composition variant (config/floorLooks; identity on D1).
+    const floorLook = activeFloorLook(ctx);
+    // A depth kit bakes its own colour and substitutes a (neutral) floor grade.
+    const kitGrade = this.layers.grade ?? null;
+    const tintMul = kitGrade ? kitGrade.mul : floorLook.backdropMul, tintLift = kitGrade ? kitGrade.lift : floorLook.backdropLift;
+    const tintMulR = tintMul[0], tintMulG = tintMul[1], tintMulB = tintMul[2];
+    const tintLiftR = tintLift[0], tintLiftG = tintLift[1], tintLiftB = tintLift[2];
+    const backdropOffsetX = kitGrade ? kitGrade.offsetX : floorLook.backdropOffsetX;
+    const backdropMirror = kitGrade ? kitGrade.mirror : floorLook.backdropMirror;
+    const machinery = kitGrade ? kitGrade.machinery : floorLook.machinery;
+    // Shape-aware floors (FloorLook.natural): the cached colour of an Empty
+    // cell carries its backdrop contact shade (TerrainArt.naturalAlbedo).
+    const natural = cellColors !== world.colors ? floorLook.natural : null;
+    const naturalSat = natural ? (kitGrade ? kitGrade.sat : natural.backdropSat) : 1;
+    const naturalHaze = kitGrade ? kitGrade.haze : natural?.backdropHaze;
+    const hazeR = natural && naturalHaze ? naturalHaze[0] : 0, hazeG = natural && naturalHaze ? naturalHaze[1] : 0;
+    const hazeB = natural && naturalHaze ? naturalHaze[2] : 0;
+    const hazeMix = natural ? (kitGrade ? kitGrade.hazeMix : natural.backdropHazeMix) : 0;
     // Reuse the pooled descriptor array + objects (reset, not reallocated) so
     // the per-frame compose path stays allocation-free (see field declaration).
     const activeBackdropLayers = this.activeBackdropLayers;
@@ -393,26 +616,73 @@ export class FrameComposer implements PixelSurface {
       const scale = Math.max(0.25, setting.scale);
       const xSamples = this.backdropSampleX[i];
       const ySamples = this.backdropSampleY[i];
-      const camX = Math.floor(renderCamX * setting.speed);
-      const camY = Math.floor(renderCamY * setting.speed);
+      // The plane glides with the presentation camera, not the integer one
+      // the frame is composed at (render/depth/parallax backdropOrigin).
+      const originX = backdropOrigin(renderCamX, presentationX, setting.speed);
+      const originY = backdropOrigin(renderCamY, presentationY, setting.speed);
+      const offsetX = setting.offsetX + backdropOffsetX;
       for (let vx = 0; vx < VIEW_W; vx++) {
-        let sx = Math.floor((camX + vx) / scale + setting.offsetX) % layer.width;
-        if (sx < 0) sx += layer.width;
-        xSamples[vx] = sx;
+        const sx = backdropTexel(originX, vx, scale, offsetX, layer.width);
+        // Byte offsets: the hot loop reads pixels[ySamples[vy] + xSamples[vx]].
+        xSamples[vx] = (backdropMirror ? layer.width - 1 - sx : sx) * 4;
       }
       for (let vy = 0; vy < VIEW_H; vy++) {
-        let sy = Math.floor((camY + vy) / scale + setting.offsetY) % layer.height;
-        if (sy < 0) sy += layer.height;
-        ySamples[vy] = sy;
+        ySamples[vy] = backdropTexel(originY, vy, scale, setting.offsetY, layer.height) * layer.width * 4;
       }
       const descriptor = this.backdropLayerPool[activeBackdropLayers.length];
       descriptor.pixels = layer.pixels;
       descriptor.width = layer.width;
-      descriptor.opacity = setting.opacity;
+      descriptor.opacity = Math.min(1, setting.opacity * (layer.id === 'second' ? machinery : 1));
+      descriptor.alphaScale = descriptor.opacity / 255;
+      descriptor.lit = layer.lit ?? 1;
       descriptor.xSamples = xSamples;
       descriptor.ySamples = ySamples;
       activeBackdropLayers.push(descriptor);
     }
+    // CLEAR WATER (floorLooks waterClarity; ComposeShader mirrors it): a water
+    // body shows the kit's planes through it, graded like the open backdrop,
+    // washed toward grey and tinted by the water, with a slow refraction sway.
+    const waterClarity = natural?.waterClarity ?? 0;
+    const waterBodyRgb = (floorLook.waterBody[0] << 16) | (floorLook.waterBody[1] << 8) | floorLook.waterBody[2];
+    const waterSeen = natural?.waterSeen ?? WATER_SEEN_NONE, waterSeenSat = natural?.waterSeenSat ?? 1;
+    const seenPhase = ((frameCount * 0.16) % (Math.PI * 2)) * 0.35;
+    const seen = this.waterSeenRgb;
+    const sampleSeen = (svx: number, svy: number): void => {
+      let sr = 0, sg = 0, sb = 0, trans = 1;
+      for (let li = activeBackdropLayers.length - 1; li >= 0; li--) {
+        const active = activeBackdropLayers[li];
+        const px = active.pixels;
+        const si = active.ySamples[svy] + active.xSamples[svx];
+        const a = px[si + 3] * active.alphaScale;
+        if (a <= 0.001) continue;
+        const w = trans * a;
+        sr += px[si] * w;
+        sg += px[si + 1] * w;
+        sb += px[si + 2] * w;
+        trans *= 1 - a;
+        if (trans < 0.002) break;
+      }
+      sr = sr / 255 + 0.004 * trans;
+      sg = sg / 255 + 0.005 * trans;
+      sb = sb / 255 + 0.009 * trans;
+      sr = (sr * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
+      sg = (sg * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
+      sb = (sb * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
+      let l = sr * 0.2126 + sg * 0.7152 + sb * 0.0722;
+      sr = l + (sr - l) * backdropSaturation;
+      sg = l + (sg - l) * backdropSaturation;
+      sb = l + (sb - l) * backdropSaturation;
+      sr = sr <= 0 ? 0 : sr >= 1 ? 1 : sr ** backdropInvGamma;
+      sg = sg <= 0 ? 0 : sg >= 1 ? 1 : sg ** backdropInvGamma;
+      sb = sb <= 0 ? 0 : sb >= 1 ? 1 : sb ** backdropInvGamma;
+      sr = sr * tintMulR + tintLiftR;
+      sg = sg * tintMulG + tintLiftG;
+      sb = sb * tintMulB + tintLiftB;
+      l = sr * 0.2126 + sg * 0.7152 + sb * 0.0722;
+      seen[0] = (l + (sr - l) * waterSeenSat) * waterSeen[0];
+      seen[1] = (l + (sg - l) * waterSeenSat) * waterSeen[1];
+      seen[2] = (l + (sb - l) * waterSeenSat) * waterSeen[2];
+    };
     const pixelData = this.target.pixelData;
     const wavesLen = Math.min(ctx.shockwaves.length, COMPOSE_MAX_WAVES);
     const lensLen = Math.min(lenses.length, COMPOSE_MAX_LENSES);
@@ -507,6 +777,9 @@ export class FrameComposer implements PixelSurface {
 
         let r: number, g: number, b: number;
         if (type === Cell.Empty) {
+          // How much real light the visible backdrop mix takes (depth kits:
+          // the lantern does not reach the far planes; classic layers take all).
+          let litW = 1;
           const isSky = skyLine > 0 && wy < skyLine;
           if (isSky) {
             // OPEN DAYTIME SKY (D1 surface intro): gradient + distant sun + drifting
@@ -574,23 +847,35 @@ export class FrameComposer implements PixelSurface {
           } else {
             // Ordered PNG parallax composite. Every layer carries its own alpha
             // and scrolls with its own multiplier, so texture and cutout never
-            // drift apart.
-            r = 0.004;
-            g = 0.005;
-            b = 0.009;
+            // drift apart. Composited FRONT TO BACK (the same over operator,
+            // regrouped): a pixel stops sampling once nearer layers cover it.
+            r = 0;
+            g = 0;
+            b = 0;
+            litW = 0;
+            let trans = 1;
             // shift the backdrop sample column/row by the heat-haze offset so the
             // distant cave shimmers behind a held (hot) object, like the terrain does
             const bvx = hazeX !== 0 ? (vx + hazeX < 0 ? 0 : vx + hazeX >= VIEW_W ? VIEW_W - 1 : vx + hazeX) : vx;
             const bvy = hazeY !== 0 ? (vy + hazeY < 0 ? 0 : vy + hazeY >= VIEW_H ? VIEW_H - 1 : vy + hazeY) : vy;
-            for (const active of activeBackdropLayers) {
-              const si = (active.ySamples[bvy] * active.width + active.xSamples[bvx]) * 4;
-              const a = (active.pixels[si + 3] / 255) * active.opacity;
+            for (let li = activeBackdropLayers.length - 1; li >= 0; li--) {
+              const active = activeBackdropLayers[li];
+              const px = active.pixels;
+              const si = active.ySamples[bvy] + active.xSamples[bvx];
+              const a = px[si + 3] * active.alphaScale;
               if (a <= 0.001) continue;
-              const ia = 1 - a;
-              r = r * ia + (active.pixels[si] / 255) * a;
-              g = g * ia + (active.pixels[si + 1] / 255) * a;
-              b = b * ia + (active.pixels[si + 2] / 255) * a;
+              const w = trans * a;
+              r += px[si] * w;
+              g += px[si + 1] * w;
+              b += px[si + 2] * w;
+              litW += active.lit * w;
+              trans *= 1 - a;
+              if (trans < 0.002) break;
             }
+            r = r / 255 + 0.004 * trans;
+            g = g / 255 + 0.005 * trans;
+            b = b / 255 + 0.009 * trans;
+            litW += trans;
             r = (r * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
             g = (g * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
             b = (b * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
@@ -601,6 +886,22 @@ export class FrameComposer implements PixelSurface {
             r = r <= 0 ? 0 : r >= 1 ? 1 : r ** backdropInvGamma;
             g = g <= 0 ? 0 : g >= 1 ? 1 : g ** backdropInvGamma;
             b = b <= 0 ? 0 : b >= 1 ? 1 : b ** backdropInvGamma;
+            r = r * tintMulR + tintLiftR;
+            g = g * tintMulG + tintLiftG;
+            b = b * tintMulB + tintLiftB;
+            if (natural) {
+              const l = r * 0.2126 + g * 0.7152 + b * 0.0722;
+              r = l + (r - l) * naturalSat;
+              g = l + (g - l) * naturalSat;
+              b = l + (b - l) * naturalSat;
+              r += (hazeR - r) * hazeMix;
+              g += (hazeG - g) * hazeMix;
+              b += (hazeB - b) * hazeMix;
+              const shade = ((cellColors[ci] >>> 16) & 0xff) / 255;
+              r *= shade;
+              g *= shade;
+              b *= shade;
+            }
             const depthShade = 0.78 + 0.22 * (1 - wy / HEIGHT);
             r *= depthShade;
             g *= depthShade;
@@ -618,16 +919,21 @@ export class FrameComposer implements PixelSurface {
               g *= k;
               b *= k;
             } else {
+              // The distant cave sinks with the designed darkness; only real
+              // light (the lf0 term) brings it back.
+              const open = lightOpen ? openAtCell(lightOpen, LW, LH, vx, vy) : 1, shut = 1 - open, adapt = DARK_ADAPT * shut;
+              const litK = 0.72 * litW;
               let lf0 = Math.min(LIGHT_CLAMP, lightR[li]) * vg;
-              r = (r * 0.62 + ambient * 0.022) * vg + r * lf0 * lf0 * 0.72;
+              r = (r * 0.62 + ambient * 0.022) * vg * open + r * (lf0 * lf0 + adapt * lf0) * litK + DARK_AIR_R * shut;
               lf0 = Math.min(LIGHT_CLAMP, lightG[li]) * vg;
-              g = (g * 0.62 + ambient * 0.022) * vg + g * lf0 * lf0 * 0.72;
+              g = (g * 0.62 + ambient * 0.022) * vg * open + g * (lf0 * lf0 + adapt * lf0) * litK + DARK_AIR_G * shut;
               lf0 = Math.min(LIGHT_CLAMP, lightB[li]) * vg;
-              b = (b * 0.62 + ambient * 0.032) * vg + b * lf0 * lf0 * 0.72;
-              // air itself catches the glow near strong light
-              r += Math.max(0, lightR[li] - 0.25) * 0.045 * vg;
-              g += Math.max(0, lightG[li] - 0.25) * 0.04 * vg;
-              b += Math.max(0, lightB[li] - 0.25) * 0.035 * vg;
+              b = (b * 0.62 + ambient * 0.032) * vg * open + b * (lf0 * lf0 + adapt * lf0) * litK + DARK_AIR_B * shut;
+              // air itself catches the glow near strong light (more so in the dark)
+              const haze = vg * (1 + DARK_AIR_GLOW * shut);
+              r += Math.max(0, lightR[li] - 0.25) * 0.045 * haze;
+              g += Math.max(0, lightG[li] - 0.25) * 0.04 * haze;
+              b += Math.max(0, lightB[li] - 0.25) * 0.035 * haze;
             }
           }
           if (ringGlow > 0) {
@@ -638,7 +944,9 @@ export class FrameComposer implements PixelSurface {
           pixelData[bufferIdx] = r;
           pixelData[bufferIdx + 1] = g;
           pixelData[bufferIdx + 2] = b;
-          pixelData[bufferIdx + 3] = 1.0;
+          // Alpha 0 marks open backdrop (sprites write 1 over it): the WebGL
+          // depth particles blend only there (render/depth/ForegroundGL).
+          pixelData[bufferIdx + 3] = isSky ? 1.0 : 0.0;
           continue;
         }
 
@@ -646,6 +954,16 @@ export class FrameComposer implements PixelSurface {
         r = unpackR(rgb) / 255;
         g = unpackG(rgb) / 255;
         b = unpackB(rgb) / 255;
+        // The terrain cache paints a clear body (not a surface, not a sealed
+        // pocket, not an override) exactly the look's waterBody.
+        if (waterClarity > 0 && type === Cell.Water && rgb === waterBodyRgb) {
+          const sway = Math.floor(Math.sin(wy * 0.19 + seenPhase) * 1.6);
+          const svx = vx + sway < 0 ? 0 : vx + sway >= VIEW_W ? VIEW_W - 1 : vx + sway;
+          sampleSeen(svx, vy);
+          r += (seen[0] - r) * waterClarity;
+          g += (seen[1] - g) * waterClarity;
+          b += (seen[2] - b) * waterClarity;
+        }
 
         // Living flame: per-frame flicker on hot cells
         if (type === Cell.Fire) {
@@ -660,7 +978,8 @@ export class FrameComposer implements PixelSurface {
           const fl = 0.7 + Math.random() * 0.55;
           r *= fl;
           g *= fl * 0.95;
-        } else if ((type === Cell.Water || type === Cell.Healium || type === Cell.Teleportium) && wy > 0 && lookupY > 0 && types[ci - WIDTH] === Cell.Empty) {
+        } else if ((type === Cell.Water || type === Cell.Healium || type === Cell.Teleportium) && wy > 0 && lookupY > 0 && types[ci - WIDTH] === Cell.Empty
+          && (type !== Cell.Water || types[ci + WIDTH] !== Cell.Empty)) {
           const wave = 0.88 + Math.sin(frameCount * 0.16 + wx * 0.42) * 0.12;
           r *= wave;
           g *= 0.94 + (wave - 0.88) * 0.45;
@@ -681,6 +1000,12 @@ export class FrameComposer implements PixelSurface {
           // whole patch leans together instead of shimmering per-cell). Matches the shader.
           const living = 0.94 + Math.sin(frameCount * 0.035 + wind + wx * 0.13 + wy * 0.29) * 0.08;
           g *= living;
+        } else if (type === Cell.Leaf) {
+          // FLORA canopy rustle: a breeze wave rolls across the leaves. Matches the shader.
+          const rustle = 0.9 + Math.sin(frameCount * 0.035 + wind * 1.6 + wx * 0.19 - wy * 0.11) * 0.1;
+          r *= rustle;
+          g *= rustle;
+          b *= rustle * 0.96;
         }
 
         let scalar = 0.0;
@@ -706,7 +1031,11 @@ export class FrameComposer implements PixelSurface {
           // squared: compensates the sRGB output curve so darkness reads as darkness.
           // The small additive floor keeps shadowed rock readable as silhouette
           // (the BFS rim shading baked into cell colors carries the detail).
-          const floor = LIGHT_READABILITY_FLOOR * vg;
+          // Designed darkness lowers ambient and this floor together; what is
+          // left at full dark is the cold DARK_FLOOR remainder.
+          const open = lightOpen ? openAtCell(lightOpen, LW, LH, vx, vy) : 1, shut = 1 - open;
+          const floor = LIGHT_READABILITY_FLOOR * vg * open;
+          const amb = ambient * open, adapt = DARK_ADAPT * shut;
           // Emissive cells are LIGHT SOURCES: their own brightness must not be
           // crushed by the screen vignette (it sits inside the squared light
           // factor, so corners rendered at ~23% and bloom only fired near the
@@ -716,18 +1045,18 @@ export class FrameComposer implements PixelSurface {
           // Soft knee on lit (non-emissive) cells: strong light keeps its REACH
           // but the top end compresses, so the wand no longer blows nearby
           // floor into a white bloom wash that swallows levers and pickups.
-          let lf = (ambient + Math.min(LIGHT_CLAMP, lightR[li])) * vg;
-          let lit = lf * lf;
+          let lf = (amb + Math.min(LIGHT_CLAMP, lightR[li])) * vg;
+          let lit = lf * lf + adapt * lf;
           if (lit > LIGHT_KNEE_START) lit = Math.min(LIGHT_KNEE_MAX, LIGHT_KNEE_START + (lit - LIGHT_KNEE_START) * LIGHT_KNEE_SLOPE);
-          r = r * Math.max(lit, selfGlow) + r * floor;
-          lf = (ambient + Math.min(LIGHT_CLAMP, lightG[li])) * vg;
-          lit = lf * lf;
+          r = r * Math.max(lit, selfGlow) + r * (floor + DARK_FLOOR_R * shut);
+          lf = (amb + Math.min(LIGHT_CLAMP, lightG[li])) * vg;
+          lit = lf * lf + adapt * lf;
           if (lit > LIGHT_KNEE_START) lit = Math.min(LIGHT_KNEE_MAX, LIGHT_KNEE_START + (lit - LIGHT_KNEE_START) * LIGHT_KNEE_SLOPE);
-          g = g * Math.max(lit, selfGlow) + g * floor;
-          lf = (ambient + Math.min(LIGHT_CLAMP, lightB[li])) * vg;
-          lit = lf * lf;
+          g = g * Math.max(lit, selfGlow) + g * (floor + DARK_FLOOR_G * shut);
+          lf = (amb + Math.min(LIGHT_CLAMP, lightB[li])) * vg;
+          lit = lf * lf + adapt * lf;
           if (lit > LIGHT_KNEE_START) lit = Math.min(LIGHT_KNEE_MAX, LIGHT_KNEE_START + (lit - LIGHT_KNEE_START) * LIGHT_KNEE_SLOPE);
-          b = b * Math.max(lit, selfGlow) + b * floor;
+          b = b * Math.max(lit, selfGlow) + b * (floor + DARK_FLOOR_B * shut);
         }
         pixelData[bufferIdx] = r * intensity + ringGlow * 0.55;
         pixelData[bufferIdx + 1] = g * intensity + ringGlow * 0.42;
@@ -751,6 +1080,10 @@ export class FrameComposer implements PixelSurface {
    * void — it reads as "nothing's there", which is the truth.
    */
   private maskVoidBelowWorldFloor(ctx: Ctx): void {
+    // Both GPU composers already apply the world-floor mask after the overlay.
+    // Painting a whole black strip here needlessly converts/uploads thousands
+    // of half-float sprite pixels whenever the player reaches a deep floor.
+    if (this.overlay !== null && ctx.world.height === HEIGHT) return;
     const firstVoidVy = ctx.world.height - this.renderCamY;
     if (firstVoidVy >= VIEW_H) return; // the floor is below the view — nothing to mask
     const pixelData = this.target.pixelData;
@@ -764,17 +1097,18 @@ export class FrameComposer implements PixelSurface {
         pixelData[bi + 2] = 0;
         pixelData[bi + 3] = 1;
         if (overlay !== null) {
-          overlay.data[bi] = 0;
-          overlay.data[bi + 1] = 0;
-          overlay.data[bi + 2] = 0;
-          overlay.data[bi + 3] = 1;
-          overlay.mark(rowBase + vx);
+          this.setPx(this.renderCamX + vx, this.renderCamY + vy, 0, 0, 0);
         }
       }
     }
   }
 
   private composeOverlays(ctx: Ctx): void {
+    // Depth particles behind the play layer (over open air only), under every
+    // sprite — unless the presentation draws them as GL points.
+    const depthParticles = this.target.nativeDepthParticles !== true;
+    if (depthParticles) this.layers.drawParticles?.(this, this.light, ctx, 'behind');
+    drawFallingWater(this, this.light, ctx);
     // Ballistic debris / embers / coins, lightning arcs, projectiles — the
     // combat FX overlays live in sprites/FxSprites (shared with the gallery).
     drawParticles(this, this.light, ctx);
@@ -790,30 +1124,50 @@ export class FrameComposer implements PixelSurface {
     this.drawLandmarks(ctx);
     this.drawPickupsAndPortal(ctx);
     this.drawMechanismsAndRunes(ctx);
+    drawLumenBlooms(this, this.light, ctx);
     this.drawCritters(ctx);
     this.drawFlaskEffects(ctx);
     this.drawRigidBodies(ctx);
+    drawFallingFlora(this, this.light, ctx, this.alpha);
+    drawTeaMachineDecor(this, this.light, ctx, this.alpha);
+    // STORY (wave 3): the speaking-pipes, Pell's camp and Pell, the resonant valve, the echoes.
+    drawStoryLayer(this, this.light, ctx);
     this.drawVineStrands(ctx, 'foreground');
 
     // Entities on top. Contact shadows first, under everything, so a body's
     // own sprite and its neighbours draw over the shared ground darkening.
     for (const e of ctx.enemies) {
+      this.positionSprite(e);
       if (this.enemyInRenderView(ctx, e)) this.drawEnemyContactShadow(ctx, e);
     }
     if (ctx.state.mode === 'play' && !ctx.player.dead) {
+      this.positionSprite(ctx.player);
       this.drawContactShadow(ctx, ctx.player.x, ctx.player.y, PLAYER_HALF_W + 1, 0.58);
     }
+    // The dead lie under the living (they are not interpolated: they barely move).
+    this.drawOffsetX = 0; this.drawOffsetY = 0;
+    if (ctx.state.mode === 'play') drawCorpses(this, this.light, ctx, e => this.enemyInRenderView(ctx, e));
     for (const e of ctx.enemies) {
+      this.positionSprite(e);
       if (this.enemyInRenderView(ctx, e)) this.drawEnemy(this, this.light, ctx, e);
     }
+    this.drawOffsetX = 0; this.drawOffsetY = 0;
     // Excavation beam: white-hot core, tight amber sheath, light cast onto nearby rock
     drawDigBeam(this, ctx);
 
     // Peers draw BEFORE the local player so your own wizard is never hidden
     // behind a phantom you cannot interact with.
     this.drawPeers(this, this.light, ctx);
-    if (ctx.state.mode === 'play') this.drawPlayer(this, this.light, ctx);
-    this.drawPlayerRagdoll(ctx);
+    if (ctx.state.mode === 'play') {
+      this.positionSprite(ctx.player); this.drawPlayer(this, this.light, ctx);
+    }
+    this.drawOffsetX = 0; this.drawOffsetY = 0;
+    drawHeldLeg(this, this.light, ctx, this.alpha);
+    drawTelekinesis(this, ctx);
+    drawPlayerRagdollSprite(this, this.light, ctx, this.alpha);
+    // Near depth particles: motes in front of everything, catching real light.
+    if (depthParticles) this.layers.drawParticles?.(this, this.light, ctx, 'front');
+    drawTrickshotOverlay(this, ctx);
   }
 
   private enemyInRenderView(ctx: Ctx, e: Enemy): boolean {
@@ -912,24 +1266,46 @@ export class FrameComposer implements PixelSurface {
   /** Per-enemy contact-shadow params: bigger, softer bodies read as heavier
    *  shadows; self-lit fliers (imp/wisp) cast a touch fainter. */
   private drawEnemyContactShadow(ctx: Ctx, e: Enemy): void {
+    // Rigged creatures are grounded by their own planted feet, tails and
+    // bellies; a shadow disc under the body read as a hole between the legs.
+    if (hasSpeciesArt(e.kind)) return;
     const def = ctx.enemyCtl.defs[e.kind];
     const halfW = def?.halfW ?? 10;
     const faint = e.kind === 'imp' || e.kind === 'wisp' ? 0.72 : 1;
     this.drawContactShadow(ctx, e.x, e.y, halfW + 1, 0.55 * faint);
   }
 
-  /** Rigid bodies: rotated boxes and circles, flat-shaded with a darker rim for
-   *  read and (on circles) a radial spoke so spin is visible. Lit by the ambient
-   *  field like the rest of the world. */
+  /** Rigid bodies: rotated plates and discs at presentation resolution,
+   *  interpolated between fixed ticks. Discs get a dark rim, a spherical
+   *  shade and a radial spoke so spin is visible; plates a dark edge and a
+   *  lit top bevel. Ropes twist and chains link along their real sag. Lit
+   *  by the ambient field like the rest of the world. */
   private drawRigidBodies(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
     const frame = ctx.state.frameCount;
+    const view = cameraView(ctx.camera, 6);
+    const ropePen = new Pen(this, view);
+    const points: Array<readonly [number, number]> = [];
     for (const b of ctx.rigidBodies.bodies) {
-      if (b.tag === 'player-corpse') continue; // drawn as a limp wizard in drawPlayerRagdoll
+      const pose = interpolateBody(b, this.alpha);
+      for (const rope of [b.rope, b.tether]) {
+        if (!rope) continue;
+        const distance = Math.hypot(pose.x - rope.x, pose.y - rope.y);
+        const slack = Math.sqrt(Math.max(0, rope.length * rope.length - distance * distance)) * .25;
+        const n = Math.max(2, Math.ceil(distance / 5));
+        points.length = 0;
+        for (let i = 0; i <= n; i++) {
+          const t = i / n;
+          points.push([rope.x + (pose.x - rope.x) * t, rope.y + (pose.y - rope.y) * t + Math.sin(t * Math.PI) * slack]);
+        }
+        ropePen.cable(points, 0, { material: rope.material === 'chain' ? 'chain' : 'rope', sag: 0 });
+      }
+      if (b.tag?.startsWith('player-corpse')) continue; // drawn as a limp wizard in drawPlayerRagdoll
+      if (b.tag?.startsWith('flora-')) continue; // a felled stand: drawn cell-for-cell by FloraArt
       let r = ((b.color >> 16) & 0xff) / 255;
       let g = ((b.color >> 8) & 0xff) / 255;
       let bl = (b.color & 0xff) / 255;
-      const lt = this.light.sample(b.x, b.y);
+      const lt = this.light.sample(pose.x, pose.y);
       let lr = Math.max(0.06, lt.r);
       let lg = Math.max(0.06, lt.g);
       let lb = Math.max(0.06, lt.b);
@@ -948,153 +1324,89 @@ export class FrameComposer implements PixelSurface {
         g = g * 0.7 + 0.28;
         bl = Math.min(1, bl * 0.8 + 0.55);
       }
-      const cos = Math.cos(b.angle);
-      const sin = Math.sin(b.angle);
       const reach = b.shape.kind === 'circle' ? b.shape.radius : Math.hypot(b.shape.halfW, b.shape.halfH);
       // Coarse off-screen cull (matches the landmark/decor draws).
       if (
-        b.x + reach < this.renderCamX ||
-        b.x - reach > this.renderCamX + VIEW_W ||
-        b.y + reach < this.renderCamY ||
-        b.y - reach > this.renderCamY + VIEW_H
+        pose.x + reach < this.renderCamX ||
+        pose.x - reach > this.renderCamX + VIEW_W ||
+        pose.y + reach < this.renderCamY ||
+        pose.y - reach > this.renderCamY + VIEW_H
       )
         continue;
-      this.drawContactShadow(ctx, b.x, b.y + reach, reach, 0.5);
-      const x0 = Math.floor(b.x - reach);
-      const x1 = Math.ceil(b.x + reach);
-      const y0 = Math.floor(b.y - reach);
-      const y1 = Math.ceil(b.y + reach);
-      for (let yy = y0; yy <= y1; yy++) {
-        for (let xx = x0; xx <= x1; xx++) {
-          const dx = xx + 0.5 - b.x;
-          const dy = yy + 0.5 - b.y;
-          const lx = dx * cos + dy * sin; // into the body's local frame
-          const ly = -dx * sin + dy * cos;
-          let edge = 1;
-          if (b.shape.kind === 'circle') {
-            const rad = b.shape.radius;
-            if (dx * dx + dy * dy > rad * rad) continue;
-            if (dx * dx + dy * dy > (rad - 1) * (rad - 1)) edge = 0.6;
-            // a single spoke toward local +x makes the roll legible
-            else if (lx > 0 && Math.abs(ly) < 0.9) edge = 0.5;
-          } else {
-            const { halfW, halfH } = b.shape;
-            if (Math.abs(lx) > halfW || Math.abs(ly) > halfH) continue;
-            if (Math.abs(lx) > halfW - 1 || Math.abs(ly) > halfH - 1) edge = 0.6;
+      this.drawContactShadow(ctx, pose.x, pose.y + reach, reach, 0.5);
+      const pen = new Pen(this, view, [lr, lg, lb]);
+      const fill: readonly [number, number, number] = [r, g, bl];
+      const edge: readonly [number, number, number] = [r * 0.42 + INK[0] * 0.3, g * 0.42 + INK[1] * 0.3, bl * 0.42 + INK[2] * 0.3];
+      if (b.shape.kind === 'circle') {
+        const rad = b.shape.radius;
+        const at = (x: number, y: number): readonly [number, number] => [
+          pose.x + x * Math.cos(pose.angle) - y * Math.sin(pose.angle),
+          pose.y + x * Math.sin(pose.angle) + y * Math.cos(pose.angle),
+        ];
+        const radial = (count: number, radiusAt: (index: number) => number): Array<readonly [number, number]> => {
+          const silhouette: Array<readonly [number, number]> = [];
+          for (let i = 0; i < count; i++) {
+            const a = Math.PI * 2 * i / count, rr = radiusAt(i);
+            silhouette.push(at(Math.cos(a) * rr, Math.sin(a) * rr));
           }
-          this.setPx(xx, yy, r * lr * edge, g * lg * edge, bl * lb * edge);
+          return silhouette;
+        };
+        if (b.tag === 'tea-boulder') {
+          // The trigger stone is intentionally not a physics-debug sphere. A
+          // chipped outline, broad planes and one forked crack preserve its
+          // circular collider while making it read as a quarried boulder.
+          const chips = [1, .92, .98, .89, .96, 1, .91, .97, .9, .99, .93, .97];
+          pen.polygon(radial(chips.length, i => rad * chips[i]), edge);
+          pen.polygon(radial(chips.length, i => rad * chips[i] * .9), fill, 1, .24);
+          pen.polygon([at(-rad * .72, -rad * .22), at(-rad * .15, -rad * .72), at(rad * .15, -rad * .08)], STEEL_D, .72, .18);
+          pen.polygon([at(rad * .15, -rad * .08), at(rad * .76, rad * .05), at(rad * .26, rad * .48)], IRON, .65, .16);
+          pen.line(...at(-rad * .08, -rad * .78), ...at(rad * .12, -rad * .1), edge, pen.step);
+          pen.line(...at(rad * .12, -rad * .1), ...at(rad * .48, rad * .25), edge, pen.step);
+          pen.line(...at(rad * .12, -rad * .1), ...at(-rad * .15, rad * .38), edge);
+        } else if (b.tag === 'tea-pendulum') {
+          // A cast workshop bob: steel cheeks, a brass tyre and bolted hub.
+          // Concentric construction detail makes its rotation visible without
+          // the placeholder-looking single radius line.
+          pen.disc(pose.x, pose.y, rad, IRON_D, INK, Math.max(pen.step, rad * .08));
+          pen.ring(pose.x, pose.y, rad * .87, Math.max(.8, rad * .12), BRASS_D);
+          pen.disc(pose.x, pose.y, rad * .7, STEEL_D, IRON, Math.max(pen.step, rad * .07));
+          for (let i = 0; i < 6; i++) {
+            const a = pose.angle + i * Math.PI / 3;
+            pen.rivet(pose.x + Math.cos(a) * rad * .55, pose.y + Math.sin(a) * rad * .55, i % 2 ? BRASS : STEEL_L);
+          }
+          pen.rod(...at(-rad * .58, 0), ...at(rad * .58, 0), BRASS, .7);
+          pen.disc(pose.x, pose.y, rad * .17, BRASS_L, INK);
+        } else if (b.tag === 'tea-sugar') {
+          // A fused crystal lump, not a smooth stone. The facets stay inside
+          // the real circular collider and catch the boiler's light as it falls.
+          const crystal = [1, .9, .97, .86, .94, 1, .88, .96, .9, .98, .87, .95, .91, .98];
+          pen.polygon(radial(crystal.length, i => rad * crystal[i]), edge);
+          pen.polygon(radial(crystal.length, i => rad * crystal[i] * .9), fill, 1.08, .18);
+          pen.polygon([at(-rad * .72, -.1 * rad), at(-rad * .12, -.72 * rad), at(-rad * .02, .12 * rad)], STEEL_L, .74, .08);
+          pen.polygon([at(-rad * .02, .12 * rad), at(.68 * rad, -.32 * rad), at(.52 * rad, .55 * rad)], BRASS_L, .52, .16);
+          pen.line(...at(-rad * .02, -.72 * rad), ...at(-rad * .02, .12 * rad), edge);
+          pen.line(...at(-rad * .02, .12 * rad), ...at(.52 * rad, .55 * rad), edge);
+        } else if (b.tag === 'tea-counterweight') {
+          // Octagonal foundry weight with a bolted face plate. It still rolls
+          // as a circle, but visually belongs to the same riveted apparatus.
+          pen.polygon(radial(12, i => rad * (i % 2 ? .92 : 1)), INK);
+          pen.polygon(radial(12, i => rad * (i % 2 ? .82 : .89)), IRON, 1, .22);
+          pen.ring(pose.x, pose.y, rad * .62, Math.max(.7, rad * .1), BRASS_D);
+          for (let i = 0; i < 4; i++) {
+            const a = pose.angle + Math.PI / 4 + i * Math.PI / 2;
+            pen.rivet(pose.x + Math.cos(a) * rad * .46, pose.y + Math.sin(a) * rad * .46, BRASS);
+          }
+          pen.box(pose.x, pose.y, rad * .35, rad * .12, pose.angle, STEEL, IRON_D);
+        } else {
+          pen.disc(pose.x, pose.y, rad, fill, edge, Math.max(pen.step, rad * 0.09));
+          // A single spoke toward local +x makes generic rolling cargo legible.
+          pen.line(pose.x, pose.y, pose.x + Math.cos(pose.angle) * (rad - 1), pose.y + Math.sin(pose.angle) * (rad - 1), edge, pen.step * 2);
+          pen.arc(pose.x, pose.y, rad * 0.62, Math.PI * 1.1, Math.PI * 1.4, fill, 0, 1.35);
         }
+      } else {
+        pen.box(pose.x, pose.y, b.shape.halfW, b.shape.halfH, pose.angle, fill, edge);
       }
     }
-  }
-
-  /** The death ragdoll: an ARTICULATED limp wizard (head, torso, two arms, two
-   *  legs, hat) hanging off the corpse body. Limbs flail with the body's spin +
-   *  speed so it tumbles like a ragdoll, not a rigid log; a tombstone rises once
-   *  it settles. Replaces the live player sprite. */
-  private drawPlayerRagdoll(ctx: Ctx): void {
-    if (ctx.state.mode !== 'play') return;
-    const corpse = ctx.rigidBodies.playerCorpse;
-    if (!corpse || corpse.shape.kind !== 'box') return;
-    const cx = corpse.x;
-    const cy = corpse.y;
-    const ang = corpse.angle;
-    const cos = Math.cos(ang);
-    const sin = Math.sin(ang);
-    // body-local -> world (local −y is the head end, +y the feet)
-    const wx = (lx: number, ly: number): number => cx + lx * cos - ly * sin;
-    const wy = (lx: number, ly: number): number => cy + lx * sin + ly * cos;
-    const lt = this.light.sample(cx, cy);
-    const lr = Math.max(0.16, lt.r);
-    const lg = Math.max(0.16, lt.g);
-    const lb = Math.max(0.2, lt.b);
-    const ROBE: [number, number, number] = [0.24 * lr, 0.44 * lg, 0.86 * lb];
-    const ROBE_D: [number, number, number] = [0.09 * lr, 0.18 * lg, 0.42 * lb];
-    const SKIN: [number, number, number] = [0.86 * lr, 0.7 * lg, 0.52 * lb];
-    const HAT: [number, number, number] = [0.5 * lr, 0.26 * lg, 0.8 * lb];
-    const HAT_D: [number, number, number] = [0.22 * lr, 0.1 * lg, 0.42 * lb];
-    const BOOT: [number, number, number] = [0.14 * lr, 0.12 * lg, 0.2 * lb];
-
-    const fc = ctx.state.frameCount;
-    const settled = corpse.data?.settled === true || corpse.sleeping;
-    const va = corpse.va ?? 0;
-    const speed = Math.hypot(corpse.vx ?? 0, corpse.vy ?? 0);
-    // how hard the limbs flail: driven by spin + travel, easing to a limp droop at rest
-    const flail = settled ? 0.06 : Math.min(1.4, Math.abs(va) * 5 + speed * 0.22);
-
-    const dot = (x: number, y: number, c: [number, number, number], k = 1): void => {
-      this.setPx(x, y, c[0] * k, c[1] * k, c[2] * k);
-      this.setPx(x + 1, y, c[0] * 0.78 * k, c[1] * 0.78 * k, c[2] * 0.78 * k);
-    };
-    const seg = (x0: number, y0: number, x1: number, y1: number, c: [number, number, number]): void => {
-      const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
-      for (let i = 0; i <= n; i++) dot(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n, c);
-    };
-    // a 2-segment limb (with an elbow/knee) hanging from a body-local joint. The
-    // limb stays anchored to the body but LAGS its spin and wobbles — that lag is
-    // exactly what reads as a joint instead of a welded plank.
-    const limb = (jx: number, jy: number, spread: number, len: number, phase: number, tip: [number, number, number]): void => {
-      const jwx = wx(jx, jy);
-      const jwy = wy(jx, jy);
-      const a1 = ang + Math.PI / 2 + spread + va * 4 + Math.sin(fc * 0.22 + phase) * flail;
-      const kx = jwx + Math.cos(a1) * len * 0.55;
-      const ky = jwy + Math.sin(a1) * len * 0.55;
-      const a2 = a1 + 0.45 + Math.sin(fc * 0.3 + phase + 1.3) * flail * 0.7;
-      const ex = kx + Math.cos(a2) * len * 0.5;
-      const ey = ky + Math.sin(a2) * len * 0.5;
-      seg(jwx, jwy, kx, ky, ROBE_D);
-      seg(kx, ky, ex, ey, ROBE_D);
-      dot(ex, ey, tip);
-      dot(ex, ey + 1, tip, 0.85);
-    };
-
-    // draw order: legs + arms BEHIND, torso over the shoulders, then head + hat
-    limb(-1.4, 5, 0.32, 8, 0.0, BOOT); // left leg
-    limb(1.4, 5, -0.32, 8, 2.1, BOOT); // right leg
-    limb(-2, -1, 0.55, 6, 1.0, SKIN); // left arm
-    limb(2, -1, -0.55, 6, 3.3, SKIN); // right arm
-    // TORSO — a robe slab, darker rim, purple hood up top (−y)
-    for (let ly = -3; ly <= 5; ly++) {
-      for (let lx = -2; lx <= 2; lx++) {
-        const edge = Math.abs(lx) >= 2 || ly >= 5 ? 0.6 : 1;
-        const c = ly <= -2 ? ROBE_D : ROBE;
-        this.setPx(wx(lx, ly), wy(lx, ly), c[0] * edge, c[1] * edge, c[2] * edge);
-      }
-    }
-    // HEAD — a small round skin blob above the torso
-    for (let ly = -8; ly <= -4; ly++) {
-      const r = ly === -8 || ly === -4 ? 1 : 2;
-      for (let lx = -r; lx <= r; lx++) {
-        const shade = lx * (va >= 0 ? 1 : -1) > 0 ? 1 : 0.82;
-        this.setPx(wx(lx, ly), wy(lx, ly), SKIN[0] * shade, SKIN[1] * shade, SKIN[2] * shade);
-      }
-    }
-    // HAT — purple cone + brim beyond the head, tumbling with the skull
-    for (let dx = -5; dx <= 5; dx++) this.setPx(wx(dx, -9), wy(dx, -9), HAT[0], HAT[1], HAT[2]);
-    for (let dx = -6; dx <= 6; dx++) this.setPx(wx(dx, -8), wy(dx, -8), HAT_D[0], HAT_D[1], HAT_D[2]);
-    for (let t = 1; t <= 5; t++) {
-      const w = Math.max(0, 4 - Math.floor(t * 0.7));
-      for (let dx = -w; dx <= w; dx++) this.setPx(wx(dx, -9 - t), wy(dx, -9 - t), HAT[0], HAT[1], HAT[2]);
-    }
-    // TOMBSTONE — rises once the corpse settles (world-upright marker + cross)
-    if (settled) this.drawTombstone(cx, cy - 21);
-  }
-
-  /** A small arched grey headstone with a darker cross, dimly lit, world-upright. */
-  private drawTombstone(cx: number, topY: number): void {
-    const lt = this.light.sample(cx, topY + 6);
-    const lr = Math.max(0.24, lt.r);
-    const lg = Math.max(0.24, lt.g);
-    const lb = Math.max(0.26, lt.b);
-    for (let dy = 0; dy <= 12; dy++) {
-      const halfW = dy < 4 ? Math.floor(2 + dy * 0.7) : 5;
-      for (let dx = -halfW; dx <= halfW; dx++) {
-        const edge = Math.abs(dx) >= halfW || dy >= 12 ? 0.7 : 1;
-        this.setPx(cx + dx, topY + dy, 0.5 * lr * edge, 0.5 * lg * edge, 0.52 * lb * edge);
-      }
-    }
-    for (let dy = 3; dy <= 9; dy++) this.setPx(cx, topY + dy, 0.28 * lr, 0.28 * lg, 0.3 * lb);
-    for (let dx = -2; dx <= 2; dx++) this.setPx(cx + dx, topY + 5, 0.28 * lr, 0.28 * lg, 0.3 * lb);
   }
 
   private drawVineStrands(ctx: Ctx, layer: 'den' | 'foreground'): void {
@@ -1106,9 +1418,13 @@ export class FrameComposer implements PixelSurface {
     const camY = this.renderCamY;
     for (const strand of strands) {
       if ((strand.denWeb === true) !== drawDen) continue;
-      const baseR = this.unpackR01(strand.color);
-      const baseG = this.unpackG01(strand.color);
-      const baseB = this.unpackB01(strand.color);
+      if (strand.foliage) drawVineFoliage(this, this.light, ctx, strand);
+      // Den webs are old silk, whatever tint a save carried: pale and faint,
+      // set dressing behind the lair rather than a glowing green cage.
+      const silk = strand.denWeb === true;
+      const baseR = silk ? 0.74 : this.unpackR01(strand.color);
+      const baseG = silk ? 0.72 : this.unpackG01(strand.color);
+      const baseB = silk ? 0.64 : this.unpackB01(strand.color);
       const half = ((strand.thickness ?? 1) - 1) / 2;
       for (const segment of strand.segments) {
         const a = strand.nodes[segment.a];
@@ -1138,15 +1454,16 @@ export class FrameComposer implements PixelSurface {
             const cell = world.types[world.idx(cx, cy)];
             if (blocksEntity(cell) && !isSoftGrowth(cell)) continue;
           }
-          const lt = this.light.sample(x, y);
-          const webGlow = strand.web === true ? 0.22 : 0;
-          const denMul = strand.denWeb === true ? 0.42 : 1;
-          const r = baseR * (Math.max(0.16, lt.r) * 1.05 + webGlow * 0.45) * denMul;
-          const g = baseG * (Math.max(0.18, lt.g) * 1.1 + webGlow) * denMul;
-          const b2 = baseB * (Math.max(0.14, lt.b) + webGlow * 0.45) * denMul;
+          const lt = this.light.sample(x, y), dk = lt.open ?? 1;
+          const webGlow = silk ? 0.05 : strand.web === true ? 0.22 : 0;
+          const denMul = silk ? 0.3 : 1;
+          const char = Math.min(1, ((a.burn ?? 0) * (1 - t) + (b.burn ?? 0) * t) * 1.6);
+          const r = baseR * (Math.max(0.16 * dk, lt.r) * 1.05 + webGlow * 0.45) * denMul;
+          const g = baseG * (Math.max(0.18 * dk, lt.g) * 1.1 + webGlow) * denMul;
+          const b2 = baseB * (Math.max(0.14 * dk, lt.b) + webGlow * 0.45) * denMul;
           for (let w = -half; w <= half + 1e-6; w += 1) {
             if (strand.denWeb === true) this.addPx(x + perpX * w, y + perpY * w, r, g, b2);
-            else this.setPx(x + perpX * w, y + perpY * w, r, g, b2);
+            else this.setPx(x + perpX * w, y + perpY * w, r * (1 - char * .5), g * (1 - char * .73), b2 * (1 - char * .78));
           }
         }
       }
@@ -1154,13 +1471,13 @@ export class FrameComposer implements PixelSurface {
         for (const node of strand.nodes) {
           if (node.x < camX - 2 || node.x > camX + VIEW_W + 2 || node.y < camY - 2 || node.y > camY + VIEW_H + 2)
             continue;
-          const lt = this.light.sample(node.x, node.y);
+          const lt = this.light.sample(node.x, node.y), dk = lt.open ?? 1;
           this.setPx(
             node.x,
             node.y,
-            baseR * Math.max(0.16, lt.r),
-            baseG * Math.max(0.18, lt.g),
-            baseB * Math.max(0.14, lt.b),
+            baseR * Math.max(0.16 * dk, lt.r),
+            baseG * Math.max(0.18 * dk, lt.g),
+            baseB * Math.max(0.14 * dk, lt.b),
           );
         }
       }
@@ -1507,6 +1824,14 @@ export class FrameComposer implements PixelSurface {
   private drawCritters(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
     const frame = ctx.state.frameCount;
+    for (const lure of ctx.levels.current?.living?.lures ?? []) {
+      const x = Math.round(lure.x), y = Math.round(lure.y);
+      const pulse = 0.65 + Math.sin(frame * 0.06 + lure.id) * 0.2;
+      this.setPx(x, y, 0.65, 0.87, 0.66);
+      this.addPx(x, y - 1, 0.4 * pulse, 0.7 * pulse, 0.5 * pulse);
+      this.addPx(x - 1, y, 0.2 * pulse, 0.4 * pulse, 0.28 * pulse);
+      this.addPx(x + 1, y, 0.2 * pulse, 0.4 * pulse, 0.28 * pulse);
+    }
     for (const c of ctx.critters.list) {
       const x = Math.round(c.x),
         y = Math.round(c.y);
@@ -1519,16 +1844,59 @@ export class FrameComposer implements PixelSurface {
       } else if (c.kind === 'firefly') {
         // dark speck, bright abdomen on the pulse
         const pulse = Math.max(0, Math.sin(c.phase * 0.45));
-        this.setPx(x, y, 0.1, 0.12, 0.06);
-        if (pulse > 0.25) this.addPx(x, y + 1, 0.5 * pulse, 1.4 * pulse, 0.25 * pulse);
+        this.setPx(x, y, 0.20, 0.30, 0.25);
+        if (pulse > 0.25) this.addPx(x, y + 1, 0.58 * pulse, 0.94 * pulse, 0.69 * pulse);
+      } else if (isOrganism(c.kind)) {
+        drawOrganism(this, this.light, ctx, c); // WS-N organisms (render/organisms)
+      } else if (c.kind === 'fish' && (c.dead ?? 0) > 0) {
+        // Belly-up: the pale underside turned to the ceiling.
+        this.setPx(x, y, 0.72, 0.72, 0.66);
+        this.setPx(x - c.facing, y, 0.6, 0.6, 0.56);
+        this.setPx(x - c.facing * 2, y - 1, 0.36, 0.4, 0.4);
       } else if (c.kind === 'fish') {
         const tail = Math.sin(c.phase * 1.6) > 0 ? 1 : 0;
         this.setPx(x, y, 0.5, 0.6, 0.62);
         this.setPx(x - c.facing, y, 0.36, 0.46, 0.5);
         this.setPx(x - c.facing * 2, y + tail - 0, 0.26, 0.36, 0.4);
       } else if (c.kind === 'beetle') {
-        this.setPx(x, y, 0.16, 0.13, 0.1);
-        this.setPx(x + c.facing, y, 0.22, 0.18, 0.12);
+        // Cave roach: low segmented carapace, six independent legs and long
+        // feelers. It remains tiny in the ecology, but no longer reads as two
+        // loose pixels when the Undertow colony breaks into a run.
+        const face = c.facing < 0 ? -1 : 1;
+        const scramble = (c.startle ?? 0) > 0 ? Math.sin(c.phase * 3.2) : Math.sin(c.phase * .9) * .45;
+        const fineLine = (ax: number, ay: number, bx: number, by: number, r: number, g: number, b: number): void => {
+          const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) * 2));
+          for (let i = 0; i <= steps; i++) this.setFinePx(ax + (bx - ax) * i / steps,
+            ay + (by - ay) * i / steps, r, g, b);
+        };
+        for (let segment = -2; segment <= 1; segment++) {
+          const sx = x + face * segment * .72;
+          const width = segment === -1 ? 1.15 : segment === 0 ? 1 : .72;
+          for (let dy = -width; dy <= width; dy += .5) {
+            const taper = 1 - Math.abs(dy) / (width + .5);
+            this.setFinePx(sx, y - .75 + dy * .5, .16 + taper * .14, .085 + taper * .1, .035 + taper * .055);
+            this.setFinePx(sx + face * .5, y - .75 + dy * .5, .23 + taper * .11, .12 + taper * .08, .045 + taper * .04);
+          }
+        }
+        // A warm shell ridge catches the wand light while the legs stay dark;
+        // the insects remain environmental detail but do not disappear into
+        // the black floor precisely when their scatter beat should read.
+        fineLine(x - face * 1.3, y - 1.15, x + face * .95, y - 1.2, .35, .2, .075);
+        this.setFinePx(x + face * 1.7, y - .85, .4, .24, .085);
+        this.setFinePx(x + face * 2.1, y - .8, .08, .055, .035);
+        for (let leg = 0; leg < 3; leg++) {
+          const rootX = x + face * (-1.1 + leg * .9);
+          const kick = Math.sin(c.phase * 2.6 + leg * 2.1) * (1 + Math.abs(scramble));
+          for (const side of [-1, 1]) fineLine(rootX, y - .4, rootX - face * kick * .55 + side * .65,
+            y + .5 + Math.abs(kick) * .28, .14, .075, .035);
+        }
+        fineLine(x + face * 1.8, y - 1.1, x + face * (3.8 + scramble), y - 2.2 - scramble * .35, .16, .11, .055);
+        fineLine(x + face * 1.8, y - .7, x + face * (4.1 - scramble * .6), y - .3 + scramble * .45, .12, .08, .04);
+        if ((c.startle ?? 0) > 0) {
+          const trail = -face * (3.1 + Math.abs(scramble));
+          this.setFinePx(x + trail, y - .25, .32, .27, .18);
+          this.setFinePx(x + trail - face * 1.4, y - .65 - Math.abs(scramble) * .3, .2, .18, .13);
+        }
       } else if (c.kind === 'fly') {
         this.setPx(x, y, 0.12, 0.11, 0.09);
         if (frame % 4 < 2) this.addPx(x, y - 1, 0.08, 0.08, 0.07);
@@ -1547,10 +1915,48 @@ export class FrameComposer implements PixelSurface {
     const camX = ctx.camera.renderX,
       camY = ctx.camera.renderY;
 
+    const turn = runtime.living?.valveTurn ?? 0;
+    // Material-sensor conduits make D1's cold census visually traceable. They
+    // are old physical capillary lines first, magic signal second: oxidised
+    // copper remains visible at rest and a restrained green pulse runs through
+    // the tube only after real Ice satisfies the sensor.
+    const coldSensors = runtime.mechanisms.filter(m => m.kind === 'sensor' &&
+      m.sensorType === 'material' && m.materialFilter?.includes(Cell.Ice));
+    if (coldSensors.length > 0) {
+      const conduit = new Pen(this, cameraView(ctx.camera, 10));
+      for (let n = 0; n < coldSensors.length; n++) {
+        const sensor = coldSensors[n], target = runtime.mechanisms.find(m => m.id === sensor.targetId);
+        if (!target) continue;
+        const busY = 321 + n * 4, targetX = target.x + (target.w - 1) / 2;
+        const live = sensor.state > 0;
+        const route: ReadonlyArray<readonly [number, number]> = [[sensor.x, sensor.y - 2],
+          [sensor.x, busY], [targetX, busY], [targetX, target.y + target.h - 4]];
+        for (let i = 1; i < route.length; i++) {
+          conduit.rod(...route[i - 1], ...route[i], [.15, .24, .23], .9);
+          conduit.line(...route[i - 1], ...route[i], [.32, .28, .18], 0, .82);
+        }
+        if (live) conduit.cable(route, frame * -.1, {
+          material: 'cable', color: [.3, .83, .61], dark: [.12, .42, .31], width: .5, sag: 0,
+        });
+        for (const [x, y] of [[sensor.x, busY], [targetX, busY]] as const) {
+          conduit.disc(x, y, 1.25, [.17, .22, .2], [.43, .34, .19], .5, true);
+          conduit.rivet(x - .25, y - .25, live ? [.32, .86, .63] : [.36, .52, .5]);
+          if (live) conduit.glow(x, y, [.2, .68, .48], .16);
+        }
+      }
+    }
     for (const m of runtime.mechanisms) {
-      if (m.x < camX - 12 || m.x > camX + VIEW_W + 12 || m.y < camY - 12 || m.y > camY + VIEW_H + 12)
+      // Dressed levers (crank wheel, handwheel) reach well past their cell.
+      const pad = m.look ? 30 : 12;
+      if (m.x < camX - pad || m.x > camX + VIEW_W + pad || m.y < camY - pad || m.y > camY + VIEW_H + pad)
         continue;
-      drawMechanismSprite(this, m, frame);
+      const lt = this.light.sample(m.x, m.y - 4);
+      // Designed darkness (light wave) dims a fixture's 0.55 floor, never below ~0.17.
+      const mf = 0.55 * Math.max(0.3, lt.open ?? 1);
+      drawMechanismSprite(this, m, frame, {
+        light: [Math.min(1, Math.max(mf, lt.r)), Math.min(1, Math.max(mf, lt.g)), Math.min(1, Math.max(mf, lt.b))],
+        turn: m.look === 'handwheel' ? turn : undefined,
+      });
     }
 
     for (const v of runtime.runeVaults) {
@@ -1567,7 +1973,16 @@ export class FrameComposer implements PixelSurface {
     const frame = ctx.state.frameCount;
 
     for (const p of runtime.pickups) {
-      if (p.taken) continue;
+      if (p.taken || (p.kind === 'key' && runtime.living && !runtime.living.tea?.completed)) continue;
+      if (p.kind === 'weaverleg') {
+        drawLooseLeg(this, this.light, ctx, p, this.alpha);
+        continue;
+      }
+      if (p.kind === 'goldpile') {
+        // A heap sits on the ground (no glyph bob) and reads as coin metal.
+        drawGoldPile(this, this.light, cameraView(ctx.camera), p.x, p.y, frame, Math.floor(p.x * 7 + p.y * 3) & 63);
+        continue;
+      }
       const bob = Math.sin(frame * 0.08 + p.x * 0.7) * 1.4;
       const x = Math.round(p.x);
       const y = Math.round(p.y + bob) - 2;
@@ -1587,6 +2002,16 @@ export class FrameComposer implements PixelSurface {
         }
         this.setPx(x, y + lid, 1.2, 1.1, 0.5); // clasp glint
       } else if (p.kind === 'key') {
+        if (runtime.living) {
+          // The opening's gate token is a small brass bell, still using the
+          // existing append-only key pickup/save contract.
+          for (let yy = -4; yy <= 1; yy++) {
+            const width = yy < -2 ? 1 : yy < 0 ? 2 : 3;
+            for (let xx = -width; xx <= width; xx++) this.setPx(x + xx, y + yy, xx === -width ? 0.90 : 0.67, xx === -width ? 0.74 : 0.50, 0.27);
+          }
+          this.setPx(x, y + 3, 0.82, 0.69, 0.37);
+          continue;
+        }
         // bright sparkling key; its bow twitches like it wants the portal
         const twitch = frame % 50 < 6 ? Math.round(Math.sin(frame * 1.7)) : 0;
         const dir = runtime.portal && runtime.portal.x < p.x ? -1 : 1;
@@ -1624,16 +2049,8 @@ export class FrameComposer implements PixelSurface {
         this.setPx(x + slosh, y, r * pulse * 1.3, g * pulse * 1.3, b * pulse * 1.3);
         this.setPx(x + 1, y, r * 0.7, g * 0.7, b * 0.7);
         this.addPx(x - slosh, y - 1, 0.1, 0.13, 0.16);
-      } else if (p.kind === 'goldpile') {
-        // coin tumble: a tiny pile flashes edge-on every few frames
-        const spin = (frame + Math.floor(p.x)) % 24;
-        const narrow = spin < 5 || spin > 18;
-        const hw = narrow ? 1 : 2;
-        for (let dx = -hw; dx <= hw; dx++) this.setPx(x + dx, y, r * pulse * 1.3, g * pulse * 1.15, b * 0.7);
-        this.setPx(x - 1, y + 1, r * 0.7, g * 0.5, b * 0.22);
-        this.setPx(x + 1, y + 1, r * 0.8, g * 0.55, b * 0.25);
       } else {
-        // diamond glyph (heart/tome/potion/goldpile)
+        // diamond glyph (any other pickup kind)
         this.setPx(x, y, r * pulse * 1.4, g * pulse * 1.4, b * pulse * 1.4);
         this.setPx(x + 1, y, r * pulse * 0.8, g * pulse * 0.8, b * pulse * 0.8);
         this.setPx(x - 1, y, r * pulse * 0.8, g * pulse * 0.8, b * pulse * 0.8);

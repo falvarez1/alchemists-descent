@@ -139,3 +139,30 @@ export async function worldToBuilderClient(page, wx, wy, options = {}) {
     return { x: r.left + ux * r.width, y: r.top + uy * r.height };
   }, { wx, wy, view, overlayId });
 }
+
+/**
+ * Open the Runtime Inspector during a run. The play screen hides the header
+ * (and its RUNTIME button), so authoring builds open it with F9 — but only in
+ * Play: wait for the run to be in play and unpaused first, and press again if
+ * a slow machine swallowed the first press. Throws with the game's state if it
+ * never opens, so a CI failure says why.
+ */
+export async function openRuntimeInspector(page, { timeout = 15000 } = {}) {
+  await page.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play', null, { timeout });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (await page.locator('#runtime-inspector.open').count()) return;
+    await page.keyboard.press('F9');
+    const opened = await page
+      .waitForSelector('#runtime-inspector.open', { state: 'attached', timeout: 4000 })
+      .then(() => true)
+      .catch(() => false);
+    if (opened) return;
+  }
+  const state = await page.evaluate(() => ({
+    mode: window.__game?.ctx?.state?.mode,
+    paused: window.__game?.ctx?.state?.paused,
+    active: document.activeElement?.tagName + '#' + (document.activeElement?.id ?? ''),
+    inspector: document.getElementById('runtime-inspector')?.className ?? 'missing',
+  }));
+  throw new Error(`Runtime Inspector did not open on F9: ${JSON.stringify(state)}`);
+}

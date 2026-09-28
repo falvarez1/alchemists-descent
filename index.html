@@ -3,7 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Purple Llama Studio — Alchemist's Descent</title>
+    <title>Breathing Works — An Alchemist’s Descent</title>
+    <!-- Player-facing name, tagline and share cards: keep in step with src/config/brand.ts
+         (tests/brand.test.ts compares them). -->
+    <meta name="description" content="Something is alive in the old refinery. Listen. Experiment. Find your way down.">
+    <meta name="application-name" content="Breathing Works">
+    <meta name="theme-color" content="#102025">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Breathing Works">
+    <meta property="og:title" content="Breathing Works — An Alchemist’s Descent">
+    <meta property="og:description" content="Something is alive in the old refinery. Listen. Experiment. Find your way down.">
+    <meta property="og:url" content="https://alchemists-descent.pages.dev/">
+    <meta property="og:image" content="https://alchemists-descent.pages.dev/assets/living-descent/refinery-distance.png">
+    <meta property="og:image:width" content="1150">
+    <meta property="og:image:height" content="782">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Breathing Works — An Alchemist’s Descent">
+    <meta name="twitter:description" content="Something is alive in the old refinery. Listen. Experiment. Find your way down.">
+    <!-- The entry title's face: fetch it with the HTML instead of after the JS-injected CSS. -->
+    <link rel="preload" href="/assets/fonts/cormorant-garamond-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <!-- The refinery plates: the entry screen paints them as CSS backgrounds and
+         the game decodes them for its backdrop; one preloaded request serves both
+         (a cold load fetched a plate twice without it). -->
+    <link rel="preload" href="/assets/living-descent/refinery-distance.png" as="image">
+    <link rel="preload" href="/assets/living-descent/refinery-machinery.png" as="image">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2307070a'/%3E%3Crect x='3' y='9' width='3' height='3' fill='%23d4af37'/%3E%3Crect x='6' y='6' width='3' height='3' fill='%23a855f7'/%3E%3Crect x='9' y='9' width='3' height='3' fill='%233a7bd5'/%3E%3C/svg%3E">
     <style>
       /* Critical boot styles, inlined on purpose: the app stylesheet loads
@@ -32,16 +55,28 @@
     </style>
 </head>
 <body>
+    <!--
+    THESIS: Enter a living refinery; the expedition itself leads, with workshops behind it.
+    OWN-WORLD: Wet slate, mineral chalk, corroded copper, amber refuge light and mint fauna.
+    Quiet pixel clusters and planted silhouettes carry depth; thin engraved controls recede.
+    STORY: Read the creatures, alter their habitat, find shelter, and choose the next descent.
+    FIRST VIEWPORT: Full-bleed refinery, a small ivory alchemist on a readable terrace,
+    health upper left, immediate destination upper right, tools lower left. Begin and Continue
+    sit over the quiet intake before play. No studio header competes with the cave.
+    FORM: Experience, approved Living Descent refinery composition; seed 19469569,
+    assigned candidate 6. The user's approved direction governs the composition.
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+    -->
 
     <div id="boot-overlay">
-        <div class="boot-title">PURPLE LLAMA STUDIO</div>
-        <div class="boot-sub">ALCHEMIST'S DESCENT</div>
+        <div class="boot-title">BREATHING WORKS</div>
+        <div class="boot-sub">AN ALCHEMIST’S DESCENT</div>
         <div class="boot-dots"><span></span><span></span><span></span></div>
         <div id="boot-status">CONJURING THE CAVES&hellip;</div>
     </div>
 
     <header>
-        <div><h1>Purple Llama Studio <span class="title-sub">| Alchemist's Descent</span></h1></div>
+        <div><h1>Purple Llama Studio <span class="title-sub">| Breathing Works</span></h1></div>
         <div class="hud-wrapper">
             <!-- data-authoring: stripped from a play build by main.ts. PERF stays
                  (a tester reporting "it's slow" needs it); these are dev tools. -->
@@ -49,21 +84,24 @@
             <button class="sound-btn" data-authoring id="runtime-inspector-toggle" title="Inspect the active Play runtime" disabled>RUNTIME</button>
             <button class="sound-btn" data-authoring id="gpu-compose-toggle" title="GPU frame composition: A/B the terrain shader live (full controls are in the Builder Post Processing panel)">GPU FX</button>
             <button class="sound-btn" data-authoring id="webgpu-compose-toggle" title="WebGPU raw WGSL compose: toggles the diagnostic live compose path when booted with WebGPU">WGSL</button>
-            <button class="sound-btn" id="perf-hud-toggle" title="Performance overlay: fps + per-phase frame timings (F3)">PERF</button>
-            <button class="sound-btn" id="immersive-play-btn" title="Enter fullscreen play with keyboard lock when the browser supports it">FULLSCREEN PLAY</button>
-            <div class="mode-switch">
+            <!-- data-workshop-dev: the studio chrome a player build's Workshop hides
+                 (ui/PlayerWorkshop.ts). Unlike data-authoring these stay in the DOM:
+                 their owners bind them strictly, and hiding is all a player needs. -->
+            <button class="sound-btn" data-workshop-dev id="perf-hud-toggle" title="Performance overlay: fps + per-phase frame timings (F3)">PERF</button>
+            <button class="sound-btn" data-workshop-dev id="immersive-play-btn" title="Enter fullscreen play with keyboard lock when the browser supports it">FULLSCREEN PLAY</button>
+            <div class="mode-switch" data-workshop-dev>
                 <button data-mode="build" class="active" id="mode-build-btn">SANDBOX</button>
                 <button data-mode="play" id="mode-play-btn">PLAY</button>
             </div>
-            <button class="sound-btn" id="sound-toggle">SND ON</button>
+            <button class="sound-btn" data-workshop-dev id="sound-toggle">SND ON</button>
         </div>
     </header>
 
     <div id="workbench">
         <div id="left-toolbar">
             <input id="toolbar-filter" type="text" placeholder="&#9906; filter tools&hellip;" spellcheck="false">
-            <div class="section-title">World Generation</div>
-            <select id="biome-select" class="biome-select">
+            <div class="section-title" data-workshop-dev>World Generation</div>
+            <select id="biome-select" class="biome-select" data-workshop-dev>
                 <option value="earthen" selected>Biome: Earthen Hollows</option>
                 <option value="frozen">Biome: Frozen Depths</option>
                 <option value="flooded">Biome: Flooded Caverns</option>
@@ -71,9 +109,9 @@
                 <option value="scorched">Biome: Scorched Wastes</option>
             </select>
             <button class="action-btn" id="btn-sandbox">Fresh Workshop</button>
-            <button class="action-btn" id="btn-caves">Generate Caves</button>
-            <button class="action-btn" id="btn-fortress">Spawn Fortress</button>
-            <details id="worldgen-tune-wrap" class="wg-tune-wrap">
+            <button class="action-btn" data-workshop-dev id="btn-caves">Generate Caves</button>
+            <button class="action-btn" data-workshop-dev id="btn-fortress">Spawn Fortress</button>
+            <details id="worldgen-tune-wrap" class="wg-tune-wrap" data-workshop-dev>
                 <summary>Look tuning <span class="wg-tune-hint">tweak &rarr; Generate Caves</span></summary>
                 <div id="worldgen-tune" class="wg-tune"></div>
                 <button class="action-btn" id="btn-worldgen-reset">Reset look</button>
@@ -102,28 +140,31 @@
             <button class="tool-btn spell-mode" data-mode="spell" data-id="meteor"><span class="color-indicator" style="background:#ff5a1e"></span>Meteor</button>
             <button class="tool-btn spell-mode" data-mode="spell" data-id="blackhole"><span class="color-indicator" style="background:#a855f7"></span>Black Hole</button>
 
-            <div class="section-title">Hostiles (Sandbox)</div>
-            <button class="action-btn dropper-slime" id="btn-spawn-slime">Drop Slime</button>
-            <button class="action-btn dropper-imp" id="btn-spawn-imp">Drop Fire Imp</button>
-            <button class="action-btn dropper-golem" id="btn-spawn-golem">Drop Stone Golem</button>
+            <div class="section-title" data-workshop-dev>Hostiles (Sandbox)</div>
+            <button class="action-btn dropper-slime" data-workshop-dev id="btn-spawn-slime">Drop Slime</button>
+            <button class="action-btn dropper-imp" data-workshop-dev id="btn-spawn-imp">Drop Fire Imp</button>
+            <button class="action-btn dropper-golem" data-workshop-dev id="btn-spawn-golem">Drop Stone Golem</button>
 
-            <div class="section-title">Level Library</div>
-            <button class="action-btn" id="btn-level-save">Save Level</button>
-            <select id="level-select" class="biome-select" disabled></select>
-            <button class="action-btn" id="btn-level-load">Load Level</button>
-            <button class="action-btn" id="btn-level-delete">Delete Level</button>
-            <button class="action-btn" id="btn-level-export">Export .json</button>
-            <label class="action-btn" for="level-import" style="text-align:center;cursor:pointer;">Import .json</label>
+            <div class="section-title" data-workshop-dev>Level Library</div>
+            <button class="action-btn" data-workshop-dev id="btn-level-save">Save Level</button>
+            <select id="level-select" class="biome-select" data-workshop-dev disabled></select>
+            <button class="action-btn" data-workshop-dev id="btn-level-load">Load Level</button>
+            <button class="action-btn" data-workshop-dev id="btn-level-delete">Delete Level</button>
+            <button class="action-btn" data-workshop-dev id="btn-level-export">Export .json</button>
+            <label class="action-btn" data-workshop-dev for="level-import" style="text-align:center;cursor:pointer;">Import .json</label>
             <input type="file" id="level-import" accept=".json" style="display:none">
-            <button class="action-btn" id="btn-level-playtest" style="border-color:#78350f;color:#fcd34d;background:#1d1407;">Playtest Level</button>
+            <button class="action-btn" data-workshop-dev id="btn-level-playtest" style="border-color:#78350f;color:#fcd34d;background:#1d1407;">Playtest Level</button>
 
-            <div class="section-title">Expedition</div>
-            <button class="action-btn" id="btn-expedition-abandon">Abandon Saved Expedition</button>
+            <div class="section-title" data-workshop-dev>Expedition</div>
+            <button class="action-btn" data-workshop-dev id="btn-expedition-abandon">Abandon Saved Expedition</button>
         </div>
 
         <div id="viewport-container">
             <div id="canvas-holder">
                 <div id="game-hud">
+                    <div id="expedition-tools"></div>
+                    <div id="field-note"></div>
+                    <button id="expedition-pause" type="button">Pause · Esc</button>
                     <div id="hud-left">
                         <div id="spell-hotbar"></div>
                         <div id="god-tools" aria-label="God mode QA tools"></div>
@@ -137,8 +178,7 @@
                         </div>
                     </div>
                     <div class="wave-readout">
-                        <div class="wave-num" id="wave-num">WAVE 1</div>
-                        <div class="sub"><span id="enemies-left">0</span> HOSTILES</div>
+                        <div class="wave-num" id="wave-num"></div>
                         <div id="treasure-row">
                             <span class="treasure-chip" id="key-indicator" title="The Golden Key">&#9919;</span>
                             <span class="treasure-chip" id="cards-chip" title="Spell cards in the satchel &mdash; B to slot them"><span class="t-icon" id="cards-chip-icon"></span><b id="hud-cards">0</b></span>
@@ -158,63 +198,65 @@
                     <div id="wave-banner"><div class="big" id="banner-big">WAVE 1</div><div class="small" id="banner-small">HOSTILES INBOUND</div></div>
                     <div id="damage-vignette"></div>
                 </div>
-                <div id="pause-overlay">
-                    <div class="pause-title">PAUSED</div>
-                    <div class="pause-sub">ESC to resume &middot; H for the handbook</div>
-                    <div class="pause-actions">
-                        <button id="pause-restart" type="button">RESTART LEVEL</button>
-                        <button id="pause-launcher" type="button">START RUN MENU</button>
-                        <button id="pause-copy-report" type="button" title="Copy build, seeds, position, and local play counters as JSON — paste it with your feedback">COPY PLAYTEST REPORT</button>
-                    </div>
-                    <button id="pause-exit-fullscreen" type="button">EXIT FULLSCREEN</button>
-                    <div class="pause-sub" id="pause-build"></div>
-                </div>
-                <div id="help-overlay">
-                    <div class="help-title">THE ALCHEMIST'S HANDBOOK</div>
-                    <div class="help-grid">
-                        <div class="help-col">
-                            <div class="help-h">THE DESCENT</div>
-                            <p>Find the <b>GOLDEN KEY</b>, open the <b>PORTAL</b>, take a boon in the Sanctum, descend. Eight depths down, the <b>KILN COLOSSUS</b> waits — and water is the strategy.</p>
-                            <p>Impatient? The sealed <b>WELL</b> at each level's floor can be dug open — a fast drop that skips the Sanctum's boons.</p>
-                            <p><b>WAYSTONES</b> are checkpoints: carry fire to the bowl to light one. Death spills 15% of your carried gold where you fell — return to the last lit stone, then go take it back.</p>
-                            <div class="help-h">LOCKS MADE OF PHYSICS</div>
-                            <p><b>PLATES</b> want weight. <b>LEVERS</b> flip with E — or a blast. <b>BRAZIERS</b> want fire (some gates need all three). The <b>SAND SCALE</b> wants material poured onto its pan, the <b>SLUICE</b> wants its basin flooded, the <b>CHARGE COIL</b> wants one spark. <b>RUNE GLYPHS</b> open distant vaults when struck by any spell.</p>
-                            <p>Wreck a mechanism and its gate groans open half a minute later — physics never locks you out.</p>
+                <div id="pause-overlay" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+                    <div class="pause-shell">
+                        <div class="pause-main">
+                            <div class="pause-title" id="pause-title">Take a breath</div>
+                            <div class="pause-sub" id="pause-input-hint">Escape to resume · H for the handbook</div>
+                            <button id="pause-resume" type="button">Resume descent</button>
+                            <nav class="pause-menu" aria-label="Pause menu">
+                                <button type="button" data-pause-open="KeyM"><span>Map</span><kbd class="key">M</kbd></button>
+                                <button type="button" data-pause-open="KeyB"><span>Wandsmith&#39;s bench</span><kbd class="key">B</kbd></button>
+                                <button type="button" data-pause-open="KeyH"><span>Handbook</span><kbd class="key">H</kbd></button>
+                                <button type="button" data-pause-open="KeyJ"><span>Grimoire</span><kbd class="key">J</kbd></button>
+                                <div class="pause-actions"></div>
+                                <button id="pause-restart" type="button"><span>Restart level</span></button>
+                            </nav>
                         </div>
-                        <div class="help-col">
-                            <div class="help-h">ALCHEMY</div>
-                            <p>Flask: <b>E</b> siphon &middot; <b>Q</b> pour &middot; <b>F / RMB</b> throw &middot; <b>X</b> drink. Drop ingredients into a heated <b>CAULDRON</b> basin to brew elixirs — recipes are remembered in your grimoire.</p>
-                            <p>Hearts grow your vessel at once, but refilling it is a <b>COMMUNION</b> — you are rooted and unarmed while the charge runs. Pick your moment.</p>
-                            <div class="help-h">WANDS</div>
-                            <p>You carry two WANDS, not a list of items. <b>WHEEL</b> or <b>1/2</b> swaps which wand is in hand (the dim row is holstered — click it to draw). Each wand holds spell CARDS: every click casts the <b>NEXT</b> card group left to right, then wraps — the amber glow marks what fires next. Modifier cards charge the payload after them; multicasts fire two at once. <b>B</b> opens the bench to re-slot cards.</p>
-                            <div class="help-h">THE MAP</div>
-                            <p><b>M</b> for the full chart. LMB sets a waypoint on explored cells or visible markers; RMB clears it. Dots: <span style="color:#fde047">key</span> &middot; <span style="color:#fbbf24">sealed gate</span> &middot; <span style="color:#a78bfa">rune glyph</span> &middot; <span style="color:#c084fc">portal</span> &middot; <span style="color:#ff9a3c">lit waystone</span> &middot; <span style="color:#4ade80">cauldron</span> &middot; <span style="color:#fb7185">heart</span> &middot; <span style="color:#7dd3fc">tome</span>.</p>
-                            <div class="help-h">CONTROLS</div>
-                            <p>A/D move &middot; SPACE jump / levitate &middot; S crouch &amp; peek (in air: dive slam) &middot; SHIFT/C wall grab, W/S climb &middot; LMB cast &middot; RMB/F flask &middot; R respawn &middot; H this handbook &middot; &#96; opens the developer console</p>
-                        </div>
+                        <aside class="pause-status" aria-label="Where you are">
+                            <p class="menu-label">Where you are</p>
+                            <h3 id="pause-place"></h3>
+                            <p id="pause-goal"></p>
+                            <dl id="pause-stats"></dl>
+                        </aside>
                     </div>
-                    <div class="help-close">H or ESC to close</div>
+                    <div class="pause-tools">
+                        <button id="pause-launcher" type="button">Set up a run</button>
+                        <button id="pause-copy-report" type="button" title="Copy build, seeds, position, and local play counters as JSON — paste it with your feedback">Copy playtest report</button>
+                        <button id="pause-exit-fullscreen" type="button">Exit fullscreen</button>
+                        <span class="pause-sub" id="pause-build"></span>
+                    </div>
                 </div>
-                <div id="victory-overlay">
-                    <div class="vic-title">THE KILN IS COLD</div>
-                    <div class="vic-sub">EIGHT DEPTHS CONQUERED &middot; THE DESCENT IS COMPLETE</div>
-                    <div class="vic-gold"><span id="vic-gold">0</span> oz OF GOLD CARRIED OUT</div>
-                    <button id="vic-return">RISE TO THE SURFACE</button>
-                </div>
+                <div id="help-overlay"><!-- The Alchemist's Handbook: built by src/ui/HelpOverlay.ts --></div>
                 <div id="sanctum-overlay">
-                    <div class="sanc-title">THE SANCTUM</div>
-                    <div class="sanc-sub">BETWEEN DEPTHS, THE OLD ONES OFFER A BARGAIN &middot; DEPTH <span id="sanc-depth">1</span> AWAITS &middot; <span id="sanc-gold" class="gold">0</span> oz</div>
-                    <div class="sanc-heading">CHOOSE A BOON</div>
-                    <div id="perk-row"></div>
-                    <div class="sanc-heading">PROVISIONS</div>
-                    <div id="sanc-shop"></div>
-                    <button id="descend-btn" disabled>CHOOSE A BOON TO DESCEND</button>
+                    <div class="sanc-shell" role="dialog" aria-modal="true" aria-labelledby="sanc-title">
+                        <div class="sanc-head">
+                            <div>
+                                <div class="sanc-title" id="sanc-title">The Sanctum</div>
+                                <div class="sanc-sub">Between floors the old ones trade. Floor <span id="sanc-depth">2 of 4</span> waits below.</div>
+                            </div>
+                            <div class="sanc-purse"><span class="menu-label">Gold carried</span><b><span id="sanc-gold" class="gold">0</span> oz</b></div>
+                        </div>
+                        <div class="sanc-body">
+                            <section class="sanc-section">
+                                <div class="sanc-heading">Choose a boon <span>Take one before you descend</span></div>
+                                <div id="perk-row"></div>
+                            </section>
+                            <section class="sanc-section">
+                                <div class="sanc-heading">Provisions <span>Optional; paid in gold</span></div>
+                                <div id="sanc-shop"></div>
+                            </section>
+                        </div>
+                        <div class="sanc-foot"><button id="descend-btn" disabled>Choose a boon to descend</button></div>
+                    </div>
                 </div>
-                <div id="gameover-overlay">
-                    <div class="go-title">YOU DIED</div>
-                    <div class="go-stats">REACHED <span id="go-wave">D1</span> &middot; PURSED <span id="go-gold">0</span> oz OF GOLD<br>THE CAVES RECLAIM ANOTHER ALCHEMIST</div>
+                <div id="gameover-overlay" role="dialog" aria-modal="true" aria-labelledby="death-title">
+                  <div class="go-panel">
+                    <div class="go-title" id="death-title">You fell.</div>
+                    <div class="go-stats"><span id="go-wave">D1</span> &middot; <span id="go-gold">0</span> oz carried</div>
                     <div id="go-cause" class="go-cause">THE CAVES DECLINE TO SPECIFY</div>
-                    <button id="respawn-btn">RISE AGAIN</button>
+                    <button id="respawn-btn">Return to your waystone</button>
+                  </div>
                 </div>
                 <div id="level-curtain" aria-hidden="true">
                     <div class="level-curtain-panel" role="status" aria-live="polite" aria-atomic="true">

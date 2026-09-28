@@ -26,7 +26,13 @@ const check = (name, ok, detail = '') => {
 };
 
 const room = `probe-${Date.now().toString(36)}`;
-const target = `${url}${url.includes('?') ? '&' : '?'}link=${room}`;
+const withLink = (base) => `${base}${base.includes('?') ? '&' : '?'}link=${room}`;
+// The REAL two-window layout: the editor is the /builder.html route (it boots
+// straight into the Builder), the game is /. Booting the editor route here is
+// itself a check — it once died for weeks because its shell fell behind
+// index.html and every probe drove the Builder from / instead.
+const editorTarget = withLink(`${url.replace(/\/?$/, '/')}builder.html`);
+const gameTarget = withLink(url);
 
 const browser = await launchBrowser();
 const errs = [];
@@ -45,18 +51,34 @@ for (const [name, page] of [['editor', editor], ['game', game]]) {
   page.on('console', (msg) => {
     const text = msg.text();
     if (text.includes('[authorlink]')) linkWarnings.push(`${name}: ${text}`);
+    if (process.env.AUTHORLINK_PROBE_VERBOSE && (msg.type() === 'error' || msg.type() === 'warning')) console.log(`    [${name} ${msg.type()}] ${text}`);
   });
 }
 
-const boot = async (page) => {
+const boot = async (page, target) => {
   await page.goto(target, { waitUntil: 'networkidle', timeout: 45000 });
   await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 30000 });
   // The link is installed before Game.start; wait for the socket, not a sleep.
   await page.waitForFunction(() => window.__authorLink?.getStatus().kind === 'connected', { timeout: 20000 });
 };
 
-await boot(editor);
-await boot(game);
+await boot(editor, editorTarget);
+await boot(game, gameTarget);
+let editorOpened = false;
+try {
+  await editor.waitForFunction(
+    () => document.body.classList.contains('builder-open') && !!document.getElementById('builder-canvas'),
+    { timeout: 30000 },
+  );
+  editorOpened = true;
+} catch {
+  editorOpened = false;
+}
+check(
+  'the /builder.html route boots straight into the Builder',
+  editorOpened,
+  await editor.evaluate(() => document.getElementById('boot-status')?.textContent ?? ''),
+);
 
 // Both windows must see each other before any publish, or the first message
 // races the join and the probe goes flaky for reasons that are not bugs.
@@ -211,12 +233,10 @@ check(
 );
 
 console.log('-- cells: a real Builder brush stroke stamps real cells in the game window');
-await editor.click('#mode-builder-btn');
-await editor.waitForFunction(
-  () => document.body.classList.contains('builder-open') && !!document.getElementById('builder-overlay'),
-  { timeout: 20000 },
-);
+// The editor route opened the Builder at boot; the pull above landed in the
+// grid it is editing. Give the overlay a beat to settle before real clicks.
 await editor.waitForTimeout(700);
+const objectsSentBeforeStroke = await editor.evaluate(() => window.__authorLink.getStats().sent.objects ?? 0);
 
 // The receiving world is already paused (above). The transport is what is under
 // test; a running sim would let a liquid stroke flow out from under the indices
@@ -321,6 +341,15 @@ if (stroke) {
 } else {
   check('the game window replayed the painted cells', false, 'no patch was published');
 }
+// A terrain stroke used to re-publish the WHOLE authored set (tearing down and
+// re-instantiating every synced object in the tester's level on every brush
+// drag). The set now goes out only when objects/links/lights actually changed.
+const objectsSentAfterStroke = await editor.evaluate(() => window.__authorLink.getStats().sent.objects ?? 0);
+check(
+  'a terrain stroke does not re-publish the authored set',
+  objectsSentAfterStroke === objectsSentBeforeStroke,
+  `objects sent ${objectsSentBeforeStroke} -> ${objectsSentAfterStroke}`,
+);
 
 console.log('-- cells: the receiving window reports the edit as a world change');
 // Arm the listener first, then publish, so there is no race with the send.
@@ -368,19 +397,50 @@ await game.evaluate(() => window.__game.ctx.levels.playCurrentWorld(window.__gam
 await game.waitForFunction(() => window.__game.ctx.levels.current !== null, { timeout: 20000 });
 await editor.waitForFunction(() => window.__authorLink.getWorldState().mismatch === true, { timeout: 15000 });
 check('starting a runtime is detected as a world change', true);
+
+console.log('-- worlds: a window PLAYING a live level refuses to pull a foreign grid over it');
+// Both windows show the amber pill on a mismatch, but pulling into the play
+// window would drop the editor's cells under the tester's live runtime — its
+// exit, mechanisms and pickups would stay where the OLD level put them.
+const playPull = await game.evaluate(async () => {
+  const state = window.__authorLink.getWorldState();
+  const ok = await window.__authorLink.pullWorldFrom();
+  return { canPull: state.canPull, reason: state.pullBlockedReason ?? null, ok, level: window.__game.ctx.levels.current?.def.id ?? null };
+});
+check(
+  'the play window reports it cannot pull, and the pull is refused',
+  playPull.canPull === false && playPull.ok === false && playPull.level !== null,
+  JSON.stringify(playPull),
+);
+
 await editor.evaluate(() => window.__authorLink.pullWorldFrom());
 await editor.waitForFunction(() => window.__authorLink.getWorldState().mismatch === false, { timeout: 20000 });
 const runtimeBaseline = await game.evaluate(() => ({
   mechanisms: window.__game.ctx.levels.current.mechanisms.length,
   pickups: window.__game.ctx.levels.current.pickups.length,
+  bats: window.__game.ctx.enemies.filter((e) => e.kind === 'bat').length,
 }));
 
 // A lever wired to a door: the pair proves BOTH instantiation and link wiring,
-// and the trigger index is the thing most likely to be left stale.
+// and the trigger index is the thing most likely to be left stale. The bat
+// proves enemies are tracked too: an authored enemy that teardown cannot find
+// is a duplicate on every re-publish. An exact spawn needs open air (the
+// door and lever stamp their own cells; an enemy does not), so find a pocket
+// in the game window's generated cave rather than guessing a coordinate.
+const batSpot = await game.evaluate(() => {
+  const ctx = window.__game.ctx;
+  for (let y = 60; y < 500; y += 2) {
+    for (let x = 60; x < 800; x += 2) {
+      if (ctx.physics.entityFree(x, y, 5, 10)) return { x, y };
+    }
+  }
+  return { x: 160, y: 120 };
+});
 const authored = {
   objects: [
     { id: 'door-1', kind: 'door', x: 120, y: 120, rotation: 0, locked: false, hidden: false, params: { w: 3, h: 12 } },
     { id: 'lever-1', kind: 'lever', x: 140, y: 128, rotation: 0, locked: false, hidden: false, params: {} },
+    { id: 'bat-1', kind: 'enemy', x: batSpot.x, y: batSpot.y, rotation: 0, locked: false, hidden: false, params: { kind: 'bat' } },
   ],
   links: [{ id: 'link-1', kind: 'triggerDoor', fromId: 'lever-1', toId: 'door-1' }],
   lights: [],
@@ -423,6 +483,30 @@ check(
   runtimeAfter.doorCell !== null && runtimeAfter.doorCell !== 0,
   `cell=${runtimeAfter.doorCell}`,
 );
+const batsAfter = await game.evaluate(() => window.__game.ctx.enemies.filter((e) => e.kind === 'bat').map((e) => e.sourceId ?? null));
+check(
+  'the authored enemy spawned and carries its record id',
+  batsAfter.length === runtimeBaseline.bats + 1 && batsAfter.includes('bat-1'),
+  JSON.stringify(batsAfter),
+);
+
+console.log('-- objects: re-publishing the SAME set neither duplicates nor leaks');
+await editor.evaluate((set) => window.__authorLink.publishAuthoredSet(set), authored);
+await game.waitForTimeout(1200);
+const republished = await game.evaluate((base) => {
+  const rt = window.__game.ctx.levels.current;
+  return {
+    mechanisms: rt.mechanisms.length,
+    expected: base.mechanisms + 2,
+    bats: window.__game.ctx.enemies.filter((e) => e.kind === 'bat').length,
+    expectedBats: base.bats + 1,
+  };
+}, runtimeBaseline);
+check(
+  'an identical re-publish leaves exactly one copy of each object',
+  republished.mechanisms === republished.expected && republished.bats === republished.expectedBats,
+  JSON.stringify(republished),
+);
 
 console.log('-- objects: clearing the set removes them AND their stamped cells');
 await editor.evaluate(() =>
@@ -450,6 +534,94 @@ check(
   objectsLanded && afterTeardown.cellAtDoor !== 13,
   `cell=${afterTeardown.cellAtDoor}`,
 );
+const batsAfterTeardown = await game.evaluate(() => window.__game.ctx.enemies.filter((e) => e.kind === 'bat').length);
+check('the authored enemy was removed with the set', batsAfterTeardown === runtimeBaseline.bats, `bats=${batsAfterTeardown}`);
+
+console.log('-- mirror: the playing window streams its simulation into the editor');
+// The editor's own sim is paused for authoring, so the only way its grid can
+// show sand FALLING is the mirror. Sand is placed in the GAME through the
+// world API (which touches the activity grid the way the sim does), inside
+// the play window's sim bounds (they follow the player), the clock runs for
+// a moment, and then the region must agree cell for cell in both windows.
+const mirrorSpot = await game.evaluate(() => {
+  const ctx = window.__game.ctx;
+  const px = Math.floor(ctx.player.x);
+  const py = Math.floor(ctx.player.y);
+  for (let r = 20; r < 220; r += 6) {
+    for (let dy = -r; dy <= r; dy += 4) {
+      for (let dx = -r; dx <= r; dx += 4) {
+        const x = px + dx;
+        const y = py + dy;
+        // A 5x14 pocket of air: room for the sand to be placed AND to fall.
+        if (ctx.physics.entityFree(x, y, 3, 14)) return { x, y };
+      }
+    }
+  }
+  return null;
+});
+check('found an air pocket near the player to drop sand into', mirrorSpot !== null);
+if (mirrorSpot) {
+  const sandTop = { x: mirrorSpot.x, y: mirrorSpot.y - 12 };
+  await game.evaluate(({ x, y }) => {
+    const w = window.__game.ctx.world;
+    for (let dy = 0; dy < 3; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        if (w.inBounds(x + dx, y + dy)) w.replaceCellAt(w.idx(x + dx, y + dy), 1, 0xd2b48c);
+      }
+    }
+  }, sandTop);
+  const editorCellsBefore = await editor.evaluate(() => window.__authorLink.getStats().received.cells ?? 0);
+  await game.evaluate(() => {
+    const ctx = window.__game.ctx;
+    ctx.time.setManual(false);
+    ctx.state.paused = false;
+  });
+  let sawReceiving = false;
+  for (let i = 0; i < 20 && !sawReceiving; i++) {
+    await editor.waitForTimeout(100);
+    sawReceiving = await editor.evaluate(() => window.__authorLink.getWorldState().mirror === 'receiving');
+  }
+  const sending = await game.evaluate(() => window.__authorLink.getWorldState().mirror);
+  await game.waitForTimeout(1200);
+  await game.evaluate(() => {
+    const ctx = window.__game.ctx;
+    ctx.state.paused = true;
+    ctx.time.setManual(true);
+  });
+  // The last frames are still in flight; the sweep also needs a moment.
+  await game.waitForTimeout(900);
+  check('the play window reports it is streaming its simulation', sending === 'sending', `mirror=${sending}`);
+  check('the editor saw itself receiving the mirror', sawReceiving);
+  const editorCellsAfter = await editor.evaluate(() => window.__authorLink.getStats().received.cells ?? 0);
+  check('mirror frames arrived in the editor', editorCellsAfter > editorCellsBefore, `${editorCellsBefore} -> ${editorCellsAfter}`);
+  const region = (page) =>
+    page.evaluate(({ x, y }) => {
+      const w = window.__game.ctx.world;
+      let h = 2166136261;
+      let sand = 0;
+      let placedRows = 0;
+      for (let yy = y - 6; yy < y + 40; yy++) {
+        for (let xx = x - 24; xx <= x + 24; xx++) {
+          if (!w.inBounds(xx, yy)) continue;
+          const t = w.types[w.idx(xx, yy)];
+          h = Math.imul(h ^ t, 16777619) >>> 0;
+          if (t === 1) {
+            sand++;
+            if (yy < y + 3) placedRows++;
+          }
+        }
+      }
+      return { h, sand, placedRows };
+    }, sandTop);
+  const gameRegion = await region(game);
+  const editorRegion = await region(editor);
+  check('the sand fell in the play window', gameRegion.sand > 0 && gameRegion.placedRows < 15, JSON.stringify(gameRegion));
+  check(
+    'the editor shows the SAME fallen sand, cell for cell',
+    gameRegion.h === editorRegion.h && editorRegion.sand === gameRegion.sand,
+    `game=${JSON.stringify(gameRegion)} editor=${JSON.stringify(editorRegion)}`,
+  );
+}
 
 console.log('-- objects: a peer set for a different world is refused');
 await game.evaluate(() => {
@@ -504,7 +676,9 @@ const pill = await editor.evaluate(() => {
   const el = document.getElementById('authorlink-status');
   return el ? { text: el.textContent, state: el.dataset.state } : null;
 });
-check('link pill shows connected with a peer', pill?.state === 'connected' && /LINK\s+1/.test(pill.text ?? ''), JSON.stringify(pill));
+// The pill may still carry a mirror arrow (⇣ receiving) for a moment after the
+// last frame; the peer count is what this asserts.
+check('link pill shows connected with a peer', pill?.state === 'connected' && /LINK\s+[⇣⇡]?1/.test(pill.text ?? ''), JSON.stringify(pill));
 
 // ---------------------------------------------------------------------------
 console.log('-- resilience: the room is genuinely idle after all that traffic');

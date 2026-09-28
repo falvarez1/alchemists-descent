@@ -43,7 +43,7 @@ function makeCtx(): { ctx: Ctx; list: Mechanism[]; world: World; toasts: string[
     enemies: [],
     player: { x: -500, y: -500, dead: false, pullT: 0, pullDir: 1, facing: 1 },
     state: { mode: 'play', paused: false, frameCount: 1, currentBiome: 'earthen' },
-    audio: {
+    audio: { sfx: () => undefined, creature: () => undefined,
       tone: noop, groan: noop, zap: noop, bubble: noop, brazier: noop,
       lever: noop, doorGrind: noop, boom: noop,
     },
@@ -117,6 +117,16 @@ describe('valve', () => {
     step(h.ctx, mech, 2);
     expect(valve.state).toBe(0);
     expect(countCells(h.world, 100, 100, 103, 102, Cell.Stone)).toBe(12);
+  });
+
+  it('does not mistake a deliberately retracted valve body for structural damage', () => {
+    const valve = makeValve(h.ctx, h.list, 100, 100, 4, 3);
+    const lever = placeLever(h, 90, 110, valve);
+    lever.state = 1;
+    step(h.ctx, mech, 90);
+    expect(valve.state).toBe(1);
+    expect(valve.broken).toBeUndefined();
+    expect(countCells(h.world, 100, 100, 103, 102, Cell.Metal)).toBe(0);
   });
 
   it('oneShot valves stay open after the trigger releases', () => {
@@ -208,10 +218,10 @@ describe('plug', () => {
     step(h.ctx, mech, 16);
     expect(plug.state).toBe(1);
     expect(door.state).toBe(1);
-    expect(h.toasts.filter((t) => t.includes('SEAL')).length).toBe(1);
+    expect(h.toasts.filter((t) => /seal/i.test(t)).length).toBe(1);
     step(h.ctx, mech, 30); // never re-fires, never un-fires
     expect(plug.state).toBe(1);
-    expect(h.toasts.filter((t) => t.includes('SEAL')).length).toBe(1);
+    expect(h.toasts.filter((t) => /seal/i.test(t)).length).toBe(1);
   });
 
   it('transformed cells count as destroyed (wood that became fire is gone)', () => {
@@ -355,6 +365,49 @@ describe('counterweight', () => {
     step(h.ctx, mech, 30);
     expect(cw.state).toBe(1);
     expect(door.state).toBe(1);
+  });
+});
+
+describe('world-driven toasts (QA: duplicates, and arrival narrating changes the player never made)', () => {
+  function fillBucket(cwX: number): void {
+    for (const y of [98, 99]) for (let i = 0; i < 7; i++) h.world.types[h.world.idx(cwX + i, y)] = Cell.Sand;
+  }
+
+  it('the arrival settling is silent; the same latch later, in sight, is told once', () => {
+    h.ctx.player.x = 110; h.ctx.player.y = 100;
+    const door = makeDoor(h.ctx, h.list, 200, 100, 3, 10);
+    const early = makeCounterweight(h.world, h.list, 100, 100, 7, 12, door);
+    h.ctx.events.emit('levelChanged', { depth: 2, name: 'The Rot Gardens' });
+    fillBucket(100); // generation's sand settles into the bucket on arrival
+    step(h.ctx, mech, 10);
+    expect(early.state).toBe(1); // the machine still moves...
+    expect(h.toasts.filter((t) => /counterweight/i.test(t))).toEqual([]); // ...quietly
+    step(h.ctx, mech, 600); // the arrival window has passed
+    const late = makeCounterweight(h.world, h.list, 130, 100, 7, 12, door);
+    fillBucket(130);
+    step(h.ctx, mech, 10);
+    expect(late.state).toBe(1);
+    expect(h.toasts.filter((t) => /counterweight/i.test(t))).toHaveLength(1);
+  });
+
+  it('a latch nobody could see (a screen away) is not narrated', () => {
+    h.ctx.player.x = 900; h.ctx.player.y = 700;
+    const door = makeDoor(h.ctx, h.list, 200, 100, 3, 10);
+    makeCounterweight(h.world, h.list, 100, 100, 7, 12, door);
+    fillBucket(100);
+    step(h.ctx, mech, 10);
+    expect(h.toasts.filter((t) => /counterweight/i.test(t))).toEqual([]);
+  });
+
+  it('two machines saying the same line on the same tick say it once', () => {
+    h.ctx.player.x = 115; h.ctx.player.y = 100;
+    const door = makeDoor(h.ctx, h.list, 200, 100, 3, 10);
+    // two levers standing in empty air: both fail their body audit on the same tick
+    makeLever(h.list, 100, 100, door);
+    makeLever(h.list, 130, 100, door);
+    h.ctx.state.frameCount = 29;
+    step(h.ctx, mech, 1);
+    expect(h.toasts.filter((t) => /groans/i.test(t))).toEqual(['A mechanism groans. Something gives way.']);
   });
 });
 

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { LEVELS, populationForLevel } from '@/config/worldgraph';
+import { LEVELS, populationForLevel, SPINE_ROSTERS } from '@/config/worldgraph';
 import { EventBus } from '@/core/events';
 import { Rng } from '@/core/rng';
-import type { Critter, Ctx, Enemy, EnemyDef, EnemySpawnOptions, WeaverLairWeb } from '@/core/types';
+import type { Critter, Ctx, Enemy, EnemyDef, EnemySpawnOptions, LevelDef, WeaverLairWeb } from '@/core/types';
 import { ENEMY_KINDS as BUILDER_ENEMY_KINDS, PATROL_KINDS } from '@/builder/inspectorSchemas';
 import { Enemies, ENEMY_DEFS, enemyLethalCell } from '@/entities/Enemies';
 import { spawnPrefabEnemy } from '@/game/instantiate';
@@ -53,10 +53,12 @@ function makeEnemy(kind: Enemy['kind'], overrides: Partial<Enemy> = {}): Enemy {
 }
 
 describe('enemy bounty economy', () => {
-  it('splits non-multiple bounties into exact-value homing coins', () => {
+  it('pays the bounty into the purse at the kill and splits it across exact-value homing coins', () => {
     const values: number[] = [];
+    const scores: number[] = [];
     const ctx = {
       state: { mode: 'play', score: 0 },
+      events: { on: () => () => undefined, emit: (name: string, p: { score: number }) => { if (name === 'scoreChanged') scores.push(p.score); } },
       particles: {
         spawn: (
           _x: number,
@@ -81,8 +83,18 @@ describe('enemy bounty economy', () => {
 
     expect(values.reduce((sum, value) => sum + value, 0)).toBe(ENEMY_DEFS.bat.bounty);
     expect(values).toHaveLength(2);
+    // Credited exactly once, at the kill — the coins only animate it.
+    expect(ctx.state.score).toBe(ENEMY_DEFS.bat.bounty);
+    expect(scores).toEqual([ENEMY_DEFS.bat.bounty]);
   });
 });
+
+/** Creature voices are positional now: `at` runs the placed cue, every other method is a no-op unless counted. */
+const fakeAudio = (counted: Record<string, () => void> = {}): Ctx['audio'] =>
+  new Proxy(counted, {
+    get: (target, key) =>
+      key === 'at' ? (_x: number, _y: number, fn: () => void) => fn() : (target[key as string] ?? (() => undefined)),
+  }) as unknown as Ctx['audio'];
 
 describe('enemy controller edge cases', () => {
   afterEach(() => {
@@ -153,6 +165,7 @@ describe('enemy controller edge cases', () => {
   it('wakes and alerts sleeping enemies when they take damage', () => {
     const enemy = makeEnemy('bat', { sleeping: true, alerted: false, vy: 0 });
     const ctx = {
+      state: { worldSeed: 7, frameCount: 0 },
       particles: {
         burst: () => undefined,
         spawn: () => undefined,
@@ -203,6 +216,7 @@ describe('enemy controller edge cases', () => {
     } as Enemy;
     world.types[world.idx(25, 30)] = Cell.Acid;
     const ctx = {
+      state: { worldSeed: 7, frameCount: 0 },
       world,
       particles: { burst: () => undefined },
       enemies: [enemy],
@@ -229,7 +243,7 @@ describe('enemy controller edge cases', () => {
           type: number | null,
         ) => spawned.push({ type }),
       },
-      audio: { tone: () => undefined },
+      audio: fakeAudio(),
       camera: { x: 0, y: 0 },
       fx: { screenShake: 0 },
     } as unknown as Ctx;
@@ -254,7 +268,7 @@ describe('enemy controller edge cases', () => {
       particles: {
         spawn: (_x: number, _y: number, _vx: number, _vy: number, type: number | null) => spawned.push({ type }),
       },
-      audio: { tone: () => undefined },
+      audio: fakeAudio(),
       camera: { x: 0, y: 0 },
       fx: { screenShake: 0 },
       levels: { current: null },
@@ -339,7 +353,7 @@ describe('enemy controller edge cases', () => {
         spawn: (_x: number, _y: number, _vx: number, _vy: number, type: number | null) => spawned.push({ type }),
         burst: () => undefined,
       },
-      audio: { hollowKnock: () => undefined },
+      audio: fakeAudio(),
       camera: { x: 0, y: 0 },
       fx: { screenShake: 0 },
       levels: { current: null },
@@ -441,7 +455,7 @@ describe('enemy controller edge cases', () => {
     const world = new World(70, 60);
     const ctx = {
       world,
-      audio: { zap: () => undefined },
+      audio: fakeAudio(),
       particles: { burst: () => undefined },
     } as unknown as Ctx;
     const enemies = new Enemies(ctx);
@@ -478,30 +492,32 @@ describe('enemy controller edge cases', () => {
 
 describe('weaver encounter contract', () => {
   it('adds sparse organic enemies to biome populations', () => {
-    expect(ENEMY_DEFS.weaver).toMatchObject({ hp: 260, halfW: 9, h: 18 });
+    expect(ENEMY_DEFS.weaver).toMatchObject({ hp: 135, halfW: 9, h: 18 });
     expect(ENEMY_DEFS.rootloper).toMatchObject({ hp: 90, halfW: 6, h: 14 });
     expect(ENEMY_DEFS.stonemaw).toMatchObject({ hp: 150, halfW: 8, h: 10 });
-    expect(ENEMY_DEFS.rillback).toMatchObject({ hp: 58, halfW: 7, h: 8 });
+    expect(ENEMY_DEFS.rillback).toMatchObject({ hp: 78, halfW: 7, h: 8 });
 
-    expect(populationForLevel(LEVELS.d1, EXTRAS.earthen.foes).weaver ?? 0).toBe(0);
-    expect(populationForLevel(LEVELS.d2, EXTRAS.fungal.foes).weaver).toBe(1);
-    expect(populationForLevel(LEVELS.d2, EXTRAS.fungal.foes).rootloper).toBe(2);
-    expect(populationForLevel(LEVELS.d4, EXTRAS.flooded.foes).rillback).toBe(1);
-    expect(populationForLevel(LEVELS.d5, EXTRAS.timber.foes).weaver).toBe(1);
-    expect(populationForLevel(LEVELS.d5, EXTRAS.timber.foes).rootloper).toBe(1);
-    expect(populationForLevel(LEVELS.d6, EXTRAS.crystal.foes).stonemaw).toBe(1);
-    expect(populationForLevel(LEVELS.d8, EXTRAS.volcanic.foes).stonemaw).toBe(1);
-    // Adding the Weaver's weight shifts the ROUNDED counts of the other timber
-    // foes (weightSum 12 -> 12.25): pin the full d5 roster so that rebalance stays
-    // intentional and any future silent drift is caught.
-    expect(populationForLevel(LEVELS.d5, EXTRAS.timber.foes)).toMatchObject({
-      imp: 13,
-      slime: 10,
-      bomber: 10,
-      bat: 7,
-      weaver: 1,
-      rootloper: 1,
-    });
+    // Spine rosters are keyed by biome (the four-floor Breathing Works spine).
+    const floor = (biome: LevelDef['biome'], depth: number): LevelDef => ({ id: 'x', name: 'X', biome, depth, nextLevelId: null });
+    expect(populationForLevel(LEVELS.d1, EXTRAS.earthen.foes)).toEqual({ weaver: 2, rillback: 2 });
+    expect(populationForLevel(floor('fungal', 2), EXTRAS.fungal.foes)).toEqual(SPINE_ROSTERS.fungal);
+    expect(populationForLevel(floor('flooded', 3), EXTRAS.flooded.foes)).toEqual(SPINE_ROSTERS.flooded);
+    expect(populationForLevel(floor('volcanic', 4), EXTRAS.volcanic.foes)).toEqual(SPINE_ROSTERS.volcanic);
+    // Rot Gardens fodder, Drowned Cistern eels, Kiln Heart imps and bombers.
+    expect(SPINE_ROSTERS.fungal).toMatchObject({ slime: 4, acidslime: 2, bat: 8, eggs: 2 });
+    expect(SPINE_ROSTERS.flooded?.rillback).toBe(6);
+    expect(SPINE_ROSTERS.volcanic).toMatchObject({ imp: 5, bomber: 4, golem: 2 });
+    // No spine roster places a boss: the Leviathan and the Colossus are structure-placed.
+    for (const roster of Object.values(SPINE_ROSTERS)) {
+      expect(roster?.leviathan).toBeUndefined();
+      expect(roster?.colossus).toBeUndefined();
+      expect(roster?.rimewarden).toBeUndefined();
+    }
+    // The second doors (wave 3) are spine floors with their own rosters.
+    expect(populationForLevel(floor('frozen', 2), EXTRAS.frozen.foes)).toEqual(SPINE_ROSTERS.frozen);
+    expect(populationForLevel(floor('crystal', 3), EXTRAS.crystal.foes)).toEqual(SPINE_ROSTERS.crystal);
+    // Legacy biomes the spine no longer uses keep their habitat roster.
+    expect(populationForLevel(floor('timber', 5), EXTRAS.timber.foes)).toEqual({ weaver: 4, rootloper: 4, stonemaw: 2 });
     expect(LEVELS['weaver-test']).toMatchObject({
       id: 'weaver-test',
       biome: 'fungal',
@@ -523,8 +539,14 @@ describe('weaver encounter contract', () => {
         (def.depth === 8 && !def.branch ? 1 : 0) +
         (def.branch ? 2 : 0);
 
-      expect(base + reserved).toBeLessThanOrEqual(70);
-      expect(base + reserved).toBeGreaterThanOrEqual(45);
+      if (def.branch) {
+        expect(base + reserved).toBeLessThanOrEqual(70);
+      } else {
+        // Predators stay few; the fodder crowd (bats hang in roosts) keeps a floor under ~24.
+        expect(base).toBeGreaterThanOrEqual(4);
+        expect(base).toBeLessThanOrEqual(24);
+        expect(base - (pop.bat ?? 0)).toBeLessThanOrEqual(16);
+      }
     }
   });
 
@@ -637,7 +659,7 @@ describe('weaver encounter contract', () => {
     const webShots: Array<{ x: number; y: number; dirX: number; dirY: number; length?: number; ashOnExpire?: boolean }> = [];
     const ctx = {
       world,
-      audio: { squelch: () => undefined },
+      audio: fakeAudio(),
       particles: { burst: () => undefined },
       vineStrands: {
         addWebShot: (
@@ -679,6 +701,8 @@ describe('weaver encounter contract', () => {
     };
     const critters = [prey];
     const ctx = {
+      world: new World(100, 100),
+      state: { worldSeed: 7, frameCount: 0 },
       critters: {
         list: critters,
         remove: (critter: Critter) => {
@@ -687,7 +711,7 @@ describe('weaver encounter contract', () => {
           return undefined;
         },
       },
-      audio: { squelch: () => undefined },
+      audio: fakeAudio(),
       particles: { burst: () => undefined },
     } as unknown as Ctx;
     const enemies = new Enemies(ctx);
@@ -721,8 +745,8 @@ describe('weaver encounter contract', () => {
       burst: 0,
       impulse: 0,
       scatter: 0,
-      squelch: 0,
-      tone: 0,
+      chirr: 0,
+      sfx: 0,
       webShot: 0,
     };
     const countVines = () => {
@@ -745,15 +769,16 @@ describe('weaver encounter contract', () => {
       events,
       world,
       enemies: [sleeper],
+      state: { worldSeed: 7, frameCount: 0 },
       player: { x: 30, y: 80 },
-      audio: {
-        squelch: () => {
-          calls.squelch++;
+      audio: fakeAudio({
+        chirr: () => {
+          calls.chirr++;
         },
-        tone: () => {
-          calls.tone++;
+        sfx: () => {
+          calls.sfx++;
         },
-      },
+      }),
       particles: {
         burst: () => {
           calls.burst++;
@@ -791,8 +816,8 @@ describe('weaver encounter contract', () => {
     expect(calls.webShot).toBe(1);
     expect(calls.scatter).toBe(1);
     expect(calls.impulse).toBe(1);
-    expect(calls.squelch).toBeGreaterThan(0);
-    expect(calls.tone).toBeGreaterThan(0);
+    expect(calls.chirr).toBeGreaterThan(0);
+    expect(calls.sfx).toBeGreaterThan(0);
     expect(calls.burst).toBeGreaterThanOrEqual(2);
     expect(ctx.fx.screenShake).toBeGreaterThan(0);
 
@@ -800,7 +825,7 @@ describe('weaver encounter contract', () => {
     calls.burst = 0;
     calls.impulse = 0;
     calls.scatter = 0;
-    calls.squelch = 0;
+    calls.chirr = 0;
     calls.tone = 0;
     calls.webShot = 0;
     ctx.fx.screenShake = 0;
@@ -818,7 +843,7 @@ describe('weaver encounter contract', () => {
     expect(calls.webShot).toBe(1);
     expect(calls.scatter).toBe(1);
     expect(calls.impulse).toBe(1);
-    expect(calls.squelch).toBeGreaterThan(0);
+    expect(calls.chirr).toBeGreaterThan(0);
     expect(calls.burst).toBeGreaterThanOrEqual(2);
     expect(ctx.fx.screenShake).toBeGreaterThan(0);
   });

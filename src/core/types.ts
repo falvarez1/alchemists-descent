@@ -2,6 +2,17 @@ import type { World } from '@/sim/World';
 import type { EventBus } from '@/core/events';
 import type { Cell } from '@/sim/CellType';
 import type { VirtualWorldDef } from '@/authoring/virtualWorld';
+import type { CreatureBody, CreatureMind, PlantedFoot } from '@/creatures/types';
+import type { CreatureExpression } from '@/creatures/expression';
+import type { CreatureRig } from '@/creatures/rig/types';
+import type { Corpse } from '@/creatures/corpses';
+import type { BossBrain } from '@/creatures/bosses/types';
+import type { IdleLife } from '@/creatures/idle';
+import type { PlayerCostume } from '@/entities/playerCostume';
+import type { ChillTuning } from '@/config/params';
+import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/run';
+import type { CreatureSfxAction, SfxId } from '@/content/audio/sfxCues';
+import type { LevelStorySites, StoryApi, StorySpeakOptions, StorySpokenLine } from '@/core/story';
 
 /* ============================================================
  * Entity data
@@ -45,6 +56,13 @@ export interface Hat {
  * fx/fy accumulate sub-cell motion until a whole cell is crossed.
  * Hitbox: halfW 4, height 17 (PLAYER_HALF_W / PLAYER_H).
  */
+export interface HeldLegPoint { x: number; y: number }
+export interface HeldLegRig {
+  hand: HeldLegPoint; knee: HeldLegPoint; hip: HeldLegPoint;
+  previousHand: HeldLegPoint; previousKnee: HeldLegPoint; previousHip: HeldLegPoint;
+  wrist: number; wristVelocity: number; vx: number; vy: number;
+}
+
 export interface PlayerState {
   x: number;
   y: number;
@@ -72,6 +90,8 @@ export interface PlayerState {
   /** Set on the LMB press edge, consumed by the first cast of that click. Lets
    *  god mode fire instantly per click while a HELD button stays interval-capped. */
   firePressed?: boolean;
+  /** Equipment changes require a fresh primary press before drawing the wand. */
+  fireBlockedUntilRelease?: boolean;
   // procedural animation state
   stridePhase: number;
   landTimer: number;
@@ -112,6 +132,9 @@ export interface PlayerState {
   kickT: number;
   /** Direction (±1) the last kick was aimed (for the pose). */
   kickDir: number;
+  /** Equipped salvage replaces the wand; primary/F whips, secondary throws. */
+  legClub?: { durability: number; length: number; swingT: number; angle: number; cooldown: number; owner?: string;
+    rig?: HeldLegRig; hitThisSwing?: boolean };
   /** True while swinging on a vine (pendulum owns movement; body-resolve skips him). */
   swinging?: boolean;
   /** Hurt stagger lean (frames left) in staggerDir (+-1, away from the hit). */
@@ -169,6 +192,67 @@ export interface PlayerState {
    * body in proportion. Purely cosmetic — cleared on respawn.
    */
   bloodStain: number;
+  /** Presentation: the levitation jet is lit this tick (set by PlayerControl, read by art). */
+  levitating?: boolean;
+  /** Presentation: frames left of the flask-throw arm swing. */
+  throwT?: number;
+  /** Presentation-only cloth/hat physics (entities/playerCostume). Never saved. */
+  costume?: PlayerCostume;
+  /** THE CHILL (entities/chill): the graded body cold; absent until the chill system first ticks. Never saved. */
+  chill?: PlayerChill;
+}
+
+/**
+ * THE CHILL: the alchemist's graded body cold (entities/chill is the model,
+ * game/Chill the system that feeds it real cells). Written once a tick;
+ * movement (Player), the art (AlchemistArt, playerPose), the lens (PostFx)
+ * and the score (MusicDirector) only read it.
+ */
+export interface PlayerChill {
+  /** 0..1 how cold the body is. Everything below follows it. */
+  level: number;
+  /** 0..1 frost on the body: climbs with the chill, holds while it thaws, cracks off at the thaw beat. */
+  rime: number;
+  /** Ticks left frozen solid (0 = free). Movement and casting lock while it holds. */
+  shell: number;
+  /** Cracks the current shell has taken (a press, a blow, heat): drawn across the ice. */
+  cracks: number;
+  /** Ticks before another shell may form (the chill is held under the lock meanwhile). */
+  cooldown: number;
+  /** Speed/acceleration and jump multipliers (1 = no cost). */
+  moveK: number;
+  jumpK: number;
+  /** 0..1 the body's perception of the cold: the lens grade and the frost at the frame's edges. */
+  screen: number;
+  /** The score's tape: playback rate and lowpass cutoff (Hz) it glides toward. */
+  musicRate: number;
+  musicCutoff: number;
+  /** Frame of the last thaw beat or shell burst (the score snaps back after it); -1 = never. */
+  thawAt: number;
+  /** Accreted-rime accumulator for the crackle ticks. */
+  crackle: number;
+  /** Reached the deep chill since the last reset (the docent remarks on it once). */
+  deep: boolean;
+  /** The last breath fogging the air: its frame (-1 none), where it left the mouth, which way, how deep. */
+  breathAt: number;
+  breathX: number;
+  breathY: number;
+  breathDir: number;
+  breathK: number;
+}
+
+/** The chill system (game/Chill): the cold the grid puts into the body, and back out. */
+export interface ChillApi {
+  /** Live tuning (config/params CHILL_PARAMS). */
+  readonly tuning: ChillTuning;
+  /** Fixed tick, right after the player moves. */
+  update(ctx: Ctx): void;
+  /** A blow of cold (a frost bolt, a rime wave, a lick of frost breath): chill added at once. */
+  hit(amount: number): void;
+  /** Warm the body back to nothing (respawn, a new floor). */
+  reset(): void;
+  /** Pin the chill at a level (probes, the console); null hands it back to the grid. */
+  hold(level: number | null): void;
 }
 
 export const PLAYER_HALF_W = 4;
@@ -228,6 +312,10 @@ export const ENEMY_KINDS = [
   'rootloper',
   'stonemaw',
   'rillback',
+  // Wave 3, the second doors' guardians: the Cold Store's Rime Warden (thaw
+  // or shatter its ice armour).
+  'rimewarden',
+  'lenswright',
 ] as const;
 
 export type EnemyKind = (typeof ENEMY_KINDS)[number];
@@ -280,6 +368,8 @@ export interface ProceduralLegIkState {
 /** One Weaver leg, owned by the tick-rate locomotion (entities/weaverLocomotion).
  *  The renderer draws these; it never decides where feet go. */
 export interface WeaverLegState {
+  /** A severed socket is permanent; it cannot plant or support the animal. */
+  missing?: boolean;
   /** world foot position */
   x: number;
   y: number;
@@ -374,6 +464,32 @@ export interface WeaverLocoState {
 }
 
 export interface Enemy {
+  expression?: CreatureExpression;
+  mind?: CreatureMind;
+  body?: CreatureBody;
+  /** Physical body (verlet chunks, chains, gripping legs, soft body). Tick-owned, never saved. */
+  rig?: CreatureRig;
+  /** Bosses (creatures/bosses): phase, committed move and its clock, the fight's honesty ledger. */
+  boss?: BossBrain;
+  /** Ticks until a blow may stagger it again (Enemies.flinch: no stun-lock). */
+  flinchCd?: number;
+  /** Idle life (creatures/idle): the small act a resting animal is doing. Presentation only. */
+  idle?: IdleLife;
+  /** Ecology: ticks spent feeding on remains (a scavenging slime), and where it smells them. */
+  scavengeT?: number;
+  forageX?: number;
+  /** Ecology: the moth swarm a bat is flying to (creatures/ecology.mothSwarm). */
+  swarmX?: number;
+  swarmY?: number;
+  /** Last hit's knockback direction and frame: the rig answers it physically (a snapped-back
+   *  head, a whipped tail, a dented gel). Presentation-only, never saved. */
+  hitKx?: number;
+  hitKy?: number;
+  hitAt?: number;
+  hitAmount?: number;
+  /** Throttled line-of-fire memo for ranged walkers (1 clear, 0 blocked). */
+  sightLine?: number;
+  feet?: PlantedFoot[];
   kind: EnemyKind;
   x: number;
   y: number;
@@ -395,6 +511,8 @@ export interface Enemy {
   jetFuel: number;
   jetCd: number;
   stuckT: number;
+  /** Consecutive ticks the box has been inside terrain (Enemies.unembed). */
+  embedT?: number;
   /** Teleportium contact cooldown; prevents liquid pools from strobe-warping enemies. */
   tpCool?: number;
   // lazily-added smoothed displacement trackers (sprite animation)
@@ -433,6 +551,12 @@ export interface Enemy {
   tumble?: number;
   /** Bat: frames of slime-gummed wings; it drops to the floor and cannot bite. */
   slimed?: number;
+  /**
+   * Id of the authored record (Builder object) this enemy was spawned from,
+   * when any. Lets AuthorLink tear down exactly the enemies a synced document
+   * created and nothing the level generated for itself.
+   */
+  sourceId?: string;
   /** Builder-authored patrol waypoints: un-alerted walkers/hoppers loop
    *  these instead of free-wandering (generated levels never set this). */
   patrol?: Array<[number, number]>;
@@ -506,6 +630,18 @@ export interface Enemy {
   /** Root Loper: committed lash target chosen at windup start. */
   rootLashX?: number;
   rootLashY?: number;
+  rootLashT?: number;
+  rillStrikeAngle?: number;
+  rillFeedT?: number;
+  /** Append-only anatomical bit positions, one per locomotion leg. */
+  weaverMissingLegs?: number;
+  /** Stable provenance for a severed leg, retained across saves. */
+  weaverSalvageId?: string;
+  weaverLegDamage?: number[];
+  weaverFlinchT?: number;
+  weaverRetreatT?: number;
+  /** How the lantern's light touches this creature (creatures/lightResponse). Tick-owned, never saved. */
+  lightSense?: CreatureLightSense;
   /** Stone Maw: committed chewing frames; sprite reads it as mouth-open pressure. */
   mawChewT?: number;
   /** Stone Maw: cooldown before another terrain bite. */
@@ -518,9 +654,13 @@ export interface Enemy {
   rillWet?: number;
   /** Rillback: cooldown before another living-conductor pulse. */
   rillChargeCd?: number;
+  /** Beached-hop bookkeeping: where the last hop started, how many went nowhere, and a rest timer after a wall. */
+  hopFromX?: number;
+  hopBlocked?: number;
+  hopRest?: number;
   /** Rillback: visible pre-pulse frames before a local conductor charge. */
   rillChargeWindup?: number;
-  /** Rillback: render-owned trailing body segments. */
+  /** Tick-owned trailing body nodes (legacy tooling alias). */
   rillSegments?: Array<{ x: number; y: number }>;
 
   /* --- Behavior drives & reflexes (the threat-aware AI layer in Enemies.ts).
@@ -544,14 +684,27 @@ export interface Enemy {
   fleeDir?: number;
   /** 0..1 multiplier the arbiter folds into the per-kind chase speed when hesitating. */
   chaseScale?: number;
+  /** Frames of breath left while the head is under liquid (land kinds only;
+   *  refills in air). At 0 the creature drowns a little every tick. */
+  breath?: number;
 }
 
 /* ---------------- Wave F: the critter layer ---------------- */
 
-export type CritterKind = 'moth' | 'firefly' | 'fish' | 'beetle' | 'fly';
+export type CritterKind = 'moth' | 'firefly' | 'fish' | 'beetle' | 'fly'
+  // Breathing Works wave 2 (WS-N): organisms with behaviour (game/organisms/*).
+  | 'glowworm' | 'puffer' | 'snapjaw' | 'isopod' | 'leech' | 'emberbeetle' | 'ashmoth'
+  // Wave 3, the second doors: the Cold Store's frost mites, snow moths and
+  // brine skaters; the Glass Galleries' glass beetles, prism moths and lens mites.
+  | 'frostmite' | 'snowmoth' | 'brineskater' | 'glassbeetle' | 'prismmoth' | 'lensmite';
 
-/** Ambient harmless life. Transient per level — respawned around the camera. */
+/** Harmless habitat residents; expeditions persist them independently of the camera. */
 export interface Critter {
+  /** Habitat residents have stable identities and survive camera/level changes. */
+  id?: string;
+  homeX?: number;
+  homeY?: number;
+  energy?: number;
   kind: CritterKind;
   x: number;
   y: number;
@@ -566,6 +719,29 @@ export interface Critter {
    *  the critter fleeing — its normal steering + heavy damping are suppressed so
    *  the shove actually carries and it visibly scatters. */
   startle?: number;
+  /** Organisms (game/organisms): the cell a sessile body is rooted to — a
+   *  glow-worm's ceiling, a snapjaw's or puffer's footing. */
+  anchorX?: number;
+  anchorY?: number;
+  /** Organisms: outward surface normal at the anchor / under a crawler (unit, grid axes). */
+  nx?: number;
+  ny?: number;
+  /** Organisms: behaviour state (per-kind small integers, see game/organisms/types). */
+  state?: number;
+  /** Organisms: ticks spent in `state`. */
+  stateT?: number;
+  /** Organisms: the one animated scalar a body reads (thread length, sac inflation, jaw gape…). */
+  extent?: number;
+  /** Organisms: this individual's full extension (a glow-worm's longest thread, a snapjaw's stalk). */
+  reach?: number;
+  /** Organisms: remaining health (snapjaw, puffer) or a meal being digested (ticks). */
+  hp?: number;
+  meal?: number;
+  /** Prey held by a snare/jaw, or the organism this critter is caught by (ids). */
+  holds?: string;
+  heldBy?: string;
+  /** Dead-in-place (a shocked fish floating belly-up, a shrivelled leech): ticks since death. */
+  dead?: number;
 }
 
 export interface CrittersApi {
@@ -1077,6 +1253,10 @@ export interface RunStartConfig {
   kit?: RunTestKitConfig;
   /** Normal campaign only: resume local expedition save when one exists. */
   continueSave?: boolean;
+  /** Fresh-loadout runs: the starting kit (Breathing Works). Defaults to spark. */
+  starterKit?: KitId;
+  /** YYYY-MM-DD when this is the date-seeded daily descent. */
+  daily?: string | null;
 }
 
 export interface RunStartResult {
@@ -1108,6 +1288,16 @@ export interface RunStatus {
 }
 
 export interface GameStateData {
+  highReadability?: boolean;
+  /** The alchemist has hooded his lantern (stealth; the light wave's L key). Transient. */
+  lanternHooded?: boolean;
+  /** The arrival's grace (game/arrival): until this frame nothing sees or hurts the
+   *  alchemist on a floor he just reached. Set by Levels on entry; transient. */
+  arrivalGraceUntil?: number;
+  creatureCaptions?: boolean;
+  reduceCameraShake?: boolean;
+  reduceFlashes?: boolean;
+  trickshot?: TrickshotSettings;
   /** The run's SECRET alchemy reaction (derived from worldSeed; see
    *  sim/reactions.ts). Surfaced for probes and the inspector — the player
    *  learns it from the discovery toast, not from here. */
@@ -1161,6 +1351,8 @@ export interface Keys {
 }
 
 export interface InputState {
+  /** Short taps survive a keyup between two fixed ticks. */
+  queuedJump?: 'jump' | 'wall';
   keys: Keys;
   /** Cursor position in world-grid coordinates (original mouseGridPosition). */
   mouse: { x: number; y: number };
@@ -1183,7 +1375,44 @@ export interface InputState {
   releaseHeldInput?: () => void;
 }
 
+export interface TrickshotSettings {
+  enabled: boolean;
+  timeScale: number;
+  durationMs: number;
+  chainWindowMs: number;
+  assistDegrees: number;
+  /** The humiliation finisher: a directed slow approach, a confirmed impact, a cue. */
+  finisher: boolean;
+  /** Real-time hit pause when the finisher lands (0..70 ms). */
+  impactPauseMs: number;
+  /** Small framing nudge and zoom during the finisher; off for comfort. */
+  cameraMotion: boolean;
+}
+
+export type FinisherPhase = 'idle' | 'approach' | 'impact' | 'release';
+
+export interface TrickshotRuntime {
+  remainingMs: number;
+  elapsedMs: number;
+  scale: number;
+  chainMs: number;
+  chain: number;
+  seen: Set<Enemy>;
+  label: string;
+  labelMs: number;
+  continuousMs: number;
+  recoveryMs: number;
+  /** The finisher's time-director phase; real-time `phaseMs` since it began. */
+  phase: FinisherPhase;
+  phaseMs: number;
+  /** The creature being finished, for framing and the bracket. */
+  target: Enemy | null;
+  /** Recent knee positions of the whipped limb (brass trail), newest last. */
+  trail: Array<{ x: number; y: number }>;
+}
+
 export interface FxState {
+  trickshot?: TrickshotRuntime;
   /** Transient bloom surge after detonations; decays *= 0.86 per frame. */
   bloomKick: number;
   /** Camera shake magnitude; decays *= 0.88 per frame. */
@@ -1194,6 +1423,8 @@ export interface FxState {
   /** Death slow-motion timer (game ticks). >0 slows the sim cadence; render is
    *  unaffected, so the ragdoll tumbles in slow-mo. Decrements each tick. */
   deathSlowMo: number;
+  /** Real-time seconds since the alchemist fell (0 while alive): drives the death cinematic. */
+  deathTime?: number;
 }
 
 export interface WaveState {
@@ -1207,23 +1438,49 @@ export interface WaveState {
  * Service APIs (implemented by systems, wired by Game)
  * ============================================================ */
 
+/** Player-facing volume sliders (audio/mix.ts owns the curves and bus routing). */
+export type VolumeChannel = 'master' | 'effects' | 'ambience' | 'music' | 'voice';
+/** Short procedural cues for run events (audio/Stingers.ts subscribes them). */
+export type AudioStinger = 'alchemy' | 'phialCrack' | 'phialFill' | 'victory' | 'fallen' | 'shutter';
+export interface AudioStingerOptions { chain?: number; cause?: string; x?: number; y?: number }
+/** Per-play options for a sampled cue (`AudioApi.sfx`). */
+export interface SfxOptions {
+  /** Level multiplier on top of the cue's mix level. */
+  gain?: number;
+  /** Pitch offset in semitones (on top of the cue's random spread). */
+  pitch?: number;
+  /** Playback-rate multiplier (pitch and speed together). */
+  rate?: number;
+  /** Start delay in seconds. */
+  delay?: number;
+  /** Sustained (loop) cues: which instance this call keeps alive; default the cue id. */
+  key?: string;
+}
+
+/**
+ * World-positioned presets take an optional trailing (x, y) in cells: when
+ * given, the sound is panned by its bearing from the camera centre, fades
+ * with distance and loses its top end far away (audio/mix.ts `placeSound`).
+ */
 export interface AudioApi {
+  /** Local, bounded cues placed relative to the listener (the listener args are legacy and ignored). */
+  worldSound?(kind: 'stone' | 'metal' | 'water' | 'weaver' | 'rillback' | 'pressure', x: number, y: number, listenerX?: number, listenerY?: number): void;
   readonly enabled: boolean;
   /** Create/resume the AudioContext. Must be called from a user gesture. */
   ensure(): void;
   /** Flip sound on/off; returns the new enabled state. */
   toggle(): boolean;
-  tone(freq: number, endFreq: number, dur: number, type: OscillatorType, vol: number): void;
-  noiseBurst(dur: number, filterFreq: number, vol: number, highpass?: boolean): void;
-  boom(size: number): void;
-  zap(): void;
-  lightning(): void;
+  tone(freq: number, endFreq: number, dur: number, type: OscillatorType, vol: number, x?: number, y?: number): void;
+  noiseBurst(dur: number, filterFreq: number, vol: number, highpass?: boolean, x?: number, y?: number): void;
+  boom(size: number, x?: number, y?: number): void;
+  zap(x?: number, y?: number): void;
+  lightning(x?: number, y?: number): void;
   /** Low resonant impact: a thin wall with open space behind it. */
-  hollowKnock(): void;
+  hollowKnock(x?: number, y?: number): void;
   /** Cauldron simmer blub. */
-  bubble(): void;
+  bubble(x?: number, y?: number): void;
   /** Glass/ice breaking: bright crack + falling ring. */
-  shatter(): void;
+  shatter(x?: number, y?: number): void;
   /** Small treasure chime (gold piles, generic pickups). */
   pickup(): void;
   /** Chest-opening three-note arpeggio. */
@@ -1239,21 +1496,21 @@ export interface AudioApi {
   /** Lever clack (two square clicks). */
   lever(): void;
   /** Heavy metal door grinding open or shut. */
-  doorGrind(): void;
+  doorGrind(x?: number, y?: number): void;
   /** A brazier catching: whoosh + rising triangle. */
-  brazier(): void;
+  brazier(x?: number, y?: number): void;
   /** A soft, throttled fire crackle for a body that is alight (status.burning). */
-  sizzle(): void;
+  sizzle(x?: number, y?: number): void;
   /** The airy hiss of water flashing to steam on lava. */
-  steam(): void;
+  steam(x?: number, y?: number): void;
   /** A broken mechanism groaning before its gate falls open. */
-  groan(): void;
+  groan(x?: number, y?: number): void;
   /** Tiny cave-life chirp (crickets, moths near the lamp). */
-  chirp(): void;
+  chirp(x?: number, y?: number): void;
   /** A beetle's dry tick-tick skitter. */
-  skitter(): void;
+  skitter(x?: number, y?: number): void;
   /** A single water drop falling from the ceiling into a pool. */
-  drip(): void;
+  drip(x?: number, y?: number): void;
   /** Hollow click: the wand asked for mana the tank doesn't have. */
   dryFire(): void;
   /** Quick whick of drawing the other wand. */
@@ -1275,20 +1532,97 @@ export interface AudioApi {
   /** Landing thud scaled by fall hardness (0..1). */
   landThud(intensity: number): void;
   /** Breaking the surface of a pool (0..1 by entry speed). */
-  splash(intensity: number): void;
+  splash(intensity: number, x?: number, y?: number): void;
   /** A foe notices you: one short rising blip. */
   alert(): void;
+  /** Where the ears are this tick: the camera centre, so what you hear matches what you see. */
+  setListener(x: number, y: number): void;
+  /**
+   * Run `fn` as a sound placed at (x, y): panned and attenuated by distance to
+   * the listener, silent beyond `range`. Every creature voice goes through
+   * this, so a Rillback three rooms away is not in your ear at full volume.
+   */
+  at(x: number, y: number, fn: () => void, range?: number): void;
+  /** Dip everything to `level` (0..1) and come back over `ms` — under a cinematic beat. */
+  duck(level: number, ms: number): void;
+  /** Weaver: two or three dry chitin clicks. Never wet. */
+  chitin(intensity?: number): void;
+  /** Weaver voice: a fast-modulated chirr; `pitch` < 1 threatens, > 1 squeaks. */
+  chirr(dur?: number, pitch?: number, vol?: number): void;
+  /** Rillback: a wet body sliding — filtered noise that opens and closes. */
+  slither(intensity?: number): void;
+  /** Root Loper: a slow low creak of wood under strain, with a dry rasp. */
+  creak(intensity?: number): void;
+  /** Stone Maw: grinding stone over a low knock, then grit. */
+  grind(intensity?: number): void;
+  /** Bat: a short falling squeak. */
+  squeak(): void;
+  /** A small soft pat: a body launching off the ground (slime, beached Rillback). */
+  hop(size?: number): void;
+  /** The death voice of a creature kind; falls back to the wet squelch. */
+  deathCry(kind: string): void;
+  /** Rising whip-whoosh under the finisher approach. */
+  finisherWhip(): void;
+  /** Dry shell crack, then a small embarrassed chirr: the finisher lands. */
+  shellCrack(): void;
   /** Waystone ignition: a deep bronze gong with overtones. */
   gong(): void;
   coin(streak?: number): void;
   hurt(): void;
   jump(): void;
-  squelch(): void;
-  flame(): void;
-  dig(): void;
-  waveHorn(): void;
+  squelch(x?: number, y?: number): void;
+  flame(x?: number, y?: number): void;
+  dig(x?: number, y?: number): void;
   levitate(): void;
-  implode(): void;
+  implode(x?: number, y?: number): void;
+  /** A run-event stinger (alchemy chime, phial crack/fill, run verdict, shutter). */
+  stinger(kind: AudioStinger, opts?: AudioStingerOptions): void;
+  /** Set a player volume slider (0..1), applied live. */
+  setVolume(channel: VolumeChannel, value: number): void;
+  /**
+   * A named sampled sound effect (content/audio/sfxCues.ts). With (x, y) it is
+   * placed in the world at the cue's range; without, it plays at the current
+   * placement (inside `at()`, where the caller put it; else centred). A loop
+   * cue SUSTAINS: keep calling to keep it alive, stop calling and it fades.
+   * Falls back to the procedural voice until its samples have loaded.
+   */
+  sfx(id: SfxId, x?: number, y?: number, opts?: SfxOptions): void;
+  /** A creature's own voice for an action (alert, hurt, death, idle, step…), at the current placement. */
+  creature(kind: EnemyKind, action: CreatureSfxAction): void;
+}
+
+/** The streamed score (audio/MusicDirector). Absent in small test contexts. */
+export interface MusicApi {
+  /** The cue playing or fading in now (a score.generated.ts track id), or null. */
+  readonly cue: string | null;
+  /** A settings slider moved: let the score be heard for a moment even when nothing is playing. */
+  preview(): void;
+  /** Read-only state for in-page probes. */
+  debugSnapshot(): Record<string, unknown>;
+}
+
+/** The narrator (audio/Narrator). Absent in small test contexts. */
+export interface NarratorApi {
+  readonly enabled: boolean;
+  /** The Narration setting: off stops any line and keeps the narrator quiet. */
+  setEnabled(on: boolean): void;
+  /** Play a short line at the current Voice level (the Voice slider's preview). */
+  preview(): void;
+  /**
+   * STORY: say speaker-tagged lines (the Docent, Pell, Matron Ash) in order.
+   * A line with no recording, or with the voice off, is still published (as a
+   * silent `narration` of its reading time) so its caption shows. Returns
+   * whether anything was started or queued.
+   */
+  speak?(lines: readonly StorySpokenLine[], opts: StorySpeakOptions): boolean;
+  /** Something is being said (or queued) right now. */
+  readonly busy?: boolean;
+  /** The source of the line being said right now ('sanctum-ash', 'prologue', 'pipe'...), or null. */
+  readonly speakingSource?: string | null;
+  /** Stop (and unqueue) the lines of one source: a dialogue closed, an echo walked away from. */
+  cutSource?(source: string): void;
+  /** Read-only state for in-page probes. */
+  debugSnapshot(): Record<string, unknown>;
 }
 
 export interface ParticlesApi {
@@ -1385,6 +1719,14 @@ export type BodyMaterial = 'wood' | 'metal' | 'stone';
  * cells/frame; `va` rad/frame.
  */
 export interface RigidBody {
+  guideAxis?: 'vertical' | 'horizontal';
+  /** Stored angular spring energy, integrated by Rapier as a restoring torque. */
+  torsionSpring?: { restAngle: number; stiffness: number; damping: number };
+  /** A real maximum-length rope to a fixed world anchor. */
+  rope?: { x: number; y: number; length: number; material?: 'rope' | 'chain' };
+  tether?: RigidBody['rope'];
+  /** A broad piston face that receives pressure from real steam beneath it. */
+  steamPiston?: boolean;
   readonly id: number;
   kind: RigidBodyKind;
   shape: RigidShape;
@@ -1394,6 +1736,9 @@ export interface RigidBody {
   vy: number;
   angle: number;
   va: number;
+  previousX?: number;
+  previousY?: number;
+  previousAngle?: number;
   /** Inverse mass / inverse rotational inertia used by the current local solver. */
   invMass?: number;
   invInertia?: number;
@@ -1436,11 +1781,26 @@ export interface RigidBody {
 }
 
 export interface SpawnBodyOpts {
+  torsionSpring?: RigidBody['torsionSpring'];
+  steamPiston?: boolean;
+  /** A slider rail: the solver permits travel on this axis and locks rotation. */
+  guideAxis?: 'vertical' | 'horizontal';
+  /** Pivot at the spawn position, with mechanical angular stops in radians. */
+  hinge?: { minAngle: number; maxAngle: number };
+  /** A free revolute joint to a fixed WORLD point (e.g. the hinge wood of a
+   *  felled tree's cut). Released with RigidBodiesApi.releasePivot. */
+  pivot?: { x: number; y: number };
+  /** Compound shape: these local-frame boxes REPLACE the default collider
+   *  (`shape` then stays the overall bounds used for queries/extents). */
+  colliders?: ReadonlyArray<{ halfW: number; halfH: number; x: number; y: number }>;
   kind?: RigidBodyKind;
   vx?: number;
   vy?: number;
   angle?: number;
   va?: number;
+  collisionGroups?: number;
+  linearDamping?: number;
+  angularDamping?: number;
   /** What it's made of — sets density + default colour (explicit density/color win). */
   material?: BodyMaterial;
   /** Mass/inertia derive from shape area × density (default 1). */
@@ -1500,7 +1860,19 @@ export interface PeerGhostsApi {
   sample(nowMs: number): readonly PeerGhost[];
 }
 
+export type RagdollPart = 'torso' | 'head' | 'leftArm' | 'leftForearm' | 'rightArm' | 'rightForearm' |
+  'leftThigh' | 'leftShin' | 'rightThigh' | 'rightShin' | 'hat';
+export interface PlayerRagdollRig {
+  facing: number;
+  parts: Record<RagdollPart, RigidBody>;
+  joints: Array<{ a: RagdollPart; b: RagdollPart; anchorA: { x: number; y: number }; anchorB: { x: number; y: number } }>;
+}
+
 export interface RigidBodiesApi {
+  tieRope(body: RigidBody, x: number, y: number, length?: number, material?: 'rope' | 'chain', secondary?: boolean): void;
+  cutRope(body: RigidBody, secondary?: boolean): void;
+  readonly playerRagdoll?: PlayerRagdollRig | null;
+  spawnPlayerRagdoll?(player: PlayerState): RigidBody;
   /** Live list — mutated in place, never reassigned (entity-array invariant). */
   readonly bodies: RigidBody[];
   /** The live player-corpse ragdoll (or null), cached so per-frame readers
@@ -1550,9 +1922,18 @@ export interface RigidBodiesApi {
    *  barrel alight directly instead of waiting for a fire cell to drift into its
    *  footprint. Returns how many bodies were newly lit. */
   igniteArea(x: number, y: number, radius: number): number;
+  /** Break a body's `pivot` joint (the hinge wood snaps; the body falls free),
+   *  optionally resetting its angular damping (the hinge's friction goes with it). */
+  releasePivot?(body: RigidBody, angularDamping?: number): void;
+  /** Retune a body's damping mid-flight (a hinge that loosens as it goes). */
+  setDamping?(body: RigidBody, linear?: number, angular?: number): void;
 }
 
 export interface VineStrandNodeView {
+  readonly burn?: number;
+  readonly burning?: boolean;
+  /** Stable botanical detail stays with the node when a stem is severed. */
+  readonly leafLength?: number;
   readonly x: number;
   readonly y: number;
 }
@@ -1563,6 +1944,8 @@ export interface VineStrandSegmentView {
 }
 
 export interface VineStrandView {
+  /** Botanical leaves follow this strand's physical stem, including cut fragments. */
+  readonly foliage?: boolean;
   readonly nodes: readonly VineStrandNodeView[];
   readonly segments: readonly VineStrandSegmentView[];
   readonly color: number;
@@ -1592,6 +1975,11 @@ export interface VineStrandsApi {
   readonly strands: readonly VineStrandView[];
   /** Convert a disconnected vine component in the cell grid into a soft strand. */
   detachCluster(x: number, y: number): boolean;
+  /** Sever live botanical geometry; returns the number of strands split. */
+  cutAt?(x: number, y: number, radius: number): number;
+  hitTest?(x: number, y: number, radius: number): boolean;
+  /** Include material held by live strands in copied save buffers without changing the world. */
+  writeSnapshotCells?(world: World, types: Uint8Array, life: Int16Array): void;
   /** Add a PERSISTENT strand pinned at (x,y) hanging `length` cells down — a rope
    *  or thick vine that sways, collides, and reacts to the player (never settles). */
   addHanging(x: number, y: number, length: number, opts?: { thickness?: number; color?: number }): void;
@@ -1665,21 +2053,81 @@ export interface PlayerControlApi {
   update(ctx: Ctx): void;
 }
 
+/** What dealt a blow to a creature: the wand/boot/blade directly, or a material
+ *  or physical consequence (combat/AlchemyKills attributes the killing blow). */
+export type EnemyDamageSource = 'direct' | AlchemyCause;
+
 export interface EnemyControlApi {
   readonly defs: Record<EnemyKind, EnemyDef>;
   spawn(kind: EnemyKind, x: number, y: number, opts?: EnemySpawnOptions): Enemy | null;
-  damage(e: Enemy, amount: number, kx: number, ky: number): void;
+  /** `source` defaults to 'direct' (a wand, a boot, a thrown leg). */
+  damage(e: Enemy, amount: number, kx: number, ky: number, source?: EnemyDamageSource): void;
   /** A hazard cell (lava/fire/acid) splashes the point (x,y): if a foe harmed by
    *  `cell` overlaps it, deal the matching environmental damage (and ignite it for
-   *  fire/lava) and return true. Used by poured/sprayed material hitting a foe. */
-  splashHazard(x: number, y: number, cell: number): boolean;
-  kill(e: Enemy, kx: number, ky: number): void;
+   *  fire/lava) and return true. Used by poured/sprayed material hitting a foe.
+   *  `source` 'direct' marks the wand's own stream (the Flame Jet); omitted, the
+   *  blow is the material's own (a poured flask). */
+  splashHazard(x: number, y: number, cell: number, source?: EnemyDamageSource): boolean;
+  kill(e: Enemy, kx: number, ky: number, source?: EnemyDamageSource): void;
   /** Blow a foe along (dirX,dirY) with a wind-gust shove (the player's kick),
    *  mass-scaled so a bat is hurled and a golem barely rocks. Light foes enter a
    *  brief ballistic launch and SMASH into the first wall they hit. `strength` is
    *  the gust intensity at the body (≈0..1 × a push scalar). No-op on bosses. */
   gustShove(e: Enemy, dirX: number, dirY: number, strength: number): void;
   update(ctx: Ctx): void;
+}
+
+/**
+ * Kill attribution (combat/AlchemyKills): remembers what last harmed each
+ * creature and, when the world rather than the wand landed the killing blow,
+ * announces an alchemical kill, chains it and pays out in real gold.
+ */
+/**
+ * One sim-sampled harm tick on a creature (its status sample, or flame cells it
+ * touches), broken into shares, with the grid facts kill attribution needs to
+ * tell the wand's own fire and current from the world's (combat/AlchemyKills).
+ */
+export interface StatusBlow {
+  /** Hit points from fire this tick (the burning status, or flame touching the body). */
+  burn: number;
+  /** Hit points from electricity this tick. */
+  shock: number;
+  /** Hit points from toxic sludge this tick. */
+  toxic: number;
+  /** The body is alight / electrified after the sample (a status that has gone out forgets its origin). */
+  burning: boolean;
+  electrified: boolean;
+  /** Oil on the body, or oil/lava touching it: the fire has the world's fuel. */
+  fueled: boolean;
+  /** Flame or lava touches the body this sample (the burn was lit or relit here). */
+  heatContact: boolean;
+  /** Charge reached the body through a conductor: it is wet, or charged water/metal touches it. */
+  conducted: boolean;
+  /** Charge reached it through another liquid (blood, slime, oil): the world's
+   *  unless the wand just struck this creature (its own spatter conducts too). */
+  liquidCharge: boolean;
+  /** Any charged cell touches the body this sample. */
+  chargeContact: boolean;
+}
+
+export interface AlchemyKillsApi {
+  /** Record a blow (every damage path reports its source just before hp changes). */
+  noteHit(e: Enemy, source: EnemyDamageSource): void;
+  /** Record a sim-sampled harm tick and return what it counts as: the world's
+   *  cause, or 'direct' when it is the wand's own fire/current doing the work. */
+  noteStatus(e: Enemy, blow: StatusBlow): EnemyDamageSource;
+  /** The player's kick launched this creature (a later hazard death is credited). */
+  noteKick(e: Enemy): void;
+  /** The creature just died: classify, chain, emit `alchemyKill` and pay out. */
+  onKill(e: Enemy): AlchemyKillInfo | null;
+  /**
+   * The blow that crossed zero hp just landed, but the death is a sequence (the
+   * Kiln Colossus comes apart for seconds): judge the kill NOW — cause and
+   * credit — and let onKill honour that verdict whenever the body finishes.
+   */
+  sealVerdict?(e: Enemy): void;
+  /** Alchemical kills inside the current chain window (0 when it has lapsed). */
+  readonly chain: number;
 }
 
 export interface SpellsApi {
@@ -1698,6 +2146,7 @@ export interface SpellsApi {
 }
 
 export interface CameraApi {
+  actionFocus?: { x: number; y: number; zoom: number } | null;
   x: number;
   y: number;
   tx: number;
@@ -1707,10 +2156,21 @@ export interface CameraApi {
   inspectionFocus: { x: number; y: number } | null;
   /** Editor zoom override: when set, zoom lerps here instead of idle-zoom. */
   zoomLock: number | null;
+  /**
+   * Cinematic framing (the finisher): a small offset added to the follow
+   * target and a zoom the idle-zoom lerps toward. Written eased by the time
+   * director each presentation tick; 0/1 means ordinary follow.
+   */
+  cineDx?: number;
+  cineDy?: number;
+  cineZoom?: number;
   idleFrames: number;
   /** Integer camera snapshot used for the current frame's texture (set by the renderer). */
   renderX: number;
   renderY: number;
+  /** The interpolated camera used to compose THIS frame, before integer snapping. */
+  presentationX?: number;
+  presentationY?: number;
   update(ctx: Ctx): void;
   /** Derive world.simBounds from the camera position (+/- SIM_MARGIN). */
   updateSimBounds(world: World): void;
@@ -1771,12 +2231,6 @@ export interface WorldGenApi {
     ctx: Ctx,
     def: LevelDef,
     seed: number,
-    opts?: {
-      /** This level hosts the hidden gilded arch to the vault branch
-       *  (decided by Levels from the expedition seed — deterministic, so
-       *  save-resume's pristine regeneration reproduces it). */
-      hostArch?: boolean;
-    },
   ): {
     exit: LevelExitWell;
     waystones: Waystone[];
@@ -1787,11 +2241,11 @@ export interface WorldGenApi {
     mechanisms: Mechanism[];
     runeVaults: RuneVault[];
     boss: { x: number; y: number; kind?: EnemyKind } | null;
-    /** The gilded arch (two-way branch gate) if this level carries one;
-     *  back* is the safe arrival spot for travelers stepping OUT of it. */
-    vaultArch: VaultArch | null;
-    /** Branch-level hoard center — createLevel posts the elite guards here. */
-    vaultHoard: { x: number; y: number } | null;
+    /** Retired with the Gilded Vault branch (2026-09): no generator produces
+     *  an arch or a hoard any more. Optional so authored generators that
+     *  still return null for them keep compiling. */
+    vaultArch?: VaultArch | null;
+    vaultHoard?: { x: number; y: number } | null;
     /** D1 teaching alcove with real-cell stations and a checked reward. */
     spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null;
     /** Deferred prefab enemies — createLevel spawns them; restoreLevel
@@ -1810,6 +2264,12 @@ export interface WorldGenApi {
     surfaceSpawn: { x: number; y: number } | null;
     /** D1 only: horizon row — Empty cells above it render as open daytime sky. */
     surfaceSkyLine: number | null;
+    /** Designed deep-dark zones (light wave); static, regenerated on restore. */
+    darkZones?: DarkZone[];
+    /** Lumen blooms (light plants whose petals are real glass cells). */
+    lumenBlooms?: LumenBloom[];
+    /** STORY: pipes, Pell's camp, the resonant valve, the Kiln flue (static). */
+    story?: LevelStorySites;
   };
 }
 
@@ -2008,6 +2468,18 @@ export interface Mechanism {
   material?: number;
   /** valve: stays open once fired. */
   oneShot?: boolean;
+  /** lever: presentation dressing — the Bell & Tea Engine's brass crank
+   *  wheel or the sluice's handwheel. Pull/flip behaviour is the plain
+   *  lever's; only the drawing changes. */
+  look?: 'crank' | 'handwheel';
+  /** Authored Metroidvania gate. The physical world still enforces the lock;
+   * this tells findability that initial inaccessibility is deliberate and
+   * makes the corresponding tome a hard progression requirement. */
+  requiresCard?: CardId;
+  /** plug: an authored seal ON a traversal route that the starting kit always
+   *  opens (it burns, or Excavate digs it). Findability treats its intact body
+   *  as open ground instead of carving a rescue tunnel through it. */
+  routeSeal?: boolean;
   /** valve: force-close N frames after opening; reopens only on a fresh
    *  rising edge of its trigger aggregate (ignored when oneShot). */
   autoCloseFrames?: number;
@@ -2018,13 +2490,16 @@ export interface Mechanism {
   /** plug: fraction of body cells gone/transformed that fires it (0.5). */
   breakFrac?: number;
   /** sensor: what the zone reads. */
-  sensorType?: 'heat' | 'liquid' | 'weight' | 'charge' | 'material';
+  sensorType?: 'heat' | 'liquid' | 'weight' | 'charge' | 'material' | 'light';
   /** sensor 'material': cell ids that count toward the reading. */
   materialFilter?: number[];
   /** sensor: how a satisfied reading latches (default 'timed'). */
   latch?: 'momentary' | 'timed' | 'permanent';
   /** sensor 'timed': frames held after the reading passes (default 420). */
   latchFrames?: number;
+  /** sensor 'light': where the light must ENTER the optics that feed a sealed lens (a mirror well's
+   *  mouth — world/galleryPuzzles); findability checks the beam can reach there, not the lens. */
+  lightPort?: { x: number; y: number };
   /** relay: frames between inputs-satisfied and firing (default 0). */
   delayFrames?: number;
   /** relay: live fuse countdown once armed (undefined = not armed). */
@@ -2054,7 +2529,7 @@ export interface RuneVault {
   active: boolean;
 }
 
-export const PICKUP_KINDS = ['goldpile', 'heart', 'tome', 'chest', 'potion', 'key'] as const;
+export const PICKUP_KINDS = ['goldpile', 'heart', 'tome', 'chest', 'potion', 'key', 'weaverleg'] as const;
 export type PickupKind = (typeof PICKUP_KINDS)[number];
 
 export interface Pickup {
@@ -2065,7 +2540,9 @@ export interface Pickup {
   vy: number;
   taken: boolean;
   /** tome: card seed/unique grant; potion: POTION_DEFS key; goldpile/chest: amount. */
-  data: { card?: CardId; potion?: string; amount?: number; offerPending?: boolean };
+  data: { card?: CardId; potion?: string; amount?: number; offerPending?: boolean;
+    legLength?: number; legAngle?: number; legSpin?: number; legAge?: number; legOwner?: string;
+    legDurability?: number; legBend?: number; legThrown?: boolean; legPickupBlocked?: boolean };
 }
 
 /** The level's exit gate: opens when the golden key is brought to it. */
@@ -2103,6 +2580,10 @@ export interface HintApi {
   /** The current best hint, or null when nothing relevant is in reach. */
   readonly current: HintInfo | null;
   update(ctx: Ctx): void;
+  /** The teach popover's calm gate (ui/HintTeachOverlay): while a centre beat
+   *  (the engine caption, a title card, the Sanctum, a notice) is on screen no
+   *  teach-once fires; lessons wait, unspent, for a calm moment. */
+  setTeachHeld?(held: boolean): void;
 }
 
 export interface MechanismsApi {
@@ -2121,8 +2602,14 @@ export interface PickupsApi {
 
 export interface SanctumApi {
   readonly isOpen: boolean;
-  /** Open the between-depths pause: perk draft + shop. onDescend fires on close. */
-  open(ctx: Ctx, onDescend: () => void): void;
+  /**
+   * Open the between-depths pause: perk draft + shop, and — where the floor
+   * below has two doors — the door choice. onDescend fires on close with the
+   * level id of the door taken.
+   */
+  open(ctx: Ctx, onDescend: (nextLevelId: string) => void): void;
+  /** The door picked so far while open (null before a choice, or when closed). */
+  readonly chosenDoor?: string | null;
   /** Open the SHOP alone (the Refuge shrine's trade) — closing just resumes. */
   openShop(ctx: Ctx): void;
 }
@@ -2204,6 +2691,8 @@ export interface CastAction {
 }
 
 export interface CastActionExecutionContext {
+  /** Single assisted wand shot; triggered payloads never inherit the lock. */
+  precision?: boolean;
   origin: 'wand' | 'trigger';
   /** Cursor-target cards use this target instead of the live mouse position. */
   target?: { x: number; y: number };
@@ -2258,11 +2747,14 @@ export interface WandState {
  * projectiles-per-cast at 6; 'trigger' nests at most one level deep.
  */
 export interface WandsApi {
+  /** Read-only next cast; does not spend mana, advance the deck or sample RNG. */
+  peekCast?(): { actions: readonly CastAction[]; spread: number; affordable: boolean } | null;
   readonly wands: [WandState, WandState];
   active: 0 | 1;
   /** Owned cards not currently slotted in either wand. */
   readonly collection: CardId[];
-  /** Per-frame while player.firing (play mode): advance + cast the program. */
+  /** Per-frame while player.firing, or while a tap's press edge waits (play
+   *  mode): advance + cast the program; answering a press clears firePressed. */
   fire(ctx: Ctx): void;
   /** The active Flame Jet stream this frame (wand tip + aim + reach/half-angle),
    *  or null. A read-only sense so the enemy AI can sidestep out of the cone. */
@@ -2294,6 +2786,12 @@ export interface WandsApi {
   castActionAt(ctx: Ctx, action: CastAction, x: number, y: number, angle: number, options?: CastActionExecutionContext): void;
   /** Start-run support: restore the launch starter wands/collection in place. */
   resetLoadout(): void;
+  /**
+   * Fresh-run kits: seat these cards on wand I and wand II (default frames)
+   * and make `collection` the whole satchel. No grant events — a kit is not
+   * a discovery.
+   */
+  applyStarterLoadout(wands: readonly [readonly CardId[], readonly CardId[]], collection: readonly CardId[]): void;
   /** QA/debug command: upgrade both wands and expose every card. */
   grantReviewLoadout(): void;
   /** QA/debug play HUD: randomize review wands without opening the bench. */
@@ -2388,9 +2886,15 @@ export interface LevelDef {
   /** Level reached through this level's exit portal, or null for the last floor. */
   nextLevelId: string | null;
   /**
-   * A branch level hangs OFF the descent spine: it is entered through a
-   * hidden gilded arch in its host level and its own arch returns to that
-   * host at the same depth. Branch levels never roll the finale arena.
+   * The floor's boss arena, keyed explicitly (never inferred from depth): the
+   * Sunken Leviathan's sump or the Kiln Colossus's kiln — or, behind the
+   * second doors (wave 3), the Rime Warden's ice-house in the Cold Store and
+   * the Lenswright's gallery. Killing the Colossus wins the run.
+   */
+  boss?: 'leviathan' | 'colossus' | 'rimewarden' | 'lenswright';
+  /**
+   * An off-spine level (the retired Gilded Vault was the only one). Kept for
+   * authored/Builder level lists; no campaign level sets it today.
    */
   branch?: boolean;
 }
@@ -2475,6 +2979,9 @@ export interface PlacedPrefab {
   y0: number;
   x1: number;
   y1: number;
+  /** Where the set piece's verb applies (a flora puzzle's felling line, seed
+   *  bed or thicket mouth) — for probes, audits and the inspector. */
+  focus?: { x: number; y: number };
 }
 
 /** Player-authored navigation pin set from the full minimap. One active pin per
@@ -2597,6 +3104,8 @@ export interface RuntimeDecor {
  * for the whole expedition (v1) — your scars stay exactly as you left them.
  */
 export interface LevelRuntime {
+  fauna?: Critter[];
+  living?: LivingExpeditionState;
   def: LevelDef;
   world: World;
   enemies: Enemy[];
@@ -2664,12 +3173,134 @@ export interface LevelRuntime {
   spellLab?: { x: number; y: number; rewardX: number; rewardY: number };
   /** The gilded arch: hidden branch entrance (host) / way home (branch). */
   vaultArch?: VaultArch;
+  /** Designed deep-dark zones (core/darkness bakes them). Static: regenerated with the pristine world. */
+  darkZones?: DarkZone[];
+  /** Lumen blooms: light-drinking plants whose glass petals bridge a gap while lit. */
+  lumenBlooms?: LumenBloom[];
+  /** STORY: the floor's speaking-pipes, Pell's camp, the resonant valve, the Kiln flue. Static: regenerated with the pristine world. */
+  story?: LevelStorySites;
+}
+
+/**
+ * A designed deep-dark region: its core reads `strength` × the floor's deep
+ * darkness, feathered at the rim (config/darkness DARKNESS.feather). An
+ * ellipse by default; `rect` for a straight-walled room (rx/ry = half extents).
+ */
+export interface DarkZone {
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+  strength?: number;
+  shape?: 'ellipse' | 'rect';
+}
+
+/**
+ * A lumen bloom (game/LightDevices): a heart rooted in a wall that unfurls a
+ * run of pale glass petals — real, walkable Glass cells — while light lands on
+ * it, holds, then slowly furls in the dark. `petals` lists the cells in
+ * unfurl order (root first). `open` is transient (restores furled).
+ */
+export interface LumenBloom {
+  id: number;
+  /** The heart: the light sensor and the drawn bud. */
+  x: number;
+  y: number;
+  /** Unfurl direction along the petals (+1 right, -1 left). */
+  dir: number;
+  petals: Array<[number, number]>;
+  /** 0 furled … 1 fully open. */
+  open: number;
+  /** Ticks held open before furling begins. */
+  hold: number;
+  /** Petal cells currently stamped (count along `petals`). */
+  shown: number;
+}
+
+/** How the lantern's light touches a creature this tick (transient). */
+export interface CreatureLightSense {
+  /** Wand coverage at the creature, 0..1 (0 while hooded). */
+  wand: number;
+  /** The aimed beam, not only the omni spill, is on it. */
+  beam: boolean;
+  /** Consecutive ticks lit by the wand. */
+  litT: number;
+  /** Weaver habituation: beam ticks inside the leaky window. */
+  habit: number;
+  /** Flinch cooldown ticks. */
+  cd: number;
+  /** Root Loper: light-frozen ticks remaining. */
+  frozen: number;
+  /** Tick the beam last caught its eyes (the eyeshine catch cue's throttle). */
+  glintAt?: number;
+}
+
+/** One authored crown's persistent material condition and physical motion. */
+export interface HabitatPlantState {
+  x: number;
+  y: number;
+  rootY: number;
+  angle: number;
+  velocity: number;
+  rotation: number;
+  spin: number;
+  vx: number;
+  vy: number;
+  detached: boolean;
+  burn: number;
+  burning: boolean;
+  age: number;
+  spent: boolean;
+}
+
+/** Expedition ecology and room progress; separate from Builder documents. */
+export interface TeaMachineState {
+  stage: number;
+  ticks: number;
+  stageTicks: number;
+  completed: boolean;
+  stalled: boolean;
+  /** Ratcheted valve travel in cells; the grid contains the actual moving plates. */
+  travel?: Partial<Record<'gate' | 'spring' | 'tap' | 'pin' | 'bell', number>>;
+  /** Watchdog nudges spent on the current stage (each one is a visible physical assist). */
+  assists?: number;
+  /** Ticks the current fault has waited for the player; drives its slow backup. */
+  faultTicks?: number;
+  bodies: Array<{ key: string; x: number; y: number; vx: number; vy: number; angle: number; va: number; rope: boolean; tether?: boolean }>;
+}
+
+export interface LivingExpeditionState {
+  tea?: TeaMachineState;
+  /** Authored crowns retain damage and falling motion through an expedition save. */
+  plants?: Array<HabitatPlantState | null>;
+  valveTurn?: number;
+  valveAngularVelocity?: number;
+  ticks: number;
+  visited: string[];
+  room: string;
+  glowseeds: number;
+  /** The pouch's size this run (game/glowseeds; 3 unless Pell's gift found it full). */
+  glowseedCap?: number;
+  nextLureId: number;
+  lures: Array<{ id: number; x: number; y: number; vx: number; vy: number; life: number }>;
+  rested: boolean;
+  restTicks: number;
+  /** Label of the waypoint the expedition itself last set (a milestone
+   *  breadcrumb); a player-set waypoint with another label is never replaced. */
+  autoWaypoint?: string;
+  /** Retired with the cold lock (GEN 48); old saves may still carry it. */
+  coldLockSeen?: boolean;
+  /** Consecutive grounded ticks inside the room the player is standing in;
+   *  its name is announced only after a real arrival, never a fall-through. */
+  roomDwell?: { id: string; ticks: number };
 }
 
 export interface LevelsApi {
   /** Null until the descent starts (first play-mode entry). */
   readonly current: LevelRuntime | null;
   readonly transitioning: boolean;
+  /** Diagnostic readiness after the bounded, post-settling route repair. */
+  readonly findabilityReady?: boolean;
   /** Canonical launcher/dev-console run entrypoint. */
   startRun(ctx: Ctx, config: RunStartConfig): RunStartResult;
   /** Canonical status for launcher/dev-console run workflows. */
@@ -2697,8 +3328,11 @@ export interface LevelsApi {
   exitDisposableRuntime(ctx: Ctx): void;
   /** QA/debug command: stock visible potion pickups in the current level. */
   seedReviewKit(ctx: Ctx): void;
-  /** Persist the whole expedition (visited levels + hero) to localStorage. */
+  /** Queue a durable expedition checkpoint. Encoding and I/O run in a worker. */
   saveExpedition(ctx: Ctx): void;
+  readonly ready?: Promise<void>;
+  persistenceStatus?(): { backend: string; state: string; revision: number; error: string | null };
+  flushSaves?(): Promise<{ state: string; revision: number; error: string | null }>;
   /** Persist a post-death checkpoint: world penalty now, hero resumes at the respawn anchor. */
   saveDeathCheckpoint(ctx: Ctx): void;
   hasSavedExpedition(): boolean;
@@ -2739,7 +3373,118 @@ export interface DebugControl {
   update(): void;
 }
 
+/* ============================================================
+ * Breathing Works: the run — phials, stats, the ledger, the meta profile
+ * ============================================================ */
+
+/** A best result on one daily date. */
+export interface RunDailyBest {
+  floor: number;
+  timeMs: number;
+  victory: boolean;
+}
+
+/** The run's own slice of the expedition save (absent in older saves). */
+export interface RunSaveState {
+  v: 1;
+  phials: number;
+  kit: KitId;
+  daily: string | null;
+  seed: number;
+  timeMs: number;
+  kills: number;
+  alchemicalKills: number;
+  bestChain: number;
+  deaths: number;
+  cardsFound: number;
+  maxFloor: number;
+  /** A floor-3 warden fell this run: the Sunken Leviathan or the Lenswright (the ember kit's milestone). */
+  leviathanSlain: boolean;
+  /** False for debug-tainted runs: they play out but never touch the meta profile. */
+  recorded: boolean;
+  /**
+   * The doors this run walked through, in order of first arrival (campaign
+   * level ids, one per floor: `['d1', 'd2b', 'd3']`). Optional: saves from
+   * before the branching descent carry none and resume on the first doors.
+   */
+  path?: string[];
+}
+
+/** A finished run, as the ledger screen reads it. */
+export interface RunResult {
+  summary: RunSummary;
+  /** Kits this run unlocked (floor reached, Leviathan, victory). */
+  unlocked: KitId[];
+  dailyBest: RunDailyBest | null;
+  newDailyBest: boolean;
+  newBestFloor: boolean;
+  /** False for debug-tainted runs (nothing was recorded). */
+  recorded: boolean;
+  /** False when the run was replaced by a new one: record it, show nothing. */
+  present: boolean;
+}
+
+/** What the title screen and the ledger need from the meta profile. */
+export interface RunMetaView {
+  unlockedKits: KitId[];
+  lastKit: KitId;
+  workshopUnlocked: boolean;
+  runsEnded: number;
+  bestFloor: number;
+  victories: number;
+  /** Today's UTC date key and this player's best on it. */
+  today: string;
+  todayBest: RunDailyBest | null;
+  /** Campaign levels this player has ever walked into (the Sanctum marks an unwalked door). */
+  levelsSeen: string[];
+}
+
+export interface RunBeginOptions {
+  seed: number;
+  kit: KitId;
+  daily: string | null;
+  /** Normal campaign runs are tracked (phials, ledger); test runs are not. */
+  tracked: boolean;
+}
+
+/**
+ * The run lifecycle (game/RunDirector). Levels tells it when a run begins or
+ * resumes and asks it for its save slice; the Sanctum and the refuge pour
+ * phials back; menus start, abandon and read runs through it.
+ */
+export interface RunApi {
+  /** A tracked run is in progress (not over). */
+  readonly active: boolean;
+  /** The tracked run has ended; its ledger is waiting (or showing). */
+  readonly over: boolean;
+  readonly phials: number;
+  readonly maxPhials: number;
+  readonly kit: KitId;
+  readonly daily: string | null;
+  /** The last finished run, for the ledger. */
+  readonly lastResult: RunResult | null;
+  beginRun(ctx: Ctx, opts: RunBeginOptions): void;
+  snapshotForSave(): RunSaveState | null;
+  restoreFromSave(ctx: Ctx, save: RunSaveState | undefined): void;
+  /** Fixed-tick bookkeeping: play time, kills, the refuge's warmth. */
+  update(ctx: Ctx): void;
+  /** Pour one phial back (max 3); false when already full or no run. */
+  restorePhial(ctx: Ctx, reason: 'refuge' | 'sanctum'): boolean;
+  /** End the run by choice; the ledger follows. */
+  abandon(ctx: Ctx): void;
+  /** A fresh run: a new seed (or today's daily seed) with the chosen kit. */
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean }): RunStartResult;
+  metaView(): RunMetaView;
+  chooseKit(kit: KitId): void;
+}
+
 export interface Ctx {
+  /** Optional authored spectacle director; absent in small test contexts. */
+  contraption?: {
+    update(): void;
+    interact(): boolean;
+    includeSimulation(): void;
+  };
   world: World;
   events: EventBus;
   audio: AudioApi;
@@ -2781,4 +3526,96 @@ export interface Ctx {
   hints: HintApi;
   debug: DebugControl;
   time: TimeControlApi;
+  /** The run lifecycle; absent in small test contexts. */
+  run?: RunApi;
+  /** Kill attribution + alchemical-kill payouts; absent in small test contexts. */
+  alchemy?: AlchemyKillsApi;
+  /** Light as a gameplay fact (render/LightQuery); absent in small test contexts. */
+  lightQuery?: LightQueryApi;
+  /** The streamed score; absent in small test contexts. */
+  music?: MusicApi;
+  /** The narrator; absent in small test contexts. */
+  narrator?: NarratorApi;
+  /** Living plants that fall (game/Flora); absent in small test contexts. */
+  flora?: FloraApi;
+  /** Remains as physical objects (creatures/corpses); absent in small test contexts. */
+  corpses?: CorpsesApi;
+  /** The story: pipes, Pell, echoes, prologues, the Kiln escape (game/story); absent in small test contexts. */
+  story?: StoryApi;
+  /** The graded body cold (game/Chill); absent in small test contexts. */
+  chill?: ChillApi;
+}
+
+/**
+ * TELEKINESIS / CORPSES: the dead as mass the world can push. The sim's
+ * blasts, the boot and the plates reach the remains through here (the list
+ * itself lives in creatures/corpses; `list` is a read-only view for probes).
+ */
+export interface CorpsesApi {
+  readonly list: readonly Corpse[];
+  /** A blast at (cx, cy): bodies in `reach` are flung by distance; frozen ones close in shatter. */
+  blast(cx: number, cy: number, reach: number, strength: number, byPlayer: boolean): void;
+  /** The boot: punt bodies in the melee cone, shove those in the gust. Returns the kick's reaction 0..1. */
+  kick(ox: number, oy: number, dirX: number, dirY: number, reach: number, cosArc: number, gustAt: GustFalloff): number;
+  /** Plate weight of the remains resting in the box (round(mass × 4) each). */
+  weightOn(x0: number, y0: number, x1: number, y1: number): number;
+}
+
+/**
+ * FLORA (wave 2): a felled stand in flight. A read-only render mirror — the
+ * lifted cells (sprite, in the world frame at the moment of felling) ride a
+ * Rapier body; draw them at the body's pose.
+ */
+export interface FloraFallView {
+  readonly id: number;
+  readonly body: RigidBody;
+  /** Spawn pose of the body (the sprite's frame). */
+  readonly cx0: number;
+  readonly cy0: number;
+  readonly a0: number;
+  readonly sprite: {
+    readonly x0: number;
+    readonly y0: number;
+    readonly w: number;
+    readonly h: number;
+    /** 0 empty, 1 wood, 2 leaf, 3 seed, 4 smouldering wood, 5 glowseed. */
+    readonly kind: Uint8Array;
+    readonly color: Uint32Array;
+  };
+  /** 0..1 while the trunk is alight (it comes down burning). */
+  readonly burning: number;
+}
+
+/** The kick's gust falloff: 0 outside the cone, up to 1 at the boot. */
+export type GustFalloff = (x: number, y: number) => number;
+
+export interface FloraApi {
+  /** Felled stands currently falling/settling (render mirror, mutated in place). */
+  readonly falling: readonly FloraFallView[];
+  /** Fixed tick: detect severed stands, fell them, drive falls, re-stamp logs. */
+  update(ctx: Ctx): void;
+  /** The player's kick: snap a sapling at the boot, shake a tree (pods drop). */
+  gust(ctx: Ctx, gustAt: GustFalloff, dirX: number, dirY: number, ox: number, oy: number): void;
+  /** Living wood appeared at (x, y) — or over the rect to (x1, y1): watch those chunks. */
+  noteGrowth(x: number, y: number, x1?: number, y1?: number): void;
+  /** Include wood still in flight in copied save buffers (the log it will become). */
+  writeSnapshotCells?(world: World, types: Uint8Array, life: Int16Array): void;
+}
+
+/**
+ * Gameplay reads of the light the player actually sees (Breathing Works light
+ * wave). Creatures, organisms, plants and devices ask "how lit is this spot?"
+ * and "is the wand's beam on it?" instead of reaching into the renderer. Values
+ * refer to the most recent light build (lighting rebuilds on even frames; the
+ * field only covers the view window — off-view points read as unlit).
+ */
+export interface LightQueryApi {
+  /** Perceived light at a world point, 0 (black) … ~1 (well lit) … up to 2 (blazing), ambient included. */
+  level(x: number, y: number): number;
+  /** How strongly the wand's beam/omni light covers this point, 0 … 1 (0 when the lantern is hooded). */
+  wandLight(x: number, y: number): number;
+  /** How dark the place is by design (a deep-dark zone reads 1; an ordinary cave ~0.3; open Works 0). */
+  darkness(x: number, y: number): number;
+  /** True while the player has hooded their lantern (stealth). */
+  readonly hooded: boolean;
 }

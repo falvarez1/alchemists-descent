@@ -1,16 +1,26 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { difficultyMods } from '@/config/difficulty';
+import { CAMP_HAVEN_RADIUS } from '@/config/pacing';
 import { RILLBACK_WET_THRESHOLD } from '@/core/enemyState';
 import { clamp } from '@/core/math';
-import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
+import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDamageSource, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
+import { causeForCell } from '@/core/alchemyCause';
+import { BossWard, playerBlow } from '@/core/bossWard';
 import { tickWeaverLocomotion, weaverKnockSync, weaverLeap } from '@/entities/weaverLocomotion';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
+import type { BossHost } from '@/creatures/bosses/types';
+import { engageBoss, ensureBossBrain } from '@/creatures/bosses/types';
+import { colossusBeginDeath, colossusDamageScale, tickColossus } from '@/creatures/bosses/colossus';
+import { leviathanDamageScale, tickLeviathan } from '@/creatures/bosses/leviathan';
+import { rimeWardenDeathHeap, rimeWardenHit, tickRimeWarden } from '@/creatures/bosses/rimeWarden';
+import { lenswrightDeathShards, lenswrightHit, tickLenswright } from '@/creatures/bosses/lenswright';
 export { ENEMY_DEFS } from '@/content/enemyDefs';
-import { createDefaultStatus, rollCatchFire, sampleAndTickStatus } from '@/entities/status';
+import { addCorpse, updateCorpses } from '@/creatures/corpses';
+import { createDefaultStatus, rollCatchFire, sampleAndTickStatus, type StatusSampleOptions } from '@/entities/status';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { LEVIATHAN_REWARD_POOL, randomCard } from '@/content/cardRewardPools';
 import { enemyMovementPace } from '@/core/progressionPacing';
-import { blocksEntity, Cell, isConductor, isSoftGrowth } from '@/sim/CellType';
+import { blocksEntity, Cell, isConductor, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import {
   acidColor,
   ashColor,
@@ -30,6 +40,13 @@ import {
 } from '@/sim/colors';
 import { splatterStain } from '@/sim/stains';
 import { entityRandom } from '@/core/simRandom';
+import { ensureCreatureMind, sightClear, tickCreatureMind } from '@/creatures/perception';
+import { lightMotion, playerVisibility, respondToLight } from '@/creatures/lightResponse';
+import { tickCreaturePose } from '@/creatures/pose';
+import { localRoute } from '@/creatures/navigation';
+import { pointHitsCreature } from '@/creatures/body';
+import { advanceRootLash, impSnack, mothSwarm, scatterRoost, slimeForage, carryRillback, feedRillback, rillbackPrey } from '@/creatures/ecology';
+import type { CreatureCue, CreatureMind } from '@/creatures/types';
 
 // ===================== Enemies =====================
 interface CellCandidate {
@@ -61,7 +78,7 @@ function addNearestCandidate(list: CellCandidate[], cap: number, x: number, y: n
 const GORE_REF_AREA = 50;
 const GORE_CHUNK_TTL = 540; // ~9s a felled foe's body chunks linger before clearing
 const ENV_DAMAGE_FEEDBACK_COOLDOWN = 12;
-const WEAVER_PREY: ReadonlySet<CritterKind> = new Set<CritterKind>(['moth', 'firefly', 'beetle', 'fly']);
+const WEAVER_PREY: ReadonlySet<CritterKind> = new Set<CritterKind>(['moth', 'firefly', 'beetle', 'fly', 'isopod', 'ashmoth']);
 const WEAVER_DISTURBANCE_WAKE_PAD = 88;
 const WEAVER_CRANKY_FRAMES = 260;
 const WEAVER_TRAIL_WEB_COOLDOWN = 18;
@@ -76,6 +93,8 @@ const RILLBACK_CHARGE_WINDUP_FRAMES = 18;
 const GUST_REF_MASS = 40; // a slime-ish footprint (halfW·h); push scales inversely
 const GUST_MASS_LO = 0.2; // heaviest foes barely budge
 const GUST_MASS_HI = 4.5; // lightest foes (bats) get hurled
+/** Share of a blow that lands on a submerged Leviathan (its water is armour). */
+const LEVIATHAN_WATER_ARMOR = 0.12;
 const GUST_KNOCK_FRAMES_MAX = 18; // longest ballistic-launch window (AI + flight cap suppressed)
 const KNOCK_GRAV = 0.12; // gentle gravity during a launch so the arc reads
 const KNOCK_DRAG = 0.97; // per-frame air drag on a launched body
@@ -84,6 +103,14 @@ const SLAM_MIN_SPEED = 3.5; // ...and only above a real impact speed (cells/fram
 const SLAM_DMG_BASE = 12; // base wall-slam damage...
 const SLAM_DMG_PER_SPEED = 2.4; // ...plus this per cell/frame of impact speed (small foes gib outright)
 const BAT_SLIME_GROUNDED_FRAMES = 7 * 60;
+/** Hit stagger (Enemies.flinch): minimum blow, shove scale, stagger ticks, and the cooldown against stun-lock. */
+const FLINCH_MIN_DAMAGE = 5;
+const FLINCH_PUSH = 0.55;
+const FLINCH_T_MIN = 3;
+const FLINCH_T_MAX = 9;
+const FLINCH_CD = 45;
+/** Bodies that don't stagger: rooted, surface-bound, chain-bodied, or a clutch of eggs. */
+const NO_FLINCH: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['weaver', 'eggs', 'spitter', 'rillback', 'stonemaw', 'rootloper']);
 const MAGE_TELEKINESIS_CELLS = new Set<number>([
   Cell.Sand,
   Cell.Gold,
@@ -113,13 +140,57 @@ const STATUS_IMMUNE: Partial<
   wisp: { frozen: true },
   spitter: { toxic: true },
   // The kiln cannot burn or freeze — but it CAN be doused (wet = thermal shock)
-  colossus: { burning: true, frozen: true, teleportium: true },
+  // (and its own slam's residual charge must never shock it: no electrified)
+  colossus: { burning: true, frozen: true, teleportium: true, electrified: true },
   // A soaked hide never catches — but cold stiffens it and charge cooks it
   leviathan: { burning: true, teleportium: true },
+  // Ice cannot catch or carry a current, but it CAN freeze (brittle: creatures/bosses/rimeWarden).
+  // Heat thaws it through the cells touching it, not as a burn that would skip the rime.
+  rimewarden: { burning: true, teleportium: true, electrified: true },
+  // Glass and brass: nothing takes but a blow (and light).
+  lenswright: { burning: true, frozen: true, teleportium: true, electrified: true, toxic: true, wet: true, oiled: true },
   // Rillbacks are the living conductor in their pool; their own charge pulse
   // should threaten the player, not instantly shock the eel to death.
   rillback: { electrified: true },
 };
+
+/**
+ * FIRE IS A WEAPON. A creature that catches keeps burning until it is doused or
+ * burns out (5 s; 7 s oiled — was the alchemist's 1.5 s / 5 s) and burns at
+ * 2.5x the alchemist's rate: 0.30 hp per 2-tick sample = 9 hp/s (was 3.6), so a
+ * lit slime (36-48 hp) is ash in ~4-5 s unless it reaches water — and a burning
+ * body that runs sheds real fire on the way. The alchemist's own burning is a
+ * separate call and is unchanged. (Deliberate magic-number change; FEEL.md.)
+ */
+const CREATURE_BURN: StatusSampleOptions = { burnScale: 2.5, igniteTicks: 300, igniteOiledTicks: 420 };
+
+/**
+ * A boss's LAIR, relative to its home (where it was placed): the room it
+ * watches. An alchemist inside it who is in sight of the boss's head, or
+ * within `near` cells, wakes it — facing or not, lit or dark, idle or not.
+ * Sized to the carved arenas (world/structures: the Kiln is a 62 x 40 pocket
+ * with a flat 116-wide floor 29 below its centre; the Sump 42 x 26, 26 above).
+ */
+export interface BossLair { halfW: number; up: number; down: number; near: number; eye: number; name: string }
+export const BOSS_LAIRS: Partial<Record<EnemyKind, BossLair>> = {
+  colossus: { halfW: 62, up: 72, down: 14, near: 80, eye: 28, name: 'THE KILN COLOSSUS' },
+  leviathan: { halfW: 54, up: 58, down: 12, near: 56, eye: 8, name: 'THE SUNKEN LEVIATHAN' },
+  rimewarden: { halfW: 58, up: 50, down: 12, near: 64, eye: 20, name: 'THE RIME WARDEN' },
+  lenswright: { halfW: 64, up: 70, down: 50, near: 70, eye: 11, name: 'THE LENSWRIGHT' },
+};
+/** The Kiln's entrance beat, in ticks: roar, name card, two stomps, the camera leans and returns. */
+const ENTRANCE_CARD_T = 10;
+const ENTRANCE_STOMP_T: readonly number[] = [22, 46];
+const ENTRANCE_LEAN_IN = 40;
+const ENTRANCE_HOLD = 70;
+const ENTRANCE_LEAN_OUT = 40;
+const ENTRANCE_LEAN_X = 70;
+const ENTRANCE_LEAN_Y = 28;
+const ENTRANCE_ZOOM = 1.06;
+/** The Colossus stands its ground through the roar and both stomps, then marches. */
+const ENTRANCE_ROAR_TICKS = 52;
+/** ...and holds its fire while it introduces itself (a fair first beat). */
+const ENTRANCE_GRACE_TICKS = 110;
 
 /** Per-kind TEMPERAMENT: how each foe weights the threat-aware behavior drives.
  *  - fear: how strongly sensed danger + low HP raise the fear drive (0 = fearless brute).
@@ -150,9 +221,12 @@ const TEMPERAMENT: Partial<Record<EnemyKind, Temperament>> = {
   golem: { fear: 0.18, dodge: 0.28, fleeAt: 1.5, seekWater: false }, // brute, shrugs it off
   colossus: { fear: 0, dodge: 0, fleeAt: 2, seekWater: false }, // fearless boss
   leviathan: { fear: 0, dodge: 0.12, fleeAt: 2, seekWater: false }, // fearless (water is its home)
+  rimewarden: { fear: 0, dodge: 0, fleeAt: 2, seekWater: false }, // frozen to its post
+  lenswright: { fear: 0, dodge: 0, fleeAt: 2, seekWater: false }, // an eye does not flinch
 };
 
-const FIREPROOF: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['imp', 'colossus', 'leviathan']);
+// (The Rime Warden: fire THAWS it — creatures/bosses/rimeWarden — it does not burn it.)
+const FIREPROOF: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['imp', 'colossus', 'leviathan', 'rimewarden', 'lenswright']);
 
 /** Does cell `c` deal environmental harm to `kind`? Single source of truth for
  *  wary look-ahead and threat scanning. Fire/lava burn everything but fireproof
@@ -165,11 +239,29 @@ export function enemyLethalCell(kind: EnemyKind, c: number): boolean {
   return false;
 }
 
+/** Steam SCALDS what fire can burn: per sampled body row per tick, like fire's
+ *  0.7 but a slow poach (an engulfed Weaver loses ~27 hp/s). The Works' exhale
+ *  and a boiled pool are weapons; the fireproof shrug it off. */
+const STEAM_SCALD = 0.05;
+
+function scaldedBySteam(kind: EnemyKind, c: number): boolean {
+  return c === Cell.Steam && !FIREPROOF.has(kind);
+}
+
 function directEnvironmentDamage(kind: EnemyKind, c: number): number {
   if ((c === Cell.Fire || c === Cell.Lava) && !FIREPROOF.has(kind)) return c === Cell.Lava ? 1.6 : 0.7;
   if (c === Cell.Acid && kind !== 'acidslime') return 0.9;
+  if (scaldedBySteam(kind, c)) return STEAM_SCALD;
   return 0;
 }
+
+/** Kinds that breathe water, float over it or never breathe at all. */
+const DROWN_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['rillback', 'leviathan', 'colossus', 'rimewarden', 'lenswright', 'wisp', 'eggs']);
+/** Ticks a land creature can hold its breath with its head under liquid. */
+const BREATH_TICKS = 360;
+const BREATH_TICKS_BY_KIND: Partial<Record<EnemyKind, number>> = { imp: 90, bat: 180, bomber: 150 };
+/** Out of breath: this share of max hp per tick (a full body drowns in ~5 s). */
+const DROWN_HP_SHARE = 1 / 300;
 
 function weaverSupportGrowth(t: number): boolean {
   return isSoftGrowth(t) || t === Cell.Slime;
@@ -219,15 +311,58 @@ export class Enemies implements EnemyControlApi {
     speedScale: 1,
   };
 
+  /** What a boss module may ask of this system (creatures/bosses). */
+  private readonly bossHost: BossHost = {
+    voice: (e, fn, range) => this.voice(e, fn, range),
+    shakeAt: (x, y, amount, cap) => this.shakeAt(x, y, amount, cap),
+    hasAttackLine: (e, def, lob) => this.hasAttackLine(e, def, lob),
+    finishDeath: (e) => this.kill(e, 0, 0),
+    poolVolley: (e) => this.poolVolley(e),
+    worldHarm: (e) => this.bossWard.allows(e, 'shorted', this.ctx.state.frameCount),
+    quenchTick: (e, soaked) => this.bossWard.quenchTick(e, soaked, this.ctx.state.frameCount),
+    introducing: (e) => this.entrance?.e === e && this.ctx.state.frameCount - this.entrance.start < ENTRANCE_ROAR_TICKS,
+  };
+
   constructor(private ctx: Ctx) {
     const onStrike = ctx.events?.on('structureStrike', ({ x, y, radius }) => {
       this.wakeSleepingWeaversNear(x, y, radius + WEAVER_DISTURBANCE_WAKE_PAD, 'disturbance');
+      this.cue(x, y, Math.max(180, radius * 5), 1, 'vibration');
     });
     const onImpact = ctx.events?.on('groundImpact', ({ x, y, radius, strength }) => {
       this.wakeSleepingWeaversNear(x, y, radius + WEAVER_DISTURBANCE_WAKE_PAD + strength * 18, 'disturbance');
+      this.cue(x, y, Math.max(90, radius * 3 + strength * 25), Math.min(1, strength), 'vibration');
     });
     if (onStrike) this.disposers.push(onStrike);
     if (onImpact) this.disposers.push(onImpact);
+    const onCast = ctx.events?.on('cardCast', ({ x, y }) => this.cue(x, y, 230, 0.8, 'sound'));
+    if (onCast) this.disposers.push(onCast);
+    const onSignal = ctx.events?.on('creatureSignal', ({ x, y, radius, strength, kind }) => this.cue(x, y, radius, strength, kind));
+    if (onSignal) this.disposers.push(onSignal);
+    // THE BOSS WARD hears the player act: a cast (wand or its trigger payload),
+    // a pour or a throw. Only harm that follows an act near a boss lands on it.
+    const onActCast = ctx.events?.on('cardCast', ({ x, y }) => this.bossWard.noteAct(ctx.state.frameCount, x, y));
+    const onActFlask = ctx.events?.on('flaskUsed', ({ verb }) => {
+      if (verb === 'pour' || verb === 'throw') this.bossWard.noteAct(ctx.state.frameCount, ctx.player.x, ctx.player.y);
+    });
+    const onActLevel = ctx.events?.on('levelChanged', () => this.bossWard.reset());
+    for (const off of [onActCast, onActFlask, onActLevel]) if (off) this.disposers.push(off);
+  }
+
+  /** Warded bosses (the Colossus, the Leviathan) take only harm the player caused — core/bossWard. */
+  private readonly bossWard = new BossWard();
+
+  private readonly cues: CreatureCue[] = [];
+  /** Bosses that have made their entrance (once per live creature). */
+  private readonly introduced = new WeakSet<Enemy>();
+  /** The entrance beat in progress (the Kiln Colossus's): who, and the tick it began. */
+  private entrance: { e: Enemy; start: number; lean: boolean } | null = null;
+  /** A wall-slam in progress: whatever dies now is paste, not a corpse. */
+  private gibbing = false;
+  private lastImpactFeedback = -1000;
+
+  private cue(x: number, y: number, radius: number, strength: number, kind: CreatureCue['kind']): void {
+    if (this.cues.length >= 32) this.cues.shift();
+    this.cues.push({ x, y, radius, strength, kind, tick: this.ctx.state.frameCount });
   }
 
   /** Tear down the page-lifetime EventBus subscriptions (symmetry with the
@@ -262,7 +397,7 @@ export class Enemies implements EnemyControlApi {
       e.vx *= 0.45;
       e.vy = Math.max(e.vy, 0.7);
       this.ctx.particles.burst(e.x, e.y - def.h * 0.6, 10, Cell.Slime, slimeColor, 1.4, { grav: 0.08 });
-      this.ctx.audio.squelch();
+      this.voice(e, () => this.ctx.audio.sfx('creature.bat.slimed'));
     }
   }
 
@@ -272,6 +407,10 @@ export class Enemies implements EnemyControlApi {
     e.alerted = true;
     e.sleeping = false;
     e.calmT = 0;
+    const mind = ensureCreatureMind(e, this.ctx.state.worldSeed);
+    mind.irritation = Math.max(mind.irritation, 0.6);
+    mind.nextSense = 0;
+    mind.nextDecision = 0;
     if (e.kind === 'bat' && wasSleeping) {
       e.windup = 0;
       e.swoop = 0;
@@ -280,6 +419,29 @@ export class Enemies implements EnemyControlApi {
       e.cranky = Math.max(e.cranky ?? 0, WEAVER_CRANKY_FRAMES);
       e.webPulse = Math.max(e.webPulse ?? 0, 18);
     }
+  }
+
+  /**
+   * Being struck by the alchemist ALWAYS provokes. The blow tells the creature
+   * where it came from (the pain has a direction; no omniscience beyond that):
+   * its mind gets the wizard's position as a confident fix, so a Weaver stops
+   * foraging and turns on him. Flighty kinds (low `fleeAt`) bolt instead; the
+   * threat layer carries the flee and they come back once the fright ebbs.
+   */
+  private provokeByPlayer(e: Enemy): void {
+    const p = this.ctx.player;
+    if (e.kind === 'eggs' || !p || p.dead) return;
+    const mind = ensureCreatureMind(e, this.ctx.state.worldSeed);
+    mind.targetX = p.x;
+    mind.targetY = p.y;
+    mind.targetVx = p.vx;
+    mind.confidence = Math.max(mind.confidence, 0.8);
+    mind.irritation = Math.max(mind.irritation, 0.75);
+    mind.lastHeard = this.ctx.state.frameCount;
+    const temp = TEMPERAMENT[e.kind] ?? DEFAULT_TEMPERAMENT;
+    if (temp.fleeAt < 0.5) e.fear = Math.max(e.fear ?? 0, temp.fleeAt);
+    else e.aggression = Math.max(e.aggression ?? 0, 0.6);
+    if (e.kind === 'weaver') e.cranky = Math.max(e.cranky ?? 0, 90);
   }
 
   spawn(kind: EnemyKind, x: number, y: number, opts: EnemySpawnOptions = {}): Enemy | null {
@@ -399,44 +561,98 @@ export class Enemies implements EnemyControlApi {
   /** A hazard cell (lava/fire/acid/toxic) splashes (x,y): if a foe harmed by `cell`
    *  overlaps the point, deal the matching env damage (and ignite it for
    *  fire/lava) and return true. Lets poured/sprayed material strike foes. */
-  splashHazard(x: number, y: number, cell: number): boolean {
+  splashHazard(x: number, y: number, cell: number, source?: EnemyDamageSource): boolean {
     if (this.ctx.state.mode !== 'play') return false;
     for (const e of this.ctx.enemies) {
       const def = this.defs[e.kind];
-      if (Math.abs(x - e.x) > def.halfW + 1) continue;
-      if (y > e.y + 2 || y < e.y - def.h - 2) continue;
+      if (!pointHitsCreature(e, def, x, y, 2)) continue;
       if (!enemyLethalCell(e.kind, cell)) continue;
       const dmg = cell === Cell.Toxic ? 0.7 : directEnvironmentDamage(e.kind, cell);
       if (dmg <= 0) continue;
-      this.damage(e, dmg, (entityRandom() - 0.5) * 0.6, -0.3);
+      // A poured flask's material strikes as itself; the Flame Jet says 'direct'.
+      this.damage(e, dmg, (entityRandom() - 0.5) * 0.6, -0.3, source ?? causeForCell(cell));
       if (cell === Cell.Lava || cell === Cell.Fire) {
         // Same percentage-based catch as passive exposure: a single lava splash
         // is much likelier to ignite than a fire splash; a stream re-rolls each hit.
-        rollCatchFire(e.status, cell === Cell.Fire ? 1 : 0, cell === Cell.Lava ? 1 : 0, STATUS_IMMUNE[e.kind]?.burning === true);
+        rollCatchFire(
+          e.status,
+          cell === Cell.Fire ? 1 : 0,
+          cell === Cell.Lava ? 1 : 0,
+          STATUS_IMMUNE[e.kind]?.burning === true,
+          CREATURE_BURN.igniteTicks,
+          CREATURE_BURN.igniteOiledTicks,
+        );
       }
       return true;
     }
     return false;
   }
 
-  damage(e: Enemy, amount: number, kx: number, ky: number): void {
+  damage(e: Enemy, amount: number, kx: number, ky: number, source: EnemyDamageSource = 'direct'): void {
     const ctx = this.ctx;
-    if (amount > 0) this.alertFromDamage(e);
+    // THE BOSS WARD: a warded boss's hp moves only for harm the player set in
+    // motion (a direct blow, or the world's while he is engaged) — never for a
+    // blast, fire or creature that went off on its own. core/bossWard.
+    if (!this.bossWard.allows(e, source, ctx.state.frameCount)) return;
+    // ...and on top of the ward, the boss brain (creatures/bosses): nothing
+    // lands on a dying boss, its own tumbling armour is not a blow, and its
+    // exposure windows (a quenched, kneeling kiln; a convulsing eel) bite harder.
+    if (BOSS_LAIRS[e.kind]) {
+      const brain = ensureBossBrain(e);
+      if (brain.move === 'dying' || brain.finished) return;
+      if (playerBlow(source)) engageBoss(brain, ctx.state.frameCount);
+      else if (ctx.state.frameCount < brain.selfHarmUntil) return;
+      // The windows sharpen the player's own blows; the world's harm lands as the ward allows it.
+      // The Rime Warden's rime glances a blow, or cracks a plate off (creatures/bosses/rimeWarden).
+      if (e.kind === 'rimewarden') amount = rimeWardenHit(ctx, e, this.defs[e.kind], this.bossHost, amount, source);
+      // ...and the Lenswright's housing glances unless its iris is open (creatures/bosses/lenswright).
+      else if (e.kind === 'lenswright') amount = lenswrightHit(ctx, e, this.defs[e.kind], this.bossHost, amount, source);
+      else if (source === 'direct') amount *= e.kind === 'colossus' ? colossusDamageScale(e) : leviathanDamageScale(e);
+      brain.playerDamage += amount;
+    }
+    // Kill attribution: every blow reports its source before hp moves.
+    ctx.alchemy?.noteHit(e, source);
+    if (amount > 0) {
+      this.alertFromDamage(e);
+      if (playerBlow(source)) this.provokeByPlayer(e);
+    }
     // WATER IS THE LEVIATHAN'S ARMOR: while the body is actually in water
     // (cell census, not the wet meter) hits glance off — and SAY so, every
-    // time, with a cold shimmer and a dull plink. Drain the pool.
+    // time, with a cold shimmer and a dull plink. Drain the pool, or short it.
+    // (×0.12, was ×0.25: a held Spark Bolt ground ~10 hp/s through the water,
+    // half the fight, whatever the pool was doing.)
     if (e.kind === 'leviathan' && e.submerged === true) {
-      amount *= 0.25;
+      amount *= LEVIATHAN_WATER_ARMOR;
       ctx.particles.burst(e.x, e.y - 7, 3, null, () => packRGB(120, 220, 255), 1.2, {
         glow: 1.8,
         grav: -0.01,
       });
-      ctx.audio.tone(820, 520, 0.05, 'triangle', 0.07);
+      this.voice(e, () => ctx.audio.sfx('creature.leviathan.glance'));
     }
     e.hp -= amount;
     e.flash = 6;
     e.vx += kx || 0;
     e.vy += ky || 0;
+    this.flinch(e, amount, kx || 0, ky || 0);
+    // The rig answers the blow physically on its next tick (creatures/species).
+    e.hitKx = kx || 0;
+    e.hitKy = ky || 0;
+    e.hitAt = ctx.state.frameCount;
+    e.hitAmount = amount;
+    if (amount >= 7 && Math.abs(kx) + Math.abs(ky) > .25 && ctx.state.frameCount - this.lastImpactFeedback >= 5 &&
+        Math.hypot(e.x - ctx.player.x, e.y - ctx.player.y) < 240) {
+      this.lastImpactFeedback = ctx.state.frameCount;
+      ctx.fx.hitstop = Math.max(ctx.fx.hitstop ?? 0, amount >= 20 ? 3 : 2);
+      e.squash = Math.max(e.squash ?? 0, .18);
+      this.voice(e, () => { ctx.audio.sfx('creature.hit'); ctx.audio.creature(e.kind, 'hurt'); });
+    } else if (source === 'direct' && amount >= 2 && Math.abs(kx) + Math.abs(ky) > .25 &&
+        ctx.state.frameCount - this.lastImpactFeedback >= 5 && Math.hypot(e.x - ctx.player.x, e.y - ctx.player.y) < 240) {
+      // Small direct hits (pellets, chip damage) still land: a 1-frame micro-hitstop
+      // and a lighter squash. Sub-2 streams (the Flame Jet's 0.7 ticks) never stutter.
+      this.lastImpactFeedback = ctx.state.frameCount;
+      ctx.fx.hitstop = Math.max(ctx.fx.hitstop ?? 0, 1);
+      e.squash = Math.max(e.squash ?? 0, .1);
+    }
     const def = this.defs[e.kind];
     ctx.particles.burst(
       e.x,
@@ -447,8 +663,20 @@ export class Enemies implements EnemyControlApi {
       2.1,
       e.kind === 'imp' ? { glow: 1.8, grav: 0.06 } : undefined,
     );
-    // Wounds bleed: a directional spray that pools where it lands
-    if (e.kind !== 'imp') {
+    // Wounds bleed: a directional spray that pools where it lands. The Kiln
+    // Colossus is stone and fire: it sheds chips and sparks, never blood.
+    if (e.kind === 'colossus') {
+      ctx.particles.burst(e.x + Math.sign(kx || 0) * 4, e.y - def.h * 0.5, Math.min(10, 3 + Math.floor(amount * 0.3)), null,
+        () => packRGB(255, 150 + ((entityRandom() * 80) | 0), 40), 2.2, { glow: 2.2, grav: 0.05 });
+    } else if (e.kind === 'lenswright') {
+      // Glass and brass: glints and chips of lens, never blood.
+      ctx.particles.burst(e.x + Math.sign(kx || 0) * 3, e.y - def.h * 0.55, Math.min(10, 3 + Math.floor(amount * 0.3)), null,
+        () => packRGB(230 + ((entityRandom() * 25) | 0), 236, 250), 2.0, { glow: 1.4, grav: 0.05 });
+    } else if (e.kind === 'rimewarden') {
+      // Iron and ice: frost chips and a rust-dark spark, never blood.
+      ctx.particles.burst(e.x + Math.sign(kx || 0) * 4, e.y - def.h * 0.5, Math.min(10, 3 + Math.floor(amount * 0.3)), null,
+        () => packRGB(200 + ((entityRandom() * 50) | 0), 230, 250), 2.0, { glow: 0.9, grav: 0.05 });
+    } else if (e.kind !== 'imp') {
       if (entityRandom() < 0.6) splatterStain(ctx.world, e.x - Math.sign(kx || 0) * 3, e.y - 5, 4);
       const n = this.goreCount(e, Math.min(22, 5 + Math.floor(amount * 0.8)), Cell.Blood);
       for (let i = 0; i < n; i++) {
@@ -476,18 +704,41 @@ export class Enemies implements EnemyControlApi {
     if (e.hp <= 0) this.kill(e, kx, ky);
   }
 
+  /**
+   * A blow that READS (the Rain World bar): a real hit staggers the body — a
+   * short, mass-scaled ballistic shove (the knock system owns it, so the AI
+   * pauses and the shove carries) — at most once per FLINCH_CD ticks, so a
+   * rapid wand cannot stun-lock anything. Bosses, rooted and surface-bound
+   * bodies answer with their rigs alone.
+   */
+  private flinch(e: Enemy, amount: number, kx: number, ky: number): void {
+    if (amount < FLINCH_MIN_DAMAGE || e.hp <= 0 || (e.flinchCd ?? 0) > 0 || (e.knockT ?? 0) > 0) return;
+    if (BOSS_LAIRS[e.kind] || NO_FLINCH.has(e.kind) || e.sleeping) return;
+    const def = this.defs[e.kind];
+    const k = Math.hypot(kx, ky);
+    const dx = k > 0.05 ? kx / k : 0, dy = k > 0.05 ? ky / k : -1;
+    const push = clamp(GUST_REF_MASS / (def.halfW * def.h), 0.3, 2) * clamp(k, 0.8, 3) * FLINCH_PUSH;
+    e.knockVx = dx * push;
+    e.knockVy = dy * push * 0.6 - push * 0.25;
+    e.knockT = Math.round(clamp(FLINCH_T_MIN + (amount / Math.max(1, e.maxHp)) * 26, FLINCH_T_MIN, FLINCH_T_MAX));
+    e.flinchCd = FLINCH_CD;
+  }
+
   /** The player's kick is a wind blast: shove a foe along (dirX,dirY), mass-scaled
    *  so a bat is hurled and a golem barely rocks. Light foes enter a brief ballistic
    *  LAUNCH (AI + per-kind flight cap suppressed in tickKnock) so the shove actually
    *  carries — and a fast launch SMASHES into the first wall it meets, painting it. */
   gustShove(e: Enemy, dirX: number, dirY: number, strength: number): void {
     if (strength <= 0 || e.hp <= 0) return;
-    if (e.kind === 'colossus' || e.kind === 'leviathan') return; // a gust can't move a boss
+    if (BOSS_LAIRS[e.kind]) return; // a gust can't move a boss
     const def = this.defs[e.kind];
     const mass = def.halfW * def.h; // footprint proxy: bat 15, slime 40, golem 140
     const push = strength * clamp(GUST_REF_MASS / mass, GUST_MASS_LO, GUST_MASS_HI);
     e.alerted = true;
     e.sleeping = false; // a roosting bat is knocked loose
+    // Whatever the launch delivers it to (a wall, lava, a pool) is the kick's doing.
+    this.ctx.alchemy?.noteKick(e);
+    this.provokeByPlayer(e);
     e.knockVx = (e.knockVx ?? 0) + dirX * push;
     e.knockVy = (e.knockVy ?? 0) + dirY * push - push * 0.18; // a touch of lift
     // Heavy foes get a short stagger; light ones a long, wall-smashing flight.
@@ -587,8 +838,7 @@ export class Enemies implements EnemyControlApi {
       );
     }
     ctx.particles.burst(e.x, e.y - 5, 10, null, () => packRGB(150, 140, 120), 1.6, { grav: 0.05 });
-    ctx.audio.noiseBurst(0.12, 170, 0.13); // wet crunch
-    ctx.audio.tone(120, 70, 0.12, 'square', 0.08);
+    this.voice(e, () => ctx.audio.sfx('creature.gib')); // wet crunch
     // THE PUNCH: a wall-slam gib is a kill-cam moment — a beat of hitstop, a bloom
     // flash, and a small shake, all scaled a touch by how hard it hit.
     const punch = Math.min(1, speed / 12);
@@ -603,7 +853,8 @@ export class Enemies implements EnemyControlApi {
     e.fy = 0;
     e.vx = 0;
     e.vy = 0;
-    this.damage(e, SLAM_DMG_BASE + speed * SLAM_DMG_PER_SPEED, -nx * 0.6, -ny * 0.6);
+    this.gibbing = true;
+    try { this.damage(e, SLAM_DMG_BASE + speed * SLAM_DMG_PER_SPEED, -nx * 0.6, -ny * 0.6, 'impaled'); } finally { this.gibbing = false; }
   }
 
   private removeEnemyAt(index: number): Enemy | undefined {
@@ -622,12 +873,25 @@ export class Enemies implements EnemyControlApi {
   }
 
   private killAt(index: number, e: Enemy, kx: number, ky: number): void {
+    if (this.deferBossDeath(e)) return;
     const removed = this.ctx.enemies[index] === e ? this.removeEnemyAt(index) : this.removeEnemy(e);
     if (!removed) return;
     this.finishKill(e, kx, ky);
   }
 
-  kill(e: Enemy, kx: number, ky: number): void {
+  /** The Kiln Colossus dies as a sequence (creatures/bosses); the kill path runs when it ends. */
+  private deferBossDeath(e: Enemy): boolean {
+    if (e.kind !== 'colossus' || e.boss?.finished) return false;
+    // The blow that crossed zero is judged now (combat/AlchemyKills.sealVerdict):
+    // the sequence outlasts the killing-blow window, and BOWLED or SHATTERED
+    // belongs to the blow, not to the rubble seconds later.
+    if (e.boss?.move !== 'dying') this.ctx.alchemy?.sealVerdict?.(e);
+    return colossusBeginDeath(this.ctx, e, this.defs[e.kind], this.bossHost);
+  }
+
+  kill(e: Enemy, kx: number, ky: number, source?: EnemyDamageSource): void {
+    if (source) this.ctx.alchemy?.noteHit(e, source);
+    if (this.deferBossDeath(e)) return;
     if (!this.removeEnemy(e)) return;
     this.finishKill(e, kx, ky);
   }
@@ -635,6 +899,11 @@ export class Enemies implements EnemyControlApi {
   private finishKill(e: Enemy, kx: number, ky: number): void {
     const ctx = this.ctx;
     const def = this.defs[e.kind];
+    // The world's kills are announced, chained and paid in gold (combat/AlchemyKills).
+    ctx.alchemy?.onKill(e);
+    // Every death is a fact first (the run ledger counts it), THEN its aftermath —
+    // a bomber's blast, the Colossus ending the run.
+    ctx.events.emit('enemyKilled', { kind: e.kind, x: e.x, y: e.y });
     // Bombers go out the only way they know how
     if (e.kind === 'bomber') {
       ctx.explosions.trigger(e.x, e.y - 4, 24 + Math.floor(entityRandom() * 3), { playerDamageSource: 'bomber' });
@@ -657,6 +926,7 @@ export class Enemies implements EnemyControlApi {
       });
       splatterStain(ctx.world, e.x, e.y - 5, 12);
       this.seedGorePool(e.x, e.y - 2, 8);
+      addCorpse(ctx, e, kx, ky);
       this.dropBounty(e, def);
       const runtime = ctx.levels.current;
       if (runtime && ctx.state.mode === 'play') {
@@ -667,28 +937,65 @@ export class Enemies implements EnemyControlApi {
           }),
         );
       }
-      ctx.audio.groan();
-      ctx.audio.squelch();
+      this.voice(e, () => ctx.audio.sfx('creature.leviathan.death'), 700);
       this.shakeAt(e.x, e.y, 0.035, 0.06);
       ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 1.2);
       ctx.waves.kills++;
       ctx.events.emit('toast', { text: 'THE SUMP FALLS STILL' });
       return;
     }
+    // The Rime Warden: a floor's guardian — it comes apart into a heap of real
+    // ice, and the Cold Store pays a heart and a card for it.
+    if (e.kind === 'lenswright') {
+      // The Lenswright: the lens bursts into real glass and its drops fall as crystal.
+      lenswrightDeathShards(ctx, e, def);
+      this.dropBounty(e, def);
+      const runtime = ctx.levels.current;
+      if (runtime && ctx.state.mode === 'play') {
+        runtime.pickups.push(makePickup('heart', e.x - 5, e.y - 6));
+        runtime.pickups.push(makePickup('tome', e.x + 5, e.y - 6, { card: randomCard(LEVIATHAN_REWARD_POOL) }));
+      }
+      this.voice(e, () => ctx.audio.sfx('creature.lenswright.death'), 900);
+      this.shakeAt(e.x, e.y, 0.035, 0.06);
+      ctx.waves.kills++;
+      ctx.events.emit('toast', { text: 'THE GALLERIES GO DARK' });
+      return;
+    }
+    if (e.kind === 'rimewarden') {
+      rimeWardenDeathHeap(ctx, e, def);
+      this.dropBounty(e, def);
+      const runtime = ctx.levels.current;
+      if (runtime && ctx.state.mode === 'play') {
+        runtime.pickups.push(makePickup('heart', e.x - 5, e.y - 12));
+        runtime.pickups.push(makePickup('tome', e.x + 5, e.y - 12, { card: randomCard(LEVIATHAN_REWARD_POOL) }));
+      }
+      this.voice(e, () => ctx.audio.sfx('creature.rimewarden.death'), 900);
+      this.shakeAt(e.x, e.y, 0.04, 0.07);
+      ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 1.0);
+      ctx.waves.kills++;
+      ctx.events.emit('toast', { text: 'THE WARDEN STANDS DOWN' });
+      return;
+    }
     // The Kiln Colossus: the run ends here, loudly.
     if (e.kind === 'colossus') {
-      ctx.explosions.trigger(e.x, e.y - 10, 28, { playerDamageSource: 'colossus-death' });
+      // The death sequence (creatures/bosses/colossus) already brought the kiln
+      // down in its own blast and heaped its rubble; only a bare kill blows here.
+      if (!e.boss?.finished) ctx.explosions.trigger(e.x, e.y - 10, 28, { playerDamageSource: 'colossus-death' });
       ctx.particles.burst(e.x, e.y - 12, this.goreCount(e, 40, Cell.Stone), Cell.Stone, stoneColor, 4.5);
       ctx.particles.burst(e.x, e.y - 12, 24, null, () => packRGB(255, 170, 40), 3.8, {
         glow: 2.6,
         grav: -0.01,
       });
       this.dropBounty(e, def);
-      ctx.audio.portalWhoosh();
+      ctx.audio.sfx('creature.colossus.death', e.x, e.y);
       ctx.fx.screenShake = 0.06;
       ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 1.6);
       ctx.waves.kills++;
       ctx.events.emit('toast', { text: 'THE KILN IS COLD' });
+      // STORY (wave 3): the Heart's last heave — the escape up the old flue;
+      // victory (runComplete) comes at the top. Without a flue (a test arena,
+      // no story) the run is complete here, as before.
+      if (ctx.story?.beginEscape()) return;
       ctx.events.emit('runComplete', { gold: ctx.state.score });
       // The run is complete — the save has nothing left to protect.
       ctx.levels.abandonExpedition();
@@ -751,10 +1058,12 @@ export class Enemies implements EnemyControlApi {
       // ...and a real wet pool at the feet that the spray keeps feeding
       this.seedGorePool(e.x, e.y - 2, e.kind === 'golem' ? 5 : e.kind === 'bat' ? 1 : 3);
     }
-    // Substantial bodies leave physical remains: a few gore-coloured chunks
-    // tumble off with the death impulse, bounce, and settle (Rain World's
-    // physical death). Bosses/bombers returned early with their own deaths.
-    this.spawnDeathChunks(e, def, kx, ky);
+    // Rain World's physical death: the body stays — the rig goes limp, falls,
+    // drapes and later melts back into the grid (creatures/corpses). A foe
+    // smashed to paste against a wall leaves no body; the old gore chunks
+    // remain the fallback when there is no corpse to keep.
+    const kept = !this.gibbing && addCorpse(ctx, e, kx, ky);
+    if (!kept) this.spawnDeathChunks(e, def, kx, ky);
     // A felled foe goes out in the colour of whatever was killing it.
     this.elementalDeathFlourish(e, def);
     this.dropBounty(e, def);
@@ -763,7 +1072,7 @@ export class Enemies implements EnemyControlApi {
     if (ctx.player.perks.vampirism && !ctx.player.dead) {
       ctx.player.hp = Math.min(ctx.player.maxHp, ctx.player.hp + 2);
     }
-    ctx.audio.squelch();
+    this.voice(e, () => ctx.audio.deathCry(e.kind));
     this.shakeAt(e.x, e.y, 0.012, 0.04);
     ctx.waves.kills++;
   }
@@ -820,20 +1129,20 @@ export class Enemies implements EnemyControlApi {
     if (st.frozen > 0) {
       ctx.particles.burst(e.x, e.y - 5, this.goreCount(e, 20, Cell.Ice), Cell.Ice, iceColor, 3.8);
       ctx.particles.burst(e.x, e.y - 6, 12, null, () => packRGB(225, 245, 255), 2.6, { glow: 2.3, grav: 0.05 });
-      ctx.audio.shatter?.();
+      this.voice(e, () => ctx.audio.shatter?.());
       ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick ?? 0, 0.6);
     } else if (st.burning > 0) {
       ctx.particles.burst(e.x, e.y - 6, 22, null, () => fireColor(), 3.4, { glow: 2.6, grav: -0.05 });
       ctx.particles.burst(e.x, e.y - 5, this.goreCount(e, 12, Cell.Fire), Cell.Fire, fireColor, 2.6);
-      ctx.audio.brazier?.();
+      this.voice(e, () => ctx.audio.brazier?.());
       ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick ?? 0, 0.7);
     } else if (st.electrified > 0) {
       ctx.particles.burst(e.x, e.y - 5, 16, null, () => packRGB(120, 240, 255), 3.0, { glow: 2.6, grav: 0 });
       ctx.lightning?.spark?.(e.x - def.halfW, e.y - def.h, e.x + def.halfW, e.y - 2);
-      ctx.audio.zap?.();
+      this.voice(e, () => ctx.audio.zap?.());
     } else if (st.wet > 0) {
       ctx.particles.burst(e.x, e.y - 5, 16, null, () => packRGB(110, 180, 235), 3.0, { glow: 0.5, grav: 0.1 });
-      ctx.audio.splash?.(0.6);
+      this.voice(e, () => ctx.audio.splash?.(0.6));
     }
   }
 
@@ -842,6 +1151,162 @@ export class Enemies implements EnemyControlApi {
    * quadratically to nothing ~420 cells out. A quake next door rattles you;
    * the same quake across the cavern is a tremor; off-screen it is nothing.
    */
+  /** A creature's sound comes from where the creature is: panned, attenuated, silent past `range`. */
+  /**
+   * THE LAIR WATCH. A boss is not a patrol animal that might glance the other
+   * way: its room is its body. While the alchemist stands inside the lair — in
+   * sight of its head, or close — it holds a confident fix on him (so it
+   * marches and attacks), and the first time, it makes its entrance.
+   */
+  private watchLair(e: Enemy, def: EnemyDef, lair: BossLair, mind: CreatureMind): void {
+    const ctx = this.ctx;
+    const p = ctx.player;
+    if (p.dead || e.hp <= 0) return;
+    const dx = p.x - mind.homeX;
+    const dy = p.y - mind.homeY;
+    if (Math.abs(dx) > lair.halfW || dy < -lair.up || dy > lair.down) return;
+    const near = Math.hypot(p.x - e.x, p.y - e.y) <= lair.near;
+    if (!near && !sightClear(ctx.world, e.x, e.y - lair.eye, p.x, p.y - 9)) return;
+    mind.targetX = p.x;
+    mind.targetY = p.y;
+    mind.targetVx = p.vx;
+    mind.lastSeen = ctx.state.frameCount;
+    mind.confidence = 1;
+    if (mind.irritation < 1) {
+      mind.irritation = 1;
+      mind.nextSense = 0;
+      mind.nextDecision = 0;
+    }
+    e.alerted = true;
+    if (!this.introduced.has(e)) this.beginEntrance(e, def, lair);
+  }
+
+  /**
+   * A boss introduces itself once. The Leviathan: the pool churns, it groans,
+   * its name surfaces. The Kiln Colossus lands as the final boss: the mix ducks
+   * under a furnace roar and a stone grind, its name card rises over it, two
+   * stomps shake the kiln, the camera leans in to take it in and returns — and
+   * it holds its fire for the ~2 s that takes. Camera motion honours the camera
+   * shake setting; glow honours reduced flashes.
+   */
+  private beginEntrance(e: Enemy, def: EnemyDef, lair: BossLair): void {
+    const ctx = this.ctx;
+    this.introduced.add(e);
+    // A boss never meets the player already wounded by something he did not
+    // do (belt and braces behind the ward: an old save, a pre-ward scratch).
+    if (!this.bossWard.harmedByPlayer(e)) e.hp = e.maxHp;
+    engageBoss(ensureBossBrain(e), ctx.state.frameCount);
+    if (e.kind === 'lenswright') {
+      // THE LENSWRIGHT turns its eye on you: the iris opens a crack, its drops
+      // chime, its name rises — and it holds a beat before the first lance.
+      ctx.audio.duck(0.5, 1100);
+      this.voice(e, () => ctx.audio.sfx('creature.lenswright.alert', e.x, e.y), 900);
+      ctx.particles.burst(e.x, e.y - def.h * 0.55, 24, null, () => packRGB(255, 236, 190), 2.2, { glow: 2.0, grav: 0 });
+      this.shakeAt(e.x, e.y, 0.02, 0.04);
+      ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 10, text: lair.name, tone: 'finisher' });
+      e.attackCd = Math.max(e.attackCd, 100);
+      return;
+    }
+    if (e.kind === 'rimewarden') {
+      // THE RIME WARDEN stirs at its post: rime cracks off its joints in a
+      // glittering shower, its name rises, and it holds a beat before it moves.
+      ctx.audio.duck(0.5, 1200);
+      this.voice(e, () => ctx.audio.sfx('creature.rimewarden.alert', e.x, e.y), 900);
+      ctx.particles.burst(e.x, e.y - def.h + 2, 26, null, () => packRGB(210 + Math.floor(entityRandom() * 40), 234, 252), 2.4, {
+        glow: 1.2,
+        grav: 0.03,
+      });
+      this.shakeAt(e.x, e.y, 0.025, 0.05);
+      ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 10, text: lair.name, tone: 'finisher' });
+      e.attackCd = Math.max(e.attackCd, 90);
+      return;
+    }
+    if (e.kind !== 'colossus') {
+      // a deep churn under the surface — the pool itself announces it
+      this.voice(e, () => ctx.audio.sfx('creature.leviathan.alert', e.x, e.y), 720);
+      ctx.particles.burst(e.x, e.y - 14, 16, null, () => packRGB(150, 220, 255), 1.8, { glow: 1.4, grav: -0.03 });
+      this.shakeAt(e.x, e.y, 0.02, 0.04);
+      ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 10, text: lair.name, tone: 'finisher' });
+      return;
+    }
+    // THE KILN COLOSSUS
+    ctx.audio.duck(0.4, 1500);
+    this.voice(e, () => {
+      ctx.audio.sfx('creature.colossus.alert', e.x, e.y);
+      ctx.audio.groan();
+      ctx.audio.grind(1.4);
+    }, 900);
+    // the furnace flares: embers pour off its shoulders
+    ctx.particles.burst(e.x, e.y - def.h + 2, 30, null, () => packRGB(255, 120 + Math.floor(entityRandom() * 110), 30), 2.6, {
+      glow: 2.4,
+      grav: -0.02,
+    });
+    if (!ctx.state.reduceFlashes) ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick, 0.8);
+    this.shakeAt(e.x, e.y, 0.03, 0.05);
+    e.attackCd = Math.max(e.attackCd, ENTRANCE_GRACE_TICKS);
+    this.entrance = { e, start: ctx.state.frameCount, lean: !ctx.state.reduceCameraShake };
+  }
+
+  /** Drive the Kiln entrance once per tick (even with the boss off-window), then hand the camera back. */
+  private tickEntrance(): void {
+    const run = this.entrance;
+    if (!run) return;
+    const ctx = this.ctx;
+    const e = run.e;
+    const t = ctx.state.frameCount - run.start;
+    const total = ENTRANCE_LEAN_IN + ENTRANCE_HOLD + ENTRANCE_LEAN_OUT;
+    if (!ctx.enemies.includes(e) || e.hp <= 0 || ctx.player.dead || t > total) {
+      this.endEntrance();
+      return;
+    }
+    const def = this.defs[e.kind];
+    if (t === ENTRANCE_CARD_T) {
+      ctx.events.emit('combatCallout', { x: e.x, y: e.y - def.h - 10, text: BOSS_LAIRS[e.kind]?.name ?? '', tone: 'finisher' });
+    }
+    if (ENTRANCE_STOMP_T.includes(t)) {
+      this.voice(e, () => { ctx.audio.boom(12); ctx.audio.hollowKnock(); }, 900);
+      this.shakeAt(e.x, e.y, 0.03, 0.05);
+      ctx.particles.burst(e.x, e.y - 1, 14, null, () => packRGB(150, 138, 120), 1.6, { grav: 0.05 });
+      if (t === ENTRANCE_STOMP_T[ENTRANCE_STOMP_T.length - 1]) {
+        ctx.particles.burst(e.x, e.y - def.h + 2, 18, null, () => packRGB(255, 150 + Math.floor(entityRandom() * 80), 40), 2.2, {
+          glow: 2.2,
+          grav: -0.02,
+        });
+      }
+    }
+    if (!run.lean || ctx.state.reduceCameraShake) return;
+    // Lean the frame toward the colossus (both of you in it), hold, return.
+    const k = t < ENTRANCE_LEAN_IN ? t / ENTRANCE_LEAN_IN
+      : t < ENTRANCE_LEAN_IN + ENTRANCE_HOLD ? 1
+        : 1 - (t - ENTRANCE_LEAN_IN - ENTRANCE_HOLD) / ENTRANCE_LEAN_OUT;
+    const ease = k * k * (3 - 2 * k);
+    const p = ctx.player;
+    const cam = ctx.camera;
+    cam.cineDx = clamp((e.x - p.x) * 0.5, -ENTRANCE_LEAN_X, ENTRANCE_LEAN_X) * ease;
+    cam.cineDy = clamp((e.y - def.h * 0.5 - (p.y - 9)) * 0.5, -ENTRANCE_LEAN_Y, ENTRANCE_LEAN_Y) * ease;
+    cam.cineZoom = 1 + (ENTRANCE_ZOOM - 1) * ease;
+  }
+
+  private endEntrance(): void {
+    const run = this.entrance;
+    this.entrance = null;
+    if (!run?.lean) return;
+    const cam = this.ctx.camera;
+    cam.cineDx = 0;
+    cam.cineDy = 0;
+    cam.cineZoom = 1;
+  }
+
+  private voice(e: Enemy, fn: () => void, range = 380): void {
+    this.ctx.audio.at(e.x, e.y - 6, fn, range);
+  }
+
+  /** "I see you", in the voice of whatever is doing the seeing. */
+  private alertVoice(e: Enemy): void {
+    // Each kind in its own voice (content/audio/sfxCues.ts creature.<kind>.alert).
+    this.ctx.audio.creature(e.kind, 'alert');
+  }
+
   private shakeAt(x: number, y: number, amount: number, cap: number): void {
     const ctx = this.ctx;
     const cx = ctx.camera.x + VIEW_W / 2,
@@ -866,10 +1331,18 @@ export class Enemies implements EnemyControlApi {
     }
   }
 
-  /** Gold coin shower (homing in play mode) + build-mode direct score credit. */
+  /**
+   * The bounty lands in the purse the instant the creature dies; the coin shower
+   * (homing to the wizard in play mode) is the payment's animation and chime, not
+   * the payment — see Particles' COIN FLIGHT. A coin a wall, a death or a
+   * run-ending blow interrupts can no longer take the gold with it.
+   */
   private dropBounty(e: Enemy, def: EnemyDef): void {
     const ctx = this.ctx;
-    const coins = Math.max(1, Math.ceil(def.bounty / 10));
+    ctx.state.score += def.bounty;
+    ctx.events.emit('scoreChanged', { score: ctx.state.score });
+    // A coin per ~4 oz (the 2026-09 economy pass made bounties ~0.3x): the shower still reads.
+    const coins = Math.max(1, Math.min(40, Math.ceil(def.bounty / 4)));
     const baseValue = Math.floor(def.bounty / coins);
     let remainder = def.bounty - baseValue * coins;
     for (let i = 0; i < coins; i++) {
@@ -889,10 +1362,6 @@ export class Enemies implements EnemyControlApi {
           grav: ctx.state.mode === 'play' ? 0 : 0.14,
         },
       );
-    }
-    if (ctx.state.mode !== 'play') {
-      ctx.state.score += def.bounty;
-      ctx.events.emit('scoreChanged', { score: ctx.state.score });
     }
   }
 
@@ -940,7 +1409,7 @@ export class Enemies implements EnemyControlApi {
         grav: 0.015,
       });
     }
-    ctx.audio.tone(240, 70, 0.3, 'sawtooth', 0.12);
+    this.voice(e, () => ctx.audio.sfx('creature.mage.cast'));
     this.shakeAt(e.x, e.y, 0.006, 0.04);
     return true;
   }
@@ -980,7 +1449,7 @@ export class Enemies implements EnemyControlApi {
         grav: 0.025,
       });
     }
-    ctx.audio.tone(180, 90, 0.22, 'sawtooth', 0.1);
+    this.voice(e, () => ctx.audio.sfx('creature.mage.shard'));
     this.shakeAt(e.x, e.y, 0.004, 0.025);
     return true;
   }
@@ -1065,7 +1534,7 @@ export class Enemies implements EnemyControlApi {
       });
     }
     if (n > 0) {
-      ctx.audio.noiseBurst(0.14, 900, 0.1, true);
+      this.voice(e, () => ctx.audio.sfx('creature.leviathan.spit'));
       this.shakeAt(e.x, e.y, 0.005, 0.03);
     }
   }
@@ -1229,7 +1698,7 @@ export class Enemies implements EnemyControlApi {
     if (chewed > 0) {
       e.mawChewT = Math.max(e.mawChewT ?? 0, 14);
       e.mawChewCd = STONE_MAW_CHEW_COOLDOWN + Math.floor(entityRandom() * 10);
-      ctx.audio.hollowKnock();
+      this.voice(e, () => ctx.audio.sfx('creature.stonemaw.chew'));
       ctx.particles.burst(mouthX, mouthY, Math.min(10, chewed + 2), Cell.Sand, stoneColor, 1.1);
       this.shakeAt(mouthX, mouthY, 0.004, 0.025);
     }
@@ -1253,10 +1722,11 @@ export class Enemies implements EnemyControlApi {
     return false;
   }
 
-  private rillbackLiquidFooting(e: Enemy, def: EnemyDef): { wet: number; hazard: number; conductor: number } {
+  private rillbackLiquidFooting(e: Enemy, def: EnemyDef): { wet: number; hazard: number; hazardCell: number; conductor: number } {
     const w = this.ctx.world;
     let wet = 0;
     let hazard = 0;
+    let hazardCell: number = Cell.Acid;
     let conductor = 0;
     let samples = 0;
     for (let dy = 0; dy < def.h; dy += 2) {
@@ -1267,12 +1737,15 @@ export class Enemies implements EnemyControlApi {
         samples++;
         const t = w.types[w.idx(x, y)];
         if (rillbackPreferredLiquid(t)) wet++;
-        else if (t === Cell.Lava || t === Cell.Acid || t === Cell.Toxic) hazard++;
+        else if (t === Cell.Lava || t === Cell.Acid || t === Cell.Toxic) {
+          hazard++;
+          hazardCell = t;
+        }
         if (rillbackChargeableLiquid(t)) conductor++;
       }
     }
     const denom = Math.max(1, samples);
-    return { wet: wet / denom, hazard: hazard / denom, conductor };
+    return { wet: wet / denom, hazard: hazard / denom, hazardCell, conductor };
   }
 
   private findRillbackLiquidSeek(e: Enemy, def: EnemyDef, radius: number): boolean {
@@ -1326,7 +1799,7 @@ export class Enemies implements EnemyControlApi {
     if (charged > 0) {
       e.rillChargeCd = 95 + Math.floor(entityRandom() * 45);
       e.blink = Math.max(e.blink, 10);
-      ctx.audio.zap();
+      this.voice(e, () => ctx.audio.sfx('creature.rillback.discharge'));
       ctx.particles.burst(e.x, e.y - def.h * 0.5, Math.min(10, charged + 2), null, () => packRGB(120, 230, 255), 1.3, {
         glow: 2.0,
         grav: -0.03,
@@ -1410,7 +1883,8 @@ export class Enemies implements EnemyControlApi {
         placed++;
       }
     }
-    ctx.audio.squelch();
+    // Silk leaving a spinneret is a dry hiss, not a wet slap.
+    ctx.audio.sfx('creature.weaver.silk', headX, headY);
     ctx.particles.burst(headX, headY, Math.max(5, Math.min(10, placed + 4)), Cell.Vines, vineColor, 1.1);
   }
 
@@ -1475,12 +1949,13 @@ export class Enemies implements EnemyControlApi {
     const x = Math.floor(clamp(tx, 3, WIDTH - 4));
     const y = Math.floor(clamp(ty, 8, HEIGHT - 8));
     ctx.particles.burst(x, y, 9, Cell.Sand, stoneColor, 1.5);
-    ctx.audio.hollowKnock();
+    ctx.audio.sfx('creature.weaver.strike', x, y);
     this.shakeAt(x, y, 0.008, 0.035);
     if (ctx.world.inBounds(x, y) && blocksEntity(ctx.world.types[ctx.world.idx(x, y)])) return;
     const dx = ctx.player.x - x;
     const dy = ctx.player.y - 8 - y;
-    if (!ctx.player.dead && Math.abs(dx) < 15 && Math.abs(dy) < 18) {
+    if (!ctx.player.dead && Math.abs(dx) < 11 && Math.abs(dy) < 14 &&
+      Math.hypot(x - e.x, y - e.y + 9) < 88 && sightClear(ctx.world, e.x, e.y - 9, x, y)) {
       ctx.playerCtl.damage(18 * (e.dmgK ?? 1), Math.sign(ctx.player.x - e.x || 1) * 4.0, -2.2, 'weaver-needle');
       ctx.particles.burst(ctx.player.x, ctx.player.y - 8, 7, Cell.Blood, bloodColor, 1.4);
     }
@@ -1512,7 +1987,7 @@ export class Enemies implements EnemyControlApi {
       e.attackCd = Math.max(e.attackCd, source === 'harm' ? 22 : 18);
       e.webPulse = Math.max(e.webPulse ?? 0, 10);
     }
-    ctx.audio.tone(disturbed ? 130 : 160, disturbed ? 55 : 70, disturbed ? 0.38 : 0.28, 'triangle', 0.08);
+    this.voice(e, () => ctx.audio.chirr(disturbed ? 0.34 : 0.24, disturbed ? 0.8 : 1, 0.06));
     ctx.particles.burst(e.x, e.y - this.defs[e.kind].h, disturbed ? 12 : 8, Cell.Vines, vineColor, 1.1);
   }
 
@@ -1545,7 +2020,7 @@ export class Enemies implements EnemyControlApi {
       const dx = cr.x - e.x;
       const dy = cr.y - (e.y - 8);
       const d2 = dx * dx + dy * dy;
-      if (d2 < bestD2) {
+      if (d2 < bestD2 && sightClear(this.ctx.world, e.x, e.y - 8, cr.x, cr.y)) {
         best = cr;
         bestD2 = d2;
       }
@@ -1565,10 +2040,15 @@ export class Enemies implements EnemyControlApi {
       });
       this.ctx.critters.remove(prey);
       e.hp = Math.min(e.maxHp, e.hp + 14);
+      const mind = ensureCreatureMind(e, this.ctx.state.worldSeed);
+      mind.hunger = Math.max(0, mind.hunger - 0.45);
+      mind.irritation *= 0.5;
+      mind.intent = 'rest';
+      mind.commitUntil = this.ctx.state.frameCount + 180;
       e.recoil = Math.max(e.recoil ?? 0, 10);
       e.weaverFeedT = Math.max(e.weaverFeedT ?? 0, 18);
       e.attackCd = Math.max(e.attackCd, 22);
-      this.ctx.audio.squelch();
+      this.voice(e, () => this.ctx.audio.sfx('creature.weaver.feed'));
     } else if (d < 34) {
       e.weaverFeedT = Math.max(e.weaverFeedT ?? 0, 8);
     }
@@ -1576,6 +2056,35 @@ export class Enemies implements EnemyControlApi {
 
   /** True if the cell just ahead of a grounded walker (foot ±1, in dir) is lethal
    *  to it — used so it refuses to voluntarily step into lava/fire/acid. */
+  /** True when the ground ends just ahead (a drop deeper than a hop). */
+  private ledgeAhead(e: Enemy, def: EnemyDef, dir: number): boolean {
+    const x = e.x + dir * (def.halfW + 2);
+    for (let dy = 1; dy <= 7; dy++) if (!this.ctx.physics.entityFree(x, e.y + dy, 0, 1)) return false;
+    return true;
+  }
+
+  /**
+   * A box that ends up inside terrain — a door or ice closing on it, powder
+   * settling into it, water draining out from under a pinned body — can never
+   * move again: tryMoveEntity refuses every step, so it hangs in the air or in
+   * the wall forever. After a short grace (a creature squeezing past settling
+   * sand should not teleport) lift it to the nearest place it fits, up first.
+   */
+  private unembed(e: Enemy, def: EnemyDef): void {
+    const physics = this.ctx.physics;
+    if (physics.entityFree(e.x, e.y, def.halfW, def.h)) { e.embedT = 0; return; }
+    e.embedT = (e.embedT ?? 0) + 1;
+    if (e.embedT < 12) return;
+    for (let r = 1; r <= 18; r++) {
+      for (const [dx, dy] of [[0, -r], [-r, 0], [r, 0], [-r, -r], [r, -r], [0, r], [-r, r], [r, r]] as const) {
+        if (!physics.entityFree(e.x + dx, e.y + dy, def.halfW, def.h)) continue;
+        e.x += dx; e.y += dy; e.fx = 0; e.fy = 0;
+        e.vx *= 0.3; e.vy = 0; e.embedT = 0;
+        return;
+      }
+    }
+  }
+
   private lethalAhead(e: Enemy, def: EnemyDef, dir: number): boolean {
     const w = this.ctx.world;
     const X = Math.floor(e.x) + dir * (def.halfW + 1);
@@ -1694,7 +2203,9 @@ export class Enemies implements EnemyControlApi {
       for (let dx = -R; dx <= R; dx += 2) {
         const X = Math.floor(e.x) + dx;
         const Y = Math.floor(e.y) + dy;
-        if (!w.inBounds(X, Y) || !enemyLethalCell(e.kind, w.types[w.idx(X, Y)])) continue;
+        if (!w.inBounds(X, Y)) continue;
+        const hz = w.types[w.idx(X, Y)];
+        if (!enemyLethalCell(e.kind, hz) && !scaldedBySteam(e.kind, hz)) continue;
         const d = Math.hypot(dx, dy) || 1;
         hzX += -dx / d;
         hzY += -dy / d;
@@ -1858,7 +2369,7 @@ export class Enemies implements EnemyControlApi {
       e.fear = Math.max(e.fear ?? 0, 0.5);
       // a soft airy whiff on the commit — gated to near the alchemist so a
       // swarm jinking at once doesn't roar (off-screen foes are frozen anyway).
-      if (pDist < 160) this.ctx.audio.noiseBurst(0.05, 1500, 0.045, true);
+      this.voice(e, () => this.ctx.audio.sfx('creature.dodge'), 180);
       }
     }
 
@@ -1892,19 +2403,52 @@ export class Enemies implements EnemyControlApi {
 
   private enemyEnvironmentDamage(e: Enemy, index?: number): void {
     const ctx = this.ctx;
+    // A dying boss is past the world's harm (the ward below decides the rest).
+    if (e.boss?.move === 'dying') return;
     const def = this.defs[e.kind];
     let dmg = 0;
+    // The hottest cell touching the body names the cause if this is the end.
+    let worst = 0;
+    let worstCell: number = Cell.Empty;
+    let oilTouch = false;
     for (let dy = 0; dy < def.h; dy += 2) {
       let rowDmg = 0;
       for (let dx = -def.halfW; dx <= def.halfW; dx += 2) {
         const X = Math.floor(e.x) + dx,
           Y = Math.floor(e.y) - dy;
         if (!ctx.world.inBounds(X, Y)) continue;
-        rowDmg = Math.max(rowDmg, directEnvironmentDamage(e.kind, ctx.world.types[ctx.world.idx(X, Y)]));
+        const c = ctx.world.types[ctx.world.idx(X, Y)];
+        if (c === Cell.Oil) oilTouch = true;
+        const d = directEnvironmentDamage(e.kind, c);
+        if (d > rowDmg) rowDmg = d;
+        if (d > worst) {
+          worst = d;
+          worstCell = c;
+        }
       }
       dmg += rowDmg;
     }
     if (dmg <= 0) return;
+    // Warded bosses: a hazard cell is only the player's doing while he is engaged.
+    if (!this.bossWard.allows(e, causeForCell(worstCell), ctx.state.frameCount)) return;
+    if (worstCell === Cell.Fire && ctx.alchemy) {
+      // Open flame on the body: the wand's own blast fire on the creature it was
+      // cast at is the spell's; burning oil, or a fire it wandered into, is the world's.
+      ctx.alchemy.noteStatus(e, {
+        burn: dmg,
+        shock: 0,
+        toxic: 0,
+        burning: e.status.burning > 0,
+        electrified: e.status.electrified > 0,
+        fueled: oilTouch || e.status.oiled > 0,
+        heatContact: true,
+        conducted: false,
+        liquidCharge: false,
+        chargeContact: false,
+      });
+    } else {
+      ctx.alchemy?.noteHit(e, causeForCell(worstCell));
+    }
     if ((e.envDamageFeedbackCd ?? 0) <= 0) {
       e.envDamageFeedbackCd = ENV_DAMAGE_FEEDBACK_COOLDOWN;
       e.flash = Math.max(e.flash, 2);
@@ -1916,6 +2460,58 @@ export class Enemies implements EnemyControlApi {
       if (index === undefined) this.kill(e, 0, 0);
       else this.killAt(index, e, 0, 0);
     }
+  }
+
+  /**
+   * Breath: a land creature whose head is under liquid holds its breath (bubbles
+   * rise off it), then drowns a little every tick until it surfaces. Floods,
+   * drained cisterns and a kick into a sump are all weapons. Sampled every 3rd
+   * tick (rates are per-sample). Returns true if the creature died.
+   */
+  private tickBreath(e: Enemy, def: EnemyDef, index: number): boolean {
+    if (DROWN_IMMUNE.has(e.kind)) return false;
+    const maxBreath = BREATH_TICKS_BY_KIND[e.kind] ?? BREATH_TICKS;
+    if (e.breath === undefined) e.breath = maxBreath;
+    if (e.timer % 3 !== 0) return false;
+    const ctx = this.ctx;
+    const w = ctx.world;
+    const top = Math.floor(e.y) - def.h + 1;
+    const x0 = Math.floor(e.x) - Math.max(0, def.halfW - 1);
+    const x1 = Math.floor(e.x) + Math.max(0, def.halfW - 1);
+    let samples = 0;
+    let wet = 0;
+    for (let y = top; y <= top + 2; y += 2) {
+      for (let x = x0; x <= x1; x += 2) {
+        if (!w.inBounds(x, y)) continue;
+        samples++;
+        if (isLiquid(w.types[w.idx(x, y)])) wet++;
+      }
+    }
+    if (samples === 0 || wet < samples * 0.6) {
+      if (e.breath < maxBreath) e.breath = Math.min(maxBreath, e.breath + 12);
+      return false;
+    }
+    e.breath = Math.max(0, e.breath - 3);
+    if (e.timer % 15 === 0) {
+      ctx.particles.spawn(e.x + (entityRandom() - 0.5) * def.halfW, top, (entityRandom() - 0.5) * 0.2, -0.45, null,
+        packRGB(200, 232, 255), 26, { grav: -0.03, glow: 0.5 });
+    }
+    if (e.breath > 0) return false;
+    // Out of air: thrash, stream bubbles, drown.
+    ctx.alchemy?.noteHit(e, 'drowned');
+    this.alertFromDamage(e);
+    e.fear = Math.max(e.fear ?? 0, 0.9);
+    e.hp -= e.maxHp * DROWN_HP_SHARE * 3;
+    e.flash = Math.max(e.flash, 2);
+    if (e.timer % 12 === 0) {
+      ctx.particles.burst(e.x, top, 4, null, () => packRGB(210, 238, 255), 0.9, { grav: -0.05, glow: 0.6 });
+      this.voice(e, () => ctx.audio.bubble());
+    }
+    if (e.hp <= 0) {
+      this.killAt(index, e, 0, 0);
+      return true;
+    }
+    return false;
   }
 
   private teleportEnemy(e: Enemy, def: EnemyDef): void {
@@ -1936,7 +2532,7 @@ export class Enemies implements EnemyControlApi {
       e.fx = 0;
       e.fy = 0;
       ctx.particles.burst(nx, ny - def.h * 0.5, 12, null, color, 2.0, { glow: 2.2, grav: 0 });
-      ctx.audio.tone(660, 1320, 0.14, 'sine', 0.12);
+      ctx.audio.sfx('creature.mage.blink', nx, ny);
       return;
     }
   }
@@ -1949,7 +2545,7 @@ export class Enemies implements EnemyControlApi {
     }
     if (noisy) {
       ctx.particles.burst(e.x, e.y - 3, 14, Cell.Slime, slimeColor, 2.0);
-      ctx.audio.squelch();
+      this.voice(e, () => ctx.audio.sfx('creature.eggs.hatch'));
       ctx.events.emit('toast', { text: 'AN EGG CLUTCH HATCHES' });
     }
     this.removeEnemyAt(index);
@@ -2008,12 +2604,32 @@ export class Enemies implements EnemyControlApi {
   update(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
     const enemies = ctx.enemies;
-    const player = ctx.player;
-    const targetAlive = !player.dead;
+    // The arrival's grace (game/arrival): while a floor's name is up, nothing sees him.
+    const arrivalGrace = ctx.state.frameCount < (ctx.state.arrivalGraceUntil ?? -1);
+    // Pell's camp is a haven (config/pacing): nothing sees him in it, and nothing stays in it.
+    const camp = ctx.levels?.current?.story?.camp ?? null;
+    const haven = camp ? { x: camp.x, y: camp.floorY - 10 } : null;
+    const havenR2 = CAMP_HAVEN_RADIUS * CAMP_HAVEN_RADIUS;
+    const inHaven = haven !== null && (ctx.player.x - haven.x) ** 2 + (ctx.player.y - 9 - haven.y) ** 2 < havenR2;
+    const observedPlayer = {
+      x: ctx.player.x, y: ctx.player.y, vx: ctx.player.vx, dead: ctx.player.dead || arrivalGrace || inHaven,
+      // Light wave: the lantern, the hood and the place's darkness set how far eyes reach.
+      crouching: ctx.input?.keys.down === true, light: playerVisibility(ctx),
+    };
+    while (this.cues.length > 0 && ctx.state.frameCount - this.cues[0].tick > 90) this.cues.shift();
+    if (ctx.player.grounded && !observedPlayer.crouching && Math.abs(ctx.player.vx) > 0.7 && ctx.state.frameCount % 14 === 0) {
+      this.cue(ctx.player.x, ctx.player.y, 115, 0.5, 'vibration');
+    }
+    // Water carries a wader further than rock carries a footstep, and even a
+    // slow paddle makes waves; only a body holding still stays quiet.
+    if (ctx.player.inLiquid && Math.abs(ctx.player.vx) + Math.abs(ctx.player.vy) > 0.25 && ctx.state.frameCount % 12 === 0) {
+      this.cue(ctx.player.x, ctx.player.y, 150, 0.6, 'vibration');
+    }
     const debugEnemyAttacksSuppressed = ctx.debug?.active === true;
     // The player's active Flame Jet cone this frame, sampled once so every foe's
     // threat scan can sidestep out of it (the stream is the same for all of them).
     this.flameStream = ctx.wands?.streamFlameInfo?.(ctx) ?? null;
+    this.tickEntrance();
 
     const sim = ctx.world.simBounds;
     for (let i = enemies.length - 1; i >= 0; i--) {
@@ -2047,6 +2663,13 @@ export class Enemies implements EnemyControlApi {
       // pause forever just because the camera moved away.
       if (e.x < sim.x0 - 60 || e.x > sim.x1 + 60 || e.y < sim.y0 - 60 || e.y > sim.y1 + 60) {
         this.tickOffscreenLifecycle(i, e, debugEnemyAttacksSuppressed);
+        if (enemies[i] === e && (ctx.state.frameCount + Math.floor(e.bobPhase * 13)) % 30 === 0) {
+          const mind = tickCreatureMind(ctx.world, e, observedPlayer, this.cues, ctx.state.frameCount, ctx.state.worldSeed);
+          const tx = mind.intent === 'investigate' ? mind.targetX : mind.homeX;
+          if (Math.abs(tx - e.x) > 20 && e.kind !== 'eggs' && !e.sleeping) {
+            ctx.physics.tryMoveEntity(e, Math.sign(tx - e.x), 0, def.halfW, def.h, 2);
+          }
+        }
         continue;
       }
       if (e.flash > 0) e.flash--;
@@ -2057,10 +2680,12 @@ export class Enemies implements EnemyControlApi {
       if ((e.weaverFeedT ?? 0) > 0) e.weaverFeedT = (e.weaverFeedT ?? 0) - 1;
       if ((e.slimed ?? 0) > 0 && !debugEnemyAttacksSuppressed) e.slimed = (e.slimed ?? 0) - 1;
       if ((e.tpCool ?? 0) > 0) e.tpCool = (e.tpCool ?? 0) - 1;
+      if ((e.flinchCd ?? 0) > 0) e.flinchCd = (e.flinchCd ?? 0) - 1;
       e.timer++;
       if (e.attackCd > 0 && !debugEnemyAttacksSuppressed) e.attackCd--;
       this.enemyEnvironmentDamage(e, i);
       if (enemies[i] !== e) continue; // died from environment
+      if (this.tickBreath(e, def, i)) continue; // drowned
       this.gumBatWingsWithSlime(e, def);
       // Body weight: read last frame's grounded/vy (before this frame's branch
       // moves them) so a landing thump lands on the same frame it touches down.
@@ -2070,7 +2695,7 @@ export class Enemies implements EnemyControlApi {
       // touching the body ARE the status — damage lands straight on hp (no
       // flash), and a frozen body's horizontal speed is scaled once per sample.
       if (e.timer % 2 === 0) {
-        const eff = sampleAndTickStatus(ctx, e, def.halfW, def.h, STATUS_IMMUNE[e.kind], 2);
+        const eff = sampleAndTickStatus(ctx, e, def.halfW, def.h, STATUS_IMMUNE[e.kind], 2, CREATURE_BURN);
         if (eff.healing > 0 && e.hp < e.maxHp) {
           e.hp = Math.min(e.maxHp, e.hp + eff.healing);
           if (ctx.state.frameCount % 10 === 0) {
@@ -2086,7 +2711,27 @@ export class Enemies implements EnemyControlApi {
             );
           }
         }
-        if (eff.damage > 0) e.hp -= eff.damage;
+        // Kill attribution hears every sample (a status that goes out forgets
+        // whose it was): the wand's own flame and live air on the creature it
+        // was cast at stay the spell's; fuel, a conductor or a fire walked into
+        // make it the world's (combat/AlchemyKills.noteStatus).
+        ctx.alchemy?.noteStatus(e, {
+          burn: eff.burnDamage,
+          shock: eff.shockDamage,
+          toxic: eff.toxicDamage,
+          burning: e.status.burning > 0,
+          electrified: e.status.electrified > 0,
+          fueled: eff.fueled,
+          heatContact: eff.heatContact,
+          conducted: eff.conducted,
+          liquidCharge: eff.liquidCharge,
+          chargeContact: eff.chargeContact,
+        });
+        // (A warded boss's status harm lands only while the player is engaged, and never on a dying one.)
+        // The Leviathan's shock is its SHORTED burst (creatures/bosses/leviathan), never a
+        // per-sample drain on top: QA watched the two together take it in ~7 s.
+        const statusHarm = e.kind === 'leviathan' ? eff.damage - eff.shockDamage : eff.damage;
+        if (statusHarm > 0 && this.bossWard.allows(e, 'shorted', ctx.state.frameCount) && e.boss?.move !== 'dying') e.hp -= statusHarm;
         if (e.hp <= 0) {
           this.killAt(i, e, 0, 0);
           continue;
@@ -2099,31 +2744,46 @@ export class Enemies implements EnemyControlApi {
       // they land, slow, or smash into a wall — see gustShove/tickKnock.
       if (this.tickKnock(e, def)) continue;
 
+      const mind = tickCreatureMind(ctx.world, e, observedPlayer, this.cues, ctx.state.frameCount, ctx.state.worldSeed, difficultyMods(ctx.state).enemySense);
+      respondToLight(ctx, e, def, mind); // light wave: lit fix, flinch, scatter, freeze
+      const lair = BOSS_LAIRS[e.kind];
+      if (lair) this.watchLair(e, def, lair, mind);
+      // A creature that strays into Pell's camp forgets the hunt and walks back out
+      // (its home, if the camp was it, moves to the camp's edge).
+      if (haven && !lair && e.kind !== 'eggs' && !e.sleeping) {
+        const hx = e.x - haven.x, hy = e.y - 6 - haven.y;
+        if (hx * hx + hy * hy < havenR2) {
+          const out = Math.sign(hx) || 1;
+          if (Math.abs(mind.homeX - haven.x) < CAMP_HAVEN_RADIUS + 24 && Math.abs(mind.homeY - haven.y) < CAMP_HAVEN_RADIUS + 24) {
+            mind.homeX = haven.x + out * (CAMP_HAVEN_RADIUS + 48);
+          }
+          mind.confidence = 0;
+          mind.visible = false;
+          mind.intent = 'return';
+          mind.commitUntil = ctx.state.frameCount + 90;
+          e.alerted = false;
+          // ...and it goes: the flee reflex carries it out past the camp's edge.
+          e.fleeT = Math.max(e.fleeT ?? 0, 12);
+          e.fleeDir = out;
+        }
+      }
+      const player = { x: mind.targetX, y: mind.targetY, vx: mind.targetVx };
+      const targetAlive = !ctx.player.dead && mind.confidence > 0.1 && (mind.intent === 'hunt' || mind.intent === 'investigate');
       const pdx = player.x - e.x,
         pdy = player.y - 9 - (e.y - 5);
       const pDist = Math.sqrt(pdx * pdx + pdy * pdy);
-      const canAttackTarget = targetAlive && !debugEnemyAttacksSuppressed;
+      const canAttackTarget = !ctx.player.dead && mind.visible && mind.intent === 'hunt' && !debugEnemyAttacksSuppressed;
 
       // THE NOTICE: the first time a foe clocks you, it says so — a blip and
       // a spark of attention over its head. The colossus announces itself
       // rather more thoroughly.
-      if (!e.alerted && targetAlive && pDist < 300 * difficultyMods(ctx.state).enemySense && e.kind !== 'eggs' && !e.sleeping) {
+      if (!e.alerted && mind.confidence > 0.55 && e.kind !== 'eggs' && !e.sleeping) {
         e.alerted = true;
-        if (e.kind === 'colossus') {
-          ctx.audio.tone(46, 110, 0.9, 'sawtooth', 0.22);
-          ctx.audio.groan();
-          this.shakeAt(e.x, e.y, 0.025, 0.04);
-        } else if (e.kind === 'leviathan') {
-          // a deep churn under the surface — the pool itself announces it
-          ctx.audio.tone(58, 30, 0.8, 'sine', 0.2);
-          ctx.audio.groan();
-          ctx.particles.burst(e.x, e.y - 14, 16, null, () => packRGB(150, 220, 255), 1.8, {
-            glow: 1.4,
-            grav: -0.03,
-          });
-          this.shakeAt(e.x, e.y, 0.02, 0.04);
+        if (lair) {
+          // A boss seen from outside its lair still makes its entrance.
+          if (!this.introduced.has(e)) this.beginEntrance(e, def, lair);
         } else {
-          ctx.audio.alert();
+          this.voice(e, () => this.alertVoice(e));
           ctx.particles.burst(e.x, e.y - def.h - 3, 3, null, () => packRGB(255, 245, 200), 0.8, {
             glow: 1.6,
             grav: -0.02,
@@ -2131,14 +2791,11 @@ export class Enemies implements EnemyControlApi {
         }
       }
 
-      // AUTHORED PATROLS EARN DE-ALERT (Rain World texture): a patroller
-      // that loses you for ~5 seconds shrugs and returns to its route.
-      // Strictly gated on Builder-authored patrol — generated enemies keep
-      // their one-way alert exactly as before.
-      if (e.alerted && e.patrol && e.patrol.length > 0 && e.kind !== 'colossus') {
-        if (!targetAlive || pDist > 300) {
+      // Every animal can lose the trail, including generated populations.
+      if (e.alerted && e.kind !== 'colossus') {
+        if (!mind.visible && mind.confidence < 0.15) {
           e.calmT = (e.calmT ?? 0) + 1;
-          if (e.calmT > 300) {
+          if (e.calmT > 45) {
             e.alerted = false;
             e.calmT = 0;
             // a dim gray puff: the scent went cold
@@ -2172,12 +2829,21 @@ export class Enemies implements EnemyControlApi {
       if (e.kind === 'slime' || e.kind === 'acidslime') {
         e.vy += 0.3;
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
+        // ECOLOGY: a slime with nothing to fight goes to remains it can smell,
+        // settles over them and eats (creatures/ecology.slimeForage).
+        const forage = !targetAlive && e.timer % 3 === 0 ? slimeForage(ctx, e) : null;
+        if (forage) e.forageX = forage.feeding ? undefined : forage.x;
+        else if (targetAlive) e.forageX = undefined;
+        const feeding = forage?.feeding === true || ((e.scavengeT ?? 0) > 0 && !targetAlive);
         if (e.grounded) {
           e.vx *= 0.6;
           // ANTICIPATION (Rain World): the body visibly gathers before it
           // leaps — the old instant hops now charge through a short windup.
-          if (!e.windup) {
+          if (feeding) {
+            e.windup = 0; // settled over the meal: no hopping off it
+          } else if (!e.windup) {
             if (targetAlive && pDist < 260 && e.timer % 50 === 0) e.windup = 7;
+            else if (e.forageX !== undefined && e.timer % 60 === 0) e.windup = 9; // purposeful: it smells something
             else if (e.timer % 130 === 0) e.windup = 12; // a lazy wander gathers longer
           } else {
             e.windup--;
@@ -2194,6 +2860,9 @@ export class Enemies implements EnemyControlApi {
                   e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
                 e.vx = (Math.sign(wp[0] - e.x) || 1) * (1.5 + entityRandom() * 0.7) * hurtK;
                 e.vy = (-2.6 - entityRandom() * 0.6) * hurtK;
+              } else if (e.forageX !== undefined) {
+                e.vx = (Math.sign(e.forageX - e.x) || 1) * (1.4 + entityRandom() * 0.6) * hurtK;
+                e.vy = -2.3 * hurtK;
               } else {
                 e.vx = (entityRandom() - 0.5) * 2.8 * hurtK;
                 e.vy = -2.4 * hurtK;
@@ -2223,6 +2892,7 @@ export class Enemies implements EnemyControlApi {
             e.kind === 'acidslime' ? 'acidslime-bite' : 'slime-bite',
           );
           e.attackCd = 45;
+          this.voice(e, () => ctx.audio.creature(e.kind, 'attack'));
         }
       } else if (e.kind === 'eggs') {
         // Slime egg clutch: sits glistening, then hatches — sooner if you
@@ -2243,10 +2913,16 @@ export class Enemies implements EnemyControlApi {
         if (e.sleeping && !wingsSlimed) {
           e.vx = 0;
           e.vy = 0;
-          if (targetAlive && pDist < 70) {
+          // A loud bang nearby (a blast, a stomp, a burst puffer) startles the roost too.
+          const startled = this.cues.some(cue => cue.strength >= 0.5 && ctx.state.frameCount - cue.tick < 4 &&
+            Math.hypot(cue.x - e.x, cue.y - e.y) < Math.min(110, cue.radius));
+          if ((targetAlive && pDist < 70) || startled) {
             e.sleeping = false;
             e.vy = 1.2; // drop off the ceiling
-            ctx.audio.tone(1900 + entityRandom() * 600, 2600, 0.08, 'square', 0.06);
+            this.voice(e, () => ctx.audio.sfx('creature.bat.wake'));
+            // ...and the whole roost bursts out with it (creatures/ecology; its
+            // organism event is the burst of wings, audio/EventCues).
+            scatterRoost(ctx, e);
           }
           continue;
         }
@@ -2260,7 +2936,7 @@ export class Enemies implements EnemyControlApi {
           const critters = ctx.critters.list;
           for (let ci2 = 0; ci2 < critters.length; ci2++) {
             const cr = critters[ci2];
-            if (cr.kind !== 'moth') continue;
+            if ((cr.kind !== 'moth' && cr.kind !== 'firefly' && cr.kind !== 'ashmoth') || cr.heldBy) continue;
             const cdx = cr.x - e.x,
               cdy = cr.y - e.y;
             if (cdx * cdx + cdy * cdy < 70 * 70) {
@@ -2279,6 +2955,20 @@ export class Enemies implements EnemyControlApi {
               // gulp: a puff of wing dust and the moth is gone
               ctx.particles.burst(prey.x, prey.y, 3, null, () => packRGB(150, 140, 110), 0.8);
               ctx.critters.remove(prey);
+              ctx.events.emit('organism', { kind: 'bat', action: 'eat', x: prey.x, y: prey.y });
+            }
+          } else if (e.timer % 12 === 0 || e.swarmX !== undefined) {
+            // A swarm circling a light is a larder: bats come to it from across
+            // the cave (lead the moths somewhere and the bats follow them).
+            if (e.timer % 12 === 0) {
+              const swarm = mothSwarm(ctx, e.x, e.y);
+              e.swarmX = swarm?.x; e.swarmY = swarm?.y;
+            }
+            if (e.swarmX !== undefined && e.swarmY !== undefined) {
+              hunting = true;
+              const sdx = e.swarmX - e.x, sdy = e.swarmY - e.y, sd = Math.hypot(sdx, sdy) || 1;
+              e.vx += (sdx / sd) * 0.12;
+              e.vy += (sdy / sd) * 0.12;
             }
           }
         }
@@ -2308,7 +2998,7 @@ export class Enemies implements EnemyControlApi {
             e.swoop = 12;
             e.vx = (pdx / d) * 2.5;
             e.vy = (pdy / d) * 2.5;
-            ctx.audio.tone(1500, 900, 0.05, 'square', 0.04);
+            this.voice(e, () => ctx.audio.sfx('creature.bat.swoop'));
           }
         } else if (!hunting && targetAlive && pDist < 320) {
           const d = pDist || 1;
@@ -2343,6 +3033,23 @@ export class Enemies implements EnemyControlApi {
         e.vx *= 0.4;
         this.spitterRootHabitat(e, def);
         if ((e.recoil ?? 0) > 0) e.recoil = (e.recoil ?? 0) - 1;
+        // A lizard, not a turret: it stalks into range, holds a spitting
+        // distance, backs off when crowded and prowls its patch when unaware.
+        // It never walks off a ledge and stands still while its throat fills.
+        if (e.timer % 10 === 0) e.sightLine = targetAlive && this.hasAttackLine(e, def, true) ? 1 : 0;
+        if (e.grounded && (e.recoil ?? 0) <= 0 && e.attackCd > 18) {
+          let want = 0;
+          if (targetAlive && e.alerted) {
+            if (pDist > 230 || e.sightLine === 0) want = Math.sign(pdx) || 1;
+            else if (pDist < 64) want = -(Math.sign(pdx) || 1);
+          } else if (!e.alerted) {
+            const leg = Math.floor((e.timer + e.bobPhase * 97) / 150);
+            const pick = (leg * 2654435761 + Math.floor(e.bobPhase * 1000)) >>> 0;
+            want = pick % 3 === 0 ? 0 : (pick & 4 ? 1 : -1);
+          }
+          if (want !== 0 && this.ledgeAhead(e, def, want)) want = 0;
+          e.vx += want * 0.19;
+        }
         // Ranged openers are gated on `alerted` so the notice blip always
         // precedes the first shot (attack ranges exceed the sense radius at
         // low difficulties — nothing may fire on a player it hasn't clocked).
@@ -2361,7 +3068,7 @@ export class Enemies implements EnemyControlApi {
             hostile: true,
             source: 'acidglob',
           });
-          ctx.audio.flame();
+          this.voice(e, () => ctx.audio.sfx('creature.spitter.spit'));
           e.recoil = 14;
           e.attackCd = 150 + Math.floor(entityRandom() * 50);
         }
@@ -2396,13 +3103,14 @@ export class Enemies implements EnemyControlApi {
           }
           if (canAttackTarget && pDist < 34) {
             e.fusing = 36; // light the fuse
-            ctx.audio.tone(900, 60, 0.3, 'square', 0.1);
+            this.voice(e, () => ctx.audio.sfx('creature.bomber.fuse'));
           }
         }
       } else if (e.kind === 'rootloper') {
         // Tanglewrist Root Loper: an overgrowth predator that moves best when
         // real vines/moss/fungus/wood give its tendrils something to plant in.
         e.vy += 0.31;
+        advanceRootLash(ctx, e, !debugEnemyAttacksSuppressed);
         e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
         if ((e.rootPanic ?? 0) > 0) e.rootPanic = (e.rootPanic ?? 0) - 1;
         if (e.status.burning > 0) e.rootPanic = Math.max(e.rootPanic ?? 0, 42);
@@ -2418,25 +3126,17 @@ export class Enemies implements EnemyControlApi {
         if ((e.windup ?? 0) > 0) {
           e.vx *= 0.68;
           if (!debugEnemyAttacksSuppressed) e.windup = (e.windup ?? 1) - 1;
-          if (e.windup === 0 && canAttackTarget) {
-            const tx = e.rootLashX ?? ctx.player.x;
-            const ty = e.rootLashY ?? ctx.player.y - 9;
-            const dx = ctx.player.x - tx;
-            const dy = ctx.player.y - 9 - ty;
-            if (Math.abs(ctx.player.x - e.x) < 62 && Math.abs(ctx.player.y - 9 - (e.y - 7)) < 34 && dx * dx + dy * dy < 28 * 28) {
-              ctx.playerCtl.damage(13 * (e.dmgK ?? 1), Math.sign(ctx.player.x - e.x || 1) * -3.2, -1.8, 'rootloper-lash');
-              ctx.particles.burst(ctx.player.x, ctx.player.y - 10, 5, Cell.Vines, vineColor, 1.0);
-            }
+          if (e.windup === 0) {
+            e.rootLashT = 10;
             e.attackCd = 70;
-            e.rootLashX = undefined;
-            e.rootLashY = undefined;
+            this.voice(e, () => ctx.audio.creature(e.kind, 'attack'));
           }
         } else if (canAttackTarget && e.attackCd === 0 && pDist < 62 && Math.abs(pdy) < 36 && support > 0.12) {
           e.windup = 13;
-          e.rootLashX = ctx.player.x;
-          e.rootLashY = ctx.player.y - 9;
+          e.rootLashX = player.x;
+          e.rootLashY = player.y - 9;
           e.attackCd = 18;
-          ctx.audio.tone(220, 120, 0.12, 'triangle', 0.06);
+          this.voice(e, () => ctx.audio.sfx('creature.rootloper.windup'));
         }
 
         if (e.grounded) {
@@ -2485,8 +3185,14 @@ export class Enemies implements EnemyControlApi {
         intent.speedScale = 1;
         if ((e.recoil ?? 0) > 0) e.recoil = (e.recoil ?? 0) - 1;
         if ((e.weaverPounceCd ?? 0) > 0) e.weaverPounceCd = (e.weaverPounceCd ?? 0) - 1;
+        if ((e.weaverFlinchT ?? 0) > 0) e.weaverFlinchT = (e.weaverFlinchT ?? 0) - 1;
+        if ((e.weaverRetreatT ?? 0) > 0) e.weaverRetreatT = (e.weaverRetreatT ?? 0) - 1;
 
-        if (e.sleeping) {
+        if ((e.weaverRetreatT ?? 0) > 0) {
+          intent.move = 'toward'; intent.tx = e.x + Math.sign(e.x - player.x || 1) * 100; intent.ty = e.y;
+          intent.urgency = .55; intent.stance = (e.weaverFlinchT ?? 0) > 0 ? 'crouch' : 'normal';
+          e.windup = 0; e.blink = 0; e.attackCd = Math.max(e.attackCd, 30);
+        } else if (e.sleeping) {
           intent.stance = 'sleep';
           const forcedAwake = e.hp < e.maxHp || e.status.burning > 0 || e.status.electrified > 0;
           if (forcedAwake || (targetAlive && pDist < 82)) {
@@ -2543,7 +3249,7 @@ export class Enemies implements EnemyControlApi {
         } else {
           // A weaver that has CLOCKED you commits to the hunt — only an
           // UNAWARE/idle weaver breaks off to snack on ambient critters.
-          const prey = !cranky && (!e.alerted || !targetAlive) ? this.findWeaverPrey(e) : null;
+          const prey = mind.intent === 'forage' && !cranky ? this.findWeaverPrey(e) : null;
           if (prey) {
             intent.move = 'toward';
             intent.tx = prey.x;
@@ -2551,6 +3257,8 @@ export class Enemies implements EnemyControlApi {
             intent.urgency = 0.25;
             this.weaverTryEat(e, prey);
             e.bobPhase += 0.08;
+          } else if (mind.intent === 'return') {
+            intent.move = 'toward'; intent.tx = mind.homeX; intent.ty = mind.homeY; intent.urgency = 0.2;
           } else if (!e.alerted && e.patrol && e.patrol.length > 0) {
             const wp = e.patrol[(e.patrolIdx ?? 0) % e.patrol.length];
             if (Math.abs(wp[0] - e.x) < 12) e.patrolIdx = ((e.patrolIdx ?? 0) + 1) % e.patrol.length;
@@ -2600,30 +3308,25 @@ export class Enemies implements EnemyControlApi {
               weaverLeap(e, player.x + clamp(player.vx * 6, -14, 14), player.y - 12);
               e.weaverPounceCd = cranky ? 55 : 95;
               e.webPulse = Math.max(e.webPulse ?? 0, 10);
-              ctx.audio.tone(210, 60, 0.28, 'triangle', 0.08);
+              this.voice(e, () => ctx.audio.sfx('creature.weaver.pounce'));
               ctx.particles.burst(e.x, e.y - 6, 6, Cell.Vines, vineColor, 0.8, { grav: -0.01 });
             }
           }
 
           if (canAttackTarget && e.attackCd === 0 && e.alerted && !recovering) {
-            if (Math.abs(pdx) < 13 && Math.abs(pdy) < 20) {
-              // Point-blank contact bite: instant (no telegraph this close) and
-              // it claims the cooldown. Works mid-air too — a pounce that lands.
-              ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx || 1) * -3.0, -2.0, 'weaver-bite');
-              e.attackCd = 80;
-            } else if (attached && pDist < 92 && Math.abs(pdy) < 62) {
+            if (attached && pDist < 92 && Math.abs(pdy) < 62) {
               // Rooted telegraphs need footing.
               e.windup = e.status.burning > 0 ? 10 : cranky ? 12 : 18;
               e.needleX = player.x;
               e.needleY = player.y - 8;
               e.webPulse = Math.max(e.webPulse ?? 0, 8);
-              ctx.audio.tone(180, 90, 0.35, 'triangle', 0.09);
+              this.voice(e, () => ctx.audio.sfx('creature.weaver.windup'));
             } else if (attached && Math.abs(pdy) > 50 && pDist < 285 && readBlocked > 12) {
               // Thread-spit is the reach for prey the contour genuinely can't
               // deliver (vertically separated AND the crawl is stalled) — a
               // same-level quarry gets closed on and bitten, never stalled at.
               e.blink = e.status.burning > 0 ? 10 : cranky ? 9 : 18;
-              ctx.audio.noiseBurst(0.08, 1300, 0.08, true);
+              this.voice(e, () => ctx.audio.sfx('creature.weaver.spit'));
             }
           }
         }
@@ -2646,6 +3349,12 @@ export class Enemies implements EnemyControlApi {
         } else {
           e.vx += (entityRandom() - 0.5) * 0.05;
           e.vy += (entityRandom() - 0.5) * 0.05;
+          // ECOLOGY: an idle imp snaps ash moths out of the lava's glow.
+          const moth = e.timer % 4 === 0 ? impSnack(ctx, e) : null;
+          if (moth) {
+            const dx = moth.x - e.x, dy = moth.y - (e.y - 5), d = Math.hypot(dx, dy) || 1;
+            e.vx += (dx / d) * 0.28; e.vy += (dy / d) * 0.28;
+          }
         }
         e.vy += Math.sin(e.bobPhase) * 0.04;
         e.vx = clamp(e.vx, -1.3, 1.3);
@@ -2669,7 +3378,7 @@ export class Enemies implements EnemyControlApi {
             hostile: true,
             source: 'hostile-fireball',
           });
-          ctx.audio.zap();
+          this.voice(e, () => ctx.audio.sfx('creature.imp.cast'));
           e.attackCd = 130 + Math.floor(entityRandom() * 70);
         }
       } else if (e.kind === 'wisp') {
@@ -2710,7 +3419,7 @@ export class Enemies implements EnemyControlApi {
             hostile: true,
             source: 'frostbolt',
           });
-          ctx.audio.tone(820, 1300, 0.12, 'sine', 0.09);
+          this.voice(e, () => ctx.audio.sfx('creature.wisp.cast'));
           e.attackCd = 140 + Math.floor(entityRandom() * 60);
         }
         // Every 8th frame the cold soaks downward: water below locks into real
@@ -2764,7 +3473,16 @@ export class Enemies implements EnemyControlApi {
           if (e.blink === 0 && canAttackTarget && (!this.hasAttackLine(e, def, true) || !this.mageVolley(e)))
             e.attackCd = Math.max(e.attackCd, 95);
         } else {
-          if (targetAlive) e.vx += Math.sign(pdx) * 0.04;
+          // A caster keeps its distance: close to spell range, then give ground.
+          if (targetAlive) {
+            const away = -(Math.sign(pdx) || 1);
+            const want = pDist > 150 ? -away : pDist < 88 && !this.ledgeAhead(e, def, away) ? away : 0;
+            e.vx += want * 0.04;
+            if (want === 0) e.vx *= 0.9;
+          } else if (!e.alerted && e.timer % 240 < 90) {
+            const dir = ((Math.floor(e.timer / 240) + Math.floor(e.bobPhase * 7)) & 1) ? 1 : -1;
+            if (!this.ledgeAhead(e, def, dir)) e.vx += dir * 0.02;
+          }
           e.vx = clamp(e.vx, -0.45, 0.45);
           if (canAttackTarget && e.alerted && e.attackCd === 0 && pDist < 340 && this.hasAttackLine(e, def, true)) {
             e.blink = 20; // begin the 20-frame telegraph
@@ -2794,103 +3512,27 @@ export class Enemies implements EnemyControlApi {
               e.fx = 0;
               e.fy = 0;
               ctx.particles.burst(nx, ny - 7, 14, null, burstCol, 2.4, { glow: 2.2, grav: -0.01 });
-              ctx.audio.zap();
+              ctx.audio.sfx('creature.mage.blink', nx, ny);
               break;
             }
           }
         }
       } else if (e.kind === 'colossus') {
-        // ===== THE KILN COLOSSUS =====
-        // A slow furnace of living stone. Stomps, slams, lobs molten rock.
-        // Water is the strategy: a doused kiln takes thermal-shock damage and
-        // staggers; lightning also stuns it. The arena ceiling holds a sealed
-        // water tank for exactly this reason.
-        e.vy += 0.36;
-        e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
-
-        const doused = e.status.wet > 0;
-        const shocked = e.status.electrified > 0;
-        if (doused) {
-          // THERMAL SHOCK: the furnace cracks — heavy damage whose tell is the
-          // steam below plus a hurt flash. A direct decrement (the leviathan's
-          // electro-shock pattern): the full damage() path would spray blood
-          // and stain walls off a stone boss EVERY wet frame.
-          this.alertFromDamage(e);
-          e.hp -= 1.4;
-          e.flash = Math.max(e.flash, 2);
-          if (e.hp <= 0) {
-            this.kill(e, 0, 0);
-            continue;
-          }
-          if (ctx.state.frameCount % 4 === 0) {
-            ctx.particles.burst(
-              e.x + (entityRandom() - 0.5) * 20,
-              e.y - 10 - entityRandom() * 14,
-              2,
-              Cell.Steam,
-              () => packRGB(220, 228, 236),
-              1.4,
-            );
-          }
-          e.attackCd = Math.max(e.attackCd, 36); // staggered: no attacks
-        }
-        if (shocked) e.attackCd = Math.max(e.attackCd, 30);
-
-        // March: slow, implacable, screen-shaking footfalls
-        if (targetAlive && !doused && e.timer % 2 === 0) {
-          e.vx += Math.sign(pdx) * 0.06;
-        }
-        e.vx = clamp(e.vx, -0.42, 0.42);
-        if (e.grounded && !e.prevG) {
-          this.shakeAt(e.x, e.y, 0.02, 0.05);
-          ctx.audio.hollowKnock();
-        }
-        // The colossus owns its own landing edge: the renderer only writes prevG
-        // for slimes/bomber, so without this the footfall would fire every grounded
-        // frame instead of once per landing. Keep this gating in the sim.
-        e.prevG = e.grounded;
-
-        // Furnace breath: embers rise off the shoulders
-        if (ctx.state.frameCount % 5 === 0 && !doused) {
-          ctx.particles.spawn(
-            e.x + (entityRandom() - 0.5) * 18,
-            e.y - def.h + 2,
-            (entityRandom() - 0.5) * 0.4,
-            -0.6 - entityRandom() * 0.5,
-            null,
-            packRGB(255, 120 + Math.floor(entityRandom() * 100), 20),
-            18,
-            { glow: 2.0, grav: -0.01 },
-          );
-        }
-
-        if (canAttackTarget && e.attackCd === 0) {
-          if (Math.abs(pdx) < 32 && Math.abs(pdy) < 32) {
-            // GROUND SLAM: a real explosion at the fist — far enough out that
-            // the blast radius (r*1.5) cannot reach the colossus's own body
-            ctx.explosions.trigger(e.x + Math.sign(pdx) * 18, e.y - 2, 11, { playerDamageSource: 'colossus-slam' });
-            ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.03, 0.06);
-            e.attackCd = 150 + Math.floor(entityRandom() * 40);
-          } else if (Math.abs(pdx) < 300 && this.hasAttackLine(e, def, true)) {
-            // MOLTEN VOLLEY: three lobbed gobs of kiln-fire
-            for (let v = -1; v <= 1; v++) {
-              ctx.projectiles.push({
-                x: e.x + Math.sign(pdx) * 8,
-                y: e.y - def.h + 4,
-                vx: pdx * 0.014 + v * 0.5 + (entityRandom() - 0.5) * 0.4,
-                vy: -1.3 - entityRandom() * 0.5,
-                type: 'fireball',
-                life: 240,
-                age: 0,
-                charging: false,
-                hostile: true,
-                source: 'colossus-fireball',
-              });
-            }
-            ctx.audio.tone(90, 220, 0.4, 'sawtooth', 0.16);
-            e.attackCd = 170 + Math.floor(entityRandom() * 50);
-          }
-        }
+        // ===== THE KILN COLOSSUS ===== (creatures/bosses/colossus: phases,
+        // telegraphed slam / stomp waves / molten throw / heat vent, the
+        // thermal-shock quench and the death sequence). The quench's damage
+        // and cadence are the ward's (core/bossWard KILN_QUENCH).
+        tickColossus(ctx, e, def, this.bossHost, { targetAlive, canAttack: canAttackTarget, pdx, pdy, pDist, debugSuppressed: debugEnemyAttacksSuppressed });
+      } else if (e.kind === 'lenswright') {
+        // ===== THE LENSWRIGHT ===== (creatures/bosses/lenswright: a hovering
+        // lens; told lances traced through the real grid, banked off mirrors;
+        // dazzled by the wand's beam in its open iris; burned by its own light).
+        tickLenswright(ctx, e, def, this.bossHost, { targetAlive, canAttack: canAttackTarget, pdx, pdy, pDist, debugSuppressed: debugEnemyAttacksSuppressed });
+      } else if (e.kind === 'rimewarden') {
+        // ===== THE RIME WARDEN ===== (creatures/bosses/rimeWarden: six plates of
+        // rime that glance blows — thaw them with heat or shatter them; slam
+        // spikes, stomp rime waves, hail, frost breath, the icicle roar).
+        tickRimeWarden(ctx, e, def, this.bossHost, { targetAlive, canAttack: canAttackTarget, pdx, pdy, pDist, debugSuppressed: debugEnemyAttacksSuppressed });
       } else if (e.kind === 'rillback') {
         // Rillback Silt Eel: a small pool predator. Wet body = fluid S-curve
         // steering and a short living-conductor pulse; dry body = weak flops.
@@ -2899,10 +3541,12 @@ export class Enemies implements EnemyControlApi {
         if ((e.rillChargeWindup ?? 0) > 0) e.rillChargeWindup = (e.rillChargeWindup ?? 0) - 1;
         const chargeReady = chargeWinding && (e.rillChargeWindup ?? 0) <= 0;
         if ((e.blink ?? 0) > 0) e.blink--;
+        if ((e.rillFeedT ?? 0) > 0) e.rillFeedT = (e.rillFeedT ?? 0) - 1;
         if (e.timer % 4 === 0) {
           const footing = this.rillbackLiquidFooting(e, def);
           e.rillWet = footing.wet;
           if (footing.hazard > 0) {
+            ctx.alchemy?.noteHit(e, causeForCell(footing.hazardCell));
             e.hp -= footing.hazard * 1.2;
             e.flash = Math.max(e.flash, 2);
             if (e.hp <= 0) {
@@ -2922,7 +3566,17 @@ export class Enemies implements EnemyControlApi {
             e.vx += this.rillbackLiquidSeek.dx * 0.14;
             e.vy += this.rillbackLiquidSeek.dy * 0.12;
           }
-          if (targetAlive && e.alerted && (e.windup ?? 0) === 0 && (e.swoop ?? 0) === 0) {
+          const prey = rillbackPrey(ctx, e);
+          if ((e.rillFeedT ?? 0) > 0) {
+            e.vx *= .94; e.vy *= .94;
+          } else if (prey && (e.windup ?? 0) === 0 && (e.swoop ?? 0) === 0) {
+            const dx = prey.x - e.x, dy = prey.y - e.y + 4, length = Math.hypot(dx, dy) || 1;
+            e.vx += dx / length * .10; e.vy += dy / length * .085;
+            feedRillback(ctx, e, prey);
+          } else if (e.attackCd > 35 && mind.intent === 'hunt' && (e.swoop ?? 0) === 0) {
+            e.vx -= Math.sign(pdx || mind.facing) * .065;
+            e.vy += .014;
+          } else if (targetAlive && e.alerted && (e.windup ?? 0) === 0 && (e.swoop ?? 0) === 0) {
             const d = pDist || 1;
             e.vx += (pdx / d) * (0.07 + wet * 0.08);
             e.vy += (pdy / d) * (0.05 + wet * 0.05);
@@ -2931,8 +3585,9 @@ export class Enemies implements EnemyControlApi {
             e.vy += Math.sin(e.timer * 0.06 + e.bobPhase) * 0.02;
           }
           if (canAttackTarget && e.attackCd === 0 && pDist < 72 && (e.windup ?? 0) === 0 && (e.swoop ?? 0) === 0) {
-            e.windup = 10;
-            ctx.audio.tone(95, 170, 0.22, 'sine', 0.08);
+            e.windup = 18;
+            e.rillStrikeAngle = Math.atan2(pdy, pdx);
+            this.voice(e, () => ctx.audio.sfx('creature.rillback.windup'));
           }
           if (
             canAttackTarget &&
@@ -2944,7 +3599,7 @@ export class Enemies implements EnemyControlApi {
           ) {
             e.rillChargeWindup = RILLBACK_CHARGE_WINDUP_FRAMES;
             e.blink = Math.max(e.blink, RILLBACK_CHARGE_WINDUP_FRAMES);
-            ctx.audio.tone(280, 520, 0.18, 'sine', 0.07);
+            this.voice(e, () => ctx.audio.sfx('creature.rillback.charge'));
           }
           if (chargeReady && (e.rillChargeCd ?? 0) <= 0) {
             this.rillbackChargePulse(e, def);
@@ -2962,10 +3617,23 @@ export class Enemies implements EnemyControlApi {
             e.vx += this.rillbackLiquidSeek.dx * 0.24;
             e.vy += this.rillbackLiquidSeek.dy * 0.18;
           }
-          if (e.grounded && e.timer % 34 === 0) {
-            e.vy = -1.1 - entityRandom() * 0.4;
-            e.vx += (targetAlive ? Math.sign(pdx || 1) : entityRandom() < 0.5 ? -1 : 1) * 0.45;
-            ctx.audio.squelch();
+          // A beached Rillback hops toward what it wants. A hop that went
+          // nowhere is a wall; after three of those it rests instead of
+          // thudding into the same rock every half second until you leave.
+          if ((e.hopRest ?? 0) > 0) e.hopRest = (e.hopRest ?? 0) - 1;
+          else if (e.grounded && e.timer % 34 === 0) {
+            // Half a cell is a wall; a slow crawl toward the water still counts as progress.
+            const blocked = e.hopFromX !== undefined && Math.abs(e.x - e.hopFromX) < 0.5;
+            e.hopBlocked = blocked ? (e.hopBlocked ?? 0) + 1 : 0;
+            e.hopFromX = e.x;
+            if (e.hopBlocked >= 3) {
+              e.hopBlocked = 0;
+              e.hopRest = 150 + Math.floor(entityRandom() * 90);
+            } else {
+              e.vy = -1.1 - entityRandom() * 0.4;
+              e.vx += (targetAlive ? Math.sign(pdx || 1) : entityRandom() < 0.5 ? -1 : 1) * 0.45;
+              this.voice(e, () => ctx.audio.sfx('creature.rillback.flop'));
+            }
           }
         }
 
@@ -2973,18 +3641,18 @@ export class Enemies implements EnemyControlApi {
           e.vx *= 0.82;
           e.vy *= 0.82;
           if (!debugEnemyAttacksSuppressed) e.windup = (e.windup ?? 1) - 1;
-          if (e.windup === 0 && canAttackTarget && swimming) {
-            const a = Math.atan2(ctx.player.y - 9 - e.y, ctx.player.x - e.x);
+          if (e.windup === 0 && swimming) {
+            const a = e.rillStrikeAngle ?? Math.atan2(pdy, pdx);
             e.swoop = 12;
-            e.vx = Math.cos(a) * 2.45;
-            e.vy = Math.sin(a) * 1.85;
-            ctx.audio.noiseBurst(0.08, 850, 0.08, true);
+            e.vx = Math.cos(a) * 3.4;
+            e.vy = Math.sin(a) * 2.5;
+            this.voice(e, () => ctx.audio.sfx('creature.rillback.lunge'));
           }
         }
         if ((e.swoop ?? 0) > 0) {
           if (!debugEnemyAttacksSuppressed) e.swoop = (e.swoop ?? 1) - 1;
           if (canAttackTarget && e.attackCd === 0 && Math.abs(pdx) < 10 && Math.abs(pdy) < 13) {
-            ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx) * -3.1, -1.9, 'rillback-bite');
+            ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx) * 3.1, -1.9, 'rillback-bite');
             e.attackCd = 85;
             e.swoop = 0;
           } else if (e.swoop === 0) {
@@ -2995,161 +3663,16 @@ export class Enemies implements EnemyControlApi {
           ctx.playerCtl.damage(4 * (e.dmgK ?? 1), Math.sign(pdx) * -1.4, -0.7, 'rillback-flop');
           e.attackCd = 55;
         }
-        const maxRill = swimming ? 1.25 + wet * 0.75 : 0.7;
+        const lunging = swimming && (e.swoop ?? 0) > 0;
+        const maxRill = lunging ? 3.4 : swimming ? 1.25 + wet * 0.75 : 0.7;
         e.vx = clamp(e.vx, -maxRill, maxRill);
-        e.vy = clamp(e.vy, swimming ? -1.2 : -1.7, swimming ? 1.2 : 2.4);
+        e.vy = clamp(e.vy, lunging ? -2.5 : swimming ? -1.2 : -1.7, lunging ? 2.5 : swimming ? 1.2 : 2.4);
+        carryRillback(ctx, e);
       } else if (e.kind === 'leviathan') {
-        // ===== THE SUNKEN LEVIATHAN =====
-        // d4's mid-boss, the Kiln's mirror: WATER IS ITS ARMOR. Submerged it
-        // shrugs off hits (damage() reads e.submerged), swims fast, lunges,
-        // and throws its own pool at you. The cistern floor carries three
-        // sealed drain plugs — empty the basin and it is just meat gasping
-        // on the tiles. The pool is also one big conductor (so is the blood
-        // it sheds into it): a spark in the water cooks it from inside.
-        if (e.timer % 4 === 0) {
-          let waterN = 0;
-          for (let dy = 0; dy < def.h; dy += 3) {
-            for (let dx = -def.halfW; dx <= def.halfW; dx += 3) {
-              const X = e.x + dx,
-                Y = e.y - dy;
-              if (ctx.world.inBounds(X, Y) && ctx.world.types[ctx.world.idx(X, Y)] === Cell.Water)
-                waterN++;
-            }
-          }
-          e.submerged = waterN >= 8;
-        }
-        const sub = e.submerged === true;
-
-        // ELECTROCUTION: the doused-kiln mirror. Direct hp (bypasses the
-        // submersion shield — the water IS the delivery), visible arcs.
-        if (sub && e.status.electrified > 0) {
-          e.hp -= 1.1;
-          e.flash = Math.max(e.flash, 2);
-          if (e.hp <= 0) {
-            this.killAt(i, e, 0, 0);
-            continue;
-          }
-          e.attackCd = Math.max(e.attackCd, 30);
-        }
-
-        if (sub) {
-          // weightless pursuit; a slow patrol sway when unaware
-          e.vx *= 0.96;
-          e.vy = e.vy * 0.9;
-          if (targetAlive && e.alerted && (e.windup ?? 0) === 0) {
-            if (e.timer % 2 === 0) {
-              e.vx += Math.sign(pdx) * 0.09;
-              e.vy += Math.sign(player.y - 6 - e.y) * 0.07;
-            }
-          } else {
-            e.vx += Math.cos(e.timer * 0.02 + e.bobPhase) * 0.02;
-            e.vy += Math.sin(e.timer * 0.05 + e.bobPhase) * 0.015;
-          }
-          e.vx = clamp(e.vx, -1.5, 1.5);
-          e.vy = clamp(e.vy, -0.9, 0.9);
-          // wake bubbles when it moves with intent
-          if (ctx.state.frameCount % 7 === 0 && Math.abs(e.vx) > 0.5) {
-            ctx.particles.spawn(
-              e.x - Math.sign(e.vx) * def.halfW,
-              e.y - 6 - entityRandom() * 6,
-              -e.vx * 0.2,
-              -0.3 - entityRandom() * 0.3,
-              null,
-              packRGB(170, 220, 250),
-              14,
-              { grav: -0.04 },
-            );
-          }
-        } else {
-          // BEACHED: gravity owns it. Heaving flops, each one a dying gasp.
-          e.vy += 0.34;
-          e.grounded = !ctx.physics.entityFree(e.x, e.y + 1, def.halfW, 1);
-          e.vx *= 0.92;
-          if (e.grounded && e.timer % 38 === 0) {
-            e.vy = -1.8;
-            e.vx = (targetAlive ? Math.sign(pdx) || 1 : entityRandom() < 0.5 ? -1 : 1) * 0.85;
-            ctx.audio.squelch();
-            this.shakeAt(e.x, e.y, 0.012, 0.04);
-          }
-          if (ctx.state.frameCount % 11 === 0) {
-            ctx.particles.spawn(
-              e.x + (entityRandom() - 0.5) * 10,
-              e.y - def.h + 2,
-              (entityRandom() - 0.5) * 0.4,
-              -0.4,
-              null,
-              packRGB(150, 200, 230),
-              16,
-              { grav: -0.02 },
-            );
-          }
-        }
-
-        // LUNGE: a coiled flare, then a committed dart (can breach the
-        // surface — gravity reels the leap back into the pool)
-        if (
-          sub &&
-          canAttackTarget &&
-          e.attackCd === 0 &&
-          pDist < 90 &&
-          (e.windup ?? 0) === 0 &&
-          (e.swoop ?? 0) === 0
-        ) {
-          e.windup = 16;
-          ctx.audio.tone(70, 160, 0.5, 'sawtooth', 0.14);
-        }
-        if ((e.windup ?? 0) > 0) {
-          e.vx *= 0.8;
-          e.vy *= 0.8;
-          if (!debugEnemyAttacksSuppressed) e.windup = (e.windup ?? 1) - 1;
-          if (e.windup === 0 && canAttackTarget) {
-            e.swoop = 18;
-            const a = Math.atan2(player.y - 8 - e.y, player.x - e.x);
-            e.vx = Math.cos(a) * 3.4;
-            e.vy = Math.sin(a) * 2.6;
-            ctx.audio.noiseBurst(0.18, 700, 0.12, true);
-          }
-        }
-        if ((e.swoop ?? 0) > 0) {
-          if (!debugEnemyAttacksSuppressed) e.swoop = (e.swoop ?? 1) - 1;
-          if (!sub) e.vy += 0.12; // a breaching arc falls back home
-          if (canAttackTarget && e.attackCd === 0 && Math.abs(pdx) < 12 && Math.abs(pdy) < 16) {
-            // THE BITE
-            ctx.playerCtl.damage(16 * (e.dmgK ?? 1), Math.sign(pdx) * -4.2, -2.8, 'leviathan-bite');
-            e.attackCd = 140;
-            e.swoop = 0;
-          } else if (e.swoop === 0) {
-            e.attackCd = Math.max(e.attackCd, 90 + Math.floor(entityRandom() * 40));
-          }
-        }
-
-        // POOL VOLLEY: the ranged arm — only while it HAS a pool
-        if (
-          sub &&
-          canAttackTarget &&
-          e.alerted &&
-          e.attackCd === 0 &&
-          pDist >= 90 &&
-          pDist < 320 &&
-          this.hasAttackLine(e, def, true) &&
-          (e.windup ?? 0) === 0 &&
-          (e.swoop ?? 0) === 0
-        ) {
-          this.poolVolley(e);
-          e.attackCd = 150 + Math.floor(entityRandom() * 40);
-        }
-
-        // contact graze outside the committed bite
-        if (
-          canAttackTarget &&
-          (e.swoop ?? 0) === 0 &&
-          e.attackCd < 100 &&
-          Math.abs(pdx) < 11 &&
-          Math.abs(pdy) < 14
-        ) {
-          ctx.playerCtl.damage(10 * (e.dmgK ?? 1), Math.sign(pdx) * -3.0, -2.0, 'leviathan-graze');
-          e.attackCd = Math.max(e.attackCd, 120);
-        }
+        // ===== THE SUNKEN LEVIATHAN ===== (creatures/bosses/leviathan: the
+        // lure douses before a lunge, pool volleys, tail thrash, dive-surge,
+        // electrocution jolts the ward allows, beached exposure).
+        if (!tickLeviathan(ctx, e, def, this.bossHost, { targetAlive, canAttack: canAttackTarget, pdx, pdy, pDist, debugSuppressed: debugEnemyAttacksSuppressed })) continue;
       } else if (e.kind === 'stonemaw') {
         // Stone Maw: listens through the rock, commits to tiny chew bursts,
         // and only opens terrain. It never writes blockers or eats Metal/Glass.
@@ -3175,28 +3698,33 @@ export class Enemies implements EnemyControlApi {
           e.vx *= 0.62;
           if (!debugEnemyAttacksSuppressed) e.windup = (e.windup ?? 1) - 1;
           if (e.windup === 0 && canAttackTarget && Math.abs(pdx) < 18 && Math.abs(pdy) < 19) {
-            ctx.playerCtl.damage(18 * (e.dmgK ?? 1), Math.sign(pdx) * -4.1, -2.4, 'stonemaw-bite');
+            ctx.playerCtl.damage(18 * (e.dmgK ?? 1), Math.sign(pdx) * 4.1, -2.4, 'stonemaw-bite');
             e.attackCd = 115;
             e.mawChewT = Math.max(e.mawChewT ?? 0, 10);
-            ctx.audio.hollowKnock();
+            this.voice(e, () => ctx.audio.sfx('creature.stonemaw.bite'));
           }
         } else {
           const dir = Math.sign(pdx || e.mawDir || 1);
           e.mawDir = dir;
-          if (targetAlive && e.timer % 3 === 0) e.vx += dir * 0.055;
+          // Deliberate while it listens, then a surge once the prey is close
+          // enough to feel: a burrower that never commits reads as broken.
+          if (targetAlive) {
+            const surge = mind.intent === 'hunt' ? 0.075 : Math.abs(pdx) < 110 ? 0.05 : 0.03;
+            e.vx += dir * surge;
+          }
           e.vx *= e.grounded ? 0.88 : 0.96;
-          const blockedAhead =
-            !ctx.physics.entityFree(e.x + dir * (def.halfW + 2), e.y, def.halfW, def.h) ||
-            (!e.grounded && Math.abs(pdy) < 24 && Math.abs(pdx) < 80);
+          const wallAhead = !ctx.physics.entityFree(e.x + dir * (def.halfW + 2), e.y, def.halfW, def.h);
+          const blockedAhead = wallAhead || (!e.grounded && Math.abs(pdy) < 24 && Math.abs(pdx) < 80);
           if (
             (e.mawChewCd ?? 0) <= 0 &&
             (e.mawChewT ?? 0) <= 0 &&
             (blockedAhead || (targetAlive && pDist < 92 && e.timer % 46 === 0))
           ) {
             const chewed = this.stoneMawChewBrush(e, def);
+            // Jaws closing on metal jar it; snapping at open water just misses.
             if (chewed === 0) {
               e.mawChewCd = 26;
-              e.mawStun = Math.max(e.mawStun ?? 0, 8);
+              if (wallAhead) e.mawStun = Math.max(e.mawStun ?? 0, 8);
             }
           }
         }
@@ -3212,7 +3740,7 @@ export class Enemies implements EnemyControlApi {
           e.windup = 12;
           e.attackCd = 20;
           e.mawChewT = Math.max(e.mawChewT ?? 0, 8);
-          ctx.audio.tone(82, 150, 0.2, 'sawtooth', 0.08);
+          this.voice(e, () => ctx.audio.sfx('creature.stonemaw.windup'));
         }
         e.vx = clamp(e.vx, -0.82, 0.82);
       } else if (e.kind === 'golem') {
@@ -3275,7 +3803,7 @@ export class Enemies implements EnemyControlApi {
           if (perchedAbove || gapAhead || fallingHard) {
             e.jetFuel = 95 + Math.floor(entityRandom() * 50);
             e.jetCd = 190;
-            ctx.audio.tone(110 + entityRandom() * 30, 260, 0.35, 'sawtooth', 0.11);
+            this.voice(e, () => ctx.audio.sfx('creature.golem.jet'));
           }
         }
 
@@ -3301,7 +3829,7 @@ export class Enemies implements EnemyControlApi {
               e.jetFuel = 115;
               e.jetCd = 280;
               e.stuckT = 0;
-              ctx.audio.tone(110 + entityRandom() * 30, 260, 0.35, 'sawtooth', 0.11);
+              this.voice(e, () => ctx.audio.sfx('creature.golem.jet'));
             } else {
               e.stuckT = (e.stuckT || 0) + 1;
               if (e.stuckT > 50) {
@@ -3329,7 +3857,7 @@ export class Enemies implements EnemyControlApi {
                   e.x < camX + VIEW_W + 8 &&
                   e.y > camY - 8 &&
                   e.y < camY + VIEW_H + 8;
-                if (visible) ctx.audio.tone(60 + entityRandom() * 25, 90, 0.2, 'square', 0.16);
+                if (visible) this.voice(e, () => ctx.audio.sfx('creature.golem.punch'), 640);
                 this.shakeAt(e.x, e.y, 0.006, 0.03);
                 e.stuckT = futile ? -420 : 4; // futile: back off ~7s before retrying
               }
@@ -3374,7 +3902,7 @@ export class Enemies implements EnemyControlApi {
               { hostileDmg: 9, hostileSource: 'golem-rock' },
             );
           }
-          ctx.audio.boom(4);
+          this.voice(e, () => ctx.audio.sfx('creature.golem.throw'), 600);
           e.attackCd = 240;
         }
         if (canAttackTarget && e.attackCd < 200 && Math.abs(pdx) < 15 && Math.abs(pdy) < 22) {
@@ -3384,10 +3912,17 @@ export class Enemies implements EnemyControlApi {
         }
       }
 
+      lightMotion(ctx, e, targetAlive); // light wave: the lurker freezes/creeps, slimes follow the beam
       // THREAT REFLEXES OVERRIDE the per-kind decision this frame: a committed
       // dodge twitches the body clear of an incoming hit; a flee retreats;
       // otherwise fear just scales the chase back. Fearless bosses' weights make
       // this a near-no-op. (Electrocution below still wins — it zeroes motion.)
+      if (mind.intent === 'retreat') {
+        e.fleeT = Math.max(e.fleeT ?? 0, 12);
+        e.fleeDir = -Math.sign(mind.targetX - e.x || 1);
+      } else if (mind.intent === 'return' && e.kind !== 'weaver') {
+        e.vx += Math.sign(mind.homeX - e.x) * 0.06;
+      }
       const fleeingNow = (e.fleeT ?? 0) > 0;
       if ((e.dodgeT ?? 0) > 0) {
         e.vx = e.dodgeVX ?? e.vx;
@@ -3426,7 +3961,7 @@ export class Enemies implements EnemyControlApi {
       // Integrate movement (walkers step; flyers collide and slip around small nubs).
       // Difficulty and descent pacing scale the step distance = effective speed.
       const spd = difficultyMods(ctx.state).enemySpeed * enemyMovementPace(ctx);
-      if (e.kind === 'imp' || e.kind === 'wisp' || (e.kind === 'bat' && (e.slimed ?? 0) <= 0)) {
+      if (e.kind === 'imp' || e.kind === 'wisp' || e.kind === 'lenswright' || (e.kind === 'bat' && (e.slimed ?? 0) <= 0)) {
         this.integrateFlying(e, def, spd);
       } else if (e.kind === 'weaver') {
         // The surface crawler owns Weaver movement. Threat reflexes fold into
@@ -3444,11 +3979,16 @@ export class Enemies implements EnemyControlApi {
             intent.urgency = 1;
           }
           intent.speedScale = spd * (e.status.frozen > 0 ? 0.5 : 1);
+          if (intent.move === 'toward' && !fleeingNow && (mind.intent === 'investigate' || mind.intent === 'return')) {
+            const route = localRoute(ctx.world, e, def, intent.tx, intent.ty, ctx.state.frameCount);
+            intent.tx = route.x; intent.ty = route.y;
+          }
           tickWeaverLocomotion(ctx, e, def, intent);
         }
       } else {
+        this.unembed(e, def);
         const stepUp =
-          e.kind === 'colossus'
+          e.kind === 'colossus' || e.kind === 'rimewarden'
             ? 3
             : e.kind === 'golem' || e.kind === 'leviathan' || e.kind === 'stonemaw'
               ? 2
@@ -3511,5 +4051,11 @@ export class Enemies implements EnemyControlApi {
         }
       }
     }
+    for (const enemy of enemies) {
+      if (ctx.debug.frozenEnemy(enemy)) continue;
+      if (enemy.x < sim.x0 - 60 || enemy.x > sim.x1 + 60 || enemy.y < sim.y0 - 60 || enemy.y > sim.y1 + 60) continue;
+      tickCreaturePose(ctx, enemy);
+    }
+    updateCorpses(ctx);
   }
 }

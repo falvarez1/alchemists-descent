@@ -12,6 +12,7 @@ import {
   waterColor,
 } from '@/sim/colors';
 import { igniteGunpowder } from '@/sim/elements/powders';
+import { igniteTrunk } from '@/sim/elements/flora';
 // FIRE_REACTION_OFFSETS was the local name for the shared asymmetric ignition list.
 import { CARDINAL_OFFSETS, IGNITION_OFFSETS as FIRE_REACTION_OFFSETS } from '@/sim/neighborOffsets';
 import { fxRandom, simRandom } from '@/core/simRandom';
@@ -72,11 +73,13 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
       }
       return;
     }
-    if ((n === Cell.Wood || n === Cell.Vines) && simRandom() < P.igniteChance!) {
+    if ((n === Cell.Wood || n === Cell.Vines || n === Cell.Leaf || n === Cell.Seed) && simRandom() < P.igniteChance!) {
       // slow smoulder: a small, short-lived flame that grows or fizzles with the fuel
       w.replaceCellAt(ni, Cell.Fire, fireColor());
       w.life[ni] = 40 + Math.floor(simRandom() * 50);
     }
+    // living wood takes an ember as a smoulder in place (FLORA)
+    if (n === Cell.Trunk && simRandom() < P.igniteChance!) igniteTrunk(ctx, ni);
     if (n === Cell.MarshGas) {
       // even a drifting ember lights bog vapor at a touch
       w.replaceCellAt(ni, Cell.Fire, fireColor());
@@ -86,6 +89,7 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
       // an ember on an oil slick starts it burning IN PLACE (handleOil throws the
       // flame each frame for burnDuration) — a sustained pool fire, not a flash.
       w.life[ni] = ctx.params.materials[Cell.Oil].burnDuration! + Math.floor(simRandom() * 30);
+      w.activity.touchIndex(ni);
     } else if (n === Cell.Gunpowder && simRandom() < P.igniteChance! * 7) {
       igniteGunpowder(ctx, nx, ny);
     }
@@ -184,6 +188,20 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         w.life[ti] = 26; // damp greenery burns short and smoky
         if (simRandom() < 0.7) spawnSmoke(ctx, x, y);
       }
+      if (n === Cell.Leaf && simRandom() < ctx.params.materials[Cell.Leaf].flammability!) {
+        // a canopy goes up fast and bright (FLORA)
+        w.replaceCellAt(ti, Cell.Fire, fireColor());
+        w.life[ti] = 18 + Math.floor(simRandom() * 10);
+        if (simRandom() < 0.35) spawnSmoke(ctx, x, y);
+      }
+      if (n === Cell.Trunk && w.life[ti] <= 0 && simRandom() < ctx.params.materials[Cell.Trunk].flammability!) {
+        // living wood smoulders in place (handleTrunk) instead of flashing away
+        igniteTrunk(ctx, ti);
+      }
+      if (n === Cell.Seed && simRandom() < ctx.params.materials[Cell.Seed].flammability!) {
+        w.replaceCellAt(ti, Cell.Fire, fireColor());
+        w.life[ti] = 12;
+      }
       if (n === Cell.Grass && simRandom() < ctx.params.materials[Cell.Grass].flammability!) {
         w.replaceCellAt(ti, Cell.Fire, fireColor());
         w.life[ti] = 16; // a single blade flares briefly; low flammability keeps the spread a slow sputter
@@ -211,6 +229,7 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         // for burnDuration). Don't flash it to a fire cell that just rises away —
         // a sustained pool fire is what lets oil in a bowl hold a checkpoint lit.
         w.life[ti] = ctx.params.materials[Cell.Oil].burnDuration! + Math.floor(simRandom() * 30);
+        w.activity.touchIndex(ti);
       }
       if (n === Cell.Gunpowder) {
         igniteGunpowder(ctx, tx, ty);
@@ -231,7 +250,8 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
       if (n === Cell.Slime && simRandom() < 0.04) {
         w.replaceCellAt(ti, Cell.Acid, acidColor());
       }
-      if (n === Cell.Water) {
+      if (n === Cell.Water || n === Cell.Brine) {
+        // (Brine boils away the same way: the salt goes with the steam.)
         w.replaceCellAt(ci, Cell.Steam, steamColor());
         w.life[ci] = 260;
         // Water is a conductor: clear through the World helper so the cell is

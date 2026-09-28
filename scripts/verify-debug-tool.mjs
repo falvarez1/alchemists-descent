@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
-import { startConsoleTestRun } from './run-helpers.mjs';
+import { openRuntimeInspector, startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
@@ -12,6 +12,25 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await startConsoleTestRun(page, { level: 'weaver-test', world: 'campaign-level', seed: 1, settleMs: 400 });
 
 const GAIT_TARGET_X = 512;
+
+// A real click (boundingBox + mouse, hit-tested by the browser) without
+// Playwright's frame-to-frame "stable" heuristic, which headless Chromium
+// never satisfies inside the live Runtime Inspector even when the control
+// has not moved a pixel.
+const realClick = async (selector) => {
+  const target = page.locator(selector);
+  // The panel renders its controls a beat after it opens: wait for this one.
+  for (let attempt = 0; attempt < 30; attempt++) {
+    await target.waitFor({ state: 'visible', timeout: 5000 });
+    const box = await target.boundingBox();
+    if (box) {
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      return;
+    }
+    await page.waitForTimeout(100);
+  }
+  throw new Error(`${selector} never had a box to click`);
+};
 const problems = [];
 const ok = (c, m) => { if (!c) problems.push(m); };
 
@@ -46,9 +65,9 @@ await page.evaluate((targetX) => {
 }, GAIT_TARGET_X);
 
 // --- open the Runtime panel and flip Debug ---
-await page.click('#runtime-inspector-toggle');
-await page.waitForSelector('#runtime-inspector.open', { timeout: 5000 });
-await page.click('#brt-debug');
+// The play screen hides the header (and its RUNTIME button); authoring builds open the inspector with F9.
+await openRuntimeInspector(page);
+await realClick('#brt-debug');
 const active = await page.evaluate(() => window.__game.ctx.debug.active === true);
 ok(active, 'Debug toggle did not set ctx.debug.active');
 
@@ -58,19 +77,29 @@ const saveProbe = await page.evaluate(() => {
   const priorPlaytestSource = ctx.state.playtestSource;
   const priorDebugGodMode = ctx.state.debugGodMode;
   const priorDebugTainted = ctx.state.debugTainted;
+  // Saves go to an IndexedDB worker when one is available (else localStorage):
+  // count real writes on either backend instead of reading one of them.
+  let writes = 0;
+  const storage = ctx.levels.storage;
+  const realSave = storage?.save?.bind(storage);
+  if (storage && realSave) storage.save = (...args) => { writes++; return realSave(...args); };
+  const realSetItem = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = (key, value) => { if (key === 'noita-expedition') writes++; return realSetItem(key, value); };
   localStorage.removeItem('noita-expedition');
   ctx.state.playtestSource = null;
   ctx.state.debugGodMode = false;
   ctx.state.debugTainted = false;
   ctx.debug.setActive(true);
   ctx.levels.saveExpedition(ctx);
-  const blockedWhileDebugActive = localStorage.getItem('noita-expedition') === null;
+  const blockedWhileDebugActive = writes === 0;
   ctx.debug.setActive(false);
   ctx.levels.saveExpedition(ctx);
-  const blockedAfterDebugOff = localStorage.getItem('noita-expedition') === null;
+  const blockedAfterDebugOff = writes === 0;
   ctx.state.debugTainted = false;
   ctx.levels.saveExpedition(ctx);
-  const savedWhenClean = localStorage.getItem('noita-expedition') !== null;
+  const savedWhenClean = writes > 0;
+  if (storage && realSave) storage.save = realSave;
+  localStorage.setItem = realSetItem;
   localStorage.removeItem('noita-expedition');
   ctx.state.playtestSource = priorPlaytestSource;
   ctx.state.debugGodMode = priorDebugGodMode;
@@ -101,9 +130,8 @@ const modeClear = await page.evaluate(async () => {
 });
 ok(!modeClear.active && modeClear.live === 0 && !modeClear.frozenPlayer, `Debug leaked after leaving Play (${JSON.stringify(modeClear)})`);
 
-await page.click('#runtime-inspector-toggle');
-await page.waitForSelector('#runtime-inspector.open', { timeout: 5000 });
-await page.click('#brt-debug');
+await openRuntimeInspector(page);
+await realClick('#brt-debug');
 const reactivated = await page.evaluate(() => window.__game.ctx.debug.active === true);
 ok(reactivated, 'Debug toggle did not reactivate after returning to Play');
 
@@ -235,8 +263,8 @@ const attackSetup = await page.evaluate(() => {
   return { x: spitter.x, y: spitter.y, timer: spitter.timer };
 });
 ok(attackSetup !== null, 'Could not spawn a Spitter for debug attack suppression');
-await page.click('#runtime-inspector-toggle');
-await page.click('#runtime-inspector-toggle');
+await page.keyboard.press('F9');
+await page.keyboard.press('F9');
 const spitterLiveId = await page.evaluate((setup) => {
   const rows = [...document.querySelectorAll('#runtime-inspector .brt-row')];
   const row = rows
@@ -354,7 +382,7 @@ ok(plantRes.planted >= 3 && plantRes.floor >= 2, `legs did not plant on the floo
 
 // --- turn Debug off: the world resumes ---
 await page.evaluate(() => window.__game.ctx.debug.release());
-await page.click('#brt-debug');
+await realClick('#brt-debug');
 const offState = await page.evaluate(() => ({ active: window.__game.ctx.debug.active, live: window.__game.ctx.debug.live.size }));
 ok(!offState.active && offState.live === 0, `Debug off did not clear state (${JSON.stringify(offState)})`);
 const beforeOff = await page.evaluate(() => window.__game.ctx.enemies.filter((e) => e.kind === 'weaver').map((e) => e.x));

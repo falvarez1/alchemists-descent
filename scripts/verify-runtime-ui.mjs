@@ -32,17 +32,30 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.console, { timeout: 20000 });
 await startConsoleTestRun(page, { loadout: 'advanced', settleMs: 350 });
 
-await page.click('#runtime-inspector-toggle');
-await page.waitForSelector('#runtime-inspector.open [data-runtime-id]', { timeout: 5000 });
-const inspectorRows = await page.$$eval('#runtime-inspector [data-runtime-id]', (rows) =>
-  rows.map((row) => row.getAttribute('data-runtime-id')),
+// The play screen hides the header (and its RUNTIME button) for the whole run;
+// authoring builds open the inspector with F9.
+await page.keyboard.press('F9');
+// Some rows can be hidden (which ones depends on the machine — CI has no GPU),
+// and Playwright's waitForSelector judges only the FIRST match: wait for any
+// visible row, and walk the keyboard from a visible row with a visible neighbour.
+await page.waitForFunction(
+  () => [...document.querySelectorAll('#runtime-inspector.open [data-runtime-id]')].some((row) => row.getClientRects().length > 0),
+  null,
+  { timeout: 15000 },
 );
-await page.locator('#runtime-inspector [data-runtime-id]').first().focus();
+const walk = await page.evaluate(() => {
+  const rows = [...document.querySelectorAll('#runtime-inspector [data-runtime-id]')];
+  const shown = (row) => !!row && row.getClientRects().length > 0;
+  let start = rows.findIndex((row, i) => shown(row) && shown(rows[i + 1]));
+  if (start < 0) start = rows.findIndex(shown);
+  return { start, ids: rows.map((row) => row.getAttribute('data-runtime-id')) };
+});
+await page.locator('#runtime-inspector [data-runtime-id]').nth(walk.start).focus();
 await page.keyboard.press('ArrowDown');
-const arrowState = await page.evaluate((rows) => ({
+const arrowState = await page.evaluate((w) => ({
   activeId: document.activeElement?.getAttribute('data-runtime-id'),
-  expected: rows.length > 1 ? rows[1] : rows[0],
-}), inspectorRows);
+  expected: w.ids[Math.min(w.ids.length - 1, w.start + 1)],
+}), walk);
 check('Runtime Inspector ArrowDown moves row focus', arrowState.activeId === arrowState.expected, JSON.stringify(arrowState));
 
 await page.keyboard.press('End');
@@ -100,41 +113,18 @@ check('Card offer Escape is captured without dismissing or opening Pause', cardE
 await page.keyboard.press('Enter');
 await page.waitForFunction(() => !document.getElementById('card-offer-overlay')?.classList.contains('visible'), null, { timeout: 5000 });
 
-await page.evaluate(() => {
-  window.__runtimeUiWaystoneDismissed = false;
-  window.__game.ctx.events.emit('waystonePrompt', {
-    card: null,
-    onEquip: () => {
-      window.__runtimeUiWaystoneDismissed = false;
-    },
-    onDismiss: () => {
-      window.__runtimeUiWaystoneDismissed = true;
-    },
-  });
-});
-await page.waitForSelector('#waystone-prompt-overlay.visible .waystone-prompt-btn', { timeout: 5000 });
-await page.locator('#waystone-prompt-overlay .waystone-prompt-btn').first().focus();
-await page.keyboard.press('Tab');
-const waystoneTabState = await page.evaluate(() => ({
-  activeInside: document.getElementById('waystone-prompt-overlay')?.contains(document.activeElement) ?? false,
+// The unlit waystone no longer raises a modal (it paused the game on every
+// approach): its lesson is a non-modal teach card (game/waystoneHelp).
+await page.evaluate(() => window.__game.ctx.events.emit('hintTeach', { key: 'waystone-unlit', title: 'An Unlit Waystone', body: 'A waystone lights when fire keeps burning in its bowl.' }));
+// A teach card waits for a calm moment (no story beat, pause or centre overlay
+// — the card offer just closed), so give it the calm poll before judging.
+await page.waitForFunction(() => document.getElementById('hint-teach-overlay')?.classList.contains('visible'), null, { timeout: 6000 }).catch(() => undefined);
+const waystoneTeachState = await page.evaluate(() => ({
+  teach: document.getElementById('hint-teach-overlay')?.classList.contains('visible') ?? false,
+  paused: window.__game.ctx.state.paused,
+  modal: !!document.getElementById('waystone-prompt-overlay'),
 }));
-await page.evaluate(() => document.getElementById('runtime-inspector-toggle')?.focus());
-await page.waitForTimeout(60);
-const waystoneOutsideFocusState = await page.evaluate(() => ({
-  activeInside: document.getElementById('waystone-prompt-overlay')?.contains(document.activeElement) ?? false,
-}));
-await page.keyboard.press('Escape');
-await page.waitForFunction(() => !document.getElementById('waystone-prompt-overlay')?.classList.contains('visible'), null, { timeout: 5000 });
-const waystoneEscapeState = await page.evaluate(() => ({
-  dismissed: window.__runtimeUiWaystoneDismissed === true,
-  pauseOpen: document.getElementById('pause-overlay')?.classList.contains('visible') ?? false,
-}));
-check(
-  'Waystone prompt traps Tab and scripted outside focus',
-  waystoneTabState.activeInside && waystoneOutsideFocusState.activeInside,
-  JSON.stringify({ waystoneTabState, waystoneOutsideFocusState }),
-);
-check('Waystone prompt Escape dismisses the modal without opening Pause', waystoneEscapeState.dismissed && !waystoneEscapeState.pauseOpen, JSON.stringify(waystoneEscapeState));
+check('Waystone help is a teach card: it never pauses and no modal exists', waystoneTeachState.teach && !waystoneTeachState.paused && !waystoneTeachState.modal, JSON.stringify(waystoneTeachState));
 
 check('No page or console errors', pageErrors.length === 0 && consoleErrors.length === 0, [...pageErrors, ...consoleErrors].join('\n'));
 

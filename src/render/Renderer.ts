@@ -7,10 +7,14 @@ import { RENDER_H, RENDER_W, VIEW_H, VIEW_W } from '@/config/constants';
 import type { Ctx, RenderSettings } from '@/core/types';
 import { chooseRenderBackend } from '@/render/backendSelection';
 import { GpuCompose } from '@/render/ComposeShader';
+import { ForegroundLayerGL } from '@/render/depth/ForegroundGL';
+import { readWebGlGpu, type GpuInfo } from '@/render/gpuInfo';
 import { PostFx } from '@/render/PostFx';
-import { WebGpuRenderBackend } from '@/render/WebGpuRenderBackend';
+import { cameraPresentationOffset } from '@/render/presentation';
+import { webGpuBackendClass } from '@/render/webGpuBackendModule';
 import type {
   CompositorLens,
+  ForegroundSource,
   LightField,
   OverlaySurface,
   ParallaxLayers,
@@ -19,7 +23,7 @@ import type {
   RenderTarget,
   RendererBackend,
 } from '@/render/pixels';
-import { webGpuComposeUnrequestedStatus } from '@/render/WebGpuComposeBridge';
+import { webGpuComposeUnrequestedStatus } from '@/render/webGpuComposeStatus';
 
 /**
  * Three.js WebGL presentation layer: a full-screen orthographic quad textured
@@ -52,12 +56,17 @@ class WebGLRenderBackend implements RendererBackend {
   private gpu: GpuCompose | null = null;
   /** True while the current frame was composed by the shader path. */
   private gpuFrame = false;
+  private gpuInfo: GpuInfo | null = null;
+  private postEnabled = true;
+  /** The depth kit's foreground occluder plane, drawn over the composed frame (render/depth). */
+  private readonly foreground: ForegroundLayerGL | null;
 
   constructor(
     holder: HTMLElement,
     settings: RenderSettings,
     canvas?: HTMLCanvasElement,
     fallbackReason: string | null = null,
+    foreground: ForegroundSource | null = null,
   ) {
     this.requestedBackend = settings.backend;
     this.fallbackReason = fallbackReason;
@@ -112,11 +121,15 @@ class WebGLRenderBackend implements RendererBackend {
     this.texture.minFilter = THREE.NearestFilter;
     this.texture.magFilter = THREE.NearestFilter;
 
-    this.basicMaterial = new THREE.MeshBasicMaterial({ map: this.texture });
+    // NoBlending (not the default Normal) keeps three from forcing alpha to 1:
+    // the frame's alpha marks open backdrop for the depth particles.
+    this.basicMaterial = new THREE.MeshBasicMaterial({ map: this.texture, blending: THREE.NoBlending });
     const geometry = new THREE.PlaneGeometry(2, 2);
     this.quadMesh = new THREE.Mesh(geometry, this.basicMaterial);
     this.quadMesh.scale.set(1 + 4 / VIEW_W, 1 + 4 / VIEW_H, 1); // overscan hides sub-cell camera offsets
     this.scene.add(this.quadMesh);
+    this.foreground = foreground ? new ForegroundLayerGL(foreground) : null;
+    if (this.foreground) for (const object of this.foreground.objects) this.scene.add(object);
 
     this.composer = new EffectComposer(this.renderer);
     const renderPass = new RenderPass(this.scene, this.camera);
@@ -145,6 +158,7 @@ class WebGLRenderBackend implements RendererBackend {
     this.contextLost = false;
     this.contextRestoredCount++;
     this.texture.needsUpdate = true;
+    this.foreground?.invalidate();
     this.gpu?.dispose();
     this.gpu = null;
     this.gpuFrame = false;
@@ -180,6 +194,14 @@ class WebGLRenderBackend implements RendererBackend {
   /** WebGL2 is required (integer textures, R8/R32F); CPU path is the fallback. */
   get gpuComposeAvailable(): boolean {
     return this.renderer.capabilities.isWebGL2;
+  }
+
+  /**
+   * Depth particles are GL points here, masked by the frame's alpha — which
+   * only the post path's render target keeps (the canvas has no alpha).
+   */
+  get nativeDepthParticles(): boolean {
+    return this.foreground !== null && this.postEnabled && !this.contextLost;
   }
 
   beginGpuCompose(
@@ -260,6 +282,7 @@ class WebGLRenderBackend implements RendererBackend {
         lostCount: this.contextLostCount,
         restoredCount: this.contextRestoredCount,
       },
+      gpu: this.gpuInfo ??= readWebGlGpu(this.renderer.getContext()),
     };
   }
 
@@ -271,9 +294,10 @@ class WebGLRenderBackend implements RendererBackend {
       this.gpuFrame && this.gpu !== null ? this.gpu.material : this.basicMaterial;
 
     // Sub-cell camera smoothing + screen shake + idle zoom on the render quad
-    let ox = -(ctx.camera.x - Math.floor(ctx.camera.x)) * (2 / VIEW_W);
-    let oy = (ctx.camera.y - Math.floor(ctx.camera.y)) * (2 / VIEW_H);
-    if (ctx.fx.screenShake > 0.0005) {
+    const residual = cameraPresentationOffset(ctx.camera);
+    let ox = -residual.x * (2 / VIEW_W);
+    let oy = residual.y * (2 / VIEW_H);
+    if (!ctx.state.reduceCameraShake && ctx.fx.screenShake > 0.0005) {
       ox += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
       oy += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
     }
@@ -284,6 +308,8 @@ class WebGLRenderBackend implements RendererBackend {
       (1 + 4 / VIEW_H) * ctx.camera.zoom,
       1,
     );
+    this.postEnabled = ctx.state.postFx.enabled;
+    this.foreground?.update(ctx, this.quadMesh, this.postEnabled);
 
     // Blast-wave bloom surge is tick-decayed by Game after this frame draws, so
     // WebGL/WebGPU and high-refresh displays sample the same FX values.
@@ -306,6 +332,7 @@ class WebGLRenderBackend implements RendererBackend {
     this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.gpu?.dispose();
     this.gpu = null;
+    this.foreground?.dispose();
     this.texture.dispose();
     this.basicMaterial.dispose();
     this.quadMesh.geometry.dispose();
@@ -320,9 +347,11 @@ class WebGLRenderBackend implements RendererBackend {
 export class Renderer implements RenderTarget {
   private backend: RendererBackend;
   private readonly holder: HTMLElement;
+  private readonly foreground: ForegroundSource | null;
 
-  constructor(holder: HTMLElement, settings: RenderSettings) {
+  constructor(holder: HTMLElement, settings: RenderSettings, foreground: ForegroundSource | null = null) {
     this.holder = holder;
+    this.foreground = foreground;
     this.backend = this.createBackend(settings);
   }
 
@@ -337,34 +366,42 @@ export class Renderer implements RenderTarget {
 
   private createBackend(settings: RenderSettings): RendererBackend {
     if (settings.backend === 'webgl') {
-      return new WebGLRenderBackend(this.holder, settings);
+      return new WebGLRenderBackend(this.holder, settings, undefined, null, this.foreground);
     }
     if (!this.canAttemptWebGpu()) {
       const reason =
         typeof window !== 'undefined' && window.isSecureContext !== true
           ? 'webgpu-insecure-context-webgl-fallback'
           : 'navigator-gpu-absent-webgl-fallback';
-      return new WebGLRenderBackend(this.holder, settings, undefined, reason);
+      return new WebGLRenderBackend(this.holder, settings, undefined, reason, this.foreground);
     }
-    return new WebGpuRenderBackend(this.holder, settings);
+    // Loaded on demand (render/webGpuBackendModule): main.ts awaits it when the URL asks.
+    const WebGpuRenderBackend = webGpuBackendClass();
+    if (!WebGpuRenderBackend) {
+      return new WebGLRenderBackend(this.holder, settings, undefined, 'webgpu-module-unavailable-webgl-fallback', this.foreground);
+    }
+    return new WebGpuRenderBackend(this.holder, settings, this.foreground);
   }
 
   private fallBackFromFailedWebGpu(settings: RenderSettings): void {
-    if (!(this.backend instanceof WebGpuRenderBackend) || !this.backend.initializationFailed) return;
+    const WebGpuRenderBackend = webGpuBackendClass();
+    if (!WebGpuRenderBackend || !(this.backend instanceof WebGpuRenderBackend) || !this.backend.initializationFailed) return;
     const canvas = this.backend.releaseCanvasForWebGlFallback(true);
     this.backend = new WebGLRenderBackend(
       this.holder,
       settings,
       canvas,
       this.backend.failureReason ?? 'webgpu-init-failed-webgl-fallback',
+      this.foreground,
     );
   }
 
   private fallBackFromLostWebGpu(settings: RenderSettings): void {
-    if (!(this.backend instanceof WebGpuRenderBackend) || !this.backend.deviceLost) return;
+    const WebGpuRenderBackend = webGpuBackendClass();
+    if (!WebGpuRenderBackend || !(this.backend instanceof WebGpuRenderBackend) || !this.backend.deviceLost) return;
     const reason = this.backend.deviceLossReason;
     const canvas = this.backend.releaseCanvasForWebGlFallback(false);
-    this.backend = new WebGLRenderBackend(this.holder, settings, canvas, reason);
+    this.backend = new WebGLRenderBackend(this.holder, settings, canvas, reason, this.foreground);
     this.emitCanvasChanged();
   }
 
@@ -398,6 +435,10 @@ export class Renderer implements RenderTarget {
 
   commitGpuCompose(): void {
     this.backend.commitGpuCompose();
+  }
+
+  get nativeDepthParticles(): boolean {
+    return this.backend.nativeDepthParticles === true;
   }
 
   get domElement(): HTMLCanvasElement {

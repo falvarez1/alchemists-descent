@@ -1,0 +1,195 @@
+{
+  "pell": [
+    {
+      "key": "cameron",
+      "name": "Cameron — young British (characters)",
+      "voiceId": "FiQVBfstqvAXNba9nkRV",
+      "lines": [
+        {
+          "id": "duck",
+          "seconds": 8.48,
+          "charsPerSecond": 10,
+          "sibilantPerSecond": 4.36,
+          "voicedShare": 0.54,
+          "url": "/audition/voices/cast-pell-cameron-duck.mp3",
+          "cached": false
+        },
+        {
+          "id": "map",
+          "seconds": 10.56,
+          "charsPerSecond": 10.7,
+          "sibilantPerSecond": 4.64,
+          "voicedShare": 0.62,
+          "url": "/audition/voices/cast-pell-cameron-map.mp3",
+          "cached": false
+        }
+      ]
+    },
+    {
+      "key": "john",
+      "name": "John — fresh, natural, approachable",
+      "voiceId": "d8Hdz9ue70n2o0EmThd6",
+      "lines": [
+        {
+          "id": "duck",
+          "seconds": 6.38,
+          "charsPerSecond": 13.3,
+          "sibilantPerSecond": 4.54,
+          "voicedShare": 0.72,
+          "url": "/audition/voices/cast-pell-john-duck.mp3",
+          "cached": false
+        },
+        {
+          "id": "map",
+          "seconds": 6.96,
+          "charsPerSecond": 16.2,
+          "sibilantPerSecond": 4.02,
+          "voicedShare": 0.83,
+          "url": "/audition/voices/cast-pell-john-map.mp3",
+          "cached": false
+        }
+      ]
+    },
+    {
+      "key": "henry",
+      "name": "Henry — expressive, character voices",
+      "voiceId": "KP6QbSvtyKSTfuh4UzcQ",
+      "lines": [
+        {
+          "id": "duck",
+          "seconds": 7.2,
+          "charsPerSecond": 11.8,
+          "sibilantPerSecond": 4.3,
+          "voicedShare": 0.76,
+          "url": "/audition/voices/cast-pell-henry-duck.mp3",
+          "cached": false
+        },
+        {
+          "id": "map",
+          "seconds": 8.16,
+          "charsPerSecond": 13.8,
+          "sibilantPerSecond": 5.02,
+          "voicedShare": 0.72,
+          "url": "/audition/voices/cast-pell-henry-map.mp3",
+          "cached": false
+        }
+      ]
+    },
+    {
+      "key": "luca",
+      "name": "Luca — calm, clear, 24",
+      "voiceId": "7tUJ0eKWdVAR5YodX8RL",
+      "lines": [
+        {
+          "id": "duck",
+          "seconds": 7.07,
+          "charsPerSecond": 12,
+          "sibilantPerSecond": 5.8,
+          "voicedShare": 0.61,
+          "url": "/audition/voices/cast-pell-luca-duck.mp3",
+          "cached": false
+        },
+        {
+          "id": "map",
+          "seconds": 9.11,
+          "charsPerSecond": 12.4,
+          "sibilantPerSecond": 3.51,
+          "voicedShare": 0.56,
+          "url": "/audition/voices/cast-pell-luca-map.mp3",
+          "cached": false
+        }
+      ]
+    },
+    {
+      "key": "stephen",
+      "name": "Stephen — well spoken, kind",
+      "voiceId": "RbNTU8eTHcsao6T0f1ve",
+      "lines": [
+        {
+          "id": "duck",
+          "seconds": 6.96,
+          "charsPerSecond": 12.2,
+          "sibilantPerSecond": 3.88,
+          "voicedShare": 0.71,
+          "url": "/audition/voices/cast-pell-stephen-duck.mp3",
+          "cached": false
+        },
+        {
+          "id": "map",
+          "seconds": 8.6,
+          "charsPerSecond": 13.1,
+          "sibilantPerSecond": 3.37,
+          "voicedShare": 0.63,
+          "url": "/audition/voices/cast-pell-stephen-map.mp3",
+          "cached": false
+        }
+      ]
+    }
+  ],
+  "ash": [
+    {
+      "key": "beatrice",
+      "name": "Beatrice — mature, gentle (British)",
+      "voiceId": "kkPJzQOWz2Oz9cUaEaQd",
+      "lines": [
+        {
+          "id": "greet",
+          "seconds": 9.76,
+          "charsPerSecond": 10.3,
+          "sibilantPerSecond": 2.46,
+          "voicedShare": 0.65,
+          "url": "/audition/voices/cast-ash-beatrice-greet.mp3",
+          "cached": false
+        }
+      ]
+    },
+    {
+      "key": "maria",
+      "name": "Maria Moody — grandmotherly storykeeper",
+      "voiceId": "wGcFBfKz5yUQqhqr0mVy",
+      "lines": [
+        {
+          "id": "greet",
+          "seconds": 11.12,
+          "charsPerSecond": 9.1,
+          "sibilantPerSecond": 3.78,
+          "voicedShare": 0.99,
+          "url": "/audition/voices/cast-ash-maria-greet.mp3",
+          "cached": false
+        }
+      ]
+    },
+    {
+      "key": "morganna",
+      "name": "Seer Morganna — old, wise",
+      "voiceId": "7NsaqHdLuKNFvEfjpUno",
+      "lines": [
+        {
+          "id": "greet",
+          "seconds": 11.52,
+          "charsPerSecond": 8.8,
+          "sibilantPerSecond": 4.77,
+          "voicedShare": 0.96,
+          "url": "/audition/voices/cast-ash-morganna-greet.mp3",
+          "cached": false
+        }
+      ]
+    },
+    {
+      "key": "eleanor",
+      "name": "Eleanor — gracious, older British",
+      "voiceId": "2qQJWjw5XdG80GreshqG",
+      "lines": [
+        {
+          "id": "greet",
+          "seconds": 8.64,
+          "charsPerSecond": 11.7,
+          "sibilantPerSecond": 4.17,
+          "voicedShare": 0.66,
+          "url": "/audition/voices/cast-ash-eleanor-greet.mp3",
+          "cached": false
+        }
+      ]
+    }
+  ]
+}

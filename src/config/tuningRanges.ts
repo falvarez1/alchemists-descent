@@ -79,7 +79,6 @@ export function tuningRangeFor(path: string): TuningRange | null {
  */
 export const KNOWN_SLIDER_CLAMPS: readonly string[] = [
   'player.kickSelfRecoil',
-  'player.levitRampFrames',
   'player.recoilMaxImpulse',
   'player.vyCapUp',
   'spells.blackhole.collapseLimit',

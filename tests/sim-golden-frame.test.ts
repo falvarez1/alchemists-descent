@@ -130,12 +130,12 @@ function runScene(worldSeed: number, ticks: number): { world: World; sim: Simula
   return { world, sim, ctx };
 }
 
-/** Recorded from the first deterministic run. Re-record ONLY for a deliberate,
- *  commit-flagged change to simulation behaviour. */
+/** Living Descent: hydraulic pressure, persistent ballistic water and suspended blood
+ * deliberately change material trajectories and subsequent reaction draws. */
 const GOLDEN: Record<number, { state: string; colors: string }> = {
-  1: { state: 'a77c924e', colors: 'ef795e22' },
-  7: { state: '2f92addd', colors: 'b5185aba' },
-  1337: { state: '170c3dac', colors: '8ff27392' },
+  1: { state: '28da9205', colors: '198aa7ec' },
+  7: { state: '89dfe2bb', colors: 'b701b55f' },
+  1337: { state: '18f68036', colors: 'f2235d13' },
 };
 
 describe('sim golden frames', () => {
@@ -206,11 +206,11 @@ describe('sim golden frames', () => {
   it('matches the recorded golden hashes', () => {
     for (const seed of Object.keys(GOLDEN).map(Number)) {
       const { world } = runScene(seed, 100);
-      expect({ seed, ...GOLDEN[seed] }).toEqual({
+      expect.soft({
         seed,
         state: hashWorld(world),
         colors: hashColors(world),
-      });
+      }).toEqual({ seed, ...GOLDEN[seed] });
     }
   });
 });

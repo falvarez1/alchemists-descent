@@ -46,7 +46,12 @@ export type AuthorLinkHandler<T extends AuthorLinkMessageType> = (
 export interface AuthorLinkClientOptions {
   url: string;
   room: string;
-  role: AuthorLinkRole;
+  /**
+   * Presentation role for `hello`. A function is read at each connect, so a
+   * window that opened the Builder after linking reports `builder` on
+   * reconnect instead of the role it happened to have at boot.
+   */
+  role: AuthorLinkRole | (() => AuthorLinkRole);
   build: string;
   clientId: string;
   /** Room token for hosted rooms; omitted locally. */
@@ -223,7 +228,7 @@ export class AuthorLinkClient {
         clientId: this.clientId,
         revision: this.status.revision,
         sentAt: this.now(),
-        payload: { world: payload.world, label: payload.label },
+        payload: { world: payload.world, label: payload.label, ...(payload.stream === true ? { stream: true } : {}) },
       },
       encodeCellPatch(payload.patch),
     );
@@ -249,7 +254,7 @@ export class AuthorLinkClient {
     const frame = decodeBinaryFrame(bytes);
     if (!frame) return;
     const header = frame.header as Partial<AuthorLinkMessage> & {
-      payload?: { world?: { width?: number; height?: number }; label?: string };
+      payload?: { world?: { width?: number; height?: number }; label?: string; stream?: boolean };
     };
     if (header.type !== 'cells' || header.protocol !== AUTHORLINK_PROTOCOL) return;
     if (typeof header.clientId !== 'string') return;
@@ -283,6 +288,7 @@ export class AuthorLinkClient {
         world: world as CellsPayload['world'],
         label: header.payload?.label ?? 'patch',
         patch,
+        ...(header.payload?.stream === true ? { stream: true } : {}),
       },
     } satisfies Extract<AuthorLinkMessage, { type: 'cells' }>;
 
@@ -294,8 +300,9 @@ export class AuthorLinkClient {
   private readonly onOpen = (): void => {
     this.reconnectDelay = RECONNECT_MIN_MS;
     this.setStatus({ kind: 'connected', detail: undefined });
+    const role = typeof this.options.role === 'function' ? this.options.role() : this.options.role;
     this.send('hello', {
-      role: this.options.role,
+      role,
       build: this.options.build,
       ...(this.options.token ? { token: this.options.token } : {}),
     });

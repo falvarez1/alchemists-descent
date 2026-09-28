@@ -1,22 +1,28 @@
 // ===================== Levels (the Descent) =====================
 // Wave B: the arena becomes a vertical stack of persistent levels connected
 // by explicit key portals. Each visited level stays a LIVE World instance in RAM for
-// the whole session — your scars stay exactly as you left them when you
-// return (no snapshot codec yet; that arrives with persistence/autosave).
+// the whole session. A worker encodes copied snapshots into atomic IndexedDB
+// checkpoints; the preceding checkpoint is retained for recovery.
 //
 // v1 decisions encoded here:
 // - The descent is linear d1->d8 (worldgraph.ts); going down = finding the
-//   golden key and stepping into the portal. D1 additionally requires the
-//   Wand Bench lesson, because later depths do not place a bench.
+//   level token and stepping into the portal. D1 is an authored ecology route
+//   with an optional Refuge bench; it never requires the Heavy card lesson.
 // - Arrival placement always uses the destination level's spawn chamber.
 // - Falling to the bottom of any level is clamped for safety, never treated as
 //   a hidden transition.
 
+import type { StoryRunSave } from '@/core/story';
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_TUNE_DEFAULT_SIGNATURE, GEN_VERSION, genTuneSignature } from '@/config/gen';
 import { difficultyMods } from '@/config/difficulty';
-import { LEVELS, START_LEVEL, populationForLevel, vaultHostId } from '@/config/worldgraph';
-import { Rng, hashSeed, randomSeed, fnv1aString } from '@/core/rng';
+import { FLOORS_TOTAL, LEVELS, START_LEVEL, floorDisplayName, floorOf, levelSeedFor, nextDoors, populationForLevel } from '@/config/worldgraph';
+import { createLivingState } from '@/game/LivingExpedition';
+import { placeOrganisms } from '@/game/organisms/placement';
+import { DEFAULT_KIT, KIT_DEFS } from '@/content/kits';
+import type { KitId } from '@/core/run';
+import { restoreFauna, restoreLiving } from '@/game/persistence/ecology';
+import { Rng, hashSeed, randomSeed } from '@/core/rng';
 import { base64ToBytes, bytesToBase64, rleDecodeExact, rleEncode } from '@/core/rle';
 import type {
   Ctx,
@@ -37,6 +43,7 @@ import type {
   PrefabEnemy,
   CardId,
   RunLoadoutPreset,
+  RunSaveState,
   RunStartConfig,
   RunStartResult,
   RunStatus,
@@ -48,18 +55,23 @@ import type {
   WeaverLairWeb,
   Waystone,
 } from '@/core/types';
-import { PICKUP_KINDS } from '@/core/types';
+import { PICKUP_KINDS, PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { createPlayer, grantFullReviewKit } from '@/entities/Player';
 import { PERK_IDS } from '@/content/perks';
-import { INTRO_REWARD_CARD } from '@/game/introObjectives';
 import { createDefaultStatus } from '@/entities/status';
 import { spawnPrefabEnemy, toAuthoredLight } from '@/game/instantiate';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { makeLevelRuntime } from '@/game/runtime';
 import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
+import { WAYSTONE_HELP_RADIUS, wandMakesFire, waystoneHelp } from '@/game/waystoneHelp';
+import { ARRIVAL_GRACE_TICKS, ARRIVAL_SAFE_RADIUS, arrivalPickupRests, arrivalStandable, arrivalThreat, relocateCreature, settleArrival } from '@/game/arrival';
+import { bossArenaRect } from '@/core/bossWard';
+import { CAMP_HAVEN_RADIUS } from '@/config/pacing';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
-import { blocksEntity, Cell, CELL_COUNT, isSoftGrowth } from '@/sim/CellType';
+import { WORKS_GATE, worksGateOpen } from '@/world/breathingWorks';
+import { dropStrandedStands } from '@/world/floraPass';
+import { blocksEntity, Cell, CELL_COUNT, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import {
   COLOR_FN,
   bloodColor,
@@ -81,18 +93,22 @@ import { extractRegionGraph } from '@/world/regions';
 import { buildPhysicsArena } from '@/world/physicsArena';
 import { buildWeaverArena } from '@/world/weaverArena';
 import { buildAlchemyArena, buildFrostArena, buildGasArena } from '@/world/provingGrounds';
-import {
-  createDefaultVirtualWorldDef,
-  cropMaterializedWindow,
+import type {
   generateVirtualWindow,
-  materializeChunks,
-  type MaterializedScenePlacement,
-  type VirtualSceneLight,
-  type VirtualSceneObject,
-  type VirtualWorldDef,
+  MaterializedScenePlacement,
+  VirtualSceneLight,
+  VirtualSceneObject,
+  VirtualWorldDef,
 } from '@/world/virtual';
+import { virtualWorldModule, type VirtualWorldModule } from '@/game/lazyVirtualWorld';
 import { isEnemyKind } from '@/core/types';
 import { entityRandom } from '@/core/simRandom';
+import { ExpeditionStorage } from '@/game/persistence/ExpeditionStorage';
+import type { PendingLevelSave } from '@/game/persistence/codec';
+import type { CreatureMind } from '@/creatures/types';
+import { ensureCreatureMind } from '@/creatures/perception';
+import { INTRO_OBJECTIVE } from '@/game/introObjectives';
+import { titleCaseName } from '@/core/strings';
 
 /** Frames the transition curtain stays down after the (synchronous) swap. */
 const CURTAIN_HOLD_MS = 450;
@@ -101,9 +117,12 @@ const CURTAIN_HOLD_MS = 450;
  *  can seal the route ~2 s after entry (d6 seed 5's gold seam sealed the
  *  machine-vault approach — 1,500 wizard cells lost — AFTER the old single
  *  check had already passed). The cascade re-audits until entry settling is
- *  genuinely over; each check only carves when an error-severity issue
- *  exists, so healthy levels pay three cheap validations and nothing more. */
-const SETTLED_FINDABILITY_REPAIR_DELAYS_MS = [300, 1600, 2900, 4400, 6500];
+ *  over; each check only carves when an error-severity issue exists. The
+ *  deadlines also require matching material steps: wall time alone lets a
+ *  paused or overloaded game finish its checks before powder has fallen. */
+// The last two checks cover distant powder at 15 Hz. In d6 seed 1 its portal
+// approach was still receiving falling grains after 445 full material steps.
+const SETTLED_FINDABILITY_REPAIR_DELAYS_MS = [300, 1600, 2900, 4400, 6500, 9000, 12000];
 /** Authored test arenas REBUILD their terrain after generation (buildWeaverArena /
  *  buildPhysicsArena wipe the world and stamp a hand-designed layout). They must
  *  skip the procedural findability repair, which would otherwise "rescue" the now-
@@ -116,12 +135,6 @@ const WAYSTONE_LIGHT_TICKS = 30;
  *  flame-jet burst gaps and re-aiming (4-frame cadence, so 3 ≈ 12 frames). A
  *  longer gutter still fully resets, so a cold bowl never shows a false "almost". */
 const WAYSTONE_HEAT_GRACE = 3;
-/** Fire spells the waystone proximity prompt can offer to equip, best-first. */
-const WAYSTONE_FIRE_CARDS: readonly CardId[] = ['flame', 'emberstorm', 'meteor'];
-/** Cells: walking this close to an unlit waystone raises the help prompt once. */
-const WAYSTONE_PROMPT_RADIUS = 26;
-/** D1 starter water: enough for a first experiment, below a full flask. */
-const FRESH_STARTER_WATER_CELLS = 300;
 /** Campaign Weaver lair webs are background dressing; the authored test arena can go larger. */
 const WEAVER_LAIR_WEB_RADIUS_MIN = 24;
 const WEAVER_LAIR_WEB_RADIUS_MAX = 34;
@@ -135,9 +148,22 @@ const WEAVER_LAIR_WEB_JITTER_MIN = 0.04;
 const WEAVER_LAIR_WEB_JITTER_MAX = 0.12;
 /** Minimum placement distance (cells) between a placed enemy and the level spawn. */
 const POPULATION_SPAWN_CLEARANCE = 220;
-const POPULATION_CLEARANCE_STEPS = [POPULATION_SPAWN_CLEARANCE, 150, 80, 0] as const;
+/** The clearance relaxes when a crowded floor needs it, but never below the
+ *  arrival's safe radius (game/arrival): no foe is seeded where he arrives. */
+const POPULATION_CLEARANCE_STEPS = [POPULATION_SPAWN_CLEARANCE, 150, ARRIVAL_SAFE_RADIUS] as const;
+/** A relocated foe (secureArrival) lands at least this far from the arrival, relaxing to the safe radius. */
+const ARRIVAL_RELOCATE_CLEARANCES = [260, 200, 160, ARRIVAL_SAFE_RADIUS] as const;
 const POPULATION_ATTEMPTS_PER_PASS = 36;
+/** Kinds that may be seeded with their heads under liquid (swimmers, floaters, fliers). */
+const POPULATION_WATER_BREATHERS: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['rillback', 'leviathan', 'wisp', 'bat', 'imp', 'colossus', 'eggs']);
 const ROOST_ATTEMPTS_PER_PASS = 160;
+/** Drain search for liquid in Pell's camp (drainCamp): cells visited, and reach from the camp (cells). */
+const CAMP_DRAIN_SEARCH = 60000;
+const CAMP_DRAIN_REACH = 220;
+/** Kept out of Pell's camp at a floor's start (secureCamp): what burns, what is molten, what eats. */
+const CAMP_HAZARDS: ReadonlySet<number> = new Set<number>([Cell.Fire, Cell.Ember, Cell.Lava, Cell.Oil, Cell.Gunpowder, Cell.Acid, Cell.Toxic, Cell.MarshGas]);
+/** Bosses keep their arenas; a camp is never placed in one. */
+const BOSS_KINDS_NEVER_MOVED: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'rimewarden', 'lenswright']);
 const VIRTUAL_PICKUP_KINDS = new Set<PickupKind>(PICKUP_KINDS);
 
 interface TransitionCurtainCopy {
@@ -178,6 +204,7 @@ const LEGACY_REVIEW_WANDS = [
 ];
 
 export interface SavedEnemyState {
+  mind?: CreatureMind;
   kind: EnemyKind;
   x: number;
   y: number;
@@ -223,11 +250,19 @@ export interface SavedEnemyState {
   rillWet?: number;
   rillChargeCd?: number;
   rillChargeWindup?: number;
+  rillFeedT?: number;
+  weaverMissingLegs?: number;
+  weaverSalvageId?: string;
+  weaverLegDamage?: number[];
   status?: Partial<EntityStatus>;
 }
 
-interface SavedLevelBlob {
+export interface SavedLevelBlob {
+  fauna?: LevelRuntime['fauna'];
+  living?: LevelRuntime['living'];
   id: string;
+  simulationTick?: number;
+  mutationVersion?: number;
   /** RLE cell types; colors regenerate from the seed + a diff recolor pass. */
   rle: string;
   /** Sparse packed RGB cells whose type is unchanged but whose color is scarred. */
@@ -247,7 +282,7 @@ interface SavedLevelBlob {
   mapWaypoint?: MapWaypoint | null;
 }
 
-interface ExpeditionSave {
+export interface ExpeditionSave {
   v: 1;
   /** GEN_VERSION at save time; resume retires saves from other generations
    *  (restoreLevel regenerates pristine worlds from seed — a stale save
@@ -269,12 +304,17 @@ interface ExpeditionSave {
     levit: number;
     maxLevit: number;
     perks: Record<string, true>;
+    legClub?: { durability: number; length: number; owner?: string };
   };
   loadout: WandLoadoutSave;
   /** Full wand runtime, including grant guards/cooldowns. Absent in v1 legacy saves. */
   wands?: WandRuntimeSnapshot;
   /** Material flask belt inventory. Absent in v1 legacy saves. */
   flasks?: FlaskInventorySave;
+  /** The run's phials and ledger (RunDirector). Absent in saves from before runs. */
+  run?: RunSaveState;
+  /** The run's story: pipes heard, Pell's visits, echoes, the Kiln escape (game/story). Absent before wave 3. */
+  story?: StoryRunSave;
   levels: SavedLevelBlob[];
 }
 
@@ -477,6 +517,7 @@ export function snapshotEnemyForSave(e: Enemy): SavedEnemyState {
     bobPhase: e.bobPhase,
   };
   const status = savedStatus(e.status);
+  if (e.mind) saved.mind = { ...e.mind };
   if (status) saved.status = status;
   if (e.sleeping === true) saved.sleeping = true;
   if (e.alerted === true) saved.alerted = true;
@@ -516,6 +557,10 @@ export function snapshotEnemyForSave(e: Enemy): SavedEnemyState {
   if (e.rillWet !== undefined) saved.rillWet = e.rillWet;
   if (e.rillChargeCd !== undefined) saved.rillChargeCd = e.rillChargeCd;
   if (e.rillChargeWindup !== undefined) saved.rillChargeWindup = e.rillChargeWindup;
+  if (e.rillFeedT !== undefined) saved.rillFeedT = e.rillFeedT;
+  if (e.weaverMissingLegs !== undefined) saved.weaverMissingLegs = e.weaverMissingLegs;
+  if (e.weaverSalvageId) saved.weaverSalvageId = e.weaverSalvageId;
+  if (e.weaverLegDamage) saved.weaverLegDamage = [...e.weaverLegDamage];
   return saved;
 }
 
@@ -585,6 +630,26 @@ export function reviveSavedEnemy(se: SavedEnemyState): Enemy {
   if (se.mawStun !== undefined) enemy.mawStun = nonNegativeInt(se.mawStun, 0);
   if (se.rillWet !== undefined) enemy.rillWet = Math.max(0, Math.min(1, finiteNumber(se.rillWet, 0)));
   if (se.rillChargeCd !== undefined) enemy.rillChargeCd = nonNegativeInt(se.rillChargeCd, 0);
+  if (se.rillFeedT !== undefined) enemy.rillFeedT = Math.min(80, nonNegativeInt(se.rillFeedT, 0));
+  if (se.kind === 'weaver') {
+    if (typeof se.weaverSalvageId === 'string') enemy.weaverSalvageId = se.weaverSalvageId.slice(0, 160);
+    enemy.weaverMissingLegs = nonNegativeInt(se.weaverMissingLegs, 0) & 255;
+    if (Array.isArray(se.weaverLegDamage)) enemy.weaverLegDamage = Array.from({ length: 8 }, (_, i) => Math.min(14, nonNegativeInt(se.weaverLegDamage?.[i], 0)));
+  }
+  if (se.mind && typeof se.mind === 'object') {
+    const mind = ensureCreatureMind(enemy, 0);
+    const saved = se.mind;
+    if (typeof saved.id === 'string') mind.id = saved.id.slice(0, 80);
+    mind.phase = nonNegativeInt(saved.phase, mind.phase);
+    for (const key of ['homeX', 'homeY', 'targetX', 'targetY'] as const) mind[key] = finiteNumber(saved[key], mind[key]);
+    for (const key of ['hunger', 'irritation', 'confidence'] as const) mind[key] = Math.max(0, Math.min(1, finiteNumber(saved[key], mind[key])));
+    mind.facing = Math.sign(finiteNumber(saved.facing, 1)) || 1;
+    // Resume observations immediately, retaining individual needs/home/knowledge
+    // without carrying deadlines from a previous session's simulation clock.
+    mind.lastHp = enemy.hp;
+    mind.visible = false;
+    mind.intent = mind.confidence > 0.1 ? 'investigate' : 'forage';
+  }
   return enemy;
 }
 
@@ -610,10 +675,8 @@ export class Levels implements LevelsApi {
   private waystoneCold: number[] = [];
   /** Waystone indices per level id, in the order they were lit (last = respawn anchor). */
   private litOrder = new Map<string, number[]>();
-  /** Re-armed whenever the player is outside every unlit waystone's prompt radius. */
-  private waystonePromptArmed = true;
-  /** A waystone help prompt is open (paused) — suppresses re-triggering. */
-  private waystonePromptOpen = false;
+  /** Waystones (indices) whose help card has been shown on this floor visit (game/waystoneHelp). */
+  private waystoneTaught = new Set<number>();
   /** Last hostile count emitted via enemiesLeft. */
   private lastEnemiesEmit = -1;
   /** Levels already topped up with the review potion belt this session. */
@@ -623,10 +686,25 @@ export class Levels implements LevelsApi {
   /** Guards delayed settled-findability repair against stale level transitions. */
   private findabilityRepairToken = 0;
   private settledFindabilityTimer: ReturnType<typeof setTimeout> | null = null;
+  private settlingRuntime: LevelRuntime | null = null;
+  get findabilityReady(): boolean { return this.current === null || this.settlingRuntime !== this.current; }
 
-  constructor(private ctx: Ctx) {}
+  private readonly storage: ExpeditionStorage;
+  readonly ready: Promise<void>;
+
+  constructor(private ctx: Ctx) {
+    this.storage = new ExpeditionStorage((text) => ctx.events.emit('toast', { text }));
+    this.ready = this.storage.ready;
+  }
+
+  persistenceStatus(): ReturnType<Levels['getPersistenceStatus']> { return this.getPersistenceStatus(); }
+
+  private getPersistenceStatus() { return { ...this.storage.status }; }
+
+  flushSaves(): ReturnType<ExpeditionStorage['flush']> { return this.storage.flush(); }
 
   dispose(): void {
+    this.storage.dispose();
     this.clearTransitionFinishTimer();
     if (this.settledFindabilityTimer !== null) {
       clearTimeout(this.settledFindabilityTimer);
@@ -677,11 +755,14 @@ export class Levels implements LevelsApi {
     const mode = config.mode;
     const worldSource = config.worldSource;
     if (worldSource === 'virtual-world') {
-      if (mode !== 'test') {
+      // An authoring-only prototype in its own chunk (game/lazyVirtualWorld).
+      const virtual = virtualWorldModule();
+      if (mode !== 'test' || !virtual) {
         return {
           ok: false,
-          message:
-            'Chunked virtual worlds are playable as disposable test runs only until streaming persistence lands.',
+          message: !virtual
+            ? 'The chunked virtual world is still loading. Try again in a moment.'
+            : 'Chunked virtual worlds are playable as disposable test runs only until streaming persistence lands.',
           mode,
           worldSource,
           levelId: null,
@@ -701,7 +782,7 @@ export class Levels implements LevelsApi {
         title: 'Opening the descent',
         detail: 'Materializing a disposable test cavern.',
       });
-      const runtime = this.createVirtualTestRuntime(ctx, seed);
+      const runtime = this.createVirtualTestRuntime(ctx, seed, virtual);
       this.enterAdHocRuntime(ctx, runtime, 'EXPLORE THE CHUNKED WORLD PROTOTYPE');
       ctx.events.emit('toast', { text: 'TEST RUN: CHUNKED VIRTUAL WORLD' });
       return {
@@ -760,7 +841,8 @@ export class Levels implements LevelsApi {
     ) {
       ctx.state.debugGodMode = true;
     }
-    this.applyLoadoutPreset(ctx, preset);
+    const starterKit: KitId = config.starterKit ?? DEFAULT_KIT;
+    this.applyLoadoutPreset(ctx, preset, starterKit);
     // Difficulty cushion: scale the loadout's max HP, then top off (the kit can
     // still override below). Level 3 = ×1.0, so the shipped game is untouched.
     const hpScale = difficultyMods(ctx.state).playerHp;
@@ -769,15 +851,20 @@ export class Levels implements LevelsApi {
       ctx.player.hp = ctx.player.maxHp;
     }
     if (config.kit) this.applyTestKit(ctx, config.kit);
+    // The run begins before the first checkpoint so the save carries its phials.
+    ctx.run?.beginRun(ctx, { seed, kit: starterKit, daily: config.daily ?? null, tracked: mode === 'normal' });
+    ctx.story?.beginRun({ tracked: mode === 'normal' && !ctx.state.debugGodMode });
     this.enterLevel(ctx, levelId);
 
     const runtime = this.current;
     const label = runtime?.def.name ?? levelId.toUpperCase();
     const prefix = mode === 'test' ? 'Test run' : 'Fresh expedition';
-    const diff = difficultyMods(ctx.state);
-    ctx.events.emit('toast', {
-      text: `${prefix.toUpperCase()}: ${label} — ${diff.roman} ${diff.name.toUpperCase()}`,
-    });
+    // A player's run announces itself with the floor's title card; only an
+    // authoring test run still names its difficulty tier, for the tester.
+    if (mode === 'test') {
+      const diff = difficultyMods(ctx.state);
+      ctx.events.emit('toast', { text: `${prefix}: ${titleCaseName(label)} · ${diff.roman} ${diff.name}` });
+    }
     return {
       ok: true,
       message: `${prefix} started at ${label}.`,
@@ -844,30 +931,29 @@ export class Levels implements LevelsApi {
     }
     if (this.tryResumeExpedition(ctx)) return;
     this.expeditionSeed = ctx.state.worldSeed >>> 0;
+    ctx.run?.beginRun(ctx, {
+      seed: this.expeditionSeed,
+      kit: DEFAULT_KIT,
+      daily: null,
+      tracked: ctx.state.playtestSource === null,
+    });
+    ctx.story?.beginRun({ tracked: ctx.state.playtestSource === null });
     this.enterLevel(ctx, START_LEVEL);
-  }
-
-  private firstLevelBenchGateSatisfied(ctx: Ctx, runtime: LevelRuntime): boolean {
-    if (runtime.def.id !== START_LEVEL || runtime.def.depth !== 1 || runtime.def.branch) return true;
-    return ctx.wands.wands.some((wand) => wand.cards.includes(INTRO_REWARD_CARD));
-  }
-
-  private firstLevelBenchGateCue(ctx: Ctx, runtime: LevelRuntime): string {
-    if (this.firstLevelBenchGateSatisfied(ctx, runtime)) return 'RETURN TO THE PORTAL';
-    if (ctx.wands.collection.includes(INTRO_REWARD_CARD)) return 'SLOT HEAVY AT THE WAND BENCH';
-    if (runtime.spellLab) return 'CLAIM HEAVY FROM THE SPELL LAB';
-    return 'USE THE WAND BENCH BEFORE DESCENDING';
   }
 
   private bossObjective(kind: EnemyKind | undefined): string {
     const resolved = kind ?? 'colossus';
     switch (resolved) {
       case 'leviathan':
-        return 'DRAIN THE SUNKEN LEVIATHAN';
+        return 'Drain the Sunken Leviathan.';
       case 'colossus':
-        return 'SLAY THE KILN COLOSSUS';
+        return 'Bring down the Kiln Colossus.';
+      case 'rimewarden':
+        return 'Thaw or shatter the Rime Warden.';
+      case 'lenswright':
+        return 'Blind the Lenswright.';
       default:
-        return `SLAY THE ${resolved.toUpperCase()}`;
+        return `Bring down the ${resolved}.`;
     }
   }
 
@@ -887,8 +973,11 @@ export class Levels implements LevelsApi {
     const surfaceSpawn = runtime.surfaceSpawn;
     if (surfaceSpawn && !runtime.surfaceDescended && player.y > surfaceSpawn.y + SURFACE_DESCENT_DROP) {
       runtime.surfaceDescended = true;
-      ctx.events.emit('toast', { text: 'INTO THE DEPTHS' });
+      ctx.events.emit('toast', { text: 'Into the depths.' });
     }
+
+    // The arrival's grace ends the moment he fights (game/arrival).
+    if (player.firing && ctx.state.frameCount < (ctx.state.arrivalGraceUntil ?? -1)) ctx.state.arrivalGraceUntil = ctx.state.frameCount;
 
     // Floor safety: terrain no longer opens into a hidden descent shaft.
     if (player.y >= HEIGHT - 10) {
@@ -904,28 +993,40 @@ export class Levels implements LevelsApi {
     if (portal) {
       const pdx = player.x - portal.x;
       const pdy = player.y - 6 - portal.y;
-      const near = pdx * pdx + pdy * pdy < 100;
-      if (near && runtime.keyTaken) {
-        if (!this.firstLevelBenchGateSatisfied(ctx, runtime)) {
-          if (ctx.state.frameCount % 90 === 0) {
-            const cue = this.firstLevelBenchGateCue(ctx, runtime);
-            ctx.events.emit('toast', { text: cue });
-            ctx.events.emit('objectiveChanged', { text: cue });
-            ctx.events.emit('refugePing');
-          }
-          return;
+      let near = pdx * pdx + pdy * pdy < 100;
+      // D1: the engine made the bell, and the bell has opened the floor grate
+      // (LivingExpedition slides its real leaves aside), so the player drops in.
+      const engineReady = !runtime.living || (runtime.living.tea?.completed === true && worksGateOpen(ctx.world));
+      // The open grate takes whoever steps onto it. QA stood on its lip — the
+      // body half over the pit, feet on the floor beside it — and nothing
+      // happened: a body overlapping the open pit slides off the lip into it,
+      // and the descent fires once its feet are down in the pit.
+      if (runtime.living && runtime.keyTaken && engineReady && !player.dead) {
+        const G = WORKS_GATE;
+        const overPit = player.x + PLAYER_HALF_W >= G.pit.x0 && player.x - PLAYER_HALF_W <= G.pit.x1 &&
+          player.y >= G.floor - 3 && player.y <= G.pit.y1 + 6;
+        if (overPit && player.y <= G.floor + 1) {
+          const dir = Math.sign(G.x - player.x);
+          const nx = player.x + dir * 0.6;
+          if (dir !== 0 && ctx.physics.entityFree(Math.floor(nx), Math.floor(player.y), PLAYER_HALF_W, PLAYER_H)) player.x = nx;
         }
+        if (overPit && player.y > G.floor + 1) near = true;
+      }
+      if (near && runtime.keyTaken && engineReady) {
         if (!portal.open) {
           portal.open = true;
           ctx.audio.portalWhoosh();
-          ctx.events.emit('toast', { text: 'THE PORTAL AWAKENS' });
+          ctx.events.emit('toast', { text: runtime.living ? 'The bell rings in the lock. The lower gate opens.' : 'The key turns. The portal wakes.' });
         }
         const next = runtime.def.nextLevelId;
         if (next) {
-          // The Sanctum opens between depths: boon draft + shop, then descend.
-          ctx.sanctum.open(ctx, () => {
+          // The Sanctum opens between depths: boon draft + shop and, where the
+          // floor below has two doors, the choice of door; then descend.
+          const doors = nextDoors(runtime.def.id);
+          ctx.sanctum.open(ctx, (chosen) => {
+            const id = chosen && doors.includes(chosen) && LEVELS[chosen] ? chosen : next;
             this.leaveLevel();
-            this.enterLevel(ctx, next);
+            this.enterLevel(ctx, id);
           });
         } else if (ctx.state.frameCount % 240 === 0) {
           ctx.events.emit('toast', {
@@ -934,58 +1035,15 @@ export class Levels implements LevelsApi {
         }
         return;
       }
-      if (near && !runtime.keyTaken && ctx.state.frameCount % 90 === 0) {
+      // Carrying the bell, the grate is already ringing open: no "Sealed" nag.
+      if (near && (!runtime.keyTaken || !engineReady) && !(runtime.living && runtime.keyTaken) && ctx.state.frameCount % 90 === 0) {
         ctx.events.emit('toast', {
-          text: 'SEALED — THE GOLDEN KEY IS MISSING',
+          text: runtime.living
+            ? (runtime.living.tea?.completed
+              ? 'Sealed. Bring the brass bell from the end of the engine’s catwalk.'
+              : 'Sealed. The grate answers to a brass bell, and only the Bell & Tea Engine above the Intake makes one.')
+            : 'Sealed. It wants the golden key.',
         });
-      }
-    }
-
-    // GILDED ARCH: the two-way branch gate. Stepping between the pillars
-    // crosses over; the destination's own arch is the way back. Arrival uses
-    // the arch's authored back-spot (outside the trigger circle), never the
-    // level spawn — "returning to the same depth" must mean the same SPOT.
-    const arch = runtime.vaultArch;
-    if (arch) {
-      const adx = player.x - arch.x;
-      const ady = player.y - arch.y;
-      if (adx * adx + ady * ady < 49) {
-        const destId = runtime.def.branch ? vaultHostId(this.activeExpeditionSeed(ctx)) : 'vault';
-        if (LEVELS[destId]) {
-          ctx.audio.portalWhoosh();
-          this.leaveLevel();
-          this.checkpointSaveSuppression++;
-          try {
-            this.enterLevel(ctx, destId);
-          } finally {
-            this.checkpointSaveSuppression--;
-          }
-          const dest = this.current;
-          if (dest?.vaultArch) {
-            player.x = dest.vaultArch.backX;
-            player.y = dest.vaultArch.backY;
-            player.vx = 0;
-            player.vy = 0;
-            player.fx = 0;
-            player.fy = 0;
-            ctx.camera.snapTo(player.x, player.y);
-          }
-          this.saveExpedition(ctx);
-          return;
-        }
-      }
-      // the arch breathes: a slow shimmer of golden motes (in-view only)
-      if (ctx.state.frameCount % 9 === 0 && Math.abs(player.x - arch.x) < 300) {
-        ctx.particles.spawn(
-          arch.x - 5 + entityRandom() * 10,
-          arch.y - 1 - entityRandom() * 5,
-          (entityRandom() - 0.5) * 0.15,
-          -0.2 - entityRandom() * 0.25,
-          null,
-          packRGB(255, 210 + Math.floor(entityRandom() * 40), 120),
-          26 + Math.floor(entityRandom() * 18),
-          { glow: 1.0, grav: -0.002 },
-        );
       }
     }
 
@@ -1055,6 +1113,11 @@ export class Levels implements LevelsApi {
   }
 
   playVirtualWindow(ctx: Ctx, def: VirtualWorldDef, center: { x: number; y: number }, previewRadius: number): void {
+    const virtual = virtualWorldModule();
+    if (!virtual) {
+      ctx.events.emit('toast', { text: 'THE CHUNKED WORLD IS STILL LOADING — TRY AGAIN' });
+      return;
+    }
     this.enterPlayMode(ctx);
     this.resetRunState(ctx, { clearSave: false });
     ctx.state.worldSeed = def.seed >>> 0;
@@ -1065,7 +1128,7 @@ export class Levels implements LevelsApi {
       title: 'Opening playtest',
       detail: 'Materializing the tuned virtual window.',
     });
-    const runtime = this.createVirtualWindowRuntime(ctx, def, center, previewRadius);
+    const runtime = this.createVirtualWindowRuntime(ctx, def, center, previewRadius, virtual);
     this.enterAdHocRuntime(ctx, runtime, 'EXPLORE THE TUNED CHUNKED WORLD');
     ctx.events.emit('toast', { text: 'TEST RUN: BUILDER VIRTUAL WORLD' });
   }
@@ -1152,6 +1215,7 @@ export class Levels implements LevelsApi {
       levit: ctx.player.levit,
       maxLevit: ctx.player.maxLevit,
       perks: { ...ctx.player.perks } as Record<string, true>,
+      legClub: ctx.player.legClub ? { durability: ctx.player.legClub.durability, length: ctx.player.legClub.length, owner: ctx.player.legClub.owner } : undefined,
       ...override,
     };
   }
@@ -1160,13 +1224,24 @@ export class Levels implements LevelsApi {
     if (!this.currentId || this.currentId === 'custom') return;
     if (!LEVELS[this.currentId]) return;
     if (ctx.state.playtestSource !== null) return;
+    // A finished run has nothing left to resume; its save was retired.
+    if (ctx.run?.over) return;
     if (this.debugTainted(ctx)) return;
     const currentId = this.currentId;
     // Sync the live hostile roster into the current runtime before reading it.
     this.leaveLevel();
     const blobs: SavedLevelBlob[] = [];
+    const pending: Array<SavedLevelBlob | PendingLevelSave> = [];
+    const asynchronous = this.storage.status.backend === 'indexeddb-worker';
     for (const [id, rt] of this.levels) {
       if (id === 'custom') continue;
+      if (asynchronous) {
+        // Frozen levels reuse their last encoded blob; active buffers are copied
+        // once here, then transferred. RLE, JSON and IndexedDB run off-thread.
+        const cached = id === currentId ? undefined : this.storage.cached?.levels.find((level) => level.id === id && level.simulationTick === rt.world.simulationTick && level.mutationVersion === rt.world.mutationVersion);
+        pending.push(cached ?? this.snapshotLevelForWorker(id, rt));
+        continue;
+      }
       if (id === currentId) {
         blobs.push(this.serializeLevel(id, rt));
         continue;
@@ -1180,7 +1255,7 @@ export class Levels implements LevelsApi {
     }
     // Levels saved earlier but not visited this session keep their old blobs.
     for (const [id, blob] of this.savedBlobs) {
-      if (!this.levels.has(id)) blobs.push(blob);
+      if (!this.levels.has(id)) (asynchronous ? pending : blobs).push(blob);
     }
     const expeditionSeed = this.activeExpeditionSeed(ctx);
     const save: ExpeditionSave = {
@@ -1195,12 +1270,19 @@ export class Levels implements LevelsApi {
       loadout: ctx.wands.snapshotLoadout(),
       wands: this.snapshotWandsForSave(ctx),
       flasks: this.snapshotFlasks(ctx),
+      run: ctx.run?.snapshotForSave() ?? undefined,
+      story: ctx.story?.snapshotForSave() ?? undefined,
       levels: blobs,
     };
+    if (asynchronous) {
+      const { levels: _levels, ...metadata } = save;
+      this.storage.save({ metadata, levels: pending });
+      return;
+    }
     try {
       localStorage.setItem(EXPEDITION_KEY, JSON.stringify(save));
     } catch {
-      // quota — the expedition just lives and dies with the tab
+      ctx.events.emit('toast', { text: 'Save unavailable: storage is full or blocked. Your previous checkpoint is retained.' });
     }
   }
 
@@ -1212,6 +1294,7 @@ export class Levels implements LevelsApi {
   }
 
   hasSavedExpedition(): boolean {
+    if (this.storage.status.backend === 'indexeddb-worker') return this.storage.cached !== null;
     try {
       return localStorage.getItem(EXPEDITION_KEY) !== null;
     } catch {
@@ -1220,6 +1303,7 @@ export class Levels implements LevelsApi {
   }
 
   abandonExpedition(): void {
+    this.storage.clear();
     try {
       localStorage.removeItem(EXPEDITION_KEY);
     } catch {
@@ -1366,10 +1450,15 @@ export class Levels implements LevelsApi {
     ctx.wands.resetLoadout();
   }
 
-  private applyLoadoutPreset(ctx: Ctx, preset: RunLoadoutPreset): void {
+  private applyLoadoutPreset(ctx: Ctx, preset: RunLoadoutPreset, kitId: KitId = DEFAULT_KIT): void {
     ctx.wands.resetLoadout();
     if (preset === 'fresh') {
-      ctx.flask.setSlot(0, Cell.Water, FRESH_STARTER_WATER_CELLS);
+      // A fresh run starts with its kit and nothing else: previously
+      // discovered cards feed the reward pools, never the starting hand.
+      const kit = KIT_DEFS[kitId] ?? KIT_DEFS[DEFAULT_KIT];
+      ctx.wands.applyStarterLoadout(kit.wands, kit.collection);
+      ctx.flask.clearSlots();
+      kit.flasks.forEach((flask, index) => ctx.flask.setSlot(index, flask.material, flask.count));
       ctx.flask.selectSlot(0);
       return;
     }
@@ -1443,9 +1532,9 @@ export class Levels implements LevelsApi {
     return ctx.wands.wands.some((wand) => wand.cards.includes(card));
   }
 
-  private createVirtualTestRuntime(ctx: Ctx, seed: number): LevelRuntime {
-    const def = createDefaultVirtualWorldDef(seed);
-    const chunks = generateVirtualWindow(def, -3, -1, 3, 4);
+  private createVirtualTestRuntime(ctx: Ctx, seed: number, virtual: VirtualWorldModule): LevelRuntime {
+    const def = virtual.createDefaultVirtualWorldDef(seed);
+    const chunks = virtual.generateVirtualWindow(def, -3, -1, 3, 4);
     return this.createVirtualRuntimeFromChunks(
       ctx,
       def,
@@ -1456,6 +1545,7 @@ export class Levels implements LevelsApi {
       },
       'virtual-test',
       'CHUNKED VIRTUAL WORLD',
+      virtual,
     );
   }
 
@@ -1464,12 +1554,13 @@ export class Levels implements LevelsApi {
     def: VirtualWorldDef,
     center: { x: number; y: number },
     previewRadius: number,
+    virtual: VirtualWorldModule,
   ): LevelRuntime {
     const centerCx = Math.floor(center.x / def.chunkSize);
     const centerCy = Math.floor(center.y / def.chunkSize);
     const radiusX = Math.max(Math.floor(previewRadius), Math.ceil((WIDTH / def.chunkSize - 1) / 2));
     const radiusY = Math.max(Math.floor(previewRadius), Math.ceil((HEIGHT / def.chunkSize - 1) / 2));
-    const chunks = generateVirtualWindow(
+    const chunks = virtual.generateVirtualWindow(
       def,
       centerCx - radiusX,
       centerCy - radiusY,
@@ -1483,6 +1574,7 @@ export class Levels implements LevelsApi {
       center,
       'virtual-builder-test',
       'BUILDER VIRTUAL WORLD',
+      virtual,
     );
   }
 
@@ -1493,13 +1585,14 @@ export class Levels implements LevelsApi {
     center: { x: number; y: number },
     id: string,
     name: string,
+    virtual: VirtualWorldModule,
   ): LevelRuntime {
-    const materialized = materializeChunks(chunks);
+    const materialized = virtual.materializeChunks(chunks);
     const maxSrcX = Math.max(0, materialized.world.width - WIDTH);
     const maxSrcY = Math.max(0, materialized.world.height - HEIGHT);
     const wantedSrcX = Math.floor(center.x - materialized.originX - WIDTH / 2);
     const wantedSrcY = Math.floor(center.y - materialized.originY - HEIGHT / 2);
-    const crop = cropMaterializedWindow(
+    const crop = virtual.cropMaterializedWindow(
       materialized,
       Math.max(0, Math.min(maxSrcX, wantedSrcX)),
       Math.max(0, Math.min(maxSrcY, wantedSrcY)),
@@ -1877,8 +1970,10 @@ export class Levels implements LevelsApi {
     // Life on transient cells (fire/ember/smoke/steam) is noise a second from
     // now — skipping it keeps multi-level saves well inside localStorage quota.
     const life: Array<[number, number]> = [];
-    const types = rt.world.types;
-    const lifeArr = rt.world.life;
+    const types = rt.world.types.slice();
+    const lifeArr = rt.world.life.slice();
+    this.ctx.vineStrands?.writeSnapshotCells?.(rt.world, types, lifeArr);
+    this.ctx.flora?.writeSnapshotCells?.(rt.world, types, lifeArr);
     for (let i = 0; i < lifeArr.length; i++) {
       if (lifeArr[i] === 0) continue;
       const t = types[i];
@@ -1887,7 +1982,9 @@ export class Levels implements LevelsApi {
     }
     return {
       id,
-      rle: rleEncode(rt.world.types),
+      rle: rleEncode(types),
+      fauna: rt.fauna,
+      living: rt.living,
       colorOverrides: this.serializeColorOverrides(rt.world),
       life,
       charge: sparseNonZeroPairs(rt.world.charge),
@@ -1902,6 +1999,36 @@ export class Levels implements LevelsApi {
       enemies: rt.enemies.map(snapshotEnemyForSave),
       mapWaypoint: sanitizeMapWaypoint(rt.mapWaypoint, rt.world),
       ...(rt.weaverLairWebs.length > 0 ? { weaverLairWebs: rt.weaverLairWebs } : {}),
+    };
+  }
+
+  private snapshotLevelForWorker(id: string, rt: LevelRuntime): PendingLevelSave {
+    const types = rt.world.types.slice(), life = rt.world.life.slice();
+    this.ctx.vineStrands?.writeSnapshotCells?.(rt.world, types, life);
+    this.ctx.flora?.writeSnapshotCells?.(rt.world, types, life);
+    return {
+      metadata: structuredClone({
+        id,
+        simulationTick: rt.world.simulationTick,
+        mutationVersion: rt.world.mutationVersion,
+        fauna: rt.fauna,
+        living: rt.living,
+        colorOverrides: this.serializeColorOverrides(rt.world),
+        waystones: rt.waystones,
+        pickups: rt.pickups.map(snapshotPickupForSave),
+        mechanisms: rt.mechanisms.map(sanitizeMechanismForSave),
+        runeVaults: rt.runeVaults,
+        keyTaken: rt.keyTaken,
+        portalOpen: rt.portal?.open ?? false,
+        litOrder: this.litOrder.get(id) ?? [],
+        enemies: rt.enemies.map(snapshotEnemyForSave),
+        mapWaypoint: sanitizeMapWaypoint(rt.mapWaypoint, rt.world),
+        weaverLairWebs: rt.weaverLairWebs,
+      }),
+      types,
+      life,
+      charge: rt.world.charge.slice(),
+      explored: rt.explored.slice(),
     };
   }
 
@@ -1943,15 +2070,23 @@ export class Levels implements LevelsApi {
   }
 
   private retireSavedExpedition(ctx: Ctx, text: string): void {
-    this.abandonExpedition();
-    ctx.events.emit('toast', { text });
+    // Preserve an incompatible checkpoint for recovery/export before the next
+    // run replaces the active slot. Starting a run never erases this archive.
+    this.storage.archive();
+    try {
+      const raw = localStorage.getItem(EXPEDITION_KEY);
+      if (raw) { localStorage.setItem(`${EXPEDITION_KEY}-archive`, raw); localStorage.removeItem(EXPEDITION_KEY); }
+    } catch { /* Keep the original if the backup cannot be written. */ }
+    this.savedBlobs.clear(); this.blobCache.clear();
+    ctx.events.emit('toast', { text: text.replace('RETIRED', 'ARCHIVED — start a new descent') });
   }
 
   /** Resume a saved expedition: hero + loadout now, levels lazily on entry. */
   private tryResumeExpedition(ctx: Ctx): boolean {
     let save: ExpeditionSave | null = null;
     try {
-      const raw = localStorage.getItem(EXPEDITION_KEY);
+      const raw = this.storage.status.backend === 'indexeddb-worker' ? null : localStorage.getItem(EXPEDITION_KEY);
+      if (this.storage.status.backend === 'indexeddb-worker') save = this.storage.cached;
       if (raw) {
         const parsed = JSON.parse(raw) as unknown;
         if (!this.isExpeditionSaveShape(parsed)) {
@@ -2001,12 +2136,19 @@ export class Levels implements LevelsApi {
       p.maxLevit = save.player.maxLevit;
       p.levit = save.player.levit;
       p.perks = { ...save.player.perks } as typeof p.perks;
+      const club = save.player.legClub;
+      p.legClub = club && finiteNumber(club.durability, 0) > 0 ? {
+        durability: Math.min(6, nonNegativeInt(club.durability, 0)), length: Math.max(26, Math.min(44, finiteNumber(club.length, 34))),
+        swingT: 0, cooldown: 0, angle: 0, owner: typeof club.owner === 'string' ? club.owner.slice(0, 160) : undefined,
+      } : undefined;
       if (save.wands) ctx.wands.restoreRuntimeState(save.wands);
       else {
         ctx.wands.loadLoadout(save.loadout);
         ctx.wands.markDepthGrantsThrough(LEVELS[save.currentId].depth);
       }
       this.restoreFlasks(ctx, save.flasks);
+      ctx.run?.restoreFromSave(ctx, save.run);
+      ctx.story?.restoreFromSave(save.story);
 
       this.checkpointSaveSuppression++;
       try {
@@ -2054,10 +2196,10 @@ export class Levels implements LevelsApi {
     ctx.enemies.length = 0;
 
     const expeditionSeed = this.activeExpeditionSeed(ctx);
-    const seed = (expeditionSeed ^ this.hashString(def.id)) >>> 0;
-    const pristine = ctx.worldgen.generateLevel(ctx, def, seed, {
-      hostArch: def.id === vaultHostId(expeditionSeed),
-    });
+    const seed = levelSeedFor(expeditionSeed, def.id);
+    const pristine = ctx.worldgen.generateLevel(ctx, def, seed);
+    // Settled on the pristine cells, exactly as createLevel did (game/arrival).
+    const spawn = this.settledSpawn(ctx, def, pristine.spawn, pristine.boss, pristine.pickups);
 
     const savedTypes = new Uint8Array(world.types.length);
     if (!rleDecodeExact(blob.rle, savedTypes)) throw new Error(`Saved level "${def.id}" RLE length mismatch`);
@@ -2102,10 +2244,12 @@ export class Levels implements LevelsApi {
       world,
       enemies: ctx.enemies.slice(),
       waystones: blob.waystones,
+      fauna: restoreFauna(blob.fauna),
+      ...(def.id === 'd1' ? { living: restoreLiving(blob.living) } : {}),
       exit: pristine.exit,
       explored,
-      spawn: pristine.spawn,
-      regions: extractRegionGraph(ctx.world, pristine.spawn, {
+      spawn,
+      regions: extractRegionGraph(ctx.world, spawn, {
         x: pristine.exit.x,
         y: pristine.exit.sealY - 12,
       }),
@@ -2126,7 +2270,12 @@ export class Levels implements LevelsApi {
       ...(pristine.decors.length > 0 ? { decors: pristine.decors } : {}),
       ...(pristine.refuge ? { refuge: pristine.refuge } : {}),
       ...(pristine.spellLab ? { spellLab: pristine.spellLab } : {}),
-      ...(pristine.vaultArch ? { vaultArch: pristine.vaultArch } : {}),
+      // Light wave: designed darkness and lumen blooms are static authored data
+      // (a bloom restores furled; its update clears any petals the save kept).
+      ...(pristine.darkZones?.length ? { darkZones: pristine.darkZones } : {}),
+      ...(pristine.lumenBlooms?.length ? { lumenBlooms: pristine.lumenBlooms } : {}),
+      // STORY: pipes, camp, valve and flue are static authored data too.
+      ...(pristine.story ? { story: pristine.story } : {}),
       mapWaypoint: sanitizeMapWaypoint(blob.mapWaypoint, world),
       weaverLairWebs: sanitizeWeaverLairWebs(blob.weaverLairWebs),
     });
@@ -2167,6 +2316,9 @@ export class Levels implements LevelsApi {
   respawnPoint(): { x: number; y: number } | null {
     const runtime = this.current;
     if (!runtime) return null;
+    // STORY: during the Kiln escape a death returns to the foot of the flue.
+    const escape = this.ctx.story?.respawnPoint();
+    if (escape) return escape;
     const order = this.litOrder.get(runtime.def.id);
     if (order && order.length > 0) {
       // litOrder is restored verbatim from the save blob while waystones are
@@ -2198,6 +2350,7 @@ export class Levels implements LevelsApi {
     if (!runtime) return;
     runtime.enemies.length = 0;
     runtime.enemies.push(...this.ctx.enemies);
+    if (this.ctx.critters) runtime.fauna = this.ctx.critters.list.map(c => ({ ...c }));
   }
 
   /**
@@ -2210,10 +2363,10 @@ export class Levels implements LevelsApi {
     if (!def) return;
     this._transitioning = true;
 
-    this.showTransitionCurtain(ctx, {
-      title: 'Opening the descent',
-      detail: `Preparing ${def.name}.`,
-    });
+    const floor = floorOf(id);
+    this.showTransitionCurtain(ctx, floor > 0
+      ? { title: floorDisplayName(id), detail: `Floor ${floor} of ${FLOORS_TOTAL}` }
+      : { title: 'Opening the descent', detail: `Preparing ${def.name}.` });
 
     // This level is about to become CURRENT and mutate — its cached blob dies.
     this.blobCache.delete(id);
@@ -2257,6 +2410,8 @@ export class Levels implements LevelsApi {
     // the wizard OUT ON THE SURFACE (the Noita-style intro) — once he has dropped
     // down the cave mouth, every later arrival/respawn uses the cave spawn.
     const player = ctx.player;
+    // The settled spawn may have lost its footing since (an arrival repair tunnel, a scar): settle again.
+    this.ensureArrivalFooting(ctx, runtime);
     const arrival = introArrivalSpawn(runtime);
     player.x = arrival.x;
     player.y = arrival.y;
@@ -2272,13 +2427,16 @@ export class Levels implements LevelsApi {
     ctx.playerCtl?.resetTransientState?.(ctx);
     clearFrameStops(ctx);
     ctx.camera.snapTo(player.x, player.y);
+    // A SAFE ARRIVAL (game/arrival): room around him, and a grace while the floor's name is up.
+    ctx.state.arrivalGraceUntil = ctx.state.frameCount + ARRIVAL_GRACE_TICKS;
+    this.secureArrival(ctx, runtime, arrival);
+    this.secureCamp(ctx, runtime);
 
     this.currentId = id;
     this.scheduleSettledFindabilityRepair(ctx, runtime);
     this.waystoneHeat = new Array<number>(runtime.waystones.length).fill(0);
     this.waystoneCold = new Array<number>(runtime.waystones.length).fill(0);
-    this.waystonePromptArmed = true;
-    this.waystonePromptOpen = false;
+    this.waystoneTaught.clear();
     this.lastEnemiesEmit = ctx.enemies.length;
     if (ctx.state.debugGodMode) {
       grantFullReviewKit(player);
@@ -2308,21 +2466,176 @@ export class Levels implements LevelsApi {
         ? 'STUDY THE WEAVER LAIR'
         : runtime.portal
         ? runtime.keyTaken
-          ? this.firstLevelBenchGateSatisfied(ctx, runtime)
-            ? 'RETURN TO THE PORTAL'
-            : this.firstLevelBenchGateCue(ctx, runtime)
-          : 'FIND THE GOLDEN KEY'
+          ? INTRO_OBJECTIVE.returnPortal
+          : INTRO_OBJECTIVE.findKey
         : runtime.boss
           ? this.bossObjective(runtime.boss.kind)
-          : def.branch
-            ? 'PLUNDER THE HOARD — THE ARCH LEADS HOME'
-            : 'THE DEPTHS END HERE — SURVIVE',
+          : 'The Works end here. Survive them.',
     });
 
     this.finishTransitionWithCurtain(ctx);
 
     // Crossing a threshold is a natural checkpoint.
     if (this.checkpointSaveSuppression === 0) this.saveExpedition(ctx);
+  }
+
+  /**
+   * The generated spawn settled onto footing (game/arrival), clear of the
+   * floor's boss arena. D1 is hand-built (its cave spawn is authored) and the
+   * test arenas rebuild their world after generation: both keep theirs.
+   */
+  private settledSpawn(
+    ctx: Ctx,
+    def: LevelDef,
+    spawn: { x: number; y: number },
+    boss: { x: number; y: number; kind?: EnemyKind } | null,
+    pickups: readonly Pickup[],
+  ): { x: number; y: number } {
+    if (def.id === 'd1' || AUTHORED_TEST_ARENAS.has(def.id)) return spawn;
+    const arena = bossArenaRect(boss);
+    const settled = settleArrival(ctx, spawn, arena ? [arena] : [], pickups.filter((p) => !p.taken));
+    if (settled.x !== spawn.x || settled.y !== spawn.y) ctx.telemetry.count(`arrival.settled.${def.id}`);
+    return settled;
+  }
+
+  /** Re-settle a spawn that no longer stands (the initial findability repair runs after the settle). */
+  private ensureArrivalFooting(ctx: Ctx, runtime: LevelRuntime): void {
+    const id = runtime.def.id;
+    if (id === 'd1' || runtime.living || AUTHORED_TEST_ARENAS.has(id) || runtime.def.id === 'custom') return;
+    const arena = bossArenaRect(runtime.boss);
+    const avoid = arena ? [arena] : [];
+    const pickups = runtime.pickups.filter((p) => !p.taken);
+    if (arrivalStandable(ctx, Math.round(runtime.spawn.x), Math.round(runtime.spawn.y), avoid, arrivalPickupRests(ctx, pickups))) return;
+    const settled = settleArrival(ctx, runtime.spawn, avoid, pickups);
+    if (settled.x === runtime.spawn.x && settled.y === runtime.spawn.y) return;
+    runtime.spawn = settled;
+    ctx.telemetry.count(`arrival.resettled.${id}`);
+  }
+
+  /**
+   * No hostile waits at the arrival (game/arrival): anything within the safe
+   * radius — with a sight line, or close behind rock — is RELOCATED to a spot
+   * its kind may live in (the population's own habitat rules and clearance,
+   * bats to a roost), never deleted. Population placement already keeps its
+   * distance; this catches what it does not own (a prefab's foe, a wanderer
+   * on a re-entry). D1 and the test arenas are authored and keep theirs.
+   */
+  private secureArrival(ctx: Ctx, runtime: LevelRuntime, at: { x: number; y: number }): void {
+    const id = runtime.def.id;
+    if (runtime.living || AUTHORED_TEST_ARENAS.has(id)) return;
+    const threats = ctx.enemies.filter((e) => arrivalThreat(ctx, e, at));
+    if (threats.length === 0) return;
+    const reach = wizardMask(runtime);
+    const rng = new Rng(hashSeed(levelSeedFor(this.activeExpeditionSeed(ctx), id), 'arrival-safety'));
+    for (const e of threats) {
+      const def = ctx.enemyCtl.defs[e.kind];
+      const roost = e.kind === 'bat' && e.sleeping ? this.findRoostSpot(ctx, rng, at, runtime.regions, reach) : null;
+      const spot = roost
+        ? { x: roost.x, y: roost.y + 4 }
+        : this.findPopulationSpot(ctx, rng, at, runtime.regions, reach, def.halfW, def.h, {
+            ...this.populationHabitatOptions(ctx, e.kind),
+            clearances: ARRIVAL_RELOCATE_CLEARANCES,
+          });
+      if (!spot) {
+        ctx.telemetry.count(`arrival.unrelocated.${id}.${e.kind}`);
+        continue;
+      }
+      relocateCreature(e, spot.x, spot.y);
+      ctx.telemetry.count(`arrival.relocated.${id}.${e.kind}`);
+    }
+  }
+
+  /**
+   * Pell's camp is a haven (config/CAMP_HAVEN_RADIUS): no creature is left
+   * living in it — relocated like the arrival's, never deleted — and no fire,
+   * ember, lava, oil, powder or acid is left in the camp itself (the cells
+   * really go; a burning plant or a lava lick beside the bedroll set him alight
+   * while he read Pell's last page). Idempotent: a camp already clear is left alone.
+   */
+  private secureCamp(ctx: Ctx, runtime: LevelRuntime): void {
+    const camp = runtime.story?.camp;
+    if (!camp || AUTHORED_TEST_ARENAS.has(runtime.def.id)) return;
+    // Every floor, the hand-built Bellows too: no one sits in a puddle.
+    this.drainCamp(ctx, runtime, camp);
+    if (runtime.living) return;
+    const hx = camp.x, hy = camp.floorY - 10;
+    const inside = ctx.enemies.filter((e) => e.hp > 0 && !BOSS_KINDS_NEVER_MOVED.has(e.kind) && (e.x - hx) ** 2 + (e.y - 6 - hy) ** 2 < CAMP_HAVEN_RADIUS ** 2);
+    if (inside.length) {
+      const reach = wizardMask(runtime);
+      const rng = new Rng(hashSeed(levelSeedFor(this.activeExpeditionSeed(ctx), runtime.def.id), 'camp-haven'));
+      const at = { x: hx, y: camp.floorY };
+      for (const e of inside) {
+        const def = ctx.enemyCtl.defs[e.kind];
+        const spot = this.findPopulationSpot(ctx, rng, at, runtime.regions, reach, def.halfW, def.h, {
+          ...this.populationHabitatOptions(ctx, e.kind),
+          clearances: [CAMP_HAVEN_RADIUS + 90, CAMP_HAVEN_RADIUS + 40],
+          extra: (x, y) => Math.hypot(x - runtime.spawn.x, y - runtime.spawn.y) >= ARRIVAL_SAFE_RADIUS,
+        });
+        if (spot) { relocateCreature(e, spot.x, spot.y); ctx.telemetry.count(`camp.relocated.${runtime.def.id}.${e.kind}`); }
+      }
+    }
+    const w = runtime.world;
+    const x0 = Math.max(1, Math.min(camp.x0, camp.x - 40) - 6), x1 = Math.min(w.width - 2, Math.max(camp.x1, camp.x + 40) + 6);
+    for (let y = Math.max(1, camp.floorY - 44); y <= Math.min(w.height - 2, camp.floorY); y++) {
+      for (let x = x0; x <= x1; x++) {
+        const i = w.idx(x, y);
+        if (CAMP_HAZARDS.has(w.types[i])) w.clearCellAt(i);
+      }
+    }
+  }
+
+  /**
+   * FAIL-OPEN: liquid that still sits in Pell's camp (placement keeps camps on
+   * dry ground, world/storySites) drains DOWNHILL — each cell is swapped
+   * (world.swap: type, colour, life, charge) into the lowest open cell below the
+   * camp's floor that the camp's air connects to, the way it would run out of
+   * an opened drain. Only liquid with nowhere lower to go is removed.
+   */
+  private drainCamp(ctx: Ctx, runtime: LevelRuntime, camp: NonNullable<NonNullable<LevelRuntime['story']>['camp']>): void {
+    const w = runtime.world;
+    const x0 = Math.max(1, Math.min(camp.x0, camp.x - 40) - 6), x1 = Math.min(w.width - 2, Math.max(camp.x1, camp.x + 40) + 6);
+    const y0 = Math.max(1, camp.floorY - 44), y1 = camp.floorY;
+    const wet: number[] = [];
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (isLiquid(w.types[w.idx(x, y)])) wet.push(w.idx(x, y));
+    if (wet.length === 0) return;
+    // The open space the camp's air and water connect to, searched outward (bounded).
+    const W = w.width;
+    const seen = new Uint8Array(W * w.height);
+    const queue: number[] = [];
+    for (const i of wet) { seen[i] = 1; queue.push(i); }
+    const sinks: number[] = [];
+    for (let q = 0; q < queue.length && q < CAMP_DRAIN_SEARCH; q++) {
+      const i = queue[q];
+      const x = i % W, y = (i - x) / W;
+      if (y > camp.floorY + 2 && w.types[i] === Cell.Empty) sinks.push(i);
+      for (const n of [i + 1, i - 1, i + W, i - W]) {
+        const nx = n % W, ny = (n - nx) / W;
+        if (seen[n] || nx < 1 || nx >= W - 1 || ny < 1 || ny >= w.height - 1) continue;
+        if (Math.abs(nx - camp.x) > CAMP_DRAIN_REACH || Math.abs(ny - camp.floorY) > CAMP_DRAIN_REACH) continue;
+        const t = w.types[n];
+        if (blocksEntity(t) && !isLiquid(t)) continue;
+        seen[n] = 1;
+        queue.push(n);
+      }
+    }
+    // The lowest sinks first: the water runs to the bottom of what it can reach.
+    sinks.sort((a, b) => b - a);
+    wet.sort((a, b) => b - a);
+    let moved = 0, removed = 0;
+    for (const i of wet) {
+      if (!isLiquid(w.types[i])) continue;
+      const dst = sinks.shift();
+      const x = i % W, y = (i - x) / W;
+      if (dst !== undefined) {
+        const dx = dst % W, dy = (dst - dx) / W;
+        w.swap(x, y, dx, dy);
+        moved++;
+      } else {
+        w.clearCellAt(i);
+        removed++;
+      }
+    }
+    ctx.telemetry.count(`camp.drained.${runtime.def.id}`, moved + removed);
   }
 
   seedReviewKit(ctx: Ctx): void {
@@ -2356,7 +2669,7 @@ export class Levels implements LevelsApi {
     ctx.events.emit('toast', { text: 'REVIEW POTION BELT STOCKED' });
   }
 
-  private repairFindability(ctx: Ctx, runtime: LevelRuntime, phase: 'initial' | 'settled'): boolean {
+  private repairFindability(_ctx: Ctx, runtime: LevelRuntime, phase: 'initial' | 'settled'): boolean {
     const findability = failOpenFindability(runtime);
     if (import.meta.env.DEV) {
       if (findability.repaired.length) {
@@ -2377,7 +2690,12 @@ export class Levels implements LevelsApi {
     }
     if (findability.repaired.length > 0) {
       this.blobCache.delete(runtime.def.id);
-      ctx.events.emit('toast', { text: 'A SAFE ROUTE TEARS OPEN' });
+      // FLORA: an arrival repair tunnel can cut the ground from under a plant;
+      // take the stranded stand away rather than drop it on the arrival.
+      if (phase === 'initial') dropStrandedStands(runtime.world);
+      // World repair is silent: it runs on arrival and afterwards, on rock the
+      // player never touched ("Somewhere below, rock shifts…" narrated a change
+      // he never made — QA). The DEV console line above still reports it.
     }
     return findability.repaired.length > 0;
   }
@@ -2387,6 +2705,8 @@ export class Levels implements LevelsApi {
     // Authored arenas own their layout; the procedural repair would carve
     // rescue tunnels through it (see AUTHORED_TEST_ARENAS).
     if (AUTHORED_TEST_ARENAS.has(id)) return;
+    this.settlingRuntime = runtime;
+    const startedStep = runtime.world.activity.stepSerial;
     const token = ++this.findabilityRepairToken;
     if (this.settledFindabilityTimer !== null) {
       clearTimeout(this.settledFindabilityTimer);
@@ -2395,6 +2715,14 @@ export class Levels implements LevelsApi {
     const runStep = (step: number): void => {
       if (this.settledFindabilityTimer !== null) this.settledFindabilityTimer = null;
       if (token !== this.findabilityRepairToken || this.currentId !== id || this.current !== runtime) return;
+      const requiredSteps = Math.round(SETTLED_FINDABILITY_REPAIR_DELAYS_MS[step] * 60 / 1000);
+      if (runtime.world.activity.stepSerial - startedStep < requiredSteps) {
+        this.settledFindabilityTimer = globalThis.setTimeout(() => runStep(step), 100);
+        return;
+      }
+      // Liquid that ran into Pell's camp while the floor settled drains downhill too.
+      const camp = runtime.story?.camp;
+      if (camp) this.drainCamp(ctx, runtime, camp);
       if (this.repairFindability(ctx, runtime, 'settled') && this.checkpointSaveSuppression === 0) {
         this.saveExpedition(ctx);
       }
@@ -2404,7 +2732,7 @@ export class Levels implements LevelsApi {
           () => runStep(next),
           SETTLED_FINDABILITY_REPAIR_DELAYS_MS[next] - SETTLED_FINDABILITY_REPAIR_DELAYS_MS[step],
         );
-      }
+      } else this.settlingRuntime = null;
     };
     this.settledFindabilityTimer = globalThis.setTimeout(() => runStep(0), SETTLED_FINDABILITY_REPAIR_DELAYS_MS[0]);
   }
@@ -2418,11 +2746,11 @@ export class Levels implements LevelsApi {
     ctx.enemies.length = 0;
 
     const expeditionSeed = this.activeExpeditionSeed(ctx);
-    const seed = (expeditionSeed ^ this.hashString(def.id)) >>> 0;
+    const seed = levelSeedFor(expeditionSeed, def.id);
     const {
       exit,
       waystones,
-      spawn,
+      spawn: generatedSpawn,
       cauldron,
       pickups,
       portal,
@@ -2436,13 +2764,16 @@ export class Levels implements LevelsApi {
       decors,
       refuge,
       spellLab,
-      vaultArch,
-      vaultHoard,
       surfaceSpawn,
       surfaceSkyLine,
-    } = ctx.worldgen.generateLevel(ctx, def, seed, {
-      hostArch: def.id === vaultHostId(expeditionSeed),
-    });
+      darkZones,
+      lumenBlooms,
+      story,
+    } = ctx.worldgen.generateLevel(ctx, def, seed);
+    // A SAFE ARRIVAL (game/arrival): the spawn is settled onto footing before
+    // anything is placed around it, so the population keeps its distance from
+    // where the alchemist really stands (not the chamber air he falls through).
+    const spawn = this.settledSpawn(ctx, def, generatedSpawn, boss, pickups);
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
     const regions = extractRegionGraph(ctx.world, spawn, {
@@ -2450,8 +2781,19 @@ export class Levels implements LevelsApi {
       y: exit.sealY - 12,
     });
     const populationReach = wizardMask(makeLevelRuntime({ def, world, spawn, regions }));
+    // FLORA puzzle rooms are set pieces (a sealed cistern over a seed bed, a
+    // tree balanced at a chasm): a foe seeded inside would wreck one before
+    // the player arrives. Population keeps out of them (they still wander in).
+    for (const p of placedPrefabs) {
+      // (The second doors' puzzle rooms are set pieces too: a Cold Store tank,
+      // a Galleries lens room.)
+      if (!p.id.startsWith('flora-') && !p.id.startsWith('cold-') && !p.id.startsWith('glass-')) continue;
+      for (let y = Math.max(0, p.y0); y <= Math.min(world.height - 1, p.y1); y++) {
+        populationReach.fill(0, y * world.width + Math.max(0, p.x0), y * world.width + Math.min(world.width - 1, p.x1) + 1);
+      }
+    }
     const weaverLairWebs: WeaverLairWeb[] = [];
-    const population = this.placePopulation(
+    const population = def.id === 'd1' ? { planned: {}, placed: {}, skipped: {}, lairs: {} } : this.placePopulation(
       ctx,
       def,
       spawn,
@@ -2460,25 +2802,11 @@ export class Levels implements LevelsApi {
       new Rng(hashSeed(seed, 'population')),
       weaverLairWebs,
     );
-    // Boss arenas: the Kiln Colossus at the bottom of the run; the Sunken
-    // Leviathan in d4's perched cistern (the marker carries the kind).
+    // Boss arenas, keyed on the floor (LevelDef.boss): the Sunken Leviathan
+    // in the Drowned Cisterns' perched sump, the Kiln Colossus at the bottom
+    // of the Kiln Heart (the marker carries the kind).
     if (boss && !ctx.enemyCtl.spawn(boss.kind ?? 'colossus', boss.x, boss.y)) {
       ctx.telemetry.count(`population.skipped.${def.id}.${boss.kind ?? 'colossus'}`);
-    }
-    // The Gilded Vault's hoard guards: a pair of elite golems, posted at the
-    // chamber flanks (their boosted stats persist through saves — the blob
-    // roster records hp/maxHp/dmgK).
-    if (vaultHoard) {
-      for (const side of [-10, 10]) {
-        const g = ctx.enemyCtl.spawn('golem', vaultHoard.x + side, vaultHoard.y);
-        if (g && g.kind === 'golem') {
-          g.maxHp = Math.round(g.maxHp * 2.6);
-          g.hp = g.maxHp;
-          g.dmgK = (g.dmgK ?? 1) * 1.6;
-        } else {
-          ctx.telemetry.count(`population.skipped.${def.id}.golem`);
-        }
-      }
     }
     // Prefab-authored enemies (sleeping/patrol fixups applied at spawn).
     for (const rec of prefabEnemies) spawnPrefabEnemy(ctx, rec);
@@ -2506,11 +2834,14 @@ export class Levels implements LevelsApi {
       ...(decors.length > 0 ? { decors } : {}),
       ...(refuge ? { refuge } : {}),
       ...(spellLab ? { spellLab } : {}),
-      ...(vaultArch ? { vaultArch } : {}),
       ...(surfaceSpawn ? { surfaceSpawn } : {}),
       ...(surfaceSkyLine !== null ? { skyLine: surfaceSkyLine } : {}),
+      ...(darkZones?.length ? { darkZones } : {}),
+      ...(lumenBlooms?.length ? { lumenBlooms } : {}),
+      ...(story ? { story } : {}),
       weaverLairWebs,
       population,
+      ...(def.id === 'd1' ? { living: createLivingState() } : {}),
     });
 
     // Findability fail-open: validator-matched progression breaks carve an
@@ -2519,6 +2850,13 @@ export class Levels implements LevelsApi {
     // there's nothing to make reachable — and its Metal rescue sleeves would only
     // be wiped by the rebuild anyway.
     if (!AUTHORED_TEST_ARENAS.has(def.id)) this.repairFindability(ctx, runtime, 'initial');
+    // Ambient life (WS-N organisms): a finite resident census per floor from its
+    // own RNG stream; writes no cells. Floors without a recipe keep the old
+    // runtime seeding in Critters.
+    if (def.id !== 'd1' && !AUTHORED_TEST_ARENAS.has(def.id)) {
+      const fauna = placeOrganisms(world, def, spawn, populationReach, new Rng(hashSeed(seed, 'organisms')));
+      if (fauna) runtime.fauna = fauna;
+    }
 
     return runtime;
   }
@@ -2538,20 +2876,22 @@ export class Levels implements LevelsApi {
     const foes = EXTRAS[def.biome].foes;
     const pop = populationForLevel(def, foes);
     const countScale = difficultyMods(ctx.state).enemyCount;
+    // Spine floors roster their bats as roosts (below), not scattered in the air.
+    const spineRoster = def.depth > 0 && !def.branch;
     const report: NonNullable<LevelRuntime['population']> = { planned: {}, placed: {}, skipped: {}, lairs: {} };
     const markSkipped = (kind: EnemyKind): void => {
       report.skipped[kind] = (report.skipped[kind] ?? 0) + 1;
       ctx.telemetry.count(`population.skipped.${def.id}.${kind}`);
     };
     for (const [kind, count] of Object.entries(pop) as Array<[EnemyKind, number]>) {
+      if (spineRoster && kind === 'bat') continue;
       const enemyDef = ctx.enemyCtl.defs[kind];
       const scaled = Math.round(count * countScale);
       report.planned[kind] = scaled;
       for (let i = 0; i < scaled; i++) {
         const habitat = this.populationHabitatOptions(ctx, kind);
         const spot =
-          this.findPopulationSpot(ctx, rng, spawn, regions, reachable, enemyDef.halfW, enemyDef.h, habitat) ??
-          this.findPopulationSpot(ctx, rng, spawn, regions, reachable, enemyDef.halfW, enemyDef.h);
+          this.findPopulationSpot(ctx, rng, spawn, regions, reachable, enemyDef.halfW, enemyDef.h, habitat);
         if (spot) {
           const enemy = this.spawnSeededEnemy(ctx, kind, spot.x, spot.y, rng);
           if (enemy) {
@@ -2568,13 +2908,24 @@ export class Levels implements LevelsApi {
     }
 
     // Wave F nests — life that implies more life.
-    // Bat roosts: sleeping clusters hanging from cave ceilings.
-    if (foes.bat) {
-      const roosts = 1 + rng.int(2);
+    // Bat roosts: sleeping clusters hanging from cave ceilings. Test arenas roll
+    // their own; a spine roster's `bat` count hangs as broods of up to four.
+    const rosterBats = spineRoster ? Math.round((pop.bat ?? 0) * countScale) : 0;
+    if ((def.depth === 0 && foes.bat) || rosterBats > 0) {
+      const roosts = rosterBats > 0 ? Math.ceil(rosterBats / 4) : 1 + rng.int(2);
+      let batsLeft = rosterBats;
       for (let r = 0; r < roosts; r++) {
         const roost = this.findRoostSpot(ctx, rng, spawn, regions, reachable);
-        if (!roost) continue;
-        const brood = 3 + rng.int(2);
+        const rosterBrood = Math.min(4, batsLeft);
+        batsLeft -= rosterBrood;
+        if (!roost) {
+          for (let b = 0; b < rosterBrood; b++) {
+            report.planned.bat = (report.planned.bat ?? 0) + 1;
+            markSkipped('bat');
+          }
+          continue;
+        }
+        const brood = rosterBats > 0 ? rosterBrood : 3 + rng.int(2);
         report.planned.bat = (report.planned.bat ?? 0) + brood;
         for (let b = 0; b < brood; b++) {
           const bat = this.spawnSeededEnemy(ctx, 'bat', roost.x + (b - 1) * 5, roost.y + 4, rng);
@@ -2590,12 +2941,12 @@ export class Levels implements LevelsApi {
       }
     }
     // Slime egg clutches: glistening on the cave floor, ticking quietly.
-    if (foes.slime) {
+    if (def.depth === 0 && foes.slime) {
       const clutches = 1 + rng.int(2);
       const eggsDef = ctx.enemyCtl.defs.eggs;
       for (let c = 0; c < clutches; c++) {
         const spot = this.findPopulationSpot(ctx, rng, spawn, regions, reachable, eggsDef.halfW, eggsDef.h, {
-          clearances: [180, 100, 0],
+          clearances: [180, ARRIVAL_SAFE_RADIUS],
         });
         report.planned.eggs = (report.planned.eggs ?? 0) + 1;
         if (spot && this.spawnSeededEnemy(ctx, 'eggs', spot.x, spot.y, rng)) {
@@ -2651,6 +3002,26 @@ export class Levels implements LevelsApi {
   }
 
   private populationHabitatOptions(ctx: Ctx, kind: EnemyKind): PopulationSpotOptions {
+    const options = this.populationHabitatOptionsFor(ctx, kind);
+    if (POPULATION_WATER_BREATHERS.has(kind)) return options;
+    // Land creatures drown (Enemies.tickBreath): never seed one with its head
+    // under water, however open the flooded cistern looks to the spot finder.
+    const h = ctx.enemyCtl.defs[kind].h;
+    const inner = options.extra;
+    return { ...options, extra: (x, y) => this.headInAir(ctx, x, y, h) && (!inner || inner(x, y)) };
+  }
+
+  private headInAir(ctx: Ctx, x: number, y: number, h: number): boolean {
+    const world = ctx.world;
+    for (const dy of [h - 1, h - 3]) {
+      const hx = Math.floor(x);
+      const hy = Math.floor(y) - dy;
+      if (world.inBounds(hx, hy) && isLiquid(world.types[world.idx(hx, hy)])) return false;
+    }
+    return true;
+  }
+
+  private populationHabitatOptionsFor(ctx: Ctx, kind: EnemyKind): PopulationSpotOptions {
     if (kind === 'rootloper') {
       return {
         attempts: POPULATION_ATTEMPTS_PER_PASS * 3,
@@ -2730,11 +3101,14 @@ export class Levels implements LevelsApi {
     const batDef = ctx.enemyCtl.defs.bat;
     const regionPasses = regions && regions.mainPath.length > 0 ? [true, false] : [false];
     for (const mainPathOnly of regionPasses) {
-      for (const clearance of [200, 120, 0]) {
+      for (const clearance of [200, ARRIVAL_SAFE_RADIUS]) {
         const clearanceSq = clearance * clearance;
         for (let attempt = 0; attempt < ROOST_ATTEMPTS_PER_PASS; attempt++) {
           const x = 40 + rng.int(WIDTH - 80);
-          const y = 50 + rng.int(Math.max(1, HEIGHT - 200));
+          let y = 50 + rng.int(Math.max(1, HEIGHT - 200));
+          // A sample in open air climbs to the ceiling above it (a random point
+          // almost never lands exactly under rock; this finds the roof it is under).
+          for (let up = 0; up < 80 && y > 51 && world.inBounds(x, y - 1) && world.types[world.idx(x, y - 1)] === Cell.Empty; up++) y--;
           const footY = y + 4;
           const dx = x - spawn.x;
           const dy = footY - spawn.y;
@@ -2943,6 +3317,17 @@ export class Levels implements LevelsApi {
       color: packRGB(66 + rng.int(24), 148 + rng.int(42), 58 + rng.int(24)),
       jitter: WEAVER_LAIR_WEB_JITTER_MIN + rng.next() * (WEAVER_LAIR_WEB_JITTER_MAX - WEAVER_LAIR_WEB_JITTER_MIN),
     });
+    // The web hangs in the chamber's air: under a low ceiling its hub landed in
+    // the rock (QA: three webs 89-100% inside rock) and the renderer, which
+    // skips rock cells, drew almost nothing. Slide it down toward the lair until
+    // its hub is open, never into the body lane (no draws: the stream is unchanged).
+    const web = weaverLairWebs[weaverLairWebs.length - 1];
+    const hubSolid = (cy: number): number => {
+      let n = 0;
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (!world.inBounds(x + dx, cy + dy) || blocksEntity(world.types[world.idx(x + dx, cy + dy)])) n++;
+      return n / 81;
+    };
+    while (web.y < y - WEAVER_LAIR_WEB_BODY_CLEARANCE - 4 && hubSolid(web.y) > 0.25) web.y++;
     for (let n = 0; n < 10; n++) {
       const ax = Math.floor(x - 46 + rng.int(93));
       let anchorY = -1;
@@ -3031,6 +3416,14 @@ export class Levels implements LevelsApi {
       }
       return false;
     };
+    if (runtime.living) {
+      // Authored supplies sit beyond the safe movement apron. Random crates
+      // beside the intake stone could overlap the arrival body and trap it.
+      // (The refuge keeps no crate: on the plinth it blocked the east entrance
+      // and the frost shrine, and the refuge waystone is lit from the start.)
+      drop(290, 314, 5); drop(1325, 389, 5);
+      return;
+    }
     // 1-2 crates beside each waystone — guaranteed checkpoint fuel
     for (const ws of runtime.waystones) {
       const want = 1 + (rng.next() < 0.5 ? 1 : 0);
@@ -3060,6 +3453,14 @@ export class Levels implements LevelsApi {
    * lava or drifting embers — so a player with no fire spell can still light it.
    */
   private updateWaystones(ctx: Ctx, runtime: LevelRuntime): void {
+    if (runtime.living?.rested && runtime.living.restTicks >= 120 && runtime.waystones[1]?.lit) {
+      const order = this.litOrder.get(runtime.def.id) ?? [];
+      if (order.at(-1) !== 1) {
+        order.push(1); this.litOrder.set(runtime.def.id, order);
+        ctx.events.emit('toast', { text: 'Your return point is now the warm refuge.' });
+        this.saveExpedition(ctx);
+      }
+    }
     const world = ctx.world;
     for (let i = 0; i < runtime.waystones.length; i++) {
       const ws = runtime.waystones[i];
@@ -3168,74 +3569,34 @@ export class Levels implements LevelsApi {
       glow: 2.2,
       grav: 0.02,
     });
-    ctx.audio.tone(660, 660, 0.22, 'sine', 0.18);
-    setTimeout(() => ctx.audio.tone(990, 990, 0.3, 'sine', 0.16), 130);
+    ctx.audio.sfx('world.waystone');
 
     ctx.events.emit('waystoneLit');
   }
 
   /**
-   * Walking up to an unlit waystone raises a one-shot help prompt: if the player
-   * owns a fire spell that isn't on the active wand, offer to seat it; if they
-   * own none, explain how to bring fire by hand. Fires once per approach
-   * (re-armed when they step away) and never when the wand can already make fire.
+   * Walking up to an unlit waystone teaches how to light it — a TEACH CARD
+   * (ui/HintTeachOverlay: non-modal, the game never pauses, it yields to the
+   * story's beats), once per waystone per floor visit and only once he has
+   * landed; the hint line (game/Hints) says the short version while he stands
+   * there. Never when the wand already makes fire. (QA counted 41 modal,
+   * game-pausing prompts in one session for a kit without fire.)
    */
   private maybeWaystonePrompt(ctx: Ctx, runtime: LevelRuntime): void {
-    if (this.waystonePromptOpen || ctx.state.paused) return;
-    const r2 = WAYSTONE_PROMPT_RADIUS * WAYSTONE_PROMPT_RADIUS;
-    let near = false;
-    for (const ws of runtime.waystones) {
-      if (ws.lit) continue;
+    if (ctx.state.paused || !ctx.player.grounded) return;
+    const r2 = WAYSTONE_HELP_RADIUS * WAYSTONE_HELP_RADIUS;
+    for (let i = 0; i < runtime.waystones.length; i++) {
+      const ws = runtime.waystones[i];
+      if (ws.lit || this.waystoneTaught.has(i)) continue;
       const dx = ws.x - ctx.player.x,
         dy = ws.y - ctx.player.y;
-      if (dx * dx + dy * dy <= r2) {
-        near = true;
-        break;
-      }
-    }
-    if (!near) {
-      this.waystonePromptArmed = true;
+      if (dx * dx + dy * dy > r2) continue;
+      if (wandMakesFire(ctx)) return;
+      this.waystoneTaught.add(i);
+      const help = waystoneHelp(ctx);
+      ctx.events.emit('hintTeach', { key: 'waystone-unlit', title: help.title, body: help.body });
       return;
     }
-    if (!this.waystonePromptArmed) return;
-    const active = ctx.wands.wands[ctx.wands.active];
-    // The wand can already make fire — no need to nag.
-    if (WAYSTONE_FIRE_CARDS.some((c) => active.cards.includes(c))) return;
-    this.waystonePromptArmed = false;
-    const owned =
-      WAYSTONE_FIRE_CARDS.find(
-        (c) => ctx.wands.collection.includes(c) || ctx.wands.wands.some((w) => w.cards.includes(c)),
-      ) ?? null;
-    this.waystonePromptOpen = true;
-    const shown = ctx.events.emit('waystonePrompt', {
-      card: owned,
-      onEquip: () => {
-        if (owned) this.equipFireCard(ctx, owned);
-        this.waystonePromptOpen = false;
-      },
-      onDismiss: () => {
-        this.waystonePromptOpen = false;
-      },
-    });
-    if (!shown) this.waystonePromptOpen = false; // no UI listening — don't wedge
-  }
-
-  /** Replace the active wand's loadout with a single fire card the player owns. */
-  private equipFireCard(ctx: Ctx, card: CardId): void {
-    const wi = ctx.wands.active;
-    const wand = ctx.wands.wands[wi];
-    // If the card is parked in the other wand, pull it back to the collection first.
-    if (!ctx.wands.collection.includes(card)) {
-      const other = wi === 0 ? 1 : 0;
-      const os = ctx.wands.wands[other].cards.indexOf(card);
-      if (os >= 0) ctx.wands.slotCard(other, os, null);
-    }
-    // Clear the active wand back to the collection, then seat the fire card.
-    for (let s = 0; s < wand.cards.length; s++) {
-      if (wand.cards[s] !== null) ctx.wands.slotCard(wi, s, null);
-    }
-    ctx.wands.slotCard(wi, 0, card);
-    ctx.events.emit('toast', { text: 'FIRE SPELL EQUIPPED' });
   }
 
   /* ---------------- cartography ---------------- */
@@ -3253,12 +3614,5 @@ export class Levels implements LevelsApi {
         if (dx * dx + dy * dy <= 36) runtime.explored[X + Y * MINIMAP_W] = 1;
       }
     }
-  }
-
-  /** Tiny FNV-1a over the level id — folds it into the expedition seed.
-   *  Shared with Builder's campaign playtest seed (core/rng.fnv1aString) so the
-   *  two cannot silently diverge. */
-  private hashString(s: string): number {
-    return fnv1aString(s);
   }
 }

@@ -13,9 +13,9 @@ import type { Ctx, Projectile, SpellId, SpellsApi } from '@/core/types';
 import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
 import { entityRandom } from '@/core/simRandom';
 
-/** Gold per RawOre cell mined. Kept modest (raw ore < refined gold's ~10/cell) —
- *  caches are plentiful and buried, so the per-cell value guards the economy. */
-const RAWORE_GOLD = 2;
+/** Gold per RawOre cell mined. Kept modest — caches are plentiful and buried, so
+ *  the per-cell value guards the economy. (1, was 2: the 2026-09 economy pass.) */
+const RAWORE_GOLD = 1;
 
 /**
  * Player spell casting: wand geometry, the excavation ray, warp teleport
@@ -51,6 +51,7 @@ export class Spells implements SpellsApi {
       const gx = Math.floor(x), gy = Math.floor(y);
       if (!world.inBounds(gx, gy)) return null;
       const c = world.types[world.idx(gx, gy)];
+      if (c === Cell.Empty && this.ctx.vineStrands?.hitTest?.(x, y, .8)) return { x: gx, y: gy, hit: Cell.Vines };
       if (c === Cell.Empty || isGas(c) || c === Cell.Fire || isLiquid(c)) continue;
       return { x: gx, y: gy, hit: c as Cell };
     }
@@ -59,6 +60,7 @@ export class Spells implements SpellsApi {
 
   erodeAt(gx: number, gy: number, rad: number): number {
     const { world } = this.ctx;
+    this.ctx.vineStrands?.cutAt?.(gx, gy, rad);
     let chewed = 0, debris = 0, oreCells = 0;
     for (let dy = -rad; dy <= rad; dy++) {
       for (let dx = -rad; dx <= rad; dx++) {
@@ -70,14 +72,18 @@ export class Spells implements SpellsApi {
         if (c === Cell.RawOre) {
           // Mining the hidden ore spills its gold: a homing grain flies to the
           // wizard (the same tell as the gold harvester). Score + chime aggregate
-          // after the loop so a radius dig pays once, not per cell.
+          // after the loop so a radius dig pays once, not per cell; the grain is
+          // only the animation (a coin in flight never pays — Particles: COIN FLIGHT).
           this.ctx.particles.spawn(X, Y, (entityRandom() - 0.5) * 1.4, -0.8 - entityRandom(),
             null, goldColor(), 200, { homing: true, glow: 2.2, grav: 0 });
           world.clearCellAt(i); chewed++; oreCells++;
-        } else if (c === Cell.Wall || c === Cell.Sand || c === Cell.Wood || c === Cell.Ice || c === Cell.Vines || c === Cell.Stone || c === Cell.Gunpowder) {
+        } else if (c === Cell.Wall || c === Cell.Sand || c === Cell.Wood || c === Cell.Ice || c === Cell.Vines || c === Cell.Stone || c === Cell.Gunpowder
+          || c === Cell.Trunk || c === Cell.Leaf) {
           if (debris < 2 && entityRandom() < 0.16) {
+            // Living wood throws splinters (visual only: a deposited speck must never
+            // prop up the trunk being cut); leaves flutter off as real leaves.
             this.ctx.particles.spawn(X, Y, (entityRandom() - 0.5) * 1.6, -0.7 - entityRandom() * 0.9,
-              c === Cell.Wood ? Cell.Wood : Cell.Sand, world.colors[i], 55);
+              c === Cell.Wood ? Cell.Wood : c === Cell.Trunk ? null : c === Cell.Leaf ? Cell.Leaf : Cell.Sand, world.colors[i], 55);
             debris++;
           }
           world.clearCellAt(i); chewed++;
@@ -122,7 +128,7 @@ export class Spells implements SpellsApi {
       }
     }
     this.ctx.particles.burst(cx, cy - 4, 8, null, stoneColor, 1.2, { grav: 0.08 });
-    this.ctx.audio.dig();
+    this.ctx.audio.sfx('spell.conjure', cx, cy);
   }
 
   private castScatter(x: number, y: number, angle: number, mul = 1): void {
@@ -143,13 +149,12 @@ export class Spells implements SpellsApi {
         mul,
       });
     }
-    this.ctx.audio.zap();
-    this.ctx.audio.noiseBurst(0.06, 800, 0.05);
+    this.ctx.audio.sfx('spell.spark.cast');
   }
 
   private castVitriolSpray(x: number, y: number, angle: number, carryVx = 0): void {
     const sp = this.ctx.params.spells.vitriol;
-    this.ctx.audio.flame();
+    this.ctx.audio.sfx('spell.vitriol.loop');
     for (let j = 0; j < 3; j++) {
       const spreadA = angle + (entityRandom() - 0.5) * sp.spread!;
       const speed = 3.0 + entityRandom() * 2.0;
@@ -168,7 +173,7 @@ export class Spells implements SpellsApi {
 
   private castEmberStorm(x: number, y: number, angle: number): void {
     const sp = this.ctx.params.spells.emberstorm;
-    this.ctx.audio.flame();
+    this.ctx.audio.sfx('spell.emberstorm');
     for (let j = 0; j < sp.count!; j++) {
       const ea = angle + (entityRandom() - 0.5) * 0.55;
       const speed = 2.6 + entityRandom() * 2.2;
@@ -203,7 +208,7 @@ export class Spells implements SpellsApi {
             player.vx = 0; player.vy = 0; player.fx = 0; player.fy = 0;
             player.invuln = Math.max(player.invuln, 25);
             this.ctx.particles.burst(player.x, player.y - 7, 22, null, () => packRGB(225, 170, 255), 2.9, { glow: 2.6, grav: -0.01 });
-            this.ctx.audio.zap();
+            this.ctx.audio.sfx('player.teleport');
             return true;
           }
         }
@@ -227,7 +232,7 @@ export class Spells implements SpellsApi {
     if (player.spell === 'bolt') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'bolt', life: PROJECTILE_LIFE.bolt, age: 0, charging: false, hostile: false });
-      this.ctx.audio.zap();
+      this.ctx.audio.sfx('spell.spark.cast');
     } else if (player.spell === 'scatter') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       this.castScatter(tip.x, tip.y, a);
@@ -235,7 +240,7 @@ export class Spells implements SpellsApi {
       // Worms-style: holding charges the throw; release happens on mouseup
       if (input.bombCharge < 0) input.bombCharge = 0;
       else input.bombCharge = Math.min(1, input.bombCharge + 1 / 65);
-      if (input.bombCharge >= 1 && this.ctx.state.frameCount % 20 === 0) this.ctx.audio.tone(880, 35, 0.05, 'square', 0.04); // full-power tick
+      if (input.bombCharge >= 1 && this.ctx.state.frameCount % 20 === 0) this.ctx.audio.sfx('ui.tally'); // full-power tick
     } else if (player.spell === 'lightning') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       this.ctx.lightning.cast(tip.x, tip.y, a);
@@ -258,15 +263,15 @@ export class Spells implements SpellsApi {
     } else if (player.spell === 'frostshard') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'iceshard', life: PROJECTILE_LIFE.iceshard, age: 0, charging: false, hostile: false });
-      this.ctx.audio.zap();
+      this.ctx.audio.sfx('spell.frostshard.cast');
     } else if (player.spell === 'icelance') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'icelance', life: PROJECTILE_LIFE.icelance, age: 0, charging: false, hostile: false });
-      this.ctx.audio.tone(1400, 220, 0.16, 'sine', 0.10);
+      this.ctx.audio.sfx('spell.icelance.cast');
     } else if (player.spell === 'wisp') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'wisp', life: PROJECTILE_LIFE.wisp, age: 0, charging: false, hostile: false });
-      this.ctx.audio.zap();
+      this.ctx.audio.sfx('spell.wisp.cast');
     } else if (player.spell === 'dig') {
       player.mana -= sp.manaCost;
       const hit = this.digRay(tip.x, tip.y, a, sp.range!);
@@ -280,14 +285,14 @@ export class Spells implements SpellsApi {
     } else if (player.spell === 'warp') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce!, type: 'warp', life: PROJECTILE_LIFE.warp, age: 0, charging: false, hostile: false });
-      this.ctx.audio.zap();
+      this.ctx.audio.sfx('spell.warp.cast');
     } else if (player.spell === 'conjure') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       this.conjureStone(input.mouse.x, input.mouse.y, player.x, player.y - 9);
     } else if (player.spell === 'meteor') {
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
       projectiles.push({ x: tip.x, y: tip.y, vx: Math.cos(a) * sp.velocityForce!, vy: Math.sin(a) * sp.velocityForce! - 1.0, type: 'meteor', life: PROJECTILE_LIFE.meteor, age: 0, charging: false, hostile: false });
-      this.ctx.audio.boom(8);
+      this.ctx.audio.sfx('spell.meteor.cast');
     } else if (player.spell === 'blackhole') {
       if (input.activeChargingBlackHole) return;
       player.mana -= sp.manaCost; player.cooldown = sp.cooldown;
@@ -339,7 +344,7 @@ export class Spells implements SpellsApi {
       const startX = camera.renderX + Math.floor(VIEW_W / 2), startY = camera.renderY + VIEW_H - 14;
       const angle = Math.atan2(targetY - startY, targetX - startX);
       projectiles.push({ x: startX, y: startY, vx: Math.cos(angle) * spells.icelance.velocityForce!, vy: Math.sin(angle) * spells.icelance.velocityForce!, type: 'icelance', life: PROJECTILE_LIFE.icelance, age: 0, charging: false, hostile: false });
-      this.ctx.audio.tone(1400, 220, 0.16, 'sine', 0.10);
+      this.ctx.audio.sfx('spell.icelance.cast');
     } else if (type === 'scatter') {
       const startX = camera.renderX + Math.floor(VIEW_W / 2), startY = camera.renderY + VIEW_H - 14;
       this.castScatter(startX, startY, Math.atan2(targetY - startY, targetX - startX));
@@ -374,8 +379,8 @@ export class Spells implements SpellsApi {
         charging: false,
         hostile: false,
       });
-      if (type === 'bolt' || type === 'frostshard' || type === 'wisp') this.ctx.audio.zap();
-      if (type === 'meteor') this.ctx.audio.boom(8);
+      if (type === 'bolt' || type === 'frostshard' || type === 'wisp') this.ctx.audio.sfx(type === 'bolt' ? 'spell.spark.cast' : type === 'wisp' ? 'spell.wisp.cast' : 'spell.frostshard.cast');
+      if (type === 'meteor') this.ctx.audio.sfx('spell.meteor.cast');
     }
   }
 }

@@ -1,0 +1,218 @@
+/* =====================================================================
+ * House style — one display face, one UI sans, for every player surface.
+ * Cormorant Garamond names places and moments; the system sans carries
+ * everything you read quickly or operate. No monospace reaches the player.
+ * Loaded last (after menus.css) so these rules own the play HUD, toasts,
+ * the title card, teach cards and the level curtain.
+ * ===================================================================== */
+:root {
+  --house-serif: 'Cormorant Garamond', Georgia, serif;
+  --house-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --house-paper: #e6dfca;
+  --house-paper-soft: #cfd6c8;
+  --house-muted: #9fb0a6;
+  --house-brass: #d5b982;
+  --house-brass-strong: #f2e3b6;
+  --house-copper: #bd9460;
+  --house-slate: #0f1c21;
+  --house-shadow: 0 1px 2px #050b0d, 0 0 8px #050b0dcc;
+  --house-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---------- Vitals: bigger, brighter, labelled; a slot beside them ---------- */
+body.play-active #hud-left {
+  top: 22px; left: 26px; display: grid; grid-template-columns: auto auto; column-gap: 16px; row-gap: 8px; align-items: start;
+}
+body.play-active #hud-left > #god-tools { grid-column: 1 / -1; }
+body.play-active .vitals { width: calc(214px * var(--text-scale)); gap: 7px; }
+body.play-active .vital-row { gap: 10px; }
+body.play-active .vital-label {
+  width: calc(40px * var(--text-scale)); font: 650 calc(11px * var(--text-scale))/1 var(--house-sans);
+  letter-spacing: 0.1em; color: #efe7d2; text-shadow: var(--house-shadow);
+}
+body.play-active .vital-track {
+  position: relative; height: calc(10px * var(--text-scale)); padding: 2px; box-sizing: border-box;
+  border: 1px solid #cdb98c70; background: #071014eb; box-shadow: 0 1px 0 #00000070;
+}
+body.play-active .vital-fill { position: relative; z-index: 1; }
+/* A one-pixel lit edge along each fill keeps it legible over bright scenes. */
+body.play-active #hp-fill { background-color: #d4826a; background-image: linear-gradient(180deg, #f3b8a0 0 1px, transparent 1px) !important; }
+body.play-active #mana-fill { background-color: #88bfcd; background-image: linear-gradient(180deg, #d4eef3 0 1px, transparent 1px) !important; }
+body.play-active #levit-fill { background-color: #cdb678; background-image: linear-gradient(180deg, #f2e4b4 0 1px, transparent 1px) !important; }
+/* The chunk you just lost lingers pale behind the fill, then drains. */
+.vital-ghost { display: none; }
+body.play-active .vital-ghost {
+  display: block; position: absolute; left: 2px; top: 2px; bottom: 2px; width: calc(100% - 4px); z-index: 0;
+  background: #f4e6c8a8; transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.28s;
+}
+body.play-active .vital-track:has(#mana-fill) .vital-ghost { background: #cfeef5a0; }
+body.play-active .vital-ghost.snap { transition: none; }
+body.play-active .vitals-aside { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+body.play-active .vitals-aside:empty { display: none; }
+body.play-active #cramped-glyph { font: 600 calc(10px * var(--text-scale))/1.2 var(--house-sans); letter-spacing: 0.08em; border-radius: 0; }
+
+/* ---------- Flask belt: the count sits beside the bottle, never on it ---------- */
+body.play-active #flask-belt { gap: 6px; }
+body.play-active .flask-slot { width: calc(64px * var(--text-scale)); flex: 0 0 calc(64px * var(--text-scale)); }
+body.play-active .flask-slot::before { left: 16px; }
+body.play-active .flask-slot::after { left: 11px; right: auto; width: 20px; box-sizing: border-box; }
+body.play-active .flask-slot-fill { left: 13px; width: 16px; }
+body.play-active .flask-slot-key {
+  left: 0; top: 9px; font: 600 calc(10px * var(--text-scale))/1 var(--house-sans); color: #d7dfcf; text-shadow: var(--house-shadow);
+}
+body.play-active .flask-slot-count {
+  left: 34px; right: auto; top: 12px; bottom: auto; font: 500 calc(10px * var(--text-scale))/1 var(--house-sans);
+  font-variant-numeric: tabular-nums; color: #eee3c9; text-shadow: var(--house-shadow); letter-spacing: 0;
+}
+body.play-active .flask-slot-name { left: 0; width: auto; text-align: left; }
+body.play-active .flask-slot.active .flask-slot-key { color: #f2e3b6; }
+
+/* ---------- Wand hotbar numerals ---------- */
+body.play-active .hot-slot .key,
+body.play-active .hot-slot .cost { font-family: var(--house-sans); font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* ---------- Toasts: a calm log under the objective, merged not stacked ---------- */
+body.play-active #toast-stack {
+  position: static; transform: none; margin-top: 12px; max-width: none;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 5px; pointer-events: none;
+}
+#game-hud .toast {
+  display: inline-flex; align-items: baseline; gap: 8px; max-width: min(340px, 100%);
+  padding: 5px 10px 6px 11px; border: 0; border-right: 2px solid #9c8458; border-radius: 0;
+  background: #0f1d22e0; color: #e4dbc5; text-shadow: none; letter-spacing: 0; text-align: right;
+  font: 400 calc(12.5px * var(--text-scale))/1.4 var(--house-sans);
+  animation: house-toast-in 0.22s var(--house-ease) both;
+}
+#game-hud .toast .toast-text { min-width: 0; }
+#game-hud .toast .toast-count {
+  flex: none; font: 650 calc(11px * var(--text-scale))/1 var(--house-sans); font-variant-numeric: tabular-nums;
+  color: var(--house-brass-strong); letter-spacing: 0.02em;
+}
+#game-hud .toast .toast-count.pop { animation: house-toast-pop 0.26s var(--house-ease); }
+#game-hud .toast.bump { animation: house-toast-bump 0.3s var(--house-ease); }
+#game-hud .toast.leaving { animation: house-toast-out 0.26s ease-in forwards; }
+@keyframes house-toast-in { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+@keyframes house-toast-out { to { opacity: 0; transform: translateY(-4px); } }
+@keyframes house-toast-pop { 0% { transform: scale(1.45); color: #fff6dc; } 100% { transform: scale(1); } }
+@keyframes house-toast-bump { 0% { border-right-color: #f2e3b6; background-color: #1a2d31f0; } 100% { border-right-color: #9c8458; } }
+
+/* ---------- Title card (level arrivals + event banners) ---------- */
+#wave-banner.title-card {
+  top: 30%; width: min(760px, 86%); text-align: center; pointer-events: none;
+  transition: opacity 0.6s ease; font-family: var(--house-sans);
+}
+#wave-banner.title-card .title-card-kicker { display: none; }
+#wave-banner.title-card .big {
+  font: 500 clamp(26px, 2.9vw, 42px)/1.12 var(--house-serif); letter-spacing: 0.14em; text-transform: uppercase;
+  color: #eadfc2; text-shadow: 0 2px 22px #000c, 0 1px 3px #000; text-wrap: balance;
+}
+#wave-banner.title-card .title-card-rule {
+  width: 0; height: 1px; margin: 12px auto 10px; background: linear-gradient(90deg, transparent, #bd9460 20%, #e4c98f 50%, #bd9460 80%, transparent);
+  transition: width 0.9s var(--house-ease) 0.2s;
+}
+#wave-banner.title-card.show .title-card-rule { width: min(260px, 60%); }
+#wave-banner.title-card .small {
+  margin: 0; font: 400 calc(13.5px * var(--text-scale))/1.45 var(--house-sans); letter-spacing: 0.02em;
+  color: #cfd6c8; text-shadow: 0 1px 8px #000;
+}
+/* Level arrival: kicker, a larger tracked name that settles in, the epigraph last. */
+#wave-banner.title-card.level .title-card-kicker {
+  display: block; margin-bottom: 10px; font: 600 calc(11px * var(--text-scale))/1 var(--house-sans);
+  letter-spacing: 0.24em; text-transform: uppercase; color: #d5b982; text-shadow: 0 1px 6px #000;
+}
+#wave-banner.title-card.level .big { font-size: clamp(34px, 4vw, 60px); letter-spacing: 0.16em; }
+#wave-banner.title-card.level.show .title-card-kicker { animation: house-fade-up 0.8s ease both; }
+#wave-banner.title-card.level.show .big { animation: house-title-in 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+#wave-banner.title-card.level.show .small { animation: house-fade-up 1s ease both 0.7s; font-style: italic; font-family: var(--house-serif); font-size: calc(19px * var(--text-scale)); letter-spacing: 0.01em; }
+#wave-banner.title-card:not(.level).show .big { animation: house-fade-up 0.5s var(--house-ease) both; }
+/* Event notice (waystone lit, a first brew, a card found): the title's quieter
+   sibling. Sentence case, no tracking, a short rule; it queues behind arrivals. */
+#wave-banner.title-card.notice .title-card-kicker {
+  display: block; margin-bottom: 8px; font: 600 calc(10.5px * var(--text-scale))/1 var(--house-sans);
+  letter-spacing: 0.22em; text-transform: uppercase; color: var(--house-brass); text-shadow: 0 1px 6px #000;
+}
+#wave-banner.title-card.notice .big {
+  font: 500 clamp(26px, 2.5vw, 36px)/1.12 var(--house-serif); letter-spacing: 0.01em; text-transform: none;
+  color: var(--house-brass-strong);
+}
+#wave-banner.title-card.notice .title-card-rule { margin: 9px auto 8px; }
+#wave-banner.title-card.notice.show .title-card-rule { width: min(120px, 40%); }
+#wave-banner.title-card.notice.show .title-card-kicker { animation: house-fade-up 0.45s var(--house-ease) both; }
+#wave-banner.title-card.notice.show .small { animation: house-fade-up 0.6s var(--house-ease) both 0.18s; }
+
+/* The objective's second line: a found card's bench cue, never the objective itself. */
+#objective-note {
+  max-height: 0; margin-top: 0; overflow: hidden; opacity: 0; text-align: right;
+  font: 400 calc(11.5px * var(--text-scale))/1.45 var(--house-sans); color: var(--house-brass);
+  text-shadow: var(--house-shadow);
+  transition: opacity 0.4s ease, max-height 0.4s var(--house-ease), margin-top 0.4s var(--house-ease);
+}
+#objective-note.shown { max-height: 3em; margin-top: 4px; opacity: 1; }
+@keyframes house-title-in { from { opacity: 0; letter-spacing: 0.34em; filter: blur(3px); } to { opacity: 1; letter-spacing: 0.16em; filter: blur(0); } }
+@keyframes house-fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Contextual hints and teach cards ---------- */
+body.play-active #interaction-hint { font-family: var(--house-sans); }
+.hint-teach-overlay { font-family: var(--house-sans); }
+.hint-teach-card {
+  gap: 7px; padding: 13px 16px 12px; border: 1px solid #52665b; border-top: 1px solid #b5a074; border-radius: 2px;
+  background: #0f1d22f5; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+}
+.hint-teach-title {
+  font: 600 calc(11.5px * var(--text-scale, 1))/1.2 var(--house-sans); letter-spacing: 0.1em; color: var(--house-brass);
+}
+.hint-teach-body { font: 400 calc(13.5px * var(--text-scale, 1))/1.5 var(--house-sans); color: var(--house-paper); }
+.hint-teach-dismiss {
+  font: 400 calc(11px * var(--text-scale, 1))/1.2 var(--house-sans); letter-spacing: 0; text-transform: none; color: var(--house-muted);
+}
+.waypoint-range { font-family: var(--house-sans) !important; font-weight: 650 !important; font-variant-numeric: tabular-nums; }
+
+/* ---------- Level curtain: the same slate and brass as the rest of the house ---------- */
+#level-curtain { background: #081216f2; font-family: var(--house-sans); }
+.level-curtain-panel {
+  border: 0; border-top: 1px solid #b5a074; border-radius: 0; background: #0f1d22f5;
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.55); padding: 16px 18px;
+}
+.level-curtain-panel .run-launcher-loading-copy strong,
+#level-curtain-title { font: 500 calc(24px * var(--text-scale, 1))/1.1 var(--house-serif); color: var(--house-paper); letter-spacing: 0.01em; text-transform: none; }
+.level-curtain-panel .run-launcher-loading-sigil { border-color: #b5a07466; background: radial-gradient(circle, #d5b98224 0 18%, #0c171bf0 19% 100%); box-shadow: none; }
+.level-curtain-panel .run-launcher-loading-sigil span { border-top-color: #d5b982; border-right-color: #8fb3a080; }
+.level-curtain-panel .run-launcher-loading-sigil span:nth-child(2) { border-top-color: #bd9460; border-right-color: #d5b98255; }
+.level-curtain-panel .run-launcher-loading-sigil span:nth-child(3) { border-top-color: #e6dfca; }
+.level-curtain-panel .run-launcher-loading-bar { height: 2px; border-radius: 0; background: #1b2b2f; }
+.level-curtain-panel .run-launcher-loading-bar i { border-radius: 0; background: linear-gradient(90deg, #bd946000, #d5b982 45%, #f2e3b6); box-shadow: none; }
+.level-curtain-panel .run-launcher-loading-copy span,
+#level-curtain-detail { font: 400 calc(13px * var(--text-scale, 1))/1.45 var(--house-sans); color: var(--house-paper-soft); }
+/* A generic kicker any curtain or card can carry ("Floor 2 of 4"). */
+.title-card-kicker { font: 600 calc(11px * var(--text-scale, 1))/1 var(--house-sans); letter-spacing: 0.24em; text-transform: uppercase; color: var(--house-brass); }
+
+/* ---------- Victory (until the run layer replaces it) ---------- */
+body.play-active #victory-overlay { font-family: var(--house-sans); }
+body.play-active #victory-overlay .vic-title { font-family: var(--house-serif); font-weight: 500; letter-spacing: 0.14em; text-shadow: 0 2px 22px #000c; }
+
+@media (max-width: 760px) {
+  body.play-active #hud-left { top: 12px; left: 12px; column-gap: 10px; }
+  body.play-active .vitals { width: calc(140px * var(--text-scale)); }
+  body.play-active .flask-slot { width: calc(56px * var(--text-scale)); flex-basis: calc(56px * var(--text-scale)); }
+  #wave-banner.title-card.level .big { font-size: 30px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.play-active .vital-ghost { transition: none; }
+  #wave-banner.title-card .title-card-rule { transition: none; }
+}
+.reduce-flashes #game-hud .toast .toast-count.pop, .reduce-flashes #game-hud .toast.bump { animation: none; }
+
+/* ---------- Chart room: repeated places fold into one counted row ---------- */
+.map-place-count { color: var(--house-brass); font-weight: 600; font-variant-numeric: tabular-nums; }
+#minimap-caption, .map-caption { font-family: var(--house-sans); }
+
+/* ---------- F3 in player builds: one quiet frame counter in the play field's corner ---------- */
+#perf-fps {
+  position: absolute; top: 6px; right: 10px; z-index: 30; pointer-events: none;
+  padding: 3px 7px 4px; background: #0f1c21c7; border-right: 2px solid #9c8458;
+  font: 600 calc(10.5px * var(--text-scale, 1))/1 var(--house-sans); letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums; color: var(--house-paper-soft);
+  opacity: 0; transform: translateY(-3px); transition: opacity 0.18s ease, transform 0.18s var(--house-ease);
+}
+#perf-fps.shown { opacity: 1; transform: none; }
+#perf-fps.slow { color: #e8b39a; border-right-color: #c9785a; }

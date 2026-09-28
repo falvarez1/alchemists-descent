@@ -6,7 +6,7 @@
 // rewrite of entity-vs-cell rules.
 
 import type { Ctx, EntityStatus } from '@/core/types';
-import { Cell } from '@/sim/CellType';
+import { Cell, isLiquid } from '@/sim/CellType';
 import { fireColor, packRGB, steamColor } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
 
@@ -29,6 +29,18 @@ const FIRE_IGNITE_CHANCE = 0.03; // per Fire cell, per sample
 const LAVA_IGNITE_CHANCE = 0.16; // per Lava cell, per sample — a furnace next to open flame
 const OIL_IGNITE_MULT = 5; // an oiled body goes up fast
 const IGNITE_HOT_ENOUGH = 1; // accumulated heat ≥ this ignites with certainty
+/** Ticks a fresh catch burns (an oiled body burns longer); refreshed while in the flames. */
+export const IGNITE_TICKS = 90;
+export const IGNITE_OILED_TICKS = 300;
+/** Brine cells touching a body before it chills (a toe in a gutter does not). */
+const BRINE_CHILL_CELLS = 3;
+/** The frozen slow a brine soak keeps topped up (short: it thaws a beat after you climb out). */
+const BRINE_CHILL_TICKS = 36;
+/** Frostbite: hp per tick while soaking in brine (~1.8 hp/s at scale 1). */
+const FROSTBITE_PER_TICK = 0.03;
+
+/** Burning damage per status sample before any per-body scale. */
+const BURN_DAMAGE = 0.12;
 
 interface StatusBody {
   x: number;
@@ -43,7 +55,17 @@ export interface BodyCellSample {
   lava: number;
   acid: number;
   nitrogen: number;
+  /** Brine cells touching the body (the Cold Store's coolant: it chills, it bites). */
+  brine: number;
   charged: number;
+  /** Charged WATER / METAL / LAVA cells touching the body or underfoot: a current
+   *  that reached it through a conductor (blood is left out — a creature's own
+   *  spatter from the wand's hit must not turn the wand's current into the world's). */
+  conductorCharged: number;
+  /** Charged cells of any OTHER liquid (blood, slime, oil, acid...) touching or underfoot. */
+  liquidCharged: number;
+  /** Strongest charge on any sampled cell (0 when none): how hot the current is HERE. */
+  maxCharge: number;
   toxic: number;
   healium: number;
   teleportium: number;
@@ -57,11 +79,42 @@ export interface BodyCellSample {
 export interface StatusSampleOptions {
   toxicScale?: number;
   healiumScale?: number;
+  /** Multiplies the burning status's damage (creatures burn harder than the alchemist). */
+  burnScale?: number;
+  /** Ticks a fresh catch burns (default IGNITE_TICKS / IGNITE_OILED_TICKS). */
+  igniteTicks?: number;
+  igniteOiledTicks?: number;
+  /**
+   * FROSTBITE (the Cold Store): hp per tick while wading in brine, times this
+   * scale. 0 by default — only the alchemist opts in;
+   * creatures still take the chill (the frozen slow) but not the bite.
+   */
+  frostbiteScale?: number;
+  /**
+   * The body carries a GRADED chill (entities/chill: the alchemist). Its
+   * frozen timer is then only a record of cold exposure: no flat 0.55 slow and
+   * no generic frost motes — the chill's own curves, rime and breath say it.
+   */
+  gradedChill?: boolean;
 }
 
 export interface StatusSampleResult {
   damage: number;
   toxicDamage: number;
+  /** The burning share of `damage` (kill attribution reads the parts). */
+  burnDamage: number;
+  /** The electrical share of `damage`, one-time zap included. */
+  shockDamage: number;
+  /** The frostbite share of `damage` (brine soaking the body). */
+  frostbiteDamage: number;
+  /** Strongest charge touching the body this sample (0 = none). */
+  maxCharge: number;
+  /** Kill attribution's grid facts (see StatusBlow in core/types). */
+  fueled: boolean;
+  heatContact: boolean;
+  conducted: boolean;
+  liquidCharge: boolean;
+  chargeContact: boolean;
   healing: number;
   teleportTouch: boolean;
   slowFactor: number;
@@ -92,13 +145,20 @@ export function createDefaultStatus(): EntityStatus {
  * no-op for fire-immune bodies. Shared by passive exposure (sampleAndTickStatus)
  * and direct splash hits so the two stay consistent.
  */
-export function rollCatchFire(status: EntityStatus, fireCells: number, lavaCells: number, immune = false): boolean {
+export function rollCatchFire(
+  status: EntityStatus,
+  fireCells: number,
+  lavaCells: number,
+  immune = false,
+  igniteTicks = IGNITE_TICKS,
+  igniteOiledTicks = IGNITE_OILED_TICKS,
+): boolean {
   if (immune) return false;
   const heat = (fireCells * FIRE_IGNITE_CHANCE + lavaCells * LAVA_IGNITE_CHANCE) * (status.oiled > 0 ? OIL_IGNITE_MULT : 1);
   if (heat <= 0) return status.burning > 0;
   if (status.burning > 0 || heat >= IGNITE_HOT_ENOUGH || entityRandom() < heat) {
     // staying in the flames refreshes the burn; a fresh catch lights it.
-    status.burning = status.oiled > 0 ? 300 : 90;
+    status.burning = status.oiled > 0 ? igniteOiledTicks : igniteTicks;
     return true;
   }
   return false;
@@ -129,7 +189,11 @@ export function sampleBodyCells(
     lava: 0,
     acid: 0,
     nitrogen: 0,
+    brine: 0,
     charged: 0,
+    conductorCharged: 0,
+    liquidCharged: 0,
+    maxCharge: 0,
     toxic: 0,
     healium: 0,
     teleportium: 0,
@@ -153,6 +217,7 @@ export function sampleBodyCells(
       else if (t === Cell.Lava) sample.lava++;
       else if (t === Cell.Acid) sample.acid++;
       else if (t === Cell.Nitrogen) sample.nitrogen++;
+      else if (t === Cell.Brine) sample.brine++;
       else if (t === Cell.Toxic) sample.toxic++;
       else if (t === Cell.Healium) {
         sample.healium++;
@@ -171,7 +236,8 @@ export function sampleBodyCells(
         t === Cell.ElixirStone ||
         t === Cell.Toxic ||
         t === Cell.Healium ||
-        t === Cell.Teleportium
+        t === Cell.Teleportium ||
+        t === Cell.Brine
       ) {
         sample.liquid++;
         if (sample.sampledSplashColor === null || t === Cell.Water || t === Cell.Blood) {
@@ -180,7 +246,12 @@ export function sampleBodyCells(
         if (t === Cell.Water || t === Cell.Blood) sample.waterOrBlood++;
       }
       if (t === Cell.Fungus || t === Cell.Glowshroom) sample.fungus++;
-      if (world.charge[i] > 0) sample.charged++;
+      if (world.charge[i] > 0) {
+        sample.charged++;
+        if (t === Cell.Water || t === Cell.Metal || t === Cell.Lava || t === Cell.Brine) sample.conductorCharged++;
+        else if (isLiquid(t)) sample.liquidCharged++;
+        if (world.charge[i] > sample.maxCharge) sample.maxCharge = world.charge[i];
+      }
     }
   }
   // Standing on a charged conductor (a zapped metal floor / electrified water)
@@ -188,7 +259,16 @@ export function sampleBodyCells(
   for (let dx = -halfW; dx <= halfW; dx += 2) {
     const X = bx + dx;
     const Y = by + 1;
-    if (world.inBounds(X, Y) && world.charge[world.idx(X, Y)] > 0) sample.charged++;
+    if (!world.inBounds(X, Y)) continue;
+    const ui = world.idx(X, Y);
+    const c = world.charge[ui];
+    if (c > 0) {
+      sample.charged++;
+      const ut = world.types[ui];
+      if (ut === Cell.Water || ut === Cell.Metal || ut === Cell.Lava || ut === Cell.Brine) sample.conductorCharged++;
+      else if (isLiquid(ut)) sample.liquidCharged++;
+      if (c > sample.maxCharge) sample.maxCharge = c;
+    }
   }
   return sample;
 }
@@ -237,7 +317,11 @@ export function sampleAndTickStatus(
   const sample = sampleBodyCells(ctx, body, halfW, h);
 
   // --- Transitions (immune statuses never rise above 0) ---
-  if (sample.water >= 3) {
+  // Brine soaks like water (it douses a fire) and CHILLS: a body wading in it
+  // stiffens (the frozen slow, topped up while it stays in) — the Cold Store's
+  // frostbite. It never freezes solid the way nitrogen does.
+  if (sample.brine >= BRINE_CHILL_CELLS && !immune?.frozen) st.frozen = Math.max(st.frozen, BRINE_CHILL_TICKS);
+  if (sample.water + sample.brine >= 3) {
     if (!immune?.wet) st.wet = 120;
     st.oiled = 0;
     if (st.burning > 0) {
@@ -260,7 +344,7 @@ export function sampleAndTickStatus(
   if (sample.oil >= 3 && st.wet === 0 && !immune?.oiled) st.oiled = 600;
   // CATCH FIRE (percentage-based): hotter flame + more cells + oil all raise the
   // per-sample odds, and sustained exposure re-rolls until it catches.
-  if (!immune?.burning) rollCatchFire(st, sample.fire, sample.lava);
+  if (!immune?.burning) rollCatchFire(st, sample.fire, sample.lava, false, options.igniteTicks, options.igniteOiledTicks);
   if (sample.nitrogen >= 2 && !immune?.frozen) st.frozen = Math.max(st.frozen, 100);
   // Touching a live conductor electrocutes for 1-2s. While still in the current
   // it tops back up (decays to ~1s, re-rolls), so a body stuck to charged metal
@@ -270,7 +354,7 @@ export function sampleAndTickStatus(
   }
   // The instant a body goes live (0 -> charged) gets a one-time zap + a crack.
   const justShocked = electrifiedBefore === 0 && st.electrified > 0;
-  if (justShocked) ctx.audio.zap();
+  if (justShocked) ctx.audio.zap(body.x, body.y - h / 2);
 
   // --- Tick every timer ---
   if (st.wet > 0) st.wet = Math.max(0, st.wet - tickFrames);
@@ -330,7 +414,7 @@ export function sampleAndTickStatus(
       }
     }
   }
-  if (st.frozen > 0 && frame % 6 === 0) {
+  if (st.frozen > 0 && !options.gradedChill && frame % 6 === 0) {
     const e = randomEdgeCell(body, halfW, h);
     ctx.particles.spawn(
       e.x,
@@ -393,16 +477,26 @@ export function sampleAndTickStatus(
   }
 
   const shock = ctx.params.global.shockDamage;
-  const damage =
-    (st.burning > 0 ? 0.12 : 0) +
-    (st.electrified > 0 ? shock * (st.wet > 0 ? SHOCK_WET_MULT : 1) : 0) +
-    (justShocked ? SHOCK_ZAP : 0) +
-    toxicDamage;
+  const burnDamage = st.burning > 0 ? BURN_DAMAGE * (options.burnScale ?? 1) : 0;
+  const shockDamage = (st.electrified > 0 ? shock * (st.wet > 0 ? SHOCK_WET_MULT : 1) : 0) + (justShocked ? SHOCK_ZAP : 0);
+  const frostbiteDamage = sample.brine >= BRINE_CHILL_CELLS && !immune?.frozen
+    ? FROSTBITE_PER_TICK * tickFrames * (options.frostbiteScale ?? 0)
+    : 0;
+  const damage = burnDamage + shockDamage + toxicDamage + frostbiteDamage;
   // Electrified bodies stutter (a mild slow), short of the deep frozen lock.
-  const slowFactor = st.frozen > 0 ? 0.55 : st.electrified > 0 ? 0.82 : 1;
+  const slowFactor = st.frozen > 0 && !options.gradedChill ? 0.55 : st.electrified > 0 ? 0.82 : 1;
   return {
     damage,
     toxicDamage,
+    burnDamage,
+    shockDamage,
+    frostbiteDamage,
+    maxCharge: sample.maxCharge,
+    fueled: st.oiled > 0 || sample.oil > 0 || sample.lava > 0,
+    heatContact: sample.fire > 0 || sample.lava > 0,
+    conducted: st.wet > 0 || sample.conductorCharged > 0,
+    liquidCharge: sample.liquidCharged > 0,
+    chargeContact: sample.charged > 0,
     healing,
     teleportTouch: !immune?.teleportium && sample.teleportium > 0,
     slowFactor,

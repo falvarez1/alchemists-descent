@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Ctx, Enemy, LevelRuntime, WandLoadoutSave, WandRuntimeSnapshot } from '@/core/types';
 import { GEN_TUNE, GEN_VERSION, genTuneSignature } from '@/config/gen';
 import { LEVELS } from '@/config/worldgraph';
@@ -114,6 +114,48 @@ function restoreSavedBlob(levels: Levels, ctx: Ctx, blob: unknown): LevelRuntime
     restoreLevel(ctx: Ctx, def: typeof LEVELS.d2, blob: typeof blob): LevelRuntime;
   }).restoreLevel(ctx, LEVELS.d2, blob);
 }
+
+describe('settled route repairs', () => {
+  it('waits for material progress under pauses or slow frames, then cancels on disposal', () => {
+    vi.useFakeTimers();
+    const ctx = {} as Ctx;
+    const levels = new Levels(ctx);
+    const runtime = makeLevelRuntime({ def: LEVELS.d2, world: new World(32, 32), spawn: { x: 16, y: 24 } });
+    const internals = levels as unknown as {
+      currentId: string;
+      levels: Map<string, LevelRuntime>;
+      repairFindability: () => boolean;
+      scheduleSettledFindabilityRepair(ctx: Ctx, runtime: LevelRuntime): void;
+    };
+    const repair = vi.fn(() => false);
+    internals.currentId = 'd2'; internals.levels.set('d2', runtime);
+    internals.repairFindability = repair;
+    try {
+      internals.scheduleSettledFindabilityRepair(ctx, runtime);
+      vi.advanceTimersByTime(7000);
+      expect(repair).not.toHaveBeenCalled();
+      expect(levels.findabilityReady).toBe(false);
+      runtime.world.activity.stepSerial = 18;
+      vi.advanceTimersByTime(100);
+      expect(repair).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(7000);
+      expect(repair).toHaveBeenCalledTimes(1);
+      runtime.world.activity.stepSerial = 390;
+      vi.advanceTimersByTime(7000);
+      expect(repair).toHaveBeenCalledTimes(5);
+      expect(levels.findabilityReady).toBe(false);
+      runtime.world.activity.stepSerial = 720;
+      vi.advanceTimersByTime(7000);
+      expect(repair).toHaveBeenCalledTimes(7);
+      expect(levels.findabilityReady).toBe(true);
+      internals.scheduleSettledFindabilityRepair(ctx, runtime);
+      levels.dispose();
+      runtime.world.activity.stepSerial += 720;
+      vi.advanceTimersByTime(7000);
+      expect(repair).toHaveBeenCalledTimes(7);
+    } finally { levels.dispose(); vi.useRealTimers(); }
+  });
+});
 
 describe('level enemy persistence', () => {
   it('round-trips behavior state used by roosts, patrols, and enemy attacks', () => {
@@ -982,7 +1024,7 @@ describe('level enemy persistence', () => {
     });
   });
 
-  it('retires expedition saves captured under different worldgen tuning', () => {
+  it('archives expedition saves captured under different worldgen tuning', () => {
     withLocalStorage((store) => {
       const originalTune = { ...GEN_TUNE };
       const savedSignature = genTuneSignature();
@@ -1027,7 +1069,8 @@ describe('level enemy persistence', () => {
 
         expect(levels.tryResumeExpedition(ctx)).toBe(false);
         expect(store.get('noita-expedition')).toBeUndefined();
-        expect(toasts).toContain('WORLDGEN TUNING CHANGED - EXPEDITION RETIRED');
+        expect(JSON.parse(store.get('noita-expedition-archive')!).genTuneSignature).toBe(savedSignature);
+        expect(toasts).toContain('WORLDGEN TUNING CHANGED - EXPEDITION ARCHIVED — start a new descent');
       } finally {
         Object.assign(GEN_TUNE, originalTune);
       }
@@ -1186,130 +1229,6 @@ describe('level enemy persistence', () => {
       });
     });
   });
-
-  it('checkpoints the final vault-arch arrival position instead of the destination spawn', () => {
-    withLocalStorage((store) => {
-      withLevelDom(() => {
-        const world = new World();
-        const vaultWorld = new World();
-        const loadout: WandLoadoutSave = {
-          active: 0,
-          collection: [],
-          wands: [],
-        };
-        const wands: WandRuntimeSnapshot = {
-          active: 0,
-          collection: [],
-          wands: [],
-          lastDryFire: 0,
-          flameBurst: 0,
-          depthsGranted: [],
-          infuserGranted: false,
-        };
-        const flask = new Flask();
-        const ctx = {
-          world,
-          enemies: [],
-          projectiles: [],
-          shockwaves: [],
-          state: {
-            mode: 'play',
-            playtestSource: null,
-            debugGodMode: false,
-            score: 0,
-            worldSeed: 123,
-            frameCount: 10,
-          },
-          player: {
-            x: 50,
-            y: 50,
-            vx: 1,
-            vy: 1,
-            fx: 1,
-            fy: 1,
-            hp: 100,
-            maxHp: 100,
-            levit: 100,
-            maxLevit: 100,
-            perks: {},
-            dead: false,
-            firing: false,
-            crawling: false,
-            crawlT: 0,
-            wallGrabT: 0,
-          },
-          input: {
-            activeChargingBlackHole: null,
-            keys: {
-              left: false,
-              right: false,
-              up: false,
-              jump: false,
-              wallJump: false,
-              down: false,
-              grab: false,
-            },
-            isDrawing: false,
-            lastX: null,
-            lastY: null,
-            buildSpellHeld: false,
-            bombCharge: -1,
-            siphonHeld: false,
-            pourHeld: false,
-            drinkHeld: false,
-          },
-          fx: { digBeam: null },
-          simulation: { accumulator: 0 },
-          particles: { clear: () => undefined, spawn: () => undefined },
-          lightning: { clear: () => undefined },
-          camera: { snapTo: () => undefined },
-          events: { emit: () => undefined },
-          audio: { portalWhoosh: () => undefined },
-          flask,
-          wands: {
-            snapshotLoadout: () => loadout,
-            snapshotRuntimeState: () => wands,
-          },
-          sanctum: { open: () => undefined },
-        } as unknown as Ctx;
-        const levels = new Levels(ctx);
-        const host = makeLevelRuntime({
-          def: { ...LEVELS.d1, nextLevelId: null },
-          world,
-          enemies: [],
-          spawn: { x: 10, y: 20 },
-          regions: null,
-          vaultArch: { x: 50, y: 50, backX: 60, backY: 60 },
-        });
-        const vault = makeLevelRuntime({
-          def: LEVELS.vault,
-          world: vaultWorld,
-          enemies: [],
-          spawn: { x: 100, y: 120 },
-          regions: null,
-          vaultArch: { x: 30, y: 40, backX: 77, backY: 88 },
-        });
-        const internals = levels as unknown as {
-          currentId: string | null;
-          expeditionSeed: number | null;
-          levels: Map<string, LevelRuntime>;
-        };
-        internals.levels.set('d1', host);
-        internals.levels.set('vault', vault);
-        internals.currentId = 'd1';
-        internals.expeditionSeed = 123;
-
-        levels.update(ctx);
-
-        const save = JSON.parse(store.get('noita-expedition') ?? 'null') as {
-          currentId: string;
-          player: { x: number; y: number };
-        };
-        expect(save.currentId).toBe('vault');
-        expect(save.player).toMatchObject({ x: 77, y: 88 });
-      });
-    });
-  });
 });
 
 describe('level objective labels', () => {
@@ -1317,8 +1236,8 @@ describe('level objective labels', () => {
     const levels = new Levels({} as Ctx);
     const objective = levels as unknown as { bossObjective(kind: 'leviathan' | 'colossus' | undefined): string };
 
-    expect(objective.bossObjective('leviathan')).toBe('DRAIN THE SUNKEN LEVIATHAN');
-    expect(objective.bossObjective('colossus')).toBe('SLAY THE KILN COLOSSUS');
-    expect(objective.bossObjective(undefined)).toBe('SLAY THE KILN COLOSSUS');
+    expect(objective.bossObjective('leviathan')).toBe('Drain the Sunken Leviathan.');
+    expect(objective.bossObjective('colossus')).toBe('Bring down the Kiln Colossus.');
+    expect(objective.bossObjective(undefined)).toBe('Bring down the Kiln Colossus.');
   });
 });

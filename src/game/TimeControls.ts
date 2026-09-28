@@ -209,6 +209,7 @@ export class TimeControls implements TimeControlApi {
   }
 
   private restoreSnapshot(snapshot: GridSnapshot): boolean {
+    this.ctx.world.activity.touchRect(snapshot.bounds.x0, snapshot.bounds.y0, snapshot.bounds.x1, snapshot.bounds.y1);
     const world = this.ctx.world;
     if (world.width !== snapshot.worldWidth || world.height !== snapshot.worldHeight) return false;
     const width = snapshot.bounds.x1 - snapshot.bounds.x0;

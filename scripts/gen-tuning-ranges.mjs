@@ -19,7 +19,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const outPath = join(repoRoot, 'servers', 'authorlink', 'tuningRanges.generated.mjs');
-const modulePath = join(repoRoot, 'servers', 'spacetime', 'spacetimedb', 'src', 'tuningRanges.generated.ts');
 const check = process.argv.includes('--check');
 
 const entry = `
@@ -43,7 +42,7 @@ try {
     // The schema modules are pure, but they sit in files that also reference
     // browser globals at type level; neutral platform + these shims keep the
     // bundle importable under plain Node.
-    define: { 'import.meta.env.DEV': 'false' },
+    define: { 'import.meta.env.DEV': 'false', 'import.meta.env.BASE_URL': '"/"' },
   });
 
   const mod = await import(pathToFileURL(bundlePath).href);
@@ -70,25 +69,8 @@ try {
     `  return Object.prototype.hasOwnProperty.call(TUNING_RANGES, path) ? TUNING_RANGES[path] : null;\n` +
     `}\n`;
 
-  // The SpacetimeDB module enforces the SAME bounds as the relay, from the same
-  // schema. Two hosted backends that disagree about which values are legal is
-  // the drift this whole generator exists to prevent — it would just move the
-  // hand-maintained copy from one server to another.
-  const moduleBody =
-    banner +
-    `export interface TuningRange {\n` +
-    `  min: number;\n` +
-    `  max: number;\n` +
-    `  step?: number;\n` +
-    `}\n\n` +
-    `export const TUNING_RANGES: Record<string, TuningRange> = ${JSON.stringify(table, null, 2)};\n\n` +
-    `export function tuningRangeFor(path: string): TuningRange | null {\n` +
-    `  return Object.prototype.hasOwnProperty.call(TUNING_RANGES, path) ? TUNING_RANGES[path] : null;\n` +
-    `}\n`;
-
   const targets = [
     { path: outPath, body, label: 'tuningRanges.generated.mjs' },
-    { path: modulePath, body: moduleBody, label: 'spacetime tuningRanges.generated.ts' },
   ];
 
   if (check) {

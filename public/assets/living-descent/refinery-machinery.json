@@ -1,0 +1,51 @@
+{
+  "prompt": "Use case: precise-object-edit.\nEdit target: the isolated pixel-art machinery. Preserve only its machinery; replace the entire painted checkerboard background with one exact flat chroma-key color.\nPrimary request: keep every dark copper pipe, cropped wheel, hanging chain, rust speck and mineral edge in the same place, preserving the silhouettes and dark material palette. Replace all empty pixels around and inside the machinery, including wheel holes and chain openings, with uniform RGB (255,0,255), HEX #FF00FF saturated magenta. Use this exact identical magenta everywhere. No gradients, lighting, fog, noise, texture, shadows, checkerboard, or transparency simulation in that background. Background must be absolutely flat solid #FF00FF and cover at least 70 percent of the canvas. There is no magenta or purple in the objects.\nOutput: 1536 by 1024 landscape PNG. Clean coarse pixel-art edges: hard pixel steps, no blur, no antialiasing or feathered pink fringes. The central rectangle remains empty magenta for game action.\nConstraints: change only the background. Same original isolated pressure-wheel fragments and dark slate/corroded copper pipes. No new objects, no text, no numbers, no UI, no frame, no foreground floor, no stones, no terrain, no water, no creatures. This is a chroma-key source for a separately verified RGBA game asset; do not fake transparency.",
+  "tool": "built-in image_gen",
+  "type": "precise-object-edit",
+  "requestedDimensions": [
+    1536,
+    1024
+  ],
+  "sourcePath": ".impeccable/assets/living-descent/sources/refinery-machinery-chroma-original.png",
+  "sourceDimensions": [
+    1536,
+    1024
+  ],
+  "outputPath": "public/assets/living-descent/refinery-machinery.png",
+  "outputDimensions": [
+    1150,
+    782
+  ],
+  "role": "transparent sparse mid-distance machinery",
+  "nonCollidable": true,
+  "referenceImages": [
+    ".impeccable/assets/living-descent/sources/refinery-machinery-first-rgb.png"
+  ],
+  "compositionReferences": [
+    ".impeccable/mocks/sluice.png",
+    ".impeccable/mocks/intake.png",
+    ".impeccable/mocks/web-gallery.png"
+  ],
+  "promptHistory": [
+    "docs/living-descent-assets/prompts/refinery-machinery-first.json",
+    "docs/living-descent-assets/prompts/refinery-machinery-correction.json"
+  ],
+  "nativeAlphaLimit": "Both native transparent-background attempts returned opaque RGB with painted checkerboards. Neither failed RGB render is a shipping asset.",
+  "conversion": {
+    "tool": "Node Sharp converter, followed by Sharp CLI",
+    "script": "docs/living-descent-assets/convert-chroma-key.mjs",
+    "authorization": "Parent authorized the Impeccable playbook chroma-key fallback within the approved asset-production scope.",
+    "generatedKeyRgb": [
+      244,
+      3,
+      237
+    ],
+    "keyHue": 302,
+    "hueTolerance": 25,
+    "minimumSaturation": 0.25,
+    "contentPreservation": "Only alpha changes for one magenta hue key; all RGB samples preserved in the keyed source.",
+    "resize": "Nearest-neighbor resize to 575x391 logical pixels, then integer 2x nearest-neighbor upscale to 1150x782. No crop; 2 percent aspect adjustment."
+  },
+  "qaStatus": "accepted",
+  "qaNotes": "Real RGBA verified; more than 70 percent transparent. Reviewed combined over refinery-distance at 575x391; no visible bright key-color fringe."
+}

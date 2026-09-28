@@ -1,4 +1,5 @@
 import { DataUtils } from 'three';
+import { activeArtPlane, activeFloorLook, prepareTerrainColors } from '@/render/TerrainArt';
 import { HalfFloatType, NearestFilter, RGBAFormat, StorageTexture, WebGPURenderer } from 'three/webgpu';
 import { Fn, instanceIndex, textureStore, uint, uvec2, vec4 } from 'three/tsl';
 
@@ -6,6 +7,7 @@ import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import type { Ctx, MaterialParams } from '@/core/types';
 import { COMPOSE_MAX_LENSES, COMPOSE_MAX_WAVES } from '@/render/composeLimits';
+import { backdropOrigin } from '@/render/depth/parallax';
 import type {
   CompositorLens,
   LightField,
@@ -22,6 +24,15 @@ import {
   LIGHT_KNEE_SLOPE,
   LIGHT_KNEE_START,
   LIGHT_READABILITY_FLOOR,
+  DARK_ADAPT,
+  DARK_AIR_GLOW,
+  DARK_AIR_B,
+  DARK_AIR_G,
+  DARK_AIR_R,
+  DARK_FLOOR_B,
+  DARK_FLOOR_G,
+  DARK_FLOOR_R,
+  renderAmbient,
   SELF_GLOW_BASE,
   SELF_GLOW_SCALE,
 } from '@/render/lightingModel';
@@ -47,13 +58,23 @@ const GPU_BUFFER_USAGE_COPY_DST = 0x08;
 const GPU_BUFFER_USAGE_STORAGE = 0x80;
 const GPU_SHADER_STAGE_COMPUTE = 0x04;
 
-const PARAM_COUNT = 160;
+const PARAM_COUNT = 180;
 const BACKDROP_BASE = 32;
 const BACKDROP_STRIDE = 8;
+/** Per-layer light response (render/depth kits), in the free params 27–31. */
+const BACKDROP_LIT_BASE = 27;
 const WAVE_BASE = BACKDROP_BASE + MAX_BACKDROP_LAYERS * BACKDROP_STRIDE;
 const WAVE_STRIDE = 8;
 const LENS_BASE = WAVE_BASE + COMPOSE_MAX_WAVES * WAVE_STRIDE;
 const LENS_STRIDE = 4;
+/** Shape-aware floor backdrop: on, saturation, haze rgb, haze mix (after the lenses). */
+const NATURAL_BASE = LENS_BASE + COMPOSE_MAX_LENSES * LENS_STRIDE;
+/** 1 while designed darkness is present (the light alpha is not all ones). */
+const DARK_ON_PARAM = NATURAL_BASE + 6;
+/** CLEAR WATER (floorLooks waterClarity): clarity, seen tint rgb, seen saturation, body rgb (0–255). */
+const WATER_BASE = NATURAL_BASE + 7;
+/** Per-layer plane origin x, y (render/depth/parallax backdropOrigin). */
+const BACKDROP_ORIGIN_BASE = WATER_BASE + 8;
 
 interface RuntimeGpuQueue {
   submit(commandBuffers: unknown[]): void;
@@ -415,6 +436,33 @@ fn softLit(lf: f32) -> f32 {
   return lit;
 }
 
+// Designed darkness, SMOOTH: the light alpha bilinear between the half-res
+// texel centres around this cell's centre (core/darkness openAtCell; the
+// WebGL2 shader's openAt). Even cells sit 3/4 of the way from texel
+// (v/2)-1 to v/2, odd cells 1/4 past v/2.
+fn openAt(vx: i32, vy: i32) -> f32 {
+  let x0 = (vx + 1) / 2 - 1;
+  let y0 = (vy + 1) / 2 - 1;
+  let tx = select(0.75, 0.25, (vx & 1) == 1);
+  let ty = select(0.75, 0.25, (vy & 1) == 1);
+  let xa = clamp(x0, 0, ${LIGHT_W - 1});
+  let xb = clamp(x0 + 1, 0, ${LIGHT_W - 1});
+  let ya = clamp(y0, 0, ${LIGHT_H - 1});
+  let yb = clamp(y0 + 1, 0, ${LIGHT_H - 1});
+  let top = mix(textureLoad(uLight, vec2<i32>(xa, ya), 0).a, textureLoad(uLight, vec2<i32>(xb, ya), 0).a, tx);
+  let bot = mix(textureLoad(uLight, vec2<i32>(xa, yb), 0).a, textureLoad(uLight, vec2<i32>(xb, yb), 0).a, tx);
+  return mix(top, bot, ty);
+}
+
+// softLit plus the designed-darkness eye adaptation (lightingModel DARK_ADAPT).
+fn adaptLit(lf: f32, adapt: f32) -> f32 {
+  var lit = lf * lf + adapt * lf;
+  if (lit > ${LIGHT_KNEE_START.toFixed(2)}) {
+    lit = min(${LIGHT_KNEE_MAX.toFixed(1)}, ${LIGHT_KNEE_START.toFixed(2)} + (lit - ${LIGHT_KNEE_START.toFixed(2)}) * ${LIGHT_KNEE_SLOPE.toFixed(1)});
+  }
+  return lit;
+}
+
 fn gradeBackdrop(cIn: vec3<f32>) -> vec3<f32> {
   var c = (cIn * exp2(p(14u)) + p(15u) - 0.5) * p(16u) + 0.5;
   let luma = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
@@ -422,14 +470,18 @@ fn gradeBackdrop(cIn: vec3<f32>) -> vec3<f32> {
   return pow(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(p(17u)));
 }
 
-fn backdropCoord(base: u32, vx: i32, vy: i32, camX: i32, camY: i32) -> vec2<i32> {
-  let speed = p(base);
+fn backdropCoord(base: u32, origin: u32, vx: i32, vy: i32) -> vec2<i32> {
   let scale = max(0.25, p(base + 3u));
   let width = max(1, i32(round(1.0 / max(0.000001, p(base + 4u)))));
   let height = max(1, i32(round(1.0 / max(0.000001, p(base + 5u)))));
-  let sx = i32(floor((floor(f32(camX) * speed) + f32(vx)) / scale + p(base + 6u)));
-  let sy = i32(floor((floor(f32(camY) * speed) + f32(vy)) / scale + p(base + 7u)));
-  return vec2<i32>(wrapI(sx, width), wrapI(sy, height));
+  let sx = i32(floor((p(origin) + f32(vx)) / scale + p(base + 6u)));
+  let sy = i32(floor((p(origin + 1u) + f32(vy)) / scale + p(base + 7u)));
+  var wx = wrapI(sx, width);
+  // Per-floor composition variant: mirror the sample column (floorLooks).
+  if (p(26u) > 0.5) {
+    wx = width - 1 - wx;
+  }
+  return vec2<i32>(wx, wrapI(sy, height));
 }
 
 fn applyBackdropSample(c: vec3<f32>, sample: vec4<f32>, opacity: f32) -> vec3<f32> {
@@ -531,7 +583,13 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
     let cell = textureLoad(uWin, vec2<i32>(lx, ly), 0);
     let typeId = i32(cell.a & 0x7fu);
     let charged = (cell.a & 0x80u) != 0u;
-    let light = textureLoad(uLight, vec2<i32>(vx / 2, vy / 2), 0).rgb;
+    let lightTexel = textureLoad(uLight, vec2<i32>(vx / 2, vy / 2), 0);
+    let light = lightTexel.rgb;
+    // Designed darkness (alpha): scales ambient + the readability floor,
+    // read smooth (openAt) so no dark edge shows the texel staircase.
+    let open = select(1.0, openAt(vx, vy), p(${DARK_ON_PARAM}u) > 0.5);
+    let shut = 1.0 - open;
+    let adapt = ${DARK_ADAPT.toFixed(3)} * shut;
     let dxv = f32(vx) - ${(VIEW_W / 2).toFixed(1)};
     let dyv = f32(vy) - ${(VIEW_H / 2).toFixed(1)};
     let vg = 1.0 - p(19u) * ((dxv * dxv + dyv * dyv) / ${((VIEW_W / 2) * (VIEW_W / 2) + (VIEW_H / 2) * (VIEW_H / 2)).toFixed(1)});
@@ -542,38 +600,63 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
       // shimmers behind a held (hot) object, matching the foreground warp
       let bvx = vx + hazeX;
       let bvy = vy + hazeY;
-      if (p(${BACKDROP_BASE}u + 2u) > 0.5 && p(${BACKDROP_BASE}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop0, backdropCoord(${BACKDROP_BASE}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE}u + 1u));
+      var lw = 1.0;
+      ${Array.from({ length: MAX_BACKDROP_LAYERS }, (_, i) => {
+        const b = BACKDROP_BASE + i * BACKDROP_STRIDE;
+        // lw: how much real light the visible mix takes (params 27–31 per layer).
+        return `if (p(${b}u + 2u) > 0.5 && p(${b}u + 1u) > 0.0) {
+        let s${i} = textureLoad(uBackdrop${i}, backdropCoord(${b}u, ${BACKDROP_ORIGIN_BASE + i * 2}u, bvx, bvy), 0);
+        bg = applyBackdropSample(bg, s${i}, p(${b}u + 1u));
+        lw = mix(lw, p(${BACKDROP_LIT_BASE + i}u), clamp(s${i}.a * p(${b}u + 1u), 0.0, 1.0));
+      }`;
+      }).join('\n      ')}
+      bg = gradeBackdrop(bg) * vec3<f32>(p(20u), p(21u), p(22u)) + vec3<f32>(p(23u), p(24u), p(25u));
+      if (p(${NATURAL_BASE}u) > 0.5) {
+        // Shape-aware floors: desaturate, haze, then the contact shade the
+        // terrain cache stores in an Empty cell's red byte.
+        bg = mix(vec3<f32>(dot(bg, vec3<f32>(0.2126, 0.7152, 0.0722))), bg, p(${NATURAL_BASE + 1}u));
+        bg = mix(bg, vec3<f32>(p(${NATURAL_BASE + 2}u), p(${NATURAL_BASE + 3}u), p(${NATURAL_BASE + 4}u)), p(${NATURAL_BASE + 5}u));
+        bg = bg * (f32(cell.r) / 255.0);
       }
-      if (p(${BACKDROP_BASE + BACKDROP_STRIDE}u + 2u) > 0.5 && p(${BACKDROP_BASE + BACKDROP_STRIDE}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop1, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE}u + 1u));
-      }
-      if (p(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u + 2u) > 0.5 && p(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop2, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u + 1u));
-      }
-      if (p(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u + 2u) > 0.5 && p(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop3, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u + 1u));
-      }
-      if (p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 2u) > 0.5 && p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop4, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 1u));
-      }
-      bg = gradeBackdrop(bg);
       let depthShade = 0.78 + 0.22 * (1.0 - f32(wy) / ${HEIGHT.toFixed(1)});
       var r = bg.r * depthShade;
       var g = bg.g * depthShade;
       var b = bg.b * depthShade;
+      let litK = 0.72 * lw;
       var lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.r) * vg;
-      r = (r * 0.62 + ambient * 0.022) * vg + r * lf0 * lf0 * 0.72;
+      r = (r * 0.62 + ambient * 0.022) * vg * open + r * (lf0 * lf0 + adapt * lf0) * litK + ${DARK_AIR_R.toFixed(4)} * shut;
       lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.g) * vg;
-      g = (g * 0.62 + ambient * 0.022) * vg + g * lf0 * lf0 * 0.72;
+      g = (g * 0.62 + ambient * 0.022) * vg * open + g * (lf0 * lf0 + adapt * lf0) * litK + ${DARK_AIR_G.toFixed(4)} * shut;
       lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.b) * vg;
-      b = (b * 0.62 + ambient * 0.032) * vg + b * lf0 * lf0 * 0.72;
-      r = r + max(0.0, light.r - 0.25) * 0.045 * vg;
-      g = g + max(0.0, light.g - 0.25) * 0.04 * vg;
-      b = b + max(0.0, light.b - 0.25) * 0.035 * vg;
+      b = (b * 0.62 + ambient * 0.032) * vg * open + b * (lf0 * lf0 + adapt * lf0) * litK + ${DARK_AIR_B.toFixed(4)} * shut;
+      let haze = vg * (1.0 + ${DARK_AIR_GLOW.toFixed(3)} * shut);
+      r = r + max(0.0, light.r - 0.25) * 0.045 * haze;
+      g = g + max(0.0, light.g - 0.25) * 0.04 * haze;
+      b = b + max(0.0, light.b - 0.25) * 0.035 * haze;
       c = vec3<f32>(r, g, b) + ringGlow * vec3<f32>(0.55, 0.42, 0.26);
     } else {
       var base = vec3<f32>(f32(cell.r), f32(cell.g), f32(cell.b)) / 255.0;
+      // CLEAR WATER (ComposeShader): the kit's planes show through a body. The
+      // terrain cache paints a clear body (not a surface, not a sealed pocket)
+      // exactly the look's waterBody.
+      if (typeId == ${Cell.Water} && p(${WATER_BASE}u) > 0.0) {
+        let body = vec3<u32>(u32(p(${WATER_BASE + 5}u)), u32(p(${WATER_BASE + 6}u)), u32(p(${WATER_BASE + 7}u)));
+        if (all(cell.rgb == body)) {
+          let sway = i32(floor(sin(f32(wy) * 0.19 + p(6u) * 0.35) * 1.6));
+          let svx = clamp(vx + sway, 0, ${VIEW_W - 1});
+          var seen = vec3<f32>(0.004, 0.005, 0.009);
+          ${Array.from({ length: MAX_BACKDROP_LAYERS }, (_, i) => {
+            const b = BACKDROP_BASE + i * BACKDROP_STRIDE;
+            return `if (p(${b}u + 2u) > 0.5 && p(${b}u + 1u) > 0.0) {
+            seen = applyBackdropSample(seen, textureLoad(uBackdrop${i}, backdropCoord(${b}u, ${BACKDROP_ORIGIN_BASE + i * 2}u, svx, vy), 0), p(${b}u + 1u));
+          }`;
+          }).join('\n          ')}
+          seen = gradeBackdrop(seen) * vec3<f32>(p(20u), p(21u), p(22u)) + vec3<f32>(p(23u), p(24u), p(25u));
+          seen = mix(vec3<f32>(dot(seen, vec3<f32>(0.2126, 0.7152, 0.0722))), seen, p(${WATER_BASE + 4}u))
+            * vec3<f32>(p(${WATER_BASE + 1}u), p(${WATER_BASE + 2}u), p(${WATER_BASE + 3}u));
+          base = mix(base, seen, p(${WATER_BASE}u));
+        }
+      }
       if (typeId == ${Cell.Fire}) {
         let fl = 0.75 + flickerRand(vec2<f32>(f32(wx), f32(wy)), 1.0) * 0.5;
         base = base * fl;
@@ -584,7 +667,9 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
         let fl = 0.7 + flickerRand(vec2<f32>(f32(wx), f32(wy)), 1.0) * 0.55;
         base.r = base.r * fl;
         base.g = base.g * fl * 0.95;
-      } else if ((typeId == ${Cell.Water} || typeId == ${Cell.Healium} || typeId == ${Cell.Teleportium}) && wy > 0 && ly > 0 && i32(textureLoad(uWin, vec2<i32>(lx, ly - 1), 0).a & 0x7fu) == ${Cell.Empty}) {
+      } else if ((typeId == ${Cell.Water} || typeId == ${Cell.Healium} || typeId == ${Cell.Teleportium}) && wy > 0 && ly > 0
+        && (typeId != ${Cell.Water} || i32(textureLoad(uWin, vec2<i32>(lx, min(${WIN_H - 1}, ly + 1)), 0).a & 0x7fu) != ${Cell.Empty})
+        && i32(textureLoad(uWin, vec2<i32>(lx, ly - 1), 0).a & 0x7fu) == ${Cell.Empty}) {
         let wave = 0.88 + sin(p(6u) + f32(wx) * 0.42) * 0.12;
         base.r = base.r * wave;
         base.g = base.g * (0.94 + (wave - 0.88) * 0.45);
@@ -611,18 +696,20 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
         let chargeGlow = select(boost * 1.2, boost * 0.35, typeId == ${Cell.Metal});
         intensity = chargeGlow * (0.3 + flickerRand(vec2<f32>(f32(wx), f32(wy)), 2.3) * 1.1);
       }
-      let floorL = ${LIGHT_READABILITY_FLOOR.toFixed(2)} * vg;
+      let floorL = ${LIGHT_READABILITY_FLOOR.toFixed(2)} * vg * open;
+      let ambL = ambient * open;
       let selfGlow = select(0.0, ${SELF_GLOW_BASE.toFixed(2)} + scalar * ${SELF_GLOW_SCALE.toFixed(2)}, scalar > 0.0);
       c = vec3<f32>(
-        base.r * max(softLit((ambient + min(${LIGHT_CLAMP.toFixed(1)}, light.r)) * vg), selfGlow) + base.r * floorL,
-        base.g * max(softLit((ambient + min(${LIGHT_CLAMP.toFixed(1)}, light.g)) * vg), selfGlow) + base.g * floorL,
-        base.b * max(softLit((ambient + min(${LIGHT_CLAMP.toFixed(1)}, light.b)) * vg), selfGlow) + base.b * floorL
+        base.r * max(adaptLit((ambL + min(${LIGHT_CLAMP.toFixed(1)}, light.r)) * vg, adapt), selfGlow) + base.r * (floorL + ${DARK_FLOOR_R.toFixed(4)} * shut),
+        base.g * max(adaptLit((ambL + min(${LIGHT_CLAMP.toFixed(1)}, light.g)) * vg, adapt), selfGlow) + base.g * (floorL + ${DARK_FLOOR_G.toFixed(4)} * shut),
+        base.b * max(adaptLit((ambL + min(${LIGHT_CLAMP.toFixed(1)}, light.b)) * vg, adapt), selfGlow) + base.b * (floorL + ${DARK_FLOOR_B.toFixed(4)} * shut)
       ) * intensity + ringGlow * vec3<f32>(0.55, 0.42, 0.26);
     }
     }
   }
 
-  var outColor = c + ov.rgb;
+  // Partial overlay alpha (0, 0.5] = premultiplied alpha-over (see ComposeShader).
+  var outColor = c * (1.0 - clamp(ov.a * 2.0, 0.0, 1.0)) + ov.rgb;
   if (camY + vy >= ${HEIGHT}) {
     outColor = vec3<f32>(0.0);
   }
@@ -643,6 +730,8 @@ export class WebGpuLiveCompose {
   private readonly winBytes = new Uint8Array(WIN_W * WIN_H * 4);
   private readonly win32 = new Uint32Array(this.winBytes.buffer);
   private readonly lightData = new Float32Array(LIGHT_W * LIGHT_H * 4);
+  /** The uploaded light alpha carries designed darkness (not all ones). */
+  private darkOn = false;
   private readonly lutData = new Float32Array(256);
   // One-float scratch for hashing each LUT weight's raw bits into lutSignature
   // (updateLut), so the rarely-changing bloom table isn't re-uploaded every frame.
@@ -813,8 +902,8 @@ export class WebGpuLiveCompose {
     const fullWindow = ctx.shockwaves.length > 0 || lenses.length > 0;
     const packStart = performance.now();
     const packedRows = fullWindow
-      ? this.packWindowFull(ctx.world, camX, camY)
-      : this.packWindowVisibleRows(ctx.world, camX, camY);
+      ? this.packWindowFull(ctx.world, prepareTerrainColors(ctx), camX, camY)
+      : this.packWindowVisibleRows(ctx.world, prepareTerrainColors(ctx), camX, camY);
     metrics.packWindowCpuMs = performance.now() - packStart;
     metrics.packWindowBytes = fullWindow
       ? WIN_W * WIN_H * 4
@@ -1255,7 +1344,7 @@ export class WebGpuLiveCompose {
     params[1] = camY;
     params[2] = camX - COMPOSE_PAD;
     params[3] = camY - COMPOSE_PAD;
-    params[4] = ctx.params.global.ambient;
+    params[4] = renderAmbient(ctx);
     params[5] = ctx.params.global.maxBrightness;
     params[6] = (ctx.state.frameCount * 0.16) % TWO_PI;
     params[7] = ctx.state.frameCount % 97;
@@ -1267,7 +1356,7 @@ export class WebGpuLiveCompose {
     params[12] = Math.min(ctx.shockwaves.length, COMPOSE_MAX_WAVES);
     params[13] = Math.min(lenses.length, COMPOSE_MAX_LENSES);
 
-    const backdropProfile = resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
+    const backdropProfile = layers.profile ?? resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
     params[14] = backdropProfile.grade.exposure;
     params[15] = backdropProfile.grade.brightness;
     params[16] = backdropProfile.grade.contrast;
@@ -1276,6 +1365,38 @@ export class WebGpuLiveCompose {
     // Screen vignette strength, tracked live like the CPU FrameComposer / WebGL
     // ComposeShader uVignette (0.52 shipped) instead of a WGSL literal.
     params[19] = ctx.state.postFx.vignette;
+    // Per-floor backdrop grade + composition variant (config/floorLooks).
+    const look = activeFloorLook(ctx);
+    // A depth kit (render/depth) bakes its own colour and substitutes the floor's backdrop grade.
+    const kit = layers.grade ?? null;
+    const mul = kit ? kit.mul : look.backdropMul, lift = kit ? kit.lift : look.backdropLift;
+    params[20] = mul[0];
+    params[21] = mul[1];
+    params[22] = mul[2];
+    params[23] = lift[0];
+    params[24] = lift[1];
+    params[25] = lift[2];
+    params[26] = (kit ? kit.mirror : look.backdropMirror) ? 1 : 0;
+    const natural = activeArtPlane(ctx) ? look.natural : null;
+    const haze = kit ? kit.haze : natural?.backdropHaze;
+    params[NATURAL_BASE] = natural ? 1 : 0;
+    params[NATURAL_BASE + 1] = natural ? (kit ? kit.sat : natural.backdropSat) : 1;
+    params[NATURAL_BASE + 2] = natural && haze ? haze[0] : 0;
+    params[NATURAL_BASE + 3] = natural && haze ? haze[1] : 0;
+    params[NATURAL_BASE + 4] = natural && haze ? haze[2] : 0;
+    params[NATURAL_BASE + 5] = natural ? (kit ? kit.hazeMix : natural.backdropHazeMix) : 0;
+    params[DARK_ON_PARAM] = this.darkOn ? 1 : 0;
+    const seen = natural?.waterSeen ?? [1, 1, 1];
+    params[WATER_BASE] = natural?.waterClarity ?? 0;
+    params[WATER_BASE + 1] = seen[0];
+    params[WATER_BASE + 2] = seen[1];
+    params[WATER_BASE + 3] = seen[2];
+    params[WATER_BASE + 4] = natural?.waterSeenSat ?? 1;
+    params[WATER_BASE + 5] = look.waterBody[0];
+    params[WATER_BASE + 6] = look.waterBody[1];
+    params[WATER_BASE + 7] = look.waterBody[2];
+    const machinery = kit ? kit.machinery : look.machinery;
+    const offsetX = kit ? kit.offsetX : look.backdropOffsetX;
 
     const settings = backdropProfile.layers;
     for (let i = 0; i < MAX_BACKDROP_LAYERS; i++) {
@@ -1284,17 +1405,21 @@ export class WebGpuLiveCompose {
       if (!layer) {
         params[base + 4] = 1;
         params[base + 5] = 1;
+        params[BACKDROP_LIT_BASE + i] = 1;
         continue;
       }
       const setting = settings[layer.id];
+      params[BACKDROP_LIT_BASE + i] = layer.lit ?? 1;
       params[base] = setting.speed;
-      params[base + 1] = setting.opacity;
+      params[base + 1] = Math.min(1, setting.opacity * (layer.id === 'second' ? machinery : 1));
       params[base + 2] = setting.visible ? 1 : 0;
       params[base + 3] = Math.max(0.25, setting.scale);
       params[base + 4] = 1 / Math.max(1, this.backdropTextures[i].width);
       params[base + 5] = 1 / Math.max(1, this.backdropTextures[i].height);
-      params[base + 6] = setting.offsetX;
+      params[base + 6] = setting.offsetX + offsetX;
       params[base + 7] = setting.offsetY;
+      params[BACKDROP_ORIGIN_BASE + i * 2] = backdropOrigin(camX, ctx.camera.presentationX ?? ctx.camera.x, setting.speed);
+      params[BACKDROP_ORIGIN_BASE + i * 2 + 1] = backdropOrigin(camY, ctx.camera.presentationY ?? ctx.camera.y, setting.speed);
     }
 
     const waveCount = Math.min(ctx.shockwaves.length, COMPOSE_MAX_WAVES);
@@ -1328,12 +1453,14 @@ export class WebGpuLiveCompose {
         `WebGPU live compose light-field size mismatch: expected ${LIGHT_W}x${LIGHT_H}, got ${light.LW}x${light.LH}`,
       );
     }
-    const { lightR, lightG, lightB } = light;
+    const { lightR, lightG, lightB, lightOpen } = light;
+    this.darkOn = lightOpen !== undefined && light.openFlat !== true;
     for (let i = 0, offset = 0; i < LIGHT_W * LIGHT_H; i++, offset += 4) {
       this.lightData[offset] = lightR[i];
       this.lightData[offset + 1] = lightG[i];
       this.lightData[offset + 2] = lightB[i];
-      this.lightData[offset + 3] = 1;
+      // alpha = designed darkness as a render factor (1 = shipped look)
+      this.lightData[offset + 3] = lightOpen ? lightOpen[i] : 1;
     }
   }
 
@@ -1358,10 +1485,8 @@ export class WebGpuLiveCompose {
     return true;
   }
 
-  private packWindowFull(world: World, camX: number, camY: number): number {
-    const types = world.types;
-    const colors = world.colors;
-    const charge = world.charge;
+  private packWindowFull(world: World, colors: Uint32Array, camX: number, camY: number): number {
+    const types = world.types, charge = world.charge;
     const out = this.win32;
     const x0 = camX - COMPOSE_PAD;
     const y0 = camY - COMPOSE_PAD;
@@ -1381,10 +1506,8 @@ export class WebGpuLiveCompose {
     return WIN_H;
   }
 
-  private packWindowVisibleRows(world: World, camX: number, camY: number): number {
-    const types = world.types;
-    const colors = world.colors;
-    const charge = world.charge;
+  private packWindowVisibleRows(world: World, colors: Uint32Array, camX: number, camY: number): number {
+    const types = world.types, charge = world.charge;
     const out = this.winVisible32;
     const rowStride = this.winVisiblePaddedRowBytes >> 2;
     const startRow = COMPOSE_PAD - 1;

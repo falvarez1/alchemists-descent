@@ -1,6 +1,13 @@
 # Multiplayer Architecture — decisions and evidence
 
-- Status: **decided**; **stage 1 shipped and verified against a live
+- **Archived / frozen (2026-09-26).** Breathing Works ships single-player.
+  The SpacetimeDB transport, module and bindings (`src/net/SpacetimeDbTransport.ts`,
+  `src/net/spacetimeConnector.ts`, `servers/spacetime/`, their test and
+  `verify:spacetime`) were removed; the last tree that has them is git tag
+  `archive/spacetimedb`. Still live and still governed by this document: the
+  determinism boundary (seeded streams, enforced by `eslint.config.mjs`) and
+  the `SessionTransport` seam AuthorLink runs on.
+- Status (before the freeze): **decided**; **stage 1 shipped and verified against a live
   database**. Supersedes the multiplayer sections of
   `REALTIME-TUNING-LAB-AND-MULTIPLAYER-SERVER-SPEC.md`, which remains the
   record for AuthorLink itself.

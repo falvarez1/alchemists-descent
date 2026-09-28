@@ -3,6 +3,9 @@
 /** Commit hash + build time, baked in by vite.config's `define`. */
 declare const __BUILD_STAMP__: string;
 
+/** SemVer package release plus the baked short git revision as build metadata. */
+declare const __APP_VERSION__: string;
+
 /**
  * Is the authoring surface — the Builder route and the debug toggles — part of
  * this build? True in dev, false in a production build unless

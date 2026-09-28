@@ -9,13 +9,19 @@ import {
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { clamp } from '@/core/math';
 import { EnemySpatialIndex } from '@/core/enemySpatial';
+import { pointHitsCreature } from '@/creatures/body';
+import { weaverLegAt } from '@/creatures/weaverAnatomy';
+import { strikeWeaverLeg } from '@/combat/WeaverLimbs';
+import { recordTrickshot } from '@/combat/Trickshot';
+import { isSpentGore, projectileGravity, WEAVER_LIMB_DAMAGE } from '@/combat/projectileDefs';
 import type { Ctx, Projectile, ProjectilesApi, ProjectileType, RigidBody } from '@/core/types';
 import { Cell, isConductor, isGas, isSolid } from '@/sim/CellType';
 import { acidColor, COLOR_FN, EMPTY_COLOR, fireColor, iceColor, packRGB } from '@/sim/colors';
 import { chargeDeposit } from '@/sim/electrical';
 import { probeHollow } from '@/sim/hollow';
 import type { World } from '@/sim/World';
-import { entityRandom } from '@/core/simRandom';
+import type { SfxId } from '@/content/audio/sfxCues';
+import { entityRandom, fxRandom } from '@/core/simRandom';
 
 /**
  * Per-type impulse a player projectile imparts to a rigid body it strikes —
@@ -50,12 +56,9 @@ const FROST_BODY_MOMENTUM_GRACE = 10;
  *
  * Deliberately NOT all liquids — see docs/PORTING.md.
  */
-function isSpentGore(t: number): boolean {
-  return t === Cell.Blood || t === Cell.Slime;
-}
-
 /** Solid-for-projectiles test (same gate as the impact check in update()). */
 function solidAt(world: World, x: number, y: number): boolean {
+  x = Math.floor(x); y = Math.floor(y);
   if (!world.inBounds(x, y)) return true;
   const c = world.types[world.idx(x, y)];
   return c !== Cell.Empty && !isGas(c) && !isSpentGore(c);
@@ -108,6 +111,7 @@ function hasSolidNeighbor(world: World, x: number, y: number): boolean {
 /** Frost shard impact: freeze standing water, rime exposed surfaces — never inside the player. */
 function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
   const world = ctx.world;
+  let brineRefused = 0;
   cx = Math.floor(cx);
   cy = Math.floor(cy);
   for (let dy = -radius; dy <= radius; dy++) {
@@ -123,6 +127,9 @@ function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
       const t = world.types[ci];
       if (t === Cell.Water) {
         world.replaceCellAt(ci, Cell.Ice, iceColor());
+      } else if (t === Cell.Brine) {
+        // Brine refuses the frost (the Cold Store's lesson): it only smokes.
+        brineRefused++;
       } else if (t === Cell.Empty && entityRandom() < 0.35) {
         // thin rime on solid-adjacent air cells
         if (hasSolidNeighbor(world, X, Y)) {
@@ -131,8 +138,11 @@ function freezeSplash(ctx: Ctx, cx: number, cy: number, radius: number): void {
       }
     }
   }
+  if (brineRefused > 0) {
+    ctx.particles.burst(cx, cy - 2, Math.min(10, 2 + (brineRefused >> 2)), null, () => packRGB(214, 236, 240), 0.9, { grav: -0.03, glow: 0.4 });
+  }
   ctx.particles.burst(cx, cy, 8, null, iceColor, 1.8, { glow: 1.6, grav: 0.03 });
-  ctx.audio.shatter();
+  ctx.audio.sfx('spell.freeze', cx, cy);
 }
 
 /** Deposit a disc of liquid cells (glob splashes, future flask spills). */
@@ -246,24 +256,21 @@ interface ElementalCritFx {
   speed: number;
   glow: number;
   grav: number;
-  toneFreq: number;
-  toneEnd: number;
-  toneDur: number;
-  toneType: OscillatorType;
-  toneVol: number;
+  /** The payoff's sound (content/audio/sfxCues.ts). */
+  sfx: SfxId;
 }
 
 const WET_CRIT_FX: ElementalCritFx = {
   burst: 12, color: () => packRGB(100, 210, 255), speed: 2.0, glow: 2.2, grav: 0.02,
-  toneFreq: 1180, toneEnd: 120, toneDur: 0.14, toneType: 'triangle', toneVol: 0.08,
+  sfx: 'spell.crit.wet',
 };
 const SHATTER_CRIT_FX: ElementalCritFx = {
   burst: 14, color: () => packRGB(220, 245, 255), speed: 2.2, glow: 2.5, grav: 0.04,
-  toneFreq: 1640, toneEnd: 100, toneDur: 0.16, toneType: 'triangle', toneVol: 0.1,
+  sfx: 'spell.crit.shatter',
 };
 const PYRE_CRIT_FX: ElementalCritFx = {
   burst: 13, color: () => packRGB(255, 150 + ((entityRandom() * 60) | 0), 40), speed: 2.1, glow: 2.4, grav: -0.04,
-  toneFreq: 380, toneEnd: 170, toneDur: 0.13, toneType: 'sawtooth', toneVol: 0.09,
+  sfx: 'spell.crit.pyre',
 };
 
 /**
@@ -283,7 +290,7 @@ function elementalCritFeedback(ctx: Ctx, x: number, y: number, fx: ElementalCrit
   }
   ctx.fx.bloomKick = Math.min(1.1, ctx.fx.bloomKick + 0.5);
   ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.008, 0.05);
-  ctx.audio.tone(fx.toneFreq, fx.toneEnd, fx.toneDur, fx.toneType, fx.toneVol);
+  ctx.audio.sfx(fx.sfx, x, y);
 }
 
 function wetCritFeedback(ctx: Ctx, x: number, y: number): void {
@@ -298,12 +305,58 @@ function pyreCritFeedback(ctx: Ctx, x: number, y: number): void {
   elementalCritFeedback(ctx, x, y, PYRE_CRIT_FX);
 }
 
+/** Spark Bolt knockback: a mass-scaled stagger (bat ~2.6, slime ~1.4, golem ~0.4
+ *  cells/tick for 4 ticks), always under the wall-slam speed so a bolt never gibs
+ *  anything against rock. Weavers keep their surface grip (their rig answers the
+ *  blow); bosses do not budge. */
+const SPARK_KNOCK = 1.4;
+const SPARK_KNOCK_TICKS = 4;
+
+function sparkKnock(ctx: Ctx, e: Ctx['enemies'][number], vx: number, vy: number): void {
+  if (e.hp <= 0 || e.kind === 'weaver' || e.kind === 'colossus' || e.kind === 'leviathan' || e.kind === 'rimewarden' || e.kind === 'lenswright' || e.kind === 'eggs') return;
+  const def = ctx.enemyCtl.defs[e.kind];
+  const push = clamp((SPARK_KNOCK * 40) / Math.max(1, def.halfW * def.h), 0.35, 2.6);
+  const spd = Math.hypot(vx, vy) || 1;
+  e.knockVx = (e.knockVx ?? 0) + (vx / spd) * push;
+  e.knockVy = (e.knockVy ?? 0) + (vy / spd) * push * 0.5 - push * 0.35;
+  e.knockT = Math.max(e.knockT ?? 0, SPARK_KNOCK_TICKS);
+}
+
+/**
+ * Spark Bolt impact: a crisp electric crack. A white-hot flash, a spray of cyan
+ * sparks thrown back off the struck face, a few streakers carried on through, a
+ * tiny arc at the contact and a dry high tick. Cosmetic motes only (null-typed,
+ * fx stream): the bolt's blast, charge and ignition rules are untouched.
+ */
+function sparkImpactFx(ctx: Ctx, x: number, y: number, vx: number, vy: number, flesh: boolean): void {
+  const spd = Math.hypot(vx, vy) || 1;
+  const ux = vx / spd;
+  const uy = vy / spd;
+  const back = Math.atan2(-uy, -ux);
+  for (let i = 0; i < 12; i++) {
+    const a = back + (fxRandom() - 0.5) * 2.4;
+    const s = 1.1 + fxRandom() * 2.5;
+    ctx.particles.spawn(x, y, Math.cos(a) * s, Math.sin(a) * s - 0.35, null,
+      i < 4 ? packRGB(238, 250, 255) : packRGB(105, 218, 255), 6 + ((fxRandom() * 9) | 0), { glow: 2.7, grav: 0.07 });
+  }
+  for (let i = 0; i < 3; i++) {
+    const s = 2.2 + fxRandom() * 2;
+    ctx.particles.spawn(x, y, ux * s + (fxRandom() - 0.5) * 0.9, uy * s + (fxRandom() - 0.5) * 0.9 - 0.3, null,
+      packRGB(170, 238, 255), 9 + ((fxRandom() * 6) | 0), { glow: 2.3, grav: 0.03 });
+  }
+  const jx = (fxRandom() - 0.5) * 4;
+  const jy = (fxRandom() - 0.5) * 4;
+  ctx.lightning?.spark?.(x - ux * 3 + jx, y - uy * 3 + jy, x + ux * 2 - jy, y + uy * 2 + jx);
+  if (!ctx.state.reduceFlashes) ctx.fx.bloomKick = Math.max(ctx.fx.bloomKick ?? 0, flesh ? 0.34 : 0.2);
+  ctx.audio.sfx('spell.spark.impact', x, y, { gain: flesh ? 1 : 0.72 });
+}
+
 function electricFeedback(ctx: Ctx, x: number, y: number): void {
   ctx.particles.burst(x, y - 4, 10, null, () => packRGB(150, 230, 255), 1.7, {
     glow: 2.3,
     grav: 0,
   });
-  ctx.audio.tone(1500, 300, 0.08, 'square', 0.06);
+  ctx.audio.sfx('spell.charge.electric', x, y);
 }
 
 function pruneProjectileMods(p: Projectile, mods: ProjectileModState): void {
@@ -356,7 +409,7 @@ function frostChargeFeedback(ctx: Ctx, x: number, y: number): void {
     glow: 1.8,
     grav: 0.03,
   });
-  ctx.audio.tone(940, 180, 0.1, 'sine', 0.07);
+  ctx.audio.sfx('spell.charge.frost', x, y);
 }
 
 function applyFrostChargeToEnemy(ctx: Ctx, p: Projectile, enemy: Ctx['enemies'][number]): void {
@@ -466,7 +519,9 @@ export class Projectiles implements ProjectilesApi {
   }
 
   private damageEnemy(ctx: Ctx, enemy: Ctx['enemies'][number], amount: number, kx: number, ky: number): void {
+    const hp = enemy.hp;
     ctx.enemyCtl.damage(enemy, amount, kx, ky);
+    if (hp > 0 && enemy.hp < hp) recordTrickshot(ctx, enemy, enemy.hp <= 0 ? 'kill' : 'hit');
     if (enemy.hp <= 0) {
       this.enemyIndex.syncLive(ctx.enemies);
       this.indexedEnemyCount = ctx.enemies.length;
@@ -514,6 +569,7 @@ export class Projectiles implements ProjectilesApi {
         p.y += p.vy;
         return 'bounce';
       case 'bolt':
+        sparkImpactFx(ctx, p.x, p.y, p.vx, p.vy, false);
         this.triggerExplosion(ctx, p.x, p.y, ctx.params.spells.bolt.explosionRadius!);
         break;
       case 'pellet':
@@ -641,7 +697,7 @@ export class Projectiles implements ProjectilesApi {
     ctx.particles.burst(cx, cy, 10, null, () => packRGB(240, 220, 255), 0.8, { glow: 3.0, grav: 0 });
     ctx.fx.bloomKick = Math.min(1.1, ctx.fx.bloomKick + 0.85);
     ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.03, 0.05);
-    ctx.audio.implode();
+    ctx.audio.implode(cx, cy);
   }
 
   private updateSingularityGravityWells(ctx: Ctx): void {
@@ -755,12 +811,8 @@ export class Projectiles implements ProjectilesApi {
       }
 
       // Per-type gravity / steering
-      if (p.type === 'bomb' || p.type === 'fireball' || p.type === 'frostbolt')
-        p.vy += p.type === 'bomb' ? 0.14 : p.type === 'fireball' ? 0.02 : 0.01;
-      else if (p.type === 'iceshard') p.vy += 0.04;
-      else if (p.type === 'meteor') p.vy += 0.07;
-      else if (p.type === 'acidglob') p.vy += 0.12;
-      else if (p.type === 'wisp') {
+      p.vy += projectileGravity(p.type);
+      if (p.type === 'wisp') {
         // Seek the nearest enemy within 240px
         let best = null,
           bestD = 240 * 240;
@@ -874,16 +926,14 @@ export class Projectiles implements ProjectilesApi {
 
         // Ice lance: pierce, deep-freeze, keep flying
         if (!p.hostile && p.type === 'icelance') {
-          for (const e of this.enemyIndex.query(p.x, p.y + 5, 12, this.enemyScratch)) {
+          for (const e of this.enemyIndex.query(p.x, p.y + 5, 50, this.enemyScratch)) {
             if (!this.enemyIndex.has(e)) continue;
             // Pierce each enemy at most once. The e.flash gate alone let the lance
             // re-enter a target after ~4 ticks and read its OWN inflicted freeze to
             // self-arm the shatter crit; the per-lance hit set closes that.
             const lanceHits = LANCE_HITS.get(p);
             if (e.flash > 2 || lanceHits?.has(e)) continue;
-            const dx = e.x - p.x,
-              dy = e.y - 5 - p.y;
-            if (dx * dx + dy * dy < 130) {
+            if (pointHitsCreature(e, ctx.enemyCtl.defs[e.kind], p.x, p.y, 3)) {
               if (lanceHits) lanceHits.add(e);
               else LANCE_HITS.set(p, new Set([e]));
               const wetCrit = wetCritArmed(ctx, p, e);
@@ -902,7 +952,7 @@ export class Projectiles implements ProjectilesApi {
               if (wetCrit) wetCritFeedback(ctx, e.x, e.y);
               if (shatterCrit) shatterCritFeedback(ctx, e.x, e.y);
               if (pyreCrit) pyreCritFeedback(ctx, e.x, e.y);
-              ctx.audio.tone(900 + entityRandom() * 300, 130, 0.12, 'sine', 0.08);
+              ctx.audio.sfx('spell.ice.impact', e.x, e.y);
             }
           }
           // freeze water in the wake
@@ -946,6 +996,7 @@ export class Projectiles implements ProjectilesApi {
             if (p.type === 'frostbolt') {
               ctx.playerCtl.damage(6, p.vx * 0.8, -0.6, p.source ?? 'frostbolt');
               ctx.player.status.frozen = Math.max(ctx.player.status.frozen, 120);
+              ctx.chill?.hit(ctx.chill.tuning.frostbolt);
             } else if (p.type === 'acidglob') {
               ctx.playerCtl.damage(8, p.vx * 1.3, -1.6, p.source ?? 'acidglob');
               splashLiquid(ctx, p.x, p.y, Cell.Acid, acidColor, 3);
@@ -959,6 +1010,20 @@ export class Projectiles implements ProjectilesApi {
             break;
           }
         }
+        // A visible limb is a small, separate target. Terrain still shields it;
+        // torso hits retain their ordinary spell effects and never roll a limb.
+        const limbDamage = !p.hostile ? WEAVER_LIMB_DAMAGE[p.type] : undefined;
+        if (limbDamage && !solidAt(world, p.x, p.y)) {
+          let limbHit = false;
+          for (const e of this.enemyIndex.query(p.x, p.y, 86, this.enemyScratch)) {
+            if (e.kind !== 'weaver' || !this.enemyIndex.has(e)) continue;
+            const leg = weaverLegAt(e, p.x, p.y, 1);
+            if (leg < 0 || !strikeWeaverLeg(ctx, e, leg, limbDamage * (p.mul ?? 1), p.vx, p.vy)) continue;
+            if (e.hp <= 0) { this.enemyIndex.syncLive(ctx.enemies); this.indexedEnemyCount = ctx.enemies.length; }
+            releaseTriggered(ctx, p); this.removeAt(projectiles, i); limbHit = true; break;
+          }
+          if (limbHit) { removed = true; break; }
+        }
         // Player projectiles: detonate on enemies (meteors hit a wider arc)
         if (
           !p.hostile &&
@@ -971,11 +1036,9 @@ export class Projectiles implements ProjectilesApi {
           const mul = p.mul ?? 1;
           let hit = false;
           const hitRadius = p.type === 'meteor' ? 15 : 12;
-          for (const e of this.enemyIndex.query(p.x, p.y + 5, hitRadius, this.enemyScratch)) {
+          for (const e of this.enemyIndex.query(p.x, p.y + 5, hitRadius + 38, this.enemyScratch)) {
             if (!this.enemyIndex.has(e)) continue;
-            const dx = e.x - p.x,
-              dy = e.y - 5 - p.y;
-            if (dx * dx + dy * dy < (p.type === 'meteor' ? 200 : 120)) {
+            if (pointHitsCreature(e, ctx.enemyCtl.defs[e.kind], p.x, p.y, p.type === 'meteor' ? 7 : 2)) {
               const wetCrit = wetCritArmed(ctx, p, e);
               const shatterCrit = shatterCritArmed(ctx, p, e);
               const pyreCrit = pyreCritArmed(ctx, p, e);
@@ -984,7 +1047,9 @@ export class Projectiles implements ProjectilesApi {
               const explosionMul = critMul;
               applyElectricChargeToEnemy(ctx, p, e);
               if (p.type === 'bolt') {
+                sparkImpactFx(ctx, p.x, p.y, p.vx, p.vy, true);
                 this.damageEnemy(ctx, e, 18 * damageMul, p.vx * 0.8, -1.6);
+                sparkKnock(ctx, e, p.vx, p.vy);
                 this.triggerExplosion(ctx, p.x, p.y, ctx.params.spells.bolt.explosionRadius!, explosionMul);
               } else if (p.type === 'pellet') {
                 this.damageEnemy(ctx, e, 8 * damageMul, p.vx * 0.6, -1.0);
@@ -1013,6 +1078,12 @@ export class Projectiles implements ProjectilesApi {
             removed = true;
             break;
           }
+        }
+
+        // Soft stems part along the actual projectile path and keep its momentum.
+        // Lifted vines no longer occupy terrain cells, so grid impacts cannot cut them.
+        if (!p.hostile && WEAVER_LIMB_DAMAGE[p.type] && !isSolid(world.types[world.idx(gx, gy)])) {
+          ctx.vineStrands?.cutAt?.(p.x, p.y, 1.8);
         }
 
         // Rigid bodies are solid to player shots: a strike shoves + spins the
@@ -1049,7 +1120,7 @@ export class Projectiles implements ProjectilesApi {
           ) {
             const behind = probeHollow(ctx.world, gx, gy, p.vx, p.vy);
             if (behind) {
-              ctx.audio.hollowKnock();
+              ctx.audio.hollowKnock(gx, gy);
               for (let d = 0; d < 2; d++) {
                 ctx.particles.spawn(
                   gx,
@@ -1107,7 +1178,7 @@ export class Projectiles implements ProjectilesApi {
               glow: 2.0,
               grav: 0.06,
             });
-            ctx.audio.tone(1600, 160, 0.14, 'triangle', 0.1);
+            ctx.audio.sfx('spell.ice.impact', gx, gy);
             this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'pellet') {
@@ -1131,6 +1202,7 @@ export class Projectiles implements ProjectilesApi {
             this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'bolt') {
+            sparkImpactFx(ctx, p.x, p.y, p.vx, p.vy, false);
             this.triggerExplosion(ctx, gx, gy, ctx.params.spells.bolt.explosionRadius!);
             world.setChargeAt(world.idx(gx, gy), chargeDeposit(ctx, 20));
             this.removeAt(projectiles, i);
@@ -1156,7 +1228,7 @@ export class Projectiles implements ProjectilesApi {
               }
             }
             ctx.particles.burst(gx, gy, 10, null, iceColor, 1.3, { glow: 1.5, grav: 0.02 });
-            ctx.audio.tone(900, 400, 0.1, 'sine', 0.1);
+            ctx.audio.sfx('spell.freeze', gx, gy);
             this.removeAt(projectiles, i);
             removed = true;
           } else if (p.type === 'warp') {

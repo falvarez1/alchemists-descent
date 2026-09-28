@@ -12,9 +12,11 @@
  *
  * So the client owns the SEMANTICS (reconnect, heartbeat, echo suppression,
  * revision tracking) and a transport owns the BYTES. Today there is one
- * implementation, `WebSocketTransport`, pointed at the dev relay. The planned
- * second is SpacetimeDB, where a "message" is a row in a session table and
- * `send` is a reducer call — see docs/MULTIPLAYER-ARCHITECTURE.md.
+ * implementation, `WebSocketTransport`, pointed at the dev relay. A second,
+ * SpacetimeDB (a "message" is a row in a session table, `send` a reducer
+ * call), was prototyped and archived on 2026-09-26 — git tag
+ * `archive/spacetimedb`; see docs/MULTIPLAYER-ARCHITECTURE.md. The seam stays
+ * so the next backend slots in here.
  *
  * DELIBERATELY NOT IN THIS INTERFACE:
  *
@@ -140,7 +142,8 @@ export class WebSocketTransport implements SessionTransport {
 
   sendBinary(data: Uint8Array): boolean {
     if (this.closed || !this.socket || this.socket.readyState !== SOCKET_OPEN) return false;
-    this.socket.send(data);
+    // WebSocket.send takes an ArrayBuffer-backed view; copy a view over a SharedArrayBuffer.
+    this.socket.send(data.buffer instanceof ArrayBuffer ? (data as Uint8Array<ArrayBuffer>) : new Uint8Array(data));
     return true;
   }
 

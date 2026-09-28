@@ -62,6 +62,11 @@ export const CELL_PALETTE: readonly number[] = [
   packRGB(120, 95, 45), //  36 RawOre (dark gold-flecked rock)
   packRGB(124, 176, 52), // 37 Grass (yellow-green lawn blades)
   packRGB(151, 158, 84), // 38 MarshGas (murky bog vapor)
+  packRGB(92, 140, 70), //  39 Leaf (mid canopy green)
+  packRGB(136, 110, 84), // 40 Trunk (pale living bark)
+  packRGB(176, 128, 58), // 41 Seed (amber pod grain)
+  packRGB(104, 172, 184), // 42 Brine (milky cold salt water)
+  packRGB(214, 216, 204), // 43 Mirror (silvered glass)
 ];
 
 /** Display names, indexed by cell id (import reports, .gpl swatch labels). */
@@ -105,6 +110,11 @@ export const CELL_NAME: readonly string[] = [
   'Raw Ore',
   'Grass',
   'Marsh Gas',
+  'Leaf',
+  'Trunk',
+  'Seed',
+  'Brine',
+  'Mirror',
 ];
 
 export function paletteColor(t: number): number {

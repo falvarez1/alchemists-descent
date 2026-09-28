@@ -20,7 +20,7 @@ const outDir = 'verify-out/webgpu-live-compose';
 const timestamp = Date.now();
 const providedBaseUrl = process.argv[2] ?? null;
 const COMPOSE_PAD = 64;
-const PARAM_BYTES = 160 * 4;
+const PARAM_BYTES = 180 * 4;
 
 function align(value, alignment) {
   return Math.ceil(value / alignment) * alignment;

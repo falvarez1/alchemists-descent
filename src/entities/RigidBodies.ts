@@ -1,6 +1,6 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { bodyMaterialDef, WATER_DENSITY } from '@/content/bodyMaterials';
-import type { Ctx, RigidBodiesApi, RigidBody, RigidShape, SpawnBodyOpts } from '@/core/types';
+import type { Ctx, RigidBodiesApi, RigidBody, RigidShape, SpawnBodyOpts, PlayerState, PlayerRagdollRig, RagdollPart } from '@/core/types';
 import { PLAYER_CRAWL_H, PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { cellBlocksEntityWithLooseRubble, type CollisionScratch } from '@/sim/collision';
@@ -109,8 +109,12 @@ export class RigidBodies implements RigidBodiesApi {
   /** The live player-corpse ragdoll, cached so the camera/lighting/compose
    *  readers don't linear-scan `bodies` for it every frame. */
   playerCorpse: RigidBody | null = null;
+  playerRagdoll: PlayerRagdollRig | null = null;
   private world: RWorld;
   private readonly handles = new Map<RigidBody, RBody>();
+  private readonly ropeAnchors = new Map<RigidBody, RBody>();
+  private readonly tetherAnchors = new Map<RigidBody, RBody>();
+  private readonly hingeAnchors = new Map<RigidBody, RBody>();
   private readonly terrain = new Map<number, RCollider>();
   /** Cell index → frame it left the desired set. Removal is DEFERRED a few frames
    *  so we never yank a collider out of an active contact with a fast body (that
@@ -146,6 +150,7 @@ export class RigidBodies implements RigidBodiesApi {
   }
 
   spawn(shape: RigidShape, x: number, y: number, opts: SpawnBodyOpts = {}): RigidBody {
+    if (opts.guideAxis && opts.hinge) throw new Error('A rigid body may use a sliding guide or a pivot hinge, not both.');
     const kinematic = opts.kind === 'kinematic';
     // Keep the dynamic-body set bounded so a runaway spawn (chain detonations,
     // repeated shatter) can't overflow Rapier's solver — thin out the oldest first.
@@ -159,20 +164,25 @@ export class RigidBodies implements RigidBodiesApi {
       .setRotation(opts.angle ?? 0)
       .setLinvel((opts.vx ?? 0) * PF, (opts.vy ?? 0) * PF)
       .setAngvel((opts.va ?? 0) * PF)
+      .setLinearDamping(opts.linearDamping ?? 0)
+      .setAngularDamping(opts.angularDamping ?? 0)
+      .setAdditionalSolverIterations(opts.tag?.startsWith('player-corpse') ? 4 : 0)
       .setCcdEnabled(true);
     const rb = this.world.createRigidBody(desc);
+    if (opts.steamPiston || opts.guideAxis) rb.lockRotations(true, true);
     const matDef = opts.material ? bodyMaterialDef(opts.material) : null;
     const density = opts.density ?? matDef?.density ?? 1;
     const color = opts.color ?? matDef?.color ?? packRGB(150, 100, 55);
     const restitution = opts.restitution ?? 0.2;
     const friction = opts.friction ?? 0.6;
-    const colDesc = (
-      shape.kind === 'box' ? RAPIER.ColliderDesc.cuboid(shape.halfW, shape.halfH) : RAPIER.ColliderDesc.ball(shape.radius)
-    )
-      .setDensity(density)
-      .setRestitution(restitution)
-      .setFriction(friction);
-    this.world.createCollider(colDesc, rb);
+    const parts = opts.colliders && opts.colliders.length > 0
+      ? opts.colliders.map((c) => RAPIER.ColliderDesc.cuboid(c.halfW, c.halfH).setTranslation(c.x, c.y))
+      : [shape.kind === 'box' ? RAPIER.ColliderDesc.cuboid(shape.halfW, shape.halfH) : RAPIER.ColliderDesc.ball(shape.radius)];
+    for (const colDesc of parts) {
+      colDesc.setDensity(density).setRestitution(restitution).setFriction(friction);
+      if (opts.collisionGroups !== undefined) colDesc.setCollisionGroups(opts.collisionGroups);
+      this.world.createCollider(colDesc, rb);
+    }
     const mass = rb.mass();
 
     const body: RigidBody = {
@@ -201,14 +211,67 @@ export class RigidBodies implements RigidBodiesApi {
       tag: opts.tag,
       data: opts.data,
       onTerrainHit: opts.onTerrainHit,
+      steamPiston: opts.steamPiston,
+      torsionSpring: opts.torsionSpring,
+      guideAxis: opts.guideAxis,
     };
     this.handles.set(body, rb);
+    if (opts.guideAxis) {
+      const anchor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y));
+      const axis = opts.guideAxis === 'vertical' ? { x: 0, y: 1 } : { x: 1, y: 0 };
+      this.world.createImpulseJoint(RAPIER.JointData.prismatic({ x: 0, y: 0 }, { x: 0, y: 0 }, axis), anchor, rb, true);
+      this.hingeAnchors.set(body, anchor);
+    }
+    if (opts.pivot && !opts.hinge) {
+      // A world-space hinge (a felled trunk's cut): the local anchor is the
+      // pivot expressed in the body's spawn frame.
+      const a = opts.angle ?? 0, dx = opts.pivot.x - x, dy = opts.pivot.y - y;
+      const local = { x: dx * Math.cos(a) + dy * Math.sin(a), y: -dx * Math.sin(a) + dy * Math.cos(a) };
+      const anchor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(opts.pivot.x, opts.pivot.y));
+      const joint = this.world.createImpulseJoint(RAPIER.JointData.revolute({ x: 0, y: 0 }, local), anchor, rb, true);
+      joint.setContactsEnabled(false);
+      this.hingeAnchors.set(body, anchor);
+    }
+    if (opts.hinge) {
+      const anchor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y));
+      const joint = RAPIER.JointData.revolute({ x: 0, y: 0 }, { x: 0, y: 0 });
+      joint.limitsEnabled = true; joint.limits = [opts.hinge.minAngle, opts.hinge.maxAngle];
+      const hinge = this.world.createImpulseJoint(joint, anchor, rb, true) as RAPIER.RevoluteImpulseJoint;
+      hinge.setLimits(opts.hinge.minAngle, opts.hinge.maxAngle);
+      this.hingeAnchors.set(body, anchor);
+    }
     this.bodies.push(body);
     if (opts.tag === 'player-corpse') this.playerCorpse = body;
     return body;
   }
 
+  setDamping(body: RigidBody, linear?: number, angular?: number): void {
+    const rb = this.handles.get(body);
+    if (!rb) return;
+    if (linear !== undefined) rb.setLinearDamping(linear);
+    if (angular !== undefined) rb.setAngularDamping(angular);
+  }
+
+  releasePivot(body: RigidBody, angularDamping?: number): void {
+    const anchor = this.hingeAnchors.get(body);
+    const rb = this.handles.get(body);
+    if (rb && angularDamping !== undefined) rb.setAngularDamping(angularDamping);
+    if (!anchor) return;
+    this.world.removeRigidBody(anchor);
+    this.hingeAnchors.delete(body);
+    rb?.wakeUp();
+  }
+
   remove(body: RigidBody): void {
+    this.cutRope(body);
+    const hinge = this.hingeAnchors.get(body);
+    this.cutRope(body, true);
+    if (hinge) this.world.removeRigidBody(hinge);
+    this.hingeAnchors.delete(body);
+    if (this.playerRagdoll && Object.values(this.playerRagdoll.parts).includes(body)) {
+      const parts = Object.values(this.playerRagdoll.parts); this.playerRagdoll = null;
+      for (const part of parts) if (part !== body) this.remove(part);
+    }
     const rb = this.handles.get(body);
     if (rb) {
       this.world.removeRigidBody(rb); // also removes its colliders
@@ -239,12 +302,19 @@ export class RigidBodies implements RigidBodiesApi {
   /** A body the eviction sweep must never claim: the one the player is holding, or
    *  a long-lived tagged body whose owner keeps polling it (the player corpse). */
   private evictionProtected(b: RigidBody): boolean {
-    return b === this.held || b.tag === 'player-corpse';
+    return b === this.held || b.tag?.startsWith('player-corpse') === true || b.tag?.startsWith('tea-') === true
+      // A falling tree is polled every tick by game/Flora until it re-stamps as a log.
+      || b.tag?.startsWith('flora-') === true;
   }
 
   clear(): void {
+    for (const body of this.ropeAnchors.keys()) this.cutRope(body);
+    for (const body of this.tetherAnchors.keys()) this.cutRope(body, true);
+    for (const anchor of this.hingeAnchors.values()) this.world.removeRigidBody(anchor);
+    this.hingeAnchors.clear();
     this.held = null;
     this.playerCorpse = null;
+    this.playerRagdoll = null;
     this.detonations.length = 0;
     for (const rb of this.handles.values()) this.world.removeRigidBody(rb);
     this.handles.clear();
@@ -252,6 +322,71 @@ export class RigidBodies implements RigidBodiesApi {
     for (const col of this.terrain.values()) this.world.removeCollider(col, false);
     this.terrain.clear();
     this.terrainStale.clear();
+  }
+
+  tieRope(body: RigidBody, x: number, y: number, length = Math.hypot(body.x - x, body.y - y), material: 'rope' | 'chain' = 'rope', secondary = false): void {
+    const rb = this.handles.get(body);
+    if (!rb || ![x, y, length].every(Number.isFinite) || length < 1 || length > 300) return;
+    this.cutRope(body, secondary);
+    const anchor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y));
+    this.world.createImpulseJoint(RAPIER.JointData.rope(length, { x: 0, y: 0 }, { x: 0, y: 0 }), anchor, rb, true);
+    (secondary ? this.tetherAnchors : this.ropeAnchors).set(body, anchor);
+    body[secondary ? 'tether' : 'rope'] = { x, y, length, material };
+  }
+
+  cutRope(body: RigidBody, secondary = false): void {
+    const anchors = secondary ? this.tetherAnchors : this.ropeAnchors;
+    const anchor = anchors.get(body);
+    if (anchor) this.world.removeRigidBody(anchor);
+    anchors.delete(body);
+    body[secondary ? 'tether' : 'rope'] = undefined;
+  }
+
+  /** Eleven small bodies, nine limited anatomical joints, and one loose hat.
+   * All contacts use the same mutable terrain as crates. Self-collision is
+   * excluded to keep thin overlapping cloth/limbs stable at this world scale. */
+  spawnPlayerRagdoll(player: PlayerState): RigidBody {
+    if (this.playerCorpse) this.remove(this.playerCorpse);
+    const f = player.facing || 1, vx = Math.max(-10, Math.min(10, player.vx * .85));
+    const vy = Math.max(-8, Math.min(9, player.vy * .85)) - .4, spin = -vx * .018 - f * .025;
+    const make = (name: RagdollPart, dx: number, dy: number, shape: RigidShape, density = 1.05): RigidBody =>
+      this.spawn(shape, player.x + dx, player.y + dy, { vx: vx - (dy + 8.5) * spin,
+        vy: vy + dx * spin, va: spin, density, friction: .8, restitution: .06,
+        linearDamping: .35, angularDamping: 2.2, collisionGroups: 0x0002fffd,
+        tag: name === 'torso' ? 'player-corpse' : `player-corpse-${name}`, color: packRGB(174, 185, 158) });
+    const box = (halfW: number, halfH: number): RigidShape => ({ kind: 'box', halfW, halfH });
+    const parts: PlayerRagdollRig['parts'] = {
+      torso: make('torso', 0, -8.5, box(2.2, 3.6), 1.2),
+      head: make('head', 0, -15, { kind: 'circle', radius: 2.25 }),
+      leftArm: make('leftArm', -2.2, -10, box(.85, 1.7)),
+      leftForearm: make('leftForearm', -2.2, -6.9, box(.7, 1.4)),
+      rightArm: make('rightArm', 2.2, -10, box(.85, 1.7)),
+      rightForearm: make('rightForearm', 2.2, -6.9, box(.7, 1.4)),
+      leftThigh: make('leftThigh', -1.2, -3.8, box(.9, 1.7)),
+      leftShin: make('leftShin', -1.2, -1, box(.8, 1.1)),
+      rightThigh: make('rightThigh', 1.2, -3.8, box(.9, 1.7)),
+      rightShin: make('rightShin', 1.2, -1, box(.8, 1.1)),
+      hat: make('hat', f * .3, -19.3, box(3.8, 1.5), .35),
+    };
+    const rig: PlayerRagdollRig = { facing: f, parts, joints: [] };
+    const join = (a: RagdollPart, b: RagdollPart, ax: number, ay: number, bx: number, by: number, min: number, max: number) => {
+      const anchorA = { x: ax, y: ay }, anchorB = { x: bx, y: by };
+      const joint = this.world.createImpulseJoint(RAPIER.JointData.revolute(anchorA, anchorB), this.handles.get(parts[a])!, this.handles.get(parts[b])!, true);
+      joint.setContactsEnabled(false);
+      if (joint instanceof RAPIER.RevoluteImpulseJoint) joint.setLimits(min, max);
+      rig.joints.push({ a, b, anchorA, anchorB });
+    };
+    join('torso', 'head', 0, -4, 0, 2.5, -.55, .55);
+    for (const side of ['left', 'right'] as const) {
+      const sx = side === 'left' ? -1 : 1;
+      join('torso', `${side}Arm`, sx * 2.2, -3.2, 0, -1.7, -1.8, 1.8);
+      join(`${side}Arm`, `${side}Forearm`, 0, 1.7, 0, -1.4, f > 0 ? -2.25 : -.15, f > 0 ? .15 : 2.25);
+      join('torso', `${side}Thigh`, sx * 1.2, 3, 0, -1.7, -1.3, 1.3);
+      join(`${side}Thigh`, `${side}Shin`, 0, 1.7, 0, -1.1, f > 0 ? -.12 : -2.15, f > 0 ? 2.15 : .12);
+    }
+    this.playerRagdoll = rig;
+    this.applyImpulse(parts.hat, f * .55, -.8);
+    return parts.torso;
   }
 
   /** Keep a body's integrated state sane after a step. Returns false if the body
@@ -284,7 +419,8 @@ export class RigidBodies implements RigidBodiesApi {
     const rb = this.handles.get(body);
     if (!rb) return;
     const v = rb.linvel();
-    rb.setLinvel({ x: v.x + ix * PF, y: v.y + iy * PF }, true);
+    rb.setLinvel({ x: body.guideAxis === 'vertical' ? 0 : v.x + ix * PF,
+      y: body.guideAxis === 'horizontal' ? 0 : v.y + iy * PF }, true);
   }
 
   applyImpulseAt(body: RigidBody, ix: number, iy: number, px: number, py: number): void {
@@ -353,7 +489,7 @@ export class RigidBodies implements RigidBodiesApi {
     let best: RigidBody | null = null;
     let bestD = Infinity;
     for (const body of this.bodies) {
-      if (body.kind !== 'dynamic') continue;
+      if (body.kind !== 'dynamic' || isFloraBody(body)) continue;
       const mass = body.invMass && body.invMass > 0 ? 1 / body.invMass : Infinity;
       if (mass > GRAB_MASS_MAX) continue;
       const dx = body.x - ox;
@@ -369,7 +505,7 @@ export class RigidBodies implements RigidBodiesApi {
     }
     if (!best) return;
     this.held = best;
-    ctx.audio.tone(320, 220, 0.06, 'square', 0.08); // grab snap
+    ctx.audio.sfx('body.grab'); // grab snap
   }
 
   /** Telekinesis: lift the body the MOUSE CURSOR is on (within reach), regardless
@@ -401,12 +537,12 @@ export class RigidBodies implements RigidBodiesApi {
         if (d2 < bestD2) { bestD2 = d2; target = body; }
       }
     }
-    if (!target || target.kind !== 'dynamic') return false;
+    if (!target || target.kind !== 'dynamic' || isFloraBody(target)) return false;
     const mass = target.invMass && target.invMass > 0 ? 1 / target.invMass : Infinity;
     if (mass > TELE_MASS_MAX) return false;
     if (Math.hypot(target.x - p.x, target.y - (p.y - 8)) > TELE_REACH) return false;
     this.held = target;
-    ctx.audio.tone(440, 200, 0.08, 'sine', 0.07); // telekinetic lift
+    ctx.audio.sfx('body.lift'); // telekinetic lift
     return true;
   }
 
@@ -424,14 +560,14 @@ export class RigidBodies implements RigidBodiesApi {
       rb.setAngvel((entityRandom() - 0.5) * 6, true);
       held.vx = vx / PF;
       held.vy = vy / PF;
-      ctx.audio.tone(210, 90, 0.1, 'square', 0.09); // throw
+      ctx.audio.sfx('body.throw'); // throw
     } else {
       // gentle set-down: kill the tracking velocity so it just falls where it floats
       rb.setLinvel({ x: 0, y: 0 }, true);
       rb.setAngvel(0, true);
       held.vx = 0;
       held.vy = 0;
-      ctx.audio.tone(180, 80, 0.07, 'sine', 0.06); // soft drop
+      ctx.audio.sfx('body.drop'); // soft drop
     }
   }
 
@@ -537,7 +673,7 @@ export class RigidBodies implements RigidBodiesApi {
         12 + ((entityRandom() * 8) | 0),
         { grav: 0.05 },
       );
-      ctx.audio.tone(110 + this.ripCharge * 6, 45, 0.04, 'square', 0.05);
+      ctx.audio.sfx('body.rip', undefined, undefined, { pitch: this.ripCharge * 0.25 });
     }
     if (this.ripCharge >= RIP_CHARGE_FRAMES) {
       this.ripCharge = 0;
@@ -584,7 +720,7 @@ export class RigidBodies implements RigidBodiesApi {
       restitution: 0.15,
     });
     this.held = body; // the torn plank levitates straight to the hand
-    ctx.audio.tone(90, 170, 0.12, 'sawtooth', 0.1); // timber tearing free
+    ctx.audio.sfx('body.tear'); // timber tearing free
     ctx.particles.burst(cx, cy, 12, null, () => color, 1.1, { grav: 0.05 });
   }
 
@@ -600,6 +736,8 @@ export class RigidBodies implements RigidBodiesApi {
     for (const body of this.bodies) {
       if (body.hitCd !== undefined && body.hitCd > 0) body.hitCd--;
       if (body.kind !== 'dynamic') continue; // held bodies CAN hit (the pull) — gated by speed
+      // A falling tree is a long rotated box: its AABB lies. game/Flora crushes with the true shape.
+      if (isFloraBody(body)) continue;
       if (body.hitCd !== undefined && body.hitCd > 0) continue;
       const sp = Math.hypot(body.vx, body.vy);
       if (sp < BODY_HIT_MIN_SPEED) continue;
@@ -611,7 +749,8 @@ export class RigidBodies implements RigidBodiesApi {
         const mass = body.invMass && body.invMass > 0 ? 1 / body.invMass : REFERENCE_MASS;
         const massF = Math.sqrt(Math.min(3, mass / REFERENCE_MASS));
         const dmg = Math.min(70, Math.round(sp * BODY_HIT_DMG_K * massF) + 4);
-        ctx.enemyCtl.damage(e, dmg, body.vx * 0.8, body.vy * 0.45 - 0.4);
+        // Debris, a thrown crate, a collapse: the world FLATTENS (combat/AlchemyKills).
+        ctx.enemyCtl.damage(e, dmg, body.vx * 0.8, body.vy * 0.45 - 0.4, 'flattened');
         body.hitCd = BODY_HIT_COOLDOWN;
         // A THROWN body sheds momentum into the foe (slow the Rapier handle so it
         // thuds in instead of ghosting through). A body being PULLED toward the
@@ -626,7 +765,7 @@ export class RigidBodies implements RigidBodiesApi {
           body.vx *= 0.55;
           body.vy *= 0.55;
         }
-        ctx.audio.tone(150, 130, 0.08, 'square', 0.12);
+        ctx.audio.sfx('body.bash', body.x, body.y);
         break; // one foe per body per cooldown
       }
     }
@@ -720,7 +859,7 @@ export class RigidBodies implements RigidBodiesApi {
       this.applyImpulse(piece, (dx / dd) * 3.5, (dy / dd) * 3.5 - 1.5);
     }
     this.ctx.particles.burst(bx, by, 18, null, () => packRGB(160, 140, 110), 2.4, { grav: 0.05 });
-    this.ctx.audio.noiseBurst(0.14, 300, 0.1);
+    this.ctx.audio.sfx(`body.smash.${mat ?? 'wood'}`, bx, by);
   }
 
   /** A crate STOMPED to bits: remove it and pulverize it into its rubble cells +
@@ -751,7 +890,7 @@ export class RigidBodies implements RigidBodiesApi {
       }
     }
     this.ctx.particles.burst(bx, by, 22, null, () => packRGB(170, 140, 105), 2.8, { grav: 0.06 });
-    this.ctx.audio.noiseBurst(0.16, 250, 0.12);
+    this.ctx.audio.sfx(`body.smash.${body.material ?? 'wood'}`, bx, by);
   }
 
   /** Queue an explosive barrel to detonate next tick (idempotent). */
@@ -782,6 +921,12 @@ export class RigidBodies implements RigidBodiesApi {
     // which sets its Rapier translation directly without a step.
     if (ctx.state.mode === 'play' && ctx.debug.active) return;
     this.processDetonations(ctx);
+    for (const body of this.bodies) {
+      const spring = body.torsionSpring, rb = this.handles.get(body);
+      if (!spring || !rb) continue;
+      const acceleration = (spring.restAngle - body.angle) * spring.stiffness - body.va * spring.damping;
+      rb.applyTorqueImpulse(acceleration * PF * rb.effectiveAngularInertia(), Math.abs(acceleration) > .00001);
+    }
     // Terrain sync + the solver step are the two places a degenerate contact/
     // collider pile can overflow Rapier's wasm stack. That overflow leaves the
     // world PERMANENTLY borrow-locked ("recursive use of an object detected"),
@@ -805,6 +950,7 @@ export class RigidBodies implements RigidBodiesApi {
       }
       const t = rb.translation();
       const v = rb.linvel();
+      body.previousX = body.x; body.previousY = body.y; body.previousAngle = body.angle;
       body.x = t.x;
       body.y = t.y;
       body.angle = rb.rotation();
@@ -818,7 +964,7 @@ export class RigidBodies implements RigidBodiesApi {
     this.tickGoreChunks(ctx);
     this.reactBodies(ctx);
     this.trackHeld(ctx); // after reactBodies so carrying overrides buoyancy/etc.
-    this.updatePlankRip(ctx); // hold E aimed at a wood platform to tear a plank loose
+    this.updatePlankRip(ctx);
     this.resolvePlayer(ctx);
     this.resolveBodyEnemyHits(ctx); // thrown/flung bodies bludgeon foes they strike
   }
@@ -840,6 +986,8 @@ export class RigidBodies implements RigidBodiesApi {
 
     const strength = Math.min(1, Math.max(0.25, (delta - BODY_IMPACT_NOISE_MIN_DELTA) / 4));
     body.impactNoiseCd = BODY_IMPACT_NOISE_COOLDOWN;
+    // A felled tree sounds its own strikes in its own wood (game/Flora → treeLanded → audio/EventCues).
+    if (body.tag !== 'flora-fell') ctx.audio.sfx(`body.impact.${body.material ?? 'wood'}`, body.x, body.y, { gain: strength });
     ctx.events.emit('groundImpact', {
       x: body.x,
       y: body.y,
@@ -854,7 +1002,13 @@ export class RigidBodies implements RigidBodiesApi {
   private stepPhysics(ctx: Ctx): boolean {
     try {
       this.syncTerrain(ctx.world, ctx.state.frameCount);
-      this.world.step();
+      // Small limbs otherwise stop at different CCD instants during one hard
+      // landing. Short internal steps keep joint anchors together at impact;
+      // the total simulated time is still exactly one authored 60 Hz tick.
+      const steps = this.playerRagdoll && !this.playerCorpse?.sleeping ? 6 : 1;
+      this.world.integrationParameters.dt = DT / steps;
+      for (let i = 0; i < steps; i++) this.world.step();
+      this.world.integrationParameters.dt = DT;
       return true;
     } catch (err) {
       this.recoverFromFault(err);
@@ -870,6 +1024,9 @@ export class RigidBodies implements RigidBodiesApi {
    *  flow still resolves without its ragdoll. */
   private recoverFromFault(err: unknown): void {
     this.world = this.createWorld();
+    this.ropeAnchors.clear();
+    this.tetherAnchors.clear();
+    this.hingeAnchors.clear();
     this.handles.clear();
     this.terrain.clear();
     this.terrainStale.clear();
@@ -878,6 +1035,7 @@ export class RigidBodies implements RigidBodiesApi {
     this.detonations.length = 0;
     this.held = null;
     this.playerCorpse = null;
+    this.playerRagdoll = null;
     console.error('[RigidBodies] physics solver fault — world reset to recover', err);
     this.ctx.events.emit('toast', { text: 'PHYSICS RESET (solver overload)' });
   }
@@ -924,13 +1082,36 @@ export class RigidBodies implements RigidBodiesApi {
       if (body.kind !== 'dynamic') continue;
       const matDef = body.material ? bodyMaterialDef(body.material) : null;
 
+      // Hemp responds to the same heat and solvent as the rest of the room.
+      // Sampling along its live span also lets a player cut it with a flame.
+      for (const secondary of [false, true]) {
+        const rope = body[secondary ? 'tether' : 'rope'];
+        if (!rope || rope.material === 'chain') continue;
+        const distance = Math.hypot(body.x - rope.x, body.y - rope.y);
+        for (let d = 3; d < distance - 3; d += 2) {
+          const t = world.type(Math.round(rope.x + (body.x - rope.x) * d / distance), Math.round(rope.y + (body.y - rope.y) * d / distance));
+          if (isHotCell(t) || t === Cell.Acid) { this.cutRope(body, secondary); break; }
+        }
+      }
+
+      // A piston is a pressure face, not a floating stone. Only real steam
+      // trapped immediately beneath its broad underside supplies lift.
+      if (body.steamPiston && body.shape.kind === 'box') {
+        let steam = 0;
+        const bottom = Math.ceil(body.y + body.shape.halfH);
+        for (let x = Math.floor(body.x - body.shape.halfW); x <= body.x + body.shape.halfW; x++) {
+          for (let y = bottom; y <= bottom + 12; y++) if (world.type(x, y) === Cell.Steam) steam++;
+        }
+        if (steam > 3) this.applyImpulse(body, 0, -Math.min(1.2, steam * .12));
+      }
+
       // FIRE — a flammable body lit by adjacent fire/lava/ember burns, then chars to ash.
       if (matDef?.flammable) {
         if (!body.burnT) {
           if (this.scanFootprint(world, body, 1, isHotCell)) {
             // explosive barrels burn a short fuse, then blow instead of charring
             body.burnT = (body.payload === 'explosive' ? BARREL_FUSE : BURN_FRAMES) + Math.floor(entityRandom() * 40);
-            ctx.audio.noiseBurst(0.1, 480, 0.05);
+            ctx.audio.sfx('mat.ignite', body.x, body.y, { gain: 0.45 });
           }
         } else {
           body.burnT--;
@@ -990,8 +1171,10 @@ export class RigidBodies implements RigidBodiesApi {
           const density = Math.max(0.2, body.density ?? 1);
           const buoy = submerged * (WATER_DENSITY / density) * GRAVITY * DT; // upward (−y)
           const drag = 1 - Math.min(0.5, submerged * WATER_DRAG);
-          const nvx = v.x * drag;
-          const nvy = (v.y - buoy) * drag;
+          // Currents carry floating props, just as they carry suspended cells.
+          const flowX = Math.max(-3, Math.min(3, world.flow.x(body.x, body.y))) * PF;
+          const nvx = body.guideAxis === 'vertical' ? 0 : v.x * drag + flowX * (1 - drag);
+          const nvy = body.guideAxis === 'horizontal' ? 0 : (v.y - buoy) * drag;
           rb.setLinvel({ x: nvx, y: nvy }, true);
           rb.setAngvel(rb.angvel() * drag, true);
           body.vx = nvx / PF;
@@ -1047,7 +1230,7 @@ export class RigidBodies implements RigidBodiesApi {
         { grav: 0.08, glow: 0.4 },
       );
     }
-    ctx.audio.bubble();
+    ctx.audio.splash(1, body.x, body.y);
   }
 
   /** True if any cell within `margin` of the body's footprint passes `test`. */
@@ -1105,7 +1288,7 @@ export class RigidBodies implements RigidBodiesApi {
     }
     ctx.particles.burst(body.x, body.y, 22, null, smokeColor, 2.6, { grav: -0.02 });
     ctx.particles.burst(body.x, body.y, 12, null, fireColor, 2.0, { glow: 2.6, grav: -0.01 });
-    ctx.audio.noiseBurst(0.14, 220, 0.08);
+    ctx.audio.sfx('body.burnout', body.x, body.y);
   }
 
   /** The dig beam (if active this frame) shoves bodies in its path, mass-aware. */
@@ -1149,7 +1332,7 @@ export class RigidBodies implements RigidBodiesApi {
     // handles.has() check below skips anything already removed this frame.
     for (let bi = this.bodies.length - 1; bi >= 0; bi--) {
       const body = this.bodies[bi];
-      if (!body || body.kind !== 'dynamic') continue;
+      if (!body || body.kind !== 'dynamic' || isFloraBody(body)) continue;
       if (body === this.held) continue; // don't shove the player off its own carried body
       if (!this.handles.has(body)) continue; // removed (smashed) earlier this frame
       if (Math.abs(body.x - player.x) > 48 || Math.abs(body.y - player.y) > 48) continue;
@@ -1318,6 +1501,11 @@ export class RigidBodies implements RigidBodiesApi {
       }
     }
   }
+}
+
+/** A felled tree/stem owned by game/Flora (tag 'flora-*'). */
+function isFloraBody(body: RigidBody): boolean {
+  return body.tag !== undefined && body.tag.startsWith('flora-');
 }
 
 function shapeRadius(shape: RigidShape): number {

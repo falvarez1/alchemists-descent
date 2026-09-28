@@ -36,12 +36,14 @@ export class BuilderLauncher {
     this.button.id = 'mode-builder-btn';
     this.button.textContent = 'BUILDER';
     this.button.addEventListener('click', this.onClick);
+    window.addEventListener('keydown', this.onKeyDown);
     if (this.createdButton) document.querySelector('.mode-switch')?.appendChild(this.button);
   }
 
   dispose(): void {
     this.disposed = true;
     this.button.removeEventListener('click', this.onClick);
+    window.removeEventListener('keydown', this.onKeyDown);
     const builder = this.builder;
     builder?.dispose();
     this.builder = null;
@@ -60,6 +62,13 @@ export class BuilderLauncher {
       })
       .catch(() => undefined);
   }
+
+  /** F10: the play screen hides the header — and its BUILDER button — for the whole run. */
+  private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (event.code !== 'F10' || event.repeat) return;
+    event.preventDefault();
+    this.onClick();
+  };
 
   private readonly onClick = (): void => {
     if (this.disposed) return;

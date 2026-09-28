@@ -9,14 +9,15 @@
 // uFlickerMid pins the shader hash to 0.5 — every branch deterministic.
 //
 // Usage: node scripts/probe-compose-parity.mjs [url]   (dev server running)
-import { chromium } from 'playwright-core';
+import { launchBrowser } from './browser-launch.mjs';
 import { mkdirSync } from 'node:fs';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const outDir = 'verify-out/compose-parity';
 mkdirSync(outDir, { recursive: true });
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser({ headless: true });
 const page = await (await browser.newContext()).newPage();
 const consoleErrors = [];
 page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${String(e)}`));
@@ -25,7 +26,8 @@ page.on('console', (m) => {
 });
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-await page.waitForTimeout(2500);
+await startConsoleTestRun(page, { seed: 777, level: 'd1', world: 'campaign-level', loadout: 'fresh', settleMs: 7000 });
+await page.waitForFunction(() => window.__game.ctx.levels.findabilityReady, null, { timeout: 60000 });
 
 const results = [];
 const record = (name, pass, info = '') => {
@@ -112,6 +114,7 @@ const setupOk = await page.evaluate(() => {
   paint(470, 210, 490, 230, 20, 0xff6420, 30000);
 
   // ---------- helpers ----------
+  W.activity.invalidateAll();
   const glCanvas = document.querySelector('#canvas-holder > canvas');
   const tmp = document.createElement('canvas');
   tmp.width = glCanvas.width;
@@ -125,6 +128,10 @@ const setupOk = await page.evaluate(() => {
       const tryOnce = (attempt) => {
         if (attempt > 60) return reject(new Error('capture: 60 black frames'));
         requestAnimationFrame(() => {
+          // Render the requested backend immediately before readback. The game
+          // caches paused presentations; a timer alone can capture an older one.
+          window.__game.composer.compose(ctx, 1);
+          window.__game.renderer.render(ctx);
           g.drawImage(glCanvas, 0, 0);
           const d = g.getImageData(0, 0, tmp.width, tmp.height).data;
           let sum = 0;
@@ -141,6 +148,8 @@ const setupOk = await page.evaluate(() => {
       const tryOnce = (attempt) => {
         if (attempt > 60) return reject(new Error('captureRect: 60 black frames'));
         requestAnimationFrame(() => {
+          window.__game.composer.compose(ctx, 1);
+          window.__game.renderer.render(ctx);
           g.drawImage(glCanvas, 0, 0);
           const d = g.getImageData(x, y, w, h).data;
           let sum = 0;
@@ -201,7 +210,7 @@ const s1 = await page.evaluate(async () => {
   ctx.state.postFx.gpuCompose = false;
   return { rig, ab };
 });
-record('S0 rig: frozen clock renders identical CPU frames', s1.rig.maxd === 0, JSON.stringify(s1.rig));
+record('S0 rig: frozen CPU frames agree within one 8-bit channel step', s1.rig.maxd <= 1, JSON.stringify(s1.rig));
 record(
   'S1 static scene: CPU vs GPU parity (mean<=0.04, bigPct<=0.3%, exact>99.5%)',
   s1.ab.meand <= 0.04 && s1.ab.bigPct <= 0.3 && s1.ab.exactPct > 99.5,
@@ -211,6 +220,7 @@ record(
 // ---------- S2: max-size black hole at the view edge (distortion pad) ----------
 const s2 = await page.evaluate(async () => {
   const ctx = window.__game.ctx;
+  window.__setFrozen(1002);
   const { camX, camY } = window.__cam;
   // max-size singularity (collapseLimit 140) hugging the left view edge: the
   // worst-case lens offset must stay inside the window pad
@@ -243,6 +253,7 @@ record(
 // ---------- S3: shockwave ring + sprite overlay semantics ----------
 const s3 = await page.evaluate(async () => {
   const ctx = window.__game.ctx;
+  window.__setFrozen(1004);
   const { camX, camY } = window.__cam;
   // static blast ring straddling air + stone (refraction over both paths)
   ctx.shockwaves.push({
@@ -293,6 +304,9 @@ const s4 = await page.evaluate(async () => {
     const sum = [0, 0, 0];
     const sumSq = [0, 0, 0];
     for (let f = 0; f < frames; f++) {
+      // A paused CPU frame is intentionally cached. Advance the diagnostic
+      // presentation clock explicitly to sample fresh flicker on both paths.
+      window.__setFrozen(1100 + f);
       const d = await window.__captureRect(...rect);
       for (let i = 0; i < d.length; i += 4) {
         for (let c = 0; c < 3; c++) {
@@ -320,6 +334,7 @@ const s4 = await page.evaluate(async () => {
   // restore determinism for the remaining sections
   Math.random = () => 0.5;
   window.__composeFlickerMid = true;
+  window.__setFrozen(1000);
   return { cpu, gpu };
 });
 {

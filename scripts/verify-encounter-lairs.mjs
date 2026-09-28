@@ -2,11 +2,23 @@
 // habitat cells in the live campaign runtime, and those levels must remain
 // findable after generation/entry.
 // Usage: node scripts/verify-encounter-lairs.mjs [url] [seedCsv]
+//
+// Habitat is sampled twice, neither on the wall clock: `generated` the instant
+// the level is entered (generation + the synchronous initial repair — a pure
+// function of the seed), and `settled` after a FIXED number of sim steps. The
+// old single sample was taken whenever the findability wait happened to finish,
+// so a habitat still changing under the live sim read a different number every
+// run (d2 seed 5's grove: 23 one run, 70 the next, from one identical world).
 import { launchBrowser } from './browser-launch.mjs';
 import { isBenignDevConsoleError, startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
-const seeds = (process.argv[3] ?? '1,5,1337,42').split(',').map(Number);
+// 2, 3 and 7 joined the defaults after d3 seed 3 (a flora connector through
+// the Rillback pool) went unseen for want of a seed that hit it.
+const seeds = (process.argv[3] ?? '1,2,3,5,7,1337,42').split(',').map(Number);
+// Sim steps (60 per second) the habitat must survive before `settled` is read:
+// powder falls, liquids level, a resident Rillback soaks in its pool.
+const SETTLE_STEPS = 360;
 
 const CASES = [
   {
@@ -17,28 +29,14 @@ const CASES = [
     minCells: 45,
   },
   {
-    id: 'd4',
+    id: 'd3',
     lair: 'encounter-lair-rillback-pool',
     kind: 'rillback',
     signature: ['Water', 'Blood', 'Slime'],
     minCells: 180,
   },
   {
-    id: 'd5',
-    lair: 'encounter-lair-rootloper-grove',
-    kind: 'rootloper',
-    signature: ['Vines', 'Moss', 'Fungus', 'Glowshroom'],
-    minCells: 45,
-  },
-  {
-    id: 'd6',
-    lair: 'encounter-lair-stonemaw-seam',
-    kind: 'stonemaw',
-    signature: ['RawOre', 'Coal'],
-    minCells: 45,
-  },
-  {
-    id: 'd8',
+    id: 'd4',
     lair: 'encounter-lair-stonemaw-seam',
     kind: 'stonemaw',
     signature: ['RawOre', 'Coal'],
@@ -70,21 +68,33 @@ try {
       await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
       await startConsoleTestRun(page, { seed, settleMs: 100 });
       const rows = await page.evaluate(
-        async ({ cases }) => {
+        async ({ cases, SETTLE_STEPS }) => {
           const { Cell } = await import('/src/sim/CellType.ts');
           const { reachableMask, validateFindability, wizardMask } = await import('/src/world/validate.ts');
           const ctx = window.__game.ctx;
           const w = () => ctx.world;
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
           const cellId = (name) => Cell[name];
+          // The level's MATERIAL, not just the grid: a hanging vine near the
+          // player is lifted out of its cells into a swaying soft strand and
+          // settles back when far (entities/VineStrands), so the bare grid
+          // under-counts a grove by however many strands happen to be live.
+          // writeSnapshotCells is the save path's own answer to that.
+          const materialTypes = () => {
+            const world = w();
+            const types = world.types.slice();
+            ctx.vineStrands?.writeSnapshotCells?.(world, types, world.life.slice());
+            return types;
+          };
           const countCells = (rect, names) => {
             if (!rect) return 0;
             const wanted = new Set(names.map(cellId));
             let count = 0;
             const world = w();
+            const types = materialTypes();
             for (let y = rect.y0; y <= rect.y1; y++) {
               for (let x = rect.x0; x <= rect.x1; x++) {
-                if (world.inBounds(x, y) && wanted.has(world.types[world.idx(x, y)])) count++;
+                if (world.inBounds(x, y) && wanted.has(types[world.idx(x, y)])) count++;
               }
             }
             return count;
@@ -99,6 +109,21 @@ try {
                 y: Math.round(e.y),
                 hp: Math.round(e.hp ?? 0),
                 rillWet: e.rillWet ?? 0,
+                // Water around the body. A resident outside the player's sim
+                // window is frozen, so its rillWet can still read the spawn
+                // default while it sits in the pool; the cells cannot lie.
+                bodyWater: (() => {
+                  const world = w();
+                  let n = 0;
+                  for (let dy = -6; dy <= 1; dy++) {
+                    for (let dx = -5; dx <= 5; dx++) {
+                      const X = Math.round(e.x) + dx;
+                      const Y = Math.round(e.y) + dy;
+                      if (world.inBounds(X, Y) && world.types[world.idx(X, Y)] === cellId('Water')) n++;
+                    }
+                  }
+                  return n;
+                })(),
               }));
           };
           const near = (mask, x, y, r) => {
@@ -123,12 +148,27 @@ try {
             }
             return count;
           };
+          // The sim advances only as fast as frames render, and a GPU-less CI
+          // runner renders a few a second: drive it with the game's manual time
+          // (up to 60 queued ticks a frame) until `done()`, then hand time back.
+          // The same simulation — just not throttled by the renderer.
+          const driveSim = async (done, capMs = 180000) => {
+            const deadline = performance.now() + capMs;
+            const wasManual = ctx.time.manual;
+            if (!done()) ctx.time.setManual(true);
+            while (!done() && performance.now() < deadline) {
+              if (ctx.time.queuedTicks < 120) ctx.time.queueTicks(240);
+              await sleep(20);
+            }
+            if (ctx.time.manual !== wasManual) ctx.time.setManual(wasManual);
+          };
+
           const waitForFindability = async (rt) => {
             let latest = [];
             let cleanFrames = 0;
-            // Let the level's scheduled settled repair run before the heavy
-            // validator loop starts; otherwise the probe itself can delay the
-            // browser timer it is trying to observe.
+            // Let the level's own settled-repair cascade finish (it waits on sim
+            // steps) before judging convergence.
+            await driveSim(() => ctx.levels.findabilityReady);
             await sleep(700);
             // The level's own repair cascade runs through ~6.5 s after entry
             // (SETTLED_FINDABILITY_REPAIR_DELAYS_MS): a powder column can seal
@@ -149,6 +189,13 @@ try {
             return latest;
           };
 
+          // Wait on SIM steps, not the wall clock: a slow frame or a heavy
+          // validator call must not move the moment the habitat is judged.
+          const waitSteps = async (from, steps) => {
+            await driveSim(() => w().activity.stepSerial - from >= steps);
+            return w().activity.stepSerial - from;
+          };
+
           const out = [];
           for (const c of cases) {
             if (ctx.levels.current?.def?.id !== c.id) {
@@ -158,8 +205,10 @@ try {
             const rt = ctx.levels.current;
             const lair = rt?.placedPrefabs?.find((p) => p.id === c.lair) ?? null;
             const residents = enemiesInRect(lair, c.kind);
-            const findability = await waitForFindability(rt);
-            if (c.kind === 'rillback') await sleep(5200);
+            // The generation truth, before a single sim step has run.
+            const generatedCells = countCells(lair, c.signature);
+            const settleFrom = w().activity.stepSerial;
+            const settledSteps = await waitSteps(settleFrom, SETTLE_STEPS);
             const signatureCells = countCells(lair, c.signature);
             const metalCells = countCells(lair, ['Metal']);
             const liquidRect = lair
@@ -172,6 +221,7 @@ try {
               : null;
             const nearbyLiquid = c.kind === 'rillback' ? countCells(liquidRect, ['Water', 'Blood']) : 0;
             const settledResidents = enemiesInRect(lair, c.kind);
+            const findability = await waitForFindability(rt);
             // Mask sampling gets the same settle-tolerance the findability
             // wait above has: the level SIMULATES while this audits, and a
             // transient falling-debris plug along the fit-path can zero the
@@ -198,7 +248,10 @@ try {
               .map((issue) => `${issue.what}@${issue.x},${issue.y}`);
             const issues = [];
             if (!lair) issues.push('missing lair footprint');
-            if (lair && signatureCells < c.minCells) issues.push(`signature cells ${signatureCells}/${c.minCells}`);
+            if (lair && generatedCells < c.minCells) issues.push(`generated signature cells ${generatedCells}/${c.minCells}`);
+            if (lair && signatureCells < c.minCells) {
+              issues.push(`settled signature cells ${signatureCells}/${c.minCells} after ${settledSteps} steps`);
+            }
             if (lair && metalCells > 0) issues.push(`metal cells inside footprint ${metalCells}`);
             if (lair && residents.length === 0) issues.push(`missing resident ${c.kind}`);
             if (lair && !lairCellReachable) issues.push('lair interior not cell-reachable');
@@ -206,7 +259,7 @@ try {
             if (lair && c.kind === 'rillback' && !residentCellReachable) issues.push('rillback resident not cell-reachable');
             if (lair && c.kind !== 'rillback' && !residentWizardReachable) issues.push(`${c.kind} resident not wizard-reachable`);
             if (c.kind === 'rillback' && nearbyLiquid < 120) issues.push(`rillback pool drained or absent ${nearbyLiquid}`);
-            if (c.kind === 'rillback' && !settledResidents.some((e) => e.rillWet >= 0.28)) {
+            if (c.kind === 'rillback' && !settledResidents.some((e) => e.rillWet >= 0.28 || e.bodyWater >= 24)) {
               issues.push(`rillback dry after settle ${JSON.stringify(settledResidents)}`);
             }
             for (const issue of findabilityErrors) issues.push(`findability ${issue}`);
@@ -214,7 +267,9 @@ try {
               id: c.id,
               kind: c.kind,
               lair,
+              generatedCells,
               signatureCells,
+              settledSteps,
               metalCells,
               residents,
               settledResidents,
@@ -229,7 +284,7 @@ try {
           }
           return out;
         },
-        { cases: CASES },
+        { cases: CASES, SETTLE_STEPS },
       );
 
       for (const err of pageErrors) {
@@ -245,7 +300,7 @@ try {
       for (const row of rows) {
         const ok = row.issues.length === 0;
         console.log(
-          `${ok ? ' ok ' : 'FAIL'} seed=${seed} ${row.id} ${row.kind} cells=${row.signatureCells} metal=${row.metalCells} residents=${row.residents.length}` +
+          `${ok ? ' ok ' : 'FAIL'} seed=${seed} ${row.id} ${row.kind} cells=${row.generatedCells}/${row.signatureCells}@${row.settledSteps} metal=${row.metalCells} residents=${row.residents.length}` +
             (row.nearbyLiquid ? ` liquid=${row.nearbyLiquid}` : '') +
             ` reach=${row.lairCellReachCells}/${row.lairWizardReachCells}` +
             (row.issues.length ? ` issues=${row.issues.join('; ')}` : ''),

@@ -33,7 +33,7 @@ function makeFlaskCtx(flask = new Flask()): Ctx {
         [Cell.Water]: { name: 'Water' },
       },
     },
-    audio: {
+    audio: { sfx: () => undefined, creature: () => undefined,
       tone: () => undefined,
       dryFire: () => undefined,
       noiseBurst: () => undefined,
@@ -45,6 +45,7 @@ function makeFlaskCtx(flask = new Flask()): Ctx {
       collection: [],
       wands: [],
       resetLoadout: () => undefined,
+      applyStarterLoadout: () => undefined,
       grantCard: () => undefined,
     },
   } as unknown as Ctx;

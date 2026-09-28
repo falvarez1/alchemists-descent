@@ -25,4 +25,5 @@ export const PICKUP_COLOR: Record<PickupKind, number> = {
   chest: packRGB(210, 150, 70),
   potion: packRGB(220, 120, 255),
   key: packRGB(255, 230, 90),
+  weaverleg: packRGB(170, 195, 164),
 };

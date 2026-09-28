@@ -4,10 +4,14 @@ import { GEN, GEN_TUNE, scaleSkeletonSpec } from '@/config/gen';
 import { clamp, hash2, valueNoise } from '@/core/math';
 import { Rng, hashSeed, randomSeed } from '@/core/rng';
 import { reseedAllStreams } from '@/core/simRandom';
+import { generateBreathingWorks } from '@/world/breathingWorks';
+import { matureVegetation } from '@/world/vegetation';
 import { makeInstantiationSink } from '@/game/instantiate';
 import type {
   AuthoredLight,
   Ctx,
+  DarkZone,
+  LumenBloom,
   EnemyKind,
   ExitPortal,
   HazardEmitter,
@@ -23,8 +27,7 @@ import type {
   Waystone,
   WorldGenApi,
 } from '@/core/types';
-import { Cell } from '@/sim/CellType';
-import type { World } from '@/sim/World';
+import { blocksEntity, Cell, isLiquid } from '@/sim/CellType';
 import {
   COLOR_FN,
   EMPTY_COLOR,
@@ -34,7 +37,6 @@ import {
   iceColor,
   oilColor,
   packRGB,
-  sandColor,
   stoneColor,
   unpackB,
   unpackG,
@@ -43,18 +45,35 @@ import {
   woodColor,
 } from '@/sim/colors';
 import { applyBiomeExtras, applyCampaignDressing, fillMineralVugs, goldPocketBudgetForBiome } from '@/world/biomeExtras';
-import { PlacementLedger, carveRect, tunnelTo } from '@/world/connect';
+import { type CarveAvoid, PlacementLedger, carveRect, sealedFootprints, tunnelTo } from '@/world/connect';
+import { applyFloraPass } from '@/world/floraPass';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
 import type { SkeletonIO } from '@/world/skeleton';
-import { polishCaveTerrain, consolidateRock, fillEnclosedHoles, solidifyRock } from '@/world/terrainPolish';
+import { polishCaveTerrain, consolidateRock, fillEnclosedHoles, solidifyRock, type PolishTarget } from '@/world/terrainPolish';
 import { dressWalkSurface, plantGroundCover } from '@/world/surfaceDress';
 import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
 import { placeEncounterLairs } from '@/world/encounterLairs';
+import { placeLightPuzzles, type LightPuzzleOutput } from '@/world/lightPuzzles';
+import { dressColdStore } from '@/world/coldStore';
+import { placeColdStorePuzzles, type ColdStorePuzzleOutput } from '@/world/coldStorePuzzles';
+import { dressGlassGalleries } from '@/world/glassGalleries';
+import { placeGalleryPuzzles, type GalleryPuzzleOutput } from '@/world/galleryPuzzles';
 import { stampSecrets } from '@/world/secrets';
-import { computeFits, reachableMask, wizardMask } from '@/world/validate';
+import { bodyCanCollect, computeFits, reachableMask, wizardMask } from '@/world/validate';
+import {
+  type BodyRecord,
+  cauldronFooting,
+  holdFixtureFootings,
+  recordBodies,
+  reserveFooting,
+  reserveTriggerFootings,
+  waystoneFooting,
+} from '@/world/fixtureFooting';
 import { placeStructures } from '@/world/structures';
+import { placeStorySites } from '@/world/storySites';
+import type { LevelStorySites } from '@/core/story';
 
 /* ===================== Procedural Generation Map Engines ===================== */
 
@@ -67,19 +86,6 @@ const N4: ReadonlyArray<readonly [number, number]> = [
   [0, 1],
   [0, -1],
 ];
-
-// D1 surface geometry. The same values reserve protected placement space before
-// prefabs and later carve the visible intro surface.
-const INTRO_SURFACE_RISE = 96;
-const INTRO_SURFACE_GROUND_MIN = 110;
-const INTRO_SURFACE_GROUND_MAX = HEIGHT - 240;
-const INTRO_SURFACE_GROUND_NOISE_FREQ = 0.014;
-const INTRO_SURFACE_GROUND_WAVE = 26;
-const INTRO_SURFACE_SOIL = 14;
-const INTRO_SURFACE_SHAFT_HALF = 4;
-const INTRO_SURFACE_MOUTH_TIMBER = 12;
-const INTRO_SURFACE_SPAWN_OFFSET = 210;
-const INTRO_SURFACE_CABIN_OFFSET = 26;
 
 function shouldLogDevDiagnostics(): boolean {
   if (!import.meta.env.DEV || import.meta.env.MODE === 'test') return false;
@@ -116,6 +122,7 @@ export class WorldGen implements WorldGenApi {
   }
 
   spawnFortress(ctx: Ctx): void {
+    ctx.world.activity.invalidateAll();
     stampFortress(ctx);
   }
 
@@ -497,20 +504,29 @@ export class WorldGen implements WorldGenApi {
     // Gilded Vault and timber scaffold routes keep their original thin-route
     // topology because generated locks are tuned tightly around them.
     if (ctx.state.currentBiome !== 'gilded' && ctx.state.currentBiome !== 'timber') {
+      // Polish fills and walk-surface dressing are PRISTINE paint — a restore
+      // regenerates them from the seed — not scars. Registering them as
+      // colorOverrides told the renderer to show their raw biome paint instead
+      // of the terrain atlas (the camouflage blotches on every procedural
+      // floor) and bloated each save. Hand the passes a view without the
+      // override set, exactly like the chunked generator's scratch adapter.
+      const pristine: PolishTarget = {
+        types: world.types, colors: world.colors, life: world.life, charge: world.charge, width: WIDTH, height: HEIGHT,
+      };
       if (GEN_TUNE.rockFillPasses > 0) {
-        consolidateRock(world, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.rockFillPasses, GEN_TUNE.rockFillThreshold);
+        consolidateRock(pristine, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.rockFillPasses, GEN_TUNE.rockFillThreshold);
       }
       // De-speckle: a morphological close packs every CONNECTED open feature
       // thinner than 2*radius (the porous-noise speckle the player walks over),
       // leaving caverns/tunnels wider than the radius untouched. Then mop up any
       // remaining SEALED pockets. Both are connectivity-safe by construction.
       if (GEN_TUNE.rockCloseRadius > 0) {
-        solidifyRock(world, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.rockCloseRadius);
+        solidifyRock(pristine, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.rockCloseRadius);
       }
       if (GEN_TUNE.holeFillMax > 0) {
-        fillEnclosedHoles(world, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.holeFillMax);
+        fillEnclosedHoles(pristine, seed, MIN_Y, FLOOR_BAND, GEN_TUNE.holeFillMax);
       }
-      polishCaveTerrain(world, {
+      polishCaveTerrain(pristine, {
         seed,
         minY: MIN_Y,
         floorBand: FLOOR_BAND,
@@ -523,7 +539,7 @@ export class WorldGen implements WorldGenApi {
       // flowers on the ledges the player walks (runs after polish so it dresses the
       // filled surface). See world/surfaceDress.ts.
       const dressOpts = { seed, minY: MIN_Y, floorBand: FLOOR_BAND, crown: B.crown, flowerChance: B.flowerChance };
-      dressWalkSurface(world, dressOpts);
+      dressWalkSurface(pristine, dressOpts);
       // Living, walk-through ground cover (grass blades + sparse mushroom tufts) on
       // the dressed surface — real soft-growth cells that sway-spread, burn, and
       // wither on their own. See world/surfaceDress.plantGroundCover.
@@ -566,6 +582,7 @@ export class WorldGen implements WorldGenApi {
     pickups: Pickup[],
     waystones: Waystone[],
     cauldron: { x: number; y: number } | null,
+    sealed: readonly CarveAvoid[] = [],
   ): void {
       let wiz = wizardMask({ world: ctx.world, spawn });
       let cell = reachableMask({ world: ctx.world, spawn });
@@ -594,6 +611,9 @@ export class WorldGen implements WorldGenApi {
         return false;
       };
       const HANDS_ON = new Set(['plate', 'lever', 'brazier', 'scale']);
+      /** A hand-trigger's first own row: the lever's bracket, the brazier's lips, the plate, the scale's lips. */
+      const fixtureTop = (m: Mechanism): number =>
+        m.kind === 'lever' ? m.y + 1 : m.kind === 'brazier' ? m.y - 1 : m.kind === 'scale' ? m.y - 2 : m.y;
       const CELL_REACH = new Set(['sensor', 'counterweight', 'plug', 'buoy', 'chargelatch']);
       // nearest spawn-connected wizard cell whose STRAIGHT LINE from the
       // lock crosses no Metal — carvePocket spares Metal, so a tunnel aimed
@@ -614,14 +634,24 @@ export class WorldGen implements WorldGenApi {
         }
         return false;
       };
+      // Sealed features (an encounter lair's pool, the sump, a light room) are
+      // walked around, and never the join target: their open interiors are
+      // wizard-reachable, so the nearest reachable cell is often INSIDE one,
+      // and a tunnel aimed there cut the d3 seed-20 Rillback pool in half.
+      // A feature the rescued point itself stands in is its destination, not
+      // an obstacle (a light room's own lock), and is not avoided.
+      const avoidFor = (x: number, y: number): CarveAvoid[] =>
+        sealed.filter((r) => !(x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1));
       const nearestWiz = (x: number, y: number): { x: number; y: number } | null => {
+        const avoid = avoidFor(x, y);
         let fallback: { x: number; y: number } | null = null;
         for (let r = 24; r <= 1200; r += 3) {
           for (let a = 0; a < 24; a++) {
             const ang = (a / 24) * Math.PI * 2;
             const X = Math.floor(x + Math.cos(ang) * r),
               Y = Math.floor(y + Math.sin(ang) * r);
-            if (X > 1 && Y > 1 && X < WIDTH - 1 && Y < HEIGHT - 1 && wiz[X + Y * WIDTH]) {
+            if (X > 1 && Y > 1 && X < WIDTH - 1 && Y < HEIGHT - 1 && wiz[X + Y * WIDTH]
+              && !avoid.some((q) => X >= q.x0 && X <= q.x1 && Y >= q.y0 && Y <= q.y1)) {
               if (!metalOnLine(x, y, X, Y)) return { x: X, y: Y };
               fallback ??= { x: X, y: Y };
             }
@@ -636,21 +666,27 @@ export class WorldGen implements WorldGenApi {
       // tunnel from the chamber joins the spawn component; verify by
       // recomputing the mask, and fall back to a tunnel aimed at the spawn.
       const SWEEP = { halfW: 10, up: 25, down: 12 }; // gauge-guaranteed gallery
-      const rescueAt = (px: number, py: number, pass: () => boolean): boolean => {
-        carveRect(ctx.world, px - SWEEP.halfW, py - 24, px + SWEEP.halfW, py + 4);
+      // `keep`: a FIXTURE's first own row (its bowl, bracket or floor). The
+      // chamber then stops just above it and the tunnel leaves from high enough
+      // that its first disc does too — a rescue used to dig four rows under the
+      // thing it rescued and leave it floating (world/fixtureFooting).
+      const rescueAt = (px: number, py: number, pass: () => boolean, keep?: number): boolean => {
+        carveRect(ctx.world, px - SWEEP.halfW, py - 24, px + SWEEP.halfW, keep === undefined ? py + 4 : keep - 1);
+        const ty = keep === undefined ? py - 10 : Math.min(py - 10, keep - 13);
         // Let the rescue tunnel reach a chamber/target ABOVE the default row-26
         // floor (the rescue chamber's top is py-24); for deep features (every
         // case in the shipped seeds) this stays 26, so carve output is unchanged.
         const rescueMinY = Math.min(26, py - 24);
-        const target = nearestWiz(px, py - 10) ?? {
+        const target = nearestWiz(px, ty) ?? {
           x: Math.floor(spawn.x),
           y: Math.floor(spawn.y) - 4,
         };
-        tunnelTo(ctx.world, this.rng, px, py - 10, target.x, target.y, 12, SWEEP, rescueMinY);
+        const avoid = avoidFor(px, ty);
+        tunnelTo(ctx.world, this.rng, px, ty, target.x, target.y, 12, SWEEP, rescueMinY, avoid);
         wiz = wizardMask({ world: ctx.world, spawn });
         cell = reachableMask({ world: ctx.world, spawn });
         if (pass()) return true;
-        tunnelTo(ctx.world, this.rng, px, py - 10, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP, rescueMinY);
+        tunnelTo(ctx.world, this.rng, px, ty, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP, rescueMinY, avoid);
         wiz = wizardMask({ world: ctx.world, spawn });
         cell = reachableMask({ world: ctx.world, spawn });
         return pass();
@@ -733,9 +769,12 @@ export class WorldGen implements WorldGenApi {
           const pass = (): boolean => wizNear(m.x, m.y - 2, 6);
           const stable = (): boolean => wizNearCount(m.x, m.y - 2, 6) >= 40;
           if (pass() && stable()) continue;
-          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, stable) || failOpenTargetDoor(m, stable));
+          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, stable, fixtureTop(m)) || failOpenTargetDoor(m, stable));
         } else if (CELL_REACH.has(m.kind)) {
-          const pass = (): boolean => cellNear(m.x, m.y - 2, 5);
+          // A lens sealed behind optics (world/galleryPuzzles) is reached at its
+          // port — the rescue must never carve into the sealed lens itself.
+          const rx = m.lightPort?.x ?? m.x, ry = m.lightPort?.y ?? m.y;
+          const pass = (): boolean => cellNear(rx, ry - 2, 5);
           if (pass()) continue;
           if (labMechanism) {
             recordRescue(`spell-lab@${Math.floor(spellLab?.x ?? m.x)},${Math.floor(spellLab?.y ?? m.y)}`, () =>
@@ -743,7 +782,7 @@ export class WorldGen implements WorldGenApi {
             );
             continue;
           }
-          recordRescue(`${m.kind}@${m.x},${m.y}`, () => rescueAt(m.x, m.y, pass));
+          recordRescue(`${m.kind}@${rx},${ry}`, () => rescueAt(rx, ry, pass));
         }
       }
       for (const v of runeVaults) {
@@ -754,28 +793,33 @@ export class WorldGen implements WorldGenApi {
         recordRescue(`rune@${rx},${ry}`, () => rescueAt(rx, ry, pass));
       }
       // The golden key gates progression and the wizard must WALK to it —
-      // it gets the same guarantee as the hands-on locks.
+      // it gets the same guarantee as the hands-on locks, judged by the real
+      // collect rule (validate bodyCanCollect): a key sunk in the floor is ten
+      // cells from open ground and still cannot be taken. The rescue keeps the
+      // floor it rests on.
       for (const p of pickups) {
         if (p.kind !== 'key') continue;
         const kx = Math.floor(p.x),
           ky = Math.floor(p.y);
-        const pass = (): boolean => wizNear(kx, ky, 10);
+        const pass = (): boolean => bodyCanCollect(wiz, ctx.world, p.x, p.y);
         if (pass() && wizNearCount(kx, ky, 10) >= 64) continue;
-        recordRescue(`key@${kx},${ky}`, () => rescueAt(kx, ky, pass));
+        let floor = ky + 1;
+        while (floor < HEIGHT - 9 && !blocksEntity(ctx.world.types[kx + floor * WIDTH])) floor++;
+        recordRescue(`key@${kx},${ky}`, () => rescueAt(kx, ky, pass, floor));
       }
       for (const ws of waystones) {
         const wx = Math.floor(ws.x),
           wy = Math.floor(ws.y);
         const pass = (): boolean => wizNear(wx, wy, 10);
         if (pass() && wizNearCount(wx, wy, 10) >= 64) continue;
-        recordRescue(`waystone@${wx},${wy}`, () => rescueAt(wx, wy, pass));
+        recordRescue(`waystone@${wx},${wy}`, () => rescueAt(wx, wy, pass, wy - 1));
       }
       if (cauldron) {
         const cx = Math.floor(cauldron.x),
           cy = Math.floor(cauldron.y);
         const pass = (): boolean => wizNear(cx, cy, 10);
         if (!pass() || wizNearCount(cx, cy, 10) < 64) {
-          recordRescue(`cauldron@${cx},${cy}`, () => rescueAt(cx, cy, pass));
+          recordRescue(`cauldron@${cx},${cy}`, () => rescueAt(cx, cy, pass, cy - 1));
         }
       }
       for (const m of mechanisms) {
@@ -803,7 +847,6 @@ export class WorldGen implements WorldGenApi {
     ctx: Ctx,
     def: LevelDef,
     seed: number,
-    opts?: { hostArch?: boolean },
   ): {
     exit: LevelExitWell;
     waystones: Waystone[];
@@ -821,13 +864,25 @@ export class WorldGen implements WorldGenApi {
     decors: RuntimeDecor[];
     refuge: { x: number; y: number } | null;
     spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null;
-    vaultArch: VaultArch | null;
-    vaultHoard: { x: number; y: number } | null;
+    /** Retired with the Gilded Vault branch: never produced, always null. */
+    vaultArch?: VaultArch | null;
+    vaultHoard?: { x: number; y: number } | null;
     /** D1 only: the open-air start point on the surface, above the cave mouth. */
     surfaceSpawn: { x: number; y: number } | null;
     /** D1 only: the horizon row — Empty above it renders as open sky. */
     surfaceSkyLine: number | null;
+    /** Light wave: designed deep-dark zones and lumen blooms. */
+    darkZones?: DarkZone[];
+    lumenBlooms?: LumenBloom[];
+    /** STORY: pipes, Pell's camp, the resonant valve, the Kiln flue. */
+    story?: LevelStorySites;
   } {
+    if (def.id === 'd1') {
+      const works = generateBreathingWorks(ctx, seed);
+      matureVegetation(ctx.world);
+      this.spawnHint = works.spawn;
+      return works;
+    }
     // DEV stage timing — generation runs synchronously behind the curtain,
     // so a slow stage is a felt hitch; shout when the total crosses 400ms.
     const tStart = performance.now();
@@ -929,16 +984,28 @@ export class WorldGen implements WorldGenApi {
       }
       waystones.push({ x: cx, y: baseY - 1, lit: false });
     };
+    const wetOver = (cx: number, baseY: number): boolean => {
+      for (let y = baseY - 5; y <= baseY; y++) {
+        for (let x = cx - 3; x <= cx + 3; x++) if (isLiquid(world.types[x + y * WIDTH])) return true;
+      }
+      return false;
+    };
     for (const anchor of [WIDTH * 0.33, WIDTH * 0.66]) {
       let placed = false;
-      for (let attempt = 0; attempt < 40 && !placed; attempt++) {
+      // A checkpoint is lit with fire: its bowl is never set on the bed of a
+      // pool (the scan reads water as open, and a restored bowl fills at once).
+      // Relaxed in tiers, never skipped: dry ground on the lower artery, then
+      // dry ground from higher up (a flooded floor's water table), then any
+      // ground, as before.
+      for (let attempt = 0; attempt < 120 && !placed; attempt++) {
+        const tier = attempt < 40 ? 0 : attempt < 80 ? 1 : 2;
         const cx = Math.floor(anchor + (this.rng.next() - 0.5) * 80);
         if (cx < 12 || cx >= WIDTH - 12) continue;
         if (Math.abs(cx - wellX) < halfW + 26) continue;
         // Scan down from the lower artery's band for the first standable floor.
         let baseY = -1;
-        for (let y = Math.floor(HEIGHT * 0.56); y < HEIGHT - 6; y++) {
-          if (isOpenT(world.types[cx + y * WIDTH]) && isFloorT(world.types[cx + (y + 1) * WIDTH])) {
+        for (let y = Math.floor(HEIGHT * (tier === 1 ? 0.35 : 0.56)); y < HEIGHT - 6; y++) {
+          if (isOpenT(world.types[cx + y * WIDTH]) && isFloorT(world.types[cx + (y + 1) * WIDTH]) && (tier === 2 || !wetOver(cx, y))) {
             baseY = y;
             break;
           }
@@ -982,16 +1049,15 @@ export class WorldGen implements WorldGenApi {
     const ledger = new PlacementLedger();
     ledger.reserve(spawn.x - 60, spawn.y - 60, spawn.x + 60, spawn.y + 60, 'spawn');
     ledger.reserve(wellX - halfW - 6, 0, wellX + halfW + 6, HEIGHT - 1, 'exit-well');
-    if (def.depth === 1 && !def.branch) this.reserveIntroSurfaceFootprint(ledger, spawn);
     for (let n = 0; n < waystones.length; n++) {
       const ws = waystones[n];
       const rx = n === 0 ? 34 : 12; // ws[0]'s wider margin also covers the cauldron site
       ledger.reserve(ws.x - rx, ws.y - 12, ws.x + rx, ws.y + 12, 'waystone');
+      // ...and its bowl's footing is sealed ground every later tunnel walks around.
+      reserveFooting(ledger, waystoneFooting(ws), 'waystone');
     }
-    if (def.depth === 1) {
-      // the two onboarding lessons sweep spawn±(120..124)x / ±84y for sites
-      ledger.reserve(spawn.x - 140, spawn.y - 100, spawn.x + 140, spawn.y + 100, 'onboarding');
-    }
+    // The generated bowls (a prefab's waystone keeps its authored cells).
+    const bowls = waystones.slice();
     const sink = makeInstantiationSink();
     const genDef = GEN[def.biome] || GEN.earthen;
     let placedPrefabs = placePrefabs(
@@ -1045,8 +1111,23 @@ export class WorldGen implements WorldGenApi {
     const cSide = this.rng.next() < 0.5 ? -1 : 1;
     // Set well clear of the waystone — the runestone + cauldron render large now,
     // so a tight 14-cell offset made the cauldron sit in front of the stele.
-    const cauldronX = Math.floor(clamp(ws0.x + cSide * 28, 8, WIDTH - 9));
-    const cauldronBaseY = ws0.y + 1;
+    // It stands on real ground: the side whose ground under the basin is nearer
+    // the waystone's row wins (the rolled side on a tie), and the basin settles
+    // onto the ground under its own centre. It used to be stamped on the
+    // waystone's row whatever lay under it — over a 15-row pit on d2 seed 1337.
+    const siteX = (side: number): number => Math.floor(clamp(ws0.x + side * 28, 8, WIDTH - 9));
+    const undercut = (x: number): number => {
+      let worst = 0;
+      for (let dx = -4; dx <= 4; dx++) {
+        let gap = 0;
+        while (gap < 60 && !isFloorT(world.types[x + dx + (ws0.y + 2 + gap) * WIDTH])) gap++;
+        worst = Math.max(worst, gap);
+      }
+      return worst;
+    };
+    const cauldronX = undercut(siteX(-cSide)) < undercut(siteX(cSide)) ? siteX(-cSide) : siteX(cSide);
+    let cauldronBaseY = ws0.y + 1;
+    for (let d = 0; d < 40 && !isFloorT(world.types[cauldronX + (cauldronBaseY + 1) * WIDTH]); d++) cauldronBaseY++;
     // carve clearance above the basin footprint if rock is in the way
     for (let dy = 1; dy <= 6; dy++) {
       for (let dx = -4; dx <= 4; dx++) setCell(cauldronX + dx, cauldronBaseY - dy, Cell.Empty, EMPTY_COLOR);
@@ -1057,135 +1138,9 @@ export class WorldGen implements WorldGenApi {
       setCell(cauldronX + 4, cauldronBaseY - t, Cell.Stone, stoneColor());
     }
     const cauldron = { x: cauldronX, y: cauldronBaseY - 1 };
+    reserveFooting(ledger, cauldronFooting(cauldron), 'cauldron');
 
-    // 7) D1 onboarding (depth 1 only): two staged lessons in sim literacy near
-    //    spawn — fire eats wood, sand obeys gravity. Both are plain cells.
-    if (def.depth === 1) {
-      const isWallAt = (x: number, y: number): boolean =>
-        x > 1 && x < WIDTH - 2 && y > 2 && y < HEIGHT - 7 && world.types[x + y * WIDTH] === Cell.Wall;
-      const isOpenAt = (x: number, y: number): boolean =>
-        world.inBounds(x, y) && world.types[x + y * WIDTH] === Cell.Empty;
-
-      // (i) The wooden seal: a 12x8 pocket carved into a wall face, its throat
-      // sealed with 4-thick wood, 40 gold inside, and a campfire smouldering
-      // 10-14 cells outside as the hint that fire opens it.
-      const trySeal = (ex: number, ey: number, dir: number, needFire: boolean): boolean => {
-        if (!isOpenAt(ex, ey) || !isOpenAt(ex - dir, ey)) return false;
-        for (let d = 1; d <= 16; d++) {
-          for (let dy = -4; dy <= 3; dy++) {
-            if (!isWallAt(ex + dir * d, ey + dy)) return false;
-          }
-        }
-        let fireX = -1,
-          fireY = -1;
-        for (let out = 10; out <= 14 && fireX < 0; out++) {
-          const px = ex - dir * out;
-          if (px < 6 || px >= WIDTH - 6) continue;
-          for (let py = Math.max(3, ey - 6); py < Math.min(HEIGHT - 7, ey + 24); py++) {
-            if (world.types[px + py * WIDTH] === Cell.Empty && world.types[px + (py + 1) * WIDTH] === Cell.Wall) {
-              fireX = px;
-              fireY = py;
-              break;
-            }
-          }
-        }
-        if (fireX < 0 && needFire) return false;
-        for (let d = 1; d <= 16; d++) {
-          for (let dy = -4; dy <= 3; dy++) {
-            if (d <= 4) setCell(ex + dir * d, ey + dy, Cell.Wood, woodColor());
-            else setCell(ex + dir * d, ey + dy, Cell.Empty, EMPTY_COLOR);
-          }
-        }
-        let goldLeft = 40;
-        for (let dy = 3; dy >= -4 && goldLeft > 0; dy--) {
-          for (let d = 5; d <= 16 && goldLeft > 0; d++) {
-            setCell(ex + dir * d, ey + dy, Cell.Gold, goldColor());
-            goldLeft--;
-          }
-        }
-        if (fireX >= 0) {
-          // same pattern as the generator's campfires, burning a touch longer
-          for (let dx = -4; dx <= 4; dx++) {
-            if (isOpenAt(fireX + dx, fireY)) setCell(fireX + dx, fireY, Cell.Wood, woodColor());
-            if (Math.abs(dx) <= 3 && isOpenAt(fireX + dx, fireY - 1))
-              setCell(fireX + dx, fireY - 1, Cell.Wood, woodColor());
-            if (Math.abs(dx) <= 3 && isOpenAt(fireX + dx, fireY - 2)) {
-              setCell(fireX + dx, fireY - 2, Cell.Fire, fireColor());
-              world.life[fireX + dx + (fireY - 2) * WIDTH] = 260 + Math.floor(this.rng.next() * 80);
-            }
-          }
-        }
-        return true;
-      };
-      let sealDone = false;
-      for (let attempt = 0; attempt < 240 && !sealDone; attempt++) {
-        const ex = spawn.x + Math.floor((this.rng.next() - 0.5) * 240);
-        const ey = spawn.y + Math.floor((this.rng.next() - 0.5) * 170);
-        const dir = this.rng.next() < 0.5 ? -1 : 1;
-        sealDone = trySeal(ex, ey, dir, true) || trySeal(ex, ey, -dir, true);
-      }
-      // guaranteed fallback: systematic sweep of the spawn surroundings
-      for (let dy = -84; dy <= 84 && !sealDone; dy += 3) {
-        for (let dx = -120; dx <= 120 && !sealDone; dx += 2) {
-          sealDone =
-            trySeal(spawn.x + dx, spawn.y + dy, dx >= 0 ? 1 : -1, false) ||
-            trySeal(spawn.x + dx, spawn.y + dy, dx >= 0 ? -1 : 1, false);
-        }
-      }
-
-      // (ii) The sand plug: an 8x14 pit in the spawn region's floor — six rows
-      // of cap sand over a hollow drop with 30 gold waiting at the bottom.
-      const tryPlug = (px: number, relaxed: boolean): boolean => {
-        if (px < 6 || px >= WIDTH - 8) return false;
-        const yLo = Math.max(4, spawn.y - 70);
-        const yHi = Math.min(HEIGHT - 26, spawn.y + 90);
-        // natural floors are never perfectly flat: each column's surface may
-        // sit up to `lead` cells below the shared top row
-        const lead = relaxed ? 3 : 1;
-        for (let y = yLo; y < yHi; y++) {
-          let ok = true;
-          for (let dx = -3; dx <= 4 && ok; dx++) {
-            const col = px + dx;
-            if (world.types[col + y * WIDTH] !== Cell.Empty) {
-              ok = false;
-              break;
-            }
-            let d = 1;
-            while (d <= lead && world.types[col + (y + d) * WIDTH] === Cell.Empty) d++;
-            for (; d <= 14 && ok; d++) {
-              const t = world.types[col + (y + d) * WIDTH];
-              if (relaxed ? t === Cell.Empty || t === Cell.Metal : t !== Cell.Wall) ok = false;
-            }
-          }
-          if (!ok) continue;
-          let goldLeft = 30;
-          for (let d = 14; d >= 1; d--) {
-            for (let dx = -3; dx <= 4; dx++) {
-              if (d <= 6) setCell(px + dx, y + d, Cell.Sand, sandColor());
-              else if (goldLeft > 0) {
-                setCell(px + dx, y + d, Cell.Gold, goldColor());
-                goldLeft--;
-              } else setCell(px + dx, y + d, Cell.Empty, EMPTY_COLOR);
-            }
-          }
-          return true;
-        }
-        return false;
-      };
-      let plugDone = false;
-      for (let attempt = 0; attempt < 160 && !plugDone; attempt++) {
-        const off = (12 + this.rng.int(110)) * (this.rng.next() < 0.5 ? -1 : 1);
-        plugDone = tryPlug(spawn.x + off, false);
-      }
-      for (let off = 12; off <= 124 && !plugDone; off++) {
-        plugDone = tryPlug(spawn.x + off, false) || tryPlug(spawn.x - off, false);
-      }
-      for (let off = 12; off <= 124 && !plugDone; off++) {
-        plugDone = tryPlug(spawn.x + off, true) || tryPlug(spawn.x - off, true);
-      }
-    }
-
-    stage('cauldron+onboarding');
+    stage('cauldron');
 
     // 8) Landmark structures (upgrade-port meta layer): the exit portal above
     //    the seal plug, the golden key vault, hearts, tomes, chests, gold.
@@ -1199,9 +1154,10 @@ export class WorldGen implements WorldGenApi {
       authoredLights: structLights,
       refuge,
       spellLab,
-      vaultArch,
-      vaultHoard,
       sumpRepair,
+      kilnRepair,
+      wardenRepair,
+      kilnFlue,
     } = placeStructures(
       ctx,
       this.rng,
@@ -1213,9 +1169,11 @@ export class WorldGen implements WorldGenApi {
       cauldron,
       ledger,
       fits,
-      { hostArch: opts?.hostArch === true },
     );
     stage('structures');
+    // The generator's own triggers and glyphs (the prefab ones below keep their authored cells).
+    const ownTriggers = mechanisms.filter((m) => m.kind === 'lever' || m.kind === 'brazier');
+    const ownRunes = runeVaults.slice();
 
     // 8b) Merge the prefab sink into the structure outputs. Mechanism ids are
     //     list-scoped (allocId), so the two independently-built lists collide
@@ -1231,6 +1189,13 @@ export class WorldGen implements WorldGenApi {
     pickups.push(...sink.pickups);
     runeVaults.push(...sink.runeVaults);
     waystones.push(...sink.waystones);
+    // Every body as stamped, and every hand-trigger's footing sealed for the
+    // passes still to carve (world/fixtureFooting): repeated below for the
+    // set pieces that add their own.
+    const bodies: BodyRecord = new Map();
+    const footed = new Set<Mechanism>();
+    recordBodies(world, mechanisms, bodies);
+    reserveTriggerFootings(ledger, mechanisms, footed);
     stage('merge');
 
     // 8b.5) Late campaign dressing enriches terrain mass after all authored
@@ -1260,7 +1225,7 @@ export class WorldGen implements WorldGenApi {
     // organic enemy trio. They run after broad dressing/vug fill so their
     // signatures survive, but before rescue so downstream terrain audits see
     // the final cells. The encounter-lair probe owns lair reachability checks.
-    const placedEncounterLairs = placeEncounterLairs(
+    const encounterLairs = placeEncounterLairs(
       ctx,
       new Rng(hashSeed(seed >>> 0, 'encounter-lairs')),
       graph,
@@ -1270,12 +1235,121 @@ export class WorldGen implements WorldGenApi {
       { spawn, wellX },
       fits,
     );
-    if (placedEncounterLairs.length > 0) {
-      placedPrefabs = placedPrefabs.concat(placedEncounterLairs);
+    if (encounterLairs.placed.length > 0) {
+      placedPrefabs = placedPrefabs.concat(encounterLairs.placed);
       graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
       fits.set(computeFits(ctx.world));
     }
     stage('encounter-lairs');
+
+    // 8b.8) LIGHT WAVE: two light puzzles (a photocell strongroom, a lumen-bloom
+    // crossing) carved off the caves on floors 2-4, each a room of designed
+    // black, plus darkness over a big cave or two on the main route. Forked
+    // stream; the shared ledger keeps them clear of everything placed above.
+    const lightOut: LightPuzzleOutput = { mechanisms, pickups, darkZones: [], lumenBlooms: [], placed: [] };
+    const lightAvoid = [
+      ...waystones.map((w) => ({ x: w.x, y: w.y, r: 70 })),
+      ...(portal ? [{ x: portal.x, y: portal.y, r: 90 }] : []),
+      ...(boss ? [{ x: boss.x, y: boss.y, r: 170 }] : []),
+      ...(refuge ? [{ x: refuge.x, y: refuge.y, r: 60 }] : []),
+      { x: cauldron.x, y: cauldron.y, r: 50 },
+    ];
+    placeLightPuzzles(ctx, new Rng(hashSeed(seed >>> 0, 'light-puzzles')), graph, ledger, def,
+      { spawn, wellX, avoid: lightAvoid }, fits, lightOut);
+    if (lightOut.placed.length > 0) {
+      placedPrefabs = placedPrefabs.concat(lightOut.placed);
+      graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+      fits.set(computeFits(ctx.world));
+    }
+    stage('light-puzzles');
+    // 8b.8a) THE SECOND DOORS' PUZZLE ROOMS (wave 3): the Cold Store's Frozen
+    // Fall and Ice Vault. Their own forked stream and the shared ledger, before
+    // the flora takes its ground; their tanks re-assert after the rescues.
+    const setPieceRepairs: Array<() => void> = [];
+    if (def.biome === 'frozen') {
+      const cold: ColdStorePuzzleOutput = { pickups: [], placed: [], repairs: [] };
+      placeColdStorePuzzles(ctx, new Rng(hashSeed(seed >>> 0, 'cold-store-puzzles')), graph, ledger,
+        { spawn, wellX, avoid: lightAvoid }, fits, cold);
+      pickups.push(...cold.pickups);
+      setPieceRepairs.push(...cold.repairs);
+      if (cold.placed.length > 0) {
+        placedPrefabs = placedPrefabs.concat(cold.placed);
+        graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+        fits.set(computeFits(ctx.world));
+      }
+      stage('cold-store-puzzles');
+    }
+    // ...and the Glass Galleries' Periscope and Prism Gate (the same frame).
+    if (def.biome === 'crystal') {
+      const glass: GalleryPuzzleOutput = { mechanisms, pickups: [], placed: [], repairs: [] };
+      placeGalleryPuzzles(ctx, new Rng(hashSeed(seed >>> 0, 'glass-galleries-puzzles')), graph, ledger,
+        { spawn, wellX, avoid: lightAvoid }, fits, glass);
+      pickups.push(...glass.pickups);
+      setPieceRepairs.push(...glass.repairs);
+      if (glass.placed.length > 0) {
+        placedPrefabs = placedPrefabs.concat(glass.placed);
+        graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+        fits.set(computeFits(ctx.world));
+      }
+      stage('glass-galleries-puzzles');
+    }
+    recordBodies(world, mechanisms, bodies);
+    reserveTriggerFootings(ledger, mechanisms, footed);
+    // 8b.8) FLORA (wave 2): the floor's puzzle rooms (fell a tree across a
+    // chasm or lava moat, water a thirsty seed into a root ladder, burn a
+    // bramble thicket) carved into rock and joined to the main path, then the
+    // floor's own plants on real ground. Its own forked stream: every earlier
+    // placement stays byte-identical per seed. Floor 1 is hand-planted.
+    // Its rooms' connectors walk around the sealed features placed so far (the
+    // lairs, the sump, the light rooms): a flora connector took the whole d3
+    // seed-3 Rillback pool when they walked straight through.
+    const flora = applyFloraPass(ctx.world, new Rng(hashSeed(seed >>> 0, 'flora')), def.biome, ledger,
+      { spawn, wellX, pickups, graph, fits, avoid: sealedFootprints(ledger) });
+    if (flora.puzzles.length > 0) {
+      pickups.push(...flora.pickups);
+      sink.enemies.push(...flora.enemies);
+      placedPrefabs = placedPrefabs.concat(flora.puzzles.map((p) => ({ id: `flora-${p.kind}`, x0: p.x0, y0: p.y0, x1: p.x1, y1: p.y1, focus: p.focus })));
+      graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+      fits.set(computeFits(ctx.world));
+    }
+    stage('flora');
+    // 8b.9) THE SECOND DOORS' DRESSING (wave 3): the Cold Store's icicles,
+    // frozen falls, snow, frosted pipes and brine gutters — written only into
+    // open cells a body never needs, after the plants have taken their ground.
+    // Its own forked stream; no other floor draws from it.
+    if (def.biome === 'frozen') {
+      const dressed = dressColdStore(ctx.world, new Rng(hashSeed(seed >>> 0, 'cold-store-dressing')), ledger,
+        { spawn, wellX, avoid: lightAvoid });
+      if (shouldLogDevDiagnostics() && dressed.icicles < 60) console.warn(`[cold-store] only ${dressed.icicles} icicles on ${def.id}`);
+      stage('cold-store-dressing');
+    }
+    if (def.biome === 'crystal') {
+      const dressed = dressGlassGalleries(ctx.world, new Rng(hashSeed(seed >>> 0, 'glass-galleries-dressing')), ledger,
+        { spawn, wellX, avoid: lightAvoid });
+      if (shouldLogDevDiagnostics() && dressed.panels < 8) console.warn(`[glass-galleries] only ${dressed.panels} mirror panels on ${def.id}`);
+      stage('glass-galleries-dressing');
+    }
+
+    // 8b.9) STORY (wave 3, GEN 55): the Docent's speaking-pipes near the
+    // arrival and the waystones, Pell's lit camp nook and the resonant valve's
+    // nook, each carved off the main path and joined to it. Its own forked
+    // stream, after every other placement pass, respecting the ledger. On the
+    // Kiln, Pell has gone ahead: his camp is cold.
+    const storyPlaced = placeStorySites(world, new Rng(hashSeed(seed >>> 0, 'story')), graph, ledger, {
+      spawn,
+      waystones,
+      avoid: [
+        { x: cauldron.x, y: cauldron.y, r: 60 },
+        ...(portal ? [{ x: portal.x, y: portal.y, r: 90 }] : []),
+        ...(boss ? [{ x: boss.x, y: boss.y - 30, r: 190 }] : []),
+        ...(kilnFlue ? [{ x: (kilnFlue.shaft.x0 + kilnFlue.shaft.x1) / 2, y: (kilnFlue.shaft.y0 + kilnFlue.shaft.y1) / 2, r: 170 }] : []),
+      ],
+    }, def.biome !== 'volcanic');
+    if (storyPlaced.sites.camp || storyPlaced.sites.valve) {
+      graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+      fits.set(computeFits(ctx.world));
+    }
+    stage('story');
 
     // (A GLOBAL powder settle was tried here and reverted: suspended powder
     // PLUGS are a deliberate authored primitive — the spell lab's dig-station
@@ -1289,7 +1363,10 @@ export class WorldGen implements WorldGenApi {
     //     the spawn-connected component, verified by recomputing the masks.
     //     This closes the long tail of organic-junction rolls no static
     //     geometry can promise away.
-    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron);
+    // Rescue tunnels route around the sealed features too (fail-open: a sealed
+    // room is dear, never a wall), and each repairs after them below.
+    const sealed = sealedFootprints(ledger);
+    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed);
     stage('gauge-rescue');
 
     // 8d) The Sump self-repairs AFTER the rescue pass: rescue tunnels eat all
@@ -1298,6 +1375,10 @@ export class WorldGen implements WorldGenApi {
     //     casing survives on its own; this puts back the parts that can't
     //     be armored (plugs, gold tells, the pool itself).
     sumpRepair?.();
+    kilnRepair?.();
+    // ...and so does a lair's pool, should a rescue have had to cut it.
+    encounterLairs.repair();
+    wardenRepair?.();
     stage('sump-repair');
 
     if (shouldLogDevDiagnostics()) {
@@ -1310,30 +1391,44 @@ export class WorldGen implements WorldGenApi {
       }
     }
 
-    // 9.5) D1 ONLY — the Noita-style surface intro: cap the cave with open sky,
-    // grass, a cabin, and a timbered cave mouth the wizard descends to reach the
-    // cave proper. (Only depth-1 non-branch is D1; the structures pass already
-    // relies on this identity.)
-    let surfaceSpawn: { x: number; y: number } | null = null;
-    let surfaceSkyLine: number | null = null;
-    let surfaceLights: AuthoredLight[] = [];
-    let surfaceDecors: RuntimeDecor[] = [];
-    if (def.depth === 1 && !def.branch) {
-      const surf = this.dressIntroSurface(world, spawn);
-      surfaceSpawn = surf.surfaceSpawn;
-      surfaceSkyLine = surf.skyLine;
-      surfaceLights = surf.lights;
-      surfaceDecors = surf.decors;
-    }
-    stage('intro-surface');
-
     // Final terrain dressing can invalidate a route that was clean during the
     // main rescue pass (D1's surface cap is the usual culprit). Validate the
     // finished cell field before handing it to Levels/runtime repair.
-    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron);
+    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed);
+    // ...and the final rescue may carve again: the Kiln's seal is the player's
+    // to dig, so re-assert its tank once more (idempotent; no-op off the Kiln).
+    kilnRepair?.();
+    // Likewise the Sump's casing, plugs and pool (a final rescue tunnel through
+    // the basin took a column of its water on d3 seed 11) — but not its rock
+    // rim: a tunnel the final rescue needed through it stays open.
+    sumpRepair?.(false);
+    // An encounter lair's pool likewise (idempotent: an intact pool is untouched).
+    // Were its basin the only way a final rescue found, the runtime repair —
+    // which routes around every placed room — reopens a way on arrival.
+    encounterLairs.repair();
+    wardenRepair?.(false);
+    // FLORA puzzles re-assert what the rescue tunnels took (a tree, a cistern)
+    // — writing only into open cells, so no route the rescue opened is closed.
+    flora.repair();
+    // The second doors' tanks and cisterns (casing, seal, liquid) likewise.
+    for (const repair of setPieceRepairs) repair();
     stage('final-gauge-rescue');
 
+    // 8e) THE FOOTING CONTRACT, after the last carve: every bowl, basin, body
+    //     and glyph re-stamped, ground put back under anything a carve
+    //     undercut, the key in open air on its floor under nothing that will
+    //     fall. Fail-open: a fill that costs standing room elsewhere is undone.
+    const footing = holdFixtureFootings(world, {
+      bowls, cauldron, mechanisms, ownTriggers, runeVaults: ownRunes, pickups,
+      story: { ...storyPlaced.sites, flue: kilnFlue }, bodies, spawn,
+    });
+    if (shouldLogDevDiagnostics() && (footing.undercut.length > 0 || footing.reverted.length > 0)) {
+      console.warn(`[gen] ${def.id}: footing undercut ${footing.undercut.join(' ') || '-'}; taken back ${footing.reverted.join(' ') || '-'}`);
+    }
+    stage('footing');
+
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
+    matureVegetation(ctx.world);
     return {
       exit: { x: wellX, sealY, halfW },
       waystones,
@@ -1346,258 +1441,17 @@ export class WorldGen implements WorldGenApi {
       boss,
       prefabEnemies: sink.enemies,
       placedPrefabs,
-      authoredLights: [...sink.authoredLights, ...structLights, ...surfaceLights],
+      authoredLights: [...sink.authoredLights, ...structLights, ...storyPlaced.lights],
       emitters: [...sink.emitters, ...structEmitters],
-      decors: [...sink.decors, ...surfaceDecors],
+      decors: [...sink.decors],
       refuge,
       spellLab,
-      vaultArch,
-      vaultHoard,
-      surfaceSpawn,
-      surfaceSkyLine,
+      // D1 (the only level with a surface) is generateBreathingWorks, above.
+      surfaceSpawn: null,
+      surfaceSkyLine: null,
+      darkZones: lightOut.darkZones,
+      lumenBlooms: lightOut.lumenBlooms,
+      story: { ...storyPlaced.sites, flue: kilnFlue },
     };
-  }
-
-  private reserveIntroSurfaceFootprint(ledger: PlacementLedger, spawn: { x: number; y: number }): void {
-    const groundBase = Math.floor(clamp(spawn.y - INTRO_SURFACE_RISE, INTRO_SURFACE_GROUND_MIN, INTRO_SURFACE_GROUND_MAX));
-    const protectedY = Math.ceil(groundBase + INTRO_SURFACE_GROUND_WAVE + INTRO_SURFACE_SOIL + 6);
-    ledger.reserve(0, 0, WIDTH - 1, protectedY, 'intro-surface');
-
-    const mouthX = Math.floor(clamp(spawn.x, 90, WIDTH - 90));
-    const shaftPad = INTRO_SURFACE_SHAFT_HALF + 10;
-    ledger.reserve(mouthX - shaftPad, 0, mouthX + shaftPad, spawn.y + 8, 'intro-surface-shaft');
-  }
-
-  /**
-   * D1 Noita-style surface intro. Caps the top of the cave with open daylight
-   * sky, a gently rolling grass surface, a starter cabin, and a timbered mine
-   * mouth whose shaft drops into the existing spawn chamber. The wizard starts
-   * out here (see LevelRuntime.surfaceSpawn) and descends into the cave — the
-   * first thing the game asks of you, taught by the level itself. Deterministic
-   * (this.rng / paintSeed only), so the golden hash stays replayable.
-   */
-  private dressIntroSurface(
-    world: World,
-    spawn: { x: number; y: number },
-  ): { surfaceSpawn: { x: number; y: number }; skyLine: number; lights: AuthoredLight[]; decors: RuntimeDecor[] } {
-    const seed = this.paintSeed ?? 0;
-
-    // D1 surface geometry — all values preserve the locked generation (gen-golden).
-    // Named here so the landscape is tunable in one place rather than as magic
-    // numbers buried in the carving loops below.
-    // Surface scatter — deterministic per-column hash thresholds (hash2 is pure,
-    // so these read as plain probabilities).
-    const TUFT_CHANCE = 0.55; // a grass blade stands on this column …
-    const FLOWER_PINK = 0.045; // … recolored a pink wildflower below this …
-    const FLOWER_YELLOW = 0.08; // … a yellow one below this
-    const TALL_BLADE = 0.2; // and an occasional second, taller blade
-    const STONE_CHANCE = 0.05; // a field stone …
-    const STONE_PAIR = 0.4; // … sometimes paired with one beside it
-    const PINK_FLOWER = packRGB(214, 96, 150);
-    const YELLOW_FLOWER = packRGB(206, 186, 84);
-
-    // Trees framing the scene — kept clear of the mouth, cabin, and start.
-    const TREE_TARGET = 5;
-    const TREE_TRIES = 70;
-    const TREE_CLEAR_MOUTH = 44;
-    const TREE_CLEAR_CABIN = 24;
-    const TREE_CLEAR_SPAWN = 26;
-
-    const set = (x: number, y: number, t: Cell, color: number): void => {
-      if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return;
-      const i = x + y * WIDTH;
-      world.types[i] = t;
-      world.colors[i] = color;
-      world.life[i] = 0;
-      world.charge[i] = 0;
-    };
-    const grassColor = (x: number, y: number): number => {
-      const j = (hash2(x, y, seed + 71) * 26) | 0;
-      return packRGB(58 + j, 132 + ((hash2(x, y, seed + 72) * 30) | 0), 48 + ((j / 2) | 0));
-    };
-    const dirtColor = (x: number, y: number): number => {
-      const j = (hash2(x, y, seed + 73) * 18) | 0;
-      return packRGB(92 + j, 62 + ((j * 2) / 3) | 0, 40 + ((j / 2) | 0));
-    };
-
-    // Surface line: ~96 cells above the cave spawn so there is generous sky but a
-    // short, readable descent. Gently rolling, not a dead-flat shelf.
-    const groundBase = Math.floor(clamp(spawn.y - INTRO_SURFACE_RISE, INTRO_SURFACE_GROUND_MIN, INTRO_SURFACE_GROUND_MAX));
-    const groundAt = (x: number): number =>
-      groundBase + Math.round((valueNoise(x, 13, INTRO_SURFACE_GROUND_NOISE_FREQ, seed + 61) - 0.5) * INTRO_SURFACE_GROUND_WAVE);
-
-    // Sky overhead, a grass crown, and a packed soil layer dividing surface from cave.
-    for (let x = 0; x < WIDTH; x++) {
-      const gy = groundAt(x);
-      for (let y = 0; y < gy; y++) set(x, y, Cell.Empty, EMPTY_COLOR);
-      set(x, gy, Cell.Grass, grassColor(x, gy));
-      for (let y = gy + 1; y <= gy + INTRO_SURFACE_SOIL; y++) {
-        set(x, y, y >= gy + INTRO_SURFACE_SOIL - 4 ? Cell.Stone : Cell.Wall, dirtColor(x, y));
-      }
-    }
-
-    // The cave mouth: a timbered shaft straight down into the spawn chamber.
-    const mouthX = Math.floor(clamp(spawn.x, 90, WIDTH - 90));
-    const mouthGy = groundAt(mouthX);
-    for (let y = mouthGy - 1; y <= spawn.y + 2; y++) {
-      for (let dx = -INTRO_SURFACE_SHAFT_HALF; dx <= INTRO_SURFACE_SHAFT_HALF; dx++) set(mouthX + dx, y, Cell.Empty, EMPTY_COLOR);
-    }
-    for (let dy = 0; dy <= INTRO_SURFACE_MOUTH_TIMBER; dy++) {
-      set(mouthX - INTRO_SURFACE_SHAFT_HALF - 1, mouthGy - dy, Cell.Wood, woodColor());
-      set(mouthX + INTRO_SURFACE_SHAFT_HALF + 1, mouthGy - dy, Cell.Wood, woodColor());
-    }
-    for (let dx = -INTRO_SURFACE_SHAFT_HALF - 1; dx <= INTRO_SURFACE_SHAFT_HALF + 1; dx++) set(mouthX + dx, mouthGy - INTRO_SURFACE_MOUTH_TIMBER - 1, Cell.Wood, woodColor());
-    for (let dx = -INTRO_SURFACE_SHAFT_HALF - 1; dx <= INTRO_SURFACE_SHAFT_HALF + 1; dx++) set(mouthX + dx, mouthGy - INTRO_SURFACE_MOUTH_TIMBER, Cell.Wood, woodColor());
-
-    // Start the wizard out on the grass, off to the open side of the mouth.
-    const side = mouthX > WIDTH / 2 ? -1 : 1;
-    const spawnX = Math.floor(clamp(mouthX + side * INTRO_SURFACE_SPAWN_OFFSET, 60, WIDTH - 60));
-    const spawnGy = groundAt(spawnX);
-    const surfaceSpawn = { x: spawnX, y: spawnGy - 1 };
-
-    // A starter cabin behind the spawn — shelter at your back, the cave mouth ahead.
-    const cabinX = Math.floor(clamp(spawnX + side * INTRO_SURFACE_CABIN_OFFSET, 30, WIDTH - 30));
-    this.stampStarterCabin(world, set, cabinX, groundAt(cabinX));
-
-    // Grass tufts, wildflowers, and scattered field stones for a living surface.
-    for (let x = 6; x < WIDTH - 6; x += 2) {
-      const gy = groundAt(x);
-      const r = hash2(x, gy, seed + 81);
-      if (r < TUFT_CHANCE) {
-        if (r < FLOWER_PINK) set(x, gy - 1, Cell.Grass, PINK_FLOWER);
-        else if (r < FLOWER_YELLOW) set(x, gy - 1, Cell.Grass, YELLOW_FLOWER);
-        else set(x, gy - 1, Cell.Grass, grassColor(x, gy - 1));
-        if (r < TALL_BLADE) set(x, gy - 2, Cell.Grass, grassColor(x, gy - 2)); // a taller blade
-      }
-      if (hash2(x, gy, seed + 82) < STONE_CHANCE) {
-        set(x, gy - 1, Cell.Stone, stoneColor());
-        if (hash2(x, gy, seed + 83) < STONE_PAIR) set(x + 1, gy - 1, Cell.Stone, stoneColor());
-      }
-    }
-
-    // A few trees — real wood trunks, leafy mossy canopies — clear of the cabin,
-    // the mouth, and the start so they frame the scene without blocking it.
-    let trees = 0;
-    for (let attempt = 0; attempt < TREE_TRIES && trees < TREE_TARGET; attempt++) {
-      const tx = 70 + Math.floor(hash2(attempt, 3, seed + 91) * (WIDTH - 140));
-      if (
-        Math.abs(tx - mouthX) < TREE_CLEAR_MOUTH ||
-        Math.abs(tx - cabinX) < TREE_CLEAR_CABIN ||
-        Math.abs(tx - spawnX) < TREE_CLEAR_SPAWN
-      ) {
-        continue;
-      }
-      this.stampSurfaceTree(set, tx, groundAt(tx), 9 + Math.floor(hash2(tx, 5, seed + 92) * 7), seed + tx);
-      trees++;
-    }
-
-    // A signpost on the approach to the cave mouth — "the way down".
-    const signColumn = mouthX + side * (INTRO_SURFACE_SHAFT_HALF + 12);
-    this.stampSignpost(set, Math.floor(clamp(signColumn, 20, WIDTH - 20)), groundAt(signColumn));
-
-    // skyLine: the surface horizon. Empty cells above it render as open daytime
-    // sky (FrameComposer) instead of the distant-cave backdrop.
-    return { surfaceSpawn, skyLine: groundBase, lights: this.buildSurfaceDaylight(groundAt, groundBase), decors: [] };
-  }
-
-  /**
-   * The D1 surface daylight rig: two stacked rows of overlapping NON-occluded
-   * fill disks. Non-occluded lights paint their whole falloff disk into the light
-   * field (occluded ones only seed a point), so the overlapping disks flood the
-   * surface evenly. A contained radius keeps the bright band hugging the grass so
-   * the deep cave below still goes dark — just a soft glow down the mine shaft.
-   * The sky gradient itself now carries the sky's brightness, so these fills only
-   * need to lift the terrain and horizon.
-   */
-  private buildSurfaceDaylight(groundAt: (x: number) => number, groundBase: number): AuthoredLight[] {
-    const lights: AuthoredLight[] = [];
-    const COUNT = 16;
-    for (let i = 0; i < COUNT; i++) {
-      const lx = Math.floor((WIDTH * (i + 0.5)) / COUNT);
-      const surf = groundAt(lx);
-      // bright ground-hugging fill
-      lights.push({
-        x: lx, y: surf - 44, r: 1, g: 0.95, b: 0.82,
-        intensity: 1.9, radius: 124, bloom: 0.12, flicker: 0, flickerPhase: 0, falloff: 'soft', occluded: false,
-      });
-      // softer high sky glow
-      lights.push({
-        x: lx, y: Math.max(18, groundBase - 118), r: 0.96, g: 0.93, b: 0.86,
-        intensity: 1.15, radius: 178, bloom: 0.06, flicker: 0, flickerPhase: 0, falloff: 'soft', occluded: false,
-      });
-    }
-    return lights;
-  }
-
-  /** A surface tree: a real wood trunk (it burns) crowned by a mossy canopy. */
-  private stampSurfaceTree(
-    set: (x: number, y: number, t: Cell, color: number) => void,
-    tx: number,
-    baseY: number,
-    trunkH: number,
-    seed: number,
-  ): void {
-    for (let dy = 0; dy < trunkH; dy++) {
-      set(tx, baseY - 1 - dy, Cell.Wood, woodColor());
-      // an occasional fork gives the trunk some character
-      if (dy > 2 && dy < trunkH - 3 && hash2(tx, dy, seed + 4) < 0.22) {
-        set(tx + (hash2(tx, dy, seed + 5) < 0.5 ? 1 : -1), baseY - 1 - dy, Cell.Wood, woodColor());
-      }
-    }
-    const cyTop = baseY - trunkH;
-    const cr = 5 + ((seed >> 3) & 2);
-    for (let dy = -cr; dy <= cr - 1; dy++) {
-      for (let dx = -cr; dx <= cr; dx++) {
-        if (dx * dx + dy * dy > cr * cr) continue;
-        if (hash2(tx + dx, cyTop + dy, seed + 7) > 0.82) continue; // ragged edge
-        const g = (hash2(tx + dx, cyTop + dy, seed + 9) * 44) | 0;
-        set(tx + dx, cyTop + dy, Cell.Moss, packRGB(46 + ((g / 2) | 0), 118 + g, 44 + ((g / 3) | 0)));
-      }
-    }
-  }
-
-  /** A weathered wooden signpost — a post and a board — pointing the way down. */
-  private stampSignpost(
-    set: (x: number, y: number, t: Cell, color: number) => void,
-    x: number,
-    baseY: number,
-  ): void {
-    for (let dy = 1; dy <= 7; dy++) set(x, baseY - dy, Cell.Wood, woodColor());
-    for (let dx = -3; dx <= 3; dx++) {
-      set(x + dx, baseY - 6, Cell.Wood, woodColor());
-      set(x + dx, baseY - 7, Cell.Wood, woodColor());
-    }
-  }
-
-  /** A small wooden hut on the surface: floor, two walls, a peaked roof, an open
-   *  doorway facing the cave mouth. Pure cells — it really burns. */
-  private stampStarterCabin(
-    world: World,
-    set: (x: number, y: number, t: Cell, color: number) => void,
-    cx: number,
-    groundY: number,
-  ): void {
-    const HW = 6;
-    const H = 9;
-    const floor = groundY;
-    // floor plank + side walls
-    for (let dx = -HW; dx <= HW; dx++) set(cx + dx, floor, Cell.Wood, woodColor());
-    for (let dy = 1; dy <= H; dy++) {
-      set(cx - HW, floor - dy, Cell.Wood, woodColor());
-      set(cx + HW, floor - dy, Cell.Wood, woodColor());
-    }
-    // peaked roof
-    for (let dx = -HW - 1; dx <= HW + 1; dx++) {
-      const peak = H + 1 + Math.round((HW + 1 - Math.abs(dx)) * 0.6);
-      set(cx + dx, floor - peak, Cell.Wood, woodColor());
-      set(cx + dx, floor - peak + 1, Cell.Wood, woodColor());
-    }
-    // doorway: clear a 3-wide x 5-tall opening in the near wall and the interior
-    for (let dy = 1; dy <= H; dy++) {
-      for (let dx = -HW + 1; dx <= HW - 1; dx++) {
-        if (dy <= 5 && Math.abs(dx) <= 1) set(cx + dx, floor - dy, Cell.Empty, EMPTY_COLOR);
-        else if (world.types[cx + dx + (floor - dy) * WIDTH] !== Cell.Wood) set(cx + dx, floor - dy, Cell.Empty, EMPTY_COLOR);
-      }
-    }
   }
 }

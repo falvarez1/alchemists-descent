@@ -1,10 +1,51 @@
 import type { Ctx, FlyingParticle, ParticleOpts, ParticlesApi } from '@/core/types';
 import { EntityPool } from '@/entities/ecs';
-import { MAX_PARTICLES } from '@/config/constants';
+import { GOLD_CELL_VALUE, MAX_PARTICLES } from '@/config/constants';
 import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import { ashColor } from '@/sim/colors';
 import { stainCell } from '@/sim/stains';
 import { particleRandom } from '@/core/simRandom';
+
+/*
+ * COIN FLIGHT. A homing coin is the ANIMATION of a payment, never the payment:
+ * gold is only ever in two honest places — a real Gold cell in the grid, or the
+ * purse (`state.score`) — and whoever moves it between them (a kill's bounty, the
+ * harvester field lifting a grain) credits the purse at that instant. The mote
+ * then flies to the wizard and rings the loot cascade when it lands. A flight
+ * that carried the value lost it to everything a particle meets: a stone lip in
+ * its path, an overshoot orbit (3.75 cells/tick vs a 2.5-cell catch), a full
+ * pool, a death, a save, the run-ending Colossus blow. So the flight is steered
+ * to ARRIVE (a braking-curve speed profile, never an orbit), sweeps its catch
+ * radius along each step, and passes through rock like the magnet pull it is.
+ */
+/** Top coin speed, cells/tick — outruns a falling wizard. */
+const COIN_MAX_SPEED = 5.2;
+/** Steering authority per tick; also the braking deceleration the arrive curve assumes. */
+const COIN_STEER = 0.45;
+/** Speed kept at the very end of the flight so the coin snaps into the purse instead of drifting. */
+const COIN_ARRIVE_FLOOR = 1.2;
+/** Catch radius around the purse, swept along the step (≥ the arrival speed, so nothing tunnels). */
+const COIN_CATCH_R = 3;
+/** Cells above the feet where the purse rides. */
+const COIN_TARGET_LIFT = 6;
+/** Loot cascade window: coins landing within this many ticks of each other climb the scale. */
+const COIN_STREAK_GAP = 24;
+/** Where a liquid that struck the player lands: the strike cell, then around it (up first — he stands in the rest). */
+const SPILL_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [0, 0], [0, -1], [-1, 0], [1, 0], [-1, -1], [1, -1], [0, -2], [-2, 0], [2, 0], [0, 1],
+];
+
+/** Squared distance from (px,py) to the segment (ax,ay)→(bx,by). */
+function segmentDist2(ax: number, ay: number, bx: number, by: number, px: number, py: number): number {
+  const sx = bx - ax;
+  const sy = by - ay;
+  const len2 = sx * sx + sy * sy;
+  let t = len2 > 0 ? ((px - ax) * sx + (py - ay) * sy) / len2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const dx = ax + sx * t - px;
+  const dy = ay + sy * t - py;
+  return dx * dx + dy * dy;
+}
 
 /**
  * Ballistic flying particles: explosion debris, gore, sparks, homing coins,
@@ -32,7 +73,10 @@ export class Particles implements ParticlesApi {
     life: number,
     opts?: ParticleOpts,
   ): void {
-    if (this.pool.full) return;
+    // Real gold in flight (an alchemical payout's grains, blasted ore) is a cell
+    // in transit: a full pool makes room by retiring a cosmetic mote instead of
+    // silently deleting money that is about to land.
+    if (this.pool.full && !(type === Cell.Gold && this.evictCosmetic())) return;
     const p = this.free.pop() ?? ({} as FlyingParticle);
     p.x = x;
     p.y = y;
@@ -50,6 +94,60 @@ export class Particles implements ParticlesApi {
     p.looseDebris = opts?.looseDebris ?? false;
     p.deposit = (opts && opts.deposit) || false;
     this.pool.add(p);
+  }
+
+  /** Drop one purely visual particle (type null, not hostile) to free a slot. */
+  private evictCosmetic(): boolean {
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      const q = this.list[i];
+      if (q.type === null && q.hostileDmg <= 0) {
+        this.removeAt(i);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * A Gold grain that found no room where it landed settles in the nearest open
+   * cell instead (a small spiral search); if the rock around it is solid, it
+   * goes straight into the purse. Gold is never deleted by a particle.
+   */
+  private settleGold(ctx: Ctx, gx: number, gy: number, color: number): void {
+    const world = ctx.world;
+    for (let r = 0; r <= 6; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const x = gx + dx;
+          const y = gy + dy; // rows above first: a grain rests on top of what it hit
+          if (!world.inBounds(x, y)) continue;
+          const i = world.idx(x, y);
+          const t = world.types[i];
+          if (t === Cell.Empty || isGas(t)) {
+            world.replaceCellAt(i, Cell.Gold, color);
+            return;
+          }
+        }
+      }
+    }
+    if (ctx.state.mode === 'play') {
+      ctx.state.score += GOLD_CELL_VALUE;
+      ctx.events.emit('scoreChanged', { score: ctx.state.score });
+    }
+  }
+
+  /** Land a carried liquid cell in the first open (or gas) cell at or beside (gx, gy). */
+  private spillNear(world: Ctx['world'], gx: number, gy: number, type: number, color: number): void {
+    for (const [dx, dy] of SPILL_OFFSETS) {
+      const x = gx + dx, y = gy + dy;
+      if (!world.inBounds(x, y)) continue;
+      const i = world.idx(x, y);
+      if (world.types[i] === Cell.Empty || isGas(world.types[i])) {
+        world.replaceCellAt(i, type, color);
+        return;
+      }
+    }
   }
 
   private depositedType(p: FlyingParticle): { type: number; color: number } {
@@ -101,7 +199,7 @@ export class Particles implements ParticlesApi {
         { grav: 0.22 },
       );
     }
-    if (particleRandom() < 0.12) ctx.audio.splash(0.4 + particleRandom() * 0.3);
+    if (particleRandom() < 0.12) ctx.audio.splash(0.4 + particleRandom() * 0.3, x, y);
   }
 
   /**
@@ -121,42 +219,63 @@ export class Particles implements ParticlesApi {
       const p = this.list[i];
       p.life--;
 
-      if (p.homing && !player.dead) {
-        // gold coin homing
-        const dx = player.x - p.x,
-          dy = player.y - 3 - p.y;
-        const d = Math.sqrt(dx * dx + dy * dy) || 1;
-        p.vx += (dx / d) * 0.3;
-        p.vy += (dy / d) * 0.3;
-        p.vx *= 0.92;
-        p.vy *= 0.92;
-        if (d < 2.5) {
-          ctx.state.score += p.value;
-          ctx.events.emit('scoreChanged', { score: ctx.state.score });
-          // Loot cascade: coins vacuumed up in quick succession ring UP the scale
-          // (a satisfying ching-ching-ching on a fat bounty shower) and pop a gold
-          // sparkle at the wizard. The streak resets after a short gap.
-          const frame = ctx.state.frameCount;
-          if (frame - this.lastCoinFrame > 24) this.coinStreak = 0;
-          this.lastCoinFrame = frame;
-          this.coinStreak++;
-          ctx.audio.coin(this.coinStreak);
-          this.spawn(
-            player.x + (particleRandom() - 0.5) * 4,
-            player.y - 3 - particleRandom() * 4,
-            (particleRandom() - 0.5) * 0.6,
-            -0.5 - particleRandom() * 0.5,
-            null,
-            0xffe078,
-            8 + ((particleRandom() * 6) | 0),
-            { grav: 0.05, glow: 1.4 },
-          );
-          this.removeAt(i);
+      // A coin's flight (see COIN FLIGHT above): the purse was paid at harvest,
+      // so this only has to LOOK right — arrive, ring, never orbit or vanish.
+      if (p.homing && p.type === null) {
+        if (player.dead) {
+          // The wizard fell mid-flight: the coin gutters out as a falling glint.
+          p.homing = false;
+          p.grav = 0.12;
+          if (p.life > 30) p.life = 30;
+        } else {
+          const tx = player.x;
+          const ty = player.y - COIN_TARGET_LIFT;
+          const ox = p.x;
+          const oy = p.y;
+          const dx = tx - ox;
+          const dy = ty - oy;
+          const d = Math.sqrt(dx * dx + dy * dy) || 1;
+          // ARRIVE: never faster than the speed it can still brake from before
+          // the purse (v = sqrt(2·a·d)), so the burst-out arc bends into a clean
+          // landing instead of the old overshoot orbit.
+          const want = Math.min(COIN_MAX_SPEED, Math.sqrt(2 * COIN_STEER * d) + COIN_ARRIVE_FLOOR);
+          const sx = (dx / d) * want - p.vx;
+          const sy = (dy / d) * want - p.vy;
+          const s = Math.sqrt(sx * sx + sy * sy);
+          const k = s > COIN_STEER ? COIN_STEER / s : 1;
+          p.vx += sx * k;
+          p.vy += sy * k;
+          p.x += p.vx;
+          p.y += p.vy;
+          if (segmentDist2(ox, oy, p.x, p.y, tx, ty) <= COIN_CATCH_R * COIN_CATCH_R) {
+            // Loot cascade: coins landing in quick succession ring UP the scale
+            // (a satisfying ching-ching-ching on a fat bounty shower) and pop a
+            // gold sparkle at the wizard. The streak resets after a short gap.
+            const frame = ctx.state.frameCount;
+            if (frame - this.lastCoinFrame > COIN_STREAK_GAP) this.coinStreak = 0;
+            this.lastCoinFrame = frame;
+            this.coinStreak++;
+            ctx.audio.coin(this.coinStreak);
+            this.removeAt(i);
+            this.spawn(
+              tx + (particleRandom() - 0.5) * 4,
+              ty + 3 - particleRandom() * 4,
+              (particleRandom() - 0.5) * 0.6,
+              -0.5 - particleRandom() * 0.5,
+              null,
+              0xffe078,
+              8 + ((particleRandom() * 6) | 0),
+              { grav: 0.05, glow: 1.4 },
+            );
+            continue;
+          }
+          // The pull is a magnet, not a throw: rock does not stop it. A coin that
+          // never arrives (a teleport across the level) just fades — it is paid.
+          if (p.life <= 0) this.removeAt(i);
           continue;
         }
-      } else {
-        p.vy += p.grav;
       }
+      p.vy += p.grav;
 
       p.x += p.vx;
       p.y += p.vy;
@@ -166,7 +285,12 @@ export class Particles implements ParticlesApi {
       if (!world.inBounds(gx, gy)) {
         // a pour stream that flies off the map still drops its cell at the last
         // in-bounds step, so siphoned material is conserved
-        if (p.deposit && p.type !== null) {
+        if (p.type === Cell.Gold) {
+          // gold that flies off the map settles at the edge it left by
+          const bx = Math.max(0, Math.min(world.width - 1, Math.floor(p.x - p.vx)));
+          const by = Math.max(0, Math.min(world.height - 1, Math.floor(p.y - p.vy)));
+          this.settleGold(ctx, bx, by, p.color);
+        } else if (p.deposit && p.type !== null) {
           const bx = Math.floor(p.x - p.vx),
             by = Math.floor(p.y - p.vy);
           if (world.inBounds(bx, by)) {
@@ -182,7 +306,8 @@ export class Particles implements ParticlesApi {
       }
       if (p.life <= 0) {
         // a pour stream that runs out of arc mid-air drops its cell where it is
-        if (p.deposit && p.type !== null) {
+        if (p.type === Cell.Gold) this.settleGold(ctx, gx, gy, p.color);
+        else if (p.deposit && p.type !== null) {
           const di = world.idx(gx, gy);
           if (world.types[di] === Cell.Empty || isGas(world.types[di])) {
             const deposit = this.depositedType(p);
@@ -228,6 +353,10 @@ export class Particles implements ParticlesApi {
         }
         if (struckPlayer) {
           ctx.playerCtl.damage(p.hostileDmg, p.vx * 1.5, -1, p.hostileSource ?? 'hostile-debris');
+          // A thrown LIQUID (the Leviathan's volleys and tail-slams are its own
+          // pool) splashes off him and lands, rather than vanishing on contact:
+          // every hit used to delete the water it was made of.
+          if (p.type !== null && isLiquid(p.type)) this.spillNear(world, Math.floor(p.x), Math.floor(p.y), p.type, p.color);
           this.removeAt(i);
           continue;
         }
@@ -260,7 +389,9 @@ export class Particles implements ParticlesApi {
         // Deposit at last free position behind us
         if (p.type !== null) {
           const blockingDebris = blocksEntity(p.type);
-          if (!(hitLiquid && blockingDebris)) {
+          // Gold still settles on a pool: the powder sim sinks it to the bed
+          // (an alchemical kill in a cistern pays out into the water, honestly).
+          if (!(hitLiquid && blockingDebris) || p.type === Cell.Gold) {
             const bx = Math.floor(p.x - p.vx),
               by = Math.floor(p.y - p.vy);
             let placed = false;
@@ -287,10 +418,14 @@ export class Particles implements ParticlesApi {
                 if (world.types[cidx] === Cell.Empty || isGas(world.types[cidx])) {
                   const deposit = this.depositedType(p);
                   world.replaceCellAt(cidx, deposit.type, deposit.color);
+                  placed = true;
                   break;
                 }
               }
             }
+            // Gold is never deleted by a particle: no room here, the nearest
+            // open cell (or, walled in, the purse) takes it.
+            if (!placed && p.type === Cell.Gold) this.settleGold(ctx, gx, gy, p.color);
           }
         }
         this.removeAt(i);

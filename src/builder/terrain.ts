@@ -79,13 +79,11 @@ export function writeCell(w: World, rec: PatchRecorder, x: number, y: number, ty
   if (!w.inBounds(x, y)) return;
   const i = w.idx(x, y);
   rec.touch(i);
-  w.types[i] = type;
   const fn = COLOR_FN[type];
-  w.colors[i] = fn ? fn() : EMPTY_COLOR;
+  w.replaceCellAt(i, type, fn ? fn() : EMPTY_COLOR);
   if (type === Cell.Smoke) w.life[i] = 30 + Math.floor(Math.random() * 40);
   else if (type === Cell.Fire) w.life[i] = 15 + Math.floor(Math.random() * 30);
   else w.life[i] = 0;
-  w.clearChargeAt(i);
 }
 
 function disc(w: World, rec: PatchRecorder, cx: number, cy: number, r: number, type: number): void {

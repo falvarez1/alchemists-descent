@@ -1,0 +1,84 @@
+{
+  "prompt": "Use case: style-transfer.\nEdit target: Image 1, the current four-quadrant terrain atlas for Alchemist's Descent, Living Descent. Image 2 is the shipped valve/refuge/pipe sprite atlas, used ONLY to match the richer clustered mineral/copper finish of its refuge arch. Image 3 is The Sluice, the approved material reference. Repaint only the terrain surface textures of Image 1. Keep the exact four-quadrant contract: top-left masonry, top-right copper/brass, bottom-left horizontal timber, bottom-right natural mineral rock. Equal square quadrants without gutter, border or text. Produce a square opaque PNG for exact nearest-neighbor reduction to a 256 by 256 logical-pixel atlas; each material quadrant is exactly 128 by 128 logical pixels.\nNamed finish correction: the current large equally outlined, minimally shaded stones repeat conspicuously in the live game. Replace that regular macro-stone stamp with irregular interlocking masonry and compatible clustered wear. Retain the existing cool-slate/chalk, muted copper, timber and dark mineral palette and overall diffuse exposure. No new direction.\nTOP-LEFT MASONRY: replace the uniform big-block grid. Use an irregular repaired mixture of smaller broken ashlar, a few long worn slabs and small wedge/filler stones. Vary widths roughly 6 to 18 logical pixels with occasional 25-pixel slabs, uneven heights and interrupted staggered seams; avoid straight regular courses or a small checker grid. Many neighboring faces should recede together into quiet blue-slate patches instead of every stone having a thick black outline. Add fine clustered fractures, chips and rough mineral facets comparable to the refuge sprite: irregular groups of 1 to 4 logical pixels forming several larger 8 to 20-pixel deposits. Chalk/cream mineral wear crosses some neighboring stone boundaries; wet dark deposition gathers asymmetrically inside cracks and lower corners. Spread multiple quiet and worn areas irregularly throughout the tile so no centered stain, repeating diagonal stripe, single giant stone or equally bright stone-top stamp dominates. Broad quiet stone faces remain between detailed clusters. Do not turn everything into rubble, moss or fine random grain.\nTOP-RIGHT COPPER/BRASS: keep functional broad plate surfaces and sparse rivets, but add continuous restrained abrasion, uneven muted oxidation and grouped dark worn patches. Vary plate dimensions and seam positions; no tiny repeated rivet grid, no glow, no green corrosion wash. Preserve copper and brass identity and quiet low-contrast midtone faces.\nBOTTOM-LEFT TIMBER: continuous horizontal woodgrain that crosses the left/right tile boundary naturally, a mixture of narrow and broad planks with staggered joins, grouped scuffed tan wear, occasional dark end-grain/splinter clusters and sparse iron nails. Avoid a periodic black horizontal band or regular same-length board stamp. Keep grain connected, not random speckle or large blank brown bars.\nBOTTOM-RIGHT NATURAL ROCK: irregular layered mineral masses with finer fractured faces, clustered restrained chalk deposition and dark wet seams. Lose the equally outlined rounded-cobble pattern. Let several adjoining rock planes merge into quiet darker areas and other areas carry broken striations; no uniform pebble grid, shiny crystals or masonry rows.\nTile discipline: each material quadrant must independently repeat seamlessly left-to-right and top-to-bottom. Match edge tone and continuations so no framing border, brightness seam or recognizable cross appears. Compatible variation lives across the whole 128-pixel tile; never subdivide a quadrant into visible alternate mini-tiles. Keep horizontal grain direction in timber and mechanical plate continuity in copper.\nRendering: authored pixel art with hand-clustered medium and fine detail, matching the refuge's material language at the SAME logical game-pixel scale. Hard square pixel steps. This is richer mineral surface definition than Image 1, but not photographic noise, smooth painting, airbrush shading or a shiny 3D render. Preserve restrained midtone values: the game adds live lighting and contact-edge highlights. Do not bake bright edge lighting onto every stone.\nInvariants: exact 2 by 2 quadrant mapping; diffuse opaque surface albedo only; no scene, platform silhouette, physical objects from Image 2, water, liquid, steam, plants, creatures, characters, UI, text, labels, numbers, symbols, glow, vignette, separator or outer border. Collision geometry stays code-owned. Refine this specific material atlas only.",
+  "tool": "built-in image_gen",
+  "type": "style-transfer",
+  "referenceImages": [
+    ".impeccable/assets/living-descent/sources/terrain-atlas-round1.png",
+    "public/assets/living-descent/props-atlas.png",
+    ".impeccable/mocks/sluice.png"
+  ],
+  "role": "opaque live-terrain albedo atlas; simulation retains collision authority",
+  "outputDimensions": [
+    256,
+    256
+  ],
+  "quadrants": [
+    {
+      "id": "slate-masonry",
+      "material": "wet slate masonry and chalk",
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "id": "copper-brass",
+      "material": "corroded copper and brass plates",
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "id": "wood",
+      "material": "worn timber and iron nail details",
+      "x": 0,
+      "y": 128,
+      "width": 128,
+      "height": 128
+    },
+    {
+      "id": "mineral-rock",
+      "material": "dark natural mineral rock",
+      "x": 128,
+      "y": 128,
+      "width": 128,
+      "height": 128
+    }
+  ],
+  "compositionReferences": [
+    ".impeccable/mocks/sluice.png",
+    ".impeccable/mocks/web-gallery.png"
+  ],
+  "promptHistory": [
+    "docs/living-descent-assets/prompts/terrain-atlas-initial.json",
+    "docs/living-descent-assets/prompts/terrain-atlas-round1.json"
+  ],
+  "sourcePath": ".impeccable/assets/living-descent/sources/terrain-atlas-round2-original.png",
+  "sourceDimensions": [
+    1254,
+    1254
+  ],
+  "outputPath": "public/assets/living-descent/terrain-atlas.png",
+  "conversion": {
+    "tool": "Node Sharp",
+    "operation": "Nearest-neighbor resize from square 1254x1254 generated edit to the existing 256x256 PNG; compressionLevel 9.",
+    "contentChanges": "No procedural paint, source-composition crop, alpha manipulation, palette conversion or runtime code changes."
+  },
+  "sampling": "Existing contract unchanged: four 128x128 quadrants, one atlas pixel per world cell, nearest filtering and local wrapping. Fixed x&127/y&127 sampling remains inherently periodic; finer compatible variation reduces the prominence of individual stamps without claiming nonperiodicity.",
+  "collisionAuthority": "Simulation grid clips every textured pixel and owns terrain shape, mutation, topology and collision. Atlas is opaque surface albedo only.",
+  "qaStatus": "accepted",
+  "qaEvidence": ".impeccable/assets/living-descent/sources/terrain-atlas-round2-tiling-review.png",
+  "qaNotes": "One imagegen edit for the final bounded material batch. Inspected output and independently repeated quadrants at logical resolution. No frame, gutter, new scene, UI or alpha was introduced. Root owns renderer/water/UI changes and final integration.",
+  "nativeGenerationLimits": "Native edit output is 1254x1254; mechanical nearest-neighbor conversion retains the required 256x256 production dimensions. No claim of exact periodic edge equality or a strict reduced-color palette.",
+  "generationRevision": "finish-review-round1-material-fix",
+  "reviewSource": "verify-out/living-descent/finish-review-round1.md",
+  "namedFinding": "Raster material is present; masonry remains repetitive. Revise the terrain raster with clustered wear and compatible variation.",
+  "changes": [
+    "Varied broken ashlar, long worn slabs and smaller filler stones replace the uniformly outlined macro-stone pattern.",
+    "Fracture, chalk wear and dark wet-deposition clusters add compatible finer material definition while keeping quieter faces.",
+    "Continuous grouped timber grain and staggered joins; uneven copper abrasion and seam wear.",
+    "Natural rock uses finer layered fractures and less uniformly outlined faces."
+  ],
+  "qaScope": "Asset file and own repeated-tile inspection only; this does not stand in for the independent final finish verdict."
+}

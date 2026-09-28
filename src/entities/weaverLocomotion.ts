@@ -61,8 +61,8 @@ const MAX_AIRBORNE_LEGS = 4; // gait may not lift more than half the legs
 const LEG_PLANT_MIN = 2; // fewer planted than this (and no surface) = falling
 
 // Rest pose in the surface frame: arc = offset along the contour (positive =
-// toward the head), hipOut = hip height above the feet line. Mirrors the
-// renderer's classic splayed stance so the silhouette carries over.
+// toward the head). hipArc/hipOut are anatomical offsets from the body,
+// shared by rendering and hit detection; clearance never relocates a socket.
 interface LegRest {
   arc: number;
   hipArc: number;
@@ -77,17 +77,17 @@ interface LegRest {
 // slack plus an up-pole spends the extra bone length on knee height, so the
 // knees arch above the compact body instead of the legs bunching into columns.
 export const WEAVER_LOCO_REST: readonly LegRest[] = [
-  { arc: -30, hipArc: -6, hipOut: 15, group: 0, ripple: 0.0 },
-  { arc: -37, hipArc: -9, hipOut: 13, group: 1, ripple: Math.PI },
-  { arc: -44, hipArc: -9, hipOut: 10, group: 0, ripple: Math.PI * 0.5 },
-  { arc: -35, hipArc: -6, hipOut: 7, group: 1, ripple: Math.PI * 1.5 },
-  { arc: 30, hipArc: 6, hipOut: 15, group: 1, ripple: Math.PI },
-  { arc: 37, hipArc: 9, hipOut: 13, group: 0, ripple: 0.0 },
-  { arc: 44, hipArc: 9, hipOut: 10, group: 1, ripple: Math.PI * 1.5 },
-  { arc: 35, hipArc: 6, hipOut: 7, group: 0, ripple: Math.PI * 0.5 },
+  { arc: -30, hipArc: -3.2, hipOut: 2.5, group: 0, ripple: 0.0 },
+  { arc: -37, hipArc: -2.2, hipOut: 1, group: 1, ripple: Math.PI },
+  { arc: -44, hipArc: -0.8, hipOut: 0, group: 0, ripple: Math.PI * 0.5 },
+  { arc: -35, hipArc: 1, hipOut: -2.5, group: 1, ripple: Math.PI * 1.5 },
+  { arc: 30, hipArc: 2, hipOut: 2.5, group: 1, ripple: Math.PI },
+  { arc: 37, hipArc: 3.2, hipOut: 1, group: 0, ripple: 0.0 },
+  { arc: 44, hipArc: 4.4, hipOut: 0, group: 1, ripple: Math.PI * 1.5 },
+  { arc: 35, hipArc: 5.2, hipOut: -2.5, group: 0, ripple: Math.PI * 0.5 },
 ];
 export const WEAVER_LEG_REACH_LOCO = WEAVER_LOCO_REST.map((r) =>
-  Math.hypot(r.arc - r.hipArc, r.hipOut) * 1.5,
+  Math.hypot(r.arc - r.hipArc, RIDE_HEIGHT + r.hipOut) * 1.28,
 );
 
 // ------------------------------------------------------------- predicates ----
@@ -345,7 +345,7 @@ export function makeWeaverLoco(x: number, y: number): WeaverLocoState {
     deepArc: 0,
     deepAge: 999,
     deepHold: 0,
-    legs: Array.from({ length: WEAVER_LOCO_REST.length }, makeLeg),
+    legs: WEAVER_LOCO_REST.map(rest => ({ ...makeLeg(), x: x + rest.arc * .6, y })),
     ex: x,
     ey: y,
   };
@@ -353,7 +353,7 @@ export function makeWeaverLoco(x: number, y: number): WeaverLocoState {
 
 function plantedCount(loco: WeaverLocoState): number {
   let n = 0;
-  for (const leg of loco.legs) if (leg.planted) n++;
+  for (const leg of loco.legs) if (!leg.missing && leg.planted) n++;
   return n;
 }
 
@@ -375,7 +375,9 @@ export function weaverHipWorld(loco: WeaverLocoState, i: number): { x: number; y
   const rest = WEAVER_LOCO_REST[i];
   const { tx, ty } = tangentOf(loco.nx, loco.ny, 1);
   const along = rest.hipArc * loco.face;
-  const outw = rest.hipOut - loco.ride; // hips sit around the body centre
+  // Anatomical sockets live INSIDE the thorax, independent of clearance and
+  // ride height. Subtracting ride pulled them out of the shell in low poses.
+  const outw = rest.hipOut;
   return {
     x: loco.px + tx * along + loco.nx * outw,
     y: loco.py + ty * along + loco.ny * outw,
@@ -435,6 +437,12 @@ export function tickWeaverLocomotion(
     loco = makeWeaverLoco(e.x, e.y);
     e.weaverLoco = loco;
   }
+  for (let i = 0; i < loco.legs.length; i++) {
+    const leg = loco.legs[i];
+    leg.missing = ((e.weaverMissingLegs ?? 0) & (1 << i)) !== 0;
+    if (leg.missing) { leg.planted = false; leg.stepT = -1; leg.lift = 0; }
+  }
+  if (loco.mode === 'attached' && loco.legs.filter(leg => !leg.missing).length < 2) detach(loco, loco.vx, .3);
 
   // External displacement (knockback landing, teleportium, debug drag): resync
   // the body and let attachment be re-earned rather than assumed.
@@ -505,6 +513,7 @@ function tickDragged(ctx: Ctx, e: Enemy, loco: WeaverLocoState): void {
   // rotates onto a nearby surface exactly like the old drag behavior
   for (let i = 0; i < loco.legs.length; i++) {
     const leg = loco.legs[i];
+    if (leg.missing) continue;
     const rest = WEAVER_LOCO_REST[i];
     const hip = weaverHipWorld(loco, i);
     if (
@@ -666,7 +675,8 @@ function tickAttached(ctx: Ctx, loco: WeaverLocoState, intent: WeaverIntent): vo
     loco.recoverT--;
     targetSpeed *= 0.3;
   }
-  targetSpeed *= intent.speedScale ?? 1;
+  const lostLegs = loco.legs.filter(leg => leg.missing).length;
+  targetSpeed *= (intent.speedScale ?? 1) * Math.max(.2, 1 - lostLegs * .12);
   // "blocked" = the chase wants to move but the crawl can't deliver — whether
   // no route exists or a gap lip has braked it to a standstill. This is what
   // arms the pounce/thread-spit fallbacks in the AI.
@@ -736,10 +746,10 @@ function tickAttached(ctx: Ctx, loco: WeaverLocoState, intent: WeaverIntent): vo
         : intent.stance === 'rear'
           ? RIDE_HEIGHT + 4
           : RIDE_HEIGHT - intent.urgency * 1.6;
-  const gaitBob = loco.speed > 0.05 ? Math.sin(loco.stride * 2) * 0.7 : 0;
+  const gaitBob = loco.speed > 0.05 ? Math.sin(loco.stride * 2) * (.7 + lostLegs * .4) : 0;
   loco.ride = lerp(
     loco.ride,
-    clamp(Math.min(stanceRide, clear - 1.5), RIDE_MIN, RIDE_HEIGHT + 4) + gaitBob,
+    clamp(Math.min(stanceRide - lostLegs * .8, clear - 1.5), RIDE_MIN, RIDE_HEIGHT + 4) + gaitBob,
     0.14,
   );
 
@@ -811,10 +821,12 @@ function tickLegs(
   const rippleAmt = clamp(0.36 - urgency * 0.22, 0.12, 0.4);
   const lead = loco.speed * 6 * loco.dir * loco.face; // step where the body is going
   let airborne = 0;
-  for (const leg of loco.legs) if (!leg.planted) airborne++;
+  for (const leg of loco.legs) if (!leg.missing && !leg.planted) airborne++;
+  const maxAirborne = Math.min(MAX_AIRBORNE_LEGS, Math.max(1, Math.floor(loco.legs.filter(leg => !leg.missing).length / 2)));
 
   for (let i = 0; i < loco.legs.length; i++) {
     const leg = loco.legs[i];
+    if (leg.missing) continue;
     const rest = WEAVER_LOCO_REST[i];
     const hip = weaverHipWorld(loco, i);
     // desired foothold = the contour sample at this leg's arc offset — walked
@@ -845,7 +857,7 @@ function tickLegs(
       const smooth = t * t * (3 - 2 * t);
       leg.x = leg.fromX + (leg.targetX - leg.fromX) * smooth;
       leg.y = leg.fromY + (leg.targetY - leg.fromY) * smooth;
-      leg.lift = Math.sin(t * Math.PI) * 0.72; // swing phase; render scales to cells
+      leg.lift = Math.sin(t * Math.PI) * (3.5 + urgency * 2); // real foot clearance
       if (leg.stepT >= 1) {
         leg.stepT = -1;
         leg.x = leg.targetX;
@@ -877,7 +889,7 @@ function tickLegs(
           (sample !== null &&
             disp > STEP_DEADBAND + loco.speed * 3.6 &&
             (phase > 0.15 || loco.speed < 0.05));
-        if (wantStep && sample && airborne < MAX_AIRBORNE_LEGS) {
+        if (wantStep && sample && airborne < maxAirborne) {
           leg.stepT = 0;
           leg.fromX = leg.x;
           leg.fromY = leg.y;
@@ -922,7 +934,7 @@ function updateOrientFromLegs(loco: WeaverLocoState): void {
   let fSyy = 0;
   let fSxy = 0;
   for (const leg of loco.legs) {
-    if (!leg.planted) continue;
+    if (leg.missing || !leg.planted) continue;
     fW += 1;
     fSx += leg.x;
     fSy += leg.y;
@@ -1038,6 +1050,7 @@ export function weaverKnockSync(e: Enemy): void {
 function trailLegsAirborne(loco: WeaverLocoState): void {
   for (let i = 0; i < loco.legs.length; i++) {
     const leg = loco.legs[i];
+    if (leg.missing) continue;
     const rest = WEAVER_LOCO_REST[i];
     const hip = weaverHipWorld(loco, i);
     leg.planted = false;
@@ -1115,7 +1128,7 @@ function tickAirborne(
   trailLegsAirborne(loco);
 
   // catch: any surface within reach of the body re-attaches it
-  if (loco.leapT <= 0) {
+  if (loco.leapT <= 0 && loco.legs.filter(leg => !leg.missing).length >= 2) {
     const snap = snapToSurface(ctx, loco.px, loco.py + 3, ATTACH_RADIUS);
     if (snap) {
       loco.mode = 'attached';
@@ -1141,6 +1154,7 @@ function tickAirborne(
       let plantedNow = 0;
       for (let i = 0; i < loco.legs.length && plantedNow < 3; i++) {
         const leg = loco.legs[i];
+        if (leg.missing) continue;
         const hip = weaverHipWorld(loco, i);
         const legSnap = snapToSurface(ctx, hip.x - loco.nx * 2, hip.y - loco.ny * 2, ATTACH_RADIUS);
         if (

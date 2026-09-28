@@ -1,0 +1,55 @@
+{
+  "sourceWidth": 1774,
+  "sourceHeight": 887,
+  "outputWidth": 192,
+  "outputHeight": 96,
+  "bytes": 15923,
+  "sprites": [
+    {
+      "id": "brass-valve",
+      "start": 0,
+      "end": 0.24,
+      "x": 8,
+      "y": 40,
+      "width": 32,
+      "height": 40,
+      "sourceCrop": {
+        "left": 117,
+        "top": 325,
+        "width": 220,
+        "height": 359
+      }
+    },
+    {
+      "id": "refuge-hearth",
+      "start": 0.24,
+      "end": 0.76,
+      "x": 48,
+      "y": 24,
+      "width": 96,
+      "height": 56,
+      "sourceCrop": {
+        "left": 454,
+        "top": 176,
+        "width": 818,
+        "height": 508
+      }
+    },
+    {
+      "id": "pipe-mouth",
+      "start": 0.76,
+      "end": 1,
+      "x": 152,
+      "y": 56,
+      "width": 32,
+      "height": 24,
+      "sourceCrop": {
+        "left": 1402,
+        "top": 477,
+        "width": 256,
+        "height": 207
+      }
+    }
+  ],
+  "packing": "Tight alpha bounds from three separate source regions; nearest-neighbor contain sizing; bottom-center alignment; transparent padding. No object painting or freeform edits."
+}

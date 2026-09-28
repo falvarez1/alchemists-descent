@@ -141,6 +141,7 @@ describe('worldgen determinism', () => {
     const beforeLife = world.life.slice();
     const beforeCharge = world.charge.slice();
     const beforeOverrides = new Set(world.colorOverrides);
+    const beforeOverrideMask = world.colorOverrides.mask.slice();
     const ctx = { world } as unknown as Ctx;
     const rng = new ScriptedRng([0, 0, 0, (50 - 40) / (160 - 40), 0, 0]);
 
@@ -152,6 +153,9 @@ describe('worldgen determinism', () => {
     expect(world.life).toEqual(beforeLife);
     expect(world.charge).toEqual(beforeCharge);
     expect(world.activeCharges.has(charged)).toBe(true);
-    expect(world.colorOverrides).toEqual(beforeOverrides);
+    // Compare saved members and the derived mask; the cache's monotonic
+    // invalidation revision is intentionally not rolled back with the cells.
+    expect(new Set(world.colorOverrides)).toEqual(beforeOverrides);
+    expect(world.colorOverrides.mask).toEqual(beforeOverrideMask);
   });
 });

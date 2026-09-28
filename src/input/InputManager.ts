@@ -7,6 +7,11 @@ import { spawnCircle, drawLine } from '@/sim/brush';
 import { cancelChargingBlackHole, ensureSandboxWorldDetached, resetHeldSpellInputs } from '@/core/runtimeState';
 import { BUILDER_REQUEST_CLOSE_EVENT } from '@/app/builderCloseRequest';
 import type { BuilderCloseRequestDetail } from '@/app/builderCloseRequest';
+import { throwGlowseed } from '@/game/LivingExpedition';
+import { toggleLantern } from '@/game/Lantern';
+import { releaseWeaverLeg } from '@/combat/LooseWeaverLeg';
+import { telekinesisHolding, telekinesisHurl, telekinesisLift, telekinesisSetDown } from '@/combat/Telekinesis';
+import { flaskSlotKey, gameplayCode } from '@/input/bindings';
 
 type KeyboardLockApi = {
   lock?: (keyCodes?: string[]) => Promise<void>;
@@ -42,6 +47,8 @@ const GAMEPLAY_KEY_CODES = new Set([
   'KeyX',
   'KeyF',
   'KeyG',
+  'KeyV',
+  'KeyL',
   'KeyR',
   'Digit1',
   'Digit2',
@@ -57,6 +64,8 @@ export function isGameplayKeyCode(code: string): boolean {
 }
 
 export const KEYBOARD_UI_BLOCK_SELECTOR = [
+  '#player-settings[open]',
+  '#expedition-entry:not([hidden])',
   '.app-dialog-root',
   '.editor-command-menu.open',
   '.editor-popover.interactive',
@@ -65,11 +74,11 @@ export const KEYBOARD_UI_BLOCK_SELECTOR = [
   '#dev-console.open',
   '#runtime-inspector.open',
   '#card-offer-overlay.visible',
-  '#waystone-prompt-overlay.visible',
   '#pause-overlay.visible',
   '#help-overlay.visible',
   '#sanctum-overlay.visible',
   '#wand-bench.visible',
+  '#run-summary.visible',
 ].join(', ');
 
 export function isKeyboardUiOwnerActive(doc: Document = document): boolean {
@@ -100,6 +109,95 @@ function isEditableTarget(target: EventTarget | null): boolean {
  * (mode buttons, HUD visibility, banners, depth readout) is emitted as events.
  */
 export class InputManager {
+  private readonly previousPadButtons = new Uint8Array(18);
+  private padDriving = false;
+  /** X just lifted or set down a body: holding it on must not start a siphon. */
+  private padLifted = false;
+
+  /** Poll on presentation frames, including while menus pause the simulation. */
+  pollGamepad(): void {
+    this.refreshPointerWorld();
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+    const pad = Array.from(navigator.getGamepads()).find(p => p?.connected && p.mapping === 'standard');
+    if (!pad) {
+      if (this.padDriving) { this.syncHeldKeys(); this.ctx.player.firing = false; this.ctx.input.pourHeld = false; this.ctx.input.siphonHeld = false; }
+      this.padDriving = false; this.previousPadButtons.fill(0); return;
+    }
+    const ctx = this.ctx;
+    const held = (index: number): boolean => pad.buttons[index]?.pressed === true;
+    const pressed = (index: number): boolean => held(index) && !this.previousPadButtons[index];
+    const menu = document.getElementById('expedition-entry');
+    if (menu && !menu.hidden) {
+      const buttons = Array.from(menu.querySelectorAll<HTMLButtonElement>('nav button:not([hidden])'));
+      if (pressed(13) || pressed(12)) {
+        const index = Math.max(0, buttons.indexOf(document.activeElement as HTMLButtonElement));
+        buttons[(index + (pressed(13) ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+      }
+      if (pressed(0) && document.activeElement instanceof HTMLButtonElement) document.activeElement.click();
+    } else if (ctx.state.mode === 'play') {
+      if (pressed(9)) window.dispatchEvent(new Event('game-pause-request'));
+      if (pressed(8)) ctx.events.emit('clipRequested', { reason: 'hotkey' }); // View/Back: save the last seconds
+      const overlay = document.querySelector<HTMLDialogElement>('#player-settings[open]')
+        ?? document.querySelector<HTMLElement>('#pause-overlay.visible, #run-summary.visible, #gameover-overlay.visible');
+      if (overlay) {
+        const controls = Array.from(overlay.querySelectorAll<HTMLButtonElement | HTMLSelectElement | HTMLInputElement>('button, select, input')).filter(el => el.getClientRects().length > 0 && !el.disabled);
+        let index = controls.indexOf(document.activeElement as HTMLButtonElement);
+        if (index < 0) { index = 0; controls[0]?.focus(); }
+        if (pressed(12) || pressed(13)) controls[(index + (pressed(13) ? 1 : controls.length - 1)) % controls.length]?.focus();
+        if (pressed(0)) controls[index]?.click();
+        const focused = controls[index];
+        if (focused instanceof HTMLSelectElement && (pressed(14) || pressed(15))) {
+          focused.selectedIndex = Math.max(0, Math.min(focused.options.length - 1, focused.selectedIndex + (pressed(15) ? 1 : -1)));
+          focused.dispatchEvent(new Event('change'));
+        }
+        if (pressed(1)) {
+          if (overlay instanceof HTMLDialogElement) overlay.close();
+          else window.dispatchEvent(new Event('game-pause-request'));
+        }
+      }
+      if (!ctx.state.paused && !document.querySelector(KEYBOARD_UI_BLOCK_SELECTOR)) {
+        const ax = pad.axes[0] ?? 0, ay = pad.axes[1] ?? 0;
+        const aimX = pad.axes[2] ?? 0, aimY = pad.axes[3] ?? 0;
+        const active = Math.hypot(ax, ay) > 0.2 || Math.hypot(aimX, aimY) > 0.25 || pad.buttons.some(b => b.pressed);
+        if (active || this.padDriving) {
+          this.syncHeldKeys();
+          const keys = ctx.input.keys;
+          keys.left ||= ax < -0.2 || held(14); keys.right ||= ax > 0.2 || held(15);
+          keys.up ||= ay < -0.35 || held(12); keys.down ||= ay > 0.4 || held(13) || held(1);
+          keys.jump ||= held(0); keys.wallJump ||= held(0); keys.grab ||= held(10);
+          if (pressed(0)) ctx.input.queuedJump = 'wall';
+          if (Math.hypot(aimX, aimY) > 0.25) {
+            ctx.input.mouse.x = ctx.player.x + aimX * 130;
+            ctx.input.mouse.y = ctx.player.y - 9 + aimY * 130;
+          }
+          if (active) ctx.audio.ensure();
+          if (!held(7)) ctx.player.fireBlockedUntilRelease = false;
+          ctx.player.firing = held(7) && !ctx.player.fireBlockedUntilRelease;
+          if (pressed(7)) ctx.player.firePressed = true;
+          ctx.input.pourHeld = held(6);
+          if (pressed(5) && !telekinesisHurl(ctx) && !releaseWeaverLeg(ctx, true)) ctx.flask.throwFlask(ctx);
+          if (pressed(4) && ctx.player.legClub) releaseWeaverLeg(ctx, false);
+          else if (pressed(4)) throwGlowseed(ctx);
+          if (pressed(3)) this.selectWand(ctx.wands.active === 0 ? 1 : 0);
+          // X: set down what the wand holds, else lift the body along the aim, else interact.
+          if (pressed(2)) {
+            if (telekinesisHolding(ctx)) { telekinesisSetDown(ctx); this.padLifted = true; }
+            else if (ctx.story?.interact()) this.padLifted = true;
+            else if (!ctx.player.legClub && telekinesisLift(ctx, true)) this.padLifted = true;
+            else ctx.mechanisms.interact(ctx);
+          }
+          if (!held(2)) this.padLifted = false;
+          ctx.input.siphonHeld = held(2) && ctx.player.pullT <= 0 && !this.padLifted && !telekinesisHolding(ctx);
+          if (pressed(11) && !telekinesisHurl(ctx)) ctx.playerCtl.kick(ctx);
+          this.padDriving = active;
+        }
+      } else if (this.padDriving) {
+        this.clearHeldInput();
+        this.padDriving = false;
+      }
+    }
+    for (let i = 0; i < this.previousPadButtons.length; i++) this.previousPadButtons[i] = held(i) ? 1 : 0;
+  }
   private keyboardLocked = false;
   private readonly heldKeyCodes = new Set<string>();
   private canvas: HTMLCanvasElement;
@@ -210,7 +308,25 @@ export class InputManager {
     this.canvas.dataset.inputAttached = 'true';
   }
 
-  private getMouseGridCoords(e: MouseEvent): { x: number; y: number } {
+  /** Last pointer position on screen; the world point under it is re-derived every frame. */
+  private pointerClient: { clientX: number; clientY: number } | null = null;
+
+  /**
+   * The cursor is a point on the SCREEN. Stored only in world coordinates, it
+   * stayed behind whenever the camera panned under a still mouse: running
+   * right with the cursor ahead of you, the camera caught up, the alchemist
+   * overtook that stale world point and turned round to face it, running
+   * backwards. Re-project the last screen position through the current
+   * camera every frame (the gamepad writes its own aim point).
+   */
+  private refreshPointerWorld(): void {
+    if (!this.pointerClient || this.padDriving || this.ctx.state.mode !== 'play') return;
+    const coords = this.getMouseGridCoords(this.pointerClient);
+    this.ctx.input.mouse.x = coords.x;
+    this.ctx.input.mouse.y = coords.y;
+  }
+
+  private getMouseGridCoords(e: { clientX: number; clientY: number }): { x: number; y: number } {
     const rect = this.canvas.getBoundingClientRect();
     const u = (e.clientX - rect.left) / rect.width;
     const v = (e.clientY - rect.top) / rect.height;
@@ -234,6 +350,7 @@ export class InputManager {
   private onMouseDown(e: MouseEvent): void {
     const { ctx } = this;
     ctx.audio.ensure();
+    this.pointerClient = { clientX: e.clientX, clientY: e.clientY };
     const coords = this.getMouseGridCoords(e);
     ctx.input.mouse.x = coords.x;
     ctx.input.mouse.y = coords.y;
@@ -249,8 +366,8 @@ export class InputManager {
     // Right mouse: a game verb, never the browser menu.
     if (e.button === 2) {
       if (ctx.state.mode === 'play') {
-        // Same grip as the reference build: RMB hurls the flask.
-        if (!ctx.player.dead) ctx.flask.throwFlask(ctx);
+        // Holding something on the wand's thread, the throw is the body's.
+        if (!ctx.player.dead && !telekinesisHurl(ctx) && !releaseWeaverLeg(ctx, true)) ctx.flask.throwFlask(ctx);
       } else {
         // Sandbox eyedropper: pick up whatever material is under the cursor.
         if (ctx.world.inBounds(coords.x, coords.y)) {
@@ -273,8 +390,12 @@ export class InputManager {
     if (ctx.state.mode === 'play') {
       if (ctx.player.climbing) return;
       if (!ctx.player.dead) {
+        ctx.player.fireBlockedUntilRelease = false;
         ctx.player.firing = true;
-        ctx.player.firePressed = true; // press edge: god mode fires this click instantly
+        // Press edge: god mode fires this click instantly, and a tap released
+        // before the next tick still casts from it. A click on a paused world is
+        // not a shot waiting for the resume.
+        ctx.player.firePressed = !ctx.state.paused;
       }
       return;
     }
@@ -292,6 +413,7 @@ export class InputManager {
 
   private onMouseMove(e: MouseEvent): void {
     const { ctx } = this;
+    this.pointerClient = { clientX: e.clientX, clientY: e.clientY };
     const coords = this.getMouseGridCoords(e);
     ctx.input.mouse.x = coords.x;
     ctx.input.mouse.y = coords.y;
@@ -326,6 +448,7 @@ export class InputManager {
     // fixed-spell release to perform here. Just clear the charge counter.
     ctx.input.bombCharge = -1;
     ctx.player.firing = false;
+    ctx.player.fireBlockedUntilRelease = false;
     cancelChargingBlackHole(ctx);
   }
 
@@ -347,10 +470,11 @@ export class InputManager {
   private selectFlaskSlot(idx: number): void {
     if (!this.ctx.flask.selectSlot(idx)) return;
     const slot = this.ctx.flask.state;
-    const material = slot.material === null
-      ? 'EMPTY'
-      : (this.ctx.params.materials[slot.material]?.name ?? `MATERIAL ${slot.material}`).toUpperCase();
-    this.ctx.events.emit('toast', { text: `FLASK ${idx + 1}: ${material}` });
+    const material = slot.material === null || slot.count <= 0
+      ? 'empty'
+      : (this.ctx.params.materials[slot.material]?.name ?? `material ${slot.material}`);
+    // Named by the key that picked it, as the HUD belt labels it.
+    this.ctx.events.emit('toast', { text: `Flask ${flaskSlotKey(idx)}: ${material}` });
   }
 
   private shouldIgnoreKeyboard(e: KeyboardEvent): boolean {
@@ -367,7 +491,7 @@ export class InputManager {
 
   private claimPlayKey(e: KeyboardEvent): void {
     if (this.ctx.state.mode !== 'play') return;
-    if (!this.isGameplayKey(e.code)) return;
+    if (!this.isGameplayKey(gameplayCode(e.code))) return;
     e.preventDefault();
   }
 
@@ -416,6 +540,7 @@ export class InputManager {
     keys.down = false;
     keys.grab = false;
     this.heldKeyCodes.clear();
+    ctx.input.queuedJump = undefined;
     ctx.input.isDrawing = false;
     ctx.input.lastX = null;
     ctx.input.lastY = null;
@@ -438,10 +563,22 @@ export class InputManager {
     if (e.defaultPrevented) return;
     if (this.shouldIgnoreKeyboard(e)) return;
     const { ctx } = this;
+    const code = ctx.state.mode === 'play' ? gameplayCode(e.code) : e.code;
     this.claimPlayKey(e);
+    if (!e.repeat && JUMP_KEY_CODES.has(code)) ctx.input.queuedJump = code === 'Space' ? 'wall' : 'jump';
+
+    if (code === 'KeyV' && ctx.state.mode === 'play' && !e.repeat && throwGlowseed(ctx)) {
+      e.preventDefault();
+      return;
+    }
+    // L (rebindable): hood / unhood the lantern — the light wave's stealth verb.
+    if (code === 'KeyL' && ctx.state.mode === 'play' && !e.repeat && toggleLantern(ctx)) {
+      e.preventDefault();
+      return;
+    }
 
     ctx.audio.ensure();
-    if (e.code === 'Tab') {
+    if (code === 'Tab') {
       e.preventDefault();
       if (document.body.classList.contains('builder-open')) return;
       // Tab no longer drops PLAY into the Sandbox. It still leaves the Sandbox /
@@ -459,20 +596,20 @@ export class InputManager {
     }
 
     if (ctx.state.mode !== 'play') {
-      if (e.code === 'KeyA' || e.code === 'ArrowLeft') {
+      if (code === 'KeyA' || code === 'ArrowLeft') {
         e.preventDefault();
-        this.setKeyHeld(e.code, true);
-      } else if (e.code === 'KeyD' || e.code === 'ArrowRight') {
+        this.setKeyHeld(code, true);
+      } else if (code === 'KeyD' || code === 'ArrowRight') {
         e.preventDefault();
-        this.setKeyHeld(e.code, true);
-      } else if (e.code === 'Space' || e.code === 'KeyW' || e.code === 'ArrowUp') {
+        this.setKeyHeld(code, true);
+      } else if (code === 'Space' || code === 'KeyW' || code === 'ArrowUp') {
         e.preventDefault();
-        this.setKeyHeld(e.code, true);
-      } else if (e.code === 'KeyS' || e.code === 'ArrowDown') {
+        this.setKeyHeld(code, true);
+      } else if (code === 'KeyS' || code === 'ArrowDown') {
         e.preventDefault();
-        this.setKeyHeld(e.code, true);
-      } else if (e.code.startsWith('Digit')) {
-        const n = parseInt(e.code.slice(5)) - 1;
+        this.setKeyHeld(code, true);
+      } else if (code.startsWith('Digit')) {
+        const n = parseInt(code.slice(5)) - 1;
         if (n >= 0 && n < SPELL_ORDER.length) {
           ctx.player.spell = SPELL_ORDER[n];
           ctx.input.bombCharge = -1;
@@ -483,45 +620,49 @@ export class InputManager {
 
     // mode === 'play' from here (the block above returns for every other mode).
     if (
-      e.code === 'KeyA' ||
-      e.code === 'ArrowLeft' ||
-      e.code === 'KeyD' ||
-      e.code === 'ArrowRight' ||
-      e.code === 'Space' ||
-      e.code === 'KeyW' ||
-      e.code === 'ArrowUp' ||
-      e.code === 'KeyS' ||
-      e.code === 'ArrowDown' ||
-      GRAB_KEY_CODES.has(e.code)
+      code === 'KeyA' ||
+      code === 'ArrowLeft' ||
+      code === 'KeyD' ||
+      code === 'ArrowRight' ||
+      code === 'Space' ||
+      code === 'KeyW' ||
+      code === 'ArrowUp' ||
+      code === 'KeyS' ||
+      code === 'ArrowDown' ||
+      GRAB_KEY_CODES.has(code)
     )
-      this.setKeyHeld(e.code, true);
-    else if (e.code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
-    else if (e.code === 'KeyE' && !ctx.player.climbing) {
-      // E telekinesis (toggle): drop a levitated crate, else LIFT the crate the
-      // mouse cursor is on. If no crate's involved it falls through to the old
-      // E behaviour — a lever-pull in reach, else hold-to-siphon the flask.
-      if (!e.repeat && ctx.rigidBodies.isHolding()) {
-        ctx.rigidBodies.release(ctx, false); // set the levitated crate down
-      } else if (!e.repeat && ctx.rigidBodies.grabAtCursor(ctx)) {
-        // lifted the crate under the cursor — it now levitates and tracks the hand
-      } else if (!ctx.rigidBodies.isHolding()) {
+      this.setKeyHeld(code, true);
+    else if (code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
+    else if (code === 'KeyE' && !ctx.player.climbing) {
+      // E telekinesis (toggle): set down whatever the wand holds (a corpse, a
+      // crate), else LIFT the body under the cursor — the fallen or a crate;
+      // the one the cursor is ON wins (combat/Telekinesis). With nothing
+      // liftable under the cursor it falls through to the old E behaviour —
+      // a lever-pull in reach, else hold-to-siphon the flask.
+      if (!e.repeat && telekinesisHolding(ctx)) {
+        telekinesisSetDown(ctx);
+      } else if (!e.repeat && ctx.story?.interact()) {
+        // the story took it: Pell, a resonant valve, a page (or the next line of a conversation)
+      } else if (!e.repeat && !ctx.player.legClub && telekinesisLift(ctx)) {
+        // lifted the body under the cursor — it now hangs on the wand's thread
+      } else if (!telekinesisHolding(ctx)) {
         const pulling = !e.repeat && ctx.mechanisms.interact(ctx);
         if (!pulling) ctx.input.siphonHeld = true;
       }
     }
-    else if (e.code === 'KeyQ' && !ctx.player.climbing) ctx.input.pourHeld = true;
-    else if (e.code === 'KeyX' && !ctx.player.climbing) ctx.input.drinkHeld = true;
-    else if (e.code === 'KeyF' && !ctx.player.dead && !ctx.player.climbing) {
-      // F throws a telekinetically-held crate; otherwise it's the kick gust.
-      if (ctx.rigidBodies.isHolding()) ctx.rigidBodies.release(ctx, true);
-      else ctx.playerCtl.kick(ctx);
+    else if (code === 'KeyQ' && !ctx.player.climbing) ctx.input.pourHeld = true;
+    else if (code === 'KeyX' && !ctx.player.climbing) ctx.input.drinkHeld = true;
+    else if (code === 'KeyF' && !ctx.player.dead && !ctx.player.climbing) {
+      // F hurls whatever the wand holds (a corpse at the cursor, a crate along
+      // the aim); otherwise it's the kick gust (which punts corpses too).
+      if (!telekinesisHurl(ctx)) ctx.playerCtl.kick(ctx);
     }
-    else if (e.code === 'KeyG' && !e.repeat && !ctx.player.dead && !ctx.player.climbing) {
+    else if (code === 'KeyG' && !e.repeat && !ctx.player.dead) {
       // hold G: latch a hanging vine to swing, else carry a body; release to let go/throw
-      if (!ctx.playerCtl.grabVine(ctx)) ctx.rigidBodies.grab(ctx);
+      if (!releaseWeaverLeg(ctx, false) && !ctx.player.climbing && !ctx.playerCtl.grabVine(ctx)) ctx.rigidBodies.grab(ctx);
     }
-    else if (e.code.startsWith('Digit')) {
-      const n = parseInt(e.code.slice(5)) - 1;
+    else if (code.startsWith('Digit')) {
+      const n = parseInt(code.slice(5)) - 1;
       // Wave D: digits pick wands first, then the Noita-like potion belt.
       if (n === 0 || n === 1) this.selectWand(n);
       else if (n >= 2 && n <= 5) this.selectFlaskSlot(n - 2);
@@ -530,13 +671,14 @@ export class InputManager {
 
   private onKeyUp(e: KeyboardEvent): void {
     const { ctx } = this;
+    const code = ctx.state.mode === 'play' ? gameplayCode(e.code) : e.code;
     if (!this.shouldIgnoreKeyboard(e)) this.claimPlayKey(e);
 
-    if (this.isTrackedHeldKey(e.code)) this.setKeyHeld(e.code, false);
-    else if (e.code === 'KeyE') ctx.input.siphonHeld = false;
-    else if (e.code === 'KeyQ') ctx.input.pourHeld = false;
-    else if (e.code === 'KeyX') ctx.input.drinkHeld = false;
-    else if (e.code === 'KeyG') {
+    if (this.isTrackedHeldKey(code)) this.setKeyHeld(code, false);
+    else if (code === 'KeyE') ctx.input.siphonHeld = false;
+    else if (code === 'KeyQ') ctx.input.pourHeld = false;
+    else if (code === 'KeyX') ctx.input.drinkHeld = false;
+    else if (code === 'KeyG') {
       ctx.playerCtl.releaseVine(ctx); // let go of a vine swing...
       ctx.rigidBodies.release(ctx); // ...or throw the carried body (whichever is active)
     }

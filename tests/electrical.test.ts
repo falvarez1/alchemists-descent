@@ -5,6 +5,7 @@ import type { Ctx } from '@/core/types';
 import { updateElectricalGrid } from '@/sim/electrical';
 import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
+import { mockRandom } from './helpers/randomSeam';
 
 describe('updateElectricalGrid', () => {
   it('spreads ATTENUATED charge through the four cardinal neighbors only and decays the source', () => {
@@ -67,7 +68,7 @@ describe('updateElectricalGrid', () => {
     expect(world.charge[lava]).toBe(79);
   });
 
-  it('ignores charged cells outside the active simulation window', () => {
+  it('decays charged cells outside the camera interest window', () => {
     const world = new World(8, 8);
     world.simBounds.x0 = 0;
     world.simBounds.x1 = 4;
@@ -79,10 +80,10 @@ describe('updateElectricalGrid', () => {
 
     updateElectricalGrid(ctxFor(world));
 
-    expect(world.charge[outside]).toBe(7);
+    expect(world.charge[outside]).toBe(6);
   });
 
-  it('discovers directly restored charges when the simulation window reaches a new tile', () => {
+  it('discovers restored charges immediately and keeps decaying through a window move', () => {
     const world = new World(128, 8);
     world.simBounds.x0 = 0;
     world.simBounds.x1 = 16;
@@ -93,13 +94,13 @@ describe('updateElectricalGrid', () => {
     world.charge[restored] = 5;
 
     updateElectricalGrid(ctxFor(world));
-    expect(world.charge[restored]).toBe(5);
+    expect(world.charge[restored]).toBe(4);
 
     world.simBounds.x0 = 64;
     world.simBounds.x1 = 96;
     updateElectricalGrid(ctxFor(world));
 
-    expect(world.charge[restored]).toBe(4);
+    expect(world.charge[restored]).toBe(3);
   });
 
   it('decays independent worlds on the same frame count', () => {
@@ -115,6 +116,73 @@ describe('updateElectricalGrid', () => {
 
     expect(first.charge[first.idx(3, 3)]).toBe(4);
     expect(second.charge[second.idx(3, 3)]).toBe(4);
+  });
+});
+
+/**
+ * THE SUMP HOLDS ITS WATER (fix3): the Sunken Leviathan's pool drained itself
+ * mid-fight because every current in it spalled the stone drain plugs set into
+ * its metal floor. These pin the three rules that stopped it.
+ */
+describe('electro-erosion keeps to the strike', () => {
+  /** A 5-wide, 16-deep pool in a metal tub whose floor is one stone plug. */
+  function sump(): { world: World; plug: number; surface: number } {
+    const world = new World(9, 24);
+    for (let y = 2; y <= 20; y++) {
+      world.types[world.idx(1, y)] = Cell.Metal;
+      world.types[world.idx(7, y)] = Cell.Metal;
+    }
+    for (let x = 1; x <= 7; x++) world.types[world.idx(x, 20)] = Cell.Metal;
+    const plug = world.idx(4, 20);
+    world.types[plug] = Cell.Stone;
+    for (let y = 4; y <= 19; y++) for (let x = 2; x <= 6; x++) world.types[world.idx(x, y)] = Cell.Water;
+    return { world, plug, surface: world.idx(4, 4) };
+  }
+  function run(world: World, frames: number): void {
+    const params = createGameParams(); // shipped falloff / decay / erosion
+    for (let f = 0; f < frames; f++) {
+      updateElectricalGrid({ world, params, state: { frameCount: ++testFrame }, particles: { spawn: () => undefined } } as unknown as Ctx);
+    }
+  }
+
+  it('a strike on the surface does not bore out the plug 16 rows down', () => {
+    mockRandom().mockReturnValue(0); // every eligible bite lands
+    const { world, plug, surface } = sump();
+    world.setChargeAt(surface, 70); // a lightning strike's deposit (chargeDeposit 20)
+    run(world, 90);
+    expect(world.types[plug]).toBe(Cell.Stone);
+  });
+
+  it('a strike right beside wet rock still chips it', () => {
+    mockRandom().mockReturnValue(0);
+    const world = new World(6, 6);
+    const water = world.idx(2, 2), rock = world.idx(3, 2);
+    world.types[water] = Cell.Water;
+    world.types[rock] = Cell.Stone;
+    world.setChargeAt(water, 70);
+    run(world, 2);
+    expect(world.types[rock]).toBe(Cell.Empty);
+  });
+
+  it('metal carries its current without arcing into the rock it holds', () => {
+    mockRandom().mockReturnValue(0);
+    const world = new World(6, 6);
+    const metal = world.idx(2, 2), rock = world.idx(3, 2);
+    world.types[metal] = Cell.Metal;
+    world.types[rock] = Cell.Stone;
+    world.setChargeAt(metal, 210); // a blast rings metal at chargeDeposit(60)
+    run(world, 60);
+    expect(world.types[rock]).toBe(Cell.Stone);
+  });
+
+  it('blood takes the capped water intake from metal, so it cannot relay the full current into a pool', () => {
+    const world = new World(8, 8);
+    const metal = world.idx(3, 3), blood = world.idx(4, 3);
+    world.types[metal] = Cell.Metal;
+    world.charge[metal] = 80;
+    world.types[blood] = Cell.Blood;
+    updateElectricalGrid(ctxFor(world));
+    expect(world.charge[blood]).toBe(15);
   });
 });
 

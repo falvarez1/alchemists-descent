@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { MINIMAP_H, MINIMAP_W } from '@/config/constants';
 import type { Ctx, LevelRuntime, Mechanism } from '@/core/types';
 import { makePickup } from '@/core/pickupDefs';
-import { collectMinimapPois, findMinimapMaterialPoi, hitTestMinimapPoi } from '@/ui/Minimap';
+import { collectMinimapPois, findMinimapMaterialPoi, groupPlaces, hitTestMinimapPoi } from '@/ui/Minimap';
 import { Cell } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 import { World } from '@/sim/World';
@@ -258,7 +258,9 @@ describe('minimap POI markers', () => {
     expect(pois.map((poi) => poi.id)).toEqual(expect.arrayContaining(['mechanism:3', 'mechanism:4']));
 
     const leverPoi = pois.find((poi) => poi.id === 'mechanism:3')!;
-    expect(leverPoi.title).toBe('Lever #3');
+    // Player-facing names; the id stays in the popover's fields.
+    expect(leverPoi.title).toBe('Lever');
+    expect(leverPoi.fields).toEqual(expect.arrayContaining([{ label: 'id', value: '3' }]));
     expect(leverPoi.fields).toEqual(expect.arrayContaining([{ label: 'target', value: '2' }]));
 
     const sensorPoi = pois.find((poi) => poi.id === 'mechanism:4')!;
@@ -288,5 +290,16 @@ describe('minimap POI markers', () => {
     level.explored[44 + 30 * MINIMAP_W] = 1;
 
     expect(findMinimapMaterialPoi(level, 44.5, 30.5, 0.75)).toBeNull();
+  });
+});
+
+describe('chart room places', () => {
+  it('folds repeated places into one counted row that steers to the nearest', () => {
+    const place = (kind: 'pickup' | 'waystone', title: string, distance: number) => ({ poi: { kind, title }, distance });
+    const grouped = groupPlaces([
+      place('pickup', 'Weaver Leg', 10), place('waystone', 'Waystone', 20), place('pickup', 'Weaver Leg', 30),
+      place('pickup', 'Weaver Leg', 40), place('pickup', 'Weaver leg', 50),
+    ]);
+    expect(grouped.map((g) => [g.poi.title, g.count, g.distance])).toEqual([['Weaver Leg', 4, 10], ['Waystone', 1, 20]]);
   });
 });

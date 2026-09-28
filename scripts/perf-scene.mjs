@@ -9,7 +9,7 @@
 // drift-proof same-session A/B).
 import { readFileSync, existsSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
-import { startConsoleTestRun } from './run-helpers.mjs';
+import { execConsoleCommand, startConsoleTestRun, waitForRunReady } from './run-helpers.mjs';
 import {
   addSampleBuckets,
   collectBackendCapabilities,
@@ -53,13 +53,21 @@ const all = emptyBuckets(['autosaveMs', 'heapUsedDeltaMB', 'heapTotalDeltaMB']);
 let firstRunCapabilities = null;
 let webgpuCapabilities = null;
 const gpuComposeRuns = [];
+const checkpointRuns = [];
+const errors = [];
 
 for (let run = 0; run < RUNS; run++) {
   const page = await newBenchmarkPage(browser, { diagnosticsLabel: `perf-scene-${run + 1}` });
-  page.on('pageerror', (e) => console.error('PAGE ERROR:', String(e)));
+  page.on('pageerror', (e) => {
+    errors.push({ run: run + 1, message: String(e) });
+    console.error('PAGE ERROR:', String(e));
+  });
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.waitForTimeout(2000);
   await startConsoleTestRun(page, { seed: 777, settleMs: 1500 });
+  // Campaign repairs must finish before the chaos fixture is stamped, or a
+  // delayed rescue tunnel can alter the measured scene during recording.
+  await page.waitForFunction(() => window.__game.ctx.levels.findabilityReady, null, { timeout: 60000 });
   const gpuComposeAppliedBeforeScene = await page.evaluate((mode) => {
     const ctx = window.__game.ctx;
     if (mode === '1') ctx.state.postFx.gpuCompose = true;
@@ -83,6 +91,7 @@ for (let run = 0; run < RUNS; run++) {
         w.colors[i] = color;
         w.life[i] = life;
         w.charge[i] = charge;
+        w.activity.touchIndex(i);
       };
       ctx.player.hp = 999999;
       ctx.player.maxHp = 999999;
@@ -182,19 +191,8 @@ for (let run = 0; run < RUNS; run++) {
       const samples = window.__perfSamples;
       const heapAfterRecord = readHeap();
 
-      // ---- AUTOSAVE HITCH: visit 5 levels, then time saveExpedition ----
-      for (const id of ['d2', 'd3', 'd4', 'd5']) {
-        ctx.levels.leaveLevel();
-        ctx.levels.enterLevel(ctx, id);
-        await new Promise((r) => setTimeout(r, 250));
-      }
+      // Saving is measured below in a normal run; disposable tests cannot save.
       const saves = [];
-      for (let k = 0; k < 5; k++) {
-        const t0 = performance.now();
-        ctx.levels.saveExpedition(ctx);
-        saves.push(performance.now() - t0);
-        await new Promise((r) => setTimeout(r, 120));
-      }
       const heapAfterSaves = readHeap();
       return {
         samples,
@@ -213,6 +211,25 @@ for (let run = 0; run < RUNS; run++) {
     },
     { FRAMES },
   );
+
+  await page.screenshot({ path: `verify-out/perf-${label}-run-${run + 1}.png` });
+  await execConsoleCommand(page, 'run new --seed 777');
+  await waitForRunReady(page); await page.waitForTimeout(3000);
+  await page.waitForFunction(() => window.__game.ctx.levels.findabilityReady, null, { timeout: 60000 });
+  result.checkpoints = await page.evaluate(async () => {
+    const ctx = window.__game.ctx, checkpoints = [];
+    for (let i = 0; i < 5; i++) {
+      const start = performance.now(); await ctx.console.exec('run save');
+      const mainThreadMs = performance.now() - start;
+      const status = await ctx.levels.flushSaves();
+      if (status.state !== 'ready' || status.revision < 1) throw new Error('Normal checkpoint did not commit');
+      checkpoints.push({ mainThreadMs, durableMs: performance.now() - start, ...status });
+      await new Promise(resolve => setTimeout(resolve, 120));
+    }
+    return checkpoints;
+  });
+  result.saves = result.checkpoints.map(c => c.mainThreadMs);
+  checkpointRuns.push({ run: run + 1, samples: result.checkpoints });
 
   addSampleBuckets(all, result.samples);
   all.autosaveMs.push(...result.saves);
@@ -265,6 +282,8 @@ const payload = {
   },
   scenario: 'chaos',
   seed: 777,
+  errors,
+  checkpoints: checkpointRuns,
   capabilities: {
     initial: firstRunCapabilities,
     webgpuAdapter: webgpuCapabilities,
@@ -277,6 +296,7 @@ writeJson(`verify-out/perf-${label}-${Date.now()}.json`, payload);
 
 printBucketSummary(label, summary, summaryKeys);
 const thresholdFailures = evaluateSummaryThresholds(summary, SUMMARY_THRESHOLDS);
+if (errors.length) thresholdFailures.push(`${errors.length} runtime page errors`);
 
 if (label !== 'before' && existsSync('verify-out/perf-before.json')) {
   const before = JSON.parse(readFileSync('verify-out/perf-before.json', 'utf8'));

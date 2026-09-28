@@ -1,13 +1,35 @@
 import '@/styles/main.css';
+import '@/styles/living-descent.css';
+import '@/styles/menus.css';
+import '@/styles/house.css';
+import '@/styles/run.css';
+import '@/styles/sound.css';
+import '@/styles/trailer.css';
 import { Game } from '@/game/Game';
-import { installAuthorLink, resolveAuthorLinkConfig } from '@/app/AuthorLink';
-import { AuthorLinkIndicator } from '@/app/AuthorLinkIndicator';
+import type { AuthorLinkHandle } from '@/app/AuthorLink';
+import type { AuthorLinkIndicator } from '@/app/AuthorLinkIndicator';
+import { resolveAuthorLinkConfig, type AuthorLinkConfig } from '@/app/authorLinkConfig';
+import { PlayerWorkshop } from '@/ui/PlayerWorkshop';
 import { initRapier } from '@/entities/rapierInit';
 import { readAppMode } from '@/game/modePersist';
+import { loadWebGpuBackend, requestedRenderBackend } from '@/render/webGpuBackendModule';
 import { drawCounts, resetDrawCounts, restoreStreams, snapshotStreams } from '@/core/simRandom';
 
 /** Dev-only handle onto the seeded streams (see `core/simRandom.ts`). */
 const simRandomDebug = { drawCounts, resetDrawCounts, snapshotStreams, restoreStreams };
+
+async function loadAuthorLink(
+  game: Game,
+  config: AuthorLinkConfig,
+): Promise<{ authorLink: AuthorLinkHandle | null; linkIndicator: AuthorLinkIndicator | null }> {
+  if (!config.enabled || typeof WebSocket === 'undefined') return { authorLink: null, linkIndicator: null };
+  const [{ installAuthorLink }, { AuthorLinkIndicator }] = await Promise.all([
+    import('@/app/AuthorLink'),
+    import('@/app/AuthorLinkIndicator'),
+  ]);
+  const authorLink = installAuthorLink(game.ctx, config);
+  return { authorLink, linkIndicator: authorLink ? new AuthorLinkIndicator(config.room) : null };
+}
 
 const bootOverlay = document.getElementById('boot-overlay');
 const bootStatus = document.getElementById('boot-status');
@@ -23,7 +45,12 @@ requestAnimationFrame(() =>
       // The rigid-body engine (Rapier2D) is WASM — initialise it before the
       // Game constructor builds the physics world.
       if (bootStatus) bootStatus.textContent = 'LOADING PHYSICS…';
+      // The WebGPU backend is its own chunk, fetched only when the URL asks
+      // for it (render.backend is startup-only); it loads beside the physics.
+      const backend = requestedRenderBackend(window.location.search);
+      const webGpu = backend === 'webgpu' || backend === 'auto' ? loadWebGpuBackend() : null;
       await initRapier();
+      if (webGpu) await webGpu;
 
       const savedMode = import.meta.env.DEV ? readAppMode() : null;
       const game = new Game(holder);
@@ -38,8 +65,9 @@ requestAnimationFrame(() =>
         import.meta.env.VITE_AUTHORLINK_TOKEN,
         navigator.webdriver === true,
       );
-      const authorLink = installAuthorLink(game.ctx, linkConfig);
-      const linkIndicator = authorLink ? new AuthorLinkIndicator(linkConfig.room) : null;
+      // The link itself (client, protocol, object sync) loads only when this
+      // window links: always in dev, in a player build only on `?link=<room>`.
+      const { authorLink, linkIndicator } = await loadAuthorLink(game, linkConfig);
       const linkDisposers: Array<() => void> = [];
       if (authorLink && linkIndicator) {
         linkIndicator.setPullHandler(() => void authorLink.pullWorldFrom());
@@ -62,8 +90,14 @@ requestAnimationFrame(() =>
         // the GPU/WGSL A-B toggles are authoring tools, not player features.
         // Removing the nodes is enough — every owner looks them up optionally.
         for (const el of document.querySelectorAll('[data-authoring]')) el.remove();
+        // The Sandbox a player reaches from the title is the Workshop: house
+        // chrome, the palette and a few toys, none of the studio's panels.
+        new PlayerWorkshop(game.ctx);
       }
-      game.start();
+      // The entry screen covers the boot world, so the Sandbox workshop is built
+      // on first use. A dev reload restoring play or the Builder skips the entry
+      // and keeps the old eager build.
+      game.start({ deferWorkshop: savedMode !== 'play' && savedMode !== 'builder' });
       if (import.meta.env.DEV && savedMode === 'builder') builderLauncher?.open();
 
       if (import.meta.env.DEV) {

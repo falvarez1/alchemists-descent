@@ -1,5 +1,5 @@
 import type { Ctx } from '@/core/types';
-import { blocksEntity, Cell, isConductor, isSolid } from '@/sim/CellType';
+import { blocksEntity, Cell, isConductor, isLiquid, isSolid } from '@/sim/CellType';
 import { fxRandom, simRandom } from '@/core/simRandom';
 
 /**
@@ -35,6 +35,17 @@ const CRAWL_HOPS = 4;
 const WATER_INTAKE_CAP = 15;
 /** A current weaker than this won't erode terrain — a faded spark shouldn't crumble rock. */
 const EROSION_MIN_CHARGE = 6;
+/**
+ * A current carried by a LIQUID spalls rock only near where it struck. A pool
+ * spreads a strike thin (water loses 3 charge per hop), so the diffuse current
+ * that crawled a dozen cells through it has no bite left for the pool's own
+ * bed. 48 sits under a strike's own deposit (chargeDeposit 20 → 70 at the
+ * shipped strength 3.5), so a bolt or lightning landing beside wet rock still
+ * chips it within ~7 hops, while a shocked cistern no longer bores out the
+ * stone drain plugs 15 rows below its surface (the Sunken Leviathan's pool
+ * drained itself mid-fight: every jolt the player earned also dug the plugs).
+ */
+const EROSION_MIN_LIQUID_CHARGE = 48;
 /** Electric fleck thrown off each spalled terrain cell (packed 0xRRGGBB cyan-white). */
 const SPARK_COLOR = 0x9fe8ff;
 
@@ -50,7 +61,7 @@ function conductorFalloff(ctx: Ctx, t: number, base: number): number {
 
 export function updateElectricalGrid(ctx: Ctx): void {
   const w = ctx.world;
-  const sim = w.simBounds;
+  const sim = w.allBounds;
   // Gather tracked live charges in the active window, then apply spreads + decay in two phases.
   // Save loads and legacy direct writes start with an empty tracker, so the first pass rebuilds
   // discovery from the active simulation window; sustained charge then stays sparse.
@@ -91,7 +102,13 @@ export function updateElectricalGrid(ctx: Ctx): void {
       // through its own vaporized cells (empty/steam/fire — not solid), and a direct
       // water-hit spreads water→water; both must stay UNCAPPED or the bolt-in-water
       // ripple flatlines (the cap used to throttle every non-liquid source).
-      if (srcSolid && tt === Cell.Water) v = Math.min(v, WATER_INTAKE_CAP);
+      // Blood takes water's capped intake too (lava deliberately does not — it
+      // carries a metal current at full strength). The cap used to test for
+      // Water alone, so a blast-rung metal casing (210) poured its full current
+      // into the blood a wounded Leviathan shed into its pool, and that blood
+      // handed it on to the water uncapped (82-95 charge on the cells over the
+      // Sump's drain plugs, which then spalled them).
+      if (srcSolid && (tt === Cell.Water || tt === Cell.Blood)) v = Math.min(v, WATER_INTAKE_CAP);
       if (v > 0) {
         const prev = spreadCharge.get(ti);
         if (prev === undefined || v > prev) spreadCharge.set(ti, v);
@@ -136,7 +153,13 @@ export function updateElectricalGrid(ctx: Ctx): void {
       // freed cell lets the conductor seep in and carry the charge deeper). Metal
       // conducts and is immune; the bite scales with local charge so a faded spark
       // doesn't crumble the world, and decay below makes it self-limiting.
-      if (eroding && cc > EROSION_MIN_CHARGE) {
+      // Metal is never the ARC's source either: a current in metal takes the metal
+      // path and does not jump into the rock the metal is set in. (It used to:
+      // any blast rings chargeDeposit(60) = 210 through connected metal, so one
+      // bolt on the Sump's casing spalled every stone cell touching the whole
+      // shell — its drain plugs, shores and plinth — and the pool fell out.)
+      const src = w.types[ci];
+      if (eroding && src !== Cell.Metal && cc > (isLiquid(src) ? EROSION_MIN_LIQUID_CHARGE : EROSION_MIN_CHARGE)) {
         const y = Math.floor(ci / w.width);
         const x = ci - y * w.width;
         const bite = erosion * Math.min(1, cc / 110) * 0.045;

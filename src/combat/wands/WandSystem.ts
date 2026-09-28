@@ -1,3 +1,4 @@
+import { startLegSwing } from '@/combat/WeaverLimbs';
 import type {
   CardId,
   CastActionExecutionContext,
@@ -18,9 +19,10 @@ import { getDiscoveredCards, markCardDiscovered } from './cardDiscovery';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 import { BOUNCE_COUNTS, INFUSED, INFUSE_TRAIL_BUDGET, TRIGGERED, TRIGGER_SOURCE_SPREAD, ensureProjectileMods } from './projectileMarks';
 import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
-import { buildCardOffer, collectOwnedCards, DEPTH_PROJECTILE_POOL, WAYSTONE_MOD_POOL } from './rewardPools';
+import { buildCardOffer, collectOwnedCards, DEPTH_PROJECTILE_POOL, WAYSTONE_MOD_POOL, withDiscoveredCards } from './rewardPools';
 import { REVIEW_WAND_LOADOUTS, WAND_FRAMES } from '@/combat/wands/wandCatalog';
 import { entityRandom } from '@/core/simRandom';
+import { getAimGuide } from '@/combat/AimGuide';
 export { REVIEW_WAND_LOADOUTS, STARTING_WAND_LOADOUTS, WAND_FRAMES, type BuiltInWandLoadout } from '@/combat/wands/wandCatalog';
 
 /**
@@ -64,6 +66,25 @@ const STACK_JITTER = 0.06;
  * still fire as fast as you can click.
  */
 const GOD_CAST_DELAY = 20;
+/**
+ * The click buffer: a TAP (press and release inside one tick, so `firing` is
+ * already false when the tick runs) still casts once from its press edge. A tap
+ * that lands while the wand is still cycling is remembered — ONE buffered cast
+ * (`player.firePressed` is a flag, so extra taps merge into it, never a queue)
+ * — and fires the tick the wand is ready, provided that is at most this many
+ * ticks after the release. One that lands deeper in the recharge, or while
+ * casting is refused (rooted, on a ladder, behind a pickup overlay), is spent
+ * and never fires late; a wand swap, a level change and death spend it too.
+ *
+ * 30 ticks = 0.5 s (was 8, ~130 ms, which dropped every other tap of a 450 ms
+ * rhythm on the Oak Sprig — QA: 8 taps gave 4 casts). Half a second is about
+ * the longest a shot can trail its click and still read as the click's; it
+ * covers all but the first 6 ticks of the Oak Sprig's 36-tick cycle (so a
+ * steady tapper is answered on every tap the wand can physically cast), while
+ * slow frames (Bone 54, Brass 66 ticks) still spend a click made a second
+ * before they are ready instead of firing a ghost shot.
+ */
+export const CLICK_BUFFER_TICKS = 30;
 /** Flame card: frames of stream burst per cast / hard cap while spamming. */
 const FLAME_BURST_FRAMES = 4;
 const FLAME_BURST_CAP = 16;
@@ -95,16 +116,19 @@ const REVIEW_WAND_CARDS: [CardId[], CardId[]] = [
 ];
 
 const STARTING_COLLECTION: CardId[] = ['double', 'speed'];
-const STARTER_WAND_CARDS = new Set<CardId>(['spark', 'dig']);
 
+/**
+ * The launch satchel. Breathing Works: a fresh run starts with its kit only —
+ * cards discovered in earlier runs join the reward pools (see
+ * rewardPoolWithDiscoveries), never the starting hand.
+ */
 function startingCollection(): CardId[] {
-  const discovered = new Set(getDiscoveredCards());
-  const collection = [...STARTING_COLLECTION];
-  for (const id of ALL_CARD_IDS) {
-    if (!discovered.has(id) || STARTER_WAND_CARDS.has(id) || collection.includes(id)) continue;
-    collection.push(id);
-  }
-  return collection;
+  return [...STARTING_COLLECTION];
+}
+
+/** A reward pool widened by every card discovered in any earlier run. */
+function rewardPoolWithDiscoveries(pool: readonly CardId[]): CardId[] {
+  return withDiscoveredCards(pool, getDiscoveredCards());
 }
 
 function shuffledCards(cards: readonly CardId[]): CardId[] {
@@ -142,6 +166,11 @@ function takeUnused(pool: readonly CardId[], used: ReadonlySet<CardId>): CardId 
  * damage surface the bench sentence warns instead of promising a no-op.
  */
 export class WandSystem implements WandsApi {
+  peekCast(): { actions: readonly CastAction[]; spread: number; affordable: boolean } | null {
+    const wand = this.wands[this._active], program = this.program(this._active);
+    const group = program[wand.castIndex % Math.max(1, program.length)];
+    return group ? { actions: group.actions, spread: wand.frame.spread, affordable: wand.mana >= group.manaCost } : null;
+  }
   readonly wands: [WandState, WandState] = [
     { frame: WAND_FRAMES.oak, cards: ['spark', null, null], mana: WAND_FRAMES.oak.manaMax, cooldown: 0, castIndex: 0 },
     { frame: WAND_FRAMES.bone, cards: ['dig', null, null, null], mana: WAND_FRAMES.bone.manaMax, cooldown: 0, castIndex: 0 },
@@ -175,6 +204,8 @@ export class WandSystem implements WandsApi {
       this.grantRandomCardFromPool(pool);
     }));
     this.eventDisposers.push(ctx.events.on('levelChanged', ({ depth }) => {
+      // A click buffered on the floor above is not a shot on arrival.
+      ctx.player.firePressed = false;
       if (depth < 2 || this.depthsGranted.has(depth)) return;
       this.depthsGranted.add(depth);
       this.grantRandomCardFromPool(DEPTH_PROJECTILE_POOL);
@@ -203,6 +234,9 @@ export class WandSystem implements WandsApi {
   set active(v: 0 | 1) {
     if (v === this._active) return;
     this._active = v;
+    // The buffered click was aimed with the other wand: spend it (a HELD button
+    // keeps firing through `player.firing`).
+    this.ctx.player.firePressed = false;
     if (this.ctx.state.mode === 'play') {
       this.ctx.audio.wandSwap();
       // The character sells the swap too: holster-to-aim draw arc.
@@ -214,19 +248,35 @@ export class WandSystem implements WandsApi {
   /* ---------------- the cast cycle ---------------- */
 
   fire(ctx: Ctx): void {
-    if (ctx.state.mode !== 'play' || ctx.player.dead) return;
-    // Heart communion roots the wand arm; so does hauling on a lever.
-    if (ctx.player.recharge > 0 || ctx.player.pullT > 0 || ctx.player.climbing) return;
-    if (ctx.input.activeChargingBlackHole) return;
+    const player = ctx.player;
+    if (ctx.state.mode !== 'play' || player.dead) return;
+    // A tap's button is already up; only its press edge is left (CLICK_BUFFER_TICKS).
+    const tap = !player.firing && player.firePressed === true;
+    // Heart communion roots the wand arm; so does hauling on a lever, and an ice shell.
+    if (player.fireBlockedUntilRelease || player.recharge > 0 || player.pullT > 0 || player.climbing || (player.chill?.shell ?? 0) > 0) {
+      if (tap) player.firePressed = false;
+      return;
+    }
+    if (startLegSwing(ctx)) return;
+    if (ctx.input.activeChargingBlackHole) {
+      if (tap) player.firePressed = false;
+      return;
+    }
     const wand = this.wands[this._active];
     // God mode: a wand never runs dry. A fresh CLICK (the press edge) fires
     // instantly — fire as fast as you can click — while a HELD button is throttled
     // to the quick GOD_CAST_DELAY interval set below, so shots don't pile up.
     const godMode = ctx.state.debugGodMode === true;
     if (godMode) wand.mana = wand.frame.manaMax;
-    const freshClick = ctx.player.firePressed === true;
-    ctx.player.firePressed = false;
-    if (wand.cooldown > 0 && !(godMode && freshClick)) return;
+    const freshClick = player.firePressed === true;
+    if (wand.cooldown > 0 && !(godMode && freshClick)) {
+      // Still cycling: a held press waits with the button; a tap waits only if
+      // the cast is a hair away, otherwise it is spent (no late ghost shots).
+      if (tap && wand.cooldown > CLICK_BUFFER_TICKS) player.firePressed = false;
+      return;
+    }
+    // From here the press is answered — a cast, a dry-fire fizzle or a pick strike.
+    player.firePressed = false;
     const program = this.program(this._active);
     if (program.length === 0) {
       this.tryPickStrike(ctx);
@@ -252,6 +302,8 @@ export class WandSystem implements WandsApi {
       return;
     }
 
+    const aimGuide = ctx.state.trickshot?.enabled ? getAimGuide(ctx) : null;
+    const precision = !!aimGuide?.assisted && !aimGuide.uncertain;
     if (!godMode) wand.mana -= group.manaCost;
     wand.castIndex++;
     const wrapped = wand.castIndex >= program.length;
@@ -292,6 +344,7 @@ export class WandSystem implements WandsApi {
         atCursor ? ctx.input.mouse.x : tip.x,
         atCursor ? ctx.input.mouse.y : tip.y,
         ctx.player.aimAngle,
+        { origin: 'wand', precision },
       );
     }
   }
@@ -343,7 +396,7 @@ export class WandSystem implements WandsApi {
       ctx.player.vy = Math.min(ctx.player.vy ?? 0, -2.2);
       ctx.player.grounded = false;
     }
-    ctx.audio.dig();
+    ctx.audio.sfx('player.staff');
     ctx.particles.burst(tip.x + ax * 8, tip.y + ay * 8, 4, Cell.Smoke, smokeColor, 0.5);
     return true;
   }
@@ -372,7 +425,7 @@ export class WandSystem implements WandsApi {
       ? options.sourceSpread
       : frame.spread;
     const jitter = (): number =>
-      godMode ? angle : angle + (entityRandom() * 2 - 1) * (sourceSpread + action.spreadAdd);
+      godMode ? angle : angle + (entityRandom() * 2 - 1) * (options.origin === 'wand' && options.precision ? 0 : sourceSpread + action.spreadAdd);
     const targetPoint = (): { x: number; y: number } => options.target ?? ctx.input.mouse;
     const sp = ctx.params.spells;
     ctx.telemetry.count('card.cast.' + action.card);
@@ -389,14 +442,14 @@ export class WandSystem implements WandsApi {
         ctx.projectiles.push(p);
         this.markProjectile(ctx, p, action);
       }
-      ctx.audio.zap();
+      ctx.audio.sfx('spell.spark.cast');
     } else if (action.card === 'bomb') {
       const a = jitter();
       const v = sp.bomb.velocityForce! * action.speedMul;
       const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'bomb', life: Math.floor(sp.bomb.fuseTicks!), age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
-      ctx.audio.noiseBurst(0.06, 700, 0.05);
+      ctx.audio.sfx('spell.bomb.cast');
     } else if (action.card === 'lightning') {
       // dmgMul scaling: cast the arc floor(dmgMul) times, max 2.
       const casts = Math.min(2, Math.max(1, Math.floor(action.dmgMul)));
@@ -429,7 +482,7 @@ export class WandSystem implements WandsApi {
       const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'warp', life: PROJECTILE_LIFE.warp, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
-      ctx.audio.zap();
+      ctx.audio.sfx('spell.warp.cast');
     } else if (action.card === 'blackhole') {
       // One charging singularity at a time (original rule) — extra casts fizzle.
       if (ctx.input.activeChargingBlackHole) return;
@@ -447,7 +500,7 @@ export class WandSystem implements WandsApi {
         ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd, Cell.Acid, acidColor(),
           30 + Math.floor(entityRandom() * 20), { grav: 0.05, glow: 0.8 });
       }
-      if (ctx.state.frameCount % 6 === 0) ctx.audio.noiseBurst(0.1, 1400, 0.07, true);
+      if (ctx.state.frameCount % 6 === 0) ctx.audio.sfx('spell.vitriol.loop');
     } else if (action.card === 'cryojet') {
       // Stream card: real nitrogen cells, tuned for bridge-making over pools.
       const count = 5 + Math.max(0, Math.round(action.dmgMul) - 1) * 3;
@@ -457,7 +510,7 @@ export class WandSystem implements WandsApi {
         ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd - 0.12, Cell.Nitrogen, nitrogenColor(),
           34 + Math.floor(entityRandom() * 22), { grav: 0.08, glow: 0.9, deposit: true });
       }
-      if (ctx.state.frameCount % 6 === 0) ctx.audio.noiseBurst(0.08, 1900, 0.06, true);
+      if (ctx.state.frameCount % 6 === 0) ctx.audio.sfx('spell.cryojet.loop');
     } else if (action.card === 'aquajet') {
       // Stream card: real water cells. Pools douse fire (fire + water -> steam in
       // the sim), flood basins, and leave foes WET — priming critwet / electric.
@@ -468,21 +521,21 @@ export class WandSystem implements WandsApi {
         ctx.particles.spawn(x, y, Math.cos(a) * spd, Math.sin(a) * spd, Cell.Water, waterColor(),
           34 + Math.floor(entityRandom() * 22), { grav: 0.12, glow: 0.35, deposit: true });
       }
-      if (ctx.state.frameCount % 6 === 0) ctx.audio.splash(0.5);
+      if (ctx.state.frameCount % 6 === 0) ctx.audio.sfx('spell.aquajet.loop');
     } else if (action.card === 'frostshard') {
       const a = jitter();
       const v = 11 * action.speedMul;
       const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'iceshard', life: PROJECTILE_LIFE.iceshard, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
-      ctx.audio.tone(1100, 500, 0.08, 'sine', 0.09);
+      ctx.audio.sfx('spell.frostshard.cast');
     } else if (action.card === 'icelance') {
       const a = jitter();
       const v = 16 * action.speedMul;
       const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'icelance', life: PROJECTILE_LIFE.icelance, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
-      ctx.audio.tone(1500, 700, 0.1, 'triangle', 0.1);
+      ctx.audio.sfx('spell.icelance.cast');
     } else if (action.card === 'wisp') {
       // dmgMul >= 2 releases a pair of seekers.
       const seekers = action.dmgMul >= 2 ? 2 : 1;
@@ -493,7 +546,7 @@ export class WandSystem implements WandsApi {
         ctx.projectiles.push(p);
         this.markProjectile(ctx, p, action);
       }
-      ctx.audio.tone(700, 1200, 0.1, 'sine', 0.07);
+      ctx.audio.sfx('spell.wisp.cast');
     } else if (action.card === 'meteor') {
       // Lobbed in a heavy arc — the upward bias makes the descent count.
       const a = jitter();
@@ -501,7 +554,7 @@ export class WandSystem implements WandsApi {
       const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 2.2, type: 'meteor', life: PROJECTILE_LIFE.meteor, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
-      ctx.audio.tone(120, 40, 0.4, 'sawtooth', 0.18);
+      ctx.audio.sfx('spell.meteor.cast');
     } else if (action.card === 'conjure') {
       // Raise a disc of real stone at the cursor, clamped to casting range 130.
       const target = targetPoint();
@@ -531,7 +584,7 @@ export class WandSystem implements WandsApi {
         }
       }
       ctx.particles.burst(cxx, cyy - 4, 8, null, stoneColor, 1.2, { grav: 0.08 });
-      ctx.audio.tone(180, 60, 0.18, 'triangle', 0.2);
+      ctx.audio.sfx('spell.conjure', cxx, cyy);
     } else if (action.card === 'vitrify') {
       // The Gilded Vault's prize: transmute LIQUID into load-bearing glass
       // at the cursor (the conjure grammar, liquid-only — air stays air, so
@@ -565,8 +618,7 @@ export class WandSystem implements WandsApi {
         }
       }
       ctx.particles.burst(cxx, cyy - 3, 10, null, glassColor, 1.1, { grav: 0.06 });
-      ctx.audio.tone(1250, 300, 0.14, 'triangle', 0.14);
-      ctx.audio.tone(640, 90, 0.2, 'sine', 0.1);
+      ctx.audio.sfx('spell.vitrify', cxx, cyy);
     } else if (action.card === 'emberstorm') {
       // A fountain of real embers that smoulder where they land.
       const count = 16 + Math.max(0, Math.round(action.dmgMul) - 1) * 6;
@@ -582,7 +634,7 @@ export class WandSystem implements WandsApi {
           { grav: 0.06, glow: 1.5 },
         );
       }
-      ctx.audio.flame();
+      ctx.audio.sfx('spell.emberstorm');
     }
   }
 
@@ -639,7 +691,7 @@ export class WandSystem implements WandsApi {
       }
       for (const e of targets) {
         if (e.hp <= 0) continue;
-        ctx.enemyCtl.splashHazard(e.x, e.y - 5, Cell.Fire);
+        ctx.enemyCtl.splashHazard(e.x, e.y - 5, Cell.Fire, 'direct');
       }
       targets.length = 0;
     }
@@ -699,6 +751,7 @@ export class WandSystem implements WandsApi {
   /* ---------------- per-frame upkeep ---------------- */
 
   update(ctx: Ctx): void {
+    if (ctx.player.legClub) { this.flameBurst = 0; this.flameBurstAction = null; }
     // Mana Font boon: the old ones keep the tanks topped up 60% faster.
     const regenK = ctx.player.perks.manafont ? 1.6 : 1;
     for (const w of this.wands) {
@@ -740,7 +793,9 @@ export class WandSystem implements WandsApi {
   /* ---------------- collection + bench ---------------- */
 
   private grantRandomCardFromPool(pool: readonly CardId[]): void {
-    const card = buildCardOffer(pool, collectOwnedCards(this), { count: 1 })[0] ?? 'spark';
+    // Unowned cards first (buildCardOffer), drawn from the pool plus every
+    // card this player has discovered in earlier runs.
+    const card = buildCardOffer(rewardPoolWithDiscoveries(pool), collectOwnedCards(this), { count: 1 })[0] ?? 'spark';
     this.grantCard(this.ctx, card);
   }
 
@@ -903,6 +958,28 @@ export class WandSystem implements WandsApi {
     this.flameBurst = 0;
     this.flameBurstAction = null;
     this.lastDryFire = -99;
+    this._active = 0;
+    this.ctx.events.emit('wandChanged');
+  }
+
+  applyStarterLoadout(wands: readonly [readonly CardId[], readonly CardId[]], collection: readonly CardId[]): void {
+    const frames = [WAND_FRAMES.oak, WAND_FRAMES.bone] as const;
+    for (let i = 0; i < this.wands.length; i++) {
+      const wand = this.wands[i];
+      const frame = frames[i];
+      wand.frame = frame;
+      wand.cards.length = 0;
+      wand.cards.push(...wands[i].filter(isCardId).slice(0, frame.capacity));
+      while (wand.cards.length < frame.capacity) wand.cards.push(null);
+      wand.mana = frame.manaMax;
+      wand.cooldown = 0;
+      wand.castIndex = 0;
+      delete wand.cooldownMax;
+      this.compiled[i as 0 | 1] = null;
+    }
+    this.collection.length = 0;
+    this.collection.push(...collection.filter(isCardId));
+    this.infuserGranted = this.collection.includes('infuser') || this.wands.some((wand) => wand.cards.includes('infuser'));
     this._active = 0;
     this.ctx.events.emit('wandChanged');
   }
