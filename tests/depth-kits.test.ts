@@ -93,6 +93,32 @@ describe('depth plane art', () => {
     }
   });
 
+  it('the Kiln far plane is a hot core with falloff, not a flat wash', () => {
+    const bmp = bakePlane(depthKitFor('volcanic'), 0, null)!;
+    const l: number[] = [];
+    for (let o = 0; o < bmp.pixels.length; o += 4) l.push(bmp.pixels[o] * 0.2126 + bmp.pixels[o + 1] * 0.7152 + bmp.pixels[o + 2] * 0.0722);
+    l.sort((a, b) => a - b);
+    expect(l[l.length - 1]).toBeGreaterThan(180);
+    // The white-hot core is small; most of the plane sits in soot and ember.
+    expect(l.filter((v) => v > 150).length / l.length).toBeLessThan(0.08);
+    expect(l[l.length >> 1]).toBeLessThan(90);
+  });
+
+  it('lit silhouettes step down the ramp toward the viewer', () => {
+    for (const biome of ['volcanic', 'flooded', 'fungal'] as BiomeId[]) {
+      const kit = depthKitFor(biome);
+      const solid = kit.planes.map((p, i) => ({ p, i })).filter(({ p }) => !p.shafts && p.source.kind === 'art').slice(1);
+      const means = solid.map(({ i }) => valueStats(bakePlane(kit, i, null)!).mean);
+      for (let k = 1; k < means.length; k++) expect(means[k]).toBeLessThan(means[k - 1]);
+    }
+  });
+
+  it('the Kiln heat rises: its plume plane scrolls and breathes', () => {
+    const plume = depthKitFor('volcanic').planes.find((p) => p.shafts)!;
+    expect(plume.scroll?.y ?? 0).toBeGreaterThan(0);
+    expect(plume.pulse?.amp ?? 0).toBeGreaterThan(0);
+  });
+
   it('backgrounds stay darker than the brightest playable values', () => {
     for (const kit of [...Object.values(DEPTH_KITS), genericKit('crystal')]) {
       if (!kit) continue;

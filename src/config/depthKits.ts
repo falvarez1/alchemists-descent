@@ -47,6 +47,32 @@ export interface KitPalette {
   readonly fgRim: Rgb;
   /** Direction toward the light in texels: [-1,-1] upper-left, [0,1] from below (the kiln). */
   readonly light: readonly [number, number];
+  /** The kit's value/colour ramp, dark (0) to its brightest light (1): lit silhouettes live on it. */
+  readonly ramp?: readonly (readonly [number, Rgb])[];
+  /** Where the kit's light comes from (render/depth/lightArt). */
+  readonly lightField?: KitLight;
+}
+
+/** A soft light source in plane fractions, with an elliptical falloff. */
+export interface LightCore {
+  readonly x: number;
+  readonly y: number;
+  readonly rx: number;
+  readonly ry: number;
+  readonly k: number;
+}
+
+/**
+ * A kit's light: a vertical profile ([row fraction, light] stops, first and
+ * last equal so the plane wraps), soft cores with a power falloff (a hot core,
+ * not a flat wash), and a slow smoke modulation.
+ */
+export interface KitLight {
+  readonly rows: readonly (readonly [number, number])[];
+  readonly cores: readonly LightCore[];
+  readonly falloff: number;
+  readonly smoke: number;
+  readonly smokeCell: number;
 }
 
 export type DepthPlaneSource =
@@ -67,6 +93,8 @@ export interface DepthPlaneSpec {
   readonly haze: { readonly mix: number; readonly contrast: number; readonly saturation?: number; readonly mist?: number };
   readonly offsetX?: number;
   readonly offsetY?: number;
+  /** Texture drift in texels per tick (heat rising through a plume plane: y > 0 moves the art up). */
+  readonly scroll?: { readonly x: number; readonly y: number };
   /** Breathing opacity (light shafts): opacity × (1 - amp + amp·(0.5 + 0.5 sin)). */
   readonly pulse?: { readonly amp: number; readonly period: number };
   /** This plane is light shafts: the particles brighten inside them. */
@@ -154,18 +182,25 @@ const BELLOWS: DepthKit = {
     haze: [66, 86, 100], fog: [96, 116, 126], deep: [16, 22, 28],
     body: [30, 40, 48], rim: [92, 104, 104], accent: [96, 66, 44], glow: [196, 138, 70],
     shaft: [170, 188, 192], fg: [8, 10, 12], fgRim: [62, 66, 62], light: [-1, -1],
+    // Mist-blue slate, lit from high grates.
+    ramp: [[0, [9, 13, 17]], [0.3, [24, 34, 42]], [0.55, [50, 68, 80]], [0.8, [92, 112, 122]], [1, [150, 168, 172]]],
+    lightField: {
+      rows: [[0, 0.32], [0.4, 0.22], [0.8, 0.28], [1, 0.32]],
+      cores: [{ x: 0.3, y: 0.2, rx: 0.24, ry: 0.45, k: 0.4 }, { x: 0.74, y: 0.28, rx: 0.2, ry: 0.4, k: 0.35 }],
+      falloff: 1.5, smoke: 0.3, smokeCell: 70,
+    },
   },
   planes: [
     { label: 'Distant refinery', source: { kind: 'image', src: ASSET('refinery-distance.png') }, parallax: 0.08, scale: 0.5,
       opacity: 1, lit: 0.12, haze: { mix: 0.18, contrast: 0.85, mist: 0.22 } },
     { label: 'Stack hall', source: { kind: 'art', art: 'bellows-hall', width: 1024, height: 512 }, parallax: 0.14, scale: 1,
-      opacity: 1, lit: 0.25, haze: { mix: 0.24, contrast: 0.72, saturation: 0.8, mist: 0.12 } },
+      opacity: 1, lit: 0.25, haze: { mix: 0, contrast: 1 } },
     { label: 'Grate light', source: { kind: 'art', art: 'bellows-shafts', width: 1024, height: 512 }, parallax: 0.14, scale: 1,
       opacity: 1, lit: 0, haze: { mix: 0, contrast: 1 }, pulse: { amp: 0.35, period: 420 }, shafts: true },
     { label: 'Copper machinery', source: { kind: 'image', src: ASSET('refinery-machinery.png') }, parallax: 0.2, scale: 0.5,
       opacity: 0.52, lit: 0.7, haze: { mix: 0.06, contrast: 0.95 } },
     { label: 'Girders and chains', source: { kind: 'art', art: 'bellows-near', width: 1024, height: 640 }, parallax: 0.32, scale: 1,
-      opacity: 1, lit: 0.9, haze: { mix: 0.05, contrast: 1 } },
+      opacity: 1, lit: 0.9, haze: { mix: 0, contrast: 1 } },
   ],
   foreground: { parallax: 1.4, scale: 1.5, opacity: 0.94, art: 'bellows-fg' },
   particles: [
@@ -192,18 +227,26 @@ const ROT: DepthKit = {
     haze: [96, 118, 74], fog: [170, 184, 106], deep: [22, 36, 28],
     body: [44, 60, 46], rim: [134, 160, 98], accent: [96, 74, 56], glow: [170, 232, 130],
     shaft: [176, 196, 112], fg: [7, 10, 8], fgRim: [58, 72, 44], light: [0, -1],
+    // Sickly gut-green to spore-gold; pools of spore light float at mid height.
+    ramp: [[0, [8, 14, 10]], [0.22, [24, 40, 27]], [0.45, [56, 80, 44]], [0.66, [104, 128, 62]], [0.84, [164, 180, 96]], [1, [216, 224, 150]]],
+    lightField: {
+      rows: [[0, 0.3], [0.45, 0.42], [0.62, 0.4], [1, 0.3]],
+      cores: [{ x: 0.18, y: 0.5, rx: 0.22, ry: 0.34, k: 1 }, { x: 0.56, y: 0.42, rx: 0.16, ry: 0.28, k: 0.8 },
+        { x: 0.86, y: 0.56, rx: 0.15, ry: 0.26, k: 0.75 }],
+      falloff: 1.6, smoke: 0.4, smokeCell: 64,
+    },
   },
   planes: [
     { label: 'Spore murk', source: { kind: 'art', art: 'rot-far', width: 768, height: 512 }, parallax: 0.05, scale: 1,
-      opacity: 1, lit: 0.1, haze: { mix: 0.2, contrast: 0.7, saturation: 0.85 } },
+      opacity: 1, lit: 0.1, haze: { mix: 0, contrast: 1 } },
     { label: 'Far stalks', source: { kind: 'art', art: 'rot-stalks-far', width: 1024, height: 512 }, parallax: 0.12, scale: 1,
-      opacity: 1, lit: 0.22, haze: { mix: 0.3, contrast: 0.7, saturation: 0.8 } },
+      opacity: 1, lit: 0.22, haze: { mix: 0, contrast: 1 } },
     { label: 'Spore light', source: { kind: 'art', art: 'rot-shafts', width: 1024, height: 512 }, parallax: 0.12, scale: 1,
       opacity: 1, lit: 0, haze: { mix: 0, contrast: 1 }, pulse: { amp: 0.4, period: 520 }, shafts: true },
     { label: 'Mid garden', source: { kind: 'art', art: 'rot-mid', width: 1024, height: 576 }, parallax: 0.22, scale: 1,
-      opacity: 1, lit: 0.55, haze: { mix: 0.12, contrast: 0.88, saturation: 0.9 } },
+      opacity: 1, lit: 0.55, haze: { mix: 0, contrast: 1 } },
     { label: 'Near stalks and roots', source: { kind: 'art', art: 'rot-near', width: 1024, height: 640 }, parallax: 0.34, scale: 1,
-      opacity: 1, lit: 0.9, haze: { mix: 0.05, contrast: 1 } },
+      opacity: 1, lit: 0.9, haze: { mix: 0, contrast: 1 } },
   ],
   foreground: { parallax: 1.4, scale: 1.5, opacity: 0.94, art: 'rot-fg' },
   particles: [
@@ -229,18 +272,25 @@ const CISTERNS: DepthKit = {
     haze: [68, 116, 124], fog: [118, 172, 172], deep: [12, 28, 36],
     body: [34, 60, 70], rim: [124, 176, 180], accent: [48, 86, 82], glow: [140, 230, 215],
     shaft: [156, 214, 216], fg: [5, 11, 14], fgRim: [48, 78, 84], light: [0, -1],
+    // Blue-green murk under light wells from the surface.
+    ramp: [[0, [5, 12, 16]], [0.22, [12, 33, 41]], [0.45, [29, 70, 78]], [0.68, [64, 122, 126]], [0.86, [128, 184, 182]], [1, [194, 226, 218]]],
+    lightField: {
+      rows: [[0, 0.52], [0.25, 0.38], [0.6, 0.2], [0.85, 0.16], [1, 0.52]],
+      cores: [{ x: 0.28, y: 0, rx: 0.13, ry: 0.8, k: 0.95 }, { x: 0.7, y: 0.02, rx: 0.11, ry: 0.65, k: 0.8 }],
+      falloff: 1.4, smoke: 0.35, smokeCell: 70,
+    },
   },
   planes: [
     { label: 'Murk', source: { kind: 'art', art: 'cistern-far', width: 768, height: 512 }, parallax: 0.05, scale: 1,
-      opacity: 1, lit: 0.1, haze: { mix: 0.2, contrast: 0.7 } },
+      opacity: 1, lit: 0.1, haze: { mix: 0, contrast: 1 } },
     { label: 'Far arcades', source: { kind: 'art', art: 'cistern-arcade-far', width: 960, height: 512 }, parallax: 0.11, scale: 1,
-      opacity: 1, lit: 0.2, haze: { mix: 0.34, contrast: 0.66, saturation: 0.85 } },
+      opacity: 1, lit: 0.2, haze: { mix: 0, contrast: 1 } },
     { label: 'Surface light', source: { kind: 'art', art: 'cistern-shafts', width: 960, height: 512 }, parallax: 0.11, scale: 1,
       opacity: 1, lit: 0, haze: { mix: 0, contrast: 1 }, pulse: { amp: 0.45, period: 360 }, shafts: true },
     { label: 'Drowned statuary', source: { kind: 'art', art: 'cistern-mid', width: 1024, height: 576 }, parallax: 0.21, scale: 1,
-      opacity: 1, lit: 0.55, haze: { mix: 0.14, contrast: 0.85 } },
+      opacity: 1, lit: 0.55, haze: { mix: 0, contrast: 1 } },
     { label: 'Columns and kelp', source: { kind: 'art', art: 'cistern-near', width: 1024, height: 640 }, parallax: 0.33, scale: 1,
-      opacity: 1, lit: 0.9, haze: { mix: 0.05, contrast: 1 } },
+      opacity: 1, lit: 0.9, haze: { mix: 0, contrast: 1 } },
   ],
   foreground: { parallax: 1.4, scale: 1.5, opacity: 0.94, art: 'cistern-fg' },
   particles: [
@@ -266,25 +316,34 @@ const KILN: DepthKit = {
     haze: [150, 64, 32], fog: [236, 122, 50], deep: [20, 9, 8],
     body: [38, 22, 19], rim: [214, 106, 48], accent: [72, 38, 28], glow: [255, 164, 72],
     shaft: [244, 124, 54], fg: [9, 5, 4], fgRim: [104, 46, 22], light: [0, 1],
+    // Soot → ember red → furnace orange → a white-hot core, low on the screen.
+    ramp: [[0, [9, 4, 4]], [0.18, [34, 11, 8]], [0.38, [92, 28, 13]], [0.58, [170, 66, 24]], [0.76, [232, 124, 48]],
+      [0.9, [255, 184, 96]], [1, [255, 226, 164]]],
+    lightField: {
+      rows: [[0, 0.16], [0.3, 0.2], [0.55, 0.3], [0.68, 0.36], [0.8, 0.22], [1, 0.16]],
+      cores: [{ x: 0.2, y: 0.62, rx: 0.34, ry: 0.38, k: 1 }, { x: 0.55, y: 0.66, rx: 0.24, ry: 0.3, k: 0.75 },
+        { x: 0.85, y: 0.58, rx: 0.22, ry: 0.32, k: 0.85 }],
+      falloff: 1.7, smoke: 0.3, smokeCell: 56,
+    },
   },
   planes: [
     { label: 'Furnace glow', source: { kind: 'art', art: 'kiln-far', width: 768, height: 512 }, parallax: 0.05, scale: 1,
-      opacity: 1, lit: 0.1, haze: { mix: 0.1, contrast: 0.85 } },
+      opacity: 1, lit: 0.1, haze: { mix: 0, contrast: 1 } },
     { label: 'Chimney stacks', source: { kind: 'art', art: 'kiln-stacks', width: 1024, height: 512 }, parallax: 0.12, scale: 1,
-      opacity: 1, lit: 0.22, haze: { mix: 0.24, contrast: 0.72 } },
+      opacity: 1, lit: 0.22, haze: { mix: 0, contrast: 1 } },
     { label: 'Heat plumes', source: { kind: 'art', art: 'kiln-plumes', width: 1024, height: 512 }, parallax: 0.12, scale: 1,
-      opacity: 1, lit: 0, haze: { mix: 0, contrast: 1 }, pulse: { amp: 0.4, period: 240 }, shafts: true },
+      opacity: 1, lit: 0, haze: { mix: 0, contrast: 1 }, pulse: { amp: 0.25, period: 240 }, scroll: { x: 0, y: 0.3 }, shafts: true },
     { label: 'Kiln tunnels', source: { kind: 'art', art: 'kiln-mid', width: 1024, height: 576 }, parallax: 0.21, scale: 1,
-      opacity: 1, lit: 0.55, haze: { mix: 0.14, contrast: 0.85 } },
+      opacity: 1, lit: 0.55, haze: { mix: 0, contrast: 1 } },
     { label: 'Basalt and chains', source: { kind: 'art', art: 'kiln-near', width: 1024, height: 640 }, parallax: 0.33, scale: 1,
-      opacity: 1, lit: 0.9, haze: { mix: 0.04, contrast: 1 } },
+      opacity: 1, lit: 0.9, haze: { mix: 0, contrast: 1 } },
   ],
   foreground: { parallax: 1.4, scale: 1.5, opacity: 0.95, art: 'kiln-fg' },
   particles: [
     { label: 'far embers', parallax: 0.12, count: 64, color: [0.688, 0.25, 0.063], size: 2, drift: [0.02, -0.3], sway: 3, twinkle: 1,
       behind: true, light: 'open', inShafts: 1.8 },
-    { label: 'ash', parallax: 0.3, count: 61, color: [0.175, 0.15, 0.138], size: 2, drift: [0.03, 0.12], sway: 6, twinkle: 0.4,
-      behind: true, light: 'open' },
+    { label: 'drifting embers', parallax: 0.28, count: 44, color: [0.5, 0.19, 0.05], size: 2, drift: [0.02, -0.18], sway: 6, twinkle: 0.8,
+      behind: true, light: 'open', inShafts: 1.6 },
     { label: 'near sparks', parallax: 1.3, count: 29, color: [1, 0.4, 0.1], size: 3, drift: [0.03, -0.4], sway: 5, twinkle: 1,
       behind: false, light: 'open' },
   ],
@@ -324,13 +383,13 @@ export function genericKit(biome: BiomeId): DepthKit {
     palette,
     planes: [
       { label: 'Far murk', source: { kind: 'art', art: 'generic-far', width: 768, height: 512 }, parallax: 0.05, scale: 1,
-        opacity: 1, lit: 0.1, haze: { mix: 0.3, contrast: 0.6, mist: 0.12 } },
+        opacity: 1, lit: 0.1, haze: { mix: 0, contrast: 1 } },
       { label: 'Far arcades', source: { kind: 'art', art: 'generic-arcade', width: 960, height: 512 }, parallax: 0.12, scale: 1,
-        opacity: 0.92, lit: 0.22, haze: { mix: 0.38, contrast: 0.62 } },
+        opacity: 0.92, lit: 0.22, haze: { mix: 0, contrast: 1 } },
       { label: 'Light', source: { kind: 'art', art: 'generic-shafts', width: 960, height: 512 }, parallax: 0.12, scale: 1,
         opacity: 1, lit: 0, haze: { mix: 0, contrast: 1 }, pulse: { amp: 0.35, period: 420 }, shafts: true },
       { label: 'Near columns', source: { kind: 'art', art: 'generic-near', width: 1024, height: 640 }, parallax: 0.3, scale: 1,
-        opacity: 1, lit: 0.85, haze: { mix: 0.06, contrast: 1 } },
+        opacity: 1, lit: 0.85, haze: { mix: 0, contrast: 1 } },
     ],
     foreground: { parallax: 1.4, scale: 1.5, opacity: 0.9, art: 'generic-fg' },
     particles: [

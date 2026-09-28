@@ -1065,6 +1065,15 @@ and flutters: 42% fall / 10% drift per step, floats on water as a pad) and
     → chimney stacks and basalt (0.12) → rising heat plumes (0.12, 240-tick
     breath) → brick tunnel mouths with glowing hearths and crucibles (0.21)
     → basalt columns, chains, a gear (0.33).
+  Painted planes are *lit silhouettes* (render/depth/lightArt): each kit has
+  a restrained value ramp and a light (a vertical profile plus soft cores
+  with a power falloff) — the Kiln's furnace cores glow low on the screen
+  and fall off to soot, the Cisterns' light wells fall from above, the Rot
+  Gardens' spore pools float at mid height. The far plane is that light;
+  nearer planes are nearly flat silhouettes that step down the ramp toward
+  the viewer, veiled by the light behind them and rimmed where it wraps
+  their edges. The Kiln's heat columns scroll upward (0.3 texels/tick) and
+  breathe (amp 0.25 / 240 ticks); embers drift at two depths.
   Atmospheric perspective is baked per plane (haze mix 0.04–0.34 and kept
   contrast 0.66–1 toward the kit's haze colour), so far reads lighter, cooler
   and flatter. Each plane has a light response: the lantern, the wand and

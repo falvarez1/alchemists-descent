@@ -1,45 +1,42 @@
-import type { KitPalette, Rgb } from '@/config/depthKits';
+import type { KitLight, KitPalette, Rgb } from '@/config/depthKits';
 import {
   arcade, arch, basalt, bellows, chain, chimney, gear, girder, hPipe, kelp, mushroom, pipeColumn, pressureStack, root,
   shaft, stalactites, statue, type Rand,
 } from '@/render/depth/motifs';
-import { type Bitmap, MaskPlane, type Material, fogFill, mixRgb, over, rng, shade } from '@/render/depth/raster';
+import {
+  M_ACCENT, M_BODY, M_GLOW, M_SOFT, type SilhouetteOptions, lightField, paintLight, paintSilhouettes, paletteRamp, rampColor,
+} from '@/render/depth/lightArt';
+import { type Bitmap, MaskPlane, rng, smoothstep, tileFbm } from '@/render/depth/raster';
 
 /**
  * The procedural depth-plane art, by id (config/depthKits names them).
- * Every builder paints a TILEABLE plane in the game's pixel grain from the
- * kit's palette; the kit's haze settings then push it back into the air.
- * Builders are deterministic in (palette, size, seed): every run sees the
- * same scenery, and the tests can hold the look.
  *
- * Far planes barely scroll vertically (parallax ≤ 0.14 moves them at most
- * ~100 cells over a whole level), so their rows map almost directly to the
- * screen: the far fills put their light where the screen needs it (the
- * Kiln's furnace glow low, the Cisterns' surface light high) and blend back
- * to the top colour past the visible rows, so the vertical wrap is seamless.
+ * Every kit is painted as LIT SILHOUETTES (render/depth/lightArt): the far
+ * plane is the kit's light itself — a furnace core, light wells from above,
+ * spore pools — through the kit's restrained ramp; every nearer plane is
+ * nearly flat silhouettes that step DOWN the ramp toward the viewer, veiled
+ * by the light behind them and rimmed where it wraps their edges. Value does
+ * the depth; texture only whispers.
+ *
+ * Builders are deterministic in (palette, size, seed) and tile: planes wrap
+ * under the compositors' repeat sampling. Far planes barely scroll vertically
+ * (parallax ≤ 0.14 moves them ≤ ~100 cells over a whole level), so their rows
+ * map almost directly to the screen: a kit's light sits where the screen
+ * needs it (the Kiln's furnace low, the Cisterns' wells high).
  */
 
 export type PlaneArtBuilder = (palette: KitPalette, width: number, height: number, seed: number) => Bitmap;
 
-const M_BODY = 1, M_ACCENT = 2, M_GLOW = 3, M_SOFT = 4;
-
-const k3 = (c: Rgb, k: number): Rgb => [c[0] * k, c[1] * k, c[2] * k];
-
-function palMaterials(pal: KitPalette, bodyK = 1, soft: Rgb = pal.shaft, glowK = 1): (Material | null)[] {
-  const body = k3(pal.body, bodyK);
-  const accent = k3(pal.accent, bodyK);
-  return [
-    null,
-    { base: body, rim: mixRgb(body, pal.rim, 0.5 + 0.3 * (1 - Math.min(1, bodyK))), shade: k3(body, 0.66) },
-    { base: accent, rim: mixRgb(accent, pal.rim, 0.5), shade: k3(accent, 0.64) },
-    { base: k3(pal.glow, glowK), rim: pal.glow, shade: pal.glow, glow: true },
-    { base: soft, rim: soft, shade: soft, glow: true },
-  ];
-}
-
-const lightFromAbove = (t: number): number => 1.1 - 0.28 * t;
-const lightFromBelow = (t: number): number => 0.75 + 0.4 * t * t;
 const between = (r: Rand, a: number, b: number): number => a + (b - a) * r();
+
+/** A kit's light when its palette names none: a soft band with two gentle pools. */
+const DEFAULT_LIGHT: KitLight = {
+  rows: [[0, 0.06], [0.45, 0.2], [0.7, 0.16], [1, 0.06]],
+  cores: [{ x: 0.3, y: 0.5, rx: 0.22, ry: 0.3, k: 0.55 }, { x: 0.75, y: 0.45, rx: 0.16, ry: 0.26, k: 0.45 }],
+  falloff: 1.6,
+  smoke: 0.35,
+  smokeCell: 70,
+};
 
 /** Evenly spread x positions with jitter: `n` slots across a tiling width. */
 function slots(r: Rand, width: number, n: number, jitter = 0.35): number[] {
@@ -47,14 +44,25 @@ function slots(r: Rand, width: number, n: number, jitter = 0.35): number[] {
   return Array.from({ length: n }, (_, i) => Math.round(i * step + (r() - 0.5) * step * jitter));
 }
 
-function shadeWith(p: MaskPlane, pal: KitPalette, mats: (Material | null)[], seed: number, grain = 5): Bitmap {
-  return shade(p, {
-    materials: mats,
-    light: pal.light,
-    gradient: pal.light[1] > 0 ? lightFromBelow : lightFromAbove,
-    grain,
-    seed,
-  });
+interface Painter {
+  readonly ramp: readonly (readonly [number, Rgb])[];
+  readonly field: Float32Array;
+  paint(p: MaskPlane, o: Partial<SilhouetteOptions> & Pick<SilhouetteOptions, 'value' | 'veil' | 'rim'>): Bitmap;
+  /** The light itself (an opaque far plane), scaled. */
+  light(scale?: number): Bitmap;
+}
+
+function painter(pal: KitPalette, w: number, h: number, seed: number): Painter {
+  const ramp = paletteRamp(pal);
+  const field = lightField(w, h, pal.lightField ?? DEFAULT_LIGHT, seed);
+  return {
+    ramp,
+    field,
+    paint: (p, o) => paintSilhouettes(p, {
+      ramp, field, rimDir: [pal.light[0], pal.light[1]], glow: pal.glow, soft: pal.shaft, ...o,
+    }),
+    light: (scale = 1) => paintLight(w, h, field, ramp, scale),
+  };
 }
 
 /** A lattice tower: two chords with X bracing, full height (tiles vertically). */
@@ -68,6 +76,24 @@ function latticeTower(p: MaskPlane, x: number, w: number, m: number): void {
   }
 }
 
+/** Soft rising-heat (or falling-light) columns: streaky blobs inside a wavering band; tiles in y. */
+function softColumns(p: MaskPlane, r: Rand, n: number, halfW: readonly [number, number], amp: readonly [number, number], seed: number): void {
+  const { width: w, height: h } = p;
+  for (let k = 0; k < n; k++) {
+    const cx = r() * w, half = between(r, halfW[0], halfW[1]), phase = r() * Math.PI * 2, a = between(r, amp[0], amp[1]);
+    for (let y = 0; y < h; y++) {
+      const wob = Math.sin((y / h) * Math.PI * 4 + phase) * 6 + Math.sin((y / h) * Math.PI * 10 + phase * 2) * 2.5;
+      for (let dx = -Math.ceil(half); dx <= half; dx++) {
+        const u = Math.abs(dx) / half;
+        if (u >= 1) continue;
+        const blob = smoothstep(0.4, 0.8, tileFbm(cx + dx, y, 20, w, h, seed + k * 17));
+        const c = a * (1 - u * u) * (0.3 + 0.7 * blob);
+        if (c > 0.012) p.soft(Math.round(cx + wob + dx), y, M_SOFT, c);
+      }
+    }
+  }
+}
+
 /* =========================== THE BELLOWS =========================== */
 
 function bellowsHall(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -78,7 +104,6 @@ function bellowsHall(pal: KitPalette, w: number, h: number, seed: number): Bitma
     if (i % 3 === 2) latticeTower(p, xs[i], Math.round(between(r, 16, 24)), M_BODY);
     else pressureStack(p, xs[i], Math.round(between(r, 28, 46)), M_BODY, M_GLOW, r);
   }
-  // Catwalks between neighbouring stacks (short spans: never a line across the whole view).
   for (let i = 0; i < xs.length; i++) {
     const a = xs[i] + 40, b = (i + 1 < xs.length ? xs[i + 1] : xs[0] + w) - 4;
     if (r() < 0.6) {
@@ -88,7 +113,9 @@ function bellowsHall(pal: KitPalette, w: number, h: number, seed: number): Bitma
     }
     for (let k = 0; k < 2; k++) hPipe(p, a - 20, b, Math.round(between(r, 0.08, 0.92) * h), Math.round(between(r, 4, 7)), M_ACCENT);
   }
-  return shadeWith(p, pal, palMaterials(pal, 1, pal.shaft, 0.5), seed);
+  // Hazy, not black: the engine hall's rods and frames must still read against it.
+  return painter(pal, w, h, seed).paint(p, { value: 0.3, veil: 0.3, rim: 0.28, accent: { color: pal.accent, mix: 0.45 },
+    glow: [pal.glow[0] * 0.55, pal.glow[1] * 0.55, pal.glow[2] * 0.55] });
 }
 
 function bellowsShafts(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -99,7 +126,7 @@ function bellowsShafts(pal: KitPalette, w: number, h: number, seed: number): Bit
     shaft(p, M_SOFT, Math.round(r() * w), Math.round(between(r, 0.02, 0.4) * h), Math.round(between(r, 200, 320)), Math.round(between(r, 12, 30)),
       between(r, 0.1, 0.24), between(r, 0.28, 0.42), Math.round(r() * 100));
   }
-  return shadeWith(p, pal, palMaterials(pal), seed, 0);
+  return painter(pal, w, h, seed).paint(p, { value: 0, veil: 0, rim: 0 });
 }
 
 function bellowsNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -112,26 +139,23 @@ function bellowsNear(pal: KitPalette, w: number, h: number, seed: number): Bitma
   for (let k = 0; k < 3; k++) chain(p, Math.round(w * (0.18 + k * 0.1) + between(r, -8, 8)), gy + 12, Math.round(between(r, 60, 200)), M_BODY, 2);
   gear(p, Math.round(w * 0.12), Math.round(h * 0.64), 56, 18, 6, M_BODY);
   gear(p, Math.round(w * 0.7), Math.round(h * 0.42), 34, 12, 5, M_ACCENT);
-  // The great bellows of the Breathing Chamber, slung on chains.
   bellows(p, Math.round(w * 0.85), Math.round(h * 0.72), 96, 104, M_ACCENT);
   chain(p, Math.round(w * 0.85) - 30, 0, Math.round(h * 0.72) - 58, M_BODY, 2);
   chain(p, Math.round(w * 0.85) + 30, 0, Math.round(h * 0.72) - 58, M_BODY, 2);
   hPipe(p, Math.round(w * 0.3), Math.round(w * 0.7), Math.round(h * 0.9), 10, M_ACCENT);
-  return shadeWith(p, pal, palMaterials(pal, 0.72), seed);
+  return painter(pal, w, h, seed).paint(p, { value: 0.07, veil: 0.12, rim: 0.5, accent: { color: pal.accent, mix: 0.6 }, tone: 0.2 });
 }
 
 /* ========================== THE ROT GARDENS ========================= */
 
 function rotFar(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   const r = rng(seed);
-  // A spore-lit band across the middle of the screen, dark above and below.
-  const fill = fogFill(w, h, [[0, pal.deep], [0.3, mixRgb(pal.deep, pal.haze, 0.7)], [0.5, mixRgb(pal.haze, pal.fog, 0.35)],
-    [0.72, pal.haze], [0.86, pal.deep], [1, pal.deep]], { color: pal.fog, amount: 0.5, cell: 90, seed });
+  const P = painter(pal, w, h, seed);
   const p = new MaskPlane(w, h);
   for (const x of slots(r, w, 5, 0.6)) {
-    mushroom(p, r, x, Math.round(h * between(r, 0.74, 0.86)), Math.round(between(r, 200, 320)), Math.round(between(r, 120, 210)), M_BODY, M_BODY, M_GLOW);
+    mushroom(p, r, x, Math.round(h * between(r, 0.7, 0.84)), Math.round(between(r, 200, 320)), Math.round(between(r, 120, 210)), M_BODY, M_BODY, M_GLOW);
   }
-  return over(fill, shadeWith(p, pal, palMaterials(pal, 1.25, pal.shaft, 0.45), seed));
+  return P.paint(p, { base: P.light(), value: 0.16, veil: 0.45, rim: 0.25 });
 }
 
 function rotStalksFar(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -141,7 +165,7 @@ function rotStalksFar(pal: KitPalette, w: number, h: number, seed: number): Bitm
     mushroom(p, r, x, Math.round(r() * h), Math.round(between(r, 200, 420)), Math.round(between(r, 90, 180)), M_BODY, M_ACCENT, M_GLOW);
   }
   for (let k = 0; k < 8; k++) root(p, r, Math.round(r() * w), Math.round(r() * h), Math.round(between(r, 60, 200)), between(r, 2, 4), M_BODY);
-  return shadeWith(p, pal, palMaterials(pal, 0.95, pal.shaft, 0.55), seed);
+  return painter(pal, w, h, seed).paint(p, { value: 0.1, veil: 0.32, rim: 0.45, accent: { color: pal.accent, mix: 0.4 } });
 }
 
 function rotShafts(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -149,9 +173,9 @@ function rotShafts(pal: KitPalette, w: number, h: number, seed: number): Bitmap 
   const p = new MaskPlane(w, h);
   for (let k = 0; k < 6; k++) {
     shaft(p, M_SOFT, Math.round(r() * w), Math.round(r() * h), Math.round(between(r, 260, 420)), Math.round(between(r, 26, 56)), between(r, -0.08, 0.08),
-      between(r, 0.26, 0.4), Math.round(r() * 100));
+      between(r, 0.2, 0.32), Math.round(r() * 100));
   }
-  return shadeWith(p, pal, palMaterials(pal), seed, 0);
+  return painter(pal, w, h, seed).paint(p, { value: 0, veil: 0, rim: 0 });
 }
 
 function rotMid(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -167,13 +191,12 @@ function rotMid(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
     }
   }
   for (let k = 0; k < 9; k++) root(p, r, Math.round(r() * w), Math.round(r() * h), Math.round(between(r, 50, 170)), between(r, 2, 4), M_BODY);
-  return shadeWith(p, pal, palMaterials(pal, 0.7, pal.shaft, 0.75), seed);
+  return painter(pal, w, h, seed).paint(p, { value: 0.05, veil: 0.15, rim: 0.55, accent: { color: pal.accent, mix: 0.5 } });
 }
 
 function rotNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   const r = rng(seed);
   const p = new MaskPlane(w, h);
-  // Thick stalks that climb the whole height (they tile), ringed with shelf fungi.
   for (const x of [Math.round(w * 0.1), Math.round(w * 0.5), Math.round(w * 0.82)]) {
     const sw = Math.round(between(r, 16, 26));
     for (let y = 0; y < h; y++) {
@@ -195,18 +218,16 @@ function rotNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
     const x0 = Math.round(r() * w), y0 = Math.round(r() * h);
     for (let j = 0; j < 6; j++) root(p, r, x0 + j * Math.round(between(r, 4, 9)), y0, Math.round(between(r, 60, 220)), between(r, 2, 5), M_BODY);
   }
-  return shadeWith(p, pal, palMaterials(pal, 0.5), seed);
+  return painter(pal, w, h, seed).paint(p, { value: 0.015, veil: 0.05, rim: 0.55, accent: { color: pal.accent, mix: 0.5 }, tone: 0.2 });
 }
 
 /* ======================= THE DROWNED CISTERNS ======================= */
 
 function cisternFar(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
-  // Light falls from somewhere above: bright high, murk low, back to light past the visible rows.
-  const fill = fogFill(w, h, [[0, mixRgb(pal.haze, pal.fog, 0.6)], [0.35, pal.haze], [0.78, pal.deep], [0.9, pal.deep],
-    [1, mixRgb(pal.haze, pal.fog, 0.6)]], { color: pal.fog, amount: 0.45, cell: 110, seed });
+  const P = painter(pal, w, h, seed);
   const p = new MaskPlane(w, h);
   arcade(p, Math.round(h * 0.46), 128, 92, 8, 220, M_BODY, 20);
-  return over(fill, shadeWith(p, pal, palMaterials(pal, 1.3), seed));
+  return P.paint(p, { base: P.light(), value: 0.18, veil: 0.45, rim: 0.2 });
 }
 
 function cisternArcadeFar(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -215,7 +236,7 @@ function cisternArcadeFar(pal: KitPalette, w: number, h: number, seed: number): 
   arcade(p, Math.round(h * 0.32), 160, 112, 12, 170, M_BODY);
   arcade(p, Math.round(h * 0.84), 192, 140, 14, 120, M_BODY, 40);
   for (let k = 0; k < 6; k++) chain(p, Math.round(r() * w), Math.round(r() * h), Math.round(between(r, 30, 90)), M_BODY);
-  return shadeWith(p, pal, palMaterials(pal, 1.05), seed);
+  return painter(pal, w, h, seed).paint(p, { value: 0.11, veil: 0.3, rim: 0.45, tone: 0.1 });
 }
 
 function cisternShafts(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -225,7 +246,7 @@ function cisternShafts(pal: KitPalette, w: number, h: number, seed: number): Bit
     shaft(p, M_SOFT, Math.round(r() * w), Math.round(between(r, 0, 0.3) * h), Math.round(between(r, 240, 380)), Math.round(between(r, 14, 40)),
       between(r, 0.08, 0.2), between(r, 0.3, 0.44), Math.round(r() * 100));
   }
-  return shadeWith(p, pal, palMaterials(pal), seed, 0);
+  return painter(pal, w, h, seed).paint(p, { value: 0, veil: 0, rim: 0 });
 }
 
 function cisternMid(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -235,12 +256,11 @@ function cisternMid(pal: KitPalette, w: number, h: number, seed: number): Bitmap
   const pier = 250;
   arcade(p, spring, 256, 176, 18, pier, M_BODY, 30);
   const floor = spring + pier;
-  // Drowned statues keep vigil between the piers; kelp grows at their feet.
   for (let x = 30 + 128; x < w + 30; x += 256) {
     statue(p, r, x + Math.round(between(r, -30, 30)), floor, Math.round(between(r, 84, 120)), M_ACCENT, r() < 0.45);
     for (let k = 0; k < 4; k++) kelp(p, r, x + Math.round(between(r, -70, 70)), floor, Math.round(between(r, 40, 120)), M_BODY);
   }
-  return shadeWith(p, pal, palMaterials(pal, 0.72), seed);
+  return painter(pal, w, h, seed).paint(p, { value: 0.055, veil: 0.16, rim: 0.6, accent: { color: pal.accent, mix: 0.55 }, tone: 0.12 });
 }
 
 function cisternNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -263,58 +283,68 @@ function cisternNear(pal: KitPalette, w: number, h: number, seed: number): Bitma
   }
   for (let k = 0; k < 3; k++) chain(p, Math.round(r() * w), Math.round(r() * h), Math.round(between(r, 60, 200)), M_BODY, 2);
   hPipe(p, Math.round(w * 0.2), Math.round(w * 0.5), Math.round(h * 0.7), 12, M_BODY);
-  return shadeWith(p, pal, palMaterials(pal, 0.5), seed);
+  return painter(pal, w, h, seed).paint(p, { value: 0.015, veil: 0.05, rim: 0.55, accent: { color: pal.accent, mix: 0.45 }, tone: 0.2 });
 }
 
 /* ========================== THE KILN HEART ========================== */
 
 function kilnFar(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   const r = rng(seed);
-  // Furnace glow LOW on the screen (rows ~0.55–0.8), soot above, dark past the visible rows.
-  const fill = fogFill(w, h, [[0, pal.deep], [0.2, mixRgb(pal.deep, pal.haze, 0.3)], [0.45, pal.haze], [0.62, pal.fog],
-    [0.74, pal.fog], [0.86, mixRgb(pal.deep, pal.haze, 0.6)], [1, pal.deep]], { color: mixRgb(pal.haze, pal.deep, 0.6), amount: 0.5, cell: 100, seed });
+  const P = painter(pal, w, h, seed);
   const p = new MaskPlane(w, h);
+  // Far chimneys stand in the furnace light; their throats glow.
   for (const x of slots(r, w, 6, 0.6)) {
-    chimney(p, r, x, Math.round(h * between(r, 0.7, 0.8)), Math.round(between(r, 24, 42)), Math.round(between(r, 150, 260)), M_BODY, M_GLOW);
+    // Rooted below the visible rows: they rise out of the furnace floor.
+    chimney(p, r, x, h - 1, Math.round(between(r, 22, 38)), Math.round(h * between(r, 0.62, 0.8)), M_BODY, M_GLOW);
   }
-  return over(fill, shadeWith(p, pal, palMaterials(pal, 0.6, pal.shaft, 0.8), seed));
+  for (let k = 0; k < 5; k++) {
+    const x0 = Math.round(r() * w), top = Math.round(h * between(r, 0.5, 0.62));
+    for (let j = 0; j < 3; j++) basalt(p, r, x0 + j * 11, 10, top + Math.round(between(r, 0, 30)), Math.round(h * 0.74), M_BODY);
+  }
+  return P.paint(p, { base: P.light(), value: 0.08, veil: 0.5, rim: 0.3, glow: rampColor(P.ramp, 0.9) });
 }
 
 function kilnStacks(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   const r = rng(seed);
+  const P = painter(pal, w, h, seed);
   const p = new MaskPlane(w, h);
-  for (const x of slots(r, w, 5, 0.6)) {
-    chimney(p, r, x, Math.round(between(r, 0.75, 1.0) * h), Math.round(between(r, 34, 58)), Math.round(between(r, 180, 330)), M_BODY, M_GLOW);
+  // Few and slender: the furnace light behind must show between them.
+  for (const x of slots(r, w, 4, 0.6)) {
+    chimney(p, r, x, Math.round(between(r, 0.7, 0.95) * h), Math.round(between(r, 26, 42)), Math.round(between(r, 180, 330)), M_BODY, M_GLOW);
   }
-  for (let k = 0; k < 4; k++) {
+  for (let k = 0; k < 3; k++) {
     const x0 = Math.round(r() * w), top = Math.round(r() * h * 0.6);
-    for (let j = 0; j < 4; j++) basalt(p, r, x0 + j * 14, 12, top + Math.round(between(r, 0, 60)), top + Math.round(between(r, 220, 320)), M_ACCENT);
+    for (let j = 0; j < 3; j++) basalt(p, r, x0 + j * 14, 12, top + Math.round(between(r, 0, 60)), top + Math.round(between(r, 220, 320)), M_ACCENT);
   }
   hPipe(p, 0, Math.round(w * 0.45), Math.round(h * 0.18), 7, M_BODY);
-  return shadeWith(p, pal, palMaterials(pal, 0.8, pal.shaft, 0.85), seed);
+  return P.paint(p, { value: 0.06, veil: 0.28, rim: 0.6, accent: { color: pal.accent, mix: 0.3 }, glow: rampColor(P.ramp, 0.86) });
 }
 
-function kilnPlumes(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
+function kilnHeat(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
+  // Heat rising: wavering, streaky columns that the kit scrolls upward.
   const r = rng(seed);
+  const P = painter(pal, w, h, seed);
   const p = new MaskPlane(w, h);
-  for (let k = 0; k < 6; k++) {
-    shaft(p, M_SOFT, Math.round(r() * w), Math.round(between(r, 0.7, 0.95) * h), Math.round(between(r, 200, 340)), Math.round(between(r, 18, 44)),
-      between(r, -0.06, 0.06), between(r, 0.28, 0.42), Math.round(r() * 100), -1);
-  }
-  return shadeWith(p, pal, palMaterials(pal), seed, 0);
+  softColumns(p, r, 5, [14, 34], [0.12, 0.2], seed);
+  return P.paint(p, { value: 0, veil: 0, rim: 0, soft: rampColor(P.ramp, 0.82) });
 }
 
 function kilnMid(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   const r = rng(seed);
+  const P = painter(pal, w, h, seed);
   const p = new MaskPlane(w, h);
-  // Brick tunnel mouths with a hearth glowing at their feet.
+  // Brick tunnel mouths, firelit from their hearths: the opening glows up from the bed.
   for (let x = 90; x < w + 90; x += 300) {
-    const spring = Math.round(between(r, 0.3, 0.6) * h);
-    arch(p, x, spring, 110, 16, 150, M_ACCENT);
-    for (let yy = 143; yy < 150; yy++) for (let xx = -54; xx <= 54; xx++) {
-      if (p.get(x + xx, spring + yy) === 0) p.set(x + xx, spring + yy, M_GLOW);
+    const spring = Math.round(between(r, 0.3, 0.55) * h);
+    const span = 110, pierH = 150, r0 = span / 2;
+    arch(p, x, spring, span, 16, pierH, M_ACCENT);
+    for (let yy = -r0; yy < pierH; yy++) for (let xx = -r0 + 1; xx < r0; xx++) {
+      if (yy < 0 && xx * xx + yy * yy >= r0 * r0) continue;
+      const t = (yy + r0) / (pierH + r0);
+      const side = 1 - Math.pow(Math.abs(xx) / r0, 2) * 0.6;
+      p.soft(x + xx, spring + yy, M_SOFT, (0.03 + 0.4 * t * t * t) * side);
     }
-    for (let k = 0; k < 14; k++) p.set(x + Math.round(between(r, -48, 48)), spring + Math.round(between(r, 120, 142)), M_GLOW);
+    for (let xx = -r0 + 2; xx < r0 - 2; xx++) for (let yy = pierH - 3; yy < pierH; yy++) p.set(x + xx, spring + yy, M_GLOW);
   }
   hPipe(p, 0, Math.round(w * 0.6), Math.round(h * 0.12), 9, M_BODY);
   for (let k = 0; k < 4; k++) {
@@ -323,30 +353,30 @@ function kilnMid(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
     p.poly([[cx - 12, top + len], [cx + 12, top + len], [cx + 8, top + len + 16], [cx - 8, top + len + 16]], M_BODY, 10);
     p.hBar(cx - 10, top + len, 21, 2, M_GLOW);
   }
-  return shadeWith(p, pal, palMaterials(pal, 0.7, pal.shaft, 0.7), seed);
+  return P.paint(p, { value: 0.035, veil: 0.14, rim: 0.7, accent: { color: pal.accent, mix: 0.35 }, glow: rampColor(P.ramp, 0.92),
+    soft: rampColor(P.ramp, 0.86) });
 }
 
 function kilnNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   const r = rng(seed);
   const p = new MaskPlane(w, h);
   for (const x of [Math.round(w * 0.04), Math.round(w * 0.5)]) {
-    for (let j = 0; j < 3; j++) basalt(p, r, x + j * 18, 17, Math.round(r() * h * 0.3), Math.round(r() * h * 0.3) + h, M_BODY);
+    for (let j = 0; j < 2; j++) basalt(p, r, x + j * 16, 15, Math.round(r() * h * 0.3), Math.round(r() * h * 0.3) + h, M_BODY);
   }
-  for (let k = 0; k < 4; k++) chain(p, Math.round(r() * w), Math.round(r() * h), Math.round(between(r, 70, 220)), M_BODY, 2);
+  for (let k = 0; k < 3; k++) chain(p, Math.round(r() * w), Math.round(r() * h), Math.round(between(r, 70, 220)), M_BODY, 2);
   hPipe(p, Math.round(w * 0.62), Math.round(w * 0.98), Math.round(h * 0.55), 14, M_ACCENT);
   gear(p, Math.round(w * 0.8), Math.round(h * 0.25), 44, 14, 5, M_BODY);
-  return shadeWith(p, pal, palMaterials(pal, 0.5), seed);
+  return painter(pal, w, h, seed).paint(p, { value: 0.012, veil: 0.05, rim: 0.75, accent: { color: pal.accent, mix: 0.3 }, tone: 0.15 });
 }
 
 /* ============================= GENERIC ============================== */
 
 function genericFar(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   const r = rng(seed);
-  const fill = fogFill(w, h, [[0, pal.deep], [0.35, mixRgb(pal.deep, pal.haze, 0.7)], [0.6, pal.haze], [0.85, pal.deep], [1, pal.deep]],
-    { color: pal.fog, amount: 0.45, cell: 100, seed });
+  const P = painter(pal, w, h, seed);
   const p = new MaskPlane(w, h);
   arcade(p, Math.round(h * 0.52), 144, 100, 10, 200, M_BODY, Math.round(r() * 40));
-  return over(fill, shadeWith(p, pal, palMaterials(pal, 1.25), seed));
+  return P.paint(p, { base: P.light(), value: 0.16, veil: 0.45, rim: 0.2 });
 }
 
 function genericArcade(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -355,7 +385,7 @@ function genericArcade(pal: KitPalette, w: number, h: number, seed: number): Bit
   arcade(p, Math.round(h * 0.36), 160, 116, 12, 180, M_BODY);
   stalactites(p, r, 0, w, Math.round(h * 0.02), 60, M_BODY);
   for (let k = 0; k < 6; k++) chain(p, Math.round(r() * w), Math.round(r() * h), Math.round(between(r, 30, 90)), M_BODY);
-  return shadeWith(p, pal, palMaterials(pal, 1), seed);
+  return painter(pal, w, h, seed).paint(p, { value: 0.1, veil: 0.3, rim: 0.45, tone: 0.1 });
 }
 
 function genericShafts(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -365,7 +395,7 @@ function genericShafts(pal: KitPalette, w: number, h: number, seed: number): Bit
     shaft(p, M_SOFT, Math.round(r() * w), Math.round(between(r, 0, 0.35) * h), Math.round(between(r, 200, 340)), Math.round(between(r, 14, 34)),
       between(r, 0.08, 0.22), between(r, 0.26, 0.4), Math.round(r() * 100));
   }
-  return shadeWith(p, pal, palMaterials(pal), seed, 0);
+  return painter(pal, w, h, seed).paint(p, { value: 0, veil: 0, rim: 0 });
 }
 
 function genericNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
@@ -376,7 +406,7 @@ function genericNear(pal: KitPalette, w: number, h: number, seed: number): Bitma
   stalactites(p, r, Math.round(w * 0.25), Math.round(w * 0.5), Math.round(h * 0.4), 80, M_BODY);
   for (let k = 0; k < 4; k++) chain(p, Math.round(r() * w), Math.round(r() * h), Math.round(between(r, 60, 200)), M_BODY, 2);
   girder(p, Math.round(w * 0.7), Math.round(w * 0.98), Math.round(h * 0.75), 9, M_BODY);
-  return shadeWith(p, pal, palMaterials(pal, 0.66), seed);
+  return painter(pal, w, h, seed).paint(p, { value: 0.015, veil: 0.05, rim: 0.55, accent: { color: pal.accent, mix: 0.4 }, tone: 0.2 });
 }
 
 export const PLANE_ART: Readonly<Record<string, PlaneArtBuilder>> = {
@@ -395,7 +425,7 @@ export const PLANE_ART: Readonly<Record<string, PlaneArtBuilder>> = {
   'cistern-near': cisternNear,
   'kiln-far': kilnFar,
   'kiln-stacks': kilnStacks,
-  'kiln-plumes': kilnPlumes,
+  'kiln-plumes': kilnHeat,
   'kiln-mid': kilnMid,
   'kiln-near': kilnNear,
   'generic-far': genericFar,
