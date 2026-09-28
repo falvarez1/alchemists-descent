@@ -3,6 +3,7 @@ import { createLivingState } from '@/game/LivingExpedition';
 import { WORKS_ROOMS } from '@/world/breathingWorks';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { WORKS_PLANTS } from '@/world/worksHabitat';
+import { GLOWSEED_POUCH, GLOWSEED_POUCH_MAX, glowseedCap } from '@/game/glowseeds';
 import { restoreTeaMachine } from '@/game/TeaMachine';
 import { GLOW, LEECH } from '@/game/organisms/types';
 
@@ -67,7 +68,8 @@ export function restoreLiving(value: unknown): LivingExpeditionState {
   state.ticks = Math.floor(finite(raw.ticks, 0, 0, Number.MAX_SAFE_INTEGER));
   state.room = rooms.has(raw.room ?? '') ? raw.room! : 'intake';
   state.visited = Array.isArray(raw.visited) ? [...new Set(raw.visited.filter(room => rooms.has(room)))] : [];
-  state.glowseeds = Math.floor(finite(raw.glowseeds, 3, 0, 3));
+  state.glowseedCap = glowseedCap({ glowseedCap: finite(raw.glowseedCap, GLOWSEED_POUCH, GLOWSEED_POUCH, GLOWSEED_POUCH_MAX) });
+  state.glowseeds = Math.floor(finite(raw.glowseeds, 3, 0, state.glowseedCap));
   state.rested = raw.rested === true;
   // A resumed game earns a new calm rest; a partial dwell is not a checkpoint.
   state.restTicks = 0;

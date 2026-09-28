@@ -143,13 +143,13 @@ export class DialogueBox {
       this.ctx.story?.dialogueClose();
       return;
     }
-    const n = /^Digit([1-3])$/.exec(e.code);
-    if (n && v.choices.length) {
+    // Number keys belong to the box while it is open: a choice's number picks it, and
+    // any other number is swallowed (QA: "Flask 3: empty" x5 behind a two-choice box).
+    const n = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
+    if (n) {
+      e.preventDefault(); e.stopImmediatePropagation();
       const i = Number(n[1]) - 1;
-      if (i < v.choices.length) {
-        e.preventDefault(); e.stopImmediatePropagation();
-        this.ctx.story?.dialogueChoose(i);
-      }
+      if (i >= 0 && i < v.choices.length) this.ctx.story?.dialogueChoose(i);
     }
   };
 

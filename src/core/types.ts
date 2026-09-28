@@ -3223,6 +3223,8 @@ export interface LivingExpeditionState {
   visited: string[];
   room: string;
   glowseeds: number;
+  /** The pouch's size this run (game/glowseeds; 3 unless Pell's gift found it full). */
+  glowseedCap?: number;
   nextLureId: number;
   lures: Array<{ id: number; x: number; y: number; vx: number; vy: number; life: number }>;
   rested: boolean;

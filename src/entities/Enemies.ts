@@ -1,5 +1,6 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { difficultyMods } from '@/config/difficulty';
+import { CAMP_HAVEN_RADIUS } from '@/config/pacing';
 import { RILLBACK_WET_THRESHOLD } from '@/core/enemyState';
 import { clamp } from '@/core/math';
 import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDamageSource, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
@@ -2604,8 +2605,13 @@ export class Enemies implements EnemyControlApi {
     const enemies = ctx.enemies;
     // The arrival's grace (game/arrival): while a floor's name is up, nothing sees him.
     const arrivalGrace = ctx.state.frameCount < (ctx.state.arrivalGraceUntil ?? -1);
+    // Pell's camp is a haven (config/pacing): nothing sees him in it, and nothing stays in it.
+    const camp = ctx.levels?.current?.story?.camp ?? null;
+    const haven = camp ? { x: camp.x, y: camp.floorY - 10 } : null;
+    const havenR2 = CAMP_HAVEN_RADIUS * CAMP_HAVEN_RADIUS;
+    const inHaven = haven !== null && (ctx.player.x - haven.x) ** 2 + (ctx.player.y - 9 - haven.y) ** 2 < havenR2;
     const observedPlayer = {
-      x: ctx.player.x, y: ctx.player.y, vx: ctx.player.vx, dead: ctx.player.dead || arrivalGrace,
+      x: ctx.player.x, y: ctx.player.y, vx: ctx.player.vx, dead: ctx.player.dead || arrivalGrace || inHaven,
       // Light wave: the lantern, the hood and the place's darkness set how far eyes reach.
       crouching: ctx.input?.keys.down === true, light: playerVisibility(ctx),
     };
@@ -2741,6 +2747,25 @@ export class Enemies implements EnemyControlApi {
       respondToLight(ctx, e, def, mind); // light wave: lit fix, flinch, scatter, freeze
       const lair = BOSS_LAIRS[e.kind];
       if (lair) this.watchLair(e, def, lair, mind);
+      // A creature that strays into Pell's camp forgets the hunt and walks back out
+      // (its home, if the camp was it, moves to the camp's edge).
+      if (haven && !lair && e.kind !== 'eggs' && !e.sleeping) {
+        const hx = e.x - haven.x, hy = e.y - 6 - haven.y;
+        if (hx * hx + hy * hy < havenR2) {
+          const out = Math.sign(hx) || 1;
+          if (Math.abs(mind.homeX - haven.x) < CAMP_HAVEN_RADIUS + 24 && Math.abs(mind.homeY - haven.y) < CAMP_HAVEN_RADIUS + 24) {
+            mind.homeX = haven.x + out * (CAMP_HAVEN_RADIUS + 48);
+          }
+          mind.confidence = 0;
+          mind.visible = false;
+          mind.intent = 'return';
+          mind.commitUntil = ctx.state.frameCount + 90;
+          e.alerted = false;
+          // ...and it goes: the flee reflex carries it out past the camp's edge.
+          e.fleeT = Math.max(e.fleeT ?? 0, 12);
+          e.fleeDir = out;
+        }
+      }
       const player = { x: mind.targetX, y: mind.targetY, vx: mind.targetVx };
       const targetAlive = !ctx.player.dead && mind.confidence > 0.1 && (mind.intent === 'hunt' || mind.intent === 'investigate');
       const pdx = player.x - e.x,

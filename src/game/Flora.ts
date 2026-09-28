@@ -15,6 +15,7 @@ import {
 } from '@/sim/elements/flora';
 import type { World } from '@/sim/World';
 import { entityRandom } from '@/core/simRandom';
+import { glowseedCap } from '@/game/glowseeds';
 import {
   FELL_EMBER,
   FELL_GLOWSEED,
@@ -980,7 +981,7 @@ export class Flora implements FloraApi {
         if (!world.inBounds(x, y)) continue;
         const i = world.idx(x, y);
         if (world.types[i] !== Cell.Seed || world.life[i] !== SEED_GLOW_LOOSE) continue;
-        if (living.glowseeds >= 3) {
+        if (living.glowseeds >= glowseedCap(living)) {
           if (this.pouchToastT <= 0) {
             ctx.events.emit('toast', { text: 'Your glowseed pouch is full.' });
             this.pouchToastT = 600;
@@ -1001,7 +1002,7 @@ export class Flora implements FloraApi {
           }
         }
         for (const ci of pod) world.clearCellAt(ci);
-        living.glowseeds = Math.min(3, living.glowseeds + 1);
+        living.glowseeds = Math.min(glowseedCap(living), living.glowseeds + 1);
         ctx.particles.burst(x + 0.5, y, 10, null, () => packRGB(214, 244, 150), 1.2, { glow: 2, grav: -0.02 });
         ctx.audio.sfx('flora.glowseed');
         ctx.events.emit('toast', { text: `A glowseed pod. ${living.glowseeds} in the pouch.` });

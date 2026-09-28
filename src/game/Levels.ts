@@ -66,6 +66,7 @@ import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
 import { WAYSTONE_HELP_RADIUS, wandMakesFire, waystoneHelp } from '@/game/waystoneHelp';
 import { ARRIVAL_GRACE_TICKS, ARRIVAL_SAFE_RADIUS, arrivalPickupRests, arrivalStandable, arrivalThreat, relocateCreature, settleArrival } from '@/game/arrival';
 import { bossArenaRect } from '@/core/bossWard';
+import { CAMP_HAVEN_RADIUS } from '@/config/pacing';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
 import { WORKS_GATE, worksGateOpen } from '@/world/breathingWorks';
@@ -158,6 +159,10 @@ const POPULATION_ATTEMPTS_PER_PASS = 36;
 /** Kinds that may be seeded with their heads under liquid (swimmers, floaters, fliers). */
 const POPULATION_WATER_BREATHERS: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['rillback', 'leviathan', 'wisp', 'bat', 'imp', 'colossus', 'eggs']);
 const ROOST_ATTEMPTS_PER_PASS = 160;
+/** Kept out of Pell's camp at a floor's start (secureCamp): what burns, what is molten, what eats. */
+const CAMP_HAZARDS: ReadonlySet<number> = new Set<number>([Cell.Fire, Cell.Ember, Cell.Lava, Cell.Oil, Cell.Gunpowder, Cell.Acid, Cell.Toxic, Cell.MarshGas]);
+/** Bosses keep their arenas; a camp is never placed in one. */
+const BOSS_KINDS_NEVER_MOVED: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'rimewarden', 'lenswright']);
 const VIRTUAL_PICKUP_KINDS = new Set<PickupKind>(PICKUP_KINDS);
 
 interface TransitionCurtainCopy {
@@ -2412,6 +2417,7 @@ export class Levels implements LevelsApi {
     // A SAFE ARRIVAL (game/arrival): room around him, and a grace while the floor's name is up.
     ctx.state.arrivalGraceUntil = ctx.state.frameCount + ARRIVAL_GRACE_TICKS;
     this.secureArrival(ctx, runtime, arrival);
+    this.secureCamp(ctx, runtime);
 
     this.currentId = id;
     this.scheduleSettledFindabilityRepair(ctx, runtime);
@@ -2523,6 +2529,42 @@ export class Levels implements LevelsApi {
       }
       relocateCreature(e, spot.x, spot.y);
       ctx.telemetry.count(`arrival.relocated.${id}.${e.kind}`);
+    }
+  }
+
+  /**
+   * Pell's camp is a haven (config/CAMP_HAVEN_RADIUS): no creature is left
+   * living in it — relocated like the arrival's, never deleted — and no fire,
+   * ember, lava, oil, powder or acid is left in the camp itself (the cells
+   * really go; a burning plant or a lava lick beside the bedroll set him alight
+   * while he read Pell's last page). Idempotent: a camp already clear is left alone.
+   */
+  private secureCamp(ctx: Ctx, runtime: LevelRuntime): void {
+    const camp = runtime.story?.camp;
+    if (!camp || runtime.living || AUTHORED_TEST_ARENAS.has(runtime.def.id)) return;
+    const hx = camp.x, hy = camp.floorY - 10;
+    const inside = ctx.enemies.filter((e) => e.hp > 0 && !BOSS_KINDS_NEVER_MOVED.has(e.kind) && (e.x - hx) ** 2 + (e.y - 6 - hy) ** 2 < CAMP_HAVEN_RADIUS ** 2);
+    if (inside.length) {
+      const reach = wizardMask(runtime);
+      const rng = new Rng(hashSeed(levelSeedFor(this.activeExpeditionSeed(ctx), runtime.def.id), 'camp-haven'));
+      const at = { x: hx, y: camp.floorY };
+      for (const e of inside) {
+        const def = ctx.enemyCtl.defs[e.kind];
+        const spot = this.findPopulationSpot(ctx, rng, at, runtime.regions, reach, def.halfW, def.h, {
+          ...this.populationHabitatOptions(ctx, e.kind),
+          clearances: [CAMP_HAVEN_RADIUS + 90, CAMP_HAVEN_RADIUS + 40],
+          extra: (x, y) => Math.hypot(x - runtime.spawn.x, y - runtime.spawn.y) >= ARRIVAL_SAFE_RADIUS,
+        });
+        if (spot) { relocateCreature(e, spot.x, spot.y); ctx.telemetry.count(`camp.relocated.${runtime.def.id}.${e.kind}`); }
+      }
+    }
+    const w = runtime.world;
+    const x0 = Math.max(1, Math.min(camp.x0, camp.x - 40) - 6), x1 = Math.min(w.width - 2, Math.max(camp.x1, camp.x + 40) + 6);
+    for (let y = Math.max(1, camp.floorY - 44); y <= Math.min(w.height - 2, camp.floorY); y++) {
+      for (let x = x0; x <= x1; x++) {
+        const i = w.idx(x, y);
+        if (CAMP_HAZARDS.has(w.types[i])) w.clearCellAt(i);
+      }
     }
   }
 

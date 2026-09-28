@@ -29,4 +29,13 @@ export const PROGRESSION_PACING: ProgressionPacingTuning = {
   enemyMax: 1,
 };
 
+/**
+ * PELL'S CAMP IS A HAVEN (cells from his feet, measured at chest height): nothing
+ * hunts the alchemist while he stands in it, a creature that strays in turns back
+ * out, no creature is left living in it when the floor begins, and no fire or
+ * molten rock is left burning in it (QA: a slime killed him straight after the
+ * floor-2 talk; he burned reading Pell's last page on the Kiln).
+ */
+export const CAMP_HAVEN_RADIUS = 90;
+
 export const PROGRESSION_PACING_DEFAULTS: Readonly<ProgressionPacingTuning> = Object.freeze({ ...PROGRESSION_PACING });
