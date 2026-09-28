@@ -47,37 +47,24 @@ export class Background implements ParallaxLayers {
       this.loadedCount++;
       return;
     }
-    if (typeof fetch === 'function' && typeof createImageBitmap === 'function') {
-      void this.loadLayerBitmap(layer);
-      return;
-    }
     this.loadLayerImage(layer);
   }
 
-  private async loadLayerBitmap(layer: ParallaxBitmapLayer): Promise<void> {
-    try {
-      const response = await fetch(layer.src);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const bitmap = await createImageBitmap(await response.blob());
-      this.commitLayerPixels(layer, bitmap, bitmap.width, bitmap.height);
-      bitmap.close();
-    } catch {
-      this.loadLayerImage(layer);
-    }
-  }
-
+  /**
+   * An image element, not fetch(): the title screen paints the same two
+   * refinery plates as CSS backgrounds, and only an image load shares that
+   * request (the document's image cache). Through fetch() a cold first load
+   * downloaded both plates twice (463 KB, fix4b). decode() keeps the decode
+   * off the main thread, as createImageBitmap did.
+   */
   private loadLayerImage(layer: ParallaxBitmapLayer): void {
     const img = new Image();
     img.decoding = 'async';
-    img.onload = () => {
-      const w = img.naturalWidth || img.width;
-      const h = img.naturalHeight || img.height;
-      this.commitLayerPixels(layer, img, w, h);
-    };
-    img.onerror = () => {
-      console.warn(`[background] failed to load ${layer.file}`);
-    };
     img.src = layer.src;
+    img.decode().then(
+      () => this.commitLayerPixels(layer, img, img.naturalWidth || img.width, img.naturalHeight || img.height),
+      () => console.warn(`[background] failed to load ${layer.file}`),
+    );
   }
 
   private commitLayerPixels(
