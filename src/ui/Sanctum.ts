@@ -169,7 +169,7 @@ export class Sanctum implements SanctumApi {
       b.classList.toggle('passed', !on);
       b.setAttribute('aria-pressed', String(on));
     }
-    ctx.audio.sfx('ui.card.choose');
+    ctx.audio.sfx('ui.door.choose');
     ctx.telemetry.count(`sanctum.door.${id}`);
     const def = LEVELS[id];
     if (def) ctx.story?.sanctumDoor(def.biome);

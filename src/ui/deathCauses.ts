@@ -186,6 +186,39 @@ const DEATH_LINES: Record<string, string[]> = {
     'The Leviathan slapped the pool at you, and the pool won.',
     'Tail-whipped by the plumbing.',
   ],
+  // THE SECOND DOORS (wave 3): the Cold Store's brine and its Rime Warden, the Glass Galleries' Lenswright.
+  frostbite: [
+    'The brine never froze. You did.',
+    'Salt water below freezing, and you in it up to the knees.',
+  ],
+  'rimewarden-slam': [
+    'The Rime Warden brought its fists down, and the floor came up in ice.',
+    'Speared by a floor that was flat a moment ago.',
+  ],
+  'rimewarden-wave': [
+    'A rime wave ran along the floor. You were standing on it.',
+    'The Warden stamped, and the frost came for your ankles.',
+  ],
+  'rimewarden-breath': [
+    'The Rime Warden breathed on you. You kept.',
+    'Frozen where you stood by a very old draught.',
+  ],
+  'rimewarden-icicle': [
+    'The Warden roared, and the ceiling let go of its icicles.',
+    'An icicle finally found something to point at.',
+  ],
+  'rimewarden-hail': [
+    'Hailed on by the Rime Warden, with its own shoulders.',
+    'The Warden threw its armour at you. It had plenty.',
+  ],
+  'lenswright-lance': [
+    'The Lenswright looked at you properly.',
+    'Burned through by a lens that never blinked.',
+  ],
+  'lenswright-flare': [
+    'You stood too close to the Lenswright. It flashed you away.',
+    'A lens does not like to be crowded.',
+  ],
 };
 
 /**
@@ -239,6 +272,14 @@ const DEATH_TITLES: Record<string, string> = {
   'colossus-stomp': 'You were crushed.',
   'colossus-vent': 'You burned.',
   'leviathan-thrash': 'You were swept away.',
+  frostbite: 'You froze.',
+  'rimewarden-slam': 'You were impaled.',
+  'rimewarden-wave': 'You froze.',
+  'rimewarden-breath': 'You froze.',
+  'rimewarden-icicle': 'You were impaled.',
+  'rimewarden-hail': 'You froze.',
+  'lenswright-lance': 'You burned.',
+  'lenswright-flare': 'You were struck down.',
   status: 'You succumbed.',
 };
 
@@ -249,11 +290,7 @@ const DEATH_TITLES: Record<string, string> = {
  * own lines at the next voice pass (scripts/audio/gen-voice.mjs). Empty now:
  * the felled tree has its own ('You were felled.').
  */
-const DEATH_ALIASES: Record<string, string> = {
-  // THE COLD STORE (wave 3): brine's frostbite borrows the frost bolt's lines
-  // until the next voice pass records its own.
-  frostbite: 'frostbolt',
-};
+const DEATH_ALIASES: Record<string, string> = {};
 
 function normalizeDeathSource(source: string | null | undefined): string {
   if (!source) return 'unknown';

@@ -110,6 +110,8 @@ export const SFX_CUES = {
   'ui.grimoire': ui({ gain: 1.2, cooldownMs: 600 }),
   'ui.card.reveal': ui({ gain: 1.4 }),
   'ui.card.choose': ui({ gain: 1.4 }),
+  // The Sanctum's two doors (wave 3): a stair chosen.
+  'ui.door.choose': ui({ gain: 1.3 }),
   'ui.card.pick': ui({ gain: 0.74 }),
   'ui.card.slot': ui({ gain: 1.1 }),
   'ui.bench': ui({ gain: 1.1 }),
@@ -227,6 +229,8 @@ export const SFX_CUES = {
   'boom.large': wo('explosion', { gain: 1.13, voices: 3 }),
   'mat.zap': wo('material', { gain: 0.87, range: 450, cooldownMs: 70 }),
   'mat.shatter': wo('material', { gain: 1.4, range: 500, cooldownMs: 90 }),
+  // Brine eating ice (sim/elements/brine): the salt's soft fizz — the Cold Store's puzzles, audible.
+  'mat.brine.fizz': wo('material', { gain: 0.8, range: 320, cooldownMs: 260 }),
   'mat.steam': wo('material', { gain: 0.68, range: 360, cooldownMs: 150 }),
   'mat.sizzle': wo('material', { gain: 0.4, range: 300, cooldownMs: 240 }),
   'mat.ignite': wo('material', { gain: 1, range: 450, cooldownMs: 120 }),
@@ -344,6 +348,9 @@ export const SFX_CUES = {
   'amb.rot': c('amb-d2', 'bed', { loop: true }),
   'amb.cisterns': c('amb-d3', 'bed', { loop: true }),
   'amb.kiln': c('amb-d4', 'bed', { loop: true }),
+  // The second doors (wave 3): each floor's own bed, loaded with its floor.
+  'amb.coldstore': c('amb-d2b', 'bed', { loop: true }),
+  'amb.galleries': c('amb-d3b', 'bed', { loop: true }),
   'amb.breath.inhale': c('amb-d1', 'material', { gain: 1.3, range: 820, cooldownMs: 4000, bus: 'ambience', pitchCents: 0 }),
   'amb.breath.exhale': c('amb-d1', 'material', { gain: 1.4, range: 820, cooldownMs: 4000, bus: 'ambience', pitchCents: 0 }),
   'amb.breath.jet': loop('amb-d1', { gain: 1.0, range: 520, keepAliveMs: 260 }),
@@ -602,12 +609,15 @@ export const FLOOR_BEDS: Readonly<Record<string, SfxId>> = {
   d2: 'amb.rot',
   d3: 'amb.cisterns',
   d4: 'amb.kiln',
+  d2b: 'amb.coldstore',
+  d3b: 'amb.galleries',
 };
 export const BIOME_BEDS: Readonly<Record<string, SfxId>> = {
   earthen: 'amb.bellows',
   fungal: 'amb.rot',
   flooded: 'amb.cisterns',
-  frozen: 'amb.cisterns',
+  frozen: 'amb.coldstore',
+  crystal: 'amb.galleries',
   volcanic: 'amb.kiln',
 };
 

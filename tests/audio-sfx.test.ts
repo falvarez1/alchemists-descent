@@ -91,18 +91,18 @@ describe('the sampled sound catalog', () => {
     }
   });
 
-  it('keeps the payload inside budget (≲ 7.6 MB of sfx + ambience)', () => {
+  it('keeps the payload inside budget (≲ 8 MB of sfx + ambience)', () => {
     // A guard against runaway takes (a long take, a stray stereo encode, a third take nobody
     // needs), not a first-load cost: nothing here is fetched before the first gesture, and
     // everything past the core packs loads with its floor (audio/AudioDirector). Raised from
     // 6.3 MB for the flora pack (26 cues, 412 KB of short mono one-shots and two loops at the
     // established 72/64 kbps), leaving ~290 KB of headroom: a wave that needs more should
-    // shorten takes before it moves this line again. Raised to 7.6 MB for the
-    // second doors (wave 3): the Cold Store's and the Glass Galleries' guardians,
-    // organisms, set pieces and beds — packs that load only with their own
-    // floor, and a run visits one door per floor.
+    // shorten takes before it moves this line again. Raised to 8 MB for the
+    // second doors (wave 3, ~1 MB): the Cold Store's and the Glass Galleries'
+    // guardians, organisms and their two stereo beds — packs that load only
+    // with their own floor, and a run visits one door per floor.
     const bytes = [...filesOnDisk.values()].flat().reduce((n, f) => n + statSync(f).size, 0);
-    expect(bytes).toBeLessThan(7.6 * 1024 * 1024);
+    expect(bytes).toBeLessThan(8 * 1024 * 1024);
   });
 });
 
@@ -189,7 +189,7 @@ describe('packs, beds and the floors', () => {
   });
 
   it('gives each floor a looping bed with files, and each biome a fallback', () => {
-    for (const floor of ['d1', 'd2', 'd3', 'd4']) {
+    for (const floor of ['d1', 'd2', 'd3', 'd4', 'd2b', 'd3b']) {
       const bed = FLOOR_BEDS[floor];
       expect(bed).toBeDefined();
       expect(sfxCue(bed).loop).toBe(true);

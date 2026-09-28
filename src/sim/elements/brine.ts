@@ -46,6 +46,7 @@ function eatIce(ctx: Ctx, x: number, y: number): void {
     const n = w.types[ni];
     if (n === Cell.Ice && simRandom() < melt) {
       w.replaceCellAt(ni, Cell.Water, waterColor());
+      if (fxRandom() < 0.06) ctx.audio.sfx('mat.brine.fizz', nx + 0.5, ny + 0.5);
       if (fxRandom() < 0.35) {
         ctx.particles.spawn(nx + 0.5, ny, (fxRandom() - 0.5) * 0.3, -0.25 - fxRandom() * 0.3, null,
           packRGB(226, 242, 246), 14 + Math.floor(fxRandom() * 10), { grav: -0.01, glow: 0.4 });

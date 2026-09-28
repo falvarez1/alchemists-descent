@@ -26,12 +26,13 @@ async function loadGameModules() {
   const entry = `
 export { GAME_TAGLINE } from '@/config/brand';
 export { FLOOR_LOOKS } from '@/config/floorLooks';
-export { LEVELS, CAMPAIGN_FLOORS, floorDisplayName } from '@/config/worldgraph';
-export { FLOOR_LORE } from '@/content/floorLore';
+export { LEVELS, CAMPAIGN_FLOORS, CAMPAIGN_LEVELS, floorDisplayName } from '@/config/worldgraph';
+export { FLOOR_LORE, TWO_DOORS_LINE } from '@/content/floorLore';
 export { knownDeathCauseSources, deathTitle, deathCauseLine } from '@/ui/deathCauses';
 export { runHeadline, buildRunSummary, VICTORY_EPITAPH } from '@/game/runRules';
 export { KIT_DEFS, KIT_ORDER, DEFAULT_KIT } from '@/content/kits';
-export { narrationKey, normalizeNarration, arrivalLine } from '@/audio/narrationText';
+export { narrationKey, normalizeNarration, arrivalLine, speakerKey } from '@/audio/narrationText';
+export { storyVoiceLines } from '@/content/story';
 `;
   const tmp = await mkdtemp(join(tmpdir(), 'bw-voice-'));
   try {
@@ -163,40 +164,81 @@ const TAGS = [
 ];
 const tagFor = (text) => TAGS.find(([re]) => re.test(text))?.[1];
 
+/**
+ * The story's performance notes (wave 3): Pell is a little anxious and warm,
+ * Matron Ash is soft, old and close, the Docent drops his voice for memories
+ * and the farewell and raises it once, for the heave. Sparing, as above.
+ */
+const STORY_TAGS = {
+  docent: [
+    [/^The Heart is heaving/, 'urgently'],
+    [/^Up! You know the way/, 'urgently'],
+    [/^I never did leave/, 'softly'],
+    [/^Go on up/, 'softly'],
+    [/^(The Bellows\. The evening|We closed the valves|Everyone went up|Someone had to stay|A year ago\. A surveyor|He was frightened|I did try to send|The Cisterns, on the morning|Every pipe in the Works|Then the Works coughed|The Kiln, a hundred|It was built to shovel|When the Heart began|Be kind to it|The Cold Store, on its last|The final delivery|The Glass Galleries, on the day|Everyone stopped work|Nobody wrote down)/, 'softly'],
+    [/Guild regulations forbid that/, 'dryly'],
+    [/^Do not look down/, 'dryly'],
+  ],
+  pell: [
+    [/^Oh! Oh, thank goodness/, 'nervous'],
+    [/^Oh! It’s you/, 'surprised'],
+    [/^Ha! No/, 'laughs'],
+    [/^I went down to the sump/, 'nervous'],
+    [/^It’s freezing/, 'nervous'],
+    [/^Don’t look at your reflection/, 'nervous'],
+    [/^You made it! I was worried/, 'relieved'],
+    [/^You made it! So did I/, 'excited'],
+    [/Don’t tell the Old Ones I peeked/, 'whispers'],
+    [/^My last tin of tea/, 'warmly'],
+    [/^The Kiln\. The stoker is sad/, 'softly'],
+  ],
+  ash: [[/./, 'softly']],
+};
+/** A story line read with its own direction (a short line the voice otherwise rushes). The key stays the text's. */
+const STORY_SAY = {
+  'I’ve started leaving the kettle on for you.': '[warmly] I’ve started leaving the kettle on... for you.',
+};
+const storyTagFor = (speaker, text) => STORY_TAGS[speaker]?.find(([re]) => re.test(text))?.[1];
+
 /* ---------------- the catalog ---------------- */
 
 export async function buildCatalog() {
   const g = await loadGameModules();
   const lines = new Map();
-  const add = (text, group, { takes = 1, captioned = false, say } = {}) => {
+  const add = (text, group, { takes = 1, captioned = false, say, speaker = 'docent' } = {}) => {
     const clean = String(text).trim();
     if (!clean) return;
-    const key = g.narrationKey(clean);
+    // The Docent keys by text alone (his lines are the narrator's); Pell and Matron Ash by speaker and text.
+    const key = g.speakerKey(speaker, clean);
     const prior = lines.get(key);
-    if (prior) { prior.takes = Math.max(prior.takes, takes); return; }
-    lines.set(key, { key, text: clean, say: say ?? delivery(clean, tagFor(clean)), group, takes, captioned });
+    if (prior) { prior.takes = Math.max(prior.takes, takes); prior.captioned ||= captioned; return; }
+    const tag = speaker === 'docent' ? (tagFor(clean) ?? storyTagFor(speaker, clean)) : storyTagFor(speaker, clean);
+    lines.set(key, { key, text: clean, say: say ?? delivery(clean, tag), group, takes, captioned, speaker });
   };
 
   // The title card on the entrance.
   add(g.GAME_TAGLINE, 'Title', { takes: 2 });
 
-  // Arrivals: the floor's name and its epigraph, as the title card shows them.
-  for (const id of g.CAMPAIGN_FLOORS) {
+  // Arrivals: the floor's name and its epigraph, as the title card shows them —
+  // every door of every floor (wave 3: the Cold Store, the Glass Galleries).
+  for (const id of g.CAMPAIGN_LEVELS) {
     const look = g.FLOOR_LOOKS[g.LEVELS[id].biome];
     add(g.arrivalLine(g.floorDisplayName(id), look.epigraph), 'Floor arrivals', { takes: 2 });
   }
 
-  // The Sanctum's look at the floor below (floor 1 is never "below").
-  for (const id of g.CAMPAIGN_FLOORS.slice(1)) add(g.FLOOR_LORE[id].line, 'Sanctum');
+  // The Sanctum's look at the floor below (floor 1 is never "below"), every door,
+  // and what the Docent says when the floor below has two.
+  for (const id of g.CAMPAIGN_LEVELS) if (g.LEVELS[id].depth > 1) add(g.FLOOR_LORE[id].line, 'Sanctum');
+  add(g.TWO_DOORS_LINE, 'Sanctum');
 
   // Boss name beats: the resident line as the boss wakes (no on-screen text, so captioned),
   // the boss objective, and the toast each one leaves behind.
-  for (const [id, boss] of [['d3', 'leviathan'], ['d4', 'colossus']]) add(g.FLOOR_LORE[id].resident, `Bosses · ${boss}`, { captioned: true });
+  for (const [id, boss] of [['d3', 'leviathan'], ['d4', 'colossus'], ['d2b', 'rimewarden'], ['d3b', 'lenswright']]) add(g.FLOOR_LORE[id].resident, `Bosses · ${boss}`, { captioned: true });
   const levels = await parse('game/Levels.ts');
   walk(member(levels, 'bossObjective'), (n) => { if (ts.isReturnStatement(n) && literal(n.expression)) add(literal(n.expression), 'Bosses'); });
-  for (const t of toasts(await parse('entities/Enemies.ts'))) if (t.text && /SUMP|KILN/.test(t.text)) add(t.text, 'Bosses');
+  for (const t of toasts(await parse('entities/Enemies.ts'))) if (t.text && /SUMP|KILN|WARDEN|GALLERIES/.test(t.text)) add(t.text, 'Bosses');
   // A boss's phase beats, as the callouts over its body name them (the armour bursts, the pool shorts, the kiln cracks).
-  for (const rel of ['creatures/bosses/colossus.ts', 'creatures/bosses/leviathan.ts', 'entities/kilnQuench.ts']) {
+  for (const rel of ['creatures/bosses/colossus.ts', 'creatures/bosses/leviathan.ts', 'entities/kilnQuench.ts', 'creatures/bosses/rimeWarden.ts', 'creatures/bosses/lenswright.ts']) {
     for (const text of callouts(await parse(rel))) add(text, 'Bosses · phases');
   }
 
@@ -236,7 +278,7 @@ export async function buildCatalog() {
     floorsTotal: g.CAMPAIGN_FLOORS.length, timeMs: 0, kills: 0, alchemicalKills: 0, bestChain: 0, deaths: 0, gold: 0, cardsFound: 0, ...extra });
   add(g.runHeadline({ outcome: 'victory', floorName: g.floorDisplayName('d4') }), 'Ledger', { takes: 2 });
   add(g.VICTORY_EPITAPH, 'Ledger', { takes: 2 });
-  for (const id of g.CAMPAIGN_FLOORS) {
+  for (const id of g.CAMPAIGN_LEVELS) {
     add(g.runHeadline({ outcome: 'fallen', floorName: g.floorDisplayName(id) }), 'Ledger');
     add(g.runHeadline({ outcome: 'abandoned', floorName: g.floorDisplayName(id) }), 'Ledger');
   }
@@ -256,6 +298,10 @@ export async function buildCatalog() {
   if (!note) throw new Error('ExpeditionEntry: the Workshop note moved');
   add(note, 'Workshop', { captioned: true });
 
+  // THE STORY (wave 3): the Docent's pipes, echoes, prologues and the escape; Pell; Matron Ash;
+  // the opening and the ending — every line from src/content/story, in its speaker's voice.
+  for (const l of g.storyVoiceLines()) add(l.text, l.group, { captioned: l.captioned, speaker: l.speaker, say: STORY_SAY[l.text] });
+
   return { lines: [...lines.values()], narrationKey: g.narrationKey };
 }
 
@@ -266,7 +312,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { lines } = await buildCatalog();
   const groups = new Map();
   for (const l of lines) groups.set(l.group, (groups.get(l.group) ?? 0) + 1);
-  for (const l of lines) console.log(`${l.key}  ${l.group.padEnd(22)} ${l.takes > 1 ? `x${l.takes}` : '  '} ${l.captioned ? 'cc' : '  '} ${l.say}`);
+  for (const l of lines) console.log(`${l.key}  ${l.speaker.padEnd(6)} ${l.group.padEnd(22)} ${l.takes > 1 ? `x${l.takes}` : '  '} ${l.captioned ? 'cc' : '  '} ${l.say}`);
   const chars = lines.reduce((s, l) => s + l.say.length * l.takes, 0);
   console.log(`\n${lines.length} lines (${[...groups].map(([k, v]) => `${k} ${v}`).join(', ')}); ${chars} characters with takes.`);
 }

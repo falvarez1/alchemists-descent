@@ -4023,5 +4023,43 @@
   ],
   "rejected": [],
   "failed": []
+ },
+ "ui.door.choose": {
+  "hash": "9e7b5a0827ba",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "mat.brine.fizz": {
+  "hash": "5c935ec17040",
+  "variants": [
+   3,
+   4
+  ],
+  "rejected": [],
+  "failed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "amb.coldstore": {
+  "hash": "a876ec7c0592",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "amb.galleries": {
+  "hash": "50a80ad2942f",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
  }
 }

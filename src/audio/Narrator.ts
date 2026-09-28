@@ -9,6 +9,9 @@ import { GAME_TAGLINE } from '@/config/brand';
 import { FLOOR_LOOKS } from '@/config/floorLooks';
 import { LEVELS, floorDisplayName, floorOf, nextDoors } from '@/config/worldgraph';
 import { FLOOR_LORE, TWO_DOORS_LINE } from '@/content/floorLore';
+
+/** The second doors' guardians, by the name that rises over them as they wake → their floor's lore. */
+const GUARDIAN_NAMES: Readonly<Record<string, string>> = { 'THE RIME WARDEN': 'd2b', 'THE LENSWRIGHT': 'd3b' };
 import { TEA_COMPLETE_STAGE } from '@/world/teaMachine';
 import { deathCauseLine, deathTitle } from '@/ui/deathCauses';
 import { runHeadline } from '@/game/runRules';
@@ -111,7 +114,14 @@ export class Narrator implements NarratorApi {
       on('playerRespawned', () => this.cutSource('death')),
       on('toast', ({ text }) => this.say([text], 'normal', 'toast', 2500)),
       // A boss's phase beat (THE CORE IS BARE, SHORTED): only callouts with a recording are said.
-      on('combatCallout', ({ text }) => this.say([text], 'normal', 'callout', 2000)),
+      on('combatCallout', ({ text }) => {
+        // The second doors' guardians have no boss cue of their own (they fight to
+        // the floor's hunted cue): their name rising over them is the moment.
+        const floor = GUARDIAN_NAMES[text];
+        const lore = floor ? FLOOR_LORE[floor] : undefined;
+        if (lore) this.later(700, () => this.say([lore.resident], 'high', 'boss', 5000));
+        else this.say([text], 'normal', 'callout', 2000);
+      }),
       on('objectiveChanged', ({ text }) => this.say([text], 'low', 'objective', 2500)),
     );
     const visibility = failSafe('Narrator visibility', () => { if (document.hidden) this.silence(true); });
