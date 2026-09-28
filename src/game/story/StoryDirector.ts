@@ -35,6 +35,9 @@ import { StoryCinema } from './StoryCinema';
 /** Pipes listen for a passer-by within this (cells, horizontally; the band above the floor below). */
 const PIPE_REACH_X = 30;
 const PIPE_REACH_UP = 64;
+/** A pipe passed while the air was taken stays armed this long, and speaks while you are within earshot. */
+const PIPE_ARMED_S = 12;
+const PIPE_EARSHOT = 150;
 
 /**
  * THE STORY DIRECTOR (Breathing Works wave 3, WS-S): the narrative spine, in
@@ -72,6 +75,8 @@ export class StoryDirector implements StoryApi {
   private readonly cinema: StoryCinema;
   private readonly disposers: Array<() => void> = [];
   private readonly pipeGlow = new Map<string, number>();
+  /** Pipes passed under (by id on this floor) and until when they may still speak. */
+  private readonly pipeArmed = new Map<string, number>();
   private openingDue = false;
   private sanctumDoors = new Set<string>();
   private lastInput = 0;
@@ -210,6 +215,7 @@ export class StoryDirector implements StoryApi {
     this.prologue.levelChanged();
     this.escape.levelChanged();
     this.pipeGlow.clear();
+    this.pipeArmed.clear();
     this.pendingPipe = null;
     this.pipesQuietUntil = performance.now() / 1000 + 7;
     if (this.resumeEscapeAfterEntry && this.ctx.levels.current?.story?.flue) {
@@ -261,25 +267,32 @@ export class StoryDirector implements StoryApi {
       this.pipeGlow.delete(pending.key);
     }
     if (!rt || !id || !biome || !pipes?.length || ctx.player.dead || (ctx.state.frameCount % 6) !== 0) return;
+    const p = ctx.player;
+    // Passing under a pipe ARMS it: if the air is taken just then (the floor's arrival, another
+    // line), it speaks as soon as it is free, while you are still within earshot.
+    for (const pipe of pipes) {
+      if (Math.abs(p.x - pipe.x) <= PIPE_REACH_X && p.y >= pipe.floorY - PIPE_REACH_UP && p.y <= pipe.floorY + 10) this.pipeArmed.set(pipe.id, now + PIPE_ARMED_S);
+    }
     // Never over a scripted beat: the arrival, the echo, Pell or a cinematic has the floor.
     if (now < this.pipesQuietUntil || this.pendingPipe || this.echo.active || this.pell.talking || this.cinema.active || this.escape.active) return;
-    const p = ctx.player;
+    if (ctx.narrator?.busy) return;
     const script = DOCENT_PIPES[biome];
     for (const pipe of pipes) {
-      if (Math.abs(p.x - pipe.x) > PIPE_REACH_X || p.y < pipe.floorY - PIPE_REACH_UP || p.y > pipe.floorY + 10) continue;
+      const armed = this.pipeArmed.get(pipe.id) ?? 0;
+      if (armed < now || Math.hypot(p.x - pipe.x, p.y - pipe.floorY) > PIPE_EARSHOT) continue;
       const line = pipeLine(script, pipe, id, this.state, this.meta());
       if (!line) {
         // Nothing left to say here this run: the pipe keeps quiet (and stops being asked).
         this.state = withPipeSpoken(this.state, id, pipe, null);
+        this.pipeArmed.delete(pipe.id);
         continue;
       }
-      // Something else is speaking: wait (the passer-by may still be here in a moment).
-      if (ctx.narrator?.busy) continue;
       const key = `${id}:${pipe.id}`;
       // Pending BEFORE speaking: a caption-only line begins (and confirms itself) inside speak().
       this.pendingPipe = { key, levelId: id, pipeId: pipe.id, text: line.text, beat: line.beat.id, biome, until: now + 4.5 };
       this.pipeGlow.set(key, now + this.lineSeconds({ speaker: 'docent', text: line.text }) + 0.8);
       this.state = withPipeSpoken(this.state, id, pipe, line.beat.id);
+      this.pipeArmed.delete(pipe.id);
       const ok = this.say([{ speaker: 'docent', text: line.text }], { priority: 'normal', source: 'pipe', ttlMs: 4000, captioned: true, repeatable: true });
       if (!ok) {
         this.pendingPipe = null;

@@ -167,6 +167,8 @@ export interface EventMap {
   storyDialogue: StoryDialogueView;
   /** STORY: a cinematic's plates (the opening, the ending; ui/story/StoryCinema paints them). */
   storyCinema: StoryCinemaView;
+  /** STORY: a beat with weight (a boss prologue) draws the letterbox in, and out. */
+  storyLetterbox: { on: boolean };
   /** Return phials changed (death spent one, a refuge/Sanctum restored one). */
   phialsChanged: { phials: number; max: number; reason: 'start' | 'death' | 'refuge' | 'sanctum' | 'restore' };
   /** Something asked for the last seconds of play to be saved as a clip. */

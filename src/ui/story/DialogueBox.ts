@@ -65,6 +65,11 @@ const STYLE = `
 #story-prompt.show { opacity: 1; transform: translate(-50%, -100%); }
 #story-prompt b { color: #f2e3b6; margin-right: 6px; }
 body.reduce-flashes #story-dialogue, body.reduce-flashes #story-prompt { transition: opacity 0.15s linear; }
+.story-letterbox { position: absolute; left: 0; right: 0; height: 8.5%; background: #020304; z-index: 43; pointer-events: none;
+  transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1); }
+.story-letterbox.top { top: 0; transform: translateY(-100%); }
+.story-letterbox.bottom { bottom: 0; transform: translateY(100%); }
+.story-letterbox.on { transform: none; }
 `;
 
 /**
@@ -81,6 +86,8 @@ export class DialogueBox {
   private readonly text = document.createElement('p');
   private readonly choices = document.createElement('div');
   private readonly prompt = document.createElement('div');
+  private readonly barTop = document.createElement('div');
+  private readonly barBottom = document.createElement('div');
   private readonly off: Array<() => void> = [];
   private view: StoryDialogueView | null = null;
   private typedAt = 0;
@@ -113,7 +120,14 @@ export class DialogueBox {
     });
     this.prompt.id = 'story-prompt';
     const holder = document.getElementById('canvas-holder') ?? document.body;
-    holder.append(this.root, this.prompt);
+    holder.append(this.root, this.prompt, this.barTop, this.barBottom);
+    this.barTop.className = 'story-letterbox top';
+    this.barBottom.className = 'story-letterbox bottom';
+    // A boss prologue draws the letterbox in: a beat with weight.
+    this.off.push(ctx.events.on('storyLetterbox', ({ on }) => {
+      this.barTop.classList.toggle('on', on);
+      this.barBottom.classList.toggle('on', on);
+    }));
     this.off.push(ctx.events.on('storyDialogue', (v) => this.show(v)));
     this.off.push(ctx.events.on('levelChanged', () => this.show(null)));
     window.addEventListener('keydown', this.onKey, true);
@@ -233,6 +247,8 @@ export class DialogueBox {
     if (this.raf !== null) cancelAnimationFrame(this.raf);
     this.root.remove();
     this.prompt.remove();
+    this.barTop.remove();
+    this.barBottom.remove();
     this.style.remove();
   }
 }

@@ -48,6 +48,7 @@ export class BossPrologue {
     const b = this.beat;
     if (!b || b.released) return;
     b.released = true;
+    this.host.ctx.events.emit('storyLetterbox', { on: false });
     const cam = this.host.ctx.camera;
     if (cam.actionFocus && Math.hypot(cam.actionFocus.x - b.target.x, cam.actionFocus.y - b.target.y) < 1) cam.actionFocus = null;
   }
@@ -84,6 +85,7 @@ export class BossPrologue {
     if (!ctx.state.reduceCameraShake) ctx.camera.actionFocus = { x: target.x, y: target.y, zoom: 1.04 };
     this.beat = { kind, start: this.host.now(), target, released: ctx.state.reduceCameraShake === true };
     this.armedAt = this.host.now();
+    if (!this.beat.released) ctx.events.emit('storyLetterbox', { on: true });
   }
 
   debug(): Record<string, unknown> {

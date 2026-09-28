@@ -199,16 +199,22 @@ function cavern(g: G, w: number, h: number, color: string, seed: number): void {
 /* ---------------- the plates ---------------- */
 
 function town(g: G, w: number, h: number, t: number): void {
-  g.fillStyle = vgrad(g, h, [[0, '#2a2016'], [0.45, '#6b5230'], [0.7, '#8a6a3a'], [1, '#2c2418']]);
+  // A sick amber evening: the sun a smear behind the smoke.
+  g.fillStyle = vgrad(g, h, [[0, '#231a10'], [0.35, '#7a5a2c'], [0.62, '#b08440'], [0.8, '#5a4426'], [1, '#1c160e']]);
   g.fillRect(0, 0, w, h);
-  glow(g, w * 0.68, h * 0.52, 260, [230, 170, 90], 0.22);
-  smoke(g, t, [[w * 0.1, h * 0.55], [w * 0.4, h * 0.5], [w * 0.8, h * 0.55]], [60, 48, 36], 0.5, 1.8);
-  const far = skyline(g, w, h * 0.72, '#241c14', 11, 10, [255, 196, 110], 0.35);
-  smoke(g, t * 1.2, far.slice(0, 7), [48, 40, 32], 0.55);
-  const near = skyline(g, w, h * 0.86, '#120e0a', 57, 12, [255, 200, 120], 0.45);
-  smoke(g, t * 1.4, near.slice(0, 6), [30, 26, 22], 0.7, 1.2);
-  headframe(g, w * 0.82, h * 0.86, 0.9, '#0c0907');
-  motes(g, t, w, h, 60, [40, 34, 28], -1, 3);
+  glow(g, w * 0.64, h * 0.5, 300, [255, 196, 110], 0.32);
+  glow(g, w * 0.64, h * 0.5, 60, [255, 226, 160], 0.4);
+  // The Works' great chimneys on the horizon, breathing out the smoke that chokes the town.
+  g.fillStyle = '#2e2216';
+  for (const [cx, ch] of [[0.28, 0.34], [0.36, 0.27], [0.52, 0.31]] as const) g.fillRect(w * cx - 9, h * (0.72 - ch), 18, h * ch);
+  smoke(g, t, [[w * 0.28, h * 0.38], [w * 0.36, h * 0.45], [w * 0.52, h * 0.41]], [44, 34, 24], 0.62, 2.4);
+  smoke(g, t * 0.8, [[w * 0.1, h * 0.5], [w * 0.75, h * 0.48]], [70, 56, 40], 0.35, 2.2);
+  const far = skyline(g, w, h * 0.72, '#241b12', 11, 12, [255, 196, 110], 0.4);
+  smoke(g, t * 1.2, far.slice(0, 7), [40, 33, 26], 0.55);
+  const near = skyline(g, w, h * 0.86, '#100c08', 57, 14, [255, 206, 130], 0.5);
+  smoke(g, t * 1.4, near.slice(0, 6), [26, 22, 18], 0.7, 1.2);
+  headframe(g, w * 0.82, h * 0.86, 0.9, '#0a0806');
+  motes(g, t, w, h, 70, [30, 26, 22], -1, 3);
 }
 
 function lift(g: G, w: number, h: number, t: number): void {
@@ -261,71 +267,181 @@ function works(g: G, w: number, h: number, t: number, speaking: number): void {
 }
 
 function flue(g: G, w: number, h: number, t: number): void {
-  g.fillStyle = vgrad(g, h, [[0, '#d8c9a0'], [0.25, '#6d6352'], [0.7, '#2a1c16'], [1, '#3a140a']]);
+  // Looking up the flue: the lava below cooling to stone, clean air rising past the ledges to the light.
+  const cx = w / 2, half = 150;
+  g.fillStyle = vgrad(g, h, [[0, '#e6d8b0'], [0.3, '#6f6552'], [0.72, '#2a1d16'], [1, '#34130a']]);
   g.fillRect(0, 0, w, h);
-  const cx = w / 2;
-  g.fillStyle = '#0d0a09';
-  g.fillRect(0, 0, cx - 130, h); g.fillRect(cx + 130, 0, w - cx - 130, h);
-  // Ledges, alternating.
-  for (let i = 0; i < 6; i++) { const y = h - 60 - i * 90; g.fillRect(i % 2 ? cx + 50 : cx - 130, y, 80, 10); }
-  glow(g, cx, h, 320, [255, 110, 40], 0.35 * Math.max(0, 1 - t / 4));
-  glow(g, cx, 0, 300, [255, 250, 220], 0.45);
-  motes(g, t * 1.6, w, h, 90, [255, 250, 230], 2, 5);
+  const cool = Math.min(1, t / 3.5);
+  glow(g, cx, h + 20, 340, [255, 110, 40], 0.5 * (1 - cool) + 0.08);
+  // Brick walls either side, soot-dark.
+  for (const [x0, x1] of [[0, cx - half], [cx + half, w]] as const) {
+    g.fillStyle = '#120d0a'; g.fillRect(x0, 0, x1 - x0, h);
+    g.fillStyle = 'rgba(255,220,170,0.05)';
+    for (let row = 0, y = 0; y < h; row++, y += 16) {
+      g.fillRect(x0, y, x1 - x0, 1);
+      for (let x = x0 + (row % 2) * 20; x < x1; x += 40) g.fillRect(x, y, 1, 16);
+    }
+  }
+  // Rim light where the walls meet the shaft.
+  g.fillStyle = 'rgba(255,236,200,0.18)'; g.fillRect(cx - half - 3, 0, 3, h); g.fillRect(cx + half, 0, 3, h);
+  // The ledges he climbed, alternating.
+  g.fillStyle = '#0d0907';
+  for (let i = 0; i < 6; i++) { const y = h - 50 - i * 84; g.fillRect(i % 2 ? cx + half - 90 : cx - half, y, 90, 9); }
+  // Clean air: pale ribbons rising, unhurried.
+  g.lineCap = 'round';
+  for (let k = 0; k < 7; k++) {
+    const x0 = cx - 110 + k * 36, phase = k * 1.7;
+    g.strokeStyle = `rgba(236,246,240,${0.1 + 0.05 * Math.sin(t + k)})`; g.lineWidth = 6 + (k % 3) * 3;
+    g.beginPath();
+    for (let y = h; y >= 0; y -= 12) {
+      const yy = (y - ((t * 60 + k * 40) % 24)) , x = x0 + Math.sin(yy * 0.018 + phase + t * 0.8) * 16;
+      if (y === h) g.moveTo(x, yy); else g.lineTo(x, yy);
+    }
+    g.stroke();
+  }
+  g.lineCap = 'butt';
+  // The apprentice on the highest ledge, looking up.
+  apprentice(g, cx - half + 45, h - 50 - 4 * 84, 1.5, '#0b0806', 1, 0.6);
+  glow(g, cx, 0, 320, [255, 250, 222], 0.5);
+  motes(g, t * 1.6, w, h, 80, [255, 250, 230], 2, 5);
 }
 
 function windowPlate(g: G, w: number, h: number, t: number): void {
   const clear = Math.min(1, t / 3);
-  g.fillStyle = vgrad(g, h, [[0, clear > 0.5 ? '#9ab8c8' : '#6b5f48'], [0.6, '#e6cf9a'], [1, '#3a3020']]);
+  // Outside: morning over Kettleby, the smoke thinning to nothing.
+  g.fillStyle = vgrad(g, h, [[0, clear > 0.5 ? '#a8c4d0' : '#7a6a4c'], [0.55, '#f0d9a4'], [1, '#4a3c28']]);
   g.fillRect(0, 0, w, h);
-  glow(g, w * 0.7, h * 0.55, 300, [255, 220, 150], 0.4);
-  smoke(g, t, [[w * 0.2, h * 0.6], [w * 0.6, h * 0.6]], [120, 110, 90], 0.25 * (1 - clear), 1.8);
-  skyline(g, w, h * 0.78, '#3c342a', 11, 14, [255, 220, 150], 0.7);
-  // The window: its frame and shutters, one swinging open.
-  const wx = w * 0.18, wy = h * 0.18, ww = 220, wh = 300;
-  g.fillStyle = '#1c150e';
-  g.fillRect(0, 0, wx, h); g.fillRect(wx + ww, 0, w - wx - ww, h); g.fillRect(0, 0, w, wy); g.fillRect(0, wy + wh, w, h - wy - wh);
-  g.fillStyle = '#2c2116'; g.fillRect(wx - 8, wy + wh, ww + 16, 14);
+  glow(g, w * 0.3, h * 0.46, 260, [255, 226, 160], 0.5);
+  smoke(g, t, [[w * 0.2, h * 0.6], [w * 0.4, h * 0.6]], [120, 110, 90], 0.3 * (1 - clear), 1.8);
+  skyline(g, w, h * 0.7, '#4a4034', 11, 14, [255, 224, 160], 0.7);
+  // Inside: a lamp-lit room — striped paper, a table, a teacup still steaming.
+  const wx = w * 0.14, wy = h * 0.14, ww = w * 0.3, wh = h * 0.56;
+  const room = (x: number, y: number, rw: number, rh: number): void => {
+    g.fillStyle = '#2a2016'; g.fillRect(x, y, rw, rh);
+    g.fillStyle = 'rgba(80,60,40,0.35)';
+    for (let sx = x + 8; sx < x + rw; sx += 26) g.fillRect(sx, y, 9, rh);
+  };
+  room(0, 0, wx, h); room(wx + ww, 0, w - wx - ww, h); room(wx, 0, ww, wy); room(wx, wy + wh, ww, h - wy - wh);
+  glow(g, w * 0.72, h * 0.62, 320, [255, 190, 110], 0.2);
+  // The window frame and sill.
+  g.fillStyle = '#4a3622'; g.fillRect(wx - 10, wy - 10, ww + 20, 10); g.fillRect(wx - 10, wy, 10, wh); g.fillRect(wx + ww, wy, 10, wh);
+  g.fillStyle = '#5c4228'; g.fillRect(wx - 16, wy + wh, ww + 32, 14);
+  g.fillStyle = '#4a3622'; g.fillRect(wx + ww / 2 - 3, wy, 6, wh);
+  // The casements swing open.
   const open = Math.min(1, Math.max(0, (t - 0.6) / 1.6));
-  g.fillStyle = '#3a2a1a';
-  g.fillRect(wx, wy, (ww / 2) * (1 - open * 0.85), wh);
-  g.fillRect(wx + ww - (ww / 2) * (1 - open), wy, (ww / 2) * (1 - open), wh);
+  g.fillStyle = 'rgba(58,42,26,0.92)';
+  g.fillRect(wx, wy, (ww / 2) * (1 - open * 0.8), wh);
+  g.fillRect(wx + ww - (ww / 2) * (1 - open * 0.8), wy, (ww / 2) * (1 - open * 0.8), wh);
   // The curtain, stirring in air that moves again.
-  g.fillStyle = 'rgba(230,220,200,0.35)';
-  g.beginPath(); g.moveTo(wx + ww * 0.1, wy);
-  for (let i = 0; i <= 10; i++) g.lineTo(wx + ww * 0.1 + Math.sin(t * 2 + i * 0.6) * 10 * open + i * 3, wy + (wh * i) / 10);
-  g.lineTo(wx, wy + wh); g.lineTo(wx, wy); g.closePath(); g.fill();
-  motes(g, t, w, h, 30, [255, 245, 220], 1, 6);
+  g.fillStyle = 'rgba(236,224,200,0.5)';
+  g.beginPath(); g.moveTo(wx + ww + 10, wy - 10);
+  for (let i = 0; i <= 12; i++) g.lineTo(wx + ww + 10 - 26 - Math.sin(t * 1.8 + i * 0.55) * 12 * open - i * 1.5, wy - 10 + ((wh + 10) * i) / 12);
+  g.lineTo(wx + ww + 40, wy + wh); g.lineTo(wx + ww + 40, wy - 10); g.closePath(); g.fill();
+  // A table, a teacup, and its steam.
+  const tx = w * 0.62, ty = h * 0.78;
+  g.fillStyle = '#3a2818'; g.fillRect(tx - 120, ty, 240, 12); g.fillRect(tx - 110, ty + 12, 10, h - ty); g.fillRect(tx + 100, ty + 12, 10, h - ty);
+  g.fillStyle = '#e8dcc0'; g.beginPath(); g.ellipse(tx, ty - 3, 26, 6, 0, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#f2e8d2'; g.fillRect(tx - 12, ty - 22, 24, 18);
+  g.strokeStyle = '#f2e8d2'; g.lineWidth = 3; g.beginPath(); g.arc(tx + 14, ty - 14, 6, -1.2, 1.2); g.stroke();
+  smoke(g, t * 2.4, [[tx, ty - 30]], [240, 236, 226], 0.14, 0.3);
+  motes(g, t, w, h, 36, [255, 245, 220], 1, 6);
 }
 
 function flueTop(g: G, w: number, h: number, t: number, who: 'pell' | 'lantern'): void {
-  g.fillStyle = vgrad(g, h, [[0, '#f0dca8'], [0.5, '#8a7a5a'], [1, '#1a1410']]);
-  g.fillRect(0, 0, w, h);
-  glow(g, w / 2, h * 0.1, 360, [255, 245, 210], 0.5);
-  // The hatch, thrown open; the landing.
-  g.fillStyle = '#16110c'; g.fillRect(0, h * 0.78, w, h * 0.22);
-  g.fillRect(0, 0, w * 0.2, h); g.fillRect(w * 0.8, 0, w * 0.2, h);
-  g.fillStyle = '#8a6a36'; g.fillRect(w * 0.36, h * 0.1, w * 0.28, 8);
-  g.save(); g.translate(w * 0.64, h * 0.1); g.rotate(-1.1 * Math.min(1, t / 1.2)); g.fillRect(0, -4, w * 0.2, 8); g.restore();
-  if (who === 'pell') pellFigure(g, w * 0.56, h * 0.78, 2.2, '#0d0a08', t, t > 0.4);
-  else {
-    // Only his lantern on its pole, leaning on the wall, and the finished map pinned beside it.
-    g.strokeStyle = '#0d0a08'; g.lineWidth = 4;
-    g.beginPath(); g.moveTo(w * 0.7, h * 0.78); g.lineTo(w * 0.76, h * 0.3); g.stroke();
-    glow(g, w * 0.765, h * 0.32, 120, [255, 180, 90], 0.55);
-    glow(g, w * 0.765, h * 0.32, 14, [255, 235, 180], 0.95);
-    g.fillStyle = '#d8c8a0'; g.save(); g.translate(w * 0.28, h * 0.42); g.rotate(-0.06); g.fillRect(0, 0, 90, 70);
-    g.strokeStyle = 'rgba(80,60,30,0.7)'; g.lineWidth = 1.5;
-    g.beginPath(); g.moveTo(10, 55); g.lineTo(30, 30); g.lineTo(50, 42); g.lineTo(78, 14); g.stroke(); g.restore();
+  const floor = h * 0.8, hx0 = w * 0.4, hx1 = w * 0.6, hy = h * 0.15;
+  // The flue's last chamber: soot-dark brick, warmed where the morning comes in.
+  g.fillStyle = '#1b140f'; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(0,0,0,0.35)';
+  for (let row = 0, y = 0; y < floor; row++, y += 18) {
+    g.fillRect(0, y, w, 2);
+    for (let x = (row % 2) * 22; x < w; x += 44) g.fillRect(x, y, 2, 18);
   }
-  motes(g, t, w, h, 40, [255, 250, 230], 1, 7);
+  glow(g, w / 2, hy + 40, 380, [255, 226, 170], 0.42);
+  // The hatch, thrown open on a clean sky.
+  g.fillStyle = vgrad(g, hy, [[0, '#bcd6df'], [1, '#f4e2b4']]);
+  g.fillRect(hx0, 0, hx1 - hx0, hy);
+  g.fillStyle = '#0c0907'; g.fillRect(hx0 - 12, hy, hx1 - hx0 + 24, 10);
+  g.save(); g.translate(hx1 + 6, hy); g.rotate(-1.25 * Math.min(1, t / 1.2)); g.fillStyle = '#4a3420'; g.fillRect(0, -6, hx1 - hx0, 12);
+  g.fillStyle = '#2a1c10'; for (let i = 1; i < 4; i++) g.fillRect(((hx1 - hx0) * i) / 4, -6, 3, 12); g.restore();
+  // Daylight falling down the shaft.
+  const shaft = g.createLinearGradient(0, hy, 0, floor);
+  shaft.addColorStop(0, 'rgba(255,244,214,0.34)'); shaft.addColorStop(1, 'rgba(255,244,214,0.04)');
+  g.fillStyle = shaft;
+  g.beginPath(); g.moveTo(hx0, hy); g.lineTo(hx1, hy); g.lineTo(hx1 + 90, floor); g.lineTo(hx0 - 90, floor); g.closePath(); g.fill();
+  // The ladder up and out.
+  g.strokeStyle = '#2c1f14'; g.lineWidth = 5;
+  const lx0 = w * 0.47, lx1 = w * 0.53;
+  g.beginPath(); g.moveTo(lx0, floor); g.lineTo(lx0, hy - 6); g.moveTo(lx1, floor); g.lineTo(lx1, hy - 6); g.stroke();
+  g.lineWidth = 3; g.beginPath();
+  for (let y = floor - 16; y > hy; y -= 22) { g.moveTo(lx0, y); g.lineTo(lx1, y); }
+  g.stroke();
+  // The landing.
+  g.fillStyle = '#100b08'; g.fillRect(0, floor, w, h - floor);
+  g.fillStyle = 'rgba(255,230,180,0.22)'; g.fillRect(w * 0.3, floor, w * 0.4, 2);
+  if (who === 'pell') pellFigure(g, w * 0.64, floor, 2.2, '#0d0a08', t, t > 0.4);
+  else {
+    // Only his lantern, its pole planted by the ladder, still lit; the finished map on the boards beneath it.
+    const px = w * 0.64, top = floor - 150, sway = Math.sin(t * 1.4) * 2;
+    g.strokeStyle = '#0d0a08'; g.lineWidth = 4;
+    g.beginPath(); g.moveTo(px, floor); g.lineTo(px, top); g.quadraticCurveTo(px, top - 12, px + 16, top - 8); g.stroke();
+    g.lineWidth = 1.5; g.beginPath(); g.moveTo(px + 16, top - 8); g.lineTo(px + 16 + sway, top + 6); g.stroke();
+    g.fillStyle = '#0d0a08'; g.fillRect(px + 10 + sway, top + 6, 12, 16);
+    glow(g, px + 16 + sway, top + 16, 150, [255, 176, 88], 0.5 + 0.06 * Math.sin(t * 7));
+    glow(g, px + 16 + sway, top + 16, 12, [255, 236, 186], 0.95);
+    // The map, flat on the boards: contours, his dotted route, and an X at the top.
+    g.save(); g.translate(w * 0.3, floor + 30); g.transform(1, 0, -0.55, 0.42, 0, 0);
+    g.fillStyle = '#dccba0'; g.fillRect(0, -60, 170, 120);
+    g.strokeStyle = 'rgba(90,66,34,0.6)'; g.lineWidth = 2;
+    for (let i = 0; i < 4; i++) { g.beginPath(); g.ellipse(70 + i * 8, 4, 60 - i * 13, 40 - i * 9, 0.3, 0, Math.PI * 2); g.stroke(); }
+    g.setLineDash([6, 6]); g.strokeStyle = 'rgba(120,40,24,0.85)'; g.lineWidth = 2.5;
+    g.beginPath(); g.moveTo(14, 50); g.bezierCurveTo(60, 30, 40, -10, 90, -20); g.lineTo(150, -48); g.stroke(); g.setLineDash([]);
+    g.lineWidth = 3; g.beginPath(); g.moveTo(144, -54); g.lineTo(156, -42); g.moveTo(156, -54); g.lineTo(144, -42); g.stroke();
+    g.restore();
+    g.fillStyle = '#2a211a'; g.beginPath(); g.ellipse(w * 0.36, floor + 12, 11, 6, 0, 0, Math.PI * 2); g.fill();
+  }
+  motes(g, t, w, h, 46, [255, 250, 230], 1, 7);
 }
 
 function farewell(g: G, w: number, h: number, t: number, speaking: number): void {
   g.fillStyle = vgrad(g, h, [[0, '#0a1a1c'], [0.7, '#12302f'], [1, '#081314']]);
   g.fillRect(0, 0, w, h);
   glow(g, w * 0.5, h * 0.3, 420, [180, 230, 210], 0.2);
+  // The Works' pipes along the back wall.
+  for (let i = 0; i < 9; i++) {
+    const x = w * 0.12 + i * w * 0.095, pw = 10 + (i % 3) * 6;
+    g.fillStyle = `rgba(30,52,50,${0.55 + (i % 2) * 0.2})`; g.fillRect(x, 0, pw, h);
+    g.fillStyle = 'rgba(120,160,150,0.12)'; g.fillRect(x, 0, 2, h);
+    g.fillStyle = 'rgba(20,34,33,0.9)'; g.fillRect(x - 3, h * (0.2 + (i % 4) * 0.13), pw + 6, 8);
+  }
   cavern(g, w, h, '#040909', 33);
-  horn(g, w * 0.5, h * 0.36, 1.4, speaking * (0.6 + 0.4 * Math.sin(t * 2)));
+  const hx = w * 0.56, hy = h * 0.36;
+  horn(g, hx, hy, 1.4, speaking * (0.6 + 0.4 * Math.sin(t * 2)));
+  // By the pipe, for a breath, the old Docent himself: an echo the Works kept. He fades as he speaks.
+  const a = Math.min(1, t / 1.2) * Math.max(0, 1 - Math.max(0, t - 2.6) / 2.2);
+  if (a > 0.01) {
+    const x = hx - 90, y = h * 0.84, col = (k: number): string => `rgba(176,232,216,${(k * a).toFixed(3)})`;
+    glow(g, x, y - 70, 160, [150, 225, 205], 0.28 * a);
+    g.save(); g.translate(x, y); g.scale(1.5, 1.5); g.translate(-x, -y);
+    g.fillStyle = col(0.5);
+    // Seated on a crate, turned to the pipe: the long coat, the head bowed to listen, both hands on his cane.
+    g.fillStyle = col(0.22); g.fillRect(x - 26, y - 18, 32, 18);
+    g.fillStyle = col(0.5);
+    g.beginPath();
+    g.moveTo(x - 16, y - 18); g.quadraticCurveTo(x - 21, y - 40, x - 12, y - 58);
+    g.quadraticCurveTo(x - 4, y - 66, x + 6, y - 60);
+    g.quadraticCurveTo(x + 12, y - 48, x + 10, y - 34);
+    g.lineTo(x + 28, y - 24); g.quadraticCurveTo(x + 33, y - 20, x + 30, y - 14);
+    g.lineTo(x + 30, y - 2); g.lineTo(x + 38, y); g.lineTo(x + 21, y); g.lineTo(x + 21, y - 12);
+    g.lineTo(x - 16, y - 12); g.closePath(); g.fill();
+    g.beginPath(); g.arc(x + 5, y - 69, 8, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = col(0.55); g.lineCap = 'round';
+    g.lineWidth = 5; g.beginPath(); g.moveTo(x + 2, y - 54); g.quadraticCurveTo(x + 10, y - 38, x + 24, y - 36); g.stroke();
+    g.lineWidth = 2.5; g.beginPath(); g.moveTo(x + 24, y - 38); g.lineTo(x + 27, y); g.stroke();
+    g.lineCap = 'butt';
+    // Spectacles catching the horn's light.
+    g.fillStyle = col(1); g.fillRect(x + 9, y - 71, 4, 2);
+    g.restore();
+  }
   motes(g, t, w, h, 80, [200, 240, 225], 1, 8);
 }
 
