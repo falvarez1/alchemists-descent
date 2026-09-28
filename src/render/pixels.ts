@@ -175,6 +175,12 @@ export interface LightField {
    * compose path. Absent = all ones (builder/test fields).
    */
   readonly lightOpen?: Float32Array;
+  /**
+   * True while lightOpen holds all ones (a readable level). Every compose path
+   * reads the darkness SMOOTHLY (core/darkness openAtCell, bilinear between
+   * texel centres) and may skip that read while this is set. Absent = false.
+   */
+  readonly openFlat?: boolean;
   build(ctx: Ctx): void;
   /**
    * Squared, clamped lit factors at a world position (original sampleSpriteLight).

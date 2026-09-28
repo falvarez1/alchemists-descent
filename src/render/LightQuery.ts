@@ -1,5 +1,5 @@
 import type { Ctx, LightQueryApi } from '@/core/types';
-import { darkMapFor, renderOpenLut, sampleDarkMap } from '@/core/darkness';
+import { darkMapFor, openAtCell, renderOpenLut, sampleDarkMap } from '@/core/darkness';
 import { LIGHT_CLAMP, renderAmbient } from '@/render/lightingModel';
 
 /** The slice of the light field a gameplay query reads (render/Lighting). */
@@ -11,6 +11,8 @@ export interface QueryableLightField {
   readonly lightB: Float32Array;
   readonly wandField: Float32Array;
   readonly lightOpen?: Float32Array;
+  /** lightOpen is all ones this build (a readable level). */
+  readonly openFlat?: boolean;
   /** Camera origin the field was built at (half-res texel = (x - originX) >> 1). */
   readonly originX: number;
   readonly originY: number;
@@ -52,7 +54,10 @@ export class LightQuery implements LightQueryApi {
     let open: number;
     let L = 0;
     if (i >= 0) {
-      open = f.lightOpen ? f.lightOpen[i] : 1;
+      // The darkness reads smooth, exactly as drawn (core/darkness openAtCell).
+      open = f.lightOpen && f.openFlat !== true
+        ? openAtCell(f.lightOpen, f.LW, f.LH, Math.floor(x) - f.originX, Math.floor(y) - f.originY)
+        : 1;
       L = Math.max(f.lightR[i], f.lightG[i], f.lightB[i]);
     } else {
       const d = sampleDarkMap(darkMapFor(this.ctx.levels?.current), x, y);

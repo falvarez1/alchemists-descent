@@ -68,6 +68,8 @@ const LENS_BASE = WAVE_BASE + COMPOSE_MAX_WAVES * WAVE_STRIDE;
 const LENS_STRIDE = 4;
 /** Shape-aware floor backdrop: on, saturation, haze rgb, haze mix (after the lenses). */
 const NATURAL_BASE = LENS_BASE + COMPOSE_MAX_LENSES * LENS_STRIDE;
+/** 1 while designed darkness is present (the light alpha is not all ones). */
+const DARK_ON_PARAM = NATURAL_BASE + 6;
 
 interface RuntimeGpuQueue {
   submit(commandBuffers: unknown[]): void;
@@ -429,6 +431,24 @@ fn softLit(lf: f32) -> f32 {
   return lit;
 }
 
+// Designed darkness, SMOOTH: the light alpha bilinear between the half-res
+// texel centres around this cell's centre (core/darkness openAtCell; the
+// WebGL2 shader's openAt). Even cells sit 3/4 of the way from texel
+// (v/2)-1 to v/2, odd cells 1/4 past v/2.
+fn openAt(vx: i32, vy: i32) -> f32 {
+  let x0 = (vx + 1) / 2 - 1;
+  let y0 = (vy + 1) / 2 - 1;
+  let tx = select(0.75, 0.25, (vx & 1) == 1);
+  let ty = select(0.75, 0.25, (vy & 1) == 1);
+  let xa = clamp(x0, 0, ${LIGHT_W - 1});
+  let xb = clamp(x0 + 1, 0, ${LIGHT_W - 1});
+  let ya = clamp(y0, 0, ${LIGHT_H - 1});
+  let yb = clamp(y0 + 1, 0, ${LIGHT_H - 1});
+  let top = mix(textureLoad(uLight, vec2<i32>(xa, ya), 0).a, textureLoad(uLight, vec2<i32>(xb, ya), 0).a, tx);
+  let bot = mix(textureLoad(uLight, vec2<i32>(xa, yb), 0).a, textureLoad(uLight, vec2<i32>(xb, yb), 0).a, tx);
+  return mix(top, bot, ty);
+}
+
 // softLit plus the designed-darkness eye adaptation (lightingModel DARK_ADAPT).
 fn adaptLit(lf: f32, adapt: f32) -> f32 {
   var lit = lf * lf + adapt * lf;
@@ -561,8 +581,9 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
     let charged = (cell.a & 0x80u) != 0u;
     let lightTexel = textureLoad(uLight, vec2<i32>(vx / 2, vy / 2), 0);
     let light = lightTexel.rgb;
-    // Designed darkness (alpha): scales ambient + the readability floor.
-    let open = lightTexel.a;
+    // Designed darkness (alpha): scales ambient + the readability floor,
+    // read smooth (openAt) so no dark edge shows the texel staircase.
+    let open = select(1.0, openAt(vx, vy), p(${DARK_ON_PARAM}u) > 0.5);
     let shut = 1.0 - open;
     let adapt = ${DARK_ADAPT.toFixed(3)} * shut;
     let dxv = f32(vx) - ${(VIEW_W / 2).toFixed(1)};
@@ -684,6 +705,8 @@ export class WebGpuLiveCompose {
   private readonly winBytes = new Uint8Array(WIN_W * WIN_H * 4);
   private readonly win32 = new Uint32Array(this.winBytes.buffer);
   private readonly lightData = new Float32Array(LIGHT_W * LIGHT_H * 4);
+  /** The uploaded light alpha carries designed darkness (not all ones). */
+  private darkOn = false;
   private readonly lutData = new Float32Array(256);
   // One-float scratch for hashing each LUT weight's raw bits into lutSignature
   // (updateLut), so the rarely-changing bloom table isn't re-uploaded every frame.
@@ -1337,6 +1360,7 @@ export class WebGpuLiveCompose {
     params[NATURAL_BASE + 3] = natural && haze ? haze[1] : 0;
     params[NATURAL_BASE + 4] = natural && haze ? haze[2] : 0;
     params[NATURAL_BASE + 5] = natural ? (kit ? kit.hazeMix : natural.backdropHazeMix) : 0;
+    params[DARK_ON_PARAM] = this.darkOn ? 1 : 0;
     const machinery = kit ? kit.machinery : look.machinery;
     const offsetX = kit ? kit.offsetX : look.backdropOffsetX;
 
@@ -1394,6 +1418,7 @@ export class WebGpuLiveCompose {
       );
     }
     const { lightR, lightG, lightB, lightOpen } = light;
+    this.darkOn = lightOpen !== undefined && light.openFlat !== true;
     for (let i = 0, offset = 0; i < LIGHT_W * LIGHT_H; i++, offset += 4) {
       this.lightData[offset] = lightR[i];
       this.lightData[offset + 1] = lightG[i];

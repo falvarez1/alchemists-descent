@@ -41,6 +41,7 @@ import {
   VIGNETTE_BASE,
 } from '@/render/lightingModel';
 import { SKY } from '@/render/skyAtmosphere';
+import { openAtCell } from '@/core/darkness';
 import { PICKUP_COLOR } from '@/core/pickupDefs';
 import { drawHeldLeg, drawLooseLeg } from '@/render/sprites/CreatureArt';
 import { drawTelekinesis } from '@/render/sprites/TelekinesisArt';
@@ -562,7 +563,10 @@ export class FrameComposer implements PixelSurface {
     const materials = ctx.params.materials;
     const { lightR, lightG, lightB, vignette, LW } = this.light;
     // Designed darkness per light texel (1 = shipped look); see lightingModel DARK_*.
-    const lightOpen = this.light.lightOpen;
+    // Read SMOOTHLY per cell (core/darkness openAtCell, as the GPU shaders do);
+    // a readable level (all ones) skips the read.
+    const lightOpen = this.light.lightOpen && this.light.openFlat !== true ? this.light.lightOpen : null;
+    const LH = this.light.LH;
     // The vignette[] array bakes the shipped 0.52 strength; rescale per-frame so
     // postFx.vignette tunes it (mirrors the GPU compose's uVignette uniform).
     const vigScale = ctx.state.postFx.vignette / VIGNETTE_BASE;
@@ -866,7 +870,7 @@ export class FrameComposer implements PixelSurface {
             } else {
               // The distant cave sinks with the designed darkness; only real
               // light (the lf0 term) brings it back.
-              const open = lightOpen ? lightOpen[li] : 1, shut = 1 - open, adapt = DARK_ADAPT * shut;
+              const open = lightOpen ? openAtCell(lightOpen, LW, LH, vx, vy) : 1, shut = 1 - open, adapt = DARK_ADAPT * shut;
               const litK = 0.72 * litW;
               let lf0 = Math.min(LIGHT_CLAMP, lightR[li]) * vg;
               r = (r * 0.62 + ambient * 0.022) * vg * open + r * (lf0 * lf0 + adapt * lf0) * litK + DARK_AIR_R * shut;
@@ -968,7 +972,7 @@ export class FrameComposer implements PixelSurface {
           // (the BFS rim shading baked into cell colors carries the detail).
           // Designed darkness lowers ambient and this floor together; what is
           // left at full dark is the cold DARK_FLOOR remainder.
-          const open = lightOpen ? lightOpen[li] : 1, shut = 1 - open;
+          const open = lightOpen ? openAtCell(lightOpen, LW, LH, vx, vy) : 1, shut = 1 - open;
           const floor = LIGHT_READABILITY_FLOOR * vg * open;
           const amb = ambient * open, adapt = DARK_ADAPT * shut;
           // Emissive cells are LIGHT SOURCES: their own brightness must not be

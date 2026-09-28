@@ -1230,12 +1230,20 @@ wobbling ±10 so a zone reads as a cave the light never reached). Zones are
 baked once per level into a half-res map (static data, regenerated with the
 pristine world on restore). The bake FOLLOWS THE ROCK (fix3): the dark starts
 in a zone's core air and travels only through what connects to it — along air
-it holds 8 cells of feathered depth then fades over 40 (a doorway dims, never
-meets a drawn edge), into rock 3× slower (a room's walls go dark a few cells
+it holds 8 cells of feathered depth then fades over 52 (a doorway dims, never
+meets a drawn edge), into rock 2.2× slower (a room's walls go dark some cells
 deep; the rock beyond and any cave the zone's box merely overlaps keep their
-light), rim wobble ±10 in air / ±18 in rock, a 1-2-1 blur over the texel steps.
-(Before, the zone box was painted over whatever lay under it: light-puzzle
-rooms read as black rectangles cut through rock and lit caves.) The render uses d² × 0.965 (an ordinary cave dims
+light), the fade's line wandering ±16 in air / ±18 in rock, a 1-2-1 blur over
+the texel steps. Only STRUCTURE soaks slowly (rock, masonry, metal, timber,
+ice, glass): a sand dune, a gold drift or snow in a dark room goes dark with
+the room. (Before, the zone box was painted over whatever lay under it:
+light-puzzle rooms read as black rectangles cut through rock and lit caves.
+fix4b: a fade of 40 and a soak of 3 still drew a dark room as a black
+rectangle cut out of lit walls, and a sand heap in the Undertow glowed as a lit
+block.) The map is READ SMOOTH: bilinear between texel centres for gameplay
+(`sampleDarkMap`) and per cell in every compose path and the sprite light
+(`openAtCell` over the per-light-texel field) — sampled nearest, every dark
+edge was a staircase of 2-cell steps. The render uses d² × 0.965 (an ordinary cave dims
 unlit rock only ~9%); gameplay reads d linearly. Per light texel the result is
 an OPEN factor that every compose path (CPU reference, WebGL2 light-texture
 alpha, WebGPU WGSL) multiplies ambient and the 0.40 readability floor by; the

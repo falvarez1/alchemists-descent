@@ -175,6 +175,7 @@ uniform float uAmbient;
 uniform float uSkyLine;    // D1 surface intro: Empty cells above this row paint as open sky (0 = none)
 uniform float uBoost;      // maxBrightness
 uniform float uVignette;   // screen vignette strength (postFx.vignette; 0.52 shipped)
+uniform bool uDarkOn;      // designed darkness present (the light alpha is not all ones)
 uniform int uGlintFrame;   // frameCount % 97 (crystal glint is integer math)
 uniform float uPhaseWater;  // (frameCount * 0.16)  mod 2pi
 uniform float uPhaseShroom; // (frameCount * 0.045) mod 2pi
@@ -242,6 +243,23 @@ bool openCell(int t) {
   if (t < 32) return ((${terrainOpenMask[0]}u >> uint(t)) & 1u) != 0u;
   if (t < 64) return ((${terrainOpenMask[1]}u >> uint(t - 32)) & 1u) != 0u;
   return false;
+}
+
+// Designed darkness, SMOOTH: the light alpha (render open factor) bilinear
+// between the half-res texel centres around this cell's centre — the mirror
+// of core/darkness openAtCell (CPU compose, sprites, LightQuery). An even cell
+// sits 3/4 of the way from texel (v>>1)-1 to v>>1, an odd one 1/4 past v>>1.
+float openAt(int vx, int vy) {
+  ivec2 hi = textureSize(uLight, 0) - ivec2(1);
+  int x0 = (vx + 1) / 2 - 1;
+  int y0 = (vy + 1) / 2 - 1;
+  float tx = (vx & 1) == 1 ? 0.25 : 0.75;
+  float ty = (vy & 1) == 1 ? 0.25 : 0.75;
+  int xa = clamp(x0, 0, hi.x), xb = clamp(x0 + 1, 0, hi.x);
+  int ya = clamp(y0, 0, hi.y), yb = clamp(y0 + 1, 0, hi.y);
+  float top = mix(texelFetch(uLight, ivec2(xa, ya), 0).a, texelFetch(uLight, ivec2(xb, ya), 0).a, tx);
+  float bot = mix(texelFetch(uLight, ivec2(xa, yb), 0).a, texelFetch(uLight, ivec2(xb, yb), 0).a, tx);
+  return mix(top, bot, ty);
 }
 
 vec3 gradeBackdrop(vec3 c) {
@@ -348,8 +366,9 @@ void main() {
 
     vec4 lightTexel = texelFetch(uLight, ivec2(vx >> 1, vy >> 1), 0);
     vec3 light = lightTexel.rgb;
-    // Designed darkness (alpha): scales ambient + the readability floor.
-    float open = lightTexel.a;
+    // Designed darkness (alpha): scales ambient + the readability floor,
+    // read smooth (openAt) so no dark edge shows the texel staircase.
+    float open = uDarkOn ? openAt(vx, vy) : 1.0;
     float shut = 1.0 - open;
     float adapt = ${DARK_ADAPT.toFixed(3)} * shut;
     float dxv = float(vx) - ${VIG_CX.toFixed(1)};
@@ -977,6 +996,7 @@ export class GpuCompose {
         uSkyLine: { value: 0 },
         uBoost: { value: 1 },
         uVignette: { value: VIGNETTE_BASE },
+        uDarkOn: { value: false },
         uGlintFrame: { value: 0 },
         uPhaseWater: { value: 0 },
         uPhaseShroom: { value: 0 },
@@ -1038,6 +1058,7 @@ export class GpuCompose {
     u.uSkyLine.value = ctx.levels.current?.skyLine ?? 0;
     u.uBoost.value = ctx.params.global.maxBrightness;
     u.uVignette.value = ctx.state.postFx.vignette;
+    u.uDarkOn.value = light.lightOpen !== undefined && light.openFlat !== true;
 
     const frameCount = ctx.state.frameCount;
     u.uGlintFrame.value = frameCount % 97;
