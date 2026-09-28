@@ -1333,7 +1333,12 @@ export class FrameComposer implements PixelSurface {
         pose.y - reach > this.renderCamY + VIEW_H
       )
         continue;
-      this.drawContactShadow(ctx, pose.x, pose.y + reach, reach, 0.5);
+      // The shadow sits under the body's true lowest point: a box's diagonal
+      // reached ~40% of its size INTO the floor and inked a blob in the rock.
+      const ca = Math.abs(Math.cos(pose.angle)), sa = Math.abs(Math.sin(pose.angle));
+      const downReach = b.shape.kind === 'circle' ? reach : b.shape.halfW * sa + b.shape.halfH * ca;
+      const sideReach = b.shape.kind === 'circle' ? reach : b.shape.halfW * ca + b.shape.halfH * sa;
+      this.drawContactShadow(ctx, pose.x, pose.y + downReach, sideReach, 0.5);
       const pen = new Pen(this, view, [lr, lg, lb]);
       const fill: readonly [number, number, number] = [r, g, bl];
       const edge: readonly [number, number, number] = [r * 0.42 + INK[0] * 0.3, g * 0.42 + INK[1] * 0.3, bl * 0.42 + INK[2] * 0.3];
@@ -1403,8 +1408,164 @@ export class FrameComposer implements PixelSurface {
           pen.line(pose.x, pose.y, pose.x + Math.cos(pose.angle) * (rad - 1), pose.y + Math.sin(pose.angle) * (rad - 1), edge, pen.step * 2);
           pen.arc(pose.x, pose.y, rad * 0.62, Math.PI * 1.1, Math.PI * 1.4, fill, 0, 1.35);
         }
+      } else if (b.payload === 'explosive') {
+        this.drawPowderKeg(pen, pose, b.shape.halfW, b.shape.halfH, fill, edge, b.burnT ?? 0, frame + b.id * 7);
+      } else if (b.material === 'wood' && Math.min(b.shape.halfW, b.shape.halfH) >= 1.2) {
+        this.drawTimberBody(pen, pose, b.shape.halfW, b.shape.halfH, fill, edge, b.burnT ?? 0, b.frozenT ?? 0, frame + b.id * 7);
       } else {
         pen.box(pose.x, pose.y, b.shape.halfW, b.shape.halfH, pose.angle, fill, edge);
+      }
+    }
+  }
+
+  /**
+   * An explosive barrel: bellied red staves, two iron hoops and a pale powder
+   * mark, so it reads as "do not light" before anyone learns it the hard way.
+   * Drawn inside its box collider; the fuse glows while it burns.
+   */
+  private drawPowderKeg(
+    pen: Pen, pose: { x: number; y: number; angle: number }, hw: number, hh: number,
+    fill: readonly [number, number, number], edge: readonly [number, number, number], burnT: number, phase: number,
+  ): void {
+    const cos = Math.cos(pose.angle), sin = Math.sin(pose.angle);
+    const at = (lx: number, ly: number): readonly [number, number] => [pose.x + lx * cos - ly * sin, pose.y + lx * sin + ly * cos];
+    const e = pen.step;
+    const shade = (k: number): readonly [number, number, number] => [fill[0] * k, fill[1] * k, fill[2] * k];
+    // Bellied silhouette: the chimes are narrower than the waist.
+    const chime = hw * 0.8;
+    const outline = [at(-chime, -hh), at(chime, -hh), at(hw, -hh * 0.4), at(hw, hh * 0.4), at(chime, hh), at(-chime, hh), at(-hw, hh * 0.4), at(-hw, -hh * 0.4)];
+    pen.polygon(outline, edge);
+    const inner = [at(-chime + e, -hh + e), at(chime - e, -hh + e), at(hw - e, -hh * 0.4), at(hw - e, hh * 0.4), at(chime - e, hh - e), at(-chime + e, hh - e), at(-hw + e, hh * 0.4), at(-hw + e, -hh * 0.4)];
+    pen.polygon(inner, fill, 1, 0.24);
+    // Staves: seams bowing with the belly, the lit one to the left of centre.
+    for (const s of [-0.5, 0, 0.5]) {
+      const [ax, ay] = at(s * chime, -hh + e), [cx, cy] = at(s * hw * 1.08, 0), [bx, by] = at(s * chime, hh - e);
+      pen.curve(ax, ay, cx, cy, bx, by, edge, 0, 0.9);
+    }
+    const [l0x, l0y] = at(-hw * 0.3, -hh + e * 2), [l1x, l1y] = at(-hw * 0.3, hh - e * 2);
+    pen.line(l0x, l0y, l1x, l1y, shade(1.25), 0, 1);
+    // Two iron hoops.
+    for (const y of [-hh * 0.62, hh * 0.62]) {
+      const w = hw - (Math.abs(y) / hh) * (hw - chime) * 0.8;
+      const [ax, ay] = at(-w, y), [bx, by] = at(w, y);
+      pen.line(ax, ay, bx, by, IRON_D, e * 2, 1);
+      const [hx0, hy0] = at(-w + e, y - e * 0.5), [hx1, hy1] = at(w - e, y - e * 0.5);
+      pen.line(hx0, hy0, hx1, hy1, STEEL_D, 0, 1);
+    }
+    // The powder mark: a pale diamond on the waist.
+    const m = Math.min(hw, hh) * 0.34;
+    pen.polygon([at(0, -m), at(m, 0), at(0, m), at(-m, 0)], [0.93, 0.86, 0.66]);
+    pen.polygon([at(0, -m * 0.45), at(m * 0.45, 0), at(0, m * 0.45), at(-m * 0.45, 0)], INK, 0.9);
+    // The bung, and its fuse spitting while the barrel burns.
+    const [fx, fy] = at(chime * 0.35, -hh);
+    pen.rivet(fx, fy, BRASS);
+    if (burnT > 0) {
+      const flick = 0.6 + 0.4 * Math.sin(phase * 0.9);
+      pen.glow(fx, fy - e, [1, 0.62, 0.18], flick * 1.4);
+      pen.glow(fx + e, fy - e * 2, [1, 0.85, 0.4], flick);
+    }
+  }
+
+  /**
+   * Loose timber, drawn as what it is (QA: level crates read as flat orange
+   * placeholder squares). A near-square body is a nailed crate: planked face,
+   * a lit batten frame, a diagonal brace, iron straps on the big ones and a
+   * nail at each corner. A long body (a plank torn from a wall) is one board
+   * with its grain and a nail at each end. Fire chars the seams and glows in
+   * them; frost rimes the top edge. The collider is the drawn rectangle.
+   */
+  private drawTimberBody(
+    pen: Pen, pose: { x: number; y: number; angle: number }, hw: number, hh: number,
+    fill: readonly [number, number, number], edge: readonly [number, number, number], burnT: number, frozenT: number, phase: number,
+  ): void {
+    const cos = Math.cos(pose.angle), sin = Math.sin(pose.angle);
+    const at = (lx: number, ly: number): readonly [number, number] => [pose.x + lx * cos - ly * sin, pose.y + lx * sin + ly * cos];
+    const e = pen.step;
+    const shade = (k: number): readonly [number, number, number] => [fill[0] * k, fill[1] * k, fill[2] * k];
+    const seam = burnT > 0 ? INK : edge;
+    // Outline, then the face.
+    pen.polygon([at(-hw, -hh), at(hw, -hh), at(hw, hh), at(-hw, hh)], edge);
+    pen.polygon([at(-hw + e, -hh + e), at(hw - e, -hh + e), at(hw - e, hh - e), at(-hw + e, hh - e)], shade(0.84), 1, 0.2);
+    const embers = (ax: number, ay: number, bx: number, by: number): void => {
+      if (burnT <= 0) return;
+      const n = Math.max(2, Math.ceil(Math.hypot(bx - ax, by - ay) / (e * 3)));
+      for (let i = 1; i < n; i++) {
+        const t = i / n, flick = 0.5 + 0.5 * Math.sin(phase * 0.37 + i * 2.1);
+        if (flick < 0.45) continue;
+        const [x, y] = at(ax + (bx - ax) * t, ay + (by - ay) * t);
+        pen.glow(x, y, [0.9, 0.36, 0.08], flick * 0.8);
+      }
+    };
+    const long = Math.max(hw, hh) >= Math.min(hw, hh) * 1.8;
+    if (long) {
+      // One board: grain runs the long way, a nail at each end.
+      const alongX = hw >= hh;
+      const len = alongX ? hw : hh, across = alongX ? hh : hw;
+      const lines = Math.max(1, Math.floor(across * 2 / 1.6) - 1);
+      for (let i = 1; i <= lines; i++) {
+        const o = -across + (across * 2) * i / (lines + 1);
+        const wob = ((i * 37) % 5) * 0.12 * len;
+        const a = alongX ? at(-len + e * 2 + wob * 0.2, o) : at(o, -len + e * 2 + wob * 0.2);
+        const c = alongX ? at(len - e * 2 - wob * 0.3, o) : at(o, len - e * 2 - wob * 0.3);
+        pen.line(a[0], a[1], c[0], c[1], shade(0.66), 0, 0.9);
+      }
+      for (const s of [-1, 1]) {
+        const [nx, ny] = alongX ? at(s * (len - 1.3), 0) : at(0, s * (len - 1.3));
+        pen.rivet(nx, ny, STEEL_L);
+      }
+      embers(alongX ? -len : 0, alongX ? 0 : -len, alongX ? len : 0, alongX ? 0 : len);
+      return;
+    }
+    // Planks: horizontal boards ~2.4 cells tall with dark seams.
+    const boards = Math.max(2, Math.round((hh * 2) / 2.4));
+    for (let i = 1; i < boards; i++) {
+      const y = -hh + (hh * 2) * i / boards;
+      const [ax, ay] = at(-hw + e, y), [bx, by] = at(hw - e, y);
+      pen.line(ax, ay, bx, by, seam, 0, 0.95);
+      embers(-hw + e, y, hw - e, y);
+    }
+    // The batten frame: a lit band inside the outline, top brightest.
+    const band = Math.max(e, Math.min(hw, hh) * 0.2);
+    const lit = shade(1.12), mid = shade(1.0), low = shade(0.9);
+    const rect = (x0: number, y0: number, x1: number, y1: number, c: readonly [number, number, number]): void =>
+      pen.polygon([at(x0, y0), at(x1, y0), at(x1, y1), at(x0, y1)], c);
+    rect(-hw + e, -hh + e, hw - e, -hh + e + band, lit);
+    rect(-hw + e, hh - e - band, hw - e, hh - e, low);
+    rect(-hw + e, -hh + e + band, -hw + e + band, hh - e - band, mid);
+    rect(hw - e - band, -hh + e + band, hw - e, hh - e - band, mid);
+    // The diagonal brace, with its shadow on the boards below it.
+    const ix = hw - e - band, iy = hh - e - band;
+    const [s0x, s0y] = at(-ix, iy + e), [s1x, s1y] = at(ix, -iy + e);
+    pen.line(s0x, s0y, s1x, s1y, seam, band * 0.5, 0.9);
+    const [b0x, b0y] = at(-ix, iy), [b1x, b1y] = at(ix, -iy);
+    pen.line(b0x, b0y, b1x, b1y, mid, band, 1);
+    embers(-ix, iy, ix, -iy);
+    // Iron straps round a big crate, riveted where they cross the frame.
+    if (Math.min(hw, hh) >= 4.5) {
+      for (const s of [-0.5, 0.5]) {
+        const x = s * hw;
+        const [t0x, t0y] = at(x, -hh), [t1x, t1y] = at(x, hh);
+        pen.line(t0x, t0y, t1x, t1y, IRON_D, e * 2, 1);
+        const [h0x, h0y] = at(x - e * 0.5, -hh + e), [h1x, h1y] = at(x - e * 0.5, hh - e);
+        pen.line(h0x, h0y, h1x, h1y, STEEL_D, 0, 1);
+        for (const yy of [-hh + band * 0.6 + e, hh - band * 0.6 - e]) {
+          const [rx, ry] = at(x, yy);
+          pen.rivet(rx, ry, STEEL);
+        }
+      }
+    }
+    // A nail in each corner of the frame.
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+      const [nx, ny] = at(sx * (hw - e - band * 0.5), sy * (hh - e - band * 0.5));
+      pen.rivet(nx, ny, burnT > 0 ? IRON : STEEL_L);
+    }
+    // Rime along the top edge while it is frozen.
+    if (frozenT > 0) {
+      const n = Math.max(3, Math.ceil(hw * 2 / e));
+      for (let i = 0; i <= n; i++) {
+        if ((i * 7 + phase) % 3 === 0) continue;
+        const [fx, fy] = at(-hw + (hw * 2) * i / n, -hh);
+        pen.px(fx, fy, STEEL_L, 1.15);
       }
     }
   }
