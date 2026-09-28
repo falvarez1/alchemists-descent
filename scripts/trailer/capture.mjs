@@ -23,7 +23,7 @@ import { chromium } from 'playwright-core';
 import { installVirtualTime } from './lib/virtualTime.mjs';
 import { installTrailerHelpers } from './lib/pageHelpers.mjs';
 import { hudCss } from './lib/hud.mjs';
-import { buildMarks } from './lib/marks.mjs';
+import { manualMarks, marksFrom, toEvents } from './lib/marks.mjs';
 import { writeManifest, writeContactSheet } from './lib/manifest.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -347,7 +347,9 @@ async function captureShot(shot) {
     if (stillsEvery) return null;
     const fps = FPS;
     const clipS = frameTotal / fps;
-    const { marks, events } = buildMarks(shot, pageState, { fps, clipS, scale, fromTick: preTicks });
+    const events = toEvents(pageState.events, fps);
+    const manual = manualMarks(shot, pageState, { fps, clipS, scale, fromTick: preTicks });
+    const marks = marksFrom(events, manual);
     const sidecar = {
       id: shot.id,
       file: `${shot.id}.mp4`,
@@ -359,6 +361,7 @@ async function captureShot(shot) {
       bestWindow: shot.bestWindow ?? { startS: Math.min(1, clipS / 4), endS: Math.max(clipS - 1, clipS * 0.75) },
       hero: shot.hero ?? null,
       marks,
+      manualMarks: manual,
       events,
       slowmo: shot.slowmo ? { scale, of: shot.base } : undefined,
       seed: shot.seed ?? 777,

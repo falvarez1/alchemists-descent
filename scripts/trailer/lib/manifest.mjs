@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright-core';
+import { marksFrom } from './marks.mjs';
 
 export function writeManifest(out, registry) {
   const order = new Map(registry.map((s, i) => [s.id, i]));
@@ -14,6 +15,9 @@ export function writeManifest(out, registry) {
     .map((f) => JSON.parse(readFileSync(join(out, f), 'utf8')))
     .filter((s) => s && s.id && existsSync(join(out, s.file)))
     .sort((a, b) => (order.get(a.id) ?? 1e9) - (order.get(b.id) ?? 1e9) || a.id.localeCompare(b.id));
+  // Marks are re-derived from the event log, so label rules apply to every
+  // sidecar that kept its manual marks apart.
+  for (const s of sidecars) if (Array.isArray(s.manualMarks)) s.marks = marksFrom(s.events, s.manualMarks);
   const manifest = sidecars.map((s) => ({
     id: s.id,
     file: s.file,
