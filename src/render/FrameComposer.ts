@@ -64,6 +64,8 @@ interface ActiveBackdropLayer {
   pixels: Uint8ClampedArray;
   width: number;
   opacity: number;
+  /** opacity / 255: byte alpha → coverage in one multiply. */
+  alphaScale: number;
   /** Share of real light the layer takes (depth kits: far planes little, near planes most). */
   lit: number;
   xSamples: Int32Array;
@@ -128,7 +130,7 @@ export class FrameComposer implements PixelSurface {
   private readonly lenses: CompositorLens[] = [];
   private readonly backdropLayerPool: ActiveBackdropLayer[] = Array.from(
     { length: 5 },
-    () => ({ pixels: EMPTY_BACKDROP_PIXELS, width: 0, opacity: 0, lit: 1, xSamples: EMPTY_SAMPLES, ySamples: EMPTY_SAMPLES }),
+    () => ({ pixels: EMPTY_BACKDROP_PIXELS, width: 0, opacity: 0, alphaScale: 0, lit: 1, xSamples: EMPTY_SAMPLES, ySamples: EMPTY_SAMPLES }),
   );
   private readonly activeBackdropLayers: ActiveBackdropLayer[] = [];
   private readonly poses = new RenderPoses();
@@ -607,17 +609,19 @@ export class FrameComposer implements PixelSurface {
       for (let vx = 0; vx < VIEW_W; vx++) {
         let sx = Math.floor((camX + vx) / scale + offsetX) % layer.width;
         if (sx < 0) sx += layer.width;
-        xSamples[vx] = backdropMirror ? layer.width - 1 - sx : sx;
+        // Byte offsets: the hot loop reads pixels[ySamples[vy] + xSamples[vx]].
+        xSamples[vx] = (backdropMirror ? layer.width - 1 - sx : sx) * 4;
       }
       for (let vy = 0; vy < VIEW_H; vy++) {
         let sy = Math.floor((camY + vy) / scale + setting.offsetY) % layer.height;
         if (sy < 0) sy += layer.height;
-        ySamples[vy] = sy;
+        ySamples[vy] = sy * layer.width * 4;
       }
       const descriptor = this.backdropLayerPool[activeBackdropLayers.length];
       descriptor.pixels = layer.pixels;
       descriptor.width = layer.width;
       descriptor.opacity = Math.min(1, setting.opacity * (layer.id === 'second' ? machinery : 1));
+      descriptor.alphaScale = descriptor.opacity / 255;
       descriptor.lit = layer.lit ?? 1;
       descriptor.xSamples = xSamples;
       descriptor.ySamples = ySamples;
@@ -787,24 +791,35 @@ export class FrameComposer implements PixelSurface {
           } else {
             // Ordered PNG parallax composite. Every layer carries its own alpha
             // and scrolls with its own multiplier, so texture and cutout never
-            // drift apart.
-            r = 0.004;
-            g = 0.005;
-            b = 0.009;
+            // drift apart. Composited FRONT TO BACK (the same over operator,
+            // regrouped): a pixel stops sampling once nearer layers cover it.
+            r = 0;
+            g = 0;
+            b = 0;
+            litW = 0;
+            let trans = 1;
             // shift the backdrop sample column/row by the heat-haze offset so the
             // distant cave shimmers behind a held (hot) object, like the terrain does
             const bvx = hazeX !== 0 ? (vx + hazeX < 0 ? 0 : vx + hazeX >= VIEW_W ? VIEW_W - 1 : vx + hazeX) : vx;
             const bvy = hazeY !== 0 ? (vy + hazeY < 0 ? 0 : vy + hazeY >= VIEW_H ? VIEW_H - 1 : vy + hazeY) : vy;
-            for (const active of activeBackdropLayers) {
-              const si = (active.ySamples[bvy] * active.width + active.xSamples[bvx]) * 4;
-              const a = (active.pixels[si + 3] / 255) * active.opacity;
+            for (let li = activeBackdropLayers.length - 1; li >= 0; li--) {
+              const active = activeBackdropLayers[li];
+              const px = active.pixels;
+              const si = active.ySamples[bvy] + active.xSamples[bvx];
+              const a = px[si + 3] * active.alphaScale;
               if (a <= 0.001) continue;
-              const ia = 1 - a;
-              r = r * ia + (active.pixels[si] / 255) * a;
-              g = g * ia + (active.pixels[si + 1] / 255) * a;
-              b = b * ia + (active.pixels[si + 2] / 255) * a;
-              litW = litW * ia + active.lit * a;
+              const w = trans * a;
+              r += px[si] * w;
+              g += px[si + 1] * w;
+              b += px[si + 2] * w;
+              litW += active.lit * w;
+              trans *= 1 - a;
+              if (trans < 0.002) break;
             }
+            r = r / 255 + 0.004 * trans;
+            g = g / 255 + 0.005 * trans;
+            b = b / 255 + 0.009 * trans;
+            litW += trans;
             r = (r * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
             g = (g * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
             b = (b * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;

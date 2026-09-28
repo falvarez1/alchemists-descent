@@ -1071,9 +1071,12 @@ and flutters: 42% fall / 10% drift per step, floats on water as a pad) and
   opacity 0.94) of near-black silhouettes — chains, pipes with valves,
   girders, gears (Bellows), stalks and root curtains (Rot), kelp and broken
   columns (Cisterns), basalt and crucibles (Kiln). Floor 1's are placed to
-  frame its rooms (the Intake's riser pipe and chains, the engine hall's
-  gear and girder, the Chamber's trunk main, the Silt Garden's roots, the
-  Lower Bell's gear); generated floors scatter about one per screen.
+  frame its rooms where the follow camera sits (the Intake's riser pipe and
+  valve, two gears under the engine hall's catwalk, the Chamber's trunk
+  main, the Silt Garden's roots, the Refuge's lamp chain, the Lower Bell's
+  gear and chain); generated floors scatter about one per screen. The Bell
+  & Tea Engine's hall and catwalk are a no-occluder zone (36-cell soft edge):
+  the machine is played, not watched.
   **The play layer always wins:** a reveal field (8-cell texels, updated at
   30 Hz, easing 0.26 per update) clears the screen centre (clear to 0.42 of the half-diagonal,
   full by 0.86), and punches soft holes (0.6 → 1.35 radii) over the player

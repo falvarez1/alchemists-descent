@@ -65,6 +65,9 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
 
 let versionCounter = 1;
 
+/** Baked kits kept in memory (the current floor and the one before it). */
+const KIT_CACHE = 2;
+
 export class DepthScene implements ParallaxLayers {
   readonly backdropLayers: ParallaxBitmapLayer[];
   profile: BackdropProfile | null = null;
@@ -154,6 +157,17 @@ export class DepthScene implements ParallaxLayers {
         foregroundDone: false,
         levelId: kit.id === 'bellows' && levelId === 'd1' ? 'd1' : null,
       };
+      this.baked.set(key, baked);
+      // Keep the two most recent floors baked (a floor's planes and foreground
+      // are ~10-15 MB); an older floor re-bakes over a few frames on return.
+      while (this.baked.size > KIT_CACHE) {
+        const oldest = this.baked.keys().next().value;
+        if (oldest === undefined || oldest === key) break;
+        this.baked.delete(oldest);
+      }
+    } else {
+      // Most-recently used last (Map iteration order is insertion order).
+      this.baked.delete(key);
       this.baked.set(key, baked);
     }
     this.bakeStep(baked);
