@@ -5,7 +5,7 @@ import { createDefaultPostFxSettings } from '@/config/params';
 import { LEVELS } from '@/config/worldgraph';
 import type { Ctx, GameStateData } from '@/core/types';
 import { fnv1aString } from '@/core/rng';
-import { Cell } from '@/sim/CellType';
+import { Cell, isSoftGrowth, isSolid } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { WorldGen } from '@/world/CaveGenerator';
 
@@ -90,6 +90,37 @@ describe('encounter lairs survive the tunnels carved after them', () => {
       const lair = lairs.find((p) => p.id === c.lair);
       expect(lair, 'lair placed').toBeTruthy();
       expect(count(world, lair!, c.cells)).toBeGreaterThanOrEqual(c.min);
+    });
+  }
+});
+
+describe('grove vines hang from real rock', () => {
+  // A vine cell holds only under another vine or beside load-bearing rock
+  // (sim/elements/vines); one stamped in the air detaches on the first sim
+  // step. Half a second into a visit the d2 seed-5 grove kept 2 to 63 of its
+  // 105 vine cells that way, a different number every time.
+  for (const exp of [1, 5, 42]) {
+    it(`d2 expedition ${exp}: every vine in the grove is anchored`, () => {
+      const { world, lairs } = generate('d2', exp);
+      const grove = lairs.find((p) => p.id === 'encounter-lair-rootloper-grove');
+      expect(grove, 'grove placed').toBeTruthy();
+      const anchor = (x: number, y: number): boolean => {
+        const t = world.types[world.idx(x, y)];
+        return isSolid(t) && !isSoftGrowth(t);
+      };
+      let vines = 0;
+      const loose: string[] = [];
+      for (let y = grove!.y0; y <= grove!.y1; y++) {
+        for (let x = grove!.x0; x <= grove!.x1; x++) {
+          if (world.types[world.idx(x, y)] !== Cell.Vines) continue;
+          vines++;
+          const held = world.types[world.idx(x, y - 1)] === Cell.Vines ||
+            anchor(x, y - 1) || anchor(x, y + 1) || anchor(x - 1, y) || anchor(x + 1, y);
+          if (!held) loose.push(`${x},${y}`);
+        }
+      }
+      expect(vines).toBeGreaterThan(20);
+      expect(loose).toEqual([]);
     });
   }
 });

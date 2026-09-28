@@ -184,7 +184,7 @@ const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
   // volcanic Colossus floor at depth 4.
   { id: 'd3', seed: 1337, hash: 'd2069c03' }, // GEN_VERSION 55: late tunnels (light/flora connectors, gauge rescue) route around sealed features, over v54's Sump rim + upper-flank connectors
   { id: 'd4', seed: 1337, hash: 'a73e843c' }, // GEN_VERSION 54: the Kiln's flora budget 14/46 -> 18/72 (more fire-lilies), over v53's grown Kiln + light puzzles + flora pass
-  { id: 'd2', seed: 42, hash: 'b4ab2627' }, // GEN_VERSION 55: late tunnels route around sealed features (the grove, the light rooms), over v53's light puzzles + organism census + flora pass
+  { id: 'd2', seed: 42, hash: '1b432ad9' }, // GEN_VERSION 55: grove vines hung from the real ceiling + late tunnels routed around sealed features, over v53's light puzzles + organism census + flora pass
 ];
 
 describe('full generateLevel golden hashes', () => {

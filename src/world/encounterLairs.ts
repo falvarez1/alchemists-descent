@@ -124,6 +124,8 @@ export function placeEncounterLairs(
       }
     }
 
+    if (spec.kind === 'rootloper') hangGroveVines(ctx.world, rng, at, spec);
+
     ledger.reserve(
       at.x0 - LAIR_MARGIN,
       at.y0 - LAIR_MARGIN,
@@ -513,14 +515,8 @@ function stampRootLoperGrove(world: World, rng: Rng, at: LairSite, spec: LairSpe
     }
   }
 
-  for (let x = at.x0 + 10; x <= x1 - 10; x += 3) {
-    const vineLen = 4 + rng.int(11);
-    for (let k = 0; k < vineLen; k++) {
-      const y = at.y0 + 10 + k;
-      if (y >= floorY - 3) break;
-      setCell(world, x + rng.int(3) - 1, y, Cell.Vines, vineColor());
-    }
-  }
+  // (The hanging vines are hung LAST — hangGroveVines, after the connector
+  // has carved — from the ceiling the grove actually ends up with.)
   for (let n = 0; n < 90; n++) {
     const x = at.x0 + 9 + rng.int(Math.max(1, spec.w - 18));
     const y = floorY - 1 - rng.int(8);
@@ -538,6 +534,37 @@ function stampRootLoperGrove(world: World, rng: Rng, at: LairSite, spec: LairSpe
 
   const spawn = { x: at.x0 + Math.floor(spec.w / 2), y: floorY - 1 };
   return { spawn, mouth: { x: spawn.x, y: spawn.y - 8 } };
+}
+
+/**
+ * The grove's curtain of hanging vines, hung from the REAL ceiling. A vine
+ * cell holds only under another vine or beside load-bearing rock
+ * (sim/elements/vines), so strands used to be stamped at a fixed row with a
+ * per-cell +-1 jitter: under the carved dome (or once the connector's gallery
+ * cut them off their roots) most hung from air or broke at every jog, and the
+ * live sim detached them on arrival — half a second in, the d2 seed-5 grove
+ * kept anywhere from 2 to 63 of its 105 vine cells, a different number every
+ * visit. Each strand now climbs its column to the first rigid rock above
+ * the grove's open interior and hangs straight down from it; a column with no
+ * rock overhead (an open-topped grove) gets no strand. Runs after the lair's
+ * own connector and settle; later passes' tunnels route around the lair.
+ */
+function hangGroveVines(world: World, rng: Rng, at: LairSite, spec: LairSpec): void {
+  const x1 = at.x0 + spec.w - 1;
+  const floorY = at.y0 + spec.h - 10;
+  const anchor = (t: number): boolean => isSolid(t) && !isSoftGrowth(t);
+  for (let x = at.x0 + 10; x <= x1 - 10; x += 3) {
+    const vineLen = 4 + rng.int(11);
+    // Climb from the grove's open interior to the first thing overhead.
+    let y = floorY - 12;
+    if (world.types[world.idx(x, y)] !== Cell.Empty) continue;
+    while (y > at.y0 - 6 && world.types[world.idx(x, y - 1)] === Cell.Empty) y--;
+    if (!anchor(world.types[world.idx(x, y - 1)])) continue;
+    for (let k = 0; k < vineLen && y + k < floorY - 3; k++) {
+      if (world.types[world.idx(x, y + k)] !== Cell.Empty) break;
+      setCell(world, x, y + k, Cell.Vines, vineColor());
+    }
+  }
 }
 
 function stampStoneMawSeam(world: World, rng: Rng, at: LairSite, spec: LairSpec): LairStamp {
