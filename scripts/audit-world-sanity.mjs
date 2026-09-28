@@ -190,14 +190,14 @@ function installAudit() {
   };
   const R = (v) => Math.round(v * 1000) / 1000;
 
-  A.measure = (phase) => {
+  A.measure = (_phase) => {
     const rt = ctx.levels.current;
     A.masks();
     const items = [];
     const push = (it) => { items.push(it); return it; };
     const story = rt.story;
     const view = ctx.story?.view;
-    const biome = rt.def.biome;
+    const _biome = rt.def.biome;
 
     // --- the player's arrival spot ---
     {

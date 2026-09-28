@@ -71,7 +71,7 @@ export default {
     const p = ctx.player;
     const alive = (e) => e && ctx.enemies.includes(e) && !e.dead;
     // Fly the party: enter from the right, then hold a bobbing slot.
-    P.party.forEach(([kind, sx, sy, enter, phase], i) => {
+    P.party.forEach(([_kind, sx, sy, enter, phase], i) => {
       const e = T.party[i];
       if (!alive(e)) return;
       e.attackCd = Math.max(e.attackCd ?? 0, 200);

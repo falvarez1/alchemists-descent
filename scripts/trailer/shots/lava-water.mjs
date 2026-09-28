@@ -13,7 +13,7 @@ export default {
   bestWindow: { startS: 1.8, endS: 7 },
   hero: 3.2,
   params: { pourAt: 100, pourTicks: 210, x0: 1002, x1: 1060 },
-  setup(ctx, T, P) {
+  setup(ctx, T, _P) {
     T.clearEnemies(1024, 550, 300);
     T.tp(988, 529);
     ctx.player.facing = 1;

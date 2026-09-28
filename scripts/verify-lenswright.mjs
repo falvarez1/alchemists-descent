@@ -84,7 +84,7 @@ const ward = await page.evaluate(() => {
   const ctx = window.__game.ctx, e = window.__lw(), b = ctx.levels.current.boss;
   window.__stand(b.x + 40, b.y + 40);
   const hp0 = e.hp;
-  e.boss && (e.boss.move = 'march');
+  if (e.boss) e.boss.move = 'march';
   window.__tick(60);
   const hp1 = e.hp;
   e.boss.move = 'march'; e.boss.moveT = 0;

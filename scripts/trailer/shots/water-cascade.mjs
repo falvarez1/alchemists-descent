@@ -15,7 +15,7 @@ export default {
   bestWindow: { startS: 1.6, endS: 7.5 },
   hero: 3.2,
   params: { fireAt: 96, sweep: [[586, 587], [556, 587]], sweepTicks: 60, floorY: 586, x0: 544, x1: 596 },
-  setup(ctx, T, P) {
+  setup(ctx, T, _P) {
     T.clearEnemies(570, 600, 260);
     T.tp(607, 565);
     ctx.player.facing = -1;

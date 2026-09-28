@@ -32,7 +32,7 @@ export default {
     P.since = 0;
     T.place(P.camX, P.camY, P.zoom);
   },
-  tick(ctx, T, P, t) {
+  tick(ctx, T, P, _t) {
     const tea = T.rt().living?.tea;
     // Camera: ease toward the engine's current station, whole cells.
     const af = ctx.camera.actionFocus;

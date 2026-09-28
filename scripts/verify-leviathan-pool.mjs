@@ -147,7 +147,7 @@ try {
         // second half: lightning-sized strikes too (Storm-kit worst case).
         const striking = Date.now() - t0 > FIGHT_MS / 2;
         await page.evaluate((striking) => {
-          const ctx = window.__game.ctx, w = ctx.world, { cx, cy } = window.__sump;
+          const ctx = window.__game.ctx, w = ctx.world, { cy } = window.__sump;
           const lev = ctx.enemies.find((e) => e.kind === 'leviathan');
           if (!lev) return;
           // A lightning-sized strike on the pool surface above it (Storm kit worst case).
