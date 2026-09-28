@@ -96,7 +96,7 @@ export function connectToCaves(
   // A sealed feature is never the TARGET either: its open interior (a lair's
   // cave, a light room) is often the nearest main-path region, and a tunnel
   // aimed into it is a tunnel through it. With nothing to avoid this is a no-op.
-  const sealed = (x: number, y: number): boolean => avoid.some((r) => inRect(r, x, y));
+  const sealed = (x: number, y: number): boolean => inFootprint(avoid, x, y);
   // Target the nearest MAIN-PATH region: those form the spawn<->exit artery,
   // so the tunnel provably joins the network the player actually walks.
   // (Nearest "open area" is not enough — isolated pockets are open too.)
@@ -255,6 +255,18 @@ function inRect(r: CarveAvoid, x: number, y: number): boolean {
   return x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1;
 }
 
+/**
+ * Is (x, y) inside any of these footprints? A caller choosing where a tunnel
+ * should END asks this first: a tunnel is never kept out of the footprint it
+ * ends in (that room is its destination), so a join target picked inside a
+ * sealed feature's open interior — a lair's cave is a perfectly good
+ * main-path floor — hands the walk a licence to cut straight through it (a
+ * story nook's connector took the west wall and floor of d2 seed 10's grove).
+ */
+export function inFootprint(rects: readonly CarveAvoid[], x: number, y: number): boolean {
+  return rects.some((r) => inRect(r, x, y));
+}
+
 /** Half-extents of one carve step: its disc, plus the swept gallery if any. */
 function carveExtent(radius: number, sweep?: { halfW: number; up: number; down: number }): { hx: number; up: number; down: number } {
   return {
@@ -407,8 +419,11 @@ function detourSteps(
       const nodes: number[] = [];
       for (let at = id; at >= 0; at = parents[at]) nodes.push(at);
       nodes.reverse();
+      // The walk leaves from the true start, not from the grid node it snapped
+      // to: that node (up to half a pitch off) is never charged, and carving it
+      // could clip a footprint right beside the mouth (a stonemaw's own seam).
       const out: Array<[number, number]> = [[sx, sy]];
-      for (const n of nodes) out.push([xMin + (n % cols) * P, yMin + Math.floor(n / cols) * P]);
+      for (const n of nodes.slice(1)) out.push([xMin + (n % cols) * P, yMin + Math.floor(n / cols) * P]);
       out.push([gx, gy]);
       return out;
     }

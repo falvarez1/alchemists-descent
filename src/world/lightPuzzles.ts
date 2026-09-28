@@ -8,7 +8,7 @@ import { randomCard, TOME_REWARD_POOL } from '@/content/cardRewardPools';
 import { Cell } from '@/sim/CellType';
 import { acidColor, packRGB, stoneColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
-import { type PlacementLedger, SEALED_LABEL, carvePocket, carveRect, connectToCaves, sealedFootprints, tunnelTo } from '@/world/connect';
+import { type PlacementLedger, SEALED_LABEL, carvePocket, carveRect, connectToCaves, inFootprint, sealedFootprints, tunnelTo } from '@/world/connect';
 import { wizardMask } from '@/world/validate';
 
 /**
@@ -206,7 +206,7 @@ export function carveRoom(
   if (steps.length === 0) {
     let best: { x: number; y: number } | null = null, bd = Infinity;
     for (const reg of graph.regions) {
-      if (!reg.onMainPath) continue;
+      if (!reg.onMainPath || inFootprint(avoid, reg.cx, reg.cy)) continue;
       const d = Math.hypot(reg.cx - mouth.x, reg.cy - mouth.y);
       if (d < bd) { bd = d; best = { x: Math.floor(reg.cx), y: Math.floor(reg.cy) }; }
     }

@@ -18,7 +18,7 @@ import {
   woodColor,
 } from '@/sim/colors';
 import type { World } from '@/sim/World';
-import { PlacementLedger, carvePocket, carveRect, connectToCaves, sealedFootprints, tunnelTo } from '@/world/connect';
+import { type CarveAvoid, PlacementLedger, carvePocket, carveRect, connectToCaves, inFootprint, sealedFootprints, tunnelTo } from '@/world/connect';
 import { wizardMask } from '@/world/validate';
 
 interface LairSpec {
@@ -84,11 +84,16 @@ export function placeEncounterLairs(
     const stamp = stampLair(ctx.world, rng, spec, at);
     carvePocket(ctx.world, stamp.mouth.x, stamp.mouth.y, 11, 13);
     // Sealed features placed before this lair (the sump, an earlier lair) are
-    // walked around like every later tunnel walks around this one.
-    const avoid = sealedFootprints(ledger);
+    // walked around like every later tunnel walks around this one — and so is
+    // this lair's own ORGAN. A tunnel is never kept out of the room it starts
+    // in (world/connect), so the lair's own connector used to be free to bore
+    // through its habitat on the way out: on d4 seed 21 it climbed straight
+    // through the stonemaw's ore seam (175 ore/coal cells -> 121).
+    const organ = lairOrgan(spec, at);
+    const avoid = organ ? [...sealedFootprints(ledger), organ] : sealedFootprints(ledger);
     let steps = connectToCaves(ctx.world, rng, graph, stamp.mouth.x, stamp.mouth.y, 12, fits, { halfW: 7, up: 21, down: 9 }, avoid);
     if (steps.length === 0) {
-      const target = nearestConnectorTarget(graph, stamp.mouth.x, stamp.mouth.y);
+      const target = nearestConnectorTarget(graph, stamp.mouth.x, stamp.mouth.y, avoid);
       if (target) {
         steps = Math.abs(stamp.mouth.x - target.x) <= 3 && Math.abs(stamp.mouth.y - target.y) <= 3
           ? [[stamp.mouth.x, stamp.mouth.y]]
@@ -113,7 +118,7 @@ export function placeEncounterLairs(
     );
     hardenCorridorAgainstPowder(ctx.world, steps, 7, 21, 9);
     if (!lairWizardReachable(ctx.world, site.spawn, at, spec, stamp.spawn)) {
-      const target = nearestWizardCell(ctx.world, site.spawn, stamp.mouth.x, stamp.mouth.y);
+      const target = nearestWizardCell(ctx.world, site.spawn, stamp.mouth.x, stamp.mouth.y, avoid);
       if (target) {
         tunnelTo(ctx.world, rng, stamp.mouth.x, stamp.mouth.y, target.x, target.y, 12, { halfW: 7, up: 21, down: 9 }, 26, avoid);
       }
@@ -147,6 +152,27 @@ export function placeEncounterLairs(
     }
   }
   return out;
+}
+
+/**
+ * The part of a lair that IS its habitat, which the lair's own connectors walk
+ * around: the stonemaw's ore seam (its band, the ore and coal flecked above it,
+ * and the floor under it) and the Rillback's pool with its basin. The grove has
+ * none: its moss is floor dressing the mouth stands in, and its vines are hung
+ * after the connectors, from whatever ceiling they leave (hangGroveVines).
+ * Inclusive cell rect; the mouth always lies outside it.
+ */
+function lairOrgan(spec: LairSpec, at: LairSite): CarveAvoid | null {
+  const x1 = at.x0 + spec.w - 1;
+  if (spec.kind === 'stonemaw') {
+    const floorY = at.y0 + spec.h - 10;
+    return { x0: x1 - 25, y0: at.y0 + 9, x1: x1 - 7, y1: floorY + 4 };
+  }
+  if (spec.kind === 'rillback') {
+    const pool = rillbackPoolRect(at, spec);
+    return { x0: pool.x0 - 2, y0: pool.top, x1: pool.x1 + 2, y1: pool.bottom + 6 };
+  }
+  return null;
 }
 
 function snapshotWorld(world: World): {
@@ -344,13 +370,15 @@ function distanceToMainPath(graph: RegionGraph, x: number, y: number): number {
   return best;
 }
 
-function nearestConnectorTarget(graph: RegionGraph, x: number, y: number): { x: number; y: number } | null {
+/** The nearest main-path region's centre outside every `avoid` footprint (a join target is never inside a sealed feature). */
+function nearestConnectorTarget(graph: RegionGraph, x: number, y: number, avoid: readonly CarveAvoid[]): { x: number; y: number } | null {
   let best: { x: number; y: number } | null = null;
   let bestD = Infinity;
   for (const onlyMain of [true, false]) {
     for (const reg of graph.regions) {
       if (onlyMain && !reg.onMainPath) continue;
       if (!onlyMain && reg.area < 60) continue;
+      if (inFootprint(avoid, reg.cx, reg.cy)) continue;
       const d = (reg.cx - x) * (reg.cx - x) + (reg.cy - y) * (reg.cy - y);
       if (d < bestD) {
         bestD = d;
@@ -395,13 +423,14 @@ function nearestWizardCell(
   spawn: { x: number; y: number },
   x: number,
   y: number,
+  avoid: readonly CarveAvoid[],
 ): { x: number; y: number } | null {
   const mask = wizardMask({ world, spawn });
   let best: { x: number; y: number } | null = null;
   let bestD = Infinity;
   for (let yy = 2; yy < world.height - 2; yy += 3) {
     for (let xx = 2; xx < world.width - 2; xx += 3) {
-      if (!mask[world.idx(xx, yy)]) continue;
+      if (!mask[world.idx(xx, yy)] || inFootprint(avoid, xx, yy)) continue;
       const d = (xx - x) * (xx - x) + (yy - y) * (yy - y);
       if (d < bestD) {
         bestD = d;

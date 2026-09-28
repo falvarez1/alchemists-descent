@@ -68,8 +68,8 @@ function count(world: World, x0: number, y0: number, x1: number, y1: number, cel
 
 /** GEN_VERSION 57: the Ice-House and the Glass Galleries (galleries skeleton, light rooms, dressing, the Lens Room), with the story's camp and valve nooks. */
 const GOLDEN: Array<{ id: 'd2b' | 'd3b'; seed: number; hash: string }> = [
-  { id: 'd2b', seed: 1337, hash: 'a7525099' }, // GEN_VERSION 58: late tunnels also route around the second doors' rooms (lair fix + biomes)
-  { id: 'd3b', seed: 1337, hash: 'dc94f5bc' }, // GEN_VERSION 58: as d2b
+  { id: 'd2b', seed: 1337, hash: '2c2b18a9' }, // GEN_VERSION 59: a story nook's route floor is never inside a sealed feature (its search's rng draws shift)
+  { id: 'd3b', seed: 1337, hash: 'd7ea111d' }, // GEN_VERSION 59: a sealed-footprint detour leaves from its true start, not the snapped grid node
 ];
 
 describe('the second doors: golden hashes', () => {
