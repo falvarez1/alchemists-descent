@@ -64,6 +64,10 @@ interface ActiveBackdropLayer {
   pixels: Uint8ClampedArray;
   width: number;
   opacity: number;
+  /** opacity / 255: byte alpha → coverage in one multiply. */
+  alphaScale: number;
+  /** Share of real light the layer takes (depth kits: far planes little, near planes most). */
+  lit: number;
   xSamples: Int32Array;
   ySamples: Int32Array;
 }
@@ -126,7 +130,7 @@ export class FrameComposer implements PixelSurface {
   private readonly lenses: CompositorLens[] = [];
   private readonly backdropLayerPool: ActiveBackdropLayer[] = Array.from(
     { length: 5 },
-    () => ({ pixels: EMPTY_BACKDROP_PIXELS, width: 0, opacity: 0, xSamples: EMPTY_SAMPLES, ySamples: EMPTY_SAMPLES }),
+    () => ({ pixels: EMPTY_BACKDROP_PIXELS, width: 0, opacity: 0, alphaScale: 0, lit: 1, xSamples: EMPTY_SAMPLES, ySamples: EMPTY_SAMPLES }),
   );
   private readonly activeBackdropLayers: ActiveBackdropLayer[] = [];
   private readonly poses = new RenderPoses();
@@ -402,6 +406,8 @@ export class FrameComposer implements PixelSurface {
     ctx.camera.renderY = Math.floor(ctx.camera.presentationY);
     this.renderCamX = ctx.camera.renderX;
     this.renderCamY = ctx.camera.renderY;
+    // Depth scene (render/depth): the floor's kit planes, foreground reveal field.
+    this.layers.sync?.(ctx);
 
     const frameCount = ctx.state.frameCount;
     // Active singularities bend the image around them (inward pull + swirl).
@@ -560,7 +566,7 @@ export class FrameComposer implements PixelSurface {
     // postFx.vignette tunes it (mirrors the GPU compose's uVignette uniform).
     const vigScale = ctx.state.postFx.vignette / VIGNETTE_BASE;
     const backdropLayers = this.layers.backdropLayers;
-    const backdropProfile = resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
+    const backdropProfile = this.layers.profile ?? resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
     const backdropSettings = backdropProfile.layers;
     const backdropGrade = backdropProfile.grade;
     const backdropExposure = 2 ** backdropGrade.exposure;
@@ -570,14 +576,22 @@ export class FrameComposer implements PixelSurface {
     const backdropSaturation = backdropGrade.saturation;
     // Per-floor grade + composition variant (config/floorLooks; identity on D1).
     const floorLook = activeFloorLook(ctx);
-    const tintMulR = floorLook.backdropMul[0], tintMulG = floorLook.backdropMul[1], tintMulB = floorLook.backdropMul[2];
-    const tintLiftR = floorLook.backdropLift[0], tintLiftG = floorLook.backdropLift[1], tintLiftB = floorLook.backdropLift[2];
+    // A depth kit bakes its own colour and substitutes a (neutral) floor grade.
+    const kitGrade = this.layers.grade ?? null;
+    const tintMul = kitGrade ? kitGrade.mul : floorLook.backdropMul, tintLift = kitGrade ? kitGrade.lift : floorLook.backdropLift;
+    const tintMulR = tintMul[0], tintMulG = tintMul[1], tintMulB = tintMul[2];
+    const tintLiftR = tintLift[0], tintLiftG = tintLift[1], tintLiftB = tintLift[2];
+    const backdropOffsetX = kitGrade ? kitGrade.offsetX : floorLook.backdropOffsetX;
+    const backdropMirror = kitGrade ? kitGrade.mirror : floorLook.backdropMirror;
+    const machinery = kitGrade ? kitGrade.machinery : floorLook.machinery;
     // Shape-aware floors (FloorLook.natural): the cached colour of an Empty
     // cell carries its backdrop contact shade (TerrainArt.naturalAlbedo).
     const natural = cellColors !== world.colors ? floorLook.natural : null;
-    const naturalSat = natural ? natural.backdropSat : 1;
-    const hazeR = natural ? natural.backdropHaze[0] : 0, hazeG = natural ? natural.backdropHaze[1] : 0;
-    const hazeB = natural ? natural.backdropHaze[2] : 0, hazeMix = natural ? natural.backdropHazeMix : 0;
+    const naturalSat = natural ? (kitGrade ? kitGrade.sat : natural.backdropSat) : 1;
+    const naturalHaze = kitGrade ? kitGrade.haze : natural?.backdropHaze;
+    const hazeR = natural && naturalHaze ? naturalHaze[0] : 0, hazeG = natural && naturalHaze ? naturalHaze[1] : 0;
+    const hazeB = natural && naturalHaze ? naturalHaze[2] : 0;
+    const hazeMix = natural ? (kitGrade ? kitGrade.hazeMix : natural.backdropHazeMix) : 0;
     // Reuse the pooled descriptor array + objects (reset, not reallocated) so
     // the per-frame compose path stays allocation-free (see field declaration).
     const activeBackdropLayers = this.activeBackdropLayers;
@@ -591,21 +605,24 @@ export class FrameComposer implements PixelSurface {
       const ySamples = this.backdropSampleY[i];
       const camX = Math.floor(renderCamX * setting.speed);
       const camY = Math.floor(renderCamY * setting.speed);
-      const offsetX = setting.offsetX + floorLook.backdropOffsetX;
+      const offsetX = setting.offsetX + backdropOffsetX;
       for (let vx = 0; vx < VIEW_W; vx++) {
         let sx = Math.floor((camX + vx) / scale + offsetX) % layer.width;
         if (sx < 0) sx += layer.width;
-        xSamples[vx] = floorLook.backdropMirror ? layer.width - 1 - sx : sx;
+        // Byte offsets: the hot loop reads pixels[ySamples[vy] + xSamples[vx]].
+        xSamples[vx] = (backdropMirror ? layer.width - 1 - sx : sx) * 4;
       }
       for (let vy = 0; vy < VIEW_H; vy++) {
         let sy = Math.floor((camY + vy) / scale + setting.offsetY) % layer.height;
         if (sy < 0) sy += layer.height;
-        ySamples[vy] = sy;
+        ySamples[vy] = sy * layer.width * 4;
       }
       const descriptor = this.backdropLayerPool[activeBackdropLayers.length];
       descriptor.pixels = layer.pixels;
       descriptor.width = layer.width;
-      descriptor.opacity = Math.min(1, setting.opacity * (layer.id === 'second' ? floorLook.machinery : 1));
+      descriptor.opacity = Math.min(1, setting.opacity * (layer.id === 'second' ? machinery : 1));
+      descriptor.alphaScale = descriptor.opacity / 255;
+      descriptor.lit = layer.lit ?? 1;
       descriptor.xSamples = xSamples;
       descriptor.ySamples = ySamples;
       activeBackdropLayers.push(descriptor);
@@ -704,6 +721,9 @@ export class FrameComposer implements PixelSurface {
 
         let r: number, g: number, b: number;
         if (type === Cell.Empty) {
+          // How much real light the visible backdrop mix takes (depth kits:
+          // the lantern does not reach the far planes; classic layers take all).
+          let litW = 1;
           const isSky = skyLine > 0 && wy < skyLine;
           if (isSky) {
             // OPEN DAYTIME SKY (D1 surface intro): gradient + distant sun + drifting
@@ -771,23 +791,35 @@ export class FrameComposer implements PixelSurface {
           } else {
             // Ordered PNG parallax composite. Every layer carries its own alpha
             // and scrolls with its own multiplier, so texture and cutout never
-            // drift apart.
-            r = 0.004;
-            g = 0.005;
-            b = 0.009;
+            // drift apart. Composited FRONT TO BACK (the same over operator,
+            // regrouped): a pixel stops sampling once nearer layers cover it.
+            r = 0;
+            g = 0;
+            b = 0;
+            litW = 0;
+            let trans = 1;
             // shift the backdrop sample column/row by the heat-haze offset so the
             // distant cave shimmers behind a held (hot) object, like the terrain does
             const bvx = hazeX !== 0 ? (vx + hazeX < 0 ? 0 : vx + hazeX >= VIEW_W ? VIEW_W - 1 : vx + hazeX) : vx;
             const bvy = hazeY !== 0 ? (vy + hazeY < 0 ? 0 : vy + hazeY >= VIEW_H ? VIEW_H - 1 : vy + hazeY) : vy;
-            for (const active of activeBackdropLayers) {
-              const si = (active.ySamples[bvy] * active.width + active.xSamples[bvx]) * 4;
-              const a = (active.pixels[si + 3] / 255) * active.opacity;
+            for (let li = activeBackdropLayers.length - 1; li >= 0; li--) {
+              const active = activeBackdropLayers[li];
+              const px = active.pixels;
+              const si = active.ySamples[bvy] + active.xSamples[bvx];
+              const a = px[si + 3] * active.alphaScale;
               if (a <= 0.001) continue;
-              const ia = 1 - a;
-              r = r * ia + (active.pixels[si] / 255) * a;
-              g = g * ia + (active.pixels[si + 1] / 255) * a;
-              b = b * ia + (active.pixels[si + 2] / 255) * a;
+              const w = trans * a;
+              r += px[si] * w;
+              g += px[si + 1] * w;
+              b += px[si + 2] * w;
+              litW += active.lit * w;
+              trans *= 1 - a;
+              if (trans < 0.002) break;
             }
+            r = r / 255 + 0.004 * trans;
+            g = g / 255 + 0.005 * trans;
+            b = b / 255 + 0.009 * trans;
+            litW += trans;
             r = (r * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
             g = (g * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
             b = (b * backdropExposure + backdropBrightness - 0.5) * backdropContrast + 0.5;
@@ -834,12 +866,13 @@ export class FrameComposer implements PixelSurface {
               // The distant cave sinks with the designed darkness; only real
               // light (the lf0 term) brings it back.
               const open = lightOpen ? lightOpen[li] : 1, shut = 1 - open, adapt = DARK_ADAPT * shut;
+              const litK = 0.72 * litW;
               let lf0 = Math.min(LIGHT_CLAMP, lightR[li]) * vg;
-              r = (r * 0.62 + ambient * 0.022) * vg * open + r * (lf0 * lf0 + adapt * lf0) * 0.72 + DARK_AIR_R * shut;
+              r = (r * 0.62 + ambient * 0.022) * vg * open + r * (lf0 * lf0 + adapt * lf0) * litK + DARK_AIR_R * shut;
               lf0 = Math.min(LIGHT_CLAMP, lightG[li]) * vg;
-              g = (g * 0.62 + ambient * 0.022) * vg * open + g * (lf0 * lf0 + adapt * lf0) * 0.72 + DARK_AIR_G * shut;
+              g = (g * 0.62 + ambient * 0.022) * vg * open + g * (lf0 * lf0 + adapt * lf0) * litK + DARK_AIR_G * shut;
               lf0 = Math.min(LIGHT_CLAMP, lightB[li]) * vg;
-              b = (b * 0.62 + ambient * 0.032) * vg * open + b * (lf0 * lf0 + adapt * lf0) * 0.72 + DARK_AIR_B * shut;
+              b = (b * 0.62 + ambient * 0.032) * vg * open + b * (lf0 * lf0 + adapt * lf0) * litK + DARK_AIR_B * shut;
               // air itself catches the glow near strong light (more so in the dark)
               const haze = vg * (1 + DARK_AIR_GLOW * shut);
               r += Math.max(0, lightR[li] - 0.25) * 0.045 * haze;
@@ -855,7 +888,9 @@ export class FrameComposer implements PixelSurface {
           pixelData[bufferIdx] = r;
           pixelData[bufferIdx + 1] = g;
           pixelData[bufferIdx + 2] = b;
-          pixelData[bufferIdx + 3] = 1.0;
+          // Alpha 0 marks open backdrop (sprites write 1 over it): the WebGL
+          // depth particles blend only there (render/depth/ForegroundGL).
+          pixelData[bufferIdx + 3] = isSky ? 1.0 : 0.0;
           continue;
         }
 
@@ -1003,6 +1038,10 @@ export class FrameComposer implements PixelSurface {
   }
 
   private composeOverlays(ctx: Ctx): void {
+    // Depth particles behind the play layer (over open air only), under every
+    // sprite — unless the presentation draws them as GL points.
+    const depthParticles = this.target.nativeDepthParticles !== true;
+    if (depthParticles) this.layers.drawParticles?.(this, this.light, ctx, 'behind');
     drawFallingWater(this, this.light, ctx);
     // Ballistic debris / embers / coins, lightning arcs, projectiles — the
     // combat FX overlays live in sprites/FxSprites (shared with the gallery).
@@ -1058,6 +1097,8 @@ export class FrameComposer implements PixelSurface {
     drawHeldLeg(this, this.light, ctx, this.alpha);
     drawTelekinesis(this, ctx);
     drawPlayerRagdollSprite(this, this.light, ctx, this.alpha);
+    // Near depth particles: motes in front of everything, catching real light.
+    if (depthParticles) this.layers.drawParticles?.(this, this.light, ctx, 'front');
     drawTrickshotOverlay(this, ctx);
   }
 

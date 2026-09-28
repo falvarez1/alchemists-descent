@@ -60,6 +60,8 @@ const GPU_SHADER_STAGE_COMPUTE = 0x04;
 const PARAM_COUNT = 160;
 const BACKDROP_BASE = 32;
 const BACKDROP_STRIDE = 8;
+/** Per-layer light response (render/depth kits), in the free params 27–31. */
+const BACKDROP_LIT_BASE = 27;
 const WAVE_BASE = BACKDROP_BASE + MAX_BACKDROP_LAYERS * BACKDROP_STRIDE;
 const WAVE_STRIDE = 8;
 const LENS_BASE = WAVE_BASE + COMPOSE_MAX_WAVES * WAVE_STRIDE;
@@ -573,21 +575,16 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
       // shimmers behind a held (hot) object, matching the foreground warp
       let bvx = vx + hazeX;
       let bvy = vy + hazeY;
-      if (p(${BACKDROP_BASE}u + 2u) > 0.5 && p(${BACKDROP_BASE}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop0, backdropCoord(${BACKDROP_BASE}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE}u + 1u));
-      }
-      if (p(${BACKDROP_BASE + BACKDROP_STRIDE}u + 2u) > 0.5 && p(${BACKDROP_BASE + BACKDROP_STRIDE}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop1, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE}u + 1u));
-      }
-      if (p(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u + 2u) > 0.5 && p(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop2, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 2}u + 1u));
-      }
-      if (p(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u + 2u) > 0.5 && p(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop3, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 3}u + 1u));
-      }
-      if (p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 2u) > 0.5 && p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 1u) > 0.0) {
-        bg = applyBackdropSample(bg, textureLoad(uBackdrop4, backdropCoord(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u, bvx, bvy, camX, camY), 0), p(${BACKDROP_BASE + BACKDROP_STRIDE * 4}u + 1u));
-      }
+      var lw = 1.0;
+      ${Array.from({ length: MAX_BACKDROP_LAYERS }, (_, i) => {
+        const b = BACKDROP_BASE + i * BACKDROP_STRIDE;
+        // lw: how much real light the visible mix takes (params 27–31 per layer).
+        return `if (p(${b}u + 2u) > 0.5 && p(${b}u + 1u) > 0.0) {
+        let s${i} = textureLoad(uBackdrop${i}, backdropCoord(${b}u, bvx, bvy, camX, camY), 0);
+        bg = applyBackdropSample(bg, s${i}, p(${b}u + 1u));
+        lw = mix(lw, p(${BACKDROP_LIT_BASE + i}u), clamp(s${i}.a * p(${b}u + 1u), 0.0, 1.0));
+      }`;
+      }).join('\n      ')}
       bg = gradeBackdrop(bg) * vec3<f32>(p(20u), p(21u), p(22u)) + vec3<f32>(p(23u), p(24u), p(25u));
       if (p(${NATURAL_BASE}u) > 0.5) {
         // Shape-aware floors: desaturate, haze, then the contact shade the
@@ -600,12 +597,13 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
       var r = bg.r * depthShade;
       var g = bg.g * depthShade;
       var b = bg.b * depthShade;
+      let litK = 0.72 * lw;
       var lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.r) * vg;
-      r = (r * 0.62 + ambient * 0.022) * vg * open + r * (lf0 * lf0 + adapt * lf0) * 0.72 + ${DARK_AIR_R.toFixed(4)} * shut;
+      r = (r * 0.62 + ambient * 0.022) * vg * open + r * (lf0 * lf0 + adapt * lf0) * litK + ${DARK_AIR_R.toFixed(4)} * shut;
       lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.g) * vg;
-      g = (g * 0.62 + ambient * 0.022) * vg * open + g * (lf0 * lf0 + adapt * lf0) * 0.72 + ${DARK_AIR_G.toFixed(4)} * shut;
+      g = (g * 0.62 + ambient * 0.022) * vg * open + g * (lf0 * lf0 + adapt * lf0) * litK + ${DARK_AIR_G.toFixed(4)} * shut;
       lf0 = min(${LIGHT_CLAMP.toFixed(1)}, light.b) * vg;
-      b = (b * 0.62 + ambient * 0.032) * vg * open + b * (lf0 * lf0 + adapt * lf0) * 0.72 + ${DARK_AIR_B.toFixed(4)} * shut;
+      b = (b * 0.62 + ambient * 0.032) * vg * open + b * (lf0 * lf0 + adapt * lf0) * litK + ${DARK_AIR_B.toFixed(4)} * shut;
       let haze = vg * (1.0 + ${DARK_AIR_GLOW.toFixed(3)} * shut);
       r = r + max(0.0, light.r - 0.25) * 0.045 * haze;
       g = g + max(0.0, light.g - 0.25) * 0.04 * haze;
@@ -1310,7 +1308,7 @@ export class WebGpuLiveCompose {
     params[12] = Math.min(ctx.shockwaves.length, COMPOSE_MAX_WAVES);
     params[13] = Math.min(lenses.length, COMPOSE_MAX_LENSES);
 
-    const backdropProfile = resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
+    const backdropProfile = layers.profile ?? resolveBackdropProfileForRuntime(ctx.params.backdrop, ctx.levels.current);
     params[14] = backdropProfile.grade.exposure;
     params[15] = backdropProfile.grade.brightness;
     params[16] = backdropProfile.grade.contrast;
@@ -1321,20 +1319,26 @@ export class WebGpuLiveCompose {
     params[19] = ctx.state.postFx.vignette;
     // Per-floor backdrop grade + composition variant (config/floorLooks).
     const look = activeFloorLook(ctx);
-    params[20] = look.backdropMul[0];
-    params[21] = look.backdropMul[1];
-    params[22] = look.backdropMul[2];
-    params[23] = look.backdropLift[0];
-    params[24] = look.backdropLift[1];
-    params[25] = look.backdropLift[2];
-    params[26] = look.backdropMirror ? 1 : 0;
+    // A depth kit (render/depth) bakes its own colour and substitutes the floor's backdrop grade.
+    const kit = layers.grade ?? null;
+    const mul = kit ? kit.mul : look.backdropMul, lift = kit ? kit.lift : look.backdropLift;
+    params[20] = mul[0];
+    params[21] = mul[1];
+    params[22] = mul[2];
+    params[23] = lift[0];
+    params[24] = lift[1];
+    params[25] = lift[2];
+    params[26] = (kit ? kit.mirror : look.backdropMirror) ? 1 : 0;
     const natural = activeArtPlane(ctx) ? look.natural : null;
+    const haze = kit ? kit.haze : natural?.backdropHaze;
     params[NATURAL_BASE] = natural ? 1 : 0;
-    params[NATURAL_BASE + 1] = natural ? natural.backdropSat : 1;
-    params[NATURAL_BASE + 2] = natural ? natural.backdropHaze[0] : 0;
-    params[NATURAL_BASE + 3] = natural ? natural.backdropHaze[1] : 0;
-    params[NATURAL_BASE + 4] = natural ? natural.backdropHaze[2] : 0;
-    params[NATURAL_BASE + 5] = natural ? natural.backdropHazeMix : 0;
+    params[NATURAL_BASE + 1] = natural ? (kit ? kit.sat : natural.backdropSat) : 1;
+    params[NATURAL_BASE + 2] = natural && haze ? haze[0] : 0;
+    params[NATURAL_BASE + 3] = natural && haze ? haze[1] : 0;
+    params[NATURAL_BASE + 4] = natural && haze ? haze[2] : 0;
+    params[NATURAL_BASE + 5] = natural ? (kit ? kit.hazeMix : natural.backdropHazeMix) : 0;
+    const machinery = kit ? kit.machinery : look.machinery;
+    const offsetX = kit ? kit.offsetX : look.backdropOffsetX;
 
     const settings = backdropProfile.layers;
     for (let i = 0; i < MAX_BACKDROP_LAYERS; i++) {
@@ -1343,16 +1347,18 @@ export class WebGpuLiveCompose {
       if (!layer) {
         params[base + 4] = 1;
         params[base + 5] = 1;
+        params[BACKDROP_LIT_BASE + i] = 1;
         continue;
       }
       const setting = settings[layer.id];
+      params[BACKDROP_LIT_BASE + i] = layer.lit ?? 1;
       params[base] = setting.speed;
-      params[base + 1] = Math.min(1, setting.opacity * (layer.id === 'second' ? look.machinery : 1));
+      params[base + 1] = Math.min(1, setting.opacity * (layer.id === 'second' ? machinery : 1));
       params[base + 2] = setting.visible ? 1 : 0;
       params[base + 3] = Math.max(0.25, setting.scale);
       params[base + 4] = 1 / Math.max(1, this.backdropTextures[i].width);
       params[base + 5] = 1 / Math.max(1, this.backdropTextures[i].height);
-      params[base + 6] = setting.offsetX + look.backdropOffsetX;
+      params[base + 6] = setting.offsetX + offsetX;
       params[base + 7] = setting.offsetY;
     }
 
