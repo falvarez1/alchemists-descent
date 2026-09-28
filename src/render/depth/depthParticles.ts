@@ -2,7 +2,7 @@ import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { DepthKit, DepthParticleSpec } from '@/config/depthKits';
 import type { Ctx } from '@/core/types';
 import type { DepthParticlePass, LightField, PixelSurface } from '@/render/pixels';
-import { backdropTexel, particleScreen } from '@/render/depth/parallax';
+import { backdropOrigin, backdropTexel, particleScreen } from '@/render/depth/parallax';
 import { hash2, type Bitmap } from '@/render/depth/raster';
 import { Cell } from '@/sim/CellType';
 
@@ -49,10 +49,11 @@ export interface ShaftPlane {
   readonly opacity: number;
 }
 
-function shaftAlpha(sh: ShaftPlane, camX: number, camY: number, vx: number, vy: number): number {
+/** The shaft plane's alpha at view position (vx, vy), sampled as the compositors draw it. */
+function shaftAlpha(sh: ShaftPlane, camX: number, camY: number, presX: number, presY: number, vx: number, vy: number): number {
   const b = sh.bitmap;
-  const sx = backdropTexel(camX, Math.floor(vx), sh.parallax, sh.scale, 0, b.width);
-  const sy = backdropTexel(camY, Math.floor(vy), sh.parallax, sh.scale, 0, b.height);
+  const sx = backdropTexel(backdropOrigin(camX, presX, sh.parallax), vx, sh.scale, 0, b.width);
+  const sy = backdropTexel(backdropOrigin(camY, presY, sh.parallax), vy, sh.scale, 0, b.height);
   return (b.pixels[(sy * b.width + sx) * 4 + 3] / 255) * sh.opacity;
 }
 
@@ -78,7 +79,7 @@ function drawField(out: PixelSurface, light: LightField, ctx: Ctx, spec: DepthPa
       : 0.3 * open + Math.min(1.4, Math.max(s.r, s.g, s.b)) * 0.8;
     k *= 1 - spec.twinkle * 0.5 * (1 + Math.sin(t * 0.045 * seeds[3] + seeds[2] * 3));
     const vx = wx - camX, vy = wy - camY;
-    if (shafts && spec.inShafts && spec.inShafts > 1) k *= 1 + (spec.inShafts - 1) * Math.min(1, shaftAlpha(shafts, camX, camY, vx, vy) * 3.2);
+    if (shafts && spec.inShafts && spec.inShafts > 1) k *= 1 + (spec.inShafts - 1) * Math.min(1, shaftAlpha(shafts, camX, camY, presX, presY, vx, vy) * 3.2);
     if (calmAt) k *= calmAt(vx, vy);
     if (k <= 0.02) continue;
     add(wx, wy, spec.color[0] * k, spec.color[1] * k, spec.color[2] * k);

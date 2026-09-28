@@ -1079,9 +1079,28 @@ and flutters: 42% fall / 10% drift per step, floats on water as a pad) and
   0.002), copper machinery ×1.75, saturation ×0.9 and a warm smoke haze
   (0.12, 0.045, 0.02) at only 0.18 — and a deeper contact shadow (×0.30,
   easing out over 10 cells) so the rock stands in front of the warm refinery.
-  Small enclosed air pockets under 1500 cells are sealed and count as rock.
+  Small enclosed air pockets under 1500 cells are sealed and count as rock,
+  and so is a liquid body under 1500 cells that meets no exposed air (the
+  POCKET bit on its loose byte: a water pore in a flooded wall; a dig carries
+  the verdict forward and opens it where the air gets in).
   Digs re-derive at most 4 chunk regions per frame, and liquid or powder churn
   one every other frame, so render cost stays within noise of the classic sampler.
+- **Underwater readability (the Drowned Cisterns, fix4b):** rock, water and
+  backdrop were one blue-grey value (luma ~25 / 27 / 28), so the drowned
+  masonry read as one more backdrop plane. Now a reachable water body is lit
+  murk (body 40, 98, 116) that shows the kit's planes through it at 0.45 —
+  graded like the open backdrop, then 0.45 saturation and a ×(0.8, 1.25, 1.4)
+  tint, swaying ±1.6 cells (sin(y·0.19 + phase·0.35)) like refraction — so a
+  flooded hall reads as open water with drowned arches beyond it (luma ~34
+  against rock ~25). A face against a body of water (two cells of water or
+  more, never a pocket) wears a wet rim (112, 170, 180) at 0.5 on tops, 0.25
+  on sides; sealed pockets keep the old opaque (26, 66, 88) and no rim. Lips
+  0.55 → 0.62, sides 0.35 → 0.42. The kit's backdrop grade steps the distance
+  back: mul (0.72, 0.84, 0.84), saturation 0.85, a deep-teal haze (0.02,
+  0.055, 0.058) at 0.2. CPU, WebGL2 and WebGPU draw the same (`waterClarity`,
+  `waterSeen`, `waterPocket`, `wetLip` on `NaturalLook`; other floors leave
+  them unset and look as they did — floors 2, 4 and the second doors carry
+  little water and already separated rock from distance).
 - **Depth kits (`config/depthKits.ts`, `render/depth/`):** every expedition
   floor stands in layered scenery, looked up by biome (a generic kit graded
   from the floor look covers any biome without its own). Far → near:
@@ -1127,6 +1146,13 @@ and flutters: 42% fall / 10% drift per step, floats on water as a pad) and
   lava glow reach near planes (lit 0.9) but barely the far ones (0.1), and
   designed darkness dims them all. Procedural planes are one texel per cell
   (the Living Descent plates' grain), bake one per frame on floor entry.
+  Every plane glides with the camera's sub-cell position: the WebGL2 compose
+  samples it where each canvas pixel sits on screen (cam · parallax + screen
+  position, `render/depth/parallax` backdropOrigin), so a slow drift slides
+  it steadily a pixel (half a cell) at a time instead of riding the world for
+  a cell and snapping back (`scripts/verify-parallax-drift.mjs`). The CPU
+  fallback and the WebGPU compose build a cell-resolution frame, so their
+  planes still step a whole cell.
 - **Foreground occluders:** a plane at parallax 1.4 (1.5 cells per texel,
   opacity 0.94) of near-black silhouettes — chains, pipes with valves,
   girders, gears (Bellows), stalks and root curtains (Rot), kelp and broken
@@ -1266,12 +1292,20 @@ wobbling ±10 so a zone reads as a cave the light never reached). Zones are
 baked once per level into a half-res map (static data, regenerated with the
 pristine world on restore). The bake FOLLOWS THE ROCK (fix3): the dark starts
 in a zone's core air and travels only through what connects to it — along air
-it holds 8 cells of feathered depth then fades over 40 (a doorway dims, never
-meets a drawn edge), into rock 3× slower (a room's walls go dark a few cells
+it holds 8 cells of feathered depth then fades over 52 (a doorway dims, never
+meets a drawn edge), into rock 2.2× slower (a room's walls go dark some cells
 deep; the rock beyond and any cave the zone's box merely overlaps keep their
-light), rim wobble ±10 in air / ±18 in rock, a 1-2-1 blur over the texel steps.
-(Before, the zone box was painted over whatever lay under it: light-puzzle
-rooms read as black rectangles cut through rock and lit caves.) The render uses d² × 0.965 (an ordinary cave dims
+light), the fade's line wandering ±16 in air / ±18 in rock, a 1-2-1 blur over
+the texel steps. Only STRUCTURE soaks slowly (rock, masonry, metal, timber,
+ice, glass): a sand dune, a gold drift or snow in a dark room goes dark with
+the room. (Before, the zone box was painted over whatever lay under it:
+light-puzzle rooms read as black rectangles cut through rock and lit caves.
+fix4b: a fade of 40 and a soak of 3 still drew a dark room as a black
+rectangle cut out of lit walls, and a sand heap in the Undertow glowed as a lit
+block.) The map is READ SMOOTH: bilinear between texel centres for gameplay
+(`sampleDarkMap`) and per cell in every compose path and the sprite light
+(`openAtCell` over the per-light-texel field) — sampled nearest, every dark
+edge was a staircase of 2-cell steps. The render uses d² × 0.965 (an ordinary cave dims
 unlit rock only ~9%); gameplay reads d linearly. Per light texel the result is
 an OPEN factor that every compose path (CPU reference, WebGL2 light-texture
 alpha, WebGPU WGSL) multiplies ambient and the 0.40 readability floor by; the

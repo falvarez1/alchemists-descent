@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import {
-  ART_AIR_MASK, ART_BUILT_BIT, ART_DEPTH_MASK, ART_LOOSE_BIT, ART_SEALED_BIT, ART_SOLID_BIT,
+  ART_AIR_MASK, ART_BUILT_BIT, ART_DEPTH_MASK, ART_LOOSE_BIT, ART_POCKET_BIT, ART_SEALED_BIT, ART_SOLID_BIT,
   TerrainArtPlane, type ArtPlaneOptions,
 } from '@/render/terrainArtPlane';
 
@@ -118,5 +118,38 @@ describe('terrain art plane', () => {
     dig(world, 100, 110, 5, Cell.Empty);
     for (let k = 0; k < 8; k++) plane.sync(0, 0, world.width, world.height);
     expect(plane.data[world.idx(100, 110)] & ART_SEALED_BIT).toBe(ART_SEALED_BIT);
+  });
+
+  /**
+   * SEALED LIQUID POCKETS (fix4b): the renderer draws clear water and wet
+   * faces only where the water can be reached; a pore of water sealed in the
+   * rock keeps the pocket bit and stays part of the rock mass.
+   */
+  it('labels a sealed water pore a pocket, and water that meets the air a body', () => {
+    const world = cave();
+    dig(world, 60, 130, 4, Cell.Water); // a pore deep in the rock
+    for (let y = 52; y < 60; y++) for (let x = 90; x < 130; x++) world.types[world.idx(x, y)] = Cell.Water; // a pool on the floor
+    dig(world, 110, 150, 24, Cell.Water); // a big drowned hall, sealed but no pore
+    const plane = new TerrainArtPlane(world, OPTIONS);
+    const pocket = (x: number, y: number): boolean =>
+      (plane.data[world.idx(x, y)] & (ART_SOLID_BIT | ART_LOOSE_BIT | ART_POCKET_BIT)) === (ART_LOOSE_BIT | ART_POCKET_BIT);
+    expect(pocket(60, 130)).toBe(true);
+    expect(pocket(110, 58)).toBe(false);
+    expect(pocket(110, 150)).toBe(false);
+    // The pocket bit never disturbs the loose depth under it.
+    expect(solidDepth(plane, world, 60, 124)).toBe(20);
+  });
+
+  it('opens a pocket where a dig lets the air in, and keeps the rest sealed', () => {
+    const world = cave();
+    dig(world, 60, 130, 5, Cell.Water);
+    const plane = new TerrainArtPlane(world, OPTIONS);
+    const pocketBit = (x: number, y: number): number => plane.data[world.idx(x, y)] & ART_POCKET_BIT;
+    expect(pocketBit(60, 128)).toBe(ART_POCKET_BIT);
+    // A shaft from the surface down to the pore's crown.
+    for (let y = 60; y < 126; y++) for (let x = 58; x < 63; x++) { world.types[world.idx(x, y)] = Cell.Empty; world.activity.touch(x, y); }
+    for (let k = 0; k < 8; k++) plane.sync(0, 0, world.width, world.height);
+    expect(pocketBit(60, 126)).toBe(0); // the water the air now meets reads as water
+    expect(pocketBit(60, 133)).toBe(ART_POCKET_BIT); // the untouched depths stay part of the rock
   });
 });

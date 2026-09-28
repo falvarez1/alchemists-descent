@@ -62,13 +62,22 @@ export const DARKNESS = {
    */
   airHold: 8,
   /** …then fades over this many more, so a doorway or a cave mouth dims
-   *  gradually (the zone's rim sits ~22 cells into the fade: no larger than
-   *  the old shape, only never a straight drawn edge)… */
-  airFade: 40,
-  /** …and into rock this many times slower, so a room's walls go dark a few
+   *  gradually (fix4b: 40 → 52 — across a room the dark read as a curtain
+   *  drawn at one line; now it thins out like a place the light gave up on)… */
+  airFade: 52,
+  /** …and into rock this many times slower, so a room's walls go dark some
    *  cells deep while the rock beyond, and any cave the zone's box merely
-   *  overlaps, keep their light. */
-  rockSoak: 3,
+   *  overlaps, keep their light (fix4b: 3 → 2.2 — at 3 the walls stayed lit
+   *  to within a couple of cells of the face, so a dark room read as a black
+   *  rectangle cut out of lit rock). */
+  rockSoak: 2.2,
+  /** How far the fade's line wanders, × rimNoise: in open air (fix4b: 1 →
+   *  1.6, so the fade across a tall room is never a straight vertical) and
+   *  in rock (a cell of rock is `rockSoak` cells of travel, so without the
+   *  larger wobble a straight wall's dark would run parallel to it; more
+   *  than ~1.8 reads as a toothed fringe). */
+  airWander: 1.6,
+  rockWander: 1.8,
   /** Dark-map resolution: one texel per this many cells (the light field's own grain). */
   mapCell: 2,
   /** Per-build smoothing of the darkness under the player (light builds every 2 frames). */

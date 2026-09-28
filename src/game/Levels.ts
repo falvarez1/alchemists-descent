@@ -93,16 +93,14 @@ import { extractRegionGraph } from '@/world/regions';
 import { buildPhysicsArena } from '@/world/physicsArena';
 import { buildWeaverArena } from '@/world/weaverArena';
 import { buildAlchemyArena, buildFrostArena, buildGasArena } from '@/world/provingGrounds';
-import {
-  createDefaultVirtualWorldDef,
-  cropMaterializedWindow,
+import type {
   generateVirtualWindow,
-  materializeChunks,
-  type MaterializedScenePlacement,
-  type VirtualSceneLight,
-  type VirtualSceneObject,
-  type VirtualWorldDef,
+  MaterializedScenePlacement,
+  VirtualSceneLight,
+  VirtualSceneObject,
+  VirtualWorldDef,
 } from '@/world/virtual';
+import { virtualWorldModule, type VirtualWorldModule } from '@/game/lazyVirtualWorld';
 import { isEnemyKind } from '@/core/types';
 import { entityRandom } from '@/core/simRandom';
 import { ExpeditionStorage } from '@/game/persistence/ExpeditionStorage';
@@ -757,11 +755,14 @@ export class Levels implements LevelsApi {
     const mode = config.mode;
     const worldSource = config.worldSource;
     if (worldSource === 'virtual-world') {
-      if (mode !== 'test') {
+      // An authoring-only prototype in its own chunk (game/lazyVirtualWorld).
+      const virtual = virtualWorldModule();
+      if (mode !== 'test' || !virtual) {
         return {
           ok: false,
-          message:
-            'Chunked virtual worlds are playable as disposable test runs only until streaming persistence lands.',
+          message: !virtual
+            ? 'The chunked virtual world is still loading. Try again in a moment.'
+            : 'Chunked virtual worlds are playable as disposable test runs only until streaming persistence lands.',
           mode,
           worldSource,
           levelId: null,
@@ -781,7 +782,7 @@ export class Levels implements LevelsApi {
         title: 'Opening the descent',
         detail: 'Materializing a disposable test cavern.',
       });
-      const runtime = this.createVirtualTestRuntime(ctx, seed);
+      const runtime = this.createVirtualTestRuntime(ctx, seed, virtual);
       this.enterAdHocRuntime(ctx, runtime, 'EXPLORE THE CHUNKED WORLD PROTOTYPE');
       ctx.events.emit('toast', { text: 'TEST RUN: CHUNKED VIRTUAL WORLD' });
       return {
@@ -1112,6 +1113,11 @@ export class Levels implements LevelsApi {
   }
 
   playVirtualWindow(ctx: Ctx, def: VirtualWorldDef, center: { x: number; y: number }, previewRadius: number): void {
+    const virtual = virtualWorldModule();
+    if (!virtual) {
+      ctx.events.emit('toast', { text: 'THE CHUNKED WORLD IS STILL LOADING — TRY AGAIN' });
+      return;
+    }
     this.enterPlayMode(ctx);
     this.resetRunState(ctx, { clearSave: false });
     ctx.state.worldSeed = def.seed >>> 0;
@@ -1122,7 +1128,7 @@ export class Levels implements LevelsApi {
       title: 'Opening playtest',
       detail: 'Materializing the tuned virtual window.',
     });
-    const runtime = this.createVirtualWindowRuntime(ctx, def, center, previewRadius);
+    const runtime = this.createVirtualWindowRuntime(ctx, def, center, previewRadius, virtual);
     this.enterAdHocRuntime(ctx, runtime, 'EXPLORE THE TUNED CHUNKED WORLD');
     ctx.events.emit('toast', { text: 'TEST RUN: BUILDER VIRTUAL WORLD' });
   }
@@ -1526,9 +1532,9 @@ export class Levels implements LevelsApi {
     return ctx.wands.wands.some((wand) => wand.cards.includes(card));
   }
 
-  private createVirtualTestRuntime(ctx: Ctx, seed: number): LevelRuntime {
-    const def = createDefaultVirtualWorldDef(seed);
-    const chunks = generateVirtualWindow(def, -3, -1, 3, 4);
+  private createVirtualTestRuntime(ctx: Ctx, seed: number, virtual: VirtualWorldModule): LevelRuntime {
+    const def = virtual.createDefaultVirtualWorldDef(seed);
+    const chunks = virtual.generateVirtualWindow(def, -3, -1, 3, 4);
     return this.createVirtualRuntimeFromChunks(
       ctx,
       def,
@@ -1539,6 +1545,7 @@ export class Levels implements LevelsApi {
       },
       'virtual-test',
       'CHUNKED VIRTUAL WORLD',
+      virtual,
     );
   }
 
@@ -1547,12 +1554,13 @@ export class Levels implements LevelsApi {
     def: VirtualWorldDef,
     center: { x: number; y: number },
     previewRadius: number,
+    virtual: VirtualWorldModule,
   ): LevelRuntime {
     const centerCx = Math.floor(center.x / def.chunkSize);
     const centerCy = Math.floor(center.y / def.chunkSize);
     const radiusX = Math.max(Math.floor(previewRadius), Math.ceil((WIDTH / def.chunkSize - 1) / 2));
     const radiusY = Math.max(Math.floor(previewRadius), Math.ceil((HEIGHT / def.chunkSize - 1) / 2));
-    const chunks = generateVirtualWindow(
+    const chunks = virtual.generateVirtualWindow(
       def,
       centerCx - radiusX,
       centerCy - radiusY,
@@ -1566,6 +1574,7 @@ export class Levels implements LevelsApi {
       center,
       'virtual-builder-test',
       'BUILDER VIRTUAL WORLD',
+      virtual,
     );
   }
 
@@ -1576,13 +1585,14 @@ export class Levels implements LevelsApi {
     center: { x: number; y: number },
     id: string,
     name: string,
+    virtual: VirtualWorldModule,
   ): LevelRuntime {
-    const materialized = materializeChunks(chunks);
+    const materialized = virtual.materializeChunks(chunks);
     const maxSrcX = Math.max(0, materialized.world.width - WIDTH);
     const maxSrcY = Math.max(0, materialized.world.height - HEIGHT);
     const wantedSrcX = Math.floor(center.x - materialized.originX - WIDTH / 2);
     const wantedSrcY = Math.floor(center.y - materialized.originY - HEIGHT / 2);
-    const crop = cropMaterializedWindow(
+    const crop = virtual.cropMaterializedWindow(
       materialized,
       Math.max(0, Math.min(maxSrcX, wantedSrcX)),
       Math.max(0, Math.min(maxSrcY, wantedSrcY)),

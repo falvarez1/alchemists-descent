@@ -34,6 +34,7 @@ import type {
   ParallaxLayers,
 } from '@/render/pixels';
 import { cloudSumGlsl, glslFloat, SKY } from '@/render/skyAtmosphere';
+import { backdropOrigin } from '@/render/depth/parallax';
 import { Cell } from '@/sim/CellType';
 import type { World } from '@/sim/World';
 import {
@@ -150,6 +151,10 @@ uniform vec4 uNatGlaze;     // rgb, mix (0 = off)
 uniform vec2 uNatContact;   // darkest shade, reach (cells)
 uniform vec4 uNatHaze;      // rgb, mix
 uniform float uNatSat;
+uniform vec4 uNatWet;       // wet-face rim rgb, mix (0 = off) — TerrainArt WET FACES
+uniform vec4 uWaterSeen;    // clear water: the drowned distance's tint rgb, saturation
+uniform float uWaterClarity; // clear water: share of the backdrop seen through a body (0 = opaque)
+uniform vec3 uWaterPocket;  // a sealed pocket's opaque colour (terrainArtPlane ART_POCKET_BIT)
 
 uniform ivec2 uCam;        // integer camera snapshot (renderCamX/Y)
 uniform ivec2 uWinOrigin;  // world coords of window texel (0,0)
@@ -168,6 +173,7 @@ uniform vec2 uBackdropOff1;
 uniform vec2 uBackdropOff2;
 uniform vec2 uBackdropOff3;
 uniform vec2 uBackdropOff4;
+uniform vec2 uBackdropOrg[5]; // plane coordinate under view (0, 0) — render/depth/parallax backdropOrigin
 uniform vec4 uBackdropGrade; // exposure, brightness, contrast, inverse gamma
 uniform float uBackdropSaturation;
 uniform float uBackdropLit[5]; // share of real light each layer takes (render/depth kits)
@@ -175,6 +181,7 @@ uniform float uAmbient;
 uniform float uSkyLine;    // D1 surface intro: Empty cells above this row paint as open sky (0 = none)
 uniform float uBoost;      // maxBrightness
 uniform float uVignette;   // screen vignette strength (postFx.vignette; 0.52 shipped)
+uniform bool uDarkOn;      // designed darkness present (the light alpha is not all ones)
 uniform int uGlintFrame;   // frameCount % 97 (crystal glint is integer math)
 uniform float uPhaseWater;  // (frameCount * 0.16)  mod 2pi
 uniform float uPhaseShroom; // (frameCount * 0.045) mod 2pi
@@ -210,10 +217,13 @@ vec2 detailSubpixel() {
   return ${PIXEL_SCALE === 2 ? `floor(fract(vec2(vUv.x, 1.0 - vUv.y) * vec2(${VIEW_W}.0, ${VIEW_H}.0)) * 2.0) * 0.5` : 'vec2(0.0)'};
 }
 
-void overBackdrop(inout vec3 c, inout float lw, sampler2D tex, vec4 cfg, vec2 invSize, vec2 offset, float lit, int vx, int vy) {
+// view: the fragment's own view position, not its cell's. The quad slides by
+// the camera's sub-cell residual, so sampling the plane where the fragment
+// really is keeps it gliding at cam·speed on screen; a cell-snapped sample
+// rode the world for a cell and then jumped back.
+void overBackdrop(inout vec3 c, inout float lw, sampler2D tex, vec4 cfg, vec2 invSize, vec2 offset, vec2 origin, float lit, vec2 view) {
   if (cfg.z < 0.5 || cfg.y <= 0.0 || cfg.w <= 0.0) return;
-  vec2 sub = detailSubpixel();
-  vec2 samplePx = floor((floor(vec2(uCam) * cfg.x) + vec2(float(vx), float(vy)) + sub) / max(cfg.w, 0.25) + offset);
+  vec2 samplePx = floor((origin + view) / max(cfg.w, 0.25) + offset);
   vec2 p = (samplePx + vec2(0.5)) * invSize;
   vec4 s = texture(tex, p);
   float a = clamp(s.a * cfg.y, 0.0, 1.0);
@@ -244,6 +254,33 @@ bool openCell(int t) {
   return false;
 }
 
+// Designed darkness, SMOOTH: the light alpha (render open factor) bilinear
+// between the half-res texel centres around this cell's centre — the mirror
+// of core/darkness openAtCell (CPU compose, sprites, LightQuery). An even cell
+// sits 3/4 of the way from texel (v>>1)-1 to v>>1, an odd one 1/4 past v>>1.
+float openAt(int vx, int vy) {
+  ivec2 hi = textureSize(uLight, 0) - ivec2(1);
+  int x0 = (vx + 1) / 2 - 1;
+  int y0 = (vy + 1) / 2 - 1;
+  float tx = (vx & 1) == 1 ? 0.25 : 0.75;
+  float ty = (vy & 1) == 1 ? 0.25 : 0.75;
+  int xa = clamp(x0, 0, hi.x), xb = clamp(x0 + 1, 0, hi.x);
+  int ya = clamp(y0, 0, hi.y), yb = clamp(y0 + 1, 0, hi.y);
+  float top = mix(texelFetch(uLight, ivec2(xa, ya), 0).a, texelFetch(uLight, ivec2(xb, ya), 0).a, tx);
+  float bot = mix(texelFetch(uLight, ivec2(xa, yb), 0).a, texelFetch(uLight, ivec2(xb, yb), 0).a, tx);
+  return mix(top, bot, ty);
+}
+
+// TerrainArt's WET_BODY: beyond a water-facing cell lies water or open space.
+bool wetBody(int t) {
+  return t == ${Cell.Water} || openCell(t);
+}
+
+// terrainArtPlane: a loose byte with the pocket bit is a sealed liquid pocket.
+bool artPocket(int lx, int ly) {
+  return (texelFetch(uArt, ivec2(lx, ly), 0).r & 0xE0u) == 0x60u;
+}
+
 vec3 gradeBackdrop(vec3 c) {
   c = (c * exp2(uBackdropGrade.x) + uBackdropGrade.y - 0.5) * uBackdropGrade.z + 0.5;
   float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -256,6 +293,7 @@ void main() {
   int rowB = clamp(int(vUv.y * ${VIEW_H.toFixed(1)}), 0, ${VIEW_H - 1});
   int vx = col;
   int vy = ${VIEW_H - 1} - rowB; // view y from the top (buffer rows are Y-flipped)
+  vec2 viewPos = vec2(vUv.x * ${VIEW_W.toFixed(1)}, (1.0 - vUv.y) * ${VIEW_H.toFixed(1)}); // unsnapped (vx, vy)
 
   // Overlay first: a setPx'd pixel replaces terrain outright, so all terrain
   // work can be skipped (exact CPU semantics: setPx overwrote the buffer).
@@ -348,8 +386,9 @@ void main() {
 
     vec4 lightTexel = texelFetch(uLight, ivec2(vx >> 1, vy >> 1), 0);
     vec3 light = lightTexel.rgb;
-    // Designed darkness (alpha): scales ambient + the readability floor.
-    float open = lightTexel.a;
+    // Designed darkness (alpha): scales ambient + the readability floor,
+    // read smooth (openAt) so no dark edge shows the texel staircase.
+    float open = uDarkOn ? openAt(vx, vy) : 1.0;
     float shut = 1.0 - open;
     float adapt = ${DARK_ADAPT.toFixed(3)} * shut;
     float dxv = float(vx) - ${VIG_CX.toFixed(1)};
@@ -408,13 +447,12 @@ void main() {
         bg = vec3(0.004, 0.005, 0.009);
         // shift the backdrop sample by the heat-haze offset so the distant cave
         // shimmers behind a held (hot) object, matching the foreground warp
-        int bvx = vx + hazeX;
-        int bvy = vy + hazeY;
-        overBackdrop(bg, lw, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, uBackdropLit[0], bvx, bvy);
-        overBackdrop(bg, lw, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, uBackdropLit[1], bvx, bvy);
-        overBackdrop(bg, lw, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, uBackdropLit[2], bvx, bvy);
-        overBackdrop(bg, lw, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, uBackdropLit[3], bvx, bvy);
-        overBackdrop(bg, lw, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, uBackdropLit[4], bvx, bvy);
+        vec2 bv = viewPos + vec2(float(hazeX), float(hazeY));
+        overBackdrop(bg, lw, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, uBackdropOrg[0], uBackdropLit[0], bv);
+        overBackdrop(bg, lw, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, uBackdropOrg[1], uBackdropLit[1], bv);
+        overBackdrop(bg, lw, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, uBackdropOrg[2], uBackdropLit[2], bv);
+        overBackdrop(bg, lw, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, uBackdropOrg[3], uBackdropLit[3], bv);
+        overBackdrop(bg, lw, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, uBackdropOrg[4], uBackdropLit[4], bv);
         bg = gradeBackdrop(bg) * uBackdropTintMul + uBackdropTintLift;
         if (uNatural) {
           // The distance sits back: less colour, a floor haze, and a contact
@@ -463,7 +501,29 @@ void main() {
         if (type == ${Cell.Water}) {
           int t = int(texelFetch(uWin, ivec2(lx, min(${WIN_H - 1}, ly + 1)), 0).a & 0x7fu);
           bool supported = t == ${Cell.Water} || (${terrainBlocksGlsl});
-          albedo = above == ${Cell.Empty} && lookupY > 0 && supported ? uWaterSurface : uWaterBody;
+          bool surface = above == ${Cell.Empty} && lookupY > 0 && supported;
+          // A sealed pocket (a pore in a flooded wall) stays part of the rock mass.
+          bool pocket = !surface && uNatural && artPocket(lx, ly);
+          albedo = surface ? uWaterSurface : pocket ? uWaterPocket : uWaterBody;
+          if (!surface && !pocket && uWaterClarity > 0.0) {
+            // CLEAR WATER (floorLooks waterClarity): the kit's planes show
+            // through the body, graded like the open backdrop, then washed
+            // toward grey and tinted by the water, with a slow refraction
+            // sway. FrameComposer (CPU) and the WebGPU compose mirror it.
+            int sway = int(floor(sin(float(wy) * 0.19 + uPhaseWater * 0.35) * 1.6));
+            int svx = clamp(vx + sway, 0, ${VIEW_W - 1});
+            vec2 sv = vec2(viewPos.x + float(svx - vx), viewPos.y);
+            vec3 seen = vec3(0.004, 0.005, 0.009);
+            float slw = 1.0;
+            overBackdrop(seen, slw, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, uBackdropOrg[0], uBackdropLit[0], sv);
+            overBackdrop(seen, slw, uBackdrop1, uBackdropCfg1, uBackdropInv1, uBackdropOff1, uBackdropOrg[1], uBackdropLit[1], sv);
+            overBackdrop(seen, slw, uBackdrop2, uBackdropCfg2, uBackdropInv2, uBackdropOff2, uBackdropOrg[2], uBackdropLit[2], sv);
+            overBackdrop(seen, slw, uBackdrop3, uBackdropCfg3, uBackdropInv3, uBackdropOff3, uBackdropOrg[3], uBackdropLit[3], sv);
+            overBackdrop(seen, slw, uBackdrop4, uBackdropCfg4, uBackdropInv4, uBackdropOff4, uBackdropOrg[4], uBackdropLit[4], sv);
+            seen = gradeBackdrop(seen) * uBackdropTintMul + uBackdropTintLift;
+            seen = mix(vec3(dot(seen, vec3(0.2126, 0.7152, 0.0722))), seen, uWaterSeen.w) * uWaterSeen.rgb;
+            albedo = mix(albedo, seen * 255.0, uWaterClarity);
+          }
         } else if (uNatural && (type == ${Cell.Wall} || type == ${Cell.Stone} || type == ${Cell.Wood} || type == ${Cell.Metal})) {
           uint art = texelFetch(uArt, ivec2(lx, ly), 0).r;
           bool artSolid = (art & 0x80u) != 0u;
@@ -530,6 +590,22 @@ void main() {
           } else {
             t = int(texelFetch(uWin, ivec2(min(${WIN_W - 1}, lx + 1), ly), 0).a & 0x7fu);
             if (lookupX + 1 < ${WIDTH} && openCell(t)) albedo *= ${PIXEL_SCALE === 2 ? 'sub.x >= 0.5 ? uNatSide.y : 0.5 + 0.5 * uNatSide.y' : 'uNatSide.y'};
+            else if (uNatWet.w > 0.0) {
+              // WET FACES (TerrainArt): a face against a body of water, not a pore.
+              float wm = 0.0;
+              if (lookupY > 1 && above == ${Cell.Water} && !artPocket(lx, max(0, ly - 1))
+                  && wetBody(int(texelFetch(uWin, ivec2(lx, max(0, ly - 2)), 0).a & 0x7fu))) {
+                wm = uNatWet.w${PIXEL_SCALE === 2 ? ' * (sub.y < 0.5 ? 1.0 : 0.45)' : ''};
+              } else {
+                int tl = int(texelFetch(uWin, ivec2(max(0, lx - 1), ly), 0).a & 0x7fu);
+                bool wl = lookupX > 1 && tl == ${Cell.Water} && !artPocket(max(0, lx - 1), ly)
+                  && wetBody(int(texelFetch(uWin, ivec2(max(0, lx - 2), ly), 0).a & 0x7fu));
+                bool wr = lookupX + 2 < ${WIDTH} && t == ${Cell.Water} && !artPocket(min(${WIN_W - 1}, lx + 1), ly)
+                  && wetBody(int(texelFetch(uWin, ivec2(min(${WIN_W - 1}, lx + 2), ly), 0).a & 0x7fu));
+                if (wl || wr) wm = uNatWet.w * 0.5${PIXEL_SCALE === 2 ? ' * ((wl && sub.x < 0.5) || (wr && sub.x >= 0.5) ? 1.0 : 0.45)' : ''};
+              }
+              albedo = mix(albedo, uNatWet.rgb, wm);
+            }
           }
           // Glaze: rock that touches lava is fired to a crazed amber glass.
           if (uNatGlaze.w > 0.0) {
@@ -708,13 +784,21 @@ class Overlay implements OverlaySurface {
   readonly scale = PIXEL_SCALE;
   readonly data = new Float32Array(PIXEL_W * PIXEL_H * 4);
   readonly half = new Uint16Array(PIXEL_W * PIXEL_H * 4);
+  /** The staging floats' bits, for the inline f16 conversion in commit(). */
+  private readonly bits = new Uint32Array(this.data.buffer);
   private readonly touched = new Uint8Array(PIXEL_W * PIXEL_H);
   private written = new Uint32Array(8192);
   private count = 0;
-  private dirtyX0 = PIXEL_W;
-  private dirtyY0 = PIXEL_H;
-  private dirtyX1 = -1;
-  private dirtyY1 = -1;
+  /** Bounds of the pixels written this frame... */
+  private wx0 = PIXEL_W;
+  private wy0 = PIXEL_H;
+  private wx1 = -1;
+  private wy1 = -1;
+  /** ...and of last frame's, which clear() zeroed: the upload covers both. */
+  private cx0 = PIXEL_W;
+  private cy0 = PIXEL_H;
+  private cx1 = -1;
+  private cy1 = -1;
 
   mark(pixelIdx: number): void {
     if (this.touched[pixelIdx] !== 0) return;
@@ -725,13 +809,16 @@ class Overlay implements OverlaySurface {
       this.written = grown;
     }
     this.written[this.count++] = pixelIdx;
-    this.includeDirty(pixelIdx);
+    const y = (pixelIdx / PIXEL_W) | 0, x = pixelIdx - y * PIXEL_W;
+    if (x < this.wx0) this.wx0 = x;
+    if (y < this.wy0) this.wy0 = y;
+    if (x > this.wx1) this.wx1 = x;
+    if (y > this.wy1) this.wy1 = y;
   }
 
   /** Zero only last frame's written pixels (full-buffer fill was the slow path). */
   clear(): void {
     const { data, half, touched, written } = this;
-    this.resetDirty();
     for (let k = 0; k < this.count; k++) {
       const pi = written[k];
       const b = pi * 4;
@@ -744,45 +831,65 @@ class Overlay implements OverlaySurface {
       half[b + 2] = 0;
       half[b + 3] = 0;
       touched[pi] = 0;
-      this.includeDirty(pi);
     }
+    // The cleared pixels' bounds are last frame's written bounds.
+    this.cx0 = this.wx0; this.cy0 = this.wy0; this.cx1 = this.wx1; this.cy1 = this.wy1;
+    this.wx0 = PIXEL_W; this.wy0 = PIXEL_H; this.wx1 = -1; this.wy1 = -1;
     this.count = 0;
   }
 
-  /** Convert this frame's written pixels to f16. Returns the upload rect, if any. */
+  /**
+   * Convert this frame's written pixels to f16. Returns the upload rect, if any.
+   * The conversion is three's DataUtils.toHalfFloat inlined (the same tables,
+   * bit for bit) over the staging floats' bits: per call it was a third of
+   * the overlay's cost on a busy frame (the Bell & Tea Engine's linkages
+   * write ~10^5 fine pixels a frame). Magnitudes of 65536 and up (never
+   * drawn) take the library call for its clamp.
+   */
   commit(): DirtyRect | null {
-    const { data, half, written } = this;
+    const { data, half, written, bits } = this;
     for (let k = 0; k < this.count; k++) {
       const b = written[k] * 4;
-      half[b] = DataUtils.toHalfFloat(data[b]);
-      half[b + 1] = DataUtils.toHalfFloat(data[b + 1]);
-      half[b + 2] = DataUtils.toHalfFloat(data[b + 2]);
-      half[b + 3] = DataUtils.toHalfFloat(data[b + 3]);
+      for (let c = b; c < b + 4; c++) {
+        const f = bits[c], e = (f >>> 23) & 0x1ff;
+        half[c] = (e & 0xff) >= 143 ? DataUtils.toHalfFloat(data[c]) : HALF_BASE[e] + ((f & 0x007fffff) >>> HALF_SHIFT[e]);
+      }
     }
-    if (this.dirtyX1 < this.dirtyX0 || this.dirtyY1 < this.dirtyY0) return null;
-    return {
-      x: this.dirtyX0,
-      y: this.dirtyY0,
-      w: this.dirtyX1 - this.dirtyX0 + 1,
-      h: this.dirtyY1 - this.dirtyY0 + 1,
-    };
+    const x0 = Math.min(this.wx0, this.cx0), y0 = Math.min(this.wy0, this.cy0);
+    const x1 = Math.max(this.wx1, this.cx1), y1 = Math.max(this.wy1, this.cy1);
+    if (x1 < x0 || y1 < y0) return null;
+    return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
   }
+}
 
-  private includeDirty(pixelIdx: number): void {
-    const x = pixelIdx % PIXEL_W;
-    const y = (pixelIdx / PIXEL_W) | 0;
-    if (x < this.dirtyX0) this.dirtyX0 = x;
-    if (y < this.dirtyY0) this.dirtyY0 = y;
-    if (x > this.dirtyX1) this.dirtyX1 = x;
-    if (y > this.dirtyY1) this.dirtyY1 = y;
+/**
+ * float32 -> float16 tables (three's DataUtils._generateTables, "Fast Half
+ * Float Conversions", van der Zijp): the overlay's inline conversion.
+ */
+const HALF_BASE = new Uint32Array(512);
+const HALF_SHIFT = new Uint32Array(512);
+for (let i = 0; i < 256; ++i) {
+  const e = i - 127;
+  if (e < -27) {
+    HALF_BASE[i] = 0x0000; HALF_BASE[i | 0x100] = 0x8000; HALF_SHIFT[i] = 24; HALF_SHIFT[i | 0x100] = 24;
+  } else if (e < -14) {
+    HALF_BASE[i] = 0x0400 >> (-e - 14); HALF_BASE[i | 0x100] = (0x0400 >> (-e - 14)) | 0x8000;
+    HALF_SHIFT[i] = -e - 1; HALF_SHIFT[i | 0x100] = -e - 1;
+  } else if (e <= 15) {
+    HALF_BASE[i] = (e + 15) << 10; HALF_BASE[i | 0x100] = ((e + 15) << 10) | 0x8000; HALF_SHIFT[i] = 13; HALF_SHIFT[i | 0x100] = 13;
+  } else if (e < 128) {
+    HALF_BASE[i] = 0x7c00; HALF_BASE[i | 0x100] = 0xfc00; HALF_SHIFT[i] = 24; HALF_SHIFT[i | 0x100] = 24;
+  } else {
+    HALF_BASE[i] = 0x7c00; HALF_BASE[i | 0x100] = 0xfc00; HALF_SHIFT[i] = 13; HALF_SHIFT[i | 0x100] = 13;
   }
+}
 
-  private resetDirty(): void {
-    this.dirtyX0 = PIXEL_W;
-    this.dirtyY0 = PIXEL_H;
-    this.dirtyX1 = -1;
-    this.dirtyY1 = -1;
-  }
+/** The inline overlay f16 conversion (tests hold it bit-exact to DataUtils). */
+export function overlayHalf(value: number): number {
+  const view = new Float32Array(1), bits = new Uint32Array(view.buffer);
+  view[0] = value;
+  const f = bits[0], e = (f >>> 23) & 0x1ff;
+  return (e & 0xff) >= 143 ? DataUtils.toHalfFloat(value) : HALF_BASE[e] + ((f & 0x007fffff) >>> HALF_SHIFT[e]);
 }
 
 /** GLSL source, ShaderMaterial, window packer, and texture/uniform management. */
@@ -941,6 +1048,10 @@ export class GpuCompose {
         uNatContact: { value: new THREE.Vector2(1, 2) },
         uNatHaze: { value: new THREE.Vector4() },
         uNatSat: { value: 1 },
+        uNatWet: { value: new THREE.Vector4(0, 0, 0, 0) },
+        uWaterSeen: { value: new THREE.Vector4(1, 1, 1, 1) },
+        uWaterClarity: { value: 0 },
+        uWaterPocket: { value: new THREE.Vector3() },
         uLookGain: { value: new THREE.Vector3(1.28, 1.28, 1.28) },
         uLookLift: { value: new THREE.Vector3(15, 20, 21) },
         uLookLip: { value: new THREE.Vector3(115, 111, 94) },
@@ -973,10 +1084,12 @@ export class GpuCompose {
         uBackdropGrade: { value: new THREE.Vector4(0, 0, 1, 1) },
         uBackdropSaturation: { value: 1 },
         uBackdropLit: { value: [1, 1, 1, 1, 1] },
+        uBackdropOrg: { value: Array.from({ length: 5 }, () => new THREE.Vector2()) },
         uAmbient: { value: 0 },
         uSkyLine: { value: 0 },
         uBoost: { value: 1 },
         uVignette: { value: VIGNETTE_BASE },
+        uDarkOn: { value: false },
         uGlintFrame: { value: 0 },
         uPhaseWater: { value: 0 },
         uPhaseShroom: { value: 0 },
@@ -1038,6 +1151,7 @@ export class GpuCompose {
     u.uSkyLine.value = ctx.levels.current?.skyLine ?? 0;
     u.uBoost.value = ctx.params.global.maxBrightness;
     u.uVignette.value = ctx.state.postFx.vignette;
+    u.uDarkOn.value = light.lightOpen !== undefined && light.openFlat !== true;
 
     const frameCount = ctx.state.frameCount;
     u.uGlintFrame.value = frameCount % 97;
@@ -1255,6 +1369,11 @@ export class GpuCompose {
     // The backdrop tint and the natural floors' haze/saturation are set per
     // frame in updateBackdropUniforms (a depth kit may substitute them).
     const natural = look.natural;
+    const wet = natural?.wetLip ?? [0, 0, 0], seen = natural?.waterSeen ?? [1, 1, 1];
+    (u.uNatWet.value as THREE.Vector4).set(wet[0], wet[1], wet[2], natural?.wetLipMix ?? 0);
+    (u.uWaterSeen.value as THREE.Vector4).set(seen[0], seen[1], seen[2], natural?.waterSeenSat ?? 1);
+    u.uWaterClarity.value = natural?.waterClarity ?? 0;
+    set3('uWaterPocket', natural?.waterPocket ?? look.waterBody);
     if (!natural) return;
     (u.uNatTile.value as THREE.Vector2).set((natural.tile & 1) * FLOOR_TILE, (natural.tile >> 1) * FLOOR_TILE);
     set3('uNatRockGain', natural.rockGain);
@@ -1305,6 +1424,8 @@ export class GpuCompose {
     const offsetX = kit ? kit.offsetX : look.backdropOffsetX;
     const machinery = kit ? kit.machinery : look.machinery;
     const lit = u.uBackdropLit.value as number[];
+    const origins = u.uBackdropOrg.value as THREE.Vector2[];
+    const cam = ctx.camera;
     (u.uBackdropGrade.value as THREE.Vector4).set(
       profile.grade.exposure,
       profile.grade.brightness,
@@ -1332,6 +1453,10 @@ export class GpuCompose {
       // mirrors its sample column the same way).
       inv.set((mirror ? -1 : 1) / Math.max(1, layer.width), 1 / Math.max(1, layer.height));
       off.set(setting.offsetX + offsetX, setting.offsetY);
+      origins[i].set(
+        backdropOrigin(cam.renderX, cam.presentationX ?? cam.x, setting.speed),
+        backdropOrigin(cam.renderY, cam.presentationY ?? cam.y, setting.speed),
+      );
       lit[i] = layer.lit ?? 1;
     }
   }

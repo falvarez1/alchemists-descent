@@ -138,6 +138,15 @@ export class MusicDirector implements MusicApi {
     this.master = null;
   }
 
+  /**
+   * The director is built after the title shows (game/playSystems): the Game
+   * calls this when a real click or key landed before it existed, so that
+   * gesture still unlocks the score.
+   */
+  adoptEarlierGesture(): void {
+    this.onGesture();
+  }
+
   private onGesture(): void {
     if (this.gestured) return;
     this.gestured = true;
