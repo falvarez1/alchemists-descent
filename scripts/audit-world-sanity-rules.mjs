@@ -10,6 +10,7 @@ export function classify(item, arrivalItem, level) {
   const m = item.m, flags = [];
   const f = (cls, sev, why) => flags.push({ cls, sev, why });
   const liqName = (t) => Object.keys(t ?? {}).join('+') || 'liquid';
+  const onlyOil = (t) => { const k = Object.keys(t ?? {}); return k.length > 0 && k.every((n) => n === 'oil'); };
   switch (item.cat) {
     case 'spawn':
       if (m.depth >= 3 || m.liqF > 0.15) f('SUBMERGED', m.depth >= 8 ? 'P1' : 'P2', `arrival spot under ${m.depth} cells of ${liqName(m.liqT)} (${Math.round(m.liqF * 100)}% of body)`);
@@ -53,7 +54,8 @@ export function classify(item, arrivalItem, level) {
       if (m.shaftLiqF > 0.15) f('SUBMERGED', 'P2', `flue shaft ${Math.round(m.shaftLiqF * 100)}% liquid before the escape`);
       break;
     case 'waystone':
-      if (!m.lit && m.bowlLiqF > 0.15) f('BLOCKED', 'P1', `unlit waystone's bowl holds ${liqName(m.bowlLiqT)} (${Math.round(m.bowlLiqF * 100)}%): fire cannot burn there`);
+      // Oil in the bowl is fuel, not a blocker: fire lights it and the burning oil lights the waystone.
+      if (!m.lit && m.bowlLiqF > 0.15 && !onlyOil(m.bowlLiqT)) f('BLOCKED', 'P1', `unlit waystone's bowl holds ${liqName(m.bowlLiqT)} (${Math.round(m.bowlLiqF * 100)}%): fire cannot burn there`);
       if (m.depth >= 3) f('SUBMERGED', m.depth >= 12 ? 'P1' : 'P2', `waystone stands in ${m.depth} cells of liquid`);
       if (m.bowlBlkF > 0.3) f('BURIED', 'P2', `waystone bowl ${Math.round(m.bowlBlkF * 100)}% filled with ${liqName(m.bowlBlkT)}`);
       if (m.steleBlkF > 0.12) f('BURIED', m.steleBlkF > 0.35 ? 'P1' : 'P2', `waystone stele drawn over rock (${Math.round(m.steleBlkF * 100)}% solid: ${liqName(m.steleBlkT)})`);
@@ -96,7 +98,7 @@ export function classify(item, arrivalItem, level) {
       const k = item.kind;
       if (k.startsWith('door')) { if (m.state === 0 && m.metalF < 0.6) f('ABSURD', 'P3', `closed door only ${Math.round(m.metalF * 100)}% metal`); break; }
       if (m.liqF !== undefined && m.liqF > 0.25 && /^(lever|brazier|plate)/.test(k)) f('SUBMERGED', k.startsWith('brazier') ? 'P1' : 'P2', `${k} ${Math.round(m.liqF * 100)}% in ${liqName(m.liqT)}`);
-      if (k.startsWith('brazier') && m.bowlLiqF > 0.3 && m.state === 0) f('BLOCKED', 'P1', `unlit brazier bowl holds ${liqName(m.bowlLiqT)}`);
+      if (k.startsWith('brazier') && m.bowlLiqF > 0.3 && m.state === 0 && !onlyOil(m.bowlLiqT)) f('BLOCKED', 'P1', `unlit brazier bowl holds ${liqName(m.bowlLiqT)}`);
       if (m.blkF !== undefined && m.blkF > 0.25 && /^(lever|brazier)/.test(k)) f('BURIED', 'P2', `${k} region ${Math.round(m.blkF * 100)}% solid (${liqName(m.blkT)})`);
       if (m.blkF !== undefined && m.blkF > 0.5 && /^plate/.test(k)) f('BURIED', 'P3', `plate buried under ${liqName(m.blkT)} (${Math.round(m.blkF * 100)}%)`);
       if (m.support !== undefined && m.support < 0.4) f('FLOATING', m.gap >= 4 ? 'P1' : 'P2', `${k} drawn in mid-air (support ${Math.round(m.support * 100)}%, ${m.gap} cells above the floor)`);

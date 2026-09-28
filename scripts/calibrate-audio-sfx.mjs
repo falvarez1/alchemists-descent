@@ -54,6 +54,10 @@ const TARGETS = {
   'flora.canopy': 0.08, 'flora.settle': 0.05, 'flora.rustle': 0.04, 'flora.pod.drop': 0.04, 'flora.glowseed': 0.065,
   'flora.seed.soak': 0.03, 'flora.seed.sprout': 0.07, 'flora.ladder.rung': 0.05, 'flora.ladder.bloom': 0.07,
   'flora.catch': 0.09, 'flora.firelily.flare': 0.08, 'flora.brush.grass': 0.03, 'flora.brush.reeds': 0.035, 'flora.brush.kelp': 0.03,
+  // The Chill: the crackle and the crack repeat while a chilled body moves, so they sit near a
+  // footstep and a jump; the shell closing reads like a hard landing, the shatter under a hurt.
+  'player.chill.crackle': 0.035, 'player.chill.crack': 0.065, 'player.chill.shell': 0.097, 'player.chill.shatter': 0.14,
+  'player.chill.thaw': 0.09, 'player.chill.breath': 0.037,
 };
 
 const browser = await launchBrowser({ args: ['--autoplay-policy=no-user-gesture-required'] });
