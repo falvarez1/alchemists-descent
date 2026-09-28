@@ -224,6 +224,16 @@ export function stepCrawler(ctx: Ctx, c: Critter, _host: OrganismHost): boolean 
           ctx.particles.spawn(gx + 0.5, gy + 0.5, 0, -0.2, null, packRGB(230, 240, 250), 18, { glow: 1, grav: 0.02 });
         }
       }
+      // Frost mites graze the snow they walk on (a clean track through the drift).
+      if (c.kind === 'frostmite' && (c.meal ?? 0) < 200) {
+        const gx = c.anchorX - (c.nx ?? 0), gy = c.anchorY - (c.ny ?? 0);
+        if (w.inBounds(gx, gy) && w.types[w.idx(gx, gy)] === Cell.Snow && entityRandom() < 0.06) {
+          w.clearCellAt(w.idx(gx, gy));
+          organismEvent(ctx, c.kind, 'eat', gx + 0.5, gy + 0.5);
+          c.meal = 900;
+          ctx.particles.spawn(gx + 0.5, gy + 0.5, 0, -0.2, null, packRGB(236, 244, 252), 16, { glow: 0.6, grav: 0.02 });
+        }
+      }
       // Ember beetles graze the coal they walk on.
       if (ember && (c.meal ?? 0) < 200) {
         const gx = c.anchorX - (c.nx ?? 0), gy = c.anchorY - (c.ny ?? 0);

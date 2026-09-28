@@ -4,6 +4,7 @@ import {
   acidColor,
   bloodColor,
   fireColor,
+  iceColor,
   nitrogenColor,
   slimeColor,
   stoneColor,
@@ -42,4 +43,7 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   stonemaw: { hp: 150, halfW: 8, h: 10, bounty: 130, gore: Cell.Stone, goreFn: stoneColor },
   // Pool ecology eel: dangerous in liquid, clumsy when beached.
   rillback: { hp: 78, halfW: 7, h: 8, bounty: 70, gore: Cell.Blood, goreFn: bloodColor },
+  // The Cold Store's guardian: a watchman automaton grown a hide of rime.
+  // Thaw it or shatter the plates off (creatures/bosses/rimeWarden).
+  rimewarden: { hp: 380, halfW: 11, h: 26, bounty: 380, gore: Cell.Ice, goreFn: iceColor },
 };

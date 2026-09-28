@@ -44,6 +44,7 @@ import {
 } from '@/world/connect';
 import type { PlacementLedger } from '@/world/connect';
 import { wizardMask } from '@/world/validate';
+import { buildIceHouse } from '@/world/wardenArenas';
 
 /**
  * Landmark structures placed after generation (upgrade-port meta layer):
@@ -87,6 +88,8 @@ export function placeStructures(
    *  4), flooding the Colossus before the player ever arrived. The seal is the
    *  player's to dig. */
   kilnRepair: (() => void) | null;
+  /** Re-asserts a second-door guardian's hall (world/wardenArenas); `floor: false` after the final rescue. */
+  wardenRepair: ((floor?: boolean) => void) | null;
 } {
   const w = ctx.world;
   const pickups: Pickup[] = [];
@@ -98,6 +101,7 @@ export function placeStructures(
   const spellLab: { x: number; y: number; rewardX: number; rewardY: number } | null = null;
   let sumpRepair: ((rim?: boolean) => void) | null = null;
   let kilnRepair: (() => void) | null = null;
+  let wardenRepair: ((floor?: boolean) => void) | null = null;
 
   const carvePocket = (cx: number, cy: number, rx: number, ry: number): void =>
     carvePocketCells(w, cx, cy, rx, ry);
@@ -1170,6 +1174,13 @@ export function placeStructures(
     };
   }
 
+  // ---- The second doors' guardians (wave 3): their halls live in world/wardenArenas ----
+  if (def.boss === 'rimewarden') {
+    const arena = buildIceHouse({ w, rng, ledger, spawn, portalX, pickups, lights: authoredLights, connect: connectToCaves });
+    boss = arena.boss;
+    wardenRepair = arena.repair;
+  }
+
   return {
     pickups,
     portal,
@@ -1182,5 +1193,6 @@ export function placeStructures(
     spellLab,
     sumpRepair,
     kilnRepair,
+    wardenRepair,
   };
 }

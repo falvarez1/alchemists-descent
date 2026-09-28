@@ -33,6 +33,7 @@ export interface BossBrain {
   lastMove: BossMove;
   /** Colossus: furnace heat 0..1. Only a hot kiln cracks when water hits it. */
   heat: number;
+  /** Colossus: the thermal-shock re-arm. Rime Warden: ticks until its rime has re-set (no plate goes before). */
   quenchCd: number;
   /** The player has entered the fight (its entrance ran, or he struck it), and when. */
   engaged: boolean;

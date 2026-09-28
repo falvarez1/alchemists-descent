@@ -26,7 +26,7 @@ import type { Enemy, EnemyDamageSource, EnemyKind } from '@/core/types';
  */
 
 /** The bosses the ward protects. */
-export const WARDED_BOSSES: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan']);
+export const WARDED_BOSSES: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'rimewarden']);
 
 /** A cast, pour or throw keeps the world's harm "his" for 8 s (ticks at 60 Hz). */
 export const BOSS_ACT_TICKS = 8 * 60;
@@ -98,6 +98,8 @@ export function bossOrganRect(boss: { x: number; y: number; kind?: EnemyKind } |
   // ±34 with seals 61-62 rows up, gold tells two rows under each.
   if (boss.kind === 'colossus') return { x0: boss.x - 42, y0: boss.y - 79, x1: boss.x + 42, y1: boss.y - 59 };
   if (boss.kind === 'leviathan') return { x0: boss.x - 28, y0: boss.y + 6, x1: boss.x + 28, y1: boss.y + 9 };
+  // The Ice-House's floor band: the coal pits and brine gutters sunk in it (world/wardenArenas).
+  if (boss.kind === 'rimewarden') return { x0: boss.x - 50, y0: boss.y + 1, x1: boss.x + 50, y1: boss.y + 4 };
   return null;
 }
 
@@ -111,7 +113,19 @@ export function bossArenaRect(boss: { x: number; y: number; kind?: EnemyKind } |
   if (!boss) return null;
   if (boss.kind === 'colossus') return { x0: boss.x - 64, y0: boss.y - 81, x1: boss.x + 64, y1: boss.y + 6 };
   if (boss.kind === 'leviathan') return { x0: boss.x - 44, y0: boss.y - 52, x1: boss.x + 44, y1: boss.y + 10 };
+  if (boss.kind === 'rimewarden') return { x0: boss.x - 60, y0: boss.y - 54, x1: boss.x + 60, y1: boss.y + 6 };
   return null;
+}
+
+/**
+ * A boss arena's FUEL: cells the player lights rather than opens — the
+ * Ice-House's coal pits (world/wardenArenas), sunk in the floor band either
+ * side of the Rime Warden's post. A blast there catches the coal instead of
+ * blowing it away (sim/explosion).
+ */
+export function bossFuelRect(boss: { x: number; y: number; kind?: EnemyKind } | null | undefined): BossOrganRect | null {
+  if (!boss || boss.kind !== 'rimewarden') return null;
+  return { x0: boss.x - 27, y0: boss.y + 1, x1: boss.x + 27, y1: boss.y + 4 };
 }
 
 interface QuenchState {

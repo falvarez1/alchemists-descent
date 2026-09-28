@@ -5,7 +5,7 @@ import { ashColor, crystalColor, fireColor, glassColor, packRGB, smokeColor } fr
 import { chargeDeposit } from '@/sim/electrical';
 import { causeForExplosion } from '@/core/alchemyCause';
 import { fxRandom, simRandom } from '@/core/simRandom';
-import { blastAuthor, bossOrganRect } from '@/core/bossWard';
+import { blastAuthor, bossFuelRect, bossOrganRect } from '@/core/bossWard';
 
 /** Reused blast-carve scratch — see the note at its use site in trigger(). */
 let blastTouchedScratch = new Uint8Array(0);
@@ -225,6 +225,10 @@ export class Explosions implements ExplosionApi {
     // (probe, seed 4: the tank burst ~3 s after the Colossus woke, before the
     // player had done anything, and the flood was wasted).
     const organ = causeForExplosion(options.playerDamageSource) === 'direct' ? null : bossOrganRect(ctx.levels?.current?.boss);
+    // ...and an arena's FUEL (the Ice-House's coal pits) is the player's to
+    // LIGHT: any blast there catches the coal instead of blowing it away (a
+    // spark bolt used to flash the whole pit off in a second).
+    const fuel = bossFuelRect(ctx.levels?.current?.boss);
 
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -235,6 +239,10 @@ export class Explosions implements ExplosionApi {
           if (organ && nx >= organ.x0 && nx <= organ.x1 && ny >= organ.y0 && ny <= organ.y1) continue;
           const ni = world.idx(nx, ny);
           const orig = world.types[ni];
+          if (fuel && orig === Cell.Coal && nx >= fuel.x0 && nx <= fuel.x1 && ny >= fuel.y0 && ny <= fuel.y1) {
+            if (world.life[ni] === 0) world.life[ni] = (ctx.params.materials[Cell.Coal].burnDuration ?? 240) + Math.floor(fxRandom() * 40);
+            continue;
+          }
           if (orig === Cell.MarshGas) {
             // a blast doesn't erase a gas pocket - it LIGHTS it
             world.replaceCellAt(ni, Cell.Fire, fireColor());

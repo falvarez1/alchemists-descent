@@ -933,6 +933,8 @@ export class Levels implements LevelsApi {
         return 'Drain the Sunken Leviathan.';
       case 'colossus':
         return 'Bring down the Kiln Colossus.';
+      case 'rimewarden':
+        return 'Thaw or shatter the Rime Warden.';
       default:
         return `Bring down the ${resolved}.`;
     }

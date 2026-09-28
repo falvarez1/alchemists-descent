@@ -511,10 +511,13 @@ describe('weaver encounter contract', () => {
     for (const roster of Object.values(SPINE_ROSTERS)) {
       expect(roster?.leviathan).toBeUndefined();
       expect(roster?.colossus).toBeUndefined();
+      expect(roster?.rimewarden).toBeUndefined();
     }
+    // The second doors (wave 3) are spine floors with their own rosters.
+    expect(populationForLevel(floor('frozen', 2), EXTRAS.frozen.foes)).toEqual(SPINE_ROSTERS.frozen);
+    expect(populationForLevel(floor('crystal', 3), EXTRAS.crystal.foes)).toEqual(SPINE_ROSTERS.crystal);
     // Legacy biomes the spine no longer uses keep their habitat roster.
     expect(populationForLevel(floor('timber', 5), EXTRAS.timber.foes)).toEqual({ weaver: 4, rootloper: 4, stonemaw: 2 });
-    expect(populationForLevel(floor('crystal', 6), EXTRAS.crystal.foes).stonemaw).toBe(4);
     expect(LEVELS['weaver-test']).toMatchObject({
       id: 'weaver-test',
       biome: 'fungal',

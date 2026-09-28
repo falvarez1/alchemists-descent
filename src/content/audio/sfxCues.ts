@@ -374,6 +374,15 @@ export const SFX_CUES = {
   'organism.emberbeetle.crunch': org('emberbeetle', 'critter', { gain: 1.0, cooldownMs: 300 }),
   'organism.emberbeetle.pop': org('emberbeetle', 'creature', { gain: 0.7 }),
   'organism.ashmoth.flare': org('ashmoth', 'critter', { gain: 2.0, cooldownMs: 120 }),
+  // The second doors (wave 3): the Cold Store's and the Glass Galleries' small life.
+  'organism.frostmite.curl': org('frostmite', 'creature', { gain: 0.6, voices: 2, cooldownMs: 150 }),
+  'organism.frostmite.eat': org('frostmite', 'critter', { gain: 0.9, cooldownMs: 300 }),
+  'organism.snowmoth.flare': org('snowmoth', 'critter', { gain: 1.6, cooldownMs: 120 }),
+  'organism.brineskater.scatter': org('brineskater', 'critter', { gain: 1.2, cooldownMs: 700, voices: 1 }),
+  'organism.glassbeetle.curl': org('glassbeetle', 'creature', { gain: 0.7, voices: 2, cooldownMs: 150 }),
+  'organism.prismmoth.flare': org('prismmoth', 'critter', { gain: 1.6, cooldownMs: 120 }),
+  'organism.lensmite.eat': org('lensmite', 'critter', { gain: 1.0, cooldownMs: 250 }),
+  'organism.lensmite.curl': org('lensmite', 'creature', { gain: 0.6, voices: 2, cooldownMs: 150 }),
 
   // ---------------------------------------------------- flora (every floor)
   // Living plants (game/Flora, sim/elements/flora, audio/HabitatAudio): the
@@ -543,6 +552,23 @@ export const SFX_CUES = {
   'creature.colossus.kneel': boss('colossus', { gain: 0.75 }),
   'creature.colossus.death.crack': boss('colossus', { gain: 1.0, range: 1000, priority: 5 }),
   'creature.colossus.death.rubble': boss('colossus', { gain: 1.2, range: 1200, priority: 5 }),
+  // THE RIME WARDEN (creatures/bosses/rimeWarden): the Cold Store's guardian — ice
+  // armour that glances blows, thaws or shatters; spikes, rime waves, hail, frost breath.
+  'creature.rimewarden.idle': boss('rimewarden', { gain: 0.7, cooldownMs: 3200 }),
+  'creature.rimewarden.alert': boss('rimewarden', { gain: 1.1, priority: 5 }),
+  'creature.rimewarden.step': boss('rimewarden', { gain: 0.8, cooldownMs: 160 }),
+  'creature.rimewarden.hurt': boss('rimewarden', { gain: 0.8 }),
+  'creature.rimewarden.death': boss('rimewarden', { gain: 1.2, range: 1200, priority: 5 }),
+  'creature.rimewarden.glance': boss('rimewarden', { gain: 0.6, cooldownMs: 180 }),
+  'creature.rimewarden.creak': boss('rimewarden', { gain: 0.7 }),
+  'creature.rimewarden.slam': boss('rimewarden', { gain: 1.0, priority: 5 }),
+  'creature.rimewarden.stomp': boss('rimewarden', { gain: 1.1, priority: 5 }),
+  'creature.rimewarden.hail': boss('rimewarden', { gain: 0.9 }),
+  'creature.rimewarden.inhale': boss('rimewarden', { gain: 0.8 }),
+  'creature.rimewarden.breath': boss('rimewarden', { gain: 1.0 }),
+  'creature.rimewarden.roar': boss('rimewarden', { gain: 1.15, priority: 5 }),
+  'creature.rimewarden.shatter': boss('rimewarden', { gain: 1.1, priority: 5 }),
+  'creature.rimewarden.thaw': boss('rimewarden', { gain: 0.9, priority: 5 }),
 } as const satisfies Record<string, SfxCueDef>;
 
 export type SfxId = keyof typeof SFX_CUES;

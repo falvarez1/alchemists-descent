@@ -313,7 +313,7 @@ const SPARK_KNOCK = 1.4;
 const SPARK_KNOCK_TICKS = 4;
 
 function sparkKnock(ctx: Ctx, e: Ctx['enemies'][number], vx: number, vy: number): void {
-  if (e.hp <= 0 || e.kind === 'weaver' || e.kind === 'colossus' || e.kind === 'leviathan' || e.kind === 'eggs') return;
+  if (e.hp <= 0 || e.kind === 'weaver' || e.kind === 'colossus' || e.kind === 'leviathan' || e.kind === 'rimewarden' || e.kind === 'eggs') return;
   const def = ctx.enemyCtl.defs[e.kind];
   const push = clamp((SPARK_KNOCK * 40) / Math.max(1, def.halfW * def.h), 0.35, 2.6);
   const spd = Math.hypot(vx, vy) || 1;

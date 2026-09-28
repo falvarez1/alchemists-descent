@@ -255,6 +255,9 @@ export const ENEMY_KINDS = [
   'rootloper',
   'stonemaw',
   'rillback',
+  // Wave 3, the second doors' guardians: the Cold Store's Rime Warden (thaw
+  // or shatter its ice armour).
+  'rimewarden',
 ] as const;
 
 export type EnemyKind = (typeof ENEMY_KINDS)[number];

@@ -1081,6 +1081,7 @@ export class WorldGen implements WorldGenApi {
       spellLab,
       sumpRepair,
       kilnRepair,
+      wardenRepair,
     } = placeStructures(
       ctx,
       this.rng,
@@ -1240,6 +1241,7 @@ export class WorldGen implements WorldGenApi {
     //     be armored (plugs, gold tells, the pool itself).
     sumpRepair?.();
     kilnRepair?.();
+    wardenRepair?.();
     stage('sump-repair');
 
     if (shouldLogDevDiagnostics()) {
@@ -1263,6 +1265,7 @@ export class WorldGen implements WorldGenApi {
     // the basin took a column of its water on d3 seed 11) — but not its rock
     // rim: a tunnel the final rescue needed through it stays open.
     sumpRepair?.(false);
+    wardenRepair?.(false);
     // FLORA puzzles re-assert what the rescue tunnels took (a tree, a cistern)
     // — writing only into open cells, so no route the rescue opened is closed.
     flora.repair();

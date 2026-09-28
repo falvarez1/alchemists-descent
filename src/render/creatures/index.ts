@@ -12,6 +12,7 @@ import { batArt } from './bat';
 import { impArt } from './imp';
 import { wispArt } from './wisp';
 import { bruteArt } from './brute';
+import { rimeArt } from './rime';
 import { mageArt } from './mage';
 import { weaverArt } from './weaver';
 import { leviathanArt, rillbackArt, stonemawArt } from './serpents';
@@ -34,6 +35,7 @@ const ART: Partial<Record<EnemyKind, SpeciesArt>> = {
   wisp: wispArt,
   golem: bruteArt,
   colossus: bruteArt,
+  rimewarden: rimeArt,
   mage: mageArt,
   weaver: weaverArt,
   rillback: rillbackArt,
