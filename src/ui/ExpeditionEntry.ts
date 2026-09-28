@@ -6,6 +6,7 @@ import { formatRunTime } from '@/game/runRules';
 import { PlayerSettings } from '@/ui/PlayerSettings';
 import { KitPicker } from '@/ui/KitPicker';
 import { appDialog } from '@/ui/AppDialog';
+import { openTrailer } from '@/ui/TrailerLightbox';
 
 /** "Breathing Works" → "Breathing<br><em>Works</em>": the last word takes the brass. */
 function titleMarkup(title: string): string {
@@ -48,6 +49,7 @@ export class ExpeditionEntry {
       <div class="entry-kits"></div>
       <button type="button" data-entry="daily" class="entry-daily">Today’s descent<span class="entry-note" data-entry-note="daily"></span></button>
       <button type="button" data-entry="settings">Controls & comfort</button>
+      <button type="button" data-entry="trailer" class="entry-trailer">Watch the trailer<span class="entry-note">Ninety-five seconds of safety induction. Mind the duck.</span></button>
       <button type="button" data-entry="opening" class="entry-opening" hidden>The opening<span class="entry-note">Kettleby, the lift, and a voice in the pipes.</span></button>
       <button type="button" data-entry="workshop" class="entry-workshop" hidden>The Workshop<span class="entry-note">The material sandbox. Nothing here can hurt you, much.</span></button></nav>
       <p class="entry-status" role="status"></p>
@@ -64,6 +66,7 @@ export class ExpeditionEntry {
       if (!button) return;
       const action = button.dataset.entry;
       if (action === 'settings') this.settings.open();
+      else if (action === 'trailer') openTrailer(ctx, button);
       else if (action === 'opening') void ctx.story?.playOpening({ replay: true });
       else if (action === 'begin' || action === 'continue') void this.launch(action === 'continue' ? 'continue' : 'begin');
       else if (action === 'daily') void this.launch('daily');

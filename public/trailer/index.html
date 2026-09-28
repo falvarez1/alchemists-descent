@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Breathing Works — Trailer</title>
+    <meta name="description" content="Breathing Works — An Alchemist's Descent. A free falling-sand action roguelite in your browser. Every grain is real. Please mind the duck." />
+    <meta property="og:type" content="video.other" />
+    <meta property="og:title" content="Breathing Works — An Alchemist's Descent (Trailer)" />
+    <meta property="og:description" content="A free falling-sand action roguelite in your browser. Every grain is real." />
+    <meta property="og:image" content="https://alchemists-descent.pages.dev/trailer/poster.jpg" />
+    <meta property="og:video" content="https://alchemists-descent.pages.dev/trailer/breathing-works-trailer.mp4" />
+    <meta property="og:video:type" content="video/mp4" />
+    <meta property="og:video:width" content="1920" />
+    <meta property="og:video:height" content="1080" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://alchemists-descent.pages.dev/trailer/poster.jpg" />
+    <style>
+      @font-face {
+        font-family: 'Cormorant Garamond';
+        src: url('/assets/fonts/cormorant-garamond-latin.woff2') format('woff2');
+        font-weight: 300 700;
+      }
+      :root { --slate: #0b1417; --paper: #e6dfca; --brass: #d5b982; --brass-strong: #f2e3b6; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; background: var(--slate); color: var(--paper); }
+      body {
+        display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 40px 16px 48px;
+        font-family: 'Cormorant Garamond', Georgia, serif;
+        background: radial-gradient(ellipse 80% 60% at 50% 30%, #13242b, var(--slate) 70%);
+      }
+      h1 { margin: 0; font-weight: 600; font-size: clamp(34px, 6vw, 64px); letter-spacing: 0.1em; color: var(--brass-strong); text-align: center; }
+      h1 small { display: block; margin-top: 6px; font-size: 0.34em; letter-spacing: 0.34em; color: var(--brass); font-variant: small-caps; }
+      video { width: min(100%, 1280px); aspect-ratio: 16 / 9; background: #000; border: 2px solid var(--brass); box-shadow: 0 30px 90px rgb(0 0 0 / 70%); }
+      .play {
+        display: inline-block; padding: 14px 30px; border: 2px solid var(--brass); color: var(--slate); background: var(--brass);
+        font: 600 clamp(20px, 2.4vw, 26px)/1 'Cormorant Garamond', Georgia, serif; letter-spacing: 0.08em; text-decoration: none;
+      }
+      .play:hover, .play:focus-visible { background: var(--brass-strong); }
+      p { margin: 0; font-size: clamp(17px, 1.8vw, 21px); opacity: 0.85; text-align: center; max-width: 760px; }
+      footer { font-size: 15px; letter-spacing: 0.3em; font-variant: small-caps; color: var(--brass); opacity: 0.8; }
+    </style>
+  </head>
+  <body>
+    <h1>Breathing Works<small>An Alchemist’s Descent</small></h1>
+    <video controls playsinline preload="metadata" poster="/trailer/poster.jpg" src="/trailer/breathing-works-trailer.mp4"></video>
+    <a class="play" href="/">Play free in your browser</a>
+    <p>A falling-sand action roguelite. Every grain is simulated: the sand falls, the water flows, and the oil… burns. No download, no install. Just descend.</p>
+    <footer>A Purple Llama Studio game</footer>
+  </body>
+</html>

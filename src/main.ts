@@ -4,6 +4,7 @@ import '@/styles/menus.css';
 import '@/styles/house.css';
 import '@/styles/run.css';
 import '@/styles/sound.css';
+import '@/styles/trailer.css';
 import { Game } from '@/game/Game';
 import type { AuthorLinkHandle } from '@/app/AuthorLink';
 import type { AuthorLinkIndicator } from '@/app/AuthorLinkIndicator';

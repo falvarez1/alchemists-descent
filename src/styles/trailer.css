@@ -1,0 +1,40 @@
+/* The trailer lightbox over the title (ui/TrailerLightbox). Above the entry screen (88) and the sound control (90). */
+#trailer-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  background: rgb(4 8 10 / 92%);
+  backdrop-filter: blur(6px);
+  animation: tl-in 0.25s ease-out;
+}
+#trailer-lightbox .tl-frame {
+  position: relative;
+  width: min(92vw, calc(84vh * 16 / 9));
+}
+#trailer-lightbox video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 2px solid #d5b982;
+  box-shadow: 0 30px 90px rgb(0 0 0 / 70%);
+}
+#trailer-lightbox .tl-close {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  padding: 7px 14px;
+  font: 600 15px/1 var(--house-sans, system-ui, sans-serif);
+  letter-spacing: 0.06em;
+  color: #e6dfca;
+  background: rgb(15 28 33 / 92%);
+  border: 1px solid rgb(213 185 130 / 60%);
+  cursor: pointer;
+}
+#trailer-lightbox .tl-close:hover,
+#trailer-lightbox .tl-close:focus-visible { border-color: #d5b982; color: #f2e3b6; }
+#trailer-lightbox .tl-close kbd { margin-left: 6px; font: inherit; opacity: 0.6; }
+@keyframes tl-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #trailer-lightbox { animation: none; } }
