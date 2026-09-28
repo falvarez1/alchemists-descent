@@ -249,7 +249,7 @@ nothing client-side talks to ElevenLabs — `tests/audio-bundle.test.ts` scans
 the production bundle for `sk_` tokens and `api.elevenlabs.io`):
 
 ```bash
-ELEVENLABS_API_KEY_FILE='Y:\elevenlabs-api-key.txt' AUDIO_CACHE_DIR='Y:\Projects\bw-audio-cache' \
+ELEVENLABS_API_KEY_FILE='Y:\elevenlabs-api-key.txt' AUDIO_CACHE_DIR='Y:\Projects\alchemists-descent-worktrees\audio-cache' \
 AUDIO_LOG_NAME='generation-log.sfx.jsonl' AUDIO_BUDGET_CREDITS=80000 \
 node scripts/audio/gen-sfx.mjs [--only id,prefix.*,/regex/] [--dry] [--offline]
 ```
