@@ -135,8 +135,8 @@ describe('alchemical kill classification', () => {
       }
       expect(alchemyBonusGold(bounty, 5)).toBe(alchemyBonusGold(bounty, 9));
     }
-    expect(alchemyBonusGold(70, 1)).toBe(30); // 10 + 24.5 -> 34.5 -> 30
-    expect(alchemyBonusGold(70, 3)).toBe(70); // x2
+    expect(alchemyBonusGold(20, 1)).toBe(12); // 4 + 8
+    expect(alchemyBonusGold(20, 3)).toBe(24); // x2
   });
 });
 

@@ -414,15 +414,15 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
     pickups: [pickup('key', TEA.receiver.x, TEA.receiver.y), pickup('tome', 892, 735, { card: 'frostshard' }),
       pickup('tome', 265, 252, { card: 'bounce' }), pickup('tome', 1402, 407, { card: 'heavy' }),
       pickup('tome', 672, 942, { card: 'double' }),
-      pickup('heart', 820, 735), pickup('goldpile', 1470, 722, { amount: 60 }),
-      pickup('goldpile', 1063, 978, { amount: 30 }),
+      pickup('heart', 820, 735), pickup('goldpile', 1470, 722, { amount: 20 }),
+      pickup('goldpile', 1063, 978, { amount: 10 }),
       // The Intake lessons pay in gold: behind the wooden gate, and inside the sand plug.
-      pickup('goldpile', 30, 313, { amount: 45 }), pickup('goldpile', 308, 256, { amount: 40 }),
+      pickup('goldpile', 30, 313, { amount: 15 }), pickup('goldpile', 308, 256, { amount: 15 }),
       // The Undertow cache, under its lens-locked lid.
-      pickup('goldpile', WORKS_UNDERTOW_CACHE.niche.x0 + 4, WORKS_UNDERTOW_CACHE.niche.y1, { amount: 50 }),
+      pickup('goldpile', WORKS_UNDERTOW_CACHE.niche.x0 + 4, WORKS_UNDERTOW_CACHE.niche.y1, { amount: 20 }),
       pickup('potion', WORKS_UNDERTOW_CACHE.niche.x1 - 3, WORKS_UNDERTOW_CACHE.niche.y1 - 1, { potion: 'torch' }),
       // The Seed Cellar's shelf: grow the root ladder to reach it.
-      pickup('goldpile', WORKS_SEED_CELLAR.reward.x, WORKS_SEED_CELLAR.reward.y, { amount: 40 })],
+      pickup('goldpile', WORKS_SEED_CELLAR.reward.x, WORKS_SEED_CELLAR.reward.y, { amount: 15 })],
     mechanisms, runeVaults: [], boss: null,
     prefabEnemies: [
       { kind: 'rillback', x: 707, y: 413, sourceId: 'works-rillback-sluice' },

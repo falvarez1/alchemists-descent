@@ -447,7 +447,7 @@ function thicket(world: World, rng: Rng, floor: FloraFloor, ledger: PlacementLed
   fill(world, x0 + 4, floorY, x1 - 6, floorY + 4, Cell.Wall, ROCK_COLOR);
   lamp(world, x1 - 12, floorY - 1, floor);
   const reward = { x: x1 - 20, y: floorY - 2 };
-  out.pickups.push(makePickup('goldpile', reward.x, reward.y, { amount: floor === 'kiln' ? 90 : floor === 'cistern' ? 75 : 60 }));
+  out.pickups.push(makePickup('goldpile', reward.x, reward.y, { amount: floor === 'kiln' ? 30 : floor === 'cistern' ? 25 : 20 }));
   // Brambles: a woven lattice of real Wood (it walls the mouth) laced with leaves (it catches).
   const bramble = floor === 'kiln' ? packRGB(52, 40, 34) : floor === 'rot' ? packRGB(92, 70, 52)
     : floor === 'cold' ? packRGB(96, 102, 110) : floor === 'glass' ? packRGB(100, 92, 118) : packRGB(78, 70, 50);

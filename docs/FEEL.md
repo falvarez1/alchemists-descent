@@ -714,8 +714,9 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   tick never SHATTERS a frozen body. Credit is generous: within 280 cells of the
   wizard, or struck by him in the last 20 s, or kick-launched in the last 3 s.
   Kills within 3 s (180 ticks) chain; the chain resets on a level change.
-  **Payout, grid-honest:** bonus gold = 10 + 35% of bounty, ×1 / ×1.5 / ×2 /
-  ×2.5 / ×3 by chain, rounded to whole 10-oz grains; that many real Gold
+  **Payout, grid-honest:** bonus gold = 4 + 40% of bounty, ×1 / ×1.5 / ×2 /
+  ×2.5 / ×3 by chain, rounded to whole 1-oz grains (2026-09 economy pass; was
+  10 + 35% in 10-oz grains, on bounties ~3.3× larger); that many real Gold
   cells fountain out of the body in a low arc (vx ±1.1, vy −1.8…−3.4 cells/tick:
   apex ~10–36 cells, so walking over the kill brings the pile inside the 30-cell
   harvester pull; gold settles into a pool and sinks) for the harvester field to
@@ -727,7 +728,7 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   brass dyad whose top note climbs two semitones per link (capped at a fifth).
 - **Coin flight** (`particles/Particles.ts`): gold is only ever a real Gold
   cell or the purse. Whoever moves it — a kill's bounty, the harvester lifting a
-  grain (10 oz a cell), mined ore — credits `state.score` at that instant; the
+  grain (1 oz a cell; was 10), mined ore — credits `state.score` at that instant; the
   homing mote is the payment's animation. It steers to ARRIVE: desired speed
   min(5.2, √(2·0.45·d) + 1.2) cells/tick with 0.45 cells/tick² of steering, so
   the burst-out arc bends into a landing instead of the old 3.75-vs-2.5-cell
@@ -736,6 +737,21 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   within 24 ticks climb the scale) and pops a sparkle at the belt (6 cells up).
   If the wizard dies mid-flight the mote gutters out as a falling glint — the
   gold is already his.
+- **Gold, the economy** (2026-09 deliberate pass): QA ended a run with 15,732 oz
+  (4,533 after floor 2) against Sanctum prices of 40–380 — every choice free.
+  The floors hold ~4,500 gold cells each (seams, vugs, tells) and the harvester
+  lifted them THROUGH solid rock. Now: a gold cell is **1 oz** (was 10) and the
+  harvester lifts only gold with a face open to air, liquid or gas (a seam still
+  sealed in rock stays until it is dug to); bounties ×~0.3 (slime 10, bat 5,
+  weaver 35, rillback 20, rootloper 25, stonemaw 40, Leviathan 140, Rime Warden
+  120, Lenswright 130, Colossus 180; was 30/15/110/70/85/130/450/380/420/600),
+  paid as a coin per ~4 oz (≤ 40); gold piles ×~0.35 (chests 3–5 piles of 5–13,
+  was 15–39; floor-1 piles 10–20, puzzle rewards 12–30); a first brew 30 (was
+  100); raw ore 1 oz a cell (was 2). Sanctum prices are unchanged (mend 40,
+  toughen 90, brew 60, lost pages 160, the wandwrights 240 / 380). Measured by
+  a teleport walk (no kills): the direct route lifts ~80–230 oz a floor, a
+  completionist sweep ~870–1,030; with bounties and piles a good run earns
+  ~1,500–2,200 and, after the Sanctums, carries ~800–1,500 to the end.
 - **Callouts** (`ui/Callouts.ts`, `styles/callouts.css`): the word pops over
   the kill, rises and fades — FLAMBÉED, RENDERED, STEEPED, SHORTED, DROWNED,
   DISSOLVED, SHATTERED, FLATTENED, DETONATED, POISONED, IMPALED, BOWLED — one word per

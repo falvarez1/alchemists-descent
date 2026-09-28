@@ -95,7 +95,7 @@ function strongroom(ctx: Ctx, rng: Rng, x1: number, floorY: number, out: Gallery
   glassLamp(world, vx1 - 2, vy1);
   const rx = Math.floor((vx0 + vx1) / 2);
   out.pickups.push(makePickup('tome', rx, vy1 - 1, { card: randomCard(TOME_REWARD_POOL, () => rng.next()) }));
-  out.pickups.push(makePickup('goldpile', rx + 6, vy1, { amount: 45 + rng.int(35) }));
+  out.pickups.push(makePickup('goldpile', rx + 6, vy1, { amount: 15 + rng.int(12) }));
   return gate;
 }
 

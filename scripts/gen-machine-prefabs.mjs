@@ -101,7 +101,7 @@ function powderMill() {
       obj('plug0', 'plug', 35, 30, { w: 7, h: 2, material: 'wood' }),
       obj('braz0', 'brazier', 28, 55, {}),
       obj('relay0', 'relay', 31, 55, { delay: 60, action: 'ignite' }),
-      obj('gold0', 'pickup', 78, 54, { kind: 'goldpile', amount: 70 }),
+      obj('gold0', 'pickup', 78, 54, { kind: 'goldpile', amount: 25 }),
       obj('chest0', 'pickup', 84, 54, { kind: 'chest' }),
     ],
     [
@@ -147,7 +147,7 @@ function alchemyClock() {
       obj('relay0', 'relay', 12, 79, { delay: 45 }),
       obj('door0', 'door', 30, 58, { w: 4, h: 22 }),
       obj('pot0', 'pickup', 44, 78, { kind: 'potion' }),
-      obj('gold0', 'pickup', 52, 78, { kind: 'goldpile', amount: 55 }),
+      obj('gold0', 'pickup', 52, 78, { kind: 'goldpile', amount: 20 }),
       obj('pot1', 'pickup', 57, 78, { kind: 'potion' }),
     ],
     [
@@ -201,7 +201,7 @@ function kilnElevator() {
       obj('cw0', 'counterweight', 49, 65, { w: 9, threshold: 24 }),
       obj('door0', 'door', 55, 44, { w: 4, h: 22 }),
       obj('tome0', 'pickup', 70, 61, { kind: 'tome' }),
-      obj('gold0', 'pickup', 78, 64, { kind: 'goldpile', amount: 60 }),
+      obj('gold0', 'pickup', 78, 64, { kind: 'goldpile', amount: 20 }),
     ],
     [
       link('k0', 's0', 'valve0'), // kiln heat opens the boiler
@@ -252,7 +252,7 @@ function crystalRelayVault() {
       obj('s0', 'sensor', 34, 49, { type: 'liquid', threshold: 8, zoneW: 11, zoneH: 6, latch: 'permanent', filter: 'water' }),
       obj('relay0', 'relay', 50, 49, { delay: 30 }),
       obj('door0', 'door', 61, 28, { w: 3, h: 22 }),
-      obj('gold0', 'pickup', 70, 48, { kind: 'goldpile', amount: 90 }),
+      obj('gold0', 'pickup', 70, 48, { kind: 'goldpile', amount: 30 }),
       obj('chest0', 'pickup', 76, 48, { kind: 'chest' }),
     ],
     [

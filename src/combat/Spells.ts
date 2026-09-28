@@ -13,9 +13,9 @@ import type { Ctx, Projectile, SpellId, SpellsApi } from '@/core/types';
 import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
 import { entityRandom } from '@/core/simRandom';
 
-/** Gold per RawOre cell mined. Kept modest (raw ore < refined gold's ~10/cell) —
- *  caches are plentiful and buried, so the per-cell value guards the economy. */
-const RAWORE_GOLD = 2;
+/** Gold per RawOre cell mined. Kept modest — caches are plentiful and buried, so
+ *  the per-cell value guards the economy. (1, was 2: the 2026-09 economy pass.) */
+const RAWORE_GOLD = 1;
 
 /**
  * Player spell casting: wand geometry, the excavation ray, warp teleport

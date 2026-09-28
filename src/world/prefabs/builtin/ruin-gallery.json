@@ -21,7 +21,7 @@
       "hidden": false,
       "params": {
         "kind": "goldpile",
-        "amount": 25
+        "amount": 10
       }
     },
     {
@@ -34,7 +34,7 @@
       "hidden": false,
       "params": {
         "kind": "goldpile",
-        "amount": 30
+        "amount": 10
       }
     }
   ],

@@ -1341,7 +1341,8 @@ export class Enemies implements EnemyControlApi {
     const ctx = this.ctx;
     ctx.state.score += def.bounty;
     ctx.events.emit('scoreChanged', { score: ctx.state.score });
-    const coins = Math.max(1, Math.ceil(def.bounty / 10));
+    // A coin per ~4 oz (the 2026-09 economy pass made bounties ~0.3x): the shower still reads.
+    const coins = Math.max(1, Math.min(40, Math.ceil(def.bounty / 4)));
     const baseValue = Math.floor(def.bounty / coins);
     let remainder = def.bounty - baseValue * coins;
     for (let i = 0; i < coins; i++) {

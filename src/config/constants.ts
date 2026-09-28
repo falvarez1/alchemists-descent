@@ -43,5 +43,8 @@ export const DEATH_SLOWMO_FRAMES = 60;
 export const DEATH_SLOWMO_MIN = 0.32;
 
 /** What one real Gold cell is worth in the purse when the harvester lifts it
- *  (an alchemical payout's grains are minted at this rate, too). */
-export const GOLD_CELL_VALUE = 10;
+ *  (an alchemical payout's grains are minted at this rate, too). 1 oz (was 10,
+ *  2026-09 economy pass): the floors hold ~4,500 gold cells each (seams, vugs,
+ *  tells), so at 10 a run ended with 15,000+ oz against Sanctum prices of
+ *  40-380. See FEEL.md "Gold". */
+export const GOLD_CELL_VALUE = 1;

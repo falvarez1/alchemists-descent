@@ -131,7 +131,7 @@ export class Pickups implements PickupsApi {
       ctx.events.emit('toast', { text: `Weaver leg equipped · LMB whip · RMB throw · ${keyLabel(getBindings().carry)} drop` });
       ctx.audio.sfx('pickup.leg');
     } else if (p.kind === 'goldpile') {
-      const amount = p.data.amount ?? 25;
+      const amount = p.data.amount ?? 10;
       ctx.state.score += amount;
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
       ctx.events.emit('toast', { text: `+${amount} oz gold` });
@@ -159,7 +159,7 @@ export class Pickups implements PickupsApi {
       const piles = 3 + Math.floor(entityRandom() * 3);
       for (let i = 0; i < piles; i++) {
         const gp = makePickup('goldpile', p.x + (entityRandom() - 0.5) * 14, p.y - 4 - entityRandom() * 6, {
-          amount: 15 + Math.floor(entityRandom() * 25),
+          amount: 5 + Math.floor(entityRandom() * 9),
         });
         gp.vx = (entityRandom() - 0.5) * 1.6;
         gp.vy = -1.2 - entityRandom();

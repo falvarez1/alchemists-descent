@@ -177,12 +177,13 @@ export function nextChain(prevChain: number, lastKillFrame: number, frame: numbe
 }
 
 /**
- * Bonus gold for an alchemical kill: 10 + 35% of the creature's bounty, scaled
+ * Bonus gold for an alchemical kill: 4 + 40% of the creature's bounty, scaled
  * ×1, ×1.5, ×2, ×2.5, ×3 by the chain (capped), rounded to whole grains.
+ * (2026-09 economy pass: was 10 + 35% of bounties ~3.3x larger, in 10-oz grains.)
  */
 export function alchemyBonusGold(bounty: number, chain: number): number {
   const mult = 1 + Math.min(4, Math.max(0, chain - 1)) * 0.5;
-  const raw = (10 + Math.max(0, bounty) * 0.35) * mult;
+  const raw = (4 + Math.max(0, bounty) * 0.4) * mult;
   return Math.max(GOLD_PER_GRAIN, Math.round(raw / GOLD_PER_GRAIN) * GOLD_PER_GRAIN);
 }
 
