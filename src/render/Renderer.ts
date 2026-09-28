@@ -11,7 +11,7 @@ import { ForegroundLayerGL } from '@/render/depth/ForegroundGL';
 import { readWebGlGpu, type GpuInfo } from '@/render/gpuInfo';
 import { PostFx } from '@/render/PostFx';
 import { cameraPresentationOffset } from '@/render/presentation';
-import { WebGpuRenderBackend } from '@/render/WebGpuRenderBackend';
+import { webGpuBackendClass } from '@/render/webGpuBackendModule';
 import type {
   CompositorLens,
   ForegroundSource,
@@ -23,7 +23,7 @@ import type {
   RenderTarget,
   RendererBackend,
 } from '@/render/pixels';
-import { webGpuComposeUnrequestedStatus } from '@/render/WebGpuComposeBridge';
+import { webGpuComposeUnrequestedStatus } from '@/render/webGpuComposeStatus';
 
 /**
  * Three.js WebGL presentation layer: a full-screen orthographic quad textured
@@ -375,11 +375,17 @@ export class Renderer implements RenderTarget {
           : 'navigator-gpu-absent-webgl-fallback';
       return new WebGLRenderBackend(this.holder, settings, undefined, reason, this.foreground);
     }
+    // Loaded on demand (render/webGpuBackendModule): main.ts awaits it when the URL asks.
+    const WebGpuRenderBackend = webGpuBackendClass();
+    if (!WebGpuRenderBackend) {
+      return new WebGLRenderBackend(this.holder, settings, undefined, 'webgpu-module-unavailable-webgl-fallback', this.foreground);
+    }
     return new WebGpuRenderBackend(this.holder, settings, this.foreground);
   }
 
   private fallBackFromFailedWebGpu(settings: RenderSettings): void {
-    if (!(this.backend instanceof WebGpuRenderBackend) || !this.backend.initializationFailed) return;
+    const WebGpuRenderBackend = webGpuBackendClass();
+    if (!WebGpuRenderBackend || !(this.backend instanceof WebGpuRenderBackend) || !this.backend.initializationFailed) return;
     const canvas = this.backend.releaseCanvasForWebGlFallback(true);
     this.backend = new WebGLRenderBackend(
       this.holder,
@@ -391,7 +397,8 @@ export class Renderer implements RenderTarget {
   }
 
   private fallBackFromLostWebGpu(settings: RenderSettings): void {
-    if (!(this.backend instanceof WebGpuRenderBackend) || !this.backend.deviceLost) return;
+    const WebGpuRenderBackend = webGpuBackendClass();
+    if (!WebGpuRenderBackend || !(this.backend instanceof WebGpuRenderBackend) || !this.backend.deviceLost) return;
     const reason = this.backend.deviceLossReason;
     const canvas = this.backend.releaseCanvasForWebGlFallback(false);
     this.backend = new WebGLRenderBackend(this.holder, settings, canvas, reason, this.foreground);

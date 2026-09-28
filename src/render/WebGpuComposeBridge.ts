@@ -11,6 +11,9 @@ import {
   type WebGpuStorageTextureAccess,
   type WebGpuTextureLike,
 } from '@/render/WebGpuStorageTextureAccess';
+import { rawWgslUnrequestedStatus, webGpuComposeUnrequestedStatus } from '@/render/webGpuComposeStatus';
+
+export { webGpuComposeUnrequestedStatus };
 
 interface RuntimeGpuBuffer {
   mapAsync(mode: number): Promise<void>;
@@ -76,16 +79,6 @@ const GPU_BUFFER_USAGE_COPY_DST = 0x8;
 const GPU_MAP_MODE_READ = 0x1;
 const RAW_WGSL_ROW_BYTES = VIEW_W * 4;
 const RAW_WGSL_PADDED_ROW_BYTES = align(RAW_WGSL_ROW_BYTES, 256);
-
-const rawWgslUnrequestedStatus: RenderBackendWebGpuComposeRawWgslStatus = {
-  status: 'unrequested',
-  reason: 'webgpu-compose-raw-wgsl-write-not-requested',
-  maxDelta: null,
-  mismatchPct: null,
-  exactPct: null,
-  meanDelta: null,
-  gpuSubmitReadbackWallMs: null,
-};
 
 function makeStorageInitCompute(storageTexture: StorageTexture) {
   return Fn(() => {
@@ -385,14 +378,4 @@ export class WebGpuComposeBridge {
   dispose(): void {
     this.outputTexture.dispose();
   }
-}
-
-export function webGpuComposeUnrequestedStatus(reason: string): RenderBackendWebGpuComposeStatus {
-  return {
-    productionAvailable: false,
-    bridge: 'unrequested',
-    reason,
-    outputStorage: null,
-    rawWgslWrite: { ...rawWgslUnrequestedStatus },
-  };
 }
