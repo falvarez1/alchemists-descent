@@ -874,6 +874,10 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/6ac75f06.mp3",
   seconds: 6.48
  },
+ "eb467347": {
+  url: "audio/voice/eb467347.mp3",
+  seconds: 6.38
+ },
  "eeda0140": {
   url: "audio/voice/eeda0140.mp3",
   seconds: 5.36,
@@ -3836,6 +3840,18 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 6.48,
   urls: [
    "audio/voice/6ac75f06.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "eb467347",
+  text: "Frost in the beard. Very distinguished. Find a fire before it spreads to the rest of you.",
+  say: "[dryly] Frost in the beard. Very distinguished. Find a fire before it spreads to the rest of you.",
+  group: "The chill",
+  seconds: 6.38,
+  urls: [
+   "audio/voice/eb467347.mp3",
+   "audio/voice/eb467347-2.mp3"
   ],
   speaker: "docent"
  },

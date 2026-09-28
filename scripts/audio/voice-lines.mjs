@@ -33,6 +33,7 @@ export { runHeadline, buildRunSummary, VICTORY_EPITAPH } from '@/game/runRules';
 export { KIT_DEFS, KIT_ORDER, DEFAULT_KIT } from '@/content/kits';
 export { narrationKey, normalizeNarration, arrivalLine, speakerKey } from '@/audio/narrationText';
 export { storyVoiceLines } from '@/content/story';
+export { DEEP_CHILL_REMARK } from '@/content/chill';
 `;
   const tmp = await mkdtemp(join(tmpdir(), 'bw-voice-'));
   try {
@@ -161,6 +162,7 @@ const TAGS = [
   [/The Rot Gardens are not decorative/, 'dryly'],
   [/You were standing in the chimney/, 'dryly'],
   [/^Timber\. The creak was/, 'dryly'],
+  [/^Frost in the beard/, 'dryly'],
 ];
 const tagFor = (text) => TAGS.find(([re]) => re.test(text))?.[1];
 
@@ -291,6 +293,9 @@ export async function buildCatalog() {
     if (!t.template || !/KIT_DEFS\[kit\]/.test(t.template)) continue;
     for (const kit of g.KIT_ORDER) if (kit !== g.DEFAULT_KIT) add(expand(t.template, { KIT_DEFS: g.KIT_DEFS, kit }), 'Kit unlocks');
   }
+
+  // The chill (game/Chill): the docent's one remark the first time the cold runs deep, raised as a toast.
+  add(g.DEEP_CHILL_REMARK, 'The chill', { takes: 2 });
 
   // The Workshop: its note on the entrance, spoken (captioned) on arrival in the sandbox.
   const entry = await readFile(join(SRC, 'ui', 'ExpeditionEntry.ts'), 'utf8');
