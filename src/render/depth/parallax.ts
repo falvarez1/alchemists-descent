@@ -3,7 +3,8 @@
  * the foreground quad, the particles and the tests.
  *
  * Conventions: the camera position is the view's TOP-LEFT in world cells
- * (ctx.camera.x / renderX), the view is VIEW_W × VIEW_H cells, and a plane
+ * (the continuous presentation camera; renderX is its floor, the origin the
+ * frame is composed at), the view is VIEW_W × VIEW_H cells, and a plane
  * with parallax P moves P× the camera: P < 1 recedes behind the play layer,
  * P = 1 is the play layer, P > 1 passes in front of it.
  */
@@ -14,11 +15,25 @@ export function wrap(v: number, n: number): number {
 }
 
 /**
- * The backdrop texel the compositors sample for a view column/row (the
- * CPU/GLSL/WGSL mapping, integer camera): floor((floor(cam·speed) + v) / scale + offset), wrapped.
+ * A backdrop plane's coordinate (cells) under view position 0 of the compose
+ * quad. The frame is composed at the integer `renderCam` and the quad slides
+ * by the sub-cell residual (cam − renderCam), so taking that residual off
+ * here puts the plane point cam·speed + s at screen position s exactly,
+ * however slowly the camera drifts — the rule ForegroundGL's occluder plane
+ * already follows. Flooring cam·speed instead made every plane ride the
+ * world for a cell of camera travel, then snap back by up to a cell.
  */
-export function backdropTexel(cam: number, view: number, speed: number, scale: number, offset: number, size: number): number {
-  return wrap(Math.floor((Math.floor(cam * speed) + view) / Math.max(0.25, scale) + offset), size);
+export function backdropOrigin(renderCam: number, cam: number, speed: number): number {
+  return cam * speed - (cam - renderCam);
+}
+
+/**
+ * The backdrop texel the compositors sample at a view position (the
+ * CPU/GLSL/WGSL mapping): floor((origin + view) / scale + offset), wrapped,
+ * with `origin` from backdropOrigin.
+ */
+export function backdropTexel(origin: number, view: number, scale: number, offset: number, size: number): number {
+  return wrap(Math.floor((origin + view) / Math.max(0.25, scale) + offset), size);
 }
 
 /** Foreground plane coordinate (cells) of a world point while the camera sits at `cam`. */

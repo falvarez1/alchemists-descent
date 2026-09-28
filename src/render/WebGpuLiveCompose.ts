@@ -7,6 +7,7 @@ import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import type { Ctx, MaterialParams } from '@/core/types';
 import { COMPOSE_MAX_LENSES, COMPOSE_MAX_WAVES } from '@/render/composeLimits';
+import { backdropOrigin } from '@/render/depth/parallax';
 import type {
   CompositorLens,
   LightField,
@@ -57,7 +58,7 @@ const GPU_BUFFER_USAGE_COPY_DST = 0x08;
 const GPU_BUFFER_USAGE_STORAGE = 0x80;
 const GPU_SHADER_STAGE_COMPUTE = 0x04;
 
-const PARAM_COUNT = 168;
+const PARAM_COUNT = 180;
 const BACKDROP_BASE = 32;
 const BACKDROP_STRIDE = 8;
 /** Per-layer light response (render/depth kits), in the free params 27–31. */
@@ -72,6 +73,8 @@ const NATURAL_BASE = LENS_BASE + COMPOSE_MAX_LENSES * LENS_STRIDE;
 const DARK_ON_PARAM = NATURAL_BASE + 6;
 /** CLEAR WATER (floorLooks waterClarity): clarity, seen tint rgb, seen saturation, body rgb (0–255). */
 const WATER_BASE = NATURAL_BASE + 7;
+/** Per-layer plane origin x, y (render/depth/parallax backdropOrigin). */
+const BACKDROP_ORIGIN_BASE = WATER_BASE + 8;
 
 interface RuntimeGpuQueue {
   submit(commandBuffers: unknown[]): void;
@@ -467,13 +470,12 @@ fn gradeBackdrop(cIn: vec3<f32>) -> vec3<f32> {
   return pow(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(p(17u)));
 }
 
-fn backdropCoord(base: u32, vx: i32, vy: i32, camX: i32, camY: i32) -> vec2<i32> {
-  let speed = p(base);
+fn backdropCoord(base: u32, origin: u32, vx: i32, vy: i32) -> vec2<i32> {
   let scale = max(0.25, p(base + 3u));
   let width = max(1, i32(round(1.0 / max(0.000001, p(base + 4u)))));
   let height = max(1, i32(round(1.0 / max(0.000001, p(base + 5u)))));
-  let sx = i32(floor((floor(f32(camX) * speed) + f32(vx)) / scale + p(base + 6u)));
-  let sy = i32(floor((floor(f32(camY) * speed) + f32(vy)) / scale + p(base + 7u)));
+  let sx = i32(floor((p(origin) + f32(vx)) / scale + p(base + 6u)));
+  let sy = i32(floor((p(origin + 1u) + f32(vy)) / scale + p(base + 7u)));
   var wx = wrapI(sx, width);
   // Per-floor composition variant: mirror the sample column (floorLooks).
   if (p(26u) > 0.5) {
@@ -603,7 +605,7 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
         const b = BACKDROP_BASE + i * BACKDROP_STRIDE;
         // lw: how much real light the visible mix takes (params 27–31 per layer).
         return `if (p(${b}u + 2u) > 0.5 && p(${b}u + 1u) > 0.0) {
-        let s${i} = textureLoad(uBackdrop${i}, backdropCoord(${b}u, bvx, bvy, camX, camY), 0);
+        let s${i} = textureLoad(uBackdrop${i}, backdropCoord(${b}u, ${BACKDROP_ORIGIN_BASE + i * 2}u, bvx, bvy), 0);
         bg = applyBackdropSample(bg, s${i}, p(${b}u + 1u));
         lw = mix(lw, p(${BACKDROP_LIT_BASE + i}u), clamp(s${i}.a * p(${b}u + 1u), 0.0, 1.0));
       }`;
@@ -646,7 +648,7 @@ fn cs(@builtin(global_invocation_id) globalId: vec3<u32>) {
           ${Array.from({ length: MAX_BACKDROP_LAYERS }, (_, i) => {
             const b = BACKDROP_BASE + i * BACKDROP_STRIDE;
             return `if (p(${b}u + 2u) > 0.5 && p(${b}u + 1u) > 0.0) {
-            seen = applyBackdropSample(seen, textureLoad(uBackdrop${i}, backdropCoord(${b}u, svx, vy, camX, camY), 0), p(${b}u + 1u));
+            seen = applyBackdropSample(seen, textureLoad(uBackdrop${i}, backdropCoord(${b}u, ${BACKDROP_ORIGIN_BASE + i * 2}u, svx, vy), 0), p(${b}u + 1u));
           }`;
           }).join('\n          ')}
           seen = gradeBackdrop(seen) * vec3<f32>(p(20u), p(21u), p(22u)) + vec3<f32>(p(23u), p(24u), p(25u));
@@ -1416,6 +1418,8 @@ export class WebGpuLiveCompose {
       params[base + 5] = 1 / Math.max(1, this.backdropTextures[i].height);
       params[base + 6] = setting.offsetX + offsetX;
       params[base + 7] = setting.offsetY;
+      params[BACKDROP_ORIGIN_BASE + i * 2] = backdropOrigin(camX, ctx.camera.presentationX ?? ctx.camera.x, setting.speed);
+      params[BACKDROP_ORIGIN_BASE + i * 2 + 1] = backdropOrigin(camY, ctx.camera.presentationY ?? ctx.camera.y, setting.speed);
     }
 
     const waveCount = Math.min(ctx.shockwaves.length, COMPOSE_MAX_WAVES);

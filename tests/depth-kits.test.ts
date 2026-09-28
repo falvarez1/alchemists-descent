@@ -6,7 +6,7 @@ import { FLOOR_LOOKS } from '@/config/floorLooks';
 import type { BiomeId, LevelRuntime } from '@/core/types';
 import { bakeForeground, bakePlane } from '@/render/depth/bake';
 import {
-  backdropTexel, cameraFor, foregroundCoord, foregroundExtent, framingAnchor, particleScreen, pulseOpacity, wrap,
+  backdropOrigin, backdropTexel, cameraFor, foregroundCoord, foregroundExtent, framingAnchor, particleScreen, pulseOpacity, wrap,
 } from '@/render/depth/parallax';
 import { luma, valueStats } from '@/render/depth/raster';
 import { REVEAL_CELL, RevealField, centreMask, pointMask, rectMask } from '@/render/depth/reveal';
@@ -187,19 +187,65 @@ describe('depth plane art', () => {
 });
 
 describe('parallax math', () => {
-  it('backdropTexel matches the compositors (integer camera × speed, wrapped)', () => {
-    expect(backdropTexel(0, 5, 0.1, 1, 0, 100)).toBe(5);
-    expect(backdropTexel(100, 5, 0.1, 1, 0, 100)).toBe(15);
+  it('backdropTexel samples the plane from its origin (scaled, offset, wrapped)', () => {
+    expect(backdropTexel(backdropOrigin(0, 0, 0.1), 5, 1, 0, 100)).toBe(5);
+    expect(backdropTexel(backdropOrigin(100, 100, 0.1), 5, 1, 0, 100)).toBe(15);
     // Half-cell texels at scale 0.5 (the refinery plates).
-    expect(backdropTexel(0, 5, 0.1, 0.5, 0, 100)).toBe(10);
-    expect(backdropTexel(0, -1, 0, 1, 0, 100)).toBe(99);
+    expect(backdropTexel(0, 5, 0.5, 0, 100)).toBe(10);
+    expect(backdropTexel(0, 5, 1, 3, 100)).toBe(8);
+    expect(backdropTexel(0, -1, 1, 0, 100)).toBe(99);
     expect(wrap(-1, 7)).toBe(6);
+  });
+
+  it('a backdrop plane sits at cam·speed on screen through every sub-cell camera position', () => {
+    // The frame is composed at floor(cam) and the quad slides by the residual,
+    // so view position v shows at screen v − residual.
+    for (const speed of [0.05, 0.14, 0.32]) {
+      for (let i = 0; i <= 500; i++) {
+        const cam = 100 + i * 0.037, renderCam = Math.floor(cam), residual = cam - renderCam;
+        for (const screen of [0, 17.25, 300.5]) {
+          expect(backdropOrigin(renderCam, cam, speed) + screen + residual).toBeCloseTo(cam * speed + screen, 9);
+        }
+      }
+    }
+  });
+
+  it('a slow camera drift slides a backdrop edge steadily, never riding the world and snapping back', () => {
+    // Model the GPU compose: fragment k (2 per cell) samples the plane at its
+    // own view position; find the first fragment showing texel `edge` or later.
+    const fragmentAt = (origin: number, residual: number, edge: number): number => {
+      let k = 0;
+      while (Math.floor(origin + (k + 0.5) / 2 + residual) < edge) k++;
+      return k;
+    };
+    const drift = (originFor: (renderCam: number, cam: number, speed: number) => number, speed: number) => {
+      const edge = Math.floor(100 * speed) + 200;
+      let last = Infinity, backward = 0, worst = 0;
+      for (let i = 0; i <= 120; i++) {
+        const cam = 100 + i * 0.1, renderCam = Math.floor(cam);
+        const k = fragmentAt(originFor(renderCam, cam, speed), cam - renderCam, edge);
+        if (k > last) backward++;
+        last = k;
+        worst = Math.max(worst, Math.abs(k - (2 * (edge - cam * speed) - 0.5)));
+      }
+      return { backward, worst };
+    };
+    for (const speed of [0.08, 0.14, 0.32]) {
+      const glide = drift(backdropOrigin, speed);
+      expect(glide.backward).toBe(0);
+      expect(glide.worst).toBeLessThan(1); // within one canvas pixel of the ideal
+      // The old mapping (floor(renderCam · speed)) rode the world for a cell and
+      // jumped back — the model above must catch that.
+      const legacy = drift((renderCam, _cam, s) => Math.floor(renderCam * s), speed);
+      expect(legacy.backward).toBeGreaterThan(5);
+      expect(legacy.worst).toBeGreaterThan(1);
+    }
   });
 
   it('a plane with parallax P moves P× the camera', () => {
     const P = 0.3;
-    const at = (cam: number): number => Math.floor(cam * P);
-    expect(at(1000) - at(0)).toBe(300);
+    const at = (cam: number): number => backdropOrigin(cam, cam, P);
+    expect(at(1000) - at(0)).toBeCloseTo(300);
     // Foreground: the plane point under a fixed world point drifts (P − 1) × the camera.
     const P2 = 1.4;
     expect(foregroundCoord(500, 100, P2) - foregroundCoord(500, 0, P2)).toBeCloseTo(40);

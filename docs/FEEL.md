@@ -1110,6 +1110,13 @@ and flutters: 42% fall / 10% drift per step, floats on water as a pad) and
   lava glow reach near planes (lit 0.9) but barely the far ones (0.1), and
   designed darkness dims them all. Procedural planes are one texel per cell
   (the Living Descent plates' grain), bake one per frame on floor entry.
+  Every plane glides with the camera's sub-cell position: the WebGL2 compose
+  samples it where each canvas pixel sits on screen (cam · parallax + screen
+  position, `render/depth/parallax` backdropOrigin), so a slow drift slides
+  it steadily a pixel (half a cell) at a time instead of riding the world for
+  a cell and snapping back (`scripts/verify-parallax-drift.mjs`). The CPU
+  fallback and the WebGPU compose build a cell-resolution frame, so their
+  planes still step a whole cell.
 - **Foreground occluders:** a plane at parallax 1.4 (1.5 cells per texel,
   opacity 0.94) of near-black silhouettes — chains, pipes with valves,
   girders, gears (Bellows), stalks and root curtains (Rot), kelp and broken
