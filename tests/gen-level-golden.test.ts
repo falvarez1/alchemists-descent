@@ -178,13 +178,13 @@ describe('marsh-gas ceiling pockets', () => {
 });
 
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '2a4357d3' }, // GEN_VERSION 53: the Undertow's lens-locked cache (light) + hand-planted flora and the Seed Cellar, over the GEN 48 opening and the played Bell & Tea Engine
+  { id: 'd1', seed: 1337, hash: '30711f79' }, // GEN_VERSION 55: the Guild locker nook off the return shaft (the resonant valve), over v53's Undertow cache, flora and Seed Cellar
   // GEN_VERSION 46 (four floors): the Drowned Cisterns inherit the old flooded
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
-  { id: 'd3', seed: 1337, hash: '541a1626' }, // GEN_VERSION 54: the Sump's stone rim (shores + plinth) and upper-flank connectors, over v53's light puzzles + organism census + flora pass
-  { id: 'd4', seed: 1337, hash: 'a73e843c' }, // GEN_VERSION 54: the Kiln's flora budget 14/46 -> 18/72 (more fire-lilies), over v53's grown Kiln + light puzzles + flora pass
-  { id: 'd2', seed: 42, hash: 'e75d9c7b' }, // GEN_VERSION 53: light puzzles + organism census + the flora pass
+  { id: 'd3', seed: 1337, hash: '571e3b74' }, // GEN_VERSION 55: Pell's camp and the resonant valve's nooks (story stream), over v54's Sump rim
+  { id: 'd4', seed: 1337, hash: '33d82c03' }, // GEN_VERSION 55: the Kiln's old flue behind its damper (the escape) + the story nooks, over v54's Kiln flora
+  { id: 'd2', seed: 42, hash: '33672b9b' }, // GEN_VERSION 55: the story nooks (Pell's camp, the resonant valve), over v53's light puzzles + census + flora
 ];
 
 describe('full generateLevel golden hashes', () => {

@@ -95,6 +95,10 @@ import { Clips } from '@/app/Clips';
 import { RunDirector } from '@/game/RunDirector';
 import { RunSummary } from '@/ui/RunSummary';
 import { RunHud } from '@/ui/RunHud';
+import { StoryDirector } from '@/game/story/StoryDirector';
+import { DialogueBox } from '@/ui/story/DialogueBox';
+import { StoryCinemaOverlay } from '@/ui/story/StoryCinema';
+import { AshVoice } from '@/ui/story/AshVoice';
 
 function initialRenderBackendOverride(): RenderBackendMode | null {
   if (typeof window === 'undefined') return null;
@@ -294,6 +298,10 @@ export class Game {
     const music = new MusicDirector(ctx, audio);
     ctx.music = music;
     const narrator = new Narrator(ctx, audio);
+    // The story (wave 3): the Docent's pipes, Pell, the echoes, the prologues, the Kiln escape.
+    const story = new StoryDirector(ctx);
+    ctx.story = story;
+    this.disposables.push(story);
     ctx.narrator = narrator;
     this.disposables.push(music, narrator, new NarrationCaption(ctx));
 
@@ -361,6 +369,8 @@ export class Game {
     const runSummary = new RunSummary(ctx);
     this.disposables.push(runSummary);
     this.disposables.push(new RunHud(ctx, () => runSummary.showLast()));
+    // The story's dialogue box (Pell) with its interact prompt, and the opening/ending plates.
+    this.disposables.push(new DialogueBox(ctx), new StoryCinemaOverlay(ctx), new AshVoice(ctx));
     this.minimap = new Minimap(ctx);
     this.disposables.push(this.minimap);
     // World-anchored alchemical-kill words (listens to `alchemyKill`/`combatCallout`).
@@ -697,6 +707,7 @@ export class Game {
         // transitions, waystones, and the explored mask.
         ctx.levels.update(ctx);
         ctx.run?.update(ctx);
+        ctx.story?.update();
         ctx.pickups.update(ctx);
         ctx.mechanisms.update(ctx);
         this.lightDevices?.update(ctx);

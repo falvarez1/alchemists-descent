@@ -1,8 +1,9 @@
 import type { Ctx, NarratorApi } from '@/core/types';
+import type { StorySpeakOptions, StorySpeaker, StorySpokenLine } from '@/core/story';
 import type { StreamHost } from '@/audio/streamHost';
 import type { NarrationClip } from '@/content/audio/narrationTypes';
 import { NARRATION_CLIPS } from '@/content/audio/narration.generated';
-import { arrivalLine, narrationKey } from '@/audio/narrationText';
+import { arrivalLine, narrationKey, readingSeconds, speakerKey } from '@/audio/narrationText';
 import { NARRATION_LINE_GAP_MS, NarrationGate, type NarrationPriority } from '@/audio/narrationRules';
 import { GAME_TAGLINE } from '@/config/brand';
 import { FLOOR_LOOKS } from '@/config/floorLooks';
@@ -30,6 +31,12 @@ interface Utterance {
   source: string;
   /** Wall time after which the moment has passed and the line is not started. */
   expiresAt: number;
+  /** STORY: each line's speaker (the caption's name plate). */
+  speakers?: Array<StorySpeaker | undefined>;
+  /** STORY: lines with no recording (or with the voice off) — their caption holds for a reading time instead. */
+  silent?: boolean[];
+  /** STORY: force the caption on (lines with no text of their own on screen). */
+  captioned?: boolean;
 }
 
 interface Speaking {
@@ -38,6 +45,8 @@ interface Speaking {
   node: AudioBufferSourceNode | null;
   gain: GainNode | null;
   cancelled: boolean;
+  /** A silent line's wait, released early by a cut. */
+  wake?: () => void;
 }
 
 /**
@@ -113,6 +122,44 @@ export class Narrator implements NarratorApi {
 
   get enabled(): boolean { return this.on; }
 
+  /** Something is being said, or waits its turn. */
+  get busy(): boolean { return this.speaking !== null || this.queue.length > 0; }
+
+  /**
+   * STORY lines (the Docent's pipes, Pell, Matron Ash, an echo, a prologue):
+   * speaker-tagged, gated by the story director (never by "heard this
+   * session"), and never over another line — a line that outranks what is
+   * speaking cuts it, anything else waits its turn (up to three waiting).
+   * A line with no recording, or with the Narration setting off, still runs
+   * silently for its reading time so its caption shows; only a hidden tab
+   * drops it.
+   */
+  speak(lines: readonly StorySpokenLine[], opts: StorySpeakOptions): boolean {
+    if (document.hidden) return false;
+    const list = lines.filter(l => l.text.trim());
+    if (list.length === 0) return false;
+    const voiced = this.on && this.host.streamContext() !== null;
+    const now = performance.now();
+    const u: Utterance = {
+      keys: list.map(l => speakerKey(l.speaker, l.text)),
+      texts: list.map(l => l.text),
+      priority: opts.priority,
+      source: opts.source,
+      expiresAt: now + (opts.ttlMs ?? 6000),
+      speakers: list.map(l => l.speaker),
+      silent: list.map(l => !voiced || !this.clips[speakerKey(l.speaker, l.text)]),
+      captioned: opts.captioned,
+    };
+    const rank = { low: 0, normal: 1, high: 2 } as const;
+    if (this.speaking) {
+      if (rank[opts.priority] > rank[this.speaking.u.priority]) this.cut();
+      else if (this.queue.length < 3) { this.queue.push(u); return true; }
+      else return false;
+    }
+    void this.run(u);
+    return true;
+  }
+
   setEnabled(on: boolean): void {
     this.on = on;
     if (!on) this.silence(true);
@@ -169,6 +216,8 @@ export class Narrator implements NarratorApi {
     arrival.timer = this.later(delayMs, () => {
       if (this.arrival !== arrival) return;
       this.arrival = null;
+      // The story's opening has the floor (its last plate is the welcome to the Works).
+      if (this.ctx.story?.cinematic) return;
       this.say([arrival.text], 'high', 'arrival', 5000);
     });
   }
@@ -227,12 +276,24 @@ export class Narrator implements NarratorApi {
   private async run(u: Utterance): Promise<void> {
     const me: Speaking = { u, index: 0, node: null, gain: null, cancelled: false };
     this.speaking = me;
-    this.duck(true);
+    if (!u.silent || u.silent.some(s => !s)) this.duck(true);
     let played = 0;
     for (let i = 0; i < u.keys.length && !me.cancelled; i++) {
       me.index = i;
       if (i > 0) await new Promise<void>(r => this.later(NARRATION_LINE_GAP_MS, r));
       if (me.cancelled) break;
+      if (u.silent?.[i]) {
+        // A story line with no recording: its caption holds for a reading time.
+        if (i === 0 && performance.now() > u.expiresAt) break;
+        const seconds = readingSeconds(u.texts[i]);
+        this.ctx.events.emit('narration', { text: u.texts[i], seconds, captioned: u.captioned ?? true, speaker: u.speakers?.[i], silent: true });
+        this.spoken.push({ text: u.texts[i], at: Math.round(performance.now()), priority: u.priority, source: u.source });
+        if (this.spoken.length > 30) this.spoken.shift();
+        await new Promise<void>(r => { me.wake = r; this.later(seconds * 1000, r); });
+        me.wake = undefined;
+        played++;
+        continue;
+      }
       // Only the first line of an utterance can be too late; the rest follow it.
       const ok = await this.playOne(u, u.keys[i], i === 0, me);
       if (ok) played++;
@@ -243,7 +304,7 @@ export class Narrator implements NarratorApi {
       // A line that never started (its moment passed) costs no cooldown.
       if (played > 0) this.gate.finished(performance.now());
       const next = this.queue.shift();
-      if (next && performance.now() < next.expiresAt && this.on) void this.run(next);
+      if (next && this.canRun(next)) void this.run(next);
       else this.duck(false);
     }
   }
@@ -269,7 +330,9 @@ export class Narrator implements NarratorApi {
       const text = u.texts[u.keys.indexOf(key)] ?? '';
       this.spoken.push({ text, at: Math.round(now), priority: u.priority, source: u.source });
       if (this.spoken.length > 30) this.spoken.shift();
-      this.ctx.events.emit('narration', { text, seconds: buffer.duration, captioned: clip.captioned === true });
+      const index = u.keys.indexOf(key);
+      const speaker = u.speakers?.[index];
+      this.ctx.events.emit('narration', { text, seconds: buffer.duration, captioned: u.captioned ?? clip.captioned === true, ...(speaker ? { speaker } : {}) });
     }
     return new Promise<boolean>(resolve => {
       node.onended = () => { node.disconnect(); gain.disconnect(); resolve(true); };
@@ -296,6 +359,7 @@ export class Narrator implements NarratorApi {
     if (!s) return;
     s.cancelled = true;
     this.speaking = null;
+    s.wake?.();
     const ac = this.host.streamContext();
     if (s.node && s.gain && ac) {
       const t = ac.currentTime;
@@ -305,14 +369,22 @@ export class Narrator implements NarratorApi {
     }
   }
 
-  /** Stop (and unqueue) lines that belonged to a screen that has closed. */
-  private cutSource(source: string): void {
+  /** Stop (and unqueue) lines that belonged to a screen that has closed (or a story beat that ended). */
+  cutSource(source: string): void {
     for (let i = this.queue.length - 1; i >= 0; i--) if (this.queue[i].source === source) this.queue.splice(i, 1);
     if (this.speaking?.u.source === source) {
       this.cut();
       this.gate.finished(performance.now());
-      this.duck(false);
+      // Whatever was waiting behind it (another source's line) takes its turn.
+      const next = this.queue.shift();
+      if (next && this.canRun(next)) void this.run(next);
+      else this.duck(false);
     }
+  }
+
+  /** A waiting utterance may still start: its moment has not passed, and it can be heard (or is caption-only). */
+  private canRun(u: Utterance): boolean {
+    return performance.now() < u.expiresAt && (this.on || (u.silent?.every(Boolean) ?? false));
   }
 
   /** Everything stops: the setting went off or the tab was hidden. */

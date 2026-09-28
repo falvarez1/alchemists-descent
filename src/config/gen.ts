@@ -121,7 +121,7 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 54; // 54 (fix3): the Sump keeps its rim — the Leviathan's arena stamps (and re-asserts) its stone shores and plinth, its flank connectors leave above the shore, it refuses sites built over earlier metal/loot, and the final rescue refills its pool; flora footing no longer counts loose powder as anchoring rock or gold as footing; the Kiln's flora budget grows 14/46 -> 18/72 with more fire-lilies
+export const GEN_VERSION = 55; // 55 (story): the Kiln's old flue (a ledged shaft behind a metal damper, the escape's climb) replaces its flue-side flank connector; Pell's camp and the resonant valve nooks carved off the main path on floors 2-4 (their own 'story' stream); floor 1's Guild locker nook off the return shaft
 // 53: the light, fauna and flora waves together — flora's forked 'flora' pass (plants + felling / root-ladder / thicket rooms) runs after the light puzzles, and D1 carries both the Undertow's lens-locked cache and the hand-planted flora with the Seed Cellar
 // 52: the Kiln grew with a 34-cell Colossus (62x40 vault over a flat 116-wide floor, three ceiling tanks re-asserted after carves, a 16-row footing) and floors 2-4 seed a resident organism census (no cells)
 // 51: light wave — floors 2-4 carve a photocell strongroom and a lumen-bloom crossing (forked 'light-puzzles' stream) plus designed dark zones; D1 gains the Undertow's lens-locked cache. (The flora branch also called its pass 51.)

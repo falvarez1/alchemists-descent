@@ -104,6 +104,36 @@ export class Budget {
   }
 }
 
+/**
+ * A budget against EVERYTHING this generator's log has ever spent (the SFX
+ * generator's rule): `start` is the prior logged spend of `kinds` in LOG_FILE,
+ * and the cap (AUDIO_BUDGET_CREDITS) is prior spend + this job's allowance.
+ * Unlike Budget it never reads the live counter, so parallel workstreams
+ * spending at the same time cannot eat one another's allowance.
+ */
+export class LedgerBudget {
+  constructor(kinds, cap = Number(process.env.AUDIO_BUDGET_CREDITS ?? 0)) {
+    this.kinds = new Set(kinds);
+    this.cap = cap;
+    this.spent = 0;
+    this.start = 0;
+    if (existsSync(LOG_FILE)) {
+      for (const line of readFileSync(LOG_FILE, 'utf8').split(/\r?\n/)) {
+        if (!line.trim()) continue;
+        try { const e = JSON.parse(line); if (this.kinds.has(e.kind)) this.start += e.estimate ?? 0; } catch { /* a torn line */ }
+      }
+    }
+  }
+  async init() { return { used: this.start, limit: this.cap }; }
+  async refresh() { return this.spent; }
+  async guard(estimate) {
+    if (this.start + this.spent + estimate > this.cap) {
+      throw new Error(`Audio budget reached: ${this.start + this.spent} of ${this.cap} logged credits (next ~${estimate}).`);
+    }
+  }
+  note(estimate) { this.spent += estimate; }
+}
+
 function cacheKey(kind, payload) {
   return createHash('sha1').update(kind + '\n' + JSON.stringify(payload)).digest('hex');
 }

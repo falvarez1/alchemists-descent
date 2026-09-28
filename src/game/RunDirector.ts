@@ -254,6 +254,8 @@ export class RunDirector implements RunApi {
     if (!this.active || !this.state) return;
     // A Builder/Sandbox playtest in the middle of a run is not the run.
     if (ctx.state.playtestSource !== null && ctx.state.playtestSource !== undefined) return;
+    // The Kiln escape is generous: a fall in the climb costs no phial (the story restarts the climb).
+    if (ctx.story?.escapeActive) return;
     this.state.deaths++;
     this.lastCause = cause;
     const spent = spendPhial(this.state.phials);

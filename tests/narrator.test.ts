@@ -93,9 +93,11 @@ describe('the recorded lines match what the game shows', () => {
     for (const clip of Object.values(NARRATION_CLIPS)) expect(existsSync(join('public', clip.url)), clip.url).toBe(true);
     expect([...shipped].filter(f => !wanted.has(f))).toEqual([]);
     expect(NARRATION_LINES.length).toBeGreaterThanOrEqual(120);
-    expect(NARRATION_LINES.length).toBeLessThanOrEqual(250);
+    // The story (wave 3) added ~140 lines: pipes, Pell, Matron Ash, echoes, prologues, the escape
+    // and the ending. Clips are fetched one line at a time as they are spoken, never preloaded.
+    expect(NARRATION_LINES.length).toBeLessThanOrEqual(360);
     const bytes = [...shipped].reduce((s, f) => s + statSync(join('public', 'audio', 'voice', f)).size, 0);
-    expect(bytes / 1048576).toBeLessThan(8);
+    expect(bytes / 1048576).toBeLessThan(18);
     expect(NARRATOR_VOICE.model).toBe('eleven_v3');
   });
 });

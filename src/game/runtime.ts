@@ -49,6 +49,7 @@ export function makeLevelRuntime(
       | 'skyLine'
       | 'darkZones'
       | 'lumenBlooms'
+      | 'story'
     >
   >,
 ): LevelRuntime {

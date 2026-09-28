@@ -43,6 +43,7 @@ export class ExpeditionEntry {
       <div class="entry-kits"></div>
       <button type="button" data-entry="daily" class="entry-daily">Today’s descent<span class="entry-note" data-entry-note="daily"></span></button>
       <button type="button" data-entry="settings">Controls & comfort</button>
+      <button type="button" data-entry="opening" class="entry-opening" hidden>The opening<span class="entry-note">Kettleby, the lift, and a voice in the pipes.</span></button>
       <button type="button" data-entry="workshop" class="entry-workshop" hidden>The Workshop<span class="entry-note">The material sandbox. Nothing here can hurt you, much.</span></button></nav>
       <p class="entry-status" role="status"></p>
       <details class="entry-workshops"><summary>Workshops</summary><div><button type="button" data-entry="sandbox">Material sandbox</button><button type="button" data-entry="builder">Level builder</button><button type="button" data-entry="advanced">Advanced run setup</button></div></details>
@@ -58,6 +59,7 @@ export class ExpeditionEntry {
       if (!button) return;
       const action = button.dataset.entry;
       if (action === 'settings') this.settings.open();
+      else if (action === 'opening') void ctx.story?.playOpening({ replay: true });
       else if (action === 'begin' || action === 'continue') void this.launch(action === 'continue' ? 'continue' : 'begin');
       else if (action === 'daily') void this.launch('daily');
       else if (action === 'sandbox' || action === 'builder' || action === 'workshop') {
@@ -110,6 +112,9 @@ export class ExpeditionEntry {
         : '';
       note.textContent = `${view.today} · one seed for everyone · the Sparkwright’s case${bestText}`;
     }
+    // STORY: once seen, the opening can be watched again from here.
+    const opening = this.root.querySelector<HTMLButtonElement>('[data-entry="opening"]');
+    if (opening) opening.hidden = this.ctx.story?.openingSeen !== true;
     // The material sandbox opens to players once a first run has ended.
     const workshop = this.root.querySelector<HTMLButtonElement>('[data-entry="workshop"]');
     if (workshop) workshop.hidden = view?.workshopUnlocked !== true;

@@ -59,6 +59,8 @@ import { placeLightPuzzles, type LightPuzzleOutput } from '@/world/lightPuzzles'
 import { stampSecrets } from '@/world/secrets';
 import { computeFits, reachableMask, wizardMask } from '@/world/validate';
 import { placeStructures } from '@/world/structures';
+import { placeStorySites } from '@/world/storySites';
+import type { LevelStorySites } from '@/core/story';
 
 /* ===================== Procedural Generation Map Engines ===================== */
 
@@ -831,6 +833,8 @@ export class WorldGen implements WorldGenApi {
     /** Light wave: designed deep-dark zones and lumen blooms. */
     darkZones?: DarkZone[];
     lumenBlooms?: LumenBloom[];
+    /** STORY: pipes, Pell's camp, the resonant valve, the Kiln flue. */
+    story?: LevelStorySites;
   } {
     if (def.id === 'd1') {
       const works = generateBreathingWorks(ctx, seed);
@@ -1079,6 +1083,7 @@ export class WorldGen implements WorldGenApi {
       spellLab,
       sumpRepair,
       kilnRepair,
+      kilnFlue,
     } = placeStructures(
       ctx,
       this.rng,
@@ -1189,6 +1194,27 @@ export class WorldGen implements WorldGenApi {
     }
     stage('flora');
 
+    // 8b.9) STORY (wave 3, GEN 55): the Docent's speaking-pipes near the
+    // arrival and the waystones, Pell's lit camp nook and the resonant valve's
+    // nook, each carved off the main path and joined to it. Its own forked
+    // stream, after every other placement pass, respecting the ledger. On the
+    // Kiln, Pell has gone ahead: his camp is cold.
+    const storyPlaced = placeStorySites(world, new Rng(hashSeed(seed >>> 0, 'story')), graph, ledger, {
+      spawn,
+      waystones,
+      avoid: [
+        { x: cauldron.x, y: cauldron.y, r: 60 },
+        ...(portal ? [{ x: portal.x, y: portal.y, r: 90 }] : []),
+        ...(boss ? [{ x: boss.x, y: boss.y - 30, r: 190 }] : []),
+        ...(kilnFlue ? [{ x: (kilnFlue.shaft.x0 + kilnFlue.shaft.x1) / 2, y: (kilnFlue.shaft.y0 + kilnFlue.shaft.y1) / 2, r: 170 }] : []),
+      ],
+    }, def.biome !== 'volcanic');
+    if (storyPlaced.sites.camp || storyPlaced.sites.valve) {
+      graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+      fits.set(computeFits(ctx.world));
+    }
+    stage('story');
+
     // (A GLOBAL powder settle was tried here and reverted: suspended powder
     // PLUGS are a deliberate authored primitive — the spell lab's dig-station
     // sand plug, the well plug bypass — and a world-wide settle destroys
@@ -1253,7 +1279,7 @@ export class WorldGen implements WorldGenApi {
       boss,
       prefabEnemies: sink.enemies,
       placedPrefabs,
-      authoredLights: [...sink.authoredLights, ...structLights],
+      authoredLights: [...sink.authoredLights, ...structLights, ...storyPlaced.lights],
       emitters: [...sink.emitters, ...structEmitters],
       decors: [...sink.decors],
       refuge,
@@ -1263,6 +1289,7 @@ export class WorldGen implements WorldGenApi {
       surfaceSkyLine: null,
       darkZones: lightOut.darkZones,
       lumenBlooms: lightOut.lumenBlooms,
+      story: { ...storyPlaced.sites, flue: kilnFlue },
     };
   }
 }

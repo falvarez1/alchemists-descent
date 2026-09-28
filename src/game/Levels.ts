@@ -12,6 +12,7 @@
 // - Falling to the bottom of any level is clamped for safety, never treated as
 //   a hidden transition.
 
+import type { StoryRunSave } from '@/core/story';
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_TUNE_DEFAULT_SIGNATURE, GEN_VERSION, genTuneSignature } from '@/config/gen';
 import { difficultyMods } from '@/config/difficulty';
@@ -303,6 +304,8 @@ export interface ExpeditionSave {
   flasks?: FlaskInventorySave;
   /** The run's phials and ledger (RunDirector). Absent in saves from before runs. */
   run?: RunSaveState;
+  /** The run's story: pipes heard, Pell's visits, echoes, the Kiln escape (game/story). Absent before wave 3. */
+  story?: StoryRunSave;
   levels: SavedLevelBlob[];
 }
 
@@ -840,6 +843,7 @@ export class Levels implements LevelsApi {
     if (config.kit) this.applyTestKit(ctx, config.kit);
     // The run begins before the first checkpoint so the save carries its phials.
     ctx.run?.beginRun(ctx, { seed, kit: starterKit, daily: config.daily ?? null, tracked: mode === 'normal' });
+    ctx.story?.beginRun({ tracked: mode === 'normal' && !ctx.state.debugGodMode });
     this.enterLevel(ctx, levelId);
 
     const runtime = this.current;
@@ -923,6 +927,7 @@ export class Levels implements LevelsApi {
       daily: null,
       tracked: ctx.state.playtestSource === null,
     });
+    ctx.story?.beginRun({ tracked: ctx.state.playtestSource === null });
     this.enterLevel(ctx, START_LEVEL);
   }
 
@@ -1241,6 +1246,7 @@ export class Levels implements LevelsApi {
       wands: this.snapshotWandsForSave(ctx),
       flasks: this.snapshotFlasks(ctx),
       run: ctx.run?.snapshotForSave() ?? undefined,
+      story: ctx.story?.snapshotForSave() ?? undefined,
       levels: blobs,
     };
     if (asynchronous) {
@@ -2113,6 +2119,7 @@ export class Levels implements LevelsApi {
       }
       this.restoreFlasks(ctx, save.flasks);
       ctx.run?.restoreFromSave(ctx, save.run);
+      ctx.story?.restoreFromSave(save.story);
 
       this.checkpointSaveSuppression++;
       try {
@@ -2236,6 +2243,8 @@ export class Levels implements LevelsApi {
       // (a bloom restores furled; its update clears any petals the save kept).
       ...(pristine.darkZones?.length ? { darkZones: pristine.darkZones } : {}),
       ...(pristine.lumenBlooms?.length ? { lumenBlooms: pristine.lumenBlooms } : {}),
+      // STORY: pipes, camp, valve and flue are static authored data too.
+      ...(pristine.story ? { story: pristine.story } : {}),
       mapWaypoint: sanitizeMapWaypoint(blob.mapWaypoint, world),
       weaverLairWebs: sanitizeWeaverLairWebs(blob.weaverLairWebs),
     });
@@ -2276,6 +2285,9 @@ export class Levels implements LevelsApi {
   respawnPoint(): { x: number; y: number } | null {
     const runtime = this.current;
     if (!runtime) return null;
+    // STORY: during the Kiln escape a death returns to the foot of the flue.
+    const escape = this.ctx.story?.respawnPoint();
+    if (escape) return escape;
     const order = this.litOrder.get(runtime.def.id);
     if (order && order.length > 0) {
       // litOrder is restored verbatim from the save blob while waystones are
@@ -2558,6 +2570,7 @@ export class Levels implements LevelsApi {
       surfaceSkyLine,
       darkZones,
       lumenBlooms,
+      story,
     } = ctx.worldgen.generateLevel(ctx, def, seed);
     // Placement brain (Wave C): one flood-fill analysis of the fresh cells,
     // anchored at the spawn chamber and the well mouth above the seal plug.
@@ -2621,6 +2634,7 @@ export class Levels implements LevelsApi {
       ...(surfaceSkyLine !== null ? { skyLine: surfaceSkyLine } : {}),
       ...(darkZones?.length ? { darkZones } : {}),
       ...(lumenBlooms?.length ? { lumenBlooms } : {}),
+      ...(story ? { story } : {}),
       weaverLairWebs,
       population,
       ...(def.id === 'd1' ? { living: createLivingState() } : {}),
