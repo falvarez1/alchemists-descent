@@ -2064,6 +2064,12 @@ export interface AlchemyKillsApi {
   noteKick(e: Enemy): void;
   /** The creature just died: classify, chain, emit `alchemyKill` and pay out. */
   onKill(e: Enemy): AlchemyKillInfo | null;
+  /**
+   * The blow that crossed zero hp just landed, but the death is a sequence (the
+   * Kiln Colossus comes apart for seconds): judge the kill NOW — cause and
+   * credit — and let onKill honour that verdict whenever the body finishes.
+   */
+  sealVerdict?(e: Enemy): void;
   /** Alchemical kills inside the current chain window (0 when it has lapsed). */
   readonly chain: number;
 }

@@ -881,6 +881,10 @@ export class Enemies implements EnemyControlApi {
   /** The Kiln Colossus dies as a sequence (creatures/bosses); the kill path runs when it ends. */
   private deferBossDeath(e: Enemy): boolean {
     if (e.kind !== 'colossus' || e.boss?.finished) return false;
+    // The blow that crossed zero is judged now (combat/AlchemyKills.sealVerdict):
+    // the sequence outlasts the killing-blow window, and BOWLED or SHATTERED
+    // belongs to the blow, not to the rubble seconds later.
+    if (e.boss?.move !== 'dying') this.ctx.alchemy?.sealVerdict?.(e);
     return colossusBeginDeath(this.ctx, e, this.defs[e.kind], this.bossHost);
   }
 
