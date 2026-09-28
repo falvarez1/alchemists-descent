@@ -448,7 +448,10 @@ export class FrameComposer implements PixelSurface {
       lens.K = -(heldBody.burnT && heldBody.burnT > 0 ? 6.5 : 4.2);
       lenses.push(lens);
     }
-    const lightBuildDue = frameCount % 2 === 0 || frameCount < 5;
+    // Every other tick, as the original's every-other-frame. Parity alone is
+    // not enough in the port: a render that ran two ticks (a 30 Hz display, a
+    // busy frame) could land on odd frames indefinitely and never relight.
+    const lightBuildDue = frameCount % 2 === 0 || frameCount - this.lastLightBuildFrame >= 2 || frameCount < 5;
     const webGpuLiveComposeDisabled = ctx.state.render?.backend === 'webgpu' && !ctx.state.render.compose;
     const gpuComposeRequested =
       ctx.state.postFx.gpuCompose && !webGpuLiveComposeDisabled && this.target.gpuComposeAvailable;

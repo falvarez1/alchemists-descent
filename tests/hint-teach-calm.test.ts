@@ -92,7 +92,9 @@ describe('hint lines', () => {
     h.tick(4);
     expect(h.hints.current?.key).toBe('portal');
     h.ctx.state.paused = true; // the Sanctum: no update runs, nothing recomputes
+    expect(h.hints.current).toBeNull(); // and no line shows under it
     h.ctx.events.emit('levelChanged', { depth: 3, name: 'The Drowned Cisterns' });
+    h.ctx.state.paused = false; // arrival: the first frames before any recompute
     expect(h.hints.current).toBeNull();
   });
 

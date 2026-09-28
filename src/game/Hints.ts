@@ -133,8 +133,9 @@ export class HintSystem implements HintApi {
     for (const dispose of this.disposers.splice(0)) dispose();
   }
 
+  /** Nothing while the game is paused: the Sanctum, a menu or a card offer has the screen. */
   get current(): HintInfo | null {
-    return this._current;
+    return this.ctx.state.paused ? null : this._current;
   }
 
   /**

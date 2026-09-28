@@ -307,11 +307,11 @@ sim severed becomes a hinged body that steps in the same solver pass; settled lo
 rigidBodies.update →
 vineStrands.update → levels.update → pickups.update → mechanisms.update → critters.update →
 brewing.update → hints.update → introProgression.update → wands.update → particles.update → lightning.update →
-compose pixels/light → HUD update (even frames, play mode) → minimap.update →
+compose pixels/light → HUD update (~30 Hz by wall time, play mode) → minimap.update →
 renderer.render (bloom/shake transforms → composer.render) → digBeam decay →
 bloom/shake decay once per fixed frame`.
 Several behaviors silently depend on this order (sim bounds derive from camera; spells
-aim with the *previous* frame's render snapshot; lighting rebuilds on even frames).
+aim with the *previous* frame's render snapshot; lighting rebuilds on even frames, or whenever two ticks have passed since the last build).
 
 **Live-tunable params.** `config/params.ts` objects are intentionally mutable: the
 inspector UI writes straight into them and the simulation/rendering layers read

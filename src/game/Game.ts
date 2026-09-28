@@ -111,6 +111,9 @@ function initialWebGpuLiveComposeOverride(): boolean {
  * The per-frame ordering below is a CONTRACT inherited from the original game
  * (see ARCHITECTURE.md "Frame order is a contract") — do not reorder casually.
  */
+/** The HUD's refresh interval: every other frame at 60 Hz, every frame at 30 Hz. */
+const HUD_REFRESH_MS = 30;
+
 export class Game {
   /** Public for dev tooling and verification scripts only — not a gameplay API. */
   readonly ctx: Ctx;
@@ -143,6 +146,8 @@ export class Game {
   private lastVisualFxDecayFrame = -1;
   private composeDirty = true;
   private lastComposeSignature = -1;
+  /** Wall time of the last HUD refresh (the HUD runs at ~30 Hz of rendered frames). */
+  private lastHudMs = -Infinity;
   /** Page-lifetime UI singletons whose global listeners/timers must be torn down on HMR dispose. */
   private readonly disposables: { dispose(): void }[] = [];
   /** The streamed layers' host (the play systems' score and narrator feed it). */
@@ -817,7 +822,14 @@ export class Game {
     }
     const tCompose = performance.now();
     this.perfHud.mark('compose', shouldCompose ? tCompose - tRender : 0);
-    if (ctx.state.mode === 'play' && ctx.state.frameCount % 2 === 0) this.hud.update(ctx);
+    // ~30 Hz by wall time, not by tick parity: a frame that ran two ticks (a
+    // 30 Hz display, a busy frame) kept frameCount odd at every render and the
+    // whole HUD froze (QA: the last floor's "The portal is open" stayed up ~2 s
+    // after arrival).
+    if (ctx.state.mode === 'play' && frameWorkStart - this.lastHudMs >= HUD_REFRESH_MS) {
+      this.lastHudMs = frameWorkStart;
+      this.hud.update(ctx);
+    }
     this.minimap.update(ctx);
     const tGl = performance.now();
     this.renderer.render(ctx);
