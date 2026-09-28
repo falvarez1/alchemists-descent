@@ -15,6 +15,14 @@ export type OrganismAction =
 export type CorpseMomentKind =
   | 'thud' | 'bowl' | 'splash' | 'ignite' | 'douse' | 'consume' | 'dissolve' | 'freeze' | 'shatter' | 'twitch';
 
+/**
+ * A beat of the alchemist's chill (game/Chill). crackle = frost accreting on
+ * the body; shell = frozen solid; crack = the shell takes a crack (a press, a
+ * blow, heat); shatter = the shell bursts; thaw = the rime cracks off as the
+ * body warms; breath = a shivering breath; skin = the wake skins over with ice.
+ */
+export type ChillMomentKind = 'crackle' | 'shell' | 'crack' | 'shatter' | 'thaw' | 'breath' | 'skin';
+
 /** A phase of the wand's telekinetic grip (combat/Telekinesis). */
 export type TelekinesisPhase = 'grab' | 'hold' | 'release' | 'hurl' | 'fizzle' | 'strain';
 
@@ -141,6 +149,8 @@ export interface EventMap {
    * out of reach, out of sight) or was refused; strain = too heavy to lift (a nudge).
    */
   telekinesis: { phase: TelekinesisPhase; x: number; y: number; mass: number; target: 'corpse' | 'crate' };
+  /** THE CHILL: the body did something with the cold (strength 0..1; `warm` = heat did it). Audio/EventCues plays it. */
+  chillMoment: { kind: ChillMomentKind; x: number; y: number; strength: number; warm: boolean };
   /** CORPSES: remains did something physical worth hearing (strength 0..1; audio/EventCues). */
   corpseMoment: { kind: CorpseMomentKind; x: number; y: number; strength: number; mass: number; species: EnemyKind };
   /** A world-anchored combat word (ui/Callouts): the Trickshot finisher's line, etc. */

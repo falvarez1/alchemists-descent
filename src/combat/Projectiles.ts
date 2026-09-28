@@ -996,6 +996,7 @@ export class Projectiles implements ProjectilesApi {
             if (p.type === 'frostbolt') {
               ctx.playerCtl.damage(6, p.vx * 0.8, -0.6, p.source ?? 'frostbolt');
               ctx.player.status.frozen = Math.max(ctx.player.status.frozen, 120);
+              ctx.chill?.hit(ctx.chill.tuning.frostbolt);
             } else if (p.type === 'acidglob') {
               ctx.playerCtl.damage(8, p.vx * 1.3, -1.6, p.source ?? 'acidglob');
               splashLiquid(ctx, p.x, p.y, Cell.Acid, acidColor, 3);

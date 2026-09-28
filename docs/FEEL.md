@@ -135,6 +135,120 @@ blood (`updatePlayer`'s BLOOD WADE block); one count drives three things:
   the wake can never flood the sim) — plus the odd soft splash. The grid
   explains every part of it.
 
+### The chill (`entities/chill` model, `game/Chill` system)
+
+The old frozen status painted a pale ice oval over the alchemist. His cold is
+now a graded body state, `player.chill.level` 0..1, built from real cold cells
+and thawed by real heat. Every look, sound and slow follows it. Enemies keep
+their binary `status.frozen` (the Rime Warden's brittleness, shatter crits and
+frozen corpses are unchanged). The alchemist's frozen timer only records
+exposure (`gradedChill` in `entities/status`: no flat 0.55 slow, no generic
+motes). All numbers live in `CHILL_PARAMS` (`config/params.ts`, live-tunable
+as `ctx.chill.tuning`), per fixed tick.
+
+- **Cold in** (sampled every 2 ticks from the cells at the body):
+  - brine at the legs: 0.0026, plus 0.0042 × how deep (a wade freezes solid in about 4 s);
+  - liquid nitrogen: 0.0035 a cell, capped at 0.02;
+  - fresh water in a frozen biome: 0.0014 × depth;
+  - ice or snow pressed to the body: 0.00035 (it only slows the warming);
+  - a frozen biome's air holds the body at 0.12 at least, climbing 0.0008 a tick (breath, a touch of rime, no slow);
+  - blows land at once (`ctx.chill.hit`): a frost bolt 0.24, a Rime Warden rime wave 0.2, each lick of its breath 0.075.
+- **Heat out:**
+  - 0.0011 a tick out of the cold, only 0.00025 while a cold source still touches;
+  - plus 0.0065 × warmth: fire 1, lava 1.5, embers 0.7 and burning coal or oil 0.8, each weighted
+    1/(1 + d²/(0.18·26²)) within 26 cells of the chest, scanned every 4 ticks, full warmth at 7;
+  - the Warm Refuge counts as 0.6 of full warmth;
+  - a burning coat adds 0.02.
+  - Casting fire warms you because the fire is real cells beside you.
+- **Movement:** speed and acceleration × `moveK`, jump × `jumpK`; both have a dead zone under 0.08:
+
+  | chill | 0.25 | 0.5 | 0.75 | 1 |
+  |---|---|---|---|---|
+  | `moveK` | 0.94 | 0.81 | 0.64 | 0.45 |
+  | `jumpK` | 0.99 | 0.95 | 0.89 | 0.82 |
+
+  The jump falls far less than the run, because a jump that cannot clear a gutter's lip would trap a
+  freezing body in the brine. Levitation spools slower through the same pace but still climbs.
+  Stops stay crisp: ground stop decay is unchanged.
+- **Frozen solid** (fail-open):
+  - At 1.0 the body locks in an ice shell for 72 ticks. Movement and casting stop and gravity still applies.
+  - Each fresh press cracks 9 ticks off (a crack each), heat melts it faster, and a real blow (≥ 1.5 hp) bursts it at once.
+  - It bursts to 0.66, then holds under 0.94 for 420 ticks, so it cannot re-lock.
+  - Worst case (nitrogen at its cap, brine to the neck, a frost bolt a second): locked at most 72 of every 492 ticks (`tests/chill.test.ts`).
+- **The rime and the thaw beat:** `rime` is the frost on the body.
+  - It accretes after the level: up to 0.006 + 6% of the gap a tick, with a crackle per 0.045.
+  - It holds while the body warms, melting 0.0007 a tick (+0.0015 × warmth, +0.01 alight).
+  - When the level falls 0.26 under it (with ≥ 0.42 on), it cracks off at once. This is the thaw beat:
+    - real Snow and Ice tumble off (7 + 16 × strength particles, half Snow and a sixth Ice, deposited where they land; the rest glassy shards);
+    - by a fire, real Steam hisses off and the shed melts;
+    - the score snaps back.
+  - The shell bursting sheds the same way (7 + 18 × strength).
+- **The body** (`render/player/AlchemistArt` drawChill; `render/creatures/raster` frost):
+  - **Rime on the real silhouette.** Each pixel scores 0.5 × edge (a chamfer distance to the silhouette,
+    fading over 2.2 cells) + 0.2 × up-facing + 0.22 × its part's exposure + 0.1 × how far toward
+    hat or boots + 0.28 × crystal noise (two scales, anchored to the body). It frosts past
+    1 − 0.87a − 0.06 sin(πa).
+  - Exposure by part: brim 1, crown 0.86, shoulders 0.84, sleeves 0.72, boots 0.66, tails 0.52, coat 0.3,
+    face 0.08 (stipple only), vial and effects never.
+  - The front is an ordered stipple of whole crystals, the coat behind it solid, shaded on the same
+    normals by its own blue-white ramp. It keeps its cold under a warm lamp (light desaturated × 0.65 on rime).
+  - Past 0.28 the beard frosts, past 0.5 the brows. Icicles grow from the brim from 0.5
+    (six, off the eye), and cuff drips form past 0.55.
+  - Past 0.78 a glaze (to 0.22) sets in and crystals twinkle (not with reduced flashes).
+  - Frozen solid: rime all over (a 0.4 floor), a thin clear-ice shell that hugs every limb 0.8–1.1 cells
+    proud, facet lines, and a dark fracture per crack.
+  - The fallen keep their rime.
+- **The pose** (`entities/playerPose` chillPose):
+  - The hug starts at 0.3 and is full by 0.75. The off hand tucks under the mantle, the wand arm draws in,
+    the head sinks 0.6 and tips down, and he leans 0.07 into it.
+  - Stiffness starts at 0.2 and is full by 0.8: stride × (1 − 0.42), knee lift × (1 − 0.5), bob × (1 − 0.6).
+  - The breath quickens: sin(0.13 f) × 0.16.
+  - The shiver: from 0.32, a one-fine-pixel shudder of the upper body on up to 60% of tick pairs.
+    Never mid-cast, never with reduced flashes, never inside the ice.
+- **Breath:**
+  - From 0.1 (so in any frozen biome), every 150 − 90 × depth ticks.
+  - A translucent wisp billows off the mouth over 52 ticks: fine pixels, premultiplied, dimmed by the room's light.
+  - Past 0.5, every other breath also leaves a real Steam cell (life 22–38).
+- **The world answers (real cells):**
+  - Past 0.45 a chilled body wading fresh water leaves a skin of rime Ice on the surface behind him
+    (3 columns every 3 ticks at 35–100% odds). It thaws back to water after 960–1260 ticks.
+    Brine refuses: it never freezes, the Cold Store's first lesson.
+  - Past 0.5 his boots print hoarfrost on stone, wood, metal and ice, a colour stain × 0.34–0.68
+    toward (218, 234, 246). Standing still, the frost creeps round the boots out to 7 cells, and the
+    wall he clings to rimes. Prints fade after 2100–2700 ticks.
+  - Leaving a floor gives back everything the cold wrote.
+- **The lens** (`render/PostFx`, WebGPU twin; `render/chillLens`):
+  - `screen` eases toward the level: 0.035/tick in, 0.045 out, 0.09 just after a thaw. Dead under 0.14.
+  - The grade drains colour toward a cold blue-grey (× 0.52), shifts the white balance
+    (0.88, 0.97, 1.1) and adds blue to the shadows.
+  - Frost grows in from the frame's edges from screen 0.12, reaching up to a fifth of the frame's height.
+    It is milky at the rim, a lace of ridged fronds with hexagonal needles at the ragged front,
+    frosted-glass blur behind it, and a few glints at the front (none with reduced flashes).
+  - A safe ellipse (0.38 × 0.33 of the frame) is never touched.
+  - Opacity is capped at 0.55, or 0.36 with high-readability lighting.
+- **Sound** (`audio/EventCues` chillCues; `audio/MusicDirector` tape):
+  - Frost crackles climb from high ticks to low creaks as the rime thickens.
+  - A shivering exhale plays at most every 2.4 s past 0.45.
+  - Seizing solid, cracks, the burst, and the thaw (with a steam hiss when a fire did it).
+  - The wind-and-ice loop swells with the lens (gain 0.2–1).
+  - The heart slows past 0.72: 78 → 112 ticks a beat, rate 0.86 → 0.78.
+  - **The score's tape runs down.** It is dead under 0.15, and the playback rate and pitch fall together:
+
+    | chill | 0.25 | 0.5 | 0.75 | 1 |
+    |---|---|---|---|---|
+    | playback rate | 0.986 | 0.936 | 0.873 | 0.80 |
+    | lowpass cutoff (Hz) | 15.2k | 6.9k | 2.85k | 1.1–1.4k |
+
+    It glides on its own 60 ms clock: 0.06 a step cooling, 0.14 warming, 0.32 in the 50 ticks after a thaw beat.
+- **Voice:** the first deep chill of a session (≥ 0.6) brings the Docent's captioned line (it
+  waits behind a pipe line, 14 s): "Frost in the beard. Very distinguished. Find a fire before it
+  spreads to the rest of you." (Voiced, Daniel `[dryly]`; a toast where no narrator is loaded.)
+- **Creatures:** a frozen creature takes a lighter rime on its own silhouette
+  (0.55, fading over its last 40 frozen ticks). A frozen carcass takes 0.7 over a paler cast
+  (the old 0.42 wash is now 0.16).
+- **Cost:** 0.03 ms a tick for the system; the rime pass is lost in noise. Frame means are
+  5.6–6.0 ms at chill 0 and at chill 1 (d2b, measured).
+
 ### Kick / force push (F)
 
 A single button that is half melee, half *blast of air* — Newton both ways.
@@ -1416,6 +1530,7 @@ levitation horizontal: own control (levitHorizControl 1.0×) — decoupled from 
 air inertia: input caps at maxRun but never snaps carried momentum down; airborne vx *= airDrag (0.985) each frame instead of the ground 0.72 — sprint carries into jump/levitate, glide coasts (±12 sanity rail). Builder → LEVITATION → Air momentum (drag)
 gore/blood: count = baseline × global.bloodAmount × channelMul(material) × sizeFactor. sizeFactor = clamp(halfW·h / 50, 0.3, 4) (bat barely spatters, golem/colossus gushes). channelMul keys off the sprayed cell: Cell.Blood→goreBlood, Cell.Slime→goreSlime, Cell.Acid/Toxic→goreOoze, else 1 — so red blood, green slime, and glowing ooze tune discretely. bloodAmount is the master: 0 = bloodless, 1 = shipped, up to 10 = maximum gore / Tarantino mode. All in Builder → Global Controls → GORE (Overall 0–10×, channels 0–4×). Particle pool MAX_PARTICLES=4200 caps extremes gracefully; gold bounty shower is NOT scaled
 blood staining: blood particles stain (stainCell) the sturdy surface they strike (Wall/Wood/Stone/Ice), and flowing/pooling blood liquid stains the floor/walls it touches each substep (handleViscousLiquid) — red soaks in permanently (tints world.colors, not types, so golden hashes unaffected)
+chill (CHILL_PARAMS): brine .0026 + .0042·depth · nitrogen .0035/cell ≤ .02 · frozen-biome floor .12 · frost bolt +.24, rime wave +.2, breath lick +.075 · decay .0011 (.00025 in contact) + .0065·warmth (r26, full 7) + .02 alight · moveK 1→.45, jumpK 1→.82 (dead zone .08) · shell 72 ticks, press −9, burst → .66, cooldown 420 (cap .94) · thaw beat gap .26 (rime ≥ .42) · skin ≥ .45 (fresh water, 960–1260 ticks) · prints ≥ .5 · steam breath ≥ .5 · lens reach .2 of height, cap .55 (.36 readable) · score rate → .8, lowpass → 1.1 kHz (dead zone .15)
 blood wading: wet Cell.Blood at the legs (sample 9 tall × ±4) / WADE_FULL_CELLS 48 = wade01; sheds ≤0.55× of accel+maxRun (shin-deep ≈ −40%). Contact (≥4 cells) BANKS soak charge into player.bloodStain (+18/f ×0.35–1.0 by depth, cap 3600) → sprite reddens boots+hem the more/longer he wades (BLOOD_STAIN_FULL 1000 = full crimson, over 8 cells); off the blood drains 1/f, holds then fades ≈ 1 min. Moving (|vx|>0.5) shoves a crest up (world.swap) + flings the pool's own-colour cosmetic droplets + soft splash
 run accel 0.5 ground / 0.575 air · max run 2.6 paced by depth · crouch 0.38x · peek +48 cells
 dive: entry 5.6, floor 4.6, terminal 6.4 (normal 5.0), drift x0.86/f

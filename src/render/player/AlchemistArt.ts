@@ -7,7 +7,8 @@ import { chainTube } from '@/render/creatures/anatomy';
 import { material } from '@/render/creatures/palette';
 import type { CreatureMaterial } from '@/render/creatures/palette';
 import { blankLight, sampleSceneLight, sharedRaster } from '@/render/creatures/raster';
-import type { CreatureRaster } from '@/render/creatures/raster';
+import type { CreatureRaster, SceneLight } from '@/render/creatures/raster';
+import { hash2 } from '@/core/math';
 
 /**
  * The alchemist, drawn as lit volumes on the creature rasterizer: a teal
@@ -18,7 +19,7 @@ import type { CreatureRaster } from '@/render/creatures/raster';
  * and the fallen share every stitch.
  */
 const COAT = 1, COAT_D = 2, MANTLE = 3, LEATHER = 4, COPPER = 5, SKIN = 6, BEARD = 7, BOOT = 8, EYE = 9, GLINT = 10,
-  CYAN = 11, WOOD = 12, GLASS = 13, BLOOD = 14, RUNE = 15, HEART = 16, ICE = 17, FLAME = 18, LIQUID = 19;
+  CYAN = 11, WOOD = 12, GLASS = 13, BLOOD = 14, RUNE = 15, HEART = 16, ICE = 17, FLAME = 18, LIQUID = 19, RIME = 20, SHELL = 21;
 
 const MATS: CreatureMaterial[] = [
   material({ keys: [0x0a1a1c, 0x133538, 0x1f5150, 0x347168, 0x5e9c88], gloss: 0.12, rim: 0.85, outline: 0x040a0b }),
@@ -40,7 +41,31 @@ const MATS: CreatureMaterial[] = [
   material({ keys: [0x6a9ab0, 0xa8d4e8, 0xe4f8ff, 0xffffff], translucent: 0.4, gloss: 1, shine: 30, rim: 1 }),
   material({ keys: [0x6a1a00, 0xe05a08, 0xffb030, 0xfff2b0], emissive: 1, glow: 0x7a2a04, glowK: 1.1, translucent: 0.2 }),
   material({ keys: [0x1a3a5a, 0x2a6a9a, 0x5aa0d0, 0xa0d8ff], translucent: 0.2, emissive: 0.3, gloss: 0.8 }),
+  // The chill: packed frost (a frosted beard, brows) and the ice shell of a body frozen solid.
+  material({ keys: [0x40607a, 0x8cb4cc, 0xd4ecf8, 0xffffff], gloss: 0.5, shine: 26, rim: 0.9, outline: 0x10202c }),
+  material({ keys: [0x1a3850, 0x4a88b0, 0x9ad0ee, 0xe6f8ff], translucent: 0.55, gloss: 1, shine: 34, rim: 1.3, outline: 0x16344a }),
 ];
+
+/**
+ * Where rime takes first, by primitive group (see the groups below): the hat
+ * brim and crown and the shoulders are the extremities the cold finds first,
+ * then sleeves, boots, the coat's tails, and the coat itself last; the face
+ * barely (the beard frosts on its own); the glowing vial and the effects never.
+ */
+const RIME_BIAS = ((): Float32Array => {
+  const b = new Float32Array(32).fill(-1);
+  const set: Array<[number, number]> = [
+    [1, 0.3], [2, 0.72], [3, 0.66], [4, 0.52], [5, 0.62], [6, 0.4], [8, 0.66], [9, 0.52], [10, 0.84],
+    [11, 0.08], [12, 0.45], [13, 0.72], [14, 0.3], [15, 1], [16, 0.86], [17, 0.8],
+  ];
+  for (const [g, v] of set) b[g] = v;
+  return b;
+})();
+
+/** Brim positions (along the brim, cells) icicles hang from: behind the head and out past the nose, never over the eye. */
+const ICICLES: ReadonlyArray<readonly [number, number]> = [[-5.2, 0.9], [-4.1, 1.35], [-3.0, 0.75], [3.3, 0.8], [4.4, 1.25], [5.5, 1.05]];
+
+const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 const LIGHT = blankLight();
 
@@ -183,24 +208,158 @@ export function drawAlchemistBody(out: PixelSurface, field: LightField, ctx: Ctx
     const beat = 0.8 + Math.max(0, Math.sin(frame * 0.2)) * 0.5;
     r.ellipse(hx, hy - 0.3, 1.1 * beat, 1.0 * beat, 0, 12, HEART, { group: 21, noOutline: true });
   }
-  if (a.status.frozen > 0 && !dead) {
-    r.ellipse(s.chest.x, (s.chest.y + s.hip.y) / 2, 4.2, 8.2, s.lean, 14, ICE, { group: 22, noOutline: true, depth: 0.2 });
-  }
   if (a.status.burning > 0 && !dead) {
     for (let i = 0; i < 4; i++) {
       const fx = s.hip.x - 2.4 + i * 1.6, fy = s.chest.y - Math.sin(frame * 0.22 + i) * 2 + 1;
       r.ellipse(fx, fy, 0.9, 1.6 + Math.sin(frame * 0.5 + i) * 0.4, 0, 15, FLAME, { group: 23 + i, noOutline: true });
     }
   }
+  // --- The chill: rime on the real silhouette (never a shape pasted over it) ---
+  const glaze = drawChill(r, ctx, a, s, f, dead, !hatBody, H);
   const flash = !ctx.state.reduceFlashes && a.staggerT > 7 ? 0.18 : 0;
   sampleSceneLight(field, s.chest.x, s.chest.y, 10, flash, LIGHT, dead ? 0.15 : 1);
   // The hero stays readable in any gloom; the direction still comes from the lamps.
   LIGHT.r = Math.min(1.08, Math.max(0.74, LIGHT.r)); LIGHT.g = Math.min(1.08, Math.max(0.74, LIGHT.g)); LIGHT.b = Math.min(1.08, Math.max(0.76, LIGHT.b));
+  LIGHT.tint = glaze;
   r.resolve(out, LIGHT);
+  LIGHT.tint = undefined;
+  if (!dead && a.chill) drawBreath(out, field, ctx, a.chill);
   if (a.status.electrified > 0 && frame % 4 !== 0 && !dead) {
     const arc = (out.setFinePx ?? out.setPx).bind(out);
     for (let i = 0; i < 6; i++) arc(s.chest.x - 4 + i * 1.6, s.chest.y - 3 + ((i * 7 + frame) % 5) - 2, 0.42, 0.86, 1);
   }
+}
+
+const GLAZE: [number, number, number, number] = [0.8, 0.9, 1, 0];
+
+/** How long a breath hangs in the air (ticks). */
+const BREATH_LIFE = 52;
+
+/**
+ * A breath fogging the cold air: a translucent wisp off the mouth that
+ * billows forward and up, breaks apart and thins out (fine pixels,
+ * premultiplied blend over whatever is behind it), dimmed by the room's light
+ * so it never glows in the dark.
+ */
+function drawBreath(out: PixelSurface, field: LightField, ctx: Ctx, c: NonNullable<PlayerState['chill']>): void {
+  if (!out.blendFinePx || !(c.breathAt >= 0)) return;
+  const age = ctx.state.frameCount - c.breathAt;
+  if (age < 0 || age > BREATH_LIFE) return;
+  const t = age / BREATH_LIFE, step = out.pixelStep ?? 0.5;
+  const k = (0.34 + 0.4 * c.breathK) * (t < 0.1 ? t / 0.1 : (1 - (t - 0.1) / 0.9) ** 1.5);
+  const cx = c.breathX + c.breathDir * (1.2 + 5.2 * Math.sqrt(t)), cy = c.breathY - 0.3 - 2.4 * t;
+  const R = 0.8 + 2.6 * t, RX = R * 1.35;
+  const L = typeof field?.sample === 'function' ? field.sample(cx, cy) : { r: 1, g: 1, b: 1 };
+  const lum = Math.max(0.42, Math.min(1.05, L.r * 0.3 + L.g * 0.5 + L.b * 0.2));
+  const drift = age >> 2;
+  for (let gy = Math.floor((cy - R) / step); gy <= Math.ceil((cy + R) / step); gy++) {
+    for (let gx = Math.floor((cx - RX) / step); gx <= Math.ceil((cx + RX) / step); gx++) {
+      const x = gx * step, y = gy * step;
+      const dx = (x - cx) / RX, dy = (y - cy) / R, d2 = dx * dx + dy * dy;
+      if (d2 > 1) continue;
+      const n = hash2(gx - drift * c.breathDir, gy + drift, 41) * 0.6 + hash2((gx >> 1) - drift, gy >> 1, 43) * 0.4;
+      const al = k * (1 - d2) * (0.2 + 0.8 * n);
+      if (al < 0.04) continue;
+      out.blendFinePx(x, y, 0.82 * lum * al, 0.89 * lum * al, 0.95 * lum * al, al);
+    }
+  }
+}
+
+/**
+ * THE CHILL on the body (entities/chill; docs/PLAYER-ART.md). Rime creeps in
+ * from the silhouette's edge, the tops and the extremities (raster.frost with
+ * RIME_BIAS: brim, crown and shoulders first, then sleeves and boots, the coat
+ * last); the beard and brows frost over; icicles grow from the brim; near the
+ * top the whole figure takes an icy glaze and crystals catch the light. Frozen
+ * solid, he is rime all over inside a thin shell of clear ice that hugs his
+ * shape limb by limb, crazed with the cracks each press puts in it. The fallen
+ * keep their rime. Returns the glaze wash for the resolve (or undefined).
+ */
+function drawChill(r: CreatureRaster, ctx: Ctx, a: PlayerState, s: Skeleton, f: number, dead: boolean, hatOn: boolean,
+  H: (side: number, up: number) => [number, number]): SceneLight['tint'] {
+  const ch = a.chill;
+  const shell = !dead && (ch?.shell ?? 0) > 0;
+  const rime = shell ? 1 : ch?.rime ?? 0;
+  if (rime < 0.02) return undefined;
+  const calm = ctx.state.reduceFlashes === true, frame = ctx.state.frameCount;
+  const standing = s.kind === 'stand' || s.kind === 'climb';
+  r.frost(rime, {
+    bias: RIME_BIAS, edge: 2.2,
+    cy: standing ? (s.hip.y + s.head.y) / 2 : undefined, halfH: standing ? Math.max(4, (s.hip.y - s.head.y) / 2 + 4.5) : undefined,
+    twinkle: calm || dead ? undefined : frame,
+    glaze: shell ? 0.4 : 0,
+  });
+  // Frost in the beard and on the brows: the face's own tell.
+  const ht = s.headTilt;
+  const beard = clamp01((rime - 0.28) / 0.4);
+  if (beard > 0) {
+    r.stamp(...H(0.5 + (1 - beard) * 0.4, -1.55), 1.8 * (0.45 + 0.55 * beard), 0.95 * (0.5 + 0.5 * beard), ht, RIME, 1 + beard * 1.4, false, 11);
+    r.stamp(...H(1.7, -0.75), 0.95 * beard, 0.35, ht, RIME, 2.2, false, 11);
+    if (rime > 0.5) r.stroke(...H(0.5, 1.35), ...H(1.9, 1.25), RIME, 2.6, true);
+  }
+  // Icicles from the brim: they start as beads and lengthen with the cold.
+  const drip = clamp01((rime - 0.5) / 0.4);
+  if (hatOn && drip > 0 && s.kind !== 'crawl') {
+    const [bx, by] = H(-0.1, 2.15);
+    const ba = s.brimAngle, bc = Math.cos(ba), bs = Math.sin(ba);
+    for (let k = 0; k < ICICLES.length; k++) {
+      const [along, len] = ICICLES[k];
+      const t = along * f;
+      const droop = Math.abs(along) > 5 ? 0.35 : 0;
+      const x = bx + bc * t, y = by + bs * t + 0.6 + droop;
+      const L = len * drip * (0.7 + hash2(k, 3, 17) * 0.6) + (shell ? 0.4 : 0);
+      if (L < 0.25) continue;
+      r.capsule(x, y - 0.1, 0.34, x + 0.06 * f, y + L, 0.1, 6.45, 6.45, ICE, { group: 15 });
+    }
+  }
+  if (!dead && rime > 0.55 && s.kind === 'stand' && !shell) {
+    // Icicle beads under the sleeves' cuffs and the coat's hem as it deepens.
+    const k = clamp01((rime - 0.55) / 0.35);
+    for (const [e, h] of [[s.frontElbow, s.frontHand], [s.backElbow, s.backHand]] as const) {
+      const cx = e.x + (h.x - e.x) * 0.72, cy = e.y + (h.y - e.y) * 0.72 + 0.7;
+      r.capsule(cx, cy, 0.26, cx + 0.05, cy + 0.5 + 0.8 * k, 0.08, 9, 9, ICE, { group: 13 });
+    }
+  }
+  if (shell) {
+    // Frozen solid: a thin shell of clear ice around every limb (behind the body,
+    // so only its hug past the silhouette shows), then the cracks.
+    const Z = -14, o = { group: 30 };
+    r.capsule(s.hip.x, s.hip.y + 0.6, 3.0, s.chest.x, s.chest.y, 3.3, Z, Z, SHELL, o);
+    r.ellipse(s.head.x, s.head.y, 3.2, 3.3, ht, Z, SHELL, o);
+    r.capsule(s.hip.x, s.hip.y, 2.1, s.backKnee.x, s.backKnee.y, 1.9, Z, Z, SHELL, o);
+    r.capsule(s.backKnee.x, s.backKnee.y, 1.9, s.backFoot.x, s.backFoot.y - 0.3, 2.0, Z, Z, SHELL, o);
+    r.capsule(s.hip.x, s.hip.y, 2.1, s.frontKnee.x, s.frontKnee.y, 1.9, Z, Z, SHELL, o);
+    r.capsule(s.frontKnee.x, s.frontKnee.y, 1.9, s.frontFoot.x, s.frontFoot.y - 0.3, 2.0, Z, Z, SHELL, o);
+    r.capsule(s.chest.x, s.chest.y, 1.9, s.backElbow.x, s.backElbow.y, 1.7, Z, Z, SHELL, o);
+    r.capsule(s.backElbow.x, s.backElbow.y, 1.7, s.backHand.x, s.backHand.y, 1.6, Z, Z, SHELL, o);
+    r.capsule(s.chest.x, s.chest.y, 1.9, s.frontElbow.x, s.frontElbow.y, 1.7, Z, Z, SHELL, o);
+    r.capsule(s.frontElbow.x, s.frontElbow.y, 1.7, s.frontHand.x, s.frontHand.y, 1.6, Z, Z, SHELL, o);
+    if (hatOn) {
+      const [bx, by] = H(-0.1, 2.15), [cx, cy] = H(-0.25, 3.6);
+      const bc = Math.cos(s.brimAngle), bs = Math.sin(s.brimAngle);
+      r.capsule(bx - bc * 6.4, by - bs * 6.4 + 0.4, 1.1, bx + bc * 6.7, by + bs * 6.7 + 0.35, 1.1, Z, Z, SHELL, o);
+      r.ellipse(cx, cy - 0.4, 3.1, 2.5, s.brimAngle, Z, SHELL, o);
+    }
+    // Facets: a few hard light lines across the ice where it bulges.
+    r.stroke(s.chest.x - f * 3.4, s.chest.y + 1.2, s.chest.x - f * 2.2, s.chest.y - 1.6, SHELL, 3, true);
+    r.stroke(s.hip.x + f * 2.6, s.hip.y + 2.4, s.hip.x + f * 3.1, s.hip.y - 0.6, SHELL, 3, true);
+    // Cracks: each one a dark fracture branching out from where the ice gave, lit along one lip.
+    const n = Math.min(6, ch?.cracks ?? 0);
+    for (let k = 0; k < n; k++) {
+      const sx = s.chest.x + (hash2(k, 1, 5) - 0.5) * 4, sy = s.chest.y + 1 + (hash2(k, 2, 5) - 0.5) * 6;
+      const ang = hash2(k, 3, 5) * Math.PI * 2, len = 2.2 + hash2(k, 4, 5) * 2.6;
+      const mx = sx + Math.cos(ang) * len * 0.55, my = sy + Math.sin(ang) * len * 0.55;
+      r.stroke(sx, sy - 0.5, mx, my - 0.5, RIME, 3, true);
+      r.stroke(sx, sy, mx, my, RIME, 0, true);
+      r.stroke(mx, my, mx + Math.cos(ang + 0.7) * len * 0.5, my + Math.sin(ang + 0.7) * len * 0.5, RIME, 0, true);
+      r.stroke(mx, my, mx + Math.cos(ang - 0.6) * len * 0.45, my + Math.sin(ang - 0.6) * len * 0.45, RIME, 0, true);
+    }
+  }
+  // Near the top of the cold the figure takes an icy glaze (a lift toward pale blue).
+  const g = shell ? 0.34 : clamp01((rime - 0.78) / 0.22) * 0.22;
+  if (g <= 0.005) return undefined;
+  GLAZE[3] = g;
+  return GLAZE;
 }
 
 function drawHat(r: CreatureRaster, s: Skeleton, costume: PlayerCostume | undefined, f: number, H: (side: number, up: number) => [number, number]): void {

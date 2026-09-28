@@ -252,8 +252,8 @@ export class WandSystem implements WandsApi {
     if (ctx.state.mode !== 'play' || player.dead) return;
     // A tap's button is already up; only its press edge is left (CLICK_BUFFER_TICKS).
     const tap = !player.firing && player.firePressed === true;
-    // Heart communion roots the wand arm; so does hauling on a lever.
-    if (player.fireBlockedUntilRelease || player.recharge > 0 || player.pullT > 0 || player.climbing) {
+    // Heart communion roots the wand arm; so does hauling on a lever, and an ice shell.
+    if (player.fireBlockedUntilRelease || player.recharge > 0 || player.pullT > 0 || player.climbing || (player.chill?.shell ?? 0) > 0) {
       if (tap) player.firePressed = false;
       return;
     }

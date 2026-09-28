@@ -17,11 +17,14 @@ import {
 import {
   Fn,
   clamp,
+  abs,
   dot,
   float,
   floor,
   fract,
+  length,
   max,
+  min,
   mix,
   renderOutput,
   sin,
@@ -54,6 +57,8 @@ import { WebGpuComposeBridge, webGpuComposeUnrequestedStatus } from '@/render/We
 import { WebGpuDeviceLifecycle } from '@/render/WebGpuDeviceLifecycle';
 import { describeGpu, type GpuInfo } from '@/render/gpuInfo';
 import { cameraPresentationOffset } from '@/render/presentation';
+import { chillLens } from '@/render/chillLens';
+import type { Node as ChillNode } from 'three/webgpu';
 import { WebGpuLiveCompose } from '@/render/WebGpuLiveCompose';
 
 interface NavigatorWithGpu {
@@ -91,6 +96,7 @@ const WEBGPU_COMPOSE_LIMIT_KEYS = [
 
 type TslUvNode = NonNullable<Parameters<typeof texture>[1]>;
 type TslRgbNode = ReturnType<typeof texture>['rgb'];
+type TslNode<T extends string> = ChillNode<T>;
 type ToneMappingMode = typeof ACESFilmicToneMapping | typeof NoToneMapping;
 
 function backendName(renderer: WebGPURenderer): 'webgpu' | 'webgl2' | 'unknown' {
@@ -231,6 +237,10 @@ export class WebGpuRenderBackend implements RendererBackend {
   private readonly aberration = uniform(0.0005);
   private readonly grain = uniform(0.028);
   private readonly hurt = uniform(0);
+  /** THE CHILL (render/chillLens): the grade and the frost's reach and ceiling — PostFx's twin. */
+  private readonly chill = uniform(0);
+  private readonly chillFrost = uniform(0);
+  private readonly chillCap = uniform(0.55);
   private readonly time = uniform(0);
   private readonly quadOffset = uniform(new Vector2(0, 0));
   private readonly quadScale = uniform(new Vector2(1 + 4 / VIEW_W, 1 + 4 / VIEW_H));
@@ -502,12 +512,43 @@ export class WebGpuRenderBackend implements RendererBackend {
         .mul(smoothstep(0.18, 0.55, r2))
         .mul(sin(this.time.mul(0.12)).mul(0.25).add(0.75))
         .mul(0.6);
-      const lensed = mix(withGrain, vec3(0.45, 0.02, 0.04), hurtMix);
+      const hurtLensed = mix(withGrain, vec3(0.45, 0.02, 0.04), hurtMix);
+      const lensed = this.chillLensNode(hurtLensed, p);
       const post = mix(bloomBase, lensed, this.lensEnabled).mul(this.exposure);
       return vec4(post, 1.0);
     })();
 
     return renderOutput(postColor, toneMapping, SRGBColorSpace);
+  }
+
+  /**
+   * THE CHILL on the WebGPU lens: the same cold grade as render/PostFx, and a
+   * lighter frost — milky, ragged-fronted, speckled with crystals — growing in
+   * from the edges under the same reach, safe ellipse and opacity ceiling
+   * (PostFx's WebGL frost adds the ridged fronds and lattice needles).
+   */
+  private chillLensNode(col: TslRgbNode, p: ReturnType<WebGpuRenderBackend['pixelUv']>): TslRgbNode {
+    const lum = dot(col, vec3(0.299, 0.587, 0.114));
+    const cold = vec3(lum, lum, lum).mul(vec3(0.84, 0.97, 1.2));
+    const graded = mix(col, cold, this.chill.mul(0.52)).mul(mix(vec3(1, 1, 1), vec3(0.88, 0.97, 1.1), this.chill));
+    const hash = (q: TslNode<'vec2'>): TslNode<'float'> => fract(sin(dot(q, vec2(12.9898, 78.233))).mul(43758.5453));
+    const vnoise = (q: TslNode<'vec2'>): TslNode<'float'> => {
+      const i = floor(q), f = fract(q), u = f.mul(f).mul(f.mul(-2).add(3));
+      return mix(mix(hash(i), hash(i.add(vec2(1, 0))), u.x), mix(hash(i.add(vec2(0, 1))), hash(i.add(vec2(1, 1))), u.x), u.y);
+    };
+    const aspect = RENDER_W / RENDER_H;
+    const q = vec2(p.x.mul(aspect), p.y);
+    const d = min(min(p.x, float(1).sub(p.x)).mul(aspect), min(p.y, float(1).sub(p.y)));
+    const reach = this.chillFrost.mul(0.2);
+    const n = vnoise(q.mul(7)).mul(0.6).add(vnoise(q.mul(15)).mul(0.4));
+    const front = reach.mul(n.mul(0.75).add(0.55)).sub(d);
+    const age = clamp(front.div(max(reach.mul(0.55), 0.02)), 0, 1);
+    const speck = smoothstep(0.55, 0.9, vnoise(q.mul(90)).mul(float(1).sub(abs(vnoise(q.mul(34)).mul(2).sub(1)))));
+    const safe = smoothstep(1.0, 1.2, length(p.sub(0.5).div(vec2(0.38, 0.33))));
+    const frost = clamp(age.mul(age).mul(0.8).add(speck.mul(float(0.9).sub(age.mul(0.5)))), 0, 1)
+      .mul(step(0.0, front)).mul(safe).mul(step(0.001, this.chillFrost));
+    const ice = mix(graded.mul(vec3(0.9, 1.0, 1.12)).add(vec3(0.03, 0.045, 0.06)), vec3(0.72, 0.84, 0.95), age.mul(0.35).add(0.35));
+    return mix(graded, ice, frost.mul(this.chillCap));
   }
 
   private buildBaseOutputNode(toneMapping: ToneMappingMode = ACESFilmicToneMapping): ReturnType<typeof renderOutput> {
@@ -822,6 +863,10 @@ export class WebGpuRenderBackend implements RendererBackend {
       ctx.state.mode === 'play' && !ctx.player.dead
         ? (Math.max(0, 0.35 - ctx.player.hp / ctx.player.maxHp) / 0.35) * post.hurtPulse
         : 0;
+    const lens = chillLens(ctx);
+    this.chill.value = lens.grade;
+    this.chillFrost.value = lens.frost;
+    this.chillCap.value = lens.cap;
 
     this.quadOffset.value.set(ox * ctx.camera.zoom, oy * ctx.camera.zoom);
     this.syncForeground(ctx);

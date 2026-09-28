@@ -311,3 +311,96 @@ export function createDefaultWandLightSettings(): WandLightSettings {
     torchMinFlicker: 1.05,
   };
 }
+
+/**
+ * THE CHILL (entities/chill model, game/Chill system): the alchemist's graded
+ * body cold, 0..1, built from real cold cells and thawed by real heat. Every
+ * look, sound and slow scales with it (docs/FEEL.md "The chill"). Rates are
+ * per fixed tick (60 a second). Mutable like the rest of this file; probes
+ * reach it as `ctx.chill.tuning`.
+ */
+export interface ChillTuning {
+  /** Wading in brine (≥ 3 cells touching), plus this much more fully under. */
+  brineBase: number;
+  brineSubmerged: number;
+  /** Per liquid-nitrogen cell touching, capped. */
+  nitrogenPerCell: number;
+  nitrogenCap: number;
+  /** Fresh water in a frozen biome (× how deep), and ice or snow pressed to the body. */
+  coldWater: number;
+  iceContact: number;
+  /** A frozen biome's air keeps the body at least this cold, climbing at `ambientRate`. */
+  ambientFloor: number;
+  ambientRate: number;
+  /** Blows of cold, added at once: a frost bolt, a Rime Warden's floor wave, each lick of its breath. */
+  frostbolt: number;
+  rimeWave: number;
+  rimeBreath: number;
+  /** Warming out of the cold, and (slower) while a cold source still touches. */
+  decay: number;
+  decayInCold: number;
+  /** Heat scan: radius (cells), the weighted hot-cell count that reads as full warmth, and its thaw rate. */
+  heatRadius: number;
+  heatFull: number;
+  heatRate: number;
+  /** A body alight thaws at this rate on top. */
+  burningRate: number;
+  /** Speed/acceleration and jump velocity at full chill (1 = no cost). */
+  moveMin: number;
+  jumpMin: number;
+  /** The score's tape at full chill: playback rate (pitch drops with it) and the lowpass cutoff (Hz). */
+  musicRateMin: number;
+  musicCutoffMin: number;
+  /** Frozen solid: ticks locked, ticks a fresh press cracks off, chill left when it bursts, ticks before another. */
+  shellTicks: number;
+  shellMash: number;
+  shellAfter: number;
+  shellCooldown: number;
+  /** The rime cracks off (the thaw beat) once the chill falls this far under it, if this much is on. */
+  thawGap: number;
+  thawMin: number;
+  /** Rime melting per tick out of the heat (drips), and on top per unit of warmth. */
+  rimeMelt: number;
+  rimeMeltHeat: number;
+  /** World: the wake skins over (fresh water only) from this chill; frost prints and breath cells from these. */
+  skinMin: number;
+  printMin: number;
+  breathCellMin: number;
+}
+
+export const CHILL_PARAMS: ChillTuning = {
+  brineBase: 0.0026,
+  brineSubmerged: 0.0042,
+  nitrogenPerCell: 0.0035,
+  nitrogenCap: 0.02,
+  coldWater: 0.0014,
+  iceContact: 0.00035,
+  ambientFloor: 0.12,
+  ambientRate: 0.0008,
+  frostbolt: 0.24,
+  rimeWave: 0.2,
+  rimeBreath: 0.075,
+  decay: 0.0011,
+  decayInCold: 0.00025,
+  heatRadius: 26,
+  heatFull: 7,
+  heatRate: 0.0065,
+  burningRate: 0.02,
+  moveMin: 0.45,
+  jumpMin: 0.82,
+  musicRateMin: 0.8,
+  musicCutoffMin: 1100,
+  shellTicks: 72,
+  shellMash: 9,
+  shellAfter: 0.66,
+  shellCooldown: 420,
+  thawGap: 0.26,
+  thawMin: 0.42,
+  rimeMelt: 0.0007,
+  rimeMeltHeat: 0.0015,
+  skinMin: 0.45,
+  printMin: 0.5,
+  breathCellMin: 0.5,
+};
+
+export const CHILL_PARAM_DEFAULTS: Readonly<ChillTuning> = Object.freeze({ ...CHILL_PARAMS });

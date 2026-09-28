@@ -298,6 +298,7 @@ function stepWaves(ctx: Ctx, e: Enemy, b: BossBrain): void {
       wv.hit = true;
       ctx.playerCtl.damage(RIME.WAVE_DMG * (e.dmgK ?? 1), wv.dir * 1.6, -3.2, 'rimewarden-wave');
       p.status.frozen = Math.max(p.status.frozen, 50);
+      ctx.chill?.hit(ctx.chill.tuning.rimeWave);
     }
   }
 }
@@ -361,6 +362,7 @@ function breath(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost, b: BossBrain)
     const off = Math.abs(Math.atan2(Math.sin(Math.atan2(dy, dx) - aim), Math.cos(Math.atan2(dy, dx) - aim)));
     if (d < RIME.BREATH_R && off < RIME.BREATH_HALF && sightClear(w, mx, my, p.x, p.y - 8)) {
       p.status.frozen = Math.max(p.status.frozen, 90);
+      ctx.chill?.hit(ctx.chill.tuning.rimeBreath);
       if (t % 20 === 0) ctx.playerCtl.damage(RIME.BREATH_DMG * (e.dmgK ?? 1), Math.cos(aim) * 1.2, -0.4, 'rimewarden-breath');
     }
   }

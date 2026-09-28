@@ -55,7 +55,7 @@ export function hasSpeciesArt(kind: EnemyKind): boolean {
   return ART[kind] !== undefined;
 }
 
-export function drawSpecies(out: PixelSurface, light: LightField, ctx: Ctx, e: Enemy, glow = 1, tint?: SceneLight['tint']): boolean {
+export function drawSpecies(out: PixelSurface, light: LightField, ctx: Ctx, e: Enemy, glow = 1, tint?: SceneLight['tint'], frost?: number): boolean {
   const art = ART[e.kind];
   if (!art) return false;
   const rig = ensureRig(e);
@@ -89,6 +89,10 @@ export function drawSpecies(out: PixelSurface, light: LightField, ctx: Ctx, e: E
   // Light wave: in designed darkness the body resolves as the light finds it,
   // and its eyes and markings glow on top (render/creatures/eyeshine).
   LIGHT.reveal = glow >= 0.999 ? revealFor(ctx, e, LIGHT, probe[0], probe[1]) : 1;
+  // Frost on a frozen body: rime grows on its own silhouette (the chill's
+  // raster pass, lighter than the alchemist's), thinning as it thaws out.
+  const rime = frost ?? (e.status.frozen > 0 ? 0.55 * Math.min(1, e.status.frozen / 40) : 0);
+  if (rime > 0.02) r.frost(rime, { baseBias: 0.55, edge: 1.8, twinkle: ctx.state.reduceFlashes ? undefined : ctx.state.frameCount });
   LIGHT.tint = tint;
   r.resolve(out, LIGHT);
   LIGHT.tint = undefined;
@@ -105,8 +109,9 @@ const TINT: [number, number, number, number] = [0, 0, 0, 0];
  * single glint at the grip says it.
  */
 function corpseTint(ctx: Ctx, c: Corpse): SceneLight['tint'] {
+  // (Frozen remains also take a rime pass in drawSpecies: the wash is only a pale cast now.)
   const t = ctx.state.frameCount;
-  if (c.frozen > 0) { TINT[0] = 0.8; TINT[1] = 0.92; TINT[2] = 1; TINT[3] = 0.42; return TINT; }
+  if (c.frozen > 0) { TINT[0] = 0.8; TINT[1] = 0.92; TINT[2] = 1; TINT[3] = 0.16; return TINT; }
   if (c.burn > 0) {
     const f = 0.5 + 0.5 * Math.sin(t * 0.37 + c.e.bobPhase * 9);
     TINT[0] = 0.4 + 0.25 * f; TINT[1] = 0.12 + 0.06 * f; TINT[2] = 0.03; TINT[3] = Math.min(0.8, 0.25 + c.char * 0.55);
@@ -120,6 +125,7 @@ function corpseTint(ctx: Ctx, c: Corpse): SceneLight['tint'] {
 export function drawCorpses(out: PixelSurface, light: LightField, ctx: Ctx, inView: (e: Enemy) => boolean): void {
   for (const c of corpses()) {
     if (c.world !== ctx.world || !inView(c.e)) continue;
-    drawSpecies(out, light, ctx, c.e, c.glow, corpseTint(ctx, c));
+    // A frozen carcass is rimed over (and paled a little); a thawing one loses it.
+    drawSpecies(out, light, ctx, c.e, c.glow, corpseTint(ctx, c), c.frozen > 0 ? 0.7 * Math.min(1, c.frozen / 120) : 0);
   }
 }

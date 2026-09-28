@@ -259,8 +259,10 @@ export function drawAlchemistSprite(out: PixelSurface, field: LightField, ctx: C
   else if (a.climbing || a.wallGrabT > 0) climb();
   else standard();
 
-  if (a.status.frozen > 0) for (let i = 0; i < 5; i++) {
-    pen.raw(a.x - 3.5 + i * 1.7, a.y - 2.5 - (i % 2) * 3.8, [0.63, .88, .94], .7);
+  // The chill (no raster surface): rime flecks along the figure, more as it deepens.
+  const rime = a.chill?.shell ? 1 : a.chill?.rime ?? 0;
+  if (rime > 0.2) for (let i = 0; i < Math.round(3 + rime * 6); i++) {
+    pen.raw(a.x - 3.5 + (i % 5) * 1.7, a.y - 2.5 - (i % 2) * 3.8 - Math.floor(i / 5) * 8, [0.63, .88, .94], .5 + .4 * rime);
   }
   if (a.status.burning > 0) for (let i = 0; i < 4; i++) {
     const x = a.x - 2.4 + i * 1.6, y = a.y - 4 - Math.sin(frame * .22 + i) * 2;

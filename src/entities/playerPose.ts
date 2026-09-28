@@ -1,4 +1,4 @@
-import { clamp } from '@/core/math';
+import { clamp, hash2 } from '@/core/math';
 import type { Ctx, PlayerState, RigidBody } from '@/core/types';
 
 /**
@@ -61,6 +61,27 @@ export function makeSkeleton(): Skeleton {
 
 const set = (v: V, p: readonly [number, number]): void => { v.x = p[0]; v.y = p[1]; };
 const ease = (t: number): number => t * t * (3 - 2 * t);
+const mixP = (p: [number, number], q: readonly [number, number], t: number): [number, number] => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+
+/**
+ * THE CHILL in the body (entities/chill): how far the arms hug in, the gait
+ * stiffens and the head sinks, and the shiver (a 1-px shudder of the upper
+ * body on some frames, deterministic by tick; none with reduced flashes, none
+ * inside the ice). Frozen solid is full hug, no breath, no stride.
+ */
+function chillPose(ctx: Ctx, a: PlayerState, frame: number): { hug: number; stiff: number; shiver: number; shelled: boolean } {
+  const c = a.chill;
+  if (!c || c.level < 0.18) return { hug: 0, stiff: 0, shiver: 0, shelled: false };
+  const shelled = c.shell > 0;
+  const hug = shelled ? 1 : clamp((c.level - 0.3) / 0.45, 0, 1);
+  const stiff = shelled ? 1 : clamp((c.level - 0.2) / 0.6, 0, 1);
+  let shiver = 0;
+  if (!shelled && ctx.state.reduceFlashes !== true) {
+    const p = clamp((c.level - 0.32) / 0.5, 0, 1) * 0.6;
+    if (p > 0 && hash2(frame >> 1, 7, 3) < p) shiver = (frame & 2) !== 0 ? 0.5 : -0.5;
+  }
+  return { hug, stiff, shiver, shelled };
+}
 
 /**
  * Pose the living alchemist. `frame` drives only cosmetic cycles (breathing);
@@ -81,6 +102,7 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   if (a.climbing || a.wallGrabT > 0) return poseClimb(a, s, frame);
 
   s.kind = 'stand';
+  const cold = chillPose(ctx, a, frame);
   const crouch = clamp(a.crouchT / 10, 0, 1), landing = clamp(a.landTimer / 10, 0, 1);
   const air = a.grounded ? 0 : 1, skid = clamp(a.skidT / 10, 0, 1), hurt = clamp(a.staggerT / 10, 0, 1);
   const pulling = a.pullT > 0 ? 1 : 0;
@@ -92,16 +114,22 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   const rising = air && a.vy < -0.2 ? clamp(-a.vy / 3.5, 0, 1) : 0;
   // Stride: feet apart at contact (|sin| = 1), passing at sin = 0.
   const ph = a.stridePhase;
-  let stride = a.grounded ? Math.sin(ph) * (1.1 + speed * 2.0) : 0;
+  // (A chilled body shuffles: shorter steps, feet kept low, less bob.)
+  let stride = a.grounded ? Math.sin(ph) * (1.1 + speed * 2.0) * (1 - 0.42 * cold.stiff) : 0;
   if (skid) stride = -2.1;
+  if (cold.shelled) stride = 0;
   const swing = Math.cos(ph); // which foot is travelling forward
-  const bob = a.grounded ? Math.abs(Math.sin(ph)) * speed * 0.75 : 0;
-  const breath = a.grounded && speed < 0.1 ? Math.sin(frame * 0.052) * 0.28 : 0;
+  const bob = a.grounded ? Math.abs(Math.sin(ph)) * speed * 0.75 * (1 - 0.6 * cold.stiff) : 0;
+  // Breathing: slow at rest; a cold body's breath comes quick and shallow; frozen solid, none.
+  const breath = cold.shelled ? 0 : a.grounded && speed < 0.1
+    ? cold.hug > 0.3 ? Math.sin(frame * 0.13) * 0.16 : Math.sin(frame * 0.052) * 0.28 : 0;
   // Torso lean: into speed, back on a skid, forward on a dive, arched when hit.
   let lean = f * (speed * 0.11 + skid * -0.18 + dive * 0.5 - pulling * 0.16 + falling * 0.05 + swim * 0.55)
     - (a.staggerDir || -f) * hurt * 0.22;
   if (a.kickT > 0) lean -= f * 0.18;
   if (flask === 'drink') lean -= f * 0.08;
+  // Hunched into the cold.
+  if (a.grounded && !swim) lean += f * 0.07 * cold.hug;
   s.lean = lean;
   const squash = crouch * 3.2 + landing * 2.1 + commune * 4.2 + bob;
   const stretch = clamp(a.stretchT / 10, 0, 1) * 1.4 + rising * 0.5;
@@ -114,9 +142,11 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
     const dx = f * side, dy = -u;
     return [a.x + dx * cos - dy * sin, a.y + dx * sin + dy * cos];
   };
-  set(s.hip, at(0, 6.2)); set(s.chest, at(0.2, 11.2)); set(s.neck, at(0.35, 12.6)); set(s.head, at(0.55, 14.0));
-  // Legs.
-  const lift = 1.6 + speed * 1.2;
+  // The head sinks into the mantle and juts a little as he hunches.
+  set(s.hip, at(0, 6.2)); set(s.chest, at(0.2, 11.2));
+  set(s.neck, at(0.35 + 0.15 * cold.hug, 12.6 - 0.35 * cold.hug)); set(s.head, at(0.55 + 0.3 * cold.hug, 14.0 - 0.6 * cold.hug));
+  // Legs (knees stiffen with the chill).
+  const lift = (1.6 + speed * 1.2) * (1 - 0.5 * cold.stiff);
   let bF = at(-2.0 - stride, 0.15 + Math.max(0, -swing) * lift * (a.grounded ? speed : 0));
   let fF = at(2.0 + stride, 0.1 + Math.max(0, swing) * lift * (a.grounded ? speed : 0));
   let bK = at(-1.1 - stride * 0.35 + Math.max(0, -swing) * speed * 1.2, 3.5 + Math.max(0, -swing) * speed * 1.1);
@@ -141,7 +171,7 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   if (commune) { bF = at(-2.6, 0.1); fF = at(2.2, 0.1); bK = at(-0.4, 1.0); fK = at(2.6, 2.8); }
   set(s.backFoot, bF); set(s.frontFoot, fF); set(s.backKnee, bK); set(s.frontKnee, fK);
   // Head: tilts with gaze, snaps back when hit, tips back to drink.
-  s.headTilt = f * (s.gazeY * 0.28 * f) - (a.staggerDir || -f) * hurt * 0.35 * f * f;
+  s.headTilt = f * (s.gazeY * 0.28 * f) - (a.staggerDir || -f) * hurt * 0.35 * f * f + f * 0.12 * cold.hug;
   if (flask === 'drink') s.headTilt = -f * 0.55;
   if (hurt > 0.3) { s.eyesShut = true; s.mouth = 0.7; }
   // Arms. The off (back) arm counter-swings the stride; the wand arm aims.
@@ -157,6 +187,12 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   if (swim) {
     const stroke = Math.sin(frame * 0.12);
     bE = at(1.2, 12.4 + stroke); bH = at(4.8 + stroke * 1.6, 12.8); fE = at(2.8, 11.6 - stroke); fH = at(6.0 - stroke * 1.6, 11.2);
+  }
+  if (cold.hug > 0 && !swim) {
+    // Arms held in: the off hand tucked across the chest under the mantle, the wand arm drawn close.
+    const k = cold.hug * (air ? 0.6 : 1);
+    bE = mixP(bE, at(-0.7, 9.1), k); bH = mixP(bH, at(1.5, 10.1), k);
+    fE = mixP(fE, at(1.7, 8.8), k * 0.8); fH = mixP(fH, at(2.7, 8.2), k * 0.8);
   }
   if (hurt > 0.2) { bE = at(-3.2, 11.4); bH = at(-4.4, 13.2); }
   if (commune) {
@@ -212,8 +248,16 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   s.wand.x = fH[0]; s.wand.y = fH[1];
   s.wand.angle = a.aimAngle;
   s.wand.glow = a.firing ? 1 : a.swapT > 6 ? 0.2 : 0.55 + Math.sin(frame * 0.2) * 0.07;
-  set(s.crown, at(-0.2, 17.2));
+  set(s.crown, at(-0.2 + 0.3 * cold.hug, 17.2 - 0.6 * cold.hug));
   s.brimAngle = lean + s.headTilt * 0.6;
+  if (cold.shiver !== 0 && !a.firing && a.recoilT <= 0) {
+    // The shudder: the upper body only (the boots stay planted), one fine pixel.
+    // (Never mid-cast: the wand hand stays on the ray the spell leaves along.)
+    const d = cold.shiver;
+    for (const v of [s.chest, s.neck, s.head, s.crown, s.backElbow, s.backHand, s.frontElbow, s.frontHand]) v.x += d;
+    s.wand.x += d;
+    if (s.held) s.held.x += d;
+  }
   return s;
 }
 

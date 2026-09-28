@@ -28,6 +28,7 @@ import { Projectiles } from '@/combat/Projectiles';
 import { Spells } from '@/combat/Spells';
 import { Enemies } from '@/entities/Enemies';
 import { createPlayer, PlayerControl } from '@/entities/Player';
+import { ChillSystem } from '@/game/Chill';
 import { Physics } from '@/entities/physics';
 import { RigidBodies } from '@/entities/RigidBodies';
 import { VineStrands } from '@/entities/VineStrands';
@@ -249,6 +250,10 @@ export class Game {
     ctx.flora = flora;
     this.disposables.push(flora);
     ctx.playerCtl = new PlayerControl(ctx);
+    // The graded body cold (brine, nitrogen, frost in; fire, lava, embers out).
+    const chill = new ChillSystem(ctx);
+    ctx.chill = chill;
+    this.disposables.push(chill);
     ctx.peers = new PeerGhosts();
     const enemyCtl = new Enemies(ctx);
     ctx.enemyCtl = enemyCtl;
@@ -744,7 +749,13 @@ export class Game {
       this.perfHud.mark('sim', simMs);
 
       const tEnt = performance.now();
-      if (!dbg.frozenPlayer()) { ctx.playerCtl.update(ctx); if (!ctx.player.dead) updateLegSwing(ctx); updateTelekinesis(ctx); }
+      if (!dbg.frozenPlayer()) {
+        ctx.playerCtl.update(ctx);
+        // The body's temperature follows where it now stands (its moveK is read next tick).
+        ctx.chill?.update(ctx);
+        if (!ctx.player.dead) updateLegSwing(ctx);
+        updateTelekinesis(ctx);
+      }
       if (!debugActive) ctx.flask.update(ctx);
       const enemyStart = performance.now();
       ctx.enemyCtl.update(ctx); // self-gates per enemy via ctx.debug.frozenEnemy
