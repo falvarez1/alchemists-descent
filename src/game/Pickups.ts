@@ -9,7 +9,7 @@ import { ALL_CARD_IDS } from '@/combat/wands/cards';
 import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
 import { makePickup, POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
 import type { CardId, Ctx, Pickup, PickupsApi } from '@/core/types';
-import { blocksEntity } from '@/sim/CellType';
+import { blocksEntity, Cell } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
 import { LEG_CLUB_SWINGS } from '@/combat/WeaverLimbs';
@@ -40,6 +40,11 @@ function potionIdOrRandom(value: unknown): string {
 }
 
 export { makePickup, PICKUP_COLOR, POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
+
+/** Loose grains a buried key can rise through (not rock, not a coal seam). */
+function loosePowder(t: number): boolean {
+  return t === Cell.Sand || t === Cell.Snow || t === Cell.Gunpowder || t === Cell.Gold || t === Cell.Catalyst;
+}
 
 export class Pickups implements PickupsApi {
   update(ctx: Ctx): void {
@@ -119,6 +124,18 @@ export class Pickups implements PickupsApi {
             p.vy = 0;
             break;
           }
+        }
+      }
+
+      // A key buried by a powder slump works its way up through the loose
+      // grains, as a light thing does in a shaken pile (QA: Cold Store snow
+      // drifted over the golden key, and the collect rule's clear line never
+      // reached it). Only the key: the Spell Lab buries its tome on purpose.
+      if (p.kind === 'key' && ctx.state.frameCount % 6 === 0) {
+        const kx = Math.floor(p.x), ky = Math.floor(p.y);
+        if (world.inBounds(kx, ky - 1) && loosePowder(world.types[world.idx(kx, ky)])) {
+          p.y = ky - 1;
+          p.vy = 0;
         }
       }
 
