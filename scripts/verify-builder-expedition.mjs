@@ -42,7 +42,9 @@ console.log('-- open builder mid-expedition');
 // The play screen hides the header (and its BUILDER button) for the whole run;
 // authoring builds open the Builder mid-run with F10.
 await page.keyboard.press('F10');
-await page.waitForSelector('#builder-intent-modal', { timeout: 5000 });
+// The first open lazy-loads the Builder: on a cold CI dev server that is the
+// whole Builder module graph transformed on demand, far past 5 s.
+await page.waitForSelector('#builder-intent-modal', { timeout: 45000 });
 const modalShown = await page.locator('#builder-intent-modal').isVisible();
 check('builder asks for play-to-builder intent', modalShown);
 await page.click('#builder-intent-modal [data-intent="continue-document"]');
@@ -91,7 +93,7 @@ check('the expedition level is untouched', after.sum === before, `before ${befor
 console.log('-- back to the descent');
 await page.click('#b-exit');
 await page.click('#mode-play-btn');
-await page.waitForSelector('#run-launcher.visible', { timeout: 5000 });
+await page.waitForSelector('#run-launcher.visible', { timeout: 20000 });
 await page.evaluate(() => document.querySelector('#run-launcher [data-action="continue"]')?.click());
 await waitForRunReady(page);
 await page.waitForTimeout(500);
@@ -119,7 +121,7 @@ const playSpot = await page.evaluate(() => {
   return { x: Math.round(ctx.player.x), y: Math.round(ctx.player.y), sum };
 });
 await page.keyboard.press('F10');
-await page.waitForSelector('#builder-intent-modal', { timeout: 5000 });
+await page.waitForSelector('#builder-intent-modal', { timeout: 20000 });
 await page.click('#builder-intent-modal [data-intent="current-scene"]');
 await page.waitForTimeout(400);
 const adopted = await page.evaluate(() => {
