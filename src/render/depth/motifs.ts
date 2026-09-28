@@ -373,3 +373,124 @@ export function shaft(p: MaskPlane, m: number, x: number, y: number, len: number
     }
   }
 }
+
+/* ---------------------- the refrigeration wing ---------------------- */
+
+/** A meat hook: a short shank and a J-curve, hanging from (x, y). */
+export function hook(p: MaskPlane, x: number, y: number, size: number, m: number): void {
+  const s = Math.max(1, Math.round(size));
+  p.vBar(x, y, 3 * s, s, m, 10);
+  const r0 = 2 * s, cy = y + 3 * s + r0;
+  for (let a = 0; a <= Math.PI * 1.15; a += 0.08 / s) {
+    const hx = x + Math.round(Math.sin(-a) * r0) + r0 - (s > 1 ? 0 : 1), hy = cy + Math.round(Math.cos(a) * r0) - r0;
+    for (let k = 0; k < s; k++) p.set(hx + k, hy, m, 6);
+  }
+}
+
+/** A rail with hooks hanging from it on short chains (a cold-room carcass line). */
+export function hookRail(p: MaskPlane, r: Rand, x0: number, x1: number, y: number, m: number, size = 1): void {
+  p.hBar(x0, y, x1 - x0, 2 * size, m, 20);
+  for (let x = x0 + 8; x < x1 - 4; x += Math.round(12 + r() * 14) * size) {
+    const len = Math.round((4 + r() * 16) * size);
+    chain(p, x, y + 2 * size, len, m, size > 1 ? 2 : 1);
+    hook(p, x, y + 2 * size + len, size, m);
+  }
+}
+
+/** A brine tank: a banded cylinder with a domed cap, a manway and a ladder. */
+export function tank(p: MaskPlane, r: Rand, cx: number, baseY: number, w: number, h: number, m: number): void {
+  const half = w / 2;
+  for (let k = 0; k < h; k++) for (let xx = -Math.floor(half); xx <= Math.floor(half); xx++) {
+    const u = xx / half;
+    p.set(cx + xx, baseY - k, m, (0.3 - u) * 36);
+  }
+  const domeH = Math.round(w * 0.22);
+  for (let k = 0; k < domeH; k++) {
+    const t = k / domeH, hw = half * Math.sqrt(Math.max(0, 1 - t * t));
+    for (let xx = -Math.floor(hw); xx <= Math.floor(hw); xx++) p.set(cx + xx, baseY - h - k, m, (0.3 - xx / half) * 30 + 10);
+  }
+  for (let y = baseY - Math.round(h * 0.15); y > baseY - h; y -= Math.round(h * between01(r, 0.22, 0.32))) p.hBar(cx - Math.floor(half) - 1, y, Math.round(w) + 2, 2, m, -18);
+  // Manway and a ladder up one side.
+  p.ring(cx, baseY - Math.round(h * 0.55), 3, 5, m, 22);
+  const lx = cx + Math.round(half) + 2;
+  p.vBar(lx, baseY - h - 2, h + 2, 1, m, 0);
+  p.vBar(lx + 3, baseY - h - 2, h + 2, 1, m, 0);
+  for (let y = baseY - h; y < baseY; y += 4) { p.set(lx + 1, y, m, 10); p.set(lx + 2, y, m, 10); }
+  // Legs.
+  for (const dx of [-half * 0.7, half * 0.7]) p.rect(Math.round(cx + dx) - 1, baseY, 3, 8, m, -10);
+}
+
+/** A bank of cooling coils: a serpentine pipe run between two headers. */
+export function coilBank(p: MaskPlane, x0: number, y0: number, w: number, rows: number, pitch: number, thick: number, m: number): void {
+  p.vBar(x0 - thick, y0 - 2, rows * pitch + 4, thick + 2, m, 24);
+  p.vBar(x0 + w, y0 - 2, rows * pitch + 4, thick + 2, m, 24);
+  for (let k = 0; k < rows; k++) p.hBar(x0, y0 + k * pitch, w, thick, m, 40);
+  // Return bends alternate sides.
+  for (let k = 0; k + 1 < rows; k++) {
+    const bx = k % 2 === 0 ? x0 + w - 2 : x0 - 1;
+    p.vBar(bx, y0 + k * pitch, pitch + thick, thick, m, 30);
+  }
+}
+
+/** A frosted grate: a frame with a bar grid (a vent or a catwalk panel seen face-on). */
+export function grate(p: MaskPlane, x0: number, y0: number, w: number, h: number, step: number, m: number): void {
+  p.hBar(x0, y0, w, 2, m, 18);
+  p.hBar(x0, y0 + h - 2, w, 2, m, -6);
+  p.vBar(x0, y0, h, 2, m, 10);
+  p.vBar(x0 + w - 2, y0, h, 2, m, -10);
+  for (let x = x0 + step; x < x0 + w - 2; x += step) p.vBar(x, y0, h, 1, m, 4);
+  for (let y = y0 + step; y < y0 + h - 2; y += step) p.hBar(x0, y, w, 1, m, 4);
+}
+
+/* ------------------------ the lens galleries ------------------------ */
+
+/** A glass display case on legs: a frame, a soft pane, a lens or prism on a plinth inside. */
+export function displayCase(p: MaskPlane, r: Rand, x0: number, baseY: number, w: number, h: number, m: number, pane: number): void {
+  const y0 = baseY - h;
+  p.rect(x0 - 2, baseY - 6, w + 4, 6, m, 10); // the plinth base
+  for (const lx of [x0, x0 + w - 3]) p.rect(lx, baseY, 3, 10, m, -10); // legs
+  for (let y = y0; y < baseY - 6; y++) for (let x = x0 + 2; x < x0 + w - 2; x++) {
+    const streak = ((x - y) & 15) < 3 ? 0.16 : 0.07;
+    p.soft(x, y, pane, streak);
+  }
+  p.hBar(x0, y0, w, 2, m, 22);
+  p.vBar(x0, y0, h - 6, 2, m, 8);
+  p.vBar(x0 + w - 2, y0, h - 6, 2, m, -8);
+  // The exhibit: a lens on a stand, or a prism.
+  const cx = x0 + Math.round(w / 2), sy = baseY - 6;
+  p.rect(cx - 1, sy - 8, 3, 8, m, 0);
+  if (r() < 0.5) p.ring(cx, sy - 14, 4, 6, m, 16);
+  else p.poly([[cx - 6, sy - 8], [cx + 6, sy - 8], [cx, sy - 19]], m, 14);
+}
+
+/** A lens rack: a tall frame holding a column of ground lenses. */
+export function lensRack(p: MaskPlane, x: number, baseY: number, h: number, m: number): void {
+  p.vBar(x - 7, baseY - h, h, 2, m, 12);
+  p.vBar(x + 6, baseY - h, h, 2, m, -12);
+  p.hBar(x - 9, baseY - h - 2, 19, 2, m, 18);
+  for (let y = baseY - h + 8; y < baseY - 6; y += 14) {
+    p.ring(x, y, 3, 5, m, 16);
+    p.hBar(x - 6, y + 6, 13, 1, m, 0);
+  }
+}
+
+/** A hanging prism on a chain. */
+export function hangingPrism(p: MaskPlane, x: number, y0: number, len: number, size: number, m: number): void {
+  chain(p, x, y0, len, m);
+  const y = y0 + len;
+  p.poly([[x, y], [x + size, y + size * 1.7], [x - size, y + size * 1.7]], m, 18);
+}
+
+/** A soft pool of coloured light (a prism's spill): broad, dim, round — never a beam. */
+export function lightPool(p: MaskPlane, m: number, cx: number, cy: number, rx: number, ry: number, strength: number): void {
+  for (let y = Math.floor(-ry); y <= Math.ceil(ry); y++) for (let x = Math.floor(-rx); x <= Math.ceil(rx); x++) {
+    const e = Math.hypot(x / rx, y / ry);
+    if (e >= 1) continue;
+    const c = strength * (1 - e) * (1 - e);
+    if (c > 0.01) p.soft(cx + x, cy + y, m, c);
+  }
+}
+
+function between01(r: Rand, a: number, b: number): number {
+  return a + (b - a) * r();
+}

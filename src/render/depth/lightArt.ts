@@ -15,6 +15,8 @@ import { type Bitmap, type MaskPlane, hash2, luma, mixRgb, smoothstep, tileFbm }
  */
 
 export const M_BODY = 1, M_ACCENT = 2, M_GLOW = 3, M_SOFT = 4;
+/** Tinted soft materials: M_TINT + k paints with `tints[k]` (prism light, glass panes). */
+export const M_TINT = 8;
 
 const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 
@@ -119,6 +121,8 @@ export interface SilhouetteOptions {
   /** Emissive accents (mouths, spores, windows) and soft light (hearth glow, plumes). */
   readonly glow: Rgb;
   readonly soft: Rgb;
+  /** Colours for the tinted soft materials (M_TINT + k), soft-covered like M_SOFT. */
+  readonly tints?: readonly Rgb[];
   /** How much of the motifs' tone texture survives (0 = flat silhouettes). */
   readonly tone?: number;
   /** An opaque base to paint over (the far plane's light), or null for a transparent plane. */
@@ -146,12 +150,13 @@ export function paintSilhouettes(p: MaskPlane, o: SilhouetteOptions): Bitmap {
       out[o4] = o.glow[0]; out[o4 + 1] = o.glow[1]; out[o4 + 2] = o.glow[2]; out[o4 + 3] = 255;
       continue;
     }
-    if (m === M_SOFT) {
+    if (m === M_SOFT || m >= M_TINT) {
+      const sc = m === M_SOFT ? o.soft : o.tints?.[m - M_TINT] ?? o.soft;
       const a = cover[i] / 255;
       if (o.base) {
-        out[o4] += (o.soft[0] - out[o4]) * a; out[o4 + 1] += (o.soft[1] - out[o4 + 1]) * a; out[o4 + 2] += (o.soft[2] - out[o4 + 2]) * a;
+        out[o4] += (sc[0] - out[o4]) * a; out[o4 + 1] += (sc[1] - out[o4 + 1]) * a; out[o4 + 2] += (sc[2] - out[o4 + 2]) * a;
       } else {
-        out[o4] = o.soft[0]; out[o4 + 1] = o.soft[1]; out[o4 + 2] = o.soft[2]; out[o4 + 3] = cover[i];
+        out[o4] = sc[0]; out[o4 + 1] = sc[1]; out[o4 + 2] = sc[2]; out[o4 + 3] = cover[i];
       }
       continue;
     }

@@ -21,7 +21,7 @@ import { FLOOR_LOOKS } from '@/config/floorLooks';
 
 export type Rgb = readonly [number, number, number];
 
-export type DepthKitId = 'bellows' | 'rot' | 'cisterns' | 'kiln' | 'generic';
+export type DepthKitId = 'bellows' | 'rot' | 'cisterns' | 'kiln' | 'cold' | 'glass' | 'generic';
 
 /** Colours an art builder paints with (0–255). The generic kit derives them from a floor look. */
 export interface KitPalette {
@@ -47,6 +47,8 @@ export interface KitPalette {
   readonly fgRim: Rgb;
   /** Direction toward the light in texels: [-1,-1] upper-left, [0,1] from below (the kiln). */
   readonly light: readonly [number, number];
+  /** Soft tinted light (prism spill, glass panes): M_TINT + k in the plane art. */
+  readonly tints?: readonly Rgb[];
   /** The kit's value/colour ramp, dark (0) to its brightest light (1): lit silhouettes live on it. */
   readonly ramp?: readonly (readonly [number, Rgb])[];
   /** Where the kit's light comes from (render/depth/lightArt). */
@@ -350,6 +352,99 @@ const KILN: DepthKit = {
   grade: NEUTRAL_GRADE,
 };
 
+/* ------------------------------------------------------------------ *
+ * THE COLD STORE — the refinery's refrigeration wing. Brine tanks and
+ * cooling-coil banks recede into frost haze under a cold blue-white light
+ * from the high vents; carcass rails and meat hooks hang in the dark; snow
+ * drifts at every depth.
+ * ------------------------------------------------------------------ */
+const COLD: DepthKit = {
+  id: 'cold',
+  label: 'The Cold Store',
+  seed: 0xc01d,
+  palette: {
+    haze: [70, 96, 124], fog: [150, 176, 204], deep: [8, 14, 24],
+    body: [30, 42, 58], rim: [200, 220, 240], accent: [120, 150, 180], glow: [200, 230, 255],
+    shaft: [196, 220, 240], fg: [5, 8, 13], fgRim: [70, 92, 116], light: [0, -1],
+    // Navy dark to slate blue to frost white: a cold light from above.
+    ramp: [[0, [6, 11, 20]], [0.22, [16, 30, 48]], [0.45, [40, 64, 92]], [0.68, [92, 124, 158]], [0.86, [168, 196, 224]], [1, [226, 238, 250]]],
+    lightField: {
+      rows: [[0, 0.5], [0.25, 0.4], [0.6, 0.22], [0.85, 0.18], [1, 0.5]],
+      cores: [{ x: 0.22, y: 0, rx: 0.14, ry: 0.7, k: 0.8 }, { x: 0.62, y: 0.02, rx: 0.12, ry: 0.6, k: 0.7 },
+        { x: 0.88, y: 0, rx: 0.1, ry: 0.5, k: 0.55 }],
+      falloff: 1.5, smoke: 0.3, smokeCell: 72,
+    },
+  },
+  planes: [
+    { label: 'Tank hall in frost haze', source: { kind: 'art', art: 'cold-far', width: 896, height: 512 }, parallax: 0.05, scale: 1,
+      opacity: 1, lit: 0.1, haze: { mix: 0, contrast: 1 } },
+    { label: 'Coil banks and rails', source: { kind: 'art', art: 'cold-racks', width: 1024, height: 512 }, parallax: 0.12, scale: 1,
+      opacity: 1, lit: 0.22, haze: { mix: 0, contrast: 1 } },
+    { label: 'Vent light', source: { kind: 'art', art: 'cold-shafts', width: 1024, height: 512 }, parallax: 0.12, scale: 1,
+      opacity: 1, lit: 0, haze: { mix: 0, contrast: 1 }, pulse: { amp: 0.3, period: 520 }, shafts: true },
+    { label: 'Brine tanks and grates', source: { kind: 'art', art: 'cold-mid', width: 1024, height: 576 }, parallax: 0.21, scale: 1,
+      opacity: 1, lit: 0.55, haze: { mix: 0, contrast: 1 } },
+    { label: 'Frosted pipes and hooks', source: { kind: 'art', art: 'cold-near', width: 1024, height: 640 }, parallax: 0.33, scale: 1,
+      opacity: 1, lit: 0.9, haze: { mix: 0, contrast: 1 } },
+  ],
+  foreground: { parallax: 1.4, scale: 1.5, opacity: 0.94, art: 'cold-fg' },
+  particles: [
+    { label: 'far snow', parallax: 0.12, count: 70, color: [0.2, 0.24, 0.3], size: 1, drift: [0.03, 0.2], sway: 5, twinkle: 0.3,
+      behind: true, light: 'open', inShafts: 2.4 },
+    { label: 'mid snow', parallax: 0.3, count: 60, color: [0.26, 0.3, 0.36], size: 2, drift: [0.05, 0.32], sway: 8, twinkle: 0.2,
+      behind: true, light: 'open', inShafts: 2 },
+    { label: 'near flakes', parallax: 1.3, count: 30, color: [0.34, 0.38, 0.44], size: 3, drift: [0.07, 0.45], sway: 10, twinkle: 0.2,
+      behind: false, light: 'light' },
+  ],
+  grade: NEUTRAL_GRADE,
+};
+
+/* ------------------------------------------------------------------ *
+ * THE GLASS GALLERIES — the lens-grinding halls. Dark by design (its light
+ * puzzles own every beam): tall glazed arcades, display cases, lens racks
+ * and hanging prisms stand in a deep violet dusk, lit only by broad, dim
+ * pools of prism spill. NO light shafts: nothing here may read as a beam or
+ * a bright spot near the floor's optics.
+ * ------------------------------------------------------------------ */
+const GLASS: DepthKit = {
+  id: 'glass',
+  label: 'The Glass Galleries',
+  seed: 0x9a55,
+  palette: {
+    haze: [52, 44, 82], fog: [104, 92, 146], deep: [8, 6, 16],
+    body: [28, 24, 44], rim: [176, 164, 220], accent: [96, 84, 140], glow: [150, 136, 200],
+    shaft: [120, 110, 170], fg: [6, 5, 11], fgRim: [60, 54, 88], light: [0, -1],
+    ramp: [[0, [6, 5, 12]], [0.24, [16, 13, 30]], [0.48, [36, 30, 62]], [0.7, [70, 60, 110]], [0.88, [120, 108, 166]], [1, [168, 158, 206]]],
+    // Prism spill (violet, teal, amber) and the panes' faint glaze.
+    tints: [[92, 70, 150], [56, 108, 120], [128, 96, 60], [84, 80, 124]],
+    lightField: {
+      rows: [[0, 0.3], [0.4, 0.4], [0.65, 0.36], [1, 0.3]],
+      cores: [{ x: 0.3, y: 0.45, rx: 0.24, ry: 0.4, k: 0.5 }, { x: 0.78, y: 0.5, rx: 0.2, ry: 0.34, k: 0.42 }],
+      falloff: 2, smoke: 0.25, smokeCell: 80,
+    },
+  },
+  planes: [
+    { label: 'Dusk hall and prism spill', source: { kind: 'art', art: 'glass-far', width: 896, height: 512 }, parallax: 0.05, scale: 1,
+      opacity: 1, lit: 0.1, haze: { mix: 0, contrast: 1 } },
+    { label: 'Glazed arcades', source: { kind: 'art', art: 'glass-arcade', width: 960, height: 512 }, parallax: 0.12, scale: 1,
+      opacity: 1, lit: 0.22, haze: { mix: 0, contrast: 1 } },
+    { label: 'Cases, racks and prisms', source: { kind: 'art', art: 'glass-mid', width: 1024, height: 576 }, parallax: 0.21, scale: 1,
+      opacity: 1, lit: 0.55, haze: { mix: 0, contrast: 1 } },
+    { label: 'Columns and a great lens', source: { kind: 'art', art: 'glass-near', width: 1024, height: 640 }, parallax: 0.33, scale: 1,
+      opacity: 1, lit: 0.9, haze: { mix: 0, contrast: 1 } },
+  ],
+  foreground: { parallax: 1.4, scale: 1.5, opacity: 0.92, art: 'glass-fg' },
+  particles: [
+    { label: 'far dust', parallax: 0.12, count: 40, color: [0.1, 0.09, 0.15], size: 1, drift: [0.02, -0.03], sway: 4, twinkle: 0.5,
+      behind: true, light: 'open' },
+    { label: 'glints', parallax: 0.3, count: 22, color: [0.16, 0.14, 0.24], size: 1, drift: [0.01, 0.01], sway: 3, twinkle: 1,
+      behind: true, light: 'open' },
+    { label: 'near dust', parallax: 1.25, count: 24, color: [0.16, 0.15, 0.2], size: 2, drift: [0.03, 0.02], sway: 6, twinkle: 0.7,
+      behind: false, light: 'light' },
+  ],
+  grade: NEUTRAL_GRADE,
+};
+
 const clamp255 = (v: number): number => Math.max(0, Math.min(255, Math.round(v)));
 const scale3 = (c: Rgb, k: number, lift: Rgb = [0, 0, 0]): Rgb => [clamp255(c[0] * k + lift[0]), clamp255(c[1] * k + lift[1]), clamp255(c[2] * k + lift[2])];
 
@@ -408,6 +503,8 @@ export const DEPTH_KITS: Readonly<Partial<Record<BiomeId, DepthKit>>> = {
   fungal: ROT,
   flooded: CISTERNS,
   volcanic: KILN,
+  frozen: COLD,
+  crystal: GLASS,
 };
 
 const genericCache = new Map<BiomeId, DepthKit>();

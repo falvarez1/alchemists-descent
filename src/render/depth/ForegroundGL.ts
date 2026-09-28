@@ -108,6 +108,7 @@ void main() {
   vec4 rv = texture(uReveal, (v / ${REVEAL_CELL.toFixed(1)} + 0.5) / uRevealSize);
   float level = rv.g * 1.4, open = rv.b;
   float k = uLightMode[f] > 0.5 ? 0.3 * open + level * 0.8 : open * open;
+  k *= rv.a; // calm: no glints inside an optics zone (the Glass Galleries' puzzles)
   k *= 1.0 - uTwinkle[f] * 0.5 * (1.0 + sin(uFrame * 0.045 * pace + ph * 3.0));
   if (uShaftCfg.w > 0.5 && uInShafts[f] > 1.0) {
     vec2 sp = floor((floor(uRenderCam * uShaftCfg.x) + floor(v)) / uShaftCfg.y);

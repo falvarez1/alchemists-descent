@@ -16,7 +16,9 @@ import { smoothstep } from '@/render/depth/raster';
  * thins and returns smoothly as things move behind it instead of popping.
  * Channel G carries how lit the spot is (0 dark … 1), so an occluder's rim
  * catch dims in designed darkness; channel B the designed-darkness render
- * factor alone (1 open … 0 deep dark), which the far depth particles dim by.
+ * factor alone (1 open … 0 deep dark), which the far depth particles dim by;
+ * channel A is CALM (1, or 0 inside an optics zone: the Glass Galleries'
+ * puzzle rooms and the Lens Room), where no depth particle may glint.
  */
 
 export const REVEAL_CELL = 8;
@@ -42,6 +44,8 @@ export interface RevealRect {
   x1: number;
   y1: number;
   pad: number;
+  /** Also silence the depth particles here (optics: no false glints near a beam puzzle). */
+  calm?: boolean;
 }
 
 /** A rect's hole: 0 inside, easing to 1 over `pad` cells outside. */
@@ -80,7 +84,9 @@ export class RevealField {
   readonly light: Float32Array;
   /** Designed-darkness open factor per texel (0–1). */
   readonly open: Float32Array;
-  /** RGBA8 upload buffer (R = allowance, G = light, B = open). */
+  /** Particle calm per texel (1 = particles allowed, 0 = an optics zone). */
+  readonly calm: Float32Array;
+  /** RGBA8 upload buffer (R = allowance, G = light, B = open, A = calm). */
   readonly bytes: Uint8Array;
   version = 0;
   private primed = false;
@@ -89,6 +95,7 @@ export class RevealField {
   private readonly centre: Float32Array;
   private readonly centreReadable: Float32Array;
   private readonly lightSample = new Float32Array(2);
+  private readonly calmTarget: Float32Array;
 
   constructor(readonly viewW: number, readonly viewH: number) {
     this.w = Math.ceil(viewW / REVEAL_CELL) + 1;
@@ -97,6 +104,8 @@ export class RevealField {
     this.value = new Float32Array(n);
     this.light = new Float32Array(n).fill(1);
     this.open = new Float32Array(n).fill(1);
+    this.calm = new Float32Array(n).fill(1);
+    this.calmTarget = new Float32Array(n);
     this.bytes = new Uint8Array(n * 4);
     this.target = new Float32Array(n);
     this.centre = new Float32Array(n);
@@ -114,9 +123,19 @@ export class RevealField {
    */
   update(points: readonly RevealPoint[], opts: RevealOptions, lightAt: RevealLightSampler | null,
     rects: readonly RevealRect[] = []): number {
-    const { w, h, value, light, open, bytes, target, lightSample } = this;
+    const { w, h, value, light, open, calm, calmTarget, bytes, target, lightSample } = this;
     const ease = opts.snap || !this.primed ? 1 : REVEAL_EASE;
     target.set(opts.readable ? this.centreReadable : this.centre);
+    calmTarget.fill(1);
+    for (const r of rects) {
+      if (!r.calm) continue;
+      const tx0 = Math.max(0, Math.floor((r.x0 - r.pad) / REVEAL_CELL)), tx1 = Math.min(w - 1, Math.ceil((r.x1 + r.pad) / REVEAL_CELL));
+      const ty0 = Math.max(0, Math.floor((r.y0 - r.pad) / REVEAL_CELL)), ty1 = Math.min(h - 1, Math.ceil((r.y1 + r.pad) / REVEAL_CELL));
+      for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+        const i = ty * w + tx;
+        calmTarget[i] = Math.min(calmTarget[i], rectMask(tx * REVEAL_CELL, ty * REVEAL_CELL, r));
+      }
+    }
     for (const r of rects) {
       const tx0 = Math.max(0, Math.floor((r.x0 - r.pad) / REVEAL_CELL)), tx1 = Math.min(w - 1, Math.ceil((r.x1 + r.pad) / REVEAL_CELL));
       const ty0 = Math.max(0, Math.floor((r.y0 - r.pad) / REVEAL_CELL)), ty1 = Math.min(h - 1, Math.ceil((r.y1 + r.pad) / REVEAL_CELL));
@@ -141,6 +160,7 @@ export class RevealField {
       for (let tx = 0; tx < w; tx++) {
         const i = ty * w + tx;
         value[i] += (target[i] - value[i]) * ease;
+        calm[i] += (calmTarget[i] - calm[i]) * ease;
         if (lightNow) {
           lightAt(tx * REVEAL_CELL, ty * REVEAL_CELL, lightSample);
           const k = Math.min(1, ease * 3);
@@ -151,7 +171,7 @@ export class RevealField {
         bytes[o] = Math.round(value[i] * 255);
         bytes[o + 1] = Math.round(Math.max(0, Math.min(1, light[i])) * 255);
         bytes[o + 2] = Math.round(Math.max(0, Math.min(1, open[i])) * 255);
-        bytes[o + 3] = 255;
+        bytes[o + 3] = Math.round(Math.max(0, Math.min(1, calm[i])) * 255);
       }
     }
     this.primed = true;
@@ -160,10 +180,19 @@ export class RevealField {
 
   /** Bilinear read of the eased allowance at a view point (tests, particles). */
   sample(vx: number, vy: number): number {
+    return this.bilinear(this.value, vx, vy);
+  }
+
+  /** Bilinear read of the particle calm at a view point (the CPU particle path). */
+  sampleCalm(vx: number, vy: number): number {
+    return this.bilinear(this.calm, vx, vy);
+  }
+
+  private bilinear(v: Float32Array, vx: number, vy: number): number {
     const fx = Math.max(0, Math.min(this.w - 1.001, vx / REVEAL_CELL));
     const fy = Math.max(0, Math.min(this.h - 1.001, vy / REVEAL_CELL));
     const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
-    const v = this.value, w = this.w;
+    const w = this.w;
     const a = v[y0 * w + x0], b = v[y0 * w + x0 + 1], c = v[(y0 + 1) * w + x0], d = v[(y0 + 1) * w + x0 + 1];
     return (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * ty;
   }

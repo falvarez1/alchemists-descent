@@ -1,6 +1,6 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import type { KitPalette, Rgb } from '@/config/depthKits';
-import { basalt, chain, gear, kelp, mushroom, root, type Rand } from '@/render/depth/motifs';
+import { basalt, chain, gear, hook, kelp, mushroom, root, stalactites, type Rand } from '@/render/depth/motifs';
 import { framingAnchor } from '@/render/depth/parallax';
 import { type Bitmap, MaskPlane, type Material, mixRgb, rng, shade } from '@/render/depth/raster';
 
@@ -209,6 +209,42 @@ function kilnFg(p: MaskPlane, r: Rand, _pal: KitPalette, place: Placer): void {
     [(pp, rr, x, y) => basaltCluster(pp, rr, x, y + place.t(160), Math.round(between(rr, 2, 4)))]);
 }
 
+/** A meat hook on a heavy chain. */
+function hookChain(p: MaskPlane, x: number, y0: number, len: number): void {
+  chain(p, x, y0, len, M_BODY, 2);
+  hook(p, x, y0 + len, 3, M_BODY);
+}
+
+/** A frosted pipe run with icicles hanging from it. */
+function frostedPipe(p: MaskPlane, r: Rand, x: number, y: number, len: number): void {
+  p.hBar(x, y, len, 12, M_BODY, 40);
+  for (let k = 20; k < len - 6; k += 58) p.vBar(x + k, y - 2, 16, 4, M_DETAIL, 24);
+  stalactites(p, r, x + 4, x + len - 4, y + 13, 26, M_BODY);
+}
+
+function coldFg(p: MaskPlane, r: Rand, _pal: KitPalette, place: Placer): void {
+  scatter(p, r, place,
+    [(pp, rr, x, y) => hookChain(pp, x, y, Math.round(between(rr, 50, 150))),
+      (pp, rr, x, y) => { hookChain(pp, x, y, Math.round(between(rr, 60, 120))); hookChain(pp, x + Math.round(between(rr, 16, 26)), y - 8, Math.round(between(rr, 80, 150))); },
+      (pp, rr, x, y) => frostedPipe(pp, rr, x, y, place.t(between(rr, 150, 260)))],
+    [(pp, rr, x, y) => pipe(pp, x, y - place.t(160), y + place.t(200), 18, rr() < 0.5)]);
+}
+
+/** A great lens in a frame, hanging on two chains. */
+function hangingLens(p: MaskPlane, x: number, y0: number, len: number, radius: number): void {
+  chain(p, x - radius + 4, y0, len, M_BODY, 2);
+  chain(p, x + radius - 4, y0, len, M_BODY, 2);
+  const cy = y0 + len + radius;
+  p.ring(x, cy, radius - 4, radius, M_BODY, 16);
+  p.ring(x, cy, radius - 7, radius - 5, M_DETAIL, 0);
+}
+
+function glassFg(p: MaskPlane, r: Rand, _pal: KitPalette, place: Placer): void {
+  scatter(p, r, place,
+    [(pp, rr, x, y) => hangingLens(pp, x, y, Math.round(between(rr, 40, 110)), Math.round(between(rr, 18, 28))), hangChain],
+    [(pp, rr, x, y) => brokenColumn(pp, rr, x, y + place.t(160), place.t(between(rr, 120, 220)), 24)]);
+}
+
 function genericFg(p: MaskPlane, r: Rand, _pal: KitPalette, place: Placer): void {
   scatter(p, r, place, [hangChain, hangChains],
     [(pp, rr, x, y) => brokenColumn(pp, rr, x, y + place.t(160), place.t(between(rr, 120, 220)), 26)]);
@@ -219,6 +255,8 @@ const FOREGROUND_ART: Readonly<Record<string, (p: MaskPlane, r: Rand, pal: KitPa
   'rot-fg': rotFg,
   'cistern-fg': cisternFg,
   'kiln-fg': kilnFg,
+  'cold-fg': coldFg,
+  'glass-fg': glassFg,
   'generic-fg': genericFg,
 };
 
