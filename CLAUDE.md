@@ -78,8 +78,9 @@ dev server. `scripts/verify-*.mjs` show the pattern.
   game tick (`Game.step` accumulator — game speed must not depend on monitor refresh rate);
   entity AI/render details run at tick rate. All tuning constants assume this split; don't unify.
 - **Frame order is a contract** (documented in ARCHITECTURE.md). Sim bounds derive from the
-  camera, spells aim with the *previous* frame's render snapshot, lighting rebuilds on even
-  frames. Do not reorder `Game.tick` casually.
+  camera, spells aim with the *previous* frame's render snapshot, lighting rebuilds every
+  other tick. Do not reorder `Game.tick` casually. Never gate render-side work on
+  `frameCount` parity alone: a render can run two ticks, which parks the parity.
 - **Three authoring/save families, kept separate:** Sandbox (live-sim painting, raw grid v1
   saves), the Builder authoring tool (`EditorDocument` v2 in `src/builder/`, compiles disposable
   playtest runtimes — see `docs/BUILDER.md`), and expedition runtime saves. Don't grow one
@@ -111,8 +112,8 @@ dev server. `scripts/verify-*.mjs` show the pattern.
 ## Hard invariants
 
 1. **Cell IDs are append-only forever** (save-format ABI). `CELL_COUNT` in `sim/CellType.ts`
-   must match (currently 42; Seed=41 is the highest taken id — Leaf 39, Trunk 40, Seed 41 were
-   appended by the flora wave). Never renumber or reuse.
+   must match (currently 44; Mirror=43 is the highest taken id — Leaf 39, Trunk 40, Seed 41 were
+   appended by the flora wave, Brine 42 and Mirror 43 by the biomes wave). Never renumber or reuse.
    The marker palette in `sim/cellPalette.ts` is the same kind of ABI (it identifies
    materials in every exported terrain PNG): one appended color per new cell type,
    ≥12 Manhattan RGB from every existing entry, never edited (test-enforced).
