@@ -67,7 +67,9 @@ jobs:
           done
           curl -fsS http://127.0.0.1:5173/ >/dev/null
           npm run verify:runtime-ui -- http://127.0.0.1:5173/
-          node scripts/verify-debug-tool.mjs http://127.0.0.1:5173/
+          # The debug probe drives a live Weaver gait; on a GPU-less runner the sim
+          # occasionally leaves it standing for the whole window. One retry.
+          node scripts/verify-debug-tool.mjs http://127.0.0.1:5173/ || node scripts/verify-debug-tool.mjs http://127.0.0.1:5173/
           node scripts/verify-builder-expedition.mjs http://127.0.0.1:5173/
           npm run verify:findability -- http://127.0.0.1:5173/
           # Two browser contexts against this dev server: the /builder.html

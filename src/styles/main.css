@@ -204,6 +204,9 @@ body.runtime-inspector-open #viewport-container {
     overflow: auto; background: rgba(8,11,16,0.96); border: 1px solid #1d2733;
     border-radius: 5px; box-shadow: 0 18px 48px rgba(0,0,0,0.74);
     color: #9fb6cc; font-family: var(--mono); font-size: 10px;
+    /* Live rows grow and shrink every tick; a scrollbar that comes and goes would
+       shove every control sideways under the cursor. Keep its gutter reserved. */
+    scrollbar-gutter: stable;
 }
 #runtime-inspector.open { display: block; }
 #runtime-inspector .bi-head {

@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
-import { startConsoleTestRun } from './run-helpers.mjs';
+import { openRuntimeInspector, startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
@@ -12,6 +12,25 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await startConsoleTestRun(page, { level: 'weaver-test', world: 'campaign-level', seed: 1, settleMs: 400 });
 
 const GAIT_TARGET_X = 512;
+
+// A real click (boundingBox + mouse, hit-tested by the browser) without
+// Playwright's frame-to-frame "stable" heuristic, which headless Chromium
+// never satisfies inside the live Runtime Inspector even when the control
+// has not moved a pixel.
+const realClick = async (selector) => {
+  const target = page.locator(selector);
+  // The panel renders its controls a beat after it opens: wait for this one.
+  for (let attempt = 0; attempt < 30; attempt++) {
+    await target.waitFor({ state: 'visible', timeout: 5000 });
+    const box = await target.boundingBox();
+    if (box) {
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      return;
+    }
+    await page.waitForTimeout(100);
+  }
+  throw new Error(`${selector} never had a box to click`);
+};
 const problems = [];
 const ok = (c, m) => { if (!c) problems.push(m); };
 
@@ -47,9 +66,8 @@ await page.evaluate((targetX) => {
 
 // --- open the Runtime panel and flip Debug ---
 // The play screen hides the header (and its RUNTIME button); authoring builds open the inspector with F9.
-await page.keyboard.press('F9');
-await page.waitForSelector('#runtime-inspector.open', { timeout: 5000 });
-await page.click('#brt-debug');
+await openRuntimeInspector(page);
+await realClick('#brt-debug');
 const active = await page.evaluate(() => window.__game.ctx.debug.active === true);
 ok(active, 'Debug toggle did not set ctx.debug.active');
 
@@ -112,9 +130,8 @@ const modeClear = await page.evaluate(async () => {
 });
 ok(!modeClear.active && modeClear.live === 0 && !modeClear.frozenPlayer, `Debug leaked after leaving Play (${JSON.stringify(modeClear)})`);
 
-await page.keyboard.press('F9');
-await page.waitForSelector('#runtime-inspector.open', { timeout: 5000 });
-await page.click('#brt-debug');
+await openRuntimeInspector(page);
+await realClick('#brt-debug');
 const reactivated = await page.evaluate(() => window.__game.ctx.debug.active === true);
 ok(reactivated, 'Debug toggle did not reactivate after returning to Play');
 
@@ -365,7 +382,7 @@ ok(plantRes.planted >= 3 && plantRes.floor >= 2, `legs did not plant on the floo
 
 // --- turn Debug off: the world resumes ---
 await page.evaluate(() => window.__game.ctx.debug.release());
-await page.click('#brt-debug');
+await realClick('#brt-debug');
 const offState = await page.evaluate(() => ({ active: window.__game.ctx.debug.active, live: window.__game.ctx.debug.live.size }));
 ok(!offState.active && offState.live === 0, `Debug off did not clear state (${JSON.stringify(offState)})`);
 const beforeOff = await page.evaluate(() => window.__game.ctx.enemies.filter((e) => e.kind === 'weaver').map((e) => e.x));
