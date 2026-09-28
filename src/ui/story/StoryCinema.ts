@@ -2,6 +2,7 @@ import type { Ctx } from '@/core/types';
 import type { StoryCinemaView } from '@/core/story';
 import { SPEAKER_NAMES } from '@/content/story/types';
 import { paintPlate, type PlateArtId } from './plates';
+import { DEFAULT_BINDINGS, gameplayCode, getBindings, keyLabel } from '@/input/bindings';
 
 const STYLE = `
 #story-cinema {
@@ -71,7 +72,7 @@ export class StoryCinemaOverlay {
     this.pips.className = 'sc-pips';
     const skip = document.createElement('span');
     skip.className = 'sc-skip';
-    skip.textContent = 'Any key to skip';
+    skip.textContent = `Any key to skip · ${keyLabel(getBindings().mute)} mutes`;
     this.root.append(this.canvas, this.title, this.line, this.pips, skip);
     (document.getElementById('canvas-holder') ?? document.body).appendChild(this.root);
     this.root.addEventListener('click', () => this.skip());
@@ -85,7 +86,13 @@ export class StoryCinemaOverlay {
 
   private readonly onKey = (e: KeyboardEvent): void => {
     if (!this.root.classList.contains('show')) return;
-    // Everything waits while a plate is up; any key skips (after a moment, so a held key does not).
+    // The mute key MUTES (ui/SoundQuickControl hears it; QA pressed N on a plate and
+    // lost the opening instead), and the browser's own chords and F-keys pass.
+    if (e.ctrlKey || e.metaKey || e.altKey || /^F\d{1,2}$/.test(e.code)) return;
+    if (gameplayCode(e.code) === DEFAULT_BINDINGS.mute) return;
+    // Everything else waits while a plate is up; any key — Esc included — skips
+    // (after a moment, so a held key does not), and never reaches the game or the
+    // pause menu behind the plate.
     e.preventDefault(); e.stopImmediatePropagation();
     if (!e.repeat) this.skip();
   };
