@@ -41,6 +41,8 @@ import { bossPhaseFor, ensureBossBrain } from './types';
 export const LENS = {
   /** Hover band: this far above the floor under it, this far from the alchemist. */
   HOVER: 40, NEAR: 64, FAR: 118,
+  /** How far it drifts from its post (the Lens Room's floor is 56 either side). */
+  LEASH: 44,
   SPEED: [0.55, 0.65, 0.78] as const,
   LANCE_DUR: 92, LOCK: 38, FIRE: 54, FIRE_END: 70,
   SWEEP_DUR: 112, SWEEP_END: 94, SWEEP_ARC: 0.34,
@@ -339,7 +341,8 @@ export function tickLenswright(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost
   } else {
     // Hover: hold the band above the floor, and a firing distance from him.
     const floor = floorBelow(ctx, e.x, e.y, 90);
-    const wantY = (floor ?? e.y) - LENS.HOVER + Math.sin(ctx.state.frameCount * 0.04 + e.bobPhase) * 3;
+    // Over a drop with no floor in reach it holds its height (it never climbs into the dark).
+    const wantY = (floor !== null ? floor - LENS.HOVER : e.y) + Math.sin(ctx.state.frameCount * 0.04 + e.bobPhase) * 3;
     const dx = p.x - e.x, dist = Math.abs(dx);
     let wantVx = 0;
     if (s.targetAlive) {
@@ -347,6 +350,9 @@ export function tickLenswright(ctx: Ctx, e: Enemy, def: EnemyDef, host: BossHost
       else if (dist > LENS.FAR) wantVx = Math.sign(dx);
       else wantVx = Math.sin(ctx.state.frameCount * 0.013 + e.bobPhase) * 0.5; // a slow drift across the gallery
     }
+    // Leashed to its gallery: it never follows the alchemist out through a door.
+    const homeX = e.mind?.homeX ?? e.x;
+    if (Math.abs(e.x - homeX) > LENS.LEASH) wantVx = -Math.sign(e.x - homeX);
     const busy = b.move !== 'march';
     const cap = (LENS.SPEED[b.phase - 1] ?? LENS.SPEED[0]) * (busy ? 0.25 : 1);
     e.vx += (wantVx * cap - e.vx) * 0.06;
