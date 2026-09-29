@@ -5,6 +5,25 @@ import { ActivityGrid } from '@/sim/ActivityGrid';
 import { ColorOverrides } from '@/sim/ColorOverrides';
 import { FluidFlow } from '@/sim/FluidFlow';
 
+/** The per-cell planes a World can adopt instead of allocating (the
+ *  SharedArrayBuffer-backed parallel sandbox: sim/parallel/sharedWorld). */
+export interface WorldPlanes {
+  types: Uint8Array;
+  colors: Uint32Array;
+  life: Int16Array;
+  moved: Uint8Array;
+  charge: Uint16Array;
+}
+
+/** Injected parts. Absent fields are allocated as usual. */
+export interface WorldOptions {
+  planes?: WorldPlanes;
+  flow?: FluidFlow;
+  activity?: ActivityGrid;
+  colorOverrides?: ColorOverrides;
+  activeCharges?: ChargeIndexSet;
+}
+
 const CHARGE_SCAN_TILE = 64;
 
 /**
@@ -15,11 +34,26 @@ const CHARGE_SCAN_TILE = 64;
  * the set; the plane answers those without a hash lookup.
  */
 export class ChargeIndexSet extends Set<number> {
-  private readonly flags: Uint8Array;
+  protected readonly flags: Uint8Array;
 
-  constructor(cells: number) {
+  /** `flags` adopts an externally allocated (shared) membership plane. */
+  constructor(cells: number, flags?: Uint8Array) {
     super();
-    this.flags = new Uint8Array(cells);
+    this.flags = flags ?? new Uint8Array(cells);
+  }
+
+  /** Replay an add/delete a parallel sweep participant already applied to the
+   *  shared flag plane (sim/parallel): Set membership only, flags untouched. */
+  adoptLogged(i: number, added: boolean): void {
+    if (added) super.add(i);
+    else super.delete(i);
+  }
+
+  /** Rebuild membership (flags and Set) from a charge plane. */
+  rebuildFrom(charge: Uint16Array): void {
+    this.flags.fill(0);
+    super.clear();
+    for (let i = 0; i < charge.length; i++) if (charge[i] > 0) { this.flags[i] = 1; super.add(i); }
   }
 
   override add(i: number): this {
@@ -90,19 +124,20 @@ export class World {
   readonly simBounds: { x0: number; x1: number; y0: number; y1: number };
   readonly allBounds: { x0: number; x1: number; y0: number; y1: number };
 
-  constructor(width = WIDTH, height = HEIGHT) {
+  constructor(width = WIDTH, height = HEIGHT, options?: WorldOptions) {
     this.width = width;
     this.height = height;
-    this.flow = new FluidFlow(width, height);
-    this.activity = new ActivityGrid(width, height);
+    this.flow = options?.flow ?? new FluidFlow(width, height);
+    this.activity = options?.activity ?? new ActivityGrid(width, height);
     const n = width * height;
-    this.colorOverrides = new ColorOverrides(n);
-    this.types = new Uint8Array(n);
-    this.colors = new Uint32Array(n).fill(EMPTY_COLOR);
-    this.life = new Int16Array(n);
-    this.moved = new Uint8Array(n);
-    this.charge = new Uint16Array(n);
-    this.activeCharges = new ChargeIndexSet(n);
+    this.colorOverrides = options?.colorOverrides ?? new ColorOverrides(n);
+    const planes = options?.planes;
+    this.types = planes?.types ?? new Uint8Array(n);
+    this.colors = planes?.colors ?? new Uint32Array(n).fill(EMPTY_COLOR);
+    this.life = planes?.life ?? new Int16Array(n);
+    this.moved = planes?.moved ?? new Uint8Array(n);
+    this.charge = planes?.charge ?? new Uint16Array(n);
+    this.activeCharges = options?.activeCharges ?? new ChargeIndexSet(n);
     this.simBounds = { x0: 0, x1: width, y0: 0, y1: height };
     this.allBounds = { x0: 0, x1: width, y0: 0, y1: height };
   }

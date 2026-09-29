@@ -67,6 +67,8 @@ import { Cell } from '@/sim/CellType';
 import { Explosions } from '@/sim/explosion';
 import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
+import { ParallelSim } from '@/sim/parallel/ParallelSim';
+import { createSharedWorld, sharedMemoryAvailable } from '@/sim/parallel/sharedWorld';
 import { GpuNotice } from '@/ui/GpuNotice';
 import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
@@ -103,6 +105,21 @@ function initialRenderBackendOverride(): RenderBackendMode | null {
 function initialWebGpuLiveComposeOverride(): boolean {
   if (typeof window === 'undefined') return false;
   return new URLSearchParams(window.location.search).get('enableWebGpuLiveCompose') === '1';
+}
+
+/**
+ * Sim worker threads for the Sandbox's parallel sweep (docs/SANDBOX-MT.md):
+ * `?threads=N`, `?threads=0` for the serial sweep. Default: the core count
+ * minus two (the main thread sweeps too, and the renderer needs a core),
+ * capped at 6. Needs cross-origin isolation (COOP/COEP) for SharedArrayBuffer.
+ */
+function sandboxSimThreads(): number {
+  if (typeof window === 'undefined' || !sharedMemoryAvailable()) return 0;
+  const raw = new URLSearchParams(window.location.search).get('threads');
+  const auto = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 4) - 2));
+  if (raw === null || raw === 'auto') return auto;
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) ? Math.max(0, Math.min(15, n)) : auto;
 }
 
 /**
@@ -213,8 +230,10 @@ export class Game {
     };
     for (const type of GESTURES) window.addEventListener(type, onGesture, { capture: true });
     this.disposables.push({ dispose: () => { for (const type of GESTURES) window.removeEventListener(type, onGesture, { capture: true }); } });
+    const simThreads = sandboxSimThreads();
     const ctx = {
-      world: new World(),
+      // The Sandbox world; on shared memory when its sweep runs on workers.
+      world: simThreads > 0 ? createSharedWorld() : new World(),
       events: new EventBus(),
       audio,
       params: createGameParams(),
@@ -275,7 +294,14 @@ export class Game {
     ctx.corpses = createCorpsesApi(ctx);
     this.disposables.push({ dispose: ctx.events.on('levelChanged', () => clearTelekinesis()) });
     ctx.spells = new Spells(ctx);
-    ctx.simulation = new Simulation();
+    const simulation = new Simulation();
+    ctx.simulation = simulation;
+    if (simThreads > 0) {
+      const parallel = new ParallelSim(ctx.world, { global: ctx.params.global, materials: ctx.params.materials }, simThreads);
+      simulation.parallel = parallel;
+      this.disposables.push(parallel);
+      console.info(`[sandbox-mt] parallel sandbox sweep: ${simThreads} workers + main`);
+    }
     ctx.worldgen = new WorldGen();
     ctx.flask = new Flask();
     const telemetry = new Telemetry();

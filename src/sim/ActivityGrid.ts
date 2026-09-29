@@ -15,6 +15,18 @@ for (const t of [Cell.Fire, Cell.Ember, Cell.Lava, Cell.Acid, Cell.Nitrogen, Cel
 for (const t of [Cell.Water, Cell.Wall, Cell.Wood, Cell.Stone, Cell.Metal, Cell.Crystal, Cell.Glass, Cell.RawOre, Cell.Mirror]) waterRestContact[t] = 1;
 for (const t of [Cell.Oil, Cell.Wall, Cell.Wood, Cell.Stone, Cell.Metal, Cell.Crystal, Cell.Glass, Cell.RawOre, Cell.Mirror]) oilRestContact[t] = 1;
 
+/** The activity planes a parallel chunk sweep's participants read (eligible,
+ *  rowMasks, scheduled) or flag mid-sweep (scheduled, dirty, quiet, seeds) —
+ *  allocated on SharedArrayBuffers by sim/parallel/sharedWorld. */
+export interface ActivitySharedPlanes {
+  scheduled: Uint8Array;
+  dirty: Uint8Array;
+  quiet: Uint8Array;
+  eligible: Uint8Array;
+  rowMasks: Uint32Array;
+  seeds: Uint32Array;
+}
+
 /** Activity and independent render damage over the save-compatible flat grid. */
 export class ActivityGrid {
   readonly columns: number;
@@ -45,7 +57,7 @@ export class ActivityGrid {
   private readonly dynamic: Uint32Array;
   private readonly restless: Uint32Array;
   private readonly urgent: Uint32Array;
-  private readonly quiet: Uint8Array;
+  protected readonly quiet: Uint8Array;
   private readonly cellClass: Uint8Array;
   private readonly dirtyRows: Uint32Array;
   private readonly growthSets: Set<number>[];
@@ -66,7 +78,7 @@ export class ActivityGrid {
    * mid-step (scheduled, dirty) and the change counters (versions, revision)
    * are still written at touch time over the two-cell halo, as before.
    */
-  private readonly seeds: Uint32Array;
+  protected readonly seeds: Uint32Array;
   private readonly seedChunk: Uint8Array;
   private readonly seedMinX: Int16Array;
   private readonly seedMinY: Int16Array;
@@ -79,17 +91,21 @@ export class ActivityGrid {
   private readonly dilated1 = new Uint32Array(64 * 4);
   private readonly dilated2 = new Uint32Array(64 * 4);
   private readonly lastWordMask: number;
+  /** Chunks whose seed boxes a parallel sweep handed over (adoptSeedBox). */
+  private readonly adoptMark: Uint8Array;
+  private readonly adoptList: Int32Array;
+  private adoptCount = 0;
 
-  constructor(private readonly width: number, private readonly height: number) {
+  constructor(protected readonly width: number, protected readonly height: number, shared?: ActivitySharedPlanes) {
     this.columns = Math.ceil(width / 64); this.rows = Math.ceil(height / 64);
     this.wordsPerRow = Math.ceil(width / 32);
     const count = this.columns * this.rows;
-    this.scheduled = new Uint8Array(count); this.versions = new Uint32Array(count);
-    this.dirty = new Uint8Array(count); this.dynamic = new Uint32Array(count);
+    this.scheduled = shared?.scheduled ?? new Uint8Array(count); this.versions = new Uint32Array(count);
+    this.dirty = shared?.dirty ?? new Uint8Array(count); this.dynamic = new Uint32Array(count);
     this.restless = new Uint32Array(count); this.urgent = new Uint32Array(count);
-    this.quiet = new Uint8Array(count); this.eligible = new Uint8Array(width * height);
+    this.quiet = shared?.quiet ?? new Uint8Array(count); this.eligible = shared?.eligible ?? new Uint8Array(width * height);
     this.cellClass = new Uint8Array(width * height);
-    this.rowMasks = new Uint32Array(this.wordsPerRow * height);
+    this.rowMasks = shared?.rowMasks ?? new Uint32Array(this.wordsPerRow * height);
     this.dirtyRows = new Uint32Array(this.wordsPerRow * height);
     this.renderDirtyRows = new Uint32Array(this.wordsPerRow * height);
     this.growthChanged = new Uint8Array(count); this.growthScheduled = new Uint8Array(count);
@@ -99,13 +115,54 @@ export class ActivityGrid {
     this.maxX = new Int16Array(count); this.maxY = new Int16Array(count);
     this.renderMinX = new Int16Array(count).fill(32767); this.renderMinY = new Int16Array(count).fill(32767);
     this.renderMaxX = new Int16Array(count); this.renderMaxY = new Int16Array(count);
-    this.seeds = new Uint32Array(this.wordsPerRow * height);
+    this.seeds = shared?.seeds ?? new Uint32Array(this.wordsPerRow * height);
     this.seedChunk = new Uint8Array(count);
     this.seedMinX = new Int16Array(count); this.seedMinY = new Int16Array(count);
     this.seedMaxX = new Int16Array(count); this.seedMaxY = new Int16Array(count);
     this.seededChunks = new Int32Array(count);
     const tail = width & 31;
     this.lastWordMask = tail === 0 ? 0xffffffff : ((1 << tail) - 1);
+    this.adoptMark = new Uint8Array(count);
+    this.adoptList = new Int32Array(count);
+  }
+
+  /**
+   * PARALLEL SWEEP HAND-OVER. A participant (sim/parallel) already wrote its
+   * touched cells into the shared `seeds` plane and flagged scheduled/dirty/
+   * quiet as it went; this unions its per-chunk seed box (inclusive cells, all
+   * inside chunk `key`) into the pending halos so the next flushTouches()
+   * dilates them like any other touch. Call finishAdoption() after the last box.
+   */
+  adoptSeedBox(key: number, sx0: number, sy0: number, sx1: number, sy1: number): void {
+    if (this.seedChunk[key] === 0) {
+      this.seedChunk[key] = 1;
+      this.seededChunks[this.seededCount++] = key;
+      this.seedMinX[key] = sx0; this.seedMinY[key] = sy0; this.seedMaxX[key] = sx1; this.seedMaxY[key] = sy1;
+    } else {
+      if (sx0 < this.seedMinX[key]) this.seedMinX[key] = sx0;
+      if (sy0 < this.seedMinY[key]) this.seedMinY[key] = sy0;
+      if (sx1 > this.seedMaxX[key]) this.seedMaxX[key] = sx1;
+      if (sy1 > this.seedMaxY[key]) this.seedMaxY[key] = sy1;
+    }
+    if (this.adoptMark[key] === 0) { this.adoptMark[key] = 1; this.adoptList[this.adoptCount++] = key; }
+  }
+
+  /** Change counters for the adopted boxes: once per adopted chunk, over its
+   *  two-cell halo — independent of how many participants touched it. */
+  finishAdoption(): void {
+    const columns = this.columns;
+    for (let n = 0; n < this.adoptCount; n++) {
+      const key = this.adoptList[n];
+      this.adoptMark[key] = 0;
+      this.revision++;
+      const ex0 = Math.max(0, this.seedMinX[key] - 2), ey0 = Math.max(0, this.seedMinY[key] - 2);
+      const ex1 = Math.min(this.width - 1, this.seedMaxX[key] + 2), ey1 = Math.min(this.height - 1, this.seedMaxY[key] + 2);
+      for (let cy = ey0 >> 6; cy <= ey1 >> 6; cy++) for (let cx = ex0 >> 6; cx <= ex1 >> 6; cx++) {
+        const k = cx + cy * columns;
+        this.dirty[k] = 1; this.quiet[k] = 0; this.scheduled[k] = 1; this.versions[k]++;
+      }
+    }
+    this.adoptCount = 0;
   }
 
   invalidateAll(): void { this.initialized = false; this.revision++; this.epoch++; }
