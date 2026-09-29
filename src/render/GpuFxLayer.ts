@@ -143,6 +143,9 @@ export class GpuFxLayer implements ParticleSink {
       toneMapped: false,
     });
     this.ensureCapacity(4096);
+    // A fixed bound: the object is never culled, and three's draw-order sort
+    // must not walk the (partly unused) position buffer to compute one.
+    this.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e9);
     this.points = new THREE.Points(this.geometry, this.material);
     this.points.frustumCulled = false;
     this.scene.add(this.points);
@@ -173,7 +176,9 @@ export class GpuFxLayer implements ParticleSink {
       const fp = list[k];
       const x = fp.x + offsetX, y = fp.y + offsetY;
       const vx = Math.round(x) - camX, vy = Math.round(y) - camY;
-      if (vx < 0 || vx >= VIEW_W || vy < 0 || vy >= VIEW_H) continue;
+      // Written as a positive test so a NaN position (which setPx silently
+      // dropped: its pixel index was NaN) is culled here too.
+      if (!(vx >= 0 && vx < VIEW_W && vy >= 0 && vy < VIEW_H)) continue;
       pos[n * 2] = x - camX;
       pos[n * 2 + 1] = y - camY;
       const c = fp.color, glow = fp.glow, o = n * 4;

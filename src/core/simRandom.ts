@@ -68,22 +68,23 @@ function seedFor(worldSeed: number, tick: number, stream: number): number {
   return mix32((worldSeed | 0) ^ Math.imul(tick | 0, 0x9e3779b1) ^ Math.imul(stream, 0x85ebca6b));
 }
 
-/* State is kept as signed int32 (`| 0`) rather than uint32 (`>>> 0`): both hold
- * the same 32 bits through imul/xor/shift, but the signed form stays a SMI and
- * never boxes into a double in the hot loop. */
-let simState = seedFor(0, 0, STREAM_SIM);
-let entityState = seedFor(0, 0, STREAM_ENTITY);
-let particleState = seedFor(0, 0, STREAM_PARTICLE);
-let fxState = seedFor(0, 0, STREAM_FX);
+/* Stream state lives in an Int32Array, not in module-level `let`s. The state
+ * is a full signed int32, and browsers that use pointer compression (Chrome,
+ * Edge) keep only 31-bit SMIs unboxed — a `let` holding the state boxed a new
+ * heap number on every draw (the sim draws millions per second). Typed-array
+ * elements never box. Same 32 bits through the same imul/xor/shift. */
+const SIM = 0, ENTITY = 1, PARTICLE = 2, FX = 3;
+const state = new Int32Array(4);
+state[SIM] = seedFor(0, 0, STREAM_SIM);
+state[ENTITY] = seedFor(0, 0, STREAM_ENTITY);
+state[PARTICLE] = seedFor(0, 0, STREAM_PARTICLE);
+state[FX] = seedFor(0, 0, STREAM_FX);
 
 /* Draw counters. One SMI increment against five arithmetic ops is free, and it
  * turns "the golden hash differs" into "the sim stream drew 8,301 times on one
  * side and 8,299 on the other, at tick 412" — which is the difference between a
  * bug report you can act on and one you cannot. */
-let simDraws = 0;
-let entityDraws = 0;
-let particleDraws = 0;
-let fxDraws = 0;
+const draws = new Float64Array(4);
 
 /**
  * TEST SEAM. Tests need rolls a real generator cannot give them — "every roll
@@ -104,10 +105,10 @@ export function setRandomOverrideForTests(fn: (() => number) | null): void {
 
 /** The cellular automata's stream. Drop-in for `Math.random()`. */
 export function simRandom(): number {
-  simDraws++;
+  draws[SIM]++;
   if (override !== null) return override();
-  simState = (simState + 0x6d2b79f5) | 0;
-  let t = simState;
+  let t = (state[SIM] + 0x6d2b79f5) | 0;
+  state[SIM] = t;
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -115,10 +116,10 @@ export function simRandom(): number {
 
 /** Entities, combat, and the gameplay systems. Drop-in for `Math.random()`. */
 export function entityRandom(): number {
-  entityDraws++;
+  draws[ENTITY]++;
   if (override !== null) return override();
-  entityState = (entityState + 0x6d2b79f5) | 0;
-  let t = entityState;
+  let t = (state[ENTITY] + 0x6d2b79f5) | 0;
+  state[ENTITY] = t;
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -126,10 +127,10 @@ export function entityRandom(): number {
 
 /** The particle simulation's stream — state, see the header. Drop-in for `Math.random()`. */
 export function particleRandom(): number {
-  particleDraws++;
+  draws[PARTICLE]++;
   if (override !== null) return override();
-  particleState = (particleState + 0x6d2b79f5) | 0;
-  let t = particleState;
+  let t = (state[PARTICLE] + 0x6d2b79f5) | 0;
+  state[PARTICLE] = t;
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -137,10 +138,10 @@ export function particleRandom(): number {
 
 /** Cosmetics that never feed a decision. Drop-in for `Math.random()`. */
 export function fxRandom(): number {
-  fxDraws++;
+  draws[FX]++;
   if (override !== null) return override();
-  fxState = (fxState + 0x6d2b79f5) | 0;
-  let t = fxState;
+  let t = (state[FX] + 0x6d2b79f5) | 0;
+  state[FX] = t;
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -154,14 +155,14 @@ export function fxRandom(): number {
  * in the seed or two substeps in the same tick would replay each other.
  */
 export function reseedSimSubstep(worldSeed: number, tick: number, substep: number): void {
-  simState = seedFor(worldSeed, Math.imul(tick | 0, 8) + (substep | 0), STREAM_SIM);
+  state[SIM] = seedFor(worldSeed, Math.imul(tick | 0, 8) + (substep | 0), STREAM_SIM);
 }
 
 /** Reseed the tick-rate streams. Called once per game tick, before any system runs. */
 export function reseedTickStreams(worldSeed: number, tick: number): void {
-  entityState = seedFor(worldSeed, tick, STREAM_ENTITY);
-  particleState = seedFor(worldSeed, tick, STREAM_PARTICLE);
-  fxState = seedFor(worldSeed, tick, STREAM_FX);
+  state[ENTITY] = seedFor(worldSeed, tick, STREAM_ENTITY);
+  state[PARTICLE] = seedFor(worldSeed, tick, STREAM_PARTICLE);
+  state[FX] = seedFor(worldSeed, tick, STREAM_FX);
 }
 
 /**
@@ -172,10 +173,10 @@ export function reseedTickStreams(worldSeed: number, tick: number): void {
  * known point rather than from wherever the previous level left them.
  */
 export function reseedAllStreams(worldSeed: number): void {
-  simState = seedFor(worldSeed, 0, STREAM_SIM);
-  entityState = seedFor(worldSeed, 0, STREAM_ENTITY);
-  particleState = seedFor(worldSeed, 0, STREAM_PARTICLE);
-  fxState = seedFor(worldSeed, 0, STREAM_FX);
+  state[SIM] = seedFor(worldSeed, 0, STREAM_SIM);
+  state[ENTITY] = seedFor(worldSeed, 0, STREAM_ENTITY);
+  state[PARTICLE] = seedFor(worldSeed, 0, STREAM_PARTICLE);
+  state[FX] = seedFor(worldSeed, 0, STREAM_FX);
 }
 
 export interface SimRandomSnapshot {
@@ -192,38 +193,35 @@ export interface SimRandomSnapshot {
 /** Capture every stream's exact position — for replay harnesses and tests. */
 export function snapshotStreams(): SimRandomSnapshot {
   return {
-    sim: simState,
-    entity: entityState,
-    particle: particleState,
-    fx: fxState,
-    simDraws,
-    entityDraws,
-    particleDraws,
-    fxDraws,
+    sim: state[SIM],
+    entity: state[ENTITY],
+    particle: state[PARTICLE],
+    fx: state[FX],
+    simDraws: draws[SIM],
+    entityDraws: draws[ENTITY],
+    particleDraws: draws[PARTICLE],
+    fxDraws: draws[FX],
   };
 }
 
 /** Restore a captured position, draw counters included. */
 export function restoreStreams(snap: SimRandomSnapshot): void {
-  simState = snap.sim | 0;
-  entityState = snap.entity | 0;
-  particleState = snap.particle | 0;
-  fxState = snap.fx | 0;
-  simDraws = snap.simDraws;
-  entityDraws = snap.entityDraws;
-  particleDraws = snap.particleDraws;
-  fxDraws = snap.fxDraws;
+  state[SIM] = snap.sim | 0;
+  state[ENTITY] = snap.entity | 0;
+  state[PARTICLE] = snap.particle | 0;
+  state[FX] = snap.fx | 0;
+  draws[SIM] = snap.simDraws;
+  draws[ENTITY] = snap.entityDraws;
+  draws[PARTICLE] = snap.particleDraws;
+  draws[FX] = snap.fxDraws;
 }
 
 /** Zero the draw counters. Golden-frame tests count draws over a known span. */
 export function resetDrawCounts(): void {
-  simDraws = 0;
-  entityDraws = 0;
-  particleDraws = 0;
-  fxDraws = 0;
+  draws.fill(0);
 }
 
 /** Draws taken since the last `resetDrawCounts`, per stream. */
 export function drawCounts(): { sim: number; entity: number; particle: number; fx: number } {
-  return { sim: simDraws, entity: entityDraws, particle: particleDraws, fx: fxDraws };
+  return { sim: draws[SIM], entity: draws[ENTITY], particle: draws[PARTICLE], fx: draws[FX] };
 }
