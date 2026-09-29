@@ -1,7 +1,7 @@
 # Sandbox MT prototype: a multithreaded sweep and a sub-cell look
 
-Status: **prototype** on branch `proto/sandbox-mt` (2026-09-29). Only the Sandbox
-world uses it. Levels, the Builder and saves are unchanged.
+Status: **prototype**, merged to `main` in `db444d1` (PR #3, 2026-09-29). Only the
+Sandbox world uses it. Levels, the Builder and saves are unchanged.
 
 The goal: make room for finer, busier material scenes. That means a sim that
 scales across cores (Noita's approach, Web Workers over shared memory) and a
@@ -24,8 +24,15 @@ cost, which is why this route was taken instead.
 **Enabling it.** Use `?threads=N` (0 = serial). The default is cores−2, capped
 at 6. It needs cross-origin isolation: `vite.config.ts` sends COOP `same-origin`
 and COEP `credentialless` on dev and preview. A static host needs the same two
-headers, e.g. a Cloudflare Pages `_headers` file. Without them there is no
-SharedArrayBuffer, so the Sandbox runs serial. The runtime A/B switch is
+headers. **The hosted game (Cloudflare Pages) deliberately does not send them**
+(no `public/_headers`, decided 2026-09-29), so hosted play runs the serial sweep.
+Reason: the pool is built in `Game`'s constructor, so an isolated page spawns up
+to 6 sim workers and their shared buffers at load for EVERY visitor, campaign-only
+players and phones included, not just when the Workshop opens. Before adding the
+headers, start the pool lazily with the Workshop (or cap it on small devices) and
+measure the campaign's cost. Without the headers there is no SharedArrayBuffer, so
+the Sandbox runs serial (as it does in any browser that does not support
+`credentialless`). The runtime A/B switch is
 `__game.ctx.simulation.parallel.enabled`.
 
 **The substep.** Everything around the sweep stays serial on main, exactly

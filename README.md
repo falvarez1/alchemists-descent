@@ -55,7 +55,11 @@ cursor) compiles the document into a disposable custom level. See
 **Expedition** — choose Begin or Continue. Find the brass bell in the Breathing
 Works and carry it to the lower gate; deeper floors use keyed portals. Rest at
 the warm refuge to refill health and glowseeds. Other waystones require real fire.
-Death preserves the level and leaves a recoverable portion of carried gold.
+You carry three **return phials**. A death spends one and returns you to your last
+checkpoint with the world intact; the gold you were carrying spills where you fell,
+guarded by whatever killed you. A rest at the warm refuge, or a Sanctum, pours one
+back (never past three). Die with none left and the run ends at its ledger, from
+which you can descend again.
 
 - `A`/`D` move, `SPACE` jump / levitate (coyote time + jump buffering included)
 - `S` crouches, crawls with movement, or dives in air; `Shift`/`C` grabs walls
@@ -64,10 +68,14 @@ Death preserves the level and leaves a recoverable portion of carried gold.
   (multicasts, modifiers, impact triggers, the flask-fed Infuser); earn cards by
   lighting waystones, descending, and brewing
 - `1`/`2` or mouse wheel switch wands, `B` opens the wand bench
-- `E` interact / siphon, `Q` pour, right click throw a flask, `X` drink,
-  `3`–`6` select a flask, `F` kick, `G` carry, `V` throw a glowseed
+- `E` takes the story's beat (Pell, a resonant valve, a page), else lifts
+  (telekinesis) the body or crate under the cursor and sets it down again, else
+  pulls a lever in reach, else siphons a flask;
+  `Q` pour, right click throw a flask, `X` drink, `3`–`6` select a flask,
+  `F` kick, `G` carry, `V` throw a glowseed, `L` the hooded lantern
   (brew elixirs at cauldrons: real reagents in the bowl + real fire against it)
-- `M` fog-of-war map, `R` rise again when dead, `F3` perf overlay
+- `M` fog-of-war map, `R` rise again when dead, `P` save a clip of the last
+  seconds, `N` mute, `F3` perf overlay
 - Escape pauses; Controls & comfort provides remapping, text size, flash and
   shake controls, high-readability lighting, and creature sound captions.
 

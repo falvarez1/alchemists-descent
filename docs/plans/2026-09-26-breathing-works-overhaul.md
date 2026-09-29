@@ -1,6 +1,7 @@
 # Breathing Works — the fun & polish overhaul
 
-**Status: in progress on `feat/breathing-works` (2026-09-26).** Built on a verbatim
+**Status: merged to `main` (PR #2, 2026-09-28); the waves below are the record of
+what was built.** Started 2026-09-26 on `feat/breathing-works`, built on a verbatim
 snapshot of the `feat/living-descent` working tree (commit `5a33e8d`).
 
 ## Why
@@ -87,7 +88,8 @@ additive** (`core/types.ts`, `core/events.ts`, `ui/Hud.ts`, `game/Game.ts`,
 - Worldgen changes bump `GEN_VERSION` and re-record goldens on your branch; the
   integrator sets the final version and re-records once after merging.
 - Cell IDs stay append-only; `CELL_COUNT` stays 39 unless a workstream truly needs
-  a new cell (avoid).
+  a new cell (avoid). *(Wave 1's rule. Waves 2 and 3 appended ids 39–43; the count
+  is now 44 — `CLAUDE.md` has the current figure.)*
 - New player-facing copy uses the house tone; no uppercase shouting except
   callouts and titles that were already uppercase by design.
 
