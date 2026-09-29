@@ -322,11 +322,24 @@ export interface ParticleSink {
   submitParticles(ctx: Ctx, offsetX?: number, offsetY?: number): void;
 }
 
+/**
+ * GPU overlay commands (WebGL GPU-compose frames, render/GpuFxLayer): each
+ * overlay write is appended in draw order and scattered on the GPU instead of
+ * landing in `data`. `pixelIndex` is the overlay layout's index; `coverage`
+ * is 1 for a replace (setPx), 0 for an add (addPx), a for a premultiplied
+ * blend (blendFinePx).
+ */
+export interface OverlayCommandSink {
+  put(pixelIndex: number, r: number, g: number, b: number, coverage: number): void;
+}
+
 export interface OverlaySurface {
   /** Presentation pixels per material cell; omitted by legacy backends. */
   readonly scale?: number;
   /** Present when this frame's particles draw on the GPU (see ParticleSink). */
   readonly particles?: ParticleSink;
+  /** Present when this frame's overlay writes go to the GPU (see OverlayCommandSink). */
+  readonly commands?: OverlayCommandSink;
   /** Float RGBA staging, VIEW_W x VIEW_H, Y-flipped rows. */
   readonly data: Float32Array;
   /** Record a touched pixel (pixel index, not float offset). Idempotent. */

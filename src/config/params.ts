@@ -269,6 +269,7 @@ export function createDefaultPostFxSettings(): PostFxSettings {
     // same-session A/B and fallback checks (docs/GPU-COMPOSE-PLAN.md).
     gpuCompose: true,
     gpuParticles: true,
+    gpuOverlay: true,
     bloomEnabled: true,
     bloomStrength: 0.18,
     bloomRadius: 0.2,

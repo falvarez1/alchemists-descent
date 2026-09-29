@@ -29,6 +29,7 @@ import type { Ctx, MaterialParams } from '@/core/types';
 import type {
   CompositorLens,
   LightField,
+  OverlayCommandSink,
   OverlaySurface,
   ParticleSink,
   ParallaxBitmapLayer,
@@ -303,15 +304,16 @@ void main() {
   // work can be skipped (exact CPU semantics: setPx overwrote the buffer).
   ivec2 finePx = clamp(ivec2(vUv * vec2(${PIXEL_W}.0, ${PIXEL_H}.0)), ivec2(0), ivec2(${PIXEL_W - 1}, ${PIXEL_H - 1}));
   vec4 ov = texelFetch(uOverlay, finePx, 0);
-  // The GPU FX layer sits under every sprite: an opaque write (a = 1) replaces
-  // the terrain like setPx did, an additive one (a = 0) adds like addPx.
+  // The GPU FX layer (render/GpuFxLayer): premultiplied rgb + coverage, laid
+  // over the terrain as terrain * (1 - coverage) + rgb. Full coverage replaced
+  // the terrain outright (setPx semantics), so its work is skipped too.
   vec4 fxp = uFxOn ? texelFetch(uFx, finePx, 0) : vec4(0.0);
 
   vec3 c = vec3(0.0);
   // Frame alpha: 0 where the open backdrop shows with no sprite over it (the
   // WebGL depth particles blend there only — render/depth/ForegroundGL).
   float bgMask = 0.0;
-  if (ov.a <= 0.5 && fxp.a > 0.5) {
+  if (ov.a <= 0.5 && fxp.a >= 0.999) {
     c = fxp.rgb;
   } else if (ov.a <= 0.5) {
     int wx = uCam.x + vx;
@@ -759,10 +761,10 @@ void main() {
   // (0, 0.5], so the terrain shows through by 1 - 2a (creature gel/jelly).
   // Re-apply the world-floor mask after overlay combine so sprites/particles
   // cannot leak into the camera void below small or chunked worlds.
-  if (fxp.a <= 0.5) c += fxp.rgb;
+  if (fxp.a < 0.999) c = c * (1.0 - fxp.a) + fxp.rgb;
   vec3 outColor = c * (1.0 - clamp(ov.a * 2.0, 0.0, 1.0)) + ov.rgb;
   if (uCam.y + vy >= ${HEIGHT}) { outColor = vec3(0.0); bgMask = 0.0; }
-  gl_FragColor = vec4(outColor, bgMask > 0.5 && ov.a <= 0.0 ? 0.0 : 1.0);
+  gl_FragColor = vec4(outColor, bgMask > 0.5 && ov.a <= 0.0 && fxp.a <= 0.0 ? 0.0 : 1.0);
 
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -794,6 +796,7 @@ function packCellValue(
 class Overlay implements OverlaySurface {
   readonly scale = PIXEL_SCALE;
   particles: ParticleSink | undefined = undefined;
+  commands: OverlayCommandSink | undefined = undefined;
   readonly data = new Float32Array(PIXEL_W * PIXEL_H * 4);
   readonly half = new Uint16Array(PIXEL_W * PIXEL_H * 4);
   /** The staging floats' bits, for the inline f16 conversion in commit(). */
@@ -1025,7 +1028,6 @@ export class GpuCompose {
     this.overlayTex.needsUpdate = true;
 
     this.fx = new GpuFxLayer(renderer, this.lightTex);
-    this.overlay.particles = this.fx;
 
     for (let i = 0; i < COMPOSE_MAX_WAVES; i++) this.waveA.push(new THREE.Vector4());
     for (let i = 0; i < COMPOSE_MAX_LENSES; i++) this.lensV.push(new THREE.Vector4());
@@ -1204,6 +1206,12 @@ export class GpuCompose {
     }
     u.uLensCount.value = lCount;
 
+    // The FX layer takes particles and/or every overlay write this frame
+    // (postFx.gpuParticles / gpuOverlay, runtime A/B); off, they fall back to
+    // the CPU paths: FxSprites particles and the staged overlay upload.
+    const fxOn = this.fx.available;
+    this.overlay.particles = fxOn && ctx.state.postFx.gpuParticles ? this.fx : undefined;
+    this.overlay.commands = fxOn && ctx.state.postFx.gpuOverlay ? this.fx : undefined;
     this.fx.beginFrame();
     this.fx.setDarkOn(u.uDarkOn.value as boolean);
     this.overlay.clear();

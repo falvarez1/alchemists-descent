@@ -884,6 +884,7 @@ export class Game {
     }
     mix(post.gpuCompose ? 1 : 0);
     mix(post.gpuParticles ? 1 : 0);
+    mix(post.gpuOverlay ? 1 : 0);
     mix(render.compose ? 1 : 0);
     mixFloat(ctx.params.global.ambient);
     mixFloat(ctx.params.global.maxBrightness);

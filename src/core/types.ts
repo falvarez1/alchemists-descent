@@ -1058,6 +1058,13 @@ export interface PostFxSettings {
    * off (or any CPU/WebGPU compose frame) draws them through FxSprites.
    */
   gpuParticles: boolean;
+  /**
+   * GPU overlay (render/GpuFxLayer): on a GPU-composed WebGL frame every
+   * sprite pixel write is appended as a command and scattered on the GPU
+   * instead of staged in a CPU float buffer, half-float converted and
+   * uploaded. Runtime-flippable for A/B.
+   */
+  gpuOverlay: boolean;
   /** UnrealBloomPass layer: emissive cells, blasts, and hot materials. */
   bloomEnabled: boolean;
   bloomStrength: number;

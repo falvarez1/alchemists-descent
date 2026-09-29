@@ -200,15 +200,18 @@ export class FrameComposer implements PixelSurface {
     const idx = pi * 4;
     const overlay = this.overlay;
     if (overlay !== null) {
+      const cmd = overlay.commands;
       if ((overlay.scale ?? 1) > 1) {
         const scale = overlay.scale!, width = VIEW_W * scale;
         for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) {
           const fine = ((VIEW_H - 1 - vy) * scale + dy) * width + vx * scale + dx, offset = fine * 4;
+          if (cmd) { cmd.put(fine, r, g, b, 1); continue; }
           overlay.data[offset] = r; overlay.data[offset + 1] = g; overlay.data[offset + 2] = b; overlay.data[offset + 3] = 1;
           overlay.mark(fine);
         }
         return;
       }
+      if (cmd) { cmd.put(pi, r, g, b, 1); return; }
       const d = overlay.data;
       d[idx] = r;
       d[idx + 1] = g;
@@ -234,6 +237,8 @@ export class FrameComposer implements PixelSurface {
     const width = VIEW_W * scale, height = VIEW_H * scale;
     if (vx < 0 || vx >= width || vy < 0 || vy >= height) return;
     const pi = (height - 1 - vy) * width + vx, idx = pi * 4;
+    const cmd = overlay.commands;
+    if (cmd) { cmd.put(pi, r, g, b, 1); return; }
     overlay.data[idx] = r; overlay.data[idx + 1] = g; overlay.data[idx + 2] = b; overlay.data[idx + 3] = 1;
     overlay.mark(pi);
   }
@@ -261,6 +266,8 @@ export class FrameComposer implements PixelSurface {
     const width = VIEW_W * scale, height = VIEW_H * scale;
     if (vx < 0 || vx >= width || vy < 0 || vy >= height) return;
     const pi = (height - 1 - vy) * width + vx, idx = pi * 4, d = overlay.data, k = 1 - a;
+    const cmd = overlay.commands;
+    if (cmd) { cmd.put(pi, r, g, b, a); return; }
     const dstA = d[idx + 3] > 0.5 ? 1 : d[idx + 3] * 2;
     const outA = a + dstA * k;
     d[idx] = r + d[idx] * k; d[idx + 1] = g + d[idx + 1] * k; d[idx + 2] = b + d[idx + 2] * k;
@@ -290,6 +297,23 @@ export class FrameComposer implements PixelSurface {
     const vy0 = Math.round((y0 + this.drawOffsetY - this.renderCamY) * scale);
     const width = VIEW_W * scale, height = VIEW_H * scale, d = overlay.data;
     const i0 = Math.max(0, -vx0), i1 = Math.min(w, width - vx0);
+    const cmd = overlay.commands;
+    if (cmd) {
+      for (let j = 0; j < h; j++) {
+        const vy = vy0 + j;
+        if (vy < 0 || vy >= height) continue;
+        const row = (height - 1 - vy) * width + vx0;
+        for (let i = i0; i < i1; i++) {
+          const k = j * w + i, al = a[k];
+          if (al >= 0.999) cmd.put(row + i, rgb[k * 3], rgb[k * 3 + 1], rgb[k * 3 + 2], 1);
+          else if (al > 0) cmd.put(row + i, rgb[k * 3], rgb[k * 3 + 1], rgb[k * 3 + 2], al);
+          if (glow !== null && (glow[k * 3] > 0 || glow[k * 3 + 1] > 0 || glow[k * 3 + 2] > 0)) {
+            cmd.put(row + i, glow[k * 3], glow[k * 3 + 1], glow[k * 3 + 2], 0);
+          }
+        }
+      }
+      return;
+    }
     for (let j = 0; j < h; j++) {
       const vy = vy0 + j;
       if (vy < 0 || vy >= height) continue;
@@ -320,6 +344,8 @@ export class FrameComposer implements PixelSurface {
     const width = VIEW_W * scale, height = VIEW_H * scale;
     if (vx < 0 || vx >= width || vy < 0 || vy >= height) return;
     const pi = (height - 1 - vy) * width + vx, idx = pi * 4;
+    const cmd = overlay.commands;
+    if (cmd) { cmd.put(pi, r, g, b, 0); return; }
     overlay.data[idx] += r; overlay.data[idx + 1] += g; overlay.data[idx + 2] += b;
     overlay.mark(pi);
   }
@@ -332,15 +358,18 @@ export class FrameComposer implements PixelSurface {
     const idx = pi * 4;
     const overlay = this.overlay;
     if (overlay !== null) {
+      const cmd = overlay.commands;
       if ((overlay.scale ?? 1) > 1) {
         const scale = overlay.scale!, width = VIEW_W * scale;
         for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) {
           const fine = ((VIEW_H - 1 - vy) * scale + dy) * width + vx * scale + dx, offset = fine * 4;
+          if (cmd) { cmd.put(fine, r, g, b, 0); continue; }
           overlay.data[offset] += r; overlay.data[offset + 1] += g; overlay.data[offset + 2] += b;
           overlay.mark(fine);
         }
         return;
       }
+      if (cmd) { cmd.put(pi, r, g, b, 0); return; }
       const d = overlay.data;
       d[idx] += r;
       d[idx + 1] += g;

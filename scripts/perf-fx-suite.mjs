@@ -8,6 +8,7 @@
 //   boss       boss-fight FX storm: ~60 live spell projectiles, lightning casts, ember
 //              bursts, explosions and a few foes — the "crazy boss fight" load
 //   bodies     80 dynamic rigid bodies (boxes + circles, wood/stone/metal) under repeated blasts
+//   pile       destruction stress: 400 requested bodies (capped by the physics layer) under blasts
 //
 // Stress scenes run on the authored physics-test level (findability repair never
 // re-carves it). Every scene is rebuilt deterministically (seeded placement).
@@ -142,6 +143,30 @@ const SETUPS = {
     });
     return { bodies: ctx.rigidBodies.bodies.length };
   },
+
+  // Destruction stress: as many dynamic bodies as the physics layer allows
+  // (ask for 400), piled in one arena under repeated blasts. Measures how far
+  // "more destructible objects" can scale; the live count is in `peak`.
+  pile: ({ seed }) => {
+    const h = window.__perfArena(seed, { w: 560, h: 260 });
+    const { ctx, px, py, rnd } = h;
+    const mats = ['wood', 'stone', 'metal'];
+    let n = 0;
+    for (let row = 0; row < 10; row++) for (let col = 0; col < 40; col++) {
+      const x = px - 260 + col * 13 + rnd() * 3, y = py - 235 + row * 14;
+      const material = mats[n % 3];
+      if (n % 4 === 3) ctx.rigidBodies.spawn({ kind: 'circle', radius: 2 + rnd() * 2.5 }, x, y, { material });
+      else ctx.rigidBodies.spawn({ kind: 'box', halfW: 2 + rnd() * 3, halfH: 2 + rnd() * 3 }, x, y, { material, angle: rnd() });
+      n++;
+    }
+    let b = 0;
+    h.every(900, () => {
+      const x = px - 200 + (b++ % 5) * 100;
+      ctx.explosions.trigger(x, py + 8, 10);
+      ctx.rigidBodies.applyRadialImpulse(x, py + 8, 70, 6);
+    });
+    return { requested: n, bodies: ctx.rigidBodies.bodies.length };
+  },
 };
 
 // Installed once per page: arena carving, seeded rng, managed intervals.
@@ -184,7 +209,7 @@ function installHelpers() {
 // ---------------------------------------------------------------- recording
 async function recordScene(page, cdp, name, url) {
   const setupResult = await page.evaluate(SETUPS[name], { seed: 0x5eed + name.length * 7919 });
-  await page.waitForTimeout(name === 'bodies' ? 2500 : 1500); // let the scene reach steady state
+  await page.waitForTimeout(name === 'bodies' || name === 'pile' ? 2500 : 1500); // let the scene reach steady state
   if (cdp && PROFILE) await cdp.send('Profiler.start');
   const res = await page.evaluate(async (FRAMES) => {
     window.__perfSamples = [];
