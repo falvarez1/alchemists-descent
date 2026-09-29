@@ -109,6 +109,9 @@ export default defineConfig(({ mode }) => ({
           // backend (render/webGpuBackendModule): keep it out of the boot download.
           if (/[\\/]node_modules[\\/]three[\\/]build[\\/]three\.(webgpu|tsl)\.js$/.test(id)) return 'vendor-three-webgpu';
           if (/[\\/]node_modules[\\/]three[\\/]/.test(id)) return 'vendor-three';
+          // Rapier's SIMD and scalar builds are separate lazy chunks: initRapier
+          // imports only the one this browser can run.
+          if (/[\\/]node_modules[\\/]@dimforge[\\/]rapier2d-simd-compat[\\/]/.test(id)) return 'vendor-rapier-simd';
           if (/[\\/]node_modules[\\/]@dimforge[\\/]rapier2d-compat[\\/]/.test(id)) return 'vendor-rapier';
           return 'vendor';
         },
@@ -118,7 +121,7 @@ export default defineConfig(({ mode }) => ({
   // gifenc is only reached from the clips worker, so the dev server found it
   // late and re-optimized mid-session — reloading a page a probe (or a
   // playtester) had already started a run in. Pre-bundle it up front.
-  optimizeDeps: { include: ['gifenc'] },
+  optimizeDeps: { include: ['gifenc', '@dimforge/rapier2d-compat', '@dimforge/rapier2d-simd-compat'] },
   server: {
     open: false,
     watch: {
