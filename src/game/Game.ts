@@ -1,4 +1,4 @@
-import { CELL_PREVIEW_SCALE, DEATH_SLOWMO_FRAMES, DEATH_SLOWMO_MIN, VIEW_H, VIEW_W } from '@/config/constants';
+import { DEATH_SLOWMO_FRAMES, DEATH_SLOWMO_MIN, VIEW_H, VIEW_W } from '@/config/constants';
 import { createDefaultPostFxSettings, createDefaultRenderSettings, createDefaultWandLightSettings, createGameParams } from '@/config/params';
 import { installTuningPersistence } from '@/config/tuningStore';
 import { EventBus } from '@/core/events';
@@ -169,7 +169,7 @@ export class Game {
       currentElement: Cell.Sand,
       currentSpell: 'bolt',
       currentBiome: 'earthen',
-      brushSize: 6 * CELL_PREVIEW_SCALE, // same on-screen brush in the ?cells=half preview
+      brushSize: 6,
       playerSpawned: false,
       worldSeed: randomSeed(),
       difficulty: 2, // shipped balance until a run picks otherwise
@@ -243,16 +243,6 @@ export class Game {
     const sparks = new Sparks();
     ctx.sparks = sparks;
     this.disposables.push({ dispose: ctx.events.on('levelChanged', () => sparks.clear()) });
-    if (CELL_PREVIEW_SCALE > 1) {
-      // The ?cells=half preview doubles the grid, but levels and characters are
-      // authored in cells, so a run just looks zoomed out. Say so once.
-      let warned = false;
-      this.disposables.push({ dispose: ctx.events.on('levelChanged', () => {
-        if (warned) return;
-        warned = true;
-        ctx.events.emit('toast', { text: 'HALF-CELL PREVIEW: levels are built in cells, so this looks zoomed out — try Workshops > Material sandbox' });
-      }) });
-    }
     ctx.explosions = new Explosions(ctx);
     ctx.lightning = new Lightning(ctx);
     ctx.projectileCtl = new Projectiles();

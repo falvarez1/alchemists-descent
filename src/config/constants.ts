@@ -1,27 +1,15 @@
-/**
- * PREVIEW `?cells=half`: the world at twice the resolution — every cell half
- * its on-screen size, the size of today's fine presentation pixels — so the
- * look, the material behaviour and the cost of smaller cells can be seen in
- * the Sandbox. Gameplay (the wizard, creatures, levels) is authored in cells
- * and is NOT rescaled: it is a material-sim preview, not a game mode.
- * Read once at startup (like ?pixelScale); tests and Node always get 1.
- */
-export const CELL_PREVIEW_SCALE =
-  typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('cells') === 'half' ? 2 : 1;
-
 /** World grid dimensions (simulation cells). */
-export const WIDTH = 1600 * CELL_PREVIEW_SCALE;
-export const HEIGHT = 1064 * CELL_PREVIEW_SCALE;
+export const WIDTH = 1600;
+export const HEIGHT = 1064;
 
 // A fixed 16:9 logical canvas keeps gameplay framing stable across displays.
-export const VIEW_W = 640 * CELL_PREVIEW_SCALE;
-export const VIEW_H = 360 * CELL_PREVIEW_SCALE;
+export const VIEW_W = 640;
+export const VIEW_H = 360;
 
 /** Renderer output resolution (CSS pixels of the canvas backing store).
- *  Kept at exactly 2× the camera window (2 px/cell — crisp integer scaling);
- *  the half-cell preview keeps the same canvas at 1 px/cell. */
-export const RENDER_W = (640 * 2);
-export const RENDER_H = (360 * 2);
+ *  Kept at exactly 2× the camera window (2 px/cell — crisp integer scaling). */
+export const RENDER_W = VIEW_W * 2;
+export const RENDER_H = VIEW_H * 2;
 
 /** Margin of cells simulated beyond the camera window. */
 export const SIM_MARGIN = 44;
@@ -44,8 +32,8 @@ export const SIM_MARGIN = 44;
 export const MAX_PARTICLES = 12000;
 
 /** Fog-of-war minimap mask dimensions (1:8 downsample of the world). */
-export const MINIMAP_W = 200 * CELL_PREVIEW_SCALE;
-export const MINIMAP_H = 133 * CELL_PREVIEW_SCALE;
+export const MINIMAP_W = 200;
+export const MINIMAP_H = 133;
 
 /** Death slow-motion: game ticks the slow-mo lasts, and its slowest time scale.
  *  The scale ramps from MIN back to 1.0 over the timer (a juicy ease-out as the

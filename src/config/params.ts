@@ -1,4 +1,3 @@
-import { CELL_PREVIEW_SCALE } from '@/config/constants';
 import { Cell } from '@/sim/CellType';
 import { loadBackdropSettings } from '@/config/backdrop';
 import type {
@@ -20,9 +19,7 @@ import type {
  */
 
 export const GLOBAL_PARAMS: GlobalParams = {
-  // Half-size cells (?cells=half) take two sim substeps per tick so a falling
-  // grain crosses the same screen distance per tick as a full-size one.
-  simSpeed: CELL_PREVIEW_SCALE,
+  simSpeed: 1.0,
   maxBrightness: 2.5,
   // Raised from the original 0.14: with the squared light curve, this floor
   // keeps the caves moody while letting shadowed rock read as silhouette.

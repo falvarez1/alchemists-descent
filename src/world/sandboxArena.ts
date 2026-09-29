@@ -1,4 +1,4 @@
-import { CELL_PREVIEW_SCALE, HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
+import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import type { Ctx } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
@@ -31,38 +31,30 @@ import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
  * bench you learn is the bench you get back.
  */
 
-// Laid out in DESIGN cells. The half-cell preview (?cells=half) stamps each
-// design cell as an S x S block of its smaller cells, so the workbench is the
-// same bench on screen while everything poured onto it is finer.
-const S = CELL_PREVIEW_SCALE;
 const FLOOR_Y = 880;
-const CEIL_Y = FLOOR_Y - VIEW_H / S + 12; // one viewport of headroom
-const CENTER_X = Math.floor(WIDTH / S / 2);
-const HALF_W = Math.floor((VIEW_W / S) * 0.7);
+const CEIL_Y = FLOOR_Y - VIEW_H + 12; // one viewport of headroom
+const CENTER_X = Math.floor(WIDTH / 2);
+const HALF_W = Math.floor(VIEW_W * 0.7);
 const WALL_X0 = CENTER_X - HALF_W;
 const WALL_X1 = CENTER_X + HALF_W;
 const SHELL = 16;
 
 /** Where the camera sits: the whole chamber in frame, floor toward the bottom. */
 export const SANDBOX_FOCUS = {
-  x: CENTER_X * S,
-  y: (Math.floor((CEIL_Y + FLOOR_Y) / 2) + 14) * S,
+  x: CENTER_X,
+  y: Math.floor((CEIL_Y + FLOOR_Y) / 2) + 14,
 };
 
 export function stampSandboxArena(ctx: Ctx): void {
   const world = ctx.world;
 
-  const setCell = (x: number, y: number, type: Cell): void => {
+  const set = (x: number, y: number, type: Cell): void => {
     if (x < 0 || y < 0 || x >= WIDTH || y >= HEIGHT) return;
     const i = world.idx(x, y);
     world.types[i] = type;
     world.colors[i] = COLOR_FN[type]?.() ?? EMPTY_COLOR;
     world.life[i] = 0;
     world.charge[i] = 0;
-  };
-  // One design cell = an S x S block of world cells (S = 1 outside the preview).
-  const set = (x: number, y: number, type: Cell): void => {
-    for (let dy = 0; dy < S; dy++) for (let dx = 0; dx < S; dx++) setCell(x * S + dx, y * S + dy, type);
   };
   const fill = (xa: number, ya: number, xb: number, yb: number, type: Cell): void => {
     for (let y = Math.min(ya, yb); y <= Math.max(ya, yb); y++) {

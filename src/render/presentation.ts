@@ -1,11 +1,10 @@
-import { CELL_PREVIEW_SCALE, VIEW_H, VIEW_W } from '@/config/constants';
+import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { CameraApi } from '@/core/types';
 
 /** Presentation pixels are independent of material cells. Fine mode exposes
  * sub-cell creature poses and source-art detail without changing world units.
  * The startup override makes identical-scene A/B measurements repeatable. */
-export const PIXEL_SCALE = CELL_PREVIEW_SCALE > 1 ? 1 // half-size cells ARE the fine pixels
-  : typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('pixelScale') !== '1' ? 2 : 1;
+export const PIXEL_SCALE = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('pixelScale') !== '1' ? 2 : 1;
 export const PIXEL_W = VIEW_W * PIXEL_SCALE;
 export const PIXEL_H = VIEW_H * PIXEL_SCALE;
 
