@@ -62,7 +62,7 @@
     "verify:virtual-playtest": "node scripts/verify-virtual-playtest.mjs",
     "verify:campaign-playtest": "node scripts/verify-campaign-playtest.mjs",
     "bench:virtual-world": "node scripts/bench-virtual-world.mjs",
-    "build:wasm": "asc assembly/worldgen.ts --outFile build/roundCorners.wasm --runtime stub --optimize --noAssert && node scripts/embed-wasm.mjs",
+    "build:wasm": "asc assembly/worldgen.ts --outFile build/roundCorners.wasm --runtime stub --optimize --noAssert && asc assembly/light.ts --outFile build/light.wasm --runtime stub --optimize -O3 --noAssert --enable simd && node scripts/embed-wasm.mjs",
     "perf:scene": "node scripts/perf-scene.mjs",
     "perf:ab": "node scripts/perf-ab-feature.mjs",
     "perf:compose-backends": "node scripts/perf-compose-backends.mjs",
