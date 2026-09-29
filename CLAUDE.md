@@ -32,6 +32,15 @@ npm run gen:builder-html   # regenerate builder.html from index.html (NEVER hand
 npm run lint               # eslint src
 node scripts/verify-game.mjs   # headless browser smoke test (needs dev server running + Edge)
 node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs saved baseline)
+# Performance / FX (docs/PERF-2026-09.md; dev server running): perf-fx-suite.mjs
+# (7 stress scenes incl. boss FX, flood, 400-body pile; --ab URL_A,URL_B for an
+# interleaved A/B against a frozen worktree's server, --profile, --init),
+# probe-gpu-fx.mjs (GPU overlay/particles vs CPU parity; STRICT=1),
+# probe-gpu-sparks.mjs, probe-physics-stress.mjs. Node benches: bench-sim.mjs
+# (cell sim, behaviour-hashed), bench-light.mjs, bench-rapier-terrain.mjs.
+# npm run build:wasm builds + embeds BOTH AssemblyScript kernels (worldgen, light).
+# After any npm install/upgrade restart the dev server with --force: a running
+# server keeps serving the old pre-bundled dependency.
 # Builder end-to-end probes (dev server running): verify-builder.mjs,
 # verify-builder-suite.mjs, verify-builder-expedition.mjs,
 # verify-builder-pro.mjs, verify-builder-ux.mjs, verify-builder-prefabs.mjs,
