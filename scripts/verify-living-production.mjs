@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { launchBrowser } from './browser-launch.mjs';
+import { waitForOpeningEnd } from './run-helpers.mjs';
 
 const output = 'verify-out/living-descent'; mkdirSync(output, { recursive: true });
 const browser = await launchBrowser({ headless: true });
@@ -13,7 +14,8 @@ try {
   await page.screenshot({ path: `${output}/production-entry.png` });
   await page.locator('[data-entry="begin"]').click();
   await page.locator('#expedition-entry').waitFor({ state: 'hidden' });
-  await page.waitForTimeout(5000);
+  await waitForOpeningEnd(page); // the plates hold the world still; a key press would only skip them
+  await page.waitForTimeout(600);
   await page.screenshot({ path: `${output}/production-intake.png` });
   await page.keyboard.down('KeyD'); await page.waitForTimeout(400);
   await page.keyboard.press('Space', { delay: 180 }); await page.waitForTimeout(900); await page.keyboard.up('KeyD');
@@ -26,7 +28,7 @@ try {
   await page.locator('[name="textScale"]').selectOption('1.3');
   assert.equal(await page.locator('[name="trickshotEnabled"]').isChecked(), false);
   await page.locator('[name="trickshotEnabled"]').check();
-  await page.locator('[name="timeScale"]').focus(); await page.keyboard.press('ArrowRight');
+  // (The time-scale slider was cut from the settings in the free-web redesign; text size and trickshot still persist.)
   await page.screenshot({ path: `${output}/production-settings.png` });
   await page.setViewportSize({ width: 720, height: 480 });
   await page.screenshot({ path: `${output}/production-settings-compact.png` });
@@ -54,7 +56,6 @@ try {
   report.resumed = true;
   await page.locator('#expedition-pause').click(); await page.locator('#pause-settings').click();
   assert.equal(await page.locator('[name="trickshotEnabled"]').isChecked(), true);
-  assert.equal(await page.locator('[name="timeScale"]').inputValue(), '0.4');
   report.trickshotPreferencesResumed = true;
   await page.locator('[name="trickshotEnabled"]').uncheck();
   await page.locator('#player-settings button[value="close"]').click(); await page.keyboard.press('Escape');

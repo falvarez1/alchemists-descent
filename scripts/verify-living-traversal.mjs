@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
-import { execConsoleCommand, waitForRunReady } from './run-helpers.mjs';
+import { chooseBoonAndDoor, execConsoleCommand, waitForRunReady } from './run-helpers.mjs';
 
 const output = 'verify-out/living-descent'; mkdirSync(output, { recursive: true });
 const browser = await launchBrowser({ headless: true });
@@ -251,7 +251,8 @@ try {
   await page.setViewportSize({ width: 720, height: 480 });
   await page.screenshot({ path: `${output}/traversal-boon-compact.png` });
   await page.setViewportSize({ width: 1280, height: 720 });
-  await page.locator('#perk-row .perk-card').first().click();
+  // Below floor 1 the stair forks (the Rot Gardens or the Cold Store): a boon AND a door.
+  await chooseBoonAndDoor(page, 'd2');
   await page.locator('#descend-btn').click();
   await page.waitForFunction(() => window.__game.ctx.levels.current?.def.id === 'd2' && !window.__game.ctx.levels.transitioning);
   report.arrival = await page.evaluate(() => ({ level: window.__game.ctx.levels.current.def.id, alive: !window.__game.ctx.player.dead }));

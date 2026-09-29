@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { launchBrowser } from './browser-launch.mjs';
-import { execConsoleCommand, waitForConsoleApi, waitForRunReady } from './run-helpers.mjs';
+import { execConsoleCommand, waitForConsoleApi, waitForOpeningEnd, waitForRunReady } from './run-helpers.mjs';
 
 const output = 'verify-out/living-descent';
 mkdirSync(output, { recursive: true });
@@ -33,7 +33,8 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.locator('[data-entry="begin"]').click();
   await waitForRunReady(page);
-  await page.waitForTimeout(4500);
+  await waitForOpeningEnd(page); // the plates hold the world still; a key press would only skip them
+  await page.waitForTimeout(600);
   await page.screenshot({ path: `${output}/intake-desktop.png` });
   await verifyFlaskLayout();
   report.opening = await page.evaluate(() => {

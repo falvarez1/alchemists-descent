@@ -1,6 +1,9 @@
-// Runtime probe for early pacing: D1 should start deliberately slower, later
-// depths should approach the old baseline, and mobility upgrades should be a
-// visible way to outgrow the slow start.
+// Runtime probe for pacing, as it reaches the movement code (the tuning table itself is pinned by
+// tests/progression-pacing.test.ts; config/pacing.ts): the alchemist runs at ONE speed on every floor
+// (playerDepthStep 0: the opening is faster now, not slower), creatures start at 0.85x on floor 1 and
+// reach full speed by floor 3, and mobility upgrades still let him outrun the baseline.
+// (Until 2026-09-26 the D1 player was deliberately slowed and D1 creatures ran at 0.55x; this probe
+// asserted those bands and went red when the pacing was retuned for the four-floor run.)
 // Usage: node scripts/verify-progression-pacing.mjs [url]
 import { chromium } from 'playwright-core';
 import { startConsoleTestRun } from './run-helpers.mjs';
@@ -159,11 +162,11 @@ const d6Enemy = await measureEnemyStep('d4');
 console.log(`  ..    player run vx: D1=${d1Run.vx}, D5=${d5Run.vx}, D1+mobility=${d1SwiftRun.vx}`);
 console.log(`  ..    enemy integration dx: D1=${d1Enemy.dx}, D6=${d6Enemy.dx}`);
 
-check('D1 baseline player run is slowed for onboarding', d1Run.vx >= 1.75 && d1Run.vx <= 2.05, JSON.stringify(d1Run));
-check('later depth player run returns near baseline', d5Run.vx >= 2.45 && d5Run.vx <= 2.75, JSON.stringify(d5Run));
-check('mobility upgrades visibly outrun D1 baseline', d1SwiftRun.vx >= d1Run.vx * 1.45 && d1SwiftRun.vx <= 3.7, JSON.stringify({ d1Run, d1SwiftRun }));
-check('D1 enemy movement integrates slower', d1Enemy.dx >= 0.22 && d1Enemy.dx <= 0.28, JSON.stringify(d1Enemy));
-check('later depth enemy movement returns to its per-kind baseline', d6Enemy.dx >= 0.43 && d6Enemy.dx <= 0.47, JSON.stringify(d6Enemy));
+check('D1 player runs at the baseline speed (no onboarding slowdown)', Math.abs(d1Run.vx - d5Run.vx) <= d5Run.vx * 0.03 && d1Run.vx >= 2.6 && d1Run.vx <= 3.1, JSON.stringify({ d1Run, d5Run }));
+check('later depth player run is the same baseline', d5Run.vx >= 2.6 && d5Run.vx <= 3.1, JSON.stringify(d5Run));
+check('mobility upgrades visibly outrun the baseline', d1SwiftRun.vx >= d1Run.vx * 1.2 && d1SwiftRun.vx <= 3.9, JSON.stringify({ d1Run, d1SwiftRun }));
+check('D1 creatures integrate at 0.85x of their full pace', d1Enemy.dx / d6Enemy.dx >= 0.82 && d1Enemy.dx / d6Enemy.dx <= 0.88, JSON.stringify({ d1Enemy, d6Enemy }));
+check('later depth creature movement is its per-kind baseline', d6Enemy.dx >= 0.43 && d6Enemy.dx <= 0.47, JSON.stringify(d6Enemy));
 check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
 
 console.log(`\nprogression pacing probe: ${pass} passed, ${fail} failed`);

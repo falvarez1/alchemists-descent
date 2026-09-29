@@ -34,6 +34,9 @@ const result = await page.evaluate(async () => {
     p.dead = false;
     p.hp = p.maxHp;
     p.invuln = 0;
+    // The arrival's grace (game/arrival): nothing lands while a floor's name is up. A direct hit
+    // straight after the level starts is absorbed; status deaths bypass damage() and were not.
+    ctx.state.arrivalGraceUntil = -1;
     p.lastDamageSource = null;
     p.status.wet = 0;
     p.status.oiled = 0;

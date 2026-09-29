@@ -166,3 +166,32 @@ export async function openRuntimeInspector(page, { timeout = 15000 } = {}) {
   }));
   throw new Error(`Runtime Inspector did not open on F9: ${JSON.stringify(state)}`);
 }
+
+/**
+ * A first descent opens on the story's plates (~9 s, the world held still behind
+ * them; any key skips them). The plates' class lands a beat AFTER `play-active`, so
+ * wait to see them start (a resumed run has none), then for them to end. A probe
+ * that presses a key or judges movement before this is skipping the opening, not
+ * testing the game.
+ */
+export async function waitForOpeningEnd(page, { timeout = 45000 } = {}) {
+  await page
+    .waitForFunction(() => document.body.classList.contains('story-cinema-active'), null, { timeout: 4000 })
+    .catch(() => undefined);
+  await page.waitForFunction(() => !document.body.classList.contains('story-cinema-active'), null, { timeout });
+}
+
+/**
+ * The Sanctum's descent asks for a boon AND a door: below floors 1-3 the stair forks
+ * (`button.sanc-door[data-level]`); above the Kiln there is one way down and the game
+ * chooses it. Real clicks: a boon, then `levelId`'s door when the stair forks (the
+ * first door when `levelId` is omitted), leaving the descend button armed.
+ */
+export async function chooseBoonAndDoor(page, levelId) {
+  await page.locator('#perk-row .perk-card').first().click();
+  const doors = page.locator('#sanctum-overlay .sanc-door');
+  if ((await doors.count()) > 0) {
+    const wanted = levelId ? page.locator(`#sanctum-overlay .sanc-door[data-level="${levelId}"]`) : doors;
+    await wanted.first().click();
+  }
+}

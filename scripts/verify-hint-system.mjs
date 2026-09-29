@@ -25,6 +25,15 @@ await page.waitForFunction(() => window.__game?.ctx?.hints, { timeout: 20000 });
 await page.evaluate(() => window.__game.ctx.levels.startRun(window.__game.ctx, { mode: 'test', worldSource: 'campaign-level', levelId: 'physics-test', seed: 1, loadout: 'fresh' }));
 await page.waitForFunction(() => window.__game.ctx.levels.current?.def.id === 'physics-test', { timeout: 20000 });
 await page.waitForFunction(() => window.__game.ctx.levels._transitioning === false, { timeout: 10000 });
+// A floor's arrival is the title card's beat: every teach card holds while a centre beat is on
+// screen and for 120 frames after it (game/Hints TEACH_ARRIVAL_HOLD_FRAMES). The card's timers
+// run on the wall clock, which synchronous tick() calls do not advance, so let real time pass too.
+await page.waitForTimeout(4500);
+// A test arena's #wave-banner never fades (a real floor's does), and it counts as a centre beat that
+// holds every lesson: clear it, let the overlay's calm poll notice, then let the 45-frame calm pass.
+await page.evaluate(() => { const b = document.getElementById('wave-banner'); if (b) b.style.display = 'none'; });
+await page.waitForTimeout(700);
+await page.evaluate(() => { for (let f = 0; f < 200; f++) window.__game.tick(); });
 
 // helper that runs inside the page: teleport, tick, report current hint + DOM
 const probe = async (setup) => page.evaluate((setupSrc) => {

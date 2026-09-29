@@ -197,6 +197,8 @@ try {
   await shot('sanctum-teaser');
   const descend = async (id) => {
     await realClick('#perk-row .perk-card');
+    // Where the stair forks (below floors 1-3) the descent also wants a door.
+    if (await page.locator('#sanctum-overlay .sanc-door').count()) await realClick(`#sanctum-overlay .sanc-door[data-level="${id}"]`);
     await realClick('#descend-btn');
     await page.waitForTimeout(90);
     const curtain = await page.evaluate(() => ({
@@ -240,6 +242,11 @@ try {
     return true;
   });
   check('the Kiln Heart houses the Colossus', colossus);
+  // The Colossus's fall starts the Kiln escape (the climb out of the flue; tests/story-escape.test.ts);
+  // victory is `runComplete`, which the story's ending emits at the top. This probe is about the
+  // ledger, so end the run the way the ending does.
+  await page.waitForTimeout(800);
+  await page.evaluate(() => window.__game.ctx.events.emit('runComplete', { gold: window.__game.ctx.state.score }));
   await page.waitForSelector('#run-summary.visible', { timeout: 12000 });
   await page.waitForTimeout(3200);
   const victory = await page.evaluate(() => ({

@@ -60,9 +60,16 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # (footfalls/splashes/tracks/vines/critters), bench-creatures.mjs,
 # perf-creatures-live.mjs. Player (docs/PLAYER-ART.md): player-studio.mjs
 # (every action posed + costume-ticked, zoomed), probe-player-death.mjs
-# Gameplay/runtime probes (dev server running): verify-descent-progression.mjs,
-# verify-progression-pacing.mjs, verify-bat-slime.mjs, verify-death-causes.mjs,
-# verify-god-mode-qa.mjs
+# Gameplay/runtime probes (dev server running): verify-tea-machine.mjs (floor 1 PLAYED with
+# real input: barricade, crank, the three faults, bell, gate), verify-living-traversal.mjs /
+# verify-living-progression.mjs / verify-run-lifecycle.mjs (route to the Sanctum, boon + door, all
+# four floors, victory ledger), verify-progression-pacing.mjs, verify-hint-system.mjs,
+# verify-first-run-hints.mjs, verify-death-causes.mjs, verify-overlay-hit.mjs (every menu's
+# controls reachable across window sizes), verify-bat-slime.mjs, verify-god-mode-qa.mjs.
+# A probe that presses keys after Begin must run-helpers' waitForOpeningEnd() (the opening's
+# plates skip on any key), and one that descends must chooseBoonAndDoor() (the stair forks).
+# Probes that hit `window.__game` in test arenas: the arena's #wave-banner never fades and holds
+# every teach card; a level's first 2 s are an arrival grace (`arrivalGraceUntil`) too.
 # Audio (dev server running): verify-audio-mix.mjs — buses/limiter/pan/attenuation,
 # volume sliders + persistence, stingers, lazy Grimoire art (we cannot listen:
 # ctx.audio.debugSnapshot() / debugRenderOffline() are the instruments)

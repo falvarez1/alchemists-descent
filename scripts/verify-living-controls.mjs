@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
-import { execConsoleCommand, waitForConsoleApi, waitForRunReady } from './run-helpers.mjs';
+import { execConsoleCommand, waitForConsoleApi, waitForOpeningEnd, waitForRunReady } from './run-helpers.mjs';
 const output = 'verify-out/living-descent'; mkdirSync(output, { recursive: true });
 const browser = await launchBrowser({ headless: true }); const page = await browser.newPage();
 const errors = [], report = { errors }; page.on('pageerror', e => errors.push(String(e)));
@@ -18,7 +18,7 @@ const press = async index => {
 try {
   await page.goto(process.argv[2] ?? 'http://127.0.0.1:5182/', { waitUntil: 'networkidle' });
   await waitForConsoleApi(page); await page.evaluate(() => window.__game.ctx.levels.ready);
-  await execConsoleCommand(page, 'run new --seed 777'); await waitForRunReady(page); await page.waitForTimeout(4500);
+  await execConsoleCommand(page, 'run new --seed 777'); await waitForRunReady(page); await waitForOpeningEnd(page); await page.waitForTimeout(600);
   const startX = await page.evaluate(() => window.__game.ctx.player.x);
   await page.evaluate(() => { window.__controlFixture.axes[0] = 1; }); await page.waitForTimeout(300);
   await page.evaluate(() => { window.__controlFixture.axes[0] = 0; });
@@ -39,7 +39,7 @@ try {
   report.disconnect = await page.evaluate(() => ({ pour: window.__game.ctx.input.pourHeld, siphon: window.__game.ctx.input.siphonHeld, firing: window.__game.ctx.player.firing }));
   assert.deepEqual(report.disconnect, { pour: false, siphon: false, firing: false });
   await page.locator('#expedition-pause').click(); await page.locator('#pause-settings').click();
-  await page.locator('button[aria-label^="Change left:"]').click(); await page.keyboard.press('KeyZ');
+  await page.locator('button[aria-label^="Change move left:"]').click(); await page.keyboard.press('KeyZ');
   await page.locator('#player-settings button[value="close"]').click(); await page.keyboard.press('Escape');
   const beforeRemap = await page.evaluate(() => window.__game.ctx.player.x);
   await page.keyboard.down('KeyZ'); await page.waitForTimeout(300);
