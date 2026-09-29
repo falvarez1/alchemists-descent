@@ -48,10 +48,14 @@ const MAX_TERRAIN_REACH = 40; // absolute cap on the collider-window half-extent
 // GLOBAL caps: per-body velocity/window are bounded above, but a chain reaction or
 // debris pile can still grow the body set — and the SUM of their terrain windows —
 // until Rapier's broad-phase recurses past the wasm stack ("recursive use" lock).
-// These ceilings sit far above normal play (a handful of bodies, a few hundred
-// terrain cells) but cut the runaway off before it can crash the solver.
-const MAX_DYNAMIC_BODIES = 80; // live dynamic bodies; spawning past this evicts the oldest
-const MAX_TERRAIN_CELLS = 2800; // total terrain colliders requested per frame
+// These ceilings cut a runaway off before it can crash the solver. They were 80
+// bodies / 2800 colliders; scripts/probe-physics-stress.mjs (a 20x20 column of
+// bodies collapsing, a 20-barrel chain reaction, repeated blasts) runs clean at
+// 800 bodies / 20000 colliders, so 400 / 16000 keeps a 2x margin. 2800 colliders
+// also starved dense piles: 80 bodies in a heap already asked for more, and the
+// bodies past the ceiling got no floor.
+const MAX_DYNAMIC_BODIES = 400; // live dynamic bodies; spawning past this evicts the oldest
+const MAX_TERRAIN_CELLS = 16000; // total terrain colliders requested per frame
 const REFERENCE_MASS = 45; // a "typical" crate; blast/kick scale a body's throw by REFERENCE_MASS / mass
 const PUSH_MASS_MAX = 60; // player shoves bodies up to this mass (light wood); heavier ones block
 const MIN_PUSH = 0.7; // minimum shove speed (cells/frame) when the player leans on a light body
@@ -120,7 +124,21 @@ export class RigidBodies implements RigidBodiesApi {
    *  so we never yank a collider out of an active contact with a fast body (that
    *  recursion-crashes Rapier); by then the body has moved off it. */
   private readonly terrainStale = new Map<number, number>();
-  private readonly desired = new Set<number>();
+  /**
+   * This sync's wanted terrain colliders: insertion-ordered list + a stamp
+   * plane (desiredMark[i] === syncSerial) in place of a Set — the removal
+   * pass tests every live collider against it each tick.
+   */
+  private readonly desiredList: number[] = [];
+  private readonly desiredMark = new Uint16Array(WIDTH * HEIGHT);
+  /**
+   * Per-sync memo of "is this cell a terrain collider?" (solid, on the
+   * surface, not loose rubble), stamped `syncSerial << 1 | answer`. A pile's
+   * collider windows overlap body over body; the terrain cannot change inside
+   * one sync, so each cell's flood-fill rubble test runs once, not per body.
+   */
+  private readonly candidateMemo = new Uint16Array(WIDTH * HEIGHT);
+  private syncSerial = 0;
   private nextId = 1;
   /** The body the player is currently carrying (grab/throw), or null. */
   private held: RigidBody | null = null;
@@ -1030,7 +1048,7 @@ export class RigidBodies implements RigidBodiesApi {
     this.handles.clear();
     this.terrain.clear();
     this.terrainStale.clear();
-    this.desired.clear();
+    this.desiredList.length = 0;
     this.bodies.length = 0;
     this.detonations.length = 0;
     this.held = null;
@@ -1433,10 +1451,18 @@ export class RigidBodies implements RigidBodiesApi {
    */
   private syncTerrain(world: World, frame: number): void {
     const types = world.types;
-    const desired = this.desired;
-    desired.clear();
+    // Stamps live in Uint16 planes: serial 1..32767 (top bit of the memo is
+    // the answer); wrap every 32767 syncs (~9 min) with one clear.
+    if (++this.syncSerial > 0x7fff) {
+      this.syncSerial = 1;
+      this.desiredMark.fill(0);
+      this.candidateMemo.fill(0);
+    }
+    const serial = this.syncSerial, memo = this.candidateMemo, mark = this.desiredMark;
+    const desired = this.desiredList;
+    desired.length = 0;
     for (const body of this.bodies) {
-      if (desired.size >= MAX_TERRAIN_CELLS) break; // total-collider ceiling (anti-overflow)
+      if (desired.length >= MAX_TERRAIN_CELLS) break; // total-collider ceiling (anti-overflow)
       const rb = this.handles.get(body);
       if (!rb || body.kind !== 'dynamic') continue;
       const t = rb.translation();
@@ -1456,25 +1482,31 @@ export class RigidBodies implements RigidBodiesApi {
       // between bodies: one body in a wall of dense surface terrain could
       // otherwise add its whole 80×80 window (thousands of cells) in a single
       // pass and overflow Rapier before the next body's check ever ran.
-      for (let y = y0; y <= y1 && desired.size < MAX_TERRAIN_CELLS; y++) {
+      for (let y = y0; y <= y1 && desired.length < MAX_TERRAIN_CELLS; y++) {
         const row = y * WIDTH;
         for (let x = x0; x <= x1; x++) {
           const i = row + x;
           if (!blocksEntity(types[i])) continue;
-          // Surface only — skip cells fully buried in solid (bodies can't reach them).
-          if (
-            blocksEntity(types[i - 1]) &&
-            blocksEntity(types[i + 1]) &&
-            blocksEntity(types[i - WIDTH]) &&
-            blocksEntity(types[i + WIDTH])
-          )
-            continue;
-          // Loose-rubble rule (same as the player): a solid cell in a cluster of
-          // fewer than five is walk-through, so a body never snags on a one- or
-          // two-cell floating speck — it shoves past like the player does.
-          if (!cellBlocksEntityWithLooseRubble(world, x, y, TERRAIN_SCRATCH)) continue;
-          desired.add(i);
-          if (desired.size >= MAX_TERRAIN_CELLS) break;
+          const m = memo[i];
+          let collider: boolean;
+          if ((m >> 1) === serial) collider = (m & 1) === 1;
+          else {
+            // Surface only — skip cells fully buried in solid (bodies can't
+            // reach them). Loose-rubble rule (same as the player): a solid
+            // cell in a cluster of fewer than five is walk-through, so a body
+            // never snags on a one- or two-cell floating speck.
+            collider = !(
+              blocksEntity(types[i - 1]) &&
+              blocksEntity(types[i + 1]) &&
+              blocksEntity(types[i - WIDTH]) &&
+              blocksEntity(types[i + WIDTH])
+            ) && cellBlocksEntityWithLooseRubble(world, x, y, TERRAIN_SCRATCH);
+            memo[i] = (serial << 1) | (collider ? 1 : 0);
+          }
+          if (!collider || mark[i] === serial) continue;
+          mark[i] = serial;
+          desired.push(i);
+          if (desired.length >= MAX_TERRAIN_CELLS) break;
         }
       }
     }
@@ -1490,7 +1522,7 @@ export class RigidBodies implements RigidBodiesApi {
     // Deferred removals (see terrainStale): hold a stale collider for a few
     // frames so a fast body moves off it before we remove it.
     for (const [i, col] of this.terrain) {
-      if (desired.has(i)) continue;
+      if (mark[i] === serial) continue;
       const since = this.terrainStale.get(i);
       if (since === undefined) {
         this.terrainStale.set(i, frame);
