@@ -27,6 +27,7 @@
     "verify:runtime": "node scripts/verify-runtime-suite.mjs",
     "verify:runtime-ui": "node scripts/verify-runtime-ui.mjs",
     "verify:game": "node scripts/verify-game.mjs",
+    "verify:mobile": "node scripts/verify-mobile.mjs",
     "verify:builder-boundaries": "node scripts/verify-builder-boundaries.mjs --strict",
     "verify:builder-bundle": "node scripts/verify-builder-bundle-boundary.mjs",
     "verify:builder-prod-network": "node scripts/verify-builder-prod-network.mjs",

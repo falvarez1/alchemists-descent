@@ -279,7 +279,7 @@ export class PauseOverlay {
     this.ctx.state.paused = this.active;
     document.getElementById('pause-overlay')?.classList.toggle('visible', this.active);
     const hint = document.getElementById('pause-input-hint');
-    if (hint) hint.textContent = Array.from(navigator.getGamepads?.() ?? []).some(p => p?.connected)
+    if (hint) hint.textContent = document.body.classList.contains('touch-enabled') ? 'Tap Resume descent to continue' : Array.from(navigator.getGamepads?.() ?? []).some(p => p?.connected)
       ? 'Start to resume · A to choose' : 'Escape to resume · H for the handbook';
     if (this.active) {
       this.fillStatus();

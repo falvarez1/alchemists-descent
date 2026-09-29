@@ -72,7 +72,7 @@ export class StoryCinemaOverlay {
     this.pips.className = 'sc-pips';
     const skip = document.createElement('span');
     skip.className = 'sc-skip';
-    skip.textContent = `Any key to skip · ${keyLabel(getBindings().mute)} mutes`;
+    skip.textContent = document.body.classList.contains('touch-enabled') ? 'Tap anywhere to skip' : `Any key to skip · ${keyLabel(getBindings().mute)} mutes`;
     this.root.append(this.canvas, this.title, this.line, this.pips, skip);
     (document.getElementById('canvas-holder') ?? document.body).appendChild(this.root);
     this.root.addEventListener('click', () => this.skip());
