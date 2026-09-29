@@ -1,12 +1,13 @@
 import type { Ctx, MaterialParams, SpellId, SpellParams } from '@/core/types';
 import { formatStep } from '@/core/strings';
 import { GLOBAL_PARAM_DEFAULTS } from '@/config/params';
+import { CELL_PREVIEW_SCALE } from '@/config/constants';
 import { bindRange, type Binding } from '@/ui/domBind';
 import { mountTimeControlsPanel } from '@/ui/TimeControlsPanel';
 import { PopoverHost } from '@/ui/editor/PopoverHost';
 
 /** Initial GameStateData.brushSize (Game.ts) — the reset target for the brush slider. */
-const BRUSH_DEFAULT = 6;
+const BRUSH_DEFAULT = 6 * CELL_PREVIEW_SCALE;
 import { ensureSandboxWorldDetached, resetCombatTransients } from '@/core/runtimeState';
 
 // ===================== Adaptive UI Form Inspectors =====================
