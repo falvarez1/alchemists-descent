@@ -142,7 +142,7 @@ export class ParallelFlow extends FluidFlow {
     if (index < 0 || index >= this.vx.length) return;
     this.vx[index] = Math.max(-4, Math.min(4, this.vx[index] + dx));
     this.vy[index] = Math.max(-4, Math.min(4, this.vy[index] + dy));
-    this.planes.tileActive[index] = 1;
+    if (this.planes.tileActive[index] === 0) this.planes.tileActive[index] = 1; // store on change: a shared line
   }
 
   private launchAt(world: World, x: number, y: number, vx: number, vy: number): void {

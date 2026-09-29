@@ -40,6 +40,8 @@ const GROWTH_STREAM_KEY = 0x7ff1;
  */
 export interface ParallelSweep {
   handles(world: World): boolean;
+  /** Stands in for world.activity.beginStep. */
+  activityStep(ctx: Ctx, interest: { x0: number; y0: number; x1: number; y1: number } | undefined, tick: number): void;
   sweep(ctx: Ctx, substep: number): void;
 }
 
@@ -100,7 +102,10 @@ export class Simulation implements SimulationApi {
     runHarvesterField(ctx);
     updateElectricalGrid(ctx);
     ctx.projectileCtl.update(ctx);
-    world.activity.beginStep(world, ctx.state.mode === 'play' ? world.simBounds : undefined, gameTick);
+    const parallel = this.parallel !== null && this.parallel.handles(world) ? this.parallel : null;
+    const interest = ctx.state.mode === 'play' ? world.simBounds : undefined;
+    if (parallel !== null) parallel.activityStep(ctx, interest, gameTick);
+    else world.activity.beginStep(world, interest, gameTick);
     const sim = world.activity.bounds;
 
     for (let i = ctx.shockwaves.length - 1; i >= 0; i--) {
@@ -109,8 +114,8 @@ export class Simulation implements SimulationApi {
       if (w.currentRadius >= w.maxRadius) ctx.shockwaves.splice(i, 1);
     }
 
-    if (this.parallel !== null && this.parallel.handles(world)) {
-      this.parallel.sweep(ctx, substep);
+    if (parallel !== null) {
+      parallel.sweep(ctx, substep);
       // the sweep left the sim stream wherever its last chunk did; growth
       // draws from its own so the result is independent of thread count
       reseedSimChunk(ctx.state.worldSeed | 0, gameTick, substep, GROWTH_STREAM_KEY);

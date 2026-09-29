@@ -18,7 +18,7 @@ import {
   PARTICLE_DEPOSIT, PARTICLE_HOMING, PARTICLE_LOOSE_DEBRIS, SFX_NAMES,
 } from '@/sim/parallel/effectLog';
 import {
-  C_CURSOR, C_FLOW_STEP, C_MOVED_TICK, C_PARTICLES, C_SUBSTEP, C_TICK, C_WORLD_SEED,
+  C_CURSOR, C_FIRST, C_FLOW_STEP, C_MOVED_TICK, C_PARTICLES, C_READY_TAIL, C_SUBSTEP, C_TICK, C_WORLD_SEED,
   CHUNK, F_PLAYER_X, F_PLAYER_Y, FLOW_REACH, wavefrontSchedule, type WavefrontSchedule,
 } from '@/sim/parallel/protocol';
 import { type ParticipantView, type SharedWorldDescriptor, viewSharedWorld } from '@/sim/parallel/sharedWorld';
@@ -28,8 +28,14 @@ export interface ParticipantSetup {
   world: SharedWorldDescriptor;
   control: SharedArrayBuffer;
   controlF64: SharedArrayBuffer;
-  /** Int32 per chunk: the GEN in which it was last finished. */
-  done: SharedArrayBuffer;
+  /** Int32 per wavefront position: dependencies not yet finished this substep. */
+  pending: SharedArrayBuffer;
+  /** Int32 per position: the ready queue's slots (-1 = not pushed yet). */
+  ready: SharedArrayBuffer;
+  /** Float64 x4: last substep's [sweeping ms, queue-wait ms, chunks] (diagnostics). */
+  stats: SharedArrayBuffer;
+  /** Int32 x GROWTH_LOG_INTS: the reclassify phase's growth-set edits. */
+  growthLog: SharedArrayBuffer;
   logData: SharedArrayBuffer | ArrayBuffer;
   logSegs: SharedArrayBuffer | ArrayBuffer;
   boxes: SharedArrayBuffer | ArrayBuffer;
@@ -121,7 +127,17 @@ export class Participant {
   private readonly ctrl: Int32Array;
   private readonly ctrlF: Float64Array;
   private readonly boxes: Int32Array;
-  private readonly done: Int32Array;
+  private readonly pending: Int32Array;
+  private readonly ready: Int32Array;
+  private readonly stats: Float64Array;
+  private readonly growthLog: Int32Array;
+  private growthCount = 0;
+  private readonly growthSink = (key: number, index: number, added: boolean): void => {
+    const o = 2 + this.growthCount * 3;
+    if (o + 3 > this.growthLog.length) { this.growthLog[1] = 1; return; }
+    this.growthLog[o] = key; this.growthLog[o + 1] = index; this.growthLog[o + 2] = added ? 1 : 0;
+    this.growthCount++;
+  };
   private readonly schedule: WavefrontSchedule;
   private readonly rule: ReturnType<typeof makeRuleCtx>;
   private readonly columns: number;
@@ -139,7 +155,10 @@ export class Participant {
     this.ctrl = new Int32Array(setup.control);
     this.ctrlF = new Float64Array(setup.controlF64);
     this.boxes = new Int32Array(setup.boxes);
-    this.done = new Int32Array(setup.done);
+    this.pending = new Int32Array(setup.pending);
+    this.ready = new Int32Array(setup.ready);
+    this.stats = new Float64Array(setup.stats);
+    this.growthLog = new Int32Array(setup.growthLog);
     this.schedule = wavefrontSchedule(setup.world.width, setup.world.height);
     this.columns = Math.ceil(setup.world.width / CHUNK);
     this.rule = makeRuleCtx(this.view.world, params, this.log);
@@ -147,8 +166,27 @@ export class Participant {
 
   setParams(params: RuleParams): void { this.rule.setParams(params); }
 
-  /** Take part in substep `gen` (the GEN main just published); then publish results. */
-  runSubstep(gen: number): void {
+  /**
+   * The reclassify phase (ActivityGrid.reclassChunk): claim chunks until none
+   * are left. Chunks are independent — each reclassifies only its own cells
+   * and row words from neighbour types nobody writes in this phase. Growth-set
+   * edits go to the log for main.
+   */
+  runReclass(): void {
+    const ctrl = this.ctrl, world = this.view.world, activity = this.view.activity;
+    const first = ctrl[C_FIRST] !== 0, count = activity.columns * activity.rows;
+    this.growthCount = 0;
+    this.growthLog[1] = 0;
+    for (;;) {
+      const key = Atomics.add(ctrl, C_CURSOR, 1);
+      if (key >= count) break;
+      activity.reclassChunk(world, key, first, this.growthSink);
+    }
+    this.growthLog[0] = this.growthCount;
+  }
+
+  /** Take part in the substep main just published; then publish results. */
+  runSubstep(): void {
     const ctrl = this.ctrl, world = this.view.world;
     world.movedTick = ctrl[C_MOVED_TICK];
     this.view.flow.setStep(ctrl[C_FLOW_STEP]);
@@ -163,29 +201,43 @@ export class Participant {
     this.chunksSwept = 0;
     const t0 = performance.now();
     const tick = ctrl[C_TICK], substep = ctrl[C_SUBSTEP], seed = ctrl[C_WORLD_SEED];
-    const scheduled = world.activity.scheduled, done = this.done;
-    const { order, depStart, deps } = this.schedule, n = order.length;
+    const scheduled = world.activity.scheduled, pending = this.pending, ready = this.ready;
+    const { order, dependentStart, dependents } = this.schedule, n = order.length;
     const testOrder = this.testOrder?.() ?? null;
+    let busy = 0, waiting = 0;
     for (let claim = 0; ; claim++) {
-      const i = testOrder !== null ? (claim < n ? testOrder[claim] : n) : Atomics.add(ctrl, C_CURSOR, 1);
-      if (i >= n) break;
-      // Everything below and (odd columns) beside this chunk must be finished.
-      // Claims go out in order, so each dependency is already someone's.
-      for (let d = depStart[i], end = depStart[i + 1]; d < end; d++) {
-        const dep = deps[d];
-        while (Atomics.load(done, dep) !== gen) { /* a neighbour is still sweeping */ }
+      let i: number;
+      if (testOrder !== null) {
+        i = claim < n ? testOrder[claim] : n;
+        if (i >= n) break;
+      } else {
+        const slot = Atomics.add(ctrl, C_CURSOR, 1);
+        if (slot >= n) break;
+        // Filled once the last dependency of some chunk finishes (see protocol).
+        if ((i = Atomics.load(ready, slot)) < 0) {
+          const w0 = performance.now();
+          while ((i = Atomics.load(ready, slot)) < 0) { /* the wavefront is catching up */ }
+          waiting += performance.now() - w0;
+        }
       }
       const key = order[i];
       if (scheduled[key] !== 0) {
+        const b0 = performance.now();
         reseedSimChunk(seed, tick, substep, key);
         this.log.begin(i);
         this.sweepChunk(key);
         this.log.end();
         this.chunksSwept++;
+        busy += performance.now() - b0;
       }
-      Atomics.store(done, key, gen);
+      if (testOrder !== null) continue;
+      for (let d = dependentStart[i], end = dependentStart[i + 1]; d < end; d++) {
+        const j = dependents[d];
+        if (Atomics.sub(pending, j, 1) === 1) Atomics.store(ready, Atomics.add(ctrl, C_READY_TAIL, 1), j);
+      }
     }
     this.sweepMs = performance.now() - t0;
+    this.stats[0] = busy; this.stats[1] = waiting; this.stats[2] = this.chunksSwept;
     this.log.publish();
     this.view.activity.publishBoxes(this.boxes);
   }

@@ -7,7 +7,7 @@ import { World as PlainWorld, type World } from '@/sim/World';
 import { ParallelSim } from '@/sim/parallel/ParallelSim';
 import { createSharedWorld } from '@/sim/parallel/sharedWorld';
 import { wavefrontSchedule } from '@/sim/parallel/protocol';
-import { buildLargeScene, hashSimColors, hashSimState, makeSimCtx } from './fixtures/largeSimScene';
+import { buildLargeScene, hashActivity, hashSimColors, hashSimState, makeSimCtx } from './fixtures/largeSimScene';
 
 /**
  * THE PARALLEL SWEEP'S CONTRACT (sim/parallel, docs/SANDBOX-MT.md). Chunks of
@@ -53,14 +53,16 @@ function topologicalOrder(kind: Order, tick: number): Int32Array {
   return Int32Array.from(out);
 }
 
-function run(seed: number, ticks: number, order: Order, width = 320, height = 256): { world: World; sim: ParallelSim } {
+function run(seed: number, ticks: number, order: Order, width = 320, height = 256, serialReclass = false): { world: World; sim: ParallelSim } {
   const world = createSharedWorld(width, height);
   buildLargeScene(world);
+  plantMoss(world);
   world.simBounds.x0 = 0; world.simBounds.x1 = Math.floor(width * 0.6);
   world.simBounds.y0 = 0; world.simBounds.y1 = height;
   reseedAllStreams(seed);
   const ctx = makeSimCtx(world, seed);
   const parallel = new ParallelSim(world, { global: ctx.params.global, materials: ctx.params.materials }, 0);
+  parallel.parallelReclass = !serialReclass;
   let tick = 0;
   if (order !== 'list') parallel.testOrder = () => topologicalOrder(order, tick);
   const simulation = new Simulation();
@@ -77,6 +79,7 @@ function run(seed: number, ticks: number, order: Order, width = 320, height = 25
 function runSerial(seed: number, ticks: number, width = 320, height = 256): World {
   const world = new PlainWorld(width, height);
   buildLargeScene(world);
+  plantMoss(world);
   world.simBounds.x0 = 0; world.simBounds.x1 = Math.floor(width * 0.6);
   world.simBounds.y0 = 0; world.simBounds.y1 = height;
   reseedAllStreams(seed);
@@ -88,6 +91,16 @@ function runSerial(seed: number, ticks: number, width = 320, height = 256): Worl
     simulation.processFrame(ctx);
   }
   return world;
+}
+
+/** Growth for the growth sets to track: moss along the lowest shelf, grass on the floor. */
+function plantMoss(world: World): void {
+  const shelf = Math.floor(world.height * 0.75);
+  for (let x = 2; x < world.width - 2; x += 3) {
+    const i = world.idx(x, shelf - 1);
+    if (world.types[i] === Cell.Empty && world.types[world.idx(x, shelf)] === Cell.Stone) world.types[i] = Cell.Moss;
+  }
+  world.activity.invalidateAll();
 }
 
 function census(world: World): Record<number, number> {
@@ -115,6 +128,15 @@ describe('parallel chunk sweep', () => {
     });
     expect(results[1]).toEqual(results[0]);
     expect(results[2]).toEqual(results[0]);
+  });
+
+  it('reclassifies on the participants exactly as the serial beginStep does', () => {
+    const a = run(13, 100, 'list', 320, 256, true).world;
+    const b = run(13, 100, 'list').world;
+    expect(hashActivity(b)).toBe(hashActivity(a));
+    expect(hashSimState(b)).toBe(hashSimState(a));
+    expect(b.activity.growthCells.map((c) => c.join(',')).join('|')).toBe(a.activity.growthCells.map((c) => c.join(',')).join('|'));
+    expect(a.activity.growthCells.some((c) => c.length > 0)).toBe(true);
   });
 
   it('keeps the sparse indexes in step with their planes', () => {

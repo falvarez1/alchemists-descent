@@ -5,12 +5,15 @@
  * inputs the rules read; one Int32 per chunk records the generation in
  * which that chunk was last finished.
  *
- * Per substep: main writes the parameters, zeroes the cursor and bumps GEN.
- * Every participant (main included) then claims positions in the WAVEFRONT
- * order with Atomics.add, waits until the claimed chunk's dependencies are
- * finished this generation, sweeps it, and marks it finished. A worker then
- * publishes its effect log and seed boxes and bumps PUBLISHED; main merges
- * once PUBLISHED reaches the worker count.
+ * Per substep: main writes the parameters, resets the READY QUEUE (the
+ * wavefront positions with no dependencies) and bumps GEN. Every participant
+ * (main included) pops a queue slot with Atomics.add on CURSOR, spins until
+ * that slot is filled, sweeps the chunk, then decrements each dependent's
+ * pending count — whoever takes one to zero pushes it (Atomics.add on
+ * READY_TAIL). Each position is pushed exactly once, so n pops drain it; no
+ * thread ever waits on one particular neighbour. A worker then publishes its
+ * effect log and seed boxes and bumps PUBLISHED; main merges once PUBLISHED
+ * reaches the worker count.
  */
 export const C_GEN = 0;
 export const C_TICK = 1;
@@ -23,7 +26,18 @@ export const C_PARTICLES = 7;
 export const C_CURSOR = 8;
 export const C_PUBLISHED = 9;
 export const C_SHUTDOWN = 10;
+export const C_READY_TAIL = 11;
+/** Which job this GEN is: the activity reclassify or the material sweep. */
+export const C_PHASE = 12;
+/** Reclassify phase: 1 on a first/invalidated step (every chunk, every cell). */
+export const C_FIRST = 13;
 export const CONTROL_INTS = 16;
+
+export const PHASE_SWEEP = 0;
+export const PHASE_RECLASS = 1;
+
+/** Int32s per participant growth log: [count, overflow, (key, index, added)...]. */
+export const GROWTH_LOG_INTS = 2 + 3 * 32768;
 
 export const F_PLAYER_X = 0;
 export const F_PLAYER_Y = 1;
@@ -55,6 +69,13 @@ export interface WavefrontSchedule {
   /** deps[depStart[i] .. depStart[i+1]) = chunk keys position i must wait for. */
   depStart: Int32Array;
   deps: Int32Array;
+  /** The same graph by position, for the ready queue: dependency counts, and
+   *  dependents[dependentStart[i] .. dependentStart[i+1]) = positions waiting on i. */
+  depCount: Int32Array;
+  dependentStart: Int32Array;
+  dependents: Int32Array;
+  /** Positions with no dependencies (the queue's initial contents). */
+  roots: Int32Array;
 }
 
 /**
@@ -88,5 +109,21 @@ export function wavefrontSchedule(width: number, height: number): WavefrontSched
     }
   }
   depStart.push(deps.length);
-  return { order: Int32Array.from(order), depStart: Int32Array.from(depStart), deps: Int32Array.from(deps) };
+  const n = order.length, position = new Map<number, number>();
+  order.forEach((key, i) => position.set(key, i));
+  const depCount = new Int32Array(n), waiting: number[][] = Array.from({ length: n }, () => []);
+  for (let i = 0; i < n; i++) {
+    depCount[i] = depStart[i + 1] - depStart[i];
+    for (let d = depStart[i]; d < depStart[i + 1]; d++) waiting[position.get(deps[d])!].push(i);
+  }
+  const dependentStart: number[] = [], dependents: number[] = [];
+  for (let i = 0; i < n; i++) { dependentStart.push(dependents.length); dependents.push(...waiting[i]); }
+  dependentStart.push(dependents.length);
+  const roots: number[] = [];
+  for (let i = 0; i < n; i++) if (depCount[i] === 0) roots.push(i);
+  return {
+    order: Int32Array.from(order), depStart: Int32Array.from(depStart), deps: Int32Array.from(deps),
+    depCount, dependentStart: Int32Array.from(dependentStart), dependents: Int32Array.from(dependents),
+    roots: Int32Array.from(roots),
+  };
 }

@@ -25,6 +25,17 @@ export interface ActivitySharedPlanes {
   eligible: Uint8Array;
   rowMasks: Uint32Array;
   seeds: Uint32Array;
+  /** The reclassify phase's planes (participants run reclassChunk too). */
+  cellClass: Uint8Array;
+  dirtyRows: Uint32Array;
+  dynamic: Uint32Array;
+  restless: Uint32Array;
+  urgent: Uint32Array;
+  minX: Int16Array;
+  minY: Int16Array;
+  maxX: Int16Array;
+  maxY: Int16Array;
+  growthChanged: Uint8Array;
 }
 
 /** Activity and independent render damage over the save-compatible flat grid. */
@@ -95,24 +106,28 @@ export class ActivityGrid {
   private readonly adoptMark: Uint8Array;
   private readonly adoptList: Int32Array;
   private adoptCount = 0;
+  /** Chunks whose growth sets a parallel reclass edited (applyGrowthEdit). */
+  private readonly growthMark: Uint8Array;
+  private readonly growthEditList: Int32Array;
+  private growthEditCount = 0;
 
   constructor(protected readonly width: number, protected readonly height: number, shared?: ActivitySharedPlanes) {
     this.columns = Math.ceil(width / 64); this.rows = Math.ceil(height / 64);
     this.wordsPerRow = Math.ceil(width / 32);
     const count = this.columns * this.rows;
     this.scheduled = shared?.scheduled ?? new Uint8Array(count); this.versions = new Uint32Array(count);
-    this.dirty = shared?.dirty ?? new Uint8Array(count); this.dynamic = new Uint32Array(count);
-    this.restless = new Uint32Array(count); this.urgent = new Uint32Array(count);
+    this.dirty = shared?.dirty ?? new Uint8Array(count); this.dynamic = shared?.dynamic ?? new Uint32Array(count);
+    this.restless = shared?.restless ?? new Uint32Array(count); this.urgent = shared?.urgent ?? new Uint32Array(count);
     this.quiet = shared?.quiet ?? new Uint8Array(count); this.eligible = shared?.eligible ?? new Uint8Array(width * height);
-    this.cellClass = new Uint8Array(width * height);
+    this.cellClass = shared?.cellClass ?? new Uint8Array(width * height);
     this.rowMasks = shared?.rowMasks ?? new Uint32Array(this.wordsPerRow * height);
-    this.dirtyRows = new Uint32Array(this.wordsPerRow * height);
+    this.dirtyRows = shared?.dirtyRows ?? new Uint32Array(this.wordsPerRow * height);
     this.renderDirtyRows = new Uint32Array(this.wordsPerRow * height);
-    this.growthChanged = new Uint8Array(count); this.growthScheduled = new Uint8Array(count);
+    this.growthChanged = shared?.growthChanged ?? new Uint8Array(count); this.growthScheduled = new Uint8Array(count);
     this.growthCells = Array.from({ length: count }, () => []);
     this.growthSets = Array.from({ length: count }, () => new Set<number>());
-    this.minX = new Int16Array(count).fill(32767); this.minY = new Int16Array(count).fill(32767);
-    this.maxX = new Int16Array(count); this.maxY = new Int16Array(count);
+    this.minX = shared?.minX ?? new Int16Array(count).fill(32767); this.minY = shared?.minY ?? new Int16Array(count).fill(32767);
+    this.maxX = shared?.maxX ?? new Int16Array(count); this.maxY = shared?.maxY ?? new Int16Array(count);
     this.renderMinX = new Int16Array(count).fill(32767); this.renderMinY = new Int16Array(count).fill(32767);
     this.renderMaxX = new Int16Array(count); this.renderMaxY = new Int16Array(count);
     this.seeds = shared?.seeds ?? new Uint32Array(this.wordsPerRow * height);
@@ -124,6 +139,8 @@ export class ActivityGrid {
     this.lastWordMask = tail === 0 ? 0xffffffff : ((1 << tail) - 1);
     this.adoptMark = new Uint8Array(count);
     this.adoptList = new Int32Array(count);
+    this.growthMark = new Uint8Array(count);
+    this.growthEditList = new Int32Array(count);
   }
 
   /**
@@ -308,83 +325,152 @@ export class ActivityGrid {
   }
 
   beginStep(world: World, interest?: { x0: number; y0: number; x1: number; y1: number }, tick?: number): void {
+    const first = this.prepareStep();
+    for (let key = 0, count = this.columns * this.rows; key < count; key++) this.reclassChunk(world, key, first, null);
+    this.scheduleStep(interest, tick);
+  }
+
+  /**
+   * beginStep in three parts, so a parallel sweep (sim/parallel) can run the
+   * middle one -- every chunk independent of the others -- on its workers.
+   * prepareStep: pending halos, the step counter, and the full reset on a
+   * first/invalidated step (returned as "first").
+   */
+  prepareStep(): boolean {
     this.flushTouches();
     this.stepSerial++;
-    const first = !this.initialized, types = world.types, width = this.width, height = this.height;
-    const life = world.life, charge = world.charge, wordsPerRow = this.wordsPerRow;
-    const cellClass = this.cellClass, eligible = this.eligible, rowMasks = this.rowMasks, dirtyRows = this.dirtyRows;
+    const first = !this.initialized;
     if (first) {
       this.dynamic.fill(0); this.restless.fill(0); this.urgent.fill(0); this.cellClass.fill(0);
       this.eligible.fill(0); this.rowMasks.fill(0);
       this.quiet.fill(0);
       for (const set of this.growthSets) set.clear();
     }
+    return first;
+  }
+
+  /**
+   * Reclassify one chunk's changed cells (or age a clean chunk's quiet
+   * counter). Touches only that chunk's cells, row words and counters.
+   * growthSink receives growth-set edits instead of this grid applying them
+   * (a parallel participant, whose growth sets are not main's); main then
+   * calls applyGrowthEdit + finishGrowthEdits.
+   */
+  reclassChunk(world: World, key: number, first: boolean,
+    growthSink: ((key: number, index: number, added: boolean) => void) | null): void {
+    if (!first && !this.dirty[key]) { this.quiet[key] = Math.min(120, this.quiet[key] + 1); return; }
+    const types = world.types, width = this.width, height = this.height;
+    const life = world.life, charge = world.charge, wordsPerRow = this.wordsPerRow;
+    const cellClass = this.cellClass, eligible = this.eligible, rowMasks = this.rowMasks, dirtyRows = this.dirtyRows;
+    const tx = key % this.columns, ty = (key - tx) / this.columns, x0 = tx * 64, y0 = ty * 64;
+    const x1 = Math.min(width, x0 + 64), y1 = Math.min(height, y0 + 64);
+    this.growthChanged[key] = 1;
+    const left = first ? x0 : this.minX[key], top = first ? y0 : this.minY[key];
+    const right = first ? x1 : this.maxX[key], bottom = first ? y1 : this.maxY[key];
+    const growth = this.growthSets[key];
+    let growthEdited = first;
+    // Chunk counters accumulate locally (Uint32 wraparound makes the order
+    // of -- and ++ irrelevant) and each row word's mask is written once.
+    let dDynamic = 0, dRestless = 0, dUrgent = 0;
+    for (let y = top; y < bottom; y++) {
+      const rowBase = y * wordsPerRow, cellRow = y * width;
+      for (let word = left >> 5; word <= (right - 1) >> 5; word++) {
+        const rowIndex = rowBase + word;
+        let changed = first ? 0xffffffff : dirtyRows[rowIndex];
+        if (changed === 0) continue;
+        dirtyRows[rowIndex] = 0;
+        let mask = rowMasks[rowIndex];
+        while (changed !== 0) {
+          const low = changed & -changed;
+          changed ^= low;
+          const x = word * 32 + 31 - Math.clz32(low);
+          if (x >= width) continue;
+          const i = x + cellRow, type = types[i], kind = category[type], old = cellClass[i], q = charge[i];
+          // Inert stays inert: class 0 means the last pass left this cell
+          // ineligible with its mask bit clear, and nothing about it changed.
+          if (kind === 0 && old === 0 && q === 0) continue;
+          if (eligible[i]) { dDynamic--; if (old & 8) dRestless--; }
+          if (old & 4) dUrgent--;
+          const burningOil = type === Cell.Oil && life[i] > 0;
+          const urgent = urgentMaterial[type] !== 0 || q > 0 || burningOil;
+          const restless = kind === 3 || q > 0 || burningOil;
+          cellClass[i] = kind | (urgent ? 4 : 0) | (restless ? 8 : 0);
+          if (urgent) dUrgent++;
+          if ((old & 3) === 1 && kind !== 1) {
+            if (growthSink === null) { growth.delete(i); growthEdited = true; } else growthSink(key, i, false);
+          }
+          if (kind === 1 && (old & 3) !== 1) {
+            if (growthSink === null) { growth.add(i); growthEdited = true; } else growthSink(key, i, true);
+          }
+          let active = kind > 1;
+          const restContact = type === Cell.Water ? waterRestContact : type === Cell.Oil && !burningOil ? oilRestContact
+            : type === Cell.Brine ? brineRestContact : null;
+          if (restContact !== null && !urgent && x > 0 && x + 1 < width && y > 0 && y + 1 < height &&
+              restContact[types[i - 1]] && restContact[types[i + 1]] &&
+              restContact[types[i - width]] && restContact[types[i + width]] &&
+              restContact[types[i - width - 1]] && restContact[types[i - width + 1]] &&
+              restContact[types[i + width - 1]] && restContact[types[i + width + 1]] &&
+              (charge[i - 1] | charge[i + 1] | charge[i - width] | charge[i + width] |
+               charge[i - width - 1] | charge[i - width + 1] | charge[i + width - 1] | charge[i + width + 1]) === 0) active = false;
+          eligible[i] = active ? 1 : 0;
+          if (active) { mask |= low; dDynamic++; if (restless) dRestless++; }
+          else mask &= ~low;
+        }
+        rowMasks[rowIndex] = mask;
+      }
+    }
+    this.dynamic[key] += dDynamic; this.restless[key] += dRestless; this.urgent[key] += dUrgent;
+    if (growthSink === null && growthEdited) this.rebuildGrowthCells(key);
+    this.dirty[key] = 0; this.minX[key] = 32767; this.minY[key] = 32767; this.maxX[key] = 0; this.maxY[key] = 0;
+  }
+
+  private rebuildGrowthCells(key: number): void {
+    const cells = this.growthCells[key];
+    cells.length = 0;
+    for (const index of this.growthSets[key]) cells.push(index);
+    cells.sort((a, b) => a - b);
+  }
+
+  /** A growth-set edit a participant's reclassChunk reported (see growthSink). */
+  applyGrowthEdit(key: number, index: number, added: boolean): void {
+    if (added) this.growthSets[key].add(index);
+    else this.growthSets[key].delete(index);
+    if (this.growthMark[key] === 0) { this.growthMark[key] = 1; this.growthEditList[this.growthEditCount++] = key; }
+  }
+
+  /** Rebuild the sorted growth lists of every chunk edited since the last call.
+   *  first: a full reclass ran, so every list is rebuilt (the serial path's rule). */
+  finishGrowthEdits(first: boolean): void {
+    if (first) {
+      for (let key = 0; key < this.growthCells.length; key++) this.rebuildGrowthCells(key);
+    } else {
+      for (let n = 0; n < this.growthEditCount; n++) this.rebuildGrowthCells(this.growthEditList[n]);
+    }
+    for (let n = 0; n < this.growthEditCount; n++) this.growthMark[this.growthEditList[n]] = 0;
+    this.growthEditCount = 0;
+  }
+
+  /** Rebuild every growth set from the cell classes (a participant's growth log overflowed). */
+  rebuildGrowthSets(): void {
+    for (const set of this.growthSets) set.clear();
+    const cellClass = this.cellClass, width = this.width, columns = this.columns;
+    for (let i = 0; i < cellClass.length; i++) {
+      if ((cellClass[i] & 3) !== 1) continue;
+      const y = Math.floor(i / width);
+      this.growthSets[((i - y * width) >> 6) + (y >> 6) * columns].add(i);
+    }
+    for (let key = 0; key < this.growthCells.length; key++) this.rebuildGrowthCells(key);
+  }
+
+  /** The per-chunk schedule for this step (after every chunk was reclassified). */
+  scheduleStep(interest?: { x0: number; y0: number; x1: number; y1: number }, tick?: number): void {
+    const width = this.width;
     this.activeChunks = 0; this.sleepingChunks = 0; this.coarseChunks = 0;
     const bounds = this.bounds;
     bounds.x0 = width; bounds.y0 = this.height; bounds.x1 = 0; bounds.y1 = 0;
     for (let ty = 0; ty < this.rows; ty++) for (let tx = 0; tx < this.columns; tx++) {
       const key = tx + ty * this.columns, x0 = tx * 64, y0 = ty * 64;
       const x1 = Math.min(width, x0 + 64), y1 = Math.min(this.height, y0 + 64);
-      if (first || this.dirty[key]) {
-        this.growthChanged[key] = 1;
-        const left = first ? x0 : this.minX[key], top = first ? y0 : this.minY[key];
-        const right = first ? x1 : this.maxX[key], bottom = first ? y1 : this.maxY[key];
-        const growth = this.growthSets[key];
-        let growthEdited = first;
-        // Chunk counters accumulate locally (Uint32 wraparound makes the order
-        // of -- and ++ irrelevant) and each row word's mask is written once.
-        let dDynamic = 0, dRestless = 0, dUrgent = 0;
-        for (let y = top; y < bottom; y++) {
-          const rowBase = y * wordsPerRow, cellRow = y * width;
-          for (let word = left >> 5; word <= (right - 1) >> 5; word++) {
-            const rowIndex = rowBase + word;
-            let changed = first ? 0xffffffff : dirtyRows[rowIndex];
-            if (changed === 0) continue;
-            dirtyRows[rowIndex] = 0;
-            let mask = rowMasks[rowIndex];
-            while (changed !== 0) {
-              const low = changed & -changed;
-              changed ^= low;
-              const x = word * 32 + 31 - Math.clz32(low);
-              if (x >= width) continue;
-              const i = x + cellRow, type = types[i], kind = category[type], old = cellClass[i], q = charge[i];
-              // Inert stays inert: class 0 means the last pass left this cell
-              // ineligible with its mask bit clear, and nothing about it changed.
-              if (kind === 0 && old === 0 && q === 0) continue;
-              if (eligible[i]) { dDynamic--; if (old & 8) dRestless--; }
-              if (old & 4) dUrgent--;
-              const burningOil = type === Cell.Oil && life[i] > 0;
-              const urgent = urgentMaterial[type] !== 0 || q > 0 || burningOil;
-              const restless = kind === 3 || q > 0 || burningOil;
-              cellClass[i] = kind | (urgent ? 4 : 0) | (restless ? 8 : 0);
-              if (urgent) dUrgent++;
-              if ((old & 3) === 1 && kind !== 1) { growth.delete(i); growthEdited = true; }
-              if (kind === 1 && (old & 3) !== 1) { growth.add(i); growthEdited = true; }
-              let active = kind > 1;
-              const restContact = type === Cell.Water ? waterRestContact : type === Cell.Oil && !burningOil ? oilRestContact
-                : type === Cell.Brine ? brineRestContact : null;
-              if (restContact !== null && !urgent && x > 0 && x + 1 < width && y > 0 && y + 1 < height &&
-                  restContact[types[i - 1]] && restContact[types[i + 1]] &&
-                  restContact[types[i - width]] && restContact[types[i + width]] &&
-                  restContact[types[i - width - 1]] && restContact[types[i - width + 1]] &&
-                  restContact[types[i + width - 1]] && restContact[types[i + width + 1]] &&
-                  (charge[i - 1] | charge[i + 1] | charge[i - width] | charge[i + width] |
-                   charge[i - width - 1] | charge[i - width + 1] | charge[i + width - 1] | charge[i + width + 1]) === 0) active = false;
-              eligible[i] = active ? 1 : 0;
-              if (active) { mask |= low; dDynamic++; if (restless) dRestless++; }
-              else mask &= ~low;
-            }
-            rowMasks[rowIndex] = mask;
-          }
-        }
-        this.dynamic[key] += dDynamic; this.restless[key] += dRestless; this.urgent[key] += dUrgent;
-        if (growthEdited) {
-          this.growthCells[key].length = 0;
-          for (const index of growth) this.growthCells[key].push(index);
-          this.growthCells[key].sort((a, b) => a - b);
-        }
-        this.dirty[key] = 0; this.minX[key] = 32767; this.minY[key] = 32767; this.maxX[key] = 0; this.maxY[key] = 0;
-      } else this.quiet[key] = Math.min(120, this.quiet[key] + 1);
       const near = !interest || (x1 > interest.x0 && x0 < interest.x1 && y1 > interest.y0 && y0 < interest.y1);
       // Distant fluids/growth advance at 15 Hz. Heat, active reagents and charge
       // retain 60 Hz everywhere. Activation is independent of the camera.

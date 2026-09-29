@@ -55,6 +55,10 @@ function planesFrom(d: SharedWorldDescriptor): {
     activity: {
       scheduled: new Uint8Array(a.scheduled), dirty: new Uint8Array(a.dirty), quiet: new Uint8Array(a.quiet),
       eligible: new Uint8Array(a.eligible), rowMasks: new Uint32Array(a.rowMasks), seeds: new Uint32Array(a.seeds),
+      cellClass: new Uint8Array(a.cellClass), dirtyRows: new Uint32Array(a.dirtyRows),
+      dynamic: new Uint32Array(a.dynamic), restless: new Uint32Array(a.restless), urgent: new Uint32Array(a.urgent),
+      minX: new Int16Array(a.minX), minY: new Int16Array(a.minY), maxX: new Int16Array(a.maxX), maxY: new Int16Array(a.maxY),
+      growthChanged: new Uint8Array(a.growthChanged),
     },
     flow: {
       vx: new Float32Array(f.vx), vy: new Float32Array(f.vy), tileActive: new Uint8Array(f.tileActive),
@@ -79,6 +83,10 @@ export function createSharedWorld(width = WIDTH, height = HEIGHT): World {
     activity: {
       scheduled: sab(chunks), dirty: sab(chunks), quiet: sab(chunks), eligible: sab(n),
       rowMasks: sab(wordsPerRow * height * 4), seeds: sab(wordsPerRow * height * 4),
+      cellClass: sab(n), dirtyRows: sab(wordsPerRow * height * 4),
+      dynamic: sab(chunks * 4), restless: sab(chunks * 4), urgent: sab(chunks * 4),
+      minX: sab(chunks * 2), minY: sab(chunks * 2), maxX: sab(chunks * 2), maxY: sab(chunks * 2),
+      growthChanged: sab(chunks),
     },
     flow: {
       vx: bufferOf(flow.vx), vy: bufferOf(flow.vy), tileActive: bufferOf(flow.tileActive), inFlight: bufferOf(flow.inFlight),
@@ -88,6 +96,7 @@ export function createSharedWorld(width = WIDTH, height = HEIGHT): World {
   };
   const p = planesFrom(d);
   p.world.colors.fill(EMPTY_COLOR);
+  p.activity.minX.fill(32767); p.activity.minY.fill(32767); // ActivityGrid's "no damage" bounds
   const world = new World(width, height, {
     planes: p.world,
     flow: new ParallelFlow(width, height, p.flow),
@@ -143,7 +152,12 @@ export class ParticipantActivity extends ActivityGrid {
     for (let cy = ey0 >> 6, cy1 = (ey1 - 1) >> 6; cy <= cy1; cy++) {
       for (let cx = ex0 >> 6, cx1 = (ex1 - 1) >> 6; cx <= cx1; cx++) {
         const key = cx + cy * columns;
-        scheduled[key] = 1; dirty[key] = 1; quiet[key] = 0;
+        // Store only on change: these per-chunk bytes share a handful of cache
+        // lines with every other thread, and a store per swap (what the serial
+        // grid does) keeps those lines bouncing between cores.
+        if (dirty[key] === 0) dirty[key] = 1;
+        if (scheduled[key] === 0) scheduled[key] = 1;
+        if (quiet[key] !== 0) quiet[key] = 0;
       }
     }
     if (!small) {

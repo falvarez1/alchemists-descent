@@ -5,7 +5,7 @@
  * each substep main publishes.
  */
 import { Participant, type ParticipantSetup, type RuleParams } from '@/sim/parallel/chunkSweep';
-import { C_GEN, C_PARAMS_EPOCH, C_PUBLISHED, C_SHUTDOWN } from '@/sim/parallel/protocol';
+import { C_GEN, C_PARAMS_EPOCH, C_PHASE, C_PUBLISHED, C_SHUTDOWN, PHASE_RECLASS } from '@/sim/parallel/protocol';
 
 export type SimWorkerMessage =
   | { type: 'init'; setup: ParticipantSetup; params: RuleParams; paramsEpoch: number; index: number }
@@ -67,7 +67,8 @@ async function run(p: Participant, ctrl: Int32Array): Promise<void> {
       // main posted new tuning just before this substep; take it first
       await new Promise<void>((resolve) => { epochWaiter = resolve; });
     }
-    p.runSubstep(gen);
+    if (Atomics.load(ctrl, C_PHASE) === PHASE_RECLASS) p.runReclass();
+    else p.runSubstep();
     Atomics.add(ctrl, C_PUBLISHED, 1);
   }
 }

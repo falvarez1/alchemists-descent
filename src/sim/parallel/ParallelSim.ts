@@ -10,9 +10,9 @@ import {
 } from '@/sim/parallel/effectLog';
 import type { ParallelFlow } from '@/sim/parallel/ParallelFlow';
 import {
-  C_CURSOR, C_FLOW_STEP, C_GEN, C_MOVED_TICK, C_PARAMS_EPOCH, C_PARTICLES, C_PUBLISHED,
+  C_CURSOR, C_FIRST, C_FLOW_STEP, C_GEN, C_MOVED_TICK, C_PARAMS_EPOCH, C_PARTICLES, C_PHASE, C_PUBLISHED, C_READY_TAIL,
   C_SHUTDOWN, C_SUBSTEP, C_TICK, C_WORLD_SEED, CONTROL_F64, CONTROL_INTS, EXPLOSION_STREAM_KEY, F_PLAYER_X,
-  F_PLAYER_Y,
+  F_PLAYER_Y, GROWTH_LOG_INTS, PHASE_RECLASS, PHASE_SWEEP, wavefrontSchedule, type WavefrontSchedule,
 } from '@/sim/parallel/protocol';
 import { sharedDescriptorOf } from '@/sim/parallel/sharedWorld';
 import type { SimWorkerMessage } from '@/sim/parallel/simWorker';
@@ -24,6 +24,8 @@ export interface ParallelSimStats {
   sweepMs: number;
   waitMs: number;
   mergeMs: number;
+  /** Last substep: the parallel activity reclassify, start to schedule. */
+  reclassMs: number;
   /** Last substep: chunks swept (all participants / main alone), replayed records. */
   chunks: number;
   mainChunks: number;
@@ -57,13 +59,15 @@ function decodeOpts(grav: number, glow: number, flags: number): ParticleOpts | u
 export class ParallelSim implements ParallelSweep {
   /** Runtime A/B switch: off = the serial sweep over the same shared world. */
   enabled = true;
+  /** Off = the serial ActivityGrid.beginStep (tests prove both identical). */
+  parallelReclass = true;
   readonly threads: number;
-  readonly stats: ParallelSimStats = { substeps: 0, sweepMs: 0, waitMs: 0, mergeMs: 0, chunks: 0, mainChunks: 0, records: 0 };
+  readonly stats: ParallelSimStats = { substeps: 0, reclassMs: 0, sweepMs: 0, waitMs: 0, mergeMs: 0, chunks: 0, mainChunks: 0, records: 0 };
   failure: string | null = null;
   private readonly ctrl: Int32Array;
   private readonly ctrlF: Float64Array;
   private readonly main: Participant;
-  private readonly participants: { log: EffectLog; boxes: Int32Array }[] = [];
+  private readonly participants: { log: EffectLog; boxes: Int32Array; stats: Float64Array; growth: Int32Array }[] = [];
   private readonly workers: Worker[] = [];
   private readyCount = 0;
   private paramsJson = '';
@@ -71,6 +75,9 @@ export class ParallelSim implements ParallelSweep {
   private lastParamsCheck = -Infinity;
   private readonly segmentOrder: number[] = [];
   private readonly explosions: number[] = [];
+  private readonly schedule: WavefrontSchedule;
+  private readonly pending: Int32Array;
+  private readonly readyQueue: Int32Array;
 
   /**
    * @param threads worker count (0 = the chunked sweep on main alone — the
@@ -85,18 +92,31 @@ export class ParallelSim implements ParallelSweep {
     this.ctrl = new Int32Array(control);
     this.ctrlF = new Float64Array(controlF64);
     const chunks = Math.ceil(descriptor.width / 64) * Math.ceil(descriptor.height / 64);
-    const done = new SharedArrayBuffer(chunks * 4);
+    const pending = new SharedArrayBuffer(chunks * 4), ready = new SharedArrayBuffer(chunks * 4);
+    this.pending = new Int32Array(pending);
+    this.readyQueue = new Int32Array(ready);
+    this.schedule = wavefrontSchedule(descriptor.width, descriptor.height);
     const setupFor = (): ParticipantSetup => {
       const log = EffectLog.allocate(true);
-      return { world: descriptor, control, controlF64, done, logData: log.data, logSegs: log.segs, boxes: new SharedArrayBuffer((1 + chunks * 5) * 4) };
+      return {
+        world: descriptor, control, controlF64, pending, ready, logData: log.data, logSegs: log.segs,
+        boxes: new SharedArrayBuffer((1 + chunks * 5) * 4), stats: new SharedArrayBuffer(4 * 8),
+        growthLog: new SharedArrayBuffer(GROWTH_LOG_INTS * 4),
+      };
     };
     const mainSetup = setupFor();
     this.main = new Participant(mainSetup, params);
-    this.participants.push({ log: this.main.log, boxes: new Int32Array(mainSetup.boxes) });
+    this.participants.push({
+      log: this.main.log, boxes: new Int32Array(mainSetup.boxes), stats: new Float64Array(mainSetup.stats),
+      growth: new Int32Array(mainSetup.growthLog),
+    });
     this.paramsJson = JSON.stringify(params);
     for (let i = 0; i < this.threads; i++) {
       const setup = setupFor();
-      this.participants.push({ log: new EffectLog(setup.logData, setup.logSegs), boxes: new Int32Array(setup.boxes) });
+      this.participants.push({
+        log: new EffectLog(setup.logData, setup.logSegs), boxes: new Int32Array(setup.boxes), stats: new Float64Array(setup.stats),
+        growth: new Int32Array(setup.growthLog),
+      });
       const worker = createWorker(i);
       worker.onmessage = (event: MessageEvent<{ type: string; message?: string }>) => {
         if (event.data.type === 'ready') this.readyCount++;
@@ -107,6 +127,11 @@ export class ParallelSim implements ParallelSweep {
       worker.postMessage(init);
       this.workers.push(worker);
     }
+  }
+
+  /** Per participant (main first) for the last substep: [sweeping ms, waiting-on-the-queue ms, chunks]. */
+  participantStats(): number[][] {
+    return this.participants.map((p) => [p.stats[0], p.stats[1], p.stats[2]]);
   }
 
   /** Tests only: see Participant.testOrder (main sweeping alone, threads = 0). */
@@ -142,6 +167,52 @@ export class ParallelSim implements ParallelSweep {
     Atomics.store(this.ctrl, C_PARAMS_EPOCH, this.paramsEpoch);
   }
 
+  /** Wake every participant for one phase (main writes the phase's inputs first). */
+  private startPhase(phase: number): void {
+    const c = this.ctrl;
+    c[C_PHASE] = phase;
+    c[C_CURSOR] = 0;
+    c[C_PUBLISHED] = 0;
+    Atomics.add(c, C_GEN, 1);
+    if (this.threads > 0) Atomics.notify(c, C_GEN);
+  }
+
+  private awaitPublished(): void {
+    while (Atomics.load(this.ctrl, C_PUBLISHED) < this.threads) { /* the last participant finishing */ }
+  }
+
+  /**
+   * ActivityGrid.beginStep with its middle — every chunk's reclassify — on
+   * all participants. Same result as the serial call (tests/parallel-sweep).
+   */
+  activityStep(ctx: Ctx, interest: { x0: number; y0: number; x1: number; y1: number } | undefined, tick: number): void {
+    const t0 = performance.now();
+    const activity = this.world.activity;
+    if (!this.parallelReclass) {
+      activity.beginStep(this.world, interest, tick);
+      this.stats.reclassMs = performance.now() - t0;
+      return;
+    }
+    const first = activity.prepareStep();
+    this.syncParams(ctx);
+    this.ctrl[C_FIRST] = first ? 1 : 0;
+    this.startPhase(PHASE_RECLASS);
+    this.main.runReclass();
+    this.awaitPublished();
+    let overflow = false;
+    for (const { growth } of this.participants) {
+      if (growth[1] !== 0) overflow = true;
+      for (let n = 0, count = growth[0]; n < count; n++) {
+        const o = 2 + n * 3;
+        activity.applyGrowthEdit(growth[o], growth[o + 1], growth[o + 2] !== 0);
+      }
+    }
+    if (overflow) activity.rebuildGrowthSets();
+    else activity.finishGrowthEdits(first);
+    activity.scheduleStep(interest, tick);
+    this.stats.reclassMs = performance.now() - t0;
+  }
+
   sweep(ctx: Ctx, substep: number): void {
     const c = this.ctrl, world = this.world, tick = ctx.state.frameCount;
     this.syncParams(ctx);
@@ -153,17 +224,20 @@ export class ParallelSim implements ParallelSweep {
     c[C_PARTICLES] = ctx.particles?.list.length ?? 0;
     this.ctrlF[F_PLAYER_X] = ctx.player?.x ?? -1e9;
     this.ctrlF[F_PLAYER_Y] = ctx.player?.y ?? -1e9;
-    c[C_CURSOR] = 0;
-    c[C_PUBLISHED] = 0;
-    const gen = Atomics.add(c, C_GEN, 1) + 1;
-    if (this.threads > 0) Atomics.notify(c, C_GEN);
+    // the ready queue: every dependency count, and the positions that have none
+    const { depCount, roots } = this.schedule;
+    this.pending.set(depCount);
+    this.readyQueue.fill(-1);
+    this.readyQueue.set(roots);
+    c[C_READY_TAIL] = roots.length;
+    this.startPhase(PHASE_SWEEP);
 
     const t0 = performance.now();
     const streams = snapshotStreams();
-    this.main.runSubstep(gen);
+    this.main.runSubstep();
     restoreStreams(streams);
     const t1 = performance.now();
-    while (Atomics.load(c, C_PUBLISHED) < this.threads) { /* workers finishing their last chunk */ }
+    this.awaitPublished();
     const t2 = performance.now();
     this.merge(ctx, substep);
     const t3 = performance.now();
