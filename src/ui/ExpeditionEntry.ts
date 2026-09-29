@@ -52,6 +52,7 @@ export class ExpeditionEntry {
       <button type="button" data-entry="trailer" class="entry-trailer">Watch the trailer<span class="entry-note">Ninety-five seconds of safety induction. Mind the duck.</span></button>
       <button type="button" data-entry="opening" class="entry-opening" hidden>The opening<span class="entry-note">Kettleby, the lift, and a voice in the pipes.</span></button>
       <button type="button" data-entry="workshop" class="entry-workshop" hidden>The Workshop<span class="entry-note">The material sandbox. Nothing here can hurt you, much.</span></button></nav>
+      <p class="touch-entry-hint">Touch controls are ready. Turn sideways for a larger view. Change controls in Controls & comfort.</p>
       <p class="entry-status" role="status"></p>
       <details class="entry-workshops"><summary>Workshops</summary><div><button type="button" data-entry="sandbox">Material sandbox</button><button type="button" data-entry="builder">Level builder</button><button type="button" data-entry="advanced">Advanced run setup</button></div></details>
       </div><div class="entry-footer"><span class="entry-release">${GAME_TITLE} <b aria-label="Game version ${__APP_VERSION__}">v${__APP_VERSION__}</b></span><span>Keyboard + mouse / controller</span></div>`;

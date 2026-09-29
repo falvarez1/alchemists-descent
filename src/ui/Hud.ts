@@ -1,4 +1,5 @@
 import type { Ctx, PerkId } from '@/core/types';
+import { touchHint } from '@/ui/touchLabels';
 import { livingObjective } from '@/game/LivingExpedition';
 import { canHumiliate } from '@/combat/Trickshot';
 import { worksPlaceName } from '@/world/breathingWorks';
@@ -472,7 +473,7 @@ export class Hud {
 
   /** A quiet second line under the objective; the objective itself never changes for it. */
   private showObjectiveNote(text: string, card: string | null): void {
-    this.objectiveNote.textContent = text;
+    this.objectiveNote.textContent = touchHint(text);
     this.objectiveNoteCard = card;
     this.objectiveNoteUntil = this.ctx.state.frameCount + BENCH_NOTE_FRAMES;
     this.objectiveNote.classList.remove('shown');
@@ -609,11 +610,13 @@ export class Hud {
     const hint = ctx.hints.current;
     const note = hint?.key.startsWith('works-note') === true;
     const verb = hint?.key === 'works-valve' ? 'Turn valve' : hint?.key === 'works-crank' ? 'Pull crank' : null;
-    const anchored = (verb !== null || note) && hint?.world;
+    const touch = document.body.classList.contains('touch-enabled');
+    const anchored = !touch && (verb !== null || note) && hint?.world;
     const controller = anchored && !note && Array.from(navigator.getGamepads?.() ?? []).some(pad => pad?.connected);
-    const text = anchored && verb ? `${controller ? 'X' : keyLabel(getBindings().interact)} · ${verb}` : hint?.line ?? '';
+    const text = touch && verb ? `Use · ${verb}` : anchored && verb ? `${controller ? 'X' : keyLabel(getBindings().interact)} · ${verb}` : hint?.line ?? '';
     const node = this.interactionHintNode;
-    if (node.textContent !== text) node.textContent = text;
+    const label = touchHint(text);
+    if (node.textContent !== label) node.textContent = label;
     node.classList.toggle('visible', text !== '');
     node.classList.toggle('world-anchor', Boolean(anchored));
     node.classList.toggle('wide', Boolean(anchored && note));

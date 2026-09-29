@@ -422,7 +422,7 @@ export class Game {
     // Wires its DOM listeners in the constructor; lives for the page lifetime.
     const inputManager = new InputManager(this.renderer.domElement, ctx);
     this.disposables.push(inputManager);
-    this.pollInput = () => inputManager.pollGamepad();
+    this.pollInput = () => inputManager.poll();
     // Its Begin / Continue / Today's descent wait for the play systems.
     this.entry = new ExpeditionEntry(ctx, () => this.loadPlaySystems().then((systems) => systems !== null));
     this.disposables.push(this.entry);

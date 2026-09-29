@@ -1,0 +1,106 @@
+/* Only the playing surface owns game gestures. Menus retain scrolling and zoom. */
+.touch-entry-hint { display: none; }
+body.touch-enabled .touch-entry-hint { display: block; }
+body.touch-enabled { height: 100dvh; }
+body.touch-enabled:is(.play-active, .entry-active) #workbench { min-height: 0; height: 100dvh; }
+body.touch-enabled:is(.play-active, .entry-active) #canvas-holder {
+  width: 100%; height: 100%; aspect-ratio: auto;
+}
+body.touch-enabled.play-active #canvas-holder > canvas[data-input-attached] {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(100%, calc(100dvh * 16 / 9)) !important;
+  height: auto !important; aspect-ratio: 16 / 9;
+  touch-action: none;
+  z-index: 0;
+}
+body.touch-enabled.play-active #game-hud { z-index: 2; }
+#mobile-controls {
+  position: absolute; inset: 0; z-index: 40; pointer-events: none;
+  --touch-left: max(12px, env(safe-area-inset-left));
+  --touch-right: max(12px, env(safe-area-inset-right));
+  --touch-bottom: max(12px, env(safe-area-inset-bottom));
+  font: 500 12px/1.3 var(--house-sans, system-ui);
+  color: #f2e3c8;
+}
+#mobile-controls button {
+  appearance: none; pointer-events: auto; min-width: 48px; min-height: 48px;
+  padding: 8px 12px; border: 1px solid #b6ac858c; border-radius: 12px;
+  background: #112025e8; color: #f2e3c8; font: inherit;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+#mobile-controls [data-touch-key], #mobile-controls [data-touch-action], .touch-stick {
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+#mobile-controls button.held, #mobile-controls button[aria-pressed="true"] {
+  background: #786541; border-color: #f4deb0;
+}
+.touch-topbar { position: absolute; top: max(10px, env(safe-area-inset-top)); right: var(--touch-right); display: flex; gap: 6px; }
+.touch-left, .touch-right { position: absolute; bottom: var(--touch-bottom); display: flex; flex-direction: column; gap: 10px; }
+.touch-left { left: var(--touch-left); align-items: flex-start; }
+.touch-right { right: var(--touch-right); align-items: flex-end; }
+.touch-actions { display: flex; gap: 8px; }
+.touch-stick {
+  pointer-events: auto; position: relative; width: 124px; height: 124px;
+  border: 1px solid #c5b78780; border-radius: 50%; background: #112025a8;
+  box-sizing: border-box;
+}
+.touch-stick span { position: absolute; top: 9px; width: 100%; text-align: center; pointer-events: none; }
+.touch-stick i {
+  position: absolute; left: calc(50% - 22px); top: calc(50% - 22px); width: 44px; height: 44px;
+  border-radius: 50%; background: #b7aa7d66; border: 1px solid #e5d3a494; box-sizing: border-box;
+  transform: translate(var(--thumb-x, 0px), var(--thumb-y, 0px)); pointer-events: none;
+}
+.touch-stick.held { border-color: #ecd9ad; background: #1f363bc7; }
+#touch-tools {
+  position: absolute; top: max(68px, calc(env(safe-area-inset-top) + 58px));
+  right: var(--touch-right); width: min(360px, calc(100% - var(--touch-left) - var(--touch-right)));
+  max-height: calc(100% - 270px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: auto; overscroll-behavior: contain; pointer-events: auto;
+  box-sizing: border-box; padding: 12px; border: 1px solid #9b8f69;
+  background: #112025fa; border-radius: 12px; display: flex; flex-wrap: wrap; gap: 8px;
+}
+#touch-tools p { flex-basis: 100%; margin: 0; line-height: 1.5; color: #d8d4c2; }
+.touch-portrait-note { display: none; }
+body.touch-enabled.play-active #hud-left { top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); display: block; }
+body.touch-enabled.play-active .vitals { width: 158px; gap: 4px; }
+body.touch-enabled.play-active .vital-label { font-size: 11px; width: 38px; }
+body.touch-enabled.play-active #flask-belt { width: 158px; gap: 4px; margin-top: 8px; }
+body.touch-enabled.play-active .flask-slot { width: 36px; flex-basis: 36px; height: 28px; }
+body.touch-enabled.play-active .flask-slot-name { max-width: 36px; overflow: hidden; }
+body.touch-enabled.play-active :is(#controls-hint, #expedition-pause, #spell-hotbar, #minimap-corner, #field-note, #sound-quick) { display: none !important; }
+body.touch-enabled.play-active #expedition-tools { top: max(74px, calc(env(safe-area-inset-top) + 64px)); bottom: auto; left: max(12px, env(safe-area-inset-left)); }
+body.touch-enabled.play-active .wave-readout { top: max(70px, calc(env(safe-area-inset-top) + 60px)); right: max(12px, env(safe-area-inset-right)); max-width: 32%; font-size: 11px; }
+body.touch-enabled.play-active #interaction-hint { bottom: 235px; max-width: min(70%, 400px); white-space: normal; font-size: 12px; }
+body.touch-enabled.play-active #toast-stack { top: 115px; max-width: 65%; }
+body.touch-enabled.play-active .toast { font-size: 12px; letter-spacing: 0; }
+body.touch-enabled :is(#pause-overlay, #help-overlay, #sanctum-overlay, #run-summary, #wand-bench, #grimoire-overlay, #gameover-overlay) {
+  box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain;
+  padding-top: max(16px, env(safe-area-inset-top)); padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+body.touch-enabled :is(#pause-overlay, #help-overlay, #sanctum-overlay, #run-summary, #wand-bench, #gameover-overlay, #player-settings, #expedition-entry) button {
+  min-height: 44px; touch-action: manipulation;
+}
+body.touch-enabled #player-settings { max-width: calc(100% - 24px); max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); box-sizing: border-box; }
+body.touch-enabled #player-settings :is(select, input) { font-size: 16px; }
+body.touch-enabled #expedition-entry .entry-content { margin: max(28px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-left)) 60px; width: auto; }
+body.touch-enabled #expedition-entry .entry-footer { position: static; padding: 0 24px max(20px, env(safe-area-inset-bottom)); }
+body.touch-enabled #story-dialogue { bottom: 210px; max-height: 45%; overflow: auto; }
+body.touch-enabled #story-dialogue button { min-width: 44px; min-height: 44px; }
+body.touch-enabled:has(#wand-bench.visible, #pause-overlay.visible, #minimap-overlay.visible, #help-overlay.visible, #player-settings[open]) #narration-caption { display: none; }
+@media (orientation: portrait) {
+  body.touch-enabled.play-active #canvas-holder > canvas[data-input-attached] { top: 42%; }
+  .touch-portrait-note { display: block; position: absolute; bottom: calc(var(--touch-bottom) + 198px); width: 100%; text-align: center; color: #b9c5b8; }
+  #mobile-controls button { padding: 8px; }
+  body.touch-enabled.play-active .vitals { width: 138px; }
+  body.touch-enabled.play-active .wave-readout { max-width: 43%; }
+  body.touch-enabled #expedition-entry h1 { font-size: 56px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .touch-stick { width: 104px; height: 104px; }
+  .touch-left, .touch-right { gap: 6px; }
+  #touch-tools { max-height: calc(100% - 90px - env(safe-area-inset-bottom)); right: 190px; width: min(310px, calc(100% - 370px)); }
+  body.touch-enabled #expedition-entry h1 { font-size: 48px; }
+  body.touch-enabled #expedition-entry .entry-tagline { display: none; }
+  body.touch-enabled #story-dialogue { bottom: 16px; width: min(42%, 480px); }
+  body.touch-enabled.play-active #interaction-hint { bottom: 18px; max-width: 40%; }
+}

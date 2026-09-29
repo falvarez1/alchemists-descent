@@ -1,4 +1,5 @@
 import type { Ctx } from '@/core/types';
+import { touchHint } from '@/ui/touchLabels';
 
 const DISMISS_MS = 9000;
 /** How often the calm gate looks at the centre of the screen. */
@@ -133,12 +134,12 @@ export class HintTeachOverlay {
 
     const text = document.createElement('div');
     text.className = 'hint-teach-body';
-    text.textContent = body;
+    text.textContent = touchHint(body);
     card.appendChild(text);
 
     const dismiss = document.createElement('div');
     dismiss.className = 'hint-teach-dismiss';
-    dismiss.textContent = 'click to dismiss';
+    dismiss.textContent = document.body.classList.contains('touch-enabled') ? 'tap to dismiss' : 'click to dismiss';
     card.appendChild(dismiss);
 
     this.root.appendChild(card);

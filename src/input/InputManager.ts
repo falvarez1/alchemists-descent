@@ -12,6 +12,7 @@ import { toggleLantern } from '@/game/Lantern';
 import { releaseWeaverLeg } from '@/combat/LooseWeaverLeg';
 import { telekinesisHolding, telekinesisHurl, telekinesisLift, telekinesisSetDown } from '@/combat/Telekinesis';
 import { flaskSlotKey, gameplayCode } from '@/input/bindings';
+import { MobileControls } from '@/input/MobileControls';
 
 type KeyboardLockApi = {
   lock?: (keyCodes?: string[]) => Promise<void>;
@@ -79,6 +80,9 @@ export const KEYBOARD_UI_BLOCK_SELECTOR = [
   '#sanctum-overlay.visible',
   '#wand-bench.visible',
   '#run-summary.visible',
+  '#gameover-overlay.visible',
+  '#grimoire-overlay.open',
+  '#story-cinema.show',
 ].join(', ');
 
 export function isKeyboardUiOwnerActive(doc: Document = document): boolean {
@@ -109,6 +113,13 @@ function isEditableTarget(target: EventTarget | null): boolean {
  * (mode buttons, HUD visibility, banners, depth readout) is emitted as events.
  */
 export class InputManager {
+  private readonly mobile: MobileControls;
+  private readonly touchKeyCodes = new Set<string>();
+
+  poll(): void {
+    this.pollGamepad();
+    this.mobile.update();
+  }
   private readonly previousPadButtons = new Uint8Array(18);
   private padDriving = false;
   /** X just lifted or set down a body: holding it on must not start a siphon. */
@@ -159,6 +170,7 @@ export class InputManager {
         const ax = pad.axes[0] ?? 0, ay = pad.axes[1] ?? 0;
         const aimX = pad.axes[2] ?? 0, aimY = pad.axes[3] ?? 0;
         const active = Math.hypot(ax, ay) > 0.2 || Math.hypot(aimX, aimY) > 0.25 || pad.buttons.some(b => b.pressed);
+        if (active) this.mobile.reset();
         if (active || this.padDriving) {
           this.syncHeldKeys();
           const keys = ctx.input.keys;
@@ -212,7 +224,11 @@ export class InputManager {
         : null;
     if (canvas) this.attachCanvas(canvas);
   };
-  private readonly handleWindowMouseUp = (): void => this.onMouseUp();
+  private readonly handleWindowMouseUp = (event: MouseEvent): void => {
+    // Menu taps can produce compatibility mouse events while another thumb casts.
+    if (event.target instanceof Element && event.target.closest('#mobile-controls')) return;
+    this.onMouseUp();
+  };
   private readonly handleKeyDown = (e: KeyboardEvent): void => this.onKeyDown(e);
   private readonly handleKeyUp = (e: KeyboardEvent): void => this.onKeyUp(e);
   private readonly handleWindowBlur = (): void => this.clearHeldInput();
@@ -267,9 +283,30 @@ export class InputManager {
     document.getElementById('mode-play-btn')?.addEventListener('click', this.handleModePlayClick);
     document.getElementById('immersive-play-btn')?.addEventListener('click', this.handleImmersivePlayClick);
     this.syncImmersiveButton();
+    this.mobile = new MobileControls(ctx, {
+      canPlay: () => ctx.state.mode === 'play' && !ctx.state.paused && !ctx.player.dead
+        && !document.body.classList.contains('builder-open') && !isKeyboardUiOwnerActive(),
+      key: (code, held) => this.setTouchKey(code, held),
+      aim: (x, y) => {
+        this.pointerClient = null;
+        ctx.input.mouse.x = ctx.player.x + x * 130;
+        ctx.input.mouse.y = ctx.player.y - 9 + y * 130;
+      },
+      fire: held => {
+        if (!held) ctx.player.fireBlockedUntilRelease = false;
+        ctx.player.firing = held && !ctx.player.fireBlockedUntilRelease;
+        if (ctx.player.firing) ctx.player.firePressed = true;
+      },
+      action: action => {
+        if (action === 'wand') this.selectWand(ctx.wands.active === 0 ? 1 : 0);
+        else if (action === 'flask') this.selectFlaskSlot((ctx.flask.activeIndex + 1) % ctx.flask.slots.length);
+        else if (!telekinesisHurl(ctx) && !releaseWeaverLeg(ctx, true)) ctx.flask.throwFlask(ctx);
+      },
+    });
   }
 
   dispose(): void {
+    this.mobile.dispose();
     window.removeEventListener('mouseup', this.handleWindowMouseUp);
     window.removeEventListener('renderer-canvas-changed', this.handleRendererCanvasChanged);
     window.removeEventListener('keydown', this.handleKeyDown, true);
@@ -348,6 +385,7 @@ export class InputManager {
   }
 
   private onMouseDown(e: MouseEvent): void {
+    this.mobile.reset();
     const { ctx } = this;
     ctx.audio.ensure();
     this.pointerClient = { clientX: e.clientX, clientY: e.clientY };
@@ -412,6 +450,7 @@ export class InputManager {
   }
 
   private onMouseMove(e: MouseEvent): void {
+    this.mobile.reset();
     const { ctx } = this;
     this.pointerClient = { clientX: e.clientX, clientY: e.clientY };
     const coords = this.getMouseGridCoords(e);
@@ -514,7 +553,7 @@ export class InputManager {
   }
 
   private anyHeld(codes: Set<string>): boolean {
-    for (const code of codes) if (this.heldKeyCodes.has(code)) return true;
+    for (const code of codes) if (this.heldKeyCodes.has(code) || this.touchKeyCodes.has(code)) return true;
     return false;
   }
 
@@ -525,11 +564,13 @@ export class InputManager {
     keys.up = this.anyHeld(UP_KEY_CODES);
     keys.down = this.anyHeld(DOWN_KEY_CODES);
     keys.jump = this.anyHeld(JUMP_KEY_CODES);
-    keys.wallJump = this.heldKeyCodes.has('Space');
+    keys.wallJump = this.heldKeyCodes.has('Space') || this.touchKeyCodes.has('Space');
     keys.grab = this.anyHeld(GRAB_KEY_CODES);
   }
 
   private clearHeldInput(): void {
+    this.mobile?.reset();
+    this.touchKeyCodes.clear();
     const { ctx } = this;
     const keys = ctx.input.keys;
     keys.left = false;
@@ -618,7 +659,26 @@ export class InputManager {
       return;
     }
 
-    // mode === 'play' from here (the block above returns for every other mode).
+    this.pressPlayAction(code, e.repeat);
+  }
+
+  private setTouchKey(code: string, held: boolean): void {
+    if (held === this.touchKeyCodes.has(code)) return;
+    if (held) {
+      this.touchKeyCodes.add(code);
+      if (JUMP_KEY_CODES.has(code)) this.ctx.input.queuedJump = code === 'Space' ? 'wall' : 'jump';
+      if (code === 'KeyV') throwGlowseed(this.ctx);
+      else if (code === 'KeyL') toggleLantern(this.ctx);
+      else if (!this.isTrackedHeldKey(code)) this.pressPlayAction(code, false);
+    } else {
+      this.touchKeyCodes.delete(code);
+      if (!this.isTrackedHeldKey(code)) this.releasePlayAction(code);
+    }
+    this.syncHeldKeys();
+  }
+
+  private pressPlayAction(code: string, repeat: boolean): void {
+    const { ctx } = this;
     if (
       code === 'KeyA' ||
       code === 'ArrowLeft' ||
@@ -639,14 +699,14 @@ export class InputManager {
       // the one the cursor is ON wins (combat/Telekinesis). With nothing
       // liftable under the cursor it falls through to the old E behaviour —
       // a lever-pull in reach, else hold-to-siphon the flask.
-      if (!e.repeat && telekinesisHolding(ctx)) {
+      if (!repeat && telekinesisHolding(ctx)) {
         telekinesisSetDown(ctx);
-      } else if (!e.repeat && ctx.story?.interact()) {
+      } else if (!repeat && ctx.story?.interact()) {
         // the story took it: Pell, a resonant valve, a page (or the next line of a conversation)
-      } else if (!e.repeat && !ctx.player.legClub && telekinesisLift(ctx)) {
+      } else if (!repeat && !ctx.player.legClub && telekinesisLift(ctx)) {
         // lifted the body under the cursor — it now hangs on the wand's thread
       } else if (!telekinesisHolding(ctx)) {
-        const pulling = !e.repeat && ctx.mechanisms.interact(ctx);
+        const pulling = !repeat && ctx.mechanisms.interact(ctx);
         if (!pulling) ctx.input.siphonHeld = true;
       }
     }
@@ -657,7 +717,7 @@ export class InputManager {
       // the aim); otherwise it's the kick gust (which punts corpses too).
       if (!telekinesisHurl(ctx)) ctx.playerCtl.kick(ctx);
     }
-    else if (code === 'KeyG' && !e.repeat && !ctx.player.dead) {
+    else if (code === 'KeyG' && !repeat && !ctx.player.dead) {
       // hold G: latch a hanging vine to swing, else carry a body; release to let go/throw
       if (!releaseWeaverLeg(ctx, false) && !ctx.player.climbing && !ctx.playerCtl.grabVine(ctx)) ctx.rigidBodies.grab(ctx);
     }
@@ -675,7 +735,12 @@ export class InputManager {
     if (!this.shouldIgnoreKeyboard(e)) this.claimPlayKey(e);
 
     if (this.isTrackedHeldKey(code)) this.setKeyHeld(code, false);
-    else if (code === 'KeyE') ctx.input.siphonHeld = false;
+    else this.releasePlayAction(code);
+  }
+
+  private releasePlayAction(code: string): void {
+    const { ctx } = this;
+    if (code === 'KeyE') ctx.input.siphonHeld = false;
     else if (code === 'KeyQ') ctx.input.pourHeld = false;
     else if (code === 'KeyX') ctx.input.drinkHeld = false;
     else if (code === 'KeyG') {

@@ -4,6 +4,7 @@ import { VOLUME_CHANNELS, sanitizeVolumes, type VolumeSettings } from '@/audio/m
 import { DEFAULT_BINDINGS, getBindings, keyLabel, resetBindings, setBinding, type BindingAction } from '@/input/bindings';
 import { isClipRecordingEnabled, setClipRecordingEnabled } from '@/config/clipSettings';
 import { SoundQuickControl } from '@/ui/SoundQuickControl';
+import { readTouchControlsPreference, setTouchControlsPreference } from '@/input/touchSupport';
 
 export interface PlayerPreferences { textScale: number; reducedFlashes: boolean; cameraShake: boolean; highReadability: boolean; creatureCaptions: boolean; trickshot: TrickshotSettings; volume: VolumeSettings; narration: boolean; muted: boolean }
 const KEY = 'ad-player-preferences-v1';
@@ -78,11 +79,20 @@ export class PlayerSettings {
       <section class="settings-group" aria-labelledby="settings-clips"><h3 id="settings-clips">Clips</h3><div class="settings-options">
       <div class="settings-option"><label><input type="checkbox" name="recordClips"> Keep the last ten seconds of play</label>
       <p class="settings-note">Press <kbd class="key" data-clip-key>${clipKey}</kbd> (View on a controller) to save them as a GIF. The death screen and the ledger offer it too.</p></div></div></section>
+      <section class="settings-group" aria-labelledby="settings-touch"><h3 id="settings-touch">Touch controls</h3>
+      <label>Show touch controls<select name="touchControls"><option value="auto">Auto (touch devices)</option><option value="on">Always</option><option value="off">Never</option></select></label>
+      <p>Left pad moves and climbs. Right pad aims and casts. Hold Jump to fly; Grip holds a wall. Use interacts or fills a flask. Tools has flask actions, carrying, glowseeds, and an Aim only switch. Landscape gives you a larger view. The screen stays awake during play when your browser allows it; Pause releases it.</p></section>
       <section class="settings-group" aria-labelledby="settings-keys"><h3 id="settings-keys">Keyboard</h3><p>Choose an action, then press its new key. Mouse aims; left click casts; right click throws a flask. With a Weaver leg equipped: left click whips, right click throws the leg, and Carry drops it.</p>
       <div class="binding-list"></div><p id="binding-feedback" role="status"></p>
       <button type="button" id="reset-controls">Restore controls</button></section>
       <section class="settings-group" aria-labelledby="settings-pad"><h3 id="settings-pad">Controller</h3><p class="controller-help">Left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. With a Weaver leg: RT whips, RB throws it, LB drops it. Start pauses; View saves a clip.</p></section></form>`;
     document.getElementById('canvas-holder')!.appendChild(this.dialog);
+    const touchControls = this.dialog.querySelector<HTMLSelectElement>('[name="touchControls"]')!;
+    touchControls.value = readTouchControlsPreference();
+    touchControls.addEventListener('change', () => {
+      const value = touchControls.value;
+      if (value === 'auto' || value === 'on' || value === 'off') setTouchControlsPreference(value);
+    });
     this.dialog.addEventListener('close', () => {
       // Native close events are queued. Escape/Resume may already have released
       // the owning overlay by the time this callback runs.
