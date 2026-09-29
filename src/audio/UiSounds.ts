@@ -13,7 +13,7 @@ import { failSafe, listen } from '@/audio/failSafe';
  *   tiles) or opt out with `data-sfx="none"` stay quiet, and so does the
  *   Builder (an authoring tool, not the game's interface).
  * - Overlays announce themselves: the pause menu closes a steam valve and
- *   opens it again on resume; the Grimoire, Handbook and settings open and
+ *   opens it again on resume; the Grimoire, Handbook, map and settings open and
  *   close like a ledger (a MutationObserver watches their visibility).
  * - Run events: toasts tick, a new objective arrives by pneumatic tube,
  *   a card offer fans its cards, a hint turns a page, the bench drawer slides
@@ -34,6 +34,8 @@ const OVERLAYS: OverlayWatch[] = [
   { selector: '#pause-overlay', isOpen: (el) => el.classList.contains('visible'), open: 'ui.pause', close: 'ui.resume' },
   { selector: '#grimoire-overlay', isOpen: (el) => el.classList.contains('open'), open: 'ui.open', close: 'ui.close' },
   { selector: '#help-overlay', isOpen: (el) => el.classList.contains('visible'), open: 'ui.open', close: 'ui.close' },
+  // The full map (M): the one menu opened constantly and, until now, the one that opened in silence.
+  { selector: '#minimap-overlay', isOpen: (el) => el.classList.contains('visible'), open: 'ui.open', close: 'ui.close' },
   { selector: '#player-settings', isOpen: (el) => el.hasAttribute('open'), open: 'ui.open', close: 'ui.close' },
 ];
 
