@@ -67,6 +67,7 @@ import { Cell } from '@/sim/CellType';
 import { Explosions } from '@/sim/explosion';
 import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
+import { setDetachedSandboxWorldSource } from '@/core/runtimeState';
 import { ParallelSim } from '@/sim/parallel/ParallelSim';
 import { createSharedWorld, sharedMemoryAvailable } from '@/sim/parallel/sharedWorld';
 import { GpuNotice } from '@/ui/GpuNotice';
@@ -297,9 +298,18 @@ export class Game {
     const simulation = new Simulation();
     ctx.simulation = simulation;
     if (simThreads > 0) {
-      const parallel = new ParallelSim(ctx.world, { global: ctx.params.global, materials: ctx.params.materials }, simThreads);
+      const sharedWorld = ctx.world;
+      const parallel = new ParallelSim(sharedWorld, { global: ctx.params.global, materials: ctx.params.materials }, simThreads);
       simulation.parallel = parallel;
       this.disposables.push(parallel);
+      // A Sandbox detached from a level paints on a copy of it: make that copy
+      // the shared world again, so the parallel sweep follows the Sandbox back.
+      setDetachedSandboxWorldSource((width, height) => {
+        if (width !== sharedWorld.width || height !== sharedWorld.height || ctx.world === sharedWorld) return new World(width, height);
+        sharedWorld.clear();
+        return sharedWorld;
+      });
+      this.disposables.push({ dispose: () => setDetachedSandboxWorldSource(null) });
       console.info(`[sandbox-mt] parallel sandbox sweep: ${simThreads} workers + main`);
     }
     ctx.worldgen = new WorldGen();

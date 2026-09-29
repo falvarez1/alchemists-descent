@@ -92,11 +92,22 @@ export function resetCombatTransients(ctx: Ctx, options: CombatTransientResetOpt
   if (opts.simulationAccumulator && ctx.simulation) ctx.simulation.accumulator = 0;
 }
 
+/**
+ * Where a detached Sandbox world comes from. The composition root points it
+ * at the parallel sweep's shared world (docs/SANDBOX-MT.md), which nothing
+ * uses while a level is current; it must return an EMPTY world.
+ */
+let detachedWorldSource: ((width: number, height: number) => World) | null = null;
+export function setDetachedSandboxWorldSource(source: ((width: number, height: number) => World) | null): void {
+  detachedWorldSource = source;
+}
+
 export function ensureSandboxWorldDetached(ctx: Ctx, reason = 'SANDBOX WORLD DETACHED FROM EXPEDITION'): boolean {
   const runtime = ctx.levels.current;
   if (!runtime || runtime.def.id === 'custom' || ctx.world !== runtime.world) return false;
 
-  const scratch = new World(runtime.world.width, runtime.world.height);
+  const scratch = detachedWorldSource?.(runtime.world.width, runtime.world.height)
+    ?? new World(runtime.world.width, runtime.world.height);
   scratch.types.set(runtime.world.types);
   scratch.colors.set(runtime.world.colors);
   scratch.life.set(runtime.world.life);
