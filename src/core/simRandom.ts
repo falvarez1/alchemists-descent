@@ -158,6 +158,20 @@ export function reseedSimSubstep(worldSeed: number, tick: number, substep: numbe
   state[SIM] = seedFor(worldSeed, Math.imul(tick | 0, 8) + (substep | 0), STREAM_SIM);
 }
 
+/**
+ * Reseed the sim AND fx streams for one chunk of one substep (the parallel
+ * chunk sweep, sim/parallel). Every chunk draws from its own streams, so the
+ * result cannot depend on which thread ran which chunk, or in what order the
+ * chunks of one checkerboard pass finished. `key` is the activity chunk key;
+ * keys past the chunk count name serial phases (explosion replay, growth).
+ */
+export function reseedSimChunk(worldSeed: number, tick: number, substep: number, key: number): void {
+  const t = Math.imul(tick | 0, 8) + (substep | 0);
+  const k = mix32(Math.imul((key | 0) + 1, 0x27d4eb2f) ^ t);
+  state[SIM] = seedFor(worldSeed ^ k, t, STREAM_SIM);
+  state[FX] = seedFor(worldSeed ^ k, t, STREAM_FX);
+}
+
 /** Reseed the tick-rate streams. Called once per game tick, before any system runs. */
 export function reseedTickStreams(worldSeed: number, tick: number): void {
   state[ENTITY] = seedFor(worldSeed, tick, STREAM_ENTITY);

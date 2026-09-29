@@ -1065,6 +1065,12 @@ export interface PostFxSettings {
    * uploaded. Runtime-flippable for A/B.
    */
   gpuOverlay: boolean;
+  /**
+   * SUB-CELL LOOK (GPU compose, fine presentation): loose materials draw
+   * Scale2x silhouettes and powders a per-fine-pixel grain, so piles and pool
+   * rims step at the fine pixel pitch (docs/SANDBOX-MT.md). Look only.
+   */
+  subcell: boolean;
   /** UnrealBloomPass layer: emissive cells, blasts, and hot materials. */
   bloomEnabled: boolean;
   bloomStrength: number;

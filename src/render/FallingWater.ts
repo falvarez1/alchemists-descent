@@ -7,11 +7,11 @@ import { Cell } from '@/sim/CellType';
  * No pool outlines on droplets, no persistent trails, and no simulated mass. */
 export function drawFallingWater(out: PixelSurface, light: LightField, ctx: Ctx): void {
   const { world, camera } = ctx, step = out.pixelStep ?? 1;
-  for (const [index, flight] of world.flow.falling) {
-    if (world.types[index] !== Cell.Water || flight.y < camera.renderY - 6 || flight.y > camera.renderY + VIEW_H + 6
-      || flight.x < camera.renderX - 6 || flight.x > camera.renderX + VIEW_W + 6) continue;
+  world.flow.forEachFlight(camera.renderX - 6, camera.renderY - 6, camera.renderX + VIEW_W + 6, camera.renderY + VIEW_H + 6, (index, fx, fy, previousX, previousY) => {
+    if (world.types[index] !== Cell.Water) return;
+    const flight = { x: fx, y: fy, previousX, previousY };
     const dx = flight.x - flight.previousX, dy = flight.y - flight.previousY;
-    if (dy < .7) continue;
+    if (dy < .7) return;
     const length = Math.hypot(dx, dy), samples = Math.ceil(length / step);
     const sample = light.sample(flight.x, flight.y);
     const dk = sample.open ?? 1; // designed darkness (light wave) lowers the floor
@@ -27,5 +27,5 @@ export function drawFallingWater(out: PixelSurface, light: LightField, ctx: Ctx)
       const strength = (.45 + t * .55) / Math.max(1, length * .6);
       (out.addFinePx ?? out.addPx).call(out, x, y, .04 * r * strength, .085 * g * strength, .095 * b * strength);
     }
-  }
+  });
 }

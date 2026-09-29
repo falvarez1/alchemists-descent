@@ -7,9 +7,18 @@ export class ColorOverrides extends Set<number> {
   get mask(): Uint8Array { return this.#mask; }
   get revision(): number { return this.#revision; }
 
-  constructor(cellCount: number) {
+  /** `mask` adopts an externally allocated (shared) plane. */
+  constructor(cellCount: number, mask?: Uint8Array) {
     super();
-    this.#mask = new Uint8Array(cellCount);
+    this.#mask = mask ?? new Uint8Array(cellCount);
+  }
+
+  /** Replay an add/delete a parallel sweep participant already applied to the
+   *  shared mask (sim/parallel): Set membership and revision only. */
+  adoptLogged(index: number, added: boolean): void {
+    if (added) super.add(index);
+    else super.delete(index);
+    this.#revision++;
   }
 
   override add(index: number): this {

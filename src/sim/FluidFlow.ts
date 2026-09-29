@@ -22,23 +22,37 @@ export class FluidFlow {
   /** 1 where `falling` holds an entry: lets forget() — called twice per cell
    *  swap — skip the Map lookup for the overwhelming majority of cells that
    *  carry no flight. Every set/delete/clear of `falling` keeps it in step. */
-  private readonly inFlight: Uint8Array;
-  private readonly columns: number;
-  private readonly vx: Float32Array;
-  private readonly vy: Float32Array;
+  protected readonly inFlight: Uint8Array;
+  protected readonly columns: number;
+  protected readonly vx: Float32Array;
+  protected readonly vy: Float32Array;
   private readonly active = new Set<number>();
-  private readonly surface: Int16Array;
-  private readonly bottom: Int16Array;
-  private readonly checked: Uint32Array;
-  private step = 0;
-  private epoch = -1;
+  protected readonly surface: Int16Array;
+  protected readonly bottom: Int16Array;
+  protected readonly checked: Uint32Array;
+  protected step = 0;
+  protected epoch = -1;
 
-  constructor(width: number, height: number) {
+  /** `shared` adopts externally allocated momentum/flight planes (the
+   *  SharedArrayBuffer-backed parallel sandbox, sim/parallel/ParallelFlow). */
+  constructor(width: number, height: number, shared?: { vx: Float32Array; vy: Float32Array; inFlight: Uint8Array }) {
     this.columns = Math.ceil(width / TILE);
     const count = this.columns * Math.ceil(height / TILE);
-    this.vx = new Float32Array(count); this.vy = new Float32Array(count);
+    this.vx = shared?.vx ?? new Float32Array(count); this.vy = shared?.vy ?? new Float32Array(count);
     this.surface = new Int16Array(width); this.bottom = new Int16Array(width); this.checked = new Uint32Array(width);
-    this.inFlight = new Uint8Array(width * height);
+    this.inFlight = shared?.inFlight ?? new Uint8Array(width * height);
+  }
+
+  /** Visit each live airborne-water flight positioned inside the INCLUSIVE
+   *  box [x0,x1]x[y0,y1] (FallingWater's exposure streaks). Positions are in cells. */
+  forEachFlight(
+    x0: number, y0: number, x1: number, y1: number,
+    visit: (index: number, x: number, y: number, previousX: number, previousY: number) => void,
+  ): void {
+    for (const [index, flight] of this.falling) {
+      if (flight.x < x0 || flight.x > x1 || flight.y < y0 || flight.y > y1) continue;
+      visit(index, flight.x, flight.y, flight.previousX, flight.previousY);
+    }
   }
 
   /** Drop every airborne-water flight (World.clear). */

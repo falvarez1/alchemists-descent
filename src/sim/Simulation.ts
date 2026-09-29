@@ -27,11 +27,29 @@ import { handleLeaf, handleSeed, handleTrunk } from '@/sim/elements/flora';
 import { handleBrine } from '@/sim/elements/brine';
 import { updateElectricalGrid } from '@/sim/electrical';
 import { runHarvesterField } from '@/sim/harvester';
-import { reseedSimSubstep, simRandom } from '@/core/simRandom';
+import { reseedSimChunk, reseedSimSubstep, simRandom } from '@/core/simRandom';
+import type { World } from '@/sim/World';
+
+/** Stream key the growth pass reseeds with after a parallel sweep (sim/parallel/protocol). */
+const GROWTH_STREAM_KEY = 0x7ff1;
+
+/**
+ * A multithreaded replacement for the material sweep (the prototype sandbox:
+ * sim/parallel/ParallelSim). Everything before and after the sweep stays
+ * here and serial; `handles` gates it to the one shared world it owns.
+ */
+export interface ParallelSweep {
+  handles(world: World): boolean;
+  /** Stands in for world.activity.beginStep. */
+  activityStep(ctx: Ctx, interest: { x0: number; y0: number; x1: number; y1: number } | undefined, tick: number): void;
+  sweep(ctx: Ctx, substep: number): void;
+}
 
 /* ===================== Core Simulation Frame ===================== */
 export class Simulation implements SimulationApi {
   accumulator = 0;
+  /** Optional parallel sweep (docs/SANDBOX-MT.md); null = always serial. */
+  parallel: ParallelSweep | null = null;
   private readonly sparseGrowthCells: number[] = [];
   /** Substep index within the current tick, for the per-substep reseed below.
    *  Derived from `frameCount` rather than from `update`'s loop counter so a
@@ -69,7 +87,8 @@ export class Simulation implements SimulationApi {
       this.lastSeededTick = gameTick;
       this.substep = 0;
     }
-    reseedSimSubstep(ctx.state.worldSeed, gameTick, this.substep++);
+    const substep = this.substep++;
+    reseedSimSubstep(ctx.state.worldSeed, gameTick, substep);
 
     // New substep = new moved-epoch (see World.movedTick). The old code
     // zeroed every window cell here, column-major, every substep.
@@ -83,13 +102,26 @@ export class Simulation implements SimulationApi {
     runHarvesterField(ctx);
     updateElectricalGrid(ctx);
     ctx.projectileCtl.update(ctx);
-    world.activity.beginStep(world, ctx.state.mode === 'play' ? world.simBounds : undefined, gameTick);
+    const parallel = this.parallel !== null && this.parallel.handles(world) ? this.parallel : null;
+    const interest = ctx.state.mode === 'play' ? world.simBounds : undefined;
+    if (parallel !== null) parallel.activityStep(ctx, interest, gameTick);
+    else world.activity.beginStep(world, interest, gameTick);
     const sim = world.activity.bounds;
 
     for (let i = ctx.shockwaves.length - 1; i >= 0; i--) {
       const w = ctx.shockwaves[i];
       w.currentRadius += w.speed;
       if (w.currentRadius >= w.maxRadius) ctx.shockwaves.splice(i, 1);
+    }
+
+    if (parallel !== null) {
+      parallel.sweep(ctx, substep);
+      // the sweep left the sim stream wherever its last chunk did; growth
+      // draws from its own so the result is independent of thread count
+      reseedSimChunk(ctx.state.worldSeed | 0, gameTick, substep, GROWTH_STREAM_KEY);
+      this.sparseGrowthCells.length = 0;
+      this.growthPass(ctx, world);
+      return;
     }
 
     // Hoisted for the hot loop: handlers run inside it, so V8 cannot prove
@@ -199,6 +231,14 @@ export class Simulation implements SimulationApi {
       }
     }
 
+    this.growthPass(ctx, world);
+  }
+
+  /** The sparse growth pass (ice, vines, fungus, moss, grass, leaf, trunk) after the sweep. */
+  private growthPass(ctx: Ctx, world: World): void {
+    const movedArr = world.moved;
+    const tick = world.movedTick;
+    const sparseGrowthCells = this.sparseGrowthCells;
     for (let key = 0; key < world.activity.growthCells.length; key++) {
       if (world.activity.growthScheduled[key]) for (const ci of world.activity.growthCells[key]) sparseGrowthCells.push(ci);
     }

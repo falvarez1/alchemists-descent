@@ -51,6 +51,25 @@ import type { TerrainArtPlane } from '@/render/terrainArtPlane';
 /** Short alias for embedding SKY tuning numbers as GLSL float literals below. */
 const flt = glslFloat;
 
+/** A 64-bit cell-type set as two GLSL uint masks: a branch-free membership test. */
+function cellMaskGlsl(name: string, cells: readonly number[]): string {
+  let lo = 0, hi = 0;
+  for (const t of cells) {
+    if (t < 32) lo |= 1 << t; else hi |= 1 << (t - 32);
+  }
+  return `bool ${name}(int t) { return (((t < 32 ? ${lo >>> 0}u >> uint(t) : ${hi >>> 0}u >> uint(max(0, t - 32)))) & 1u) != 0u; }`;
+}
+/** SUB-CELL LOOK (postFx.subcell; docs/SANDBOX-MT.md). Loose materials get
+ *  Scale2x silhouettes; powders a per-fine-pixel grain. */
+const SUBCELL_POWDERS = [Cell.Sand, Cell.Gold, Cell.Catalyst, Cell.Gunpowder, Cell.Snow, Cell.Coal, Cell.Ash];
+const SUBCELL_LOOSE = [
+  ...SUBCELL_POWDERS, Cell.Seed,
+  Cell.Water, Cell.Oil, Cell.Acid, Cell.Lava, Cell.Blood, Cell.Slime, Cell.Brine, Cell.Nitrogen,
+  Cell.Toxic, Cell.Healium, Cell.Teleportium, Cell.ElixirLife, Cell.ElixirLevity, Cell.ElixirStone,
+];
+/** Shapes that read as open air to the silhouette rule (a pile's edge against smoke is still an edge). */
+const SUBCELL_AIR = [Cell.Empty, Cell.Smoke, Cell.Steam, Cell.MarshGas];
+
 /* ===================== GPU Frame Composition (perf ticket #8) =====================
  * The FrameComposer terrain loop, ported formula-for-formula into a fragment
  * shader (docs/GPU-COMPOSE-PLAN.md). THE CPU LOOP IS THE LOOK: every constant
@@ -122,6 +141,11 @@ uniform bool uFxOn;
 uniform sampler2D uTerrain;
 uniform sampler2D uScars;
 uniform bool uTerrainEnabled;
+uniform bool uSubcell;     // postFx.subcell: Scale2x silhouettes + powder grain at the fine pixel pitch
+${cellMaskGlsl('subcellLoose', SUBCELL_LOOSE)}
+${cellMaskGlsl('subcellPowder', SUBCELL_POWDERS)}
+${cellMaskGlsl('subcellAir', SUBCELL_AIR)}
+int subcellShape(int t) { return subcellAir(t) ? 0 : t; }
 // Per-floor material grade (config/floorLooks.ts; earthen is the identity).
 uniform vec3 uLookGain;
 uniform vec3 uLookLift;
@@ -395,6 +419,50 @@ void main() {
       bool leftAir = (texelFetch(uWin, ivec2(max(0, lx - 1), ly), 0).a & 0x7fu) == 0u;
       bool rightAir = (texelFetch(uWin, ivec2(min(${WIN_W - 1}, lx + 1), ly), 0).a & 0x7fu) == 0u;
       if (topAir && sub.y < 0.5 && ((leftAir && sub.x < 0.5) || (rightAir && sub.x >= 0.5))) type = ${Cell.Empty};
+    }
+    // SUB-CELL SILHOUETTES: Scale2x on material shapes. Each fine pixel looks
+    // at the two neighbours on its own side of the cell (H, V) and the two
+    // opposite (H2, V2); where H and V agree, differ from their opposites and
+    // from this cell, the pixel takes V. A 45-degree pile or a pool rim then
+    // steps at the fine pixel pitch instead of the cell's; single grains and
+    // one-cell lines are left whole. Only where a loose material is involved
+    // (rock keeps its authored blocks); the sim never sees any of it.
+    if (uSubcell) {
+      int hs = sub.x < 0.25 ? -1 : 1;
+      int vs = sub.y < 0.25 ? -1 : 1;
+      uvec4 cV = texelFetch(uWin, ivec2(lx, clamp(ly + vs, 0, ${WIN_H - 1})), 0);
+      int tV = int(cV.a & 0x7fu);
+      int sP = subcellShape(type), sV = subcellShape(tV);
+      bool looseP = subcellLoose(type);
+      if (sV != sP && (looseP || subcellLoose(tV))) {
+        int sH = subcellShape(int(texelFetch(uWin, ivec2(clamp(lx + hs, 0, ${WIN_W - 1}), ly), 0).a & 0x7fu));
+        int sH2 = subcellShape(int(texelFetch(uWin, ivec2(clamp(lx - hs, 0, ${WIN_W - 1}), ly), 0).a & 0x7fu));
+        int sV2 = subcellShape(int(texelFetch(uWin, ivec2(lx, clamp(ly - vs, 0, ${WIN_H - 1})), 0).a & 0x7fu));
+        if (looseP && sV == 0 && sH == 0 && sH2 == 0 && sV2 == 0) {
+          // A lone grain or droplet in open air draws as ONE fine pixel of its
+          // cell (the one its colour picks, so it holds still as it flies):
+          // spray and sifting sand at the pitch sparks and embers already use.
+          uint pick = (cell.r ^ (cell.g >> 1u) ^ (cell.b >> 2u)) & 3u;
+          if (uint(sub.x * 2.0) + 2u * uint(sub.y * 2.0) != pick) {
+            cell = cV;
+            type = tV;
+            charged = (cV.a & 0x80u) != 0u;
+          }
+        } else if (sH == sV && sH != sV2 && sV != sH2) {
+          cell = cV;
+          type = tV;
+          charged = (cV.a & 0x80u) != 0u;
+        }
+      }
+      // Grain: each fine pixel of a powder cell a little lighter or darker,
+      // keyed on the cell's own colour so the pattern rides with the grain.
+      if (subcellPowder(type)) {
+        uint q = uint(sub.x * 2.0) + 2u * uint(sub.y * 2.0);
+        uint h = (cell.r * 131u) ^ (cell.g * 197u) ^ (cell.b * 59u) ^ (q * 0x9e37u);
+        h ^= h >> 7; h *= 0x2c1bu; h ^= h >> 9;
+        float k = 0.93 + float(h & 255u) * (0.14 / 255.0);
+        cell.rgb = uvec3(clamp(vec3(cell.rgb) * k, 0.0, 255.0));
+      }
     }` : ''}
 
     vec4 lightTexel = texelFetch(uLight, ivec2(vx >> 1, vy >> 1), 0);
@@ -1058,6 +1126,7 @@ export class GpuCompose {
         uTerrain: { value: this.terrainTex },
         uScars: { value: this.scarTex },
         uTerrainEnabled: { value: false },
+        uSubcell: { value: false },
         uNatural: { value: false },
         uArt: { value: this.artTex },
         uFloorTiles: { value: this.terrainTex },
@@ -1179,6 +1248,7 @@ export class GpuCompose {
     u.uSkyLine.value = ctx.levels.current?.skyLine ?? 0;
     u.uBoost.value = ctx.params.global.maxBrightness;
     u.uVignette.value = ctx.state.postFx.vignette;
+    u.uSubcell.value = ctx.state.postFx.subcell === true;
     u.uDarkOn.value = light.lightOpen !== undefined && light.openFlat !== true;
 
     const frameCount = ctx.state.frameCount;

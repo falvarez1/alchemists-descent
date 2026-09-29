@@ -75,6 +75,11 @@ function worldLayerChunk(id: string): string | undefined {
   return WORLD_LAYER.test(path) && !WORLD_LAYER_EXCLUDED.test(path) ? 'world' : undefined;
 }
 
+const ISOLATION_HEADERS = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'credentialless',
+};
+
 export default defineConfig(({ mode }) => ({
   plugins: [authorLinkPlugin()],
   define: {
@@ -122,7 +127,12 @@ export default defineConfig(({ mode }) => ({
   // late and re-optimized mid-session — reloading a page a probe (or a
   // playtester) had already started a run in. Pre-bundle it up front.
   optimizeDeps: { include: ['gifenc', '@dimforge/rapier2d-compat', '@dimforge/rapier2d-simd-compat'] },
+  // Cross-origin isolation, so the Sandbox can put its world on
+  // SharedArrayBuffers for the parallel sweep (docs/SANDBOX-MT.md).
+  // `credentialless` keeps no-cors third-party loads working without CORP.
+  preview: { headers: ISOLATION_HEADERS },
   server: {
+    headers: ISOLATION_HEADERS,
     open: false,
     watch: {
       // Gallery writes are evidence, and must not reload a running playtest.
