@@ -70,8 +70,10 @@ const info = await page.evaluate((strict) => {
   return { live: ctx.particles.list.length, bodies: ctx.rigidBodies.bodies.length, enemies: ctx.enemies.length };
 }, STRICT);
 
-// Let the camera settle on the scene, then freeze everything.
+// Let the camera settle and the bodies fall asleep (the resting-body art
+// cache only serves sleeping bodies), then freeze everything.
 await page.waitForTimeout(1500);
+await page.waitForFunction(() => window.__game.ctx.rigidBodies.bodies.every((b) => b.sleeping), null, { timeout: 20000 }).catch(() => {});
 await page.evaluate(() => {
   const ctx = window.__game.ctx;
   ctx.state.paused = true;
@@ -96,6 +98,14 @@ async function capture(gpu, name) {
 const gpuA = await capture(true, 'gpu');
 const cpu = await capture(false, 'cpu');
 const gpuB = await capture(true, 'gpu-again');
+// Resting-body art: replayed recordings vs drawing every body directly.
+const asleep = await page.evaluate(() => window.__game.ctx.rigidBodies.bodies.filter((b) => b.sleeping).length);
+await page.evaluate(() => { window.__bodyArtCache = false; window.__game.ctx.state.postFx.gpuParticles = false; });
+await page.waitForTimeout(200);
+const direct = await capture(true, 'art-direct');
+await page.evaluate(() => { window.__bodyArtCache = true; });
+const cached = await capture(true, 'art-cached');
+const artDiff = diffPixelSnapshots(direct, cached, 0);
 
 const noise = diffPixelSnapshots(gpuA, gpuB, 0);
 const diff = diffPixelSnapshots(gpuA, cpu, 2);
@@ -109,6 +119,7 @@ const gpuUsed = await page.evaluate(() => window.__game.ctx.state.postFx.gpuPart
 const result = {
   info, gpuUsed,
   noiseFloor: { differingPixels: noise.differingPixels, maxChannelDelta: noise.maxChannelDelta },
+  bodyArtCache: { asleep, differingPixels: artDiff.differingPixels, maxChannelDelta: artDiff.maxChannelDelta },
   gpuVsCpu: { differingPixels: diff.differingPixels, pct: +diff.differingPixelPct.toFixed(4), maxChannelDelta: diff.maxChannelDelta, meanChannelDelta: +diff.meanChannelDelta.toFixed(4), bigDeltaPixels: big },
   errors,
 };
@@ -117,6 +128,6 @@ console.log(JSON.stringify(result, null, 2));
 await browser.close();
 // Creatures animate at render time, so two GPU captures already differ a
 // little (the noise floor); the GPU-vs-CPU diff must stay within it.
-const pass = errors.length === 0 && diff.differingPixels <= Math.max(50, noise.differingPixels * 2) && big <= Math.max(20, noise.differingPixels * 2);
+const pass = errors.length === 0 && artDiff.differingPixels <= noise.differingPixels && diff.differingPixels <= Math.max(50, noise.differingPixels * 2) && big <= Math.max(20, noise.differingPixels * 2);
 console.log(pass ? 'PASS gpu fx matches the CPU paths' : 'FAIL gpu fx differs from the CPU paths');
 process.exitCode = pass ? 0 : 1;

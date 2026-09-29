@@ -17,6 +17,7 @@
 //   node scripts/perf-fx-suite.mjs [--url U] [--label L] [--frames N] [--scenes a,b] [--profile]
 //   node scripts/perf-fx-suite.mjs --ab URL_A,URL_B [--blocks 2] ...   interleaved A/B (A,B,B,A...)
 //   node scripts/perf-fx-suite.mjs --compare verify-out/perf-fx-<label>.json ...
+//   node scripts/perf-fx-suite.mjs --init 'window.__flag = 1' ...   (page init script, e.g. debug overrides)
 // Writes verify-out/perf-fx-<label>.json (per-scene bucket stats + raw per-frame samples).
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
@@ -38,6 +39,8 @@ const SCENES = (arg('scenes', 'quiet,chaos,particles,flood,boss,bodies')).split(
 const PROFILE = flag('profile');
 const COMPARE = arg('compare', null);
 const THROTTLE = Number(arg('throttle', 1));
+// --init 'js': runs in every page before the game boots (debug overrides for A/B).
+const INIT = arg('init', null);
 const KEYS = ['sim', 'entities', 'compose', 'gl', 'render', 'frame'];
 
 mkdirSync('verify-out', { recursive: true });
@@ -269,6 +272,7 @@ async function runBlock(browser, url) {
   const page = await newBenchmarkPage(browser, { diagnosticsLabel: 'perf-fx' });
   await page.setViewportSize({ width: 1280, height: 800 });
   page.on('pageerror', (e) => console.error('PAGE ERROR:', String(e)));
+  if (INIT) await page.addInitScript({ content: INIT });
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1500);
   const cdp = await page.context().newCDPSession(page);
