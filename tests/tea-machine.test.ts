@@ -122,6 +122,40 @@ describe('the played engine', () => {
   }, 120000);
 });
 
+describe('an engine nobody has touched', () => {
+  it('rests quietly: the rocker on its stop does not clank, or wake sleepers, ten times a second', () => {
+    // QA (2026-09-29): the rocker's pin sags a little under its own weight and presses
+    // its end onto the fixed stop, so it chattered there forever, striking every
+    // ~20 ticks. Each strike sounded (audible anywhere along the catwalk) and fed
+    // groundImpact, which wakes sleeping weavers near it.
+    const { ctx, rigid, world, runtime } = fixture();
+    ctx.params = createGameParams(); ctx.state.worldSeed = 777; ctx.shockwaves = [];
+    ctx.projectileCtl = { update: vi.fn() } as unknown as Ctx['projectileCtl'];
+    ctx.physics = { cellBlocks: () => false } as unknown as Ctx['physics'];
+    ctx.explosions = new Explosions(ctx);
+    const cues: string[] = [];
+    Reflect.set(ctx.audio, 'sfx', (id: string) => { cues.push(id); });
+    let strikes = 0;
+    ctx.events.on('groundImpact', () => { strikes++; });
+    stampTeaMachine(world, runtime.mechanisms);
+    const director = new TeaMachine(ctx); ctx.contraption = director; director.update();
+    const sim = new Simulation(); Object.assign(world.simBounds, TEA.simBounds);
+    const step = () => {
+      ctx.state.frameCount++; Object.assign(world.simBounds, TEA.simBounds); director.includeSimulation();
+      sim.update(ctx); updateElectricalGrid(ctx); rigid.update(ctx); director.update();
+    };
+    for (let tick = 0; tick < 120; tick++) step(); // the machine settles onto its stops
+    cues.length = 0; strikes = 0;
+    for (let tick = 0; tick < 600; tick++) step(); // ten seconds, the crank untouched
+    const impacts = cues.filter(id => id.startsWith('body.impact'));
+    director.dispose(); rigid.dispose();
+    // A body that has come to rest may tick once or twice as it finds its seat; a chatter
+    // strikes ~30 times in ten seconds.
+    expect(impacts.length, JSON.stringify(impacts.slice(0, 6))).toBeLessThanOrEqual(3);
+    expect(strikes).toBeLessThanOrEqual(3);
+  }, 60000);
+});
+
 function directorFixture() {
   const f = fixture();
   stampTeaMachine(f.world, f.runtime.mechanisms);

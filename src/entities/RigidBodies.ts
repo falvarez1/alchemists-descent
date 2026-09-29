@@ -96,6 +96,15 @@ const STOMP_BOUNCE = 3.2; // upward pop when a dive-stomp smashes a destructible
 const BODY_IMPACT_NOISE_MIN_SPEED = 1.7; // cells/frame before a body slam can wake sleepers
 const BODY_IMPACT_NOISE_MIN_DELTA = 1.25; // abrupt velocity change required, not just gravity/drag
 const BODY_IMPACT_NOISE_COOLDOWN = 18;
+// A body that strikes the same spot again and again is resting, not bouncing: a
+// pinned board that sags onto its stop, a crate juddering on a slope. Such chatter
+// used to sound (and wake sleeping weavers via groundImpact) every ~20 frames for
+// as long as the body existed. After a couple of taps, further WEAK strikes there
+// are silent; a real blow always sounds, and the chatter is forgotten once it stops.
+const BODY_IMPACT_SPOT_RADIUS = 3; // cells: "the same spot"
+const BODY_IMPACT_SPOT_WINDOW = 90; // frames between strikes for them to be one chatter
+const BODY_IMPACT_SPOT_TAPS = 2; // strikes allowed before a chatter is silenced
+const BODY_IMPACT_SPOT_LOUD = 0.5; // strength from which a strike is a blow, never chatter
 const BODY_HIT_MIN_SPEED = 2.6; // a body must move this fast (cells/frame) to hurt a foe
 const BODY_HIT_COOLDOWN = 16; // frames before the same body can damage a foe again (one throw = one hit)
 const BODY_HIT_DMG_K = 1.5; // contact damage per cell/frame of impact speed, scaled by body mass
@@ -133,6 +142,8 @@ export class RigidBodies implements RigidBodiesApi {
   private readonly ropeAnchors = new Map<RigidBody, RBody>();
   private readonly tetherAnchors = new Map<RigidBody, RBody>();
   private readonly hingeAnchors = new Map<RigidBody, RBody>();
+  /** Where and when each body last struck, to tell a body chattering in place from one bouncing along. */
+  private readonly impactSpots = new WeakMap<RigidBody, { x: number; y: number; frame: number; taps: number }>();
   /**
    * The cave as Rapier sees it: one Voxels collider per 64x64 activity chunk
    * that a dynamic body is near, holding every solid SURFACE cell of the chunk
@@ -1018,6 +1029,16 @@ export class RigidBodies implements RigidBodiesApi {
     if (!this.scanFootprint(ctx.world, body, 2, blocksEntity)) return;
 
     const strength = Math.min(1, Math.max(0.25, (delta - BODY_IMPACT_NOISE_MIN_DELTA) / 4));
+    if (strength < BODY_IMPACT_SPOT_LOUD) {
+      const frame = ctx.state.frameCount;
+      const spot = this.impactSpots.get(body);
+      if (spot && frame - spot.frame <= BODY_IMPACT_SPOT_WINDOW && Math.hypot(body.x - spot.x, body.y - spot.y) <= BODY_IMPACT_SPOT_RADIUS) {
+        spot.frame = frame; // still chattering: keep the memory alive, so it stays quiet until it truly stops
+        if (++spot.taps > BODY_IMPACT_SPOT_TAPS) return;
+      } else {
+        this.impactSpots.set(body, { x: body.x, y: body.y, frame, taps: 1 });
+      }
+    }
     body.impactNoiseCd = BODY_IMPACT_NOISE_COOLDOWN;
     // A felled tree sounds its own strikes in its own wood (game/Flora → treeLanded → audio/EventCues).
     if (body.tag !== 'flora-fell') ctx.audio.sfx(`body.impact.${body.material ?? 'wood'}`, body.x, body.y, { gain: strength });
