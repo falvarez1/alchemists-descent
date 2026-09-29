@@ -340,6 +340,8 @@ export interface OverlaySurface {
   readonly particles?: ParticleSink;
   /** Present when this frame's overlay writes go to the GPU (see OverlayCommandSink). */
   readonly commands?: OverlayCommandSink;
+  /** True when this frame's queued sparks went to the GPU simulator (else: CPU particles). */
+  readonly sparksOnGpu?: boolean;
   /** Float RGBA staging, VIEW_W x VIEW_H, Y-flipped rows. */
   readonly data: Float32Array;
   /** Record a touched pixel (pixel index, not float offset). Idempotent. */

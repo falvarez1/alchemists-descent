@@ -49,6 +49,7 @@ import { createWaveState } from '@/game/WaveDirector';
 import { InputManager } from '@/input/InputManager';
 import { currentAppMode, readAppMode, saveAppMode } from '@/game/modePersist';
 import { Particles } from '@/particles/Particles';
+import { Sparks } from '@/particles/Sparks';
 import { DepthScene } from '@/render/depth/DepthScene';
 import { Camera } from '@/render/Camera';
 import { FrameComposer } from '@/render/FrameComposer';
@@ -239,6 +240,9 @@ export class Game {
     });
 
     ctx.particles = new Particles();
+    const sparks = new Sparks();
+    ctx.sparks = sparks;
+    this.disposables.push({ dispose: ctx.events.on('levelChanged', () => sparks.clear()) });
     ctx.explosions = new Explosions(ctx);
     ctx.lightning = new Lightning(ctx);
     ctx.projectileCtl = new Projectiles();

@@ -40,6 +40,7 @@ import { backdropOrigin } from '@/render/depth/parallax';
 import { Cell } from '@/sim/CellType';
 import type { World } from '@/sim/World';
 import { GpuFxLayer } from '@/render/GpuFxLayer';
+import { GpuSparkSim } from '@/render/GpuSparkSim';
 import {
   activeArtPlane, activeFloorLook, terrainArtPixels, terrainBlocksGlsl, terrainOpenMask, usesTerrainArt,
 } from '@/render/TerrainArt';
@@ -797,6 +798,8 @@ class Overlay implements OverlaySurface {
   readonly scale = PIXEL_SCALE;
   particles: ParticleSink | undefined = undefined;
   commands: OverlayCommandSink | undefined = undefined;
+  /** True when this frame's queued sparks went to the GPU simulator. */
+  sparksOnGpu = false;
   readonly data = new Float32Array(PIXEL_W * PIXEL_H * 4);
   readonly half = new Uint16Array(PIXEL_W * PIXEL_H * 4);
   /** The staging floats' bits, for the inline f16 conversion in commit(). */
@@ -956,6 +959,9 @@ export class GpuCompose {
   private readonly overlay = new Overlay();
   /** GPU particles/FX, layered between terrain and the overlay (render/GpuFxLayer). */
   private readonly fx: GpuFxLayer;
+  /** GPU cosmetic sparks (render/GpuSparkSim), drawn by the FX layer. */
+  private readonly sparks: GpuSparkSim;
+  private sparkGeneration = -1;
   private overlayUploadTex: THREE.DataTexture | null = null;
   private overlayUploadData: Uint16Array<ArrayBuffer> | null = null;
   private overlayUploadCapacity = 0;
@@ -1028,6 +1034,7 @@ export class GpuCompose {
     this.overlayTex.needsUpdate = true;
 
     this.fx = new GpuFxLayer(renderer, this.lightTex);
+    this.sparks = new GpuSparkSim(renderer, this.winTex, this.lightTex);
 
     for (let i = 0; i < COMPOSE_MAX_WAVES; i++) this.waveA.push(new THREE.Vector4());
     for (let i = 0; i < COMPOSE_MAX_LENSES; i++) this.lensV.push(new THREE.Vector4());
@@ -1214,8 +1221,23 @@ export class GpuCompose {
     this.overlay.commands = fxOn && ctx.state.postFx.gpuOverlay ? this.fx : undefined;
     this.fx.beginFrame();
     this.fx.setDarkOn(u.uDarkOn.value as boolean);
+    this.overlay.sparksOnGpu = fxOn && this.sparks.available && ctx.sparks !== undefined;
+    if (this.overlay.sparksOnGpu) this.stepSparks(ctx, camX, camY);
     this.overlay.clear();
     return this.overlay;
+  }
+
+  /** Take the queued bursts, advance the sparks by the elapsed ticks, hand them to the FX layer. */
+  private stepSparks(ctx: Ctx, camX: number, camY: number): void {
+    const sparks = ctx.sparks!, sim = this.sparks;
+    if (sparks.generation !== this.sparkGeneration) {
+      this.sparkGeneration = sparks.generation;
+      sim.clear();
+    }
+    sparks.drain((records, count) => sim.queue(records, count));
+    const tick = ctx.state.frameCount;
+    sim.step(tick, camX - COMPOSE_PAD, camY - COMPOSE_PAD);
+    if (sim.live(tick)) this.fx.setSparks(sim, camX, camY, renderAmbient(ctx), tick);
   }
 
   /** Stage this frame's overlay writes for upload. */
@@ -1239,6 +1261,7 @@ export class GpuCompose {
     this.overlayTex.dispose();
     this.overlayUploadTex?.dispose();
     this.fx.dispose();
+    this.sparks.dispose();
     for (const tex of this.backdropTex) tex.dispose();
   }
 

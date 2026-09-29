@@ -5,6 +5,7 @@ import type { Ctx } from '@/core/types';
 import { DARK_ADAPT, renderAmbient, VIGNETTE_BASE } from '@/render/lightingModel';
 import { PIXEL_H, PIXEL_SCALE, PIXEL_W } from '@/render/presentation';
 import type { OverlayCommandSink, ParticleSink } from '@/render/pixels';
+import type { GpuSparkSim } from '@/render/GpuSparkSim';
 
 /**
  * The GPU FX layer (WebGL GPU-compose frames): a fine-resolution RGBA16F
@@ -215,6 +216,12 @@ export class GpuFxLayer implements ParticleSink, OverlayCommandSink {
   /** The target holds last frame's content (so an empty frame must clear it). */
   private drawn = false;
   private readonly savedClear = new THREE.Color();
+  /** GPU sparks to draw this frame (null = none alive), with their draw inputs. */
+  private sparks: GpuSparkSim | null = null;
+  private sparkCamX = 0;
+  private sparkCamY = 0;
+  private sparkAmbient = 0;
+  private sparkTick = 0;
 
   constructor(private readonly renderer: THREE.WebGLRenderer, lightTex: THREE.Texture) {
     const ext = renderer.extensions;
@@ -263,7 +270,13 @@ export class GpuFxLayer implements ParticleSink, OverlayCommandSink {
 
   /** True when this frame drew anything the compose shader must layer in. */
   get active(): boolean {
-    return this.particleCount > 0 || this.commandCount > 0;
+    return this.particleCount > 0 || this.commandCount > 0 || this.sparks !== null;
+  }
+
+  /** Draw these live sparks with the particles this frame (null: none). */
+  setSparks(sim: GpuSparkSim | null, camX: number, camY: number, ambient: number, tick: number): void {
+    this.sparks = sim;
+    this.sparkCamX = camX; this.sparkCamY = camY; this.sparkAmbient = ambient; this.sparkTick = tick;
   }
 
   /** Start of a GPU-composed frame: nothing submitted yet. */
@@ -271,6 +284,7 @@ export class GpuFxLayer implements ParticleSink, OverlayCommandSink {
     this.particleCount = 0;
     this.commandCount = 0;
     this.commandSplit = 0;
+    this.sparks = null;
   }
 
   /** One overlay write (see the class comment for the coverage convention). */
@@ -349,6 +363,8 @@ export class GpuFxLayer implements ParticleSink, OverlayCommandSink {
       this.particles.geometry.setDrawRange(0, this.particleCount);
       renderer.render(this.particleScene, this.camera);
     }
+    // Sparks fly with the particles: over the terrain, under every sprite.
+    if (this.sparks) this.sparks.draw(this.sparkCamX, this.sparkCamY, this.sparkAmbient, this.sparkTick);
     if (nc > split) this.drawCommands(split, nc - split);
     renderer.autoClear = previousAutoClear;
     renderer.setRenderTarget(previousTarget);

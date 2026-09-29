@@ -392,6 +392,17 @@ export class Explosions implements ExplosionApi {
       glow: 2.4,
       grav: 0.1,
     });
+    // GPU sparks (cosmetic — they bounce off the cave, never become cells): a
+    // hot fan, embers drifting up, a smoke puff; all scale with the blast.
+    const sparks = ctx.sparks;
+    if (sparks) {
+      sparks.burst(cx, cy, { count: Math.min(900, radius * 40), speed: 1.6 + radius * 0.16, kind: 'spark', glow: 1.3,
+        radius: radius * 0.3, colors: [0xffd27a, 0xffa030, 0xff7a18, 0xfff0c0] });
+      sparks.burst(cx, cy, { count: Math.min(240, radius * 10), speed: 0.8 + radius * 0.05, kind: 'ember', glow: 1.1,
+        radius: radius * 0.5, colors: [0xff6a10, 0xffae40, 0xd04008] });
+      sparks.burst(cx, cy, { count: Math.min(260, radius * 12), speed: 0.35, kind: 'smoke', life: 80,
+        radius: radius * 0.6, colors: [0x5a5048, 0x6e625a, 0x4a423c] });
+    }
 
     // Entity damage. damage() can kill RE-ENTRANTLY: a bomber/colossus death
     // triggers a nested explosion that swap-removes enemies from ctx.enemies
