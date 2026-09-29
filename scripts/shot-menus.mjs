@@ -63,7 +63,10 @@ try {
     if (want('grimoire')) { await page.keyboard.press('KeyJ'); await snap('grimoire'); await closeAll(); }
     if (want('offer')) {
       await page.evaluate(() => window.__game.ctx.events.emit('cardOfferRequested', { source: 'tome', title: 'A water-stained tome', prompt: 'Choose one spell to keep.', cards: ['frostshard', 'bounce', 'heavy'], onChoose() {}, onDismiss() {} }));
-      await snap('card-offer'); await closeAll();
+      await snap('card-offer');
+      // A tome offer is a mandatory choice: Escape does nothing, a digit picks a
+      // card. Pick one, or the offer stays up and hides every menu shot after it.
+      await page.keyboard.press('Digit1'); await page.waitForTimeout(400); await closeAll();
     }
     if (want('waystone')) {
       // The unlit waystone's help is a non-modal teach card (game/waystoneHelp).

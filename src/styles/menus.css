@@ -518,11 +518,19 @@ body.play-active #descend-btn, #descend-btn {
 body.play-active #descend-btn:hover:not(:disabled), #descend-btn:hover:not(:disabled) { background: #ebddba; color: #0f1b1d; box-shadow: none; }
 body.play-active #descend-btn:disabled, #descend-btn:disabled { background: none; border-color: var(--m-line-strong); color: var(--m-muted); opacity: 1; cursor: not-allowed; }
 #descend-btn:focus-visible { outline: 2px solid var(--m-mint); outline-offset: 3px; }
-/* Short screens (1280x720 and the like): both required choices, the boon and
+/* Short views (1280x720 and the like): both required choices, the boon and
    the door, and the button that waits on them sit in view without scrolling
    (QA: at 720 p "Choose a boon" was below the fold while the button asked for one).
-   Only the optional provisions may scroll. */
-@media (max-height: 820px) {
+   Only the optional provisions may scroll.
+   The game view is a 16:9 letterbox inside the window, so what matters is the
+   VIEW's height, not the window's: a 1440x900 window has an 810 px view, a
+   1536x864 laptop an 864 px one. The roomy layout needs a view about 900 px tall
+   (Matron's line included), and a view is that tall only when the window is at
+   least 900 px high AND 1600 px wide; anything else is compact. So the query is
+   height <= 900 OR width <= 1600 (900 x 16/9). Same for the tier below: a view
+   under 620 px tall is a window under 620 px high or under 1102 px wide.
+   scripts/verify-overlay-hit.mjs checks this at a spread of window sizes. */
+@media (max-height: 900px), (max-width: 1600px) {
   body.play-active #sanctum-overlay, #sanctum-overlay { padding: 12px 5%; }
   .sanc-head { padding: 14px 24px 10px; }
   body.play-active #sanctum-overlay .sanc-title, #sanctum-overlay .sanc-title { font-size: calc(30px * var(--text-scale, 1)); }
@@ -534,13 +542,26 @@ body.play-active #descend-btn:disabled, #descend-btn:disabled { background: none
   body.play-active .perk-card .pk-name, .perk-card .pk-name { font-size: calc(19px * var(--text-scale, 1)); }
   .sanc-foot { padding: 10px 24px; }
 }
-@media (max-width: 760px), (max-height: 620px) {
+@media (max-width: 1102px), (max-height: 620px) {
+  #sanctum-overlay .sanc-ash { padding: 8px 14px 8px 16px; gap: 4px; }
+  #sanctum-overlay .sanc-ash .sa-line { font-size: calc(15px * var(--text-scale, 1)); line-height: 1.35; }
+  /* "Floor 2 of 4 waits below" repeats the door panel's own "BELOW - FLOOR 2 OF 4" label. */
+  #sanctum-overlay .sanc-sub { display: none; }
   .sanc-head { padding: 14px 18px 12px; }
   body.play-active #sanctum-overlay .sanc-title, #sanctum-overlay .sanc-title { font-size: calc(30px * var(--text-scale, 1)); }
   .sanc-body { padding: 12px 18px 14px; gap: 14px; }
   body.play-active #perk-row, #perk-row { gap: 6px; }
   body.play-active .perk-card, .perk-card { min-height: 0; padding: 10px; }
   .sanc-foot { padding: 10px 18px; }
+}
+/* The sound widget floats in the view's bottom-right corner (sound.css, z 90,
+   over every in-view menu). The footer's right-aligned button reaches it once the
+   16:9 view is narrower than ~1210px (that is a window under 680px tall too), so
+   centre the button there rather than shrink the modal for a reserved lane: the
+   button is the one control that leaves the Sanctum, and it must never sit under
+   the speaker. */
+@media (max-width: 1210px), (max-height: 680px) {
+  .sanc-foot { justify-content: center; }
 }
 
 /* =====================================================================

@@ -1,5 +1,9 @@
 /* The speaker in the corner (ui/SoundQuickControl): mute + volume sliders.
-   z-index 90: above the title screen (88) and the HUD, under the clip card (95) and modal dialogs.
+   z-index 90: above the title screen (88), the HUD and the in-view menus (pause, bench, map,
+   handbook, Sanctum: z 4-8, so you can always mute), under the clip card (95), the Grimoire
+   (200), hint cards (118) and the story cinema (400). Because it draws over the menus, a menu
+   must keep its own controls out of the bottom-right corner (see the Sanctum footer in
+   menus.css); scripts/verify-overlay-hit.mjs catches a control it lands on.
    Shown on the title screen and in play; everywhere else it stays out of the way. */
 #sound-quick { position: absolute; z-index: 90; display: none; align-items: center; gap: 2px; pointer-events: auto;
   font: 400 calc(12px * var(--text-scale, 1))/1.3 ui-sans-serif, system-ui, sans-serif; color: #d1d8c7; }
