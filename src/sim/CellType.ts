@@ -115,7 +115,7 @@ export const CELL_COUNT = 44;
  */
 
 /** Rigid, load-bearing materials: never fall, entities stand on them. */
-export function isSolid(t: number): boolean {
+function isSolidRef(t: number): boolean {
   return (
     t === Cell.Wall ||
     t === Cell.Wood ||
@@ -136,7 +136,7 @@ export function isSolid(t: number): boolean {
 }
 
 /** Soft growth occupies the grid visually/sim-wise, but bodies move through it. */
-export function isSoftGrowth(t: number): boolean {
+function isSoftGrowthRef(t: number): boolean {
   return (
     t === Cell.Vines ||
     t === Cell.Moss ||
@@ -152,11 +152,11 @@ export function isSoftGrowth(t: number): boolean {
  *  Acid/Toxic stay inert so ooze does not turn whole caves into cyan glow. Blood
  *  conducts again as a short-lived wet gore pool, giving combat spills a real
  *  lightning-combo role beside water, molten rock, and metal. */
-export function isConductor(t: number): boolean {
+function isConductorRef(t: number): boolean {
   return t === Cell.Water || t === Cell.Lava || t === Cell.Metal || t === Cell.Blood || t === Cell.Brine;
 }
 
-export function isLiquid(t: number): boolean {
+function isLiquidRef(t: number): boolean {
   return (
     t === Cell.Water ||
     t === Cell.Oil ||
@@ -175,15 +175,15 @@ export function isLiquid(t: number): boolean {
   );
 }
 
-export function isGas(t: number): boolean {
+function isGasRef(t: number): boolean {
   return t === Cell.Steam || t === Cell.Smoke || t === Cell.MarshGas;
 }
 
 /** Materials that obstruct moving bodies (player, enemies, projectiles). */
-export function blocksEntity(t: number): boolean {
-  if (isSoftGrowth(t)) return false;
+function blocksEntityRef(t: number): boolean {
+  if (isSoftGrowthRef(t)) return false;
   return (
-    isSolid(t) ||
+    isSolidRef(t) ||
     t === Cell.Sand ||
     t === Cell.Gold ||
     t === Cell.Gunpowder ||
@@ -192,3 +192,32 @@ export function blocksEntity(t: number): boolean {
     t === Cell.Catalyst
   );
 }
+
+/**
+ * The predicates above are the DEFINITIONS; hot loops call them per neighbour
+ * per cell, so each is baked once into a 256-entry byte table built by running
+ * the definition over every byte value. Same answers (a non-cell number reads
+ * undefined, which is false, exactly as the comparison chains say), one load.
+ */
+function bake(definition: (t: number) => boolean): Uint8Array {
+  const table = new Uint8Array(256);
+  for (let t = 0; t < 256; t++) table[t] = definition(t) ? 1 : 0;
+  return table;
+}
+const SOLID = bake(isSolidRef);
+const SOFT_GROWTH = bake(isSoftGrowthRef);
+const CONDUCTOR = bake(isConductorRef);
+const LIQUID = bake(isLiquidRef);
+const GAS = bake(isGasRef);
+const BLOCKS_ENTITY = bake(blocksEntityRef);
+
+/** Rigid, load-bearing materials: never fall, entities stand on them. */
+export function isSolid(t: number): boolean { return SOLID[t] === 1; }
+/** Soft growth occupies the grid visually/sim-wise, but bodies move through it. */
+export function isSoftGrowth(t: number): boolean { return SOFT_GROWTH[t] === 1; }
+/** Materials that carry electrical charge (see isConductorRef). */
+export function isConductor(t: number): boolean { return CONDUCTOR[t] === 1; }
+export function isLiquid(t: number): boolean { return LIQUID[t] === 1; }
+export function isGas(t: number): boolean { return GAS[t] === 1; }
+/** Materials that obstruct moving bodies (player, enemies, projectiles). */
+export function blocksEntity(t: number): boolean { return BLOCKS_ENTITY[t] === 1; }

@@ -19,6 +19,10 @@ export interface WaterFlight {
 export class FluidFlow {
   /** Only airborne cells need subcell momentum. Pools allocate no extra plane. */
   readonly falling = new Map<number, WaterFlight>();
+  /** 1 where `falling` holds an entry: lets forget() — called twice per cell
+   *  swap — skip the Map lookup for the overwhelming majority of cells that
+   *  carry no flight. Every set/delete/clear of `falling` keeps it in step. */
+  private readonly inFlight: Uint8Array;
   private readonly columns: number;
   private readonly vx: Float32Array;
   private readonly vy: Float32Array;
@@ -34,15 +38,32 @@ export class FluidFlow {
     const count = this.columns * Math.ceil(height / TILE);
     this.vx = new Float32Array(count); this.vy = new Float32Array(count);
     this.surface = new Int16Array(width); this.bottom = new Int16Array(width); this.checked = new Uint32Array(width);
+    this.inFlight = new Uint8Array(width * height);
+  }
+
+  /** Drop every airborne-water flight (World.clear). */
+  clearFlights(): void {
+    this.falling.clear();
+    this.inFlight.fill(0);
+  }
+
+  private setFlight(index: number, flight: WaterFlight): void {
+    this.falling.set(index, flight);
+    this.inFlight[index] = 1;
+  }
+
+  private dropFlight(index: number): void {
+    this.falling.delete(index);
+    this.inFlight[index] = 0;
   }
 
   beginStep(world: World): void {
     if (this.epoch !== world.activity.epoch) {
-      this.vx.fill(0); this.vy.fill(0); this.active.clear(); this.falling.clear(); this.epoch = world.activity.epoch;
+      this.vx.fill(0); this.vy.fill(0); this.active.clear(); this.falling.clear(); this.inFlight.fill(0); this.epoch = world.activity.epoch;
     }
     this.step++;
     for (const [index, flight] of this.falling) {
-      if (flight.step < this.step - 1 || world.types[index] !== Cell.Water) this.falling.delete(index);
+      if (flight.step < this.step - 1 || world.types[index] !== Cell.Water) this.dropFlight(index);
     }
     for (const index of this.active) {
       this.vx[index] *= .94; this.vy[index] *= .94;
@@ -53,11 +74,11 @@ export class FluidFlow {
   x(x: number, y: number): number { return this.vx[(x >> 3) + (y >> 3) * this.columns] ?? 0; }
   y(x: number, y: number): number { return this.vy[(x >> 3) + (y >> 3) * this.columns] ?? 0; }
 
-  forget(index: number): void { if (this.falling.size) this.falling.delete(index); }
+  forget(index: number): void { if (this.inFlight[index] !== 0) this.dropFlight(index); }
 
   private launch(world: World, x: number, y: number, vx: number, vy: number): void {
     if (this.falling.size >= MAX_FLIGHTS) return;
-    this.falling.set(world.idx(x, y), { x: x + .5, y: y + .5, previousX: x + .5, previousY: y + .5, vx, vy, step: this.step });
+    this.setFlight(world.idx(x, y), { x: x + .5, y: y + .5, previousX: x + .5, previousY: y + .5, vx, vy, step: this.step });
   }
 
   /** Carry the same material cell along a swept ballistic path. Fractional
@@ -87,7 +108,7 @@ export class FluidFlow {
     world.swap(x, y, nx, ny);
     this.record(nx, ny, (nx - x) / 64, (ny - y) / 64);
     flight.x = px; flight.y = py; flight.step = this.step;
-    this.falling.set(world.idx(nx, ny), flight);
+    this.setFlight(world.idx(nx, ny), flight);
     return true;
   }
 

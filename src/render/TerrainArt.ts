@@ -121,6 +121,8 @@ export function prepareTerrainColors(ctx: Ctx): Uint32Array {
   // A freshly replaced/paused world may be edited before its first sim step.
   // Those writes advance the revision without initialized per-cell damage rows.
   if (!activity.ready && cache.revision !== world.mutationVersion) cache.versions.fill(0xffffffff);
+  // Pending contact halos land in renderDirtyRows/renderMin*/renderMax* here.
+  activity.flushTouches();
   const x0 = Math.max(0, camera.renderX - COMPOSE_PAD) >> 6;
   const y0 = Math.max(0, camera.renderY - COMPOSE_PAD) >> 6;
   const x1 = Math.min(world.width - 1, camera.renderX + VIEW_W + COMPOSE_PAD) >> 6;
