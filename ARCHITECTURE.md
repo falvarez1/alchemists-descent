@@ -66,7 +66,11 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     CellType.ts           Append-only Cell ids + material classification predicates
     World.ts              Flat typed-array grid state (types/colors/life/moved/charge)
     colors.ts             Packed-RGB color factories per material
-    Simulation.ts         Fixed-step accumulator + per-tick dispatcher (bottom-up sweep)
+    Simulation.ts         Fixed-step accumulator + per-tick dispatcher (bottom-up sweep);
+                          hands the Sandbox's reclassify + sweep to `parallel` when set
+    parallel/             PROTOTYPE multithreaded Sandbox sweep (docs/SANDBOX-MT.md): the
+                          Sandbox World on SharedArrayBuffers, workers + main sweeping 64x64
+                          chunks in a bottom-up wavefront, side effects replayed in order
     electrical.ts         Two-phase charge propagation through conductors
     harvester.ts          Gold magnet/collection field
     explosion.ts          triggerExplosion: terrain destruction, debris, damage

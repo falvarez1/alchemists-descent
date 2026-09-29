@@ -193,7 +193,7 @@ for (const on of SERIAL_ONLY ? [false] : [false, true]) {
   }
 }
 writeFileSync(`verify-out/sandbox-mt-${SCENE}-t${status.threads}.json`, JSON.stringify({ status, results: {
-  serial: results.serial.map(({ samples, ...r }) => r), parallel: results.parallel.map(({ samples, ...r }) => r),
+  serial: results.serial.map(({ samples: _s, ...r }) => r), parallel: results.parallel.map(({ samples: _s, ...r }) => r),
 }, serialMean: s, parallelMean: p }, null, 2));
 if (errors.length) console.log('page errors:', errors);
 await browser.close();

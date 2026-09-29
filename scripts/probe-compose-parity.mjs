@@ -59,6 +59,8 @@ const setupOk = await page.evaluate(() => {
   ctx.state.paused = true;
   ctx.state.postFx.enabled = false;
   ctx.state.postFx.gpuCompose = false;
+  // the sub-cell look is GPU-only (it has no CPU reference yet): parity is the cell-block look
+  ctx.state.postFx.subcell = false;
   ctx.enemies.length = 0;
   ctx.projectiles.length = 0;
   ctx.shockwaves.length = 0;

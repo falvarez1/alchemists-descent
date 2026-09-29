@@ -39,6 +39,9 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # probe-gpu-sparks.mjs, probe-physics-stress.mjs. Node benches: bench-sim.mjs
 # (cell sim, behaviour-hashed), bench-light.mjs, bench-rapier-terrain.mjs.
 # npm run build:wasm builds + embeds BOTH AssemblyScript kernels (worldgen, light).
+# Sandbox MT prototype (docs/SANDBOX-MT.md; ?threads=N, ?subcell=0): probe-sandbox-mt.mjs
+# (serial vs parallel timings + phase split), verify-sandbox-mt.mjs (every replayed
+# side-effect path), shot-subcell.mjs (sub-cell look on/off), diag-sandbox-mt-frames.mjs.
 # After any npm install/upgrade restart the dev server with --force: a running
 # server keeps serving the old pre-bundled dependency.
 # Builder end-to-end probes (dev server running): verify-builder.mjs,

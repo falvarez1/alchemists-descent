@@ -270,6 +270,8 @@ export function createDefaultPostFxSettings(): PostFxSettings {
     gpuCompose: true,
     gpuParticles: true,
     gpuOverlay: true,
+    // prototype (proto/sandbox-mt): on; ?subcell=0 for the cell-block look
+    subcell: typeof window === 'undefined' || new URLSearchParams(window.location.search).get('subcell') !== '0',
     bloomEnabled: true,
     bloomStrength: 0.18,
     bloomRadius: 0.2,
