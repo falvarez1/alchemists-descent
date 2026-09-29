@@ -268,6 +268,7 @@ export function createDefaultPostFxSettings(): PostFxSettings {
     // GPU-compose is the default renderer path; keep the runtime toggle for
     // same-session A/B and fallback checks (docs/GPU-COMPOSE-PLAN.md).
     gpuCompose: true,
+    gpuParticles: true,
     bloomEnabled: true,
     bloomStrength: 0.18,
     bloomRadius: 0.2,

@@ -1051,6 +1051,13 @@ export interface PostFxSettings {
    * path when WebGL2 is unavailable.
    */
   gpuCompose: boolean;
+  /**
+   * GPU particles (render/GpuFxLayer): on a GPU-composed WebGL frame the
+   * ballistic particles draw as GPU points in a layer between terrain and the
+   * sprite overlay instead of per-pixel CPU writes. Runtime-flippable for A/B;
+   * off (or any CPU/WebGPU compose frame) draws them through FxSprites.
+   */
+  gpuParticles: boolean;
   /** UnrealBloomPass layer: emissive cells, blasts, and hot materials. */
   bloomEnabled: boolean;
   bloomStrength: number;

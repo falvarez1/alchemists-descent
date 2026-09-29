@@ -1114,7 +1114,9 @@ export class FrameComposer implements PixelSurface {
     drawFallingWater(this, this.light, ctx);
     // Ballistic debris / embers / coins, lightning arcs, projectiles — the
     // combat FX overlays live in sprites/FxSprites (shared with the gallery).
-    drawParticles(this, this.light, ctx);
+    const particleSink = ctx.state.postFx.gpuParticles ? this.overlay?.particles : undefined;
+    if (particleSink) particleSink.submitParticles(ctx, this.drawOffsetX, this.drawOffsetY);
+    else drawParticles(this, this.light, ctx);
     drawLightningArcs(this, ctx);
     drawProjectiles(this, ctx);
 

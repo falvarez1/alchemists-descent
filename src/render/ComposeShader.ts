@@ -30,6 +30,7 @@ import type {
   CompositorLens,
   LightField,
   OverlaySurface,
+  ParticleSink,
   ParallaxBitmapLayer,
   ParallaxLayers,
 } from '@/render/pixels';
@@ -37,6 +38,7 @@ import { cloudSumGlsl, glslFloat, SKY } from '@/render/skyAtmosphere';
 import { backdropOrigin } from '@/render/depth/parallax';
 import { Cell } from '@/sim/CellType';
 import type { World } from '@/sim/World';
+import { GpuFxLayer } from '@/render/GpuFxLayer';
 import {
   activeArtPlane, activeFloorLook, terrainArtPixels, terrainBlocksGlsl, terrainOpenMask, usesTerrainArt,
 } from '@/render/TerrainArt';
@@ -113,6 +115,8 @@ uniform sampler2D uBackdrop2;
 uniform sampler2D uBackdrop3;
 uniform sampler2D uBackdrop4;
 uniform sampler2D uOverlay;
+uniform sampler2D uFx;     // GPU FX layer (render/GpuFxLayer): between terrain and the overlay
+uniform bool uFxOn;
 uniform sampler2D uTerrain;
 uniform sampler2D uScars;
 uniform bool uTerrainEnabled;
@@ -297,13 +301,19 @@ void main() {
 
   // Overlay first: a setPx'd pixel replaces terrain outright, so all terrain
   // work can be skipped (exact CPU semantics: setPx overwrote the buffer).
-  vec4 ov = texelFetch(uOverlay, clamp(ivec2(vUv * vec2(${PIXEL_W}.0, ${PIXEL_H}.0)), ivec2(0), ivec2(${PIXEL_W - 1}, ${PIXEL_H - 1})), 0);
+  ivec2 finePx = clamp(ivec2(vUv * vec2(${PIXEL_W}.0, ${PIXEL_H}.0)), ivec2(0), ivec2(${PIXEL_W - 1}, ${PIXEL_H - 1}));
+  vec4 ov = texelFetch(uOverlay, finePx, 0);
+  // The GPU FX layer sits under every sprite: an opaque write (a = 1) replaces
+  // the terrain like setPx did, an additive one (a = 0) adds like addPx.
+  vec4 fxp = uFxOn ? texelFetch(uFx, finePx, 0) : vec4(0.0);
 
   vec3 c = vec3(0.0);
   // Frame alpha: 0 where the open backdrop shows with no sprite over it (the
   // WebGL depth particles blend there only — render/depth/ForegroundGL).
   float bgMask = 0.0;
-  if (ov.a <= 0.5) {
+  if (ov.a <= 0.5 && fxp.a > 0.5) {
+    c = fxp.rgb;
+  } else if (ov.a <= 0.5) {
     int wx = uCam.x + vx;
     int wy = uCam.y + vy;
 
@@ -749,6 +759,7 @@ void main() {
   // (0, 0.5], so the terrain shows through by 1 - 2a (creature gel/jelly).
   // Re-apply the world-floor mask after overlay combine so sprites/particles
   // cannot leak into the camera void below small or chunked worlds.
+  if (fxp.a <= 0.5) c += fxp.rgb;
   vec3 outColor = c * (1.0 - clamp(ov.a * 2.0, 0.0, 1.0)) + ov.rgb;
   if (uCam.y + vy >= ${HEIGHT}) { outColor = vec3(0.0); bgMask = 0.0; }
   gl_FragColor = vec4(outColor, bgMask > 0.5 && ov.a <= 0.0 ? 0.0 : 1.0);
@@ -782,6 +793,7 @@ function packCellValue(
  */
 class Overlay implements OverlaySurface {
   readonly scale = PIXEL_SCALE;
+  particles: ParticleSink | undefined = undefined;
   readonly data = new Float32Array(PIXEL_W * PIXEL_H * 4);
   readonly half = new Uint16Array(PIXEL_W * PIXEL_H * 4);
   /** The staging floats' bits, for the inline f16 conversion in commit(). */
@@ -939,6 +951,8 @@ export class GpuCompose {
 
   private readonly overlayTex: THREE.DataTexture;
   private readonly overlay = new Overlay();
+  /** GPU particles/FX, layered between terrain and the overlay (render/GpuFxLayer). */
+  private readonly fx: GpuFxLayer;
   private overlayUploadTex: THREE.DataTexture | null = null;
   private overlayUploadData: Uint16Array<ArrayBuffer> | null = null;
   private overlayUploadCapacity = 0;
@@ -1010,6 +1024,9 @@ export class GpuCompose {
     this.overlayTex.minFilter = this.overlayTex.magFilter = THREE.NearestFilter;
     this.overlayTex.needsUpdate = true;
 
+    this.fx = new GpuFxLayer(renderer, this.lightTex);
+    this.overlay.particles = this.fx;
+
     for (let i = 0; i < COMPOSE_MAX_WAVES; i++) this.waveA.push(new THREE.Vector4());
     for (let i = 0; i < COMPOSE_MAX_LENSES; i++) this.lensV.push(new THREE.Vector4());
 
@@ -1027,6 +1044,8 @@ export class GpuCompose {
         uBackdrop3: { value: this.backdropTex[3] },
         uBackdrop4: { value: this.backdropTex[4] },
         uOverlay: { value: this.overlayTex },
+        uFx: { value: this.fx.target.texture },
+        uFxOn: { value: false },
         uTerrain: { value: this.terrainTex },
         uScars: { value: this.scarTex },
         uTerrainEnabled: { value: false },
@@ -1185,12 +1204,16 @@ export class GpuCompose {
     }
     u.uLensCount.value = lCount;
 
+    this.fx.beginFrame();
+    this.fx.setDarkOn(u.uDarkOn.value as boolean);
     this.overlay.clear();
     return this.overlay;
   }
 
   /** Stage this frame's overlay writes for upload. */
   commit(): void {
+    this.fx.render();
+    this.material.uniforms.uFxOn.value = this.fx.active;
     const dirty = this.overlay.commit();
     if (dirty === null) return;
     this.uploadOverlay(dirty);
@@ -1207,6 +1230,7 @@ export class GpuCompose {
     this.floorTilesTex?.dispose();
     this.overlayTex.dispose();
     this.overlayUploadTex?.dispose();
+    this.fx.dispose();
     for (const tex of this.backdropTex) tex.dispose();
   }
 
