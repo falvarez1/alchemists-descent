@@ -102,6 +102,7 @@ export class Lightning implements LightningApi {
       if (c !== Cell.Empty && !isGas(c) && c !== Cell.Fire) {
         world.setChargeAt(world.idx(gx, gy), chargeDeposit(ctx, 20));
         ctx.explosions.trigger(x, y, 4, { playerDamageSource: 'lightning' });
+        ctx.sparks?.burst(x, y, { count: 90, speed: 2.4, kind: 'magic', glow: 1.6, colors: [0xbfeaff, 0x7fd0ff, 0xffffff] });
         this.enemyIndex.syncLive(ctx.enemies);
         struck = true;
       }

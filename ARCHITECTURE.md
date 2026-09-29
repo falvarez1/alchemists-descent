@@ -75,6 +75,8 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     elements/             Per-material behaviors (powders, liquids, thermal, gas, vines)
   particles/
     Particles.ts          Ballistic free-pixel system (debris, gore, homing coins)
+    Sparks.ts             Cosmetic spark bursts (Ctx.sparks): a renderer-agnostic queue the
+                          GPU spark sim drains; thinned into cosmetic particles without it
   combat/
     Telekinesis.ts        The wand's grip (E lift / set down, F or RMB hurl) on corpses and crates
     AlchemyKills.ts       Kill attribution (Ctx.alchemy): last blow per creature, alchemical
@@ -165,6 +167,15 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
                           loop as a fragment shader + world-window packer + sprite
                           overlay texture; CPU loop stays the look reference
                           (docs/GPU-COMPOSE-PLAN.md, parity-probed)
+    GpuFxLayer.ts         The GPU FX layer composed over the terrain: every sprite pixel
+                          write as an ordered command (premultiplied rgb + coverage),
+                          particles as points, sparks (docs/PERF-2026-09.md)
+    GpuSparkSim.ts        GPU cosmetic sparks: ping-pong float state, per-tick step
+                          colliding with the compose world window, drawn into the FX layer
+    BodyArtCache.ts       Records a sleeping rigid body's Pen art once, replays it per
+                          frame with the current light (bit-identical)
+    wasm/lightKernel.ts   WASM SIMD light propagation (assembly/light.ts, bit-identical
+                          to propagateLight.ts; TS loop is the fallback)
     skyAtmosphere.ts      D1 daytime-sky tuning (SKY) — THE single source both
                           FrameComposer and ComposeShader read (the latter
                           interpolates it into GLSL) so the CPU/GPU sky (gradient,
@@ -262,6 +273,30 @@ player ↔ spells) without letting circular imports exist.
 of nested JS arrays of arrays — far less memory, far better cache behavior, and the
 foundation for future chunking/dirty-rect work. Colors are packed `0xRRGGBB` integers.
 
+**The GPU FX layer carries the sprites.** On a GPU-composed WebGL frame the
+composer no longer stages sprite pixels in a CPU float buffer (dirty-tracked,
+half-float converted, uploaded as one bounding rectangle). Each write —
+setPx/setFinePx (replace), addPx/addFinePx (add), blendFinePx (gel) — is an
+ordered 20-byte command scattered as a GPU point into `render/GpuFxLayer`,
+which holds premultiplied colour + coverage and is composed as terrain × (1 −
+coverage) + rgb: the CPU overlay's own algebra, run by the blender in
+submission order. Particles (16 bytes each, light-sampled in the vertex
+shader) and GPU sparks draw into the same layer where the particle pass used
+to sit, so draw order is exact. `postFx.gpuOverlay` / `gpuParticles` are
+runtime A/B flags; CPU and WebGPU compose frames keep the staged overlay.
+Parity: `scripts/probe-gpu-fx.mjs` (STRICT: 0-3 pixels, the noise floor).
+
+**Terrain is Rapier Voxels; bodies sleep.** Rapier 0.21 (SIMD build where the
+browser has simd128, lazy chunk; scalar elsewhere). The cave reaches the
+solver as one Voxels collider per 64x64 activity chunk near a dynamic body,
+holding every solid surface cell; a chunk is rescanned only when its
+ActivityGrid version moved, and then only around cells whose solidity changed.
+`lengthUnit = 10` (our unit is the cell, props are 4-14 cells) scales Rapier's
+tolerances, sleep test and velocity cap sensibly. The old 1x1-cuboid-per-cell
+windows churned colliders, woke whole islands and never let a heap sleep.
+Known limit: a ball wedged in a heap keeps a residual contact velocity and can
+hold its island awake (Rapier exposes no sleep threshold to JS).
+
 **Entity storage is array-of-objects, on purpose — with a documented switch
 point.** The grid is structure-of-arrays (above), but the transient entity
 systems — the particle pool (`src/particles/Particles.ts` + the `EntityPool` in
@@ -273,7 +308,10 @@ debuggable. The crossover is real: converting `Particles` to structure-of-arrays
 (`Float32Array` per field) measured ~2× faster at 16k particles, ~4–6× at 64k, and
 ~10× less GC churn — but only once a system genuinely *sustains* that many. So the
 rule is: **keep AoS until a system sustains >~10k live elements, then convert that
-one system to SoA.** Raising `MAX_PARTICLES` (a ceiling) does not by itself trigger
+one system to SoA.** (Particles now DRAW on the GPU; the fixed
+`perf-particles-12k` gate measures 12k live motes at +0.27 ms/frame, of which the
+AoS update is ~0.28 ms/tick — well under the switch point. Purely cosmetic
+volume belongs in GPU sparks, not the particle list.) Raising `MAX_PARTICLES` (a ceiling) does not by itself trigger
 this — sustained on-screen count does. The benchmarks are the gate
 (`scripts/bench-particle-layout.mjs`, `scripts/perf-particles-12k.mjs`); re-run them
 on target hardware before refactoring. A C/WASM archetype ECS (FLECS) was evaluated

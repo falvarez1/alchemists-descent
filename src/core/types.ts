@@ -1051,6 +1051,20 @@ export interface PostFxSettings {
    * path when WebGL2 is unavailable.
    */
   gpuCompose: boolean;
+  /**
+   * GPU particles (render/GpuFxLayer): on a GPU-composed WebGL frame the
+   * ballistic particles draw as GPU points in a layer between terrain and the
+   * sprite overlay instead of per-pixel CPU writes. Runtime-flippable for A/B;
+   * off (or any CPU/WebGPU compose frame) draws them through FxSprites.
+   */
+  gpuParticles: boolean;
+  /**
+   * GPU overlay (render/GpuFxLayer): on a GPU-composed WebGL frame every
+   * sprite pixel write is appended as a command and scattered on the GPU
+   * instead of staged in a CPU float buffer, half-float converted and
+   * uploaded. Runtime-flippable for A/B.
+   */
+  gpuOverlay: boolean;
   /** UnrealBloomPass layer: emissive cells, blasts, and hot materials. */
   bloomEnabled: boolean;
   bloomStrength: number;
@@ -1647,6 +1661,42 @@ export interface ParticlesApi {
     opts?: ParticleOpts,
   ): void;
   update(ctx: Ctx): void;
+  clear(): void;
+}
+
+/** Cosmetic GPU spark kinds (particles/Sparks, render/GpuSparkSim). */
+export type SparkKind = 'spark' | 'ember' | 'smoke' | 'magic';
+
+/** One burst of cosmetic sparks. They read the grid (bounce off it) and never write it. */
+export interface SparkBurst {
+  count: number;
+  /** Launch speed, cells/tick (each spark gets 35%-125% of it). */
+  speed: number;
+  /** Half-angle of the launch cone, radians (default PI: every direction). */
+  spread?: number;
+  /** Cone centre, radians (default -PI/2: up). */
+  angle?: number;
+  /** Lifetime in ticks (+-30%; default per kind). */
+  life?: number;
+  /** Packed 0xRRGGBB colours, one picked per spark. */
+  colors: readonly number[];
+  kind?: SparkKind;
+  /** Brightness multiplier (self-lit kinds). */
+  glow?: number;
+  /** Spawn-disc radius, cells. */
+  radius?: number;
+}
+
+export interface SparksApi {
+  /** Queued spawn records not yet taken by a renderer. */
+  readonly pending: number;
+  /** Bumped by clear(): renderers drop their live sparks when it moves. */
+  readonly generation: number;
+  burst(x: number, y: number, opts: SparkBurst): void;
+  /** Hand the queued records (8 floats each) to a GPU simulator; the queue empties. */
+  drain(sink: (records: Float32Array, count: number) => void): void;
+  /** No GPU this frame: a thinned set becomes ordinary cosmetic particles. */
+  drainToParticles(ctx: Ctx, keepOneIn?: number): void;
   clear(): void;
 }
 
@@ -3501,6 +3551,8 @@ export interface Ctx {
   waves: WaveState;
 
   particles: ParticlesApi;
+  /** Cosmetic GPU sparks (optional so partial test contexts need not build one). */
+  sparks?: SparksApi;
   explosions: ExplosionApi;
   lightning: LightningApi;
   projectileCtl: ProjectilesApi;

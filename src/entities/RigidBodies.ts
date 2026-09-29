@@ -31,9 +31,18 @@ import { entityRandom } from '@/core/simRandom';
 
 const PF = 60; // frames per second — converts cells/frame ↔ cells/second
 const DT = 1 / PF;
+// Rapier's lengthUnit is "the approximate size of most dynamic objects": its
+// tolerances are normalised by it — allowed penetration (0.005 x), predictive
+// contact distance (0.02 x), max corrective velocity (3 x), the sleep test and,
+// since Rapier 0.35, the linear velocity cap (400 x units/s). Our unit is the
+// cell and our props are 4-14 cells, so the default of 1 made every tolerance
+// ~10x too tight: a resting heap never fell asleep, and the cap (400 cells/s)
+// would clip a thrown crate (THROW_SPEED 9 cells/frame = 540 cells/s). At 10
+// the cap is 4000 cells/s, above our own MAX_BODY_SPEED (2400 cells/s).
+const RAPIER_LENGTH_UNIT = 10;
+const RAGDOLL_EXTRA_SUBSTEPS = 1; // x the 6 world steps: 12 substeps per tick for the corpse's island (0.19's 4 extra iterations -> 4 extra SUBSTEPS on 0.21 would be 30)
 const GRAVITY = 0.28 * PF * PF; // 0.28 cells/frame² → cells/second²
 const TERRAIN_MARGIN = 3; // base cells of terrain colliders around each body (grows with speed)
-const REMOVE_DELAY = 4; // frames a stale terrain collider lingers before removal
 // Safety rails on body state. A body that picks up a runaway velocity (a dogpile
 // of stacked explosion impulses, or a NaN leaking in from upstream) is fatal: the
 // terrain-collider window below grows with speed, so an extreme/non-finite velocity
@@ -45,13 +54,22 @@ const MAX_BODY_SPEED = 40; // hard cap on a body's linear speed (cells/frame)
 const MAX_BODY_ANGVEL = 40; // hard cap on a body's spin (radians/second)
 const MAX_TERRAIN_LEAD = 12; // most the collider window may lead a fast body (cells)
 const MAX_TERRAIN_REACH = 40; // absolute cap on the collider-window half-extent (cells)
-// GLOBAL caps: per-body velocity/window are bounded above, but a chain reaction or
-// debris pile can still grow the body set — and the SUM of their terrain windows —
-// until Rapier's broad-phase recurses past the wasm stack ("recursive use" lock).
-// These ceilings sit far above normal play (a handful of bodies, a few hundred
-// terrain cells) but cut the runaway off before it can crash the solver.
-const MAX_DYNAMIC_BODIES = 80; // live dynamic bodies; spawning past this evicts the oldest
-const MAX_TERRAIN_CELLS = 2800; // total terrain colliders requested per frame
+// GLOBAL caps. The body cap bounds solver work and spawn churn (a chain
+// reaction or shatter cascade can multiply bodies); scripts/probe-physics-stress.mjs
+// (a 400-body column collapsing, a 20-barrel chain reaction, repeated blasts)
+// runs clean at 800, so 400 keeps a 2x margin. Terrain is a handful of voxel
+// chunks (see syncTerrain), capped so no runaway can ask for the whole world.
+const MAX_DYNAMIC_BODIES = 400; // live dynamic bodies; spawning past this evicts the oldest
+const VOXEL_CHUNK = 64; // cells per terrain voxel chunk side (= the ActivityGrid chunk)
+const MAX_VOXEL_CHUNKS = 96; // live terrain chunks (a 640x360 view spans ~60)
+const VOXEL_CHUNK_LINGER = 120; // ticks a chunk no body needs is kept before it is dropped
+// A chunk remembers which cells of it (and of a margin this wide around it)
+// were solid. A cell's voxel status reads its 4 neighbours and its 8-connected
+// cluster (loose rubble is a cluster under 5, reached within 4 cells), so only
+// cells within this reach of a solidity change can change status.
+const VOXEL_MARGIN = 6;
+const VOXEL_REACH = 5;
+const VOXEL_SNAP = VOXEL_CHUNK + 2 * VOXEL_MARGIN;
 const REFERENCE_MASS = 45; // a "typical" crate; blast/kick scale a body's throw by REFERENCE_MASS / mass
 const PUSH_MASS_MAX = 60; // player shoves bodies up to this mass (light wood); heavier ones block
 const MIN_PUSH = 0.7; // minimum shove speed (cells/frame) when the player leans on a light body
@@ -115,12 +133,24 @@ export class RigidBodies implements RigidBodiesApi {
   private readonly ropeAnchors = new Map<RigidBody, RBody>();
   private readonly tetherAnchors = new Map<RigidBody, RBody>();
   private readonly hingeAnchors = new Map<RigidBody, RBody>();
-  private readonly terrain = new Map<number, RCollider>();
-  /** Cell index → frame it left the desired set. Removal is DEFERRED a few frames
-   *  so we never yank a collider out of an active contact with a fast body (that
-   *  recursion-crashes Rapier); by then the body has moved off it. */
-  private readonly terrainStale = new Map<number, number>();
-  private readonly desired = new Set<number>();
+  /**
+   * The cave as Rapier sees it: one Voxels collider per 64x64 activity chunk
+   * that a dynamic body is near, holding every solid SURFACE cell of the chunk
+   * (loose rubble excluded). `voxelOn` mirrors which cells are filled.
+   */
+  private readonly voxelChunks = new Map<number, VoxelChunk>();
+  private readonly voxelOn = new Uint8Array(WIDTH * HEIGHT);
+  private readonly neededChunks: number[] = [];
+  /** Reused out-parameters for Rapier's allocation-free getters (0.21+). */
+  private readonly scratchT = { x: 0, y: 0 };
+  private readonly scratchV = { x: 0, y: 0 };
+  /**
+   * Per-sync memo of "is this cell a terrain voxel?" (solid, on the surface,
+   * not loose rubble), stamped `syncSerial << 1 | answer`: the flood-fill
+   * rubble test runs once per cell per sync however many chunk scans read it.
+   */
+  private readonly candidateMemo = new Uint16Array(WIDTH * HEIGHT);
+  private syncSerial = 0;
   private nextId = 1;
   /** The body the player is currently carrying (grab/throw), or null. */
   private held: RigidBody | null = null;
@@ -146,6 +176,7 @@ export class RigidBodies implements RigidBodiesApi {
   private createWorld(): RWorld {
     const world = new RAPIER.World({ x: 0, y: GRAVITY });
     world.integrationParameters.dt = DT;
+    world.integrationParameters.lengthUnit = RAPIER_LENGTH_UNIT;
     return world;
   }
 
@@ -166,7 +197,9 @@ export class RigidBodies implements RigidBodiesApi {
       .setAngvel((opts.va ?? 0) * PF)
       .setLinearDamping(opts.linearDamping ?? 0)
       .setAngularDamping(opts.angularDamping ?? 0)
-      .setAdditionalSolverIterations(opts.tag?.startsWith('player-corpse') ? 4 : 0)
+      // Rapier 0.35+: extra solver iterations are whole extra SUBSTEPS of the
+      // body's island (on 0.19 they were velocity iterations).
+      .setAdditionalSolverIterations(opts.tag?.startsWith('player-corpse') ? RAGDOLL_EXTRA_SUBSTEPS : 0)
       .setCcdEnabled(true);
     const rb = this.world.createRigidBody(desc);
     if (opts.steamPiston || opts.guideAxis) rb.lockRotations(true, true);
@@ -236,7 +269,7 @@ export class RigidBodies implements RigidBodiesApi {
       const anchor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y));
       const joint = RAPIER.JointData.revolute({ x: 0, y: 0 }, { x: 0, y: 0 });
       joint.limitsEnabled = true; joint.limits = [opts.hinge.minAngle, opts.hinge.maxAngle];
-      const hinge = this.world.createImpulseJoint(joint, anchor, rb, true) as RAPIER.RevoluteImpulseJoint;
+      const hinge = this.world.createImpulseJoint(joint, anchor, rb, true) as InstanceType<typeof RAPIER.RevoluteImpulseJoint>;
       hinge.setLimits(opts.hinge.minAngle, opts.hinge.maxAngle);
       this.hingeAnchors.set(body, anchor);
     }
@@ -319,9 +352,9 @@ export class RigidBodies implements RigidBodiesApi {
     for (const rb of this.handles.values()) this.world.removeRigidBody(rb);
     this.handles.clear();
     this.bodies.length = 0;
-    for (const col of this.terrain.values()) this.world.removeCollider(col, false);
-    this.terrain.clear();
-    this.terrainStale.clear();
+    for (const chunk of this.voxelChunks.values()) this.world.removeCollider(chunk.col, false);
+    this.voxelChunks.clear();
+    this.voxelOn.fill(0);
   }
 
   tieRope(body: RigidBody, x: number, y: number, length = Math.hypot(body.x - x, body.y - y), material: 'rope' | 'chain' = 'rope', secondary = false): void {
@@ -1005,6 +1038,9 @@ export class RigidBodies implements RigidBodiesApi {
       // Small limbs otherwise stop at different CCD instants during one hard
       // landing. Short internal steps keep joint anchors together at impact;
       // the total simulated time is still exactly one authored 60 Hz tick.
+      // (Per-island substeps — Rapier 0.35's additional solver iterations —
+      // do NOT substitute: CCD runs per world step, and the landing tears the
+      // joints apart at any substep count; tests/player-ragdoll.test.ts.)
       const steps = this.playerRagdoll && !this.playerCorpse?.sleeping ? 6 : 1;
       this.world.integrationParameters.dt = DT / steps;
       for (let i = 0; i < steps; i++) this.world.step();
@@ -1028,9 +1064,8 @@ export class RigidBodies implements RigidBodiesApi {
     this.tetherAnchors.clear();
     this.hingeAnchors.clear();
     this.handles.clear();
-    this.terrain.clear();
-    this.terrainStale.clear();
-    this.desired.clear();
+    this.voxelChunks.clear();
+    this.voxelOn.fill(0);
     this.bodies.length = 0;
     this.detonations.length = 0;
     this.held = null;
@@ -1425,82 +1460,200 @@ export class RigidBodies implements RigidBodiesApi {
   }
 
   /**
-   * Delta-update the terrain colliders so Rapier collides with the cave. Build
-   * fixed 1×1 cuboids for solid SURFACE cells in a window around each body, sized
-   * by the body's speed so colliders always exist BEFORE a fast body reaches them
-   * (no deep penetration of a freshly-spawned collider). Sleeping bodies are
-   * included so a resting body keeps its support. Removals are deferred.
+   * Keep Rapier's picture of the cave current. The terrain is Voxels
+   * colliders, one per 64x64 activity chunk that any dynamic body's window
+   * (its reach, grown with speed so terrain exists BEFORE a fast body arrives)
+   * touches; each holds every solid SURFACE cell of its chunk. A chunk is
+   * rescanned only when its ActivityGrid version moved, and only real
+   * changes to solid terrain edit voxels (O(1) setVoxel) — body jitter never
+   * adds or removes terrain, so a resting heap is left alone and falls asleep.
+   * Rapier wakes the bodies touching a chunk whose voxels change, which is
+   * exactly "the ground under a sleeping crate was dug out".
+   *
+   * Replaced a 1x1 fixed cuboid per surface cell inside every body's window:
+   * thousands of colliders churning as windows slid, each removal waking the
+   * whole island, and internal edges between cuboids that made stacks jitter
+   * (scripts/bench-rapier-terrain.mjs: a 400-box heap steps 2.9x faster on
+   * voxels while moving and is asleep in 2.5 s instead of 5 s).
    */
   private syncTerrain(world: World, frame: number): void {
-    const types = world.types;
-    const desired = this.desired;
-    desired.clear();
+    // Memo stamps live in a Uint16 plane: serial 1..32767 (top bit is the
+    // answer); wrap every 32767 syncs (~9 min) with one clear.
+    if (++this.syncSerial > 0x7fff) {
+      this.syncSerial = 1;
+      this.candidateMemo.fill(0);
+    }
+    const activity = world.activity, columns = activity.columns;
+    const needed = this.neededChunks;
+    needed.length = 0;
     for (const body of this.bodies) {
-      if (desired.size >= MAX_TERRAIN_CELLS) break; // total-collider ceiling (anti-overflow)
       const rb = this.handles.get(body);
       if (!rb || body.kind !== 'dynamic') continue;
-      const t = rb.translation();
-      const v = rb.linvel();
-      // Reach grows with speed (cells/frame) so the collider window leads motion —
-      // but BOTH the lead and the absolute reach are hard-capped: an extreme (or
-      // non-finite) velocity must never make this window span the grid and spawn a
-      // wall of colliders that overflows Rapier (clampBody also bounds the speed).
+      const t = rb.translation(this.scratchT);
+      const v = rb.linvel(this.scratchV);
+      // Reach grows with speed (cells/frame) so the terrain leads motion — but
+      // BOTH the lead and the absolute reach are hard-capped: an extreme (or
+      // non-finite) velocity must never make this window span the grid
+      // (clampBody also bounds the speed).
       const speed = Math.hypot(v.x, v.y) / PF;
       const lead = Number.isFinite(speed) ? Math.min(MAX_TERRAIN_LEAD, Math.ceil(speed)) : 0;
       const r = Math.min(MAX_TERRAIN_REACH, shapeRadius(body.shape) + TERRAIN_MARGIN + lead);
-      const x0 = Math.max(1, Math.floor(t.x - r));
-      const x1 = Math.min(WIDTH - 2, Math.ceil(t.x + r));
-      const y0 = Math.max(1, Math.floor(t.y - r));
-      const y1 = Math.min(HEIGHT - 2, Math.ceil(t.y + r));
-      // The total-collider ceiling is enforced INSIDE this window too, not just
-      // between bodies: one body in a wall of dense surface terrain could
-      // otherwise add its whole 80×80 window (thousands of cells) in a single
-      // pass and overflow Rapier before the next body's check ever ran.
-      for (let y = y0; y <= y1 && desired.size < MAX_TERRAIN_CELLS; y++) {
-        const row = y * WIDTH;
-        for (let x = x0; x <= x1; x++) {
-          const i = row + x;
-          if (!blocksEntity(types[i])) continue;
-          // Surface only — skip cells fully buried in solid (bodies can't reach them).
-          if (
-            blocksEntity(types[i - 1]) &&
-            blocksEntity(types[i + 1]) &&
-            blocksEntity(types[i - WIDTH]) &&
-            blocksEntity(types[i + WIDTH])
-          )
-            continue;
-          // Loose-rubble rule (same as the player): a solid cell in a cluster of
-          // fewer than five is walk-through, so a body never snags on a one- or
-          // two-cell floating speck — it shoves past like the player does.
-          if (!cellBlocksEntityWithLooseRubble(world, x, y, TERRAIN_SCRATCH)) continue;
-          desired.add(i);
-          if (desired.size >= MAX_TERRAIN_CELLS) break;
+      if (!Number.isFinite(t.x) || !Number.isFinite(t.y)) continue;
+      const cx0 = Math.max(0, Math.floor(t.x - r)) >> 6, cx1 = Math.min(WIDTH - 1, Math.ceil(t.x + r)) >> 6;
+      const cy0 = Math.max(0, Math.floor(t.y - r)) >> 6, cy1 = Math.min(HEIGHT - 1, Math.ceil(t.y + r)) >> 6;
+      for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
+        const key = cx + cy * columns;
+        let chunk = this.voxelChunks.get(key);
+        if (!chunk) {
+          if (this.voxelChunks.size >= MAX_VOXEL_CHUNKS) continue; // anti-runaway ceiling
+          chunk = this.createVoxelChunk(key, cx, cy);
+        }
+        if (chunk.lastNeeded !== frame) { chunk.lastNeeded = frame; needed.push(key); }
+      }
+    }
+    for (const key of needed) {
+      const chunk = this.voxelChunks.get(key)!;
+      if (!chunk.scanned || !activity.ready || activity.versions[key] !== chunk.version) this.rescanVoxelChunk(world, chunk);
+    }
+    // Chunks no body has needed for a while are dropped (nothing rests on them).
+    for (const [key, chunk] of this.voxelChunks) {
+      if (frame - chunk.lastNeeded < VOXEL_CHUNK_LINGER) continue;
+      this.world.removeCollider(chunk.col, false);
+      this.voxelChunks.delete(key);
+      const x0 = chunk.cx * VOXEL_CHUNK, y0 = chunk.cy * VOXEL_CHUNK;
+      for (let y = y0; y < Math.min(HEIGHT, y0 + VOXEL_CHUNK); y++) this.voxelOn.fill(0, y * WIDTH + x0, y * WIDTH + Math.min(WIDTH, x0 + VOXEL_CHUNK));
+    }
+  }
+
+  private createVoxelChunk(key: number, cx: number, cy: number): VoxelChunk {
+    const desc = RAPIER.ColliderDesc.voxels(new Int32Array(0), { x: 1, y: 1 }).setFriction(0.9).setRestitution(0);
+    const chunk: VoxelChunk = {
+      key, cx, cy, col: this.world.createCollider(desc), version: -1, lastNeeded: -1, scanned: false,
+      solid: new Uint8Array(VOXEL_SNAP * VOXEL_SNAP),
+    };
+    this.voxelChunks.set(key, chunk);
+    return chunk;
+  }
+
+  /**
+   * Bring one chunk's voxels in line with the grid, stitching seams to its
+   * neighbours. The chunk's version moves whenever anything in it moves (fire,
+   * smoke, water); only a change to which cells are SOLID can change a voxel,
+   * so the solidity snapshot is diffed first and only the cells within reach
+   * of a change are re-tested.
+   */
+  private rescanVoxelChunk(world: World, chunk: VoxelChunk): void {
+    const types = world.types;
+    const bx = chunk.cx * VOXEL_CHUNK, by = chunk.cy * VOXEL_CHUNK;
+    let x0 = Math.max(1, bx), x1 = Math.min(WIDTH - 2, bx + VOXEL_CHUNK - 1);
+    let y0 = Math.max(1, by), y1 = Math.min(HEIGHT - 2, by + VOXEL_CHUNK - 1);
+    if (chunk.scanned) {
+      // Diff solidity over the chunk + margin (off-world counts as solid).
+      const snap = chunk.solid, sx0 = bx - VOXEL_MARGIN, sy0 = by - VOXEL_MARGIN;
+      let cx0 = Infinity, cy0 = Infinity, cx1 = -Infinity, cy1 = -Infinity;
+      for (let j = 0; j < VOXEL_SNAP; j++) {
+        const y = sy0 + j, rowOk = y >= 0 && y < HEIGHT, row = y * WIDTH, o = j * VOXEL_SNAP;
+        for (let k = 0; k < VOXEL_SNAP; k++) {
+          const x = sx0 + k;
+          const solid = !rowOk || x < 0 || x >= WIDTH || blocksEntity(types[row + x]) ? 1 : 0;
+          if (solid === snap[o + k]) continue;
+          snap[o + k] = solid;
+          if (x < cx0) cx0 = x;
+          if (x > cx1) cx1 = x;
+          if (y < cy0) cy0 = y;
+          if (y > cy1) cy1 = y;
+        }
+      }
+      chunk.version = world.activity.versions[chunk.key];
+      if (cx1 < cx0) return; // nothing solid changed: the voxels stand
+      x0 = Math.max(x0, cx0 - VOXEL_REACH); x1 = Math.min(x1, cx1 + VOXEL_REACH);
+      y0 = Math.max(y0, cy0 - VOXEL_REACH); y1 = Math.min(y1, cy1 + VOXEL_REACH);
+      if (x1 < x0 || y1 < y0) return; // the change was in the margin, out of reach
+    } else {
+      const snap = chunk.solid, sx0 = bx - VOXEL_MARGIN, sy0 = by - VOXEL_MARGIN;
+      for (let j = 0; j < VOXEL_SNAP; j++) {
+        const y = sy0 + j, rowOk = y >= 0 && y < HEIGHT, row = y * WIDTH, o = j * VOXEL_SNAP;
+        for (let k = 0; k < VOXEL_SNAP; k++) {
+          const x = sx0 + k;
+          snap[o + k] = !rowOk || x < 0 || x >= WIDTH || blocksEntity(types[row + x]) ? 1 : 0;
         }
       }
     }
-    // Additions first (and cancel any pending removal for cells back in use).
-    for (const i of desired) {
-      this.terrainStale.delete(i);
-      if (this.terrain.has(i)) continue;
-      const cx = i % WIDTH;
-      const cy = (i / WIDTH) | 0;
-      const desc = RAPIER.ColliderDesc.cuboid(0.5, 0.5).setTranslation(cx + 0.5, cy + 0.5).setFriction(0.9).setRestitution(0);
-      this.terrain.set(i, this.world.createCollider(desc));
+    this.syncVoxels(world, chunk, x0, y0, x1, y1);
+    if (!chunk.scanned) {
+      chunk.scanned = true;
+      const cols = world.activity.columns;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = chunk.cx + dx, ny = chunk.cy + dy;
+        if (nx < 0 || ny < 0) continue;
+        const nb = this.voxelChunks.get(nx + ny * cols);
+        if (nb?.scanned) chunk.col.combineVoxelStates(nb.col, 0, 0);
+      }
     }
-    // Deferred removals (see terrainStale): hold a stale collider for a few
-    // frames so a fast body moves off it before we remove it.
-    for (const [i, col] of this.terrain) {
-      if (desired.has(i)) continue;
-      const since = this.terrainStale.get(i);
-      if (since === undefined) {
-        this.terrainStale.set(i, frame);
-      } else if (frame - since >= REMOVE_DELAY) {
-        this.world.removeCollider(col, true);
-        this.terrain.delete(i);
-        this.terrainStale.delete(i);
+    chunk.version = world.activity.versions[chunk.key];
+  }
+
+  /** Re-test cells [x0..x1]x[y0..y1] of a chunk and edit the voxels that changed. */
+  private syncVoxels(world: World, chunk: VoxelChunk, x0: number, y0: number, x1: number, y1: number): void {
+    const types = world.types, memo = this.candidateMemo, serial = this.syncSerial, on = this.voxelOn;
+    const cols = world.activity.columns;
+    const bx = chunk.cx * VOXEL_CHUNK, by = chunk.cy * VOXEL_CHUNK;
+    const col = chunk.col;
+    for (let y = y0; y <= y1; y++) {
+      const row = y * WIDTH;
+      for (let x = x0; x <= x1; x++) {
+        const i = row + x;
+        let want = false;
+        if (blocksEntity(types[i])) {
+          const m = memo[i];
+          if ((m >> 1) === serial) want = (m & 1) === 1;
+          else {
+            // Surface only — cells buried in solid are unreachable. Loose-rubble
+            // rule (same as the player): a solid cell in a cluster of fewer than
+            // five is walk-through, so a body shoves past a floating speck.
+            want = !(
+              blocksEntity(types[i - 1]) &&
+              blocksEntity(types[i + 1]) &&
+              blocksEntity(types[i - WIDTH]) &&
+              blocksEntity(types[i + WIDTH])
+            ) && cellBlocksEntityWithLooseRubble(world, x, y, TERRAIN_SCRATCH);
+            memo[i] = (serial << 1) | (want ? 1 : 0);
+          }
+        }
+        if (want === (on[i] === 1)) continue;
+        on[i] = want ? 1 : 0;
+        col.setVoxel(x, y, want);
+        // A voxel on the chunk's rim tells its neighbours, so a body crossing
+        // the seam meets no internal edge.
+        if (chunk.scanned && (x === bx || x === bx + VOXEL_CHUNK - 1 || y === by || y === by + VOXEL_CHUNK - 1)) {
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = chunk.cx + dx, ny = chunk.cy + dy;
+            if (nx < 0 || ny < 0) continue;
+            const nb = this.voxelChunks.get(nx + ny * cols);
+            if (nb?.scanned) col.propagateVoxelChange(nb.col, x, y, 0, 0);
+          }
+        }
       }
     }
   }
+}
+
+/** One terrain voxel collider (see RigidBodies.syncTerrain). */
+interface VoxelChunk {
+  key: number;
+  cx: number;
+  cy: number;
+  col: RCollider;
+  /** ActivityGrid version the voxels were last brought in line with. */
+  version: number;
+  /** Last tick a dynamic body's window touched the chunk. */
+  lastNeeded: number;
+  /** Populated (and stitched to its neighbours) at least once. */
+  scanned: boolean;
+  /** Solidity (blocksEntity) of the chunk + VOXEL_MARGIN at the last scan. */
+  solid: Uint8Array;
 }
 
 /** A felled tree/stem owned by game/Flora (tag 'flora-*'). */

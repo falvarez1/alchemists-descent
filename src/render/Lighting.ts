@@ -1,4 +1,5 @@
 import { propagateLight } from '@/render/propagateLight';
+import { propagateLightWasm } from '@/render/wasm/lightKernel';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { DARK_ADAPT, renderAmbient, VIGNETTE_BASE } from '@/render/lightingModel';
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
@@ -751,7 +752,8 @@ export class Lighting implements LightField {
     // lures where they dangle, sacs as they swell, cores as they heat; corpses gutter.
     creatureLights(ctx, this.seedCreature);
 
-    propagateLight(LW, LH, lightR, lightG, lightB, lightAtt);
+    // WASM SIMD kernel (bit-identical, ~2.5x); the TS loop when it is unavailable.
+    if (!propagateLightWasm(LW, LH, lightR, lightG, lightB, lightAtt)) propagateLight(LW, LH, lightR, lightG, lightB, lightAtt);
 
     // SANDBOX WORK LAMP. Play is lit because the wizard carries a wand; the
     // sandbox has no wizard, so nothing lit it at all — a mostly-empty workshop

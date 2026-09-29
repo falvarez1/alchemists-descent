@@ -62,7 +62,7 @@
     "verify:virtual-playtest": "node scripts/verify-virtual-playtest.mjs",
     "verify:campaign-playtest": "node scripts/verify-campaign-playtest.mjs",
     "bench:virtual-world": "node scripts/bench-virtual-world.mjs",
-    "build:wasm": "asc assembly/worldgen.ts --outFile build/roundCorners.wasm --runtime stub --optimize --noAssert && node scripts/embed-wasm.mjs",
+    "build:wasm": "asc assembly/worldgen.ts --outFile build/roundCorners.wasm --runtime stub --optimize --noAssert && asc assembly/light.ts --outFile build/light.wasm --runtime stub --optimize -O3 --noAssert --enable simd && node scripts/embed-wasm.mjs",
     "perf:scene": "node scripts/perf-scene.mjs",
     "perf:ab": "node scripts/perf-ab-feature.mjs",
     "perf:compose-backends": "node scripts/perf-compose-backends.mjs",
@@ -83,7 +83,8 @@
     "format": "prettier --write \"src/**/*.{ts,css}\" index.html"
   },
   "dependencies": {
-    "@dimforge/rapier2d-compat": "^0.19.3",
+    "@dimforge/rapier2d-compat": "^0.21.0",
+    "@dimforge/rapier2d-simd-compat": "^0.21.0",
     "gifenc": "^1.0.3",
     "three": "0.186.1"
   },

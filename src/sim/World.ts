@@ -8,6 +8,46 @@ import { FluidFlow } from '@/sim/FluidFlow';
 const CHARGE_SCAN_TILE = 64;
 
 /**
+ * The sparse charged-cell index: a real Set (insertion order is load-bearing —
+ * the electrical pass walks it and draws sim randomness per entry) that also
+ * mirrors membership in a flag plane. Every cell swap re-syncs both cells'
+ * membership, and nearly all of those are deletes of cells that were never in
+ * the set; the plane answers those without a hash lookup.
+ */
+export class ChargeIndexSet extends Set<number> {
+  private readonly flags: Uint8Array;
+
+  constructor(cells: number) {
+    super();
+    this.flags = new Uint8Array(cells);
+  }
+
+  override add(i: number): this {
+    if (this.flags[i] === 0) {
+      this.flags[i] = 1;
+      super.add(i);
+    }
+    return this;
+  }
+
+  override delete(i: number): boolean {
+    if (this.flags[i] === 0) return false;
+    this.flags[i] = 0;
+    return super.delete(i);
+  }
+
+  override has(i: number): boolean {
+    return this.flags[i] !== 0;
+  }
+
+  override clear(): void {
+    if (this.size === 0) return;
+    this.flags.fill(0);
+    super.clear();
+  }
+}
+
+/**
  * The mutable cell-grid state of the entire game world, stored as flat typed
  * arrays indexed by `idx(x, y) = x + y * width` (row-major).
  *
@@ -42,7 +82,7 @@ export class World {
    *  wider range costs nothing on the GPU side. */
   readonly charge: Uint16Array;
   /** Sparse index of charged cells, used to avoid full-window electrical discovery every substep. */
-  readonly activeCharges = new Set<number>();
+  readonly activeCharges: ChargeIndexSet;
   /** Coarse tiles already scanned for loaded/generated direct charge writes. */
   private readonly chargeScanTiles = new Set<number>();
 
@@ -62,6 +102,7 @@ export class World {
     this.life = new Int16Array(n);
     this.moved = new Uint8Array(n);
     this.charge = new Uint16Array(n);
+    this.activeCharges = new ChargeIndexSet(n);
     this.simBounds = { x0: 0, x1: width, y0: 0, y1: height };
     this.allBounds = { x0: 0, x1: width, y0: 0, y1: height };
   }
@@ -236,7 +277,7 @@ export class World {
 
   /** Wipe the whole grid back to empty space. */
   clear(): void {
-    this.flow.falling.clear();
+    this.flow.clearFlights();
     this.activity.invalidateAll();
     this.types.fill(Cell.Empty);
     this.colors.fill(EMPTY_COLOR);

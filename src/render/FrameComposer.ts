@@ -4,7 +4,8 @@ import { drawTrickshotOverlay } from '@/render/TrickshotOverlay';
 import { drawFallingWater } from '@/render/FallingWater';
 import { drawOrganism } from '@/render/organisms';
 import { isOrganism } from '@/game/organisms/types';
-import type { Ctx, Enemy, RuntimeDecor } from '@/core/types';
+import type { Ctx, Enemy, RigidBody, RuntimeDecor } from '@/core/types';
+import { ART_RECORD, ArtRecorder, artEntryValid, type BodyArtEntry } from '@/render/BodyArtCache';
 import { RenderPoses, interpolateBody } from '@/render/RenderPoses';
 import { activeFloorLook, drawWorksLandmarks, prepareTerrainColors } from '@/render/TerrainArt';
 import { drawHabitatScenery, drawVineFoliage } from '@/render/HabitatScenery';
@@ -142,6 +143,9 @@ export class FrameComposer implements PixelSurface {
   /** Scratch: the drowned distance seen through a clear water body (CLEAR WATER). */
   private readonly waterSeenRgb = new Float32Array(3);
   private readonly poses = new RenderPoses();
+  /** Recorded art of resting rigid bodies (render/BodyArtCache). */
+  private readonly bodyArt = new WeakMap<RigidBody, BodyArtEntry>();
+  private artRecorder: ArtRecorder | null = null;
   private alpha = 1;
   private drawOffsetX = 0;
   private drawOffsetY = 0;
@@ -200,15 +204,18 @@ export class FrameComposer implements PixelSurface {
     const idx = pi * 4;
     const overlay = this.overlay;
     if (overlay !== null) {
+      const cmd = overlay.commands;
       if ((overlay.scale ?? 1) > 1) {
         const scale = overlay.scale!, width = VIEW_W * scale;
         for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) {
           const fine = ((VIEW_H - 1 - vy) * scale + dy) * width + vx * scale + dx, offset = fine * 4;
+          if (cmd) { cmd.put(fine, r, g, b, 1); continue; }
           overlay.data[offset] = r; overlay.data[offset + 1] = g; overlay.data[offset + 2] = b; overlay.data[offset + 3] = 1;
           overlay.mark(fine);
         }
         return;
       }
+      if (cmd) { cmd.put(pi, r, g, b, 1); return; }
       const d = overlay.data;
       d[idx] = r;
       d[idx + 1] = g;
@@ -234,6 +241,8 @@ export class FrameComposer implements PixelSurface {
     const width = VIEW_W * scale, height = VIEW_H * scale;
     if (vx < 0 || vx >= width || vy < 0 || vy >= height) return;
     const pi = (height - 1 - vy) * width + vx, idx = pi * 4;
+    const cmd = overlay.commands;
+    if (cmd) { cmd.put(pi, r, g, b, 1); return; }
     overlay.data[idx] = r; overlay.data[idx + 1] = g; overlay.data[idx + 2] = b; overlay.data[idx + 3] = 1;
     overlay.mark(pi);
   }
@@ -261,6 +270,8 @@ export class FrameComposer implements PixelSurface {
     const width = VIEW_W * scale, height = VIEW_H * scale;
     if (vx < 0 || vx >= width || vy < 0 || vy >= height) return;
     const pi = (height - 1 - vy) * width + vx, idx = pi * 4, d = overlay.data, k = 1 - a;
+    const cmd = overlay.commands;
+    if (cmd) { cmd.put(pi, r, g, b, a); return; }
     const dstA = d[idx + 3] > 0.5 ? 1 : d[idx + 3] * 2;
     const outA = a + dstA * k;
     d[idx] = r + d[idx] * k; d[idx + 1] = g + d[idx + 1] * k; d[idx + 2] = b + d[idx + 2] * k;
@@ -290,6 +301,23 @@ export class FrameComposer implements PixelSurface {
     const vy0 = Math.round((y0 + this.drawOffsetY - this.renderCamY) * scale);
     const width = VIEW_W * scale, height = VIEW_H * scale, d = overlay.data;
     const i0 = Math.max(0, -vx0), i1 = Math.min(w, width - vx0);
+    const cmd = overlay.commands;
+    if (cmd) {
+      for (let j = 0; j < h; j++) {
+        const vy = vy0 + j;
+        if (vy < 0 || vy >= height) continue;
+        const row = (height - 1 - vy) * width + vx0;
+        for (let i = i0; i < i1; i++) {
+          const k = j * w + i, al = a[k];
+          if (al >= 0.999) cmd.put(row + i, rgb[k * 3], rgb[k * 3 + 1], rgb[k * 3 + 2], 1);
+          else if (al > 0) cmd.put(row + i, rgb[k * 3], rgb[k * 3 + 1], rgb[k * 3 + 2], al);
+          if (glow !== null && (glow[k * 3] > 0 || glow[k * 3 + 1] > 0 || glow[k * 3 + 2] > 0)) {
+            cmd.put(row + i, glow[k * 3], glow[k * 3 + 1], glow[k * 3 + 2], 0);
+          }
+        }
+      }
+      return;
+    }
     for (let j = 0; j < h; j++) {
       const vy = vy0 + j;
       if (vy < 0 || vy >= height) continue;
@@ -320,6 +348,8 @@ export class FrameComposer implements PixelSurface {
     const width = VIEW_W * scale, height = VIEW_H * scale;
     if (vx < 0 || vx >= width || vy < 0 || vy >= height) return;
     const pi = (height - 1 - vy) * width + vx, idx = pi * 4;
+    const cmd = overlay.commands;
+    if (cmd) { cmd.put(pi, r, g, b, 0); return; }
     overlay.data[idx] += r; overlay.data[idx + 1] += g; overlay.data[idx + 2] += b;
     overlay.mark(pi);
   }
@@ -332,15 +362,18 @@ export class FrameComposer implements PixelSurface {
     const idx = pi * 4;
     const overlay = this.overlay;
     if (overlay !== null) {
+      const cmd = overlay.commands;
       if ((overlay.scale ?? 1) > 1) {
         const scale = overlay.scale!, width = VIEW_W * scale;
         for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) {
           const fine = ((VIEW_H - 1 - vy) * scale + dy) * width + vx * scale + dx, offset = fine * 4;
+          if (cmd) { cmd.put(fine, r, g, b, 0); continue; }
           overlay.data[offset] += r; overlay.data[offset + 1] += g; overlay.data[offset + 2] += b;
           overlay.mark(fine);
         }
         return;
       }
+      if (cmd) { cmd.put(pi, r, g, b, 0); return; }
       const d = overlay.data;
       d[idx] += r;
       d[idx + 1] += g;
@@ -1114,7 +1147,11 @@ export class FrameComposer implements PixelSurface {
     drawFallingWater(this, this.light, ctx);
     // Ballistic debris / embers / coins, lightning arcs, projectiles — the
     // combat FX overlays live in sprites/FxSprites (shared with the gallery).
-    drawParticles(this, this.light, ctx);
+    // Sparks the GPU did not take this frame become thinned cosmetic particles.
+    if (ctx.sparks && ctx.sparks.pending > 0 && this.overlay?.sparksOnGpu !== true) ctx.sparks.drainToParticles(ctx);
+    const particleSink = ctx.state.postFx.gpuParticles ? this.overlay?.particles : undefined;
+    if (particleSink) particleSink.submitParticles(ctx, this.drawOffsetX, this.drawOffsetY);
+    else drawParticles(this, this.light, ctx);
     drawLightningArcs(this, ctx);
     drawProjectiles(this, ctx);
 
@@ -1342,82 +1379,130 @@ export class FrameComposer implements PixelSurface {
       const downReach = b.shape.kind === 'circle' ? reach : b.shape.halfW * sa + b.shape.halfH * ca;
       const sideReach = b.shape.kind === 'circle' ? reach : b.shape.halfW * ca + b.shape.halfH * sa;
       this.drawContactShadow(ctx, pose.x, pose.y + downReach, sideReach, 0.5);
-      const pen = new Pen(this, view, [lr, lg, lb]);
       const fill: readonly [number, number, number] = [r, g, bl];
       const edge: readonly [number, number, number] = [r * 0.42 + INK[0] * 0.3, g * 0.42 + INK[1] * 0.3, bl * 0.42 + INK[2] * 0.3];
-      if (b.shape.kind === 'circle') {
-        const rad = b.shape.radius;
-        const at = (x: number, y: number): readonly [number, number] => [
-          pose.x + x * Math.cos(pose.angle) - y * Math.sin(pose.angle),
-          pose.y + x * Math.sin(pose.angle) + y * Math.cos(pose.angle),
-        ];
-        const radial = (count: number, radiusAt: (index: number) => number): Array<readonly [number, number]> => {
-          const silhouette: Array<readonly [number, number]> = [];
-          for (let i = 0; i < count; i++) {
-            const a = Math.PI * 2 * i / count, rr = radiusAt(i);
-            silhouette.push(at(Math.cos(a) * rr, Math.sin(a) * rr));
-          }
-          return silhouette;
-        };
-        if (b.tag === 'tea-boulder') {
-          // The trigger stone is intentionally not a physics-debug sphere. A
-          // chipped outline, broad planes and one forked crack preserve its
-          // circular collider while making it read as a quarried boulder.
-          const chips = [1, .92, .98, .89, .96, 1, .91, .97, .9, .99, .93, .97];
-          pen.polygon(radial(chips.length, i => rad * chips[i]), edge);
-          pen.polygon(radial(chips.length, i => rad * chips[i] * .9), fill, 1, .24);
-          pen.polygon([at(-rad * .72, -rad * .22), at(-rad * .15, -rad * .72), at(rad * .15, -rad * .08)], STEEL_D, .72, .18);
-          pen.polygon([at(rad * .15, -rad * .08), at(rad * .76, rad * .05), at(rad * .26, rad * .48)], IRON, .65, .16);
-          pen.line(...at(-rad * .08, -rad * .78), ...at(rad * .12, -rad * .1), edge, pen.step);
-          pen.line(...at(rad * .12, -rad * .1), ...at(rad * .48, rad * .25), edge, pen.step);
-          pen.line(...at(rad * .12, -rad * .1), ...at(-rad * .15, rad * .38), edge);
-        } else if (b.tag === 'tea-pendulum') {
-          // A cast workshop bob: steel cheeks, a brass tyre and bolted hub.
-          // Concentric construction detail makes its rotation visible without
-          // the placeholder-looking single radius line.
-          pen.disc(pose.x, pose.y, rad, IRON_D, INK, Math.max(pen.step, rad * .08));
-          pen.ring(pose.x, pose.y, rad * .87, Math.max(.8, rad * .12), BRASS_D);
-          pen.disc(pose.x, pose.y, rad * .7, STEEL_D, IRON, Math.max(pen.step, rad * .07));
-          for (let i = 0; i < 6; i++) {
-            const a = pose.angle + i * Math.PI / 3;
-            pen.rivet(pose.x + Math.cos(a) * rad * .55, pose.y + Math.sin(a) * rad * .55, i % 2 ? BRASS : STEEL_L);
-          }
-          pen.rod(...at(-rad * .58, 0), ...at(rad * .58, 0), BRASS, .7);
-          pen.disc(pose.x, pose.y, rad * .17, BRASS_L, INK);
-        } else if (b.tag === 'tea-sugar') {
-          // A fused crystal lump, not a smooth stone. The facets stay inside
-          // the real circular collider and catch the boiler's light as it falls.
-          const crystal = [1, .9, .97, .86, .94, 1, .88, .96, .9, .98, .87, .95, .91, .98];
-          pen.polygon(radial(crystal.length, i => rad * crystal[i]), edge);
-          pen.polygon(radial(crystal.length, i => rad * crystal[i] * .9), fill, 1.08, .18);
-          pen.polygon([at(-rad * .72, -.1 * rad), at(-rad * .12, -.72 * rad), at(-rad * .02, .12 * rad)], STEEL_L, .74, .08);
-          pen.polygon([at(-rad * .02, .12 * rad), at(.68 * rad, -.32 * rad), at(.52 * rad, .55 * rad)], BRASS_L, .52, .16);
-          pen.line(...at(-rad * .02, -.72 * rad), ...at(-rad * .02, .12 * rad), edge);
-          pen.line(...at(-rad * .02, .12 * rad), ...at(.52 * rad, .55 * rad), edge);
-        } else if (b.tag === 'tea-counterweight') {
-          // Octagonal foundry weight with a bolted face plate. It still rolls
-          // as a circle, but visually belongs to the same riveted apparatus.
-          pen.polygon(radial(12, i => rad * (i % 2 ? .92 : 1)), INK);
-          pen.polygon(radial(12, i => rad * (i % 2 ? .82 : .89)), IRON, 1, .22);
-          pen.ring(pose.x, pose.y, rad * .62, Math.max(.7, rad * .1), BRASS_D);
-          for (let i = 0; i < 4; i++) {
-            const a = pose.angle + Math.PI / 4 + i * Math.PI / 2;
-            pen.rivet(pose.x + Math.cos(a) * rad * .46, pose.y + Math.sin(a) * rad * .46, BRASS);
-          }
-          pen.box(pose.x, pose.y, rad * .35, rad * .12, pose.angle, STEEL, IRON_D);
-        } else {
-          pen.disc(pose.x, pose.y, rad, fill, edge, Math.max(pen.step, rad * 0.09));
-          // A single spoke toward local +x makes generic rolling cargo legible.
-          pen.line(pose.x, pose.y, pose.x + Math.cos(pose.angle) * (rad - 1), pose.y + Math.sin(pose.angle) * (rad - 1), edge, pen.step * 2);
-          pen.arc(pose.x, pose.y, rad * 0.62, Math.PI * 1.1, Math.PI * 1.4, fill, 0, 1.35);
+      // A resting body replays its recorded art (render/BodyArtCache): same
+      // pixels, no re-rasterising. Burning or frosted art animates; moving
+      // bodies change every frame — those draw directly.
+      if (this.overlay !== null && b.sleeping && !(b.burnT && b.burnT > 0) && !(b.frozenT && b.frozenT > 0) && artCacheEnabled()) {
+        let entry = this.bodyArt.get(b);
+        if (!artEntryValid(entry, pose, fill)) {
+          const recorder = this.artRecorder ??= new ArtRecorder(this.overlay.scale ?? 1);
+          this.drawBodyArt(new Pen(recorder.begin(), null), b, pose, fill, edge, frame);
+          entry = recorder.finish(pose, fill, entry);
+          this.bodyArt.set(b, entry);
         }
-      } else if (b.payload === 'explosive') {
-        this.drawPowderKeg(pen, pose, b.shape.halfW, b.shape.halfH, fill, edge, b.burnT ?? 0, frame + b.id * 7);
-      } else if (b.material === 'wood' && Math.min(b.shape.halfW, b.shape.halfH) >= 1.2) {
-        this.drawTimberBody(pen, pose, b.shape.halfW, b.shape.halfH, fill, edge, b.burnT ?? 0, b.frozenT ?? 0, frame + b.id * 7);
-      } else {
-        pen.box(pose.x, pose.y, b.shape.halfW, b.shape.halfH, pose.angle, fill, edge);
+        this.replayArt(entry, lr, lg, lb);
+        continue;
       }
+      this.drawBodyArt(new Pen(this, view, [lr, lg, lb]), b, pose, fill, edge, frame);
+    }
+  }
+
+  /** A rigid body's art at `pose` (the tagged Bell & Tea parts, kegs, timber, plain boxes and discs). */
+  private drawBodyArt(
+    pen: Pen, b: RigidBody, pose: { x: number; y: number; angle: number },
+    fill: readonly [number, number, number], edge: readonly [number, number, number], frame: number,
+  ): void {
+    if (b.shape.kind === 'circle') {
+      const rad = b.shape.radius;
+      const at = (x: number, y: number): readonly [number, number] => [
+        pose.x + x * Math.cos(pose.angle) - y * Math.sin(pose.angle),
+        pose.y + x * Math.sin(pose.angle) + y * Math.cos(pose.angle),
+      ];
+      const radial = (count: number, radiusAt: (index: number) => number): Array<readonly [number, number]> => {
+        const silhouette: Array<readonly [number, number]> = [];
+        for (let i = 0; i < count; i++) {
+          const a = Math.PI * 2 * i / count, rr = radiusAt(i);
+          silhouette.push(at(Math.cos(a) * rr, Math.sin(a) * rr));
+        }
+        return silhouette;
+      };
+      if (b.tag === 'tea-boulder') {
+        // The trigger stone is intentionally not a physics-debug sphere. A
+        // chipped outline, broad planes and one forked crack preserve its
+        // circular collider while making it read as a quarried boulder.
+        const chips = [1, .92, .98, .89, .96, 1, .91, .97, .9, .99, .93, .97];
+        pen.polygon(radial(chips.length, i => rad * chips[i]), edge);
+        pen.polygon(radial(chips.length, i => rad * chips[i] * .9), fill, 1, .24);
+        pen.polygon([at(-rad * .72, -rad * .22), at(-rad * .15, -rad * .72), at(rad * .15, -rad * .08)], STEEL_D, .72, .18);
+        pen.polygon([at(rad * .15, -rad * .08), at(rad * .76, rad * .05), at(rad * .26, rad * .48)], IRON, .65, .16);
+        pen.line(...at(-rad * .08, -rad * .78), ...at(rad * .12, -rad * .1), edge, pen.step);
+        pen.line(...at(rad * .12, -rad * .1), ...at(rad * .48, rad * .25), edge, pen.step);
+        pen.line(...at(rad * .12, -rad * .1), ...at(-rad * .15, rad * .38), edge);
+      } else if (b.tag === 'tea-pendulum') {
+        // A cast workshop bob: steel cheeks, a brass tyre and bolted hub.
+        // Concentric construction detail makes its rotation visible without
+        // the placeholder-looking single radius line.
+        pen.disc(pose.x, pose.y, rad, IRON_D, INK, Math.max(pen.step, rad * .08));
+        pen.ring(pose.x, pose.y, rad * .87, Math.max(.8, rad * .12), BRASS_D);
+        pen.disc(pose.x, pose.y, rad * .7, STEEL_D, IRON, Math.max(pen.step, rad * .07));
+        for (let i = 0; i < 6; i++) {
+          const a = pose.angle + i * Math.PI / 3;
+          pen.rivet(pose.x + Math.cos(a) * rad * .55, pose.y + Math.sin(a) * rad * .55, i % 2 ? BRASS : STEEL_L);
+        }
+        pen.rod(...at(-rad * .58, 0), ...at(rad * .58, 0), BRASS, .7);
+        pen.disc(pose.x, pose.y, rad * .17, BRASS_L, INK);
+      } else if (b.tag === 'tea-sugar') {
+        // A fused crystal lump, not a smooth stone. The facets stay inside
+        // the real circular collider and catch the boiler's light as it falls.
+        const crystal = [1, .9, .97, .86, .94, 1, .88, .96, .9, .98, .87, .95, .91, .98];
+        pen.polygon(radial(crystal.length, i => rad * crystal[i]), edge);
+        pen.polygon(radial(crystal.length, i => rad * crystal[i] * .9), fill, 1.08, .18);
+        pen.polygon([at(-rad * .72, -.1 * rad), at(-rad * .12, -.72 * rad), at(-rad * .02, .12 * rad)], STEEL_L, .74, .08);
+        pen.polygon([at(-rad * .02, .12 * rad), at(.68 * rad, -.32 * rad), at(.52 * rad, .55 * rad)], BRASS_L, .52, .16);
+        pen.line(...at(-rad * .02, -.72 * rad), ...at(-rad * .02, .12 * rad), edge);
+        pen.line(...at(-rad * .02, .12 * rad), ...at(.52 * rad, .55 * rad), edge);
+      } else if (b.tag === 'tea-counterweight') {
+        // Octagonal foundry weight with a bolted face plate. It still rolls
+        // as a circle, but visually belongs to the same riveted apparatus.
+        pen.polygon(radial(12, i => rad * (i % 2 ? .92 : 1)), INK);
+        pen.polygon(radial(12, i => rad * (i % 2 ? .82 : .89)), IRON, 1, .22);
+        pen.ring(pose.x, pose.y, rad * .62, Math.max(.7, rad * .1), BRASS_D);
+        for (let i = 0; i < 4; i++) {
+          const a = pose.angle + Math.PI / 4 + i * Math.PI / 2;
+          pen.rivet(pose.x + Math.cos(a) * rad * .46, pose.y + Math.sin(a) * rad * .46, BRASS);
+        }
+        pen.box(pose.x, pose.y, rad * .35, rad * .12, pose.angle, STEEL, IRON_D);
+      } else {
+        pen.disc(pose.x, pose.y, rad, fill, edge, Math.max(pen.step, rad * 0.09));
+        // A single spoke toward local +x makes generic rolling cargo legible.
+        pen.line(pose.x, pose.y, pose.x + Math.cos(pose.angle) * (rad - 1), pose.y + Math.sin(pose.angle) * (rad - 1), edge, pen.step * 2);
+        pen.arc(pose.x, pose.y, rad * 0.62, Math.PI * 1.1, Math.PI * 1.4, fill, 0, 1.35);
+      }
+    } else if (b.payload === 'explosive') {
+      this.drawPowderKeg(pen, pose, b.shape.halfW, b.shape.halfH, fill, edge, b.burnT ?? 0, frame + b.id * 7);
+    } else if (b.material === 'wood' && Math.min(b.shape.halfW, b.shape.halfH) >= 1.2) {
+      this.drawTimberBody(pen, pose, b.shape.halfW, b.shape.halfH, fill, edge, b.burnT ?? 0, b.frozenT ?? 0, frame + b.id * 7);
+    } else {
+      pen.box(pose.x, pose.y, b.shape.halfW, b.shape.halfH, pose.angle, fill, edge);
+    }
+  }
+
+  /**
+   * Replay a recorded body drawing (BodyArtCache) into this frame's overlay:
+   * the camera offset applied, the view clip applied, the body's light
+   * multiplied in — the writes Pen would have made, in the order it made them.
+   */
+  private replayArt(entry: BodyArtEntry, lr: number, lg: number, lb: number): void {
+    const overlay = this.overlay!, scale = overlay.scale ?? 1, cmd = overlay.commands;
+    const width = VIEW_W * scale, height = VIEW_H * scale;
+    const ox = this.renderCamX * scale, oy = this.renderCamY * scale;
+    const d = entry.data, od = overlay.data;
+    for (let k = 0, o = 0; k < entry.count; k++, o += ART_RECORD) {
+      const vx = d[o] - ox, vy = d[o + 1] - oy;
+      if (vx < 0 || vx >= width || vy < 0 || vy >= height) continue;
+      const pi = (height - 1 - vy) * width + vx, r = d[o + 2] * lr, g = d[o + 3] * lg, b = d[o + 4] * lb, a = d[o + 5];
+      if (cmd) { cmd.put(pi, r, g, b, a); continue; }
+      const idx = pi * 4;
+      if (a >= 1) { od[idx] = r; od[idx + 1] = g; od[idx + 2] = b; od[idx + 3] = 1; }
+      else if (a <= 0) { od[idx] += r; od[idx + 1] += g; od[idx + 2] += b; }
+      else {
+        const kk = 1 - a, dstA = od[idx + 3] > 0.5 ? 1 : od[idx + 3] * 2, outA = a + dstA * kk;
+        od[idx] = r + od[idx] * kk; od[idx + 1] = g + od[idx + 1] * kk; od[idx + 2] = b + od[idx + 2] * kk;
+        od[idx + 3] = outA >= 0.999 ? 1 : outA * 0.5;
+      }
+      overlay.mark(pi);
     }
   }
 
@@ -2252,4 +2337,9 @@ export class FrameComposer implements PixelSurface {
       }
     }
   }
+}
+
+/** Probe seam: `window.__bodyArtCache = false` draws resting bodies directly (parity A/B). */
+function artCacheEnabled(): boolean {
+  return (window as unknown as { __bodyArtCache?: boolean }).__bodyArtCache !== false;
 }

@@ -53,6 +53,32 @@ export class ActivityGrid {
   private readonly minY: Int16Array;
   private readonly maxX: Int16Array;
   private readonly maxY: Int16Array;
+  /**
+   * DEFERRED CONTACT HALOS. A touch of a small in-bounds rect (every swap and
+   * single-cell write) records only its own cells here; the halos are dilated
+   * once per step in flushTouches() with word-parallel bit ops (32 cells per
+   * operation) instead of per touch. The render halo stays two cells (terrain
+   * art reads a two-cell neighbourhood), so renderDirtyRows and the render
+   * bounds come out bit-identical. The SIM halo is one cell: a cell's
+   * eligibility reads only itself and its 8 neighbours, so reclassifying the
+   * second ring re-derives the same answer — dropping it changes no class,
+   * mask, counter or schedule, only the work. Per-chunk flags the sweep reads
+   * mid-step (scheduled, dirty) and the change counters (versions, revision)
+   * are still written at touch time over the two-cell halo, as before.
+   */
+  private readonly seeds: Uint32Array;
+  private readonly seedChunk: Uint8Array;
+  private readonly seedMinX: Int16Array;
+  private readonly seedMinY: Int16Array;
+  private readonly seedMaxX: Int16Array;
+  private readonly seedMaxY: Int16Array;
+  private readonly seededChunks: Int32Array;
+  private seededCount = 0;
+  /** Horizontally dilated seed rows of one chunk's seed box (<=64 rows x <=4
+   *  words): +-1 cell (sim) and +-2 cells (render). */
+  private readonly dilated1 = new Uint32Array(64 * 4);
+  private readonly dilated2 = new Uint32Array(64 * 4);
+  private readonly lastWordMask: number;
 
   constructor(private readonly width: number, private readonly height: number) {
     this.columns = Math.ceil(width / 64); this.rows = Math.ceil(height / 64);
@@ -73,6 +99,13 @@ export class ActivityGrid {
     this.maxX = new Int16Array(count); this.maxY = new Int16Array(count);
     this.renderMinX = new Int16Array(count).fill(32767); this.renderMinY = new Int16Array(count).fill(32767);
     this.renderMaxX = new Int16Array(count); this.renderMaxY = new Int16Array(count);
+    this.seeds = new Uint32Array(this.wordsPerRow * height);
+    this.seedChunk = new Uint8Array(count);
+    this.seedMinX = new Int16Array(count); this.seedMinY = new Int16Array(count);
+    this.seedMaxX = new Int16Array(count); this.seedMaxY = new Int16Array(count);
+    this.seededChunks = new Int32Array(count);
+    const tail = width & 31;
+    this.lastWordMask = tail === 0 ? 0xffffffff : ((1 << tail) - 1);
   }
 
   invalidateAll(): void { this.initialized = false; this.revision++; this.epoch++; }
@@ -89,6 +122,10 @@ export class ActivityGrid {
   touchRect(x0: number, y0: number, x1: number, y1: number): void {
     this.revision++;
     if (!this.initialized) return;
+    if (x1 - x0 <= 2 && y1 - y0 <= 2 && x0 >= 0 && y0 >= 0 && x0 < x1 && y0 < y1 && x1 <= this.width && y1 <= this.height) {
+      this.seedRect(x0, y0, x1, y1);
+      return;
+    }
     x0 = Math.max(0, x0 - 2); y0 = Math.max(0, y0 - 2);
     x1 = Math.min(this.width, x1 + 2); y1 = Math.min(this.height, y1 + 2);
     if (x0 >= x1 || y0 >= y1) return;
@@ -109,9 +146,116 @@ export class ActivityGrid {
     }
   }
 
+  /** Small in-bounds rect: chunk flags now, halo bits at the next flush. */
+  private seedRect(x0: number, y0: number, x1: number, y1: number): void {
+    const ex0 = x0 < 2 ? 0 : x0 - 2, ey0 = y0 < 2 ? 0 : y0 - 2;
+    const ex1 = x1 + 2 > this.width ? this.width : x1 + 2, ey1 = y1 + 2 > this.height ? this.height : y1 + 2;
+    const columns = this.columns, dirty = this.dirty, quiet = this.quiet, scheduled = this.scheduled, versions = this.versions;
+    for (let cy = ey0 >> 6, cy1 = (ey1 - 1) >> 6; cy <= cy1; cy++) {
+      for (let cx = ex0 >> 6, cx1 = (ex1 - 1) >> 6; cx <= cx1; cx++) {
+        const key = cx + cy * columns;
+        dirty[key] = 1; quiet[key] = 0; scheduled[key] = 1; versions[key]++;
+      }
+    }
+    const seeds = this.seeds, wordsPerRow = this.wordsPerRow;
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        seeds[y * wordsPerRow + (x >> 5)] |= 1 << (x & 31);
+        const key = (x >> 6) + (y >> 6) * columns;
+        if (this.seedChunk[key] === 0) {
+          this.seedChunk[key] = 1;
+          this.seededChunks[this.seededCount++] = key;
+          this.seedMinX[key] = x; this.seedMaxX[key] = x; this.seedMinY[key] = y; this.seedMaxY[key] = y;
+        } else {
+          if (x < this.seedMinX[key]) this.seedMinX[key] = x; else if (x > this.seedMaxX[key]) this.seedMaxX[key] = x;
+          if (y < this.seedMinY[key]) this.seedMinY[key] = y; else if (y > this.seedMaxY[key]) this.seedMaxY[key] = y;
+        }
+      }
+    }
+  }
+
+  /**
+   * Apply the pending contact halos (see `seeds`): dilate each seeded chunk's
+   * seed box by two cells in both axes into dirtyRows + renderDirtyRows and
+   * grow the per-chunk sim/render bounds to match. Idempotent; beginStep runs
+   * it first, and render-damage readers (TerrainArt) call it before reading.
+   */
+  flushTouches(): void {
+    const count = this.seededCount;
+    if (count === 0) return;
+    const seeds = this.seeds, dirtyRows = this.dirtyRows, renderDirtyRows = this.renderDirtyRows;
+    const wordsPerRow = this.wordsPerRow, lastWord = wordsPerRow - 1, lastWordMask = this.lastWordMask;
+    const width = this.width, height = this.height, columns = this.columns;
+    const dilated1 = this.dilated1, dilated2 = this.dilated2;
+    const minX = this.minX, minY = this.minY, maxX = this.maxX, maxY = this.maxY;
+    const rMinX = this.renderMinX, rMinY = this.renderMinY, rMaxX = this.renderMaxX, rMaxY = this.renderMaxY;
+    for (let n = 0; n < count; n++) {
+      const key = this.seededChunks[n];
+      const sx0 = this.seedMinX[key], sx1 = this.seedMaxX[key], sy0 = this.seedMinY[key], sy1 = this.seedMaxY[key];
+      const w0 = (sx0 < 2 ? 0 : sx0 - 2) >> 5, w1 = (sx1 + 2 >= width ? width - 1 : sx1 + 2) >> 5;
+      const spanW = w1 - w0 + 1;
+      // Horizontal pass over the seed rows (carrying across words).
+      for (let y = sy0; y <= sy1; y++) {
+        const row = y * wordsPerRow, out = (y - sy0) * spanW - w0;
+        for (let w = w0; w <= w1; w++) {
+          const s = seeds[row + w];
+          const prev = w > 0 ? seeds[row + w - 1] : 0;
+          const next = w < lastWord ? seeds[row + w + 1] : 0;
+          let h1 = s | (s << 1) | (s >>> 1) | (prev >>> 31) | (next << 31);
+          let h2 = h1 | (s << 2) | (s >>> 2) | (prev >>> 30) | (next << 30);
+          if (w === lastWord) { h1 &= lastWordMask; h2 &= lastWordMask; }
+          dilated1[out + w] = h1;
+          dilated2[out + w] = h2;
+        }
+      }
+      // Vertical pass straight into the damage planes + bounds.
+      const ry0 = sy0 < 2 ? 0 : sy0 - 2, ry1 = sy1 + 2 >= height ? height - 1 : sy1 + 2;
+      for (let y = ry0; y <= ry1; y++) {
+        const a2 = y - 2 < sy0 ? sy0 : y - 2, b2 = y + 2 > sy1 ? sy1 : y + 2;
+        const a1 = y - 1 < sy0 ? sy0 : y - 1, b1 = y + 1 > sy1 ? sy1 : y + 1;
+        const row = y * wordsPerRow, cyKey = (y >> 6) * columns;
+        for (let w = w0; w <= w1; w++) {
+          let v2 = 0, v1 = 0;
+          for (let r = a2; r <= b2; r++) v2 |= dilated2[(r - sy0) * spanW + w - w0];
+          if (v2 === 0) continue;
+          for (let r = a1; r <= b1; r++) v1 |= dilated1[(r - sy0) * spanW + w - w0];
+          const ck = (w >> 1) + cyKey;
+          renderDirtyRows[row + w] |= v2;
+          const rxs = w * 32 + 31 - Math.clz32(v2 & -v2), rxe = w * 32 + 32 - Math.clz32(v2);
+          if (rxs < rMinX[ck]) rMinX[ck] = rxs;
+          if (rxe > rMaxX[ck]) rMaxX[ck] = rxe;
+          if (y < rMinY[ck]) rMinY[ck] = y;
+          if (y + 1 > rMaxY[ck]) rMaxY[ck] = y + 1;
+          if (v1 === 0) continue;
+          dirtyRows[row + w] |= v1;
+          const xs = w * 32 + 31 - Math.clz32(v1 & -v1), xe = w * 32 + 32 - Math.clz32(v1);
+          if (xs < minX[ck]) minX[ck] = xs;
+          if (xe > maxX[ck]) maxX[ck] = xe;
+          if (y < minY[ck]) minY[ck] = y;
+          if (y + 1 > maxY[ck]) maxY[ck] = y + 1;
+        }
+      }
+    }
+    // Seeds are cleared only after every chunk dilated: a box's carry reads can
+    // see a neighbour's seed words, which must still be there for its own pass.
+    for (let n = 0; n < count; n++) {
+      const key = this.seededChunks[n];
+      const w0 = this.seedMinX[key] >> 5, w1 = this.seedMaxX[key] >> 5;
+      for (let y = this.seedMinY[key], y1 = this.seedMaxY[key]; y <= y1; y++) {
+        const row = y * wordsPerRow;
+        for (let w = w0; w <= w1; w++) seeds[row + w] = 0;
+      }
+      this.seedChunk[key] = 0;
+    }
+    this.seededCount = 0;
+  }
+
   beginStep(world: World, interest?: { x0: number; y0: number; x1: number; y1: number }, tick?: number): void {
+    this.flushTouches();
     this.stepSerial++;
-    const first = !this.initialized, types = world.types, width = this.width;
+    const first = !this.initialized, types = world.types, width = this.width, height = this.height;
+    const life = world.life, charge = world.charge, wordsPerRow = this.wordsPerRow;
+    const cellClass = this.cellClass, eligible = this.eligible, rowMasks = this.rowMasks, dirtyRows = this.dirtyRows;
     if (first) {
       this.dynamic.fill(0); this.restless.fill(0); this.urgent.fill(0); this.cellClass.fill(0);
       this.eligible.fill(0); this.rowMasks.fill(0);
@@ -130,40 +274,53 @@ export class ActivityGrid {
         const right = first ? x1 : this.maxX[key], bottom = first ? y1 : this.maxY[key];
         const growth = this.growthSets[key];
         let growthEdited = first;
-        for (let y = top; y < bottom; y++) for (let word = left >> 5; word <= (right - 1) >> 5; word++) {
-          const rowIndex = y * this.wordsPerRow + word;
-          let changed = first ? 0xffffffff : this.dirtyRows[rowIndex];
-          this.dirtyRows[rowIndex] = 0;
-          while (changed !== 0) {
-            const bitIndex = 31 - Math.clz32(changed & -changed), x = word * 32 + bitIndex;
-            changed &= changed - 1;
-            if (x >= width) continue;
-            const i = x + y * width, type = types[i], kind = category[type], old = this.cellClass[i];
-            if (this.eligible[i]) { this.dynamic[key]--; if (old & 8) this.restless[key]--; }
-            if (old & 4) this.urgent[key]--;
-            const burningOil = type === Cell.Oil && world.life[i] > 0;
-            const urgent = urgentMaterial[type] || world.charge[i] > 0 || burningOil;
-            const restless = kind === 3 || world.charge[i] > 0 || burningOil;
-            this.cellClass[i] = kind | (urgent ? 4 : 0) | (restless ? 8 : 0);
-            if (urgent) this.urgent[key]++;
-            if ((old & 3) === 1 && kind !== 1) { growth.delete(i); growthEdited = true; }
-            if (kind === 1 && (old & 3) !== 1) { growth.add(i); growthEdited = true; }
-            let active = kind > 1;
-            const restContact = type === Cell.Water ? waterRestContact : type === Cell.Oil && !burningOil ? oilRestContact
-              : type === Cell.Brine ? brineRestContact : null;
-            if (restContact && !urgent && x > 0 && x + 1 < width && y > 0 && y + 1 < this.height &&
-                restContact[types[i - 1]] && restContact[types[i + 1]] &&
-                restContact[types[i - width]] && restContact[types[i + width]] &&
-                restContact[types[i - width - 1]] && restContact[types[i - width + 1]] &&
-                restContact[types[i + width - 1]] && restContact[types[i + width + 1]] &&
-                (!world.charge[i - 1] && !world.charge[i + 1] && !world.charge[i - width] && !world.charge[i + width] &&
-                 !world.charge[i - width - 1] && !world.charge[i - width + 1] && !world.charge[i + width - 1] && !world.charge[i + width + 1])) active = false;
-            this.eligible[i] = active ? 1 : 0;
-            const mask = rowIndex, bit = 1 << bitIndex;
-            if (active) { this.rowMasks[mask] |= bit; this.dynamic[key]++; if (restless) this.restless[key]++; }
-            else this.rowMasks[mask] &= ~bit;
+        // Chunk counters accumulate locally (Uint32 wraparound makes the order
+        // of -- and ++ irrelevant) and each row word's mask is written once.
+        let dDynamic = 0, dRestless = 0, dUrgent = 0;
+        for (let y = top; y < bottom; y++) {
+          const rowBase = y * wordsPerRow, cellRow = y * width;
+          for (let word = left >> 5; word <= (right - 1) >> 5; word++) {
+            const rowIndex = rowBase + word;
+            let changed = first ? 0xffffffff : dirtyRows[rowIndex];
+            if (changed === 0) continue;
+            dirtyRows[rowIndex] = 0;
+            let mask = rowMasks[rowIndex];
+            while (changed !== 0) {
+              const low = changed & -changed;
+              changed ^= low;
+              const x = word * 32 + 31 - Math.clz32(low);
+              if (x >= width) continue;
+              const i = x + cellRow, type = types[i], kind = category[type], old = cellClass[i], q = charge[i];
+              // Inert stays inert: class 0 means the last pass left this cell
+              // ineligible with its mask bit clear, and nothing about it changed.
+              if (kind === 0 && old === 0 && q === 0) continue;
+              if (eligible[i]) { dDynamic--; if (old & 8) dRestless--; }
+              if (old & 4) dUrgent--;
+              const burningOil = type === Cell.Oil && life[i] > 0;
+              const urgent = urgentMaterial[type] !== 0 || q > 0 || burningOil;
+              const restless = kind === 3 || q > 0 || burningOil;
+              cellClass[i] = kind | (urgent ? 4 : 0) | (restless ? 8 : 0);
+              if (urgent) dUrgent++;
+              if ((old & 3) === 1 && kind !== 1) { growth.delete(i); growthEdited = true; }
+              if (kind === 1 && (old & 3) !== 1) { growth.add(i); growthEdited = true; }
+              let active = kind > 1;
+              const restContact = type === Cell.Water ? waterRestContact : type === Cell.Oil && !burningOil ? oilRestContact
+                : type === Cell.Brine ? brineRestContact : null;
+              if (restContact !== null && !urgent && x > 0 && x + 1 < width && y > 0 && y + 1 < height &&
+                  restContact[types[i - 1]] && restContact[types[i + 1]] &&
+                  restContact[types[i - width]] && restContact[types[i + width]] &&
+                  restContact[types[i - width - 1]] && restContact[types[i - width + 1]] &&
+                  restContact[types[i + width - 1]] && restContact[types[i + width + 1]] &&
+                  (charge[i - 1] | charge[i + 1] | charge[i - width] | charge[i + width] |
+                   charge[i - width - 1] | charge[i - width + 1] | charge[i + width - 1] | charge[i + width + 1]) === 0) active = false;
+              eligible[i] = active ? 1 : 0;
+              if (active) { mask |= low; dDynamic++; if (restless) dRestless++; }
+              else mask &= ~low;
+            }
+            rowMasks[rowIndex] = mask;
           }
         }
+        this.dynamic[key] += dDynamic; this.restless[key] += dRestless; this.urgent[key] += dUrgent;
         if (growthEdited) {
           this.growthCells[key].length = 0;
           for (const index of growth) this.growthCells[key].push(index);

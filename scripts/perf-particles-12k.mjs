@@ -28,6 +28,8 @@ page.on('pageerror', (e) => console.error('PAGE ERROR:', String(e)));
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForTimeout(1500);
 await startConsoleTestRun(page, { seed: 777, settleMs: 1500 });
+// Measure only once the run has settled into its level.
+await page.waitForFunction(() => window.__game.ctx.levels.findabilityReady, null, { timeout: 60000 });
 
 async function record(label, setup) {
   await page.evaluate(setup, { COUNT });
@@ -60,9 +62,12 @@ const loaded = await record('LOADED (~12k particles)', ({ COUNT }) => {
   ctx.particles.pool.max = COUNT + 1000; // robust vs HMR state
   const w = ctx.world;
   const cx = Math.floor(ctx.camera.x), cy = Math.floor(ctx.camera.y);
-  const canvas = document.querySelector('canvas');
-  const VW = Math.max(1, Math.floor((canvas?.width ?? 1050) / 2));
-  const VH = Math.max(1, Math.floor((canvas?.height ?? 714) / 2));
+  // The game canvas (a bare querySelector('canvas') found an 11px UI icon,
+  // so the "12k" run placed ~5 motes in a 5x5-cell patch). Presentation is
+  // 2 canvas pixels per cell.
+  const canvas = document.querySelector('#canvas-holder > canvas');
+  const VW = Math.max(1, Math.floor((canvas?.width ?? 1280) / 2));
+  const VH = Math.max(1, Math.floor((canvas?.height ?? 720) / 2));
   let placed = 0;
   for (let attempt = 0; attempt < COUNT * 8 && placed < COUNT; attempt++) {
     const x = cx + (Math.random() * VW | 0), y = cy + (Math.random() * VH | 0);
