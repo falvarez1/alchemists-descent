@@ -9,6 +9,7 @@ import { DifficultyPicker } from '@/ui/DifficultyPicker';
 import { BASE_DIFFICULTY } from '@/config/difficultyLadder';
 import { appDialog } from '@/ui/AppDialog';
 import { openTrailer } from '@/ui/TrailerLightbox';
+import { launchLine } from '@/content/launchLines';
 
 /** "Breathing Works" → "Breathing<br><em>Works</em>": the last word takes the brass. */
 function titleMarkup(title: string): string {
@@ -188,7 +189,7 @@ export class ExpeditionEntry {
     this.launching = true;
     const buttons = this.root.querySelectorAll<HTMLButtonElement>('button');
     for (const button of buttons) button.disabled = true;
-    this.root.querySelector('.entry-status')!.textContent = kind === 'continue' ? 'Returning to the Works…' : 'Opening the intake…';
+    this.root.querySelector('.entry-status')!.textContent = kind === 'continue' ? 'Returning to the Works…' : launchLine(this.ctx.run?.metaView().runsEnded ?? 0);
     this.ctx.audio.ensure();
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     try {

@@ -46,7 +46,21 @@ function loosePowder(t: number): boolean {
   return t === Cell.Sand || t === Cell.Snow || t === Cell.Gunpowder || t === Cell.Gold || t === Cell.Catalyst;
 }
 
+/** A pile this size (oz) earns the one big-gold remark of a run. */
+const BIG_GOLD_OZ = 150;
+
 export class Pickups implements PickupsApi {
+  /** The big-gold line has been said this run (the next descent's start lets it be said again). */
+  private bigGoldSaid = false;
+
+  /** True once per run, for a pile worth remarking on. */
+  private bigGoldFirst(ctx: Ctx, amount: number): boolean {
+    if (this.bigGoldSaid || amount < BIG_GOLD_OZ) return false;
+    this.bigGoldSaid = true;
+    const off = ctx.events.on('phialsChanged', ({ reason }) => { if (reason === 'start') { this.bigGoldSaid = false; off(); } });
+    return true;
+  }
+
   update(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') return;
     const runtime = ctx.levels.current;
@@ -167,7 +181,7 @@ export class Pickups implements PickupsApi {
       const amount = p.data.amount ?? 10;
       ctx.state.score += amount;
       ctx.events.emit('scoreChanged', { score: ctx.state.score });
-      ctx.events.emit('toast', { text: `+${amount} oz gold` });
+      ctx.events.emit('toast', { text: this.bigGoldFirst(ctx, amount) ? `+${amount} oz gold. The Guild will want a receipt.` : `+${amount} oz gold` });
       ctx.audio.sfx('pickup.gold');
     } else if (p.kind === 'heart') {
       // The vessel grows at once; refilling it is a COMMUNION — the alchemist

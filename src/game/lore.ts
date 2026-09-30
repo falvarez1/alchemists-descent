@@ -13,26 +13,28 @@ export const LORE_KEY = LEGACY_LORE_KEY;
 export interface LoreEntry {
   title: string;
   body: string;
+  /** What a previous reader wrote beside it: shown in the Grimoire once the material has been examined. */
+  margin?: string;
 }
 
 /** Keyed by Cell id; only cataloged materials are discoverable lore. */
 export const MATERIAL_LORE: Partial<Record<number, LoreEntry>> = {
-  [Cell.Water]: { title: 'Water', body: 'Quenches flame to steam, carries a charge, and thins toxic sludge it touches.' },
+  [Cell.Water]: { title: 'Water', body: 'Quenches flame to steam, carries a charge, and thins toxic sludge it touches.', margin: '“Do not drink the sump.” Underneath: “I did.”' },
   [Cell.Lava]: { title: 'Lava', body: 'Molten rock — melts ice, sets fire to what burns, and conducts a current.' },
   [Cell.Fire]: { title: 'Fire', body: 'Rises and spreads through anything flammable; water snuffs it, wood chars to ash.' },
-  [Cell.Acid]: { title: 'Acid', body: 'Eats through most solids. Beside water it transmutes rock into gold.' },
-  [Cell.Oil]: { title: 'Oil', body: 'Slick and flammable — a long, creeping fuse once it catches.' },
-  [Cell.Toxic]: { title: 'Toxic Sludge', body: 'Caustic ooze; clean water thins it back to water.' },
+  [Cell.Acid]: { title: 'Acid', body: 'Eats through most solids. Beside water it transmutes rock into gold.', margin: 'Initialled by eleven apprentices. Each has since changed their handwriting.' },
+  [Cell.Oil]: { title: 'Oil', body: 'Slick and flammable — a long, creeping fuse once it catches.', margin: 'Slippery. Also, regrettably, lit.' },
+  [Cell.Toxic]: { title: 'Toxic Sludge', body: 'Caustic ooze; clean water thins it back to water.', margin: 'Labelled “compost”, in a very confident hand.' },
   [Cell.Sand]: { title: 'Sand', body: 'Loose grain that pours and piles. Heat or strong charge fuses it to glass.' },
   [Cell.Wood]: { title: 'Wood', body: 'Catches fire readily and burns down to ash.' },
   [Cell.Ice]: { title: 'Ice', body: 'Frozen and slick; fire and lava melt it back to water.' },
   [Cell.Metal]: { title: 'Metal', body: 'Conducts electricity far and fast — a path for lightning.' },
-  [Cell.Gold]: { title: 'Gold', body: "Heavy, glittering dust — the alchemist's prize." },
+  [Cell.Gold]: { title: 'Gold', body: "Heavy, glittering dust — the alchemist's prize.", margin: 'Someone has underlined “prize” three times, crossed it out, and underlined it again.' },
   [Cell.Blood]: { title: 'Blood', body: 'Wet gore conducts a current and slows whatever wades through it.' },
-  [Cell.Gunpowder]: { title: 'Gunpowder', body: 'Thin trails burn like fuses. Packed clumps answer a spark with a blast.' },
+  [Cell.Gunpowder]: { title: 'Gunpowder', body: 'Thin trails burn like fuses. Packed clumps answer a spark with a blast.', margin: 'In a steadier hand: “Not in the office.”' },
   [Cell.Glowshroom]: { title: 'Glowshroom', body: 'Living light clinging to the rock, soft and breathing.' },
   [Cell.Crystal]: { title: 'Mana Crystal', body: 'Bright crystal that glints with stored magic.' },
-  [Cell.Nitrogen]: { title: 'Liquid Nitrogen', body: 'Bitter cold — freezes surface water into ice bridges.' },
+  [Cell.Nitrogen]: { title: 'Liquid Nitrogen', body: 'Bitter cold — freezes surface water into ice bridges.', margin: '“Do not lick.” Underneath, in a second hand: “Noted.”' },
 };
 
 /** Snapshot of discovered lore ids (for the Grimoire render). */
