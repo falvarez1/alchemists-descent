@@ -876,7 +876,11 @@ body.play-active.runtime-inspector-open #viewport-container {
     padding: 18px; box-sizing: border-box; background: rgba(5, 3, 8, 0.94); opacity: 0;
     pointer-events: none; transition: opacity 0.35s ease; z-index: 6; font-family: var(--mono);
 }
-#level-curtain.visible { opacity: 1; }
+/* Quick to come up (a descent paints it before generation blocks the thread), slow to lift. */
+#level-curtain.visible { opacity: 1; transition: opacity 0.07s ease-out; }
+/* game/descentCurtain: over the menu it was raised from (Sanctum z 8, the ledger z 40), until the floor is built. */
+#level-curtain.over-menus { z-index: 60; }
+body.reduce-flashes #level-curtain.visible { transition-duration: 0.18s; }
 .level-curtain-panel {
     width: min(480px, 100%); display: grid; grid-template-columns: 46px minmax(0, 1fr);
     align-items: center; gap: 12px; padding: 12px; border: 1px solid rgba(125, 211, 252, 0.48);

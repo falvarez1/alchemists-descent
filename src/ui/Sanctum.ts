@@ -14,6 +14,7 @@ import { FLOOR_LORE } from '@/content/floorLore';
 import { FLOOR_LOOKS } from '@/config/floorLooks';
 import { FLOORS_TOTAL, LEVELS, floorDisplayName, floorOf, nextDoors } from '@/config/worldgraph';
 import { PhialRow } from '@/ui/phialGlyph';
+import { descendBehindCurtain, descentCurtainCopy } from '@/game/descentCurtain';
 
 /**
  * The Sanctum (upgrade-port meta layer): a paused rest stop between depths.
@@ -79,6 +80,8 @@ export class Sanctum implements SanctumApi {
   private readonly phials = new PhialRow(3, 'phial-row sanc-phial-row');
   private readonly phialNote = document.createElement('p');
   private phialTimer: number | null = null;
+  /** The descend click has been taken: the curtain is coming up and the floor is about to be built. */
+  private descending = false;
 
   constructor(private ctx: Ctx) {
     el('descend-btn').addEventListener('click', this.onDescendClick);
@@ -165,7 +168,7 @@ export class Sanctum implements SanctumApi {
   }
 
   private chooseDoor(ctx: Ctx, id: string): void {
-    if (!this._open || this.chosen === id) return;
+    if (!this._open || this.descending || this.chosen === id) return;
     this.chosen = id;
     for (const b of this.doorButtons) {
       const on = b.dataset.level === id;
@@ -468,12 +471,29 @@ export class Sanctum implements SanctumApi {
   }
 
   private close(): void {
-    if (!this._open) return;
+    if (!this._open || this.descending) return;
+    const go = this.onDescend;
+    const door = this.chosen ?? this.fallbackNext ?? '';
+    if (!go) {
+      this.finishClose(go, door);
+      return;
+    }
+    // Paint first: the button answers, the curtain comes up over the Sanctum,
+    // and only then does the (blocking) floor generation run (game/descentCurtain).
+    this.descending = true;
+    const btn = el('descend-btn') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.textContent = 'Descending…';
+    void descendBehindCurtain(this.ctx, descentCurtainCopy(door), () => {
+      this.descending = false;
+      this.finishClose(go, door);
+    });
+  }
+
+  private finishClose(go: ((nextLevelId: string) => void) | null, door: string): void {
     this._open = false;
     el('sanctum-overlay').classList.remove('visible');
     this.ctx.state.paused = this.wasPaused;
-    const go = this.onDescend;
-    const door = this.chosen ?? this.fallbackNext ?? '';
     this.onDescend = null;
     this.rearm = null;
     this.chosen = null;
