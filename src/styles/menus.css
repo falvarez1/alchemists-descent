@@ -645,3 +645,18 @@ body.play-active #descend-btn:disabled, #descend-btn:disabled { background: none
 #player-settings .settings-options > label > .key { margin-left: 2px; }
 #player-settings .settings-note.flush { margin-left: 0; }
 #player-settings .settings-option > button { justify-self: start; }
+/* A labelled slider with its readout: name | track | value, the note beneath (same brass track as the volume sliders). */
+#player-settings .settings-slider { grid-template-columns: minmax(7.5em, 11em) 1fr 4.6em; column-gap: 18px; row-gap: 6px; align-items: center; }
+#player-settings .settings-slider > label { font-size: calc(14px * var(--text-scale, 1)); }
+#player-settings .settings-slider > .settings-note { grid-column: 1 / -1; margin-left: 0; }
+#player-settings .settings-slider output { text-align: right; font-variant-numeric: tabular-nums; color: var(--m-muted); font-size: calc(13px * var(--text-scale, 1)); }
+#player-settings .settings-slider input[type="range"] { width: 100%; height: 18px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
+#player-settings .settings-slider input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, #d5b57b var(--fill, 50%), #2e3f3c var(--fill, 50%)); }
+#player-settings .settings-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: #e6dfca; border: 2px solid #d5b57b; }
+#player-settings .settings-slider input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; background: #2e3f3c; }
+#player-settings .settings-slider input[type="range"]::-moz-range-progress { height: 4px; border-radius: 2px; background: #d5b57b; }
+#player-settings .settings-slider input[type="range"]::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: #e6dfca; border: 2px solid #d5b57b; }
+@media (max-width: 520px) {
+  #player-settings .settings-slider { grid-template-columns: 1fr 4.6em; }
+  #player-settings .settings-slider > label { grid-column: 1 / -1; }
+}

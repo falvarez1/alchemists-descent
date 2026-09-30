@@ -336,6 +336,81 @@ try {
     await reloaded.context.close();
   }
 
+
+  // ------------------------------------------------------------------ presentation sliders
+  if (want('picture')) {
+    console.log('\n== Presentation: brightness, edge shading, glow, film grain');
+    const { context, page, errors } = await freshRun();
+    const fx = () => page.evaluate(() => { const f = window.__game.ctx.state.postFx; return { gain: f.gain, vignette: f.vignette, bloom: f.bloomStrength, grain: f.grain }; });
+    const SHIPPED = { gain: 1, vignette: 0.28, bloom: 0.18, grain: 0.006 };
+    check(JSON.stringify(await fx()) === JSON.stringify(SHIPPED), `default: post-processing is exactly the shipped values ${JSON.stringify(await fx())}`);
+    check((await stored(page))?.brightness === undefined, 'nothing presentation-related is written until a slider moves');
+
+    await openSettings(page, 'presentation');
+    const readouts = () => page.evaluate(() => ['brightness', 'vignette', 'bloom', 'grain'].map((n) => document.getElementById(`out-${n}`).textContent));
+    check((await readouts()).join() === 'Default,Default,Default,Default', 'every slider reads Default');
+    const slider = (name) => page.locator(`#player-settings [name="${name}"]`);
+    const limits = await page.evaluate(() => Object.fromEntries(['brightness', 'vignette', 'bloom', 'grain'].map((n) => { const e = document.querySelector(`[name="${n}"]`); return [n, [Number(e.min), Number(e.max)]]; })));
+    check(limits.brightness[0] === 0.85 && limits.brightness[1] === 1.25, `brightness is held to 0.85-1.25 around the shipped 1 (${limits.brightness})`);
+
+    // Real keyboard on the real sliders: End = the brightest settings, Home = the darkest.
+    const bright = { brightness: 'End', vignette: 'Home', bloom: 'End', grain: 'End' };
+    const dark = { brightness: 'Home', vignette: 'End', bloom: 'Home', grain: 'Home' };
+    const set = async (keys) => { for (const [name, key] of Object.entries(keys)) { await slider(name).focus(); await page.keyboard.press(key); } };
+    await set(bright);
+    let now = await fx();
+    check(now.gain === 1.25 && now.vignette === 0.08 && now.bloom === 0.36 && now.grain === 0.018, `brightest: applied live ${JSON.stringify(now)}`);
+    const st = await stored(page);
+    check(st.brightness === 1.25 && st.vignette === 0.08 && st.bloom === 0.36 && st.grain === 0.018, 'and saved');
+    check((await readouts()).join() === '+5,\u22125,+6,+4', `readouts: ${(await readouts()).join(' ')}`);
+    await page.screenshot({ path: `${out}/picture-tab.png` });
+    await set(dark);
+    now = await fx();
+    check(now.gain === 0.85 && now.vignette === 0.44 && now.bloom === 0.06 && now.grain === 0, `darkest: applied live ${JSON.stringify(now)}`);
+    check((await readouts())[3] === 'Off', 'film grain at the floor reads Off');
+
+    await click(page, page.locator('#player-settings #reset-picture'));
+    check(JSON.stringify(await fx()) === JSON.stringify(SHIPPED), 'Reset picture restores the shipped values exactly');
+    const after = await stored(page);
+    check(after.brightness === null && after.vignette === null && after.bloom === null && after.grain === null, 'and saves "never touched" (null) again');
+    check((await readouts()).join() === 'Default,Default,Default,Default', 'readouts back to Default');
+    await closeSettings(page);
+
+    // a hostile saved value is clamped into the band on load, not trusted
+    const hostile = await freshRun({ prefs: { brightness: 9, vignette: -4, bloom: 'lots', grain: 1e9 } });
+    const hfx = await hostile.page.evaluate(() => { const f = window.__game.ctx.state.postFx; return { e: f.gain, v: f.vignette, b: f.bloomStrength, g: f.grain }; });
+    check(hfx.e === 1.25 && hfx.v === 0.08 && hfx.b === 0.18 && hfx.g === 0.018, `hostile saved values are clamped into the band: ${JSON.stringify(hfx)}`);
+    await hostile.context.close();
+    const kept = await freshRun({ prefs: { brightness: 0.95, grain: 0 } });
+    const kfx = await kept.page.evaluate(() => { const f = window.__game.ctx.state.postFx; return { e: f.gain, g: f.grain, v: f.vignette }; });
+    check(kfx.e === 0.95 && kfx.g === 0 && kfx.v === 0.28, `saved choices survive a reload and untouched ones stay shipped: ${JSON.stringify(kfx)}`);
+    await kept.context.close();
+    // The pixels really change: mean luminance of the frame (read inside a frame callback) at each end of each slider.
+    const pix = await freshRun({ seed: 7 });
+    const meanLum = () => pix.page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => {
+      const cv = document.querySelector('#canvas-holder > canvas'); const t = document.createElement('canvas'); t.width = 320; t.height = 180;
+      const g = t.getContext('2d'); g.drawImage(cv, 0, 0, 320, 180); const d = g.getImageData(0, 0, 320, 180).data;
+      let sum = 0; for (let i = 0; i < d.length; i += 4) sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+      resolve(sum / (d.length / 4));
+    })));
+    const setFx = (key, value) => pix.page.evaluate(([k, v]) => { window.__game.ctx.state.postFx[k] = v; }, [key, value]);
+    await pix.page.evaluate(() => { const c = window.__game.ctx; c.state.debugGodMode = true; });
+    await pix.page.waitForTimeout(800);
+    const lum = {};
+    for (const [label, key, value] of [['gain-', 'gain', 0.85], ['base', 'gain', 1], ['gain+', 'gain', 1.25]]) { await setFx(key, value); await pix.page.waitForTimeout(250); lum[label] = await meanLum(); }
+    await setFx('gain', 1);
+    check(lum['gain-'] < lum.base * 0.92 && lum['gain+'] > lum.base * 1.12, `Brightness moves the picture: mean luminance ${lum['gain-'].toFixed(1)} < ${lum.base.toFixed(1)} < ${lum['gain+'].toFixed(1)}`);
+    check(lum['gain+'] < lum.base * 1.4, 'and stays well inside a designed-darkness band (+25% at most)');
+    for (const [label, key, value] of [['vig-', 'vignette', 0.08], ['vig+', 'vignette', 0.44]]) { await setFx(key, value); await pix.page.waitForTimeout(250); lum[label] = await meanLum(); }
+    await setFx('vignette', 0.28);
+    check(lum['vig-'] > lum.base && lum['vig+'] < lum.base, `Edge shading moves the picture: ${lum['vig+'].toFixed(1)} < ${lum.base.toFixed(1)} < ${lum['vig-'].toFixed(1)}`);
+    for (const [label, key, value] of [['bloom-', 'bloomStrength', 0.06], ['bloom+', 'bloomStrength', 0.36]]) { await setFx(key, value); await pix.page.waitForTimeout(250); lum[label] = await meanLum(); }
+    check(lum['bloom+'] > lum['bloom-'], `Glow moves the picture: ${lum['bloom-'].toFixed(1)} < ${lum['bloom+'].toFixed(1)}`);
+    await pix.context.close();
+    check(errors.length === 0, `no page errors${errors.join(' | ')}`);
+    await context.close();
+  }
+
 } finally {
   await browser.close();
 }

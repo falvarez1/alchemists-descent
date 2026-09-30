@@ -1092,6 +1092,9 @@ export interface PostFxSettings {
   /** Screen vignette strength: the compose darkens edges by this × (r²/maxR²).
    *  0.52 is the shipped look; 0 disables it. */
   vignette: number;
+  /** The player's Brightness (ui/PlayerSettings): a final-frame gain in the post pass, 1 = as shipped.
+   *  (`exposure` only reaches the WebGPU backend; on WebGL it never changed the picture.) */
+  gain?: number;
 }
 
 export type RenderBackendMode = 'webgl' | 'webgpu' | 'auto';

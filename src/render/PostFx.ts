@@ -17,6 +17,8 @@ const PostFxShader = {
     /** Base + blast-kick chromatic aberration strength (uv offset at the rim). */
     uAberration: { value: 0.0005 },
     uGrain: { value: 0.028 },
+    /** The player's Brightness: a plain gain on the picture before grain and grading (1 = as shipped). */
+    uGain: { value: 1 },
     /** 0..1 — red edge pulse as the alchemist nears death. */
     uHurt: { value: 0 },
     /** 0..1 — the death grade: colour drains (reds hold), the vignette closes. */
@@ -43,6 +45,7 @@ const PostFxShader = {
     uniform float uTime;
     uniform float uAberration;
     uniform float uGrain;
+    uniform float uGain;
     uniform float uHurt;
     uniform float uDeath;
     uniform float uChill;
@@ -124,7 +127,7 @@ const PostFxShader = {
       float cr = texture2D(tDiffuse, vUv - shift).r;
       vec2 gb = texture2D(tDiffuse, vUv).gb;
       float cb = texture2D(tDiffuse, vUv + shift).b;
-      vec3 col = vec3(cr, gb.x, cb);
+      vec3 col = vec3(cr, gb.x, cb) * uGain;
 
       // Animated film grain (luma-preserving, centered around 0).
       // (No GPU vignette: the CPU light field already vignettes the frame —
@@ -224,6 +227,7 @@ export class PostFx {
     u.uAberration.value =
       post.aberration + ctx.fx.bloomKick * post.aberrationKick + ctx.fx.screenShake * post.shakeAberration;
     u.uGrain.value = post.grain;
+    u.uGain.value = post.gain ?? 1;
     // Creeps in below 35% HP; full pulse near death. Zero outside play mode.
     const hurt =
       ctx.state.mode === 'play' && !ctx.player.dead

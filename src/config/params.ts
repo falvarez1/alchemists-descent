@@ -286,6 +286,7 @@ export function createDefaultPostFxSettings(): PostFxSettings {
     exposure: 1.05,
     tonemap: true,
     vignette: 0.28,
+    gain: 1,
   };
 }
 

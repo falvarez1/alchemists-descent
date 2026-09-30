@@ -12,7 +12,7 @@ const storageOf = (value: string | null): Pick<Storage, 'getItem'> => ({ getItem
 describe('presentation bands', () => {
   it('centre on the shipped post-processing values, so untouched means unchanged', () => {
     const post = createDefaultPostFxSettings();
-    expect(PRESENTATION.exposure.fallback).toBe(post.exposure);
+    expect(PRESENTATION.brightness.fallback).toBe(post.gain);
     expect(PRESENTATION.vignette.fallback).toBe(post.vignette);
     expect(PRESENTATION.bloom.fallback).toBe(post.bloomStrength);
     expect(PRESENTATION.grain.fallback).toBe(post.grain);
@@ -25,15 +25,15 @@ describe('presentation bands', () => {
       expect(band.max).toBeGreaterThan(band.fallback);
     }
     // The designed darkness survives: at most ~a quarter brighter / a fifth dimmer.
-    expect(PRESENTATION.exposure.max / PRESENTATION.exposure.fallback).toBeLessThan(1.3);
-    expect(PRESENTATION.exposure.min / PRESENTATION.exposure.fallback).toBeGreaterThan(0.8);
+    expect(PRESENTATION.brightness.max / PRESENTATION.brightness.fallback).toBeLessThan(1.3);
+    expect(PRESENTATION.brightness.min / PRESENTATION.brightness.fallback).toBeGreaterThan(0.8);
   });
 
   it('clamp out-of-band values to the nearest edge and snap to the grid', () => {
-    expect(snapToBand(99, PRESENTATION.exposure)).toBe(1.35);
-    expect(snapToBand(-3, PRESENTATION.exposure)).toBe(0.9);
-    expect(snapToBand(1.0700001, PRESENTATION.exposure)).toBe(1.05);
-    expect(snapToBand(1.08, PRESENTATION.exposure)).toBe(1.1);
+    expect(snapToBand(99, PRESENTATION.brightness)).toBe(1.25);
+    expect(snapToBand(-3, PRESENTATION.brightness)).toBe(0.85);
+    expect(snapToBand(1.0700001, PRESENTATION.brightness)).toBe(1.05);
+    expect(snapToBand(1.08, PRESENTATION.brightness)).toBe(1.1);
     expect(snapToBand(0.007, PRESENTATION.grain)).toBe(0.006);
   });
 
@@ -44,9 +44,9 @@ describe('presentation bands', () => {
   });
 
   it('count steps from the shipped value for the slider readout', () => {
-    expect(stepsFromDefault(1.05, PRESENTATION.exposure)).toBe(0);
-    expect(stepsFromDefault(1.15, PRESENTATION.exposure)).toBe(2);
-    expect(stepsFromDefault(0.9, PRESENTATION.exposure)).toBe(-3);
+    expect(stepsFromDefault(1, PRESENTATION.brightness)).toBe(0);
+    expect(stepsFromDefault(1.15, PRESENTATION.brightness)).toBe(3);
+    expect(stepsFromDefault(0.85, PRESENTATION.brightness)).toBe(-3);
   });
 });
 
@@ -108,7 +108,7 @@ describe('extra preferences', () => {
     expect(d.numericVitals).toBe(false);
     expect(d.colorAssist).toBe('off');
     expect(d.hintMode).toBe('first');
-    expect([d.exposure, d.vignette, d.bloom, d.grain]).toEqual([null, null, null, null]);
+    expect([d.brightness, d.vignette, d.bloom, d.grain]).toEqual([null, null, null, null]);
     expect(d.hudScale).toBe(1);
     expect(d.hudOpacity).toBe(1);
     expect(d.showEnemyHp).toBe(false);
@@ -120,13 +120,13 @@ describe('extra preferences', () => {
 
   it('survive non-object saves and hostile field values', () => {
     for (const raw of [null, 'x', 7, [], [1, 2], true]) expect(sanitizeExtras(raw)).toEqual(DEFAULT_EXTRAS);
-    const hostile = sanitizeExtras({ pauseOnBlur: 'no', captionBacking: 1, numericVitals: 'true', colorAssist: 'rainbow', hintMode: 9, exposure: 'bright', hudScale: 'big', padDeadzone: {}, quality: null, aimAssist: 'cheat' });
+    const hostile = sanitizeExtras({ pauseOnBlur: 'no', captionBacking: 1, numericVitals: 'true', colorAssist: 'rainbow', hintMode: 9, brightness: 'bright', hudScale: 'big', padDeadzone: {}, quality: null, aimAssist: 'cheat' });
     expect(hostile).toEqual(DEFAULT_EXTRAS);
   });
 
   it('keep valid values, and only an explicit false turns pause-on-blur off', () => {
-    const p = sanitizeExtras({ pauseOnBlur: false, captionBacking: true, numericVitals: true, colorAssist: 'blue-yellow', hintMode: 'off', exposure: 1.2, hudScale: 1.3, hudOpacity: 0.7, showEnemyHp: true, aimAssist: 'strong', padDeadzone: 0.3, padRumble: true, quality: 'low' });
-    expect(p).toMatchObject({ pauseOnBlur: false, captionBacking: true, numericVitals: true, colorAssist: 'blue-yellow', hintMode: 'off', exposure: 1.2, hudScale: 1.3, hudOpacity: 0.7, showEnemyHp: true, aimAssist: 'strong', padDeadzone: 0.3, padRumble: true, quality: 'low' });
+    const p = sanitizeExtras({ pauseOnBlur: false, captionBacking: true, numericVitals: true, colorAssist: 'blue-yellow', hintMode: 'off', brightness: 1.2, hudScale: 1.3, hudOpacity: 0.7, showEnemyHp: true, aimAssist: 'strong', padDeadzone: 0.3, padRumble: true, quality: 'low' });
+    expect(p).toMatchObject({ pauseOnBlur: false, captionBacking: true, numericVitals: true, colorAssist: 'blue-yellow', hintMode: 'off', brightness: 1.2, hudScale: 1.3, hudOpacity: 0.7, showEnemyHp: true, aimAssist: 'strong', padDeadzone: 0.3, padRumble: true, quality: 'low' });
   });
 });
 
@@ -154,11 +154,11 @@ describe('the whole preference set', () => {
   });
 
   it('round-trips through JSON (what apply() persists is what the reader understands)', () => {
-    const a = sanitizePreferences({ cameraShake: 'half', pauseOnBlur: false, exposure: 1.25, bloom: 0.12, hudScale: 0.9, hintMode: 'always' }, false);
+    const a = sanitizePreferences({ cameraShake: 'half', pauseOnBlur: false, brightness: 1.25, bloom: 0.12, hudScale: 0.9, hintMode: 'always' }, false);
     const b = readPlayerPreferences(storageOf(JSON.stringify(a)));
     expect(b).toEqual(a);
     expect(b.cameraShake).toBe('half');
-    expect(b.exposure).toBe(1.25);
+    expect(b.brightness).toBe(1.25);
   });
 
   it('takes reduce-flashes from the OS reduced-motion setting only when nothing was saved', () => {
@@ -278,5 +278,18 @@ describe('numeric vitals', () => {
     expect(formatVital(-4, 90)).toBe('0/90');
     expect(formatVital(500, 90)).toBe('90/90');
     expect(formatVital(10, 0)).toBe('0/0');
+  });
+});
+
+describe('slider readouts', () => {
+  it('say Default at the shipped value and count steps either side', async () => {
+    const { bandReadout } = await import('@/config/playerPrefs');
+    expect(bandReadout(1, PRESENTATION.brightness)).toBe('Default');
+    expect(bandReadout(1.15, PRESENTATION.brightness)).toBe('+3');
+    expect(bandReadout(0.85, PRESENTATION.brightness)).toBe('−3');
+    // Film grain reads Off at zero.
+    expect(bandReadout(0, PRESENTATION.grain, 'Off')).toBe('Off');
+    expect(bandReadout(0.006, PRESENTATION.grain, 'Off')).toBe('Default');
+    expect(bandReadout(0.018, PRESENTATION.grain, 'Off')).toBe('+4');
   });
 });

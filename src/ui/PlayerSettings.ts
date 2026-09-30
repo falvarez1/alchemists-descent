@@ -8,7 +8,8 @@ import { readTouchControlsPreference, setTouchControlsPreference } from '@/input
 import { VitalNumbers } from '@/ui/VitalNumbers';
 import { resetSeenHints } from '@/game/hints/seenHints';
 import '@/styles/options.css';
-import { HINT_MODES, SHAKE_SCALE, sanitizeChoice, sanitizeExtras, sanitizeShake, type ExtraPreferences, type ShakeLevel } from '@/config/playerPrefs';
+import { HINT_MODES, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
+import { createDefaultPostFxSettings } from '@/config/params';
 
 /** Everything the dialog persists under one key. The newer options live in config/playerPrefs (ExtraPreferences). */
 export interface PlayerPreferences extends ExtraPreferences {
@@ -35,6 +36,7 @@ export const BINDING_LABELS: Readonly<Record<BindingAction, string>> = {
 export const SETTINGS_TABS = [
   { id: 'sound', label: 'Sound' },
   { id: 'display', label: 'Display & comfort' },
+  { id: 'presentation', label: 'Presentation' },
   { id: 'gameplay', label: 'Gameplay' },
   { id: 'controls', label: 'Controls' },
 ] as const;
@@ -82,6 +84,13 @@ interface SimpleControl {
   /** Sliders only: the readout beside it. */
   format?(p: PlayerPreferences): string;
 }
+/** A presentation slider: null (never touched) reads as the shipped value; writing snaps into the narrow band. */
+const picture = (key: PresentationKey, field: 'brightness' | 'vignette' | 'bloom' | 'grain', zeroLabel?: string): SimpleControl => ({
+  name: field,
+  read: p => p[field] ?? PRESENTATION[key].fallback,
+  write: (p, raw) => { p[field] = sanitizeOptionalBand(Number(raw), PRESENTATION[key]); },
+  format: p => bandReadout(p[field] ?? PRESENTATION[key].fallback, PRESENTATION[key], zeroLabel),
+});
 const flag = (key: BoolKey): SimpleControl => ({ name: key, read: p => p[key], write: (p, raw) => { (p as Record<BoolKey, boolean>)[key] = raw === true; } });
 
 const SIMPLE_CONTROLS: readonly SimpleControl[] = [
@@ -89,12 +98,18 @@ const SIMPLE_CONTROLS: readonly SimpleControl[] = [
   flag('reducedFlashes'), flag('highReadability'), flag('creatureCaptions'), flag('narration'), flag('muted'),
   { name: 'cameraShake', read: p => p.cameraShake, write: (p, raw) => { p.cameraShake = sanitizeShake(raw); } },
   flag('pauseOnBlur'), flag('captionBacking'), flag('numericVitals'),
+  picture('brightness', 'brightness'), picture('vignette', 'vignette'), picture('bloom', 'bloom'), picture('grain', 'grain', 'Off'),
   { name: 'hintMode', read: p => p.hintMode, write: (p, raw) => { p.hintMode = sanitizeChoice(raw, HINT_MODES, 'first'); } },
 ];
 
 /** One checkbox row: the label, and an optional one-line note the control is described by. */
 function checkRow(name: string, label: string, note?: string): string {
   return `<div class="settings-option"><label><input type="checkbox" name="${name}"${note ? ` aria-describedby="note-${name}"` : ''}> ${label}</label>${note ? `<p class="settings-note" id="note-${name}">${note}</p>` : ''}</div>`;
+}
+
+/** One slider row: name, the track, the readout, and an optional one-line note beneath. */
+function sliderRow(name: string, label: string, band: Band, note?: string): string {
+  return `<div class="settings-option settings-slider"><label for="set-${name}">${label}</label><input type="range" id="set-${name}" name="${name}" min="${band.min}" max="${band.max}" step="${band.step}"${note ? ` aria-describedby="note-${name}"` : ''}><output id="out-${name}" for="set-${name}"></output>${note ? `<p class="settings-note" id="note-${name}">${note}</p>` : ''}</div>`;
 }
 
 /** One select row: the label at the left, the choice at the right, the note beneath. */
@@ -110,6 +125,8 @@ export class PlayerSettings {
   private preferences = readPlayerPreferences();
   private readonly quick: SoundQuickControl;
   private readonly vitals: VitalNumbers;
+  /** Presentation fields the player has moved, so "Reset picture" restores exactly those and nothing else. */
+  private readonly touchedPicture = new Set<PresentationKey>();
   private tab: SettingsTab = 'sound';
   private readonly onTabStep = (event: Event): void => {
     const step = event instanceof CustomEvent && event.detail === -1 ? -1 : 1;
@@ -148,6 +165,13 @@ export class PlayerSettings {
       ${selectRow('cameraShake', 'Camera shake', [['full', 'Full'], ['half', 'Half'], ['off', 'Off']], 'How hard blasts, falls and heavy footsteps shake the view.')}
       ${checkRow('highReadability', 'High-readability lighting')}
       ${checkRow('creatureCaptions', 'Creature sound captions')}</div></section></div>
+      <div role="tabpanel" class="settings-panel" id="settings-panel-presentation" aria-labelledby="settings-tab-presentation" hidden>
+      <section class="settings-group" aria-labelledby="settings-picture"><h3 id="settings-picture">Picture</h3><div class="settings-options">
+      ${sliderRow('brightness', 'Brightness', PRESENTATION.brightness, 'How brightly the finished picture is lit. The dark places stay dark at either end.')}
+      ${sliderRow('vignette', 'Edge shading', PRESENTATION.vignette, 'How much the corners of the view fall away.')}
+      ${sliderRow('bloom', 'Glow', PRESENTATION.bloom, 'The soft halo around fire, lamps and lava.')}
+      ${sliderRow('grain', 'Film grain', PRESENTATION.grain, 'A faint shimmer over the whole view. Off removes it.')}
+      <div class="settings-option"><button type="button" id="reset-picture">Reset picture</button></div></div></section></div>
       <div role="tabpanel" class="settings-panel" id="settings-panel-gameplay" aria-labelledby="settings-tab-gameplay" hidden>
       <section class="settings-group" aria-labelledby="settings-play"><h3 id="settings-play">Play</h3><div class="settings-options">
       ${checkRow('pauseOnBlur', 'Pause when the window loses focus', 'Switch to another window or tab and the descent stops where it is. The title, the Sanctum and cutscenes are already still.')}</div></section>
@@ -197,6 +221,10 @@ export class PlayerSettings {
       el.addEventListener('change', () => { control.write(this.preferences, raw()); this.apply(true); });
     }
     this.dialog.querySelector('#reset-controls')!.addEventListener('click', () => { resetBindings(); this.renderBindings(); });
+    this.dialog.querySelector('#reset-picture')!.addEventListener('click', () => {
+      this.preferences.brightness = this.preferences.vignette = this.preferences.bloom = this.preferences.grain = null;
+      this.apply(true);
+    });
     this.dialog.querySelector('#reset-tutorials')!.addEventListener('click', () => {
       if (ctx.hints?.resetTaught) ctx.hints.resetTaught(); else resetSeenHints();
       this.dialog.querySelector('#settings-status')!.textContent = 'Tutorials reset. Every teaching card will appear again.';
@@ -327,6 +355,13 @@ export class PlayerSettings {
     fx.hurtPulse = this.preferences.reducedFlashes ? 0.08 : 0.4;
     fx.bloomKickScale = this.preferences.reducedFlashes ? 0 : 0.35;
     this.ctx.state.reduceCameraShake = this.preferences.cameraShake === 'off';
+    // Presentation: a slider the player never touched leaves the game's own value alone.
+    const defaults = createDefaultPostFxSettings();
+    const picture = [['brightness', 'gain', 'brightness'], ['vignette', 'vignette', 'vignette'], ['bloom', 'bloomStrength', 'bloom'], ['grain', 'grain', 'grain']] as const;
+    for (const [pref, field, key] of picture) {
+      const value = this.preferences[pref];
+      if (value !== null) { fx[field] = value; this.touchedPicture.add(key); } else if (this.touchedPicture.delete(key)) fx[field] = defaults[field] ?? 1;
+    }
     this.ctx.state.cameraShakeScale = SHAKE_SCALE[this.preferences.cameraShake];
     this.ctx.state.pauseOnBlur = this.preferences.pauseOnBlur;
     this.ctx.state.hintMode = this.preferences.hintMode;
@@ -361,6 +396,14 @@ export class PlayerSettings {
       const value = control.read(this.preferences);
       if (el instanceof HTMLInputElement && el.type === 'checkbox') el.checked = value === true;
       else el.value = String(value);
+      if (el instanceof HTMLInputElement && el.type === 'range') {
+        const fill = ((Number(el.value) - Number(el.min)) / (Number(el.max) - Number(el.min))) * 100;
+        el.style.setProperty('--fill', `${fill}%`);
+        const readout = control.format?.(this.preferences) ?? '';
+        const out = this.dialog.querySelector(`#out-${control.name}`);
+        if (out) out.textContent = readout;
+        el.setAttribute('aria-valuetext', readout);
+      }
     }
     this.quick?.refresh();
     this.ctx.narrator?.setEnabled(this.preferences.narration);

@@ -34,14 +34,15 @@ export type QualityPreset = (typeof QUALITY_PRESETS)[number];
 export interface Band { readonly min: number; readonly max: number; readonly step: number; readonly fallback: number }
 
 /**
- * Presentation sliders. Each band is narrow on purpose: from the shipped value the
- * most a player can do is about a quarter brighter or a fifth dimmer, a third the
- * vignette or half again as much, so a dark floor stays dark and a bright floor stays lit.
- * The shipped values are params.ts createDefaultPostFxSettings (exposure 1.05,
- * vignette 0.28, bloomStrength 0.18, grain 0.006); a test pins them together.
+ * Presentation sliders. Each band is narrow on purpose: from the shipped value the most a
+ * player can do is about a quarter brighter or a sixth dimmer, so a dark floor stays dark
+ * and a bright floor stays lit. The shipped values are params.ts createDefaultPostFxSettings
+ * (gain 1, vignette 0.28, bloomStrength 0.18, grain 0.006); a test pins them together.
+ * Brightness is postFx.gain (the post pass), not postFx.exposure: exposure never reached
+ * the WebGL picture.
  */
 export const PRESENTATION = {
-  exposure: { min: 0.9, max: 1.35, step: 0.05, fallback: 1.05 },
+  brightness: { min: 0.85, max: 1.25, step: 0.05, fallback: 1 },
   vignette: { min: 0.08, max: 0.44, step: 0.04, fallback: 0.28 },
   bloom: { min: 0.06, max: 0.36, step: 0.03, fallback: 0.18 },
   grain: { min: 0, max: 0.018, step: 0.003, fallback: 0.006 },
@@ -75,6 +76,13 @@ export function stepsFromDefault(value: number, band: Band): number {
   return Math.round((value - band.fallback) / band.step);
 }
 
+/** What a slider's readout says: the shipped position is "Default", others count grid steps either side ("+2", "-1"). */
+export function bandReadout(value: number, band: Band, zeroLabel?: string): string {
+  if (zeroLabel !== undefined && value <= band.min && band.min === 0) return zeroLabel;
+  const steps = stepsFromDefault(value, band);
+  return steps === 0 ? 'Default' : steps > 0 ? `+${steps}` : `−${-steps}`;
+}
+
 export function sanitizeChoice<T extends string>(saved: unknown, allowed: readonly T[], fallback: T): T {
   return typeof saved === 'string' && (allowed as readonly string[]).includes(saved) ? (saved as T) : fallback;
 }
@@ -106,7 +114,7 @@ export interface ExtraPreferences {
   /** Teaching cards: first time only (shipped), once per floor, or never. */
   hintMode: HintMode;
   /** The four presentation sliders; null = the game's own value. */
-  exposure: number | null;
+  brightness: number | null;
   vignette: number | null;
   bloom: number | null;
   grain: number | null;
@@ -126,7 +134,7 @@ export const DEFAULT_EXTRAS: Readonly<ExtraPreferences> = {
   numericVitals: false,
   colorAssist: 'off',
   hintMode: 'first',
-  exposure: null,
+  brightness: null,
   vignette: null,
   bloom: null,
   grain: null,
@@ -149,7 +157,7 @@ export function sanitizeExtras(raw: unknown): ExtraPreferences {
     numericVitals: saved.numericVitals === true,
     colorAssist: sanitizeChoice(saved.colorAssist, COLOR_ASSISTS, d.colorAssist),
     hintMode: sanitizeChoice(saved.hintMode, HINT_MODES, d.hintMode),
-    exposure: sanitizeOptionalBand(saved.exposure, PRESENTATION.exposure),
+    brightness: sanitizeOptionalBand(saved.brightness, PRESENTATION.brightness),
     vignette: sanitizeOptionalBand(saved.vignette, PRESENTATION.vignette),
     bloom: sanitizeOptionalBand(saved.bloom, PRESENTATION.bloom),
     grain: sanitizeOptionalBand(saved.grain, PRESENTATION.grain),

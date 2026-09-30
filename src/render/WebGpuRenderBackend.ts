@@ -854,7 +854,7 @@ export class WebGpuRenderBackend implements RendererBackend {
     const post = ctx.state.postFx;
     this.bloomEnabled.value = post.enabled && post.bloomEnabled ? 1 : 0;
     this.lensEnabled.value = post.enabled && post.lensEnabled ? 1 : 0;
-    this.exposure.value = post.enabled ? post.exposure : 1.0;
+    this.exposure.value = (post.enabled ? post.exposure : 1.0) * (post.gain ?? 1);
     this.bloomStrength.value = post.bloomStrength + ctx.fx.bloomKick * post.bloomKickScale;
     this.bloomThreshold.value = post.bloomThreshold;
     this.bloomRadius.value = post.bloomRadius;
