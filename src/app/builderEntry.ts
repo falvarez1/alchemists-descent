@@ -24,6 +24,9 @@ import { initRapier } from '@/entities/rapierInit';
  * `Game` growing an explicit authoring profile rather than on this file.
  */
 
+// CSS hook: this window is the editor, so there is no Sandbox for the Builder to exit to.
+document.body.classList.add('editor-window');
+
 const bootOverlay = document.getElementById('boot-overlay');
 const bootStatus = document.getElementById('boot-status');
 

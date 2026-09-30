@@ -24,7 +24,7 @@
 /* ---------------------------------------------------------------- title bar */
 
 #builder-bar.st-bar {
-    position: relative; z-index: 3; pointer-events: auto;
+    position: relative; z-index: 10; pointer-events: auto;
     display: flex; align-items: center; flex-wrap: nowrap; gap: 6px;
     height: var(--st-bar-h); padding: 0 10px; box-sizing: border-box;
     background: var(--st-surface-2); border-bottom: 1px solid var(--st-line);
@@ -236,6 +236,9 @@
 #builder-statusbar .sb-right { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; }
 #builder-statusbar .sb-item { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
 #builder-statusbar .sb-item b { color: var(--st-text-2); font-weight: 500; }
+/* Messages are written in capitals across the Builder; show them as sentences. The text content stays as written (probes read it). */
+#builder-statusbar #builder-status { display: inline-block; text-transform: lowercase; }
+#builder-statusbar #builder-status::first-letter { text-transform: uppercase; }
 #builder-statusbar #builder-status {
     position: static; transform: none; opacity: 0; max-width: 100%; padding: 0; background: none; border: 0; box-shadow: none;
     color: var(--st-text); font: 500 11px/1 var(--st-font); letter-spacing: 0; text-transform: none;
@@ -303,3 +306,17 @@
     background: var(--st-accent-bg); border-color: var(--st-accent); outline: 0; box-shadow: 0 0 0 1px var(--st-accent);
 }
 #builder-palette .bp-swatch .bp-swatch-icon { width: 20px !important; height: 20px !important; }
+
+/* ------------------------------------------------ one header, not two */
+
+/* The Builder has its own title bar; the game's studio header would stack a second,
+   unrelated one above it. The standalone editor route has no Sandbox to exit to. */
+body.builder-open > header { display: none; }
+body.builder-open #workbench { height: 100vh; }
+body.builder-open #builder-root { top: 0; }
+body.editor-window #b-exit { display: none; }
+
+#builder-root #builder-bar #b-exit {
+    border-color: var(--st-line-2); background: var(--st-surface-3); color: var(--st-text-2);
+}
+#builder-root #builder-bar #b-exit:hover { background: var(--st-surface-4); border-color: var(--st-line-3); color: var(--st-text); }

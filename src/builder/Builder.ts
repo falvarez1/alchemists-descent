@@ -16,6 +16,7 @@ import {
   bakeExclusionMask,
   captureWorldLayer,
   createEmptyDocument,
+  decodeTypes,
   docToShareCode,
   freshId,
   loadDocLibrary,
@@ -66,6 +67,9 @@ import { EMITTER_CELL_OPTIONS } from '@/game/instantiate';
 import { resetCombatTransients } from '@/core/runtimeState';
 import { BUILDER_EXTRA_SWATCHES, MATERIAL_SWATCHES } from '@/content/materialPalette';
 import { PreviewRuntime } from '@/builder/PreviewRuntime';
+import { buildShellMarkup } from '@/builder/shellMarkup';
+import { LinkControl } from '@/app/LinkControl';
+import { editorIcon } from '@/ui/editor/icons';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
 import {
   capturePrefab,
@@ -478,6 +482,7 @@ const MECH_KINDS: ReadonlySet<EditorObjectKind> = new Set([
 const familyOf = (o: EditorObject): LayerFamily => (MECH_KINDS.has(o.kind) ? 'mech' : 'gameplay');
 
 const DRAFT_KEY = 'noita-builder-draft';
+const PALETTE_TAB_KEY = 'noita-builder-palette-tab';
 /** Settle previews bigger than this commit without undo (memory honesty). */
 const SETTLE_UNDO_CAP = 400000;
 
@@ -500,6 +505,12 @@ function previewCanvas(draw: PreviewDraw): HTMLCanvasElement {
   g.fillRect(0, 0, 28, 28);
   draw(g);
   return c;
+}
+/** Parse one SVG/HTML fragment into an element. */
+function htmlToElement(html: string): Element {
+  const t = document.createElement('template');
+  t.innerHTML = html.trim();
+  return t.content.firstElementChild as Element;
 }
 const px = (g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, col: string): void => {
   g.fillStyle = col;
@@ -1054,7 +1065,7 @@ export class Builder {
     this.buildDom();
     this.wireCollapsibleSections();
     this.wireBuilderHelp();
-    this.el('bp-snap-btn').textContent = 'SNAP: ' + (this.snapStep === 0 ? 'OFF' : this.snapStep);
+    this.syncSnapButton();
     this.syncOverlayButton();
     this.wireWorkspace();
     this.applyWorkspaceLayout();
@@ -1062,6 +1073,7 @@ export class Builder {
     this.wirePrefabPanel();
     this.wireSpritePanel();
     this.wireBar();
+    this.wireStudioChrome();
     this.wireProcPanel();
     this.wirePointer();
     this.wireExtras();
@@ -1172,7 +1184,55 @@ export class Builder {
       this.showOpenIntentModal();
       return;
     }
+    // The Sandbox cells and the document's saved terrain can be two different levels.
+    // Never pick one silently: a playtest would replace what is on screen with the stale copy.
+    const conflict = this.returningFromPlaytest ? null : this.terrainConflictName();
+    if (conflict !== null) {
+      void this.resolveTerrainConflict(conflict);
+      return;
+    }
     this.openWithIntent('continue-document', null);
+  }
+
+  private terrainPromptOpen = false;
+
+  /**
+   * Name of the open document when its saved terrain no longer matches the live grid, else null.
+   * Only compares when the document holds terrain and the live grid holds no uncaptured edits
+   * (those already win: they are the newer copy).
+   */
+  private terrainConflictName(): string | null {
+    const saved = this.doc.world;
+    if (saved === null || this.paintDirty) return null;
+    const live = this.ctx.levels.current;
+    if (live && this.ctx.world === live.world) return null; // an expedition level is parked, not compared
+    const liveTypes = this.ctx.world.types;
+    const savedTypes = decodeTypes(saved);
+    for (let i = 0; i < liveTypes.length; i++) if (liveTypes[i] !== savedTypes[i]) return this.doc.name || 'untitled';
+    return null;
+  }
+
+  private async resolveTerrainConflict(name: string): Promise<void> {
+    if (this.terrainPromptOpen) return;
+    this.terrainPromptOpen = true;
+    let choice: 'sandbox' | 'document' | null = null;
+    try {
+      choice = await appDialog.choose<'sandbox' | 'document'>(
+        `The Sandbox no longer matches the terrain saved in "${name}". Which one should the Builder edit?`,
+        [
+          { id: 'document', label: "Load the document's terrain", tone: 'danger' },
+          { id: 'sandbox', label: 'Use the Sandbox scene' },
+        ],
+        { title: 'Two versions of this level', cancelText: 'Stay in Sandbox' },
+      );
+    } finally {
+      this.terrainPromptOpen = false;
+    }
+    if (choice === null) return;
+    if (choice === 'document') this.applyDocTerrain();
+    else this.markTerrainDirty();
+    this.openWithIntent('continue-document', null);
+    this.status(choice === 'document' ? 'DOCUMENT TERRAIN LOADED' : 'SANDBOX SCENE KEPT — IT REPLACES THE SAVED TERRAIN WHEN YOU SAVE');
   }
 
   toggleFromLauncher(): void {
@@ -3247,7 +3307,7 @@ export class Builder {
     this.setDevConsoleOpen(false);
     this.workspaceLayout.overlayVisibility = sanitizeOverlayVisibility(this.workspaceLayout.overlayVisibility);
     this.snapStep = 0;
-    this.el('bp-snap-btn').textContent = 'SNAP: OFF';
+    this.syncSnapButton();
     this.syncOverlayButton();
     this.syncLayers();
     this.setTool('select');
@@ -3264,7 +3324,7 @@ export class Builder {
     this.setDevConsoleOpen(false);
     this.workspaceLayout.overlayVisibility = sanitizeOverlayVisibility(this.workspaceLayout.overlayVisibility);
     this.snapStep = sanitizeSnapStep(this.workspaceLayout.snapStep);
-    this.el('bp-snap-btn').textContent = 'SNAP: ' + (this.snapStep === 0 ? 'OFF' : this.snapStep);
+    this.syncSnapButton();
     this.syncOverlayButton();
     this.syncLayers();
     this.applyWorkspaceLayout();
@@ -3395,10 +3455,19 @@ export class Builder {
       this.doc.objects.length > 0 ||
       this.doc.lights.length > 0 ||
       this.doc.world !== null ||
+      this.liveTerrainIsUncaptured() ||
       this.cmds.depth > 0 ||
       this.paintDirty ||
       this.backdropDirty
     );
+  }
+
+  /** True while the document holds no terrain of its own but the live grid has cells — the grid IS its terrain. */
+  private liveTerrainIsUncaptured(): boolean {
+    if (this.doc.world !== null) return false;
+    const t = this.ctx.world.types;
+    for (let i = 0; i < t.length; i++) if (t[i] !== 0) return true;
+    return false;
   }
 
   private hasUnsavedChanges(): boolean {
@@ -3537,286 +3606,13 @@ export class Builder {
     this.root = document.createElement('div');
     this.root.id = 'builder-root';
     this.root.style.display = 'none';
-    const toolBtn = (tool: string, glyph: string, label: string): string =>
-      `<button class="bp-tool bp-icon" data-tool="${tool}" aria-label="${label}"><span class="bp-glyph k-${tool}">${glyph}</span></button>`;
-    const placeBtn = (p: { kind: EditorObjectKind; label: string; glyph: string }): string =>
-      `<button class="bp-tool bp-mini" data-kind="${p.kind}" aria-label="${p.label}"><span class="bp-glyph k-${p.kind}">${p.glyph}</span>${p.label}</button>`;
-    const paletteSection = (id: string, label: string, body: string): string => {
-      const collapsed = this.workspaceLayout.collapsedSections[id] === true;
-      const bodyId = `bp-section-body-${id.replace(/[^A-Za-z0-9_-]/g, '-')}`;
-      return `<section class="bp-section${collapsed ? ' collapsed' : ''}" data-section="${id}">
-        <button type="button" class="bp-head bp-section-head" data-section-toggle="${id}" aria-expanded="${collapsed ? 'false' : 'true'}" aria-controls="${bodyId}">
-          <span class="bp-chevron" aria-hidden="true"></span><span>${label}</span>
-        </button>
-        <div id="${bodyId}" class="bp-section-body">${body}</div>
-      </section>`;
-    };
     const layerRows = LAYER_FAMILIES
       .map(
         (f) =>
           `<div class="bp-layer" data-layer="${f}"><span>${layerLabel(f)}</span><button data-vis type="button" aria-pressed="false" aria-label="Hide ${layerLabel(f)} layer" title="Show/hide in the editor (still compiles)">&#128065;</button><button data-lock type="button" aria-pressed="false" aria-label="Lock ${layerLabel(f)} layer" title="Lock against selection">&#128275;</button></div>`,
       )
       .join('');
-    this.root.innerHTML = `
-      <div id="builder-workspace">
-      <div id="builder-bar">
-        <span class="b-title">BUILDER</span>
-        <nav class="builder-menubar" role="menubar" aria-label="Builder menu">
-          <button type="button" class="builder-menu-btn" data-menu="document" aria-haspopup="true" aria-expanded="false">Document</button>
-          <button type="button" class="builder-menu-btn" data-menu="edit" aria-haspopup="true" aria-expanded="false">Edit</button>
-          <button type="button" class="builder-menu-btn" data-menu="view" aria-haspopup="true" aria-expanded="false">View</button>
-          <button type="button" class="builder-menu-btn" data-menu="help" aria-haspopup="true" aria-expanded="false">Help</button>
-        </nav>
-        <span class="b-sep"></span>
-        <div id="b-session-tabs" class="b-segment" aria-label="Builder session">
-          <button id="b-session-author" class="active" title="Static authoring view">AUTHOR</button>
-          <button id="b-session-live" title="Preview authored logic without player gameplay">LOGIC PREVIEW</button>
-          <button id="b-session-restart" title="Reset the disposable Logic Preview runtime from the document">RESTART</button>
-          <button id="b-session-discard" title="Discard Logic Preview and return to Author">DISCARD</button>
-        </div>
-        <input id="b-doc-name" value="untitled" spellcheck="false" title="Document name">
-        <select id="b-doc-select" title="Saved documents"></select>
-        <select id="b-biome" title="Document biome"></select>
-        <button id="b-new" title="New document">NEW</button>
-        <span class="b-spacer"></span>
-        <button id="b-playtest" class="b-accent">BUILDER PLAYTEST</button>
-        <button id="b-playtest-here" class="b-accent" title="Compile this document and spawn at the cursor">PLAYTEST HERE</button>
-        <button id="b-bake" style="display:none" title="Re-apply the held playtest scars onto the document terrain (region = precise, undoable)">BAKE</button>
-        <button id="b-reset-workspace" title="Reset dock layout, open panels, and workspace preferences">RESET</button>
-        <button id="b-exit">EXIT</button>
-        <div class="builder-menu-dropdown" data-menu-panel="document" role="menu" aria-label="Document" hidden>
-          <button id="b-save">Save</button>
-          <button id="b-load">Open Saved&hellip;</button>
-          <button id="b-export">Export JSON</button>
-          <label for="b-import" class="b-filebtn" role="menuitem">Import JSON&hellip;</label>
-          <input type="file" id="b-import" accept=".json" hidden>
-          <div class="builder-menu-sep"></div>
-          <button id="b-share" title="Compress the document into a pasteable share code">Share Code</button>
-          <button id="b-code" title="Import a level from a share code">Import Code&hellip;</button>
-        </div>
-        <div class="builder-menu-dropdown" data-menu-panel="edit" role="menu" aria-label="Edit" hidden>
-          <button id="b-undo" title="Ctrl+Z">Undo<span class="builder-menu-key">Ctrl+Z</span></button>
-          <button id="b-redo" title="Ctrl+Y">Redo<span class="builder-menu-key">Ctrl+Y</span></button>
-          <div class="builder-menu-sep"></div>
-          <button id="b-capture" title="Snapshot the live sandbox cells into the document">Capture Terrain</button>
-          <button id="b-restore" title="Re-decode the document's captured terrain into the live world (clears undo)">Restore Terrain</button>
-          <button id="b-validate">Validate</button>
-        </div>
-        <div class="builder-menu-dropdown" data-menu-panel="view" role="menu" aria-label="View" hidden>
-          <button id="b-inspector" title="Inspect the current document, selection, or light">Inspector</button>
-          <button id="b-worldgen" title="Generate and tune procedural worlds">World Generation</button>
-          <button id="b-world-map" title="Preview and tune the virtual chunk world map">World Map</button>
-          <button id="b-global" title="Global simulation and wand light controls">Global Controls</button>
-          <button id="b-postfx" title="Post processing controls">Post Processing</button>
-          <div class="builder-menu-sep"></div>
-          <button id="b-gallery" title="Browse and preview every prefab, mechanism, entity and sprite — live and animated">Gallery</button>
-          <button id="b-scene-editor" title="Author chunked-world pixel scenes: paint cells, place lights, validate">Pixel Scene Editor</button>
-          <button id="b-assets" title="Project Asset Browser: documents, prefabs, sprites, imports and dependencies">Asset Browser</button>
-          <button id="b-runtime" title="Inspect the active play runtime without editing authored objects">Runtime</button>
-          <button id="b-backdrop" title="Preview and tune parallax backdrop layers">Backdrop</button>
-          <div class="builder-menu-sep"></div>
-          <button id="b-validation-layout" title="Workspace preset: dock Validation Issues, Outliner and Link Graph for a review pass">Validation Layout</button>
-          <button id="b-zen" title="Hide all side panels for a clear view of the canvas">Toggle Panels</button>
-        </div>
-        <div class="builder-menu-dropdown" data-menu-panel="help" role="menu" aria-label="Help" hidden>
-          <button id="b-menu-palette">Command Palette<span class="builder-menu-key">Ctrl+K</span></button>
-          <button id="b-menu-help">Builder Help<span class="builder-menu-key">H</span></button>
-        </div>
-      </div>
-      <div id="builder-workspace-body">
-      <div id="builder-dock-left" class="builder-dock" data-dock="left">
-      <div id="builder-palette">
-        <div class="builder-panel-title" data-panel-handle>PALETTE</div>
-        ${paletteSection(
-          'palette.tools',
-          'TOOLS',
-          `<div class="bp-grid bp-grid5">
-          ${toolBtn('select', 'V', 'Select / Move (V)')}
-          ${toolBtn('paint', 'B', 'Paint cells — Sandbox material & brush (B)')}
-          ${toolBtn('line', '\\', 'Line (L)')}
-          ${toolBtn('rect', '▭', 'Rectangle outline')}
-          ${toolBtn('rectFill', '▬', 'Filled rectangle')}
-          ${toolBtn('ellipse', '○', 'Ellipse outline')}
-          ${toolBtn('ellipseFill', '●', 'Filled ellipse')}
-          ${toolBtn('fill', 'G', 'Flood fill the clicked area (G)')}
-          ${toolBtn('replace', '⇄', 'Replace clicked material everywhere (respects region)')}
-          ${toolBtn('smooth', '∿', 'Smooth terrain (majority rule under the brush)')}
-          ${toolBtn('roughen', '≈', 'Roughen terrain (jitter the rock/air boundary)')}
-          ${toolBtn('region', '▦', 'Rectangle region for passes & replace (R)')}
-          ${toolBtn('polyRegion', '⬠', 'Polygon region: click vertices, Enter/near-first closes')}
-          ${toolBtn('regionMagic', '✦', 'Magic region: click an open area to select the whole cavern')}
-          ${toolBtn('lassoRegion', '➰', 'Lasso region: drag a freehand loop; release closes it')}
-        </div>`,
-        )}
-        <div id="bp-mat-row" class="bp-hint" title="Active material, brush radius and zoom"></div>
-        ${paletteSection(
-          'palette.materials',
-          'MATERIALS',
-          `<div id="bp-materials" class="bp-grid bp-grid6"></div>
-        <div class="bp-brushrow"><span>brush</span><input type="range" id="bp-brush" min="1" max="24" value="6"><b id="bp-brush-val">6</b></div>`,
-        )}
-        ${paletteSection(
-          'palette.worldgen',
-          'WORLD GEN',
-          `<div class="bp-grid bp-grid3">
-          <button id="bp-gen-caves" title="Regenerate caves in the document's biome (whole world)">CAVES</button>
-          <button id="bp-gen-fort" title="Stamp a fortress into the world">FORT</button>
-          <button id="bp-gen-clear" class="b-danger" title="Clear the whole world">CLEAR</button>
-          <button id="bp-world-map-btn" title="Open the Noita-like virtual chunk world map">MAP</button>
-        </div>`,
-        )}
-        ${paletteSection('palette.place', 'PLACE', `<div class="bp-grid bp-grid2">${PLACE_GAMEPLAY.map(placeBtn).join('')}</div>`)}
-        ${paletteSection(
-          'palette.mechanisms',
-          'MECHANISMS',
-          `<div class="bp-grid bp-grid2">${PLACE_MECH.map(placeBtn).join('')}</div>
-        <button class="bp-tool" data-tool="link"><span class="bp-glyph k-link">K</span>Link trigger &rarr; door (K)</button>`,
-        )}
-        ${paletteSection(
-          'palette.lighting',
-          'LIGHTING',
-          `<button class="bp-tool" data-tool="light"><span class="bp-glyph k-light">*</span>Authored Light</button>
-        <button id="bp-light-toggle" aria-pressed="true" title="Feed authored lights into the live light field while editing">PREVIEW LIGHTS: ON</button>
-        <button id="bp-wand-light-toggle" aria-pressed="false" title="Use the mouse cursor as the live player wand light">WAND LIGHT: OFF</button>
-        <button id="bp-wand-params-btn" title="Open wand light tuning in Global Controls">WAND PARAMS&hellip;</button>`,
-        )}
-        ${paletteSection('palette.prefabs', 'PREFABS', '<div id="bp-prefab-host"></div>')}
-        ${paletteSection('palette.sprites', 'SPRITES', '<div id="bp-sprite-host"></div>')}
-        ${paletteSection(
-          'palette.simulate',
-          'SIMULATE',
-          `<div class="bp-grid bp-grid3">
-          <button id="bp-settle" aria-label="Hold to run physics; release to keep or revert">SETTLE</button>
-          <button id="bp-settle-keep" style="display:none">KEEP</button>
-          <button id="bp-settle-revert" style="display:none">REVERT</button>
-        </div>`,
-        )}
-        ${paletteSection('palette.layers', 'LAYERS', `<div id="bp-layers">${layerRows}</div>`)}
-        ${paletteSection(
-          'palette.view',
-          'VIEW',
-          `<button id="bp-overlay-btn" title="Readability overlays (O)">OVERLAY: NONE</button>
-        <button id="bp-snap-btn" title="Snap placements and drags to a grid">SNAP: OFF</button>
-        <button id="bp-sym-btn" title="Mirror terrain painting across the axis (world center; a region recenters it)">SYM: OFF</button>
-        <button id="bp-assets-btn" title="Open the Project Asset Browser">ASSETS&hellip;</button>
-        <button id="bp-outliner-btn" title="Find, select, hide, and lock authored records">OUTLINER&hellip;</button>
-        <button id="bp-runtime-btn" title="Inspect live playtest entities and runtime counts">RUNTIME&hellip;</button>
-        <button id="bp-link-graph-btn" title="Inspect trigger, relay, rune, and actuator links">LINK GRAPH&hellip;</button>`,
-        )}
-        ${paletteSection(
-          'palette.parameters',
-          'PARAMETERS',
-          `<button id="bp-world-btn" title="World generation, biome, seed, and live params">WORLDGEN&hellip;</button>
-        <button id="bp-global-btn" title="Simulation, brush, and wand light settings">GLOBAL&hellip;</button>
-        <button id="bp-postfx-btn" title="Exposure, bloom, lens, and GPU composition settings">POST FX&hellip;</button>
-        <button id="bp-mat-btn" title="Tuning sliders for the armed material">MATERIAL&hellip;</button>`,
-        )}
-        ${paletteSection('palette.procedural', 'PROCEDURAL', '<button id="bp-proc-btn">SEEDED PASSES&hellip;</button>')}
-      </div>
-      </div>
-      <div id="builder-stage" data-dock="floating">
-      <div id="builder-center-slot"></div>
-      <div id="builder-overlay"><canvas id="builder-canvas"></canvas><div id="builder-markers"></div></div>
-      <div id="bp-matpop" style="display:none"></div>
-      <canvas id="builder-minimap" width="${WIDTH >> 3}" height="${Math.ceil(HEIGHT / 8)}"
-        title="Click to jump the camera"></canvas>
-      <div id="builder-cmdk" role="dialog" aria-modal="true" aria-labelledby="bp-cmdk-label" style="display:none">
-        <label id="bp-cmdk-label" class="sr-only" for="bp-cmdk-input">Command palette</label>
-        <input id="bp-cmdk-input" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="bp-cmdk-list" placeholder="type a command&hellip; (Esc closes)" spellcheck="false">
-        <div id="bp-cmdk-list" role="listbox"></div>
-      </div>
-      <div id="builder-import-host" style="display:none"></div>
-      <div id="builder-status" role="status" aria-live="polite"></div>
-      <div id="builder-status-alert" class="sr-only" role="alert" aria-live="assertive"></div>
-      <div id="builder-help" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="builder-help-title" style="display:none">
-        <div class="builder-help-card">
-          <div class="builder-help-titlebar">
-            <div>
-              <div class="builder-help-kicker">BUILDER HELP</div>
-              <div id="builder-help-title" class="builder-help-title">Authoring controls</div>
-            </div>
-            <button id="builder-help-close" type="button" aria-label="Close Builder help">&times;</button>
-          </div>
-          <div class="builder-help-grid">
-            <div>
-              <div class="builder-help-section">Canvas</div>
-              <p><b>RMB</b> eyedrops material under the cursor.</p>
-              <p><b>Mouse wheel</b> zooms the Builder camera.</p>
-              <p><b>Drag empty canvas</b> creates a selection marquee.</p>
-              <p><b>Shift-click</b> adds to the current selection.</p>
-            </div>
-            <div>
-              <div class="builder-help-section">Editing</div>
-              <p><b>Ctrl+D</b> duplicates selection.</p>
-              <p><b>Ctrl+C / Ctrl+V</b> copies and pastes parameters.</p>
-              <p><b>Delete</b> removes the selected object or light.</p>
-              <p><b>Esc</b> steps back or closes transient Builder UI.</p>
-            </div>
-            <div>
-              <div class="builder-help-section">Testing</div>
-              <p><b>T</b> playtests at the cursor.</p>
-              <p><b>Q</b> rotates an armed prefab.</p>
-              <p><b>E</b> flips an armed prefab.</p>
-              <p><b>X</b> floats a region; <b>Enter</b> lands it.</p>
-            </div>
-          </div>
-          <div class="builder-help-close-hint">Press H or Esc to close.</div>
-        </div>
-      </div>
-      </div>
-      <div id="builder-dock-right" class="builder-dock" data-dock="right">
-      <div id="builder-inspector"></div>
-      <div id="builder-outliner" style="display:none"></div>
-      <div id="builder-runtime" style="display:none"></div>
-      <div id="builder-asset-details" style="display:none"></div>
-      <div id="builder-prefab-details" style="display:none"></div>
-      <div id="builder-world" style="display:none">
-        ${builderPanelHeader({ title: builderPanelTitle('builder-world'), closeId: 'bw-close', closeLabel: 'Close world generation' })}
-        <div id="bw-controls"></div>
-      </div>
-      <div id="builder-matparams" style="display:none">
-        ${builderPanelHeader({ title: builderPanelTitle('builder-matparams'), closeId: 'bm-close', closeLabel: 'Close material parameters' })}
-        <div id="bm-controls"></div>
-      </div>
-      <div id="builder-global" style="display:none">
-        ${builderPanelHeader({ title: builderPanelTitle('builder-global'), closeId: 'bgl-close', closeLabel: 'Close global controls' })}
-        <div id="bg-controls"></div>
-      </div>
-      <div id="builder-postfx" style="display:none">
-        ${builderPanelHeader({ title: builderPanelTitle('builder-postfx'), closeId: 'bf-close', closeLabel: 'Close post processing' })}
-        <div id="bf-controls"></div>
-      </div>
-      <div id="builder-proc" style="display:none">
-        ${builderPanelHeader({ title: builderPanelTitle('builder-proc'), closeId: 'bp-proc-close', closeLabel: 'Close procedural pass' })}
-        <div id="bp-controls" class="bi-panel-body">
-          <div class="bi-row"><span>pass</span><select id="bp-pass">${PASSES.map(
-            (p) => `<option value="${p.id}">${p.label}</option>`,
-          ).join('')}</select></div>
-          <div class="bi-row"><span>seed</span><input id="bp-seed" type="number" value="1337" min="0" step="1"><button id="bp-dice" class="b-icon" title="Re-roll seed" aria-label="Re-roll seed">&#9860;</button></div>
-          <div class="bi-row"><span>density</span><input id="bp-density" type="range" min="5" max="100" value="50" aria-label="Procedural density"><b id="bp-density-val">50</b></div>
-          <div class="bi-row"><span>target</span><b id="bp-target">whole level</b></div>
-          <div class="bi-row"><span>material</span><b id="bp-material">&mdash;</b></div>
-          <div class="bp-actions">
-            <button id="bp-preview">PREVIEW</button>
-            <button id="bp-apply" class="b-primary">APPLY</button>
-            <button id="bp-discard">DISCARD</button>
-          </div>
-          <div class="bp-hint" id="bp-status">Cell passes preview before<br>committing; population passes<br>apply directly (undoable).</div>
-        </div>
-      </div>
-      <div id="builder-issues" style="display:none"></div>
-      </div>
-      <div id="builder-dock-guides" aria-hidden="true">
-        <div id="builder-dock-guide-left" class="builder-dock-guide bdg-left" data-dock="left"><span>LEFT</span></div>
-        <div id="builder-dock-guide-right" class="builder-dock-guide bdg-right" data-dock="right"><span>RIGHT</span></div>
-        <div id="builder-dock-guide-bottom" class="builder-dock-guide bdg-bottom" data-dock="bottom"><span>BOTTOM</span></div>
-      </div>
-      <div id="builder-dock-bottom" class="builder-dock" data-dock="bottom"></div>
-      </div>
-      <div id="builder-link-graph" style="display:none"></div>
-      <div id="builder-assets" style="display:none"></div>
-      <div id="builder-virtual-world" style="display:none"></div>
-      </div>`;
+    this.root.innerHTML = buildShellMarkup({ layerRows });
     viewport?.appendChild(this.root);
     this.playtestBanner = document.createElement('div');
     this.playtestBanner.id = 'builder-playtest-banner';
@@ -4503,6 +4299,7 @@ export class Builder {
     // VALIDATE last ran; any edit makes it stale, so a save/export/share must
     // not carry a "0 errors" badge that no longer holds. (Templates null it too.)
     this.doc.validation = null;
+    if (this.chipReady) this.syncValidationChip(true);
     this.previewRuntimeDirty = true;
     if (cmd?.label === 'edit backdrop' || cmd?.label === 'edit backdrop grade') this.syncDocBackdropToLive();
     if ((cmd?.cells ?? 0) > 0) this.markTerrainDirty(false);
@@ -4805,6 +4602,352 @@ export class Builder {
     this.wireMenuBar();
   }
 
+  /* ===================== studio shell: palette tabs, tool groups, link, status ===================== */
+
+  private linkControl: LinkControl | null = null;
+  private selectPaletteTab: (pane: string, focus?: boolean) => void = () => undefined;
+  private readoutMaterialKey = '';
+  private chipIssues: { errors: number; warnings: number } | null = null;
+  /** False until the shell DOM exists (unit tests drive the class without one). */
+  private chipReady = false;
+  private closeToolbarFlyouts: (except?: HTMLElement) => void = () => undefined;
+
+  /** Everything the shell adds on top of the document/tool wiring. Element ids stay the contract. */
+  private wireStudioChrome(): void {
+    this.decorateObjectCards();
+    this.wirePaletteTabs();
+    this.wireToolGroups();
+    this.wireViewportToolbar();
+    this.wireGameLink();
+    this.wireValidationChips();
+    this.wireObjectFilter();
+    this.syncSnapButton();
+    this.syncSymButton();
+    this.syncMaterialReadout();
+    this.syncToolGroups();
+    this.syncToolHint();
+  }
+
+  /** Object cards show the same 28px pixel portrait the hover popover does: a picture, not a letter. */
+  private decorateObjectCards(): void {
+    for (const cardEl of this.root.querySelectorAll<HTMLButtonElement>('.bp-card[data-kind]')) {
+      const info = OBJECT_INFO[cardEl.dataset.kind as EditorObjectKind];
+      if (!info) continue;
+      const canvas = previewCanvas(info.draw);
+      canvas.className = 'bp-card-icon';
+      canvas.setAttribute('aria-hidden', 'true');
+      cardEl.prepend(canvas);
+    }
+  }
+
+  private wirePaletteTabs(): void {
+    const tabs = [...this.root.querySelectorAll<HTMLButtonElement>('#builder-palette .bp-tab')];
+    const panes = [...this.root.querySelectorAll<HTMLElement>('#builder-palette .bp-pane')];
+    const select = (pane: string, focus = false): void => {
+      if (!tabs.some((t) => t.dataset.pane === pane)) pane = 'materials';
+      for (const tab of tabs) {
+        const on = tab.dataset.pane === pane;
+        tab.setAttribute('aria-selected', on ? 'true' : 'false');
+        tab.tabIndex = on ? 0 : -1;
+        if (on && focus) tab.focus({ preventScroll: true });
+      }
+      for (const el of panes) el.hidden = el.dataset.pane !== pane;
+      try {
+        localStorage.setItem(PALETTE_TAB_KEY, pane);
+      } catch {
+        /* storage can be blocked (private window): the tab just isn't remembered */
+      }
+    };
+    this.selectPaletteTab = select;
+    tabs.forEach((tab, i) => {
+      tab.addEventListener('click', () => select(tab.dataset.pane ?? 'materials'));
+      tab.addEventListener('keydown', (e) => {
+        const delta = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+        const target = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : delta ? (i + delta + tabs.length) % tabs.length : -1;
+        if (target < 0) return;
+        e.preventDefault();
+        select(tabs[target].dataset.pane ?? 'materials', true);
+      });
+    });
+    let saved = 'materials';
+    try {
+      saved = localStorage.getItem(PALETTE_TAB_KEY) ?? 'materials';
+    } catch {
+      /* default */
+    }
+    select(saved);
+  }
+
+  /** Filter the Objects pane as you type; empty groups fold away. */
+  private wireObjectFilter(): void {
+    const input = this.el<HTMLInputElement>('bp-obj-search');
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      for (const group of this.root.querySelectorAll<HTMLElement>('#bp-pane-objects .bp-obj-group')) {
+        let any = false;
+        for (const c of group.querySelectorAll<HTMLElement>('.bp-card')) {
+          const hit = q === '' || (c.getAttribute('aria-label') ?? '').toLowerCase().includes(q) || (c.dataset.kind ?? c.dataset.tool ?? '').toLowerCase().includes(q);
+          c.hidden = !hit;
+          if (hit) any = true;
+        }
+        group.hidden = !any;
+        if (group instanceof HTMLDetailsElement && q !== '' && any) group.open = true;
+      }
+    });
+  }
+
+  /** Tool groups: click arms the last-used variant; click the armed head, right-click or hold to choose another. */
+  private wireToolGroups(): void {
+    const tb = this.el('builder-toolbar');
+    const flyouts = (): HTMLElement[] => [...tb.querySelectorAll<HTMLElement>('.bt-flyout')];
+    const closeFlyouts = (except?: HTMLElement): void => {
+      for (const fly of flyouts()) {
+        if (fly === except) continue;
+        fly.hidden = true;
+        fly.parentElement?.querySelector('.bt-head, .bt-toggle')?.setAttribute('aria-expanded', 'false');
+      }
+    };
+    this.closeToolbarFlyouts = closeFlyouts;
+    for (const head of tb.querySelectorAll<HTMLButtonElement>('.bt-head')) {
+      const flyout = head.parentElement?.querySelector<HTMLElement>('.bt-flyout');
+      if (!flyout) continue;
+      const open = (): void => {
+        this.popovers.hide();
+        closeFlyouts(flyout);
+        flyout.hidden = false;
+        head.setAttribute('aria-expanded', 'true');
+      };
+      let holdTimer = 0;
+      let held = false;
+      head.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        held = false;
+        holdTimer = window.setTimeout(() => {
+          held = true;
+          open();
+        }, 380);
+      });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel'] as const) head.addEventListener(ev, () => window.clearTimeout(holdTimer));
+      head.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (held) {
+          held = false;
+          return;
+        }
+        if (!flyout.hidden) closeFlyouts();
+        else if (head.classList.contains('active')) open();
+        else {
+          this.setTool((head.dataset.last ?? 'select') as BuilderTool);
+          closeFlyouts();
+        }
+      });
+      head.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        if (flyout.hidden) open();
+        else closeFlyouts();
+      });
+      head.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          open();
+          flyout.querySelector<HTMLElement>('.bp-tool')?.focus();
+        }
+      });
+      flyout.addEventListener('click', () => closeFlyouts());
+      this.attachPopover(head, (pop) => {
+        const info = TOOL_INFO[head.dataset.last ?? ''];
+        if (!info) return;
+        this.popHead(pop, null, info.name);
+        this.popDesc(pop, info.desc + ' Click the armed tool again (or right-click) for its variants.');
+      });
+    }
+    const onPointerDown = (e: PointerEvent): void => {
+      if (!(e.target as HTMLElement | null)?.closest('#builder-toolbar .bt-group')) closeFlyouts();
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    this.disposers.push(() => document.removeEventListener('pointerdown', onPointerDown, true));
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && flyouts().some((f) => !f.hidden)) {
+        e.stopPropagation();
+        closeFlyouts();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    this.disposers.push(() => window.removeEventListener('keydown', onKey, true));
+  }
+
+  /** Each group head shows the variant in use and lights when any variant is armed. */
+  private syncToolGroups(): void {
+    for (const head of this.root.querySelectorAll<HTMLButtonElement>('.bt-head')) {
+      const items = [...(head.parentElement?.querySelectorAll<HTMLButtonElement>('.bt-flyout .bp-tool') ?? [])];
+      if (items.length === 0) continue;
+      const active = items.find((b) => b.classList.contains('active'));
+      head.classList.toggle('active', active !== undefined);
+      if (active) head.dataset.last = active.dataset.tool ?? head.dataset.last ?? '';
+      const shown = active ?? items.find((b) => b.dataset.tool === head.dataset.last) ?? items[0];
+      const next = shown.querySelector('svg');
+      const cur = head.querySelector('svg');
+      if (next && cur && cur.innerHTML !== next.innerHTML) cur.replaceWith(next.cloneNode(true));
+      const name = (shown.getAttribute('aria-label') ?? '').replace(/\s*\([^)]*\)\s*$/, '');
+      head.setAttribute('aria-label', `${name} — click again for more tools`);
+    }
+  }
+
+  private syncToolHint(): void {
+    const hint = this.root.querySelector<HTMLElement>('#b-tool-hint');
+    if (!hint) return;
+    const t = this.tool;
+    hint.textContent = TOOL_INFO[t]?.desc ?? OBJECT_INFO[t as EditorObjectKind]?.desc ?? '';
+  }
+
+  /** Zoom, layers, the armed-material chip and the cursor readout. */
+  private wireViewportToolbar(): void {
+    this.el('bt-zoom-in').addEventListener('click', () => this.runUiCommand('builder.view.zoomIn'));
+    this.el('bt-zoom-out').addEventListener('click', () => this.runUiCommand('builder.view.zoomOut'));
+    this.el('bt-zoom-fit').addEventListener('click', () => this.runUiCommand('builder.view.fitDocument'));
+    this.el('bt-zoom-val').addEventListener('click', () => this.runUiCommand('builder.view.zoomReset'));
+    const layersBtn = this.el<HTMLButtonElement>('bt-layers-btn');
+    const layersPop = this.el('bp-layers');
+    layersBtn.addEventListener('click', () => {
+      const open = layersPop.hidden;
+      this.closeToolbarFlyouts(open ? layersPop : undefined);
+      layersPop.hidden = !open;
+      layersBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    this.el('bt-material').addEventListener('click', () => this.selectPaletteTab('materials', true));
+    this.attachPopover(this.el('bt-material'), (pop) => {
+      this.popHead(pop, null, 'Armed material');
+      this.popDesc(pop, 'What the brush, shapes, fill and replace tools lay down. Click to choose another.');
+    });
+    const cursor = this.el('b-cursor');
+    let pending: PointerEvent | null = null;
+    this.overlay.addEventListener('pointermove', (e) => {
+      if (pending) {
+        pending = e;
+        return;
+      }
+      pending = e;
+      requestAnimationFrame(() => {
+        const ev = pending;
+        pending = null;
+        if (!ev || !this.isOpen) return;
+        const p = this.mouseToWorld(ev);
+        cursor.textContent = `${Math.floor(p.x)}, ${Math.floor(p.y)}`;
+      });
+    });
+    this.overlay.addEventListener('pointerleave', () => {
+      cursor.textContent = '—';
+    });
+  }
+
+  /** The armed material on the toolbar chip and in the Terrain tab's header. */
+  private syncMaterialReadout(): void {
+    const state = this.ctx.state;
+    const spell = state.activeInputMode === 'spell';
+    const id = state.currentElement as number;
+    const key = spell ? 'spell' : String(id);
+    if (key === this.readoutMaterialKey) return;
+    this.readoutMaterialKey = key;
+    const name = spell ? 'Spell' : (this.ctx.params.materials[id]?.name ?? `Material ${id}`);
+    const swatch = [...MATERIAL_SWATCHES, ...BUILDER_EXTRA_SWATCHES].find((s) => s.id === id);
+    const targets: Array<[string, string]> = [
+      ['#bt-material .bt-material-dot, #bt-material canvas', 'bt-material-dot'],
+      ['#bp-armed .bp-armed-dot, #bp-armed canvas', 'bp-armed-dot'],
+    ];
+    for (const [hostSel, dotClass] of targets) {
+      const old = this.root.querySelector(hostSel);
+      if (!old) continue;
+      const icon = spell ? null : makeIconCanvas(ELEMENT_ICON[id] ?? '', 2);
+      let next: HTMLElement;
+      if (icon) {
+        next = icon;
+        next.classList.add(dotClass);
+      } else {
+        next = document.createElement('span');
+        next.className = dotClass;
+        next.style.background = swatch?.color ?? '#888';
+      }
+      next.setAttribute('aria-hidden', 'true');
+      old.replaceWith(next);
+    }
+    this.el('bt-material-name').textContent = name;
+    this.el('bp-armed-name').textContent = name;
+  }
+
+  /** The Game Link control. It is the ONLY thing in the editor that knows about the other window. */
+  private wireGameLink(): void {
+    const slot = this.el('b-gamelink-slot');
+    const config = this.host.getLinkConfig();
+    if (!config) {
+      slot.remove();
+      return;
+    }
+    const linked = config.enabled && this.host.getLinkStatus() !== null;
+    this.linkControl = new LinkControl({
+      host: slot,
+      config,
+      link: linked
+        ? {
+            getStatus: () => this.host.getLinkStatus(),
+            onStatus: (h) => this.host.subscribeLinkStatus(h),
+            getWorldState: () => this.host.getLinkWorldState(),
+            onWorldState: (h) => this.host.subscribeLinkWorldState(h),
+            pullWorldFrom: (clientId) => this.host.pullLinkedWorld(clientId),
+          }
+        : null,
+      isEditor: true,
+      confirmPull: async (peer) =>
+        !this.hasAuthoringWork() ||
+        (await appDialog.confirm(`Replace the level you are editing with ${peer}? Your undo history is cleared; save or export first if you want to keep it.`, {
+          title: "Use the game's level",
+          confirmText: 'Replace',
+          tone: 'danger',
+        })),
+      toast: (text) => this.status(text),
+      beforeLeave: () => this.keepCurrentDocDraft(),
+    });
+    this.disposers.push(() => {
+      this.linkControl?.dispose();
+      this.linkControl = null;
+    });
+  }
+
+  private wireValidationChips(): void {
+    this.el('b-validate-chip').addEventListener('click', () => this.runUiCommand('builder.validate'));
+    this.el('b-issues-chip').addEventListener('click', () => this.runUiCommand('builder.validate'));
+    this.chipReady = true;
+    this.syncValidationChip(false);
+  }
+
+  /** Title-bar + status-bar readout of the last validation; dimmed once an edit makes it stale. */
+  private syncValidationChip(stale: boolean): void {
+    const chip = this.root.querySelector<HTMLButtonElement>('#b-validate-chip');
+    const foot = this.root.querySelector<HTMLButtonElement>('#b-issues-chip');
+    if (!chip || !foot) return;
+    const counts = this.chipIssues;
+    const state = !counts ? 'idle' : counts.errors > 0 ? 'error' : counts.warnings > 0 ? 'warn' : 'ok';
+    chip.dataset.state = state;
+    chip.dataset.stale = stale && counts ? 'true' : 'false';
+    foot.dataset.state = state;
+    const n = counts ? counts.errors + counts.warnings : 0;
+    const text =
+      !counts
+        ? 'Not validated'
+        : state === 'ok'
+          ? 'No issues'
+          : `${counts.errors} error${counts.errors === 1 ? '' : 's'} · ${counts.warnings} warning${counts.warnings === 1 ? '' : 's'}`;
+    const icon = state === 'error' ? 'error' : state === 'warn' ? 'warning' : 'check';
+    chip.querySelector('.st-icon')?.replaceWith(htmlToElement(editorIcon(icon, 14)));
+    foot.querySelector('.st-icon')?.replaceWith(htmlToElement(editorIcon(icon, 12)));
+    const num = chip.querySelector<HTMLElement>('.b-validate-n');
+    if (num) num.textContent = n > 0 ? String(n) : '';
+    const label = chip.querySelector<HTMLElement>('.b-validate-text');
+    if (label) label.textContent = state === 'idle' ? 'Validate' : state === 'ok' ? 'Valid' : 'Issues';
+    const footText = foot.querySelector<HTMLElement>('.sb-issues-text');
+    if (footText) footText.textContent = text + (stale && counts ? ' (edited since)' : '');
+    chip.setAttribute('aria-label', `Validate the level. ${text}`);
+  }
+
   /**
    * The top menu bar: Document / Edit / View / Help dropdowns hold the former
    * toolbar buttons (ids + handlers unchanged). Click a menu to open; hover
@@ -5024,7 +5167,9 @@ export class Builder {
     // A world with a lifted hole must never be captured (every caller is
     // already previewBlocks-gated; this is the defense-in-depth backstop).
     if (this.floating || this.pendingPreview || this.settling || this.settleSnap) return false;
-    if (!this.paintDirty) return false;
+    // The live grid is the document's terrain while the Builder is open, so a document that has
+    // none yet takes it now — otherwise a scene brought in from the Sandbox saves as world: null.
+    if (!this.paintDirty && !(this.doc.world === null && this.liveTerrainIsUncaptured())) return false;
     this.doc.world = captureWorldLayer(this.ctx);
     this.paintDirty = false;
     this.validationDirty = true;
@@ -8128,7 +8273,9 @@ export class Builder {
         if (Math.abs(e.clientX - d.startX) + Math.abs(e.clientY - d.startY) < 6) return;
         const ghost = document.createElement('div');
         ghost.className = 'b-dnd-ghost';
-        ghost.textContent = d.kind === 'light' ? '*' : (GLYPH[d.kind] ?? '?');
+        const portrait = OBJECT_INFO[d.kind];
+        if (portrait) ghost.appendChild(previewCanvas(portrait.draw));
+        else ghost.textContent = d.kind === 'light' ? '*' : (GLYPH[d.kind] ?? '?');
         document.body.appendChild(ghost);
         d.ghost = ghost;
       }
@@ -9339,7 +9486,7 @@ export class Builder {
 
   private cycleSymmetry(): void {
     this.symmetry = SYM_MODES[(SYM_MODES.indexOf(this.symmetry) + 1) % SYM_MODES.length];
-    this.el('bp-sym-btn').textContent = 'SYM: ' + this.symmetry.toUpperCase();
+    this.syncSymButton();
     this.status(
       this.symmetry === 'off'
         ? 'SYMMETRY OFF'
@@ -9446,7 +9593,9 @@ export class Builder {
     const deciding = this.settleSnap !== null && !this.settling;
     const settle = this.el<HTMLButtonElement>('bp-settle');
     settle.style.display = deciding ? 'none' : '';
-    settle.textContent = this.settling ? 'SETTLING...' : 'SETTLE';
+    const settleLabel = settle.querySelector('.bt-label');
+    if (settleLabel) settleLabel.textContent = this.settling ? 'Settling…' : 'Settle';
+    settle.setAttribute('aria-pressed', this.settling ? 'true' : 'false');
     settle.classList.toggle('active', this.settling);
     this.el('bp-settle-keep').style.display = deciding ? '' : 'none';
     this.el('bp-settle-revert').style.display = deciding ? '' : 'none';
@@ -9461,7 +9610,9 @@ export class Builder {
 
   private toggleLightPreview(): void {
     this.lightPreviewOn = !this.lightPreviewOn;
-    this.el('bp-light-toggle').textContent = `PREVIEW LIGHTS: ${this.lightPreviewOn ? 'ON' : 'OFF'}`;
+    const lightBtn = this.el('bp-light-toggle');
+    lightBtn.textContent = `Preview lights: ${this.lightPreviewOn ? 'on' : 'off'}`;
+    lightBtn.setAttribute('aria-pressed', this.lightPreviewOn ? 'true' : 'false');
     this.status(`LIGHT PREVIEW ${this.lightPreviewOn ? 'ON' : 'OFF'}`);
   }
 
@@ -9484,7 +9635,8 @@ export class Builder {
 
   private syncWandLightPreviewButton(): void {
     const btn = this.el<HTMLButtonElement>('bp-wand-light-toggle');
-    btn.textContent = `WAND LIGHT: ${this.wandLightPreviewOn ? 'ON' : 'OFF'}`;
+    btn.textContent = `Cursor wand light: ${this.wandLightPreviewOn ? 'on' : 'off'}`;
+    btn.setAttribute('aria-pressed', this.wandLightPreviewOn ? 'true' : 'false');
     btn.classList.toggle('active', this.wandLightPreviewOn);
   }
 
@@ -9519,13 +9671,30 @@ export class Builder {
     this.overlayMode = active[0] ?? 'none';
     const label =
       active.length === 0 ? 'NONE' : active.length === 1 ? overlayLabel(active[0]).toUpperCase() : `${active.length} ON`;
-    this.el('bp-overlay-btn').textContent = 'OVERLAY: ' + label;
+    this.setToolbarToggle('bp-overlay-btn', 'Overlay', label.toLowerCase(), active.length > 0);
+  }
+
+  private syncSnapButton(): void {
+    this.setToolbarToggle('bp-snap-btn', 'Snap', this.snapStep === 0 ? 'off' : String(this.snapStep), this.snapStep !== 0);
+  }
+
+  private syncSymButton(): void {
+    this.setToolbarToggle('bp-sym-btn', 'Mirror', this.symmetry === 'off' ? 'off' : String(this.symmetry), this.symmetry !== 'off');
+  }
+
+  /** Toolbar toggles keep their icon; only the label text and the lit state change. */
+  private setToolbarToggle(id: string, name: string, value: string, on: boolean): void {
+    const btn = this.el<HTMLButtonElement>(id);
+    const label = btn.querySelector('.bt-label');
+    if (label) label.textContent = name + ': ' + value;
+    btn.dataset.on = on ? 'true' : 'false';
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
 
   private cycleSnapGrid(): void {
     this.snapStep = nextSnapStep(this.snapStep);
     this.workspaceLayout.snapStep = this.snapStep;
-    this.el('bp-snap-btn').textContent = 'SNAP: ' + (this.snapStep === 0 ? 'OFF' : this.snapStep);
+    this.syncSnapButton();
     this.saveWorkspacePrefs();
     this.status(this.snapStep === 0 ? 'SNAP OFF' : `SNAP TO ${this.snapStep}-CELL GRID (ALT TEMPORARILY BYPASSES)`);
   }
@@ -10098,9 +10267,11 @@ export class Builder {
       state.activeInputMode === 'spell'
         ? 'SPELL (pick a material!)'
         : (this.ctx.params.materials[state.currentElement]?.name ?? 'material ' + state.currentElement);
-    const text = `MAT ${matName.toUpperCase()} · BRUSH ${state.brushSize} · ZOOM ${this.ctx.camera.zoom.toFixed(1)}x`;
+    const text = `${matName} · brush ${state.brushSize} · ${Math.round(this.ctx.camera.zoom * 100)}%`;
     if (text !== this.matRowText) {
       this.matRowText = text;
+      this.syncMaterialReadout();
+      this.el('bt-zoom-val').textContent = `${Math.round(this.ctx.camera.zoom * 100)}%`;
       this.el<HTMLDivElement>('bp-mat-row').textContent = text;
       // brush size can also change via [ ] in the sandbox layer — mirror it
       this.el<HTMLInputElement>('bp-brush').value = String(state.brushSize);
@@ -13404,6 +13575,11 @@ export class Builder {
     // panel's visibility, both of which are owned by the tab group.
     const activate = options.activate ?? false;
     this.lastIssues = [...issues];
+    this.chipIssues = {
+      errors: issues.filter((i) => i.severity === 'error').length,
+      warnings: issues.filter((i) => i.severity === 'warning').length,
+    };
+    if (this.chipReady) this.syncValidationChip(false);
     this.validationDirty = false;
     this.syncNavigationPanels();
     // Keep the Validation tab's error/warning badge current even on a quiet
@@ -13685,6 +13861,8 @@ export class Builder {
     for (const btn of this.root.querySelectorAll<HTMLButtonElement>('.bp-tool')) {
       btn.classList.toggle('active', (btn.dataset.tool ?? btn.dataset.kind) === this.tool);
     }
+    this.syncToolGroups();
+    this.syncToolHint();
   }
 
   private refreshDocSelect(): void {

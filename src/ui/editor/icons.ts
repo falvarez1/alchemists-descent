@@ -57,6 +57,7 @@ const PATHS = {
   chevronRight: '<path d="m6 4 4 4-4 4" stroke-linejoin="round"/>',
   close: '<path d="m4 4 8 8M12 4l-8 8"/>',
   plus: '<path d="M8 3.2v9.6M3.2 8h9.6"/>',
+  minus: '<path d="M3.2 8h9.6"/>',
   check: '<path d="m3.4 8.4 3 3 6.2-6.6" stroke-linejoin="round"/>',
   search: '<circle cx="7" cy="7" r="4.2"/><path d="m10.2 10.2 3.4 3.4"/>',
   warning: '<path d="M8 2.6 14 13H2z" stroke-linejoin="round"/><path d="M8 6.6v3.2"/><circle cx="8" cy="11.4" r=".7" fill="currentColor" stroke="none"/>',
