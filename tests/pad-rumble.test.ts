@@ -133,3 +133,28 @@ describe('PadRumble', () => {
     expect(() => rumble.update()).not.toThrow();
   });
 });
+
+describe('enemy health readouts', () => {
+  it('prints whole points of damage, and waits for a fraction to add up', async () => {
+    const { damageText } = await import('@/ui/EnemyReadouts');
+    expect(damageText(0)).toBeNull();
+    expect(damageText(0.3)).toBeNull(); // a flicker of burn
+    expect(damageText(0.5)).toBe('−1');
+    expect(damageText(12)).toBe('−12');
+    expect(damageText(12.4)).toBe('−12');
+    expect(damageText(47.6)).toBe('−48');
+  });
+
+  it('holds a bar for two seconds and fades it over the last half second', async () => {
+    const { barOpacity, BAR_MS } = await import('@/ui/EnemyReadouts');
+    expect(BAR_MS).toBe(2000);
+    expect(barOpacity(-1)).toBe(0); // never hit
+    expect(barOpacity(0)).toBe(1);
+    expect(barOpacity(1400)).toBe(1);
+    expect(barOpacity(1750)).toBeCloseTo(0.5, 5);
+    expect(barOpacity(1999)).toBeGreaterThan(0);
+    expect(barOpacity(2000)).toBe(0);
+    expect(barOpacity(99999)).toBe(0);
+    expect(barOpacity(Infinity)).toBe(0);
+  });
+});

@@ -691,6 +691,109 @@ try {
     await saved.context.close();
   }
 
+
+  // ------------------------------------------------------------------ enemy health bars and damage numbers
+  if (want('enemyhp')) {
+    console.log('\n== Enemy health and damage (a readout only)');
+    const { context, page, errors } = await freshRun();
+    const spawn = (kind, dx, dy = 0) => page.evaluate(([k, ox, oy]) => { const c = window.__game.ctx; const e = c.enemyCtl.spawn(k, c.player.x + ox, c.player.y + oy); return c.enemies.indexOf(e); }, [kind, dx, dy]);
+    const enemyHp = (i) => page.evaluate((idx) => { const e = window.__game.ctx.enemies[idx]; return e ? [e.hp, e.maxHp] : null; }, i);
+    const hit = (i, amount) => page.evaluate(([idx, n]) => { const c = window.__game.ctx; const e = c.enemies[idx]; c.enemyCtl.damage(e, n, 0, 0, 'direct'); }, [i, amount]);
+    const dom = () => page.evaluate(() => ({ layer: !!document.getElementById('enemy-readout-layer'), bars: document.querySelectorAll('.enemy-hp-bar').length, nums: [...document.querySelectorAll('.enemy-hp-num')].map((n) => n.textContent) }));
+    await page.evaluate(() => { const c = window.__game.ctx; c.state.debugGodMode = true; c.player.invuln = 99999; });
+    const a = await spawn('slime', 60);
+    const b = await spawn('slime', -60);
+    await page.waitForTimeout(800);
+    await hit(a, 10);
+    await page.waitForTimeout(400);
+    check(JSON.stringify(await dom()) === JSON.stringify({ layer: false, bars: 0, nums: [] }), 'default: hitting an enemy adds no layer, bar or number');
+    const hpOff = await enemyHp(a);
+
+    await openSettings(page, 'gameplay');
+    const box = page.locator('#player-settings [name="showEnemyHp"]');
+    await box.scrollIntoViewIfNeeded();
+    check(!(await box.isChecked()), 'the Gameplay tab shows it unchecked');
+    await click(page, box);
+    check((await stored(page))?.showEnemyHp === true, 'checking it saves showEnemyHp:true');
+    await closeSettings(page); await resume(page);
+    check((await dom()).layer, 'on: the readout layer exists');
+    await page.evaluate(() => { window.__game.ctx.enemies.forEach((e) => { e.hp = e.maxHp; }); });
+    await page.waitForTimeout(300);
+    await hit(a, 10);
+    await page.waitForTimeout(350);
+    const hpOn = await enemyHp(a);
+    const shown = await page.evaluate(() => ({ fill: document.querySelector('.enemy-hp-bar > div')?.style.width, bars: document.querySelectorAll('.enemy-hp-bar').length, nums: [...document.querySelectorAll('.enemy-hp-num')].map((n) => n.textContent) }));
+    check(hpOn[0] === hpOff[0] && hpOn[0] === hpOn[1] - 10, `the readout changes nothing in the fight: the same hit leaves the same hp with it off or on (${hpOff[0]} / ${hpOn[0]} of ${hpOn[1]})`);
+    check(shown.bars === 1 && Math.abs(parseFloat(shown.fill) - (hpOn[0] / hpOn[1]) * 100) < 1, `a bar over the enemy that was hit, filled to ${shown.fill} (hp ${hpOn[0]}/${hpOn[1]}); the other enemy has none (${shown.bars} bar)`);
+    check(shown.nums.length === 1 && shown.nums[0] === '−10', `and the damage rises off it: ${JSON.stringify(shown.nums)}`);
+    await page.screenshot({ path: `${out}/enemyhp-hit.png` });
+    // timing, measured inside the page so a screenshot cannot skew it: a fresh hit, sampled at 1.2 s and 2.7 s
+    await page.waitForTimeout(2600);
+    const timing = await page.evaluate(([idx]) => new Promise((resolve) => {
+      const c = window.__game.ctx; const e = c.enemies[idx]; c.enemyCtl.damage(e, 6, 0, 0, 'direct');
+      const t0 = performance.now(); const out = {};
+      const snap = () => ({ bars: document.querySelectorAll('.enemy-hp-bar').length, nums: document.querySelectorAll('.enemy-hp-num').length });
+      setTimeout(() => { out.at1200 = snap(); }, 1200);
+      setTimeout(() => { out.at1750 = snap(); out.op1750 = Number(document.querySelector('.enemy-hp-bar')?.style.opacity ?? -1); }, 1750);
+      setTimeout(() => { out.at2700 = snap(); resolve(out); }, 2700);
+    }), [a]);
+    check(timing.at1200.nums === 0, 'the number has risen and gone in under a second');
+    check(timing.at1200.bars === 1 && timing.at2700.bars === 0, `the bar holds for ~2 s after a hit, then is gone (1.2 s: ${timing.at1200.bars} bar, 2.7 s: ${timing.at2700.bars})`);
+    check(timing.op1750 > 0 && timing.op1750 < 1, `and fades over the last half second (opacity ${timing.op1750.toFixed(2)} at 1.75 s)`);
+
+    // a stream of tiny hits (burning) reads as a few numbers, not a flicker of dozens
+    await page.evaluate((idx) => { const c = window.__game.ctx; const e = c.enemies[idx]; for (let i = 0; i < 40; i++) setTimeout(() => c.enemyCtl.damage(e, 0.25, 0, 0, 'burned'), i * 25); }, a);
+    await page.waitForTimeout(1300);
+    const total = await page.evaluate((idx) => { const e = window.__game.ctx.enemies[idx]; return e.maxHp - e.hp; }, a);
+    await page.screenshot({ path: `${out}/enemyhp-burn.png` });
+    const streamNums = await page.evaluate(() => window.__burnSeen ?? null);
+    check(total > 8, `(a 40-tick burn dealt ${total.toFixed(1)} damage)`);
+
+    // a real spell: aim at the enemy with the real mouse and cast
+    await page.evaluate(() => window.__game.ctx.enemies.forEach((e) => { e.hp = e.maxHp; }));
+    const pointAt = async (wx, wy) => {
+      const t = await page.evaluate(([x, y]) => {
+        const c = window.__game.ctx; const cv = document.querySelector('canvas[data-input-attached="true"]'); const r = cv.getBoundingClientRect();
+        const vw = 640, vh = 360, z = c.camera.zoom; const fx = c.camera.x - Math.floor(c.camera.x), fy = c.camera.y - Math.floor(c.camera.y);
+        const sx = (1 + 4 / vw) * z, sy = (1 + 4 / vh) * z;
+        const ndcX = -fx * (2 / vw) * z + ((x - c.camera.renderX) / vw - 0.5) * 2 * sx;
+        const ndcY = fy * (2 / vh) * z + (0.5 - (y - c.camera.renderY) / vh) * 2 * sy;
+        return { x: r.left + (ndcX + 1) * 0.5 * r.width, y: r.top + (1 - ndcY) * 0.5 * r.height };
+      }, [wx, wy]);
+      await page.mouse.move(t.x, t.y);
+    };
+    const tgt = await page.evaluate((idx) => { const e = window.__game.ctx.enemies[idx]; return [e.x, e.y - 4]; }, a);
+    await pointAt(tgt[0], tgt[1]);
+    await page.waitForTimeout(150);
+    await page.mouse.down(); await page.waitForTimeout(220); await page.mouse.up();
+    await page.waitForTimeout(900);
+    const cast = await page.evaluate((idx) => { const e = window.__game.ctx.enemies[idx]; return { hp: e ? e.hp : null, max: e ? e.maxHp : null, bars: document.querySelectorAll('.enemy-hp-bar').length, nums: [...document.querySelectorAll('.enemy-hp-num')].map((n) => n.textContent) }; }, a);
+    check(cast.hp !== null && cast.hp < cast.max && (cast.bars >= 1 || cast.nums.length >= 1), `a real Spark Bolt hit shows it: hp ${cast.hp}/${cast.max}, ${cast.bars} bar, numbers ${JSON.stringify(cast.nums)}`);
+    await page.screenshot({ path: `${out}/enemyhp-cast.png` });
+
+    // a kill: the last number is said and nothing is left behind
+    await page.evaluate((idx) => { const c = window.__game.ctx; const e = c.enemies[idx]; c.enemyCtl.damage(e, e.hp + 5, 0, 0, 'direct'); }, a);
+    await page.waitForTimeout(450);
+    const killNums = (await dom()).nums;
+    await page.waitForTimeout(3000);
+    const after = await dom();
+    check(after.bars === 0 && after.nums.length === 0, `after a kill nothing is left behind (number said: ${JSON.stringify(killNums)}; afterwards ${after.bars} bars, ${after.nums.length} numbers)`);
+
+    // off again: the layer is gone
+    await openSettings(page, 'gameplay');
+    const box2 = page.locator('#player-settings [name="showEnemyHp"]');
+    await box2.scrollIntoViewIfNeeded();
+    await click(page, box2);
+    await closeSettings(page); await resume(page);
+    check(JSON.stringify(await dom()) === JSON.stringify({ layer: false, bars: 0, nums: [] }), 'off again: layer, bars and numbers are gone');
+    check(errors.length === 0, `no page errors${errors.join(' | ')}`);
+    await context.close();
+
+    const saved = await freshRun({ prefs: { showEnemyHp: true } });
+    check((await saved.page.evaluate(() => !!document.getElementById('enemy-readout-layer'))), 'a saved showEnemyHp:true applies on load');
+    await saved.context.close();
+  }
+
 } finally {
   await browser.close();
 }

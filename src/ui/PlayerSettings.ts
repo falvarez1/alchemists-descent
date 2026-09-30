@@ -9,6 +9,7 @@ import { VitalNumbers } from '@/ui/VitalNumbers';
 import { resetSeenHints } from '@/game/hints/seenHints';
 import '@/styles/options.css';
 import { PadRumble } from '@/input/padRumble';
+import { EnemyReadouts } from '@/ui/EnemyReadouts';
 import { HINT_MODES, HUD_OPACITY, HUD_SCALE, PAD_DEADZONE, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeBand, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
 import { createDefaultPostFxSettings } from '@/config/params';
 
@@ -106,7 +107,7 @@ const SIMPLE_CONTROLS: readonly SimpleControl[] = [
   flag('reducedFlashes'), flag('highReadability'), flag('creatureCaptions'), flag('narration'), flag('muted'),
   { name: 'cameraShake', read: p => p.cameraShake, write: (p, raw) => { p.cameraShake = sanitizeShake(raw); } },
   flag('pauseOnBlur'), flag('captionBacking'), flag('numericVitals'),
-  percent('hudScale', HUD_SCALE), percent('hudOpacity', HUD_OPACITY), percent('padDeadzone', PAD_DEADZONE), flag('padRumble'),
+  flag('showEnemyHp'), percent('hudScale', HUD_SCALE), percent('hudOpacity', HUD_OPACITY), percent('padDeadzone', PAD_DEADZONE), flag('padRumble'),
   picture('brightness', 'brightness'), picture('vignette', 'vignette'), picture('bloom', 'bloom'), picture('grain', 'grain', 'Off'),
   { name: 'hintMode', read: p => p.hintMode, write: (p, raw) => { p.hintMode = sanitizeChoice(raw, HINT_MODES, 'first'); } },
 ];
@@ -135,6 +136,7 @@ export class PlayerSettings {
   private readonly quick: SoundQuickControl;
   private readonly vitals: VitalNumbers;
   private readonly rumble: PadRumble;
+  private readonly readouts: EnemyReadouts;
   /** Presentation fields the player has moved, so "Reset picture" restores exactly those and nothing else. */
   private readonly touchedPicture = new Set<PresentationKey>();
   private tab: SettingsTab = 'sound';
@@ -194,6 +196,7 @@ export class PlayerSettings {
       <div class="settings-option"><button type="button" id="reset-tutorials" aria-describedby="note-reset-tutorials">Reset tutorials</button>
       <p class="settings-note flush" id="note-reset-tutorials">Every card teaches again, as on a first descent.</p></div></div></section>
       <section class="settings-group" aria-labelledby="settings-combat"><h3 id="settings-combat">Combat</h3><div class="settings-options">
+      ${checkRow('showEnemyHp', 'Enemy health and damage', 'A thin health bar over an enemy for two seconds after you hit it, and the damage you dealt. A readout only: nothing in the fight changes.')}
       <div class="settings-option"><label><input type="checkbox" name="finisher"> Weaver-leg finisher</label>
       <p class="settings-note">With a Weaver's own leg in hand and its owner wounded, the swing slows as it closes, and only a real hit ends it. A miss just costs the moment.</p>
       <label class="settings-sub"><input type="checkbox" name="cameraMotion"> Camera leans in during the finisher</label></div>
@@ -282,6 +285,7 @@ export class PlayerSettings {
     });
     this.vitals = new VitalNumbers(ctx);
     this.rumble = new PadRumble(ctx);
+    this.readouts = new EnemyReadouts(ctx);
     this.renderBindings(); this.apply();
     window.addEventListener('settings-tab-step', this.onTabStep);
     const pause = document.createElement('button');
@@ -395,6 +399,8 @@ export class PlayerSettings {
     this.ctx.state.hudScale = this.preferences.hudScale;
     this.ctx.state.padDeadzone = this.preferences.padDeadzone;
     this.rumble.setEnabled(this.preferences.padRumble);
+    this.ctx.state.showEnemyHp = this.preferences.showEnemyHp;
+    this.readouts.setEnabled(this.preferences.showEnemyHp);
     this.vitals.setEnabled(this.preferences.numericVitals);
     this.ctx.state.reduceFlashes = this.preferences.reducedFlashes;
     this.ctx.state.highReadability = this.preferences.highReadability;
@@ -453,6 +459,6 @@ export class PlayerSettings {
 
   dispose(): void {
     window.removeEventListener('settings-tab-step', this.onTabStep);
-    this.quick.dispose(); this.vitals.dispose(); this.rumble.dispose(); this.dialog.remove(); document.getElementById('pause-settings')?.remove();
+    this.quick.dispose(); this.vitals.dispose(); this.rumble.dispose(); this.readouts.dispose(); this.dialog.remove(); document.getElementById('pause-settings')?.remove();
   }
 }

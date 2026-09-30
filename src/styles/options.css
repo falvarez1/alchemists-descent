@@ -59,3 +59,17 @@ body.hud-custom :is(#hud-left, #expedition-tools, .wave-readout) { opacity: var(
 .entry-content nav .entry-seed .entry-seed-actions button:disabled { opacity: 0.45; border-bottom-color: transparent; cursor: default; }
 .entry-content nav .entry-seed .entry-seed-actions button[hidden] { display: none; }
 #expedition-entry.seed-open .entry-footer { visibility: hidden; }
+
+/* ---------- Enemy health bars and damage numbers (ui/EnemyReadouts) ---------- */
+/* Its own layer, made only while the option is on; it follows the camera like the combat callouts and never takes input. */
+#enemy-readout-layer { --readout-scale: 1; position: absolute; inset: 0; z-index: 6; overflow: hidden; pointer-events: none; contain: layout paint; }
+#enemy-readout-layer .enemy-hp-bar {
+  position: absolute; transform: translate(-50%, -100%); height: calc(4px * var(--readout-scale));
+  box-sizing: border-box; padding: 1px; background: rgba(8, 14, 17, 0.82); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+#enemy-readout-layer .enemy-hp-bar > div { height: 100%; background: #d4826a; background-image: linear-gradient(180deg, #f3b8a0 0 1px, transparent 1px); transition: width 0.12s linear; }
+#enemy-readout-layer .enemy-hp-num {
+  position: absolute; transform: translate(-50%, -100%); white-space: nowrap;
+  font: 700 calc(14px * var(--readout-scale) * var(--text-scale, 1))/1 var(--house-sans, ui-sans-serif, system-ui, sans-serif); font-variant-numeric: tabular-nums;
+  color: #f6e3b0; text-shadow: 0 1px 0 #1d140a, 0 0 2px #1d140a, 0 0 6px rgba(0, 0, 0, 0.7);
+}

@@ -1330,6 +1330,8 @@ export interface GameStateData {
   hudScale?: number;
   /** Stick dead zone the player chose (config/playerPrefs PAD_DEADZONE; 0.2 = shipped). Read by InputManager.pollGamepad. */
   padDeadzone?: number;
+  /** Enemy health bars and damage numbers (ui/EnemyReadouts): a readout only, off = unset. */
+  showEnemyHp?: boolean;
   reduceFlashes?: boolean;
   trickshot?: TrickshotSettings;
   /** The run's SECRET alchemy reaction (derived from worldSeed; see
