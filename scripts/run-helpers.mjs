@@ -168,6 +168,22 @@ export async function openRuntimeInspector(page, { timeout = 15000 } = {}) {
 }
 
 /**
+ * The app boots to the title screen, which covers the Workshop's toolbar and header
+ * (their buttons are `not visible` to a real click). An author's way into the material
+ * sandbox is Workshops > Material sandbox. The fold remembers being open from an
+ * earlier visit: only open it when shut. Leaves the app in the Sandbox (mode 'build'),
+ * unpaused, header reachable.
+ */
+export async function enterSandboxFromTitle(page, { timeout = 30000 } = {}) {
+  await page.locator('#expedition-entry').waitFor({ state: 'visible', timeout });
+  if (!(await page.locator('#expedition-entry .entry-workshops').evaluate((d) => d.open))) {
+    await page.locator('#expedition-entry .entry-workshops > summary').click();
+  }
+  await page.locator('#expedition-entry [data-entry="sandbox"]').click();
+  await page.locator('#expedition-entry').waitFor({ state: 'hidden', timeout: 10000 });
+}
+
+/**
  * A first descent opens on the story's plates (~9 s, the world held still behind
  * them; any key skips them). The plates' class lands a beat AFTER `play-active`, so
  * wait to see them start (a resumed run has none), then for them to end. A probe

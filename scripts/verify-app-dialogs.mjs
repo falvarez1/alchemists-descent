@@ -1,6 +1,7 @@
 // Focused app-dialog probe.
 // Usage: node scripts/verify-app-dialogs.mjs [url]  (dev server running)
 import { launchBrowser } from './browser-launch.mjs';
+import { enterSandboxFromTitle } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -27,6 +28,8 @@ page.on('dialog', async (d) => {
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
+// The title fronts the app and covers the Workshop's Level Library: enter the Sandbox first.
+await enterSandboxFromTitle(page);
 await page.waitForTimeout(900);
 
 await page.click('#btn-level-save');

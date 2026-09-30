@@ -1,7 +1,7 @@
 // Focused minimap waypoint probe.
 // Usage: node scripts/verify-minimap-waypoint.mjs [url]  (dev server running)
 import { launchBrowser } from './browser-launch.mjs';
-import { isBenignDevConsoleError, startConsoleRun, startConsolePlayRun } from './run-helpers.mjs';
+import { isBenignDevConsoleError, startConsoleRun, startConsolePlayRun, waitForOpeningEnd } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -49,6 +49,10 @@ async function liveWaypointState() {
     const style = indicator ? getComputedStyle(indicator) : null;
     const { collectMinimapPois } = await import('/src/ui/Minimap.ts');
     const pois = rt ? collectMinimapPois(ctx, rt).map((poi) => ({ id: poi.id, title: poi.title, kind: poi.kind })) : [];
+    // Saves go to an IndexedDB worker when one exists (else localStorage): let the write land,
+    // then read the durable copy from whichever backend holds it.
+    await ctx.levels.flushSaves?.();
+    const durable = ctx.levels.storage?.cached ?? JSON.parse(localStorage.getItem('noita-expedition') ?? 'null');
     return {
       waypoint: rt?.mapWaypoint ?? null,
       poi: pois.find((poi) => poi.id === 'map-waypoint') ?? null,
@@ -56,7 +60,7 @@ async function liveWaypointState() {
       indicatorLeft: indicator?.style.left ?? '',
       indicatorTop: indicator?.style.top ?? '',
       range: indicator?.querySelector('.waypoint-range')?.textContent ?? '',
-      saved: JSON.parse(localStorage.getItem('noita-expedition') ?? 'null')?.levels?.[0]?.mapWaypoint ?? null,
+      saved: durable?.levels?.find((level) => level.id === rt?.def.id)?.mapWaypoint ?? null,
     };
   });
 }
@@ -64,6 +68,7 @@ async function liveWaypointState() {
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.console, { timeout: 20000 });
 await startConsolePlayRun(page, { seed: 2601, settleMs: 400 });
+await waitForOpeningEnd(page); // the plates hold the world still; the M press would only skip them
 
 const target = await page.evaluate(() => {
   const ctx = window.__game.ctx;
@@ -81,8 +86,11 @@ check('Probe runtime found an explored waypoint target', !!target, JSON.stringif
 
 await page.keyboard.press('KeyM');
 await page.waitForSelector('#minimap-overlay.visible', { timeout: 5000 });
+// The map fades and rises in: a click at the canvas's first-frame position lands where it no longer is.
+await page.waitForTimeout(500);
 const setPoint = await waypointClientPoint(target);
 check('Full map target resolves to a client point', !!setPoint, JSON.stringify(setPoint));
+await page.mouse.move(setPoint.x, setPoint.y);
 await page.mouse.click(setPoint.x, setPoint.y);
 await page.waitForFunction(() => window.__game.ctx.levels.current?.mapWaypoint != null, { timeout: 5000 });
 const setState = await liveWaypointState();
@@ -105,12 +113,24 @@ await page.evaluate(({ x, y }) => {
   ctx.camera.snapTo(ctx.player.x, ctx.player.y);
   ctx.state.frameCount += 2;
 }, target);
-await page.waitForTimeout(160);
+// The alchemist is dropped 20 cells short, but he falls when that spot is open air: judge the
+// readout against his LIVE distance (the HUD lags a frame, so wait for it to catch up once he
+// lands) rather than a fixed 20.
+const tracked = await page
+  .waitForFunction(({ x, y }) => {
+    const ctx = window.__game.ctx;
+    const text = document.querySelector('#waypoint-indicator .waypoint-range')?.textContent ?? '';
+    const dist = Math.hypot(x - ctx.player.x, y - ctx.player.y);
+    return text === (dist < 14 ? 'HERE' : String(Math.round(dist))) ? { text, dist } : false;
+  }, target, { timeout: 5000 })
+  .then((handle) => handle.jsonValue(), () => null);
 const hudMoved = await liveWaypointState();
 check(
   'HUD compass range updates as the player moves toward the waypoint',
-  hudMoved.indicatorVisible && (hudMoved.range === '20' || hudMoved.range === 'HERE'),
-  JSON.stringify({ before: hudInitial, after: hudMoved }),
+  tracked !== null &&
+    hudMoved.indicatorVisible &&
+    (tracked.text === 'HERE' || Number(tracked.text) < Number(hudInitial.range)),
+  JSON.stringify({ before: hudInitial, tracked, after: hudMoved }),
 );
 
 await page.reload({ waitUntil: 'networkidle', timeout: 30000 });

@@ -69,8 +69,11 @@ try {
     ctx.player.y = 462;
 
     fill(310, 462, 420, 468, Cell.Stone, stoneColor);
-    // Large detached crust: outside the blast core, inside the cleanup ring.
-    fill(361, 440, 365, 445, Cell.Stone, stoneColor);
+    // Large detached crust the blast BITES: its near edge (x 356-358) is inside the blast
+    // core and is carved away, which is what marks the island left behind (x 359-365, out
+    // to the cleanup ring) as blast debris. A slab the blast never touched is old terrain
+    // and stays solid (tests/explosion-debris.test.ts pins that), so it must overlap.
+    fill(356, 440, 365, 445, Cell.Stone, stoneColor);
     // Anchored ledge reaches outside the cleanup ring; it must remain solid.
     fill(333, 432, 345, 434, Cell.Stone, stoneColor);
     // Engineered metal stays blocking even when isolated.
@@ -98,12 +101,25 @@ try {
     ctx.player.y = 450;
     ctx.player.vx = 0;
     ctx.player.vy = 0;
-    fill(386, 433, 394, 433, Cell.Stone, stoneColor);
-    const sweepTotal = count(386, 433, 394, 433, () => true);
-    const sweepWasBlocking = ctx.physics.cellBlocks(390, 433);
+    // A floating fragment under five cells is loose rubble (docs/FEEL.md): walk-through,
+    // and kicked aside as particles when a body moves through it.
+    fill(388, 433, 391, 433, Cell.Stone, stoneColor);
+    const sweepTotal = count(388, 433, 391, 433, () => true);
+    const sweepWasBlocking = ctx.physics.cellBlocks(389, 433);
     const sweepMoved = ctx.physics.tryMoveEntity(ctx.player, 0, -1, 4, 17, 0);
-    const sweepCleared = count(386, 433, 394, 433, (_x, _y, i) => w.types[i] === Cell.Empty);
+    const sweepCleared = count(388, 433, 391, 433, (_x, _y, i) => w.types[i] === Cell.Empty);
     const sweepParticles = ctx.particles.list.length;
+
+    // ...but a floating slab of five or more cells is a wall however detached it is:
+    // it blocks the body and is left alone.
+    ctx.particles.clear();
+    w.clear();
+    ctx.player.x = 390;
+    ctx.player.y = 450;
+    fill(386, 433, 394, 433, Cell.Stone, stoneColor);
+    const slabBlocks = ctx.physics.cellBlocks(390, 433);
+    const slabMoved = ctx.physics.tryMoveEntity(ctx.player, 0, -1, 4, 17, 0);
+    const slabLeft = count(386, 433, 394, 433, (_x, _y, i) => w.types[i] === Cell.Stone);
 
     ctx.particles.clear();
     w.clear();
@@ -135,6 +151,9 @@ try {
       sweepMoved,
       sweepCleared,
       sweepParticles,
+      slabBlocks,
+      slabMoved,
+      slabLeft,
       anchoredMoveBlocked,
       anchoredCeilingStillThere,
       settledAsh,
@@ -148,8 +167,13 @@ try {
   check('anchored terrain remains solid', result.anchoredStone && result.anchoredBlocks, JSON.stringify(result));
   check('isolated metal remains engineered terrain', result.metalStillMetal === 9 && result.metalBlocks, JSON.stringify(result));
   check(
-    'player movement sweeps larger floating rubble away',
-    result.sweepWasBlocking && result.sweepMoved && result.sweepCleared === result.sweepTotal && result.sweepParticles > 0,
+    'player movement sweeps loose floating rubble away',
+    !result.sweepWasBlocking && result.sweepMoved && result.sweepCleared === result.sweepTotal && result.sweepParticles > 0,
+    JSON.stringify(result),
+  );
+  check(
+    'player movement still stops at a detached slab of five or more cells',
+    result.slabBlocks && !result.slabMoved && result.slabLeft === 9,
     JSON.stringify(result),
   );
   check(

@@ -91,6 +91,9 @@ try {
     ctx.player.dead = false;
     ctx.player.hp = 100;
     ctx.player.invuln = 0;
+    // A level's first 5.5 s are an arrival grace in which creatures cannot see the alchemist
+    // (the Rillback's hunt below would never start); firing a wand ends it, so end it here.
+    ctx.state.arrivalGraceUntil = ctx.state.frameCount;
 
     // Root Loper arena.
     clear(340, 600, 500, 700);
@@ -163,7 +166,10 @@ try {
     fill(824, 670, 829, 674, Cell.Blood, bloodColor);
     fill(832, 670, 837, 674, Cell.Slime, slimeColor);
     fill(840, 670, 845, 674, Cell.Acid, () => 0x33ff33);
-    ctx.player.x = 870;
+    // Territorial: a Rillback only hunts (and so only charges its pool) once the alchemist is
+    // within 38 cells (creatures/perception `intrusion`) or has worn on it for a second or two;
+    // from further off it just watches. Stand at the pool's edge, 34 cells from it.
+    ctx.player.x = 858;
     ctx.player.y = 674;
     const rill = spawnAt('rillback', 824, 676);
     rill.timer = 23;
@@ -177,7 +183,10 @@ try {
     const chargedBlood = countIn(824, 670, 829, 674, (t, x, y) => t === Cell.Blood && w.charge[w.idx(x, y)] > 0);
     const chargedSlime = countIn(832, 670, 837, 674, (t, x, y) => t === Cell.Slime && w.charge[w.idx(x, y)] > 0);
     const chargedAcid = countIn(840, 670, 845, 674, (t, x, y) => t === Cell.Acid && w.charge[w.idx(x, y)] > 0);
-    clear(810, 650, 842, 681);
+    // Drain the whole arena above the floor: a hunting eel swims toward the alchemist, so it is
+    // no longer where it was spawned, and the pool has no walls, so water that spilled past its
+    // ends while the sim ran would still keep it wet.
+    clear(760, 620, 900, 681);
     tick(8);
     const rillDry = rill.rillWet ?? 0;
 
