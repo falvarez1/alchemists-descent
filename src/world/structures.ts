@@ -28,7 +28,7 @@ import {
   setValveCells,
 } from '@/core/mechanismFactories';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
-import { Cell } from '@/sim/CellType';
+import { Cell, isLiquid } from '@/sim/CellType';
 import {
   EMPTY_COLOR,
   goldColor,
@@ -246,6 +246,49 @@ export function placeStructures(
         bestD = d;
         best = { cx: reg.cx, cy: reg.cy };
       }
+    }
+    // The key never rests at the bottom of a flood (GEN 62). A flooded floor's
+    // liquid counts as open, so its one giant region has its centroid in the sea
+    // and the key went to (795, 1057) on both reviewed seeds: a dive down a slit
+    // 500 deep, then a swim. A pick that is on the world floor or mostly liquid is
+    // swapped for the farthest DRY body-fit cell in the upper three quarters;
+    // with none, the old pick stands (never a silent skip).
+    const liquidNear = (x: number, y: number, rx: number, ry: number): { liquid: number; total: number } => {
+      let liquid = 0, total = 0;
+      for (let dy = -ry; dy <= ry; dy += 2) {
+        for (let dx = -rx; dx <= rx; dx += 2) {
+          const X = Math.floor(x) + dx, Y = Math.floor(y) + dy;
+          if (!w.inBounds(X, Y)) continue;
+          total++;
+          if (isLiquid(w.types[w.idx(X, Y)])) liquid++;
+        }
+      }
+      return { liquid, total };
+    };
+    // A pick that stands in a sea (the world floor, or a quarter liquid round it) is swapped;
+    // the swap must be DRY (no liquid within 24 of it: the vault pocket is carved there, and
+    // a pocket below a flood's surface fills at the first tick).
+    const wetAt = (x: number, y: number): boolean => {
+      if (y > HEIGHT * 0.85) return true;
+      const { liquid, total } = liquidNear(x, y, 14, 14);
+      return total > 0 && liquid / total > 0.25;
+    };
+    const dryAt = (x: number, y: number): boolean => y <= HEIGHT * 0.85 && liquidNear(x, y, 24, 24).liquid === 0;
+    if (best && fits && wetAt(best.cx, best.cy)) {
+      let dryBest: { cx: number; cy: number } | null = null;
+      let dryD = -1;
+      for (let y = Math.floor(HEIGHT * 0.2); y < HEIGHT * 0.78; y += 8) {
+        for (let x = 60; x < WIDTH - 60; x += 8) {
+          if (!fits[x + y * WIDTH] || !dryAt(x, y)) continue;
+          if (ledger.intersects(x - 15, y - 15, x + 15, y + 15)) continue;
+          const d = Math.abs(x - spawn.x) + Math.abs(y - spawn.y) * 0.6;
+          if (d > dryD) {
+            dryD = d;
+            dryBest = { cx: x, cy: y };
+          }
+        }
+      }
+      if (dryBest) best = dryBest;
     }
     const kx = Math.floor(best ? best.cx : WIDTH - spawn.x);
     const kyBase = Math.floor(best ? best.cy : HEIGHT * 0.5);
