@@ -70,9 +70,9 @@ export const ENDING_AGAIN: EndingScript = {
 /* ---------------------------------------------------------------------------
  * THE ENDING READS THE RUN (polish 2026-09). Four facts of the descent shade
  * it: whether Pell waits at the top with a cup (the apprentice took his tea),
- * and, on a later victory, the hardest tier and today's shared descent. Text
- * only: these plates run silent and captioned until they are recorded, and
- * none of them is in `storyVoiceLines` (the voice budget is shared).
+ * and, on a later victory, the hardest tier and today's shared descent. Their
+ * lines are recorded (registered in `storyVoiceLines`); a plate holds for as
+ * long as its line runs.
  * ------------------------------------------------------------------------- */
 
 export interface EndingFacts {

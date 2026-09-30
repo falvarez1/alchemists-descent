@@ -20,8 +20,9 @@ import type { StoryBiome } from './types';
  * The lines in PELL and PELL_LAST_PAGE that were recorded stay word for word
  * (their clips are keyed by the text); storyVoiceLines registers PELL for the
  * voice budget. The NOTICES, BARKS, second-talk lines, tea refusals and the
- * last page's P.S. are text first: they ship without a clip (the dialogue box
- * or a caption carries the words) and are not in the registry.
+ * last page's P.S. were built text first (2026-09-30) and then recorded with the
+ * rest: storyVoiceLines registers every one, and the dialogue box or a caption
+ * still carries the words.
  */
 
 /** What Pell can hand over. */
@@ -318,14 +319,14 @@ export const PELL_ENDING = {
   again: { id: 'pell.ending.again', text: 'Top of the flue. I told you. I’m very good at further.' },
 } as const;
 
-/* ---------------- text first: the notices, the barks, the second talk ---------------- */
+/* ---------------- the notices, the barks, the second talk (recorded 2026-09-30) ---------------- */
 
 /**
  * NOTICES: one line after his greeting, about how the run is going — read off
  * facts the game already keeps. At most one a visit, each at most once a run.
  * `ever` ones (kit, tier, boon jokes) are said at most once ever; the rest
  * answer a situation and may come round on another run. Lower `priority` first.
- * Every condition given must hold. Not voiced yet.
+ * Every condition given must hold. Recorded (see storyVoiceLines).
  */
 export interface PellNotice {
   id: string;
@@ -398,7 +399,7 @@ export const PELL_NOTICES: readonly PellNotice[] = [
 
 /**
  * BARKS: a short line, through the caption channel, when something happens near
- * his camp. Once a run each. Not voiced.
+ * his camp. Once a run each. Recorded (through the caption channel).
  */
 export interface PellBark {
   id: string;
@@ -422,8 +423,8 @@ export const PELL_BARKS = {
 /**
  * Said when the apprentice talks to him again on the same floor, instead of the
  * farewell over again: never the same as the last one said. `bye` ends the
- * talk; `menu` opens the choices he still has. Not voiced (except the kettle:
- * it was a veteran's greeting once, and its recording still fits).
+ * talk; `menu` opens the choices he still has. Recorded (the kettle line is an
+ * older recording: it was a veteran's greeting once, and still fits).
  */
 export const PELL_SECOND_TALK = {
   bye: [

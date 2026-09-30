@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PELL, PELL_NOTICES, PELL_SECOND_TALK, storyVoiceLines } from '@/content/story';
+import { PELL, PELL_BARKS, PELL_NOTICES, PELL_SECOND_TALK, storyVoiceLines } from '@/content/story';
 import type { PellFacts } from '@/game/story/host';
 import { IDLE_ACTS, pickIdle, seededRandom } from '@/game/story/pellIdle';
 import { campDress, mouthOpen, noticeHeardId, noticeKey, pickDifferent, pickNotice, pinPostscript, teaUnneeded, withTold } from '@/game/story/pellRules';
@@ -219,14 +219,14 @@ describe('the run record', () => {
   });
 });
 
-describe('the voice budget', () => {
-  it('the text-first lines are not in the registry; the recorded ones still are', () => {
-    const registered = new Set(storyVoiceLines().map(l => l.text));
-    for (const n of PELL_NOTICES) expect(registered.has(n.text), n.id).toBe(false);
-    for (const line of [...PELL_SECOND_TALK.bye, ...PELL_SECOND_TALK.menu]) {
-      // (The kettle line is an old, recorded one: it stays registered as a veteran's line no longer, and still has its clip.)
-      if (line !== 'I’ve started leaving the kettle on for you.') expect(registered.has(line), line).toBe(false);
-    }
+describe('what Pell says is registered, so it is recorded', () => {
+  // Built text-first on 2026-09-30 (kept out of the registry to stay under the old 14,000-character voice
+  // budget); the owner then authorised recording everything, so every line Pell can say is registered.
+  it('his notices, barks and second-talk lines are all in the catalogue', () => {
+    const registered = new Set(storyVoiceLines().filter(l => l.speaker === 'pell').map(l => l.text));
+    for (const n of PELL_NOTICES) expect(registered.has(n.text), n.id).toBe(true);
+    for (const b of [PELL_BARKS.fire, PELL_BARKS.corpse, PELL_BARKS.linger, PELL_BARKS.hurt, ...Object.values(PELL_BARKS.hostile)]) expect(registered.has(b.text), b.id).toBe(true);
+    for (const line of [...PELL_SECOND_TALK.bye, ...PELL_SECOND_TALK.menu, ...Object.values(PELL_SECOND_TALK.floor).flat()]) expect(registered.has(line), line).toBe(true);
     expect(registered.has(PELL.earthen!.first.greet[0]!)).toBe(true);
   });
 });

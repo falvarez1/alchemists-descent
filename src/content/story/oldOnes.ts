@@ -44,11 +44,9 @@ export const ASH_DOORS: Readonly<Partial<Record<StoryBiome, Beat>>> = {
  * THE OLD ONES READ THE RUN (polish 2026-09). Matron Ash remarks on what the
  * apprentice has been through (a third line after her greeting), answers each
  * boon struck and each purchase made, and the Clerk of Works' notices go up
- * (content/story/clerk). All of it is TEXT-FIRST: it types on in her panel and
- * runs silently until recorded, and none of it is in `storyVoiceLines` — the
- * story's voice budget (tests/story.test.ts, 14,000 characters) is shared with
- * every other stream. Register a line there (content/story/index) when it is
- * commissioned.
+ * (content/story/clerk). Her remarks are recorded (registered in
+ * `storyVoiceLines`, content/story/index); the Clerk's notices and the one-phial
+ * note are written words on the Sanctum's page and are never spoken.
  * ------------------------------------------------------------------------- */
 
 /** What the Sanctum can tell about the run as the apprentice arrives. */

@@ -180,6 +180,11 @@ const STORY_TAGS = {
     [/^(The Bellows\. The evening|We closed the valves|Everyone went up|Someone had to stay|A year ago\. A surveyor|He was frightened|I did try to send|The Cisterns, on the morning|Every pipe in the Works|Then the Works coughed|The Kiln, a hundred|It was built to shovel|When the Heart began|Be kind to it|The Cold Store, on its last|The final delivery|The Glass Galleries, on the day|Everyone stopped work|Nobody wrote down)/, 'softly'],
     [/Guild regulations forbid that/, 'dryly'],
     [/^Do not look down/, 'dryly'],
+    // The 2026-09-30 pass: the asides that land dry, the two epilogues and the echoes' new names.
+    [/^(You are on fire|An empty flask|You have hit one thing with another|That was not the wand|Three in a chain)/, 'dryly'],
+    [/^(Again, apprentice|Again\. The flue is patient|Archmage, at the last)/, 'dryly'],
+    [/^(Quiet\. Somebody has switched the pump|It has stopped shovelling)/, 'softly'],
+    [/^(Hobb on the wheel|Dunmore and Hobb had|Hobb and Dunmore ran|Wick, the foreman, patted)/, 'softly'],
   ],
   pell: [
     [/^Oh! Oh, thank goodness/, 'nervous'],
@@ -193,6 +198,13 @@ const STORY_TAGS = {
     [/Don’t tell the Old Ones I peeked/, 'whispers'],
     [/^My last tin of tea/, 'warmly'],
     [/^The Kiln\. The stoker is sad/, 'softly'],
+    // The 2026-09-30 pass: his notices and barks. Anxious where the joke is his nerves, warm where it is care.
+    [/^(Is that — it’s fine|Sorry, were you waiting|You’re bleeding on the map|It’s just a slime|Eight legs|Don’t look at it\. If it doesn’t)/, 'nervous'],
+    [/^(Oh dear\. You’re wearing rather more|The rope\. Yes)/, 'nervous'],
+    [/^Is that — did you know them/, 'softly'],
+    [/^You opened it, didn’t you/, 'warmly'],
+    [/^You look well! Horribly well/, 'surprised'],
+    [/^(Changed your mind|Yes\? Was there something else)/, 'warmly'],
   ],
   ash: [[/./, 'softly']],
 };
