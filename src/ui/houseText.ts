@@ -17,12 +17,23 @@ export function isShouting(text: string): boolean {
   return /[A-Z]{2}/.test(text) && !/[a-z]/.test(text);
 }
 
+/** Two or more adjacent SHOUTED words inside a line that also carries lowercase ("16 oz SCATTERS WHERE YOU FELL"). */
+const SHOUTED_RUN = /\b[A-Z]{2,}(?:[ \t]+[A-Z]{2,})+\b/g;
+
 /**
  * "THE MECHANISM GROANS — SOMETHING GIVES WAY" → "The mechanism groans — something gives way".
- * Lines that already carry lowercase are returned untouched.
+ * A mixed line keeps its own words but has any SHOUTED run calmed
+ * ("SECRET ALCHEMY — Gunpowder Bloom" → "Secret alchemy — Gunpowder Bloom");
+ * a run of initialisms and lone words ("LMB whip · RMB throw") stays as written.
  */
 export function calmCase(text: string): string {
-  if (!isShouting(text)) return text;
+  if (!isShouting(text)) {
+    return text.replace(SHOUTED_RUN, (run, offset: number) => {
+      const atStart = offset === 0 || /[.!?:—–]\s*$/.test(text.slice(0, offset));
+      const calmed = run.replace(/[A-Z]+/g, (word) => (KEEP_UPPER.has(word) ? word : word.toLowerCase()));
+      return atStart ? calmed[0].toUpperCase() + calmed.slice(1) : calmed;
+    });
+  }
   let sentenceStart = true;
   return text.replace(/[A-Za-z0-9][A-Za-z0-9']*|[.!?:]/g, (token) => {
     if (token === '.' || token === '!' || token === '?' || token === ':') {

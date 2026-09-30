@@ -1012,7 +1012,7 @@ export class PlayerControl implements PlayerControlApi {
         gp.vy = -1.2 - entityRandom() * 1.4;
         runtime.pickups.push(gp);
       }
-      ctx.events.emit('toast', { text: `${spill} oz SCATTERS WHERE YOU FELL` });
+      ctx.events.emit('toast', { text: `${spill} oz of gold scatters where you fell.` });
     }
     ctx.levels.saveDeathCheckpoint?.(ctx);
     // RAGDOLL DEATH: the wizard becomes a tumbling corpse flung with his last

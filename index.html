@@ -257,8 +257,11 @@
                     <button id="respawn-btn">Return to your waystone</button>
                   </div>
                 </div>
+                <!-- The curtain is a picture of the wait; the wait is SAID here. A live region inside an aria-hidden
+                     subtree is never announced, so the announcement lives beside it, always exposed and empty at rest. -->
+                <div id="level-curtain-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
                 <div id="level-curtain" aria-hidden="true">
-                    <div class="level-curtain-panel" role="status" aria-live="polite" aria-atomic="true">
+                    <div class="level-curtain-panel">
                         <div class="run-launcher-loading-sigil" aria-hidden="true">
                             <span></span>
                             <span></span>
