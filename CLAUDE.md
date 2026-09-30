@@ -49,6 +49,10 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # verify-builder-pro.mjs, verify-builder-ux.mjs, verify-builder-prefabs.mjs,
 # verify-builder-power.mjs, verify-sprites.mjs, verify-machines.mjs,
 # verify-gallery.mjs
+# Builder probes arm things through run-helpers (the shell groups tools, tabs the palette and
+# hides the game header while it is open): clickBuilderTool(page,'rectFill'),
+# clickBuilderKind(page,'door'), clickBuilderControl(page,'#b-save') (opens the menu/tab that
+# holds it), openBuilderPaletteTab, toggleBuilderMode (header button, or #b-exit when hidden).
 # Worldgen eyeball/diag: shot-biomes.mjs (overview PNGs), diag-biome.mjs,
 # shot-blueprint.mjs <levelId...> (FULL-level HUD-free blueprint PNG with
 # labeled inspection markers + spawn/player/enemy dots - THE way to judge
@@ -100,6 +104,12 @@ dev server. `scripts/verify-*.mjs` show the pattern.
   camera, spells aim with the *previous* frame's render snapshot, lighting rebuilds every
   other tick. Do not reorder `Game.tick` casually. Never gate render-side work on
   `frameCount` parity alone: a render can run two ticks, which parks the parity.
+- **The Builder's shell is `src/builder/shellMarkup.ts` + `styles/studio-chrome.css`** (tokens in
+  `styles/studio.css`, old rules in `builder.css`: no colour literals in any of them). Handlers bind by
+  element id (`this.el('b-save')` throws on a miss) and ~20 probes click the same ids: a control may
+  MOVE, it keeps its id (`tests/builder-shell-markup.test.ts`). The Builder owns the terrain while open:
+  a document with none captures the live grid on save/validate/play, and opening over a changed Sandbox
+  asks which copy to edit. See `docs/BUILDER-STUDIO.md`.
 - **Three authoring/save families, kept separate:** Sandbox (live-sim painting, raw grid v1
   saves), the Builder authoring tool (`EditorDocument` v2 in `src/builder/`, compiles disposable
   playtest runtimes — see `docs/BUILDER.md`), and expedition runtime saves. Don't grow one
@@ -115,9 +125,12 @@ dev server. `scripts/verify-*.mjs` show the pattern.
   runtime — not the instantiation setter — wrote).
   **Every cell patch is tagged with a `WorldIdentity` and refused on mismatch.** A `CellPatch`
   is only indices, and every world is 1600×1064, so size proves nothing — without the tag a
-  Builder stroke lands at the same offsets inside an unrelated level. The amber `LINK ≠` pill
-  pulls the peer's live grid over. The editor has its own route (`/builder.html`,
-  a second Vite input) — `verify:builder-bundle` checks BOTH entries.
+  Builder stroke lands at the same offsets inside an unrelated level. The Builder's **Game link**
+  button (`src/app/LinkControl.ts`; ALL the judgement is the pure `src/app/authorLinkView.ts`) names
+  the state and the one action — *Open game window*, or *Use the game's level* (pull) when a peer is
+  on another world; the old header pill (`LINK ≠`, text and `data-state` kept for the probes)
+  remains in the game window. The editor has its own route (`/builder.html`,
+  a second Vite input, `body.editor-window`) — `verify:builder-bundle` checks BOTH entries.
   Relay behavior lives ONCE in `servers/authorlink/room.mjs`; the Node host and the
   Cloudflare Durable Object host only own sockets. Hosted rooms run strict (origin
   allowlist at the upgrade, room token for writes, per-path ranges from
@@ -209,6 +222,9 @@ loops degrade criteria progressively, never silently skip.
   `docs/BOONS.md` — the Sanctum's boons: the pool, each hook, tuning, and what was measured;
   `docs/DIFFICULTY.md` — the four-tier ladder: who may pick which, where it lives, why it fits;
   `docs/PROBE-HEALTH.md` — which `scripts/verify-*` probes pass, which are stale and why (run before trusting a red one)
+- `docs/BUILDER-STUDIO.md` — the Builder's shell, design system, Sandbox↔Builder↔game flow and what was cut;
+  `docs/BATTLE-ROYALE-AND-SPACETIMEDB.md` — why SpacetimeDB is NOT integrated now and what an arena
+  mode needs first (a fighter roster; `ctx.player` is 701 refs in 103 files)
 - `docs/MULTIPLAYER-ARCHITECTURE.md` — **archived/frozen 2026-09-26** (the
   SpacetimeDB transport lives only in git tag `archive/spacetimedb`); still the
   reference for the determinism boundary, why the grid is NOT a database, and
