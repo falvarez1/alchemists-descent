@@ -320,3 +320,99 @@ body.editor-window #b-exit { display: none; }
     border-color: var(--st-line-2); background: var(--st-surface-3); color: var(--st-text-2);
 }
 #builder-root #builder-bar #b-exit:hover { background: var(--st-surface-4); border-color: var(--st-line-3); color: var(--st-text); }
+
+/* ------------------------------------------ confirm dialogs in the authoring build */
+
+/* AppDialog is shared with the game, whose house style is amber-on-ink. In the authoring build (Sandbox + Builder) it should
+   read as part of the editor; the player build keeps the house style. */
+body:not(.player-build) .app-dialog-root { background: var(--st-scrim); backdrop-filter: blur(2px); font-family: var(--st-font); }
+body:not(.player-build) .app-dialog-panel {
+    width: min(480px, calc(100vw - 44px)); padding: 18px 18px 14px; gap: 10px;
+    background: var(--st-surface-2); border: 1px solid var(--st-line-2); border-radius: var(--st-r-3); box-shadow: var(--st-shadow-pop);
+}
+body:not(.player-build) .app-dialog-panel.danger { border-color: var(--st-line-2); }
+body:not(.player-build) .app-dialog-title { color: var(--st-text); font: 600 14px/1.3 var(--st-font); letter-spacing: 0; text-transform: none; }
+body:not(.player-build) .app-dialog-message { color: var(--st-text-2); font: 400 13px/1.55 var(--st-font); }
+body:not(.player-build) .app-dialog-input { background: var(--st-well); border-color: var(--st-line-2); color: var(--st-text); font-family: var(--st-font); }
+body:not(.player-build) .app-dialog-input:focus { border-color: var(--st-accent-line); box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-accent) 24%, transparent); }
+body:not(.player-build) .app-dialog-actions { gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+body:not(.player-build) .app-dialog-btn {
+    min-width: 0; height: 30px; min-height: 0; padding: 0 14px; border-radius: var(--st-r-2);
+    font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none;
+}
+body:not(.player-build) .app-dialog-btn.secondary { background: var(--st-surface-3); border: 1px solid var(--st-line-2); color: var(--st-text-2); }
+body:not(.player-build) .app-dialog-btn.secondary:hover { background: var(--st-surface-4); color: var(--st-text); filter: none; }
+body:not(.player-build) .app-dialog-btn.secondary.danger { color: var(--st-danger-text); border-color: var(--st-danger-line); background: var(--st-danger-bg); }
+body:not(.player-build) .app-dialog-btn.primary { background: var(--st-accent); border: 1px solid var(--st-accent); color: var(--st-accent-fg); font-weight: 600; }
+body:not(.player-build) .app-dialog-btn.primary:hover { background: var(--st-accent-hi); border-color: var(--st-accent-hi); filter: none; }
+body:not(.player-build) .app-dialog-btn.primary.danger { background: var(--st-danger); border-color: var(--st-danger); color: #fff; }
+body:not(.player-build) .app-dialog-btn:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 1px; }
+
+/* --------------------------------------------- property grid (Inspector & co.) */
+
+/* Panels dock edge-to-edge: a header strip, then sections separated by hairlines. */
+#builder-root .builder-panel > .bi-head[data-panel-handle],
+#builder-root .builder-panel > .builder-panel-title {
+    min-height: 32px; padding: 0 10px; box-sizing: border-box;
+    background: var(--st-surface-2); border-bottom: 1px solid var(--st-line);
+    font: 600 11px/1 var(--st-font); letter-spacing: 0.04em; color: var(--st-text-2); text-transform: uppercase;
+}
+#builder-root .bi-panel-body { display: flex; flex-direction: column; gap: 0; padding: 0; }
+#builder-root .bi-section { display: block; border-top: 0; padding: 0; border-bottom: 1px solid var(--st-line); }
+#builder-root .bi-section:last-child { border-bottom: 0; }
+#builder-root .bi-section > .editor-section-head {
+    height: 28px; margin: 0; padding: 0 10px; gap: 6px; box-sizing: border-box;
+    background: var(--st-surface-1); color: var(--st-text-2);
+    font: 600 11px/1 var(--st-font); letter-spacing: 0.04em; text-transform: uppercase;
+}
+#builder-root .bi-section > .editor-section-head:hover { background: var(--st-surface-2); color: var(--st-text); outline: none; }
+#builder-root .bi-section > .editor-section-head:focus-visible { outline: 2px solid var(--st-focus); outline-offset: -2px; }
+#builder-root .bi-section-body { display: flex; flex-direction: column; gap: 6px; padding: 4px 10px 12px; }
+#builder-root .bi-id { padding: 0 0 2px; color: var(--st-text-4); font: 400 10px/1.3 var(--st-mono); }
+#builder-root .bi-empty { padding: 12px 10px; color: var(--st-text-3); font: 400 12px/1.6 var(--st-font); }
+
+/* label left, control right, one 26px rhythm */
+#builder-root .bi-row {
+    display: grid; grid-template-columns: minmax(64px, 42%) minmax(0, 1fr); align-items: center; gap: 8px;
+    min-height: 26px; font: 400 12px/1.3 var(--st-font);
+}
+#builder-root .bi-row > span:first-child { color: var(--st-text-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#builder-root .bi-row > b { justify-self: end; color: var(--st-text); font: 500 12px/1.3 var(--st-font); text-align: right; }
+#builder-root .bi-row > b.bi-warn { color: var(--st-warn-text); }
+#builder-root .bi-row input[type='number'],
+#builder-root .bi-row input[type='text'],
+#builder-root .bi-row select {
+    width: 100%; height: 26px; padding: 0 8px; box-sizing: border-box; min-width: 0;
+    border: 1px solid var(--st-line-2); border-radius: var(--st-r-2); background: var(--st-well); color: var(--st-text);
+    font: 400 12px/1 var(--st-font); font-variant-numeric: tabular-nums;
+}
+#builder-root .bi-row input:hover, #builder-root .bi-row select:hover { border-color: var(--st-line-3); }
+#builder-root .bi-row input:focus, #builder-root .bi-row select:focus { outline: none; border-color: var(--st-accent-line); box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-accent) 22%, transparent); }
+#builder-root .bi-row input[type='checkbox'] { justify-self: start; width: 16px; height: 16px; accent-color: var(--st-accent); }
+#builder-root .bi-row .editor-field-vec2 { width: 100%; }
+#builder-root .bi-row input[type='range'] { width: 100%; accent-color: var(--st-accent); }
+#builder-root .bi-row.editor-field-checkbox { grid-template-columns: minmax(64px, 42%) auto; }
+
+/* buttons inside panels: one secondary look, sentence case */
+#builder-root .bi-panel-body button:not(.editor-section-head):not(.b-close),
+#builder-root .bi-action-row button {
+    height: 26px; padding: 0 10px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-2);
+    background: var(--st-surface-3); color: var(--st-text-2);
+    font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none;
+}
+#builder-root .bi-panel-body button:not(.editor-section-head):not(.b-close):hover { background: var(--st-surface-4); color: var(--st-text); border-color: var(--st-line-3); }
+#builder-root #bi-delete { background: var(--st-danger-bg); border-color: var(--st-danger-line); color: var(--st-danger-text); }
+#builder-root #bi-delete:hover { background: #3a1a1d; border-color: var(--st-danger); color: #ffc2c2; }
+
+/* the dock chevrons: a drawn arrow instead of a glyph */
+#builder-root .bp-chevron { width: 10px; flex: 0 0 10px; font-size: 10px; color: var(--st-text-3); }
+
+#builder-root .bi-section > .editor-section-head { border: 0; border-radius: 0; box-shadow: none; }
+#builder-root .bi-row.editor-field-vec2 { width: 100%; grid-template-columns: minmax(64px, 42%) minmax(0, 1fr); }
+#builder-root .bi-row.editor-field-vec2 > span.editor-field-vec2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; }
+
+/* Buttons written in capitals in the markup read as sentences; the text content is unchanged. */
+#builder-root .bi-panel-body button:not(.editor-section-head):not(.b-close),
+#builder-root .bi-action-row button { text-transform: lowercase; }
+#builder-root .bi-panel-body button:not(.editor-section-head):not(.b-close)::first-letter,
+#builder-root .bi-action-row button::first-letter { text-transform: uppercase; }
