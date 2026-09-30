@@ -1,7 +1,7 @@
 // Dev console end-to-end gate.
 // Usage: node scripts/verify-console.mjs [url]   (dev server must be running)
 import { chromium } from 'playwright-core';
-import { startConsoleTestRun, leaveTitleIfShown } from './run-helpers.mjs';
+import { startConsoleTestRun, leaveTitleIfShown, openDevMenu } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -31,6 +31,7 @@ await page.waitForTimeout(900);
 const isOpen = () =>
   page.evaluate(() => document.getElementById('dev-console')?.classList.contains('open') === true);
 
+await openDevMenu(page);
 await page.click('#dev-console-toggle');
 await page.waitForFunction(() => document.getElementById('dev-console')?.classList.contains('open'));
 await page.waitForFunction(() => document.activeElement?.id === 'dev-console-input');
