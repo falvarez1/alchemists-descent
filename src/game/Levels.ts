@@ -69,6 +69,7 @@ import { bossArenaRect } from '@/core/bossWard';
 import { CAMP_HAVEN_RADIUS } from '@/config/pacing';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
+import { FindabilityAudit, createAuditBuffers, type AuditBuffers, type AuditResult } from '@/world/findabilityAudit';
 import { WORKS_GATE, worksGateOpen } from '@/world/breathingWorks';
 import { dropStrandedStands } from '@/world/floraPass';
 import { blocksEntity, Cell, CELL_COUNT, isLiquid, isSoftGrowth } from '@/sim/CellType';
@@ -125,6 +126,13 @@ const CURTAIN_HOLD_MS = 450;
 // The last two checks cover distant powder at 15 Hz. In d6 seed 1 its portal
 // approach was still receiving falling grains after 445 full material steps.
 const SETTLED_FINDABILITY_REPAIR_DELAYS_MS = [300, 1600, 2900, 4400, 6500, 9000, 12000];
+/** Each check is built a slice a frame (world/findabilityAudit) instead of as one 50-170 ms freeze:
+ *  3 ms a frame, 1 ms while he is casting or something hostile is close. */
+const SETTLED_AUDIT_BUDGET_MS = 3;
+const SETTLED_AUDIT_BUSY_BUDGET_MS = 1;
+const SETTLED_AUDIT_BUSY_RANGE = 140;
+/** Fail-open: if the slices somehow cannot finish (nothing calls update), the old synchronous check runs. */
+const SETTLED_AUDIT_GUARD_MS = 10000;
 /** Authored test arenas REBUILD their terrain after generation (buildWeaverArena /
  *  buildPhysicsArena wipe the world and stamp a hand-designed layout). They must
  *  skip the procedural findability repair, which would otherwise "rescue" the now-
@@ -689,6 +697,10 @@ export class Levels implements LevelsApi {
   private findabilityRepairToken = 0;
   private settledFindabilityTimer: ReturnType<typeof setTimeout> | null = null;
   private settlingRuntime: LevelRuntime | null = null;
+  /** The check in progress (sliced by update) and its working planes. */
+  private settledAudit: { audit: FindabilityAudit; runtime: LevelRuntime; token: number; done: (result: AuditResult | null) => void } | null = null;
+  private settledAuditBuffers: AuditBuffers | null = null;
+  private settledAuditGuard: ReturnType<typeof setTimeout> | null = null;
   get findabilityReady(): boolean { return this.current === null || this.settlingRuntime !== this.current; }
 
   private readonly storage: ExpeditionStorage;
@@ -712,6 +724,7 @@ export class Levels implements LevelsApi {
       clearTimeout(this.settledFindabilityTimer);
       this.settledFindabilityTimer = null;
     }
+    this.dropSettledAudit();
     this.findabilityRepairToken++;
   }
 
@@ -964,6 +977,7 @@ export class Levels implements LevelsApi {
    * explored-mask stamping, hostile-count events.
    */
   update(ctx: Ctx): void {
+    this.advanceSettledAudit(ctx);
     if (ctx.state.mode !== 'play' || this._transitioning || ctx.player.dead) return;
     const runtime = this.current;
     if (!runtime) return;
@@ -2714,6 +2728,10 @@ export class Levels implements LevelsApi {
       clearTimeout(this.settledFindabilityTimer);
       this.settledFindabilityTimer = null;
     }
+    this.dropSettledAudit();
+    // The fingerprint of the last check that found nothing wrong: a check whose inputs still match it ends
+    // after the hash (a still floor costs ~2 ms, not ~90).
+    let lastCleanPrint: string | null = null;
     const runStep = (step: number): void => {
       if (this.settledFindabilityTimer !== null) this.settledFindabilityTimer = null;
       if (token !== this.findabilityRepairToken || this.currentId !== id || this.current !== runtime) return;
@@ -2725,18 +2743,68 @@ export class Levels implements LevelsApi {
       // Liquid that ran into Pell's camp while the floor settled drains downhill too.
       const camp = runtime.story?.camp;
       if (camp) this.drainCamp(ctx, runtime, camp);
-      if (this.repairFindability(ctx, runtime, 'settled') && this.checkpointSaveSuppression === 0) {
-        this.saveExpedition(ctx);
-      }
-      const next = step + 1;
-      if (next < SETTLED_FINDABILITY_REPAIR_DELAYS_MS.length) {
-        this.settledFindabilityTimer = globalThis.setTimeout(
-          () => runStep(next),
-          SETTLED_FINDABILITY_REPAIR_DELAYS_MS[next] - SETTLED_FINDABILITY_REPAIR_DELAYS_MS[step],
-        );
-      } else this.settlingRuntime = null;
+      const startedAt = performance.now();
+      const finish = (result: AuditResult | null): void => {
+        if (token !== this.findabilityRepairToken || this.current !== runtime) return;
+        // The audit only DETECTS (on a snapshot of the grid). An error hands over to the synchronous repair, which
+        // audits the live grid again before it carves; a null result is the fail-open path (no slices ran): the old
+        // synchronous check, unchanged.
+        const dirty = result === null || result.issues.some((issue) => issue.severity === 'error');
+        lastCleanPrint = result !== null && !dirty ? result.print : null;
+        if (dirty && this.repairFindability(ctx, runtime, 'settled') && this.checkpointSaveSuppression === 0) {
+          this.saveExpedition(ctx);
+        }
+        const next = step + 1;
+        if (next < SETTLED_FINDABILITY_REPAIR_DELAYS_MS.length) {
+          // The schedule is kept against the clock: a check that took a second to slice leaves that much less to wait.
+          const wait = SETTLED_FINDABILITY_REPAIR_DELAYS_MS[next] - SETTLED_FINDABILITY_REPAIR_DELAYS_MS[step] - (performance.now() - startedAt);
+          this.settledFindabilityTimer = globalThis.setTimeout(() => runStep(next), Math.max(0, wait));
+        } else {
+          this.settlingRuntime = null;
+          this.dropSettledAudit();
+        }
+      };
+      this.settledAuditBuffers ??= createAuditBuffers(runtime.world.width, runtime.world.height);
+      this.settledAudit = {
+        audit: new FindabilityAudit(runtime, lastCleanPrint, this.settledAuditBuffers), runtime, token, done: finish,
+      };
+      this.settledAuditGuard = globalThis.setTimeout(() => {
+        const pending = this.settledAudit;
+        this.settledAuditGuard = null;
+        this.settledAudit = null;
+        pending?.done(null);
+      }, SETTLED_AUDIT_GUARD_MS);
     };
     this.settledFindabilityTimer = globalThis.setTimeout(() => runStep(0), SETTLED_FINDABILITY_REPAIR_DELAYS_MS[0]);
+  }
+
+  /** One slice of the settled check per game tick (a few ms; see world/findabilityAudit). */
+  private advanceSettledAudit(ctx: Ctx): void {
+    const pending = this.settledAudit;
+    if (!pending) return;
+    if (pending.token !== this.findabilityRepairToken || this.current !== pending.runtime) {
+      this.dropSettledAudit();
+      return;
+    }
+    const player = ctx.player;
+    let busy = player.firing === true;
+    if (!busy) {
+      for (const e of ctx.enemies) {
+        const dx = e.x - player.x, dy = e.y - player.y;
+        if (dx * dx + dy * dy < SETTLED_AUDIT_BUSY_RANGE * SETTLED_AUDIT_BUSY_RANGE) { busy = true; break; }
+      }
+    }
+    const result = pending.audit.step(busy ? SETTLED_AUDIT_BUSY_BUDGET_MS : SETTLED_AUDIT_BUDGET_MS);
+    if (!result) return;
+    this.settledAudit = null;
+    if (this.settledAuditGuard !== null) { clearTimeout(this.settledAuditGuard); this.settledAuditGuard = null; }
+    pending.done(result);
+  }
+
+  private dropSettledAudit(): void {
+    this.settledAudit = null;
+    this.settledAuditBuffers = null;
+    if (this.settledAuditGuard !== null) { clearTimeout(this.settledAuditGuard); this.settledAuditGuard = null; }
   }
 
   /** Generate a fresh level World into ctx and place its hostile population. */

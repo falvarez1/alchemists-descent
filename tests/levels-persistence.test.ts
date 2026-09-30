@@ -116,43 +116,101 @@ function restoreSavedBlob(levels: Levels, ctx: Ctx, blob: unknown): LevelRuntime
 }
 
 describe('settled route repairs', () => {
-  it('waits for material progress under pauses or slow frames, then cancels on disposal', () => {
-    vi.useFakeTimers();
-    const ctx = {} as Ctx;
+  /** A 32x32 rock with one waystone sealed inside it: an error-severity findability issue the audit must report. */
+  function sealedFloor(): LevelRuntime {
+    const world = new World(32, 32);
+    world.types.fill(Cell.Stone);
+    for (let y = 18; y < 31; y++) for (let x = 8; x < 24; x++) world.types[world.idx(x, y)] = Cell.Empty;
+    const runtime = makeLevelRuntime({ def: LEVELS.d2, world, spawn: { x: 16, y: 29 } });
+    runtime.waystones.push({ x: 16, y: 4, lit: false });
+    return runtime;
+  }
+
+  function harness(runtime: LevelRuntime) {
+    const ctx = { state: { mode: 'build' }, player: { x: 0, y: 0, firing: false }, enemies: [] } as unknown as Ctx;
     const levels = new Levels(ctx);
-    const runtime = makeLevelRuntime({ def: LEVELS.d2, world: new World(32, 32), spawn: { x: 16, y: 24 } });
     const internals = levels as unknown as {
       currentId: string;
       levels: Map<string, LevelRuntime>;
+      settledAudit: object | null;
       repairFindability: () => boolean;
       scheduleSettledFindabilityRepair(ctx: Ctx, runtime: LevelRuntime): void;
     };
     const repair = vi.fn(() => false);
     internals.currentId = 'd2'; internals.levels.set('d2', runtime);
     internals.repairFindability = repair;
+    /** Game ticks until the check in progress is done (each tick is one slice). */
+    const tickAudit = (): void => { for (let i = 0; i < 100_000 && internals.settledAudit; i++) levels.update(ctx); };
+    /** Advance the clock, finishing every check that starts on the way. Returns how many ran. */
+    const advance = (ms: number): number => {
+      let ran = 0;
+      for (let left = ms; left > 0; left -= 100) {
+        vi.advanceTimersByTime(Math.min(100, left));
+        if (internals.settledAudit) { ran++; tickAudit(); }
+      }
+      return ran;
+    };
+    return { ctx, levels, internals, repair, advance };
+  }
+
+  it('waits for material progress under pauses or slow frames, then cancels on disposal', () => {
+    vi.useFakeTimers();
+    const runtime = sealedFloor();
+    const { ctx, levels, internals, repair, advance } = harness(runtime);
     try {
       internals.scheduleSettledFindabilityRepair(ctx, runtime);
-      vi.advanceTimersByTime(7000);
+      expect(advance(7000)).toBe(0);
       expect(repair).not.toHaveBeenCalled();
       expect(levels.findabilityReady).toBe(false);
       runtime.world.activity.stepSerial = 18;
-      vi.advanceTimersByTime(100);
+      expect(advance(100)).toBe(1);
+      // The sealed waystone is an error verdict, so the synchronous repair is handed over to.
       expect(repair).toHaveBeenCalledTimes(1);
-      vi.advanceTimersByTime(7000);
+      expect(advance(7000)).toBe(0);
       expect(repair).toHaveBeenCalledTimes(1);
       runtime.world.activity.stepSerial = 390;
-      vi.advanceTimersByTime(7000);
+      expect(advance(7000)).toBe(4);
       expect(repair).toHaveBeenCalledTimes(5);
       expect(levels.findabilityReady).toBe(false);
       runtime.world.activity.stepSerial = 720;
-      vi.advanceTimersByTime(7000);
+      expect(advance(7000)).toBe(2);
       expect(repair).toHaveBeenCalledTimes(7);
       expect(levels.findabilityReady).toBe(true);
       internals.scheduleSettledFindabilityRepair(ctx, runtime);
       levels.dispose();
       runtime.world.activity.stepSerial += 720;
-      vi.advanceTimersByTime(7000);
+      expect(advance(7000)).toBe(0);
       expect(repair).toHaveBeenCalledTimes(7);
+    } finally { levels.dispose(); vi.useRealTimers(); }
+  });
+
+  it('runs the whole cascade without a synchronous pass when the floor is fine', () => {
+    vi.useFakeTimers();
+    const runtime = sealedFloor();
+    runtime.waystones.length = 0; // nothing sealed in
+    const { ctx, levels, internals, repair, advance } = harness(runtime);
+    try {
+      internals.scheduleSettledFindabilityRepair(ctx, runtime);
+      runtime.world.activity.stepSerial = 720;
+      expect(advance(20000)).toBe(7);
+      expect(repair).not.toHaveBeenCalled();
+      expect(levels.findabilityReady).toBe(true);
+    } finally { levels.dispose(); vi.useRealTimers(); }
+  });
+
+  it('falls back to the synchronous check when the slices cannot run', () => {
+    vi.useFakeTimers();
+    const runtime = sealedFloor();
+    runtime.waystones.length = 0;
+    const { ctx, levels, internals, repair } = harness(runtime);
+    try {
+      internals.scheduleSettledFindabilityRepair(ctx, runtime);
+      runtime.world.activity.stepSerial = 720;
+      vi.advanceTimersByTime(400); // step 0 starts its slices; nothing ever calls update
+      expect(repair).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(10_000);
+      expect(repair).toHaveBeenCalledTimes(1); // fail-open: the old synchronous pass
+      expect(levels.findabilityReady).toBe(false);
     } finally { levels.dispose(); vi.useRealTimers(); }
   });
 });
