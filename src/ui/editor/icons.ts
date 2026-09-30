@@ -42,7 +42,7 @@ const PATHS = {
   image: '<rect x="2.5" y="3" width="11" height="10" rx="1.2"/><circle cx="6" cy="6.4" r="1.1"/><path d="m3 12 3.3-3 2.4 2 1.6-1.4L13 12"/>',
   // ---- transport / session ----
   play: '<path d="M4.8 3.2v9.6L12.6 8z" fill="currentColor" stroke-linejoin="round"/>',
-  playHere: '<path d="M3.6 3.2v9.6L10.2 8z" fill="currentColor" stroke-linejoin="round"/><path d="M12.4 4.2v7.6" />',
+  playHere: '<path d="M3.4 3v10"/><path d="M6.8 3.4v9.2L13.4 8z" fill="currentColor" stroke-linejoin="round"/>',
   stop: '<rect x="4" y="4" width="8" height="8" rx="1.2" fill="currentColor" stroke="none"/>',
   pause: '<rect x="4.2" y="3.4" width="2.6" height="9.2" rx=".8" fill="currentColor" stroke="none"/><rect x="9.2" y="3.4" width="2.6" height="9.2" rx=".8" fill="currentColor" stroke="none"/>',
   step: '<path d="M4 3.4v9.2L10 8z" fill="currentColor" stroke-linejoin="round"/><path d="M12.2 3.6v8.8"/>',

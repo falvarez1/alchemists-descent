@@ -1,6 +1,7 @@
 import '@/styles/main.css';
 import '@/styles/studio.css';
 import '@/styles/builder.css';
+import '@/styles/studio-chrome.css';
 import { Game } from '@/game/Game';
 import { BuilderLauncher } from '@/app/BuilderLauncher';
 import { installAuthorLink, resolveAuthorLinkConfig } from '@/app/AuthorLink';
@@ -54,7 +55,7 @@ requestAnimationFrame(() =>
         linkDisposers.push(authorLink.onWorldState((state) => linkIndicator.updateWorlds(state)));
       }
 
-      const builderLauncher = new BuilderLauncher(game.ctx, authorLink);
+      const builderLauncher = new BuilderLauncher(game.ctx, authorLink, linkConfig);
       game.start();
       // The whole point of the route: no click to get into the editor.
       builderLauncher.open();
