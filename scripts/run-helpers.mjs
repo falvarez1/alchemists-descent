@@ -222,3 +222,28 @@ export async function chooseBoonAndDoor(page, levelId) {
     await wanted.first().click();
   }
 }
+
+/**
+ * Arm a Builder tool with real clicks. The toolbar groups related tools (Brush/Line, the four shapes,
+ * the four region tools...): a group's head shows the variant in use, and the others live in a flyout
+ * that a right-click on the head opens. Ungrouped tools (select, link, light) are plain buttons.
+ * `tool` is the `data-tool` id, e.g. 'paint', 'rectFill', 'lassoRegion', 'light'.
+ */
+export async function clickBuilderTool(page, tool) {
+  const group = await page.evaluate(
+    (t) => document.querySelector(`#builder-toolbar .bt-flyout .bp-tool[data-tool="${t}"]`)?.closest('.bt-variants')?.dataset.group ?? null,
+    tool,
+  );
+  if (group) {
+    const variant = `#builder-toolbar .bt-flyout .bp-tool[data-tool="${tool}"]`;
+    if (!(await page.isVisible(variant))) await page.click(`[data-group-head="${group}"]`, { button: 'right' });
+    await page.click(variant);
+    return;
+  }
+  await page.click(`#builder-toolbar .bt-tool[data-tool="${tool}"]`);
+}
+
+/** Open a Builder palette tab ('materials' | 'objects' | 'library') with a real click. */
+export async function openBuilderPaletteTab(page, pane) {
+  await page.click(`#builder-palette .bp-tab[data-pane="${pane}"]`);
+}
