@@ -347,7 +347,7 @@ export function buildShellMarkup(options: ShellMarkupOptions): string {
           <div class="bi-row"><span>pass</span><select id="bp-pass">${PASSES.map(
             (p) => `<option value="${p.id}">${p.label}</option>`,
           ).join('')}</select></div>
-          <div class="bi-row"><span>seed</span><input id="bp-seed" type="number" value="1337" min="0" step="1"><button id="bp-dice" class="b-icon" title="Re-roll seed" aria-label="Re-roll seed">&#9860;</button></div>
+          <div class="bi-row"><span>seed</span><input id="bp-seed" type="number" value="1337" min="0" step="1"><button id="bp-dice" class="b-icon" title="Re-roll seed" aria-label="Re-roll seed">${editorIcon('restart', 14)}</button></div>
           <div class="bi-row"><span>density</span><input id="bp-density" type="range" min="5" max="100" value="50" aria-label="Procedural density"><b id="bp-density-val">50</b></div>
           <div class="bi-row"><span>target</span><b id="bp-target">whole level</b></div>
           <div class="bi-row"><span>material</span><b id="bp-material">&mdash;</b></div>

@@ -432,3 +432,30 @@ body:not(.player-build) .app-dialog-btn:focus-visible { outline: 2px solid var(-
 #builder-statusbar .sb-issues[data-state='error'] { color: var(--st-danger-text); }
 #builder-statusbar .sb-issues[data-state='warn'] { color: var(--st-warn-text); }
 #builder-statusbar .sb-issues[data-state='ok'] .st-icon { color: var(--st-ok-text); }
+
+/* Rows that are not schema fields (procedural pass, world generation) keep a flexible row; only
+   inspector fields use the two-column grid. */
+#builder-root .bi-row:not(.editor-field) {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; grid-template-columns: none;
+}
+#builder-root .bi-row:not(.editor-field) > span:first-child { flex: 0 0 auto; }
+#builder-root .bi-row:not(.editor-field) input[type='number'],
+#builder-root .bi-row:not(.editor-field) input[type='text'],
+#builder-root .bi-row:not(.editor-field) select { width: auto; flex: 1 1 auto; max-width: 160px; }
+#builder-root .bi-row:not(.editor-field) input[type='range'] { flex: 1 1 auto; min-width: 0; width: auto; }
+#builder-root #bp-controls { padding: 10px; gap: 8px; }
+#builder-root #bp-controls .bp-actions { display: flex; gap: 6px; }
+#builder-root #bp-controls .bp-actions button { flex: 1 1 0; }
+#builder-root #bp-dice { width: 26px; padding: 0; flex: 0 0 26px; font-size: 14px; }
+
+/* Layers popover (toolbar) */
+.bt-layers-pop { left: auto; right: 0; min-width: 220px; padding: 6px; gap: 2px; }
+#builder-root .bt-layers-pop .bp-layer { display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 4px 0 8px; border-radius: var(--st-r-2); color: var(--st-text-2); font: 500 12px/1 var(--st-font); }
+#builder-root .bt-layers-pop .bp-layer:hover { background: var(--st-surface-3); }
+#builder-root .bt-layers-pop .bp-layer span { flex: 1 1 auto; letter-spacing: 0; text-transform: none; }
+#builder-root .bt-layers-pop .bp-layer button { width: 24px; height: 24px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; color: var(--st-text-2); }
+#builder-root .bt-layers-pop .bp-layer button:hover { background: var(--st-surface-4); color: var(--st-text); }
+#builder-root .bt-layers-pop .bp-layer.off { color: var(--st-text-4); }
+#builder-root .bt-layers-pop .bp-layer.off span { text-decoration: line-through; }
+#builder-root .bt-layers-pop .bp-layer.off [data-vis] { opacity: 0.4; }
+#builder-root .bt-layers-pop .bp-layer.locked [data-lock] { color: var(--st-accent-text); background: var(--st-accent-bg); border-color: var(--st-accent-line); }

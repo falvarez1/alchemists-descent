@@ -3551,7 +3551,7 @@ export class Builder {
     const layerRows = LAYER_FAMILIES
       .map(
         (f) =>
-          `<div class="bp-layer" data-layer="${f}"><span>${layerLabel(f)}</span><button data-vis type="button" aria-pressed="false" aria-label="Hide ${layerLabel(f)} layer" title="Show/hide in the editor (still compiles)">&#128065;</button><button data-lock type="button" aria-pressed="false" aria-label="Lock ${layerLabel(f)} layer" title="Lock against selection">&#128275;</button></div>`,
+          `<div class="bp-layer" data-layer="${f}"><span>${layerLabel(f)}</span><button data-vis type="button" aria-pressed="false" aria-label="Hide ${layerLabel(f)} layer" title="Show/hide in the editor (still compiles)">${editorIcon('eye', 14)}</button><button data-lock type="button" aria-pressed="false" aria-label="Lock ${layerLabel(f)} layer" title="Lock against selection">${editorIcon('lock', 14)}</button></div>`,
       )
       .join('');
     this.root.innerHTML = buildShellMarkup({ layerRows });
