@@ -24,10 +24,12 @@ import {
 } from '@/content/story';
 import { NARRATION_CLIPS } from '@/content/audio/narration.generated';
 import { readingSeconds, speakerKey } from '@/audio/narrationText';
+import { heldCorpse } from '@/combat/Telekinesis';
+import { sightClear } from '@/creatures/perception';
 import { LEVELS, floorOf } from '@/config/worldgraph';
 import { beatLine, defaultStoryMeta, StoryMetaStore, withHeard, withJournal, type StoryMetaData } from './storyMeta';
 import { freshStoryRun, pipeLine, pellWaits, sanitizeStoryRun, withPipeSpoken } from './storyRun';
-import type { StoryHost } from './host';
+import type { PellFacts, StoryHost } from './host';
 import { PellCamp } from './PellCamp';
 import { EchoStage } from './EchoStage';
 import { BossPrologue } from './BossPrologue';
@@ -109,6 +111,10 @@ export class StoryDirector implements StoryApi {
       biome: () => this.biome(),
       floor: () => floorOf(this.levelId()),
       now: () => performance.now() / 1000,
+      voiced: (line) => NARRATION_CLIPS[speakerKey(line.speaker, line.text)] !== undefined,
+      facts: () => this.pellFacts(),
+      carryingCorpse: () => heldCorpse() !== null,
+      sees: (x0, y0, x1, y1) => sightClear(ctx.world, x0, y0, x1, y1),
     };
     this.pell = new PellCamp(this.host);
     this.echo = new EchoStage(this.host);
@@ -148,6 +154,22 @@ export class StoryDirector implements StoryApi {
 
   private biome(): BiomeId | null {
     return this.ctx.levels?.current?.def.biome ?? null;
+  }
+
+  /** What Pell may notice of the run: read off the state the game already keeps. */
+  private pellFacts(): PellFacts {
+    const { player, run, state } = this.ctx;
+    return {
+      floor: floorOf(this.levelId()),
+      kit: run?.active ? run.kit : null,
+      phials: run?.active ? run.phials : 0,
+      deaths: run?.active ? run.deaths : 0,
+      hpFrac: player.maxHp > 0 ? player.hp / player.maxHp : 1,
+      gold: state.score,
+      boons: Object.keys(player.perks ?? {}),
+      difficulty: state.difficulty ?? 3,
+      daily: run?.active === true && run.daily !== null,
+    };
   }
 
   /* ---------------- speaking ---------------- */
@@ -340,6 +362,7 @@ export class StoryDirector implements StoryApi {
       lit: biome !== 'volcanic',
       abandoned: biome === 'volcanic',
       pageRead: this.state.pell[id]?.gift === 'page' && biome === 'volcanic',
+      dress: this.pell.dress(),
     } : null;
     v.pell = this.pell.view();
     v.valve = st?.valve ? { ...st.valve, ...this.echo.valveView() } : null;

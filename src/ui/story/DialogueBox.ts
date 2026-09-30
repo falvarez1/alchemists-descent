@@ -55,6 +55,11 @@ const STYLE = `
 #story-dialogue .sd-choice b {
   font: 650 calc(10.5px * var(--text-scale, 1))/1 var(--house-sans, system-ui, sans-serif); color: #d5b982; letter-spacing: 0.1em;
 }
+#story-dialogue .sd-choice .sd-hint {
+  margin-left: auto; padding-left: 12px; white-space: nowrap;
+  font: 600 calc(9.5px * var(--text-scale, 1))/1 var(--house-sans, system-ui, sans-serif); letter-spacing: 0.14em;
+  text-transform: uppercase; color: #d5b982a6;
+}
 @keyframes sd-in { to { opacity: 1; transform: none; } }
 #story-prompt {
   position: absolute; z-index: 44; padding: 5px 10px 4px; pointer-events: none; opacity: 0; transform: translate(-50%, -100%) translateY(4px);
@@ -155,11 +160,14 @@ export class DialogueBox {
     }
     // Number keys belong to the box while it is open: a choice's number picks it, and
     // any other number is swallowed (QA: "Flask 3: empty" x5 behind a two-choice box).
+    // While a line is still being said (no choices yet) a number hurries it along, as E does.
     const n = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
     if (n) {
       e.preventDefault(); e.stopImmediatePropagation();
+      if (e.repeat) return;
       const i = Number(n[1]) - 1;
-      if (i >= 0 && i < v.choices.length) this.ctx.story?.dialogueChoose(i);
+      if (v.choices.length === 0) this.ctx.story?.dialogueAdvance();
+      else if (i >= 0 && i < v.choices.length) this.ctx.story?.dialogueChoose(i);
     }
   };
 
@@ -186,6 +194,14 @@ export class DialogueBox {
       const k = document.createElement('b');
       k.textContent = String(i + 1);
       b.append(k, document.createTextNode(label));
+      // What it gives, in a word (the label stays in the apprentice's voice).
+      const hint = view.hints?.[i];
+      if (hint) {
+        const h = document.createElement('i');
+        h.className = 'sd-hint';
+        h.textContent = hint;
+        b.append(h);
+      }
       b.addEventListener('click', (e) => { e.stopPropagation(); this.ctx.story?.dialogueChoose(i); });
       return b;
     }));

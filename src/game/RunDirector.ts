@@ -163,6 +163,10 @@ export class RunDirector implements RunApi {
     return this.state?.daily ?? null;
   }
 
+  get deaths(): number {
+    return this.state?.deaths ?? 0;
+  }
+
   get lastResult(): RunResult | null {
     return this.result;
   }

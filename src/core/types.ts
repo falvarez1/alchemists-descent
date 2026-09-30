@@ -3532,6 +3532,8 @@ export interface RunApi {
   readonly maxPhials: number;
   readonly kit: KitId;
   readonly daily: string | null;
+  /** Times the alchemist has fallen on this run so far (Pell and the Old Ones read it). */
+  readonly deaths: number;
   /** The last finished run, for the ledger. */
   readonly lastResult: RunResult | null;
   beginRun(ctx: Ctx, opts: RunBeginOptions): void;
