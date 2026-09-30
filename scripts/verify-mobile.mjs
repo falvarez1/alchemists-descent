@@ -119,6 +119,7 @@ try {
 
   await page.locator('[data-touch-menu="pause"]').tap();
   await page.locator('#pause-settings').tap();
+  await page.locator('#player-settings [data-tab="controls"]').tap(); // the touch switch lives on the Controls tab
   await page.locator('[name="touchControls"]').selectOption('off');
   check('touch controls can be disabled', !await page.locator('body').evaluate(el => el.classList.contains('touch-enabled')));
   await page.locator('[name="touchControls"]').selectOption('on');

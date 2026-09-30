@@ -118,8 +118,10 @@ try {
     if (want('handbook')) { await page.keyboard.press('KeyH'); await probe('handbook', '#help-overlay'); await closeAll(); }
     if (want('grimoire')) { await page.keyboard.press('KeyJ'); await probe('grimoire', '#grimoire-overlay'); await closeAll(); }
     if (want('settings')) {
-      await page.keyboard.press('Escape'); await page.waitForTimeout(300);
-      const b = page.getByRole('button', { name: /controls/i }).first();
+      // Open the pause menu (the earlier steps' closeAll can leave Esc's own toggle out of step with the page, so press until it shows),
+      // then press its own "Controls & comfort" button with a real click. Without this the step could pass with the dialog never open (0 controls).
+      for (let i = 0; i < 3 && !(await page.evaluate(() => document.querySelector('#pause-overlay.visible') !== null)); i++) { await page.keyboard.press('Escape'); await page.waitForTimeout(300); }
+      const b = page.locator('#pause-settings');
       if (await b.count()) { const box = await b.boundingBox(); if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2); }
       await probe('settings', '#player-settings'); await closeAll();
     }

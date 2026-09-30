@@ -176,6 +176,14 @@ try {
     await click(page, page.locator('#pause-settings'));
     await page.waitForSelector('#player-settings[open]');
     check(true, 'pause menu "Controls & comfort" opens the dialog');
+    // the clip switch (its own preference key) now lives on the Gameplay tab and still works
+    await click(page, page.locator('#player-settings [data-tab="gameplay"]'));
+    const clips = page.locator('#player-settings [name="recordClips"]');
+    await clips.scrollIntoViewIfNeeded();
+    await click(page, clips);
+    check(await page.evaluate(() => localStorage.getItem('ad-clip-recording-v1') === 'off'), 'Gameplay tab: the clip switch saves its own preference (off)');
+    await click(page, clips);
+    check(await page.evaluate(() => localStorage.getItem('ad-clip-recording-v1') !== 'off'), '... and on again');
     await page.screenshot({ path: `${out}/from-pause.png` });
     await context.close();
   }

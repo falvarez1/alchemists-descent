@@ -3,19 +3,23 @@ import { sanitizeTrickshot } from '@/config/trickshot';
 import { VOLUME_CHANNELS, sanitizeVolumes, type VolumeSettings } from '@/audio/mix';
 import { DEFAULT_BINDINGS, getBindings, keyLabel, resetBindings, setBinding, type BindingAction } from '@/input/bindings';
 import { isClipRecordingEnabled, setClipRecordingEnabled } from '@/config/clipSettings';
-import { SoundQuickControl } from '@/ui/SoundQuickControl';
-import { readTouchControlsPreference, setTouchControlsPreference } from '@/input/touchSupport';
-import { VitalNumbers } from '@/ui/VitalNumbers';
-import { resetSeenHints } from '@/game/hints/seenHints';
-import '@/styles/options.css';
-import { PadRumble } from '@/input/padRumble';
-import { LatchIndicator } from '@/ui/LatchIndicator';
-import { sanitizeToggleModes, type HoldAction } from '@/input/toggleLatches';
-import { EnemyReadouts } from '@/ui/EnemyReadouts';
-import { ASSIST_PALETTES, lighten } from '@/config/colorAssist';
-import { setCosmeticBurstScale } from '@/particles/Particles';
-import { AIM_ASSISTS, COLOR_ASSISTS, HINT_MODES, QUALITY_PRESETS, HUD_OPACITY, HUD_SCALE, PAD_DEADZONE, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeBand, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
 import { createDefaultPostFxSettings } from '@/config/params';
+import {
+  AIM_ASSISTS, COLOR_ASSISTS, HINT_MODES, HUD_OPACITY, HUD_SCALE, PAD_DEADZONE, PRESENTATION, QUALITY_PRESETS, SHAKE_SCALE,
+  bandReadout, sanitizeBand, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake,
+  type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel,
+} from '@/config/playerPrefs';
+import { ASSIST_PALETTES, lighten } from '@/config/colorAssist';
+import { resetSeenHints } from '@/game/hints/seenHints';
+import { PadRumble } from '@/input/padRumble';
+import { sanitizeToggleModes, type HoldAction } from '@/input/toggleLatches';
+import { readTouchControlsPreference, setTouchControlsPreference } from '@/input/touchSupport';
+import { setCosmeticBurstScale } from '@/particles/Particles';
+import { EnemyReadouts } from '@/ui/EnemyReadouts';
+import { LatchIndicator } from '@/ui/LatchIndicator';
+import { SoundQuickControl } from '@/ui/SoundQuickControl';
+import { VitalNumbers } from '@/ui/VitalNumbers';
+import '@/styles/options.css';
 
 /** Everything the dialog persists under one key. The newer options live in config/playerPrefs (ExtraPreferences). */
 export interface PlayerPreferences extends ExtraPreferences {
