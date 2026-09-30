@@ -128,6 +128,7 @@ export class StoryDirector implements StoryApi {
       on('structureStrike', ({ x, y, radius }) => this.pell.noise(x, y, Math.min(1, radius / 30))),
       on('groundImpact', ({ x, y, strength }) => { if (strength > 0.6) this.pell.noise(x, y, strength * 0.5); }),
       on('playerDied', () => { this.echo.end(); this.pell.close(); }),
+      on('playerDied', () => this.pell.witnessDeath()),
       on('narration', ({ text, seconds, speaker }) => this.onNarration(text, seconds, speaker)),
     );
   }

@@ -553,6 +553,46 @@ describe('Pell on stage', () => {
     expect(fig.facing).toBe(1);
   });
 
+  it('jumps at a loud noise near him, peers toward a big one further off, and ignores the far-off', () => {
+    const near = harness('fungal', 'd2', { hp: 100 });
+    near.pell.noise(600, 400, 1);
+    near.tick(0.1);
+    expect(near.pell.view()!.act).toBe('startle');
+
+    const far = harness('fungal', 'd2', { hp: 100 });
+    far.pell.noise(500 + 420, 400, 1);
+    far.tick(0.1);
+    expect(far.pell.view()!.act).toBe('lookup');
+    expect(far.pell.view()!.lookX).toBe(920);
+    // A small thump that far away is not heard at all.
+    const small = harness('fungal', 'd2', { hp: 100 });
+    small.pell.noise(500 + 420, 400, 0.3);
+    small.tick(0.1);
+    expect(small.pell.view()!.act).not.toBe('lookup');
+    const gone = harness('fungal', 'd2', { hp: 100 });
+    gone.pell.noise(500 + 900, 400, 1);
+    gone.tick(0.1);
+    expect(gone.pell.view()!.act).not.toBe('lookup');
+  });
+
+  it('starts, then kneels, when the apprentice dies in sight of his camp; not when far away', () => {
+    const h = harness('fungal', 'd2', { hp: 100 });
+    h.tick(0.1);
+    h.pell.witnessDeath();
+    h.tick(0.3);
+    expect(h.pell.view()!.act).toBe('startle');
+    h.tick(1);
+    expect(h.pell.view()!.act).toBe('kneel');
+    h.tick(3);
+    expect(h.pell.view()!.act).not.toBe('kneel');
+    const far = harness('fungal', 'd2', { hp: 100 });
+    far.player.x = 900;
+    far.tick(0.1);
+    far.pell.witnessDeath();
+    far.tick(0.3);
+    expect(far.pell.view()!.act).not.toBe('startle');
+  });
+
   it('wears a bandage from the third floor, and his camp shows what the run has gathered', () => {
     const early = harness('fungal', 'd2');
     early.tick(0.1);

@@ -71,6 +71,11 @@ const HOSTILE_X = 150;
 const HOSTILE_Y = 80;
 /** Hurt, for the bark. */
 const HURT_BARK = 0.3;
+/** A noise this big (of 1) is noticed even beyond where it would make him jump, up to FAR_EXTRA further (cells). */
+const BIG_NOISE = 1;
+const FAR_EXTRA = 220;
+/** He sees an apprentice fall within this (cells). */
+const WITNESS_REACH = 140;
 /** An unrecorded line runs at this fraction of a caption's reading time. */
 const TEXT_PACE = 0.65;
 /** The two-shot's gentle push-in. */
@@ -110,6 +115,8 @@ interface React {
   until: number;
   face: 1 | -1 | null;
   look: { x: number; y: number } | null;
+  /** What he does once this is over (a startle, then he kneels). */
+  then?: { act: string; seconds: number };
 }
 
 /** The enemy kinds that have a line of their own (the rest get the general one). */
@@ -155,12 +162,27 @@ export class PellCamp {
     return { camp, present: biome !== 'volcanic' && PELL[biome] !== undefined, biome };
   }
 
-  /** A loud noise near the camp: he jumps. */
+  /** A loud noise near the camp: he jumps. A big one further off: he peers toward it. */
   noise(x: number, y: number, strength: number): void {
     const s = this.site();
     if (!s?.present || this.talk) return;
-    if (Math.hypot(x - s.camp.x, y - s.camp.floorY) > 160 + strength * 120) return;
+    const d = Math.hypot(x - s.camp.x, y - s.camp.floorY), reach = 160 + strength * 120;
+    if (d > reach) {
+      if (strength >= BIG_NOISE && d <= reach + FAR_EXTRA) this.react = { act: 'lookup', until: this.host.now() + 2, face: x >= s.camp.x ? 1 : -1, look: { x, y: y - 20 } };
+      return;
+    }
     this.startleUntil = this.host.now() + 0.9;
+    this.actT = 0;
+  }
+
+  /** The apprentice died within sight of the camp: he jumps, then kneels where they fell. */
+  witnessDeath(): void {
+    const s = this.site();
+    const p = this.host.ctx.player;
+    if (!s?.present || Math.hypot(p.x - s.camp.x, p.y - s.camp.floorY) > WITNESS_REACH) return;
+    const now = this.host.now();
+    const face: 1 | -1 = p.x >= s.camp.x ? 1 : -1;
+    this.react = { act: 'startle', until: now + 0.9, face, look: { x: p.x, y: p.y - 6 }, then: { act: 'kneel', seconds: 3 } };
     this.actT = 0;
   }
 
@@ -465,6 +487,12 @@ export class PellCamp {
     }
     // What he is doing.
     let act: string;
+    if (this.react && now >= this.react.until && this.react.then) {
+      // One reaction leads to the next: the start, then the kneel.
+      const { act: nextAct, seconds } = this.react.then;
+      this.react = { act: nextAct, until: now + seconds, face: this.react.face, look: this.react.look };
+      this.actT = 0;
+    }
     const react = this.react && now < this.react.until ? this.react : null;
     if (now < this.startleUntil) act = 'startle';
     else if (react) act = react.act;
