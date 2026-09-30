@@ -339,6 +339,7 @@ export class Sanctum implements SanctumApi {
       this.phialTimer = window.setTimeout(() => {
         this.phialTimer = null;
         this.phials.fill(run.phials - 1, run.phials, max);
+        el('sanctum-overlay').dispatchEvent(new CustomEvent('sanctum-pour'));
       }, 260);
     } else {
       this.phials.set(run.phials, max);
@@ -437,6 +438,7 @@ export class Sanctum implements SanctumApi {
         ctx.audio.learn();
         ctx.telemetry.count('perk.' + pk.id);
         ctx.story?.sanctumAct?.({ kind: 'boon', id: pk.id });
+        el('sanctum-overlay').dispatchEvent(new CustomEvent('sanctum-pick'));
         card.classList.add('taken');
         this.autoReveal = false;
         row.querySelectorAll('.perk-card').forEach((c) => {
