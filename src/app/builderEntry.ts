@@ -1,4 +1,6 @@
 import '@/styles/main.css';
+import '@/styles/studio.css';
+import '@/styles/builder.css';
 import { Game } from '@/game/Game';
 import { BuilderLauncher } from '@/app/BuilderLauncher';
 import { installAuthorLink, resolveAuthorLinkConfig } from '@/app/AuthorLink';

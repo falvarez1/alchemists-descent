@@ -1207,7 +1207,7 @@ describe('editor panel registry and chrome', () => {
   });
 
   it('reveals closable tab controls from the sibling shell selector', () => {
-    const css = readFileSync('src/styles/main.css', 'utf8');
+    const css = readFileSync('src/styles/builder.css', 'utf8');
 
     expect(css).toContain('.editor-tab-shell:hover .editor-tab-close');
     expect(css).toContain('.editor-tab-shell.active .editor-tab-close');

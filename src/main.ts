@@ -1,4 +1,6 @@
 import '@/styles/main.css';
+import '@/styles/studio.css';
+import '@/styles/builder.css';
 import '@/styles/living-descent.css';
 import '@/styles/menus.css';
 import '@/styles/house.css';
