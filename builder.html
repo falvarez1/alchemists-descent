@@ -64,25 +64,36 @@
         <div id="boot-status">CONJURING THE CAVES&hellip;</div>
     </div>
 
-    <header>
-        <div><h1>Purple Llama Studio <span class="title-sub">| Breathing Works</span></h1></div>
-        <div class="hud-wrapper">
-            <!-- data-authoring: stripped from a play build by main.ts. PERF stays
-                 (a tester reporting "it's slow" needs it); these are dev tools. -->
-            <button class="sound-btn" data-authoring id="dev-console-toggle" title="Developer console (`)">CONSOLE</button>
-            <button class="sound-btn" data-authoring id="runtime-inspector-toggle" title="Inspect the active Play runtime" disabled>RUNTIME</button>
-            <button class="sound-btn" data-authoring id="gpu-compose-toggle" title="GPU frame composition: A/B the terrain shader live (full controls are in the Builder Post Processing panel)">GPU FX</button>
-            <button class="sound-btn" data-authoring id="webgpu-compose-toggle" title="WebGPU raw WGSL compose: toggles the diagnostic live compose path when booted with WebGPU">WGSL</button>
-            <!-- data-workshop-dev: the studio chrome a player build's Workshop hides
-                 (ui/PlayerWorkshop.ts). Unlike data-authoring these stay in the DOM:
-                 their owners bind them strictly, and hiding is all a player needs. -->
-            <button class="sound-btn" data-workshop-dev id="perf-hud-toggle" title="Performance overlay: fps + per-phase frame timings (F3)">PERF</button>
-            <button class="sound-btn" data-workshop-dev id="immersive-play-btn" title="Enter fullscreen play with keyboard lock when the browser supports it">FULLSCREEN PLAY</button>
-            <div class="mode-switch" data-workshop-dev>
-                <button data-mode="build" class="active" id="mode-build-btn">SANDBOX</button>
-                <button data-mode="play" id="mode-play-btn">PLAY</button>
+    <!-- The studio bar (styles/sandbox.css, ui/SandboxChrome.ts): brand on the left, the
+         WORKSPACE switch in the middle, status + tools on the right. Every id below is bound
+         by its owner (Hud, InputManager, BuilderLauncher, Inspector, ConsoleOverlay...), so
+         elements are moved, never recreated. -->
+    <header class="sb-bar">
+        <div class="sb-bar-left"><h1 class="sb-brand"><span class="sb-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="sb-brand-name">Purple Llama Studio</span><span class="title-sub">Breathing Works</span></h1></div>
+        <!-- data-workshop-dev: the studio chrome a player build's Workshop hides
+             (ui/PlayerWorkshop.ts). Unlike data-authoring these stay in the DOM:
+             their owners bind them strictly, and hiding is all a player needs. -->
+        <div class="mode-switch st-seg sb-workspace" data-workshop-dev role="group" aria-label="Workspace">
+            <button type="button" data-mode="build" class="active" id="mode-build-btn" aria-pressed="true">Sandbox</button>
+            <!-- data-authoring: the Builder is not part of a play build (main.ts strips it) -->
+            <button type="button" data-authoring id="mode-builder-btn" aria-pressed="false">Builder</button>
+            <button type="button" data-mode="play" id="mode-play-btn" aria-pressed="false">Play</button>
+        </div>
+        <div class="hud-wrapper sb-bar-right">
+            <button type="button" class="sb-icon-btn" data-workshop-dev id="sound-toggle" aria-pressed="true" aria-label="Sound"></button>
+            <div class="sb-devmenu" data-workshop-dev>
+                <button type="button" class="st-btn st-btn--ghost sb-dev-trigger" id="dev-menu-btn" aria-haspopup="true" aria-expanded="false" aria-controls="dev-menu"><span data-icon="tools" aria-hidden="true"></span><span>Developer</span><span data-icon="chevronDown" aria-hidden="true"></span></button>
+                <div class="sb-menu" id="dev-menu" role="group" aria-label="Developer tools" hidden>
+                    <!-- data-authoring: stripped from a play build by main.ts. PERF stays
+                         (a tester reporting "it's slow" needs it); these are dev tools. -->
+                    <button type="button" class="sb-menu-item" data-authoring data-menu-close data-kbd="`" id="dev-console-toggle" title="Developer console (`)">Console</button>
+                    <button type="button" class="sb-menu-item" data-authoring data-menu-close id="runtime-inspector-toggle" title="Inspect the active Play runtime" disabled>Runtime inspector</button>
+                    <button type="button" class="sb-menu-item" data-authoring id="gpu-compose-toggle" title="GPU frame composition: A/B the terrain shader live (full controls are in the Builder Post Processing panel)">GPU compose</button>
+                    <button type="button" class="sb-menu-item" data-authoring id="webgpu-compose-toggle" title="WebGPU raw WGSL compose: toggles the diagnostic live compose path when booted with WebGPU">WGSL compose</button>
+                    <button type="button" class="sb-menu-item" data-workshop-dev data-kbd="F3" id="perf-hud-toggle" title="Performance overlay: fps + per-phase frame timings (F3)">Perf overlay</button>
+                    <button type="button" class="sb-menu-item" data-workshop-dev data-menu-close id="immersive-play-btn" title="Enter fullscreen play with keyboard lock when the browser supports it">Fullscreen play</button>
+                </div>
             </div>
-            <button class="sound-btn" data-workshop-dev id="sound-toggle">SND ON</button>
         </div>
     </header>
 
@@ -214,31 +225,53 @@
         </div>
 
         <div id="right-inspector">
-            <div class="section-title">Global Controls</div>
-            <div class="control-panel-group">
-                <div>
-                    <div class="control-label-wrapper"><label>Simulation Speed</label><span id="g-speed-value" class="val-display">1.0x</span></div>
-                    <input type="range" id="g-speed" min="0" max="2.0" step="0.1" value="1.0">
+            <!-- Inspector dock: collapsible sections (ui/SandboxChrome.ts). PlayerWorkshop hides every
+                 direct child but its own bench and MOVES #brush-size's row (the div that holds its
+                 label + readout) into it, so that row keeps its shape. -->
+            <section class="st-section" data-section="simulation">
+                <h2 class="st-section-head"><button type="button" class="st-section-toggle" aria-expanded="true" aria-controls="sb-body-simulation"><span class="st-section-title">Simulation</span></button></h2>
+                <div class="st-section-body" id="sb-body-simulation">
+                    <div>
+                        <div class="control-label-wrapper"><label for="g-speed">Speed</label><span id="g-speed-value" class="val-display">1.0x</span></div>
+                        <input type="range" id="g-speed" min="0" max="2.0" step="0.1" value="1.0">
+                    </div>
+                    <div class="control-panel-group time-control-panel-group" id="sandbox-time-controls"></div>
                 </div>
-                <div>
-                    <div class="control-label-wrapper"><label>Max Brightness</label><span id="g-bright-value" class="val-display">3.5</span></div>
-                    <input type="range" id="g-bright" min="1.0" max="10.0" step="0.5" value="3.5">
-                    <div class="control-label-wrapper"><label>Ambient Light</label><span id="g-ambient-value" class="val-display">0.18</span></div>
-                    <input type="range" id="g-ambient" min="0.02" max="0.50" step="0.02" value="0.18">
+            </section>
+
+            <section class="st-section" data-section="brush">
+                <h2 class="st-section-head"><button type="button" class="st-section-toggle" aria-expanded="true" aria-controls="sb-body-brush"><span class="st-section-title">Brush</span></button></h2>
+                <div class="st-section-body" id="sb-body-brush">
+                    <div>
+                        <div class="control-label-wrapper"><label for="brush-size">Radius</label><span id="brush-value" class="val-display">6px</span></div>
+                        <input type="range" id="brush-size" min="1" max="24" value="6">
+                    </div>
                 </div>
-                <div>
-                    <div class="control-label-wrapper"><label>Brush Radius</label><span id="brush-value" class="val-display">6px</span></div>
-                    <input type="range" id="brush-size" min="1" max="24" value="6">
+            </section>
+
+            <section class="st-section" data-section="lighting">
+                <h2 class="st-section-head"><button type="button" class="st-section-toggle" aria-expanded="true" aria-controls="sb-body-lighting"><span class="st-section-title">Lighting</span></button></h2>
+                <div class="st-section-body" id="sb-body-lighting">
+                    <div>
+                        <div class="control-label-wrapper"><label for="g-bright">Max brightness</label><span id="g-bright-value" class="val-display">3.5</span></div>
+                        <input type="range" id="g-bright" min="1.0" max="10.0" step="0.5" value="3.5">
+                    </div>
+                    <div>
+                        <div class="control-label-wrapper"><label for="g-ambient">Ambient light</label><span id="g-ambient-value" class="val-display">0.18</span></div>
+                        <input type="range" id="g-ambient" min="0.02" max="0.50" step="0.02" value="0.18">
+                    </div>
                 </div>
+            </section>
+
+            <section class="st-section" data-section="material">
+                <h2 class="st-section-head"><button type="button" class="st-section-toggle" aria-expanded="true" aria-controls="material-dynamic-controls"><span class="st-section-title" id="context-inspector-header">Material</span></button></h2>
+                <div class="st-section-body" id="material-dynamic-controls"></div>
+            </section>
+
+            <div class="sb-foot">
+                <button type="button" class="st-btn st-btn--danger sb-wide" id="clear-btn">Clear world</button>
+                <p>Empties the grid and resets the score.</p>
             </div>
-
-            <div class="section-title">Time Controls</div>
-            <div class="control-panel-group time-control-panel-group" id="sandbox-time-controls"></div>
-
-            <div class="section-title" id="context-inspector-header">Context Parameters</div>
-            <div id="material-dynamic-controls"></div>
-
-            <button id="clear-btn">Clear Canvas Matrix</button>
         </div>
     </div>
 

@@ -64,7 +64,7 @@ export function deriveBuilderHtml(indexHtml) {
     html = html.slice(0, thesisStart) + html.slice(thesisEnd + '-->\n'.length).replace(/^\n/, '');
   }
 
-  const railStart = html.indexOf('<div id="left-toolbar">');
+  const railStart = html.indexOf('<div id="left-toolbar"');
   const viewport = html.indexOf('<div id="viewport-container">');
   if (railStart < 0 || viewport < 0 || viewport < railStart) throw new Error('gen-builder-html: could not find the left rail');
   const railEnd = html.lastIndexOf('</div>', viewport) + '</div>'.length;

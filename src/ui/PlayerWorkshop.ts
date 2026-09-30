@@ -35,6 +35,11 @@ export class PlayerWorkshop {
 
   constructor(private readonly ctx: Ctx) {
     document.body.classList.add('player-build');
+    // The dock's tab panels are flattened into one list here, with no tabs to label them.
+    for (const panel of document.querySelectorAll('#left-toolbar .sb-panel')) {
+      panel.removeAttribute('role');
+      panel.removeAttribute('aria-labelledby');
+    }
     this.dressHeader();
     this.buildBench();
     const filter = document.getElementById('toolbar-filter') as HTMLInputElement | null;

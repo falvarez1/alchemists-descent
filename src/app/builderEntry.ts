@@ -1,5 +1,6 @@
 import '@/styles/main.css';
 import '@/styles/studio.css';
+import '@/styles/sandbox.css';
 import '@/styles/builder.css';
 import { Game } from '@/game/Game';
 import { BuilderLauncher } from '@/app/BuilderLauncher';
