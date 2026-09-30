@@ -1,7 +1,7 @@
 // Dev console end-to-end gate.
 // Usage: node scripts/verify-console.mjs [url]   (dev server must be running)
 import { chromium } from 'playwright-core';
-import { startConsoleTestRun, leaveTitleIfShown } from './run-helpers.mjs';
+import { startConsoleTestRun, leaveTitleIfShown, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -455,7 +455,7 @@ await page.keyboard.press('Escape');
 await page.waitForFunction(() => document.querySelector('.app-dialog-root') === null, { timeout: 5000 });
 await startConsoleTestRun(page, { settleMs: 150 });
 
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForSelector('#builder-intent-modal', { timeout: 5000 });
 await page.keyboard.press('h');
 await page.waitForTimeout(100);
@@ -538,7 +538,7 @@ check(
   !intentModalEscGuard.intentVisible && intentModalEscGuard.consoleOpen && !intentModalEscGuard.globalHelp,
   JSON.stringify(intentModalEscGuard),
 );
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForSelector('#builder-intent-modal', { timeout: 5000 });
 await page.keyboard.press('Enter');
 await page.waitForFunction(() => document.body.classList.contains('builder-open'), { timeout: 5000 });
@@ -638,7 +638,7 @@ check(
     JSON.stringify(realPlaytest.before) === JSON.stringify(realPlaytest.after),
   JSON.stringify(realPlaytest),
 );
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForFunction(() => document.body.classList.contains('builder-open') && window.__game.ctx.state.mode === 'build', { timeout: 8000 });
 const playtestReturn = await page.evaluate(async (anchor) => {
   const ctx = window.__game.ctx;
@@ -685,7 +685,7 @@ check(
   sandboxFind.mode === 'build' && !sandboxFind.res.ok && sandboxFind.res.data?.code === 'runtime-unavailable',
   JSON.stringify(sandboxFind),
 );
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForFunction(() => document.body.classList.contains('builder-open'), { timeout: 5000 });
 const builderBefore = await page.evaluate(async () => {
   const ctx = window.__game.ctx;

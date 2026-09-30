@@ -4,7 +4,7 @@
 // door logic live, playtest-from-here, overlays, share codes.
 // Usage: node scripts/verify-builder-pro.mjs [url]  (dev server must be running)
 import { launchBrowser } from './browser-launch.mjs';
-import { getGameViewSize, worldToBuilderClient, leaveTitleIfShown } from './run-helpers.mjs';
+import { getGameViewSize, worldToBuilderClient, leaveTitleIfShown, clickBuilderTool, clickBuilderKind, clickBuilderControl, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -36,7 +36,7 @@ await page.waitForTimeout(2200);
 /* ---------- builder + arena ---------- */
 const enterBuilder = async () => {
   const open = await page.evaluate(() => document.body.classList.contains('builder-open'));
-  if (!open) await page.click('#mode-builder-btn');
+  if (!open) await toggleBuilderMode(page);
   await page.waitForFunction(
     () => document.body.classList.contains('builder-open') && !!document.getElementById('builder-overlay'),
     { timeout: 15000 },
@@ -131,17 +131,17 @@ await page.evaluate(() => window.__game.ctx.camera.snapTo(600, 500));
 
 /* ---------- live light preview ---------- */
 console.log('-- light preview');
-await page.click('.bp-tool[data-tool="light"]');
+await clickBuilderTool(page, 'light');
 let p = await toClient(560, 540);
 await page.mouse.click(p.x, p.y);
 await page.waitForTimeout(250);
 let lights = await page.evaluate(() => window.__game.ctx.state.editorLights?.length ?? 0);
 check('authored light feeds the live field (editorLights=1)', lights === 1, `got ${lights}`);
-await page.click('#bp-light-toggle');
+await clickBuilderControl(page, '#bp-light-toggle');
 await page.waitForTimeout(150);
 lights = await page.evaluate(() => window.__game.ctx.state.editorLights);
 check('preview toggle OFF clears the feed', lights === null, `got ${JSON.stringify(lights)}`);
-await page.click('#bp-light-toggle'); // back on
+await clickBuilderControl(page, '#bp-light-toggle'); // back on
 await page.keyboard.press('Escape'); // leave light tool
 await page.keyboard.press('Escape'); // deselect
 
@@ -250,7 +250,7 @@ const paintBlock = async (x0, y0, x1, y1) => {
     window.__game.ctx.state.currentElement = 12;
     window.__game.ctx.state.activeInputMode = 'element';
   });
-  await page.click('.bp-tool[data-tool="rectFill"]');
+  await clickBuilderTool(page, 'rectFill');
   const sa = await toClient(x0, y0);
   const sb = await toClient(x1, y1);
   await page.mouse.move(sa.x, sa.y);
@@ -263,7 +263,7 @@ await paintBlock(640, 500, 650, 510);
 const blockA = await countStone(640, 500, 650, 510);
 check('block A painted through the UI before first save', blockA >= 100, `got ${blockA}`);
 await page.click('[data-menu="document"]');
-await page.click('#b-save');
+await clickBuilderControl(page, '#b-save');
 await page.waitForTimeout(200);
 const rle1 = await readSavedRle();
 // paint block B (paintDirty earned again), then run a ZERO-DIFF settle:
@@ -273,7 +273,7 @@ await paintBlock(660, 500, 670, 510);
 const blockB = await countStone(660, 500, 670, 510);
 check('block B painted through the UI before zero-diff settle', blockB >= 100, `got ${blockB}`);
 await holdSettle(1200); // hold-to-run; release leaves KEEP/REVERT pending
-await page.click('#bp-proc-btn'); // open the procedural panel
+await clickBuilderControl(page, '#bp-proc-btn'); // open the procedural panel
 const sumBefore = await arenaChecksum();
 await page.click('#bp-apply'); // must be REFUSED while the settle decision is pending
 await page.waitForTimeout(200);
@@ -283,7 +283,7 @@ check('proc APPLY refused while a settle decision is pending', sumBefore === sum
 await page.click('#bp-settle-keep');
 await page.waitForTimeout(200);
 await page.click('[data-menu="document"]');
-await page.click('#b-save');
+await clickBuilderControl(page, '#b-save');
 await page.waitForTimeout(200);
 const rle2 = await readSavedRle();
 check(
@@ -296,7 +296,7 @@ await page.click('#bp-proc-close');
 /* ---------- multi-select: marquee, group drag, duplicate ---------- */
 console.log('-- multi-select');
 const placeAt = async (kind, wx, wy) => {
-  await page.click(`.bp-tool[data-kind="${kind}"]`);
+  await clickBuilderKind(page, kind);
   const pt = await toClient(wx, wy);
   await page.mouse.click(pt.x, pt.y);
   await page.waitForTimeout(70);
@@ -347,7 +347,7 @@ await page.evaluate(() => {
       w.types[i] = 12; w.colors[i] = 0x8a8a92;
     }
 });
-await page.click('.bp-tool[data-tool="region"]');
+await clickBuilderTool(page, 'region');
 const ra = await toClient(477, 497);
 const rb = await toClient(493, 513);
 await page.mouse.move(ra.x, ra.y);
@@ -355,7 +355,7 @@ await page.mouse.down();
 await page.mouse.move(rb.x, rb.y, { steps: 3 });
 await page.mouse.up();
 await page.waitForTimeout(120);
-await page.click('#bp-prefab-capture');
+await clickBuilderControl(page, '#bp-prefab-capture');
 await acceptAppPrompt('test-block');
 await page.waitForTimeout(150);
 // library cards only — built-ins also list as cards now (2 action buttons
@@ -386,7 +386,7 @@ await clearBuilderStorage();
 /* ---------- OR and SEQUENCE doors, live in the runtime ---------- */
 console.log('-- door logic live');
 // wipe markers/doc state via NEW, then author: spawn + 2 plates + OR door
-await page.click('#b-new');
+await clickBuilderControl(page, '#b-new');
 await acceptAppConfirm();
 await page.waitForTimeout(150);
 await placeAt('spawn', 470, 616);
@@ -589,16 +589,16 @@ await page.keyboard.press('o');
 await page.keyboard.press('o'); // back to NONE
 
 await page.click('[data-menu="document"]');
-await page.click('#b-share');
+await clickBuilderControl(page, '#b-share');
 const code = await readAppPromptAndAccept();
 check('SHARE produces a PLLD1 code', typeof code === 'string' && code.startsWith('PLLD1.'), String(code).slice(0, 24));
-await page.click('#b-new');
+await clickBuilderControl(page, '#b-new');
 await acceptAppConfirm();
 await page.waitForTimeout(150);
 let count = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('NEW cleared the document', count === 0, `got ${count}`);
 await page.click('[data-menu="document"]');
-await page.click('#b-code');
+await clickBuilderControl(page, '#b-code');
 await acceptAppPrompt(code);
 await page.waitForTimeout(800);
 count = await page.evaluate(() => document.querySelectorAll('.b-marker').length);

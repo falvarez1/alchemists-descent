@@ -5,7 +5,7 @@
 // doubled indicator); and every empty-dock guide brightens on hover.
 // Usage: node scripts/verify-builder-dock-split.mjs [url]  (dev server must be running)
 import { launchBrowser } from './browser-launch.mjs';
-import { leaveTitleIfShown } from './run-helpers.mjs';
+import { leaveTitleIfShown, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -22,7 +22,7 @@ page.on('pageerror', (e) => errs.push(String(e)));
 
 const enterBuilder = async () => {
   const open = await page.evaluate(() => document.body.classList.contains('builder-open'));
-  if (!open) await page.click('#mode-builder-btn');
+  if (!open) await toggleBuilderMode(page);
   await page.waitForFunction(
     () => document.body.classList.contains('builder-open') && !!document.getElementById('builder-overlay'),
     { timeout: 15000 },

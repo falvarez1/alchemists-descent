@@ -2,7 +2,7 @@
 // Usage: node scripts/verify-generated-scene-selection.mjs [url]
 // Requires a running Vite dev server.
 import { chromium } from 'playwright-core';
-import { leaveTitleIfShown } from './run-helpers.mjs';
+import { leaveTitleIfShown, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -49,7 +49,7 @@ try {
   check('probe launched a deterministic virtual scene window', launched !== null, JSON.stringify(launched));
 
   await page.waitForFunction(() => window.__game.ctx.levels.current?.generatedScenes?.length > 0, { timeout: 10000 });
-  await page.click('#mode-builder-btn');
+  await toggleBuilderMode(page);
   await page.waitForSelector('.app-dialog-root [data-intent="current-scene"]', { timeout: 5000 });
   await page.click('.app-dialog-root [data-intent="current-scene"]');
   await page.waitForFunction(() => document.body.classList.contains('builder-open'), { timeout: 10000 });

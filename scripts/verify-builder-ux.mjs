@@ -5,7 +5,7 @@
 // bake-from-playtest, rotate, solo lights.
 // Usage: node scripts/verify-builder-ux.mjs [url]  (dev server must be running)
 import { launchBrowser } from './browser-launch.mjs';
-import { getGameViewSize, isBenignDevConsoleError, worldToBuilderClient, leaveTitleIfShown } from './run-helpers.mjs';
+import { getGameViewSize, isBenignDevConsoleError, worldToBuilderClient, leaveTitleIfShown, clickBuilderTool, clickBuilderKind, clickBuilderControl, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -68,7 +68,7 @@ await page.waitForTimeout(150);
 
 /* ---------- Builder-native left panel ---------- */
 console.log('-- builder panel');
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForSelector('#builder-root .bp-swatch', { timeout: 15000 });
 const panel = await page.evaluate(() => ({
   sidebarHidden: getComputedStyle(document.getElementById('left-toolbar')).display === 'none',
@@ -1095,7 +1095,7 @@ const rightHidden = await page.evaluate(
   () => getComputedStyle(document.getElementById('right-inspector')).display === 'none',
 );
 check('sandbox right inspector yields to the builder', rightHidden);
-await page.click('#bp-world-btn');
+await clickBuilderControl(page, '#bp-world-btn');
 await page.waitForTimeout(120);
 const worldPanel = await page.evaluate(() => {
   const panel = document.getElementById('builder-world');
@@ -1176,7 +1176,7 @@ console.log('-- snap');
 await page.click('#bp-snap-btn'); // SNAP 4
 let snapLabel = await page.evaluate(() => document.getElementById('bp-snap-btn')?.textContent ?? '');
 check('snap cycle includes the 4-cell grid', snapLabel.includes('4'), snapLabel);
-await page.click('.bp-tool[data-kind="waystone"]');
+await clickBuilderKind(page, 'waystone');
 const oddSpot = await toClient(563, 611);
 await page.mouse.click(oddSpot.x, oddSpot.y);
 await page.waitForTimeout(120);
@@ -1207,7 +1207,7 @@ check('snap cycle returns to off after 16', snapLabel.includes('OFF'), snapLabel
 
 /* ---------- spatial gizmos ---------- */
 console.log('-- spatial gizmos');
-await page.click('.bp-tool[data-kind="door"]');
+await clickBuilderKind(page, 'door');
 let p = await toClient(735, 580);
 await page.mouse.click(p.x, p.y);
 await page.waitForTimeout(120);
@@ -1288,7 +1288,7 @@ const rotatedDoor = await page.evaluate(() => ({
 }));
 check('canvas rotate handle swaps slab width and height as one command', rotatedDoor.w === resizedDoor.h && rotatedDoor.h === resizedDoor.w, JSON.stringify(rotatedDoor));
 
-await page.click('.bp-tool[data-tool="light"]');
+await clickBuilderTool(page, 'light');
 p = await toClient(700, 540);
 await page.mouse.click(p.x, p.y);
 await page.waitForTimeout(120);
@@ -1395,7 +1395,7 @@ check('idle select canvas uses an arrow cursor, not a paint crosshair', idleCurs
 
 /* ---------- group + align ---------- */
 console.log('-- group & align');
-await page.click('.bp-tool[data-kind="enemy"]');
+await clickBuilderKind(page, 'enemy');
 p = await toClient(620, 590);
 await page.mouse.click(p.x, p.y);
 await page.waitForTimeout(80);
@@ -1493,12 +1493,12 @@ check('palette runs the matched command', overlayLabel.includes('LIGHT'), overla
 
 /* zen mode: every panel yields to the canvas */
 await page.click('[data-menu="view"]');
-await page.click('#b-zen');
+await clickBuilderControl(page, '#b-zen');
 await page.waitForTimeout(120);
 let zenHidden = await page.evaluate(() => getComputedStyle(document.getElementById('builder-palette')).display === 'none');
 check('zen mode hides the side panels', zenHidden);
 // #b-zen is a checkmarked toggle, so the View menu stays open — click it again directly.
-await page.click('#b-zen');
+await clickBuilderControl(page, '#b-zen');
 await page.waitForTimeout(120);
 zenHidden = await page.evaluate(() => getComputedStyle(document.getElementById('builder-palette')).display === 'none');
 check('zen toggles back', !zenHidden);
@@ -1527,7 +1527,7 @@ check('showing it brings them back', markers === gameplayMarkersBeforeLayerToggl
 
 /* ---------- outliner + link graph ---------- */
 console.log('-- outliner & graph');
-await page.click('#bp-outliner-btn');
+await clickBuilderControl(page, '#bp-outliner-btn');
 await page.waitForTimeout(120);
 let outliner = await page.evaluate(() => {
   const panel = document.getElementById('builder-outliner');
@@ -1678,22 +1678,22 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(80);
 
-await page.click('.bp-tool[data-kind="plate"]');
+await clickBuilderKind(page, 'plate');
 let gp = await toClient(710, 610);
 await page.mouse.click(gp.x, gp.y);
 await page.waitForTimeout(80);
-await page.click('.bp-tool[data-kind="door"]');
+await clickBuilderKind(page, 'door');
 let gd = await toClient(748, 560);
 await page.mouse.click(gd.x, gd.y);
 await page.waitForTimeout(80);
-await page.click('.bp-tool[data-tool="link"]');
+await clickBuilderTool(page, 'link');
 gp = await toClient(710, 610);
 gd = await toClient(748, 566);
 await page.mouse.click(gp.x, gp.y);
 await page.waitForTimeout(60);
 await page.mouse.click(gd.x, gd.y);
 await page.waitForTimeout(120);
-await page.click('#bp-link-graph-btn');
+await clickBuilderControl(page, '#bp-link-graph-btn');
 await page.waitForTimeout(120);
 const graphOpen = await page.evaluate(() => {
   const panel = document.getElementById('builder-link-graph');
@@ -1769,7 +1769,7 @@ await page.evaluate(() => {
   const i = w.idx(500, 500);
   w.types[i] = 3; w.colors[i] = 0x555555;
 });
-await page.click('.bp-tool[data-tool="smooth"]');
+await clickBuilderTool(page, 'smooth');
 const sp = await toClient(500, 500);
 await page.mouse.move(sp.x, sp.y);
 await page.mouse.down();
@@ -1781,7 +1781,7 @@ check('smooth erodes the lone spur', spur === 0, `got ${spur}`);
 
 /* ---------- polygon + magic regions ---------- */
 console.log('-- regions');
-await page.click('.bp-tool[data-tool="polyRegion"]');
+await clickBuilderTool(page, 'polyRegion');
 for (const [wx, wy] of [[480, 420], [560, 420], [520, 480]]) {
   const q = await toClient(wx, wy);
   await page.mouse.click(q.x, q.y);
@@ -1792,7 +1792,7 @@ await page.waitForTimeout(120);
 let target = await page.evaluate(() => document.getElementById('bp-target').textContent);
 check('polygon region closes and arms the pass target', target.includes('region'), target);
 await page.keyboard.press('Escape'); // clear region
-await page.click('.bp-tool[data-tool="regionMagic"]');
+await clickBuilderTool(page, 'regionMagic');
 const mg = await toClient(600, 500);
 await page.mouse.click(mg.x, mg.y);
 await page.waitForTimeout(150);
@@ -1803,11 +1803,11 @@ await page.keyboard.press('Escape'); // clear region
 
 /* ---------- author the playtest doc: patrol + emitter + mood + spawn ---------- */
 console.log('-- patrol, emitter, mood (one playtest)');
-await page.click('#b-new');
+await clickBuilderControl(page, '#b-new');
 await page.locator('.app-dialog-root .app-dialog-btn.primary').click({ timeout: 1000 }).catch(() => {});
 await page.waitForTimeout(150);
 const placeAt = async (kind, wx, wy) => {
-  await page.click(`.bp-tool[data-kind="${kind}"]`);
+  await clickBuilderKind(page, kind);
   const q = await toClient(wx, wy);
   await page.mouse.click(q.x, q.y);
   await page.waitForTimeout(80);
@@ -1880,7 +1880,7 @@ moodDoc = await page.evaluate(() => {
 check('document mood ambient redoes through Builder command stack', moodDoc.value === '0.5', JSON.stringify(moodDoc));
 const preAmbient = await page.evaluate(() => window.__game.ctx.params.global.ambient);
 await page.click('[data-menu="edit"]');
-await page.click('#b-capture');
+await clickBuilderControl(page, '#b-capture');
 await page.waitForTimeout(300);
 await page.click('#b-playtest');
 await page.waitForFunction(
@@ -1957,7 +1957,7 @@ await page.evaluate(() => {
       w.types[i] = 13; w.colors[i] = 0x7a8a99; // a metal patch "scar" (static)
     }
 });
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(400);
 // the de-alert teleport parked the camera right of center - re-center so
 // the later region drags and placements land on the canvas, not the panels
@@ -1973,7 +1973,7 @@ let scarGold = await page.evaluate(() => {
 });
 check('playtest scars discarded by default', scarGold === 0, `got ${scarGold}`);
 // region over the scar, bake via the command palette
-await page.click('.bp-tool[data-tool="region"]');
+await clickBuilderTool(page, 'region');
 a = await toClient(465, 585);
 b = await toClient(485, 605);
 await page.mouse.move(a.x, a.y);
@@ -2039,7 +2039,7 @@ await page.waitForTimeout(100);
 const noteTitle = await page.evaluate(() => document.querySelector('.b-marker.k-decor')?.title ?? '');
 check('note text rides the marker tooltip', noteTitle === 'boss arena goes here', noteTitle);
 
-await page.click('.bp-tool[data-tool="light"]');
+await clickBuilderTool(page, 'light');
 p = await toClient(560, 520);
 await page.mouse.click(p.x, p.y);
 await page.waitForTimeout(80);

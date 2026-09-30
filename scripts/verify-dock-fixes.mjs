@@ -5,7 +5,7 @@
 //  4) floating panel close works (covered by repro-float-close.mjs too)
 // Usage: node scripts/verify-dock-fixes.mjs [url]   (dev server must be running)
 import { chromium } from 'playwright-core';
-import { leaveTitleIfShown } from './run-helpers.mjs';
+import { leaveTitleIfShown, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0, fail = 0;
@@ -27,7 +27,7 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1200);
-if (!(await page.evaluate(() => document.body.classList.contains('builder-open')))) await page.click('#mode-builder-btn');
+if (!(await page.evaluate(() => document.body.classList.contains('builder-open')))) await toggleBuilderMode(page);
 await page.waitForTimeout(500);
 
 const reset = async () => { await page.evaluate(() => window.__game?.ctx?.builder?.['resetWorkspace']?.()); await page.waitForTimeout(220); };

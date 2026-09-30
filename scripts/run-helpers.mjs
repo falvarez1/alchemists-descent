@@ -230,6 +230,8 @@ export async function chooseBoonAndDoor(page, levelId) {
  * `tool` is the `data-tool` id, e.g. 'paint', 'rectFill', 'lassoRegion', 'light'.
  */
 export async function clickBuilderTool(page, tool) {
+  // The Builder chunk loads lazily: Playwright auto-waits on a click, but the group lookup below does not.
+  await page.waitForSelector('#builder-toolbar', { state: 'attached', timeout: 30000 });
   const group = await page.evaluate(
     (t) => document.querySelector(`#builder-toolbar .bt-flyout .bp-tool[data-tool="${t}"]`)?.closest('.bt-variants')?.dataset.group ?? null,
     tool,
@@ -245,5 +247,53 @@ export async function clickBuilderTool(page, tool) {
 
 /** Open a Builder palette tab ('materials' | 'objects' | 'library') with a real click. */
 export async function openBuilderPaletteTab(page, pane) {
+  await page.waitForSelector('#builder-palette .bp-tab', { state: 'attached', timeout: 30000 });
   await page.click(`#builder-palette .bp-tab[data-pane="${pane}"]`);
+}
+
+/**
+ * Arm a placeable object kind from the palette's Objects tab with real clicks. Kinds under
+ * "Advanced machines" sit in a folded <details>, which this opens first. `kind` is the
+ * `data-kind` id, e.g. 'spawn', 'door', 'valve'.
+ */
+export async function clickBuilderKind(page, kind) {
+  await openBuilderPaletteTab(page, 'objects');
+  await page.evaluate((k) => {
+    const d = document.querySelector(`#bp-pane-objects details.bp-adv:has([data-kind="${k}"])`);
+    if (d) d.open = true;
+  }, kind);
+  await page.click(`#bp-pane-objects .bp-card[data-kind="${kind}"]`);
+}
+
+/**
+ * Click a Builder control wherever the shell keeps it. Controls live in menu dropdowns (File / Edit / View /
+ * Level / Help) or in a palette tab (Terrain / Objects / Library); a real click needs the menu or tab open
+ * first. Anything already visible (toolbar, title bar, status bar, docks) is just clicked.
+ */
+export async function clickBuilderControl(page, selector) {
+  await page.waitForSelector(selector, { state: 'attached', timeout: 30000 });
+  const where = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    return {
+      menu: el.closest('.builder-menu-dropdown')?.dataset.menuPanel ?? null,
+      pane: el.closest('.bp-pane')?.dataset.pane ?? null,
+    };
+  }, selector);
+  if (where?.pane) await openBuilderPaletteTab(page, where.pane);
+  if (where?.menu) {
+    // Idempotent: a probe may already have the menu open, and a second click on the trigger would close it.
+    const open = await page.evaluate((m) => document.querySelector(`.builder-menu-dropdown[data-menu-panel="${m}"]`)?.hidden === false, where.menu);
+    if (!open) await page.click(`#builder-bar [data-menu="${where.menu}"]`);
+  }
+  await page.click(selector);
+}
+
+/**
+ * Switch the Builder on or off the way a person does. While the Builder is open the game's header (and
+ * its BUILDER button) is hidden behind the Builder's own title bar, whose way back is the Sandbox button.
+ */
+export async function toggleBuilderMode(page) {
+  if (await page.isVisible('#mode-builder-btn')) await page.click('#mode-builder-btn');
+  else await page.click('#b-exit');
 }

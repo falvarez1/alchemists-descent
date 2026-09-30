@@ -3,7 +3,7 @@
 // Usage: node scripts/verify-builder-assets.mjs [url]  (dev server running)
 import { readFile } from 'node:fs/promises';
 import { launchBrowser } from './browser-launch.mjs';
-import { isBenignDevConsoleError, leaveTitleIfShown } from './run-helpers.mjs';
+import { isBenignDevConsoleError, leaveTitleIfShown, clickBuilderControl, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -114,7 +114,7 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1800);
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForSelector('#builder-root .bp-swatch', { timeout: 15000 });
 
 const clickBuilderStage = async (xFrac = 0.5, yFrac = 0.5) => {
@@ -170,7 +170,7 @@ const dragAssetRowToStage = async (assetId, xFrac = 0.5, yFrac = 0.5) => {
 
 console.log('-- asset browser open/search/filter/details');
 await page.click('[data-menu="view"]');
-await page.click('#b-assets');
+await clickBuilderControl(page, '#b-assets');
 await page.waitForTimeout(200);
 
 const openState = await page.evaluate(() => {
