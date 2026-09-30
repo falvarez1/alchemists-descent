@@ -129,6 +129,9 @@ export class PellCamp {
   idleAct = 'sketch';
   idleUntil = 0;
   private actT = 0;
+  /** The act whose small sound (a sneeze, a sip) has been, or is being waited for, and whether it has been made. */
+  private soundedAct = '';
+  private soundDone = true;
   private startleUntil = 0;
   private waved = false;
   private facing: 1 | -1 = 1;
@@ -510,6 +513,19 @@ export class PellCamp {
       act = near && this.idleAct === 'lookup' ? 'stand' : this.idleAct;
     }
     if (act !== f.act) this.actT = 0;
+    // The act that has a sound makes it at the moment the picture does (the sneeze's snap, the sip's draught),
+    // once, placed at his camp so only someone near hears it.
+    if (act !== this.soundedAct) { this.soundedAct = act; this.soundDone = false; }
+    if (!this.soundDone) {
+      const audio = this.host.ctx.audio;
+      if (act === 'sneeze' && this.actT >= 0.45) {
+        this.soundDone = true;
+        audio.at(s.camp.x, s.camp.floorY - 14, () => audio.sfx('pell.sneeze'), 240);
+      } else if (act === 'sip' && this.actT >= 2.6) {
+        this.soundDone = true;
+        audio.at(s.camp.x, s.camp.floorY - 14, () => audio.sfx('pell.sip'), 240);
+      }
+    }
     // He looks at you at once when you are near (or at what he has seen), and turns his body a moment after.
     if (!this.placed) { this.placed = true; this.facing = s.camp.facing; this.turnAt = 0; }
     const toward: 1 | -1 | null = react?.face ?? (near || this.talk ? (p.x >= s.camp.x ? 1 : -1) : null);
