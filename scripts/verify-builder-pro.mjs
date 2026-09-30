@@ -239,20 +239,6 @@ const countStone = (x0, y0, x1, y1) =>
     }
     return n;
   }, [x0, y0, x1, y1]);
-const sampleBuilderCanvas = (wx, wy) =>
-  page.evaluate(({ wx, wy, view }) => {
-    const ctx = window.__game.ctx;
-    const overlay = document.getElementById('builder-overlay');
-    const canvas = document.getElementById('builder-canvas');
-    const r = overlay.getBoundingClientRect();
-    const ux = ((wx - ctx.camera.renderX) / view.w - 0.5) * ctx.camera.zoom + 0.5;
-    const uy = ((wy - ctx.camera.renderY) / view.h - 0.5) * ctx.camera.zoom + 0.5;
-    const x = Math.max(0, Math.min(canvas.width - 1, Math.floor(ux * canvas.width)));
-    const y = Math.max(0, Math.min(canvas.height - 1, Math.floor(uy * canvas.height)));
-    if (ux < 0 || ux > 1 || uy < 0 || uy > 1 || r.width === 0 || r.height === 0) return { r: 0, g: 0, b: 0, a: 0 };
-    const p = canvas.getContext('2d').getImageData(x, y, 1, 1).data;
-    return { r: p[0], g: p[1], b: p[2], a: p[3] };
-  }, { wx, wy, view: viewSize });
 // paint STATIC stone block A through the UI, then snapshot it into a save
 await page.evaluate(() => {
   window.__game.ctx.state.currentElement = 12;
@@ -551,89 +537,6 @@ const wreckBehind = await page.evaluate(async () => {
   return { mid, done: door.seqDone === true, state: door.state };
 });
 check('wrecking an already-fired step cannot wedge the chain', wreckBehind.mid.seq === 1 && wreckBehind.done && wreckBehind.state === 1, JSON.stringify(wreckBehind));
-
-/* ---------- live preview session: disposable, Builder-owned ---------- */
-console.log('-- live preview session');
-await enterBuilder();
-await page.evaluate(() => {
-  const ctx = window.__game.ctx;
-  ctx.camera.zoomLock = 1;
-  ctx.camera.snapTo(600, 500);
-  ctx.state.currentElement = 12;
-  ctx.state.activeInputMode = 'element';
-});
-await page.waitForTimeout(200);
-// Weight one authored plate through the normal terrain tool. Live Preview
-// should read this unsaved paint from a local snapshot, not by mutating the
-// document or swapping the real world into a preview runtime.
-await paintBlock(506, 617, 514, 618);
-const livePreviewChecksum = await arenaChecksum();
-await page.click('#b-session-live');
-await page.waitForTimeout(700);
-const livePreviewState = await page.evaluate(() => ({
-  mode: window.__game.ctx.state.mode,
-  active: document.getElementById('b-session-live').classList.contains('active'),
-  restartDisabled: document.getElementById('b-session-restart').disabled,
-  discardDisabled: document.getElementById('b-session-discard').disabled,
-  checksum: (() => {
-    const w = window.__game.ctx.world;
-    let sum = 0;
-    for (let y = 375; y <= 625; y++) for (let x = 430; x <= 770; x++) sum += w.types[w.idx(x, y)];
-    return sum;
-  })(),
-}));
-check('Live Preview stays in Builder mode', livePreviewState.mode === 'build' && livePreviewState.active, JSON.stringify(livePreviewState));
-check('Live Preview does not mutate the live world', livePreviewState.checksum === livePreviewChecksum, `${livePreviewState.checksum} vs ${livePreviewChecksum}`);
-check('Live Preview enables restart/discard controls', !livePreviewState.restartDisabled && !livePreviewState.discardDisabled, JSON.stringify(livePreviewState));
-const platePixel = await sampleBuilderCanvas(510, 619);
-check('Live Preview draws preview-only mechanism cells', platePixel.a > 0, JSON.stringify(platePixel));
-const livePreviewBudget = await page.evaluate(async () => {
-  const frames = [];
-  let last = performance.now();
-  for (let i = 0; i < 36; i++) {
-    const now = await new Promise((resolve) => requestAnimationFrame(resolve));
-    frames.push(now - last);
-    last = now;
-  }
-  const avg = frames.reduce((sum, value) => sum + value, 0) / frames.length;
-  return { avg, max: Math.max(...frames), samples: frames.length };
-});
-check(
-  'Live Preview frame budget remains bounded',
-  livePreviewBudget.avg < 50 && livePreviewBudget.max < 180,
-  JSON.stringify(livePreviewBudget),
-);
-await page.evaluate(() => document.getElementById('bp-preview')?.click());
-await page.waitForTimeout(120);
-const livePreviewGate = await page.evaluate(() => ({
-  status: document.getElementById('builder-status')?.textContent ?? '',
-  active: document.getElementById('b-session-live').classList.contains('active'),
-}));
-check(
-  'Live Preview blocks procedural cell previews',
-  livePreviewGate.active && /AUTHOR-ONLY/.test(livePreviewGate.status),
-  JSON.stringify(livePreviewGate),
-);
-await page.click('#b-session-restart');
-await page.waitForTimeout(250);
-const restartState = await page.evaluate(() => ({
-  active: document.getElementById('b-session-live').classList.contains('active'),
-  checksum: (() => {
-    const w = window.__game.ctx.world;
-    let sum = 0;
-    for (let y = 375; y <= 625; y++) for (let x = 430; x <= 770; x++) sum += w.types[w.idx(x, y)];
-    return sum;
-  })(),
-}));
-check('Restart Preview keeps the authored world stable', restartState.active && restartState.checksum === livePreviewChecksum, JSON.stringify(restartState));
-await page.click('#b-session-discard');
-await page.waitForTimeout(250);
-const discardState = await page.evaluate(() => ({
-  author: document.getElementById('b-session-author').classList.contains('active'),
-  restartDisabled: document.getElementById('b-session-restart').disabled,
-}));
-check('Discard Preview returns to Author controls', discardState.author && discardState.restartDisabled, JSON.stringify(discardState));
-await page.keyboard.press('Escape');
 
 /* ---------- playtest-from-here (T) ---------- */
 console.log('-- playtest from here');

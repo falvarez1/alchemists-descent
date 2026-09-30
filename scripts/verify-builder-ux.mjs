@@ -511,19 +511,16 @@ await page.click('#b-reset-workspace');
 await page.waitForTimeout(150);
 const sideControlOverflow = [];
 for (const [panelId, buttonId] of [
-  ['builder-postfx', 'bp-postfx-btn'],
   ['builder-matparams', 'bp-mat-btn'],
-  ['builder-global', 'bp-global-btn'],
   ['builder-world', 'bp-world-btn'],
-  ['builder-virtual-world', 'bp-world-map-btn'],
 ]) {
   await page.evaluate((id) => document.getElementById(id)?.click(), buttonId);
   await page.waitForTimeout(120);
   sideControlOverflow.push(await page.evaluate((id) => {
     const panel = document.getElementById(id);
-    const body = panel?.querySelector('#bw-controls, #bm-controls, #bg-controls, #bf-controls, .vw-body, .vw-controls, .vw-inspector');
-    const rows = [...panel?.querySelectorAll('.builder-value-row, .builder-slider-row, .vw-slider') ?? []].map((row) => {
-      const line = row.querySelector('.builder-value-inputs, .bw-numline, .vw-slider-inputs');
+    const body = panel?.querySelector('#bw-controls, #bm-controls');
+    const rows = [...panel?.querySelectorAll('.builder-value-row, .builder-slider-row') ?? []].map((row) => {
+      const line = row.querySelector('.builder-value-inputs, .bw-numline');
       const rr = row.getBoundingClientRect();
       const lr = line?.getBoundingClientRect();
       return {
@@ -557,12 +554,10 @@ check(
   ),
   JSON.stringify(sideControlOverflow),
 );
-await dockWorkspacePanel('builder-virtual-world', 'builder-dock-right', 70, 0.50);
 await page.waitForTimeout(120);
 for (const [panelId, buttonId] of [
   ['builder-proc', 'bp-proc-btn'],
   ['builder-outliner', 'bp-outliner-btn'],
-  ['builder-runtime', 'bp-runtime-btn'],
 ]) {
   await page.evaluate((id) => document.getElementById(id)?.click(), buttonId);
   await page.waitForTimeout(90);
@@ -581,15 +576,11 @@ for (const [panelId, buttonId] of [
 }
 const sideTabbedChrome = [];
 for (const id of [
-  'builder-postfx',
   'builder-matparams',
-  'builder-global',
   'builder-world',
-  'builder-virtual-world',
   'builder-proc',
   'builder-issues',
   'builder-outliner',
-  'builder-runtime',
   'builder-assets',
   'builder-link-graph',
 ]) {
@@ -650,19 +641,16 @@ for (const viewport of [
   await page.evaluate(() => document.getElementById('b-reset-workspace')?.click());
   await page.waitForTimeout(120);
   for (const [panelId, buttonId] of [
-    ['builder-postfx', 'bp-postfx-btn'],
     ['builder-matparams', 'bp-mat-btn'],
-    ['builder-global', 'bp-global-btn'],
     ['builder-world', 'bp-world-btn'],
-    ['builder-virtual-world', 'bp-world-map-btn'],
   ]) {
     await page.evaluate((id) => document.getElementById(id)?.click(), buttonId);
     await page.waitForTimeout(100);
     responsiveSideControlOverflow.push(await page.evaluate(({ panelId, viewport }) => {
       const panel = document.getElementById(panelId);
-      const body = panel?.querySelector('#bw-controls, #bm-controls, #bg-controls, #bf-controls, .vw-body, .vw-controls, .vw-inspector');
-      const rows = [...panel?.querySelectorAll('.builder-value-row, .builder-slider-row, .vw-slider') ?? []].map((row) => {
-        const line = row.querySelector('.builder-value-inputs, .bw-numline, .vw-slider-inputs');
+      const body = panel?.querySelector('#bw-controls, #bm-controls');
+      const rows = [...panel?.querySelectorAll('.builder-value-row, .builder-slider-row') ?? []].map((row) => {
+        const line = row.querySelector('.builder-value-inputs, .bw-numline');
         return {
           rowOverflow: row.scrollWidth > row.clientWidth + 1,
           lineOverflow: line ? line.scrollWidth > line.clientWidth + 1 : false,
@@ -716,25 +704,25 @@ check(
 );
 await page.click('#b-reset-workspace');
 await page.waitForTimeout(150);
-await page.evaluate(() => document.getElementById('bp-world-map-btn')?.click());
+await page.evaluate(() => document.getElementById('bp-assets-btn')?.click());
 await page.waitForTimeout(300);
 await page.evaluate(() => document.getElementById('b-validate')?.click());
 await page.waitForTimeout(160);
 await dockWorkspacePanel('builder-issues', 'builder-dock-bottom', 70, 0.10);
 await dockWorkspacePanel('builder-inspector', 'builder-dock-bottom', 70, 0.90);
-await page.evaluate(() => document.getElementById('bp-global-btn')?.click());
+await page.evaluate(() => document.getElementById('bp-mat-btn')?.click());
 await page.waitForTimeout(120);
-await dockWorkspacePanel('builder-global', 'builder-dock-bottom', 70, 0.90);
-await page.evaluate(() => document.getElementById('bp-postfx-btn')?.click());
+await dockWorkspacePanel('builder-matparams', 'builder-dock-bottom', 70, 0.90);
+await page.evaluate(() => document.getElementById('bp-world-btn')?.click());
 await page.waitForTimeout(120);
-await dockWorkspacePanel('builder-postfx', 'builder-dock-bottom', 70, 0.90);
-const bottomIds = ['builder-issues', 'builder-virtual-world', 'builder-inspector', 'builder-global', 'builder-postfx'];
+await dockWorkspacePanel('builder-world', 'builder-dock-bottom', 70, 0.90);
+const bottomIds = ['builder-issues', 'builder-assets', 'builder-inspector', 'builder-matparams', 'builder-world'];
 const expectedBottomTitles = {
   'builder-issues': 'VALIDATION ISSUES',
-  'builder-virtual-world': 'WORLD MAP',
+  'builder-assets': 'ASSET BROWSER',
   'builder-inspector': 'INSPECTOR',
-  'builder-global': 'GLOBAL CONTROLS',
-  'builder-postfx': 'POST PROCESSING',
+  'builder-matparams': 'MATERIAL PARAMETERS',
+  'builder-world': 'WORLD GENERATION',
 };
 const bottomChrome = [];
 for (const id of bottomIds) {
@@ -745,7 +733,7 @@ for (const id of bottomIds) {
     const pane = panel?.closest('.builder-bottom-pane');
     const head = panel?.querySelector('.bi-head[data-panel-handle]');
     const close = panel?.querySelector('.b-close');
-    const body = panel?.querySelector('.bv-panel-body, .bi-panel-body, .vw-body, .bw-form, #bw-controls, #bm-controls, #bg-controls, #bf-controls');
+    const body = panel?.querySelector('.bv-panel-body, .bi-panel-body, .bw-form, #bw-controls, #bm-controls');
     const pcs = panel ? getComputedStyle(panel) : null;
     const hcs = head ? getComputedStyle(head) : null;
     const ccs = close ? getComputedStyle(close) : null;
@@ -796,12 +784,12 @@ check(
   'bottom dock supports VS Code-style split groups plus local tabs',
   bottomTabs.rootTabs === 0 &&
     bottomTabs.panes.some((pane) => pane.id === 'bottom-left' && pane.panels.includes('builder-issues')) &&
-    bottomTabs.panes.some((pane) => pane.id === 'bottom-main' && pane.panels.includes('builder-virtual-world')) &&
+    bottomTabs.panes.some((pane) => pane.id === 'bottom-main' && pane.panels.includes('builder-assets')) &&
     bottomTabs.panes.some((pane) =>
       pane.id === 'bottom-right' &&
       pane.panels.includes('builder-inspector') &&
-      pane.panels.includes('builder-global') &&
-      pane.panels.includes('builder-postfx'),
+      pane.panels.includes('builder-matparams') &&
+      pane.panels.includes('builder-world'),
     ) &&
     bottomTabs.childOrder.length === 5 &&
     bottomTabs.childOrder[0] === 'bottom-left' &&
@@ -868,22 +856,6 @@ check(
   'bottom split sash keyboard resize matches rendered min and has focus affordance',
   keyboardResize.active && keyboardResize.width <= 224 && keyboardResize.min === '220' && keyboardResize.now === '220' && keyboardResize.outline !== 'none',
   JSON.stringify(keyboardResize),
-);
-await activatePanel('builder-virtual-world');
-const worldMapCollapse = await page.evaluate(() => {
-  const button = document.querySelector('#builder-virtual-world [data-section-toggle="virtualWorld.controls.preview"]');
-  if (button instanceof HTMLElement) button.click();
-  const section = button?.closest('.editor-section');
-  return {
-    collapsed: section?.classList.contains('collapsed') === true,
-    expanded: button?.getAttribute('aria-expanded') ?? '',
-    controls: button?.getAttribute('aria-controls') ?? '',
-  };
-});
-check(
-  'World Map sections use shared collapsible section semantics',
-  worldMapCollapse.collapsed && worldMapCollapse.expanded === 'false' && worldMapCollapse.controls !== '',
-  JSON.stringify(worldMapCollapse),
 );
 await activatePanel('builder-inspector');
 const inspectorCollapse = await page.evaluate(() => {
@@ -1146,48 +1118,12 @@ await page.evaluate(() => {
   // restore the default so later light checks aren't washed out
   window.__game.ctx.params.global.ambient = 0.18;
 });
-await page.evaluate(() => document.getElementById('bp-global-btn')?.click());
-await page.waitForTimeout(150);
-const globalSections = await page.evaluate(() => {
-  const panel = document.getElementById('builder-global');
-  const paletteHead = document.querySelector('#builder-palette .bp-head');
-  const first = panel?.querySelector('[data-section-toggle]');
-  const paletteStyle = paletteHead ? getComputedStyle(paletteHead) : null;
-  const firstStyle = first ? getComputedStyle(first) : null;
-  if (first instanceof HTMLElement) first.click();
-  const section = first?.closest('.editor-section');
-  return {
-    visible: panel ? getComputedStyle(panel).display !== 'none' : false,
-    toggles: panel?.querySelectorAll('[data-section-toggle]').length ?? 0,
-    allAria: [...(panel?.querySelectorAll('[data-section-toggle]') ?? [])].every(
-      (button) => button.getAttribute('aria-controls') && button.getAttribute('aria-expanded'),
-    ),
-    collapsed: section?.classList.contains('collapsed') === true,
-    expanded: first?.getAttribute('aria-expanded') ?? '',
-    sameFont: Boolean(
-      paletteStyle &&
-        firstStyle &&
-        paletteStyle.fontSize === firstStyle.fontSize &&
-        paletteStyle.fontWeight === firstStyle.fontWeight &&
-        paletteStyle.letterSpacing === firstStyle.letterSpacing &&
-        paletteStyle.textTransform === firstStyle.textTransform,
-    ),
-  };
-});
-check(
-  'Global Controls sections collapse with Palette-consistent section chrome',
-  globalSections.visible &&
-    globalSections.toggles >= 4 &&
-    globalSections.allAria &&
-    globalSections.collapsed &&
-    globalSections.expanded === 'false' &&
-    globalSections.sameFont,
-  JSON.stringify(globalSections),
-);
-// arming LAVA AUTO-OPENS its tuning window (no extra click needed)
+// arm LAVA, then open its tuning window from MATERIAL... (arming alone no longer opens it)
 await page.evaluate(() => {
   document.querySelector('.bp-swatch[data-el="11"]').click();
 });
+await page.waitForTimeout(100);
+await page.evaluate(() => document.getElementById('bp-mat-btn')?.click());
 await page.waitForTimeout(150);
 const matPanel = await page.evaluate(() => {
   const panel = document.getElementById('builder-matparams');
