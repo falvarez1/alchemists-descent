@@ -9,6 +9,8 @@ import { VitalNumbers } from '@/ui/VitalNumbers';
 import { resetSeenHints } from '@/game/hints/seenHints';
 import '@/styles/options.css';
 import { PadRumble } from '@/input/padRumble';
+import { LatchIndicator } from '@/ui/LatchIndicator';
+import { sanitizeToggleModes, type HoldAction } from '@/input/toggleLatches';
 import { EnemyReadouts } from '@/ui/EnemyReadouts';
 import { AIM_ASSISTS, HINT_MODES, HUD_OPACITY, HUD_SCALE, PAD_DEADZONE, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeBand, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
 import { createDefaultPostFxSettings } from '@/config/params';
@@ -19,6 +21,8 @@ export interface PlayerPreferences extends ExtraPreferences {
   /** Off / Half / Full. Older saves held a boolean (false = Off, true = Full); sanitizeShake reads both. */
   cameraShake: ShakeLevel;
   highReadability: boolean; creatureCaptions: boolean; trickshot: TrickshotSettings; volume: VolumeSettings; narration: boolean; muted: boolean;
+  /** Hold or toggle: true = latched by a press instead of held (crouch, levitate, pour, siphon). */
+  toggles: Record<HoldAction, boolean>;
 }
 const KEY = 'ad-player-preferences-v1';
 
@@ -69,6 +73,7 @@ export function sanitizePreferences(raw: unknown, reducedMotion: boolean): Playe
     volume: sanitizeVolumes(saved.volume),
     narration: saved.narration !== false,
     muted: saved.muted === true,
+    toggles: sanitizeToggleModes(saved.toggles),
   };
 }
 
@@ -100,6 +105,12 @@ const percent = (field: 'hudScale' | 'hudOpacity' | 'padDeadzone', band: Band): 
   write: (p, raw) => { p[field] = sanitizeBand(Number(raw), band); },
   format: p => `${Math.round(p[field] * 100)}%`,
 });
+/** A Hold / Toggle select for one latchable action. */
+const holdMode = (action: HoldAction, name: string): SimpleControl => ({
+  name,
+  read: p => (p.toggles[action] ? 'toggle' : 'hold'),
+  write: (p, raw) => { p.toggles[action] = raw === 'toggle'; },
+});
 const flag = (key: BoolKey): SimpleControl => ({ name: key, read: p => p[key], write: (p, raw) => { (p as Record<BoolKey, boolean>)[key] = raw === true; } });
 
 const SIMPLE_CONTROLS: readonly SimpleControl[] = [
@@ -107,6 +118,7 @@ const SIMPLE_CONTROLS: readonly SimpleControl[] = [
   flag('reducedFlashes'), flag('highReadability'), flag('creatureCaptions'), flag('narration'), flag('muted'),
   { name: 'cameraShake', read: p => p.cameraShake, write: (p, raw) => { p.cameraShake = sanitizeShake(raw); } },
   flag('pauseOnBlur'), flag('captionBacking'), flag('numericVitals'),
+  holdMode('down', 'toggleDown'), holdMode('jump', 'toggleJump'), holdMode('pour', 'togglePour'), holdMode('interact', 'toggleInteract'),
   flag('showEnemyHp'), percent('hudScale', HUD_SCALE), percent('hudOpacity', HUD_OPACITY), percent('padDeadzone', PAD_DEADZONE), flag('padRumble'),
   picture('brightness', 'brightness'), picture('vignette', 'vignette'), picture('bloom', 'bloom'), picture('grain', 'grain', 'Off'),
   { name: 'aimAssist', read: p => p.aimAssist, write: (p, raw) => { p.aimAssist = sanitizeChoice(raw, AIM_ASSISTS, 'off'); } },
@@ -138,6 +150,7 @@ export class PlayerSettings {
   private readonly vitals: VitalNumbers;
   private readonly rumble: PadRumble;
   private readonly readouts: EnemyReadouts;
+  private readonly latchChip: LatchIndicator;
   /** Presentation fields the player has moved, so "Reset picture" restores exactly those and nothing else. */
   private readonly touchedPicture = new Set<PresentationKey>();
   private tab: SettingsTab = 'sound';
@@ -212,6 +225,13 @@ export class PlayerSettings {
       <section class="settings-group" aria-labelledby="settings-keys"><h3 id="settings-keys">Keyboard</h3><p>Choose an action, then press its new key. Mouse aims; left click casts; right click throws a flask. With a Weaver leg equipped: left click whips, right click throws the leg, and Carry drops it.</p>
       <div class="binding-list"></div><p id="binding-feedback" role="status"></p>
       <button type="button" id="reset-controls">Restore controls</button></section>
+      <section class="settings-group" aria-labelledby="settings-hold"><h3 id="settings-hold">Hold or toggle</h3>
+      <p>For when holding a key is the hard part. Toggle: press once to start, press again to stop. Anything latched lets go by itself when you pause, fall or change floor.</p>
+      <div class="settings-options">
+      ${selectRow('toggleDown', 'Crouch', [['hold', 'Hold'], ['toggle', 'Toggle']])}
+      ${selectRow('toggleJump', 'Levitate (Jump)', [['hold', 'Hold'], ['toggle', 'Toggle']])}
+      ${selectRow('togglePour', 'Pour', [['hold', 'Hold'], ['toggle', 'Toggle']])}
+      ${selectRow('toggleInteract', 'Siphon (Interact)', [['hold', 'Hold'], ['toggle', 'Toggle']])}</div></section>
       <section class="settings-group" aria-labelledby="settings-pad"><h3 id="settings-pad">Controller</h3><p class="controller-help">Left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. With a Weaver leg: RT whips, RB throws it, LB drops it. Start pauses; View saves a clip.</p>
       <div class="settings-options">${sliderRow('padDeadzone', 'Stick dead zone', PAD_DEADZONE, 'How far a stick must move before it counts. Raise it if the view drifts or the alchemist creeps on their own.')}
       ${checkRow('padRumble', 'Vibration', 'A short rumble when you are hurt, when a blast goes off close by, and when you fall. Only on controllers that can rumble.')}</div></section>
@@ -241,7 +261,10 @@ export class PlayerSettings {
       if (el instanceof HTMLInputElement && el.type === 'range') el.addEventListener('input', () => { control.write(this.preferences, raw()); this.apply(); });
       el.addEventListener('change', () => { control.write(this.preferences, raw()); this.apply(true); });
     }
-    this.dialog.querySelector('#reset-controls')!.addEventListener('click', () => { resetBindings(); this.renderBindings(); });
+    this.dialog.querySelector('#reset-controls')!.addEventListener('click', () => {
+      resetBindings(); this.renderBindings();
+      this.preferences.toggles = sanitizeToggleModes(null); this.apply(true);
+    });
     this.dialog.querySelector('#reset-hud')!.addEventListener('click', () => {
       this.preferences.hudScale = HUD_SCALE.fallback; this.preferences.hudOpacity = HUD_OPACITY.fallback; this.apply(true);
     });
@@ -288,6 +311,7 @@ export class PlayerSettings {
     this.vitals = new VitalNumbers(ctx);
     this.rumble = new PadRumble(ctx);
     this.readouts = new EnemyReadouts(ctx);
+    this.latchChip = new LatchIndicator(ctx);
     this.renderBindings(); this.apply();
     window.addEventListener('settings-tab-step', this.onTabStep);
     const pause = document.createElement('button');
@@ -403,6 +427,7 @@ export class PlayerSettings {
     this.rumble.setEnabled(this.preferences.padRumble);
     this.ctx.state.showEnemyHp = this.preferences.showEnemyHp;
     this.ctx.state.aimAssist = this.preferences.aimAssist;
+    this.ctx.state.toggleModes = { ...this.preferences.toggles };
     this.readouts.setEnabled(this.preferences.showEnemyHp);
     this.vitals.setEnabled(this.preferences.numericVitals);
     this.ctx.state.reduceFlashes = this.preferences.reducedFlashes;
@@ -462,6 +487,6 @@ export class PlayerSettings {
 
   dispose(): void {
     window.removeEventListener('settings-tab-step', this.onTabStep);
-    this.quick.dispose(); this.vitals.dispose(); this.rumble.dispose(); this.readouts.dispose(); this.dialog.remove(); document.getElementById('pause-settings')?.remove();
+    this.quick.dispose(); this.vitals.dispose(); this.rumble.dispose(); this.readouts.dispose(); this.latchChip.dispose(); this.dialog.remove(); document.getElementById('pause-settings')?.remove();
   }
 }

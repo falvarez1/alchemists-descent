@@ -14,6 +14,7 @@ import { telekinesisHolding, telekinesisHurl, telekinesisLift, telekinesisSetDow
 import { flaskSlotKey, gameplayCode } from '@/input/bindings';
 import { MobileControls } from '@/input/MobileControls';
 import { FocusPause } from '@/input/focusPause';
+import { ToggleLatches, type HoldAction } from '@/input/toggleLatches';
 import { padThresholds } from '@/config/playerPrefs';
 
 type KeyboardLockApi = {
@@ -117,11 +118,16 @@ function isEditableTarget(target: EventTarget | null): boolean {
 export class InputManager {
   private readonly mobile: MobileControls;
   private readonly focusPause: FocusPause;
+  /** Hold or toggle (the player's option): actions latched by a press. See input/toggleLatches for the rules. */
+  private readonly latches = new ToggleLatches(() => this.ctx.state.toggleModes);
+  private lastLatchKey = '';
+  private readonly offLatchEvents: Array<() => void> = [];
   private readonly touchKeyCodes = new Set<string>();
 
   poll(): void {
     this.pollGamepad();
     this.mobile.update();
+    this.settleLatches();
   }
   private readonly previousPadButtons = new Uint8Array(18);
   private padDriving = false;
@@ -275,6 +281,13 @@ export class InputManager {
     ctx.input.releaseHeldInput = () => this.clearHeldInput();
     // The player's "pause when the window loses focus" option (default on).
     this.focusPause = new FocusPause(ctx, () => isKeyboardUiOwnerActive());
+    // A latched key must never outlive the moment it was latched for.
+    this.offLatchEvents.push(
+      ctx.events.on('playerDied', () => this.dropLatches()),
+      ctx.events.on('playerRespawned', () => this.dropLatches()),
+      ctx.events.on('levelChanged', () => this.dropLatches()),
+      ctx.events.on('modeChanged', () => this.dropLatches()),
+    );
 
     // ===================== Input: Mouse =====================
     this.attachCanvas(canvas);
@@ -318,6 +331,7 @@ export class InputManager {
   }
 
   dispose(): void {
+    for (const off of this.offLatchEvents.splice(0)) off();
     this.focusPause.dispose();
     this.mobile.dispose();
     window.removeEventListener('mouseup', this.handleWindowMouseUp);
@@ -602,6 +616,45 @@ export class InputManager {
     ctx.player.firing = false;
     ctx.player.climbing = false;
     cancelChargingBlackHole(ctx);
+    // Everything is let go above (keys, pour, siphon): so is every latch.
+    this.latches.clear();
+    this.emitLatches();
+  }
+
+  /** Undo one latch: a second press, or a wholesale drop. Releases whatever it held. */
+  private releaseLatch(action: HoldAction, code: string): void {
+    const { ctx } = this;
+    if (action === 'down' || action === 'jump') this.setKeyHeld(code, false);
+    else if (action === 'pour') ctx.input.pourHeld = false;
+    else ctx.input.siphonHeld = false;
+    this.emitLatches();
+  }
+
+  /** Let go of every latch (blur, pause, death, a new floor, a mode change): a key must never stay down on its own. */
+  private dropLatches(): void {
+    for (const { action, code } of this.latches.clear()) this.releaseLatch(action, code);
+    this.emitLatches();
+  }
+
+  /** Each presentation frame: drop every latch while the game is not being played, forget the ones the game let go of. */
+  private settleLatches(): void {
+    if (this.latches.size === 0) return;
+    const { ctx } = this;
+    if (ctx.state.paused || ctx.player.dead || ctx.state.mode !== 'play' || isKeyboardUiOwnerActive()) { this.dropLatches(); return; }
+    for (const action of this.latches.active()) {
+      const code = this.latches.codeOf(action) ?? '';
+      const alive = action === 'pour' ? ctx.input.pourHeld : action === 'interact' ? ctx.input.siphonHeld : this.heldKeyCodes.has(code);
+      if (!alive) this.latches.drop(action);
+    }
+    this.emitLatches();
+  }
+
+  private emitLatches(): void {
+    const held = this.latches.active();
+    const key = held.join(',');
+    if (key === this.lastLatchKey) return;
+    this.lastLatchKey = key;
+    this.ctx.events.emit('inputLatches', { held });
   }
 
   private requestRunLauncher(source: 'play-button' | 'tab' | 'fullscreen'): boolean {
@@ -619,6 +672,12 @@ export class InputManager {
     const { ctx } = this;
     const code = ctx.state.mode === 'play' ? gameplayCode(e.code) : e.code;
     this.claimPlayKey(e);
+    // Hold or toggle (the player's option). A toggle key's auto-repeat is nothing; a fresh press flips its latch, and
+    // the press that lets go is only that (no jump rides on it). In Hold mode all of this is skipped.
+    const playing = ctx.state.mode === 'play';
+    if (playing && e.repeat && this.latches.swallowsRelease(code)) return;
+    const latch = playing && !e.repeat ? this.latches.press(code) : null;
+    if (latch?.edge === 'off') { this.releaseLatch(latch.action, latch.code); return; }
     if (!e.repeat && JUMP_KEY_CODES.has(code)) ctx.input.queuedJump = code === 'Space' ? 'wall' : 'jump';
 
     if (code === 'KeyV' && ctx.state.mode === 'play' && !e.repeat && throwGlowseed(ctx)) {
@@ -673,6 +732,11 @@ export class InputManager {
     }
 
     this.pressPlayAction(code, e.repeat);
+    // A latch only stands if the action really started (a lever pull or a lift is not a siphon; a climb cannot pour).
+    if (latch?.edge === 'on') {
+      if ((latch.action === 'pour' && !ctx.input.pourHeld) || (latch.action === 'interact' && !ctx.input.siphonHeld)) this.latches.drop(latch.action);
+      this.emitLatches();
+    }
   }
 
   private setTouchKey(code: string, held: boolean): void {
@@ -747,6 +811,8 @@ export class InputManager {
     const code = ctx.state.mode === 'play' ? gameplayCode(e.code) : e.code;
     if (!this.shouldIgnoreKeyboard(e)) this.claimPlayKey(e);
 
+    // A toggle key coming up changes nothing: the latch is let go by the next press, or by the drops above.
+    if (ctx.state.mode === 'play' && this.latches.swallowsRelease(code)) return;
     if (this.isTrackedHeldKey(code)) this.setKeyHeld(code, false);
     else this.releasePlayAction(code);
   }

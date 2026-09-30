@@ -891,6 +891,180 @@ try {
     await saved.context.close();
   }
 
+
+  // ------------------------------------------------------------------ hold or toggle
+  if (want('toggle')) {
+    console.log('\n== Hold or toggle: crouch, levitate, pour, siphon (real keyboard; every way a latch could get stuck)');
+    const { context, page, errors } = await freshRun();
+    const keys = () => page.evaluate(() => { const c = window.__game.ctx; return { down: c.input.keys.down, jump: c.input.keys.jump, pour: c.input.pourHeld, siphon: c.input.siphonHeld, crawling: c.player.crawling, levit: c.player.levit, y: c.player.y, paused: c.state.paused, dead: c.player.dead }; });
+    const chip = () => page.evaluate(() => { const el = document.getElementById('latch-indicator'); return el && !el.hidden ? el.textContent : null; });
+    const tap = async (code) => { await page.keyboard.down(code); await page.waitForTimeout(60); await page.keyboard.up(code); await page.waitForTimeout(120); };
+    await page.evaluate(() => { const c = window.__game.ctx; c.state.debugGodMode = true; c.player.invuln = 99999; });
+
+    // --- Hold (the default): exactly as it always was
+    check((await chip()) === null, 'default: no chip');
+    await page.keyboard.down('KeyS'); await page.waitForTimeout(120);
+    const heldS = await keys();
+    await page.keyboard.up('KeyS'); await page.waitForTimeout(120);
+    const relS = await keys();
+    check(heldS.down === true && relS.down === false, 'Hold: crouch is down while S is down and up when it comes up');
+    await page.keyboard.down('KeyQ'); await page.waitForTimeout(120);
+    const heldQ = (await keys()).pour;
+    await page.keyboard.up('KeyQ'); await page.waitForTimeout(120);
+    check(heldQ === true && (await keys()).pour === false, 'Hold: pour follows Q exactly');
+
+    // --- set all four to Toggle through the real dialog
+    await openSettings(page, 'controls');
+    for (const name of ['toggleDown', 'toggleJump', 'togglePour', 'toggleInteract']) {
+      const sel = page.locator(`#player-settings [name="${name}"]`);
+      await sel.scrollIntoViewIfNeeded();
+      check(await sel.evaluate((el) => [...el.options].map((o) => o.value).join() === 'hold,toggle'), `${name}: a Hold / Toggle select`);
+      await sel.selectOption('toggle');
+    }
+    check((await stored(page))?.toggles?.down === true && (await stored(page))?.toggles?.interact === true, 'all four save under "toggles"');
+    await page.screenshot({ path: `${out}/toggle-settings.png` });
+    await closeSettings(page); await resume(page);
+    check(JSON.stringify(await page.evaluate(() => window.__game.ctx.state.toggleModes)) === JSON.stringify({ down: true, jump: true, pour: true, interact: true }), 'and apply live');
+
+    // --- crouch: press once, release the key, still crouched; press again, stands
+    await tap('KeyS');
+    let k = await keys();
+    check(k.down === true, 'Toggle crouch: the key is UP and the crouch stays on');
+    check((await chip())?.includes('Crouch'), `the chip names it: "${await chip()}"`);
+    // a stationary crouch is a peek; with a step sideways it becomes a crawl: prove the body is really crouched with no crouch key down
+    await page.keyboard.down('KeyD'); await page.waitForTimeout(450);
+    const crawl = (await keys()).crawling;
+    await page.keyboard.up('KeyD'); await page.waitForTimeout(150);
+    check(crawl === true, 'and the alchemist really is crouched (walking D crawls) with no crouch key held');
+    await page.screenshot({ path: `${out}/toggle-crouch.png` });
+    await tap('KeyS');
+    k = await keys();
+    check(k.down === false && (await chip()) === null, 'the second press lets go, and the chip goes');
+    // auto-repeat is nothing
+    await page.keyboard.down('KeyS'); await page.keyboard.down('KeyS'); await page.keyboard.down('KeyS'); await page.waitForTimeout(150); await page.keyboard.up('KeyS'); await page.waitForTimeout(150);
+    check((await keys()).down === true, 'a held-down key’s auto-repeat does not flip the latch (one latch for one press)');
+    await tap('KeyS');
+    check((await keys()).down === false, 'and a clean press lets it go');
+
+    // --- pour: a latched pour keeps pouring with the key up
+    await page.evaluate(() => { const c = window.__game.ctx; c.state.debugGodMode = false; c.player.invuln = 99999; const f = c.flask.state; f.material = 2; f.count = f.capacity; });
+    const flaskCount = () => page.evaluate(() => window.__game.ctx.flask.state.count);
+    const c0 = await flaskCount();
+    await tap('KeyQ');
+    await page.waitForTimeout(700);
+    const c1 = await flaskCount();
+    check((await keys()).pour === true && c1 < c0, `Toggle pour: Q tapped once, the flask keeps emptying with the key up (${c0} -> ${c1})`);
+    await tap('KeyQ');
+    const c2 = await flaskCount();
+    await page.waitForTimeout(500);
+    check((await keys()).pour === false && (await flaskCount()) === c2, 'the second Q stops it');
+
+    // --- levitate: a latched Space keeps levitating after the jump, and letting go does not hop
+    await page.evaluate(() => { const c = window.__game.ctx; c.player.levit = c.player.maxLevit; });
+    const y0 = (await keys()).y;
+    await tap('Space');
+    await page.waitForTimeout(450);
+    k = await keys();
+    check(k.jump === true && k.y < y0 - 4, `Toggle levitate: Space tapped once, the alchemist is in the air with no key held (rose ${(y0 - k.y).toFixed(1)} cells)`);
+    const levA = k.levit;
+    await page.waitForTimeout(400);
+    check((await keys()).levit < levA, 'and keeps burning levitation while it holds');
+    // come down, then toggle off while standing: no hop
+    await page.evaluate(() => { const c = window.__game.ctx; c.player.levit = 0; });
+    await page.waitForFunction(() => window.__game.ctx.player.grounded, null, { timeout: 8000 });
+    await page.waitForTimeout(300);
+    const yGround = (await keys()).y;
+    const lowest = page.evaluate(() => new Promise((resolve) => { let min = Infinity; const t0 = performance.now(); const f = () => { min = Math.min(min, window.__game.ctx.player.y); if (performance.now() - t0 < 600) requestAnimationFrame(f); else resolve(min); }; f(); }));
+    await tap('Space');
+    const highestY = await lowest; // smallest y = highest point: a hop would pull it well above where the alchemist stood
+    k = await keys();
+    check(k.jump === false && highestY >= yGround - 1.5, `the press that lets go of levitation does not make a jump (stood at y ${yGround.toFixed(1)}, highest point afterwards ${highestY.toFixed(1)})`);
+
+    // --- siphon: E latches the siphon when nothing else takes the press; a small pool in front, the cursor on it
+    await page.evaluate(() => {
+      const c = window.__game.ctx, w = c.world; const px = Math.floor(c.player.x), py = Math.floor(c.player.y);
+      for (let dx = 6; dx < 18; dx++) for (let dy = 1; dy < 7; dy++) { const x = px + dx, y = py - dy; if (w.inBounds(x, y)) w.types[w.idx(x, y)] = 2; }
+      c.input.mouse.x = px + 10; c.input.mouse.y = py - 3;
+      const f = c.flask.state; f.material = null; f.count = 0;
+    });
+    await tap('KeyE');
+    await page.waitForTimeout(350);
+    const s1 = await flaskCount();
+    await page.waitForTimeout(500);
+    const s2 = await flaskCount();
+    k = await keys();
+    check(k.siphon === true && s2 > 0 && (s1 > 0 || s2 > s1), `Toggle siphon: E tapped once, the flask fills with the key up (${s1} -> ${s2}); chip "${await chip()}"`);
+    await tap('KeyE');
+    const s3 = await flaskCount();
+    await page.waitForTimeout(500);
+    check((await keys()).siphon === false && (await flaskCount()) === s3, 'the second E stops the siphon');
+    await page.evaluate(() => window.__game.ctx.input.releaseHeldInput());
+
+    // --- every way a latch could get stuck
+    const latchAll = async () => {
+      await page.evaluate(() => { const c = window.__game.ctx; c.player.levit = c.player.maxLevit; c.flask.state.material = 2; c.flask.state.count = c.flask.state.capacity; });
+      await tap('KeyS'); await tap('KeyQ'); await tap('Space'); await tap('KeyE');
+      await page.waitForTimeout(150);
+    };
+    const nothingHeld = async (what) => { await page.waitForTimeout(250); const z = await keys(); check(!z.down && !z.jump && !z.pour && !z.siphon && (await chip()) === null, `${what}: nothing is left held (down ${z.down}, jump ${z.jump}, pour ${z.pour}, siphon ${z.siphon}, chip ${await chip()})`); };
+    const settle = async () => { if (await paused(page)) await resume(page); await page.waitForTimeout(300); };
+
+    await latchAll();
+    check((await keys()).down && (await keys()).jump && (await keys()).pour, 'all latched (crouch, levitate, pour)');
+    await blur(page); await nothingHeld('the window losing focus'); await settle();
+    await latchAll();
+    await hide(page); await nothingHeld('the tab going hidden'); await settle();
+    await latchAll();
+    await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+    await nothingHeld('pausing (Esc)');
+    await click(page, page.locator('#pause-resume')); await page.waitForTimeout(300);
+    check(!(await keys()).down && !(await keys()).pour, 'and still nothing held after resuming');
+    await settle();
+    await latchAll();
+    await page.keyboard.press('KeyB'); await page.waitForTimeout(500);
+    await nothingHeld('opening a menu (the wand bench)');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300); await settle();
+    await latchAll();
+    await page.evaluate(() => { const c = window.__game.ctx; c.state.debugGodMode = false; c.player.invuln = 0; c.playerCtl.damage(99999, 0, 0, 'impact'); });
+    await page.waitForTimeout(600);
+    await nothingHeld('death');
+    await page.evaluate(() => window.__game.ctx.playerCtl.respawn());
+    await page.waitForFunction(() => !window.__game.ctx.player.dead, null, { timeout: 15000 });
+    await page.waitForTimeout(500);
+    await nothingHeld('the respawn');
+    await page.evaluate(() => { const c = window.__game.ctx; c.state.debugGodMode = true; c.player.invuln = 99999; });
+    await settle();
+    await latchAll();
+    await page.evaluate(() => window.__game.ctx.input.releaseHeldInput());
+    await nothingHeld('a level change (the game releases held input)');
+    await latchAll();
+    await page.evaluate(() => window.__game.ctx.events.emit('levelChanged', { depth: 1, name: 'The Bellows' }));
+    await nothingHeld('arriving on a floor');
+    await latchAll();
+    await openSettings(page, 'controls');
+    await page.locator('#player-settings [name="toggleDown"]').scrollIntoViewIfNeeded();
+    await nothingHeld('the settings dialog opening');
+    await page.locator('#player-settings [name="toggleDown"]').selectOption('hold');
+    await closeSettings(page); await resume(page);
+    await page.keyboard.down('KeyS'); await page.waitForTimeout(150);
+    const nowHold = (await keys()).down;
+    await page.keyboard.up('KeyS'); await page.waitForTimeout(150);
+    check(nowHold === true && (await keys()).down === false, 'switching crouch back to Hold: it is held again exactly as before (no stranded latch)');
+
+    // --- Restore controls puts the toggles back
+    await openSettings(page, 'controls');
+    await click(page, page.locator('#player-settings #reset-controls'));
+    check(JSON.stringify((await stored(page))?.toggles) === JSON.stringify({ down: false, jump: false, pour: false, interact: false }), 'Restore controls puts every action back to Hold');
+    await closeSettings(page); await resume(page);
+    check(errors.length === 0, `no page errors${errors.join(' | ')}`);
+    await context.close();
+
+    // a saved Toggle applies on load
+    const saved = await freshRun({ prefs: { toggles: { down: true } } });
+    check(JSON.stringify(await saved.page.evaluate(() => window.__game.ctx.state.toggleModes)) === JSON.stringify({ down: true, jump: false, pour: false, interact: false }), 'a saved toggle map applies on load');
+    await saved.context.close();
+  }
+
 } finally {
   await browser.close();
 }

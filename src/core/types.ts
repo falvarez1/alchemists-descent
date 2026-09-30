@@ -1334,6 +1334,8 @@ export interface GameStateData {
   showEnemyHp?: boolean;
   /** Aim assist for aim with no cursor (combat/AimGuide): off (unset), light or strong. */
   aimAssist?: 'off' | 'light' | 'strong';
+  /** Hold or toggle: which of crouch / levitate / pour / siphon are latched by a press instead of held (input/toggleLatches). Unset = all held. */
+  toggleModes?: Partial<Record<'down' | 'jump' | 'pour' | 'interact', boolean>>;
   reduceFlashes?: boolean;
   trickshot?: TrickshotSettings;
   /** The run's SECRET alchemy reaction (derived from worldSeed; see
