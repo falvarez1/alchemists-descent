@@ -10,6 +10,7 @@ import type {
 } from '@/core/types';
 import type { AlchemyKillInfo, KitId, RunOutcome } from '@/core/run';
 import { randomSeed } from '@/core/rng';
+import { isRunTainted } from '@/core/runTaint';
 import { FLOORS_TOTAL, doorTaken, floorDisplayName, floorOf } from '@/config/worldgraph';
 import { DEFAULT_KIT, KIT_DEFS, isKitId } from '@/content/kits';
 import {
@@ -292,6 +293,19 @@ export class RunDirector implements RunApi {
     return true;
   }
 
+  debugSetPhials(ctx: Ctx, phials: number): boolean {
+    if (!this.active || !this.state) return false;
+    this.state.phials = clampPhials(phials);
+    ctx.events.emit('phialsChanged', { phials: this.state.phials, max: PHIALS_PER_RUN, reason: 'restore' });
+    return true;
+  }
+
+  debugSetKit(kit: KitId): boolean {
+    if (!this.active || !this.state || !isKitId(kit)) return false;
+    this.state.kit = kit;
+    return true;
+  }
+
   private onPlayerDied(cause: string): void {
     const ctx = this.ctx;
     if (!this.active || !this.state) return;
@@ -500,8 +514,9 @@ export class RunDirector implements RunApi {
       this.state = null;
       this.tracked = false;
     }
-    // The run is over: nothing is left for Continue to resume.
-    ctx.levels.abandonExpedition();
+    // The run is over: nothing is left for Continue to resume. A test run leaves an
+    // older checkpoint alone: it is not this run's to delete (core/runTaint).
+    if (!this.tainted(ctx)) ctx.levels.abandonExpedition();
     ctx.events.emit('runEnded', summary);
   }
 
@@ -517,6 +532,6 @@ export class RunDirector implements RunApi {
   }
 
   private tainted(ctx: Ctx): boolean {
-    return ctx.state.debugGodMode === true || ctx.state.debugTainted === true;
+    return isRunTainted(ctx.state);
   }
 }

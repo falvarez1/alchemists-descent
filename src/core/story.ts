@@ -197,6 +197,12 @@ export interface StoryApi {
   beginRun(opts: { tracked: boolean }): void;
   snapshotForSave(): StoryRunSave | null;
   restoreFromSave(save: StoryRunSave | undefined): void;
+  /**
+   * A debug tool tainted the run mid-descent (core/runTaint): from here the story
+   * hears it from a scratch copy of the player's memory and writes nothing back
+   * (beats heard, journal pages, endings), as an untracked test run does from its start.
+   */
+  untrack?(): void;
   /** Fixed tick (runs while the player is dead too: the escape restarts itself). */
   update(): void;
   /** E pressed: talk to Pell, turn a resonant valve, read a page. True when the story took the key. */

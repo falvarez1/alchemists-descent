@@ -3,6 +3,7 @@ import { difficultyMods } from '@/config/difficulty';
 import { CAMP_HAVEN_RADIUS } from '@/config/pacing';
 import { RILLBACK_WET_THRESHOLD } from '@/core/enemyState';
 import { clamp } from '@/core/math';
+import { isRunTainted } from '@/core/runTaint';
 import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDamageSource, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
 import { causeForCell } from '@/core/alchemyCause';
 import { BossWard, playerBlow } from '@/core/bossWard';
@@ -998,8 +999,8 @@ export class Enemies implements EnemyControlApi {
       // no story) the run is complete here, as before.
       if (ctx.story?.beginEscape()) return;
       ctx.events.emit('runComplete', { gold: ctx.state.score });
-      // The run is complete — the save has nothing left to protect.
-      ctx.levels.abandonExpedition();
+      // The run is complete — the save has nothing left to protect (a test run leaves an older checkpoint alone).
+      if (!isRunTainted(ctx.state)) ctx.levels.abandonExpedition();
       return;
     }
     if (e.kind === 'stonemaw') {

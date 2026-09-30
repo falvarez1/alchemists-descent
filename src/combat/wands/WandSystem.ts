@@ -16,6 +16,7 @@ import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { acidColor, emberColor, fireColor, glassColor, nitrogenColor, packRGB, smokeColor, stoneColor, waterColor } from '@/sim/colors';
 import { ALL_CARD_IDS, CARD_DEFS, isCardId } from './cards';
 import { getDiscoveredCards, markCardDiscovered } from './cardDiscovery';
+import { isRunTainted } from '@/core/runTaint';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 import { BOUNCE_COUNTS, INFUSED, INFUSE_TRAIL_BUDGET, TRIGGERED, TRIGGER_SOURCE_SPREAD, ensureProjectileMods } from './projectileMarks';
 import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
@@ -802,7 +803,8 @@ export class WandSystem implements WandsApi {
   grantCard(ctx: Ctx, id: CardId): void {
     if (id === 'infuser') this.infuserGranted = true;
     this.collection.push(id);
-    markCardDiscovered(id);
+    // A test run (core/runTaint) discovers nothing for the player's later runs.
+    if (!isRunTainted(ctx.state ?? {})) markCardDiscovered(id);
     ctx.telemetry.count('card.granted.' + id);
     ctx.events.emit('cardGranted', { id, name: CARD_DEFS[id].name });
   }

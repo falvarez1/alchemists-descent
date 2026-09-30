@@ -30,6 +30,7 @@ import { readingSeconds, speakerKey } from '@/audio/narrationText';
 import { heldCorpse } from '@/combat/Telekinesis';
 import { sightClear } from '@/creatures/perception';
 import { LEVELS, floorOf } from '@/config/worldgraph';
+import { isRunTainted } from '@/core/runTaint';
 import { beatLine, defaultStoryMeta, StoryMetaStore, withHeard, withJournal, type StoryMetaData } from './storyMeta';
 import { freshStoryRun, pipeLine, pellWaits, sanitizeStoryRun, withPipeSpoken } from './storyRun';
 import type { PellFacts, StoryHost } from './host';
@@ -303,6 +304,12 @@ export class StoryDirector implements StoryApi {
     return this.tracked ? structuredClone(this.state) : null;
   }
 
+  untrack(): void {
+    if (!this.tracked) return;
+    this.sessionMeta = structuredClone(this.store.data);
+    this.tracked = false;
+  }
+
   restoreFromSave(save: StoryRunSave | undefined): void {
     this.tracked = true;
     this.sessionMeta = null;
@@ -500,8 +507,8 @@ export class StoryDirector implements StoryApi {
     this.updateMeta(m => withJournal({ ...m, endings: { waiting: m.endings.waiting + (waiting ? 1 : 0), lantern: m.endings.lantern + (waiting ? 0 : 1) } }, 'journal.ending'));
     const finish = (): void => {
       ctx.events.emit('runComplete', { gold: ctx.state.score });
-      // A finished run has nothing left to resume (RunDirector retires the save too).
-      ctx.levels.abandonExpedition();
+      // A finished run has nothing left to resume (RunDirector retires the save too); a test run leaves an older checkpoint alone.
+      if (!isRunTainted(ctx.state)) ctx.levels.abandonExpedition();
     };
     // The Docent's climb line is never cut by the first plate: the ending waits it out (at most 9 s).
     const start = (): void => { void this.cinema.play('ending', plates, { pause: true }).then(finish); };
