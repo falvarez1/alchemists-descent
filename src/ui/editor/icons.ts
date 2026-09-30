@@ -84,6 +84,12 @@ const PATHS = {
   drag: '<circle cx="6" cy="4.4" r=".9" fill="currentColor" stroke="none"/><circle cx="10" cy="4.4" r=".9" fill="currentColor" stroke="none"/><circle cx="6" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="10" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="6" cy="11.6" r=".9" fill="currentColor" stroke="none"/><circle cx="10" cy="11.6" r=".9" fill="currentColor" stroke="none"/>',
   target: '<circle cx="8" cy="8" r="5.2"/><circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none"/><path d="M8 1.6v2M8 12.4v2M1.6 8h2M12.4 8h2"/>',
   broadcast: '<circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/><path d="M5.2 5.2a4 4 0 0 0 0 5.6M10.8 5.2a4 4 0 0 1 0 5.6M3.4 3.4a6.6 6.6 0 0 0 0 9.2M12.6 3.4a6.6 6.6 0 0 1 0 9.2"/>',
+  // ---- Sandbox chrome ----
+  volume: '<path d="M2.8 6.4h2.2L8.2 3.6v8.8L5 9.6H2.8z" stroke-linejoin="round"/><path d="M10.6 6a3 3 0 0 1 0 4M12.2 4.2a5.6 5.6 0 0 1 0 7.6"/>',
+  volumeOff: '<path d="M2.8 6.4h2.2L8.2 3.6v8.8L5 9.6H2.8z" stroke-linejoin="round"/><path d="m10.6 6.2 3 3.6M13.6 6.2l-3 3.6"/>',
+  trash: '<path d="M3.4 4.6h9.2M6.4 4.6V3.2a.6.6 0 0 1 .6-.6h2a.6.6 0 0 1 .6.6v1.4"/><path d="M4.4 4.6 5 12.8a.8.8 0 0 0 .8.8h4.4a.8.8 0 0 0 .8-.8l.6-8.2" stroke-linejoin="round"/>',
+  download: '<path d="M8 2.8v6.6M5.4 7l2.6 2.6L10.6 7"/><path d="M3 11.2v1.4a.8.8 0 0 0 .8.8h8.4a.8.8 0 0 0 .8-.8v-1.4"/>',
+  upload: '<path d="M8 9.6V3M5.4 5.4 8 2.8l2.6 2.6"/><path d="M3 11.2v1.4a.8.8 0 0 0 .8.8h8.4a.8.8 0 0 0 .8-.8v-1.4"/>',
 } as const;
 
 export type EditorIconName = keyof typeof PATHS;
