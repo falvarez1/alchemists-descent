@@ -132,7 +132,10 @@ export class StoryDirector implements StoryApi {
     this.disposers.push(
       on('levelChanged', () => this.onLevelChanged()),
       on('telekinesis', ({ phase, target }) => { if (phase === 'grab' && target === 'corpse') this.aside('telekinesis'); }),
-      on('alchemyKill', ({ cause, chain }) => { this.aside('chain', chain >= 3) || this.aside('bowled', cause === 'bowled') || this.aside('alchemy'); }),
+      on('alchemyKill', ({ cause, chain }) => {
+        // The most particular one that is due: a chain of three, then a bowled kill, then the plain first.
+        if (!this.aside('chain', chain >= 3) && !this.aside('bowled', cause === 'bowled')) this.aside('alchemy');
+      }),
       on('waystoneLit', () => { this.aside('waystone'); }),
       on('recipeBrewed', () => { this.aside('brew'); }),
       on('flaskDry', () => { this.aside('flask'); }),
