@@ -1563,7 +1563,7 @@ spark bolt: 14-cell streak, 1.25-cell core, 3-cell halo · light 1.1/2.5/3.0 wak
 alchemy: chain 180 ticks · credit ≤280 cells | touched ≤1200 ticks | kicked ≤180 ticks · bonus (10 + .35·bounty)×(1 + .5·min(4, chain−1)) → whole 10-oz Gold cells · mana +35% active tank · +3 hp
 callouts: life 1150 ms + 180/tier · tiers ×1 brass / ×2 / ×3–4 ember / ×5+ white-gold · word 27/29/31/34 px × holder/1280 · chain link takes the spot (140 ms bow-out) · max 6 live
 self-shock: self-inflicted ≤240 ticks after a cast · scale charge/40 (floor .15) · cap 12 hp per 120 ticks · arc ≤16 cells up the charge gradient
-fodder rosters (SPINE_ROSTERS by biome): fungal weaver 2 rootloper 3 rillback 1 slime 4 acidslime 2 eggs 2 bat 8 (roosts) · flooded rillback 6 spitter 3 wisp 2 weaver 1 bat 4 · volcanic imp 5 bomber 4 golem 2 stonemaw 2 (× difficulty enemyCount)
+fodder rosters (SPINE_ROSTERS by biome): fungal weaver 2 rootloper 3 rillback 1 slime 4 acidslime 2 eggs 2 bat 8 (roosts) · flooded rillback 6 spitter 3 wisp 2 weaver 1 bat 4 · volcanic imp 8 bomber 6 golem 3 stonemaw 3 (× difficulty enemyCount)
 sim window camera ±60 · player 9x17 cells · staff ~11 cells, muzzle at d=9
 darkness: render d²×0.965 (readability ×0.5) · floor base d1 0 / d2 .3 / d3 .3 / d4 .18 · zone feather 30 ± rim wobble 10 · follows the rock: air hold 8 + fade 40, rock soak ×3 · DARK_FLOOR .012/.016/.026 · DARK_ADAPT .42 · air glow ×(1+1.4·shut)
 lantern in the dark: spill radius ×.62 · beam step 0.976→0.985, ×1.12 · glow cone ×.55 · hooded: radius ×.16, intensity ×.3, fill ×.45, beam/glow off, ease .26/build
