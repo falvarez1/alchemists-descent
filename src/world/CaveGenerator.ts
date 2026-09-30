@@ -952,13 +952,36 @@ export class WorldGen implements WorldGenApi {
     //    cut an open shaft through the floor here; keep the plug/approach tell,
     //    but leave the bottom terrain closed.
     const halfW = 14;
-    const sealY = HEIGHT - 46;
+    let sealY = HEIGHT - 46;
     let wellX = spawn.x >= WIDTH / 2 ? Math.floor(WIDTH * 0.2) : Math.floor(WIDTH * 0.8);
     for (let attempt = 0; attempt < 100; attempt++) {
       const x = Math.floor(this.rng.range(WIDTH * 0.12, WIDTH * 0.88));
       if (Math.abs(x - spawn.x) < 300) continue;
       wellX = x;
       break;
+    }
+    // GEN 62: a flooded floor's exit shrine stands ABOVE the flood, in the rock band over the water
+    // line: at the world floor it was 100% under water (standing depth 42) and its light column
+    // could not be read. The seal row is the lowest one above the flood whose plug, ring and shrine
+    // are in solid rock; with none, the old row stands.
+    const floodRow = BIOMES[def.biome]?.flood ? Math.floor(HEIGHT * BIOMES[def.biome].flood) : 0;
+    if (floodRow > 0) {
+      let bestRow = -1, bestShare = 0.6;
+      for (let y = floodRow - 64; y >= Math.floor(HEIGHT * 0.38); y -= 4) {
+        let rock = 0, total = 0;
+        for (let yy = y - 34; yy <= y + 16; yy += 2) {
+          for (let xx = wellX - 36; xx <= wellX + 36; xx += 2) {
+            total++;
+            if (world.types[xx + yy * WIDTH] === Cell.Wall) rock++;
+          }
+        }
+        if (rock / total > bestShare) {
+          bestShare = rock / total;
+          bestRow = y;
+          if (bestShare >= 0.92) break;
+        }
+      }
+      if (bestRow > 0) sealY = bestRow;
     }
 
     // The old plug remains as a visible stone mound under the portal shrine,

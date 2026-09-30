@@ -398,6 +398,18 @@ export function sealedFootprints(ledger: PlacementLedger): CarveAvoid[] {
     .map(({ x0, y0, x1, y1 }) => ({ x0, y0, x1, y1 }));
 }
 
+/**
+ * The placed prefab and machine rooms (label `prefab:*`). Not SEALED (a tunnel may end in one, and the
+ * rescue passes may cross one), but a LATE connector for a loose structure walks around them: a tome
+ * pocket's tunnel cut the relay out of d3 expedition 42's machine (GEN 62).
+ */
+export function prefabFootprints(ledger: PlacementLedger): CarveAvoid[] {
+  return ledger
+    .rects()
+    .filter((r) => r.label.startsWith('prefab:'))
+    .map(({ x0, y0, x1, y1 }) => ({ x0, y0, x1, y1 }));
+}
+
 function inRect(r: CarveAvoid, x: number, y: number): boolean {
   return x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1;
 }

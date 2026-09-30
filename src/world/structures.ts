@@ -41,10 +41,11 @@ import {
   carveRect as carveRectCells,
   connectToCaves as connectToCavesFrom,
   inFootprint,
+  prefabFootprints,
   sealedFootprints,
   tunnelTo,
 } from '@/world/connect';
-import type { PlacementLedger } from '@/world/connect';
+import type { CarveAvoid, PlacementLedger } from '@/world/connect';
 import { reserveFooting, runeFooting, triggerFooting } from '@/world/fixtureFooting';
 import { wizardMask } from '@/world/validate';
 import { buildIceHouse, buildLensRoom, reshellHall } from '@/world/wardenArenas';
@@ -234,12 +235,14 @@ export function placeStructures(
   // sealedFootprints), these walk around the ones already reserved — the Sump,
   // a warden's hall. A connector leaving from inside one is its own and is
   // not kept out; with none reserved yet, the walk is exactly the old one.
+  /** What a late structure's tunnel walks around: every sealed room, and the placed prefab and machine rooms. */
+  const avoidRooms = (): CarveAvoid[] => [...sealedFootprints(ledger), ...prefabFootprints(ledger)];
   const connectToCaves = (fromX: number, fromY: number): void => {
-    connectToCavesFrom(w, rng, graph, fromX, fromY, 12, fits, undefined, sealedFootprints(ledger));
+    connectToCavesFrom(w, rng, graph, fromX, fromY, 12, fits, undefined, avoidRooms());
   };
   const connectVaultTriggerAntechamber = (fromX: number, fromY: number, side: number): void => {
     const sweep = { halfW: 7, up: 21, down: 9 };
-    const sealed = sealedFootprints(ledger);
+    const sealed = avoidRooms();
     let best: { cx: number; cy: number } | null = null;
     let bestD = Infinity;
     for (const onlyMain of [true, false]) {
@@ -390,7 +393,7 @@ export function placeStructures(
     // The key gates progression: its vault is always walkable, never a dig —
     // and it gets the SWEPT gauge gallery, because a disc-chain connector
     // only promises 9x17 clearance on its centerline
-    connectToCavesFrom(w, rng, graph, kx - 8, kyBase, 12, fits, { halfW: 7, up: 21, down: 9 }, sealedFootprints(ledger));
+    connectToCavesFrom(w, rng, graph, kx - 8, kyBase, 12, fits, { halfW: 7, up: 21, down: 9 }, avoidRooms());
   }
 
   // ---- One heart container in a quiet pocket ----
@@ -435,7 +438,7 @@ export function placeStructures(
     // A tome is a card: its pocket joins the caves like the heart's (GEN 62: 42% of the tomes
     // the audit counted were walk-up). The tunnel draws from a forked stream, so nothing placed
     // after it moves.
-    connectToCavesFrom(w, tomeRng, graph, tx, ty - 4, 12, fits, undefined, sealedFootprints(ledger));
+    connectToCavesFrom(w, tomeRng, graph, tx, ty - 4, 12, fits, undefined, avoidRooms());
   }
 
   // ---- Chests + loose gold piles along region centroids ----

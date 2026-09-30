@@ -4,7 +4,7 @@ import { createDefaultPostFxSettings } from '@/config/params';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { LEVELS } from '@/config/worldgraph';
 import type { Ctx, GameStateData, LevelDef } from '@/core/types';
-import { Cell, blocksEntity } from '@/sim/CellType';
+import { Cell, blocksEntity, isLiquid } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { WorldGen } from '@/world/CaveGenerator';
 import { clearLooseStock } from '@/world/looseStock';
@@ -99,5 +99,18 @@ describe('generated loot', () => {
     let solid = 0;
     for (let dx = -8; dx <= 8; dx++) if (blocksEntity(world.types[world.idx(Math.floor(portal.x) + dx, out.exit.sealY)])) solid++;
     expect(solid, 'cells of the ground row under the portal that are solid').toBe(17);
+  }, 90000);
+});
+
+describe('a flooded floor exit shrine', () => {
+  it('d3 @ seed 7 stands above the water line, with a dry ring', () => {
+    const { world, out } = generate(LEVELS.d3, 7);
+    const portal = out.portal!;
+    expect(out.exit.sealY, 'the seal row sits above the flood line (62% of the height)').toBeLessThan(HEIGHT * 0.62);
+    let wet = 0;
+    for (let y = Math.floor(portal.y) - 14; y < out.exit.sealY; y++) {
+      for (let x = Math.floor(portal.x) - 6; x <= Math.floor(portal.x) + 6; x++) if (isLiquid(world.types[world.idx(x, y)])) wet++;
+    }
+    expect(wet, 'liquid cells in the shrine ring').toBe(0);
   }, 90000);
 });
