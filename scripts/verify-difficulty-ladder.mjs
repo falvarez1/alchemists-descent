@@ -71,6 +71,14 @@ try {
   check('the run really runs on Apprentice', s.difficulty === 1, JSON.stringify(s));
   check('and the alchemist is sturdier for it (x1.25 of the Adept 1.1)', s.maxHp > 110, JSON.stringify(s));
 
+  // The pause menu says which tier the descent runs on.
+  await page.keyboard.press('Escape');
+  await page.locator('#pause-overlay').waitFor({ state: 'visible', timeout: 5000 }).catch(() => undefined);
+  const pauseStats = await page.evaluate(() => document.getElementById('pause-stats')?.textContent ?? '');
+  check('the pause menu names the tier', /DifficultyApprentice \(I\)/.test(pauseStats), pauseStats.slice(0, 160));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+
   // ---- the ledger names the tier -------------------------------------------------------------------------
   await page.evaluate(() => { const c = window.__game.ctx; c.run.abandon(c); });
   await page.locator('#run-summary:not([hidden])').waitFor({ state: 'visible', timeout: 8000 });
