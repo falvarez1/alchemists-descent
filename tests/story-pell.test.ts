@@ -26,6 +26,9 @@ interface Opts {
   facts?: Partial<PellFacts>;
   hp?: number;
   run?: Partial<StoryRunSave>;
+  /** Seconds a line takes (default 2) and whether lines have recordings (default: they do). */
+  secs?: number;
+  voiced?: boolean;
 }
 
 function harness(biome: Biome, levelId: string, opts: Opts = {}) {
@@ -67,7 +70,7 @@ function harness(biome: Biome, levelId: string, opts: Opts = {}) {
       else said.push(...lines.map(l => l.text));
       return true;
     },
-    lineSeconds: () => 2, voiced: () => true, unlockJournal: () => undefined,
+    lineSeconds: () => opts.secs ?? 2, voiced: () => opts.voiced ?? true, unlockJournal: () => undefined,
     levelId: () => levelId, biome: () => biome, floor: () => Number(levelId.slice(1, 2)), now: () => clock,
     facts: () => ({ ...facts, hpFrac: player.hp / player.maxHp }),
     carryingCorpse: () => corpse,
@@ -187,6 +190,17 @@ describe('Pell', () => {
     h.player.x = 900;
     h.tick(0.1);
     expect(h.pell.talking).toBe(false);
+  });
+});
+
+describe('Pell: pace', () => {
+  it('an unrecorded line is read quicker than a caption, a recorded one takes its recording’s time', () => {
+    const silent = harness('fungal', 'd2', { hp: 100, secs: 9, voiced: false });
+    silent.pell.interact();
+    expect(silent.views.at(-1)!.seconds).toBeCloseTo(9 * 0.65, 1);
+    const spoken = harness('fungal', 'd2', { hp: 100, secs: 9, voiced: true });
+    spoken.pell.interact();
+    expect(spoken.views.at(-1)!.seconds).toBeCloseTo(9, 1);
   });
 });
 
