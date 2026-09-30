@@ -62,7 +62,7 @@ export function journalEntries(): JournalEntry[] {
   for (const biome of STORY_FLOOR_ORDER) {
     if (DOCENT_PIPES[biome]) out.push(docentEntry(biome));
     const echo = ECHOES[biome];
-    if (echo) out.push({ id: `journal.${echo.id}`, kind: 'echo', biome, title: `Echo: ${echo.title}${echo.cast?.length ? ` · ${echo.cast.join(', ')}` : ''}`, lines: echo.lines.map(text => ({ speaker: 'docent', text })) });
+    if (echo) out.push({ id: `journal.${echo.id}`, kind: 'echo', biome, title: `Echo: ${echo.title}`, lines: echo.lines.map(text => ({ speaker: 'docent', text })) });
     const page = PELL_MAP_PAGES[biome];
     if (page) out.push({ id: `journal.pell.${biome}`, kind: 'pell', biome, title: `Pell’s map: ${page.title}`, lines: [{ speaker: 'pell', text: page.text }] });
     if (biome === 'volcanic') {

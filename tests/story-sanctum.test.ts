@@ -134,13 +134,13 @@ describe('the endings read the run', () => {
 });
 
 describe('named echo workers', () => {
-  it('Hobb, Dunmore and Wick are named in the narration and listed on the Journal page', () => {
+  it('Hobb, Dunmore and Wick are named in the narration, and Dunmore’s delivery says so on its Journal page', () => {
     const cast = new Set(Object.values(ECHOES).flatMap(e => e!.cast ?? []));
     expect([...cast].sort()).toEqual(['Dunmore', 'Hobb', 'Wick']);
     for (const e of Object.values(ECHOES)) {
       for (const name of e!.cast ?? []) expect(e!.lines.join(' '), `${e!.id} names ${name}`).toContain(name);
     }
     const titles = journalEntries().filter(j => j.kind === 'echo').map(j => j.title);
-    expect(titles.some(t => t.includes('Hobb'))).toBe(true);
+    expect(titles).toContain('Echo: Dunmore’s Last Delivery');
   });
 });

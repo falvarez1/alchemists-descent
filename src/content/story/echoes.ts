@@ -41,7 +41,7 @@ export interface EchoScript {
   /** Stable id (Journal + meta). */
   id: string;
   title: string;
-  /** The workers the Docent names (Hobb, Dunmore and Wick recur): the Journal lists them after the title. */
+  /** The workers the Docent names (Hobb, Dunmore and Wick recur); each is named in the narration below. */
   cast?: readonly string[];
   /** The Docent's narration, said in order from the start of the echo. */
   lines: readonly string[];
@@ -101,7 +101,7 @@ export const ECHOES: Readonly<Partial<Record<StoryBiome, EchoScript>>> = {
   // Floor 2 (the other door) — the Cold Store's last delivery. First draft.
   frozen: {
     id: 'echo.cold',
-    title: 'The Last Delivery',
+    title: 'Dunmore’s Last Delivery',
     cast: ['Dunmore', 'Hobb'],
     lines: [
       'The Cold Store, on its last day. The ice for the Heart went down in blocks, on trolleys.',
