@@ -106,7 +106,17 @@ a probe's page on any `src` change and the failure looks real.
 Special-server or heavy probes were skipped: the AuthorLink and hosted ones (`verify:authorlink*`,
 `verify:hosted-*` — `verify-hosted-game` was run separately against the production build and passes),
 the `*-suite` runners, performance (`verify-living-performance`, `verify-fidelity-performance`,
-`verify-sandbox-mt`), `verify-encounter-lairs` (9–12 minutes), `verify-camps-dry`,
+`verify-sandbox-mt`), `verify-encounter-lairs` (9–12 minutes; the triage agent reports all 7 default seeds x 3 levels passing in one process in 8m58s on a quiet frozen server — I did not re-run it, and it fails or stalls under a hot-reloading server), `verify-camps-dry`,
 `verify-population-placement`, `verify-worldgen-tune`, `verify-sim-determinism`,
 `verify-screenshot-gallery`/`verify-gallery`, and `verify-run-player-build`.
 `verify-mobile` was run separately and passes (38 checks).
+
+## Loose ends noticed by the triage (not fixed)
+
+- `tryMoveTo` in `src/entities/physics.ts` has unused `moveDx` / `moveDy` parameters (`void moveDx; void moveDy;`)
+  that look like the stub of a "movement sweeps detached rubble" idea. It was never built; the game's documented rule
+  (docs/FEEL.md) is that a floating fragment under five cells is walk-through and five or more is a wall, and
+  `verify-explosion-debris` now asserts exactly that. Building the sweep would be a design decision.
+- `#minimap-corner` is hidden in play (`living-descent.css`), but `Minimap.ts` still redraws it about every 30 frames and
+  wires popovers to it: dead work, small.
+- `verify-game.mjs` keeps its own copy of the title-to-Sandbox helper that now lives in `run-helpers.mjs`.
