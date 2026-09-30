@@ -47,9 +47,6 @@ export const DEFAULT_BUILDER_LAYOUT: WorkspaceLayout = {
     { id: 'builder-palette', dock: 'left', open: true, size: 214 },
     { id: 'builder-inspector', dock: 'right', open: true, size: 252 },
     { id: 'builder-world', dock: 'right', open: false, size: 252 },
-    { id: 'builder-virtual-world', dock: 'bottom', open: false, size: 420 },
-    { id: 'builder-global', dock: 'right', open: false, size: 252 },
-    { id: 'builder-postfx', dock: 'right', open: false, size: 252 },
     { id: 'builder-assets', dock: 'bottom', open: false, size: 360 },
     { id: 'builder-asset-details', dock: 'right', open: false, size: 300 },
     { id: 'builder-prefab-details', dock: 'right', open: false, size: 300 },
@@ -57,9 +54,8 @@ export const DEFAULT_BUILDER_LAYOUT: WorkspaceLayout = {
     { id: 'builder-proc', dock: 'right', open: false, size: 252 },
     { id: 'builder-issues', dock: 'right', open: false, size: 252 },
     { id: 'builder-outliner', dock: 'right', open: false, size: 292 },
-    // Keep in sync with BUILDER_PANEL_SPECS (PanelRegistry): the registry's sanitizeLayout knows
-    // builder-runtime, so omitting it here let the literal default and the registry drift apart.
-    { id: 'builder-runtime', dock: 'right', open: false, size: 320 },
+    // Keep in sync with BUILDER_PANEL_SPECS (PanelRegistry): a panel the registry knows but this
+    // literal omits lets the literal default and the registry drift apart.
     { id: 'builder-link-graph', dock: 'bottom', open: false, size: 300 },
     { id: 'dev-console', dock: 'bottom', open: false, size: 260 },
   ],
@@ -296,10 +292,8 @@ export function workspacePresetLayout(preset: WorkspacePreset): WorkspaceLayout 
       open:
         panel.id === 'builder-palette' ||
         panel.id === 'builder-inspector' ||
-        panel.id === 'builder-world' ||
-        panel.id === 'builder-virtual-world' ||
-        panel.id === 'builder-global',
-      size: panel.id === 'builder-virtual-world' ? 420 : panel.id === 'builder-world' || panel.id === 'builder-global' ? 292 : panel.size,
+        panel.id === 'builder-world',
+      size: panel.id === 'builder-world' ? 292 : panel.size,
     }));
     layout.overlayVisibility.light = true;
   } else if (preset === 'prefab') {

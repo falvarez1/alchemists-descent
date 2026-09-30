@@ -64,7 +64,6 @@ export function renderRuntimePanel(model: RuntimePanelModel): string {
     <em>${count.visible} visible${count.sampled < count.total ? ` · ${count.sampled} rows` : ''}</em>
   </div>`).join('');
   const emptyRows = runtimeEmptyRows(snapshot);
-  const sourceNote = runtimeSourceNote(snapshot);
   const debugActive = model.debugActive === true;
   const liveIds = model.liveIds;
   const rowHtml = rows.length > 0
@@ -80,7 +79,6 @@ export function renderRuntimePanel(model: RuntimePanelModel): string {
       </div>
       <em>frame ${snapshot.frame}${snapshot.level ? ` · ${esc(snapshot.level.name)} d${snapshot.level.depth}` : ''}</em>
     </div>
-    ${sourceNote ? `<div class="bo-empty b-empty brt-source-note">${esc(sourceNote)}</div>` : ''}
     ${showCameraControls ? renderRuntimeCameraControls(model, model.cameraFollowEnabled === true) : ''}
     ${showCameraControls ? renderRuntimeDebugControls(model, debugActive) : ''}
     ${showTimeControls ? renderRuntimeTimeControls(model) : ''}
@@ -156,15 +154,8 @@ function section(model: Pick<RuntimePanelModel, 'collapsedSections'>, id: string
 }
 
 function runtimeEmptyRows(snapshot: RuntimeEntitySnapshot): string {
-  if (snapshot.source.id === 'build') return 'Switch to LOGIC PREVIEW to inspect authored preview rows';
-  if (snapshot.source.id === 'builder-live-preview') return 'No authored preview runtime rows';
+  if (snapshot.source.id === 'build') return 'No play runtime yet - start a Builder Playtest to inspect live rows';
   return 'No runtime rows';
-}
-
-function runtimeSourceNote(snapshot: RuntimeEntitySnapshot): string {
-  if (snapshot.source.id !== 'builder-live-preview') return '';
-  if (snapshot.rows.length > 0) return 'Logic Preview is showing authored preview rows only; full player and material simulation appears during Builder Playtest.';
-  return 'Logic Preview is running, but this document has no authored preview entities. Full player and material simulation appears during Builder Playtest.';
 }
 
 function renderRuntimeOverlayControls(overlays: RuntimeOverlayState): string {

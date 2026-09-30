@@ -4,11 +4,9 @@ import type { BuilderCloseRequestDetail } from '@/app/builderCloseRequest';
 import type { BuilderHost, BuilderPauseClaim } from '@/app/BuilderHost';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { BIOMES as BIOME_DEFS } from '@/config/biomes';
-import { GEN, GEN_TUNE, GEN_TUNE_DEFAULTS, WORLDGEN_DRESSING_CHANNELS, WORLDGEN_LOOK_FIELDS, defaultSkeletonSpec } from '@/config/gen';
-import { PROGRESSION_PACING, PROGRESSION_PACING_DEFAULTS } from '@/config/pacing';
+import { GEN, defaultSkeletonSpec } from '@/config/gen';
 import type { SkeletonSpec } from '@/config/gen';
-import { EXTRAS, campaignDressingRecipeForBiome } from '@/world/biomeExtras';
-import { createDefaultPostFxSettings, createDefaultWandLightSettings, GLOBAL_PARAM_DEFAULTS, MATERIAL_PARAM_DEFAULTS, PLAYER_TUNING_DEFAULTS } from '@/config/params';
+import { MATERIAL_PARAM_DEFAULTS } from '@/config/params';
 import { LEVELS } from '@/config/worldgraph';
 import { randomSeed, fnv1aString } from '@/core/rng';
 import {
@@ -65,7 +63,6 @@ import { compileAndPlaytest, toAuthoredLight } from '@/builder/compile';
 import { EMITTER_CELL_OPTIONS } from '@/game/instantiate';
 import { resetCombatTransients } from '@/core/runtimeState';
 import { BUILDER_EXTRA_SWATCHES, MATERIAL_SWATCHES } from '@/content/materialPalette';
-import { PreviewRuntime } from '@/builder/PreviewRuntime';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
 import {
   capturePrefab,
@@ -167,7 +164,6 @@ import { PASSES, runPass } from '@/builder/procedural';
 import { ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
 import { paramSliderSpec } from '@/ui/Inspector';
 import { fillMaterialPopover } from '@/ui/materialInfo';
-import { mountTimeControlsPanel } from '@/ui/TimeControlsPanel';
 import { CommandRegistry } from '@/ui/editor/CommandRegistry';
 import { DockHost } from '@/ui/editor/DockHost';
 import { FocusRouter } from '@/ui/editor/FocusRouter';
@@ -180,7 +176,6 @@ import type { InspectorSchemaItem } from '@/ui/editor/InspectorSchema';
 import { escapeAttr, escapeHtml } from '@/ui/editor/Fields';
 import { builderPanelHeader, normalizePanelChromeHandles } from '@/ui/editor/PanelChrome';
 import { builderPanelTitle, createBuilderPanelRegistry } from '@/ui/editor/PanelRegistry';
-import { editorSectionHtml } from '@/ui/editor/Section';
 import type { CommandSpec } from '@/ui/editor/CommandRegistry';
 import {
   documentInspectorSchema,
@@ -214,24 +209,10 @@ import {
   renderOutlinerPanel,
 } from '@/builder/outlinerPanel';
 import type { OutlinerFilter, OutlinerLayerState } from '@/builder/outlinerPanel';
-import { renderRuntimePanel } from '@/builder/runtimePanel';
-import {
-  DEFAULT_RUNTIME_OVERLAYS,
-  RUNTIME_OVERLAY_ROW_LIMITS,
-  drawRuntimeEntityOverlays,
-  runtimeOverlaySummary,
-  runtimeOverlaysActive,
-} from '@/builder/runtimeOverlay';
-import type { RuntimeOverlayKind, RuntimeOverlayState } from '@/builder/runtimeOverlay';
 import {
   buildLinkGraphModel,
   renderLinkGraphPanel,
 } from '@/builder/linkGraphPanel';
-import { buildRuntimeEntitySnapshot } from '@/game/runtimeSnapshot';
-import type { RuntimeEntityGroup, RuntimeEntitySnapshot, RuntimeSnapshotOptions } from '@/game/runtimeSnapshot';
-import { VirtualWorldPanel } from '@/builder/virtualWorldPanel';
-import { PixelSceneEditor } from '@/builder/pixelSceneEditor';
-import type { VirtualWorldDef } from '@/authoring/virtualWorld';
 import { renderAssetBrowserPanel, renderAssetPlacementPanel } from '@/builder/assetBrowserPanel';
 import type { AssetBrowserView } from '@/builder/assetBrowserPanel';
 import { renderAssetDetailPanel } from '@/builder/assetDetailPanel';
@@ -267,8 +248,6 @@ const CRAMPED_DOCK_RAIL_WIDTH = 42;
 const MIN_BUILDER_CENTER_WIDTH = 260;
 const PREFERRED_BUILDER_CENTER_WIDTH = 320;
 const BUILDER_VIEWPORT_PAD = 20;
-const RUNTIME_PANEL_REFRESH_FRAMES = 12;
-const RUNTIME_OVERLAY_REFRESH_FRAMES = 4;
 const BOTTOM_PANE_ORDER = ['bottom-left', 'bottom-main', 'bottom-right'] as const;
 const BOTTOM_SIDE_PANE_MIN = 220;
 const BOTTOM_SIDE_PANE_MAX = 420;
@@ -309,13 +288,11 @@ const PLAYTEST_CURSOR_MECHANISM_TARGETS: ReadonlySet<EditorObjectKind> = new Set
 type BuilderWorkspacePanelId =
   | 'builder-inspector'
   | 'builder-outliner'
-  | 'builder-runtime'
   | 'builder-link-graph'
   | 'builder-assets'
   | 'builder-asset-details'
-  | 'builder-prefab-details'
-  | 'builder-virtual-world';
-type BuilderSidePanel = 'proc' | 'world' | 'mat' | 'post' | 'global';
+  | 'builder-prefab-details';
+type BuilderSidePanel = 'proc' | 'world' | 'mat';
 const SKELETON_KINDS: Array<SkeletonSpec['kind']> = [
   'baseline',
   'fungalPockets',
@@ -877,16 +854,6 @@ export class Builder {
   private layerLocked = new Set<LayerFamily>();
   private outlinerQuery = '';
   private outlinerFilters = new Set<OutlinerFilter>();
-  private runtimeQuery = '';
-  private runtimeFilters = new Set<RuntimeEntityGroup>();
-  private runtimeSelectedId: string | null = null;
-  private runtimeSnapshot: RuntimeEntitySnapshot | null = null;
-  private runtimeSnapshotFrame = -1;
-  private runtimeOverlays: RuntimeOverlayState = { ...DEFAULT_RUNTIME_OVERLAYS };
-  private runtimeOverlaySnapshot: RuntimeEntitySnapshot | null = null;
-  private runtimeOverlaySnapshotFrame = -1;
-  private globalTimeControlsDispose: (() => void) | null = null;
-  private runtimeTimeControlsDispose: (() => void) | null = null;
   private linkGraphQuery = '';
   private contextLinkId: string | null = null;
   private readonly assetStore = new LocalStorageAssetStore();
@@ -935,14 +902,11 @@ export class Builder {
   private patrolEditId: string | null = null;
   private linkFrom: string | null = null;
   private pendingPreview: PendingPreview | null = null;
-  private readonly previewRuntime: PreviewRuntime;
-  private previewRuntimeDirty = true;
   private lastMouse = { x: 0, y: 0 };
   private lastMouseClient: { x: number; y: number } | null = null;
   private zoomTarget = 1;
   private lightPreviewOn = true;
   private wandLightPreviewOn = false;
-  private sessionMode: 'author' | 'live' = 'author';
   /** Placement/drag snap step in cells (0 = off). */
   private snapStep: SnapStep = 0;
   private gizmoDrag: GizmoDragState | null = null;
@@ -954,7 +918,6 @@ export class Builder {
     startY: number;
     ghost: HTMLDivElement | null;
   } | null = null;
-  private sceneEditor: PixelSceneEditor | null = null;
   private overlayMode: BuilderOverlayId | 'none' = 'none';
   private lastIssues: DocIssue[] = [];
   private lastValidationOverlay: ValidationOverlayDiagnostics | null = null;
@@ -966,7 +929,6 @@ export class Builder {
   private prefabs: PrefabDef[] = [];
   private gallery: Gallery | null = null;
   private backdropPreview: BackdropPreview | null = null;
-  private virtualWorldPanel: VirtualWorldPanel | null = null;
   private backdropDirty = false;
   private worldgenLevelId: string | null = null;
   /** A transformed (Q/E) copy of a library prefab while the stamp tool is
@@ -1039,7 +1001,6 @@ export class Builder {
     this.ctx = runtime.ctx;
     this.host = runtime.host;
     const ctx = this.ctx;
-    this.previewRuntime = new PreviewRuntime(ctx);
     this.doc = createEmptyDocument('untitled', ctx.state.currentBiome);
     this.worldgenLevelId = this.levelIdForBiome(this.doc.biome);
     this.prefabs = loadPrefabs();
@@ -1215,12 +1176,8 @@ export class Builder {
     }
     this.isOpen = true;
     this.attachWorkspace();
-    this.sessionMode = 'author';
-    this.previewRuntime.stop();
-    this.previewRuntimeDirty = true;
     this.host.setBuilderVisualState({ editorLights: null });
     this.syncWandLightPreview();
-    this.syncSessionButtons();
     if (inheritedPauseClaim) {
       this.pauseClaim = inheritedPauseClaim;
     } else if (!this.host.getModeSnapshot().paused) {
@@ -1294,15 +1251,12 @@ export class Builder {
       this.draftRetryTimer = 0;
     }
     this.host.setCameraZoomLock(null);
-    this.previewRuntime.stop();
-    this.previewRuntimeDirty = true;
     this.host.setBuilderVisualState({ editorLights: null, wandLightPreviewEnabled: false });
     this.host.releasePause(this.pauseClaim);
     this.pauseClaim = null;
     this.tool = 'select';
     this.setBuilderHelp(false);
     this.backdropPreview?.close();
-    this.virtualWorldPanel?.cancel();
     this.cancelGizmoDrag(true);
     this.drag = null;
     this.stroke = null;
@@ -1335,17 +1289,10 @@ export class Builder {
     }
     this.close();
     this.hideOpenIntentModal(true);
-    this.previewRuntime.stop();
     this.gallery?.dispose();
     this.gallery = null;
     this.backdropPreview?.close();
     this.backdropPreview = null;
-    this.virtualWorldPanel?.dispose();
-    this.virtualWorldPanel = null;
-    this.sceneEditor?.close();
-    this.sceneEditor = null;
-    this.unmountGlobalTimeControls();
-    this.unmountRuntimeTimeControls();
     window.clearInterval(this.autosaveTimer);
     window.clearTimeout(this.draftRetryTimer);
     window.clearTimeout(this.statusTimer);
@@ -1552,7 +1499,7 @@ export class Builder {
       commandIds,
       cursor: { x: event.clientX, y: event.clientY },
       commandState: (id) => this.uiCommandMenuState(id),
-      runCommand: (id) => this.runScopedUiCommand(id),
+      runCommand: (id) => this.uiCommands.run(id),
       onStatus: (message, error) => this.status(message, error),
     });
   }
@@ -1566,9 +1513,6 @@ export class Builder {
       return ['builder.inspectorPanel', 'builder.frameSelection', 'builder.validate', ...common, 'builder.delete', 'builder.duplicate'];
     }
     if (panelId === 'builder-world') return ['builder.worldPanel', ...common];
-    if (panelId === 'builder-virtual-world') return ['builder.virtualWorldPanel', ...common];
-    if (panelId === 'builder-global') return ['builder.globalControlsPanel', 'builder.wandLightPreviewToggle', ...common];
-    if (panelId === 'builder-postfx') return ['builder.postProcessingPanel', ...common];
     if (panelId === 'builder-matparams') return ['builder.materialPanel', ...common];
     if (panelId === 'builder-proc') return ['builder.proceduralPanel', ...common];
     if (panelId === 'builder-issues') return ['builder.findInvalid', 'builder.validate', ...common];
@@ -2468,12 +2412,10 @@ export class Builder {
   }
 
   private defaultBottomPaneForPanel(panelId: string): string {
-    if (panelId === 'builder-issues' || panelId === 'builder-outliner' || panelId === 'builder-runtime') return 'bottom-left';
+    if (panelId === 'builder-issues' || panelId === 'builder-outliner') return 'bottom-left';
     if (
       panelId === 'builder-inspector' ||
       panelId === 'builder-world' ||
-      panelId === 'builder-global' ||
-      panelId === 'builder-postfx' ||
       panelId === 'builder-matparams' ||
       panelId === 'builder-proc' ||
       panelId === 'builder-asset-details' ||
@@ -3568,12 +3510,6 @@ export class Builder {
           <button type="button" class="builder-menu-btn" data-menu="help" aria-haspopup="true" aria-expanded="false">Help</button>
         </nav>
         <span class="b-sep"></span>
-        <div id="b-session-tabs" class="b-segment" aria-label="Builder session">
-          <button id="b-session-author" class="active" title="Static authoring view">AUTHOR</button>
-          <button id="b-session-live" title="Preview authored logic without player gameplay">LOGIC PREVIEW</button>
-          <button id="b-session-restart" title="Reset the disposable Logic Preview runtime from the document">RESTART</button>
-          <button id="b-session-discard" title="Discard Logic Preview and return to Author">DISCARD</button>
-        </div>
         <input id="b-doc-name" value="untitled" spellcheck="false" title="Document name">
         <select id="b-doc-select" title="Saved documents"></select>
         <select id="b-biome" title="Document biome"></select>
@@ -3605,14 +3541,9 @@ export class Builder {
         <div class="builder-menu-dropdown" data-menu-panel="view" role="menu" aria-label="View" hidden>
           <button id="b-inspector" title="Inspect the current document, selection, or light">Inspector</button>
           <button id="b-worldgen" title="Generate and tune procedural worlds">World Generation</button>
-          <button id="b-world-map" title="Preview and tune the virtual chunk world map">World Map</button>
-          <button id="b-global" title="Global simulation and wand light controls">Global Controls</button>
-          <button id="b-postfx" title="Post processing controls">Post Processing</button>
           <div class="builder-menu-sep"></div>
           <button id="b-gallery" title="Browse and preview every prefab, mechanism, entity and sprite — live and animated">Gallery</button>
-          <button id="b-scene-editor" title="Author chunked-world pixel scenes: paint cells, place lights, validate">Pixel Scene Editor</button>
           <button id="b-assets" title="Project Asset Browser: documents, prefabs, sprites, imports and dependencies">Asset Browser</button>
-          <button id="b-runtime" title="Inspect the active play runtime without editing authored objects">Runtime</button>
           <button id="b-backdrop" title="Preview and tune parallax backdrop layers">Backdrop</button>
           <div class="builder-menu-sep"></div>
           <button id="b-validation-layout" title="Workspace preset: dock Validation Issues, Outliner and Link Graph for a review pass">Validation Layout</button>
@@ -3662,7 +3593,6 @@ export class Builder {
           <button id="bp-gen-caves" title="Regenerate caves in the document's biome (whole world)">CAVES</button>
           <button id="bp-gen-fort" title="Stamp a fortress into the world">FORT</button>
           <button id="bp-gen-clear" class="b-danger" title="Clear the whole world">CLEAR</button>
-          <button id="bp-world-map-btn" title="Open the Noita-like virtual chunk world map">MAP</button>
         </div>`,
         )}
         ${paletteSection('palette.place', 'PLACE', `<div class="bp-grid bp-grid2">${PLACE_GAMEPLAY.map(placeBtn).join('')}</div>`)}
@@ -3677,8 +3607,7 @@ export class Builder {
           'LIGHTING',
           `<button class="bp-tool" data-tool="light"><span class="bp-glyph k-light">*</span>Authored Light</button>
         <button id="bp-light-toggle" aria-pressed="true" title="Feed authored lights into the live light field while editing">PREVIEW LIGHTS: ON</button>
-        <button id="bp-wand-light-toggle" aria-pressed="false" title="Use the mouse cursor as the live player wand light">WAND LIGHT: OFF</button>
-        <button id="bp-wand-params-btn" title="Open wand light tuning in Global Controls">WAND PARAMS&hellip;</button>`,
+        <button id="bp-wand-light-toggle" aria-pressed="false" title="Use the mouse cursor as the live player wand light">WAND LIGHT: OFF</button>`,
         )}
         ${paletteSection('palette.prefabs', 'PREFABS', '<div id="bp-prefab-host"></div>')}
         ${paletteSection('palette.sprites', 'SPRITES', '<div id="bp-sprite-host"></div>')}
@@ -3700,15 +3629,12 @@ export class Builder {
         <button id="bp-sym-btn" title="Mirror terrain painting across the axis (world center; a region recenters it)">SYM: OFF</button>
         <button id="bp-assets-btn" title="Open the Project Asset Browser">ASSETS&hellip;</button>
         <button id="bp-outliner-btn" title="Find, select, hide, and lock authored records">OUTLINER&hellip;</button>
-        <button id="bp-runtime-btn" title="Inspect live playtest entities and runtime counts">RUNTIME&hellip;</button>
         <button id="bp-link-graph-btn" title="Inspect trigger, relay, rune, and actuator links">LINK GRAPH&hellip;</button>`,
         )}
         ${paletteSection(
           'palette.parameters',
           'PARAMETERS',
           `<button id="bp-world-btn" title="World generation, biome, seed, and live params">WORLDGEN&hellip;</button>
-        <button id="bp-global-btn" title="Simulation, brush, and wand light settings">GLOBAL&hellip;</button>
-        <button id="bp-postfx-btn" title="Exposure, bloom, lens, and GPU composition settings">POST FX&hellip;</button>
         <button id="bp-mat-btn" title="Tuning sliders for the armed material">MATERIAL&hellip;</button>`,
         )}
         ${paletteSection('palette.procedural', 'PROCEDURAL', '<button id="bp-proc-btn">SEEDED PASSES&hellip;</button>')}
@@ -3767,7 +3693,6 @@ export class Builder {
       <div id="builder-dock-right" class="builder-dock" data-dock="right">
       <div id="builder-inspector"></div>
       <div id="builder-outliner" style="display:none"></div>
-      <div id="builder-runtime" style="display:none"></div>
       <div id="builder-asset-details" style="display:none"></div>
       <div id="builder-prefab-details" style="display:none"></div>
       <div id="builder-world" style="display:none">
@@ -3777,14 +3702,6 @@ export class Builder {
       <div id="builder-matparams" style="display:none">
         ${builderPanelHeader({ title: builderPanelTitle('builder-matparams'), closeId: 'bm-close', closeLabel: 'Close material parameters' })}
         <div id="bm-controls"></div>
-      </div>
-      <div id="builder-global" style="display:none">
-        ${builderPanelHeader({ title: builderPanelTitle('builder-global'), closeId: 'bgl-close', closeLabel: 'Close global controls' })}
-        <div id="bg-controls"></div>
-      </div>
-      <div id="builder-postfx" style="display:none">
-        ${builderPanelHeader({ title: builderPanelTitle('builder-postfx'), closeId: 'bf-close', closeLabel: 'Close post processing' })}
-        <div id="bf-controls"></div>
       </div>
       <div id="builder-proc" style="display:none">
         ${builderPanelHeader({ title: builderPanelTitle('builder-proc'), closeId: 'bp-proc-close', closeLabel: 'Close procedural pass' })}
@@ -3815,7 +3732,6 @@ export class Builder {
       </div>
       <div id="builder-link-graph" style="display:none"></div>
       <div id="builder-assets" style="display:none"></div>
-      <div id="builder-virtual-world" style="display:none"></div>
       </div>`;
     viewport?.appendChild(this.root);
     this.playtestBanner = document.createElement('div');
@@ -4041,10 +3957,7 @@ export class Builder {
     const blocked = () => this.previewBlockReason() !== null;
     const blockReason = () => this.previewBlockReason() ?? 'Command unavailable';
     const AUTHOR_SCOPES = ['builder.author'] as const;
-    const LIVE_SCOPES = ['builder.livePreview'] as const;
-    const SESSION_SCOPES = ['builder.author', 'builder.livePreview'] as const;
-    const INSPECT_SCOPES = SESSION_SCOPES;
-    const add = (spec: CommandSpec, scopes: CommandSpec['scopes'] = AUTHOR_SCOPES) =>
+    const add =(spec: CommandSpec, scopes: CommandSpec['scopes'] = AUTHOR_SCOPES) =>
       this.uiCommands.register({ ...spec, scopes: spec.scopes ?? scopes });
     const tool = (id: string, t: BuilderTool, label: string, shortcut?: string) =>
       add({
@@ -4056,14 +3969,14 @@ export class Builder {
       });
 
     add({ id: 'builder.findInvalid', label: 'Find Invalid Object', category: 'Validation', run: () => this.findInvalid() });
-    add({ id: 'builder.frameSelection', label: 'Frame Selection', category: 'View', shortcut: 'F', run: () => this.frameSelection() }, INSPECT_SCOPES);
-    add({ id: 'builder.view.fitDocument', label: 'Fit Authored Bounds', category: 'View', run: () => this.fitAuthoredBounds() }, INSPECT_SCOPES);
-    add({ id: 'builder.view.centerSpawn', label: 'Center On Spawn', category: 'View', run: () => this.centerOnSpawn() }, INSPECT_SCOPES);
-    add({ id: 'builder.view.centerValidationIssue', label: 'Center Active Validation Issue', category: 'View', run: () => this.centerActiveValidationIssue() }, INSPECT_SCOPES);
-    add({ id: 'builder.view.zoomIn', label: 'Zoom In', category: 'View', run: () => this.setBuilderZoom(this.zoomTarget * 1.2) }, INSPECT_SCOPES);
-    add({ id: 'builder.view.zoomOut', label: 'Zoom Out', category: 'View', run: () => this.setBuilderZoom(this.zoomTarget / 1.2) }, INSPECT_SCOPES);
-    add({ id: 'builder.view.zoomReset', label: 'Reset Zoom', category: 'View', run: () => this.setBuilderZoom(1) }, INSPECT_SCOPES);
-    add({ id: 'builder.help', label: 'Builder Help', category: 'Help', shortcut: 'H', run: () => this.setBuilderHelp(!this.builderHelpOpen) }, INSPECT_SCOPES);
+    add({ id: 'builder.frameSelection', label: 'Frame Selection', category: 'View', shortcut: 'F', run: () => this.frameSelection() });
+    add({ id: 'builder.view.fitDocument', label: 'Fit Authored Bounds', category: 'View', run: () => this.fitAuthoredBounds() });
+    add({ id: 'builder.view.centerSpawn', label: 'Center On Spawn', category: 'View', run: () => this.centerOnSpawn() });
+    add({ id: 'builder.view.centerValidationIssue', label: 'Center Active Validation Issue', category: 'View', run: () => this.centerActiveValidationIssue() });
+    add({ id: 'builder.view.zoomIn', label: 'Zoom In', category: 'View', run: () => this.setBuilderZoom(this.zoomTarget * 1.2) });
+    add({ id: 'builder.view.zoomOut', label: 'Zoom Out', category: 'View', run: () => this.setBuilderZoom(this.zoomTarget / 1.2) });
+    add({ id: 'builder.view.zoomReset', label: 'Reset Zoom', category: 'View', run: () => this.setBuilderZoom(1) });
+    add({ id: 'builder.help', label: 'Builder Help', category: 'Help', shortcut: 'H', run: () => this.setBuilderHelp(!this.builderHelpOpen) });
     add({
       id: 'builder.validate',
       label: 'Validate Document',
@@ -4100,11 +4013,7 @@ export class Builder {
     add({ id: 'builder.undo', label: 'Undo', category: 'Edit', shortcut: 'Ctrl+Z', enabled: () => !blocked(), disabledReason: blockReason, run: () => this.undo() });
     add({ id: 'builder.redo', label: 'Redo', category: 'Edit', shortcut: 'Ctrl+Y', enabled: () => !blocked(), disabledReason: blockReason, run: () => this.redo() });
     add({ id: 'builder.redoAlt', label: 'Redo', category: 'Edit', shortcut: 'Ctrl+Shift+Z', enabled: () => !blocked(), disabledReason: blockReason, visible: () => false, run: () => this.redo() });
-    add({ id: 'builder.commandPalette', label: 'Command Palette', category: 'View', shortcut: 'Ctrl+K', run: () => this.openCmdk() }, SESSION_SCOPES);
-    add({ id: 'builder.session.author', label: 'Author View', category: 'Session', run: () => this.setBuilderSession('author') }, SESSION_SCOPES);
-    add({ id: 'builder.session.live', label: 'Logic Preview', category: 'Session', run: () => this.setBuilderSession('live') }, SESSION_SCOPES);
-    add({ id: 'builder.session.restartPreview', label: 'Restart Logic Preview', category: 'Session', run: () => this.resetPreviewRuntime('PREVIEW RESTARTED') }, LIVE_SCOPES);
-    add({ id: 'builder.session.discardPreview', label: 'Discard Logic Preview', category: 'Session', run: () => this.discardPreviewRuntime() }, LIVE_SCOPES);
+    add({ id: 'builder.commandPalette', label: 'Command Palette', category: 'View', shortcut: 'Ctrl+K', run: () => this.openCmdk() });
     add({ id: 'builder.copyParams', label: 'Copy Parameters', category: 'Edit', shortcut: 'Ctrl+C', enabled: () => this.selected() !== null, disabledReason: () => 'Select an object first', run: () => this.copyParams() });
     add({ id: 'builder.pasteParams', label: 'Paste Parameters', category: 'Edit', shortcut: 'Ctrl+V', enabled: () => this.selected() !== null && this.clipboard !== null, disabledReason: () => (this.selected() === null ? 'Select an object first' : 'Copy parameters first'), run: () => this.pasteParams() });
     add({ id: 'builder.duplicate', label: 'Duplicate Selection', category: 'Edit', shortcut: 'Ctrl+D', enabled: () => !blocked() && this.selectedIds.size > 0, disabledReason: () => blockReasonOr(this.selectedIds.size === 0 ? 'Select one or more objects first' : null), run: () => this.duplicateSelection() });
@@ -4171,22 +4080,18 @@ export class Builder {
       run: () => void this.exportRegionPng(),
     });
     add({ id: 'builder.exportPalette', label: 'Export Material Palette (.gpl)', category: 'Prefabs', run: () => this.exportMaterialPalette() });
-    add({ id: 'builder.lightPreviewToggle', label: 'Toggle Light Preview', category: 'View', run: () => this.toggleLightPreview() }, INSPECT_SCOPES);
-    add({ id: 'builder.wandLightPreviewToggle', label: 'Toggle Wand Cursor Light', category: 'View', run: () => this.toggleWandLightPreview() }, INSPECT_SCOPES);
-    add({ id: 'builder.inspectorPanel', label: 'Inspector', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-inspector') }, INSPECT_SCOPES);
+    add({ id: 'builder.lightPreviewToggle', label: 'Toggle Light Preview', category: 'View', run: () => this.toggleLightPreview() });
+    add({ id: 'builder.wandLightPreviewToggle', label: 'Toggle Wand Cursor Light', category: 'View', run: () => this.toggleWandLightPreview() });
+    add({ id: 'builder.inspectorPanel', label: 'Inspector', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-inspector') });
     add({ id: 'builder.worldPanel', label: 'World Generation', category: 'Panels', run: () => this.toggleSidePanel('world') });
-    add({ id: 'builder.virtualWorldPanel', label: 'World Map', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-virtual-world') });
-    add({ id: 'builder.globalControlsPanel', label: 'Global Controls', category: 'Panels', run: () => this.toggleSidePanel('global') });
-    add({ id: 'builder.postProcessingPanel', label: 'Post Processing', category: 'Panels', run: () => this.toggleSidePanel('post') });
     add({ id: 'builder.materialPanel', label: 'Material Parameters', category: 'Panels', run: () => this.toggleSidePanel('mat') });
     add({ id: 'builder.proceduralPanel', label: 'Seeded Procedural Passes', category: 'Panels', run: () => this.toggleSidePanel('proc') });
     add({ id: 'builder.assetsPanel', label: 'Project Asset Browser', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-assets') });
     add({ id: 'builder.assetDetailsPanel', label: 'Asset Details', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-asset-details') });
     add({ id: 'builder.prefabDetailsPanel', label: 'Prefab Details', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-prefab-details') });
     add({ id: 'builder.assetImport', label: 'Import Asset JSON', category: 'Assets', run: () => void this.importAssetJsonFiles() });
-    add({ id: 'builder.outlinerPanel', label: 'Object Outliner', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-outliner') }, INSPECT_SCOPES);
-    add({ id: 'builder.runtimePanel', label: 'Runtime', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-runtime') }, INSPECT_SCOPES);
-    add({ id: 'builder.linkGraphPanel', label: 'Link Graph', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-link-graph') }, INSPECT_SCOPES);
+    add({ id: 'builder.outlinerPanel', label: 'Object Outliner', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-outliner') });
+    add({ id: 'builder.linkGraphPanel', label: 'Link Graph', category: 'Panels', run: () => this.toggleWorkspacePanel('builder-link-graph') });
     for (const layer of LAYER_FAMILIES) {
       const label = layerLabel(layer);
       add({
@@ -4194,32 +4099,32 @@ export class Builder {
         label: `Toggle ${label} Layer Visibility`,
         category: 'Layers',
         run: () => this.toggleLayerVisibility(layer),
-      }, INSPECT_SCOPES);
+      });
       add({
         id: `builder.layer.${layer}.lock`,
         label: `Toggle ${label} Layer Lock`,
         category: 'Layers',
         run: () => this.toggleLayerLock(layer),
-      }, INSPECT_SCOPES);
+      });
     }
-    add({ id: 'builder.resetWorkspace', label: 'Reset Workspace', category: 'Panels', run: () => this.resetWorkspace() }, INSPECT_SCOPES);
+    add({ id: 'builder.resetWorkspace', label: 'Reset Workspace', category: 'Panels', run: () => this.resetWorkspace() });
     for (const preset of ['compact', 'wide', 'validation', 'lighting', 'prefab'] as const) {
       add({
         id: `builder.workspace.${preset}`,
         label: `Workspace Preset: ${preset.toUpperCase()}`,
         category: 'Panels',
         run: () => this.applyWorkspacePreset(preset),
-      }, INSPECT_SCOPES);
+      });
     }
-    add({ id: 'builder.togglePanels', label: 'Toggle Panels / Zen', category: 'View', run: () => this.toggleZen() }, INSPECT_SCOPES);
-    add({ id: 'builder.overlayCycle', label: 'Cycle Readability Overlay', category: 'Overlays', shortcut: 'O', run: () => this.cycleOverlay() }, INSPECT_SCOPES);
+    add({ id: 'builder.togglePanels', label: 'Toggle Panels / Zen', category: 'View', run: () => this.toggleZen() });
+    add({ id: 'builder.overlayCycle', label: 'Cycle Readability Overlay', category: 'Overlays', shortcut: 'O', run: () => this.cycleOverlay() });
     for (const id of BUILDER_OVERLAY_IDS) {
       add({
         id: `builder.overlay.${id}`,
         label: `Toggle ${overlayLabel(id)}`,
         category: 'Overlays',
         run: () => this.toggleOverlay(id),
-      }, INSPECT_SCOPES);
+      });
     }
     add({ id: 'builder.snapCycle', label: 'Cycle Snap Grid', category: 'View', run: () => this.cycleSnapGrid() });
     add({ id: 'builder.generateCaves', label: 'Generate Caves', category: 'World', enabled: () => !blocked(), disabledReason: blockReason, run: () => void this.guardedWorldGen('caves') });
@@ -4255,78 +4160,15 @@ export class Builder {
   }
 
   private runUiCommand(id: string): void {
-    const result = this.runScopedUiCommand(id);
+    const result = this.uiCommands.run(id);
     if (!result.ok) this.status(result.reason ?? 'COMMAND UNAVAILABLE', true);
-  }
-
-  private runScopedUiCommand(id: string) {
-    const cmd = this.uiCommands.get(id);
-    if (cmd) {
-      const reason = this.commandScopeReason(cmd);
-      if (reason) return { ok: false, reason };
-    }
-    return this.uiCommands.run(id);
   }
 
   private uiCommandMenuState(id: string): { enabled: boolean; reason?: string } {
     const cmd = this.uiCommands.get(id);
     if (!cmd) return { enabled: false, reason: 'Unknown command' };
-    const scopeReason = this.commandScopeReason(cmd);
-    if (scopeReason) return { enabled: false, reason: scopeReason };
     const enabled = this.uiCommands.isEnabled(id);
     return enabled ? { enabled } : { enabled, reason: this.uiCommands.disabledReason(id) };
-  }
-
-  private setBuilderSession(mode: 'author' | 'live'): void {
-    if (this.sessionMode === mode) return;
-    if (this.previewBlocks()) return;
-    this.sessionMode = mode;
-    this.runtimeSelectedId = null;
-    this.invalidateRuntimeSnapshots();
-    this.syncSessionButtons();
-    if (mode === 'author') {
-      // Logic Preview is visual-only; returning to Author clears transient preview feeds.
-      this.previewRuntime.stop();
-      this.host.setBuilderVisualState({ editorLights: null });
-      this.status('AUTHOR VIEW');
-    } else {
-      this.resetPreviewRuntime('LOGIC PREVIEW');
-    }
-  }
-
-  private syncSessionButtons(): void {
-    this.el('b-session-author').classList.toggle('active', this.sessionMode === 'author');
-    this.el('b-session-live').classList.toggle('active', this.sessionMode === 'live');
-    this.el<HTMLButtonElement>('b-session-restart').disabled = this.sessionMode !== 'live';
-    this.el<HTMLButtonElement>('b-session-discard').disabled = this.sessionMode !== 'live';
-  }
-
-  private resetPreviewRuntime(prefix = 'PREVIEW RESET'): void {
-    if (this.sessionMode !== 'live') {
-      this.status('LOGIC PREVIEW IS NOT ACTIVE', true);
-      return;
-    }
-    if (this.previewBlocks()) return;
-    const status = this.previewRuntime.reset(this.doc, this.previewRuntimeSourceLayer());
-    this.previewRuntimeDirty = false;
-    this.invalidateRuntimeSnapshots();
-    this.status(`${prefix}: ${status.message.toUpperCase()}`, status.capped || !status.ready);
-  }
-
-  private previewRuntimeSourceLayer(): EditorDocument['world'] {
-    if (this.paintDirty || !this.doc.world) return captureWorldLayer(this.ctx);
-    return this.doc.world;
-  }
-
-  private discardPreviewRuntime(): void {
-    if (this.sessionMode !== 'live') {
-      this.status('LOGIC PREVIEW IS NOT ACTIVE', true);
-      return;
-    }
-    this.previewRuntime.stop();
-    this.previewRuntimeDirty = true;
-    this.invalidateRuntimeSnapshots();
-    this.setBuilderSession('author');
   }
 
   /* ===================== top bar actions ===================== */
@@ -4372,18 +4214,8 @@ export class Builder {
     return true;
   }
 
-  private livePreviewActionBlocks(action: string): boolean {
-    if (this.sessionMode !== 'live') return false;
-    this.status(`${action.toUpperCase()} IS AUTHOR-ONLY — RETURN TO AUTHOR VIEW FIRST`, true);
-    return true;
-  }
-
-  private authoringActionBlocks(action: string): boolean {
-    return this.livePreviewActionBlocks(action) || this.previewBlocks();
-  }
-
   private async newDocument(): Promise<void> {
-    if (this.authoringActionBlocks('New document')) return;
+    if (this.previewBlocks()) return;
     if (!(await this.confirmDiscardCurrentDocument('New Document'))) return;
     this.doc = createEmptyDocument('untitled', this.ctx.state.currentBiome);
     this.adoptedGeneratedScenes = [];
@@ -4407,7 +4239,7 @@ export class Builder {
   }
 
   private saveDocument(): void {
-    if (this.authoringActionBlocks('Save document')) return;
+    if (this.previewBlocks()) return;
     this.ensureCaptured();
     this.ensureDocBackdrop();
     embedSprites(this.doc, this.sprites);
@@ -4421,7 +4253,7 @@ export class Builder {
   }
 
   private async loadSelectedDocument(): Promise<void> {
-    if (this.authoringActionBlocks('Load document')) {
+    if (this.previewBlocks()) {
       this.refreshDocSelect();
       return;
     }
@@ -4449,7 +4281,7 @@ export class Builder {
   }
 
   private exportDocument(): void {
-    if (this.authoringActionBlocks('Export document')) return;
+    if (this.previewBlocks()) return;
     this.ensureCaptured();
     this.ensureDocBackdrop();
     embedSprites(this.doc, this.sprites);
@@ -4462,7 +4294,7 @@ export class Builder {
   }
 
   private captureTerrain(): void {
-    if (this.authoringActionBlocks('Capture terrain')) return;
+    if (this.previewBlocks()) return;
     this.doc.world = captureWorldLayer(this.ctx);
     this.paintDirty = false;
     this.markDocumentChanged();
@@ -4470,7 +4302,7 @@ export class Builder {
   }
 
   private restoreTerrain(): void {
-    if (this.authoringActionBlocks('Restore terrain')) return;
+    if (this.previewBlocks()) return;
     if (!this.doc.world) {
       this.status('NOTHING CAPTURED YET — THE DOCUMENT HAS NO TERRAIN', true);
       return;
@@ -4483,7 +4315,7 @@ export class Builder {
   }
 
   private validateCurrentDocument(): void {
-    if (this.authoringActionBlocks('Validate document')) return;
+    if (this.previewBlocks()) return;
     this.ensureCaptured();
     const issues = validateDocument(this.doc);
     this.lastValidationOverlay = buildValidationOverlayDiagnostics(this.doc);
@@ -4503,7 +4335,6 @@ export class Builder {
     // VALIDATE last ran; any edit makes it stale, so a save/export/share must
     // not carry a "0 errors" badge that no longer holds. (Templates null it too.)
     this.doc.validation = null;
-    this.previewRuntimeDirty = true;
     if (cmd?.label === 'edit backdrop' || cmd?.label === 'edit backdrop grade') this.syncDocBackdropToLive();
     if ((cmd?.cells ?? 0) > 0) this.markTerrainDirty(false);
     this.publishTerrainToLink(cmd, direction);
@@ -4611,7 +4442,6 @@ export class Builder {
     this.paintDirty = true;
     this.validationDirty = true;
     this.doc.validation = null; // stale snapshot — see markDocumentChanged
-    this.previewRuntimeDirty = true;
     this.scheduleValidationPanelRefresh();
   }
 
@@ -4620,12 +4450,11 @@ export class Builder {
     this.backdropDirty = true;
     this.validationDirty = true;
     this.doc.validation = null; // stale snapshot — see markDocumentChanged
-    this.previewRuntimeDirty = true;
     this.scheduleValidationPanelRefresh();
   }
 
   private currentValidationIssues(options: { captureTerrain?: boolean } = {}): DocIssue[] {
-    const captureTerrain = options.captureTerrain ?? this.sessionMode !== 'live';
+    const captureTerrain = options.captureTerrain ?? true;
     if (captureTerrain && this.ensureCaptured()) this.validationDirty = true;
     if (this.validationDirty) {
       this.lastIssues = validateDocument(this.doc);
@@ -4646,7 +4475,7 @@ export class Builder {
   }
 
   private async shareDocument(): Promise<void> {
-    if (this.authoringActionBlocks('Share document')) return;
+    if (this.previewBlocks()) return;
     if (this.shareBusy) return;
     this.shareBusy = true;
     try {
@@ -4681,7 +4510,7 @@ export class Builder {
   }
 
   private async importShareCode(): Promise<void> {
-    if (this.authoringActionBlocks('Import share code')) return;
+    if (this.previewBlocks()) return;
     if (this.codeBusy) return;
     this.codeBusy = true;
     try {
@@ -4706,7 +4535,7 @@ export class Builder {
   }
 
   private async importDocumentFile(file: File): Promise<void> {
-    if (this.authoringActionBlocks('Import document')) return;
+    if (this.previewBlocks()) return;
     let parsed: unknown = null;
     try {
       const text = await file.text();
@@ -4726,7 +4555,7 @@ export class Builder {
   private wireBar(): void {
     this.el<HTMLInputElement>('b-doc-name').addEventListener('change', (e) => {
       const input = e.target as HTMLInputElement;
-      if (this.authoringActionBlocks('Rename document')) {
+      if (this.previewBlocks()) {
         input.value = this.doc.name;
         return;
       }
@@ -4735,7 +4564,7 @@ export class Builder {
     });
     this.el<HTMLSelectElement>('b-biome').addEventListener('change', (e) => {
       const select = e.target as HTMLSelectElement;
-      if (this.authoringActionBlocks('Change biome')) {
+      if (this.previewBlocks()) {
         select.value = this.doc.biome;
         return;
       }
@@ -4746,10 +4575,6 @@ export class Builder {
       this.syncWorkspacePanelContent();
     });
 
-    this.el('b-session-author').addEventListener('click', () => this.runUiCommand('builder.session.author'));
-    this.el('b-session-live').addEventListener('click', () => this.runUiCommand('builder.session.live'));
-    this.el('b-session-restart').addEventListener('click', () => this.runUiCommand('builder.session.restartPreview'));
-    this.el('b-session-discard').addEventListener('click', () => this.runUiCommand('builder.session.discardPreview'));
     this.el('b-new').addEventListener('click', () => this.runUiCommand('builder.newDocument'));
     this.el('b-save').addEventListener('click', () => this.runUiCommand('builder.save'));
     this.el('b-load').addEventListener('click', () => this.runUiCommand('builder.load'));
@@ -4762,7 +4587,7 @@ export class Builder {
       const input = e.target as HTMLInputElement;
       const file = input.files?.[0];
       if (!file) return;
-      if (this.authoringActionBlocks('Import document')) {
+      if (this.previewBlocks()) {
         input.value = '';
         return;
       }
@@ -4788,13 +4613,8 @@ export class Builder {
     this.el('b-playtest-here').addEventListener('click', () => this.runUiCommand('builder.playtestHere'));
     this.el('b-inspector').addEventListener('click', () => this.runUiCommand('builder.inspectorPanel'));
     this.el('b-worldgen').addEventListener('click', () => this.runUiCommand('builder.worldPanel'));
-    this.el('b-world-map').addEventListener('click', () => this.runUiCommand('builder.virtualWorldPanel'));
-    this.el('b-global').addEventListener('click', () => this.runUiCommand('builder.globalControlsPanel'));
-    this.el('b-postfx').addEventListener('click', () => this.runUiCommand('builder.postProcessingPanel'));
     this.el('b-gallery').addEventListener('click', () => this.openGallery());
-    this.el('b-scene-editor').addEventListener('click', () => this.openSceneEditor());
     this.el('b-assets').addEventListener('click', () => this.runUiCommand('builder.assetsPanel'));
-    this.el('b-runtime').addEventListener('click', () => this.runUiCommand('builder.runtimePanel'));
     this.el('b-backdrop').addEventListener('click', () => this.openBackdropPreview());
     this.el('b-validation-layout').addEventListener('click', () => this.runUiCommand('builder.workspace.validation'));
     this.el('b-reset-workspace').addEventListener('click', () => this.runUiCommand('builder.resetWorkspace'));
@@ -4927,12 +4747,8 @@ export class Builder {
     const checks: Array<[string, boolean]> = [
       ['b-inspector', panelOpen('builder-inspector')],
       ['b-worldgen', panelOpen('builder-world')],
-      ['b-world-map', panelOpen('builder-virtual-world')],
-      ['b-global', panelOpen('builder-global')],
-      ['b-postfx', panelOpen('builder-postfx')],
       ['b-gallery', overlayOpen('builder-gallery')],
       ['b-assets', panelOpen('builder-assets')],
-      ['b-runtime', panelOpen('builder-runtime')],
       ['b-backdrop', overlayOpen('builder-backdrop')],
       ['b-zen', !zen],
     ];
@@ -4965,25 +4781,14 @@ export class Builder {
     this.status('GALLERY — ↑↓ BROWSE · ←→ STATES · ESC CLOSES');
   }
 
-  /** The pixel-scene editor: author chunked-world pixel scenes (paint, light, validate). */
-  private openSceneEditor(): void {
-    this.sceneEditor ??= new PixelSceneEditor(this.root);
-    if (this.sceneEditor.isOpen()) {
-      this.sceneEditor.close();
-      return;
-    }
-    this.sceneEditor.open();
-    this.status('PIXEL SCENE EDITOR — PAINT · SAVE · ESC CLOSES');
-  }
-
   /** Live preview for the image-backed parallax cave backdrop. */
   private openBackdropPreview(): void {
-    if (this.authoringActionBlocks('Backdrop editor')) return;
+    if (this.previewBlocks()) return;
     this.syncDocBackdropToLive();
     this.backdropPreview ??= new BackdropPreview(this.root, this.ctx, {
       getSettings: () => this.ensureDocBackdrop(),
       commitSettings: (settings, playtestProfileId) => {
-        if (this.authoringActionBlocks('Apply backdrop')) return;
+        if (this.previewBlocks()) return;
         const clean = sanitizeBackdropSettings(settings);
         this.editDocumentMetadata('edit backdrop', { backdrop: clean, backdropProfileId: playtestProfileId });
         this.ctx.params.backdrop = clean;
@@ -5118,15 +4923,6 @@ export class Builder {
     }
     this.setPlaytestBanner(true);
     (document.getElementById('mode-play-btn') as HTMLButtonElement | null)?.click();
-  }
-
-  private playVirtualWorldWindow(def: VirtualWorldDef, center: { x: number; y: number }, previewRadius: number): void {
-    if (this.previewBlocks()) return;
-    this.builderPlaytestActive = false;
-    this.playtestScars = null;
-    this.close();
-    this.ctx.levels.playVirtualWindow(this.ctx, def, center, previewRadius);
-    this.status(`PLAYING VIRTUAL WINDOW @ ${center.x},${center.y}`);
   }
 
   private restorePrePlaytestPlayer(): void {
@@ -5297,7 +5093,7 @@ export class Builder {
   }
 
   private startGizmoInteraction(handle: ProjectedGizmoHandle): boolean {
-    if (this.authoringActionBlocks('Gizmo edit')) return false;
+    if (this.previewBlocks()) return false;
     if (handle.ownerKind === 'object') {
       const obj = this.doc.objects.find((o) => o.id === handle.ownerId);
       if (!obj || !this.layerSelectableObj(obj)) return false;
@@ -5425,7 +5221,7 @@ export class Builder {
       const light = drag.target as EditorLight;
       const nextRadius = light.radius;
       this.restoreGizmoDrag(drag);
-      if (this.authoringActionBlocks('Gizmo edit')) {
+      if (this.previewBlocks()) {
         this.renderInspector();
         return;
       }
@@ -5442,7 +5238,7 @@ export class Builder {
     const nextY = obj.y;
     const nextParams = { ...obj.params };
     this.restoreGizmoDrag(drag);
-    if (this.authoringActionBlocks('Gizmo edit')) {
+    if (this.previewBlocks()) {
       this.renderInspector();
       this.syncMarkers();
       return;
@@ -5478,17 +5274,12 @@ export class Builder {
     this.overlay.addEventListener('mousedown', (e) => {
       const pos = this.mouseToWorld(e);
       if (e.button === 2) {
-        if (this.livePreviewActionBlocks('Eyedrop')) return;
         // patrol-edit mode: RMB on a waypoint removes it; elsewhere eyedrops
         if (this.patrolEditId && this.deletePatrolPointAt(pos.x, pos.y)) return;
         this.eyedrop(pos.x, pos.y);
         return;
       }
       if (e.button !== 0) return;
-      if (this.sessionMode === 'live' && this.tool !== 'select') {
-        this.livePreviewActionBlocks(TOOL_INFO[this.tool]?.name ?? 'Tool edit');
-        return;
-      }
       // FLOATING SELECTION is modal on the canvas: inside the block starts
       // a drag; anywhere else just reminds (Enter lands, ESC cancels).
       if (this.floating) {
@@ -5502,13 +5293,12 @@ export class Builder {
       }
       // patrol authoring eats clicks until ESC ends it
       if (this.patrolEditId) {
-        if (this.livePreviewActionBlocks('Patrol edit')) return;
         this.addPatrolPoint(pos.x, pos.y);
         return;
       }
       const gizmo = this.hitGizmoAt(e);
       if (gizmo) {
-        if (this.previewBlocks() || this.livePreviewActionBlocks('Gizmo edit')) return;
+        if (this.previewBlocks()) return;
         if (this.startGizmoInteraction(gizmo)) return;
       }
       if (this.tool === 'lassoRegion') {
@@ -5586,7 +5376,6 @@ export class Builder {
       if (sel && sel.kind === 'enemy' && !sel.locked && Array.isArray(sel.params.patrol)) {
         const idx = this.hitPatrolPoint(sel, pos.x, pos.y);
         if (idx !== null) {
-          if (this.livePreviewActionBlocks('Patrol edit')) return;
           const pts = sel.params.patrol as Array<[number, number]>;
           this.waypointDrag = {
             obj: sel,
@@ -5639,7 +5428,6 @@ export class Builder {
         this.renderInspector();
       }
       // group drag: every unlocked member of the selection moves together
-      if (this.sessionMode === 'live') return;
       const targets: Array<{ t: EditorObject | EditorLight; isLight: boolean; ox: number; oy: number }> = [];
       for (const o of this.doc.objects) {
         if (this.selectedIds.has(o.id) && !o.locked && this.layerSelectableObj(o))
@@ -5738,7 +5526,7 @@ export class Builder {
         // Rewind the live preview, then land the move as ONE command.
         const next = pts.map(([px, py]) => [px, py] as [number, number]);
         d.obj.params.patrol = d.orig;
-        if (this.authoringActionBlocks('Patrol edit')) {
+        if (this.previewBlocks()) {
           this.renderInspector();
           return;
         }
@@ -5755,7 +5543,7 @@ export class Builder {
         this.terraStroke = null;
         const patch = t.rec.finish();
         if (patch) {
-          if (this.authoringActionBlocks('Terrain stroke')) {
+          if (this.previewBlocks()) {
             for (let n = 0; n < patch.before.idxs.length; n++) {
               const i = patch.before.idxs[n];
               this.ctx.world.types[i] = patch.before.types[n];
@@ -5800,7 +5588,7 @@ export class Builder {
           ? moveLightCmd(m.t as EditorLight, nx, ny)
           : moveObjectCmd(m.t as EditorObject, nx, ny);
       });
-      if (this.authoringActionBlocks('Move selection')) {
+      if (this.previewBlocks()) {
         this.renderInspector();
         this.syncMarkers();
         return;
@@ -5859,7 +5647,7 @@ export class Builder {
   }
 
   private beginStroke(x: number, y: number): void {
-    if (this.authoringActionBlocks('Paint terrain')) return;
+    if (this.previewBlocks()) return;
     if (this.materialOrComplain() === null) return;
     this.stroke = {
       seen: new Set(),
@@ -5916,7 +5704,7 @@ export class Builder {
     const s = this.stroke;
     this.stroke = null;
     if (!s) return;
-    if (this.authoringActionBlocks('Paint terrain')) {
+    if (this.previewBlocks()) {
       const w = this.ctx.world;
       for (let n = 0; n < s.before.idxs.length; n++) {
         const i = s.before.idxs[n];
@@ -5965,7 +5753,7 @@ export class Builder {
   /* ---------- terrain shape tools (Phase 4) ---------- */
 
   private commitShape(s: { x0: number; y0: number; x1: number; y1: number }): void {
-    if (this.authoringActionBlocks('Draw shape')) return;
+    if (this.previewBlocks()) return;
     const type = this.materialOrComplain();
     if (type === null) return;
     const w = this.ctx.world;
@@ -6068,7 +5856,7 @@ export class Builder {
   }
 
   private commitFlood(x: number, y: number): void {
-    if (this.authoringActionBlocks('Flood fill')) return;
+    if (this.previewBlocks()) return;
     const type = this.materialOrComplain();
     if (type === null) return;
     const w = this.ctx.world;
@@ -6096,7 +5884,7 @@ export class Builder {
   }
 
   private commitReplace(x: number, y: number): void {
-    if (this.authoringActionBlocks('Replace terrain')) return;
+    if (this.previewBlocks()) return;
     const type = this.materialOrComplain();
     if (type === null) return;
     const w = this.ctx.world;
@@ -6145,7 +5933,7 @@ export class Builder {
   }
 
   private async generateConfiguredWorld(reroll: boolean): Promise<void> {
-    if (this.authoringActionBlocks('Generate world')) return;
+    if (this.previewBlocks()) return;
     const previousSeed = this.ctx.state.worldSeed;
     if (reroll) this.ctx.state.worldSeed = randomSeed();
     const baseSeed = this.ctx.state.worldSeed >>> 0;
@@ -6209,7 +5997,7 @@ export class Builder {
   }
 
   private async guardedWorldGen(action: 'caves' | 'fortress' | 'clear'): Promise<void> {
-    if (this.authoringActionBlocks('World generation')) return;
+    if (this.previewBlocks()) return;
     if (!(await this.confirmWholeWorldReshape('Reshape World'))) return;
     const linkSnap = this.snapshotWorldForLink();
     if (action === 'caves') {
@@ -6228,7 +6016,7 @@ export class Builder {
   /* ---------- objects, links, lights ---------- */
 
   private place(kind: EditorObjectKind, x: number, y: number): void {
-    if (this.authoringActionBlocks('Place object')) return;
+    if (this.previewBlocks()) return;
     // A document has exactly one spawn: placing again moves the existing one.
     if (kind === 'spawn') {
       const existing = this.doc.objects.find((o) => o.kind === 'spawn');
@@ -6287,7 +6075,7 @@ export class Builder {
   }
 
   private placeLight(x: number, y: number): void {
-    if (this.authoringActionBlocks('Place light')) return;
+    if (this.previewBlocks()) return;
     const light: EditorLight = {
       id: freshId('light'),
       x: this.snap(x),
@@ -6309,7 +6097,7 @@ export class Builder {
   }
 
   private linkClick(x: number, y: number): void {
-    if (this.authoringActionBlocks('Link objects')) return;
+    if (this.previewBlocks()) return;
     const hit = this.hitTest(x, y);
     if (!hit || hit.isLight) {
       this.status('LINK: CLICK A TRIGGER OR RUNE GLYPH', true);
@@ -6500,7 +6288,7 @@ export class Builder {
    *  BOTH endpoints are selected come along with remapped ids. Spawn stays
    *  unique and is skipped. */
   private duplicateSelection(): void {
-    if (this.authoringActionBlocks('Duplicate selection')) return;
+    if (this.previewBlocks()) return;
     const idMap = new Map<string, string>();
     const adds: Command[] = [];
     const newIds: string[] = [];
@@ -6549,7 +6337,7 @@ export class Builder {
 
   /** Ctrl+G: bind the selected objects into a group; Ctrl+Shift+G dissolves. */
   private groupSelection(ungroup: boolean): void {
-    if (this.authoringActionBlocks(ungroup ? 'Ungroup selection' : 'Group selection')) return;
+    if (this.previewBlocks()) return;
     const members = this.doc.objects.filter((o) => this.selectedIds.has(o.id));
     if (ungroup) {
       const cmds = members.filter((o) => o.group).map((o) => setObjectGroupCmd(o, undefined));
@@ -6572,7 +6360,7 @@ export class Builder {
 
   /** Align the selection to the primary; spread distributes evenly between ends. */
   private alignSelection(mode: 'x' | 'y' | 'spreadX' | 'spreadY'): void {
-    if (this.authoringActionBlocks('Align selection')) return;
+    if (this.previewBlocks()) return;
     const targets: Array<{ t: EditorObject | EditorLight; isLight: boolean }> = [];
     for (const o of this.doc.objects) {
       if (this.selectedIds.has(o.id) && !o.locked && this.layerSelectableObj(o))
@@ -6642,7 +6430,7 @@ export class Builder {
   }
 
   private pasteParams(): void {
-    if (this.authoringActionBlocks('Paste parameters')) return;
+    if (this.previewBlocks()) return;
     const clip = this.clipboard;
     if (!clip) {
       this.status('NOTHING COPIED YET (CTRL+C)');
@@ -6785,7 +6573,7 @@ export class Builder {
   }
 
   private async deleteSelection(): Promise<void> {
-    if (this.authoringActionBlocks('Delete selection')) return;
+    if (this.previewBlocks()) return;
     const dels: Command[] = [];
     let lockedSkipped = 0;
     let deletesSpawn = false;
@@ -6838,12 +6626,7 @@ export class Builder {
     this.el('bp-proc-btn').addEventListener('click', () => this.runUiCommand('builder.proceduralPanel'));
     this.el('bp-proc-close').addEventListener('click', () => this.closeSidePanel('proc'));
     this.el('bp-world-btn').addEventListener('click', () => this.runUiCommand('builder.worldPanel'));
-    this.el('bp-world-map-btn').addEventListener('click', () => this.runUiCommand('builder.virtualWorldPanel'));
     this.el('bw-close').addEventListener('click', () => this.closeSidePanel('world'));
-    this.el('bp-global-btn').addEventListener('click', () => this.runUiCommand('builder.globalControlsPanel'));
-    this.el('bgl-close').addEventListener('click', () => this.closeSidePanel('global'));
-    this.el('bp-postfx-btn').addEventListener('click', () => this.runUiCommand('builder.postProcessingPanel'));
-    this.el('bf-close').addEventListener('click', () => this.closeSidePanel('post'));
     this.el('bp-mat-btn').addEventListener('click', () => this.runUiCommand('builder.materialPanel'));
     this.el('bm-close').addEventListener('click', () => this.closeSidePanel('mat'));
     this.el('bp-dice').addEventListener('click', () => {
@@ -6877,8 +6660,6 @@ export class Builder {
     proc: 'builder-proc',
     world: 'builder-world',
     mat: 'builder-matparams',
-    global: 'builder-global',
-    post: 'builder-postfx',
   } as const;
 
   private openSidePanel(which: BuilderSidePanel | null): void {
@@ -6902,8 +6683,6 @@ export class Builder {
     if (which === 'proc') this.syncProcPanel();
     else if (which === 'world') this.buildWorldPanel();
     else if (which === 'mat') this.buildMatPanel();
-    else if (which === 'global') this.buildGlobalPanel();
-    else if (which === 'post') this.buildPostProcessingPanel();
     this.applyWorkspaceLayout();
     this.saveWorkspacePrefs();
   }
@@ -6944,7 +6723,6 @@ export class Builder {
   }
 
   private closeWorkspacePanel(id: BuilderWorkspacePanelId): void {
-    if (id === 'builder-virtual-world') this.virtualWorldPanel?.cancel();
     this.setPanelElementVisible(this.el<HTMLDivElement>(id), false);
     this.setWorkspacePanelOpen(id, false);
     this.applyWorkspaceLayout();
@@ -6954,28 +6732,10 @@ export class Builder {
   private renderWorkspacePanelContent(id: BuilderWorkspacePanelId): void {
     if (id === 'builder-inspector') this.renderInspector();
     else if (id === 'builder-outliner') this.renderOutliner();
-    else if (id === 'builder-runtime') this.renderRuntimePanel();
     else if (id === 'builder-link-graph') this.renderLinkGraph();
     else if (id === 'builder-assets') this.renderAssetBrowser();
     else if (id === 'builder-asset-details') this.renderAssetDetails();
-    else if (id === 'builder-prefab-details') this.renderPrefabDetails();
-    else this.renderVirtualWorldPanel();
-  }
-
-  private renderVirtualWorldPanel(): void {
-    const panel = this.el<HTMLDivElement>('builder-virtual-world');
-    this.virtualWorldPanel ??= new VirtualWorldPanel(panel, {
-      getBaseSeed: () => this.ctx.state.worldSeed >>> 0,
-      onPlayWindow: (def, center, previewRadius) => this.playVirtualWorldWindow(def, center, previewRadius),
-      onClose: () => this.closeWorkspacePanel('builder-virtual-world'),
-      isSectionCollapsed: (id) => this.workspaceLayout.collapsedSections[id] === true,
-      onSectionCollapsed: (id, collapsed) => {
-        this.workspaceLayout.collapsedSections[id] = collapsed;
-        this.saveWorkspacePrefs();
-      },
-    });
-    this.refreshPanelDragHandles(panel);
-    this.virtualWorldPanel.refresh();
+    else this.renderPrefabDetails();
   }
 
   /** One live-param slider row (writes straight into the shared object). */
@@ -6992,25 +6752,6 @@ export class Builder {
     // Unified with numberRow so every tuning row is editable and visually
     // identical — no more read-only "locked" sliders sitting beside typeable ones.
     this.numberRow(host, label, value, min, max, step, fmt, onInput);
-  }
-
-  private worldSection(host: HTMLElement, title: string): HTMLElement {
-    const id = `${host.id || 'world'}.${title.toLowerCase().replace(/[^a-z0-9]+/g, '.')}`;
-    const marker = document.createElement('template');
-    marker.innerHTML = editorSectionHtml({
-      id,
-      title,
-      body: '',
-      className: 'bw-section',
-      titleClassName: 'bw-title',
-      bodyClassName: 'bw-section-body',
-      collapsed: this.workspaceLayout.collapsedSections[id] === true,
-    });
-    const section = marker.content.firstElementChild;
-    if (!(section instanceof HTMLElement)) throw new Error(`Failed to create builder section ${id}`);
-    host.appendChild(section);
-    this.wireCollapsibleSections(section);
-    return section.querySelector<HTMLElement>('.bw-section-body') ?? section;
   }
 
   private worldActionRow(host: HTMLElement, actions: Array<{ label: string; title?: string; run: () => void }>): void {
@@ -7182,7 +6923,7 @@ export class Builder {
         { value: 'custom', label: 'CUSTOM DOCUMENT' },
       ],
       (levelId) => {
-        if (this.authoringActionBlocks('Change world target')) {
+        if (this.previewBlocks()) {
           this.buildWorldPanel();
           return;
         }
@@ -7202,7 +6943,7 @@ export class Builder {
       this.doc.biome,
       BIOME_IDS.map((id) => ({ value: id, label: BIOME_DEFS[id].name })),
       (biome) => {
-        if (this.authoringActionBlocks('Change biome')) {
+        if (this.previewBlocks()) {
           this.buildWorldPanel();
           return;
         }
@@ -7279,345 +7020,6 @@ export class Builder {
     });
   }
 
-  private buildGlobalPanel(): void {
-    const host = this.el<HTMLDivElement>('bg-controls');
-    this.unmountGlobalTimeControls();
-    host.innerHTML = '';
-    const g = this.ctx.params.global;
-    const simSection = this.worldSection(host, 'SIMULATION');
-    this.sliderRow(simSection, 'Simulation Speed', g.simSpeed, 0, 2, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
-      g.simSpeed = v;
-    });
-    this.sliderRow(simSection, 'Max Brightness', g.maxBrightness, 1, 10, 0.5, (v) => v.toFixed(1), (v) => {
-      g.maxBrightness = v;
-    });
-    this.sliderRow(simSection, 'Ambient Light', g.ambient, 0.02, 0.5, 0.02, (v) => v.toFixed(2), (v) => {
-      g.ambient = v;
-    });
-    this.sliderRow(simSection, 'Brush Radius', this.ctx.state.brushSize, 1, 24, 1, (v) => v + 'px', (v) => {
-      this.ctx.state.brushSize = v;
-      this.el<HTMLInputElement>('bp-brush').value = String(v);
-      this.el('bp-brush-val').textContent = String(v);
-    });
-
-    const timeSection = this.worldSection(host, 'TIME CONTROLS');
-    this.globalTimeControlsDispose = mountTimeControlsPanel(this.ctx, timeSection, { surface: 'builder' });
-
-    const goreSection = this.worldSection(host, 'GORE');
-    // Master: 0 = bloodless … 1 = shipped … 10 = maximum gore (Tarantino mode).
-    // The particle pool is hard-capped (MAX_PARTICLES), so extreme values
-    // saturate gracefully rather than tanking the framerate.
-    this.sliderRow(goreSection, 'Overall Gore', g.bloodAmount, 0, 10, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
-      g.bloodAmount = v;
-    });
-    // Per-material channels (multiply on top of Overall) — the spray mixes each
-    // enemy's body material with a universal blood spray; tune them apart.
-    this.sliderRow(goreSection, 'Red Blood', g.goreBlood, 0, 4, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
-      g.goreBlood = v;
-    });
-    this.sliderRow(goreSection, 'Green Slime', g.goreSlime, 0, 4, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
-      g.goreSlime = v;
-    });
-    this.sliderRow(goreSection, 'Glowing Ooze (acid/toxic)', g.goreOoze, 0, 4, 0.1, (v) => v.toFixed(1) + 'x', (v) => {
-      g.goreOoze = v;
-    });
-    this.worldActionRow(goreSection, [
-      {
-        label: 'RESET SIM + GORE',
-        title: 'Restore simulation, lighting, and gore multipliers to shipped defaults',
-        run: () => {
-          Object.assign(this.ctx.params.global, GLOBAL_PARAM_DEFAULTS);
-          this.host.notifyParamsChanged(); // Sandbox Global Controls re-sync
-          this.buildGlobalPanel();
-          this.status('SIM + GORE RESET');
-        },
-      },
-    ]);
-
-    // Spark/lightning conduction (also live via console `set global.charge*`).
-    const elec = this.worldSection(host, 'ELECTRICAL');
-    this.sliderRow(elec, 'Charge Falloff (spread)', g.chargeFalloff, 1, 6, 1, (v) => v.toFixed(0), (v) => {
-      g.chargeFalloff = v;
-      this.host.notifyParamsChanged();
-    });
-    this.sliderRow(elec, 'Charge Strength (reach)', g.chargeStrength, 0.5, 5, 0.5, (v) => `${v.toFixed(1)}x`, (v) => {
-      g.chargeStrength = v;
-      this.host.notifyParamsChanged();
-    });
-    this.sliderRow(elec, 'Charge Decay (duration)', g.chargeDecay, 1, 10, 1, (v) => v.toFixed(0), (v) => {
-      g.chargeDecay = v;
-      this.host.notifyParamsChanged();
-    });
-    this.sliderRow(elec, 'Shock Damage', g.shockDamage, 0, 1, 0.05, (v) => v.toFixed(2), (v) => {
-      g.shockDamage = v;
-      this.host.notifyParamsChanged();
-    });
-
-    this.buildProgressionPacingSection(host);
-    this.buildPlayerPhysicsSections(host);
-    this.buildWorldgenLookSection(host);
-
-    const previewSection = this.worldSection(host, 'WAND PREVIEW');
-    this.checkboxRow(previewSection, 'Cursor Wand Light', this.wandLightPreviewOn, (value) => {
-      this.wandLightPreviewOn = value;
-      this.syncWandLightPreview();
-      this.syncWandLightPreviewButton();
-    });
-    const wand = this.ctx.state.wandLight;
-    const wandSection = this.worldSection(host, 'WAND LIGHT');
-    this.numberRow(wandSection, 'Intensity', wand.intensity, 0, 10, 0.05, (v) => v.toFixed(2), (v) => {
-      wand.intensity = v;
-    });
-    this.numberRow(wandSection, 'Radius', wand.radius, 16, 240, 1, (v) => Math.round(v) + 'px', (v) => {
-      wand.radius = Math.max(1, v);
-    });
-    this.numberRow(wandSection, 'Red', wand.r, 0, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
-      wand.r = v;
-    });
-    this.numberRow(wandSection, 'Green', wand.g, 0, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
-      wand.g = v;
-    });
-    this.numberRow(wandSection, 'Blue', wand.b, 0, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
-      wand.b = v;
-    });
-    this.numberRow(wandSection, 'Flicker', wand.flicker, 0, 0.6, 0.01, (v) => v.toFixed(2), (v) => {
-      wand.flicker = v;
-    });
-    this.numberRow(wandSection, 'Player Fill R', wand.fillR, 0, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
-      wand.fillR = v;
-    });
-    this.numberRow(wandSection, 'Player Fill G', wand.fillG, 0, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
-      wand.fillG = v;
-    });
-    this.numberRow(wandSection, 'Player Fill B', wand.fillB, 0, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
-      wand.fillB = v;
-    });
-
-    const torchSection = this.worldSection(host, 'TORCH WAND');
-    this.numberRow(torchSection, 'Intensity', wand.torchIntensity, 0, 14, 0.05, (v) => v.toFixed(2), (v) => {
-      wand.torchIntensity = v;
-    });
-    this.numberRow(torchSection, 'Radius', wand.torchRadius, 16, 320, 1, (v) => Math.round(v) + 'px', (v) => {
-      wand.torchRadius = Math.max(1, v);
-    });
-    this.numberRow(torchSection, 'Min Flicker', wand.torchMinFlicker, 0.5, 1.5, 0.01, (v) => v.toFixed(2), (v) => {
-      wand.torchMinFlicker = v;
-    });
-    this.worldActionRow(torchSection, [
-      {
-        label: 'RESET WAND',
-        title: 'Restore the current shipped wand-light values',
-        run: () => {
-          Object.assign(this.ctx.state.wandLight, createDefaultWandLightSettings());
-          this.buildGlobalPanel();
-          this.status('WAND LIGHT RESET');
-        },
-      },
-    ]);
-  }
-
-  /** Worldgen LOOK tuning — the same GEN_TUNE (cave size + walk-surface sink fill)
-   *  and per-biome dressing densities as the Sandbox panel. Tweak, then REGENERATE
-   *  to bake a fresh cave with the new look. Mirrors index.html's "Look tuning". */
-  private buildWorldgenLookSection(host: HTMLElement): void {
-    const t = GEN_TUNE;
-    const sec = this.worldSection(host, 'WORLDGEN LOOK');
-    // Field list + ranges come from the shared WORLDGEN_LOOK_FIELDS descriptor so
-    // this panel and the Sandbox (Toolbar) worldgen panel can't drift apart.
-    for (const f of WORLDGEN_LOOK_FIELDS) {
-      const isInt = f.decimals === 0;
-      this.numberRow(
-        sec, f.label, t[f.key], f.min, f.max, f.step,
-        (v) => (isInt ? String(Math.round(v)) : v.toFixed(f.decimals)),
-        (v) => { t[f.key] = isInt ? Math.round(v) : v; },
-      );
-    }
-    const extras = EXTRAS[this.doc.biome] as unknown as Record<string, number | undefined>;
-    this.numberRow(sec, 'Gold richness', extras.goldBonus ?? 1, 0, 3, 0.1, (v) => v.toFixed(1), (v) => { extras.goldBonus = v; });
-    const recipe = campaignDressingRecipeForBiome(this.doc.biome) as unknown as Record<string, number>;
-    for (const [key, label] of WORLDGEN_DRESSING_CHANNELS) {
-      if (typeof recipe[key] !== 'number') continue;
-      this.numberRow(sec, label, recipe[key], 0, 2, 0.02, (v) => v.toFixed(2), (v) => { recipe[key] = v; });
-    }
-    this.worldActionRow(sec, [
-      { label: 'REGENERATE CAVES', title: 'Re-run worldgen with these look values', run: () => { void this.guardedWorldGen('caves'); } },
-      { label: 'RESET LOOK', title: 'Restore the shipped worldgen look', run: () => { Object.assign(GEN_TUNE, GEN_TUNE_DEFAULTS); this.host.notifyParamsChanged(); this.buildGlobalPanel(); } },
-    ]);
-  }
-
-  private buildProgressionPacingSection(host: HTMLElement): void {
-    const p = PROGRESSION_PACING;
-    const pacing = this.worldSection(host, 'PROGRESSION PACING');
-    this.numberRow(pacing, 'D1 player speed', p.playerStart, 0.45, 1, 0.01, (v) => v.toFixed(2) + 'x', (v) => {
-      p.playerStart = v;
-    });
-    this.numberRow(pacing, 'Player depth ramp', p.playerDepthStep, 0, 0.18, 0.005, (v) => '+' + v.toFixed(3), (v) => {
-      p.playerDepthStep = v;
-    });
-    this.numberRow(pacing, 'D1 vertical speed', p.verticalStart, 0.45, 1, 0.01, (v) => v.toFixed(2) + 'x', (v) => {
-      p.verticalStart = v;
-    });
-    this.numberRow(pacing, 'Vertical depth ramp', p.verticalDepthStep, 0, 0.15, 0.005, (v) => '+' + v.toFixed(3), (v) => {
-      p.verticalDepthStep = v;
-    });
-    this.numberRow(pacing, 'D1 enemy speed', p.enemyStart, 0.25, 1, 0.01, (v) => v.toFixed(2) + 'x', (v) => {
-      p.enemyStart = v;
-    });
-    this.numberRow(pacing, 'Enemy depth ramp', p.enemyDepthStep, 0, 0.18, 0.005, (v) => '+' + v.toFixed(3), (v) => {
-      p.enemyDepthStep = v;
-    });
-    this.worldActionRow(pacing, [
-      {
-        label: 'RESET PACING',
-        title: 'Restore shipped early-progression pacing values',
-        run: () => {
-          Object.assign(PROGRESSION_PACING, PROGRESSION_PACING_DEFAULTS);
-          this.host.notifyParamsChanged();
-          this.buildGlobalPanel();
-          this.status('PROGRESSION PACING RESET');
-        },
-      },
-    ]);
-  }
-
-  /** Levitation + wand-recoil dials (ctx.params.player). These write straight
-   *  into the live tuning object, so they can be adjusted WHILE a Builder
-   *  playtest runs — fly and shoot to feel each change. The hook for future
-   *  levitation enhancement cards is `levitHorizControl`. */
-  private buildPlayerPhysicsSections(host: HTMLElement): void {
-    const p = this.ctx.params.player;
-
-    const feel = this.worldSection(host, 'MOVEMENT FEEL');
-    this.numberRow(feel, 'Soft-start (ease-in)', p.moveSoftStart, 0, 1, 0.02, (v) => v.toFixed(2), (v) => { p.moveSoftStart = v; });
-    this.numberRow(feel, 'Max run cap', p.maxRunCap, 1, 8, 0.1, (v) => v.toFixed(1), (v) => { p.maxRunCap = v; });
-    this.numberRow(feel, 'Ground stop (decay)', p.groundStopDecay, 0, 1, 0.02, (v) => v.toFixed(2), (v) => { p.groundStopDecay = v; });
-    this.numberRow(feel, 'Stop snap', p.groundStopSnap, 0, 0.6, 0.01, (v) => v.toFixed(2), (v) => { p.groundStopSnap = v; });
-    this.numberRow(feel, 'Air glide speed', p.airGlideSpeed, 0, 4, 0.1, (v) => v.toFixed(1), (v) => { p.airGlideSpeed = v; });
-    this.numberRow(feel, 'Air tap stop (decay)', p.airStopDecay, 0, 1, 0.02, (v) => v.toFixed(2), (v) => { p.airStopDecay = v; });
-    this.numberRow(feel, 'Jump cut', p.jumpCut, 0, 0.6, 0.01, (v) => v.toFixed(2), (v) => { p.jumpCut = v; });
-    this.numberRow(feel, 'Jump window', p.jumpHoldWindow, 0, 30, 1, (v) => Math.round(v) + 'f', (v) => { p.jumpHoldWindow = Math.max(0, Math.round(v)); });
-
-    const lev = this.worldSection(host, 'LEVITATION');
-    this.numberRow(lev, 'Lift: base thrust', p.levitThrust0, 0, 0.6, 0.01, (v) => v.toFixed(2), (v) => {
-      p.levitThrust0 = v;
-    });
-    this.numberRow(lev, 'Lift: ramp gain', p.levitThrustGain, 0, 0.6, 0.01, (v) => v.toFixed(2), (v) => {
-      p.levitThrustGain = v;
-    });
-    this.numberRow(lev, 'Lift: ramp frames', p.levitRampFrames, 6, 120, 1, (v) => Math.round(v) + 'f', (v) => {
-      p.levitRampFrames = Math.max(1, Math.round(v));
-    });
-    this.numberRow(lev, 'Vertical drag', p.levitDrag, 0.8, 1, 0.005, (v) => v.toFixed(3), (v) => {
-      p.levitDrag = v;
-    });
-    this.numberRow(lev, 'Up-speed cap', p.vyCapUp, -8, -3.7, 0.1, (v) => v.toFixed(1), (v) => {
-      p.vyCapUp = Math.min(-3.7, v);
-    });
-    this.numberRow(lev, 'Horizontal control', p.levitHorizControl, 0, 3, 0.05, (v) => v.toFixed(2) + 'x', (v) => {
-      p.levitHorizControl = v;
-    });
-    this.numberRow(lev, 'Air momentum (drag)', p.airDrag, 0.9, 1, 0.001, (v) => v.toFixed(3), (v) => {
-      p.airDrag = v;
-    });
-
-    const rec = this.worldSection(host, 'WAND RECOIL');
-    this.numberRow(rec, 'Base kick', p.recoilBase, 0, 20, 0.5, (v) => v.toFixed(1), (v) => {
-      p.recoilBase = v;
-    });
-    this.numberRow(rec, 'Per momentum', p.recoilPerMomentum, 0, 0.2, 0.005, (v) => v.toFixed(3), (v) => {
-      p.recoilPerMomentum = v;
-    });
-    this.numberRow(rec, 'Max impulse (cap)', p.recoilMaxImpulse, 0, 8, 0.1, (v) => v.toFixed(1), (v) => {
-      p.recoilMaxImpulse = v;
-    });
-    this.numberRow(rec, 'Ground damping', p.recoilGroundDamp, 0, 1, 0.05, (v) => v.toFixed(2) + 'x', (v) => {
-      p.recoilGroundDamp = v;
-    });
-    this.worldActionRow(rec, [
-      {
-        label: 'RESET PLAYER PHYSICS',
-        title: 'Restore the shipped levitation + recoil values',
-        run: () => {
-          Object.assign(this.ctx.params.player, PLAYER_TUNING_DEFAULTS);
-          this.buildGlobalPanel();
-          this.status('PLAYER PHYSICS RESET');
-        },
-      },
-    ]);
-  }
-
-  private buildPostProcessingPanel(): void {
-    const host = this.el<HTMLDivElement>('bf-controls');
-    host.innerHTML = '';
-    const post = this.ctx.state.postFx;
-    const section = this.worldSection(host, 'COMPOSITION');
-    this.checkboxRow(section, 'Post FX', post.enabled, (value) => {
-      post.enabled = value;
-    });
-    this.checkboxRow(section, 'GPU Compose', post.gpuCompose, (value) => {
-      post.gpuCompose = value;
-      this.syncGpuComposeButton();
-    });
-    this.numberRow(section, 'Exposure', post.exposure, 0.5, 1.8, 0.05, (v) => v.toFixed(2), (v) => {
-      post.exposure = v;
-    });
-    this.checkboxRow(section, 'Tonemapping (ACES)', post.tonemap, (value) => {
-      post.tonemap = value;
-    });
-    this.numberRow(section, 'Vignette', post.vignette, 0, 1, 0.02, (v) => v.toFixed(2), (v) => {
-      post.vignette = v;
-    });
-
-    const bloom = this.worldSection(host, 'BLOOM');
-    this.checkboxRow(bloom, 'Bloom', post.bloomEnabled, (value) => {
-      post.bloomEnabled = value;
-    });
-    this.numberRow(bloom, 'Strength', post.bloomStrength, 0, 3, 0.05, (v) => v.toFixed(2), (v) => {
-      post.bloomStrength = v;
-    });
-    this.numberRow(bloom, 'Radius', post.bloomRadius, 0, 1, 0.01, (v) => v.toFixed(2), (v) => {
-      post.bloomRadius = v;
-    });
-    this.numberRow(bloom, 'Threshold', post.bloomThreshold, 0, 2, 0.05, (v) => v.toFixed(2), (v) => {
-      post.bloomThreshold = v;
-    });
-    this.numberRow(bloom, 'Bloom Kick', post.bloomKickScale, 0, 3, 0.05, (v) => v.toFixed(2) + 'x', (v) => {
-      post.bloomKickScale = v;
-    });
-
-    const lens = this.worldSection(host, 'LENS');
-    this.checkboxRow(lens, 'Lens Layer', post.lensEnabled, (value) => {
-      post.lensEnabled = value;
-    });
-    this.numberRow(lens, 'Base Split', post.aberration, 0, 0.004, 0.0001, (v) => v.toFixed(4), (v) => {
-      post.aberration = v;
-    });
-    this.numberRow(lens, 'Blast Split', post.aberrationKick, 0, 0.02, 0.0005, (v) => v.toFixed(4), (v) => {
-      post.aberrationKick = v;
-    });
-    this.numberRow(lens, 'Shake Split', post.shakeAberration, 0, 0.15, 0.005, (v) => v.toFixed(3), (v) => {
-      post.shakeAberration = v;
-    });
-    this.numberRow(lens, 'Film Grain', post.grain, 0, 0.12, 0.002, (v) => v.toFixed(3), (v) => {
-      post.grain = v;
-    });
-    this.numberRow(lens, 'Hurt Pulse', post.hurtPulse, 0, 2, 0.05, (v) => v.toFixed(2) + 'x', (v) => {
-      post.hurtPulse = v;
-    });
-    this.worldActionRow(lens, [
-      {
-        label: 'RESET POST FX',
-        title: 'Restore default post-processing settings',
-        run: () => {
-          Object.assign(post, createDefaultPostFxSettings());
-          this.syncGpuComposeButton();
-          this.buildPostProcessingPanel();
-          this.status('POST FX RESET');
-        },
-      },
-    ]);
-  }
-
   private editBiomeControls(host: HTMLElement, biomeId: BiomeId): void {
     const biome = BIOME_DEFS[biomeId];
     this.textRow(host, 'name', biome.name, (value) => {
@@ -7648,14 +7050,10 @@ export class Builder {
   }
 
   private editBackdropGradeControls(host: HTMLElement): void {
-    if (this.sessionMode === 'live') {
-      host.innerHTML = '<div class="bp-hint">Return to Author View to edit backdrop grade.</div>';
-      return;
-    }
     const settings = sanitizeBackdropSettings(this.doc.backdrop ?? this.ctx.params.backdrop);
     const grade = settings.grade;
     const update = (mutate: (grade: typeof settings.grade) => void): void => {
-      if (this.authoringActionBlocks('Edit backdrop grade')) {
+      if (this.previewBlocks()) {
         this.buildWorldPanel();
         return;
       }
@@ -7885,8 +7283,6 @@ export class Builder {
   }
 
   private procRun(previewOnly: boolean): void {
-    if (previewOnly && this.livePreviewActionBlocks('Preview')) return;
-    if (!previewOnly && this.livePreviewActionBlocks('Apply procedural pass')) return;
     if (this.settleBlocks() || this.floatingBlocks()) return;
     const def = this.procDef();
     const seed = Number(this.el<HTMLInputElement>('bp-seed').value) || 1;
@@ -7977,7 +7373,6 @@ export class Builder {
 
   /** Commit a pending preview through the undo stack. */
   private applyPreview(): void {
-    if (this.livePreviewActionBlocks('Apply preview')) return;
     if (this.settleBlocks() || this.floatingBlocks()) return;
     const p = this.pendingPreview;
     if (!p) return;
@@ -8096,7 +7491,6 @@ export class Builder {
 
     this.el('bp-light-toggle').addEventListener('click', () => this.runUiCommand('builder.lightPreviewToggle'));
     this.el('bp-wand-light-toggle').addEventListener('click', () => this.runUiCommand('builder.wandLightPreviewToggle'));
-    this.el('bp-wand-params-btn').addEventListener('click', () => this.runUiCommand('builder.globalControlsPanel'));
 
     this.el<HTMLInputElement>('bp-brush').addEventListener('input', () => {
       const v = Number(this.el<HTMLInputElement>('bp-brush').value);
@@ -8185,7 +7579,6 @@ export class Builder {
     this.el('bp-sym-btn').addEventListener('click', () => this.runUiCommand('builder.symmetryCycle'));
     this.el('bp-assets-btn').addEventListener('click', () => this.runUiCommand('builder.assetsPanel'));
     this.el('bp-outliner-btn').addEventListener('click', () => this.runUiCommand('builder.outlinerPanel'));
-    this.el('bp-runtime-btn').addEventListener('click', () => this.runUiCommand('builder.runtimePanel'));
     this.el('bp-link-graph-btn').addEventListener('click', () => this.runUiCommand('builder.linkGraphPanel'));
 
     this.el('b-share').addEventListener('click', () => this.runUiCommand('builder.share'));
@@ -8444,7 +7837,7 @@ export class Builder {
    *  TERRAIN ONLY into the same recorder — gameplay objects never duplicate
    *  silently. */
   private pastePrefabAt(p: PrefabDef, x: number, y: number): void {
-    if (this.authoringActionBlocks('Paste prefab')) return;
+    if (this.previewBlocks()) return;
     const rec = new PatchRecorder(this.ctx.world);
     const desiredX = this.snap(x);
     const desiredY = this.snap(y);
@@ -8940,7 +8333,7 @@ export class Builder {
     }
   }
 
-  private decorSpritePreviewCanvas(obj: EditorObject, frame: number): HTMLCanvasElement | null {
+  private decorSpritePreviewCanvas(obj: EditorObject): HTMLCanvasElement | null {
     const spriteId = typeof obj.params.spriteId === 'string' ? obj.params.spriteId : '';
     if (!spriteId) return null;
     const asset =
@@ -8948,18 +8341,9 @@ export class Builder {
       this.doc.assets?.sprites.find((s) => s.id === spriteId) ??
       null;
     if (!asset) return null;
+    // Authoring shows the loop's first frame (a reversed loop starts at its end).
     const loop = resolveLoopTag(asset, typeof obj.params.loopTag === 'string' ? obj.params.loopTag : '');
-    const n = loop.to - loop.from + 1;
-    const steps = loop.dir === 'pingpong' && n > 1 ? 2 * n - 2 : n;
-    const fps = paramNum(obj, 'fps', 0);
-    const cadence = fps > 0 ? Math.max(1, Math.round(60 / Math.min(60, fps))) : 8;
-    const k = this.sessionMode === 'live' ? Math.floor(frame / cadence) % Math.max(1, steps) : 0;
-    const frameIndex =
-      loop.dir === 'reverse'
-        ? loop.to - k
-        : loop.dir === 'pingpong' && k >= n
-          ? loop.to - (k - n + 1)
-          : loop.from + k;
+    const frameIndex = loop.dir === 'reverse' ? loop.to : loop.from;
     return this.spriteFrameCanvas(spriteId, frameIndex, obj.params.flipX === true);
   }
 
@@ -9118,7 +8502,7 @@ export class Builder {
    * mechanism cells (doors, basins) — region bakes are the intended tool.
    */
   private async bakePlaytestScars(): Promise<void> {
-    if (this.authoringActionBlocks('Bake playtest scars')) return;
+    if (this.previewBlocks()) return;
     const scars = this.playtestScars;
     if (!scars) {
       this.status('NO PLAYTEST SCARS HELD — PLAYTEST FIRST, THEN BAKE ON RETURN', true);
@@ -9184,7 +8568,7 @@ export class Builder {
   /* ---------- patrol authoring ---------- */
 
   private addPatrolPoint(x: number, y: number): void {
-    if (this.authoringActionBlocks('Patrol edit')) return;
+    if (this.previewBlocks()) return;
     const obj = this.doc.objects.find((o) => o.id === this.patrolEditId);
     if (!obj) {
       this.patrolEditId = null;
@@ -9216,7 +8600,7 @@ export class Builder {
 
   /** RMB in patrol-edit mode: remove the waypoint under the cursor. */
   private deletePatrolPointAt(x: number, y: number): boolean {
-    if (this.authoringActionBlocks('Patrol edit')) return false;
+    if (this.previewBlocks()) return false;
     const obj = this.doc.objects.find((o) => o.id === this.patrolEditId);
     if (!obj) return false;
     const idx = this.hitPatrolPoint(obj, x, y);
@@ -9232,7 +8616,7 @@ export class Builder {
 
   /** X with a region set: lift its cells off the world (consumes the region). */
   private liftFloat(): void {
-    if (this.authoringActionBlocks('Lift region')) return;
+    if (this.previewBlocks()) return;
     if (!this.region) {
       this.status('SELECT A REGION FIRST (R / POLYGON / LASSO), THEN X LIFTS IT', true);
       return;
@@ -9305,7 +8689,7 @@ export class Builder {
   }
 
   private rotateSelectedObjects(): boolean {
-    if (this.authoringActionBlocks('Rotate selection')) return false;
+    if (this.previewBlocks()) return false;
     const targets = this.doc.objects.filter(
       (o) => this.selectedIds.has(o.id) && !o.locked && this.layerSelectableObj(o),
     );
@@ -9351,7 +8735,7 @@ export class Builder {
 
   private startSettle(): void {
     if (this.settling || this.settleSnap) return;
-    if (this.authoringActionBlocks('Settle terrain')) return;
+    if (this.previewBlocks()) return;
     const w = this.ctx.world;
     this.settleWasDirty = this.paintDirty;
     this.settleSnap = {
@@ -9384,12 +8768,12 @@ export class Builder {
     }
     this.settleSnap = null;
     const w = this.ctx.world;
-    if (!keep || this.livePreviewActionBlocks('Keep settle')) {
+    if (!keep) {
       w.types.set(snap.types);
       w.colors.set(snap.colors);
       w.life.set(snap.life);
       w.charge.set(snap.charge);
-      this.status(keep ? 'SETTLE REVERTED — RETURN TO AUTHOR VIEW BEFORE KEEPING' : 'SETTLE REVERTED', keep);
+      this.status('SETTLE REVERTED');
       this.syncSettleButtons();
       return;
     }
@@ -9488,10 +8872,6 @@ export class Builder {
     btn.classList.toggle('active', this.wandLightPreviewOn);
   }
 
-  private syncGpuComposeButton(): void {
-    document.getElementById('gpu-compose-toggle')?.classList.toggle('lit', this.ctx.state.postFx.gpuCompose);
-  }
-
   private cycleOverlay(): void {
     const modes: Array<BuilderOverlayId | 'none'> = ['none', ...BUILDER_OVERLAY_IDS];
     const next = modes[(modes.indexOf(this.overlayMode) + 1) % modes.length];
@@ -9542,7 +8922,7 @@ export class Builder {
       window.clearTimeout(this.draftRetryTimer);
       this.draftRetryTimer = 0;
     }
-    if (!this.isOpen || this.sessionMode === 'live') return;
+    if (!this.isOpen) return;
     if (!this.hasUnsavedChanges()) return;
     const interacting =
       this.settling ||
@@ -9652,9 +9032,8 @@ export class Builder {
     list.setAttribute('role', 'listbox');
     list.innerHTML = '';
     hits.forEach((a, n) => {
-      const scopeReason = this.commandScopeReason(a);
-      const enabled = scopeReason === null && this.uiCommands.isEnabled(a.id);
-      const reason = scopeReason ?? (enabled ? null : this.uiCommands.disabledReason(a.id));
+      const enabled = this.uiCommands.isEnabled(a.id);
+      const reason = enabled ? null : this.uiCommands.disabledReason(a.id);
       const row = document.createElement('div');
       const rowId = `bp-cmdk-option-${n}`;
       row.id = rowId;
@@ -9695,17 +9074,10 @@ export class Builder {
     }
   }
 
-  private commandScopeReason(cmd: CommandSpec): string | null {
-    if (!cmd.scopes || cmd.scopes.length === 0 || cmd.scopes.includes('global')) return null;
-    const scope = this.sessionMode === 'live' ? 'builder.livePreview' : 'builder.author';
-    if (cmd.scopes.includes(scope)) return null;
-    return this.sessionMode === 'live' ? 'Return to Author View first' : 'Switch to Logic Preview first';
-  }
-
   private runCmdkActive(): void {
     const active = this.cmdkHits[this.cmdkActiveIndex];
     if (!active) return;
-    const reason = this.commandScopeReason(active) ?? (this.uiCommands.isEnabled(active.id) ? null : this.uiCommands.disabledReason(active.id));
+    const reason = this.uiCommands.isEnabled(active.id) ? null : this.uiCommands.disabledReason(active.id);
     this.closeCmdk();
     if (reason) {
       this.status(reason, true);
@@ -9996,15 +9368,12 @@ export class Builder {
       } else this.select(null);
     } else if (e.code === 'Enter' && this.floating) {
       e.stopPropagation();
-      if (this.livePreviewActionBlocks('Floating selection')) return;
       this.commitFloat();
     } else if (e.code === 'Enter' && this.polyPoints.length >= 3) {
       e.stopPropagation();
-      if (this.livePreviewActionBlocks('Polygon region')) return;
       this.closePolyRegion();
     } else if (e.code === 'KeyX' && !e.ctrlKey && !e.metaKey) {
       e.stopPropagation();
-      if (this.livePreviewActionBlocks('Floating selection')) return;
       // X is the float toggle: lifts the region, or lands a held float
       if (this.floating) this.commitFloat();
       else this.liftFloat();
@@ -10020,7 +9389,6 @@ export class Builder {
       // precedence: floating selection > armed prefab > selected objects
       if (this.floating) {
         e.stopPropagation();
-        if (this.livePreviewActionBlocks('Floating selection')) return;
         this.floating =
           e.code === 'KeyQ' ? rotateFloating(this.floating) : mirrorFloating(this.floating);
         this.floatCanvas = null;
@@ -10031,7 +9399,6 @@ export class Builder {
         );
       } else if (this.armedPrefab) {
         e.stopPropagation();
-        if (this.livePreviewActionBlocks('Prefab transform')) return;
         if (e.code === 'KeyQ') {
           this.armedPrefab = rotatePrefab(this.armedPrefab);
           this.status(`ROTATED — NOW ${this.armedPrefab.w}×${this.armedPrefab.h}`);
@@ -10040,14 +9407,7 @@ export class Builder {
           this.status('MIRRORED');
         }
       } else if (e.code === 'KeyQ') {
-        if (this.sessionMode === 'live') {
-          if (this.selectedIds.size > 0) {
-            e.stopPropagation();
-            this.livePreviewActionBlocks('Rotate selection');
-          }
-        } else if (this.rotateSelectedObjects()) {
-          e.stopPropagation();
-        }
+        if (this.rotateSelectedObjects()) e.stopPropagation();
       } else if (e.code === 'KeyE' && this.selectedIds.size > 0) {
         // Mirror has no geometric meaning for an arbitrary placed-object
         // selection (it's a footprint transform), so explain instead of
@@ -10059,7 +9419,7 @@ export class Builder {
       // Keep play-mode overlays out of authoring.
       e.stopPropagation();
     } else {
-      const result = this.keymap.handleKeyDown(e, { scope: this.sessionMode === 'live' ? 'builder.livePreview' : 'builder.author' });
+      const result = this.keymap.handleKeyDown(e, { scope: 'builder.author' });
       if (result.handled && result.ok === false && result.reason) this.status(result.reason, true);
     }
   };
@@ -10113,24 +9473,12 @@ export class Builder {
       }
     }
 
-    if (this.sessionMode === 'live') {
-      if (this.previewRuntimeDirty) this.resetPreviewRuntime('LOGIC PREVIEW');
-      this.previewRuntime.step(state.frameCount);
-    }
-    this.refreshRuntimePanelIfOpen();
-
     // live light preview: authored lights feed the real light field
     // (solo narrows the feed to one light; MUTE drops a light from the
     // preview only — muted lights still compile)
     let editorLights: AuthoredLight[] | null = null;
     if (!this.lightPreviewOn) {
       editorLights = null;
-    } else if (this.sessionMode === 'live') {
-      const previewLights = this.previewRuntime.authoredLights({
-        mutedIds: this.mutedLightIds,
-        soloId: this.soloLightId,
-      });
-      editorLights = previewLights.length > 0 ? previewLights : null;
     } else {
       editorLights =
         this.doc.lights.length > 0
@@ -10245,31 +9593,15 @@ export class Builder {
         16,
       );
     }
-    if (this.sessionMode === 'live') {
-      this.previewRuntime.draw(g, { view, cellW, cellH, toScreen: toS });
-    }
-
     for (const o of this.doc.objects) {
       if (!this.layerVisibleObj(o)) continue;
       drawObjectPreview(g, o, {
         cellW,
         cellH,
-        frame: this.sessionMode === 'live' ? this.ctx.state.frameCount : 0,
+        frame: 0,
         selected: this.selectedIds.has(o.id),
         toScreen: toS,
-        spriteFrame: (obj, frame) => this.decorSpritePreviewCanvas(obj, frame),
-      });
-    }
-
-    if (runtimeOverlaysActive(this.runtimeOverlays)) {
-      const snapshot = this.sampleRuntimeOverlaySnapshot(false);
-      drawRuntimeEntityOverlays(g, snapshot, this.runtimeOverlays, {
-        cellW,
-        cellH,
-        width: cw,
-        height: ch,
-        labelY: activeOverlays.size > 0 ? 34 : 16,
-        toScreen: toS,
+        spriteFrame: (obj) => this.decorSpritePreviewCanvas(obj),
       });
     }
 
@@ -10621,15 +9953,6 @@ export class Builder {
       g.font = '700 11px monospace';
       const label = this.pendingPreview.kind === 'pass' ? 'PROCEDURAL PREVIEW' : 'VALIDATION REPAIR PREVIEW';
       g.fillText(`${label} — APPLY OR DISCARD`, 12, ch - 12);
-    } else if (this.sessionMode === 'live') {
-      g.fillStyle = 'rgba(74,222,128,0.92)';
-      g.font = '700 11px monospace';
-      const preview = this.previewRuntime.status();
-      g.fillText(
-        `LOGIC PREVIEW - ${preview.mechanisms} authored mech / ${preview.emitters} emit / ${preview.lights} lights`,
-        12,
-        ch - 12,
-      );
     }
     if (this.settling) {
       g.fillStyle = 'rgba(125,211,252,0.95)';
@@ -10938,7 +10261,7 @@ export class Builder {
     // x/y commit as move commands; params as edit-param commands.
     for (const input of panel.querySelectorAll<HTMLInputElement>('input[data-f="x"],input[data-f="y"]')) {
       input.addEventListener('change', () => {
-        if (this.authoringActionBlocks('Edit object position')) {
+        if (this.previewBlocks()) {
           this.renderInspector();
           return;
         }
@@ -10950,7 +10273,7 @@ export class Builder {
     }
     for (const field of panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-p]')) {
       field.addEventListener('change', () => {
-        if (this.authoringActionBlocks('Edit object parameter')) {
+        if (this.previewBlocks()) {
           this.renderInspector();
           return;
         }
@@ -10969,7 +10292,7 @@ export class Builder {
     }
     for (const flag of panel.querySelectorAll<HTMLInputElement>('input[data-f="locked"],input[data-f="hidden"]')) {
       flag.addEventListener('change', () => {
-        if (this.authoringActionBlocks('Edit object flag')) {
+        if (this.previewBlocks()) {
           this.renderInspector();
           return;
         }
@@ -10979,7 +10302,7 @@ export class Builder {
       });
     }
     panel.querySelector('#bi-patrol')?.addEventListener('click', () => {
-      if (this.authoringActionBlocks('Patrol edit')) return;
+      if (this.previewBlocks()) return;
       if (this.patrolEditId === obj.id) {
         this.patrolEditId = null;
         this.status('PATROL EDITING DONE');
@@ -10990,7 +10313,7 @@ export class Builder {
       this.renderInspector();
     });
     panel.querySelector('#bi-patrol-clear')?.addEventListener('click', () => {
-      if (this.authoringActionBlocks('Patrol edit')) {
+      if (this.previewBlocks()) {
         this.renderInspector();
         return;
       }
@@ -11000,7 +10323,7 @@ export class Builder {
       this.status('PATROL CLEARED');
     });
     panel.querySelector('#bi-rotate')?.addEventListener('click', () => {
-      if (this.authoringActionBlocks('Rotate object')) return;
+      if (this.previewBlocks()) return;
       // slabs swap w/h (footprint-true) AND advance rotation in one composite
       const dims =
         obj.kind === 'door'
@@ -11025,7 +10348,7 @@ export class Builder {
       this.status('ROTATED — NOW ' + h + '×' + w);
     });
     panel.querySelector('#bi-rotate-pt')?.addEventListener('click', () => {
-      if (this.authoringActionBlocks('Rotate object')) return;
+      if (this.previewBlocks()) return;
       const next = ((obj.rotation + 90) % 360) as EditorObject['rotation'];
       this.cmds.run(setObjectRotationCmd(obj, next));
       this.renderInspector();
@@ -11036,7 +10359,7 @@ export class Builder {
     });
     for (const unlink of panel.querySelectorAll<HTMLButtonElement>('button[data-unlink]')) {
       unlink.addEventListener('click', () => {
-        if (this.authoringActionBlocks('Unlink objects')) {
+        if (this.previewBlocks()) {
           this.renderInspector();
           return;
         }
@@ -11132,7 +10455,6 @@ export class Builder {
           <div class="bpd-message">Generated scenes are read-only runtime content. Capture Prefab converts the visible cells plus valid generated objects and lights into an editable authored prefab.</div>
           <div class="bi-action-row">
             <button id="bi-gen-frame" type="button">Frame</button>
-            <button id="bi-gen-world" type="button">World Map</button>
             <button id="bi-gen-copy" type="button">Copy ID</button>
             <button id="bi-gen-capture" class="b-primary" type="button">Capture Prefab</button>
           </div>
@@ -11141,7 +10463,6 @@ export class Builder {
     this.refreshPanelDragHandles(panel);
     panel.querySelector('#bi-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-inspector'));
     panel.querySelector('#bi-gen-frame')?.addEventListener('click', () => this.frameSelection());
-    panel.querySelector('#bi-gen-world')?.addEventListener('click', () => this.openWorkspacePanel('builder-virtual-world'));
     panel.querySelector('#bi-gen-copy')?.addEventListener('click', () => void this.copyGeneratedSceneId(scene.id));
     panel.querySelector('#bi-gen-capture')?.addEventListener('click', () => void this.captureGeneratedSceneAsPrefab(scene));
   }
@@ -11187,7 +10508,7 @@ export class Builder {
 
   private wireDocumentInspector(panel: HTMLDivElement): void {
     panel.querySelector<HTMLInputElement>('#bi-mood-ambient')?.addEventListener('change', (e) => {
-      if (this.authoringActionBlocks('Edit document mood')) {
+      if (this.previewBlocks()) {
         this.renderInspector();
         return;
       }
@@ -11205,7 +10526,7 @@ export class Builder {
       this.status(ambient === null ? 'MOOD AMBIENT: GAME DEFAULT' : `MOOD AMBIENT: ${ambient}`);
     });
     panel.querySelector<HTMLInputElement>('#bi-mood-ambience')?.addEventListener('change', (e) => {
-      if (this.authoringActionBlocks('Edit document mood')) {
+      if (this.previewBlocks()) {
         this.renderInspector();
         return;
       }
@@ -11222,7 +10543,7 @@ export class Builder {
     // selected object of the same kind, through one composite command.
     for (const field of panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-p]')) {
       field.addEventListener('change', () => {
-        if (this.authoringActionBlocks('Edit selection parameter')) {
+        if (this.previewBlocks()) {
           this.renderInspector();
           return;
         }
@@ -11250,7 +10571,7 @@ export class Builder {
     }
     for (const flag of panel.querySelectorAll<HTMLInputElement>('input[data-mf]')) {
       flag.addEventListener('change', () => {
-        if (this.authoringActionBlocks('Edit selection flag')) {
+        if (this.previewBlocks()) {
           this.renderInspector();
           return;
         }
@@ -11401,7 +10722,7 @@ export class Builder {
 
     for (const field of panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-lf]')) {
       field.addEventListener('change', () => {
-        if (this.authoringActionBlocks('Edit light')) {
+        if (this.previewBlocks()) {
           this.renderLightInspector(panel, light);
           return;
         }
@@ -11445,7 +10766,7 @@ export class Builder {
       );
     });
     panel.querySelector<HTMLSelectElement>('[data-preset]')?.addEventListener('change', (e) => {
-      if (this.authoringActionBlocks('Apply light preset')) {
+      if (this.previewBlocks()) {
         this.renderLightInspector(panel, light);
         return;
       }
@@ -11515,193 +10836,6 @@ export class Builder {
       });
     }
     this.wireSelectAndFrameRows(panel);
-  }
-
-  private renderRuntimePanel(forceSnapshot = false): void {
-    const panel = this.el<HTMLDivElement>('builder-runtime');
-    const panelScroll = panel.scrollTop;
-    const rowsScroll = panel.querySelector<HTMLElement>('.brt-rows')?.scrollTop ?? 0;
-    const snapshot = this.sampleRuntimeSnapshot(forceSnapshot);
-    this.unmountRuntimeTimeControls();
-    panel.innerHTML = renderRuntimePanel({
-      snapshot,
-      query: this.runtimeQuery,
-      filters: this.runtimeFilters,
-      overlays: this.runtimeOverlays,
-      collapsedSections: this.workspaceLayout.collapsedSections,
-      showTimeControls: true,
-    });
-    const timeHost = panel.querySelector<HTMLElement>('#brt-time-controls');
-    this.runtimeTimeControlsDispose = timeHost ? mountTimeControlsPanel(this.ctx, timeHost, { surface: 'runtime' }) : null;
-    this.restoreStructurePanelScroll(panel, panelScroll, [['.brt-rows', rowsScroll]]);
-    this.refreshPanelDragHandles(panel);
-    this.wireCollapsibleSections(panel);
-    panel.querySelector('#brt-close')?.addEventListener('click', () => this.closeWorkspacePanel('builder-runtime'));
-    panel.querySelector<HTMLInputElement>('#brt-search')?.addEventListener('input', (event) => {
-      const field = event.target as HTMLInputElement;
-      const caret = field.selectionStart;
-      this.runtimeQuery = field.value;
-      this.renderRuntimePanel(false);
-      this.refocusSearchField('brt-search', caret);
-    });
-    for (const chip of panel.querySelectorAll<HTMLButtonElement>('button[data-runtime-filter]')) {
-      chip.addEventListener('click', () => {
-        const filter = chip.dataset.runtimeFilter as RuntimeEntityGroup;
-        if (this.runtimeFilters.has(filter)) this.runtimeFilters.delete(filter);
-        else this.runtimeFilters.add(filter);
-        this.renderRuntimePanel(false);
-      });
-    }
-    for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-runtime-overlay]')) {
-      button.addEventListener('click', () => {
-        const overlay = button.dataset.runtimeOverlay as RuntimeOverlayKind;
-        this.toggleRuntimeOverlay(overlay);
-      });
-    }
-    const runtimeRows = [...panel.querySelectorAll<HTMLElement>('[data-runtime-id]')];
-    for (const row of runtimeRows) {
-      row.addEventListener('click', () => {
-        const id = row.dataset.runtimeId ?? '';
-        if (id) this.focusRuntimeRow(id);
-      });
-      // These rows advertise role="option"; back that with real keyboard nav.
-      row.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          const id = row.dataset.runtimeId ?? '';
-          if (id) this.focusRuntimeRow(id);
-          return;
-        }
-        const next =
-          event.key === 'ArrowDown'
-            ? runtimeRows[runtimeRows.indexOf(row) + 1]
-            : event.key === 'ArrowUp'
-              ? runtimeRows[runtimeRows.indexOf(row) - 1]
-              : event.key === 'Home'
-                ? runtimeRows[0]
-                : event.key === 'End'
-                  ? runtimeRows[runtimeRows.length - 1]
-                  : null;
-        if (!next || next === row) return;
-        event.preventDefault();
-        next.focus({ preventScroll: true });
-      });
-    }
-    for (const button of panel.querySelectorAll<HTMLButtonElement>('button[data-runtime-focus]')) {
-      button.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const id = button.dataset.runtimeFocus ?? '';
-        if (id) this.focusRuntimeRow(id);
-      });
-    }
-  }
-
-  private unmountGlobalTimeControls(): void {
-    this.globalTimeControlsDispose?.();
-    this.globalTimeControlsDispose = null;
-  }
-
-  private unmountRuntimeTimeControls(): void {
-    this.runtimeTimeControlsDispose?.();
-    this.runtimeTimeControlsDispose = null;
-  }
-
-  private sampleRuntimeSnapshot(force: boolean): RuntimeEntitySnapshot {
-    const frame = this.ctx.state.frameCount;
-    if (
-      force ||
-      this.runtimeSnapshot === null ||
-      this.runtimeSnapshotFrame < 0 ||
-      Math.abs(frame - this.runtimeSnapshotFrame) >= RUNTIME_PANEL_REFRESH_FRAMES
-    ) {
-      this.runtimeSnapshot = this.buildCurrentRuntimeSnapshot({
-        selectedId: this.runtimeSelectedId,
-      });
-      this.runtimeSnapshotFrame = frame;
-      if (this.runtimeSnapshot.selectedMissing) {
-        this.runtimeSelectedId = null;
-        this.invalidateRuntimeOverlaySnapshot();
-      }
-    }
-    return this.runtimeSnapshot;
-  }
-
-  private buildCurrentRuntimeSnapshot(options: RuntimeSnapshotOptions = {}): RuntimeEntitySnapshot {
-    if (this.sessionMode === 'live') {
-      if (this.previewRuntimeDirty) this.resetPreviewRuntime('LOGIC PREVIEW');
-      return this.previewRuntime.snapshot(options);
-    }
-    return buildRuntimeEntitySnapshot(this.ctx, options);
-  }
-
-  private toggleRuntimeOverlay(overlay: RuntimeOverlayKind): void {
-    this.runtimeOverlays[overlay] = !this.runtimeOverlays[overlay];
-    this.invalidateRuntimeOverlaySnapshot();
-    this.status(`RUNTIME OVERLAY ${runtimeOverlaySummary(this.runtimeOverlays)}`);
-    this.renderRuntimePanel(false);
-  }
-
-  private invalidateRuntimeOverlaySnapshot(): void {
-    this.runtimeOverlaySnapshotFrame = -1;
-  }
-
-  private invalidateRuntimeSnapshots(): void {
-    this.runtimeSnapshotFrame = -1;
-    this.runtimeOverlaySnapshotFrame = -1;
-  }
-
-  private sampleRuntimeOverlaySnapshot(force: boolean): RuntimeEntitySnapshot {
-    const frame = this.ctx.state.frameCount;
-    if (
-      force ||
-      this.runtimeOverlaySnapshot === null ||
-      this.runtimeOverlaySnapshotFrame < 0 ||
-      Math.abs(frame - this.runtimeOverlaySnapshotFrame) >= RUNTIME_OVERLAY_REFRESH_FRAMES
-    ) {
-      this.runtimeOverlaySnapshot = this.buildCurrentRuntimeSnapshot({
-        selectedId: this.runtimeSelectedId,
-        maxRowsPerGroup: RUNTIME_OVERLAY_ROW_LIMITS,
-      });
-      this.runtimeOverlaySnapshotFrame = frame;
-      if (this.runtimeOverlaySnapshot.selectedMissing) this.runtimeSelectedId = null;
-    }
-    return this.runtimeOverlaySnapshot;
-  }
-
-  private refreshRuntimePanelIfOpen(): void {
-    if (!this.isWorkspacePanelOpen('builder-runtime')) return;
-    const panel = this.el<HTMLDivElement>('builder-runtime');
-    const active = document.activeElement;
-    // Don't yank the DOM out from under a focused control: the search input OR a
-    // runtime row the user is keyboard-navigating (the wholesale innerHTML
-    // rebuild would otherwise destroy row focus ~5x/sec).
-    if (
-      active instanceof HTMLElement &&
-      panel.contains(active) &&
-      (this.focusRouter.isTextEntryTarget(active) ||
-        active.closest('[data-runtime-id],[data-runtime-filter],[data-runtime-overlay]'))
-    )
-      return;
-    const frame = this.ctx.state.frameCount;
-    if (this.runtimeSnapshotFrame >= 0 && Math.abs(frame - this.runtimeSnapshotFrame) < RUNTIME_PANEL_REFRESH_FRAMES) return;
-    this.renderRuntimePanel(true);
-  }
-
-  private focusRuntimeRow(id: string): void {
-    this.runtimeSelectedId = id;
-    this.invalidateRuntimeOverlaySnapshot();
-    const snapshot = this.sampleRuntimeSnapshot(true);
-    const row = snapshot.selectedRow ?? snapshot.rows.find((candidate) => candidate.id === id) ?? null;
-    if (!row) {
-      this.status('RUNTIME ROW NO LONGER EXISTS', true);
-      this.renderRuntimePanel(false);
-      return;
-    }
-    const focusX = row.bounds ? (row.bounds.x0 + row.bounds.x1) / 2 : row.x;
-    const focusY = row.bounds ? (row.bounds.y0 + row.bounds.y1) / 2 : row.y;
-    this.host.snapCameraTo(focusX, focusY);
-    this.status(`FOCUSED ${row.label.toUpperCase()} @ ${Math.round(focusX)}, ${Math.round(focusY)}`);
-    this.renderRuntimePanel(false);
   }
 
   private renderLinkGraph(): void {
@@ -12912,7 +12046,7 @@ export class Builder {
   }
 
   private placeAssetRecordAt(record: AssetRecord, x: number, y: number): void {
-    if (this.previewBlocks() || this.livePreviewActionBlocks('Place asset')) return;
+    if (this.previewBlocks()) return;
     if (record.kind === 'prefab' && isPrefabAsset(record.payload)) {
       const blocker = this.prefabPlacementBlocker(record);
       if (blocker) {
@@ -12958,7 +12092,7 @@ export class Builder {
   }
 
   private placeSpriteAsset(sprite: SpriteAsset, x: number, y: number): void {
-    if (this.authoringActionBlocks('Place sprite')) return;
+    if (this.previewBlocks()) return;
     const obj: EditorObject = {
       id: freshId('decor'),
       kind: 'decor',
@@ -12981,7 +12115,7 @@ export class Builder {
   }
 
   private applyMaterialProfileAsset(record: AssetRecord, x: number, y: number): void {
-    if (this.authoringActionBlocks('Apply material profile')) return;
+    if (this.previewBlocks()) return;
     const materialId = materialProfileCellId(record);
     if (materialId === null || !this.ctx.params.materials[materialId]) {
       this.status(`MATERIAL PROFILE UNAVAILABLE: ${record.sourceId.toUpperCase()}`, true);
@@ -13034,7 +12168,7 @@ export class Builder {
   }
 
   private placeOrApplyLightPresetAsset(record: AssetRecord, x: number, y: number): void {
-    if (this.authoringActionBlocks('Apply light preset')) return;
+    if (this.previewBlocks()) return;
     const preset = LIGHT_PRESETS[record.sourceId];
     if (!preset) {
       this.status(`LIGHT PRESET UNAVAILABLE: ${record.sourceId.toUpperCase()}`, true);
@@ -13083,7 +12217,6 @@ export class Builder {
   }
 
   private seedProceduralPresetAsset(record: AssetRecord): void {
-    if (this.livePreviewActionBlocks('Seed procedural preset')) return;
     const pass = PASSES.find((candidate) => candidate.id === record.sourceId);
     if (!pass) {
       this.status(`PROCEDURAL PRESET UNAVAILABLE: ${record.sourceId.toUpperCase()}`, true);
@@ -13097,7 +12230,7 @@ export class Builder {
   }
 
   private async openDocumentAsset(record: AssetRecord): Promise<void> {
-    if (this.previewBlocks() || this.livePreviewActionBlocks('Open document')) return;
+    if (this.previewBlocks()) return;
     if (record.source.storage === 'document') {
       this.status('CURRENT DOCUMENT IS ALREADY OPEN');
       return;
@@ -13109,7 +12242,7 @@ export class Builder {
     const requestedAssetId = record.assetId;
     const requestedSignature = record.contentSignature;
     if (!(await this.confirmDiscardCurrentDocument(record.kind === 'template' ? 'Create From Template' : 'Open Document'))) return;
-    if (!this.isOpen || this.previewBlocks() || this.livePreviewActionBlocks('Open document')) return;
+    if (!this.isOpen || this.previewBlocks()) return;
     const latest = this.createAssetDatabase().get(requestedAssetId);
     if (!latest || latest.kind !== record.kind || latest.contentSignature !== requestedSignature || !isDocumentAsset(latest.payload)) {
       this.status('DOCUMENT ASSET CHANGED - RESELECT AND OPEN AGAIN', true);
@@ -13279,7 +12412,7 @@ export class Builder {
   }
 
   private toggleOutlinerRecordFlag(kind: 'object' | 'light', id: string, flag: 'hidden' | 'locked'): void {
-    if (this.authoringActionBlocks(`Toggle ${flag}`)) return;
+    if (this.previewBlocks()) return;
     if (kind === 'object') {
       const object = this.doc.objects.find((item) => item.id === id);
       if (!object) return;
@@ -13297,7 +12430,7 @@ export class Builder {
   }
 
   private unlinkContextLink(): void {
-    if (this.authoringActionBlocks('Unlink objects')) return;
+    if (this.previewBlocks()) return;
     const link = this.doc.links.find((item) => item.id === this.contextLinkId);
     if (!link) return;
     this.cmds.run(deleteLinkCmd(link));
@@ -13521,7 +12654,7 @@ export class Builder {
         action === 'markPortalAlwaysOpen' ||
         action === 'createGoldenKeyNearCamera' ||
         action === 'removeDeadLink') &&
-      this.authoringActionBlocks('Fix validation issue')
+      this.previewBlocks()
     )
       return;
     if (action === 'addSpawnAtCamera') {
@@ -13618,7 +12751,6 @@ export class Builder {
   }
 
   private previewValidationCorridor(issue: DocIssue): void {
-    if (this.livePreviewActionBlocks('Validation repair preview')) return;
     if (this.previewBlocks()) return;
     this.ensureCaptured();
     const spawn = this.doc.objects.find((object) => object.kind === 'spawn' && !object.hidden);
@@ -13724,7 +12856,6 @@ export class Builder {
     this.syncMarkers();
     this.syncPalette();
     this.syncWandLightPreviewButton();
-    this.syncGpuComposeButton();
     this.renderInspector();
     this.syncWorkspacePanelContent();
   }
@@ -13732,15 +12863,12 @@ export class Builder {
   private syncWorkspacePanelContent(): void {
     const open = (id: string): boolean => this.workspaceLayout.panels.some((panel) => panel.id === id && panel.open);
     if (open('builder-world')) this.buildWorldPanel();
-    if (open('builder-global')) this.buildGlobalPanel();
-    if (open('builder-postfx')) this.buildPostProcessingPanel();
     if (open('builder-matparams')) this.buildMatPanel();
     if (open('builder-outliner')) this.renderOutliner();
     if (open('builder-link-graph')) this.renderLinkGraph();
     if (open('builder-assets')) this.renderAssetBrowser();
     if (open('builder-asset-details')) this.renderAssetDetails();
     if (open('builder-prefab-details')) this.renderPrefabDetails();
-    if (open('builder-virtual-world')) this.renderVirtualWorldPanel();
     this.syncProcPanel();
   }
 }
