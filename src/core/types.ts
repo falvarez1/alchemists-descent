@@ -1316,6 +1316,11 @@ export interface GameStateData {
   arrivalGraceUntil?: number;
   creatureCaptions?: boolean;
   reduceCameraShake?: boolean;
+  /** Player options (ui/PlayerSettings; config/playerPrefs). Unset means the shipped default. */
+  /** Pause when the window loses focus (input/focusPause). Unset = on. */
+  pauseOnBlur?: boolean;
+  /** Camera shake multiplier: 0 Off, 0.5 Half, 1 Full (render/Renderer). */
+  cameraShakeScale?: number;
   reduceFlashes?: boolean;
   trickshot?: TrickshotSettings;
   /** The run's SECRET alchemy reaction (derived from worldSeed; see

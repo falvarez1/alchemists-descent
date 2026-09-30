@@ -13,6 +13,7 @@ import { releaseWeaverLeg } from '@/combat/LooseWeaverLeg';
 import { telekinesisHolding, telekinesisHurl, telekinesisLift, telekinesisSetDown } from '@/combat/Telekinesis';
 import { flaskSlotKey, gameplayCode } from '@/input/bindings';
 import { MobileControls } from '@/input/MobileControls';
+import { FocusPause } from '@/input/focusPause';
 
 type KeyboardLockApi = {
   lock?: (keyCodes?: string[]) => Promise<void>;
@@ -114,6 +115,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
  */
 export class InputManager {
   private readonly mobile: MobileControls;
+  private readonly focusPause: FocusPause;
   private readonly touchKeyCodes = new Set<string>();
 
   poll(): void {
@@ -267,6 +269,8 @@ export class InputManager {
   ) {
     this.canvas = canvas;
     ctx.input.releaseHeldInput = () => this.clearHeldInput();
+    // The player's "pause when the window loses focus" option (default on).
+    this.focusPause = new FocusPause(ctx, () => isKeyboardUiOwnerActive());
 
     // ===================== Input: Mouse =====================
     this.attachCanvas(canvas);
@@ -310,6 +314,7 @@ export class InputManager {
   }
 
   dispose(): void {
+    this.focusPause.dispose();
     this.mobile.dispose();
     window.removeEventListener('mouseup', this.handleWindowMouseUp);
     window.removeEventListener('renderer-canvas-changed', this.handleRendererCanvasChanged);

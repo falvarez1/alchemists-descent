@@ -203,7 +203,8 @@ export class MobileControls {
   private readonly onBackground = (): void => {
     this.reset();
     this.releaseWake();
-    if (this.enabled && this.port.canPlay()) window.dispatchEvent(new Event('game-pause-request'));
+    // The player's "pause when the window loses focus" option also governs the touch pause.
+    if (this.enabled && this.port.canPlay() && this.ctx.state.pauseOnBlur !== false) window.dispatchEvent(new Event('game-pause-request'));
   };
 
   private readonly onClick = (event: MouseEvent): void => {

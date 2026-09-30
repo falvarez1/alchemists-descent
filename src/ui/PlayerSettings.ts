@@ -5,8 +5,15 @@ import { DEFAULT_BINDINGS, getBindings, keyLabel, resetBindings, setBinding, typ
 import { isClipRecordingEnabled, setClipRecordingEnabled } from '@/config/clipSettings';
 import { SoundQuickControl } from '@/ui/SoundQuickControl';
 import { readTouchControlsPreference, setTouchControlsPreference } from '@/input/touchSupport';
+import { SHAKE_SCALE, sanitizeExtras, sanitizeShake, type ExtraPreferences, type ShakeLevel } from '@/config/playerPrefs';
 
-export interface PlayerPreferences { textScale: number; reducedFlashes: boolean; cameraShake: boolean; highReadability: boolean; creatureCaptions: boolean; trickshot: TrickshotSettings; volume: VolumeSettings; narration: boolean; muted: boolean }
+/** Everything the dialog persists under one key. The newer options live in config/playerPrefs (ExtraPreferences). */
+export interface PlayerPreferences extends ExtraPreferences {
+  textScale: number; reducedFlashes: boolean;
+  /** Off / Half / Full. Older saves held a boolean (false = Off, true = Full); sanitizeShake reads both. */
+  cameraShake: ShakeLevel;
+  highReadability: boolean; creatureCaptions: boolean; trickshot: TrickshotSettings; volume: VolumeSettings; narration: boolean; muted: boolean;
+}
 const KEY = 'ad-player-preferences-v1';
 
 /** What each rebindable action is called on the keyboard list (sentence case). */
@@ -40,17 +47,46 @@ function playerTrickshot(saved: unknown): TrickshotSettings {
   return { ...sanitizeTrickshot(null), enabled: chosen.enabled, finisher: chosen.finisher, cameraMotion: chosen.cameraMotion };
 }
 
-export function readPlayerPreferences(storage: Pick<Storage, 'getItem'> | null = typeof localStorage === 'undefined' ? null : localStorage): PlayerPreferences {
-  const defaults = { textScale: 1, reducedFlashes: typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches, cameraShake: true };
-  try {
-    const saved = JSON.parse(storage?.getItem(KEY) ?? '{}') as Partial<PlayerPreferences>;
-    return { textScale: [1, 1.15, 1.3].includes(saved.textScale ?? 0) ? saved.textScale! : 1,
-      reducedFlashes: typeof saved.reducedFlashes === 'boolean' ? saved.reducedFlashes : defaults.reducedFlashes,
-      cameraShake: saved.cameraShake !== false, highReadability: saved.highReadability === true, creatureCaptions: saved.creatureCaptions === true,
-      trickshot: playerTrickshot(saved.trickshot), volume: sanitizeVolumes(saved.volume), narration: saved.narration !== false,
-      muted: saved.muted === true };
-  } catch { return { ...defaults, highReadability: false, creatureCaptions: false, trickshot: playerTrickshot(null), volume: sanitizeVolumes(null), narration: true, muted: false }; }
+/** Whatever was saved (nothing, an older build's object, corrupt or hostile values) -> a complete, valid set. Never throws. */
+export function sanitizePreferences(raw: unknown, reducedMotion: boolean): PlayerPreferences {
+  const saved = (raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+  const textScale = typeof saved.textScale === 'number' && [1, 1.15, 1.3].includes(saved.textScale) ? saved.textScale : 1;
+  return {
+    ...sanitizeExtras(saved),
+    textScale,
+    reducedFlashes: typeof saved.reducedFlashes === 'boolean' ? saved.reducedFlashes : reducedMotion,
+    cameraShake: sanitizeShake(saved.cameraShake),
+    highReadability: saved.highReadability === true,
+    creatureCaptions: saved.creatureCaptions === true,
+    trickshot: playerTrickshot(saved.trickshot),
+    volume: sanitizeVolumes(saved.volume),
+    narration: saved.narration !== false,
+    muted: saved.muted === true,
+  };
 }
+
+export function readPlayerPreferences(storage: Pick<Storage, 'getItem'> | null = typeof localStorage === 'undefined' ? null : localStorage): PlayerPreferences {
+  const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  try { return sanitizePreferences(JSON.parse(storage?.getItem(KEY) ?? '{}'), reducedMotion); } catch { return sanitizePreferences({}, reducedMotion); }
+}
+
+type BoolKey = { [K in keyof PlayerPreferences]: PlayerPreferences[K] extends boolean ? K : never }[keyof PlayerPreferences];
+/** One simple control: a checkbox, a select or a slider whose `name` is how probes and tests find it. */
+interface SimpleControl {
+  name: string;
+  read(p: PlayerPreferences): string | boolean | number;
+  write(p: PlayerPreferences, raw: string | boolean): void;
+  /** Sliders only: the readout beside it. */
+  format?(p: PlayerPreferences): string;
+}
+const flag = (key: BoolKey): SimpleControl => ({ name: key, read: p => p[key], write: (p, raw) => { (p as Record<BoolKey, boolean>)[key] = raw === true; } });
+
+const SIMPLE_CONTROLS: readonly SimpleControl[] = [
+  { name: 'textScale', read: p => String(p.textScale), write: (p, raw) => { const n = Number(raw); p.textScale = [1, 1.15, 1.3].includes(n) ? n : 1; } },
+  flag('reducedFlashes'), flag('highReadability'), flag('creatureCaptions'), flag('narration'), flag('muted'),
+  { name: 'cameraShake', read: p => p.cameraShake, write: (p, raw) => { p.cameraShake = sanitizeShake(raw); } },
+  flag('pauseOnBlur'),
+];
 
 /** One checkbox row: the label, and an optional one-line note the control is described by. */
 function checkRow(name: string, label: string, note?: string): string {
@@ -101,10 +137,12 @@ export class PlayerSettings {
       <section class="settings-group" aria-labelledby="settings-comfort"><h3 id="settings-comfort">Reading and comfort</h3><div class="settings-options">
       ${selectRow('textScale', 'Text size', [['1', 'Standard'], ['1.15', 'Large'], ['1.3', 'Larger']])}
       ${checkRow('reducedFlashes', 'Reduce flashes and pulses')}
-      ${checkRow('cameraShake', 'Camera shake')}
+      ${selectRow('cameraShake', 'Camera shake', [['full', 'Full'], ['half', 'Half'], ['off', 'Off']], 'How hard blasts, falls and heavy footsteps shake the view.')}
       ${checkRow('highReadability', 'High-readability lighting')}
       ${checkRow('creatureCaptions', 'Creature sound captions')}</div></section></div>
       <div role="tabpanel" class="settings-panel" id="settings-panel-gameplay" aria-labelledby="settings-tab-gameplay" hidden>
+      <section class="settings-group" aria-labelledby="settings-play"><h3 id="settings-play">Play</h3><div class="settings-options">
+      ${checkRow('pauseOnBlur', 'Pause when the window loses focus', 'Switch to another window or tab and the descent stops where it is. The title, the Sanctum and cutscenes are already still.')}</div></section>
       <section class="settings-group" aria-labelledby="settings-combat"><h3 id="settings-combat">Combat</h3><div class="settings-options">
       <div class="settings-option"><label><input type="checkbox" name="finisher"> Weaver-leg finisher</label>
       <p class="settings-note">With a Weaver's own leg in hand and its owner wounded, the swing slows as it closes, and only a real hit ends it. A miss just costs the moment.</p>
@@ -139,13 +177,12 @@ export class PlayerSettings {
       ctx.state.paused = this.previousPause && Boolean(document.querySelector('#pause-overlay.visible, #expedition-entry:not([hidden])'));
       if (this.returnFocus?.checkVisibility()) this.returnFocus.focus();
     });
-    this.dialog.querySelector('[name="textScale"]')!.addEventListener('change', e => {
-      this.preferences.textScale = Number((e.target as HTMLSelectElement).value); this.apply(true);
-    });
-    for (const name of ['reducedFlashes', 'cameraShake', 'highReadability', 'creatureCaptions', 'narration', 'muted'] as const) {
-      this.dialog.querySelector(`[name="${name}"]`)!.addEventListener('change', e => {
-        this.preferences[name] = (e.target as HTMLInputElement).checked; this.apply(true);
-      });
+    for (const control of SIMPLE_CONTROLS) {
+      const el = this.dialog.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${control.name}"]`)!;
+      const raw = (): string | boolean => (el instanceof HTMLInputElement && el.type === 'checkbox' ? el.checked : el.value);
+      // A slider applies live while it is dragged and is saved on release.
+      if (el instanceof HTMLInputElement && el.type === 'range') el.addEventListener('input', () => { control.write(this.preferences, raw()); this.apply(); });
+      el.addEventListener('change', () => { control.write(this.preferences, raw()); this.apply(true); });
     }
     this.dialog.querySelector('#reset-controls')!.addEventListener('click', () => { resetBindings(); this.renderBindings(); });
     // Clips keep their own preference (config/clipSettings) so app/Clips never imports this dialog.
@@ -272,7 +309,9 @@ export class PlayerSettings {
     const fx = this.ctx.state.postFx;
     fx.hurtPulse = this.preferences.reducedFlashes ? 0.08 : 0.4;
     fx.bloomKickScale = this.preferences.reducedFlashes ? 0 : 0.35;
-    this.ctx.state.reduceCameraShake = !this.preferences.cameraShake;
+    this.ctx.state.reduceCameraShake = this.preferences.cameraShake === 'off';
+    this.ctx.state.cameraShakeScale = SHAKE_SCALE[this.preferences.cameraShake];
+    this.ctx.state.pauseOnBlur = this.preferences.pauseOnBlur;
     this.ctx.state.reduceFlashes = this.preferences.reducedFlashes;
     this.ctx.state.highReadability = this.preferences.highReadability;
     this.ctx.state.creatureCaptions = this.preferences.creatureCaptions;
@@ -297,9 +336,11 @@ export class PlayerSettings {
     const lean = this.dialog.querySelector('[name="cameraMotion"]') as HTMLInputElement;
     lean.disabled = !this.preferences.trickshot.finisher;
     lean.closest('label')?.classList.toggle('disabled', lean.disabled);
-    (this.dialog.querySelector('[name="textScale"]') as HTMLSelectElement).value = String(this.preferences.textScale);
-    for (const name of ['reducedFlashes', 'cameraShake', 'highReadability', 'creatureCaptions', 'narration', 'muted'] as const) {
-      (this.dialog.querySelector(`[name="${name}"]`) as HTMLInputElement).checked = this.preferences[name];
+    for (const control of SIMPLE_CONTROLS) {
+      const el = this.dialog.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${control.name}"]`)!;
+      const value = control.read(this.preferences);
+      if (el instanceof HTMLInputElement && el.type === 'checkbox') el.checked = value === true;
+      else el.value = String(value);
     }
     this.quick?.refresh();
     this.ctx.narrator?.setEnabled(this.preferences.narration);

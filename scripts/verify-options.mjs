@@ -1,0 +1,193 @@
+// Player options (Controls & comfort): does each one change what the game DOES?
+//
+//   node scripts/verify-options.mjs [url] [--only pause,shake,...] [--headful-blur]
+//
+// Every section drives the real dialog with real clicks (selects go through Playwright's
+// selectOption, since a native drop-down cannot be clicked), then reads the game state or the
+// pixels the option is supposed to change. The defaults are checked too: an option that has
+// not been touched must leave the game as it shipped.
+//
+// Sections: pause (window focus), shake (camera jitter), ...  (added with each option)
+// Headless Edge never fires a real window blur, so the pause section dispatches the same
+// `blur` / `visibilitychange` events the browser would; --headful-blur additionally opens a
+// visible Edge and switches tabs for a genuine focus loss.
+import { mkdirSync } from 'node:fs';
+import { launchBrowser } from './browser-launch.mjs';
+import { startConsolePlayRun, waitForOpeningEnd } from './run-helpers.mjs';
+
+const args = process.argv.slice(2);
+const url = args[0] && !args[0].startsWith('--') ? args[0] : 'http://localhost:5173/';
+const opt = (name, fallback) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : fallback; };
+const only = (opt('only', '') ?? '').split(',').filter(Boolean);
+const want = (name) => only.length === 0 || only.includes(name);
+const out = 'verify-out/options';
+mkdirSync(out, { recursive: true });
+
+let failures = 0;
+const check = (ok, what) => { if (!ok) failures++; console.log(`  ${ok ? 'ok  ' : 'FAIL'}  ${what}`); };
+const click = async (page, loc) => {
+  const b = await loc.boundingBox();
+  if (!b) throw new Error('no bounding box for click');
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+};
+
+const browser = await launchBrowser();
+
+/** A fresh page on a played-through opening, Escape-menu closed, not god mode. */
+async function freshRun({ width = 1440, height = 900, prefs = null, seed = 7 } = {}) {
+  const context = await browser.newContext({ viewport: { width, height } });
+  if (prefs) await context.addInitScript((value) => { try { localStorage.setItem('ad-player-preferences-v1', value); } catch { /* */ } }, JSON.stringify(prefs));
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto(url, { waitUntil: 'networkidle' });
+  await startConsolePlayRun(page, { seed, settleMs: 3000 });
+  await waitForOpeningEnd(page).catch(() => undefined);
+  await page.evaluate(() => { const c = window.__game.ctx; c.state.paused = false; c.state.debugGodMode = false; });
+  await page.waitForTimeout(400);
+  return { context, page, errors };
+}
+
+/** Open the settings dialog from the pause menu with real clicks and select a tab. */
+async function openSettings(page, tab) {
+  if (!(await page.evaluate(() => document.querySelector('#player-settings')?.open))) {
+    if (!(await page.evaluate(() => window.__game.ctx.state.paused))) { await page.keyboard.press('Escape'); await page.waitForTimeout(350); }
+    await click(page, page.locator('#pause-settings'));
+    await page.waitForSelector('#player-settings[open]');
+  }
+  await click(page, page.locator(`#player-settings [data-tab="${tab}"]`));
+  await page.waitForTimeout(120);
+}
+async function closeSettings(page) {
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(250);
+}
+/** Close settings and the pause menu, leave the game running. */
+async function resume(page) {
+  if (await page.evaluate(() => document.querySelector('#player-settings')?.open)) await closeSettings(page);
+  if (await page.evaluate(() => document.querySelector('#pause-overlay.visible'))) await click(page, page.locator('#pause-resume'));
+  await page.waitForFunction(() => !window.__game.ctx.state.paused, null, { timeout: 4000 });
+}
+const blur = (page) => page.evaluate(() => window.dispatchEvent(new Event('blur')));
+const hide = (page) => page.evaluate(() => {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+  document.dispatchEvent(new Event('visibilitychange'));
+  delete document.hidden;
+});
+const paused = (page) => page.evaluate(() => window.__game.ctx.state.paused);
+const stored = (page) => page.evaluate(() => { try { return JSON.parse(localStorage.getItem('ad-player-preferences-v1') ?? '{}'); } catch { return null; } });
+
+try {
+  // ------------------------------------------------------------------ pause on focus loss
+  if (want('pause')) {
+    console.log('\n== Pause when the window loses focus');
+    const { context, page, errors } = await freshRun();
+    check(await page.evaluate(() => window.__game.ctx.state.pauseOnBlur) === true, 'default: the option is on');
+    check(!(await paused(page)), 'the descent is running');
+    await blur(page);
+    await page.waitForTimeout(250);
+    check(await paused(page), 'window blur pauses the descent');
+    check(await page.evaluate(() => document.querySelector('#pause-overlay.visible') !== null), 'the Esc pause menu is what appeared (Resume works as always)');
+    await blur(page); await hide(page);
+    check(await paused(page) && await page.evaluate(() => document.querySelector('#pause-overlay.visible') !== null), 'a second blur / visibilitychange while paused does NOT toggle it back off');
+    await resume(page);
+    await hide(page);
+    await page.waitForTimeout(250);
+    check(await paused(page), 'the tab going hidden pauses it too');
+    await resume(page);
+
+    // not where pausing is wrong
+    const ctxCall = (fn, arg) => page.evaluate(fn, arg);
+    await ctxCall(() => window.__game.ctx.events.emit('storyDialogue', { open: true, name: 'Pell', text: 'Hm.', choices: [], typing: false, done: true }));
+    await blur(page); await page.waitForTimeout(200);
+    check(!(await paused(page)), 'mid-conversation: no pause');
+    await ctxCall(() => window.__game.ctx.events.emit('storyDialogue', { open: false, name: '', text: '', choices: [], typing: false, done: true }));
+    await ctxCall(() => { document.body.classList.add('story-cinema-active'); document.getElementById('story-cinema')?.classList.add('show'); });
+    await blur(page); await page.waitForTimeout(200);
+    check(!(await paused(page)), 'during a cinematic: no pause');
+    await ctxCall(() => { document.getElementById('story-cinema')?.classList.remove('show'); document.body.classList.remove('story-cinema-active'); });
+    await ctxCall(() => { window.__game.ctx.state.mode = 'build'; });
+    await blur(page); await page.waitForTimeout(200);
+    check(!(await paused(page)), 'in the Sandbox: no pause');
+    await ctxCall(() => { window.__game.ctx.state.mode = 'play'; });
+    // Dead, tested inside one task so the game never runs a tick (and its death card) in between.
+    await ctxCall(() => { const c = window.__game.ctx; c.player.dead = true; window.dispatchEvent(new Event('blur')); c.player.dead = false; });
+    await page.waitForTimeout(200);
+    check(!(await paused(page)), 'dead: no pause');
+
+    // the option: off through the real dialog, persists, and really stops pausing
+    await openSettings(page, 'gameplay');
+    const box = page.locator('#player-settings [name="pauseOnBlur"]');
+    check(await box.isChecked(), 'the Gameplay tab shows it checked');
+    await click(page, box);
+    check((await stored(page))?.pauseOnBlur === false, 'unchecking saves pauseOnBlur:false');
+    check(await page.evaluate(() => window.__game.ctx.state.pauseOnBlur) === false, 'and applies live (no reload)');
+    await closeSettings(page);
+    await resume(page);
+    await blur(page); await hide(page); await page.waitForTimeout(250);
+    check(!(await paused(page)), 'with the option off, blur and hidden do nothing');
+    await page.screenshot({ path: `${out}/pause-off.png` });
+    await context.close();
+
+    // reload: the saved choice is honoured, and the default returns when storage is empty
+    const again = await freshRun({ prefs: { pauseOnBlur: false } });
+    check(await again.page.evaluate(() => window.__game.ctx.state.pauseOnBlur) === false, 'a saved pauseOnBlur:false survives a reload');
+    await blur(again.page); await again.page.waitForTimeout(250);
+    check(!(await paused(again.page)), '... and does not pause');
+    check(errors.length === 0 && again.errors.length === 0, `no page errors${[...errors, ...again.errors].join(' | ')}`);
+    await again.context.close();
+  }
+
+  // ------------------------------------------------------------------ camera shake
+  if (want('shake')) {
+    console.log('\n== Camera shake: Off / Half / Full');
+    // Range of the screen quad's jitter over 90 frames with a constant kick of shake.
+    const jitter = (page) => page.evaluate(() => new Promise((resolve) => {
+      const game = window.__game, quad = game.renderer.backend.quadMesh;
+      let frames = 0, lo = Infinity, hi = -Infinity;
+      const step = () => {
+        if (frames > 4) { lo = Math.min(lo, quad.position.x); hi = Math.max(hi, quad.position.x); }
+        game.ctx.fx.screenShake = 0.05;
+        if (++frames < 94) requestAnimationFrame(step); else resolve(hi - lo);
+      };
+      requestAnimationFrame(step);
+    }));
+    const { context, page, errors } = await freshRun();
+    const st = () => page.evaluate(() => ({ scale: window.__game.ctx.state.cameraShakeScale, reduce: window.__game.ctx.state.reduceCameraShake }));
+    check(JSON.stringify(await st()) === JSON.stringify({ scale: 1, reduce: false }), 'default: Full (scale 1, not reduced)');
+    const full = await jitter(page);
+    check(full > 0.05, `Full: the view jitters (range ${full.toFixed(4)})`);
+    await openSettings(page, 'display');
+    const select = page.locator('#player-settings [name="cameraShake"]');
+    check((await select.inputValue()) === 'full', 'the Display tab shows Full');
+    check(await select.evaluate((el) => el.tagName === 'SELECT' && [...el.options].map((o) => o.value).join() === 'full,half,off'), 'it is a three-way select (Full, Half, Off)');
+    await select.selectOption('half');
+    check((await stored(page))?.cameraShake === 'half', 'Half saves cameraShake:"half"');
+    check(JSON.stringify(await st()) === JSON.stringify({ scale: 0.5, reduce: false }), 'Half applies live: scale 0.5');
+    await closeSettings(page); await resume(page);
+    const half = await jitter(page);
+    check(half > full * 0.35 && half < full * 0.65, `Half: about half the jitter (${half.toFixed(4)} vs Full ${full.toFixed(4)})`);
+    await openSettings(page, 'display');
+    await page.locator('#player-settings [name="cameraShake"]').selectOption('off');
+    check(JSON.stringify(await st()) === JSON.stringify({ scale: 0, reduce: true }), 'Off applies live: scale 0, reduced');
+    await closeSettings(page); await resume(page);
+    const off = await jitter(page);
+    check(off < 0.002, `Off: no jitter (${off.toFixed(5)})`);
+    await context.close();
+
+    const reloaded = await freshRun({ prefs: { cameraShake: 'half' } });
+    check(JSON.stringify(await reloaded.page.evaluate(() => window.__game.ctx.state.cameraShakeScale)) === '0.5', 'Half survives a reload');
+    await reloaded.context.close();
+    const legacy = await freshRun({ prefs: { cameraShake: false, textScale: 1.15 } });
+    check((await legacy.page.evaluate(() => ({ s: window.__game.ctx.state.cameraShakeScale, r: window.__game.ctx.state.reduceCameraShake }))).r === true, 'an old save with cameraShake:false loads as Off');
+    await openSettings(legacy.page, 'display');
+    check((await legacy.page.locator('#player-settings [name="cameraShake"]').inputValue()) === 'off', '... and the select shows Off');
+    await legacy.page.screenshot({ path: `${out}/shake-display-tab.png` });
+    await legacy.context.close();
+    check(errors.length === 0 && reloaded.errors.length === 0 && legacy.errors.length === 0, 'no page errors');
+  }
+} finally {
+  await browser.close();
+}
+console.log(failures ? `\n${failures} check(s) FAILED` : '\nall checks passed');
+process.exit(failures ? 1 : 0);
