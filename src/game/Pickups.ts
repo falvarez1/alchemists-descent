@@ -18,6 +18,8 @@ import { sightClear } from '@/creatures/perception';
 import { cancelChargingBlackHole } from '@/core/runtimeState';
 import { getBindings, keyLabel } from '@/input/bindings';
 import { INTRO_OBJECTIVE } from '@/game/introObjectives';
+import { PORTAL_WAYPOINT_LABEL, setGameWaypoint } from '@/game/compass';
+import { LURE_RANGE, lureRings } from '@/game/keyLure';
 
 /**
  * World pickups (upgrade-port meta layer): hearts, spell tomes, chests,
@@ -57,6 +59,14 @@ export class Pickups implements PickupsApi {
     for (const p of runtime.pickups) {
       if (p.taken || p.data.offerPending) continue;
       if (p.kind === 'key' && runtime.living && !runtime.living.tea?.completed) continue;
+      // FAR-FIELD LURE (game/keyLure): the key rings one small glass note from where it
+      // lies, panned and faded by the mix, on the clock its glint rides. Quiet, and silent
+      // close up (the key hint has taken over) or once the floor is far behind.
+      if (p.kind === 'key' && !player.dead && lureRings(ctx.state.frameCount, p.x, p.y)) {
+        const lx = p.x - player.x, ly = p.y - player.y;
+        const d2 = lx * lx + ly * ly;
+        if (d2 < LURE_RANGE * LURE_RANGE && d2 > 50 * 50) ctx.audio.sfx('light.bloom.petal', p.x, p.y, { gain: 0.8, pitch: 7 });
+      }
       const handsFree = !player.legClub && !player.swinging && !ctx.rigidBodies?.isHolding?.();
       if (p.kind === 'weaverleg' && p.data.legDurability !== undefined) {
         updateLooseWeaverLeg(ctx, p);
@@ -212,7 +222,16 @@ export class Pickups implements PickupsApi {
       ctx.audio.drinkPotion();
     } else if (p.kind === 'key') {
       const runtime = ctx.levels.current;
-      if (runtime) runtime.keyTaken = true;
+      if (runtime) {
+        runtime.keyTaken = true;
+        runtime.keyTakenFrame = ctx.state.frameCount;
+        // The exit portal is a small violet mote from afar: the compass takes the player to it
+        // (a waypoint set by hand is left alone), and the portal answers the key with a low chime.
+        if (!runtime.living && runtime.portal) {
+          setGameWaypoint(runtime, PORTAL_WAYPOINT_LABEL, runtime.portal.x, runtime.portal.y);
+          ctx.audio.sfx('mech.shrine', runtime.portal.x, runtime.portal.y, { delay: 0.6 });
+        }
+      }
       ctx.events.emit('toast', { text: runtime?.living ? 'The brass bell is yours.' : 'The golden key is yours.' });
       ctx.events.emit('objectiveChanged', { text: runtime?.living ? 'Follow the undertow to the lower gate.' : INTRO_OBJECTIVE.returnPortal });
       ctx.audio.sfx(runtime?.living ? 'pickup.bell' : 'pickup.key');
