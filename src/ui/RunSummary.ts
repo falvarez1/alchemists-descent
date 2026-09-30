@@ -210,7 +210,9 @@ export class RunSummary {
 
     // A tier other than Adept is named in the header, as the share line names it.
     const tier = summary.difficulty && summary.difficulty !== BASE_DIFFICULTY ? ` · ${DIFFICULTY[summary.difficulty].name}` : '';
-    this.kicker.textContent = (summary.daily ? `The ledger · Daily descent ${summary.daily}` : 'The ledger') + tier;
+    // A seed the player chose on the title is named here (and in the share line), so a friend can descend the same Works.
+    const seedNote = summary.seedChosen && !summary.daily ? ` · Seed ${summary.seed}` : '';
+    this.kicker.textContent = (summary.daily ? `The ledger · Daily descent ${summary.daily}` : 'The ledger') + seedNote + tier;
     this.title.textContent = runHeadline(summary);
     this.epitaph.textContent = summary.epitaph;
     this.renderFloors(result);

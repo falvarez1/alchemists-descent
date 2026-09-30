@@ -45,13 +45,14 @@ const REFUGE_REARM_DISTANCE = 160;
 /** LivingExpedition's rest completes at this many still, unthreatened ticks. */
 const REFUGE_REST_TICKS = 120;
 
-function freshState(opts: RunBeginOptions, recorded: boolean): RunSaveState {
+function freshState(opts: RunBeginOptions, recorded: boolean, seedChosen = false): RunSaveState {
   return {
     v: 1,
     phials: PHIALS_PER_RUN,
     kit: opts.kit,
     daily: opts.daily,
     seed: opts.seed >>> 0,
+    ...(seedChosen && !opts.daily ? { seedChosen: true } : {}),
     timeMs: 0,
     kills: 0,
     alchemicalKills: 0,
@@ -75,6 +76,7 @@ function sanitizeSave(save: RunSaveState): RunSaveState | null {
     kit: isKitId(save.kit) ? save.kit : DEFAULT_KIT,
     daily: isDateKey(save.daily) ? save.daily : null,
     seed: whole(save.seed) >>> 0,
+    ...(save.seedChosen === true && !isDateKey(save.daily) ? { seedChosen: true } : {}),
     timeMs: whole(save.timeMs),
     kills: whole(save.kills),
     alchemicalKills: whole(save.alchemicalKills),
@@ -121,6 +123,8 @@ export class RunDirector implements RunApi {
   private restWasComplete = false;
   private leviathanPresent = false;
   private leviathanLevel: string | null = null;
+  /** startNewRun is about to begin a run on a seed the player chose; beginRun (called from inside startRun) consumes it. */
+  private chosenSeedPending = false;
   private readonly disposers: Array<() => void> = [];
 
   constructor(private readonly ctx: Ctx) {
@@ -177,12 +181,14 @@ export class RunDirector implements RunApi {
     this.runUnlocks = [];
     this.resetTracking(ctx);
     this.tracked = opts.tracked;
+    const seedChosen = this.chosenSeedPending;
+    this.chosenSeedPending = false;
     if (!opts.tracked) {
       this.state = null;
       return;
     }
     const recorded = !this.tainted(ctx);
-    this.state = freshState(opts, recorded);
+    this.state = freshState(opts, recorded, seedChosen);
     if (recorded) this.meta.commit(recordRunStarted(this.meta.profile, opts.kit));
     ctx.events.emit('phialsChanged', { phials: this.state.phials, max: PHIALS_PER_RUN, reason: 'start' });
   }
@@ -214,7 +220,7 @@ export class RunDirector implements RunApi {
     this.endRun(ctx, 'abandoned', true);
   }
 
-  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty }): RunStartResult {
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number }): RunStartResult {
     const today = utcDateKey(new Date());
     const kit = opts.daily ? DEFAULT_KIT : (this.meta.isKitUnlocked(opts.kit) ? opts.kit : DEFAULT_KIT);
     if (!opts.daily) this.meta.setLastKit(kit);
@@ -223,16 +229,23 @@ export class RunDirector implements RunApi {
     const profile = this.meta.profile;
     const difficulty = opts.daily ? BASE_DIFFICULTY : openDifficulty(opts.difficulty ?? profile.lastDifficulty, profile.bestVictoryDifficulty);
     if (!opts.daily) this.meta.setLastDifficulty(difficulty);
-    return ctx.levels.startRun(ctx, {
-      mode: 'normal',
-      worldSource: 'campaign',
-      continueSave: false,
-      loadout: 'fresh',
-      seed: opts.daily ? dailySeed(today) : randomSeed(),
-      starterKit: kit,
-      daily: opts.daily ? today : null,
-      difficulty,
-    });
+    // A chosen seed only ever rides a normal descent: today's is one seed for everyone.
+    const chosen = !opts.daily && typeof opts.seed === 'number' && Number.isFinite(opts.seed) && opts.seed > 0 ? opts.seed >>> 0 : null;
+    this.chosenSeedPending = chosen !== null;
+    try {
+      return ctx.levels.startRun(ctx, {
+        mode: 'normal',
+        worldSource: 'campaign',
+        continueSave: false,
+        loadout: 'fresh',
+        seed: opts.daily ? dailySeed(today) : chosen ?? randomSeed(),
+        starterKit: kit,
+        daily: opts.daily ? today : null,
+        difficulty,
+      });
+    } finally {
+      this.chosenSeedPending = false;
+    }
   }
 
   chooseKit(kit: KitId): void {
@@ -449,6 +462,7 @@ export class RunDirector implements RunApi {
       outcome,
       seed: state.seed,
       daily: state.daily,
+      seedChosen: state.seedChosen,
       kit: state.kit,
       floor: outcome === 'victory' ? FLOORS_TOTAL : floor,
       floorName: floorDisplayName(floorId),

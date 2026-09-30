@@ -481,6 +481,109 @@ try {
     await context.close();
   }
 
+
+  // ------------------------------------------------------------------ chosen seed
+  if (want('seed')) {
+    console.log('\n== Choose a seed: title fold, determinism, ledger, share line, copy');
+    /** Real title -> fold -> typed seed. Returns the page, still on the title. */
+    const startWithSeed = async (text) => {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
+      const page = await context.newPage();
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(String(e)));
+      await page.goto(url, { waitUntil: 'networkidle' });
+      await page.locator('#expedition-entry').waitFor({ state: 'visible' });
+      await page.waitForTimeout(800);
+      await click(page, page.locator('#expedition-entry .entry-seed summary'));
+      await page.waitForFunction(() => document.querySelector('#expedition-entry .entry-seed').open);
+      await click(page, page.locator('#entry-seed-input'));
+      await page.keyboard.type(text);
+      return { context, page, errors };
+    };
+    const signature = (page) => page.evaluate(() => { const r = window.__game.ctx.levels.current; const st = window.__game.ctx.state; return JSON.stringify({ worldSeed: st.worldSeed, secret: st.secretReaction, id: r.def.id, spawn: r.spawn, portal: r.portal && [r.portal.x, r.portal.y], pickups: r.pickups.map((p) => [p.kind, p.x >> 4, p.y >> 4]), enemies: window.__game.ctx.enemies.map((e) => [e.kind, Math.round(e.x) >> 4, Math.round(e.y) >> 4]), mech: r.mechanisms.map((m) => [m.kind, m.x, m.y]), ways: r.waystones.map((w) => [w.x, w.y]) }); });
+    const begin = async (page) => {
+      await click(page, page.locator('#expedition-entry [data-seed="begin"]'));
+      await page.waitForFunction(() => window.__game.ctx.state.mode === 'play' && window.__game.ctx.levels.current && !window.__game.ctx.levels.transitioning, null, { timeout: 60000 });
+      await waitForOpeningEnd(page).catch(() => undefined);
+    };
+
+    // the fold and the preview
+    const a = await startWithSeed('1234567');
+    check((await a.page.locator('#entry-seed-preview').textContent()) === 'Seed 1234567.', 'typing a number previews it: "Seed 1234567."');
+    check(await a.page.locator('#expedition-entry [data-seed="begin"]').isEnabled(), 'Begin with this seed is enabled');
+    await a.page.screenshot({ path: `${out}/seed-fold.png` });
+    await begin(a.page);
+    const statusA = await a.page.evaluate(() => { const c = window.__game.ctx; return { seed: c.levels.runStatus(c).expeditionSeed, save: c.run.snapshotForSave() }; });
+    check(statusA.seed === 1234567 && statusA.save.seed === 1234567 && statusA.save.seedChosen === true, `the descent runs on seed 1234567 and records that it was chosen (${JSON.stringify({ seed: statusA.seed, chosen: statusA.save.seedChosen })})`);
+    const sigA = await signature(a.page);
+
+    // determinism: the same seed, in a second page, is the same Works; another seed is not
+    const b = await startWithSeed('1234567');
+    await begin(b.page);
+    const sigB = await signature(b.page);
+    check(sigA === sigB, 'the same seed and case make the same descent (world seed, the run’s secret reaction, spawn, portal, mechanisms, waystones, pickups, creatures)');
+    await b.context.close();
+    const c = await startWithSeed('7654321');
+    await begin(c.page);
+    check((await signature(c.page)) !== sigA, 'a different seed makes a different descent (floor 1 is hand-built; the seed changes the generated floors and the secret reaction)');
+    await c.context.close();
+    const w1 = await startWithSeed('Kettleby');
+    const words1 = await w1.page.locator('#entry-seed-preview').textContent();
+    check(words1.startsWith('Those words make seed '), 'words preview the number they become');
+    const wordsSeed = Number(/seed (\d+)/.exec(words1)[1]);
+    await w1.context.close();
+    const w2 = await startWithSeed('  kettleBY ');
+    check(Number(/seed (\d+)/.exec(await w2.page.locator('#entry-seed-preview').textContent())[1]) === wordsSeed, 'the same words (any case or spacing) are the same seed');
+    await w2.context.close();
+
+    // the ledger and the share line carry it
+    await a.page.evaluate(() => { const c = window.__game.ctx; c.state.paused = false; c.run.abandon(c); });
+    await a.page.waitForSelector('#run-summary.visible', { timeout: 15000 });
+    await a.page.waitForTimeout(1500);
+    const ledger = await a.page.evaluate(() => ({ kicker: document.querySelector('#run-summary .rs-kicker').textContent, share: document.querySelector('#run-summary .rs-share').textContent }));
+    check(ledger.kicker.includes('Seed 1234567'), `the ledger names the seed: "${ledger.kicker}"`);
+    check(ledger.share.includes('seed 1234567'), `the share line names it: "${ledger.share}"`);
+    await a.page.screenshot({ path: `${out}/seed-ledger.png` });
+    check(a.errors.length === 0, 'no page errors');
+    await a.context.close();
+
+    // an ordinary Begin is exactly as it was: no chosen flag, no seed on the ledger or the share line
+    const plain = await freshRun();
+    const before = await plain.page.evaluate(() => window.__game.ctx.run.snapshotForSave());
+    check(before.seedChosen === undefined, 'a normal descent carries no seedChosen flag');
+    await plain.page.evaluate(() => { const c = window.__game.ctx; c.state.paused = false; c.run.abandon(c); });
+    await plain.page.waitForSelector('#run-summary.visible', { timeout: 15000 });
+    await plain.page.waitForTimeout(1500);
+    const normal = await plain.page.evaluate(() => ({ kicker: document.querySelector('#run-summary .rs-kicker').textContent, share: document.querySelector('#run-summary .rs-share').textContent }));
+    check(normal.kicker === 'The ledger' && !/seed/i.test(normal.share), `an ordinary ledger is unchanged: "${normal.kicker}" / "${normal.share}"`);
+    await plain.context.close();
+
+    // copy this descent's seed from the title
+    const d = await startWithSeed('42424242');
+    await begin(d.page);
+    await d.page.evaluate(() => { const c = window.__game.ctx; c.state.paused = false; window.dispatchEvent(new CustomEvent('expedition-title-request')); });
+    await d.page.locator('#expedition-entry').waitFor({ state: 'visible' });
+    await d.page.waitForTimeout(600);
+    const foldOpen = await d.page.evaluate(() => document.querySelector('#expedition-entry .entry-seed').open);
+    if (!foldOpen) await click(d.page, d.page.locator('#expedition-entry .entry-seed summary'));
+    const copyBtn = d.page.locator('#expedition-entry [data-seed="copy"]');
+    check(await copyBtn.isVisible(), 'with a descent in hand the title offers the copy button');
+    await click(d.page, copyBtn);
+    await d.page.waitForTimeout(400);
+    const clip = await d.page.evaluate(() => navigator.clipboard.readText().catch(() => null));
+    check(clip === '42424242' || (await d.page.locator('#entry-seed-input').inputValue()) === '42424242', `the seed reaches the clipboard (or, if refused, the selected field): clipboard=${clip}`);
+    await d.page.screenshot({ path: `${out}/seed-copy.png` });
+    await d.context.close();
+
+    // the daily is untouched
+    const daily = await freshRun();
+    await daily.page.evaluate(() => { const c = window.__game.ctx; c.state.paused = false; return c.run.startNewRun(c, { kit: 'spark', daily: true, seed: 999 }); });
+    await daily.page.waitForTimeout(3000);
+    const ds = await daily.page.evaluate(() => window.__game.ctx.run.snapshotForSave());
+    check(ds.daily !== null && ds.seed !== 999 && ds.seedChosen === undefined, 'a seed passed with the daily is ignored: it keeps its own seed and is not "chosen"');
+    await daily.context.close();
+  }
+
 } finally {
   await browser.close();
 }

@@ -3468,6 +3468,8 @@ export interface RunSaveState {
   kit: KitId;
   daily: string | null;
   seed: number;
+  /** The player chose `seed` on the title (see RunSummary.seedChosen). Absent on an ordinary run. */
+  seedChosen?: boolean;
   timeMs: number;
   kills: number;
   alchemicalKills: number;
@@ -3560,9 +3562,10 @@ export interface RunApi {
   /**
    * A fresh run: a new seed (or today's daily seed) with the chosen kit, at the
    * chosen difficulty when it is open to the player (else Adept). The daily is
-   * always Adept: it is one seed for everyone.
+   * always Adept: it is one seed for everyone. `seed` (never for the daily) is a seed the player
+   * chose on the title; omitted, the descent rolls its own.
    */
-  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty }): RunStartResult;
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number }): RunStartResult;
   metaView(): RunMetaView;
   chooseKit(kit: KitId): void;
   /** Remember the tier chosen (ignored while it is still locked). */

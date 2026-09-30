@@ -293,3 +293,45 @@ describe('slider readouts', () => {
     expect(bandReadout(0.018, PRESENTATION.grain, 'Off')).toBe('+4');
   });
 });
+
+describe('a chosen seed', () => {
+  it('reads a whole number as itself, and anything else as a stable phrase', async () => {
+    const { parseChosenSeed } = await import('@/game/runRules');
+    expect(parseChosenSeed('')).toBeNull();
+    expect(parseChosenSeed('   ')).toBeNull();
+    expect(parseChosenSeed('12345')).toEqual({ seed: 12345, phrase: false });
+    expect(parseChosenSeed(' 4294967295 ')).toEqual({ seed: 4294967295, phrase: false });
+    const words = parseChosenSeed('Kettleby');
+    expect(words?.phrase).toBe(true);
+    // Case and spacing do not matter; the same words are the same world.
+    expect(parseChosenSeed('  kettleby ')).toEqual(words);
+    expect(parseChosenSeed('the  Duck')).toEqual(parseChosenSeed('THE duck'));
+    expect(parseChosenSeed('the duck')?.seed).not.toBe(words?.seed);
+    // Out of range or zero is not a number seed: it is a phrase, never a crash and never seed 0.
+    for (const odd of ['0', '4294967296', '99999999999999999999', '-5', '1.5']) {
+      const odds = parseChosenSeed(odd);
+      expect(odds?.phrase).toBe(true);
+      expect(odds?.seed).toBeGreaterThan(0);
+      expect(odds?.seed).toBeLessThanOrEqual(4294967295);
+    }
+  });
+
+  it('is named on the share line only when the player chose it', async () => {
+    const { shareLine, buildRunSummary } = await import('@/game/runRules');
+    const base = {
+      outcome: 'fallen' as const, seed: 4242, daily: null, kit: 'spark' as const, floor: 2, floorName: 'The Rot Gardens', floorsTotal: 4,
+      timeMs: 754000, kills: 9, alchemicalKills: 3, bestChain: 2, deaths: 1, gold: 120, cardsFound: 4,
+    };
+    const plain = shareLine(buildRunSummary(base));
+    expect(plain).not.toMatch(/seed/i);
+    const chosen = shareLine(buildRunSummary({ ...base, seedChosen: true }));
+    expect(chosen).toContain('seed 4242');
+    expect(chosen.startsWith('Breathing Works — seed 4242 — ')).toBe(true);
+    // The daily names its date, not a seed; a chosen-seed flag on a daily is ignored.
+    const daily = shareLine(buildRunSummary({ ...base, daily: '2026-09-30', seedChosen: true }));
+    expect(daily).toContain('daily 2026-09-30');
+    expect(daily).not.toMatch(/seed 4242/);
+    expect(buildRunSummary({ ...base, daily: '2026-09-30', seedChosen: true }).seedChosen).toBeUndefined();
+    expect(buildRunSummary(base).seedChosen).toBeUndefined();
+  });
+});

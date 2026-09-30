@@ -9,6 +9,7 @@ import { DifficultyPicker } from '@/ui/DifficultyPicker';
 import { BASE_DIFFICULTY } from '@/config/difficultyLadder';
 import { appDialog } from '@/ui/AppDialog';
 import { openTrailer } from '@/ui/TrailerLightbox';
+import { SeedDisclosure } from '@/ui/SeedDisclosure';
 
 /** "Breathing Works" → "Breathing<br><em>Works</em>": the last word takes the brass. */
 function titleMarkup(title: string): string {
@@ -29,6 +30,7 @@ export class ExpeditionEntry {
   private readonly settings: PlayerSettings;
   private readonly kits: KitPicker;
   private readonly grades: DifficultyPicker;
+  private readonly seed: SeedDisclosure;
   private readonly disposers: Array<() => void> = [];
   private launching = false;
   private selectedKit: KitId = 'spark';
@@ -71,6 +73,9 @@ export class ExpeditionEntry {
       ctx.run?.chooseDifficulty(tier);
     });
     this.root.querySelector('.entry-grades')!.appendChild(this.grades.root);
+    // "Choose a seed": a fold under Today's descent (the daily itself is untouched).
+    this.seed = new SeedDisclosure(ctx, (seed) => void this.launch('begin', seed));
+    this.root.querySelector('.entry-daily')!.after(this.seed.root);
     document.getElementById('canvas-holder')!.appendChild(this.root);
     this.root.addEventListener('click', e => {
       const button = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-entry]');
@@ -115,6 +120,7 @@ export class ExpeditionEntry {
     this.root.querySelector<HTMLButtonElement>('[data-entry="continue"]')!.hidden = !saved;
     this.root.querySelector<HTMLButtonElement>('[data-entry="begin"]')!.textContent = saved ? 'Start a new descent' : 'Begin the descent';
     this.refreshMeta();
+    this.seed.refresh();
     this.root.querySelector<HTMLElement>('.entry-status')!.textContent = '';
     this.root.querySelector<HTMLButtonElement>(saved ? '[data-entry="continue"]' : '[data-entry="begin"]')?.focus();
   }
@@ -172,7 +178,7 @@ export class ExpeditionEntry {
     this.show();
   };
 
-  private async launch(kind: 'continue' | 'begin' | 'daily'): Promise<void> {
+  private async launch(kind: 'continue' | 'begin' | 'daily', seed?: number): Promise<void> {
     if (this.launching) return;
     const replacing = kind !== 'continue' && (this.ctx.levels.hasSavedExpedition() || this.ctx.run?.active === true);
     if (replacing) {
@@ -195,7 +201,7 @@ export class ExpeditionEntry {
         this.root.querySelector('.entry-status')!.textContent = 'The Works could not finish loading. Refresh the page to try again.';
         return;
       }
-      const started = this.start(kind);
+      const started = this.start(kind, seed);
       if (started.ok) { this.hide(); this.ctx.state.paused = false; }
       else this.root.querySelector('.entry-status')!.textContent = started.message;
     } catch (error) {
@@ -206,12 +212,12 @@ export class ExpeditionEntry {
     }
   }
 
-  private start(kind: 'continue' | 'begin' | 'daily'): RunStartResult {
+  private start(kind: 'continue' | 'begin' | 'daily', seed?: number): RunStartResult {
     const ctx = this.ctx;
     if (kind === 'continue' || !ctx.run) {
       return ctx.levels.startRun(ctx, { mode: 'normal', worldSource: 'campaign', continueSave: kind === 'continue', loadout: 'fresh' });
     }
-    return ctx.run.startNewRun(ctx, { kit: this.selectedKit, daily: kind === 'daily', difficulty: this.selectedDifficulty });
+    return ctx.run.startNewRun(ctx, { kit: this.selectedKit, daily: kind === 'daily', difficulty: this.selectedDifficulty, seed });
   }
 
   dispose(): void {

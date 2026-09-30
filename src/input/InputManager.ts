@@ -141,7 +141,8 @@ export class InputManager {
     const pressed = (index: number): boolean => held(index) && !this.previousPadButtons[index];
     const menu = document.getElementById('expedition-entry');
     if (menu && !menu.hidden) {
-      const buttons = Array.from(menu.querySelectorAll<HTMLButtonElement>('nav button:not([hidden])'));
+      // (visible ones only: a closed fold, such as "Choose a seed", holds buttons the stick could never land on)
+      const buttons = Array.from(menu.querySelectorAll<HTMLButtonElement>('nav button:not([hidden])')).filter(b => b.getClientRects().length > 0);
       if (pressed(13) || pressed(12)) {
         const index = Math.max(0, buttons.indexOf(document.activeElement as HTMLButtonElement));
         buttons[(index + (pressed(13) ? 1 : buttons.length - 1)) % buttons.length]?.focus();

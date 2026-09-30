@@ -59,12 +59,32 @@ export function dailySeed(dateKey: string): number {
   return seed === 0 ? 0x9e3779b9 : seed;
 }
 
+/**
+ * A seed the player typed on the title. A whole number from 1 to 4294967295 is that seed as it
+ * stands (what a ledger or a share line prints, so a friend's number works); anything else is a
+ * phrase, folded the same way every time (case and spacing ignored), so "Kettleby" is one world.
+ * Empty is null: no choice, a random descent. Pure.
+ */
+export function parseChosenSeed(input: string): { seed: number; phrase: boolean } | null {
+  const text = input.trim();
+  if (text === '') return null;
+  if (/^\d{1,10}$/.test(text)) {
+    const n = Number(text);
+    if (n >= 1 && n <= 4294967295) return { seed: n, phrase: false };
+  }
+  const phrase = text.toLowerCase().replace(/\s+/g, ' ').slice(0, 40);
+  const seed = fnv1aString(`breathing-works:seed:${phrase}`) >>> 0;
+  return { seed: seed === 0 ? 0x9e3779b9 : seed, phrase: true };
+}
+
 /* ---------------- the ledger ---------------- */
 
 export interface RunStatsInput {
   outcome: RunOutcome;
   seed: number;
   daily: string | null;
+  /** The player chose this seed on the title (the ledger and the share line then print it). */
+  seedChosen?: boolean;
   kit: KitId;
   floor: number;
   floorName: string;
@@ -137,6 +157,7 @@ export function buildRunSummary(input: RunStatsInput): RunSummary {
     outcome: input.outcome,
     seed: input.seed >>> 0,
     daily: input.daily,
+    ...(input.seedChosen === true && !input.daily ? { seedChosen: true } : {}),
     kit: input.kit,
     floor: Math.max(1, Math.min(input.floorsTotal, whole(input.floor) || 1)),
     floorName: input.floorName,
@@ -211,6 +232,7 @@ export function formatChain(chain: number): string {
 export function shareLine(summary: RunSummary, title = GAME_TITLE): string {
   const parts = [title];
   if (summary.daily) parts.push(`daily ${summary.daily}`);
+  else if (summary.seedChosen) parts.push(`seed ${summary.seed}`);
   if (isDifficulty(summary.difficulty) && summary.difficulty !== BASE_DIFFICULTY) parts.push(DIFFICULTY[summary.difficulty].name);
   const reach = summary.outcome === 'victory'
     ? `the Kiln quieted in ${formatRunTime(summary.timeMs)}`
