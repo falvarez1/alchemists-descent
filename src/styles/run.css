@@ -121,6 +121,10 @@ body.play-active #gameover-overlay.cine #ledger-btn { animation: go-fade-in 1s e
 .difficulty-picker .kit-chip-icon { width: auto; min-width: 12px; height: auto; }
 .difficulty-picker .kit-chip-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 #expedition-entry .difficulty-picker p.kit-note, .difficulty-picker .kit-note { flex: 1 1 170px; min-width: 0; max-width: none; }
+/* A finger is not a pointer: the numeral chips keep the 44px target the touch controls promise. */
+@media (pointer: coarse) {
+  #expedition-entry .difficulty-picker .kit-chips .kit-chip, .difficulty-picker .kit-chip { min-height: 44px; min-width: 44px; justify-content: center; }
+}
 #expedition-entry .kit-chips .kit-chip:hover, .kit-chip:hover { border-color: #8b9d8f; color: var(--m-text); background: rgba(26, 45, 50, 0.9); }
 #expedition-entry .kit-chips .kit-chip[aria-checked="true"], .kit-chip[aria-checked="true"] {
   border-color: var(--m-brass); color: var(--m-brass-strong); background: rgba(42, 44, 30, 0.92);
