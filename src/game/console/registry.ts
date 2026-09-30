@@ -80,6 +80,42 @@ export function parseConsoleLine(line: string): ParsedLine | null {
   return { raw: line, name: name.toLowerCase(), args };
 }
 
+/**
+ * Split a line into the commands of a `seq`: on semicolons outside quotes. A
+ * backslash keeps the next character literal (`\;` is a semicolon in an argument).
+ * Blank steps are dropped.
+ */
+export function splitCommandSequence(line: string): string[] {
+  const steps: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '\\' && i + 1 < line.length) {
+      current += ch + line[++i];
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) quote = null;
+      current += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === ';') {
+      if (current.trim()) steps.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) steps.push(current.trim());
+  return steps;
+}
+
 export class ConsoleCommandRegistry implements ConsoleApi {
   private readonly primary: ConsoleCommandDefinition[] = [];
   private readonly byName = new Map<string, ConsoleCommandDefinition>();

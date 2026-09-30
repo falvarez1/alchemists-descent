@@ -2439,6 +2439,12 @@ export interface CommandInfo {
   description: string;
   shortcut?: string;
   enabled: boolean;
+  /** `help` files a command under one of its groups (game/console/help). */
+  group?: string;
+  /** Other names the command answers to. */
+  aliases?: string[];
+  /** Using it marks the run as a test run: no autosave, no ledger credit, no meta unlocks. */
+  taints?: boolean;
 }
 
 export interface ConsoleApi {
@@ -2683,6 +2689,8 @@ export interface MechanismsApi {
 export interface PickupsApi {
   /** Bobbing, gravity, magnet-to-player, collection effects. */
   update(ctx: Ctx): void;
+  /** Dev console `key`: collect the level's golden key (D1's brass bell) through the same code a walk-over uses. */
+  grantKey?(ctx: Ctx): 'granted' | 'already-taken' | 'no-key';
 }
 
 export interface SanctumApi {
@@ -2697,6 +2705,15 @@ export interface SanctumApi {
   readonly chosenDoor?: string | null;
   /** Open the SHOP alone (the Refuge shrine's trade) — closing just resumes. */
   openShop(ctx: Ctx): void;
+  /**
+   * Dev console: with the Sanctum open, strike the first boon on offer, take `door`
+   * (else the first) and descend — the same clicks a player makes, the same code.
+   */
+  quickDescend?(door?: string): boolean;
+  /** Dev console: close without descending (something else is taking the alchemist out of the room). */
+  dismiss?(): void;
+  /** Dev console `boon`: strike a boon by id through the Sanctum's own code. False for an unknown id. */
+  applyBoon?(ctx: Ctx, id: string): boolean;
 }
 
 /* ============================================================
@@ -3433,6 +3450,55 @@ export interface LevelsApi {
   abandonExpedition(): void;
   /** QA/dev console level jump. The Levels system owns the transition semantics. */
   debugEnterLevel(ctx: Ctx, id: string): boolean;
+  /**
+   * Dev console `goto`: travel to a level through the real transition (curtain, arrival
+   * grace, findability repair, story hooks) with the run kept — phials, boons, kit, tier —
+   * and taint the run (core/runTaint). A level not built yet is built from the run seed
+   * exactly as the descent would; a visited one keeps its world unless `seed`/`fresh`.
+   */
+  debugTravel(ctx: Ctx, id: string, opts?: DebugTravelOptions): DebugTravelResult;
+  /**
+   * Dev console `skip`: take the current floor's exit the way the portal does (the
+   * Sanctum, then the floor below), without the key. `sanctum: false` has the Sanctum
+   * strike its first boon and take `door` for you. Taints the run.
+   */
+  debugFinishFloor(ctx: Ctx, opts?: { sanctum?: boolean; door?: string }): DebugFinishResult;
+  /** Dev console `kit`: reset the wands, satchel and flask belt to `kit`'s starting hand, through the loadout a fresh run starts with. Taints the run. */
+  debugApplyKit(ctx: Ctx, kit: KitId): boolean;
+  /** Dev console `waystone light`: the real ignition of waystone `index` of the current level. */
+  debugLightWaystone(ctx: Ctx, index: number): boolean;
+  /** Ids of the levels built so far this run. */
+  generatedLevels(): string[];
+  /** The seed the descent builds (or built) level `id` from: a `goto --seed` override, else the run seed salted with the id. */
+  levelSeed(ctx: Ctx, id: string): number;
+}
+
+export interface DebugTravelOptions {
+  /** Build the level again from this seed instead of the run's (a visited world is thrown away). */
+  seed?: number;
+  /** Throw a visited world away and build it again from the run seed. */
+  fresh?: boolean;
+}
+
+export interface DebugTravelResult {
+  ok: boolean;
+  reason?: 'unknown-level' | 'no-run';
+  from: string | null;
+  to: string;
+  /** Built for this trip (a first visit, or a rebuild), not restored. */
+  generated: boolean;
+  /** Wall ms the swap took: generation is synchronous, so this is the hitch a player sees behind the curtain. */
+  ms: number;
+}
+
+export interface DebugFinishResult {
+  ok: boolean;
+  reason?: 'no-run' | 'no-exit' | 'sanctum-open' | 'bad-door';
+  from: string | null;
+  /** The floor below's first door (null at the bottom of the descent). */
+  next: string | null;
+  /** The doors the floor below offers. */
+  doors: string[];
 }
 
 /* ============================================================
@@ -3588,6 +3654,10 @@ export interface RunApi {
   chooseKit(kit: KitId): void;
   /** Remember the tier chosen (ignored while it is still locked). */
   chooseDifficulty(difficulty: Difficulty): void;
+  /** Dev console `phials`: set the return phials of the tracked run (0 to the maximum). False with no run. */
+  debugSetPhials?(ctx: Ctx, phials: number): boolean;
+  /** Dev console `kit`: name another kit for the tracked run (the ledger and Pell read it). False with no run. */
+  debugSetKit?(kit: KitId): boolean;
 }
 
 export interface Ctx {

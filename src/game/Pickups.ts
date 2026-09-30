@@ -171,6 +171,15 @@ export class Pickups implements PickupsApi {
     }
   }
 
+  grantKey(ctx: Ctx): 'granted' | 'already-taken' | 'no-key' {
+    const runtime = ctx.levels.current;
+    const keys = runtime?.pickups.filter((p) => p.kind === 'key') ?? [];
+    const key = keys.find((p) => !p.taken);
+    if (!key) return keys.length > 0 || runtime?.keyTaken ? 'already-taken' : 'no-key';
+    this.collect(ctx, key);
+    return 'granted';
+  }
+
   private collect(ctx: Ctx, p: Pickup): void {
     const player = ctx.player;
     if (p.kind === 'tome') {

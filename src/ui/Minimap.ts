@@ -6,6 +6,7 @@ import { COLOR_FN, packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { PICKUP_COLOR, POTION_DEFS } from '@/core/pickupDefs';
 import { humanizeIdentifier, titleCaseName } from '@/core/strings';
 import { PopoverHost, type RectLike } from '@/ui/editor/PopoverHost';
+import { isEditorTextEntryTarget } from '@/ui/editor/FocusRouter';
 import { fillMaterialPopover } from '@/ui/materialInfo';
 import { resetHeldSpellInputs } from '@/core/runtimeState';
 import { WORKS_ROOMS } from '@/world/breathingWorks';
@@ -1022,6 +1023,8 @@ export class Minimap {
   private readonly disposers: Array<() => void> = [];
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (e.repeat || this.ctx.state.mode !== 'play') return;
+    // The letter m typed into a text field (the dev console's `camp`, `time`) is text, not the map.
+    if (isEditorTextEntryTarget(e.target)) return;
     if (e.code === 'KeyM') {
       e.preventDefault();
       e.stopPropagation();

@@ -4,6 +4,7 @@ import { upsertConsoleScript } from '@/game/console/scripts';
 import { cancelChargingBlackHole, resetHeldSpellInputs } from '@/core/runtimeState';
 import { isRunLauncherOpen } from '@/ui/RunLauncher';
 import { FocusRouter, isEditorTextEntryTarget } from '@/ui/editor/FocusRouter';
+import { helpRowsOf, renderHelpRows } from '@/ui/consoleHelpView';
 
 const HISTORY_KEY = 'noita-console-history';
 const HISTORY_LIMIT = 100;
@@ -210,7 +211,7 @@ export class ConsoleOverlay {
       if (this.openState) this.input.focus();
     });
     if (this.logEl.childElementCount === 0) {
-      this.appendLine('result', 'Console ready. Type help.');
+      this.appendLine('result', 'Console ready. help (or ?) lists the commands; Tab completes them.');
     }
   }
 
@@ -296,7 +297,8 @@ export class ConsoleOverlay {
     }
 
     e.stopImmediatePropagation();
-    if (e.code === 'Backquote') {
+    // The tilde (`tp ~5 ~-3`; Shift+` on a keyboard, key '~' from an automated one) is text, not the key that closes the console.
+    if (e.code === 'Backquote' && !e.shiftKey && e.key !== '~') {
       e.preventDefault();
       this.close();
       return;
@@ -387,7 +389,6 @@ export class ConsoleOverlay {
     const pending = this.appendLine('pending', '...');
     const res = await this.ctx.console.exec(line);
     this.renderCommandResult(pending, res);
-    this.scrollToBottom();
   }
 
   private async runBoundCommand(key: string, command: string): Promise<void> {
@@ -403,13 +404,26 @@ export class ConsoleOverlay {
       pending.remove();
       this.appendLine('result', res.text);
     } else {
-      pending.className = 'dev-console-line ' + (res.ok ? 'result' : 'error');
-      pending.textContent = res.text;
+      const helpRows = helpRowsOf(res);
+      pending.className = 'dev-console-line ' + (res.ok ? 'result' : 'error') + (helpRows ? ' help' : '');
+      if (helpRows) pending.replaceChildren(renderHelpRows(helpRows));
+      else pending.textContent = res.text;
+      if (helpRows) {
+        // A help page is read from its first line, not its last.
+        this.scrollTo(pending);
+        return;
+      }
     }
     if (typeof res.data === 'object' && res.data !== null && (res.data as { action?: unknown }).action === 'watch') {
       void this.refreshWatchHud();
     }
     this.scrollToBottom();
+  }
+
+  /** Scroll the log so `line` starts at its top edge. */
+  private scrollTo(line: HTMLElement): void {
+    const top = line.getBoundingClientRect().top - this.logEl.getBoundingClientRect().top + this.logEl.scrollTop;
+    this.logEl.scrollTop = Math.max(0, top - 4);
   }
 
   private shouldClearLog(res: CommandResult): boolean {

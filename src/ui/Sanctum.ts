@@ -433,11 +433,7 @@ export class Sanctum implements SanctumApi {
         if (perkTaken) return;
         perkTaken = true;
         for (const button of cards) button.disabled = true;
-        if (pk.flag) ctx.player.perks[pk.flag] = true;
-        pk.apply(ctx);
-        ctx.audio.learn();
-        ctx.telemetry.count('perk.' + pk.id);
-        ctx.story?.sanctumAct?.({ kind: 'boon', id: pk.id });
+        this.strike(ctx, pk);
         el('sanctum-overlay').dispatchEvent(new CustomEvent('sanctum-pick'));
         card.classList.add('taken');
         this.autoReveal = false;
@@ -455,6 +451,38 @@ export class Sanctum implements SanctumApi {
     el('sanctum-overlay').classList.add('visible');
     this.autoReveal = true;
     requestAnimationFrame(this.updateMore);
+  }
+
+  /** A boon struck: the flag on the alchemist (or the instant effect), the chime, the count, and (in the Sanctum) Matron Ash's answer. */
+  private strike(ctx: Ctx, pk: SanctumPerk, ashAnswers = true): void {
+    if (pk.flag) ctx.player.perks[pk.flag] = true;
+    pk.apply(ctx);
+    ctx.audio.learn();
+    ctx.telemetry.count('perk.' + pk.id);
+    if (ashAnswers) ctx.story?.sanctumAct?.({ kind: 'boon', id: pk.id });
+  }
+
+  applyBoon(ctx: Ctx, id: string): boolean {
+    const pk = PERKS.find((perk) => perk.id === id);
+    if (!pk) return false;
+    // Struck outside the Sanctum (the dev console): Matron Ash is not in the room to answer it.
+    this.strike(ctx, pk, false);
+    return true;
+  }
+
+  quickDescend(door?: string): boolean {
+    if (!this._open || this.descending || !this.onDescend) return false;
+    // The clicks a player makes: the first boon on offer, the door asked for (else the first), then descend.
+    this.perkCards[0]?.click();
+    const target = door ?? this.doorButtons[0]?.dataset.level;
+    if (target && this.doorButtons.length > 0) this.chooseDoor(this.ctx, target);
+    this.close();
+    return true;
+  }
+
+  dismiss(): void {
+    if (!this._open || this.descending) return;
+    this.finishClose(null, '');
   }
 
   /** The Refuge shrine's trade: shop only — boons are bargained at the portal. */
