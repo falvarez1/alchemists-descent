@@ -121,7 +121,7 @@ import type { BiomeId } from '@/core/types';
  *      preventing cell-reachable pressure plates from being body-unreachable
  *      behind their own door after loose materials settle.
  */
-export const GEN_VERSION = 62; // 62: THE KILN HEART IS VOLCANIC (level-design pass, 2026-09-30): the volcanic skeleton has more rock (fill .70, 9-12 tubes of 260 steps: the floor was 54-64% empty, now 44-56%), the 19x3 loose lava lenses are gone, and world/lavaLakes carves MAGMA HALLS into thick rock (a hall's lower lens is lava, its mouth a stone shelf with a gold lure) and floods natural basins, 13-18K lava cells in place of 1.3-2K, every lake contained by construction (rim fused to stone two cells deep, loose stock above it cleared, no lake on any walk to a place the player must stand, taken back if it costs a route) and registered as a placed room so repair routes walk round it; a boss hall cut off from the spawn is re-joined from its flank mouths by the gauge rescue; the golden key of a flooded floor never rests in the sea (a dry far body-fit cell instead of the giant region's centroid on the world floor). 61: THE FOOTING CONTRACT — fixtures stand on their own stamp and on ground (world/fixtureFooting). Every waystone, the cauldron, each hand-trigger and rune pedestal reserves its footing as a sealed footprint that later tunnels walk around; the waystone/cauldron connectors leave from above the bowl (they started AT it and took it and eight rows of floor: 30/30 waystones floated), the vault-trigger connector from high in its antechamber (it cut the shelf from under 18 triggers), the rune connector from above its pedestal; a gauge rescue of a fixture stops above its first own row; prefab connectors walk around their own prefab; the cauldron settles onto real ground on the nearer side; a waystone is never set on a pool bed (dry ground first, relaxed in tiers); a re-rolled treasure vault keeps its spawn clearance (a door slab 70 cells from d2 expedition 24's arrival sealed it in); the key is judged by the real collect rule (validate bodyCanCollect), never rests in a crack, and its vault's loose powder rim is fused. After the last carve every bowl, basin, body and glyph is re-stamped, the rock a stele or vessel is drawn over is cleared, and ground is put back under anything undercut (a plinth up to 12 rows, else a lip hung from rock, else a trigger comes down to the nearest dry ground on its side of its door), each taken back if it costs a route.
+export const GEN_VERSION = 62; // 62: LOOT AND SET PIECES STAND ON REAL GROUND (level-design pass, 2026-09-30): loot placed at a region's centroid rests on open ground (an entombed landing moves into its own region, to the nearest body-fit floor; 49 pickups had sunk 27-30 rows into rock), a tome's pocket is joined to the caves on a forked stream, a live circuit's one-cell port shaft and the roof hole under it are kept open by the footing pass (its lever lip sealed the latch: d4 seed 5, d3b seeds 5 and 7), loose stock (oil/gunpowder/water/sand pockets) is cleared out of every fixture's room after the last carve (world/looseStock), the exit shrine's pad and ring are restored (the carve took the plug's top: the floor under the portal was 0% solid) and an unreachable shrine is rescued from its flank mouths (d3 seed 5 and d3b seed 1337 generated with no way in). 62: THE KILN HEART IS VOLCANIC (level-design pass, 2026-09-30): the volcanic skeleton has more rock (fill .70, 9-12 tubes of 260 steps: the floor was 54-64% empty, now 44-56%), the 19x3 loose lava lenses are gone, and world/lavaLakes carves MAGMA HALLS into thick rock (a hall's lower lens is lava, its mouth a stone shelf with a gold lure) and floods natural basins, 13-18K lava cells in place of 1.3-2K, every lake contained by construction (rim fused to stone two cells deep, loose stock above it cleared, no lake on any walk to a place the player must stand, taken back if it costs a route) and registered as a placed room so repair routes walk round it; a boss hall cut off from the spawn is re-joined from its flank mouths by the gauge rescue; the golden key of a flooded floor never rests in the sea (a dry far body-fit cell instead of the giant region's centroid on the world floor). 61: THE FOOTING CONTRACT — fixtures stand on their own stamp and on ground (world/fixtureFooting). Every waystone, the cauldron, each hand-trigger and rune pedestal reserves its footing as a sealed footprint that later tunnels walk around; the waystone/cauldron connectors leave from above the bowl (they started AT it and took it and eight rows of floor: 30/30 waystones floated), the vault-trigger connector from high in its antechamber (it cut the shelf from under 18 triggers), the rune connector from above its pedestal; a gauge rescue of a fixture stops above its first own row; prefab connectors walk around their own prefab; the cauldron settles onto real ground on the nearer side; a waystone is never set on a pool bed (dry ground first, relaxed in tiers); a re-rolled treasure vault keeps its spawn clearance (a door slab 70 cells from d2 expedition 24's arrival sealed it in); the key is judged by the real collect rule (validate bodyCanCollect), never rests in a crack, and its vault's loose powder rim is fused. After the last carve every bowl, basin, body and glyph is re-stamped, the rock a stele or vessel is drawn over is cleared, and ground is put back under anything undercut (a plinth up to 12 rows, else a lip hung from rock, else a trigger comes down to the nearest dry ground on its side of its door), each taken back if it costs a route.
 // 60: Pell's camp and the echo's stage are never a liquid basin — a story nook is carved only where no liquid stands level with its floor or above within 48 cells, its connector's route floor is at most a step (4 rows) above the room, and the quietFloor fallback is dry too (the user found Pell chest-deep in a Cisterns basin: d3 seeds 1 and 3 flooded their camps). 59: 59: a lair's own connectors walk around its ORGAN (the stonemaw's ore seam, the Rillback's pool + basin) — a tunnel is never kept out of the room it starts in, so the stonemaw's connector bored through its own seam (d4 seed 21: 175 -> 121; 20 of 32 seeds lost 5-68 cells); no tunnel's chosen END lies inside a sealed feature either (a story nook's route floor inside d2 seed 10's grove let its connector cut the grove) — nook, lair-fallback, light-fallback and vault-antechamber targets all skip sealed interiors; a detour leaves from its true start, not the snapped grid node; the structures' connectors pass the sealed footprints too
 // 58: everything together — the second doors (biomes v55-57), the story (v55) and the lair fix (v55/56); late tunnels also route around the Cold Store / Glass Galleries rooms and guardian halls (connect SEALED_LABEL)
 // 56: the story (55) and the lair fix (also 55) together — late tunnels route around sealed features AND the story's flue/nooks
@@ -587,6 +587,8 @@ export interface GenDef {
   skeleton: SkeletonSpec;
   /** Basin-filled lava lakes (GEN 62); only the volcanic floor has a budget, so no other biome draws from the pass. */
   lavaLakes?: LavaLakeBudget;
+  /** Clear the loose stock (oil, gunpowder, water, sand pockets) out of every fixture's room after the last carve (GEN 62, world/looseStock). Campaign floors only. */
+  clearFixtureStock?: boolean;
   /** Discrete gold pocket count (decoration stage). */
   goldPockets: number;
   /** Placement attempts cap for gold pockets. */
@@ -1193,11 +1195,13 @@ export const GEN: Record<BiomeId, GenDef> = {
     ...baselineDef(),
     skeleton: { kind: 'frozenCrevasses', params: crevasseParams() },
     machines: machineBudget(['crystalrelay']),
+    clearFixtureStock: true,
   },
   flooded: {
     ...baselineDef(),
     skeleton: { kind: 'floodedGalleries', params: galleryParams() },
     machines: machineBudget(['alchemyclock']),
+    clearFixtureStock: true,
   },
   timber: {
     ...baselineDef(),
@@ -1212,6 +1216,7 @@ export const GEN: Record<BiomeId, GenDef> = {
     ...baselineDef(),
     skeleton: { kind: 'fungalPockets', params: fungalParams() },
     machines: machineBudget(['alchemyclock']),
+    clearFixtureStock: true,
   },
   // THE GLASS GALLERIES (d3b): the vaults, fewer, under tiers of long arcaded
   // exhibition galleries (the light puzzles and the Lenswright want sight lines).
@@ -1219,11 +1224,13 @@ export const GEN: Record<BiomeId, GenDef> = {
     ...baselineDef(),
     skeleton: { kind: 'crystalVaults', params: galleriesParams() },
     machines: machineBudget(['alchemyclock', 'crystalrelay']),
+    clearFixtureStock: true,
   },
   volcanic: {
     ...baselineDef(),
     skeleton: { kind: 'volcanicTubes', params: tubeParams() },
     machines: machineBudget(['kilnelevator']),
+    clearFixtureStock: true,
     lavaLakes: { targetCells: 26000, maxLakes: 16, minCells: 500, maxCells: 4500, minDepth: 10, yFracMin: 0.4, maxRise: 70, halls: 10, hallRx: [44, 76], hallRy: [22, 34] },
   },
   // The Gilded Vault: crystal-vault pillared halls re-dressed as a treasury,

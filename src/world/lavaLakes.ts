@@ -8,6 +8,8 @@ import { Cell } from '@/sim/CellType';
 import { lavaColor, stoneColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import { type CarveAvoid, type PlacementLedger, tunnelTo } from '@/world/connect';
+import { fitWalks, reachedNear } from '@/world/fitWalks';
+import { clearLooseStock } from '@/world/looseStock';
 import { computeFits, wizardMask } from '@/world/validate';
 
 /**
@@ -77,71 +79,11 @@ for (const t of [
 const STATIC = new Uint8Array(256);
 for (const t of [Cell.Wall, Cell.Stone, Cell.Metal, Cell.Crystal, Cell.Glass, Cell.RawOre, Cell.Mirror, Cell.Lava]) STATIC[t] = 1;
 
-/** Loose stuff that falls or flows: nothing of it may sit where it can reach a lake. */
-const LOOSE = new Uint8Array(256);
-for (const t of [Cell.Oil, Cell.Gunpowder, Cell.Water, Cell.Sand, Cell.Snow, Cell.Acid, Cell.Toxic, Cell.Blood, Cell.Slime, Cell.Nitrogen, Cell.Brine]) LOOSE[t] = 1;
-
 /** Ground a hall may be carved from: solid rock, no vault shell, no soft growth. */
 const ROCK = new Uint8Array(256);
 for (const t of [Cell.Wall, Cell.Stone, Cell.Gold, Cell.Coal, Cell.RawOre, Cell.Crystal]) ROCK[t] = 1;
 
 const N4: ReadonlyArray<readonly [number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-
-interface Bfs {
-  dist: Int32Array;
-  prev: Int32Array;
-}
-
-/** 4-connected flood over body-fit cells from the spawn, with parent pointers (the walk to everything). */
-function fitWalks(fits: Uint8Array, sx: number, sy: number): Bfs | null {
-  const W = WIDTH, H = HEIGHT;
-  const dist = new Int32Array(W * H).fill(-1);
-  const prev = new Int32Array(W * H).fill(-1);
-  const q = new Int32Array(W * H);
-  let seed = -1;
-  for (let r = 0; r < 60 && seed < 0; r++) {
-    for (let dy = -r; dy <= r && seed < 0; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-        const x = sx + dx, y = sy + dy;
-        if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) continue;
-        if (fits[x + y * W]) { seed = x + y * W; break; }
-      }
-    }
-  }
-  if (seed < 0) return null;
-  let qh = 0, qt = 0;
-  dist[seed] = 0;
-  q[qt++] = seed;
-  const bottom = (H - 1) * W;
-  while (qh < qt) {
-    const i = q[qh++];
-    const x = i % W;
-    const d = dist[i] + 1;
-    if (x + 1 < W - 1 && dist[i + 1] < 0 && fits[i + 1]) { dist[i + 1] = d; prev[i + 1] = i; q[qt++] = i + 1; }
-    if (x - 1 >= 1 && dist[i - 1] < 0 && fits[i - 1]) { dist[i - 1] = d; prev[i - 1] = i; q[qt++] = i - 1; }
-    if (i + W < bottom && dist[i + W] < 0 && fits[i + W]) { dist[i + W] = d; prev[i + W] = i; q[qt++] = i + W; }
-    if (i - W >= W && dist[i - W] < 0 && fits[i - W]) { dist[i - W] = d; prev[i - W] = i; q[qt++] = i - W; }
-  }
-  return { dist, prev };
-}
-
-/** Nearest reached cell to (x, y) within a small ring search, or -1. */
-function reachedNear(b: Bfs, x: number, y: number): number {
-  x = Math.floor(x);
-  y = Math.floor(y);
-  for (let r = 0; r <= 24; r++) {
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-        const X = x + dx, Y = y + dy;
-        if (X < 0 || Y < 0 || X >= WIDTH || Y >= HEIGHT) continue;
-        if (b.dist[X + Y * WIDTH] >= 0) return X + Y * WIDTH;
-      }
-    }
-  }
-  return -1;
-}
 
 function markDisc(mask: Uint8Array, cx: number, cy: number, r: number): void {
   const r2 = r * r;
@@ -554,42 +496,10 @@ export function placeLavaLakes(
   //      air within reach of a lake (40 cells aside, 100 above) is cleared, unless it is placed
   //      ground of something else (a reserved room's own stock) ----
   if (result.lakes.length > 0) {
-    const seenP = new Uint8Array(W * H);
-    const comp: number[] = [];
-    let purged = 0;
-    for (const lake of result.lakes) {
-      const wx0 = Math.max(2, lake.x0 - 40), wx1 = Math.min(W - 3, lake.x1 + 40);
-      const wy0 = Math.max(2, lake.y0 - 100), wy1 = Math.min(floorBand, lake.y1 + 10);
-      for (let y = wy0; y <= wy1; y++) {
-        for (let x = wx0; x <= wx1; x++) {
-          const start = x + y * W;
-          if (seenP[start] || !LOOSE[types[start]]) continue;
-          comp.length = 0;
-          comp.push(start);
-          seenP[start] = 1;
-          let open = false, held = false;
-          for (let head = 0; head < comp.length; head++) {
-            const i = comp[head];
-            if (hard[i]) held = true;
-            const cx = i % W, cy = (i / W) | 0;
-            for (const [dx, dy] of N4) {
-              const X = cx + dx, Y = cy + dy;
-              if (X < 1 || X >= W - 1 || Y < 1 || Y >= H - 1) continue;
-              const j = X + Y * W;
-              if (types[j] === Cell.Empty) open = true;
-              else if (LOOSE[types[j]] && !seenP[j]) { seenP[j] = 1; comp.push(j); }
-            }
-          }
-          if (!open || held) continue;
-          for (const i of comp) {
-            types[i] = Cell.Empty;
-            world.colors[i] = 0x08080c;
-            world.activity.touchIndex(i);
-          }
-          purged += comp.length;
-        }
-      }
-    }
+    const windows = result.lakes.map((lake) => ({
+      x0: lake.x0 - 40, x1: lake.x1 + 40, y0: lake.y0 - 100, y1: Math.min(floorBand, lake.y1 + 10),
+    }));
+    const purged = clearLooseStock(world, windows, (x, y) => hard[x + y * W] === 1, Infinity);
     if (purged > 0) result.debug.purged = purged;
   }
 

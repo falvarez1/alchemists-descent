@@ -28,7 +28,7 @@ import {
   setValveCells,
 } from '@/core/mechanismFactories';
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
-import { Cell, isLiquid } from '@/sim/CellType';
+import { Cell, blocksEntity, isLiquid } from '@/sim/CellType';
 import {
   EMPTY_COLOR,
   goldColor,
@@ -99,6 +99,10 @@ export function placeStructures(
   kilnFlue: KilnFlueSite | null;
   /** Where the boss hall's flank connectors leave it (standing height): the gauge rescue re-joins a cut-off hall from here. */
   arenaMouths: Array<{ x: number; y: number }>;
+  /** The live circuit's port shaft cells (kept open by the footing pass). */
+  portHoles: Array<[number, number]>;
+  /** Where the exit shrine's flank connectors leave it. */
+  portalMouths: Array<{ x: number; y: number }>;
 } {
   const w = ctx.world;
   const pickups: Pickup[] = [];
@@ -113,6 +117,8 @@ export function placeStructures(
   let wardenRepair: ((floor?: boolean) => void) | null = null;
   let kilnFlue: KilnFlueSite | null = null;
   const arenaMouths: Array<{ x: number; y: number }> = [];
+  /** A live circuit's port shaft (one open cell wide, through its apron floor): nothing may fill it. */
+  const portHoles: Array<[number, number]> = [];
 
   const carvePocket = (cx: number, cy: number, rx: number, ry: number): void =>
     carvePocketCells(w, cx, cy, rx, ry);
@@ -147,6 +153,76 @@ export function placeStructures(
       if (below !== Cell.Empty) return yy;
     }
     return y;
+  };
+
+  /**
+   * Where loose loot set near (x, y) really rests (GEN 62). settleY only drops to a floor:
+   * a region's centroid plus its jitter often lands IN rock, and the pickup then sat 27-30
+   * rows deep in a wall (the audit's 49 buried pickups, 18 of them P2): the centroid of a
+   * winding region is a point in the ROCK beside it. A landing that is open ground with room
+   * for a body within 8 keeps its spot exactly; an entombed one (inside rock or powder, or in
+   * a crack no body fits) moves into its own region, to the cell of it nearest the old spot,
+   * and from there to the floor under the nearest body-fit cell (never inside a reserved room:
+   * a locked prefab's interior is a room the loot would sit behind a door in). With no fits
+   * mask, or no such cell, the old landing stands (never a silent skip). No rng.
+   */
+  const lootSpot = (x: number, y: number, reg?: { id: number }): { x: number; y: number } => {
+    const ly = settleY(x, y);
+    if (!fits) return { x, y: ly };
+    const room = (X: number, Y: number): boolean => {
+      for (let dy = -8; dy <= 8; dy += 2) {
+        for (let dx = -8; dx <= 8; dx += 2) {
+          const xx = X + dx, yy = Y + dy;
+          if (xx > 1 && yy > 1 && xx < WIDTH - 1 && yy < HEIGHT - 1 && fits[xx + yy * WIDTH]) return true;
+        }
+      }
+      return false;
+    };
+    if (!blocksEntity(w.types[w.idx(x, ly)]) && room(x, ly)) return { x, y: ly };
+    const tryFrom = (cx: number, cy: number, reach: number): { x: number; y: number } | null => {
+      for (let r = 0; r <= reach; r += 2) {
+        for (let a = 0; a < (r === 0 ? 1 : 16); a++) {
+          const ang = (a / 16) * Math.PI * 2;
+          const X = Math.floor(cx + Math.cos(ang) * r), Y = Math.floor(cy + Math.sin(ang) * r);
+          if (X < 12 || Y < 12 || X >= WIDTH - 12 || Y >= HEIGHT - 12 || !fits[X + Y * WIDTH]) continue;
+          if (ledger.intersects(X - 3, Y - 3, X + 3, Y + 3)) continue;
+          const yy = settleY(X, Y);
+          if (!blocksEntity(w.types[w.idx(X, yy)])) return { x: X, y: yy };
+        }
+      }
+      return null;
+    };
+    if (reg) {
+      // the region's own cell nearest the old spot (graph.labels: one cell per 4x4 block)
+      let bx = -1, by = -1, bd = Infinity;
+      const gx0 = Math.floor(x / graph.scale), gy0 = Math.floor(y / graph.scale);
+      for (let gy = Math.max(0, gy0 - 40); gy <= Math.min(graph.h - 1, gy0 + 40); gy++) {
+        for (let gx = Math.max(0, gx0 - 40); gx <= Math.min(graph.w - 1, gx0 + 40); gx++) {
+          if (graph.labels[gx + gy * graph.w] !== reg.id) continue;
+          const d = (gx - gx0) * (gx - gx0) + (gy - gy0) * (gy - gy0);
+          if (d < bd) { bd = d; bx = gx; by = gy; }
+        }
+      }
+      if (bx >= 0) {
+        const mx = bx * graph.scale + graph.scale / 2, my = by * graph.scale + graph.scale / 2;
+        const own = tryFrom(mx, my, 14);
+        if (own) return own;
+        const near = tryFrom(x, y, 70);
+        if (near) return near;
+        // A crack no body fits (a region can be narrow): still open air, never rock. The
+        // loot rests on its floor and stays buried treasure to dig to.
+        for (let r = 0; r <= 8; r += 2) {
+          for (let a = 0; a < (r === 0 ? 1 : 8); a++) {
+            const ang = (a / 8) * Math.PI * 2;
+            const X = Math.floor(mx + Math.cos(ang) * r), Y = Math.floor(my + Math.sin(ang) * r);
+            if (X < 12 || Y < 12 || X >= WIDTH - 12 || Y >= HEIGHT - 12 || blocksEntity(w.types[w.idx(X, Y)])) continue;
+            const yy = settleY(X, Y);
+            if (!blocksEntity(w.types[w.idx(X, yy)])) return { x: X, y: yy };
+          }
+        }
+      }
+    }
+    return tryFrom(x, y, 70) ?? { x, y: ly };
   };
 
   /**
@@ -227,6 +303,9 @@ export function placeStructures(
     }
   }
   const portal: ExitPortal | null = def.nextLevelId ? { x: portalX, y: portalY, open: false } : null;
+  // The shrine's flank connectors leave from these points: the gauge rescue re-joins a shrine the
+  // spawn cannot reach from them (GEN 62: d3 seed 5 and d3b seed 1337 generated with an unreachable portal).
+  const portalMouths = portal ? [{ x: portalX - 22, y: portalY - 2 }, { x: portalX + 22, y: portalY - 2 }] : [];
 
   // D1 (the only depth-1 level) is generated by world/breathingWorks.ts and
   // never reaches this pass: its refuge is authored there, and the procedural
@@ -322,8 +401,8 @@ export function placeStructures(
       ? pocketRegions[Math.floor(rng.next() * pocketRegions.length)]
       : graph.regions[Math.floor(rng.next() * Math.max(1, graph.regions.length))];
   if (heartReg) {
-    const hx = Math.floor(heartReg.cx);
-    const hy = settleY(hx, Math.floor(heartReg.cy));
+    const heartAt = lootSpot(Math.floor(heartReg.cx), Math.floor(heartReg.cy), heartReg);
+    const hx = heartAt.x, hy = heartAt.y;
     pickups.push(makePickup('heart', hx, hy - 2));
     // Pocket regions are by definition off the main path, so tunnel the heart
     // to the cave network like every other landmark — otherwise the findability
@@ -336,10 +415,11 @@ export function placeStructures(
   const sideRegions = graph.regions.filter(
     (r2) => !r2.onMainPath && r2.area > 80 && !ledger.intersects(r2.cx - 4, r2.cy - 4, r2.cx + 4, r2.cy + 8),
   );
+  const tomeRng = rng.fork(0x70e3);
   for (let t = 0; t < tomes && sideRegions.length > 0; t++) {
     const reg = sideRegions[Math.floor(rng.next() * sideRegions.length)];
-    const tx = Math.floor(reg.cx);
-    const ty = settleY(tx, Math.floor(reg.cy));
+    const tomeAt = lootSpot(Math.floor(reg.cx), Math.floor(reg.cy), reg);
+    const tx = tomeAt.x, ty = tomeAt.y;
     // plinth
     for (let dy = 0; dy < 2; dy++) {
       const i = w.idx(tx, ty + 1 + dy);
@@ -351,6 +431,10 @@ export function placeStructures(
     pickups.push(
       makePickup('tome', tx, ty - 1, { card: randomCard(TOME_REWARD_POOL, () => rng.next()) }),
     );
+    // A tome is a card: its pocket joins the caves like the heart's (GEN 62: 42% of the tomes
+    // the audit counted were walk-up). The tunnel draws from a forked stream, so nothing placed
+    // after it moves.
+    connectToCavesFrom(w, tomeRng, graph, tx, ty - 4, 12, fits, undefined, sealedFootprints(ledger));
   }
 
   // ---- Chests + loose gold piles along region centroids ----
@@ -359,26 +443,25 @@ export function placeStructures(
     const reg = graph.regions[Math.floor(rng.next() * graph.regions.length)];
     const cx = Math.floor(reg.cx + (rng.next() - 0.5) * 30);
     if (cx < 10 || cx > WIDTH - 10) continue;
-    const cy = settleY(cx, Math.floor(reg.cy));
-    pickups.push(makePickup('chest', cx, cy - 1));
+    const chestAt = lootSpot(cx, Math.floor(reg.cy), reg);
+    pickups.push(makePickup('chest', chestAt.x, chestAt.y - 1));
   }
   const piles = 6 + Math.floor(rng.next() * 5);
   for (let g2 = 0; g2 < piles && graph.regions.length > 0; g2++) {
     const reg = graph.regions[Math.floor(rng.next() * graph.regions.length)];
     const gx = Math.floor(reg.cx + (rng.next() - 0.5) * 60);
     if (gx < 10 || gx > WIDTH - 10) continue;
-    const gy = settleY(gx, Math.floor(reg.cy));
+    const pileAt = lootSpot(gx, Math.floor(reg.cy), reg);
     pickups.push(
-      makePickup('goldpile', gx, gy - 1, { amount: 5 + Math.floor(rng.next() * 10) }),
+      makePickup('goldpile', pileAt.x, pileAt.y - 1, { amount: 5 + Math.floor(rng.next() * 10) }),
     );
   }
   // A scattered potion or two
   if (rng.next() < 0.8 && graph.regions.length > 0) {
     const reg = graph.regions[Math.floor(rng.next() * graph.regions.length)];
-    const px = Math.floor(reg.cx);
-    const py = settleY(px, Math.floor(reg.cy));
+    const potionAt = lootSpot(Math.floor(reg.cx), Math.floor(reg.cy), reg);
     pickups.push(
-      makePickup('potion', px, py - 1, {
+      makePickup('potion', potionAt.x, potionAt.y - 1, {
         potion: POTION_KINDS[Math.floor(rng.next() * POTION_KINDS.length)],
       }),
     );
@@ -904,6 +987,8 @@ export function placeStructures(
         for (const X of [px2 + 3, px2 + 4]) put(X, railY, Cell.Stone, stoneColor());
         // port shaft: one open cell, down through the apron floor
         for (let Y = py2 + 10; Y <= py2 + 11; Y++) put(px2 + 9, Y, Cell.Empty, EMPTY_COLOR);
+        // (the footing pass hangs a two-row lip along a lever's shelf: it may not fill the shaft or the roof hole under it)
+        for (let Y = py2 + 10; Y <= py2 + 12; Y++) portHoles.push([px2 + 9, Y]);
         // knife-switch valves standing OPEN in the gaps; their levers on
         // the apron are created PRE-THROWN, so pulling one CLOSES its gate
         // into the rail. V2's closed body reaches the vault roof corner.
@@ -1296,5 +1381,7 @@ export function placeStructures(
     wardenRepair,
     kilnFlue,
     arenaMouths,
+    portHoles,
+    portalMouths,
   };
 }

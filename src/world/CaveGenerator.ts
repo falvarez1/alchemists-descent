@@ -74,6 +74,8 @@ import {
 import { placeStructures } from '@/world/structures';
 import { placeStorySites } from '@/world/storySites';
 import { placeLavaLakes, type LakeTarget, type LavaLakeResult } from '@/world/lavaLakes';
+import { clearLooseStock, type StockSite } from '@/world/looseStock';
+import { holdPortalShrine } from '@/world/portalShrine';
 import type { LevelStorySites } from '@/core/story';
 
 /* ===================== Procedural Generation Map Engines ===================== */
@@ -589,6 +591,8 @@ export class WorldGen implements WorldGenApi {
     sealed: readonly CarveAvoid[] = [],
     boss: { x: number; y: number } | null = null,
     arenaMouths: ReadonlyArray<{ x: number; y: number }> = [],
+    portal: { x: number; y: number } | null = null,
+    portalMouths: ReadonlyArray<{ x: number; y: number }> = [],
   ): void {
       let wiz = wizardMask({ world: ctx.world, spawn });
       let cell = reachableMask({ world: ctx.world, spawn });
@@ -834,6 +838,11 @@ export class WorldGen implements WorldGenApi {
       if (boss && arenaMouths.length > 0) {
         const pass = (): boolean => wizNear(boss.x, boss.y, 12);
         if (!pass()) recordRescue(`boss@${Math.floor(boss.x)},${Math.floor(boss.y)}`, () => arenaMouths.some((m) => rescueAt(m.x, m.y, pass)));
+      }
+      // The exit shrine likewise (validate: 'portal'): judged as the validator does.
+      if (portal && portalMouths.length > 0) {
+        const pass = (): boolean => wizNear(portal.x, portal.y + 6, 12);
+        if (!pass()) recordRescue(`portal@${Math.floor(portal.x)},${Math.floor(portal.y)}`, () => portalMouths.some((m) => rescueAt(m.x, m.y, pass)));
       }
       for (const m of mechanisms) {
         if (!HANDS_ON.has(m.kind) || m.targetId < 0) continue;
@@ -1173,6 +1182,8 @@ export class WorldGen implements WorldGenApi {
       wardenRepair,
       kilnFlue,
       arenaMouths,
+      portHoles,
+      portalMouths,
     } = placeStructures(
       ctx,
       this.rng,
@@ -1381,7 +1392,7 @@ export class WorldGen implements WorldGenApi {
     // Rescue tunnels route around the sealed features too (fail-open: a sealed
     // room is dear, never a wall), and each repairs after them below.
     const sealed = sealedFootprints(ledger);
-    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed, boss, arenaMouths);
+    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed, boss, arenaMouths, portal, portalMouths);
     stage('gauge-rescue');
 
     // 8d) The Sump self-repairs AFTER the rescue pass: rescue tunnels eat all
@@ -1409,7 +1420,7 @@ export class WorldGen implements WorldGenApi {
     // Final terrain dressing can invalidate a route that was clean during the
     // main rescue pass (D1's surface cap is the usual culprit). Validate the
     // finished cell field before handing it to Levels/runtime repair.
-    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed, boss, arenaMouths);
+    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed, boss, arenaMouths, portal, portalMouths);
     // ...and the final rescue may carve again: the Kiln's seal is the player's
     // to dig, so re-assert its tank once more (idempotent; no-op off the Kiln).
     kilnRepair?.();
@@ -1429,13 +1440,45 @@ export class WorldGen implements WorldGenApi {
     for (const repair of setPieceRepairs) repair();
     stage('final-gauge-rescue');
 
+    // 8d+) FIXTURE STOCK (GEN 62): a seed pocket of oil or gunpowder, a stray dune or a puddle in
+    //     the room of anything the player stands at is cleared (the audit: levers 45% in oil, a
+    //     waystone in five liquid cells, an echo stage 31% sand, a portal ring half gunpowder).
+    //     Only opens cells; a mass inside a room another pass owns (a prefab, a lair, a puzzle
+    //     hall: any reserved rect but the waystone/spawn/well/footing ones) is its stock, left alone.
+    if (genDef.clearFixtureStock) {
+      const rooms = ledger.rects().filter((r) => !/^(waystone|spawn|exit-well|footing-)/.test(r.label));
+      const held = (x: number, y: number): boolean => rooms.some((r) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1);
+      const sites: StockSite[] = [];
+      for (const ws of waystones) sites.push({ x0: ws.x - 14, y0: ws.y - 36, x1: ws.x + 14, y1: ws.y + 6 });
+      sites.push({ x0: cauldron.x - 16, y0: cauldron.y - 16, x1: cauldron.x + 16, y1: cauldron.y + 6 });
+      for (const m of mechanisms) {
+        if (m.kind === 'lever' || m.kind === 'brazier' || m.kind === 'plate' || m.kind === 'scale') {
+          sites.push({ x0: m.x - 16, y0: m.y - 28, x1: m.x + m.w + 16, y1: m.y + 8 });
+        }
+      }
+      for (const v of runeVaults) sites.push({ x0: v.rx - 14, y0: v.ry - 20, x1: v.rx + 14, y1: v.ry + 8 });
+      for (const p of pickups) if (p.kind === 'key') sites.push({ x0: p.x - 18, y0: p.y - 30, x1: p.x + 18, y1: p.y + 8 });
+      if (portal) sites.push({ x0: portal.x - 34, y0: portal.y - 44, x1: portal.x + 34, y1: portal.y + 22 });
+      const camp = storyPlaced.sites.camp, valve = storyPlaced.sites.valve;
+      if (camp) sites.push({ x0: camp.x0 - 4, y0: camp.floorY - 34, x1: camp.x1 + 4, y1: camp.floorY + 2 });
+      if (valve) sites.push({ x0: valve.stageX - valve.stageHalfW - 4, y0: valve.floorY - 24, x1: valve.stageX + valve.stageHalfW + 4, y1: valve.floorY + 2 });
+      const cleared = clearLooseStock(world, sites, held);
+      if (shouldLogDevDiagnostics() && cleared > 0) console.warn(`[gen] ${def.id}: ${cleared} cells of loose stock cleared from fixture rooms`);
+      stage('fixture-stock');
+      // The exit shrine's floor and ring (the carve took the plug's top; a pocket of powder sat in the ring).
+      if (portal) {
+        const shrine = holdPortalShrine(world, portal, { x: wellX, sealY, halfW });
+        if (shouldLogDevDiagnostics() && shrine > 0) console.warn(`[gen] ${def.id}: exit shrine pad and ring restored (${shrine} cells)`);
+      }
+    }
+
     // 8e) THE FOOTING CONTRACT, after the last carve: every bowl, basin, body
     //     and glyph re-stamped, ground put back under anything a carve
     //     undercut, the key in open air on its floor under nothing that will
     //     fall. Fail-open: a fill that costs standing room elsewhere is undone.
     const footing = holdFixtureFootings(world, {
       bowls, cauldron, mechanisms, ownTriggers, runeVaults: ownRunes, pickups,
-      story: { ...storyPlaced.sites, flue: kilnFlue }, bodies, spawn,
+      story: { ...storyPlaced.sites, flue: kilnFlue }, bodies, spawn, keepOpen: portHoles,
     });
     if (shouldLogDevDiagnostics() && (footing.undercut.length > 0 || footing.reverted.length > 0)) {
       console.warn(`[gen] ${def.id}: footing undercut ${footing.undercut.join(' ') || '-'}; taken back ${footing.reverted.join(' ') || '-'}`);

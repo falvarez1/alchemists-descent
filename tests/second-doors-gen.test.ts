@@ -68,8 +68,8 @@ function count(world: World, x0: number, y0: number, x1: number, y1: number, cel
 
 /** GEN_VERSION 57: the Ice-House and the Glass Galleries (galleries skeleton, light rooms, dressing, the Lens Room), with the story's camp and valve nooks. */
 const GOLDEN: Array<{ id: 'd2b' | 'd3b'; seed: number; hash: string }> = [
-  { id: 'd2b', seed: 1337, hash: 'a63ef428' }, // GEN_VERSION 61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v60's story nooks on dry ground (no liquid level with the floor; the route at most a step above the room), over v59's sealed-feature route floors
-  { id: 'd3b', seed: 1337, hash: '79810dd5' }, // GEN_VERSION 61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v59's a sealed-footprint detour leaves from its true start, not the snapped grid node
+  { id: 'd2b', seed: 1337, hash: 'b27555c8' }, // GEN_VERSION 62: loot rests on open ground (entombed pickups re-seated, tome pockets joined), the latch port and set-piece rooms held open, the exit shrine's pad and ring restored and its mouths rescued, over v61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v60's story nooks on dry ground (no liquid level with the floor; the route at most a step above the room), over v59's sealed-feature route floors
+  { id: 'd3b', seed: 1337, hash: 'd0397486' }, // GEN_VERSION 62: loot rests on open ground (entombed pickups re-seated, tome pockets joined), the latch port and set-piece rooms held open, the exit shrine's pad and ring restored and its mouths rescued, over v61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v59's a sealed-footprint detour leaves from its true start, not the snapped grid node
 ];
 
 describe('the second doors: golden hashes', () => {

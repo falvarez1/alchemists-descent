@@ -107,6 +107,8 @@ export interface FootingInput {
   story: LevelStorySites | null;
   bodies: BodyRecord;
   spawn: { x: number; y: number };
+  /** Cells that are open ON PURPOSE (a live circuit's one-cell port shaft): no footing fills them. */
+  keepOpen?: ReadonlyArray<readonly [number, number]>;
 }
 
 export interface FootingReport {
@@ -128,6 +130,10 @@ const isPowder = (t: number): boolean => t === Cell.Sand || t === Cell.Coal || t
  */
 export function holdFixtureFootings(world: World, input: FootingInput): FootingReport {
   const report: FootingReport = { restamped: 0, plinth: 0, undercut: [], reverted: [] };
+  // The live circuit's port shaft is one cell wide and sits between two levers' shelves: the
+  // lever at its right found (394, 196) open and hung a lip across it, sealing the latch
+  // (d4 seed 5, d3b seeds 5 and 7: 'chargelatch' unreachable at generation).
+  const keep = new Set((input.keepOpen ?? []).map(([x, y]) => world.idx(x, y)));
   // Every cell this pass turns solid (or moves), with what it was, grouped per
   // fixture: a group whose fill severs a route is taken back whole. Opening a
   // cell can never cost reachability, so opens are not recorded.
@@ -145,7 +151,7 @@ export function holdFixtureFootings(world: World, input: FootingInput): FootingR
   const fill = (x: number, y: number, t: number, color: number): boolean => {
     if (x < 2 || x >= WIDTH - 2 || y < 2 || y >= HEIGHT - 6) return false;
     const i = world.idx(x, y);
-    if (blocksEntity(world.types[i])) return false;
+    if (blocksEntity(world.types[i]) || keep.has(i)) return false;
     group.push([i, world.types[i], world.colors[i]]);
     world.replaceCellAt(i, t, color);
     return true;
@@ -167,7 +173,7 @@ export function holdFixtureFootings(world: World, input: FootingInput): FootingR
   const put = (x: number, y: number, t: number, color: number): void => {
     if (x < 2 || x >= WIDTH - 2 || y < 2 || y >= HEIGHT - 6) return;
     const i = world.idx(x, y);
-    if (world.types[i] === t || world.types[i] === Cell.Metal) return;
+    if (world.types[i] === t || world.types[i] === Cell.Metal || keep.has(i)) return;
     group.push([i, world.types[i], world.colors[i]]);
     world.replaceCellAt(i, t, color);
   };
