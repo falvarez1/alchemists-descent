@@ -149,7 +149,7 @@ export class InputManager {
       if (pressed(9)) window.dispatchEvent(new Event('game-pause-request'));
       if (pressed(8)) ctx.events.emit('clipRequested', { reason: 'hotkey' }); // View/Back: save the last seconds
       const overlay = document.querySelector<HTMLDialogElement>('#player-settings[open]')
-        ?? document.querySelector<HTMLElement>('#pause-overlay.visible, #run-summary.visible, #gameover-overlay.visible');
+        ?? document.querySelector<HTMLElement>('#pause-overlay.visible, #run-summary.visible, #gameover-overlay.visible, #sanctum-overlay.visible');
       if (overlay) {
         const controls = Array.from(overlay.querySelectorAll<HTMLButtonElement | HTMLSelectElement | HTMLInputElement>('button, select, input')).filter(el => el.getClientRects().length > 0 && !el.disabled);
         let index = controls.indexOf(document.activeElement as HTMLButtonElement);
@@ -161,6 +161,8 @@ export class InputManager {
           focused.selectedIndex = Math.max(0, Math.min(focused.options.length - 1, focused.selectedIndex + (pressed(15) ? 1 : -1)));
           focused.dispatchEvent(new Event('change'));
         }
+        // The Sanctum's doors: LB / RB are its left / right-hand stair (ui/Sanctum answers Q / E).
+        if (overlay.id === 'sanctum-overlay' && (pressed(4) || pressed(5))) window.dispatchEvent(new KeyboardEvent('keydown', { code: pressed(4) ? 'KeyQ' : 'KeyE', bubbles: true }));
         if (pressed(1)) {
           if (overlay instanceof HTMLDialogElement) overlay.close();
           else window.dispatchEvent(new Event('game-pause-request'));

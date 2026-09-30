@@ -82,19 +82,112 @@ export class Sanctum implements SanctumApi {
   private phialTimer: number | null = null;
   /** The descend click has been taken: the curtain is coming up and the floor is about to be built. */
   private descending = false;
+  /** The boon cards, in order: digit keys 1-3 press them. */
+  private readonly perkCards: HTMLButtonElement[] = [];
+  /** "More below": the body scrolls and there is more under the fold than is showing. */
+  private readonly more = document.createElement('button');
+  private resizeWatch: ResizeObserver | null = null;
+  /** Until the player scrolls for themself, a layout change (Matron Ash's panel appearing) re-reveals the boons. */
+  private autoReveal = false;
+  private readonly updateMore = (): void => {
+    const body = document.querySelector<HTMLElement>('#sanctum-overlay .sanc-body');
+    if (!body) return;
+    if (this.autoReveal) this.revealPerks();
+    const below = body.scrollHeight - body.clientHeight - body.scrollTop > 6;
+    // The fade on the body's lower edge never dims the boons: where they sit on it, the button alone says "more".
+    const edge = body.getBoundingClientRect().bottom;
+    const row = el('perk-row').getBoundingClientRect();
+    body.classList.toggle('more-below', below && !(row.height > 0 && row.top < edge && row.bottom > edge - 18));
+    this.more.hidden = !below;
+  };
+  private readonly onKeyDown = (event: KeyboardEvent): void => this.keyDown(event);
 
   constructor(private ctx: Ctx) {
     el('descend-btn').addEventListener('click', this.onDescendClick);
     this.teaser.className = 'sanc-teaser';
     this.teaser.hidden = true;
-    document.querySelector('#sanctum-overlay .sanc-body')?.prepend(this.teaser);
+    const body = document.querySelector<HTMLElement>('#sanctum-overlay .sanc-body');
+    body?.prepend(this.teaser);
+    // The scroll cue: a fade on the body's lower edge (menus.css) and this button in the footer.
+    this.more.type = 'button';
+    this.more.className = 'sanc-more';
+    this.more.hidden = true;
+    this.more.innerHTML = 'More below <i aria-hidden="true"></i>';
+    this.more.addEventListener('click', () => body?.scrollBy({ top: Math.max(120, body.clientHeight * 0.7), behavior: 'smooth' }));
+    document.querySelector('#sanctum-overlay .sanc-foot')?.prepend(this.more);
+    if (body) {
+      body.addEventListener('scroll', this.updateMore, { passive: true });
+      for (const type of ['wheel', 'touchstart', 'pointerdown'] as const) body.addEventListener(type, () => { this.autoReveal = false; }, { passive: true });
+      if (typeof ResizeObserver !== 'undefined') {
+        this.resizeWatch = new ResizeObserver(this.updateMore);
+        for (const node of [body, this.teaser, el('perk-row'), el('sanc-shop')]) this.resizeWatch.observe(node);
+      }
+    }
+    window.addEventListener('keydown', this.onKeyDown, true);
   }
 
   dispose(): void {
     el('descend-btn').removeEventListener('click', this.onDescendClick);
+    window.removeEventListener('keydown', this.onKeyDown, true);
+    this.resizeWatch?.disconnect();
+    this.more.remove();
     if (this.phialTimer !== null) window.clearTimeout(this.phialTimer);
     this.phials.dispose();
     this.teaser.remove();
+  }
+
+  /**
+   * The Sanctum plays from the keyboard: 1-3 take a boon, left/right (or Q/E)
+   * choose a door, Enter descends. Yields to anything else that owns the
+   * keys (the Lost pages offer teaches 1-3 too, a dialog, the console).
+   */
+  private keyDown(event: KeyboardEvent): void {
+    if (!this._open || this.descending || event.defaultPrevented || event.repeat) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (document.querySelector('#card-offer-overlay.visible, #player-settings[open], .app-dialog-root, #dev-console.open, #story-cinema.show')) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    const digit = /^(?:Digit|Numpad)([1-9])$/.exec(event.code);
+    if (digit) {
+      const card = this.perkCards[Number(digit[1]) - 1];
+      if (!card || card.disabled) return;
+      event.preventDefault();
+      card.click();
+      return;
+    }
+    if (event.code === 'ArrowLeft' || event.code === 'KeyQ' || event.code === 'ArrowRight' || event.code === 'KeyE') {
+      const door = this.doorButtons[event.code === 'ArrowLeft' || event.code === 'KeyQ' ? 0 : 1];
+      if (!door) return;
+      event.preventDefault();
+      door.click();
+      return;
+    }
+    if (event.code === 'Enter' || event.code === 'NumpadEnter') {
+      // A focused shop button answers Enter itself; anywhere else it is "go".
+      if (target instanceof HTMLElement && target.closest('.shop-row')) return;
+      const go = el('descend-btn') as HTMLButtonElement;
+      if (go.disabled) return;
+      event.preventDefault();
+      this.close();
+    }
+  }
+
+  /** The keycap a control answers to (hidden on touch, where there is no keyboard). */
+  private static keycap(label: string): HTMLElement {
+    const cap = document.createElement('kbd');
+    cap.className = 'key sanc-key';
+    cap.textContent = label;
+    cap.setAttribute('aria-hidden', 'true');
+    return cap;
+  }
+
+  /** A short view: bring the boons into the body's view (the body scrolls; the overlay must not). */
+  private revealPerks(): void {
+    const body = document.querySelector<HTMLElement>('#sanctum-overlay .sanc-body');
+    if (!body || el('sanctum-overlay').clientHeight >= 700) return;
+    const b = body.getBoundingClientRect();
+    const r = el('perk-row').getBoundingClientRect();
+    if (r.height > 0 && r.bottom > b.bottom) body.scrollTop += r.bottom - b.bottom + 8;
   }
 
   private static facts(signature: string, resident: string): HTMLDListElement {
@@ -146,6 +239,8 @@ export class Sanctum implements SanctumApi {
         tag.textContent = 'Unwalked';
         head.append(tag);
       }
+      head.append(Sanctum.keycap(i === 0 ? '←' : '→'));
+      door.setAttribute('aria-keyshortcuts', i === 0 ? 'ArrowLeft Q' : 'ArrowRight E');
       const name = document.createElement('h3');
       name.className = 'sanc-below-name';
       name.textContent = floorDisplayName(id);
@@ -282,6 +377,7 @@ export class Sanctum implements SanctumApi {
         const name = LEVELS[target] ? floorDisplayName(target) : `depth ${depth}`;
         dBtn.disabled = false;
         dBtn.textContent = 'Descend to ' + midName(name);
+        dBtn.append(' ', Sanctum.keycap('Enter'));
       } else {
         dBtn.disabled = true;
         dBtn.textContent = !perkTaken && !target
@@ -291,18 +387,20 @@ export class Sanctum implements SanctumApi {
     };
     this.rearm = armDescend;
     armDescend();
-    const cards: HTMLButtonElement[] = [];
+    const cards = this.perkCards;
+    cards.length = 0;
     for (const pk of offer) {
       const card = document.createElement('button');
       card.type = 'button';
       card.className = 'perk-card';
+      card.setAttribute('aria-keyshortcuts', String(cards.length + 1));
       const name = document.createElement('div');
       name.className = 'pk-name';
       name.textContent = pk.name;
       const desc = document.createElement('div');
       desc.className = 'pk-desc';
       desc.textContent = pk.desc;
-      card.append(name, desc);
+      card.append(name, desc, Sanctum.keycap(String(cards.length + 1)));
       card.addEventListener('click', () => {
         if (perkTaken) return;
         perkTaken = true;
@@ -312,6 +410,7 @@ export class Sanctum implements SanctumApi {
         ctx.audio.learn();
         ctx.telemetry.count('perk.' + pk.id);
         card.classList.add('taken');
+        this.autoReveal = false;
         row.querySelectorAll('.perk-card').forEach((c) => {
           if (c !== card) c.classList.add('faded');
         });
@@ -324,6 +423,8 @@ export class Sanctum implements SanctumApi {
 
     this.buildShop(ctx);
     el('sanctum-overlay').classList.add('visible');
+    this.autoReveal = true;
+    requestAnimationFrame(this.updateMore);
   }
 
   /** The Refuge shrine's trade: shop only — boons are bargained at the portal. */
@@ -333,6 +434,8 @@ export class Sanctum implements SanctumApi {
     this.onDescend = null;
     this.rearm = null;
     this.chosen = null;
+    this.perkCards.length = 0;
+    this.doorButtons.length = 0;
     this.wasPaused = ctx.state.paused;
     ctx.state.paused = true;
     this.teaser.hidden = true;
@@ -342,10 +445,13 @@ export class Sanctum implements SanctumApi {
     const dBtn = el('descend-btn') as HTMLButtonElement;
     dBtn.disabled = false;
     dBtn.textContent = 'Return to the depths';
+    dBtn.append(' ', Sanctum.keycap('Enter'));
     el('perk-row').innerHTML =
       '<div class="sanc-note">The old ones only trade here. Boons are bargained at the exit portal, between depths.</div>';
     this.buildShop(ctx);
     el('sanctum-overlay').classList.add('visible');
+    this.autoReveal = false;
+    requestAnimationFrame(this.updateMore);
   }
 
   private buildShop(ctx: Ctx): void {

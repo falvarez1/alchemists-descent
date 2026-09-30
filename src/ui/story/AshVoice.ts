@@ -41,6 +41,12 @@ export class AshVoice {
   private startedAt = 0;
   private seconds = 1;
   private raf: number | null = null;
+  /** A click or a key in the Sanctum finishes the line being typed (her voice goes on; the words are all there). */
+  private readonly onSkip = (): void => {
+    if (!this.text || performance.now() - this.startedAt >= this.seconds * 900) return;
+    this.startedAt = performance.now() - this.seconds * 900;
+    this.frame();
+  };
 
   constructor(ctx: Ctx) {
     this.style.textContent = STYLE;
@@ -66,6 +72,8 @@ export class AshVoice {
     if (overlay) {
       this.observer = new MutationObserver(() => { if (!overlay.classList.contains('visible')) this.clear(); });
       this.observer.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+      overlay.addEventListener('pointerdown', this.onSkip, true);
+      window.addEventListener('keydown', this.onSkip, true);
     }
     this.off.push(ctx.events.on('narration', ({ text, seconds, speaker }) => {
       if (speaker !== 'ash') return;
@@ -99,6 +107,8 @@ export class AshVoice {
   dispose(): void {
     for (const d of this.off.splice(0)) d();
     this.observer?.disconnect();
+    document.getElementById('sanctum-overlay')?.removeEventListener('pointerdown', this.onSkip, true);
+    window.removeEventListener('keydown', this.onSkip, true);
     if (this.raf !== null) cancelAnimationFrame(this.raf);
     this.root.remove();
     this.style.remove();
