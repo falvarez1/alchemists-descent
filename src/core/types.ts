@@ -3222,6 +3222,10 @@ export interface LevelRuntime {
     placed: Partial<Record<EnemyKind, number>>;
     skipped: Partial<Record<EnemyKind, number>>;
     lairs?: Partial<Record<EnemyKind, number>>;
+    /** How many of the placed foes hold the spawn -> key -> exit route (game/populationRoute). */
+    routed?: number;
+    /** The traced spawn -> key -> exit route (every 12th cell), for audits and probes. */
+    route?: { length: number; keyS: number | null; points: Array<[number, number]> };
   };
   /** D1 Noita-style surface intro: the open-air start above the cave mouth. The
    *  player begins HERE on first entry (revisits/respawns use the cave spawn). */

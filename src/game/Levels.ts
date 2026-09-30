@@ -66,6 +66,8 @@ import { introArrivalSpawn, SURFACE_DESCENT_DROP } from '@/game/surfaceIntro';
 import { WAYSTONE_HELP_RADIUS, wandMakesFire, waystoneHelp } from '@/game/waystoneHelp';
 import { ARRIVAL_GRACE_TICKS, ARRIVAL_SAFE_RADIUS, arrivalPickupRests, arrivalStandable, arrivalThreat, relocateCreature, settleArrival } from '@/game/arrival';
 import { bossArenaRect } from '@/core/bossWard';
+import { findRouteSpot, planRouteSlots, traceRoute } from '@/game/populationRoute';
+import type { PopulationRoute } from '@/game/populationRoute';
 import { CAMP_HAVEN_RADIUS } from '@/config/pacing';
 import { resetCombatTransients } from '@/game/transients';
 import { failOpenFindability, wizardMask } from '@/world/validate';
@@ -159,6 +161,9 @@ const POPULATION_ATTEMPTS_PER_PASS = 36;
 /** Kinds that may be seeded with their heads under liquid (swimmers, floaters, fliers). */
 const POPULATION_WATER_BREATHERS: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['rillback', 'leviathan', 'wisp', 'bat', 'imp', 'colossus', 'eggs']);
 const ROOST_ATTEMPTS_PER_PASS = 160;
+/** Route-aware placement's own rng fork, and the kinds that never hold a guard post (a clutch, a roosting bat). */
+const ROUTE_POPULATION_SALT = 0x524f5554;
+const ROUTE_GUARD_INELIGIBLE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['eggs', 'bat']);
 /** Drain search for liquid in Pell's camp (drainCamp): cells visited, and reach from the camp (cells). */
 const CAMP_DRAIN_SEARCH = 60000;
 const CAMP_DRAIN_REACH = 220;
@@ -2783,6 +2788,20 @@ export class Levels implements LevelsApi {
       y: exit.sealY - 12,
     });
     const populationReach = wizardMask(makeLevelRuntime({ def, world, spawn, regions }));
+    // ROUTE-AWARE POPULATION (game/populationRoute): the spawn -> key -> exit walk
+    // is traced on the full mask, before the puzzle rooms below are cut out of it.
+    const populationRoute =
+      def.depth > 0 && def.id !== 'd1' && !AUTHORED_TEST_ARENAS.has(def.id)
+        ? traceRoute(
+            populationReach,
+            world.width,
+            world.height,
+            spawn,
+            pickups.find((p) => p.kind === 'key') ?? null,
+            portal ?? boss ?? { x: exit.x, y: exit.sealY - 12 },
+            portal ? 70 : 130,
+          )
+        : null;
     // FLORA puzzle rooms are set pieces (a sealed cistern over a seed bed, a
     // tree balanced at a chasm): a foe seeded inside would wreck one before
     // the player arrives. Population keeps out of them (they still wander in).
@@ -2803,6 +2822,7 @@ export class Levels implements LevelsApi {
       populationReach,
       new Rng(hashSeed(seed, 'population')),
       weaverLairWebs,
+      populationRoute,
     );
     // Boss arenas, keyed on the floor (LevelDef.boss): the Sunken Leviathan
     // in the Drowned Cisterns' perched sump, the Kiln Colossus at the bottom
@@ -2872,6 +2892,7 @@ export class Levels implements LevelsApi {
     reachable: Uint8Array,
     rng: Rng,
     weaverLairWebs: WeaverLairWeb[],
+    route: PopulationRoute | null = null,
   ): NonNullable<LevelRuntime['population']> {
     // Depth sets the headcount; the biome's foes table sets the mix; difficulty
     // scales the whole headcount (the "enemy rate is insane" knob). Level 3 = ×1.
@@ -2885,28 +2906,70 @@ export class Levels implements LevelsApi {
       report.skipped[kind] = (report.skipped[kind] ?? 0) + 1;
       ctx.telemetry.count(`population.skipped.${def.id}.${kind}`);
     };
+    // Seed one foe (and the lair its kind stamps around itself).
+    const seedFoe = (kind: EnemyKind, spot: { x: number; y: number }): boolean => {
+      const enemy = this.spawnSeededEnemy(ctx, kind, spot.x, spot.y, rng);
+      if (!enemy) return false;
+      report.placed[kind] = (report.placed[kind] ?? 0) + 1;
+      if (enemy.kind === 'weaver') this.stampWeaverLair(ctx, spot.x, spot.y, rng, weaverLairWebs);
+      this.stampOrganicEnemyLair(ctx, enemy, rng, report);
+      return true;
+    };
+    // ROUTE-AWARE placement (game/populationRoute): ~60% of the roster holds the
+    // walk the player takes, slot first: each slot (the exit leg's guard, the key's
+    // guard, then quantiles that run hotter toward the end) tries the foes still
+    // waiting, toughest first for a guard post and shuffled for the rest, until one
+    // finds a cell its habitat allows (a flooded route takes eels and wisps, a dry
+    // one takes the crowd). Route work draws from a fork, so the scatter stream
+    // below is unmoved by however many tries it took; a slot nothing can fill is
+    // simply not made, and its foe scatters as the whole roster once did.
+    const routeRng = rng.fork(ROUTE_POPULATION_SALT);
+    const waiting: EnemyKind[] = [];
     for (const [kind, count] of Object.entries(pop) as Array<[EnemyKind, number]>) {
       if (spineRoster && kind === 'bat') continue;
-      const enemyDef = ctx.enemyCtl.defs[kind];
-      const scaled = Math.round(count * countScale);
-      report.planned[kind] = scaled;
-      for (let i = 0; i < scaled; i++) {
-        const habitat = this.populationHabitatOptions(ctx, kind);
-        const spot =
-          this.findPopulationSpot(ctx, rng, spawn, regions, reachable, enemyDef.halfW, enemyDef.h, habitat);
-        if (spot) {
-          const enemy = this.spawnSeededEnemy(ctx, kind, spot.x, spot.y, rng);
-          if (enemy) {
-            report.placed[kind] = (report.placed[kind] ?? 0) + 1;
-            if (enemy.kind === 'weaver') this.stampWeaverLair(ctx, spot.x, spot.y, rng, weaverLairWebs);
-            this.stampOrganicEnemyLair(ctx, enemy, rng, report);
-          } else {
-            markSkipped(kind);
-          }
-        } else {
-          markSkipped(kind);
+      report.planned[kind] = Math.round(count * countScale);
+      for (let i = report.planned[kind] ?? 0; i > 0; i--) waiting.push(kind);
+    }
+    const routedFoes: Array<{ x: number; y: number }> = [];
+    if (route) {
+      for (const slot of planRouteSlots(route, waiting.length, () => routeRng.next())) {
+        const tryOrder = this.routeCandidates(ctx, waiting, slot.mode !== 'route', routeRng);
+        for (const at of tryOrder) {
+          const kind = waiting[at];
+          const enemyDef = ctx.enemyCtl.defs[kind];
+          const habitat = this.populationHabitatOptions(ctx, kind);
+          const spot = findRouteSpot({
+            route,
+            slot,
+            spawn,
+            next: () => routeRng.next(),
+            reach: reachable,
+            bounds: this.populationBounds(enemyDef.halfW, enemyDef.h),
+            clearances: POPULATION_CLEARANCE_STEPS,
+            avoid: routedFoes,
+            attempts: habitat.attempts ? 48 : 24,
+            accept: (x, y) =>
+              (!habitat.extra || habitat.extra(x, y)) && ctx.physics.entityFree(x, y, enemyDef.halfW, enemyDef.h),
+          });
+          if (!spot || !seedFoe(kind, spot)) continue;
+          routedFoes.push(spot);
+          report.routed = (report.routed ?? 0) + 1;
+          waiting.splice(at, 1);
+          break;
         }
       }
+      report.route = {
+        length: route.length,
+        keyS: route.keyS,
+        points: route.points.filter((_, i) => i % 2 === 0).map((p) => [p.x, p.y] as [number, number]),
+      };
+    }
+    // The rest of the roster scatters over the whole floor (sleeping roosts and lairs still turn up off the road).
+    for (const kind of waiting) {
+      const enemyDef = ctx.enemyCtl.defs[kind];
+      const habitat = this.populationHabitatOptions(ctx, kind);
+      const spot = this.findPopulationSpot(ctx, rng, spawn, regions, reachable, enemyDef.halfW, enemyDef.h, habitat);
+      if (!spot || !seedFoe(kind, spot)) markSkipped(kind);
     }
 
     // Wave F nests — life that implies more life.
@@ -2959,6 +3022,41 @@ export class Levels implements LevelsApi {
       }
     }
     return report;
+  }
+
+  /**
+   * The cells a foe of this body may be seeded in: the legacy margins of
+   * findPopulationSpot, except that a foe holding the route may stand on the
+   * world floor (a key or a portal sits there on the flooded floors, and the
+   * scatter's 140 spare rows would forbid every guard of it).
+   */
+  private populationBounds(halfW: number, h: number): { minX: number; maxX: number; minY: number; maxY: number } {
+    return {
+      minX: Math.max(Math.ceil(halfW) + 2, 40),
+      maxX: Math.min(WIDTH - Math.ceil(halfW) - 3, WIDTH - 40 - 1),
+      minY: Math.max(h, 60),
+      maxY: HEIGHT - 12,
+    };
+  }
+
+  /**
+   * The order a route slot tries the foes still waiting (indices into `waiting`):
+   * a guard post goes to the toughest first (no slot-filling egg clutch or roost
+   * bat), any other slot to a seeded shuffle, one index per distinct kind so a
+   * kind whose habitat is absent here costs one probe rather than one per foe.
+   */
+  private routeCandidates(ctx: Ctx, waiting: readonly EnemyKind[], guard: boolean, rng: Rng): number[] {
+    const firstOfKind = new Map<EnemyKind, number>();
+    waiting.forEach((kind, i) => {
+      if (!firstOfKind.has(kind) && !(guard && ROUTE_GUARD_INELIGIBLE.has(kind))) firstOfKind.set(kind, i);
+    });
+    const order = [...firstOfKind.values()];
+    if (guard) return order.sort((a, b) => ctx.enemyCtl.defs[waiting[b]].hp - ctx.enemyCtl.defs[waiting[a]].hp || a - b);
+    for (let k = order.length - 1; k > 0; k--) {
+      const j = rng.int(k + 1);
+      [order[k], order[j]] = [order[j], order[k]];
+    }
+    return order;
   }
 
   private findPopulationSpot(
