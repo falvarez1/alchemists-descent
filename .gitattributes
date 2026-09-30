@@ -1,0 +1,3 @@
+# Cloudflare Pages reads this file byte-for-byte: keep it LF whatever core.autocrlf says (a
+# checkout on Windows would otherwise give every header value a trailing carriage return).
+public/_headers text eol=lf
