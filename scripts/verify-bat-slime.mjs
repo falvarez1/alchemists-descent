@@ -57,6 +57,9 @@ const r = await page.evaluate(async () => {
   const reset = () => {
     ctx.state.mode = 'play';
     ctx.state.paused = false;
+    // A floor's first ~5 s are an arrival grace in which nothing damages the alchemist: without this the
+    // 'cannot damage' check passes for the wrong reason and the 'bite returns' check can never pass.
+    ctx.state.arrivalGraceUntil = 0;
     ctx.fx.hitstop = 0;
     ctx.enemies.length = 0;
     ctx.critters.clear?.();

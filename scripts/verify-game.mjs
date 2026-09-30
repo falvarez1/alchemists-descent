@@ -2,7 +2,7 @@
 // Usage: node scripts/verify-game.mjs [url]
 import { mkdirSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
-import { isBenignDevConsoleError, waitForRunReady } from './run-helpers.mjs';
+import { enterSandboxFromTitle, isBenignDevConsoleError, waitForRunReady } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 const outDir = 'verify-out';
@@ -37,16 +37,7 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 
 // The app boots to the title screen, which covers the Workshop's toolbar. An
 // author's way into the material sandbox is Workshops > Material sandbox.
-const enterSandboxFromTitle = async () => {
-  await page.locator('#expedition-entry').waitFor({ state: 'visible', timeout: 30000 });
-  // The fold remembers being open from an earlier visit: only open it when shut.
-  if (!(await page.locator('#expedition-entry .entry-workshops').evaluate((d) => d.open))) {
-    await page.locator('#expedition-entry .entry-workshops > summary').click();
-  }
-  await page.locator('#expedition-entry [data-entry="sandbox"]').click();
-  await page.locator('#expedition-entry').waitFor({ state: 'hidden', timeout: 10000 });
-};
-await enterSandboxFromTitle();
+await enterSandboxFromTitle(page);
 await page.waitForTimeout(3500); // let worldgen + a few hundred frames run
 
 // --- 1) Build mode: world rendered? ---
@@ -178,7 +169,7 @@ console.log('flamethrower burst done');
 // Pause > Quit to title, then back into the Workshop from the title.
 await page.keyboard.press('Escape');
 await page.locator('#pause-title-btn').click();
-await enterSandboxFromTitle();
+await enterSandboxFromTitle(page);
 await page.waitForTimeout(400);
 const backInBuild = await page.evaluate(() => !document.body.classList.contains('play-active'));
 await page.click('#mode-play-btn');

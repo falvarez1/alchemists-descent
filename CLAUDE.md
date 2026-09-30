@@ -198,7 +198,10 @@ loops degrade criteria progressively, never silently skip.
 - `.claude/skills/indie-game-dev/SKILL.md` — step-by-step content checklists (new material /
   enemy / spell card / biome / pickup) and the full verification playbook
 - `docs/DESIGN.md` — canonical game design; `docs/FEEL.md` — every mechanic/micro-animation
-  with its tuning numbers; `docs/BUILDER.md` — Builder tool spec and phases
+  with its tuning numbers; `docs/BUILDER.md` — Builder tool spec and phases;
+  `docs/BOONS.md` — the Sanctum's boons: the pool, each hook, tuning, and what was measured;
+  `docs/DIFFICULTY.md` — the four-tier ladder: who may pick which, where it lives, why it fits;
+  `docs/PROBE-HEALTH.md` — which `scripts/verify-*` probes pass, which are stale and why (run before trusting a red one)
 - `docs/MULTIPLAYER-ARCHITECTURE.md` — **archived/frozen 2026-09-26** (the
   SpacetimeDB transport lives only in git tag `archive/spacetimedb`); still the
   reference for the determinism boundary, why the grid is NOT a database, and

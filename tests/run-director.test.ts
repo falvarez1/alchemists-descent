@@ -85,6 +85,64 @@ describe('RunDirector', () => {
     expect(h.run.snapshotForSave()).toBeNull();
   });
 
+  it('records the boons struck across the descent — in the order taken — and hands them to the ledger and the save', () => {
+    const h = harness();
+    const perks: Record<string, true> = {};
+    (h.ctx.player as unknown as { perks: Record<string, true> }).perks = perks;
+    h.run.beginRun(h.ctx, { seed: 5, kit: 'spark', daily: null, tracked: true });
+    h.enter('d1');
+    expect(h.run.snapshotForSave()?.boons).toEqual([]);
+    // The Sanctum after floor 1: a bargain is struck, the next floor arrives.
+    perks.rimesoles = true;
+    h.enter('d2');
+    expect(h.run.snapshotForSave()?.boons).toEqual(['rimesoles']);
+    // A boon struck and then a death on the same floor is still in the ledger (endRun reads the player too).
+    perks.longfuse = true;
+    perks.torchbearer = true; // never a Sanctum bargain: not recorded
+    const g = harness();
+    g.run.restoreFromSave(g.ctx, { ...h.run.snapshotForSave()!, boons: ['rimesoles', 'bogus'] });
+    expect(g.run.snapshotForSave()?.boons).toEqual(['rimesoles']);
+    die(h); die(h); die(h); die(h);
+    expect(h.ended).toHaveLength(1);
+    expect(h.ended[0].boons).toEqual(['rimesoles', 'longfuse']);
+  });
+
+  it('records the tier a victory was won on, opens the next, and starts later descents where the player chose', () => {
+    const h = harness();
+    const started: Array<{ difficulty?: number; daily?: string | null }> = [];
+    (h.ctx.levels as unknown as { startRun: (c: Ctx, cfg: { difficulty?: number; daily?: string | null }) => unknown }).startRun = (_c, cfg) => {
+      started.push(cfg);
+      return { ok: true, message: '', mode: 'normal', worldSource: 'campaign' };
+    };
+    // Nothing won: Adept and the easier road only. A locked pick reads as Adept, and cannot be remembered.
+    expect(h.run.metaView()).toMatchObject({ lastDifficulty: 2, bestVictoryDifficulty: 0 });
+    h.run.chooseDifficulty(4);
+    expect(h.run.metaView().lastDifficulty).toBe(2);
+    h.run.startNewRun(h.ctx, { kit: 'spark', daily: false, difficulty: 3 });
+    expect(started.at(-1)?.difficulty).toBe(2);
+    h.run.chooseDifficulty(1);
+    expect(h.run.metaView().lastDifficulty).toBe(1);
+    h.run.startNewRun(h.ctx, { kit: 'spark', daily: false, difficulty: 1 });
+    expect(started.at(-1)?.difficulty).toBe(1);
+
+    // Quiet the Kiln on Adept: the ledger says which tier, and Conjurer opens.
+    (h.ctx.state as unknown as { difficulty: number }).difficulty = 2;
+    h.run.beginRun(h.ctx, { seed: 1, kit: 'spark', daily: null, tracked: true });
+    h.enter('d4');
+    h.ctx.events.emit('runComplete', { gold: 0 });
+    expect(h.ended.at(-1)).toMatchObject({ outcome: 'victory', difficulty: 2 });
+    expect(h.run.lastResult?.unlockedDifficulty).toBe(3);
+    expect(h.run.metaView()).toMatchObject({ bestVictoryDifficulty: 2 });
+    h.run.startNewRun(h.ctx, { kit: 'spark', daily: false, difficulty: 3 });
+    expect(started.at(-1)?.difficulty).toBe(3);
+    h.run.startNewRun(h.ctx, { kit: 'spark', daily: false, difficulty: 4 });
+    expect(started.at(-1)?.difficulty).toBe(2); // Archmage is still shut: back to Adept
+    // Today's descent is one seed for everyone: always Adept, whatever was asked.
+    h.run.startNewRun(h.ctx, { kit: 'spark', daily: true, difficulty: 3 });
+    expect(started.at(-1)).toMatchObject({ difficulty: 2 });
+    expect(started.at(-1)?.daily).toBeTruthy();
+  });
+
   it('restores phials up to three and snapshots them into the save', () => {
     const h = harness();
     h.run.beginRun(h.ctx, { seed: 5, kit: 'frost', daily: '2026-09-26', tracked: true });

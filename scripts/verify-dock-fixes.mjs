@@ -5,6 +5,7 @@
 //  4) floating panel close works (covered by repro-float-close.mjs too)
 // Usage: node scripts/verify-dock-fixes.mjs [url]   (dev server must be running)
 import { chromium } from 'playwright-core';
+import { leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0, fail = 0;
@@ -23,6 +24,7 @@ const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
 const errs = [];
 page.on('pageerror', (e) => errs.push(String(e)));
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1200);
 if (!(await page.evaluate(() => document.body.classList.contains('builder-open')))) await page.click('#mode-builder-btn');

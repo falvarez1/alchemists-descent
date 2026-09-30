@@ -58,7 +58,7 @@ async function livePickupMarker(kind, options = {}) {
   return page.evaluate(({ kind: pickupKind, amount: expectedAmount, near }) => {
     const ctx = window.__game.ctx;
     const rt = ctx.levels.current;
-    const canvas = document.getElementById('minimap-corner');
+    const canvas = document.getElementById('minimap-canvas');
     if (!rt || !(canvas instanceof HTMLCanvasElement)) return null;
     const matches = rt.pickups.filter((entry) => (
       !entry.taken &&
@@ -100,7 +100,7 @@ const markers = await page.evaluate(() => {
   const rt = ctx.levels.current;
   if (!rt) return null;
   const mark = (x, y) => {
-    const canvas = document.getElementById('minimap-corner');
+    const canvas = document.getElementById('minimap-canvas');
     const width = canvas instanceof HTMLCanvasElement ? canvas.width : 200;
     rt.explored[(x >> 3) + (y >> 3) * width] = 1;
   };
@@ -187,6 +187,7 @@ const markers = await page.evaluate(() => {
     heart: { x: heartX, y: heartY, offsetX: 1, offsetY: 1 },
     chest: { x: chestX, y: chestY, offsetX: 1, offsetY: 1 },
     lever: { x: leverX, y: leverY, offsetX: 1, offsetY: 1 },
+    leverId: maxMechanismId + 101,
     gold: { x: goldX, y: goldY, offsetX: 0.5, offsetY: 0.5 },
   };
 });
@@ -202,12 +203,15 @@ check(
   JSON.stringify(portalPop),
 );
 
-await page.keyboard.press('KeyM');
-await page.waitForTimeout(160);
-await hoverMarker('#minimap-corner', markers.refuge);
+// There is no corner chart any more (it was hidden in play, then removed), so the full map is the
+// only surface a player can hover: the rest of the popover checks stay on it.
+const noCorner = await page.evaluate(() => document.getElementById('minimap-corner') === null);
+check('There is no corner map; the full map is the only chart', noCorner);
+
+await hoverMarker('#minimap-canvas', markers.refuge);
 const refugePop = await popoverState();
 check(
-  'Corner map hover shows discovered Refuge details',
+  'Full map hover shows discovered Refuge details',
   refugePop.visible && refugePop.text.includes('Refuge') && refugePop.text.includes('bench') && refugePop.hasThumb,
   JSON.stringify(refugePop),
 );
@@ -217,12 +221,12 @@ const undiscoveredSpellLab = await page.evaluate(() => {
   const rt = ctx.levels.current;
   if (!rt) return null;
   rt.spellLab = { x: rt.refuge.x + 112, y: rt.refuge.y + 24, rewardX: rt.refuge.x + 116, rewardY: rt.refuge.y + 18 };
-  const canvas = document.getElementById('minimap-corner');
+  const canvas = document.getElementById('minimap-canvas');
   const width = canvas instanceof HTMLCanvasElement ? canvas.width : 200;
   rt.explored[(rt.spellLab.x >> 3) + (rt.spellLab.y >> 3) * width] = 0;
   return { x: rt.spellLab.x, y: rt.spellLab.y, offsetX: 0.5, offsetY: 0.5 };
 });
-await hoverMarker('#minimap-corner', undiscoveredSpellLab);
+await hoverMarker('#minimap-canvas', undiscoveredSpellLab);
 const hiddenLabPop = await popoverState();
 check(
   'Undiscovered Spell Lab marker has no popover yet',
@@ -233,12 +237,12 @@ check(
 await page.evaluate(() => {
   const ctx = window.__game.ctx;
   const rt = ctx.levels.current;
-  const canvas = document.getElementById('minimap-corner');
+  const canvas = document.getElementById('minimap-canvas');
   if (!rt?.spellLab || !(canvas instanceof HTMLCanvasElement)) return;
   rt.explored[(rt.spellLab.x >> 3) + (rt.spellLab.y >> 3) * canvas.width] = 1;
 });
 await page.waitForTimeout(120);
-await hoverMarker('#minimap-corner', undiscoveredSpellLab);
+await hoverMarker('#minimap-canvas', undiscoveredSpellLab);
 const labPop = await popoverState();
 check(
   'Newly discovered Spell Lab marker gets the same popover effect',
@@ -247,7 +251,7 @@ check(
 );
 
 const heartMarker = await livePickupMarker('heart', { near: markers.heart });
-await hoverMarker('#minimap-corner', heartMarker ?? markers.heart);
+await hoverMarker('#minimap-canvas', heartMarker ?? markers.heart);
 const heartPop = await popoverState();
 check(
   'New pickup markers expose useful POI details',
@@ -256,7 +260,7 @@ check(
 );
 
 const chestMarker = await livePickupMarker('chest', { amount: 42, near: markers.chest });
-await hoverMarker('#minimap-corner', chestMarker ?? markers.chest);
+await hoverMarker('#minimap-canvas', chestMarker ?? markers.chest);
 const chestPop = await popoverState();
 check(
   'Discovered optional pickup markers get POI details',
@@ -264,11 +268,16 @@ check(
   JSON.stringify(chestPop),
 );
 
-await hoverMarker('#minimap-corner', markers.lever);
+await hoverMarker('#minimap-canvas', markers.lever);
 const leverPop = await popoverState();
 check(
   'Small mechanism trigger markers get POI details',
-  leverPop.visible && leverPop.text.includes('Lever #') && leverPop.text.includes('target') && leverPop.hasThumb,
+  // The popover names a mechanism the way a player would ("Lever"); its id is a field, not the title.
+  leverPop.visible &&
+    leverPop.text.startsWith('Lever') &&
+    leverPop.fields.includes(`id${markers.leverId}`) &&
+    leverPop.text.includes('target') &&
+    leverPop.hasThumb,
   JSON.stringify(leverPop),
 );
 
@@ -289,7 +298,7 @@ await page.evaluate((gold) => {
     rt.world.types[supportIndex] = 13; // Cell.Metal
     rt.world.colors[supportIndex] = 0x8f9ba8;
   }
-  const canvas = document.getElementById('minimap-corner');
+  const canvas = document.getElementById('minimap-canvas');
   const width = canvas instanceof HTMLCanvasElement ? canvas.width : 200;
   rt.explored[gx + gy * width] = 1;
   for (let i = rt.mechanisms.length - 1; i >= 0; i--) {
@@ -301,7 +310,7 @@ await page.evaluate((gold) => {
 }, markers.gold);
 await page.mouse.move(1, 1);
 await page.waitForTimeout(40);
-await hoverMarker('#minimap-corner', markers.gold);
+await hoverMarker('#minimap-canvas', markers.gold);
 const goldPop = await popoverState();
 check(
   'Tiny terrain-material map pixels get Palette-style details',

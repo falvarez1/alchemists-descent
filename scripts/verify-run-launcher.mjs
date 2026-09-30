@@ -1,6 +1,7 @@
 // Focused run launcher probe.
 // Usage: node scripts/verify-run-launcher.mjs [url]  (dev server running)
 import { launchBrowser } from './browser-launch.mjs';
+import { enterSandboxFromTitle } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -48,10 +49,13 @@ async function resetLauncherStorageAndReload() {
     localStorage.removeItem('noita-expedition');
     localStorage.removeItem('noita-run-launcher-prefs-v2');
     localStorage.removeItem('noita-run-launcher-prefs-v3');
-    sessionStorage.removeItem('ad-mode'); // dev mode-persistence: reset to a clean Sandbox boot
+    sessionStorage.removeItem('ad-mode'); // dev mode-persistence: reset to a clean boot (the title)
   });
   await page.reload({ waitUntil: 'networkidle', timeout: 30000 });
   await page.waitForFunction(() => window.__game?.ctx?.levels?.runStatus, { timeout: 20000 });
+  // A clean boot is the title, which covers the header's mode buttons. This probe tests the
+  // launcher the header's PLAY opens, so walk in through Workshops > Material sandbox.
+  await enterSandboxFromTitle(page);
 }
 
 function visible(el) {
@@ -351,6 +355,7 @@ await storagePage.addInitScript(() => {
 });
 await storagePage.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await storagePage.waitForFunction(() => window.__game?.ctx?.levels?.runStatus, { timeout: 20000 });
+await enterSandboxFromTitle(storagePage);
 await storagePage.click('#mode-play-btn');
 await storagePage.waitForSelector('#run-launcher.visible', { timeout: 5000 });
 const storageFailureState = await storagePage.evaluate(() => ({

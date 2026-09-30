@@ -1,9 +1,12 @@
-import type { Ctx, RunResult } from '@/core/types';
+import type { Ctx, Difficulty, RunResult } from '@/core/types';
 import type { KitId } from '@/core/run';
 import { FLOOR_DOORS, doorTaken, floorDisplayName } from '@/config/worldgraph';
 import { KIT_DEFS } from '@/content/kits';
-import { formatChain, formatRunTime, runHeadline, shareLine } from '@/game/runRules';
+import { boonNames, formatChain, formatRunTime, runHeadline, shareLine } from '@/game/runRules';
 import { KitPicker } from '@/ui/KitPicker';
+import { DifficultyPicker } from '@/ui/DifficultyPicker';
+import { BASE_DIFFICULTY, DIFFICULTY_BLURBS } from '@/config/difficultyLadder';
+import { DIFFICULTY } from '@/config/difficulty';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
 
 /** Victory lands after the Colossus's last explosion has. */
@@ -50,8 +53,10 @@ export class RunSummary {
   private readonly floors = document.createElement('ol');
   private readonly stats = document.createElement('dl');
   private readonly daily = document.createElement('p');
+  private readonly boons = document.createElement('p');
   private readonly unlocks = document.createElement('ul');
   private readonly kits: KitPicker;
+  private readonly grades: DifficultyPicker;
   private readonly actions = document.createElement('div');
   private readonly status = document.createElement('p');
   private readonly shareText = document.createElement('p');
@@ -65,6 +70,7 @@ export class RunSummary {
   /** A "Save clip" from the ledger is in flight; its outcome lands in the status line. */
   private awaitingClip = false;
   private chosenKit: KitId = 'spark';
+  private chosenDifficulty: Difficulty = BASE_DIFFICULTY;
 
   constructor(private readonly ctx: Ctx) {
     this.root.id = 'run-summary';
@@ -81,12 +87,18 @@ export class RunSummary {
     this.floors.setAttribute('aria-label', 'Floors of the descent');
     this.stats.className = 'rs-stats';
     this.daily.className = 'rs-daily';
+    this.boons.className = 'rs-boons';
     this.unlocks.className = 'rs-unlocks';
     this.kits = new KitPicker('Next descent', (kit) => {
       this.chosenKit = kit;
       ctx.run?.chooseKit(kit);
     });
     this.kits.root.classList.add('rs-kits');
+    this.grades = new DifficultyPicker('Difficulty', (tier) => {
+      this.chosenDifficulty = tier;
+      ctx.run?.chooseDifficulty(tier);
+    });
+    this.grades.root.classList.add('rs-grades');
     this.actions.className = 'rs-actions';
     this.againButton = this.button('Descend again', 'again', true);
     this.actions.append(
@@ -107,10 +119,15 @@ export class RunSummary {
     head.append(this.kicker, this.title, this.epitaph);
     const body = document.createElement('div');
     body.className = 'rs-body';
-    body.append(this.floors, this.stats, this.daily, this.unlocks);
+    body.append(this.floors, this.stats, this.boons, this.daily, this.unlocks);
     const foot = document.createElement('div');
     foot.className = 'rs-foot';
-    foot.append(this.kits.root, this.actions, this.status, this.shareText);
+    // The next descent's two choices sit side by side: the kit picker is the taller of the two, so the
+    // difficulty picker beside it costs the ledger no height (it already scrolls on a short window).
+    const choices = document.createElement('div');
+    choices.className = 'rs-choices';
+    choices.append(this.kits.root, this.grades.root);
+    foot.append(choices, this.actions, this.status, this.shareText);
     this.shell.append(head, body, foot);
     this.root.appendChild(this.shell);
     document.getElementById('canvas-holder')?.appendChild(this.root);
@@ -191,16 +208,21 @@ export class RunSummary {
     this.root.classList.toggle('rs-still', still);
     this.root.dataset.outcome = summary.outcome;
 
-    this.kicker.textContent = summary.daily ? `The ledger · Daily descent ${summary.daily}` : 'The ledger';
+    // A tier other than Adept is named in the header, as the share line names it.
+    const tier = summary.difficulty && summary.difficulty !== BASE_DIFFICULTY ? ` · ${DIFFICULTY[summary.difficulty].name}` : '';
+    this.kicker.textContent = (summary.daily ? `The ledger · Daily descent ${summary.daily}` : 'The ledger') + tier;
     this.title.textContent = runHeadline(summary);
     this.epitaph.textContent = summary.epitaph;
     this.renderFloors(result);
     const rows = this.renderStats(result);
+    this.renderBoons(result);
     this.renderDaily(result);
     this.renderUnlocks(result);
     const view = ctx.run?.metaView();
     this.chosenKit = view?.lastKit ?? summary.kit;
     this.kits.render(view?.unlockedKits ?? ['spark'], this.chosenKit, result.unlocked);
+    this.chosenDifficulty = view?.lastDifficulty ?? BASE_DIFFICULTY;
+    this.grades.render(view?.bestVictoryDifficulty ?? 0, this.chosenDifficulty, result.unlockedDifficulty);
     this.awaitingClip = false;
     this.status.textContent = result.recorded ? '' : 'A practice descent: debug tools were used, so the ledger keeps no record.';
     this.shareText.textContent = shareLine(summary);
@@ -297,6 +319,18 @@ export class RunSummary {
     });
   }
 
+  /** The bargains this descent struck, named the way the share line names them. */
+  private renderBoons(result: RunResult): void {
+    const names = boonNames(result.summary.boons);
+    this.boons.hidden = names === '';
+    this.boons.replaceChildren();
+    if (names === '') return;
+    const label = document.createElement('span');
+    label.className = 'rs-boons-label';
+    label.textContent = 'Struck at the Sanctum';
+    this.boons.append(label, document.createTextNode(names));
+  }
+
   private renderDaily(result: RunResult): void {
     const { summary, dailyBest, newDailyBest } = result;
     this.daily.replaceChildren();
@@ -321,7 +355,24 @@ export class RunSummary {
 
   private renderUnlocks(result: RunResult): void {
     this.unlocks.replaceChildren();
-    this.unlocks.hidden = result.unlocked.length === 0;
+    this.unlocks.hidden = result.unlocked.length === 0 && result.unlockedDifficulty === null;
+    // A victory can open a harder tier: it is announced with the new cases.
+    if (result.unlockedDifficulty !== null) {
+      const tier = DIFFICULTY[result.unlockedDifficulty];
+      const li = document.createElement('li');
+      li.className = 'rs-unlock';
+      li.style.setProperty('--i', '0');
+      const label = document.createElement('span');
+      label.className = 'menu-label';
+      label.textContent = 'A harder Works';
+      const name = document.createElement('b');
+      name.textContent = `${tier.name} (${tier.roman}) is open`;
+      const blurb = document.createElement('span');
+      blurb.className = 'rs-unlock-blurb';
+      blurb.textContent = DIFFICULTY_BLURBS[result.unlockedDifficulty];
+      li.append(label, name, blurb);
+      this.unlocks.appendChild(li);
+    }
     result.unlocked.forEach((kit, i) => {
       const def = KIT_DEFS[kit];
       const li = document.createElement('li');
@@ -398,7 +449,7 @@ export class RunSummary {
     this.status.textContent = `Opening the intake with ${KIT_DEFS[this.chosenKit].name}…`;
     // Two frames so the status paints before generation blocks the thread.
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    const started = run.startNewRun(this.ctx, { kit: this.chosenKit, daily: false });
+    const started = run.startNewRun(this.ctx, { kit: this.chosenKit, daily: false, difficulty: this.chosenDifficulty });
     this.busy = false;
     if (started.ok) {
       this.hide();

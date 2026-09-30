@@ -28,6 +28,10 @@ const PROBES = [
   'verify-organic-enemy-trio-sprites.mjs',
 ];
 const PROBE_TIMEOUT_MS = 240_000;
+// Per-probe budgets for the audits that are slow by design. The encounter-lair audit walks 7
+// seeds x 3 levels at 70-100 s a seed on a quiet machine (9-12 min, more under load), so it
+// cannot fit the default. (Its optional seed list, argv[3], is the way to run it shorter.)
+const PROBE_TIMEOUT_OVERRIDES_MS = { 'verify-encounter-lairs.mjs': 1_200_000 };
 
 function ping(targetUrl) {
   return new Promise((resolve) => {
@@ -84,11 +88,12 @@ function runProbe(probe) {
     const child = spawn(process.execPath, [`scripts/${probe}`, url], { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     let timedOut = false;
+    const timeoutMs = PROBE_TIMEOUT_OVERRIDES_MS[probe] ?? PROBE_TIMEOUT_MS;
     const timer = setTimeout(() => {
       timedOut = true;
-      out += `\nTimed out after ${PROBE_TIMEOUT_MS}ms`;
+      out += `\nTimed out after ${timeoutMs}ms`;
       killChild(child);
-    }, PROBE_TIMEOUT_MS);
+    }, timeoutMs);
     child.stdout.on('data', (chunk) => {
       out += chunk;
     });

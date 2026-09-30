@@ -1,4 +1,4 @@
-import type { EnemyKind } from '@/core/types';
+import type { Difficulty, EnemyKind } from '@/core/types';
 
 /**
  * Cross-workstream run contracts (Breathing Works overhaul). Types only —
@@ -56,6 +56,10 @@ export interface RunSummary {
   epitaph: string;
   /** The doors the run took, floor by floor (campaign level ids); absent on old ledgers. */
   path?: string[];
+  /** The Sanctum boons the run struck, in the order taken (PerkId names); absent on old ledgers and boonless runs. */
+  boons?: string[];
+  /** The difficulty tier the run was played at (1 Apprentice … 4 Archmage); absent on ledgers from before the ladder. */
+  difficulty?: Difficulty;
 }
 
 /** One alchemical kill, as announced to callouts, audio, stats and clips. */

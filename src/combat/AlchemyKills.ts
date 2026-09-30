@@ -33,6 +33,11 @@ export { causeForCell, causeForExplosion } from '@/core/alchemyCause';
 
 /** Alchemical kills within 3 s (ticks) of the last one stack into a chain. */
 export const ALCHEMY_CHAIN_TICKS = 180;
+/** Chain steps that raise the bonus (×1 at the first kill, +0.5 per step: ×3 at the cap). */
+export const ALCHEMY_CHAIN_STEPS = 4;
+/** The Long Fuse boon: the window doubles and the bonus climbs to ×4. */
+export const LONG_FUSE_CHAIN_TICKS = ALCHEMY_CHAIN_TICKS * 2;
+export const LONG_FUSE_CHAIN_STEPS = 6;
 /** The killing blow is the blow noted this tick; the slack covers the 2-tick
  *  status cadence so a burning body that dies between samples still counts. */
 export const KILLING_BLOW_TICKS = 3;
@@ -172,17 +177,18 @@ export function creditedToPlayer(mem: HitMemory, distance: number, frame: number
 }
 
 /** The chain count for a kill at `frame`, given the previous chain and its last kill tick. */
-export function nextChain(prevChain: number, lastKillFrame: number, frame: number): number {
-  return prevChain > 0 && frame - lastKillFrame <= ALCHEMY_CHAIN_TICKS ? prevChain + 1 : 1;
+export function nextChain(prevChain: number, lastKillFrame: number, frame: number, windowTicks = ALCHEMY_CHAIN_TICKS): number {
+  return prevChain > 0 && frame - lastKillFrame <= windowTicks ? prevChain + 1 : 1;
 }
 
 /**
  * Bonus gold for an alchemical kill: 4 + 40% of the creature's bounty, scaled
  * ×1, ×1.5, ×2, ×2.5, ×3 by the chain (capped), rounded to whole grains.
  * (2026-09 economy pass: was 10 + 35% of bounties ~3.3x larger, in 10-oz grains.)
+ * The Long Fuse boon lifts the cap by two steps (×4).
  */
-export function alchemyBonusGold(bounty: number, chain: number): number {
-  const mult = 1 + Math.min(4, Math.max(0, chain - 1)) * 0.5;
+export function alchemyBonusGold(bounty: number, chain: number, maxSteps = ALCHEMY_CHAIN_STEPS): number {
+  const mult = 1 + Math.min(maxSteps, Math.max(0, chain - 1)) * 0.5;
   const raw = (4 + Math.max(0, bounty) * 0.4) * mult;
   return Math.max(GOLD_PER_GRAIN, Math.round(raw / GOLD_PER_GRAIN) * GOLD_PER_GRAIN);
 }
@@ -203,8 +209,13 @@ export class AlchemyKills implements AlchemyKillsApi {
     this.disposers.length = 0;
   }
 
+  /** The chain window in force: the Long Fuse boon doubles it. */
+  private get windowTicks(): number {
+    return this.ctx.player.perks?.longfuse ? LONG_FUSE_CHAIN_TICKS : ALCHEMY_CHAIN_TICKS;
+  }
+
   get chain(): number {
-    return this.ctx.state.frameCount - this.lastKillFrame <= ALCHEMY_CHAIN_TICKS ? this.chainCount : 0;
+    return this.ctx.state.frameCount - this.lastKillFrame <= this.windowTicks ? this.chainCount : 0;
   }
 
   resetChain(): void {
@@ -287,7 +298,7 @@ export class AlchemyKills implements AlchemyKillsApi {
     const player = ctx.player;
     const distance = Math.hypot(e.x - player.x, e.y - player.y);
     if (mem.verdict ? !mem.verdict.credited : !creditedToPlayer(mem, distance, frame, !player.dead)) return null;
-    const chain = nextChain(this.chainCount, this.lastKillFrame, frame);
+    const chain = nextChain(this.chainCount, this.lastKillFrame, frame, this.windowTicks);
     this.chainCount = chain;
     this.lastKillFrame = frame;
     const def = ctx.enemyCtl.defs[e.kind];
@@ -297,7 +308,7 @@ export class AlchemyKills implements AlchemyKillsApi {
       x: e.x,
       y: e.y - def.h * 0.6,
       chain,
-      bonusGold: alchemyBonusGold(def.bounty, chain),
+      bonusGold: alchemyBonusGold(def.bounty, chain, player.perks?.longfuse ? LONG_FUSE_CHAIN_STEPS : ALCHEMY_CHAIN_STEPS),
     };
     this.payout(info);
     ctx.telemetry?.count(`alchemy.kill.${cause}`);

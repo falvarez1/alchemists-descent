@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { launchBrowser } from './browser-launch.mjs';
-import { waitForOpeningEnd } from './run-helpers.mjs';
+import { waitForOpeningEnd, leaveTitleIfShown } from './run-helpers.mjs';
 
 const output = 'verify-out/living-descent'; mkdirSync(output, { recursive: true });
 const browser = await launchBrowser({ headless: true });
@@ -10,6 +10,7 @@ const errors = [], report = { errors };
 page.on('pageerror', e => errors.push(String(e)));
 try {
   await page.goto(process.argv[2] ?? 'http://127.0.0.1:5183/', { waitUntil: 'networkidle' });
+  await leaveTitleIfShown(page);
   await page.locator('#expedition-entry:not([hidden])').waitFor();
   await page.screenshot({ path: `${output}/production-entry.png` });
   await page.locator('[data-entry="begin"]').click();
@@ -49,6 +50,7 @@ try {
   assert.ok(report.saved.living.plants.some(p => p && Number.isFinite(p.rootY) && Number.isFinite(p.burn)), 'Authored crowns survive checkpoint encoding');
   assert.ok(report.saved.player.x > 210);
   await page.reload({ waitUntil: 'networkidle' });
+  await leaveTitleIfShown(page);
   await page.locator('[data-entry="continue"]').click();
   await page.locator('#expedition-entry').waitFor({ state: 'hidden' });
   await page.waitForTimeout(4500);

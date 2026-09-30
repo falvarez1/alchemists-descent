@@ -6,6 +6,7 @@ import type {
   RunResult,
   RunSaveState,
   RunStartResult,
+  Difficulty,
 } from '@/core/types';
 import type { AlchemyKillInfo, KitId, RunOutcome } from '@/core/run';
 import { randomSeed } from '@/core/rng';
@@ -23,6 +24,7 @@ import {
   PHIALS_PER_RUN,
   buildRunSummary,
   clampPhials,
+  cleanRunBoons,
   cleanRunPath,
   dailySeed,
   isDateKey,
@@ -31,6 +33,8 @@ import {
   utcDateKey,
 } from '@/game/runRules';
 import { deathCauseLine } from '@/ui/deathCauses';
+import { asDifficulty } from '@/config/difficulty';
+import { BASE_DIFFICULTY, openDifficulty } from '@/config/difficultyLadder';
 
 /** One 60 Hz tick of wall time, the most a single tick may add to the clock. */
 const TICK_MS = 1000 / 60;
@@ -58,6 +62,7 @@ function freshState(opts: RunBeginOptions, recorded: boolean): RunSaveState {
     leviathanSlain: false,
     recorded,
     path: [],
+    boons: [],
   };
 }
 
@@ -80,6 +85,7 @@ function sanitizeSave(save: RunSaveState): RunSaveState | null {
     leviathanSlain: save.leviathanSlain === true,
     recorded: save.recorded !== false,
     path: cleanRunPath(Array.isArray(save.path) ? save.path : []),
+    boons: cleanRunBoons(Array.isArray(save.boons) ? save.boons : []),
   };
 }
 
@@ -208,10 +214,15 @@ export class RunDirector implements RunApi {
     this.endRun(ctx, 'abandoned', true);
   }
 
-  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean }): RunStartResult {
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty }): RunStartResult {
     const today = utcDateKey(new Date());
     const kit = opts.daily ? DEFAULT_KIT : (this.meta.isKitUnlocked(opts.kit) ? opts.kit : DEFAULT_KIT);
     if (!opts.daily) this.meta.setLastKit(kit);
+    // The tier asked for, if it is open to this player; Adept otherwise. Today's descent is one
+    // seed for everyone, so it is always Adept (and does not move the remembered choice).
+    const profile = this.meta.profile;
+    const difficulty = opts.daily ? BASE_DIFFICULTY : openDifficulty(opts.difficulty ?? profile.lastDifficulty, profile.bestVictoryDifficulty);
+    if (!opts.daily) this.meta.setLastDifficulty(difficulty);
     return ctx.levels.startRun(ctx, {
       mode: 'normal',
       worldSource: 'campaign',
@@ -220,11 +231,16 @@ export class RunDirector implements RunApi {
       seed: opts.daily ? dailySeed(today) : randomSeed(),
       starterKit: kit,
       daily: opts.daily ? today : null,
+      difficulty,
     });
   }
 
   chooseKit(kit: KitId): void {
     this.meta.setLastKit(kit);
+  }
+
+  chooseDifficulty(difficulty: Difficulty): void {
+    this.meta.setLastDifficulty(difficulty);
   }
 
   metaView(): RunMetaView {
@@ -237,6 +253,8 @@ export class RunDirector implements RunApi {
       runsEnded: profile.runsEnded,
       bestFloor: profile.bestFloor,
       victories: profile.victories,
+      bestVictoryDifficulty: profile.bestVictoryDifficulty,
+      lastDifficulty: profile.lastDifficulty,
       today,
       todayBest: profile.dailyBests[today] ?? null,
       levelsSeen: [...profile.levelsSeen],
@@ -359,6 +377,7 @@ export class RunDirector implements RunApi {
     // never rewrites which door the run chose).
     const path = state.path ?? (state.path = []);
     if (!path.some((p) => floorOf(p) === floor)) path.push(id);
+    this.noteBoons(state);
     const recordable = state.recorded && !this.tainted(ctx);
     if (recordable) {
       const seen = recordLevelSeen(this.meta.profile, id);
@@ -394,6 +413,18 @@ export class RunDirector implements RunApi {
     state.bestChain = Math.max(state.bestChain, Math.max(1, Math.floor(info.chain)));
   }
 
+  /**
+   * The boons struck so far, in the order taken: the Sanctum sets the flag on
+   * `player.perks` and the next floor's arrival (or the end of the run) finds it
+   * here. Read off the player rather than announced, so a save resumed
+   * mid-run and a boon taken before this run was tracked both land in the ledger.
+   */
+  private noteBoons(state: RunSaveState): void {
+    const held = cleanRunBoons(Object.keys(this.ctx.player.perks ?? {}));
+    const boons = state.boons ?? (state.boons = []);
+    for (const id of held) if (!boons.includes(id)) boons.push(id);
+  }
+
   private announceUnlocks(ctx: Ctx, kits: readonly KitId[]): void {
     for (const kit of kits) {
       if (!this.runUnlocks.includes(kit)) this.runUnlocks.push(kit);
@@ -407,6 +438,7 @@ export class RunDirector implements RunApi {
   private endRun(ctx: Ctx, outcome: RunOutcome, present: boolean): void {
     const state = this.state;
     if (!state || this.finished) return;
+    this.noteBoons(state);
     const levelId = ctx.levels.current?.def.id ?? null;
     const floor = floorOf(levelId) || Math.max(1, state.maxFloor);
     // Off the spine (a playtest, a test arena) the ledger names the door this
@@ -430,14 +462,16 @@ export class RunDirector implements RunApi {
       cardsFound: state.cardsFound,
       causeLine: outcome === 'fallen' ? deathCauseLine(this.lastCause, state.seed) : undefined,
       path: state.path ?? [],
+      boons: state.boons ?? [],
+      difficulty: asDifficulty(ctx.state.difficulty, BASE_DIFFICULTY),
     });
     let unlocked = [...this.runUnlocks];
-    let record: Pick<RunResult, 'dailyBest' | 'newDailyBest' | 'newBestFloor'> = { dailyBest: null, newDailyBest: false, newBestFloor: false };
+    let record: Pick<RunResult, 'dailyBest' | 'newDailyBest' | 'newBestFloor' | 'unlockedDifficulty'> = { dailyBest: null, newDailyBest: false, newBestFloor: false, unlockedDifficulty: null };
     if (recorded) {
       const end = recordRunEnded(this.meta.profile, summary);
       this.meta.commit(end.profile);
       unlocked = [...new Set([...unlocked, ...end.unlocked])];
-      record = { dailyBest: end.dailyBest, newDailyBest: end.newDailyBest, newBestFloor: end.newBestFloor };
+      record = { dailyBest: end.dailyBest, newDailyBest: end.newDailyBest, newBestFloor: end.newBestFloor, unlockedDifficulty: end.unlockedDifficulty };
       for (const kit of end.unlocked) ctx.telemetry.count(`run.unlock.${kit}`);
     }
     ctx.telemetry.count(`run.ended.${outcome}`);

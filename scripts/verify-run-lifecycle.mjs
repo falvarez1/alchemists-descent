@@ -265,7 +265,7 @@ try {
   await page.waitForSelector('#expedition-entry:not([hidden])', { timeout: 10000 });
   await page.waitForTimeout(400);
   const entry = await page.evaluate(() => ({
-    locked: [...document.querySelectorAll('#expedition-entry .kit-chip.locked')].map((n) => n.dataset.kit),
+    locked: [...document.querySelectorAll('#expedition-entry .kit-chip[data-kit].locked')].map((n) => n.dataset.kit),
     workshop: !document.querySelector('#expedition-entry [data-entry="workshop"]').hidden,
     cont: !document.querySelector('#expedition-entry [data-entry="continue"]').hidden,
   }));
@@ -276,7 +276,7 @@ try {
   await page.mouse.move(1200, 200);
   await page.waitForTimeout(250);
   const picked = await page.evaluate(() => ({
-    checked: [...document.querySelectorAll('#expedition-entry .kit-chip[aria-checked="true"]')].map((n) => n.dataset.kit),
+    checked: [...document.querySelectorAll('#expedition-entry .kit-chip[data-kit][aria-checked="true"]')].map((n) => n.dataset.kit),
     last: window.__game.ctx.run.metaView().lastKit,
   }));
   check('choosing a kit on the title sticks and is remembered', picked.checked.join() === 'storm' && picked.last === 'storm', JSON.stringify(picked));

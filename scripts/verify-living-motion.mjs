@@ -20,11 +20,12 @@ try {
       const ctx = window.__game.ctx, engine = ctx.audio;
       engine.ensure();
       const stream = document.querySelector('#canvas-holder > canvas').captureStream(30);
-      const audio = engine.audioCtx.createMediaStreamDestination(); engine.masterGain.connect(audio);
+      const master = engine.graph?.master ?? engine.masterGain; // the engine keeps its master gain in a private graph
+      const audio = engine.audioCtx.createMediaStreamDestination(); master.connect(audio);
       for (const track of audio.stream.getAudioTracks()) stream.addTrack(track);
       const chunks = [], recorder = new MediaRecorder(stream, { mimeType: 'video/webm', videoBitsPerSecond: 2500000 });
       recorder.ondataavailable = event => chunks.push(event.data);
-      const fixture = { recorder, chunks, audio, samples: [], interval: null };
+      const fixture = { recorder, chunks, audio, master, samples: [], interval: null };
       fixture.interval = setInterval(() => fixture.samples.push({ tick: ctx.state.frameCount, voices: engine.voices,
         player: { x: ctx.player.x, y: ctx.player.y, hp: ctx.player.hp },
         creatures: ctx.enemies.map(e => ({ kind: e.kind, x: e.x, y: e.y, intent: e.mind?.intent, windup: e.windup, flash: e.flash,
@@ -59,7 +60,7 @@ try {
       const c = window.__motionCapture;
       clearInterval(c.interval);
       const blob = await new Promise(resolve => { c.recorder.onstop = () => resolve(new Blob(c.chunks, { type: 'video/webm' })); c.recorder.stop(); });
-      window.__game.ctx.audio.masterGain.disconnect(c.audio);
+      c.master.disconnect(c.audio);
       for (const track of c.recorder.stream.getTracks()) track.stop();
       const data = await new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsDataURL(blob); });
       return { data, samples: c.samples };

@@ -4,7 +4,7 @@
 // door logic live, playtest-from-here, overlays, share codes.
 // Usage: node scripts/verify-builder-pro.mjs [url]  (dev server must be running)
 import { launchBrowser } from './browser-launch.mjs';
-import { getGameViewSize, worldToBuilderClient } from './run-helpers.mjs';
+import { getGameViewSize, worldToBuilderClient, leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -28,6 +28,8 @@ const pageErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+
+await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2200);
 

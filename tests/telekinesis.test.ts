@@ -10,8 +10,8 @@ import {
 import { corpseMass, emptySample, gripPoint, sampleBody } from '@/creatures/corpseBody';
 import { bowlDamage, BOWL_MIN_SPEED, FROZEN_TICKS, HEAD_DMG_MAX } from '@/creatures/corpseWorld';
 import {
-  clearTelekinesis, grabCost, heldCorpse, holdDrain, hurlCost, hurlPower, hurlSpeed, leashTarget, springAccel, telekinesisHurl,
-  telekinesisLift, telekinesisSetDown, throwDirection, TK, updateTelekinesis,
+  clearTelekinesis, grabCost, heldCorpse, holdDrain, hurlCost, hurlPower, hurlSpeed, leashTarget, SEXTON_COST_K, SEXTON_HURL_K, springAccel,
+  telekinesisHurl, telekinesisLift, telekinesisSetDown, throwDirection, TK, updateTelekinesis,
 } from '@/combat/Telekinesis';
 import { killingCause } from '@/combat/AlchemyKills';
 import type { HitMemory } from '@/combat/AlchemyKills';
@@ -374,5 +374,41 @@ describe('weight, the boot, and rot', () => {
     expect(corpses()).toContain(held);
     expect(corpses()).not.toContain(firstUntouched);
     expect(corpses().length).toBe(10);
+  });
+});
+
+describe("the Sexton's Grip boon", () => {
+  it('halves the grab and the hurl, and only the weight share of the hold (a held body never pays the wand back)', () => {
+    expect(grabCost(2, SEXTON_COST_K)).toBeCloseTo(grabCost(2) * SEXTON_COST_K, 6);
+    expect(hurlCost(2, SEXTON_COST_K)).toBeCloseTo(hurlCost(2) * SEXTON_COST_K, 6);
+    const regen = 0.5;
+    // The wand's own regeneration is still cancelled in full while it holds.
+    expect(holdDrain(2, regen, SEXTON_COST_K)).toBeGreaterThan(regen);
+    expect(holdDrain(2, regen, SEXTON_COST_K)).toBeLessThan(holdDrain(2, regen));
+    expect(holdDrain(2, regen, 1)).toBe(holdDrain(2, regen));
+  });
+
+  it('a lift, a hold and a hurl leave more in the tank, and the hurl leaves faster', () => {
+    const throwWith = (perks: Record<string, true>) => {
+      const s = stage();
+      s.ctx.player.perks = perks;
+      const e = corpseOf(s, 'weaver', 100);
+      const loco = e.weaverLoco!;
+      s.ctx.input.mouse.x = loco.px; s.ctx.input.mouse.y = loco.py;
+      expect(telekinesisLift(s.ctx)).toBe(true);
+      s.ctx.input.mouse.x = 110; s.ctx.input.mouse.y = 100;
+      step(s, 40);
+      s.ctx.input.mouse.x = 200; s.ctx.input.mouse.y = 140;
+      expect(telekinesisHurl(s.ctx)).toBe(true);
+      const c = corpses()[0];
+      const v = sampleBody(c.e, emptySample());
+      const out = { mana: s.wand.mana, speed: Math.hypot(v.vx, v.vy) };
+      clearTelekinesis(); clearCorpses();
+      return out;
+    };
+    const plain = throwWith({});
+    const sexton = throwWith({ stronggrip: true });
+    expect(sexton.mana).toBeGreaterThan(plain.mana + 3);
+    expect(sexton.speed).toBeGreaterThan(plain.speed * (SEXTON_HURL_K - 0.1));
   });
 });

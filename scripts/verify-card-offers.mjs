@@ -133,6 +133,10 @@ const beforeShop = await page.evaluate(() => {
     'watertrail',
     'shorthoming',
     'pyrecrit',
+    // The frozen combo joined the reward pools (COMBO_SETUP_POOL). Own it, so the three
+    // cards still unowned are exactly the three this probe asserts, not a random 3 of 5.
+    'frostcharge',
+    'shattercrit',
   );
   ctx.events.emit('scoreChanged', { score: ctx.state.score });
   ctx.sanctum.openShop(ctx);

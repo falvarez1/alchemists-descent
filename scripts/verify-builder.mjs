@@ -3,6 +3,7 @@
 // playtest-compile, and return with the document intact.
 // Usage: node scripts/verify-builder.mjs [url]   (dev server must be running)
 import { chromium } from 'playwright-core';
+import { leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -19,6 +20,8 @@ const pageErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+
+await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2500); // worldgen settle
 

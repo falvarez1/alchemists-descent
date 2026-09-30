@@ -67,7 +67,7 @@ body.touch-enabled.play-active .vital-label { font-size: 11px; width: 38px; }
 body.touch-enabled.play-active #flask-belt { width: 158px; gap: 4px; margin-top: 8px; }
 body.touch-enabled.play-active .flask-slot { width: 36px; flex-basis: 36px; height: 28px; }
 body.touch-enabled.play-active .flask-slot-name { max-width: 36px; overflow: hidden; }
-body.touch-enabled.play-active :is(#controls-hint, #expedition-pause, #spell-hotbar, #minimap-corner, #field-note, #sound-quick) { display: none !important; }
+body.touch-enabled.play-active :is(#controls-hint, #expedition-pause, #spell-hotbar, #field-note, #sound-quick) { display: none !important; }
 body.touch-enabled.play-active #expedition-tools { top: max(74px, calc(env(safe-area-inset-top) + 64px)); bottom: auto; left: max(12px, env(safe-area-inset-left)); }
 body.touch-enabled.play-active .wave-readout { top: max(70px, calc(env(safe-area-inset-top) + 60px)); right: max(12px, env(safe-area-inset-right)); max-width: 32%; font-size: 11px; }
 body.touch-enabled.play-active #interaction-hint { bottom: 235px; max-width: min(70%, 400px); white-space: normal; font-size: 12px; }

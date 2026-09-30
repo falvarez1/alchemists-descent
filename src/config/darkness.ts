@@ -145,6 +145,8 @@ export const SIGHT = {
   beacon: 0.3,
   /** Sight-range multiplier for a fully unseen (hooded, deep-dark) alchemist. */
   darkRange: 0.16,
+  /** Velvet Hood boon: while hooded, the dark around the alchemist counts this many times deeper (a lit room still lights him). */
+  velvet: 1.6,
   /** Beam coverage on a creature that tells it exactly where the lantern is. */
   litFix: 0.07,
 } as const;

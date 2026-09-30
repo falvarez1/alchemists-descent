@@ -17,11 +17,13 @@ export async function startGameplayCapture(page) {
   await page.evaluate(() => {
     const audio = window.__game.ctx.audio; audio.ensure();
     const stream = document.querySelector('#canvas-holder > canvas').captureStream(30);
-    const destination = audio.audioCtx.createMediaStreamDestination(); audio.masterGain.connect(destination);
+    // The engine keeps its context and its master gain in a private graph (audio/AudioEngine); tap the master.
+    const master = audio.graph?.master ?? audio.masterGain;
+    const destination = audio.audioCtx.createMediaStreamDestination(); master.connect(destination);
     for (const track of destination.stream.getAudioTracks()) stream.addTrack(track);
     const chunks = [], recorder = new MediaRecorder(stream, { mimeType: 'video/webm', videoBitsPerSecond: 3000000 });
     recorder.ondataavailable = event => chunks.push(event.data);
-    window.__salvageCapture = { stream, destination, chunks, recorder }; recorder.start();
+    window.__salvageCapture = { stream, destination, master, chunks, recorder }; recorder.start();
   });
 }
 
@@ -31,7 +33,7 @@ export async function finishGameplayCapture(page, path) {
     const blob = await new Promise(resolve => {
       c.recorder.onstop = () => resolve(new Blob(c.chunks, { type: 'video/webm' })); c.recorder.stop();
     });
-    window.__game.ctx.audio.masterGain.disconnect(c.destination);
+    c.master.disconnect(c.destination);
     for (const track of c.stream.getTracks()) track.stop();
     return new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsDataURL(blob); });
   });

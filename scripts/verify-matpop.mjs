@@ -3,6 +3,7 @@
 // Usage: node scripts/verify-matpop.mjs [url]  (dev server must be running)
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 const outDir = 'verify-out';
@@ -20,6 +21,8 @@ const pageErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+
+await leaveTitleIfShown(page);
 await page.waitForTimeout(3000);
 
 /* ---------- Sandbox toolbar popover (#lt-matpop) ---------- */

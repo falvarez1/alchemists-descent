@@ -1,10 +1,12 @@
-import type { Ctx, RunStartResult } from '@/core/types';
+import type { Ctx, Difficulty, RunStartResult } from '@/core/types';
 import type { KitId } from '@/core/run';
 import { GAME_SUBTITLE, GAME_TAGLINE, GAME_TITLE } from '@/config/brand';
 import { FLOORS_TOTAL } from '@/config/worldgraph';
 import { formatRunTime } from '@/game/runRules';
 import { PlayerSettings } from '@/ui/PlayerSettings';
 import { KitPicker } from '@/ui/KitPicker';
+import { DifficultyPicker } from '@/ui/DifficultyPicker';
+import { BASE_DIFFICULTY } from '@/config/difficultyLadder';
 import { appDialog } from '@/ui/AppDialog';
 import { openTrailer } from '@/ui/TrailerLightbox';
 
@@ -26,9 +28,11 @@ export class ExpeditionEntry {
   private readonly root = document.createElement('section');
   private readonly settings: PlayerSettings;
   private readonly kits: KitPicker;
+  private readonly grades: DifficultyPicker;
   private readonly disposers: Array<() => void> = [];
   private launching = false;
   private selectedKit: KitId = 'spark';
+  private selectedDifficulty: Difficulty = BASE_DIFFICULTY;
 
   /**
    * `playReady` resolves once the play systems (game/playSystems: the story,
@@ -47,6 +51,7 @@ export class ExpeditionEntry {
       <nav aria-label="Expedition"><button type="button" data-entry="continue" hidden>Continue your descent</button>
       <button type="button" data-entry="begin">Begin the descent</button>
       <div class="entry-kits"></div>
+      <div class="entry-grades"></div>
       <button type="button" data-entry="daily" class="entry-daily">Today’s descent<span class="entry-note" data-entry-note="daily"></span></button>
       <button type="button" data-entry="settings">Controls & comfort</button>
       <button type="button" data-entry="trailer" class="entry-trailer">Watch the trailer<span class="entry-note">Ninety-five seconds of safety induction. Mind the duck.</span></button>
@@ -61,6 +66,11 @@ export class ExpeditionEntry {
       ctx.run?.chooseKit(kit);
     });
     this.root.querySelector('.entry-kits')!.appendChild(this.kits.root);
+    this.grades = new DifficultyPicker('Difficulty', (tier) => {
+      this.selectedDifficulty = tier;
+      ctx.run?.chooseDifficulty(tier);
+    });
+    this.root.querySelector('.entry-grades')!.appendChild(this.grades.root);
     document.getElementById('canvas-holder')!.appendChild(this.root);
     this.root.addEventListener('click', e => {
       const button = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-entry]');
@@ -113,13 +123,15 @@ export class ExpeditionEntry {
     const view = this.ctx.run?.metaView();
     this.selectedKit = view?.lastKit ?? 'spark';
     this.kits.render(view?.unlockedKits ?? ['spark'], this.selectedKit);
+    this.selectedDifficulty = view?.lastDifficulty ?? BASE_DIFFICULTY;
+    this.grades.render(view?.bestVictoryDifficulty ?? 0, this.selectedDifficulty);
     const note = this.root.querySelector<HTMLElement>('[data-entry-note="daily"]');
     if (note && view) {
       const best = view.todayBest;
       const bestText = best
         ? best.victory ? ` · best: the Kiln quieted in ${formatRunTime(best.timeMs)}` : ` · best: Floor ${best.floor}/${FLOORS_TOTAL} in ${formatRunTime(best.timeMs)}`
         : '';
-      note.textContent = `${view.today} · one seed for everyone · the Sparkwright’s case${bestText}`;
+      note.textContent = `${view.today} · one seed for everyone · the Sparkwright’s case, on Adept${bestText}`;
     }
     // STORY: once seen, the opening can be watched again from here.
     const opening = this.root.querySelector<HTMLButtonElement>('[data-entry="opening"]');
@@ -199,7 +211,7 @@ export class ExpeditionEntry {
     if (kind === 'continue' || !ctx.run) {
       return ctx.levels.startRun(ctx, { mode: 'normal', worldSource: 'campaign', continueSave: kind === 'continue', loadout: 'fresh' });
     }
-    return ctx.run.startNewRun(ctx, { kit: this.selectedKit, daily: kind === 'daily' });
+    return ctx.run.startNewRun(ctx, { kit: this.selectedKit, daily: kind === 'daily', difficulty: this.selectedDifficulty });
   }
 
   dispose(): void {

@@ -3,7 +3,7 @@
 
 /** Always hidden: HUD, menus, dev panels, prompts, toasts. */
 const CHROME = [
-  '#game-hud', '#minimap-corner', '#minimap-overlay', '#toast-stack', '#interaction-hint', '#controls-hint',
+  '#game-hud', '#minimap-overlay', '#toast-stack', '#interaction-hint', '#controls-hint',
   '#damage-vignette', '#god-tools', '#expedition-tools', '#field-note', '#expedition-pause', '#objective',
   '#objective-note', '#phial-row', '#vitals-aside', '#waypoint-indicator', '#waystone-prompt-overlay',
   '#trickshot-readout', '#clip-card', '#perf-fps', '#perf-hud', '#authorlink-status', '#card-offer-overlay',

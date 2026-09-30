@@ -5,7 +5,7 @@
 // bake-from-playtest, rotate, solo lights.
 // Usage: node scripts/verify-builder-ux.mjs [url]  (dev server must be running)
 import { launchBrowser } from './browser-launch.mjs';
-import { getGameViewSize, isBenignDevConsoleError, worldToBuilderClient } from './run-helpers.mjs';
+import { getGameViewSize, isBenignDevConsoleError, worldToBuilderClient, leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -42,6 +42,8 @@ await page.addInitScript(() => {
 });
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+
+await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2200);
 

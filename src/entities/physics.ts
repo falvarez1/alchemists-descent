@@ -94,13 +94,9 @@ export class Physics implements PhysicsApi {
     ent: { x: number; y: number },
     nextX: number,
     nextY: number,
-    moveDx: number,
-    moveDy: number,
     halfW: number,
     h: number,
   ): boolean {
-    void moveDx;
-    void moveDy;
     if (!this.entityFreeForMove(nextX, nextY, halfW, h)) return false;
     ent.x = nextX;
     ent.y = nextY;
@@ -119,7 +115,7 @@ export class Physics implements PhysicsApi {
   ): boolean {
     this._moveBlockMemo.clear();
     if (dy !== 0) {
-      if (this.tryMoveTo(ent, ent.x, ent.y + dy, 0, dy, halfW, h)) return true;
+      if (this.tryMoveTo(ent, ent.x, ent.y + dy, halfW, h)) return true;
       // Lateral "slip": the vertical mirror of stepUp. A small wall nub catching
       // a shoulder shouldn't pin a vertical climb (levitating up a tunnel) any
       // more than a low ledge stops a run — nudge sideways the minimum needed to
@@ -132,13 +128,13 @@ export class Physics implements PhysicsApi {
           // whose intermediate cells it never actually fit through.
           if (
             this.entityFreeForMove(ent.x + s, ent.y, halfW, h) &&
-            this.tryMoveTo(ent, ent.x + s, ent.y + dy, s, dy, halfW, h)
+            this.tryMoveTo(ent, ent.x + s, ent.y + dy, halfW, h)
           ) {
             return true;
           }
           if (
             this.entityFreeForMove(ent.x - s, ent.y, halfW, h) &&
-            this.tryMoveTo(ent, ent.x - s, ent.y + dy, -s, dy, halfW, h)
+            this.tryMoveTo(ent, ent.x - s, ent.y + dy, halfW, h)
           ) {
             return true;
           }
@@ -146,10 +142,10 @@ export class Physics implements PhysicsApi {
       }
       return false;
     }
-    if (this.tryMoveTo(ent, ent.x + dx, ent.y, dx, 0, halfW, h)) return true;
+    if (this.tryMoveTo(ent, ent.x + dx, ent.y, halfW, h)) return true;
     if (stepUp) {
       for (let s = 1; s <= stepUp; s++) {
-        if (this.tryMoveTo(ent, ent.x + dx, ent.y - s, dx, -s, halfW, h)) return true;
+        if (this.tryMoveTo(ent, ent.x + dx, ent.y - s, halfW, h)) return true;
       }
     }
     // Step-DOWN: the ceiling mirror of stepUp. Pressed up against a ceiling, a
@@ -161,7 +157,7 @@ export class Physics implements PhysicsApi {
         // same L-shape rule as the lateral slip above (duck first, then over)
         if (
           this.entityFreeForMove(ent.x, ent.y + s, halfW, h) &&
-          this.tryMoveTo(ent, ent.x + dx, ent.y + s, dx, s, halfW, h)
+          this.tryMoveTo(ent, ent.x + dx, ent.y + s, halfW, h)
         ) {
           return true;
         }

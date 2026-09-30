@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ALCHEMY_CHAIN_STEPS,
   ALCHEMY_CHAIN_TICKS,
   ALCHEMY_ENGAGE_CELLS,
   ALCHEMY_HEAL,
@@ -15,6 +16,8 @@ import {
   GOLD_PER_GRAIN,
   type HitMemory,
   killingCause,
+  LONG_FUSE_CHAIN_STEPS,
+  LONG_FUSE_CHAIN_TICKS,
   nextChain,
   resolveStatusOrigin,
   SPELL_STATUS_TICKS,
@@ -424,5 +427,40 @@ describe('Enemies report their killing blows', () => {
     ctx.enemies.push(bat);
     enemies.damage(bat, 2, 1, 0);
     expect(bat.fear ?? 0).toBeGreaterThanOrEqual(0.45); // a bat bolts rather than presses
+  });
+});
+
+describe('the Long Fuse boon', () => {
+  it('doubles the chain window and lifts the bonus cap from ×3 to ×4', () => {
+    expect(LONG_FUSE_CHAIN_TICKS).toBe(ALCHEMY_CHAIN_TICKS * 2);
+    // A kill 5 s after the last one breaks an ordinary chain and extends a fused one.
+    expect(nextChain(2, 0, ALCHEMY_CHAIN_TICKS + 120)).toBe(1);
+    expect(nextChain(2, 0, ALCHEMY_CHAIN_TICKS + 120, LONG_FUSE_CHAIN_TICKS)).toBe(3);
+    expect(nextChain(2, 0, LONG_FUSE_CHAIN_TICKS + 1, LONG_FUSE_CHAIN_TICKS)).toBe(1);
+    const at = (chain: number, steps: number): number => alchemyBonusGold(40, chain, steps);
+    // Same bonus until the ordinary cap; only the fused chain keeps climbing past it.
+    expect(at(1 + ALCHEMY_CHAIN_STEPS, ALCHEMY_CHAIN_STEPS)).toBe(at(1 + ALCHEMY_CHAIN_STEPS, LONG_FUSE_CHAIN_STEPS));
+    expect(at(20, ALCHEMY_CHAIN_STEPS)).toBe(at(1 + ALCHEMY_CHAIN_STEPS, ALCHEMY_CHAIN_STEPS));
+    expect(at(20, LONG_FUSE_CHAIN_STEPS)).toBeGreaterThan(at(20, ALCHEMY_CHAIN_STEPS));
+    expect(at(20, LONG_FUSE_CHAIN_STEPS)).toBeCloseTo(at(20, ALCHEMY_CHAIN_STEPS) * (4 / 3), -1);
+  });
+
+  it('keeps a chain alive across a gap that would have ended it, and pays the higher rung', () => {
+    const fused = harness(1000);
+    (fused.ctx.player as unknown as { perks: Record<string, true> }).perks = { longfuse: true };
+    const plain = harness(1000);
+    for (const { ctx, alchemy } of [fused, plain]) {
+      const a = enemy('rillback');
+      alchemy.noteHit(a, 'shorted');
+      alchemy.onKill(a);
+      ctx.state.frameCount += ALCHEMY_CHAIN_TICKS + 120; // 5 s later
+      const b = enemy('weaver');
+      alchemy.noteHit(b, 'burned');
+      alchemy.onKill(b);
+    }
+    expect(plain.kills.map((k) => k.chain)).toEqual([1, 1]);
+    expect(fused.kills.map((k) => k.chain)).toEqual([1, 2]);
+    expect(fused.alchemy.chain).toBe(2);
+    expect(plain.alchemy.chain).toBe(1);
   });
 });

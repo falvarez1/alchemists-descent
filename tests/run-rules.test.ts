@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   PHIALS_PER_RUN,
   betterDailyResult,
+  boonNames,
   buildRunSummary,
   clampPhials,
+  cleanRunBoons,
   dailySeed,
   formatChain,
   formatRunTime,
@@ -179,6 +181,38 @@ describe('the run ledger', () => {
     expect(shareLine(chainless)).toBe('Breathing Works — Floor 3/4 in 14:02 · 0 alchemical kills');
     expect(formatChain(0)).toBe('—');
     expect(formatChain(3)).toBe('×3');
+  });
+
+  it('names a tier other than Adept in the ledger and the share line, and leaves Adept unsaid', () => {
+    const adept = buildRunSummary(stats({ difficulty: 2 }));
+    expect(adept.difficulty).toBe(2);
+    expect(shareLine(adept)).toBe('Breathing Works — Floor 3/4 in 14:02 · 9 alchemical kills · best chain ×3');
+    const archmage = buildRunSummary(stats({ difficulty: 4, outcome: 'victory', floor: 4, floorName: 'The Kiln Heart' }));
+    expect(shareLine(archmage)).toBe('Breathing Works — Archmage — the Kiln quieted in 14:02 · 9 alchemical kills · best chain ×3');
+    expect(shareLine(buildRunSummary(stats({ difficulty: 1 })))).toBe('Breathing Works — Apprentice — Floor 3/4 in 14:02 · 9 alchemical kills · best chain ×3');
+    // A ledger from before the ladder (and a nonsense tier) carries no difficulty, and says nothing.
+    expect('difficulty' in buildRunSummary(stats())).toBe(false);
+    expect('difficulty' in buildRunSummary(stats({ difficulty: 9 as never }))).toBe(false);
+    expect(shareLine(buildRunSummary(stats({ daily: '2026-09-26', difficulty: 3 })))).toBe('Breathing Works — daily 2026-09-26 — Conjurer — Floor 3/4 in 14:02 · 9 alchemical kills · best chain ×3');
+  });
+
+  it('names the boons a run struck — as the Sanctum’s card named them — in the ledger and the share line', () => {
+    // Only what the Sanctum offers, once each, in the order taken (a review kit's every-perk grant is not a bargain).
+    expect(cleanRunBoons(['rimesoles', 'torchbearer', 'nonsense', 'rimesoles', 7, 'longfuse'])).toEqual(['rimesoles', 'longfuse']);
+    expect(cleanRunBoons(undefined)).toEqual([]);
+    expect(boonNames([])).toBe('');
+    expect(boonNames(['rimesoles'])).toBe('Rime Soles');
+    expect(boonNames(['rimesoles', 'longfuse'])).toBe('Rime Soles and Long Fuse');
+    // 'might' is "Power Surge" on the card the player picked.
+    expect(boonNames(['rimesoles', 'longfuse', 'might'])).toBe('Rime Soles, Long Fuse and Power Surge');
+
+    const boonly = buildRunSummary(stats({ boons: ['rimesoles', 'longfuse'], path: ['d1', 'd2b', 'd3'] }));
+    expect(boonly.boons).toEqual(['rimesoles', 'longfuse']);
+    expect(shareLine(boonly)).toBe('Breathing Works — Floor 3/4 in 14:02 · via the Cold Store and the Drowned Cisterns · with Rime Soles and Long Fuse · 9 alchemical kills · best chain ×3');
+    // A boonless run (and a ledger from before boons) leaves the clause, and the field, out.
+    expect(buildRunSummary(stats({ boons: [] })).boons).toBeUndefined();
+    expect('boons' in buildRunSummary(stats())).toBe(false);
+    expect(shareLine(buildRunSummary(stats({ boons: ['nonsense'] })))).toBe('Breathing Works — Floor 3/4 in 14:02 · 9 alchemical kills · best chain ×3');
   });
 });
 

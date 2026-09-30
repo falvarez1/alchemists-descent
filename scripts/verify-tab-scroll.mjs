@@ -4,6 +4,7 @@
 //  2) the mouse wheel over the strip scrolls the tabs horizontally.
 // Usage: node scripts/verify-tab-scroll.mjs [url]  (dev server must be running)
 import { chromium } from 'playwright-core';
+import { leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5191/';
 let pass = 0;
@@ -20,6 +21,8 @@ const errs = [];
 page.on('pageerror', (e) => errs.push(String(e)));
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+
+await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1500);
 await page.click('#mode-builder-btn');

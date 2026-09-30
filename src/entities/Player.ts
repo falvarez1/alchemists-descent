@@ -1361,7 +1361,10 @@ export class PlayerControl implements PlayerControlApi {
         // Self-shock fairness (combat/SelfShock): your own current scales with
         // how much of it reaches you and is capped per 2 s window; a visible arc
         // crawls back along the conductor toward where it came from.
-        damage += fairShockDamage(this.selfShock, status.shockDamage, status.maxCharge, ctx.state.frameCount) - status.shockDamage;
+        const fairShock = fairShockDamage(this.selfShock, status.shockDamage, status.maxCharge, ctx.state.frameCount);
+        damage += fairShock - status.shockDamage;
+        // Insulated Boots boon: the current finds a quarter of you (the arc still crawls).
+        if (player.perks.grounded) damage -= fairShock * 0.75;
         if (status.maxCharge > 0) drawConductorArc(ctx, player.x, player.y, 4, bodyH);
       }
       if (damage > 0) {

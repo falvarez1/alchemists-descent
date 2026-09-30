@@ -4,7 +4,7 @@
 // codec for all 35 cell types (the one thing vitest's node env cannot test).
 // Usage: node scripts/verify-builder-prefabs.mjs [url]  (dev server running)
 import { chromium } from 'playwright-core';
-import { getGameViewSize, worldToBuilderClient } from './run-helpers.mjs';
+import { getGameViewSize, worldToBuilderClient, leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -28,6 +28,8 @@ const pageErrors = [];
 page.on('pageerror', (err) => pageErrors.push(String(err)));
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+
+await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2200);
 await page.evaluate(() => {
@@ -53,6 +55,7 @@ await page.evaluate(() => {
   localStorage.setItem(key, JSON.stringify(layout));
 });
 await page.reload({ waitUntil: 'networkidle', timeout: 30000 });
+await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1200);
 
@@ -492,6 +495,7 @@ await page.evaluate(() => {
   }));
 });
 await page.reload({ waitUntil: 'networkidle', timeout: 30000 });
+await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1200);
 await page.click('#mode-builder-btn');

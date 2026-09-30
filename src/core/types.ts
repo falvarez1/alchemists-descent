@@ -2619,7 +2619,14 @@ export type PerkId =
   | 'ironhide'
   | 'flameward'
   | 'toxinward'
-  | 'goldmagnet';
+  | 'goldmagnet'
+  // The alchemist's bargains: boons that change how the world is met, not the numbers.
+  | 'stronggrip'
+  | 'rimesoles'
+  | 'longfuse'
+  | 'velvethood'
+  | 'grounded'
+  | 'warmblood';
 
 /** One contextual onboarding hint for the nearest interactable. */
 export interface HintInfo {
@@ -3464,6 +3471,8 @@ export interface RunSaveState {
    * before the branching descent carry none and resume on the first doors.
    */
   path?: string[];
+  /** The Sanctum boons struck this run, in the order taken (PerkId names). Optional for the same reason. */
+  boons?: string[];
 }
 
 /** A finished run, as the ledger screen reads it. */
@@ -3471,6 +3480,8 @@ export interface RunResult {
   summary: RunSummary;
   /** Kits this run unlocked (floor reached, Leviathan, victory). */
   unlocked: KitId[];
+  /** The difficulty tier this victory newly opened (config/difficultyLadder), or null. */
+  unlockedDifficulty: Difficulty | null;
   dailyBest: RunDailyBest | null;
   newDailyBest: boolean;
   newBestFloor: boolean;
@@ -3488,6 +3499,10 @@ export interface RunMetaView {
   runsEnded: number;
   bestFloor: number;
   victories: number;
+  /** The hardest difficulty tier the Kiln has been quieted on (0 = never): what opens the ladder. */
+  bestVictoryDifficulty: number;
+  /** The tier the player last chose (always one that is open to them). */
+  lastDifficulty: Difficulty;
   /** Today's UTC date key and this player's best on it. */
   today: string;
   todayBest: RunDailyBest | null;
@@ -3528,10 +3543,16 @@ export interface RunApi {
   restorePhial(ctx: Ctx, reason: 'refuge' | 'sanctum'): boolean;
   /** End the run by choice; the ledger follows. */
   abandon(ctx: Ctx): void;
-  /** A fresh run: a new seed (or today's daily seed) with the chosen kit. */
-  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean }): RunStartResult;
+  /**
+   * A fresh run: a new seed (or today's daily seed) with the chosen kit, at the
+   * chosen difficulty when it is open to the player (else Adept). The daily is
+   * always Adept: it is one seed for everyone.
+   */
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty }): RunStartResult;
   metaView(): RunMetaView;
   chooseKit(kit: KitId): void;
+  /** Remember the tier chosen (ignored while it is still locked). */
+  chooseDifficulty(difficulty: Difficulty): void;
 }
 
 export interface Ctx {

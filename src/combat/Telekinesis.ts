@@ -91,17 +91,31 @@ export function springAccel(gx: number, gy: number, vx: number, vy: number, tx: 
   return { ax, ay };
 }
 
+/**
+ * The Sexton's Grip boon: every draught the grip asks for costs this share, and a
+ * hurl leaves this much faster. (Holding still cancels the wand's regeneration in
+ * full — only the weight's share of the drain is discounted, or a held body would
+ * pay the wand back.)
+ */
+export const SEXTON_COST_K = 0.5;
+export const SEXTON_HURL_K = 1.25;
+
+/** The cost multiplier for whoever holds the wand: the boon's discount, or 1. */
+export function gripCostK(ctx: Ctx): number {
+  return ctx.player.perks?.stronggrip ? SEXTON_COST_K : 1;
+}
+
 /** Mana per tick to hold a body: the wand's regeneration (the grip has its attention) plus weight. */
-export function holdDrain(mass: number, regen: number): number {
-  return Math.max(0, regen) + TK.DRAIN_BASE + TK.DRAIN_MASS * mass;
+export function holdDrain(mass: number, regen: number, costK = 1): number {
+  return Math.max(0, regen) + (TK.DRAIN_BASE + TK.DRAIN_MASS * mass) * costK;
 }
 
-export function grabCost(mass: number): number {
-  return TK.GRAB_COST + TK.GRAB_COST_MASS * mass;
+export function grabCost(mass: number, costK = 1): number {
+  return (TK.GRAB_COST + TK.GRAB_COST_MASS * mass) * costK;
 }
 
-export function hurlCost(mass: number): number {
-  return TK.HURL_COST + TK.HURL_COST_MASS * mass;
+export function hurlCost(mass: number, costK = 1): number {
+  return (TK.HURL_COST + TK.HURL_COST_MASS * mass) * costK;
 }
 
 /** Share of a full hurl the tank can pay for (0..1). */
@@ -293,7 +307,7 @@ function liftCorpse(ctx: Ctx, pick: CorpsePick): boolean {
     }
     return true;
   }
-  const cost = grabCost(c.mass);
+  const cost = grabCost(c.mass, gripCostK(ctx));
   if (wand && wand.mana < cost) { dryFizzle(ctx, gx, gy, c.mass); return true; }
   if (wand) wand.mana -= cost;
   hold = { corpse: c, index: pick.index, lostSight: 0, heldT: 0 };
@@ -350,7 +364,7 @@ export function telekinesisHurl(ctx: Ctx): boolean {
   gripPoint(c.e, index, GP);
   const gx = GP.x, gy = GP.y;
   const wand = activeWand(ctx);
-  const cost = hurlCost(c.mass);
+  const cost = hurlCost(c.mass, gripCostK(ctx));
   const power = wand ? hurlPower(wand.mana, cost) : 1;
   if (power < TK.HURL_MIN_POWER) {
     releaseCorpse(c, now);
@@ -361,7 +375,7 @@ export function telekinesisHurl(ctx: Ctx): boolean {
   // At the cursor — lobbed so it lands there when it can; with the cursor on
   // the body itself, straight along the aim.
   const p = ctx.player;
-  const speed = hurlSpeed(c.mass, power);
+  const speed = hurlSpeed(c.mass, power) * (ctx.player.perks?.stronggrip ? SEXTON_HURL_K : 1);
   const s = sampleBody(c.e, SAMPLE);
   const tx = ctx.input.mouse.x - s.x, ty = ctx.input.mouse.y - s.y;
   let dx: number, dy: number;
@@ -425,7 +439,7 @@ export function updateTelekinesis(ctx: Ctx): void {
   const wand = activeWand(ctx);
   if (wand) {
     const regen = (wand.frame?.manaRegen ?? 0) * (p.perks?.manafont ? 1.6 : 1);
-    const drain = holdDrain(c.mass, regen);
+    const drain = holdDrain(c.mass, regen, gripCostK(ctx));
     if (wand.mana < drain) { wand.mana = 0; lose(true); return; }
     wand.mana -= drain;
   }

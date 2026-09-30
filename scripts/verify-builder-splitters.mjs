@@ -2,6 +2,7 @@
 // Drags each splitter and asserts the dock grows; verifies persistence across reload.
 // Usage: node scripts/verify-builder-splitters.mjs [url]  (dev server must be running)
 import { launchBrowser } from './browser-launch.mjs';
+import { leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -17,6 +18,8 @@ const errs = [];
 page.on('pageerror', (e) => errs.push(String(e)));
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+
+await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1500);
 await page.click('#mode-builder-btn');
@@ -106,6 +109,7 @@ if (haveRight) {
   await drag('right', -80, 0);
   const target = (await grid()).right;
   await page.reload({ waitUntil: 'networkidle' });
+  await leaveTitleIfShown(page);
   await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
   await page.waitForTimeout(1200);
   // Dev mode persistence may already have reopened the Builder on reload; only

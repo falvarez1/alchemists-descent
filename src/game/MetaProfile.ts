@@ -1,14 +1,17 @@
-import type { CardId } from '@/core/types';
+import type { CardId, Difficulty } from '@/core/types';
 import type { KitId, RunSummary } from '@/core/run';
 import { DEFAULT_KIT, KIT_ORDER, isKitId } from '@/content/kits';
 import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
 import { betterDailyResult, isDateKey } from '@/game/runRules';
 import { CAMPAIGN_LEVELS } from '@/config/worldgraph';
+import { BASE_DIFFICULTY, bestVictoryAfter, isDifficultyOpen, openDifficulty, tierOpenedByVictory } from '@/config/difficultyLadder';
 
 /**
  * The meta profile: what persists ACROSS runs (Breathing Works). Runs begun
  * and finished, the deepest floor, victories, unlocked kits, the last kit
- * chosen, whether the Workshop has opened, and the daily bests. Discovered
+ * chosen, the hardest difficulty the Kiln has been quieted on (which opens the
+ * ladder: config/difficultyLadder), whether the Workshop has opened, and the
+ * daily bests. Discovered
  * spell cards live in their own long-standing store (combat/wands/
  * cardDiscovery) and are read through here, not duplicated.
  *
@@ -47,6 +50,13 @@ export interface MetaProfileData {
   fastestVictoryMs: number | null;
   unlockedKits: KitId[];
   lastKit: KitId;
+  /**
+   * The hardest difficulty tier (1–4) the Kiln has been quieted on; 0 before the
+   * first victory. Opens the tier above it (config/difficultyLadder).
+   */
+  bestVictoryDifficulty: number;
+  /** The tier last chosen on the title screen or the ledger; only ever one that is open. */
+  lastDifficulty: Difficulty;
   /** The material sandbox opens to players after their first run ends. */
   workshopUnlocked: boolean;
   /** Best result per daily date (YYYY-MM-DD). */
@@ -72,6 +82,8 @@ export function defaultMetaProfile(): MetaProfileData {
     fastestVictoryMs: null,
     unlockedKits: [DEFAULT_KIT],
     lastKit: DEFAULT_KIT,
+    bestVictoryDifficulty: 0,
+    lastDifficulty: BASE_DIFFICULTY,
     workshopUnlocked: false,
     dailyBests: {},
     levelsSeen: [],
@@ -127,17 +139,22 @@ export function migrateMetaProfile(value: unknown): { profile: MetaProfileData; 
   const unlockedKits = KIT_ORDER.filter((kit) => kit === DEFAULT_KIT || kits.includes(kit));
   const lastKit = isKitId(raw.lastKit) && unlockedKits.includes(raw.lastKit) ? raw.lastKit : DEFAULT_KIT;
   const leviathansSlain = count(raw.leviathansSlain);
+  const victories = count(raw.victories);
+  // A profile from before the ladder that has won at all won on what was then the only tier: Adept.
+  const bestVictoryDifficulty = Math.min(4, raw.bestVictoryDifficulty === undefined ? (victories > 0 ? BASE_DIFFICULTY : 0) : count(raw.bestVictoryDifficulty));
   const fastest = raw.fastestVictoryMs;
   const profile: MetaProfileData = {
     version: META_VERSION,
     runsStarted: count(raw.runsStarted),
     runsEnded: count(raw.runsEnded),
-    victories: count(raw.victories),
+    victories,
     bestFloor: count(raw.bestFloor),
     leviathansSlain,
     fastestVictoryMs: typeof fastest === 'number' && Number.isFinite(fastest) && fastest > 0 ? Math.floor(fastest) : null,
     unlockedKits,
     lastKit,
+    bestVictoryDifficulty,
+    lastDifficulty: openDifficulty(raw.lastDifficulty, bestVictoryDifficulty),
     workshopUnlocked: raw.workshopUnlocked === true || count(raw.runsEnded) > 0,
     dailyBests: sanitizeDaily(raw.dailyBests),
     levelsSeen: sanitizeLevelsSeen(raw.levelsSeen),
@@ -197,6 +214,8 @@ export function recordLevelSeen(profile: MetaProfileData, levelId: string): Meta
 export interface RunEndRecord {
   profile: MetaProfileData;
   unlocked: KitId[];
+  /** The difficulty tier this victory newly opened, or null. */
+  unlockedDifficulty: Difficulty | null;
   /** This date's best after the run (daily runs only). */
   dailyBest: DailyBest | null;
   /** The run set (or tied into) a new daily best. */
@@ -208,12 +227,16 @@ export interface RunEndRecord {
 export function recordRunEnded(profile: MetaProfileData, summary: RunSummary): RunEndRecord {
   const victory = summary.outcome === 'victory';
   const newBestFloor = summary.floor > profile.bestFloor;
+  // A ledger from before the ladder was played on what was then the only tier.
+  const tier = summary.difficulty ?? BASE_DIFFICULTY;
+  const unlockedDifficulty = victory ? tierOpenedByVictory(profile.bestVictoryDifficulty, tier) : null;
   let next: MetaProfileData = {
     ...profile,
     runsEnded: profile.runsEnded + 1,
     workshopUnlocked: true,
     bestFloor: Math.max(profile.bestFloor, summary.floor),
     victories: profile.victories + (victory ? 1 : 0),
+    bestVictoryDifficulty: victory ? bestVictoryAfter(profile.bestVictoryDifficulty, tier) : profile.bestVictoryDifficulty,
     fastestVictoryMs: victory
       ? Math.min(profile.fastestVictoryMs ?? Number.POSITIVE_INFINITY, summary.timeMs)
       : profile.fastestVictoryMs,
@@ -231,7 +254,7 @@ export function recordRunEnded(profile: MetaProfileData, summary: RunSummary): R
     if (newDailyBest) next = { ...next, dailyBests: trimDaily({ ...next.dailyBests, [summary.daily]: result }) };
   }
   const unlocks = withUnlocks(next);
-  return { profile: unlocks.profile, unlocked: unlocks.unlocked, dailyBest, newDailyBest, newBestFloor };
+  return { profile: unlocks.profile, unlocked: unlocks.unlocked, unlockedDifficulty, dailyBest, newDailyBest, newBestFloor };
 }
 
 /* ---------------- the store ---------------- */
@@ -286,6 +309,12 @@ export class MetaProfileStore {
   setLastKit(kit: KitId): void {
     if (!this.isKitUnlocked(kit) || this.data.lastKit === kit) return;
     this.commit({ ...this.data, lastKit: kit });
+  }
+
+  /** Remember the tier chosen; a tier still locked is ignored. */
+  setLastDifficulty(tier: Difficulty): void {
+    if (!isDifficultyOpen(tier, this.data.bestVictoryDifficulty) || this.data.lastDifficulty === tier) return;
+    this.commit({ ...this.data, lastDifficulty: tier });
   }
 
   private write(): void {
