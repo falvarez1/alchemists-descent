@@ -111,12 +111,16 @@ the `*-suite` runners, performance (`verify-living-performance`, `verify-fidelit
 `verify-screenshot-gallery`/`verify-gallery`, and `verify-run-player-build`.
 `verify-mobile` was run separately and passes (38 checks).
 
-## Loose ends noticed by the triage (not fixed)
+## Loose ends noticed by the triage (closed)
 
-- `tryMoveTo` in `src/entities/physics.ts` has unused `moveDx` / `moveDy` parameters (`void moveDx; void moveDy;`)
-  that look like the stub of a "movement sweeps detached rubble" idea. It was never built; the game's documented rule
-  (docs/FEEL.md) is that a floating fragment under five cells is walk-through and five or more is a wall, and
-  `verify-explosion-debris` now asserts exactly that. Building the sweep would be a design decision.
-- `#minimap-corner` is hidden in play (`living-descent.css`), but `Minimap.ts` still redraws it about every 30 frames and
-  wires popovers to it: dead work, small.
-- `verify-game.mjs` keeps its own copy of the title-to-Sandbox helper that now lives in `run-helpers.mjs`.
+- `tryMoveTo` in `src/entities/physics.ts` carried unused `moveDx` / `moveDy` parameters (`void`ed) — the stub of a
+  "movement sweeps detached rubble" idea that was never built. Removed; behaviour is identical (`verify-tap-precision` and
+  `verify-air-tap` give byte-identical numbers before and after). The game's rule stays as documented in docs/FEEL.md: a
+  floating fragment under five cells is walk-through and five or more is a wall, which `verify-explosion-debris` asserts.
+  If a sweep is ever wanted as a feature, that is a design decision, not this stub.
+- The corner minimap was hidden in every play mode (`living-descent.css`, `mobile.css`) yet `Minimap.ts` repainted the whole
+  explored grid into it about every 30 frames and wired popovers to it. Deleted rather than gated: the canvas
+  (`index.html`, and `builder.html` regenerated), its styles, `redrawCorner`, its cadence and popover wiring. The chart is the
+  full map (`M`); the portal/refuge pings still flash on it. `verify-minimap-popovers` now asserts there is no corner map and
+  `verify-minimap-waypoint` reads the full map's canvas.
+- `verify-game.mjs` kept its own copy of the title-to-Sandbox helper; it uses `enterSandboxFromTitle` from `run-helpers` now.

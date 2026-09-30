@@ -73,7 +73,7 @@ await waitForOpeningEnd(page); // the plates hold the world still; the M press w
 const target = await page.evaluate(() => {
   const ctx = window.__game.ctx;
   const rt = ctx.levels.current;
-  const canvas = document.getElementById('minimap-corner');
+  const canvas = document.getElementById('minimap-canvas');
   if (!rt || !(canvas instanceof HTMLCanvasElement)) return null;
   const rawX = Math.max(20, Math.min(rt.world.width - 20, Math.round(ctx.player.x + 520)));
   const rawY = Math.max(20, Math.min(rt.world.height - 20, Math.round(ctx.player.y - 16)));

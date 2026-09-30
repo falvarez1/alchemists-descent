@@ -203,13 +203,10 @@ check(
   JSON.stringify(portalPop),
 );
 
-// The corner chart is not part of the play HUD any more (living-descent.css hides it), so the
-// full map is the only surface a player can hover: the rest of the popover checks stay on it.
-const cornerHidden = await page.evaluate(() => {
-  const corner = document.getElementById('minimap-corner');
-  return !!corner && getComputedStyle(corner).display === 'none';
-});
-check('Corner map is hidden while playing; the full map is the only chart', cornerHidden);
+// There is no corner chart any more (it was hidden in play, then removed), so the full map is the
+// only surface a player can hover: the rest of the popover checks stay on it.
+const noCorner = await page.evaluate(() => document.getElementById('minimap-corner') === null);
+check('There is no corner map; the full map is the only chart', noCorner);
 
 await hoverMarker('#minimap-canvas', markers.refuge);
 const refugePop = await popoverState();

@@ -948,9 +948,6 @@ export class Minimap {
   private readonly c2d: CanvasRenderingContext2D;
   private readonly img: ImageData;
   private readonly popovers = new PopoverHost();
-  /** Always-on corner panel (play mode), refreshed on a slower cadence. */
-  private readonly corner: CanvasRenderingContext2D;
-  private readonly cornerEl: HTMLCanvasElement;
   private readonly waypointEl: HTMLDivElement;
   private readonly waypointArrow: HTMLDivElement;
   private readonly waypointRange: HTMLDivElement;
@@ -996,8 +993,6 @@ export class Minimap {
     this.canvas.height = MINIMAP_H;
     this.c2d = this.canvas.getContext('2d')!;
     this.img = this.c2d.createImageData(MINIMAP_W, MINIMAP_H);
-    this.cornerEl = el('minimap-corner') as HTMLCanvasElement;
-    this.corner = this.cornerEl.getContext('2d')!;
     this.waypointEl = this.createWaypointIndicator();
     this.waypointArrow = this.waypointEl.querySelector('.waypoint-arrow') as HTMLDivElement;
     this.waypointRange = this.waypointEl.querySelector('.waypoint-range') as HTMLDivElement;
@@ -1010,7 +1005,6 @@ export class Minimap {
     this.legendEl = shell.legend;
     this.labelsEl = shell.labels;
     this.wirePoiPopovers(this.canvas);
-    this.wirePoiPopovers(this.cornerEl);
     this.wireWaypointControls();
 
     this.palette = new Uint32Array(CELL_COUNT);
@@ -1031,8 +1025,8 @@ export class Minimap {
       }
     }));
 
-    // Key in hand -> the portal dot pings on the corner map for a few
-    // seconds: "now go THERE."
+    // Key in hand -> the portal dot pings on the chart for a few seconds
+    // ("now go THERE") for whoever has it open.
     this.disposers.push(ctx.events.on('objectiveChanged', ({ text }) => {
       if (text === 'REACH THE PORTAL' || text === INTRO_OBJECTIVE.returnPortal) this.portalPing = 300;
     }));
@@ -1190,7 +1184,6 @@ export class Minimap {
     this.waypointPulse = 150;
     this.ctx.events.emit('toast', { text: 'WAYPOINT SET' });
     this.redraw(this.ctx);
-    this.redrawCorner(this.ctx);
     this.ctx.levels.saveExpedition(this.ctx);
     this.updateWaypointIndicator(this.ctx);
   }
@@ -1202,7 +1195,6 @@ export class Minimap {
     this.waypointPulse = 0;
     if (showToast) this.ctx.events.emit('toast', { text: 'WAYPOINT CLEARED' });
     this.redraw(this.ctx);
-    this.redrawCorner(this.ctx);
     this.ctx.levels.saveExpedition(this.ctx);
     this.updateWaypointIndicator(this.ctx);
   }
@@ -1221,9 +1213,8 @@ export class Minimap {
     if (on === this.visible) return;
     this.visible = on;
     el('minimap-overlay').classList.toggle('visible', on);
-    // The fullscreen map is a modal read — pause the world while it's up (the
-    // always-on corner panel is unaffected). Restore the prior pause state so it
-    // nests correctly under the pause menu.
+    // The fullscreen map is a modal read — pause the world while it's up.
+    // Restore the prior pause state so it nests correctly under the pause menu.
     if (on) {
       resetHeldSpellInputs(this.ctx);
       this.wasPaused = this.ctx.state.paused;
@@ -1242,10 +1233,6 @@ export class Minimap {
     if (this.refugePing > 0) this.refugePing--;
     if (this.waypointPulse > 0) this.waypointPulse--;
     this.updateWaypointIndicator(ctx);
-    // Always-on corner panel: a slower cadence keeps it nearly free —
-    // except while the portal ping flashes, which earns a fast refresh.
-    const cadence = this.portalPing > 0 || this.refugePing > 0 ? 8 : 30;
-    if (ctx.state.mode === 'play' && ctx.state.frameCount % cadence === 0) this.redrawCorner(ctx);
     if (!this.visible || ctx.state.frameCount % REDRAW_INTERVAL !== 0) return;
     this.redraw(ctx);
   }
@@ -1292,16 +1279,6 @@ export class Minimap {
     this.waypointEl.classList.toggle('near', distance < 14);
     this.waypointArrow.style.transform = `rotate(${Math.atan2(dy, dx) + Math.PI / 2}rad)`;
     this.waypointRange.textContent = distance < 14 ? 'HERE' : String(Math.round(distance));
-  }
-
-  /** The compact top-right map: terrain + landmark dots, no caption. */
-  private redrawCorner(ctx: Ctx): void {
-    const level = ctx.levels.current;
-    if (!level) return;
-    this.paintTerrain(level);
-    this.corner.putImageData(this.img, 0, 0);
-    this.paintViewport(this.corner, ctx);
-    this.paintMarkers(this.corner, ctx, level);
   }
 
   private redraw(ctx: Ctx): void {
@@ -1460,7 +1437,6 @@ export class Minimap {
         id: POI_POPOVER_ID,
         className: 'map-poi-pop',
         anchorRect: this.poiAnchorRect(canvas, poi),
-        preferredSide: canvas === this.cornerEl ? 'left' : undefined,
         offsetY: -10,
         render: (pop) => fillMinimapPoiPopover(pop, poi),
       });
@@ -1482,7 +1458,6 @@ export class Minimap {
       id: POI_POPOVER_ID,
       className: 'map-poi-pop',
       anchorRect: this.materialAnchorRect(canvas, material),
-      preferredSide: canvas === this.cornerEl ? 'left' : undefined,
       offsetY: -10,
       render: (pop) => fillMinimapMaterialPopover(pop, material),
     });
