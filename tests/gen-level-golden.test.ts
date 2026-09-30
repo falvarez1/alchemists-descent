@@ -183,7 +183,7 @@ const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
   { id: 'd3', seed: 1337, hash: 'dc6e1693' }, // GEN_VERSION 61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v59's detours leave from their true start; no tunnel ends inside a sealed feature, over v56's story nooks + lair fix + v54's Sump rim
-  { id: 'd4', seed: 1337, hash: 'e53b6211' }, // GEN_VERSION 61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v60's story nooks on dry ground (no liquid level with the floor, the route no higher than a step), over v59's stonemaw connector + v55's Kiln flue + v54's Kiln flora
+  { id: 'd4', seed: 1337, hash: 'e020e625' }, // GEN_VERSION 62: the Kiln Heart is volcanic (more rock, basin-filled lava lakes and carved magma halls, the boss hall rescued from its mouths), over v61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v60's story nooks on dry ground (no liquid level with the floor, the route no higher than a step), over v59's stonemaw connector + v55's Kiln flue + v54's Kiln flora
   { id: 'd2', seed: 42, hash: '100386fa' }, // GEN_VERSION 61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v60's story nooks on dry ground, over v59's sealed-feature tunnels + v56's story nooks + grove vines + lair fix
 ];
 

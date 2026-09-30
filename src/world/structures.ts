@@ -97,6 +97,8 @@ export function placeStructures(
   wardenRepair: ((floor?: boolean) => void) | null;
   /** STORY (wave 3): the old flue beside the Kiln that the escape climbs (floor 4 only). */
   kilnFlue: KilnFlueSite | null;
+  /** Where the boss hall's flank connectors leave it (standing height): the gauge rescue re-joins a cut-off hall from here. */
+  arenaMouths: Array<{ x: number; y: number }>;
 } {
   const w = ctx.world;
   const pickups: Pickup[] = [];
@@ -110,6 +112,7 @@ export function placeStructures(
   let kilnRepair: (() => void) | null = null;
   let wardenRepair: ((floor?: boolean) => void) | null = null;
   let kilnFlue: KilnFlueSite | null = null;
+  const arenaMouths: Array<{ x: number; y: number }> = [];
 
   const carvePocket = (cx: number, cy: number, rx: number, ry: number): void =>
     carvePocketCells(w, cx, cy, rx, ry);
@@ -977,6 +980,7 @@ export function placeStructures(
     // The flank away from the flue joins the cave network — the kiln must be
     // findable. The flue's flank is the damper: a connector there would open
     // the shaft to the fight (a ledge to snipe from) before the heave.
+    arenaMouths.push({ x: cx - flue.side * (HALF + 3), y: cy + FLOOR - 12 });
     connectToCaves(cx - flue.side * (HALF + 3), cy + FLOOR - 12);
     // The tanks' organs, re-assertable (integration fix, GEN 50: a flank
     // connector's tunnel or a rescue carve used to eat a seal and drown the
@@ -1185,6 +1189,7 @@ export function placeStructures(
     // Connectors leave from the pocket's upper flanks (their first disc stops
     // at cy+8, above the rim) instead of the shore row, which they used to
     // excavate on their very first step.
+    arenaMouths.push({ x: cx - 36, y: cy - 4 }, { x: cx + 36, y: cy - 4 });
     connectToCaves(cx - 36, cy - 4);
     connectToCaves(cx + 36, cy - 4);
     stampSumpRim();
@@ -1217,13 +1222,18 @@ export function placeStructures(
   }
 
   // ---- The second doors' guardians (wave 3): their halls live in world/wardenArenas ----
+  // (each hall's flank connectors are remembered as its mouths, so a cut-off hall can be rescued)
+  const connectToArena = (x: number, y: number): void => {
+    arenaMouths.push({ x, y });
+    connectToCaves(x, y);
+  };
   if (def.boss === 'rimewarden') {
-    const arena = buildIceHouse({ w, rng, ledger, spawn, portalX, pickups, lights: authoredLights, connect: connectToCaves });
+    const arena = buildIceHouse({ w, rng, ledger, spawn, portalX, pickups, lights: authoredLights, connect: connectToArena });
     boss = arena.boss;
     wardenRepair = arena.repair;
   }
   if (def.boss === 'lenswright') {
-    const arena = buildLensRoom({ w, rng, ledger, spawn, portalX, pickups, lights: authoredLights, connect: connectToCaves });
+    const arena = buildLensRoom({ w, rng, ledger, spawn, portalX, pickups, lights: authoredLights, connect: connectToArena });
     boss = arena.boss;
     wardenRepair = arena.repair;
   }
@@ -1242,5 +1252,6 @@ export function placeStructures(
     kilnRepair,
     wardenRepair,
     kilnFlue,
+    arenaMouths,
   };
 }

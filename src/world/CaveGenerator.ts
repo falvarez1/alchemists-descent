@@ -73,6 +73,7 @@ import {
 } from '@/world/fixtureFooting';
 import { placeStructures } from '@/world/structures';
 import { placeStorySites } from '@/world/storySites';
+import { placeLavaLakes, type LakeTarget, type LavaLakeResult } from '@/world/lavaLakes';
 import type { LevelStorySites } from '@/core/story';
 
 /* ===================== Procedural Generation Map Engines ===================== */
@@ -98,6 +99,9 @@ function shouldLogDevDiagnostics(): boolean {
 export class WorldGen implements WorldGenApi {
   /** Center of the carved spawn chamber (original caveSpawnHint). */
   spawnHint: { x: number; y: number } | null = null;
+
+  /** The last level's lava lakes (a tuning aid for probes; null off the volcanic floor). */
+  lastLavaLakes: LavaLakeResult | null = null;
 
   /** Paint seed for the most recent cave commit; captured by Builder docs. */
   paintSeed: number | null = null;
@@ -583,6 +587,8 @@ export class WorldGen implements WorldGenApi {
     waystones: Waystone[],
     cauldron: { x: number; y: number } | null,
     sealed: readonly CarveAvoid[] = [],
+    boss: { x: number; y: number } | null = null,
+    arenaMouths: ReadonlyArray<{ x: number; y: number }> = [],
   ): void {
       let wiz = wizardMask({ world: ctx.world, spawn });
       let cell = reachableMask({ world: ctx.world, spawn });
@@ -822,6 +828,13 @@ export class WorldGen implements WorldGenApi {
           recordRescue(`cauldron@${cx},${cy}`, () => rescueAt(cx, cy, pass, cy - 1));
         }
       }
+      // The boss hall is walked to like every lock (GEN 62): a hall whose flank
+      // connectors landed in a region the spawn cannot reach is re-joined from its
+      // mouths. Judged exactly as the validator does (validate: 'boss-arena').
+      if (boss && arenaMouths.length > 0) {
+        const pass = (): boolean => wizNear(boss.x, boss.y, 12);
+        if (!pass()) recordRescue(`boss@${Math.floor(boss.x)},${Math.floor(boss.y)}`, () => arenaMouths.some((m) => rescueAt(m.x, m.y, pass)));
+      }
       for (const m of mechanisms) {
         if (!HANDS_ON.has(m.kind) || m.targetId < 0) continue;
         const stable = (): boolean => wizNearCount(m.x, m.y - 2, 6) >= 40;
@@ -895,6 +908,7 @@ export class WorldGen implements WorldGenApi {
       tPrev = now;
     };
 
+    this.lastLavaLakes = null;
     // 1) Base caves for the level's biome, replayable from the seed.
     ctx.state.currentBiome = def.biome;
     ctx.state.worldSeed = seed >>> 0;
@@ -1158,6 +1172,7 @@ export class WorldGen implements WorldGenApi {
       kilnRepair,
       wardenRepair,
       kilnFlue,
+      arenaMouths,
     } = placeStructures(
       ctx,
       this.rng,
@@ -1366,7 +1381,7 @@ export class WorldGen implements WorldGenApi {
     // Rescue tunnels route around the sealed features too (fail-open: a sealed
     // room is dear, never a wall), and each repairs after them below.
     const sealed = sealedFootprints(ledger);
-    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed);
+    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed, boss, arenaMouths);
     stage('gauge-rescue');
 
     // 8d) The Sump self-repairs AFTER the rescue pass: rescue tunnels eat all
@@ -1394,7 +1409,7 @@ export class WorldGen implements WorldGenApi {
     // Final terrain dressing can invalidate a route that was clean during the
     // main rescue pass (D1's surface cap is the usual culprit). Validate the
     // finished cell field before handing it to Levels/runtime repair.
-    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed);
+    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed, boss, arenaMouths);
     // ...and the final rescue may carve again: the Kiln's seal is the player's
     // to dig, so re-assert its tank once more (idempotent; no-op off the Kiln).
     kilnRepair?.();
@@ -1426,6 +1441,33 @@ export class WorldGen implements WorldGenApi {
       console.warn(`[gen] ${def.id}: footing undercut ${footing.undercut.join(' ') || '-'}; taken back ${footing.reverted.join(' ') || '-'}`);
     }
     stage('footing');
+
+    // 8f) LAVA LAKES (GEN 62): a floor with a budget (the Kiln Heart) gets its
+    //     basin-filled lakes LAST, on a forked stream, keeping clear of every
+    //     placement and of the walk to each (world/lavaLakes).
+    if (genDef.lavaLakes) {
+      const lakeTargets: LakeTarget[] = [
+        ...waystones.map((w) => ({ x: w.x, y: w.y, protect: 28 })),
+        { x: cauldron.x, y: cauldron.y, protect: 28 },
+        ...pickups.map((p) => ({ x: p.x, y: p.y, protect: 14 })),
+        ...mechanisms.map((m) => ({ x: m.x + m.w / 2, y: m.y + m.h / 2, protect: 16 + Math.max(m.w, m.h) / 2 })),
+        ...runeVaults.map((v) => ({ x: v.rx, y: v.ry, protect: 16 })),
+        ...(portal ? [{ x: portal.x, y: portal.y, protect: 40 }] : []),
+        ...(boss ? [{ x: boss.x, y: boss.y, protect: 70 }] : []),
+        ...(storyPlaced.sites.camp ? [{ x: storyPlaced.sites.camp.x, y: storyPlaced.sites.camp.floorY - 8, protect: 30 }] : []),
+        ...(storyPlaced.sites.valve ? [{ x: storyPlaced.sites.valve.stageX, y: storyPlaced.sites.valve.floorY - 8, protect: 34 }] : []),
+        ...storyPlaced.sites.pipes.map((p) => ({ x: p.x, y: p.floorY - 8, protect: 22 })),
+      ];
+      const lakes = this.lastLavaLakes = placeLavaLakes(world, new Rng(hashSeed(seed >>> 0, 'lava-lakes')), ledger, spawn, lakeTargets, genDef.lavaLakes);
+      pickups.push(...lakes.pickups);
+      // Repair routes walk around a lake as they do round any placed room ('encounter-lair-' keeps the
+      // terrain art off it: these are natural halls, not built ones).
+      placedPrefabs = placedPrefabs.concat(lakes.lakes.map((l) => ({ id: `encounter-lair-lava-${l.kind}`, x0: l.x0, y0: l.y0, x1: l.x1, y1: l.y1 })));
+      if (shouldLogDevDiagnostics()) {
+        console.warn(`[gen] ${def.id}: ${lakes.lakes.length} lava lake(s), ${lakes.cells} cells${lakes.dropped > 0 ? `, ${lakes.dropped} taken back for a route` : ''}`);
+      }
+      stage('lava-lakes');
+    }
 
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
     matureVegetation(ctx.world);
