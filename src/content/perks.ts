@@ -90,6 +90,58 @@ export const PERK_DEFS: readonly PerkDefinition[] = Object.freeze([
     desc: 'Your gold pull reaches much further',
     offeredInSanctum: true,
   },
+  // The alchemist's bargains. Each one changes how the world is met rather than
+  // how large a number is, and each is read off the grid or the kill ledger
+  // (game/Chill, combat/AlchemyKills, combat/Telekinesis, creatures/lightResponse,
+  // entities/Player).
+  {
+    id: 'stronggrip',
+    name: 'Sexton’s Grip',
+    shortLabel: 'GRIP',
+    sanctumName: 'Sexton’s Grip',
+    desc: 'The wand’s grip on the fallen costs half, and hurls fly harder',
+    offeredInSanctum: true,
+  },
+  {
+    id: 'rimesoles',
+    name: 'Rime Soles',
+    shortLabel: 'RIME',
+    sanctumName: 'Rime Soles',
+    desc: 'Water you cross skins over with ice underfoot',
+    offeredInSanctum: true,
+  },
+  {
+    id: 'longfuse',
+    name: 'Long Fuse',
+    shortLabel: 'FUSE',
+    sanctumName: 'Long Fuse',
+    desc: 'Chains last twice as long and pay up to ×4',
+    offeredInSanctum: true,
+  },
+  {
+    id: 'velvethood',
+    name: 'Velvet Hood',
+    shortLabel: 'HOOD',
+    sanctumName: 'Velvet Hood',
+    desc: 'Hooded, dim places hide you like deep dark',
+    offeredInSanctum: true,
+  },
+  {
+    id: 'grounded',
+    name: 'Insulated Boots',
+    shortLabel: 'GROUND',
+    sanctumName: 'Insulated Boots',
+    desc: 'Current deals 75% less to you',
+    offeredInSanctum: true,
+  },
+  {
+    id: 'warmblood',
+    name: 'Warm Blood',
+    shortLabel: 'WARM',
+    sanctumName: 'Warm Blood',
+    desc: 'The cold reaches you half as fast',
+    offeredInSanctum: true,
+  },
 ]);
 
 export const PERK_IDS: readonly PerkId[] = Object.freeze(PERK_DEFS.map((perk) => perk.id));

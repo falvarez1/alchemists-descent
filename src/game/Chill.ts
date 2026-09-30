@@ -5,7 +5,7 @@ import type { ChillMomentKind } from '@/core/events';
 import { entityRandom, fxRandom } from '@/core/simRandom';
 import { DEEP_CHILL_REMARK } from '@/content/chill';
 import { createPlayerChill, deriveChill, resetPlayerChill, stepChill, type ChillInputs, type ChillMoment } from '@/entities/chill';
-import { Cell, isGas } from '@/sim/CellType';
+import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import { packRGB, snowColor, steamColor, unpackB, unpackG, unpackR, waterColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
 
@@ -38,6 +38,8 @@ import type { World } from '@/sim/World';
 /** Ticks a skin of rime ice holds before it gives back to water (it is thin). */
 const SKIN_LIFE = 960;
 const MAX_SKINS = 160;
+/** Rime Soles: how far below the boots (cells) the water's surface may be and still skin over. */
+const SOLE_REACH = 4;
 /** Ticks a hoarfrost print holds before the stone's own colour comes back. */
 const PRINT_LIFE = 2100;
 const MAX_PRINTS = 260;
@@ -55,6 +57,11 @@ function frostTakes(t: number): boolean {
 
 function open(t: number): boolean {
   return t === Cell.Empty || isGas(t);
+}
+
+/** Something a body stands in without being held or floated: air, gas, and the soft growth that lies on a pool. */
+function passable(t: number): boolean {
+  return !blocksEntity(t) && !isLiquid(t);
 }
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -136,12 +143,14 @@ export class ChillSystem implements ChillApi {
 
     const inp = this.inputs;
     const frozenPlace = ctx.levels?.current?.def.biome === 'frozen';
-    inp.cold = this.cold;
+    // Warm Blood boon: everything cold that reaches the body (the grid's, the air's, a frost blow) arrives at half strength.
+    const warmK = p.perks.warmblood ? 0.5 : 1;
+    inp.cold = this.cold * warmK;
     inp.touching = this.touching;
     inp.warmth = this.warmth;
     inp.burning = p.status.burning > 0;
-    inp.ambientFloor = frozenPlace ? t.ambientFloor : 0;
-    inp.impulse = this.pendingHit;
+    inp.ambientFloor = frozenPlace ? t.ambientFloor * warmK : 0;
+    inp.impulse = this.pendingHit * warmK;
     this.pendingHit = 0;
     const keys = ctx.input.keys;
     const bits = (keys.left ? 1 : 0) | (keys.right ? 2 : 0) | (keys.jump ? 4 : 0) | (keys.up ? 8 : 0) | (keys.down ? 16 : 0);
@@ -172,6 +181,7 @@ export class ChillSystem implements ChillApi {
     this.breathe(ctx, p, c, frame);
     this.shedMotes(ctx, p, c);
     this.skinWake(ctx, p, c, frame);
+    if (p.perks.rimesoles) this.rimeSoles(ctx, p, frame);
     this.printFrost(ctx, p, c, frame);
     this.listen(ctx, c);
   }
@@ -381,6 +391,49 @@ export class ChillSystem implements ChillApi {
     if (froze > 0 && fxRandom() < 0.3) {
       ctx.events.emit('chillMoment', { kind: 'skin', x: p.x - dir * 7, y: p.y - 6, strength: c.level, warm: false });
     }
+  }
+
+  /**
+   * RIME SOLES (boon): the water under the boots skins over, so a pool is a
+   * road. Every other tick each column beneath the feet is scanned down through
+   * up to SOLE_REACH cells of air (or the glow-leaf and grass that float on a
+   * Cistern); the first thing met, if it is the surface of some water with air
+   * above it, freezes into the same thin rime as a chilled wader's wake — and
+   * thaws back after SKIN_LIFE, but never while it is being stood on (the skin
+   * under the boots is topped up). Nothing freezes around a body that is
+   * already wading: ice never forms at the waist.
+   */
+  private rimeSoles(ctx: Ctx, p: PlayerState, frame: number): void {
+    if ((frame & 1) !== 0 || p.climbing || p.crawling) return;
+    const w = ctx.world, bx = Math.floor(p.x), by = Math.floor(p.y);
+    if (!w.inBounds(bx, by + SOLE_REACH) || !passable(w.types[bx + by * w.width])) return;
+    let froze = 0, fx = 0;
+    for (let dx = -PLAYER_HALF_W - 1; dx <= PLAYER_HALF_W + 1; dx++) {
+      const X = bx + dx;
+      for (let dy = 1; dy <= SOLE_REACH; dy++) {
+        const Y = by + dy;
+        if (!w.inBounds(X, Y)) break;
+        const i = X + Y * w.width, ty = w.types[i];
+        if (ty === Cell.Water) {
+          if (passable(w.types[i - w.width])) { this.freeze(w, i, frame); froze++; fx = X; }
+          break;
+        }
+        if (ty === Cell.Ice) {
+          if (dy === 1 && (frame & 15) === 0) this.holdSkin(i, frame);
+          break;
+        }
+        if (!passable(ty)) break;
+      }
+    }
+    if (froze === 0) return;
+    // A glint off the new ice; the creak is the chillMoment's (audio/EventCues).
+    ctx.particles.spawn(fx, p.y + 1, (fxRandom() - 0.5) * 0.6, -0.3 - fxRandom() * 0.4, null, packRGB(226, 242, 255), 16, { glow: 1.1, grav: 0.02 });
+    if (froze >= 2 && fxRandom() < 0.4) ctx.events.emit('chillMoment', { kind: 'skin', x: p.x, y: p.y + 2, strength: 0.5, warm: false });
+  }
+
+  /** A skin someone is standing on does not thaw yet. */
+  private holdSkin(i: number, frame: number): void {
+    for (const s of this.skins) if (s.i === i) { s.expire = Math.max(s.expire, frame + SKIN_LIFE); return; }
   }
 
   private freeze(w: World, i: number, frame: number): void {

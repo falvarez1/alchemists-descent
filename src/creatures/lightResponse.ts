@@ -62,7 +62,9 @@ export function playerVisibility(ctx: Ctx): number {
   if (!q) return base;
   const dark = q.darkness(p.x, p.y - 9);
   if (!q.hooded) return Math.min(1, base + SIGHT.beacon * dark);
-  const shade = 1 - dark;
+  // The Velvet Hood boon lines the brass hood: the dark drinks more of the spill, so half-dark hides
+  // like deep dark. A lamp-lit room (darkness 0) still lights the alchemist exactly as before.
+  const shade = 1 - Math.min(1, dark * (p.perks?.velvethood ? SIGHT.velvet : 1));
   return base * shade * shade;
 }
 

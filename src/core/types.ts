@@ -2619,7 +2619,14 @@ export type PerkId =
   | 'ironhide'
   | 'flameward'
   | 'toxinward'
-  | 'goldmagnet';
+  | 'goldmagnet'
+  // The alchemist's bargains: boons that change how the world is met, not the numbers.
+  | 'stronggrip'
+  | 'rimesoles'
+  | 'longfuse'
+  | 'velvethood'
+  | 'grounded'
+  | 'warmblood';
 
 /** One contextual onboarding hint for the nearest interactable. */
 export interface HintInfo {

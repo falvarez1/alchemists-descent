@@ -5,6 +5,7 @@ import { BUILD_STAMP, buildPlaytestReport } from '@/ui/playtestReport';
 import { WORKS_ROOMS } from '@/world/breathingWorks';
 import { titleCaseName } from '@/core/strings';
 import { FLOORS_TOTAL, floorOf } from '@/config/worldgraph';
+import { PERK_DEFS } from '@/content/perks';
 
 /**
  * ESC pause. Owns its own pause claim so it never fights the Sanctum, the
@@ -201,6 +202,9 @@ export class PauseOverlay {
       ['Spell cards', String(ctx.wands.collection.length + ctx.wands.wands.reduce((n, w) => n + w.cards.filter(Boolean).length, 0))],
     ];
     if (level.living) rows.push(['Glowseeds', String(level.living.glowseeds)]);
+    // The Sanctum's bargains leave the screen the moment they are struck; this is where they are read back.
+    const boons = PERK_DEFS.filter((perk) => ctx.player.perks[perk.id]);
+    if (boons.length > 0 && ctx.run?.active) rows.push(['Boons', boons.map((perk) => perk.name).join(', ')]);
     if (ctx.run?.active) rows.splice(2, 0, ['Return phials', `${ctx.run.phials} of ${ctx.run.maxPhials}`]);
     stats.replaceChildren(...rows.flatMap(([label, value]) => {
       const dt = document.createElement('dt');
