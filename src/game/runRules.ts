@@ -2,6 +2,7 @@ import { GAME_TITLE } from '@/config/brand';
 import type { KitId, RunOutcome, RunSummary } from '@/core/run';
 import { fnv1aString } from '@/core/rng';
 import { FLOOR_DOORS, FLOORS_TOTAL, floorDisplayName, floorOf } from '@/config/worldgraph';
+import { SANCTUM_PERK_DEFS } from '@/content/perks';
 
 /**
  * The run's pure rules (Breathing Works): return phials, the daily seed, the
@@ -76,6 +77,8 @@ export interface RunStatsInput {
   causeLine?: string;
   /** The doors the run walked through (campaign level ids, in order). */
   path?: readonly string[];
+  /** The Sanctum boons the run struck (PerkId names, in the order taken). */
+  boons?: readonly string[];
 }
 
 /**
@@ -92,6 +95,27 @@ export function cleanRunPath(path: readonly unknown[] | null | undefined): strin
     byFloor[floor - 1] = id;
   }
   return byFloor.filter((id): id is string => typeof id === 'string');
+}
+
+/**
+ * A run's boons, cleaned for the ledger: only boons the Sanctum actually offers
+ * (a review kit's every-perk grant, a hand-edited save and Torchbearer are
+ * dropped), each once, in the order taken.
+ */
+export function cleanRunBoons(boons: readonly unknown[] | null | undefined): string[] {
+  const offered = new Set<string>(SANCTUM_PERK_DEFS.map((perk) => perk.id));
+  const out: string[] = [];
+  for (const id of boons ?? []) {
+    if (typeof id === 'string' && offered.has(id) && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+/** 'Rime Soles', 'Rime Soles and Long Fuse', 'A, B and C' — the boons by the name the Sanctum's card gave them. */
+export function boonNames(boons: readonly string[] | null | undefined): string {
+  const names = cleanRunBoons(boons ?? []).map((id) => SANCTUM_PERK_DEFS.find((perk) => perk.id === id)?.sanctumName ?? id);
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
 /** The branch doors a route took (every floor that offered a choice), by name. */
@@ -121,6 +145,7 @@ export function buildRunSummary(input: RunStatsInput): RunSummary {
     cardsFound: whole(input.cardsFound),
     epitaph: runEpitaph(input),
     ...(input.path ? { path: cleanRunPath(input.path).slice(0, FLOORS_TOTAL) } : {}),
+    ...(cleanRunBoons(input.boons).length > 0 ? { boons: cleanRunBoons(input.boons) } : {}),
   };
 }
 
@@ -172,7 +197,8 @@ export function formatChain(chain: number): string {
  * `Breathing Works — daily 2026-09-26 — Floor 3/4 in 14:02 · 9 alchemical kills · best chain ×3`
  * (a run without a chain leaves the chain out rather than boasting of zero).
  * A route through the branching doors names them — `via the Cold Store and
- * the Glass Galleries` — so two players on the same daily can compare roads.
+ * the Glass Galleries` — so two players on the same daily can compare roads —
+ * and the boons struck are named the same way (`with Rime Soles and Long Fuse`).
  */
 export function shareLine(summary: RunSummary, title = GAME_TITLE): string {
   const parts = [title];
@@ -184,6 +210,7 @@ export function shareLine(summary: RunSummary, title = GAME_TITLE): string {
   const tail = [
     reach,
     ...(route.length > 0 ? [`via ${route.join(' and ')}`] : []),
+    ...(boonNames(summary.boons) ? [`with ${boonNames(summary.boons)}`] : []),
     `${summary.alchemicalKills} alchemical kill${summary.alchemicalKills === 1 ? '' : 's'}`,
     ...(Math.round(summary.bestChain) > 0 ? [`best chain ${formatChain(summary.bestChain)}`] : []),
   ].join(' · ');

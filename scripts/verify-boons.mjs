@@ -258,6 +258,21 @@ try {
   const stats = await real.evaluate(() => document.getElementById('pause-stats')?.textContent ?? '');
   check('the pause menu lists the boons you have taken', /Boons/.test(stats) && /Rime Soles/.test(stats), stats.slice(0, 240));
   await real.screenshot({ path: `${outDir}/pause-boons.png` });
+
+  // The ledger: leave the descent and read what the summary says about the bargains struck.
+  await real.keyboard.press('Escape');
+  await real.evaluate(() => { const ctx = window.__game.ctx; ctx.run.abandon(ctx); });
+  await real.locator('#run-summary:not([hidden])').waitFor({ state: 'visible', timeout: 8000 });
+  await real.waitForTimeout(1500);
+  const ledger = await real.evaluate(() => ({
+    boons: document.querySelector('#run-summary .rs-boons')?.textContent ?? '',
+    hidden: document.querySelector('#run-summary .rs-boons')?.hidden ?? true,
+    share: document.querySelector('#run-summary .rs-share')?.textContent ?? '',
+  }));
+  const struck = [picked.name === 'Vitality' ? null : picked.name, 'Rime Soles'].filter(Boolean);
+  check('the ledger names the bargains struck', !ledger.hidden && struck.every((name) => ledger.boons.includes(name)), JSON.stringify(ledger));
+  check('and the share line carries them', struck.every((name) => ledger.share.includes(name)) && /with /.test(ledger.share), JSON.stringify(ledger));
+  await real.screenshot({ path: `${outDir}/ledger-boons.png` });
 } catch (error) {
   fail++;
   console.log('  FAIL  real-run part crashed: ' + (error && error.stack ? error.stack : error));

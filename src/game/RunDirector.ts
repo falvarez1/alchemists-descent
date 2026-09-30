@@ -23,6 +23,7 @@ import {
   PHIALS_PER_RUN,
   buildRunSummary,
   clampPhials,
+  cleanRunBoons,
   cleanRunPath,
   dailySeed,
   isDateKey,
@@ -58,6 +59,7 @@ function freshState(opts: RunBeginOptions, recorded: boolean): RunSaveState {
     leviathanSlain: false,
     recorded,
     path: [],
+    boons: [],
   };
 }
 
@@ -80,6 +82,7 @@ function sanitizeSave(save: RunSaveState): RunSaveState | null {
     leviathanSlain: save.leviathanSlain === true,
     recorded: save.recorded !== false,
     path: cleanRunPath(Array.isArray(save.path) ? save.path : []),
+    boons: cleanRunBoons(Array.isArray(save.boons) ? save.boons : []),
   };
 }
 
@@ -359,6 +362,7 @@ export class RunDirector implements RunApi {
     // never rewrites which door the run chose).
     const path = state.path ?? (state.path = []);
     if (!path.some((p) => floorOf(p) === floor)) path.push(id);
+    this.noteBoons(state);
     const recordable = state.recorded && !this.tainted(ctx);
     if (recordable) {
       const seen = recordLevelSeen(this.meta.profile, id);
@@ -394,6 +398,18 @@ export class RunDirector implements RunApi {
     state.bestChain = Math.max(state.bestChain, Math.max(1, Math.floor(info.chain)));
   }
 
+  /**
+   * The boons struck so far, in the order taken: the Sanctum sets the flag on
+   * `player.perks` and the next floor's arrival (or the end of the run) finds it
+   * here. Read off the player rather than announced, so a save resumed
+   * mid-run and a boon taken before this run was tracked both land in the ledger.
+   */
+  private noteBoons(state: RunSaveState): void {
+    const held = cleanRunBoons(Object.keys(this.ctx.player.perks ?? {}));
+    const boons = state.boons ?? (state.boons = []);
+    for (const id of held) if (!boons.includes(id)) boons.push(id);
+  }
+
   private announceUnlocks(ctx: Ctx, kits: readonly KitId[]): void {
     for (const kit of kits) {
       if (!this.runUnlocks.includes(kit)) this.runUnlocks.push(kit);
@@ -407,6 +423,7 @@ export class RunDirector implements RunApi {
   private endRun(ctx: Ctx, outcome: RunOutcome, present: boolean): void {
     const state = this.state;
     if (!state || this.finished) return;
+    this.noteBoons(state);
     const levelId = ctx.levels.current?.def.id ?? null;
     const floor = floorOf(levelId) || Math.max(1, state.maxFloor);
     // Off the spine (a playtest, a test arena) the ledger names the door this
@@ -430,6 +447,7 @@ export class RunDirector implements RunApi {
       cardsFound: state.cardsFound,
       causeLine: outcome === 'fallen' ? deathCauseLine(this.lastCause, state.seed) : undefined,
       path: state.path ?? [],
+      boons: state.boons ?? [],
     });
     let unlocked = [...this.runUnlocks];
     let record: Pick<RunResult, 'dailyBest' | 'newDailyBest' | 'newBestFloor'> = { dailyBest: null, newDailyBest: false, newBestFloor: false };

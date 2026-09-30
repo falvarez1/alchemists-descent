@@ -2,7 +2,7 @@ import type { Ctx, RunResult } from '@/core/types';
 import type { KitId } from '@/core/run';
 import { FLOOR_DOORS, doorTaken, floorDisplayName } from '@/config/worldgraph';
 import { KIT_DEFS } from '@/content/kits';
-import { formatChain, formatRunTime, runHeadline, shareLine } from '@/game/runRules';
+import { boonNames, formatChain, formatRunTime, runHeadline, shareLine } from '@/game/runRules';
 import { KitPicker } from '@/ui/KitPicker';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
 
@@ -50,6 +50,7 @@ export class RunSummary {
   private readonly floors = document.createElement('ol');
   private readonly stats = document.createElement('dl');
   private readonly daily = document.createElement('p');
+  private readonly boons = document.createElement('p');
   private readonly unlocks = document.createElement('ul');
   private readonly kits: KitPicker;
   private readonly actions = document.createElement('div');
@@ -81,6 +82,7 @@ export class RunSummary {
     this.floors.setAttribute('aria-label', 'Floors of the descent');
     this.stats.className = 'rs-stats';
     this.daily.className = 'rs-daily';
+    this.boons.className = 'rs-boons';
     this.unlocks.className = 'rs-unlocks';
     this.kits = new KitPicker('Next descent', (kit) => {
       this.chosenKit = kit;
@@ -107,7 +109,7 @@ export class RunSummary {
     head.append(this.kicker, this.title, this.epitaph);
     const body = document.createElement('div');
     body.className = 'rs-body';
-    body.append(this.floors, this.stats, this.daily, this.unlocks);
+    body.append(this.floors, this.stats, this.boons, this.daily, this.unlocks);
     const foot = document.createElement('div');
     foot.className = 'rs-foot';
     foot.append(this.kits.root, this.actions, this.status, this.shareText);
@@ -196,6 +198,7 @@ export class RunSummary {
     this.epitaph.textContent = summary.epitaph;
     this.renderFloors(result);
     const rows = this.renderStats(result);
+    this.renderBoons(result);
     this.renderDaily(result);
     this.renderUnlocks(result);
     const view = ctx.run?.metaView();
@@ -295,6 +298,18 @@ export class RunSummary {
       this.stats.appendChild(wrap);
       return { row, node: dd };
     });
+  }
+
+  /** The bargains this descent struck, named the way the share line names them. */
+  private renderBoons(result: RunResult): void {
+    const names = boonNames(result.summary.boons);
+    this.boons.hidden = names === '';
+    this.boons.replaceChildren();
+    if (names === '') return;
+    const label = document.createElement('span');
+    label.className = 'rs-boons-label';
+    label.textContent = 'Struck at the Sanctum';
+    this.boons.append(label, document.createTextNode(names));
   }
 
   private renderDaily(result: RunResult): void {

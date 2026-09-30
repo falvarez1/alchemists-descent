@@ -26,6 +26,12 @@ describe('the alchemist’s bargains are on the Sanctum’s table', () => {
     }
   });
 
+  it('keeps every card’s line to one row of a Sanctum card (measured: it wraps past ~42 characters)', () => {
+    // A wrapped card is ~20 px taller, which pushes the draft below the fold of a 1100x700 window —
+    // the Sanctum's promise is that the boons sit in view there (scripts/verify-overlay-hit.mjs).
+    for (const def of SANCTUM_PERK_DEFS) expect(def.desc.length, def.id).toBeLessThanOrEqual(41);
+  });
+
   it('gives a three-card draft something to choose between: a stat, a ward, a way of playing', () => {
     expect(SANCTUM_PERK_DEFS.length).toBeGreaterThanOrEqual(15);
   });

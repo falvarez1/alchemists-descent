@@ -222,6 +222,9 @@ body.play-active #gameover-overlay.cine #ledger-btn { animation: go-fade-in 1s e
 
 .rs-daily { margin: 0; font: 400 calc(13.5px * var(--text-scale, 1))/1.5 var(--m-sans); color: var(--m-text-soft); }
 .rs-daily[hidden] { display: none; }
+.rs-boons { margin: 0; font: 400 calc(13.5px * var(--text-scale, 1))/1.5 var(--m-sans); color: var(--m-text); }
+.rs-boons[hidden] { display: none; }
+.rs-boons-label { display: block; font: 600 calc(10.5px * var(--text-scale, 1))/1.4 var(--m-sans); letter-spacing: .12em; text-transform: uppercase; color: var(--m-text-soft); margin-bottom: 2px; }
 .rs-badge {
   display: inline-block; margin-left: 6px; padding: 3px 7px; border-radius: 2px; background: #d8c699; color: #18272a;
   font: 700 10.5px/1 var(--m-sans); letter-spacing: 0.08em; text-transform: uppercase; vertical-align: 1px;

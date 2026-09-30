@@ -85,6 +85,28 @@ describe('RunDirector', () => {
     expect(h.run.snapshotForSave()).toBeNull();
   });
 
+  it('records the boons struck across the descent — in the order taken — and hands them to the ledger and the save', () => {
+    const h = harness();
+    const perks: Record<string, true> = {};
+    (h.ctx.player as unknown as { perks: Record<string, true> }).perks = perks;
+    h.run.beginRun(h.ctx, { seed: 5, kit: 'spark', daily: null, tracked: true });
+    h.enter('d1');
+    expect(h.run.snapshotForSave()?.boons).toEqual([]);
+    // The Sanctum after floor 1: a bargain is struck, the next floor arrives.
+    perks.rimesoles = true;
+    h.enter('d2');
+    expect(h.run.snapshotForSave()?.boons).toEqual(['rimesoles']);
+    // A boon struck and then a death on the same floor is still in the ledger (endRun reads the player too).
+    perks.longfuse = true;
+    perks.torchbearer = true; // never a Sanctum bargain: not recorded
+    const g = harness();
+    g.run.restoreFromSave(g.ctx, { ...h.run.snapshotForSave()!, boons: ['rimesoles', 'bogus'] });
+    expect(g.run.snapshotForSave()?.boons).toEqual(['rimesoles']);
+    die(h); die(h); die(h); die(h);
+    expect(h.ended).toHaveLength(1);
+    expect(h.ended[0].boons).toEqual(['rimesoles', 'longfuse']);
+  });
+
   it('restores phials up to three and snapshots them into the save', () => {
     const h = harness();
     h.run.beginRun(h.ctx, { seed: 5, kit: 'frost', daily: '2026-09-26', tracked: true });

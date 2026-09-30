@@ -3471,6 +3471,8 @@ export interface RunSaveState {
    * before the branching descent carry none and resume on the first doors.
    */
   path?: string[];
+  /** The Sanctum boons struck this run, in the order taken (PerkId names). Optional for the same reason. */
+  boons?: string[];
 }
 
 /** A finished run, as the ledger screen reads it. */

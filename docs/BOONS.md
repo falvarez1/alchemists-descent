@@ -52,8 +52,22 @@ world is met* rather than how big a number is. The design rules they were held t
 | **Warm Blood** | Cold arrives at half strength: the grid's cold, a frozen place's air, and frost blows. | `game/Chill.ts` `update` input scaling | ×0.5 on `cold`, `impulse`, `ambientFloor` |
 | **Sexton's Grip** | The wand's grip on the fallen costs half (grab, hurl, the weight share of holding) and hurls leave 25% faster. | `combat/Telekinesis.ts` (`gripCostK`, `SEXTON_COST_K` / `SEXTON_HURL_K`) | ×0.5 costs, ×1.25 speed. Holding still cancels the wand's regeneration **in full** — scaling that too makes a held body pay the wand back (net mana gain) |
 
-The pause menu lists boons taken (`Boons` row, `ui/PauseOverlay.ts`): the draft
-leaves the screen the moment it is struck, and nothing else shows it.
+Where a boon shows afterwards: the pause menu's `Boons` row (`ui/PauseOverlay.ts`) —
+the draft leaves the screen the moment it is struck and nothing else shows it — and
+the run's ledger. `RunDirector` reads `player.perks` at every floor arrival and at
+the end of the run into `RunSaveState.boons` (saved with the run, cleaned by
+`cleanRunBoons`: only boons the Sanctum offers, once each, in the order taken), the
+summary carries `RunSummary.boons`, the ledger prints "Struck at the Sanctum: …",
+and the share line says `with Rime Soles and Long Fuse`. Both use the name on the
+card the player chose (`sanctumName`: "Power Surge", not "Might").
+
+**Card budget.** Every offered line must be short enough for one row of a Sanctum
+card: measured at 1100×700, 1280×720, 1366×768 and 1024×640 a card is ~73 px with a
+one-line description and ~93 px with two, and the Sanctum's promise
+(`menus.css`, `verify-overlay-hit.mjs`) is that the doors, boons and descend
+button sit in view on a 1100×700 window — a wrapped card is ~20 px too tall. Lines
+wrap past ~36–41 characters (word breaks decide); `tests/boons.test.ts` holds the
+hard ceiling at 41 and the probe holds the truth.
 
 ## Measured (why some ideas are not here)
 

@@ -204,7 +204,7 @@ export class PauseOverlay {
     if (level.living) rows.push(['Glowseeds', String(level.living.glowseeds)]);
     // The Sanctum's bargains leave the screen the moment they are struck; this is where they are read back.
     const boons = PERK_DEFS.filter((perk) => ctx.player.perks[perk.id]);
-    if (boons.length > 0 && ctx.run?.active) rows.push(['Boons', boons.map((perk) => perk.name).join(', ')]);
+    if (boons.length > 0 && ctx.run?.active) rows.push(['Boons', boons.map((perk) => perk.sanctumName).join(', ')]);
     if (ctx.run?.active) rows.splice(2, 0, ['Return phials', `${ctx.run.phials} of ${ctx.run.maxPhials}`]);
     stats.replaceChildren(...rows.flatMap(([label, value]) => {
       const dt = document.createElement('dt');

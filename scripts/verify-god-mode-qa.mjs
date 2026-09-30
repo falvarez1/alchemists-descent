@@ -38,14 +38,16 @@ const god = await page.evaluate(async () => {
 check('console god command succeeds in normal play', god.ok === true, JSON.stringify(god));
 
 await page.waitForFunction(() => document.querySelector('#god-tools.visible'), { timeout: 8000 });
+// One power chip per boon in the game (the pool grows: read it, do not count it here).
+const perkCount = await page.evaluate(async () => (await import('/src/content/perks.ts')).PERK_DEFS.length);
 const hud = await page.evaluate(() => ({
   visible: document.querySelector('#god-tools.visible') !== null,
   benchOpen: document.querySelector('#wand-bench.visible') !== null,
   powerCount: document.querySelectorAll('#god-tools .god-power').length,
   activePowers: document.querySelectorAll('#god-tools .god-power.active').length,
 }));
-check('god-mode HUD QA tools appear without opening bench', hud.visible && !hud.benchOpen && hud.powerCount === 10, JSON.stringify(hud));
-check('god-mode HUD starts with all powers active', hud.activePowers === 10, JSON.stringify(hud));
+check('god-mode HUD QA tools appear without opening bench', hud.visible && !hud.benchOpen && hud.powerCount === perkCount, JSON.stringify({ ...hud, perkCount }));
+check('god-mode HUD starts with all powers active', hud.activePowers === perkCount, JSON.stringify({ ...hud, perkCount }));
 
 await page.locator('#god-tools .god-power', { hasText: 'MIGHT' }).click();
 const mightOff = await page.evaluate(() => ({

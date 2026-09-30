@@ -78,7 +78,7 @@ export const PERK_DEFS: readonly PerkDefinition[] = Object.freeze([
     name: 'Flame Ward',
     shortLabel: 'FIRE',
     sanctumName: 'Pyro Skin',
-    desc: 'Fire and lava deal 60% less; you cannot catch fire',
+    desc: 'Fire and lava deal 60% less; no burning',
     offeredInSanctum: true,
   },
   {
@@ -106,7 +106,7 @@ export const PERK_DEFS: readonly PerkDefinition[] = Object.freeze([
     name: 'Sexton’s Grip',
     shortLabel: 'GRIP',
     sanctumName: 'Sexton’s Grip',
-    desc: 'The wand’s grip on the fallen costs half, and hurls fly harder',
+    desc: 'Half the mana to lift; hurls fly harder',
     offeredInSanctum: true,
   },
   {
@@ -114,7 +114,7 @@ export const PERK_DEFS: readonly PerkDefinition[] = Object.freeze([
     name: 'Rime Soles',
     shortLabel: 'RIME',
     sanctumName: 'Rime Soles',
-    desc: 'Water you cross skins over with ice underfoot',
+    desc: 'Water you cross skins over with ice',
     offeredInSanctum: true,
     worth: ['d3'], // the Drowned Cisterns: the only floor with pools to cross
   },
@@ -123,7 +123,7 @@ export const PERK_DEFS: readonly PerkDefinition[] = Object.freeze([
     name: 'Long Fuse',
     shortLabel: 'FUSE',
     sanctumName: 'Long Fuse',
-    desc: 'Chains last twice as long and pay up to ×4',
+    desc: 'Chains last twice as long, pay up to ×4',
     offeredInSanctum: true,
   },
   {
@@ -131,7 +131,7 @@ export const PERK_DEFS: readonly PerkDefinition[] = Object.freeze([
     name: 'Velvet Hood',
     shortLabel: 'HOOD',
     sanctumName: 'Velvet Hood',
-    desc: 'Hooded, dim places hide you like deep dark',
+    desc: 'Hooded, dimness is as good as dark',
     offeredInSanctum: true,
   },
   {

@@ -56,6 +56,8 @@ export interface RunSummary {
   epitaph: string;
   /** The doors the run took, floor by floor (campaign level ids); absent on old ledgers. */
   path?: string[];
+  /** The Sanctum boons the run struck, in the order taken (PerkId names); absent on old ledgers and boonless runs. */
+  boons?: string[];
 }
 
 /** One alchemical kill, as announced to callouts, audio, stats and clips. */
