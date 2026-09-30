@@ -17,7 +17,10 @@ import { drawStoryFigure } from './figureArt';
  *    and breathes a faint pulse when it has something to say and you are near;
  *  - PELL'S CAMP: his lantern on its pole, a bedroll, a crate with the map on
  *    it, a spirit stove with the kettle on — or, on the Kiln, the cold camp and
- *    the page he left;
+ *    the page he left. The camp gathers the run: the pages of his map pinned to
+ *    the wall from the second floor, the tin cup once you have drunk his tea,
+ *    frost on the floor of the Cold Store, and on the Kiln his tea tin, empty
+ *    or unopened;
  *  - the RESONANT VALVE: a brass wheel on its pipe with a green-glass gauge
  *    that hums while the echo plays;
  *  - PELL himself, and the ECHOES' ghosts (render/story/figureArt).
@@ -102,7 +105,7 @@ function drawPipe(out: PixelSurface, field: LightField, ctx: Ctx, p: StoryRender
 
 /* ---------------- props on the rasterizer ---------------- */
 
-const WOOD = 1, BRASS_M = 2, GLASS = 3, FLAME = 4, CLOTH = 5, CLOTH_D = 6, PAPER = 7, IRON = 8, CRATE = 9, GAUGE = 10;
+const WOOD = 1, BRASS_M = 2, GLASS = 3, FLAME = 4, CLOTH = 5, CLOTH_D = 6, PAPER = 7, IRON = 8, CRATE = 9, GAUGE = 10, FROST = 12;
 const PROPS: CreatureMaterial[] = [
   material({ keys: [0x140c06, 0x34200e, 0x5c3a1c, 0x86592e], gloss: 0.3, rim: 0.6, outline: 0x060403 }),
   material({ keys: [0x3a1806, 0x8a4816, 0xd07a2a, 0xffb55a, 0xffe6a8], gloss: 0.8, shine: 22, rim: 0.7, outline: 0x140802 }),
@@ -115,6 +118,8 @@ const PROPS: CreatureMaterial[] = [
   material({ keys: [0x1c120a, 0x3e2a16, 0x644626, 0x8e6a3c], gloss: 0.2, rim: 0.6, outline: 0x0a0604 }),
   material({ keys: [0x0a3a34, 0x2aa88e, 0x9aecd8, 0xffffff], emissive: 1, glow: 0x0c3a30, glowK: 0.9, translucent: 0.35 }),
   material({ keys: [0x2a0a00, 0x6a2006, 0xa8400e, 0xe07a2a], emissive: 0.6, glow: 0x2a0a02, glowK: 0.4 }),
+  // Frost: pale blue-white, a little of its own glint (index 12, appended).
+  material({ keys: [0x5a7a8a, 0x9ac0d0, 0xd6eef6, 0xffffff], gloss: 0.6, shine: 24, emissive: 0.25, glow: 0x1a3a4a, glowK: 0.25, rim: 0.8 }),
 ];
 
 const QUAD = new Float64Array(8);
@@ -123,11 +128,58 @@ function quad(x0: number, y0: number, x1: number, y1: number): Float64Array {
   return QUAD;
 }
 
+const TQ = new Float64Array(8);
+/** A quad centred on (cx, cy), half-sizes hw x hh, turned by `a` radians (a page pinned a little crooked). */
+function tiltQuad(cx: number, cy: number, hw: number, hh: number, a: number): Float64Array {
+  const c = Math.cos(a), s = Math.sin(a);
+  for (let i = 0; i < 4; i++) {
+    const px = i === 0 || i === 3 ? -hw : hw, py = i < 2 ? -hh : hh;
+    TQ[i * 2] = cx + px * c - py * s;
+    TQ[i * 2 + 1] = cy + px * s + py * c;
+  }
+  return TQ;
+}
+
+/** The pages of his map pinned to the wall over the crate: one for each floor he has mapped, crooked, inked, pinned in red. */
+function drawPinnedPages(r: typeof sharedRaster, n: number, cx: number, y: number): void {
+  const at = n === 1 ? [0] : n === 2 ? [-3.2, 3.2] : [-6.4, 0, 6.4];
+  for (let i = 0; i < n; i++) {
+    const px = cx + at[i]!, py = y - 17.5 - (i % 2) * 2.6, a = [-0.09, 0.06, -0.04][i]!;
+    r.poly(tiltQuad(px, py, 2.4, 3.1, a), 4, -5, PAPER, 0.05, { group: 10 + i });
+    r.stroke(px - 1.5, py - 1.4, px + 1.4, py - 1.2 + a * 3, CLOTH_D, 0, true);
+    r.stroke(px - 1.6, py + 0.1, px + 0.8, py + 0.3, CLOTH_D, 0, true);
+    r.stroke(px - 1.2, py + 1.6, px + 1.5, py + 1.4, CLOTH_D, 0, true);
+    r.dot(px, py - 2.6, CLOTH, 2, 5);
+  }
+}
+
+/** His tea tin on the cold camp: closed and full when he still has it, open and empty beside its lid when you drank it. */
+function drawTin(r: typeof sharedRaster, empty: boolean, tx: number, y: number): void {
+  r.poly(quad(tx - 1.5, y - 3.4, tx + 1.5, y - 0.2), 4, -0.6, BRASS_M, 0.6, { group: 14 });
+  r.stroke(tx - 1.5, y - 1.7, tx + 1.5, y - 1.7, CLOTH, 0, true);
+  if (empty) {
+    r.ellipse(tx, y - 3.4, 1.5, 0.45, 0, -0.5, IRON, { group: 14 });
+    r.ellipse(tx + 4.2, y - 0.7, 1.6, 0.6, 0, -0.5, IRON, { group: 15 });
+  } else {
+    r.ellipse(tx, y - 3.5, 1.6, 0.55, 0, -0.5, BRASS_M, { group: 14 });
+  }
+}
+
 function drawCamp(out: PixelSurface, field: LightField, ctx: Ctx, camp: NonNullable<StoryRenderView['camp']>): void {
   if (!out.setFinePx) return;
   const r = sharedRaster, f = camp.facing, y = camp.floorY + 0.5, x = camp.x, t = ctx.state.frameCount;
+  const dress = camp.dress;
   r.begin(out.pixelStep ?? 1, x - 40, y - 36, x + 40, y + 2, PROPS, x, y);
   r.outline = 1; r.bands = 0.7; r.dither = false; r.blend = 1.2;
+  // What the run has left here: his map pages on the wall behind the crate.
+  if (dress && dress.pages > 0) drawPinnedPages(r, dress.pages, x - f * 9, y);
+  // Frost on the floor of the Cold Store: pale rime along the ground, more of it by the bedroll.
+  if (dress?.frost) {
+    for (let i = -6; i <= 6; i++) {
+      const fx = x + i * 5.6 + Math.sin(i * 2.3) * 1.4;
+      r.ellipse(fx, y - 0.25, 2.2 + Math.abs(Math.sin(i * 1.7)) * 1.4, 0.55, 0, -0.4, FROST, { group: 20 + (i + 6) });
+    }
+  }
   // Bedroll behind him.
   const bx = x - f * 20;
   r.capsule(bx - 6, y - 1.5, 1.6, bx + 6, y - 1.6, 1.7, -4, -4, camp.abandoned ? CLOTH_D : CLOTH, { group: 1 });
@@ -140,12 +192,19 @@ function drawCamp(out: PixelSurface, field: LightField, ctx: Ctx, camp: NonNulla
       r.poly(quad(bx - 2.2, y - 5.2, bx + 2.2, y - 3.4), 4, -2.5, PAPER, 0.05, { group: 4 });
       r.glowStamp(bx, y - 4.3, 2.4, 1.2, 0, PAPER, 0.6 + Math.sin(t * 0.06) * 0.25, 0.2, 4);
     }
+    if (dress && dress.tin !== 'none') drawTin(r, dress.tin === 'empty', x + f * 1.5, y);
   } else {
     // A crate with the map spread on it.
     const cx = x - f * 9;
     r.poly(quad(cx - 3.2, y - 6, cx + 3.2, y - 0.2), 4, -2, CRATE, 0.3, { group: 2 });
     r.stroke(cx - 3.2, y - 3, cx + 3.2, y - 3, WOOD, 0, true);
     r.poly(quad(cx - 3.6, y - 6.8, cx + 2.8, y - 5.8), 4, -1.5, PAPER, 0.05, { group: 5 });
+    if (dress?.cup) {
+      // The tin cup from his last tea, left on the crate by the map.
+      r.ellipse(cx + 1.9, y - 8.2, 1.05, 1.15, 0, -1.4, BRASS_M, { group: 16 });
+      r.ellipse(cx + 1.9, y - 9.2, 1.05, 0.38, 0, -1.3, IRON, { group: 16 });
+    }
+    if (dress?.frost) r.ellipse(cx, y - 6.3, 3.4, 0.45, 0, -1.4, FROST, { group: 17 });
     // The spirit stove and the kettle, steaming.
     const sx = x + f * 16;
     r.poly(quad(sx - 1.6, y - 2.4, sx + 1.6, y - 0.2), 4, -1, IRON, 0.2, { group: 3 });
