@@ -3187,6 +3187,10 @@ export interface LevelRuntime {
   portal: ExitPortal | null;
   /** The golden key has been collected in this level. */
   keyTaken: boolean;
+  /** Runtime only: the tick the key was taken (the exit portal's waking animation keys off it). */
+  keyTakenFrame?: number;
+  /** Runtime only: the floor's guardian has been heard or seen (the map then marks its arena, faintly). */
+  bossHeard?: boolean;
   /** Doors/plates/levers/braziers guarding this level's treasure. */
   mechanisms: Mechanism[];
   /** Transient actuator lookup: target mechanism id -> triggers in list order. */
