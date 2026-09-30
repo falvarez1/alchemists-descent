@@ -2,10 +2,11 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import type { Rng } from '@/core/rng';
 import type { AuthoredLight, EnemyKind, Pickup } from '@/core/types';
 import { Cell } from '@/sim/CellType';
-import { brineColor, coalColor, mirrorColor, packRGB, stoneColor } from '@/sim/colors';
+import { EMPTY_COLOR, brineColor, coalColor, mirrorColor, packRGB, stoneColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import { carvePocket, carveRect } from '@/world/connect';
 import type { PlacementLedger } from '@/world/connect';
+import { wizardMask } from '@/world/validate';
 
 /**
  * The second doors' guardians' halls (wave 3), built the way the Kiln and the
@@ -29,6 +30,90 @@ interface ArenaSite {
   pickups: readonly Pickup[];
   lights: AuthoredLight[];
   connect: (x: number, y: number) => void;
+}
+
+/** What a hall's shell needs to be re-asserted (see reshellHall). */
+export interface HallShell {
+  cx: number;
+  cy: number;
+  /** Floor surface row. */
+  FY: number;
+  RX: number;
+  RY: number;
+  /** Flat floor half-width. */
+  HALF: number;
+  tint: (X: number, Y: number) => number;
+}
+
+/** Ring thickness the shell is re-asserted to (the first build's was 4). */
+const HALL_WALL = 5;
+
+/**
+ * THE HALL KEEPS ITS WALLS (GEN 62). A guardian's hall is built as a room with a 4-cell shell
+ * and two flank doors, but every later carve (the level's own connectors, rescues, story nooks)
+ * is free to cut it: the Rime Warden's Ice-House was a floor strip in a void on one reviewed
+ * seed, the Lenswright's dome open all round. After the first rescue the ring between the hall and
+ * a wall five cells thick is re-stamped - except the two flank doors - and any piece of it that
+ * would cut the way to a part of the level the spawn could reach is left open (fail-open: the
+ * direction of every cut-off cell from the hall's centre marks the sectors to spare, three tries,
+ * then the whole ring is left as the carves had it). Only open cells become rock.
+ */
+export function reshellHall(w: World, spawn: { x: number; y: number }, h: HallShell): number {
+  const { cx, cy, FY, RX, RY, HALF } = h;
+  const inPocket = (X: number, Y: number): boolean =>
+    ((X - cx) / RX) ** 2 + ((Y - cy) / RY) ** 2 <= 1 || (Math.abs(X - cx) <= HALF && Y >= cy && Y <= FY - 1);
+  const inDoor = (X: number, Y: number): boolean => Y >= FY - 30 && Y <= FY - 1 && Math.abs(X - cx) >= HALF - 12 && Math.abs(X - cx) <= RX + HALL_WALL + 16;
+  const ring: number[] = [];
+  for (let Y = cy - RY - HALL_WALL; Y < FY - 1; Y++) {
+    for (let X = cx - RX - HALL_WALL; X <= cx + RX + HALL_WALL; X++) {
+      if (!w.inBounds(X, Y) || Y >= HEIGHT - 8) continue;
+      const dx = X - cx, dy = Y - cy;
+      if ((dx * dx) / ((RX + HALL_WALL) ** 2) + (dy * dy) / ((RY + HALL_WALL) ** 2) > 1) continue;
+      if (inPocket(X, Y) || inDoor(X, Y)) continue;
+      if (w.types[w.idx(X, Y)] === Cell.Empty) ring.push(w.idx(X, Y));
+    }
+  }
+  if (ring.length === 0) return 0;
+  const SECTORS = 24;
+  const sectorOf = (i: number): number => {
+    const a = Math.atan2((((i / w.width) | 0) - cy) / RY, ((i % w.width) - cx) / RX);
+    return Math.floor(((a + Math.PI) / (Math.PI * 2)) * SECTORS) % SECTORS;
+  };
+  const before = wizardMask({ world: w, spawn });
+  const spared = new Set<number>();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const filled: number[] = [];
+    for (const i of ring) {
+      if (spared.has(sectorOf(i)) || w.types[i] !== Cell.Empty) continue;
+      w.types[i] = Cell.Wall;
+      w.colors[i] = h.tint(i % w.width, (i / w.width) | 0);
+      w.activity.touchIndex(i);
+      filled.push(i);
+    }
+    if (filled.length === 0) return 0;
+    const after = wizardMask({ world: w, spawn });
+    const lostSectors = new Set<number>();
+    let lost = 0;
+    for (let i = 0; i < before.length; i++) {
+      if (!before[i] || after[i]) continue;
+      const X = i % w.width, Y = (i / w.width) | 0;
+      if (inPocket(X, Y) || Math.abs(X - cx) < RX + HALL_WALL + 2 && Math.abs(Y - cy) < RY + HALL_WALL + 2) continue; // the hall's own air
+      lost++;
+      lostSectors.add(sectorOf(i));
+    }
+    if (lost === 0) return filled.length;
+    for (const i of filled) {
+      w.types[i] = Cell.Empty;
+      w.colors[i] = EMPTY_COLOR;
+      w.activity.touchIndex(i);
+    }
+    for (const s of lostSectors) {
+      spared.add(s);
+      spared.add((s + 1) % SECTORS);
+      spared.add((s + SECTORS - 1) % SECTORS);
+    }
+  }
+  return 0;
 }
 
 /** Ice-House geometry, relative to the hall's centre (cx, cy). */
@@ -207,7 +292,10 @@ export function buildIceHouse(site: ArenaSite): WardenArena {
   stampFloor(true);
   return {
     boss: { x: cx, y: FY - 1, kind: 'rimewarden' },
-    repair: (floor = true): void => stampFloor(floor),
+    repair: (floor = true): void => {
+      stampFloor(floor);
+      if (floor) reshellHall(w, spawn, { cx, cy, FY, RX: A.RX, RY: A.RY, HALF: A.HALF, tint: rockTint });
+    },
   };
 }
 
@@ -350,6 +438,9 @@ export function buildLensRoom(site: ArenaSite): WardenArena {
   ledger.reserve(x0(cx), top(cy), x1(cx), bot(cy), 'warden-arena');
   return {
     boss: { x: cx, y: FY - 1 - A.HOVER, kind: 'lenswright' },
-    repair: (floor = true): void => stampFloor(floor),
+    repair: (floor = true): void => {
+      stampFloor(floor);
+      if (floor) reshellHall(w, spawn, { cx, cy, FY, RX: A.RX, RY: A.RY, HALF: A.HALF, tint: rockTint });
+    },
   };
 }

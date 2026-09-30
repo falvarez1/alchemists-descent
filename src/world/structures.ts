@@ -47,7 +47,7 @@ import {
 import type { PlacementLedger } from '@/world/connect';
 import { reserveFooting, runeFooting, triggerFooting } from '@/world/fixtureFooting';
 import { wizardMask } from '@/world/validate';
-import { buildIceHouse, buildLensRoom } from '@/world/wardenArenas';
+import { buildIceHouse, buildLensRoom, reshellHall } from '@/world/wardenArenas';
 import type { KilnFlueSite } from '@/core/story';
 import { carveKilnFlue, planKilnFlue, repairKilnFlue } from '@/world/kilnFlue';
 
@@ -1057,13 +1057,14 @@ export function placeStructures(
         if (w.inBounds(X, Y) && Y < HEIGHT - 8 && w.types[w.idx(X, Y)] === Cell.Empty) stone(X, Y);
       }
     }
-    // lava moats sunk flush into the floor band, a stone keel under each
+    // lava moats sunk flush into the floor band, a stone keel under each (GEN 62: 14 wide and 5 deep,
+    // were 10 x 3 - 185 lava cells in the whole arena; the Kiln Heart's floor is volcanic now)
     for (const side of [-1, 1]) {
-      for (let dx = 47; dx <= 56; dx++) {
-        for (let dy = FLOOR; dy <= FLOOR + 4; dy++) {
+      for (let dx = 43; dx <= 56; dx++) {
+        for (let dy = FLOOR; dy <= FLOOR + 6; dy++) {
           const X = cx + side * dx, Y = cy + dy;
           if (!w.inBounds(X, Y)) continue;
-          if (dy <= FLOOR + 2) {
+          if (dy <= FLOOR + 4) {
             const i = w.idx(X, Y);
             w.types[i] = Cell.Lava;
             w.colors[i] = packRGB(252, 60 + Math.floor(rng.next() * 60), 8);
@@ -1338,7 +1339,19 @@ export function placeStructures(
       // The rim a rescue or puzzle tunnel took (see stampSumpRim): later
       // tunnels that still need a way through re-carve it (the final gauge
       // rescue runs after this; the runtime repair routes around the arena).
-      if (rim) stampSumpRim();
+      if (rim) {
+        stampSumpRim();
+        // the crown: the pocket's upper ring walled again (five cells), its two flank doors left open
+        const tint = (X: number, Y: number): number => {
+          for (let r = 1; r <= 16; r++) {
+            for (const [ox, oy] of [[r, 0], [-r, 0], [0, r], [0, -r]] as const) {
+              if (w.inBounds(X + ox, Y + oy) && w.types[w.idx(X + ox, Y + oy)] === Cell.Wall) return w.colors[w.idx(X + ox, Y + oy)];
+            }
+          }
+          return packRGB(58, 66, 78);
+        };
+        reshellHall(w, spawn, { cx, cy, FY: cy + 17, RX: 42, RY: 26, HALF: 27, tint });
+      }
       // ...then refill whatever water a wandering carve deleted. Fixed tint
       // (no rng jitter) — the repair runs after generation's rng stream closes.
       for (let X = cx - 26; X <= cx + 26; X++) {
