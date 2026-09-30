@@ -53,14 +53,16 @@ export const DARKNESS = {
   readabilityScale: 0.5,
   /** Soft edge of a zone, in cells (smoothstep from the rim inward). */
   feather: 30,
-  /** The rim wanders this many cells in and out (core/darkness rimWobble). */
-  rimNoise: 10,
+  /** The rim wanders this many cells in and out (core/darkness rimWobble). Levels review
+   *  #16: at 10 a dark room's edge ran nearly straight and read as an unrendered chunk;
+   *  16 lets the fade line billow a few dozen cells like a cave the light gave up on. */
+  rimNoise: 16,
   /**
    * FOLLOWING THE ROCK (core/darkness bakeZoneFollowingRock): from a zone's
    * core the dark travels only through what connects it. Along open air it
    * holds full for this many cells of (feathered) depth…
    */
-  airHold: 8,
+  airHold: 16, // 8 before the rim wandered 16: the room mouths stay dark (light-query tests)
   /** …then fades over this many more, so a doorway or a cave mouth dims
    *  gradually (fix4b: 40 → 52 — across a room the dark read as a curtain
    *  drawn at one line; now it thins out like a place the light gave up on)… */
