@@ -306,7 +306,14 @@ export async function clickBuilderControl(page, selector) {
   if (where?.menu) {
     // Idempotent: a probe may already have the menu open, and a second click on the trigger would close it.
     const open = await page.evaluate((m) => document.querySelector(`.builder-menu-dropdown[data-menu-panel="${m}"]`)?.hidden === false, where.menu);
-    if (!open) await page.click(`#builder-bar [data-menu="${where.menu}"]`);
+    if (!open) {
+      const trigger = `#builder-bar [data-menu="${where.menu}"]`;
+      // Hovering a trigger while another menu is open switches to it (VS Code style), so a click that follows
+      // would toggle it shut again: hover first, and click only if that did not already open it.
+      await page.hover(trigger);
+      const nowOpen = await page.evaluate((m) => document.querySelector(`.builder-menu-dropdown[data-menu-panel="${m}"]`)?.hidden === false, where.menu);
+      if (!nowOpen) await page.click(trigger);
+    }
   }
   await page.click(selector);
 }

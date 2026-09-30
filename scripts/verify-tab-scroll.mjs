@@ -4,7 +4,7 @@
 //  2) the mouse wheel over the strip scrolls the tabs horizontally.
 // Usage: node scripts/verify-tab-scroll.mjs [url]  (dev server must be running)
 import { chromium } from 'playwright-core';
-import { leaveTitleIfShown, toggleBuilderMode } from './run-helpers.mjs';
+import { leaveTitleIfShown, toggleBuilderMode, clickBuilderControl } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5191/';
 let pass = 0;
@@ -35,7 +35,7 @@ const SEL = '#builder-dock-right .builder-dock-tabs .editor-tabs-list';
 // View items).
 await page.click('.builder-menu-btn[data-menu="view"]');
 await page.waitForTimeout(120);
-await page.click('#b-worldgen');
+await clickBuilderControl(page, '#bp-world-btn');
 await page.waitForTimeout(180);
 await page.keyboard.press('Escape');
 await page.waitForTimeout(200);

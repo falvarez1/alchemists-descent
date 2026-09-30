@@ -459,3 +459,21 @@ body:not(.player-build) .app-dialog-btn:focus-visible { outline: 2px solid var(-
 #builder-root .bt-layers-pop .bp-layer.off span { text-decoration: line-through; }
 #builder-root .bt-layers-pop .bp-layer.off [data-vis] { opacity: 0.4; }
 #builder-root .bt-layers-pop .bp-layer.locked [data-lock] { color: var(--st-accent-text); background: var(--st-accent-bg); border-color: var(--st-accent-line); }
+
+/* ------------------------------------------------ narrow windows (tablet / phone) */
+
+/* The bar and toolbar may wrap instead of forcing the whole workspace wider than the window. */
+#builder-workspace { grid-template-rows: auto minmax(0, 1fr) var(--st-status-h); min-width: 0; }
+#builder-workspace > * { min-width: 0; }
+#builder-bar.st-bar { height: auto; min-height: var(--st-bar-h); flex-wrap: wrap; row-gap: 2px; padding-top: 4px; padding-bottom: 4px; box-sizing: border-box; }
+@media (max-width: 900px) {
+    #builder-bar .b-title > span,
+    #builder-bar .b-field,
+    #builder-bar .b-bar-mid { display: none; }
+    #builder-bar .b-right { margin-left: auto; }
+    #builder-root #builder-bar #b-doc-name { width: 120px; }
+}
+@container stage (max-width: 700px) {
+    #builder-toolbar.st-toolbar { flex-wrap: wrap; height: auto; padding: 4px 8px; row-gap: 2px; }
+    #builder-toolbar .bt-spacer { display: none; }
+}
