@@ -477,3 +477,6 @@ body:not(.player-build) .app-dialog-btn:focus-visible { outline: 2px solid var(-
     #builder-toolbar.st-toolbar { flex-wrap: wrap; height: auto; padding: 4px 8px; row-gap: 2px; }
     #builder-toolbar .bt-spacer { display: none; }
 }
+
+/* The Builder's Game link button is the link UI in the editor; the game window keeps the pill. */
+body.builder-open #authorlink-status { display: none; }
