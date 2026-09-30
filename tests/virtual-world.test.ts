@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { BIOMES } from '@/config/biomes';
 import { GEN_TUNE } from '@/config/gen';
-import { effectiveVirtualWorldDef } from '@/builder/virtualWorldPanel';
+import { effectiveVirtualWorldDef } from '@/world/virtual/effectiveDef';
 import { Cell } from '@/sim/CellType';
 import { campaignDressingRecipeForBiome } from '@/world/biomeExtras';
 import {

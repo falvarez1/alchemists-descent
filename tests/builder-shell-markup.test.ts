@@ -6,7 +6,7 @@ import { ADVANCED_OBJECTS, LEVEL_OBJECTS, NOTE_OBJECTS, PUZZLE_OBJECTS, TOOL_GRO
  * The Builder binds its handlers by element id (`this.el('b-save')` throws when the id is missing,
  * and ~20 headless probes click the same ids). The shell markup lives in its own file now, so this
  * test is what keeps "a control can MOVE but keeps its id" true: every id the class looks up has to
- * exist in the template, and nothing in the hidden legacy block may outlive its handler.
+ * exist in the template.
  *
  * (String-level on purpose: the repo's unit tests run without a DOM.)
  */
@@ -18,12 +18,6 @@ const allIds = idsIn(markup);
 const markupIds = new Set(allIds);
 const referenced = new Set([...builderSource.matchAll(/this\.el(?:<[^>]*>)?\('([A-Za-z0-9_-]+)'\)/g)].map((m) => m[1]));
 
-function legacyBlock(): string {
-  const start = markup.indexOf('id="b-legacy-stubs"');
-  if (start < 0) return '';
-  return markup.slice(start, markup.indexOf('</div>', start));
-}
-
 describe('Builder shell markup', () => {
   it('has no duplicate ids', () => {
     expect(allIds.filter((id, i) => allIds.indexOf(id) !== i)).toEqual([]);
@@ -31,11 +25,6 @@ describe('Builder shell markup', () => {
 
   it('contains every element the Builder looks up by id', () => {
     expect([...referenced].filter((id) => !markupIds.has(id))).toEqual([]);
-  });
-
-  it('keeps hidden legacy stubs only for ids a handler still binds', () => {
-    const stubs = idsIn(legacyBlock()).filter((id) => id !== 'b-legacy-stubs');
-    expect(stubs.filter((id) => !referenced.has(id))).toEqual([]);
   });
 
   it('gives every tool exactly one button or flyout entry, each with a data-tool id', () => {

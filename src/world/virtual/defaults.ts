@@ -87,7 +87,7 @@ export function createDefaultVirtualGenerationParams(): VirtualWorldDef['generat
     // walk-surface look. The old baked mirror (6/4/2) silently went stale when
     // gen.ts v22 raised the sink-fill defaults (20/6/3), so Play Mode virtual
     // runs and Builder playtest generated DIFFERENT terrain at identical
-    // settings. Builder's effectiveVirtualWorldDef applies the same values;
+    // settings. effectiveVirtualWorldDef (effectiveDef.ts) applies the same values;
     // caveMultiplier() in ChunkGenerator normalizes caveScale 1.5 -> x1.0.
     caveScale: GEN_TUNE.caveScale,
     fillSurfacePits: GEN_TUNE.fillSurfacePits,
@@ -896,10 +896,10 @@ function createBoundaryRuinScene(): PixelSceneDef {
 /**
  * Normalize a VirtualWorldDef in place: fill defaults, clamp ranges, and sanitize
  * pixel-scene placements. THE single source of truth for normalization, shared by
- * the ChunkGenerator worker (authoritative generation) and the Builder's live
- * preview panel — so the preview provably matches the world the player gets.
- * (Previously duplicated in both, which had already drifted: the panel omitted
- * pixel-scene normalization and rounded maxPerTile while generation did not.)
+ * the ChunkGenerator worker (authoritative generation) and any preview of it, so
+ * a preview provably matches the world the player gets. (It was once duplicated
+ * in a Builder preview panel, which drifted: it omitted pixel-scene normalization
+ * and rounded maxPerTile while generation did not.)
  */
 export function normalizeVirtualWorldDef(def: VirtualWorldDef): void {
   def.pixelScenes = normalizePixelScenePlacements(

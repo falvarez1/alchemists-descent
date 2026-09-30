@@ -147,19 +147,6 @@ const menuItem = (id: string, label: string, opts: { key?: string; title?: strin
 
 const sep = '<div class="builder-menu-sep"></div>';
 
-/**
- * Controls whose panels were cut from the Builder (Logic Preview, Runtime,
- * Global Controls, Post FX, World Map, Pixel Scene Editor) still have handlers
- * bound by id. They live here, hidden, until the handlers are deleted with them.
- * LEGACY-STUBS: nothing in this block is ever shown.
- */
-const LEGACY_STUBS =
-  '<div id="b-legacy-stubs" hidden>' +
-  ['b-session-author', 'b-session-live', 'b-session-restart', 'b-session-discard', 'b-world-map', 'b-global', 'b-postfx', 'b-scene-editor', 'b-runtime', 'b-worldgen', 'bp-world-map-btn', 'bp-global-btn', 'bp-postfx-btn', 'bp-runtime-btn', 'bp-wand-params-btn', 'bp-gen-caves', 'bp-gen-fort', 'bp-gen-clear']
-    .map((id) => `<button id="${id}" type="button" tabindex="-1" aria-hidden="true"></button>`)
-    .join('') +
-  '</div>';
-
 export function buildShellMarkup(options: ShellMarkupOptions): string {
   const { layerRows } = options;
   return `
@@ -344,10 +331,8 @@ export function buildShellMarkup(options: ShellMarkupOptions): string {
       <div id="builder-dock-right" class="builder-dock" data-dock="right">
       <div id="builder-inspector"></div>
       <div id="builder-outliner" style="display:none"></div>
-      <div id="builder-runtime" style="display:none"></div>
       <div id="builder-asset-details" style="display:none"></div>
       <div id="builder-prefab-details" style="display:none"></div>
-      <div id="builder-virtual-world" style="display:none"></div>
       <div id="builder-world" style="display:none">
         ${builderPanelHeader({ title: builderPanelTitle('builder-world'), closeId: 'bw-close', closeLabel: 'Close world generation' })}
         <div id="bw-controls"></div>
@@ -355,14 +340,6 @@ export function buildShellMarkup(options: ShellMarkupOptions): string {
       <div id="builder-matparams" style="display:none">
         ${builderPanelHeader({ title: builderPanelTitle('builder-matparams'), closeId: 'bm-close', closeLabel: 'Close material parameters' })}
         <div id="bm-controls"></div>
-      </div>
-      <div id="builder-global" style="display:none">
-        ${builderPanelHeader({ title: builderPanelTitle('builder-global'), closeId: 'bgl-close', closeLabel: 'Close global controls' })}
-        <div id="bg-controls"></div>
-      </div>
-      <div id="builder-postfx" style="display:none">
-        ${builderPanelHeader({ title: builderPanelTitle('builder-postfx'), closeId: 'bf-close', closeLabel: 'Close post processing' })}
-        <div id="bf-controls"></div>
       </div>
       <div id="builder-proc" style="display:none">
         ${builderPanelHeader({ title: builderPanelTitle('builder-proc'), closeId: 'bp-proc-close', closeLabel: 'Close procedural pass' })}
@@ -404,6 +381,5 @@ export function buildShellMarkup(options: ShellMarkupOptions): string {
       </div>
       <div id="builder-link-graph" style="display:none"></div>
       <div id="builder-assets" style="display:none"></div>
-      ${LEGACY_STUBS}
       </div>`;
 }
