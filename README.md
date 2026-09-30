@@ -61,6 +61,19 @@ guarded by whatever killed you. A rest at the warm refuge, or a Sanctum, pours o
 back (never past three). Die with none left and the run ends at its ledger, from
 which you can descend again.
 
+Below each of the first three floors a **Sanctum** offers one of three boons, and
+where the stair forks, a door — chosen together. The boons run from plain stats
+(Power Surge) to the alchemist's bargains that change how the world is met: *Rime
+Soles* skins the water you cross with ice, *Sexton's Grip* halves what lifting the
+fallen costs, *Long Fuse* stretches an alchemical chain, and there are wards for
+current and for cold. The draft is seeded by the run and the floor, and only offers
+a ward the floors below can use (`docs/BOONS.md`). Your boons are listed in the
+pause menu and named on the run's ledger and share line. **Difficulty** runs
+Apprentice, Adept, Conjurer, Archmage: Adept is where every descent begins,
+Apprentice is always open, and quieting the Kiln opens the next tier up; today's
+descent is always Adept, so it is one seed at one difficulty for everyone
+(`docs/DIFFICULTY.md`).
+
 - `A`/`D` move, `SPACE` jump / levitate (coyote time + jump buffering included)
 - `S` crouches, crawls with movement, or dives in air; `Shift`/`C` grabs walls
   and `W`/`S` climbs while grabbed
