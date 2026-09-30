@@ -23,9 +23,13 @@ import { DEFAULT_KIT, KIT_DEFS } from '@/content/kits';
 import type { KitId } from '@/core/run';
 import { restoreFauna, restoreLiving } from '@/game/persistence/ecology';
 import { Rng, hashSeed, randomSeed } from '@/core/rng';
+import { isRunTainted, taintRun } from '@/core/runTaint';
 import { base64ToBytes, bytesToBase64, rleDecodeExact, rleEncode } from '@/core/rle';
 import type {
   Ctx,
+  DebugFinishResult,
+  DebugTravelOptions,
+  DebugTravelResult,
   Difficulty,
   Enemy,
   EnemyKind,
@@ -696,6 +700,8 @@ export class Levels implements LevelsApi {
   private lastEnemiesEmit = -1;
   /** Levels already topped up with the review potion belt this session. */
   private reviewKitSeeded = new Set<string>();
+  /** Dev console `goto --seed`: levels built from a chosen seed instead of the run's (this run only). */
+  private seedOverrides = new Map<string, number>();
   /** Resume restores the hero position after enterLevel; suppress that transient checkpoint. */
   private checkpointSaveSuppression = 0;
   /** Guards delayed settled-findability repair against stale level transitions. */
@@ -734,7 +740,7 @@ export class Levels implements LevelsApi {
   }
 
   private debugTainted(ctx: Ctx): boolean {
-    return ctx.state.debugGodMode || ctx.state.debugTainted === true || ctx.debug?.active === true;
+    return isRunTainted(ctx.state) || ctx.debug?.active === true;
   }
 
   private showTransitionCurtain(ctx: Ctx, copy: TransitionCurtainCopy = {}): void {
@@ -1034,26 +1040,7 @@ export class Levels implements LevelsApi {
         if (overPit && player.y > G.floor + 1) near = true;
       }
       if (near && runtime.keyTaken && engineReady) {
-        if (!portal.open) {
-          portal.open = true;
-          ctx.audio.portalWhoosh();
-          ctx.events.emit('toast', { text: runtime.living ? 'The bell rings in the lock. The lower gate opens.' : 'The key turns. The portal wakes.' });
-        }
-        const next = runtime.def.nextLevelId;
-        if (next) {
-          // The Sanctum opens between depths: boon draft + shop and, where the
-          // floor below has two doors, the choice of door; then descend.
-          const doors = nextDoors(runtime.def.id);
-          ctx.sanctum.open(ctx, (chosen) => {
-            const id = chosen && doors.includes(chosen) && LEVELS[chosen] ? chosen : next;
-            this.leaveLevel();
-            this.enterLevel(ctx, id);
-          });
-        } else if (ctx.state.frameCount % 240 === 0) {
-          ctx.events.emit('toast', {
-            text: 'CUSTOM LEVEL CLEAR — THE PORTAL SHINES',
-          });
-        }
+        this.passExit(ctx, runtime, portal);
         return;
       }
       // Carrying the bell, the grate is already ringing open: no "Sealed" nag.
@@ -1077,6 +1064,33 @@ export class Levels implements LevelsApi {
     if (ctx.enemies.length !== this.lastEnemiesEmit) {
       this.lastEnemiesEmit = ctx.enemies.length;
       ctx.events.emit('enemiesLeft', { count: ctx.enemies.length });
+    }
+  }
+
+  /**
+   * The exit gate's step, once the key has opened it (or the dev console takes it):
+   * wake the portal, then the Sanctum opens between depths — boon draft + shop and,
+   * where the floor below has two doors, the choice of door — and closing it descends.
+   * One path for the stairs and for the console's `skip`.
+   */
+  private passExit(ctx: Ctx, runtime: LevelRuntime, portal: ExitPortal | null): void {
+    if (portal && !portal.open) {
+      portal.open = true;
+      ctx.audio.portalWhoosh();
+      ctx.events.emit('toast', { text: runtime.living ? 'The bell rings in the lock. The lower gate opens.' : 'The key turns. The portal wakes.' });
+    }
+    const next = runtime.def.nextLevelId;
+    if (next) {
+      const doors = nextDoors(runtime.def.id);
+      ctx.sanctum.open(ctx, (chosen) => {
+        const id = chosen && doors.includes(chosen) && LEVELS[chosen] ? chosen : next;
+        this.leaveLevel();
+        this.enterLevel(ctx, id);
+      });
+    } else if (ctx.state.frameCount % 240 === 0) {
+      ctx.events.emit('toast', {
+        text: 'CUSTOM LEVEL CLEAR — THE PORTAL SHINES',
+      });
     }
   }
 
@@ -1415,6 +1429,75 @@ export class Levels implements LevelsApi {
     return this.current?.def.id === id;
   }
 
+  debugTravel(ctx: Ctx, id: string, opts: DebugTravelOptions = {}): DebugTravelResult {
+    const from = this.currentId;
+    const refuse = (reason: NonNullable<DebugTravelResult['reason']>): DebugTravelResult => ({ ok: false, reason, from, to: id, generated: false, ms: 0 });
+    if (!LEVELS[id]) return refuse('unknown-level');
+    if (ctx.state.mode !== 'play' || !this.currentId) return refuse('no-run');
+    taintRun(ctx);
+    const rebuild = opts.seed !== undefined || opts.fresh === true;
+    const generated = rebuild || !this.levels.has(id);
+    const t0 = performance.now();
+    this.leaveLevel();
+    if (rebuild) {
+      // A world built again from a chosen seed (or the run's): the visited one, its save blob and what was lit in it go.
+      if (opts.seed !== undefined) this.seedOverrides.set(id, opts.seed >>> 0);
+      else this.seedOverrides.delete(id);
+      this.levels.delete(id);
+      this.savedBlobs.delete(id);
+      this.blobCache.delete(id);
+      this.litOrder.delete(id);
+      this.reviewKitSeeded.delete(id);
+      if (this.currentId === id) this.currentId = null;
+    }
+    this.checkpointSaveSuppression++;
+    try {
+      this.enterLevel(ctx, id);
+    } finally {
+      this.checkpointSaveSuppression--;
+    }
+    return { ok: this.current?.def.id === id, from, to: id, generated, ms: Math.round(performance.now() - t0) };
+  }
+
+  debugFinishFloor(ctx: Ctx, opts: { sanctum?: boolean; door?: string } = {}): DebugFinishResult {
+    const runtime = this.current;
+    const from = runtime?.def.id ?? null;
+    const doors = from ? [...nextDoors(from)] : [];
+    const base = { from, next: runtime?.def.nextLevelId ?? null, doors };
+    if (!runtime || ctx.state.mode !== 'play' || !LEVELS[runtime.def.id]) return { ...base, ok: false, reason: 'no-run' };
+    if (!runtime.def.nextLevelId) return { ...base, ok: false, reason: 'no-exit' };
+    if (ctx.sanctum.isOpen) return { ...base, ok: false, reason: 'sanctum-open' };
+    if (opts.door !== undefined && !doors.includes(opts.door)) return { ...base, ok: false, reason: 'bad-door' };
+    taintRun(ctx);
+    this.passExit(ctx, runtime, runtime.portal);
+    if (opts.sanctum === false) ctx.sanctum.quickDescend?.(opts.door);
+    return { ...base, ok: true };
+  }
+
+  debugLightWaystone(ctx: Ctx, index: number): boolean {
+    const runtime = this.current;
+    const ws = runtime?.waystones[index];
+    if (!runtime || !ws || ws.lit) return false;
+    taintRun(ctx);
+    this.lightWaystone(ctx, runtime, index);
+    return true;
+  }
+
+  debugApplyKit(ctx: Ctx, kit: KitId): boolean {
+    if (ctx.state.mode !== 'play' || !KIT_DEFS[kit]) return false;
+    taintRun(ctx);
+    this.applyLoadoutPreset(ctx, 'fresh', kit);
+    return true;
+  }
+
+  generatedLevels(): string[] {
+    return [...this.levels.keys()];
+  }
+
+  levelSeed(ctx: Ctx, id: string): number {
+    return this.seedOverrides.get(id) ?? levelSeedFor(this.activeExpeditionSeed(ctx), id);
+  }
+
   private enterPlayMode(ctx: Ctx): void {
     if (ctx.state.mode === 'play') return;
     ctx.state.mode = 'play';
@@ -1436,6 +1519,7 @@ export class Levels implements LevelsApi {
     this.blobCache.clear();
     this.litOrder.clear();
     this.reviewKitSeeded.clear();
+    this.seedOverrides.clear();
     this.waystoneHeat = [];
     this.lastEnemiesEmit = -1;
     this.clearTransitionFinishTimer();
@@ -2820,8 +2904,7 @@ export class Levels implements LevelsApi {
     ctx.world = world;
     ctx.enemies.length = 0;
 
-    const expeditionSeed = this.activeExpeditionSeed(ctx);
-    const seed = levelSeedFor(expeditionSeed, def.id);
+    const seed = this.levelSeed(ctx, def.id);
     const {
       exit,
       waystones,

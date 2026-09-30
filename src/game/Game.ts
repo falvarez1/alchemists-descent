@@ -597,6 +597,9 @@ export class Game {
       get chosenDoor(): string | null { return real()?.chosenDoor ?? null; },
       open: (ctx, onDescend) => whenReady((sanctum) => sanctum.open(ctx, onDescend)),
       openShop: (ctx) => whenReady((sanctum) => sanctum.openShop(ctx)),
+      quickDescend: (door) => real()?.quickDescend?.(door) ?? false,
+      dismiss: () => real()?.dismiss?.(),
+      applyBoon: (ctx, id) => real()?.applyBoon?.(ctx, id) ?? false,
     };
   }
 

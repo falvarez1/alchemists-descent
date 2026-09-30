@@ -235,7 +235,8 @@ export class RunSummary {
     this.grades.render(view?.bestVictoryDifficulty ?? 0, this.chosenDifficulty, result.unlockedDifficulty);
     this.awaitingClip = false;
     this.status.textContent = result.recorded ? '' : 'A practice descent: debug tools were used, so the ledger keeps no record.';
-    this.shareText.textContent = shareLine(summary);
+    // A test run says so: its line must not pass for a result.
+    this.shareText.textContent = result.recorded ? shareLine(summary) : shareLine(summary) + ' — practice run (debug tools)';
     for (const b of this.actions.querySelectorAll('button')) b.disabled = false;
 
     ctx.state.paused = true;

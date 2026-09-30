@@ -1,14 +1,30 @@
 import { sanitizeBackdropSettings, saveBackdropSettings } from '@/config/backdrop';
 import { LEVELS } from '@/config/worldgraph';
-import { FLASK_SLOT_COUNT, type BodyMaterial, type CardId, type CommandInfo, type CommandResult, type ConsoleApi, type Ctx, type EnemyKind, type FlaskSlotConfig, type LevelRuntime, type Mechanism, type PerkId, type Pickup, type RunTestKitConfig } from '@/core/types';
+import { FLASK_SLOT_COUNT, type BodyMaterial, type CardId, type CommandResult, type ConsoleApi, type Ctx, type EnemyKind, type FlaskSlotConfig, type LevelRuntime, type Mechanism, type PerkId, type Pickup, type RunTestKitConfig } from '@/core/types';
 import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { grantFullReviewKit } from '@/entities/Player';
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
 import { PERK_IDS, isPerkId } from '@/content/perks';
 import { Cell, CELL_COUNT } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
-import { ConsoleCommandRegistry, parseConsoleLine } from '@/game/console/registry';
+import { ConsoleCommandRegistry, parseConsoleLine, splitCommandSequence } from '@/game/console/registry';
+import { createTravelCommands } from '@/game/console/travel';
 import type { CompletionRequest, ConsoleCommandDefinition } from '@/game/console/registry';
+import { currentToken, info, matching, normalizeKey, result } from '@/game/console/kit';
+import {
+  HELP_GROUPS,
+  buildHelpEntries,
+  detailRows,
+  enrichInfo,
+  groupPageRows,
+  overviewRows,
+  resolveHelpQuery,
+  rowsToText,
+  searchHelp,
+  searchRows,
+  taintRows,
+  type HelpRow,
+} from '@/game/console/help';
 import { loadConsoleBinds, loadConsoleWatches, normalizeBindKey, saveConsoleBinds, saveConsoleWatches } from '@/game/console/prefs';
 import { loadConsoleScripts, normalizeScriptName, parseScriptLines, scriptNames } from '@/game/console/scripts';
 import { FLORA_SPECIES, groundAt, plantFlora, type FloraFloor, type FloraSpecies } from '@/world/floraKit';
@@ -66,35 +82,6 @@ type PerfWindow = Window & {
   __perfSamples?: PerfSample[];
 };
 type BrowserWindow = Window & typeof globalThis;
-
-function result(ok: boolean, text: string, data?: unknown): CommandResult {
-  return data === undefined ? { ok, text } : { ok, text, data };
-}
-
-function info(
-  id: string,
-  label: string,
-  usage: string,
-  description: string,
-  category: CommandInfo['category'] = id.startsWith('console.') ? 'console' : 'game',
-  shortcut?: string,
-): CommandInfo {
-  return { id, label, category, usage, description, shortcut, enabled: true };
-}
-
-function normalizeKey(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-function currentToken(req: CompletionRequest): string {
-  if (req.trailingSpace) return '';
-  return req.args[req.args.length - 1] ?? '';
-}
-
-function matching(values: Iterable<string>, prefix: string): string[] {
-  const p = normalizeKey(prefix);
-  return [...values].filter((v) => normalizeKey(v).startsWith(p));
-}
 
 function isBuilderOpen(): boolean {
   if (typeof document === 'undefined') return false;
@@ -289,6 +276,8 @@ function resolveReadTarget(ctx: Ctx, args: string[], command: string): TargetedA
 function taintIfNeeded(ctx: Ctx, command: string, target: ConsoleTarget): string | null {
   if (!GAMEPLAY_TAINT_COMMANDS.has(command)) return null;
   if (target !== 'expedition') return null;
+  // The story hears a tainted run from a scratch memory (core/runTaint): once, however often it is tainted.
+  ctx.story?.untrack?.();
   if (ctx.state.debugGodMode) return null;
   ctx.state.debugGodMode = true;
   return 'DEBUG TAINT: expedition autosave is disabled for this run.';
@@ -1508,6 +1497,39 @@ function runCommandCompletions(req: CompletionRequest): string[] {
   return [];
 }
 
+const SEQ_MAX_STEPS = 24;
+
+/** `seq a; b; c`: the commands in order, each after the one before it finished, stopping at the first failure. */
+function sequenceCommand(): ConsoleCommandDefinition {
+  const usage = 'seq <command; command; ...>';
+  const firstLine = (text: string): string => text.split('\n')[0];
+  return {
+    name: 'seq',
+    info: info('console.seq', 'Run Sequence', usage, 'Run several commands in order, stopping at the first failure.'),
+    run: async (ctx, _args, parsed) => {
+      const steps = splitCommandSequence(parsed.raw.trim().replace(/^\S+\s*/, ''));
+      if (steps.length === 0) return result(false, `Usage: ${usage}`, { code: 'usage' });
+      if (steps.length > SEQ_MAX_STEPS) return result(false, `seq runs at most ${SEQ_MAX_STEPS} commands, got ${steps.length}.`, { code: 'seq-too-long', steps: steps.length });
+      const rows: Array<{ line: string; ok: boolean; text: string; data?: unknown }> = [];
+      const report = (): string => rows.map((r, i) => `${i + 1}. ${r.ok ? 'ok  ' : 'FAIL'} ${r.line}: ${firstLine(r.text)}`).join('\n');
+      for (const line of steps) {
+        const step = parseConsoleLine(line);
+        const res = step?.name === 'seq' ? result(false, 'seq cannot run another seq.', { code: 'seq-nested' }) : await ctx.console.exec(line);
+        rows.push({ line, ok: res.ok, text: res.text, ...(res.data !== undefined ? { data: res.data } : {}) });
+        if (!res.ok) {
+          return result(false, `seq stopped at step ${rows.length} of ${steps.length}.\n${report()}`, { code: 'seq-failed', step: rows.length, steps: steps.length, results: rows });
+        }
+      }
+      return result(true, `seq ran ${rows.length} command${rows.length === 1 ? '' : 's'}.\n${report()}`, { code: 'seq-complete', steps: rows.length, results: rows });
+    },
+    // Complete the command being typed after the last semicolon.
+    complete: (ctx, req) => {
+      const tail = req.raw.includes(';') ? req.raw.slice(req.raw.lastIndexOf(';') + 1) : req.raw.replace(/^\s*\S+\s*/, '');
+      return ctx.console.complete(tail.replace(/^\s+/, ''));
+    },
+  };
+}
+
 export function createConsoleApi(ctx: Ctx): ConsoleApi {
   const definitions: ConsoleCommandDefinition[] = [];
   const add = (def: ConsoleCommandDefinition): void => {
@@ -1517,18 +1539,44 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
   add({
     name: 'help',
     aliases: ['?'],
-    info: info('console.help', 'Help', 'help [command]', 'List commands or show one command signature.'),
+    info: info('console.help', 'Help', 'help [command|group|find <word>|taint]', 'List the commands by group, or explain one command, one group or the test-run taint.'),
     run: (_ctx, args) => {
-      if (args.length > 0) {
-        const q = args[0].toLowerCase();
-        const found = definitions.find((d) => d.name === q || d.aliases?.includes(q) || d.info.id === q);
-        if (!found) return result(false, `No help for "${args[0]}"`, { code: 'help-missing', query: args[0] });
-        return result(true, `${found.info.usage} - ${found.info.description}`, { command: found.info });
+      const entries = buildHelpEntries(definitions);
+      const query = resolveHelpQuery(entries, args);
+      const page = (layout: string, rows: HelpRow[], extra: Record<string, unknown> = {}): CommandResult =>
+        result(true, rowsToText(rows), { action: 'help', layout, rows, ...extra });
+      switch (query.kind) {
+        case 'overview':
+          return page('overview', overviewRows(entries), { commands: definitions.map((d) => d.info), groups: HELP_GROUPS });
+        case 'group':
+          return page('group', groupPageRows(entries, query.group), {
+            group: query.group,
+            commands: definitions.filter((d) => d.info.group === query.group.id).map((d) => d.info),
+          });
+        case 'command': {
+          const found = definitions.find((d) => d.name === query.entry.name);
+          return page('command', detailRows(query.entry), { command: found?.info ?? null });
+        }
+        case 'search': {
+          const found = searchHelp(entries, query.word);
+          return page('search', searchRows(entries, query.word, found), { word: query.word, matches: found.map((e) => e.name) });
+        }
+        case 'taint':
+          return page('taint', taintRows());
+        case 'missing': {
+          const hint = query.near.length > 0 ? ` Did you mean: ${query.near.join(', ')}?` : '';
+          return result(false, `No help for "${query.query}".${hint} help lists every command; help <group> lists one group.`, {
+            code: 'help-missing',
+            query: query.query,
+            near: query.near,
+          });
+        }
       }
-      const lines = definitions.map((d) => d.info.usage).join(' | ');
-      return result(true, lines, { commands: definitions.map((d) => d.info) });
     },
-    complete: (_ctx, req) => matching(definitions.map((d) => d.name), currentToken(req)),
+    complete: (_ctx, req) => {
+      if (req.completingArg !== 0) return [];
+      return matching([...definitions.map((d) => d.name), ...HELP_GROUPS.map((g) => g.id), 'find', 'taint'], currentToken(req));
+    },
   });
 
   add({
@@ -1763,6 +1811,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
       const wasDead = ctx.player.dead;
       const alreadyTainted = ctx.state.debugGodMode;
       ctx.state.debugGodMode = true;
+      ctx.story?.untrack?.();
       ctx.player.dead = false;
       grantFullReviewKit(ctx.player);
       ctx.player.invuln = Math.max(ctx.player.invuln, 90);
@@ -2464,5 +2513,13 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
     },
   });
 
+  // The tester's travel kit and `seq` exist in an authoring build only: `__AUTHORING__` is a compile-time
+  // constant, so the player build drops this branch and the modules behind it (vite.config).
+  if (__AUTHORING__) {
+    for (const def of createTravelCommands()) add(def);
+    add(sequenceCommand());
+  }
+  // `help` and ctx.console.list() carry each command's group, aliases and taint flag.
+  for (const def of definitions) def.info = enrichInfo(def.name, def.aliases, def.info);
   return new ConsoleCommandRegistry(ctx, definitions);
 }
