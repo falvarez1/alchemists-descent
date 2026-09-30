@@ -416,3 +416,9 @@ body:not(.player-build) .app-dialog-btn:focus-visible { outline: 2px solid var(-
 #builder-root .bi-action-row button { text-transform: lowercase; }
 #builder-root .bi-panel-body button:not(.editor-section-head):not(.b-close)::first-letter,
 #builder-root .bi-action-row button::first-letter { text-transform: uppercase; }
+
+/* A validation result that an edit has outdated stays visible but quiet. */
+.b-validate[data-stale='true'] .b-validate-n, .b-validate[data-stale='true'] .st-icon { opacity: 0.55; }
+#builder-statusbar .sb-issues[data-state='error'] { color: var(--st-danger-text); }
+#builder-statusbar .sb-issues[data-state='warn'] { color: var(--st-warn-text); }
+#builder-statusbar .sb-issues[data-state='ok'] .st-icon { color: var(--st-ok-text); }
