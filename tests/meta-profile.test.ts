@@ -260,3 +260,67 @@ describe('the store', () => {
     expect(store.profile.runsStarted).toBe(1);
   });
 });
+
+describe('the difficulty ladder in the profile', () => {
+  it('starts on Adept with nothing won', () => {
+    const p = defaultMetaProfile();
+    expect(p.bestVictoryDifficulty).toBe(0);
+    expect(p.lastDifficulty).toBe(2);
+  });
+
+  it('migrates a profile from before the ladder: a win then was an Adept win', () => {
+    expect(migrateMetaProfile({ version: 1, victories: 2 }).profile.bestVictoryDifficulty).toBe(2);
+    expect(migrateMetaProfile({ version: 1, victories: 0 }).profile.bestVictoryDifficulty).toBe(0);
+    expect(migrateMetaProfile({ runsStarted: 3 }).profile.bestVictoryDifficulty).toBe(0);
+  });
+
+  it('sanitizes what it keeps: the hardest tier won on is a tier, and the last chosen must be open', () => {
+    const parse = (raw: Record<string, unknown>) => migrateMetaProfile({ version: 1, ...raw }).profile;
+    expect(parse({ bestVictoryDifficulty: 9 }).bestVictoryDifficulty).toBe(4);
+    expect(parse({ bestVictoryDifficulty: 'x', victories: 0 }).bestVictoryDifficulty).toBe(0);
+    expect(parse({ bestVictoryDifficulty: 3, lastDifficulty: 4 }).lastDifficulty).toBe(4);
+    // Won on Adept: Conjurer is open, Archmage is not, so a remembered Archmage falls back to Adept.
+    expect(parse({ bestVictoryDifficulty: 2, lastDifficulty: 4 }).lastDifficulty).toBe(2);
+    expect(parse({ bestVictoryDifficulty: 2, lastDifficulty: 3 }).lastDifficulty).toBe(3);
+    // The easier road is never locked.
+    expect(parse({ lastDifficulty: 1 }).lastDifficulty).toBe(1);
+    expect(parse({ lastDifficulty: 'nonsense' }).lastDifficulty).toBe(2);
+  });
+
+  it('a victory records the tier it was won on and reports the tier it opens, once', () => {
+    let end = recordRunEnded(defaultMetaProfile(), summary({ outcome: 'victory', floor: 4, difficulty: 2 }));
+    expect(end.profile.bestVictoryDifficulty).toBe(2);
+    expect(end.unlockedDifficulty).toBe(3);
+    end = recordRunEnded(end.profile, summary({ outcome: 'victory', floor: 4, difficulty: 2 }));
+    expect(end.unlockedDifficulty).toBeNull();
+    end = recordRunEnded(end.profile, summary({ outcome: 'victory', floor: 4, difficulty: 3 }));
+    expect(end.profile.bestVictoryDifficulty).toBe(3);
+    expect(end.unlockedDifficulty).toBe(4);
+    end = recordRunEnded(end.profile, summary({ outcome: 'victory', floor: 4, difficulty: 1 }));
+    expect(end.profile.bestVictoryDifficulty).toBe(3);
+    expect(end.unlockedDifficulty).toBeNull();
+  });
+
+  it('a fall or an abandoned descent wins nothing, and a ledger from before the ladder counts as Adept', () => {
+    const fell = recordRunEnded(defaultMetaProfile(), summary({ outcome: 'fallen', floor: 3, difficulty: 4 }));
+    expect(fell.profile.bestVictoryDifficulty).toBe(0);
+    expect(fell.unlockedDifficulty).toBeNull();
+    const left = recordRunEnded(defaultMetaProfile(), summary({ outcome: 'abandoned', floor: 1, difficulty: 3 }));
+    expect(left.profile.bestVictoryDifficulty).toBe(0);
+    const old = recordRunEnded(defaultMetaProfile(), summary({ outcome: 'victory', floor: 4, difficulty: undefined }));
+    expect(old.profile.bestVictoryDifficulty).toBe(2);
+    expect(old.unlockedDifficulty).toBe(3);
+  });
+
+  it('the store remembers the last tier chosen, only while it is open', () => {
+    const storage = memoryStorage();
+    const store = new MetaProfileStore(storage);
+    store.setLastDifficulty(4);
+    expect(store.profile.lastDifficulty).toBe(2);
+    store.setLastDifficulty(1);
+    expect(new MetaProfileStore(storage).profile.lastDifficulty).toBe(1);
+    store.commit(recordRunEnded(store.profile, summary({ outcome: 'victory', floor: 4, difficulty: 2 })).profile);
+    store.setLastDifficulty(3);
+    expect(new MetaProfileStore(storage).profile.lastDifficulty).toBe(3);
+  });
+});

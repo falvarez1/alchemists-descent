@@ -3,6 +3,9 @@ import type { KitId, RunOutcome, RunSummary } from '@/core/run';
 import { fnv1aString } from '@/core/rng';
 import { FLOOR_DOORS, FLOORS_TOTAL, floorDisplayName, floorOf } from '@/config/worldgraph';
 import { SANCTUM_PERK_DEFS } from '@/content/perks';
+import { DIFFICULTY, isDifficulty } from '@/config/difficulty';
+import { BASE_DIFFICULTY } from '@/config/difficultyLadder';
+import type { Difficulty } from '@/core/types';
 
 /**
  * The run's pure rules (Breathing Works): return phials, the daily seed, the
@@ -79,6 +82,8 @@ export interface RunStatsInput {
   path?: readonly string[];
   /** The Sanctum boons the run struck (PerkId names, in the order taken). */
   boons?: readonly string[];
+  /** The difficulty tier the run was played at. */
+  difficulty?: Difficulty;
 }
 
 /**
@@ -146,6 +151,7 @@ export function buildRunSummary(input: RunStatsInput): RunSummary {
     epitaph: runEpitaph(input),
     ...(input.path ? { path: cleanRunPath(input.path).slice(0, FLOORS_TOTAL) } : {}),
     ...(cleanRunBoons(input.boons).length > 0 ? { boons: cleanRunBoons(input.boons) } : {}),
+    ...(isDifficulty(input.difficulty) ? { difficulty: input.difficulty } : {}),
   };
 }
 
@@ -199,10 +205,13 @@ export function formatChain(chain: number): string {
  * A route through the branching doors names them — `via the Cold Store and
  * the Glass Galleries` — so two players on the same daily can compare roads —
  * and the boons struck are named the same way (`with Rime Soles and Long Fuse`).
+ * A descent on any tier but Adept names it (`Archmage`); Adept is the default and
+ * goes unsaid.
  */
 export function shareLine(summary: RunSummary, title = GAME_TITLE): string {
   const parts = [title];
   if (summary.daily) parts.push(`daily ${summary.daily}`);
+  if (isDifficulty(summary.difficulty) && summary.difficulty !== BASE_DIFFICULTY) parts.push(DIFFICULTY[summary.difficulty].name);
   const reach = summary.outcome === 'victory'
     ? `the Kiln quieted in ${formatRunTime(summary.timeMs)}`
     : `Floor ${summary.floor}/${summary.floorsTotal} in ${formatRunTime(summary.timeMs)}`;

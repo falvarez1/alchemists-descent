@@ -143,6 +143,7 @@ body.play-active #interaction-hint.world-anchor.wide { max-width: 260px; white-s
   .entry-content button, .entry-workshops summary { padding: 7px 0; }
   .entry-content nav { gap: 4px; }
   .entry-content .entry-kits { margin: 2px 0 6px; }
+  .entry-content .entry-grades { margin: 0 0 6px; }
   .entry-content nav .entry-daily, .entry-content nav .entry-workshop { padding-top: 6px; padding-bottom: 6px; }
   .entry-content .entry-status { min-height: 20px; margin: 6px 0; }
   .entry-workshops { margin-top: 4px; }

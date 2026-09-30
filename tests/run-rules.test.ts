@@ -183,6 +183,19 @@ describe('the run ledger', () => {
     expect(formatChain(3)).toBe('×3');
   });
 
+  it('names a tier other than Adept in the ledger and the share line, and leaves Adept unsaid', () => {
+    const adept = buildRunSummary(stats({ difficulty: 2 }));
+    expect(adept.difficulty).toBe(2);
+    expect(shareLine(adept)).toBe('Breathing Works — Floor 3/4 in 14:02 · 9 alchemical kills · best chain ×3');
+    const archmage = buildRunSummary(stats({ difficulty: 4, outcome: 'victory', floor: 4, floorName: 'The Kiln Heart' }));
+    expect(shareLine(archmage)).toBe('Breathing Works — Archmage — the Kiln quieted in 14:02 · 9 alchemical kills · best chain ×3');
+    expect(shareLine(buildRunSummary(stats({ difficulty: 1 })))).toBe('Breathing Works — Apprentice — Floor 3/4 in 14:02 · 9 alchemical kills · best chain ×3');
+    // A ledger from before the ladder (and a nonsense tier) carries no difficulty, and says nothing.
+    expect('difficulty' in buildRunSummary(stats())).toBe(false);
+    expect('difficulty' in buildRunSummary(stats({ difficulty: 9 as never }))).toBe(false);
+    expect(shareLine(buildRunSummary(stats({ daily: '2026-09-26', difficulty: 3 })))).toBe('Breathing Works — daily 2026-09-26 — Conjurer — Floor 3/4 in 14:02 · 9 alchemical kills · best chain ×3');
+  });
+
   it('names the boons a run struck — as the Sanctum’s card named them — in the ledger and the share line', () => {
     // Only what the Sanctum offers, once each, in the order taken (a review kit's every-perk grant is not a bargain).
     expect(cleanRunBoons(['rimesoles', 'torchbearer', 'nonsense', 'rimesoles', 7, 'longfuse'])).toEqual(['rimesoles', 'longfuse']);

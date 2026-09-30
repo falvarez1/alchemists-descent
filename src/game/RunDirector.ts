@@ -6,6 +6,7 @@ import type {
   RunResult,
   RunSaveState,
   RunStartResult,
+  Difficulty,
 } from '@/core/types';
 import type { AlchemyKillInfo, KitId, RunOutcome } from '@/core/run';
 import { randomSeed } from '@/core/rng';
@@ -32,6 +33,8 @@ import {
   utcDateKey,
 } from '@/game/runRules';
 import { deathCauseLine } from '@/ui/deathCauses';
+import { asDifficulty } from '@/config/difficulty';
+import { BASE_DIFFICULTY, openDifficulty } from '@/config/difficultyLadder';
 
 /** One 60 Hz tick of wall time, the most a single tick may add to the clock. */
 const TICK_MS = 1000 / 60;
@@ -211,10 +214,15 @@ export class RunDirector implements RunApi {
     this.endRun(ctx, 'abandoned', true);
   }
 
-  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean }): RunStartResult {
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty }): RunStartResult {
     const today = utcDateKey(new Date());
     const kit = opts.daily ? DEFAULT_KIT : (this.meta.isKitUnlocked(opts.kit) ? opts.kit : DEFAULT_KIT);
     if (!opts.daily) this.meta.setLastKit(kit);
+    // The tier asked for, if it is open to this player; Adept otherwise. Today's descent is one
+    // seed for everyone, so it is always Adept (and does not move the remembered choice).
+    const profile = this.meta.profile;
+    const difficulty = opts.daily ? BASE_DIFFICULTY : openDifficulty(opts.difficulty ?? profile.lastDifficulty, profile.bestVictoryDifficulty);
+    if (!opts.daily) this.meta.setLastDifficulty(difficulty);
     return ctx.levels.startRun(ctx, {
       mode: 'normal',
       worldSource: 'campaign',
@@ -223,11 +231,16 @@ export class RunDirector implements RunApi {
       seed: opts.daily ? dailySeed(today) : randomSeed(),
       starterKit: kit,
       daily: opts.daily ? today : null,
+      difficulty,
     });
   }
 
   chooseKit(kit: KitId): void {
     this.meta.setLastKit(kit);
+  }
+
+  chooseDifficulty(difficulty: Difficulty): void {
+    this.meta.setLastDifficulty(difficulty);
   }
 
   metaView(): RunMetaView {
@@ -240,6 +253,8 @@ export class RunDirector implements RunApi {
       runsEnded: profile.runsEnded,
       bestFloor: profile.bestFloor,
       victories: profile.victories,
+      bestVictoryDifficulty: profile.bestVictoryDifficulty,
+      lastDifficulty: profile.lastDifficulty,
       today,
       todayBest: profile.dailyBests[today] ?? null,
       levelsSeen: [...profile.levelsSeen],
@@ -448,14 +463,15 @@ export class RunDirector implements RunApi {
       causeLine: outcome === 'fallen' ? deathCauseLine(this.lastCause, state.seed) : undefined,
       path: state.path ?? [],
       boons: state.boons ?? [],
+      difficulty: asDifficulty(ctx.state.difficulty, BASE_DIFFICULTY),
     });
     let unlocked = [...this.runUnlocks];
-    let record: Pick<RunResult, 'dailyBest' | 'newDailyBest' | 'newBestFloor'> = { dailyBest: null, newDailyBest: false, newBestFloor: false };
+    let record: Pick<RunResult, 'dailyBest' | 'newDailyBest' | 'newBestFloor' | 'unlockedDifficulty'> = { dailyBest: null, newDailyBest: false, newBestFloor: false, unlockedDifficulty: null };
     if (recorded) {
       const end = recordRunEnded(this.meta.profile, summary);
       this.meta.commit(end.profile);
       unlocked = [...new Set([...unlocked, ...end.unlocked])];
-      record = { dailyBest: end.dailyBest, newDailyBest: end.newDailyBest, newBestFloor: end.newBestFloor };
+      record = { dailyBest: end.dailyBest, newDailyBest: end.newDailyBest, newBestFloor: end.newBestFloor, unlockedDifficulty: end.unlockedDifficulty };
       for (const kit of end.unlocked) ctx.telemetry.count(`run.unlock.${kit}`);
     }
     ctx.telemetry.count(`run.ended.${outcome}`);
