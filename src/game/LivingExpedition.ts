@@ -112,8 +112,8 @@ function announceRoom(ctx: Ctx, state: LivingExpeditionState): void {
   if (dwell < ROOM_ARRIVAL_TICKS) return;
   state.visited.push(inside.id);
   state.roomDwell = undefined;
-  // The room he arrived in is already named, twice, by the place label and the floor's title: no third echo.
-  if (state.visited.length === 1) return;
+  // The Intake is where he arrives, and is already named twice (the place label, the floor's title): no third echo.
+  if (inside.id === WORKS_ROOMS[0].id && state.visited.length === 1) return;
   ctx.events.emit('toast', { text: inside.name });
 }
 
