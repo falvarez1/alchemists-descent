@@ -1,16 +1,15 @@
 // Player options (Controls & comfort): does each one change what the game DOES?
 //
-//   node scripts/verify-options.mjs [url] [--only pause,shake,...] [--headful-blur]
+//   node scripts/verify-options.mjs [url] [--only pause,shake,captions,vitals,hints,picture,hud,seed,pad,enemyhp,aim,toggle,assist,quality]
 //
 // Every section drives the real dialog with real clicks (selects go through Playwright's
 // selectOption, since a native drop-down cannot be clicked), then reads the game state or the
 // pixels the option is supposed to change. The defaults are checked too: an option that has
 // not been touched must leave the game as it shipped.
 //
-// Sections: pause (window focus), shake (camera jitter), ...  (added with each option)
-// Headless Edge never fires a real window blur, so the pause section dispatches the same
-// `blur` / `visibilitychange` events the browser would; --headful-blur additionally opens a
-// visible Edge and switches tabs for a genuine focus loss.
+// One section per option. Automation cannot produce a genuine OS focus loss (Playwright keeps every
+// page "focused", even in a visible window, when another tab is brought to front: checked), so the
+// pause section dispatches the same `blur` / `visibilitychange` events the browser would.
 import { mkdirSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
 import { startConsolePlayRun, waitForOpeningEnd } from './run-helpers.mjs';

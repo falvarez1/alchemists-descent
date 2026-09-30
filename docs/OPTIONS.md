@@ -55,8 +55,8 @@ ledger and share line are byte-identical to before (`seedChosen` is only set by 
   run's secret reaction.
 - The game has no "hurt", "explosion" or "enemy hit" events, so rumble and the enemy readouts read what the HUD
   and the camera already read (health, screen shake, enemy `hp`). They never write any of it.
-- Headless Edge never fires a real window blur; the probes dispatch the same `blur` / `visibilitychange` events,
-  and `--headful-blur` is reserved for a genuine tab switch.
+- Automation cannot produce a genuine OS focus loss (Playwright keeps every page "focused", even headful, when
+  another tab is brought to front), so the pause probe dispatches the same `blur` / `visibilitychange` events.
 
 ## Not built, pending a design decision
 
