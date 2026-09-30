@@ -31,9 +31,13 @@ const STYLE = `
 #story-cinema .sc-pips i { width: 18px; height: 2px; background: #d5b98233; transition: background 0.4s ease; }
 #story-cinema .sc-pips i.on { background: #d5b982; }
 #story-cinema .sc-skip {
-  position: absolute; right: 22px; bottom: 18px; font: 600 calc(10px * var(--text-scale, 1))/1 var(--house-sans, system-ui, sans-serif);
-  letter-spacing: 0.14em; color: #9fb0a680; text-transform: uppercase;
+  position: absolute; right: 22px; bottom: 18px; font: 600 calc(12.5px * var(--text-scale, 1))/1 var(--house-sans, system-ui, sans-serif);
+  letter-spacing: 0.12em; color: #b9b29c; text-transform: uppercase; opacity: 0;
 }
+/* Said once the plate has had its moment: the first seconds belong to the picture. */
+#story-cinema.show .sc-skip { animation: sc-skip-in 0.7s ease 1.5s both; }
+@keyframes sc-skip-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #story-cinema.show .sc-skip { animation-duration: 0.01s; } }
 body.reduce-flashes #story-cinema, body.reduce-flashes #story-cinema canvas { transition: opacity 0.2s linear; }
 `;
 

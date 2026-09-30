@@ -9,6 +9,7 @@ import { DifficultyPicker } from '@/ui/DifficultyPicker';
 import { BASE_DIFFICULTY, DIFFICULTY_BLURBS } from '@/config/difficultyLadder';
 import { DIFFICULTY } from '@/config/difficulty';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
+import { ledgerNote } from '@/ui/ledgerNotes';
 
 /** Victory lands after the Colossus's last explosion has. */
 const VICTORY_REVEAL_MS = 2400;
@@ -53,6 +54,7 @@ export class RunSummary {
   private readonly epitaph = document.createElement('p');
   private readonly floors = document.createElement('ol');
   private readonly stats = document.createElement('dl');
+  private readonly note = document.createElement('p');
   private readonly daily = document.createElement('p');
   private readonly boons = document.createElement('p');
   private readonly unlocks = document.createElement('ul');
@@ -87,6 +89,7 @@ export class RunSummary {
     this.floors.className = 'rs-floors';
     this.floors.setAttribute('aria-label', 'Floors of the descent');
     this.stats.className = 'rs-stats';
+    this.note.className = 'rs-note';
     this.daily.className = 'rs-daily';
     this.boons.className = 'rs-boons';
     this.unlocks.className = 'rs-unlocks';
@@ -120,7 +123,7 @@ export class RunSummary {
     head.append(this.kicker, this.title, this.epitaph);
     const body = document.createElement('div');
     body.className = 'rs-body';
-    body.append(this.floors, this.stats, this.boons, this.daily, this.unlocks);
+    body.append(this.floors, this.stats, this.note, this.boons, this.daily, this.unlocks);
     const foot = document.createElement('div');
     foot.className = 'rs-foot';
     // The next descent's two choices sit side by side: the kit picker is the taller of the two, so the
@@ -216,6 +219,10 @@ export class RunSummary {
     this.epitaph.textContent = summary.epitaph;
     this.renderFloors(result);
     const rows = this.renderStats(result);
+    // A remark for the runs whose numbers are strange, never the routine ones (ui/ledgerNotes).
+    const remark = ledgerNote(summary);
+    this.note.textContent = remark ?? '';
+    this.note.hidden = remark === null;
     this.renderBoons(result);
     this.renderDaily(result);
     this.renderUnlocks(result);

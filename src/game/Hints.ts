@@ -449,16 +449,16 @@ export class HintSystem implements HintApi {
 }
 
 /** Per-mechanism-kind hint copy (only the kinds the player directly actuates). */
-const MECHANISM_HINTS: Partial<Record<string, { key: string; line: string; teach: Teach }>> = {
+export const MECHANISM_HINTS: Partial<Record<string, { key: string; line: string; teach: Teach }>> = {
   lever: {
     key: 'lever',
     line: 'Press E to pull the lever',
-    teach: { title: 'Levers', body: 'Pull a lever with E. It drives a linked door, gate, or dispenser somewhere nearby.' },
+    teach: { title: 'Levers', body: 'Pull a lever with E. It drives a linked door, gate, or dispenser somewhere nearby. Nobody labelled any of them; it was a busy decade.' },
   },
   plate: {
     key: 'plate',
     line: 'Stand on the plate to trigger it',
-    teach: { title: 'Pressure Plates', body: 'Step on a plate to trigger whatever it is wired to. Some need weight kept on them to stay down.' },
+    teach: { title: 'Pressure Plates', body: 'Step on a plate to trigger whatever it is wired to. Some need weight kept on them to stay down. Poured sand will do; so will a corpse, and nobody is judging.' },
   },
   dispenser: {
     key: 'dispenser',

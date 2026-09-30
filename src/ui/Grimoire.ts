@@ -27,6 +27,8 @@ const JOURNAL_STYLE = `
 .gj-hear { margin-top: 0.6vh; padding: 0.5vh 1.2vh; border: 1px solid #6a4a26; border-radius: 0.4vh; background: #d8c296; color: #3a2614; font: 600 1.35vh/1 Georgia, serif; cursor: pointer; }
 .gj-hear:hover { background: #ecdcb4; }
 .gj-missing { font-size: 1.3vh; font-style: italic; opacity: 0.6; margin-top: 0.8vh; }
+/* A previous reader's note in the margin of a studied material: a little off the line, in a browner ink. */
+.gr-margin { margin: 0.35vh 0 0 1.1vh; padding-left: 0.9vh; border-left: 1px solid #6b3f1e66; font-size: 1.25vh; font-style: italic; color: #6b3f1e; transform: rotate(-0.5deg); transform-origin: left center; }
 /* The Journal's pages lay out as a column: the head stays put, the list or the page's
    lines scroll between it and the foot, and the scroll SHOWS (a fade and a "more"
    mark) — QA found the right page clipped and "Hear it again" below the fold. */
@@ -183,7 +185,7 @@ export class Grimoire {
       (loreEntries.length || interactionEntries.length
         ? `<div class="gr-section">Materials &mdash; ${loreEntries.length} / ${total} studied</div>` +
           loreEntries
-            .map(([, e]) => `<div class="gr-entry"><div class="gr-title">${e!.title}</div><div class="gr-sub">${e!.body}</div></div>`)
+            .map(([, e]) => `<div class="gr-entry"><div class="gr-title">${e!.title}</div><div class="gr-sub">${e!.body}</div>${e!.margin ? `<div class="gr-margin">${e!.margin}</div>` : ''}</div>`)
             .join('') +
           `<div class="gr-section">Interactions &mdash; ${interactionEntries.length} / ${GRIMOIRE_INTERACTIONS.length} witnessed</div>` +
           interactionEntries

@@ -34,8 +34,8 @@ export interface FindabilityRepairResult {
 }
 
 /** The wizard's collision box: entities/physics.ts tryMoveEntity(4, 17). */
-const PW = 4;
-const PH = 17;
+export const PW = 4;
+export const PH = 17;
 
 // Reused full-grid scratch for the BFS/erosion passes. These buffers are pure
 // internal workspace (NEVER returned — the masks return their own `seen`/`fits`),
@@ -584,6 +584,20 @@ export function validateFindability(runtime: LevelRuntime): FindabilityIssue[] {
   const view = routeSealedInput(runtime);
   const seen = reachableMask(view); // the crawler's view (media, treasure)
   const wiz = wizardMask(view); // the PLAYER's view (9x17, walk + jump)
+  return findabilityIssues(runtime, view, seen, wiz);
+}
+
+/**
+ * The audit proper, given the two masks. Split from validateFindability so the
+ * sliced audit (world/findabilityAudit) can build the masks a few milliseconds
+ * a frame and then judge with exactly the same rules.
+ */
+export function findabilityIssues(
+  runtime: LevelRuntime,
+  view: MaskInput,
+  seen: Uint8Array,
+  wiz: Uint8Array,
+): FindabilityIssue[] {
   const W = runtime.world.width,
     H = runtime.world.height;
   const issues: FindabilityIssue[] = [];

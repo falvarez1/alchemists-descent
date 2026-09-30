@@ -161,7 +161,7 @@ export class GrimoireInteractionObserver {
     for (const match of scanGrimoireInteractions(ctx, this.known)) {
       if (recordInteractionDiscovery(ctx, match.id, match.title)) {
         ctx.events.emit('worldInteractionObserved', match);
-        ctx.events.emit('toast', { text: `Grimoire - observed ${match.title}` });
+        ctx.events.emit('toast', { text: `Grimoire — observed: ${match.title}` });
       }
       this.known.add(match.id);
     }

@@ -152,6 +152,19 @@ describe('Breathing Works encounter contracts', () => {
     expect(runtime.living!.visited).toContain('sluice');
   });
 
+  it('does not echo the room he arrives in: the place label and the floor title already name The Intake', () => {
+    const { ctx, runtime } = fixture();
+    const toast = vi.fn(); ctx.events.on('toast', toast);
+    Object.assign(ctx.player, { x: 200, y: 314, grounded: true });
+    for (let i = 0; i < 60; i++) updateLivingExpedition(ctx);
+    expect(runtime.living!.visited).toEqual(['intake']); // arrived, noted, and not announced
+    expect(toast).not.toHaveBeenCalledWith({ text: 'The Intake' });
+    // The next room still gets its title.
+    Object.assign(ctx.player, { x: 700, y: 440, grounded: true });
+    for (let i = 0; i < 60; i++) updateLivingExpedition(ctx);
+    expect(toast).toHaveBeenCalledWith({ text: 'Rillback Sluice' });
+  });
+
   it('warns before exhaling, consumes water and cannot vent from a frozen reservoir', () => {
     expect(pressurePhase(3599)).toBe('quiet');
     expect(pressurePhase(3600)).toBe('inhale');

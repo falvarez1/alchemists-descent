@@ -391,15 +391,21 @@ export class Game {
       if (detail && detailEl) detailEl.textContent = detail;
       if (visible) {
         curtain?.classList.add('visible');
-        curtain?.setAttribute('aria-hidden', 'false');
+        // Said aloud through the always-exposed live region beside the (decorative) curtain.
+        const live = document.getElementById('level-curtain-live');
+        if (live) live.textContent = [titleEl?.textContent, detailEl?.textContent].filter(Boolean).join('. ');
         // Force reflow so the curtain class commits before synchronous generation.
         if (curtain) void curtain.offsetHeight;
         return;
       }
       const hide = (): void => {
         curtain?.classList.remove('visible');
-        curtain?.setAttribute('aria-hidden', 'true');
         this.levelCurtainTimer = null;
+        // Empty at rest, so the next arrival's words are a change and get announced.
+        window.setTimeout(() => {
+          const live = document.getElementById('level-curtain-live');
+          if (live && !curtain?.classList.contains('visible')) live.textContent = '';
+        }, 1500);
       };
       if (holdMs > 0) this.levelCurtainTimer = window.setTimeout(hide, holdMs);
       else hide();

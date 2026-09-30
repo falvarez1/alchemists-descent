@@ -478,16 +478,30 @@ export class WandBench {
     const pop = root.querySelector<HTMLElement>('.bench-inspect');
     if (!pop) return;
     this.populateCardInspect(pop, id, extra, action);
+    // The card stays inside the bench's own panel (not the whole view: at 960 px the view edge is outside it)
+    // and prefers the right of its tile, so it never covers the wand or card below.
     const box = root.getBoundingClientRect(), tile = anchor.getBoundingClientRect();
+    const panel = root.querySelector<HTMLElement>('.wb-shell')?.getBoundingClientRect() ?? box;
     pop.style.left = '0px';
     pop.style.top = '0px';
     pop.classList.add('shown');
-    const w = pop.offsetWidth, h = pop.offsetHeight, gap = 10;
-    let left = tile.left - box.left + tile.width / 2 - w / 2;
-    left = Math.max(12, Math.min(box.width - w - 12, left));
-    const below = tile.bottom - box.top + gap;
-    const above = tile.top - box.top - gap - h;
-    const top = below + h <= box.height - 12 || above < 12 ? Math.min(below, box.height - h - 12) : above;
+    const w = pop.offsetWidth, h = pop.offsetHeight, gap = 10, pad = 10;
+    const minX = panel.left - box.left + pad, maxX = panel.right - box.left - pad;
+    const minY = panel.top - box.top + pad, maxY = panel.bottom - box.top - pad;
+    const tileL = tile.left - box.left, tileR = tile.right - box.left, tileT = tile.top - box.top, tileB = tile.bottom - box.top;
+    let left: number, top: number;
+    if (tileR + gap + w <= maxX) {
+      // Top edge with the tile's: what hangs below it is a card slot or a hint line, not the wand's name and stats above.
+      left = tileR + gap; top = tileT - 4;
+    } else if (tileL - gap - w >= minX) {
+      left = tileL - gap - w; top = tileT - 4;
+    } else {
+      left = tileL + tile.width / 2 - w / 2;
+      const below = tileB + gap, above = tileT - gap - h;
+      top = below + h <= maxY || above < minY ? below : above;
+    }
+    left = Math.max(minX, Math.min(maxX - w, left));
+    top = Math.max(minY, Math.min(maxY - h, top));
     pop.style.left = Math.round(left) + 'px';
     pop.style.top = Math.round(top) + 'px';
   }
