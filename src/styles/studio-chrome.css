@@ -480,3 +480,7 @@ body:not(.player-build) .app-dialog-btn:focus-visible { outline: 2px solid var(-
 
 /* The Builder's Game link button is the link UI in the editor; the game window keeps the pill. */
 body.builder-open #authorlink-status { display: none; }
+
+/* The game's in-canvas sound control is an in-flow block: over the editor it added a 24px strip below the
+   map (the holder is sized to the map's aspect ratio) and has nothing to do there. */
+body.builder-open #sound-quick { display: none; }
