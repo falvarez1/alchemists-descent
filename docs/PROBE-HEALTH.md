@@ -77,7 +77,6 @@ a probe's page on any `src` change and the failure looks real.
 ### Builder and authoring tools that still fail after leaving the title (deeper drift; authoring-only, not in the player build)
 
 - `builder-assets` — `page.click: Timeout 30000ms exceeded.`
-- `builder-player-physics` — `page.click: Timeout 8000ms exceeded.`
 - `builder-pro` — `page.click: Timeout 30000ms exceeded.`
 - `builder-ux` — `page.fill: Timeout 30000ms exceeded.`
 - `builder` — `page.click: Timeout 30000ms exceeded.`
@@ -87,6 +86,13 @@ a probe's page on any `src` change and the failure looks real.
 - `living-production` — `locator.click: Timeout 30000ms exceeded.`
 - `peer-ghosts` — `page.click: Timeout 30000ms exceeded.`
 - `sprites` — `page.click: Timeout 30000ms exceeded.`
+
+The Builder's Logic Preview, Runtime/Global Controls/Post Processing/World Map panels and Pixel Scene Editor were
+cut (2026-09), and their probes went with them: `verify-builder-player-physics`, `verify-worldmap-panel`,
+`verify-scene-editor`, `verify-scene-editor-tile`, `verify-scene-layers` are deleted. The green dock probes
+(`builder-dock-split`, `dock-fixes`, `tab-scroll`) now use Outliner / Asset Browser / Asset Details / Prefab Details
+as their fixtures; `builder-pro`, `builder-suite`, `builder-ux` and `generated-scene-selection` lost only the
+assertions about the removed panels and keep their other (stale) failures.
 
 ### Weaver rig probes (the surface-crawler rebuild moved what they measure)
 
