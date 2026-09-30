@@ -221,112 +221,117 @@ export function placeLavaLakes(
     for (let y = 40; y < floorBand; y += 6) {
       for (let x = 20; x < W - 20; x += 6) if (walks.dist[x + y * W] >= 0) net.push(x + y * W);
     }
-    const sites: Array<{ cx: number; cy: number; rx: number; ry: number; score: number }> = [];
-    const yLo = Math.floor(H * budget.yFracMin);
-    for (let cy = yLo + 30; cy < floorBand - 50; cy += 14) {
-      for (let cx = 60; cx < W - 60; cx += 14) {
-        const rx = budget.hallRx[0] + rng.int(budget.hallRx[1] - budget.hallRx[0] + 1);
-        const ry = budget.hallRy[0] + rng.int(budget.hallRy[1] - budget.hallRy[0] + 1);
-        sites.push({ cx, cy, rx, ry, score: cy * 0.5 + rng.next() * 420 });
-      }
-    }
-    sites.sort((a, b) => b.score - a.score);
-    const seedN = rng.int(1 << 20);
     let placed = 0;
-    for (const s of sites) {
-      if (placed >= budget.halls || result.cells >= budget.targetCells) break;
-      const { cx, cy, rx, ry } = s;
-      const ex = Math.ceil(rx * 1.18) + 5, ey = Math.ceil(ry * 1.18) + 5;
-      if (cx - ex < 10 || cx + ex > W - 10 || cy - ey < 40 || cy + ey > floorBand - 6) continue;
-      if (hallRects.some((r) => cx + ex + 10 >= r.x0 && cx - ex - 10 <= r.x1 && cy + ey + 10 >= r.y0 && cy - ey - 10 <= r.y1)) continue;
-      // the box is mostly clean rock (cheap), then the ellipse itself is clean (exact)
-      const badBox = badIn(cx - ex, cy - ey, cx + ex, cy + ey);
-      { const f = badBox / (4 * ex * ey); const k = f < 0.05 ? 'box<5' : f < 0.125 ? 'box<12' : f < 0.25 ? 'box<25' : f < 0.4 ? 'box<40' : 'box>=40'; result.debug[k] = (result.debug[k] ?? 0) + 1; }
-      if (badBox > ex * ey * 0.5) { why('hallBox'); continue; }
-      let clean = true;
-      for (let y = cy - ey; y <= cy + ey && clean; y++) {
-        for (let x = cx - ex; x <= cx + ex; x++) {
-          const dx = (x - cx) / ex, dy = (y - cy) / ey;
-          if (dx * dx + dy * dy > 1) continue;
-          const i = x + y * W;
-          if (!hallGround(i) || claimed[i]) { clean = false; break; }
-          const inner = ((x - cx) / (rx * 1.18)) ** 2 + ((y - cy) / (ry * 1.18)) ** 2;
-          if (inner > 1 && !ringGround(i)) { clean = false; break; }
+    // A floor with little clean rock delivers a few small lakes: when the first pass leaves the budget under
+    // half filled, a second pass tries the halls again at 62% of their size (same forked stream).
+    for (const scale of [1, 0.62]) {
+      if (scale < 1 && (result.cells >= budget.targetCells * 0.5 || placed >= budget.halls)) break;
+      const sites: Array<{ cx: number; cy: number; rx: number; ry: number; score: number }> = [];
+      const yLo = Math.floor(H * budget.yFracMin);
+      for (let cy = yLo + 30; cy < floorBand - 50; cy += 14) {
+        for (let cx = 60; cx < W - 60; cx += 14) {
+          const rx = Math.floor((budget.hallRx[0] + rng.int(budget.hallRx[1] - budget.hallRx[0] + 1)) * scale);
+          const ry = Math.floor((budget.hallRy[0] + rng.int(budget.hallRy[1] - budget.hallRy[0] + 1)) * scale);
+          sites.push({ cx, cy, rx, ry, score: cy * 0.5 + rng.next() * 420 });
         }
       }
-      if (!clean) { why('hallDirty'); continue; }
-      // the surface: a little below the hall's middle, so the lake is the lower lens
-      const surface = Math.floor(cy + ry * 0.2);
-      const halfAt = (y: number): number => rx * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2));
-      // the mouth: the walkable cell nearest the hall, on the side it lies
-      let best = -1, bestD = 1e9;
-      for (const i of net) {
-        const nx = i % W, ny = (i / W) | 0;
-        const ddx = Math.max(0, Math.abs(nx - cx) - rx * 1.1), ddy = Math.max(0, Math.abs(ny - cy) - ry * 1.1);
-        const d = Math.hypot(ddx, ddy);
-        if (d < 14 || ny > surface + 30 || d >= bestD) continue;
-        bestD = d;
-        best = i;
-      }
-      if (best < 0 || bestD > 150) { why('hallFar'); continue; }
-      const fx = best % W, fy = (best / W) | 0;
-      const side = fx >= cx ? 1 : -1;
-
-      // carve the hall (a wobbled ellipse) and fill its lower lens with lava
-      const cells: number[] = [];
-      for (let y = cy - Math.ceil(ry * 1.2); y <= cy + Math.ceil(ry * 1.2); y++) {
-        for (let x = cx - Math.ceil(rx * 1.2); x <= cx + Math.ceil(rx * 1.2); x++) {
-          const dx = (x - cx) / rx, dy = (y - cy) / ry;
-          const lim = 1 + (valueNoise(x, y, 0.07, seedN) - 0.5) * 0.3;
-          if (dx * dx + dy * dy > lim * lim) continue;
-          const i = x + y * W;
-          if (y >= surface) {
-            types[i] = Cell.Lava;
-            world.colors[i] = lavaColor();
-            cells.push(i);
-          } else {
-            types[i] = Cell.Empty;
-            world.colors[i] = 0x08080c;
+      sites.sort((a, b) => b.score - a.score);
+      const seedN = rng.int(1 << 20);
+      for (const s of sites) {
+        if (placed >= budget.halls || result.cells >= budget.targetCells) break;
+        const { cx, cy, rx, ry } = s;
+        const ex = Math.ceil(rx * 1.18) + 5, ey = Math.ceil(ry * 1.18) + 5;
+        if (cx - ex < 10 || cx + ex > W - 10 || cy - ey < 40 || cy + ey > floorBand - 6) continue;
+        if (hallRects.some((r) => cx + ex + 10 >= r.x0 && cx - ex - 10 <= r.x1 && cy + ey + 10 >= r.y0 && cy - ey - 10 <= r.y1)) continue;
+        // the box is mostly clean rock (cheap), then the ellipse itself is clean (exact)
+        const badBox = badIn(cx - ex, cy - ey, cx + ex, cy + ey);
+        { const f = badBox / (4 * ex * ey); const k = f < 0.05 ? 'box<5' : f < 0.125 ? 'box<12' : f < 0.25 ? 'box<25' : f < 0.4 ? 'box<40' : 'box>=40'; result.debug[k] = (result.debug[k] ?? 0) + 1; }
+        if (badBox > ex * ey * 0.5) { why('hallBox'); continue; }
+        let clean = true;
+        for (let y = cy - ey; y <= cy + ey && clean; y++) {
+          for (let x = cx - ex; x <= cx + ex; x++) {
+            const dx = (x - cx) / ex, dy = (y - cy) / ey;
+            if (dx * dx + dy * dy > 1) continue;
+            const i = x + y * W;
+            if (!hallGround(i) || claimed[i]) { clean = false; break; }
+            const inner = ((x - cx) / (rx * 1.18)) ** 2 + ((y - cy) / (ry * 1.18)) ** 2;
+            if (inner > 1 && !ringGround(i)) { clean = false; break; }
           }
-          world.life[i] = 0;
-          world.charge[i] = 0;
-          world.activity.touchIndex(i);
         }
-      }
-      // the shelf the mouth opens onto: stone at the lava line, reaching into the hall
-      const mouthY = surface - 14;
-      const edgeX = Math.floor(cx + side * (halfAt(mouthY) - 3));
-      const shelfX0 = side > 0 ? edgeX - 20 : edgeX;
-      const shelfX1 = side > 0 ? edgeX : edgeX + 20;
-      for (let x = shelfX0; x <= shelfX1; x++) {
-        for (let y = surface - 1; y <= surface + 2; y++) {
-          const i = x + y * W;
-          if (types[i] === Cell.Empty || types[i] === Cell.Lava) {
-            types[i] = Cell.Stone;
-            world.colors[i] = stoneColor();
+        if (!clean) { why('hallDirty'); continue; }
+        // the surface: a little below the hall's middle, so the lake is the lower lens
+        const surface = Math.floor(cy + ry * 0.2);
+        const halfAt = (y: number): number => rx * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2));
+        // the mouth: the walkable cell nearest the hall, on the side it lies
+        let best = -1, bestD = 1e9;
+        for (const i of net) {
+          const nx = i % W, ny = (i / W) | 0;
+          const ddx = Math.max(0, Math.abs(nx - cx) - rx * 1.1), ddy = Math.max(0, Math.abs(ny - cy) - ry * 1.1);
+          const d = Math.hypot(ddx, ddy);
+          if (d < 14 || ny > surface + 30 || d >= bestD) continue;
+          bestD = d;
+          best = i;
+        }
+        if (best < 0 || bestD > 150) { why('hallFar'); continue; }
+        const fx = best % W, fy = (best / W) | 0;
+        const side = fx >= cx ? 1 : -1;
+
+        // carve the hall (a wobbled ellipse) and fill its lower lens with lava
+        const cells: number[] = [];
+        for (let y = cy - Math.ceil(ry * 1.2); y <= cy + Math.ceil(ry * 1.2); y++) {
+          for (let x = cx - Math.ceil(rx * 1.2); x <= cx + Math.ceil(rx * 1.2); x++) {
+            const dx = (x - cx) / rx, dy = (y - cy) / ry;
+            const lim = 1 + (valueNoise(x, y, 0.07, seedN) - 0.5) * 0.3;
+            if (dx * dx + dy * dy > lim * lim) continue;
+            const i = x + y * W;
+            if (y >= surface) {
+              types[i] = Cell.Lava;
+              world.colors[i] = lavaColor();
+              cells.push(i);
+            } else {
+              types[i] = Cell.Empty;
+              world.colors[i] = 0x08080c;
+            }
+            world.life[i] = 0;
+            world.charge[i] = 0;
             world.activity.touchIndex(i);
           }
         }
+        // the shelf the mouth opens onto: stone at the lava line, reaching into the hall
+        const mouthY = surface - 14;
+        const edgeX = Math.floor(cx + side * (halfAt(mouthY) - 3));
+        const shelfX0 = side > 0 ? edgeX - 20 : edgeX;
+        const shelfX1 = side > 0 ? edgeX : edgeX + 20;
+        for (let x = shelfX0; x <= shelfX1; x++) {
+          for (let y = surface - 1; y <= surface + 2; y++) {
+            const i = x + y * W;
+            if (types[i] === Cell.Empty || types[i] === Cell.Lava) {
+              types[i] = Cell.Stone;
+              world.colors[i] = stoneColor();
+              world.activity.touchIndex(i);
+            }
+          }
+        }
+        // the tunnel from the shelf to the network, leaving above the lava
+        // (it walks round EVERY reserved room, the Kiln's flue and arena included: their ledger
+        // labels are not 'sealed' ones, and the first tunnel cut the flue's ledges)
+        const avoid: CarveAvoid[] = [...reserved, ...hallRects];
+        tunnelTo(world, rng, edgeX - side * 2, mouthY, fx, fy, 12, undefined, 26, avoid);
+        // nothing open may touch the lava beside or below its surface: plug any leak with stone
+        const plugs = fuseRim(world, cells, surface);
+        if (plugs > 0) result.debug.fused = (result.debug.fused ?? 0) + plugs;
+        const x0 = cx - Math.ceil(rx * 1.2), x1 = cx + Math.ceil(rx * 1.2);
+        const y0 = cy - Math.ceil(ry * 1.2), y1 = cy + Math.ceil(ry * 1.2);
+        hallRects.push({ x0, y0, x1, y1 });
+        claimRect(x0, y0, x1, y1, 10);
+        lakeCells.push(cells);
+        result.lakes.push({ kind: 'hall', cells: cells.length, x0, y0, x1, y1, surfaceY: surface });
+        result.cells += cells.length;
+        // the lure on the shelf's end, over the lava
+        const lureX = side > 0 ? shelfX0 + 2 : shelfX1 - 2;
+        result.pickups.push(makePickup('goldpile', lureX, surface - 3, { amount: 14 }));
+        placed++;
       }
-      // the tunnel from the shelf to the network, leaving above the lava
-      // (it walks round EVERY reserved room, the Kiln's flue and arena included: their ledger
-      // labels are not 'sealed' ones, and the first tunnel cut the flue's ledges)
-      const avoid: CarveAvoid[] = [...reserved, ...hallRects];
-      tunnelTo(world, rng, edgeX - side * 2, mouthY, fx, fy, 12, undefined, 26, avoid);
-      // nothing open may touch the lava beside or below its surface: plug any leak with stone
-      const plugs = fuseRim(world, cells, surface);
-      if (plugs > 0) result.debug.fused = (result.debug.fused ?? 0) + plugs;
-      const x0 = cx - Math.ceil(rx * 1.2), x1 = cx + Math.ceil(rx * 1.2);
-      const y0 = cy - Math.ceil(ry * 1.2), y1 = cy + Math.ceil(ry * 1.2);
-      hallRects.push({ x0, y0, x1, y1 });
-      claimRect(x0, y0, x1, y1, 10);
-      lakeCells.push(cells);
-      result.lakes.push({ kind: 'hall', cells: cells.length, x0, y0, x1, y1, surfaceY: surface });
-      result.cells += cells.length;
-      // the lure on the shelf's end, over the lava
-      const lureX = side > 0 ? shelfX0 + 2 : shelfX1 - 2;
-      result.pickups.push(makePickup('goldpile', lureX, surface - 3, { amount: 14 }));
-      placed++;
     }
   }
 
