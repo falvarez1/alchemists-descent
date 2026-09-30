@@ -75,88 +75,162 @@
         <div id="boot-status">CONJURING THE CAVES&hellip;</div>
     </div>
 
-    <header>
-        <div><h1>Purple Llama Studio <span class="title-sub">| Breathing Works</span></h1></div>
-        <div class="hud-wrapper">
-            <!-- data-authoring: stripped from a play build by main.ts. PERF stays
-                 (a tester reporting "it's slow" needs it); these are dev tools. -->
-            <button class="sound-btn" data-authoring id="dev-console-toggle" title="Developer console (`)">CONSOLE</button>
-            <button class="sound-btn" data-authoring id="runtime-inspector-toggle" title="Inspect the active Play runtime" disabled>RUNTIME</button>
-            <button class="sound-btn" data-authoring id="gpu-compose-toggle" title="GPU frame composition: A/B the terrain shader live (full controls are in the Builder Post Processing panel)">GPU FX</button>
-            <button class="sound-btn" data-authoring id="webgpu-compose-toggle" title="WebGPU raw WGSL compose: toggles the diagnostic live compose path when booted with WebGPU">WGSL</button>
-            <!-- data-workshop-dev: the studio chrome a player build's Workshop hides
-                 (ui/PlayerWorkshop.ts). Unlike data-authoring these stay in the DOM:
-                 their owners bind them strictly, and hiding is all a player needs. -->
-            <button class="sound-btn" data-workshop-dev id="perf-hud-toggle" title="Performance overlay: fps + per-phase frame timings (F3)">PERF</button>
-            <button class="sound-btn" data-workshop-dev id="immersive-play-btn" title="Enter fullscreen play with keyboard lock when the browser supports it">FULLSCREEN PLAY</button>
-            <div class="mode-switch" data-workshop-dev>
-                <button data-mode="build" class="active" id="mode-build-btn">SANDBOX</button>
-                <button data-mode="play" id="mode-play-btn">PLAY</button>
+    <!-- The studio bar (styles/sandbox.css, ui/SandboxChrome.ts): brand on the left, the
+         WORKSPACE switch in the middle, status + tools on the right. Every id below is bound
+         by its owner (Hud, InputManager, BuilderLauncher, Inspector, ConsoleOverlay...), so
+         elements are moved, never recreated. -->
+    <header class="sb-bar">
+        <div class="sb-bar-left"><h1 class="sb-brand"><span class="sb-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="sb-brand-name">Purple Llama Studio</span><span class="title-sub">Breathing Works</span></h1></div>
+        <!-- data-workshop-dev: the studio chrome a player build's Workshop hides
+             (ui/PlayerWorkshop.ts). Unlike data-authoring these stay in the DOM:
+             their owners bind them strictly, and hiding is all a player needs. -->
+        <div class="mode-switch st-seg sb-workspace" data-workshop-dev role="group" aria-label="Workspace">
+            <button type="button" data-mode="build" class="active" id="mode-build-btn" aria-pressed="true">Sandbox</button>
+            <!-- data-authoring: the Builder is not part of a play build (main.ts strips it) -->
+            <button type="button" data-authoring id="mode-builder-btn" aria-pressed="false">Builder</button>
+            <button type="button" data-mode="play" id="mode-play-btn" aria-pressed="false">Play</button>
+        </div>
+        <div class="hud-wrapper sb-bar-right">
+            <button type="button" class="sb-icon-btn" data-workshop-dev id="sound-toggle" aria-pressed="true" aria-label="Sound"></button>
+            <div class="sb-devmenu" data-workshop-dev>
+                <button type="button" class="st-btn st-btn--ghost sb-dev-trigger" id="dev-menu-btn" aria-haspopup="true" aria-expanded="false" aria-controls="dev-menu"><span data-icon="tools" aria-hidden="true"></span><span>Developer</span><span data-icon="chevronDown" aria-hidden="true"></span></button>
+                <div class="sb-menu" id="dev-menu" role="group" aria-label="Developer tools" hidden>
+                    <!-- data-authoring: stripped from a play build by main.ts. PERF stays
+                         (a tester reporting "it's slow" needs it); these are dev tools. -->
+                    <button type="button" class="sb-menu-item" data-authoring data-menu-close data-kbd="`" id="dev-console-toggle" title="Developer console (`)">Console</button>
+                    <button type="button" class="sb-menu-item" data-authoring data-menu-close id="runtime-inspector-toggle" title="Inspect the active Play runtime" disabled>Runtime inspector</button>
+                    <button type="button" class="sb-menu-item" data-authoring id="gpu-compose-toggle" title="GPU frame composition: A/B the terrain shader live (full controls are in the Builder Post Processing panel)">GPU compose</button>
+                    <button type="button" class="sb-menu-item" data-authoring id="webgpu-compose-toggle" title="WebGPU raw WGSL compose: toggles the diagnostic live compose path when booted with WebGPU">WGSL compose</button>
+                    <button type="button" class="sb-menu-item" data-workshop-dev data-kbd="F3" id="perf-hud-toggle" title="Performance overlay: fps + per-phase frame timings (F3)">Perf overlay</button>
+                    <button type="button" class="sb-menu-item" data-workshop-dev data-menu-close id="immersive-play-btn" title="Enter fullscreen play with keyboard lock when the browser supports it">Fullscreen play</button>
+                </div>
             </div>
-            <button class="sound-btn" data-workshop-dev id="sound-toggle">SND ON</button>
         </div>
     </header>
 
     <div id="workbench">
-        <div id="left-toolbar">
-            <input id="toolbar-filter" type="text" placeholder="&#9906; filter tools&hellip;" spellcheck="false">
-            <div class="section-title" data-workshop-dev>World Generation</div>
-            <select id="biome-select" class="biome-select" data-workshop-dev>
-                <option value="earthen" selected>Biome: Earthen Hollows</option>
-                <option value="frozen">Biome: Frozen Depths</option>
-                <option value="flooded">Biome: Flooded Caverns</option>
-                <option value="timber">Biome: Timberworks</option>
-                <option value="scorched">Biome: Scorched Wastes</option>
-            </select>
-            <button class="action-btn" id="btn-sandbox">Fresh Workshop</button>
-            <button class="action-btn" data-workshop-dev id="btn-caves">Generate Caves</button>
-            <button class="action-btn" data-workshop-dev id="btn-fortress">Spawn Fortress</button>
-            <details id="worldgen-tune-wrap" class="wg-tune-wrap" data-workshop-dev>
-                <summary>Look tuning <span class="wg-tune-hint">tweak &rarr; Generate Caves</span></summary>
-                <div id="worldgen-tune" class="wg-tune"></div>
-                <button class="action-btn" id="btn-worldgen-reset">Reset look</button>
-            </details>
+        <div id="left-toolbar" data-tab="materials">
+            <!-- Tool dock (styles/sandbox.css, ui/SandboxChrome.ts switches the tabs). A play
+                 build's Workshop shows no tabs: sandbox.css flattens the panels back into the
+                 one palette it always had, and the World panel (data-workshop-dev) is hidden. -->
+            <div class="sb-tabs st-tabs" role="tablist" aria-label="Sandbox tools" data-workshop-dev>
+                <button type="button" class="st-tab" role="tab" id="sb-tab-materials" data-tab="materials" aria-selected="true" aria-controls="sb-panel-materials">Materials</button>
+                <button type="button" class="st-tab" role="tab" id="sb-tab-spells" data-tab="spells" aria-selected="false" aria-controls="sb-panel-spells" tabindex="-1">Spells</button>
+                <button type="button" class="st-tab" role="tab" id="sb-tab-world" data-tab="world" aria-selected="false" aria-controls="sb-panel-world" tabindex="-1">World</button>
+            </div>
+            <input id="toolbar-filter" type="text" placeholder="Search materials and spells" aria-label="Search materials and spells" autocomplete="off" spellcheck="false">
 
-            <!-- Material palette is rendered by Toolbar.ts from
-                 src/content/materialPalette.ts (single source: the Builder
-                 reads the same catalog, and cell ids are a save ABI that must
-                 not be re-typed into markup). -->
-            <div id="material-palette"></div>
+            <div class="sb-panel" id="sb-panel-materials" role="tabpanel" aria-labelledby="sb-tab-materials" data-panel="materials">
+                <!-- Material palette is rendered by Toolbar.ts from
+                     src/content/materialPalette.ts (single source: the Builder
+                     reads the same catalog, and cell ids are a save ABI that must
+                     not be re-typed into markup). -->
+                <div id="material-palette"></div>
+                <p class="sb-empty" hidden>No material matches.</p>
+            </div>
 
-            <div class="section-title">Tactical Spells</div>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="bolt"><span class="color-indicator" style="background:#00d2ff"></span>Spark Bolt</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="scatter"><span class="color-indicator" style="background:#ffb347"></span>Scatter Hex</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="bomb"><span class="color-indicator" style="background:#ff3b3b"></span>Cast Bomb</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="lightning"><span class="color-indicator" style="background:#e0f2ff"></span>Chain Lightning</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="flame"><span class="color-indicator" style="background:#ff7a18"></span>Flamethrower</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="emberstorm"><span class="color-indicator" style="background:#ffae42"></span>Ember Storm</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="vitriol"><span class="color-indicator" style="background:#84e63f"></span>Vitriol Spray</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="frostshard"><span class="color-indicator" style="background:#7dd3fc"></span>Frost Shard</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="icelance"><span class="color-indicator" style="background:#38bdf8"></span>Ice Lance</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="wisp"><span class="color-indicator" style="background:#2dd4bf"></span>Seeker Wisp</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="dig"><span class="color-indicator" style="background:#fbbf24"></span>Excavate Ray</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="conjure"><span class="color-indicator" style="background:#9b9388"></span>Conjure Stone</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="warp"><span class="color-indicator" style="background:#c084fc"></span>Warp Bolt</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="meteor"><span class="color-indicator" style="background:#ff5a1e"></span>Meteor</button>
-            <button class="tool-btn spell-mode" data-mode="spell" data-id="blackhole"><span class="color-indicator" style="background:#a855f7"></span>Black Hole</button>
+            <div class="sb-panel" id="sb-panel-spells" role="tabpanel" aria-labelledby="sb-tab-spells" data-panel="spells">
+                <div class="sb-group">
+                    <div class="section-title">Tactical Spells</div>
+                    <div class="sb-list">
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="bolt"><span class="color-indicator" style="background:#00d2ff"></span><span class="tool-label">Spark Bolt</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="scatter"><span class="color-indicator" style="background:#ffb347"></span><span class="tool-label">Scatter Hex</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="bomb"><span class="color-indicator" style="background:#ff3b3b"></span><span class="tool-label">Cast Bomb</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="lightning"><span class="color-indicator" style="background:#e0f2ff"></span><span class="tool-label">Chain Lightning</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="flame"><span class="color-indicator" style="background:#ff7a18"></span><span class="tool-label">Flamethrower</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="emberstorm"><span class="color-indicator" style="background:#ffae42"></span><span class="tool-label">Ember Storm</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="vitriol"><span class="color-indicator" style="background:#84e63f"></span><span class="tool-label">Vitriol Spray</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="frostshard"><span class="color-indicator" style="background:#7dd3fc"></span><span class="tool-label">Frost Shard</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="icelance"><span class="color-indicator" style="background:#38bdf8"></span><span class="tool-label">Ice Lance</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="wisp"><span class="color-indicator" style="background:#2dd4bf"></span><span class="tool-label">Seeker Wisp</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="dig"><span class="color-indicator" style="background:#fbbf24"></span><span class="tool-label">Excavate Ray</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="conjure"><span class="color-indicator" style="background:#9b9388"></span><span class="tool-label">Conjure Stone</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="warp"><span class="color-indicator" style="background:#c084fc"></span><span class="tool-label">Warp Bolt</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="meteor"><span class="color-indicator" style="background:#ff5a1e"></span><span class="tool-label">Meteor</span></button>
+                        <button class="tool-btn spell-mode" data-mode="spell" data-id="blackhole"><span class="color-indicator" style="background:#a855f7"></span><span class="tool-label">Black Hole</span></button>
+                    </div>
+                </div>
+                <p class="sb-empty" hidden>No spell matches.</p>
+            </div>
 
-            <div class="section-title" data-workshop-dev>Hostiles (Sandbox)</div>
-            <button class="action-btn dropper-slime" data-workshop-dev id="btn-spawn-slime">Drop Slime</button>
-            <button class="action-btn dropper-imp" data-workshop-dev id="btn-spawn-imp">Drop Fire Imp</button>
-            <button class="action-btn dropper-golem" data-workshop-dev id="btn-spawn-golem">Drop Stone Golem</button>
+            <div class="sb-panel" id="sb-panel-world" role="tabpanel" aria-labelledby="sb-tab-world" data-panel="world" data-workshop-dev>
+                <div class="sb-builder-card">
+                    <div class="sb-builder-card-title">Author a level</div>
+                    <p>Open the scene on screen in the Builder to place objects, links and lights, then playtest it.</p>
+                    <button type="button" class="st-btn st-btn--primary sb-wide" data-authoring data-workshop-dev id="btn-edit-in-builder"><span data-icon="layers" aria-hidden="true"></span>Edit in Builder</button>
+                    <button type="button" class="st-btn sb-wide" data-workshop-dev id="btn-level-playtest"><span data-icon="play" aria-hidden="true"></span>Playtest level</button>
+                </div>
 
-            <div class="section-title" data-workshop-dev>Level Library</div>
-            <button class="action-btn" data-workshop-dev id="btn-level-save">Save Level</button>
-            <select id="level-select" class="biome-select" data-workshop-dev disabled></select>
-            <button class="action-btn" data-workshop-dev id="btn-level-load">Load Level</button>
-            <button class="action-btn" data-workshop-dev id="btn-level-delete">Delete Level</button>
-            <button class="action-btn" data-workshop-dev id="btn-level-export">Export .json</button>
-            <label class="action-btn" data-workshop-dev for="level-import" style="text-align:center;cursor:pointer;">Import .json</label>
-            <input type="file" id="level-import" accept=".json" style="display:none">
-            <button class="action-btn" data-workshop-dev id="btn-level-playtest" style="border-color:#78350f;color:#fcd34d;background:#1d1407;">Playtest Level</button>
+                <section class="st-section" data-section="world-gen">
+                    <h2 class="st-section-head"><button type="button" class="st-section-toggle" aria-expanded="true" aria-controls="sb-body-world-gen"><span class="st-section-title">World generation</span></button></h2>
+                    <div class="st-section-body" id="sb-body-world-gen">
+                        <div class="st-field">
+                            <label class="st-field-label" for="biome-select">Biome</label>
+                            <select id="biome-select" class="st-select" data-workshop-dev>
+                                <option value="earthen" selected>Earthen Hollows</option>
+                                <option value="frozen">Frozen Depths</option>
+                                <option value="flooded">Flooded Caverns</option>
+                                <option value="timber">Timberworks</option>
+                                <option value="scorched">Scorched Wastes</option>
+                            </select>
+                        </div>
+                        <div class="sb-stack">
+                            <button type="button" class="st-btn sb-wide" id="btn-sandbox">Fresh workshop</button>
+                            <button type="button" class="st-btn sb-wide" data-workshop-dev id="btn-caves">Generate caves</button>
+                            <button type="button" class="st-btn sb-wide" data-workshop-dev id="btn-fortress">Spawn fortress</button>
+                        </div>
+                        <details id="worldgen-tune-wrap" class="wg-tune-wrap" data-workshop-dev>
+                            <summary>Look tuning</summary>
+                            <p class="sb-hint">Changes apply the next time you generate caves.</p>
+                            <div id="worldgen-tune" class="wg-tune"></div>
+                            <button type="button" class="st-btn sb-wide" id="btn-worldgen-reset">Reset look</button>
+                        </details>
+                    </div>
+                </section>
 
-            <div class="section-title" data-workshop-dev>Expedition</div>
-            <button class="action-btn" data-workshop-dev id="btn-expedition-abandon">Abandon Saved Expedition</button>
+                <section class="st-section" data-section="hostiles">
+                    <h2 class="st-section-head"><button type="button" class="st-section-toggle" aria-expanded="true" aria-controls="sb-body-hostiles"><span class="st-section-title">Drop hostiles</span></button></h2>
+                    <div class="st-section-body" id="sb-body-hostiles">
+                        <div class="sb-row sb-row--3">
+                            <button type="button" class="st-btn dropper-slime" data-workshop-dev id="btn-spawn-slime">Slime</button>
+                            <button type="button" class="st-btn dropper-imp" data-workshop-dev id="btn-spawn-imp">Fire imp</button>
+                            <button type="button" class="st-btn dropper-golem" data-workshop-dev id="btn-spawn-golem">Golem</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="st-section" data-section="level-library">
+                    <h2 class="st-section-head"><button type="button" class="st-section-toggle" aria-expanded="true" aria-controls="sb-body-level-library"><span class="st-section-title">Level library</span></button></h2>
+                    <div class="st-section-body" id="sb-body-level-library">
+                        <select id="level-select" class="st-select" data-workshop-dev aria-label="Saved levels" disabled></select>
+                        <div class="sb-row sb-row--3">
+                            <button type="button" class="st-btn" data-workshop-dev id="btn-level-save">Save&hellip;</button>
+                            <button type="button" class="st-btn" data-workshop-dev id="btn-level-load">Load</button>
+                            <button type="button" class="st-btn" data-workshop-dev id="btn-level-delete">Delete</button>
+                        </div>
+                        <div class="sb-row sb-row--2">
+                            <button type="button" class="st-btn" data-workshop-dev id="btn-level-export"><span data-icon="download" aria-hidden="true"></span>Export .json</button>
+                            <button type="button" class="st-btn" data-workshop-dev id="btn-level-import-pick"><span data-icon="upload" aria-hidden="true"></span>Import .json</button>
+                        </div>
+                        <input type="file" id="level-import" accept=".json" hidden>
+                    </div>
+                </section>
+
+                <section class="st-section" data-section="expedition" data-default="closed">
+                    <h2 class="st-section-head"><button type="button" class="st-section-toggle" aria-expanded="true" aria-controls="sb-body-expedition"><span class="st-section-title">Expedition</span></button></h2>
+                    <div class="st-section-body" id="sb-body-expedition">
+                        <button type="button" class="st-btn st-btn--danger sb-wide" data-workshop-dev id="btn-expedition-abandon">Abandon saved expedition</button>
+                    </div>
+                </section>
+            </div>
+
+            <div class="sb-armed" data-workshop-dev aria-live="polite">
+                <span class="sb-armed-icon" id="sb-armed-icon" aria-hidden="true"></span>
+                <span class="sb-armed-text">
+                    <span class="sb-armed-name" id="sb-armed-name">Sand</span>
+                    <span class="sb-armed-kind" id="sb-armed-kind">Material &middot; left-click paints</span>
+                </span>
+            </div>
         </div>
 
         <div id="viewport-container">
@@ -277,31 +351,53 @@
         </div>
 
         <div id="right-inspector">
-            <div class="section-title">Global Controls</div>
-            <div class="control-panel-group">
-                <div>
-                    <div class="control-label-wrapper"><label>Simulation Speed</label><span id="g-speed-value" class="val-display">1.0x</span></div>
-                    <input type="range" id="g-speed" min="0" max="2.0" step="0.1" value="1.0">
+            <!-- Inspector dock: collapsible sections (ui/SandboxChrome.ts). PlayerWorkshop hides every
+                 direct child but its own bench and MOVES #brush-size's row (the div that holds its
+                 label + readout) into it, so that row keeps its shape. -->
+            <section class="st-section" data-section="simulation">
+                <h2 class="st-section-head"><button type="button" class="st-section-toggle" aria-expanded="true" aria-controls="sb-body-simulation"><span class="st-section-title">Simulation</span></button></h2>
+                <div class="st-section-body" id="sb-body-simulation">
+                    <div>
+                        <div class="control-label-wrapper"><label for="g-speed">Speed</label><span id="g-speed-value" class="val-display">1.0x</span></div>
+                        <input type="range" id="g-speed" min="0" max="2.0" step="0.1" value="1.0">
+                    </div>
+                    <div class="control-panel-group time-control-panel-group" id="sandbox-time-controls"></div>
                 </div>
-                <div>
-                    <div class="control-label-wrapper"><label>Max Brightness</label><span id="g-bright-value" class="val-display">3.5</span></div>
-                    <input type="range" id="g-bright" min="1.0" max="10.0" step="0.5" value="3.5">
-                    <div class="control-label-wrapper"><label>Ambient Light</label><span id="g-ambient-value" class="val-display">0.18</span></div>
-                    <input type="range" id="g-ambient" min="0.02" max="0.50" step="0.02" value="0.18">
+            </section>
+
+            <section class="st-section" data-section="brush">
+                <h2 class="st-section-head"><button type="button" class="st-section-toggle" aria-expanded="true" aria-controls="sb-body-brush"><span class="st-section-title">Brush</span></button></h2>
+                <div class="st-section-body" id="sb-body-brush">
+                    <div>
+                        <div class="control-label-wrapper"><label for="brush-size">Radius</label><span id="brush-value" class="val-display">6px</span></div>
+                        <input type="range" id="brush-size" min="1" max="24" value="6">
+                    </div>
                 </div>
-                <div>
-                    <div class="control-label-wrapper"><label>Brush Radius</label><span id="brush-value" class="val-display">6px</span></div>
-                    <input type="range" id="brush-size" min="1" max="24" value="6">
+            </section>
+
+            <section class="st-section" data-section="lighting">
+                <h2 class="st-section-head"><button type="button" class="st-section-toggle" aria-expanded="true" aria-controls="sb-body-lighting"><span class="st-section-title">Lighting</span></button></h2>
+                <div class="st-section-body" id="sb-body-lighting">
+                    <div>
+                        <div class="control-label-wrapper"><label for="g-bright">Max brightness</label><span id="g-bright-value" class="val-display">3.5</span></div>
+                        <input type="range" id="g-bright" min="1.0" max="10.0" step="0.5" value="3.5">
+                    </div>
+                    <div>
+                        <div class="control-label-wrapper"><label for="g-ambient">Ambient light</label><span id="g-ambient-value" class="val-display">0.18</span></div>
+                        <input type="range" id="g-ambient" min="0.02" max="0.50" step="0.02" value="0.18">
+                    </div>
                 </div>
+            </section>
+
+            <section class="st-section" data-section="material">
+                <h2 class="st-section-head"><button type="button" class="st-section-toggle" aria-expanded="true" aria-controls="material-dynamic-controls"><span class="st-section-title" id="context-inspector-header">Material</span></button></h2>
+                <div class="st-section-body" id="material-dynamic-controls"></div>
+            </section>
+
+            <div class="sb-foot">
+                <button type="button" class="st-btn st-btn--danger sb-wide" id="clear-btn">Clear world</button>
+                <p>Empties the grid and resets the score.</p>
             </div>
-
-            <div class="section-title">Time Controls</div>
-            <div class="control-panel-group time-control-panel-group" id="sandbox-time-controls"></div>
-
-            <div class="section-title" id="context-inspector-header">Context Parameters</div>
-            <div id="material-dynamic-controls"></div>
-
-            <button id="clear-btn">Clear Canvas Matrix</button>
         </div>
     </div>
 

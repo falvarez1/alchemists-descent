@@ -180,3 +180,102 @@
   .st-btn, .st-seg > button { transition: none; }
   .st-dot--pulse { animation: none; }
 }
+
+
+/* ==========================================================================
+   FORM + PANEL PRIMITIVES (added with the Sandbox redesign; appended here so
+   they never collide with edits higher up this file).
+
+   .st-input / .st-select   24px text + select controls on the well surface
+   .st-range                thin-track slider; the filled part is painted from
+                            --p (0-100%), which ui/rangeFill.ts keeps in step
+   .st-tabs / .st-tab       dock tab strip (role=tablist / tab)
+   .st-section*             collapsible inspector section: a header button that
+                            toggles aria-expanded, and a body that goes hidden
+   .st-field                a labelled control row
+   ========================================================================== */
+
+.st-input, .st-select {
+  display: block; width: 100%; height: var(--st-h-compact); box-sizing: border-box; padding: 0 8px; margin: 0;
+  border: 1px solid var(--st-line-2); border-radius: var(--st-r-2); background-color: var(--st-well);
+  color: var(--st-text); font: 400 11px/1 var(--st-font); outline: none;
+  transition: border-color 0.12s var(--st-ease), box-shadow 0.12s var(--st-ease);
+}
+.st-input::placeholder { color: var(--st-text-4); }
+.st-input:hover:not(:disabled), .st-select:hover:not(:disabled) { border-color: var(--st-line-3); }
+.st-input:focus-visible, .st-select:focus-visible { border-color: var(--st-accent); box-shadow: 0 0 0 1px var(--st-accent); }
+.st-input:disabled, .st-select:disabled { opacity: 0.5; cursor: default; }
+.st-select {
+  appearance: none; -webkit-appearance: none; padding-right: 24px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238892a2' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 6px center; background-size: 12px;
+}
+.st-select option { background: var(--st-surface-3); color: var(--st-text); }
+
+input.st-range {
+  -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 16px; margin: 0; padding: 0;
+  background: transparent; cursor: pointer; outline: none; --p: 0%;
+}
+input.st-range::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--st-accent) var(--p), var(--st-surface-4) var(--p));
+}
+input.st-range::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px; box-sizing: border-box;
+  border: 2px solid var(--st-surface-1); border-radius: 50%; background: var(--st-accent-hi);
+  box-shadow: 0 0 0 1px var(--st-accent-line); transition: transform 0.1s var(--st-ease);
+}
+input.st-range:hover::-webkit-slider-thumb { transform: scale(1.12); }
+input.st-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--st-focus); }
+input.st-range::-moz-range-track { height: 4px; border-radius: 2px; background: var(--st-surface-4); }
+input.st-range::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--st-accent); }
+input.st-range::-moz-range-thumb {
+  width: 12px; height: 12px; box-sizing: border-box; border: 2px solid var(--st-surface-1); border-radius: 50%;
+  background: var(--st-accent-hi); box-shadow: 0 0 0 1px var(--st-accent-line);
+}
+input.st-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(--st-focus); }
+input.st-range:disabled { opacity: 0.45; cursor: default; }
+
+.st-tabs {
+  display: flex; align-items: stretch; gap: 2px; height: 32px; padding: 0 6px; box-sizing: border-box;
+  background: var(--st-surface-2); border-bottom: 1px solid var(--st-line);
+}
+.st-tab {
+  display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border: 0; border-radius: 0;
+  background: transparent; color: var(--st-text-3); font: 500 11px/1 var(--st-font); cursor: pointer;
+  transition: color 0.12s var(--st-ease), background 0.12s var(--st-ease);
+}
+.st-tab:hover { color: var(--st-text); }
+.st-tab[aria-selected='true'] { color: var(--st-text); box-shadow: inset 0 -2px 0 var(--st-accent); }
+.st-tab:focus-visible { outline: 2px solid var(--st-focus); outline-offset: -3px; border-radius: var(--st-r-2); }
+.st-tab[data-hits]::after {
+  content: attr(data-hits); min-width: 14px; height: 14px; padding: 0 4px; box-sizing: border-box; border-radius: 7px;
+  background: var(--st-accent-bg); color: var(--st-accent-text); font: 600 10px/14px var(--st-font);
+  font-variant-numeric: tabular-nums; text-align: center;
+}
+
+.st-section { border-bottom: 1px solid var(--st-line); }
+.st-section-head { margin: 0; background: var(--st-surface-2); font: inherit; }
+.st-section-toggle {
+  display: flex; align-items: center; gap: 6px; width: 100%; height: var(--st-h-regular); padding: 0 12px;
+  box-sizing: border-box; border: 0; border-radius: 0; background: transparent; color: var(--st-text-3);
+  font: 600 11px/1 var(--st-font); text-align: left; cursor: pointer; user-select: none;
+}
+.st-section-toggle:hover { background: var(--st-surface-3); }
+.st-section-toggle:focus-visible { outline: 2px solid var(--st-focus); outline-offset: -2px; }
+.st-section-toggle::before {
+  content: ''; flex: none; width: 5px; height: 5px; margin: -2px 3px 0 1px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg); transition: transform 0.12s var(--st-ease);
+}
+.st-section-toggle[aria-expanded='false']::before { margin: 0 4px 0 -1px; transform: rotate(-45deg); }
+.st-section-title { color: var(--st-text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-section-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; }
+.st-section-body[hidden] { display: none; }
+
+.st-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.st-field-label { color: var(--st-text-3); font: 500 11px/1.2 var(--st-font); }
+
+@media (prefers-reduced-motion: reduce) {
+  .st-input, .st-select, .st-tab, .st-section-toggle::before, .st-range::-webkit-slider-thumb { transition: none; }
+}

@@ -47,12 +47,13 @@ await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2200);
 
-/* ---------- Sandbox sidebar: two columns + filter ---------- */
-console.log('-- sandbox sidebar');
-const cols = await page.evaluate(
-  () => getComputedStyle(document.getElementById('left-toolbar')).gridTemplateColumns.split(' ').length,
-);
-check('sidebar lays out in two columns', cols === 2, `got ${cols}`);
+/* ---------- Sandbox dock: tabs over a tile grid + filter ---------- */
+console.log('-- sandbox dock');
+const dock = await page.evaluate(() => ({
+  tabs: [...document.querySelectorAll('#left-toolbar [role="tab"]')].map((t) => t.textContent.trim()),
+  cols: getComputedStyle(document.querySelector('#sb-panel-materials .sb-grid')).gridTemplateColumns.split(' ').length,
+}));
+check('dock offers Materials / Spells / World over a multi-column tile grid', dock.tabs.join() === 'Materials,Spells,World' && dock.cols >= 4, JSON.stringify(dock));
 await page.fill('#toolbar-filter', 'lava');
 await page.waitForTimeout(150);
 const filtered = await page.evaluate(() => {

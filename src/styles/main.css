@@ -66,56 +66,50 @@ header h1 .title-sub { color: var(--text-muted); }
     header { padding-left: 12px; padding-right: 12px; gap: 8px; overflow: hidden; justify-content: flex-start; }
     header h1 { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hud-wrapper { flex: 0 0 auto; gap: 6px; min-width: 0; }
-    .mode-switch button { padding: 6px 10px; letter-spacing: 0.4px; }
 }
 @media (max-width: 480px) {
     header h1 { max-width: 112px; font-size: 12px; }
     .hud-wrapper { gap: 4px; }
-    .mode-switch button { padding: 6px 8px; font-size: 10px; letter-spacing: 0; }
 }
 
-/* Mode segmented control */
-.mode-switch { display: flex; background: #14141c; border: 1px solid var(--panel-border); border-radius: 6px; overflow: hidden; }
-.mode-switch button {
-    background: transparent; border: none; color: var(--text-muted);
-    font-size: 11px; font-weight: 700; letter-spacing: 1px; padding: 6px 14px; cursor: pointer;
-    font-family: var(--mono); transition: all 0.12s ease;
-}
-.mode-switch button.active { color: #fff; }
-.mode-switch button[data-mode="build"].active { background: #1a233a; color: #93c5fd; }
-.mode-switch button[data-mode="play"].active { background: #2a1336; color: #d8b4fe; }
+/* The Sandbox / Builder / Play workspace switch (.mode-switch) lives in sandbox.css: a player build hides it. */
 .sound-btn { background: #14141c; border: 1px solid var(--panel-border); color: var(--text-muted); font-size: 11px; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-family: var(--mono); }
 .sound-btn:hover { color: var(--text-main); border-color: #2e2e3f; }
 .sound-btn:disabled { opacity: 0.42; cursor: default; color: #4a4a58; }
 .sound-btn:disabled:hover { color: #4a4a58; border-color: var(--panel-border); }
 .sound-btn.muted { color: #4a4a58; text-decoration: line-through; }
-/* Header A/B toggles (GPU FX / WGSL / PERF): lit = engaged, same family as SND */
-.sound-btn.lit { background: #0f1f18; border-color: #1f4d3a; color: #6ee7b7; }
-#immersive-play-btn { border-color: #3b2a13; color: #fcd34d; }
-#immersive-play-btn.lit { background: #2a1d08; border-color: #9c6a22; color: #fde68a; }
 /* AuthorLink pill: a linked window has to be able to tell at a glance whether
-   the other window is still listening, so peers>0 is the only "lit" state. */
-.authorlink-pill { min-width: 62px; letter-spacing: 1px; }
-.authorlink-pill:disabled { opacity: 1; }
-.authorlink-pill[data-state='connecting'],
-.authorlink-pill[data-state='reconnecting'] { color: #9c8a4a; border-color: #3b3320; }
-.authorlink-pill[data-state='connected'] { background: #101c26; border-color: #1f3f55; color: #7dd3fc; }
-.authorlink-pill[data-state='error'] { background: #241014; border-color: #5c2029; color: #fca5a5; }
+   the other window is still listening, so the state is carried by the chip's tone
+   (ok = linked, warn = connecting / different world, danger = unavailable) and the
+   text it already carried. Tokens from studio.css; the authoring bar and the floating
+   play-mode chip below share it. */
+.sound-btn.authorlink-pill {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 52px; height: 20px; padding: 0 8px;
+    box-sizing: border-box; border: 1px solid var(--st-line-2); border-radius: 10px; background: var(--st-surface-2);
+    color: var(--st-text-3); font: 600 10px/1 var(--st-font); letter-spacing: 0.04em; font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.sound-btn.authorlink-pill:disabled { opacity: 1; }
+.sound-btn.authorlink-pill[data-state='connecting'],
+.sound-btn.authorlink-pill[data-state='reconnecting'] { background: var(--st-warn-bg); border-color: var(--st-warn-line); color: var(--st-warn-text); }
+.sound-btn.authorlink-pill[data-state='connected'] { background: var(--st-ok-bg); border-color: var(--st-ok-line); color: var(--st-ok-text); }
+.sound-btn.authorlink-pill[data-state='error'] { background: var(--st-danger-bg); border-color: var(--st-danger-line); color: var(--st-danger-text); }
 /* Connected but on a different level: every edit is being refused, so this
    outranks the peer count and is the one pill state that is clickable. */
-.authorlink-pill[data-state='mismatch'] { background: #2a1d08; border-color: #9c6a22; color: #fbbf24; cursor: pointer; }
-.authorlink-pill[data-state='mismatch']:hover { background: #3a2809; color: #fde68a; }
+.sound-btn.authorlink-pill[data-state='mismatch'] { background: var(--st-warn-bg); border-color: var(--st-warn-line); color: var(--st-warn-text); cursor: pointer; }
+.sound-btn.authorlink-pill[data-state='mismatch']:hover:not(:disabled) { border-color: var(--st-warn); color: var(--st-warn-text); }
 /* Mismatched but THIS window may not pull (it is playing a live level): still
    amber, still worth seeing, but not a button. */
-.authorlink-pill[data-state='mismatch']:disabled { cursor: default; }
-.authorlink-pill[data-state='mismatch']:disabled:hover { background: #2a1d08; color: #fbbf24; }
+.sound-btn.authorlink-pill[data-state='mismatch']:disabled { cursor: default; }
+.sound-btn.authorlink-pill:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 1px; }
 /* Play mode hides the studio header, which would take the pill with it — and
    the play window is exactly where "your edits are being refused" needs to be
    visible. The indicator re-parents itself into the canvas while the header is
    away (above the pause button, clear of the vitals and the objective). */
 .authorlink-pill--floating { position: absolute; right: 28px; bottom: 64px; z-index: 12; pointer-events: auto; }
 
-#workbench { display: flex; flex: 1; height: calc(100vh - 49px); }
+/* 49px is the old studio header + border; sandbox.css sets --st-header-offset to the 40px bar */
+#workbench { display: flex; flex: 1; height: calc(100vh - var(--st-header-offset, 49px)); }
 
 #left-toolbar {
     /* two-column grid: section titles and action rows span both columns,
@@ -125,10 +119,6 @@ header h1 .title-sub { color: var(--text-muted); }
     align-content: start; box-sizing: border-box; overflow-y: auto; scrollbar-width: thin;
 }
 #left-toolbar .section-title,
-#left-toolbar .action-btn,
-#left-toolbar .biome-select,
-#left-toolbar select,
-#left-toolbar label.action-btn,
 #left-toolbar .wg-tune-wrap,
 #left-toolbar #toolbar-filter { grid-column: 1 / -1; }
 .wg-tune-wrap { margin: 2px 0 4px; font-size: 11px; color: #9fb3c8; }
@@ -160,11 +150,6 @@ header h1 .title-sub { color: var(--text-muted); }
 .tool-btn.active { background: #1a233a; border-color: var(--accent-blue); }
 .tool-btn.spell-mode.active { background: #251636; border-color: var(--accent-purple); }
 
-.action-btn { background: #1d192b; border: 1px solid #4c1d95; color: #c084fc; font-weight: 600; justify-content: center; padding: 8px 10px; border-radius: 5px; cursor: pointer; font-size: 11px; transition: all 0.1s ease; }
-.action-btn:hover { background: #4c1d95; color: white; }
-.action-btn.dropper-slime { border-color: #14532d; color: #86efac; background: #0b1d12; }
-.action-btn.dropper-imp { border-color: #7c2d12; color: #fdba74; background: #1d0e07; }
-.action-btn.dropper-golem { border-color: #44403c; color: #d6d3d1; background: #15130f; }
 
 #viewport-container {
     --runtime-inspector-w: 390px;
@@ -1097,14 +1082,6 @@ textarea.app-dialog-input { min-height: 150px; resize: vertical; }
 }
 #respawn-btn:hover { background: var(--accent-purple); color: #fff; box-shadow: 0 0 22px rgba(168,85,247,0.6); }
 
-.biome-select {
-    width: 100%; padding: 7px 8px; margin-bottom: 6px; cursor: pointer;
-    background: linear-gradient(180deg, rgba(34,24,17,0.92), rgba(22,15,11,0.94));
-    border: 1px dashed #6e4632; border-radius: 4px; color: #d8c8b0;
-    font-family: var(--mono); font-size: 10px; letter-spacing: 0.4px; outline: none;
-}
-.biome-select:hover { border-color: #9c6a44; }
-.biome-select option { background: #1a120d; color: #d8c8b0; }
 #right-inspector { width: 280px; background: var(--panel-bg); border-left: 1px solid var(--panel-border); padding: 16px; display: flex; flex-direction: column; gap: 14px; box-sizing: border-box; overflow-y: auto; }
 .control-panel-group { display: flex; flex-direction: column; gap: 12px; background: #13131a; padding: 12px; border-radius: 6px; border: 1px solid var(--panel-border); }
 .control-panel-group label { display: inline-block; min-width: 110px; }
@@ -1129,7 +1106,7 @@ textarea.app-dialog-input { min-height: 150px; resize: vertical; }
 .param-info-icon:hover { color: var(--accent-blue); border-color: var(--accent-blue); }
 /* Info popover body (PopoverHost adds the shared .editor-popover chrome). */
 #param-info-pop { width: 220px; max-width: calc(100vw - 16px); padding: 9px 11px; display: flex; flex-direction: column; gap: 5px; z-index: 80; }
-#param-info-pop .param-pop-title { font-size: 11px; font-weight: 700; color: #dbe6f3; text-transform: capitalize; }
+#param-info-pop .param-pop-title { font-size: 11px; font-weight: 700; color: #dbe6f3; }
 #param-info-pop .param-pop-desc { font-size: 10px; line-height: 1.5; color: #8fa3b8; }
 
 /* ===================== Grimoire (the wizard's book, toggle J) ===================== */
@@ -1164,8 +1141,6 @@ textarea.app-dialog-input { min-height: 150px; resize: vertical; }
 .gr-sub { font-size: 1.4vh; font-style: italic; opacity: 0.85; }
 .gr-locked { opacity: 0.45; }
 .gr-empty { font-size: 1.4vh; font-style: italic; opacity: 0.7; }
-
-.material-title-tag { font-size: 12px; font-weight: 600; color: #fff; background: #1a1a26; padding: 6px 10px; border-radius: 4px; border-left: 3px solid var(--accent-blue); margin-bottom: 8px; }
 
 input[type="range"] { -webkit-appearance: none; width: 100%; height: 4px; border-radius: 2px; background: #252535; outline: none; }
 input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--accent-blue); cursor: pointer; }
@@ -1236,11 +1211,8 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
 .time-controls button:disabled { opacity: 0.42; cursor: not-allowed; }
 .control-panel-group.time-control-panel-group { gap: 10px; }
 
-button#clear-btn { background: #221212; border: 1px solid #441a1a; color: #ff6666; font-weight: 600; padding: 10px; border-radius: 5px; cursor: pointer; margin-top: auto; transition: all 0.15s ease; }
-button#clear-btn:hover { background: var(--accent-danger); color: white; border-color: transparent; }
 
 /* ---------- Builder authoring overlay (src/builder/Builder.ts) ---------- */
-.mode-switch button#mode-builder-btn.active { background: #122a1c; color: #86efac; }
 
 /* instant popover: picture + name + the rule that matters, no tooltip lag */
 #bp-matpop,

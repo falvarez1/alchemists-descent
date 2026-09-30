@@ -195,6 +195,28 @@ export async function leaveTitleIfShown(page, { timeout = 8000 } = {}) {
 }
 
 /**
+ * The studio bar keeps the dev/diagnostic buttons (console, runtime inspector, GPU / WGSL compose,
+ * perf overlay, fullscreen play) in one Developer menu, closed by default: a real click on any of
+ * them needs it open first. Their ids and owners are unchanged. The menu closes itself after the
+ * buttons that open an overlay (console, runtime inspector, fullscreen play).
+ */
+export async function openDevMenu(page) {
+  const open = await page.locator('#dev-menu').evaluate((menu) => !menu.hidden);
+  if (!open) await page.click('#dev-menu-btn');
+  await page.locator('#dev-menu').waitFor({ state: 'visible', timeout: 3000 });
+}
+
+/**
+ * The Sandbox's left dock is tabbed (Materials | Spells | World); the tool buttons of a tab other
+ * than the active one are not visible to a real click. Materials is the default. `name` is
+ * 'materials' | 'spells' | 'world'. The World tab holds world generation, hostiles and the level library.
+ */
+export async function openDockTab(page, name) {
+  await page.click(`#sb-tab-${name}`);
+  await page.locator(`#sb-panel-${name}`).waitFor({ state: 'visible', timeout: 3000 });
+}
+
+/**
  * A first descent opens on the story's plates (~9 s, the world held still behind
  * them; any key skips them). The plates' class lands a beat AFTER `play-active`, so
  * wait to see them start (a resumed run has none), then for them to end. A probe

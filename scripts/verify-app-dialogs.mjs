@@ -1,7 +1,7 @@
 // Focused app-dialog probe.
 // Usage: node scripts/verify-app-dialogs.mjs [url]  (dev server running)
 import { launchBrowser } from './browser-launch.mjs';
-import { enterSandboxFromTitle, clickBuilderControl, toggleBuilderMode } from './run-helpers.mjs';
+import { enterSandboxFromTitle, clickBuilderControl, toggleBuilderMode, openDockTab } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -32,6 +32,7 @@ await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await enterSandboxFromTitle(page);
 await page.waitForTimeout(900);
 
+await openDockTab(page, 'world'); // the Level Library lives on the dock's World tab
 await page.click('#btn-level-save');
 await page.waitForSelector('.app-dialog-root .app-dialog-input', { timeout: 5000 });
 let dialog = await page.evaluate(() => ({

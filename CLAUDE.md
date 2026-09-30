@@ -125,8 +125,15 @@ dev server. `scripts/verify-*.mjs` show the pattern.
   the URL. See `docs/REALTIME-TUNING-LAB-AND-MULTIPLAYER-SERVER-SPEC.md`.
 - **The material palette is `src/content/materialPalette.ts`, not markup.** The Sandbox
   toolbar renders from it and the Builder reads it directly; never re-type cell ids into
-  HTML. Toolbar splices the buttons in as DIRECT children of `#left-toolbar` because the
-  filter walks `bar.children`.
+  HTML. Toolbar renders one `.sb-group` (title + `.sb-grid` of tiles) per palette group
+  into the dock's Materials panel; the filter finds groups by that class. The authoring
+  Sandbox is the Studio design language (`styles/studio.css` tokens, `styles/sandbox.css`,
+  behaviour in `ui/SandboxChrome.ts`): every rule in sandbox.css is under
+  `body:not(.player-build)` because the player's Workshop is the same DOM in the game's house
+  style (sandbox.css's last section flattens the dock's wrappers back to the flat list
+  workshop.css expects — compare a Workshop screenshot before/after any index.html change).
+  Never set `display` on `#left-toolbar`, `#right-inspector` or the header from sandbox.css:
+  `body.play-active`/`body.builder-open` hide them with a selector of the same specificity.
 
 ## Hard invariants
 
