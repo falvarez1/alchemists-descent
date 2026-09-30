@@ -3898,8 +3898,6 @@ export class Builder {
     const isTerrainTool =
       this.tool === 'paint' || SHAPE_TOOLS.has(this.tool) || this.tool === 'fill' || this.tool === 'replace';
     if (!isTerrainTool) this.setTool('paint');
-    // arming from the palette brings up its tuning window (it follows reselection)
-    this.openSidePanel('mat');
     const name = this.ctx.params.materials[id]?.name ?? 'Material ' + id;
     this.status('ARMED: ' + name.toUpperCase());
   }
