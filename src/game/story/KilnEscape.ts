@@ -1,4 +1,4 @@
-import type { KilnFlueSite } from '@/core/story';
+import type { KilnFlueSite, StorySpokenLine } from '@/core/story';
 import { ESCAPE_LINES, ESCAPE_OBJECTIVE } from '@/content/story';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { lavaColor, packRGB, steamColor } from '@/sim/colors';
@@ -41,6 +41,8 @@ import type { StoryHost } from './host';
 /** Seconds between the heave and the first row of lava; after a restart, a shorter breath. */
 const GRACE = 3.2;
 const RESTART_GRACE = 2.4;
+/** The most the Docent's word on the fallen stoker (said before the heave's shout) may add to the grace (s). */
+const PREFACE_GRACE_MAX = 5.5;
 /**
  * Rows per tick the lava climbs: steady, catching up on a long lead, easing off
  * close under the boots. (2026-09: 0.09 / 0.24 / 0.06, was 0.11 / 0.3 / 0.085 —
@@ -103,8 +105,13 @@ export class KilnEscape {
   get lava(): number { return this.lavaRow; }
   get heat(): number { return this.active ? 1 : 0; }
 
-  /** The Colossus is down. Returns false (the run ends as before) when this floor has no flue. */
-  begin(onComplete: () => void): boolean {
+  /**
+   * The Colossus is down. Returns false (the run ends as before) when this floor has no flue.
+   * `preface`: the Docent's word on the fallen stoker, said in the same breath before the heave's shout.
+   * The lava waits for it (up to PREFACE_GRACE_MAX seconds): the first kill in a player's life is told
+   * what it was, and the climb starts once the shout has been heard.
+   */
+  begin(onComplete: () => void, preface?: { lines: readonly StorySpokenLine[]; beats: readonly string[]; seconds: number } | null): boolean {
     const ctx = this.host.ctx;
     const flue = ctx.levels.current?.story?.flue;
     if (!flue || this.phase !== 'none' || ctx.state.mode !== 'play') return false;
@@ -112,7 +119,7 @@ export class KilnEscape {
     this.onComplete = onComplete;
     this.phase = 'heave';
     this.heaveAt = this.host.now();
-    this.riseAt = this.heaveAt + GRACE;
+    this.riseAt = this.heaveAt + GRACE + Math.min(PREFACE_GRACE_MAX, preface?.seconds ?? 0);
     this.lavaRow = flue.lavaFrom + 1;
     this.filledTo = flue.lavaFrom + 1;
     this.slabsDone.clear();
@@ -122,7 +129,7 @@ export class KilnEscape {
     const run = this.host.run();
     this.host.setRun({ ...run, escape: 'active' });
     const line = beatLine(this.host.meta(), ESCAPE_LINES.heave);
-    if (line) this.host.say([{ speaker: 'docent', text: line.text }], { priority: 'high', source: 'escape', ttlMs: 3000, captioned: true, repeatable: true, beats: [ESCAPE_LINES.heave.id] });
+    if (line) this.host.say([...(preface?.lines ?? []), { speaker: 'docent', text: line.text }], { priority: 'high', source: 'escape', ttlMs: 3000, captioned: true, repeatable: true, beats: [ESCAPE_LINES.heave.id, ...(preface?.beats ?? [])] });
     ctx.events.emit('objectiveChanged', { text: ESCAPE_OBJECTIVE });
     const rt = ctx.levels.current;
     if (rt) rt.mapWaypoint = { x: flue.exit.x, y: flue.exit.y, label: 'The Hatch' };
@@ -435,6 +442,11 @@ export class KilnEscape {
     ctx.events.emit('objectiveChanged', { text: ESCAPE_OBJECTIVE });
     const rt = ctx.levels.current;
     if (rt) rt.mapWaypoint = { x: flue.exit.x, y: flue.exit.y, label: 'The Hatch' };
+    // Sent back to the foot of the flue: a word about it, the first time in a run (not on a resumed save).
+    if (!resumed && !this.host.run().spoken.includes(ESCAPE_LINES.retry.id)) {
+      const line = beatLine(this.host.meta(), ESCAPE_LINES.retry);
+      if (line) this.host.say([{ speaker: 'docent', text: line.text }], { priority: 'normal', source: 'escape', ttlMs: 4000, captioned: true, repeatable: true, beats: [ESCAPE_LINES.retry.id] });
+    }
   }
 
   private complete(): void {

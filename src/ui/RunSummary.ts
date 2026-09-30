@@ -1,6 +1,7 @@
 import type { Ctx, Difficulty, RunResult } from '@/core/types';
 import type { KitId } from '@/core/run';
-import { FLOOR_DOORS, doorTaken, floorDisplayName } from '@/config/worldgraph';
+import { FLOOR_DOORS, START_LEVEL, doorTaken, floorDisplayName } from '@/config/worldgraph';
+import { descendBehindCurtain, descentCurtainCopy } from '@/game/descentCurtain';
 import { KIT_DEFS } from '@/content/kits';
 import { boonNames, formatChain, formatRunTime, runHeadline, shareLine } from '@/game/runRules';
 import { KitPicker } from '@/ui/KitPicker';
@@ -447,9 +448,9 @@ export class RunSummary {
     this.busy = true;
     for (const b of this.actions.querySelectorAll('button')) b.disabled = true;
     this.status.textContent = `Opening the intake with ${KIT_DEFS[this.chosenKit].name}…`;
-    // Two frames so the status paints before generation blocks the thread.
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    const started = run.startNewRun(this.ctx, { kit: this.chosenKit, daily: false, difficulty: this.chosenDifficulty });
+    // The curtain (floor 1's name) comes up over the ledger and paints before generation blocks the thread.
+    const started = await descendBehindCurtain(this.ctx, descentCurtainCopy(START_LEVEL), () =>
+      run.startNewRun(this.ctx, { kit: this.chosenKit, daily: false, difficulty: this.chosenDifficulty }));
     this.busy = false;
     if (started.ok) {
       this.hide();
