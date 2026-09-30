@@ -44,9 +44,34 @@ describe('Breathing Works encounter contracts', () => {
     expect(Buffer.from(a.runtime.world.colors.buffer).equals(Buffer.from(b.runtime.world.colors.buffer))).toBe(true);
     let hash = 0x811c9dc5;
     for (const byte of a.runtime.world.types) hash = Math.imul(hash ^ byte, 0x01000193);
+    // GEN_VERSION 62: the timber catwalks lose their diagonal braces and gain a flush joist (worksHabitat), over
     // GEN_VERSION 55: the story's Guild locker nook off the return shaft (the resonant valve), over GEN 53's
     // Undertow cache, hand-planted stands and Seed Cellar and GEN 48's barricade, shaft hatch and floor gate.
-    expect((hash >>> 0).toString(16)).toBe('dbd1ef64');
+    expect((hash >>> 0).toString(16)).toBe('4b4edc4');
+  });
+
+  it('hangs the timber catwalks bare: no diagonal sticks under a deck, and the joist stays inside it', () => {
+    // The five catwalks once grew two solid one-cell diagonal "braces" each. They ended in open
+    // air, held nothing up, and caught jumps made beside the deck (the owner's screenshot, 2026-09-30).
+    const { runtime } = fixture(1337);
+    const world = runtime.world;
+    const wood = (x: number, y: number): boolean => world.type(x, y) === Cell.Wood;
+    for (const [x, y, width] of [[570, 341, 63], [677, 325, 66], [789, 349, 48], [1015, 390, 195], [1230, 390, 167]] as const) {
+      let first = -1, last = -1;
+      for (let xx = x - 4; xx < x + width + 4; xx++) if (wood(xx, y + 6)) { if (first < 0) first = xx; last = xx; }
+      expect(first, `deck at ${x},${y} exists`).toBeGreaterThanOrEqual(0);
+      // Nothing of timber hangs more than the joist's two rows below the deck, anywhere along it.
+      for (let yy = y + 9; yy <= y + 32; yy++) {
+        for (let xx = x - 4; xx < x + width + 4; xx++) expect(wood(xx, yy), `no stick at ${xx},${yy}`).toBe(false);
+      }
+      // The joist is flush under the planks, inset from both real ends, never wider than the deck.
+      for (const row of [y + 7, y + 8]) {
+        for (let xx = x - 12; xx < x + width + 12; xx++) {
+          if (!wood(xx, row)) continue;
+          expect(xx >= first + 9 && xx <= last - 9, `joist cell ${xx},${row} inside deck ${first}..${last}`).toBe(true);
+        }
+      }
+    }
   });
 
   it('puts an oil-soaked barricade on the forced route to the crank, and nothing card-locked', () => {

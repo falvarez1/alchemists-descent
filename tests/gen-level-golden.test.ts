@@ -178,7 +178,7 @@ describe('marsh-gas ceiling pockets', () => {
 });
 
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '30711f79' }, // GEN_VERSION 55: the Guild locker nook off the return shaft (the resonant valve), over v53's Undertow cache, flora and Seed Cellar
+  { id: 'd1', seed: 1337, hash: 'bdd5e871' }, // GEN_VERSION 62: the timber catwalks lose their diagonal braces and gain a flush joist under the deck (worksHabitat), over v55: the Guild locker nook off the return shaft (the resonant valve), over v53's Undertow cache, flora and Seed Cellar
   // GEN_VERSION 46 (four floors): the Drowned Cisterns inherit the old flooded
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
