@@ -116,7 +116,8 @@ export class ExpeditionEntry {
     this.root.querySelector<HTMLButtonElement>('[data-entry="begin"]')!.textContent = saved ? 'Start a new descent' : 'Begin the descent';
     this.refreshMeta();
     this.root.querySelector<HTMLElement>('.entry-status')!.textContent = '';
-    this.root.querySelector<HTMLButtonElement>(saved ? '[data-entry="continue"]' : '[data-entry="begin"]')?.focus();
+    // The call to action takes focus for keyboard and gamepad, without the keyboard ring a mouse player never asked for.
+    this.root.querySelector<HTMLButtonElement>(saved ? '[data-entry="continue"]' : '[data-entry="begin"]')?.focus({ preventScroll: true, focusVisible: false });
   }
 
   private refreshMeta(): void {

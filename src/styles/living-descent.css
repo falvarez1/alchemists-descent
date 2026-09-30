@@ -30,7 +30,11 @@ button:focus-visible, summary:focus-visible, select:focus-visible { outline: 2px
 .entry-content p { font-size: calc(15px * var(--text-scale)); line-height: 1.65; color: #bbc9bd; margin: 0 0 30px; max-width: 38ch; }
 .entry-content nav { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .entry-content button, .entry-workshops summary { font: inherit; color: var(--works-paper); border: 0; border-radius: 0; background: transparent; padding: 11px 0; text-align: left; cursor: pointer; font-size: calc(15px * var(--text-scale)); }
-.entry-content nav button:first-child:not([hidden]), .entry-content nav button[hidden] + button { color: #f2e3b6; border-bottom: 1px solid #ab9061; padding-right: 35px; font-size: calc(21px * var(--text-scale)); }
+/* THE call to action (Continue, else Begin): brass-filled like the death card's way back, not a fourth link. */
+.entry-content nav > button:first-child:not([hidden]), .entry-content nav > button[hidden] + button { color: #18272a; background: #d8c699; border: 1px solid #e4d4ae; border-radius: 1px; padding: 13px 34px; margin: 2px 0 10px; font-weight: 500; font-size: calc(19px * var(--text-scale)); letter-spacing: 0.005em; transition: background-color 0.12s ease, transform 0.12s ease; }
+.entry-content nav > button:first-child:not([hidden]):hover, .entry-content nav > button[hidden] + button:hover { color: #18272a; background: #ebddba; }
+.entry-content nav > button:first-child:not([hidden]):active, .entry-content nav > button[hidden] + button:active { transform: translateY(1px); }
+.entry-content nav > button:first-child:not([hidden]):focus-visible, .entry-content nav > button[hidden] + button:focus-visible { outline: 2px solid #f2e3b6; outline-offset: 3px; }
 .entry-content button:hover, .entry-workshops summary:hover { color: #fff2ce; }
 .entry-content button:disabled { opacity: 0.6; cursor: wait; }
 .entry-content .entry-status { min-height: 24px; font-size: 13px; color: #dcc7a1; margin: 12px 0; }
@@ -41,6 +45,33 @@ button:focus-visible, summary:focus-visible, select:focus-visible { outline: 2px
 .entry-footer { position: absolute; left: clamp(28px, 9vw, 172px); right: 34px; bottom: 25px; display: flex; justify-content: space-between; gap: 16px; color: #a5b7aa; font-size: 12px; pointer-events: none; } /* plain text: never swallow a click meant for the menu above it */
 .entry-release { display: inline-flex; align-items: baseline; gap: 10px; }
 .entry-release b { color: #d6c59e; font: 500 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .055em; }
+/* Laptop heights (821-940 px; 601-820 have their own tier below): the call to action's room comes from the gaps, not the text. */
+@media (max-height: 940px) and (min-height: 821px) {
+  #expedition-entry .entry-content { margin-top: clamp(28px, 6vh, 60px); margin-bottom: 56px; }
+  #expedition-entry .entry-content p { margin-bottom: 22px; }
+  #expedition-entry .entry-content p.entry-subtitle { margin-bottom: 16px; }
+}
+/* Compact heights (780 px and below: 1366x768, 1280x720, 960x600): the whole menu stays above the fold. The secondary entries share one row,
+   the case note fits one line, and the heading gives back the room the call to action took. */
+@media (max-height: 780px) {
+  #expedition-entry .entry-content { width: min(660px, 84%); margin-top: clamp(18px, 4.5vh, 34px); margin-bottom: 24px; }
+  #expedition-entry .entry-content h1 { font-size: clamp(44px, 9vh, 58px); line-height: 0.9; margin-bottom: 4px; }
+  #expedition-entry .entry-content p.entry-subtitle { margin-bottom: 10px; font-size: calc(19px * var(--text-scale)); }
+  #expedition-entry .entry-content p.entry-tagline { margin-bottom: 12px; line-height: 1.5; }
+  #expedition-entry .entry-content nav { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 0 28px; }
+  #expedition-entry .entry-content nav > .entry-kits, #expedition-entry .entry-content nav > .entry-grades,
+  #expedition-entry .entry-content nav > button:first-child:not([hidden]), #expedition-entry .entry-content nav > button[hidden] + button { flex: 0 0 auto; }
+  #expedition-entry .entry-content nav > .entry-kits, #expedition-entry .entry-content nav > .entry-grades { flex-basis: 100%; }
+  #expedition-entry .entry-content nav > button:first-child:not([hidden]), #expedition-entry .entry-content nav > button[hidden] + button { margin-bottom: 8px; padding: 11px 32px; }
+  #expedition-entry .entry-content .entry-kits { margin: 2px 0 6px; }
+  #expedition-entry .entry-content .entry-grades { margin: 0 0 4px; }
+  #expedition-entry .kit-picker p.kit-note { max-width: 66ch; }
+  #expedition-entry .entry-content nav .entry-daily, #expedition-entry .entry-content nav .entry-workshop, #expedition-entry .entry-content nav button { padding-top: 6px; padding-bottom: 6px; }
+  #expedition-entry .entry-content nav .entry-note { margin-top: 2px; max-width: 34ch; }
+  #expedition-entry .entry-content nav .entry-trailer .entry-note, #expedition-entry .entry-content nav .entry-opening .entry-note, #expedition-entry .entry-content nav .entry-workshop .entry-note { display: none; }
+  #expedition-entry .entry-content .entry-status { margin: 4px 0; min-height: 18px; }
+  #expedition-entry .entry-workshops { margin-top: 8px; }
+}
 /* The scene owns the screen. Vitals and tools occupy opposite quiet corners. */
 body.play-active #game-hud { font-family: ui-sans-serif, system-ui, sans-serif; }
 body.play-active #hud-left { top: 24px; left: 28px; }
@@ -67,7 +98,10 @@ body.play-active .flask-slot.active { border-color: #dbca91; box-shadow: none; }
 body.play-active .wave-readout { top: 24px; right: 28px; max-width: min(360px, 44%); background: transparent; border: 0; box-shadow: none; padding: 0; }
 body.play-active .wave-readout .wave-num { font: 500 calc(23px * var(--text-scale))/1.1 'Cormorant Garamond', Georgia, serif; letter-spacing: 0; color: #e1d9c3; }
 body.play-active #treasure-row { display: none; }
-body.play-active .wave-readout .objective { margin-top: 7px; font-size: calc(12px * var(--text-scale)); line-height: 1.45; letter-spacing: 0; font-weight: 400; color: #c1d0bd; text-transform: none; }
+/* The objective is the line a player reads most: 13.5 px, brighter, and a scrim so it holds over ice and lava. */
+body.play-active .wave-readout { isolation: isolate; }
+body.play-active .wave-readout::before { content: ''; position: absolute; z-index: -1; inset: -18px -28px -22px -90px; pointer-events: none; background: radial-gradient(ellipse 100% 100% at 100% 0%, #071015d9 0%, #071015a6 48%, #07101500 100%); }
+body.play-active .wave-readout .objective { margin-top: 7px; font-size: calc(13.5px * var(--text-scale)); line-height: 1.45; letter-spacing: 0; font-weight: 400; color: #e3ecd9; text-transform: none; text-shadow: 0 1px 3px #000c; }
 body.play-active #controls-hint { display: none; }
 #field-note { color: #c5d2c1; font-size: calc(12px * var(--text-scale)); line-height: 1.5; text-shadow: 0 1px 4px #071014; }
 #field-note kbd { font: inherit; color: #e2d3b0; }
@@ -121,7 +155,8 @@ body.play-active #interaction-hint.world-anchor.wide { max-width: 260px; white-s
   body.play-active .vitals { width: 125px; }
   body.play-active .wave-readout { right: 12px; top: 12px; max-width: 43%; }
   body.play-active .wave-readout .wave-num { font-size: calc(18px * var(--text-scale)); }
-  body.play-active .wave-readout .objective { font-size: calc(10px * var(--text-scale)); }
+  body.play-active .wave-readout .objective { font-size: calc(11.5px * var(--text-scale)); }
+  body.play-active .wave-readout::before { inset: -12px -12px -16px -50px; }
   body.play-active #expedition-tools { left: 12px; bottom: 12px; gap: 5px; }
   body.play-active .hot-slot { width: 24px; height: 24px; }
   body.play-active #flask-belt { width: auto; }

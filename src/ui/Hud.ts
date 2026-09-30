@@ -39,6 +39,9 @@ const NOTICE_HOLD_MS = 2600;
 /** The card's fade-out (main.css #wave-banner transition) plus a breath before the next. */
 const BANNER_GAP_MS = 750;
 const MAX_QUEUED_NOTICES = 3;
+/** A Grimoire toast waits at most this long behind a teach card (a card dismisses itself after 9 s). */
+const TOAST_WAIT_MAX_MS = 9500;
+const TOAST_WAIT_POLL_MS = 400;
 
 /**
  * One centre card. Arrival titles always play first and uninterrupted; event
@@ -297,7 +300,7 @@ export class Hud {
 
     // Victory (the Kiln Colossus) is the run ledger's job now (ui/RunSummary):
     // no overlay here, and no page reload to start again.
-    this.disposers.push(ctx.events.on('toast', ({ text }) => this.toastStack.push(text)));
+    this.disposers.push(ctx.events.on('toast', ({ text }) => this.pushToast(text)));
 
     // The hotbar mirrors the active wand; any loadout change rebuilds it.
     this.disposers.push(ctx.events.on('wandChanged', () => this.buildHotbar()));
@@ -410,6 +413,19 @@ export class Hud {
       belt.appendChild(root);
       this.flaskSlots.push({ root, fill, count, name });
     }
+  }
+
+  /**
+   * The event log. A Grimoire line ("Grimoire — observed: …") waits while a teach card is up: the card is
+   * already explaining the same thing, and card + toast + caption + hint was five text layers at the first cast.
+   */
+  private pushToast(text: string, waited = 0): void {
+    const teachUp = document.getElementById('hint-teach-overlay')?.classList.contains('visible') === true;
+    if (teachUp && waited < TOAST_WAIT_MAX_MS && /^Grimoire\b/.test(text)) {
+      this.setHudTimeout(() => this.pushToast(text, waited + TOAST_WAIT_POLL_MS), TOAST_WAIT_POLL_MS);
+      return;
+    }
+    this.toastStack.push(text);
   }
 
   /** The arrival title plays now, uninterrupted; queued notices wait for it. */
