@@ -71,7 +71,7 @@ export function reserveTriggerFootings(ledger: PlacementLedger, mechanisms: read
   }
 }
 
-type Fill = [index: number, type: number, color: number];
+export type Fill = [index: number, type: number, color: number];
 
 /** Each mechanism body's cells as stamped: [index, type, color] of the blocking ones. */
 export type BodyRecord = Map<Mechanism, Fill[]>;
@@ -472,7 +472,7 @@ export function holdFixtureFootings(world: World, input: FootingInput): FootingR
   return report;
 }
 
-interface Group {
+export interface Group {
   what: string;
   fills: Fill[];
   /** The hand-trigger this group stands (or moves). */
@@ -487,7 +487,7 @@ interface Group {
  * is the fill standing on the edge of what it cut off: the group with the most
  * lost standing room right beside its own cells (the nearest if none borders it).
  */
-function holdRoutes(world: World, groups: readonly Group[], spawn: { x: number; y: number }): Group[] {
+export function holdRoutes(world: World, groups: readonly Group[], spawn: { x: number; y: number }): Group[] {
   const W = world.width;
   const live = groups.filter((g) => g.fills.length > 0);
   const taken: Group[] = [];

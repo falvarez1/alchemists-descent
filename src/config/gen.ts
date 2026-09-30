@@ -589,6 +589,8 @@ export interface GenDef {
   lavaLakes?: LavaLakeBudget;
   /** Organic connectors (GEN 62, world/connect): the nearest spawn-reachable cell instead of the hub's centroid, wandering, swelling tunnels. Campaign floors only. */
   organicTunnels?: boolean;
+  /** Waystones on the route: the two bowls at 35% and 70% of the body-fit walk to the exit, one more beside the key (GEN 62, world/routeWaystones). Campaign floors only. */
+  routeWaystones?: boolean;
   /** Clear the loose stock (oil, gunpowder, water, sand pockets) out of every fixture's room after the last carve (GEN 62, world/looseStock). Campaign floors only. */
   clearFixtureStock?: boolean;
   /** Discrete gold pocket count (decoration stage). */
@@ -1199,6 +1201,7 @@ export const GEN: Record<BiomeId, GenDef> = {
     machines: machineBudget(['crystalrelay']),
     clearFixtureStock: true,
     organicTunnels: true,
+    routeWaystones: true,
   },
   flooded: {
     ...baselineDef(),
@@ -1206,6 +1209,7 @@ export const GEN: Record<BiomeId, GenDef> = {
     machines: machineBudget(['alchemyclock']),
     clearFixtureStock: true,
     organicTunnels: true,
+    routeWaystones: true,
   },
   timber: {
     ...baselineDef(),
@@ -1222,6 +1226,7 @@ export const GEN: Record<BiomeId, GenDef> = {
     machines: machineBudget(['alchemyclock']),
     clearFixtureStock: true,
     organicTunnels: true,
+    routeWaystones: true,
   },
   // THE GLASS GALLERIES (d3b): the vaults, fewer, under tiers of long arcaded
   // exhibition galleries (the light puzzles and the Lenswright want sight lines).
@@ -1231,6 +1236,7 @@ export const GEN: Record<BiomeId, GenDef> = {
     machines: machineBudget(['alchemyclock', 'crystalrelay']),
     clearFixtureStock: true,
     organicTunnels: true,
+    routeWaystones: true,
   },
   volcanic: {
     ...baselineDef(),
@@ -1238,6 +1244,7 @@ export const GEN: Record<BiomeId, GenDef> = {
     machines: machineBudget(['kilnelevator']),
     clearFixtureStock: true,
     organicTunnels: true,
+    routeWaystones: true,
     lavaLakes: { targetCells: 26000, maxLakes: 16, minCells: 500, maxCells: 4500, minDepth: 10, yFracMin: 0.4, maxRise: 70, halls: 10, hallRx: [44, 76], hallRy: [22, 34] },
   },
   // The Gilded Vault: crystal-vault pillared halls re-dressed as a treasury,

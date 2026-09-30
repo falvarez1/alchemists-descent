@@ -76,6 +76,7 @@ import { placeStorySites } from '@/world/storySites';
 import { placeLavaLakes, type LakeTarget, type LavaLakeResult } from '@/world/lavaLakes';
 import { clearLooseStock, type StockSite } from '@/world/looseStock';
 import { holdPortalShrine } from '@/world/portalShrine';
+import { placeRouteWaystones } from '@/world/routeWaystones';
 import type { LevelStorySites } from '@/core/story';
 
 /* ===================== Procedural Generation Map Engines ===================== */
@@ -1463,6 +1464,18 @@ export class WorldGen implements WorldGenApi {
     // The second doors' tanks and cisterns (casing, seal, liquid) likewise.
     for (const repair of setPieceRepairs) repair();
     stage('final-gauge-rescue');
+
+    // 8d++) WAYSTONES ON THE ROUTE (GEN 62): the route exists only now, so the two generated bowls move to
+    //      35% and 70% of the walk to the exit and one more is lit beside the key (world/routeWaystones).
+    if (genDef.routeWaystones) {
+      const placedWs = placeRouteWaystones({
+        // (the walk ends where the floor does: its portal, or on the last floor the colossus's hall)
+        world, ledger, spawn, exit: portal ?? boss ?? { x: wellX, y: sealY - 12 }, bowls, waystones,
+        key: pickups.find((p) => p.kind === 'key') ?? null,
+      });
+      if (shouldLogDevDiagnostics() && (placedWs.moved > 0 || placedWs.brazier)) console.warn(`[gen] ${def.id}: route waystones - ${placedWs.moved} moved, ${placedWs.kept} kept${placedWs.brazier ? ', key brazier' : ''}`);
+      stage('route-waystones');
+    }
 
     // 8d+) FIXTURE STOCK (GEN 62): a seed pocket of oil or gunpowder, a stray dune or a puddle in
     //     the room of anything the player stands at is cleared (the audit: levers 45% in oil, a
