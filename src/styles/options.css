@@ -1,0 +1,107 @@
+/* =====================================================================
+ * Player options (ui/PlayerSettings). Every rule here hangs off a body class
+ * or a custom property the dialog sets, so with nothing chosen NONE of it
+ * applies and the HUD is exactly what house.css / living-descent.css draw.
+ * ===================================================================== */
+
+/* ---------- Caption backing ---------- */
+/* A dark plate behind the words that have no scrim of their own: the narrator's
+ * caption, the creature-sound captions, and the combat callouts. */
+body.caps-backed #narration-caption {
+  padding: 8px 16px 9px; background: rgba(8, 16, 19, 0.82); border-left: 2px solid var(--house-brass, #d5b982);
+  text-shadow: none; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+}
+body.caps-backed #sound-caption { padding: 4px 9px 5px; background: rgba(8, 16, 19, 0.78); border-right: 2px solid #9c8458; text-shadow: none; }
+body.caps-backed #callout-layer .callout { padding: 4px 11px 5px; background: rgba(8, 16, 19, 0.74); border-bottom: 1px solid rgba(213, 185, 130, 0.5); }
+/* Callouts follow Text size like every other word on screen (1 at the standard size: nothing changes). */
+body #callout-layer .callout-anchor { transform: translate(-50%, -100%) scale(var(--text-scale, 1)); transform-origin: 50% 100%; }
+
+/* ---------- Numeric vitals ---------- */
+/* ui/VitalNumbers adds a .vital-num to the HP / MANA / LEV rows while the option is on. The
+ * figure hangs off the right of the bar, so the bars themselves do not move or shrink. */
+body.vitals-numeric .vital-row:has(> .vital-num) { position: relative; }
+body.vitals-numeric .vital-num {
+  position: absolute; left: calc(100% + 9px); top: 50%; transform: translateY(-50%); white-space: nowrap; pointer-events: none;
+  font: 650 calc(11.5px * var(--text-scale, 1))/1 var(--house-sans, ui-sans-serif, system-ui, sans-serif); font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em; color: #efe7d2; text-shadow: var(--house-shadow, 0 1px 2px #050b0d);
+}
+
+/* ---------- HUD size and opacity ---------- */
+/* ui/PlayerSettings sets --hud-scale / --hud-opacity and adds body.hud-custom only when either differs from 1.
+ * Each corner block scales from its own corner, so it stays anchored where house.css put it; the words inside
+ * keep following Text size (--text-scale), which is a separate control. */
+body.hud-custom #hud-left { transform: scale(var(--hud-scale, 1)); transform-origin: 0 0; }
+body.hud-custom #expedition-tools { transform: scale(var(--hud-scale, 1)); transform-origin: 0 100%; }
+body.hud-custom .wave-readout { transform: scale(var(--hud-scale, 1)); transform-origin: 100% 0; }
+body.hud-custom :is(#hud-left, #expedition-tools, .wave-readout) { opacity: var(--hud-opacity, 1); }
+/* The Pause button is a control, not a readout: it keeps its size and place (it would otherwise grow over the corner speaker). */
+
+/* ---------- Choose a seed (the fold under Today's descent on the title; ui/SeedDisclosure) ---------- */
+.entry-content nav .entry-seed { margin: 0; max-width: 380px; }
+/* A single quiet line, so it adds as little height as it can to a title that already scrolls on a short window. */
+.entry-content nav .entry-seed summary { list-style: none; padding: 2px 0; font-size: calc(12.5px * var(--text-scale)); line-height: 1.5; color: #9fb0a6; cursor: pointer; }
+.entry-seed summary::-webkit-details-marker { display: none; }
+.entry-seed summary::after { content: '\25B8'; margin-left: 8px; font-size: 0.85em; color: #8fa094; display: inline-block; transition: transform 0.15s; }
+.entry-seed[open] summary::after { transform: rotate(90deg); }
+.entry-seed summary:hover { color: #fff2ce; }
+.entry-seed-body { display: grid; gap: 6px; padding: 4px 0 12px; }
+.entry-seed-body label { font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #9fb0a6; }
+.entry-seed-body input {
+  width: min(320px, 100%); box-sizing: border-box; font: inherit; font-size: calc(15px * var(--text-scale)); color: var(--works-paper, #e6dfca);
+  background: #0f1c21d9; border: 1px solid #667b70; border-radius: 0; padding: 8px 10px;
+}
+.entry-seed-body input:focus-visible { outline: 2px solid #bde2c7; outline-offset: 2px; }
+.entry-content .entry-seed p { margin: 0; max-width: 38ch; }
+.entry-content .entry-seed .entry-seed-preview { min-height: 1.5em; font-size: calc(13px * var(--text-scale)); line-height: 1.5; color: #dcc7a1; }
+.entry-content .entry-seed .entry-seed-note { margin-top: 4px; font-size: calc(12.5px * var(--text-scale)); line-height: 1.5; color: #9fb0a6; }
+.entry-seed-actions { display: flex; flex-wrap: wrap; gap: 2px 22px; }
+/* (specific enough to beat the title's 'first button in a list is the big gold one' rule, which would otherwise dress Begin with this seed as the main call to action) */
+.entry-content nav .entry-seed .entry-seed-actions button:not([hidden]) { padding: 6px 0; font-size: calc(14px * var(--text-scale)); color: #f2e3b6; border-bottom: 1px solid #ab9061; }
+.entry-content nav .entry-seed .entry-seed-actions button:disabled { opacity: 0.45; border-bottom-color: transparent; cursor: default; }
+.entry-content nav .entry-seed .entry-seed-actions button[hidden] { display: none; }
+#expedition-entry.seed-open .entry-footer { visibility: hidden; }
+
+/* ---------- Enemy health bars and damage numbers (ui/EnemyReadouts) ---------- */
+/* Its own layer, made only while the option is on; it follows the camera like the combat callouts and never takes input. */
+#enemy-readout-layer { --readout-scale: 1; position: absolute; inset: 0; z-index: 6; overflow: hidden; pointer-events: none; contain: layout paint; }
+#enemy-readout-layer .enemy-hp-bar {
+  position: absolute; transform: translate(-50%, -100%); height: calc(4px * var(--readout-scale));
+  box-sizing: border-box; padding: 1px; background: rgba(8, 14, 17, 0.82); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+#enemy-readout-layer .enemy-hp-bar > div { height: 100%; background: #d4826a; background-image: linear-gradient(180deg, #f3b8a0 0 1px, transparent 1px); transition: width 0.12s linear; }
+#enemy-readout-layer .enemy-hp-num {
+  position: absolute; transform: translate(-50%, -100%); white-space: nowrap;
+  font: 700 calc(14px * var(--readout-scale) * var(--text-scale, 1))/1 var(--house-sans, ui-sans-serif, system-ui, sans-serif); font-variant-numeric: tabular-nums;
+  color: #f6e3b0; text-shadow: 0 1px 0 #1d140a, 0 0 2px #1d140a, 0 0 6px rgba(0, 0, 0, 0.7);
+}
+
+/* ---------- Hold or toggle: the latch chip (ui/LatchIndicator) ---------- */
+#latch-indicator {
+  position: absolute; left: 50%; bottom: 56px; transform: translateX(-50%); z-index: 7; max-width: 80%; pointer-events: none;
+  padding: 5px 12px 6px; background: rgba(8, 16, 19, 0.86); border-left: 2px solid var(--house-brass, #d5b982);
+  color: var(--house-paper, #e6dfca); font: 500 calc(12px * var(--text-scale, 1))/1.3 var(--house-sans, ui-sans-serif, system-ui, sans-serif); letter-spacing: 0.02em; white-space: nowrap;
+}
+#latch-indicator[hidden] { display: none; }
+
+/* ---------- Colour assist (ui/PlayerSettings sets body.assist-on and --assist-hp / -mana / -levit from config/colorAssist) ---------- */
+/* The bars keep their lit top edge, swap their hue, and each gains a pattern so colour is never the only cue:
+ * HP hatched, MANA dotted, LEV ticked. Nothing here applies while the option is Off. */
+body.assist-on.play-active #hp-fill {
+  background-color: var(--assist-hp) !important;
+  background-image: linear-gradient(180deg, var(--assist-hp-hi) 0 1px, transparent 1px), repeating-linear-gradient(135deg, rgba(8, 16, 19, 0.42) 0 2px, transparent 2px 5px) !important;
+}
+body.assist-on.play-active #mana-fill {
+  background-color: var(--assist-mana) !important;
+  background-image: linear-gradient(180deg, var(--assist-mana-hi) 0 1px, transparent 1px), radial-gradient(circle, rgba(8, 16, 19, 0.5) 0.9px, transparent 1.3px) !important;
+  background-size: auto, 4px 4px !important;
+}
+body.assist-on.play-active #levit-fill {
+  background-color: var(--assist-levit) !important;
+  background-image: linear-gradient(180deg, var(--assist-levit-hi) 0 1px, transparent 1px), repeating-linear-gradient(90deg, rgba(8, 16, 19, 0.42) 0 1px, transparent 1px 4px) !important;
+}
+/* A spent phial is crossed out (the glyph already shows the draught gone; the line does not depend on seeing its colour). */
+body.assist-on .phial[data-state="empty"]::after {
+  content: ''; position: absolute; left: 1px; right: 1px; top: 52%; height: 2px; background: var(--assist-hp, #e0957c); opacity: 0.95;
+  transform: rotate(-38deg); transform-origin: center; pointer-events: none;
+}
+body.assist-on .phial[data-state="full"] .phial-glass { stroke: #f4f1e2; stroke-width: 1.3; }

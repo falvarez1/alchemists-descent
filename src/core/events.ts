@@ -190,6 +190,8 @@ export interface EventMap {
   eyeshineCaught: { kind: EnemyKind; x: number; y: number };
   /** A light device answered: a photocell latched, a lumen bloom unfurled/furled. Audio/HUD cues. */
   lightDevice: { kind: 'photocell' | 'bloom-open' | 'bloom-furl'; x: number; y: number };
+  /** Crouch / levitate / pour / siphon LATCHED by the player's Hold-or-toggle option (input/toggleLatches); `held` is what is latched now. */
+  inputLatches: { held: Array<'down' | 'jump' | 'pour' | 'interact'> };
   /** A cast was refused for lack of mana (HUD flashes the mana bar). */
   dryFire: undefined;
   /** Flask verb refused (empty pour/throw, siphon into a full flask). */

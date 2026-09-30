@@ -48,6 +48,20 @@ function segmentDist2(ax: number, ay: number, bx: number, by: number, px: number
 }
 
 /**
+ * The player's Quality (Low): how much of each purely cosmetic burst is drawn. Only a burst that is nothing
+ * but show is thinned (no cell type to land as, no damage, no coin): a burst that lands as cells, hurts, or
+ * carries a payment is part of the world and is always whole.
+ */
+let cosmeticBurstScale = 1;
+export function setCosmeticBurstScale(scale: number): void {
+  cosmeticBurstScale = Number.isFinite(scale) ? Math.max(0.1, Math.min(1, scale)) : 1;
+}
+export function cosmeticBurstCount(count: number, type: number | null, opts: ParticleOpts | undefined, scale: number): number {
+  if (scale >= 1 || type !== null || opts?.hostileDmg || opts?.homing || opts?.value || opts?.deposit) return count;
+  return Math.max(1, Math.round(count * scale));
+}
+
+/**
  * Ballistic flying particles: explosion debris, gore, sparks, homing coins,
  * hostile thrown rocks. Ported from spawnFlyingParticle / burstParticles /
  * updateFlyingParticles (noita-sandbox.html lines 649-716).
@@ -166,7 +180,8 @@ export class Particles implements ParticlesApi {
     speed: number,
     opts?: ParticleOpts,
   ): void {
-    for (let i = 0; i < count; i++) {
+    const n = cosmeticBurstCount(count, type, opts, cosmeticBurstScale);
+    for (let i = 0; i < n; i++) {
       const a = particleRandom() * Math.PI * 2;
       const s = speed * (0.4 + particleRandom() * 0.8);
       this.spawn(

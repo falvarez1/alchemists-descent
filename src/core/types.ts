@@ -1092,6 +1092,9 @@ export interface PostFxSettings {
   /** Screen vignette strength: the compose darkens edges by this × (r²/maxR²).
    *  0.52 is the shipped look; 0 disables it. */
   vignette: number;
+  /** The player's Brightness (ui/PlayerSettings): a final-frame gain in the post pass, 1 = as shipped.
+   *  (`exposure` only reaches the WebGPU backend; on WebGL it never changed the picture.) */
+  gain?: number;
 }
 
 export type RenderBackendMode = 'webgl' | 'webgpu' | 'auto';
@@ -1316,6 +1319,23 @@ export interface GameStateData {
   arrivalGraceUntil?: number;
   creatureCaptions?: boolean;
   reduceCameraShake?: boolean;
+  /** Player options (ui/PlayerSettings; config/playerPrefs). Unset means the shipped default. */
+  /** Pause when the window loses focus (input/focusPause). Unset = on. */
+  pauseOnBlur?: boolean;
+  /** Camera shake multiplier: 0 Off, 0.5 Half, 1 Full (render/Renderer). */
+  cameraShakeScale?: number;
+  /** Teaching cards: first time only (unset = shipped), once on every floor, or never (game/Hints). */
+  hintMode?: 'first' | 'always' | 'off';
+  /** The HUD size the player chose (1 = shipped), also on the root as --hud-scale; HUD insets that clamp to an edge follow it. */
+  hudScale?: number;
+  /** Stick dead zone the player chose (config/playerPrefs PAD_DEADZONE; 0.2 = shipped). Read by InputManager.pollGamepad. */
+  padDeadzone?: number;
+  /** Enemy health bars and damage numbers (ui/EnemyReadouts): a readout only, off = unset. */
+  showEnemyHp?: boolean;
+  /** Aim assist for aim with no cursor (combat/AimGuide): off (unset), light or strong. */
+  aimAssist?: 'off' | 'light' | 'strong';
+  /** Hold or toggle: which of crouch / levitate / pour / siphon are latched by a press instead of held (input/toggleLatches). Unset = all held. */
+  toggleModes?: Partial<Record<'down' | 'jump' | 'pour' | 'interact', boolean>>;
   reduceFlashes?: boolean;
   trickshot?: TrickshotSettings;
   /** The run's SECRET alchemy reaction (derived from worldSeed; see
@@ -2647,6 +2667,8 @@ export interface HintApi {
    *  (the engine caption, a title card, the Sanctum, a notice) is on screen no
    *  teach-once fires; lessons wait, unspent, for a calm moment. */
   setTeachHeld?(held: boolean): void;
+  /** "Reset tutorials" (ui/PlayerSettings): forget every lesson taught so far, this session included. */
+  resetTaught?(): void;
 }
 
 export interface MechanismsApi {
@@ -3462,6 +3484,8 @@ export interface RunSaveState {
   kit: KitId;
   daily: string | null;
   seed: number;
+  /** The player chose `seed` on the title (see RunSummary.seedChosen). Absent on an ordinary run. */
+  seedChosen?: boolean;
   timeMs: number;
   kills: number;
   alchemicalKills: number;
@@ -3556,9 +3580,10 @@ export interface RunApi {
   /**
    * A fresh run: a new seed (or today's daily seed) with the chosen kit, at the
    * chosen difficulty when it is open to the player (else Adept). The daily is
-   * always Adept: it is one seed for everyone.
+   * always Adept: it is one seed for everyone. `seed` (never for the daily) is a seed the player
+   * chose on the title; omitted, the descent rolls its own.
    */
-  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty }): RunStartResult;
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number }): RunStartResult;
   metaView(): RunMetaView;
   chooseKit(kit: KitId): void;
   /** Remember the tier chosen (ignored while it is still locked). */
