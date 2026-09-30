@@ -1,0 +1,14 @@
+# Cloudflare Pages response headers (read by `wrangler pages deploy`; GitHub Pages ignores this file).
+#
+# Cross-origin isolation, so the Sandbox can put its world on SharedArrayBuffers and sweep it on
+# worker threads (docs/SANDBOX-MT.md). Keep these two values identical to ISOLATION_HEADERS in
+# vite.config.ts (dev + preview send the same pair; tests/hosted-headers.test.ts holds them together).
+#
+# COEP is `credentialless`, not `require-corp`: every resource on the site is same-origin today, and
+# `credentialless` keeps any future no-cors cross-origin load working (cookie-less) instead of blocked.
+# Safari does not support `credentialless`; it simply is not isolated there and runs the serial sweep.
+#
+# The workers are lazy: a visit that never opens the Workshop spawns none (ParallelSim `lazy`).
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless

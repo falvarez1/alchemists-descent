@@ -22,17 +22,23 @@ cost, which is why this route was taken instead.
 | `ParallelSim.ts` | Main-side pool. It drives both phases and replays effects in schedule order. |
 
 **Enabling it.** Use `?threads=N` (0 = serial). The default is cores−2, capped
-at 6. It needs cross-origin isolation: `vite.config.ts` sends COOP `same-origin`
-and COEP `credentialless` on dev and preview. A static host needs the same two
-headers. **The hosted game (Cloudflare Pages) deliberately does not send them**
-(no `public/_headers`, decided 2026-09-29), so hosted play runs the serial sweep.
-Reason: the pool is built in `Game`'s constructor, so an isolated page spawns up
-to 6 sim workers and their shared buffers at load for EVERY visitor, campaign-only
-players and phones included, not just when the Workshop opens. Before adding the
-headers, start the pool lazily with the Workshop (or cap it on small devices) and
-measure the campaign's cost. Without the headers there is no SharedArrayBuffer, so
-the Sandbox runs serial (as it does in any browser that does not support
-`credentialless`). The runtime A/B switch is
+at 6, and none on a touch-first device (`(pointer: coarse)`; an explicit
+`?threads=N` still wins). It needs cross-origin isolation: `vite.config.ts` sends
+COOP `same-origin` and COEP `credentialless` on dev and preview, and **the hosted
+game (Cloudflare Pages) sends the same pair from `public/_headers`**
+(`tests/hosted-headers.test.ts` holds the two together; GitHub Pages cannot send
+headers, so that build stays serial, as does Safari, which has no `credentialless`).
+
+**The pool is lazy.** `ParallelSim` is built armed in `Game`'s constructor (the shared
+buffers exist; `lazy: true`) and `Game.settleSandboxPool` spawns the workers the
+first presentation frame someone is actually in the Sandbox: the entry screen has
+decided and gone, the mode is the Workshop's, the world on screen is the Sandbox's shared
+one, and the Builder has not claimed it. A campaign-only visit, the title screen and a
+phone that never opens the Workshop spawn nothing. (The trigger cannot be "the Sandbox
+world's first tick": the boot world ticks ~24 frames behind the title before the title
+pauses it, so a `handles()`-driven start spawned all six workers for every visitor. Found
+by capturing the stack of the first `sim-worker-0` spawn.) Until the workers report ready,
+`handles` is false and the sweep runs serial; the runtime A/B switch is
 `__game.ctx.simulation.parallel.enabled`.
 
 **The substep.** Everything around the sweep stays serial on main, exactly

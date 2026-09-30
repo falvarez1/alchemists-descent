@@ -29,7 +29,12 @@ const check = (name, ok, detail = '') => {
 
 const browser = await launchBrowser();
 const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+// The Workshop unlocks once a first run has ended; give this fresh profile that, so the probe can open it.
+await context.addInitScript(() => {
+  try { localStorage.setItem('alchemists-descent-meta', JSON.stringify({ version: 1, runsEnded: 1, workshopUnlocked: true })); } catch { /* storage blocked */ }
+});
 const page = await context.newPage();
+const simWorkers = () => page.workers().filter((w) => /simWorker/i.test(w.url())).length;
 const errs = [];
 const failedRequests = [];
 page.on('pageerror', (e) => errs.push(String(e)));
@@ -42,6 +47,16 @@ try {
   const res = await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
   check('the page loads', res?.status() === 200, `status ${res?.status()}`);
   check('no failed requests', failedRequests.length === 0, failedRequests.slice(0, 3).join(' | '));
+
+  // The Sandbox sweeps on worker threads, which need SharedArrayBuffer, which needs cross-origin
+  // isolation: public/_headers sends the pair (docs/SANDBOX-MT.md). Check the response AND the page.
+  const headers = res?.headers() ?? {};
+  check(
+    'the page is served cross-origin isolated (COOP same-origin, COEP credentialless)',
+    headers['cross-origin-opener-policy'] === 'same-origin' && headers['cross-origin-embedder-policy'] === 'credentialless',
+    JSON.stringify({ coop: headers['cross-origin-opener-policy'], coep: headers['cross-origin-embedder-policy'] }),
+  );
+  check('the page is crossOriginIsolated (SharedArrayBuffer is available)', await page.evaluate(() => crossOriginIsolated === true));
 
   // DIRECT child: the toolbar's `px-icon` canvases are descendants of
   // #canvas-holder too, and a descendant selector picks an 11x11 icon that
@@ -80,6 +95,8 @@ try {
     .catch(() => false);
   check('the opening plates end and hand over control', openingEnded);
   await new Promise((r) => setTimeout(r, 800));
+  // The pool is lazy: a campaign-only visit must not spawn the Sandbox's sim workers.
+  check('no sim workers while the campaign is played', simWorkers() === 0, `${simWorkers()} sim workers`);
 
   // Pixels, not state: a hosted build with a broken shader would still reach
   // 'play-active' and show a black rectangle. Read the GL canvas inside a rAF
@@ -175,6 +192,27 @@ try {
     () => !!document.querySelector('#dev-console.open, #dev-console.visible, .console-overlay.open'),
   );
   check('the dev console does not open on backtick', !consoleOpened);
+
+  // The Workshop: back to the title, then in. The sim workers start now, and the Sandbox still draws.
+  await page.keyboard.press('Escape');
+  await page.locator('#pause-title-btn').click();
+  await page.locator('#expedition-entry:not([hidden]) [data-entry="workshop"]').click();
+  const started = await page
+    .waitForFunction(() => document.body.classList.contains('entry-active') === false, null, { timeout: 15000 })
+    .then(() => true)
+    .catch(() => false);
+  check('the Workshop opens from the title', started);
+  const spawned = await (async () => {
+    for (let i = 0; i < 60; i++) {
+      if (simWorkers() > 0) return simWorkers();
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return 0;
+  })();
+  check('opening the Workshop starts the sim workers', spawned > 0, `${spawned} sim workers`);
+  await new Promise((r) => setTimeout(r, 1500));
+  const workshop = await sample();
+  check('the Workshop is drawn, not black', workshop.lit > 50, JSON.stringify(workshop));
 
   check('no page errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 } finally {
