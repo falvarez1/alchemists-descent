@@ -45,7 +45,7 @@ import {
   woodColor,
 } from '@/sim/colors';
 import { applyBiomeExtras, applyCampaignDressing, fillMineralVugs, goldPocketBudgetForBiome } from '@/world/biomeExtras';
-import { type CarveAvoid, PlacementLedger, carveRect, sealedFootprints, tunnelTo } from '@/world/connect';
+import { type CarveAvoid, PlacementLedger, carveRect, sealedFootprints, setOrganicTunnels, tunnelTo } from '@/world/connect';
 import { applyFloraPass } from '@/world/floraPass';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
@@ -918,6 +918,7 @@ export class WorldGen implements WorldGenApi {
     };
 
     this.lastLavaLakes = null;
+    setOrganicTunnels(!!(GEN[def.biome] || GEN.earthen).organicTunnels);
     // 1) Base caves for the level's biome, replayable from the seed.
     ctx.state.currentBiome = def.biome;
     ctx.state.worldSeed = seed >>> 0;
@@ -1511,6 +1512,8 @@ export class WorldGen implements WorldGenApi {
       }
       stage('lava-lakes');
     }
+
+    setOrganicTunnels(false);
 
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
     matureVegetation(ctx.world);

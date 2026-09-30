@@ -217,7 +217,8 @@ export function placeStructures(
             const X = Math.floor(mx + Math.cos(ang) * r), Y = Math.floor(my + Math.sin(ang) * r);
             if (X < 12 || Y < 12 || X >= WIDTH - 12 || Y >= HEIGHT - 12 || blocksEntity(w.types[w.idx(X, Y)])) continue;
             const yy = settleY(X, Y);
-            if (!blocksEntity(w.types[w.idx(X, yy)])) return { x: X, y: yy };
+            // (the pickup itself rests one row above the landing: that cell must be open too)
+            if (!blocksEntity(w.types[w.idx(X, yy)]) && !blocksEntity(w.types[w.idx(X, yy - 1)])) return { x: X, y: yy };
           }
         }
       }
@@ -469,8 +470,11 @@ export function placeStructures(
 
   // Waystone-adjacent welcome: a small gold pile near waystone[1] as a lure.
   if (waystones[1]) {
+    // (beside a bowl that stands against a wall the lure can land in the rock: then it moves to open ground)
+    const lureX = waystones[1].x + 6, lureY = waystones[1].y - 2;
+    const lure = blocksEntity(w.types[w.idx(lureX, lureY)]) ? (() => { const at = lootSpot(lureX, lureY); return { x: at.x, y: at.y - 1 }; })() : { x: lureX, y: lureY };
     pickups.push(
-      makePickup('goldpile', waystones[1].x + 6, waystones[1].y - 2, { amount: 8 }),
+      makePickup('goldpile', lure.x, lure.y, { amount: 8 }),
     );
   }
 

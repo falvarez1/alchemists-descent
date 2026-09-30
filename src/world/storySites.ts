@@ -117,6 +117,26 @@ interface Nook {
   mouth: -1 | 1;
 }
 
+/**
+ * Does the straight run (x0, y0) -> (x1, y1), six cells either side, cross Metal? A connector
+ * carve spares Metal (a vault's door slab, a shell, a casing), so a nook whose connector must
+ * cross one is cut off from the floor it was aimed at however open the rock round it looks (GEN 62:
+ * d3 seed 42's valve nook, behind a mechanism vault's door).
+ */
+function metalOnRun(world: World, x0: number, y0: number, x1: number, y1: number): boolean {
+  const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 2));
+  for (let k = 0; k <= n; k++) {
+    const X = Math.round(x0 + ((x1 - x0) * k) / n), Y = Math.round(y0 + ((y1 - y0) * k) / n);
+    for (let dy = -6; dy <= 6; dy += 3) {
+      for (let dx = -6; dx <= 6; dx += 3) {
+        const xx = X + dx, yy = Y + dy;
+        if (xx >= 0 && xx < WIDTH && yy >= 0 && yy < HEIGHT && world.types[xx + yy * WIDTH] === Cell.Metal) return true;
+      }
+    }
+  }
+  return false;
+}
+
 function mainPathAt(graph: RegionGraph, x: number, y: number): boolean {
   const gx = Math.floor(x / graph.scale), gy = Math.floor(y / graph.scale);
   if (gx < 0 || gy < 0 || gx >= graph.w || gy >= graph.h) return false;
@@ -159,6 +179,14 @@ function carveNook(world: World, rng: Rng, ledger: PlacementLedger, reach: Uint8
     if (avoid.some(a => Math.hypot(cx - a.x, floorY - a.y) < a.r)) continue;
     if (ledger.intersects(x0 - 10, y0 - 8, x1 + 10, floorY + 6)) continue;
     if (solidity(world, x0 - 3, y0 - 3, x1 + 3, floorY + 4) < 0.78) continue;
+    // The nook's stone floor strip (floorY+1..+3) closes whatever open ground lies in those rows: a
+    // walkway whose headroom it would fill is a route it severs (GEN 62: d2 seed 7's valve nook cut the
+    // cave its own connector was aimed at). No nook over a cell the alchemist can stand in.
+    let sever = false;
+    for (let yy = floorY + 1; yy <= floorY + 19 && !sever; yy += 2) {
+      for (let xx = x0 - 6; xx <= x1 + 6; xx += 2) if (reach[xx + yy * WIDTH] === 1) { sever = true; break; }
+    }
+    if (sever) continue;
     // Dry ground only: nothing liquid level with the floor or above it nearby.
     if (!roomIsDry(world, x0, x1, floorY, spec.h + 40)) continue;
     // The route beside it: a main-path standable floor within 90 cells along the nook's floor row.
@@ -177,6 +205,7 @@ function carveNook(world: World, rng: Rng, ledger: PlacementLedger, reach: Uint8
           // ends in, so a route floor inside a lair let the connector cut the lair
           // (d2 seed 10: through the grove's west wall and floor).
           if (reach[x + y * WIDTH] !== 1 || !standable(world, x, y) || inFootprint(sealed, x, y) || !roomIsDry(world, x - HALF_W, x + HALF_W, y, BODY_H, 0)) continue;
+          if (metalOnRun(world, mouth < 0 ? x0 + 4 : x1 - 4, floorY - 9, x, y - 9)) continue;
           if (!target || step < target.dist) target = { x, y, mouth, dist: step };
           break;
         }
@@ -200,7 +229,9 @@ function carveNook(world: World, rng: Rng, ledger: PlacementLedger, reach: Uint8
   // Like every late tunnel it walks AROUND sealed features (a lair's pool, the sump, light and
   // second-door rooms).
   const mx = best.mouth < 0 ? x0 + 4 : x1 - 4;
-  tunnelTo(world, rng, mx, floorY - 9, best.tx, best.ty - 9, 10, { halfW: 6, up: 10, down: 8 }, 26, sealed);
+  // (a nook's connector ends on a floor the arrival can already walk: findable by construction, so it keeps the
+  // plain walk of GEN 61 - no wander, no swell - whatever the floor's connector style)
+  tunnelTo(world, rng, mx, floorY - 9, best.tx, best.ty - 9, 10, { halfW: 6, up: 10, down: 8 }, 26, sealed, false);
   ledger.reserve(x0 - 6, floorY - spec.h - 4, x1 + 6, floorY + 4, spec.label);
   return { x0, x1, floorY, mouth: best.mouth };
 }
@@ -280,7 +311,7 @@ export function placeStorySites(
   // Where the player can actually be, from the arrival (9x17, levitation covers vertical runs).
   // A nook's connector ends on one of these floors, so the camp and the valve are findable by
   // construction rather than by the rescue passes.
-  const reach = wizardMask({ world, spawn: anchors.spawn });
+  let reach = wizardMask({ world, spawn: anchors.spawn });
   // Pell's camp: mid-floor (a stop on the way, not at the door).
   const campNook = carveNook(world, rng, ledger, reach, anchors.spawn, avoid, { w: 92, h: 38, near: 220, far: 620, label: 'story-camp' });
   let camp: StoryCampSite | null = null;
@@ -293,6 +324,9 @@ export function placeStorySites(
     if (q) camp = { x: q.x, floorY: q.y, facing: q.x < anchors.spawn.x ? 1 : -1, x0: q.x - 34, x1: q.x + 34 };
   }
   if (camp) lights.push(campLight(camp, campLit));
+  // The camp's carve (a stone floor strip, a connector) can close a way the valve's connector was going to
+  // end on: the walk is read again before the second nook picks its floor (GEN 62: d2 seed 7's valve).
+  if (campNook) reach = wizardMask({ world, spawn: anchors.spawn });
   // The resonant valve: farther off, clear of the camp.
   const valveAvoid = camp ? [...avoid, { x: camp.x, y: camp.floorY, r: 260 }] : avoid;
   const valveNook = carveNook(world, rng, ledger, reach, anchors.spawn, valveAvoid, { w: 128, h: 44, near: 300, far: 900, label: 'story-valve' });
