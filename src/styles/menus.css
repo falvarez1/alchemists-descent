@@ -567,11 +567,28 @@ body.play-active #descend-btn:disabled, #descend-btn:disabled { background: none
 /* =====================================================================
  * Controls & comfort
  * ===================================================================== */
-#player-settings { width: min(640px, calc(100vw - 48px)); padding: 0; background: var(--m-surface); border: 1px solid var(--m-line-strong); border-radius: 2px; box-shadow: var(--m-shadow); color: var(--m-text); scrollbar-color: #3d5357 transparent; }
-#player-settings form { padding: 0 28px 26px; }
+#player-settings { width: min(640px, calc(100vw - 48px)); padding: 0; background: var(--m-surface); border: 1px solid var(--m-line-strong); border-radius: 2px; box-shadow: var(--m-shadow); color: var(--m-text); scrollbar-color: #3d5357 transparent; overflow: hidden; }
+/* A fixed-height frame: the heading and the tab row stay put, only the panel scrolls,
+ * so the dialog does not change size as you move between tabs. */
+#player-settings[open] { display: flex; flex-direction: column; height: min(700px, calc(100dvh - 48px)); max-height: none; }
+#player-settings form { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 0; }
 #player-settings .settings-heading {
-  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 20px;
-  margin: 0 -28px 6px; padding: 20px 28px 14px; background: var(--m-surface); border-bottom: 1px solid var(--m-line);
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  margin: 0; padding: 20px 28px 14px; background: var(--m-surface);
+}
+#player-settings .settings-tabs { flex: none; padding: 0 28px; }
+#player-settings .menu-tab {
+  padding: 9px 12px 10px; background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  color: var(--m-muted); font: 500 calc(13px * var(--text-scale, 1))/1.1 var(--m-sans);
+}
+#player-settings .menu-tab:hover { background: none; color: var(--m-text); }
+#player-settings .menu-tab[aria-selected="true"] { color: var(--m-brass); border-bottom-color: var(--m-brass); }
+#player-settings .settings-panels { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 28px 24px; scrollbar-color: #3d5357 transparent; scroll-padding: 12px; }
+#player-settings .settings-status { flex: none; margin: 0; padding: 8px 28px 10px; border-top: 1px solid var(--m-line); color: var(--m-brass); font: 400 calc(12.5px * var(--text-scale, 1))/1.4 var(--m-sans); }
+#player-settings .settings-status:empty { display: none; }
+@media (max-height: 560px) {
+  #player-settings .settings-heading { padding: 10px 28px 8px; }
+  #player-settings h2 { font-size: calc(24px * var(--text-scale, 1)); }
 }
 #player-settings h2 { margin: 0; font: 500 calc(32px * var(--text-scale, 1))/1.05 var(--m-serif); color: var(--m-text); }
 #player-settings h3 { margin: 24px 0 10px; font: 500 calc(21px * var(--text-scale, 1))/1.1 var(--m-serif); color: var(--m-text); }
@@ -602,5 +619,27 @@ body.play-active #descend-btn:disabled, #descend-btn:disabled { background: none
   font: 600 calc(10px * var(--text-scale, 1))/1 var(--m-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--m-brass);
 }
 #player-settings .binding-list button { text-transform: none; }
-/* The sticky heading must never sit over a focused or scrolled-to option. */
-#player-settings { scroll-padding-top: 88px; }
+/* Breathing room: rows inside a group, blocks inside a group, and a label from its control. */
+#player-settings .settings-options { gap: 16px; }
+#player-settings .settings-group > .settings-options + .settings-options, #player-settings .settings-group > .settings-options + p { margin-top: 18px; }
+#player-settings .settings-group > p:first-of-type { margin-top: 0; }
+#player-settings .settings-group > p + .binding-list { margin-top: 14px; }
+#player-settings .settings-group > .binding-list + p, #player-settings .settings-group > p + #reset-controls, #player-settings .settings-group > #binding-feedback + #reset-controls { margin-top: 12px; }
+#player-settings .settings-field { grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; row-gap: 5px; align-items: center; }
+#player-settings .settings-field > label { font-size: calc(14px * var(--text-scale, 1)); }
+#player-settings .settings-field > select { margin: 0; min-width: 9em; max-width: 100%; }
+#player-settings .settings-field > .settings-note { grid-column: 1 / -1; margin-left: 0; }
+#player-settings .settings-volume label { column-gap: 18px; }
+#player-settings #binding-feedback { margin: 8px 0 12px; }
+#player-settings #binding-feedback:empty { margin: 0; }
+#player-settings .binding-list button { text-align: left; }
+@media (max-width: 520px) {
+  #player-settings h2 { font-size: calc(26px * var(--text-scale, 1)); }
+  #player-settings .settings-heading { padding: 16px 20px 12px; }
+  #player-settings .settings-tabs { padding: 0 20px; }
+  #player-settings .settings-tabs .menu-tab { flex: 1 1 auto; justify-content: center; text-align: center; }
+  #player-settings .settings-panels { padding: 2px 20px 22px; }
+  #player-settings .settings-status { padding-inline: 20px; }
+  #player-settings .binding-list { grid-template-columns: 1fr; }
+}
+#player-settings .settings-options > label > .key { margin-left: 2px; }

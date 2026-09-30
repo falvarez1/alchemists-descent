@@ -161,6 +161,10 @@ export class InputManager {
           focused.selectedIndex = Math.max(0, Math.min(focused.options.length - 1, focused.selectedIndex + (pressed(15) ? 1 : -1)));
           focused.dispatchEvent(new Event('change'));
         }
+        // The settings dialog's tab row: LB / RB step to the previous / next section.
+        if (overlay instanceof HTMLDialogElement && (pressed(4) || pressed(5))) {
+          window.dispatchEvent(new CustomEvent('settings-tab-step', { detail: pressed(4) ? -1 : 1 }));
+        }
         if (pressed(1)) {
           if (overlay instanceof HTMLDialogElement) overlay.close();
           else window.dispatchEvent(new Event('game-pause-request'));

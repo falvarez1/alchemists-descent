@@ -18,6 +18,19 @@ export const BINDING_LABELS: Readonly<Record<BindingAction, string>> = {
 };
 
 /**
+ * The dialog's sections, in tab order. Each is one panel of the tab row: what
+ * the player hears, what they see and how it is set for comfort, how a fight
+ * plays, and then every way of steering (keyboard, controller, touch).
+ */
+export const SETTINGS_TABS = [
+  { id: 'sound', label: 'Sound' },
+  { id: 'display', label: 'Display & comfort' },
+  { id: 'gameplay', label: 'Gameplay' },
+  { id: 'controls', label: 'Controls' },
+] as const;
+export type SettingsTab = (typeof SETTINGS_TABS)[number]['id'];
+
+/**
  * Only the Trickshot switches are player-facing. Its timing numbers (slow-motion
  * speed, windows, aim assist, impact pause) always come from the tuned defaults
  * in config/trickshot.ts, so an old saved slider value cannot outlive the sliders.
@@ -39,36 +52,59 @@ export function readPlayerPreferences(storage: Pick<Storage, 'getItem'> | null =
   } catch { return { ...defaults, highReadability: false, creatureCaptions: false, trickshot: playerTrickshot(null), volume: sanitizeVolumes(null), narration: true, muted: false }; }
 }
 
+/** One checkbox row: the label, and an optional one-line note the control is described by. */
+function checkRow(name: string, label: string, note?: string): string {
+  return `<div class="settings-option"><label><input type="checkbox" name="${name}"${note ? ` aria-describedby="note-${name}"` : ''}> ${label}</label>${note ? `<p class="settings-note" id="note-${name}">${note}</p>` : ''}</div>`;
+}
+
+/** One select row: the label at the left, the choice at the right, the note beneath. */
+function selectRow(name: string, label: string, choices: ReadonlyArray<readonly [string, string]>, note?: string): string {
+  const options = choices.map(([value, text]) => `<option value="${value}">${text}</option>`).join('');
+  return `<div class="settings-option settings-field"><label for="set-${name}">${label}</label><select id="set-${name}" name="${name}"${note ? ` aria-describedby="note-${name}"` : ''}>${options}</select>${note ? `<p class="settings-note" id="note-${name}">${note}</p>` : ''}</div>`;
+}
+
 export class PlayerSettings {
   private readonly dialog = document.createElement('dialog');
   private previousPause = false;
   private returnFocus: HTMLElement | null = null;
   private preferences = readPlayerPreferences();
   private readonly quick: SoundQuickControl;
+  private tab: SettingsTab = 'sound';
+  private readonly onTabStep = (event: Event): void => {
+    const step = event instanceof CustomEvent && event.detail === -1 ? -1 : 1;
+    if (this.dialog.open) this.stepTab(step, true);
+  };
 
   constructor(private readonly ctx: Ctx) {
     this.dialog.id = 'player-settings';
     this.dialog.setAttribute('aria-labelledby', 'player-settings-title');
     const clipKey = keyLabel(getBindings().clip);
-    // Grouped the way a player looks for them: what they hear, what they see,
-    // how fights feel, clips, then the keys. Every combat option is reachable
-    // on its own: the finisher does not live inside the Trickshot experiment.
+    // Grouped the way a player looks for them, one panel per tab: what they hear,
+    // what they see, how fights feel, then the keys. Every combat option is
+    // reachable on its own: the finisher does not live inside the Trickshot experiment.
+    const tabs = SETTINGS_TABS.map(({ id, label }, index) =>
+      `<button type="button" role="tab" class="menu-tab" id="settings-tab-${id}" data-tab="${id}" aria-controls="settings-panel-${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`).join('');
     this.dialog.innerHTML = `<form method="dialog"><div class="settings-heading"><h2 id="player-settings-title">Make yourself at home</h2><button value="close" class="menu-close" aria-label="Close settings"><kbd class="key">Esc</kbd>Close</button></div>
-      <section class="settings-group" aria-labelledby="settings-sound"><h3 id="settings-sound">Sound</h3>
+      <div class="settings-tabs menu-tabs" role="tablist" aria-label="Settings sections">${tabs}</div>
+      <div class="settings-panels">
+      <div role="tabpanel" class="settings-panel" id="settings-panel-sound" aria-labelledby="settings-tab-sound">
+      <section class="settings-group" aria-labelledby="settings-sound"><h3 id="settings-sound">Volume</h3>
       <div class="settings-options"><label><input type="checkbox" name="muted"> Mute all sound <kbd class="key" data-mute-key>${keyLabel(getBindings().mute)}</kbd></label></div><div class="settings-options settings-volume">
       <label>Master<input type="range" name="volume-master" min="0" max="100" step="1"><output id="volume-master-value"></output></label>
       <label>Effects<input type="range" name="volume-effects" min="0" max="100" step="1"><output id="volume-effects-value"></output></label>
       <label>Ambience<input type="range" name="volume-ambience" min="0" max="100" step="1"><output id="volume-ambience-value"></output></label>
       <label>Music<input type="range" name="volume-music" min="0" max="100" step="1"><output id="volume-music-value"></output></label>
-      <label>Voice<input type="range" name="volume-voice" min="0" max="100" step="1"><output id="volume-voice-value"></output></label></div>
-      <div class="settings-options"><div class="settings-option"><label><input type="checkbox" name="narration"> Narration</label>
-      <p class="settings-note">An old docent of the Works reads the moments worth reading aloud. Everything he says is already on screen.</p></div></div></section>
-      <section class="settings-group" aria-labelledby="settings-comfort"><h3 id="settings-comfort">Display & comfort</h3><div class="settings-options">
-      <label>Text size<select name="textScale"><option value="1">Standard</option><option value="1.15">Large</option><option value="1.3">Larger</option></select></label>
-      <label><input type="checkbox" name="reducedFlashes"> Reduce flashes and pulses</label>
-      <label><input type="checkbox" name="cameraShake"> Camera shake</label>
-      <label><input type="checkbox" name="highReadability"> High-readability lighting</label>
-      <label><input type="checkbox" name="creatureCaptions"> Creature sound captions</label></div></section>
+      <label>Voice<input type="range" name="volume-voice" min="0" max="100" step="1"><output id="volume-voice-value"></output></label></div></section>
+      <section class="settings-group" aria-labelledby="settings-narrator"><h3 id="settings-narrator">Narrator</h3><div class="settings-options">
+      ${checkRow('narration', 'Narration', 'An old docent of the Works reads the moments worth reading aloud. Everything he says is already on screen.')}</div></section></div>
+      <div role="tabpanel" class="settings-panel" id="settings-panel-display" aria-labelledby="settings-tab-display" hidden>
+      <section class="settings-group" aria-labelledby="settings-comfort"><h3 id="settings-comfort">Reading and comfort</h3><div class="settings-options">
+      ${selectRow('textScale', 'Text size', [['1', 'Standard'], ['1.15', 'Large'], ['1.3', 'Larger']])}
+      ${checkRow('reducedFlashes', 'Reduce flashes and pulses')}
+      ${checkRow('cameraShake', 'Camera shake')}
+      ${checkRow('highReadability', 'High-readability lighting')}
+      ${checkRow('creatureCaptions', 'Creature sound captions')}</div></section></div>
+      <div role="tabpanel" class="settings-panel" id="settings-panel-gameplay" aria-labelledby="settings-tab-gameplay" hidden>
       <section class="settings-group" aria-labelledby="settings-combat"><h3 id="settings-combat">Combat</h3><div class="settings-options">
       <div class="settings-option"><label><input type="checkbox" name="finisher"> Weaver-leg finisher</label>
       <p class="settings-note">With a Weaver's own leg in hand and its owner wounded, the swing slows as it closes, and only a real hit ends it. A miss just costs the moment.</p>
@@ -78,15 +114,19 @@ export class PlayerSettings {
       <p class="settings-note" id="trickshot-tuning">An assisted lock steadies single shots. The guide marks first contact; a wider ring shows spread, a broken ring marks uncertain follow-through. Seeking spells and streams keep free aim.</p></div></div></section>
       <section class="settings-group" aria-labelledby="settings-clips"><h3 id="settings-clips">Clips</h3><div class="settings-options">
       <div class="settings-option"><label><input type="checkbox" name="recordClips"> Keep the last ten seconds of play</label>
-      <p class="settings-note">Press <kbd class="key" data-clip-key>${clipKey}</kbd> (View on a controller) to save them as a GIF. The death screen and the ledger offer it too.</p></div></div></section>
-      <section class="settings-group" aria-labelledby="settings-touch"><h3 id="settings-touch">Touch controls</h3>
-      <label>Show touch controls<select name="touchControls"><option value="auto">Auto (touch devices)</option><option value="on">Always</option><option value="off">Never</option></select></label>
-      <p>Left pad moves and climbs. Right pad aims and casts. Hold Jump to fly; Grip holds a wall. Use interacts or fills a flask. Tools has flask actions, carrying, glowseeds, and an Aim only switch. Landscape gives you a larger view. The screen stays awake during play when your browser allows it; Pause releases it.</p></section>
+      <p class="settings-note">Press <kbd class="key" data-clip-key>${clipKey}</kbd> (View on a controller) to save them as a GIF. The death screen and the ledger offer it too.</p></div></div></section></div>
+      <div role="tabpanel" class="settings-panel" id="settings-panel-controls" aria-labelledby="settings-tab-controls" hidden>
       <section class="settings-group" aria-labelledby="settings-keys"><h3 id="settings-keys">Keyboard</h3><p>Choose an action, then press its new key. Mouse aims; left click casts; right click throws a flask. With a Weaver leg equipped: left click whips, right click throws the leg, and Carry drops it.</p>
       <div class="binding-list"></div><p id="binding-feedback" role="status"></p>
       <button type="button" id="reset-controls">Restore controls</button></section>
-      <section class="settings-group" aria-labelledby="settings-pad"><h3 id="settings-pad">Controller</h3><p class="controller-help">Left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. With a Weaver leg: RT whips, RB throws it, LB drops it. Start pauses; View saves a clip.</p></section></form>`;
+      <section class="settings-group" aria-labelledby="settings-pad"><h3 id="settings-pad">Controller</h3><p class="controller-help">Left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. With a Weaver leg: RT whips, RB throws it, LB drops it. Start pauses; View saves a clip.</p></section>
+      <section class="settings-group" aria-labelledby="settings-touch"><h3 id="settings-touch">Touch controls</h3><div class="settings-options">
+      ${selectRow('touchControls', 'Show touch controls', [['auto', 'Auto (touch devices)'], ['on', 'Always'], ['off', 'Never']])}</div>
+      <p>Left pad moves and climbs. Right pad aims and casts. Hold Jump to fly; Grip holds a wall. Use interacts or fills a flask. Tools has flask actions, carrying, glowseeds, and an Aim only switch. Landscape gives you a larger view. The screen stays awake during play when your browser allows it; Pause releases it.</p></section></div>
+      </div>
+      <p class="settings-status" id="settings-status" role="status"></p></form>`;
     document.getElementById('canvas-holder')!.appendChild(this.dialog);
+    this.wireTabs();
     const touchControls = this.dialog.querySelector<HTMLSelectElement>('[name="touchControls"]')!;
     touchControls.value = readTouchControlsPreference();
     touchControls.addEventListener('change', () => {
@@ -112,7 +152,7 @@ export class PlayerSettings {
     const recordClips = this.dialog.querySelector<HTMLInputElement>('[name="recordClips"]')!;
     recordClips.checked = isClipRecordingEnabled();
     recordClips.addEventListener('change', () => {
-      if (!setClipRecordingEnabled(recordClips.checked)) this.dialog.querySelector('#binding-feedback')!.textContent = 'Preferences apply for this session. Local storage is unavailable.';
+      if (!setClipRecordingEnabled(recordClips.checked)) this.dialog.querySelector('#settings-status')!.textContent = 'Preferences apply for this session. Local storage is unavailable.';
     });
     this.dialog.querySelector('[name="trickshotEnabled"]')!.addEventListener('change', e => {
       this.preferences.trickshot.enabled = (e.target as HTMLInputElement).checked; this.apply(true);
@@ -141,10 +181,47 @@ export class PlayerSettings {
       preview: (channel) => this.preview(channel),
     });
     this.renderBindings(); this.apply();
+    window.addEventListener('settings-tab-step', this.onTabStep);
     const pause = document.createElement('button');
     pause.id = 'pause-settings'; pause.textContent = 'Controls & comfort'; pause.type = 'button';
     pause.addEventListener('click', () => this.open());
     document.querySelector('.pause-actions')?.appendChild(pause);
+  }
+
+  /** The tab row: click or arrow keys to move between panels, Home/End for the ends. */
+  private wireTabs(): void {
+    const list = this.dialog.querySelector<HTMLElement>('[role="tablist"]')!;
+    for (const tab of list.querySelectorAll<HTMLButtonElement>('[role="tab"]')) {
+      tab.addEventListener('click', () => this.selectTab(tab.dataset.tab as SettingsTab, false));
+    }
+    list.addEventListener('keydown', (event) => {
+      const ids = SETTINGS_TABS.map(t => t.id);
+      const at = ids.indexOf(this.tab);
+      const next = event.key === 'ArrowRight' ? (at + 1) % ids.length
+        : event.key === 'ArrowLeft' ? (at + ids.length - 1) % ids.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? ids.length - 1 : -1;
+      if (next < 0) return;
+      event.preventDefault();
+      this.selectTab(ids[next], true);
+    });
+  }
+
+  /** Show one panel. Focus follows only when the move came from the keyboard or a controller. */
+  private selectTab(tab: SettingsTab, focus: boolean): void {
+    this.tab = tab;
+    for (const button of this.dialog.querySelectorAll<HTMLButtonElement>('[role="tab"]')) {
+      const selected = button.dataset.tab === tab;
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+      if (selected && focus) button.focus();
+    }
+    for (const panel of this.dialog.querySelectorAll<HTMLElement>('[role="tabpanel"]')) panel.hidden = panel.id !== `settings-panel-${tab}`;
+    this.dialog.querySelector('.settings-panels')!.scrollTop = 0;
+  }
+
+  private stepTab(step: 1 | -1, focus: boolean): void {
+    const ids = SETTINGS_TABS.map(t => t.id);
+    this.selectTab(ids[(ids.indexOf(this.tab) + step + ids.length) % ids.length], focus);
   }
 
   /** A small cue through the bus a slider controls, so you hear the level you chose. */
@@ -227,17 +304,22 @@ export class PlayerSettings {
     this.quick?.refresh();
     this.ctx.narrator?.setEnabled(this.preferences.narration);
     if (persist) try { localStorage.setItem(KEY, JSON.stringify(this.preferences)); } catch {
-      this.dialog.querySelector('#binding-feedback')!.textContent = 'Preferences apply for this session. Local storage is unavailable.';
+      this.dialog.querySelector('#settings-status')!.textContent = 'Preferences apply for this session. Local storage is unavailable.';
     }
   }
 
-  open(): void {
+  open(tab?: SettingsTab): void {
     if (this.dialog.open) return;
     this.previousPause = this.ctx.state.paused;
     this.returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.ctx.state.paused = true;
+    this.selectTab(tab ?? this.tab, false);
     this.dialog.showModal();
+    this.dialog.querySelector<HTMLElement>(`#settings-tab-${this.tab}`)?.focus();
   }
 
-  dispose(): void { this.quick.dispose(); this.dialog.remove(); document.getElementById('pause-settings')?.remove(); }
+  dispose(): void {
+    window.removeEventListener('settings-tab-step', this.onTabStep);
+    this.quick.dispose(); this.dialog.remove(); document.getElementById('pause-settings')?.remove();
+  }
 }
