@@ -6,7 +6,7 @@
  * path calls, animated by `t` (seconds into the plate).
  */
 
-export type PlateArtId = 'town' | 'lift' | 'works' | 'flue' | 'window' | 'pell' | 'lantern' | 'farewell';
+export type PlateArtId = 'town' | 'lift' | 'works' | 'flue' | 'window' | 'pell' | 'pellcup' | 'lantern' | 'farewell';
 
 type G = CanvasRenderingContext2D;
 
@@ -140,8 +140,26 @@ function apprentice(g: G, x: number, y: number, s: number, color: string, facing
   if (wandGlow > 0) glow(g, x + facing * 16 * s, y - 30 * s, 16 * s, [120, 230, 255], 0.55 * wandGlow);
 }
 
-/** Pell: a long coat, a map case slung on his back, a lantern on a pole. */
-function pellFigure(g: G, x: number, y: number, s: number, color: string, t: number, wave: boolean, lamp = true): void {
+/** A teacup with two threads of steam (Pell's ending when the apprentice took his tea). */
+function teacup(g: G, x: number, y: number, s: number, t: number): void {
+  g.fillStyle = '#efe4cc';
+  g.beginPath(); g.moveTo(x - 5 * s, y - 6 * s); g.lineTo(x + 5 * s, y - 6 * s); g.lineTo(x + 3.6 * s, y); g.lineTo(x - 3.6 * s, y); g.closePath(); g.fill();
+  g.strokeStyle = '#efe4cc'; g.lineWidth = 1.6 * s;
+  g.beginPath(); g.arc(x + 5.4 * s, y - 3.4 * s, 2.4 * s, -1.3, 1.3); g.stroke();
+  g.strokeStyle = 'rgba(240,236,226,0.38)'; g.lineWidth = 1.4 * s; g.lineCap = 'round';
+  for (let k = 0; k < 2; k++) {
+    g.beginPath();
+    for (let i = 0; i <= 8; i++) {
+      const yy = y - 8 * s - i * 3 * s, xx = x + (k ? 2.5 : -2.5) * s + Math.sin(t * 2 + i * 0.7 + k * 2) * 1.6 * s;
+      if (i === 0) g.moveTo(xx, yy); else g.lineTo(xx, yy);
+    }
+    g.stroke();
+  }
+  g.lineCap = 'butt';
+}
+
+/** Pell: a long coat, a map case slung on his back, a lantern on a pole. `cup`: his free hand holds out a cup. */
+function pellFigure(g: G, x: number, y: number, s: number, color: string, t: number, wave: boolean, lamp = true, cup = false): void {
   g.fillStyle = color;
   g.beginPath();
   g.moveTo(x - 9 * s, y); g.lineTo(x - 6 * s, y - 34 * s); g.lineTo(x + 6 * s, y - 34 * s); g.lineTo(x + 10 * s, y);
@@ -164,9 +182,11 @@ function pellFigure(g: G, x: number, y: number, s: number, color: string, t: num
   // His free arm: raised in a wave, or at his side.
   g.strokeStyle = color; g.lineWidth = 3 * s;
   g.beginPath(); g.moveTo(x - 5 * s, y - 30 * s);
-  if (wave) { const a = Math.sin(t * 5) * 0.4; g.lineTo(x - 10 * s, y - 42 * s); g.lineTo(x - 12 * s + a * 6 * s, y - 54 * s); }
+  if (cup) { g.lineTo(x - 13 * s, y - 26 * s); g.lineTo(x - 20 * s, y - 29 * s); }
+  else if (wave) { const a = Math.sin(t * 5) * 0.4; g.lineTo(x - 10 * s, y - 42 * s); g.lineTo(x - 12 * s + a * 6 * s, y - 54 * s); }
   else g.lineTo(x - 9 * s, y - 16 * s);
   g.stroke();
+  if (cup) teacup(g, x - 22 * s, y - 28 * s, s, t);
 }
 
 /** A brass speaking-pipe's horn, glowing warm when it speaks. */
@@ -347,7 +367,7 @@ function windowPlate(g: G, w: number, h: number, t: number): void {
   motes(g, t, w, h, 36, [255, 245, 220], 1, 6);
 }
 
-function flueTop(g: G, w: number, h: number, t: number, who: 'pell' | 'lantern'): void {
+function flueTop(g: G, w: number, h: number, t: number, who: 'pell' | 'pellcup' | 'lantern'): void {
   const floor = h * 0.8, hx0 = w * 0.4, hx1 = w * 0.6, hy = h * 0.15;
   // The flue's last chamber: soot-dark brick, warmed where the morning comes in.
   g.fillStyle = '#1b140f'; g.fillRect(0, 0, w, h);
@@ -379,7 +399,15 @@ function flueTop(g: G, w: number, h: number, t: number, who: 'pell' | 'lantern')
   g.fillStyle = '#100b08'; g.fillRect(0, floor, w, h - floor);
   g.fillStyle = 'rgba(255,230,180,0.22)'; g.fillRect(w * 0.3, floor, w * 0.4, 2);
   if (who === 'pell') pellFigure(g, w * 0.64, floor, 2.2, '#0d0a08', t, t > 0.4);
-  else {
+  else if (who === 'pellcup') {
+    // He brought the kettle: a cup in his hand, and another waiting on a crate by the ladder.
+    const cx = w * 0.4, top = floor - 40;
+    g.fillStyle = '#100b08'; g.fillRect(cx - 34, top, 68, 40);
+    g.fillStyle = 'rgba(255,230,180,0.16)'; g.fillRect(cx - 34, top, 68, 2); g.fillRect(cx - 34, top + 19, 68, 1);
+    teacup(g, cx, top, 2.2, t + 1.3);
+    glow(g, cx, top - 14, 70, [255, 190, 110], 0.14);
+    pellFigure(g, w * 0.64, floor, 2.2, '#0d0a08', t, false, true, true);
+  } else {
     // Only his lantern, its pole planted by the ladder, still lit; the finished map on the boards beneath it.
     const px = w * 0.64, top = floor - 150, sway = Math.sin(t * 1.4) * 2;
     g.strokeStyle = '#0d0a08'; g.lineWidth = 4;
@@ -455,6 +483,7 @@ export function paintPlate(g: G, art: PlateArtId, w: number, h: number, t: numbe
     case 'flue': flue(g, w, h, t); break;
     case 'window': windowPlate(g, w, h, t); break;
     case 'pell': flueTop(g, w, h, t, 'pell'); break;
+    case 'pellcup': flueTop(g, w, h, t, 'pellcup'); break;
     case 'lantern': flueTop(g, w, h, t, 'lantern'); break;
     case 'farewell': farewell(g, w, h, t, speaking); break;
   }

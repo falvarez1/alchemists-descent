@@ -1,5 +1,5 @@
 import type { Beat, Speaker, StoryBiome, StoryLine } from './types';
-import { BOSS_PROLOGUES, DOCENT_ASIDES, DOCENT_PIPES, ESCAPE_LINES } from './docent';
+import { BOSS_EPILOGUES, BOSS_PROLOGUES, DOCENT_ASIDES, DOCENT_PIPES, ESCAPE_LINES } from './docent';
 import { PELL, PELL_LAST_PAGE, PELL_MAP_PAGES } from './pell';
 import { ASH_DOORS, ASH_GREETINGS } from './oldOnes';
 import { ECHOES } from './echoes';
@@ -11,6 +11,7 @@ export * from './pell';
 export * from './oldOnes';
 export * from './echoes';
 export * from './cinematics';
+export * from './clerk';
 
 /** Floor names for the Journal (a biome a floor can be). */
 export const STORY_FLOOR_NAMES: Readonly<Partial<Record<StoryBiome, string>>> = {
@@ -61,7 +62,7 @@ export function journalEntries(): JournalEntry[] {
   for (const biome of STORY_FLOOR_ORDER) {
     if (DOCENT_PIPES[biome]) out.push(docentEntry(biome));
     const echo = ECHOES[biome];
-    if (echo) out.push({ id: `journal.${echo.id}`, kind: 'echo', biome, title: `Echo: ${echo.title}`, lines: echo.lines.map(text => ({ speaker: 'docent', text })) });
+    if (echo) out.push({ id: `journal.${echo.id}`, kind: 'echo', biome, title: `Echo: ${echo.title}${echo.cast?.length ? ` · ${echo.cast.join(', ')}` : ''}`, lines: echo.lines.map(text => ({ speaker: 'docent', text })) });
     const page = PELL_MAP_PAGES[biome];
     if (page) out.push({ id: `journal.pell.${biome}`, kind: 'pell', biome, title: `Pell’s map: ${page.title}`, lines: [{ speaker: 'pell', text: page.text }] });
     if (biome === 'volcanic') {
@@ -129,6 +130,10 @@ export function storyVoiceLines(): StoryVoiceLine[] {
     if (!b) continue;
     add('docent', b.first, 'Story · Boss prologues', true);
     add('docent', b.again, 'Story · Boss prologues', true);
+  }
+  for (const b of Object.values(BOSS_EPILOGUES)) {
+    if (!b) continue;
+    add('docent', b.first, 'Story · Boss prologues', true);
   }
   for (const b of Object.values(ESCAPE_LINES)) {
     add('docent', b.first, 'Story · The Kiln escape', true);

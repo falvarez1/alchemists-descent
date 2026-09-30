@@ -568,6 +568,11 @@ body.play-active #descend-btn:disabled, #descend-btn:disabled { background: none
    a fade and a "More below" cue where the body scrolls; and, in a view too short for the doors' lore
    (under ~580 px: a 960x600 window), the lore steps aside so the doors and the boons both show. */
 .sanc-key { flex: none; }
+.sanc-notice { margin: 7px 0 0; max-width: 62ch; font: italic 400 calc(13px * var(--text-scale, 1))/1.4 var(--m-serif); color: var(--m-muted); }
+.sanc-notice[hidden] { display: none; }
+.sanc-notice b { font: 650 calc(10.5px * var(--text-scale, 1))/1 var(--m-sans); font-style: normal; letter-spacing: 0.16em; text-transform: uppercase; color: var(--m-copper); }
+.sanc-notice cite { font-style: normal; white-space: nowrap; color: var(--m-text-soft); }
+@media (max-width: 1102px), (max-height: 620px) { #sanctum-overlay .sanc-notice { display: none; } }
 body.touch-enabled .sanc-key { display: none; }
 .perk-card { position: relative; }
 .perk-card .sanc-key { position: absolute; top: 9px; right: 9px; transition: opacity 0.2s; }

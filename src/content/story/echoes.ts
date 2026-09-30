@@ -41,6 +41,8 @@ export interface EchoScript {
   /** Stable id (Journal + meta). */
   id: string;
   title: string;
+  /** The workers the Docent names (Hobb, Dunmore and Wick recur): the Journal lists them after the title. */
+  cast?: readonly string[];
   /** The Docent's narration, said in order from the start of the echo. */
   lines: readonly string[];
   /** Length of the choreography in seconds (the echo lasts until this or the narration, whichever is later). */
@@ -55,8 +57,10 @@ export const ECHOES: Readonly<Partial<Record<StoryBiome, EchoScript>>> = {
   earthen: {
     id: 'echo.bellows',
     title: 'The Last Shift',
+    cast: ['Hobb', 'Dunmore', 'Wick'],
     lines: [
       'The Bellows. The evening the Guild sealed them.',
+      'Hobb on the wheel. Dunmore with the last crate. Wick on the bell, thanked by no one.',
       'We closed the valves by hand. The Works breathed out, and would not breathe in again.',
       'Everyone went up the lift that night. Nearly everyone.',
       'Someone had to stay and write it all down. I volunteered. It seemed the polite thing.',
@@ -98,8 +102,10 @@ export const ECHOES: Readonly<Partial<Record<StoryBiome, EchoScript>>> = {
   frozen: {
     id: 'echo.cold',
     title: 'The Last Delivery',
+    cast: ['Dunmore', 'Hobb'],
     lines: [
       'The Cold Store, on its last day. The ice for the Heart went down in blocks, on trolleys.',
+      'Dunmore and Hobb had the trolleys, and were paid nothing extra for the cold.',
       'The final delivery never left. It is still here, perfectly preserved. So is the clerk’s temper.',
     ],
     seconds: 18,
@@ -113,10 +119,12 @@ export const ECHOES: Readonly<Partial<Record<StoryBiome, EchoScript>>> = {
   flooded: {
     id: 'echo.cisterns',
     title: 'The Day the Heart Faltered',
+    cast: ['Hobb', 'Dunmore', 'Wick'],
     lines: [
       'The Cisterns, on the morning the Heart missed its first beat.',
       'Every pipe in the Works went quiet at once. For a moment, you could hear the town above.',
       'Then the Works coughed, and the water ran the wrong way. We took that as a sign.',
+      'Hobb and Dunmore ran for the lift. Wick knelt to listen at the pipe, which was the sort of thing Wick did.',
     ],
     seconds: 22,
     actors: [
@@ -145,9 +153,11 @@ export const ECHOES: Readonly<Partial<Record<StoryBiome, EchoScript>>> = {
   volcanic: {
     id: 'echo.kiln',
     title: 'The First Stoker',
+    cast: ['Wick'],
     lines: [
       'The Kiln, a hundred years ago. The Guild’s first stoker, on its very first morning.',
       'It was built to shovel coal, and not to think. It thought anyway. Mostly about coal.',
+      'Wick, the foreman, patted its shoulder and told it well done. It had not been built for praise. It kept the sound.',
       'When the Heart began to fail, it would not leave it. It still hasn’t.',
       'Be kind to it, if you can. It is only doing its job.',
     ],

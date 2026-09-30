@@ -179,7 +179,32 @@ export const ESCAPE_LINES = {
     first: 'Nearly there. I can hear the town.',
     again: null,
   },
+  /** A fall in the climb sends him back to the flue's foot (said once a run, the first time he is sent back). */
+  retry: {
+    id: 'escape.retry',
+    first: 'Again, apprentice. The flue is patient. It has had a hundred years of practice.',
+    again: 'Again. The flue is patient.',
+  },
 } as const satisfies Readonly<Record<string, Beat>>;
+
+/**
+ * BOSS EPILOGUES: one line as a guardian falls (said once ever: a joke told
+ * twice is a lecture). The Colossus's goes out with the Heart's heave (the
+ * escape's first line follows it in the same breath); the Leviathan's after
+ * the sump goes quiet. Keyed by boss kind.
+ */
+export const BOSS_EPILOGUES: Readonly<Partial<Record<EnemyKind, Beat>>> = {
+  leviathan: {
+    id: 'epilogue.leviathan',
+    first: 'Quiet. Somebody has switched the pump off at last. It took forty years and a stranger.',
+    again: null,
+  },
+  colossus: {
+    id: 'epilogue.colossus',
+    first: 'It has stopped shovelling. Nobody thought to tell it that it could.',
+    again: null,
+  },
+};
 
 /** The escape's objective line (the HUD shows it; the narrator does not read it). */
 export const ESCAPE_OBJECTIVE = 'Climb the flue. Up and out.';
@@ -195,4 +220,70 @@ export const DOCENT_ASIDES = {
     first: 'Guild regulations forbid that, strictly. The Guild, however, is not here.',
     again: null,
   },
+  /** The first creature the cellar (not the wand) killed: any `alchemyKill`. */
+  alchemy: {
+    id: 'aside.alchemy',
+    first: 'That was not the wand, apprentice. That was the cellar, doing as it was told. The Guild called it yield. The insurers had another word.',
+    again: null,
+  },
+  /** An alchemical chain of three (`alchemyKill`, chain 3). */
+  chain: {
+    id: 'aside.chain',
+    first: 'Three in a chain. The Guild gave medals for less. They were tin, and for punctuality.',
+    again: null,
+  },
+  /** The alchemist alight (status.burning, read once a tick in the director). */
+  burning: {
+    id: 'aside.burning',
+    first: 'You are on fire. I mention it only because nobody else will.',
+    again: null,
+  },
+  /** The first waystone lit (`waystoneLit`). */
+  waystone: {
+    id: 'aside.waystone',
+    first: 'A waystone, lit. The Guild installed them so that nobody would get lost, and then mislaid the map.',
+    again: null,
+  },
+  /** The first cauldron brew (`recipeBrewed`). */
+  brew: {
+    id: 'aside.brew',
+    first: 'An elixir. Do not call it soup. The Guild was very sensitive on the point.',
+    again: null,
+  },
+  /** The first empty flask (`flaskDry`). */
+  flask: {
+    id: 'aside.flask',
+    first: 'An empty flask. There is no elegant way to be disappointed by one, and yet you have found it.',
+    again: null,
+  },
+  /** The lantern hooded by choice (`lanternHooded`). */
+  hood: {
+    id: 'aside.hood',
+    first: 'Hooded. Discretion, at last. The Works are watching you learn it, and taking notes.',
+    again: null,
+  },
+  /** Eyes in the wand's beam (`eyeshineCaught`). */
+  eyeshine: {
+    id: 'aside.eyeshine',
+    first: 'Eyes in the dark. Do not wave. They take it as an invitation.',
+    again: null,
+  },
+  /** A stand of living wood brought down (`treeFelled`). */
+  tree: {
+    id: 'aside.tree',
+    first: 'A tree has come down. The Guild forbade shouting “timber” on safety grounds. I suggest you disregard them.',
+    again: null,
+  },
+  /** A creature felled by a thrown or kicked body (`alchemyKill`, cause bowled). */
+  bowled: {
+    id: 'aside.bowled',
+    first: 'You have hit one thing with another thing. The Guild had a word for that, and the word was “don’t”.',
+    again: null,
+  },
 } as const satisfies Readonly<Record<string, Beat>>;
+
+/**
+ * Asides keep a rest between them and never cut in over another line (game/story/StoryDirector):
+ * the first few minutes of a run can set off half a dozen of them, and he is a docent, not a commentator.
+ */
+export const ASIDE_REST_S = 22;

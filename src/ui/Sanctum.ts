@@ -15,6 +15,8 @@ import { FLOOR_LOOKS } from '@/config/floorLooks';
 import { FLOORS_TOTAL, LEVELS, floorDisplayName, floorOf, nextDoors } from '@/config/worldgraph';
 import { PhialRow } from '@/ui/phialGlyph';
 import { descendBehindCurtain, descentCurtainCopy } from '@/game/descentCurtain';
+import { ASH_ONE_PHIAL_NOTE } from '@/content/story/oldOnes';
+import { clerkNotice } from '@/content/story/clerk';
 
 /**
  * The Sanctum (upgrade-port meta layer): a paused rest stop between depths.
@@ -84,6 +86,10 @@ export class Sanctum implements SanctumApi {
   private descending = false;
   /** The boon cards, in order: digit keys 1-3 press them. */
   private readonly perkCards: HTMLButtonElement[] = [];
+  /** The Clerk of Works' notice, pinned under the title (content/story/clerk). */
+  private readonly notice = document.createElement('p');
+  /** Return phials in the glass when the apprentice arrived, before the old ones topped one up (Matron Ash reads it). */
+  private phialsOnArrival = 0;
   /** "More below": the body scrolls and there is more under the fold than is showing. */
   private readonly more = document.createElement('button');
   private resizeWatch: ResizeObserver | null = null;
@@ -108,6 +114,9 @@ export class Sanctum implements SanctumApi {
     this.teaser.hidden = true;
     const body = document.querySelector<HTMLElement>('#sanctum-overlay .sanc-body');
     body?.prepend(this.teaser);
+    this.notice.className = 'sanc-notice';
+    this.notice.hidden = true;
+    document.querySelector('#sanctum-overlay .sanc-sub')?.after(this.notice);
     // The scroll cue: a fade on the body's lower edge (menus.css) and this button in the footer.
     this.more.type = 'button';
     this.more.className = 'sanc-more';
@@ -131,6 +140,7 @@ export class Sanctum implements SanctumApi {
     window.removeEventListener('keydown', this.onKeyDown, true);
     this.resizeWatch?.disconnect();
     this.more.remove();
+    this.notice.remove();
     if (this.phialTimer !== null) window.clearTimeout(this.phialTimer);
     this.phials.dispose();
     this.teaser.remove();
@@ -325,7 +335,7 @@ export class Sanctum implements SanctumApi {
     if (restored) {
       // The glass shows as it was, then the old ones pour.
       this.phials.set(run.phials - 1, max);
-      this.phialNote.textContent = 'The old ones top up a return phial. No charge; they insist.';
+      this.phialNote.textContent = run.phials <= 1 ? ASH_ONE_PHIAL_NOTE : 'The old ones top up a return phial. No charge; they insist.';
       this.phialTimer = window.setTimeout(() => {
         this.phialTimer = null;
         this.phials.fill(run.phials - 1, run.phials, max);
@@ -357,10 +367,27 @@ export class Sanctum implements SanctumApi {
     el('sanc-depth').textContent = nextFloor > 0 ? `${nextFloor} of ${FLOORS_TOTAL}` : String(depth);
     el('sanc-gold').textContent = String(ctx.state.score);
     this.doorButtons.length = 0;
+    this.phialsOnArrival = ctx.run?.phials ?? 0;
     this.renderTeaser(ctx, doors.length > 0 ? doors : nextId ? [nextId] : []);
+    // The Clerk of Works' notice for the floor just finished (the run's seed picks between two).
+    const posted = clerkNotice(floorOf(currentId), ctx.levels.runStatus(ctx).worldSeed >>> 3);
+    this.notice.hidden = !posted;
+    this.notice.replaceChildren();
+    if (posted) {
+      const sign = document.createElement('cite');
+      sign.textContent = `\u2014 ${posted.signature}`;
+      const m = /^(NOTICE)\.\s+([\s\S]*)$/.exec(posted.text);
+      if (m) {
+        const tag = document.createElement('b');
+        tag.textContent = m[1];
+        this.notice.append(tag, ' ', m[2], ' ', sign);
+      } else {
+        this.notice.append(posted.text, ' ', sign);
+      }
+    }
     // STORY: Matron Ash greets the apprentice and says a word about the door
     // below — where there are two, about each as he looks at it (sanctumDoor).
-    ctx.story?.sanctumOpened(doors.length <= 1 && nextId && LEVELS[nextId] ? LEVELS[nextId].biome : null);
+    ctx.story?.sanctumOpened(doors.length <= 1 && nextId && LEVELS[nextId] ? LEVELS[nextId].biome : null, { phialsOnArrival: this.phialsOnArrival });
 
     const dBtn = el('descend-btn') as HTMLButtonElement;
     const row = el('perk-row');
@@ -409,6 +436,7 @@ export class Sanctum implements SanctumApi {
         pk.apply(ctx);
         ctx.audio.learn();
         ctx.telemetry.count('perk.' + pk.id);
+        ctx.story?.sanctumAct?.({ kind: 'boon', id: pk.id });
         card.classList.add('taken');
         this.autoReveal = false;
         row.querySelectorAll('.perk-card').forEach((c) => {
@@ -439,6 +467,7 @@ export class Sanctum implements SanctumApi {
     this.wasPaused = ctx.state.paused;
     ctx.state.paused = true;
     this.teaser.hidden = true;
+    this.notice.hidden = true;
     const here = floorOf(ctx.levels.current?.def.id);
     el('sanc-depth').textContent = here > 0 ? `${here} of ${FLOORS_TOTAL}` : String(ctx.levels.current?.def.depth ?? 1);
     el('sanc-gold').textContent = String(ctx.state.score);
@@ -457,8 +486,9 @@ export class Sanctum implements SanctumApi {
   private buildShop(ctx: Ctx): void {
     const shop = el('sanc-shop');
     shop.innerHTML = '';
-    const items: Array<{ name: string; desc: string; cost: number; act(purchase: () => boolean): void }> = [
+    const items: Array<{ id: string; name: string; desc: string; cost: number; act(purchase: () => boolean): void }> = [
       {
+        id: 'mend',
         name: 'Mend wounds',
         desc: 'Restore your health to full',
         cost: 40,
@@ -468,6 +498,7 @@ export class Sanctum implements SanctumApi {
         },
       },
       {
+        id: 'toughen',
         name: 'Toughen up',
         desc: '+15 maximum health, and healed by as much',
         cost: 90,
@@ -478,6 +509,7 @@ export class Sanctum implements SanctumApi {
         },
       },
       {
+        id: 'brew',
         name: 'Mystery brew',
         desc: 'Drink a random potent draught, right now',
         cost: 60,
@@ -497,6 +529,7 @@ export class Sanctum implements SanctumApi {
         ? []
         : [
             {
+              id: 'brass',
               name: 'Wandwright: Brass Injector',
               desc: 'Refit wand I: 5 slots, a fast cycle and a deep mana tank',
               cost: 240,
@@ -511,6 +544,7 @@ export class Sanctum implements SanctumApi {
         ? []
         : [
             {
+              id: 'void',
               name: 'Wandwright: Void Lattice',
               desc: 'Refit wand II: 5 slots, perfect aim and vast mana',
               cost: 380,
@@ -522,6 +556,7 @@ export class Sanctum implements SanctumApi {
             },
           ]),
       {
+        id: 'pages',
         name: 'Lost pages',
         desc: 'Choose one of three spell cards you do not own',
         cost: 160,
@@ -568,6 +603,7 @@ export class Sanctum implements SanctumApi {
           ctx.audio.sfx('ui.coins');
           el('sanc-gold').textContent = String(ctx.state.score);
           this.buildShop(ctx);
+          ctx.story?.sanctumAct?.({ kind: 'buy', id: it.id });
           return true;
         };
         it.act(purchase);

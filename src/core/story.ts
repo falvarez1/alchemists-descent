@@ -189,8 +189,13 @@ export interface StoryApi {
   playOpening(opts?: { replay?: boolean }): Promise<void>;
   /** The player has seen the opening (the title offers to replay it). */
   readonly openingSeen: boolean;
-  /** The Sanctum opened (Matron Ash greets). `nextBiome`: the floor below (its door line). */
-  sanctumOpened(nextBiome: string | null): void;
+  /**
+   * The Sanctum opened (Matron Ash greets). `nextBiome`: the floor below (its door line).
+   * `facts`: what the old ones can read off the run (return phials in the glass before they top one up).
+   */
+  sanctumOpened(nextBiome: string | null, facts?: { phialsOnArrival: number }): void;
+  /** A boon was struck or a provision bought in the Sanctum (Matron Ash answers it, once). */
+  sanctumAct?(act: { kind: 'boon' | 'buy'; id: string }): void;
   /** A door in the Sanctum was pointed at or chosen (the Biomes workstream's door choice). */
   sanctumDoor(biome: string): void;
   /** The dialogue box: skip the typing / next line (E, click), pick a choice, or leave (Esc, walk away). */
