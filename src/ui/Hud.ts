@@ -10,7 +10,8 @@ import { CARD_DEFS } from '@/combat/wands/cards';
 import { PERK_DEFS, isPerkActive, togglePerkActive } from '@/content/perks';
 import { nextWandSentence } from '@/combat/wands/sentenceView';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
-import { deathCauseLine, deathTitle } from '@/ui/deathCauses';
+import { deathLineFor, deathTitle } from '@/ui/deathCauses';
+import { DeathCardGate } from '@/ui/deathCardGate';
 import {
   INTRO_OBJECTIVE,
   INTRO_PRE_KEY_OBJECTIVES,
@@ -306,7 +307,7 @@ export class Hud {
       // Campaign floors get "Floor 2 of 4 · The Rot Gardens" from RunHud.
       el('go-wave').textContent = 'D' + depth + ' · ' + titleCaseName(level);
       el('go-gold').textContent = String(gold);
-      el('go-cause').textContent = deathCauseLine(cause, this.ctx.state.frameCount);
+      el('go-cause').textContent = deathLineFor(cause, this.ctx.state.frameCount);
       el('death-title').textContent = deathTitle(cause);
     }));
     // The directed death (game/DeathCinema): letterbox bars slide in and the
@@ -317,13 +318,19 @@ export class Hud {
     letterbox.setAttribute('aria-hidden', 'true');
     el('canvas-holder').appendChild(letterbox);
     this.disposers.push(() => letterbox.remove());
+    // The way back stays disabled until it has faded in (a mashed Space/Enter
+    // must not respawn past a card nobody has seen); any key or click after a
+    // beat plays the rest of the reveal quickly. See ui/deathCardGate.
+    const deathGate = new DeathCardGate(el('gameover-overlay'));
+    this.disposers.push(() => deathGate.dispose());
     const revealDeath = (): void => {
       const overlay = el('gameover-overlay');
       if (overlay.classList.contains('visible')) return;
       overlay.classList.add('visible', 'cine');
-      el('respawn-btn').focus({ preventScroll: true });
+      deathGate.arm();
     };
     const clearDeath = (): void => {
+      deathGate.release();
       document.body.classList.remove('death-cine');
       el('gameover-overlay').classList.remove('visible', 'cine');
     };

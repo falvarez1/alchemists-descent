@@ -32,7 +32,7 @@ import {
   spendPhial,
   utcDateKey,
 } from '@/game/runRules';
-import { deathCauseLine } from '@/ui/deathCauses';
+import { deathLineFor } from '@/ui/deathCauses';
 import { asDifficulty } from '@/config/difficulty';
 import { BASE_DIFFICULTY, openDifficulty } from '@/config/difficultyLadder';
 
@@ -460,7 +460,8 @@ export class RunDirector implements RunApi {
       deaths: state.deaths,
       gold: present ? ctx.state.score : this.lastGold,
       cardsFound: state.cardsFound,
-      causeLine: outcome === 'fallen' ? deathCauseLine(this.lastCause, state.seed) : undefined,
+      // The very line the death screen showed and the narrator spoke (same dispatch, same frame).
+      causeLine: outcome === 'fallen' ? deathLineFor(this.lastCause, ctx.state.frameCount) : undefined,
       path: state.path ?? [],
       boons: state.boons ?? [],
       difficulty: asDifficulty(ctx.state.difficulty, BASE_DIFFICULTY),

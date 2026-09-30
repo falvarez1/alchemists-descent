@@ -163,8 +163,8 @@ export class RunHud {
     const run = this.ctx.run;
     if (!run) return;
     if (run.over) {
+      // Focus waits for the button to fade in (ui/deathCardGate, armed by the Hud).
       this.ctx.audio.sfx('ui.run.over');
-      this.later(() => this.ledgerButton.focus({ preventScroll: true }), 30);
       return;
     }
     if (this.pendingDrain < 0) return;
