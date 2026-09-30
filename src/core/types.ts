@@ -1326,6 +1326,8 @@ export interface GameStateData {
   cameraShakeScale?: number;
   /** Teaching cards: first time only (unset = shipped), once on every floor, or never (game/Hints). */
   hintMode?: 'first' | 'always' | 'off';
+  /** The HUD size the player chose (1 = shipped), also on the root as --hud-scale; HUD insets that clamp to an edge follow it. */
+  hudScale?: number;
   reduceFlashes?: boolean;
   trickshot?: TrickshotSettings;
   /** The run's SECRET alchemy reaction (derived from worldSeed; see

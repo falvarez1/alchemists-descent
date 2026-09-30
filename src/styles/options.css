@@ -25,3 +25,13 @@ body.vitals-numeric .vital-num {
   font: 650 calc(11.5px * var(--text-scale, 1))/1 var(--house-sans, ui-sans-serif, system-ui, sans-serif); font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em; color: #efe7d2; text-shadow: var(--house-shadow, 0 1px 2px #050b0d);
 }
+
+/* ---------- HUD size and opacity ---------- */
+/* ui/PlayerSettings sets --hud-scale / --hud-opacity and adds body.hud-custom only when either differs from 1.
+ * Each corner block scales from its own corner, so it stays anchored where house.css put it; the words inside
+ * keep following Text size (--text-scale), which is a separate control. */
+body.hud-custom #hud-left { transform: scale(var(--hud-scale, 1)); transform-origin: 0 0; }
+body.hud-custom #expedition-tools { transform: scale(var(--hud-scale, 1)); transform-origin: 0 100%; }
+body.hud-custom .wave-readout { transform: scale(var(--hud-scale, 1)); transform-origin: 100% 0; }
+body.hud-custom :is(#hud-left, #expedition-tools, .wave-readout) { opacity: var(--hud-opacity, 1); }
+/* The Pause button is a control, not a readout: it keeps its size and place (it would otherwise grow over the corner speaker). */

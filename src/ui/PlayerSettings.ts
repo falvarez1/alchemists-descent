@@ -8,7 +8,7 @@ import { readTouchControlsPreference, setTouchControlsPreference } from '@/input
 import { VitalNumbers } from '@/ui/VitalNumbers';
 import { resetSeenHints } from '@/game/hints/seenHints';
 import '@/styles/options.css';
-import { HINT_MODES, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
+import { HINT_MODES, HUD_OPACITY, HUD_SCALE, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeBand, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
 import { createDefaultPostFxSettings } from '@/config/params';
 
 /** Everything the dialog persists under one key. The newer options live in config/playerPrefs (ExtraPreferences). */
@@ -91,6 +91,13 @@ const picture = (key: PresentationKey, field: 'brightness' | 'vignette' | 'bloom
   write: (p, raw) => { p[field] = sanitizeOptionalBand(Number(raw), PRESENTATION[key]); },
   format: p => bandReadout(p[field] ?? PRESENTATION[key].fallback, PRESENTATION[key], zeroLabel),
 });
+/** A required slider shown as a percentage (HUD size and opacity). */
+const percent = (field: 'hudScale' | 'hudOpacity', band: Band): SimpleControl => ({
+  name: field,
+  read: p => p[field],
+  write: (p, raw) => { p[field] = sanitizeBand(Number(raw), band); },
+  format: p => `${Math.round(p[field] * 100)}%`,
+});
 const flag = (key: BoolKey): SimpleControl => ({ name: key, read: p => p[key], write: (p, raw) => { (p as Record<BoolKey, boolean>)[key] = raw === true; } });
 
 const SIMPLE_CONTROLS: readonly SimpleControl[] = [
@@ -98,6 +105,7 @@ const SIMPLE_CONTROLS: readonly SimpleControl[] = [
   flag('reducedFlashes'), flag('highReadability'), flag('creatureCaptions'), flag('narration'), flag('muted'),
   { name: 'cameraShake', read: p => p.cameraShake, write: (p, raw) => { p.cameraShake = sanitizeShake(raw); } },
   flag('pauseOnBlur'), flag('captionBacking'), flag('numericVitals'),
+  percent('hudScale', HUD_SCALE), percent('hudOpacity', HUD_OPACITY),
   picture('brightness', 'brightness'), picture('vignette', 'vignette'), picture('bloom', 'bloom'), picture('grain', 'grain', 'Off'),
   { name: 'hintMode', read: p => p.hintMode, write: (p, raw) => { p.hintMode = sanitizeChoice(raw, HINT_MODES, 'first'); } },
 ];
@@ -160,6 +168,10 @@ export class PlayerSettings {
       ${selectRow('textScale', 'Text size', [['1', 'Standard'], ['1.15', 'Large'], ['1.3', 'Larger']])}
       ${checkRow('captionBacking', 'Caption backing', 'A dark plate behind the narrator, creature-sound captions and combat callouts. Captions and callouts grow with Text size.')}
       ${checkRow('numericVitals', 'Numbers on the bars', 'The exact figure beside health, mana and levitation.')}</div></section>
+      <section class="settings-group" aria-labelledby="settings-hud"><h3 id="settings-hud">HUD</h3><div class="settings-options">
+      ${sliderRow('hudScale', 'HUD size', HUD_SCALE, 'Scales the bars, wands, flasks and objective without touching the words. Text size changes the words.')}
+      ${sliderRow('hudOpacity', 'HUD opacity', HUD_OPACITY, 'How solid the HUD is over the world.')}
+      <div class="settings-option"><button type="button" id="reset-hud">Reset HUD</button></div></div></section>
       <section class="settings-group" aria-labelledby="settings-comfort"><h3 id="settings-comfort">Comfort</h3><div class="settings-options">
       ${checkRow('reducedFlashes', 'Reduce flashes and pulses')}
       ${selectRow('cameraShake', 'Camera shake', [['full', 'Full'], ['half', 'Half'], ['off', 'Off']], 'How hard blasts, falls and heavy footsteps shake the view.')}
@@ -221,6 +233,9 @@ export class PlayerSettings {
       el.addEventListener('change', () => { control.write(this.preferences, raw()); this.apply(true); });
     }
     this.dialog.querySelector('#reset-controls')!.addEventListener('click', () => { resetBindings(); this.renderBindings(); });
+    this.dialog.querySelector('#reset-hud')!.addEventListener('click', () => {
+      this.preferences.hudScale = HUD_SCALE.fallback; this.preferences.hudOpacity = HUD_OPACITY.fallback; this.apply(true);
+    });
     this.dialog.querySelector('#reset-picture')!.addEventListener('click', () => {
       this.preferences.brightness = this.preferences.vignette = this.preferences.bloom = this.preferences.grain = null;
       this.apply(true);
@@ -366,6 +381,13 @@ export class PlayerSettings {
     this.ctx.state.pauseOnBlur = this.preferences.pauseOnBlur;
     this.ctx.state.hintMode = this.preferences.hintMode;
     document.body.classList.toggle('caps-backed', this.preferences.captionBacking);
+    // HUD size and opacity: variables on the root, and a class only while they differ from the shipped HUD
+    // (so with nothing chosen no rule below applies and no HUD block gains a transform or an opacity).
+    const root = document.documentElement.style;
+    root.setProperty('--hud-scale', String(this.preferences.hudScale));
+    root.setProperty('--hud-opacity', String(this.preferences.hudOpacity));
+    document.body.classList.toggle('hud-custom', this.preferences.hudScale !== HUD_SCALE.fallback || this.preferences.hudOpacity !== HUD_OPACITY.fallback);
+    this.ctx.state.hudScale = this.preferences.hudScale;
     this.vitals.setEnabled(this.preferences.numericVitals);
     this.ctx.state.reduceFlashes = this.preferences.reducedFlashes;
     this.ctx.state.highReadability = this.preferences.highReadability;

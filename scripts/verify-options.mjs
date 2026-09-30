@@ -411,6 +411,76 @@ try {
     await context.close();
   }
 
+
+  // ------------------------------------------------------------------ HUD size and opacity
+  if (want('hud')) {
+    console.log('\n== HUD size and opacity');
+    const { context, page, errors } = await freshRun();
+    const BLOCKS = ['#hud-left', '#expedition-tools', '.wave-readout'];
+    const geo = () => page.evaluate((blocks) => {
+      const view = document.querySelector('#game-hud').getBoundingClientRect();
+      return Object.fromEntries(blocks.map((sel) => {
+        const el = document.querySelector(sel), b = el.getBoundingClientRect(), cs = getComputedStyle(el);
+        return [sel, { l: +b.left.toFixed(1), t: +b.top.toFixed(1), r: +b.right.toFixed(1), b: +b.bottom.toFixed(1), w: +b.width.toFixed(1), transform: cs.transform, opacity: cs.opacity, inside: b.left >= view.left - 1 && b.right <= view.right + 1 && b.top >= view.top - 1 && b.bottom <= view.bottom + 1 }];
+      }));
+    }, BLOCKS);
+    const base = await geo();
+    check(!(await page.evaluate(() => document.body.classList.contains('hud-custom'))), 'default: no hud-custom class');
+    check(BLOCKS.every((s) => base[s].transform === 'none' && base[s].opacity === '1'), 'default: no HUD block has a transform or an opacity (untouched)');
+    await page.screenshot({ path: `${out}/hud-1.0.png` });
+
+    await openSettings(page, 'display');
+    const slider = (n) => page.locator(`#player-settings [name="${n}"]`);
+    const readout = (n) => page.evaluate((id) => document.getElementById(`out-${id}`).textContent, n);
+    check((await readout('hudScale')) === '100%' && (await readout('hudOpacity')) === '100%', 'both sliders read 100%');
+    await slider('hudScale').focus(); await page.keyboard.press('End');
+    check((await stored(page))?.hudScale === 1.3 && (await readout('hudScale')) === '130%', 'End = 130%, saved');
+    await closeSettings(page); await resume(page);
+    await page.waitForTimeout(300);
+    const big = await geo();
+    check(await page.evaluate(() => document.body.classList.contains('hud-custom')), 'hud-custom appears only now');
+    check(BLOCKS.every((s) => Math.abs(big[s].w / base[s].w - 1.3) < 0.03), `each block is 1.3x wider (${BLOCKS.map((s) => (big[s].w / base[s].w).toFixed(2)).join(' ')})`);
+    check(Math.abs(big['#hud-left'].l - base['#hud-left'].l) < 1.5 && Math.abs(big['#hud-left'].t - base['#hud-left'].t) < 1.5, 'HUD-left stays anchored to its top-left corner');
+    check(Math.abs(big['.wave-readout'].r - base['.wave-readout'].r) < 1.5 && Math.abs(big['.wave-readout'].t - base['.wave-readout'].t) < 1.5, 'the objective block stays anchored to its top-right corner');
+    check(Math.abs(big['#expedition-tools'].l - base['#expedition-tools'].l) < 1.5 && Math.abs(big['#expedition-tools'].b - base['#expedition-tools'].b) < 1.5, 'wands and flasks stay anchored to the bottom-left');
+    const pauseGeo = await page.evaluate(() => { const b = document.getElementById('expedition-pause').getBoundingClientRect(); return `${Math.round(b.width)}x${Math.round(b.height)}@${Math.round(b.right)},${Math.round(b.bottom)}`; });
+    check(pauseGeo === '80x35@1412,830', `the Pause button is left alone: size and place unchanged (${pauseGeo})`);
+    check(BLOCKS.every((s) => big[s].inside), 'and every block still sits inside the view at 130%');
+    await page.screenshot({ path: `${out}/hud-1.3.png` });
+
+    await openSettings(page, 'display');
+    await slider('hudScale').focus(); await page.keyboard.press('Home');
+    await slider('hudOpacity').focus(); await page.keyboard.press('Home');
+    check((await readout('hudScale')) === '80%' && (await readout('hudOpacity')) === '50%', 'Home = 80% size, 50% opacity');
+    await closeSettings(page); await resume(page);
+    await page.waitForTimeout(300);
+    const small = await geo();
+    check(BLOCKS.every((s) => Math.abs(small[s].w / base[s].w - 0.8) < 0.03 && small[s].opacity === '0.5'), `each block 0.8x and at half opacity (${BLOCKS.map((s) => (small[s].w / base[s].w).toFixed(2) + '/' + small[s].opacity).join(' ')})`);
+    await page.screenshot({ path: `${out}/hud-0.8-half.png` });
+
+    // click-through: the scaled pause button still takes a real click
+    await click(page, page.locator('#expedition-pause'));
+    await page.waitForTimeout(300);
+    check(await page.evaluate(() => window.__game.ctx.state.paused), 'the Pause button still takes a real click with the HUD shrunk and faded');
+    await click(page, page.locator('#pause-settings'));
+    await page.waitForSelector('#player-settings[open]');
+    await click(page, page.locator('#player-settings [data-tab="display"]'));
+    await click(page, page.locator('#player-settings #reset-hud'));
+    const back = await geo();
+    check(BLOCKS.every((s) => back[s].transform === 'none' && back[s].opacity === '1') && !(await page.evaluate(() => document.body.classList.contains('hud-custom'))), 'Reset HUD puts every block back (no transform, full opacity, no class)');
+    await closeSettings(page); await resume(page);
+
+    // text size is a separate control and composes with HUD size (no double counting of the variable)
+    const saved = await freshRun({ prefs: { hudScale: 1.15, hudOpacity: 0.8, textScale: 1.3 } });
+    await saved.page.waitForTimeout(500);
+    const sg = await saved.page.evaluate(() => ({ cls: document.body.classList.contains('hud-custom'), s: getComputedStyle(document.documentElement).getPropertyValue('--hud-scale').trim(), o: getComputedStyle(document.querySelector('#hud-left')).opacity, t: getComputedStyle(document.documentElement).getPropertyValue('--text-scale').trim() }));
+    check(sg.cls && sg.s === '1.15' && sg.o === '0.8' && sg.t === '1.3', `saved choices apply on load and sit beside Text size: ${JSON.stringify(sg)}`);
+    await saved.page.screenshot({ path: `${out}/hud-1.15-text1.3.png` });
+    await saved.context.close();
+    check(errors.length === 0, `no page errors${errors.join(' | ')}`);
+    await context.close();
+  }
+
 } finally {
   await browser.close();
 }
