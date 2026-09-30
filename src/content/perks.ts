@@ -7,6 +7,13 @@ export interface PerkDefinition {
   sanctumName: string;
   desc: string;
   offeredInSanctum: boolean;
+  /**
+   * Level ids whose floor makes this boon worth the draft: it is offered only
+   * while one of them is a door below, so a ward is never a dead card (Warm
+   * Blood before a floor with no cold). Absent = offered anywhere. See
+   * docs/BOONS.md ("Measured") for why each is keyed as it is.
+   */
+  worth?: readonly string[];
 }
 
 export const PERK_DEFS: readonly PerkDefinition[] = Object.freeze([
@@ -109,6 +116,7 @@ export const PERK_DEFS: readonly PerkDefinition[] = Object.freeze([
     sanctumName: 'Rime Soles',
     desc: 'Water you cross skins over with ice underfoot',
     offeredInSanctum: true,
+    worth: ['d3'], // the Drowned Cisterns: the only floor with pools to cross
   },
   {
     id: 'longfuse',
@@ -133,6 +141,7 @@ export const PERK_DEFS: readonly PerkDefinition[] = Object.freeze([
     sanctumName: 'Insulated Boots',
     desc: 'Current deals 75% less to you',
     offeredInSanctum: true,
+    worth: ['d3'], // water + electricity
   },
   {
     id: 'warmblood',
@@ -141,6 +150,7 @@ export const PERK_DEFS: readonly PerkDefinition[] = Object.freeze([
     sanctumName: 'Warm Blood',
     desc: 'The cold reaches you half as fast',
     offeredInSanctum: true,
+    worth: ['d2b'], // the Cold Store
   },
 ]);
 
@@ -149,6 +159,27 @@ export const PERK_IDS: readonly PerkId[] = Object.freeze(PERK_DEFS.map((perk) =>
 export const SANCTUM_PERK_DEFS: readonly PerkDefinition[] = Object.freeze(
   PERK_DEFS.filter((perk) => perk.offeredInSanctum),
 );
+
+/**
+ * The Sanctum's draft: `count` boons from `pool`, deterministic in `rng` (the
+ * run's seed and the floor, so a reload cannot reroll it and a daily descent
+ * offers everyone the same table). A boon keyed to floors (`worth`) is only
+ * eligible while one of them is a door below; with no doors known (a test
+ * arena) everything is eligible.
+ */
+export function draftBoons<T extends { worth?: readonly string[] }>(
+  pool: readonly T[],
+  doors: readonly string[],
+  rng: () => number,
+  count = 3,
+): T[] {
+  const eligible = pool.filter((boon) => !boon.worth || doors.length === 0 || boon.worth.some((id) => doors.includes(id)));
+  const offer: T[] = [];
+  while (offer.length < count && eligible.length > 0) {
+    offer.push(eligible.splice(Math.floor(rng() * eligible.length), 1)[0]);
+  }
+  return offer;
+}
 
 export function isPerkId(value: string): value is PerkId {
   return (PERK_IDS as readonly string[]).includes(value);

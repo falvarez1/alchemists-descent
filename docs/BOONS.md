@@ -6,6 +6,21 @@ sanctums a run, three boons a run, from a pool of 16 (`content/perks.ts`,
 `PERK_DEFS`; a boon is a `PerkId` flag on `player.perks`, saved with the
 expedition; `Vitality` is the one instant boon and is not a flag).
 
+## The draft
+
+`draftBoons` (`content/perks.ts`, called from `ui/Sanctum.ts`) is a pure function of
+the run's seed and the floor: a reload cannot reroll the table, and a daily descent
+offers everyone the same one. A boon with `worth` is only eligible while one of
+those floors is a door below, so the situational ones are never dead cards:
+
+| Sanctum (doors below) | Situational boons on the table |
+| --- | --- |
+| after floor 1 (Rot Gardens / Cold Store) | Warm Blood |
+| after floor 2 (Cisterns / Glass Galleries) | Rime Soles, Insulated Boots |
+| after floor 3 (Kiln Heart) | none |
+
+With no doors known (a test arena) everything is eligible.
+
 ## Two kinds
 
 **The originals (10):** Power Surge, Vampirism, Featherweight, Mana Font, Swift
@@ -21,8 +36,9 @@ world is met* rather than how big a number is. The design rules they were held t
    door text names each floor's chemistry, so *Warm Blood* ↔ the Cold Store and
    *Rime Soles* / *Insulated Boots* ↔ the Drowned Cisterns are decisions, not
    guesses. A boon may be situational if its situation is announced.
-3. **Never a trap in the wrong room.** A bargain that only fires in a material a
-   floor barely has fails rule 2 — see "Measured" below for the one that did.
+3. **Never a trap in the wrong room.** The draft only offers a situational bargain
+   when its floor is a door below (`worth`), and a bargain whose trigger a floor
+   barely has fails outright — see "Measured" below for the one that did.
 4. **Feedback is existing feedback.** No new audio: the chill's `chillMoment`
    events (audio/EventCues) already creak and glint; nothing here spends
    ElevenLabs credit.

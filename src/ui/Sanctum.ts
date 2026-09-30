@@ -8,7 +8,8 @@ import {
 import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
 import type { CardId, Ctx, PerkId, SanctumApi } from '@/core/types';
 import { POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
-import { SANCTUM_PERK_DEFS } from '@/content/perks';
+import { SANCTUM_PERK_DEFS, draftBoons } from '@/content/perks';
+import { Rng } from '@/core/rng';
 import { FLOOR_LORE } from '@/content/floorLore';
 import { FLOOR_LOOKS } from '@/config/floorLooks';
 import { FLOORS_TOTAL, LEVELS, floorDisplayName, floorOf, nextDoors } from '@/config/worldgraph';
@@ -27,6 +28,8 @@ interface SanctumPerk {
   flag?: PerkId;
   name: string;
   desc: string;
+  /** Floors that make it worth drafting (content/perks). */
+  worth?: readonly string[];
   apply(ctx: Ctx): void;
 }
 
@@ -45,6 +48,7 @@ const PERKS: SanctumPerk[] = [
     flag: perk.id,
     name: perk.sanctumName,
     desc: perk.desc,
+    worth: perk.worth,
     apply: () => undefined,
   })),
 ];
@@ -263,12 +267,11 @@ export class Sanctum implements SanctumApi {
     const dBtn = el('descend-btn') as HTMLButtonElement;
     const row = el('perk-row');
     row.innerHTML = '';
-    // 3 boons the alchemist doesn't own yet (instant boons can repeat)
+    // 3 boons the alchemist doesn't own yet (instant boons can repeat), drawn from the run's seed and
+    // this floor — a reload cannot reroll the table — and only those worth taking for the doors below.
     const pool = PERKS.filter((pk) => !pk.flag || !ctx.player.perks[pk.flag]);
-    const offer: SanctumPerk[] = [];
-    while (offer.length < 3 && pool.length) {
-      offer.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
-    }
+    const draft = new Rng((ctx.levels.runStatus(ctx).worldSeed ^ Math.imul(floorOf(currentId) + 1, 0x85ebca6b)) >>> 0);
+    const offer = draftBoons(pool, doors, () => draft.next());
     let perkTaken = offer.length === 0;
     const armDescend = (): void => {
       const target = this.chosen;

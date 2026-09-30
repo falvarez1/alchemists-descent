@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SIGHT } from '@/config/darkness';
-import { PERK_DEFS, PERK_IDS, SANCTUM_PERK_DEFS, isPerkId } from '@/content/perks';
+import { PERK_DEFS, PERK_IDS, SANCTUM_PERK_DEFS, draftBoons, isPerkId } from '@/content/perks';
+import { Rng } from '@/core/rng';
 import { EventBus } from '@/core/events';
 import type { Ctx, LightQueryApi, PerkId } from '@/core/types';
 import { playerVisibility } from '@/creatures/lightResponse';
@@ -27,6 +28,67 @@ describe('the alchemist’s bargains are on the Sanctum’s table', () => {
 
   it('gives a three-card draft something to choose between: a stat, a ward, a way of playing', () => {
     expect(SANCTUM_PERK_DEFS.length).toBeGreaterThanOrEqual(15);
+  });
+});
+
+/* ---------------- the draft ---------------- */
+
+describe('the Sanctum draft', () => {
+  const pool = [{ id: 'vitality' }, ...SANCTUM_PERK_DEFS];
+  const draw = (doors: string[], seed: number) => {
+    const rng = new Rng(seed);
+    return draftBoons(pool, doors, () => rng.next()).map((b) => b.id);
+  };
+  const SITUATIONAL = { warmblood: 'd2b', rimesoles: 'd3', grounded: 'd3' } as const;
+
+  it('is a pure function of the seed: the same run and floor offer the same table, every time', () => {
+    for (let seed = 1; seed <= 25; seed++) {
+      expect(draw(['d2', 'd2b'], seed)).toEqual(draw(['d2', 'd2b'], seed));
+    }
+    const tables = new Set<string>();
+    for (let seed = 1; seed <= 25; seed++) tables.add(draw(['d2', 'd2b'], seed).join());
+    expect(tables.size).toBeGreaterThan(10);
+  });
+
+  it('offers three different boons', () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      const offer = draw(['d3', 'd3b'], seed);
+      expect(offer).toHaveLength(3);
+      expect(new Set(offer).size).toBe(3);
+    }
+  });
+
+  it('never offers a ward for a floor that is not below (no dead cards)', () => {
+    const seen = { d2: new Set<string>(), d3: new Set<string>(), d4: new Set<string>() };
+    for (let seed = 1; seed <= 400; seed++) {
+      for (const id of draw(['d2', 'd2b'], seed)) seen.d2.add(id);
+      for (const id of draw(['d3', 'd3b'], seed)) seen.d3.add(id);
+      for (const id of draw(['d4'], seed)) seen.d4.add(id);
+    }
+    // Before the Cold Store's door the frost ward is on the table, and the water boons are not.
+    expect(seen.d2.has('warmblood')).toBe(true);
+    expect(seen.d2.has('rimesoles') || seen.d2.has('grounded')).toBe(false);
+    // Before the Cisterns' door it is the other way round.
+    expect(seen.d3.has('rimesoles') && seen.d3.has('grounded')).toBe(true);
+    expect(seen.d3.has('warmblood')).toBe(false);
+    // Before the Kiln nothing situational is offered at all; the general bargains still are.
+    for (const id of Object.keys(SITUATIONAL)) expect(seen.d4.has(id), id).toBe(false);
+    for (const id of ['longfuse', 'velvethood', 'stronggrip', 'might']) expect(seen.d4.has(id), id).toBe(true);
+  });
+
+  it('offers everything when no doors are known (a test arena), and less than three when little is left', () => {
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 300; seed++) for (const id of draw([], seed)) seen.add(id);
+    for (const id of Object.keys(SITUATIONAL)) expect(seen.has(id), id).toBe(true);
+    const rng = new Rng(3);
+    expect(draftBoons([{ id: 'only', worth: undefined }], ['d4'], () => rng.next())).toHaveLength(1);
+    expect(draftBoons([], ['d4'], () => rng.next())).toHaveLength(0);
+  });
+
+  it('keys each situational boon to the floors the measurements support (docs/BOONS.md)', () => {
+    for (const [id, floor] of Object.entries(SITUATIONAL)) {
+      expect(PERK_DEFS.find((perk) => perk.id === id)?.worth, id).toEqual([floor]);
+    }
   });
 });
 
