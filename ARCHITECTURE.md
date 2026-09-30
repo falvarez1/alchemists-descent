@@ -239,6 +239,9 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     Callouts.ts           World-anchored combat words (alchemyKill / combatCallout), chains
     WandBench.ts          Card slotting plus debug-only potion/elixir/power controls
     ConsoleOverlay.ts     Backquote dev-console shell backed by game/console commands
+    consoleHelpView.ts    The console's help pages as wrapping columns (rows from game/console/help)
+                          (game/console: help, travel* — the tester's goto/skip/boss kit, authoring builds only;
+                          see docs/DEVELOPER-CONSOLE-RUN-WORKFLOW.md)
     waypointRim.ts        Where the off-screen waypoint arrow rests: the view's rim, slid clear of the
                           HUD blocks Minimap measures from the DOM (pure)
 ```

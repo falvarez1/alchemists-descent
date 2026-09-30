@@ -30,6 +30,7 @@
     "verify:mobile": "node scripts/verify-mobile.mjs",
     "verify:builder-boundaries": "node scripts/verify-builder-boundaries.mjs --strict",
     "verify:builder-bundle": "node scripts/verify-builder-bundle-boundary.mjs",
+    "verify:console-bundle": "node scripts/verify-console-bundle.mjs",
     "verify:builder-prod-network": "node scripts/verify-builder-prod-network.mjs",
     "verify:builder-decoupling": "node scripts/verify-builder-decoupling-suite.mjs",
     "verify:authorlink": "node scripts/verify-authorlink.mjs",
