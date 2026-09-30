@@ -240,10 +240,7 @@ body.builder-open #right-inspector { display: none; }
 #builder-root.b-zen #builder-inspector,
 #builder-root.b-zen #builder-proc,
 #builder-root.b-zen #builder-world,
-#builder-root.b-zen #builder-virtual-world,
 #builder-root.b-zen #builder-matparams,
-#builder-root.b-zen #builder-global,
-#builder-root.b-zen #builder-postfx,
 #builder-root.b-zen #builder-issues,
 #builder-root.b-zen #dev-console,
 #builder-root.b-zen #builder-dock-bottom,
@@ -330,16 +327,6 @@ body.builder-open #right-inspector { display: none; }
     background: color-mix(in srgb, var(--st-well) 94%, transparent); border-bottom: 1px solid var(--bui-border);
 }
 #builder-bar .b-title { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; color: var(--st-accent-text); margin-right: 4px; }
-#builder-bar .b-segment {
-    display: inline-flex; align-items: center; height: 24px;
-    border: 1px solid var(--bui-control-border); border-radius: 4px; overflow: hidden; background: var(--st-well);
-}
-#builder-bar .b-segment button {
-    border: 0; border-radius: 0; height: 22px; padding: 3px 7px;
-    background: transparent; color: var(--st-text-3);
-}
-#builder-bar .b-segment button.active { color: var(--st-text); background: var(--st-accent-bg); }
-#builder-bar .b-segment button:hover { background: var(--bui-border); }
 #builder-bar .b-sep { width: 1px; height: 16px; background: var(--bui-control-border); margin: 0 3px; }
 #builder-bar #b-doc-name { width: 110px; }
 #builder-bar #b-doc-select { max-width: 120px; }
@@ -403,7 +390,7 @@ body.builder-open #right-inspector { display: none; }
 }
 #builder-palette .bp-mini .bp-glyph { width: 12px; height: 12px; font-size: 9px; }
 
-#builder-proc, #builder-world, #builder-matparams, #builder-global, #builder-postfx {
+#builder-proc, #builder-world, #builder-matparams {
     /* the shared right-hand side-panel slot: one of these at a time, docked
        FLUSH RIGHT; .b-params-open slides the inspector left of it (no overlap) */
     position: absolute; right: 8px; top: 78px; z-index: 3; pointer-events: auto; width: 196px;
@@ -426,8 +413,6 @@ body.builder-open #right-inspector { display: none; }
 .bw-label span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .builder-value-inputs,
 .bw-numline,
-.vw-slider,
-.vw-slider-inputs,
 .bi-row {
     width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box;
 }
@@ -435,8 +420,7 @@ body.builder-open #right-inspector { display: none; }
     display: block; min-width: 0; max-width: 100%; box-sizing: border-box;
 }
 .bw-row input[type="range"],
-.bw-numline input[type="range"],
-.vw-slider input[type="range"] {
+.bw-numline input[type="range"] {
     width: 100%;
 }
 /* Builder sliders: thumb on the panel accent, mirrored for Firefox (which
@@ -470,8 +454,7 @@ body.builder-open #right-inspector { display: none; }
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-accent) 45%, transparent);
 }
 .builder-value-inputs input[type="range"],
-.bw-numline input[type="range"],
-.vw-slider-inputs input[type="range"] {
+.bw-numline input[type="range"] {
     width: calc(100% - 2px);
     margin-inline: 1px;
 }
@@ -688,9 +671,6 @@ body.builder-open #builder-issues { bottom: 182px; }
 .bw-section-body {
     display: flex; flex-direction: column; gap: var(--bui-section-body-gap); min-width: 0;
 }
-.vw-section-body {
-    display: flex; flex-direction: column; gap: var(--bui-section-body-gap); min-width: 0;
-}
 #builder-palette .bp-tool { display: flex; align-items: center; gap: 6px; text-align: left; padding: 5px 6px; }
 #builder-palette .bp-tool.active { border-color: var(--st-accent); color: var(--st-text); background: var(--st-accent-bg); }
 #builder-palette .bp-glyph {
@@ -732,16 +712,6 @@ body.builder-open #builder-issues { bottom: 182px; }
 .bi-row select { width: 88px; }
 .bi-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 2px; }
 .bi-generated-scene .bpd-message { color: var(--st-text-3); }
-
-.vw-actions button:focus-visible,
-.vw-segment button:focus-visible,
-.vw-style-row button:focus-visible,
-.vw-section-toggle:focus-visible,
-.vw-title.editor-section-head:focus-visible {
-  outline: 2px solid var(--st-accent);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--st-accent) 35%, transparent);
-}
 .editor-field input,
 .editor-field select { min-width: 0; }
 .editor-field-vec2 {
@@ -875,172 +845,6 @@ body.builder-open #builder-issues { bottom: 182px; }
 #builder-dock-left #builder-prefab-details.builder-panel {
     min-height: 260px;
 }
-
-#builder-virtual-world {
-    pointer-events: auto; display: flex; flex-direction: column; gap: 0; padding: 0;
-    background: color-mix(in srgb, var(--st-well) 96%, transparent); border: 1px solid var(--bui-border); border-radius: 5px;
-    color: var(--st-text-2); font-size: 11px; overflow: hidden;
-}
-#builder-root #builder-virtual-world.builder-panel:not(.floating) {
-    position: static; inset: auto; right: auto; top: auto; bottom: auto; left: auto;
-    z-index: auto; transform: none; box-shadow: none; width: auto; max-height: none;
-    min-height: 0; box-sizing: border-box; border-radius: 0;
-}
-#builder-root #builder-virtual-world.builder-panel.floating {
-    width: min(980px, calc(100% - 32px)); height: min(560px, calc(100% - 96px));
-    max-height: none;
-}
-#builder-dock-bottom #builder-virtual-world.builder-panel {
-    flex: 1 1 0; min-width: 0; max-width: none; width: 100%; height: auto;
-    border-right: 0; border-bottom: 0; box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
-}
-#builder-dock-left #builder-virtual-world.builder-panel,
-#builder-dock-right #builder-virtual-world.builder-panel {
-    height: 100%; min-height: 0; max-height: none;
-}
-#builder-root #builder-virtual-world .vw-head { flex: 0 0 auto; }
-#builder-root #builder-virtual-world #vw-close {
-    width: 22px; height: 21px; margin-left: auto; padding: 0;
-    display: inline-flex; align-items: center; justify-content: center;
-    border: 1px solid transparent; border-radius: 3px; background: transparent;
-    color: var(--st-text-3); font-size: 13px; line-height: 1;
-}
-#builder-root #builder-virtual-world #vw-close:hover {
-    border-color: var(--st-danger); color: var(--st-danger-text); background: var(--st-danger-bg);
-}
-.vw-body {
-    flex: 1 1 auto; min-width: 0; min-height: 0;
-    display: grid; grid-template-columns: minmax(180px, 230px) minmax(240px, 1fr) minmax(180px, 240px);
-    background: color-mix(in srgb, var(--st-well) 46%, transparent);
-}
-#builder-dock-left #builder-virtual-world .vw-body,
-#builder-dock-right #builder-virtual-world .vw-body {
-    grid-template-columns: 1fr; overflow: auto;
-}
-.vw-controls,
-.vw-inspector {
-    min-width: 0; min-height: 0; overflow: auto; padding: 8px;
-    scrollbar-width: thin; background: color-mix(in srgb, var(--st-well) 88%, transparent);
-}
-.vw-controls { border-right: 1px solid var(--st-line); }
-.vw-inspector { border-left: 1px solid var(--st-line); }
-#builder-dock-left #builder-virtual-world .vw-controls,
-#builder-dock-right #builder-virtual-world .vw-controls,
-#builder-dock-left #builder-virtual-world .vw-inspector,
-#builder-dock-right #builder-virtual-world .vw-inspector {
-    border: 0; border-bottom: 1px solid var(--st-line);
-}
-.vw-stage {
-    position: relative; min-width: 0; min-height: 220px; background: var(--st-accent-bg);
-    outline: none; overflow: hidden;
-}
-.vw-stage:focus-visible { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--st-accent) 82%, transparent); }
-#builder-root #builder-virtual-world #vw-canvas {
-    width: 100% !important; height: 100% !important; display: block;
-    image-rendering: pixelated; cursor: grab;
-}
-#builder-root #builder-virtual-world #vw-canvas:active { cursor: grabbing; }
-.vw-caption {
-    position: absolute; left: 8px; right: 8px; bottom: 7px; pointer-events: none;
-    min-height: 18px; display: flex; align-items: center; padding: 0 7px;
-    border: 1px solid rgba(37, 48, 61, 0.84); border-radius: 3px;
-    background: color-mix(in srgb, var(--st-well) 74%, transparent); color: var(--st-text-2); font-size: 10px; font-weight: 600;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.vw-section { display: flex; flex-direction: column; gap: var(--bui-section-body-gap); padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--st-line); }
-.vw-section:last-child { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
-.vw-title-row { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
-.vw-title {
-    flex: 1 1 auto;
-    font-size: 11px; font-weight: 600; color: var(--st-text); padding: 3px 6px;
-    border-left: 2px solid var(--bui-accent); background: var(--st-surface-2); border-radius: 0 3px 3px 0;
-}
-#builder-root #builder-virtual-world #vw-reset-generation {
-    flex: 0 0 auto; height: 20px; padding: 0 7px;
-    background: var(--st-surface-1); border: 1px solid var(--bui-border); border-radius: 4px;
-    color: var(--st-text-2); font-size: 10px; font-weight: 600; cursor: pointer;
-}
-#builder-root #builder-virtual-world #vw-reset-generation:hover {
-    border-color: var(--bui-accent-soft); color: var(--st-text);
-}
-.vw-segment {
-    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px;
-}
-#builder-root #builder-virtual-world .vw-segment button {
-    min-width: 0; height: 24px; padding: 0 3px;
-    background: var(--st-surface-1); border: 1px solid var(--bui-border); border-radius: 4px;
-    color: var(--st-text-3); font-size: 10px; font-weight: 600; cursor: pointer;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-#builder-root #builder-virtual-world .vw-segment button:hover {
-    border-color: var(--st-line-3); color: var(--st-text);
-}
-#builder-root #builder-virtual-world .vw-segment button.active {
-    border-color: var(--bui-accent); color: var(--st-text); background: var(--st-accent-bg);
-}
-.vw-field {
-    display: grid; grid-template-columns: 62px minmax(0, 1fr); align-items: center; gap: 6px;
-    color: var(--st-text-3); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
-}
-.vw-field input,
-.vw-field select,
-.vw-slider-inputs input[type="number"] {
-    min-width: 0; width: 100%; box-sizing: border-box; background: var(--st-surface-1); border: 1px solid var(--bui-border);
-    border-radius: 4px; color: var(--st-accent-text); padding: 4px 5px; font: inherit; font-size: 11px; outline: none;
-}
-.vw-field input:focus,
-.vw-field select:focus,
-.vw-slider-inputs input[type="number"]:focus { border-color: var(--bui-accent); }
-.vw-seed { grid-template-columns: 42px minmax(0, 1fr) 48px; }
-.vw-check {
-    display: flex; align-items: center; gap: 6px; color: var(--st-text-3);
-    font-size: 10px; font-weight: 600; line-height: 1.3;
-}
-.vw-check input { width: auto; accent-color: var(--bui-accent-soft); }
-.vw-slider { display: flex; flex-direction: column; gap: 3px; overflow-x: clip; }
-.vw-slider-label { display: flex; justify-content: space-between; gap: 8px; color: var(--st-text-3); font-size: 10px; font-weight: 600; text-transform: uppercase; }
-.vw-slider-label span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vw-slider-label b { color: var(--bui-accent-soft); }
-.vw-slider-inputs { display: grid; grid-template-columns: minmax(0, 1fr) clamp(48px, 27%, 56px); gap: 5px; align-items: center; }
-.vw-subtitle {
-    margin-top: 2px; padding-top: 6px; border-top: 1px solid var(--st-line);
-    color: var(--st-text-2); font-size: 10px; font-weight: 600; text-transform: uppercase;
-}
-.vw-advanced { display: flex; flex-direction: column; gap: 7px; }
-.vw-advanced summary {
-    color: var(--st-text-3); font-size: 10px; font-weight: 600; text-transform: uppercase;
-    cursor: pointer; user-select: none;
-}
-.vw-advanced[open] summary { margin-bottom: 7px; color: var(--st-text-2); }
-.vw-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
-#builder-root #builder-virtual-world .vw-actions button,
-#builder-root #builder-virtual-world .vw-seed button {
-    background: var(--st-surface-1); border: 1px solid var(--bui-border); border-radius: 4px; color: var(--st-text-2);
-    padding: 5px 4px; font-size: 10px; font-weight: 600; cursor: pointer;
-}
-#builder-root #builder-virtual-world .vw-actions button:hover:not(:disabled),
-#builder-root #builder-virtual-world .vw-seed button:hover { border-color: var(--bui-accent-soft); color: var(--st-text); }
-#builder-root #builder-virtual-world button:disabled,
-#builder-root #builder-virtual-world select option:disabled {
-    opacity: 0.45; cursor: not-allowed;
-}
-.vw-stat {
-    display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 6px; align-items: baseline;
-    color: var(--st-text-3); font-size: 10px; font-weight: 600; text-transform: uppercase;
-}
-.vw-stat b {
-    min-width: 0; color: var(--st-accent-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    text-transform: none;
-}
-.vw-message {
-    color: var(--st-text-3); font-size: 10px; line-height: 1.35; font-weight: 600;
-}
-.vw-list span { display: block; color: var(--st-text-3); font-size: 10px; font-weight: 600; text-transform: uppercase; margin-bottom: 3px; }
-.vw-list p { margin: 0; color: var(--st-accent-text); font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
-.vw-generating { color: var(--st-warn) !important; }
-.vw-ready { color: var(--st-accent-text) !important; }
-.vw-stale, .vw-canceled { color: var(--st-warn) !important; }
-.vw-error { color: var(--st-danger-text) !important; }
 
 .ba-browser {
     display: flex; flex-direction: column; min-width: 0; min-height: 0; width: 100%; height: 100%;
@@ -1975,8 +1779,6 @@ body.builder-open #canvas-holder {
 #builder-world,
 #builder-matparams,
 #builder-proc,
-#builder-global,
-#builder-postfx,
 #builder-issues {
     position: static; width: auto; max-height: none; border: 0; border-radius: 0;
     background: transparent; box-shadow: none; transition: none;
@@ -1991,15 +1793,11 @@ body.builder-open #canvas-holder {
 }
 #builder-inspector,
 #builder-world,
-#builder-matparams,
-#builder-global,
-#builder-postfx {
+#builder-matparams {
     padding: 0; border-bottom: 1px solid var(--st-line);
 }
 #bw-controls,
-#bm-controls,
-#bg-controls,
-#bf-controls {
+#bm-controls {
     display: flex; flex-direction: column; gap: var(--bui-panel-body-gap); min-width: 0; min-height: 0;
     width: 100%; max-width: 100%; padding: var(--bui-panel-body-pad); box-sizing: border-box; overflow-x: clip;
 }
@@ -2016,8 +1814,6 @@ body.builder-open #canvas-holder {
 #builder-dock-bottom #builder-inspector,
 #builder-dock-bottom #builder-world,
 #builder-dock-bottom #builder-matparams,
-#builder-dock-bottom #builder-global,
-#builder-dock-bottom #builder-postfx,
 #builder-dock-bottom #builder-proc {
     padding: 0; border-bottom: 0;
 }
@@ -2027,8 +1823,6 @@ body.builder-open #canvas-holder {
 #builder-world.builder-panel.floating,
 #builder-matparams.builder-panel.floating,
 #builder-proc.builder-panel.floating,
-#builder-global.builder-panel.floating,
-#builder-postfx.builder-panel.floating,
 #builder-issues.builder-panel.floating {
     position: absolute; left: var(--builder-floating-left, 24px); right: auto;
     top: var(--builder-floating-top, 64px); bottom: auto; width: min(280px, calc(100% - 28px));
@@ -2413,8 +2207,7 @@ body.builder-playtest-active #mode-play-btn.active {
 #builder-root .bad-section-title,
 #builder-root .bpd-section-title,
 #builder-root .bv-group-title,
-#builder-root .bw-title,
-#builder-root .vw-title {
+#builder-root .bw-title {
     font-family: var(--st-font);
     font-size: var(--bui-section-fz);
     font-weight: var(--bui-section-fw);
@@ -2438,8 +2231,7 @@ body.builder-playtest-active #mode-play-btn.active {
 /* ---- Builder controls / World Map section headers ----
    bw-title and vw-title used to have panel-local accent bars; keep them on
    the same collapsible micro-caps header style as Palette/Inspector sections. */
-#builder-root .bw-title,
-#builder-root .vw-title {
+#builder-root .bw-title {
     border: 0;
     background: transparent;
     border-radius: 0;
@@ -2447,17 +2239,14 @@ body.builder-playtest-active #mode-play-btn.active {
     margin: 0 0 3px;
     text-transform: uppercase;
 }
-#builder-root .bw-title.editor-section-head,
-#builder-root .vw-title.editor-section-head {
+#builder-root .bw-title.editor-section-head {
     width: 100%;
     display: flex;
     align-items: center;
     gap: 5px;
 }
 #builder-root .bw-title.editor-section-head:hover,
-#builder-root .bw-title.editor-section-head:focus-visible,
-#builder-root .vw-title.editor-section-head:hover,
-#builder-root .vw-title.editor-section-head:focus-visible {
+#builder-root .bw-title.editor-section-head:focus-visible {
     color: var(--st-text-2);
     background: var(--st-surface-2);
     outline: 2px solid var(--st-accent);
@@ -2470,23 +2259,11 @@ body.builder-playtest-active #mode-play-btn.active {
    pull dev-console + virtual-world heads onto the same type ramp. */
 #builder-root [data-panel-handle],
 #builder-root .builder-panel-title,
-#dev-console .dev-console-head,
-#builder-root #builder-virtual-world .vw-head {
+#dev-console .dev-console-head {
     font-size: var(--bui-panel-title-fz);
     font-weight: 800;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-}
-#builder-root #builder-virtual-world .vw-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    min-height: 20px;
-    padding: 2px 4px 5px;
-    background: transparent;
-    border-bottom: 1px solid var(--st-line);
-    color: var(--st-text-3);
 }
 #builder-root .builder-panel-title-label {
     min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -2508,43 +2285,10 @@ body.builder-playtest-active #mode-play-btn.active {
 #builder-root .b-close:focus-visible {
     border-color: var(--st-danger); color: var(--st-danger-text); background: var(--st-danger-bg); outline: none;
 }
-#builder-root #builder-virtual-world #vw-close.b-close {
-    width: 20px; height: 20px; min-width: 20px; margin-left: 0; padding: 0;
-    color: var(--st-text-3); font-size: 14px;
-}
-#builder-root #builder-virtual-world #vw-close.b-close:hover,
-#builder-root #builder-virtual-world #vw-close.b-close:focus-visible {
-    border-color: var(--st-danger); color: var(--st-danger-text); background: var(--st-danger-bg); outline: none;
-}
 
 /* ---- Docked World Map shell: same outer chrome as the other workspace panels.
    The map body stays edge-to-edge; this only neutralizes the stale standalone
    widget border/background at the panel shell level. */
-#builder-root #builder-virtual-world.builder-panel:not(.floating) {
-    border-radius: 0;
-}
-#builder-root #builder-dock-bottom #builder-virtual-world.builder-panel {
-    border-top: 1px solid var(--st-line-2);
-    border-right: 0;
-    border-bottom: 0;
-    border-left: 0;
-    border-radius: 0;
-    background: transparent;
-}
-#builder-root #builder-dock-left #builder-virtual-world.builder-panel,
-#builder-root #builder-dock-right #builder-virtual-world.builder-panel {
-    border: 1px solid var(--st-line);
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--st-well) 48%, transparent);
-    box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08), 0 1px 0 rgba(0,0,0,0.28);
-}
-#builder-root #builder-dock-left.has-tabs > #builder-virtual-world.builder-panel,
-#builder-root #builder-dock-right.has-tabs > #builder-virtual-world.builder-panel {
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-}
 
 /* ---- Shared empty / hint state ---- */
 #builder-root .b-empty,
