@@ -660,3 +660,4 @@ body.play-active #descend-btn:disabled, #descend-btn:disabled { background: none
   #player-settings .settings-slider { grid-template-columns: 1fr 4.6em; }
   #player-settings .settings-slider > label { grid-column: 1 / -1; }
 }
+#player-settings .settings-group > p + .settings-options { margin-top: 16px; }

@@ -584,6 +584,113 @@ try {
     await daily.context.close();
   }
 
+
+  // ------------------------------------------------------------------ controller: dead zone and vibration
+  if (want('pad')) {
+    console.log('\n== Controller: stick dead zone and vibration (a synthetic standard gamepad)');
+    // A standard-mapping pad the page believes in: the test moves its stick, the page reports its rumbles.
+    const withPad = async (prefs) => {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      await context.addInitScript(() => {
+        window.__rumbles = [];
+        window.__pad = {
+          id: 'Synthetic standard pad', index: 0, connected: true, mapping: 'standard', timestamp: 0,
+          axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
+          vibrationActuator: { playEffect: (type, params) => { window.__rumbles.push({ type, ...params }); return Promise.resolve('complete'); } },
+        };
+        Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [window.__pad] });
+      });
+      if (prefs) await context.addInitScript((value) => { try { localStorage.setItem('ad-player-preferences-v1', value); } catch { /* */ } }, JSON.stringify(prefs));
+      const page = await context.newPage();
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(String(e)));
+      await page.goto(url, { waitUntil: 'networkidle' });
+      await startConsolePlayRun(page, { seed: 7, settleMs: 3000 });
+      await waitForOpeningEnd(page).catch(() => undefined);
+      await page.evaluate(() => { const c = window.__game.ctx; c.state.paused = false; c.state.debugGodMode = false; });
+      await page.waitForTimeout(3000); // past the arrival grace
+      return { context, page, errors };
+    };
+    const px = (page) => page.evaluate(() => window.__game.ctx.player.x);
+    /** How far the alchemist walks in 700 ms with the left stick held at `x`. */
+    const walk = async (page, x) => {
+      const start = await px(page);
+      await page.evaluate((v) => { window.__pad.axes[0] = v; }, x);
+      await page.waitForTimeout(700);
+      await page.evaluate(() => { window.__pad.axes[0] = 0; });
+      const end = await px(page);
+      await page.waitForTimeout(500);
+      return Math.abs(end - start);
+    };
+
+    // --- the dead zone
+    const { context, page, errors } = await withPad();
+    check(await page.evaluate(() => window.__game.ctx.state.padDeadzone) === 0.2, 'default: dead zone 0.2 (the shipped feel)');
+    const below = await walk(page, 0.17);
+    const above = await walk(page, 0.23);
+    check(below < 2 && above > 10, `default: a stick at 0.17 does nothing (${below.toFixed(1)} cells), at 0.23 walks (${above.toFixed(1)} cells)`);
+    await openSettings(page, 'controls');
+    const slider = page.locator('#player-settings [name="padDeadzone"]');
+    check((await page.evaluate(() => document.getElementById('out-padDeadzone').textContent)) === '20%', 'the Controls tab shows the dead zone at 20%');
+    await slider.focus();
+    for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
+    check((await stored(page))?.padDeadzone === 0.35 && await page.evaluate(() => window.__game.ctx.state.padDeadzone) === 0.35, 'three arrow presses on the real slider: 35%, saved and live');
+    await page.screenshot({ path: `${out}/pad-tab.png` });
+    await closeSettings(page); await resume(page);
+    const tight = await walk(page, 0.3);
+    const tightPast = await walk(page, 0.42);
+    check(tight < 2 && tightPast > 10, `dead zone 35%: a stick at 0.30 (which used to walk) now does nothing (${tight.toFixed(1)}), at 0.42 walks (${tightPast.toFixed(1)})`);
+    await openSettings(page, 'controls');
+    await slider.focus();
+    for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowLeft');
+    await closeSettings(page); await resume(page);
+    const loose = await walk(page, -0.12); // the other way: the first walks used up the room to the right
+    check(loose > 10, `dead zone 5%: a stick at 0.12 now walks (${loose.toFixed(1)} cells)`);
+
+    // --- vibration
+    const rumbles = () => page.evaluate(() => window.__rumbles.length);
+    await page.evaluate(() => { const c = window.__game.ctx; c.player.invuln = 0; c.player.hp = c.player.maxHp; });
+    await page.waitForTimeout(400);
+    await page.evaluate(() => window.__game.ctx.playerCtl.damage(30, 0, 0, 'impact'));
+    await page.waitForTimeout(400);
+    check((await rumbles()) === 0, 'default: a real hit does not vibrate the controller');
+    await openSettings(page, 'controls');
+    const box = page.locator('#player-settings [name="padRumble"]');
+    await box.scrollIntoViewIfNeeded();
+    check(!(await box.isChecked()), 'the Vibration checkbox is off by default');
+    await click(page, box);
+    check((await stored(page))?.padRumble === true, 'checking it saves padRumble:true');
+    await closeSettings(page); await resume(page);
+    await page.evaluate(() => { const c = window.__game.ctx; c.player.invuln = 0; c.player.hp = c.player.maxHp; });
+    await page.waitForTimeout(400);
+    await page.evaluate(() => { window.__rumbles.length = 0; window.__game.ctx.playerCtl.damage(30, 0, 0, 'impact'); });
+    await page.waitForTimeout(400);
+    const hit = await page.evaluate(() => window.__rumbles.slice());
+    check(hit.length >= 1 && hit[0].type === 'dual-rumble' && hit[0].strongMagnitude > 0 && hit[0].strongMagnitude <= 1 && hit[0].duration > 0, `a real hit rumbles: ${JSON.stringify(hit[0])}`);
+    // paused: still
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    await page.evaluate(() => { window.__rumbles.length = 0; window.__game.ctx.playerCtl.damage(25, 0, 0, 'impact'); });
+    await page.waitForTimeout(400);
+    check((await rumbles()) === 0, 'paused: nothing rumbles');
+    await click(page, page.locator('#pause-resume'));
+    await page.waitForTimeout(400);
+    check((await rumbles()) === 0, 'and the damage taken while paused is not replayed on resume');
+    // a blast close by (last: it also burns, which is real damage and real rumble)
+    await page.evaluate(() => { window.__rumbles.length = 0; const c = window.__game.ctx; c.explosions.trigger(c.player.x + 18, c.player.y - 6, 26); });
+    await page.waitForTimeout(400);
+    check((await rumbles()) >= 1, `a blast close by rumbles (${await rumbles()} pulses)`);
+    check(errors.length === 0, `no page errors${errors.join(' | ')}`);
+    await context.close();
+
+    // saved choices apply on load
+    const saved = await withPad({ padDeadzone: 0.4, padRumble: true });
+    check(await saved.page.evaluate(() => window.__game.ctx.state.padDeadzone) === 0.4, 'a saved dead zone applies on load');
+    const savedWalk = await walk(saved.page, 0.35);
+    check(savedWalk < 2, `and holds: a stick at 0.35 does nothing at 40% (${savedWalk.toFixed(1)})`);
+    await saved.context.close();
+  }
+
 } finally {
   await browser.close();
 }

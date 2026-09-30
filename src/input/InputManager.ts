@@ -14,6 +14,7 @@ import { telekinesisHolding, telekinesisHurl, telekinesisLift, telekinesisSetDow
 import { flaskSlotKey, gameplayCode } from '@/input/bindings';
 import { MobileControls } from '@/input/MobileControls';
 import { FocusPause } from '@/input/focusPause';
+import { padThresholds } from '@/config/playerPrefs';
 
 type KeyboardLockApi = {
   lock?: (keyCodes?: string[]) => Promise<void>;
@@ -176,16 +177,18 @@ export class InputManager {
       if (!ctx.state.paused && !document.querySelector(KEYBOARD_UI_BLOCK_SELECTOR)) {
         const ax = pad.axes[0] ?? 0, ay = pad.axes[1] ?? 0;
         const aimX = pad.axes[2] ?? 0, aimY = pad.axes[3] ?? 0;
-        const active = Math.hypot(ax, ay) > 0.2 || Math.hypot(aimX, aimY) > 0.25 || pad.buttons.some(b => b.pressed);
+        // The player's stick dead zone; at the shipped 0.2 these are exactly the old 0.2 / 0.35 / 0.4 / 0.25.
+        const th = padThresholds(ctx.state.padDeadzone ?? 0.2);
+        const active = Math.hypot(ax, ay) > th.move || Math.hypot(aimX, aimY) > th.aim || pad.buttons.some(b => b.pressed);
         if (active) this.mobile.reset();
         if (active || this.padDriving) {
           this.syncHeldKeys();
           const keys = ctx.input.keys;
-          keys.left ||= ax < -0.2 || held(14); keys.right ||= ax > 0.2 || held(15);
-          keys.up ||= ay < -0.35 || held(12); keys.down ||= ay > 0.4 || held(13) || held(1);
+          keys.left ||= ax < -th.move || held(14); keys.right ||= ax > th.move || held(15);
+          keys.up ||= ay < -th.up || held(12); keys.down ||= ay > th.down || held(13) || held(1);
           keys.jump ||= held(0); keys.wallJump ||= held(0); keys.grab ||= held(10);
           if (pressed(0)) ctx.input.queuedJump = 'wall';
-          if (Math.hypot(aimX, aimY) > 0.25) {
+          if (Math.hypot(aimX, aimY) > th.aim) {
             ctx.input.mouse.x = ctx.player.x + aimX * 130;
             ctx.input.mouse.y = ctx.player.y - 9 + aimY * 130;
           }

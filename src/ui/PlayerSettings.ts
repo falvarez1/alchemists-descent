@@ -8,7 +8,8 @@ import { readTouchControlsPreference, setTouchControlsPreference } from '@/input
 import { VitalNumbers } from '@/ui/VitalNumbers';
 import { resetSeenHints } from '@/game/hints/seenHints';
 import '@/styles/options.css';
-import { HINT_MODES, HUD_OPACITY, HUD_SCALE, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeBand, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
+import { PadRumble } from '@/input/padRumble';
+import { HINT_MODES, HUD_OPACITY, HUD_SCALE, PAD_DEADZONE, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeBand, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
 import { createDefaultPostFxSettings } from '@/config/params';
 
 /** Everything the dialog persists under one key. The newer options live in config/playerPrefs (ExtraPreferences). */
@@ -92,7 +93,7 @@ const picture = (key: PresentationKey, field: 'brightness' | 'vignette' | 'bloom
   format: p => bandReadout(p[field] ?? PRESENTATION[key].fallback, PRESENTATION[key], zeroLabel),
 });
 /** A required slider shown as a percentage (HUD size and opacity). */
-const percent = (field: 'hudScale' | 'hudOpacity', band: Band): SimpleControl => ({
+const percent = (field: 'hudScale' | 'hudOpacity' | 'padDeadzone', band: Band): SimpleControl => ({
   name: field,
   read: p => p[field],
   write: (p, raw) => { p[field] = sanitizeBand(Number(raw), band); },
@@ -105,7 +106,7 @@ const SIMPLE_CONTROLS: readonly SimpleControl[] = [
   flag('reducedFlashes'), flag('highReadability'), flag('creatureCaptions'), flag('narration'), flag('muted'),
   { name: 'cameraShake', read: p => p.cameraShake, write: (p, raw) => { p.cameraShake = sanitizeShake(raw); } },
   flag('pauseOnBlur'), flag('captionBacking'), flag('numericVitals'),
-  percent('hudScale', HUD_SCALE), percent('hudOpacity', HUD_OPACITY),
+  percent('hudScale', HUD_SCALE), percent('hudOpacity', HUD_OPACITY), percent('padDeadzone', PAD_DEADZONE), flag('padRumble'),
   picture('brightness', 'brightness'), picture('vignette', 'vignette'), picture('bloom', 'bloom'), picture('grain', 'grain', 'Off'),
   { name: 'hintMode', read: p => p.hintMode, write: (p, raw) => { p.hintMode = sanitizeChoice(raw, HINT_MODES, 'first'); } },
 ];
@@ -133,6 +134,7 @@ export class PlayerSettings {
   private preferences = readPlayerPreferences();
   private readonly quick: SoundQuickControl;
   private readonly vitals: VitalNumbers;
+  private readonly rumble: PadRumble;
   /** Presentation fields the player has moved, so "Reset picture" restores exactly those and nothing else. */
   private readonly touchedPicture = new Set<PresentationKey>();
   private tab: SettingsTab = 'sound';
@@ -205,7 +207,9 @@ export class PlayerSettings {
       <section class="settings-group" aria-labelledby="settings-keys"><h3 id="settings-keys">Keyboard</h3><p>Choose an action, then press its new key. Mouse aims; left click casts; right click throws a flask. With a Weaver leg equipped: left click whips, right click throws the leg, and Carry drops it.</p>
       <div class="binding-list"></div><p id="binding-feedback" role="status"></p>
       <button type="button" id="reset-controls">Restore controls</button></section>
-      <section class="settings-group" aria-labelledby="settings-pad"><h3 id="settings-pad">Controller</h3><p class="controller-help">Left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. With a Weaver leg: RT whips, RB throws it, LB drops it. Start pauses; View saves a clip.</p></section>
+      <section class="settings-group" aria-labelledby="settings-pad"><h3 id="settings-pad">Controller</h3><p class="controller-help">Left stick moves, right stick aims; A jumps, RT casts, LT pours, RB throws a flask, LB throws a glowseed, X interacts, Y switches wands, B crouches. With a Weaver leg: RT whips, RB throws it, LB drops it. Start pauses; View saves a clip.</p>
+      <div class="settings-options">${sliderRow('padDeadzone', 'Stick dead zone', PAD_DEADZONE, 'How far a stick must move before it counts. Raise it if the view drifts or the alchemist creeps on their own.')}
+      ${checkRow('padRumble', 'Vibration', 'A short rumble when you are hurt, when a blast goes off close by, and when you fall. Only on controllers that can rumble.')}</div></section>
       <section class="settings-group" aria-labelledby="settings-touch"><h3 id="settings-touch">Touch controls</h3><div class="settings-options">
       ${selectRow('touchControls', 'Show touch controls', [['auto', 'Auto (touch devices)'], ['on', 'Always'], ['off', 'Never']])}</div>
       <p>Left pad moves and climbs. Right pad aims and casts. Hold Jump to fly; Grip holds a wall. Use interacts or fills a flask. Tools has flask actions, carrying, glowseeds, and an Aim only switch. Landscape gives you a larger view. The screen stays awake during play when your browser allows it; Pause releases it.</p></section></div>
@@ -277,6 +281,7 @@ export class PlayerSettings {
       preview: (channel) => this.preview(channel),
     });
     this.vitals = new VitalNumbers(ctx);
+    this.rumble = new PadRumble(ctx);
     this.renderBindings(); this.apply();
     window.addEventListener('settings-tab-step', this.onTabStep);
     const pause = document.createElement('button');
@@ -388,6 +393,8 @@ export class PlayerSettings {
     root.setProperty('--hud-opacity', String(this.preferences.hudOpacity));
     document.body.classList.toggle('hud-custom', this.preferences.hudScale !== HUD_SCALE.fallback || this.preferences.hudOpacity !== HUD_OPACITY.fallback);
     this.ctx.state.hudScale = this.preferences.hudScale;
+    this.ctx.state.padDeadzone = this.preferences.padDeadzone;
+    this.rumble.setEnabled(this.preferences.padRumble);
     this.vitals.setEnabled(this.preferences.numericVitals);
     this.ctx.state.reduceFlashes = this.preferences.reducedFlashes;
     this.ctx.state.highReadability = this.preferences.highReadability;
@@ -446,6 +453,6 @@ export class PlayerSettings {
 
   dispose(): void {
     window.removeEventListener('settings-tab-step', this.onTabStep);
-    this.quick.dispose(); this.vitals.dispose(); this.dialog.remove(); document.getElementById('pause-settings')?.remove();
+    this.quick.dispose(); this.vitals.dispose(); this.rumble.dispose(); this.dialog.remove(); document.getElementById('pause-settings')?.remove();
   }
 }
