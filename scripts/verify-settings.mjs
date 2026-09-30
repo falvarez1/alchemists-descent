@@ -70,6 +70,8 @@ try {
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.locator('#expedition-entry').waitFor({ state: 'visible' });
     await page.waitForTimeout(700);
+    // (a short window scrolls the title: a player would scroll to the button, so the probe does too)
+    await page.locator('#expedition-entry [data-entry="settings"]').scrollIntoViewIfNeeded();
     await click(page, page.locator('#expedition-entry [data-entry="settings"]'));
     await page.waitForSelector('#player-settings[open]');
     await page.waitForTimeout(250);
@@ -151,6 +153,7 @@ try {
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.locator('#expedition-entry').waitFor({ state: 'visible' });
     await page.waitForTimeout(500);
+    await page.locator('#expedition-entry [data-entry="settings"]').scrollIntoViewIfNeeded();
     await click(page, page.locator('#expedition-entry [data-entry="settings"]'));
     await page.waitForSelector('#player-settings[open]');
     const state = await page.evaluate(() => ({ text: document.documentElement.style.getPropertyValue('--text-scale'), vols: [...document.querySelectorAll('#player-settings input[name^="volume-"]')].map((i) => Number(i.value)) }));

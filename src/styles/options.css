@@ -38,7 +38,8 @@ body.hud-custom :is(#hud-left, #expedition-tools, .wave-readout) { opacity: var(
 
 /* ---------- Choose a seed (the fold under Today's descent on the title; ui/SeedDisclosure) ---------- */
 .entry-content nav .entry-seed { margin: 0; max-width: 380px; }
-.entry-content nav .entry-seed summary { list-style: none; padding: 6px 0; font-size: calc(13px * var(--text-scale)); color: #adbbaf; cursor: pointer; }
+/* A single quiet line, so it adds as little height as it can to a title that already scrolls on a short window. */
+.entry-content nav .entry-seed summary { list-style: none; padding: 2px 0; font-size: calc(12.5px * var(--text-scale)); line-height: 1.5; color: #9fb0a6; cursor: pointer; }
 .entry-seed summary::-webkit-details-marker { display: none; }
 .entry-seed summary::after { content: '\25B8'; margin-left: 8px; font-size: 0.85em; color: #8fa094; display: inline-block; transition: transform 0.15s; }
 .entry-seed[open] summary::after { transform: rotate(90deg); }

@@ -17,7 +17,7 @@ The player route enables touch controls when the browser reports a coarse primar
 
 Portrait and landscape both work. Landscape gives the world more space. The game preserves its existing 16:9 presentation and fixed render resolution, so high device pixel ratios do not multiply its rendering workload. Phone safe areas, dynamic viewport height, scrollable menus, and controls at least 44 CSS pixels wide/high are supported. Gameplay controls use Pointer Events and independent pointer capture; native scrolling and zoom remain available in menus.
 
-Switching tabs/apps or losing focus releases held touch input and pauses active mobile play. Returning requires Resume. Rotation/resize releases contacts. Menus, death, level transitions, and disposal also release held actions. Touch gameplay calls the same actions as keyboard input, without dispatching synthetic keyboard events.
+Switching tabs/apps or losing focus releases held touch input and pauses active mobile play (the **Pause when the window loses focus** option, Controls & comfort > Gameplay, governs this; it is on by default). Returning requires Resume. Rotation/resize releases contacts. Menus, death, level transitions, and disposal also release held actions. Touch gameplay calls the same actions as keyboard input, without dispatching synthetic keyboard events.
 
 Screen wake lock is optional and only held during visible active play. Pause, backgrounding, and disposal release it. A rejection is handled without a retry loop. Full screen is requested only by tapping its button; unsupported or denied requests leave browser play available. These features require browser support; wake lock normally requires HTTPS.
 
