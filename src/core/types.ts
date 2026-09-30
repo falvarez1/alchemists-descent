@@ -1321,6 +1321,8 @@ export interface GameStateData {
   pauseOnBlur?: boolean;
   /** Camera shake multiplier: 0 Off, 0.5 Half, 1 Full (render/Renderer). */
   cameraShakeScale?: number;
+  /** Teaching cards: first time only (unset = shipped), once on every floor, or never (game/Hints). */
+  hintMode?: 'first' | 'always' | 'off';
   reduceFlashes?: boolean;
   trickshot?: TrickshotSettings;
   /** The run's SECRET alchemy reaction (derived from worldSeed; see
@@ -2652,6 +2654,8 @@ export interface HintApi {
    *  (the engine caption, a title card, the Sanctum, a notice) is on screen no
    *  teach-once fires; lessons wait, unspent, for a calm moment. */
   setTeachHeld?(held: boolean): void;
+  /** "Reset tutorials" (ui/PlayerSettings): forget every lesson taught so far, this session included. */
+  resetTaught?(): void;
 }
 
 export interface MechanismsApi {

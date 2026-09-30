@@ -273,6 +273,69 @@ try {
     await context.close();
   }
 
+
+  // ------------------------------------------------------------------ teaching cards
+  if (want('hints')) {
+    console.log('\n== Teaching cards: first time / every floor / off, and Reset tutorials');
+    const { context, page, errors } = await freshRun();
+    await page.waitForTimeout(5000); // the arrival title card and the calm gate pass
+    const SEEN = 'alchemists-descent-seen-hints-v1';
+    const seen = () => page.evaluate((key) => { try { return JSON.parse(localStorage.getItem(key) ?? '{}').keys ?? []; } catch { return null; } }, SEEN);
+    const card = () => page.evaluate(() => { const o = document.getElementById('hint-teach-overlay'); return o?.classList.contains('visible') ? o.querySelector('.hint-teach-title')?.textContent ?? '?' : null; });
+    const skipGap = () => page.evaluate(() => { window.__game.ctx.state.frameCount += 800; });
+    const dismiss = async () => { if (await card()) await click(page, page.locator('#hint-teach-overlay .hint-teach-card')); await page.waitForTimeout(200); };
+    const emitBench = () => page.evaluate(() => window.__game.ctx.events.emit('benchOpened'));
+    const waitCard = (ms = 4000) => page.waitForFunction(() => document.getElementById('hint-teach-overlay')?.classList.contains('visible'), null, { timeout: ms }).then(() => true, () => false);
+
+    check(await page.evaluate(() => window.__game.ctx.state.hintMode) === 'first', 'default: First time only');
+    await emitBench();
+    check(await waitCard() && (await card()) === 'Reading a Wand', 'first time: the card appears (Reading a Wand)');
+    check((await seen()).includes('wand-sentence'), 'and is recorded as seen');
+    await page.screenshot({ path: `${out}/hints-card.png` });
+    await dismiss(); await skipGap();
+    await emitBench();
+    check(!(await waitCard(2500)), 'first time only: the same lesson does not return');
+
+    await openSettings(page, 'gameplay');
+    const select = page.locator('#player-settings [name="hintMode"]');
+    check(await select.evaluate((el) => [...el.options].map((o) => o.value).join() === 'first,always,off'), 'the Gameplay tab offers First time only / Every floor / Off');
+    await select.selectOption('off');
+    check((await stored(page))?.hintMode === 'off' && await page.evaluate(() => window.__game.ctx.state.hintMode) === 'off', 'Off saves and applies live');
+    await closeSettings(page); await resume(page); await skipGap();
+    await page.evaluate(() => window.__game.ctx.events.emit('worldInteractionObserved', { id: 'x', title: 'X', x: 0, y: 0 })); // an unseen lesson
+    // and a card another system emits straight at the overlay (the waystone card does this)
+    await page.evaluate(() => window.__game.ctx.events.emit('hintTeach', { key: 'waystone-unlit', title: 'A Waystone', body: 'Test body.' }));
+    check(!(await waitCard(2500)), 'Off: no card, from the HintSystem or from any other emitter');
+    check(!(await seen()).includes('grimoire-observed'), 'Off spends nothing (the unseen lesson is still unseen)');
+
+    await openSettings(page, 'gameplay');
+    await page.locator('#player-settings [name="hintMode"]').selectOption('always');
+    await closeSettings(page); await resume(page); await skipGap();
+    await emitBench();
+    const shownAgain = await waitCard();
+    const againTitle = await card();
+    check(shownAgain && againTitle === 'Reading a Wand', `Every floor: a lesson already seen teaches again on this floor (card: ${againTitle})`);
+    await dismiss(); await skipGap();
+    await emitBench();
+    check(!(await waitCard(2500)), 'Every floor: but only once on the same floor');
+
+    await openSettings(page, 'gameplay');
+    await page.locator('#player-settings [name="hintMode"]').selectOption('first');
+    await click(page, page.locator('#player-settings #reset-tutorials'));
+    check(!(await seen()).length, 'Reset tutorials clears the saved seen-lessons');
+    check((await page.locator('#player-settings #settings-status').textContent()).includes('Tutorials reset'), 'and says so');
+    await page.screenshot({ path: `${out}/hints-settings.png` });
+    await closeSettings(page); await resume(page); await skipGap();
+    await emitBench();
+    check(await waitCard() && (await card()) === 'Reading a Wand', 'after the reset the same lesson teaches again, same session');
+    check(errors.length === 0, `no page errors${errors.join(' | ')}`);
+    await context.close();
+
+    const reloaded = await freshRun({ prefs: { hintMode: 'off' } });
+    check(await reloaded.page.evaluate(() => window.__game.ctx.state.hintMode) === 'off', 'a saved Off survives a reload');
+    await reloaded.context.close();
+  }
+
 } finally {
   await browser.close();
 }

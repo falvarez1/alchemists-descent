@@ -6,8 +6,9 @@ import { isClipRecordingEnabled, setClipRecordingEnabled } from '@/config/clipSe
 import { SoundQuickControl } from '@/ui/SoundQuickControl';
 import { readTouchControlsPreference, setTouchControlsPreference } from '@/input/touchSupport';
 import { VitalNumbers } from '@/ui/VitalNumbers';
+import { resetSeenHints } from '@/game/hints/seenHints';
 import '@/styles/options.css';
-import { SHAKE_SCALE, sanitizeExtras, sanitizeShake, type ExtraPreferences, type ShakeLevel } from '@/config/playerPrefs';
+import { HINT_MODES, SHAKE_SCALE, sanitizeChoice, sanitizeExtras, sanitizeShake, type ExtraPreferences, type ShakeLevel } from '@/config/playerPrefs';
 
 /** Everything the dialog persists under one key. The newer options live in config/playerPrefs (ExtraPreferences). */
 export interface PlayerPreferences extends ExtraPreferences {
@@ -88,6 +89,7 @@ const SIMPLE_CONTROLS: readonly SimpleControl[] = [
   flag('reducedFlashes'), flag('highReadability'), flag('creatureCaptions'), flag('narration'), flag('muted'),
   { name: 'cameraShake', read: p => p.cameraShake, write: (p, raw) => { p.cameraShake = sanitizeShake(raw); } },
   flag('pauseOnBlur'), flag('captionBacking'), flag('numericVitals'),
+  { name: 'hintMode', read: p => p.hintMode, write: (p, raw) => { p.hintMode = sanitizeChoice(raw, HINT_MODES, 'first'); } },
 ];
 
 /** One checkbox row: the label, and an optional one-line note the control is described by. */
@@ -149,6 +151,10 @@ export class PlayerSettings {
       <div role="tabpanel" class="settings-panel" id="settings-panel-gameplay" aria-labelledby="settings-tab-gameplay" hidden>
       <section class="settings-group" aria-labelledby="settings-play"><h3 id="settings-play">Play</h3><div class="settings-options">
       ${checkRow('pauseOnBlur', 'Pause when the window loses focus', 'Switch to another window or tab and the descent stops where it is. The title, the Sanctum and cutscenes are already still.')}</div></section>
+      <section class="settings-group" aria-labelledby="settings-teaching"><h3 id="settings-teaching">Teaching cards</h3><div class="settings-options">
+      ${selectRow('hintMode', 'Show teaching cards', [['first', 'First time only'], ['always', 'Every floor'], ['off', 'Off']], 'The small cards that explain a mechanism the first time you meet it. Every floor brings each one back once on each new floor. The short prompts under the objective stay.')}
+      <div class="settings-option"><button type="button" id="reset-tutorials" aria-describedby="note-reset-tutorials">Reset tutorials</button>
+      <p class="settings-note flush" id="note-reset-tutorials">Every card teaches again, as on a first descent.</p></div></div></section>
       <section class="settings-group" aria-labelledby="settings-combat"><h3 id="settings-combat">Combat</h3><div class="settings-options">
       <div class="settings-option"><label><input type="checkbox" name="finisher"> Weaver-leg finisher</label>
       <p class="settings-note">With a Weaver's own leg in hand and its owner wounded, the swing slows as it closes, and only a real hit ends it. A miss just costs the moment.</p>
@@ -191,6 +197,10 @@ export class PlayerSettings {
       el.addEventListener('change', () => { control.write(this.preferences, raw()); this.apply(true); });
     }
     this.dialog.querySelector('#reset-controls')!.addEventListener('click', () => { resetBindings(); this.renderBindings(); });
+    this.dialog.querySelector('#reset-tutorials')!.addEventListener('click', () => {
+      if (ctx.hints?.resetTaught) ctx.hints.resetTaught(); else resetSeenHints();
+      this.dialog.querySelector('#settings-status')!.textContent = 'Tutorials reset. Every teaching card will appear again.';
+    });
     // Clips keep their own preference (config/clipSettings) so app/Clips never imports this dialog.
     const recordClips = this.dialog.querySelector<HTMLInputElement>('[name="recordClips"]')!;
     recordClips.checked = isClipRecordingEnabled();
@@ -319,6 +329,7 @@ export class PlayerSettings {
     this.ctx.state.reduceCameraShake = this.preferences.cameraShake === 'off';
     this.ctx.state.cameraShakeScale = SHAKE_SCALE[this.preferences.cameraShake];
     this.ctx.state.pauseOnBlur = this.preferences.pauseOnBlur;
+    this.ctx.state.hintMode = this.preferences.hintMode;
     document.body.classList.toggle('caps-backed', this.preferences.captionBacking);
     this.vitals.setEnabled(this.preferences.numericVitals);
     this.ctx.state.reduceFlashes = this.preferences.reducedFlashes;

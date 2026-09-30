@@ -584,7 +584,7 @@ body.play-active #descend-btn:disabled, #descend-btn:disabled { background: none
 #player-settings .menu-tab:hover { background: none; color: var(--m-text); }
 #player-settings .menu-tab[aria-selected="true"] { color: var(--m-brass); border-bottom-color: var(--m-brass); }
 #player-settings .settings-panels { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 28px 24px; scrollbar-color: #3d5357 transparent; scroll-padding: 12px; }
-#player-settings .settings-status { flex: none; margin: 0; padding: 8px 28px 10px; border-top: 1px solid var(--m-line); color: var(--m-brass); font: 400 calc(12.5px * var(--text-scale, 1))/1.4 var(--m-sans); }
+#player-settings .settings-status { flex: none; max-width: none; margin: 0; padding: 8px 28px 10px; border-top: 1px solid var(--m-line); color: var(--m-brass); font: 400 calc(12.5px * var(--text-scale, 1))/1.4 var(--m-sans); }
 #player-settings .settings-status:empty { display: none; }
 @media (max-height: 560px) {
   #player-settings .settings-heading { padding: 10px 28px 8px; }
@@ -643,3 +643,5 @@ body.play-active #descend-btn:disabled, #descend-btn:disabled { background: none
   #player-settings .binding-list { grid-template-columns: 1fr; }
 }
 #player-settings .settings-options > label > .key { margin-left: 2px; }
+#player-settings .settings-note.flush { margin-left: 0; }
+#player-settings .settings-option > button { justify-self: start; }

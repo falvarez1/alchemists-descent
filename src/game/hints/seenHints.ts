@@ -24,6 +24,17 @@ export function getSeenHints(): string[] {
   }
 }
 
+/** "Reset tutorials": forget every teach card the player has been shown. */
+export function resetSeenHints(): void {
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    storage.removeItem(SEEN_KEY);
+  } catch {
+    // The session's own reset (HintSystem.resetTaught) still applies.
+  }
+}
+
 export function markHintSeen(key: string): void {
   const storage = getStorage();
   if (!storage) return;
