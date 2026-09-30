@@ -5,6 +5,7 @@
 // Usage: node scripts/verify-gallery-spells.mjs [url]  (dev server running)
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
+import { leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 mkdirSync('verify-out', { recursive: true });
@@ -26,6 +27,8 @@ page.on('console', (msg) => {
 });
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+
+await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2200);
 await page.click('#mode-builder-btn');

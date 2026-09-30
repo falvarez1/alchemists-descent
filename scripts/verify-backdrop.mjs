@@ -1,7 +1,7 @@
 // Backdrop editor/runtime gate.
 // Usage: node scripts/verify-backdrop.mjs [url]   (dev server must be running)
 import { chromium } from 'playwright-core';
-import { getGameViewSize, worldToBuilderClient } from './run-helpers.mjs';
+import { getGameViewSize, worldToBuilderClient, leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -23,6 +23,8 @@ page.on('pageerror', (err) => pageErrors.push(String(err)));
 page.on('dialog', (d) => d.accept());
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+
+await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.console, { timeout: 20000 });
 await page.waitForTimeout(1200);
 const viewSize = await getGameViewSize(page);

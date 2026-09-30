@@ -5,6 +5,7 @@
 // doubled indicator); and every empty-dock guide brightens on hover.
 // Usage: node scripts/verify-builder-dock-split.mjs [url]  (dev server must be running)
 import { launchBrowser } from './browser-launch.mjs';
+import { leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -33,6 +34,7 @@ const enterBuilder = async () => {
 const seed = async (panels) => {
   await page.evaluate((p) => localStorage.setItem('noita-builder-workspace-v1', JSON.stringify({ panels: p })), panels);
   await page.reload({ waitUntil: 'networkidle' });
+  await leaveTitleIfShown(page);
   await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
   await page.waitForTimeout(900);
   await enterBuilder();
@@ -48,6 +50,8 @@ const dragTo = async (startX, startY, x, y) => {
 };
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+
+await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1200);
 await enterBuilder();

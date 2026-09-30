@@ -20,6 +20,7 @@
 //
 // Usage: node scripts/verify-peer-ghosts.mjs [url]   (dev server must be running)
 import { launchBrowser } from './browser-launch.mjs';
+import { leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -50,6 +51,7 @@ for (const [name, page] of [['a', a], ['b', b]]) {
 
 const boot = async (page) => {
   await page.goto(target, { waitUntil: 'networkidle', timeout: 45000 });
+  await leaveTitleIfShown(page);
   await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 30000 });
   await page.waitForFunction(() => window.__authorLink?.getStatus().kind === 'connected', {
     timeout: 20000,

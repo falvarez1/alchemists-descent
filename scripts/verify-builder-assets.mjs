@@ -3,7 +3,7 @@
 // Usage: node scripts/verify-builder-assets.mjs [url]  (dev server running)
 import { readFile } from 'node:fs/promises';
 import { launchBrowser } from './browser-launch.mjs';
-import { isBenignDevConsoleError } from './run-helpers.mjs';
+import { isBenignDevConsoleError, leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -110,6 +110,8 @@ await page.addInitScript(() => {
 });
 
 await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+
+await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1800);
 await page.click('#mode-builder-btn');

@@ -184,6 +184,17 @@ export async function enterSandboxFromTitle(page, { timeout = 30000 } = {}) {
 }
 
 /**
+ * Leave the title for the Sandbox if the title is showing. A page that loads fresh (and a
+ * reload without dev mode restore) opens on the title, which covers the header's mode buttons;
+ * a dev reload that restores play or the Builder skips it. Probes that drive the header call
+ * this after every goto / reload instead of assuming which one they got.
+ */
+export async function leaveTitleIfShown(page, { timeout = 8000 } = {}) {
+  const shown = await page.locator('#expedition-entry').waitFor({ state: 'visible', timeout }).then(() => true, () => false);
+  if (shown) await enterSandboxFromTitle(page, { timeout: 30000 });
+}
+
+/**
  * A first descent opens on the story's plates (~9 s, the world held still behind
  * them; any key skips them). The plates' class lands a beat AFTER `play-active`, so
  * wait to see them start (a resumed run has none), then for them to end. A probe

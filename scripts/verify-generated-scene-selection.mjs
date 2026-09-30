@@ -2,6 +2,7 @@
 // Usage: node scripts/verify-generated-scene-selection.mjs [url]
 // Requires a running Vite dev server.
 import { chromium } from 'playwright-core';
+import { leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -25,6 +26,7 @@ page.on('dialog', (dialog) => dialog.accept());
 
 try {
   await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+  await leaveTitleIfShown(page);
   await page.waitForFunction(() => window.__game?.ctx?.levels, { timeout: 20000 });
 
   const launched = await page.evaluate(async () => {

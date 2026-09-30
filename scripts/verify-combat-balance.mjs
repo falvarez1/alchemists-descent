@@ -19,6 +19,7 @@
 //
 // Usage: node scripts/verify-combat-balance.mjs [url]   (dev server running)
 import { launchBrowser } from './browser-launch.mjs';
+import { leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -43,6 +44,7 @@ page.on('pageerror', (e) => errs.push(String(e)));
 
 try {
   await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
+  await leaveTitleIfShown(page);
   await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 30000 });
   await page.click('#mode-play-btn');
   await page.waitForSelector('#run-launcher.visible', { timeout: 20000 });

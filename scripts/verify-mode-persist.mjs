@@ -4,6 +4,7 @@
 // stays in Sandbox.
 // Usage: node scripts/verify-mode-persist.mjs [url]  (dev server must be running)
 import { chromium } from 'playwright-core';
+import { leaveTitleIfShown } from './run-helpers.mjs';
 
 const base = process.argv[2] || 'http://localhost:5191/';
 const KEY = 'ad-mode';
@@ -26,10 +27,12 @@ const settle = async () => {
 };
 const boot = async (url) => {
   await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+  await leaveTitleIfShown(page);
   await settle();
 };
 const reload = async () => {
   await page.reload({ waitUntil: 'networkidle' });
+  await leaveTitleIfShown(page);
   await settle();
 };
 const snap = () => page.evaluate((k) => ({

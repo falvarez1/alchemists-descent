@@ -1,6 +1,7 @@
 // Builder responsive smoke probe.
 // Usage: node scripts/verify-builder-responsive.mjs [url]  (dev server must be running)
 import { launchBrowser } from './browser-launch.mjs';
+import { leaveTitleIfShown } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 const viewports = [
@@ -27,6 +28,7 @@ for (const viewport of viewports) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(String(error)));
   await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+  await leaveTitleIfShown(page);
   await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
   await page.waitForTimeout(1200);
   await page.click('#mode-builder-btn');
