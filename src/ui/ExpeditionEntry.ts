@@ -76,7 +76,12 @@ export class ExpeditionEntry {
     this.root.querySelector('.entry-grades')!.appendChild(this.grades.root);
     // "Choose a seed": a fold under Today's descent (the daily itself is untouched).
     this.seed = new SeedDisclosure(ctx, (seed) => void this.launch('begin', seed));
-    this.root.querySelector('.entry-daily')!.after(this.seed.root);
+    // Grouped with the daily button, so the two stay one item when the title lays out as a row (short windows).
+    const daily = this.root.querySelector<HTMLElement>('.entry-daily')!;
+    const dailyGroup = document.createElement('div');
+    dailyGroup.className = 'entry-daily-group';
+    daily.before(dailyGroup);
+    dailyGroup.append(daily, this.seed.root);
     document.getElementById('canvas-holder')!.appendChild(this.root);
     this.root.addEventListener('click', e => {
       const button = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-entry]');

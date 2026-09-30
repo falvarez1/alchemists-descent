@@ -50,6 +50,9 @@ button:focus-visible, summary:focus-visible, select:focus-visible { outline: 2px
   #expedition-entry .entry-content { margin-top: clamp(28px, 6vh, 60px); margin-bottom: 56px; }
   #expedition-entry .entry-content p { margin-bottom: 22px; }
   #expedition-entry .entry-content p.entry-subtitle { margin-bottom: 16px; }
+  /* The seed fold sits under the daily entry: it takes its row back from the gaps around it. */
+  #expedition-entry .entry-content nav .entry-seed summary { padding: 0; }
+  #expedition-entry .entry-workshops { margin-top: 10px; }
 }
 /* Compact heights (780 px and below: 1366x768, 1280x720, 960x600): the whole menu stays above the fold. The secondary entries share one row,
    the case note fits one line, and the heading gives back the room the call to action took. */

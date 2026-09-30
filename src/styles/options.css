@@ -37,6 +37,7 @@ body.hud-custom :is(#hud-left, #expedition-tools, .wave-readout) { opacity: var(
 /* The Pause button is a control, not a readout: it keeps its size and place (it would otherwise grow over the corner speaker). */
 
 /* ---------- Choose a seed (the fold under Today's descent on the title; ui/SeedDisclosure) ---------- */
+.entry-content nav .entry-daily-group { display: flex; flex-direction: column; align-items: flex-start; }
 .entry-content nav .entry-seed { margin: 0; max-width: 380px; }
 /* A single quiet line, so it adds as little height as it can to a title that already scrolls on a short window. */
 .entry-content nav .entry-seed summary { list-style: none; padding: 2px 0; font-size: calc(12.5px * var(--text-scale)); line-height: 1.5; color: #9fb0a6; cursor: pointer; }
