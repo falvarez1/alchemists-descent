@@ -81,3 +81,26 @@ body.hud-custom :is(#hud-left, #expedition-tools, .wave-readout) { opacity: var(
   color: var(--house-paper, #e6dfca); font: 500 calc(12px * var(--text-scale, 1))/1.3 var(--house-sans, ui-sans-serif, system-ui, sans-serif); letter-spacing: 0.02em; white-space: nowrap;
 }
 #latch-indicator[hidden] { display: none; }
+
+/* ---------- Colour assist (ui/PlayerSettings sets body.assist-on and --assist-hp / -mana / -levit from config/colorAssist) ---------- */
+/* The bars keep their lit top edge, swap their hue, and each gains a pattern so colour is never the only cue:
+ * HP hatched, MANA dotted, LEV ticked. Nothing here applies while the option is Off. */
+body.assist-on.play-active #hp-fill {
+  background-color: var(--assist-hp) !important;
+  background-image: linear-gradient(180deg, var(--assist-hp-hi) 0 1px, transparent 1px), repeating-linear-gradient(135deg, rgba(8, 16, 19, 0.42) 0 2px, transparent 2px 5px) !important;
+}
+body.assist-on.play-active #mana-fill {
+  background-color: var(--assist-mana) !important;
+  background-image: linear-gradient(180deg, var(--assist-mana-hi) 0 1px, transparent 1px), radial-gradient(circle, rgba(8, 16, 19, 0.5) 0.9px, transparent 1.3px) !important;
+  background-size: auto, 4px 4px !important;
+}
+body.assist-on.play-active #levit-fill {
+  background-color: var(--assist-levit) !important;
+  background-image: linear-gradient(180deg, var(--assist-levit-hi) 0 1px, transparent 1px), repeating-linear-gradient(90deg, rgba(8, 16, 19, 0.42) 0 1px, transparent 1px 4px) !important;
+}
+/* A spent phial is crossed out (the glyph already shows the draught gone; the line does not depend on seeing its colour). */
+body.assist-on .phial[data-state="empty"]::after {
+  content: ''; position: absolute; left: 1px; right: 1px; top: 52%; height: 2px; background: var(--assist-hp, #e0957c); opacity: 0.95;
+  transform: rotate(-38deg); transform-origin: center; pointer-events: none;
+}
+body.assist-on .phial[data-state="full"] .phial-glass { stroke: #f4f1e2; stroke-width: 1.3; }

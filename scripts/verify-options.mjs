@@ -1065,6 +1065,67 @@ try {
     await saved.context.close();
   }
 
+
+  // ------------------------------------------------------------------ colour assist
+  if (want('assist')) {
+    console.log('\n== Colour assist: Off / Red-green / Blue-yellow');
+    const { context, page, errors } = await freshRun();
+    const bars = () => page.evaluate(() => {
+      const cs = (id) => getComputedStyle(document.getElementById(id));
+      const cross = document.querySelector('.phial[data-state="empty"]');
+      return {
+        cls: document.body.classList.contains('assist-on'),
+        vars: ['--assist-hp', '--assist-mana', '--assist-levit'].map((v) => document.body.style.getPropertyValue(v)),
+        hp: cs('hp-fill').backgroundColor, mana: cs('mana-fill').backgroundColor, lev: cs('levit-fill').backgroundColor,
+        hpImg: cs('hp-fill').backgroundImage, manaImg: cs('mana-fill').backgroundImage, levImg: cs('levit-fill').backgroundImage,
+        cross: cross ? getComputedStyle(cross, '::after').content : null,
+      };
+    });
+    await page.evaluate(() => window.__game.ctx.events.emit('phialsChanged', { phials: 2, max: 3, reason: 'death' }));
+    await page.waitForTimeout(500);
+    const clip = { x: 0, y: 40, width: 420, height: 160 };
+    const d = await bars();
+    check(!d.cls && d.vars.every((v) => v === ''), 'default: no class, no assist colours');
+    check(d.hp === 'rgb(212, 130, 106)' && d.mana === 'rgb(136, 191, 205)' && d.lev === 'rgb(205, 182, 120)', `default: the bars are the shipped colours (${d.hp} ${d.mana} ${d.lev})`);
+    check(!d.hpImg.includes('repeating') && !d.manaImg.includes('radial') && !d.levImg.includes('repeating') && d.cross !== '""', 'default: no patterns and no cross on the spent phial');
+    await page.screenshot({ path: `${out}/assist-off.png`, clip });
+
+    await openSettings(page, 'display');
+    const select = page.locator('#player-settings [name="colorAssist"]');
+    check(await select.evaluate((el) => [...el.options].map((o) => o.value).join() === 'off,red-green,blue-yellow'), 'the Display tab offers Off / Red-green / Blue-yellow');
+    await select.selectOption('red-green');
+    check((await stored(page))?.colorAssist === 'red-green', 'Red-green saves');
+    await closeSettings(page); await resume(page);
+    await page.waitForTimeout(300);
+    const rg = await bars();
+    check(rg.cls && rg.hp === 'rgb(217, 79, 92)' && rg.mana === 'rgb(127, 176, 255)' && rg.lev === 'rgb(240, 228, 66)', `Red-green: the bars take the assist colours (${rg.hp} ${rg.mana} ${rg.lev})`);
+    check(rg.hpImg.includes('repeating-linear-gradient') && rg.manaImg.includes('radial-gradient') && rg.levImg.includes('repeating-linear-gradient'), 'and each bar gains a pattern (hatched, dotted, ticked)');
+    check(rg.cross === '""', 'and a spent phial is crossed out');
+    await page.screenshot({ path: `${out}/assist-red-green.png`, clip });
+
+    await openSettings(page, 'display');
+    await page.locator('#player-settings [name="colorAssist"]').selectOption('blue-yellow');
+    await closeSettings(page); await resume(page);
+    await page.waitForTimeout(300);
+    const by = await bars();
+    check(by.hp === 'rgb(194, 24, 91)' && by.mana === 'rgb(86, 180, 233)' && by.lev === 'rgb(255, 210, 63)', `Blue-yellow: its own colours (${by.hp} ${by.mana} ${by.lev})`);
+    await page.screenshot({ path: `${out}/assist-blue-yellow.png`, clip });
+
+    await openSettings(page, 'display');
+    await page.locator('#player-settings [name="colorAssist"]').selectOption('off');
+    await closeSettings(page); await resume(page);
+    await page.waitForTimeout(300);
+    const back = await bars();
+    check(!back.cls && back.vars.every((v) => v === '') && back.hp === 'rgb(212, 130, 106)' && !back.hpImg.includes('repeating'), 'Off again: back to exactly the shipped bars');
+    check(errors.length === 0, `no page errors${errors.join(' | ')}`);
+    await context.close();
+
+    const saved = await freshRun({ prefs: { colorAssist: 'blue-yellow' } });
+    await saved.page.waitForTimeout(500);
+    check((await saved.page.evaluate(() => document.body.classList.contains('assist-on'))), 'a saved choice applies on load');
+    await saved.context.close();
+  }
+
 } finally {
   await browser.close();
 }

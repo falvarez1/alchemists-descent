@@ -12,7 +12,8 @@ import { PadRumble } from '@/input/padRumble';
 import { LatchIndicator } from '@/ui/LatchIndicator';
 import { sanitizeToggleModes, type HoldAction } from '@/input/toggleLatches';
 import { EnemyReadouts } from '@/ui/EnemyReadouts';
-import { AIM_ASSISTS, HINT_MODES, HUD_OPACITY, HUD_SCALE, PAD_DEADZONE, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeBand, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
+import { ASSIST_PALETTES, lighten } from '@/config/colorAssist';
+import { AIM_ASSISTS, COLOR_ASSISTS, HINT_MODES, HUD_OPACITY, HUD_SCALE, PAD_DEADZONE, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeBand, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
 import { createDefaultPostFxSettings } from '@/config/params';
 
 /** Everything the dialog persists under one key. The newer options live in config/playerPrefs (ExtraPreferences). */
@@ -121,6 +122,7 @@ const SIMPLE_CONTROLS: readonly SimpleControl[] = [
   holdMode('down', 'toggleDown'), holdMode('jump', 'toggleJump'), holdMode('pour', 'togglePour'), holdMode('interact', 'toggleInteract'),
   flag('showEnemyHp'), percent('hudScale', HUD_SCALE), percent('hudOpacity', HUD_OPACITY), percent('padDeadzone', PAD_DEADZONE), flag('padRumble'),
   picture('brightness', 'brightness'), picture('vignette', 'vignette'), picture('bloom', 'bloom'), picture('grain', 'grain', 'Off'),
+  { name: 'colorAssist', read: p => p.colorAssist, write: (p, raw) => { p.colorAssist = sanitizeChoice(raw, COLOR_ASSISTS, 'off'); } },
   { name: 'aimAssist', read: p => p.aimAssist, write: (p, raw) => { p.aimAssist = sanitizeChoice(raw, AIM_ASSISTS, 'off'); } },
   { name: 'hintMode', read: p => p.hintMode, write: (p, raw) => { p.hintMode = sanitizeChoice(raw, HINT_MODES, 'first'); } },
 ];
@@ -192,6 +194,7 @@ export class PlayerSettings {
       <div class="settings-option"><button type="button" id="reset-hud">Reset HUD</button></div></div></section>
       <section class="settings-group" aria-labelledby="settings-comfort"><h3 id="settings-comfort">Comfort</h3><div class="settings-options">
       ${checkRow('reducedFlashes', 'Reduce flashes and pulses')}
+      ${selectRow('colorAssist', 'Colour assist', [['off', 'Off'], ['red-green', 'Red-green'], ['blue-yellow', 'Blue-yellow']], 'Recolours the health, mana and levitation bars so they stay apart, gives each bar its own pattern, and crosses out spent phials. The world keeps the colours it was painted in.')}
       ${selectRow('cameraShake', 'Camera shake', [['full', 'Full'], ['half', 'Half'], ['off', 'Off']], 'How hard blasts, falls and heavy footsteps shake the view.')}
       ${checkRow('highReadability', 'High-readability lighting')}
       ${checkRow('creatureCaptions', 'Creature sound captions')}</div></section></div>
@@ -416,6 +419,18 @@ export class PlayerSettings {
     this.ctx.state.pauseOnBlur = this.preferences.pauseOnBlur;
     this.ctx.state.hintMode = this.preferences.hintMode;
     document.body.classList.toggle('caps-backed', this.preferences.captionBacking);
+    // Colour assist: the HUD bars' accents (from config/colorAssist) and body.assist-on, which options.css keys the patterns to.
+    const assist = this.preferences.colorAssist;
+    document.body.classList.toggle('assist-on', assist !== 'off');
+    for (const key of ['hp', 'mana', 'levit'] as const) {
+      if (assist === 'off') {
+        document.body.style.removeProperty(`--assist-${key}`);
+        document.body.style.removeProperty(`--assist-${key}-hi`);
+      } else {
+        document.body.style.setProperty(`--assist-${key}`, ASSIST_PALETTES[assist][key]);
+        document.body.style.setProperty(`--assist-${key}-hi`, lighten(ASSIST_PALETTES[assist][key], 0.5));
+      }
+    }
     // HUD size and opacity: variables on the root, and a class only while they differ from the shipped HUD
     // (so with nothing chosen no rule below applies and no HUD block gains a transform or an opacity).
     const root = document.documentElement.style;
