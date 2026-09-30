@@ -1,5 +1,7 @@
 # Chunked World — Enhancement & Pixel-Scene Tooling Plan
 
+> **Update 2026-09:** The Builder World Map panel (`src/builder/virtualWorldPanel.ts`) and the Pixel Scene Editor (`src/builder/pixelSceneEditor.ts`, `pixelSceneStore.ts`) were removed from the Builder. The chunked world runtime in `src/world/virtual/*` and `Levels.playVirtualWindow` remain; references below to those two Builder surfaces are historical. `effectiveVirtualWorldDef` moved to `src/world/virtual/effectiveDef.ts`.
+
 Status: living plan. Scope: the virtual/chunked world generator (the "World Map"
 feature) — `src/world/virtual/*` + `src/builder/virtualWorldPanel.ts`. This doc
 covers the biome/dressing/look-and-feel enhancement roadmap **and** the tooling

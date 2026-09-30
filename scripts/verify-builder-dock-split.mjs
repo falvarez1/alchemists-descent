@@ -80,10 +80,10 @@ console.log('-- interaction: drag a tab into the bottom zone → split; drag it 
 await seed([
   { id: 'builder-palette', dock: 'left', open: false, size: 214 },
   { id: 'builder-inspector', dock: 'right', open: true, size: 252 },
-  { id: 'builder-global', dock: 'right', open: true, size: 252 },
+  { id: 'builder-outliner', dock: 'right', open: true, size: 252 },
 ]);
 const tabBox = await page.evaluate(() => {
-  const t = document.querySelector('#builder-dock-right .builder-dock-tabs .editor-tab[data-tab-id="builder-global"]');
+  const t = document.querySelector('#builder-dock-right .builder-dock-tabs .editor-tab[data-tab-id="builder-outliner"]');
   const d = document.getElementById('builder-dock-right');
   if (!t || !d) return null;
   const tr = t.getBoundingClientRect();
@@ -122,10 +122,10 @@ console.log('-- guides: empty dock = one full-area drop target, no doubled indic
 await seed([
   { id: 'builder-palette', dock: 'left', open: false, size: 214 },
   { id: 'builder-inspector', dock: 'right', open: true, size: 252 },
-  { id: 'builder-global', dock: 'right', open: true, size: 252 },
+  { id: 'builder-outliner', dock: 'right', open: true, size: 252 },
 ]);
 const startTab = await page.evaluate(() => {
-  const t = document.querySelector('#builder-dock-right .builder-dock-tabs .editor-tab[data-tab-id="builder-global"]');
+  const t = document.querySelector('#builder-dock-right .builder-dock-tabs .editor-tab[data-tab-id="builder-outliner"]');
   if (!t) return null;
   const tr = t.getBoundingClientRect();
   return { tx: tr.left + tr.width / 2, ty: tr.top + tr.height / 2 };

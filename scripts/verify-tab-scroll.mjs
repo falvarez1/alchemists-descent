@@ -30,16 +30,19 @@ await page.waitForTimeout(400);
 
 const SEL = '#builder-dock-right .builder-dock-tabs .editor-tabs-list';
 
-// Stack several right-dock panels into a tab group (the View menu keeps itself
-// open on checkable items, so one open + three clicks does it).
+// Stack several right-dock panels into a tab group: World Generation from the
+// View menu, the rest through their commands (only those two are right-docked
+// View items).
 await page.click('.builder-menu-btn[data-menu="view"]');
 await page.waitForTimeout(120);
-for (const id of ['b-worldgen', 'b-global', 'b-postfx']) {
-  await page.click('#' + id);
-  await page.waitForTimeout(180);
-}
+await page.click('#b-worldgen');
+await page.waitForTimeout(180);
 await page.keyboard.press('Escape');
 await page.waitForTimeout(200);
+for (const cmd of ['builder.outlinerPanel', 'builder.assetDetailsPanel', 'builder.prefabDetailsPanel']) {
+  await page.evaluate((c) => window.__game?.ctx?.builder?.['runUiCommand']?.(c), cmd);
+  await page.waitForTimeout(180);
+}
 
 const info = () => page.evaluate((sel) => {
   const list = document.querySelector(sel);

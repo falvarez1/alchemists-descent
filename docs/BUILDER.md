@@ -7,9 +7,9 @@ Sandbox mode. Builder is a separate developer tool for authoring shippable level
 rooms, encounters, puzzles, lighting, mood, and procedural dressing.
 
 Companion spec: `docs/BUILDER-LIVE-UI-SPEC.md` covers the next Builder workspace
-direction: WYSIWYG authoring, live preview, Builder-owned playtest UX, reusable
-editor UI framework controls, docked panels, menus, commands, keymaps, overlays,
-and workspace persistence.
+direction: WYSIWYG authoring, Builder-owned playtest UX, reusable editor UI
+framework controls, docked panels, menus, commands, keymaps, overlays, and
+workspace persistence.
 
 ## Product Intent
 
@@ -59,6 +59,19 @@ Sandbox saves are not authoritative level source files. They are scratchpads.
 A paused authoring environment. Builder edits an `EditorDocument`, not just the
 live `World.types` array. Playtest compiles that document into a temporary custom
 level runtime.
+
+Builder has two sessions: **Author** (static, paused, document-owned) and
+**Playtest** (the compiled, disposable runtime with a real player). There is no
+animated "logic preview": mechanisms are checked in Playtest, where the real
+engine runs, rather than in a second mechanism engine that can drift from it.
+
+The Builder carries only tools that author levels. It has no runtime/telemetry
+dock (the game window's Runtime Inspector covers a Builder Playtest), no Global
+Controls or Post Processing tuning panels (Sandbox Global Controls, the header GPU
+FX toggle and the console's `set` command carry live tuning), and no World Map
+or Pixel Scene Editor (the chunked world runtime in `src/world/virtual` has no
+Builder surface). Those were cut on purpose; see the "Scope cuts" note in
+`docs/BUILDER-LIVE-UI-SPEC.md`.
 
 ## Core Architecture
 
@@ -851,6 +864,10 @@ Status legend: [x] shipped · [~] partially shipped (see notes) · [ ] not start
 
 ## Non-Goals
 
+- Builder should not grow a second runtime (a "preview" engine) beside the
+  game's; test mechanisms in Playtest.
+- Builder should not become a general tuning panel for the simulation, player
+  feel or post-processing; those live in Sandbox and the console.
 - Builder should not replace Play progression saves.
 - Builder should not automatically turn every playtest scar into source data.
 - Builder should not hide authored intent inside raw cells when an object/link

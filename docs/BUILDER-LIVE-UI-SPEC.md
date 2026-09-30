@@ -1,6 +1,9 @@
 # Builder Live Workspace And UI Framework Spec
 
-Status: proposal for iteration.
+Status: proposal for iteration. Update 2026-09: the Logic Preview session
+(Author / Live Preview / Playtest) was cut, so Builder has two sessions, Author
+and Playtest; the Runtime, Global Controls, Post Processing, World Map and Pixel
+Scene Editor surfaces were cut with it (see "Scope cuts" below).
 
 This document extends `docs/BUILDER.md`. It defines the next Builder direction:
 a WYSIWYG authoring workspace that shows real game visuals by default, plus a
@@ -20,14 +23,15 @@ instead of accumulating one-off panels and buttons.
 - Build a reusable UI foundation for toolbars, docked panels, menus, command
   palettes, inspectors, lists, field controls, tabs, overlays, and workspace
   persistence.
-- Keep `EditorDocument` as the source of truth. Live preview and playtest are
-  views/sessions over document data, not alternate source formats.
+- Keep `EditorDocument` as the source of truth. Playtest is a session over
+  document data, not an alternate source format.
 
 ## Non-Goals
 
 - Do not add a fourth top-level "Live Builder" mode.
 - Do not make header `PLAY` validate or compile Builder content.
-- Do not let live preview silently mutate the source document.
+- Do not let a playtest silently mutate the source document; scars return only
+  through an explicit, undoable bake.
 - Do not treat generated expedition runtime state as a perfect authored
   document unless a real runtime-to-document importer is built.
 - Do not introduce a broad UI framework dependency unless the local vanilla
@@ -65,11 +69,9 @@ Top-level header modes stay:
   and must not validate Builder documents.
 - `BUILDER`: authored level/document workspace.
 
-Builder owns three internal sessions:
+Builder owns two internal sessions:
 
 - `AUTHOR`: default editing session. Paused, deterministic, document-owned.
-- `LIVE PREVIEW`: Builder-owned animation/simulation preview without full
-  player gameplay.
 - `PLAYTEST`: Builder-owned compiled runtime for full player testing.
 
 Header `PLAY` always exits Builder and resumes/starts the game. Builder
@@ -265,30 +267,14 @@ Draw editor overlays on top:
 
 Author View must not run full AI, player input, or destructive simulation.
 
-### Live Preview
+### Live Preview (cut)
 
-Builder-owned preview that animates selected systems without entering gameplay.
-
-Allowed:
-
-- Sprite animation.
-- Light flicker.
-- Decor animation.
-- Mechanism idle states.
-- Hazard emitter ghost cadence.
-- Particle preview with strict caps.
-- Optional local mechanism interaction tests.
-
-Not allowed by default:
-
-- Permanent terrain destruction.
-- Enemy AI pursuing the player.
-- Pickups being consumed.
-- Player death/progression.
-- Expedition autosave.
-
-Live Preview can operate on a preview runtime/proxy, but the document remains
-authoritative. Any "keep changes" behavior must be explicit and scoped.
+A third session, `LIVE PREVIEW` ("Logic Preview"), once animated sprites, lights
+and mechanism idle states from a disposable proxy runtime (`PreviewRuntime.ts`,
+a second mechanism engine with no player). It was removed: it duplicated the game
+runtime's logic, drifted from it, and added nothing Playtest does not do with the
+real engine. Author View keeps the cheap, honest previews (real object sprites, the
+editor light preview and wand cursor light); to see mechanisms behave, Playtest.
 
 ### Playtest
 
@@ -364,8 +350,8 @@ WYSIWYG rendering makes selection harder unless the editor gives clear rules.
 - Hidden objects are omitted from normal canvas hit testing unless hidden
   overlay/select hidden is enabled.
 - Multi-select shows shared properties and mixed-value fields.
-- Selection must survive switching Author/Live Preview/Playtest-return when
-  object ids still exist.
+- Selection must survive switching Author/Playtest-return when object ids still
+  exist.
 
 ## Inspector Conventions
 
@@ -462,7 +448,8 @@ Recommended direction:
 - Extract reusable preview draw functions for objects/mechanisms/entities.
 - Keep editor overlay drawing separate from runtime sprite drawing.
 - Prefer document/proxy render data in Author View.
-- Use a disposable preview runtime only for systems that require runtime shapes.
+- Do not grow a second runtime for previews; systems that need runtime shapes
+  are tested in Playtest.
 - Keep frame budgets explicit; the editor should remain responsive with dense
   levels.
 
@@ -475,7 +462,6 @@ src/builder/render/
   GizmoLayer.ts            selection, handles, labels
   OverlayRegistry.ts       registered overlays
   HitTest.ts               object/handle hit testing
-  PreviewRuntime.ts        optional live preview proxy runtime
 ```
 
 ## State Ownership
@@ -489,7 +475,6 @@ Ownership table:
 | Sandbox raw grid | Sandbox | Scratch data. |
 | Expedition runtime/save | Play/Levels | Never mutated by Builder editing. |
 | Builder playtest runtime | Builder | Disposable custom runtime. |
-| Live preview state | Builder | Disposable/proxy; explicit bake only. |
 | Validation snapshot | Builder document | Last checked state, not a lock. |
 
 ## Edge Cases
@@ -497,14 +482,13 @@ Ownership table:
 Invalid document:
 
 - Author View still opens.
-- Live Preview still renders partial content where possible.
 - Header Play still exits to the game.
 - Playtest blocks only on compile-breaking errors and must explain the exact
   blocker.
 
 No spawn:
 
-- Author View and Live Preview are allowed.
+- Author View is allowed.
 - Playtest offers "use camera/cursor as temporary spawn" or a quick Add Spawn
   action.
 
@@ -526,7 +510,7 @@ Leaving Builder:
 - Builder Exit returns to Sandbox/build surface.
 - Unsaved document changes are protected by draft/save prompts.
 
-Live Preview mutation:
+Playtest mutation:
 
 - No permanent document mutation without a command.
 - Any bake/keep action must be undoable when scoped and honest when too large.
@@ -544,7 +528,6 @@ Keyboard:
 Performance:
 
 - Dense overlays can be toggled.
-- Live Preview uses caps and throttles.
 - Hit testing should use spatial indexes or coarse buckets once object counts
   grow.
 
@@ -612,12 +595,11 @@ Browser/platform:
   validation badges as independent toggles.
 - Persist overlay visibility in workspace settings.
 
-### Phase G - Live Preview
+### Phase G - Live Preview (built, then cut)
 
-- Add Author/Live segmented control.
-- Animate decor, entities, lights, and selected mechanism idle states.
-- Add strict mutation boundaries and preview caps.
-- Add local mechanism test actions.
+- Shipped an Author/Live segmented control over a proxy `PreviewRuntime`.
+- Removed 2026-09 (see "Live Preview (cut)" above); Phase H is the path for
+  testing mechanisms.
 
 ### Phase H - Builder Playtest Shell
 
@@ -645,7 +627,6 @@ Automated:
 - Unit tests for inspector field controls and mixed values.
 - Browser probe: header Play exits Builder with invalid doc.
 - Browser probe: Playtest button compiles valid doc and returns to Builder.
-- Browser probe: live preview does not mutate document terrain or objects.
 - Browser probe: overlay toggles persist and do not affect document saves.
 - Browser probe: object hit testing selects visible sprites and tiny anchors.
 
@@ -662,8 +643,6 @@ Manual:
 
 - Should Builder use a local vanilla TypeScript UI framework long-term, or move
   to a small declarative renderer if panel complexity keeps growing?
-- Should Live Preview animate all visible entities or only selected/nearby
-  entities by default?
 - How much of a generated expedition scene should the current-scene snapshot
   import beyond terrain and player spawn?
 - Should Playtest Here default to cursor, camera center, or last explicit test
@@ -686,5 +665,27 @@ The Builder UI framework is successful when:
 - Layout and overlay preferences persist without touching document saves.
 - WYSIWYG Author View shows the level as the player will perceive it, with
   editor overlays layered on top.
-- Play, Sandbox, Builder Author, Builder Live Preview, and Builder Playtest are
-  distinguishable by behavior and UI, even if they share internal runtime code.
+- Play, Sandbox, Builder Author, and Builder Playtest are distinguishable by
+  behavior and UI, even if they share internal runtime code.
+
+## Scope cuts (2026-09)
+
+The Builder keeps only what helps author levels. Removed, with where the need is
+met instead:
+
+- **Logic Preview** (Author / Live Preview session, `PreviewRuntime`): use
+  Playtest.
+- **Runtime panel** (live entity/mechanism inspector docked in the Builder): the
+  game window's Runtime Inspector (header button) works during a Builder
+  Playtest.
+- **Global Controls** and **Post Processing** panels (sim, gore, electrical,
+  pacing, player-feel, wand-light and post-FX dials): the Sandbox's own Global
+  Controls, the header's GPU FX toggle and the dev console's `set` command
+  carry live tuning. World Generation's Live Sim tab keeps the few sim sliders a
+  level needs.
+- **World Map** and **Pixel Scene Editor** (chunked-world profile and scene
+  tools): the chunked world runtime (`src/world/virtual`, `Levels`) stays; it
+  has no Builder surface.
+
+Workspace layouts saved with the removed panel ids are sanitized on load (unknown
+ids are dropped).

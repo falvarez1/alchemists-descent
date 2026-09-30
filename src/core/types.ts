@@ -3383,7 +3383,7 @@ export interface LevelsApi {
    * enemies placed in build mode are kept.
    */
   playCurrentWorld(ctx: Ctx): void;
-  /** Builder World Map test run: materialize the tuned virtual world around a global center. */
+  /** Virtual-world test run (no Builder surface opens it any more): materialize the tuned virtual world around a global center. */
   playVirtualWindow(ctx: Ctx, def: VirtualWorldDef, center: { x: number; y: number }, previewRadius: number): void;
   /** Leave a disposable Builder/Sandbox custom runtime so header PLAY resumes the expedition path. */
   exitCustomPlaytest(ctx: Ctx): void;
