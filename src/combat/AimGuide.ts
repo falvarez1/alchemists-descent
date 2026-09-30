@@ -3,6 +3,7 @@ import { Cell, isGas } from '@/sim/CellType';
 import { pointHitsCreature } from '@/creatures/body';
 import { weaverLegAt, weaverLegGeometry } from '@/creatures/weaverAnatomy';
 import { PROJECTILE_LIFE, projectileGravity, isSpentGore, WEAVER_LIMB_DAMAGE } from './projectileDefs';
+import { AIM_ASSIST_DEGREES, pickBearingAssist } from './aimAssist';
 
 interface Ballistic { type: ProjectileType; speed: number; gravity: number; bias: number; life: number }
 export interface AimGuide {
@@ -63,6 +64,29 @@ function trace(ctx: Ctx, angle: number, spec: Ballistic, guide: AimGuide): AimGu
   return guide;
 }
 
+/** The angle to launch at (x, y) from (ox, oy) so the spell's gravity and upward bias still bring it there. */
+function launchAngle(ox: number, oy: number, x: number, y: number, spec: Ballistic): number {
+  let angle = Math.atan2(y - oy, x - ox);
+  for (let i = 0; i < 4; i++) {
+    const t = Math.max(0, (x - ox - Math.cos(angle) * 9) / (Math.cos(angle) * spec.speed || .001));
+    angle = Math.atan2(y - oy - spec.bias * t - spec.gravity * t * (t + 1) / 2, x - ox);
+  }
+  return angle;
+}
+
+/**
+ * The player's Aim assist option (Off / Light / Strong; Trickshot off): a creature the aim DIRECTION already
+ * points near is locked, because a stick or a keyboard has no cursor to put on it. Sleeping creatures are
+ * left alone (a lock should not wake a roost).
+ */
+function bearingAssist(ctx: Ctx, raw: number, spec: Ballistic): { angle: number; enemy: Enemy; leg: number } | null {
+  const tolerance = AIM_ASSIST_DEGREES[ctx.state.aimAssist ?? 'off'] * Math.PI / 180;
+  const p = ctx.player, ox = p.x, oy = p.y - (p.crawling ? 4 : 9);
+  const targets = ctx.enemies.filter(e => e.hp > 0 && !e.sleeping).map(e => ({ x: e.x, y: e.y - ctx.enemyCtl.defs[e.kind].h * .45, ref: e }));
+  const hit = pickBearingAssist(ox, oy, raw, tolerance, targets, 260, (x, y) => launchAngle(ox, oy, x, y, spec));
+  return hit ? { angle: hit.angle, enemy: hit.ref, leg: -1 } : null;
+}
+
 function assistAngle(ctx: Ctx, raw: number, spec: Ballistic): { angle: number; enemy: Enemy; leg: number } | null {
   const tolerance = (ctx.state.trickshot?.assistDegrees ?? 0) * Math.PI / 180;
   if (tolerance <= 0) return null;
@@ -71,11 +95,7 @@ function assistAngle(ctx: Ctx, raw: number, spec: Ballistic): { angle: number; e
   const candidate = (enemy: Enemy, x: number, y: number, leg: number) => {
     const distance = Math.hypot(x - ctx.input.mouse.x, y - ctx.input.mouse.y);
     if (distance >= score || Math.hypot(x - ox, y - oy) > 220) return;
-    let angle = Math.atan2(y - oy, x - ox);
-    for (let i = 0; i < 4; i++) {
-      const t = Math.max(0, (x - ox - Math.cos(angle) * 9) / (Math.cos(angle) * spec.speed || .001));
-      angle = Math.atan2(y - oy - spec.bias * t - spec.gravity * t * (t + 1) / 2, x - ox);
-    }
+    const angle = launchAngle(ox, oy, x, y, spec);
     const delta = Math.atan2(Math.sin(angle - raw), Math.cos(angle - raw));
     if (Math.abs(delta) > tolerance) return;
     score = distance; best = { angle: raw + delta, enemy, leg };
@@ -99,9 +119,12 @@ function assistAngle(ctx: Ctx, raw: number, spec: Ballistic): { angle: number; e
 
 const cache = new WeakMap<Ctx, { key: string; value: AimGuide | null }>();
 export function getAimGuide(ctx: Ctx): AimGuide | null {
-  if (!ctx.state.trickshot?.enabled || ctx.player.dead || ctx.player.legClub || ctx.state.mode !== 'play') return null;
+  const trick = ctx.state.trickshot?.enabled === true;
+  // The player's Aim assist option stands in for Trickshot's lock when Trickshot is off; with both off there is no guide.
+  const bearing = !trick && (ctx.state.aimAssist ?? 'off') !== 'off';
+  if ((!trick && !bearing) || ctx.player.dead || ctx.player.legClub || ctx.state.mode !== 'play') return null;
   const p = ctx.player, wand = ctx.wands.wands[ctx.wands.active];
-  const key = `${ctx.state.frameCount}:${p.x}:${p.y}:${p.crawling}:${ctx.input.mouse.x}:${ctx.input.mouse.y}:${ctx.wands.active}:${wand.castIndex}:${wand.mana}:${ctx.state.trickshot.assistDegrees}`;
+  const key = `${ctx.state.frameCount}:${p.x}:${p.y}:${p.crawling}:${ctx.input.mouse.x}:${ctx.input.mouse.y}:${ctx.wands.active}:${wand.castIndex}:${wand.mana}:${ctx.state.trickshot?.assistDegrees}:${ctx.state.aimAssist}`;
   const old = cache.get(ctx); if (old?.key === key) return old.value;
   const cast = ctx.wands.peekCast?.(), action = cast?.actions[0];
   const spec = action ? ballistic(ctx, action) : null;
@@ -110,7 +133,9 @@ export function getAimGuide(ctx: Ctx): AimGuide | null {
   const make = (): AimGuide => ({ angle: raw, points: [], enemy: null, leg: -1, contact: false,
     uncertain: action.shortHoming || cast.actions.length > 1 || action.bounces > 0 || action.card === 'bomb' || (action.card === 'spark' && action.dmgMul >= 1.5),
     spread: ctx.state.debugGodMode ? 0 : Math.max(0, cast.spread + action.spreadAdd), affordable: cast.affordable, assisted: false });
-  const target = action.shortHoming ? null : assistAngle(ctx, raw, spec);
+  const target = action.shortHoming ? null : bearing ? bearingAssist(ctx, raw, spec) : assistAngle(ctx, raw, spec);
+  // No creature in the cone: the aim is the player's own, untouched, and nothing is traced.
+  if (bearing && !target) { cache.set(ctx, { key, value: null }); return null; }
   let guide = target ? trace(ctx, target.angle, spec, make()) : trace(ctx, raw, spec, make());
   if (target && (guide.enemy !== target.enemy || guide.leg !== target.leg)) guide = trace(ctx, raw, spec, make());
   else if (target) {

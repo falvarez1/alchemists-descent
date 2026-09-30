@@ -10,7 +10,7 @@ import { resetSeenHints } from '@/game/hints/seenHints';
 import '@/styles/options.css';
 import { PadRumble } from '@/input/padRumble';
 import { EnemyReadouts } from '@/ui/EnemyReadouts';
-import { HINT_MODES, HUD_OPACITY, HUD_SCALE, PAD_DEADZONE, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeBand, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
+import { AIM_ASSISTS, HINT_MODES, HUD_OPACITY, HUD_SCALE, PAD_DEADZONE, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeBand, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
 import { createDefaultPostFxSettings } from '@/config/params';
 
 /** Everything the dialog persists under one key. The newer options live in config/playerPrefs (ExtraPreferences). */
@@ -109,6 +109,7 @@ const SIMPLE_CONTROLS: readonly SimpleControl[] = [
   flag('pauseOnBlur'), flag('captionBacking'), flag('numericVitals'),
   flag('showEnemyHp'), percent('hudScale', HUD_SCALE), percent('hudOpacity', HUD_OPACITY), percent('padDeadzone', PAD_DEADZONE), flag('padRumble'),
   picture('brightness', 'brightness'), picture('vignette', 'vignette'), picture('bloom', 'bloom'), picture('grain', 'grain', 'Off'),
+  { name: 'aimAssist', read: p => p.aimAssist, write: (p, raw) => { p.aimAssist = sanitizeChoice(raw, AIM_ASSISTS, 'off'); } },
   { name: 'hintMode', read: p => p.hintMode, write: (p, raw) => { p.hintMode = sanitizeChoice(raw, HINT_MODES, 'first'); } },
 ];
 
@@ -196,6 +197,7 @@ export class PlayerSettings {
       <div class="settings-option"><button type="button" id="reset-tutorials" aria-describedby="note-reset-tutorials">Reset tutorials</button>
       <p class="settings-note flush" id="note-reset-tutorials">Every card teaches again, as on a first descent.</p></div></div></section>
       <section class="settings-group" aria-labelledby="settings-combat"><h3 id="settings-combat">Combat</h3><div class="settings-options">
+      ${selectRow('aimAssist', 'Aim assist', [['off', 'Off'], ['light', 'Light'], ['strong', 'Strong']], 'Bends a shot the last few degrees onto an enemy your aim already points at (Light 4, Strong 8). For a stick, a keyboard or a touch pad, which have no cursor to place. Trickshot keeps its own lock.')}
       ${checkRow('showEnemyHp', 'Enemy health and damage', 'A thin health bar over an enemy for two seconds after you hit it, and the damage you dealt. A readout only: nothing in the fight changes.')}
       <div class="settings-option"><label><input type="checkbox" name="finisher"> Weaver-leg finisher</label>
       <p class="settings-note">With a Weaver's own leg in hand and its owner wounded, the swing slows as it closes, and only a real hit ends it. A miss just costs the moment.</p>
@@ -400,6 +402,7 @@ export class PlayerSettings {
     this.ctx.state.padDeadzone = this.preferences.padDeadzone;
     this.rumble.setEnabled(this.preferences.padRumble);
     this.ctx.state.showEnemyHp = this.preferences.showEnemyHp;
+    this.ctx.state.aimAssist = this.preferences.aimAssist;
     this.readouts.setEnabled(this.preferences.showEnemyHp);
     this.vitals.setEnabled(this.preferences.numericVitals);
     this.ctx.state.reduceFlashes = this.preferences.reducedFlashes;

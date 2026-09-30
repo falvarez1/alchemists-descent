@@ -1332,6 +1332,8 @@ export interface GameStateData {
   padDeadzone?: number;
   /** Enemy health bars and damage numbers (ui/EnemyReadouts): a readout only, off = unset. */
   showEnemyHp?: boolean;
+  /** Aim assist for aim with no cursor (combat/AimGuide): off (unset), light or strong. */
+  aimAssist?: 'off' | 'light' | 'strong';
   reduceFlashes?: boolean;
   trickshot?: TrickshotSettings;
   /** The run's SECRET alchemy reaction (derived from worldSeed; see

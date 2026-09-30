@@ -794,6 +794,103 @@ try {
     await saved.context.close();
   }
 
+
+  // ------------------------------------------------------------------ aim assist
+  if (want('aim')) {
+    console.log('\n== Aim assist: Off / Light / Strong (a synthetic right stick aimed a few degrees off an egg clutch)');
+    const make = async (aimAssist) => {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      await context.addInitScript(() => {
+        window.__pad = {
+          id: 'Synthetic standard pad', index: 0, connected: true, mapping: 'standard', timestamp: 0,
+          axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
+        };
+        Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [window.__pad] });
+      });
+      if (aimAssist) await context.addInitScript((value) => { try { localStorage.setItem('ad-player-preferences-v1', value); } catch { /* */ } }, JSON.stringify({ aimAssist }));
+      const page = await context.newPage();
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(String(e)));
+      await page.goto(url, { waitUntil: 'networkidle' });
+      await startConsolePlayRun(page, { seed: 7, settleMs: 3000 });
+      await waitForOpeningEnd(page).catch(() => undefined);
+      await page.evaluate(() => { const c = window.__game.ctx; c.state.paused = false; c.state.debugGodMode = true; c.player.invuln = 99999; });
+      await page.waitForTimeout(2500);
+      return { context, page, errors };
+    };
+    /** Put an egg clutch `dist` cells to the right, aim the stick `offDeg` above its bearing, and report what the player aims at. */
+    const trial = async (page, offDeg, { fire = false, dist = 80 } = {}) => {
+      await page.evaluate(() => { const c = window.__game.ctx; c.enemies.splice(0, c.enemies.length); });
+      const info = await page.evaluate((d) => {
+        const c = window.__game.ctx; const e = c.enemyCtl.spawn('eggs', c.player.x + d, c.player.y); return { x: e.x, y: e.y };
+      }, dist);
+      await page.waitForTimeout(700);
+      const setup = await page.evaluate(([off]) => {
+        const c = window.__game.ctx; const e = c.enemies[0]; const def = c.enemyCtl.defs[e.kind];
+        const bearing = Math.atan2((e.y - def.h * 0.45) - (c.player.y - 9), e.x - c.player.x);
+        const raw = bearing - off * Math.PI / 180;
+        window.__pad.axes[2] = Math.cos(raw); window.__pad.axes[3] = Math.sin(raw);
+        return { bearing, raw, hp: e.hp, max: e.maxHp };
+      }, [offDeg]);
+      await page.waitForTimeout(450);
+      const aimed = await page.evaluate(() => window.__game.ctx.player.aimAngle);
+      let result = null;
+      if (fire) {
+        await page.evaluate(() => { window.__pad.buttons[7].pressed = true; window.__pad.buttons[7].value = 1; });
+        await page.waitForTimeout(260);
+        await page.evaluate(() => { window.__pad.buttons[7].pressed = false; window.__pad.buttons[7].value = 0; });
+        await page.waitForTimeout(900);
+        result = await page.evaluate(() => { const e = window.__game.ctx.enemies[0]; return e ? [e.hp, e.maxHp] : 'gone'; });
+      }
+      await page.evaluate(() => { window.__pad.axes[2] = 0; window.__pad.axes[3] = 0; });
+      await page.waitForTimeout(300);
+      const toDeg = (r) => (r * 180) / Math.PI;
+      return { offBearing: toDeg(aimed - setup.bearing), offRaw: toDeg(aimed - setup.raw), result, hpStart: setup.hp, info };
+    };
+
+    // --- Off (the default)
+    const off = await make(null);
+    check(await off.page.evaluate(() => window.__game.ctx.state.aimAssist) === 'off', 'default: Off');
+    const tOff = await trial(off.page, 6, { fire: true });
+    check(Math.abs(tOff.offRaw) < 0.6 && Math.abs(tOff.offBearing) > 5, `Off: the shot goes exactly where the stick points (${tOff.offRaw.toFixed(2)} deg off the stick, ${tOff.offBearing.toFixed(1)} off the target)`);
+    check(Array.isArray(tOff.result) && tOff.result[0] === tOff.result[1], `Off: a bolt aimed 6 deg over the clutch misses it (hp ${tOff.result})`);
+    await off.context.close();
+
+    // --- through the real dialog: Light then Strong
+    const { context, page, errors } = await make(null);
+    await openSettings(page, 'gameplay');
+    const select = page.locator('#player-settings [name="aimAssist"]');
+    await select.scrollIntoViewIfNeeded();
+    check(await select.evaluate((el) => [...el.options].map((o) => o.value).join() === 'off,light,strong'), 'the Gameplay tab offers Off / Light / Strong');
+    await select.selectOption('light');
+    check((await stored(page))?.aimAssist === 'light' && await page.evaluate(() => window.__game.ctx.state.aimAssist) === 'light', 'Light saves and applies live');
+    await page.screenshot({ path: `${out}/aim-setting.png` });
+    await closeSettings(page); await resume(page);
+    const tLightIn = await trial(page, 3);
+    check(Math.abs(tLightIn.offBearing) < 0.8, `Light (4 deg): a stick 3 deg off the clutch is pulled onto it (${tLightIn.offBearing.toFixed(2)} deg off the target, was 3)`);
+    const tLightOut = await trial(page, 6);
+    check(Math.abs(tLightOut.offRaw) < 0.6 && Math.abs(tLightOut.offBearing) > 5, `Light: 6 deg off is outside the cone and is left alone (${tLightOut.offBearing.toFixed(1)} deg off the target)`);
+    await openSettings(page, 'gameplay');
+    await page.locator('#player-settings [name="aimAssist"]').selectOption('strong');
+    await closeSettings(page); await resume(page);
+    const tStrong = await trial(page, 6, { fire: true });
+    check(Math.abs(tStrong.offBearing) < 0.8, `Strong (8 deg): 6 deg off is pulled onto the clutch (${tStrong.offBearing.toFixed(2)} deg off the target)`);
+    check(tStrong.result === 'gone' || (Array.isArray(tStrong.result) && tStrong.result[0] < tStrong.result[1]), `Strong: the same bolt now lands (${tStrong.result === 'gone' ? 'the clutch is destroyed' : 'hp ' + tStrong.result})`);
+    const tFar = await trial(page, 6, { dist: 290 });
+    check(Math.abs(tFar.offRaw) < 0.6, `out of reach (290 cells) nothing is locked (${tFar.offRaw.toFixed(2)} deg off the stick)`);
+    // no creature in the cone: the aim is exactly the stick's
+    await page.evaluate(() => { const c = window.__game.ctx; c.enemies.splice(0, c.enemies.length); window.__pad.axes[2] = 0.9; window.__pad.axes[3] = -0.3; });
+    await page.waitForTimeout(400);
+    const free = await page.evaluate(() => ({ aim: window.__game.ctx.player.aimAngle, want: Math.atan2(-0.3, 0.9) }));
+    check(Math.abs(free.aim - free.want) < 0.012, 'with no creature in the cone the aim is exactly the stick’s');
+    check(errors.length === 0, `no page errors${errors.join(' | ')}`);
+    await context.close();
+
+    const saved = await make('strong');
+    check(await saved.page.evaluate(() => window.__game.ctx.state.aimAssist) === 'strong', 'a saved Strong applies on load');
+    await saved.context.close();
+  }
+
 } finally {
   await browser.close();
 }
