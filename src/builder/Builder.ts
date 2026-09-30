@@ -262,7 +262,7 @@ const SIDE_BOTTOM_PANE_MIN = 140;
 const SIDE_BOTTOM_PANE_MAX = 600;
 const SIDE_DEFAULT_PANE_SIZE = 240;
 /** Shipped dock sizes (match DEFAULT_BUILDER_LAYOUT) — used by double-click reset. */
-const DEFAULT_DOCK_SIZE: Record<'left' | 'right' | 'bottom', number> = { left: 214, right: 252, bottom: 420 };
+const DEFAULT_DOCK_SIZE: Record<'left' | 'right' | 'bottom', number> = { left: 232, right: 284, bottom: 420 };
 const BIOME_IDS = Object.keys(BIOME_DEFS) as BiomeId[];
 const WORLDGEN_LIGHT_PREFIX = 'worldgen-light-';
 const SCENE_LIGHT_PREFIX = 'scene-light-';
@@ -1903,7 +1903,7 @@ export class Builder {
         background: rgba(56, 189, 248, 0.72);
       }
       #builder-root .builder-side-pane-splitter:focus-visible {
-        outline: 1px solid rgba(125, 211, 252, 0.9); outline-offset: -1px;
+        outline: 1px solid rgba(139,153,255, 0.9); outline-offset: -1px;
       }
       #builder-root .builder-side-pane.drop-target {
         outline: 2px solid #4ade80; outline-offset: -3px; background: #0d1512;
@@ -9086,7 +9086,7 @@ export class Builder {
   private setToolbarToggle(id: string, name: string, value: string, on: boolean): void {
     const btn = this.el<HTMLButtonElement>(id);
     const label = btn.querySelector('.bt-label');
-    if (label) label.textContent = name + ': ' + value;
+    if (label) label.textContent = on ? `${name} ${value}` : name;
     btn.dataset.on = on ? 'true' : 'false';
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
@@ -9776,7 +9776,7 @@ export class Builder {
         },
         activeOverlays,
       );
-      g.fillStyle = 'rgba(125,211,252,0.9)';
+      g.fillStyle = 'rgba(139,153,255,0.9)';
       g.font = '700 10px monospace';
       g.fillText(
         `OVERLAY: ${[...activeOverlays].map((id) => overlayLabel(id as BuilderOverlayId).toUpperCase()).join(', ')} (O CYCLES)`,
@@ -9803,7 +9803,7 @@ export class Builder {
       const a = toS(this.region.x0, this.region.y0);
       const b = toS(this.region.x1 + 1, this.region.y1 + 1);
       g.setLineDash([6, 4]);
-      g.strokeStyle = 'rgba(125,211,252,0.85)';
+      g.strokeStyle = 'rgba(139,153,255,0.85)';
       g.lineWidth = 1;
       g.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
       g.setLineDash([]);
@@ -9846,7 +9846,7 @@ export class Builder {
       // sensor zones read as faint inner boxes
       if (o.kind === 'scale' || o.kind === 'buoy' || o.kind === 'chargeLatch' || o.kind === 'counterweight') {
         g.setLineDash([3, 3]);
-        g.strokeStyle = 'rgba(125,211,252,0.4)';
+        g.strokeStyle = 'rgba(139,153,255,0.4)';
         g.lineWidth = 1;
         g.strokeRect(a.x + 2, a.y + 2, b.x - a.x - 4, Math.max(4, (b.y - a.y) * 0.6));
         g.setLineDash([]);
@@ -9957,7 +9957,7 @@ export class Builder {
 
     // lasso loop in progress
     if (this.lassoPoints && this.lassoPoints.length > 1) {
-      g.strokeStyle = 'rgba(125,211,252,0.9)';
+      g.strokeStyle = 'rgba(139,153,255,0.9)';
       g.lineWidth = 1.5;
       g.setLineDash([4, 3]);
       g.beginPath();
@@ -10005,7 +10005,7 @@ export class Builder {
 
     // polygon region in progress
     if (this.polyPoints.length > 0) {
-      g.strokeStyle = 'rgba(125,211,252,0.9)';
+      g.strokeStyle = 'rgba(139,153,255,0.9)';
       g.lineWidth = 1.5;
       g.setLineDash([5, 4]);
       g.beginPath();
@@ -10019,12 +10019,12 @@ export class Builder {
       g.lineTo(m.x, m.y);
       g.stroke();
       g.setLineDash([]);
-      g.fillStyle = 'rgba(125,211,252,0.95)';
+      g.fillStyle = 'rgba(139,153,255,0.95)';
       g.fillRect(p0.x - 3, p0.y - 3, 6, 6); // close target
     }
     if (this.region && this.regionMask) {
       const a = toS(this.region.x0, this.region.y0);
-      g.fillStyle = 'rgba(125,211,252,0.9)';
+      g.fillStyle = 'rgba(139,153,255,0.9)';
       g.font = '700 9px monospace';
       g.fillText('MASKED REGION', a.x + 2, a.y - 4);
     }
@@ -10034,7 +10034,7 @@ export class Builder {
       const s = this.shapeDrag;
       const a = toS(Math.min(s.x0, s.x1), Math.min(s.y0, s.y1));
       const b = toS(Math.max(s.x0, s.x1) + 1, Math.max(s.y0, s.y1) + 1);
-      g.strokeStyle = this.tool === 'region' ? 'rgba(125,211,252,0.9)' : 'rgba(74,222,128,0.9)';
+      g.strokeStyle = this.tool === 'region' ? 'rgba(139,153,255,0.9)' : 'rgba(74,222,128,0.9)';
       g.lineWidth = 1.5;
       if (this.tool === 'region') g.setLineDash([6, 4]);
       if (this.tool === 'line') {
@@ -10099,7 +10099,7 @@ export class Builder {
         g.fillText(GLYPH[o.kind] ?? '?', a.x + o.x * cellW - 3, a.y + o.y * cellH + 4);
       }
       for (const lt of s.lights) {
-        g.fillStyle = 'rgba(125,211,252,0.9)';
+        g.fillStyle = 'rgba(139,153,255,0.9)';
         g.fillText('*', a.x + lt.x * cellW - 3, a.y + lt.y * cellH + 4);
       }
       for (const an of s.anchors ?? []) {
@@ -10125,11 +10125,11 @@ export class Builder {
       g.drawImage(this.floatCanvas, a.x, a.y, f.w * cellW, f.h * cellH);
       g.imageSmoothingEnabled = prevSmooth;
       g.setLineDash([5, 3]);
-      g.strokeStyle = 'rgba(125,211,252,0.95)';
+      g.strokeStyle = 'rgba(139,153,255,0.95)';
       g.lineWidth = 1.5;
       g.strokeRect(a.x, a.y, f.w * cellW, f.h * cellH);
       g.setLineDash([]);
-      g.fillStyle = 'rgba(125,211,252,0.95)';
+      g.fillStyle = 'rgba(139,153,255,0.95)';
       g.font = '700 10px monospace';
       g.fillText(
         `FLOATING ${f.w}×${f.h} — ENTER LANDS · Q/E SPIN · ESC CANCELS`,
@@ -10146,7 +10146,7 @@ export class Builder {
       g.fillText(`${label} — APPLY OR DISCARD`, 12, ch - 12);
     }
     if (this.settling) {
-      g.fillStyle = 'rgba(125,211,252,0.95)';
+      g.fillStyle = 'rgba(139,153,255,0.95)';
       g.font = '700 11px monospace';
       g.fillText('SETTLING… (ESC CANCELS)', 12, ch - 12);
     }
@@ -10204,7 +10204,7 @@ export class Builder {
     const boxW = Math.min(width - 16, textW + padX * 2);
     const bx = Math.max(8, Math.min(width - boxW - 8, x));
     g.fillStyle = 'rgba(5,10,18,0.86)';
-    g.strokeStyle = 'rgba(125,211,252,0.32)';
+    g.strokeStyle = 'rgba(139,153,255,0.32)';
     g.lineWidth = 1;
     g.fillRect(bx, y, boxW, 17);
     g.strokeRect(bx, y, boxW, 17);
@@ -10227,7 +10227,7 @@ export class Builder {
           : handle.kind === 'waypoint'
             ? 'rgba(248,113,113,0.96)'
             : handle.kind === 'light-radius'
-              ? 'rgba(125,211,252,0.96)'
+              ? 'rgba(139,153,255,0.96)'
               : handle.kind === 'light-falloff'
                 ? 'rgba(196,181,253,0.96)'
                 : 'rgba(94,234,212,0.96)';

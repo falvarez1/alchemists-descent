@@ -262,9 +262,9 @@ export function buildShellMarkup(options: ShellMarkupOptions): string {
         <div class="bt-brush"><span class="st-label">Brush</span><input type="range" id="bp-brush" min="1" max="24" value="6" aria-label="Brush radius"><b id="bp-brush-val">6</b></div>
         <button id="bt-material" type="button" class="bt-material" aria-label="Armed material: open the material list"><span class="bt-material-dot"></span><span id="bt-material-name">Sand</span></button>
         <span class="bt-spacer"></span>
-        <button id="bp-snap-btn" type="button" class="bt-toggle" data-on="false" title="Snap placements and drags to a grid">${editorIcon('magnet', 14)}<span class="bt-label">Snap: off</span></button>
-        <button id="bp-sym-btn" type="button" class="bt-toggle" data-on="false" title="Mirror terrain painting across the axis (world center; a region recenters it)">${editorIcon('symmetry', 14)}<span class="bt-label">Mirror: off</span></button>
-        <button id="bp-overlay-btn" type="button" class="bt-toggle" data-on="false" title="Readability overlays (O)">${editorIcon('eye', 14)}<span class="bt-label">Overlay: none</span></button>
+        <button id="bp-snap-btn" type="button" class="bt-toggle" data-on="false" title="Snap placements and drags to a grid">${editorIcon('magnet', 14)}<span class="bt-label">Snap</span></button>
+        <button id="bp-sym-btn" type="button" class="bt-toggle" data-on="false" title="Mirror terrain painting across the axis (world center; a region recenters it)">${editorIcon('symmetry', 14)}<span class="bt-label">Mirror</span></button>
+        <button id="bp-overlay-btn" type="button" class="bt-toggle" data-on="false" title="Readability overlays (O)">${editorIcon('eye', 14)}<span class="bt-label">Overlay</span></button>
         <span class="bt-group bt-layers"><button id="bt-layers-btn" type="button" class="bt-toggle" aria-haspopup="true" aria-expanded="false" title="Show, hide and lock layers in the editor">${editorIcon('layers', 14)}<span class="bt-label">Layers</span></button><div id="bp-layers" class="bt-flyout bt-layers-pop" hidden>${layerRows}</div></span>
         <span class="bt-sep"></span>
         <span class="bt-group bt-simulate" role="group" aria-label="Settle">

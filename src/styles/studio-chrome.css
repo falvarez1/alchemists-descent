@@ -220,8 +220,18 @@
 #builder-root .bt-zoom { display: inline-flex; align-items: center; gap: 0; }
 #builder-root .bt-zoom-val { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; color: var(--st-text-2); font: 500 11px/1 var(--st-font); }
 
-@media (max-width: 1180px) {
-    #builder-toolbar .bt-brush .st-label, #builder-root .bt-toggle > span { display: none; }
+/* The stage, not the window, decides: docks eat width, so ask the toolbar's own container. */
+#builder-stage { container: stage / inline-size; }
+@container stage (max-width: 1000px) {
+    #builder-toolbar .bt-brush .st-label { display: none; }
+    #builder-root #builder-toolbar .bt-toggle .bt-label { display: none; }
+    #builder-root #builder-toolbar .bt-toggle[data-on='true'] .bt-label { display: inline; }
+}
+@container stage (max-width: 820px) {
+    #builder-root #builder-toolbar .bt-toggle[data-on='true'] .bt-label { display: none; }
+    #builder-toolbar #bp-brush { width: 56px; }
+    #builder-root #bt-material #bt-material-name { display: none; }
+    #builder-root #bt-material { padding: 0 6px; }
 }
 
 /* ---------------------------------------------------------- status bar */

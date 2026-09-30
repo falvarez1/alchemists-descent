@@ -44,15 +44,15 @@ export const BUILDER_WORKSPACE_KEY = 'noita-builder-workspace-v1';
 
 export const DEFAULT_BUILDER_LAYOUT: WorkspaceLayout = {
   panels: [
-    { id: 'builder-palette', dock: 'left', open: true, size: 214 },
-    { id: 'builder-inspector', dock: 'right', open: true, size: 252 },
-    { id: 'builder-world', dock: 'right', open: false, size: 252 },
+    { id: 'builder-palette', dock: 'left', open: true, size: 232 },
+    { id: 'builder-inspector', dock: 'right', open: true, size: 284 },
+    { id: 'builder-world', dock: 'right', open: false, size: 284 },
     { id: 'builder-assets', dock: 'bottom', open: false, size: 360 },
     { id: 'builder-asset-details', dock: 'right', open: false, size: 300 },
     { id: 'builder-prefab-details', dock: 'right', open: false, size: 300 },
-    { id: 'builder-matparams', dock: 'right', open: false, size: 252 },
-    { id: 'builder-proc', dock: 'right', open: false, size: 252 },
-    { id: 'builder-issues', dock: 'right', open: false, size: 252 },
+    { id: 'builder-matparams', dock: 'right', open: false, size: 284 },
+    { id: 'builder-proc', dock: 'right', open: false, size: 284 },
+    { id: 'builder-issues', dock: 'right', open: false, size: 284 },
     { id: 'builder-outliner', dock: 'right', open: false, size: 292 },
     // Keep in sync with BUILDER_PANEL_SPECS (PanelRegistry): a panel the registry knows but this
     // literal omits lets the literal default and the registry drift apart.

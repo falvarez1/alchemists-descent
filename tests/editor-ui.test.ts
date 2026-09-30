@@ -806,7 +806,7 @@ describe('editor workspace layout', () => {
     expect(layout.panels.find((panel) => panel.id === 'builder-issues')).toMatchObject({
       dock: 'right',
       open: false,
-      size: 252,
+      size: 284,
     });
     expect(layout.activePanelId).toBe('builder-palette');
     expect(layout.snapStep).toBe(0);
