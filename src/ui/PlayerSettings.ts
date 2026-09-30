@@ -13,7 +13,8 @@ import { LatchIndicator } from '@/ui/LatchIndicator';
 import { sanitizeToggleModes, type HoldAction } from '@/input/toggleLatches';
 import { EnemyReadouts } from '@/ui/EnemyReadouts';
 import { ASSIST_PALETTES, lighten } from '@/config/colorAssist';
-import { AIM_ASSISTS, COLOR_ASSISTS, HINT_MODES, HUD_OPACITY, HUD_SCALE, PAD_DEADZONE, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeBand, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
+import { setCosmeticBurstScale } from '@/particles/Particles';
+import { AIM_ASSISTS, COLOR_ASSISTS, HINT_MODES, QUALITY_PRESETS, HUD_OPACITY, HUD_SCALE, PAD_DEADZONE, PRESENTATION, SHAKE_SCALE, bandReadout, sanitizeBand, sanitizeChoice, sanitizeExtras, sanitizeOptionalBand, sanitizeShake, type Band, type ExtraPreferences, type PresentationKey, type ShakeLevel } from '@/config/playerPrefs';
 import { createDefaultPostFxSettings } from '@/config/params';
 
 /** Everything the dialog persists under one key. The newer options live in config/playerPrefs (ExtraPreferences). */
@@ -122,6 +123,7 @@ const SIMPLE_CONTROLS: readonly SimpleControl[] = [
   holdMode('down', 'toggleDown'), holdMode('jump', 'toggleJump'), holdMode('pour', 'togglePour'), holdMode('interact', 'toggleInteract'),
   flag('showEnemyHp'), percent('hudScale', HUD_SCALE), percent('hudOpacity', HUD_OPACITY), percent('padDeadzone', PAD_DEADZONE), flag('padRumble'),
   picture('brightness', 'brightness'), picture('vignette', 'vignette'), picture('bloom', 'bloom'), picture('grain', 'grain', 'Off'),
+  { name: 'quality', read: p => p.quality, write: (p, raw) => { p.quality = sanitizeChoice(raw, QUALITY_PRESETS, 'standard'); } },
   { name: 'colorAssist', read: p => p.colorAssist, write: (p, raw) => { p.colorAssist = sanitizeChoice(raw, COLOR_ASSISTS, 'off'); } },
   { name: 'aimAssist', read: p => p.aimAssist, write: (p, raw) => { p.aimAssist = sanitizeChoice(raw, AIM_ASSISTS, 'off'); } },
   { name: 'hintMode', read: p => p.hintMode, write: (p, raw) => { p.hintMode = sanitizeChoice(raw, HINT_MODES, 'first'); } },
@@ -155,6 +157,8 @@ export class PlayerSettings {
   private readonly latchChip: LatchIndicator;
   /** Presentation fields the player has moved, so "Reset picture" restores exactly those and nothing else. */
   private readonly touchedPicture = new Set<PresentationKey>();
+  /** True once Low has turned the fine pixel look off, so Standard puts back exactly what the game had. */
+  private lowApplied = false;
   private tab: SettingsTab = 'sound';
   private readonly onTabStep = (event: Event): void => {
     const step = event instanceof CustomEvent && event.detail === -1 ? -1 : 1;
@@ -204,7 +208,9 @@ export class PlayerSettings {
       ${sliderRow('vignette', 'Edge shading', PRESENTATION.vignette, 'How much the corners of the view fall away.')}
       ${sliderRow('bloom', 'Glow', PRESENTATION.bloom, 'The soft halo around fire, lamps and lava.')}
       ${sliderRow('grain', 'Film grain', PRESENTATION.grain, 'A faint shimmer over the whole view. Off removes it.')}
-      <div class="settings-option"><button type="button" id="reset-picture">Reset picture</button></div></div></section></div>
+      <div class="settings-option"><button type="button" id="reset-picture">Reset picture</button></div></div></section>
+      <section class="settings-group" aria-labelledby="settings-perf"><h3 id="settings-perf">Performance</h3><div class="settings-options">
+      ${selectRow('quality', 'Quality', [['standard', 'Standard'], ['low', 'Low']], 'Low softens the fine pixel detail on sand and water, draws half the sparks and debris that are only for show, and keeps the Sandbox on one thread (that part applies when the page next loads). The game itself plays the same.')}</div></section></div>
       <div role="tabpanel" class="settings-panel" id="settings-panel-gameplay" aria-labelledby="settings-tab-gameplay" hidden>
       <section class="settings-group" aria-labelledby="settings-play"><h3 id="settings-play">Play</h3><div class="settings-options">
       ${checkRow('pauseOnBlur', 'Pause when the window loses focus', 'Switch to another window or tab and the descent stops where it is. The title, the Sanctum and cutscenes are already still.')}</div></section>
@@ -415,6 +421,10 @@ export class PlayerSettings {
       const value = this.preferences[pref];
       if (value !== null) { fx[field] = value; this.touchedPicture.add(key); } else if (this.touchedPicture.delete(key)) fx[field] = defaults[field] ?? 1;
     }
+    // Quality: Low turns the sub-cell look off (live) and thins cosmetic sparks; Standard restores what the game had.
+    if (this.preferences.quality === 'low') { fx.subcell = false; this.lowApplied = true; }
+    else if (this.lowApplied) { fx.subcell = defaults.subcell; this.lowApplied = false; }
+    setCosmeticBurstScale(this.preferences.quality === 'low' ? 0.5 : 1);
     this.ctx.state.cameraShakeScale = SHAKE_SCALE[this.preferences.cameraShake];
     this.ctx.state.pauseOnBlur = this.preferences.pauseOnBlur;
     this.ctx.state.hintMode = this.preferences.hintMode;

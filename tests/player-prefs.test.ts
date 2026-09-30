@@ -335,3 +335,29 @@ describe('a chosen seed', () => {
     expect(buildRunSummary(base).seedChosen).toBeUndefined();
   });
 });
+
+describe('quality', () => {
+  it('reads the saved preset before the game exists, and never throws', async () => {
+    const { readSavedQuality } = await import('@/config/playerPrefs');
+    const store = (value: string | null) => (key: string) => (key === 'ad-player-preferences-v1' ? value : null);
+    expect(readSavedQuality(null)).toBe('standard');
+    expect(readSavedQuality(store(null))).toBe('standard');
+    expect(readSavedQuality(store('{"quality":"low"}'))).toBe('low');
+    expect(readSavedQuality(store('{"quality":"ultra"}'))).toBe('standard');
+    for (const junk of ['{', 'null', '[]', '"low"', '7', '{"quality":7}']) expect(readSavedQuality(store(junk))).toBe('standard');
+    expect(readSavedQuality(() => { throw new Error('storage blocked'); })).toBe('standard');
+  });
+
+  it('thins only bursts that are nothing but show', async () => {
+    const { cosmeticBurstCount } = await import('@/particles/Particles');
+    expect(cosmeticBurstCount(40, null, undefined, 1)).toBe(40);
+    expect(cosmeticBurstCount(40, null, undefined, 0.5)).toBe(20);
+    expect(cosmeticBurstCount(3, null, undefined, 0.5)).toBe(2);
+    expect(cosmeticBurstCount(1, null, undefined, 0.5)).toBe(1); // never to nothing
+    expect(cosmeticBurstCount(40, 4, undefined, 0.5)).toBe(40); // lands as cells
+    expect(cosmeticBurstCount(40, null, { hostileDmg: 2 }, 0.5)).toBe(40); // hurts
+    expect(cosmeticBurstCount(40, null, { homing: true, value: 5 }, 0.5)).toBe(40); // a coin flight
+    expect(cosmeticBurstCount(40, null, { deposit: true }, 0.5)).toBe(40);
+    expect(cosmeticBurstCount(40, null, { glow: 2, grav: 0.1 }, 0.5)).toBe(20); // glow and gravity are just look
+  });
+});

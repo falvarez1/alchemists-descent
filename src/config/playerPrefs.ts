@@ -147,6 +147,14 @@ export const DEFAULT_EXTRAS: Readonly<ExtraPreferences> = {
   quality: 'standard',
 };
 
+/** The saved Quality, read before the game exists (the Sandbox's worker pool is decided at boot). Never throws. */
+export function readSavedQuality(getItem: ((key: string) => string | null) | null): QualityPreset {
+  try {
+    const saved = JSON.parse(getItem?.('ad-player-preferences-v1') ?? '{}') as unknown;
+    return sanitizeChoice(saved !== null && typeof saved === 'object' ? (saved as Record<string, unknown>).quality : undefined, QUALITY_PRESETS, 'standard');
+  } catch { return 'standard'; }
+}
+
 /** Read the extra options out of whatever was saved. Never throws; unknown or wrong-typed fields take their defaults. */
 export function sanitizeExtras(raw: unknown): ExtraPreferences {
   const saved = (raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;

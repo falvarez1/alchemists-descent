@@ -1126,6 +1126,87 @@ try {
     await saved.context.close();
   }
 
+
+  // ------------------------------------------------------------------ quality
+  if (want('quality')) {
+    console.log('\n== Quality: Standard / Low');
+    const { context, page, errors } = await freshRun();
+    const sub = () => page.evaluate(() => window.__game.ctx.state.postFx.subcell);
+    /** Particles added by one burst of `n`, cosmetic (no cell type) and then one that lands as cells. */
+    const burstCounts = () => page.evaluate(() => {
+      const c = window.__game.ctx; c.particles.clear();
+      c.particles.burst(c.player.x, c.player.y - 20, 40, null, () => 0xffffff, 1);
+      const cosmetic = c.particles.list.length;
+      c.particles.clear();
+      c.particles.burst(c.player.x, c.player.y - 20, 40, 4, () => 0xaa7744, 1); // Wood: lands as cells
+      const cells = c.particles.list.length;
+      c.particles.clear();
+      c.particles.burst(c.player.x, c.player.y - 20, 40, null, () => 0xffffff, 1, { hostileDmg: 3, hostileSource: 'test' });
+      const hostile = c.particles.list.length;
+      c.particles.clear();
+      return { cosmetic, cells, hostile };
+    });
+    const standardSub = await sub();
+    const std = await burstCounts();
+    check(standardSub === true && std.cosmetic === 40 && std.cells === 40 && std.hostile === 40, `Standard: sub-cell look on, bursts whole (${JSON.stringify(std)})`);
+
+    // pixels: sand is where the fine pixel look shows
+    const meanPixels = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => {
+      const cv = document.querySelector('#canvas-holder > canvas'); const t = document.createElement('canvas'); t.width = 640; t.height = 360;
+      const g = t.getContext('2d'); g.drawImage(cv, 0, 0, 640, 360); const d = g.getImageData(0, 0, 640, 360).data;
+      resolve(Array.from(d));
+    })));
+    await page.evaluate(() => { const c = window.__game.ctx; c.state.debugGodMode = true; c.player.invuln = 99999; });
+    await page.waitForTimeout(800);
+    const std1 = await meanPixels();
+    await openSettings(page, 'presentation');
+    const select = page.locator('#player-settings [name="quality"]');
+    await select.scrollIntoViewIfNeeded();
+    check(await select.evaluate((el) => [...el.options].map((o) => o.value).join() === 'standard,low'), 'the Presentation tab offers Standard / Low');
+    await select.selectOption('low');
+    check((await stored(page))?.quality === 'low', 'Low saves');
+    await page.screenshot({ path: `${out}/quality-setting.png` });
+    await closeSettings(page); await resume(page);
+    await page.waitForTimeout(800);
+    check((await sub()) === false, 'Low turns the sub-cell look off, live');
+    const low = await burstCounts();
+    check(low.cosmetic === 20 && low.cells === 40 && low.hostile === 40, `Low: a cosmetic burst of 40 draws 20; a burst that lands as cells or hurts stays 40 (${JSON.stringify(low)})`);
+    const low1 = await meanPixels();
+    let changed = 0; for (let i = 0; i < std1.length; i += 4) if (Math.abs(std1[i] - low1[i]) + Math.abs(std1[i + 1] - low1[i + 1]) + Math.abs(std1[i + 2] - low1[i + 2]) > 24) changed++;
+    check(changed > 500, `and the picture really changes (${changed} of ${std1.length / 4} pixels differ noticeably)`);
+    await page.screenshot({ path: `${out}/quality-low.png` });
+
+    await openSettings(page, 'presentation');
+    await page.locator('#player-settings [name="quality"]').selectOption('standard');
+    await closeSettings(page); await resume(page);
+    const again = await burstCounts();
+    check((await sub()) === true && again.cosmetic === 40, 'Standard again: exactly what the game had (sub-cell on, bursts whole)');
+    check(errors.length === 0, `no page errors${errors.join(' | ')}`);
+    await context.close();
+
+    // the page loads Low (and says so): no worker pool armed, sub-cell off
+    const logs = [];
+    const lowCtx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await lowCtx.addInitScript((value) => { try { localStorage.setItem('ad-player-preferences-v1', value); } catch { /* */ } }, JSON.stringify({ quality: 'low' }));
+    const lp = await lowCtx.newPage();
+    lp.on('console', (m) => logs.push(m.text()));
+    await lp.goto(url, { waitUntil: 'networkidle' });
+    await lp.waitForTimeout(1500);
+    const lowSub = await lp.evaluate(() => window.__game.ctx.state.postFx.subcell);
+    check(lowSub === false, 'a saved Low loads with the sub-cell look off');
+    check(!logs.some((l) => l.includes('parallel sandbox sweep armed')), 'and arms no Sandbox worker pool');
+    await lowCtx.close();
+    const stdLogs = [];
+    const stdCtx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const sp = await stdCtx.newPage();
+    sp.on('console', (m) => stdLogs.push(m.text()));
+    await sp.goto(url, { waitUntil: 'networkidle' });
+    await sp.waitForTimeout(1500);
+    const isolated = await sp.evaluate(() => typeof SharedArrayBuffer !== 'undefined' && self.crossOriginIsolated === true);
+    check(!isolated || stdLogs.some((l) => l.includes('parallel sandbox sweep armed')), isolated ? 'Standard (as before) arms the worker pool' : '(this server is not cross-origin isolated: the worker pool cannot be compared)');
+    await stdCtx.close();
+  }
+
 } finally {
   await browser.close();
 }
