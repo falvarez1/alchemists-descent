@@ -1,0 +1,27 @@
+/* =====================================================================
+ * Player options (ui/PlayerSettings). Every rule here hangs off a body class
+ * or a custom property the dialog sets, so with nothing chosen NONE of it
+ * applies and the HUD is exactly what house.css / living-descent.css draw.
+ * ===================================================================== */
+
+/* ---------- Caption backing ---------- */
+/* A dark plate behind the words that have no scrim of their own: the narrator's
+ * caption, the creature-sound captions, and the combat callouts. */
+body.caps-backed #narration-caption {
+  padding: 8px 16px 9px; background: rgba(8, 16, 19, 0.82); border-left: 2px solid var(--house-brass, #d5b982);
+  text-shadow: none; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+}
+body.caps-backed #sound-caption { padding: 4px 9px 5px; background: rgba(8, 16, 19, 0.78); border-right: 2px solid #9c8458; text-shadow: none; }
+body.caps-backed #callout-layer .callout { padding: 4px 11px 5px; background: rgba(8, 16, 19, 0.74); border-bottom: 1px solid rgba(213, 185, 130, 0.5); }
+/* Callouts follow Text size like every other word on screen (1 at the standard size: nothing changes). */
+body #callout-layer .callout-anchor { transform: translate(-50%, -100%) scale(var(--text-scale, 1)); transform-origin: 50% 100%; }
+
+/* ---------- Numeric vitals ---------- */
+/* ui/VitalNumbers adds a .vital-num to the HP / MANA / LEV rows while the option is on. The
+ * figure hangs off the right of the bar, so the bars themselves do not move or shrink. */
+body.vitals-numeric .vital-row:has(> .vital-num) { position: relative; }
+body.vitals-numeric .vital-num {
+  position: absolute; left: calc(100% + 9px); top: 50%; transform: translateY(-50%); white-space: nowrap; pointer-events: none;
+  font: 650 calc(11.5px * var(--text-scale, 1))/1 var(--house-sans, ui-sans-serif, system-ui, sans-serif); font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em; color: #efe7d2; text-shadow: var(--house-shadow, 0 1px 2px #050b0d);
+}

@@ -186,6 +186,93 @@ try {
     await legacy.context.close();
     check(errors.length === 0 && reloaded.errors.length === 0 && legacy.errors.length === 0, 'no page errors');
   }
+
+  // ------------------------------------------------------------------ caption backing and size
+  if (want('captions')) {
+    console.log('\n== Caption backing and size');
+    const { context, page, errors } = await freshRun();
+    const probe = () => page.evaluate(() => {
+      const c = window.__game.ctx;
+      c.events.emit('narration', { text: 'The Works regrets to inform you that the floor is, at present, mostly lava.', seconds: 30, captioned: true, speaker: 'docent' });
+      c.events.emit('combatCallout', { x: c.player.x + 30, y: c.player.y - 6, text: 'FLAMBEED', tone: 'brass' });
+      const cap = document.getElementById('narration-caption');
+      const anchor = document.querySelector('#callout-layer .callout-anchor:last-child');
+      const card = anchor?.querySelector('.callout');
+      const cs = getComputedStyle(cap);
+      return {
+        body: document.body.classList.contains('caps-backed'),
+        capBg: cs.backgroundColor, capPad: cs.paddingLeft, capFont: parseFloat(cs.fontSize),
+        anchorScale: anchor ? new DOMMatrix(getComputedStyle(anchor).transform).a : null,
+        calloutBg: card ? getComputedStyle(card).backgroundColor : null,
+      };
+    });
+    const alpha = (css) => { const m = /rgba?\(([^)]+)\)/.exec(css ?? ''); if (!m) return 0; const p = m[1].split(',').map(Number); return p.length > 3 ? p[3] : 1; };
+    await page.waitForTimeout(800);
+    const before = await probe();
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: `${out}/captions-default.png` });
+    check(!before.body && alpha(before.capBg) === 0 && before.capPad === '0px', `default: no backing (caption background ${before.capBg}, padding ${before.capPad})`);
+    check(before.anchorScale === 1 && alpha(before.calloutBg) === 0 && before.capFont === 17, 'default: callout scale 1, caption 17px, no plate (unchanged)');
+
+    await openSettings(page, 'display');
+    await click(page, page.locator('#player-settings [name="captionBacking"]'));
+    check((await stored(page))?.captionBacking === true, 'the checkbox saves captionBacking:true');
+    await click(page, page.locator('#player-settings [name="textScale"]').first());
+    await page.locator('#player-settings [name="textScale"]').selectOption('1.3');
+    await closeSettings(page); await resume(page);
+    await page.waitForTimeout(300);
+    const after = await probe();
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: `${out}/captions-backed-larger.png` });
+    check(after.body && alpha(after.capBg) > 0.6 && parseFloat(after.capPad) >= 12, `backing on: dark plate behind the caption (${after.capBg}, padding ${after.capPad})`);
+    check(alpha(after.calloutBg) > 0.5, `backing on: plate behind the callout (${after.calloutBg})`);
+    check(Math.abs(after.capFont - 17 * 1.3) < 0.1 && Math.abs(after.anchorScale - 1.3) < 0.01, `Larger text: caption ${after.capFont}px, callout x${after.anchorScale} (both follow Text size)`);
+    await context.close();
+
+    const saved = await freshRun({ prefs: { captionBacking: true } });
+    await saved.page.waitForTimeout(500);
+    check(await saved.page.evaluate(() => document.body.classList.contains('caps-backed')), 'a saved captionBacking:true applies on load');
+    check(errors.length === 0 && saved.errors.length === 0, 'no page errors');
+    await saved.context.close();
+  }
+
+  // ------------------------------------------------------------------ numeric vitals
+  if (want('vitals')) {
+    console.log('\n== Numbers on the bars');
+    const { context, page, errors } = await freshRun();
+    const nums = () => page.evaluate(() => ({ cls: document.body.classList.contains('vitals-numeric'), nodes: [...document.querySelectorAll('.vital-num')].map((n) => n.textContent) }));
+    const d0 = await nums();
+    check(!d0.cls && d0.nodes.length === 0, 'default: no class, no number elements (the HUD is untouched)');
+    await page.screenshot({ path: `${out}/vitals-default.png`, clip: { x: 0, y: 40, width: 420, height: 160 } });
+    await openSettings(page, 'display');
+    await click(page, page.locator('#player-settings [name="numericVitals"]'));
+    check((await stored(page))?.numericVitals === true, 'the checkbox saves numericVitals:true');
+    await closeSettings(page); await resume(page);
+    await page.waitForTimeout(300);
+    const on = await nums();
+    const real = await page.evaluate(() => { const p = window.__game.ctx.player; return [`${Math.ceil(p.hp)}/${p.maxHp}`, `${Math.floor(p.mana)}/${p.maxMana}`, `${Math.floor(p.levit)}/${p.maxLevit}`]; });
+    check(on.cls && on.nodes.length === 3 && on.nodes.join() === real.join(), `on: ${on.nodes.join('  ')} matches the player (${real.join('  ')})`);
+    await page.screenshot({ path: `${out}/vitals-on-full.png`, clip: { x: 0, y: 40, width: 420, height: 160 } });
+    await page.evaluate(() => { const c = window.__game.ctx; c.player.hp = 37.4; c.player.levit = 12; c.player.invuln = 99999; });
+    await page.waitForTimeout(300);
+    const low = await nums();
+    const liveLevit = await page.evaluate(() => window.__game.ctx.player.levit);
+    check(low.nodes[0] === '38/110' && Math.abs(Number(low.nodes[2].split('/')[0]) - liveLevit) <= 8, `the figures follow the player live: ${low.nodes.join('  ')} (levitation regenerates, now ${Math.round(liveLevit)})`);
+    await page.screenshot({ path: `${out}/vitals-on-hurt.png`, clip: { x: 0, y: 40, width: 420, height: 160 } });
+    // the bars themselves did not move or shrink
+    const geo = (p) => p.evaluate(() => { const r = document.getElementById('hp-fill').parentElement.getBoundingClientRect(); return `${Math.round(r.left)},${Math.round(r.width)}`; });
+    const geoOn = await geo(page);
+    await openSettings(page, 'display');
+    await click(page, page.locator('#player-settings [name="numericVitals"]'));
+    await closeSettings(page); await resume(page);
+    await page.waitForTimeout(300);
+    const off = await nums();
+    check(!off.cls && off.nodes.length === 0, 'off again: the elements and the class are gone');
+    check(geoOn === await geo(page), `the bar keeps its place and width with the numbers on or off (${geoOn})`);
+    check(errors.length === 0, 'no page errors');
+    await context.close();
+  }
+
 } finally {
   await browser.close();
 }

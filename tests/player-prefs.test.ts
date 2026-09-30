@@ -268,3 +268,15 @@ describe('FocusPause listener', () => {
     seen.stop();
   });
 });
+
+describe('numeric vitals', () => {
+  it('formats whole numbers inside 0..max', async () => {
+    const { formatVital } = await import('@/ui/VitalNumbers');
+    expect(formatVital(110, 110)).toBe('110/110');
+    expect(formatVital(37.4, 110, Math.ceil)).toBe('38/110');
+    expect(formatVital(37.9, 110)).toBe('37/110');
+    expect(formatVital(-4, 90)).toBe('0/90');
+    expect(formatVital(500, 90)).toBe('90/90');
+    expect(formatVital(10, 0)).toBe('0/0');
+  });
+});

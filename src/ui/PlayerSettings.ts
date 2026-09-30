@@ -5,6 +5,8 @@ import { DEFAULT_BINDINGS, getBindings, keyLabel, resetBindings, setBinding, typ
 import { isClipRecordingEnabled, setClipRecordingEnabled } from '@/config/clipSettings';
 import { SoundQuickControl } from '@/ui/SoundQuickControl';
 import { readTouchControlsPreference, setTouchControlsPreference } from '@/input/touchSupport';
+import { VitalNumbers } from '@/ui/VitalNumbers';
+import '@/styles/options.css';
 import { SHAKE_SCALE, sanitizeExtras, sanitizeShake, type ExtraPreferences, type ShakeLevel } from '@/config/playerPrefs';
 
 /** Everything the dialog persists under one key. The newer options live in config/playerPrefs (ExtraPreferences). */
@@ -85,7 +87,7 @@ const SIMPLE_CONTROLS: readonly SimpleControl[] = [
   { name: 'textScale', read: p => String(p.textScale), write: (p, raw) => { const n = Number(raw); p.textScale = [1, 1.15, 1.3].includes(n) ? n : 1; } },
   flag('reducedFlashes'), flag('highReadability'), flag('creatureCaptions'), flag('narration'), flag('muted'),
   { name: 'cameraShake', read: p => p.cameraShake, write: (p, raw) => { p.cameraShake = sanitizeShake(raw); } },
-  flag('pauseOnBlur'),
+  flag('pauseOnBlur'), flag('captionBacking'), flag('numericVitals'),
 ];
 
 /** One checkbox row: the label, and an optional one-line note the control is described by. */
@@ -105,6 +107,7 @@ export class PlayerSettings {
   private returnFocus: HTMLElement | null = null;
   private preferences = readPlayerPreferences();
   private readonly quick: SoundQuickControl;
+  private readonly vitals: VitalNumbers;
   private tab: SettingsTab = 'sound';
   private readonly onTabStep = (event: Event): void => {
     const step = event instanceof CustomEvent && event.detail === -1 ? -1 : 1;
@@ -134,8 +137,11 @@ export class PlayerSettings {
       <section class="settings-group" aria-labelledby="settings-narrator"><h3 id="settings-narrator">Narrator</h3><div class="settings-options">
       ${checkRow('narration', 'Narration', 'An old docent of the Works reads the moments worth reading aloud. Everything he says is already on screen.')}</div></section></div>
       <div role="tabpanel" class="settings-panel" id="settings-panel-display" aria-labelledby="settings-tab-display" hidden>
-      <section class="settings-group" aria-labelledby="settings-comfort"><h3 id="settings-comfort">Reading and comfort</h3><div class="settings-options">
+      <section class="settings-group" aria-labelledby="settings-reading"><h3 id="settings-reading">Reading</h3><div class="settings-options">
       ${selectRow('textScale', 'Text size', [['1', 'Standard'], ['1.15', 'Large'], ['1.3', 'Larger']])}
+      ${checkRow('captionBacking', 'Caption backing', 'A dark plate behind the narrator, creature-sound captions and combat callouts. Captions and callouts grow with Text size.')}
+      ${checkRow('numericVitals', 'Numbers on the bars', 'The exact figure beside health, mana and levitation.')}</div></section>
+      <section class="settings-group" aria-labelledby="settings-comfort"><h3 id="settings-comfort">Comfort</h3><div class="settings-options">
       ${checkRow('reducedFlashes', 'Reduce flashes and pulses')}
       ${selectRow('cameraShake', 'Camera shake', [['full', 'Full'], ['half', 'Half'], ['off', 'Off']], 'How hard blasts, falls and heavy footsteps shake the view.')}
       ${checkRow('highReadability', 'High-readability lighting')}
@@ -217,6 +223,7 @@ export class PlayerSettings {
       setMuted: (muted) => { this.preferences.muted = muted; this.apply(true); },
       preview: (channel) => this.preview(channel),
     });
+    this.vitals = new VitalNumbers(ctx);
     this.renderBindings(); this.apply();
     window.addEventListener('settings-tab-step', this.onTabStep);
     const pause = document.createElement('button');
@@ -312,6 +319,8 @@ export class PlayerSettings {
     this.ctx.state.reduceCameraShake = this.preferences.cameraShake === 'off';
     this.ctx.state.cameraShakeScale = SHAKE_SCALE[this.preferences.cameraShake];
     this.ctx.state.pauseOnBlur = this.preferences.pauseOnBlur;
+    document.body.classList.toggle('caps-backed', this.preferences.captionBacking);
+    this.vitals.setEnabled(this.preferences.numericVitals);
     this.ctx.state.reduceFlashes = this.preferences.reducedFlashes;
     this.ctx.state.highReadability = this.preferences.highReadability;
     this.ctx.state.creatureCaptions = this.preferences.creatureCaptions;
@@ -361,6 +370,6 @@ export class PlayerSettings {
 
   dispose(): void {
     window.removeEventListener('settings-tab-step', this.onTabStep);
-    this.quick.dispose(); this.dialog.remove(); document.getElementById('pause-settings')?.remove();
+    this.quick.dispose(); this.vitals.dispose(); this.dialog.remove(); document.getElementById('pause-settings')?.remove();
   }
 }
