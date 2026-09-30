@@ -1,6 +1,7 @@
 import type { EnemyKind } from '@/core/types';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { BOSS_PROLOGUES } from '@/content/story';
+import { fxRandom } from '@/core/simRandom';
 import { beatLine } from './storyMeta';
 import type { StoryHost } from './host';
 
@@ -96,7 +97,7 @@ export class BossPrologue {
     if (d < BREATH_HEARD) rt.bossHeard = true;
     const now = this.host.now();
     if (now < this.nextBreath) return;
-    this.nextBreath = now + BREATH_EVERY + Math.random() * BREATH_JITTER;
+    this.nextBreath = now + BREATH_EVERY + fxRandom() * BREATH_JITTER;
     const cam = ctx.camera;
     const nearCam = Math.abs(home.x - (cam.x + VIEW_W / 2)) < NEAR_CAM_X && Math.abs(home.y - (cam.y + VIEW_H / 2)) < NEAR_CAM_Y;
     // On screen the boss already mutters (HabitatAudio); beyond that this is its breath.
