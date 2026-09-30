@@ -58,9 +58,7 @@ export class DeathCardGate {
   /** The card left (respawn, ledger, a cleared death): nothing stays disabled. */
   release(): void {
     this.generation++;
-    window.clearTimeout(this.timer);
-    window.removeEventListener('keydown', this.onKey, true);
-    window.removeEventListener('pointerdown', this.onPointer, true);
+    this.detachInput();
     for (const button of this.held) {
       button.removeEventListener('animationend', this.onAnimationEnd);
       button.disabled = false;
@@ -72,6 +70,13 @@ export class DeathCardGate {
 
   dispose(): void {
     this.release();
+  }
+
+  /** Nothing is left to wait for (or the card is gone): stop listening for the impatient. */
+  private detachInput(): void {
+    window.clearTimeout(this.timer);
+    window.removeEventListener('keydown', this.onKey, true);
+    window.removeEventListener('pointerdown', this.onPointer, true);
   }
 
   private readonly onAnimationEnd = (event: AnimationEvent): void => {
@@ -117,5 +122,6 @@ export class DeathCardGate {
     const active = document.activeElement;
     const holdsFocus = active instanceof HTMLButtonElement && !active.disabled && this.overlay.contains(active);
     if (!holdsFocus) button.focus({ preventScroll: true });
+    if (this.held.every((b) => !b.disabled)) this.detachInput();
   }
 }
