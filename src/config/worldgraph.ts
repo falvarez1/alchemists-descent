@@ -155,8 +155,9 @@ export const SPINE_ROSTERS: Partial<Record<BiomeId, Readonly<Partial<Record<Enem
   flooded: { rillback: 6, spitter: 3, wisp: 2, weaver: 1, bat: 4 },
   // Floor 4, THE KILN HEART: fire-born imps (water, steam and a sump undo
   // them), bombers that detonate the crowd they die in, golems and stone maws
-  // in the slag. The Kiln Colossus is structure-placed.
-  volcanic: { imp: 5, bomber: 4, golem: 2, stonemaw: 2 },
+  // in the slag. The Kiln Colossus is structure-placed. The deepest floor is
+  // the fullest (it was the emptiest: 13 foes over a straight 700-cell drop).
+  volcanic: { imp: 8, bomber: 6, golem: 3, stonemaw: 3 },
   // Floor 2, THE COLD STORE (the second door): frost wisps drifting through
   // the cold rooms (immune to the chill, not to a fire), bat roosts under the
   // pipes, slimes gone sluggish in the cold, stonemaws chewing through the

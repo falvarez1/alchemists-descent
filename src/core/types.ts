@@ -3187,6 +3187,10 @@ export interface LevelRuntime {
   portal: ExitPortal | null;
   /** The golden key has been collected in this level. */
   keyTaken: boolean;
+  /** Runtime only: the tick the key was taken (the exit portal's waking animation keys off it). */
+  keyTakenFrame?: number;
+  /** Runtime only: the floor's guardian has been heard or seen (the map then marks its arena, faintly). */
+  bossHeard?: boolean;
   /** Doors/plates/levers/braziers guarding this level's treasure. */
   mechanisms: Mechanism[];
   /** Transient actuator lookup: target mechanism id -> triggers in list order. */
@@ -3222,6 +3226,10 @@ export interface LevelRuntime {
     placed: Partial<Record<EnemyKind, number>>;
     skipped: Partial<Record<EnemyKind, number>>;
     lairs?: Partial<Record<EnemyKind, number>>;
+    /** How many of the placed foes hold the spawn -> key -> exit route (game/populationRoute). */
+    routed?: number;
+    /** The traced spawn -> key -> exit route (every 12th cell), for audits and probes. */
+    route?: { length: number; keyS: number | null; points: Array<[number, number]> };
   };
   /** D1 Noita-style surface intro: the open-air start above the cave mouth. The
    *  player begins HERE on first entry (revisits/respawns use the cave spawn). */

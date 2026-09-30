@@ -2,12 +2,14 @@ import { propagateLight } from '@/render/propagateLight';
 import { propagateLightWasm } from '@/render/wasm/lightKernel';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { DARK_ADAPT, renderAmbient, VIGNETTE_BASE } from '@/render/lightingModel';
-import { Cell, isGas, isLiquid } from '@/sim/CellType';
+import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import type { AuthoredLight, Ctx } from '@/core/types';
 import { DARKNESS, LANTERN } from '@/config/darkness';
 import { darkMapFor, fillOpenField, openAtCell, renderDarkness, renderOpenLut, sampleDarkMap } from '@/core/darkness';
 import type { LightField, LightSample } from '@/render/pixels';
 import { creatureLights } from '@/render/creatures/lights';
+import { lureGlint } from '@/game/keyLure';
+import { cachedSetPieceTells } from '@/render/setPieceTells';
 import { BEAM_MIRROR, BEAM_PRISM, MAX_BEAM_DEPTH, MIRROR_REFLECTANCE, PRISM_SHARE, PRISM_SPLIT, mirrorNormal, reflect, rotate } from '@/sim/beam';
 
 const RUNTIME_INSPECTION_LIGHT_INTENSITY = 1.2;
@@ -700,7 +702,11 @@ export class Lighting implements LightField {
     if (runtime && ctx.state.mode === 'play') {
       for (const p of runtime.pickups) {
         if (p.taken) continue;
-        if (p.kind === 'key') this.seedLight(p.x, p.y - 2, 0.7, 0.6, 0.2);
+        if (p.kind === 'key') {
+          // The key's glint (game/keyLure) lights the cave around it on the same clock.
+          const glint = 1 + 1.6 * lureGlint(ctx.state.frameCount, p.x, p.y);
+          this.seedLight(p.x, p.y - 2, 0.7 * glint, 0.6 * glint, 0.2 * glint);
+        }
         else if (p.kind === 'heart') this.seedLight(p.x, p.y - 2, 0.5, 0.16, 0.22);
         else if (p.kind === 'tome') this.seedLight(p.x, p.y - 2, 0.25, 0.4, 0.6);
         else if (p.kind === 'potion') this.seedLight(p.x, p.y - 2, 0.4, 0.2, 0.5);
@@ -709,6 +715,13 @@ export class Lighting implements LightField {
         const throb = 0.6 + Math.sin(ctx.state.frameCount * 0.07) * 0.25;
         const lit = runtime.keyTaken ? 1.5 : 0.6;
         this.seedLight(runtime.portal.x, runtime.portal.y - 4, 0.55 * throb * lit, 0.2 * throb * lit, 0.9 * throb * lit);
+        // A woken gate is a lamp, not a point (levels review #3): a true shadow-casting
+        // light that throws the cave's walls in violet, flaring as the key is taken.
+        if (runtime.keyTaken) {
+          const since = runtime.keyTakenFrame === undefined ? 999 : ctx.state.frameCount - runtime.keyTakenFrame;
+          const k = 1.4 * throb * (since < 50 ? 1 + 1.6 * (1 - since / 50) : 1);
+          this.raycastLight(runtime.portal.x, runtime.portal.y - 6, 0.6 * k, 0.22 * k, 1.0 * k, 34);
+        }
       }
       // Rune glyphs glow violet until struck, then triumphant green
       for (const v of runtime.runeVaults) {
@@ -741,6 +754,10 @@ export class Lighting implements LightField {
       // Designer-placed lights (Builder Phase 7).
       if (runtime.authoredLights) {
         this.seedAuthoredSet(ctx, runtime.authoredLights, renderCamX, renderCamY);
+      }
+      // One far tell per set piece (render/setPieceTells): a small lamp in the colour of its own fixture.
+      if (runtime.placedPrefabs) {
+        this.seedAuthoredSet(ctx, cachedSetPieceTells(runtime.placedPrefabs, ctx.world, blocksEntity), renderCamX, renderCamY);
       }
     }
     // Builder light PREVIEW: while the editor is open it feeds its authored
