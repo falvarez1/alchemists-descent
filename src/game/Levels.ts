@@ -3092,12 +3092,40 @@ export class Levels implements LevelsApi {
     return score;
   }
 
+  /** A roost under a marsh-gas dome when the floor has one (a lit pocket over the brood), else the ordinary search. */
   private findRoostSpot(
     ctx: Ctx,
     rng: Rng,
     spawn: { x: number; y: number },
     regions: LevelRuntime['regions'],
     reachable: Uint8Array,
+  ): { x: number; y: number } | null {
+    if (ctx.world.types.includes(Cell.MarshGas)) {
+      const domed = this.searchRoost(ctx, rng, spawn, regions, reachable, true);
+      if (domed) return domed;
+    }
+    return this.searchRoost(ctx, rng, spawn, regions, reachable, false);
+  }
+
+  /** Is there a real pool of marsh gas round here (a dome, not a puff)? */
+  private gasNear(world: Ctx['world'], x: number, y: number): boolean {
+    let gas = 0;
+    for (let dy = -10; dy <= 6; dy += 2) {
+      for (let dx = -14; dx <= 14; dx += 2) {
+        const px = x + dx, py = y + dy;
+        if (world.inBounds(px, py) && world.types[world.idx(px, py)] === Cell.MarshGas) gas++;
+      }
+    }
+    return gas >= 12;
+  }
+
+  private searchRoost(
+    ctx: Ctx,
+    rng: Rng,
+    spawn: { x: number; y: number },
+    regions: LevelRuntime['regions'],
+    reachable: Uint8Array,
+    gasOnly: boolean,
   ): { x: number; y: number } | null {
     const world = ctx.world;
     const batDef = ctx.enemyCtl.defs.bat;
@@ -3119,6 +3147,7 @@ export class Levels implements LevelsApi {
           if (!world.inBounds(x, y - 1) || !world.inBounds(x, footY)) continue;
           if (reachable[world.idx(x, footY)] === 0) continue;
           if (mainPathOnly && !this.inMainPathRegion(regions, x, footY)) continue;
+          if (gasOnly && !this.gasNear(world, x, footY)) continue;
           // ceiling: something a bat can grip above (QA: roosts hung 8-95 cells
           // under a falling oil drip, a leaf or a wisp of gas), open air below
           if (!roostPerch(world.types[world.idx(x, y - 1)]) || !roostAir(world.types[world.idx(x, y)])) continue;

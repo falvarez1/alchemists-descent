@@ -297,6 +297,19 @@ export function tunnelTo(
     y = Math.floor(clamp(y, minY, HEIGHT - 12));
     steps.push([x, y]);
   }
+  // The walk drifts left on average (its jitter is -1 or 0), so a long walk to the RIGHT covers only ~0.3 cells a
+  // step and the guard above ends it far short: a rescue tunnel that never arrived (d2 seed 11's exit cave, cut
+  // off from the spawn). A walk that ended on the guard is finished with unbiased steps (campaign floors, and
+  // not the narrow dig-gated connectors: the walks that arrived, and every earthen one, draw exactly what they drew).
+  if (organicTunnels && radius >= 10 && guard >= 900) {
+    for (let more = 0; more < 2400 && (Math.abs(x - tx) > 3 || Math.abs(y - ty) > 3); more++) {
+      x += Math.sign(tx - x) * (rng.next() < 0.9 ? 1 : 0);
+      y += Math.sign(ty - y) * (rng.next() < 0.9 ? 1 : 0);
+      x = Math.floor(clamp(x, radius + 2, WIDTH - radius - 3));
+      y = Math.floor(clamp(y, minY, HEIGHT - 12));
+      steps.push([x, y]);
+    }
+  }
   // The walk never reads the world, so planning it whole and carving after is
   // byte-identical to carving step by step — and lets a sealed feature on the
   // line be seen before a single cell of it is cut. A walk that would bite one

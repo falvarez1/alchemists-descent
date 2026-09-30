@@ -67,6 +67,20 @@ describe('tunnelTo with the organic switch', () => {
   });
 });
 
+describe('a long walk to the right', () => {
+  it('arrives on a campaign floor (the old walk drifts left and ended on its guard ~0.3 cells a step)', () => {
+    const run = (organic: boolean): { last: [number, number] } => {
+      setOrganicTunnels(organic);
+      const w = solidWorld();
+      const steps = tunnelTo(w, new Rng(9), 200, 300, 1250, 320, 12);
+      return { last: steps[steps.length - 1] };
+    };
+    expect(Math.abs(run(true).last[0] - 1250)).toBeLessThanOrEqual(4);
+    // ...and the old style still stops short (every other biome's output is unchanged)
+    expect(Math.abs(run(false).last[0] - 1250)).toBeGreaterThan(300);
+  });
+});
+
 describe('connectToCaves with the organic switch', () => {
   it('ends in the cave the spawn can walk to, not in a nearer island it cannot', () => {
     const w = solidWorld();

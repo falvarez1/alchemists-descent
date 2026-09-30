@@ -61,7 +61,7 @@ import { placeColdStorePuzzles, type ColdStorePuzzleOutput } from '@/world/coldS
 import { dressGlassGalleries } from '@/world/glassGalleries';
 import { placeGalleryPuzzles, type GalleryPuzzleOutput } from '@/world/galleryPuzzles';
 import { stampSecrets } from '@/world/secrets';
-import { bodyCanCollect, computeFits, reachableMask, wizardMask } from '@/world/validate';
+import { beamable, bodyCanCollect, computeFits, reachableMask, wizardMask } from '@/world/validate';
 import {
   type BodyRecord,
   cauldronFooting,
@@ -326,6 +326,7 @@ export class WorldGen implements WorldGenApi {
     let goldPlaced = 0,
       goldTries = 0;
     const goldPocketTarget = goldPocketBudgetForBiome(G.goldPockets, ctx.state.currentBiome);
+    const goldKeep = G.goldKeep ?? 1;
     while (goldPlaced < goldPocketTarget && goldTries < G.goldTriesCap) {
       goldTries++;
       const x = 14 + Math.floor(this.rng.next() * (WIDTH - 28));
@@ -339,13 +340,16 @@ export class WorldGen implements WorldGenApi {
         }
       }
       if (!nearOpen) continue;
+      // (a kept pocket is written; the rest draw the same numbers and leave the rock alone, GenDef.goldKeep)
+      const stamped = Math.floor((goldPlaced + 1) * goldKeep) > Math.floor(goldPlaced * goldKeep);
       for (let dy = -5; dy <= 5; dy++) {
         for (let dx = -5; dx <= 5; dx++) {
           if (
             dx * dx + dy * dy <= 24 &&
             world.inBounds(x + dx, y + dy) &&
             world.types[x + dx + (y + dy) * WIDTH] === Cell.Wall &&
-            this.rng.next() < 0.85
+            this.rng.next() < 0.85 &&
+            stamped
           ) {
             world.types[x + dx + (y + dy) * WIDTH] = Cell.Gold;
             world.colors[x + dx + (y + dy) * WIDTH] = goldColor();
@@ -785,7 +789,11 @@ export class WorldGen implements WorldGenApi {
           // A lens sealed behind optics (world/galleryPuzzles) is reached at its
           // port — the rescue must never carve into the sealed lens itself.
           const rx = m.lightPort?.x ?? m.x, ry = m.lightPort?.y ?? m.y;
-          const pass = (): boolean => cellNear(rx, ry - 2, 5);
+          // A photocell is judged by the BEAM (validate: photocell), not by a reachable cell beside it: a chandelier
+          // or a panel the dressing hung in the line of its port blanks a lens the puzzle had made beamable
+          // (d3b seed 3, d2b seed 7 after an unrelated gold change).
+          const photocell = m.kind === 'sensor' && m.sensorType === 'light' && m.state === 0 && !m.requiresCard;
+          const pass = (): boolean => cellNear(rx, ry - 2, 5) && (!photocell || beamable(wiz, ctx.world, rx, ry, 150));
           if (pass()) continue;
           if (labMechanism) {
             recordRescue(`spell-lab@${Math.floor(spellLab?.x ?? m.x)},${Math.floor(spellLab?.y ?? m.y)}`, () =>
@@ -1081,7 +1089,7 @@ export class WorldGen implements WorldGenApi {
     // 5) Biome extras first (fungus colonies, crystal clusters, snow drifts,
     //    coal seams, healing springs), so secrets can still find untouched
     //    thick wall masses afterward; then the placement brain.
-    applyBiomeExtras(ctx, this.rng, def.biome);
+    applyBiomeExtras(ctx, this.rng, def.biome, waystones.map((ws) => ({ x: ws.x, y: ws.y })));
     let graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
     // Wizard-fit mask (9x17 erosion): connect tunnels target FIT cells, so
     // every guaranteed connection joins space the player can actually occupy

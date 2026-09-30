@@ -30,6 +30,8 @@ export const FOOTING_LABEL = 'footing-';
 const FOOTING_DEPTH = 8;
 /** The deepest undercut a plinth fills; a deeper one gets a lip instead. */
 const PLINTH_MAX = 12;
+/** The farthest the golden key is let fall to its floor (a longer drop is a shaft a body cannot follow). */
+const KEY_DROP_MAX = 24;
 /** How far along its own ground row a deep-undercut fixture looks for rock to hang a lip from. */
 const BRIDGE_MAX = 10;
 /** How far below a hand-trigger with nothing to hang from looks for ground to stand on... */
@@ -438,8 +440,17 @@ export function holdFixtureFootings(world: World, input: FootingInput): FootingR
     // narrower than the key is floor (d2 expedition 1: the key fell down a
     // one-cell crack and sat four rows inside the rock, QA F4).
     begin(`key floor@${kx},${ky}`);
+    // ...and never down a shaft either: a key that fell 94 rows down a five-wide slot sat where no body
+    // could follow (d2b seed 8). A drop of more than KEY_DROP_MAX is cut short by a shelf under the key's
+    // own cell.
+    const ky0 = ky;
     while (ky < HEIGHT - 9 && !blocks(kx, ky + 1)) {
       if (blocks(kx - 1, ky + 1) || blocks(kx + 1, ky + 1)) {
+        for (let dx = -2; dx <= 2; dx++) ground(kx + dx, ky + 1);
+        break;
+      }
+      if (ky - ky0 >= KEY_DROP_MAX) {
+        ky = ky0;
         for (let dx = -2; dx <= 2; dx++) ground(kx + dx, ky + 1);
         break;
       }
