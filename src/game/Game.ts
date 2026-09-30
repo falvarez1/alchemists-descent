@@ -112,12 +112,15 @@ function initialWebGpuLiveComposeOverride(): boolean {
  * Sim worker threads for the Sandbox's parallel sweep (docs/SANDBOX-MT.md):
  * `?threads=N`, `?threads=0` for the serial sweep. Default: the core count
  * minus two (the main thread sweeps too, and the renderer needs a core),
- * capped at 6. Needs cross-origin isolation (COOP/COEP) for SharedArrayBuffer.
+ * capped at 6, and none on a touch-first device (a phone's cores are not for
+ * a paint toy). Needs cross-origin isolation (COOP/COEP) for SharedArrayBuffer.
+ * The workers themselves are spawned lazily, on the Sandbox's first frame.
  */
 function sandboxSimThreads(): number {
   if (typeof window === 'undefined' || !sharedMemoryAvailable()) return 0;
   const raw = new URLSearchParams(window.location.search).get('threads');
-  const auto = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 4) - 2));
+  const touchFirst = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+  const auto = touchFirst ? 0 : Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 4) - 2));
   if (raw === null || raw === 'auto') return auto;
   const n = Math.floor(Number(raw));
   return Number.isFinite(n) ? Math.max(0, Math.min(15, n)) : auto;
@@ -299,8 +302,12 @@ export class Game {
     ctx.simulation = simulation;
     if (simThreads > 0) {
       const sharedWorld = ctx.world;
-      const parallel = new ParallelSim(sharedWorld, { global: ctx.params.global, materials: ctx.params.materials }, simThreads);
+      // Lazy: the shared buffers exist now, the workers wait for someone to be in the
+      // Sandbox (settleSandboxPool), so a campaign-only visit never spawns them.
+      const parallel = new ParallelSim(sharedWorld, { global: ctx.params.global, materials: ctx.params.materials }, simThreads, undefined, { lazy: true });
       simulation.parallel = parallel;
+      this.sandboxPool = parallel;
+      this.sandboxPoolWorld = sharedWorld;
       this.disposables.push(parallel);
       // A Sandbox detached from a level paints on a copy of it: make that copy
       // the shared world again, so the parallel sweep follows the Sandbox back.
@@ -310,7 +317,7 @@ export class Game {
         return sharedWorld;
       });
       this.disposables.push({ dispose: () => setDetachedSandboxWorldSource(null) });
-      console.info(`[sandbox-mt] parallel sandbox sweep: ${simThreads} workers + main`);
+      console.info(`[sandbox-mt] parallel sandbox sweep armed: ${simThreads} workers + main, started with the Sandbox`);
     }
     ctx.worldgen = new WorldGen();
     ctx.flask = new Flask();
@@ -586,6 +593,14 @@ export class Game {
 
   private bootWorld: Ctx['world'] | null = null;
   private workshopPending = false;
+  /**
+   * The Sandbox's sim-worker pool (docs/SANDBOX-MT.md): built armed at boot with its
+   * shared buffers, its workers spawned by `settleSandboxPool` once someone is actually in the
+   * Sandbox. (Not on the Sandbox world's first tick: the boot world ticks ~24 frames behind the
+   * title before the title pauses it, which would spawn the pool for every visitor.)
+   */
+  private sandboxPool: ParallelSim | null = null;
+  private sandboxPoolWorld: Ctx['world'] | null = null;
   /** Set once boot has decided whether the entry screen shows (it waits on `levels.ready`). */
   private entryDecided = false;
 
@@ -609,6 +624,22 @@ export class Game {
     if (ctx.world !== this.bootWorld || body.contains('builder-open')) { this.workshopPending = false; return; }
     if (!this.entryDecided || ctx.state.mode !== 'build' || body.contains('entry-active')) return;
     this.buildWorkshop();
+  }
+
+  /**
+   * Start the Sandbox's sim workers the first presentation frame someone is in the Sandbox: the
+   * entry screen has decided and gone, the mode is the Workshop's, the world on screen is the
+   * Sandbox's shared one, and the Builder has not claimed it. A campaign-only visit, the title
+   * screen and a phone that never opens the Workshop spawn nothing.
+   */
+  private settleSandboxPool(): void {
+    const pool = this.sandboxPool;
+    if (pool === null || pool.isStarted) return;
+    const { ctx } = this;
+    const body = document.body.classList;
+    if (!this.entryDecided || ctx.state.mode !== 'build' || ctx.world !== this.sandboxPoolWorld) return;
+    if (body.contains('entry-active') || body.contains('builder-open')) return;
+    pool.start();
   }
 
   dispose(): void {
@@ -687,6 +718,7 @@ export class Game {
     if (this.disposed) return;
     this.animationFrameId = requestAnimationFrame(this.step);
     if (this.workshopPending) this.settleDeferredWorkshop();
+    if (this.sandboxPool !== null && !this.sandboxPool.isStarted) this.settleSandboxPool();
     // Poll on presentation frames so Start can also resume a paused simulation.
     this.pollInput();
     // Death slow-mo: stretch the wall-clock cost of a tick so the sim advances

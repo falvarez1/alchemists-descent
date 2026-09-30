@@ -69,6 +69,9 @@ export class ParallelSim implements ParallelSweep {
   private readonly main: Participant;
   private readonly participants: { log: EffectLog; boxes: Int32Array; stats: Float64Array; growth: Int32Array }[] = [];
   private readonly workers: Worker[] = [];
+  private readonly setupFor: () => ParticipantSetup;
+  private readonly createWorker: (index: number) => Worker;
+  private started = false;
   private readyCount = 0;
   private paramsJson = '';
   private paramsEpoch = 0;
@@ -82,9 +85,13 @@ export class ParallelSim implements ParallelSweep {
   /**
    * @param threads worker count (0 = the chunked sweep on main alone — the
    *        determinism reference and the Node test path).
+   * @param options `lazy`: allocate the shared buffers now but leave the workers
+   *        unspawned until `start()` (Game calls it when someone is actually in
+   *        the Sandbox), so a page that never opens it never pays for them. Until
+   *        then `handles` is false and the sweep runs serial. Default: spawn them here.
    */
   constructor(private readonly world: World, params: RuleParams, threads: number,
-    createWorker: (index: number) => Worker = defaultWorker) {
+    createWorker: (index: number) => Worker = defaultWorker, options: { lazy?: boolean } = {}) {
     const descriptor = sharedDescriptorOf(world);
     if (!descriptor) throw new Error('ParallelSim needs a world from createSharedWorld()');
     this.threads = Math.max(0, threads | 0);
@@ -96,6 +103,7 @@ export class ParallelSim implements ParallelSweep {
     this.pending = new Int32Array(pending);
     this.readyQueue = new Int32Array(ready);
     this.schedule = wavefrontSchedule(descriptor.width, descriptor.height);
+    this.createWorker = createWorker;
     const setupFor = (): ParticipantSetup => {
       const log = EffectLog.allocate(true);
       return {
@@ -111,13 +119,25 @@ export class ParallelSim implements ParallelSweep {
       growth: new Int32Array(mainSetup.growthLog),
     });
     this.paramsJson = JSON.stringify(params);
+    this.setupFor = setupFor;
+    if (!options.lazy) this.start();
+  }
+
+  /** Have the workers been spawned (a lazy pool waits for `start()`)? */
+  get isStarted(): boolean { return this.started; }
+
+  /** Spawn the workers. Idempotent, and never after a failure or dispose. */
+  start(): void {
+    if (this.started || this.failure !== null) return;
+    this.started = true;
+    if (this.threads > 0) console.info(`[sandbox-mt] starting ${this.threads} sim workers`);
     for (let i = 0; i < this.threads; i++) {
-      const setup = setupFor();
+      const setup = this.setupFor();
       this.participants.push({
         log: new EffectLog(setup.logData, setup.logSegs), boxes: new Int32Array(setup.boxes), stats: new Float64Array(setup.stats),
         growth: new Int32Array(setup.growthLog),
       });
-      const worker = createWorker(i);
+      const worker = this.createWorker(i);
       worker.onmessage = (event: MessageEvent<{ type: string; message?: string }>) => {
         if (event.data.type === 'ready') this.readyCount++;
         else if (event.data.type === 'error') this.fail(`sim worker ${i}: ${event.data.message}`);
@@ -139,6 +159,7 @@ export class ParallelSim implements ParallelSweep {
 
   get ready(): boolean { return this.failure === null && this.readyCount === this.threads; }
 
+  /** Does this pool sweep `world`? Only its own (the Sandbox's), and only once its workers are ready. */
   handles(world: World): boolean {
     return this.enabled && world === this.world && this.ready;
   }
