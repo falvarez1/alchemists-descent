@@ -13,6 +13,7 @@ import type { ChillTuning } from '@/config/params';
 import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/run';
 import type { CreatureSfxAction, SfxId } from '@/content/audio/sfxCues';
 import type { LevelStorySites, StoryApi, StorySpeakOptions, StorySpokenLine } from '@/core/story';
+import type { FighterApi } from '@/core/fighters';
 
 /* ============================================================
  * Entity data
@@ -3714,6 +3715,8 @@ export interface Ctx {
   run?: RunApi;
   /** Kill attribution + alchemical-kill payouts; absent in small test contexts. */
   alchemy?: AlchemyKillsApi;
+  /** The equipped fighter: passive, tactical, ultimate (src/fighters); absent in small test contexts, id null = the classic Alchemist. */
+  fighters?: FighterApi;
   /** Light as a gameplay fact (render/LightQuery); absent in small test contexts. */
   lightQuery?: LightQueryApi;
   /** The streamed score; absent in small test contexts. */

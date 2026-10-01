@@ -1,0 +1,664 @@
+import { FIGHTER_DEFS, isFighterId } from '@/content/fighters';
+import type { FighterId } from '@/content/fighters';
+import { playerBlow } from '@/core/bossWard';
+import type {
+  AbilitySlot, AbilityView, FighterApi, FighterDrawable, FighterSaveState, FighterView,
+} from '@/core/fighters';
+import { PLAYER_CRAWL_H, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP } from '@/core/types';
+import type { Ctx, Enemy, EnemyDamageSource, Projectile } from '@/core/types';
+import type { FighterKitDef, FighterMod, KitInstance } from '@/fighters/kit';
+import { kitFor } from '@/fighters/kits';
+import { FIGHTER_TUNING } from '@/fighters/tuning';
+import { drawReveals } from '@/render/fighterReveal';
+
+/** A move the system carries out for the body (a dash, a blink-in, a ram, a tether pull). */
+export interface MovePlan {
+  /** Ticks at most; the plan ends sooner when `step` returns null or the body is blocked. */
+  ticks: number;
+  /** Cells to travel this tick (the plan may read the player each call). null ends the move. */
+  step(tick: number): { dx: number; dy: number } | null;
+  /** Hold invulnerability for the move (ticks of `player.invuln` kept topped up). */
+  invuln?: number;
+  /** Face the direction of travel. */
+  face?: boolean;
+  /** Called every tick the body actually moved (a ram's hit test, a trail of fire). */
+  onStep?(tick: number): void;
+  /** The move ended: 'done' (ran its course), 'blocked' (a wall or ceiling), 'cancelled' (death, a new floor). */
+  onEnd?(reason: 'done' | 'blocked' | 'cancelled'): void;
+  /** Velocity (cells/tick) the body keeps when the move ends, so a dash hands back its momentum. */
+  exitVx?: number;
+  exitVy?: number;
+}
+
+interface ActiveMove {
+  plan: MovePlan;
+  tick: number;
+  ax: number;
+  ay: number;
+}
+
+interface EnemyFx {
+  slowK: number;
+  slowUntil: number;
+  revealUntil: number;
+  revealRgb: readonly [number, number, number];
+  markUntil: number;
+  stunUntil: number;
+}
+
+interface ModEntry {
+  until: number;
+  mod: FighterMod;
+}
+
+const NO_REVEAL: readonly [number, number, number] = [1, 1, 1];
+
+/**
+ * THE FIGHTER SYSTEM (docs/FIGHTERS.md). Inert until a fighter is equipped (`id` null = the classic
+ * Alchemist), and then it owns the three things every kit shares: the tactical cooldown, the ultimate's
+ * charge and duration, and the machinery a kit's effects are made of (modifiers, enemy slow / stun /
+ * reveal, a body-owning move, placed drawables, an armor pool). A kit (src/fighters/kits/<id>.ts) is
+ * only the rules.
+ *
+ * Tick: right after the player moves and before the enemies think (Game.tick), so a dash that starts
+ * this tick has already moved the body when the foes look at it. The engine's questions of a fighter
+ * (`reduceIncoming`, `moveScale`, `enemySlow`, ...) are cached numbers, never a scan.
+ */
+export class FighterSystem implements FighterApi {
+  id: FighterId | null = null;
+  readonly view: FighterView = {
+    id: null,
+    tactical: blankAbility('tactical'),
+    ultimate: blankAbility('ultimate'),
+    armor: 0,
+    armorMax: 0,
+    meter: null,
+  };
+  readonly drawables: FighterDrawable[] = [];
+
+  // ---- the equipped kit and its clocks ----
+  private def: FighterKitDef | null = null;
+  private kit: KitInstance | null = null;
+  private tacticalCd = 0;
+  private tacticalCdMax = 1;
+  /** 0..1 */
+  private charge = 0;
+  private ultimateLeft = 0;
+  private ultimateMax = 1;
+  private pendingTactical = -1;
+  private pendingUltimate = -1;
+  private alive = false;
+  private lastHp = -1;
+
+  // ---- armor and modifiers ----
+  armor = 0;
+  armorMax = 0;
+  private readonly mods = new Map<string, ModEntry>();
+  private cMove = 1;
+  private cClimb = 1;
+  private cDamage = 1;
+  private cStagger = false;
+  private cConceal = 0;
+
+  // ---- enemy effects ----
+  private readonly enemyFx = new WeakMap<Enemy, EnemyFx>();
+  /** Foes with a live effect (the render and the stun refresh walk this, never the WeakMap). */
+  private readonly touched: Enemy[] = [];
+  private revealing = 0;
+  private readonly nearBuf: Enemy[] = [];
+
+  // ---- body-owning move ----
+  private move: ActiveMove | null = null;
+  /** True while a kit callback is running (guards a kit's own damage from re-entering its hooks). */
+  private inKit = false;
+
+  private readonly disposers: Array<() => void> = [];
+  private readonly revealDrawable: FighterDrawable = {
+    layer: 'over',
+    draw: (out, field, ctx) => { drawReveals(out, field, ctx, this.touched, (e) => this.revealOf(e)); },
+  };
+
+  /** `kits` resolves a fighter id to its kit (tests pass their own). */
+  constructor(readonly ctx: Ctx, private readonly kits: (id: FighterId) => FighterKitDef | undefined = kitFor) {
+    this.disposers.push(
+      ctx.events.on('playerRespawned', () => this.resetAll()),
+      ctx.events.on('playerDeathCleared', () => this.resetAll()),
+      // A new floor: what was placed stays behind with the old World; the fighter itself carries on.
+      ctx.events.on('levelChanged', () => this.onLevelChanged()),
+    );
+  }
+
+  dispose(): void {
+    this.teardown();
+    for (const off of this.disposers.splice(0)) off();
+  }
+
+  // ======================================================================== equip
+
+  equip(id: FighterId | null): void {
+    this.teardown();
+    this.id = id;
+    this.def = id ? this.kits(id) ?? null : null;
+    this.kit = this.def ? this.def.create(this) : null;
+    this.tacticalCd = 0;
+    this.tacticalCdMax = Math.max(1, this.def?.tacticalCooldown ?? 1);
+    this.charge = 0;
+    this.ultimateLeft = 0;
+    this.ultimateMax = Math.max(1, this.def?.ultimateDuration ?? 1);
+    this.armor = 0;
+    this.armorMax = 0;
+    this.lastHp = -1;
+    this.pendingTactical = this.pendingUltimate = -1;
+    this.view.id = id;
+    const copy = id ? FIGHTER_DEFS[id] : null;
+    this.view.tactical.name = copy?.tactical.name ?? '';
+    this.view.ultimate.name = copy?.ultimate.name ?? '';
+    this.syncView();
+  }
+
+  // ======================================================================== input
+
+  press(slot: AbilitySlot): void {
+    if (this.id === null) return;
+    const now = this.ctx.state.frameCount;
+    if (slot === 'tactical') this.pendingTactical = now;
+    else this.pendingUltimate = now;
+  }
+
+  // ======================================================================== tick
+
+  update(ctx: Ctx): void {
+    if (this.id === null || ctx.state.mode !== 'play') return;
+    const p = ctx.player;
+    const now = ctx.state.frameCount;
+    if (p.dead) {
+      if (this.alive) this.cancelEffects();
+      this.alive = false;
+      this.lastHp = -1;
+      this.pendingTactical = this.pendingUltimate = -1;
+      return;
+    }
+    this.alive = true;
+
+    // What the fighter lost this tick, by whatever road (a blow, a hazard's drip, a status).
+    if (this.lastHp >= 0 && this.lastHp - p.hp > 0.01) this.noteHurt(this.lastHp - p.hp);
+    if (this.tacticalCd > 0) this.tacticalCd--;
+
+    // Presses are latched between ticks and consumed here, inside the tick.
+    const window = FIGHTER_TUNING.pressWindow;
+    if (this.pendingTactical >= 0) {
+      if (now - this.pendingTactical <= window) this.tryTactical(now);
+      this.pendingTactical = -1;
+    }
+    if (this.pendingUltimate >= 0) {
+      if (now - this.pendingUltimate <= window) this.tryUltimate(now);
+      this.pendingUltimate = -1;
+    }
+
+    this.stepMove();
+    this.expire(now);
+    this.keepStunned(now);
+
+    if (this.ultimateLeft > 0) {
+      this.ultimateLeft--;
+      this.guard(() => this.kit?.ultimateTick?.(this.ultimateLeft + 1));
+      if (this.ultimateLeft === 0) this.guard(() => this.kit?.ultimateEnd?.());
+    } else this.charge = Math.min(1, this.charge + FIGHTER_TUNING.chargeTrickle);
+
+    this.guard(() => this.kit?.tick?.());
+    this.lastHp = p.hp;
+    this.syncView();
+  }
+
+  private tryTactical(now: number): void {
+    const p = this.ctx.player;
+    if (!this.kit || !this.def) return;
+    if (this.tacticalCd > 0 || this.rooted(p)) return this.refuse('tactical', now);
+    let fired = false;
+    this.guard(() => { fired = this.kit?.tactical() === true; });
+    if (!fired) return this.refuse('tactical', now);
+    this.tacticalCd = this.tacticalCdMax = Math.max(1, this.def.tacticalCooldown);
+    this.view.tactical.usedAt = now;
+  }
+
+  private tryUltimate(now: number): void {
+    const p = this.ctx.player;
+    if (!this.kit || !this.def) return;
+    if (this.ultimateLeft > 0 || this.charge < 1 || this.rooted(p)) return this.refuse('ultimate', now);
+    let began = false;
+    this.guard(() => { began = this.kit?.ultimate() === true; });
+    if (!began) return this.refuse('ultimate', now);
+    this.charge = 0;
+    this.view.ultimate.usedAt = now;
+    if (this.def.ultimateDuration > 0) {
+      this.ultimateLeft = this.ultimateMax = this.def.ultimateDuration;
+    } else this.guard(() => this.kit?.ultimateEnd?.());
+  }
+
+  /** Rooted by a communion, a lever, or the ice: no ability. */
+  private rooted(p: Ctx['player']): boolean {
+    return p.recharge > 0 || p.pullT > 0 || (p.chill?.shell ?? 0) > 0;
+  }
+
+  private refuse(slot: AbilitySlot, now: number): void {
+    if (slot === 'tactical') this.view.tactical.refusedAt = now;
+    else this.view.ultimate.refusedAt = now;
+  }
+
+  // ======================================================================== charge
+
+  addCharge(amount: number): void {
+    if (this.id === null || !(amount > 0) || this.ultimateLeft > 0) return;
+    const before = this.charge;
+    this.charge = Math.min(1, this.charge + amount);
+    if (before < 1 && this.charge >= 1) {
+      const ctx = this.ctx;
+      this.view.ultimate.readyAt = ctx.state.frameCount;
+      ctx.audio.sfx('pickup.bell', ctx.player.x, ctx.player.y, { gain: 0.6, pitch: 1.25 });
+      this.callout(`${this.view.ultimate.name.toUpperCase()} READY`);
+    }
+  }
+
+  refill(): void {
+    this.tacticalCd = 0;
+    if (this.charge < 1) this.addCharge(1);
+  }
+
+  /** The harm the fighter did a foe, or the world did on its behalf (Enemies.damage calls this). */
+  noteEnemyHurt(e: Enemy, amount: number, source: EnemyDamageSource, killed: boolean): void {
+    if (this.id === null) return;
+    const t = FIGHTER_TUNING;
+    const share = playerBlow(source) ? 1 : t.chargeWorldShare;
+    this.addCharge(Math.min(amount, e.maxHp) * t.chargeDealt * share + (killed ? t.chargeKill : 0));
+    if (this.inKit) return; // a kit's own damage charges the bar but never re-enters the kit's hooks
+    this.guard(() => this.kit?.onEnemyHurt?.(e, amount, source, killed));
+  }
+
+  private noteHurt(lost: number): void {
+    this.addCharge(lost * FIGHTER_TUNING.chargeTaken);
+    const source = this.ctx.player.lastDamageSource ?? undefined;
+    this.guard(() => this.kit?.onPlayerHurt?.(lost, source));
+  }
+
+  // ======================================================================== modifiers and armor
+
+  /**
+   * Hold a modifier for `ticks` (refreshing one with the same id). Scales multiply, damage taken
+   * multiplies, concealment takes the strongest, stagger resistance is any.
+   */
+  setMod(id: string, ticks: number, mod: FighterMod): void {
+    this.mods.set(id, { until: this.ctx.state.frameCount + Math.max(1, ticks), mod });
+    this.recompute();
+  }
+
+  clearMod(id: string): void {
+    if (this.mods.delete(id)) this.recompute();
+  }
+
+  hasMod(id: string): boolean {
+    return this.mods.has(id);
+  }
+
+  private expire(now: number): void {
+    let changed = false;
+    for (const [id, m] of this.mods) {
+      if (now >= m.until) { this.mods.delete(id); changed = true; }
+    }
+    if (changed) this.recompute();
+    // Enemy effects lapse on their own clocks; drop the foes with none left.
+    if (this.touched.length > 0 && (now & 7) === 0) this.sweepTouched(now);
+  }
+
+  private recompute(): void {
+    let move = 1, climb = 1, dmg = 1, conceal = 0, stagger = false;
+    for (const { mod } of this.mods.values()) {
+      if (mod.moveScale !== undefined) move *= mod.moveScale;
+      if (mod.climbScale !== undefined) climb *= mod.climbScale;
+      if (mod.damageTaken !== undefined) dmg *= mod.damageTaken;
+      if (mod.concealment !== undefined) conceal = Math.max(conceal, mod.concealment);
+      if (mod.staggerResist) stagger = true;
+    }
+    this.cMove = move; this.cClimb = climb; this.cDamage = dmg; this.cConceal = conceal; this.cStagger = stagger;
+  }
+
+  /** Raise the armor ceiling (a kit's call) and optionally fill the new room. */
+  setArmorMax(max: number, fill = false): void {
+    this.armorMax = Math.max(0, max);
+    this.armor = fill ? this.armorMax : Math.min(this.armor, this.armorMax);
+  }
+
+  addArmor(amount: number): void {
+    if (this.armorMax <= 0 || !(amount > 0)) return;
+    this.armor = Math.min(this.armorMax, this.armor + amount);
+  }
+
+  // ---- the engine's questions (cheap and allocation-free) ----
+
+  reduceIncoming(amount: number, _source: string | undefined): number {
+    if (this.id === null) return amount;
+    amount *= this.cDamage;
+    if (this.armor > 0 && amount > 0) {
+      const take = Math.min(this.armor, amount);
+      this.armor -= take;
+      amount -= take;
+      this.armorStruck(take);
+    }
+    return amount;
+  }
+
+  moveScale(): number { return this.cMove; }
+  climbScale(): number { return this.cClimb; }
+  get staggerResist(): boolean { return this.cStagger; }
+  get ownsMovement(): boolean { return this.move !== null; }
+
+  concealment(): number {
+    if (this.id === null) return 0;
+    let c = this.cConceal;
+    const k = this.kit?.concealment?.();
+    if (k !== undefined && k > c) c = k;
+    return c > 0.95 ? 0.95 : c;
+  }
+
+  enemySlow(e: Enemy): number {
+    if (this.touched.length === 0) return 1;
+    const fx = this.enemyFx.get(e);
+    return fx && this.ctx.state.frameCount < fx.slowUntil ? fx.slowK : 1;
+  }
+
+  interceptProjectile(p: Projectile): boolean {
+    return this.kit?.intercept?.(p) === true;
+  }
+
+  private armorStruck(amount: number): void {
+    const ctx = this.ctx, p = ctx.player;
+    ctx.particles.burst(p.x, p.y - 9, Math.min(8, 2 + amount * 0.3), null, () => 0xe8d8a8, 1.6, { glow: 1.2, grav: 0.02 });
+  }
+
+  // ======================================================================== enemy effects
+
+  private fxOf(e: Enemy): EnemyFx {
+    let fx = this.enemyFx.get(e);
+    if (!fx) {
+      fx = { slowK: 1, slowUntil: 0, revealUntil: 0, revealRgb: NO_REVEAL, markUntil: 0, stunUntil: 0 };
+      this.enemyFx.set(e, fx);
+    }
+    if (!this.touched.includes(e)) this.touched.push(e);
+    return fx;
+  }
+
+  slowEnemy(e: Enemy, factor: number, ticks: number): void {
+    const fx = this.fxOf(e);
+    const until = this.ctx.state.frameCount + ticks;
+    // A harder slow wins; an equal one extends.
+    if (until > fx.slowUntil || factor < fx.slowK) { fx.slowK = factor; fx.slowUntil = Math.max(fx.slowUntil, until); }
+  }
+
+  stunEnemy(e: Enemy, ticks: number): void {
+    const fx = this.fxOf(e);
+    fx.stunUntil = Math.max(fx.stunUntil, this.ctx.state.frameCount + ticks);
+  }
+
+  /** Show `e` through walls and darkness for `ticks` (the HUD's tell for Bloodsense, a bell, the spoor). */
+  revealEnemy(e: Enemy, ticks: number, rgb: readonly [number, number, number] = NO_REVEAL): void {
+    const fx = this.fxOf(e);
+    const until = this.ctx.state.frameCount + ticks;
+    if (this.revealOf(e) === undefined) this.revealing++;
+    fx.revealUntil = Math.max(fx.revealUntil, until);
+    fx.revealRgb = rgb;
+    if (!this.drawables.includes(this.revealDrawable)) this.drawables.push(this.revealDrawable);
+  }
+
+  markEnemy(e: Enemy, ticks: number): void {
+    const fx = this.fxOf(e);
+    fx.markUntil = Math.max(fx.markUntil, this.ctx.state.frameCount + ticks);
+  }
+
+  isMarked(e: Enemy): boolean {
+    const fx = this.enemyFx.get(e);
+    return fx !== undefined && this.ctx.state.frameCount < fx.markUntil;
+  }
+
+  isRevealed(e: Enemy): boolean {
+    return this.revealOf(e) !== undefined;
+  }
+
+  /** The reveal colour while `e` is revealed (the renderer reads this), else undefined. */
+  revealOf(e: Enemy): readonly [number, number, number] | undefined {
+    const fx = this.enemyFx.get(e);
+    return fx && this.ctx.state.frameCount < fx.revealUntil ? fx.revealRgb : undefined;
+  }
+
+  /** Re-pin stunned foes each tick: a stun is the knock state held at zero velocity, so the AI stays off. */
+  private keepStunned(now: number): void {
+    for (const e of this.touched) {
+      const fx = this.enemyFx.get(e);
+      if (!fx || now >= fx.stunUntil) continue;
+      e.knockVx = 0;
+      e.knockVy = Math.max(0, e.knockVy ?? 0);
+      e.knockT = Math.max(e.knockT ?? 0, 2);
+    }
+  }
+
+  private sweepTouched(now: number): void {
+    for (let i = this.touched.length - 1; i >= 0; i--) {
+      const e = this.touched[i];
+      const fx = this.enemyFx.get(e);
+      const alive = this.ctx.enemies.includes(e);
+      if (!fx || !alive || (now >= fx.slowUntil && now >= fx.revealUntil && now >= fx.markUntil && now >= fx.stunUntil)) {
+        this.touched.splice(i, 1);
+        if (fx) this.enemyFx.delete(e);
+      }
+    }
+    this.revealing = this.touched.reduce((n, e) => n + (this.revealOf(e) !== undefined ? 1 : 0), 0);
+    if (this.revealing === 0) {
+      const at = this.drawables.indexOf(this.revealDrawable);
+      if (at >= 0) this.drawables.splice(at, 1);
+    }
+  }
+
+  /** Foes whose body centre is within `r` of (x, y), nearest first, in a buffer that is reused on the next call. */
+  enemiesNear(x: number, y: number, r: number): readonly Enemy[] {
+    const out = this.nearBuf;
+    out.length = 0;
+    const defs = this.ctx.enemyCtl.defs;
+    for (const e of this.ctx.enemies) {
+      const def = defs[e.kind];
+      const dx = e.x - x, dy = e.y - (def ? def.h * 0.5 : 5) - y;
+      const reach = r + (def ? def.halfW : 4);
+      if (dx * dx + dy * dy <= reach * reach) out.push(e);
+    }
+    out.sort((a, b) => (a.x - x) ** 2 + (a.y - y) ** 2 - ((b.x - x) ** 2 + (b.y - y) ** 2));
+    return out;
+  }
+
+  /** A blow from the fighter (credited as the player's own). Kit hooks do not re-enter. */
+  hurt(e: Enemy, amount: number, kx: number, ky: number): void {
+    const was = this.inKit;
+    this.inKit = true;
+    try { this.ctx.enemyCtl.damage(e, amount, kx, ky, 'direct'); } finally { this.inKit = was; }
+  }
+
+  // ======================================================================== the body-owning move
+
+  startMove(plan: MovePlan): void {
+    this.endMove('cancelled');
+    const p = this.ctx.player;
+    p.climbing = false;
+    p.crouchT = 0;
+    this.move = { plan, tick: 0, ax: 0, ay: 0 };
+  }
+
+  cancelMove(): void {
+    this.endMove('cancelled');
+  }
+
+  private stepMove(): void {
+    const m = this.move;
+    if (!m) return;
+    const ctx = this.ctx, p = ctx.player;
+    const s = m.tick < m.plan.ticks ? m.plan.step(m.tick) : null;
+    if (!s) return this.endMove('done');
+    if (m.plan.invuln) p.invuln = Math.max(p.invuln, m.plan.invuln);
+    if (m.plan.face && Math.abs(s.dx) > 0.01) p.facing = s.dx > 0 ? 1 : -1;
+    m.ax += s.dx;
+    m.ay += s.dy;
+    const bodyH = p.crawling ? PLAYER_CRAWL_H : PLAYER_H;
+    let blocked = false;
+    // Whole cells only, one at a time, so a wall stops the body where it is.
+    while (!blocked && Math.abs(m.ax) >= 1) {
+      const sx = m.ax > 0 ? 1 : -1;
+      if (ctx.physics.tryMoveEntity(p, sx, 0, PLAYER_HALF_W, bodyH, PLAYER_STEP_UP)) m.ax -= sx;
+      else blocked = true;
+    }
+    while (!blocked && Math.abs(m.ay) >= 1) {
+      const sy = m.ay > 0 ? 1 : -1;
+      if (ctx.physics.tryMoveEntity(p, 0, sy, PLAYER_HALF_W, bodyH, 0)) m.ay -= sy;
+      else blocked = true;
+    }
+    p.vx = s.dx;
+    p.vy = s.dy;
+    p.fx = 0;
+    p.fy = 0;
+    p.grounded = !ctx.physics.entityFree(p.x, p.y + 1, PLAYER_HALF_W, 1);
+    m.tick++;
+    m.plan.onStep?.(m.tick);
+    if (this.move !== m) return; // onStep started or cancelled another move
+    if (blocked) this.endMove('blocked');
+  }
+
+  private endMove(reason: 'done' | 'blocked' | 'cancelled'): void {
+    const m = this.move;
+    if (!m) return;
+    this.move = null;
+    const p = this.ctx.player;
+    if (reason !== 'cancelled') {
+      p.vx = m.plan.exitVx ?? Math.max(-3, Math.min(3, p.vx));
+      p.vy = m.plan.exitVy ?? Math.max(-3, Math.min(3, p.vy));
+    }
+    m.plan.onEnd?.(reason);
+  }
+
+  // ======================================================================== placed things
+
+  addDrawable(d: FighterDrawable): () => void {
+    this.drawables.push(d);
+    return () => {
+      const at = this.drawables.indexOf(d);
+      if (at >= 0) this.drawables.splice(at, 1);
+    };
+  }
+
+  /** A short floating line over the fighter ("PHOENIX DRAFT READY"). */
+  callout(text: string): void {
+    const p = this.ctx.player;
+    this.ctx.events.emit('combatCallout', { x: p.x, y: p.y - 24, text, tone: 'brass' });
+  }
+
+  // ======================================================================== lifecycle
+
+  private guard(fn: () => void): void {
+    const was = this.inKit;
+    this.inKit = true;
+    try { fn(); } finally { this.inKit = was; }
+  }
+
+  /** Stop everything running (a death, a floor, a new fighter) without touching the cooldowns. */
+  private cancelEffects(): void {
+    this.endMove('cancelled');
+    if (this.ultimateLeft > 0) {
+      this.ultimateLeft = 0;
+      this.guard(() => this.kit?.ultimateEnd?.());
+    }
+    this.guard(() => this.kit?.reset?.());
+    this.mods.clear();
+    this.recompute();
+    for (let i = this.drawables.length - 1; i >= 0; i--) {
+      if (this.drawables[i] !== this.revealDrawable) this.drawables.splice(i, 1);
+    }
+    this.touched.length = 0;
+    this.revealing = 0;
+    const at = this.drawables.indexOf(this.revealDrawable);
+    if (at >= 0) this.drawables.splice(at, 1);
+  }
+
+  private onLevelChanged(): void {
+    if (this.id === null) return;
+    this.cancelEffects();
+    this.lastHp = -1;
+  }
+
+  /** A respawn or a cleared death: a fresh start for the same fighter. */
+  private resetAll(): void {
+    if (this.id === null) return;
+    this.cancelEffects();
+    this.tacticalCd = 0;
+    this.charge = 0;
+    this.armor = 0;
+    this.lastHp = -1;
+    this.syncView();
+  }
+
+  reset(): void {
+    this.resetAll();
+  }
+
+  private teardown(): void {
+    this.cancelEffects();
+    this.kit = null;
+    this.def = null;
+  }
+
+  // ======================================================================== save
+
+  snapshot(): FighterSaveState | null {
+    if (this.id === null) return null;
+    return {
+      v: 1,
+      id: this.id,
+      tacticalCooldown: this.tacticalCd,
+      ultimateCooldown: 0,
+      charge: this.charge,
+      armor: this.armor,
+      kit: this.kit?.save?.() ?? {},
+    };
+  }
+
+  restore(save: FighterSaveState | null | undefined): void {
+    if (!save || save.v !== 1 || !isFighterId(save.id)) return;
+    if (this.id !== save.id) this.equip(save.id);
+    const finite = (n: unknown, lo: number, hi: number): number => (typeof n === 'number' && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : 0);
+    this.tacticalCd = finite(save.tacticalCooldown, 0, this.tacticalCdMax);
+    this.charge = finite(save.charge, 0, 1);
+    this.armor = finite(save.armor, 0, Math.max(this.armorMax, 1000));
+    if (this.kit?.load && save.kit && typeof save.kit === 'object') {
+      const bag: Record<string, number> = {};
+      for (const [k, v] of Object.entries(save.kit)) if (typeof v === 'number' && Number.isFinite(v)) bag[k] = v;
+      this.kit.load(bag);
+    }
+    this.syncView();
+  }
+
+  // ======================================================================== view
+
+  private syncView(): void {
+    const v = this.view;
+    const t = v.tactical, u = v.ultimate;
+    t.cooldown = this.tacticalCd > 0 ? this.tacticalCd / this.tacticalCdMax : 0;
+    t.cooldownSeconds = Math.ceil(this.tacticalCd / 60);
+    t.ready = this.id !== null && this.tacticalCd <= 0 && this.alive;
+    t.active = 0;
+    t.charge = 1;
+    u.charge = this.charge;
+    u.active = this.ultimateLeft > 0 ? this.ultimateLeft / this.ultimateMax : 0;
+    u.cooldown = 0;
+    u.cooldownSeconds = 0;
+    u.ready = this.id !== null && this.charge >= 1 && this.ultimateLeft <= 0 && this.alive;
+    v.armor = this.armor;
+    v.armorMax = this.armorMax;
+    v.meter = this.kit?.meter?.() ?? null;
+  }
+}
+
+function blankAbility(slot: AbilitySlot): AbilityView {
+  return { slot, name: '', ready: false, cooldown: 0, cooldownSeconds: 0, active: 0, charge: slot === 'tactical' ? 1 : 0, usedAt: -1, refusedAt: -1, readyAt: -1 };
+}

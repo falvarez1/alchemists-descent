@@ -10,6 +10,7 @@ import { PERK_IDS, isPerkId } from '@/content/perks';
 import { Cell, CELL_COUNT } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { ConsoleCommandRegistry, parseConsoleLine, splitCommandSequence } from '@/game/console/registry';
+import { createFighterCommands } from '@/game/console/fighters';
 import { createTravelCommands } from '@/game/console/travel';
 import type { CompletionRequest, ConsoleCommandDefinition } from '@/game/console/registry';
 import { currentToken, info, matching, normalizeKey, result } from '@/game/console/kit';
@@ -2517,6 +2518,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
   // constant, so the player build drops this branch and the modules behind it (vite.config).
   if (__AUTHORING__) {
     for (const def of createTravelCommands()) add(def);
+    for (const def of createFighterCommands()) add(def);
     add(sequenceCommand());
   }
   // `help` and ctx.console.list() carry each command's group, aliases and taint flag.

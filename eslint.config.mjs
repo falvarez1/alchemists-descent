@@ -20,6 +20,7 @@ const DETERMINISTIC = [
   ['src/entities/**/*.ts', 'entityRandom()'],
   ['src/combat/**/*.ts', 'entityRandom()'],
   ['src/game/**/*.ts', 'entityRandom()'],
+  ['src/fighters/**/*.ts', 'entityRandom()'],
   ['src/particles/**/*.ts', 'particleRandom()'],
 ];
 

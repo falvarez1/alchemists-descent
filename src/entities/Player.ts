@@ -454,7 +454,9 @@ export class PlayerControl implements PlayerControlApi {
   private tryMantle(ctx: Ctx): boolean {
     const { player } = ctx;
     const side = player.climbDir || 1;
-    for (let up = CLIMB_MANTLE_MIN_UP; up <= CLIMB_MANTLE_MAX_UP; up++) {
+    // A fighter who climbs well (Rooftop Runner) reads a ledge from further below.
+    const reach = (ctx.fighters?.climbScale() ?? 1) > 1 ? 4 : 0;
+    for (let up = CLIMB_MANTLE_MIN_UP; up <= CLIMB_MANTLE_MAX_UP + reach; up++) {
       for (let over = 0; over <= PLAYER_HALF_W + 3; over++) {
         const nx = player.x + side * over; // step onto the TOP of the wall (toward the face)
         const ny = player.y - up;
@@ -607,9 +609,15 @@ export class PlayerControl implements PlayerControlApi {
     return Math.max(1, Math.hypot(1, player.y - startY));
   }
 
-  private reduceIncomingDamage(amount: number, minimum = 0): number {
+  private reduceIncomingDamage(amount: number, minimum = 0, source?: string): number {
     if (this.ctx.state?.debugGodMode) return 0;
     if (this.ctx.player.status.stoneskin > 0) amount *= 0.5;
+    // A fighter's armor and damage reduction (src/fighters): a blow it fully absorbs is 0, not the floor.
+    const fighters = this.ctx.fighters;
+    if (fighters && fighters.id !== null) {
+      amount = fighters.reduceIncoming(amount, source);
+      if (amount <= 0) return 0;
+    }
     return Math.max(minimum, amount);
   }
 
@@ -646,7 +654,7 @@ export class PlayerControl implements PlayerControlApi {
     if (src === 'fire' && player.perks.flameward) amount *= 0.4;
     if ((src === 'toxic' || src === 'acid') && player.perks.toxinward) amount *= 0.25;
     // Stoneskin (Wave C potion): half damage, knockback shrugged off entirely
-    amount = this.reduceIncomingDamage(amount, 0.5);
+    amount = this.reduceIncomingDamage(amount, 0.5, source);
     // A blow shatters heart communion — the unhealed remainder is lost
     if (player.recharge > 0) {
       player.recharge = 0;
@@ -656,10 +664,13 @@ export class PlayerControl implements PlayerControlApi {
     this.applyImpulse(kx || 0, ky || 0);
     player.invuln = 30;
     // Hurt stagger: a lean away from the blow, and the hat whips with it
-    player.staggerT = 12;
-    player.staggerDir = kx !== 0 ? Math.sign(kx) : -player.facing;
-    player.hat.vx += player.staggerDir * 2.6;
-    player.hat.vy -= 1.2;
+    // (a fighter at full Pressure / in Redline keeps its footing: src/fighters)
+    if (ctx.fighters?.staggerResist !== true) {
+      player.staggerT = 12;
+      player.staggerDir = kx !== 0 ? Math.sign(kx) : -player.facing;
+      player.hat.vx += player.staggerDir * 2.6;
+      player.hat.vy -= 1.2;
+    }
     ctx.audio.hurt();
     ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.018, 0.05);
     // hitstop: heavy hits freeze gameplay for a beat (Game consumes fx.hitstop)
@@ -675,6 +686,7 @@ export class PlayerControl implements PlayerControlApi {
   applyImpulse(vx: number, vy: number): void {
     const player = this.ctx.player;
     if (player.status.stoneskin > 0) return;
+    if (this.ctx.fighters?.staggerResist === true) return;
     player.vx += vx;
     player.vy += vy;
   }
@@ -1204,6 +1216,13 @@ export class PlayerControl implements PlayerControlApi {
     if (ctx.state.mode !== 'play' || player.dead) return;
     player.levitating = false;
     if (this.swinging) { player.firePressed = false; this.updateSwing(ctx); return; } // pendulum replaces normal movement (and the wand)
+    // A fighter's dash / ram / tether (src/fighters) moves the body itself; the pose still follows the real displacement.
+    if (ctx.fighters?.ownsMovement === true) {
+      player.firePressed = false;
+      player.levitating = false;
+      this.updatePlayerAnimation(ctx);
+      return;
+    }
     if (this.kickCooldownT > 0) this.kickCooldownT--;
 
     // Near death, you hear it: a slow heartbeat under 25% HP, urgent under 12%.
@@ -1371,7 +1390,7 @@ export class PlayerControl implements PlayerControlApi {
         // The Cold Store's frostbite names itself when it is most of the harm.
         const cause = status.frostbiteDamage > 0 && status.frostbiteDamage >= damage * 0.5 ? 'frostbite' : this.statusDamageSource(player);
         const source = this.noteDamageSource(cause);
-        player.hp -= this.reduceIncomingDamage(damage);
+        player.hp -= this.reduceIncomingDamage(damage, 0, source);
         if (player.hp <= 0) {
           this.kill(source);
           return;
@@ -1505,7 +1524,7 @@ export class PlayerControl implements PlayerControlApi {
     const speedK = levitatingMove
       ? lp.levitHorizControl
       : (player.status.swift > 0 ? 1.5 : 1) * (player.perks.swiftfoot ? 1.18 : 1);
-    const pacedSpeedK = speedK * movePace;
+    const pacedSpeedK = speedK * movePace * (ctx.fighters?.moveScale() ?? 1);
     // crouch-creep 0.38; crawl 0.32 — slow is the crawl's whole cost
     const stanceK = player.crawling ? 0.32 : crouching ? 0.38 : 1;
     // Cap the per-frame speed gain so a high top speed builds up over several
@@ -1659,7 +1678,7 @@ export class PlayerControl implements PlayerControlApi {
           ['unknown', 0],
         )[0],
       );
-      player.hp -= this.reduceIncomingDamage(hazardDmg);
+      player.hp -= this.reduceIncomingDamage(hazardDmg, 0, source);
       if (ctx.state.frameCount % 14 === 0) {
         ctx.audio.hurt();
         ctx.particles.burst(player.x, player.y - 7, 4, Cell.Smoke, smokeColor, 1.1);
@@ -1805,7 +1824,7 @@ export class PlayerControl implements PlayerControlApi {
 
         if (climbIntent !== 0) {
           // accumulate fractional cells-per-frame; a whole cell of progress = one step
-          player.climbMoveT += climbIntent < 0 ? CLIMB_RATE_UP : CLIMB_RATE_DOWN;
+          player.climbMoveT += (climbIntent < 0 ? CLIMB_RATE_UP : CLIMB_RATE_DOWN) * (ctx.fighters?.climbScale() ?? 1);
           if (player.climbMoveT >= 1) {
             player.climbMoveT -= 1;
             if (this.tryClimbStep(ctx, climbIntent)) {

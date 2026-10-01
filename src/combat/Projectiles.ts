@@ -987,6 +987,12 @@ export class Projectiles implements ProjectilesApi {
         // Hostile projectiles: fireballs detonate on the player, frostbolts
         // hit lighter but soak in as a real frozen status, acid globs splash
         if (p.hostile && ctx.state.mode === 'play' && !ctx.player.dead) {
+          // A fighter's raised plate or prism (src/fighters) takes the shot first.
+          if (ctx.fighters && ctx.fighters.id !== null && ctx.fighters.interceptProjectile(p)) {
+            this.removeAt(projectiles, i);
+            removed = true;
+            break;
+          }
           // A crawler is a smaller, lower target — shots at standing-head
           // height pass clean over the 9x9 body (CRAWL.md: a real dodge).
           const crawl = ctx.player.crawling;

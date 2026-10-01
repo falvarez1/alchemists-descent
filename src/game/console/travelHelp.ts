@@ -109,6 +109,18 @@ export const TRAVEL_HELP_META: Readonly<Record<string, HelpMeta>> = {
     examples: ['kit', 'kit storm'],
     detail: ["Switching resets both wands, the satchel and the flask belt to that kit's starting hand (cards found this run are dropped) and names the kit in the ledger. Kits you have not unlocked are fine here: a test run unlocks nothing."],
   },
+  fighter: {
+    group: 'runs',
+    order: 125,
+    args: '[id|none|charge|refill]',
+    summary: 'list the fighters, equip one, or top up the ultimate',
+    taints: true,
+    examples: ['fighter', 'fighter ilyra-voss', 'fighter none', 'fighter charge', 'fighter refill'],
+    detail: [
+      'A fighter is who you descend as: a look, a passive, a tactical ability on Z and an ultimate on T (docs/FIGHTERS.md). Listing never taints. Equipping, charging or refilling does when a real run is in progress; in the Sandbox nothing is tainted.',
+      'charge adds a share of the ultimate bar (default all of it); refill clears the tactical cooldown and fills the bar. none returns to the classic Alchemist.',
+    ],
+  },
   tier: {
     group: 'runs',
     order: 130,

@@ -52,6 +52,8 @@ export class MobileControls {
         <button type="button" data-touch-key="KeyG">Carry / swing</button>
         <button type="button" data-touch-key="KeyV">Glowseed</button>
         <button type="button" data-touch-key="KeyL">Lantern</button>
+        <button type="button" data-touch-key="KeyZ">Tactical</button>
+        <button type="button" data-touch-key="KeyT">Ultimate</button>
         <p>Use lifts or sets down objects, talks, and operates mechanisms. Hold Use to fill a flask. Aim only lets you aim without casting.</p>
       </div>
       <div class="touch-left">

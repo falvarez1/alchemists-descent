@@ -2,6 +2,8 @@ export const DEFAULT_BINDINGS = {
   left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS', jump: 'Space',
   climb: 'ShiftLeft', interact: 'KeyE', pour: 'KeyQ', drink: 'KeyX', kick: 'KeyF', carry: 'KeyG', lure: 'KeyV',
   clip: 'KeyP', mute: 'KeyN', lantern: 'KeyL',
+  // The fighter's tactical ability and ultimate (src/fighters).
+  tactical: 'KeyZ', ultimate: 'KeyT',
 } as const;
 export type BindingAction = keyof typeof DEFAULT_BINDINGS;
 type Bindings = Record<BindingAction, string>;
@@ -12,7 +14,7 @@ let cached: Bindings | undefined;
  * predates one may already use its default key for something else; the new
  * action then takes a free spare key instead of invalidating the whole layout.
  */
-const LATE_ACTIONS: readonly BindingAction[] = ['clip', 'mute', 'lantern'];
+const LATE_ACTIONS: readonly BindingAction[] = ['clip', 'mute', 'lantern', 'tactical', 'ultimate'];
 const SPARE_KEYS = ['KeyP', 'KeyK', 'KeyL', 'KeyO', 'KeyU', 'KeyY', 'KeyT', 'KeyN', 'KeyZ'];
 
 function allowed(code: unknown): code is string {

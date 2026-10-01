@@ -7,11 +7,11 @@ export function touchHint(text: string): string {
     .replace(/\bSpace\b/g, 'Jump')
     .replace(/\bShift\b/g, 'Grip')
     .replace(/\(B\)/g, "(Pause > Wandsmith's bench)")
-    .replace(/\b([EQXFGVL])(?=\s*(?:[·:]|to\b))/g, (_match, key: string) => touchKey(key))
-    .replace(/\b(Press|press|Hold|hold) ([EQXFGVL])\b/g, (_match, verb: string, key: string) => `${verb} ${touchKey(key)}`);
+    .replace(/\b([EQXFGVLZT])(?=\s*(?:[·:]|to\b))/g, (_match, key: string) => touchKey(key))
+    .replace(/\b(Press|press|Hold|hold) ([EQXFGVLZT])\b/g, (_match, verb: string, key: string) => `${verb} ${touchKey(key)}`);
 }
 
 function touchKey(key: string): string {
-  const labels: Record<string, string> = { E: 'Use', Q: 'Pour', X: 'Drink', F: 'Kick', G: 'Carry', V: 'Glowseed', L: 'Lantern' };
+  const labels: Record<string, string> = { E: 'Use', Q: 'Pour', X: 'Drink', F: 'Kick', G: 'Carry', V: 'Glowseed', L: 'Lantern', Z: 'Tactical', T: 'Ultimate' };
   return labels[key] ?? key;
 }

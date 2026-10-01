@@ -50,6 +50,7 @@ import { drawKeyFlare, drawLampGlint, drawPortalTell, portalWakeAge } from '@/re
 import { cachedSetPieceTells } from '@/render/setPieceTells';
 import { drawHeldLeg, drawLooseLeg } from '@/render/sprites/CreatureArt';
 import { drawTelekinesis } from '@/render/sprites/TelekinesisArt';
+import { drawFighterFx } from '@/render/FighterFx';
 import { looseLegPose } from '@/combat/LooseWeaverLeg';
 import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
@@ -1177,6 +1178,7 @@ export class FrameComposer implements PixelSurface {
     drawStoryLayer(this, this.light, ctx);
     this.drawVineStrands(ctx, 'foreground');
 
+    drawFighterFx(this, this.light, ctx, 'under');
     // Entities on top. Contact shadows first, under everything, so a body's
     // own sprite and its neighbours draw over the shared ground darkening.
     for (const e of ctx.enemies) {
@@ -1211,6 +1213,7 @@ export class FrameComposer implements PixelSurface {
     // Near depth particles: motes in front of everything, catching real light.
     if (depthParticles) this.layers.drawParticles?.(this, this.light, ctx, 'front');
     drawTrickshotOverlay(this, ctx);
+    drawFighterFx(this, this.light, ctx, 'over');
   }
 
   private enemyInRenderView(ctx: Ctx, e: Enemy): boolean {

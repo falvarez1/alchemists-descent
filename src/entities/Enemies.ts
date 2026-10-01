@@ -636,6 +636,7 @@ export class Enemies implements EnemyControlApi {
     e.vx += kx || 0;
     e.vy += ky || 0;
     this.flinch(e, amount, kx || 0, ky || 0);
+    if (amount > 0) ctx.fighters?.noteEnemyHurt(e, amount, source, e.hp <= 0);
     // The rig answers the blow physically on its next tick (creatures/species).
     e.hitKx = kx || 0;
     e.hitKy = ky || 0;
@@ -2616,7 +2617,9 @@ export class Enemies implements EnemyControlApi {
     const observedPlayer = {
       x: ctx.player.x, y: ctx.player.y, vx: ctx.player.vx, dead: ctx.player.dead || arrivalGrace || inHaven,
       // Light wave: the lantern, the hood and the place's darkness set how far eyes reach.
-      crouching: ctx.input?.keys.down === true, light: playerVisibility(ctx),
+      crouching: ctx.input?.keys.down === true,
+      // (a fighter's smoke, stillness in cover, an echo: src/fighters concealment scales how far eyes reach)
+      light: playerVisibility(ctx) * (1 - (ctx.fighters?.concealment() ?? 0)),
     };
     while (this.cues.length > 0 && ctx.state.frameCount - this.cues[0].tick > 90) this.cues.shift();
     if (ctx.player.grounded && !observedPlayer.crouching && Math.abs(ctx.player.vx) > 0.7 && ctx.state.frameCount % 14 === 0) {
@@ -2740,6 +2743,9 @@ export class Enemies implements EnemyControlApi {
         }
         if (eff.teleportTouch && (e.tpCool ?? 0) <= 0) this.teleportEnemy(e, def);
         if (eff.slowFactor !== 1) e.vx *= eff.slowFactor;
+        // A fighter's slow (Dead Chime, Ironvine): the same per-sample scaling a frozen body gets.
+        const fighterSlow = ctx.fighters?.enemySlow(e) ?? 1;
+        if (fighterSlow !== 1) e.vx *= fighterSlow;
       }
 
       // Gust-launched foes fly ballistically (AI + flight cap suppressed) until

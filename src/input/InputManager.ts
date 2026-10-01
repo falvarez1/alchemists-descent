@@ -54,6 +54,8 @@ const GAMEPLAY_KEY_CODES = new Set([
   'KeyV',
   'KeyL',
   'KeyR',
+  'KeyZ',
+  'KeyT',
   'Digit1',
   'Digit2',
   'Digit3',
@@ -772,6 +774,9 @@ export class InputManager {
     )
       this.setKeyHeld(code, true);
     else if (code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
+    // The fighter's tactical ability (Z) and ultimate (T): latched here, consumed inside the tick (src/fighters).
+    else if (code === 'KeyZ' && !repeat && !ctx.player.dead) ctx.fighters?.press('tactical');
+    else if (code === 'KeyT' && !repeat && !ctx.player.dead) ctx.fighters?.press('ultimate');
     else if (code === 'KeyE' && !ctx.player.climbing) {
       // E telekinesis (toggle): set down whatever the wand holds (a corpse, a
       // crate), else LIFT the body under the cursor — the fallen or a crate;

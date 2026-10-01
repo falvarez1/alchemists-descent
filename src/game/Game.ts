@@ -29,6 +29,7 @@ import { Spells } from '@/combat/Spells';
 import { Enemies } from '@/entities/Enemies';
 import { createPlayer, PlayerControl } from '@/entities/Player';
 import { ChillSystem } from '@/game/Chill';
+import { FighterSystem } from '@/fighters/FighterSystem';
 import { Physics } from '@/entities/physics';
 import { RigidBodies } from '@/entities/RigidBodies';
 import { VineStrands } from '@/entities/VineStrands';
@@ -290,6 +291,10 @@ export class Game {
     const chill = new ChillSystem(ctx);
     ctx.chill = chill;
     this.disposables.push(chill);
+    // The fighter (src/fighters): inert until one is equipped, so the classic Alchemist is untouched.
+    const fighters = new FighterSystem(ctx);
+    ctx.fighters = fighters;
+    this.disposables.push(fighters);
     ctx.peers = new PeerGhosts();
     const enemyCtl = new Enemies(ctx);
     ctx.enemyCtl = enemyCtl;
@@ -846,6 +851,8 @@ export class Game {
         ctx.playerCtl.update(ctx);
         // The body's temperature follows where it now stands (its moveK is read next tick).
         ctx.chill?.update(ctx);
+        // The fighter's abilities act on the body that just moved, before the enemies think.
+        ctx.fighters?.update(ctx);
         if (!ctx.player.dead) updateLegSwing(ctx);
         updateTelekinesis(ctx);
       }
