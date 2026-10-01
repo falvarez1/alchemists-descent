@@ -1,6 +1,6 @@
 import type { Ctx } from '@/core/types';
 import { difficultyMods } from '@/config/difficulty';
-import { MAX_MUTATORS, MUTATOR_DEFS, MUTATOR_ORDER, cleanMutators, isMutatorId, mutatorLoadText } from '@/content/mutators';
+import { MAX_MUTATORS, MUTATOR_DEFS, MUTATOR_ORDER, cleanMutators, isMutatorId, mutatorLoadText, rescaleHealth } from '@/content/mutators';
 import { isRunTainted, taintRun } from '@/core/runTaint';
 import type { ConsoleCommandDefinition } from '@/game/console/registry';
 import { currentToken, info, matching, result } from '@/game/console/kit';
@@ -22,12 +22,10 @@ function names(ids: readonly string[]): string {
 }
 
 /** The alchemist's health follows the HP dial the way the title's choice would have set it (a ratio, so a hurt alchemist stays hurt in proportion). */
-function rescaleHealth(ctx: Ctx, before: number, after: number): void {
-  if (before === after || before <= 0) return;
-  const ratio = after / before;
-  const maxHp = Math.max(1, Math.round(ctx.player.maxHp * ratio));
-  ctx.player.hp = Math.max(1, Math.min(maxHp, Math.round(ctx.player.hp * ratio)));
-  ctx.player.maxHp = maxHp;
+function followHpDial(ctx: Ctx, before: number, after: number): void {
+  const scaled = rescaleHealth(ctx.player.hp, ctx.player.maxHp, before, after);
+  ctx.player.maxHp = scaled.maxHp;
+  ctx.player.hp = scaled.hp;
 }
 
 export function createMutatorCommands(): ConsoleCommandDefinition[] {
@@ -77,7 +75,7 @@ export function createMutatorCommands(): ConsoleCommandDefinition[] {
       const hpBefore = difficultyMods(ctx.state).playerHp;
       // The run remembers them (its ledger and a resume read the run's own state); with no tracked run the layer is set directly.
       if (!ctx.run?.debugSetMutators?.(ctx, next)) ctx.mutators.activate(ctx, next);
-      rescaleHealth(ctx, hpBefore, difficultyMods(ctx.state).playerHp);
+      followHpDial(ctx, hpBefore, difficultyMods(ctx.state).playerHp);
       const note = wasTainted ? '' : ` ${TAINT_SENTENCE}`;
       return result(true, `In force: ${names(next)}${next.length > 0 ? ` (${mutatorLoadText(next)})` : ''}. Dials follow now; puddles and vents are laid when a floor is built.${note}`, { action: 'mutator', active: [...next], tainted: true });
     },

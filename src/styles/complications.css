@@ -65,3 +65,27 @@
 #run-summary .entry-comps .comp-note b { font-weight: 600; color: var(--m-text); }
 #run-summary .entry-comps .comp-clear { padding: 2px 0; border: 0; border-bottom: 1px solid #ab9061; background: transparent; color: var(--m-brass-strong); font: 500 calc(12.5px * var(--text-scale, 1))/1.3 var(--m-sans); cursor: pointer; }
 #run-summary .entry-comps .comp-clear[hidden] { display: none; }
+
+/* The Sanctum's bargain row (ui/SanctumBargain): a complication that hardens the descent, for a second boon. It sits
+   under the boon cards as one slim dashed "contract"; struck, it goes solid brass like a taken card. */
+#sanctum-overlay .sanc-bargain { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 10px; padding: 12px 14px; box-sizing: border-box; border: 1px dashed var(--m-brass, #d5b982); border-radius: 2px; background: rgba(42, 44, 30, 0.45); }
+#sanctum-overlay .sanc-bargain[hidden] { display: none; }
+#sanctum-overlay .sanc-bargain.struck { border-style: solid; background: #262b1d; }
+#sanctum-overlay .bargain-text { display: grid; gap: 4px; min-width: 0; }
+#sanctum-overlay .bargain-name { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; }
+#sanctum-overlay .bargain-kicker { font: 700 9.5px/1 var(--m-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--m-muted); }
+#sanctum-overlay .bargain-name b { font: 500 calc(19px * var(--text-scale, 1))/1.1 var(--m-serif); color: var(--m-brass-strong); }
+#sanctum-overlay .bargain-weight { font: 600 11px/1 var(--m-sans); letter-spacing: 0.04em; color: #d9a07a; }
+#sanctum-overlay .bargain-body, #sanctum-overlay .bargain-deal, #sanctum-overlay .bargain-status { margin: 0; font: 400 calc(13px * var(--text-scale, 1))/1.45 var(--m-sans); color: var(--m-text-soft); letter-spacing: 0; text-transform: none; }
+#sanctum-overlay .bargain-deal { color: var(--m-muted); }
+#sanctum-overlay .bargain-status { color: var(--m-brass-strong); }
+#sanctum-overlay .bargain-status:empty { display: none; }
+#sanctum-overlay .sanc-bargain.struck .bargain-deal { display: none; }
+#sanctum-overlay .bargain-accept {
+  flex: none; min-width: 124px; padding: 9px 14px; border: 1px solid #8d7450; border-radius: 2px; background: #262b1d; color: var(--m-brass-strong);
+  font: 600 calc(13px * var(--text-scale, 1))/1.1 var(--m-sans); letter-spacing: 0; cursor: pointer;
+}
+#sanctum-overlay .bargain-accept:hover:not(:disabled) { background: #d8c699; border-color: #e4d4ae; color: #16252a; }
+#sanctum-overlay .bargain-accept:focus-visible { outline: 2px solid var(--m-mint, #bde2c7); outline-offset: 2px; }
+#sanctum-overlay .bargain-accept:disabled { border-color: var(--m-line); background: none; color: #8fa094; cursor: default; }
+@media (max-width: 640px) { #sanctum-overlay .sanc-bargain { flex-direction: column; align-items: stretch; } }

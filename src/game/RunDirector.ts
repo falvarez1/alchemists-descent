@@ -34,9 +34,9 @@ import {
   utcDateKey,
 } from '@/game/runRules';
 import { deathLineFor } from '@/ui/deathCauses';
-import { asDifficulty } from '@/config/difficulty';
+import { asDifficulty, difficultyMods } from '@/config/difficulty';
 import { BASE_DIFFICULTY, openDifficulty } from '@/config/difficultyLadder';
-import { cleanMutators, dailyMutators } from '@/content/mutators';
+import { canBargain, cleanMutators, dailyMutators, rescaleHealth, type Bargain } from '@/content/mutators';
 
 /** One 60 Hz tick of wall time, the most a single tick may add to the clock. */
 const TICK_MS = 1000 / 60;
@@ -89,6 +89,7 @@ function sanitizeSave(save: RunSaveState): RunSaveState | null {
     seed: whole(save.seed) >>> 0,
     ...(save.seedChosen === true && !isDateKey(save.daily) ? { seedChosen: true } : {}),
     ...(runMutators(save.daily, save.mutators).length > 0 ? { mutators: runMutators(save.daily, save.mutators) } : {}),
+    ...(cleanBargains(save.daily, save.bargains).length > 0 ? { bargains: cleanBargains(save.daily, save.bargains) } : {}),
     timeMs: whole(save.timeMs),
     kills: whole(save.kills),
     alchemicalKills: whole(save.alchemicalKills),
@@ -104,6 +105,21 @@ function sanitizeSave(save: RunSaveState): RunSaveState | null {
 }
 
 const NO_MUTATORS: readonly string[] = Object.freeze([]);
+const NO_BARGAINS: ReadonlyArray<Bargain> = Object.freeze([]);
+
+/** The bargains a save carries: one per floor at most, a floor that exists, a complication that exists, and none on the daily (it is the date's). */
+function cleanBargains(daily: string | null | undefined, raw: unknown): Bargain[] {
+  if (isDateKey(daily) || !Array.isArray(raw)) return [];
+  const out: Bargain[] = [];
+  for (const entry of raw) {
+    const floor = (entry as Bargain | null)?.floor;
+    const id = (entry as Bargain | null)?.id;
+    if (typeof floor !== 'number' || !Number.isInteger(floor) || floor < 1 || floor > FLOORS_TOTAL || typeof id !== 'string') continue;
+    if (cleanMutators([id]).length === 0 || out.some((b) => b.floor === floor)) continue;
+    out.push({ floor, id });
+  }
+  return out;
+}
 
 /** The floor-3 wardens: either one slain is the ember kit's milestone. */
 const FLOOR3_WARDENS = new Set<string>(['leviathan', 'lenswright']);
@@ -183,6 +199,10 @@ export class RunDirector implements RunApi {
 
   get mutators(): readonly string[] {
     return this.state?.mutators ?? NO_MUTATORS;
+  }
+
+  get bargains(): ReadonlyArray<{ floor: number; id: string }> {
+    return this.state?.bargains ?? NO_BARGAINS;
   }
 
   get deaths(): number {
@@ -335,6 +355,23 @@ export class RunDirector implements RunApi {
   debugSetKit(kit: KitId): boolean {
     if (!this.active || !this.state || !isKitId(kit)) return false;
     this.state.kit = kit;
+    return true;
+  }
+
+  strikeBargain(ctx: Ctx, id: string, floor: number): boolean {
+    const state = this.state;
+    if (!this.active || !state || state.daily || !Number.isInteger(floor) || floor < 1) return false;
+    if ((state.bargains ?? []).some((b) => b.floor === floor) || !canBargain(state.mutators, id)) return false;
+    const hpBefore = difficultyMods(ctx.state).playerHp;
+    const next = cleanMutators([...(state.mutators ?? []), id]);
+    state.mutators = next;
+    state.bargains = [...(state.bargains ?? []), { floor, id }];
+    ctx.mutators?.activate(ctx, next);
+    // A bargain that moves the HP dial (Glass Cannon) takes the alchemist's health with it, in proportion.
+    const scaled = rescaleHealth(ctx.player.hp, ctx.player.maxHp, hpBefore, difficultyMods(ctx.state).playerHp);
+    ctx.player.maxHp = scaled.maxHp;
+    ctx.player.hp = scaled.hp;
+    ctx.telemetry.count(`bargain.${id}`);
     return true;
   }
 

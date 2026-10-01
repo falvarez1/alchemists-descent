@@ -4,6 +4,7 @@ import {
   MUTATOR_DEFS,
   MUTATOR_ORDER,
   cleanMutators,
+  conflictsWith,
   mutatorLoad,
   mutatorLoadText,
   mutatorNames,
@@ -131,6 +132,13 @@ export class ComplicationsDisclosure {
       void chip?.offsetWidth;
       chip?.classList.add('refused');
       this.note.textContent = `${MAX_MUTATORS} at a time. Put one back to take another.`;
+      return;
+    }
+    // Two that cancel (Hush and Nosy Neighbours) never share a descent: the new one takes the old one's place, and the note says so.
+    const displaced = this.chosen.find((c) => conflictsWith(c, id));
+    if (displaced) {
+      this.set([...this.chosen.filter((c) => c !== displaced), id]);
+      this.note.textContent = `${MUTATOR_DEFS[id].name} takes the place of ${MUTATOR_DEFS[displaced].name}: the two cancel out.`;
       return;
     }
     this.set([...this.chosen, id]);

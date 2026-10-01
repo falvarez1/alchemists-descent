@@ -7,6 +7,10 @@ import {
   MUTATOR_DEFS,
   MUTATOR_ORDER,
   NEUTRAL_MODS,
+  bargainOffer,
+  canBargain,
+  conflictsWith,
+  rescaleHealth,
   cleanMutators,
   composeMutatorMods,
   dailyMutators,
@@ -106,6 +110,46 @@ describe('the ladder flag', () => {
     expect(mutatorsCountForLadder(['tinderbox', 'glass-cannon'])).toBe(true);
     expect(mutatorsCountForLadder(['low-gravity'])).toBe(false);
     expect(mutatorsCountForLadder(['tinderbox', 'hush'])).toBe(false);
+  });
+});
+
+describe('conflicts and the bargain', () => {
+  it('never holds two that cancel out (Hush and Nosy Neighbours): the first in the canonical order stands', () => {
+    expect(conflictsWith('hush', 'nosy-neighbours')).toBe(true);
+    expect(conflictsWith('nosy-neighbours', 'hush')).toBe(true);
+    expect(conflictsWith('hush', 'tinderbox')).toBe(false);
+    expect(cleanMutators(['nosy-neighbours', 'hush', 'tinderbox'])).toEqual(['tinderbox', 'hush']);
+  });
+
+  it('offers only a complication that hardens the descent, that is not in force and does not conflict with one that is', () => {
+    for (const id of MUTATOR_ORDER) {
+      expect(canBargain([], id)).toBe(MUTATOR_DEFS[id].weight >= 1);
+    }
+    expect(canBargain(['tinderbox'], 'tinderbox')).toBe(false);
+    expect(canBargain(['hush'], 'nosy-neighbours')).toBe(false);
+    expect(canBargain(['wet-floors', 'low-gravity', 'hush'], 'famine')).toBe(false); // three already: the most there may be
+    expect(canBargain([], 'bogus')).toBe(false);
+  });
+
+  it('is a pure function of the seed, the floor and what is in force (a reload cannot reroll it), and varies with them', () => {
+    const a = bargainOffer([], 1234, 1);
+    expect(a).not.toBeNull();
+    for (let k = 0; k < 5; k++) expect(bargainOffer([], 1234, 1)).toBe(a);
+    const seen = new Set<string | null>();
+    for (let seed = 1; seed <= 40; seed++) for (const floor of [1, 2, 3]) seen.add(bargainOffer([], seed, floor));
+    expect(seen.size).toBeGreaterThanOrEqual(5);
+    for (const id of seen) expect(canBargain([], id as string)).toBe(true);
+    // Never offers what is in force; nothing left to offer is null.
+    for (let seed = 1; seed <= 30; seed++) expect(bargainOffer(['tinderbox', 'gas-leak'], seed, 2)).not.toMatch(/^(tinderbox|gas-leak)$/);
+    expect(bargainOffer(['tinderbox', 'gas-leak', 'famine'], 5, 2)).toBeNull();
+  });
+
+  it('rescales health with the dial: in proportion, never below one, and not at all when the dial did not move', () => {
+    expect(rescaleHealth(60, 100, 1, 0.5)).toEqual({ hp: 30, maxHp: 50 });
+    expect(rescaleHealth(60, 100, 0.5, 1)).toEqual({ hp: 120, maxHp: 200 });
+    expect(rescaleHealth(1, 2, 1, 0.1)).toEqual({ hp: 1, maxHp: 1 });
+    expect(rescaleHealth(37, 110, 1, 1)).toEqual({ hp: 37, maxHp: 110 });
+    expect(rescaleHealth(37, 110, 0, 0.5)).toEqual({ hp: 37, maxHp: 110 });
   });
 });
 

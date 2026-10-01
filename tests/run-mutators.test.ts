@@ -28,7 +28,7 @@ function harness(): {
   const mutators = {
     ids: [] as readonly string[],
     has: () => false,
-    activate: (_c: Ctx, ids: readonly string[]) => { calls.push(`activate:${ids.join(',')}`); },
+    activate: (c: Ctx, ids: readonly string[]) => { calls.push(`activate:${ids.join(',')}`); c.state.mutators = ids; },
     deactivate: () => { calls.push('deactivate'); },
     planLevel: () => undefined,
     dressLevel: () => undefined,
@@ -37,7 +37,7 @@ function harness(): {
   const ctx = {
     events,
     state: { mode: 'play', score: 0, debugGodMode: false, debugTainted: false, paused: false, difficulty: 2 },
-    player: { x: 0, y: 0, dead: false },
+    player: { x: 0, y: 0, dead: false, hp: 100, maxHp: 100 },
     enemies: [] as Enemy[],
     waves: { kills: 0 },
     audio: new Proxy({}, { get: () => () => undefined }),
@@ -224,5 +224,88 @@ describe('the ledger and the share line', () => {
     expect('mutators' in buildRunSummary({ ...base, mutators: [] })).toBe(false);
     expect('mutators' in buildRunSummary({ ...base, mutators: ['bogus'] })).toBe(false);
     expect('mutators' in buildRunSummary(base)).toBe(false);
+  });
+});
+
+describe('the Sanctum bargain', () => {
+  it('takes a complication for the rest of the descent, records it, and persists it through a resume', () => {
+    const h = harness();
+    h.run.startNewRun(h.ctx, { kit: 'spark', daily: false, mutators: ['wet-floors'] });
+    expect(h.run.strikeBargain(h.ctx, 'tinderbox', 1)).toBe(true);
+    expect(h.run.mutators).toEqual(['wet-floors', 'tinderbox']);
+    expect(h.run.bargains).toEqual([{ floor: 1, id: 'tinderbox' }]);
+    expect(h.calls.at(-1)).toBe('activate:wet-floors,tinderbox');
+    const save = JSON.parse(JSON.stringify(h.run.snapshotForSave()));
+    const g = harness();
+    g.run.restoreFromSave(g.ctx, save);
+    expect(g.run.mutators).toEqual(['wet-floors', 'tinderbox']);
+    expect(g.run.bargains).toEqual([{ floor: 1, id: 'tinderbox' }]);
+    h.run.abandon(h.ctx);
+    expect(h.ended[0].mutators).toEqual(['wet-floors', 'tinderbox']);
+  });
+
+  it('is one a floor, and no more than the most a descent may carry', () => {
+    const h = harness();
+    h.run.startNewRun(h.ctx, { kit: 'spark', daily: false });
+    expect(h.run.strikeBargain(h.ctx, 'tinderbox', 1)).toBe(true);
+    expect(h.run.strikeBargain(h.ctx, 'gas-leak', 1)).toBe(false);
+    expect(h.run.strikeBargain(h.ctx, 'gas-leak', 2)).toBe(true);
+    expect(h.run.strikeBargain(h.ctx, 'famine', 3)).toBe(true);
+    expect(h.run.strikeBargain(h.ctx, 'dark-works', 4)).toBe(false);
+    expect(h.run.mutators).toEqual(['tinderbox', 'gas-leak', 'famine']);
+  });
+
+  it('refuses what is not on the table: the easing, the neutral, the repeated, the conflicting, a made-up one, a bad floor', () => {
+    const h = harness();
+    h.run.startNewRun(h.ctx, { kit: 'spark', daily: false, mutators: ['hush', 'tinderbox'] });
+    for (const id of ['low-gravity', 'wet-floors', 'fireworks', 'tinderbox', 'nosy-neighbours', 'bogus']) expect(h.run.strikeBargain(h.ctx, id, 1)).toBe(false);
+    expect(h.run.strikeBargain(h.ctx, 'famine', 0)).toBe(false);
+    expect(h.run.strikeBargain(h.ctx, 'famine', 1.5)).toBe(false);
+    expect(h.run.bargains).toEqual([]);
+    expect(h.run.mutators).toEqual(['tinderbox', 'hush']);
+  });
+
+  it('is never struck on the daily (one descent for everyone), nor with no run', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-03T12:00:00Z'));
+    const h = harness();
+    expect(h.run.strikeBargain(h.ctx, 'tinderbox', 1)).toBe(false);
+    h.run.startNewRun(h.ctx, { kit: 'spark', daily: true });
+    expect(h.run.strikeBargain(h.ctx, 'tinderbox', 1)).toBe(false);
+    expect(h.run.mutators).toEqual(['low-gravity', 'crowded-house']);
+  });
+
+  it("takes the alchemist's health with the HP dial when the bargain is Glass Cannon (in proportion, so a hurt alchemist stays hurt)", () => {
+    const h = harness();
+    h.run.startNewRun(h.ctx, { kit: 'spark', daily: false });
+    h.ctx.player.hp = 60;
+    expect(h.run.strikeBargain(h.ctx, 'glass-cannon', 1)).toBe(true);
+    expect(h.ctx.player.maxHp).toBe(50);
+    expect(h.ctx.player.hp).toBe(30);
+    // A bargain that leaves the dial alone leaves the health alone.
+    const g = harness();
+    g.run.startNewRun(g.ctx, { kit: 'spark', daily: false });
+    g.ctx.player.hp = 60;
+    g.run.strikeBargain(g.ctx, 'famine', 1);
+    expect([g.ctx.player.maxHp, g.ctx.player.hp]).toEqual([100, 60]);
+  });
+
+  it('cleans the bargains a save carries: a floor that exists, a complication that exists, one a floor, none on the daily', () => {
+    const h = harness();
+    h.run.startNewRun(h.ctx, { kit: 'spark', daily: false, mutators: ['tinderbox'] });
+    const save = h.run.snapshotForSave()!;
+    const g = harness();
+    g.run.restoreFromSave(g.ctx, {
+      ...save,
+      bargains: [{ floor: 1, id: 'tinderbox' }, { floor: 1, id: 'famine' }, { floor: 99, id: 'famine' }, { floor: 2, id: 'bogus' }, { floor: 2.5, id: 'famine' }, null as never, { floor: 3, id: 'famine' }],
+    });
+    expect(g.run.bargains).toEqual([{ floor: 1, id: 'tinderbox' }, { floor: 3, id: 'famine' }]);
+    const junk = harness();
+    junk.run.restoreFromSave(junk.ctx, { ...save, bargains: 'nope' as never });
+    expect(junk.run.bargains).toEqual([]);
+    const forged = harness();
+    forged.run.restoreFromSave(forged.ctx, { ...save, daily: '2026-10-03', bargains: [{ floor: 1, id: 'tinderbox' }] });
+    expect(forged.run.bargains).toEqual([]);
+    expect('bargains' in forged.run.snapshotForSave()!).toBe(false);
   });
 });

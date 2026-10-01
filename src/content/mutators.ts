@@ -1,4 +1,5 @@
 import type { DifficultyMods } from '@/config/difficulty';
+import { Rng, hashSeed } from '@/core/rng';
 
 /**
  * COMPLICATIONS (run mutators): one set of floors, many different runs.
@@ -224,6 +225,17 @@ export const MUTATOR_ORDER: readonly MutatorId[] = [
   'nosy-neighbours',
 ];
 
+/**
+ * Complications that undo each other: a creature cannot be made to notice from half as far AND half again
+ * as far. A set never holds both (`cleanMutators` keeps the first in canonical order, the title swaps one for
+ * the other, a bargain is never offered one that conflicts with what is in force).
+ */
+const CONFLICTS: ReadonlyArray<readonly [MutatorId, MutatorId]> = [['hush', 'nosy-neighbours']];
+
+export function conflictsWith(a: string, b: string): boolean {
+  return CONFLICTS.some(([x, y]) => (a === x && b === y) || (a === y && b === x));
+}
+
 export function isMutatorId(value: unknown): value is MutatorId {
   return typeof value === 'string' && Object.prototype.hasOwnProperty.call(MUTATOR_DEFS, value);
 }
@@ -241,7 +253,9 @@ export function cleanMutators(input: readonly unknown[] | null | undefined, max 
   if (!Array.isArray(input)) return [];
   const wanted = new Set<string>();
   for (const id of input) if (isMutatorId(id)) wanted.add(id);
-  return MUTATOR_ORDER.filter((id) => wanted.has(id)).slice(0, Math.max(0, max));
+  const kept: MutatorId[] = [];
+  for (const id of MUTATOR_ORDER) if (wanted.has(id) && !kept.some((k) => conflictsWith(k, id))) kept.push(id);
+  return kept.slice(0, Math.max(0, max));
 }
 
 /** 'Wet Floors', 'Wet Floors and Low Gravity', 'A, B and C': the complications by name. */
@@ -276,6 +290,47 @@ export function mutatorLoadText(ids: readonly string[] | null | undefined): stri
  */
 export function mutatorsCountForLadder(ids: readonly string[] | null | undefined): boolean {
   return cleanMutators(ids ?? []).every((id) => MUTATOR_DEFS[id].ladder);
+}
+
+/* ---------------- the bargain ---------------- */
+
+/** A bargain struck at the Sanctum below `floor`: the complication accepted for the rest of the descent. */
+export interface Bargain {
+  floor: number;
+  id: string;
+}
+
+/**
+ * THE SANCTUM'S BARGAIN: between floors the old ones offer one complication for the rest of the
+ * descent, and a second boon in return (take two of the three). Only a complication that HARDENS
+ * the descent (weight 1 or more) is ever offered, so the trade is a real one; one that is already in
+ * force, one that conflicts with one in force, and any offer past the most a descent may carry are not.
+ */
+export function canBargain(active: readonly string[] | null | undefined, id: string): id is MutatorId {
+  if (!isMutatorId(id) || MUTATOR_DEFS[id].weight < 1) return false;
+  const now = cleanMutators(active ?? []);
+  return now.length < MAX_MUTATORS && !now.includes(id) && !now.some((n) => conflictsWith(n, id));
+}
+
+/**
+ * The complication on offer at the Sanctum below `floor`: a pure function of the run's seed, the floor
+ * and what is already in force, so a reload cannot reroll it. Null when there is none to offer.
+ */
+export function bargainOffer(active: readonly string[] | null | undefined, expeditionSeed: number, floor: number): MutatorId | null {
+  const pool = MUTATOR_ORDER.filter((id) => canBargain(active, id));
+  if (pool.length === 0) return null;
+  return pool[new Rng(hashSeed(expeditionSeed >>> 0, `bargain:${floor}`)).int(pool.length)];
+}
+
+/**
+ * The alchemist's health after the HP dial (a tier's, or Glass Cannon's) moves from `before` to `after`:
+ * in proportion, so a hurt alchemist stays hurt in proportion, and never below one. Pure.
+ */
+export function rescaleHealth(hp: number, maxHp: number, before: number, after: number): { hp: number; maxHp: number } {
+  if (before === after || before <= 0) return { hp, maxHp };
+  const ratio = after / before;
+  const nextMax = Math.max(1, Math.round(maxHp * ratio));
+  return { hp: Math.max(1, Math.min(nextMax, Math.round(hp * ratio))), maxHp: nextMax };
 }
 
 /* ---------------- the arithmetic ---------------- */

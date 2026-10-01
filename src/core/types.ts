@@ -3581,6 +3581,8 @@ export interface RunSaveState {
   boons?: string[];
   /** The complications this run carries (content/mutators ids, canonical order). Absent on an ordinary run. */
   mutators?: string[];
+  /** The Sanctum bargains struck this run (content/mutators Bargain): at most one per floor. Absent when none. */
+  bargains?: Array<{ floor: number; id: string }>;
 }
 
 /** A finished run, as the ledger screen reads it. */
@@ -3648,6 +3650,8 @@ export interface RunApi {
   readonly daily: string | null;
   /** The complications this run carries (empty when none). */
   readonly mutators: readonly string[];
+  /** The Sanctum bargains struck this run (one per floor at most). */
+  readonly bargains: ReadonlyArray<{ floor: number; id: string }>;
   /** Times the alchemist has fallen on this run so far (Pell and the Old Ones read it). */
   readonly deaths: number;
   /** The last finished run, for the ledger. */
@@ -3674,6 +3678,12 @@ export interface RunApi {
   chooseDifficulty(difficulty: Difficulty): void;
   /** Remember the complications chosen for the next ordinary descent (cleaned; the daily ignores them). */
   chooseMutators(ids: readonly string[]): void;
+  /**
+   * The Sanctum's bargain below `floor`: take `id` for the rest of the descent (the owed second boon is the
+   * Sanctum's). False when it is not on the table (no run, the daily, one already struck this floor, or not
+   * offerable: content/mutators canBargain). A real, credited run: it never taints.
+   */
+  strikeBargain(ctx: Ctx, id: string, floor: number): boolean;
   /** Dev console `phials`: set the return phials of the tracked run (0 to the maximum). False with no run. */
   debugSetPhials?(ctx: Ctx, phials: number): boolean;
   /** Dev console `kit`: name another kit for the tracked run (the ledger and Pell read it). False with no run. */

@@ -17,6 +17,7 @@ import { PhialRow } from '@/ui/phialGlyph';
 import { descendBehindCurtain, descentCurtainCopy } from '@/game/descentCurtain';
 import { ASH_ONE_PHIAL_NOTE } from '@/content/story/oldOnes';
 import { clerkNotice } from '@/content/story/clerk';
+import { SanctumBargain } from '@/ui/SanctumBargain';
 
 /**
  * The Sanctum (upgrade-port meta layer): a paused rest stop between depths.
@@ -88,6 +89,8 @@ export class Sanctum implements SanctumApi {
   private readonly perkCards: HTMLButtonElement[] = [];
   /** The Clerk of Works' notice, pinned under the title (content/story/clerk). */
   private readonly notice = document.createElement('p');
+  /** The complication offered for a second boon (ui/SanctumBargain). */
+  private readonly bargain = new SanctumBargain();
   /** Return phials in the glass when the apprentice arrived, before the old ones topped one up (Matron Ash reads it). */
   private phialsOnArrival = 0;
   /** "More below": the body scrolls and there is more under the fold than is showing. */
@@ -114,6 +117,7 @@ export class Sanctum implements SanctumApi {
     this.teaser.hidden = true;
     const body = document.querySelector<HTMLElement>('#sanctum-overlay .sanc-body');
     body?.prepend(this.teaser);
+    el('perk-row').after(this.bargain.root);
     this.notice.className = 'sanc-notice';
     this.notice.hidden = true;
     document.querySelector('#sanctum-overlay .sanc-sub')?.after(this.notice);
@@ -141,6 +145,7 @@ export class Sanctum implements SanctumApi {
     this.resizeWatch?.disconnect();
     this.more.remove();
     this.notice.remove();
+    this.bargain.dispose();
     if (this.phialTimer !== null) window.clearTimeout(this.phialTimer);
     this.phials.dispose();
     this.teaser.remove();
@@ -174,7 +179,7 @@ export class Sanctum implements SanctumApi {
     }
     if (event.code === 'Enter' || event.code === 'NumpadEnter') {
       // A focused shop button answers Enter itself; anywhere else it is "go".
-      if (target instanceof HTMLElement && target.closest('.shop-row')) return;
+      if (target instanceof HTMLElement && target.closest('.shop-row, .sanc-bargain')) return;
       const go = el('descend-btn') as HTMLButtonElement;
       if (go.disabled) return;
       event.preventDefault();
@@ -196,7 +201,7 @@ export class Sanctum implements SanctumApi {
     const body = document.querySelector<HTMLElement>('#sanctum-overlay .sanc-body');
     if (!body || el('sanctum-overlay').clientHeight >= 700) return;
     const b = body.getBoundingClientRect();
-    const r = el('perk-row').getBoundingClientRect();
+    const r = (this.bargain.visible ? this.bargain.root : el('perk-row')).getBoundingClientRect();
     if (r.height > 0 && r.bottom > b.bottom) body.scrollTop += r.bottom - b.bottom + 8;
   }
 
@@ -399,6 +404,10 @@ export class Sanctum implements SanctumApi {
     const draft = new Rng((ctx.levels.runStatus(ctx).worldSeed ^ Math.imul(floorOf(currentId) + 1, 0x85ebca6b)) >>> 0);
     const offer = draftBoons(pool, doors, () => draft.next());
     let perkTaken = offer.length === 0;
+    // Boons still to take: one, or two once a bargain is struck (ui/SanctumBargain).
+    let picksLeft = 1;
+    const hint = row.closest('.sanc-section')?.querySelector('.sanc-heading span');
+    if (hint) hint.textContent = 'Take one before you descend';
     const armDescend = (): void => {
       const target = this.chosen;
       if (perkTaken && target) {
@@ -430,23 +439,33 @@ export class Sanctum implements SanctumApi {
       desc.textContent = pk.desc;
       card.append(name, desc, Sanctum.keycap(String(cards.length + 1)));
       card.addEventListener('click', () => {
-        if (perkTaken) return;
-        perkTaken = true;
-        for (const button of cards) button.disabled = true;
+        if (perkTaken || card.classList.contains('taken')) return;
+        picksLeft--;
+        perkTaken = picksLeft <= 0;
+        card.disabled = true;
+        // With every boon taken the rest are shut; with one still owed (a bargain) they stay open.
+        if (perkTaken) for (const button of cards) button.disabled = true;
         this.strike(ctx, pk);
         el('sanctum-overlay').dispatchEvent(new CustomEvent('sanctum-pick'));
         card.classList.add('taken');
         this.autoReveal = false;
-        row.querySelectorAll('.perk-card').forEach((c) => {
-          if (c !== card) c.classList.add('faded');
-        });
-        perkTaken = true;
+        if (perkTaken) row.querySelectorAll('.perk-card:not(.taken)').forEach((c) => c.classList.add('faded'));
         armDescend();
       });
       cards.push(card);
       row.appendChild(card);
     }
 
+    // THE BARGAIN: a complication for a second boon. Struck, a second pick is owed (before or after the first).
+    this.bargain.show(ctx, floorOf(currentId), offer.length >= 2, () => {
+      picksLeft++;
+      if (perkTaken) {
+        perkTaken = false;
+        for (const button of cards) if (!button.classList.contains('taken')) { button.disabled = false; button.classList.remove('faded'); }
+      }
+      if (hint) hint.textContent = 'Take two before you descend';
+      armDescend();
+    });
     this.buildShop(ctx);
     el('sanctum-overlay').classList.add('visible');
     this.autoReveal = true;
