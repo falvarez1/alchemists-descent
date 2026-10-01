@@ -7,6 +7,7 @@
 import { DEATH_SLOWMO_FRAMES, HEIGHT, WIDTH } from '@/config/constants';
 import { gustHabitat } from '@/game/HabitatMotion';
 import { difficultyMods } from '@/config/difficulty';
+import { mutatorMods } from '@/content/mutators';
 import { clamp } from '@/core/math';
 import type { Ctx, EnemyKind, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
 import { PLAYER_AIR_CEIL_SLIP, PLAYER_CEIL_SLIP, PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP, PLAYER_VERT_SLIP } from '@/core/types';
@@ -915,7 +916,7 @@ export class PlayerControl implements PlayerControlApi {
   private updateSwing(ctx: Ctx): void {
     const player = ctx.player;
     const keys = ctx.input.keys;
-    player.vy += 0.28; // gravity drives the swing
+    player.vy += 0.28 * mutatorMods(ctx.state).gravity; // gravity drives the swing (the complications' dial: 1 = today's)
     const rx = player.x - this.swingAX;
     const ry = player.y - this.swingAY;
     const rd = Math.hypot(rx, ry) || 0.001;
@@ -1844,7 +1845,8 @@ export class PlayerControl implements PlayerControlApi {
 
     if (!handledByClimb) {
       // Gravity / levitation
-      const grav = player.inLiquid ? 0.12 : 0.28;
+      // (the complications' gravity dial, content/mutators: 1 = today's exactly)
+      const grav = (player.inLiquid ? 0.12 : 0.28) * mutatorMods(ctx.state).gravity;
       player.vy += grav;
       if (player.inLiquid) player.vy *= 0.88;
 

@@ -387,6 +387,8 @@ export class RunDirector implements RunApi {
     const warden = runtime?.def.boss && FLOOR3_WARDENS.has(runtime.def.boss) ? runtime.def.boss : null;
     this.watchLeviathan(ctx, runtime?.def.id ?? null, warden, killed);
     this.watchRefuge(ctx);
+    // The run's complications: vents and drips, heals, fireworks (game/MutatorDirector).
+    ctx.mutators?.update(ctx);
   }
 
   /** A floor-3 warden (the Leviathan, or the Lenswright behind the Galleries' door) died on its floor. */

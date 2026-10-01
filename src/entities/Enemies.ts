@@ -1,5 +1,6 @@
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { difficultyMods } from '@/config/difficulty';
+import { mutatorMods } from '@/content/mutators';
 import { CAMP_HAVEN_RADIUS } from '@/config/pacing';
 import { RILLBACK_WET_THRESHOLD } from '@/core/enemyState';
 import { clamp } from '@/core/math';
@@ -596,6 +597,10 @@ export class Enemies implements EnemyControlApi {
     // motion (a direct blow, or the world's while he is engaged) — never for a
     // blast, fire or creature that went off on its own. core/bossWard.
     if (!this.bossWard.allows(e, source, ctx.state.frameCount)) return;
+    // COMPLICATIONS (content/mutators): the alchemist's own blows land harder or softer. This is a
+    // separate multiplier at the point a blow reaches a creature, so it sits OUTSIDE the wand
+    // compiler's x4 damage clamp (a wand still compiles to at most x4); 1 leaves every blow as it was.
+    if (playerBlow(source)) amount *= mutatorMods(ctx.state).playerDamage;
     // ...and on top of the ward, the boss brain (creatures/bosses): nothing
     // lands on a dying boss, its own tumbling armour is not a blow, and its
     // exposure windows (a quenched, kneeling kiln; a convulsing eel) bite harder.
@@ -757,7 +762,7 @@ export class Enemies implements EnemyControlApi {
     e.knockT = (e.knockT ?? 0) - 1;
     const ctx = this.ctx;
     const vx = (e.knockVx ?? 0) * KNOCK_DRAG;
-    const vy = ((e.knockVy ?? 0) + KNOCK_GRAV) * KNOCK_DRAG;
+    const vy = ((e.knockVy ?? 0) + KNOCK_GRAV * mutatorMods(ctx.state).gravity) * KNOCK_DRAG;
     const speed = Math.hypot(vx, vy);
     e.fx += vx;
     e.fy += vy;
@@ -1341,12 +1346,15 @@ export class Enemies implements EnemyControlApi {
    */
   private dropBounty(e: Enemy, def: EnemyDef): void {
     const ctx = this.ctx;
-    ctx.state.score += def.bounty;
+    // COMPLICATIONS (content/mutators): a richer or leaner bounty; 1 is the shipped one, untouched.
+    const richer = mutatorMods(ctx.state).gold;
+    const bounty = richer === 1 ? def.bounty : Math.round(def.bounty * richer);
+    ctx.state.score += bounty;
     ctx.events.emit('scoreChanged', { score: ctx.state.score });
     // A coin per ~4 oz (the 2026-09 economy pass made bounties ~0.3x): the shower still reads.
-    const coins = Math.max(1, Math.min(40, Math.ceil(def.bounty / 4)));
-    const baseValue = Math.floor(def.bounty / coins);
-    let remainder = def.bounty - baseValue * coins;
+    const coins = Math.max(1, Math.min(40, Math.ceil(bounty / 4)));
+    const baseValue = Math.floor(bounty / coins);
+    let remainder = bounty - baseValue * coins;
     for (let i = 0; i < coins; i++) {
       const value = baseValue + (remainder-- > 0 ? 1 : 0);
       ctx.particles.spawn(

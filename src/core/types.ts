@@ -3752,6 +3752,12 @@ export interface Ctx {
   mutators?: MutatorApi;
 }
 
+/** The part of a generated floor the complications' dressing reads (a structural subset of generateLevel's result). */
+export type MutatorLevelGen = Pick<
+  ReturnType<WorldGenApi['generateLevel']>,
+  'spawn' | 'exit' | 'pickups' | 'portal' | 'boss' | 'placedPrefabs' | 'mechanisms' | 'waystones'
+>;
+
 /**
  * COMPLICATIONS (run mutators, content/mutators): the runtime that turns the run's chosen set into
  * dials, dressed floors and per-tick effects. RunDirector tells it when a run begins, resumes or
@@ -3770,8 +3776,11 @@ export interface MutatorApi {
   activate(ctx: Ctx, ids: readonly string[]): void;
   /** The run is over, or another begins: the shipped tuning, no complications. Idempotent. */
   deactivate(ctx: Ctx): void;
-  /** A floor's pristine cells exist (createLevel and restoreLevel both): plan its vents and drips from the seed. */
-  planLevel(ctx: Ctx, def: LevelDef, seed: number): void;
+  /**
+   * A floor's pristine cells exist (createLevel and restoreLevel both, straight after generation):
+   * plan its vents and puddles from the level seed. `gen` is what the generator just returned.
+   */
+  planLevel(ctx: Ctx, def: LevelDef, seed: number, gen: MutatorLevelGen): void;
   /** A freshly generated floor is complete: dress it (puddles), checked against its route. Never run on a restored floor (the cells persist). */
   dressLevel(ctx: Ctx, runtime: LevelRuntime): void;
   /** Once per play tick (from RunDirector.update): vents and drips, heals, fireworks. */
