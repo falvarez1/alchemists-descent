@@ -3,6 +3,7 @@ import '@/styles/living-descent.css';
 import '@/styles/menus.css';
 import '@/styles/house.css';
 import '@/styles/run.css';
+import '@/styles/complications.css';
 import '@/styles/sound.css';
 import '@/styles/trailer.css';
 import { Game } from '@/game/Game';

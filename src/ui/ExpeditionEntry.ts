@@ -11,6 +11,8 @@ import { appDialog } from '@/ui/AppDialog';
 import { openTrailer } from '@/ui/TrailerLightbox';
 import { launchLine } from '@/content/launchLines';
 import { SeedDisclosure } from '@/ui/SeedDisclosure';
+import { ComplicationsDisclosure } from '@/ui/ComplicationsDisclosure';
+import { mutatorNames } from '@/content/mutators';
 
 /** "Breathing Works" → "Breathing<br><em>Works</em>": the last word takes the brass. */
 function titleMarkup(title: string): string {
@@ -32,6 +34,7 @@ export class ExpeditionEntry {
   private readonly kits: KitPicker;
   private readonly grades: DifficultyPicker;
   private readonly seed: SeedDisclosure;
+  private readonly comps: ComplicationsDisclosure;
   private readonly disposers: Array<() => void> = [];
   private launching = false;
   private selectedKit: KitId = 'spark';
@@ -81,7 +84,12 @@ export class ExpeditionEntry {
     const dailyGroup = document.createElement('div');
     dailyGroup.className = 'entry-daily-group';
     daily.before(dailyGroup);
-    dailyGroup.append(daily, this.seed.root);
+    // "Complications" sits on the seed fold's row (both closed: one line), and each opens to the full width.
+    this.comps = new ComplicationsDisclosure(ctx, 'title');
+    const folds = document.createElement('div');
+    folds.className = 'entry-folds';
+    folds.append(this.seed.root, this.comps.root);
+    dailyGroup.append(daily, folds);
     document.getElementById('canvas-holder')!.appendChild(this.root);
     this.root.addEventListener('click', e => {
       const button = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-entry]');
@@ -127,6 +135,7 @@ export class ExpeditionEntry {
     this.root.querySelector<HTMLButtonElement>('[data-entry="begin"]')!.textContent = saved ? 'Start a new descent' : 'Begin the descent';
     this.refreshMeta();
     this.seed.refresh();
+    this.comps.refresh();
     this.root.querySelector<HTMLElement>('.entry-status')!.textContent = '';
     // The call to action takes focus for keyboard and gamepad, without the keyboard ring a mouse player never asked for.
     this.root.querySelector<HTMLButtonElement>(saved ? '[data-entry="continue"]' : '[data-entry="begin"]')?.focus({ preventScroll: true, focusVisible: false });
@@ -144,7 +153,8 @@ export class ExpeditionEntry {
       const bestText = best
         ? best.victory ? ` · best: the Kiln quieted in ${formatRunTime(best.timeMs)}` : ` · best: Floor ${best.floor}/${FLOORS_TOTAL} in ${formatRunTime(best.timeMs)}`
         : '';
-      note.textContent = `${view.today} · one seed for everyone · the Sparkwright’s case, on Adept${bestText}`;
+      const carries = view.todayMutators.length > 0 ? ` · ${mutatorNames(view.todayMutators)}` : '';
+      note.textContent = `${view.today} · one seed for everyone · the Sparkwright’s case, on Adept${carries}${bestText}`;
     }
     // STORY: once seen, the opening can be watched again from here.
     const opening = this.root.querySelector<HTMLButtonElement>('[data-entry="opening"]');
@@ -224,7 +234,7 @@ export class ExpeditionEntry {
     if (kind === 'continue' || !ctx.run) {
       return ctx.levels.startRun(ctx, { mode: 'normal', worldSource: 'campaign', continueSave: kind === 'continue', loadout: 'fresh' });
     }
-    return ctx.run.startNewRun(ctx, { kit: this.selectedKit, daily: kind === 'daily', difficulty: this.selectedDifficulty, seed });
+    return ctx.run.startNewRun(ctx, { kit: this.selectedKit, daily: kind === 'daily', difficulty: this.selectedDifficulty, seed, mutators: this.comps.selected });
   }
 
   dispose(): void {

@@ -7,6 +7,7 @@ import { titleCaseName } from '@/core/strings';
 import { FLOORS_TOTAL, floorOf } from '@/config/worldgraph';
 import { PERK_DEFS } from '@/content/perks';
 import { DIFFICULTY, asDifficulty } from '@/config/difficulty';
+import { mutatorNames } from '@/content/mutators';
 
 /**
  * ESC pause. Owns its own pause claim so it never fights the Sanctum, the
@@ -211,6 +212,8 @@ export class PauseOverlay {
       // Which tier this descent runs on (it is chosen once, on the title or the ledger, and then forgotten).
       const tier = DIFFICULTY[asDifficulty(ctx.state.difficulty)];
       rows.splice(1, 0, ['Difficulty', `${tier.name} (${tier.roman})`]);
+      // The standing regulations of this descent (chosen on the title, or set by the date for the daily).
+      if (ctx.run.mutators.length > 0) rows.splice(2, 0, ['Complications', mutatorNames(ctx.run.mutators)]);
     }
     stats.replaceChildren(...rows.flatMap(([label, value]) => {
       const dt = document.createElement('dt');
