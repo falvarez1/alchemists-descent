@@ -57,6 +57,8 @@ export const RIME_BIAS = ((): Float32Array => {
   const set: Array<[number, number]> = [
     [1, 0.3], [2, 0.72], [3, 0.66], [4, 0.52], [5, 0.62], [6, 0.4], [8, 0.66], [9, 0.52], [10, 0.84],
     [11, 0.08], [12, 0.45], [13, 0.72], [14, 0.3], [15, 1], [16, 0.86], [17, 0.8],
+    // 18: a fighter's hood or helm (render/player/FighterArt); the classic art never draws it. Extremities, like the hat.
+    [18, 0.78],
   ];
   for (const [g, v] of set) b[g] = v;
   return b;

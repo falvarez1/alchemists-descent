@@ -188,8 +188,8 @@ function passTorso(c: LookCtx): void {
   }
   if (look.outfit === 'armor') {
     // Plate: a breastplate over the coat, a gorget, knee caps and greaves ride the legs.
-    r.ellipse(s.chest.x + f * 0.5, (s.chest.y + mid.y) / 2, 2.9 * tk, 2.7 * tk, s.lean * 0.6, 2.4, COPPER, { group: 30 });
-    r.stamp(s.chest.x + f * 0.6, s.chest.y + 0.6, 2.2 * tk, 0.55, s.lean, COAT, 2, false, 30);
+    r.ellipse(s.chest.x + f * 0.5, (s.chest.y + mid.y) / 2, 2.9 * tk, 2.7 * tk, s.lean * 0.6, 2.4, COPPER, { group: 34 });
+    r.stamp(s.chest.x + f * 0.6, s.chest.y + 0.6, 2.2 * tk, 0.55, s.lean, COAT, 2, false, 34);
   }
 }
 
@@ -200,7 +200,7 @@ function passNearLeg(c: LookCtx): void {
   lb(c, s.frontKnee, s.frontFoot, 1.0, 0.85, 3, BOOT, 8);
   boot(r, s.frontFoot, s.frontKnee, f, 3, 8, false);
   if (look.outfit === 'armor') {
-    r.ellipse(s.frontKnee.x + f * 0.5, s.frontKnee.y, 1.5 * limbK(c), 1.4 * limbK(c), 0, 3.6, COPPER, { group: 31 });
+    r.ellipse(s.frontKnee.x + f * 0.5, s.frontKnee.y, 1.5 * limbK(c), 1.4 * limbK(c), 0, 3.6, COPPER, { group: 35 });
   }
   if (costume && (look.outfit === 'coat' || look.outfit === 'robe')) chainTube(r, costume.tails[1], 3.5, COAT, { group: 9 }, 1.2, 1.45);
   // Blood soak: the hem and boots redden as he wades (player.bloodStain).
@@ -221,8 +221,8 @@ function passShoulders(c: LookCtx): void {
   }
   if (look.outfit === 'armor') {
     const k = torsoK(c);
-    r.ellipse(s.chest.x - f * 0.2, s.chest.y - 0.6, 3.4 * k, 2.0 * k, s.lean * 0.8, 2.6, COPPER, { group: 32 });
-    r.shade(s.chest.x - f * 0.2, s.chest.y + 0.6, 3.1 * k, 0.6, s.lean, -0.9, 32);
+    r.ellipse(s.chest.x - f * 0.2, s.chest.y - 0.6, 3.4 * k, 2.0 * k, s.lean * 0.8, 2.6, COPPER, { group: 36 });
+    r.shade(s.chest.x - f * 0.2, s.chest.y + 0.6, 3.1 * k, 0.6, s.lean, -0.9, 36);
   }
 }
 
