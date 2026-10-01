@@ -10,8 +10,7 @@ import {
   type FighterId,
 } from '@/content/fighters';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
-import { icon, roleIconName } from '@/ui/fighterRosterIcons';
-import { abilityIcon } from '@/ui/fighterIcons';
+import { abilityIconNode, icon, roleIconName } from '@/ui/fighterRosterIcons';
 import {
   ABILITY_KINDS,
   CLASSIC_COPY,
@@ -838,7 +837,7 @@ export class FighterRoster {
       const ability = def[kind];
       const key = abilityKeyLabel(kind, this.keyLabels);
       // Each ability has its own glyph (ui/fighterIcons); the badge is tinted with the fighter's accent by its CSS.
-      rowParts.badge.innerHTML = abilityIcon(def.id, kind, 24);
+      rowParts.badge.replaceChildren(abilityIconNode(def.id, kind, 24));
       rowParts.name.textContent = ability.name;
       rowParts.desc.textContent = ability.description;
       rowParts.key.hidden = key === null;

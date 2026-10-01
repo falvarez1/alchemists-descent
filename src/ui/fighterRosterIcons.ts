@@ -1,4 +1,6 @@
-import type { FighterRole } from '@/content/fighters';
+import type { FighterId, FighterRole } from '@/content/fighters';
+import { abilityIcon } from '@/ui/fighterIcons';
+import type { AbilityIconSlot } from '@/ui/fighterIcons';
 import type { RoleFilter } from '@/ui/fighterRosterModel';
 
 /**
@@ -66,4 +68,13 @@ export function roleIconName(role: FighterRole | RoleFilter): IconName {
     case 'Support': return 'support';
     case 'All': return 'all';
   }
+}
+
+/**
+ * One ability's own glyph (`ui/fighterIcons`) as a DOM node, for the dossier. The markup is the icon module's own
+ * static output, parsed once here so the roster component itself never touches innerHTML.
+ */
+export function abilityIconNode(id: FighterId, kind: AbilityIconSlot, size = 24): Element {
+  const doc = new DOMParser().parseFromString(abilityIcon(id, kind, size), 'image/svg+xml');
+  return document.importNode(doc.documentElement, true);
 }
