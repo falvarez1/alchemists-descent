@@ -8,6 +8,7 @@ import { heldCorpse } from '@/combat/Telekinesis';
 import { getBindings, keyLabel } from '@/input/bindings';
 import { WAYSTONE_HELP_RADIUS, waystoneHelp } from '@/game/waystoneHelp';
 import { isWardedBoss } from '@/core/bossWard';
+import { LOCK_HINT_CELLS, LOCK_TEXT, lockFocus, lockOf } from '@/game/lockText';
 
 /** A teach-once popover body, paired with a contextual hint line. */
 interface Teach {
@@ -259,6 +260,22 @@ export class HintSystem implements HintApi {
               : { title: 'The Golden Key', body: 'Take the key, then reach the portal to descend. No key, no exit.' },
           });
         }
+      }
+    }
+
+    // --- a floor's LOCK (world/locks): its machine reads from a way off, and says what it wants ---
+    const lockPlug = lockOf(runtime);
+    if (lockPlug && lockPlug.state === 0 && lockPlug.lock) {
+      const at = lockFocus(runtime, lockPlug);
+      const d2 = (at.x - px) ** 2 + (at.y - py) ** 2;
+      const copy = LOCK_TEXT[lockPlug.lock];
+      if (d2 <= LOCK_HINT_CELLS * LOCK_HINT_CELLS) {
+        consider({
+          priority: 3,
+          dist2: d2,
+          info: { key: 'lock-' + lockPlug.lock, line: copy.hint, world: { x: Math.round(at.x), y: Math.round(at.y) } },
+          teach: { title: copy.teachTitle, body: copy.teachBody },
+        });
       }
     }
 

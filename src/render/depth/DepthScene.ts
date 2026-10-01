@@ -30,7 +30,7 @@ interface AuthoredZone {
 }
 
 /** Placed set pieces whose rooms stay clear (ledger labels: the second doors' puzzle rooms and halls). */
-const CLEAR_PREFAB = /^(cold|glass|warden)-/;
+const CLEAR_PREFAB = /^(cold|glass|warden|lock)-/;
 
 const zoneCache = new WeakMap<LevelRuntime, readonly AuthoredZone[]>();
 

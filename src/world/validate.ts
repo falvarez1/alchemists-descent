@@ -1,4 +1,4 @@
-import type { LevelRuntime } from '@/core/types';
+import type { LevelRuntime, Mechanism } from '@/core/types';
 import type { World } from '@/sim/World';
 import { mechanismTriggersFor } from '@/core/mechanisms';
 import { bossArenaRect, bossOrganRect } from '@/core/bossWard';
@@ -561,18 +561,27 @@ export function failOpenFindability(
  * every other level audits byte-for-byte as before.
  */
 function routeSealedView(runtime: LevelRuntime): MaskInput['world'] {
-  const seals = runtime.mechanisms.filter((m) => m.kind === 'plug' && m.routeSeal && m.state === 0 && m.body?.length);
-  if (seals.length === 0) return runtime.world;
-  const types = runtime.world.types.slice();
-  const W = runtime.world.width;
+  return routeSealedWorld(runtime.world, runtime.mechanisms);
+}
+
+/**
+ * The same view for a world still being generated (the gauge rescue judges with it too, or it would
+ * tunnel into every lock's vault): the world itself when no intact route seal stands, else a copy of
+ * its cell types with each seal's body opened.
+ */
+export function routeSealedWorld(world: MaskInput['world'], mechanisms: readonly Mechanism[]): MaskInput['world'] {
+  const seals = mechanisms.filter((m) => m.kind === 'plug' && m.routeSeal && m.state === 0 && m.body?.length);
+  if (seals.length === 0) return world;
+  const types = world.types.slice();
+  const W = world.width;
   for (const seal of seals) {
     for (const [x, y] of seal.body!) {
-      if (x >= 0 && y >= 0 && x < W && y < runtime.world.height && types[x + y * W] === (seal.material ?? Cell.Stone)) {
+      if (x >= 0 && y >= 0 && x < W && y < world.height && types[x + y * W] === (seal.material ?? Cell.Stone)) {
         types[x + y * W] = Cell.Empty;
       }
     }
   }
-  return { width: W, height: runtime.world.height, types };
+  return { width: W, height: world.height, types };
 }
 
 /** The masks' input with every intact route seal opened (see routeSealedView). */

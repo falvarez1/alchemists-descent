@@ -13,6 +13,7 @@ import {
 import { entityRandom } from '@/core/simRandom';
 import { steamOffBowl, wetCells } from '@/game/warmBowl';
 import { PHOTOCELL } from '@/config/darkness';
+import { LOCK_HINT_CELLS, lockFocus } from '@/game/lockText';
 export {
   BUOY_LATCH_FRAMES,
   DEFAULT_TRIGGER_LATCH_FRAMES,
@@ -46,6 +47,15 @@ const WITNESS_RADIUS = 360;
 const ARRIVAL_QUIET_FRAMES = 480;
 /** An unlit brazier sunk in standing water this long (frames) counts as wrecked: fail-open. */
 const BRAZIER_DROWN_FRAMES = 1200;
+/** Cells of `cell` standing in a rect (a vent's census). */
+function countCells(world: Ctx['world'], cell: number, r: { x0: number; y0: number; x1: number; y1: number }): number {
+  let n = 0;
+  for (let y = r.y0; y <= r.y1; y++) {
+    if (y < 0 || y >= world.height) continue;
+    for (let x = r.x0; x <= r.x1; x++) if (x >= 0 && x < world.width && world.types[x + y * world.width] === cell) n++;
+  }
+  return n;
+}
 function nearPlayer(ctx: Ctx, m: Mechanism): boolean {
   const dx = m.x - ctx.player.x, dy = m.y - ctx.player.y;
   return dx * dx + dy * dy <= WITNESS_RADIUS * WITNESS_RADIUS;
@@ -218,6 +228,7 @@ export class Mechanisms implements MechanismsApi {
           if (charged) {
             m.state = 1;
             ctx.audio.sfx('mech.latch', m.x, m.y);
+            if (m.cue) ctx.audio.sfx(m.cue, m.x, m.y);
             ctx.particles.burst(m.x, m.y - 3, 12, null, () => packRGB(120, 200, 255), 2.0, {
               glow: 2.4,
               grav: -0.01,
@@ -226,6 +237,24 @@ export class Mechanisms implements MechanismsApi {
           }
         }
       } else if (m.kind === 'plug') {
+        // A LOCK's plug (world/locks): the Works relent when a floor's vault has stayed shut for
+        // relentFrames of play — a ruined puzzle can never lock a run. (A seal broken by the machine,
+        // by digging or by the relent has state 1 and is done.)
+        if (m.lock && m.state === 0 && ctx.state.frameCount % 30 === 0 && !this.lockSeen.has(m)) {
+          const at = lockFocus(runtime, m);
+          const ddx = at.x - ctx.player.x, ddy = at.y - ctx.player.y;
+          if (ddx * ddx + ddy * ddy <= LOCK_HINT_CELLS * LOCK_HINT_CELLS) {
+            this.lockSeen.add(m);
+            ctx.events.emit('lockChanged', { kind: m.lock, phase: 'seen', x: at.x, y: at.y });
+          }
+        }
+        if (m.state === 0 && m.relentFrames !== undefined) {
+          m.relentFrames--;
+          if (m.relentFrames <= 0) {
+            m.relentFrames = undefined;
+            this.relentLock(ctx, m);
+          }
+        }
         // A plug WANTS its body destroyed: when breakFrac of its recorded
         // cells are gone or TRANSFORMED — burned, dissolved, blasted, dug,
         // by any cause — it fires once. The material is the break profile.
@@ -267,6 +296,7 @@ export class Mechanisms implements MechanismsApi {
           }
           if (!was && this.satisfied(m)) {
             ctx.audio.sfx('mech.sensor', m.x, m.y);
+            if (m.cue) ctx.audio.sfx(m.cue, m.x, m.y);
             ctx.particles.burst(m.x, m.y - 2, 4, null, () => packRGB(140, 220, 190), 0.5, {
               grav: 0.02,
               glow: 0.9,
@@ -429,6 +459,9 @@ export class Mechanisms implements MechanismsApi {
     if (runtime.emitters) {
       for (const em of runtime.emitters) {
         if ((ctx.state.frameCount + em.phase) % em.rate !== 0) continue;
+        // A vent that stops: shut by a latch (the Gas Bell's clapper) or while its product already fills its rect.
+        if (em.haltOn !== undefined && list.some((m) => m.id === em.haltOn && m.state > 0)) continue;
+        if (em.cap && countCells(world, em.cell, em.cap) >= em.cap.max) continue;
         const dx = em.dir === 90 ? -1 : em.dir === 270 ? 1 : 0;
         const dy = em.dir === 180 ? -1 : em.dir === 0 ? 1 : 0;
         for (let k = 1; k <= em.burst; k++) {
@@ -604,6 +637,12 @@ export class Mechanisms implements MechanismsApi {
    */
   private updateRelay(ctx: Ctx, m: Mechanism, runtime: LevelRuntime): void {
     if (m.state === 1) return; // fired forever
+    // A destroyed relay that drives a plug has no actuator to read it as satisfied: when its groan is over it
+    // fires for itself (fail-open: a wrecked lock opens).
+    if (m.broken === 0 && m.outputAction === 'break') {
+      this.fireRelay(ctx, m, runtime.mechanisms);
+      return;
+    }
     if (m.broken !== undefined) return; // groaning/dead: the watch owns it
     if (m.fuseT === undefined) {
       const triggers = mechanismTriggersFor(runtime, m.id, m);
@@ -707,6 +746,21 @@ export class Mechanisms implements MechanismsApi {
     ctx.audio.sfx('mech.dispenser', m.x, m.y);
   }
 
+  /** Locks the alchemist has come within sight of this session (the Docent's aside, once). */
+  private readonly lockSeen = new WeakSet<Mechanism>();
+  /** True while relentLock breaks the plug (breakPlug then names the phase 'relented'). */
+  private relenting = false;
+
+  /** The Works relent: a lock that stayed shut for its whole clock cracks open, with a groan and a dry word. */
+  private relentLock(ctx: Ctx, m: Mechanism): void {
+    if (m.state === 1 || !m.lock) return;
+    ctx.audio.groan(m.x + m.w / 2, m.y + m.h / 2);
+    this.relenting = true;
+    this.breakPlug(ctx, m, true);
+    this.relenting = false;
+    this.say(ctx, 'The Works relent. Somewhere, a vault door gives way.');
+  }
+
   /**
    * The plug fires (once): latch and announce. `demolish` (relay 'break')
    * also clears its remaining cells into debris — a detonated seal; a plug
@@ -757,7 +811,13 @@ export class Mechanisms implements MechanismsApi {
     ctx.particles.burst(m.x + m.w / 2, m.y + m.h / 2, 8, null, () => packRGB(180, 150, 110), 1.2, {
       grav: 0.05,
     });
-    if (!m.routeSeal) this.say(ctx, 'A seal gives way.');
+    if (m.lock) {
+      // a lock's seal: it has its own voice (ui/lockText), and the vault's key is now there for the taking
+      m.relentFrames = undefined;
+      ctx.audio.sfx('mech.vault', m.x + m.w / 2, m.y + m.h / 2); // a heavy vault door unsealing
+      ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.02, 0.06);
+      ctx.events.emit('lockChanged', { kind: m.lock, phase: this.relenting ? 'relented' : 'opened', x: m.x + m.w / 2, y: m.y + m.h / 2 });
+    } else if (!m.routeSeal) this.say(ctx, 'A seal gives way.');
   }
 
   /** Photocell charge, latch and feedback (sensorType 'light'). */

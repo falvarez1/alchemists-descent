@@ -117,6 +117,7 @@ import type { PendingLevelSave } from '@/game/persistence/codec';
 import type { CreatureMind } from '@/creatures/types';
 import { ensureCreatureMind } from '@/creatures/perception';
 import { INTRO_OBJECTIVE } from '@/game/introObjectives';
+import { LOCK_TEXT, lockOf } from '@/game/lockText';
 import { titleCaseName } from '@/core/strings';
 
 /** Frames the transition curtain stays down after the (synchronous) swap. */
@@ -1050,7 +1051,7 @@ export class Levels implements LevelsApi {
             ? (runtime.living.tea?.completed
               ? 'Sealed. Bring the brass bell from the end of the engine’s catwalk.'
               : 'Sealed. The grate answers to a brass bell, and only the Bell & Tea Engine above the Intake makes one.')
-            : 'Sealed. It wants the golden key.',
+            : (lockOf(runtime)?.lock && LOCK_TEXT[lockOf(runtime)!.lock!].sealed) || 'Sealed. It wants the golden key.',
         });
       }
     }
@@ -2959,7 +2960,8 @@ export class Levels implements LevelsApi {
     for (const p of placedPrefabs) {
       // (The second doors' puzzle rooms are set pieces too: a Cold Store tank,
       // a Galleries lens room.)
-      if (!p.id.startsWith('flora-') && !p.id.startsWith('cold-') && !p.id.startsWith('glass-')) continue;
+      // (...and a floor's lock room: world/locks)
+      if (!p.id.startsWith('flora-') && !p.id.startsWith('cold-') && !p.id.startsWith('glass-') && !p.id.startsWith('lock-')) continue;
       for (let y = Math.max(0, p.y0); y <= Math.min(world.height - 1, p.y1); y++) {
         populationReach.fill(0, y * world.width + Math.max(0, p.x0), y * world.width + Math.min(world.width - 1, p.x1) + 1);
       }

@@ -1,4 +1,5 @@
 import { HEIGHT, WIDTH } from '@/config/constants';
+import { GEN } from '@/config/gen';
 import { randomCard, TOME_REWARD_POOL } from '@/content/cardRewardPools';
 import { clamp, hash2 } from '@/core/math';
 import type { Rng } from '@/core/rng';
@@ -316,7 +317,9 @@ export function placeStructures(
   // D1 refuge / Spell Lab that lived here were removed as unreachable.
 
   // ---- Golden key vault: the main-path region farthest from the spawn ----
-  if (portal) {
+  // (A floor with a LOCK — GenDef.lock — keeps its key in the lock's own vault chamber, placed by
+  // world/locks after this pass: no pocket here, and none of its rng draws.)
+  if (portal && !GEN[def.biome]?.lock) {
     let best = null as { cx: number; cy: number } | null;
     let bestD = -1;
     for (const reg of graph.regions) {
