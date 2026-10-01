@@ -286,6 +286,28 @@ export const DOCENT_ASIDES = {
     first: 'You have hit one thing with another thing. The Guild had a word for that, and the word was “don’t”.',
     again: null,
   },
+  /** The floor's lock first seen (`lockChanged` 'seen', world/locks): one aside per lock, said once ever. */
+  lockGasBell: {
+    id: 'aside.lock.gasbell',
+    first: 'A bell hung full of marsh gas. The Guild called it a lock; I call it a fuse with a good address. Light it from a long way off.',
+    again: null,
+  },
+  lockWeir: {
+    id: 'aside.lock.weir',
+    first: 'The Weir. Water carries a current, apprentice, which the Guild’s engineers called a convenience. Open the sluice, then stand on something dry.',
+    again: null,
+  },
+  lockCrucible: {
+    id: 'aside.lock.crucible',
+    first: 'The Crucible, kept at heat for the gate’s sake. Quench it, and from a distance: the steam has never once been introduced.',
+    again: null,
+  },
+  /** A lock cracked open by the Works themselves (`lockChanged` 'relented'). */
+  lockRelent: {
+    id: 'aside.lock.relent',
+    first: 'The Works relent. They do, you know, if you wait. It is their one concession to visitors.',
+    again: null,
+  },
 } as const satisfies Readonly<Record<string, Beat>>;
 
 /**

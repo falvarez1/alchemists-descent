@@ -7,5 +7,7 @@
  * left on this list: delete the id here when its takes land.
  */
 export const PENDING_SFX_RECORDING: readonly string[] = [
-  // (none: recorded 2026-10-01; add a cue here when it ships with only a prompt and a fallback)
+  // The locks (src/world/locks.ts): the Gas Bell's ring and the Crucible's slag gate letting go. Prompt + fallback exist.
+  'lock.bell',
+  'lock.slag',
 ];

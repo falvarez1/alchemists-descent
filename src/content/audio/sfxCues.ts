@@ -312,6 +312,9 @@ export const SFX_CUES = {
   'mech.relay.fire': wo('mechanism'),
   'mech.dispenser': wo('mechanism', { gain: 0.8 }),
   'mech.plug': wo('mechanism', { gain: 1.1 }),
+  // THE LOCKS (world/locks): the Gas Bell's clapper (a vault's seal giving way is 'mech.vault').
+  'lock.bell': wo('mechanism', { gain: 1.3, range: 520 }),
+  'lock.slag': wo('mechanism', { gain: 1.2, range: 520 }),
   'mech.rune': wo('mechanism', { gain: 1.1, range: 0 }),
   'mech.shrine': wo('mechanism', { gain: 0.7, cooldownMs: 600 }),
   'mech.cauldron': wo('mechanism', { gain: 0.9 }),

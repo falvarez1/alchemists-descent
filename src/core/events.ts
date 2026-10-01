@@ -1,4 +1,4 @@
-import type { CardId, EnemyKind, TimeControlStatus } from '@/core/types';
+import type { CardId, EnemyKind, LockKind, TimeControlStatus } from '@/core/types';
 import type { AlchemyKillInfo, RunSummary } from '@/core/run';
 import type { BrewAttemptInfo, CauldronView } from '@/core/alchemy';
 import type { StoryCinemaView, StoryDialogueView, StorySpeaker } from '@/core/story';
@@ -214,6 +214,9 @@ export interface EventMap {
   eyeshineCaught: { kind: EnemyKind; x: number; y: number };
   /** A light device answered: a photocell latched, a lumen bloom unfurled/furled. Audio/HUD cues. */
   lightDevice: { kind: 'photocell' | 'bloom-open' | 'bloom-furl'; x: number; y: number };
+  /** A floor's LOCK (world/locks) changed: the alchemist came within sight of its machine ('seen', once a floor), the machine
+   *  answered and the vault's seal cracked ('opened'), or the Works relented and cracked it themselves ('relented'). */
+  lockChanged: { kind: LockKind; phase: 'seen' | 'opened' | 'relented'; x: number; y: number };
   /** Crouch / levitate / pour / siphon LATCHED by the player's Hold-or-toggle option (input/toggleLatches); `held` is what is latched now. */
   inputLatches: { held: Array<'down' | 'jump' | 'pour' | 'interact'> };
   /** A cast was refused for lack of mana (HUD flashes the mana bar). */

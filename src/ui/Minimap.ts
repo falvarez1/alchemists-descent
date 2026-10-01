@@ -11,6 +11,7 @@ import { fillMaterialPopover } from '@/ui/materialInfo';
 import { resetHeldSpellInputs } from '@/core/runtimeState';
 import { WORKS_ROOMS } from '@/world/breathingWorks';
 import { INTRO_OBJECTIVE } from '@/game/introObjectives';
+import { LOCK_TEXT } from '@/game/lockText';
 import { PORTAL_WAYPOINT_LABEL } from '@/game/compass';
 import { WAYPOINT_EDGE, rimPointAvoiding, type PctRect } from '@/ui/waypointRim';
 
@@ -257,6 +258,7 @@ function mechanismStateLabel(mechanism: Mechanism): string {
   if (mechanism.kind === 'chargelatch' || mechanism.kind === 'counterweight') {
     return mechanism.state === 1 ? 'latched' : 'waiting';
   }
+  if (mechanism.kind === 'plug' && mechanism.lock) return mechanism.state === 1 ? 'open' : 'sealed';
   if (mechanism.kind === 'plug') return mechanism.state === 1 ? 'fired' : 'intact';
   if (mechanism.kind === 'relay') {
     if (mechanism.state === 1) return 'fired';
@@ -268,6 +270,7 @@ function mechanismStateLabel(mechanism: Mechanism): string {
 
 /** What a player would call it: a cold-lock gate, a sluice valve, a lever. */
 function mechanismPlaceName(mechanism: Mechanism): string {
+  if (mechanism.kind === 'plug' && mechanism.lock) return LOCK_TEXT[mechanism.lock].placeName;
   if (mechanism.kind === 'plug' && mechanism.routeSeal) return 'Barricade';
   if (mechanism.kind === 'door' && mechanism.requiresCard === 'frostshard') return 'Cold-lock gate';
   if (mechanism.kind === 'door') return mechanism.state === 1 ? 'Open gate' : 'Sealed gate';
@@ -289,6 +292,7 @@ function mechanismDescription(mechanism: Mechanism): string {
   if (mechanism.kind === 'buoy') return 'A float sensor that rises when liquid fills its basin.';
   if (mechanism.kind === 'chargelatch') return 'A conductive coil that latches forever on the first spark.';
   if (mechanism.kind === 'valve') return 'A material gate in a channel, driven by linked triggers like a door.';
+  if (mechanism.kind === 'plug' && mechanism.lock) return LOCK_TEXT[mechanism.lock].placeDescription;
   if (mechanism.kind === 'plug') return 'A breakable seal that fires when enough of its real cells are destroyed.';
   if (mechanism.kind === 'sensor') return 'A tuned reader for heat, liquid, weight, charge, or material in its zone.';
   if (mechanism.kind === 'counterweight') return 'A pan that permanently latches when enough mass collects.';

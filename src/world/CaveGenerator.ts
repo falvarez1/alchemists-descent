@@ -61,7 +61,7 @@ import { placeColdStorePuzzles, type ColdStorePuzzleOutput } from '@/world/coldS
 import { dressGlassGalleries } from '@/world/glassGalleries';
 import { placeGalleryPuzzles, type GalleryPuzzleOutput } from '@/world/galleryPuzzles';
 import { stampSecrets } from '@/world/secrets';
-import { beamable, bodyCanCollect, computeFits, reachableMask, wizardMask } from '@/world/validate';
+import { beamable, bodyCanCollect, computeFits, reachableMask, routeSealedWorld, wizardMask } from '@/world/validate';
 import {
   type BodyRecord,
   cauldronFooting,
@@ -74,6 +74,8 @@ import {
 import { placeStructures } from '@/world/structures';
 import { placeStorySites } from '@/world/storySites';
 import { placeLavaLakes, type LakeTarget, type LavaLakeResult } from '@/world/lavaLakes';
+import type { LockOutput } from '@/world/locks';
+import { placeLock } from '@/world/placeLocks';
 import { clearLooseStock, type StockSite } from '@/world/looseStock';
 import { holdPortalShrine } from '@/world/portalShrine';
 import { placeRouteWaystones } from '@/world/routeWaystones';
@@ -600,8 +602,12 @@ export class WorldGen implements WorldGenApi {
     portal: { x: number; y: number } | null = null,
     portalMouths: ReadonlyArray<{ x: number; y: number }> = [],
   ): void {
-      let wiz = wizardMask({ world: ctx.world, spawn });
-      let cell = reachableMask({ world: ctx.world, spawn });
+      // The masks see the grid with every intact route seal open, as the validator does: a lock's vault is
+      // reachable by design, and the rescue must not tunnel round its plug (world/locks). With no seal
+      // standing (every floor but a locked one) this is ctx.world itself.
+      const maskWorld = () => routeSealedWorld(ctx.world, mechanisms);
+      let wiz = wizardMask({ world: maskWorld(), spawn });
+      let cell = reachableMask({ world: maskWorld(), spawn });
       const wizNear = (x: number, y: number, r: number): boolean => {
         return wizNearCount(x, y, r) > 0;
       };
@@ -699,12 +705,12 @@ export class WorldGen implements WorldGenApi {
         };
         const avoid = avoidFor(px, ty);
         tunnelTo(ctx.world, this.rng, px, ty, target.x, target.y, 12, SWEEP, rescueMinY, avoid);
-        wiz = wizardMask({ world: ctx.world, spawn });
-        cell = reachableMask({ world: ctx.world, spawn });
+        wiz = wizardMask({ world: maskWorld(), spawn });
+        cell = reachableMask({ world: maskWorld(), spawn });
         if (pass()) return true;
         tunnelTo(ctx.world, this.rng, px, ty, Math.floor(spawn.x), Math.floor(spawn.y) - 4, 12, SWEEP, rescueMinY, avoid);
-        wiz = wizardMask({ world: ctx.world, spawn });
-        cell = reachableMask({ world: ctx.world, spawn });
+        wiz = wizardMask({ world: maskWorld(), spawn });
+        cell = reachableMask({ world: maskWorld(), spawn });
         return pass();
       };
       const rescued: string[] = [];
@@ -724,8 +730,8 @@ export class WorldGen implements WorldGenApi {
           }
         }
         door.state = 1;
-        wiz = wizardMask({ world: ctx.world, spawn });
-        cell = reachableMask({ world: ctx.world, spawn });
+        wiz = wizardMask({ world: maskWorld(), spawn });
+        cell = reachableMask({ world: maskWorld(), spawn });
         return pass();
       };
       const inSpellLab = (x: number, y: number): boolean =>
@@ -1216,6 +1222,7 @@ export class WorldGen implements WorldGenApi {
       wardenRepair,
       kilnFlue,
       arenaMouths,
+      kilnLock,
       portHoles,
       portalMouths,
     } = placeStructures(
@@ -1326,8 +1333,14 @@ export class WorldGen implements WorldGenApi {
     // Fall and Ice Vault. Their own forked stream and the shared ledger, before
     // the flora takes its ground; their tanks re-assert after the rescues.
     const setPieceRepairs: Array<() => void> = [];
+    // THE CRUCIBLE (GEN 65): the Kiln hall's gatehouse was built with the hall (world/structures); it is a placed room and re-asserts after the rescues.
+    if (kilnLock) {
+      placedPrefabs = placedPrefabs.concat([kilnLock.placed]);
+      setPieceRepairs.push(kilnLock.repair);
+    }
     if (def.biome === 'frozen') {
-      const cold: ColdStorePuzzleOutput = { pickups: [], placed: [], repairs: [] };
+      // (the floor's own mechanism list: a plug allocates its id from it)
+      const cold: ColdStorePuzzleOutput = { pickups: [], mechanisms, placed: [], repairs: [] };
       placeColdStorePuzzles(ctx, new Rng(hashSeed(seed >>> 0, 'cold-store-puzzles')), graph, ledger,
         { spawn, wellX, avoid: lightAvoid }, fits, cold);
       pickups.push(...cold.pickups);
@@ -1352,6 +1365,21 @@ export class WorldGen implements WorldGenApi {
         fits.set(computeFits(ctx.world));
       }
       stage('glass-galleries-puzzles');
+    }
+    // 8b.8b) THE LOCK (GEN 65, world/locks): the floor's signature puzzle and its key vault, a chamber on
+    // the route sealed by a plug the puzzle's machine breaks. Its own forked stream, the shared ledger,
+    // and nothing is drawn on a floor without one (so every other floor generates exactly as before).
+    if (genDef.lock && genDef.lock !== 'crucible') {
+      const lockOut: LockOutput = { mechanisms, pickups, placed: [], repairs: [], emitters: structEmitters, lights: structLights };
+      placeLock(ctx, new Rng(hashSeed(seed >>> 0, 'locks')), genDef.lock, graph, ledger,
+        { spawn, wellX, exit: portal ? { x: portal.x, y: portal.y } : null, avoid: lightAvoid }, fits, lockOut);
+      setPieceRepairs.push(...lockOut.repairs);
+      if (lockOut.placed.length > 0) {
+        placedPrefabs = placedPrefabs.concat(lockOut.placed);
+        graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
+        fits.set(computeFits(ctx.world));
+      }
+      stage('lock');
     }
     recordBodies(world, mechanisms, bodies);
     reserveTriggerFootings(ledger, mechanisms, footed);

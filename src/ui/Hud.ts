@@ -1,6 +1,7 @@
 import type { Ctx, PerkId } from '@/core/types';
 import { touchHint } from '@/ui/touchLabels';
 import { livingObjective } from '@/game/LivingExpedition';
+import { lockObjective } from '@/game/lockText';
 import { canHumiliate } from '@/combat/Trickshot';
 import { worksPlaceName } from '@/world/breathingWorks';
 import { flaskSlotKey, getBindings, keyLabel } from '@/input/bindings';
@@ -80,6 +81,9 @@ export function contextualObjectiveText(ctx: Ctx, fallback: string): string {
     return dx * dx + dy * dy <= WAYSTONE_OBJECTIVE_RADIUS_SQ;
   });
   if (nearUnlitWaystone && !runtime.keyTaken) return FLOOR_OBJECTIVE_WAYSTONE;
+  // A floor with a LOCK (world/locks) names its puzzle near the machine and its reward once the seal is open.
+  const lock = lockObjective(runtime, ctx.player);
+  if (lock) return lock;
   if (runtime.portal) {
     if (runtime.keyTaken) return INTRO_OBJECTIVE.returnPortal;
     return INTRO_PRE_KEY_OBJECTIVES.has(fallback) && !introCompletionCardSlotted(ctx)

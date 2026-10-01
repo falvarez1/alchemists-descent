@@ -2380,7 +2380,17 @@ export interface HazardEmitter {
   dir: 0 | 90 | 180 | 270;
   burst: number;
   phase: number;
+  /** A vent that stops while enough of its own product is already about (the Gas Bell's marsh
+   *  gas): emission is skipped while `max` or more cells of `cell` stand in the rect. */
+  cap?: { x0: number; y0: number; x1: number; y1: number; max: number };
+  /** The id of a mechanism whose latch (state > 0) shuts this vent for good (the Gas Bell's clapper, once rung). */
+  haltOn?: number;
+  /** The id of a sensor: this vent runs only WHILE that sensor reads something and the relay it feeds has not yet fired (the Crucible's vat exhaling as it cools). */
+  ventOn?: number;
 }
+
+/** The signature puzzles that seal each floor's key vault (world/locks). */
+export type LockKind = 'gasbell' | 'weir' | 'crucible' | 'coldvault' | 'periscope';
 
 /* ============================================================
  * Wave A expansion systems
@@ -2605,6 +2615,15 @@ export interface Mechanism {
   fuseT?: number;
   /** relay: world effect at its target on fire (default 'activate'). */
   outputAction?: 'activate' | 'ignite' | 'break' | 'strike';
+  /** plug: this seal is a floor's LOCK (world/locks) — the signature puzzle whose machine breaks it.
+   *  The objective line, hints, toasts and minimap name the lock by this. Persists with the mechanism. */
+  lock?: LockKind;
+  /** plug (lock): play frames left before the Works relent and the seal cracks of its own accord
+   *  (the fail-open that keeps a ruined puzzle from locking a run). Counts only while this floor
+   *  is the current one; undefined = no timer. */
+  relentFrames?: number;
+  /** sensor / chargelatch (lock): an extra sound cue played when it first answers (the Gas Bell's ring). */
+  cue?: SfxId;
   /** dispenser: frames between emissions while triggered. */
   dispCooldown?: number;
   /** dispenser: max bodies kept alive (oldest despawned past this). */

@@ -146,6 +146,7 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
                           reach mask, a corridor field (path steps to it), guard/quantile slots and
                           the cell finder Levels.placePopulation fills them with (fail-open to scatter)
     keyLure.ts            The golden key's far-field lure clock (glint + chime, one per key; pure)
+    lockText.ts           The locks' voice: objective, hint + teach card, 'Sealed' toast, minimap names (one table)
     compass.ts            The game's own waypoint (the exit portal once the key is taken); never
                           replaces a waypoint set by hand
     MutatorDirector.ts    COMPLICATIONS at runtime (ctx.mutators, content/mutators): the per-run tuning
@@ -172,6 +173,17 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     fitWalks.ts           Body-fit BFS walks over computeFits (dist/prev, walkTo, reachedNear)
     looseStock.ts         Clears oil/gunpowder/water/sand pockets from a fixture's room (only
                           open-touching masses, never a room another pass owns)
+    locks.ts              THE LOCKS (GEN 65): each floor's key vault is a signature puzzle chamber sealed by
+                          a route-seal Metal plug the floor's machine breaks (sensor/latch -> relay -> plug);
+                          the shared frame: vault box + door + relay niche, the site search (above a flooded
+                          floor's sea: seaTopRow), the room carve + floor re-lay, the relent clock
+    lockGasBell.ts        d2: a brass bell hung full of marsh gas, a heat-sensor clapper, a refilling vent
+    lockWeir.ts           d3: a brass-lined pool, a coil in a dry well, a hung cistern, a lever (water is the wire)
+    lockCrucible.ts       d4: the Colossus hall's Metal gatehouse: slag gate, lava vat + gangway, cistern, a gauge
+                          that counts Stone, a steam vent; sealKilnHall films every cave that ran into the hall
+    placeLocks.ts         Dispatch to the three rooms; the unsealed-pocket fallback key when none stands
+                          (d2b's Ice Vault wall and d3b's Periscope strongroom are the same plug, built in
+                          coldStorePuzzles / galleryPuzzles)
     portalShrine.ts       The exit shrine's stone pad and open ring, re-asserted after the carves
     routeWaystones.ts     Waystone sites on the body-fit walk spawn->exit (35%/70%) + the key's brazier
     floraKit.ts           The 14 plant species as real-cell growers (Planter: writes only open cells)
@@ -442,6 +454,14 @@ renderer.render (bloom/shake transforms → composer.render) → digBeam decay �
 bloom/shake decay once per fixed frame`.
 Several behaviors silently depend on this order (sim bounds derive from camera; spells
 aim with the *previous* frame's render snapshot; lighting rebuilds on even frames, or whenever two ticks have passed since the last build).
+
+**The floor locks.** A campaign floor's key (d4's Colossus hall) sits behind a `plug` with
+`routeSeal` + `lock` + `relentFrames`, never behind a valve or door: findability audits the grid with every
+intact route seal open (validate `routeSealedWorld`; the gauge rescue judges the same view), so nothing digs
+round it, and the vault is a Metal box so a rescue tunnel cannot either. The machine is real cells plus the usual
+sensor/latch -> relay('break') -> plug chain; brute force is closed by material (a Metal door ignores blasts and the
+ray) and the Works relent after 7.5 minutes of play on the floor (`Mechanisms` plug branch; a taken key stands it down).
+Water kept for a puzzle is placed in a CLOSED, FULL casing (a water mass touching air is loose stock to the sweeps).
 
 **Live-tunable params.** `config/params.ts` objects are intentionally mutable: the
 inspector UI writes straight into them and the simulation/rendering layers read
