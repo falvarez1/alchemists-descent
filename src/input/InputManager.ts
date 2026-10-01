@@ -941,9 +941,9 @@ export class InputManager {
     btn.classList.toggle('lit', fullscreen);
     btn.textContent = fullscreen
       ? this.keyboardLocked
-        ? 'KEYS LOCKED'
-        : 'FULLSCREEN'
-      : 'FULLSCREEN PLAY';
+        ? 'Keys locked'
+        : 'Fullscreen'
+      : 'Fullscreen play';
     btn.title = fullscreen
       ? 'Fullscreen play is active. Long-press Esc or leave play mode to exit.'
       : 'Enter fullscreen play with keyboard lock when the browser supports it';

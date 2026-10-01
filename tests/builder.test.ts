@@ -33,7 +33,6 @@ import { CommandRegistry } from '@/ui/editor/CommandRegistry';
 import { buildScratchGrid, buildValidationOverlayDiagnostics, playtestBlockingIssues, validateDocument } from '@/builder/validate';
 import { renderValidationPanel } from '@/builder/validationPanel';
 import { capRuntimeAuthoredLights, toAuthoredLight } from '@/builder/compile';
-import { PreviewRuntime } from '@/builder/PreviewRuntime';
 import {
   hitProjectedGizmoHandle,
   lightGizmoHandles,
@@ -43,7 +42,7 @@ import {
   resizeObjectPatchFromDrag,
 } from '@/builder/gizmos';
 import { nextSnapStep, sanitizeSnapStep, snapValue } from '@/builder/spatialGuides';
-import type { Ctx, GeneratedScenePlacement } from '@/core/types';
+import type { GeneratedScenePlacement } from '@/core/types';
 import { generatedSceneCaptureDocument } from '@/builder/generatedSceneCapture';
 import { PASSES, runPass } from '@/builder/procedural';
 import { sanitizeBackdropSettings } from '@/config/backdrop';
@@ -77,25 +76,6 @@ function carveBox(w: World, x0: number, y0: number, x1: number, y1: number): voi
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) w.types[w.idx(x, y)] = Cell.Empty;
   }
-}
-
-function previewCtx(world = new World()): Ctx {
-  return {
-    world,
-    player: { x: -999, y: -999 },
-    enemies: [],
-    enemyCtl: {
-      defs: {
-        slime: { hp: 48, halfW: 5, h: 8, bounty: 30, gore: Cell.Slime, goreFn: () => 0 },
-        bat: { hp: 16, halfW: 3, h: 5, bounty: 15, gore: Cell.Blood, goreFn: () => 0 },
-      },
-    },
-    camera: { renderX: 0, renderY: 0, zoom: 1 },
-    state: { mode: 'build', frameCount: 0 },
-    particles: { spawn: () => undefined, burst: () => undefined },
-    events: { emit: () => undefined },
-    audio: { tone: () => undefined },
-  } as unknown as Ctx;
 }
 
 const errors = (issues: ReturnType<typeof validateDocument>) =>
@@ -405,7 +385,6 @@ describe('builder document', () => {
       doc: EditorDocument;
       documentRevision: number;
       validationDirty: boolean;
-      previewRuntimeDirty: boolean;
       syncs: number;
       markDocumentChanged: (cmd?: { label: string; cells?: number }) => void;
       syncDocBackdropToLive: () => void;
@@ -417,7 +396,6 @@ describe('builder document', () => {
       doc: createEmptyDocument('backdrop-harness', 'earthen'),
       documentRevision: 0,
       validationDirty: false,
-      previewRuntimeDirty: false,
       syncs: 0,
       syncDocBackdropToLive() {
         this.syncs++;
@@ -509,77 +487,8 @@ describe('builder validation', () => {
     expect(diagnostics.clearanceReachable).toBeTruthy();
   });
 
-  it('builds and steps PreviewRuntime without mutating the live world or document layer', () => {
-    const live = new World();
-    live.types[live.idx(10, 10)] = Cell.Metal;
-    const ctx = previewCtx(live);
-    const doc = createEmptyDocument('preview-runtime', 'earthen');
-    doc.world = { rle: rleEncode(new World().types), life: [], charge: [] };
-    const originalRle = doc.world?.rle;
-    doc.objects.push(makeObj('spawn', 120, 158));
-    doc.objects.push(makeObj('hazardEmitter', 130, 120, { cell: Cell.Water, rate: 1, burst: 2 }));
-    doc.lights.push({ id: freshId('light'), x: 130, y: 110, radius: 40, intensity: 1, color: '#88ccff', flicker: 0, bloom: 0, falloff: 'soft', occluded: false, hidden: false });
-
-    const preview = new PreviewRuntime(ctx);
-    const status = preview.reset(doc);
-    preview.step(0);
-    preview.step(3);
-
-    expect(status.ready).toBe(true);
-    expect(status.emitters).toBe(1);
-    expect(status.lights).toBe(1);
-    expect(live.types[live.idx(10, 10)]).toBe(Cell.Metal);
-    expect(doc.world?.rle).toBe(originalRle);
-    expect(preview.world.types[preview.world.idx(130, 121)]).toBe(Cell.Water);
-    expect(preview.status().changedCells).toBeGreaterThan(0);
-  });
-
-  it('does not cap Logic Preview solely because captured terrain is dense', () => {
-    const source = new World();
-    source.types.fill(Cell.Stone);
-    const doc = createEmptyDocument('preview-dense-terrain', 'earthen');
-    doc.world = { rle: rleEncode(source.types), life: [], charge: [] };
-
-    const preview = new PreviewRuntime(previewCtx());
-    const status = preview.reset(doc);
-
-    expect(status.nonEmptyCells).toBe(source.types.length);
-    expect(status.changedCells).toBe(0);
-    expect(status.ready).toBe(true);
-    expect(status.capped).toBe(false);
-    expect(status.message).toBe('Logic Preview running from disposable runtime');
-  });
-
-  it('surfaces Builder Logic Preview rows through a detached runtime snapshot', () => {
-    const ctx = previewCtx();
-    const doc = createEmptyDocument('preview-runtime-snapshot', 'earthen');
-    doc.world = { rle: rleEncode(new World().types), life: [], charge: [] };
-    const enemy = makeObj('enemy', 140, 158, { kind: 'bat' });
-    const plate = makeObj('plate', 160, 159, { w: 5 });
-    const door = makeObj('door', 190, 130, { w: 3, h: 14 });
-    doc.objects.push(makeObj('spawn', 120, 158), enemy, plate, door, makeObj('pickup', 170, 158, { kind: 'key' }));
-    doc.links.push({ id: freshId('link'), fromId: plate.id, toId: door.id, kind: 'triggerDoor', logic: 'and' });
-
-    const preview = new PreviewRuntime(ctx);
-    preview.reset(doc);
-    const snapshot = preview.snapshot();
-    const enemyRow = snapshot.rows.find((row) => row.group === 'enemies');
-
-    expect(snapshot.source.id).toBe('builder-live-preview');
-    expect(snapshot.source.label).toBe('Builder Logic Preview');
-    expect(snapshot.counts.find((count) => count.group === 'enemies')).toMatchObject({ total: 1, sampled: 1 });
-    expect(snapshot.counts.find((count) => count.group === 'mechanisms')).toMatchObject({ total: 2, sampled: 2 });
-    expect(snapshot.counts.find((count) => count.group === 'pickups')).toMatchObject({ total: 1, sampled: 1 });
-    expect(enemyRow?.id).toBe(`preview-enemy:${enemy.id}`);
-    expect(enemyRow?.bounds).toEqual({ x0: 137, y0: 154, x1: 144, y1: 159 });
-
-    const selected = preview.snapshot({ selectedId: enemyRow?.id });
-    expect(selected.selectedRow?.id).toBe(enemyRow?.id);
-  });
-
-  it('does not capture dirty terrain when Logic Preview inspection reads validation issues', () => {
+  it('captures dirty terrain before validating unless told not to', () => {
     type ValidationHarness = {
-      sessionMode: 'author' | 'live';
       validationDirty: boolean;
       lastIssues: ReturnType<typeof validateDocument>;
       lastValidationOverlay: ReturnType<typeof buildValidationOverlayDiagnostics> | null;
@@ -589,85 +498,30 @@ describe('builder validation', () => {
     };
     const builder = Object.create(Builder.prototype) as ValidationHarness;
     let captured = false;
-    builder.sessionMode = 'live';
     builder.validationDirty = true;
     builder.lastIssues = [];
     builder.lastValidationOverlay = null;
-    builder.doc = createEmptyDocument('logic-preview-validation', 'earthen');
+    builder.doc = createEmptyDocument('validation-capture', 'earthen');
     builder.ensureCaptured = () => {
       captured = true;
       return true;
     };
 
-    builder.currentValidationIssues();
+    // The overlay path reads issues every frame and must never snapshot the world.
+    builder.currentValidationIssues({ captureTerrain: false });
 
     expect(captured).toBe(false);
     expect(builder.validationDirty).toBe(false);
 
-    builder.sessionMode = 'author';
     builder.validationDirty = true;
     builder.currentValidationIssues();
 
     expect(captured).toBe(true);
   });
 
-  it('does not autosave-capture dirty terrain while Logic Preview is open', () => {
-    type AutosaveHarness = {
-      isOpen: boolean;
-      sessionMode: 'author' | 'live';
-      settling: boolean;
-      settleSnap: unknown;
-      pendingPreview: unknown;
-      floating: unknown;
-      gizmoDrag: unknown;
-      drag: unknown;
-      floatDrag: unknown;
-      waypointDrag: unknown;
-      shapeDrag: unknown;
-      marquee: unknown;
-      stroke: unknown;
-      terraStroke: unknown;
-      cmds: { depth: number };
-      paintDirty: boolean;
-      hasUnsavedChanges?: () => boolean;
-      ensureCaptured: () => boolean;
-      autosaveDraft: () => void;
-    };
-    const builder = Object.create(Builder.prototype) as AutosaveHarness;
-    let captured = false;
-    Object.assign(builder, {
-      isOpen: true,
-      sessionMode: 'live',
-      settling: false,
-      settleSnap: null,
-      pendingPreview: null,
-      floating: null,
-      gizmoDrag: null,
-      drag: null,
-      floatDrag: null,
-      waypointDrag: null,
-      shapeDrag: null,
-      marquee: null,
-      stroke: null,
-      terraStroke: null,
-      cmds: { depth: 1 },
-      paintDirty: true,
-      ensureCaptured: () => {
-        captured = true;
-        return true;
-      },
-    });
-
-    builder.autosaveDraft();
-
-    expect(captured).toBe(false);
-    expect(builder.paintDirty).toBe(true);
-  });
-
   it('does not autosave a clean saved document just because undo history exists', () => {
     type AutosaveHarness = {
       isOpen: boolean;
-      sessionMode: 'author' | 'live';
       settling: boolean;
       settleSnap: unknown;
       pendingPreview: unknown;
@@ -690,7 +544,6 @@ describe('builder validation', () => {
     let captured = false;
     Object.assign(builder, {
       isOpen: true,
-      sessionMode: 'author',
       settling: false,
       settleSnap: null,
       pendingPreview: null,
@@ -717,183 +570,52 @@ describe('builder validation', () => {
     expect(captured).toBe(false);
   });
 
-  it('blocks author-only commands through Builder scoped menu execution in Logic Preview', () => {
+  it('reports command availability to Builder menus', () => {
     type MenuHarness = {
-      sessionMode: 'author' | 'live';
       uiCommands: CommandRegistry;
       uiCommandMenuState: (id: string) => { enabled: boolean; reason?: string };
-      runScopedUiCommand: (id: string) => { ok: boolean; reason?: string };
+      runUiCommand: (id: string) => void;
+      status: (text: string, warn?: boolean) => void;
     };
     const builder = Object.create(Builder.prototype) as MenuHarness;
-    let ran = false;
-    builder.sessionMode = 'live';
+    const statuses: string[] = [];
+    let ran = 0;
     builder.uiCommands = new CommandRegistry();
+    builder.status = (text) => {
+      statuses.push(text);
+    };
     builder.uiCommands.register({
-      id: 'builder.findInvalid',
-      label: 'Find Invalid Object',
-      category: 'Validation',
+      id: 'builder.open',
+      label: 'Open',
+      category: 'Test',
       scopes: ['builder.author'],
       run: () => {
-        ran = true;
+        ran++;
+      },
+    });
+    builder.uiCommands.register({
+      id: 'builder.blocked',
+      label: 'Blocked',
+      category: 'Test',
+      scopes: ['builder.author'],
+      enabled: () => false,
+      disabledReason: () => 'Finish the settle preview first',
+      run: () => {
+        ran++;
       },
     });
 
-    expect(builder.uiCommandMenuState('builder.findInvalid')).toEqual({
+    expect(builder.uiCommandMenuState('builder.open')).toEqual({ enabled: true });
+    expect(builder.uiCommandMenuState('builder.blocked')).toEqual({
       enabled: false,
-      reason: 'Return to Author View first',
+      reason: 'Finish the settle preview first',
     });
-    expect(builder.runScopedUiCommand('builder.findInvalid')).toEqual({
-      ok: false,
-      reason: 'Return to Author View first',
-    });
-    expect(ran).toBe(false);
-  });
+    expect(builder.uiCommandMenuState('builder.missing')).toEqual({ enabled: false, reason: 'Unknown command' });
 
-  it('previews linked mechanism state in a disposable world', () => {
-    const live = new World();
-    live.types[live.idx(10, 10)] = Cell.Metal;
-    const source = new World();
-    for (let y = 128; y <= 129; y++) {
-      for (let x = 128; x <= 132; x++) source.types[source.idx(x, y)] = Cell.Stone;
-    }
-    const ctx = previewCtx(live);
-    const doc = createEmptyDocument('preview-mechanism', 'earthen');
-    doc.world = { rle: rleEncode(source.types), life: [], charge: [] };
-    const originalRle = doc.world.rle;
-    const plate = makeObj('plate', 130, 130, { w: 5 });
-    const door = makeObj('door', 150, 110, { w: 3, h: 14 });
-    doc.objects.push(makeObj('spawn', 120, 158), plate, door);
-    doc.links.push({ id: freshId('link'), fromId: plate.id, toId: door.id, kind: 'triggerDoor', logic: 'and' });
-
-    const preview = new PreviewRuntime(ctx);
-    const status = preview.reset(doc);
-    const doorBottom = preview.world.idx(150, 123);
-
-    expect(status.ready).toBe(true);
-    expect(status.mechanisms).toBe(2);
-    expect(preview.world.types[doorBottom]).toBe(Cell.Metal);
-
-    preview.step(0);
-    preview.step(20);
-
-    expect(preview.world.types[doorBottom]).toBe(Cell.Empty);
-    expect(live.types[live.idx(10, 10)]).toBe(Cell.Metal);
-    expect(doc.world.rle).toBe(originalRle);
-  });
-
-  it('previews machine primitive triggers and relay outputs', () => {
-    const stepPreview = (preview: PreviewRuntime): void => {
-      for (let frame = 0; frame <= 80; frame += 10) preview.step(frame);
-    };
-
-    const counterSource = new World();
-    for (let y = 124; y <= 128; y++) {
-      for (let x = 197; x <= 203; x++) counterSource.types[counterSource.idx(x, y)] = Cell.Stone;
-    }
-    const counterDoc = createEmptyDocument('preview-counterweight', 'earthen');
-    counterDoc.world = { rle: rleEncode(counterSource.types), life: [], charge: [] };
-    const counter = makeObj('counterweight', 200, 130, { w: 7, threshold: 8 });
-    const counterDoor = makeObj('door', 220, 110, { w: 3, h: 14 });
-    counterDoc.objects.push(makeObj('spawn', 180, 158), counter, counterDoor);
-    counterDoc.links.push({ id: freshId('link'), fromId: counter.id, toId: counterDoor.id, kind: 'triggerDoor', logic: 'and' });
-    const counterPreview = new PreviewRuntime(previewCtx());
-    counterPreview.reset(counterDoc);
-    stepPreview(counterPreview);
-    expect(counterPreview.world.types[counterPreview.world.idx(220, 123)]).toBe(Cell.Empty);
-
-    const chargeSource = new World();
-    const chargeIndex = chargeSource.idx(260, 126);
-    const chargeDoc = createEmptyDocument('preview-charge-latch', 'earthen');
-    chargeDoc.world = { rle: rleEncode(chargeSource.types), life: [], charge: [[chargeIndex, 8]] };
-    const latch = makeObj('chargeLatch', 260, 130);
-    const latchDoor = makeObj('door', 280, 110, { w: 3, h: 14 });
-    chargeDoc.objects.push(makeObj('spawn', 240, 158), latch, latchDoor);
-    chargeDoc.links.push({ id: freshId('link'), fromId: latch.id, toId: latchDoor.id, kind: 'triggerDoor', logic: 'and' });
-    const chargePreview = new PreviewRuntime(previewCtx());
-    chargePreview.reset(chargeDoc);
-    stepPreview(chargePreview);
-    expect(chargePreview.world.types[chargePreview.world.idx(280, 123)]).toBe(Cell.Empty);
-
-    const relaySource = new World();
-    for (let y = 124; y <= 126; y++) {
-      for (let x = 297; x <= 303; x++) relaySource.types[relaySource.idx(x, y)] = Cell.Stone;
-    }
-    const relayDoc = createEmptyDocument('preview-relay', 'earthen');
-    relayDoc.world = { rle: rleEncode(relaySource.types), life: [], charge: [] };
-    const sensor = makeObj('sensor', 300, 130, { type: 'weight', threshold: 3, zoneW: 7, zoneH: 6, latch: 'momentary' });
-    const relay = makeObj('relay', 315, 130, { delay: 0 });
-    const relayDoor = makeObj('door', 330, 110, { w: 3, h: 14 });
-    relayDoc.objects.push(makeObj('spawn', 290, 158), sensor, relay, relayDoor);
-    relayDoc.links.push(
-      { id: freshId('link'), fromId: sensor.id, toId: relay.id, kind: 'triggerDoor', logic: 'and' },
-      { id: freshId('link'), fromId: relay.id, toId: relayDoor.id, kind: 'triggerDoor', logic: 'and' },
-    );
-    const relayPreview = new PreviewRuntime(previewCtx());
-    relayPreview.reset(relayDoc);
-    stepPreview(relayPreview);
-    expect(relayPreview.world.types[relayPreview.world.idx(330, 123)]).toBe(Cell.Empty);
-
-    const plugSource = new World();
-    for (let y = 124; y <= 126; y++) {
-      for (let x = 377; x <= 383; x++) plugSource.types[plugSource.idx(x, y)] = Cell.Stone;
-    }
-    const plugDoc = createEmptyDocument('preview-relay-break', 'earthen');
-    plugDoc.world = { rle: rleEncode(plugSource.types), life: [], charge: [] };
-    const plugSensor = makeObj('sensor', 380, 130, { type: 'weight', threshold: 3, zoneW: 7, zoneH: 6, latch: 'momentary' });
-    const breaker = makeObj('relay', 395, 130, { action: 'break' });
-    const plug = makeObj('plug', 410, 120, { w: 3, h: 3, material: 'wood' });
-    plugDoc.objects.push(makeObj('spawn', 370, 158), plugSensor, breaker, plug);
-    plugDoc.links.push(
-      { id: freshId('link'), fromId: plugSensor.id, toId: breaker.id, kind: 'triggerDoor', logic: 'and' },
-      { id: freshId('link'), fromId: breaker.id, toId: plug.id, kind: 'triggerDoor', logic: 'and' },
-    );
-    const plugPreview = new PreviewRuntime(previewCtx());
-    plugPreview.reset(plugDoc);
-    expect(plugPreview.world.types[plugPreview.world.idx(410, 120)]).not.toBe(Cell.Empty);
-    stepPreview(plugPreview);
-    expect(plugPreview.world.types[plugPreview.world.idx(410, 120)]).toBe(Cell.Empty);
-
-    const strikeSource = new World();
-    for (let y = 124; y <= 126; y++) {
-      for (let x = 457; x <= 463; x++) strikeSource.types[strikeSource.idx(x, y)] = Cell.Stone;
-    }
-    const strikeDoc = createEmptyDocument('preview-relay-strike', 'earthen');
-    strikeDoc.world = { rle: rleEncode(strikeSource.types), life: [], charge: [] };
-    const strikeSensor = makeObj('sensor', 460, 130, { type: 'weight', threshold: 3, zoneW: 7, zoneH: 6, latch: 'momentary' });
-    const striker = makeObj('relay', 475, 130, { action: 'strike' });
-    const struckDoor = makeObj('door', 500, 110, { w: 3, h: 14 });
-    const struckLever = makeObj('lever', 503, 117);
-    const leverDoor = makeObj('door', 520, 110, { w: 3, h: 14 });
-    strikeDoc.objects.push(makeObj('spawn', 450, 158), strikeSensor, striker, struckDoor, struckLever, leverDoor);
-    strikeDoc.links.push(
-      { id: freshId('link'), fromId: strikeSensor.id, toId: striker.id, kind: 'triggerDoor', logic: 'and' },
-      { id: freshId('link'), fromId: striker.id, toId: struckDoor.id, kind: 'triggerDoor', logic: 'and' },
-      { id: freshId('link'), fromId: struckLever.id, toId: leverDoor.id, kind: 'triggerDoor', logic: 'and' },
-    );
-    const strikePreview = new PreviewRuntime(previewCtx());
-    strikePreview.reset(strikeDoc);
-    stepPreview(strikePreview);
-    expect(strikePreview.world.types[strikePreview.world.idx(520, 123)]).toBe(Cell.Empty);
-  });
-
-  it('caps excessive PreviewRuntime rune vault links', () => {
-    const doc = createEmptyDocument('preview-rune-cap', 'earthen');
-    doc.world = { rle: rleEncode(new World().types), life: [], charge: [] };
-    const glyph = makeObj('runeGlyph', 120, 130);
-    const slab = makeObj('runeDoor', 150, 110, { w: 2, h: 11 });
-    doc.objects.push(makeObj('spawn', 100, 158), glyph, slab);
-    for (let n = 0; n < 140; n++) {
-      doc.links.push({ id: freshId('link'), fromId: glyph.id, toId: slab.id, kind: 'runeDoor', logic: 'and' });
-    }
-
-    const preview = new PreviewRuntime(previewCtx());
-    const status = preview.reset(doc);
-    preview.step(80);
-
-    expect(status.ready).toBe(false);
-    expect(status.capped).toBe(true);
-    expect(status.runeVaults).toBe(128);
-    expect(status.message).toBe('Preview capped - reduce rune links');
+    builder.runUiCommand('builder.open');
+    builder.runUiCommand('builder.blocked');
+    expect(ran).toBe(1);
+    expect(statuses).toEqual(['Finish the settle preview first']);
   });
 
   it('keeps validation row indices stable across severity groups', () => {

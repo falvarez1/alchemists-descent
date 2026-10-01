@@ -83,6 +83,7 @@ import { PerfHud } from '@/ui/PerfHud';
 import { RunLauncher } from '@/ui/RunLauncher';
 import { RuntimeInspector } from '@/ui/RuntimeInspector';
 import { Toolbar } from '@/ui/Toolbar';
+import { SandboxChrome } from '@/ui/SandboxChrome';
 import { WandBench } from '@/ui/WandBench';
 import { WorldGen } from '@/world/CaveGenerator';
 import { SANDBOX_FOCUS, stampSandboxArena } from '@/world/sandboxArena';
@@ -476,6 +477,9 @@ export class Game {
     this.disposables.push(this.inspector);
     this.toolbar = new Toolbar(ctx, (id, mode) => this.inspector.generateContextInspector(id, mode));
     this.disposables.push(this.toolbar);
+    // The authoring Sandbox's chrome behaviour (dock tabs, inspector sections, the Developer
+    // menu). It binds nothing the owners above bind; a player build's Workshop has none of it.
+    if (__AUTHORING__) this.disposables.push(new SandboxChrome(ctx));
     // Debug cell readout under the cursor (toggle with `I`). Self-managing; lives
     // for the page lifetime like the other DOM-wiring UI modules above.
     this.disposables.push(new CellInspector(ctx));

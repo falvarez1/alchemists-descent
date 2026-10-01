@@ -3,7 +3,7 @@
 // The Builder detaches onto a scratch world; PLAY re-attaches the real one.
 // Usage: node scripts/verify-builder-expedition.mjs [url]
 import { launchBrowser } from './browser-launch.mjs';
-import { isBenignDevConsoleError, startConsolePlayRun, waitForRunReady } from './run-helpers.mjs';
+import { isBenignDevConsoleError, startConsolePlayRun, waitForRunReady, clickBuilderControl } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -142,7 +142,7 @@ check('scene snapshot gets a named Builder document', /scene edit/i.test(adopted
 
 /* ---------- PLAY from inside Builder exits to the game, even with an invalid doc ---------- */
 console.log('-- header play exits builder');
-await page.click('#b-new'); // no terrain / no spawn: invalid for Builder playtest, still fine for game Play
+await clickBuilderControl(page, '#b-new'); // no terrain / no spawn: invalid for Builder playtest, still fine for game Play
 const newDialog = page.locator('.app-dialog-root');
 if (await newDialog.isVisible({ timeout: 1000 }).catch(() => false)) {
   await newDialog.locator('.app-dialog-btn.primary').click();

@@ -6,7 +6,6 @@ export type InspectorTargetScope =
   | 'sandbox'
   | 'expedition'
   | 'builder-document'
-  | 'builder-live-preview'
   | 'builder-playtest'
   | 'asset-library'
   | 'view-session'

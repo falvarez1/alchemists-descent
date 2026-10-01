@@ -283,6 +283,17 @@ export class LevelStore {
       opt.textContent = n;
       select.appendChild(opt);
     }
+    if (names.length === 0) {
+      // A blank dropdown reads as broken; say what is (not) in it.
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'No saved levels';
+      select.appendChild(opt);
+    }
     select.disabled = names.length === 0;
+    for (const id of ['btn-level-load', 'btn-level-delete']) {
+      const button = document.getElementById(id) as HTMLButtonElement | null;
+      if (button) button.disabled = names.length === 0;
+    }
   }
 }

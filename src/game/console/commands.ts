@@ -1,4 +1,6 @@
 import { sanitizeBackdropSettings, saveBackdropSettings } from '@/config/backdrop';
+import { GEN_TUNE } from '@/config/gen';
+import { PROGRESSION_PACING } from '@/config/pacing';
 import { LEVELS } from '@/config/worldgraph';
 import { FLASK_SLOT_COUNT, type BodyMaterial, type CardId, type CommandResult, type ConsoleApi, type Ctx, type EnemyKind, type FlaskSlotConfig, type LevelRuntime, type Mechanism, type PerkId, type Pickup, type RunTestKitConfig } from '@/core/types';
 import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
@@ -35,7 +37,6 @@ type ConsoleTarget =
   | 'sandbox'
   | 'expedition'
   | 'builder-document'
-  | 'builder-live-preview'
   | 'builder-playtest';
 
 type TargetedArgs =
@@ -46,7 +47,6 @@ const TARGETS: ConsoleTarget[] = [
   'sandbox',
   'expedition',
   'builder-document',
-  'builder-live-preview',
   'builder-playtest',
 ];
 
@@ -180,17 +180,6 @@ function resolveTargetForMode(ctx: Ctx, args: string[], command: string, mode: '
             command,
             target,
           }),
-    };
-  }
-  if (target === 'builder-live-preview') {
-    // Same code/data, but the verb tracks the mode ("target" vs "inspect").
-    return {
-      ok: false,
-      result: result(false, `${command} cannot ${mode === 'write' ? 'target' : 'inspect'} builder-live-preview yet; the workspace live preview runtime does not exist.`, {
-        code: 'target-unavailable',
-        command,
-        target,
-      }),
     };
   }
   if (target === 'sandbox') {
@@ -981,6 +970,13 @@ function resolveParamPath(ctx: Ctx, path: string): ResolvedParamPath | CommandRe
     if (!(key in owner)) return result(false, `Unknown postFx parameter "${key}"`, { code: 'parse-param-path', path });
     return { owner, key, current: owner[key], canonical: `postFx.${key}` };
   }
+  if (parts[0] === 'pacing' || parts[0] === 'wandLight' || parts[0] === 'gen') {
+    // Early-progression pacing, the cursor/torch wand light, and the worldgen LOOK dials (flat numeric bags).
+    const owner = (parts[0] === 'pacing' ? PROGRESSION_PACING : parts[0] === 'wandLight' ? ctx.state.wandLight : GEN_TUNE) as unknown as ParamOwner;
+    const key = parts[1];
+    if (!(key in owner)) return result(false, `Unknown ${parts[0]} parameter "${key}"`, { code: 'parse-param-path', path });
+    return { owner, key, current: owner[key], canonical: `${parts[0]}.${key}` };
+  }
   if (parts[0] === 'render') {
     const owner = ctx.state.render as unknown as ParamOwner;
     const key = parts[1];
@@ -1114,6 +1110,10 @@ async function executeNamedScript(ctx: Ctx, nameRaw: string, stack: string[] = [
 function paramSuggestions(ctx: Ctx, prefix: string): string[] {
   const paths: string[] = [
     ...Object.keys(ctx.params.global).map((k) => `global.${k}`),
+    ...Object.keys(ctx.params.player).map((k) => `player.${k}`),
+    ...Object.keys(PROGRESSION_PACING).map((k) => `pacing.${k}`),
+    ...Object.keys(ctx.state.wandLight).map((k) => `wandLight.${k}`),
+    ...Object.keys(GEN_TUNE).map((k) => `gen.${k}`),
     ...Object.keys(ctx.state.postFx).map((k) => `postFx.${k}`),
     ...Object.keys(ctx.state.render).map((k) => `render.${k}`),
   ];

@@ -4,12 +4,19 @@ import { GLOBAL_PARAM_DEFAULTS } from '@/config/params';
 import { bindRange, type Binding } from '@/ui/domBind';
 import { mountTimeControlsPanel } from '@/ui/TimeControlsPanel';
 import { PopoverHost } from '@/ui/editor/PopoverHost';
+import { editorIcon } from '@/ui/editor/icons';
 
 /** Initial GameStateData.brushSize (Game.ts) — the reset target for the brush slider. */
 const BRUSH_DEFAULT = 6;
 import { ensureSandboxWorldDetached, resetCombatTransients } from '@/core/runtimeState';
 
 // ===================== Adaptive UI Form Inspectors =====================
+
+/** "density Weight" -> "Density weight": the dock's labels are sentence case. */
+function sentenceCase(text: string): string {
+  const t = text.trim().toLowerCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
 
 /**
  * Slider spec for one live-param key — shared by the Sandbox inspector and
@@ -197,13 +204,8 @@ export class Inspector {
       : this.ctx.params.materials[id as number];
     if (!profile) return;
 
-    document.getElementById('context-inspector-header')!.textContent = isSpell ? "Spell Parameters" : "Material Parameters";
-
-    const title = document.createElement('div');
-    title.className = 'material-title-tag';
-    title.style.borderLeftColor = isSpell ? 'var(--accent-purple)' : 'var(--accent-blue)';
-    title.textContent = profile.name + " Config";
-    container.appendChild(title);
+    // The dock's section header names what is being tuned: "Material: Sand", "Spell: Spark Bolt".
+    document.getElementById('context-inspector-header')!.textContent = (isSpell ? 'Spell: ' : 'Material: ') + profile.name;
 
     const group = document.createElement('div');
     group.className = 'control-panel-group';
@@ -215,14 +217,14 @@ export class Inspector {
     Object.keys(profile).forEach(propKey => {
       if (propKey === 'name') return;
       const { min, max, step, label: labelText } = paramSliderSpec(propKey, fields[propKey]);
-      const displayLabel = labelText.replace(/([A-Z])/g, ' $1');
+      const displayLabel = sentenceCase(labelText.replace(/([A-Z])/g, ' $1'));
       const info = PARAM_INFO[propKey];
 
       const wrapper = document.createElement('div');
       wrapper.innerHTML = `
           <div class="control-label-wrapper">
               <span class="ctrl-label-left">
-                  <label style="text-transform: capitalize;">${displayLabel}</label>
+                  <label for="dyn-input-${propKey}">${displayLabel}</label>
                   ${info ? `<span class="param-info-icon" role="img" aria-label="${displayLabel.trim()} — details">i</span>` : ''}
               </span>
               <span id="dyn-val-${propKey}" class="val-display">${propKey === 'bloomWeight' ? (fields[propKey] * 100).toFixed(0) + '%' : formatStep(fields[propKey], step)}</span>
@@ -384,7 +386,9 @@ export class Inspector {
     const btn = document.getElementById('sound-toggle');
     if (!btn) return;
     const paint = (on: boolean): void => {
-      btn.textContent = on ? 'SND ON' : 'SND OFF';
+      // An icon button: the speaker says what sound IS; aria-pressed carries it for assistive tech.
+      btn.innerHTML = editorIcon(on ? 'volume' : 'volumeOff', 16);
+      btn.setAttribute('aria-pressed', String(on));
       btn.classList.toggle('muted', !on);
     };
     this.listen(btn, 'click', () => {

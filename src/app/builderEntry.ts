@@ -1,4 +1,8 @@
 import '@/styles/main.css';
+import '@/styles/studio.css';
+import '@/styles/sandbox.css';
+import '@/styles/builder.css';
+import '@/styles/studio-chrome.css';
 import { Game } from '@/game/Game';
 import { BuilderLauncher } from '@/app/BuilderLauncher';
 import { installAuthorLink, resolveAuthorLinkConfig } from '@/app/AuthorLink';
@@ -20,6 +24,9 @@ import { initRapier } from '@/entities/rapierInit';
  * Builder decoupling plan rules out. Narrowing it is a later slice, gated on
  * `Game` growing an explicit authoring profile rather than on this file.
  */
+
+// CSS hook: this window is the editor, so there is no Sandbox for the Builder to exit to.
+document.body.classList.add('editor-window');
 
 const bootOverlay = document.getElementById('boot-overlay');
 const bootStatus = document.getElementById('boot-status');
@@ -52,7 +59,7 @@ requestAnimationFrame(() =>
         linkDisposers.push(authorLink.onWorldState((state) => linkIndicator.updateWorlds(state)));
       }
 
-      const builderLauncher = new BuilderLauncher(game.ctx, authorLink);
+      const builderLauncher = new BuilderLauncher(game.ctx, authorLink, linkConfig);
       game.start();
       // The whole point of the route: no click to get into the editor.
       builderLauncher.open();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderRuntimePanel } from '@/builder/runtimePanel';
+import { renderRuntimePanel } from '@/ui/diagnostics/runtimePanel';
 import type { RuntimeEntitySnapshot } from '@/game/runtimeSnapshot';
 
 describe('runtime panel renderer', () => {
@@ -120,7 +120,7 @@ describe('runtime panel renderer', () => {
     expect(html.match(/brt-live-row/g)?.length).toBe(2);
   });
 
-  it('points author-mode empty runtime panels at Logic Preview', () => {
+  it('points empty authoring runtime panels at Builder Playtest', () => {
     const snapshot = makeSnapshot();
     snapshot.source = { id: 'build', label: 'Builder Authoring', detail: 'No active play runtime' };
     snapshot.rows = [];
@@ -133,60 +133,8 @@ describe('runtime panel renderer', () => {
       overlays: { bounds: false, labels: false, velocity: false },
     });
 
-    expect(html).toContain('Switch to LOGIC PREVIEW to inspect authored preview rows');
-  });
-
-  it('explains empty Builder Logic Preview snapshots', () => {
-    const snapshot = makeSnapshot();
-    snapshot.source = {
-      id: 'builder-live-preview',
-      label: 'Builder Logic Preview',
-      detail: 'Logic Preview running from disposable runtime',
-    };
-    snapshot.level = { id: 'builder-live-preview', name: 'Logic Preview', depth: 0 };
-    snapshot.rows = [];
-    snapshot.counts = snapshot.counts.map((count) => ({ ...count, total: 0, visible: 0, sampled: 0 }));
-    snapshot.particles = {
-      total: 0,
-      visible: 0,
-      visual: 0,
-      depositing: 0,
-      homing: 0,
-      hostile: 0,
-      glowing: 0,
-      byMaterial: [],
-    };
-
-    const html = renderRuntimePanel({
-      snapshot,
-      query: '',
-      filters: new Set(),
-      overlays: { bounds: false, labels: false, velocity: false },
-    });
-
-    expect(html).toContain('No authored preview runtime rows');
-    expect(html).toContain('Logic Preview is running, but this document has no authored preview entities');
-    expect(html).toContain('Full player and material simulation appears during Builder Playtest');
-  });
-
-  it('marks non-empty Builder Logic Preview rows as authored preview rows', () => {
-    const snapshot = makeSnapshot();
-    snapshot.source = {
-      id: 'builder-live-preview',
-      label: 'Builder Logic Preview',
-      detail: 'Logic Preview running from disposable runtime',
-    };
-    snapshot.level = { id: 'builder-live-preview', name: 'Logic Preview', depth: 0 };
-
-    const html = renderRuntimePanel({
-      snapshot,
-      query: '',
-      filters: new Set(),
-      overlays: { bounds: false, labels: false, velocity: false },
-    });
-
-    expect(html).toContain('Logic Preview is showing authored preview rows only');
-    expect(html).toContain('data-runtime-id="enemy:1"');
+    expect(html).toContain('start a Builder Playtest to inspect live rows');
+    expect(html).not.toContain('LOGIC PREVIEW');
   });
 });
 

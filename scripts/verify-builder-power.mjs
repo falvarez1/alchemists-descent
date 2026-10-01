@@ -5,7 +5,7 @@
 // (preview feed drops it, the document keeps it).
 // Usage: node scripts/verify-builder-power.mjs [url]  (dev server running)
 import { chromium } from 'playwright-core';
-import { getGameViewSize, worldToBuilderClient, leaveTitleIfShown } from './run-helpers.mjs';
+import { getGameViewSize, worldToBuilderClient, leaveTitleIfShown, clickBuilderTool, clickBuilderKind, clickBuilderControl, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -28,7 +28,7 @@ await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2200);
 
 /* ---------- builder + arena ---------- */
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(300);
 await page.evaluate(() => {
   for (const key of Object.keys(localStorage)) {
@@ -95,7 +95,7 @@ await page.evaluate(() => {
       w.types[i] = 12; w.colors[i] = 0x8a8a92;
     }
 });
-await page.click('.bp-tool[data-tool="region"]');
+await clickBuilderTool(page, 'region');
 await dragWorld(477, 497, 493, 513);
 await page.keyboard.press('x');
 await page.waitForTimeout(150);
@@ -105,7 +105,7 @@ const holeWhileFloating = await countType(480, 489, 500, 509, 12);
 check('lift leaves a hole at the source', holeWhileFloating === 0, `got ${holeWhileFloating}`);
 // save must refuse while floating (the gate every mutation path shares)
 await page.click('[data-menu="document"]');
-await page.click('#b-save');
+await clickBuilderControl(page, '#b-save');
 await page.waitForTimeout(120);
 st = await statusText();
 check('SAVE refused while floating', /floating|land/i.test(st), st);
@@ -137,12 +137,12 @@ await page.evaluate(() => {
   window.__game.ctx.state.activeInputMode = 'element';
 });
 // a region recenters the axis at x=600 (inside the arena)
-await page.click('.bp-tool[data-tool="region"]');
+await clickBuilderTool(page, 'region');
 await dragWorld(500, 450, 700, 550);
 await page.click('#bp-sym-btn'); // OFF -> X
 let symLabel = await page.evaluate(() => document.getElementById('bp-sym-btn').textContent);
-check('SYM button cycles to X', symLabel.includes('X'), symLabel);
-await page.click('.bp-tool[data-tool="rectFill"]');
+check('Mirror button cycles to x', /mirror x/i.test(symLabel), symLabel);
+await clickBuilderTool(page, 'rectFill');
 await dragWorld(520, 470, 530, 480);
 // drag endpoints quantize through client pixels — assert the mirror, not
 // an exact box size (counting windows pad the intended boxes)
@@ -161,7 +161,7 @@ await page.waitForTimeout(100);
 
 /* ---------- lasso region ---------- */
 console.log('-- lasso region');
-await page.click('.bp-tool[data-tool="lassoRegion"]');
+await clickBuilderTool(page, 'lassoRegion');
 const l0 = await toClient(500, 520);
 await page.mouse.move(l0.x, l0.y);
 await page.mouse.down();
@@ -184,11 +184,11 @@ await page.evaluate(() => {
   window.__game.ctx.state.currentElement = 34; // Moss
   window.__game.ctx.state.activeInputMode = 'element';
 });
-await page.click('.bp-tool[data-tool="region"]');
+await clickBuilderTool(page, 'region');
 // include the floor rows: endpoint quantization must not shave off the
 // surface row (y=619, the open cells above the metal floor at 620)
 await dragWorld(440, 595, 760, 623);
-await page.click('#bp-proc-btn');
+await clickBuilderControl(page, '#bp-proc-btn');
 await page.evaluate(() => {
   const sel = document.getElementById('bp-pass');
   sel.value = 'crowns';
@@ -220,7 +220,7 @@ await page.waitForTimeout(100);
 
 /* ---------- inspector ROTATE 90 on a point kind ---------- */
 console.log('-- object rotation');
-await page.click('.bp-tool[data-kind="hazardEmitter"]');
+await clickBuilderKind(page, 'hazardEmitter');
 let p = await toClient(600, 450);
 await page.mouse.click(p.x, p.y);
 await page.waitForTimeout(150);
@@ -247,7 +247,7 @@ check(
 
 /* ---------- light MUTE: preview feed drops it, document keeps it ---------- */
 console.log('-- light mute');
-await page.click('.bp-tool[data-tool="light"]');
+await clickBuilderTool(page, 'light');
 p = await toClient(560, 480);
 await page.mouse.click(p.x, p.y);
 await page.waitForTimeout(250);

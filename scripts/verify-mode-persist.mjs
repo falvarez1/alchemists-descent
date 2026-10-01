@@ -4,7 +4,7 @@
 // stays in Sandbox.
 // Usage: node scripts/verify-mode-persist.mjs [url]  (dev server must be running)
 import { chromium } from 'playwright-core';
-import { leaveTitleIfShown } from './run-helpers.mjs';
+import { leaveTitleIfShown, toggleBuilderMode } from './run-helpers.mjs';
 
 const base = process.argv[2] || 'http://localhost:5191/';
 const KEY = 'ad-mode';
@@ -50,7 +50,7 @@ check('fresh boot stores no token', s.token === null, JSON.stringify(s));
 
 /* ---------- Builder survives a PLAIN reload ---------- */
 console.log('-- builder persists across a manual refresh');
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(300);
 s = await snap();
 check('opening the Builder records token=builder', s.builderOpen && s.token === 'builder', JSON.stringify(s));
@@ -60,7 +60,7 @@ check('a plain reload reopens the Builder (not Sandbox)', s.builderOpen === true
 
 /* ---------- closing the Builder clears it; reload stays Sandbox ---------- */
 console.log('-- leaving the Builder clears persistence');
-await page.click('#mode-builder-btn'); // it is open (restored) -> this closes it
+await toggleBuilderMode(page); // it is open (restored) -> this closes it
 await page.waitForTimeout(300);
 s = await snap();
 check('closing the Builder clears the token', !s.builderOpen && s.token === null, JSON.stringify(s));

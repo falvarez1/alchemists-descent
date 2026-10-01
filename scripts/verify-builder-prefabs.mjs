@@ -4,7 +4,7 @@
 // codec for all 35 cell types (the one thing vitest's node env cannot test).
 // Usage: node scripts/verify-builder-prefabs.mjs [url]  (dev server running)
 import { chromium } from 'playwright-core';
-import { getGameViewSize, worldToBuilderClient, leaveTitleIfShown } from './run-helpers.mjs';
+import { getGameViewSize, worldToBuilderClient, leaveTitleIfShown, clickBuilderTool, clickBuilderKind, clickBuilderControl, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -60,7 +60,7 @@ await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1200);
 
 /* ---------- builder + arena ---------- */
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(300);
 await page.evaluate(() => {
   for (const key of Object.keys(localStorage)) {
@@ -96,7 +96,7 @@ const toClient = async (wx, wy) =>
   worldToBuilderClient(page, wx, wy, { viewSize });
 
 const placeAt = async (kind, wx, wy) => {
-  await page.click(`.bp-tool[data-kind="${kind}"]`);
+  await clickBuilderKind(page, kind);
   const pt = await toClient(wx, wy);
   await page.mouse.click(pt.x, pt.y);
   await page.waitForTimeout(70);
@@ -155,7 +155,7 @@ await page.mouse.click(pt.x, pt.y);
 await page.waitForTimeout(100);
 await page.keyboard.press('Escape');
 // one authored light
-await page.click('.bp-tool[data-tool="light"]');
+await clickBuilderTool(page, 'light');
 pt = await toClient(580, 500);
 await page.mouse.click(pt.x, pt.y);
 await page.waitForTimeout(100);
@@ -169,7 +169,7 @@ const docCounts = await page.evaluate(() => {
 check('room authored (4 markers: lever, door, enemy, light)', docCounts.markers === 4, JSON.stringify(docCounts));
 
 // region around the whole room, then capture
-await page.click('.bp-tool[data-tool="region"]');
+await clickBuilderTool(page, 'region');
 const ra = await toClient(480, 470); // 241x147 cells — inside the 40k prefab cap
 const rb = await toClient(720, 616);
 await page.mouse.move(ra.x, ra.y);
@@ -177,7 +177,7 @@ await page.mouse.down();
 await page.mouse.move(rb.x, rb.y, { steps: 3 });
 await page.mouse.up();
 await page.waitForTimeout(120);
-await page.click('#bp-prefab-capture');
+await clickBuilderControl(page, '#bp-prefab-capture');
 await acceptAppPrompt('gate room #arena #mech');
 await page.waitForTimeout(200);
 
@@ -387,7 +387,7 @@ check('anchor snap pastes undo as complete prefab commands', markers === before.
 
 /* ---------- terrain-only prefabs still create compatible snap targets ---------- */
 console.log('-- terrain-only anchor snap');
-await page.click('.bp-tool[data-tool="region"]');
+await clickBuilderTool(page, 'region');
 let ta = await toClient(430, 382);
 let tb = await toClient(500, 618);
 await page.mouse.move(ta.x, ta.y);
@@ -395,7 +395,7 @@ await page.mouse.down();
 await page.mouse.move(tb.x, tb.y, { steps: 3 });
 await page.mouse.up();
 await page.waitForTimeout(100);
-await page.click('#bp-prefab-capture');
+await clickBuilderControl(page, '#bp-prefab-capture');
 await acceptAppPrompt('terrain seam #terrain');
 await page.waitForTimeout(180);
 await openPrefabDetails('terrain seam');
@@ -498,7 +498,7 @@ await page.reload({ waitUntil: 'networkidle', timeout: 30000 });
 await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1200);
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(250);
 await dispatchAssetDrop('prefab:library:missing-sprite-prefab', 600, 500);
 await page.waitForTimeout(160);

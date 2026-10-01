@@ -1,4 +1,8 @@
 import '@/styles/main.css';
+import '@/styles/studio.css';
+import '@/styles/sandbox.css';
+import '@/styles/builder.css';
+import '@/styles/studio-chrome.css';
 import '@/styles/living-descent.css';
 import '@/styles/menus.css';
 import '@/styles/house.css';
@@ -85,7 +89,7 @@ requestAnimationFrame(() =>
       let builderLauncher: { open(): void; dispose(): void } | null = null;
       if (__AUTHORING__) {
         const { BuilderLauncher } = await import('@/app/BuilderLauncher');
-        builderLauncher = new BuilderLauncher(game.ctx, authorLink);
+        builderLauncher = new BuilderLauncher(game.ctx, authorLink, linkConfig);
       } else {
         // Same reasoning for the debug surface: console, runtime inspector and
         // the GPU/WGSL A-B toggles are authoring tools, not player features.
