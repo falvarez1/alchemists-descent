@@ -157,7 +157,7 @@ builder-dock-split (10), builder-responsive (18), overlay-hit. Pass a URL as the
 
 Starting a run through the title is now two clicks, `[data-entry="begin"]` then `[data-entry="descend"]`; the Workshops
 fold is a page (`[data-entry="workshops"]` first), and the seed, case and difficulty live on pages under New descent.
-About twenty probes were patched for it (`grep -l 'data-entry="descend"' scripts`). New: `verify-title-menu.mjs` (183
+About twenty probes were patched for it (`grep -l 'data-entry="descend"' scripts`). New: `verify-title-menu.mjs` (207
 checks at three sizes) and `shot-title.mjs`. Verified against the new title: verify-title-menu, verify-fighter-title,
 verify-fighter-ledger, verify-fighter-run, `verify-options --only seed`, verify-difficulty-ladder, verify-overlay-hit,
 verify-settings, verify-sandbox-arena. NOT exercised after the patch (patched blind, same pattern as the verified ones):

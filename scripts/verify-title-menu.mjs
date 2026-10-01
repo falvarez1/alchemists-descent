@@ -222,7 +222,8 @@ for (const [w, h] of sizes) {
     await page.evaluate((i) => { window.__pad.buttons[i].pressed = false; }, index);
     await page.waitForTimeout(140);
   };
-  check(`${tag}: with a pad connected the legend names its buttons`, /D-pad/.test(await page.locator('#expedition-entry .tm-keys').textContent()) && /\bA\b/.test(await page.locator('#expedition-entry .tm-keys').textContent()), await page.locator('#expedition-entry .tm-keys').textContent());
+  const padKeys = await page.evaluate(() => [...document.querySelectorAll('#expedition-entry .tm-keys kbd')].map((k) => k.textContent));
+  check(`${tag}: with a pad connected the legend names its buttons`, padKeys.includes('D-pad') && padKeys.includes('A') && !padKeys.includes('Enter'), JSON.stringify(padKeys));
   await tap(13);
   check(`${tag}: pad d-pad Down moves the selection`, (await focused()) === 'daily', await focused());
   await tap(12);

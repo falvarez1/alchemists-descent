@@ -189,10 +189,24 @@ body.touch-enabled #expedition-entry .tm-item { min-height: 52px; touch-action: 
 /* Narrow windows and phones: the card drops under the list instead of beside it. */
 @media (max-width: 900px) {
   .entry-content { width: auto; margin-right: 28px; margin-left: 28px; }
-  .tm-list { width: 100%; }
+  .tm-list { width: min(450px, 100%); }
   .tm-detail { position: static; transform: none; width: auto; margin: 16px 0 0 26px; padding: 18px 20px 20px; }
   .tm-card-art-portrait .tm-portrait { height: 120px; }
   .entry-footer { left: 28px; right: 28px; flex-direction: column; align-items: flex-start; gap: 6px; position: static; margin: 20px 28px; }
+}
+/* A phone on its side: a wordmark and the list, nothing else. */
+@media (max-height: 500px) {
+  .tm-brand h1 { font-size: 32px; margin-bottom: 0; }
+  .tm-brand h1 br { display: none; }
+  .tm-brand h1 em { margin-left: 0.25em; }
+  .tm-brand p, .tm-hint, .touch-entry-hint { display: none; }
+  .tm-slot { margin-top: 8px; }
+  .entry-content { margin-top: 14px; margin-bottom: 20px; }
+  body.touch-enabled #expedition-entry .tm-item, .tm-item { min-height: 40px; padding-top: 3px; padding-bottom: 3px; font-size: 19px; }
+  .tm-page-head { margin-bottom: 6px; padding-bottom: 6px; }
+  .tm-title { font-size: 24px; }
+  .tm-detail { display: none; }
+  .entry-footer { display: none; }
 }
 body.touch-enabled #expedition-entry .entry-content { margin: max(28px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) 60px max(24px, env(safe-area-inset-left)); width: auto; }
 body.touch-enabled #expedition-entry .entry-footer { position: static; padding: 0 24px max(20px, env(safe-area-inset-bottom)); }
