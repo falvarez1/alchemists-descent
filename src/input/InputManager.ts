@@ -88,6 +88,7 @@ export const KEYBOARD_UI_BLOCK_SELECTOR = [
   '#gameover-overlay.visible',
   '#grimoire-overlay.open',
   '#story-cinema.show',
+  '#fighter-roster.visible',
 ].join(', ');
 
 export function isKeyboardUiOwnerActive(doc: Document = document): boolean {
@@ -149,7 +150,16 @@ export class InputManager {
     const held = (index: number): boolean => pad.buttons[index]?.pressed === true;
     const pressed = (index: number): boolean => held(index) && !this.previousPadButtons[index];
     const menu = document.getElementById('expedition-entry');
-    if (menu && !menu.hidden) {
+    // The Fighter Roster (over the title or a run) walks like any menu: d-pad focus, A to press, B to go back.
+    const roster = document.querySelector<HTMLElement>('#fighter-roster.visible');
+    if (roster) {
+      const controls = Array.from(roster.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input')).filter(el => el.getClientRects().length > 0 && !el.disabled);
+      let index = controls.indexOf(document.activeElement as HTMLButtonElement);
+      if (index < 0) { index = 0; controls[0]?.focus(); }
+      if (pressed(12) || pressed(13)) controls[(index + (pressed(13) ? 1 : controls.length - 1)) % controls.length]?.focus();
+      if (pressed(0)) controls[index]?.click();
+      if (pressed(1)) window.dispatchEvent(new Event('game-pause-request')); // (the roster treats it as Back)
+    } else if (menu && !menu.hidden) {
       // (visible ones only: a closed fold, such as "Choose a seed", holds buttons the stick could never land on)
       const buttons = Array.from(menu.querySelectorAll<HTMLButtonElement>('nav button:not([hidden])')).filter(b => b.getClientRects().length > 0);
       if (pressed(13) || pressed(12)) {

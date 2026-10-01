@@ -65,3 +65,22 @@
 
 /* Touch: the pad has its own Tactical/Ultimate buttons, and the corner stack moves to the top-left. */
 body.touch-enabled #fighter-chips .fc-names { display: none; }
+
+/* ------------------------------------------------------------------ "Your fighter" on the title and the ledger */
+
+.fighter-pick-chip { gap: 8px; }
+.fighter-pick-thumb { width: 28px !important; height: 28px !important; border: 1px solid var(--fighter-accent, #8b9d8f); overflow: hidden; background: #0b1417; flex: none; }
+.fighter-pick-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 24%; image-rendering: pixelated; display: block; }
+.fighter-pick-more { margin-left: 6px; color: var(--m-muted, #8fa090); font-size: 0.85em; letter-spacing: 0.04em; }
+.fighter-pick-chip:hover .fighter-pick-more, .fighter-pick-chip:focus-visible .fighter-pick-more { color: var(--m-text, #e3ead9); }
+#expedition-entry .entry-content .entry-fighter { margin: 0 0 6px; }
+@media (max-height: 780px) {
+  #expedition-entry .entry-content nav > .entry-fighter { flex: 0 0 100%; }
+}
+/* Compact windows (the title keeps the whole menu above the fold): label, chip and the kit line share one row, as the difficulty row does. */
+@media (max-height: 780px) {
+  #expedition-entry .fighter-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 2px; }
+  #expedition-entry .fighter-pick .kit-picker-label { margin: 0; flex: none; }
+  #expedition-entry .fighter-pick .kit-chips { flex: none; }
+  #expedition-entry .fighter-pick p.kit-note { flex: 1 1 170px; min-width: 0; max-width: none; }
+}

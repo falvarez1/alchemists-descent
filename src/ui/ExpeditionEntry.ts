@@ -5,6 +5,8 @@ import { FLOORS_TOTAL } from '@/config/worldgraph';
 import { formatRunTime } from '@/game/runRules';
 import { PlayerSettings } from '@/ui/PlayerSettings';
 import { KitPicker } from '@/ui/KitPicker';
+import { FighterPick } from '@/ui/FighterPick';
+import type { FighterId } from '@/content/fighters';
 import { DifficultyPicker } from '@/ui/DifficultyPicker';
 import { BASE_DIFFICULTY } from '@/config/difficultyLadder';
 import { appDialog } from '@/ui/AppDialog';
@@ -30,11 +32,13 @@ export class ExpeditionEntry {
   private readonly root = document.createElement('section');
   private readonly settings: PlayerSettings;
   private readonly kits: KitPicker;
+  private readonly fighter: FighterPick;
   private readonly grades: DifficultyPicker;
   private readonly seed: SeedDisclosure;
   private readonly disposers: Array<() => void> = [];
   private launching = false;
   private selectedKit: KitId = 'spark';
+  private selectedFighter: FighterId | null = null;
   private selectedDifficulty: Difficulty = BASE_DIFFICULTY;
 
   /**
@@ -54,6 +58,7 @@ export class ExpeditionEntry {
       <nav aria-label="Expedition"><button type="button" data-entry="continue" hidden>Continue your descent</button>
       <button type="button" data-entry="begin">Begin the descent</button>
       <div class="entry-kits"></div>
+      <div class="entry-fighter"></div>
       <div class="entry-grades"></div>
       <button type="button" data-entry="daily" class="entry-daily">Today’s descent<span class="entry-note" data-entry-note="daily"></span></button>
       <button type="button" data-entry="settings">Controls & comfort</button>
@@ -69,6 +74,12 @@ export class ExpeditionEntry {
       ctx.run?.chooseKit(kit);
     });
     this.root.querySelector('.entry-kits')!.appendChild(this.kits.root);
+    // Who carries the case: one chip that opens the Fighter Roster (src/ui/FighterRoster).
+    this.fighter = new FighterPick(ctx, 'Your fighter', (id) => {
+      this.selectedFighter = id;
+      ctx.run?.chooseFighter(id);
+    });
+    this.root.querySelector('.entry-fighter')!.appendChild(this.fighter.root);
     this.grades = new DifficultyPicker('Difficulty', (tier) => {
       this.selectedDifficulty = tier;
       ctx.run?.chooseDifficulty(tier);
@@ -136,6 +147,8 @@ export class ExpeditionEntry {
     const view = this.ctx.run?.metaView();
     this.selectedKit = view?.lastKit ?? 'spark';
     this.kits.render(view?.unlockedKits ?? ['spark'], this.selectedKit);
+    this.selectedFighter = view?.lastFighter ?? null;
+    this.fighter.render(this.selectedFighter);
     this.selectedDifficulty = view?.lastDifficulty ?? BASE_DIFFICULTY;
     this.grades.render(view?.bestVictoryDifficulty ?? 0, this.selectedDifficulty);
     const note = this.root.querySelector<HTMLElement>('[data-entry-note="daily"]');
@@ -144,7 +157,7 @@ export class ExpeditionEntry {
       const bestText = best
         ? best.victory ? ` · best: the Kiln quieted in ${formatRunTime(best.timeMs)}` : ` · best: Floor ${best.floor}/${FLOORS_TOTAL} in ${formatRunTime(best.timeMs)}`
         : '';
-      note.textContent = `${view.today} · one seed for everyone · the Sparkwright’s case, on Adept${bestText}`;
+      note.textContent = `${view.today} · one seed for everyone · the Alchemist with the Sparkwright’s case, on Adept${bestText}`;
     }
     // STORY: once seen, the opening can be watched again from here.
     const opening = this.root.querySelector<HTMLButtonElement>('[data-entry="opening"]');
@@ -224,7 +237,7 @@ export class ExpeditionEntry {
     if (kind === 'continue' || !ctx.run) {
       return ctx.levels.startRun(ctx, { mode: 'normal', worldSource: 'campaign', continueSave: kind === 'continue', loadout: 'fresh' });
     }
-    return ctx.run.startNewRun(ctx, { kit: this.selectedKit, daily: kind === 'daily', difficulty: this.selectedDifficulty, seed });
+    return ctx.run.startNewRun(ctx, { kit: this.selectedKit, daily: kind === 'daily', difficulty: this.selectedDifficulty, seed, fighter: this.selectedFighter });
   }
 
   dispose(): void {
