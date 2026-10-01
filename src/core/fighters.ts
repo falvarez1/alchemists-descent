@@ -90,8 +90,9 @@ export interface FighterApi {
   /** Everything the kit has placed in the world right now, for the renderer to walk. */
   readonly drawables: readonly FighterDrawable[];
 
-  /** Equip a fighter (null = the classic Alchemist). Resets kit state, cooldowns and charge. */
+  /** Equip a fighter (null = the classic Alchemist). Resets kit state, cooldowns and charge. The kit loads on demand: `whenReady` resolves when it has. */
   equip(id: FighterId | null): void;
+  whenReady(): Promise<void>;
   /** A tactical/ultimate press edge from the input layer (and the touch buttons). */
   press(slot: AbilitySlot): void;
   /** Fixed tick, after the player moves and before the enemies think (Game.tick). */
@@ -123,10 +124,14 @@ export interface FighterApi {
   readonly staggerResist: boolean;
   /** Eyes: 0 (seen as normal) .. 1 (unseen): smoke, stillness in cover, an echo, the dark. Scales how far enemies notice. */
   concealment(): number;
+  /** Where foe `e` believes the fighter is when a decoy draws its eye (Mirror Hunt), or null for the real body. */
+  decoyFor(e: Enemy): { x: number; y: number; vx: number } | null;
   /** A speed factor for an enemy while a fighter effect slows it (1 = unchanged). */
   enemySlow(e: Enemy): number;
   /** A hostile projectile about to be tested against the player: true consumes it (a shield, a prism). */
   interceptProjectile(p: Projectile): boolean;
-  /** An enemy took a blow from the player or the world (the `enemyHurt` event's engine-side twin). */
+  /** An enemy took a blow from the player or the world on the player's behalf (Enemies.damage tells the system). */
   noteEnemyHurt(e: Enemy, amount: number, source: EnemyDamageSource, killed: boolean): void;
+  /** The blows landing this tick are melee: a kick, a limb swing, a ram (Player.kick and the weaver limbs call this). */
+  noteMelee(): void;
 }

@@ -29,6 +29,14 @@ export interface KitInstance {
   intercept?(p: Projectile): boolean;
   /** 0..1 how unseen the fighter is right now, beyond its modifiers (smoke around it, stillness in cover). */
   concealment?(): number;
+  /**
+   * Where foe `e` believes the fighter is, when a decoy draws its eye (Mirror Hunt): the position and
+   * horizontal velocity it should hunt instead of the real body, or null for the real one. Called once per
+   * foe per tick, so keep it cheap; return null whenever no decoy is out.
+   */
+  decoyFor?(e: Enemy): { x: number; y: number; vx: number } | null;
+  /** The kit is being thrown away (a new fighter, the system disposed): undo subscriptions and anything not covered by `reset`. */
+  dispose?(): void;
   /** Wipe everything the kit has placed in the world and every running effect (respawn, a new floor, unequip). */
   reset?(): void;
   /** An extra readout for the HUD (Pressure). */
@@ -57,6 +65,8 @@ export interface FighterMod {
   damageTaken?: number;
   /** Blows neither shove nor stagger. */
   staggerResist?: boolean;
+  /** Damage sources (the `src` tag of a player blow or a hazard: 'fire', 'burning', 'explosion', ...) that do nothing at all. */
+  immuneTo?: readonly string[];
   /** 0..1, how unseen the fighter is. */
   concealment?: number;
 }

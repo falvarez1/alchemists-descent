@@ -748,6 +748,7 @@ export class PlayerControl implements PlayerControlApi {
       const nx = dx / d;
       const ny = dy / d;
       if (nx * dirX + ny * dirY < cosArc) continue;
+      ctx.fighters?.noteMelee();
       ctx.enemyCtl.damage(e, lp.kickDamage, dirX * 3.2, dirY * 2 - 1.4);
       reaction = Math.max(reaction, 0.5);
     }

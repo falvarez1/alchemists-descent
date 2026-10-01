@@ -2752,7 +2752,10 @@ export class Enemies implements EnemyControlApi {
       // they land, slow, or smash into a wall — see gustShove/tickKnock.
       if (this.tickKnock(e, def)) continue;
 
-      const mind = tickCreatureMind(ctx.world, e, observedPlayer, this.cues, ctx.state.frameCount, ctx.state.worldSeed, difficultyMods(ctx.state).enemySense);
+      // (a fighter's decoy, Mirror Hunt, can draw the foe's hunt to somewhere the body is not)
+      const decoy = ctx.fighters && ctx.fighters.id !== null ? ctx.fighters.decoyFor(e) : null;
+      const seen = decoy ? { ...observedPlayer, x: decoy.x, y: decoy.y, vx: decoy.vx } : observedPlayer;
+      const mind = tickCreatureMind(ctx.world, e, seen, this.cues, ctx.state.frameCount, ctx.state.worldSeed, difficultyMods(ctx.state).enemySense);
       respondToLight(ctx, e, def, mind); // light wave: lit fix, flinch, scatter, freeze
       const lair = BOSS_LAIRS[e.kind];
       if (lair) this.watchLair(e, def, lair, mind);

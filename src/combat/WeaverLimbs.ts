@@ -106,6 +106,7 @@ export function updateLegSwing(ctx: Ctx): void {
     const finish = canHumiliate(ctx, e);
     const cinematic = finisherPhase(ctx) === 'approach';
     // A heavy lateral strike rolls the corpse; an overhead one folds it down.
+    ctx.fighters?.noteMelee();
     ctx.enemyCtl.damage(e, finish ? Math.max(24, e.hp * 2) : 24, dx * (finish ? 6.4 : 3.2), dy * 2 - (finish ? 2.2 : 1.2));
     if (finish && e.hp <= 0) confirmFinisher(ctx, e, contact.x, contact.y, dx, dy);
     else if (cinematic) missFinisher(ctx); // something else took the stroke: resolve it physically, at normal time

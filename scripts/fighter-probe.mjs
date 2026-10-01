@@ -60,6 +60,7 @@ export async function boot(url = 'http://localhost:5173/', opts = {}) {
     Object.assign(p, { dead: false, hp, maxHp: hp, invuln: 0, crawling: false, climbing: false, swinging: false, x: ARENA.spawnX, y: ARENA.floorY - 1, vx: 0, vy: 0, fx: 0, fy: 0, grounded: true });
     for (const k of Object.keys(ctx.input.keys)) ctx.input.keys[k] = false;
     ctx.fighters.equip(fighter);
+    await ctx.fighters.whenReady(); // the kit loads on demand, one small chunk
     window.__game.tick();
     // Hold the real-time loop still and step by hand: the probe, not the clock, decides when a tick happens.
     ctx.state.paused = true;

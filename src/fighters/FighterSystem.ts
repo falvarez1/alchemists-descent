@@ -10,6 +10,8 @@ import type { FighterKitDef, FighterMod, KitInstance } from '@/fighters/kit';
 import { kitFor } from '@/fighters/kits';
 import { FIGHTER_TUNING } from '@/fighters/tuning';
 import { drawReveals } from '@/render/fighterReveal';
+import { entityRandom } from '@/core/simRandom';
+import type { AuthoredLight } from '@/core/types';
 
 /** A move the system carries out for the body (a dash, a blink-in, a ram, a tether pull). */
 export interface MovePlan {
@@ -52,6 +54,7 @@ interface ModEntry {
 }
 
 const NO_REVEAL: readonly [number, number, number] = [1, 1, 1];
+const NO_IMMUNITY: readonly string[] = [];
 
 /**
  * THE FIGHTER SYSTEM (docs/FIGHTERS.md). Inert until a fighter is equipped (`id` null = the classic
@@ -99,6 +102,7 @@ export class FighterSystem implements FighterApi {
   private cDamage = 1;
   private cStagger = false;
   private cConceal = 0;
+  private cImmune: readonly string[] = NO_IMMUNITY;
 
   // ---- enemy effects ----
   private readonly enemyFx = new WeakMap<Enemy, EnemyFx>();
@@ -106,6 +110,9 @@ export class FighterSystem implements FighterApi {
   private readonly touched: Enemy[] = [];
   private revealing = 0;
   private readonly nearBuf: Enemy[] = [];
+  /** Lights a kit has placed (a flash, a prism's glow): removed from the level when they lapse or the floor changes. */
+  private readonly lights: Array<{ light: AuthoredLight; set: AuthoredLight[]; start: number; until: number; peak: number; fade: boolean }> = [];
+  private meleeAt = -10;
 
   // ---- body-owning move ----
   private move: ActiveMove | null = null;
@@ -118,8 +125,15 @@ export class FighterSystem implements FighterApi {
     draw: (out, field, ctx) => { drawReveals(out, field, ctx, this.touched, (e) => this.revealOf(e)); },
   };
 
-  /** `kits` resolves a fighter id to its kit (tests pass their own). */
-  constructor(readonly ctx: Ctx, private readonly kits: (id: FighterId) => FighterKitDef | undefined = kitFor) {
+  /** The kit's chunk is still loading (equip returns at once; abilities arrive when it lands). */
+  private loading: Promise<void> = Promise.resolve();
+  private pendingRestore: FighterSaveState | null = null;
+
+  /** `kits` resolves a fighter id to its kit, now or later (tests pass their own). */
+  constructor(
+    readonly ctx: Ctx,
+    private readonly kits: (id: FighterId) => FighterKitDef | Promise<FighterKitDef | undefined> | undefined = kitFor,
+  ) {
     this.disposers.push(
       ctx.events.on('playerRespawned', () => this.resetAll()),
       ctx.events.on('playerDeathCleared', () => this.resetAll()),
@@ -138,13 +152,24 @@ export class FighterSystem implements FighterApi {
   equip(id: FighterId | null): void {
     this.teardown();
     this.id = id;
-    this.def = id ? this.kits(id) ?? null : null;
-    this.kit = this.def ? this.def.create(this) : null;
+    this.def = null;
+    this.kit = null;
+    this.loading = Promise.resolve();
+    if (id) {
+      const found = this.kits(id);
+      if (found && typeof (found as Promise<unknown>).then === 'function') {
+        this.loading = (found as Promise<FighterKitDef | undefined>).then((def) => {
+          // Only if this fighter is still the chosen one when its chunk lands.
+          if (def && this.id === id && this.kit === null) this.adopt(def);
+        });
+      } else if (found) this.adopt(found as FighterKitDef);
+    }
     this.tacticalCd = 0;
-    this.tacticalCdMax = Math.max(1, this.def?.tacticalCooldown ?? 1);
+    const adopted = this.def as FighterKitDef | null; // (adopt() may have set it above)
+    this.tacticalCdMax = Math.max(1, adopted?.tacticalCooldown ?? 1);
     this.charge = 0;
     this.ultimateLeft = 0;
-    this.ultimateMax = Math.max(1, this.def?.ultimateDuration ?? 1);
+    this.ultimateMax = Math.max(1, adopted?.ultimateDuration ?? 1);
     this.armor = 0;
     this.armorMax = 0;
     this.lastHp = -1;
@@ -153,6 +178,28 @@ export class FighterSystem implements FighterApi {
     const copy = id ? FIGHTER_DEFS[id] : null;
     this.view.tactical.name = copy?.tactical.name ?? '';
     this.view.ultimate.name = copy?.ultimate.name ?? '';
+    this.syncView();
+  }
+
+  /** Resolves once the equipped fighter's kit has loaded (immediately when it already had). */
+  whenReady(): Promise<void> {
+    return this.loading;
+  }
+
+  private adopt(def: FighterKitDef): void {
+    this.def = def;
+    this.kit = def.create(this);
+    this.tacticalCdMax = Math.max(1, def.tacticalCooldown);
+    this.ultimateMax = Math.max(1, def.ultimateDuration);
+    const copy = this.id ? FIGHTER_DEFS[this.id] : null;
+    this.view.tactical.name = copy?.tactical.name ?? '';
+    this.view.ultimate.name = copy?.ultimate.name ?? '';
+    // A save that arrived before the chunk did is applied now.
+    if (this.pendingRestore) {
+      const save = this.pendingRestore;
+      this.pendingRestore = null;
+      this.restore(save);
+    }
     this.syncView();
   }
 
@@ -197,6 +244,7 @@ export class FighterSystem implements FighterApi {
 
     this.stepMove();
     this.expire(now);
+    if (this.lights.length > 0) this.tickLights(now);
     this.keepStunned(now);
 
     if (this.ultimateLeft > 0) {
@@ -311,7 +359,9 @@ export class FighterSystem implements FighterApi {
 
   private recompute(): void {
     let move = 1, climb = 1, dmg = 1, conceal = 0, stagger = false;
+    let immune: string[] | null = null;
     for (const { mod } of this.mods.values()) {
+      if (mod.immuneTo) (immune ??= []).push(...mod.immuneTo);
       if (mod.moveScale !== undefined) move *= mod.moveScale;
       if (mod.climbScale !== undefined) climb *= mod.climbScale;
       if (mod.damageTaken !== undefined) dmg *= mod.damageTaken;
@@ -319,6 +369,7 @@ export class FighterSystem implements FighterApi {
       if (mod.staggerResist) stagger = true;
     }
     this.cMove = move; this.cClimb = climb; this.cDamage = dmg; this.cConceal = conceal; this.cStagger = stagger;
+    this.cImmune = immune ?? NO_IMMUNITY;
   }
 
   /** Raise the armor ceiling (a kit's call) and optionally fill the new room. */
@@ -334,8 +385,9 @@ export class FighterSystem implements FighterApi {
 
   // ---- the engine's questions (cheap and allocation-free) ----
 
-  reduceIncoming(amount: number, _source: string | undefined): number {
+  reduceIncoming(amount: number, source: string | undefined): number {
     if (this.id === null) return amount;
+    if (source !== undefined && this.cImmune.length > 0 && this.cImmune.includes(source)) return 0;
     amount *= this.cDamage;
     if (this.armor > 0 && amount > 0) {
       const take = Math.min(this.armor, amount);
@@ -363,6 +415,10 @@ export class FighterSystem implements FighterApi {
     if (this.touched.length === 0) return 1;
     const fx = this.enemyFx.get(e);
     return fx && this.ctx.state.frameCount < fx.slowUntil ? fx.slowK : 1;
+  }
+
+  decoyFor(e: Enemy): { x: number; y: number; vx: number } | null {
+    return this.kit?.decoyFor?.(e) ?? null;
   }
 
   interceptProjectile(p: Projectile): boolean {
@@ -540,6 +596,59 @@ export class FighterSystem implements FighterApi {
 
   // ======================================================================== placed things
 
+  /**
+   * A light the level's lighting reads (a flash, a lantern, a prism) for `ticks`, fading over its last
+   * third. It is removed when it lapses, when the floor changes and when the fighter dies, so it can
+   * never be left behind in a level that persists.
+   */
+  addLight(
+    x: number,
+    y: number,
+    spec: { rgb: readonly [number, number, number]; intensity: number; radius: number; bloom?: number; flicker?: number },
+    ticks: number,
+    fade = true,
+  ): AuthoredLight | null {
+    const rt = this.ctx.levels?.current;
+    if (!rt) return null;
+    const set = (rt.authoredLights ??= []);
+    const light: AuthoredLight = {
+      x, y, r: spec.rgb[0], g: spec.rgb[1], b: spec.rgb[2], intensity: spec.intensity, radius: spec.radius,
+      bloom: spec.bloom ?? 0.4, flicker: spec.flicker ?? 0.08, flickerPhase: entityRandom() * 6.28, falloff: 'soft', occluded: true,
+    };
+    set.push(light);
+    const now = this.ctx.state.frameCount;
+    this.lights.push({ light, set, start: now, until: now + ticks, peak: spec.intensity, fade });
+    return light;
+  }
+
+  private tickLights(now: number): void {
+    for (let i = this.lights.length - 1; i >= 0; i--) {
+      const l = this.lights[i];
+      if (now >= l.until) { this.dropLight(i); continue; }
+      if (l.fade) {
+        const left = (l.until - now) / Math.max(1, l.until - l.start);
+        l.light.intensity = l.peak * (left < 0.34 ? left / 0.34 : 1);
+      }
+    }
+  }
+
+  private dropLight(i: number): void {
+    const l = this.lights[i];
+    const at = l.set.indexOf(l.light);
+    if (at >= 0) l.set.splice(at, 1);
+    this.lights.splice(i, 1);
+  }
+
+  /** Mark this tick's blows as melee (a kick, a limb swing, a ram). */
+  noteMelee(): void {
+    this.meleeAt = this.ctx.state.frameCount;
+  }
+
+  /** True when a melee blow landed this tick or the last: a kill now was a melee kill. */
+  get recentMelee(): boolean {
+    return this.ctx.state.frameCount - this.meleeAt <= 1;
+  }
+
   addDrawable(d: FighterDrawable): () => void {
     this.drawables.push(d);
     return () => {
@@ -570,6 +679,7 @@ export class FighterSystem implements FighterApi {
       this.guard(() => this.kit?.ultimateEnd?.());
     }
     this.guard(() => this.kit?.reset?.());
+    for (let i = this.lights.length - 1; i >= 0; i--) this.dropLight(i);
     this.mods.clear();
     this.recompute();
     for (let i = this.drawables.length - 1; i >= 0; i--) {
@@ -604,6 +714,7 @@ export class FighterSystem implements FighterApi {
 
   private teardown(): void {
     this.cancelEffects();
+    this.guard(() => this.kit?.dispose?.());
     this.kit = null;
     this.def = null;
   }
@@ -626,6 +737,11 @@ export class FighterSystem implements FighterApi {
   restore(save: FighterSaveState | null | undefined): void {
     if (!save || save.v !== 1 || !isFighterId(save.id)) return;
     if (this.id !== save.id) this.equip(save.id);
+    // The kit's chunk may still be on its way: keep the save until it lands, then apply it whole.
+    if (this.kit === null && this.def === null && this.kits(save.id) !== undefined) {
+      this.pendingRestore = save;
+      return;
+    }
     const finite = (n: unknown, lo: number, hi: number): number => (typeof n === 'number' && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : 0);
     this.tacticalCd = finite(save.tacticalCooldown, 0, this.tacticalCdMax);
     this.charge = finite(save.charge, 0, 1);

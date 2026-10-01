@@ -5,11 +5,11 @@
  */
 export const FIGHTER_TUNING = {
   /** Ultimate charge (0..1 of the bar) per point of damage the fighter deals to a foe. */
-  chargeDealt: 0.004,
+  chargeDealt: 0.0015,
   /** ... per point of damage the fighter takes (after armor). */
-  chargeTaken: 0.0025,
+  chargeTaken: 0.002,
   /** ... per kill. */
-  chargeKill: 0.04,
+  chargeKill: 0.03,
   /** ... per tick, just for being in the fight (1% per 10 s). */
   chargeTrickle: 0.01 / 600,
   /** The harm the world does on the player's behalf (fire, a blast it set, a kill chain) counts for this much of a direct blow. */
