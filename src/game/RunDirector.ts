@@ -36,6 +36,7 @@ import {
 import { deathLineFor } from '@/ui/deathCauses';
 import { asDifficulty } from '@/config/difficulty';
 import { BASE_DIFFICULTY, openDifficulty } from '@/config/difficultyLadder';
+import { cleanMutators, dailyMutators } from '@/content/mutators';
 
 /** One 60 Hz tick of wall time, the most a single tick may add to the clock. */
 const TICK_MS = 1000 / 60;
@@ -54,6 +55,7 @@ function freshState(opts: RunBeginOptions, recorded: boolean, seedChosen = false
     daily: opts.daily,
     seed: opts.seed >>> 0,
     ...(seedChosen && !opts.daily ? { seedChosen: true } : {}),
+    ...(runMutators(opts.daily, opts.mutators).length > 0 ? { mutators: runMutators(opts.daily, opts.mutators) } : {}),
     timeMs: 0,
     kills: 0,
     alchemicalKills: 0,
@@ -68,6 +70,14 @@ function freshState(opts: RunBeginOptions, recorded: boolean, seedChosen = false
   };
 }
 
+/**
+ * The complications a run carries: today's daily takes the ones its DATE names (the player's own
+ * choice never applies to it, like the kit and the tier); any other run takes its cleaned choice.
+ */
+function runMutators(daily: string | null | undefined, chosen: readonly unknown[] | null | undefined): string[] {
+  return isDateKey(daily) ? dailyMutators(daily) : cleanMutators(chosen);
+}
+
 function sanitizeSave(save: RunSaveState): RunSaveState | null {
   if (!save || typeof save !== 'object' || save.v !== 1) return null;
   const whole = (n: unknown): number => (typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0);
@@ -78,6 +88,7 @@ function sanitizeSave(save: RunSaveState): RunSaveState | null {
     daily: isDateKey(save.daily) ? save.daily : null,
     seed: whole(save.seed) >>> 0,
     ...(save.seedChosen === true && !isDateKey(save.daily) ? { seedChosen: true } : {}),
+    ...(runMutators(save.daily, save.mutators).length > 0 ? { mutators: runMutators(save.daily, save.mutators) } : {}),
     timeMs: whole(save.timeMs),
     kills: whole(save.kills),
     alchemicalKills: whole(save.alchemicalKills),
@@ -91,6 +102,8 @@ function sanitizeSave(save: RunSaveState): RunSaveState | null {
     boons: cleanRunBoons(Array.isArray(save.boons) ? save.boons : []),
   };
 }
+
+const NO_MUTATORS: readonly string[] = Object.freeze([]);
 
 /** The floor-3 wardens: either one slain is the ember kit's milestone. */
 const FLOOR3_WARDENS = new Set<string>(['leviathan', 'lenswright']);
@@ -168,6 +181,10 @@ export class RunDirector implements RunApi {
     return this.state?.daily ?? null;
   }
 
+  get mutators(): readonly string[] {
+    return this.state?.mutators ?? NO_MUTATORS;
+  }
+
   get deaths(): number {
     return this.state?.deaths ?? 0;
   }
@@ -190,10 +207,14 @@ export class RunDirector implements RunApi {
     this.chosenSeedPending = false;
     if (!opts.tracked) {
       this.state = null;
+      ctx.mutators?.deactivate(ctx);
       return;
     }
     const recorded = !this.tainted(ctx);
     this.state = freshState(opts, recorded, seedChosen);
+    // The run's complications are in force from its first tick (and again here, after a replaced
+    // run's end deactivated them: this state is the authority).
+    ctx.mutators?.activate(ctx, this.state.mutators ?? []);
     if (recorded) this.meta.commit(recordRunStarted(this.meta.profile, opts.kit));
     ctx.events.emit('phialsChanged', { phials: this.state.phials, max: PHIALS_PER_RUN, reason: 'start' });
   }
@@ -217,6 +238,7 @@ export class RunDirector implements RunApi {
       daily: null,
       tracked: true,
     }, !this.tainted(ctx));
+    ctx.mutators?.activate(ctx, this.state.mutators ?? []);
     ctx.events.emit('phialsChanged', { phials: this.state.phials, max: PHIALS_PER_RUN, reason: 'restore' });
   }
 
@@ -225,7 +247,7 @@ export class RunDirector implements RunApi {
     this.endRun(ctx, 'abandoned', true);
   }
 
-  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number }): RunStartResult {
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number; mutators?: readonly string[] }): RunStartResult {
     const today = utcDateKey(new Date());
     const kit = opts.daily ? DEFAULT_KIT : (this.meta.isKitUnlocked(opts.kit) ? opts.kit : DEFAULT_KIT);
     if (!opts.daily) this.meta.setLastKit(kit);
@@ -237,6 +259,9 @@ export class RunDirector implements RunApi {
     // A chosen seed only ever rides a normal descent: today's is one seed for everyone.
     const chosen = !opts.daily && typeof opts.seed === 'number' && Number.isFinite(opts.seed) && opts.seed > 0 ? opts.seed >>> 0 : null;
     this.chosenSeedPending = chosen !== null;
+    // Today's complications are the date's; an ordinary descent takes the player's (and remembers them).
+    const mutators = runMutators(opts.daily ? today : null, opts.mutators);
+    if (!opts.daily) this.meta.setLastMutators(mutators);
     try {
       return ctx.levels.startRun(ctx, {
         mode: 'normal',
@@ -247,6 +272,7 @@ export class RunDirector implements RunApi {
         starterKit: kit,
         daily: opts.daily ? today : null,
         difficulty,
+        mutators,
       });
     } finally {
       this.chosenSeedPending = false;
@@ -259,6 +285,10 @@ export class RunDirector implements RunApi {
 
   chooseDifficulty(difficulty: Difficulty): void {
     this.meta.setLastDifficulty(difficulty);
+  }
+
+  chooseMutators(ids: readonly string[]): void {
+    this.meta.setLastMutators(ids);
   }
 
   metaView(): RunMetaView {
@@ -276,6 +306,8 @@ export class RunDirector implements RunApi {
       today,
       todayBest: profile.dailyBests[today] ?? null,
       levelsSeen: [...profile.levelsSeen],
+      lastMutators: [...profile.lastMutators],
+      todayMutators: dailyMutators(today),
     };
   }
 
@@ -497,6 +529,7 @@ export class RunDirector implements RunApi {
       path: state.path ?? [],
       boons: state.boons ?? [],
       difficulty: asDifficulty(ctx.state.difficulty, BASE_DIFFICULTY),
+      mutators: state.mutators ?? [],
     });
     let unlocked = [...this.runUnlocks];
     let record: Pick<RunResult, 'dailyBest' | 'newDailyBest' | 'newBestFloor' | 'unlockedDifficulty'> = { dailyBest: null, newDailyBest: false, newBestFloor: false, unlockedDifficulty: null };
@@ -517,6 +550,8 @@ export class RunDirector implements RunApi {
     // The run is over: nothing is left for Continue to resume. A test run leaves an
     // older checkpoint alone: it is not this run's to delete (core/runTaint).
     if (!this.tainted(ctx)) ctx.levels.abandonExpedition();
+    // The shipped tuning comes back with the run's end (the ledger reads the summary, not the dials).
+    ctx.mutators?.deactivate(ctx);
     ctx.events.emit('runEnded', summary);
   }
 

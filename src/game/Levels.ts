@@ -859,6 +859,8 @@ export class Levels implements LevelsApi {
     ctx.state.playtestSource = mode === 'test' ? 'test' : null;
 
     if (config.difficulty !== undefined) ctx.state.difficulty = config.difficulty;
+    // COMPLICATIONS are in force before the HP scale below reads them (RunDirector.beginRun keeps them in the run's save).
+    ctx.mutators?.activate(ctx, mode === 'normal' ? config.mutators ?? [] : []);
 
     const preset = config.loadout ?? 'fresh';
     if (
@@ -878,7 +880,7 @@ export class Levels implements LevelsApi {
     }
     if (config.kit) this.applyTestKit(ctx, config.kit);
     // The run begins before the first checkpoint so the save carries its phials.
-    ctx.run?.beginRun(ctx, { seed, kit: starterKit, daily: config.daily ?? null, tracked: mode === 'normal' });
+    ctx.run?.beginRun(ctx, { seed, kit: starterKit, daily: config.daily ?? null, tracked: mode === 'normal', mutators: config.mutators });
     ctx.story?.beginRun({ tracked: mode === 'normal' && !ctx.state.debugGodMode });
     this.enterLevel(ctx, levelId);
 
@@ -1512,6 +1514,7 @@ export class Levels implements LevelsApi {
   private resetRunState(ctx: Ctx, options: { clearSave: boolean }): void {
     if (options.clearSave) this.abandonExpedition();
     ctx.state.debugTainted = false;
+    ctx.mutators?.deactivate(ctx);
     this.levels.clear();
     this.currentId = null;
     this.preCustomCurrentId = null;

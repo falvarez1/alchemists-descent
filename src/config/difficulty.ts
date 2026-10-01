@@ -1,4 +1,5 @@
 import type { Difficulty } from '@/core/types';
+import { composeTierMods } from '@/content/mutators';
 
 /**
  * Difficulty tuning. Every field is a MULTIPLIER on the shipped balance except
@@ -35,9 +36,13 @@ export const DIFFICULTY: Record<Difficulty, DifficultyMods> = {
 };
 
 /** The active run's difficulty mods, defaulting to the shipped balance (3) for
- *  any state that hasn't picked one (test harnesses, legacy saves). */
-export function difficultyMods(state: { difficulty?: Difficulty }): DifficultyMods {
-  return DIFFICULTY[state.difficulty ?? 3] ?? DIFFICULTY[3];
+ *  any state that hasn't picked one (test harnesses, legacy saves). With the run's
+ *  complications (content/mutators) folded in when it carries any: the one funnel
+ *  every difficulty read goes through, so a complication is a layer over the tier,
+ *  not a second place to look. With none it is the tier's own object, untouched. */
+export function difficultyMods(state: { difficulty?: Difficulty; mutators?: readonly string[] }): DifficultyMods {
+  const tier = DIFFICULTY[state.difficulty ?? 3] ?? DIFFICULTY[3];
+  return state.mutators && state.mutators.length > 0 ? composeTierMods(tier, state.mutators) : tier;
 }
 
 /** Menu default (the user found "3" too hard, so open on the gentler Adept). */

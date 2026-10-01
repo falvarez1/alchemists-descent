@@ -5,6 +5,7 @@ import { FLOOR_DOORS, FLOORS_TOTAL, floorDisplayName, floorOf } from '@/config/w
 import { SANCTUM_PERK_DEFS } from '@/content/perks';
 import { DIFFICULTY, isDifficulty } from '@/config/difficulty';
 import { BASE_DIFFICULTY } from '@/config/difficultyLadder';
+import { cleanMutators, mutatorTag } from '@/content/mutators';
 import type { Difficulty } from '@/core/types';
 
 /**
@@ -104,6 +105,8 @@ export interface RunStatsInput {
   boons?: readonly string[];
   /** The difficulty tier the run was played at. */
   difficulty?: Difficulty;
+  /** The complications the run carried (content/mutators ids). */
+  mutators?: readonly string[];
 }
 
 /**
@@ -173,6 +176,7 @@ export function buildRunSummary(input: RunStatsInput): RunSummary {
     ...(input.path ? { path: cleanRunPath(input.path).slice(0, FLOORS_TOTAL) } : {}),
     ...(cleanRunBoons(input.boons).length > 0 ? { boons: cleanRunBoons(input.boons) } : {}),
     ...(isDifficulty(input.difficulty) ? { difficulty: input.difficulty } : {}),
+    ...(cleanMutators(input.mutators).length > 0 ? { mutators: cleanMutators(input.mutators) } : {}),
   };
 }
 
@@ -227,13 +231,15 @@ export function formatChain(chain: number): string {
  * the Glass Galleries` — so two players on the same daily can compare roads —
  * and the boons struck are named the same way (`with Rime Soles and Long Fuse`).
  * A descent on any tier but Adept names it (`Archmage`); Adept is the default and
- * goes unsaid.
+ * goes unsaid. A descent under complications names them too (`Wet Floors + Low Gravity`),
+ * after the tier; one without them says nothing, so its line is what it always was.
  */
 export function shareLine(summary: RunSummary, title = GAME_TITLE): string {
   const parts = [title];
   if (summary.daily) parts.push(`daily ${summary.daily}`);
   else if (summary.seedChosen) parts.push(`seed ${summary.seed}`);
   if (isDifficulty(summary.difficulty) && summary.difficulty !== BASE_DIFFICULTY) parts.push(DIFFICULTY[summary.difficulty].name);
+  if (cleanMutators(summary.mutators).length > 0) parts.push(mutatorTag(summary.mutators));
   const reach = summary.outcome === 'victory'
     ? `the Kiln quieted in ${formatRunTime(summary.timeMs)}`
     : `Floor ${summary.floor}/${summary.floorsTotal} in ${formatRunTime(summary.timeMs)}`;
