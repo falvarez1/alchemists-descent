@@ -193,6 +193,12 @@ try {
     const done = await state(L);
     assert.ok((done.px - ox(L, 3)) * -L.e >= -8 && !done.dead, `at the hall mouth (${done.px} vs ${ox(L, 3)})`);
     await shot('05-at-the-hall');
+    // ...and into the hall itself: off the corridor's lip, down onto the Colossus's floor
+    await walkTo(ox(L, -16));
+    await page.waitForTimeout(1200);
+    const inside = await state(L);
+    assert.ok(inside.py > L.Fr + 6 && !inside.dead, `dropped into the hall (y ${inside.py} vs the corridor floor ${L.Fr})`);
+    await shot('06-in-the-hall');
     report.solveTicks = done.frame - enteredAt;
     report.stages.push({ name: 'at-the-hall', ...done });
     console.log(`PASS (${mode}): vat quenched (${s.stone} stone), gauge latched, gate open ${(report.openTicks / 60).toFixed(1)} s after the pour began, at the hall mouth ${(report.solveTicks / 60).toFixed(1)} s after entering the gallery`);
