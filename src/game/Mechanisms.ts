@@ -250,6 +250,8 @@ export class Mechanisms implements MechanismsApi {
         }
         // THE CRUCIBLE: a quench's steam is real, and it scalds whoever stands in it near the vat (the reason the lever is far off)
         if (m.lock === 'crucible' && ctx.state.frameCount % 20 === 0) this.scaldInSteam(ctx, runtime, m);
+        // a seal that has been dug, melted or blasted through to its key needs no relenting
+        if (m.state === 0 && m.relentFrames !== undefined && runtime.keyTaken) m.relentFrames = undefined;
         if (m.state === 0 && m.relentFrames !== undefined) {
           m.relentFrames--;
           if (m.relentFrames <= 0) {

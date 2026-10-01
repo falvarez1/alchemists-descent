@@ -1216,6 +1216,7 @@ export const GEN: Record<BiomeId, GenDef> = {
     organicTunnels: true,
     goldKeep: 0.45, // ~45 effective gold pockets (100 x goldBonus x keep)
     routeWaystones: true,
+    lock: 'coldvault',
   },
   flooded: {
     ...baselineDef(),

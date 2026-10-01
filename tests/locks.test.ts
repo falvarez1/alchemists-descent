@@ -366,15 +366,53 @@ describe('floors without a lock are untouched', () => {
     expect(GEN.fungal.lock).toBe('gasbell');
     expect(GEN.flooded.lock).toBe('weir');
     expect(GEN.volcanic.lock).toBe('crucible');
-    for (const biome of ['earthen', 'frozen', 'crystal', 'timber', 'scorched'] as const) expect(GEN[biome].lock, biome).toBeUndefined();
+    expect(GEN.frozen.lock).toBe('coldvault');
+    for (const biome of ['earthen', 'crystal', 'timber', 'scorched'] as const) expect(GEN[biome].lock, biome).toBeUndefined();
   });
 
-  it('the Cold Store keeps its pocket vault and generates no lock room', () => {
-    const level = generate(LEVELS.d2b, 1337);
+  it('the Glass Galleries still keep their pocket vault and generate no lock', () => {
+    const level = generate(LEVELS.d3b, 1337);
     expect(level.placedPrefabs.some((p) => p.id.startsWith('lock-'))).toBe(false);
     expect(level.mechanisms.some((m) => m.lock)).toBe(false);
     expect(level.pickups.filter((p) => p.kind === 'key').length).toBe(1);
   });
+});
+
+describe('the Ice Vault (d2b)', () => {
+  for (const seed of [1337, 5, 42]) {
+    describe(`seed ${seed}`, () => {
+      const level = generate(LEVELS.d2b, seed);
+      const runtime = runtimeOf(level, LEVELS.d2b);
+      const plug = level.mechanisms.find((m) => m.kind === 'plug' && m.lock === 'coldvault')!;
+      const room = level.placedPrefabs.find((p) => p.id === 'cold-ice-vault')!;
+      const at = (x: number, y: number): number => level.world.types[level.world.idx(x, y)];
+
+      it('makes the strongroom’s ice wall the key’s lock: a route-seal plug over real ice, the key behind it, one key on the floor', () => {
+        expect(room).toBeTruthy();
+        expect(plug).toBeTruthy();
+        expect(plug.routeSeal).toBe(true);
+        expect(plug.material).toBe(Cell.Ice);
+        expect(plug.relentFrames).toBe(LOCK_RELENT_FRAMES);
+        expect(plug.breakFrac).toBe(0.7);
+        for (const [x, y] of plug.body!) expect(at(x, y), `ice at ${x},${y}`).toBe(Cell.Ice);
+        const keys = level.pickups.filter((p) => p.kind === 'key');
+        expect(keys.length).toBe(1);
+        expect(keys[0].x).toBeGreaterThan(plug.x + plug.w);
+        expect(keys[0].x).toBeLessThan(room.x1);
+        expect(keys[0].y).toBeGreaterThan(plug.y);
+        expect(keys[0].y).toBeLessThan(plug.y + plug.h);
+        expect(new Set(level.mechanisms.map((m) => m.id)).size, 'mechanism ids are unique').toBe(level.mechanisms.length);
+      });
+
+      it('is sealed to the audit: the key is out of reach while the ice stands, reachable once it counts as open, findability is clean', () => {
+        const key = level.pickups.find((p) => p.kind === 'key')!;
+        const ky = Math.floor(key.y) - 3;
+        expect(wizardMask({ world: level.world, spawn: level.spawn })[level.world.idx(Math.floor(key.x), ky)]).toBe(0);
+        expect(wizardMask({ world: routeSealedWorld(level.world, level.mechanisms), spawn: level.spawn })[level.world.idx(Math.floor(key.x), ky)]).toBe(1);
+        expect(validateFindability(runtime).filter((i) => i.severity === 'error' && i.what === 'key')).toEqual([]);
+      });
+    });
+  }
 });
 
 describe('the lock plug (mechanism contract)', () => {

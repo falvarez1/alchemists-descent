@@ -80,7 +80,9 @@ try {
   await execConsoleCommand(page, resume ? `run new --seed ${seed}` : `run test --level d4 --world campaign-level --seed ${seed} --loadout fresh`);
   await waitForRunReady(page);
   if (resume) {
-    await execConsoleCommand(page, 'goto d4'); await waitForRunReady(page); await page.waitForTimeout(800);
+    await execConsoleCommand(page, 'goto d4'); await waitForRunReady(page);
+    await page.waitForFunction(() => window.__game.ctx.levels.current?.def.id === 'd4', null, { timeout: 90000 }); // (a floor takes a few seconds to build)
+    await page.waitForTimeout(800);
     // (the console jump taints the run, and a tainted run is never saved: this probe tests the SAVE of the lock, not the taint rule)
     await page.evaluate(() => { window.__game.ctx.state.debugTainted = false; });
   }

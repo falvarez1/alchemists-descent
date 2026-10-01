@@ -1338,7 +1338,8 @@ export class WorldGen implements WorldGenApi {
       setPieceRepairs.push(kilnLock.repair);
     }
     if (def.biome === 'frozen') {
-      const cold: ColdStorePuzzleOutput = { pickups: [], placed: [], repairs: [] };
+      // (the floor's own mechanism list: a plug allocates its id from it)
+      const cold: ColdStorePuzzleOutput = { pickups: [], mechanisms, placed: [], repairs: [] };
       placeColdStorePuzzles(ctx, new Rng(hashSeed(seed >>> 0, 'cold-store-puzzles')), graph, ledger,
         { spawn, wellX, avoid: lightAvoid }, fits, cold);
       pickups.push(...cold.pickups);

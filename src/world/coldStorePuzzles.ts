@@ -1,6 +1,7 @@
 import { HEIGHT } from '@/config/constants';
 import type { Rng } from '@/core/rng';
-import type { Ctx, PlacedPrefab, Pickup, RegionGraph } from '@/core/types';
+import type { Ctx, Mechanism, PlacedPrefab, Pickup, RegionGraph } from '@/core/types';
+import { makePlug } from '@/core/mechanismFactories';
 import { makePickup } from '@/core/pickupDefs';
 import { randomCard, TOME_REWARD_POOL } from '@/content/cardRewardPools';
 import { Cell } from '@/sim/CellType';
@@ -8,6 +9,7 @@ import { brineColor, coalColor, crystalColor, goldColor, packRGB, stoneColor, wa
 import type { World } from '@/sim/World';
 import type { PlacementLedger } from '@/world/connect';
 import { iceShade, type ColdStoreSite } from '@/world/coldStore';
+import { LOCK_RELENT_FRAMES } from '@/world/locks';
 import { carveRoom, findRoomSite, intrudes, restore, ROOM_MARGIN, roomReachable, snapshot, type RoomSpec, type Site } from '@/world/lightPuzzles';
 
 /* ============================================================
@@ -31,6 +33,8 @@ import { carveRoom, findRoomSite, intrudes, restore, ROOM_MARGIN, roomReachable,
 
 export interface ColdStorePuzzleOutput {
   pickups: Pickup[];
+  /** THE LOCK (GEN 64): the Ice Vault's ice wall is the floor's key lock, a route-seal plug (world/locks). */
+  mechanisms: Mechanism[];
   placed: PlacedPrefab[];
   /** Re-assert the tanks' seals and liquid after the rescue passes (idempotent). */
   repairs: Array<() => void>;
@@ -164,6 +168,14 @@ function iceVault(world: World, rng: Rng, at: Site, spec: RoomSpec, out: ColdSto
     put(world, V.wallX0, y, Cell.Ice, iceShade(0, y * 5));
     put(world, V.vx0 - 1, y, Cell.Ice, iceShade(1, y * 7));
   }
+  // THE LOCK (GEN 64): the golden key lies in the strongroom, and the wall is its door. A route-seal plug watches the ice: melted
+  // (the coal, the brine), blasted or dug away - however - and the seal is open; findability treats the ice as open ground, so
+  // nothing digs round it. A seven-tenths-gone wall is a passage. The Works relent, as on every floor.
+  const wall = makePlug(world, out.mechanisms, V.wallX0, V.vy0, V.vx0 - V.wallX0, V.vy1 - V.vy0 + 1, Cell.Ice, null, 0.7);
+  wall.routeSeal = true;
+  wall.lock = 'coldvault';
+  wall.relentFrames = LOCK_RELENT_FRAMES;
+  for (const [x, y] of wall.body ?? []) world.colors[world.idx(x, y)] = iceShade(x === V.wallX0 ? 0 : x === V.vx0 - 1 ? 1 : 2, x === V.wallX0 ? y * 5 : x === V.vx0 - 1 ? y * 7 : x * 3 + y);
   // The wall is the puzzle: a later connector or rescue tunnel that ate into
   // it (they spare only metal) is filled back in. Only the wall's own rect,
   // and only open cells — the strongroom behind it is metal-sealed, so a
@@ -211,6 +223,7 @@ function iceVault(world: World, rng: Rng, at: Site, spec: RoomSpec, out: ColdSto
   coldLamp(world, V.vx1 - 3, V.vy1);
   out.pickups.push(makePickup('chest', V.vx0 + 10, V.vy1, { amount: 80 + rng.int(40) }));
   out.pickups.push(makePickup('tome', V.vx0 + 20, V.vy1 - 1, { card: randomCard(TOME_REWARD_POOL, () => rng.next()) }));
+  out.pickups.push(makePickup('key', V.vx0 + 27, V.vy1 - 2));
   coldLamp(world, at.x0 + 30, V.floorY - 1);
 }
 
@@ -235,7 +248,7 @@ export function placeColdStorePuzzles(
       }
       if (!at) break;
       const before = snapshot(ctx.world);
-      const pickCount = out.pickups.length, repairCount = out.repairs.length;
+      const pickCount = out.pickups.length, repairCount = out.repairs.length, mechCount = out.mechanisms.length;
       const x1 = at.x0 + spec.w - 1;
       const floorY = at.y0 + spec.h - floorOff;
       const interior = { x0: at.x0 + 8, y0: at.y0 + 10, x1: x1 - 8, y1: floorY - 1 };
@@ -243,7 +256,7 @@ export function placeColdStorePuzzles(
       const site0 = at;
       const rollback = (why: string): void => {
         restore(ctx.world, before);
-        out.pickups.length = pickCount; out.repairs.length = repairCount;
+        out.pickups.length = pickCount; out.repairs.length = repairCount; out.mechanisms.length = mechCount;
         refused.push({ id: spec.id, x0: site0.x0, y0: site0.y0, x1, y1: site0.y0 + spec.h - 1 });
         console.warn(`[cold-store] ${spec.id}: ${why}; trying elsewhere`);
       };

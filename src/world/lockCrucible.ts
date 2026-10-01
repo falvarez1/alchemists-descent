@@ -257,7 +257,7 @@ export function buildKilnGate(ctx: Ctx, _rng: Rng, hall: KilnSite, ledger: Place
     sensorType: 'material', threshold: GATE.threshold, zone: L.zone, latch: 'permanent', materialFilter: [Cell.Stone],
   }, relay);
   world.colors[world.idx(L.sensor.x, L.sensor.y)] = brass(L.sensor.x, L.sensor.y);
-  gauge.cue = 'lock.bell'; // (the Gas Bell's brass: the slag gate's own cue is the vault door's)
+  gauge.cue = 'lock.slag'; // an iron clank and a long hiss when the gauge latches (the gate itself unseals with the vault door's cue)
   // ---- the vat exhales as it cools: while the gauge reads stone and the gate has not yet unsealed, steam comes up the hatch ----
   for (const u of [GATE.hatchU0 + 1, GATE.hatchU1 - 1]) {
     out.emitters.push({ x: ox(u), y: Fr + 1, cell: Cell.Steam, rate: 1, dir: 180, burst: 3, phase: 0, ventOn: gauge.id });

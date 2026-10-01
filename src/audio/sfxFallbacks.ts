@@ -170,6 +170,12 @@ export const SFX_FALLBACKS: Partial<Record<SfxId, SfxFallback>> = {
     p.later(14, () => p.tone(1745, 1745, 0.7, 'sine', 0.018));
     p.noiseBurst(0.12, 2400, 0.03, true);
   },
+  // ...and the Crucible's gauge: an iron clank, a long hiss.
+  'lock.slag': (p) => {
+    p.tone(110, 70, 0.5, 'square', 0.08);
+    p.later(40, () => p.tone(160, 120, 0.3, 'sawtooth', 0.05));
+    p.later(60, () => p.noiseBurst(0.9, 3200, 0.05, true));
+  },
   'mech.rune': (p) => { p.tone(220, 500, 0.5, 'sine', 0.18); p.later(240, () => p.tone(330, 400, 0.4, 'sine', 0.14)); },
   'mech.grip': (p) => p.tone(180, 140, 0.08, 'square', 0.08),
   'mech.shrine': (p) => p.tone(660, 220, 0.18, 'triangle', 0.1),
