@@ -10,7 +10,7 @@ import {
   type FighterId,
 } from '@/content/fighters';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
-import { icon, roleIconName } from '@/ui/fighterIcons';
+import { icon, roleIconName } from '@/ui/fighterRosterIcons';
 import {
   ABILITY_KINDS,
   CLASSIC_COPY,
