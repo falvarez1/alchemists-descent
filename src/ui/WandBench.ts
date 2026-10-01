@@ -5,6 +5,7 @@ import { buildWandSentenceView, type WandSentenceView, type WandSlotLinkKind } f
 import { makeFitter } from '@/combat/wands/cardFit';
 import '@/styles/builds.css';
 import { POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
+import { addStatusFrames } from '@/content/elixirs';
 import { flaskMaterialOptions } from '@/content/flaskMaterials';
 import { PERK_DEFS, isPerkActive, togglePerkActive } from '@/content/perks';
 import { cardIconName, ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
@@ -20,7 +21,6 @@ function cardTitle(id: CardId): string {
   return def.name + ' — ' + def.manaCost + ' mana — ' + def.blurb;
 }
 
-const BENCH_STATUS_CAP = 3600;
 
 export type BenchCardFilter = 'all' | 'projectile' | 'modifier' | 'multicast' | 'setup' | 'terrain';
 
@@ -665,7 +665,7 @@ export class WandBench {
     tile.setAttribute('aria-label', def.name + ' refreshes ' + def.status);
     tile.addEventListener('click', () => {
       const status = this.ctx.player.status;
-      status[def.status] = Math.min(BENCH_STATUS_CAP, status[def.status] + def.frames);
+      addStatusFrames(status, def.status, def.frames);
       this.ctx.audio.drinkPotion();
       this.ctx.events.emit('toast', { text: def.name });
     });

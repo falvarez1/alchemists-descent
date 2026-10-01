@@ -5,7 +5,7 @@ import { Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { PlacementLedger } from '@/world/connect';
 import { fitWalks } from '@/world/fitWalks';
-import { bowlSiteNear, keyBrazierSite, placeRouteWaystones, routeAnchors, stampWaystoneBowl } from '@/world/routeWaystones';
+import { bowlSiteNear, CAULDRON_ROUTE_REACH, keyBrazierSite, placeRouteWaystones, routeAnchors, routeDistance, stampWaystoneBowl } from '@/world/routeWaystones';
 import { computeFits } from '@/world/validate';
 
 /**
@@ -118,7 +118,45 @@ describe('placeRouteWaystones', () => {
     const w = solidWorld();
     const b0 = stampWaystoneBowl(w, 150, 340);
     const r = placeRouteWaystones({ world: w, ledger: new PlacementLedger(), spawn: { x: 400, y: 400 }, exit: { x: 800, y: 800 }, bowls: [b0], waystones: [b0], key: null });
-    expect(r).toEqual({ moved: 0, kept: 0, brazier: false });
+    expect(r).toEqual({ moved: 0, kept: 0, brazier: false, cauldron: { from: null, to: null, moved: false } });
     expect(b0.x).toBe(150);
+  });
+
+  it('brings a cauldron that stands off the route beside the bowl on it, and leaves one that is already on the walk', () => {
+    const { w, spawn, exit } = lShape();
+    // the old site: a basin stamped far down the drop's dead end (carved off the corridor), 28 cells from where bowl 0 used to stand
+    carveBox(w, 200, 480, 300, 520);
+    const stoneAt = (x: number, y: number): boolean => w.types[w.idx(x, y)] === Cell.Stone;
+    for (let dx = -4; dx <= 4; dx++) w.types[w.idx(250 + dx, 520)] = Cell.Stone;
+    const cauldron = { x: 250, y: 519 };
+    const b0 = stampWaystoneBowl(w, 150, 340);
+    const r = placeRouteWaystones({ world: w, ledger: new PlacementLedger(), spawn, exit, bowls: [b0], waystones: [b0], key: null, cauldron });
+    expect(r.cauldron.from).toBeGreaterThan(CAULDRON_ROUTE_REACH);
+    expect(r.cauldron.moved).toBe(true);
+    expect(r.cauldron.to).toBeLessThanOrEqual(CAULDRON_ROUTE_REACH);
+    // it stands on the corridor within 14-56 cells of the bowl, a real stamp: stone base, walls two tall, open bowl
+    expect(Math.abs(cauldron.x - b0.x)).toBeGreaterThanOrEqual(14);
+    expect(Math.abs(cauldron.x - b0.x)).toBeLessThanOrEqual(56);
+    expect(stoneAt(cauldron.x, cauldron.y + 1)).toBe(true);
+    expect(stoneAt(cauldron.x - 4, cauldron.y)).toBe(true);
+    expect(stoneAt(cauldron.x + 4, cauldron.y - 1)).toBe(true);
+    expect(w.types[w.idx(cauldron.x, cauldron.y)]).toBe(Cell.Empty);
+    // the old basin's stone is gone
+    expect(stoneAt(250, 520)).toBe(false);
+
+    // a basin already beside the walk stays where it is
+    const w2 = lShape();
+    for (let dx = -4; dx <= 4; dx++) w2.w.types[w2.w.idx(500 + dx, 341)] = Cell.Stone;
+    const stays = { x: 500, y: 340 };
+    const c0 = stampWaystoneBowl(w2.w, 150, 340);
+    const r2 = placeRouteWaystones({ world: w2.w, ledger: new PlacementLedger(), spawn: w2.spawn, exit: w2.exit, bowls: [c0], waystones: [c0], key: null, cauldron: stays });
+    expect(r2.cauldron.moved).toBe(false);
+    expect(stays).toEqual({ x: 500, y: 340 });
+  });
+
+  it('measures a point against the walk', () => {
+    const path = [330 * WIDTH + 120, 330 * WIDTH + 121, 330 * WIDTH + 122, 330 * WIDTH + 123];
+    expect(routeDistance(path, 121, 330)).toBeLessThan(3);
+    expect(routeDistance(path, 121, 400)).toBeGreaterThan(60);
   });
 });

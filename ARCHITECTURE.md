@@ -320,11 +320,30 @@ biome extras → region graph → ledger pre-reserves → prefab placement (fork
 structure placement (a second placePrefabs pass on the forked 'machines'
 stream: chain-reaction rooms built from the machine mechanism vocabulary,
 biome-gated by `GEN[biome].machines` tags) → graph re-extract → secrets →
-cauldron/onboarding → structures. Expedition saves record `GEN_VERSION`;
+cauldron/onboarding → structures → (after the last carve) route waystones, which also bring a
+cauldron that stands off the route beside the bowl nearest it (GEN 64). Expedition saves record `GEN_VERSION`;
 resume retires mismatched saves (restoreLevel regenerates the pristine world
 from seed, so stale saves would silently desync).
 
 ## Key design decisions
+
+**Alchemy is a discovery game** (THE EXPERIMENT; numbers in `docs/FEEL.md` §11). The
+brew is still the literal cells in the bowl; what is new is that the bowl *answers*.
+`game/alchemy/mix` (pure) judges a histogram: `matchMix` (exact amounts, a purity
+slack, the most specific recipe wins) and `assessMix` (inert / close / muddy, and each
+reagent cold / warm / hot against the nearest undiscovered recipe, never its name).
+`game/Brewing` samples the basin, holds the heat memory, emits `cauldronView` (the
+bowl panel, `ui/BowlPanel`) and `brewAttempt` (the Grimoire's experiment log, record v3
+in `core/grimoireStore`, plus margin notes unlocked by play: `content/alchemyClues`,
+`game/alchemy/clues`). What a brew *does* is one row of `content/elixirs` per potion
+cell (cells 44-52 are viscous liquids to the sim through `ELIXIR_CELL_IDS`, so a new
+potion is a cell, a palette entry and a row: the checklist is pinned by
+`tests/elixirs.test.ts`): a status timer, or a timed *boon* (`status.boons`, read
+through `core/boons hasBoon`, the same call a Sanctum perk answers), loaded by
+`game/potions.drinkFlask`, shown by `ui/PotionChips`. `content/recipes` is data under
+`tests/recipes.test.ts` (unique, fit the bowl, no gold, none that the sim will not
+keep in a bowl, a floor that holds both ingredients); the probe that earns the
+right to ship a recipe is `scripts/verify-alchemy.mjs`.
 
 **Ctx composition root.** Every shared dependency (world state, entity lists, service
 APIs) lives on a single `Ctx` object built once in `Game.ts`. Systems depend on the

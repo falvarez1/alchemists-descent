@@ -9,6 +9,7 @@ import { makeValve } from '@/core/mechanismFactories';
 import { stampPhotocell } from './lightPuzzles';
 import { carveSeedCellar, plantWorksFlora, WORKS_SEED_CELLAR } from '@/world/worksFlora';
 import { carveWorksEchoNook, worksStorySites } from '@/world/worksStory';
+import { stampRefugeKettle } from '@/world/refugeKettle';
 
 /** Authored encounter geometry; every ledge, reservoir and pipe below is real material. */
 export const WORKS_ROOMS = [
@@ -305,6 +306,9 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
     rect(x, floor - 3, 6, 3, Cell.Glowshroom, packRGB(105, 175, 140));
   }
   dressWorksHabitat(world, seed);
+  // THE REFUGE KETTLE (GEN 64): the floor's one cauldron, on the plinth's west end (world/refugeKettle).
+  // After the habitat dressing: moss had carpeted a bowl stamped before it.
+  const kettle = stampRefugeKettle(world);
   const valveBody: Array<[number, number]> = [];
   for (let y = 412; y < 437; y++) for (let x = 800; x < 805; x++) valveBody.push([x, y]);
   const mechanisms: Mechanism[] = [
@@ -410,7 +414,7 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   return {
     spawn: { x: 170, y: 314 }, exit: { x: 1400, sealY: 1010, halfW: 14 },
     waystones: [{ x: 192, y: 314, lit: true }, { x: 857, y: 743, lit: true }],
-    portal: { x: 1400, y: 1008, open: false }, cauldron: null,
+    portal: { x: 1400, y: 1008, open: false }, cauldron: kettle.cauldron,
     pickups: [pickup('key', TEA.receiver.x, TEA.receiver.y), pickup('tome', 892, 735, { card: 'frostshard' }),
       pickup('tome', 265, 252, { card: 'bounce' }), pickup('tome', 1402, 407, { card: 'heavy' }),
       pickup('tome', 672, 942, { card: 'double' }),
@@ -435,7 +439,7 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
     placedPrefabs: [...WORKS_ROOMS.map(r => ({ id: `works-${r.id}`, x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.floor })),
       { id: 'works-bell-tea-engine', ...TEA.bounds }],
     authoredLights: [lamp(180, 279, true, 150), lamp(30, 300, true, 70), lamp(394, 276, true, 80, .06, .7),
-      lamp(WORKS_GATE.x, WORKS_GATE.arch.top + 4, true, 90, .05, .6), lamp(675, 340), lamp(1235, 325), lamp(1450, 570, true),
+      lamp(WORKS_GATE.x, WORKS_GATE.arch.top + 4, true, 90, .05, .6), ...kettle.lights, lamp(675, 340), lamp(1235, 325), lamp(1450, 570, true),
       lamp(850, 702, true, 155), lamp(285, 740), lamp(1400, 948, true, 115, .1, .48), ...failingLights, ...machineLights, ...story.lights],
     emitters: [], decors: [], refuge: { x: 857, y: 739 }, spellLab: null,
     vaultArch: null, vaultHoard: null, surfaceSpawn: null, surfaceSkyLine: null,

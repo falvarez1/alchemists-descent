@@ -44,10 +44,12 @@ describe('Breathing Works encounter contracts', () => {
     expect(Buffer.from(a.runtime.world.colors.buffer).equals(Buffer.from(b.runtime.world.colors.buffer))).toBe(true);
     let hash = 0x811c9dc5;
     for (const byte of a.runtime.world.types) hash = Math.imul(hash ^ byte, 0x01000193);
+    // GEN_VERSION 64: the Refuge Kettle (a basin, an ember-banked furnace, a cistern under a grate and a tea shrub on the
+    // Warm Refuge plinth), over
     // GEN_VERSION 62: the timber catwalks lose their diagonal braces and gain a flush joist (worksHabitat), over
     // GEN_VERSION 55: the story's Guild locker nook off the return shaft (the resonant valve), over GEN 53's
     // Undertow cache, hand-planted stands and Seed Cellar and GEN 48's barricade, shaft hatch and floor gate.
-    expect((hash >>> 0).toString(16)).toBe('4b4edc4');
+    expect((hash >>> 0).toString(16)).toBe('5c264b8');
   });
 
   it('hangs the timber catwalks bare: no diagonal sticks under a deck, and the joist stays inside it', () => {

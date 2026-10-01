@@ -48,7 +48,7 @@ await page.waitForFunction(() => {
 }, null, { timeout: 5000 });
 
 let state = await page.evaluate(() => JSON.parse(localStorage.getItem('noita-grimoire') ?? '{}'));
-check('Explicit examine records Water in the unified Grimoire store', state.version === 2 && state.materials?.['2'] === true, JSON.stringify(state));
+check('Explicit examine records Water in the unified Grimoire store', state.version === 3 && state.materials?.['2'] === true, JSON.stringify(state));
 
 await page.evaluate(() => {
   const ctx = window.__game.ctx;
