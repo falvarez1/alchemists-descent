@@ -3876,7 +3876,7 @@ export class Levels implements LevelsApi {
     });
     ctx.audio.sfx('world.waystone');
 
-    ctx.events.emit('waystoneLit');
+    ctx.events.emit('waystoneLit', { index, depth: runtime.def.depth, levelId: runtime.def.id });
   }
 
   /**
