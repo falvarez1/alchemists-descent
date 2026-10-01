@@ -17,10 +17,6 @@ async function press(pg, code, ticks = 1) {
   await tick(pg, ticks);
   await pg.keyboard.up(code);
 }
-async function hold(pg, code, ticks) {
-  for (let i = 0; i < ticks; i++) { await pg.keyboard.down(code); await tick(pg, 1); }
-  await pg.keyboard.up(code);
-}
 const tally = makeChecker();
 const check = tally.check;
 const { page, finish } = await boot(url, { fighter: 'ilyra-voss', hp: 100 });
@@ -96,12 +92,6 @@ async function aimMouse(wx, wy) {
 }
 /** Aim the real pointer at a spot relative to her (flat along the floor by default): the pointer, not the harness's aimAt, is what the game follows once it has moved. */
 const aimFlat = async (dx = 250, dy = -9) => { const p = await me(page); return aimMouse(p.x + dx, p.y + dy); };
-/** Hold the real mouse button (the wand fires while it is down) for `ticks`. */
-async function fireWand(ticks) {
-  await page.mouse.down();
-  await tick(page, ticks);
-  await page.mouse.up();
-}
 
 // ----------------------------------------------------------------------------- looking at it
 mkdirSync('verify-out/fighters', { recursive: true });
@@ -197,9 +187,7 @@ if (want('crucible')) {
   await look('burst-0', hit.x, hit.y - 6, 60, 36, 5);
   const dmg14 = (await logs()).dmg.filter((d) => d.amount === 14);
   check('every foe inside 30 cells took exactly 14 (the two nearest)', dmg14.length === 2 || dmg14.length === 3, JSON.stringify(dmg14.map((d) => d.kind)) + ' x' + dmg14.length);
-  const after0 = await foes();
   check('the foe 48 cells out is untouched by the blast itself', (await logs()).dmg.filter((d) => d.amount === 14).length < 4);
-  const posNow = (await foes()).map((f) => f.x);
   await tick(page, 2);
   await look('burst-3', hit.x, hit.y - 6, 60, 36, 5);
   await tick(page, 3);
@@ -287,7 +275,7 @@ if (want('crucible')) {
   const F = await spawnFoe('slime', 40, 100);
   await tick(page, 2);
   await clearLogs();
-  const t2 = await now();
+  await now();
   await press(page, 'KeyZ', 1);
   let contact = null;
   for (let i = 0; i < 30 && !contact; i++) { await tick(page, 1); contact = (await logs()).sfx.find((s) => s.id === 'flask.shatter') ?? null; }

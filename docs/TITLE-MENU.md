@@ -10,12 +10,13 @@ Main (the big wordmark, six rows at most)
 ├─ Continue                      (only with a descent in hand: "Floor 2 of 4 · Sparkwright · 12:41")
 ├─ New descent ─► Prepare your descent   (the loadout page; opens on Descend)
 │                 ├─ Case        ◂ Sparkwright ▸   Enter: the case list (locked cases refuse and say how to earn them)
-│                 ├─ Fighter     ◂ The Alchemist ▸ Enter: the Fighter Roster (src/ui/FighterRoster.ts)
 │                 ├─ Difficulty  ◂ II · Adept ▸    Enter: the tiers
+│                 ├─ Complications  None           Enter: twelve toggles, three at a time (a swap for the two that cancel)
 │                 ├─ Seed        Random            Enter: a page with a field ("Use this seed", "Random descent", copy)
 │                 ├─ Descend     (the recap: "Sparkwright · Mara Quell · Adept · seed 905805099")
 │                 └─ Back
 ├─ Today's descent               (launches the daily; its date or best is the dimmed line, the full sentence the hint)
+├─ Arena (authoring builds)      the Fighter Roster over the title; choosing a fighter starts the Proving Yard as them (docs/FIGHTERS.md)
 ├─ Workshops (authoring builds)  ─► Material sandbox · Level builder · Advanced run setup
 │  The Workshop (player builds, once a first run has ended)
 ├─ Extras ─► Watch the trailer · The opening (once seen)
@@ -23,8 +24,8 @@ Main (the big wordmark, six rows at most)
 ```
 
 Drilled in, the title steps back to a small wordmark and the page takes the room. A **detail card** beside the page
-explains the focused row (the case's contents, the fighter's portrait and three abilities with the player's own keys,
-the tier, how a locked entry is earned); on the main page one hint line under the list does the same job.
+explains the focused row (the case's contents, the tier, a complication's regulation and weight,
+how a locked entry is earned); on the main page one hint line under the list does the same job.
 The footer's key legend follows the page and the row (↑↓ Select, ←→ Change on a choice row, Enter Open/Confirm,
 Esc Back; D-pad / A / B once a pad is connected).
 

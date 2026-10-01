@@ -1,12 +1,16 @@
 # Fighters
 
-Ten playable fighters from the design document (`alchemists_descent_fighter_roster.html`, kept with its
-concept sheets under `public/assets/fighters/`). A fighter is **who you descend as**: a look, a passive, a
-tactical ability on **Z** and an ultimate on **T**. Weapons still come from the kit and from loot, so a
-fighter and a starting kit are independent choices.
+Ten fighters from the design document (`alchemists_descent_fighter_roster.html`, kept with its
+concept sheets under `public/assets/fighters/`), made for the ARENA (Battle Royale) mode. A fighter is a look, a
+passive, a tactical ability on **Z** and an ultimate on **T**. Weapons still come from the kit and from loot.
 
-**Status: implemented.** All ten fighters are playable in the single-player descent: choose one on the title
-(or the ledger's "Next descent"), and the run is theirs. This file is the contract the code was built against.
+**Where they are played today: the Proving Yard, not the campaign.** The campaign is the classic Alchemist only
+(the title's New descent has no Fighter row, the ledger offers no fighter, the daily is classic). The title's **Arena**
+door (authoring builds) opens the roster and starts [the Proving Yard](#the-proving-yard): a test arena where each
+fighter can be walked through every move. The engine still carries a fighter on a run (`RunStartConfig.fighter`, the
+`fighter` console command) so the arena mode can reuse it; the campaign UI just never sets one.
+
+**Status: the fighters are implemented; the arena MODE is not.** This file is the contract the code was built against.
 Each fighter has its own write-up under `docs/fighters/<id>.md` (the numbers, what was measured in the real
 game, the deviations from the specs below and why), and the looks are written up in `docs/fighters/looks-*.md`.
 What is NOT built is the arena (Battle Royale) mode these fighters were designed for: see
@@ -21,21 +25,57 @@ against `allyTargets` / `decoyFor`-style seams so a peer can stand where a foe s
 - [x] All ten kits (passive, tactical on Z, ultimate on T), each against real foes, real cells and real terrain
 - [x] All ten looks on the alchemist's own rig, alive and fallen, plus an icon for every ability
 - [x] The Fighter Roster screen (filters, search, dossier cards, keyboard and pad)
-- [x] Title and ledger: the "Your fighter" choice; HUD chips with cooldown sweep and the ultimate's charge bar
-- [x] Run plumbing: a fighter is saved with the run, resumes, shows in the ledger; the daily descent is always the classic Alchemist
+- [x] HUD chips with cooldown sweep and the ultimate's charge bar
+- [x] Run plumbing: a fighter is saved with the run and resumes (the campaign never chooses one)
+- [x] The Proving Yard: a test arena, a panel that steps through the fighters and ticks off their moves, the title's Arena door
 - [x] Rebindable keys (Z / T), touch buttons, the `fighter` console command
 - [x] All ten played through a real run (Z and T, a floor change, a death, a respawn)
 
 **Remaining / not built:**
 
-- [ ] The arena (Battle Royale) mode these fighters were designed for (docs/BATTLE-ROYALE-AND-SPACETIMEDB.md)
+- [ ] The arena (Battle Royale) MODE these fighters were designed for (docs/BATTLE-ROYALE-AND-SPACETIMEDB.md): rules (damage-scaled knockback, ring-outs, stocks, a collapsing stage), several fighters on screen, bots, a camera that frames them, netcode. The Proving Yard is its first stage: one fighter against foes, no rules
 - [ ] Sounds of their own: every ability reuses an existing cue today, and nobody has listened to them
 - [ ] Balance by play: the numbers are first-pass, tuned by probes (`fighters/tuning.ts` and each kit's `TUNING`)
 - [ ] Unlocks: all ten are open from the start
 - [ ] Load the ten looks lazily (they ship in the main chunk, about 135 KB with the rest of the system)
 - [ ] Edge cases not probed: bosses, campaign floors other than floor 1 and d2, calm / reduce-flashes mode
-- [ ] Merge to main (the push deploys the game); the unmerged branches of other sessions touch the same
-  title, ledger, HUD, types and run-director files, so expect conflicts at whichever merges second
+- [ ] Merge to main (the push deploys the game). Main is already merged into this branch (2026-10-01)
+
+## The Proving Yard
+
+`world/fighterArena.ts` (the hall), `content/fighterArena.ts` (the tips and the foe presets), `ui/FighterArenaPanel.ts`
+(the panel), level id `fighter-test` (`config/worldgraph`; wiped and stamped on entry like the other dev arenas, never
+autosaved). Reach it from the title's **Arena** door (authoring builds) or `run test --level fighter-test --world
+campaign-level`. One hall, left to right, a station per thing a kit needs something to act on:
+
+| Station | What is there | Whose moves it is for |
+|---|---|---|
+| The Muster | the start: a dais, two potions on the floor | Edda's Stored Light (drink one, or sip the flask with X) |
+| The Sparring Ring | sand floor, two low cover pillars; the foe buttons place foes here | almost everyone: hits, kicks, slows, stuns, decoys, smoke |
+| The Gallery | a metal ledge hung from the roof over the ring's right end; shooters stand here | Brann's plate, Mara's chime, Edda's prism: things that stop shots |
+| The Kiln Wall | a bay 30 up: a wooden barricade over a packed powder keg; then an oil lane and a lava torch behind a baffle | Rusk's ram, Ilyra's crucible and trail, Nox's smoke (fire eats it), fire immunity |
+| The Bluff | a block 96 high with the floor running under it, and a ledge hung 34 higher | Sable's tether, Kest's climb and Updraft, Selene's blink, Thorne's vines |
+| The Cistern | a pool 40 deep under a grating bridge, mossy banks | Thorne's camouflage (moss), Selene's slide, liquids |
+| The Locked Cell | a sealed stone cell 30 up with a wooden door; the Fill button puts foes in it | Sable's Bloodsense, Mara's ripples, Nox's Soot Sight: reads through walls |
+
+The corridor under everything is open end to end (nothing taller than a 26-high step-over, at least 24 of headroom under
+a slab); the bay, the bluff and the cell are slabs you climb or levitate onto. Bright lighting, a black backdrop, a lamp
+at every station, a blueprint marker per station (`node scripts/shot-blueprint.mjs fighter-test`).
+
+**The panel** (right edge, only while the yard is the level; `[` and `]` step the fighters, the classic Alchemist
+included): the fighter in hand and a Roster button; the three abilities, each with the ability's name and key, a status
+(READY / COOLING 6s / CHARGING 40% / ACTIVE), a "what to try and where" line from `ARENA_TIPS`, a **Go** button that
+stands you at the station it names, and a tick with a count once it has fired (the passive has a "Seen" box); **Foes**
+(slime, golem, imp, bat, shooters, mage, fill the cell, wound all, clear); **Take me to** every station; **Tools**:
+Refill (skip the cooldowns), Heal, Hurt 25, Start, Reset yard (rebuild the hall and the potions), Leave, and the toggles
+**Unlimited abilities** and **Safe mode** (foes ignore you and nothing hurts you: the arrival grace held open).
+
+Adding a fighter's test: put its three tips in `ARENA_TIPS`; if it needs something the hall lacks, add a station to
+`stampYard`, a station id to `YARD_STATIONS`, and a spot to `YARD_SPOTS`.
+
+Probe: `verify-fighter-arena.mjs` (the title's Arena door to the yard; the hall and its open corridor; [ and ]; every
+fighter chosen from the panel's Roster with its Go buttons and Z and T through the real key path; the tools; Rusk's ram
+breaking the barricade; the keg detonating; the oil staying unlit; Reset yard; Leave).
 
 ## How it plugs into the engine
 
@@ -60,7 +100,7 @@ tuning lives in a `TUNING` object beside the kit; the live probes decided the fi
 
 `scripts/fighter-probe.mjs` is the shared harness. `verify-fighter-framework` (the engine seams, 28 checks),
 `verify-fighter-run` (start, save, continue, daily), `verify-fighter-chips`, `verify-fighter-title`,
-`verify-fighter-ledger`, `verify-fighter-roster` (the roster screen at four sizes), one
+`verify-fighter-ledger` (the ledger has no fighter), `verify-fighter-arena`, `verify-fighter-roster` (the roster screen at four sizes), one
 `verify-fighter-<name>` per kit (60 to 100 checks each, against real foes, real cells and real terrain),
 and `verify-fighter-roster-play` (all ten through a real run: Z and T, a floor change, a death and a respawn).
 `scripts/fighter-studio.mjs` draws every fighter in every pose.

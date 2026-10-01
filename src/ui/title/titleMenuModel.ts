@@ -1,7 +1,7 @@
 import type { Difficulty } from '@/core/types';
 import type { KitId } from '@/core/run';
 import { KIT_DEFS, KIT_ORDER } from '@/content/kits';
-import { FIGHTER_DEFS, FIGHTER_ORDER, fighterPortraitUrl, type FighterId } from '@/content/fighters';
+import { FIGHTER_DEFS, type FighterId } from '@/content/fighters';
 import { DIFFICULTY, DIFFICULTY_ORDER } from '@/config/difficulty';
 import { DIFFICULTY_BLURBS, difficultyUnlockHint, isDifficultyOpen } from '@/config/difficultyLadder';
 import {
@@ -13,7 +13,6 @@ import {
   mutatorsCountForLadder,
   type MutatorId,
 } from '@/content/mutators';
-import { CLASSIC_COPY } from '@/ui/fighterRosterModel';
 
 /**
  * The title screen as a game menu: pure data and rules, no DOM (ui/title/TitleMenu draws it, ui/ExpeditionEntry
@@ -105,13 +104,6 @@ export function cycleOpen<T>(order: readonly T[], isOpen: (option: T) => boolean
   return current;
 }
 
-/** Every fighter the title offers, the classic Alchemist (null) first. */
-export const FIGHTER_CYCLE: ReadonlyArray<FighterId | null> = [null, ...FIGHTER_ORDER];
-
-export function cycleFighter(current: FighterId | null, dir: -1 | 1): FighterId | null {
-  return cycleOpen(FIGHTER_CYCLE, () => true, current, dir);
-}
-
 export function cycleKit(unlocked: ReadonlySet<KitId>, current: KitId, dir: -1 | 1): KitId {
   return cycleOpen(KIT_ORDER, (kit) => unlocked.has(kit), current, dir);
 }
@@ -172,27 +164,6 @@ export function kitDetail(kit: KitId, open: boolean): DetailSpec {
     body: open ? def.blurb : `Locked. ${def.unlockHint}`,
     icon: { kind: 'kit', kit },
     locked: !open,
-  };
-}
-
-export interface KeyLabels { tactical: string; ultimate: string }
-
-export function fighterDetail(id: FighterId | null, keys: KeyLabels): DetailSpec {
-  if (!id) {
-    return { eyebrow: 'No fighter', heading: CLASSIC_COPY.name, body: CLASSIC_COPY.blurb, icon: { kind: 'text', text: '⚗' } };
-  }
-  const def = FIGHTER_DEFS[id];
-  return {
-    eyebrow: def.role,
-    heading: def.name,
-    sub: def.title,
-    body: def.playstyle,
-    lines: [
-      { label: 'Passive', name: def.passive.name, text: def.passive.description },
-      { label: keys.tactical, name: def.tactical.name, text: def.tactical.description },
-      { label: keys.ultimate, name: def.ultimate.name, text: def.ultimate.description },
-    ],
-    icon: { kind: 'portrait', src: fighterPortraitUrl(id), accent: def.accent },
   };
 }
 

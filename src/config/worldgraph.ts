@@ -69,6 +69,14 @@ export const LEVELS: Record<string, LevelDef> = {
     depth: 0,
     nextLevelId: null,
   },
+  // Where the fighters are walked through every move (world/fighterArena; the title's Arena door).
+  'fighter-test': {
+    id: 'fighter-test',
+    name: 'THE PROVING YARD',
+    biome: 'earthen',
+    depth: 0,
+    nextLevelId: null,
+  },
 };
 
 export const START_LEVEL = 'd1';

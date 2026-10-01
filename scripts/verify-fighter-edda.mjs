@@ -343,7 +343,7 @@ check('T with the bar empty is refused and nothing stands', v.ultimate.refusedAt
 
 await page.evaluate(() => { window.__fp.ctx.fighters.refill(); });
 const baseLights = await lightCount();
-const tMark = await sfxMark(), tSparks = await sparksMark(), tCall = await calloutMark();
+const tMark = await sfxMark(), tSparks = await sparksMark(), _tCall = await calloutMark();
 await press(page, 'KeyT', 1);
 v = await view(page);
 check('T with the bar full raises the window: active, bar spent, a window drawable', v.ultimate.active > 0.95 && v.ultimate.charge < 0.05 && (await drawables()) === 1, JSON.stringify(v.ultimate));

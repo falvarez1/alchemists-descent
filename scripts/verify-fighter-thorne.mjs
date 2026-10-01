@@ -236,7 +236,6 @@ console.log('\nRooted Camouflage: what a foe notices');
 
 // ================================================================================ Ironvine
 console.log('\nIronvine');
-let carpet; // what the carpet looked like once grown (the later checks read it)
 {
   await arena('father-thorne');
   let v = await view(page);
@@ -277,7 +276,6 @@ let carpet; // what the carpet looked like once grown (the later checks read it)
     for (const n of cols.values()) depths[n] = (depths[n] ?? 0) + 1;
     return { minX, maxX, minY, maxY, depths, thorns, notDormant };
   }, { AX0, AY0, AX1, AY1 });
-  carpet = { grown, ...xs };
   console.log(`  (${grown} Vines cells, x ${xs.minX}..${xs.maxX}, y ${xs.minY}..${xs.maxY}, columns by depth ${JSON.stringify(xs.depths)}, ${xs.thorns} thorn cells)`);
   check('real Vines cells stand in the grid: more than a hundred', grown > 100 && grown < 200, `${grown}`);
   check('along the ground in the aim, reaching 60 cells from where she stood', xs.maxX - X0 >= 58 && xs.maxX - X0 <= 61, `to x ${xs.maxX}`);
@@ -556,8 +554,6 @@ console.log('\nIronvine: it withers on its own after about 25 s');
 
 // ================================================================================ Overgrowth
 console.log('\nOvergrowth');
-const GROW_RECT = [AX0, AY0, AX1, AY1];
-let zoneInfo;
 {
   await arena('father-thorne', { x: 430 });
   let v = await view(page);
@@ -599,7 +595,6 @@ let zoneInfo;
   const c = await count([CELL.Trunk, CELL.Moss, CELL.Leaf, CELL.Vines]);
   const tot = (o) => Object.values(o).reduce((a, b) => a + b, 0);
   console.log(`  (cells after 8 / 22 / 132 ticks: ${tot(c8)} / ${tot(c22)} / ${tot(c)}; at 132: ${JSON.stringify(c)}; vine strands lifted: ${await page.evaluate(() => window.__fp.ctx.vineStrands?.strands?.length ?? -1)})`);
-  zoneInfo = c;
   check('it sweeps out: more cells at 22 ticks than at 8, and more still when the wave has crossed', tot(c8) < tot(c22) && tot(c22) < tot(c), `${tot(c8)} ${tot(c22)} ${tot(c)}`);
   check('roots: hundreds of Trunk cells (climbable roots hung from the ceiling and up the walls)', c[CELL.Trunk] > 150, `${c[CELL.Trunk]}`);
   check('Moss and Leaf ground cover', c[CELL.Moss] > 40 && c[CELL.Leaf] > 15, `${c[CELL.Moss]} moss, ${c[CELL.Leaf]} leaf`);

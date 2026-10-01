@@ -64,9 +64,9 @@ for (const [w, h] of sizes) {
 
   // ---- the main page: only the doors ----
   const main = await items();
-  check(`${tag}: the main page lists the doors, in order`, JSON.stringify(main.filter((id) => id !== 'workshops')) === JSON.stringify(['begin', 'daily', 'extras', 'settings']), JSON.stringify(main));
+  check(`${tag}: the main page lists the doors, in order`, JSON.stringify(main.filter((id) => id !== 'workshops')) === JSON.stringify(['begin', 'daily', 'arena', 'extras', 'settings']), JSON.stringify(main));
   check(`${tag}: it is short (six rows at most)`, main.length <= 6, String(main.length));
-  const dumped = await page.evaluate(() => ['.kit-chip', '.difficulty-chip', '.fighter-pick-chip', '[data-entry="case"]', '[data-entry="fighter"]', '[data-entry="seed"]', '[data-entry="trailer"]'].filter((s) => document.querySelector(`#expedition-entry ${s}`)));
+  const dumped = await page.evaluate(() => ['.kit-chip', '.difficulty-chip', '.fighter-pick-chip', '[data-entry="case"]', '[data-entry="fighter"]', '[data-entry="seed"]', '[data-entry="trailer"]', '#fighter-roster.visible'].filter((s) => document.querySelector(`#expedition-entry ${s}`)));
   check(`${tag}: no case, fighter, difficulty, seed or trailer controls on the main page`, dumped.length === 0, JSON.stringify(dumped));
   check(`${tag}: New descent holds the focus (the call to action)`, (await focused()) === 'begin', await focused());
   const fold0 = await inFold();
@@ -93,16 +93,17 @@ for (const [w, h] of sizes) {
   // ---- New descent: the loadout page ----
   await press('Enter'); await settle();
   const descent = await items();
-  check(`${tag}: Enter opens the loadout page`, JSON.stringify(descent) === JSON.stringify(['case', 'fighter', 'difficulty', 'complications', 'seed', 'descend', 'back']), JSON.stringify(descent));
+  check(`${tag}: Enter opens the loadout page`, JSON.stringify(descent) === JSON.stringify(['case', 'difficulty', 'complications', 'seed', 'descend', 'back']), JSON.stringify(descent));
   check(`${tag}: it opens on Descend`, (await focused()) === 'descend', await focused());
   const small = await page.evaluate(() => document.querySelector('#expedition-entry h1').getBoundingClientRect().height);
   check(`${tag}: the title steps back to a wordmark`, small < 60 && small < big / 1.6, `${small} vs ${big}`);
   check(`${tag}: the page is named`, /Prepare your descent/.test(await page.locator('#expedition-entry .tm-title').textContent()));
   check(`${tag}: Descend has no card (nothing to explain)`, (await card()) === '');
   check(`${tag}: the legend gains Back`, /Back/.test(await page.locator('#expedition-entry .tm-keys').textContent()));
-  check(`${tag}: the rows show a fresh profile's choices`, (await rowValue('case')) === 'Sparkwright' && (await rowValue('fighter')) === 'The Alchemist' && /Adept/.test(await rowValue('difficulty')) && (await rowValue('seed')) === 'Random');
-  await press('ArrowUp'); await press('ArrowUp'); await press('ArrowUp'); await press('ArrowUp'); await press('ArrowUp');
-  check(`${tag}: five Ups reach Case`, (await focused()) === 'case', await focused());
+  check(`${tag}: the rows show a fresh profile's choices`, (await rowValue('case')) === 'Sparkwright' && /Adept/.test(await rowValue('difficulty')) && (await rowValue('seed')) === 'Random');
+  check(`${tag}: the campaign has no fighter row (the fighters belong to the Arena)`, !(await visible('#expedition-entry [data-entry="fighter"]')));
+  await press('ArrowUp'); await press('ArrowUp'); await press('ArrowUp'); await press('ArrowUp');
+  check(`${tag}: four Ups reach Case`, (await focused()) === 'case', await focused());
   check(`${tag}: its card explains the case`, /Sparkwright/.test(await card()) && /Spark bolt/.test(await card()), (await card()).slice(0, 80));
   const fold1 = await inFold();
   check(`${tag}: the page and its card are above the fold`, fold1.bad.length === 0 && !fold1.hscroll, JSON.stringify(fold1));
@@ -112,24 +113,12 @@ for (const [w, h] of sizes) {
   await press('ArrowRight');
   check(`${tag}: Right on Case with one case owned changes nothing`, (await rowValue('case')) === 'Sparkwright');
   await press('ArrowDown'); await press('ArrowRight');
-  const fighterNow = await rowValue('fighter');
-  check(`${tag}: Right on Fighter picks the first fighter`, fighterNow === 'Ilyra Voss', fighterNow);
-  check(`${tag}: and the card lists her three abilities with the keys`, /Volatile Mixture/.test(await card()) && /Flash Crucible/.test(await card()) && /Phoenix Draft/.test(await card()) && /Z/.test(await card()), (await card()).slice(0, 120));
-  await page.screenshot({ path: `verify-out/title/menu-${tag}-fighter.png` });
-  const fold2 = await inFold();
-  check(`${tag}: the tall fighter card still fits the window`, fold2.bad.length === 0, JSON.stringify(fold2));
-  await press('ArrowLeft'); await press('ArrowLeft');
-  check(`${tag}: Left twice wraps to the last fighter`, (await rowValue('fighter')) === 'Father Thorne', await rowValue('fighter'));
-  await press('ArrowRight');
-  check(`${tag}: Right wraps back to the classic Alchemist`, (await rowValue('fighter')) === 'The Alchemist', await rowValue('fighter'));
-  await press('ArrowRight');
-  await press('ArrowDown'); await press('ArrowRight');
   check(`${tag}: Right on Difficulty goes to Apprentice (the open tiers wrap)`, /Apprentice/.test(await rowValue('difficulty')), await rowValue('difficulty'));
-  const meta = await page.evaluate(() => ({ f: window.__game.ctx.run.metaView().lastFighter, d: window.__game.ctx.run.metaView().lastDifficulty }));
-  check(`${tag}: the choices are remembered by the profile`, meta.f === 'ilyra-voss' && meta.d === 1, JSON.stringify(meta));
+  const meta = await page.evaluate(() => ({ d: window.__game.ctx.run.metaView().lastDifficulty }));
+  check(`${tag}: the choice is remembered by the profile`, meta.d === 1, JSON.stringify(meta));
 
   // ---- lists: the current choice is focused, a locked one refuses and explains ----
-  await press('ArrowUp'); await press('ArrowUp');
+  await press('ArrowUp');
   await press('Enter'); await settle();
   check(`${tag}: Enter on Case opens the case list`, (await visible('#expedition-entry .tm-item[data-kit]')) && /Your case/.test(await page.locator('#expedition-entry .tm-title').textContent()));
   check(`${tag}: it opens on the case in use`, (await focused()) === 'kit-spark', await focused());
@@ -140,24 +129,27 @@ for (const [w, h] of sizes) {
   await page.screenshot({ path: `verify-out/title/menu-${tag}-case-list.png` });
   await press('Backspace'); await settle();
   check(`${tag}: Backspace goes back to the loadout page, on the row it came from`, (await focused()) === 'case', await focused());
-  await press('ArrowDown'); await press('ArrowDown');
+  await press('ArrowDown');
   await press('Enter'); await settle();
   check(`${tag}: Enter on Difficulty opens the tiers, on the current one`, (await focused()) === 'difficulty-1', await focused());
   await click('#expedition-entry .tm-item[data-difficulty="2"]');
   check(`${tag}: choosing Adept returns to the loadout page with the row updated`, (await visible('#expedition-entry [data-entry="descend"]')) && /Adept/.test(await rowValue('difficulty')), await rowValue('difficulty'));
 
-  // ---- the fighter roster opens from the row, and Back returns to it ----
-  await press('ArrowUp');
+  // ---- the Arena door: the roster over the title, Back returns to the door (the Proving Yard itself: verify-fighter-arena) ----
+  await press('Escape'); await settle();
+  for (let n = 0; n < 6 && (await focused()) !== 'arena'; n++) await press('ArrowDown');
+  check(`${tag}: the Arena door is on the main page`, (await focused()) === 'arena', await focused());
+  check(`${tag}: it says what it is`, /Pick a fighter/.test(await page.locator('#expedition-entry .tm-hint').textContent()), await page.locator('#expedition-entry .tm-hint').textContent());
   await press('Enter');
   await page.waitForSelector('#fighter-roster.visible', { timeout: 5000 });
-  check(`${tag}: Enter on Fighter opens the roster`, await visible('#fighter-roster.visible'));
-  await click('#fighter-roster .fr-card[data-entry="mara-quell"]');
-  await click('#fighter-roster .fr-choose');
-  await page.waitForTimeout(600);
-  check(`${tag}: choosing in the roster updates the row and returns to it`, (await rowValue('fighter')) === 'Mara Quell' && (await focused()) === 'fighter', `${await rowValue('fighter')} / ${await focused()}`);
+  check(`${tag}: Enter on Arena opens the roster`, await visible('#fighter-roster.visible'));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(500);
+  check(`${tag}: Escape leaves the roster and returns to the door; nothing started`, !(await visible('#fighter-roster.visible')) && (await focused()) === 'arena' && (await page.evaluate(() => window.__game.ctx.levels.current?.def.id !== 'fighter-test')), await focused());
+  await press('Home'); await press('Enter'); await settle();
 
   // ---- the Complications page: toggles, three at a time ----
-  await press('ArrowDown'); await press('ArrowDown');
+  await press('ArrowUp'); await press('ArrowUp'); // (the loadout page opens on Descend; above it are Seed, then Complications)
   check(`${tag}: Complications row`, (await focused()) === 'complications', await focused());
   check(`${tag}: it says None, and its card says the Works as issued`, (await rowValue('complications')) === 'None' && /The Works as issued/.test(await card()), `${await rowValue('complications')} / ${(await card()).slice(0, 60)}`);
   await press('Enter'); await settle();
@@ -218,7 +210,7 @@ for (const [w, h] of sizes) {
   // ---- the pad: the keys InputManager dispatches ----
   await page.evaluate(() => { document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', bubbles: true, cancelable: true })); });
   await page.waitForTimeout(90);
-  check(`${tag}: a dispatched d-pad Down moves the selection`, (await focused()) === 'fighter', await focused());
+  check(`${tag}: a dispatched d-pad Down moves the selection`, (await focused()) === 'difficulty', await focused());
   await page.evaluate(() => { document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true })); });
   await settle();
   check(`${tag}: and a dispatched B goes back to the main page, on New descent`, (await visible('#expedition-entry [data-entry="daily"]')) && (await focused()) === 'begin', await focused());
@@ -275,7 +267,7 @@ for (const [w, h] of sizes) {
   await page.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play' && window.__game.ctx.run?.active === true, { timeout: 30000 });
   await page.evaluate(() => window.__game.ctx.fighters.whenReady());
   const run = await page.evaluate(() => { const c = window.__game.ctx; return { fighter: c.fighters.id, difficulty: c.state.difficulty, kit: c.run.snapshotForSave()?.kit, seed: c.run.snapshotForSave()?.seed, chosen: c.run.snapshotForSave()?.seedChosen, mutators: c.run.snapshotForSave()?.mutators ?? null, hidden: document.getElementById('expedition-entry').hidden }; });
-  check(`${tag}: Descend starts the run as Mara Quell on Adept with the chosen seed`, run.fighter === 'mara-quell' && run.difficulty === 2 && run.kit === 'spark' && String(run.seed) === seedRow && run.chosen === true && run.hidden, JSON.stringify(run));
+  check(`${tag}: Descend starts the campaign as the classic Alchemist on Adept with the chosen seed`, run.fighter === null && run.difficulty === 2 && run.kit === 'spark' && String(run.seed) === seedRow && run.chosen === true && run.hidden, JSON.stringify(run));
   check(`${tag}: and carries the three complications`, JSON.stringify(run.mutators) === JSON.stringify(['wet-floors', 'slime-rain', 'gas-leak']), JSON.stringify(run.mutators));
   check(`${tag}: no page errors`, errors.length === 0, errors.slice(0, 2).join(' | '));
   await browser.close();

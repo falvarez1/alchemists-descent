@@ -10,7 +10,7 @@
 //     the ceiling returns to 40 (armor clamped) when it ends.
 // Every ability is also photographed (verify-out/fighters/rusk-*.png) so it can be LOOKED at.
 // Usage: node scripts/verify-fighter-rusk.mjs [url]
-import { aimAt, boot, makeChecker, me, press, shot, tick, view } from './fighter-probe.mjs';
+import { boot, makeChecker, me, press, shot, tick, view } from './fighter-probe.mjs';
 
 const url = process.argv[2] || 'http://localhost:5195/';
 const tally = makeChecker();
@@ -34,7 +34,6 @@ if (blocker) console.log('  note: a keyboard-owning panel was up after boot (' +
 // ---- page-side helpers --------------------------------------------------------------------------------
 await page.evaluate(async () => {
   const fac = await import('/src/core/mechanismFactories.ts');
-  const { Cell } = window.__fp;
   const ctx = window.__fp.ctx, w = ctx.world, p = ctx.player, A = window.__fp.ARENA;
   const sfx = [];
   const orig = ctx.audio.sfx.bind(ctx.audio);
@@ -108,7 +107,6 @@ const frame = async (x, y, zoom = 3) => {
   await page.waitForTimeout(260);
 };
 const sfxHas = (id) => page.evaluate((id) => window.__rk.sfx.includes(id), id);
-const FLOOR = 690; // arena floor row (stone); feet stand on 689
 
 // =======================================================================================================
 console.log('\n-- Scrap Recovery (passive)');

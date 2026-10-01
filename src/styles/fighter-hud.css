@@ -66,14 +66,3 @@
 /* Touch: the pad has its own Tactical/Ultimate buttons, and the corner stack moves to the top-left. */
 body.touch-enabled #fighter-chips .fc-names { display: none; }
 
-/* ------------------------------------------------------------------ "Your fighter" on the title and the ledger */
-
-.fighter-pick-chip { gap: 8px; }
-.fighter-pick-thumb { width: 28px !important; height: 28px !important; border: 1px solid var(--fighter-accent, #8b9d8f); overflow: hidden; background: #0b1417; flex: none; }
-.fighter-pick-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 24%; image-rendering: pixelated; display: block; }
-.fighter-pick-more { margin-left: 6px; color: var(--m-muted, #8fa090); font-size: 0.85em; letter-spacing: 0.04em; }
-.fighter-pick-chip:hover .fighter-pick-more, .fighter-pick-chip:focus-visible .fighter-pick-more { color: var(--m-text, #e3ead9); }
-/* The ledger: the fighter chip rides under the difficulty row in the choices' second column. */
-.rs-choices .rs-side { display: grid; gap: 14px; align-content: start; min-width: 0; }
-.rs-choices .rs-fighter { margin-top: 0; }
-.rs-choices .rs-fighter .kit-picker-label { margin: 0; }

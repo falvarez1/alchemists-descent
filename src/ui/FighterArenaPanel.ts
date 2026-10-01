@@ -1,0 +1,374 @@
+import '@/styles/arena.css';
+import { FIGHTER_DEFS, FIGHTER_ORDER, type FighterId } from '@/content/fighters';
+import { ARENA_TIPS, FOE_PRESETS, YARD_STATIONS, type FoePreset, type YardStation } from '@/content/fighterArena';
+import type { AbilitySlot } from '@/core/fighters';
+import type { Ctx, EnemyKind } from '@/core/types';
+import { getBindings, keyLabel } from '@/input/bindings';
+import { YARD, resetFighterArena, standFighterAt } from '@/world/fighterArena';
+import { openFighterRoster } from '@/ui/fighterRosterHost';
+
+/** The fighters the panel steps through: the classic Alchemist (null) first, then the ten. */
+const CYCLE: ReadonlyArray<FighterId | null> = [null, ...FIGHTER_ORDER];
+/** Foes that fly: they spawn up in the air, the rest on the floor. */
+const FLYERS: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['bat', 'imp', 'wisp']);
+const LEVEL_ID = 'fighter-test';
+/** The station names as the Go buttons print them. */
+const STATION_SHORT: Readonly<Record<YardStation, string>> = { muster: 'Muster', ring: 'Ring', gallery: 'Gallery', kiln: 'Kiln', bluff: 'Bluff', cistern: 'Cistern', cell: 'Cell' };
+const SPAWN_GROUND = 3;
+
+interface MoveRow {
+  root: HTMLElement;
+  status: HTMLElement;
+  uses: HTMLElement;
+  name: HTMLElement;
+  key: HTMLElement;
+  tip: HTMLElement;
+  where: HTMLButtonElement;
+  seen?: HTMLInputElement;
+}
+
+/**
+ * THE PROVING YARD's panel (docs/FIGHTERS.md): while the yard is the level, a card on the right edge that
+ * steps through the fighters ([ and ]), lists the one in hand's three abilities with what to try and WHERE, ticks
+ * each off as it fires, and carries the tools a tester wants: foes to hit (and shooters to be shot at), a refill
+ * and an unlimited toggle, hurt / heal, a safe mode (foes ignore you and nothing lands), "take me there" for every
+ * station, a reset that rebuilds the yard, and the way out.
+ *
+ * A developer's instrument, drawn in the game's HUD voice. It reads `ctx.fighters.view` and presses nothing itself:
+ * Z and T are the player's.
+ */
+export class FighterArenaPanel {
+  private readonly root = document.createElement('aside');
+  private readonly body = document.createElement('div');
+  private readonly name = document.createElement('div');
+  private readonly title = document.createElement('div');
+  private readonly rows: Record<'passive' | AbilitySlot, MoveRow>;
+  private readonly unlimited: HTMLInputElement;
+  private readonly safe: HTMLInputElement;
+  private readonly foesLabel = el('div', 'fa-label', 'Foes');
+  private raf = 0;
+  private frame = 0;
+  private shown = false;
+  private equipped: FighterId | null | undefined;
+  private readonly lastUsed: Record<AbilitySlot, number> = { tactical: -1, ultimate: -1 };
+  private readonly uses: Record<AbilitySlot, number> = { tactical: 0, ultimate: 0 };
+  private readonly offs: Array<() => void> = [];
+
+  constructor(private readonly ctx: Ctx) {
+    this.root.id = 'fighter-arena';
+    this.root.hidden = true;
+    this.root.setAttribute('aria-label', 'The Proving Yard');
+
+    const head = el('div', 'fa-head');
+    head.append(el('span', 'fa-title', 'THE PROVING YARD'));
+    const fold = el('button', 'fa-fold', '–') as HTMLButtonElement;
+    fold.type = 'button';
+    fold.title = 'Fold the panel';
+    fold.addEventListener('click', () => {
+      this.root.classList.toggle('collapsed');
+      fold.textContent = this.root.classList.contains('collapsed') ? '+' : '–';
+    });
+    head.append(fold);
+
+    // ---- the fighter in hand
+    const who = el('div', 'fa-who');
+    const prev = button('fa-step', '‹', () => this.step(-1), 'Previous fighter ( [ )');
+    const next = button('fa-step', '›', () => this.step(1), 'Next fighter ( ] )');
+    const names = el('div', 'fa-names');
+    this.name.className = 'fa-name';
+    this.title.className = 'fa-subtitle';
+    names.append(this.name, this.title);
+    const roster = button('fa-roster', 'Roster', () => this.openRoster(), 'Open the roster');
+    who.append(prev, names, next, roster);
+
+    // ---- the three abilities
+    const moves = el('div', 'fa-moves');
+    this.rows = {
+      passive: this.makeRow('passive'),
+      tactical: this.makeRow('tactical'),
+      ultimate: this.makeRow('ultimate'),
+    };
+    moves.append(this.rows.passive.root, this.rows.tactical.root, this.rows.ultimate.root);
+
+    // ---- foes
+    const foes = el('div', 'fa-section');
+    foes.append(this.foesLabel);
+    const foeRow = el('div', 'fa-buttons');
+    for (const preset of FOE_PRESETS) foeRow.append(button('fa-btn', preset.label, () => this.spawn(preset), `${preset.count} x ${preset.kind}`));
+    foeRow.append(button('fa-btn', 'Wound all', () => this.woundFoes(), 'Take every foe to 40% health (Sable\'s Bloodsense reads wounds)'));
+    foeRow.append(button('fa-btn', 'Clear', () => this.clearFoes(), 'Remove every foe and shot'));
+    foes.append(foeRow);
+
+    // ---- stations
+    const where = el('div', 'fa-section');
+    where.append(el('div', 'fa-label', 'Take me to'));
+    const whereRow = el('div', 'fa-buttons');
+    for (const id of Object.keys(YARD_STATIONS) as YardStation[]) {
+      whereRow.append(button('fa-btn', YARD_STATIONS[id].name.replace(/^The /, ''), () => standFighterAt(this.ctx, id), YARD_STATIONS[id].blurb));
+    }
+    where.append(whereRow);
+
+    // ---- tools
+    const tools = el('div', 'fa-section');
+    tools.append(el('div', 'fa-label', 'Tools'));
+    const toolRow = el('div', 'fa-buttons');
+    toolRow.append(
+      button('fa-btn', 'Refill', () => this.ctx.fighters?.refill(), 'Skip the cooldowns and fill the ultimate'),
+      button('fa-btn', 'Heal', () => this.heal(), 'Full health'),
+      button('fa-btn', 'Hurt 25', () => this.ctx.playerCtl.damage(25, 0, 0, 'proving-yard'), 'Take a blow (Brann\'s Pressure, Rusk\'s armor, Edda\'s shield)'),
+      button('fa-btn', 'Start', () => standFighterAt(this.ctx, 'muster'), 'Back to the dais'),
+      button('fa-btn', 'Reset yard', () => this.resetYard(), 'Rebuild the hall: the barricade, the keg, the oil, the potions'),
+      button('fa-btn fa-leave', 'Leave', () => window.dispatchEvent(new Event('expedition-title-request')), 'Back to the title'),
+    );
+    const toggles = el('div', 'fa-toggles');
+    this.unlimited = toggle('Unlimited abilities', 'Refill every cooldown and the ultimate as they run down');
+    this.safe = toggle('Safe mode', 'Foes ignore you and nothing hurts you (the arrival grace, held open)');
+    toggles.append(this.unlimited.parentElement as HTMLElement, this.safe.parentElement as HTMLElement);
+    tools.append(toolRow, toggles);
+
+    this.body.className = 'fa-body';
+    this.body.append(who, moves, foes, where, tools);
+    this.root.append(head, this.body);
+    (document.getElementById('canvas-holder') ?? document.body).append(this.root);
+
+    window.addEventListener('keydown', this.onKey);
+    this.offs.push(() => window.removeEventListener('keydown', this.onKey));
+    this.offs.push(ctx.events.on('levelChanged', () => { this.equipped = undefined; }));
+    this.loop = this.loop.bind(this);
+    this.raf = requestAnimationFrame(this.loop);
+  }
+
+  // ---- the panel's rows ----------------------------------------------------------------------------------
+
+  private makeRow(slot: 'passive' | AbilitySlot): MoveRow {
+    const root = el('div', `fa-move fa-${slot}`);
+    const top = el('div', 'fa-move-top');
+    const key = el('kbd', 'key', slot === 'passive' ? '·' : '');
+    const name = el('span', 'fa-move-name');
+    const status = el('span', 'fa-status');
+    const where = button('fa-where', '', () => undefined) as HTMLButtonElement;
+    const uses = el('span', 'fa-uses');
+    top.append(key, name, where, uses, status);
+    const tip = el('div', 'fa-tip');
+    root.append(top, tip);
+    const row: MoveRow = { root, status, uses, name, key, tip, where };
+    if (slot === 'passive') {
+      // the passive cannot be counted: the tester ticks it off once they have watched it work
+      const seen = toggle('Seen', 'Tick it off once you have watched the passive work');
+      seen.addEventListener('change', () => root.classList.toggle('done', seen.checked));
+      top.insertBefore(seen.parentElement as HTMLElement, status);
+      row.seen = seen;
+    }
+    return row;
+  }
+
+  // ---- the fighters ---------------------------------------------------------------------------------------
+
+  private step(dir: -1 | 1): void {
+    const at = CYCLE.indexOf(this.ctx.fighters?.id ?? null);
+    this.equip(CYCLE[((at < 0 ? 0 : at) + dir + CYCLE.length) % CYCLE.length]);
+  }
+
+  private equip(id: FighterId | null): void {
+    this.ctx.fighters?.equip(id);
+    this.ctx.run?.chooseFighter(id);
+    this.ctx.audio.sfx('ui.click');
+  }
+
+  private openRoster(): void {
+    openFighterRoster(this.ctx, this.ctx.fighters?.id ?? null, (id) => this.equip(id));
+  }
+
+  private readonly onKey = (event: KeyboardEvent): void => {
+    if (!this.shown || event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+    if (document.querySelector('#fighter-roster.visible')) return;
+    if (event.code === 'BracketLeft') { event.preventDefault(); this.step(-1); }
+    else if (event.code === 'BracketRight') { event.preventDefault(); this.step(1); }
+  };
+
+  // ---- the tools ------------------------------------------------------------------------------------------
+
+  private spawn(preset: FoePreset): void {
+    const ctx = this.ctx;
+    for (let i = 0; i < preset.count; i++) {
+      let x: number;
+      let y: number;
+      if (preset.at === 'gallery') {
+        x = YARD.gallery.x0 + 14 + i * 18;
+        y = YARD.gallery.y - 3;
+      } else if (preset.at === 'cell') {
+        x = YARD.cell.cx + (i - (preset.count - 1) / 2) * 30;
+        y = YARD.cell.y;
+      } else {
+        // the ring, alternating sides of the middle, never on a cover pillar
+        const side = i % 2 === 0 ? 1 : -1;
+        x = YARD.ring.cx + side * (60 + Math.floor(i / 2) * 34) + (FLYERS.has(preset.kind) ? 0 : 20);
+        y = FLYERS.has(preset.kind) ? YARD.floor - 46 : YARD.ring.y - SPAWN_GROUND;
+      }
+      ctx.enemyCtl.spawn(preset.kind, Math.round(x), Math.round(y));
+      const e = ctx.enemies[ctx.enemies.length - 1];
+      if (e) { e.sleeping = false; e.alerted = false; }
+    }
+  }
+
+  private clearFoes(): void {
+    this.ctx.enemies.length = 0;
+    this.ctx.projectiles.length = 0;
+  }
+
+  private woundFoes(): void {
+    for (const e of this.ctx.enemies) e.hp = Math.max(1, Math.round(e.maxHp * 0.4));
+  }
+
+  private heal(): void {
+    const p = this.ctx.player;
+    p.hp = p.maxHp;
+    p.dead = false;
+  }
+
+  private resetYard(): void {
+    resetFighterArena(this.ctx);
+    this.uses.tactical = 0;
+    this.uses.ultimate = 0;
+  }
+
+  // ---- the frame loop ---------------------------------------------------------------------------------------
+
+  private loop(): void {
+    this.raf = requestAnimationFrame(this.loop);
+    const ctx = this.ctx;
+    const active = ctx.state.mode === 'play' && ctx.levels.current?.def.id === LEVEL_ID && !document.body.classList.contains('entry-active');
+    if (active !== this.shown) {
+      this.shown = active;
+      this.root.hidden = !active;
+      if (!active) { ctx.state.arrivalGraceUntil = 0; this.safe.checked = false; }
+    }
+    if (!active) return;
+    // The tools that act every frame, even between the panel's slower redraws.
+    if (this.safe.checked) ctx.state.arrivalGraceUntil = ctx.state.frameCount + 120;
+    const fighters = ctx.fighters;
+    if (!fighters) return;
+    if (this.unlimited.checked && (!fighters.view.tactical.ready || !fighters.view.ultimate.ready)) fighters.refill();
+    // Count the uses on every frame (a use lasts one tick), draw on every sixth.
+    const view = fighters.view;
+    for (const slot of ['tactical', 'ultimate'] as const) {
+      const at = view[slot].usedAt;
+      if (at !== this.lastUsed[slot]) {
+        if (at >= 0) this.uses[slot]++;
+        this.lastUsed[slot] = at;
+      }
+    }
+    if (this.frame++ % 6 !== 0 && this.equipped === fighters.id) return;
+    this.draw();
+  }
+
+  private draw(): void {
+    const ctx = this.ctx;
+    const fighters = ctx.fighters;
+    if (!fighters) return;
+    const view = fighters.view;
+    const id = fighters.id;
+    const bindings = getBindings();
+    if (this.equipped !== id) {
+      this.equipped = id;
+      this.uses.tactical = 0;
+      this.uses.ultimate = 0;
+      this.lastUsed.tactical = view.tactical.usedAt;
+      this.lastUsed.ultimate = view.ultimate.usedAt;
+      this.fillFighter(id, keyLabel(bindings.tactical), keyLabel(bindings.ultimate));
+    }
+    this.root.style.setProperty('--fa-accent', id ? FIGHTER_DEFS[id].accent : '#d5b982');
+    this.statusOf('tactical', view.tactical.ready, view.tactical.active, view.tactical.cooldownSeconds, 1, view.tactical.name);
+    this.statusOf('ultimate', view.ultimate.ready, view.ultimate.active, view.ultimate.cooldownSeconds, view.ultimate.charge, view.ultimate.name);
+    this.rows.tactical.uses.textContent = this.uses.tactical > 0 ? `✓ ×${this.uses.tactical}` : '';
+    this.rows.ultimate.uses.textContent = this.uses.ultimate > 0 ? `✓ ×${this.uses.ultimate}` : '';
+    this.rows.tactical.root.classList.toggle('done', this.uses.tactical > 0);
+    this.rows.ultimate.root.classList.toggle('done', this.uses.ultimate > 0);
+    const foes = ctx.enemies.length;
+    this.foesLabel.textContent = foes === 0 ? 'Foes' : `Foes · ${foes} in the yard`;
+  }
+
+  private statusOf(slot: AbilitySlot, ready: boolean, active: number, seconds: number, charge: number, name: string): void {
+    const row = this.rows[slot];
+    row.name.textContent = name;
+    let text: string;
+    let state: string;
+    if (active > 0) { text = 'ACTIVE'; state = 'active'; }
+    else if (ready) { text = 'READY'; state = 'ready'; }
+    else if (slot === 'ultimate' && charge < 1) { text = `CHARGING ${Math.floor(charge * 100)}%`; state = 'charging'; }
+    else { text = `COOLING ${seconds}s`; state = 'cooling'; }
+    row.status.textContent = text;
+    row.status.dataset.state = state;
+  }
+
+  /** The fighter changed: the names, the keys, the tips and where to go. */
+  private fillFighter(id: FighterId | null, tacticalKey: string, ultimateKey: string): void {
+    this.name.textContent = id ? FIGHTER_DEFS[id].name : 'The Alchemist';
+    this.title.textContent = id ? `${FIGHTER_DEFS[id].title} · ${FIGHTER_DEFS[id].role}` : 'No fighter: no passive, no abilities';
+    const rows = this.rows;
+    rows.tactical.key.textContent = tacticalKey;
+    rows.ultimate.key.textContent = ultimateKey;
+    if (rows.passive.seen) { rows.passive.seen.checked = false; rows.passive.root.classList.remove('done'); }
+    if (!id) {
+      for (const slot of ['passive', 'tactical', 'ultimate'] as const) {
+        rows[slot].name.textContent = slot === 'passive' ? 'Nothing' : '—';
+        rows[slot].tip.textContent = 'The classic Alchemist has only the wands, the flask and the world. A baseline to compare the others against.';
+        rows[slot].where.textContent = '';
+        rows[slot].where.hidden = true;
+      }
+      rows.passive.status.textContent = '';
+      return;
+    }
+    const def = FIGHTER_DEFS[id];
+    const tips = ARENA_TIPS[id];
+    for (const slot of ['passive', 'tactical', 'ultimate'] as const) {
+      const row = rows[slot];
+      row.name.textContent = def[slot].name;
+      row.tip.textContent = tips[slot].try;
+      row.tip.title = def[slot].description;
+      row.where.hidden = false;
+      row.where.textContent = `Go: ${STATION_SHORT[tips[slot].where]}`;
+      row.where.title = `Stand at ${YARD_STATIONS[tips[slot].where].name}`;
+      const station = tips[slot].where;
+      row.where.onclick = () => standFighterAt(this.ctx, station);
+    }
+    rows.passive.status.textContent = 'PASSIVE';
+    rows.passive.status.dataset.state = 'passive';
+  }
+
+  dispose(): void {
+    cancelAnimationFrame(this.raf);
+    for (const off of this.offs) off();
+    this.root.remove();
+  }
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function button(className: string, text: string, onClick: () => void, title?: string): HTMLButtonElement {
+  const node = el('button', className, text);
+  node.type = 'button';
+  node.addEventListener('click', onClick);
+  // A click must not take the keyboard: Space is the jump, and a focused button would press itself with it.
+  node.addEventListener('mousedown', (event) => event.preventDefault());
+  if (title) node.title = title;
+  return node;
+}
+
+/** A labelled checkbox; returns the input (its label is its parent). */
+function toggle(label: string, title: string): HTMLInputElement {
+  const wrap = el('label', 'fa-toggle');
+  wrap.title = title;
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.addEventListener('change', () => input.blur());
+  wrap.append(input, el('span', 'fa-toggle-text', label));
+  return input;
+}

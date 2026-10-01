@@ -1,7 +1,9 @@
-// The Fighter Roster INTEGRATED into the title menu: the Fighter row is on the New descent page (one door in), inside the
-// fold at the usual window sizes, a real click opens the roster over the title, choosing a fighter updates the row and
-// its card and is remembered, Descend starts the run as that fighter, and the roster's classic choice goes back to the
-// classic Alchemist. Real clicks only. (The menu itself is verify-title-menu.mjs.)
+// The Fighter Roster and the title (docs/TITLE-MENU.md, docs/FIGHTERS.md): the fighters belong to the ARENA, not the campaign.
+//   the main page has an Arena door, inside the fold at the usual window sizes
+//   a real click opens the Fighter Roster over the title; Escape leaves it with nothing started and the door keeps the focus
+//   choosing a fighter starts the Proving Yard as them (a disposable test run, never a saved descent)
+//   the campaign has no fighter anywhere: New descent has no Fighter row, and Descend starts the classic Alchemist even when
+//   the profile remembers a fighter from the arena
 // Usage: node scripts/verify-fighter-title.mjs [url] [--sizes 1400x860,960x600,800x600]
 import { mkdirSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
@@ -38,64 +40,55 @@ for (const [w, h] of sizes) {
   await page.waitForSelector('#expedition-entry:not([hidden])', { timeout: 20000 });
   await page.waitForTimeout(900);
 
-  // --- one door in, the Fighter row is on screen, with Descend still reachable
-  await click(page, '#expedition-entry [data-entry="begin"]');
-  const row = await page.evaluate(() => {
-    const f = document.querySelector('#expedition-entry [data-entry="fighter"]');
-    const d = document.querySelector('#expedition-entry [data-entry="descend"]');
-    const box = (el) => { const r = el?.getBoundingClientRect(); return r ? { x: r.x, y: r.y, w: r.width, h: r.height } : null; };
-    return { row: box(f), descend: box(d), text: f?.textContent ?? '', vh: window.innerHeight };
+  // --- the Arena door is on the main page, inside the fold
+  const door = await page.evaluate(() => {
+    const a = document.querySelector('#expedition-entry [data-entry="arena"]');
+    const r = a?.getBoundingClientRect();
+    return { box: r ? { y: r.y, h: r.height } : null, text: a?.textContent ?? '', vh: window.innerHeight };
   });
-  check(`${tag}: the loadout page has a Fighter row (the classic Alchemist by default)`, row.row !== null && /The Alchemist/.test(row.text), JSON.stringify(row.text));
-  check(`${tag}: the row is on screen`, row.row && row.row.y >= 0 && row.row.y + row.row.h <= row.vh, JSON.stringify(row.row));
-  check(`${tag}: Descend is reachable`, row.descend && row.descend.y >= 0 && row.descend.y + row.descend.h <= row.vh, JSON.stringify(row.descend));
+  check(`${tag}: the main page has an Arena door (the Proving Yard)`, door.box !== null && /Arena/.test(door.text) && /Proving Yard/.test(door.text), JSON.stringify(door.text));
+  check(`${tag}: it is on screen`, door.box && door.box.y >= 0 && door.box.y + door.box.h <= door.vh, JSON.stringify(door.box));
   await page.screenshot({ path: `verify-out/fighters/title-${tag}.png` });
 
   // --- a real click opens the roster over the title
-  await click(page, '#expedition-entry [data-entry="fighter"]');
+  await click(page, '#expedition-entry [data-entry="arena"]');
   await page.waitForSelector('#fighter-roster.visible', { timeout: 5000 });
   await page.waitForTimeout(700);
-  check(`${tag}: a click on the row opens the Fighter Roster`, await page.evaluate(() => !!document.querySelector('#fighter-roster.visible')));
+  check(`${tag}: a click on the Arena door opens the Fighter Roster`, await page.evaluate(() => !!document.querySelector('#fighter-roster.visible')));
   await page.screenshot({ path: `verify-out/fighters/title-roster-${tag}.png` });
 
-  // --- Back leaves the roster with nothing changed, and the row keeps the focus
+  // --- Back leaves it with nothing started, and the door keeps the focus
   await page.keyboard.press('Escape');
   await page.waitForTimeout(500);
-  const backed = await page.evaluate(() => ({ open: !!document.querySelector('#fighter-roster.visible'), row: document.querySelector('#expedition-entry [data-entry="fighter"]')?.textContent ?? '', active: document.activeElement?.dataset?.entry }));
-  check(`${tag}: Escape closes the roster, changes nothing and returns to the row`, !backed.open && /The Alchemist/.test(backed.row) && backed.active === 'fighter', JSON.stringify(backed));
-  await click(page, '#expedition-entry [data-entry="fighter"]');
+  const backed = await page.evaluate(() => ({ open: !!document.querySelector('#fighter-roster.visible'), active: document.activeElement?.dataset?.entry, level: window.__game.ctx.levels.current?.def.id, entry: !document.getElementById('expedition-entry').hidden }));
+  check(`${tag}: Escape closes the roster, starts nothing and returns to the Arena door`, !backed.open && backed.active === 'arena' && backed.entry && backed.level !== 'fighter-test', JSON.stringify(backed));
+
+  // --- choosing a fighter starts the Proving Yard as them
+  await click(page, '#expedition-entry [data-entry="arena"]');
   await page.waitForSelector('#fighter-roster.visible', { timeout: 5000 });
   await page.waitForTimeout(500);
-
-  // --- choose Mara Quell: click her card, then Choose
   await click(page, '#fighter-roster .fr-card[data-entry="mara-quell"]');
   check(`${tag}: her dossier shows`, /Mara Quell/.test(await page.locator('#fighter-roster .fr-name').textContent()));
   await page.screenshot({ path: `verify-out/fighters/title-roster-mara-${tag}.png` });
   await click(page, '#fighter-roster .fr-choose');
-  await page.waitForTimeout(600);
-  const after = await page.evaluate(() => ({
-    open: !!document.querySelector('#fighter-roster.visible'),
-    row: document.querySelector('#expedition-entry [data-entry="fighter"] .tm-value')?.textContent ?? '',
-    card: document.querySelector('#expedition-entry .tm-detail')?.textContent ?? '',
-    remembered: window.__game?.ctx?.run?.metaView?.().lastFighter ?? 'n/a',
-    paused: window.__game?.ctx?.state?.paused,
-    active: document.activeElement?.dataset?.entry,
-  }));
-  check(`${tag}: choosing closes the roster and the row names her`, !after.open && after.row === 'Mara Quell', JSON.stringify(after));
-  check(`${tag}: the card names her kit and the keys`, /Resonance Bell/.test(after.card) && /Dead Chime/.test(after.card) && /Z/.test(after.card) && /T/.test(after.card), after.card.slice(0, 160));
-  check(`${tag}: the choice is remembered`, after.remembered === 'mara-quell', String(after.remembered));
-  check(`${tag}: the title is still paused behind it, the row has the focus`, after.paused === true && after.active === 'fighter', JSON.stringify({ paused: after.paused, active: after.active }));
-  await page.screenshot({ path: `verify-out/fighters/title-mara-${tag}.png` });
-
-  // --- Descend as her
-  await click(page, '#expedition-entry [data-entry="descend"]');
-  await page.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play' && window.__game.ctx.run?.active === true, { timeout: 30000 });
+  await page.waitForFunction(() => window.__game?.ctx?.levels?.current?.def.id === 'fighter-test' && window.__game.ctx.state.mode === 'play', null, { timeout: 40000 });
   await page.evaluate(() => window.__game.ctx.fighters.whenReady());
-  const run = await page.evaluate(() => ({ id: window.__game.ctx.fighters.id, run: window.__game.ctx.run.fighter, t: window.__game.ctx.fighters.view.tactical.name }));
-  check(`${tag}: the run starts as Mara Quell`, run.id === 'mara-quell' && run.run === 'mara-quell' && run.t === 'Resonance Bell', JSON.stringify(run));
-  await page.waitForTimeout(500);
+  const yard = await page.evaluate(() => { const c = window.__game.ctx; return { id: c.fighters.id, t: c.fighters.view.tactical.name, remembered: c.run.metaView().lastFighter, test: c.state.playtestSource, entry: document.getElementById('expedition-entry').hidden, panel: !document.getElementById('fighter-arena').hidden }; });
+  check(`${tag}: choosing Mara Quell starts the Proving Yard as her (a test run), with the panel up`, yard.id === 'mara-quell' && yard.t === 'Resonance Bell' && yard.test === 'test' && yard.entry && yard.panel, JSON.stringify(yard));
+  check(`${tag}: the profile remembers the arena fighter`, yard.remembered === 'mara-quell', String(yard.remembered));
   const chipsOn = await page.evaluate(() => { const c = document.getElementById('fighter-chips'); return !!c && !c.hidden; });
   check(`${tag}: her ability chips are on the HUD`, chipsOn);
+
+  // --- back at the title, the campaign knows no fighter: no row, and Descend starts the classic Alchemist
+  await page.evaluate(() => window.dispatchEvent(new Event('expedition-title-request')));
+  await page.waitForSelector('#expedition-entry:not([hidden])', { timeout: 10000 });
+  await page.waitForTimeout(600);
+  await click(page, '#expedition-entry [data-entry="begin"]');
+  check(`${tag}: New descent has no Fighter row`, !(await page.locator('#expedition-entry [data-entry="fighter"]').count()));
+  await click(page, '#expedition-entry [data-entry="descend"]');
+  await page.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play' && window.__game.ctx.run?.active === true && window.__game.ctx.levels.current?.def.id !== 'fighter-test', { timeout: 40000 });
+  const camp = await page.evaluate(() => ({ id: window.__game.ctx.fighters.id, runFighter: window.__game.ctx.run.fighter ?? null, chips: !document.getElementById('fighter-chips') || document.getElementById('fighter-chips').hidden, panel: !document.getElementById('fighter-arena').hidden }));
+  check(`${tag}: Descend starts the campaign as the classic Alchemist (the remembered arena fighter is not used)`, camp.id === null && camp.runFighter === null && camp.chips && !camp.panel, JSON.stringify(camp));
   await browser.close();
   check(`${tag}: no page errors`, errors.length === 0, errors.slice(0, 2).join(' | '));
 }

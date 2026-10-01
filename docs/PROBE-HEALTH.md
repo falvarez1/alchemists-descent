@@ -166,3 +166,12 @@ the audio, boons, clips, living-*, mobile, hosted and builder-prod-network probe
 `verify-run-lifecycle` fails at the first respawn wait (`waitPlaying('d1')` after `#respawn-btn`, 10 s) on main too (its
 original version run against main f63f2eb stops at the same check), so the title section it now carries (kit list via
 Case) has not run; verify-title-menu covers the same ground.
+
+## 2026-10-01 (later): fighters left the campaign; the Proving Yard
+
+`verify-fighter-title` and `verify-fighter-ledger` were rewritten: the title has an Arena door (not a Fighter row) and the
+ledger offers no fighter. New: `verify-fighter-arena.mjs` (65 checks: the Arena door to the yard, the hall and its open
+corridor, the panel, every fighter's Z and T through the real key path, the tools, Rusk's ram, the keg, Reset yard, Leave).
+`verify-title-menu` gained the Complications page and the Arena door (237 checks at three sizes). Main (Complications,
+alchemy, builds) is merged in: `verify-mutators` (title section) and `verify-builds` follow the menu. The fighter kit probes
+had 17 unused-variable lint errors (CI lints scripts too: `npm run lint`); fixed, not re-run.

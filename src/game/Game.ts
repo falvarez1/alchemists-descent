@@ -96,6 +96,7 @@ import { RunDirector } from '@/game/RunDirector';
 import { RunSummary } from '@/ui/RunSummary';
 import { RunHud } from '@/ui/RunHud';
 import { FighterChips } from '@/ui/FighterChips';
+import { FighterArenaPanel } from '@/ui/FighterArenaPanel';
 import { DialogueBox } from '@/ui/story/DialogueBox';
 import { StoryCinemaOverlay } from '@/ui/story/StoryCinema';
 
@@ -453,6 +454,8 @@ export class Game {
     this.disposables.push(new RunHud(ctx, () => runSummary.showLast()));
     // The fighter's tactical and ultimate chips under the flask belt (nothing for the classic Alchemist).
     this.disposables.push(new FighterChips(ctx));
+    // The Proving Yard's card (steps through the fighters, ticks off their moves); it shows only in that level.
+    this.disposables.push(new FighterArenaPanel(ctx));
     // The story's dialogue box (Pell) with its interact prompt, and the opening/ending plates.
     // (Matron Ash's voice comes with the play systems.)
     this.disposables.push(new DialogueBox(ctx), new StoryCinemaOverlay(ctx));

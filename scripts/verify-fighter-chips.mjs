@@ -2,7 +2,7 @@
 // with a real click, a cooldown that counts down on the chip, an ultimate ring that fills and glows when ready,
 // and the armor bar / kit meter. Screenshots of each state go to verify-out/fighters/.
 // Usage: node scripts/verify-fighter-chips.mjs [url]
-import { boot, makeChecker, shot, tick, view } from './fighter-probe.mjs';
+import { boot, makeChecker, shot, tick } from './fighter-probe.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 const t = makeChecker();

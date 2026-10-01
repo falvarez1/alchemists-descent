@@ -5,8 +5,6 @@ import { descendBehindCurtain, descentCurtainCopy } from '@/game/descentCurtain'
 import { KIT_DEFS } from '@/content/kits';
 import { boonNames, formatChain, formatRunTime, runHeadline, shareLine } from '@/game/runRules';
 import { KitPicker } from '@/ui/KitPicker';
-import { FighterPick } from '@/ui/FighterPick';
-import type { FighterId } from '@/content/fighters';
 import { DifficultyPicker } from '@/ui/DifficultyPicker';
 import { BASE_DIFFICULTY, DIFFICULTY_BLURBS } from '@/config/difficultyLadder';
 import { DIFFICULTY } from '@/config/difficulty';
@@ -71,7 +69,6 @@ export class RunSummary {
   private readonly nextComps: ComplicationsDisclosure;
   private readonly unlocks = document.createElement('ul');
   private readonly kits: KitPicker;
-  private readonly fighters: FighterPick;
   private readonly grades: DifficultyPicker;
   private readonly actions = document.createElement('div');
   private readonly status = document.createElement('p');
@@ -86,7 +83,6 @@ export class RunSummary {
   /** A "Save clip" from the ledger is in flight; its outcome lands in the status line. */
   private awaitingClip = false;
   private chosenKit: KitId = 'spark';
-  private chosenFighter: FighterId | null = null;
   private chosenDifficulty: Difficulty = BASE_DIFFICULTY;
 
   constructor(private readonly ctx: Ctx) {
@@ -117,12 +113,6 @@ export class RunSummary {
       ctx.run?.chooseKit(kit);
     });
     this.kits.root.classList.add('rs-kits');
-    // Who carries the next descent: the same chip as the title, and the same Fighter Roster behind it.
-    this.fighters = new FighterPick(ctx, 'Fighter', (id) => {
-      this.chosenFighter = id;
-      ctx.run?.chooseFighter(id);
-    });
-    this.fighters.root.classList.add('rs-fighter');
     this.grades = new DifficultyPicker('Difficulty', (tier) => {
       this.chosenDifficulty = tier;
       ctx.run?.chooseDifficulty(tier);
@@ -155,11 +145,7 @@ export class RunSummary {
     // difficulty picker beside it costs the ledger no height (it already scrolls on a short window).
     const choices = document.createElement('div');
     choices.className = 'rs-choices';
-    // (the fighter rides under the difficulty: that column has the room, the kit column is already the tall one)
-    const side = document.createElement('div');
-    side.className = 'rs-side';
-    side.append(this.grades.root, this.fighters.root);
-    choices.append(this.kits.root, side);
+    choices.append(this.kits.root, this.grades.root);
     foot.append(choices, this.nextComps.root, this.actions, this.status, this.shareText);
     this.shell.append(head, body, foot);
     this.root.appendChild(this.shell);
@@ -263,8 +249,6 @@ export class RunSummary {
     const view = ctx.run?.metaView();
     this.chosenKit = view?.lastKit ?? summary.kit;
     this.kits.render(view?.unlockedKits ?? ['spark'], this.chosenKit, result.unlocked);
-    this.chosenFighter = view?.lastFighter ?? null;
-    this.fighters.render(this.chosenFighter);
     this.chosenDifficulty = view?.lastDifficulty ?? BASE_DIFFICULTY;
     this.grades.render(view?.bestVictoryDifficulty ?? 0, this.chosenDifficulty, result.unlockedDifficulty);
     this.awaitingClip = false;
@@ -541,7 +525,7 @@ export class RunSummary {
     this.status.textContent = `Opening the intake with ${KIT_DEFS[this.chosenKit].name}…`;
     // The curtain (floor 1's name) comes up over the ledger and paints before generation blocks the thread.
     const started = await descendBehindCurtain(this.ctx, descentCurtainCopy(START_LEVEL), () =>
-      run.startNewRun(this.ctx, { kit: this.chosenKit, daily: false, difficulty: this.chosenDifficulty, fighter: this.chosenFighter, mutators: this.nextComps.selected }));
+      run.startNewRun(this.ctx, { kit: this.chosenKit, daily: false, difficulty: this.chosenDifficulty, mutators: this.nextComps.selected }));
     this.busy = false;
     if (started.ok) {
       this.hide();

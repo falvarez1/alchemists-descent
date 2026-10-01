@@ -1,22 +1,19 @@
 import { describe, expect, test } from 'vitest';
-import { FIGHTER_DEFS, FIGHTER_ORDER } from '@/content/fighters';
+import { FIGHTER_DEFS } from '@/content/fighters';
 import { KIT_DEFS, KIT_ORDER } from '@/content/kits';
 import { MAX_MUTATORS, MUTATOR_DEFS, MUTATOR_ORDER } from '@/content/mutators';
 import { DIFFICULTY_ORDER } from '@/config/difficulty';
 import {
-  FIGHTER_CYCLE,
   complicationDetail,
   complicationsDetail,
   complicationsTotal,
   complicationsValue,
   continueLine,
   cycleDifficulty,
-  cycleFighter,
   cycleKit,
   cycleOpen,
   dailyLines,
   difficultyDetail,
-  fighterDetail,
   keyHints,
   kitDetail,
   loadMark,
@@ -56,14 +53,6 @@ describe('cycleOpen: Left / Right on a choice row', () => {
     expect(cycleDifficulty(4, 4, 1)).toBe(1);
   });
 
-  test('the fighter row walks the classic Alchemist and then all ten', () => {
-    expect(FIGHTER_CYCLE).toHaveLength(11);
-    expect(FIGHTER_CYCLE[0]).toBeNull();
-    expect(cycleFighter(null, 1)).toBe(FIGHTER_ORDER[0]);
-    expect(cycleFighter(null, -1)).toBe(FIGHTER_ORDER[FIGHTER_ORDER.length - 1]);
-    expect(cycleFighter(FIGHTER_ORDER[FIGHTER_ORDER.length - 1], 1)).toBeNull();
-    expect(cycleFighter(FIGHTER_ORDER[0], -1)).toBeNull();
-  });
 });
 
 describe('moveFocusIndex: Up / Down wrap, Home / End jump', () => {
@@ -130,23 +119,6 @@ describe('the detail cards', () => {
     expect(difficultyDetail(4, 3).locked).toBe(false);
   });
 
-  test('the classic Alchemist has no abilities to list; every fighter lists three, with the keys', () => {
-    const classic = fighterDetail(null, { tactical: 'Z', ultimate: 'T' });
-    expect(classic.lines).toBeUndefined();
-    expect(classic.heading).toBe('The Alchemist');
-    for (const id of FIGHTER_ORDER) {
-      const card = fighterDetail(id, { tactical: 'Z', ultimate: 'T' });
-      expect(card.heading).toBe(FIGHTER_DEFS[id].name);
-      expect(card.lines?.map((line) => line.label)).toEqual(['Passive', 'Z', 'T']);
-      expect(card.lines?.map((line) => line.name)).toEqual([FIGHTER_DEFS[id].passive.name, FIGHTER_DEFS[id].tactical.name, FIGHTER_DEFS[id].ultimate.name]);
-      expect(card.icon?.kind).toBe('portrait');
-    }
-  });
-
-  test('a rebound key shows as the player bound it', () => {
-    const card = fighterDetail('ilyra-voss', { tactical: 'Q', ultimate: 'Shift' });
-    expect(card.lines?.map((line) => line.label)).toEqual(['Passive', 'Q', 'Shift']);
-  });
 });
 
 describe('the key legend', () => {

@@ -68,6 +68,8 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # (footfalls/splashes/tracks/vines/critters), bench-creatures.mjs,
 # perf-creatures-live.mjs. Player (docs/PLAYER-ART.md): player-studio.mjs
 # (every action posed + costume-ticked, zoomed), probe-player-death.mjs
+# Proving Yard (dev server running): verify-fighter-arena.mjs (the Arena door to the yard, the hall, the panel, every fighter's Z and T,
+# the ram, the keg), shot-blueprint.mjs fighter-test (the whole hall).
 # Title menu (dev server running): verify-title-menu.mjs (the menu at three sizes: keys, rows, lists, seed, pointer, a
 # fake pad the game polls, Descend starts what the rows say), shot-title.mjs (every page, for the eye).
 # Gameplay/runtime probes (dev server running): verify-tea-machine.mjs (floor 1 PLAYED with
@@ -116,15 +118,17 @@ dev server. `scripts/verify-*.mjs` show the pattern.
   MOVE, it keeps its id (`tests/builder-shell-markup.test.ts`). The Builder owns the terrain while open:
   a document with none captures the live grid on save/validate/play, and opening over a changed Sandbox
   asks which copy to edit. See `docs/BUILDER-STUDIO.md`.
-- **Fighters are who you descend as** (`src/fighters/`, docs/FIGHTERS.md): ten, each a look, a passive, a tactical
-  (Z) and an ultimate (T). `ctx.fighters` is absent in test contexts and `id` is null for the classic Alchemist,
+- **Fighters are for the ARENA mode, not the campaign** (`src/fighters/`, docs/FIGHTERS.md): ten, each a look, a passive,
+  a tactical (Z) and an ultimate (T). The campaign is the classic Alchemist only; the title's Arena door (authoring
+  builds) starts the Proving Yard (`world/fighterArena`, level `fighter-test`, `ui/FighterArenaPanel`), the test
+  arena where each is walked through every move. The arena MODE itself (rules, several fighters, bots) is not built. `ctx.fighters` is absent in test contexts and `id` is null for the classic Alchemist,
   so every engine hook (`ctx.fighters?.…`) is a no-op by default; `FighterSystem` owns the shared machinery
   (cooldowns, ultimate charge, modifiers, a foe's slow/stun/reveal, a body-owning `startMove`, armor, drawables,
   lights) and a kit (`fighters/kits/<id>.ts`, lazy, found by filename: helper modules are `<id>-<what>.ts`) is
   only the rules. A foe's slow is TIME (`enemyRuns`), never a per-sample velocity scale. The look
   (`render/player/looks/<id>.ts`) is the alchemist's own rig and cloth dressed differently, never a sprite. A
-  fighter rides the run exactly as `kitId` does (config, `RunSaveState`, meta profile, ledger) and the daily is
-  always the classic Alchemist. The arena mode they were designed for does not exist yet.
+  fighter still rides a run the way `kitId` does (config, `RunSaveState`, meta profile) so the arena can reuse it, but
+  no campaign UI sets one and the daily is always the classic Alchemist.
 - **The title is a game menu, not a page** (`src/ui/title/`, docs/TITLE-MENU.md): a short main list, each door a page
   (New descent is the loadout: case / fighter / difficulty / seed / Descend), a detail card beside the focused row.
   `titleMenuModel.ts` is the pure part (tested), `TitleMenu.ts` the engine, `ExpeditionEntry.ts` the pages. Items are
@@ -243,7 +247,7 @@ loops degrade criteria progressively, never silently skip.
   `docs/DIFFICULTY.md` — the four-tier ladder: who may pick which, where it lives, why it fits;
   `docs/PROBE-HEALTH.md` — which `scripts/verify-*` probes pass, which are stale and why (run before trusting a red one)
 - `docs/TITLE-MENU.md` — the title as a game menu: the pages, the files, the rules (focus, pointer, key legend), the probes
-- `docs/FIGHTERS.md` — the ten fighters: the engine seams, every ability's spec, how to write a kit, the probes;
+- `docs/FIGHTERS.md` — the ten fighters and the Proving Yard: the engine seams, every ability's spec, how to write a kit, the probes;
   `docs/fighters/<id>.md` — each fighter's numbers, measurements and deviations; `docs/fighters/KIT-BRIEF.md`
   — the working brief a kit is built to
 - `docs/BUILDER-STUDIO.md` — the Builder's shell, design system, Sandbox↔Builder↔game flow and what was cut;

@@ -73,7 +73,6 @@ const steam = () => page.evaluate(() => window.__fp.count(window.__fp.Cell.Steam
 /** Frame the camera tighter or looser for a screenshot (it eases over ~30 ticks; the plate and steam are tick-driven, so settle first). */
 const zoomTo = async (k) => { await page.evaluate((z) => { window.__fp.ctx.camera.zoomLock = z; }, k); await tick(page, 36); };
 const aimRight = () => aimAt(page, 520, FLOOR - 10);
-const aimLeft = () => aimAt(page, 360, FLOOR - 10);
 
 // The test arena's teach card and pickup toasts never fade while the world is paused: hide them for the screenshots.
 await page.evaluate(() => { const st = document.createElement('style'); st.textContent = '#wave-banner, .wave-banner { display: none !important; }'; document.head.appendChild(st); });

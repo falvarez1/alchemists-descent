@@ -172,12 +172,12 @@ if (run('soot')) {
   check('and the veil drawable is gone with them', (await page.evaluate(() => window.__fp.ctx.fighters.drawables.length)) === 0);
 
   // darkness, installed the way Long Night installs it: a profile for the level and a NEW zone array
-  await page.evaluate(async ({ X0, FLOOR }) => {
+  await page.evaluate(async () => {
     const c = window.__fp.ctx, p = c.player;
     const cfg = await import('/src/config/darkness.ts');
     cfg.FLOOR_DARKNESS['physics-test'] = { base: 0, deep: 1 };
     c.levels.current.darkZones = [{ x: p.x, y: p.y - 9, rx: 200, ry: 120, strength: 1, shape: 'ellipse' }];
-  }, { X0, FLOOR });
+  });
   await tick(page, 4);
   const dark = (await level(X0, FLOOR - 9)).dark;
   check('the dark zone is real: lightQuery.darkness at her is above 0.5', dark > 0.5, `${dark}`);
@@ -436,7 +436,6 @@ if (run('cost')) {
 console.log('\nLong Night');
 if (run('night')) {
   await arena();
-  const ids = {};
   await lampAt(60, -40, 1.4); await lampAt(-150, -35, 1.2); await lampAt(240, -40, 1.05); await lampAt(300, -40, 1.4); // the last is out of her 260
   const L0 = await lamps(); // [the level's own (far away, out of range), +4 test lamps]
   const lampPos = await page.evaluate(() => window.__fp.ctx.levels.current.authoredLights.map((l) => [Math.round(l.x), Math.round(l.y), l.intensity, !!l.__nox]));
