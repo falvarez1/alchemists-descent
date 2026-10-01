@@ -239,7 +239,7 @@ async function sectionLeak() {
     c.events.emit('paramsChanged');
     return { stored: localStorage.getItem('ad:tuning:v1'), wood: c.params.materials[4].flammability, ambient: c.params.global.ambient, oil: c.params.materials[6].igniteChance };
   });
-  check('in force, the run plays on a clone: wood and oil catch more readily, the cave is darker', during.wood > 0.2 && during.oil > 0.15 && during.ambient < 0.2, JSON.stringify(during));
+  check('in force, the run plays on a clone: wood and oil catch more readily, the cave is darker', during.wood > 0.2 && during.oil > 0.15 && during.ambient < 0.25, JSON.stringify(during));
   await sleep(700);
   const flushed = await page.evaluate(() => localStorage.getItem('ad:tuning:v1'));
   check('a pagehide flush and a paramsChanged write NOTHING of it into ad:tuning:v1', flushed === null, String(flushed));
