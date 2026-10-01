@@ -10,6 +10,10 @@ import { BASE_DIFFICULTY, DIFFICULTY_BLURBS } from '@/config/difficultyLadder';
 import { DIFFICULTY } from '@/config/difficulty';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
 import { ledgerNote } from '@/ui/ledgerNotes';
+import { runNotesLine } from '@/ui/runNotes';
+import '@/styles/builds.css';
+import { ComplicationsDisclosure } from '@/ui/ComplicationsDisclosure';
+import { MUTATOR_DEFS, cleanMutators, mutatorLoadText } from '@/content/mutators';
 
 /** Victory lands after the Colossus's last explosion has. */
 const VICTORY_REVEAL_MS = 2400;
@@ -57,6 +61,12 @@ export class RunSummary {
   private readonly note = document.createElement('p');
   private readonly daily = document.createElement('p');
   private readonly boons = document.createElement('p');
+  /** The build the run ended with, and its decision notes ("Run notes"). */
+  private readonly build = document.createElement('p');
+  private readonly runNotes = document.createElement('p');
+  /** What the run carried: its complications, as chips (empty and hidden on an ordinary run). */
+  private readonly complications = document.createElement('div');
+  private readonly nextComps: ComplicationsDisclosure;
   private readonly unlocks = document.createElement('ul');
   private readonly kits: KitPicker;
   private readonly grades: DifficultyPicker;
@@ -92,7 +102,12 @@ export class RunSummary {
     this.note.className = 'rs-note';
     this.daily.className = 'rs-daily';
     this.boons.className = 'rs-boons';
+    this.build.className = 'rs-boons rs-build';
+    this.runNotes.className = 'rs-boons rs-notes';
+    this.complications.className = 'rs-complications';
+    this.complications.setAttribute('aria-label', 'Complications this descent carried');
     this.unlocks.className = 'rs-unlocks';
+    this.nextComps = new ComplicationsDisclosure(ctx, 'ledger');
     this.kits = new KitPicker('Next descent', (kit) => {
       this.chosenKit = kit;
       ctx.run?.chooseKit(kit);
@@ -123,7 +138,7 @@ export class RunSummary {
     head.append(this.kicker, this.title, this.epitaph);
     const body = document.createElement('div');
     body.className = 'rs-body';
-    body.append(this.floors, this.stats, this.note, this.boons, this.daily, this.unlocks);
+    body.append(this.floors, this.stats, this.note, this.boons, this.complications, this.build, this.runNotes, this.daily, this.unlocks);
     const foot = document.createElement('div');
     foot.className = 'rs-foot';
     // The next descent's two choices sit side by side: the kit picker is the taller of the two, so the
@@ -131,7 +146,7 @@ export class RunSummary {
     const choices = document.createElement('div');
     choices.className = 'rs-choices';
     choices.append(this.kits.root, this.grades.root);
-    foot.append(choices, this.actions, this.status, this.shareText);
+    foot.append(choices, this.nextComps.root, this.actions, this.status, this.shareText);
     this.shell.append(head, body, foot);
     this.root.appendChild(this.shell);
     document.getElementById('canvas-holder')?.appendChild(this.root);
@@ -226,6 +241,9 @@ export class RunSummary {
     this.note.textContent = remark ?? '';
     this.note.hidden = remark === null;
     this.renderBoons(result);
+    this.renderBuild(result);
+    this.renderComplications(summary.mutators);
+    this.nextComps.refresh();
     this.renderDaily(result);
     this.renderUnlocks(result);
     const view = ctx.run?.metaView();
@@ -255,6 +273,30 @@ export class RunSummary {
     this.playReveal(summary.outcome === 'victory');
     this.countUp(rows, still);
     if (result.unlocked.length > 0) this.later(() => ctx.audio.learn(), still ? 0 : 700 + rows.length * STAT_STAGGER_MS);
+  }
+
+  /** The complications the run carried, as chips with their regulations on hover; nothing at all for an ordinary run. */
+  private renderComplications(ids: readonly string[] | undefined): void {
+    const carried = cleanMutators(ids ?? []);
+    this.complications.hidden = carried.length === 0;
+    this.complications.replaceChildren();
+    if (carried.length === 0) return;
+    const label = document.createElement('span');
+    label.className = 'rs-comp-label';
+    label.textContent = 'Complications';
+    this.complications.append(label);
+    for (const id of carried) {
+      const chip = document.createElement('span');
+      chip.className = 'rs-comp-chip';
+      chip.dataset.mutator = id;
+      chip.textContent = MUTATOR_DEFS[id].name;
+      chip.title = MUTATOR_DEFS[id].regulation;
+      this.complications.append(chip);
+    }
+    const load = document.createElement('span');
+    load.className = 'rs-comp-load';
+    load.textContent = mutatorLoadText(carried);
+    this.complications.append(load);
   }
 
   private hide(): void {
@@ -340,6 +382,29 @@ export class RunSummary {
     label.className = 'rs-boons-label';
     label.textContent = 'Struck at the Sanctum';
     this.boons.append(label, document.createTextNode(names));
+  }
+
+  /** The wands the run ended with, and the run's decisions in a line (ui/runNotes). */
+  private renderBuild(result: RunResult): void {
+    const line = result.summary.build ?? '';
+    this.build.hidden = line === '';
+    this.build.replaceChildren();
+    if (line !== '') {
+      const label = document.createElement('span');
+      label.className = 'rs-boons-label';
+      label.textContent = 'Built on';
+      this.build.append(label, document.createTextNode(line));
+    }
+    const notes = this.ctx.wands.buildNotes?.();
+    const text = notes ? runNotesLine(notes) : null;
+    this.runNotes.hidden = text === null;
+    this.runNotes.replaceChildren();
+    if (text !== null) {
+      const label = document.createElement('span');
+      label.className = 'rs-boons-label';
+      label.textContent = 'Run notes';
+      this.runNotes.append(label, document.createTextNode(text));
+    }
   }
 
   private renderDaily(result: RunResult): void {
@@ -460,7 +525,7 @@ export class RunSummary {
     this.status.textContent = `Opening the intake with ${KIT_DEFS[this.chosenKit].name}…`;
     // The curtain (floor 1's name) comes up over the ledger and paints before generation blocks the thread.
     const started = await descendBehindCurtain(this.ctx, descentCurtainCopy(START_LEVEL), () =>
-      run.startNewRun(this.ctx, { kit: this.chosenKit, daily: false, difficulty: this.chosenDifficulty }));
+      run.startNewRun(this.ctx, { kit: this.chosenKit, daily: false, difficulty: this.chosenDifficulty, mutators: this.nextComps.selected }));
     this.busy = false;
     if (started.ok) {
       this.hide();

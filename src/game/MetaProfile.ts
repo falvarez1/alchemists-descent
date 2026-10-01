@@ -5,6 +5,7 @@ import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
 import { betterDailyResult, isDateKey } from '@/game/runRules';
 import { CAMPAIGN_LEVELS } from '@/config/worldgraph';
 import { BASE_DIFFICULTY, bestVictoryAfter, isDifficultyOpen, openDifficulty, tierOpenedByVictory } from '@/config/difficultyLadder';
+import { cleanMutators, mutatorsCountForLadder } from '@/content/mutators';
 
 /**
  * The meta profile: what persists ACROSS runs (Breathing Works). Runs begun
@@ -46,7 +47,10 @@ export interface MetaProfileData {
    * stored key).
    */
   leviathansSlain: number;
-  /** Fastest victory, or null before the first. */
+  /**
+   * Fastest victory, or null before the first. A descent under complications never sets it
+   * (a Low Gravity run is not a record for the Works as issued); see docs/DIFFICULTY.md.
+   */
   fastestVictoryMs: number | null;
   unlockedKits: KitId[];
   lastKit: KitId;
@@ -67,6 +71,12 @@ export interface MetaProfileData {
    * from before the branching descent; migration reads it as empty.
    */
   levelsSeen: string[];
+  /**
+   * The complications last chosen for an ordinary descent (content/mutators ids). The title's
+   * fold opens with them and "Descend again" carries them. Absent on profiles from before
+   * complications; migration reads it as none. The daily never reads it.
+   */
+  lastMutators: string[];
 }
 
 export type MetaParseStatus = 'fresh' | 'ok' | 'migrated' | 'corrupt' | 'future';
@@ -87,6 +97,7 @@ export function defaultMetaProfile(): MetaProfileData {
     workshopUnlocked: false,
     dailyBests: {},
     levelsSeen: [],
+    lastMutators: [],
   };
 }
 
@@ -158,6 +169,7 @@ export function migrateMetaProfile(value: unknown): { profile: MetaProfileData; 
     workshopUnlocked: raw.workshopUnlocked === true || count(raw.runsEnded) > 0,
     dailyBests: sanitizeDaily(raw.dailyBests),
     levelsSeen: sanitizeLevelsSeen(raw.levelsSeen),
+    lastMutators: cleanMutators(Array.isArray(raw.lastMutators) ? raw.lastMutators : []),
   };
   return { profile, status: version === META_VERSION ? 'ok' : 'migrated' };
 }
@@ -229,15 +241,22 @@ export function recordRunEnded(profile: MetaProfileData, summary: RunSummary): R
   const newBestFloor = summary.floor > profile.bestFloor;
   // A ledger from before the ladder was played on what was then the only tier.
   const tier = summary.difficulty ?? BASE_DIFFICULTY;
-  const unlockedDifficulty = victory ? tierOpenedByVictory(profile.bestVictoryDifficulty, tier) : null;
+  // COMPLICATIONS (docs/DIFFICULTY.md "Complications"): a descent under any of them is a real run and is
+  // credited as one (a win, the floor, the kits it earns), with two exceptions. A complication that
+  // EASES the descent (ladder: false) never opens a tier, and a victory under ANY complication is not
+  // a fastest-victory record: that figure stays the Works as issued. dailyBests are untouched (they
+  // are per date, and a date's complications are fixed by the table).
+  const mutated = (summary.mutators?.length ?? 0) > 0;
+  const countsForLadder = mutatorsCountForLadder(summary.mutators);
+  const unlockedDifficulty = victory && countsForLadder ? tierOpenedByVictory(profile.bestVictoryDifficulty, tier) : null;
   let next: MetaProfileData = {
     ...profile,
     runsEnded: profile.runsEnded + 1,
     workshopUnlocked: true,
     bestFloor: Math.max(profile.bestFloor, summary.floor),
     victories: profile.victories + (victory ? 1 : 0),
-    bestVictoryDifficulty: victory ? bestVictoryAfter(profile.bestVictoryDifficulty, tier) : profile.bestVictoryDifficulty,
-    fastestVictoryMs: victory
+    bestVictoryDifficulty: victory && countsForLadder ? bestVictoryAfter(profile.bestVictoryDifficulty, tier) : profile.bestVictoryDifficulty,
+    fastestVictoryMs: victory && !mutated
       ? Math.min(profile.fastestVictoryMs ?? Number.POSITIVE_INFINITY, summary.timeMs)
       : profile.fastestVictoryMs,
   };
@@ -315,6 +334,13 @@ export class MetaProfileStore {
   setLastDifficulty(tier: Difficulty): void {
     if (!isDifficultyOpen(tier, this.data.bestVictoryDifficulty) || this.data.lastDifficulty === tier) return;
     this.commit({ ...this.data, lastDifficulty: tier });
+  }
+
+  /** Remember the complications chosen for the next ordinary descent (cleaned, canonical order). */
+  setLastMutators(ids: readonly string[]): void {
+    const next = cleanMutators(ids);
+    if (next.length === this.data.lastMutators.length && next.every((id, i) => id === this.data.lastMutators[i])) return;
+    this.commit({ ...this.data, lastMutators: next });
   }
 
   private write(): void {

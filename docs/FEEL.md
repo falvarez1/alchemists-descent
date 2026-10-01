@@ -927,6 +927,110 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   under reduced flashes); the chain slow-motion and the finisher never
   multiply — the deeper one wins.
 
+### Frames, bargains and the choice (the choice update, 2026-10-01)
+
+**What changed and why.** The forced route held no card choice (every tome sat off it) and a lit waystone silently handed
+over one card. Now a lit waystone opens an **altar of three** (a host, a synergy that works with the hosts you carry,
+and a wild devil's bargain with a price) a moment after the flare; a floor's **arrival gift** (floors 2-4, held until the
+floor's title has had its moment) is three too (a burst, a precise shot, a utility). Every offer tile carries a **fit
+tell**; an offer never carries more than one card that would do nothing in the wands you hold. Wand frames became
+loot (eight frames), shown with their stat diff, how YOUR cards would cycle in them, and the cards a smaller frame would
+push out (back to the satchel; a refit no longer deletes anything). Code: `combat/wands/{cardRules,cardFit,altarOffers,
+wandFinds,BuildDirector,buildRecap}.ts`, `ui/{WandOfferOverlay,CardOfferOverlay,buildRecapView,runNotes}.ts`.
+
+**Cadence** (ticks, 60/s; every offer waits until play is calm: unpaused, no curtain, no story beat, no Sanctum, a
+living player, the arrival grace over): altar 50 after the flare; the gift 60 after arrival (the 330-tick grace holds it
+longer); a boss's wreckage frame 170 after the kill (Leviathan, Lenswright, Rime Warden; the Colossus ends the run, so it
+leaves none); the altar's wand 40 after its card is chosen. **One altar in three** (the 3rd, 6th, 9th of a run) also
+turns up a wand. Wandwright's rack: three specialists, 200 oz, paid only if one is taken. Tomes and Lost pages use
+the same fit rule (one dead card at most; an authored tome's fixed card is never swapped). An offer that is earned but
+not yet shown (the altar's 50 ticks, the gift's grace, a boss's 170) rides the wand runtime snapshot as `build.owed`
+(optional, defaulted) and is re-queued 90 ticks after a resume, so a save written in that gap never eats the decision.
+
+**Fit tells** (`cardFit(holdings, card)`): *works* / *dead* / *open*. The host rule is the compiler's (`modifierWorksOn`):
+the eight body mods plus Bounce, Infuser and Trigger need a projectile body (spark, bomb, warp, black hole, frost shard,
+ice lance, wisp, meteor: never a jet, the arc, the dig ray, a placed spell; Bounce not the black hole); speed/heavy/spread
+by their effect sets. A Trigger also needs a second projectile, a multicast needs N. Crits read the TARGET's state: *wet*
+(Aqua Jet, Water Trail), *frozen* (Frost Charge, Frost Shard, Ice Lance, Cryo Jet), *burning* (Flame, Ember Storm, Meteor);
+the tell names the setters and what pays off. The dead-cast caption ("Water Trail does nothing on Chain Lightning: it needs a
+projectile body.") shows in the toast stack AND the hotbar's cast caption, once per card per run.
+
+**Measured by real casts** (`node scripts/measure-builds.mjs`; the real `WandSystem.fire`, compiler and projectile code,
+an endless-HP target, 600 ticks (10 s) of held fire, mean of 3, the arena corridor re-cleared because the cell sim is not
+running). Oak Sprig unless named; dps / damage per mana at 30, 70, 200 cells:
+
+| build | 30 | 70 | 200 | note |
+|---|---|---|---|---|
+| Spark Bolt (baseline) | 36 / 2.1 | 36 / 2.1 | 35 / 2.1 | never dry (tank 80 of 90 at the low) |
+| + Heavy Charm | 56 / 1.8 | 58 / 1.9 | 53 / 1.7 | x1.6, not x1.2 (see below) |
+| + Overcharged Coil (x3, 26 mana) | 56 / 1.6 | 57 / 1.6 | 57 / 1.6 | burst x2.2 (3 s: 228 vs 105); tank dry in ~3 casts; 0.76x efficiency |
+| + Loose Cannon (x4, +29 deg aim) | 94 / 3.5 | 25 / 0.9 | 10 / 0.4 | x2.6 point-blank, under 0.7x at 70 |
+| + Short Fuse (x3, life x0.075) | 96 / 3.5 | 97 / 3.6 | 0 | x2.7 out to ~125 cells (a bolt lives 14 ticks, was 180), nothing beyond; bolts and lances only (measured at x0.06: same 30 and 70, 0 at 200) |
+| + Millstone Charm (x2.5, speed x0.3) | 80 / 2.6 | 82 / 2.7 | 71 / 2.3 | x2.3 on a still target; a flier or hopper steps aside (18 vs 5 dps on the strafing target: the same low hit rate as the plain bolt) |
+| + Kickback Charm (x2, recoil 7) | 66 / 2.2 | 66 / 2.2 | 65 / 2.1 | x1.8; every cast shoves the alchemist ~4.7 cells/tick (a plain Spark Bolt: 0.5) |
+| Cast Bomb | 6 / 0.2 | 46 / 1.2 | 5 / 0.1 | arcs; lands near 70 |
+| + Overcharged Coil | 123 / 2.5 | 172 / 3.4 | 62 / 1.2 | x3.7 at 70; dry; 23 hp of self-blast per 10 s |
+| + Short Fuse | - | - | - | **a dud on a bomb (and a meteor), by rule**: at x0.03 the bomb burst ~9 cells ahead of the alchemist every cast, killed two 153 hp golems and two imps in ONE cast and cost 61-82 of 110 hp (406 hp of self-blast per 10 s in the endless-target run): a suicide button, not a price |
+
+The price of each bargain is paid in the COMPILER and lands only where its rule says it does (benefit and price together;
+on any other host it is a dud, mana still charged): Overcharge +26 mana; Loose Cannon +0.5 rad of jitter; Short Fuse x0.075
+lifetime (a bolt: 14 ticks, was 180; spark, frost shard, ice lance and wisp only); Millstone x0.3 speed; Kickback an uncapped +7 recoil impulse.
+All stay inside the x4 damage clamp (stacking two clamps the damage and keeps both prices). Bargains are in no tome,
+Lost-pages, depth or waystone pool and discovery never feeds them: they exist only as an altar's wild card.
+
+**Played fights** (the same real WandSystem and projectile code, but the REAL game loop and a held real mouse button, aim
+re-projected from the nearest enemy through the camera every 90 ms; a flat metal arena 320 cells wide, 110 HP, Oak Sprig;
+two golems (153 hp) and two imps (36 hp, they hover and burn you) at 60 / 90 / 120 / 150 cells; one line per trial: seconds to
+clear, hp lost, D = the alchemist died). A single trial is noisy (the plain Spark Bolt itself lost 3, 105 and 14 hp on
+three runs), so read the pattern, not the digit:
+
+| build | trials |
+|---|---|
+| Spark Bolt (baseline) | 8.1s -0 · 6.1s -3 · 10.0s -105 · 9.7s -14 |
+| + Heavy Charm | 7.6s -12 |
+| + Overcharged Coil | 6.1s -2 (the tank is at 1 of 90 by the end: the price) |
+| + Loose Cannon | 20.9s -84 · 18.5s D · 7.4s -59 · 12.8s -36 (2.6x slower at range: the shot scatters, the imps live) |
+| + Short Fuse, life x0.03 (first tuning) | 20.3s D · 12.3s D · 30s -29, 2 of 4 killed · 13.1s D (nothing that keeps its distance can be killed: **shipped value was too harsh**) |
+| + Short Fuse, life x0.06 | 20.1s -80 · 14.2s -10 · 13.9s D · 15.3s D · 15.9s -104 · 14.5s D (3 of 6 die: still too harsh) |
+| + Short Fuse, life x0.09 | 9.6s -18 · 12.0s -48 · 5.5s -38 · 12.6s -58 · 8.2s -31 · 13.4s -10 (no deaths, about the baseline: the price has gone) |
+| + Short Fuse, life x0.075 (shipped) | 14.9s -17 · 30s -29 (3 of 4 killed) · 11.3s -18 · 7.7s -23 · 13.9s -76 · 13.5s -66 (no deaths; about twice as slow as the baseline, because the imps hover at the edge of a 125-cell reach) |
+| + Millstone Charm | 8.4s -28 |
+| + Kickback Charm | 9.2s -2 (in an open arena the shove is a retreat; the price shows beside a pit or lava) |
+| Cast Bomb alone | 6.5s D (a bomb at close range is a self-weapon already) |
+| + Overcharged Coil on a bomb | 8.5s D |
+| + Short Fuse on a bomb (retired) | 0.6s, all four dead in ONE cast, -61 hp (and -82 against slimes): the room clears and so does most of the alchemist |
+
+A pack of four slimes (weak, hp ~30) is trivially won by everything (3.9 s with the plain bolt, 1.6 s with Overcharged Coil,
+which empties 70 of 90 mana for it), so the golem-and-imp pack is the honest test. The conclusions that changed the code:
+Short Fuse's life went from x0.03 to x0.075 (x0.06 still killed half the runs, x0.09 cost nothing) and it no longer rides a bomb or a meteor.
+
+**Frames, carrying three builds** (dps for a lone Spark Bolt at 30 / 70 / 200 cells; Meteor Call dps at 30 cells, where it lands):
+
+| frame | slots | cast / recharge | mana / regen | spread | Spark | Meteor | what it is for |
+|---|---|---|---|---|---|---|---|
+| Oak Sprig | 3 | 0.23 / 0.37 s | 90 / 30/s | 1.1 deg | 35 / 36 / 35 | 36 (dry) | the starter |
+| Bone Crook | 4 | 0.15 / 0.75 | 120 / 39 | 2.9 | 24 / 24 / 16 | 51 | |
+| Brass Injector | 5 | 0.10 / 1.00 | 160 / 48 | 4.6 | 20 / 20 / 10 | 65 | many groups per cycle |
+| Void Lattice | 5 | 0.27 / 0.33 | 220 / 66 | 0 | 37 / 37 / 37 | 87 | |
+| **Hornet Needle** (found) | 3 | 0.08 / 0.33 | 80 / 25 | 3.4 | **49 / 49 / 26** | 29 (dry) | rapid: x1.4 on a cheap card; the small tank dies on anything dear |
+| **Pepperpot Rod** | 4 | 0.08 / 0.43 | 130 / 37 | 11.5 | 40 / 23 / 9 | 50 | wide: a fan up close, hopeless at range (Twin Cast sparks 47 at 30, 13 at 200) |
+| **Cast-Iron Mortar** | 6 | 0.33 / 0.73 | 260 / 54 | 0 | 22 / 22 / 22 | **73** | heavy: six slots, a slow hand; dear spells keep going (tank holds, 78 left) |
+| **Samovar Staff** | 4 | 0.20 / 0.60 | 280 / 72 | 1.7 | 27 / 27 / 24 | **94** | marathon: Meteor Call at x2.6 the Oak's rate and the tank never empties (61 left) |
+
+Reading the table: the specialists are not upgrades of the starter, they are other answers (Brass and Void stay the paid
+generalist upgrades, and are not on the rack). A group that costs more mana than the frame's tank can never fire
+(Overcharged Coil + Meteor Call is 96 mana: dead on an Oak Sprig's 90), and the bench's sentence says so.
+
+**Two findings from the same casts** (the first fixed here, the second left alone and recorded):
+- *Heavy was not x1.7.* A `dmgMul > 1` Spark Bolt used to be `round(dmgMul)` stacked bolts at a little extra jitter ("heavy =
+  more bolts" v1, written before `Projectile.mul` existed). In real casts the extras detonated on the first bolt's debris or
+  strayed off the target: Heavy Charm measured x1.2 (25 damage a cast, not 44), and Power Surge (x1.25 rounds to one bolt)
+  did nothing for a Spark Bolt. It is now ONE bolt carrying `mul` (read at impact like the bomb's and the shard's): Heavy
+  x1.6, Power Surge a real +25%. A deliberate balance change, flagged in the commit.
+- *Twin Cast with two Spark Bolts underdelivers* (30 dps at 1.0 dmg/mana against a lone Spark's 36 at 2.1): two bolts
+  leave in the same tick and the second meets the first one's explosion debris. Not changed here (it is the multicast's
+  own design); a wide frame's jitter helps it (Pepperpot 47 at 30 cells). Worth a look from whoever owns multicast.
+
 ---
 
 ## 6. Sound as material truth (procedural, `audio/AudioEngine.ts`)
@@ -1520,7 +1624,29 @@ ice and crystal pass it) to the lens or heart.
 
 ---
 
-## 11. The Experiment (alchemy as a discovery game)
+## 11. Complications (run mutators, 2026-10-01 — `content/mutators`, `game/MutatorDirector`, docs/DIFFICULTY.md)
+
+Standing regulations for a descent: the feel of each is what the grid does, and every one was *played* with
+real input and measured (`scripts/verify-mutators.mjs`). A complication shows itself three ways: a Notice toast
+when the descent begins ("Notice posted: … in force"), a one-line instruction the first time the alchemist nears
+each kind of vent (once per kind per run), and the chips on the pause menu and the ledger.
+
+```
+tinderbox: every fuel's flammability ×2.4 (wood .1 → .24, oil igniteChance .08 → .19) — a flame at the end of a 3-thick plank that dies at ×1 (10 cells of 1,179 in 6 s) burns 278-657 at ×2.4 · wet-floors: ×0.55 (wood .055)
+low-gravity: gravity ×0.55 (0.28 → 0.154; liquid 0.12 → 0.066) in Player, the Rapier world + buoyancy, KNOCK_GRAV, the swing · a full-hold jump apex 23 → 45 cells (×1.9), a 36-cell drop 16 → 21 ticks · the levitation jet's thrust follows the dial (it was tuned against 0.28: unscaled it climbed 198 cells in the probe arena vs 112; scaled, 112 → 97) so jump + jet stays about the same reach, and it stays a hover instrument
+glass-cannon: alchemist HP ×0.5 (Adept 110 → 55, a Sanctum's Vitality +30 still lands on top) · alchemist's blows ×1.5 on 'direct'/'bowled' hits in Enemies.damage, AFTER the wand compiler's ×4 clamp (a real spark bolt: asked 18, dealt 27)
+crowded-house: enemyCount ×1.5 (floor 2, seed 424242: 14 → 21 placed) · bounty ×1.4 (slime 10 → 14 oz)
+dark-works: ambient ×0.6 (0.36 → 0.216) + a darkness FLOOR of 0.7 under every campaign floor (core/darkness.darkMapFor lift: a floor's base darkness becomes max(designed, 0.7); hubs and custom levels stay readable) — mean luma of floor 2 at the same spot 0.077 → 0.045 · ambient alone (0.45×) was only 12% darker: the compose pass's 0.40 readability floor dominates an unlit surface
+famine (Short Rations): a rise in health within one tick is halved unless it is a set piece (> max(6, 30% of max HP): a rest, a respawn) — a healium pool 80 → 38 in 2.5 s
+fireworks: a fallen creature (not a warden) bursts after 14 ticks: 160 sparks + 40 embers, kicks the bloom, boom(5); foes within 20 cells take 5-14 'detonated', the alchemist within 12 cells 3-7 · queue ≤ 24 · a chain of three slimes runs to the last
+hush ×0.5 / nosy-neighbours ×1.5: the creature's sight radius (265 × light scale × dial) — a slime notices from 200 cells plain, 100 under Hush, the arena's edge (280) under Nosy
+wet-floors dressing: ≤ 6 closed basins on the walk (14-110 cells, ≤ 4 deep, ≥ 60 apart, ≥ 40 from the arrival, ≥ 16 from a pickup), 5 drips (every 36 ticks, 1 droplet, budget 260 cells) · a spark placed in a puddle reached 58 of its 61 cells inside 1 s and shocked a wet alchemist standing in it
+slime-rain: 8 ceiling vents (every 30 ticks, 2 droplets, budget 300 each), ≥ 70 apart; fire turns the cup of slime to acid (the sim's own 4%/tick)
+gas-leak: 5 floor vents (every 22 ticks, 4 cells, budget 900), ≥ 70 apart; MarshGas has no lifetime, so it pools under the ceiling; a flame took all 32 cells of a plume in the probe
+```
+
+---
+## 12. The Experiment (alchemy as a discovery game)
 
 *Measured in the real sim by `scripts/verify-alchemy.mjs` (real pours, real siphon and drink on floor 1's Refuge Kettle) and `scripts/verify-alchemy-floors.mjs` (floors 2-4). Every number below was read off a run.*
 
@@ -1558,7 +1684,7 @@ Measured end to end (siphon the whole bowl, hold X): 19-53 s across bowls of 11-
 ## Tuning quick-reference (this codex's load-bearing numbers)
 
 ```
-coyote 6f · jump buffer 8f · jump vy -3.7 paced by depth · gravity 0.28 (liquid 0.12)
+coyote 6f · jump buffer 8f · jump vy -3.7 paced by depth · gravity 0.28 (liquid 0.12), × the complications' gravity dial (1 unless Low Gravity: §11)
 levitation spool: 0.33 -> 0.57 thrust over 48f (t-cubed ease-in) + 0.92/f drag -> ~3.3 terminal climb
 wand recoil: base 6 + sum(proj speed×count), ×0.06 -> impulse, cap 4.0, ground ×0.55 (opposite aim; down+airborne = rocket-jump)
 levitation horizontal: own control (levitHorizControl 1.0×) — decoupled from ground Swift/Swift-Soles buffs

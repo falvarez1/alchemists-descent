@@ -68,8 +68,8 @@ export interface EventMap {
   levelChanged: { depth: number; name: string };
   /** Gameplay requests the level-transition curtain; Game owns DOM/timing. */
   levelCurtain: { visible: boolean; holdMs?: number; title?: string; detail?: string };
-  /** A waystone brazier caught fire — checkpoint set. */
-  waystoneLit: undefined;
+  /** A waystone brazier caught fire — checkpoint set. `index` is its place in the floor's list; the altar's offer reads it. */
+  waystoneLit: { index: number; depth: number; levelId: string };
   /** First-time brew of a recipe — Grimoire entry + gold bounty. */
   recipeDiscovered: { name: string; bounty: number };
   /** Any completed cauldron recipe, including recipes already known in the Grimoire. */
@@ -90,13 +90,30 @@ export interface EventMap {
   cardCast: { id: CardId; origin: 'wand' | 'trigger'; x: number; y: number };
   /** Gameplay asks presentation to show an unskippable choice of spell cards. */
   cardOfferRequested: {
-    source: 'tome' | 'sanctum';
+    source: 'tome' | 'sanctum' | 'altar' | 'depth';
     title: string;
     prompt?: string;
     cards: CardId[];
+    /** One short kicker per card ("Host", "Synergy", "Wild"); absent for a plain tome. */
+    labels?: string[];
     handled?: boolean;
     onChoose(card: CardId): void;
   };
+  /** Gameplay asks presentation to show a found wand frame (swap wand I or II's frame, or leave it). */
+  wandOfferRequested: {
+    source: 'boss' | 'altar' | 'sanctum';
+    title: string;
+    prompt?: string;
+    /** WandFrame ids on offer (1 for a find, up to 3 at the Wandwright). */
+    frames: string[];
+    handled?: boolean;
+    /** The player refitted `wand` with `frameId`. */
+    onChoose(frameId: string, wand: 0 | 1): void;
+    /** The player left it. */
+    onDecline?(): void;
+  };
+  /** A modifier you cast does nothing to the projectile it rode: the HUD says so, once per card per run. */
+  deadCardCast: { card: CardId; host: CardId; text: string };
   /** Active wand or its loadout changed — HUD wand display refresh. */
   wandChanged: undefined;
   /** The wand bench overlay opened — first-run teaching and telemetry listen. */

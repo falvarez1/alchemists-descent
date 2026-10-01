@@ -72,6 +72,7 @@ export const SFX_FALLBACKS: Partial<Record<SfxId, SfxFallback>> = {
   'ui.learn': (p) => p.learn(),
   'ui.curtain': (p) => p.tone(98, 49, 1.6, 'sine', 0.08),
   'ui.card.choose': (p) => p.learn(),
+  'ui.card.bargain': (p) => { p.tone(110, 70, 0.5, 'sine', 0.08); p.later(110, () => p.tone(55, 55, 0.7, 'sine', 0.05)); },
   'ui.door.choose': (p) => p.learn(),
   'mat.brine.fizz': (p) => p.noiseBurst(0.25, 5200, 0.04, true),
   // ---- player ----

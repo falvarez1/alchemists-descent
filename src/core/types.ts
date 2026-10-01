@@ -1289,6 +1289,8 @@ export interface RunStartConfig {
   starterKit?: KitId;
   /** YYYY-MM-DD when this is the date-seeded daily descent. */
   daily?: string | null;
+  /** Fresh campaign runs: the complications this descent carries (content/mutators); cleaned by the director. */
+  mutators?: readonly string[];
 }
 
 export interface RunStartResult {
@@ -1365,6 +1367,12 @@ export interface GameStateData {
   /** Run difficulty 1–4 (3 = shipped balance); scales enemy count/damage/hp/speed/
    *  sense, player HP, and the death penalty. Set at run start, held for the run. */
   difficulty: Difficulty;
+  /**
+   * The complications in force for this run (content/mutators), canonical order; absent or empty on
+   * an ordinary run. Set by MutatorDirector when a run begins or resumes, cleared when it ends. It
+   * is the one thing `difficultyMods` and `mutatorMods` read, so a system never asks the run.
+   */
+  mutators?: readonly string[];
   /** Gameplay frozen behind a modal (Sanctum); rendering continues. */
   paused: boolean;
   /** Transient QA mode enabled by the debug console key; never autosaved. */
@@ -2766,10 +2774,16 @@ export type CardId =
   | 'pyrecrit'
   | 'aquajet'
   | 'trigger'
-  | 'bounce';
+  | 'bounce'
+  // devil's bargains (combat/wands/bargains): strong modifiers with a real cost, offered only by waystone altars
+  | 'overcharge'
+  | 'loosecannon'
+  | 'shortfuse'
+  | 'millstone'
+  | 'kickback';
 
 export type CardKind = 'projectile' | 'modifier' | 'multicast';
-export type CardTag = 'Damage' | 'Terrain' | 'Setup' | 'Trail' | 'Status' | 'Combo' | 'Movement' | 'Risk';
+export type CardTag = 'Damage' | 'Terrain' | 'Setup' | 'Trail' | 'Status' | 'Combo' | 'Movement' | 'Risk' | 'Bargain';
 
 export interface CastAction {
   card: CardId;
@@ -2799,6 +2813,12 @@ export interface CastAction {
   bounces: number;
   /** Cast at the impact point (depth-1 trigger payload), or null. */
   triggered: CastAction[] | null;
+  /** Bargain cost: scales the projectile's lifetime (absent = 1). */
+  lifeMul?: number;
+  /** Bargain cost: extra self-recoil impulse on the cast (absent = 0). */
+  recoil?: number;
+  /** The devil's bargains that actually landed on this cast (absent = none). */
+  bargains?: CardId[];
 }
 
 export interface CastActionExecutionContext {
@@ -2820,6 +2840,10 @@ export interface CardDef {
   manaCost: number;
   /** One-line bench tooltip. */
   blurb: string;
+  /** A devil's bargain: strong, with a real price (see `cost`). Offered by waystone altars only. */
+  bargain?: boolean;
+  /** The price, plainly (bargains only): shown on the offer tile and in the bench. */
+  cost?: string;
 }
 
 export interface WandFrame {
@@ -2835,6 +2859,8 @@ export interface WandFrame {
   manaRegen: number;
   /** Base aim jitter in radians. */
   spread: number;
+  /** What the frame is FOR, in a line (frames found as loot show it). */
+  blurb?: string;
 }
 
 export interface WandState {
@@ -2918,6 +2944,41 @@ export interface WandsApi {
    * cursor) — the HUD highlights them so the cycle is visible.
    */
   nextCastSlots(): number[];
+  /** A copy of the run's build-decision notes (offers, altars, frames, floor times). */
+  buildNotes?(): BuildNotes;
+}
+
+/**
+ * What a run has asked of the build, for the ledger's "Run notes" and the playtest report (combat/wands/
+ * BuildDirector keeps it; it rides the wand runtime snapshot, so a resumed run keeps counting).
+ */
+export interface BuildNotes {
+  /** Card offers put in front of the player, and how many were taken. */
+  offersShown: number;
+  offersTaken: number;
+  /** The same per source: tome, altar, depth, sanctum. */
+  bySource: Record<string, { shown: number; taken: number }>;
+  /** Waystone altars that answered. */
+  altars: number;
+  /** Devil's bargains taken (from any source). */
+  bargainsTaken: number;
+  /** Distinct dead-card captions shown (a modifier cast on a card it does nothing for). */
+  deadCardCasts: number;
+  /** Wand-frame offers shown, fitted and left. */
+  framesFound: number;
+  framesFitted: number;
+  framesLeft: number;
+  /** Unpaused play ticks spent on each depth (key: the depth). */
+  floorTicks: Record<string, number>;
+  /** Cards chosen from offers, in order (capped). */
+  picks: CardId[];
+  /** Cards whose dead-cast caption has already shown this run. */
+  deadCaptioned: CardId[];
+  /**
+   * Offers earned but not yet shown (a lit waystone, an arrival, a boss's wreckage waits for a calm moment): the
+   * runtime snapshot carries them so a run saved in that gap still gets its decision. Only the snapshot has it.
+   */
+  owed?: Partial<Record<'altar' | 'gift' | 'bossFrame' | 'altarFrame', number>>;
 }
 
 export interface WandLoadoutSave {
@@ -2941,6 +3002,8 @@ export interface WandRuntimeSnapshot {
   flameBurst: number;
   depthsGranted: number[];
   infuserGranted: boolean;
+  /** The run's decision notes; optional so saves from before them restore with an empty record. */
+  build?: BuildNotes;
 }
 
 /* ============================================================
@@ -3580,6 +3643,10 @@ export interface RunSaveState {
   path?: string[];
   /** The Sanctum boons struck this run, in the order taken (PerkId names). Optional for the same reason. */
   boons?: string[];
+  /** The complications this run carries (content/mutators ids, canonical order). Absent on an ordinary run. */
+  mutators?: string[];
+  /** The Sanctum bargains struck this run (content/mutators Bargain): at most one per floor. Absent when none. */
+  bargains?: Array<{ floor: number; id: string }>;
 }
 
 /** A finished run, as the ledger screen reads it. */
@@ -3615,6 +3682,10 @@ export interface RunMetaView {
   todayBest: RunDailyBest | null;
   /** Campaign levels this player has ever walked into (the Sanctum marks an unwalked door). */
   levelsSeen: string[];
+  /** The complications the player last chose for an ordinary descent (the title's fold and "Descend again" start from them). */
+  lastMutators: string[];
+  /** The complications today's daily descent carries, by the date alone (content/mutators DAILY_ERAS). */
+  todayMutators: string[];
 }
 
 export interface RunBeginOptions {
@@ -3623,6 +3694,8 @@ export interface RunBeginOptions {
   daily: string | null;
   /** Normal campaign runs are tracked (phials, ledger); test runs are not. */
   tracked: boolean;
+  /** The complications this run begins with (cleaned by the director); absent on an ordinary run. */
+  mutators?: readonly string[];
 }
 
 /**
@@ -3639,6 +3712,10 @@ export interface RunApi {
   readonly maxPhials: number;
   readonly kit: KitId;
   readonly daily: string | null;
+  /** The complications this run carries (empty when none). */
+  readonly mutators: readonly string[];
+  /** The Sanctum bargains struck this run (one per floor at most). */
+  readonly bargains: ReadonlyArray<{ floor: number; id: string }>;
   /** Times the alchemist has fallen on this run so far (Pell and the Old Ones read it). */
   readonly deaths: number;
   /** The last finished run, for the ledger. */
@@ -3658,15 +3735,25 @@ export interface RunApi {
    * always Adept: it is one seed for everyone. `seed` (never for the daily) is a seed the player
    * chose on the title; omitted, the descent rolls its own.
    */
-  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number }): RunStartResult;
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number; mutators?: readonly string[] }): RunStartResult;
   metaView(): RunMetaView;
   chooseKit(kit: KitId): void;
   /** Remember the tier chosen (ignored while it is still locked). */
   chooseDifficulty(difficulty: Difficulty): void;
+  /** Remember the complications chosen for the next ordinary descent (cleaned; the daily ignores them). */
+  chooseMutators(ids: readonly string[]): void;
+  /**
+   * The Sanctum's bargain below `floor`: take `id` for the rest of the descent (the owed second boon is the
+   * Sanctum's). False when it is not on the table (no run, the daily, one already struck this floor, or not
+   * offerable: content/mutators canBargain). A real, credited run: it never taints.
+   */
+  strikeBargain(ctx: Ctx, id: string, floor: number): boolean;
   /** Dev console `phials`: set the return phials of the tracked run (0 to the maximum). False with no run. */
   debugSetPhials?(ctx: Ctx, phials: number): boolean;
   /** Dev console `kit`: name another kit for the tracked run (the ledger and Pell read it). False with no run. */
   debugSetKit?(kit: KitId): boolean;
+  /** Dev console `mutator`: put another set of complications in force for the tracked run (its ledger and a resume read it). False with no run. */
+  debugSetMutators?(ctx: Ctx, ids: readonly string[]): boolean;
 }
 
 export interface Ctx {
@@ -3737,8 +3824,45 @@ export interface Ctx {
   story?: StoryApi;
   /** The graded body cold (game/Chill); absent in small test contexts. */
   chill?: ChillApi;
+  /** The run's complications (game/MutatorDirector); absent in small test contexts. */
+  mutators?: MutatorApi;
   /** The cauldron, read-only (game/Brewing): the bowl's contents and progress; absent in small test contexts. */
   brewing?: BrewingApi;
+}
+
+/** The part of a generated floor the complications' dressing reads (a structural subset of generateLevel's result). */
+export type MutatorLevelGen = Pick<
+  ReturnType<WorldGenApi['generateLevel']>,
+  'spawn' | 'exit' | 'pickups' | 'portal' | 'boss' | 'placedPrefabs' | 'mechanisms' | 'waystones'
+>;
+
+/**
+ * COMPLICATIONS (run mutators, content/mutators): the runtime that turns the run's chosen set into
+ * dials, dressed floors and per-tick effects. RunDirector tells it when a run begins, resumes or
+ * ends; Levels asks it to plan and dress a floor; nothing else needs to know a complication exists
+ * (the dials are read through `difficultyMods` / `mutatorMods`).
+ */
+export interface MutatorApi {
+  /** The complications in force (empty when none). */
+  readonly ids: readonly string[];
+  has(id: string): boolean;
+  /**
+   * Put these complications in force: `ctx.state.mutators`, and a per-run clone of the material and
+   * global tuning when one needs it (the shared tuning objects are never written: the tuning store
+   * would save the run's changes as the player's own). An empty set is the same as `deactivate`.
+   */
+  activate(ctx: Ctx, ids: readonly string[]): void;
+  /** The run is over, or another begins: the shipped tuning, no complications. Idempotent. */
+  deactivate(ctx: Ctx): void;
+  /**
+   * A floor's pristine cells exist (createLevel and restoreLevel both, straight after generation):
+   * plan its vents and puddles from the level seed. `gen` is what the generator just returned.
+   */
+  planLevel(ctx: Ctx, def: LevelDef, seed: number, gen: MutatorLevelGen): void;
+  /** A freshly generated floor is complete: dress it (puddles), checked against its route. Never run on a restored floor (the cells persist). */
+  dressLevel(ctx: Ctx, runtime: LevelRuntime): void;
+  /** Once per play tick (from RunDirector.update): vents and drips, heals, fireworks. */
+  update(ctx: Ctx): void;
 }
 
 /**

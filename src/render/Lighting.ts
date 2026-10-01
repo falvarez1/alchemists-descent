@@ -5,6 +5,7 @@ import { DARK_ADAPT, renderAmbient, VIGNETTE_BASE } from '@/render/lightingModel
 import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import type { AuthoredLight, Ctx } from '@/core/types';
 import { DARKNESS, LANTERN } from '@/config/darkness';
+import { mutatorMods } from '@/content/mutators';
 import { darkMapFor, fillOpenField, openAtCell, renderDarkness, renderOpenLut, sampleDarkMap } from '@/core/darkness';
 import type { LightField, LightSample } from '@/render/pixels';
 import { creatureLights } from '@/render/creatures/lights';
@@ -357,7 +358,7 @@ export class Lighting implements LightField {
     this.wandField.fill(0);
     // Designed darkness (core/darkness): a per-level baked map, read per texel
     // through the comfort setting's render curve. A readable level skips it.
-    const darkMap = ctx.state.mode === 'play' ? darkMapFor(ctx.levels.current) : null;
+    const darkMap = ctx.state.mode === 'play' ? darkMapFor(ctx.levels.current, mutatorMods(ctx.state).darkness) : null;
     const openLut = renderOpenLut(ctx.state.highReadability === true);
     const lightOpen = this.lightOpen;
     if (!darkMap && !this.openIsFlat) {

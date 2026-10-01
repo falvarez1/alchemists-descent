@@ -114,6 +114,8 @@ export const SFX_CUES = {
   'ui.door.choose': ui({ gain: 1.3 }),
   'ui.card.pick': ui({ gain: 0.74 }),
   'ui.card.slot': ui({ gain: 1.1 }),
+  // The choice update: a devil's bargain taken (a refit already rings ui.learn through upgradeFrame).
+  'ui.card.bargain': ui({ gain: 1.3 }),
   'ui.bench': ui({ gain: 1.1 }),
   'ui.coins': ui({ gain: 1.2 }),
   'ui.tally': ui({ gain: 0.35, cooldownMs: 30, voices: 3 }),

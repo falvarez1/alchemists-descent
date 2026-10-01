@@ -7,6 +7,7 @@ import {
 } from '@/combat/wands/rewardPools';
 import { ALL_CARD_IDS } from '@/combat/wands/cards';
 import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
+import { makeFitter } from '@/combat/wands/cardFit';
 import { makePickup, POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
 import { addStatusFrames } from '@/content/elixirs';
 import type { CardId, Ctx, Pickup, PickupsApi } from '@/core/types';
@@ -290,6 +291,8 @@ export class Pickups implements PickupsApi {
     const cards = buildCardOffer(pool, collectOwnedCards(ctx.wands), {
       preferred: fixedCard ? [fixedCard] : [],
       ensureKind: 'projectile',
+      // At most one card that would do nothing in the wands you carry (an authored tome's fixed page stays).
+      dead: makeFitter(ctx.wands).dead,
     });
     p.data.offerPending = true;
     const handled = requestCardOffer(ctx, {

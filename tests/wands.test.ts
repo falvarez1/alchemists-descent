@@ -642,23 +642,30 @@ describe('WandSystem runtime snapshots', () => {
     expect(wands.snapshotRuntimeState().infuserGranted).toBe(true);
   });
 
-  it('keeps Infuser out of waystone random grants', () => {
+  it('keeps Infuser out of waystone altars: the altar is a three-card choice and none of the three is the Infuser', () => {
     const events = new EventBus();
     const ctx = {
       events,
       telemetry: { count: () => undefined },
       audio: { sfx: () => undefined, creature: () => undefined, wandSwap: () => undefined },
-      state: { mode: 'build' },
-      player: {},
+      state: { mode: 'play', paused: false, frameCount: 0 },
+      player: { perks: {}, dead: false },
     } as unknown as Ctx;
     const wands = new WandSystem(ctx);
+    const offered: string[][] = [];
+    events.on('cardOfferRequested', (request) => { request.handled = true; offered.push([...request.cards]); });
     mockRandom().mockReturnValue(0);
     try {
-      events.emit('waystoneLit');
+      events.emit('waystoneLit', { index: 0, depth: 2, levelId: 'd2' });
+      for (let i = 0; i < 80; i++) { ctx.state.frameCount++; wands.update(ctx); }
     } finally {
       restoreRandom();
     }
 
+    expect(offered).toHaveLength(1);
+    expect(offered[0]).toHaveLength(3);
+    expect(offered[0]).not.toContain('infuser');
+    // an altar offers; it does not hand a card over unseen
     expect(wands.collection).not.toContain('infuser');
     expect(wands.snapshotRuntimeState().infuserGranted).toBe(false);
   });
@@ -944,13 +951,17 @@ describe('WandSystem metaprogression', () => {
     expect(wands.collection).toEqual(['spark', 'shattercrit']);
 
     // With every depth-pool card already owned, the only unowned page left is
-    // the one this player discovered in an earlier run: the grant finds it.
+    // the one this player discovered in an earlier run: the arrival gift's choice offers it.
     wands.collection.length = 0;
     wands.collection.push(...DEPTH_PROJECTILE_POOL, 'spark');
-    const granted: string[] = [];
-    ctx.events.on('cardGranted', ({ id }) => granted.push(id));
+    const offered: string[][] = [];
+    ctx.events.on('cardOfferRequested', (request) => { request.handled = true; offered.push([...request.cards]); });
     ctx.events.emit('levelChanged', { depth: 2, name: 'THE ROT GARDENS' });
-    expect(granted).toEqual(['vitrify']);
+    Object.assign(ctx.state, { paused: false, frameCount: 0 });
+    Object.assign(ctx.player, { perks: {}, dead: false });
+    for (let i = 0; i < 400; i++) { ctx.state.frameCount++; wands.update(ctx); }
+    expect(offered).toHaveLength(1);
+    expect(offered[0]).toContain('vitrify');
   });
 
   it('debug shuffle rebuilds review wands from the canonical card catalog', () => {

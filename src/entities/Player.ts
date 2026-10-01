@@ -7,6 +7,7 @@
 import { DEATH_SLOWMO_FRAMES, HEIGHT, WIDTH } from '@/config/constants';
 import { gustHabitat } from '@/game/HabitatMotion';
 import { difficultyMods } from '@/config/difficulty';
+import { mutatorMods } from '@/content/mutators';
 import { clamp } from '@/core/math';
 import type { Ctx, EnemyKind, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
 import { PLAYER_AIR_CEIL_SLIP, PLAYER_CEIL_SLIP, PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP, PLAYER_VERT_SLIP } from '@/core/types';
@@ -917,7 +918,7 @@ export class PlayerControl implements PlayerControlApi {
   private updateSwing(ctx: Ctx): void {
     const player = ctx.player;
     const keys = ctx.input.keys;
-    player.vy += 0.28; // gravity drives the swing
+    player.vy += 0.28 * mutatorMods(ctx.state).gravity; // gravity drives the swing (the complications' dial: 1 = today's)
     const rx = player.x - this.swingAX;
     const ry = player.y - this.swingAY;
     const rd = Math.hypot(rx, ry) || 0.001;
@@ -1846,7 +1847,9 @@ export class PlayerControl implements PlayerControlApi {
 
     if (!handledByClimb) {
       // Gravity / levitation
-      const grav = player.inLiquid ? 0.12 : 0.28;
+      // (the complications' gravity dial, content/mutators: 1 = today's exactly)
+      const gravityDial = mutatorMods(ctx.state).gravity;
+      const grav = (player.inLiquid ? 0.12 : 0.28) * gravityDial;
       player.vy += grav;
       if (player.inLiquid) player.vy *= 0.88;
 
@@ -1878,7 +1881,9 @@ export class PlayerControl implements PlayerControlApi {
           // also damps a fall you catch mid-air. Apply it EVERY frame (the
           // simulated curve depends on the drag hitting positive vy too).
           const t = Math.min(this.levitFrames / lp.levitRampFrames, 1);
-          const thrust = (lp.levitThrust0 + lp.levitThrustGain * t * t * t) * verticalPace;
+          // (the jet's thrust was tuned against gravity 0.28: it follows the complications' dial, so under Low Gravity it
+          // is still a hover instrument and not a rocket; the jump and the fall are what get floaty)
+          const thrust = (lp.levitThrust0 + lp.levitThrustGain * t * t * t) * verticalPace * gravityDial;
           player.vy -= thrust;
           player.vy *= lp.levitDrag;
           // Levity potion (Wave C): levitation burns no levit while the timer runs
