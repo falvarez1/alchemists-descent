@@ -4,10 +4,10 @@ import type { AuthoredLight, Ctx, HazardEmitter, LockKind, Mechanism, Pickup, Pl
 import { makePickup } from '@/core/pickupDefs';
 import { makePlug } from '@/core/mechanismFactories';
 import { blocksEntity, Cell } from '@/sim/CellType';
-import { goldColor, packRGB, stoneColor } from '@/sim/colors';
+import { goldColor, packRGB } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import type { PlacementLedger } from '@/world/connect';
-import { carveRoom, intrudes, restore, ROOM_MARGIN, roomReachable, snapshot, type RoomSpec, type Site } from '@/world/lightPuzzles';
+import { carveRoom, intrudes, relayRoomFloor, restore, ROOM_MARGIN, roomReachable, snapshot, type RoomSpec, type Site } from '@/world/lightPuzzles';
 import { clearLooseStock } from '@/world/looseStock';
 
 /* ============================================================
@@ -431,17 +431,9 @@ export function placeLockRoom(
       console.warn(`[locks] ${label}: ${why}; trying elsewhere`);
     };
     if (!carveRoom(ctx, rng, graph, fits, site.spawn, floorY, mouth, interior, ledger)) { rollback('could not be joined to the caves'); continue; }
-    // The connector's carve (a long tunnel whose sweep reaches nine rows below its line) can run along the hall and eat its whole
-    // floor slab (d3 in-game seed 3: the pool and the vault hung in a void): lay the slab again east of the entrance, before the
-    // room is built (the pool's dent is carved into it after). Open cells only.
-    const relayFloor = (): void => {
-      for (let y = floorY; y <= floorY + 4; y++) {
-        for (let x = Math.min(x1 - 6, mouth.x + 14); x <= interior.x1 + 2; x++) {
-          if (!blocksEntity(lockCell(ctx.world, x, y))) putCell(ctx.world, x, y, Cell.Stone, stoneColor());
-        }
-      }
-    };
-    relayFloor();
+    // The connector's carve can run along the hall and eat its whole floor slab (d3 in-game seed 3: the pool and the vault hung in a void):
+    // lay the slab again east of the entrance, before the room is built (the pool's dent is carved into it after).
+    relayRoomFloor(ctx.world, Math.min(x1 - 6, mouth.x + 14), interior.x1 + 2, floorY);
     // (the connector may have opened a pocket of oil or powder into the hall: clear it before anything is built)
     if (!room.ownsStock) sweepLockStock(ctx.world, ledger, { x0: at.x0, y0: at.y0, x1, y1: at.y0 + spec.h - 1 });
     if (room.fuelFree) clearFuelNear(ctx.world, ledger, { x: at.x0 + 24, y: floorY - 6 });

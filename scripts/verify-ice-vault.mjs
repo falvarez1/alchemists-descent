@@ -23,7 +23,7 @@ const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const report = { mode, seed, errors: [], stages: [] };
 page.on('pageerror', (e) => report.errors.push(String(e)));
-const { ctxEval, shot, waitFor, walkTo, pointAtWorld, waitObjective, waitHint, plugOpen } = lockProbeTools(page, output);
+const { ctxEval, shot, waitFor, walkTo, pointAtWorld, waitObjective, waitHint, plugOpen, dismissCards } = lockProbeTools(page, output);
 
 const lock = () => ctxEval(() => {
   const rt = window.__game.ctx.levels.current;
@@ -60,7 +60,9 @@ try {
   assert.ok(s.relent > 0 && s.relent <= 27000, `the Works' clock is running (${JSON.stringify(s)})`);
   await enterRoom(L);
   await waitObjective('Open the Ice Vault. Melt it, salt it, or blast it.', 'near the vault the puzzle is named');
+  await dismissCards();
   await waitHint('A strongroom in a block of ice. Heat, brine or a blast will have it.', 'the hint reads the vault');
+  await dismissCards();
   await shot('01-room');
   s = await state(L);
   report.stages.push({ name: 'room', ...s });

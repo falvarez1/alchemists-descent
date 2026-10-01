@@ -367,13 +367,16 @@ describe('floors without a lock are untouched', () => {
     expect(GEN.flooded.lock).toBe('weir');
     expect(GEN.volcanic.lock).toBe('crucible');
     expect(GEN.frozen.lock).toBe('coldvault');
-    for (const biome of ['earthen', 'crystal', 'timber', 'scorched'] as const) expect(GEN[biome].lock, biome).toBeUndefined();
+    expect(GEN.crystal.lock).toBe('periscope');
+    for (const biome of ['earthen', 'timber', 'scorched'] as const) expect(GEN[biome].lock, biome).toBeUndefined();
   });
 
-  it('the Glass Galleries still keep their pocket vault and generate no lock', () => {
+  it('the Prism Gate keeps its valve gate (its lenses stand too near the door for a seal) and the Periscope alone holds the key', () => {
     const level = generate(LEVELS.d3b, 1337);
-    expect(level.placedPrefabs.some((p) => p.id.startsWith('lock-'))).toBe(false);
-    expect(level.mechanisms.some((m) => m.lock)).toBe(false);
+    const prism = level.placedPrefabs.find((p) => p.id === 'glass-prism-gate')!;
+    expect(prism).toBeTruthy();
+    expect(level.mechanisms.some((m) => m.kind === 'valve' && m.x >= prism.x0 && m.x <= prism.x1 && m.y >= prism.y0 && m.y <= prism.y1)).toBe(true);
+    expect(level.mechanisms.filter((m) => m.lock).length).toBe(1);
     expect(level.pickups.filter((p) => p.kind === 'key').length).toBe(1);
   });
 });
@@ -410,6 +413,44 @@ describe('the Ice Vault (d2b)', () => {
         expect(wizardMask({ world: level.world, spawn: level.spawn })[level.world.idx(Math.floor(key.x), ky)]).toBe(0);
         expect(wizardMask({ world: routeSealedWorld(level.world, level.mechanisms), spawn: level.spawn })[level.world.idx(Math.floor(key.x), ky)]).toBe(1);
         expect(validateFindability(runtime).filter((i) => i.severity === 'error' && i.what === 'key')).toEqual([]);
+      });
+    });
+  }
+});
+
+describe('the Periscope (d3b)', () => {
+  for (const seed of [1337, 5, 42]) {
+    describe(`seed ${seed}`, () => {
+      const level = generate(LEVELS.d3b, seed);
+      const runtime = runtimeOf(level, LEVELS.d3b);
+      const plug = level.mechanisms.find((m) => m.kind === 'plug' && m.lock === 'periscope')!;
+      const room = level.placedPrefabs.find((p) => p.id === 'glass-periscope')!;
+
+      it('makes the strongroom door the key’s lock: a Metal route-seal plug, a relay at its foot, the attic lens, the key inside', () => {
+        expect(room).toBeTruthy();
+        expect(plug).toBeTruthy();
+        expect(plug.routeSeal).toBe(true);
+        expect(plug.material).toBe(Cell.Metal);
+        expect(plug.relentFrames).toBe(LOCK_RELENT_FRAMES);
+        expect(plug.body!.length).toBe(2 * 19);
+        const relay = level.mechanisms.find((m) => m.kind === 'relay' && m.targetId === plug.id)!;
+        expect(relay.outputAction).toBe('break');
+        const lens = level.mechanisms.find((m) => m.kind === 'sensor' && m.sensorType === 'light' && m.targetId === relay.id)!;
+        expect(lens).toBeTruthy();
+        expect(lockFocus(runtime, plug)).toEqual({ x: lens.x, y: lens.y });
+        const keys = level.pickups.filter((p) => p.kind === 'key');
+        expect(keys.length).toBe(1);
+        expect(keys[0].x).toBeGreaterThan(plug.x + plug.w);
+        expect(keys[0].x).toBeLessThan(room.x1);
+        expect(new Set(level.mechanisms.map((m) => m.id)).size, 'mechanism ids are unique').toBe(level.mechanisms.length);
+      });
+
+      it('is sealed to the audit: the key is out of reach while the door stands, reachable once it counts as open, findability is clean', () => {
+        const key = level.pickups.find((p) => p.kind === 'key')!;
+        const ky = Math.floor(key.y) - 3;
+        expect(wizardMask({ world: level.world, spawn: level.spawn })[level.world.idx(Math.floor(key.x), ky)]).toBe(0);
+        expect(wizardMask({ world: routeSealedWorld(level.world, level.mechanisms), spawn: level.spawn })[level.world.idx(Math.floor(key.x), ky)]).toBe(1);
+        expect(validateFindability(runtime).filter((i) => i.severity === 'error' && (i.what === 'key' || i.what === 'photocell'))).toEqual([]);
       });
     });
   }

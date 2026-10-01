@@ -25,7 +25,7 @@ const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const report = { mode, seed, errors: [], stages: [] };
 page.on('pageerror', (e) => report.errors.push(String(e)));
-const { ctxEval, shot, waitFor, walkTo, pointAtWorld, waitObjective, waitHint, plugOpen } = lockProbeTools(page, output);
+const { ctxEval, shot, waitFor, walkTo, pointAtWorld, waitObjective, waitHint, plugOpen, dismissCards } = lockProbeTools(page, output);
 
 const lock = () => ctxEval(() => {
   const ctx = window.__game.ctx, rt = ctx.levels.current;
@@ -113,7 +113,9 @@ try {
   assert.ok(s.relent > 0 && s.relent <= 27000, `the Works' clock is running (${s.relent})`);
   await enterHall(L);
   await waitObjective('Wire the Weir. Fill the bowl, then spark the brass.', 'near the machine the puzzle is named');
+  await dismissCards();
   await waitHint('A dry bowl and a coil in its well. Fill it, then spark the brass.', 'the hint reads the machine');
+  await dismissCards();
   await shot('01-hall');
   s = await state(L);
   report.stages.push({ name: 'hall', ...s });

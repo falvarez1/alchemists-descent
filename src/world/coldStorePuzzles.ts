@@ -10,7 +10,7 @@ import type { World } from '@/sim/World';
 import type { PlacementLedger } from '@/world/connect';
 import { iceShade, type ColdStoreSite } from '@/world/coldStore';
 import { LOCK_RELENT_FRAMES } from '@/world/locks';
-import { carveRoom, findRoomSite, intrudes, restore, ROOM_MARGIN, roomReachable, snapshot, type RoomSpec, type Site } from '@/world/lightPuzzles';
+import { carveRoom, findRoomSite, relayRoomFloor, intrudes, restore, ROOM_MARGIN, roomReachable, snapshot, type RoomSpec, type Site } from '@/world/lightPuzzles';
 
 /* ============================================================
  * THE COLD STORE'S PUZZLES (wave 3). Rooms carved off the caves and joined
@@ -261,6 +261,7 @@ export function placeColdStorePuzzles(
         console.warn(`[cold-store] ${spec.id}: ${why}; trying elsewhere`);
       };
       if (!carveRoom(ctx, rng, graph, fits, site.spawn, floorY, mouth, interior, ledger)) { rollback('could not be joined to the caves'); continue; }
+      if (spec.id === 'cold-ice-vault') relayRoomFloor(ctx.world, Math.min(x1 - 6, mouth.x + 14), interior.x1 + 2, floorY); // (the vault holds the key: its floor must stand)
       build(at, spec);
       if (!roomReachable(ctx.world, site.spawn, interior.x0, interior.y0, at.x0 + 40, floorY - 1)) { rollback('lost its approach'); continue; }
       if (intrudes(ctx.world, before.types, ledger)) { rollback('its carve cut into another placement'); continue; }

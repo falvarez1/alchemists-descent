@@ -1520,6 +1520,33 @@ ice and crystal pass it) to the lens or heart.
 
 ---
 
+## 11. The locks (the "more fun" round, GEN 64)
+
+Each campaign floor asks a different question of the sim; the key (d4: the Colossus hall) is behind its answer.
+All of it is real cells and `Mechanism` fields, so a save carries it; every number below was played (scripts/verify-<lock>.mjs).
+
+- **Relent**: `LOCK_RELENT_FRAMES` = 27,000 (7.5 min of play on the floor); the seal cracks open and demolishes its body,
+  the Docent says so once. A destroyed relay fires on its groan (30 s). A taken key cancels the clock.
+- **d2 THE GAS BELL**: an elliptical brass bell (rx 21, ry 27, 3-cell wall) hung full of marsh gas (~690 cells), a glass
+  porthole at wand height on the west face, a heat-sensor clapper (threshold 12, permanent), a vent that drips a cell every
+  3 frames until the clapper has rung (capped by the hall's gas). One Spark Bolt from the brass inlay 40 cells off: the
+  door lets go 1.1 s later (relay delay 72 frames). Solve, standing on the inlay: ~6-10 s.
+- **d3 THE WEIR**: a 40-wide, 9-deep pool (ramps of one row to two columns), a 3-wide 6-deep well to a charge-latch coil
+  (zone = the well's own water, 3 x 4), a cistern of 220 water cells hung over it behind a one-shot sluice valve, a lever
+  by the dais. The pool empties in ~2 s (a gush; the stream is visible for ~1.5 s); a bolt on the dry lining rings the brass
+  (210, ~3.5 s) and does nothing; a bolt on the wet lining latches the coil. A Water flask poured in works. Solve ~10-15 s
+  (the wade across the pool included). Sited above the sea (floor row <= seaTopRow - 14) or the sea floods the hall.
+- **d4 THE CRUCIBLE**: a 28 x 5 vat of lava (140 cells) under a 1-row Metal gangway with a 4-wide hatch, a 24 x 6 cistern
+  (144 water) over the hatch, the lever 46 cells off, a gauge that counts Stone in the vat (threshold 24; 43-79 counted
+  after a quench). The vat vents real Steam (2 emitters, 3 cells a frame) while the gauge reads and the relay waits; a
+  steam cell in the alchemist's body within 90 cells scalds (3 hp every 20 frames). Solve ~8-12 s. The gate is a 12 x 24 Metal slab in
+  a 6-row Metal sleeve; every cave that ran into the hall is filmed in 2 cells of iron (15/16 seeds closed).
+- **d2b THE ICE VAULT**: the strongroom's ice wall (10 x 26) is the seal (breakFrac .7): three Spark Bolts at the coal bank
+  blow it (7 s), the coal or the brine cistern take longer.
+- **d3b THE PERISCOPE**: the grinder's strongroom door is the seal; the attic lens drinks when the wand's beam goes straight up
+  the well (2.5-7 s after the aim). The Prism Gate keeps its valve: its lenses stand five cells from the door and a lantern
+  in the gap would drink for them (wand coverage .14-.54 at the lens, over the .07 threshold).
+
 ## Tuning quick-reference (this codex's load-bearing numbers)
 
 ```

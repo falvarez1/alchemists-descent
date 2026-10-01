@@ -138,7 +138,9 @@ try {
   // (the HUD re-reads its objective on its own cadence: wait for the line to turn)
   await page.waitForFunction(() => document.getElementById('objective')?.innerText.startsWith('Ring the Gas Bell'), null, { timeout: 8000 }).catch(() => undefined);
   await waitObjective('Ring the Gas Bell. Light the gas from a distance.', 'near the machine the puzzle is named');
+  await dismissCards();
   await waitHint('A bell of marsh gas. Light it from a distance; the vault answers.', 'the hint reads the machine');
+  await dismissCards();
   s = await state(L);
   await shot('01-hall');
   report.stages.push({ name: 'hall', ...s });

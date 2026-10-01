@@ -26,7 +26,7 @@ const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const report = { mode, seed, errors: [], stages: [] };
 page.on('pageerror', (e) => report.errors.push(String(e)));
-const { ctxEval, shot, waitFor, walkTo, pointAtWorld, waitObjective, waitHint, plugOpen } = lockProbeTools(page, output);
+const { ctxEval, shot, waitFor, walkTo, pointAtWorld, waitObjective, waitHint, plugOpen, dismissCards } = lockProbeTools(page, output);
 
 const lock = () => ctxEval(() => {
   const ctx = window.__game.ctx, rt = ctx.levels.current;
@@ -100,7 +100,9 @@ try {
   assert.ok(s.relent > 0 && s.relent <= 27000, `the Works' clock is running (${s.relent})`);
   await enterGallery(L);
   await waitObjective('Quench the Crucible. Water on the lava, from a distance.', 'near the machine the puzzle is named');
+  await dismissCards();
   await waitHint('A vat of lava and a shut slag gate. Water on the lava; stand well back.', 'the hint reads the machine');
+  await dismissCards();
   await shot('01-gallery');
   s = await state(L);
   report.stages.push({ name: 'gallery', ...s });

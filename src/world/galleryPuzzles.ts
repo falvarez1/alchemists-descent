@@ -1,7 +1,7 @@
 import { HEIGHT } from '@/config/constants';
 import type { Rng } from '@/core/rng';
-import type { Ctx, Mechanism, PlacedPrefab, Pickup, RegionGraph } from '@/core/types';
-import { makeValve } from '@/core/mechanismFactories';
+import type { Ctx, LockKind, Mechanism, PlacedPrefab, Pickup, RegionGraph } from '@/core/types';
+import { makePlug, makeRelay, makeValve } from '@/core/mechanismFactories';
 import { makePickup } from '@/core/pickupDefs';
 import { randomCard, TOME_REWARD_POOL } from '@/content/cardRewardPools';
 import { Cell } from '@/sim/CellType';
@@ -9,7 +9,8 @@ import { crystalColor, glassColor, goldColor, mirrorColor, packRGB } from '@/sim
 import type { World } from '@/sim/World';
 import type { PlacementLedger } from '@/world/connect';
 import type { ColdStoreSite } from '@/world/coldStore';
-import { carveRoom, findRoomSite, intrudes, restore, ROOM_MARGIN, roomReachable, snapshot, stampPhotocell, type RoomSpec, type Site } from '@/world/lightPuzzles';
+import { LOCK_RELENT_FRAMES, PLUG_BREAK_FRAC } from '@/world/locks';
+import { carveRoom, findRoomSite, relayRoomFloor, intrudes, restore, ROOM_MARGIN, roomReachable, snapshot, stampPhotocell, type RoomSpec, type Site } from '@/world/lightPuzzles';
 
 /* ============================================================
  * THE GLASS GALLERIES' PUZZLES (wave 3). Light that turns corners, on the
@@ -81,8 +82,13 @@ function restoreHousing(world: World, lens: Mechanism): void {
   for (const [x, y] of lens.body ?? []) if (t(world, x, y) !== Cell.Stone) put(world, x, y, Cell.Stone, packRGB(74, 62, 40));
 }
 
-/** The strongroom against the east wall (a metal box, a sliding gate on its west side, the reward inside). */
-function strongroom(ctx: Ctx, rng: Rng, x1: number, floorY: number, out: GalleryPuzzleOutput): Mechanism {
+/**
+ * The strongroom against the east wall (a metal box, a sliding gate on its west side, the reward inside). `lock` (the Periscope's,
+ * GEN 64): the floor's golden key lies inside and the gate is its LOCK - a route-seal plug the lens's relay breaks, so the audit
+ * counts the room reachable and nothing digs round it; the Works relent as on every floor. The Prism Gate keeps its valve (its
+ * lenses stand five cells from the door: a lantern in front of it would drink for them).
+ */
+function strongroom(ctx: Ctx, rng: Rng, x1: number, floorY: number, out: GalleryPuzzleOutput, lock?: LockKind): Mechanism {
   const world = ctx.world;
   const vx0 = x1 - 36, vx1 = x1 - 12, vy0 = floorY - 22, vy1 = floorY - 1;
   for (let y = vy0 - 2; y <= floorY + 2; y++) {
@@ -91,11 +97,22 @@ function strongroom(ctx: Ctx, rng: Rng, x1: number, floorY: number, out: Gallery
       put(world, x, y, inside ? Cell.Empty : Cell.Metal, inside ? AIR : CASING);
     }
   }
-  const gate = makeValve(ctx, out.mechanisms, vx0 - 2, vy1 - 18, 2, 19, { material: Cell.Metal, oneShot: true });
+  let gate: Mechanism;
+  if (lock) {
+    const plug = makePlug(world, out.mechanisms, vx0 - 2, vy1 - 18, 2, 19, Cell.Metal, null, PLUG_BREAK_FRAC);
+    plug.routeSeal = true;
+    plug.lock = lock;
+    plug.relentFrames = LOCK_RELENT_FRAMES;
+    // the relay inside, at the plug's foot, on the casing's floor (a metal-footed node nothing can reach to dig out)
+    gate = makeRelay(out.mechanisms, vx0 + 1, vy1, { delayFrames: 72, outputAction: 'break' }, plug);
+  } else {
+    gate = makeValve(ctx, out.mechanisms, vx0 - 2, vy1 - 18, 2, 19, { material: Cell.Metal, oneShot: true });
+  }
   glassLamp(world, vx1 - 2, vy1);
   const rx = Math.floor((vx0 + vx1) / 2);
   out.pickups.push(makePickup('tome', rx, vy1 - 1, { card: randomCard(TOME_REWARD_POOL, () => rng.next()) }));
   out.pickups.push(makePickup('goldpile', rx + 6, vy1, { amount: 15 + rng.int(12) }));
+  if (lock) out.pickups.push(makePickup('key', rx - 5, vy1 - 1));
   return gate;
 }
 
@@ -122,7 +139,7 @@ function periscope(ctx: Ctx, rng: Rng, at: Site, spec: RoomSpec, out: GalleryPuz
   const world = ctx.world;
   const x1 = at.x0 + spec.w - 1;
   const L = periscopeLayout(at, spec);
-  const gate = strongroom(ctx, rng, x1, L.floorY, out);
+  const gate = strongroom(ctx, rng, x1, L.floorY, out, 'periscope'); // the Periscope's vault holds the golden key
   // The attic: a metal false ceiling over the whole room, sealed except the
   // light well and the lens tunnel inside it.
   const stampOptics = (): void => {
@@ -251,6 +268,7 @@ export function placeGalleryPuzzles(
         console.warn(`[glass-galleries] ${spec.id}: ${why}; trying elsewhere`);
       };
       if (!carveRoom(ctx, rng, graph, fits, site.spawn, floorY, mouth, interior, ledger)) { rollback('could not be joined to the caves'); continue; }
+      if (spec.id === 'glass-periscope') relayRoomFloor(ctx.world, Math.min(x1 - 6, mouth.x + 14), interior.x1 + 2, floorY); // (the Periscope's vault holds the key: its floor must stand)
       build(at, spec);
       if (!roomReachable(ctx.world, site.spawn, interior.x0, interiorTop(at), at.x0 + 40, floorY - 1)) { rollback('lost its approach'); continue; }
       if (intrudes(ctx.world, before.types, ledger)) { rollback('its carve cut into another placement'); continue; }

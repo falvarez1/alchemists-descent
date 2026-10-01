@@ -71,16 +71,16 @@ export const LOCK_TEXT: Record<LockKind, LockCopy> = {
     placeName: 'Vault door',
     placeDescription: 'An ice wall and a Metal door. It opens when the ice is gone, or when the Works relent.',
   },
-  prismgate: {
-    name: 'the Prism Gate',
-    near: 'Open the Prism Gate. Shine a beam through the window.',
+  periscope: {
+    name: 'the Periscope',
+    near: 'Open the Periscope vault. Shine a beam up the light well.',
     open: 'The vault stands open. Take the golden key.',
-    hint: 'Two lenses and a prism behind glass. Shine a beam through the window.',
-    teachTitle: 'The Prism Gate',
-    teachBody: 'Two photocells, each holding its charge for a heartbeat, and one prism that splits a beam in two. Shine through the window, into the prism, and both lenses drink at once. The Works relent, in time.',
-    sealed: 'Sealed. The golden key is in the Prism Gate’s vault.',
+    hint: 'A mirror at the head of a light well. Stand on the brass and shine straight up.',
+    teachTitle: 'The Periscope',
+    teachBody: 'The grinder’s vault is held by a photocell sealed in the attic, and the only way light gets in is up the well, off the silvered mirror at its head and along the tunnel to the lens. Stand on the brass inlay under the well and shine straight up; the lens drinks, the relay counts a moment, and the vault door lets go. The Works relent, in time.',
+    sealed: 'Sealed. The golden key is in the Periscope’s vault.',
     placeName: 'Vault door',
-    placeDescription: 'Metal all through. It opens when both lenses drink the light at once, or when the Works relent.',
+    placeDescription: 'Metal all through. It opens when the lens in the attic drinks the light, or when the Works relent.',
   },
 };
 

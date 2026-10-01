@@ -2373,7 +2373,7 @@ export interface HazardEmitter {
 }
 
 /** The signature puzzles that seal each floor's key vault (world/locks). */
-export type LockKind = 'gasbell' | 'weir' | 'crucible' | 'coldvault' | 'prismgate';
+export type LockKind = 'gasbell' | 'weir' | 'crucible' | 'coldvault' | 'periscope';
 
 /* ============================================================
  * Wave A expansion systems
