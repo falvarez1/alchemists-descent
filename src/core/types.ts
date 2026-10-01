@@ -2368,6 +2368,8 @@ export interface HazardEmitter {
   cap?: { x0: number; y0: number; x1: number; y1: number; max: number };
   /** The id of a mechanism whose latch (state > 0) shuts this vent for good (the Gas Bell's clapper, once rung). */
   haltOn?: number;
+  /** The id of a sensor: this vent runs only WHILE that sensor reads something and the relay it feeds has not yet fired (the Crucible's vat exhaling as it cools). */
+  ventOn?: number;
 }
 
 /** The signature puzzles that seal each floor's key vault (world/locks). */

@@ -16,6 +16,7 @@ import { WorldGen } from '@/world/CaveGenerator';
 import { LOCK_RELENT_FRAMES, PLUG_DEPTH, PLUG_HEIGHT } from '@/world/locks';
 import { bellInterior, bellLayout, BELL } from '@/world/lockGasBell';
 import { bowlInterior, bowlSurface, tankRows, weirCapacity, weirLayout, WEIR } from '@/world/lockWeir';
+import { GATE, kilnGateLayout } from '@/world/lockCrucible';
 import { reachableMask, routeSealedWorld, validateFindability, wizardMask } from '@/world/validate';
 
 /**
@@ -257,10 +258,114 @@ describe('the Weir (d3)', () => {
   });
 });
 
+describe('the Crucible (d4)', () => {
+  for (const seed of [1337, 5, 42]) {
+    describe(`seed ${seed}`, () => {
+      const level = generate(LEVELS.d4, seed);
+      const runtime = runtimeOf(level, LEVELS.d4);
+      const plug = level.mechanisms.find((m) => m.kind === 'plug' && m.lock === 'crucible')!;
+      const room = level.placedPrefabs.find((p) => p.id === 'lock-crucible')!;
+      const relay = (): Mechanism => level.mechanisms.find((m) => m.kind === 'relay' && m.targetId === plug.id)!;
+      const gauge = (): Mechanism => level.mechanisms.find((m) => m.kind === 'sensor' && m.targetId === relay().id)!;
+      const valve = (): Mechanism => level.mechanisms.find((m) => m.kind === 'valve' && m.x >= room.x0 && m.x <= room.x1 && m.y >= room.y0 && m.y <= room.y1)!;
+      const lever = (): Mechanism => level.mechanisms.find((m) => m.kind === 'lever' && m.targetId === valve().id)!;
+      // the layout, rebuilt from what generation made: the hall's centre from its boss, the side and gallery length from the lever
+      const boss = level.boss!;
+      const cx = boss.x, cy = boss.y - 29;
+      const e: 1 | -1 = lever().x > plug.x ? 1 : -1;
+      const gallery = e * (lever().x - cx) - 59 + GATE.leverIn - GATE.corridor;
+      const L = kilnGateLayout({ cx, cy, FLOOR: 30, HALF: 58, RX: 62, RY: 40, e, gallery });
+      const at = (x: number, y: number): number => level.world.types[level.world.idx(x, y)];
+
+      it('is built on the hall’s entrance flank, with one slag gate and no key', () => {
+        expect(room).toBeTruthy();
+        expect(plug.routeSeal).toBe(true);
+        expect(plug.material).toBe(Cell.Metal);
+        expect(plug.relentFrames).toBe(LOCK_RELENT_FRAMES);
+        expect(plug.body!.length).toBe(GATE.plugW * GATE.up);
+        expect(level.pickups.some((p) => p.kind === 'key')).toBe(false);
+        expect(level.placedPrefabs.filter((p) => p.id.startsWith('lock-')).length).toBe(1);
+        expect(plug.x).toBe(L.plug.x);
+        expect(plug.y).toBe(L.plug.y);
+        expect(room.x0).toBe(L.rect.x0);
+        expect(room.x1).toBe(L.rect.x1);
+      });
+
+      it('chains gauge -> relay -> gate; a lever works a one-shot sluice; the vat vents steam while it cools', () => {
+        expect(relay().outputAction).toBe('break');
+        const g = gauge();
+        expect(g.sensorType).toBe('material');
+        expect(g.materialFilter).toEqual([Cell.Stone]);
+        expect(g.latch).toBe('permanent');
+        expect(g.threshold).toBe(GATE.threshold);
+        expect(lockFocus(runtime, plug)).toEqual({ x: g.x, y: g.y });
+        expect(valve().oneShot).toBe(true);
+        expect(valve().material).toBe(Cell.Metal);
+        expect(lever()).toBeTruthy();
+        // the lever is far from the vat: water on lava is steam, and steam scalds
+        const hatchX = (L.ox(GATE.hatchU0) + L.ox(GATE.hatchU1)) / 2;
+        expect(Math.abs(lever().x - hatchX)).toBeGreaterThan(30);
+        const vents = level.emitters.filter((v) => v.cell === Cell.Steam && v.ventOn === g.id);
+        expect(vents.length).toBe(2);
+        for (const v of vents) { expect(v.dir).toBe(180); expect(v.y).toBe(L.Fr + 1); }
+      });
+
+      it('has a vat of lava the gauge reads zero stone in, walled in Metal, bridged by a gangway with a hatch', () => {
+        const z = gauge().zone!;
+        let lava = 0, stone = 0;
+        for (let y = z.y0; y <= z.y1; y++) for (let x = z.x0; x <= z.x1; x++) { const c = at(x, y); if (c === Cell.Lava) lava++; else if (c === Cell.Stone) stone++; }
+        expect(stone).toBe(0);
+        expect(lava).toBe((GATE.potU1 - GATE.potU0 + 1) * GATE.lavaRows);
+        // every lava cell is held: its neighbours are lava, Metal or open air above it, never rock
+        for (let y = z.y0; y <= z.y1; y++) {
+          for (let x = z.x0; x <= z.x1; x++) {
+            if (at(x, y) !== Cell.Lava) continue;
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) expect([Cell.Lava, Cell.Metal, Cell.Empty], `lava at ${x},${y} touches ${dx},${dy}`).toContain(at(x + dx, y + dy));
+          }
+        }
+        // the gangway: Metal along the floor row over the vat and its walls, open at the hatch
+        for (let u = GATE.potU0 - GATE.lining; u <= GATE.potU1 + GATE.lining; u++) {
+          const hatch = u >= GATE.hatchU0 && u <= GATE.hatchU1;
+          expect(at(L.ox(u), L.Fr), `gangway u=${u}`).toBe(hatch ? Cell.Empty : Cell.Metal);
+        }
+      });
+
+      it('hangs a closed full cistern over the hatch', () => {
+        let water = 0, air = 0;
+        for (let y = L.tank.y0 + GATE.wall; y <= L.tank.y1 - GATE.wall; y++) for (let x = L.tank.x0 + GATE.wall; x <= L.tank.x1 - GATE.wall; x++) { if (at(x, y) === Cell.Water) water++; else air++; }
+        expect(air, 'a mass of water that touches air is loose stock to the sweeps').toBe(0);
+        expect(water).toBe(GATE.tankRows * GATE.tankHalf * 2);
+        // the valve's cells are Metal while shut, and sit in the casing's floor over the hatch
+        for (let y = L.valve.y; y < L.valve.y + L.valve.h; y++) for (let x = L.valve.x; x < L.valve.x + L.valve.w; x++) expect(at(x, y)).toBe(Cell.Metal);
+        expect(L.valve.x).toBeLessThanOrEqual(Math.min(L.ox(GATE.hatchU0), L.ox(GATE.hatchU1)));
+        expect(L.valve.x + L.valve.w).toBeGreaterThan(Math.max(L.ox(GATE.hatchU0), L.ox(GATE.hatchU1)));
+      });
+
+      it('has a Metal-sleeved corridor to the hall, and is the ONLY way into the hall', () => {
+        for (let u = 0; u < GATE.corridor; u++) {
+          expect(at(L.ox(u), L.Fr - GATE.up - 1), `lintel u=${u}`).toBe(Cell.Metal);
+          expect(at(L.ox(u), L.Fr), `sill u=${u}`).toBe(Cell.Metal);
+        }
+        expect(at(L.ox(0), L.Fr - 1)).toBe(Cell.Empty);
+        const closed = reachableMask({ world: level.world, spawn: level.spawn });
+        const open = reachableMask({ world: routeSealedWorld(level.world, level.mechanisms), spawn: level.spawn });
+        const hall = level.world.idx(cx, cy + 24);
+        expect(closed[hall], 'with the gate shut the hall cannot be walked into').toBe(0);
+        expect(open[hall], 'with the gate open it can').toBe(1);
+      });
+
+      it('findability is clean', () => {
+        expect(validateFindability(runtime).filter((i) => i.severity === 'error')).toEqual([]);
+      });
+    });
+  }
+});
+
 describe('floors without a lock are untouched', () => {
   it('only the floors with a GenDef.lock draw one', () => {
     expect(GEN.fungal.lock).toBe('gasbell');
     expect(GEN.flooded.lock).toBe('weir');
+    expect(GEN.volcanic.lock).toBe('crucible');
     for (const biome of ['earthen', 'frozen', 'crystal', 'timber', 'scorched'] as const) expect(GEN[biome].lock, biome).toBeUndefined();
   });
 
@@ -280,7 +385,7 @@ describe('the lock plug (mechanism contract)', () => {
   let toasts: string[];
   let mech: Mechanisms;
   let lockEvents: Array<{ kind: LockKind; phase: string }>;
-  const emitters: Array<{ x: number; y: number; cell: number; rate: number; dir: 0 | 90 | 180 | 270; burst: number; phase: number; cap?: { x0: number; y0: number; x1: number; y1: number; max: number }; haltOn?: number }> = [];
+  const emitters: Array<{ x: number; y: number; cell: number; rate: number; dir: 0 | 90 | 180 | 270; burst: number; phase: number; cap?: { x0: number; y0: number; x1: number; y1: number; max: number }; haltOn?: number; ventOn?: number }> = [];
 
   beforeEach(() => {
     world = new World();
@@ -295,7 +400,7 @@ describe('the lock plug (mechanism contract)', () => {
       world, events, enemies: [],
       player: { x: 100, y: 100, dead: false, pullT: 0, pullDir: 1, facing: 1 },
       state: { mode: 'play', paused: false, frameCount: 1, currentBiome: 'fungal' },
-      audio: { sfx: noop, creature: noop, tone: noop, groan: noop, zap: noop, bubble: noop, brazier: noop, lever: noop, doorGrind: noop, boom: noop },
+      audio: { sfx: noop, creature: noop, tone: noop, groan: noop, zap: noop, bubble: noop, brazier: noop, lever: noop, doorGrind: noop, boom: noop, steam: noop },
       particles: { spawn: noop, burst: noop, clear: noop },
       enemyCtl: { defs: {} },
       levels: { current: { mechanisms: list, runeVaults: [], emitters, pickups: [], def: LEVELS.d2, keyTaken: false } },
@@ -404,6 +509,28 @@ describe('the lock plug (mechanism contract)', () => {
     sensor.state = 1;
     step(24);
     expect(gasIn()).toBe(0); // the clapper has rung: the vent is shut for good
+  });
+
+  it('a steam vent runs only while its gauge reads something and the relay it feeds has not fired', () => {
+    const door1 = door();
+    const relay = makeRelay(list, 290, 290, { outputAction: 'break' }, door1);
+    const gauge = makeSensor(world, list, 200, 300, { sensorType: 'material', threshold: 5, zone: { x0: 195, y0: 295, x1: 205, y1: 299 }, latch: 'permanent', materialFilter: [Cell.Stone] }, relay);
+    emitters.push({ x: 500, y: 500, cell: Cell.Steam, rate: 1, dir: 180, burst: 2, phase: 0, ventOn: gauge.id });
+    const steamIn = (): number => {
+      let n = 0;
+      for (let y = 490; y <= 500; y++) for (let x = 495; x <= 505; x++) if (world.types[world.idx(x, y)] === Cell.Steam) n++;
+      return n;
+    };
+    step(4);
+    expect(steamIn(), 'a still vat is quiet').toBe(0);
+    gauge.reading = 3; // some of the lava has crusted
+    step(4);
+    expect(steamIn(), 'the vat exhales as it cools').toBeGreaterThan(0);
+    expect(world.life[world.idx(500, 499)]).toBeGreaterThan(100); // (a steam cell with a lifetime: it rises and scalds)
+    for (let y = 490; y <= 500; y++) for (let x = 495; x <= 505; x++) world.types[world.idx(x, y)] = Cell.Empty;
+    relay.state = 1; // the gate has let go
+    step(4);
+    expect(steamIn(), 'the vent is shut once the gate has opened').toBe(0);
   });
 });
 

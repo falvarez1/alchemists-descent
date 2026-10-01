@@ -1266,6 +1266,7 @@ export const GEN: Record<BiomeId, GenDef> = {
     goldKeep: 0.34, // ~45 effective gold pockets (100 x goldBonus x keep)
     routeWaystones: true,
     lavaLakes: { targetCells: 26000, maxLakes: 16, minCells: 500, maxCells: 4500, minDepth: 10, yFracMin: 0.4, maxRise: 70, halls: 10, hallRx: [44, 76], hallRy: [22, 34] },
+    lock: 'crucible',
   },
   // The Gilded Vault: crystal-vault pillared halls re-dressed as a treasury,
   // gold-saturated (the hoard IS the decoration — see applyBiomeExtras' gold

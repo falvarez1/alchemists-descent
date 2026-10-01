@@ -1221,6 +1221,7 @@ export class WorldGen implements WorldGenApi {
       wardenRepair,
       kilnFlue,
       arenaMouths,
+      kilnLock,
       portHoles,
       portalMouths,
     } = placeStructures(
@@ -1331,6 +1332,11 @@ export class WorldGen implements WorldGenApi {
     // Fall and Ice Vault. Their own forked stream and the shared ledger, before
     // the flora takes its ground; their tanks re-assert after the rescues.
     const setPieceRepairs: Array<() => void> = [];
+    // THE CRUCIBLE (GEN 64): the Kiln hall's gatehouse was built with the hall (world/structures); it is a placed room and re-asserts after the rescues.
+    if (kilnLock) {
+      placedPrefabs = placedPrefabs.concat([kilnLock.placed]);
+      setPieceRepairs.push(kilnLock.repair);
+    }
     if (def.biome === 'frozen') {
       const cold: ColdStorePuzzleOutput = { pickups: [], placed: [], repairs: [] };
       placeColdStorePuzzles(ctx, new Rng(hashSeed(seed >>> 0, 'cold-store-puzzles')), graph, ledger,
@@ -1361,7 +1367,7 @@ export class WorldGen implements WorldGenApi {
     // 8b.8b) THE LOCK (GEN 64, world/locks): the floor's signature puzzle and its key vault, a chamber on
     // the route sealed by a plug the puzzle's machine breaks. Its own forked stream, the shared ledger,
     // and nothing is drawn on a floor without one (so every other floor generates exactly as before).
-    if (genDef.lock) {
+    if (genDef.lock && genDef.lock !== 'crucible') {
       const lockOut: LockOutput = { mechanisms, pickups, placed: [], repairs: [], emitters: structEmitters, lights: structLights };
       placeLock(ctx, new Rng(hashSeed(seed >>> 0, 'locks')), genDef.lock, graph, ledger,
         { spawn, wellX, exit: portal ? { x: portal.x, y: portal.y } : null, avoid: lightAvoid }, fits, lockOut);

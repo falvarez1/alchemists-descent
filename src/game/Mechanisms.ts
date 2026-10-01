@@ -248,6 +248,8 @@ export class Mechanisms implements MechanismsApi {
             ctx.events.emit('lockChanged', { kind: m.lock, phase: 'seen', x: at.x, y: at.y });
           }
         }
+        // THE CRUCIBLE: a quench's steam is real, and it scalds whoever stands in it near the vat (the reason the lever is far off)
+        if (m.lock === 'crucible' && ctx.state.frameCount % 20 === 0) this.scaldInSteam(ctx, runtime, m);
         if (m.state === 0 && m.relentFrames !== undefined) {
           m.relentFrames--;
           if (m.relentFrames <= 0) {
@@ -461,6 +463,12 @@ export class Mechanisms implements MechanismsApi {
         if ((ctx.state.frameCount + em.phase) % em.rate !== 0) continue;
         // A vent that stops: shut by a latch (the Gas Bell's clapper) or while its product already fills its rect.
         if (em.haltOn !== undefined && list.some((m) => m.id === em.haltOn && m.state > 0)) continue;
+        if (em.ventOn !== undefined) {
+          const gauge = list.find((m) => m.id === em.ventOn);
+          const relay = gauge ? list.find((m) => m.id === gauge.targetId) : undefined;
+          if (!gauge || (gauge.reading ?? 0) <= 0 || relay?.state === 1) continue;
+          if (em.cell === Cell.Steam && ctx.state.frameCount % 8 === 0) ctx.audio.steam(em.x, em.y);
+        }
         if (em.cap && countCells(world, em.cell, em.cap) >= em.cap.max) continue;
         const dx = em.dir === 90 ? -1 : em.dir === 270 ? 1 : 0;
         const dy = em.dir === 180 ? -1 : em.dir === 0 ? 1 : 0;
@@ -474,6 +482,7 @@ export class Mechanisms implements MechanismsApi {
           world.replaceCellAt(i, em.cell, fn ? fn() : EMPTY_COLOR);
           if (em.cell === Cell.Fire) world.life[i] = 15 + Math.floor(entityRandom() * 30);
           else if (em.cell === Cell.Smoke) world.life[i] = 30 + Math.floor(entityRandom() * 40);
+          else if (em.cell === Cell.Steam) world.life[i] = 120 + Math.floor(entityRandom() * 60);
         }
       }
     }
@@ -744,6 +753,18 @@ export class Mechanisms implements MechanismsApi {
     bodies.push(body);
     ctx.particles.burst(m.x, m.y + 1, 6, null, () => packRGB(180, 172, 150), 1.0, { grav: 0.06 });
     ctx.audio.sfx('mech.dispenser', m.x, m.y);
+  }
+
+  /** Steam cells in the alchemist's body, within the Crucible's gallery, scald (the pressure vent's own rule: sampled up the body). */
+  private scaldInSteam(ctx: Ctx, runtime: LevelRuntime, m: Mechanism): void {
+    if (ctx.state.mode !== 'play' || ctx.player.dead) return;
+    const at = lockFocus(runtime, m);
+    const dx = at.x - ctx.player.x, dy = at.y - ctx.player.y;
+    if (dx * dx + dy * dy > 90 * 90) return;
+    const px = Math.round(ctx.player.x), py = Math.round(ctx.player.y);
+    for (const dx2 of [-3, 0, 3]) {
+      if ([0, 5, 10, 15].some((offset) => ctx.world.type(px + dx2, py - offset) === Cell.Steam)) { ctx.playerCtl.damage(3, 0, 0.7, 'steam-pressure'); return; }
+    }
   }
 
   /** Locks the alchemist has come within sight of this session (the Docent's aside, once). */
