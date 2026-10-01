@@ -228,6 +228,7 @@ export const SFX_PROMPTS = {
   'mech.dispenser': { p: "A hatch dropping open and a crate tumbling out with a thud, short", d: 0.8, t: 1, i: 0.6 },
   'mech.plug': { p: "A stone plug cracking and crumbling apart, rock debris falling, short", d: 1, t: 1, i: 0.55 },
   'lock.bell': { p: "A great brass bell struck once with a mallet, a deep resonant bong ringing out and slowly fading in a stone hall, a faint rumble of a gas flame whooshing under it", d: 3, t: 1, i: 0.5 },
+  'lock.slag': { p: "A great iron furnace gate unlatching with a heavy clank, then a long hiss of steam as molten slag cools to stone, a low metallic groan fading", d: 3, t: 1, i: 0.5 },
   'mech.rune': { p: "A magic rune struck: a resonant shimmering chime rising, with a distant deep stone rumble", d: 1.5, t: 1, i: 0.55 },
   'mech.shrine': { p: "A soft warm humming chime of a small shrine, gentle and quiet, short", d: 1, t: 1, i: 0.6 },
   'mech.cauldron': { p: "A cauldron brew completing: a rich bubbling surge and a bright magical chime pop", d: 1.2, t: 1, i: 0.55 },
