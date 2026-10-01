@@ -78,6 +78,13 @@ export const SANCTUM_LOST_PAGES_POOL: readonly CardId[] = [
   ...COMBO_SETUP_POOL,
 ];
 
+/**
+ * The devil's bargains (combat/wands/cardRules.BARGAIN_RULES): strong, and the price is paid in the
+ * compiler. Offered ONLY as an altar's wild card — in no tome, page or depth pool, and never fed in by
+ * discovery — so taking one is always a choice made at a waystone.
+ */
+export const BARGAIN_POOL: readonly CardId[] = ['overcharge', 'loosecannon', 'shortfuse', 'millstone', 'kickback'];
+
 export function randomCard(pool: readonly CardId[], rng: () => number = entityRandom): CardId {
   return pool[Math.floor(rng() * pool.length)] ?? 'spark';
 }

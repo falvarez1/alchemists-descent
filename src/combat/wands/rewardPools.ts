@@ -1,7 +1,9 @@
 import type { CardId, CardKind, Ctx, WandsApi } from '@/core/types';
 import { entityRandom } from '@/core/simRandom';
 import { CARD_DEFS } from './cards';
+import { isBargain } from './cardRules';
 export {
+  BARGAIN_POOL,
   COMBO_SETUP_POOL,
   DEPTH_PROJECTILE_POOL,
   LEVIATHAN_REWARD_POOL,
@@ -26,7 +28,14 @@ export function collectOwnedCards(wands: WandsApi): Set<CardId> {
 export function buildCardOffer(
   pool: readonly CardId[],
   owned: ReadonlySet<CardId>,
-  options: { count?: number; preferred?: readonly CardId[]; rng?: () => number; ensureKind?: CardKind | readonly CardKind[] } = {},
+  options: {
+    count?: number;
+    preferred?: readonly CardId[];
+    rng?: () => number;
+    ensureKind?: CardKind | readonly CardKind[];
+    /** A card that would do nothing in this player's hands (combat/wands/cardFit): an offer carries at most one. */
+    dead?: (id: CardId) => boolean;
+  } = {},
 ): CardId[] {
   const count = Math.max(1, Math.floor(options.count ?? 3));
   const rng = options.rng ?? entityRandom;
@@ -48,18 +57,49 @@ export function buildCardOffer(
     drawFrom(fallback, result, count, rng);
   }
 
+  limitDeadCards(pool, owned, result, preferredSet, options.dead, rng);
   ensureOfferKind(pool, owned, result, preferredSet, options.ensureKind, rng);
   if (result.length === 0) result.push('spark');
   return result;
 }
 
+/**
+ * Fit tells made binding: an offer never hands over three dead cards. Beyond the first dead card (an
+ * authored tome's preferred card is never touched) each is traded for a live one from the same pool,
+ * unowned cards first. When the pool has no live card left the offer stays as drawn.
+ */
+function limitDeadCards(
+  pool: readonly CardId[],
+  owned: ReadonlySet<CardId>,
+  result: CardId[],
+  preferred: ReadonlySet<CardId>,
+  dead: ((id: CardId) => boolean) | undefined,
+  rng: () => number,
+): void {
+  if (!dead) return;
+  const deadSlots: number[] = [];
+  result.forEach((id, i) => {
+    if (!preferred.has(id) && dead(id)) deadSlots.push(i);
+  });
+  // Keep the first dead card (a player may want it for later); trade the rest.
+  for (const at of deadSlots.slice(1).reverse()) {
+    const live = pool.filter((id) => !result.includes(id) && !dead(id));
+    const fresh = live.filter((id) => !owned.has(id));
+    const choices = fresh.length > 0 ? fresh : live;
+    if (choices.length === 0) break;
+    result[at] = choices[Math.floor(rng() * choices.length)];
+  }
+}
+
 export function requestCardOffer(
   ctx: Ctx,
   offer: {
-    source: 'tome' | 'sanctum';
+    source: 'tome' | 'sanctum' | 'altar' | 'depth';
     title: string;
     prompt?: string;
     cards: CardId[];
+    /** One short kicker per card ("Host", "Synergy", "Wild"): an altar's three differ on purpose. */
+    labels?: string[];
     onChoose(card: CardId): void;
   },
 ): boolean {
@@ -121,7 +161,8 @@ export function withDiscoveredCards(base: readonly CardId[], discovered: readonl
   const out = [...base];
   const seen = new Set<CardId>(base);
   for (const card of discovered) {
-    if (seen.has(card) || DISCOVERY_EXCLUDED.has(card)) continue;
+    // A bargain is only ever the altar's wild card: a discovery never lets one loose in a tome.
+    if (seen.has(card) || DISCOVERY_EXCLUDED.has(card) || isBargain(card)) continue;
     seen.add(card);
     out.push(card);
   }

@@ -54,6 +54,7 @@ export function installUiSounds(events: EventBus, audio: Pick<AudioApi, 'sfx'>, 
     listen(events, 'hintTeach', () => eventCue('ui.hint')),
     listen(events, 'grimoireEntryDiscovered', () => eventCue('ui.grimoire')),
     listen(events, 'cardOfferRequested', () => eventCue('ui.card.reveal')),
+    listen(events, 'wandOfferRequested', () => eventCue('ui.card.reveal')),
     listen(events, 'benchOpened', () => eventCue('ui.bench')),
     listen(events, 'runLedger', ({ open }) => eventCue(open ? 'ui.open' : 'ui.close')),
     listen(events, 'levelCurtain', ({ visible }) => { if (visible) eventCue('ui.curtain'); }),
@@ -79,6 +80,7 @@ export function installUiSounds(events: EventBus, audio: Pick<AudioApi, 'sfx'>, 
   const onClick = failSafe('UiSounds click', (e: Event): void => {
     const el = buttonAt(e.target);
     if (!el) return;
+    if (el.matches('.card-offer-card.bargain')) { audio.sfx('ui.card.bargain'); return; }
     if (el.matches('.card-offer-card')) { audio.sfx('ui.card.choose'); return; }
     if (el.closest(OWN_SOUND)) return;
     audio.sfx(el.matches(BACKISH) ? 'ui.back' : 'ui.click');

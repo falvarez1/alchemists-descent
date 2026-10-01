@@ -130,6 +130,16 @@ try {
       await probe('offer', '#card-offer-overlay');
       await page.keyboard.press('Digit1'); await page.waitForTimeout(400); await closeAll();
     }
+    if (want('altar')) {
+      // The choice update: an altar's three (a bargain with its price on the tile), and the Wandwright's rack
+      // of three frames, each with two refit targets (the tallest overlay in the game).
+      await page.evaluate(() => window.__game.ctx.events.emit('cardOfferRequested', { source: 'altar', title: 'The altar answers', prompt: 'Take one.', cards: ['icelance', 'shattercrit', 'shortfuse'], labels: ['Host', 'Synergy', 'Wild · a bargain'], onChoose() {} }));
+      await probe('altar', '#card-offer-overlay');
+      await page.keyboard.press('Digit1'); await page.waitForTimeout(400); await closeAll();
+      await page.evaluate(() => window.__game.ctx.events.emit('wandOfferRequested', { source: 'sanctum', title: 'The Wandwright’s rack', frames: ['quill', 'mortar', 'samovar'], onChoose() {}, onDecline() {} }));
+      await probe('wandrack', '#wand-offer-overlay');
+      await page.keyboard.press('Escape'); await page.waitForTimeout(400); await closeAll();
+    }
     if (want('sanctum')) {
       await page.evaluate(() => { const c = window.__game.ctx; c.state.score = 240; c.sanctum.open(c, () => {}); });
       await probe('sanctum', '#sanctum-overlay', 1400);

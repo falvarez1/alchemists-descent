@@ -274,6 +274,58 @@ export const CARD_DEFS: Record<CardId, CardDef> = {
     blurb: 'Next projectile casts the following group where it lands',
   },
 
+  // ------- devil's bargains: altar-only, strong, and the price is real (cardRules.BARGAIN_RULES) -------
+  overcharge: {
+    id: 'overcharge',
+    name: 'Overcharged Coil',
+    kind: 'modifier',
+    tags: ['Damage', 'Risk', 'Bargain'],
+    manaCost: 26,
+    blurb: 'Next projectile hits x3 as hard',
+    bargain: true,
+    cost: 'Costs 26 mana on top of its host: a small tank is dry in about three casts.',
+  },
+  loosecannon: {
+    id: 'loosecannon',
+    name: 'Loose Cannon',
+    kind: 'modifier',
+    tags: ['Damage', 'Risk', 'Bargain'],
+    manaCost: 6,
+    blurb: 'Next projectile hits x4 as hard',
+    bargain: true,
+    cost: 'The aim wanders about 29 degrees either way. Stand close.',
+  },
+  shortfuse: {
+    id: 'shortfuse',
+    name: 'Short Fuse',
+    kind: 'modifier',
+    tags: ['Damage', 'Risk', 'Bargain'],
+    manaCost: 6,
+    blurb: 'Next projectile hits x3 as hard',
+    bargain: true,
+    cost: 'The shot lives a thirteenth as long: it dies within about 125 cells, so anything that keeps its distance is out of reach. Bolts and lances only.',
+  },
+  millstone: {
+    id: 'millstone',
+    name: 'Millstone Charm',
+    kind: 'modifier',
+    tags: ['Damage', 'Risk', 'Bargain'],
+    manaCost: 8,
+    blurb: 'Next projectile hits x2.5 as hard',
+    bargain: true,
+    cost: 'It flies at under a third of the speed. Anything quick steps out of the way.',
+  },
+  kickback: {
+    id: 'kickback',
+    name: 'Kickback Charm',
+    kind: 'modifier',
+    tags: ['Damage', 'Risk', 'Bargain'],
+    manaCost: 8,
+    blurb: 'Next projectile hits x2 as hard',
+    bargain: true,
+    cost: 'Every cast kicks you backward, hard. Mind the lava; aim down and it lifts you.',
+  },
+
   // ---------------- multicast cards ----------------
   double: {
     id: 'double',

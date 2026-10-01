@@ -10,6 +10,8 @@ import { BASE_DIFFICULTY, DIFFICULTY_BLURBS } from '@/config/difficultyLadder';
 import { DIFFICULTY } from '@/config/difficulty';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
 import { ledgerNote } from '@/ui/ledgerNotes';
+import { runNotesLine } from '@/ui/runNotes';
+import '@/styles/builds.css';
 
 /** Victory lands after the Colossus's last explosion has. */
 const VICTORY_REVEAL_MS = 2400;
@@ -57,6 +59,9 @@ export class RunSummary {
   private readonly note = document.createElement('p');
   private readonly daily = document.createElement('p');
   private readonly boons = document.createElement('p');
+  /** The build the run ended with, and its decision notes ("Run notes"). */
+  private readonly build = document.createElement('p');
+  private readonly runNotes = document.createElement('p');
   private readonly unlocks = document.createElement('ul');
   private readonly kits: KitPicker;
   private readonly grades: DifficultyPicker;
@@ -92,6 +97,8 @@ export class RunSummary {
     this.note.className = 'rs-note';
     this.daily.className = 'rs-daily';
     this.boons.className = 'rs-boons';
+    this.build.className = 'rs-boons rs-build';
+    this.runNotes.className = 'rs-boons rs-notes';
     this.unlocks.className = 'rs-unlocks';
     this.kits = new KitPicker('Next descent', (kit) => {
       this.chosenKit = kit;
@@ -123,7 +130,7 @@ export class RunSummary {
     head.append(this.kicker, this.title, this.epitaph);
     const body = document.createElement('div');
     body.className = 'rs-body';
-    body.append(this.floors, this.stats, this.note, this.boons, this.daily, this.unlocks);
+    body.append(this.floors, this.stats, this.note, this.boons, this.build, this.runNotes, this.daily, this.unlocks);
     const foot = document.createElement('div');
     foot.className = 'rs-foot';
     // The next descent's two choices sit side by side: the kit picker is the taller of the two, so the
@@ -226,6 +233,7 @@ export class RunSummary {
     this.note.textContent = remark ?? '';
     this.note.hidden = remark === null;
     this.renderBoons(result);
+    this.renderBuild(result);
     this.renderDaily(result);
     this.renderUnlocks(result);
     const view = ctx.run?.metaView();
@@ -340,6 +348,29 @@ export class RunSummary {
     label.className = 'rs-boons-label';
     label.textContent = 'Struck at the Sanctum';
     this.boons.append(label, document.createTextNode(names));
+  }
+
+  /** The wands the run ended with, and the run's decisions in a line (ui/runNotes). */
+  private renderBuild(result: RunResult): void {
+    const line = result.summary.build ?? '';
+    this.build.hidden = line === '';
+    this.build.replaceChildren();
+    if (line !== '') {
+      const label = document.createElement('span');
+      label.className = 'rs-boons-label';
+      label.textContent = 'Built on';
+      this.build.append(label, document.createTextNode(line));
+    }
+    const notes = this.ctx.wands.buildNotes?.();
+    const text = notes ? runNotesLine(notes) : null;
+    this.runNotes.hidden = text === null;
+    this.runNotes.replaceChildren();
+    if (text !== null) {
+      const label = document.createElement('span');
+      label.className = 'rs-boons-label';
+      label.textContent = 'Run notes';
+      this.runNotes.append(label, document.createTextNode(text));
+    }
   }
 
   private renderDaily(result: RunResult): void {
