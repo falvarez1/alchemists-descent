@@ -140,6 +140,25 @@ prototype for a direction the game no longer takes.
   menu item (layers moved to a toolbar popover; generate moved to *Level ▸ Generate terrain…*).
 - Material Parameters no longer pops open every time a swatch is armed (still *Level ▸ Material tuning…*).
 
+### Where the Global Controls / Post FX dials live now (audited 2026-09-30)
+
+Cutting those two panels removed the only GUI for most of their dials; the Sandbox panel only ever had four of them. Each
+dial still has a route, and the two families that had none were given one:
+
+| Dials | Route now |
+|---|---|
+| Sim speed, max brightness, ambient, brush size | Sandbox sliders; Builder *World* panel; console `global.*` |
+| Time controls (pause / step / back / snapshot) | Sandbox clock panel |
+| Gore (`bloodAmount`, `goreBlood/Slime/Ooze`), electrical (`charge*`, `shockDamage`) | console `set global.<key>` |
+| Movement feel, levitation, wand recoil | console `set player.<key>` |
+| Post FX, bloom, lens | console `set postFx.<key>` (players have the Options sliders) |
+| Worldgen look (`GEN_TUNE`, gold richness, dressing) | Sandbox world panel; console `set gen.<key>` (**new**) |
+| Progression pacing (D1 speeds + depth ramps) | console `set pacing.<key>` (**new**; it had no route at all) |
+| Cursor / torch wand light | console `set wandLight.<key>` (**new**; no route at all) |
+
+`pacing.*`, `gen.*` and `global/player.*` persist across reloads through `config/tuningStore`; `wandLight.*` does not
+(it never did). The completion list now covers `player.*`, `pacing.*`, `wandLight.*` and `gen.*` as well.
+
 The **Reference gallery** moved to *Help*; it is an art browser, not a level tool.
 
 ## Small things that carry the feel (second polish round)

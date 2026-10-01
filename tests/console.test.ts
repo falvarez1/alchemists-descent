@@ -14,6 +14,8 @@ import type {
   LevelRuntime,
   WandsApi,
 } from '@/core/types';
+import { GEN_TUNE } from '@/config/gen';
+import { PROGRESSION_PACING } from '@/config/pacing';
 import { createPlayer } from '@/entities/Player';
 import { createConsoleApi } from '@/game/console/commands';
 import { resolveRelativeCoord, parseCellType } from '@/game/console/commands';
@@ -541,6 +543,45 @@ describe('console registry', () => {
     expect(set.ok).toBe(true);
     expect(get).toMatchObject({ ok: true, data: { path: 'global.simSpeed', value: 0.5 } });
     expect(ctx.state.debugGodMode).toBe(false);
+  });
+
+  it('reaches the dials the Builder no longer has a panel for (pacing, wand light, worldgen look, gore, feel)', async () => {
+    const ctx = makeCtx();
+    const pacingBefore = { ...PROGRESSION_PACING };
+    const genBefore = { ...GEN_TUNE };
+    try {
+      const pacing = await ctx.console.exec('set pacing.enemyStart 0.6');
+      const wand = await ctx.console.exec('set wandLight.torchRadius 200');
+      const gen = await ctx.console.exec('set gen.rockFillPasses 3');
+      const gore = await ctx.console.exec('set global.goreBlood 2');
+      const feel = await ctx.console.exec('set player.jumpCut 0.3');
+      expect(pacing).toMatchObject({ ok: true, data: { path: 'pacing.enemyStart', value: 0.6, tainted: false } });
+      expect(PROGRESSION_PACING.enemyStart).toBe(0.6);
+      expect(wand).toMatchObject({ ok: true, data: { path: 'wandLight.torchRadius', value: 200 } });
+      expect(ctx.state.wandLight.torchRadius).toBe(200);
+      expect(gen).toMatchObject({ ok: true, data: { path: 'gen.rockFillPasses', value: 3 } });
+      expect(GEN_TUNE.rockFillPasses).toBe(3);
+      expect(gore.ok).toBe(true);
+      expect(ctx.params.global.goreBlood).toBe(2);
+      expect(feel.ok).toBe(true);
+      expect(ctx.params.player.jumpCut).toBe(0.3);
+      expect(await ctx.console.exec('get pacing.enemyStart')).toMatchObject({ ok: true, data: { value: 0.6 } });
+      const unknown = await ctx.console.exec('set pacing.nope 1');
+      expect(unknown).toMatchObject({ ok: false, data: { code: 'parse-param-path' } });
+    } finally {
+      Object.assign(PROGRESSION_PACING, pacingBefore);
+      Object.assign(GEN_TUNE, genBefore);
+    }
+  });
+
+  it('completes the full tuning surface, not just global/postFx', async () => {
+    const ctx = makeCtx();
+    const roots = new Set<string>();
+    for (const prefix of ['pacing.', 'wandLight.', 'gen.', 'player.', 'global.']) {
+      const got = ctx.console.complete('set ' + prefix);
+      if (got.some((c) => c.startsWith(prefix))) roots.add(prefix);
+    }
+    expect([...roots].sort()).toEqual(['gen.', 'global.', 'pacing.', 'player.', 'wandLight.']);
   });
 
   it('sets render backend flags through live params without tainting debug saves', async () => {
