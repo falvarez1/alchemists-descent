@@ -75,11 +75,11 @@ export function stampRefugeKettle(world: World): RefugeKettle {
   const f = K.furnace;
   for (let y = f.y0; y <= f.y1; y++) for (let x = f.x0; x <= f.x1; x++) set(x, y, Cell.Ember, COLOR_FN[Cell.Ember]());
 
-  // THE CISTERN: water in a sunken tank, a riveted grate over its mouth (every other column open to the flask).
+  // THE CISTERN: water in a sunken tank, a riveted grate over its mouth (a bar every third column: two-cell gaps, so a flask aimed from above can see the water and a body cannot fall through).
   const t = K.tank;
   for (let y = t.y0; y <= t.y1; y++) for (let x = t.x0; x <= t.x1; x++) set(x, y, Cell.Water, COLOR_FN[Cell.Water]());
   for (let x = t.grateX0; x <= t.grateX1; x++) {
-    if ((x - t.grateX0) % 2 === 0) set(x, t.grateY, Cell.Metal, copper);
+    if ((x - t.grateX0) % 3 === 0) set(x, t.grateY, Cell.Metal, copper);
     else set(x, t.grateY, Cell.Empty, EMPTY_COLOR);
   }
 

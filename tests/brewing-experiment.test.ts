@@ -102,6 +102,35 @@ describe('the experiment', () => {
     ]);
   });
 
+  it('keeps its warmth through a gutter: a fire out for a second still brews, one out for good does not', () => {
+    const seen = fresh();
+    const world = new World();
+    const ctx = makeCtx(world, seen);
+    const brewing = new Brewing();
+    const fireAt = world.idx(CAULDRON.x + 5, CAULDRON.y);
+    pour(world, [[Cell.Water, 9], [Cell.Slime, 4]]); // Levity
+    // the fire gutters out and back every 16 samples (64 frames, a second): 8 samples on, 8 off
+    for (let i = 0; i < 120; i++) {
+      world.types[fireAt] = i % 16 < 8 ? Cell.Fire : Cell.Empty;
+      run(ctx, brewing, 1);
+      if (seen.brewed.length > 0) break;
+    }
+    expect(seen.brewed).toEqual(['levity']);
+    // a fire that is really out: the view goes cold once the memory runs out and the brew stalls
+    const cold = fresh();
+    const world2 = new World();
+    const ctx2 = makeCtx(world2, cold);
+    const brewing2 = new Brewing();
+    pour(world2, [[Cell.Water, 9], [Cell.Slime, 4]]);
+    run(ctx2, brewing2, 20);
+    world2.types[world2.idx(CAULDRON.x + 5, CAULDRON.y)] = Cell.Empty;
+    run(ctx2, brewing2, 30); // 120 frames: still inside the 150-frame memory
+    expect(cold.views[cold.views.length - 1].heated).toBe(true);
+    run(ctx2, brewing2, 20); // past it
+    expect(cold.views[cold.views.length - 1].heated).toBe(false);
+    expect(cold.brewed).toEqual([]);
+  });
+
   it('tries the same mix again as a second try, not a second line', () => {
     const seen = fresh();
     const world = new World();

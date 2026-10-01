@@ -50,6 +50,15 @@ const HEAT_HALF_W = 6;
 const HEAT_TOP = -2;
 const HEAT_BOTTOM = 4;
 
+/**
+ * The stone keeps its warmth: a fire that gutters out for this long (frames, 2.5 s) still counts as a
+ * fire. Measured on a floor-2 cauldron lit the way a player lights one (oil poured against the wall, one
+ * Spark Bolt): the slick burned 8 s but the heat read flickered on and off every second or two, and each
+ * gap bled a tick of progress. A deliberate change (it was no memory at all); a fire that is really out
+ * for more than this still goes cold, and a bowl nobody keeps warm still stalls.
+ */
+const HEAT_MEMORY_FRAMES = 150;
+
 /** The cauldron's notices speak to someone standing at it (QA: settling drips
  *  into an untended basin toasted "NEEDS HEAT" every 2 s from across the floor). */
 const HINT_RADIUS = 90;
@@ -80,6 +89,8 @@ const HIDDEN_VIEW: CauldronView = {
 // ===================== Cauldron Brewing =====================
 export class Brewing implements BrewingApi {
   private brewTicks = 0;
+  /** The frame until which the bowl still counts as hot (the last fire seen, plus HEAT_MEMORY_FRAMES). */
+  private heatUntil = -1;
   private activeBrewKey: string | null = null;
   private lastHintFrame = -9999;
   private lastHintText = '';
@@ -99,19 +110,22 @@ export class Brewing implements BrewingApi {
   update(ctx: Ctx): void {
     if (ctx.state.mode !== 'play') {
       this.resetProgress();
+      this.heatUntil = -1;
       this.hideView(ctx);
       return;
     }
     const cauldron = ctx.levels.current?.cauldron;
     if (!cauldron) {
       this.resetProgress();
+      this.heatUntil = -1;
       this.hideView(ctx);
       return;
     }
     if (ctx.state.frameCount % 4 !== 0) return;
 
     const sample = this.sampleBasin(ctx, cauldron);
-    const heated = this.hasHeat(ctx, cauldron);
+    if (this.hasHeat(ctx, cauldron)) this.heatUntil = ctx.state.frameCount + HEAT_MEMORY_FRAMES;
+    const heated = ctx.state.frameCount < this.heatUntil;
     const recipe = matchMix(sample.counts);
     const sig = mixSignature(sample.counts);
     if (!recipe) {
