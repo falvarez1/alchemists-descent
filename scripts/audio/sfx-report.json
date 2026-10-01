@@ -14860,5 +14860,73 @@
     "bytes": 11537
    }
   ]
+ },
+ "brew.fizzle": {
+  "pack": "world",
+  "cat": "mechanism",
+  "prompt": "A cauldron mix that goes nowhere: a flat wet fizz and a few sullen bubbles settling, a small anticlimax, short",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": -11.7,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 12.6,
+    "limitDb": -1.9,
+    "sec": 1,
+    "truncated": false,
+    "bytes": 8612
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1,
+    "peakDb": 0.4,
+    "onsetSec": 0,
+    "pinnedPct": 0.02,
+    "gainDb": -2.3,
+    "limitDb": 0,
+    "sec": 0.99,
+    "truncated": false,
+    "bytes": 8403
+   }
+  ]
+ },
+ "brew.shimmer": {
+  "pack": "world",
+  "cat": "mechanism",
+  "prompt": "A cauldron mix that is almost right: a soft rising glassy shimmer over gentle bubbling, hopeful, a small question answered with a sparkle",
+  "dur": 1.4,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.36,
+    "peakDb": -6.2,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -1.6,
+    "limitDb": 0,
+    "sec": 0.98,
+    "truncated": false,
+    "bytes": 8403
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.36,
+    "peakDb": -3.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -4,
+    "limitDb": 0,
+    "sec": 0.96,
+    "truncated": false,
+    "bytes": 8194
+   }
+  ]
  }
 }
