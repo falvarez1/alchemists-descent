@@ -460,6 +460,7 @@ const familyOf = (o: EditorObject): LayerFamily => (MECH_KINDS.has(o.kind) ? 'me
 
 const DRAFT_KEY = 'noita-builder-draft';
 const PALETTE_TAB_KEY = 'noita-builder-palette-tab';
+const MINIMAP_KEY = 'noita-builder-minimap';
 /** Settle previews bigger than this commit without undo (memory honesty). */
 const SETTLE_UNDO_CAP = 400000;
 
@@ -3560,10 +3561,10 @@ export class Builder {
     this.playtestBanner.id = 'builder-playtest-banner';
     this.playtestBanner.style.display = 'none';
     this.playtestBanner.innerHTML = `
-      <div class="bpt-title">BUILDER PLAYTEST</div>
-      <div class="bpt-sub">DISPOSABLE CUSTOM RUNTIME</div>
-      <button id="bpt-return" type="button">RETURN TO BUILDER</button>
-      <button id="bpt-restart" type="button">RESTART</button>`;
+      <span class="st-dot st-dot--ok st-dot--pulse" aria-hidden="true"></span>
+      <div class="bpt-text"><div class="bpt-title">Playtest</div><div class="bpt-sub">A disposable copy: your level is untouched</div></div>
+      <button id="bpt-restart" type="button" class="st-btn">${editorIcon('restart', 14)}<span>Restart</span></button>
+      <button id="bpt-return" type="button" class="st-btn st-btn--primary">${editorIcon('layers', 14)}<span>Back to Builder</span></button>`;
     holder?.appendChild(this.playtestBanner);
     this.playtestBanner
       .querySelector<HTMLButtonElement>('#bpt-return')
@@ -4656,6 +4657,28 @@ export class Builder {
       this.closeToolbarFlyouts(open ? layersPop : undefined);
       layersPop.hidden = !open;
       layersBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    const mapBtn = this.el<HTMLButtonElement>('bt-minimap-btn');
+    let mapOn = true;
+    try {
+      mapOn = localStorage.getItem(MINIMAP_KEY) !== 'off';
+    } catch {
+      /* default on */
+    }
+    const applyMap = (): void => {
+      this.root.classList.toggle('b-no-minimap', !mapOn);
+      mapBtn.dataset.on = mapOn ? 'true' : 'false';
+      mapBtn.setAttribute('aria-pressed', mapOn ? 'true' : 'false');
+    };
+    applyMap();
+    mapBtn.addEventListener('click', () => {
+      mapOn = !mapOn;
+      applyMap();
+      try {
+        localStorage.setItem(MINIMAP_KEY, mapOn ? 'on' : 'off');
+      } catch {
+        /* not remembered */
+      }
     });
     this.el('bt-material').addEventListener('click', () => this.selectPaletteTab('materials', true));
     this.attachPopover(this.el('bt-material'), (pop) => {

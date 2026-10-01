@@ -83,6 +83,7 @@ const PATHS = {
   tools: '<path d="M9.8 3.6a3 3 0 0 0-3.6 3.8L2.8 10.8a1.4 1.4 0 0 0 2 2l3.4-3.4a3 3 0 0 0 3.8-3.6L10.4 7.6 8.4 5.6z" stroke-linejoin="round"/>',
   more: '<circle cx="3.6" cy="8" r="1" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"/><circle cx="12.4" cy="8" r="1" fill="currentColor" stroke="none"/>',
   drag: '<circle cx="6" cy="4.4" r=".9" fill="currentColor" stroke="none"/><circle cx="10" cy="4.4" r=".9" fill="currentColor" stroke="none"/><circle cx="6" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="10" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="6" cy="11.6" r=".9" fill="currentColor" stroke="none"/><circle cx="10" cy="11.6" r=".9" fill="currentColor" stroke="none"/>',
+  map: '<path d="M2.6 4.2 6 3l4 1.6 3.4-1.2v8.4L10 13 6 11.4l-3.4 1.2z" stroke-linejoin="round"/><path d="M6 3v8.4M10 4.6V13"/>',
   target: '<circle cx="8" cy="8" r="5.2"/><circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none"/><path d="M8 1.6v2M8 12.4v2M1.6 8h2M12.4 8h2"/>',
   broadcast: '<circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/><path d="M5.2 5.2a4 4 0 0 0 0 5.6M10.8 5.2a4 4 0 0 1 0 5.6M3.4 3.4a6.6 6.6 0 0 0 0 9.2M12.6 3.4a6.6 6.6 0 0 1 0 9.2"/>',
   // ---- Sandbox chrome ----

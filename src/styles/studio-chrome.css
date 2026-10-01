@@ -484,3 +484,119 @@ body.builder-open #authorlink-status { display: none; }
 /* The game's in-canvas sound control is an in-flow block: over the editor it added a 24px strip below the
    map (the holder is sized to the map's aspect ratio) and has nothing to do there. */
 body.builder-open #sound-quick { display: none; }
+
+/* --------------------------------------------------------- playtest banner */
+
+/* Floats over the game view while a Builder playtest runs: studio chrome on top of house-styled play. */
+#builder-playtest-banner {
+    top: 12px; gap: 10px; padding: 6px 6px 6px 12px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-3);
+    background: color-mix(in srgb, var(--st-surface-2) 94%, transparent); backdrop-filter: blur(6px);
+    box-shadow: var(--st-shadow-pop); color: var(--st-text); font-family: var(--st-font);
+}
+#builder-playtest-banner .bpt-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#builder-playtest-banner .bpt-title { font: 600 12px/1 var(--st-font); letter-spacing: 0; color: var(--st-text); }
+#builder-playtest-banner .bpt-sub { font: 400 11px/1 var(--st-font); letter-spacing: 0; color: var(--st-text-3); white-space: nowrap; }
+#builder-playtest-banner .st-btn { height: 26px; font: 500 12px/1 var(--st-font); text-transform: none; letter-spacing: 0; }
+#builder-playtest-banner .st-btn:hover { background: var(--st-surface-4); color: var(--st-text); }
+#builder-playtest-banner .st-btn--primary { background: var(--st-accent); border-color: var(--st-accent); color: var(--st-accent-fg); }
+#builder-playtest-banner .st-btn--primary:hover { background: var(--st-accent-hi); border-color: var(--st-accent-hi); color: var(--st-accent-fg); }
+@media (max-width: 760px) { #builder-playtest-banner .bpt-sub { display: none; } }
+
+/* ------------------------------------------------------------------ minimap */
+
+/* A quiet overview in the corner of the map, not a black slab: smaller, translucent, rounded, and optional. */
+#builder-root #builder-minimap {
+    right: 14px; bottom: 14px; width: 176px !important; height: 117px !important;
+    border: 1px solid var(--st-line-2); border-radius: var(--st-r-3); box-shadow: var(--st-shadow-pop);
+    background: color-mix(in srgb, var(--st-well) 82%, transparent); opacity: 0.92;
+    transition: opacity 0.15s var(--st-ease);
+}
+#builder-root #builder-minimap:hover { opacity: 1; }
+#builder-root.b-no-minimap #builder-minimap { display: none; }
+
+/* --------------------------------------------------------- validation issues */
+
+#builder-root .bv-panel-body { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+#builder-root .bv-summary { color: var(--st-text-3); font: 500 11px/1.3 var(--st-font); letter-spacing: 0; text-transform: none; }
+#builder-root .bv-blocker {
+    display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--st-danger-line);
+    border-radius: var(--st-r-3); background: var(--st-danger-bg); color: var(--st-danger-text); font: 400 12px/1.4 var(--st-font);
+}
+#builder-root .bv-blocker strong { font-weight: 600; letter-spacing: 0; }
+#builder-root .bv-filters { display: flex; flex-wrap: wrap; gap: 4px; }
+#builder-root .bv-filters button {
+    height: 22px; padding: 0 8px; border-radius: 11px; text-transform: none; letter-spacing: 0;
+    font: 500 11px/1 var(--st-font); background: var(--st-surface-2); border-color: var(--st-line-2); color: var(--st-text-2);
+}
+#builder-root .bv-filters button span { color: var(--st-text-3); font-variant-numeric: tabular-nums; margin-left: 2px; }
+#builder-root .bv-filters button[aria-pressed='true'] { background: var(--st-accent-bg); border-color: var(--st-accent-line); color: var(--st-accent-text); }
+#builder-root .bv-group { border: 0; padding: 0; }
+#builder-root .bv-group-title { height: 26px; padding: 0 2px; background: transparent; border: 0; font: 600 11px/1 var(--st-font); letter-spacing: 0.04em; text-transform: uppercase; color: var(--st-text-3); }
+#builder-root .bv-group-body { display: flex; flex-direction: column; gap: 6px; padding: 2px 0 6px; }
+
+/* a card is neutral; only its left edge and icon carry the severity */
+#builder-root .bv-issue {
+    display: flex; flex-direction: column; gap: 8px; padding: 9px 10px 9px 12px; position: relative;
+    border: 1px solid var(--st-line); border-radius: var(--st-r-3); background: var(--st-surface-2); box-shadow: none;
+}
+#builder-root .bv-issue::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 2px; background: var(--st-text-4); }
+#builder-root .bv-issue.error::before { background: var(--st-danger); }
+#builder-root .bv-issue.warning::before { background: var(--st-warn); }
+#builder-root .bv-issue.info::before { background: var(--st-accent); }
+#builder-root .bv-issue.playtest-blocker { border-color: var(--st-danger-line); }
+#builder-root .bv-issue:hover { border-color: var(--st-line-3); }
+#builder-root .bv-title { display: flex; gap: 8px; align-items: flex-start; color: var(--st-text); font: 500 12px/1.4 var(--st-font); letter-spacing: 0; text-transform: none; }
+#builder-root .bv-sev { display: inline-flex; flex: none; margin-top: 1px; }
+#builder-root .bv-sev--error { color: var(--st-danger); }
+#builder-root .bv-sev--warning { color: var(--st-warn); }
+#builder-root .bv-sev--info { color: var(--st-accent-text); }
+#builder-root .bv-meta { display: flex; flex-wrap: wrap; gap: 4px; padding-left: 22px; }
+#builder-root .bv-code, #builder-root .bv-loc {
+    padding: 1px 6px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-1); background: var(--st-well);
+    color: var(--st-text-3); font: 400 10px/1.5 var(--st-mono); letter-spacing: 0; text-transform: none;
+}
+#builder-root .bv-actions { display: flex; flex-wrap: wrap; gap: 4px; padding-left: 22px; }
+#builder-root .bv-actions button {
+    height: 24px; padding: 0 9px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-2); background: var(--st-surface-3);
+    color: var(--st-text-2); font: 500 11px/1 var(--st-font); letter-spacing: 0; text-transform: none;
+}
+#builder-root .bv-actions button:hover { background: var(--st-surface-4); color: var(--st-text); border-color: var(--st-line-3); }
+#builder-root .bv-actions .bv-select { background: transparent; }
+#builder-root .bv-action.mutate { border-color: var(--st-accent-line); color: var(--st-accent-text); background: var(--st-accent-bg); }
+#builder-root .bv-action.mutate:hover { background: var(--st-accent-bg-hi); color: var(--st-text); }
+#builder-root .bv-action > span:empty { display: none; }
+#builder-root .bv-empty { padding: 14px 10px; border: 1px dashed var(--st-line-2); border-radius: var(--st-r-3); text-align: center; color: var(--st-text-3); font: 400 12px/1.5 var(--st-font); }
+
+/* --------------------------------------------------------- outliner & lists */
+
+#builder-root .bo-summary, #builder-root .bo-section-title, #builder-root .bo-empty { text-transform: none; }
+#builder-root .bo-summary { font: 500 11px/1.3 var(--st-font); letter-spacing: 0; padding: 8px 10px 4px; }
+#builder-root .bo-section-title { font: 600 11px/1 var(--st-font); letter-spacing: 0.04em; text-transform: uppercase; }
+#builder-root .bo-search { padding: 4px 10px 6px; }
+#builder-root .bo-search input { height: 26px; padding: 0 8px; border-radius: var(--st-r-2); border-color: var(--st-line-2); font: 400 12px/1 var(--st-font); }
+#builder-root .bo-chips { gap: 4px; padding: 2px 10px 8px; }
+#builder-root .bo-chip { height: 22px; padding: 0 8px; border-radius: 11px; text-transform: none; letter-spacing: 0; font: 500 11px/1 var(--st-font); background: var(--st-surface-2); border-color: var(--st-line-2); color: var(--st-text-2); }
+#builder-root .bo-chip.active, #builder-root .bo-chip[aria-pressed='true'] { background: var(--st-accent-bg); border-color: var(--st-accent-line); color: var(--st-accent-text); }
+#builder-root .bo-section { padding: 8px 10px; }
+#builder-root .bo-layer span { text-transform: none; font-weight: 500; font-size: 12px; }
+#builder-root .bo-row, #builder-root .blg-link, #builder-root .blg-actuator { padding: 7px 8px; border-radius: var(--st-r-3); }
+#builder-root .bo-row-title { font: 600 12px/1.3 var(--st-font); }
+#builder-root .bo-row-sub, #builder-root .blg-msg { font: 400 11px/1.4 var(--st-font); }
+#builder-root .bo-row-issue { font: 400 11px/1.4 var(--st-font); }
+#builder-root .bo-badge, #builder-root .ba-pill { text-transform: none; letter-spacing: 0; font: 500 10px/1.5 var(--st-font); padding: 0 6px; border-radius: 9px; }
+#builder-root .bo-row-actions button, #builder-root .bo-layer button {
+    height: 22px; padding: 0 8px; border-radius: var(--st-r-2); text-transform: none; letter-spacing: 0; font: 500 11px/1 var(--st-font);
+    background: var(--st-surface-3); border: 1px solid var(--st-line-2); color: var(--st-text-2);
+}
+#builder-root .bo-row-actions button:hover, #builder-root .bo-layer button:hover { background: var(--st-surface-4); color: var(--st-text); }
+
+/* ------------------------------------------------------------------- help */
+
+.builder-help-card { width: min(640px, calc(100% - 24px)); background: var(--st-surface-2); border-radius: var(--st-r-3); box-shadow: var(--st-shadow-pop); }
+.builder-help-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.builder-help-grid > div { background: var(--st-surface-1); border-radius: var(--st-r-3); }
+.builder-help-card p { font-size: 12px; line-height: 1.55; }
+.builder-help-card p b { color: var(--st-text); font-weight: 600; }
+.builder-help-section { font-size: 11px; color: var(--st-accent-text); text-transform: uppercase; }
+.builder-help-title { font-size: 15px; }
+@media (max-width: 700px) { .builder-help-grid { grid-template-columns: 1fr; } }

@@ -265,6 +265,7 @@ export function buildShellMarkup(options: ShellMarkupOptions): string {
         <button id="bp-snap-btn" type="button" class="bt-toggle" data-on="false" title="Snap placements and drags to a grid">${editorIcon('magnet', 14)}<span class="bt-label">Snap</span></button>
         <button id="bp-sym-btn" type="button" class="bt-toggle" data-on="false" title="Mirror terrain painting across the axis (world center; a region recenters it)">${editorIcon('symmetry', 14)}<span class="bt-label">Mirror</span></button>
         <button id="bp-overlay-btn" type="button" class="bt-toggle" data-on="false" title="Readability overlays (O)">${editorIcon('eye', 14)}<span class="bt-label">Overlay</span></button>
+        <button id="bt-minimap-btn" type="button" class="bt-toggle" data-on="true" aria-pressed="true" title="Show or hide the minimap">${editorIcon('map', 14)}<span class="bt-label">Map</span></button>
         <span class="bt-group bt-layers"><button id="bt-layers-btn" type="button" class="bt-toggle" aria-haspopup="true" aria-expanded="false" title="Show, hide and lock layers in the editor">${editorIcon('layers', 14)}<span class="bt-label">Layers</span></button><div id="bp-layers" class="bt-flyout bt-layers-pop" hidden>${layerRows}</div></span>
         <span class="bt-sep"></span>
         <span class="bt-group bt-simulate" role="group" aria-label="Settle">
@@ -303,25 +304,32 @@ export function buildShellMarkup(options: ShellMarkupOptions): string {
           </div>
           <div class="builder-help-grid">
             <div>
+              <div class="builder-help-section">Tools</div>
+              <p><b>V</b> select · <b>B</b> brush · <b>L</b> line · <b>G</b> fill.</p>
+              <p><b>R</b> region · <b>K</b> link triggers.</p>
+              <p>Click an armed tool again, right-click it, or hold it to pick a variant.</p>
+              <p><b>Ctrl+K</b> opens the command palette.</p>
+            </div>
+            <div>
               <div class="builder-help-section">Canvas</div>
               <p><b>RMB</b> eyedrops the material under the cursor.</p>
-              <p><b>Mouse wheel</b> zooms the Builder camera.</p>
-              <p><b>Drag empty canvas</b> creates a selection marquee.</p>
-              <p><b>Shift-click</b> adds to the current selection.</p>
+              <p><b>Mouse wheel</b> zooms the map.</p>
+              <p><b>Drag empty canvas</b> draws a selection box; <b>Shift-click</b> adds to it.</p>
+              <p><b>Alt</b> bypasses snapping while you drag.</p>
             </div>
             <div>
               <div class="builder-help-section">Editing</div>
+              <p><b>Ctrl+Z / Ctrl+Y</b> undo and redo.</p>
               <p><b>Ctrl+D</b> duplicates the selection.</p>
               <p><b>Ctrl+C / Ctrl+V</b> copies and pastes parameters.</p>
-              <p><b>Delete</b> removes the selected object or light.</p>
-              <p><b>Esc</b> steps back or closes transient Builder UI.</p>
+              <p><b>Delete</b> removes the selection; <b>Esc</b> steps back.</p>
             </div>
             <div>
               <div class="builder-help-section">Testing</div>
               <p><b>T</b> plays from the cursor.</p>
-              <p><b>Q</b> rotates an armed prefab.</p>
-              <p><b>E</b> flips an armed prefab.</p>
+              <p><b>Q</b> rotates and <b>E</b> flips an armed prefab.</p>
               <p><b>X</b> floats a region; <b>Enter</b> lands it.</p>
+              <p><b>Settle</b> runs real physics on the terrain, then keep or revert.</p>
             </div>
           </div>
           <div class="builder-help-close-hint">Press H or Esc to close.</div>
