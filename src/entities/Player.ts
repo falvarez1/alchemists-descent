@@ -609,13 +609,13 @@ export class PlayerControl implements PlayerControlApi {
     return Math.max(1, Math.hypot(1, player.y - startY));
   }
 
-  private reduceIncomingDamage(amount: number, minimum = 0, source?: string): number {
+  private reduceIncomingDamage(amount: number, minimum = 0, source?: string, kx?: number, ky?: number): number {
     if (this.ctx.state?.debugGodMode) return 0;
     if (this.ctx.player.status.stoneskin > 0) amount *= 0.5;
     // A fighter's armor and damage reduction (src/fighters): a blow it fully absorbs is 0, not the floor.
     const fighters = this.ctx.fighters;
     if (fighters && fighters.id !== null) {
-      amount = fighters.reduceIncoming(amount, source);
+      amount = fighters.reduceIncoming(amount, source, kx, ky);
       if (amount <= 0) return 0;
     }
     return Math.max(minimum, amount);
@@ -654,7 +654,7 @@ export class PlayerControl implements PlayerControlApi {
     if (src === 'fire' && player.perks.flameward) amount *= 0.4;
     if ((src === 'toxic' || src === 'acid') && player.perks.toxinward) amount *= 0.25;
     // Stoneskin (Wave C potion): half damage, knockback shrugged off entirely
-    amount = this.reduceIncomingDamage(amount, 0.5, source);
+    amount = this.reduceIncomingDamage(amount, 0.5, source, kx, ky);
     // A blow shatters heart communion — the unhealed remainder is lost
     if (player.recharge > 0) {
       player.recharge = 0;

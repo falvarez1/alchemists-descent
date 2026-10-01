@@ -15,6 +15,18 @@ export interface KitInstance {
   tick?(): void;
   /** The tactical (Z). Return true when it fired (the cooldown is spent), false to refuse (no room, nothing to do). */
   tactical(): boolean;
+  /**
+   * Z pressed while the tactical is still cooling down (a raised plate that Z lowers early, a recall).
+   * Return true to consume the press; false (or no hook) is the ordinary refusal. Never refunds the cooldown.
+   */
+  tacticalAgain?(): boolean;
+  /** 0..1 how much of a held tactical (a raised plate) is left, for the chip's active state; 0 when none is running. */
+  tacticalActive?(): number;
+  /**
+   * A blow is about to reach health (after the modifiers, before armor): return the amount that goes on.
+   * `kx`/`ky` are the knock vector Player.damage was given (both 0 for a hazard tick).
+   */
+  reduceIncoming?(amount: number, source: string | undefined, kx: number, ky: number): number;
   /** The ultimate (T), the bar full. Return true when it began. The system runs `ultimateTick` for the duration. */
   ultimate(): boolean;
   /** Each tick while the ultimate runs; `remaining` counts down to 1. */

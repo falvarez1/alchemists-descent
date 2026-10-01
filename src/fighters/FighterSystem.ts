@@ -261,7 +261,14 @@ export class FighterSystem implements FighterApi {
   private tryTactical(now: number): void {
     const p = this.ctx.player;
     if (!this.kit || !this.def) return;
-    if (this.tacticalCd > 0 || this.rooted(p)) return this.refuse('tactical', now);
+    if (this.rooted(p)) return this.refuse('tactical', now);
+    if (this.tacticalCd > 0) {
+      // A kit may answer a press while its tactical cools (Z lowers a raised plate): consumed, never a refusal.
+      let again = false;
+      if (this.kit.tacticalAgain) this.guard(() => { again = this.kit?.tacticalAgain?.() === true; });
+      if (!again) this.refuse('tactical', now);
+      return;
+    }
     let fired = false;
     this.guard(() => { fired = this.kit?.tactical() === true; });
     if (!fired) return this.refuse('tactical', now);
@@ -385,10 +392,12 @@ export class FighterSystem implements FighterApi {
 
   // ---- the engine's questions (cheap and allocation-free) ----
 
-  reduceIncoming(amount: number, source: string | undefined): number {
+  reduceIncoming(amount: number, source: string | undefined, kx = 0, ky = 0): number {
     if (this.id === null) return amount;
     if (source !== undefined && this.cImmune.length > 0 && this.cImmune.includes(source)) return 0;
     amount *= this.cDamage;
+    // The kit's own say (a plate that halves a blow from the front): after the modifiers, before the armor.
+    if (this.kit?.reduceIncoming && amount > 0) amount = this.kit.reduceIncoming(amount, source, kx, ky);
     if (this.armor > 0 && amount > 0) {
       const take = Math.min(this.armor, amount);
       this.armor -= take;
@@ -762,7 +771,7 @@ export class FighterSystem implements FighterApi {
     t.cooldown = this.tacticalCd > 0 ? this.tacticalCd / this.tacticalCdMax : 0;
     t.cooldownSeconds = Math.ceil(this.tacticalCd / 60);
     t.ready = this.id !== null && this.tacticalCd <= 0 && this.alive;
-    t.active = 0;
+    t.active = this.kit?.tacticalActive?.() ?? 0;
     t.charge = 1;
     u.charge = this.charge;
     u.active = this.ultimateLeft > 0 ? this.ultimateLeft / this.ultimateMax : 0;
