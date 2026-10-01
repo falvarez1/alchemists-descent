@@ -14,6 +14,7 @@ import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/ru
 import type { CreatureSfxAction, SfxId } from '@/content/audio/sfxCues';
 import type { LevelStorySites, StoryApi, StorySpeakOptions, StorySpokenLine } from '@/core/story';
 import type { FighterApi } from '@/core/fighters';
+import type { FighterId } from '@/content/fighters';
 
 /* ============================================================
  * Entity data
@@ -1279,6 +1280,8 @@ export interface RunStartConfig {
   continueSave?: boolean;
   /** Fresh-loadout runs: the starting kit (Breathing Works). Defaults to spark. */
   starterKit?: KitId;
+  /** Who the run descends as (src/fighters); null or absent = the classic Alchemist. */
+  fighter?: FighterId | null;
   /** YYYY-MM-DD when this is the date-seeded daily descent. */
   daily?: string | null;
 }
@@ -3549,6 +3552,8 @@ export interface RunSaveState {
   v: 1;
   phials: number;
   kit: KitId;
+  /** The fighter this run descends as; absent = the classic Alchemist. */
+  fighter?: FighterId;
   daily: string | null;
   seed: number;
   /** The player chose `seed` on the title (see RunSummary.seedChosen). Absent on an ordinary run. */
@@ -3594,6 +3599,8 @@ export interface RunResult {
 export interface RunMetaView {
   unlockedKits: KitId[];
   lastKit: KitId;
+  /** The fighter the player last chose (null = the classic Alchemist). */
+  lastFighter: FighterId | null;
   workshopUnlocked: boolean;
   runsEnded: number;
   bestFloor: number;
@@ -3612,6 +3619,7 @@ export interface RunMetaView {
 export interface RunBeginOptions {
   seed: number;
   kit: KitId;
+  fighter?: FighterId | null;
   daily: string | null;
   /** Normal campaign runs are tracked (phials, ledger); test runs are not. */
   tracked: boolean;
@@ -3630,6 +3638,8 @@ export interface RunApi {
   readonly phials: number;
   readonly maxPhials: number;
   readonly kit: KitId;
+  /** Who this run descends as (null = the classic Alchemist). */
+  readonly fighter: FighterId | null;
   readonly daily: string | null;
   /** Times the alchemist has fallen on this run so far (Pell and the Old Ones read it). */
   readonly deaths: number;
@@ -3650,9 +3660,11 @@ export interface RunApi {
    * always Adept: it is one seed for everyone. `seed` (never for the daily) is a seed the player
    * chose on the title; omitted, the descent rolls its own.
    */
-  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number }): RunStartResult;
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number; fighter?: FighterId | null }): RunStartResult;
   metaView(): RunMetaView;
   chooseKit(kit: KitId): void;
+  /** Remember the fighter chosen on the title or the ledger (null = the classic Alchemist). */
+  chooseFighter(id: FighterId | null): void;
   /** Remember the tier chosen (ignored while it is still locked). */
   chooseDifficulty(difficulty: Difficulty): void;
   /** Dev console `phials`: set the return phials of the tracked run (0 to the maximum). False with no run. */

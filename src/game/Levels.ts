@@ -13,6 +13,7 @@
 //   a hidden transition.
 
 import type { StoryRunSave } from '@/core/story';
+import type { FighterSaveState } from '@/core/fighters';
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_TUNE_DEFAULT_SIGNATURE, GEN_VERSION, genTuneSignature } from '@/config/gen';
 import { difficultyMods } from '@/config/difficulty';
@@ -307,6 +308,8 @@ export interface ExpeditionSave {
    *  (restoreLevel regenerates pristine worlds from seed — a stale save
    *  against new generation silently desyncs). Absent = pre-guard save. */
   genVersion?: number;
+  /** The fighter's own numbers (cooldown, charge, armor, a kit's bag); who it is rides `run.fighter`. Absent for the classic Alchemist. */
+  fighter?: FighterSaveState;
   /** Signature of live GEN_TUNE at save time. Absent = pre-tuning-guard save. */
   genTuneSignature?: string;
   expeditionSeed: number;
@@ -869,6 +872,8 @@ export class Levels implements LevelsApi {
     }
     const starterKit: KitId = config.starterKit ?? DEFAULT_KIT;
     this.applyLoadoutPreset(ctx, preset, starterKit);
+    // Who the run descends as (src/fighters): resetRunState cleared the last one; null = the classic Alchemist.
+    ctx.fighters?.equip(config.fighter ?? null);
     // Difficulty cushion: scale the loadout's max HP, then top off (the kit can
     // still override below). Level 3 = ×1.0, so the shipped game is untouched.
     const hpScale = difficultyMods(ctx.state).playerHp;
@@ -878,7 +883,7 @@ export class Levels implements LevelsApi {
     }
     if (config.kit) this.applyTestKit(ctx, config.kit);
     // The run begins before the first checkpoint so the save carries its phials.
-    ctx.run?.beginRun(ctx, { seed, kit: starterKit, daily: config.daily ?? null, tracked: mode === 'normal' });
+    ctx.run?.beginRun(ctx, { seed, kit: starterKit, fighter: config.fighter ?? null, daily: config.daily ?? null, tracked: mode === 'normal' });
     ctx.story?.beginRun({ tracked: mode === 'normal' && !ctx.state.debugGodMode });
     this.enterLevel(ctx, levelId);
 
@@ -1306,6 +1311,7 @@ export class Levels implements LevelsApi {
       wands: this.snapshotWandsForSave(ctx),
       flasks: this.snapshotFlasks(ctx),
       run: ctx.run?.snapshotForSave() ?? undefined,
+      fighter: ctx.fighters?.snapshot() ?? undefined,
       story: ctx.story?.snapshotForSave() ?? undefined,
       levels: blobs,
     };
@@ -1527,6 +1533,7 @@ export class Levels implements LevelsApi {
     this.expeditionSeed = null;
 
     Object.assign(ctx.player, createPlayer());
+    ctx.fighters?.equip(null);
     ctx.playerCtl?.resetTransientState?.(ctx);
     ctx.state.score = 0;
     ctx.state.playerSpawned = false;
@@ -2253,6 +2260,9 @@ export class Levels implements LevelsApi {
       }
       this.restoreFlasks(ctx, save.flasks);
       ctx.run?.restoreFromSave(ctx, save.run);
+      // The run knows who it descends as; the fighter's own clocks, charge and armor come from its slice.
+      ctx.fighters?.equip(ctx.run?.fighter ?? null);
+      ctx.fighters?.restore(save.fighter);
       ctx.story?.restoreFromSave(save.story);
 
       this.checkpointSaveSuppression++;
