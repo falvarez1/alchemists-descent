@@ -1,4 +1,5 @@
 import { CHILL_PARAMS } from '@/config/params';
+import { hasBoon } from '@/core/boons';
 import type { ChillApi, Ctx, PlayerChill, PlayerState } from '@/core/types';
 import { PLAYER_CRAWL_H, PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import type { ChillMomentKind } from '@/core/events';
@@ -144,7 +145,7 @@ export class ChillSystem implements ChillApi {
     const inp = this.inputs;
     const frozenPlace = ctx.levels?.current?.def.biome === 'frozen';
     // Warm Blood boon: everything cold that reaches the body (the grid's, the air's, a frost blow) arrives at half strength.
-    const warmK = p.perks.warmblood ? 0.5 : 1;
+    const warmK = hasBoon(p, 'warmblood') ? 0.5 : 1;
     inp.cold = this.cold * warmK;
     inp.touching = this.touching;
     inp.warmth = this.warmth;

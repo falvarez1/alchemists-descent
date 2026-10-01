@@ -8,6 +8,7 @@ import {
 import { ALL_CARD_IDS } from '@/combat/wands/cards';
 import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
 import { makePickup, POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
+import { addStatusFrames } from '@/content/elixirs';
 import type { CardId, Ctx, Pickup, PickupsApi } from '@/core/types';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
@@ -240,7 +241,7 @@ export class Pickups implements PickupsApi {
     } else if (p.kind === 'potion') {
       const def = POTION_DEFS[potionIdOrRandom(p.data.potion)] ?? POTION_DEFS.vigor;
       const st = player.status;
-      st[def.status] = Math.min(1800, st[def.status] + def.frames);
+      addStatusFrames(st, def.status, def.frames);
       ctx.events.emit('toast', { text: def.name });
       ctx.audio.drinkPotion();
     } else if (p.kind === 'key') {

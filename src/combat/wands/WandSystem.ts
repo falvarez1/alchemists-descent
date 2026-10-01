@@ -17,6 +17,7 @@ import { acidColor, emberColor, fireColor, glassColor, nitrogenColor, packRGB, s
 import { ALL_CARD_IDS, CARD_DEFS, isCardId } from './cards';
 import { getDiscoveredCards, markCardDiscovered } from './cardDiscovery';
 import { isRunTainted } from '@/core/runTaint';
+import { hasBoon } from '@/core/boons';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 import { BOUNCE_COUNTS, INFUSED, INFUSE_TRAIL_BUDGET, TRIGGERED, TRIGGER_SOURCE_SPREAD, ensureProjectileMods } from './projectileMarks';
 import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
@@ -417,7 +418,7 @@ export class WandSystem implements WandsApi {
   ): void {
     const frame = this.wands[this._active].frame;
     // Power Surge boon: +25% on every cast's damage multiplier.
-    const action: CastAction = ctx.player.perks.might
+    const action: CastAction = hasBoon(ctx.player, 'might')
       ? { ...actionIn, dmgMul: Math.min(4, actionIn.dmgMul * 1.25) }
       : actionIn;
     // God mode: every shot flies dead on the aim — no wand/card spread jitter.

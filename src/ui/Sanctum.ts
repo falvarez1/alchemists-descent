@@ -8,6 +8,7 @@ import {
 import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
 import type { CardId, Ctx, PerkId, SanctumApi } from '@/core/types';
 import { POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
+import { addStatusFrames } from '@/content/elixirs';
 import { SANCTUM_PERK_DEFS, draftBoons } from '@/content/perks';
 import { Rng } from '@/core/rng';
 import { FLOOR_LORE } from '@/content/floorLore';
@@ -548,7 +549,7 @@ export class Sanctum implements SanctumApi {
           const id = POTION_KINDS[Math.floor(Math.random() * POTION_KINDS.length)];
           const def = POTION_DEFS[id];
           const st = ctx.player.status;
-          st[def.status] = Math.min(1800, st[def.status] + def.frames * 1.5);
+          addStatusFrames(st, def.status, def.frames * 1.5);
           ctx.events.emit('toast', { text: def.name });
           ctx.audio.drinkPotion();
         },

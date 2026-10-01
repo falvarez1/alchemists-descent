@@ -67,6 +67,13 @@ export const CELL_PALETTE: readonly number[] = [
   packRGB(176, 128, 58), // 41 Seed (amber pod grain)
   packRGB(104, 172, 184), // 42 Brine (milky cold salt water)
   packRGB(214, 216, 204), // 43 Mirror (silvered glass)
+  packRGB(190, 110, 40), //  44 ElixirSwift (strong tea, deep amber)
+  packRGB(205, 245, 110), // 45 ElixirTorch (glowing draught, lime-white)
+  packRGB(255, 115, 35), //  46 ElixirFire (salamander's gall, vermilion)
+  packRGB(150, 235, 215), // 47 ElixirFrost (frostproof tonic, milky mint)
+  packRGB(40, 120, 150), //  48 ElixirShock (gutta-percha tonic, deep teal)
+  packRGB(34, 58, 52), //    49 ElixirToxin (charcoal draught, ink with a green glint)
+  packRGB(235, 205, 40), //  50 ElixirMight (brimstone tincture, sulphur)
 ];
 
 /** Display names, indexed by cell id (import reports, .gpl swatch labels). */
@@ -115,6 +122,13 @@ export const CELL_NAME: readonly string[] = [
   'Seed',
   'Brine',
   'Mirror',
+  'Strong Tea',
+  'Glowing Draught',
+  "Salamander's Gall",
+  'Frostproof Tonic',
+  'Gutta-Percha Tonic',
+  'Charcoal Draught',
+  'Brimstone Tincture',
 ];
 
 export function paletteColor(t: number): number {

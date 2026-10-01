@@ -133,7 +133,8 @@ describe('run test kit flask setup', () => {
     playerCtl.drink(ctx);
 
     expect(flask.state).toMatchObject({ material: Cell.ElixirLife, count: 5 });
-    expect(ctx.player.status.regen).toBe(20);
+    // one sip is one cell, worth the elixir table's 100 frames of mending (it was two cells of 10 frames: the old 2 s)
+    expect(ctx.player.status.regen).toBe(100);
   });
 
   it('honors an explicit active flask index for legacy single-flask setup', () => {

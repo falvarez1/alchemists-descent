@@ -47,7 +47,7 @@ export const MATERIAL_INFO: Record<number, string> = {
   [Cell.Nitrogen]:
     'Cryogenic liquid: freezes surface water into bridgeable Ice strips and shocks lava into Stone, boiling away as it works. Slowly evaporates on its own.',
   [Cell.Gold]:
-    'Heavy precious powder. Dig it loose in play mode and the grains home to your purse. Acid alchemy creates it; the cauldron accepts it as an ingredient.',
+    'Heavy precious powder. Dig it loose in play mode and the grains home to your purse, and any loose grains near you are banked at once. Acid alchemy creates it.',
   [Cell.Blood]:
     'Spilled by wounded creatures. Stains rock and timber, slows the legs, conducts lightning while wet, and slowly darkens as it dries.',
   [Cell.Slime]:
@@ -60,6 +60,20 @@ export const MATERIAL_INFO: Record<number, string> = {
     'Brewed flight draught: drink (X) and levitation burns no fuel while the timer runs.',
   [Cell.ElixirStone]:
     'Brewed stoneskin draught: drink (X) to halve all damage taken while it lasts.',
+  [Cell.ElixirSwift]:
+    'Strong Tea, brewed: siphon it (E) and drink (X) to move half again as fast and leap a little higher while the cup lasts.',
+  [Cell.ElixirTorch]:
+    'Glowing Draught, brewed: drink (X) for a brighter, steadier wand light. A pool of it glows in the dark on its own.',
+  [Cell.ElixirFire]:
+    "Salamander's Gall, brewed: drink (X) and fire and lava deal far less and you will not catch alight, for a while.",
+  [Cell.ElixirFrost]:
+    'Frostproof Tonic, brewed: drink (X) and the cold reaches you half as fast, whether it comes from brine, nitrogen or the air.',
+  [Cell.ElixirShock]:
+    'Gutta-Percha Tonic, brewed: drink (X) and a current deals a quarter of its harm to you. Water still carries it; you carry less of it.',
+  [Cell.ElixirToxin]:
+    'Charcoal Draught, brewed: drink (X) and acid and toxic sludge deal a quarter of their harm while it lasts.',
+  [Cell.ElixirMight]:
+    'Brimstone Tincture, brewed: drink (X) for a quarter more damage from every spell. Brewed from gunpowder and oil, so keep the fire under the pot.',
   [Cell.Toxic]:
     'Poison ooze: damages on contact and catches fire. Clean water dilutes it back into water; lava boils it into smoke.',
   [Cell.Healium]:

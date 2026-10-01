@@ -96,6 +96,23 @@ export const Cell = {
   // lance) off its face — game/beamTrace reads the face from the cells around
   // the hit — and shatters like glass under a blast or a hard strike.
   Mirror: 43,
+  // THE EXPERIMENT (alchemy as discovery): seven more potions, one cell each, because a flask
+  // slot stores a bare cell id. What each does is ONE row of content/elixirs; the sim treats
+  // them all as viscous liquids (ELIXIR_CELL_IDS below is the list it reads).
+  /** Strong Tea: swift. */
+  ElixirSwift: 44,
+  /** Glowing Draught: the torch's light. */
+  ElixirTorch: 45,
+  /** Salamander's Gall: fire and lava ward. */
+  ElixirFire: 46,
+  /** Frostproof Tonic: the cold reaches you half as fast. */
+  ElixirFrost: 47,
+  /** Gutta-Percha Tonic: current deals a quarter. */
+  ElixirShock: 48,
+  /** Charcoal Draught: acid and toxin deal a quarter. */
+  ElixirToxin: 49,
+  /** Brimstone Tincture: spell damage up. */
+  ElixirMight: 50,
 } as const;
 
 export type Cell = (typeof Cell)[keyof typeof Cell];
@@ -104,10 +121,21 @@ export type Cell = (typeof Cell)[keyof typeof Cell];
  * NOTE: the GPU compose path (render/ComposeShader.ts) packs each cell's type
  * into a texture byte as `type | 0x80` when the cell is charged. That is an
  * internal texture format, NOT a save format — but it means cell ids must
- * stay <= 127. Ids are append-only and top out at 43 today, so there is room
- * for 84 more materials; if id 128 is ever near, the charge bit moves first.
+ * stay <= 127. Ids are append-only and top out at 50 today, so there is room
+ * for 77 more materials; if id 128 is ever near, the charge bit moves first.
  */
-export const CELL_COUNT = 44;
+export const CELL_COUNT = 51;
+
+/**
+ * The potion cells (the cauldron's products). Every one is a viscous liquid to the
+ * sim, so the sim, the body sampler and the cell tables read this one list instead
+ * of naming each elixir; content/elixirs holds what each does when drunk, and a test
+ * pins the two lists together.
+ */
+export const ELIXIR_CELL_IDS: readonly number[] = [
+  Cell.ElixirLife, Cell.ElixirLevity, Cell.ElixirStone,
+  Cell.ElixirSwift, Cell.ElixirTorch, Cell.ElixirFire, Cell.ElixirFrost, Cell.ElixirShock, Cell.ElixirToxin, Cell.ElixirMight,
+];
 
 /**
  * Classification predicates take plain numbers so values read straight out of
@@ -156,6 +184,10 @@ function isConductorRef(t: number): boolean {
   return t === Cell.Water || t === Cell.Lava || t === Cell.Metal || t === Cell.Blood || t === Cell.Brine;
 }
 
+function isElixirRef(t: number): boolean {
+  return ELIXIR_CELL_IDS.includes(t);
+}
+
 function isLiquidRef(t: number): boolean {
   return (
     t === Cell.Water ||
@@ -165,9 +197,7 @@ function isLiquidRef(t: number): boolean {
     t === Cell.Nitrogen ||
     t === Cell.Blood ||
     t === Cell.Slime ||
-    t === Cell.ElixirLife ||
-    t === Cell.ElixirLevity ||
-    t === Cell.ElixirStone ||
+    isElixirRef(t) ||
     t === Cell.Toxic ||
     t === Cell.Healium ||
     t === Cell.Teleportium ||
@@ -208,6 +238,7 @@ const SOLID = bake(isSolidRef);
 const SOFT_GROWTH = bake(isSoftGrowthRef);
 const CONDUCTOR = bake(isConductorRef);
 const LIQUID = bake(isLiquidRef);
+const ELIXIR = bake(isElixirRef);
 const GAS = bake(isGasRef);
 const BLOCKS_ENTITY = bake(blocksEntityRef);
 
@@ -218,6 +249,8 @@ export function isSoftGrowth(t: number): boolean { return SOFT_GROWTH[t] === 1; 
 /** Materials that carry electrical charge (see isConductorRef). */
 export function isConductor(t: number): boolean { return CONDUCTOR[t] === 1; }
 export function isLiquid(t: number): boolean { return LIQUID[t] === 1; }
+/** A potion cell (ELIXIR_CELL_IDS): a viscous liquid the cauldron makes and a flask can drink. */
+export function isElixir(t: number): boolean { return ELIXIR[t] === 1; }
 export function isGas(t: number): boolean { return GAS[t] === 1; }
 /** Materials that obstruct moving bodies (player, enemies, projectiles). */
 export function blocksEntity(t: number): boolean { return BLOCKS_ENTITY[t] === 1; }

@@ -73,6 +73,13 @@ export const MATERIAL_PALETTE: readonly MaterialGroup[] = [
       { id: Cell.ElixirLife, label: "Elixir of Life", color: '#fb7185' },
       { id: Cell.ElixirLevity, label: "Elixir of Levity", color: '#67e8f9' },
       { id: Cell.ElixirStone, label: "Elixir of Stone", color: '#a8a29e' },
+      { id: Cell.ElixirSwift, label: "Strong Tea", color: '#be6e28' },
+      { id: Cell.ElixirTorch, label: "Glowing Draught", color: '#cdf56e' },
+      { id: Cell.ElixirFire, label: "Salamander's Gall", color: '#ff7323' },
+      { id: Cell.ElixirFrost, label: "Frostproof Tonic", color: '#96ebd7' },
+      { id: Cell.ElixirShock, label: "Gutta-Percha Tonic", color: '#287896' },
+      { id: Cell.ElixirToxin, label: "Charcoal Draught", color: '#223a34' },
+      { id: Cell.ElixirMight, label: "Brimstone Tincture", color: '#ebcd28' },
     ],
   },
   {

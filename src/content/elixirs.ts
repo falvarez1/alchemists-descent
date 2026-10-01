@@ -1,5 +1,5 @@
-import type { EntityStatus, PerkId } from '@/core/types';
-import { Cell } from '@/sim/CellType';
+import type { EntityStatus, PerkId, PotionStatusKey } from '@/core/types';
+import { Cell, isElixir } from '@/sim/CellType';
 
 /**
  * THE ELIXIRS: one table says what each potion cell does when it is drunk.
@@ -19,9 +19,6 @@ import { Cell } from '@/sim/CellType';
 
 /** The longest any one potion effect can be stacked to (60 s at 60 Hz). Was 1800 inline in three files. */
 export const POTION_CAP_FRAMES = 3600;
-
-/** The numeric timers on EntityStatus a potion may drive. */
-export type PotionStatusKey = Extract<keyof EntityStatus, 'regen' | 'levity' | 'stoneskin' | 'swift' | 'torch'>;
 
 export type ElixirEffect =
   | { kind: 'status'; key: PotionStatusKey }
@@ -58,22 +55,104 @@ export const ELIXIRS: readonly ElixirDef[] = [
     cell: Cell.ElixirStone,
     effect: { kind: 'status', key: 'stoneskin' },
     framesPerCell: 130,
-    chip: { label: 'STONE', tint: '#c4b59a' },
+    chip: { label: 'STONESKIN', tint: '#c4b59a' },
     does: 'half the harm from every blow, and no being shoved',
+  },
+  {
+    cell: Cell.ElixirSwift,
+    effect: { kind: 'status', key: 'swift' },
+    framesPerCell: 200,
+    chip: { label: 'SWIFT', tint: '#e0903a' },
+    does: 'a step half again as quick, and a higher leap',
+  },
+  {
+    cell: Cell.ElixirTorch,
+    effect: { kind: 'status', key: 'torch' },
+    framesPerCell: 250,
+    chip: { label: 'LAMPLIGHT', tint: '#d6f27a' },
+    does: 'a brighter, steadier wand light',
+  },
+  {
+    cell: Cell.ElixirFire,
+    effect: { kind: 'boon', key: 'flameward' },
+    framesPerCell: 180,
+    chip: { label: 'FIREPROOF', tint: '#ff8a3a' },
+    does: 'fire and lava that bite far less, and no catching alight',
+  },
+  {
+    cell: Cell.ElixirFrost,
+    effect: { kind: 'boon', key: 'warmblood' },
+    framesPerCell: 180,
+    chip: { label: 'FROSTPROOF', tint: '#9ae8d6' },
+    does: 'cold that reaches you half as fast',
+  },
+  {
+    cell: Cell.ElixirShock,
+    effect: { kind: 'boon', key: 'grounded' },
+    framesPerCell: 180,
+    chip: { label: 'INSULATED', tint: '#4aa6c8' },
+    does: 'a current that deals a quarter of its harm',
+  },
+  {
+    cell: Cell.ElixirToxin,
+    effect: { kind: 'boon', key: 'toxinward' },
+    framesPerCell: 180,
+    chip: { label: 'ANTIDOTE', tint: '#6fae8a' },
+    does: 'acid and toxic sludge that deal a quarter of their harm',
+  },
+  {
+    cell: Cell.ElixirMight,
+    effect: { kind: 'boon', key: 'might' },
+    framesPerCell: 130,
+    chip: { label: 'BRIMSTONE', tint: '#ecd23a' },
+    does: 'a quarter more damage from every spell',
   },
 ];
 
-/** Every potion cell id, as a 256-entry byte table (the sim reads it per cell). */
-const ELIXIR_TABLE = new Uint8Array(256);
-for (const e of ELIXIRS) ELIXIR_TABLE[e.cell] = 1;
-
 /** Is `t` a potion cell (a product of the cauldron, never an ingredient)? */
 export function isElixirCell(t: number): boolean {
-  return ELIXIR_TABLE[t] === 1;
+  return isElixir(t);
 }
 
 const BY_CELL = new Map<number, ElixirDef>(ELIXIRS.map((e) => [e.cell, e]));
 
 export function elixirDef(cell: number): ElixirDef | undefined {
   return BY_CELL.get(cell);
+}
+
+/** Frames left of an effect on a body. */
+export function effectFrames(status: EntityStatus, effect: ElixirEffect): number {
+  return effect.kind === 'status' ? status[effect.key] : status.boons?.[effect.key] ?? 0;
+}
+
+/**
+ * Add `frames` to an effect, never past the shared cap. Returns the frames actually added
+ * (0 when the cup is already full: a drink refuses rather than wasting the cell).
+ */
+export function addEffectFrames(status: EntityStatus, effect: ElixirEffect, frames: number): number {
+  const have = effectFrames(status, effect);
+  const next = Math.min(POTION_CAP_FRAMES, have + frames);
+  if (effect.kind === 'status') status[effect.key] = next;
+  else (status.boons ??= {})[effect.key] = next;
+  return next - have;
+}
+
+/** Add to one of the numeric status timers under the shared cap (loot potions, the Sanctum's brew, the bench's tiles). */
+export function addStatusFrames(status: EntityStatus, key: PotionStatusKey, frames: number): void {
+  status[key] = Math.min(POTION_CAP_FRAMES, status[key] + frames);
+}
+
+export interface PotionTimer {
+  def: ElixirDef;
+  frames: number;
+}
+
+/** The potions working on a body right now, one per effect, in the table's order (the HUD's chips). */
+export function activePotions(status: EntityStatus): PotionTimer[] {
+  const out: PotionTimer[] = [];
+  for (const def of ELIXIRS) {
+    const frames = effectFrames(status, def.effect);
+    if (frames > 0) out.push({ def, frames });
+  }
+  return out;
 }

@@ -41,7 +41,15 @@ export interface EntityStatus {
   swift: number;
   /** Buff: brighter, steadier, longer wand light. */
   torch: number;
+  /** Potions that hold a Sanctum boon for a while: boon id -> frames left (core/boons `hasBoon` reads it with the run's perks). */
+  boons?: Partial<Record<PerkId, number>>;
 }
+
+/** The numeric status timers (every EntityStatus field but the potion-boon map). */
+export type StatusTimerKey = Exclude<keyof EntityStatus, 'boons'>;
+
+/** The status timers a potion (a loot potion, a brewed elixir, the Sanctum's brew) may drive. */
+export type PotionStatusKey = Extract<StatusTimerKey, 'regen' | 'levity' | 'stoneskin' | 'swift' | 'torch'>;
 
 export interface Hat {
   ox: number;
