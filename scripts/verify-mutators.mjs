@@ -268,31 +268,77 @@ async function sectionLeak() {
 }
 
 /* ============================== gravity ============================== */
-async function jumpApex(page) {
+async function jumpApex(page, { jetMs = 0 } = {}) {
   await carveArena(page);
   await sleep(900);
-  const floorY = await page.evaluate(() => Math.floor(window.__game.ctx.player.y));
-  await page.evaluate(() => { window.__trace = []; window.__iv = setInterval(() => window.__trace.push(window.__game.ctx.player.y), 16); });
+  // The jet is the other half of a rise: switched off for the pure jump (a ballistic arc), on for the full-hold climb.
+  await page.evaluate((jet) => { const p = window.__game.ctx.player; p.maxLevit = jet ? 100 : 0; p.levit = jet ? 100 : 0; }, jetMs > 0);
+  // The trace is per game TICK (frameCount), read in a rAF loop: wall-clock timers drift under load.
+  await page.evaluate(() => {
+    const c = window.__game.ctx;
+    window.__trace = new Map();
+    const tick = () => { window.__trace.set(c.state.frameCount, c.player.y); window.__raf = requestAnimationFrame(tick); };
+    tick();
+  });
+  // Held past the 7-tick window in which a release cuts a jump short, then let go.
   await page.keyboard.down('KeyW');
-  await sleep(90);
+  await sleep(jetMs || 300);
   await page.keyboard.up('KeyW');
-  await sleep(1800);
-  const trace = await page.evaluate(() => { clearInterval(window.__iv); return window.__trace; });
-  return { floorY, apex: floorY - Math.min(...trace), airtime: trace.filter((y) => y < floorY - 2).length };
+  await sleep(2600);
+  const ys = await page.evaluate(() => { cancelAnimationFrame(window.__raf); return [...window.__trace.entries()].sort((a, b) => a[0] - b[0]); });
+  if (process.env.DEBUG_JUMP) console.log('   trace', JSON.stringify(ys.filter((_, i) => i % 2 === 0).slice(0, 50).map(([f, y]) => [f, Math.round(y)])));
+  // The resting floor is the lowest y the trace reaches (the alchemist settles a cell or two after the carve).
+  const floorY = Math.max(...ys.map(([, y]) => y));
+  const apex = floorY - Math.min(...ys.map(([, y]) => y));
+  const airborne = ys.filter(([, y]) => y < floorY - 1);
+  const airtime = airborne.length ? airborne[airborne.length - 1][0] - airborne[0][0] : 0;
+  return { floorY, apex, airtime };
+}
+/** The best of three tries (a tap that lands in the first ticks of a settle is cut short, which is the game's own jump-cut, not the dial). */
+async function bestJump(page, opts) {
+  let best = null;
+  for (let k = 0; k < 3; k++) {
+    const r = await jumpApex(page, opts);
+    if (!best || r.apex > best.apex) best = r;
+  }
+  return best;
+}
+/** Ticks a drop of 36 cells takes (teleport up, let go): t = sqrt(2h/g) until terminal speed, so it is the dial itself. */
+async function fallTicks(page) {
+  await carveArena(page);
+  await sleep(900);
+  return page.evaluate(() => new Promise((resolve) => {
+    const c = window.__game.ctx;
+    const floorY = c.player.y;
+    Object.assign(c.player, { y: floorY - 36, vy: 0, vx: 0 });
+    const t0 = c.state.frameCount;
+    let started = false;
+    const tick = () => {
+      if (!c.player.grounded) started = true;
+      if (started && c.player.grounded) resolve({ ticks: c.state.frameCount - t0, floorY });
+      else requestAnimationFrame(tick);
+    };
+    tick();
+  }));
 }
 async function sectionGravity() {
-  console.log('\n# Low Gravity: a real jump (W), measured');
+  console.log('\n# Low Gravity: a real jump (W held), measured per tick');
   const plain = await startRun([]);
-  const a = await jumpApex(plain);
+  const a = await bestJump(plain);
+  const aJet = await bestJump(plain, { jetMs: 600 });
+  const aFall = await fallTicks(plain);
   await plain.context().close();
   const low = await startRun(['low-gravity']);
-  const b = await jumpApex(low);
+  const b = await bestJump(low);
+  const bJet = await bestJump(low, { jetMs: 600 });
+  const bFall = await fallTicks(low);
   await low.screenshot({ path: `${outDir}/low-gravity.png` });
   await low.context().close();
-  console.log(`   plain apex ${a.apex.toFixed(1)} cells over ${a.airtime} samples; low gravity apex ${b.apex.toFixed(1)} over ${b.airtime}`);
-  check('a plain jump goes up (the probe stands on its floor)', a.apex > 6, JSON.stringify(a));
-  check('under Low Gravity the same tap jumps much higher', b.apex > a.apex * 1.4, `${a.apex.toFixed(1)} -> ${b.apex.toFixed(1)}`);
-  check('and the alchemist hangs in the air longer', b.airtime > a.airtime * 1.3, `${a.airtime} -> ${b.airtime}`);
+  console.log(`   pure jump: plain ${a.apex.toFixed(1)} cells / ${a.airtime} ticks, low gravity ${b.apex.toFixed(1)} / ${b.airtime}; jet held 600 ms: plain ${aJet.apex.toFixed(1)}, low ${bJet.apex.toFixed(1)}; a 36-cell drop takes ${aFall.ticks} ticks, ${bFall.ticks} under low gravity`);
+  check('a plain jump goes up (the probe stands on its floor)', a.apex > 14 && a.apex < 34, JSON.stringify(a));
+  check('under Low Gravity the same jump goes about twice as high (1/0.55)', b.apex > a.apex * 1.6 && b.apex < a.apex * 2.3, `${a.apex.toFixed(1)} -> ${b.apex.toFixed(1)}`);
+  check('and the alchemist falls slower: the same 36-cell drop takes about 1/sqrt(0.55) as long again', bFall.ticks > aFall.ticks * 1.2, `${aFall.ticks} -> ${bFall.ticks}`);
+  check('the jet is still a hover instrument, not a rocket: its climb is no more than plain', bJet.apex < aJet.apex * 1.25 && bJet.apex > aJet.apex * 0.5, `${aJet.apex.toFixed(1)} -> ${bJet.apex.toFixed(1)}`);
 }
 
 /* ============================== glass cannon ============================== */

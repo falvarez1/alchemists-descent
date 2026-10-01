@@ -1846,7 +1846,8 @@ export class PlayerControl implements PlayerControlApi {
     if (!handledByClimb) {
       // Gravity / levitation
       // (the complications' gravity dial, content/mutators: 1 = today's exactly)
-      const grav = (player.inLiquid ? 0.12 : 0.28) * mutatorMods(ctx.state).gravity;
+      const gravityDial = mutatorMods(ctx.state).gravity;
+      const grav = (player.inLiquid ? 0.12 : 0.28) * gravityDial;
       player.vy += grav;
       if (player.inLiquid) player.vy *= 0.88;
 
@@ -1878,7 +1879,9 @@ export class PlayerControl implements PlayerControlApi {
           // also damps a fall you catch mid-air. Apply it EVERY frame (the
           // simulated curve depends on the drag hitting positive vy too).
           const t = Math.min(this.levitFrames / lp.levitRampFrames, 1);
-          const thrust = (lp.levitThrust0 + lp.levitThrustGain * t * t * t) * verticalPace;
+          // (the jet's thrust was tuned against gravity 0.28: it follows the complications' dial, so under Low Gravity it
+          // is still a hover instrument and not a rocket; the jump and the fall are what get floaty)
+          const thrust = (lp.levitThrust0 + lp.levitThrustGain * t * t * t) * verticalPace * gravityDial;
           player.vy -= thrust;
           player.vy *= lp.levitDrag;
           // Levity potion (Wave C): levitation burns no levit while the timer runs
