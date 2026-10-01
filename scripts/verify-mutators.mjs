@@ -160,7 +160,7 @@ async function sectionTitle() {
     return { exists: !!f, closed: f && !f.open, summary: f?.querySelector('summary')?.textContent, chips: document.querySelectorAll('#expedition-entry .comp-chip').length, sameRow: !!sb && !!cb && Math.abs(sb.top - cb.top) < 4 };
   });
   check('the title has a Complications fold, closed, naming nothing', fold.exists && fold.closed && fold.summary === 'Complications', JSON.stringify(fold));
-  check('it offers all eleven complications as chips', fold.chips === 11, String(fold.chips));
+  check('it offers all twelve complications as chips', fold.chips === 12, String(fold.chips));
   check('closed, it shares the seed fold\'s row (no extra height on a short title)', fold.sameRow, JSON.stringify(fold));
   await chooseOnTitle(page, ['wet-floors', 'low-gravity', 'tinderbox']);
   check('three can be chosen with real clicks', (await chosenOnTitle(page)).length === 3, JSON.stringify(await chosenOnTitle(page)));
@@ -514,16 +514,20 @@ async function noticeRange(page) {
   });
 }
 async function sectionHush() {
-  console.log('\n# Hush: creatures notice you from half as far (probed by distance)');
+  console.log('\n# Hush and Nosy Neighbours: creatures notice you from half as far, or half again (probed by distance)');
   const plain = await startRun([]);
   const a = await noticeRange(plain);
   await plain.context().close();
   const page = await startRun(['hush']);
   const b = await noticeRange(page);
-  console.log(`   a foe first fails to notice beyond ${a} cells plain, ${b} under Hush`);
+  await page.context().close();
+  const nosy = await startRun(['nosy-neighbours']);
+  const c = await noticeRange(nosy);
+  await nosy.context().close();
+  console.log(`   a foe first fails to notice beyond ${a} cells plain, ${b} under Hush, ${c} under Nosy Neighbours`);
   check('plain, a foe notices the alchemist from far off', a >= 100, String(a));
   check('under Hush it takes roughly half the distance', b > 0 && b <= a * 0.7 && b >= a * 0.3, `${a} -> ${b}`);
-  await page.context().close();
+  check('under Nosy Neighbours it reaches half again as far (to the edge of the arena at least)', c >= Math.min(260, a * 1.25), `${a} -> ${c}`);
 }
 
 /* ============================== fuel: tinderbox / wet floors ============================== */

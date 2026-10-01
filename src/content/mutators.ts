@@ -196,6 +196,14 @@ export const MUTATOR_DEFS = {
     ladder: false,
     mods: { enemySense: 0.5 },
   },
+  'nosy-neighbours': {
+    id: 'nosy-neighbours',
+    name: 'Nosy Neighbours',
+    regulation: 'Creatures notice you from half again as far. Most of them mean well.',
+    weight: 1,
+    ladder: true,
+    mods: { enemySense: 1.5 },
+  },
 } as const satisfies Record<string, MutatorDef>;
 
 export type MutatorId = keyof typeof MUTATOR_DEFS;
@@ -213,6 +221,7 @@ export const MUTATOR_ORDER: readonly MutatorId[] = [
   'famine',
   'fireworks',
   'hush',
+  'nosy-neighbours',
 ];
 
 export function isMutatorId(value: unknown): value is MutatorId {
