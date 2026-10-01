@@ -93,7 +93,7 @@ const cardTabState = await page.evaluate(() => ({
   activeInside: document.getElementById('card-offer-overlay')?.contains(document.activeElement) ?? false,
   visible: document.getElementById('card-offer-overlay')?.classList.contains('visible') ?? false,
 }));
-await page.evaluate(() => document.getElementById('runtime-inspector-toggle')?.focus());
+await page.evaluate(() => document.getElementById('sound-toggle')?.focus());
 await page.waitForTimeout(60);
 const cardOutsideFocusState = await page.evaluate(() => ({
   activeInside: document.getElementById('card-offer-overlay')?.contains(document.activeElement) ?? false,

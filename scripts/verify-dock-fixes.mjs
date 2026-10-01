@@ -5,7 +5,7 @@
 //  4) floating panel close works (covered by repro-float-close.mjs too)
 // Usage: node scripts/verify-dock-fixes.mjs [url]   (dev server must be running)
 import { chromium } from 'playwright-core';
-import { leaveTitleIfShown } from './run-helpers.mjs';
+import { leaveTitleIfShown, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0, fail = 0;
@@ -27,7 +27,7 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1200);
-if (!(await page.evaluate(() => document.body.classList.contains('builder-open')))) await page.click('#mode-builder-btn');
+if (!(await page.evaluate(() => document.body.classList.contains('builder-open')))) await toggleBuilderMode(page);
 await page.waitForTimeout(500);
 
 const reset = async () => { await page.evaluate(() => window.__game?.ctx?.builder?.['resetWorkspace']?.()); await page.waitForTimeout(220); };
@@ -48,7 +48,7 @@ const dockState = () => page.evaluate(() => {
 
 console.log('-- 1) tear-out collapses bottom split to one full-width section');
 await reset();
-await run('builder.virtualWorldPanel');   // World Map -> bottom
+await run('builder.assetsPanel');   // Asset Browser -> bottom
 await run('builder.worldPanel');          // World Generation -> right dock
 let d = await box('#builder-dock-bottom');
 // dock World Generation to the bottom-left
@@ -65,11 +65,11 @@ check('lone pane is the main pane', /has-one-pane/.test(collapsed.classes) && /h
 
 console.log('-- 1b) directly stranded side pane self-heals to main');
 await reset();
-await run('builder.virtualWorldPanel');
-// Force the lone World Map panel into a side pane via the layout, then re-sync.
+await run('builder.assetsPanel');
+// Force the lone Asset Browser panel into a side pane via the layout, then re-sync.
 const healed = await page.evaluate(() => {
   const b = window.__game?.ctx?.builder; const layout = b['workspaceLayout'];
-  const p = layout.panels.find((x) => x.id === 'builder-virtual-world');
+  const p = layout.panels.find((x) => x.id === 'builder-assets');
   p.dock = 'bottom'; p.open = true; p.tabGroupId = 'bottom-left';
   b['applyWorkspaceLayout']();
   const pane = document.querySelector('#builder-dock-bottom .builder-bottom-pane');
@@ -81,7 +81,7 @@ check('healed pane fills the dock width', healed.fills, JSON.stringify(healed));
 
 console.log('-- 2) drop indicator appears and tracks zones during a drag');
 await reset();
-await run('builder.virtualWorldPanel');
+await run('builder.assetsPanel');
 await run('builder.worldPanel');
 d = await box('#builder-dock-bottom');
 const indAt = async (clientX, clientY, fromId) => {
@@ -159,9 +159,9 @@ check('real click on tab close removes the panel', afterClose === beforeClose - 
 
 console.log('-- 4) drop indicator also highlights a side dock');
 await reset();
-await run('builder.virtualWorldPanel');   // bottom panel to drag
+await run('builder.assetsPanel');   // bottom panel to drag
 const rightDock = await box('#builder-dock-right');
-const fSide = await handleBoxOf('builder-virtual-world');
+const fSide = await handleBoxOf('builder-assets');
 await page.mouse.move(fSide.x, fSide.y); await page.mouse.down();
 await page.mouse.move(fSide.x + 8, fSide.y + 8, { steps: 4 });
 await page.mouse.move(rightDock.cx, rightDock.cy, { steps: 12 });

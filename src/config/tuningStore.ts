@@ -16,8 +16,8 @@ import { createStorageOwner } from '@/core/storageOwner';
 /**
  * Live-tuning persistence.
  *
- * Every tuning dial (Sandbox Global Controls, the Builder's player-physics and
- * worldgen-look sliders, material/spell params, GEN_TUNE) writes straight into a
+ * Every tuning dial (Sandbox Global Controls, the worldgen-look sliders,
+ * material/spell params, the dev console's `set`, GEN_TUNE) writes straight into a
  * MUTABLE module singleton (`config/params.ts`, `config/gen.ts`). Those modules
  * re-evaluate to their shipped defaults on every page load — so an HMR reload or
  * a manual refresh used to wipe whatever you'd just dialed in.

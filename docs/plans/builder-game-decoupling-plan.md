@@ -1,5 +1,7 @@
 # Builder/Game Decoupling Plan
 
+> **Update 2026-09:** `src/builder/PreviewRuntime.ts` was removed along with the Logic Preview session; Builder playtest, and worldgen prefab placement still share the real instantiation path. Mentions of `PreviewRuntime` below are historical.
+
 Status: implementation in progress.
 Created: 2026-06-20.
 Scope: architecture, source ownership, build boundaries, playtest integration, persistence, and validation for separating the Builder tool surface from the player-facing game runtime without forking gameplay semantics.

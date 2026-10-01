@@ -1,5 +1,7 @@
 # Builder Enhancement Implementation Plan
 
+> **Update 2026-09:** Phase 8 (`PreviewRuntime` and the Logic Preview session) was built and then removed: `src/builder/PreviewRuntime.ts`, the AUTHOR / LOGIC PREVIEW session chips and `builder.session.*` commands no longer exist. Builder sessions are Author and Playtest. The Builder Runtime panel and the Global Controls / Post Processing panels were cut too. See `docs/BUILDER-LIVE-UI-SPEC.md` ("Scope cuts").
+
 Date: 2026-06-13
 
 Revision: 2026-06-14 - Project Asset Browser and Asset Database promoted to

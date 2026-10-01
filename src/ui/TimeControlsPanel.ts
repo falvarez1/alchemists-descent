@@ -52,11 +52,11 @@ function timeControlsHtml(surface: TimeControlsSurface): string {
   return `
     <div class="time-controls time-controls-${surface}" data-time-controls>
       <div class="tc-topline">
-        <label class="tc-toggle" title="Stop automatic ticks; use the step buttons to advance.">
+        <label class="tc-toggle" title="Stop the clock; advance it yourself with the step buttons.">
           <input type="checkbox" data-time-manual>
-          <span>Manual</span>
+          <span>Pause &amp; step</span>
         </label>
-        <span class="tc-status" data-time-status>AUTO</span>
+        <span class="tc-status" data-time-status>Running</span>
       </div>
       <div class="tc-readouts">
         <span>Frame <b data-time-frame>0</b></span>
@@ -88,7 +88,7 @@ function syncPanel(host: HTMLElement, status: TimeControlStatus): void {
   root?.classList.toggle('manual', status.manual);
   const manual = host.querySelector<HTMLInputElement>('[data-time-manual]');
   if (manual && document.activeElement !== manual) manual.checked = status.manual;
-  setText(host, '[data-time-status]', status.lastAction);
+  setText(host, '[data-time-status]', friendlyAction(status.lastAction));
   setText(host, '[data-time-frame]', String(status.frameCount));
   setText(host, '[data-time-history]', `${status.rewindAvailable}/${status.historyLimit}`);
   setText(host, '[data-time-queue]', String(status.queuedTicks));
@@ -98,6 +98,17 @@ function syncPanel(host: HTMLElement, status: TimeControlStatus): void {
   }
   const clear = host.querySelector<HTMLButtonElement>('[data-time-clear]');
   if (clear) clear.disabled = status.rewindAvailable === 0 && status.queuedTicks === 0;
+}
+
+/** The clock's own log words ("AUTO", "STEP +5") read as a status for people. */
+function friendlyAction(raw: string): string {
+  const text = raw.trim();
+  if (text === 'AUTO') return 'Running';
+  if (text === 'MANUAL') return 'Paused';
+  if (text === 'SNAP') return 'Checkpoint saved';
+  const m = /^(STEP +|STEPPED |BACK )(d+)$/.exec(text);
+  if (m) return (m[1].startsWith('BACK') ? 'Rewound ' : m[1].startsWith('STEP +') ? 'Queued ' : 'Stepped ') + m[2];
+  return text.charAt(0) + text.slice(1).toLowerCase();
 }
 
 function setText(host: HTMLElement, selector: string, value: string): void {
