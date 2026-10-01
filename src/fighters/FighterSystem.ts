@@ -300,6 +300,16 @@ export class FighterSystem implements FighterApi {
     else this.view.ultimate.refusedAt = now;
   }
 
+  /**
+   * A kit's reward for using its tactical well (Selene's recall): keep `keep` (0..1) of what is left of the
+   * tactical's cooldown. Never lengthens it, never touches the ultimate.
+   */
+  scaleTacticalCooldown(keep: number): void {
+    if (!(this.tacticalCd > 0) || !Number.isFinite(keep)) return;
+    this.tacticalCd = Math.min(this.tacticalCd, Math.ceil(this.tacticalCd * Math.max(0, keep)));
+    this.syncView();
+  }
+
   // ======================================================================== charge
 
   addCharge(amount: number): void {
