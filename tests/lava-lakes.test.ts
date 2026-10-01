@@ -59,7 +59,8 @@ describe('the Kiln Heart lava lakes', () => {
       expect(lakes.dropped, 'no lake cost a route').toBe(0);
       let lava = 0;
       for (let i = 0; i < world.types.length; i++) if (world.types[i] === Cell.Lava) lava++;
-      expect(lava, 'lava cells (was 1.3-2.0K before GEN 62)').toBeGreaterThan(10000);
+      // (GEN 64: the Crucible's gatehouse reserves ground the lakes would take - seed 5 holds 7.9K, was 12.5K; ten surveyed seeds run 7.9-18K)
+      expect(lava, 'lava cells (was 1.3-2.0K before GEN 62)').toBeGreaterThan(7000);
       // Contained: beside or below a lake's lava, at or under its surface, only static rock.
       let leaks = 0;
       for (const lake of lakes.lakes) {
