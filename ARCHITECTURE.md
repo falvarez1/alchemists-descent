@@ -132,6 +132,13 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     fixtureFooting.ts     The footing contract: fixtures' footings are sealed ground for
                           later tunnels; after the last carve every bowl/basin/body is
                           re-stamped and stood on ground (fail-open, never cuts a route)
+    lavaLakes.ts          The Kiln Heart's magma: carved halls + basin lakes, contained (rim fused,
+                          loose stock purged), dry-checked against the wizard mask (GEN 62)
+    fitWalks.ts           Body-fit BFS walks over computeFits (dist/prev, walkTo, reachedNear)
+    looseStock.ts         Clears oil/gunpowder/water/sand pockets from a fixture's room (only
+                          open-touching masses, never a room another pass owns)
+    portalShrine.ts       The exit shrine's stone pad and open ring, re-asserted after the carves
+    routeWaystones.ts     Waystone sites on the body-fit walk spawn->exit (35%/70%) + the key's brazier
     floraKit.ts           The 14 plant species as real-cell growers (Planter: writes only open cells)
     floraPass.ts          Floors 2-4: flora puzzle rooms + dressing on a forked 'flora' stream
     worksFlora.ts         Floor 1's hand-planted flora and the Seed Cellar puzzle

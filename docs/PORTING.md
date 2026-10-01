@@ -171,6 +171,15 @@ manipulated `[r,g,b]` channels (coagulation darkening, stains, shading), use
     and all three compose paths (CPU reference, WebGL GLSL, WebGPU WGSL) treat a
     negative K as an animated shimmer warp instead of a black-hole swirl. Purely
     visual; no new uniforms (phase reuses the existing `frameCount*0.16`).
+18. Campaign-floor terrain (floors 2-4) is no longer the original's cave generator's output
+    byte for byte: GEN 62 (level-design pass, 2026-09-30) made connectors organic (no hub
+    starburst), carved magma into the Kiln Heart, lifted a flooded floor's exit shrine above
+    the water, and put waystones on the route. The earthen generator is untouched
+    (`tests/gen-golden.test.ts` still holds). The campaign biomes' own budgets changed for
+    the Sandbox's biome picker too, because it runs the same generator: about half the gold
+    pockets (`GenDef.goldKeep`) and larger marsh-gas domes on the fungal and flooded biomes
+    (`gasDomes`). The campaign floors' hashes live in `tests/gen-level-golden.test.ts` /
+    `tests/second-doors-gen.test.ts` and were re-recorded.
 
 Everything else: identical behavior — confirmed by a 13-agent adversarial fidelity
 audit (zero critical/major divergences) on 2026-06-10.
