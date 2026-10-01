@@ -78,6 +78,14 @@ try {
     await execConsoleCommand(page, `run test --level ${level} --world campaign-level --seed ${seed} --loadout fresh`, { timeout: 90000 });
     await waitForRunReady(page, { timeout: 90000 });
     await page.waitForTimeout(1200);
+    // A floor's arrival gift is a choice ("A gift for the way down"): it opens when the arrival grace ends (~6 s in) and
+    // pauses the game, so take the first card with a real click before the probe starts working the bowl.
+    try {
+      await page.waitForSelector('#card-offer-overlay.visible', { timeout: 12000 });
+      const card = await page.locator('#card-offer-overlay .card-offer-card').first().boundingBox();
+      await page.mouse.click(card.x + card.width / 2, card.y + card.height / 2);
+      await page.waitForFunction(() => !window.__game.ctx.state.paused, null, { timeout: 8000 });
+    } catch { /* no gift on this floor, or it was taken */ }
     const f = report.floors[level] = {};
     const geo = await evalGame(async () => {
       const ctx = window.__game.ctx; const rt = ctx.levels.current; const c = rt.cauldron;
