@@ -1,3 +1,4 @@
+import { isFighterId } from '@/content/fighters';
 import type { FighterId } from '@/content/fighters';
 import type { FighterKitDef } from '@/fighters/kit';
 
@@ -7,8 +8,11 @@ import type { FighterKitDef } from '@/fighters/kit';
  * roster preloads the one that was chosen (`kitFor` returns the cached definition synchronously once it
  * has loaded). A fighter whose kit file does not exist yet still equips (its look, no abilities), which is
  * how the roster lands before every kit does; tests/fighters-roster.test.ts requires all ten.
+ *
+ * A kit's helper modules are named `<id>-<what>.ts` (three or more hyphenated parts), so they are never
+ * mistaken for a kit and never get a chunk of their own.
  */
-const loaders = import.meta.glob<{ kit?: FighterKitDef }>(['./*.ts', '!./index.ts']);
+const loaders = import.meta.glob<{ kit?: FighterKitDef }>(['./*.ts', '!./index.ts', '!./*-*-*.ts']);
 
 const cache = new Map<FighterId, FighterKitDef>();
 
@@ -25,5 +29,7 @@ export function kitFor(id: FighterId): FighterKitDef | Promise<FighterKitDef | u
 
 /** The ids that have a kit module on disk (the roster test and the console read this). */
 export function kitIds(): FighterId[] {
-  return Object.keys(loaders).map((p) => p.replace(/^\.\//, '').replace(/\.ts$/, '') as FighterId);
+  return Object.keys(loaders)
+    .map((p) => p.replace(/^\.\//, '').replace(/\.ts$/, ''))
+    .filter(isFighterId);
 }
