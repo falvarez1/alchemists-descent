@@ -1,6 +1,7 @@
 import type { AuthoredLight } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR, packRGB, stoneColor } from '@/sim/colors';
+import { bankFurnace } from '@/world/furnace';
 import type { World } from '@/sim/World';
 
 /**
@@ -30,8 +31,8 @@ export const REFUGE_KETTLE = {
   /** The bowl's centre column and the row of its stone base (the plinth's top row is 744). */
   x: 800,
   baseY: 743,
-  /** The sealed furnace pocket in the plinth, under the bowl (rows 745-747, 7 wide). */
-  furnace: { x0: 797, x1: 803, y0: 745, y1: 747 },
+  /** The furnace under the bowl: three rows of embers (world/furnace), rows 745-747, 7 wide. */
+  furnaceRows: 3,
   /** The sunken tank (water 5 wide, rows 745-750) and the grate over it on the plinth's top row. */
   tank: { x0: 787, x1: 791, y0: 745, y1: 750, grateX0: 786, grateX1: 792, grateY: 744 },
   /** The shrub: an ellipse of leaf on the plinth's top row, west end. */
@@ -72,8 +73,7 @@ export function stampRefugeKettle(world: World): RefugeKettle {
   }
 
   // THE FURNACE: a sealed pocket under the bowl (the plinth's own top row and the basin's base are the slab over it), banked with embers.
-  const f = K.furnace;
-  for (let y = f.y0; y <= f.y1; y++) for (let x = f.x0; x <= f.x1; x++) set(x, y, Cell.Ember, COLOR_FN[Cell.Ember]());
+  if (!bankFurnace(world, { x: K.x, y: K.baseY - 1 }, K.furnaceRows)) throw new Error("the Refuge Kettle's plinth cannot hold its furnace");
 
   // THE CISTERN: water in a sunken tank, a riveted grate over its mouth (a bar every third column: two-cell gaps, so a flask aimed from above can see the water and a body cannot fall through).
   const t = K.tank;

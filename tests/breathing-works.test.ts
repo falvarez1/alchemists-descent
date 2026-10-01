@@ -49,7 +49,7 @@ describe('Breathing Works encounter contracts', () => {
     // GEN_VERSION 62: the timber catwalks lose their diagonal braces and gain a flush joist (worksHabitat), over
     // GEN_VERSION 55: the story's Guild locker nook off the return shaft (the resonant valve), over GEN 53's
     // Undertow cache, hand-planted stands and Seed Cellar and GEN 48's barricade, shaft hatch and floor gate.
-    expect((hash >>> 0).toString(16)).toBe('7ead08e7');
+    expect((hash >>> 0).toString(16)).toBe('5c264b8');
   });
 
   it('hangs the timber catwalks bare: no diagonal sticks under a deck, and the joist stays inside it', () => {
