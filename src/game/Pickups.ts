@@ -243,6 +243,8 @@ export class Pickups implements PickupsApi {
       st[def.status] = Math.min(1800, st[def.status] + def.frames);
       ctx.events.emit('toast', { text: def.name });
       ctx.audio.drinkPotion();
+      // A potion off the floor is a consumable used, though it never passed the flask (no material): a fighter's passive may listen.
+      ctx.events.emit('flaskUsed', { verb: 'drink', material: null, amount: 1 });
     } else if (p.kind === 'key') {
       const runtime = ctx.levels.current;
       if (runtime) {
