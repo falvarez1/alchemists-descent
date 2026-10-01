@@ -927,6 +927,82 @@ state** — derived from the reflex timers at their peak (`dodgeT ≥ 10` / `fle
   under reduced flashes); the chain slow-motion and the finisher never
   multiply — the deeper one wins.
 
+### Frames, bargains and the choice (the choice update, 2026-10-01)
+
+**What changed and why.** The forced route held no card choice (every tome sat off it) and a lit waystone silently handed
+over one card. Now a lit waystone opens an **altar of three** (a host, a synergy that works with the hosts you carry,
+and a wild devil's bargain with a price) a moment after the flare; a floor's **arrival gift** (floors 2-4, held until the
+floor's title has had its moment) is three too (a burst, a precise shot, a utility). Every offer tile carries a **fit
+tell**; an offer never carries more than one card that would do nothing in the wands you hold. Wand frames became
+loot (eight frames), shown with their stat diff, how YOUR cards would cycle in them, and the cards a smaller frame would
+push out (back to the satchel; a refit no longer deletes anything). Code: `combat/wands/{cardRules,cardFit,altarOffers,
+wandFinds,BuildDirector,buildRecap}.ts`, `ui/{WandOfferOverlay,CardOfferOverlay,buildRecapView,runNotes}.ts`.
+
+**Cadence** (ticks, 60/s; every offer waits until play is calm: unpaused, no curtain, no story beat, no Sanctum, a
+living player, the arrival grace over): altar 50 after the flare; the gift 60 after arrival (the 330-tick grace holds it
+longer); a boss's wreckage frame 170 after the kill (Leviathan, Lenswright, Rime Warden; the Colossus ends the run, so it
+leaves none); the altar's wand 40 after its card is chosen. **One altar in three** (the 3rd, 6th, 9th of a run) also
+turns up a wand. Wandwright's rack: three specialists, 200 oz, paid only if one is taken. Tomes and Lost pages use
+the same fit rule (one dead card at most; an authored tome's fixed card is never swapped).
+
+**Fit tells** (`cardFit(holdings, card)`): *works* / *dead* / *open*. The host rule is the compiler's (`modifierWorksOn`):
+the eight body mods plus Bounce, Infuser and Trigger need a projectile body (spark, bomb, warp, black hole, frost shard,
+ice lance, wisp, meteor: never a jet, the arc, the dig ray, a placed spell; Bounce not the black hole); speed/heavy/spread
+by their effect sets. A Trigger also needs a second projectile, a multicast needs N. Crits read the TARGET's state: *wet*
+(Aqua Jet, Water Trail), *frozen* (Frost Charge, Frost Shard, Ice Lance, Cryo Jet), *burning* (Flame, Ember Storm, Meteor);
+the tell names the setters and what pays off. The dead-cast caption ("Water Trail does nothing on Chain Lightning: it needs a
+projectile body.") shows in the toast stack AND the hotbar's cast caption, once per card per run.
+
+**Measured by real casts** (`node scripts/measure-builds.mjs`; the real `WandSystem.fire`, compiler and projectile code,
+an endless-HP target, 600 ticks (10 s) of held fire, mean of 3, the arena corridor re-cleared because the cell sim is not
+running). Oak Sprig unless named; dps / damage per mana at 30, 70, 200 cells:
+
+| build | 30 | 70 | 200 | note |
+|---|---|---|---|---|
+| Spark Bolt (baseline) | 36 / 2.1 | 36 / 2.1 | 35 / 2.1 | never dry (tank 80 of 90 at the low) |
+| + Heavy Charm | 56 / 1.8 | 58 / 1.9 | 53 / 1.7 | x1.6, not x1.2 (see below) |
+| + Overcharged Coil (x3, 26 mana) | 56 / 1.6 | 57 / 1.6 | 57 / 1.6 | burst x2.2 (3 s: 228 vs 105); tank dry in ~3 casts; 0.76x efficiency |
+| + Loose Cannon (x4, +29 deg aim) | 94 / 3.5 | 25 / 0.9 | 10 / 0.4 | x2.6 point-blank, under 0.7x at 70 |
+| + Short Fuse (x3, life x0.03) | 97 / 3.6 | 0 | 0 | x2.7 inside ~47 cells, nothing beyond |
+| + Millstone Charm (x2.5, speed x0.3) | 80 / 2.6 | 82 / 2.7 | 71 / 2.3 | x2.3 on a still target; a flier or hopper steps aside (18 vs 5 dps on the strafing target: the same low hit rate as the plain bolt) |
+| + Kickback Charm (x2, recoil 7) | 66 / 2.2 | 66 / 2.2 | 65 / 2.1 | x1.8; every cast shoves the alchemist ~4.7 cells/tick (a plain Spark Bolt: 0.5) |
+| Cast Bomb | 6 / 0.2 | 46 / 1.2 | 5 / 0.1 | arcs; lands near 70 |
+| + Overcharged Coil | 123 / 2.5 | 172 / 3.4 | 62 / 1.2 | x3.7 at 70; dry; 23 hp of self-blast per 10 s |
+| + Short Fuse | 554 / 15 | 365 / 10 | 0 | the fuse goes off ~30 cells away: **406 hp of self-blast per 10 s** (about three casts kill) |
+
+The price of each bargain is paid in the COMPILER and lands only where its rule says it does (benefit and price together;
+on any other host it is a dud, mana still charged): Overcharge +26 mana; Loose Cannon +0.5 rad of jitter; Short Fuse x0.03
+lifetime (a bolt: 5 ticks, was 180; a bomb's fuse 4 ticks); Millstone x0.3 speed; Kickback an uncapped +7 recoil impulse.
+All stay inside the x4 damage clamp (stacking two clamps the damage and keeps both prices). Bargains are in no tome,
+Lost-pages, depth or waystone pool and discovery never feeds them: they exist only as an altar's wild card.
+
+**Frames, carrying three builds** (dps for a lone Spark Bolt at 30 / 70 / 200 cells; Meteor Call dps at 30 cells, where it lands):
+
+| frame | slots | cast / recharge | mana / regen | spread | Spark | Meteor | what it is for |
+|---|---|---|---|---|---|---|---|
+| Oak Sprig | 3 | 0.23 / 0.37 s | 90 / 30/s | 1.1 deg | 35 / 36 / 35 | 36 (dry) | the starter |
+| Bone Crook | 4 | 0.15 / 0.75 | 120 / 39 | 2.9 | 24 / 24 / 16 | 51 | |
+| Brass Injector | 5 | 0.10 / 1.00 | 160 / 48 | 4.6 | 20 / 20 / 10 | 65 | many groups per cycle |
+| Void Lattice | 5 | 0.27 / 0.33 | 220 / 66 | 0 | 37 / 37 / 37 | 87 | |
+| **Hornet Needle** (found) | 3 | 0.08 / 0.33 | 80 / 25 | 3.4 | **49 / 49 / 26** | 29 (dry) | rapid: x1.4 on a cheap card; the small tank dies on anything dear |
+| **Pepperpot Rod** | 4 | 0.08 / 0.43 | 130 / 37 | 11.5 | 40 / 23 / 9 | 50 | wide: a fan up close, hopeless at range (Twin Cast sparks 47 at 30, 13 at 200) |
+| **Cast-Iron Mortar** | 6 | 0.33 / 0.73 | 260 / 54 | 0 | 22 / 22 / 22 | **73** | heavy: six slots, a slow hand; dear spells keep going (tank holds, 78 left) |
+| **Samovar Staff** | 4 | 0.20 / 0.60 | 280 / 72 | 1.7 | 27 / 27 / 24 | **94** | marathon: Meteor Call at x2.6 the Oak's rate and the tank never empties (61 left) |
+
+Reading the table: the specialists are not upgrades of the starter, they are other answers (Brass and Void stay the paid
+generalist upgrades, and are not on the rack). A group that costs more mana than the frame's tank can never fire
+(Overcharged Coil + Meteor Call is 96 mana: dead on an Oak Sprig's 90), and the bench's sentence says so.
+
+**Two findings from the same casts** (the first fixed here, the second left alone and recorded):
+- *Heavy was not x1.7.* A `dmgMul > 1` Spark Bolt used to be `round(dmgMul)` stacked bolts at a little extra jitter ("heavy =
+  more bolts" v1, written before `Projectile.mul` existed). In real casts the extras detonated on the first bolt's debris or
+  strayed off the target: Heavy Charm measured x1.2 (25 damage a cast, not 44), and Power Surge (x1.25 rounds to one bolt)
+  did nothing for a Spark Bolt. It is now ONE bolt carrying `mul` (read at impact like the bomb's and the shard's): Heavy
+  x1.6, Power Surge a real +25%. A deliberate balance change, flagged in the commit.
+- *Twin Cast with two Spark Bolts underdelivers* (30 dps at 1.0 dmg/mana against a lone Spark's 36 at 2.1): two bolts
+  leave in the same tick and the second meets the first one's explosion debris. Not changed here (it is the multicast's
+  own design); a wide frame's jitter helps it (Pepperpot 47 at 30 cells). Worth a look from whoever owns multicast.
+
 ---
 
 ## 6. Sound as material truth (procedural, `audio/AudioEngine.ts`)
