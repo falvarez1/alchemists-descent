@@ -92,6 +92,21 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     Lightning.ts          Chain lightning raycast + arc visuals
     Projectiles.ts        Spell projectiles, bombs, black holes, gravity wells
     Spells.ts             Wand tip, dig ray, warp, tactical spell dispatch
+    wands/                The wand engine: WandSystem (cast cycle, frames, saves), compiler (the x4 clamp,
+                          depth-1 triggers), sentenceView (the bench's sentences and warnings), cards,
+                          wandCatalog (EIGHT frames: oak, bone, brass, void + the found archetypes quill,
+                          pepperpot, mortar, samovar), rewardPools. And the CHOICE layer (pillar 2, the choice
+                          update; numbers in docs/FEEL.md section 5): cardRules (which card works on which: the
+                          compiler's host rule, the wet/frozen/burning setters and payoffs, the five devil's
+                          bargains' rules; ONE truth for the compiler, the bench warnings, the dead-card
+                          caption and the fit tells), cardFit (pure cardFit(holdings, card): works / dead /
+                          open and the state a card primes), altarOffers (an altar's host + synergy + wild
+                          bargain; an arrival gift's burst + precision + utility), wandFinds (frames as loot:
+                          refitCards closes cards up before it displaces any, previewRefit, pickFrameFind /
+                          pickFrameRack), BuildDirector (waystone altars and floor gifts as three-card choices,
+                          a frame from a boss's wreckage and one altar in three, the once-per-card dead-cast
+                          caption, the run's BuildNotes; offers wait for a calm moment, never mid-curtain or
+                          mid-title), buildRecap (the build as sentences for the Sanctum, pause menu, ledger)
   entities/
     physics.ts            Entity-vs-grid collision with the loose-rubble cluster rule
     Player.ts             Player state/factory, review kit, damage/death/respawn, movement, animation
@@ -260,7 +275,13 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     Inspector.ts          Right dock: global/PostFx sliders + dynamic per-material/spell params
     Hud.ts                In-canvas HUD: vitals, hotbar, banners, game-over overlay
     Callouts.ts           World-anchored combat words (alchemyKill / combatCallout), chains
-    WandBench.ts          Card slotting plus debug-only potion/elixir/power controls
+    WandBench.ts          Card slotting plus debug-only potion/elixir/power controls; fit tells on every card
+    CardOfferOverlay.ts   The three-card offer (tome, Sanctum page, altar, arrival gift): roles, fit tells,
+                          a bargain's price; unskippable; snapshots and restores `paused`
+    WandOfferOverlay.ts   A found wand frame: stat diff for wand I and II, how YOUR cards would cycle, the
+                          cards a smaller frame would push out (back to the satchel); may be left
+    buildRecapView.ts     The wands as a readable block (Sanctum); runNotes.ts: the ledger's "Run notes" line
+                          and the playtest report's decision record
     ConsoleOverlay.ts     Backquote dev-console shell backed by game/console commands
     consoleHelpView.ts    The console's help pages as wrapping columns (rows from game/console/help)
                           (game/console: help, travel* — the tester's goto/skip/boss kit, authoring builds only;

@@ -8,6 +8,7 @@ import { AshVoice } from '@/ui/story/AshVoice';
 import { Sanctum } from '@/ui/Sanctum';
 import { Callouts } from '@/ui/Callouts';
 import { CardOfferOverlay } from '@/ui/CardOfferOverlay';
+import { WandOfferOverlay } from '@/ui/WandOfferOverlay';
 import { HintTeachOverlay } from '@/ui/HintTeachOverlay';
 import { HelpOverlay } from '@/ui/HelpOverlay';
 import { Grimoire } from '@/ui/Grimoire';
@@ -63,6 +64,8 @@ export function installPlaySystems(ctx: Ctx, audio: StreamHost, gestured: boolea
   // World-anchored alchemical-kill words (listens to `alchemyKill`/`combatCallout`).
   disposables.push(new Callouts(ctx));
   disposables.push(new CardOfferOverlay(ctx));
+  // A found wand frame (a boss's wreckage, an altar, the Wandwright's rack): refit wand I or II, or leave it.
+  disposables.push(new WandOfferOverlay(ctx));
   disposables.push(new HintTeachOverlay(ctx));
   // The Handbook (H). Its ESC yields to the pause overlay registered before it.
   disposables.push(new HelpOverlay(ctx));

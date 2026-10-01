@@ -36,6 +36,7 @@ import {
 import { deathLineFor } from '@/ui/deathCauses';
 import { asDifficulty, difficultyMods } from '@/config/difficulty';
 import { BASE_DIFFICULTY, openDifficulty } from '@/config/difficultyLadder';
+import { buildLine } from '@/combat/wands/buildRecap';
 import { canBargain, cleanMutators, dailyMutators, rescaleHealth, type Bargain } from '@/content/mutators';
 
 /** One 60 Hz tick of wall time, the most a single tick may add to the clock. */
@@ -577,6 +578,8 @@ export class RunDirector implements RunApi {
       path: state.path ?? [],
       boons: state.boons ?? [],
       difficulty: asDifficulty(ctx.state.difficulty, BASE_DIFFICULTY),
+      // The wands as they stand at the end: the ledger and the share line say what the run was built on.
+      build: ctx.wands ? buildLine(ctx.wands.wands) : '',
       mutators: state.mutators ?? [],
     });
     let unlocked = [...this.runUnlocks];

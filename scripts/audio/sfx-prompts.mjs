@@ -35,6 +35,7 @@ export const SFX_PROMPTS = {
   'ui.card.choose': { p: "A single stiff card placed decisively onto a wooden table with a soft thock, followed by a short warm glassy chime", d: 1, t: 2, i: 0.6 },
   'ui.door.choose': { p: "A heavy old wooden door latch lifting with a brass clack, and a short low resonant chime like a stairwell answering, dry", d: 1, t: 2, i: 0.6 },
   'ui.card.pick': { p: "Paper snick: a single stiff card lifted crisply off a stack, a very short paper flick, dry, close-miked", d: 0.5, t: 3, i: 0.7, max: 0.25 },
+  'ui.card.bargain': { p: "A heavy iron ledger stamp pressed down onto parchment with a low dull thunk, then a single deep distant bell tolling once, ominous, short, dry", d: 1.4, t: 2, i: 0.6 },
   'ui.card.slot': { p: "A brass card slotted firmly into a brass holder, a crisp metallic clack with a tiny spring snap, very short, dry", d: 0.5, t: 3, i: 0.7, max: 0.3 },
   'ui.bench': { p: "An old wooden workbench drawer slid open, brass tools and glass vials rattling softly inside, short, close-miked", d: 1.2, t: 2, i: 0.6 },
   'ui.coins': { p: "A small handful of gold coins counted onto a brass counter, bright clinks settling, short, close-miked, dry", d: 1, t: 2, i: 0.6 },
