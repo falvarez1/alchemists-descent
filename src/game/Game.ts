@@ -94,6 +94,7 @@ import { Clips } from '@/app/Clips';
 import { RunDirector } from '@/game/RunDirector';
 import { RunSummary } from '@/ui/RunSummary';
 import { RunHud } from '@/ui/RunHud';
+import { FighterChips } from '@/ui/FighterChips';
 import { DialogueBox } from '@/ui/story/DialogueBox';
 import { StoryCinemaOverlay } from '@/ui/story/StoryCinema';
 
@@ -444,6 +445,8 @@ export class Game {
     const runSummary = new RunSummary(ctx);
     this.disposables.push(runSummary);
     this.disposables.push(new RunHud(ctx, () => runSummary.showLast()));
+    // The fighter's tactical and ultimate chips under the flask belt (nothing for the classic Alchemist).
+    this.disposables.push(new FighterChips(ctx));
     // The story's dialogue box (Pell) with its interact prompt, and the opening/ending plates.
     // (Matron Ash's voice comes with the play systems.)
     this.disposables.push(new DialogueBox(ctx), new StoryCinemaOverlay(ctx));
