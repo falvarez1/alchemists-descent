@@ -8,7 +8,7 @@ import { blocksEntity, Cell } from '@/sim/CellType';
 import { World } from '@/sim/World';
 import { fnv1aString } from '@/core/rng';
 import { WorldGen } from '@/world/CaveGenerator';
-import { bodyCanCollect, wizardMask } from '@/world/validate';
+import { bodyCanCollect, routeSealedWorld, wizardMask } from '@/world/validate';
 
 /**
  * THE FIXTURE FOOTING CONTRACT (world/fixtureFooting): at the end of generation
@@ -76,9 +76,11 @@ function footingProblems(world: World, out: ReturnType<WorldGen['generateLevel']
     if (m.kind === 'brazier' && !row(m.x - 2, m.x + 2, m.y + 1)) problems.push(`${at}: bowl over air`);
     if (m.kind === 'plate' && !inShelf(m.x, m.x + m.w - 1, m.y)) problems.push(`${at}: sill over air`);
   }
-  const wiz = wizardMask({ world, spawn: out.spawn });
+  // (a floor's LOCK seals its key vault with a route-seal plug: judged, as the validator does, with every intact seal open)
+  const sealed = routeSealedWorld(world, out.mechanisms);
+  const wiz = wizardMask({ world: sealed, spawn: out.spawn });
   for (const p of out.pickups) {
-    if (p.kind === 'key' && !bodyCanCollect(wiz, world, p.x, p.y)) problems.push(`key@${Math.round(p.x)},${Math.round(p.y)}: the body cannot take it`);
+    if (p.kind === 'key' && !bodyCanCollect(wiz, sealed, p.x, p.y)) problems.push(`key@${Math.round(p.x)},${Math.round(p.y)}: the body cannot take it`);
   }
   return problems;
 }

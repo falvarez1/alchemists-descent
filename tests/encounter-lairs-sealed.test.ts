@@ -90,7 +90,9 @@ describe('encounter lairs survive the tunnels carved after them', () => {
     { id: 'd4', exp: 21, lair: 'encounter-lair-stonemaw-seam', cells: [Cell.RawOre, Cell.Coal], min: 150 },
     // GEN 58: a story nook's connector ENDED on a floor inside the grove (a tunnel is never kept
     // out of the room it ends in) and cut the grove's west wall and floor, 142 -> 130 and 92 -> 85.
-    { id: 'd2', exp: 10, lair: 'encounter-lair-rootloper-grove', cells: GROVE, min: 140 },
+    // GEN 64 (the Gas Bell: d2 draws no pocket vault, so every later stamp re-rolls) re-rolled seed 10's grove to a
+    // natural stamp of 130 (viewed: whole, a floating slab in open cavern, no tunnel near; the lock's hall is 150 rows away).
+    { id: 'd2', exp: 10, lair: 'encounter-lair-rootloper-grove', cells: GROVE, min: 120 },
     { id: 'd2', exp: 24, lair: 'encounter-lair-rootloper-grove', cells: GROVE, min: 90 },
   ] as const;
   for (const c of cases) {

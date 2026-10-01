@@ -99,6 +99,11 @@ async function enterHall(L) {
 /** Aim up into the porthole from wherever the alchemist stands and cast the wand. */
 const shootPorthole = async (L) => { await page.keyboard.press('Digit1'); await pointAtWorld(L.bx - 19, L.by - 6, true); };
 const waitFor = (fn, arg, timeout = 15000) => page.waitForFunction(fn, arg, { timeout });
+/** The HUD re-reads its objective and the hint system its line on their own cadence: wait for them to turn, then assert. */
+const waitObjective = (text, why) => page.waitForFunction((t) => document.getElementById('objective')?.innerText === t, text, { timeout: 12000 })
+  .catch(() => undefined).then(async () => assert.equal(await page.evaluate(() => document.getElementById('objective')?.innerText ?? ''), text, why));
+const waitHint = (text, why) => page.waitForFunction((t) => window.__game.ctx.hints?.current?.line === t, text, { timeout: 12000 })
+  .catch(() => undefined).then(async () => assert.equal(await page.evaluate(() => window.__game.ctx.hints?.current?.line ?? null), text, why));
 const plugOpen = (id) => waitFor((i) => window.__game.ctx.levels.current.mechanisms.find((m) => m.id === i).state === 1, id, 15000);
 
 try {
@@ -107,7 +112,11 @@ try {
   // A resumable save needs a real expedition; test runs are disposable by design.
   await execConsoleCommand(page, resume ? `run new --seed ${seed}` : `run test --level d2 --world campaign-level --seed ${seed} --loadout fresh`);
   await waitForRunReady(page);
-  if (resume) { await execConsoleCommand(page, 'goto d2'); await waitForRunReady(page); await page.waitForTimeout(800); }
+  if (resume) {
+    await execConsoleCommand(page, 'goto d2'); await waitForRunReady(page); await page.waitForTimeout(800);
+    // (the console jump taints the run, and a tainted run is never saved: this probe tests the SAVE of the lock, not the taint rule)
+    await page.evaluate(() => { window.__game.ctx.state.debugTainted = false; });
+  }
   let L = await lock();
   report.layout = { room: L.room, door: L.plug, markX: L.markX, bell: { x: L.bx, y: L.by } };
 
@@ -123,9 +132,9 @@ try {
   await enterHall(L);
   // (the HUD re-reads its objective on its own cadence: wait for the line to turn)
   await page.waitForFunction(() => document.getElementById('objective')?.innerText.startsWith('Ring the Gas Bell'), null, { timeout: 8000 }).catch(() => undefined);
+  await waitObjective('Ring the Gas Bell. Light the gas from a distance.', 'near the machine the puzzle is named');
+  await waitHint('A bell of marsh gas. Light it from a distance; the vault answers.', 'the hint reads the machine');
   s = await state(L);
-  assert.equal(s.objective, 'Ring the Gas Bell. Light the gas from a distance.', 'near the machine the puzzle is named');
-  assert.equal(s.hint, 'A bell of marsh gas. Light it from a distance; the vault answers.', 'the hint reads the machine');
   await shot('01-hall');
   report.stages.push({ name: 'hall', ...s });
   const enteredAt = s.frame;
@@ -170,8 +179,7 @@ try {
     await plugOpen(L.plugId);
     const t = await state(L);
     assert.equal(t.sensor, 0, 'the clapper never rang: the Works opened it');
-    assert.equal(t.objective, 'The vault stands open. Take the golden key.');
-    await page.waitForTimeout(600);
+    await waitObjective('The vault stands open. Take the golden key.', 'the objective names the reward');
     await shot('02-relented');
     await walkTo(L.key.x);
     await waitFor(() => window.__game.ctx.levels.current.keyTaken, null, 20000);
@@ -219,7 +227,7 @@ try {
     assert.ok(s.hp >= 100 || s.hp >= (report.hpBefore ?? 0) - 0, `unhurt (${s.hp})`);
     report.openTicks = s.frame - firedAt;
     await shot('04-door-open');
-    assert.equal(s.objective, 'The vault stands open. Take the golden key.');
+    await waitObjective('The vault stands open. Take the golden key.', 'the objective names the reward');
     // the vent halted for good with the ring: no more gas
     await page.waitForTimeout(2500);
     const calm = await state(L);
@@ -229,7 +237,7 @@ try {
     await waitFor(() => window.__game.ctx.levels.current.keyTaken, null, 25000);
     await shot('05-key');
     const done = await state(L);
-    assert.equal(done.objective, 'Carry the golden key back to the portal.');
+    await waitObjective('Carry the golden key back to the portal.', 'the key in hand, the objective is the portal');
     report.solveTicks = done.frame - enteredAt;
     report.stages.push({ name: 'key', ...done });
     console.log(`PASS (${mode}): bell burned, clapper rang, door open ${(report.openTicks / 60).toFixed(1)} s after the shot, key taken ${(report.solveTicks / 60).toFixed(1)} s after entering the hall`);
