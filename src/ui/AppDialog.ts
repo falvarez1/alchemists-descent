@@ -49,6 +49,28 @@ class AppDialog {
     });
   }
 
+  /**
+   * Pick one of several named outcomes. Escape / the cancel button resolve `null` so the
+   * safe answer is always "do nothing"; the LAST choice is the primary (focused) button.
+   */
+  choose<T extends string>(
+    message: string,
+    choices: ReadonlyArray<{ id: T; label: string; tone?: DialogTone }>,
+    options: { title?: string; cancelText?: string } = {},
+  ): Promise<T | null> {
+    return this.open<T | null>({
+      title: options.title ?? 'Choose',
+      message,
+      confirmText: choices[choices.length - 1]?.label ?? 'OK',
+      cancelText: options.cancelText ?? 'Cancel',
+      tone: choices[choices.length - 1]?.tone ?? 'normal',
+      fallback: null,
+      renderInput: null,
+      value: () => choices[choices.length - 1]?.id ?? null,
+      extra: choices.slice(0, -1).map((c) => ({ text: c.label, danger: c.tone === 'danger', result: c.id })),
+    });
+  }
+
   prompt(message: string, initialValue = '', options: PromptOptions = {}): Promise<string | null> {
     let input: HTMLInputElement | HTMLTextAreaElement | null = null;
     return this.open<string | null>({
@@ -85,6 +107,8 @@ class AppDialog {
     renderInput: (() => HTMLElement) | null;
     value: () => T;
     afterOpen?: () => void;
+    /** Extra buttons between Cancel and the primary one; each resolves its own result. */
+    extra?: Array<{ text: string; danger?: boolean; result: T }>;
   }): Promise<T> {
     if (this.active) this.closeActive();
 
@@ -122,6 +146,13 @@ class AppDialog {
       actions.appendChild(cancel);
     }
 
+    const extraButtons = (cfg.extra ?? []).map((x) => {
+      const b = document.createElement('button');
+      b.className = 'app-dialog-btn secondary' + (x.danger ? ' danger' : '');
+      b.textContent = x.text;
+      actions.appendChild(b);
+      return { b, result: x.result };
+    });
     const confirm = document.createElement('button');
     confirm.className = 'app-dialog-btn primary' + (cfg.tone === 'danger' ? ' danger' : '');
     confirm.textContent = cfg.confirmText;
@@ -215,6 +246,7 @@ class AppDialog {
 
       confirm.addEventListener('click', () => finish(cfg.value()));
       cancel?.addEventListener('click', () => finish(cfg.fallback));
+      for (const x of extraButtons) x.b.addEventListener('click', () => finish(x.result));
 
       window.setTimeout(() => {
         cfg.afterOpen?.();

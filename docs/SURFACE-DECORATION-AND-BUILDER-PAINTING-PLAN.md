@@ -1,5 +1,7 @@
 # Builder Surface Painting & Local Dressing Override Plan
 
+> **Update 2026-09:** `src/builder/virtualWorldPanel.ts` (the World Map panel this plan extends) was removed from the Builder; the virtual world runtime remains. The World Map items below are void.
+
 ## Status & scope correction (read first)
 
 This plan was originally drafted assuming surface vegetation was unbuilt. **It is not.** The

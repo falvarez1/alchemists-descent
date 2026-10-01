@@ -5,7 +5,7 @@ import {
   runtimeOverlaySummary,
   runtimeOverlaysActive,
   type RuntimeOverlayState,
-} from '@/builder/runtimeOverlay';
+} from '@/ui/diagnostics/runtimeOverlay';
 import type { RuntimeEntityRow, RuntimeEntitySnapshot } from '@/game/runtimeSnapshot';
 
 describe('runtime entity overlays', () => {

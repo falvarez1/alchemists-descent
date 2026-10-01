@@ -24,7 +24,6 @@ export type RuntimeSnapshotSourceId =
   | 'unavailable'
   | 'build'
   | 'expedition'
-  | 'builder-live-preview'
   | 'builder-playtest'
   | 'sandbox-playtest'
   | 'test-run'

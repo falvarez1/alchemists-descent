@@ -2,7 +2,7 @@
 // selecting it must run the real kick without errors and blow the ash patch into
 // motes. Screenshot-free (robust against HMR). Usage: node scripts/verify-gallery-kick.mjs [url]
 import { chromium } from 'playwright-core';
-import { leaveTitleIfShown } from './run-helpers.mjs';
+import { leaveTitleIfShown, clickBuilderControl, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0, fail = 0;
@@ -20,10 +20,10 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1500);
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(400);
 await page.click('[data-menu="view"]');
-await page.click('#b-gallery');
+await clickBuilderControl(page, '#b-gallery');
 await page.waitForTimeout(500);
 check('gallery opens', await page.isVisible('#builder-gallery'));
 

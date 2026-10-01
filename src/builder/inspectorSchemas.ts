@@ -75,17 +75,13 @@ export function documentInspectorSchema(doc: EditorDocument, undoDepth: number):
   const mood = doc.mood ?? { ambient: null, ambience: '' };
   return [
     section('INSPECTOR'),
-    help([
-      'Nothing selected.',
-      'Click a marker, or pick a',
-      'tool and click the canvas.',
-      'Ctrl+K = command palette.',
-    ]),
+    section('LEVEL', 'document.level'),
+    help(['Nothing selected. Click a marker, or pick a tool and click the map. Ctrl+K opens the command palette.']),
     readout('document.objects', 'objects', doc.objects.length),
     readout('document.links', 'links', doc.links.length),
     readout('document.lights', 'lights', doc.lights.length),
     readout('document.passes', 'passes', doc.proceduralHistory.length),
-    readout('document.terrain', 'terrain', doc.world ? 'captured' : '-'),
+    readout('document.terrain', 'terrain', doc.world ? 'captured' : 'not captured yet'),
     readout('document.undoDepth', 'undo depth', undoDepth),
     section('DOCUMENT MOOD', 'document.mood'),
     field(
@@ -115,7 +111,7 @@ export function documentInspectorSchema(doc: EditorDocument, undoDepth: number):
       },
       docMetaCommand('builder.inspector.document.mood.ambience', { key: 'mood.ambience' }),
     ),
-    help(['Ambient overrides the global', 'light level in playtests', '(restored on return).']),
+    help(['Ambient overrides the global light level in playtests (restored on return).']),
   ];
 }
 
@@ -249,7 +245,7 @@ export function lightInspectorSchema(light: EditorLight, context: LightInspector
     action(
       'light.mute',
       context.muted ? 'MUTED - CLICK TO UNMUTE' : 'MUTE THIS LIGHT',
-      'Drop this light from Logic Preview only; it still compiles',
+      'Drop this light from the editor light preview only; it still compiles',
       {},
       viewCommand('builder.inspector.light.mute', { lightId: light.id }),
       'bi-mute',

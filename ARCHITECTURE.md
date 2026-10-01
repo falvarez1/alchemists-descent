@@ -26,7 +26,10 @@ src/
     authorLinkObjects.ts  Applies a remote authored set into the live runtime
                           through the SAME instantiateObjects the compiler uses,
                           and tears down only what it created
-  styles/main.css       All styling (extracted from the original <style>)
+  styles/main.css       Game + legacy styling (extracted from the original <style>)
+  styles/studio.css     Editor design tokens (--st-*) + primitives (.st-btn, .st-seg, .st-section...)
+  styles/sandbox.css    The authoring Sandbox screen on those tokens (studio bar, docks, viewport frame);
+                        all under body:not(.player-build) — the player's Workshop is the same DOM
   config/               Tunable data, no logic
     constants.ts          World/view dimensions, sim margin, particle cap
     params.ts             GLOBAL/MATERIAL/SPELL/PostFx params (live-mutated by inspector UI)
@@ -255,8 +258,10 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     InputManager.ts       Mouse/keyboard handlers, mode switching
   ui/
     icons.ts              Hand-authored pixel-art icon set
-    Toolbar.ts            Left panel: materials, spells, world gen, enemy droppers
-    Inspector.ts          Right panel: global/PostFx sliders + dynamic per-material/spell params
+    Toolbar.ts            Left dock: material/spell tools, the filter, the armed readout
+    SandboxChrome.ts      Authoring Sandbox chrome: dock tabs, inspector sections, Developer menu, workspace state
+    rangeFill.ts          Keeps the filled part of `.st-range` sliders (studio.css) in step with their value
+    Inspector.ts          Right dock: global/PostFx sliders + dynamic per-material/spell params
     Hud.ts                In-canvas HUD: vitals, hotbar, banners, game-over overlay
     Callouts.ts           World-anchored combat words (alchemyKill / combatCallout), chains
     WandBench.ts          Card slotting plus debug-only potion/elixir/power controls; fit tells on every card

@@ -1,0 +1,385 @@
+/* ==========================================================================
+   SANDBOX — the authoring Sandbox screen in the Studio design language
+   (tokens + primitives in studio.css; behaviour in ui/SandboxChrome.ts).
+
+   This is the `/` page as an author meets it: a 40px studio bar, a tool dock on
+   the left (Materials | Spells | World), the game view, and an inspector dock on
+   the right. The Builder (builder.css) opens over the same header, so the bar is
+   written for both.
+
+   SCOPING. Every rule is under `body:not(.player-build)`: a player build's
+   Workshop is this same DOM dressed by ui/PlayerWorkshop.ts + workshop.css in the
+   game's own house style, and must not notice any of this. The one section that
+   speaks for `body.player-build` (last) only flattens the new wrappers back into
+   the flat list of items workshop.css was written against.
+
+   SPECIFICITY. The header, the two docks and the viewport are also shown or
+   hidden by state rules elsewhere (body.play-active, body.builder-open, ...). Those
+   rules set `display`, and `body:not(...) #x` ties with `body.state #x`, so this
+   file never sets `display` on #left-toolbar, #right-inspector or the header, and
+   the viewport rules use :where() to stay one notch below the state rules.
+   ========================================================================== */
+
+body:not(.player-build) {
+  --st-header-offset: var(--st-bar-h); /* read by #workbench in main.css */
+  --sb-dock-w: 264px;
+}
+@media (max-width: 1100px) { body:not(.player-build) { --sb-dock-w: 232px; } }
+@media (max-width: 900px) { body:not(.player-build) { --sb-dock-w: 208px; } }
+
+/* ---------- Studio bar ---------- */
+
+body:not(.player-build) > header.sb-bar {
+  box-sizing: border-box; flex: none; height: var(--st-bar-h); padding: 0 12px; gap: 12px;
+  justify-content: flex-start;
+  background: var(--st-surface-2); border-bottom: 1px solid var(--st-line);
+  color: var(--st-text); font-family: var(--st-font);
+}
+body:not(.player-build) .sb-bar-left { flex: 1 1 0; min-width: 0; }
+body:not(.player-build) .sb-bar-right { flex: 1 1 0; min-width: 0; justify-content: flex-end; gap: 6px; }
+
+body:not(.player-build) .sb-brand {
+  display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0;
+  font: 600 12px/1 var(--st-font); letter-spacing: 0; color: var(--st-text); white-space: nowrap;
+}
+body:not(.player-build) .sb-brand .title-sub {
+  padding-left: 10px; border-left: 1px solid var(--st-line-2);
+  font: 500 12px/14px var(--st-font); color: var(--st-text-3);
+  overflow: hidden; text-overflow: ellipsis;
+}
+body:not(.player-build) .sb-mark {
+  position: relative; flex: none; width: 18px; height: 18px; box-sizing: border-box;
+  border: 1px solid var(--st-line-3); border-radius: var(--st-r-2); background: var(--st-well);
+}
+body:not(.player-build) .sb-mark i { position: absolute; width: 4px; height: 4px; border-radius: 1px; }
+body:not(.player-build) .sb-mark i:nth-child(1) { left: 2px; top: 9px; background: #d4af37; }
+body:not(.player-build) .sb-mark i:nth-child(2) { left: 6px; top: 5px; background: #a855f7; }
+body:not(.player-build) .sb-mark i:nth-child(3) { left: 10px; top: 9px; background: #3a7bd5; }
+
+/* Workspace switch: Sandbox | Builder | Play. The active one is a selection, so it takes
+   the accent. Builder.ts and BuilderLauncher.ts write "BUILDER" into their button, so the
+   label is lower-cased and its first letter raised here rather than fought over. */
+body:not(.player-build) .sb-workspace { flex: none; }
+body:not(.player-build) .sb-workspace > button {
+  min-width: 64px; height: 22px; padding: 0 12px; text-align: center;
+  font: 500 11px/1 var(--st-font); letter-spacing: 0; text-transform: lowercase;
+}
+body:not(.player-build) .sb-workspace > button::first-letter { text-transform: uppercase; }
+body:not(.player-build) .sb-workspace > button[aria-pressed='true'] {
+  background: var(--st-accent-bg); color: var(--st-accent-text); box-shadow: inset 0 0 0 1px var(--st-accent-line);
+}
+/* Hud.ts keeps `.active` on Sandbox while the Builder is open over it: one workspace at a time. */
+body:not(.player-build) .sb-workspace > button.active:not([aria-pressed='true']) {
+  background: transparent; color: var(--st-text-3); box-shadow: none;
+}
+body:not(.player-build) .sb-workspace > button.active:not([aria-pressed='true']):hover { color: var(--st-text); }
+body:not(.player-build) .sb-workspace > button:disabled { opacity: 0.6; cursor: progress; }
+body:not(.player-build) .sb-workspace > button.load-error { color: var(--st-danger-text); }
+
+body:not(.player-build) .sb-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: var(--st-h-compact); height: var(--st-h-compact); padding: 0; box-sizing: border-box;
+  border: 1px solid transparent; border-radius: var(--st-r-2); background: transparent;
+  color: var(--st-text-2); cursor: pointer;
+  transition: background 0.12s var(--st-ease), color 0.12s var(--st-ease);
+}
+body:not(.player-build) .sb-icon-btn:hover { background: var(--st-surface-3); color: var(--st-text); }
+body:not(.player-build) .sb-icon-btn:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 1px; }
+body:not(.player-build) .sb-icon-btn[aria-pressed='false'] { color: var(--st-text-3); }
+
+body:not(.player-build) .sb-devmenu { flex: none; }
+body:not(.player-build) .sb-dev-trigger { position: relative; gap: 6px; padding: 0 6px 0 8px; color: var(--st-text-2); }
+body:not(.player-build) .sb-dev-trigger:hover:not(:disabled),
+body:not(.player-build) .sb-dev-trigger[aria-expanded='true'] { background: var(--st-surface-3); color: var(--st-text); }
+body:not(.player-build) .sb-dev-trigger .st-icon { width: 14px; height: 14px; }
+body:not(.player-build) .sb-dev-trigger.has-active::after {
+  content: ''; position: absolute; top: 3px; left: 17px; width: 6px; height: 6px; box-sizing: border-box;
+  border: 1px solid var(--st-surface-2); border-radius: 50%; background: var(--st-accent);
+}
+
+/* The Developer menu. Fixed to the viewport (ui/SandboxChrome.ts places it under its
+   trigger) so nothing in the bar clips it. The buttons inside keep their ids: each owner
+   binds its own, reads `.lit` off it and writes its label. */
+body:not(.player-build) .sb-menu {
+  position: fixed; top: calc(var(--st-bar-h) - 4px); right: 12px; z-index: var(--z-menu, 90);
+  display: flex; flex-direction: column; gap: 1px; min-width: 204px; padding: 4px; box-sizing: border-box;
+  background: var(--st-surface-2); border: 1px solid var(--st-line-2); border-radius: var(--st-r-3);
+  box-shadow: var(--st-shadow-pop); font-family: var(--st-font);
+}
+body:not(.player-build) .sb-menu[hidden] { display: none !important; }
+body:not(.player-build) .sb-menu-item {
+  position: relative; display: flex; align-items: center; gap: 8px; width: 100%; height: 26px;
+  padding: 0 8px 0 26px; box-sizing: border-box; border: 0; border-radius: var(--st-r-1);
+  background: transparent; color: var(--st-text-2); font: 500 11px/1 var(--st-font); letter-spacing: 0;
+  text-align: left; text-transform: none; white-space: nowrap; cursor: pointer;
+}
+body:not(.player-build) .sb-menu-item::before {
+  content: ''; position: absolute; left: 10px; top: 50%; width: 8px; height: 8px; margin-top: -4px; box-sizing: border-box;
+  border: 1px solid var(--st-line-3); border-radius: 50%;
+}
+body:not(.player-build) .sb-menu-item[data-kbd]::after {
+  content: attr(data-kbd); margin-left: auto; min-width: 16px; padding: 2px 5px; box-sizing: border-box; text-align: center;
+  border: 1px solid var(--st-line-2); border-radius: var(--st-r-1); background: var(--st-surface-1); color: var(--st-text-3);
+  font: 500 10px/1 var(--st-font);
+}
+body:not(.player-build) .sb-menu-item:hover:not(:disabled),
+body:not(.player-build) .sb-menu-item:focus-visible { background: var(--st-surface-4); color: var(--st-text); outline: none; }
+body:not(.player-build) .sb-menu-item:focus-visible { box-shadow: inset 0 0 0 1px var(--st-focus); }
+body:not(.player-build) .sb-menu-item:disabled { opacity: 0.45; cursor: default; }
+body:not(.player-build) .sb-menu-item.lit { color: var(--st-text); }
+body:not(.player-build) .sb-menu-item.lit::before { border-color: var(--st-ok); background: var(--st-ok); box-shadow: 0 0 0 3px rgba(71, 194, 133, 0.16); }
+
+/* Tooltip for the icon-only controls (PopoverHost adds .editor-popover; the extra class outranks it). */
+.editor-popover.sb-tip {
+  z-index: 95; padding: 5px 8px; white-space: nowrap; pointer-events: none;
+  background: var(--st-surface-3); border: 1px solid var(--st-line-3); border-radius: var(--st-r-2);
+  color: var(--st-text); font: 500 11px/1.2 var(--st-font); box-shadow: var(--st-shadow-pop);
+}
+
+/* ---------- Docks ---------- */
+
+body:not(.player-build) #left-toolbar,
+body:not(.player-build) #right-inspector {
+  flex: none; box-sizing: border-box; width: var(--sb-dock-w); padding: 0; gap: 0;
+  background: var(--st-surface-1); font-family: var(--st-font); color: var(--st-text-2);
+  scrollbar-width: thin; scrollbar-color: var(--st-line-3) transparent;
+}
+body:not(.player-build) #left-toolbar {
+  grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto;
+  align-content: stretch; overflow: hidden; border-right: 1px solid var(--st-line);
+}
+body:not(.player-build) #right-inspector { overflow-y: auto; border-left: 1px solid var(--st-line); }
+
+/* Left dock: tab strip, search, the active panel, the armed readout. */
+body:not(.player-build) #left-toolbar > .sb-tabs { grid-row: 1; }
+body:not(.player-build) #left-toolbar > #toolbar-filter {
+  grid-row: 2; grid-column: 1; box-sizing: border-box; width: auto; height: 26px; margin: 8px 12px 0; padding: 0 8px 0 26px;
+  border: 1px solid var(--st-line-2); border-radius: var(--st-r-2); background-color: var(--st-well);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23646e7d' stroke-width='1.6' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='4.2'/%3E%3Cpath d='m10.2 10.2 3.4 3.4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: 8px center; background-size: 12px;
+  color: var(--st-text); font: 400 11px/1 var(--st-font); outline: none;
+  transition: border-color 0.12s var(--st-ease), box-shadow 0.12s var(--st-ease);
+}
+body:not(.player-build) #left-toolbar > #toolbar-filter::placeholder { color: var(--st-text-4); }
+body:not(.player-build) #left-toolbar > #toolbar-filter:hover { border-color: var(--st-line-3); }
+body:not(.player-build) #left-toolbar > #toolbar-filter:focus { border-color: var(--st-accent); box-shadow: 0 0 0 1px var(--st-accent); }
+body:not(.player-build) #left-toolbar[data-tab='world'] > #toolbar-filter { display: none; }
+body:not(.player-build) #left-toolbar > .sb-panel {
+  grid-row: 3; grid-column: 1; display: none; min-height: 0; overflow-y: auto; padding: 8px 12px 12px;
+  scrollbar-width: thin; scrollbar-color: var(--st-line-3) transparent;
+}
+body:not(.player-build) #left-toolbar[data-tab='materials'] > .sb-panel[data-panel='materials'],
+body:not(.player-build) #left-toolbar[data-tab='spells'] > .sb-panel[data-panel='spells'],
+body:not(.player-build) #left-toolbar[data-tab='world'] > .sb-panel[data-panel='world'] { display: block; }
+body:not(.player-build) #left-toolbar > .sb-panel[data-panel='world'] { padding: 0; }
+body:not(.player-build) #left-toolbar > .sb-armed { grid-row: 4; }
+
+/* Filter tabs' results and empty states. */
+body:not(.player-build) .sb-empty { margin: 16px 0; color: var(--st-text-3); font: 400 11px/1.4 var(--st-font); text-align: center; }
+body:not(.player-build) .sb-empty[hidden] { display: none; }
+
+/* Groups: a quiet sentence-case heading over a dense tile grid. */
+body:not(.player-build) #left-toolbar .sb-group + .sb-group { margin-top: 12px; }
+body:not(.player-build) #left-toolbar .sb-group > .section-title {
+  position: static; display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  margin: 0 0 6px; padding: 0; background: none;
+  font: 600 11px/1.2 var(--st-font); letter-spacing: 0; text-transform: none; color: var(--st-text-2);
+}
+body:not(.player-build) #left-toolbar .sb-group > .section-title[data-count]::after {
+  content: attr(data-count); color: var(--st-text-4); font: 500 10px/1 var(--st-font); font-variant-numeric: tabular-nums;
+}
+body:not(.player-build) .sb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 4px; }
+body:not(.player-build) .sb-list { display: flex; flex-direction: column; gap: 2px; }
+
+/* Tool tiles + spell rows (.tool-btn is what Toolbar / Inspector / InputManager bind). */
+body:not(.player-build) #left-toolbar .tool-btn {
+  position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; box-sizing: border-box;
+  padding: 0; border: 1px solid var(--st-line); border-radius: var(--st-r-2); background: var(--st-surface-2);
+  color: var(--st-text-2); font: 500 11px/1 var(--st-font); text-align: left;
+  transition: background 0.1s var(--st-ease), border-color 0.1s var(--st-ease), color 0.1s var(--st-ease);
+}
+body:not(.player-build) #left-toolbar .tool-btn:hover { background: var(--st-surface-4); border-color: var(--st-line-3); color: var(--st-text); }
+body:not(.player-build) #left-toolbar .tool-btn:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 1px; }
+body:not(.player-build) #left-toolbar .tool-btn.active,
+body:not(.player-build) #left-toolbar .tool-btn.spell-mode.active {
+  background: var(--st-accent-bg); border-color: var(--st-accent-line); color: var(--st-accent-text);
+  box-shadow: inset 0 0 0 1px var(--st-accent-line);
+}
+body:not(.player-build) #left-toolbar .tool-btn .px-icon { margin: 0; }
+body:not(.player-build) #left-toolbar .tool-btn .color-indicator {
+  width: 14px; height: 14px; border-radius: var(--st-r-1); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+body:not(.player-build) .sb-grid > .tool-btn { aspect-ratio: 1; }
+body:not(.player-build) .sb-grid > .tool-btn .tool-label {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+body:not(.player-build) #left-toolbar .sb-list > .tool-btn { justify-content: flex-start; gap: 10px; height: 30px; padding: 0 10px; }
+body:not(.player-build) #left-toolbar .sb-list > .tool-btn .px-icon,
+body:not(.player-build) #left-toolbar .sb-list > .tool-btn .color-indicator { flex: none; }
+body:not(.player-build) #sb-panel-spells .sb-group > .section-title { display: none; }
+
+/* The armed readout: what a click on the canvas will do. */
+body:not(.player-build) .sb-armed {
+  display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 12px; box-sizing: border-box;
+  background: var(--st-surface-2); border-top: 1px solid var(--st-line);
+}
+body:not(.player-build) .sb-armed-icon {
+  display: grid; place-items: center; flex: none; width: 30px; height: 30px; box-sizing: border-box;
+  border: 1px solid var(--st-line-2); border-radius: var(--st-r-2); background: var(--st-well);
+}
+body:not(.player-build) .sb-armed-icon .color-indicator { width: 14px; height: 14px; border-radius: var(--st-r-1); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16); }
+body:not(.player-build) .sb-armed-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+body:not(.player-build) .sb-armed-name { color: var(--st-text); font: 600 12px/1.1 var(--st-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body:not(.player-build) .sb-armed-kind { color: var(--st-text-3); font: 400 10px/1.1 var(--st-font); }
+
+/* World panel. */
+body:not(.player-build) .sb-builder-card {
+  display: flex; flex-direction: column; gap: 8px; margin: 12px; padding: 10px; box-sizing: border-box;
+  border: 1px solid var(--st-line-2); border-radius: var(--st-r-3); background: var(--st-surface-2);
+}
+body:not(.player-build) .sb-builder-card-title { color: var(--st-text); font: 600 12px/1.2 var(--st-font); }
+body:not(.player-build) .sb-builder-card p { margin: -2px 0 2px; color: var(--st-text-3); font: 400 11px/1.45 var(--st-font); }
+body:not(.player-build) .sb-wide { width: 100%; }
+body:not(.player-build) .sb-stack { display: flex; flex-direction: column; gap: 4px; }
+body:not(.player-build) .sb-row { display: grid; gap: 4px; }
+body:not(.player-build) .sb-row--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+body:not(.player-build) .sb-row--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+body:not(.player-build) .sb-row > .st-btn,
+body:not(.player-build) .sb-stack > .st-btn { min-width: 0; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; }
+body:not(.player-build) .st-btn .st-icon { width: 14px; height: 14px; }
+body:not(.player-build) .dropper-slime::before,
+body:not(.player-build) .dropper-imp::before,
+body:not(.player-build) .dropper-golem::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; }
+body:not(.player-build) .dropper-slime::before { background: #65d63f; }
+body:not(.player-build) .dropper-imp::before { background: #ff7a1e; }
+body:not(.player-build) .dropper-golem::before { background: #8a8a92; }
+
+body:not(.player-build) .wg-tune-wrap { margin: 0; font-size: 11px; color: var(--st-text-2); }
+body:not(.player-build) .wg-tune-wrap > summary {
+  display: flex; align-items: center; gap: 6px; height: var(--st-h-compact); padding: 0; list-style: none;
+  color: var(--st-text-2); font: 500 11px/1 var(--st-font); letter-spacing: 0; cursor: pointer; user-select: none;
+}
+body:not(.player-build) .wg-tune-wrap > summary::-webkit-details-marker { display: none; }
+body:not(.player-build) .wg-tune-wrap > summary::before {
+  content: ''; flex: none; width: 5px; height: 5px; margin: -2px 3px 0 1px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; color: var(--st-text-3); transform: rotate(-45deg);
+}
+body:not(.player-build) .wg-tune-wrap[open] > summary::before { margin-top: -4px; transform: rotate(45deg); }
+body:not(.player-build) .wg-tune-wrap > summary:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 1px; border-radius: var(--st-r-2); }
+body:not(.player-build) .sb-hint { margin: 2px 0 0; color: var(--st-text-3); font: 400 10px/1.4 var(--st-font); }
+body:not(.player-build) .wg-tune { gap: 10px; padding: 8px 0 10px; }
+body:not(.player-build) .wg-tune-row { gap: 4px; }
+body:not(.player-build) .wg-tune-top { font: 400 11px/1.2 var(--st-font); color: var(--st-text-2); }
+body:not(.player-build) .wg-tune-val { color: var(--st-text); font-variant-numeric: tabular-nums; }
+
+/* Standalone editor route: the left rail is a one-paragraph note there. */
+body:not(.player-build) #left-toolbar.builder-entry-toolbar { padding: 12px; grid-template-rows: auto auto 1fr; }
+body:not(.player-build) #left-toolbar.builder-entry-toolbar .section-title { position: static; margin: 0 0 6px; padding: 0; background: none; color: var(--st-text); font: 600 12px/1.2 var(--st-font); letter-spacing: 0; text-transform: none; }
+body:not(.player-build) #left-toolbar.builder-entry-toolbar .builder-entry-note { margin: 0; padding: 0; color: var(--st-text-3); font: 400 11px/1.5 var(--st-font); }
+
+/* ---------- Right dock ---------- */
+
+body:not(.player-build) #right-inspector .st-section-body { gap: 12px; }
+body:not(.player-build) #right-inspector .control-label-wrapper {
+  align-items: baseline; gap: 8px; margin: 0 0 4px; color: var(--st-text-2); font: 400 11px/1.2 var(--st-font);
+}
+body:not(.player-build) #material-dynamic-controls .control-panel-group label {
+  min-width: 0; display: block; color: var(--st-text-2); font: 400 11px/1.2 var(--st-font); text-transform: none;
+}
+body:not(.player-build) #right-inspector .control-label-wrapper span.val-display {
+  flex: none; min-width: 36px; text-align: right; color: var(--st-text);
+  font: 500 11px/1.2 var(--st-font); font-variant-numeric: tabular-nums;
+}
+body:not(.player-build) #right-inspector .control-label-wrapper > label { min-width: 0; color: var(--st-text-2); font: 400 11px/1.2 var(--st-font); }
+body:not(.player-build) #right-inspector .val-display.resettable:hover { color: var(--st-accent-text); }
+body:not(.player-build) #right-inspector .val-display.overridden { color: var(--st-accent-text); }
+body:not(.player-build) #right-inspector .control-label-wrapper .ctrl-label-left { gap: 6px; }
+body:not(.player-build) #right-inspector .param-info-icon {
+  width: 12px; height: 12px; border-color: var(--st-line-3); color: var(--st-text-3); font: italic 600 8px/1 var(--st-font);
+}
+body:not(.player-build) #right-inspector .param-info-icon:hover { color: var(--st-accent-text); border-color: var(--st-accent-line); }
+
+/* Material / spell parameters: the rows Inspector.ts generates. */
+body:not(.player-build) #material-dynamic-controls { padding: 10px 12px 12px; }
+body:not(.player-build) #material-dynamic-controls > .control-panel-group {
+  gap: 12px; padding: 0; border: 0; border-radius: 0; background: none;
+}
+body:not(.player-build) #material-dynamic-controls > .control-panel-group > div { min-width: 0; }
+
+/* Time controls (TimeControlsPanel.ts, `sandbox` surface). */
+body:not(.player-build) #sandbox-time-controls.control-panel-group { gap: 0; padding: 0; border: 0; border-radius: 0; background: none; }
+body:not(.player-build) .time-controls-sandbox { gap: 8px; font-family: var(--st-font); color: var(--st-text-2); }
+body:not(.player-build) .time-controls-sandbox .tc-toggle { min-width: 0; gap: 6px; color: var(--st-text-2); font: 500 11px/1 var(--st-font); text-transform: none; }
+body:not(.player-build) .time-controls-sandbox .tc-toggle input {
+  -webkit-appearance: none; appearance: none; position: relative; flex: none; width: 14px; height: 14px; margin: 0; box-sizing: border-box;
+  border: 1px solid var(--st-line-3); border-radius: var(--st-r-1); background: var(--st-well); cursor: pointer;
+}
+body:not(.player-build) .time-controls-sandbox .tc-toggle input:hover { border-color: var(--st-text-3); }
+body:not(.player-build) .time-controls-sandbox .tc-toggle input:checked { border-color: var(--st-accent); background: var(--st-accent); }
+body:not(.player-build) .time-controls-sandbox .tc-toggle input:checked::after {
+  content: ''; position: absolute; left: 4px; top: 1px; width: 3px; height: 7px;
+  border-right: 1.5px solid var(--st-accent-fg); border-bottom: 1.5px solid var(--st-accent-fg); transform: rotate(45deg);
+}
+body:not(.player-build) .time-controls-sandbox .tc-toggle input:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 1px; }
+body:not(.player-build) .time-controls-sandbox .tc-status { max-width: 110px; color: var(--st-text-3); font: 500 10px/1 var(--st-font); text-transform: lowercase; }
+body:not(.player-build) .time-controls-sandbox .tc-status::first-letter { text-transform: uppercase; }
+body:not(.player-build) .time-controls-sandbox.manual .tc-status { color: var(--st-ok-text); }
+body:not(.player-build) .time-controls-sandbox .tc-readouts { gap: 4px; }
+body:not(.player-build) .time-controls-sandbox .tc-readouts span {
+  padding: 4px 6px; border: 1px solid var(--st-line); border-radius: var(--st-r-2); background: var(--st-well);
+  color: var(--st-text-3); font: 400 10px/1.2 var(--st-font); text-transform: none;
+}
+body:not(.player-build) .time-controls-sandbox .tc-readouts b {
+  margin-top: 2px; color: var(--st-text); font: 500 11px/1.2 var(--st-font); font-variant-numeric: tabular-nums;
+}
+body:not(.player-build) .time-controls-sandbox .tc-row { grid-template-columns: 40px repeat(3, minmax(0, 1fr)); gap: 4px; }
+body:not(.player-build) .time-controls-sandbox .tc-row-secondary { grid-template-columns: 40px repeat(2, minmax(0, 1fr)); }
+body:not(.player-build) .time-controls-sandbox .tc-row span { color: var(--st-text-3); font: 400 10px/1 var(--st-font); text-transform: none; }
+body:not(.player-build) .time-controls-sandbox button {
+  height: var(--st-h-compact); padding: 0 4px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-2);
+  background: var(--st-surface-3); color: var(--st-text-2); font: 500 11px/1 var(--st-font); font-variant-numeric: tabular-nums;
+  transition: background 0.12s var(--st-ease), border-color 0.12s var(--st-ease), color 0.12s var(--st-ease);
+}
+body:not(.player-build) .time-controls-sandbox button:hover:not(:disabled) { background: var(--st-surface-4); border-color: var(--st-line-3); color: var(--st-text); }
+body:not(.player-build) .time-controls-sandbox button:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 1px; background: var(--st-surface-4); }
+body:not(.player-build) .time-controls-sandbox button:disabled { opacity: 0.4; }
+
+/* Clear world: pinned to the foot of the dock so it is always there and never under a section. */
+body:not(.player-build) #right-inspector .sb-foot {
+  position: sticky; bottom: 0; z-index: 2; display: flex; flex-direction: column; gap: 6px; margin-top: auto;
+  padding: 10px 12px 12px; box-sizing: border-box; background: var(--st-surface-1); border-top: 1px solid var(--st-line);
+}
+body:not(.player-build) #right-inspector .sb-foot p { margin: 0; color: var(--st-text-3); font: 400 10px/1.3 var(--st-font); text-align: center; }
+
+/* ---------- Viewport frame ---------- */
+
+body:where(:not(.player-build)) #viewport-container { background: var(--st-well); padding: 12px; }
+body:where(:not(.player-build)) #canvas-holder {
+  border: 1px solid var(--st-line-2); border-radius: 2px; box-shadow: none;
+  width: min(100%, calc((100vh - var(--st-bar-h) - 28px) * 1.4706));
+}
+
+/* ---------- Narrow windows ---------- */
+
+@media (max-width: 1100px) {
+  body:not(.player-build) > header.sb-bar { gap: 8px; }
+  body:not(.player-build) .sb-brand .title-sub { display: none; }
+}
+@media (max-width: 720px) {
+  body:not(.player-build) > header.sb-bar { padding: 0 8px; }
+  body:not(.player-build) .sb-brand-name, body:not(.player-build) .sb-devmenu { display: none; }
+  body:not(.player-build) .sb-workspace > button { min-width: 0; padding: 0 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body:not(.player-build) .sb-icon-btn, body:not(.player-build) #left-toolbar .tool-btn,
+  body:not(.player-build) .time-controls-sandbox button { transition: none; }
+}
+
+/* ---------- Player build: the same DOM, flattened ----------
+   The Workshop (workshop.css) styles a flat list of filter + section titles + tool buttons
+   in a two-column grid. The tab wrappers add boxes between them; these make the boxes
+   vanish so the list is exactly what it was. The tab strip, the World panel and the armed
+   readout are data-workshop-dev and already hidden. */
+body.player-build #left-toolbar :is(.sb-panel, .sb-group, .sb-grid, .sb-list) { display: contents; }
+body.player-build .sb-empty { display: none !important; }

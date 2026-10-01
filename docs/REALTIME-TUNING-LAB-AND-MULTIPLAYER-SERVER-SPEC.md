@@ -894,7 +894,9 @@ save ABI) are no longer re-typed into HTML.
 One subtlety worth keeping: the generated buttons must be spliced in as DIRECT
 children of `#left-toolbar`. The toolbar filter walks `bar.children` and toggles
 each one, so wrapping the palette in a container makes it a single unfilterable
-element — caught by `verify-builder-ux`, not by any unit test.
+element — caught by `verify-builder-ux`, not by any unit test. (The Studio Sandbox redesign
+keeps the same contract one level down: each palette group is a `.sb-group` wrapper, the
+filter finds groups by that class, and `verify-builder-ux` still exercises it.)
 
 NOT delivered: the editor window still boots Rapier and the gameplay update
 systems. Those come from the one composition root in `Game`, and forking it

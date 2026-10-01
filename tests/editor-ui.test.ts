@@ -348,7 +348,7 @@ describe('editor keymap', () => {
     });
     const keymap = new Keymap(registry);
 
-    expect(keymap.handleKeyDown(keyboard('KeyB', { key: 'b' }), { scope: 'builder.livePreview' })).toEqual({ handled: false });
+    expect(keymap.handleKeyDown(keyboard('KeyB', { key: 'b' }), { scope: 'play' })).toEqual({ handled: false });
     expect(keymap.handleKeyDown(keyboard('KeyB', { key: 'b' }), { scope: 'builder.author' })).toMatchObject({
       handled: true,
       commandId: 'builder.tool.paint',
@@ -455,17 +455,17 @@ describe('editor popover and menu hosts', () => {
     ]);
   });
 
-  it('lets scoped owners override command menu enabled state', () => {
+  it('lets owners override command menu enabled state', () => {
     const registry = new CommandRegistry();
-    registry.register({ id: 'builder.authorOnly', label: 'Author Only', category: 'test', run: () => undefined });
+    registry.register({ id: 'builder.owned', label: 'Owned', category: 'test', run: () => undefined });
 
     expect(
-      commandMenuItems(registry, ['builder.authorOnly'], () => ({
+      commandMenuItems(registry, ['builder.owned'], () => ({
         enabled: false,
-        reason: 'Return to Author View first',
+        reason: 'Finish the settle preview first',
       })),
     ).toEqual([
-      { id: 'builder.authorOnly', label: 'Author Only', enabled: false, reason: 'Return to Author View first' },
+      { id: 'builder.owned', label: 'Owned', enabled: false, reason: 'Finish the settle preview first' },
     ]);
   });
 });
@@ -758,6 +758,9 @@ describe('builder outliner and link graph models', () => {
   });
 });
 
+/** Dock panels the Builder used to ship; a saved layout may still name them. */
+const RETIRED_PANEL_IDS = ['builder-runtime', 'builder-global', 'builder-postfx', 'builder-virtual-world'] as const;
+
 describe('editor workspace layout', () => {
   it('sanitizes corrupt layouts back to known Builder panels', () => {
     const layout = sanitizeWorkspaceLayout({
@@ -795,21 +798,54 @@ describe('editor workspace layout', () => {
       open: false,
       size: 360,
     });
-    expect(layout.panels.find((panel) => panel.id === 'builder-global')).toMatchObject({
+    expect(layout.panels.find((panel) => panel.id === 'builder-outliner')).toMatchObject({
       dock: 'right',
       open: false,
-      size: 252,
+      size: 292,
     });
-    expect(layout.panels.find((panel) => panel.id === 'builder-postfx')).toMatchObject({
+    expect(layout.panels.find((panel) => panel.id === 'builder-issues')).toMatchObject({
       dock: 'right',
       open: false,
-      size: 252,
+      size: 284,
     });
     expect(layout.activePanelId).toBe('builder-palette');
     expect(layout.snapStep).toBe(0);
     expect(sanitizeWorkspaceLayout({ panels: [], snapStep: 4 }).snapStep).toBe(4);
     expect(layout.lastTool).toBe('select');
     expect(layout.collapsedSections).toEqual({ 'palette.materials': true });
+  });
+
+  it('drops panels that were removed from the Builder when a saved layout still names them', () => {
+    const stale = {
+      panels: [
+        { id: 'builder-palette', dock: 'left', open: true, size: 214 },
+        { id: 'builder-global', dock: 'right', open: true, size: 300, tabGroupId: 'right-top' },
+        { id: 'builder-postfx', dock: 'floating', open: true, size: 252, floating: { x: 40, y: 40 } },
+        { id: 'builder-runtime', dock: 'bottom', open: true, size: 320, tabGroupId: 'bottom-left' },
+        { id: 'builder-virtual-world', dock: 'bottom', open: true, size: 420 },
+        { id: 'builder-world', dock: 'right', open: true, size: 252 },
+      ],
+      collapsedSections: { 'runtime.particles': true, 'palette.materials': true },
+      activePanelId: 'builder-virtual-world',
+    };
+    const fromRegistry = createBuilderPanelRegistry().sanitizeLayout(stale);
+    const fromDefaults = sanitizeWorkspaceLayout(stale);
+    const storage = storageStub({ [BUILDER_WORKSPACE_KEY]: JSON.stringify(stale) });
+    const loaded = loadWorkspaceLayout(storage);
+
+    for (const layout of [fromRegistry, fromDefaults, loaded]) {
+      const ids = layout.panels.map((panel) => panel.id);
+      for (const removed of RETIRED_PANEL_IDS) expect(ids).not.toContain(removed);
+      // The panels that survive keep their saved state.
+      expect(layout.panels.find((panel) => panel.id === 'builder-world')).toMatchObject({ dock: 'right', open: true });
+      // The active panel falls back to one that still exists.
+      expect(ids).toContain(layout.activePanelId);
+      expect(layout.activePanelId).not.toBe('builder-virtual-world');
+    }
+    expect(fromRegistry.panels.map((panel) => panel.id).sort()).toEqual(BUILDER_PANEL_SPECS.map((spec) => spec.id).sort());
+    // Saving the sanitized layout never writes a retired id back.
+    expect(saveWorkspaceLayout(loaded, storage)).toBe(true);
+    for (const removed of RETIRED_PANEL_IDS) expect(storage.getItem(BUILDER_WORKSPACE_KEY)).not.toContain(removed);
   });
 
   it('moves and opens panels without mutating the input layout', () => {
@@ -994,8 +1030,11 @@ describe('editor workspace layout', () => {
     });
     expect(validation.overlayVisibility.validation).toBe(true);
     expect(validation.overlayVisibility.clearance).toBe(true);
-    expect(lighting.panels.find((panel) => panel.id === 'builder-world')?.open).toBe(true);
-    expect(lighting.panels.find((panel) => panel.id === 'builder-global')?.open).toBe(true);
+    expect(lighting.panels.filter((panel) => panel.open).map((panel) => panel.id)).toEqual([
+      'builder-palette',
+      'builder-inspector',
+      'builder-world',
+    ]);
     expect(lighting.overlayVisibility.light).toBe(true);
     expect(workspacePresetLayout('prefab').panels.find((panel) => panel.id === 'builder-assets')?.open).toBe(true);
     expect(workspacePresetLayout('prefab').panels.find((panel) => panel.id === 'builder-asset-details')?.open).toBe(true);
@@ -1058,16 +1097,17 @@ describe('editor panel registry and chrome', () => {
       defaultDock: 'bottom',
       commandIds: { open: 'builder.linkGraphPanel' },
     });
-    expect(registry.get('builder-global')).toMatchObject({
-      title: 'Global Controls',
+    expect(registry.get('builder-prefab-details')).toMatchObject({
+      title: 'Prefab Details',
       defaultDock: 'right',
-      commandIds: { open: 'builder.globalControlsPanel' },
+      commandIds: { open: 'builder.prefabDetailsPanel' },
     });
-    expect(registry.get('builder-postfx')).toMatchObject({
-      title: 'Post Processing',
+    expect(registry.get('builder-matparams')).toMatchObject({
+      title: 'Material Parameters',
       defaultDock: 'right',
-      commandIds: { open: 'builder.postProcessingPanel' },
     });
+    // Panels that were cut from the Builder stay out of the registry.
+    for (const removed of RETIRED_PANEL_IDS) expect(registry.has(removed)).toBe(false);
     expect(registry.canDock('dev-console', 'floating')).toBe(true);
     expect(registry.canDock('builder-inspector', 'bottom')).toBe(true);
     expect(registry.canDock('builder-palette', 'bottom')).toBe(false);
@@ -1207,7 +1247,7 @@ describe('editor panel registry and chrome', () => {
   });
 
   it('reveals closable tab controls from the sibling shell selector', () => {
-    const css = readFileSync('src/styles/main.css', 'utf8');
+    const css = readFileSync('src/styles/builder.css', 'utf8');
 
     expect(css).toContain('.editor-tab-shell:hover .editor-tab-close');
     expect(css).toContain('.editor-tab-shell.active .editor-tab-close');

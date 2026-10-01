@@ -4,6 +4,7 @@
 // gates the playtest, and the document survives the round trip.
 // Usage: node scripts/verify-builder-suite.mjs [url]  (dev server must be running)
 import { chromium } from 'playwright-core';
+import { clickBuilderTool, clickBuilderKind, clickBuilderControl, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -25,7 +26,7 @@ await page.waitForTimeout(2500);
 
 /* ---------- open builder, carve a deterministic metal arena ---------- */
 console.log('-- arena');
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(300);
 await page.evaluate(() => {
   const ctx = window.__game.ctx;
@@ -77,7 +78,7 @@ await page.evaluate(() => {
   ctx.state.currentElement = 12;
   ctx.state.activeInputMode = 'element';
 });
-await page.click('.bp-tool[data-tool="rectFill"]');
+await clickBuilderTool(page, 'rectFill');
 let a = await toClient(500, 480);
 let b = await toClient(540, 500);
 await page.mouse.move(a.x, a.y);
@@ -95,7 +96,7 @@ await page.waitForTimeout(120);
 check('rect redoes', (await cellType(520, 490)) === 12, `got ${await cellType(520, 490)}`);
 
 // flood fill: water into a small stone cup painted with the rect tool
-await page.click('.bp-tool[data-tool="rect"]');
+await clickBuilderTool(page, 'rect');
 a = await toClient(560, 470);
 b = await toClient(590, 500);
 await page.mouse.move(a.x, a.y);
@@ -104,7 +105,7 @@ await page.mouse.move(b.x, b.y, { steps: 4 });
 await page.mouse.up();
 await page.waitForTimeout(120);
 await page.evaluate(() => { window.__game.ctx.state.currentElement = 2; }); // water
-await page.click('.bp-tool[data-tool="fill"]');
+await clickBuilderTool(page, 'fill');
 const inCup = await toClient(575, 485);
 await page.mouse.click(inCup.x, inCup.y);
 await page.waitForTimeout(120);
@@ -114,7 +115,7 @@ check('flood fill stays inside the cup', (await cellType(545, 485)) === 0, `got 
 /* ---------- Phase 5+6: objects, mechanisms, link tool ---------- */
 console.log('-- mechanisms & links');
 const placeAt = async (kind, wx, wy) => {
-  await page.click(`.bp-tool[data-kind="${kind}"]`);
+  await clickBuilderKind(page, kind);
   const p = await toClient(wx, wy);
   await page.mouse.click(p.x, p.y);
   await page.waitForTimeout(80);
@@ -136,7 +137,7 @@ await page.evaluate(() => {
 await placeAt('waystone', 700, 616);
 
 // LINK: plate -> door
-await page.click('.bp-tool[data-tool="link"]');
+await clickBuilderTool(page, 'link');
 let p = await toClient(510, 619);
 await page.mouse.click(p.x, p.y);
 await page.waitForTimeout(80);
@@ -145,7 +146,7 @@ await page.mouse.click(p.x, p.y);
 await page.waitForTimeout(80);
 
 // light above the spawn
-await page.click('.bp-tool[data-tool="light"]');
+await clickBuilderTool(page, 'light');
 p = await toClient(560, 560);
 await page.mouse.click(p.x, p.y);
 await page.waitForTimeout(80);
@@ -155,7 +156,7 @@ check('five markers (4 objects + 1 light)', markers === 5, `got ${markers}`);
 
 /* ---------- save -> document carries links + lights ---------- */
 await page.click('[data-menu="document"]');
-await page.click('#b-save');
+await clickBuilderControl(page, '#b-save');
 await page.waitForTimeout(150);
 const savedDoc = await page.evaluate(() => {
   const lib = {};
@@ -171,7 +172,7 @@ check('saved doc has the light', savedDoc && savedDoc.lights.length === 1, `got 
 
 /* ---------- Phase 8: procedural pass with region ---------- */
 console.log('-- procedural');
-await page.click('.bp-tool[data-tool="region"]');
+await clickBuilderTool(page, 'region');
 a = await toClient(440, 600);
 b = await toClient(760, 624);
 await page.mouse.move(a.x, a.y);
@@ -179,7 +180,7 @@ await page.mouse.down();
 await page.mouse.move(b.x, b.y, { steps: 4 });
 await page.mouse.up();
 await page.waitForTimeout(100);
-await page.click('#bp-proc-btn');
+await clickBuilderControl(page, '#bp-proc-btn');
 await page.evaluate(() => { window.__game.ctx.state.currentElement = 17; }); // gold veins
 await page.selectOption('#bp-pass', 'veins');
 await page.click('#bp-preview');
@@ -213,7 +214,7 @@ check('apply commits the pass', goldInRegion >= 10, `got ${goldInRegion}`);
 /* ---------- Phase 10: validation passes clean ---------- */
 console.log('-- validate & playtest');
 await page.click('[data-menu="edit"]');
-await page.click('#b-validate');
+await clickBuilderControl(page, '#b-validate');
 await page.waitForTimeout(400);
 const errCount = await page.evaluate(() => document.querySelectorAll('#builder-issues .b-issue.error').length);
 check('validation finds no errors on the wired level', errCount === 0, `got ${errCount} errors`);
@@ -248,49 +249,6 @@ check('door slab is real metal', rt.doorCell === 13, `got ${rt.doorCell}`);
 check('authored light compiled', rt.lights === 1, `got ${rt.lights}`);
 check('waystone compiled', rt.waystones === 1, `got ${rt.waystones}`);
 
-/* Runtime panel selection must bypass the cached snapshot. */
-await page.evaluate(() => document.getElementById('bp-runtime-btn')?.click());
-await page.waitForFunction(
-  () => document.querySelectorAll('#builder-runtime [data-runtime-id]').length >= 2,
-  { timeout: 10000 },
-);
-const runtimeSelection = await page.evaluate(() => {
-  const panel = document.getElementById('builder-runtime');
-  if (!panel) return { ok: false, reason: 'missing panel' };
-  const rows = [...panel.querySelectorAll('[data-runtime-id]')];
-  const first = rows[0];
-  const second = rows.find((row) => row.getAttribute('data-runtime-id') !== first?.getAttribute('data-runtime-id'));
-  if (!(first instanceof HTMLElement) || !(second instanceof HTMLElement)) {
-    return { ok: false, reason: 'missing distinct rows', rows: rows.length };
-  }
-  const firstId = first.getAttribute('data-runtime-id');
-  const secondId = second.getAttribute('data-runtime-id');
-  first.click();
-  const afterFirst = {
-    selected: panel.querySelector('.brt-row.selected')?.getAttribute('data-runtime-id') ?? null,
-    detail: panel.querySelector('.brt-detail .bo-row-sub')?.textContent?.trim() ?? '',
-  };
-  const freshSecond = panel.querySelector(`[data-runtime-id="${CSS.escape(secondId ?? '')}"]`);
-  if (!(freshSecond instanceof HTMLElement)) {
-    return { ok: false, reason: 'second row missing after first render', firstId, secondId, afterFirst };
-  }
-  freshSecond.click();
-  const afterSecond = {
-    selected: panel.querySelector('.brt-row.selected')?.getAttribute('data-runtime-id') ?? null,
-    detail: panel.querySelector('.brt-detail .bo-row-sub')?.textContent?.trim() ?? '',
-  };
-  return { ok: true, firstId, secondId, afterFirst, afterSecond };
-});
-check(
-  'runtime panel row clicks refresh selected row and detail immediately',
-  runtimeSelection.ok &&
-    runtimeSelection.afterFirst.selected === runtimeSelection.firstId &&
-    runtimeSelection.afterFirst.detail === runtimeSelection.firstId &&
-    runtimeSelection.afterSecond.selected === runtimeSelection.secondId &&
-    runtimeSelection.afterSecond.detail === runtimeSelection.secondId,
-  JSON.stringify(runtimeSelection),
-);
-
 /* the AND gate, live: stand on the plate, the gate retracts */
 await page.evaluate(() => {
   const ctx = window.__game.ctx;
@@ -309,7 +267,7 @@ check('standing on the plate opens the door (AND gate live)', after.state === 1,
 check('door cells retract to empty', after.cell === 0, `got ${after.cell}`);
 
 /* ---------- return: the document survives the playtest ---------- */
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(400);
 markers = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('document intact after playtest (5 markers)', markers === 5, `got ${markers}`);
@@ -323,7 +281,7 @@ const procCount = await page.evaluate(() => {
 });
 check('saved doc predates the pass (history persists on next save)', procCount === 0, `got ${procCount}`);
 await page.click('[data-menu="document"]');
-await page.click('#b-save');
+await clickBuilderControl(page, '#b-save');
 await page.waitForTimeout(150);
 const procCount2 = await page.evaluate(() => {
   const lib = {};
@@ -405,7 +363,7 @@ repairPage.on('pageerror', (err) => pageErrors.push(String(err)));
 await repairPage.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await repairPage.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await repairPage.waitForTimeout(1200);
-await repairPage.click('#mode-builder-btn');
+await toggleBuilderMode(repairPage);
 await repairPage.waitForTimeout(240);
 await repairPage.click('#b-playtest');
 await repairPage.waitForTimeout(180);
@@ -424,7 +382,7 @@ check(
   JSON.stringify(spawnPlaytestBlock),
 );
 await repairPage.click('[data-menu="edit"]');
-await repairPage.click('#b-validate');
+await clickBuilderControl(repairPage, '#b-validate');
 await repairPage.waitForTimeout(200);
 const spawnRepairBefore = await repairPage.evaluate(() => {
   const issue = document.querySelector('#builder-issues .b-issue[data-issue-code="builder.spawn.missing"]');
@@ -482,22 +440,22 @@ const repairToClient = async (wx, wy) =>
     return { x: r.left + ux * r.width, y: r.top + uy * r.height };
   }, [wx, wy, viewSize]);
 const repairPlaceAt = async (kind, wx, wy) => {
-  await repairPage.click(`.bp-tool[data-kind="${kind}"]`);
+  await clickBuilderKind(repairPage, kind);
   const p = await repairToClient(wx, wy);
   await repairPage.mouse.click(p.x, p.y);
   await repairPage.waitForTimeout(80);
 };
 await repairPlaceAt('spawn', 470, 616);
 await repairPage.click('[data-menu="edit"]');
-await repairPage.click('#b-capture');
+await clickBuilderControl(repairPage, '#b-capture');
 await repairPage.waitForTimeout(100);
 await repairPage.click('[data-menu="edit"]');
-await repairPage.click('#b-validate');
+await clickBuilderControl(repairPage, '#b-validate');
 await repairPage.waitForTimeout(160);
-await repairPage.click('#bp-link-graph-btn');
+await clickBuilderControl(repairPage, '#bp-link-graph-btn');
 await repairPage.waitForTimeout(120);
 await repairPage.evaluate(() => { window.__game.ctx.state.currentElement = 12; });
-await repairPage.click('.bp-tool[data-tool="rectFill"]');
+await clickBuilderTool(repairPage, 'rectFill');
 let terrainA = await repairToClient(466, 600);
 let terrainB = await repairToClient(474, 616);
 await repairPage.mouse.move(terrainA.x, terrainA.y);
@@ -525,7 +483,7 @@ check(
 );
 await repairPlaceAt('plate', 510, 619);
 await repairPlaceAt('door', 651, 590);
-await repairPage.click('.bp-tool[data-tool="link"]');
+await clickBuilderTool(repairPage, 'link');
 let linkPoint = await repairToClient(510, 619);
 await repairPage.mouse.click(linkPoint.x, linkPoint.y);
 await repairPage.waitForTimeout(60);
@@ -581,7 +539,7 @@ check(
     wellCasingBlock.inspector.includes('exitwell'),
   JSON.stringify(wellCasingBlock),
 );
-await repairPage.click('#bp-outliner-btn');
+await clickBuilderControl(repairPage, '#bp-outliner-btn');
 await repairPage.waitForTimeout(120);
 await repairPage.fill('#bo-search', 'plate');
 await repairPage.evaluate(() => {
@@ -591,7 +549,7 @@ await repairPage.evaluate(() => {
 });
 await repairPage.waitForTimeout(120);
 await repairPage.click('[data-menu="edit"]');
-await repairPage.click('#b-validate');
+await clickBuilderControl(repairPage, '#b-validate');
 await repairPage.waitForTimeout(200);
 const hiddenLinkRepairBefore = await repairPage.evaluate(() => {
   const issue = document.querySelector('#builder-issues .b-issue[data-issue-code="builder.link.hiddenEndpoint"]');

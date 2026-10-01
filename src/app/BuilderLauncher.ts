@@ -2,6 +2,7 @@ import type { Ctx } from '@/core/types';
 import { createBuilderHost } from '@/app/BuilderHost';
 import type { BuilderHost } from '@/app/BuilderHost';
 import type { AuthorLinkHandle } from '@/app/AuthorLink';
+import type { AuthorLinkConfig } from '@/app/authorLinkConfig';
 
 interface LazyBuilder {
   open(): void;
@@ -28,8 +29,9 @@ export class BuilderLauncher {
   constructor(
     private readonly ctx: Ctx,
     link: AuthorLinkHandle | null = null,
+    linkConfig: AuthorLinkConfig | null = null,
   ) {
-    this.host = createBuilderHost(ctx, link);
+    this.host = createBuilderHost(ctx, link, linkConfig);
     const existing = document.getElementById('mode-builder-btn') as HTMLButtonElement | null;
     this.button = existing ?? document.createElement('button');
     this.createdButton = existing === null;
