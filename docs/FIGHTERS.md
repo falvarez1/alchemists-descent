@@ -78,3 +78,38 @@ The concept sheets are illustrated at about 120 px per figure, and the player is
 are *reference*, not sprites. Every fighter is a look on the production rasterizer: palette, headgear, hair,
 coat length, armour plates, a held or carried prop, and a cloth rig (the same four verlet chains). Portraits
 are the concept art, shipped as 20-36 KB WebP; the full sheets are lazy-loaded by the dossier.
+
+## The roster screen (`src/ui/FighterRoster.ts`)
+
+Who descends: a full overlay with the classic Alchemist first and the ten after it, a role filter, a search
+("/" focuses it), and a dossier for the one in focus (portrait, lore, Passive / Tactical / Ultimate with the
+keys they sit on, four ratings, a lazily loaded concept sheet). The arrow keys walk the grid and the dossier
+follows the focus (the kit picker's describe-on-focus); **Choose** confirms. Weapons stay with the kit and with
+loot, and the dossier footer says so.
+
+```ts
+new FighterRoster(ctx, {
+  onChoose(id: FighterId | null) {},      // null = the classic Alchemist
+  onCancel?() {},                         // Escape, Back, a pad's B
+  keyLabels?: { tactical: 'Z', ultimate: 'T' },   // the player's bindings
+  unlocked?: ReadonlySet<FighterId>,      // default: all ten. A locked card is readable, never chosen
+  unlockHint?(id) { return '...'; },
+});
+roster.open(selected: FighterId | null); roster.close(); roster.refresh({ unlocked, keyLabels }); roster.dispose();
+```
+
+- **Hosts add** `'#fighter-roster.visible'` to `KEYBOARD_UI_BLOCK_SELECTOR` (`input/InputManager.ts`) and to the pad's
+  overlay list (`pollGamepad`'s `#pause-overlay.visible, #run-summary.visible, ...`); the title's pad branch must
+  also yield to it. `FIGHTER_ROSTER_SELECTOR` / `FIGHTER_ROSTER_OPEN_SELECTOR` are exported for that.
+- **Import it statically** where it is used. Its module installs a window capture-phase guard when it loads, so
+  the game's hotkeys (map, bench, handbook...) and a pad's B stay out while it is open, whatever order the systems
+  are built in. It pauses the sim while open and puts the pause back as found.
+- **Layout keys on the overlay's own size** (`container: fighter-roster / size`; no `@media` on the window, because the
+  game view is a 16:9 letterbox): *wide* (view >= 1100 x 640) is a six-up card grid beside the dossier; *compact* is a
+  four-up portrait grid beside a dossier that sets its portrait to the side. 800x600 in a run is an 800x450 view and
+  is compact.
+- **Art**: portraits load the first time the roster opens (not when it is built); a concept sheet loads only when the
+  player asks for it and then only that fighter's, never prefetched. Nothing is inlined.
+- **Probe**: `node scripts/verify-fighter-roster.mjs [url]` (title, play and Workshop mounts at 800x600, 960x600,
+  1280x720, 1600x900; screenshots in `verify-out/fighter-roster/`). The pure logic (filter, search, counts, bars,
+  grid stepping) is `ui/fighterRosterModel.ts`, pinned by `tests/fighter-roster-model.test.ts`.
