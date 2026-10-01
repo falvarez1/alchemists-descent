@@ -3,10 +3,27 @@ import { FLASK_SLOT_COUNT, type Ctx, type FlaskApi, type FlaskBottleState, type 
 import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, packRGB } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
+import { SIPHONABLE_SOLIDS } from '@/content/recipes';
 
-/** Cell types the flask can drink: any liquid, plus the loose powders worth carrying. */
+/** Cell types the flask can drink: any liquid, plus the loose powders worth carrying and the reagent solids (a leaf, coal). */
 function siphonable(t: number): boolean {
-  return isLiquid(t) || t === Cell.Sand || t === Cell.Gold || t === Cell.Gunpowder;
+  return isLiquid(t) || t === Cell.Sand || t === Cell.Gold || t === Cell.Gunpowder || SIPHONABLE_SOLIDS.includes(t as Cell);
+}
+
+/**
+ * MEASURED POUR: aimed over a cauldron's bowl the flask pours a cell at a time (and draws a cell
+ * every other frame), so the bowl panel's count can be WATCHED climbing and stopped at: a bowl holds
+ * about fourteen cells and a human lets go two or three tenths of a second late, so at the old ten cells
+ * a frame no recipe could be poured on purpose. Away from a bowl nothing changes.
+ */
+const MEASURED_POUR_EVERY = 4;
+const MEASURED_DRAW_EVERY = 2;
+/** The cursor is over the basin (a little above it, where the pour is aimed from; a little slack either way: a cursor is not exact). */
+function overBowl(ctx: Ctx): boolean {
+  const c = ctx.levels?.current?.cauldron;
+  if (!c) return false;
+  const m = ctx.input.mouse;
+  return Math.abs(m.x - c.x) <= 8 && m.y >= c.y - 12 && m.y <= c.y + 6;
 }
 
 const SIPHON_RADIUS = 8;
@@ -164,9 +181,12 @@ export class Flask implements FlaskApi {
     const rx = mx - player.x, ry = my - (player.y - 9);
     if (rx * rx + ry * ry > SIPHON_REACH * SIPHON_REACH) return;
 
+    const measured = overBowl(ctx);
+    if (measured && ctx.state.frameCount % MEASURED_DRAW_EVERY !== 0) return;
+    const rate = measured ? 1 : SIPHON_RATE;
     let taken = 0;
-    for (let dy = -SIPHON_RADIUS; dy <= SIPHON_RADIUS && taken < SIPHON_RATE; dy++) {
-      for (let dx = -SIPHON_RADIUS; dx <= SIPHON_RADIUS && taken < SIPHON_RATE; dx++) {
+    for (let dy = -SIPHON_RADIUS; dy <= SIPHON_RADIUS && taken < rate; dy++) {
+      for (let dx = -SIPHON_RADIUS; dx <= SIPHON_RADIUS && taken < rate; dx++) {
         if (dx * dx + dy * dy > SIPHON_RADIUS * SIPHON_RADIUS) continue;
         if (s.count >= s.capacity) break;
         const x = mx + dx, y = my + dy;
@@ -223,7 +243,9 @@ export class Flask implements FlaskApi {
     // carries a real cell that deposits when it lands (deposit:true also drops it
     // on expiry, so siphoned material is conserved even over open space).
     const infinite = infiniteFlask(ctx);
-    const n = Math.min(POUR_RATE, s.count);
+    const measured = overBowl(ctx);
+    if (measured && ctx.state.frameCount % MEASURED_POUR_EVERY !== 0) return;
+    const n = Math.min(measured ? 1 : POUR_RATE, s.count);
     const glow = material === Cell.Lava ? 1.4 : material === Cell.Acid ? 0.7 : 0.35;
     for (let j = 0; j < n; j++) {
       const a = aim + (entityRandom() - 0.5) * 0.16; // a little nozzle spread
