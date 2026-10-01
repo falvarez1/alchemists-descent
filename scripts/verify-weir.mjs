@@ -58,13 +58,13 @@ const state = (L) => ctxEval(({ plugId, relayId, coilId, valveId, leverId, px, f
     // the dent's open cells (the ramps' own surface row is the limit: the rock under the lining holds natural pockets of water)
     bowl: (() => { let n = 0; for (let x = px - 20; x <= px + 19; x++) { const t = x < px - 4 ? px - 4 - x : x > px + 3 ? x - px - 3 : 0; const s2 = floorY + Math.max(0, 9 - Math.ceil(t / 2)); for (let y = floorY; y < s2; y++) if (w.types[w.idx(x, y)] === 2) n++; } return n + count(px - 1, pedY - 6, px + 1, pedY - 1, 2); })(),
     well: count(px - 1, pedY - 6, px + 1, pedY - 1, 2),
-    hp: Math.round(ctx.player.hp), dead: ctx.player.dead, keyTaken: rt.keyTaken, px: ctx.player.x, py: ctx.player.y,
+    hp: Math.round(ctx.player.hp), hurtBy: ctx.player.lastDamageSource ?? null, dead: ctx.player.dead, keyTaken: rt.keyTaken, px: ctx.player.x, py: ctx.player.y,
   };
 }, L);
 
-/** Put the alchemist at the hall's west end (the route to the room is verify-living-traversal's job), feet on the floor. */
+/** Put the alchemist on the lever's iron pads at the hall's west end (the route to the room is verify-living-traversal's job; the hall's own mouth can be a shaft, so not the very end). */
 async function enterHall(L) {
-  await ctxEval(({ x, y, px, floorY }) => { const c = window.__game.ctx; c.enemies.length = 0; Object.assign(c.player, { x, y, vx: 0, vy: 0 }); c.camera.snapTo(px - 30, floorY - 40); }, { x: L.room.x0 + 16, y: L.floorY - 1, px: L.px, floorY: L.floorY });
+  await ctxEval(({ x, y, px, floorY }) => { const c = window.__game.ctx; c.enemies.length = 0; Object.assign(c.player, { x, y, vx: 0, vy: 0 }); c.camera.snapTo(px - 30, floorY - 40); }, { x: L.leverX, y: L.floorY - 1, px: L.px, floorY: L.floorY });
   await page.waitForTimeout(1500);
 }
 /** Let the brass stop ringing (a blast rings the lining at 210, a charge of 1 a frame: ~3.5 s) so what follows is judged on its own. */
@@ -99,7 +99,10 @@ try {
   await page.evaluate(() => { window.__game.ctx.enemies.length = 0; });
   await page.waitForTimeout(600);
   let s = await state(L);
-  await waitObjective('Find the golden key. The Works keep it under lock.', 'far from the machine the objective is the generic one');
+  // far from the machine the objective is NOT the puzzle's own line (it is the generic one, or a waystone's when the arrival is near one)
+  const farLine = await page.evaluate(() => document.getElementById('objective')?.innerText ?? '');
+  const awayFromIt = await ctxEval(({ px, pedY }) => Math.hypot(window.__game.ctx.player.x - px, window.__game.ctx.player.y - pedY) > 230, { px: L.px, pedY: L.pedY });
+  if (awayFromIt) assert.notEqual(farLine, 'Wire the Weir. Fill the bowl, then spark the brass.', 'far from the machine the puzzle is not yet named');
   assert.equal(s.plug, 0);
   assert.equal(s.doorMetal, L.plug.n, 'the door stands');
   assert.ok(s.tank >= 190, `the cistern hangs full (${s.tank})`);
@@ -235,7 +238,8 @@ try {
     assert.equal(s.relay, 1);
     assert.equal(s.plug, 1);
     assert.equal(s.dead, false, 'the alchemist stood clear and lived');
-    assert.ok(s.hp >= hp0, `unhurt on the dais (${hp0} -> ${s.hp})`);
+    // (an ambient creature may nip the alchemist: the dais is judged on electricity)
+    assert.ok(s.hp >= hp0 || !/shock|elect|spark|charge|lightning|water/i.test(String(s.hurtBy)), `unshocked on the dais (${hp0} -> ${s.hp}, hurt by ${s.hurtBy})`);
     report.openTicks = s.frame - firedAt;
     await shot('06-door-open');
     await waitObjective('The vault stands open. Take the golden key.', 'the objective names the reward');

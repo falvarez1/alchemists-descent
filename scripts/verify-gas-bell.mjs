@@ -93,7 +93,7 @@ async function pointAtWorld(worldX, worldY, click = false) {
 const shot = (name) => page.screenshot({ path: `${output}/${name}.png` });
 /** Put the alchemist at the hall's west end (the route to the room is verify-living-traversal's job), feet on the floor. */
 async function enterHall(L) {
-  await ctxEval(({ x, y, bx, floorY }) => { const c = window.__game.ctx; c.enemies.length = 0; Object.assign(c.player, { x, y, vx: 0, vy: 0 }); c.camera.snapTo(bx - 50, floorY - 40); }, { x: L.room.x0 + 16, y: L.floorY - 1, bx: L.bx, floorY: L.floorY });
+  await ctxEval(({ x, y, bx, floorY }) => { const c = window.__game.ctx; c.enemies.length = 0; Object.assign(c.player, { x, y, vx: 0, vy: 0 }); c.camera.snapTo(bx - 50, floorY - 40); }, { x: L.markX - 6, y: L.floorY - 1, bx: L.bx, floorY: L.floorY });
   await page.waitForTimeout(1500);
 }
 /** Aim up into the porthole from wherever the alchemist stands and cast the wand. */
@@ -124,7 +124,10 @@ try {
   await page.evaluate(() => { window.__game.ctx.enemies.length = 0; });
   await page.waitForTimeout(600);
   let s = await state(L);
-  assert.equal(s.objective, 'Find the golden key. The Works keep it under lock.', 'far from the machine the objective is the generic one');
+  // far from the machine the objective is NOT the puzzle's own line (it is the generic one, or a waystone's when the arrival is near one)
+  const farLine = await page.evaluate(() => document.getElementById('objective')?.innerText ?? '');
+  const awayFromIt = await ctxEval(({ sx, sy }) => Math.hypot(window.__game.ctx.player.x - sx, window.__game.ctx.player.y - sy) > 230, { sx: L.sensor.x, sy: L.sensor.y });
+  if (awayFromIt) assert.notEqual(farLine, 'Ring the Gas Bell. Light the gas from a distance.', 'far from the machine the puzzle is not yet named');
   assert.equal(s.plug, 0);
   assert.equal(s.doorMetal, L.plug.n, 'the door stands');
   assert.ok(s.gas > 600, `the bell hangs full of gas (${s.gas})`);

@@ -5,7 +5,7 @@ import type { CarveAvoid, PlacementLedger } from '@/world/connect';
 import { carvePocket, connectToCaves, sealedFootprints, prefabFootprints } from '@/world/connect';
 import { gasBellRoom } from '@/world/lockGasBell';
 import { weirRoom } from '@/world/lockWeir';
-import { type LockOutput, type LockSite, placeLockRoom } from '@/world/locks';
+import { type LockOutput, type LockSite, placeLockRoom, seaTopRow } from '@/world/locks';
 
 /**
  * The floor's LOCK, placed (world/locks has the pattern). Returns whether the lock stands. A floor
@@ -19,7 +19,11 @@ export function placeLock(
 ): boolean {
   let stood = false;
   if (kind === 'gasbell') stood = placeLockRoom(ctx, rng, graph, ledger, site, fits, out, gasBellRoom(ctx, rng, out), 'lock-gas-bell');
-  else if (kind === 'weir') stood = placeLockRoom(ctx, rng, graph, ledger, site, fits, out, weirRoom(ctx, rng, out), 'lock-weir');
+  else if (kind === 'weir') {
+    // (a flooded floor: the hall stands above the sea, or the sea comes in through its connector)
+    const seaTop = seaTopRow(ctx.world);
+    stood = placeLockRoom(ctx, rng, graph, ledger, Number.isFinite(seaTop) ? { ...site, maxFloorY: seaTop - 14 } : site, fits, out, weirRoom(ctx, rng, out), 'lock-weir');
+  }
   if (stood) return true;
   if (out.pickups.some((p) => p.kind === 'key')) return false;
   placeFallbackKey(ctx, rng, graph, ledger, site, fits, out);

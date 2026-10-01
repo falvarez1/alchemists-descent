@@ -4,7 +4,7 @@ import type { AuthoredLight, Ctx, HazardEmitter, LockKind, Mechanism, Pickup, Pl
 import { makePickup } from '@/core/pickupDefs';
 import { makePlug } from '@/core/mechanismFactories';
 import { blocksEntity, Cell } from '@/sim/CellType';
-import { goldColor, packRGB } from '@/sim/colors';
+import { goldColor, packRGB, stoneColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import type { PlacementLedger } from '@/world/connect';
 import { carveRoom, intrudes, restore, ROOM_MARGIN, roomReachable, snapshot, type RoomSpec, type Site } from '@/world/lightPuzzles';
@@ -65,6 +65,29 @@ export interface LockSite {
   /** Where the floor's way down is (the portal), for choosing a vault on the route; null when there is none. */
   exit: { x: number; y: number } | null;
   avoid: ReadonlyArray<{ x: number; y: number; r: number }>;
+  /** The lowest floor row a lock room may have (a flooded floor's hall must stand above its sea: see seaTopRow); absent = anywhere. */
+  maxFloorY?: number;
+}
+
+/**
+ * The top of a flooded floor's SEA: the first row from which every one of the next 14 rows holds at least 220 water cells
+ * (a perched pool or the cistern's tank never does). A hall whose floor stands below it takes the sea in through its own
+ * connector the moment the sim runs (d3 seeds 3 and 8: 4,500 cells in nine seconds); Infinity when the floor has none.
+ */
+export function seaTopRow(world: World): number {
+  const W = world.width, H = world.height;
+  const counts = new Int32Array(H);
+  for (let y = 0; y < H; y++) {
+    let n = 0;
+    for (let x = 0; x < W; x++) if (world.types[x + y * W] === Cell.Water) n++;
+    counts[y] = n;
+  }
+  for (let y = 200; y < H - 14; y++) {
+    let sustained = true;
+    for (let k = 0; k < 14 && sustained; k++) if (counts[y + k] < 220) sustained = false;
+    if (sustained) return y;
+  }
+  return Infinity;
 }
 
 export function lockCell(world: World, x: number, y: number): number {
@@ -306,7 +329,7 @@ export const lockSiteStats = { stage: -1, tries: 0, via: 0, candidates: 0 };
  */
 export function findLockSite(
   world: World, rng: Rng, graph: RegionGraph, ledger: PlacementLedger, spec: RoomSpec,
-  site: LockSite, placed: readonly PlacedPrefab[],
+  site: LockSite, placed: readonly PlacedPrefab[], floorOff = 12,
 ): Site | null {
   const xSpan = WIDTH - spec.w - 40;
   const ySpan = HEIGHT - 70 - spec.h - 50;
@@ -333,6 +356,7 @@ export function findLockSite(
     return { rock: cells ? rockN / cells : 0, open: cells ? open / cells : 1, metal: false };
   };
   const clear = (x0: number, y0: number, stage: number): { score: number; via: number } | null => {
+    if (site.maxFloorY !== undefined && y0 + spec.h - floorOff > site.maxFloorY) return null;
     const cx = x0 + spec.w / 2, cy = y0 + spec.h / 2;
     const fromSpawn = Math.hypot(cx - site.spawn.x, cy - site.spawn.y);
     if (fromSpawn < spec.minSpawnDist * (stage >= 2 ? 0.6 : 1)) return null;
@@ -386,7 +410,7 @@ export function placeLockRoom(
   for (let attempt = 0; attempt < 5; attempt++) {
     let at: Site | null = null, spec = room.sizes[0];
     for (const size of room.sizes) {
-      at = findLockSite(ctx.world, rng, graph, ledger, size, site, [...out.placed, ...refused]);
+      at = findLockSite(ctx.world, rng, graph, ledger, size, site, [...out.placed, ...refused], room.floorOff);
       spec = size;
       if (at) break;
     }
@@ -407,6 +431,17 @@ export function placeLockRoom(
       console.warn(`[locks] ${label}: ${why}; trying elsewhere`);
     };
     if (!carveRoom(ctx, rng, graph, fits, site.spawn, floorY, mouth, interior, ledger)) { rollback('could not be joined to the caves'); continue; }
+    // The connector's carve (a long tunnel whose sweep reaches nine rows below its line) can run along the hall and eat its whole
+    // floor slab (d3 in-game seed 3: the pool and the vault hung in a void): lay the slab again east of the entrance, before the
+    // room is built (the pool's dent is carved into it after). Open cells only.
+    const relayFloor = (): void => {
+      for (let y = floorY; y <= floorY + 4; y++) {
+        for (let x = Math.min(x1 - 6, mouth.x + 14); x <= interior.x1 + 2; x++) {
+          if (!blocksEntity(lockCell(ctx.world, x, y))) putCell(ctx.world, x, y, Cell.Stone, stoneColor());
+        }
+      }
+    };
+    relayFloor();
     // (the connector may have opened a pocket of oil or powder into the hall: clear it before anything is built)
     if (!room.ownsStock) sweepLockStock(ctx.world, ledger, { x0: at.x0, y0: at.y0, x1, y1: at.y0 + spec.h - 1 });
     if (room.fuelFree) clearFuelNear(ctx.world, ledger, { x: at.x0 + 24, y: floorY - 6 });

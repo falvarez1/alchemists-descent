@@ -60,7 +60,7 @@ const state = (L) => ctxEval(({ plugId, relayId, gaugeId, valveId, leverId, zone
 
 /** Put the alchemist at the gallery's far end (the route to the Kiln is verify-living-traversal's job), feet on the floor. */
 async function enterGallery(L) {
-  await ctxEval(({ x, y, tx }) => { const c = window.__game.ctx; c.enemies.length = 0; Object.assign(c.player, { x, y, vx: 0, vy: 0 }); c.camera.snapTo(tx, y - 20); }, { x: L.leverX + L.e * 6, y: L.Fr - 1, tx: ox(L, 80) });
+  await ctxEval(({ x, y, tx }) => { const c = window.__game.ctx; c.enemies.length = 0; Object.assign(c.player, { x, y, vx: 0, vy: 0 }); c.camera.snapTo(tx, y - 20); }, { x: L.leverX, y: L.Fr - 1, tx: ox(L, 80) });
   await page.waitForTimeout(1500);
 }
 const pullLever = () => page.keyboard.press('KeyE');
