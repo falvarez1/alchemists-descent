@@ -196,6 +196,34 @@ describe('short rations', () => {
     expect(h.ctx.player.hp).toBe(80);
   });
 
+  it('halves a heart pickup even on a small pool (the half a Glass Cannon is left with), where a fraction of the maximum would have called +20 a rest', () => {
+    const h = harness({ hp: 20, maxHp: 55 });
+    h.director.activate(h.ctx, ['famine']);
+    h.director.update(h.ctx);
+    h.ctx.player.hp += 20;
+    h.director.update(h.ctx);
+    expect(h.ctx.player.hp).toBeCloseTo(30);
+  });
+
+  it('does not halve what changed while the game was not ticking: a purchase in a menu is not a heal', () => {
+    const h = harness({ hp: 20, maxHp: 110 });
+    const clock = vi.spyOn(performance, 'now');
+    clock.mockReturnValue(1000);
+    h.director.activate(h.ctx, ['famine']);
+    h.director.update(h.ctx);
+    // The Sanctum is open for a while (the game is paused: no ticks), and "Mend wounds" restores health to full.
+    clock.mockReturnValue(9000);
+    h.ctx.player.hp = 30;
+    h.director.update(h.ctx);
+    expect(h.ctx.player.hp).toBe(30);
+    // The next ordinary heal is halved again.
+    clock.mockReturnValue(9016);
+    h.ctx.player.hp += 10;
+    h.director.update(h.ctx);
+    expect(h.ctx.player.hp).toBeCloseTo(35);
+    clock.mockRestore();
+  });
+
   it('does nothing without the complication', () => {
     const h = harness({ hp: 50 });
     h.director.activate(h.ctx, ['hush']);

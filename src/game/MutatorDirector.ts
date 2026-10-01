@@ -44,8 +44,15 @@ const POP_PLAYER_RADIUS = 12;
 /** Ticks between a creature falling and its burst: the fuse, and the rhythm of a chain. */
 const POP_FUSE = 14;
 const POP_QUEUE_MAX = 24;
-/** Heals above this fraction of maximum health in one tick are a set piece (a rest, a respawn), not a potion: left alone. */
+/**
+ * A rise in health in one tick larger than this is a set piece (a rest, a respawn), not a potion: left alone. It
+ * is a fraction of maximum health with a floor, so that on a small pool (Glass Cannon's half) the largest ordinary
+ * heal, a heart pickup (+20), is still a heal and still halved.
+ */
 const HEAL_SET_PIECE = 0.3;
+const HEAL_SET_PIECE_MIN = 24;
+/** A gap this long between two ticks was a menu (the Sanctum's "Mend wounds" is paid for and says "to full"), a hidden tab or a hitch: what changed in it is not a heal. */
+const MAX_TICK_GAP_MS = 250;
 
 /** The wardens (the keys of entities/Enemies BOSS_LAIRS): a warden's death has its own spectacle, and its ward admits no stray blast. */
 const WARDENS: ReadonlySet<string> = new Set(['colossus', 'leviathan', 'rimewarden', 'lenswright']);
@@ -107,6 +114,7 @@ export class MutatorDirector implements MutatorApi {
   private pops: Pop[] = [];
   private readonly noticed = new Set<string>();
   private lastHp = 0;
+  private lastHealAt = 0;
   private announceAt = -1;
   private readonly disposers: Array<() => void> = [];
 
@@ -307,9 +315,12 @@ export class MutatorDirector implements MutatorApi {
   private tickHealing(ctx: Ctx): void {
     const player = ctx.player;
     const healing = mutatorMods({ mutators: this.active }).healing;
-    if (healing < 1 && !player.dead && this.lastHp > 0 && player.hp > this.lastHp) {
+    const now = performance.now();
+    const gap = this.lastHealAt > 0 ? now - this.lastHealAt : 0;
+    this.lastHealAt = now;
+    if (healing < 1 && !player.dead && this.lastHp > 0 && player.hp > this.lastHp && gap <= MAX_TICK_GAP_MS) {
       const rise = player.hp - this.lastHp;
-      if (rise <= Math.max(6, player.maxHp * HEAL_SET_PIECE)) player.hp = this.lastHp + rise * healing;
+      if (rise <= Math.max(HEAL_SET_PIECE_MIN, player.maxHp * HEAL_SET_PIECE)) player.hp = this.lastHp + rise * healing;
     }
     this.lastHp = player.dead ? 0 : player.hp;
   }

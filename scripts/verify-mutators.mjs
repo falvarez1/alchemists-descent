@@ -199,6 +199,12 @@ async function sectionTitle() {
   await page.locator('#expedition-entry .entry-comps summary').click();
   await page.locator('#expedition-entry .comp-clear').click();
   check('Clear empties it', (await chosenOnTitle(page)).length === 0);
+  // Two that cancel (Hush and Nosy Neighbours) never share a descent: the new chip takes the old one's place, and the note says so.
+  await page.locator('#expedition-entry .comp-chip[data-mutator="hush"]').click();
+  await page.locator('#expedition-entry .comp-chip[data-mutator="nosy-neighbours"]').click();
+  const swapped = await page.evaluate(() => ({ on: [...document.querySelectorAll('#expedition-entry .comp-chip[aria-pressed="true"]')].map((c) => c.dataset.mutator), note: document.querySelector('#expedition-entry .comp-note')?.textContent ?? '' }));
+  check('Hush and Nosy Neighbours swap rather than cancel, and the note says so', JSON.stringify(swapped.on) === JSON.stringify(['nosy-neighbours']) && /takes the place of Hush/.test(swapped.note), JSON.stringify(swapped));
+  await page.locator('#expedition-entry .comp-clear').click();
   await page.context().close();
 
   for (const [w, h] of [[960, 600], [1440, 900]]) {
