@@ -1520,6 +1520,41 @@ ice and crystal pass it) to the lens or heart.
 
 ---
 
+## 11. The Experiment (alchemy as a discovery game)
+
+*Measured in the real sim by `scripts/verify-alchemy.mjs` (real pours, real siphon and drink on floor 1's Refuge Kettle) and `scripts/verify-alchemy-floors.mjs` (floors 2-4). Every number below was read off a run.*
+
+**The loop.** Siphon (E) an ingredient off the world into a flask, pour (Q) it into the bowl, wait, siphon the brew, drink (X). Over a bowl (the cursor within its nine-cell width and a tall column above it: narrow on purpose, so the oil a player pours against the wall to make a fire is still a free stream) the flask is *measured*: a pour is one cell per 4 frames (about 15 a second) lobbed on the arc that falls into the bowl, and a draw is one cell per 2 frames (`MEASURED_POUR_EVERY` 4, `MEASURED_DRAW_EVERY` 2, `lobToBowl` in `combat/Flask`). Away from a bowl nothing changed (10 a frame, 40 a frame). Before the lob a free pour aimed at the bowl's middle from ten cells off kept 7 of 28 cells; an empty flask now draws the cell the cursor is ON (it drew the first in scan order: a brewed potion came out as the stray leaf beside it).
+
+**The bowl.** 7 wide, walls 2 tall, holds 14 cells (`BOWL_CAPACITY`), sampled `x±3, y-4..y` (a leaf or a mushroom does not sink: poured onto a bowl already full of water it heaps over the rim, so the two rows above the walls count and are consumed too). A brew is 90 sampler ticks (every 4th frame) = 360 frames = 6 s of matched amounts and heat (measured 5.4-5.9 s from the last pour, 12 recipes). Heat is any Fire/Lava/Ember within 6 cells outside the bowl (see the furnace); the stone keeps its warmth 150 frames after a fire gutters (`HEAT_MEMORY_FRAMES`: a slick burning half the time never finished a brew). Matching is exact amounts (`needs[].min`), at most `PURITY_SLACK` 2 foreign reagent cells, the most specific recipe wins. A heated mix that matches nothing and stands unchanged for `ATTEMPT_TICKS` 24 (1.6 s) is judged once (gap 240 frames, at least `ATTEMPT_MIN_MASS` 6 cells): *nothing stirs* (inert), *the brew shimmers* (the right ingredients, amounts short: each reagent reads cold/warm/hot against the nearest undiscovered recipe, never its name: `Water 8 HOT, Glowshroom 3 WARM`), *the brew clouds* (amounts met, something foreign: `Oil 9 HOT, Glowshroom 4 HOT, Water 3 COLD`). Each attempt is a line in the Grimoire's Experiments tab (record v3).
+
+**The furnace.** "Keep a fire under it" could not be done by hand: on a floor-2 cauldron lit the way a player lights one (lamp oil poured against the wall, one Spark Bolt) the slick burned 8 s, flowed into the bowl (4 of 8 cells) and spoiled the mix. Every campaign cauldron now stands on a sealed 7x2 pocket of Ember cells three rows under its base (`world/furnace bankFurnace`, last of all in generateLevel, GEN 64; an ember never burns out or ashes, so there is no fuel to run dry: a first version fed pilot flames from emitters and every flame left ash, choking the pocket within a minute): 37 of 40 floors (8 seeds x 5 floors), the rest keep the player's own fire. The glow shows through the rock face under the pot.
+
+**What the sim will not keep in a bowl** (so no recipe asks for it): *blood* dissolves in water (`advectBlood`: after ~180 ticks a cell in contact turns to water at 1.8% a tick) and dries to a stain on a stone floor; *ash* dissolves in water (10% a tick in contact); *snow* melts to water in brine; gold is banked by the harvester within a second (a Gold ingredient would never stay: 5 cells, +5 oz, 0.9 s). The previous version's Life (water + blood) and Stone (blood + sand) could not be brewed by hand at all: they only ever passed a probe that wrote cells into the grid without waking them. Pour order matters (dry things first, then the liquid: a sinking coal displaces water over the rim, a heaped herb sits above it), and no recipe asks for more than 12 of the 14 cells.
+
+**The recipes** (solvent x herb, so a player who has worked out the grid can walk it):
+
+| Recipe | Ingredients | Effect | A 12-cell bowl |
+|---|---|---|---|
+| Elixir of Life | water 7 + glowshroom 5 | mending (0.15 HP a frame) | 24 s |
+| Elixir of Levity | water 8 + slime 4 | flight, no fuel | 26 s |
+| Elixir of Stone | oil 6 + sand 6 | half damage, no knockback | 26 s |
+| Strong Tea | water 8 + leaf 4 | swift + wand mana 60% faster | 40 s |
+| Glowing Draught | oil 7 + glowshroom 4 | torch light | 50 s |
+| Salamander's Gall | oil 6 + coal 6 | fire/lava bite x0.4, no catching alight | 36 s |
+| Frostproof Tonic | brine 7 + leaf 5 | cold arrives at half strength | 36 s |
+| Gutta-Percha Tonic | oil 6 + slime 6 | current deals a quarter | 36 s |
+| Charcoal Draught | water 7 + coal 5 | acid and toxin deal a quarter | 36 s |
+| Brimstone Tincture | gunpowder 6 + oil 6 | spells +25% | 26 s |
+| Heartwine | slime 6 + leaf 5 | kills restore 2 HP | 40 s |
+| Hush Draught | snow 6 + coal 5 | hood the lantern: half-dark hides like dark | 40 s |
+
+Measured end to end (siphon the whole bowl, hold X): 19-53 s across bowls of 11-14 cells. Every effect is one row of `content/elixirs` (a status timer, or a *timed boon*: the same hook a Sanctum boon sets for the run, read through `core/boons hasBoon`); a drunk cell is worth `framesPerCell` (120-250) frames, the cup stacks to `POTION_CAP_FRAMES` 3600 (60 s, one shared constant: it was 1800 inline in three files) and refuses a cell past it (the cell stays in the flask). A sip is one cell every other frame; a bowl drinks in under a second, so a potion can be carried (a flask holds 600) and drunk at the door of the thing it was brewed for. The HUD chip row under the vitals shows each working potion's label, seconds left and a bar. The ingredients lie where the recipes are wanted (a census of the generated floors, seeds 5 and 777): leaf and gunpowder everywhere, glowshroom d1-d3b, oil from floor 2, coal d2/d2b/d3b/d4, snow and brine only in the Cold Store.
+
+**Where it is brewed.** Floor 1 has a cauldron now: the Refuge Kettle on the Warm Refuge plinth (`world/refugeKettle`, GEN 64): a basin on the plinth's top row, a furnace under it (three rows of embers), a sunken cistern under a grate (30 water; a bar every third column, two-cell gaps), and a mound of 29 walk-through leaf cells, with nothing standing in the walk (the alchemist crosses it holding D). A generated floor's cauldron was set 28 cells from where the first waystone *used* to stand; GEN 62 moved the bowls onto the route and left it behind (measured, d2/d3/d4 seeds 1/5/7: 7 of 9 stood 50-500 cells from the walk). `placeRouteWaystones` now brings one farther than `CAULDRON_ROUTE_REACH` 30 cells beside the bowl nearest the route (else onto the walk at 40%), fail-open: 40 floors (8 seeds x d2/d2b/d3/d3b/d4), 38 within 43 cells of the walk, median 15, two kept (no site).
+
+**Economy.** First-brew bounty is a flat 5 oz (was 100, then 30): a dozen recipes at 30 would out-earn a floor. The reward is the Grimoire page, the margin notes and the effect.
+
 ## Tuning quick-reference (this codex's load-bearing numbers)
 
 ```
