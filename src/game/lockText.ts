@@ -40,14 +40,14 @@ export const LOCK_TEXT: Record<LockKind, LockCopy> = {
   },
   weir: {
     name: 'the Weir',
-    near: 'Wire the Weir. Flood the channel, then shock the water.',
+    near: 'Wire the Weir. Fill the bowl, then spark the brass.',
     open: 'The vault stands open. Take the golden key.',
-    hint: 'A dry channel and a coil. Water is the wire: flood it, then shock it from a dry perch.',
+    hint: 'A dry bowl and a coil in its well. Fill it, then spark the brass.',
     teachTitle: 'The Weir',
-    teachBody: 'The channel is dry, and a dry channel carries nothing. Pull the sluice lever and let the reservoir in, then put a Spark Bolt into the water from the dry perch. The charge crawls to the coil and the vault door lets go. Do not stand in it.',
+    teachBody: 'The coil at the foot of the well drinks only through water, and the bowl is dry. Pull the sluice lever by the dais and the cistern empties into it; then put a Spark Bolt into the brass lining. The wet well carries the charge down to the coil, and the vault door lets go. Do not stand in the bowl when you do. The Works relent, eventually.',
     sealed: 'Sealed. The golden key is in the Weir’s vault.',
     placeName: 'Vault door',
-    placeDescription: 'Metal all through. It opens when the coil in the Weir latches, or when the Works relent.',
+    placeDescription: 'Metal all through. It opens when the coil at the foot of the Weir’s well latches, or when the Works relent.',
   },
   crucible: {
     name: 'the Crucible',

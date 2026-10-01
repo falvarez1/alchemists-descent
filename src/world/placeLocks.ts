@@ -4,6 +4,7 @@ import { makePickup } from '@/core/pickupDefs';
 import type { CarveAvoid, PlacementLedger } from '@/world/connect';
 import { carvePocket, connectToCaves, sealedFootprints, prefabFootprints } from '@/world/connect';
 import { gasBellRoom } from '@/world/lockGasBell';
+import { weirRoom } from '@/world/lockWeir';
 import { type LockOutput, type LockSite, placeLockRoom } from '@/world/locks';
 
 /**
@@ -18,6 +19,7 @@ export function placeLock(
 ): boolean {
   let stood = false;
   if (kind === 'gasbell') stood = placeLockRoom(ctx, rng, graph, ledger, site, fits, out, gasBellRoom(ctx, rng, out), 'lock-gas-bell');
+  else if (kind === 'weir') stood = placeLockRoom(ctx, rng, graph, ledger, site, fits, out, weirRoom(ctx, rng, out), 'lock-weir');
   if (stood) return true;
   if (out.pickups.some((p) => p.kind === 'key')) return false;
   placeFallbackKey(ctx, rng, graph, ledger, site, fits, out);

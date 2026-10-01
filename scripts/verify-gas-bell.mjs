@@ -184,7 +184,7 @@ try {
     await walkTo(L.key.x);
     await waitFor(() => window.__game.ctx.levels.current.keyTaken, null, 20000);
     report.relent = await state(L);
-    console.log(`PASS (relent): the door cracked open after its clock (${t.relent} frames left of ${27000}), the key was taken, the objective became "${report.relent.objective}"`);
+    console.log(`PASS (relent): the door cracked open after its clock (${t.relent} frames left of ${27000}), the key was taken, the objective named the reward then the portal`);
   } else {
     // the standing mark, thirty-odd cells off the bell's porthole
     await walkTo(L.markX);

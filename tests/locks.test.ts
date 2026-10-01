@@ -15,6 +15,7 @@ import { World } from '@/sim/World';
 import { WorldGen } from '@/world/CaveGenerator';
 import { LOCK_RELENT_FRAMES, PLUG_DEPTH, PLUG_HEIGHT } from '@/world/locks';
 import { bellInterior, bellLayout, BELL } from '@/world/lockGasBell';
+import { bowlInterior, bowlSurface, tankRows, weirCapacity, weirLayout, WEIR } from '@/world/lockWeir';
 import { reachableMask, routeSealedWorld, validateFindability, wizardMask } from '@/world/validate';
 
 /**
@@ -153,9 +154,113 @@ describe('the Gas Bell (d2)', () => {
   });
 });
 
+describe('the Weir (d3)', () => {
+  for (const seed of [1337, 5, 42]) {
+    describe(`seed ${seed}`, () => {
+      const level = generate(LEVELS.d3, seed);
+      const runtime = runtimeOf(level, LEVELS.d3);
+      const plug = level.mechanisms.find((m) => m.kind === 'plug' && m.lock === 'weir')!;
+      const room = level.placedPrefabs.find((p) => p.id === 'lock-weir')!;
+      const spec = { id: 'lock-weir', w: room.x1 - room.x0 + 1, h: room.y1 - room.y0 + 1, minSpawnDist: 0 };
+      const L = weirLayout({ x0: room.x0, y0: room.y0 }, spec);
+      const at = (x: number, y: number): number => level.world.types[level.world.idx(x, y)];
+      const relay = (): Mechanism => level.mechanisms.find((m) => m.kind === 'relay' && m.targetId === plug.id)!;
+      const coil = (): Mechanism => level.mechanisms.find((m) => m.kind === 'chargelatch' && m.targetId === relay().id)!;
+
+      it('lays a lock room with one vault door and one key, and no pocket vault', () => {
+        expect(room).toBeTruthy();
+        expect(plug).toBeTruthy();
+        expect(plug.routeSeal).toBe(true);
+        expect(plug.material).toBe(Cell.Metal);
+        expect(plug.relentFrames).toBe(LOCK_RELENT_FRAMES);
+        const keys = level.pickups.filter((p) => p.kind === 'key');
+        expect(keys.length).toBe(1);
+        expect(keys[0].x).toBeGreaterThan(plug.x + plug.w);
+        expect(keys[0].x).toBeLessThan(room.x1);
+        expect(level.placedPrefabs.filter((p) => p.id.startsWith('lock-')).length).toBe(1);
+      });
+
+      it('chains coil -> relay -> door, with a lever on a one-shot sluice over the well', () => {
+        expect(relay().outputAction).toBe('break');
+        expect(coil()).toBeTruthy();
+        expect(lockFocus(runtime, plug)).toEqual({ x: coil().x, y: coil().y });
+        expect(coil().x).toBe(L.px);
+        expect(coil().y).toBe(L.pedY);
+        const valve = level.mechanisms.find((m) => m.kind === 'valve' && m.x >= room.x0 && m.x <= room.x1 && m.y >= room.y0 && m.y <= room.y1)!;
+        expect(valve.oneShot).toBe(true);
+        expect(valve.material).toBe(Cell.Metal);
+        expect(valve.state).toBe(0);
+        expect(valve.x).toBeLessThanOrEqual(L.px);
+        expect(valve.x + valve.w).toBeGreaterThan(L.px); // it stands over the well
+        const lever = level.mechanisms.find((m) => m.kind === 'lever' && m.targetId === valve.id)!;
+        expect(lever).toBeTruthy();
+        expect(lever.x).toBeLessThan(L.dais.x0); // by the dais, on the near side of the pool
+      });
+
+      it("the coil's zone is the well's own water: open at generation, walled by the brass, no Metal inside", () => {
+        const z = coil().zone!;
+        expect(z.x1 - z.x0 + 1).toBe(3);
+        for (let y = z.y0; y <= z.y1; y++) {
+          for (let x = z.x0; x <= z.x1; x++) expect(at(x, y), `zone cell ${x},${y}`).toBe(Cell.Empty);
+          // the walls beside the zone are the circuit: water standing against them takes the current
+          expect(at(z.x0 - 1, y)).toBe(Cell.Metal);
+          expect(at(z.x1 + 1, y)).toBe(Cell.Metal);
+        }
+        for (let x = L.px - 2; x <= L.px + 2; x++) expect(at(x, L.pedY)).toBe(Cell.Metal);
+      });
+
+      it('has a dry pool in a brass-lined dent, a full closed cistern over it, and water enough but never the brim', () => {
+        const cap = weirCapacity();
+        expect(bowlInterior(L).length).toBe(cap);
+        let wet = 0;
+        for (const [x, y] of bowlInterior(L)) if (at(x, y) !== Cell.Empty) wet++;
+        expect(wet).toBe(0);
+        let water = 0, air = 0;
+        for (let y = L.tankY0 + WEIR.wall; y <= L.tankY1 - WEIR.wall; y++) {
+          for (let x = L.tankX0 + WEIR.wall; x <= L.tankX1 - WEIR.wall; x++) { if (at(x, y) === Cell.Water) water++; else air++; }
+        }
+        expect(air, 'a mass of water that touches air is loose stock to the sweeps').toBe(0);
+        expect(water).toBe(tankRows() * WEIR.tankHalf * 2);
+        expect(water).toBeLessThan(cap - 6);
+        expect(water).toBeGreaterThan(cap * 0.8);
+        // every column of the dent stands on three rows of Metal; the well's walls reach the coil
+        for (let x = L.px - 20; x <= L.px + 19; x++) {
+          if (x >= L.px - 1 && x <= L.px + 1) continue;
+          const s = bowlSurface(L, x);
+          for (let k = 0; k < WEIR.lining; k++) expect(at(x, s + k), `lining ${x},${s + k}`).toBe(Cell.Metal);
+        }
+        for (const x of [L.px - 3, L.px - 2, L.px + 2, L.px + 3]) for (let y = L.wellTop; y <= L.pedY; y++) expect(at(x, y), `well wall ${x},${y}`).toBe(Cell.Metal);
+      });
+
+      it('is a ford: the dais, the far bank and the key are reachable, and so is the coil by cells', () => {
+        const seen = reachableMask({ world: level.world, spawn: level.spawn });
+        expect(seen[level.world.idx(L.px, L.wellTop + 2)]).toBe(1);
+        expect(seen[level.world.idx(L.px, L.pedY - 1)]).toBe(1);
+        const wiz = wizardMask({ world: routeSealedWorld(level.world, level.mechanisms), spawn: level.spawn });
+        // the dais, and the bank on the vault's side of the pool (the way to the key runs through it)
+        expect(wiz[level.world.idx(L.dais.x0 + 4, L.dais.top - 1)], 'the dais').toBe(1);
+        expect(wiz[level.world.idx(L.px + 24, L.floorY - 1)], 'the far bank').toBe(1);
+        const key = level.pickups.find((p) => p.kind === 'key')!;
+        expect(wiz[level.world.idx(Math.floor(key.x), Math.floor(key.y) - 3)]).toBe(1);
+        expect(wizardMask({ world: level.world, spawn: level.spawn })[level.world.idx(Math.floor(key.x), Math.floor(key.y) - 3)]).toBe(0);
+      });
+
+      it('findability is clean', () => {
+        expect(validateFindability(runtime).filter((i) => i.severity === 'error')).toEqual([]);
+      });
+    });
+  }
+
+  it('is deterministic per seed', () => {
+    const a = generate(LEVELS.d3, 7), b = generate(LEVELS.d3, 7);
+    expect(Buffer.compare(Buffer.from(a.world.types), Buffer.from(b.world.types))).toBe(0);
+  });
+});
+
 describe('floors without a lock are untouched', () => {
   it('only the floors with a GenDef.lock draw one', () => {
     expect(GEN.fungal.lock).toBe('gasbell');
+    expect(GEN.flooded.lock).toBe('weir');
     for (const biome of ['earthen', 'frozen', 'crystal', 'timber', 'scorched'] as const) expect(GEN[biome].lock, biome).toBeUndefined();
   });
 

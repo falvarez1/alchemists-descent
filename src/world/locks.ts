@@ -88,8 +88,8 @@ export function brass(x: number, y: number): number {
 }
 
 /** A small lit lamp in the dark: light is information (the lock reads from afar). */
-export function lockLight(x: number, y: number, rgb: readonly [number, number, number], radius: number, intensity: number, flicker = 0.1): AuthoredLight {
-  return { x, y, r: rgb[0], g: rgb[1], b: rgb[2], intensity, radius, bloom: 0.5, flicker, flickerPhase: ((x * 31 + y * 17) % 628) / 100, falloff: 'soft', occluded: true };
+export function lockLight(x: number, y: number, rgb: readonly [number, number, number], radius: number, intensity: number, flicker = 0.1, occluded = true): AuthoredLight {
+  return { x, y, r: rgb[0], g: rgb[1], b: rgb[2], intensity, radius, bloom: 0.5, flicker, flickerPhase: ((x * 31 + y * 17) % 628) / 100, falloff: 'soft', occluded };
 }
 
 /** The key vault's geometry, shared by the rooms that put it at their east end. */
