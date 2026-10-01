@@ -1,7 +1,7 @@
 // Focused fullscreen pause probe.
 // Usage: node scripts/verify-fullscreen-pause.mjs [url]  (dev server running)
 import { chromium } from 'playwright-core';
-import { leaveTitleIfShown } from './run-helpers.mjs';
+import { leaveTitleIfShown, openDevMenu } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -48,6 +48,7 @@ await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(500);
 
+await openDevMenu(page);
 await page.click('#immersive-play-btn');
 await page.waitForSelector('#run-launcher.visible', { timeout: 5000 });
 await page.click('#run-launcher .run-launcher-start');

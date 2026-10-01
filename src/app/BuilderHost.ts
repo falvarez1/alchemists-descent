@@ -2,6 +2,7 @@ import type { EventMap } from '@/core/events';
 import type { AuthoredLight, BiomeId, Ctx, GameMode, PlaytestSource } from '@/core/types';
 import type { CellPatch } from '@/authoring/cellPatch';
 import type { AuthorLinkHandle, AuthorLinkWorldState, TerrainPublishResult } from '@/app/AuthorLink';
+import type { AuthorLinkConfig } from '@/app/authorLinkConfig';
 import type { AuthoredSet } from '@/app/authorLinkObjects';
 import { MAX_PATCH_CELLS, type AuthorLinkStatus } from '@/net/authorLinkProtocol';
 
@@ -73,8 +74,17 @@ export interface BuilderHost {
   /** Null when no link is active. `mismatch` means edits are being refused. */
   getLinkWorldState(): AuthorLinkWorldState | null;
   subscribeLinkWorldState(handler: (state: AuthorLinkWorldState) => void): () => void;
-  /** Replace this window's grid with a linked peer's. Destructive; user-initiated only. */
-  pullLinkedWorld(): Promise<boolean>;
+  /**
+   * Replace this window's grid with a linked peer's (the named one, or the first on a
+   * different world). Destructive; user-initiated only.
+   */
+  pullLinkedWorld(clientId?: string): Promise<boolean>;
+  /**
+   * How this window's link was configured (room, relay kind, whether it may write, and
+   * why it is off when it is), or null when the shell never resolved one. The Game Link
+   * control reads this so it can explain an unlinked window instead of showing nothing.
+   */
+  getLinkConfig(): AuthorLinkConfig | null;
 }
 
 class RuntimeBuilderHost implements BuilderHost {
@@ -85,6 +95,7 @@ class RuntimeBuilderHost implements BuilderHost {
   constructor(
     private readonly ctx: Ctx,
     private readonly link: AuthorLinkHandle | null = null,
+    private readonly linkConfig: AuthorLinkConfig | null = null,
   ) {}
 
   getModeSnapshot(): BuilderModeSnapshot {
@@ -192,11 +203,19 @@ class RuntimeBuilderHost implements BuilderHost {
     return this.link?.onWorldState(handler) ?? (() => undefined);
   }
 
-  pullLinkedWorld(): Promise<boolean> {
-    return this.link?.pullWorldFrom() ?? Promise.resolve(false);
+  pullLinkedWorld(clientId?: string): Promise<boolean> {
+    return this.link?.pullWorldFrom(clientId) ?? Promise.resolve(false);
+  }
+
+  getLinkConfig(): AuthorLinkConfig | null {
+    return this.linkConfig;
   }
 }
 
-export function createBuilderHost(ctx: Ctx, link: AuthorLinkHandle | null = null): BuilderHost {
-  return new RuntimeBuilderHost(ctx, link);
+export function createBuilderHost(
+  ctx: Ctx,
+  link: AuthorLinkHandle | null = null,
+  linkConfig: AuthorLinkConfig | null = null,
+): BuilderHost {
+  return new RuntimeBuilderHost(ctx, link, linkConfig);
 }

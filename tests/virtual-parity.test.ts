@@ -9,9 +9,9 @@ import {
   VIRTUAL_BIOME_IDS,
 } from '@/world/virtual/defaults';
 
-// Play Mode virtual runs build their def from these defaults; Builder playtest
-// normalizes through effectiveVirtualWorldDef, which stamps live GEN_TUNE onto
-// the same fields. Both must read ONE source of truth or the two paths render
+// Play Mode virtual runs build their def from these defaults; a def built
+// earlier normalizes through effectiveVirtualWorldDef, which stamps live GEN_TUNE
+// onto the same fields. Both must read ONE source of truth or the two paths render
 // different terrain at identical settings (the stale 6/4/2 mirror bug).
 describe('virtual world def parity', () => {
   it('mirrors the live GEN_TUNE walk-surface fields', () => {

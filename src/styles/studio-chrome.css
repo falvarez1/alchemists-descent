@@ -1,0 +1,669 @@
+/* ==========================================================================
+   STUDIO CHROME — the Builder shell: title bar, viewport toolbar, status bar,
+   palette tabs, object cards and the Game Link popover.
+
+   Layout (Unity / Godot idiom, one row each):
+
+     ┌ title bar ─ brand · menus │ document · biome │ ▶ Play · ▶| · ✓ │ link · layout · exit ┐
+     ├────────┬───────────────────────────────────────────┬──────────┤
+     │ dock   │ viewport toolbar: tools · brush · material │  dock    │
+     │ tabs   ├───────────────────────────────────────────┤  inspec- │
+     │ mater- │                                           │  tor /   │
+     │ ials / │              the map viewport             │  outli-  │
+     │ objects│                                           │  ner     │
+     ├────────┴───────────────────────────────────────────┴──────────┤
+     └ status bar ─ message / tool hint │ cursor · zoom · material │ issues ─────────────────┘
+
+   Tokens come from studio.css; nothing here hard-codes a colour.
+   ========================================================================== */
+
+#builder-workspace {
+    grid-template-rows: var(--st-bar-h) minmax(0, 1fr) var(--st-status-h);
+}
+
+/* ---------------------------------------------------------------- title bar */
+
+#builder-bar.st-bar {
+    position: relative; z-index: 10; pointer-events: auto;
+    display: flex; align-items: center; flex-wrap: nowrap; gap: 6px;
+    height: var(--st-bar-h); padding: 0 10px; box-sizing: border-box;
+    background: var(--st-surface-2); border-bottom: 1px solid var(--st-line);
+    font-family: var(--st-font); font-size: 12px; color: var(--st-text-2);
+}
+#builder-bar .st-bar-group { display: flex; align-items: center; gap: 6px; min-width: 0; }
+
+#builder-bar .b-title {
+    display: inline-flex; align-items: center; gap: 7px; margin: 0 6px 0 0;
+    font: 600 13px/1 var(--st-font); letter-spacing: 0; color: var(--st-text);
+    text-transform: none;
+}
+#builder-bar .b-title .st-icon { color: var(--st-accent-text); }
+
+#builder-bar .builder-menubar { display: inline-flex; align-items: center; gap: 0; }
+#builder-root #builder-bar .builder-menu-btn {
+    height: 28px; padding: 0 10px; border: 0; border-radius: var(--st-r-2);
+    background: transparent; color: var(--st-text-2);
+    font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none;
+}
+#builder-root #builder-bar .builder-menu-btn:hover,
+#builder-root #builder-bar .builder-menu-btn[aria-expanded='true'] { background: var(--st-surface-3); color: var(--st-text); }
+
+/* document cluster: the title reads like a document tab, not a form field */
+#builder-bar .b-doc { flex: 0 1 auto; }
+#builder-root #builder-bar #b-doc-name {
+    width: clamp(110px, 14vw, 200px); height: 26px; padding: 0 8px; box-sizing: border-box;
+    border: 1px solid transparent; border-radius: var(--st-r-2); background: transparent;
+    color: var(--st-text); font: 600 12px/1 var(--st-font); text-overflow: ellipsis;
+}
+#builder-root #builder-bar #b-doc-name:hover { background: var(--st-surface-3); }
+#builder-root #builder-bar #b-doc-name:focus { background: var(--st-well); border-color: var(--st-accent-line); outline: none; }
+#builder-root #builder-bar #b-doc-select,
+#builder-root #builder-bar #b-biome {
+    height: 26px; max-width: 150px; padding: 0 6px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-2);
+    background: var(--st-surface-3); color: var(--st-text-2); font: 500 11px/1 var(--st-font);
+}
+#builder-bar .b-field { display: inline-flex; align-items: center; gap: 6px; }
+#builder-bar .b-field > .st-label { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 11px; }
+
+/* transport: one primary action, one secondary, one status chip */
+#builder-bar .b-transport { gap: 4px; padding: 0 2px; }
+#builder-root #builder-bar .st-btn {
+    height: 26px; padding: 0 10px; border-radius: var(--st-r-2);
+    font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none;
+}
+#builder-root #builder-bar .st-btn--icon { width: 26px; padding: 0; }
+#builder-root #builder-bar .st-btn--play { padding: 0 12px 0 10px; }
+#builder-root #builder-bar .st-btn--play .st-icon { color: var(--st-ok-text); }
+
+.b-validate { gap: 6px; }
+.b-validate[data-state='ok'] .st-icon { color: var(--st-ok-text); }
+.b-validate[data-state='warn'] { border-color: var(--st-warn-line); background: var(--st-warn-bg); color: var(--st-warn-text); }
+.b-validate[data-state='error'] { border-color: var(--st-danger-line); background: var(--st-danger-bg); color: var(--st-danger-text); }
+.b-validate .b-validate-n { font-variant-numeric: tabular-nums; }
+
+#builder-bar .b-right { margin-left: auto; }
+#builder-bar .b-bar-mid { flex: 1 1 0; min-width: 8px; }
+
+/* narrow windows: drop labels before dropping controls */
+@media (max-width: 1240px) {
+    #builder-bar #b-doc-select,
+    #builder-bar .b-field > .st-label { display: none; }
+}
+@media (max-width: 1040px) {
+    #builder-bar .st-btn--play > span,
+    #builder-bar #b-exit > span,
+    #builder-bar .b-validate .b-validate-text { display: none; }
+    #builder-bar .st-btn--play, #builder-bar #b-exit { width: 26px; padding: 0; }
+    #builder-bar .st-link-label { max-width: 96px; }
+}
+
+/* ------------------------------------------------------- Game Link button */
+
+.st-link { gap: 7px; }
+.st-link .st-link-label { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.st-link .st-link-chevron { display: inline-flex; color: var(--st-text-3); }
+.st-link[data-tone='ok'] { border-color: var(--st-ok-line); }
+.st-link[data-tone='warn'] { border-color: var(--st-warn-line); background: var(--st-warn-bg); color: var(--st-warn-text); }
+.st-link[data-tone='danger'] { border-color: var(--st-danger-line); background: var(--st-danger-bg); color: var(--st-danger-text); }
+.st-link[data-tone='off'] { color: var(--st-text-3); }
+.st-link--attention { animation: st-attention 1.6s ease-in-out infinite; }
+@keyframes st-attention {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--st-warn) 0%, transparent); }
+    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--st-warn) 32%, transparent); }
+}
+.st-dot--busy { background: var(--st-accent-hi); box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-accent) 22%, transparent); }
+.st-dot--off { background: var(--st-text-4); }
+
+.st-link-pop {
+    position: fixed; z-index: var(--z-popover, 84); width: 340px; max-width: calc(100vw - 16px); box-sizing: border-box;
+    padding: 12px; display: flex; flex-direction: column; gap: 10px;
+    background: var(--st-surface-2); border: 1px solid var(--st-line-2); border-radius: var(--st-r-3);
+    box-shadow: var(--st-shadow-pop); color: var(--st-text-2); font: 400 12px/1.45 var(--st-font);
+}
+.st-link-pop[hidden] { display: none; }
+.st-link-head { display: flex; align-items: center; gap: 8px; color: var(--st-text); font-size: 13px; }
+.st-link-head strong { font-weight: 600; }
+.st-link-summary { margin: 0; color: var(--st-text-2); }
+.st-link-note { margin: -4px 0 0; color: var(--st-text-3); font-size: 11px; }
+.st-link-primary { height: 30px; justify-content: center; width: 100%; font-size: 12px; }
+.st-link-sec { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--st-line); }
+.st-link-synced, .st-link-peers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.st-link-synced li { display: flex; align-items: center; gap: 6px; color: var(--st-text-2); }
+.st-link-synced .st-icon { color: var(--st-ok-text); }
+.st-link-peers li { display: grid; grid-template-columns: 64px 1fr auto; align-items: center; gap: 8px; min-height: 24px; }
+.st-link-who { color: var(--st-text); font-weight: 500; }
+.st-link-world { color: var(--st-text-3); font: 400 11px/1.2 var(--st-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-link-peers li[data-same='false'] .st-link-world { color: var(--st-warn-text); }
+.st-link-ok { color: var(--st-ok-text); display: inline-flex; }
+.st-link-roomrow { display: flex; align-items: center; gap: 4px; }
+.st-link-roomrow code { padding: 2px 7px; border-radius: var(--st-r-1); background: var(--st-well); border: 1px solid var(--st-line); color: var(--st-text); font: 500 12px/1.4 var(--st-mono); margin-right: auto; }
+.st-link-roomedit { display: flex; gap: 4px; }
+.st-link-roomedit .st-input { flex: 1 1 auto; min-width: 0; }
+.st-link-foot { margin: 0; color: var(--st-text-3); font-size: 11px; }
+.st-input {
+    height: 26px; padding: 0 8px; box-sizing: border-box; border: 1px solid var(--st-line-2); border-radius: var(--st-r-2);
+    background: var(--st-well); color: var(--st-text); font: 400 12px/1 var(--st-font);
+}
+.st-input:focus { outline: none; border-color: var(--st-accent-line); box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-accent) 24%, transparent); }
+.st-input::placeholder { color: var(--st-text-4); }
+
+/* --------------------------------------------------- viewport toolbar */
+
+#builder-stage { flex-direction: column; align-items: stretch; justify-content: flex-start; padding: 0; }
+#builder-stage > #builder-center-slot { flex: 1 1 auto; min-height: 0; width: 100%; height: auto; padding: 10px; box-sizing: border-box; }
+
+#builder-toolbar.st-toolbar {
+    position: relative; z-index: 4; pointer-events: auto; flex: 0 0 auto;
+    display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 8px; box-sizing: border-box;
+    background: var(--st-surface-1); border-bottom: 1px solid var(--st-line);
+    font-family: var(--st-font); color: var(--st-text-2); overflow: visible;
+}
+#builder-toolbar .bt-group { display: inline-flex; align-items: center; gap: 2px; position: relative; }
+#builder-toolbar .bt-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--st-line); flex: none; }
+#builder-toolbar .bt-spacer { flex: 1 1 auto; }
+
+/* tool buttons: icon-only, 28px, accent when armed */
+#builder-root .bt-tool,
+#builder-root .bt-head {
+    position: relative; width: 28px; height: 28px; padding: 0; box-sizing: border-box;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid transparent; border-radius: var(--st-r-2); background: transparent; color: var(--st-text-2);
+    cursor: pointer; transition: background 0.12s var(--st-ease), color 0.12s var(--st-ease);
+}
+#builder-root .bt-tool:hover, #builder-root .bt-head:hover { background: var(--st-surface-3); color: var(--st-text); border-color: transparent; }
+#builder-root .bt-tool.active, #builder-root .bt-head.active {
+    background: var(--st-accent-bg); border-color: var(--st-accent-line); color: var(--st-accent-text);
+}
+#builder-root .bt-tool:focus-visible, #builder-root .bt-head:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 1px; }
+/* a group whose head has variants carries a small corner notch */
+#builder-root .bt-head.has-flyout::after {
+    content: ''; position: absolute; right: 3px; bottom: 3px; width: 0; height: 0;
+    border-left: 4px solid transparent; border-bottom: 4px solid currentColor; opacity: 0.55;
+}
+.bt-flyout {
+    position: absolute; left: 0; top: calc(100% + 4px); z-index: var(--z-popover, 84); min-width: 210px; padding: 4px;
+    display: flex; flex-direction: column; gap: 1px;
+    background: var(--st-surface-2); border: 1px solid var(--st-line-2); border-radius: var(--st-r-3); box-shadow: var(--st-shadow-pop);
+}
+.bt-flyout[hidden] { display: none; }
+#builder-root .bt-flyout .bp-tool {
+    display: flex; align-items: center; gap: 10px; width: 100%; height: 28px; padding: 0 8px; box-sizing: border-box;
+    border: 1px solid transparent; border-radius: var(--st-r-2); background: transparent; color: var(--st-text-2);
+    font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none; text-align: left;
+}
+#builder-root .bt-flyout .bp-tool:hover { background: var(--st-surface-3); color: var(--st-text); }
+#builder-root .bt-flyout .bp-tool.active { background: var(--st-accent-bg); color: var(--st-accent-text); border-color: var(--st-accent-line); }
+#builder-root .bt-flyout .bp-tool .bt-name { flex: 1 1 auto; }
+#builder-root .bt-flyout .bp-tool .st-kbd { margin-left: auto; }
+
+/* brush + armed material */
+#builder-toolbar .bt-brush { display: inline-flex; align-items: center; gap: 8px; padding: 0 4px; }
+#builder-toolbar .bt-brush .st-label { letter-spacing: 0; text-transform: none; font-weight: 500; font-size: 11px; }
+#builder-toolbar #bp-brush { width: 84px; }
+#builder-toolbar #bp-brush-val { min-width: 18px; text-align: right; color: var(--st-text); font: 500 11px/1 var(--st-font); font-variant-numeric: tabular-nums; }
+#builder-root .bt-material {
+    display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 9px 0 6px; box-sizing: border-box;
+    border: 1px solid var(--st-line-2); border-radius: var(--st-r-2); background: var(--st-surface-3); color: var(--st-text);
+    font: 500 11px/1 var(--st-font); cursor: pointer;
+}
+#builder-root .bt-material:hover { background: var(--st-surface-4); }
+#builder-root .bt-material canvas, #builder-root .bt-material .bt-material-dot { width: 16px; height: 16px; image-rendering: pixelated; border-radius: 3px; }
+
+/* option toggles on the right of the viewport toolbar */
+#builder-root .bt-toggle {
+    height: 26px; padding: 0 8px; gap: 6px; display: inline-flex; align-items: center; box-sizing: border-box;
+    border: 1px solid transparent; border-radius: var(--st-r-2); background: transparent; color: var(--st-text-2);
+    font: 500 11px/1 var(--st-font); letter-spacing: 0; text-transform: none; cursor: pointer; white-space: nowrap;
+}
+#builder-root .bt-toggle:hover { background: var(--st-surface-3); color: var(--st-text); border-color: transparent; }
+#builder-root .bt-toggle[data-on='true'], #builder-root .bt-toggle.active { background: var(--st-accent-bg); color: var(--st-accent-text); border-color: var(--st-accent-line); }
+#builder-root .bt-zoom { display: inline-flex; align-items: center; gap: 0; }
+#builder-root .bt-zoom-val { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; color: var(--st-text-2); font: 500 11px/1 var(--st-font); }
+
+/* The stage, not the window, decides: docks eat width, so ask the toolbar's own container. */
+#builder-stage { container: stage / inline-size; }
+@container stage (max-width: 1000px) {
+    #builder-toolbar .bt-brush .st-label { display: none; }
+    #builder-root #builder-toolbar .bt-toggle .bt-label { display: none; }
+    #builder-root #builder-toolbar .bt-toggle[data-on='true'] .bt-label { display: inline; }
+}
+@container stage (max-width: 820px) {
+    #builder-root #builder-toolbar .bt-toggle[data-on='true'] .bt-label { display: none; }
+    #builder-toolbar #bp-brush { width: 56px; }
+    #builder-root #bt-material #bt-material-name { display: none; }
+    #builder-root #bt-material { padding: 0 6px; }
+}
+
+/* ---------------------------------------------------------- status bar */
+
+#builder-statusbar.st-status {
+    position: relative; z-index: 3; pointer-events: auto;
+    display: flex; align-items: center; gap: 12px; height: var(--st-status-h); padding: 0 10px; box-sizing: border-box;
+    background: var(--st-surface-2); border-top: 1px solid var(--st-line);
+    font: 400 11px/1 var(--st-font); color: var(--st-text-3); white-space: nowrap; overflow: hidden;
+}
+#builder-statusbar .sb-left { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; }
+#builder-statusbar .sb-right { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; }
+#builder-statusbar .sb-item { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+#builder-statusbar .sb-item b { color: var(--st-text-2); font-weight: 500; }
+/* Messages are written in capitals across the Builder; show them as sentences. The text content stays as written (probes read it). */
+#builder-statusbar #builder-status { display: inline-block; text-transform: lowercase; }
+#builder-statusbar #builder-status::first-letter { text-transform: uppercase; }
+#builder-statusbar #builder-status {
+    position: static; transform: none; opacity: 0; max-width: 100%; padding: 0; background: none; border: 0; box-shadow: none;
+    color: var(--st-text); font: 500 11px/1 var(--st-font); letter-spacing: 0; text-transform: none;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: opacity 0.18s var(--st-ease);
+}
+#builder-statusbar #builder-status.show { opacity: 1; }
+#builder-statusbar #builder-status.warn { color: var(--st-warn-text); }
+#builder-statusbar #builder-status.warn::before { content: ''; }
+#builder-statusbar .sb-hint { color: var(--st-text-3); overflow: hidden; text-overflow: ellipsis; }
+#builder-statusbar #builder-status.show ~ .sb-hint { display: none; }
+#builder-statusbar .sb-issues { cursor: pointer; border: 0; background: transparent; color: inherit; padding: 2px 4px; border-radius: var(--st-r-1); font: inherit; }
+#builder-statusbar .sb-issues:hover { background: var(--st-surface-3); color: var(--st-text); }
+
+/* ------------------------------------------------------- palette tabs */
+
+#builder-palette.bp-tabbed { padding: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+#builder-palette .bp-tabs { display: flex; gap: 0; padding: 0 6px; background: var(--st-surface-2); border-bottom: 1px solid var(--st-line); flex: 0 0 auto; }
+#builder-palette .bp-tab {
+    position: relative; flex: 1 1 0; height: 32px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    border: 0; border-radius: 0; background: transparent; color: var(--st-text-3); font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none; cursor: pointer;
+}
+#builder-root #builder-palette .bp-tab:hover { color: var(--st-text); background: transparent; }
+#builder-root #builder-palette .bp-tab[aria-selected='true'] { color: var(--st-text); }
+#builder-palette .bp-tab[aria-selected='true']::after { content: ''; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; background: var(--st-accent); border-radius: 2px 2px 0 0; }
+#builder-palette .bp-tab:focus-visible { outline: 2px solid var(--st-focus); outline-offset: -2px; }
+#builder-palette .bp-panes { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 10px; box-sizing: border-box; scrollbar-gutter: stable; }
+#builder-palette .bp-pane[hidden] { display: none; }
+#builder-palette .bp-pane { display: flex; flex-direction: column; gap: 12px; }
+#builder-palette .bp-group-title { display: flex; align-items: center; justify-content: space-between; margin: 0 0 6px; }
+#builder-palette .bp-group-title .st-label { color: var(--st-text-3); }
+
+/* armed material readout */
+#builder-palette .bp-armed {
+    display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--st-line); border-radius: var(--st-r-3); background: var(--st-surface-2);
+}
+#builder-palette .bp-armed canvas, #builder-palette .bp-armed .bp-armed-dot { width: 28px; height: 28px; image-rendering: pixelated; border-radius: var(--st-r-2); flex: none; }
+#builder-palette .bp-armed b { display: block; color: var(--st-text); font: 600 12px/1.2 var(--st-font); }
+#builder-palette .bp-armed span { color: var(--st-text-3); font: 400 11px/1.3 var(--st-font); }
+
+/* object cards */
+#builder-palette .bp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
+#builder-root #builder-palette .bp-card {
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 5px; min-width: 0; height: 66px; padding: 7px 4px 5px; box-sizing: border-box;
+    border: 1px solid var(--st-line); border-radius: var(--st-r-3); background: var(--st-surface-2); color: var(--st-text-2);
+    font: 500 11px/1.15 var(--st-font); letter-spacing: 0; text-transform: none; text-align: center; cursor: pointer;
+    transition: background 0.12s var(--st-ease), border-color 0.12s var(--st-ease);
+}
+#builder-root #builder-palette .bp-card:hover { background: var(--st-surface-3); border-color: var(--st-line-3); color: var(--st-text); }
+#builder-root #builder-palette .bp-card.active { background: var(--st-accent-bg); border-color: var(--st-accent-line); color: var(--st-accent-text); }
+#builder-palette .bp-card canvas { width: 30px; height: 30px; image-rendering: pixelated; border-radius: var(--st-r-1); flex: none; }
+#builder-palette .bp-card span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#builder-palette .bp-adv > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 2px 0; color: var(--st-text-3); }
+#builder-palette .bp-adv > summary::-webkit-details-marker { display: none; }
+#builder-palette .bp-adv > summary .st-icon { transition: transform 0.12s var(--st-ease); }
+#builder-palette .bp-adv[open] > summary .st-icon { transform: rotate(90deg); }
+#builder-palette .bp-adv > .bp-cards { margin-top: 6px; }
+#builder-palette .bp-search { width: 100%; }
+#builder-palette .bp-toggles { display: flex; flex-direction: column; gap: 4px; }
+
+/* materials grid: bigger targets than the old 22px swatches */
+#builder-palette #bp-materials.bp-grid6 { grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 4px; }
+#builder-palette .bp-swatch { height: 34px; padding: 0; border-radius: var(--st-r-2); background: var(--st-surface-2); border: 1px solid var(--st-line); }
+#builder-palette .bp-swatch:hover { background: var(--st-surface-3); border-color: var(--st-line-3); }
+#builder-palette .bp-swatch.active {
+    background: var(--st-accent-bg); border-color: var(--st-accent); outline: 0; box-shadow: 0 0 0 1px var(--st-accent);
+}
+#builder-palette .bp-swatch .bp-swatch-icon { width: 20px !important; height: 20px !important; }
+
+/* ------------------------------------------------ one header, not two */
+
+/* The Builder has its own title bar; the game's studio header would stack a second,
+   unrelated one above it. The standalone editor route has no Sandbox to exit to. */
+body.builder-open > header { display: none; }
+body.builder-open #workbench { height: 100vh; }
+body.builder-open #builder-root { top: 0; }
+body.editor-window #b-exit { display: none; }
+
+#builder-root #builder-bar #b-exit {
+    border-color: var(--st-line-2); background: var(--st-surface-3); color: var(--st-text-2);
+}
+#builder-root #builder-bar #b-exit:hover { background: var(--st-surface-4); border-color: var(--st-line-3); color: var(--st-text); }
+
+/* ------------------------------------------ confirm dialogs in the authoring build */
+
+/* AppDialog is shared with the game, whose house style is amber-on-ink. In the authoring build (Sandbox + Builder) it should
+   read as part of the editor; the player build keeps the house style. */
+body:not(.player-build) .app-dialog-root { background: var(--st-scrim); backdrop-filter: blur(2px); font-family: var(--st-font); }
+body:not(.player-build) .app-dialog-panel {
+    width: min(480px, calc(100vw - 44px)); padding: 18px 18px 14px; gap: 10px;
+    background: var(--st-surface-2); border: 1px solid var(--st-line-2); border-radius: var(--st-r-3); box-shadow: var(--st-shadow-pop);
+}
+body:not(.player-build) .app-dialog-panel.danger { border-color: var(--st-line-2); }
+body:not(.player-build) .app-dialog-title { color: var(--st-text); font: 600 14px/1.3 var(--st-font); letter-spacing: 0; text-transform: none; }
+body:not(.player-build) .app-dialog-message { color: var(--st-text-2); font: 400 13px/1.55 var(--st-font); }
+body:not(.player-build) .app-dialog-input { background: var(--st-well); border-color: var(--st-line-2); color: var(--st-text); font-family: var(--st-font); }
+body:not(.player-build) .app-dialog-input:focus { border-color: var(--st-accent-line); box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-accent) 24%, transparent); }
+body:not(.player-build) .app-dialog-actions { gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+body:not(.player-build) .app-dialog-btn {
+    min-width: 0; height: 30px; min-height: 0; padding: 0 14px; border-radius: var(--st-r-2);
+    font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none;
+}
+body:not(.player-build) .app-dialog-btn.secondary { background: var(--st-surface-3); border: 1px solid var(--st-line-2); color: var(--st-text-2); }
+body:not(.player-build) .app-dialog-btn.secondary:hover { background: var(--st-surface-4); color: var(--st-text); filter: none; }
+body:not(.player-build) .app-dialog-btn.secondary.danger { color: var(--st-danger-text); border-color: var(--st-danger-line); background: var(--st-danger-bg); }
+body:not(.player-build) .app-dialog-btn.primary { background: var(--st-accent); border: 1px solid var(--st-accent); color: var(--st-accent-fg); font-weight: 600; }
+body:not(.player-build) .app-dialog-btn.primary:hover { background: var(--st-accent-hi); border-color: var(--st-accent-hi); filter: none; }
+body:not(.player-build) .app-dialog-btn.primary.danger { background: var(--st-danger); border-color: var(--st-danger); color: #fff; }
+body:not(.player-build) .app-dialog-btn:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 1px; }
+
+/* --------------------------------------------- property grid (Inspector & co.) */
+
+/* Panels dock edge-to-edge: a header strip, then sections separated by hairlines. */
+#builder-root .builder-panel > .bi-head[data-panel-handle],
+#builder-root .builder-panel > .builder-panel-title {
+    min-height: 32px; padding: 0 10px; box-sizing: border-box;
+    background: var(--st-surface-2); border-bottom: 1px solid var(--st-line);
+    font: 600 11px/1 var(--st-font); letter-spacing: 0.04em; color: var(--st-text-2); text-transform: uppercase;
+}
+#builder-root .bi-panel-body { display: flex; flex-direction: column; gap: 0; padding: 0; }
+#builder-root .bi-section { display: block; border-top: 0; padding: 0; border-bottom: 1px solid var(--st-line); }
+#builder-root .bi-section:last-child { border-bottom: 0; }
+#builder-root .bi-section > .editor-section-head {
+    height: 28px; margin: 0; padding: 0 10px; gap: 6px; box-sizing: border-box;
+    background: var(--st-surface-1); color: var(--st-text-2);
+    font: 600 11px/1 var(--st-font); letter-spacing: 0.04em; text-transform: uppercase;
+}
+#builder-root .bi-section > .editor-section-head:hover { background: var(--st-surface-2); color: var(--st-text); outline: none; }
+#builder-root .bi-section > .editor-section-head:focus-visible { outline: 2px solid var(--st-focus); outline-offset: -2px; }
+#builder-root .bi-section-body { display: flex; flex-direction: column; gap: 6px; padding: 4px 10px 12px; }
+#builder-root .bi-id { padding: 0 0 2px; color: var(--st-text-4); font: 400 10px/1.3 var(--st-mono); }
+#builder-root .bi-empty { padding: 12px 10px; color: var(--st-text-3); font: 400 12px/1.6 var(--st-font); }
+
+/* label left, control right, one 26px rhythm */
+#builder-root .bi-row {
+    display: grid; grid-template-columns: minmax(64px, 42%) minmax(0, 1fr); align-items: center; gap: 8px;
+    min-height: 26px; font: 400 12px/1.3 var(--st-font);
+}
+#builder-root .bi-row > span:first-child { color: var(--st-text-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#builder-root .bi-row > b { justify-self: end; color: var(--st-text); font: 500 12px/1.3 var(--st-font); text-align: right; }
+#builder-root .bi-row > b.bi-warn { color: var(--st-warn-text); }
+#builder-root .bi-row input[type='number'],
+#builder-root .bi-row input[type='text'],
+#builder-root .bi-row select {
+    width: 100%; height: 26px; padding: 0 8px; box-sizing: border-box; min-width: 0;
+    border: 1px solid var(--st-line-2); border-radius: var(--st-r-2); background: var(--st-well); color: var(--st-text);
+    font: 400 12px/1 var(--st-font); font-variant-numeric: tabular-nums;
+}
+#builder-root .bi-row input:hover, #builder-root .bi-row select:hover { border-color: var(--st-line-3); }
+#builder-root .bi-row input:focus, #builder-root .bi-row select:focus { outline: none; border-color: var(--st-accent-line); box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-accent) 22%, transparent); }
+#builder-root .bi-row input[type='checkbox'] { justify-self: start; width: 16px; height: 16px; accent-color: var(--st-accent); }
+#builder-root .bi-row .editor-field-vec2 { width: 100%; }
+#builder-root .bi-row input[type='range'] { width: 100%; accent-color: var(--st-accent); }
+#builder-root .bi-row.editor-field-checkbox { grid-template-columns: minmax(64px, 42%) auto; }
+
+/* buttons inside panels: one secondary look, sentence case */
+#builder-root .bi-panel-body button:not(.editor-section-head):not(.b-close),
+#builder-root .bi-action-row button {
+    height: 26px; padding: 0 10px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-2);
+    background: var(--st-surface-3); color: var(--st-text-2);
+    font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none;
+}
+#builder-root .bi-panel-body button:not(.editor-section-head):not(.b-close):hover { background: var(--st-surface-4); color: var(--st-text); border-color: var(--st-line-3); }
+#builder-root #bi-delete { background: var(--st-danger-bg); border-color: var(--st-danger-line); color: var(--st-danger-text); }
+#builder-root #bi-delete:hover { background: #3a1a1d; border-color: var(--st-danger); color: #ffc2c2; }
+
+/* the dock chevrons: a drawn arrow instead of a glyph */
+#builder-root .bp-chevron { width: 10px; flex: 0 0 10px; font-size: 10px; color: var(--st-text-3); }
+
+#builder-root .bi-section > .editor-section-head { border: 0; border-radius: 0; box-shadow: none; }
+#builder-root .bi-row.editor-field-vec2 { width: 100%; grid-template-columns: minmax(64px, 42%) minmax(0, 1fr); }
+#builder-root .bi-row.editor-field-vec2 > span.editor-field-vec2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; }
+
+/* Buttons written in capitals in the markup read as sentences; the text content is unchanged. */
+#builder-root .bi-panel-body button:not(.editor-section-head):not(.b-close),
+#builder-root .bi-action-row button { text-transform: lowercase; }
+#builder-root .bi-panel-body button:not(.editor-section-head):not(.b-close)::first-letter,
+#builder-root .bi-action-row button::first-letter { text-transform: uppercase; }
+
+/* A validation result that an edit has outdated stays visible but quiet. */
+.b-validate[data-stale='true'] .b-validate-n, .b-validate[data-stale='true'] .st-icon { opacity: 0.55; }
+#builder-statusbar .sb-issues[data-state='error'] { color: var(--st-danger-text); }
+#builder-statusbar .sb-issues[data-state='warn'] { color: var(--st-warn-text); }
+#builder-statusbar .sb-issues[data-state='ok'] .st-icon { color: var(--st-ok-text); }
+
+/* Rows that are not schema fields (procedural pass, world generation) keep a flexible row; only
+   inspector fields use the two-column grid. */
+#builder-root .bi-row:not(.editor-field) {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; grid-template-columns: none;
+}
+#builder-root .bi-row:not(.editor-field) > span:first-child { flex: 0 0 auto; }
+#builder-root .bi-row:not(.editor-field) input[type='number'],
+#builder-root .bi-row:not(.editor-field) input[type='text'],
+#builder-root .bi-row:not(.editor-field) select { width: auto; flex: 1 1 auto; max-width: 160px; }
+#builder-root .bi-row:not(.editor-field) input[type='range'] { flex: 1 1 auto; min-width: 0; width: auto; }
+#builder-root #bp-controls { padding: 10px; gap: 8px; }
+#builder-root #bp-controls .bp-actions { display: flex; gap: 6px; }
+#builder-root #bp-controls .bp-actions button { flex: 1 1 0; }
+#builder-root #bp-dice { width: 26px; padding: 0; flex: 0 0 26px; font-size: 14px; }
+
+/* Layers popover (toolbar) */
+.bt-layers-pop { left: auto; right: 0; min-width: 220px; padding: 6px; gap: 2px; }
+#builder-root .bt-layers-pop .bp-layer { display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 4px 0 8px; border-radius: var(--st-r-2); color: var(--st-text-2); font: 500 12px/1 var(--st-font); }
+#builder-root .bt-layers-pop .bp-layer:hover { background: var(--st-surface-3); }
+#builder-root .bt-layers-pop .bp-layer span { flex: 1 1 auto; letter-spacing: 0; text-transform: none; }
+#builder-root .bt-layers-pop .bp-layer button { width: 24px; height: 24px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; color: var(--st-text-2); }
+#builder-root .bt-layers-pop .bp-layer button:hover { background: var(--st-surface-4); color: var(--st-text); }
+#builder-root .bt-layers-pop .bp-layer.off { color: var(--st-text-4); }
+#builder-root .bt-layers-pop .bp-layer.off span { text-decoration: line-through; }
+#builder-root .bt-layers-pop .bp-layer.off [data-vis] { opacity: 0.4; }
+#builder-root .bt-layers-pop .bp-layer.locked [data-lock] { color: var(--st-accent-text); background: var(--st-accent-bg); border-color: var(--st-accent-line); }
+
+/* ------------------------------------------------ narrow windows (tablet / phone) */
+
+/* The bar and toolbar may wrap instead of forcing the whole workspace wider than the window. */
+#builder-workspace { grid-template-rows: auto minmax(0, 1fr) var(--st-status-h); min-width: 0; }
+#builder-workspace > * { min-width: 0; }
+#builder-bar.st-bar { height: auto; min-height: var(--st-bar-h); flex-wrap: wrap; row-gap: 2px; padding-top: 4px; padding-bottom: 4px; box-sizing: border-box; }
+@media (max-width: 900px) {
+    #builder-bar .b-title > span,
+    #builder-bar .b-field,
+    #builder-bar .b-bar-mid { display: none; }
+    #builder-bar .b-right { margin-left: auto; }
+    #builder-root #builder-bar #b-doc-name { width: 120px; }
+}
+@container stage (max-width: 700px) {
+    #builder-toolbar.st-toolbar { flex-wrap: wrap; height: auto; padding: 4px 8px; row-gap: 2px; }
+    #builder-toolbar .bt-spacer { display: none; }
+}
+
+/* The Builder's Game link button is the link UI in the editor; the game window keeps the pill. */
+body.builder-open #authorlink-status { display: none; }
+
+/* The game's in-canvas sound control is an in-flow block: over the editor it added a 24px strip below the
+   map (the holder is sized to the map's aspect ratio) and has nothing to do there. */
+body.builder-open #sound-quick { display: none; }
+
+/* --------------------------------------------------------- playtest banner */
+
+/* Floats over the game view while a Builder playtest runs: studio chrome on top of house-styled play. */
+#builder-playtest-banner {
+    top: 12px; gap: 10px; padding: 6px 6px 6px 12px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-3);
+    background: color-mix(in srgb, var(--st-surface-2) 94%, transparent); backdrop-filter: blur(6px);
+    box-shadow: var(--st-shadow-pop); color: var(--st-text); font-family: var(--st-font);
+}
+#builder-playtest-banner .bpt-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#builder-playtest-banner .bpt-title { font: 600 12px/1 var(--st-font); letter-spacing: 0; color: var(--st-text); }
+#builder-playtest-banner .bpt-sub { font: 400 11px/1 var(--st-font); letter-spacing: 0; color: var(--st-text-3); white-space: nowrap; }
+#builder-playtest-banner .st-btn { height: 26px; font: 500 12px/1 var(--st-font); text-transform: none; letter-spacing: 0; }
+#builder-playtest-banner .st-btn:hover { background: var(--st-surface-4); color: var(--st-text); }
+#builder-playtest-banner .st-btn--primary { background: var(--st-accent); border-color: var(--st-accent); color: var(--st-accent-fg); }
+#builder-playtest-banner .st-btn--primary:hover { background: var(--st-accent-hi); border-color: var(--st-accent-hi); color: var(--st-accent-fg); }
+@media (max-width: 760px) { #builder-playtest-banner .bpt-sub { display: none; } }
+
+/* ------------------------------------------------------------------ minimap */
+
+/* A quiet overview in the corner of the map, not a black slab: smaller, translucent, rounded, and optional. */
+#builder-root #builder-minimap {
+    right: 14px; bottom: 14px; width: 176px !important; height: 117px !important;
+    border: 1px solid var(--st-line-2); border-radius: var(--st-r-3); box-shadow: var(--st-shadow-pop);
+    background: color-mix(in srgb, var(--st-well) 82%, transparent); opacity: 0.92;
+    transition: opacity 0.15s var(--st-ease);
+}
+#builder-root #builder-minimap:hover { opacity: 1; }
+#builder-root.b-no-minimap #builder-minimap { display: none; }
+
+/* --------------------------------------------------------- validation issues */
+
+#builder-root .bv-panel-body { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+#builder-root .bv-summary { color: var(--st-text-3); font: 500 11px/1.3 var(--st-font); letter-spacing: 0; text-transform: none; }
+#builder-root .bv-blocker {
+    display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--st-danger-line);
+    border-radius: var(--st-r-3); background: var(--st-danger-bg); color: var(--st-danger-text); font: 400 12px/1.4 var(--st-font);
+}
+#builder-root .bv-blocker strong { font-weight: 600; letter-spacing: 0; }
+#builder-root .bv-filters { display: flex; flex-wrap: wrap; gap: 4px; }
+#builder-root .bv-filters button {
+    height: 22px; padding: 0 8px; border-radius: 11px; text-transform: none; letter-spacing: 0;
+    font: 500 11px/1 var(--st-font); background: var(--st-surface-2); border-color: var(--st-line-2); color: var(--st-text-2);
+}
+#builder-root .bv-filters button span { color: var(--st-text-3); font-variant-numeric: tabular-nums; margin-left: 2px; }
+#builder-root .bv-filters button[aria-pressed='true'] { background: var(--st-accent-bg); border-color: var(--st-accent-line); color: var(--st-accent-text); }
+#builder-root .bv-group { border: 0; padding: 0; }
+#builder-root .bv-group-title { height: 26px; padding: 0 2px; background: transparent; border: 0; font: 600 11px/1 var(--st-font); letter-spacing: 0.04em; text-transform: uppercase; color: var(--st-text-3); }
+#builder-root .bv-group-body { display: flex; flex-direction: column; gap: 6px; padding: 2px 0 6px; }
+
+/* a card is neutral; only its left edge and icon carry the severity */
+#builder-root .bv-issue {
+    display: flex; flex-direction: column; gap: 8px; padding: 9px 10px 9px 12px; position: relative;
+    border: 1px solid var(--st-line); border-radius: var(--st-r-3); background: var(--st-surface-2); box-shadow: none;
+}
+#builder-root .bv-issue::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 2px; background: var(--st-text-4); }
+#builder-root .bv-issue.error::before { background: var(--st-danger); }
+#builder-root .bv-issue.warning::before { background: var(--st-warn); }
+#builder-root .bv-issue.info::before { background: var(--st-accent); }
+#builder-root .bv-issue.playtest-blocker { border-color: var(--st-danger-line); }
+#builder-root .bv-issue:hover { border-color: var(--st-line-3); }
+#builder-root .bv-title { display: flex; gap: 8px; align-items: flex-start; color: var(--st-text); font: 500 12px/1.4 var(--st-font); letter-spacing: 0; text-transform: none; }
+#builder-root .bv-sev { display: inline-flex; flex: none; margin-top: 1px; }
+#builder-root .bv-sev--error { color: var(--st-danger); }
+#builder-root .bv-sev--warning { color: var(--st-warn); }
+#builder-root .bv-sev--info { color: var(--st-accent-text); }
+#builder-root .bv-meta { display: flex; flex-wrap: wrap; gap: 4px; padding-left: 22px; }
+#builder-root .bv-code, #builder-root .bv-loc {
+    padding: 1px 6px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-1); background: var(--st-well);
+    color: var(--st-text-3); font: 400 10px/1.5 var(--st-mono); letter-spacing: 0; text-transform: none;
+}
+#builder-root .bv-actions { display: flex; flex-wrap: wrap; gap: 4px; padding-left: 22px; }
+#builder-root .bv-actions button {
+    height: 24px; padding: 0 9px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-2); background: var(--st-surface-3);
+    color: var(--st-text-2); font: 500 11px/1 var(--st-font); letter-spacing: 0; text-transform: none;
+}
+#builder-root .bv-actions button:hover { background: var(--st-surface-4); color: var(--st-text); border-color: var(--st-line-3); }
+#builder-root .bv-actions .bv-select { background: transparent; }
+#builder-root .bv-action.mutate { border-color: var(--st-accent-line); color: var(--st-accent-text); background: var(--st-accent-bg); }
+#builder-root .bv-action.mutate:hover { background: var(--st-accent-bg-hi); color: var(--st-text); }
+#builder-root .bv-action > span:empty { display: none; }
+#builder-root .bv-empty { padding: 14px 10px; border: 1px dashed var(--st-line-2); border-radius: var(--st-r-3); text-align: center; color: var(--st-text-3); font: 400 12px/1.5 var(--st-font); }
+
+/* --------------------------------------------------------- outliner & lists */
+
+#builder-root .bo-summary, #builder-root .bo-section-title, #builder-root .bo-empty { text-transform: none; }
+#builder-root .bo-summary { font: 500 11px/1.3 var(--st-font); letter-spacing: 0; padding: 8px 10px 4px; }
+#builder-root .bo-section-title { font: 600 11px/1 var(--st-font); letter-spacing: 0.04em; text-transform: uppercase; }
+#builder-root .bo-search { padding: 4px 10px 6px; }
+#builder-root .bo-search input { height: 26px; padding: 0 8px; border-radius: var(--st-r-2); border-color: var(--st-line-2); font: 400 12px/1 var(--st-font); }
+#builder-root .bo-chips { gap: 4px; padding: 2px 10px 8px; }
+#builder-root .bo-chip { height: 22px; padding: 0 8px; border-radius: 11px; text-transform: none; letter-spacing: 0; font: 500 11px/1 var(--st-font); background: var(--st-surface-2); border-color: var(--st-line-2); color: var(--st-text-2); }
+#builder-root .bo-chip.active, #builder-root .bo-chip[aria-pressed='true'] { background: var(--st-accent-bg); border-color: var(--st-accent-line); color: var(--st-accent-text); }
+#builder-root .bo-section { padding: 8px 10px; }
+#builder-root .bo-layer span { text-transform: none; font-weight: 500; font-size: 12px; }
+#builder-root .bo-row, #builder-root .blg-link, #builder-root .blg-actuator { padding: 7px 8px; border-radius: var(--st-r-3); }
+#builder-root .bo-row-title { font: 600 12px/1.3 var(--st-font); }
+#builder-root .bo-row-sub, #builder-root .blg-msg { font: 400 11px/1.4 var(--st-font); }
+#builder-root .bo-row-issue { font: 400 11px/1.4 var(--st-font); }
+#builder-root .bo-badge, #builder-root .ba-pill { text-transform: none; letter-spacing: 0; font: 500 10px/1.5 var(--st-font); padding: 0 6px; border-radius: 9px; }
+#builder-root .bo-row-actions button, #builder-root .bo-layer button {
+    height: 22px; padding: 0 8px; border-radius: var(--st-r-2); text-transform: none; letter-spacing: 0; font: 500 11px/1 var(--st-font);
+    background: var(--st-surface-3); border: 1px solid var(--st-line-2); color: var(--st-text-2);
+}
+#builder-root .bo-row-actions button:hover, #builder-root .bo-layer button:hover { background: var(--st-surface-4); color: var(--st-text); }
+
+/* ------------------------------------------------------------------- help */
+
+.builder-help-card { width: min(640px, calc(100% - 24px)); background: var(--st-surface-2); border-radius: var(--st-r-3); box-shadow: var(--st-shadow-pop); }
+.builder-help-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.builder-help-grid > div { background: var(--st-surface-1); border-radius: var(--st-r-3); }
+.builder-help-card p { font-size: 12px; line-height: 1.55; }
+.builder-help-card p b { color: var(--st-text); font-weight: 600; }
+.builder-help-section { font-size: 11px; color: var(--st-accent-text); text-transform: uppercase; }
+.builder-help-title { font-size: 15px; }
+@media (max-width: 700px) { .builder-help-grid { grid-template-columns: 1fr; } }
+
+/* --------------------------------------------------------------- library tab */
+
+#builder-root #bp-prefab-host { display: flex; flex-direction: column; gap: 8px; }
+#builder-root #bp-prefab-capture {
+    height: 28px; background: var(--st-accent); border: 1px solid var(--st-accent); color: var(--st-accent-fg);
+    font: 600 12px/1 var(--st-font); letter-spacing: 0; text-transform: none;
+}
+#builder-root #bp-prefab-capture:hover:not(:disabled) { background: var(--st-accent-hi); border-color: var(--st-accent-hi); color: var(--st-accent-fg); }
+#builder-palette .bp-pane[data-pane='library'] .bp-grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+#builder-root #bp-prefab-import, #builder-root #bp-prefab-png, #builder-root #bp-prefab-gpl,
+#builder-root #bp-prefab-host .bp-grid button, #builder-root #bp-sprite-host > button {
+    height: 26px; padding: 0 8px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-2); background: var(--st-surface-3);
+    color: var(--st-text-2); font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none;
+}
+#builder-root #bp-prefab-import:hover, #builder-root #bp-prefab-png:hover, #builder-root #bp-prefab-gpl:hover,
+#builder-root #bp-sprite-host > button:hover { background: var(--st-surface-4); color: var(--st-text); border-color: var(--st-line-3); }
+#builder-root #bp-prefab-search, #builder-root #bp-sprite-host input[type='search'] {
+    height: 26px; padding: 0 8px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-2); background: var(--st-well);
+    color: var(--st-text); font: 400 12px/1 var(--st-font);
+}
+#builder-root #bp-prefab-search:focus, #builder-root #bp-sprite-host input[type='search']:focus { outline: none; border-color: var(--st-accent-line); box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-accent) 22%, transparent); }
+#builder-palette .bp-hint { padding: 0; color: var(--st-text-3); font: 400 12px/1.5 var(--st-font); text-transform: none; }
+#builder-root .bp-prefab-tag { height: 20px; border-radius: 10px; text-transform: none; letter-spacing: 0; font: 500 11px/1 var(--st-font); }
+#builder-root #bp-assets-btn { height: 28px; justify-content: center; gap: 6px; background: var(--st-surface-3); border: 1px solid var(--st-line-2); color: var(--st-text-2); font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none; border-radius: var(--st-r-2); }
+#builder-root #bp-assets-btn:hover { background: var(--st-surface-4); color: var(--st-text); }
+
+/* playtest banner: the legacy amber button rule has more weight than .st-btn */
+#builder-playtest-banner .st-btn { background: var(--st-surface-3); border: 1px solid var(--st-line-2); color: var(--st-text-2); }
+#builder-playtest-banner .st-btn--primary { background: var(--st-accent); border-color: var(--st-accent); color: var(--st-accent-fg); }
+
+/* ---------------------------------------------------------------- context bar */
+
+/* Floats at the foot of the map while a region (or a lifted block) is selected; the top edge belongs to the tool flyouts. */
+#builder-contextbar.st-contextbar {
+    position: absolute; z-index: 5; bottom: 18px; left: 50%; transform: translateX(-50%); pointer-events: auto;
+    display: flex; align-items: center; gap: 4px; padding: 4px; max-width: calc(100% - 24px);
+    background: color-mix(in srgb, var(--st-surface-2) 96%, transparent); border: 1px solid var(--st-line-2);
+    border-radius: var(--st-r-3); box-shadow: var(--st-shadow-pop); font-family: var(--st-font);
+}
+#builder-contextbar[hidden] { display: none; }
+#builder-contextbar .cb-label { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; color: var(--st-text-2); font: 400 12px/1 var(--st-font); white-space: nowrap; }
+#builder-contextbar .cb-label b { color: var(--st-text); font-weight: 600; font-variant-numeric: tabular-nums; }
+#builder-contextbar .cb-label .st-icon { color: var(--st-accent-text); }
+#builder-root #builder-contextbar .cb-btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--st-r-2);
+    background: transparent; color: var(--st-text-2); font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none; white-space: nowrap; cursor: pointer;
+}
+#builder-root #builder-contextbar .cb-btn:hover { background: var(--st-surface-4); color: var(--st-text); }
+#builder-root #builder-contextbar .cb-btn.cb-primary { background: var(--st-accent); border-color: var(--st-accent); color: var(--st-accent-fg); }
+#builder-root #builder-contextbar .cb-btn.cb-primary:hover { background: var(--st-accent-hi); border-color: var(--st-accent-hi); }
+#builder-contextbar .st-kbd { background: color-mix(in srgb, var(--st-well) 70%, transparent); }
+#builder-root #builder-contextbar .cb-primary .st-kbd { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.28); color: var(--st-accent-fg); }
+
+/* ------------------------------------------------------------ material filter */
+
+#builder-palette .bp-group-title { display: flex; align-items: baseline; justify-content: space-between; }
+#builder-palette .bp-count { color: var(--st-text-4); font: 500 11px/1 var(--st-font); font-variant-numeric: tabular-nums; }
+#builder-palette #bp-mat-search {
+    width: 100%; box-sizing: border-box; height: 26px; margin: 4px 0 8px; padding: 0 8px; border: 1px solid var(--st-line-2);
+    border-radius: var(--st-r-2); background: var(--st-well); color: var(--st-text); font: 400 12px/1 var(--st-font);
+}
+#builder-palette #bp-mat-search:focus { outline: none; border-color: var(--st-accent-line); box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-accent) 22%, transparent); }
+#builder-palette .bp-swatch[hidden] { display: none; }
+
+/* the run's title cards belong to the game; the editor map is not a level you are playing */
+body.builder-open #wave-banner, body.builder-open #narration-caption { display: none; }

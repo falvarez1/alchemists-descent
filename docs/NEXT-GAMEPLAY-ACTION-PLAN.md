@@ -1,5 +1,7 @@
 # Next Gameplay Action Plan
 
+> **Update 2026-09:** `src/builder/virtualWorldPanel.ts` and the Builder World Map were removed; read the World Map items below as historical.
+
 Status: largely implemented by later waves (2026-07-11 audit). Workstream 1
 (D1 first-10-minutes) shipped via the surface intro + IntroProgression +
 Spell Lab; Workstream 2 (Grimoire) shipped as GrimoireStore/Interactions +

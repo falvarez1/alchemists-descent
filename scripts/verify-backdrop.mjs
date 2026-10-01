@@ -1,7 +1,7 @@
 // Backdrop editor/runtime gate.
 // Usage: node scripts/verify-backdrop.mjs [url]   (dev server must be running)
 import { chromium } from 'playwright-core';
-import { getGameViewSize, worldToBuilderClient, leaveTitleIfShown } from './run-helpers.mjs';
+import { getGameViewSize, worldToBuilderClient, leaveTitleIfShown, clickBuilderKind, clickBuilderControl, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -29,10 +29,10 @@ await page.waitForFunction(() => window.__game?.ctx?.console, { timeout: 20000 }
 await page.waitForTimeout(1200);
 const viewSize = await getGameViewSize(page);
 
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForFunction(() => document.body.classList.contains('builder-open'), { timeout: 6000 });
 await page.click('[data-menu="view"]');
-await page.click('#b-backdrop');
+await clickBuilderControl(page, '#b-backdrop');
 await page.waitForFunction(() => getComputedStyle(document.getElementById('builder-backdrop')).display !== 'none');
 
 const opened = await page.evaluate(() => ({
@@ -145,8 +145,8 @@ await page.evaluate(() => {
   ctx.camera.snapTo(620, 560);
 });
 await page.click('[data-menu="edit"]');
-await page.click('#b-capture');
-await page.click('.bp-tool[data-kind="spawn"]');
+await clickBuilderControl(page, '#b-capture');
+await clickBuilderKind(page, 'spawn');
 const spawnPoint = await worldToBuilderClient(page, 620, 616, { viewSize });
 await page.mouse.click(spawnPoint.x, spawnPoint.y);
 await page.waitForTimeout(120);

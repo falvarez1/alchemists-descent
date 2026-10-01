@@ -34,7 +34,6 @@ type ConsoleTarget =
   | 'sandbox'
   | 'expedition'
   | 'builder-document'
-  | 'builder-live-preview'
   | 'builder-playtest';
 
 type TargetedArgs =
@@ -45,7 +44,6 @@ const TARGETS: ConsoleTarget[] = [
   'sandbox',
   'expedition',
   'builder-document',
-  'builder-live-preview',
   'builder-playtest',
 ];
 
@@ -179,17 +177,6 @@ function resolveTargetForMode(ctx: Ctx, args: string[], command: string, mode: '
             command,
             target,
           }),
-    };
-  }
-  if (target === 'builder-live-preview') {
-    // Same code/data, but the verb tracks the mode ("target" vs "inspect").
-    return {
-      ok: false,
-      result: result(false, `${command} cannot ${mode === 'write' ? 'target' : 'inspect'} builder-live-preview yet; the workspace live preview runtime does not exist.`, {
-        code: 'target-unavailable',
-        command,
-        target,
-      }),
     };
   }
   if (target === 'sandbox') {

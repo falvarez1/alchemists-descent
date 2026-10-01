@@ -8,7 +8,7 @@
 // Usage: node scripts/verify-sprites.mjs [url]   (dev server running)
 import { chromium } from 'playwright-core';
 import { deflateSync } from 'node:zlib';
-import { getGameViewSize, worldToBuilderClient, leaveTitleIfShown } from './run-helpers.mjs';
+import { getGameViewSize, worldToBuilderClient, leaveTitleIfShown, clickBuilderTool, clickBuilderKind, clickBuilderControl, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -98,7 +98,7 @@ await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2200);
 
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(300);
 await page.evaluate(() => {
   for (const key of Object.keys(localStorage)) {
@@ -137,7 +137,7 @@ const toClient = async (wx, wy) =>
 /* ---------- import through the real file chooser ---------- */
 console.log('-- import (Aseprite JSON + sheet PNG paired by basename)');
 const chooser = page.waitForEvent('filechooser', { timeout: 10000 });
-await page.click('#bp-sprite-import');
+await clickBuilderControl(page, '#bp-sprite-import');
 await (await chooser).setFiles([
   { name: 'probe.sprite.json', mimeType: 'application/json', buffer: Buffer.from(aseJson) },
   { name: 'probe.sheet.png', mimeType: 'image/png', buffer: sheetPng },
@@ -177,7 +177,7 @@ const decorParams = await page.evaluate(() => {
 check('decor marker reads "sprite decor (visual only)"', decorParams.marker === 'sprite decor (visual only)', JSON.stringify(decorParams));
 
 // select the decor; the inspector must show the sprite rows + preview canvas
-await page.click('.bp-tool[data-tool="select"]');
+await clickBuilderTool(page, 'select');
 pt = await toClient(DECOR.x, DECOR.y);
 await page.mouse.click(pt.x, pt.y);
 await page.waitForTimeout(150);
@@ -201,7 +201,7 @@ await page.waitForTimeout(100);
 await page.keyboard.press('Escape');
 
 // player spawn on the arena floor
-await page.click('.bp-tool[data-kind="spawn"]');
+await clickBuilderKind(page, 'spawn');
 pt = await toClient(500, 610);
 await page.mouse.click(pt.x, pt.y);
 await page.waitForTimeout(100);
@@ -266,7 +266,7 @@ check('decor pixels CHANGE over time (red frames AND blue frames seen)', redFram
 
 /* ---------- export round-trip: both downloads fire ---------- */
 console.log('-- export (name.sheet.png + name.sprite.json)');
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(600);
 const dl1p = page.waitForEvent('download', { timeout: 10000 });
 await page.click('#bp-sprite-host .ba-placement-row[data-asset-id^="sprite:"] [data-asset-placement-details]');

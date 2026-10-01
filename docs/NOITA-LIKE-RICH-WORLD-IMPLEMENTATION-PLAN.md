@@ -1,5 +1,7 @@
 # Noita-Like Rich World Implementation Plan
 
+> **Update 2026-09:** The Builder World Map panel (`src/builder/virtualWorldPanel.ts`) was removed; the virtual chunked world generator (`src/world/virtual/*`) remains. Builder-facing items below are historical.
+
 Last updated: 2026-06-16
 
 ## Objective

@@ -1,5 +1,7 @@
 # Noita-Like Virtual Worldgen Prototype Plan
 
+> **Update 2026-09:** The Builder World Map panel this plan proposed shipped and was later removed; the virtual worldgen runtime (`src/world/virtual/*`) remains.
+
 Date: 2026-06-14
 
 This plan scopes a prototype for replacing the current fixed-size, per-depth
