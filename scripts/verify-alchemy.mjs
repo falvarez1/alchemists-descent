@@ -243,11 +243,11 @@ try {
     await evalGame(() => { const ctx = window.__game.ctx; ctx.flask.setSlot(0, 2, 60); ctx.flask.setSlot(1, 33, 60); ctx.flask.setSlot(2, 6, 60); ctx.flask.setSlot(3, null, 0); window.__alch.brewed.length = 0; });
     await clearBowl(c);
     await page.waitForTimeout(400);
-    // (a) Glowing Draught's amounts (oil 7, glowshroom 4) spoiled by three cells of water: the brew clouds
-    await evalGame(() => { const ctx = window.__game.ctx; ctx.flask.setSlot(2, 6, 60); ctx.flask.setSlot(3, 33, 60); });
-    await pourInto(2, 6, 7, c);
-    await pourInto(3, 33, 4, c);
-    await pourInto(0, 2, 3, c);
+    // (a) Hush Draught's amounts (snow 6, coal 5) spoiled by three cells of sand: the brew clouds (all dry things: no pour order to get wrong)
+    await evalGame(() => { const ctx = window.__game.ctx; ctx.flask.setSlot(0, 27, 60); ctx.flask.setSlot(1, 28, 60); ctx.flask.setSlot(2, 1, 60); });
+    await pourInto(0, 27, 6, c);
+    await pourInto(1, 28, 5, c);
+    await pourInto(2, 1, 3, c);
     await waitFor(() => window.__alch.attempts.some((a) => a.verdict === 'muddy'), null, 25000);
     report.experiment.muddy = await panelText();
     assert.ok(/cloud|does not belong/i.test(report.experiment.muddy), `the panel says the brew clouds (${report.experiment.muddy})`);
@@ -255,9 +255,10 @@ try {
     await clearBowl(c);
     await page.waitForTimeout(500);
     // (b) water and a little glowshroom: a near-miss of something undiscovered (judged once the bowl has stood a moment)
+    await evalGame(() => { const ctx = window.__game.ctx; ctx.flask.setSlot(0, 2, 60); ctx.flask.setSlot(1, 33, 60); });
     const mark = (await alch()).attempts.length;
     const w8 = await pourInto(0, 2, 8, c);
-    const b3 = await pourInto(1, 33, 3, c);
+    const b3 = await pourInto(1, 33, 2, c); // (a hold overshoots by a cell or two: Life wants five, so two is safely short)
     report.experiment.poured = { water: w8.n, glowshroom: b3.n };
     await waitFor((from) => window.__alch.attempts.slice(from).some((a) => a.verdict === 'close' && a.closeTo === 'life'), mark, 25000);
     const near = (await alch()).attempts.slice(mark).find((a) => a.verdict === 'close' && a.closeTo === 'life');

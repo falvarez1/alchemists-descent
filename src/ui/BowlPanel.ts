@@ -64,7 +64,10 @@ export class BowlPanel {
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
     el.hidden = true;
-    (document.getElementById('canvas-holder') ?? document.body).appendChild(el);
+    const holder = document.getElementById('canvas-holder') ?? document.body;
+    const hud = document.getElementById('game-hud');
+    if (hud && hud.parentElement === holder) holder.insertBefore(el, hud);
+    else holder.appendChild(el);
     this.el = el;
     return el;
   }

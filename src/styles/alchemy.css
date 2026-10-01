@@ -5,10 +5,12 @@
  * ===================================================================== */
 
 /* ---------- The bowl panel: a card that hangs over the basin ---------- */
+/* a banner (A FIRST BREW, a floor title) has the middle of the screen: the card steps aside for the few seconds it shows */
+#canvas-holder:has(#wave-banner.show) #bowl-panel { opacity: 0; }
 #bowl-panel {
   --bp-scale: calc(var(--text-scale, 1) * 1);
   position: absolute;
-  z-index: 6;
+  z-index: 0; /* in the DOM before #game-hud: the HUD (a first-brew banner, a toast) paints over it, never the other way */
   transform: translate(-50%, -100%);
   width: calc(184px * var(--bp-scale));
   box-sizing: border-box;

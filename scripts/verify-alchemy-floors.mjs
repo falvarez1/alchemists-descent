@@ -100,6 +100,7 @@ try {
     await evalGame((c) => {
       const ctx = window.__game.ctx;
       ctx.enemies.length = 0; ctx.state.arrivalGraceUntil = 0;
+      ctx.player.invuln = 60 * 60 * 10; // a floor has things lurking near its route (a snapjaw closed on the probe at d2's cauldron): this probe is about the bowl
       ctx.player.x = c.x - 14; ctx.player.y = c.y - 1; ctx.player.vx = 0; ctx.player.vy = 0;
       window.__ev = [];
       ctx.events.on('recipeBrewed', (e) => window.__ev.push({ id: e.id }));
@@ -142,6 +143,7 @@ try {
   assert.deepEqual(report.errors, [], 'no page errors');
 } catch (err) {
   report.failure = String(err?.stack ?? err);
+  try { report.finalView = await view(); report.finalPlayer = await evalGame(() => { const g = window.__game.ctx; return { x: g.player.x, y: g.player.y, hp: g.player.hp, dead: g.player.dead, paused: g.state.paused, mode: g.state.mode, frame: g.state.frameCount }; }); } catch { /* the page may be gone */ }
   await shot('FAILED').catch(() => undefined);
   throw err;
 } finally {
