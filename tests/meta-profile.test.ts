@@ -324,3 +324,71 @@ describe('the difficulty ladder in the profile', () => {
     expect(new MetaProfileStore(storage).profile.lastDifficulty).toBe(3);
   });
 });
+
+describe('complications in the profile (docs/DIFFICULTY.md "Complications")', () => {
+  const win = (mutators: string[] | undefined, extra: Partial<RunSummary> = {}): RunSummary =>
+    summary({ outcome: 'victory', floor: 4, difficulty: 2, timeMs: 700_000, ...(mutators ? { mutators } : {}), ...extra });
+
+  it('remembers the last choice, cleaned, and reads a profile from before them as none', () => {
+    expect(defaultMetaProfile().lastMutators).toEqual([]);
+    expect(migrateMetaProfile({ version: 1, victories: 3 }).profile.lastMutators).toEqual([]);
+    const parse = (raw: unknown) => migrateMetaProfile({ version: 1, lastMutators: raw }).profile.lastMutators;
+    expect(parse(['low-gravity', 'bogus', 'wet-floors', 'wet-floors'])).toEqual(['wet-floors', 'low-gravity']);
+    expect(parse('wet-floors')).toEqual([]);
+    expect(parse(['wet-floors', 'tinderbox', 'gas-leak', 'hush'])).toHaveLength(3);
+    const storage = memoryStorage();
+    const store = new MetaProfileStore(storage);
+    store.setLastMutators(['hush', 'wet-floors']);
+    expect(new MetaProfileStore(storage).profile.lastMutators).toEqual(['wet-floors', 'hush']);
+    store.setLastMutators([]);
+    expect(new MetaProfileStore(storage).profile.lastMutators).toEqual([]);
+  });
+
+  it('credits a victory under complications like any real run: the win, the kit, the floor, the run count', () => {
+    const end = recordRunEnded(defaultMetaProfile(), win(['low-gravity']));
+    expect(end.profile.victories).toBe(1);
+    expect(end.profile.runsEnded).toBe(1);
+    expect(end.profile.bestFloor).toBe(4);
+    expect(end.unlocked).toContain('storm');
+  });
+
+  it('lets a harder complication open the next tier as any win would, and never an easier one', () => {
+    const hard = recordRunEnded(defaultMetaProfile(), win(['tinderbox', 'glass-cannon']));
+    expect(hard.profile.bestVictoryDifficulty).toBe(2);
+    expect(hard.unlockedDifficulty).toBe(3);
+    // An easy mutator on Adept must not open Conjurer, alone or beside a hard one.
+    for (const set of [['low-gravity'], ['hush'], ['tinderbox', 'hush']]) {
+      const easy = recordRunEnded(defaultMetaProfile(), win(set));
+      expect(easy.profile.bestVictoryDifficulty).toBe(0);
+      expect(easy.unlockedDifficulty).toBeNull();
+      expect(easy.profile.victories).toBe(1);
+    }
+    // ...and it does not lower what an earlier honest win opened.
+    const earlier = recordRunEnded(defaultMetaProfile(), win(undefined, { difficulty: 3 })).profile;
+    expect(recordRunEnded(earlier, win(['hush'], { difficulty: 1 })).profile.bestVictoryDifficulty).toBe(3);
+  });
+
+  it('keeps the fastest victory for the Works as issued: a mutated win never sets it, an ordinary one still does', () => {
+    const first = recordRunEnded(defaultMetaProfile(), win(['crowded-house'], { timeMs: 300_000 }));
+    expect(first.profile.fastestVictoryMs).toBeNull();
+    const plain = recordRunEnded(first.profile, win(undefined, { timeMs: 900_000 }));
+    expect(plain.profile.fastestVictoryMs).toBe(900_000);
+    const faster = recordRunEnded(plain.profile, win(['wet-floors'], { timeMs: 100_000 }));
+    expect(faster.profile.fastestVictoryMs).toBe(900_000);
+    expect(recordRunEnded(plain.profile, win(undefined, { timeMs: 800_000 })).profile.fastestVictoryMs).toBe(800_000);
+  });
+
+  it('leaves the daily bests as they were: per date, the date fixes the complications', () => {
+    const d = summary({ outcome: 'victory', floor: 4, daily: '2026-10-03', difficulty: 2, mutators: ['low-gravity', 'crowded-house'], timeMs: 500_000 });
+    const end = recordRunEnded(defaultMetaProfile(), d);
+    expect(end.newDailyBest).toBe(true);
+    expect(end.profile.dailyBests['2026-10-03']).toEqual({ floor: 4, timeMs: 500_000, victory: true });
+    // The same date, faster, still improves it (nothing about a mutator changes how a date's best is read).
+    const again = recordRunEnded(end.profile, { ...d, timeMs: 400_000 });
+    expect(again.newDailyBest).toBe(true);
+    expect(again.profile.dailyBests['2026-10-03'].timeMs).toBe(400_000);
+    // A mutated daily win is still not a fastest-victory record, and (easy mix) not a ladder win.
+    expect(end.profile.fastestVictoryMs).toBeNull();
+    expect(end.unlockedDifficulty).toBeNull();
+  });
+});

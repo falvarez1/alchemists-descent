@@ -3,10 +3,79 @@ import { FLASK_SLOT_COUNT, type Ctx, type FlaskApi, type FlaskBottleState, type 
 import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import { COLOR_FN, packRGB } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
+import { SIPHONABLE_SOLIDS } from '@/content/recipes';
 
-/** Cell types the flask can drink: any liquid, plus the loose powders worth carrying. */
+/** Cell types the flask can drink: any liquid, plus the loose powders worth carrying and the reagent solids (a leaf, coal). */
 function siphonable(t: number): boolean {
-  return isLiquid(t) || t === Cell.Sand || t === Cell.Gold || t === Cell.Gunpowder;
+  return isLiquid(t) || t === Cell.Sand || t === Cell.Gold || t === Cell.Gunpowder || SIPHONABLE_SOLIDS.includes(t as Cell);
+}
+
+/**
+ * MEASURED POUR: aimed over a cauldron's bowl the flask pours a cell at a time (and draws a cell
+ * every other frame), so the bowl panel's count can be WATCHED climbing and stopped at: a bowl holds
+ * about fourteen cells and a human lets go two or three tenths of a second late, so at the old ten cells
+ * a frame no recipe could be poured on purpose. Away from a bowl nothing changes.
+ */
+const MEASURED_POUR_EVERY = 4;
+const MEASURED_DRAW_EVERY = 2;
+/**
+ * The cursor is over the basin: its nine-cell width and a tall column above it (where a pour is aimed). Narrow on purpose: the
+ * fire a player lights beside the bowl (oil poured against the wall, five or six cells off) must still pour as a free stream.
+ */
+function overBowl(ctx: Ctx): boolean {
+  const c = ctx.levels?.current?.cauldron;
+  if (!c) return false;
+  const m = ctx.input.mouse;
+  return Math.abs(m.x - c.x) <= 4 && m.y >= c.y - 14 && m.y <= c.y + 2;
+}
+
+/** The exit speed a measured pour is lobbed at (the same 2.4-3.5 cells a frame a free pour leaves at). */
+const LOB_SPEED = 3;
+/** A lob is taken when it deposits within this many columns of where it was aimed (a bowl is seven wide). */
+const LOB_TOLERANCE = 2.5;
+
+/**
+ * THE LOB: a stream aimed at a bowl leaves the wand along the aim and falls under gravity, so from ten
+ * cells off it grazes the far wall or sails over a seven-cell bowl (measured: 28 cells poured at a bowl's
+ * centre, 7 stayed in it). Over a bowl the flask lobs each droplet on the arc that falls INTO it: the
+ * velocity (cells/frame) whose flight, as the particle system flies it (vy += grav; x += vx; y += vy),
+ * ends on the first solid or liquid cell it meets with the droplet depositing in the bowl's own air
+ * (within LOB_TOLERANCE columns of tx, within a row and a half of ty). Found by trying each launch angle; null
+ * when no arc does (too close, too far, walled off): then the pour is the ordinary free stream.
+ */
+export function lobToBowl(
+  world: { width: number; height: number; types: Uint8Array },
+  x0: number, y0: number, tx: number, ty: number, grav: number,
+): { vx: number; vy: number } | null {
+  const dir = tx >= x0 ? 1 : -1;
+  let best: { vx: number; vy: number } | null = null;
+  let bestCost = LOB_TOLERANCE;
+  for (let k = 0; k < 120; k++) {
+    const phi = -1.4 + (k / 119) * 2.95; // from steeply up to straight down, toward the target
+    const vx = dir * LOB_SPEED * Math.cos(phi);
+    const vy0 = LOB_SPEED * Math.sin(phi) - 0.25; // (the free stream's touch of lift)
+    let x = x0, y = y0, vy = vy0, px = Math.floor(x0), py = Math.floor(y0);
+    for (let n = 0; n < 90; n++) {
+      vy += grav;
+      x += vx;
+      y += vy;
+      const gx = Math.floor(x), gy = Math.floor(y);
+      if (gx < 0 || gy < 0 || gx >= world.width || gy >= world.height) break;
+      const t = world.types[gx + gy * world.width];
+      if (t !== Cell.Empty && !isGas(t)) {
+        // it deposits at the last free cell behind the one it struck
+        const cost = Math.abs(py - ty) <= 1.5 ? Math.abs(px - tx) : Infinity;
+        if (cost < bestCost) {
+          bestCost = cost;
+          best = { vx, vy: vy0 };
+        }
+        break;
+      }
+      px = gx;
+      py = gy;
+    }
+  }
+  return best;
 }
 
 const SIPHON_RADIUS = 8;
@@ -164,9 +233,29 @@ export class Flask implements FlaskApi {
     const rx = mx - player.x, ry = my - (player.y - 9);
     if (rx * rx + ry * ry > SIPHON_REACH * SIPHON_REACH) return;
 
+    const measured = overBowl(ctx);
+    if (measured && ctx.state.frameCount % MEASURED_DRAW_EVERY !== 0) return;
+    const rate = measured ? 1 : SIPHON_RATE;
+    // An empty flask draws what the cursor is ON: the nearest cell it can take, not the first in scan order
+    // (a brewed potion in a bowl with a stray leaf or a splash of water beside it was drawn as the leaf).
+    if (s.material === null) {
+      let bestD = Infinity;
+      for (let dy = -SIPHON_RADIUS; dy <= SIPHON_RADIUS; dy++) {
+        for (let dx = -SIPHON_RADIUS; dx <= SIPHON_RADIUS; dx++) {
+          const d = dx * dx + dy * dy;
+          if (d >= bestD || d > SIPHON_RADIUS * SIPHON_RADIUS) continue;
+          const x = mx + dx, y = my + dy;
+          if (!world.inBounds(x, y)) continue;
+          const t = world.types[world.idx(x, y)];
+          if (!siphonable(t) || !hasLineOfSight(ctx, player.x, player.y - 9, x, y)) continue;
+          bestD = d;
+          s.material = t;
+        }
+      }
+    }
     let taken = 0;
-    for (let dy = -SIPHON_RADIUS; dy <= SIPHON_RADIUS && taken < SIPHON_RATE; dy++) {
-      for (let dx = -SIPHON_RADIUS; dx <= SIPHON_RADIUS && taken < SIPHON_RATE; dx++) {
+    for (let dy = -SIPHON_RADIUS; dy <= SIPHON_RADIUS && taken < rate; dy++) {
+      for (let dx = -SIPHON_RADIUS; dx <= SIPHON_RADIUS && taken < rate; dx++) {
         if (dx * dx + dy * dy > SIPHON_RADIUS * SIPHON_RADIUS) continue;
         if (s.count >= s.capacity) break;
         const x = mx + dx, y = my + dy;
@@ -223,20 +312,26 @@ export class Flask implements FlaskApi {
     // carries a real cell that deposits when it lands (deposit:true also drops it
     // on expiry, so siphoned material is conserved even over open space).
     const infinite = infiniteFlask(ctx);
-    const n = Math.min(POUR_RATE, s.count);
+    const measured = overBowl(ctx);
+    if (measured && ctx.state.frameCount % MEASURED_POUR_EVERY !== 0) return;
+    const n = Math.min(measured ? 1 : POUR_RATE, s.count);
     const glow = material === Cell.Lava ? 1.4 : material === Cell.Acid ? 0.7 : 0.35;
+    const grav = liquid ? 0.11 : 0.15;
+    const bowl = measured ? ctx.levels?.current?.cauldron : null;
     for (let j = 0; j < n; j++) {
       const a = aim + (entityRandom() - 0.5) * 0.16; // a little nozzle spread
       const sp = 2.4 + entityRandom() * 1.1; // exit speed (cells/frame)
+      // over a bowl: the arc that falls into it (a little spread across its width), else the aim itself
+      const lob = bowl ? lobToBowl(ctx.world, tip.x, tip.y, bowl.x + (entityRandom() - 0.5) * 4, bowl.y - 1, grav) : null;
       ctx.particles.spawn(
-        tip.x + dirX * 2,
-        tip.y + dirY * 2,
-        Math.cos(a) * sp,
-        Math.sin(a) * sp - 0.25, // a touch of lift gives the hose arc
+        lob ? tip.x : tip.x + dirX * 2,
+        lob ? tip.y : tip.y + dirY * 2,
+        lob ? lob.vx : Math.cos(a) * sp,
+        lob ? lob.vy : Math.sin(a) * sp - 0.25, // a touch of lift gives the hose arc
         material,
         colorFn(),
         55 + Math.floor(entityRandom() * 25),
-        { grav: liquid ? 0.11 : 0.15, glow, deposit: true },
+        { grav, glow, deposit: true },
       );
       if (!infinite) s.count--;
     }

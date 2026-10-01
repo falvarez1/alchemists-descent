@@ -1,4 +1,6 @@
+import '@/styles/builds.css';
 import { CARD_DEFS } from '@/combat/wands/cards';
+import { makeFitter, type CardFit } from '@/combat/wands/cardFit';
 import type { EventMap } from '@/core/events';
 import type { CardId, Ctx } from '@/core/types';
 import { cardIconName, makeIconCanvas } from '@/ui/icons';
@@ -78,7 +80,9 @@ export class CardOfferOverlay {
 
     const row = document.createElement('div');
     row.className = 'card-offer-row';
-    request.cards.forEach((card, index) => row.appendChild(this.makeCardButton(card, index)));
+    // The fit tell on every tile: what this card would do in the wands you carry right now.
+    const fitter = makeFitter(this.ctx.wands);
+    request.cards.forEach((card, index) => row.appendChild(this.makeCardButton(card, index, fitter.fit(card), request.labels?.[index])));
     panel.appendChild(row);
 
     const note = document.createElement('p');
@@ -94,12 +98,14 @@ export class CardOfferOverlay {
     }, 0);
   }
 
-  private makeCardButton(id: CardId, index: number): HTMLElement {
+  private makeCardButton(id: CardId, index: number, fit: CardFit, label?: string): HTMLElement {
     const def = CARD_DEFS[id];
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'card-offer-card';
+    button.className = 'card-offer-card' + (def.bargain ? ' bargain' : '') + ' fit-' + fit.verdict;
     button.dataset.cardOfferId = id;
+    button.dataset.cardFit = fit.verdict;
+    if (label) button.dataset.cardOfferRole = label;
 
     const key = document.createElement('kbd');
     key.className = 'key card-offer-key';
@@ -112,6 +118,14 @@ export class CardOfferOverlay {
     const icon = makeIconCanvas(cardIconName(id), 4);
     if (icon) iconWrap.appendChild(icon);
     button.appendChild(iconWrap);
+
+    // An altar's three differ on purpose: the kicker says how.
+    if (label) {
+      const kicker = document.createElement('div');
+      kicker.className = 'card-offer-kicker';
+      kicker.textContent = label;
+      button.appendChild(kicker);
+    }
 
     const name = document.createElement('div');
     name.className = 'card-offer-name';
@@ -128,11 +142,40 @@ export class CardOfferOverlay {
     blurb.textContent = def.blurb;
     button.appendChild(blurb);
 
+    // A devil's bargain wears its price on its face.
+    if (def.cost) {
+      const cost = document.createElement('div');
+      cost.className = 'card-offer-cost';
+      const label = document.createElement('b');
+      label.textContent = 'Price';
+      cost.append(label, ' ' + def.cost);
+      button.appendChild(cost);
+    }
+
+    if (fit.line || fit.note) {
+      const fitBox = document.createElement('div');
+      fitBox.className = 'card-offer-fit';
+      if (fit.line) {
+        const line = document.createElement('div');
+        line.className = 'card-offer-fit-line';
+        line.textContent = fit.line;
+        fitBox.appendChild(line);
+      }
+      if (fit.note) {
+        const note = document.createElement('div');
+        note.className = 'card-offer-fit-note';
+        note.textContent = fit.note;
+        fitBox.appendChild(note);
+      }
+      button.appendChild(fitBox);
+    }
+
     const tags = document.createElement('div');
     tags.className = 'card-offer-tags';
     for (const tag of def.tags) {
       const chip = document.createElement('span');
       chip.textContent = tag;
+      if (tag === 'Bargain') chip.className = 'tag-bargain';
       tags.appendChild(chip);
     }
     button.appendChild(tags);

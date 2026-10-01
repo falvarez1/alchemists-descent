@@ -1,5 +1,6 @@
 import type { CardId, EnemyKind, LockKind, TimeControlStatus } from '@/core/types';
 import type { AlchemyKillInfo, RunSummary } from '@/core/run';
+import type { BrewAttemptInfo, CauldronView } from '@/core/alchemy';
 import type { StoryCinemaView, StoryDialogueView, StorySpeaker } from '@/core/story';
 
 /** What an organism just did (the `organism` event). */
@@ -67,12 +68,18 @@ export interface EventMap {
   levelChanged: { depth: number; name: string };
   /** Gameplay requests the level-transition curtain; Game owns DOM/timing. */
   levelCurtain: { visible: boolean; holdMs?: number; title?: string; detail?: string };
-  /** A waystone brazier caught fire — checkpoint set. */
-  waystoneLit: undefined;
+  /** A waystone brazier caught fire — checkpoint set. `index` is its place in the floor's list; the altar's offer reads it. */
+  waystoneLit: { index: number; depth: number; levelId: string };
   /** First-time brew of a recipe — Grimoire entry + gold bounty. */
   recipeDiscovered: { name: string; bounty: number };
   /** Any completed cauldron recipe, including recipes already known in the Grimoire. */
   recipeBrewed: { id: string; name: string; firstDiscovery: boolean };
+  /** The cauldron's bowl as it stands (game/Brewing): contents, fire, progress, verdict. The bowl panel listens; `visible: false` once when the player leaves. */
+  cauldronView: CauldronView;
+  /** A mix was heated long enough to judge and answered no recipe: what the cauldron made of it (the experiment log, the sounds). */
+  brewAttempt: BrewAttemptInfo;
+  /** A marginal note was written into the Grimoire by play (game/alchemy/clues). */
+  clueUnlocked: { id: string; recipe: string; text: string };
   /** Any first-time Grimoire entry persisted by the unified knowledge store. */
   grimoireEntryDiscovered: { kind: 'recipe' | 'material' | 'interaction'; id: string; title: string };
   /** A real sim/material interaction was observed near the player and may be inscribed. */
@@ -83,13 +90,30 @@ export interface EventMap {
   cardCast: { id: CardId; origin: 'wand' | 'trigger'; x: number; y: number };
   /** Gameplay asks presentation to show an unskippable choice of spell cards. */
   cardOfferRequested: {
-    source: 'tome' | 'sanctum';
+    source: 'tome' | 'sanctum' | 'altar' | 'depth';
     title: string;
     prompt?: string;
     cards: CardId[];
+    /** One short kicker per card ("Host", "Synergy", "Wild"); absent for a plain tome. */
+    labels?: string[];
     handled?: boolean;
     onChoose(card: CardId): void;
   };
+  /** Gameplay asks presentation to show a found wand frame (swap wand I or II's frame, or leave it). */
+  wandOfferRequested: {
+    source: 'boss' | 'altar' | 'sanctum';
+    title: string;
+    prompt?: string;
+    /** WandFrame ids on offer (1 for a find, up to 3 at the Wandwright). */
+    frames: string[];
+    handled?: boolean;
+    /** The player refitted `wand` with `frameId`. */
+    onChoose(frameId: string, wand: 0 | 1): void;
+    /** The player left it. */
+    onDecline?(): void;
+  };
+  /** A modifier you cast does nothing to the projectile it rode: the HUD says so, once per card per run. */
+  deadCardCast: { card: CardId; host: CardId; text: string };
   /** Active wand or its loadout changed — HUD wand display refresh. */
   wandChanged: undefined;
   /** The wand bench overlay opened — first-run teaching and telemetry listen. */

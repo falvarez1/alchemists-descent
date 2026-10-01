@@ -114,6 +114,8 @@ export const SFX_CUES = {
   'ui.door.choose': ui({ gain: 1.3 }),
   'ui.card.pick': ui({ gain: 0.74 }),
   'ui.card.slot': ui({ gain: 1.1 }),
+  // The choice update: a devil's bargain taken (a refit already rings ui.learn through upgradeFrame).
+  'ui.card.bargain': ui({ gain: 1.3 }),
   'ui.bench': ui({ gain: 1.1 }),
   'ui.coins': ui({ gain: 1.2 }),
   'ui.tally': ui({ gain: 0.35, cooldownMs: 30, voices: 3 }),
@@ -316,6 +318,9 @@ export const SFX_CUES = {
   'mech.rune': wo('mechanism', { gain: 1.1, range: 0 }),
   'mech.shrine': wo('mechanism', { gain: 0.7, cooldownMs: 600 }),
   'mech.cauldron': wo('mechanism', { gain: 0.9 }),
+  // The experiment (game/Brewing): a heated mix judged. Close to something undiscovered, or nothing at all.
+  'brew.shimmer': wo('mechanism', { gain: 0.8, cooldownMs: 800 }),
+  'brew.fizzle': wo('mechanism', { gain: 0.8, cooldownMs: 800 }),
   // Pell's camp life (the surveyor's idle acts): small, close and human. Rare, so they carry a long cooldown.
   'pell.sneeze': c('world', 'creature', { gain: 1.3, cooldownMs: 3000, pitchCents: 30 }),
   'pell.sip': c('world', 'creature', { gain: 0.9, cooldownMs: 3000, pitchCents: 30 }),

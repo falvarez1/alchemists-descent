@@ -72,6 +72,7 @@ export const SFX_FALLBACKS: Partial<Record<SfxId, SfxFallback>> = {
   'ui.learn': (p) => p.learn(),
   'ui.curtain': (p) => p.tone(98, 49, 1.6, 'sine', 0.08),
   'ui.card.choose': (p) => p.learn(),
+  'ui.card.bargain': (p) => { p.tone(110, 70, 0.5, 'sine', 0.08); p.later(110, () => p.tone(55, 55, 0.7, 'sine', 0.05)); },
   'ui.door.choose': (p) => p.learn(),
   'mat.brine.fizz': (p) => p.noiseBurst(0.25, 5200, 0.04, true),
   // ---- player ----
@@ -180,6 +181,8 @@ export const SFX_FALLBACKS: Partial<Record<SfxId, SfxFallback>> = {
   'mech.grip': (p) => p.tone(180, 140, 0.08, 'square', 0.08),
   'mech.shrine': (p) => p.tone(660, 220, 0.18, 'triangle', 0.1),
   'mech.cauldron': (p) => p.tone(360, 720, 0.22, 'sine', 0.1),
+  'brew.shimmer': (p) => { p.tone(880, 1320, 0.25, 'sine', 0.06); p.later(120, () => p.tone(1320, 1760, 0.3, 'sine', 0.04)); },
+  'brew.fizzle': (p) => { p.noiseBurst(0.22, 700, 0.05); p.tone(260, 110, 0.2, 'triangle', 0.05); },
   'amb.breath.inhale': (p) => p.tone(63, 94, 2.5, 'sine', 0.08),
   'amb.breath.jet': (p) => { p.noiseBurst(0.7, 400, 0.055); p.tone(60, 82, 1.2, 'sine', 0.045); },
   // ---- the Bell & Tea Engine ----

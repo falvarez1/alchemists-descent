@@ -4146,5 +4146,32 @@
   ],
   "rejected": [],
   "failed": []
+ },
+ "ui.card.bargain": {
+  "hash": "453fd744a88e",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "brew.shimmer": {
+  "hash": "0b80c1f201bc",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "brew.fizzle": {
+  "hash": "e88f0e47769f",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
  }
 }

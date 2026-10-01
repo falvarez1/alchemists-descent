@@ -11,7 +11,7 @@ import { carveRoom, intrudes, relayRoomFloor, restore, ROOM_MARGIN, roomReachabl
 import { clearLooseStock } from '@/world/looseStock';
 
 /* ============================================================
- * THE LOCKS (the "more fun" round, GEN 64). Each campaign floor used to hide
+ * THE LOCKS (the "more fun" round, GEN 65). Each campaign floor used to hide
  * its golden key in a far pocket of rock: the same hunt on every floor. Now the
  * key sits in a VAULT CHAMBER on the route, in plain sight, behind a seal the
  * floor's own puzzle breaks — and each floor asks a different question:

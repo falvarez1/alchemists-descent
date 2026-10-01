@@ -33,7 +33,7 @@ import { carveRoom, findRoomSite, relayRoomFloor, intrudes, restore, ROOM_MARGIN
 
 export interface ColdStorePuzzleOutput {
   pickups: Pickup[];
-  /** THE LOCK (GEN 64): the Ice Vault's ice wall is the floor's key lock, a route-seal plug (world/locks). */
+  /** THE LOCK (GEN 65): the Ice Vault's ice wall is the floor's key lock, a route-seal plug (world/locks). */
   mechanisms: Mechanism[];
   placed: PlacedPrefab[];
   /** Re-assert the tanks' seals and liquid after the rescue passes (idempotent). */
@@ -168,7 +168,7 @@ function iceVault(world: World, rng: Rng, at: Site, spec: RoomSpec, out: ColdSto
     put(world, V.wallX0, y, Cell.Ice, iceShade(0, y * 5));
     put(world, V.vx0 - 1, y, Cell.Ice, iceShade(1, y * 7));
   }
-  // THE LOCK (GEN 64): the golden key lies in the strongroom, and the wall is its door. A route-seal plug watches the ice: melted
+  // THE LOCK (GEN 65): the golden key lies in the strongroom, and the wall is its door. A route-seal plug watches the ice: melted
   // (the coal, the brine), blasted or dug away - however - and the seal is open; findability treats the ice as open ground, so
   // nothing digs round it. A seven-tenths-gone wall is a passage. The Works relent, as on every floor.
   const wall = makePlug(world, out.mechanisms, V.wallX0, V.vy0, V.vx0 - V.wallX0, V.vy1 - V.vy0 + 1, Cell.Ice, null, 0.7);

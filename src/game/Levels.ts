@@ -860,6 +860,8 @@ export class Levels implements LevelsApi {
     ctx.state.playtestSource = mode === 'test' ? 'test' : null;
 
     if (config.difficulty !== undefined) ctx.state.difficulty = config.difficulty;
+    // COMPLICATIONS are in force before the HP scale below reads them (RunDirector.beginRun keeps them in the run's save).
+    ctx.mutators?.activate(ctx, mode === 'normal' ? config.mutators ?? [] : []);
 
     const preset = config.loadout ?? 'fresh';
     if (
@@ -879,7 +881,7 @@ export class Levels implements LevelsApi {
     }
     if (config.kit) this.applyTestKit(ctx, config.kit);
     // The run begins before the first checkpoint so the save carries its phials.
-    ctx.run?.beginRun(ctx, { seed, kit: starterKit, daily: config.daily ?? null, tracked: mode === 'normal' });
+    ctx.run?.beginRun(ctx, { seed, kit: starterKit, daily: config.daily ?? null, tracked: mode === 'normal', mutators: config.mutators });
     ctx.story?.beginRun({ tracked: mode === 'normal' && !ctx.state.debugGodMode });
     this.enterLevel(ctx, levelId);
 
@@ -1513,6 +1515,7 @@ export class Levels implements LevelsApi {
   private resetRunState(ctx: Ctx, options: { clearSave: boolean }): void {
     if (options.clearSave) this.abandonExpedition();
     ctx.state.debugTainted = false;
+    ctx.mutators?.deactivate(ctx);
     this.levels.clear();
     this.currentId = null;
     this.preCustomCurrentId = null;
@@ -2304,6 +2307,8 @@ export class Levels implements LevelsApi {
     const expeditionSeed = this.activeExpeditionSeed(ctx);
     const seed = levelSeedFor(expeditionSeed, def.id);
     const pristine = ctx.worldgen.generateLevel(ctx, def, seed);
+    // COMPLICATIONS: its vents are re-derived from the same pristine cells and seed createLevel used (the puddles are in the saved cells).
+    ctx.mutators?.planLevel(ctx, def, seed, pristine);
     // Settled on the pristine cells, exactly as createLevel did (game/arrival).
     const spawn = this.settledSpawn(ctx, def, pristine.spawn, pristine.boss, pristine.pickups);
 
@@ -2929,6 +2934,8 @@ export class Levels implements LevelsApi {
       lumenBlooms,
       story,
     } = ctx.worldgen.generateLevel(ctx, def, seed);
+    // COMPLICATIONS: plan the floor's vents and puddles from its pristine cells (restoreLevel does the same).
+    ctx.mutators?.planLevel(ctx, def, seed, { spawn: generatedSpawn, exit, pickups, portal, boss, placedPrefabs, mechanisms, waystones });
     // A SAFE ARRIVAL (game/arrival): the spawn is settled onto footing before
     // anything is placed around it, so the population keeps its distance from
     // where the alchemist really stands (not the chamber air he falls through).
@@ -3032,6 +3039,8 @@ export class Levels implements LevelsApi {
       const fauna = placeOrganisms(world, def, spawn, populationReach, new Rng(hashSeed(seed, 'organisms')));
       if (fauna) runtime.fauna = fauna;
     }
+    // COMPLICATIONS: the planned puddles become real water (a created floor only: a restored one has them in its cells).
+    if (!AUTHORED_TEST_ARENAS.has(def.id)) ctx.mutators?.dressLevel(ctx, runtime);
 
     return runtime;
   }
@@ -3878,7 +3887,7 @@ export class Levels implements LevelsApi {
     });
     ctx.audio.sfx('world.waystone');
 
-    ctx.events.emit('waystoneLit');
+    ctx.events.emit('waystoneLit', { index, depth: runtime.def.depth, levelId: runtime.def.id });
   }
 
   /**

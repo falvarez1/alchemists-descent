@@ -22,6 +22,7 @@ const CENTRE_BEATS = [
   '#pause-overlay',
   '#gameover-overlay',
   '#card-offer-overlay',
+  '#wand-offer-overlay',
   '#grimoire-overlay',
   '#run-summary',
   '#wand-bench',

@@ -2,7 +2,10 @@ import { FLASK_SLOT_COUNT, type CardId, type Ctx, type FlaskState, type WandFram
 import { ALL_CARD_IDS, CARD_DEFS } from '@/combat/wands/cards';
 import { REVIEW_WAND_LOADOUTS, WAND_FRAMES, type BuiltInWandLoadout } from '@/combat/wands/wandCatalog';
 import { buildWandSentenceView, type WandSentenceView, type WandSlotLinkKind } from '@/combat/wands/sentenceView';
+import { makeFitter } from '@/combat/wands/cardFit';
+import '@/styles/builds.css';
 import { POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
+import { addStatusFrames } from '@/content/elixirs';
 import { flaskMaterialOptions } from '@/content/flaskMaterials';
 import { PERK_DEFS, isPerkActive, togglePerkActive } from '@/content/perks';
 import { cardIconName, ELEMENT_ICON, makeIconCanvas } from '@/ui/icons';
@@ -18,7 +21,6 @@ function cardTitle(id: CardId): string {
   return def.name + ' — ' + def.manaCost + ' mana — ' + def.blurb;
 }
 
-const BENCH_STATUS_CAP = 3600;
 
 export type BenchCardFilter = 'all' | 'projectile' | 'modifier' | 'multicast' | 'setup' | 'terrain';
 
@@ -104,6 +106,8 @@ export class WandBench {
   private inspectedCard: CardId | null = null;
   private dragSource: BenchDragSource | null = null;
   private collectionFilter: BenchCardFilter = 'all';
+  /** What each card would do in the wands carried right now (rebuilt every render): the bench's fit tells. */
+  private fitter = makeFitter({ wands: [], collection: [] });
   private closeWatchTimer: number | null = null;
   /** Sim pause state captured when the bench opens, restored on close. */
   private wasPaused = false;
@@ -194,6 +198,7 @@ export class WandBench {
     root.innerHTML = '';
     root.classList.toggle('holding', this.heldIdx >= 0);
     const wands = this.ctx.wands;
+    this.fitter = makeFitter(wands);
 
     const shell = document.createElement('div');
     shell.className = 'wb-shell';
@@ -240,6 +245,7 @@ export class WandBench {
       const name = document.createElement('span');
       name.className = 'wb-wand-name';
       name.textContent = wand.frame.name;
+      if (wand.frame.blurb) name.title = wand.frame.blurb;
       id.append(numeral, name);
       if (active) {
         const pill = document.createElement('span');
@@ -452,6 +458,33 @@ export class WandBench {
       });
       panel.appendChild(links);
     }
+    // A devil's bargain wears its price; every card says what it does in the wands you carry now.
+    if (def.cost) {
+      const cost = document.createElement('div');
+      cost.className = 'bench-inspect-cost';
+      const label = document.createElement('b');
+      label.textContent = 'Price';
+      cost.append(label, ' ' + def.cost);
+      panel.appendChild(cost);
+    }
+    const fit = this.fitter.fit(id);
+    if (fit.line || fit.note) {
+      const fitBox = document.createElement('div');
+      fitBox.className = 'bench-inspect-fit fit-' + fit.verdict;
+      if (fit.line) {
+        const line = document.createElement('div');
+        line.className = 'fit-line';
+        line.textContent = fit.line;
+        fitBox.appendChild(line);
+      }
+      if (fit.note) {
+        const note = document.createElement('div');
+        note.className = 'fit-note';
+        note.textContent = fit.note;
+        fitBox.appendChild(note);
+      }
+      panel.appendChild(fitBox);
+    }
     const hints = recipeHintsForCard(id);
     if (hints.length > 0) {
       const hintWrap = document.createElement('div');
@@ -632,7 +665,7 @@ export class WandBench {
     tile.setAttribute('aria-label', def.name + ' refreshes ' + def.status);
     tile.addEventListener('click', () => {
       const status = this.ctx.player.status;
-      status[def.status] = Math.min(BENCH_STATUS_CAP, status[def.status] + def.frames);
+      addStatusFrames(status, def.status, def.frames);
       this.ctx.audio.drinkPotion();
       this.ctx.events.emit('toast', { text: def.name });
     });
@@ -1018,9 +1051,12 @@ export class WandBench {
     tile.dataset.benchCardId = id;
     tile.dataset.benchCardKind = CARD_DEFS[id].kind;
     tile.dataset.benchCardTags = CARD_DEFS[id].tags.join(' ');
+    const fit = this.fitter.fit(id);
+    tile.dataset.benchCardFit = fit.verdict;
+    if (fit.verdict === 'dead') tile.classList.add('fit-dead');
     tile.tabIndex = 0;
     tile.setAttribute('role', 'button');
-    tile.setAttribute('aria-label', cardTitle(id));
+    tile.setAttribute('aria-label', cardTitle(id) + (fit.line ? ' — ' + fit.line : ''));
     tile.setAttribute('aria-pressed', String(i === this.heldIdx));
     if (this.inspectedCard === id) tile.classList.add('inspected');
     const kind = document.createElement('span');

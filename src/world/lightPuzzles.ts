@@ -217,7 +217,7 @@ export function carveRoom(
 }
 
 /**
- * Lay a room's floor slab again where the connector's carve took it (GEN 64). The connector is a long tunnel whose sweep reaches nine rows
+ * Lay a room's floor slab again where the connector's carve took it (GEN 65). The connector is a long tunnel whose sweep reaches nine rows
  * below its line, and when it runs along a hall it eats the whole five-row slab: the vault and the machine hang in a void. Only open
  * cells become stone, from `fromX` (east of the entrance, which keeps its way in) to `toX`.
  */

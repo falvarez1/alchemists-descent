@@ -153,6 +153,7 @@ export class StoryDirector implements StoryApi {
         } else if (phase === 'relented') this.aside('lockRelent');
       }),
       on('recipeBrewed', () => { this.aside('brew'); }),
+      on('cauldronView', (view) => { if (view.visible) this.aside('kettle'); }),
       on('flaskDry', () => { this.aside('flask'); }),
       on('lanternHooded', ({ hooded, quiet }) => { if (hooded && !quiet) this.aside('hood'); }),
       on('eyeshineCaught', () => { this.aside('eyeshine'); }),

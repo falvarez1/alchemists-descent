@@ -102,7 +102,7 @@ export function placeStructures(
   kilnFlue: KilnFlueSite | null;
   /** Where the boss hall's flank connectors leave it (standing height): the gauge rescue re-joins a cut-off hall from here. */
   arenaMouths: Array<{ x: number; y: number }>;
-  /** THE CRUCIBLE (GEN 64, world/lockCrucible): the Kiln hall's entrance gatehouse - slag gate, vat, cistern - when the floor has one. */
+  /** THE CRUCIBLE (GEN 65, world/lockCrucible): the Kiln hall's entrance gatehouse - slag gate, vat, cistern - when the floor has one. */
   kilnLock: KilnGateBuild | null;
   /** The live circuit's port shaft cells (kept open by the footing pass). */
   portHoles: Array<[number, number]>;
@@ -1123,7 +1123,7 @@ export function placeStructures(
     // The flank away from the flue joins the cave network — the kiln must be
     // findable. The flue's flank is the damper: a connector there would open
     // the shaft to the fight (a ledge to snipe from) before the heave.
-    // THE CRUCIBLE (GEN 64): on a floor with a lock the flank is a gatehouse - a corridor with the slag gate across it and a
+    // THE CRUCIBLE (GEN 65): on a floor with a lock the flank is a gatehouse - a corridor with the slag gate across it and a
     // gallery with the machine - and the caves are joined at the gallery's far end; otherwise the old mid-wall mouth.
     if (GEN[def.biome]?.lock === 'crucible') {
       kilnLock = buildKilnGate(ctx, rng, { cx, cy, FLOOR, HALF, RX, RY, e: flue.side > 0 ? -1 : 1 }, ledger, { mechanisms, lights: authoredLights, emitters });

@@ -57,10 +57,12 @@ describe('GrimoireStore', () => {
 
     expect(loadDiscoveredRecipes()).toEqual({ life: true });
     expect(JSON.parse(storage.get(GRIMOIRE_KEY) ?? '{}')).toMatchObject({
-      version: 2,
+      version: 3,
       recipes: { life: true },
       materials: {},
       interactions: {},
+      experiments: [],
+      clues: {},
     });
   });
 
@@ -70,7 +72,7 @@ describe('GrimoireStore', () => {
 
     expect(loadDiscoveredMaterials()).toEqual({ [Cell.Water]: true });
     expect(JSON.parse(storage.get(GRIMOIRE_KEY) ?? '{}')).toMatchObject({
-      version: 2,
+      version: 3,
       recipes: { life: true },
       materials: { [Cell.Water]: true },
     });
@@ -79,7 +81,7 @@ describe('GrimoireStore', () => {
   it('treats bad JSON as an empty versioned record', () => {
     storage.set(GRIMOIRE_KEY, '{bad');
 
-    expect(loadGrimoireRecord()).toEqual({ version: 2, recipes: {}, materials: {}, interactions: {} });
+    expect(loadGrimoireRecord()).toEqual({ version: 3, recipes: {}, materials: {}, interactions: {}, experiments: [], clues: {} });
   });
 
   it('survives storage read/write failures with session cache', () => {

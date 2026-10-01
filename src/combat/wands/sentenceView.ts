@@ -1,6 +1,14 @@
 import type { CardId } from '@/core/types';
 import { CARD_DEFS, MULTICAST_SIZE, PROJECTILE_MOD_HOST_CARDS } from './cards';
 import { compileWand, MAX_ACTIONS_PER_GROUP, type CastGroup } from './compiler';
+import {
+  BARGAIN_RULES,
+  DAMAGE_EFFECT_CARDS,
+  HOST_BOUND_MODIFIERS,
+  SPEED_EFFECT_CARDS,
+  SPREAD_EFFECT_CARDS,
+  modifierWorksOn,
+} from './cardRules';
 
 export interface WandSentenceLine {
   label: string;
@@ -37,60 +45,21 @@ function isProjectile(id: CardId): boolean {
   return CARD_DEFS[id].kind === 'projectile';
 }
 
-const SPEED_EFFECT_CARDS = new Set<CardId>([
-  'spark',
-  'bomb',
-  'flame',
-  'warp',
-  'vitriol',
-  'cryojet',
-  'frostshard',
-  'icelance',
-  'wisp',
-  'meteor',
-  'emberstorm',
-]);
+/** The words a landed bargain adds to a cast's sentence. */
+const BARGAIN_WORD: Partial<Record<CardId, string>> = {
+  overcharge: 'Overcharged',
+  loosecannon: 'Loose',
+  shortfuse: 'Short-Fused',
+  millstone: 'Millstone',
+  kickback: 'Kicking',
+};
 
-const DAMAGE_EFFECT_CARDS = new Set<CardId>([
-  'spark',
-  'bomb',
-  'lightning',
-  'flame',
-  'dig',
-  'vitriol',
-  'cryojet',
-  'frostshard',
-  'icelance',
-  'wisp',
-  'meteor',
-  'emberstorm',
-  'vitrify',
-]);
-
-const SPREAD_EFFECT_CARDS = new Set<CardId>([
-  'spark',
-  'bomb',
-  'lightning',
-  'flame',
-  'dig',
-  'warp',
-  'vitriol',
-  'cryojet',
-  'frostshard',
-  'icelance',
-  'wisp',
-  'meteor',
-]);
-
-function modifierHasEffect(modifier: CardId, host: CardId): boolean {
-  if (modifier === 'speed') return SPEED_EFFECT_CARDS.has(host);
-  if (modifier === 'heavy') return DAMAGE_EFFECT_CARDS.has(host);
-  if (modifier === 'spread') return SPREAD_EFFECT_CARDS.has(host);
-  return true;
-}
-
-function modifierEffectWarning(modifier: CardId, modifierSlot: number, host: CardId, hostSlot: number): string {
-  const effect = modifier === 'speed' ? 'speed' : modifier === 'heavy' ? 'damage' : 'spread';
+/** A dead modifier, said the way the bench says it. */
+function deadModifierWarning(modifier: CardId, modifierSlot: number, host: CardId, hostSlot: number): string {
+  if (HOST_BOUND_MODIFIERS.has(modifier) && !PROJECTILE_MOD_HOST_CARDS.has(host)) {
+    return `${cardName(modifier)} in slot ${slotLabel(modifierSlot)} needs a projectile body; ${cardName(host)} in slot ${slotLabel(hostSlot)} cannot carry it`;
+  }
+  const effect = modifier === 'speed' ? 'speed' : modifier === 'spread' ? 'spread' : modifier === 'bounce' ? 'bounce' : 'damage';
   return `${cardName(modifier)} in slot ${slotLabel(modifierSlot)} has no ${effect} effect on ${cardName(host)} in slot ${slotLabel(hostSlot)}`;
 }
 
@@ -141,9 +110,19 @@ function actionPhrase(action: CastGroup['actions'][number]): string {
   if (action.shatterCrit) parts.push('Shatter-Crit');
   if (action.pyreCrit) parts.push('Pyre-Crit');
   if (action.bounces > 0) parts.push('Bouncing');
-  if (action.speedMul > 1.05 && SPEED_EFFECT_CARDS.has(action.card)) parts.push('Swift');
-  if (action.dmgMul > 1.05 && DAMAGE_EFFECT_CARDS.has(action.card)) parts.push('Heavy');
-  if (action.spreadAdd > 0.01 && SPREAD_EFFECT_CARDS.has(action.card)) parts.push('Scatter');
+  // A landed bargain names itself; what is left of the multipliers is the plain charms.
+  let bargainDmg = 1, bargainSpeed = 1, bargainSpread = 0;
+  for (const id of action.bargains ?? []) {
+    const rule = BARGAIN_RULES[id];
+    if (!rule) continue;
+    bargainDmg *= rule.dmgMul ?? 1;
+    bargainSpeed *= rule.speedMul ?? 1;
+    bargainSpread += rule.spreadAdd ?? 0;
+    parts.push(BARGAIN_WORD[id] ?? cardName(id));
+  }
+  if (action.speedMul / bargainSpeed > 1.05 && SPEED_EFFECT_CARDS.has(action.card)) parts.push('Swift');
+  if (action.dmgMul / bargainDmg > 1.05 && DAMAGE_EFFECT_CARDS.has(action.card)) parts.push('Heavy');
+  if (action.spreadAdd - bargainSpread > 0.01 && SPREAD_EFFECT_CARDS.has(action.card)) parts.push('Scatter');
   parts.push(cardName(action.card));
   return parts.join(' ');
 }
@@ -354,22 +333,8 @@ function analyzeSlots(
         addRelation(slotRelations, slot, host);
         if (id !== 'trigger') addSlotLink(slotLinks, { kind: 'modifier', from: slot, to: host });
         const hostId = cards[host];
-        const projectileBodyMod =
-          id === 'watertrail' ||
-          id === 'oiltrail' ||
-          id === 'electriccharge' ||
-          id === 'critwet' ||
-          id === 'shorthoming' ||
-          id === 'frostcharge' ||
-          id === 'shattercrit' ||
-          id === 'pyrecrit';
-        if (projectileBodyMod && hostId && !PROJECTILE_MOD_HOST_CARDS.has(hostId)) {
-          const warning = `${def.name} in slot ${slotLabel(slot)} needs a projectile body; ${cardName(hostId)} in slot ${slotLabel(host)} cannot carry it`;
-          warnings.push(warning);
-          addWarning(slotWarnings, slot, warning);
-          addWarning(slotWarnings, host, warning);
-        } else if ((id === 'speed' || id === 'heavy' || id === 'spread') && hostId && !modifierHasEffect(id, hostId)) {
-          const warning = modifierEffectWarning(id, slot, hostId, host);
+        if (hostId && !modifierWorksOn(id, hostId)) {
+          const warning = deadModifierWarning(id, slot, hostId, host);
           warnings.push(warning);
           addWarning(slotWarnings, slot, warning);
           addWarning(slotWarnings, host, warning);

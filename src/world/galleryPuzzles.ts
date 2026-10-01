@@ -84,7 +84,7 @@ function restoreHousing(world: World, lens: Mechanism): void {
 
 /**
  * The strongroom against the east wall (a metal box, a sliding gate on its west side, the reward inside). `lock` (the Periscope's,
- * GEN 64): the floor's golden key lies inside and the gate is its LOCK - a route-seal plug the lens's relay breaks, so the audit
+ * GEN 65): the floor's golden key lies inside and the gate is its LOCK - a route-seal plug the lens's relay breaks, so the audit
  * counts the room reachable and nothing digs round it; the Works relent as on every floor. The Prism Gate keeps its valve (its
  * lenses stand five cells from the door: a lantern in front of it would drink for them).
  */

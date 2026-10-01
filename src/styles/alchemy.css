@@ -1,0 +1,81 @@
+/* =====================================================================
+ * THE EXPERIMENT: the bowl panel over the cauldron (ui/BowlPanel) and the
+ * potion chips in the vitals aside (ui/PotionChips). House tokens (house.css):
+ * slate ground, brass rules, the system sans for anything read quickly.
+ * ===================================================================== */
+
+/* ---------- The bowl panel: a card that hangs over the basin ---------- */
+/* a banner (A FIRST BREW, a floor title) has the middle of the screen: the card steps aside for the few seconds it shows */
+#canvas-holder:has(#wave-banner.show) #bowl-panel { opacity: 0; }
+#bowl-panel {
+  --bp-scale: calc(var(--text-scale, 1) * 1);
+  position: absolute;
+  z-index: 0; /* in the DOM before #game-hud: the HUD (a first-brew banner, a toast) paints over it, never the other way */
+  transform: translate(-50%, -100%);
+  width: calc(184px * var(--bp-scale));
+  box-sizing: border-box;
+  padding: calc(7px * var(--bp-scale)) calc(9px * var(--bp-scale)) calc(8px * var(--bp-scale));
+  border: 1px solid #cdb98c80;
+  background: linear-gradient(180deg, #0d1a1ff0, #071014f2);
+  box-shadow: 0 2px 0 #00000070, 0 0 14px #050b0dc0;
+  color: #e9e1cb;
+  font: 500 calc(11px * var(--bp-scale))/1.25 var(--house-sans, ui-sans-serif, system-ui, sans-serif);
+  pointer-events: none;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+#bowl-panel[hidden] { display: none; }
+#bowl-panel.simmering { border-color: #e2b45a; }
+#bowl-panel.verdict-close { border-color: #f2d27a; box-shadow: 0 2px 0 #00000070, 0 0 16px #f2d27a55; }
+#bowl-panel.verdict-muddy { border-color: #8c6a48; }
+#bowl-panel .bp-head { display: flex; align-items: baseline; gap: calc(8px * var(--bp-scale)); padding-bottom: calc(4px * var(--bp-scale)); border-bottom: 1px solid #cdb98c40; }
+#bowl-panel .bp-title { font: 600 calc(14px * var(--bp-scale))/1 var(--house-serif, Georgia, serif); letter-spacing: 0.06em; color: var(--house-brass-strong, #f2e3b6); flex: 1; }
+#bowl-panel .bp-mass { font-variant-numeric: tabular-nums; color: #b9c5bb; }
+#bowl-panel .bp-fire { font-size: calc(10px * var(--bp-scale)); letter-spacing: 0.08em; text-transform: uppercase; color: #6f7f7f; }
+#bowl-panel .bp-fire.lit { color: #ffb45a; text-shadow: 0 0 6px #ff8a2a99; }
+#bowl-panel .bp-list { list-style: none; margin: calc(5px * var(--bp-scale)) 0 0; padding: 0; display: grid; gap: calc(3px * var(--bp-scale)); }
+#bowl-panel .bp-row { display: grid; grid-template-columns: calc(12px * var(--bp-scale)) 1fr auto auto; align-items: center; column-gap: calc(7px * var(--bp-scale)); }
+#bowl-panel .bp-swatch { display: block; width: calc(11px * var(--bp-scale)); height: calc(11px * var(--bp-scale)); border: 1px solid #00000090; box-shadow: inset 0 0 0 1px #ffffff26; }
+#bowl-panel .bp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#bowl-panel .bp-n { font-variant-numeric: tabular-nums; color: #f2e3b6; min-width: 1.6em; text-align: right; }
+#bowl-panel .bp-feel { font-size: calc(10px * var(--bp-scale)); letter-spacing: 0.06em; text-transform: uppercase; padding: 0 calc(5px * var(--bp-scale)); border: 1px solid currentColor; min-width: 3.1em; text-align: center; }
+#bowl-panel .bp-feel.hot { color: #ff9a5c; }
+#bowl-panel .bp-feel.warm { color: #f2d27a; }
+#bowl-panel .bp-feel.cold { color: #8ec7e0; }
+#bowl-panel .bp-product { margin-top: calc(2px * var(--bp-scale)); padding-top: calc(3px * var(--bp-scale)); border-top: 1px dashed #cdb98c40; color: var(--house-brass-strong, #f2e3b6); }
+#bowl-panel .bp-bar { margin-top: calc(7px * var(--bp-scale)); height: calc(5px * var(--bp-scale)); border: 1px solid #cdb98c70; background: #05090b; padding: 1px; box-sizing: content-box; }
+#bowl-panel .bp-fill { height: 100%; background: linear-gradient(90deg, #d9923c, #f6d076); transition: width 0.25s linear; }
+#bowl-panel .bp-note { margin-top: calc(6px * var(--bp-scale)); color: #c9d2c3; font-style: italic; }
+#bowl-panel.verdict-close .bp-note { color: #f2d27a; font-style: normal; }
+#bowl-panel.simmering .bp-note { color: #ffd28a; }
+
+/* ---------- Potion chips: what you are, and for how long ---------- */
+#vitals-aside .potion-chips { display: flex; flex-direction: column; gap: calc(4px * var(--text-scale, 1)); }
+#vitals-aside .potion-chip {
+  position: relative; display: grid; grid-template-columns: auto 1fr auto; align-items: center; column-gap: calc(8px * var(--text-scale, 1));
+  min-width: calc(150px * var(--text-scale, 1)); padding: calc(3px * var(--text-scale, 1)) calc(8px * var(--text-scale, 1)) calc(5px * var(--text-scale, 1)) calc(7px * var(--text-scale, 1));
+  border: 1px solid #cdb98c60; border-left: calc(3px * var(--text-scale, 1)) solid var(--chip-tint, #cdb98c);
+  background: #071014d8; color: #efe7d2; text-shadow: var(--house-shadow, none);
+  font: 600 calc(10px * var(--text-scale, 1))/1.2 var(--house-sans, ui-sans-serif, system-ui, sans-serif); letter-spacing: 0.1em;
+}
+#vitals-aside .potion-chip .pc-time { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; color: #f2e3b6; }
+#vitals-aside .potion-chip .pc-bar { position: absolute; left: 0; right: 0; bottom: 0; height: calc(2px * var(--text-scale, 1)); background: #00000070; }
+#vitals-aside .potion-chip .pc-bar > i { display: block; height: 100%; background: var(--chip-tint, #cdb98c); }
+#vitals-aside .potion-chip.fading { animation: pc-fade 0.7s ease-in-out infinite alternate; }
+@keyframes pc-fade { from { opacity: 1; } to { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { #vitals-aside .potion-chip.fading { animation: none; } }
+
+/* ---------- The Grimoire's elixir page: effect line, notes, the experiment log ---------- */
+.gr-entry .gr-effect { font-size: 1.25vh; font-style: italic; opacity: 0.85; margin-top: 0.15vh; }
+.gr-entry .gr-swatch { display: inline-block; width: 1.1vh; height: 1.1vh; margin-right: 0.5vh; vertical-align: -0.1vh; border: 1px solid #3a2614aa; }
+.gr-entry.gr-locked .gr-note { margin-top: 0.3vh; padding-left: 0.9vh; border-left: 1px solid #6b3f1e66; font-size: 1.2vh; font-style: italic; color: #6b3f1e; }
+.gr-entry.gr-locked .gr-unwritten { margin-top: 0.3vh; font-size: 1.1vh; opacity: 0.55; font-style: italic; }
+.gr-log { margin: 0.2vh 0 0.7vh; }
+.gr-log-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.2vh 0.7vh; padding: 0.25vh 0; border-bottom: 1px dotted #6b3f1e44; font-size: 1.2vh; }
+.gr-log-mix { display: inline-flex; flex-wrap: wrap; gap: 0.1vh 0.6vh; }
+.gr-log-mix span i { display: inline-block; width: 0.9vh; height: 0.9vh; margin-right: 0.25vh; vertical-align: -0.05vh; border: 1px solid #3a2614aa; }
+.gr-log-mix .hot { text-decoration: underline; text-decoration-color: #c4572a; text-underline-offset: 0.2vh; }
+.gr-log-mix .warm { text-decoration: underline dotted #b88a1e; text-underline-offset: 0.2vh; }
+.gr-log-mix .cold { opacity: 0.55; }
+.gr-log-verdict { margin-left: auto; font-style: italic; opacity: 0.85; }
+.gr-log-row.close .gr-log-verdict { color: #8a5a10; opacity: 1; font-weight: 600; }
+.gr-log-tries { opacity: 0.6; }

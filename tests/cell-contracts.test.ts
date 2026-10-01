@@ -123,8 +123,18 @@ describe('cell ABI contracts', () => {
       Seed: 41,
       Brine: 42,
       Mirror: 43,
+      // the experiment: seven potion cells (alchemy as discovery)
+      ElixirSwift: 44,
+      ElixirTorch: 45,
+      ElixirFire: 46,
+      ElixirFrost: 47,
+      ElixirShock: 48,
+      ElixirToxin: 49,
+      ElixirMight: 50,
+      ElixirVampire: 51,
+      ElixirHush: 52,
     });
-    expect(CELL_COUNT).toBe(44);
+    expect(CELL_COUNT).toBe(53);
     expect(Math.max(...Object.values(Cell))).toBeLessThan(128);
   });
 
@@ -161,6 +171,15 @@ describe('cell ABI contracts', () => {
       Cell.ElixirLife,
       Cell.ElixirLevity,
       Cell.ElixirStone,
+      Cell.ElixirSwift,
+      Cell.ElixirTorch,
+      Cell.ElixirFire,
+      Cell.ElixirFrost,
+      Cell.ElixirShock,
+      Cell.ElixirToxin,
+      Cell.ElixirMight,
+      Cell.ElixirVampire,
+      Cell.ElixirHush,
       Cell.Steam,
       Cell.Smoke,
       Cell.Ice,

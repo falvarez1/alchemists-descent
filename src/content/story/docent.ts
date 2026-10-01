@@ -250,6 +250,12 @@ export const DOCENT_ASIDES = {
     first: 'An elixir. Do not call it soup. The Guild was very sensitive on the point.',
     again: null,
   },
+  /** The first cauldron come upon (`cauldronView`): floor 1's Refuge Kettle, lit before the alchemist arrives. */
+  kettle: {
+    id: 'aside.kettle',
+    first: 'A kettle, already lit. Pour in what you find; the book will say how close you came. Pell would call it tea. Pell calls most things tea.',
+    again: null,
+  },
   /** The first empty flask (`flaskDry`). */
   flask: {
     id: 'aside.flask',

@@ -1,5 +1,5 @@
 import type { Ctx, SimulationApi } from '@/core/types';
-import { Cell, isLiquid } from '@/sim/CellType';
+import { Cell, isElixir, isLiquid } from '@/sim/CellType';
 import { canDryBloodOnSurface, stainCell } from '@/sim/stains';
 import { handleGas, handleMarshGas } from '@/sim/elements/gas';
 import { maybeReact, refreshSecretReaction } from '@/sim/reactions';
@@ -192,9 +192,7 @@ export class Simulation implements SimulationApi {
           else if (
             type === Cell.Blood ||
             type === Cell.Slime ||
-            type === Cell.ElixirLife ||
-            type === Cell.ElixirLevity ||
-            type === Cell.ElixirStone
+            isElixir(type)
           ) {
             if (type === Cell.Blood) {
               // wet blood stains adjacent rock and timber, and slowly soaks in

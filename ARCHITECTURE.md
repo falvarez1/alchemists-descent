@@ -92,6 +92,21 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     Lightning.ts          Chain lightning raycast + arc visuals
     Projectiles.ts        Spell projectiles, bombs, black holes, gravity wells
     Spells.ts             Wand tip, dig ray, warp, tactical spell dispatch
+    wands/                The wand engine: WandSystem (cast cycle, frames, saves), compiler (the x4 clamp,
+                          depth-1 triggers), sentenceView (the bench's sentences and warnings), cards,
+                          wandCatalog (EIGHT frames: oak, bone, brass, void + the found archetypes quill,
+                          pepperpot, mortar, samovar), rewardPools. And the CHOICE layer (pillar 2, the choice
+                          update; numbers in docs/FEEL.md section 5): cardRules (which card works on which: the
+                          compiler's host rule, the wet/frozen/burning setters and payoffs, the five devil's
+                          bargains' rules; ONE truth for the compiler, the bench warnings, the dead-card
+                          caption and the fit tells), cardFit (pure cardFit(holdings, card): works / dead /
+                          open and the state a card primes), altarOffers (an altar's host + synergy + wild
+                          bargain; an arrival gift's burst + precision + utility), wandFinds (frames as loot:
+                          refitCards closes cards up before it displaces any, previewRefit, pickFrameFind /
+                          pickFrameRack), BuildDirector (waystone altars and floor gifts as three-card choices,
+                          a frame from a boss's wreckage and one altar in three, the once-per-card dead-cast
+                          caption, the run's BuildNotes; offers wait for a calm moment, never mid-curtain or
+                          mid-title), buildRecap (the build as sentences for the Sanctum, pause menu, ledger)
   entities/
     physics.ts            Entity-vs-grid collision with the loose-rubble cluster rule
     Player.ts             Player state/factory, review kit, damage/death/respawn, movement, animation
@@ -134,6 +149,17 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     lockText.ts           The locks' voice: objective, hint + teach card, 'Sealed' toast, minimap names (one table)
     compass.ts            The game's own waypoint (the exit portal once the key is taken); never
                           replaces a waypoint set by hand
+    MutatorDirector.ts    COMPLICATIONS at runtime (ctx.mutators, content/mutators): the per-run tuning
+                          clone (ctx.params swapped for a copy while a descent is played, so nothing
+                          reaches the tuning store), vents and drips, Short Rations, Fireworks, the notice;
+                          ticked from RunDirector.update (never reorder the tick for it)
+    mutatorDressing.ts    The complications' floor dressing (pure over a World + a level seed): real closed
+                          puddles on the walk, ceiling drips and floor gas vents; a TAIL pass planned from
+                          the pristine cells on createLevel AND restoreLevel, route-checked, never part of
+                          generation (no GEN_VERSION churn)
+  content/
+    mutators.ts           The complication registry (names, regulations, weights, ladder flags), the dial
+                          arithmetic, the append-only DAILY table, the Sanctum's bargain rules (pure)
   world/
     CaveGenerator.ts      Generation pipeline host: skeleton dispatch + paint + decorations
     carve.ts              Pure carve primitives over the work buffer (incl. ensureConnectivity)
@@ -147,7 +173,7 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     fitWalks.ts           Body-fit BFS walks over computeFits (dist/prev, walkTo, reachedNear)
     looseStock.ts         Clears oil/gunpowder/water/sand pockets from a fixture's room (only
                           open-touching masses, never a room another pass owns)
-    locks.ts              THE LOCKS (GEN 64): each floor's key vault is a signature puzzle chamber sealed by
+    locks.ts              THE LOCKS (GEN 65): each floor's key vault is a signature puzzle chamber sealed by
                           a route-seal Metal plug the floor's machine breaks (sensor/latch -> relay -> plug);
                           the shared frame: vault box + door + relay niche, the site search (above a flooded
                           floor's sea: seaTopRow), the room carve + floor re-lay, the relent clock
@@ -261,7 +287,13 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     Inspector.ts          Right dock: global/PostFx sliders + dynamic per-material/spell params
     Hud.ts                In-canvas HUD: vitals, hotbar, banners, game-over overlay
     Callouts.ts           World-anchored combat words (alchemyKill / combatCallout), chains
-    WandBench.ts          Card slotting plus debug-only potion/elixir/power controls
+    WandBench.ts          Card slotting plus debug-only potion/elixir/power controls; fit tells on every card
+    CardOfferOverlay.ts   The three-card offer (tome, Sanctum page, altar, arrival gift): roles, fit tells,
+                          a bargain's price; unskippable; snapshots and restores `paused`
+    WandOfferOverlay.ts   A found wand frame: stat diff for wand I and II, how YOUR cards would cycle, the
+                          cards a smaller frame would push out (back to the satchel); may be left
+    buildRecapView.ts     The wands as a readable block (Sanctum); runNotes.ts: the ledger's "Run notes" line
+                          and the playtest report's decision record
     ConsoleOverlay.ts     Backquote dev-console shell backed by game/console commands
     consoleHelpView.ts    The console's help pages as wrapping columns (rows from game/console/help)
                           (game/console: help, travel* — the tester's goto/skip/boss kit, authoring builds only;
@@ -300,11 +332,30 @@ biome extras → region graph → ledger pre-reserves → prefab placement (fork
 structure placement (a second placePrefabs pass on the forked 'machines'
 stream: chain-reaction rooms built from the machine mechanism vocabulary,
 biome-gated by `GEN[biome].machines` tags) → graph re-extract → secrets →
-cauldron/onboarding → structures. Expedition saves record `GEN_VERSION`;
+cauldron/onboarding → structures → (after the last carve) route waystones, which also bring a
+cauldron that stands off the route beside the bowl nearest it (GEN 64). Expedition saves record `GEN_VERSION`;
 resume retires mismatched saves (restoreLevel regenerates the pristine world
 from seed, so stale saves would silently desync).
 
 ## Key design decisions
+
+**Alchemy is a discovery game** (THE EXPERIMENT; numbers in `docs/FEEL.md` §11). The
+brew is still the literal cells in the bowl; what is new is that the bowl *answers*.
+`game/alchemy/mix` (pure) judges a histogram: `matchMix` (exact amounts, a purity
+slack, the most specific recipe wins) and `assessMix` (inert / close / muddy, and each
+reagent cold / warm / hot against the nearest undiscovered recipe, never its name).
+`game/Brewing` samples the basin, holds the heat memory, emits `cauldronView` (the
+bowl panel, `ui/BowlPanel`) and `brewAttempt` (the Grimoire's experiment log, record v3
+in `core/grimoireStore`, plus margin notes unlocked by play: `content/alchemyClues`,
+`game/alchemy/clues`). What a brew *does* is one row of `content/elixirs` per potion
+cell (cells 44-52 are viscous liquids to the sim through `ELIXIR_CELL_IDS`, so a new
+potion is a cell, a palette entry and a row: the checklist is pinned by
+`tests/elixirs.test.ts`): a status timer, or a timed *boon* (`status.boons`, read
+through `core/boons hasBoon`, the same call a Sanctum perk answers), loaded by
+`game/potions.drinkFlask`, shown by `ui/PotionChips`. `content/recipes` is data under
+`tests/recipes.test.ts` (unique, fit the bowl, no gold, none that the sim will not
+keep in a bowl, a floor that holds both ingredients); the probe that earns the
+right to ship a recipe is `scripts/verify-alchemy.mjs`.
 
 **Ctx composition root.** Every shared dependency (world state, entity lists, service
 APIs) lives on a single `Ctx` object built once in `Game.ts`. Systems depend on the
@@ -315,6 +366,16 @@ player ↔ spells) without letting circular imports exist.
 **Flat typed arrays.** The grid is five `TypedArray`s indexed `x + y * width` instead
 of nested JS arrays of arrays — far less memory, far better cache behavior, and the
 foundation for future chunking/dirty-rect work. Colors are packed `0xRRGGBB` integers.
+
+**Complications are a layer, not a second place to look.** A run's mutators
+(`RunSaveState.mutators`, mirrored on `ctx.state.mutators`; never `player.perks`, which is the
+Sanctum's) reach the game through the funnels it already had: `difficultyMods(ctx.state)` folds
+them into the tier (an ordinary run still reads the tier's own object), `mutatorMods(ctx.state)` is
+the read for the rest (gravity, the alchemist's blows, bounty, healing, light), and floor dressing
+is a seeded tail pass on a finished floor — never a generation change. The shared tuning
+singletons are never written: while a descent is played, `ctx.params` is a per-run clone.
+docs/DIFFICULTY.md "Complications" is the contract (the catalog, where each dial sits, the
+daily table's append-only rule, the meta policy).
 
 **The GPU FX layer carries the sprites.** On a GPU-composed WebGL frame the
 composer no longer stages sprite pixels in a CPU float buffer (dirty-tracked,

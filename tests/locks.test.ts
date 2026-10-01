@@ -20,7 +20,7 @@ import { GATE, kilnGateLayout } from '@/world/lockCrucible';
 import { reachableMask, routeSealedWorld, validateFindability, wizardMask } from '@/world/validate';
 
 /**
- * THE LOCKS (world/locks, GEN 64): each campaign floor's key vault is a signature puzzle chamber on the
+ * THE LOCKS (world/locks, GEN 65): each campaign floor's key vault is a signature puzzle chamber on the
  * route, sealed by a Metal door the floor's own machine breaks. This file holds the generation contracts
  * (the room, the chain, the seal, findability, the floors that have no lock) and the mechanism contracts
  * (the relent, the vent). The chemistry itself is PLAYED by scripts/verify-gas-bell.mjs (real input).
