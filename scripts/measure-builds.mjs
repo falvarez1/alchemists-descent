@@ -38,7 +38,6 @@ const BUILDS = [
   { id: 'millstone+spark', frame: 'oak', cards: ['millstone', 'spark'] },
   { id: 'kickback+spark', frame: 'oak', cards: ['kickback', 'spark'] },
   { id: 'overcharge+bomb', frame: 'bone', cards: ['overcharge', 'bomb'] },
-  { id: 'shortfuse+bomb', frame: 'oak', cards: ['shortfuse', 'bomb'] },
   { id: 'millstone+frostshard', frame: 'oak', cards: ['millstone', 'frostshard'] },
   // the frames, carrying the same three builds
   ...['oak', 'bone', 'brass', 'void', 'quill', 'pepperpot', 'mortar', 'samovar'].flatMap((frame) => [

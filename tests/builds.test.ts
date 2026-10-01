@@ -109,8 +109,14 @@ describe("devil's bargains in the compiler", () => {
   });
 
   it('puts the price in the compile: lifetime, speed, recoil, mana', () => {
-    expect(compileWand(['shortfuse', 'spark'])[0].actions[0].lifeMul).toBeCloseTo(0.03);
+    expect(compileWand(['shortfuse', 'spark'])[0].actions[0].lifeMul).toBeCloseTo(0.075);
     expect(compileWand(['shortfuse', 'flame'])[0].actions[0].lifeMul).toBeUndefined();
+    // a bomb or a meteor with a held-breath fuse bursts beside the alchemist every cast: not a price, a suicide button
+    for (const host of ['bomb', 'meteor'] as CardId[]) {
+      const [dud] = compileWand(['shortfuse', host]);
+      expect(dud.actions[0].lifeMul).toBeUndefined();
+      expect(dud.actions[0].dmgMul).toBe(1);
+    }
     expect(compileWand(['millstone', 'spark'])[0].actions[0].speedMul).toBeCloseTo(0.3);
     expect(compileWand(['kickback', 'spark'])[0].actions[0].recoil).toBeGreaterThan(0);
     expect(compileWand(['overcharge', 'spark'])[0].manaCost).toBe(CARD_DEFS.overcharge.manaCost + CARD_DEFS.spark.manaCost);
@@ -202,6 +208,7 @@ describe('cardFit: what a card does in YOUR hands', () => {
   it('judges bargains by the hosts they land on', () => {
     expect(cardFit(holdings(['spark']), 'shortfuse').verdict).toBe('works');
     expect(cardFit(holdings(['flame']), 'shortfuse').verdict).toBe('dead');
+    expect(cardFit(holdings(['bomb']), 'shortfuse').verdict).toBe('dead');
     expect(cardFit(holdings(['lightning']), 'loosecannon').verdict).toBe('works'); // lightning has both damage and aim jitter
     expect(cardFit(holdings(['conjure']), 'overcharge').verdict).toBe('dead');
   });
@@ -622,7 +629,7 @@ describe('the build director: choices on the route', () => {
     // x3 is ONE bolt carrying the multiplier (it was three stacked bolts: the extras detonated on the first one's debris)
     expect(ctx.projectiles).toHaveLength(1);
     expect(ctx.projectiles[0].mul).toBe(3);
-    expect(ctx.projectiles[0].life).toBeLessThan(10);
+    expect(ctx.projectiles[0].life).toBeLessThan(15);
     const calm = makeCtx();
     const w2 = new WandSystem(calm);
     w2.wands[0].cards.splice(0, 3, 'spark', null, null);
@@ -756,7 +763,7 @@ describe('the build, read back', () => {
 
   it('names a bargain on the cast it struck', () => {
     expect(wandGroups(['loosecannon', 'spark'])[0]).toBe('Loose Spark Bolt');
-    expect(wandGroups(['shortfuse', 'bomb'])[0]).toBe('Short-Fused Cast Bomb');
+    expect(wandGroups(['shortfuse', 'icelance'])[0]).toBe('Short-Fused Ice Lance');
     // a plain Heavy Charm still says Heavy; a bargain's own multiplier does not read as Heavy
     expect(wandGroups(['heavy', 'spark'])[0]).toBe('Heavy Spark Bolt');
     expect(wandGroups(['overcharge', 'spark'])[0]).toBe('Overcharged Spark Bolt');

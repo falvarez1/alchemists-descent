@@ -965,18 +965,44 @@ running). Oak Sprig unless named; dps / damage per mana at 30, 70, 200 cells:
 | + Heavy Charm | 56 / 1.8 | 58 / 1.9 | 53 / 1.7 | x1.6, not x1.2 (see below) |
 | + Overcharged Coil (x3, 26 mana) | 56 / 1.6 | 57 / 1.6 | 57 / 1.6 | burst x2.2 (3 s: 228 vs 105); tank dry in ~3 casts; 0.76x efficiency |
 | + Loose Cannon (x4, +29 deg aim) | 94 / 3.5 | 25 / 0.9 | 10 / 0.4 | x2.6 point-blank, under 0.7x at 70 |
-| + Short Fuse (x3, life x0.03) | 97 / 3.6 | 0 | 0 | x2.7 inside ~47 cells, nothing beyond |
+| + Short Fuse (x3, life x0.075) | 96 / 3.5 | 97 / 3.6 | 0 | x2.7 out to ~125 cells (a bolt lives 14 ticks, was 180), nothing beyond; bolts and lances only (measured at x0.06: same 30 and 70, 0 at 200) |
 | + Millstone Charm (x2.5, speed x0.3) | 80 / 2.6 | 82 / 2.7 | 71 / 2.3 | x2.3 on a still target; a flier or hopper steps aside (18 vs 5 dps on the strafing target: the same low hit rate as the plain bolt) |
 | + Kickback Charm (x2, recoil 7) | 66 / 2.2 | 66 / 2.2 | 65 / 2.1 | x1.8; every cast shoves the alchemist ~4.7 cells/tick (a plain Spark Bolt: 0.5) |
 | Cast Bomb | 6 / 0.2 | 46 / 1.2 | 5 / 0.1 | arcs; lands near 70 |
 | + Overcharged Coil | 123 / 2.5 | 172 / 3.4 | 62 / 1.2 | x3.7 at 70; dry; 23 hp of self-blast per 10 s |
-| + Short Fuse | 554 / 15 | 365 / 10 | 0 | the fuse goes off ~30 cells away: **406 hp of self-blast per 10 s** (about three casts kill) |
+| + Short Fuse | - | - | - | **a dud on a bomb (and a meteor), by rule**: at x0.03 the bomb burst ~9 cells ahead of the alchemist every cast, killed two 153 hp golems and two imps in ONE cast and cost 61-82 of 110 hp (406 hp of self-blast per 10 s in the endless-target run): a suicide button, not a price |
 
 The price of each bargain is paid in the COMPILER and lands only where its rule says it does (benefit and price together;
-on any other host it is a dud, mana still charged): Overcharge +26 mana; Loose Cannon +0.5 rad of jitter; Short Fuse x0.03
-lifetime (a bolt: 5 ticks, was 180; a bomb's fuse 4 ticks); Millstone x0.3 speed; Kickback an uncapped +7 recoil impulse.
+on any other host it is a dud, mana still charged): Overcharge +26 mana; Loose Cannon +0.5 rad of jitter; Short Fuse x0.075
+lifetime (a bolt: 14 ticks, was 180; spark, frost shard, ice lance and wisp only); Millstone x0.3 speed; Kickback an uncapped +7 recoil impulse.
 All stay inside the x4 damage clamp (stacking two clamps the damage and keeps both prices). Bargains are in no tome,
 Lost-pages, depth or waystone pool and discovery never feeds them: they exist only as an altar's wild card.
+
+**Played fights** (the same real WandSystem and projectile code, but the REAL game loop and a held real mouse button, aim
+re-projected from the nearest enemy through the camera every 90 ms; a flat metal arena 320 cells wide, 110 HP, Oak Sprig;
+two golems (153 hp) and two imps (36 hp, they hover and burn you) at 60 / 90 / 120 / 150 cells; one line per trial: seconds to
+clear, hp lost, D = the alchemist died). A single trial is noisy (the plain Spark Bolt itself lost 3, 105 and 14 hp on
+three runs), so read the pattern, not the digit:
+
+| build | trials |
+|---|---|
+| Spark Bolt (baseline) | 8.1s -0 · 6.1s -3 · 10.0s -105 · 9.7s -14 |
+| + Heavy Charm | 7.6s -12 |
+| + Overcharged Coil | 6.1s -2 (the tank is at 1 of 90 by the end: the price) |
+| + Loose Cannon | 20.9s -84 · 18.5s D · 7.4s -59 · 12.8s -36 (2.6x slower at range: the shot scatters, the imps live) |
+| + Short Fuse, life x0.03 (first tuning) | 20.3s D · 12.3s D · 30s -29, 2 of 4 killed · 13.1s D (nothing that keeps its distance can be killed: **shipped value was too harsh**) |
+| + Short Fuse, life x0.06 | 20.1s -80 · 14.2s -10 · 13.9s D · 15.3s D · 15.9s -104 · 14.5s D (3 of 6 die: still too harsh) |
+| + Short Fuse, life x0.09 | 9.6s -18 · 12.0s -48 · 5.5s -38 · 12.6s -58 · 8.2s -31 · 13.4s -10 (no deaths, about the baseline: the price has gone) |
+| + Short Fuse, life x0.075 (shipped) | 14.9s -17 · 30s -29 (3 of 4 killed) · 11.3s -18 · 7.7s -23 · 13.9s -76 · 13.5s -66 (no deaths; about twice as slow as the baseline, because the imps hover at the edge of a 125-cell reach) |
+| + Millstone Charm | 8.4s -28 |
+| + Kickback Charm | 9.2s -2 (in an open arena the shove is a retreat; the price shows beside a pit or lava) |
+| Cast Bomb alone | 6.5s D (a bomb at close range is a self-weapon already) |
+| + Overcharged Coil on a bomb | 8.5s D |
+| + Short Fuse on a bomb (retired) | 0.6s, all four dead in ONE cast, -61 hp (and -82 against slimes): the room clears and so does most of the alchemist |
+
+A pack of four slimes (weak, hp ~30) is trivially won by everything (3.9 s with the plain bolt, 1.6 s with Overcharged Coil,
+which empties 70 of 90 mana for it), so the golem-and-imp pack is the honest test. The conclusions that changed the code:
+Short Fuse's life went from x0.03 to x0.075 (x0.06 still killed half the runs, x0.09 cost nothing) and it no longer rides a bomb or a meteor.
 
 **Frames, carrying three builds** (dps for a lone Spark Bolt at 30 / 70 / 200 cells; Meteor Call dps at 30 cells, where it lands):
 

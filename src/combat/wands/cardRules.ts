@@ -61,8 +61,10 @@ export const BARGAIN_RULES: Partial<Record<CardId, BargainRule>> = {
   overcharge: { dmgMul: 3, appliesTo: DAMAGE_EFFECT_CARDS },
   // The clamp's full x4 and an aim like a handful of gravel (+0.5 rad of jitter, about 29 degrees): a shotgun.
   loosecannon: { dmgMul: 4, spreadAdd: 0.5, appliesTo: intersect(DAMAGE_EFFECT_CARDS, SPREAD_EFFECT_CARDS) },
-  // x3, but the shot lives a thirtieth as long: a bolt dies inside ~50 cells, a bomb's fuse is a held breath.
-  shortfuse: { dmgMul: 3, lifeMul: 0.03, appliesTo: intersect(DAMAGE_EFFECT_CARDS, PROJECTILE_MOD_HOST_CARDS) },
+  // x3, but the shot lives a thirteenth as long: a bolt dies inside ~125 cells. Bolts only (a bomb or a meteor with
+  // a held-breath fuse bursts a few steps from the alchemist every cast: measured in a played fight, one cast cleared
+  // the room and cost 60-90 of 110 hp, which is a suicide button, not a price).
+  shortfuse: { dmgMul: 3, lifeMul: 0.075, appliesTo: new Set<CardId>(['spark', 'frostshard', 'icelance', 'wisp']) },
   // x2.5 at under a third of the speed: a thrown anvil, easy to step around.
   millstone: { dmgMul: 2.5, speedMul: 0.3, appliesTo: intersect(DAMAGE_EFFECT_CARDS, SPEED_EFFECT_CARDS) },
   // x2 and every cast kicks the alchemist back (and a downward one pops him off the floor).
