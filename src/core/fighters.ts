@@ -154,6 +154,13 @@ export interface FighterApi {
   decoyFor(e: Enemy): { x: number; y: number; vx: number } | null;
   /** A speed factor for an enemy while a fighter effect slows it (1 = unchanged). Read-only: the enemy loop uses `enemyRuns`. */
   enemySlow(e: Enemy): number;
+  /** Is `e` held by a stun this fighter put on it? (An arena asks about the other fighter's stand-in.) */
+  isStunned(e: Enemy): boolean;
+  /**
+   * ARENA: set by the arena on a rival's fighter system. Kit creation (which is asynchronous and subscribes to events) runs
+   * through it so it happens under that fighter's slot binding.
+   */
+  bindScope: ((fn: () => void) => void) | null;
   /**
    * Does this foe take its update this tick? Always true unless a fighter slows it, when it is true on the
    * matching fraction of ticks (a slow of 0.5 is every other tick): the slow is time, so everything the foe does slows alike.

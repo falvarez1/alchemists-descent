@@ -242,7 +242,7 @@ await shot('5-keg');
 const oilNow = await count(6, 730, FLOOR - 10, 830, FLOOR - 1);
 check('the oil lane has not caught from the torch', oilNow >= hall.oil * 0.95, `${hall.oil} -> ${oilNow}`);
 // Reset yard: the barricade, the keg, the oil and the potions come back
-await click(panelBtn('Reset yard'));
+await click('#fighter-arena button:text-is("Reset")');
 await page.waitForTimeout(600);
 const reset = { wood: await count(4, 600, FLOOR - 100, 613, FLOOR - 31), keg: await count(8, 640, FLOOR - 45, 670, FLOOR - 31), oil: await count(6, 730, FLOOR - 10, 830, FLOOR - 1), pickups: await E(() => window.__game.ctx.levels.current.pickups.filter((p) => !p.taken).length) };
 check('Reset yard rebuilds the hall (barricade, keg, oil, potions)', reset.wood > 800 && reset.keg > 100 && reset.oil > 400 && reset.pickups === 2, JSON.stringify(reset));

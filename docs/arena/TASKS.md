@@ -36,16 +36,16 @@ and the decision log refer to it. Update the box in the same commit as the work.
 
 ## P3: combatants (D-001, `ARCHITECTURE.md`)
 
-- [ ] A3.1 contracts: `Enemy.fighter`, `Projectile.owner`, `'fighter'` enemy kind (+ defs, profiles), `Ctx.arena`
-- [ ] A3.2 `src/arena/ArenaSlots.ts`: slots, `bind/with`, proxy factory and sync, knock bridge, victim-side slow/stun
-- [ ] A3.3 the scoped event bus; every per-slot subscription registered through it; `adopt()` under bind
-- [ ] A3.4 `Game.ts`: the rival loop, sim-bounds union, camera targets
-- [ ] A3.5 `Enemies.ts`: the redirect in `damage/kill/gustShove/splashHazard`, the AI-loop skip, `noteEnemyHurt`
-- [ ] A3.6 `Projectiles.ts` + `markProjectile`: `owner` stamps, per-projectile bind, enemy-index invalidation, `interceptProjectile` for proxies
-- [ ] A3.7 `Player.ts`: arena `kill`/`respawn` branches, `stunT`, `STOMP_IMMUNE`
-- [ ] A3.8 render: the second fighter's sprite/shadow/pose/fx; proxies skipped in every enemy draw loop; camera multi-target + leash
-- [ ] A3.9 the duel stage (symmetric, `ARENA-RULES.md` 1) and a second-input provider (keyboard-for-one + scripted/second pad)
-- [ ] A3.10 the "every damage path exactly once" probe (spell, kick, explosion, flame, liquid, rigid body, each kit effect) and a regression run of all existing probes
+- [x] A3.1 contracts: `Enemy.fighter`, `Projectile.owner`, `'fighter'` enemy kind (+ defs, profiles), `Ctx.arena`
+- [x] A3.2 `src/arena/ArenaSlots.ts`: slots, `bind/with`, proxy factory and sync, knock bridge, victim-side slow/stun
+- [x] A3.3 the scoped event bus; every per-slot subscription registered through it; `adopt()` under bind
+- [x] A3.4 `Game.ts`: the rival loop, sim-bounds union, camera targets
+- [x] A3.5 `Enemies.ts`: the redirect in `damage/kill/gustShove/splashHazard`, the AI-loop skip, `noteEnemyHurt`
+- [x] A3.6 `Projectiles.ts` + `markProjectile`: `owner` stamps, per-projectile bind, enemy-index invalidation, `interceptProjectile` for proxies
+- [x] A3.7 `Player.ts`: arena `kill`/`respawn` branches, `stunT`, `STOMP_IMMUNE`
+- [x] A3.8 render: the second fighter's sprite/shadow/pose/fx; proxies skipped in every enemy draw loop; camera multi-target + leash
+- [x] A3.9 the duel stage (symmetric, `ARENA-RULES.md` 1) and a second-input provider (keyboard-for-one + scripted/second pad)
+- [x] A3.10 the "every damage path exactly once" probe (spell, kick, explosion, flame, liquid, rigid body, each kit effect) and a regression run of all existing probes
 - [ ] A3.11 audit of the ~60 files that scan `ctx.enemies` (music, hints, minimap, readouts, sprite switches) for proxy leaks
 
 ## P4: AI fighters (`AI-FIGHTERS.md`)

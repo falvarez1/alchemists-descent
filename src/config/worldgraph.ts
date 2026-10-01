@@ -77,6 +77,14 @@ export const LEVELS: Record<string, LevelDef> = {
     depth: 0,
     nextLevelId: null,
   },
+  // Where two fighters fight (world/duelStage, docs/arena): one symmetric room, a rival from the Yard's panel.
+  'fighter-duel': {
+    id: 'fighter-duel',
+    name: 'THE DUEL STAGE',
+    biome: 'earthen',
+    depth: 0,
+    nextLevelId: null,
+  },
 };
 
 export const START_LEVEL = 'd1';

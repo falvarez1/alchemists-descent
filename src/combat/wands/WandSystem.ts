@@ -705,6 +705,8 @@ export class WandSystem implements WandsApi {
 
   /** Write the impact-time side-channel marks for a freshly spawned projectile. */
   private markProjectile(ctx: Ctx, p: Projectile, action: CastAction): void {
+    // ARENA: a shot belongs to the fighter that cast it (its pass runs bound to that fighter).
+    if (ctx.arena !== undefined && ctx.arena.active && ctx.arena.bound !== 0) p.owner = ctx.arena.bound;
     // A bargain's short life (Short Fuse): a bolt's range, a bomb's fuse.
     if (action.lifeMul !== undefined) p.life = Math.max(3, Math.round(p.life * action.lifeMul));
     if (action.bounces > 0) BOUNCE_COUNTS.set(p, action.bounces);

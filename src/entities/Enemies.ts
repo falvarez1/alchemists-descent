@@ -594,6 +594,8 @@ export class Enemies implements EnemyControlApi {
 
   damage(e: Enemy, amount: number, kx: number, ky: number, source: EnemyDamageSource = 'direct'): void {
     const ctx = this.ctx;
+    // ARENA (core/arena): a blow aimed at the stand-in for another fighter lands on that fighter, through ITS controller.
+    if (e.fighter !== undefined) { ctx.arena?.hit(e, amount, kx, ky, source); return; }
     // THE BOSS WARD: a warded boss's hp moves only for harm the player set in
     // motion (a direct blow, or the world's while he is engaged) — never for a
     // blast, fire or creature that went off on its own. core/bossWard.
@@ -739,6 +741,7 @@ export class Enemies implements EnemyControlApi {
    *  LAUNCH (AI + per-kind flight cap suppressed in tickKnock) so the shove actually
    *  carries — and a fast launch SMASHES into the first wall it meets, painting it. */
   gustShove(e: Enemy, dirX: number, dirY: number, strength: number): void {
+    if (e.fighter !== undefined) { this.ctx.arena?.shove(e, dirX, dirY, strength); return; }
     if (strength <= 0 || e.hp <= 0) return;
     if (BOSS_LAIRS[e.kind]) return; // a gust can't move a boss
     const def = this.defs[e.kind];
@@ -900,6 +903,8 @@ export class Enemies implements EnemyControlApi {
   }
 
   kill(e: Enemy, kx: number, ky: number, source?: EnemyDamageSource): void {
+    // (a fighter is never "killed" by an enemy call: only a blow that takes its health ends it, in its own controller)
+    if (e.fighter !== undefined) return;
     if (source) this.ctx.alchemy?.noteHit(e, source);
     if (this.deferBossDeath(e)) return;
     if (!this.removeEnemy(e)) return;
@@ -2650,6 +2655,7 @@ export class Enemies implements EnemyControlApi {
     for (let i = enemies.length - 1; i >= 0; i--) {
       const e = enemies[i];
       if (!e) continue;
+      if (e.fighter !== undefined) continue; // ARENA: the stand-in for a real fighter never thinks (its body took the world's blows itself)
       // A mid-loop swap-remove (e.g. a bomber's death explosion killing a foe
       // at a lower index) can move an ALREADY-UPDATED element into a slot this
       // backwards sweep hasn't reached yet — the stamp turns that second visit
@@ -4083,6 +4089,7 @@ export class Enemies implements EnemyControlApi {
       }
     }
     for (const enemy of enemies) {
+      if (enemy.fighter !== undefined) continue;
       if (ctx.debug.frozenEnemy(enemy)) continue;
       if (enemy.x < sim.x0 - 60 || enemy.x > sim.x1 + 60 || enemy.y < sim.y0 - 60 || enemy.y > sim.y1 + 60) continue;
       tickCreaturePose(ctx, enemy);

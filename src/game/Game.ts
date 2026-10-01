@@ -30,6 +30,7 @@ import { Enemies } from '@/entities/Enemies';
 import { createPlayer, PlayerControl } from '@/entities/Player';
 import { ChillSystem } from '@/game/Chill';
 import { FighterSystem } from '@/fighters/FighterSystem';
+import { ArenaSlots } from '@/arena/ArenaSlots';
 import { Physics } from '@/entities/physics';
 import { RigidBodies } from '@/entities/RigidBodies';
 import { VineStrands } from '@/entities/VineStrands';
@@ -353,6 +354,36 @@ export class Game {
     const wands = new WandSystem(ctx);
     ctx.wands = wands;
     this.disposables.push(wands);
+    // ARENA (core/arena): a second fighter's bundle is built here, the one place that names the concrete classes. Its player and
+    // input stand in on the Ctx while its systems are constructed (they read them), and every subscription they make is tagged with
+    // the slot, so a rival's `cardCast` or `flaskUsed` never feeds this fighter's passive.
+    ctx.arena = new ArenaSlots(ctx, (slot) => {
+      const keepPlayer = ctx.player, keepInput = ctx.input;
+      const player = createPlayer();
+      const input: InputState = {
+        keys: { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false },
+        mouse: { x: 0, y: 0 },
+        isDrawing: false, lastX: null, lastY: null, buildSpellHeld: false, bombCharge: -1, activeChargingBlackHole: null,
+        siphonHeld: false, pourHeld: false, drinkHeld: false,
+      };
+      ctx.player = player;
+      ctx.input = input;
+      try {
+        return ctx.events.asSlot(slot, () => {
+          const playerCtl = new PlayerControl(ctx);
+          const chill = new ChillSystem(ctx);
+          const fighters = new FighterSystem(ctx);
+          const slotWands = new WandSystem(ctx);
+          const flask = new Flask();
+          return { player, input, playerCtl, wands: slotWands, flask, fighters, chill };
+        });
+      } finally {
+        ctx.player = keepPlayer;
+        ctx.input = keepInput;
+      }
+    });
+    const arena = ctx.arena;
+    this.disposables.push({ dispose: () => { arena.removeRival(1); } });
     ctx.pickups = new Pickups();
     const mechanisms = new Mechanisms(ctx);
     ctx.mechanisms = mechanisms;
@@ -840,6 +871,7 @@ export class Game {
       bounds.x1 = Math.min(ctx.world.width, Math.ceil(ctx.player.x + VIEW_W / 2 + 80));
       bounds.y0 = Math.max(0, Math.floor(ctx.player.y - VIEW_H / 2 - 80));
       bounds.y1 = Math.min(ctx.world.height, Math.ceil(ctx.player.y + VIEW_H / 2 + 80));
+      ctx.arena?.extendSimBounds(bounds); // (a rival's surroundings are simulated too)
     }
     ctx.contraption?.includeSimulation();
 
@@ -863,15 +895,19 @@ export class Game {
       if (!dbg.frozenPlayer()) {
         // A computer fighter, if one is installed (src/arena/ai), writes this tick's inputs just before the body reads them.
         runBots(ctx);
-        ctx.playerCtl.update(ctx);
-        // The body's temperature follows where it now stands (its moveK is read next tick).
-        ctx.chill?.update(ctx);
-        // The fighter's abilities act on the body that just moved, before the enemies think.
-        ctx.fighters?.update(ctx);
+        // (an arena: a rival's slow is TIME, so a slowed fighter runs only a fraction of its ticks)
+        if (ctx.arena === undefined || ctx.arena.runsBody(0)) {
+          ctx.playerCtl.update(ctx);
+          // The body's temperature follows where it now stands (its moveK is read next tick).
+          ctx.chill?.update(ctx);
+          // The fighter's abilities act on the body that just moved, before the enemies think.
+          ctx.fighters?.update(ctx);
+        }
+        ctx.arena?.runRivals('body');
         if (!ctx.player.dead) updateLegSwing(ctx);
         updateTelekinesis(ctx);
       }
-      if (!debugActive) ctx.flask.update(ctx);
+      if (!debugActive) { ctx.flask.update(ctx); ctx.arena?.runRivals('flask'); }
       const enemyStart = performance.now();
       ctx.enemyCtl.update(ctx); // self-gates per enemy via ctx.debug.frozenEnemy
       let creatureMs = performance.now() - enemyStart;
@@ -905,11 +941,13 @@ export class Game {
         this.brewing.update(ctx);
         ctx.hints.update(ctx);
         ctx.wands.update(ctx);
+        ctx.arena?.runRivals('wands');
         ctx.particles.update(ctx);
         ctx.lightning.update();
         ctx.lightning.ambientDischarge();
       }
       this.updateBuildModeHeldSpells();
+      ctx.arena?.endTick();
       if (debugActive) dbg.update(); // drag the grabbed entity to the cursor
       this.perfHud.mark('entities', performance.now() - tEnt);
       const totalMs = performance.now() - tickStart;

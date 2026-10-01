@@ -1,6 +1,6 @@
 import { BRAIN_BLURBS, BRAIN_IDS } from '@/arena/ai';
 import type { BrainId } from '@/arena/ai';
-import { botDriverFor } from '@/arena/ai/driver';
+import { botDriverFor, rivalDriverFor, type BotDriver } from '@/arena/ai/driver';
 import type { Ctx } from '@/core/types';
 
 /**
@@ -18,11 +18,12 @@ export class ArenaBotsPanel {
   private level = 3;
   private last = '';
 
-  constructor(private readonly ctx: Ctx) {
+  /** `slot` 0 is the fighter you hold (the keyboard is the "You" choice); a rival's brain can be a brain or nothing. */
+  constructor(private readonly ctx: Ctx, private readonly slot = 0, title = 'At the controls') {
     this.root.className = 'fa-section fa-bots';
     const label = document.createElement('div');
     label.className = 'fa-label';
-    label.textContent = 'At the controls';
+    label.textContent = title;
     const row = document.createElement('div');
     row.className = 'fa-buttons';
     const make = (id: BrainId | 'off', text: string, title: string): HTMLButtonElement => {
@@ -38,7 +39,7 @@ export class ArenaBotsPanel {
       row.append(b);
       return b;
     };
-    make('off', 'You', 'The keyboard and mouse are yours');
+    make('off', slot === 0 ? 'You' : 'Still', slot === 0 ? 'The keyboard and mouse are yours' : 'No brain: the rival stands where it is');
     for (const id of BRAIN_IDS) make(id, id, BRAIN_BLURBS[id]);
     const levels = document.createElement('div');
     levels.className = 'fa-buttons fa-levels';
@@ -63,8 +64,13 @@ export class ArenaBotsPanel {
     this.root.append(label, row, levels, this.think, this.stats);
   }
 
+  private driver(): BotDriver | null {
+    return this.slot === 0 ? botDriverFor(this.ctx) : rivalDriverFor(this.ctx, this.slot);
+  }
+
   private choose(id: BrainId | 'off'): void {
-    const driver = botDriverFor(this.ctx);
+    const driver = this.driver();
+    if (!driver) return;
     if (id === 'off') driver.off();
     else driver.install(id, this.level);
     this.update(true);
@@ -72,15 +78,15 @@ export class ArenaBotsPanel {
 
   private setLevel(n: number): void {
     this.level = n;
-    const driver = botDriverFor(this.ctx);
-    if (driver.active) driver.setLevel(n);
+    const driver = this.driver();
+    if (driver?.active) driver.setLevel(n);
     this.update(true);
   }
 
   /** Redraw from the driver's state (cheap; the panel calls it a few times a second). */
   update(force = false): void {
-    const d = botDriverFor(this.ctx);
-    const brain = d.brain;
+    const d = this.driver();
+    const brain = d?.brain ?? null;
     const key = brain ? `${brain.id}|${brain.level}|${brain.status.intent}|${brain.status.target}|${brain.status.rule}|${Object.values(brain.status.stats).join(',')}` : `off|${this.level}`;
     if (!force && key === this.last) return;
     this.last = key;
@@ -88,7 +94,7 @@ export class ArenaBotsPanel {
     const shown = brain ? brain.level : this.level;
     this.levelBtns.forEach((b, i) => { b.classList.toggle('on', i + 1 === shown); });
     if (!brain) {
-      this.think.textContent = 'The keyboard is yours.';
+      this.think.textContent = this.slot === 0 ? 'The keyboard is yours.' : d === null ? 'No rival.' : 'No brain: it stands still.';
       this.stats.textContent = '';
       return;
     }

@@ -44,6 +44,24 @@ export function playerSelf(ctx: Ctx): BrainSelf {
   return { slot: 0, player: ctx.player, input: ctx.input, fighters: ctx.fighters, hands: playerHands(ctx) };
 }
 
+/** A rival slot's `BrainSelf` (its own body, input and hands; `think` runs under that slot's binding, so `ctx.*` is its own). */
+export function slotSelf(ctx: Ctx, slot: number): BrainSelf | null {
+  const b = ctx.arena?.bundle(slot);
+  if (!b) return null;
+  return {
+    slot,
+    player: b.player,
+    input: b.input,
+    fighters: b.fighters,
+    hands: {
+      press: (s) => b.fighters.press(s),
+      kick: () => { if (!b.player.dead) b.playerCtl.kick(ctx); },
+      flask: () => { if (!b.player.dead) b.flask.throwFlask(ctx); },
+      respawn: () => undefined,
+    },
+  };
+}
+
 export class BotDriver {
   private current: Brain | null = null;
   private levelId: string | undefined;
@@ -53,7 +71,7 @@ export class BotDriver {
 
   constructor(
     private readonly ctx: Ctx,
-    private readonly self: BrainSelf = playerSelf(ctx),
+    readonly self: BrainSelf = playerSelf(ctx),
   ) {
     // The level changing hands the keyboard back (the new floor is nobody's plan); so does leaving play.
     this.offs.push(
@@ -142,6 +160,28 @@ export function botDriverFor(ctx: Ctx): BotDriver {
     DRIVERS.set(ctx, driver);
   }
   return driver;
+}
+
+const RIVAL_DRIVERS = new WeakMap<Ctx, Map<number, BotDriver>>();
+
+/**
+ * A driver for a RIVAL slot (the duel): its brain thinks under that slot's binding, once a tick, right before the slot's body phase
+ * (`ArenaApi.setDriver`). Made on first use, and re-made when the slot's bundle is a new one (a rival that was removed and re-added).
+ */
+export function rivalDriverFor(ctx: Ctx, slot: number): BotDriver | null {
+  const self = slotSelf(ctx, slot);
+  if (!self || !ctx.arena) return null;
+  let byCtx = RIVAL_DRIVERS.get(ctx);
+  if (!byCtx) { byCtx = new Map(); RIVAL_DRIVERS.set(ctx, byCtx); }
+  let d = byCtx.get(slot);
+  if (d === undefined || d.self.player !== self.player) {
+    d?.dispose();
+    d = new BotDriver(ctx, self);
+    byCtx.set(slot, d);
+    const driver = d;
+    ctx.arena.setDriver(slot, () => driver.tick());
+  }
+  return d;
 }
 
 /** The one call `Game.updateFixedTick` makes each tick, before `playerCtl.update`. Free when no bot has ever been installed. */

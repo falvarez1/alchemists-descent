@@ -104,6 +104,7 @@ import { buildPhysicsArena } from '@/world/physicsArena';
 import { buildWeaverArena } from '@/world/weaverArena';
 import { buildAlchemyArena, buildFrostArena, buildGasArena } from '@/world/provingGrounds';
 import { buildFighterArena } from '@/world/fighterArena';
+import { buildDuelStage } from '@/world/duelStage';
 import type {
   generateVirtualWindow,
   MaterializedScenePlacement,
@@ -147,7 +148,7 @@ const SETTLED_AUDIT_GUARD_MS = 10000;
  *  skip the procedural findability repair, which would otherwise "rescue" the now-
  *  wiped campaign features by carving braced tunnels through the authored level.
  *  They own their own reachability. */
-const AUTHORED_TEST_ARENAS = new Set(['weaver-test', 'physics-test', 'alchemy-test', 'gas-test', 'frost-test', 'fighter-test']);
+const AUTHORED_TEST_ARENAS = new Set(['weaver-test', 'physics-test', 'alchemy-test', 'gas-test', 'frost-test', 'fighter-test', 'fighter-duel']);
 /** Waystone bowl fire checks run every 4th frame; this many hot checks light it. */
 const WAYSTONE_LIGHT_TICKS = 30;
 /** Cold bowl checks tolerated before ignition progress resets — coyote time for
@@ -2574,6 +2575,7 @@ export class Levels implements LevelsApi {
     if (id === 'gas-test') buildGasArena(ctx);
     if (id === 'frost-test') buildFrostArena(ctx);
     if (id === 'fighter-test') buildFighterArena(ctx);
+    if (id === 'fighter-duel') buildDuelStage(ctx);
     // Loose wood crates (carry-able fuel) AFTER levelChanged clears the body pool,
     // same as the arenas — so they persist for the visit.
     this.spawnLevelCrates(ctx, runtime);
@@ -2587,6 +2589,8 @@ export class Levels implements LevelsApi {
         ? 'FREEZE A CROSSING — THROW WHAT BURNS'
         : id === 'fighter-test'
         ? 'THE PROVING YARD — TRY EVERY MOVE'
+        : id === 'fighter-duel'
+        ? 'THE DUEL STAGE — TWO FIGHTERS, ONE ROOM'
         : id === 'weaver-test'
         ? 'STUDY THE WEAVER LAIR'
         : runtime.portal

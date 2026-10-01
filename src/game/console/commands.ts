@@ -12,6 +12,7 @@ import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { ConsoleCommandRegistry, parseConsoleLine, splitCommandSequence } from '@/game/console/registry';
 import { createFighterCommands } from '@/game/console/fighters';
 import { createAiCommands } from '@/game/console/ai';
+import { createArenaCommands } from '@/game/console/arena';
 import { createTravelCommands } from '@/game/console/travel';
 import { createMutatorCommands } from '@/game/console/mutators';
 import type { CompletionRequest, ConsoleCommandDefinition } from '@/game/console/registry';
@@ -2522,6 +2523,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
     for (const def of createTravelCommands()) add(def);
     for (const def of createFighterCommands()) add(def);
     for (const def of createAiCommands()) add(def);
+    for (const def of createArenaCommands()) add(def);
     for (const def of createMutatorCommands()) add(def);
     add(sequenceCommand());
   }

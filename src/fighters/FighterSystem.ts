@@ -213,7 +213,9 @@ export class FighterSystem implements FighterApi {
 
   private adopt(def: FighterKitDef): void {
     this.def = def;
-    this.kit = def.create(this);
+    const scope = this.bindScope;
+    if (scope) scope(() => { this.kit = def.create(this); });
+    else this.kit = def.create(this);
     this.tacticalCdMax = Math.max(1, def.tacticalCooldown);
     this.ultimateMax = Math.max(1, def.ultimateDuration);
     const copy = this.id ? FIGHTER_DEFS[this.id] : null;
@@ -465,6 +467,14 @@ export class FighterSystem implements FighterApi {
     }
     return amount;
   }
+
+  isStunned(e: Enemy): boolean {
+    const fx = this.enemyFx.get(e);
+    return fx !== undefined && this.ctx.state.frameCount < fx.stunUntil;
+  }
+
+  /** ARENA (core/arena): kit creation runs through this on a rival's system, under that fighter's binding. */
+  bindScope: ((fn: () => void) => void) | null = null;
 
   moveScale(): number { return this.cMove; }
   climbScale(): number { return this.cClimb * this.baseBody.climb; }

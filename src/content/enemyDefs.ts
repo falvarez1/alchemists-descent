@@ -48,4 +48,7 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
   // Thaw it or shatter the plates off (creatures/bosses/rimeWarden).
   rimewarden: { hp: 380, halfW: 11, h: 26, bounty: 120, gore: Cell.Ice, goreFn: iceColor },
   lenswright: { hp: 330, halfW: 10, h: 20, bounty: 130, gore: Cell.Glass, goreFn: glassColor },
+  // ARENA (core/arena): the stand-in for another fighter. The body of a fighter (4 wide, 17 tall: core/types PLAYER_HALF_W, PLAYER_H);
+  // its hp is the fighter's, mirrored; harm to it lands on the real fighter.
+  fighter: { hp: 100, halfW: 4, h: 17, bounty: 0, gore: Cell.Blood, goreFn: bloodColor },
 };

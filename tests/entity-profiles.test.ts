@@ -17,7 +17,8 @@ describe('entityProfiles', () => {
     expect(PLAYER_ENTITY_PROFILE.description.trim().length).toBeGreaterThan(0);
     expectCompleteTraits(PLAYER_ENTITY_PROFILE.traits);
 
-    expect(Object.keys(ENEMY_ENTITY_PROFILES).sort()).toEqual([...ENEMY_KINDS].sort());
+    // (every placeable kind, plus 'fighter': the stand-in an arena makes for the other fighter)
+    expect(Object.keys(ENEMY_ENTITY_PROFILES).sort()).toEqual([...ENEMY_KINDS, 'fighter'].sort());
     for (const kind of ENEMY_KINDS) {
       const profile = ENEMY_ENTITY_PROFILES[kind];
       expect(profile.description.trim().length, kind).toBeGreaterThan(0);

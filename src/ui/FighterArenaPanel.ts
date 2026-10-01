@@ -9,12 +9,15 @@ import { getBindings, keyLabel } from '@/input/bindings';
 import { YARD, resetFighterArena, standFighterAt } from '@/world/fighterArena';
 import { openFighterRoster } from '@/ui/fighterRosterHost';
 import { ArenaBotsPanel } from '@/ui/ArenaBotsPanel';
+import { ArenaDuelPanel } from '@/ui/ArenaDuelPanel';
+import { resetDuelStage, standAtSpawn } from '@/world/duelStage';
 
 /** The fighters the panel steps through: the classic Alchemist (null) first, then the ten. */
 const CYCLE: ReadonlyArray<FighterId | null> = [null, ...FIGHTER_ORDER];
 /** Foes that fly: they spawn up in the air, the rest on the floor. */
 const FLYERS: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['bat', 'imp', 'wisp']);
 const LEVEL_ID = 'fighter-test';
+const DUEL_LEVEL_ID = 'fighter-duel';
 /** The station names as the Go buttons print them. */
 const STATION_SHORT: Readonly<Record<YardStation, string>> = { muster: 'Muster', ring: 'Ring', gallery: 'Gallery', kiln: 'Kiln', bluff: 'Bluff', cistern: 'Cistern', cell: 'Cell' };
 const SPAWN_GROUND = 3;
@@ -50,6 +53,7 @@ export class FighterArenaPanel {
   private readonly safe: HTMLInputElement;
   private readonly foesLabel = el('div', 'fa-label', 'Foes');
   private readonly bots: ArenaBotsPanel;
+  private readonly duel: ArenaDuelPanel;
   private readonly barsEl = el('div', 'fa-bars');
   private readonly moveRead = el('div', 'fa-moveread');
   /** The fighter's movement technique: its name and how, a Go button, its state and a count of uses. */
@@ -143,8 +147,9 @@ export class FighterArenaPanel {
       button('fa-btn', 'Refill', () => this.ctx.fighters?.refill(), 'Skip the cooldowns and fill the ultimate'),
       button('fa-btn', 'Heal', () => this.heal(), 'Full health'),
       button('fa-btn', 'Hurt 25', () => this.ctx.playerCtl.damage(25, 0, 0, 'proving-yard'), 'Take a blow (Brann\'s Pressure, Rusk\'s armor, Edda\'s shield)'),
-      button('fa-btn', 'Start', () => standFighterAt(this.ctx, 'muster'), 'Back to the dais'),
-      button('fa-btn', 'Reset yard', () => this.resetYard(), 'Rebuild the hall: the barricade, the keg, the oil, the potions'),
+      button('fa-btn', 'Start', () => this.toStart(), 'Back to the dais (the yard) or your spawn (the duel stage)'),
+      button('fa-btn', 'Reset', () => this.resetYard(), 'Rebuild the hall or the stage: the barricade, the keg, the oil, the potions; in a duel, a new bout'),
+      button('fa-btn', 'Other stage', () => this.otherStage(), 'The Duel Stage from the yard, the Proving Yard from the stage'),
       button('fa-btn fa-leave', 'Leave', () => window.dispatchEvent(new Event('expedition-title-request')), 'Back to the title'),
     );
     const toggles = el('div', 'fa-toggles');
@@ -154,8 +159,13 @@ export class FighterArenaPanel {
     tools.append(toolRow, toggles);
 
     this.bots = new ArenaBotsPanel(ctx);
+    this.duel = new ArenaDuelPanel(ctx);
     this.body.className = 'fa-body';
-    this.body.append(who, bodyCard, moves, this.bots.root, foes, where, tools);
+    foes.classList.add('fa-yard-only');
+    where.classList.add('fa-yard-only');
+    this.bots.root.classList.add('fa-yard-only');
+    this.duel.root.classList.add('fa-duel-only');
+    this.body.append(who, bodyCard, moves, this.bots.root, this.duel.root, foes, where, tools);
     this.root.append(head, this.body);
     (document.getElementById('canvas-holder') ?? document.body).append(this.root);
 
@@ -257,9 +267,26 @@ export class FighterArenaPanel {
   }
 
   private resetYard(): void {
-    resetFighterArena(this.ctx);
+    if (this.ctx.levels.current?.def.id === DUEL_LEVEL_ID) {
+      resetDuelStage(this.ctx);
+      if (this.ctx.arena?.active) this.ctx.arena.reset();
+      else standAtSpawn(this.ctx, 0);
+    } else resetFighterArena(this.ctx);
     this.uses.tactical = 0;
     this.uses.ultimate = 0;
+  }
+
+  private toStart(): void {
+    if (this.ctx.levels.current?.def.id === DUEL_LEVEL_ID) standAtSpawn(this.ctx, 0);
+    else standFighterAt(this.ctx, 'muster');
+  }
+
+  /** The Proving Yard and the Duel Stage are two test levels: leaving one for the other starts a fresh test run on it, with the fighter in hand. */
+  private otherStage(): void {
+    const ctx = this.ctx;
+    const to = ctx.levels.current?.def.id === DUEL_LEVEL_ID ? LEVEL_ID : DUEL_LEVEL_ID;
+    const fighter = ctx.fighters?.id ?? undefined;
+    ctx.levels.startRun(ctx, { mode: 'test', worldSource: 'campaign-level', levelId: to, loadout: 'advanced', fighter });
   }
 
   // ---- the frame loop ---------------------------------------------------------------------------------------
@@ -267,7 +294,9 @@ export class FighterArenaPanel {
   private loop(): void {
     this.raf = requestAnimationFrame(this.loop);
     const ctx = this.ctx;
-    const active = ctx.state.mode === 'play' && ctx.levels.current?.def.id === LEVEL_ID && !document.body.classList.contains('entry-active');
+    const levelId = ctx.levels.current?.def.id;
+    const active = ctx.state.mode === 'play' && (levelId === LEVEL_ID || levelId === DUEL_LEVEL_ID) && !document.body.classList.contains('entry-active');
+    this.root.dataset.level = levelId === DUEL_LEVEL_ID ? 'duel' : 'yard';
     if (active !== this.shown) {
       this.shown = active;
       this.root.hidden = !active;
@@ -289,7 +318,7 @@ export class FighterArenaPanel {
       }
     }
     this.sampleMovement();
-    if (this.frame % 6 === 0) this.bots.update();
+    if (this.frame % 6 === 0) { this.bots.update(); if (levelId === DUEL_LEVEL_ID) this.duel.update(); }
     if (this.frame++ % 6 !== 0 && this.equipped === fighters.id) return;
     this.draw();
   }

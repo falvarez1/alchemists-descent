@@ -91,7 +91,8 @@ const WADE_STAIN_GAIN = 18; // soak charge banked per frame of wading (×0.35–
 // See config/params.ts PLAYER_PARAMS and core/types.ts PlayerTuning.
 const ENEMY_STOMP_BOUNCE = 3.6; // upward pop after a Mario-style stomp kill (chains to the next foe)
 // Too big/heavy to stomp — a boot off these just bounces (handle them another way).
-const STOMP_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'rimewarden', 'lenswright', 'golem']);
+// (a rival fighter is not stomped flat: a dive onto one is a blow like any other, not an execution)
+const STOMP_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'rimewarden', 'lenswright', 'golem', 'fighter']);
 const SWING_REACH = 16;
 const SWING_PUMP = 0.16;
 const SWING_MIN_LEN = 14;
@@ -183,6 +184,7 @@ export function createPlayer(): PlayerState {
     tpCool: 0,
     recharge: 0,
     pullT: 0,
+    stunT: 0,
     pullDir: 1,
     stretchT: 0,
     skidT: 0,
@@ -991,6 +993,26 @@ export class PlayerControl implements PlayerControlApi {
     }
   }
 
+  private killInArena(src?: string): void {
+    const ctx = this.ctx;
+    const player = ctx.player;
+    const source = src ?? player.lastDamageSource ?? this.noteDamageSource('unknown');
+    this.releaseVine(ctx);
+    player.dead = true;
+    player.hp = 0;
+    player.recharge = 0;
+    player.firePressed = false;
+    player.firing = false;
+    clearElementalStatus(player.status);
+    this.resetClimbState(player);
+    ctx.particles.burst(player.x, player.y - 7, 56, Cell.Blood, bloodColor, 4.2);
+    ctx.particles.burst(player.x, player.y - 7, 10, null, () => packRGB(221, 209, 159), 2.4, { glow: 2.4, grav: 0.04 });
+    ctx.fx.hitstop = Math.max(ctx.fx.hitstop ?? 0, 8);
+    ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.03, 0.06);
+    ctx.audio.hurt();
+    ctx.arena?.noteDown(ctx.arena.bound, source);
+  }
+
   /** Original: killPlayer() — lines 1577-1587. */
   kill(src?: string): void {
     const ctx = this.ctx;
@@ -1000,6 +1022,11 @@ export class PlayerControl implements PlayerControlApi {
       player.dead = false;
       player.hp = player.maxHp;
       ctx.events.emit('playerDeathCleared');
+      return;
+    }
+    // ARENA (core/arena): a fighter knocked out of a bout. No purse, no checkpoint, no ragdoll, no death screen: the arena decides.
+    if (ctx.arena !== undefined && ctx.arena.active) {
+      this.killInArena(src);
       return;
     }
     const source = src ?? player.lastDamageSource ?? this.noteDamageSource('unknown');
@@ -1249,7 +1276,8 @@ export class PlayerControl implements PlayerControlApi {
     }
     const channeling = player.recharge > 0;
     // (The chill's ice shell locks him too — briefly: entities/chill.)
-    const restrained = channeling || player.pullT > 0 || (player.chill?.shell ?? 0) > 0;
+    if (player.stunT > 0) player.stunT--;
+    const restrained = channeling || player.pullT > 0 || player.stunT > 0 || (player.chill?.shell ?? 0) > 0;
     const queuedJump = ctx.input.queuedJump;
     ctx.input.queuedJump = undefined;
     const keys = restrained

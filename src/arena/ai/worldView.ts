@@ -208,7 +208,8 @@ export function buildWorldView(ctx: Ctx, self: BrainSelf, tick: number, out: Wor
     if (foes.length >= MAX_FOES) break;
     if (e.hp <= 0) continue;
     const sleeping = e.sleeping === true;
-    if (!isVisible(p, { x: e.x, y: e.y, sleeping }, () => lineClear(cellBlocks, me.x, me.sy, e.x, e.y - 4))) continue;
+    // (a rival fighter is always seen: the duel's camera holds both fighters on screen, so a person sees it wherever it stands)
+    if (e.fighter === undefined && !isVisible(p, { x: e.x, y: e.y, sleeping }, () => lineClear(cellBlocks, me.x, me.sy, e.x, e.y - 4))) continue;
     const def = defs[e.kind];
     const h = def ? def.h : 10;
     const halfW = def ? def.halfW : 5;

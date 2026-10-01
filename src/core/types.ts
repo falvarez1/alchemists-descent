@@ -14,6 +14,7 @@ import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/ru
 import type { CreatureSfxAction, SfxId } from '@/content/audio/sfxCues';
 import type { LevelStorySites, StoryApi, StorySpeakOptions, StorySpokenLine } from '@/core/story';
 import type { FighterApi } from '@/core/fighters';
+import type { ArenaApi } from '@/core/arena';
 import type { FighterId } from '@/content/fighters';
 import type { BrewingApi } from '@/core/alchemy';
 
@@ -127,6 +128,8 @@ export interface PlayerState {
   recharge: number;
   /** Lever pull (frames left): gripping and driving the arm across. */
   pullT: number;
+  /** ARENA: ticks the body is held still by a rival's stun (it feeds `restrained`); 0 outside an arena. */
+  stunT: number;
   /** Direction (+-1) toward the lever being pulled. */
   pullDir: number;
   // fluidity pass: squash/stretch, skid, draw, recoil, stagger, fidget, cloth
@@ -329,7 +332,11 @@ export const ENEMY_KINDS = [
   'lenswright',
 ] as const;
 
-export type EnemyKind = (typeof ENEMY_KINDS)[number];
+/**
+ * The kinds a level can place, plus 'fighter': the stand-in an arena makes for the OTHER fighter (core/arena). It is not in
+ * `ENEMY_KINDS`, so no level, validator or Builder offers it; it exists only inside a duel.
+ */
+export type EnemyKind = (typeof ENEMY_KINDS)[number] | 'fighter';
 
 const ENEMY_KIND_SET: ReadonlySet<string> = new Set(ENEMY_KINDS);
 
@@ -475,6 +482,12 @@ export interface WeaverLocoState {
 }
 
 export interface Enemy {
+  /**
+   * ARENA (core/arena): set on the stand-in an arena makes for another fighter: the slot it stands for. To the bound fighter's
+   * spells, kicks, blasts and kit effects it is an enemy like any other; harm done to it lands on the real fighter
+   * (`Enemies.damage` redirects), and it never thinks or draws as an enemy.
+   */
+  fighter?: number;
   expression?: CreatureExpression;
   mind?: CreatureMind;
   body?: CreatureBody;
@@ -817,6 +830,8 @@ export interface Projectile {
   mul?: number;
   /** Optional player-facing source label for hostile projectile deaths. */
   source?: string;
+  /** ARENA: the fighter slot that cast it (undefined = slot 0). A projectile's pass runs bound to its owner. */
+  owner?: number;
 }
 
 export interface FlyingParticle {
@@ -1766,6 +1781,8 @@ export interface LightningApi {
 
 export interface ProjectilesApi {
   update(ctx: Ctx): void;
+  /** The enemy index is keyed by (frame, count): an arena changes who the stand-in is mid-tick and must force a rebuild. */
+  invalidateEnemyIndex?(): void;
 }
 
 export interface PhysicsApi {
@@ -3844,6 +3861,8 @@ export interface Ctx {
   alchemy?: AlchemyKillsApi;
   /** The equipped fighter: passive, tactical, ultimate (src/fighters); absent in small test contexts, id null = the classic Alchemist. */
   fighters?: FighterApi;
+  /** Two fighters in one world (core/arena); absent in small test contexts and until a rival is added. */
+  arena?: ArenaApi;
   /** Light as a gameplay fact (render/LightQuery); absent in small test contexts. */
   lightQuery?: LightQueryApi;
   /** The streamed score; absent in small test contexts. */

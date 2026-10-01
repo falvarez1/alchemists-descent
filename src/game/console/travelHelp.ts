@@ -121,6 +121,28 @@ export const TRAVEL_HELP_META: Readonly<Record<string, HelpMeta>> = {
       'charge adds a share of the ultimate bar (default all of it); refill clears the tactical cooldown and fills the bar. none returns to the classic Alchemist.',
     ],
   },
+  ai: {
+    group: 'runs',
+    order: 126,
+    args: '[status|off|basic [1-5]|level|tier|reset]',
+    summary: 'a computer brain plays your fighter; set its skill',
+    examples: ['ai basic 3', 'ai level 5', 'ai status', 'ai tiers', 'ai tier 3 reaction 8', 'ai off'],
+    detail: [
+      'Puts a computer brain in charge of the fighter you hold: it presses the same keys, moves the same cursor and pulls the same trigger a person does, and the keyboard stands down while it plays. dummy stands and turns; basic walks to a good range, aims with lead, shoots, kicks, hops slabs and uses Z and T by simple rules (docs/arena/AI-FIGHTERS.md).',
+      'Skill is a dial from 1 (slow to react, wide of the mark) to 5. tiers lists the four numbers behind each level (reaction, aimError, decision, mistake); tier <level> <key> <n> changes one live; reset restores them. off hands the keyboard back.',
+    ],
+  },
+  arena: {
+    group: 'runs',
+    order: 127,
+    args: '[status|add|remove|reset|bot]',
+    summary: 'a rival fighter in the world; brains for either',
+    examples: ['arena add brann-rook', 'arena bot 0 basic 4', 'arena bot 1 basic 4', 'arena status', 'arena reset', 'arena remove'],
+    detail: [
+      'Two fighters in one world (docs/arena/ARCHITECTURE.md): slot 0 is the fighter you hold, slot 1 the rival. Each is hurt by the spells, kicks, blasts, flames and kit effects of the other, and hurts it with its own. A knockout ends the bout; reset starts another.',
+      'bot <slot> <dummy|basic|off> [level] gives either fighter a computer brain (the keyboard is yours only for a slot with none). The Duel Stage is run test --level fighter-duel --world campaign-level; the Proving Yard works too.',
+    ],
+  },
   tier: {
     group: 'runs',
     order: 130,

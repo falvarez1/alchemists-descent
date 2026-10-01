@@ -499,6 +499,11 @@ export class Projectiles implements ProjectilesApi {
   private indexedFrame = -1;
   private indexedEnemyCount = -1;
 
+  /** ARENA: the stand-in's identity changed (a binding change): the cached index is stale. */
+  invalidateEnemyIndex(): void {
+    this.indexedFrame = -1;
+  }
+
   private ensureEnemyIndex(ctx: Ctx): void {
     if (this.indexedFrame === ctx.state.frameCount && this.indexedEnemyCount === ctx.enemies.length) return;
     this.enemyIndex.rebuild(ctx.enemies);
@@ -776,13 +781,27 @@ export class Projectiles implements ProjectilesApi {
   }
 
   update(ctx: Ctx): void {
+    try {
+      this.runPasses(ctx);
+    } finally {
+      // ARENA: a projectile's pass runs bound to the fighter that cast it; slot 0 is the bound slot again afterwards.
+      ctx.arena?.releaseOwner();
+    }
+  }
+
+  private runPasses(ctx: Ctx): void {
     this.ensureEnemyIndex(ctx);
     this.updateSingularityGravityWells(ctx);
 
     const world = ctx.world;
     const projectiles = ctx.projectiles;
+    const arena = ctx.arena;
     for (let i = projectiles.length - 1; i >= 0; i--) {
       const p = projectiles[i];
+      if (arena !== undefined && arena.active) {
+        arena.bindOwner(p.owner);
+        this.ensureEnemyIndex(ctx);
+      }
       p.life--;
       p.age++;
 
@@ -1045,6 +1064,12 @@ export class Projectiles implements ProjectilesApi {
           for (const e of this.enemyIndex.query(p.x, p.y + 5, hitRadius + 38, this.enemyScratch)) {
             if (!this.enemyIndex.has(e)) continue;
             if (pointHitsCreature(e, ctx.enemyCtl.defs[e.kind], p.x, p.y, p.type === 'meteor' ? 7 : 2)) {
+              // ARENA: the rival's raised plate or prism takes the shot first
+              if (e.fighter !== undefined && arena !== undefined && arena.intercept(e, p)) {
+                this.removeAt(projectiles, i);
+                hit = true;
+                break;
+              }
               const wetCrit = wetCritArmed(ctx, p, e);
               const shatterCrit = shatterCritArmed(ctx, p, e);
               const pyreCrit = pyreCritArmed(ctx, p, e);

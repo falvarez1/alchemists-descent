@@ -67,7 +67,7 @@ included): the fighter in hand and a Roster button; the three abilities, each wi
 (READY / COOLING 6s / CHARGING 40% / ACTIVE), a "what to try and where" line from `ARENA_TIPS`, a **Go** button that
 stands you at the station it names, and a tick with a count once it has fired (the passive has a "Seen" box); **Foes**
 (slime, golem, imp, bat, shooters, mage, fill the cell, wound all, clear); **Take me to** every station; **Tools**:
-Refill (skip the cooldowns), Heal, Hurt 25, Start, Reset yard (rebuild the hall and the potions), Leave, and the toggles
+Refill (skip the cooldowns), Heal, Hurt 25, Start, Reset (rebuild the hall and the potions; a new bout on the Duel Stage), Other stage (the Duel Stage and back), Leave, and the toggles
 **Unlimited abilities** and **Safe mode** (foes ignore you and nothing hurts you: the arrival grace held open).
 
 Adding a fighter's test: put its three tips in `ARENA_TIPS`; if it needs something the hall lacks, add a station to
