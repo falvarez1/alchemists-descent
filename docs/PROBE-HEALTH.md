@@ -152,3 +152,17 @@ builder-dock-split (10), builder-responsive (18), overlay-hit. Pass a URL as the
   sections (`palette.materials` toggle - dropped), old panel-header metrics (uppercase 11px chrome, `titleOk`), and hovers
   `.bp-tool[data-kind=...]` while the Objects tab is hidden (use `clickBuilderKind`). Two steps were already repaired;
   the rest needs a rewrite against the shell rather than a patch.
+
+## 2026-10-01: the title became a menu (docs/TITLE-MENU.md)
+
+Starting a run through the title is now two clicks, `[data-entry="begin"]` then `[data-entry="descend"]`; the Workshops
+fold is a page (`[data-entry="workshops"]` first), and the seed, case and difficulty live on pages under New descent.
+About twenty probes were patched for it (`grep -l 'data-entry="descend"' scripts`). New: `verify-title-menu.mjs` (183
+checks at three sizes) and `shot-title.mjs`. Verified against the new title: verify-title-menu, verify-fighter-title,
+verify-fighter-ledger, verify-fighter-run, `verify-options --only seed`, verify-difficulty-ladder, verify-overlay-hit,
+verify-settings, verify-sandbox-arena. NOT exercised after the patch (patched blind, same pattern as the verified ones):
+the audio, boons, clips, living-*, mobile, hosted and builder-prod-network probes.
+
+`verify-run-lifecycle` fails at the first respawn wait (`waitPlaying('d1')` after `#respawn-btn`, 10 s) on main too (its
+original version run against main f63f2eb stops at the same check), so the title section it now carries (kit list via
+Case) has not run; verify-title-menu covers the same ground.
