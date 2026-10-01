@@ -2,7 +2,7 @@
 // Usage: node scripts/verify-game.mjs [url]
 import { mkdirSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
-import { enterSandboxFromTitle, isBenignDevConsoleError, waitForRunReady } from './run-helpers.mjs';
+import { enterSandboxFromTitle, isBenignDevConsoleError, openDockTab, waitForRunReady } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 const outDir = 'verify-out';
@@ -113,6 +113,7 @@ await page.screenshot({ path: `${outDir}/02-painted-water.png` });
 console.log('painted water stroke');
 
 // --- 3) Generate caves for a different biome (UI wiring check) ---
+await openDockTab(page, 'world'); // the biome picker lives on the dock's World tab
 await page.selectOption('#biome-select', 'frozen');
 await page.waitForTimeout(1500);
 await page.screenshot({ path: `${outDir}/03-frozen-biome.png` });

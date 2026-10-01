@@ -2,7 +2,7 @@
 // (biome terrain + generated lights), not the dull/dark grid the plan worried about.
 //
 // NOTE: there is no "Builder Playtest of a campaign level" — the Builder playtests authored
-// EditorDocuments via PreviewRuntime, while campaign levels come from CaveGenerator. Both use
+// EditorDocuments through compileAndPlaytest, while campaign levels come from CaveGenerator. Both use
 // the SAME renderer, and campaign light/cell restore parity is covered by unit tests
 // (tests/level-lights.test.ts, tests/worldgen.test.ts). This probe adds the runtime confirmation
 // that a campaign level actually renders rich in the real game.

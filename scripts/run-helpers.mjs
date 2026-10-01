@@ -195,6 +195,28 @@ export async function leaveTitleIfShown(page, { timeout = 8000 } = {}) {
 }
 
 /**
+ * The studio bar keeps the dev/diagnostic buttons (console, runtime inspector, GPU / WGSL compose,
+ * perf overlay, fullscreen play) in one Developer menu, closed by default: a real click on any of
+ * them needs it open first. Their ids and owners are unchanged. The menu closes itself after the
+ * buttons that open an overlay (console, runtime inspector, fullscreen play).
+ */
+export async function openDevMenu(page) {
+  const open = await page.locator('#dev-menu').evaluate((menu) => !menu.hidden);
+  if (!open) await page.click('#dev-menu-btn');
+  await page.locator('#dev-menu').waitFor({ state: 'visible', timeout: 3000 });
+}
+
+/**
+ * The Sandbox's left dock is tabbed (Materials | Spells | World); the tool buttons of a tab other
+ * than the active one are not visible to a real click. Materials is the default. `name` is
+ * 'materials' | 'spells' | 'world'. The World tab holds world generation, hostiles and the level library.
+ */
+export async function openDockTab(page, name) {
+  await page.click(`#sb-tab-${name}`);
+  await page.locator(`#sb-panel-${name}`).waitFor({ state: 'visible', timeout: 3000 });
+}
+
+/**
  * A first descent opens on the story's plates (~9 s, the world held still behind
  * them; any key skips them). The plates' class lands a beat AFTER `play-active`, so
  * wait to see them start (a resumed run has none), then for them to end. A probe
@@ -221,4 +243,86 @@ export async function chooseBoonAndDoor(page, levelId) {
     const wanted = levelId ? page.locator(`#sanctum-overlay .sanc-door[data-level="${levelId}"]`) : doors;
     await wanted.first().click();
   }
+}
+
+/**
+ * Arm a Builder tool with real clicks. The toolbar groups related tools (Brush/Line, the four shapes,
+ * the four region tools...): a group's head shows the variant in use, and the others live in a flyout
+ * that a right-click on the head opens. Ungrouped tools (select, link, light) are plain buttons.
+ * `tool` is the `data-tool` id, e.g. 'paint', 'rectFill', 'lassoRegion', 'light'.
+ */
+export async function clickBuilderTool(page, tool) {
+  // The Builder chunk loads lazily: Playwright auto-waits on a click, but the group lookup below does not.
+  await page.waitForSelector('#builder-toolbar', { state: 'attached', timeout: 30000 });
+  const group = await page.evaluate(
+    (t) => document.querySelector(`#builder-toolbar .bt-flyout .bp-tool[data-tool="${t}"]`)?.closest('.bt-variants')?.dataset.group ?? null,
+    tool,
+  );
+  if (group) {
+    const variant = `#builder-toolbar .bt-flyout .bp-tool[data-tool="${tool}"]`;
+    if (!(await page.isVisible(variant))) await page.click(`[data-group-head="${group}"]`, { button: 'right' });
+    await page.click(variant);
+    return;
+  }
+  await page.click(`#builder-toolbar .bt-tool[data-tool="${tool}"]`);
+}
+
+/** Open a Builder palette tab ('materials' | 'objects' | 'library') with a real click. */
+export async function openBuilderPaletteTab(page, pane) {
+  await page.waitForSelector('#builder-palette .bp-tab', { state: 'attached', timeout: 30000 });
+  await page.click(`#builder-palette .bp-tab[data-pane="${pane}"]`);
+}
+
+/**
+ * Arm a placeable object kind from the palette's Objects tab with real clicks. Kinds under
+ * "Advanced machines" sit in a folded <details>, which this opens first. `kind` is the
+ * `data-kind` id, e.g. 'spawn', 'door', 'valve'.
+ */
+export async function clickBuilderKind(page, kind) {
+  await openBuilderPaletteTab(page, 'objects');
+  await page.evaluate((k) => {
+    const d = document.querySelector(`#bp-pane-objects details.bp-adv:has([data-kind="${k}"])`);
+    if (d) d.open = true;
+  }, kind);
+  await page.click(`#bp-pane-objects .bp-card[data-kind="${kind}"]`);
+}
+
+/**
+ * Click a Builder control wherever the shell keeps it. Controls live in menu dropdowns (File / Edit / View /
+ * Level / Help) or in a palette tab (Terrain / Objects / Library); a real click needs the menu or tab open
+ * first. Anything already visible (toolbar, title bar, status bar, docks) is just clicked.
+ */
+export async function clickBuilderControl(page, selector) {
+  await page.waitForSelector(selector, { state: 'attached', timeout: 30000 });
+  const where = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    return {
+      menu: el.closest('.builder-menu-dropdown')?.dataset.menuPanel ?? null,
+      pane: el.closest('.bp-pane')?.dataset.pane ?? null,
+    };
+  }, selector);
+  if (where?.pane) await openBuilderPaletteTab(page, where.pane);
+  if (where?.menu) {
+    // Idempotent: a probe may already have the menu open, and a second click on the trigger would close it.
+    const open = await page.evaluate((m) => document.querySelector(`.builder-menu-dropdown[data-menu-panel="${m}"]`)?.hidden === false, where.menu);
+    if (!open) {
+      const trigger = `#builder-bar [data-menu="${where.menu}"]`;
+      // Hovering a trigger while another menu is open switches to it (VS Code style), so a click that follows
+      // would toggle it shut again: hover first, and click only if that did not already open it.
+      await page.hover(trigger);
+      const nowOpen = await page.evaluate((m) => document.querySelector(`.builder-menu-dropdown[data-menu-panel="${m}"]`)?.hidden === false, where.menu);
+      if (!nowOpen) await page.click(trigger);
+    }
+  }
+  await page.click(selector);
+}
+
+/**
+ * Switch the Builder on or off the way a person does. While the Builder is open the game's header (and
+ * its BUILDER button) is hidden behind the Builder's own title bar, whose way back is the Sandbox button.
+ */
+export async function toggleBuilderMode(page) {
+  if (await page.isVisible('#mode-builder-btn')) await page.click('#mode-builder-btn');
+  else await page.click('#b-exit');
 }

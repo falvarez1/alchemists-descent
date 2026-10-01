@@ -2,7 +2,7 @@
 // Drags each splitter and asserts the dock grows; verifies persistence across reload.
 // Usage: node scripts/verify-builder-splitters.mjs [url]  (dev server must be running)
 import { launchBrowser } from './browser-launch.mjs';
-import { leaveTitleIfShown } from './run-helpers.mjs';
+import { leaveTitleIfShown, clickBuilderControl, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -22,7 +22,7 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await leaveTitleIfShown(page);
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(1500);
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(500);
 
 const grid = () => page.evaluate(() => {
@@ -57,7 +57,7 @@ const drag = async (dock, dx, dy) => {
 const openAssetBrowser = async () => {
   await page.click('.builder-menu-btn[data-menu="view"]');
   await page.waitForTimeout(120);
-  await page.click('#b-assets');
+  await clickBuilderControl(page, '#b-assets');
   await page.waitForTimeout(150);
   await page.keyboard.press('Escape'); // menu stays open by design; dismiss it
   await page.waitForTimeout(120);
@@ -115,7 +115,7 @@ if (haveRight) {
   // Dev mode persistence may already have reopened the Builder on reload; only
   // click to open it if it isn't already (a click would otherwise toggle it shut).
   const reopened = await page.evaluate(() => document.body.classList.contains('builder-open'));
-  if (!reopened) await page.click('#mode-builder-btn');
+  if (!reopened) await toggleBuilderMode(page);
   await page.waitForTimeout(500);
   const restored = (await grid()).right;
   persisted = { target, restored };

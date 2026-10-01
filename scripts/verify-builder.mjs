@@ -3,7 +3,7 @@
 // playtest-compile, and return with the document intact.
 // Usage: node scripts/verify-builder.mjs [url]   (dev server must be running)
 import { chromium } from 'playwright-core';
-import { leaveTitleIfShown } from './run-helpers.mjs';
+import { leaveTitleIfShown, clickBuilderTool, clickBuilderKind, clickBuilderControl, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -27,7 +27,7 @@ await page.waitForTimeout(2500); // worldgen settle
 
 /* ---------- open the Builder ---------- */
 console.log('-- open');
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(300);
 let s = await page.evaluate(() => ({
   paused: window.__game.ctx.state.paused,
@@ -75,7 +75,7 @@ const placements = [
   ['exitPortal', 0.38, 0.55],
 ];
 for (const [kind, fx, fy] of placements) {
-  await page.click(`.bp-tool[data-kind="${kind}"]`);
+  await clickBuilderKind(page, kind);
   const p = at(fx, fy);
   await page.mouse.click(p.x, p.y);
   await page.waitForTimeout(80);
@@ -87,7 +87,7 @@ const spawnCount = await page.evaluate(() => document.querySelectorAll('.b-marke
 check('exactly one spawn', spawnCount === 1, `got ${spawnCount}`);
 
 /* second spawn placement must MOVE the existing one, not add */
-await page.click('.bp-tool[data-kind="spawn"]');
+await clickBuilderKind(page, 'spawn');
 const p2 = at(0.52, 0.5);
 await page.mouse.click(p2.x, p2.y);
 await page.waitForTimeout(80);
@@ -97,14 +97,14 @@ check('re-placing spawn moves it (still 5 markers)', markers === 5, `got ${marke
 /* ---------- undo / redo ---------- */
 console.log('-- undo/redo');
 await page.click('[data-menu="edit"]');
-await page.click('#b-undo'); // undo spawn move
+await clickBuilderControl(page, '#b-undo'); // undo spawn move
 await page.click('[data-menu="edit"]');
-await page.click('#b-undo'); // undo portal add
+await clickBuilderControl(page, '#b-undo'); // undo portal add
 await page.waitForTimeout(80);
 markers = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('undo removes the portal (4 markers)', markers === 4, `got ${markers}`);
 await page.click('[data-menu="edit"]');
-await page.click('#b-redo');
+await clickBuilderControl(page, '#b-redo');
 await page.waitForTimeout(80);
 markers = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('redo restores it (5 markers)', markers === 5, `got ${markers}`);
@@ -148,9 +148,9 @@ await page.waitForTimeout(80);
 /* ---------- capture terrain + validate ---------- */
 console.log('-- capture/validate');
 await page.click('[data-menu="edit"]');
-await page.click('#b-capture');
+await clickBuilderControl(page, '#b-capture');
 await page.click('[data-menu="edit"]');
-await page.click('#b-validate');
+await clickBuilderControl(page, '#b-validate');
 await page.waitForTimeout(120);
 const issues = await page.evaluate(() => {
   const panel = document.getElementById('builder-issues');
@@ -164,7 +164,7 @@ check('validation finds no errors', issues.errors === 0, issues.text.slice(0, 20
 
 /* ---------- in-builder terrain painting ---------- */
 console.log('-- paint');
-await page.click('.bp-tool[data-tool="paint"]');
+await clickBuilderTool(page, 'paint');
 // RMB eyedrops like the Sandbox: an empty cell arms the Eraser (element 0).
 const ed = at(0.5, 0.6);
 await page.mouse.click(ed.x, ed.y, { button: 'right' });
@@ -209,7 +209,7 @@ console.log('-- save/load');
 await page.fill('#b-doc-name', 'probe-level');
 await page.evaluate(() => document.getElementById('b-doc-name').dispatchEvent(new Event('change')));
 await page.click('[data-menu="document"]');
-await page.click('#b-save');
+await clickBuilderControl(page, '#b-save');
 const saved = await page.evaluate(() => {
   const lib = {};
   for (let n = 0; n < localStorage.length; n++) {
@@ -266,7 +266,7 @@ await page.evaluate(() => {
 
 /* ---------- return to the Builder ---------- */
 console.log('-- return');
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(400);
 s = await page.evaluate(() => {
   const ctx = window.__game.ctx;
@@ -287,12 +287,12 @@ walls = await wallsIn();
 check('in-builder paint auto-captured through playtest', walls > 20, `got ${walls}`);
 
 /* ---------- load round-trip ---------- */
-await page.click('#b-new');
+await clickBuilderControl(page, '#b-new');
 await page.waitForTimeout(120);
 let m = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('NEW clears the document', m === 0, `got ${m}`);
 await page.click('[data-menu="document"]');
-await page.click('#b-load');
+await clickBuilderControl(page, '#b-load');
 await page.waitForTimeout(120);
 m = await page.evaluate(() => document.querySelectorAll('.b-marker').length);
 check('LOAD restores the saved document', m === 5, `got ${m}`);

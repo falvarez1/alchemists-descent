@@ -6,6 +6,8 @@ tester's travel kit and a readable `help`**, is shipped too: see "Phase 5" below
 `docs/DEVELOPER-CONSOLE-RUN-WORKFLOW.md` for the command list. The original proposal text
 follows, unchanged.
 
+> **Update 2026-09:** The `builder-live-preview` console target no longer exists (the Builder has no Logic Preview runtime); targets are `sandbox`, `expedition`, `builder-document` and `builder-playtest`.
+
 **Status: PROPOSAL — drafted June 2026, revised same day after the 3-VP panel
 review** (1 Critical + 5 High findings, all code-verified, all folded in —
 see Review Summary at the bottom). A Quake/Minecraft-style in-game

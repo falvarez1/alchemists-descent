@@ -4,6 +4,7 @@
 // chips change the stage, and every entity kind draws without a preview
 // failure. Usage: node scripts/verify-gallery.mjs [url]  (dev server running)
 import { chromium } from 'playwright-core';
+import { clickBuilderControl, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -27,12 +28,12 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await page.waitForFunction(() => window.__game?.ctx?.state, { timeout: 20000 });
 await page.waitForTimeout(2200);
 
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(400);
 
 /* ---------- open ---------- */
 await page.click('[data-menu="view"]');
-await page.click('#b-gallery');
+await clickBuilderControl(page, '#b-gallery');
 await page.waitForTimeout(500);
 check('gallery opens', await page.isVisible('#builder-gallery'));
 const modalRect = await page.evaluate(() => {

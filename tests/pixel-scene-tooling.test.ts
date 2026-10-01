@@ -3,7 +3,6 @@ import { Cell } from '@/sim/CellType';
 import { getDefaultPixelSceneLibrary } from '@/world/virtual/defaults';
 import { serializePixelScene, parsePixelScene } from '@/world/virtual/pixelSceneJson';
 import { validatePixelScene } from '@/world/virtual/pixelSceneValidate';
-import { listUserScenes, saveUserScene, deleteUserScene, userSceneExists } from '@/builder/assets/pixelSceneStore';
 import { stampPixelScenes } from '@/world/virtual/PixelSceneStamper';
 import { PIXEL_SCENE_BIOME_FILL, type PixelSceneDef } from '@/world/virtual/types';
 
@@ -27,27 +26,6 @@ function syntheticScene(): PixelSceneDef {
     links: [],
     lights: [{ id: 'l', x: 2, y: 2, color: '#7df9ff', intensity: 0.8, radius: 40 }],
   };
-}
-
-function withLocalStorage<T>(run: () => T): T {
-  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
-  const store = new Map<string, string>();
-  Object.defineProperty(globalThis, 'localStorage', {
-    configurable: true,
-    value: {
-      get length() { return store.size; },
-      key: (i: number) => Array.from(store.keys())[i] ?? null,
-      getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => store.set(k, v),
-      removeItem: (k: string) => store.delete(k),
-    },
-  });
-  try {
-    return run();
-  } finally {
-    if (previous) Object.defineProperty(globalThis, 'localStorage', previous);
-    else delete (globalThis as typeof globalThis & { localStorage?: Storage }).localStorage;
-  }
 }
 
 describe('pixel scene JSON registry', () => {
@@ -126,22 +104,5 @@ describe('pixel scene biome-fill (Noita FFFFFF)', () => {
     material[4] = Cell.Water; // centre, walled by biome-fill on all sides
     const scene: PixelSceneDef = { v: 1, id: 's', name: 's', w, h, material, mask: new Uint8Array(n).fill(1), objects: [], links: [], lights: [], kind: 'shrines', tags: ['x'] };
     expect(validatePixelScene(scene).some((x) => x.code === 'liquid-basin')).toBe(false);
-  });
-});
-
-describe('pixel scene user store', () => {
-  it('saves, lists, and deletes user scenes through localStorage', () => {
-    withLocalStorage(() => {
-      const s = syntheticScene();
-      s.id = 'user-mine';
-      expect(userSceneExists('user-mine')).toBe(false);
-      expect(saveUserScene(s)).toBe(true);
-      expect(userSceneExists('user-mine')).toBe(true);
-      const list = listUserScenes();
-      expect(list.map((x) => x.id)).toContain('user-mine');
-      expect(Array.from(list[0].material)).toEqual(Array.from(s.material));
-      deleteUserScene('user-mine');
-      expect(userSceneExists('user-mine')).toBe(false);
-    });
   });
 });

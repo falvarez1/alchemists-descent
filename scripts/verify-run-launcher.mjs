@@ -1,7 +1,7 @@
 // Focused run launcher probe.
 // Usage: node scripts/verify-run-launcher.mjs [url]  (dev server running)
 import { launchBrowser } from './browser-launch.mjs';
-import { enterSandboxFromTitle } from './run-helpers.mjs';
+import { enterSandboxFromTitle, openDevMenu } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -324,6 +324,7 @@ await page.waitForFunction(
 await resetLauncherStorageAndReload();
 await page.click('#mode-build-btn');
 await page.waitForFunction(() => window.__game.ctx.state.mode === 'build', { timeout: 5000 });
+await openDevMenu(page);
 await page.click('#immersive-play-btn');
 await page.waitForSelector('#run-launcher.visible', { timeout: 5000 });
 await page.click('#run-launcher .run-launcher-start');

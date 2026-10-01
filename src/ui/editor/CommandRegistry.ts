@@ -16,7 +16,7 @@ export interface CommandSpec {
   visible?: () => boolean;
 }
 
-export type CommandScope = 'global' | 'builder.author' | 'builder.livePreview' | 'builder.playtest' | 'sandbox' | 'play' | 'console';
+export type CommandScope = 'global' | 'builder.author' | 'builder.playtest' | 'sandbox' | 'play' | 'console';
 
 export interface CommandRunResult {
   ok: boolean;

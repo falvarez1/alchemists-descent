@@ -2,7 +2,7 @@
 // Usage: node scripts/verify-generated-scene-selection.mjs [url]
 // Requires a running Vite dev server.
 import { chromium } from 'playwright-core';
-import { leaveTitleIfShown } from './run-helpers.mjs';
+import { leaveTitleIfShown, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -49,7 +49,7 @@ try {
   check('probe launched a deterministic virtual scene window', launched !== null, JSON.stringify(launched));
 
   await page.waitForFunction(() => window.__game.ctx.levels.current?.generatedScenes?.length > 0, { timeout: 10000 });
-  await page.click('#mode-builder-btn');
+  await toggleBuilderMode(page);
   await page.waitForSelector('.app-dialog-root [data-intent="current-scene"]', { timeout: 5000 });
   await page.click('.app-dialog-root [data-intent="current-scene"]');
   await page.waitForFunction(() => document.body.classList.contains('builder-open'), { timeout: 10000 });
@@ -116,7 +116,6 @@ try {
       captureLights: capture?.doc.lights.length ?? 0,
       captureButton: buttonState('bi-gen-capture'),
       frameButton: buttonState('bi-gen-frame'),
-      worldButton: buttonState('bi-gen-world'),
       copyButton: buttonState('bi-gen-copy'),
     };
   });
@@ -125,7 +124,7 @@ try {
   check('generated-scene inspector exposes stable field rows', selection.inspectorText.includes('GENERATED PIXEL SCENE') && selection.boundsRow !== '' && selection.sizeRow !== '' && selection.contentRow.includes('obj') && selection.sourceChunkRow !== '', JSON.stringify(selection));
   check('generated-scene selection clears normal object, multi-select, and region state', selection.selectedId === null && selection.selectedIds === 0 && selection.regionArmed === false, JSON.stringify(selection));
   check('generated-scene capture model includes scene objects or lights', selection.captureObjects + selection.captureLights > 0, JSON.stringify(selection));
-  check('generated-scene inspector exposes enabled frame/world/copy/capture actions', [selection.frameButton, selection.worldButton, selection.copyButton, selection.captureButton].every((button) => button.exists && !button.disabled), JSON.stringify(selection));
+  check('generated-scene inspector exposes enabled frame/copy/capture actions', [selection.frameButton, selection.copyButton, selection.captureButton].every((button) => button.exists && !button.disabled), JSON.stringify(selection));
 
   await page.click('#bi-gen-frame');
   await page.waitForTimeout(80);
@@ -149,13 +148,6 @@ try {
   });
   check('generated-scene Frame action recenters the camera near the scene center', framed !== null && framed.dx <= 1 && framed.dy <= 1, JSON.stringify(framed));
 
-  await page.click('#bi-gen-world');
-  await page.waitForSelector('#builder-virtual-world', { state: 'visible', timeout: 5000 });
-  const worldPanelOpen = await page.evaluate(() => {
-    const panel = document.getElementById('builder-virtual-world');
-    return panel instanceof HTMLElement && getComputedStyle(panel).display !== 'none' && panel.offsetParent !== null;
-  });
-  check('generated-scene World Map action opens the virtual world panel', worldPanelOpen, String(worldPanelOpen));
   check('no page errors', pageErrors.length === 0, pageErrors.join(' | ').slice(0, 300));
 } finally {
   console.log(`\n${pass} passed, ${fail} failed`);

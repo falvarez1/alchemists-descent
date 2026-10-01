@@ -3,7 +3,7 @@
 // Usage: node scripts/verify-matpop.mjs [url]  (dev server must be running)
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
-import { leaveTitleIfShown } from './run-helpers.mjs';
+import { leaveTitleIfShown, toggleBuilderMode } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 const outDir = 'verify-out';
@@ -85,7 +85,7 @@ check('toolbar popover hides on mouse leave', !s, JSON.stringify(s));
 
 /* ---------- Builder palette popover (#bp-matpop) ---------- */
 
-await page.click('#mode-builder-btn');
+await toggleBuilderMode(page);
 await page.waitForTimeout(600);
 
 const swatch = page.locator('#bp-materials .bp-swatch[data-el="35"]');
