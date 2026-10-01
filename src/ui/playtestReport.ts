@@ -29,8 +29,8 @@ export function buildPlaytestReport(ctx: Ctx): string {
       // What this run asked of the build: the wands as sentences, and the decision notes (offers shown and
       // taken, altars, dead-card captions, frames, seconds on each floor) — the answer to "what happens at minute five".
       choices: {
-        wands: recapRows(ctx.wands.wands).map((r) => ({ wand: r.numeral, frame: r.frameName, slots: r.capacity, casts: r.sentence })),
-        notes: ctx.wands.buildNotes ? buildNotesReport(ctx.wands.buildNotes()) : null,
+        wands: (ctx.wands ? recapRows(ctx.wands.wands) : []).map((r) => ({ wand: r.numeral, frame: r.frameName, slots: r.capacity, casts: r.sentence })),
+        notes: ctx.wands?.buildNotes ? buildNotesReport(ctx.wands.buildNotes()) : null,
       },
       counters: ctx.telemetry.all(),
     },

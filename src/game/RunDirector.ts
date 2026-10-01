@@ -499,7 +499,7 @@ export class RunDirector implements RunApi {
       boons: state.boons ?? [],
       difficulty: asDifficulty(ctx.state.difficulty, BASE_DIFFICULTY),
       // The wands as they stand at the end: the ledger and the share line say what the run was built on.
-      build: buildLine(ctx.wands.wands),
+      build: ctx.wands ? buildLine(ctx.wands.wands) : '',
     });
     let unlocked = [...this.runUnlocks];
     let record: Pick<RunResult, 'dailyBest' | 'newDailyBest' | 'newBestFloor' | 'unlockedDifficulty'> = { dailyBest: null, newDailyBest: false, newBestFloor: false, unlockedDifficulty: null };

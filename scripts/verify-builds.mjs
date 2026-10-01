@@ -328,6 +328,19 @@ try {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
 
+  /* ---------------- a save in the gap between "earned" and "shown" ---------------- */
+  const owed = await G(() => {
+    const ctx = window.__game.ctx;
+    ctx.events.emit('waystoneLit', { index: 0, depth: 3, levelId: 'd3' });
+    const snap = JSON.parse(JSON.stringify(ctx.wands.snapshotRuntimeState()));
+    ctx.wands.restoreRuntimeState(snap); // what a resumed run does with the saved record
+    return snap.build?.owed ?? null;
+  });
+  check('a save written the moment a waystone caught carries the offer it owes', owed?.altar === 1, JSON.stringify(owed));
+  const resumedAltar = await waitForOffer(30000);
+  check('...and the resumed run still gets its altar', resumedAltar.length === 3 && resumedAltar[2].bargain, JSON.stringify(resumedAltar.map((t) => t.id)));
+  await takeCard(resumedAltar[1].id);
+
   await G(() => { const ctx = window.__game.ctx; ctx.state.score = 900; ctx.sanctum.openShop(ctx); });
   await page.waitForSelector('#sanctum-overlay.visible');
   await page.waitForTimeout(300);

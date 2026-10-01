@@ -943,7 +943,9 @@ living player, the arrival grace over): altar 50 after the flare; the gift 60 af
 longer); a boss's wreckage frame 170 after the kill (Leviathan, Lenswright, Rime Warden; the Colossus ends the run, so it
 leaves none); the altar's wand 40 after its card is chosen. **One altar in three** (the 3rd, 6th, 9th of a run) also
 turns up a wand. Wandwright's rack: three specialists, 200 oz, paid only if one is taken. Tomes and Lost pages use
-the same fit rule (one dead card at most; an authored tome's fixed card is never swapped).
+the same fit rule (one dead card at most; an authored tome's fixed card is never swapped). An offer that is earned but
+not yet shown (the altar's 50 ticks, the gift's grace, a boss's 170) rides the wand runtime snapshot as `build.owed`
+(optional, defaulted) and is re-queued 90 ticks after a resume, so a save written in that gap never eats the decision.
 
 **Fit tells** (`cardFit(holdings, card)`): *works* / *dead* / *open*. The host rule is the compiler's (`modifierWorksOn`):
 the eight body mods plus Bounce, Infuser and Trigger need a projectile body (spark, bomb, warp, black hole, frost shard,
