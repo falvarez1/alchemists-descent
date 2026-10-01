@@ -57,6 +57,10 @@ export async function boot(url = 'http://localhost:5173/', opts = {}) {
     ctx.fx.hitstop = 0;
     ctx.enemies.length = 0;
     ctx.critters.clear?.();
+    // The test level's spell tomes and chests lie about: stepping on one opens the card-offer modal, which
+    // swallows every key the probe presses. Take the loot away and close any offer that is already up.
+    if (ctx.levels?.current?.pickups) ctx.levels.current.pickups.length = 0;
+    document.querySelectorAll('#card-offer-overlay.visible, .card-offer-overlay.visible').forEach((e) => e.classList.remove('visible'));
     Object.assign(p, { dead: false, hp, maxHp: hp, invuln: 0, crawling: false, climbing: false, swinging: false, x: ARENA.spawnX, y: ARENA.floorY - 1, vx: 0, vy: 0, fx: 0, fy: 0, grounded: true });
     for (const k of Object.keys(ctx.input.keys)) ctx.input.keys[k] = false;
     ctx.fighters.equip(fighter);
