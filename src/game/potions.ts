@@ -1,4 +1,4 @@
-import { addEffectFrames, effectFrames, elixirDef, POTION_CAP_FRAMES } from '@/content/elixirs';
+import { addElixirFrames, effectFrames, elixirDef, POTION_CAP_FRAMES } from '@/content/elixirs';
 import { entityRandom } from '@/core/simRandom';
 import type { Ctx } from '@/core/types';
 import { Cell } from '@/sim/CellType';
@@ -36,7 +36,7 @@ export function drinkFlask(ctx: Ctx): void {
       }
       return;
     }
-    addEffectFrames(st, def.effect, def.framesPerCell);
+    addElixirFrames(st, def, def.framesPerCell);
     if (!ctx.state.debugGodMode) {
       s.count -= 1;
       if (s.count === 0) s.material = null;

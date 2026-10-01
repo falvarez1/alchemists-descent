@@ -74,6 +74,8 @@ export const CELL_PALETTE: readonly number[] = [
   packRGB(40, 120, 150), //  48 ElixirShock (gutta-percha tonic, deep teal)
   packRGB(34, 58, 52), //    49 ElixirToxin (charcoal draught, ink with a green glint)
   packRGB(235, 205, 40), //  50 ElixirMight (brimstone tincture, sulphur)
+  packRGB(118, 18, 78), //   51 ElixirVampire (heartwine, claret)
+  packRGB(150, 142, 196), // 52 ElixirHush (hush draught, twilight lilac)
 ];
 
 /** Display names, indexed by cell id (import reports, .gpl swatch labels). */
@@ -129,6 +131,8 @@ export const CELL_NAME: readonly string[] = [
   'Gutta-Percha Tonic',
   'Charcoal Draught',
   'Brimstone Tincture',
+  'Heartwine',
+  'Hush Draught',
 ];
 
 export function paletteColor(t: number): number {

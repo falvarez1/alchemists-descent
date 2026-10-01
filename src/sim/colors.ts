@@ -101,6 +101,8 @@ export const elixirFrostColor = () => packRGB(146 + rand(10), 230 + rand(10), 21
 export const elixirShockColor = () => packRGB(36 + rand(10), 116 + rand(12), 146 + rand(12)); //  gutta-percha tonic: deep teal
 export const elixirToxinColor = () => packRGB(30 + rand(8), 54 + rand(8), 48 + rand(8)); //       charcoal draught: ink with a green glint
 export const elixirMightColor = () => packRGB(230 + rand(10), 200 + rand(10), 36 + rand(10)); //  brimstone tincture: sulphur
+export const elixirVampireColor = () => packRGB(112 + rand(12), 16 + rand(8), 74 + rand(10)); //  heartwine: claret
+export const elixirHushColor = () => packRGB(144 + rand(12), 136 + rand(12), 190 + rand(12)); //  hush draught: twilight lilac
 export const toxicColor = () => packRGB(64 + rand(18), 118 + rand(26), 36 + rand(12));
 export const healiumColor = () => packRGB(248 + rand(8), 110 + rand(30), 160 + rand(30));
 export const teleportiumColor = () => packRGB(150 + rand(30), 60 + rand(20), 235 + rand(20));
@@ -201,6 +203,8 @@ export const COLOR_FN: Record<number, () => number> = {
   [Cell.ElixirShock]: elixirShockColor,
   [Cell.ElixirToxin]: elixirToxinColor,
   [Cell.ElixirMight]: elixirMightColor,
+  [Cell.ElixirVampire]: elixirVampireColor,
+  [Cell.ElixirHush]: elixirHushColor,
   [Cell.Toxic]: toxicColor,
   [Cell.Healium]: healiumColor,
   [Cell.Teleportium]: teleportiumColor,

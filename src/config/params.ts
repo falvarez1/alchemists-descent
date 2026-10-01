@@ -122,6 +122,8 @@ export const MATERIAL_PARAMS: Record<number, MaterialParams> = {
   [Cell.ElixirShock]: { name: 'Gutta-Percha Tonic', flowRate: 0.5, bloomWeight: 0.25 },
   [Cell.ElixirToxin]: { name: 'Charcoal Draught', flowRate: 0.5, bloomWeight: 0.12 },
   [Cell.ElixirMight]: { name: 'Brimstone Tincture', flowRate: 0.55, bloomWeight: 0.5 },
+  [Cell.ElixirVampire]: { name: 'Heartwine', flowRate: 0.5, bloomWeight: 0.3 },
+  [Cell.ElixirHush]: { name: 'Hush Draught', flowRate: 0.6, bloomWeight: 0.2 },
   // Upgrade port: 10 new materials + Stone made inspectable (remapped ids).
   // Crystal's dead 'resonance' param was dropped (vestige of a cut feature).
   [Cell.Stone]: { name: 'Stone' },

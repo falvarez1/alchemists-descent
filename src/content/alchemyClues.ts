@@ -92,6 +92,18 @@ export const CLUES: readonly Clue[] = [
     text: 'By “Gunpowder”: “Add oil, if you must. Not in the office.” The first word has been scratched out and rewritten three times.' },
   { id: 'brimstone.2', recipe: 'brimstone', on: { on: 'floor', level: 'd3b' },
     text: '“Tincture of Brimstone. The fire goes UNDER the pot. Beside the lid is how we lost the east wing.”' },
+
+  // ---- Heartwine: blood and leaf (tea's cousin: the leaf steeped in something other than water)
+  { id: 'heartwine.1', recipe: 'heartwine', on: { on: 'brewed', recipe: 'tea' },
+    text: 'On the Strong Tea page, in red: “Same leaf. Different cup. Do not tell Pell what the cup was.”' },
+  { id: 'heartwine.2', recipe: 'heartwine', on: { on: 'kill', kind: 'bat' },
+    text: 'Pinned beside a bat’s sketch: “Everything that bleeds well is a vintage, if you are not squeamish. I was not. I am now.”' },
+
+  // ---- Hush Draught: snow and ash (the quiet pair)
+  { id: 'hush.1', recipe: 'hush', on: { on: 'examine', cell: Cell.Snow },
+    text: 'Under “Snow”: “It swallows footsteps. Pair it with something that has already finished burning.”' },
+  { id: 'hush.2', recipe: 'hush', on: { on: 'floor', level: 'd3' },
+    text: 'Scrawled low on the page, small: “They hear the lantern before they hear you. Hood it. Then be as quiet as a thing that has stopped.”' },
 ];
 
 /** The clues about one recipe, in the order the page shows them. */

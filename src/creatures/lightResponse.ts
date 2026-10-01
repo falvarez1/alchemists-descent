@@ -1,6 +1,7 @@
 import type { CreatureLightSense, Ctx, Enemy, EnemyDef } from '@/core/types';
 import type { CreatureMind } from './types';
 import { LANTERN, LIGHT_RESPONSE, SIGHT } from '@/config/darkness';
+import { hasBoon } from '@/core/boons';
 import { blocksEntity } from '@/sim/CellType';
 import { sightClear } from './perception';
 
@@ -64,7 +65,7 @@ export function playerVisibility(ctx: Ctx): number {
   if (!q.hooded) return Math.min(1, base + SIGHT.beacon * dark);
   // The Velvet Hood boon lines the brass hood: the dark drinks more of the spill, so half-dark hides
   // like deep dark. A lamp-lit room (darkness 0) still lights the alchemist exactly as before.
-  const shade = 1 - Math.min(1, dark * (p.perks?.velvethood ? SIGHT.velvet : 1));
+  const shade = 1 - Math.min(1, dark * (hasBoon(p, 'velvethood') ? SIGHT.velvet : 1));
   return base * shade * shade;
 }
 

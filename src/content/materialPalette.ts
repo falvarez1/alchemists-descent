@@ -80,6 +80,8 @@ export const MATERIAL_PALETTE: readonly MaterialGroup[] = [
       { id: Cell.ElixirShock, label: "Gutta-Percha Tonic", color: '#287896' },
       { id: Cell.ElixirToxin, label: "Charcoal Draught", color: '#223a34' },
       { id: Cell.ElixirMight, label: "Brimstone Tincture", color: '#ebcd28' },
+      { id: Cell.ElixirVampire, label: "Heartwine", color: '#76124e' },
+      { id: Cell.ElixirHush, label: "Hush Draught", color: '#9690c4' },
     ],
   },
   {

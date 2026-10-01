@@ -135,4 +135,24 @@ export const RECIPES: Recipe[] = [
     ],
     page: 'Gunpowder and lamp oil, simmered. Every spell lands harder. So, if you are careless, does the pot. The fire goes UNDER it.',
   },
+  {
+    id: 'heartwine',
+    name: 'HEARTWINE',
+    elixir: Cell.ElixirVampire,
+    needs: [
+      { cell: Cell.Blood, min: 7 },
+      { cell: Cell.Leaf, min: 5 },
+    ],
+    page: 'Leaves steeped in blood where tea would have had water. Each creature you fell pays a little of itself back. The Guild called this theft, and then asked for the recipe.',
+  },
+  {
+    id: 'hush',
+    name: 'HUSH DRAUGHT',
+    elixir: Cell.ElixirHush,
+    needs: [
+      { cell: Cell.Snow, min: 6 },
+      { cell: Cell.Ash, min: 5 },
+    ],
+    page: 'Snow and soot, the two quietest things in the Works. Hood the lantern, drink, and the dark takes your side. It does not take it kindly, or for long.',
+  },
 ];

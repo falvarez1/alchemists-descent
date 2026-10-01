@@ -49,6 +49,7 @@ import { localRoute } from '@/creatures/navigation';
 import { pointHitsCreature } from '@/creatures/body';
 import { advanceRootLash, impSnack, mothSwarm, scatterRoost, slimeForage, carryRillback, feedRillback, rillbackPrey } from '@/creatures/ecology';
 import type { CreatureCue, CreatureMind } from '@/creatures/types';
+import { hasBoon } from '@/core/boons';
 
 // ===================== Enemies =====================
 interface CellCandidate {
@@ -911,7 +912,7 @@ export class Enemies implements EnemyControlApi {
       ctx.explosions.trigger(e.x, e.y - 4, 24 + Math.floor(entityRandom() * 3), { playerDamageSource: 'bomber' });
       this.dropBounty(e, def);
       this.maybeDropPotion(e);
-      if (ctx.player.perks.vampirism && !ctx.player.dead) {
+      if (hasBoon(ctx.player, 'vampirism') && !ctx.player.dead) {
         ctx.player.hp = Math.min(ctx.player.maxHp, ctx.player.hp + 2);
       }
       ctx.waves.kills++;
@@ -1071,7 +1072,7 @@ export class Enemies implements EnemyControlApi {
     this.dropBounty(e, def);
     this.maybeDropPotion(e);
     // Vampirism boon: every kill feeds the alchemist
-    if (ctx.player.perks.vampirism && !ctx.player.dead) {
+    if (hasBoon(ctx.player, 'vampirism') && !ctx.player.dead) {
       ctx.player.hp = Math.min(ctx.player.maxHp, ctx.player.hp + 2);
     }
     this.voice(e, () => ctx.audio.deathCry(e.kind));

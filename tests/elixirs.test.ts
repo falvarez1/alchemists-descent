@@ -51,9 +51,9 @@ describe('the elixir table', () => {
 
   it('names a real effect: a status timer, or a Sanctum boon some hook reads', () => {
     const timers = ['regen', 'levity', 'stoneskin', 'swift', 'torch'];
-    for (const e of ELIXIRS) {
-      if (e.effect.kind === 'status') expect(timers).toContain(e.effect.key);
-      else expect(isPerkId(e.effect.key), e.effect.key).toBe(true);
+    for (const e of ELIXIRS) for (const fx of [e.effect, ...(e.also ? [e.also] : [])]) {
+      if (fx.kind === 'status') expect(timers).toContain(fx.key);
+      else expect(isPerkId(fx.key), fx.key).toBe(true);
     }
     expect(new Set(ELIXIRS.map((e) => e.effect.key)).size).toBe(ELIXIRS.length); // no two potions are the same potion
   });
@@ -143,6 +143,14 @@ describe('drinking from the flask', () => {
     expect(ctx.flask.state.count).toBe(0);
     expect(ctx.flask.state.material).toBeNull();
     expect(ctx.player.status.swift / 60).toBeGreaterThan(40);
+  });
+
+  it('a cell of tea carries two effects: the step and the mana', () => {
+    const { ctx } = drinkCtx(Cell.ElixirSwift, 13);
+    drinkFlask(ctx);
+    expect(ctx.player.status.swift).toBe(200);
+    expect(ctx.player.status.boons).toEqual({ manafont: 200 });
+    expect(hasBoon({ perks: {}, status: ctx.player.status }, 'manafont')).toBe(true);
   });
 
   it('puts a boon potion into the boon map, not a timer', () => {

@@ -113,6 +113,10 @@ export const Cell = {
   ElixirToxin: 49,
   /** Brimstone Tincture: spell damage up. */
   ElixirMight: 50,
+  /** Heartwine: every kill mends a little. */
+  ElixirVampire: 51,
+  /** Hush Draught: the dark hides you better while the lantern is hooded. */
+  ElixirHush: 52,
 } as const;
 
 export type Cell = (typeof Cell)[keyof typeof Cell];
@@ -121,10 +125,10 @@ export type Cell = (typeof Cell)[keyof typeof Cell];
  * NOTE: the GPU compose path (render/ComposeShader.ts) packs each cell's type
  * into a texture byte as `type | 0x80` when the cell is charged. That is an
  * internal texture format, NOT a save format — but it means cell ids must
- * stay <= 127. Ids are append-only and top out at 50 today, so there is room
- * for 77 more materials; if id 128 is ever near, the charge bit moves first.
+ * stay <= 127. Ids are append-only and top out at 52 today, so there is room
+ * for 75 more materials; if id 128 is ever near, the charge bit moves first.
  */
-export const CELL_COUNT = 51;
+export const CELL_COUNT = 53;
 
 /**
  * The potion cells (the cauldron's products). Every one is a viscous liquid to the
@@ -135,6 +139,7 @@ export const CELL_COUNT = 51;
 export const ELIXIR_CELL_IDS: readonly number[] = [
   Cell.ElixirLife, Cell.ElixirLevity, Cell.ElixirStone,
   Cell.ElixirSwift, Cell.ElixirTorch, Cell.ElixirFire, Cell.ElixirFrost, Cell.ElixirShock, Cell.ElixirToxin, Cell.ElixirMight,
+  Cell.ElixirVampire, Cell.ElixirHush,
 ];
 
 /**

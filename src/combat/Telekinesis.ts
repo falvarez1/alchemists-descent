@@ -7,6 +7,7 @@ import { corpseFrame, emptySample, gripPoint, LIFT_MASS_MAX, nearestGrip, pushBo
 import { sightClear } from '@/creatures/perception';
 import { packRGB } from '@/sim/colors';
 import { fxRandom } from '@/core/simRandom';
+import { hasBoon } from '@/core/boons';
 
 /**
  * TELEKINESIS — the wand's grip on a body. E on the fallen (or a crate) under
@@ -438,7 +439,7 @@ export function updateTelekinesis(ctx: Ctx): void {
   if (hold.lostSight > TK.LOS_GRACE) { lose(true); return; }
   const wand = activeWand(ctx);
   if (wand) {
-    const regen = (wand.frame?.manaRegen ?? 0) * (p.perks?.manafont ? 1.6 : 1);
+    const regen = (wand.frame?.manaRegen ?? 0) * (hasBoon(p, 'manafont') ? 1.6 : 1);
     const drain = holdDrain(c.mass, regen, gripCostK(ctx));
     if (wand.mana < drain) { wand.mana = 0; lose(true); return; }
     wand.mana -= drain;

@@ -755,7 +755,7 @@ export class WandSystem implements WandsApi {
   update(ctx: Ctx): void {
     if (ctx.player.legClub) { this.flameBurst = 0; this.flameBurstAction = null; }
     // Mana Font boon: the old ones keep the tanks topped up 60% faster.
-    const regenK = ctx.player.perks.manafont ? 1.6 : 1;
+    const regenK = hasBoon(ctx.player, 'manafont') ? 1.6 : 1;
     for (const w of this.wands) {
       if (w.cooldown > 0) w.cooldown--;
       w.mana = Math.min(w.frame.manaMax, w.mana + w.frame.manaRegen * regenK);

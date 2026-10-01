@@ -131,8 +131,10 @@ describe('cell ABI contracts', () => {
       ElixirShock: 48,
       ElixirToxin: 49,
       ElixirMight: 50,
+      ElixirVampire: 51,
+      ElixirHush: 52,
     });
-    expect(CELL_COUNT).toBe(51);
+    expect(CELL_COUNT).toBe(53);
     expect(Math.max(...Object.values(Cell))).toBeLessThan(128);
   });
 
@@ -176,6 +178,8 @@ describe('cell ABI contracts', () => {
       Cell.ElixirShock,
       Cell.ElixirToxin,
       Cell.ElixirMight,
+      Cell.ElixirVampire,
+      Cell.ElixirHush,
       Cell.Steam,
       Cell.Smoke,
       Cell.Ice,

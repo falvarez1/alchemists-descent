@@ -74,6 +74,10 @@ export const MATERIAL_INFO: Record<number, string> = {
     'Charcoal Draught, brewed: drink (X) and acid and toxic sludge deal a quarter of their harm while it lasts.',
   [Cell.ElixirMight]:
     'Brimstone Tincture, brewed: drink (X) for a quarter more damage from every spell. Brewed from gunpowder and oil, so keep the fire under the pot.',
+  [Cell.ElixirVampire]:
+    'Heartwine, brewed: drink (X) and every creature you kill gives a little of its life back to you while it lasts.',
+  [Cell.ElixirHush]:
+    'Hush Draught, brewed: drink (X) and the dark hides you better while your lantern is hooded (L): half-dark counts as dark to anything that is looking.',
   [Cell.Toxic]:
     'Poison ooze: damages on contact and catches fire. Clean water dilutes it back into water; lava boils it into smoke.',
   [Cell.Healium]:

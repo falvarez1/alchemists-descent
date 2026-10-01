@@ -28,6 +28,8 @@ export interface ElixirDef {
   /** The potion's cell id. */
   cell: number;
   effect: ElixirEffect;
+  /** A second effect the same cell carries (it takes the same frames, and its timer counts down beside the first). */
+  also?: ElixirEffect;
   /** Frames of the effect one drunk cell gives: a brimming 13-cell bowl is 13 times this. */
   framesPerCell: number;
   /** The HUD chip: a short upper-case label and its tint. */
@@ -62,8 +64,9 @@ export const ELIXIRS: readonly ElixirDef[] = [
     cell: Cell.ElixirSwift,
     effect: { kind: 'status', key: 'swift' },
     framesPerCell: 200,
+    also: { kind: 'boon', key: 'manafont' },
     chip: { label: 'SWIFT', tint: '#e0903a' },
-    does: 'a step half again as quick, and a higher leap',
+    does: 'a step half again as quick, a higher leap, and a wand that refills its mana 60% faster',
   },
   {
     cell: Cell.ElixirTorch,
@@ -107,6 +110,20 @@ export const ELIXIRS: readonly ElixirDef[] = [
     chip: { label: 'BRIMSTONE', tint: '#ecd23a' },
     does: 'a quarter more damage from every spell',
   },
+  {
+    cell: Cell.ElixirVampire,
+    effect: { kind: 'boon', key: 'vampirism' },
+    framesPerCell: 200,
+    chip: { label: 'HEARTWINE', tint: '#c2417f' },
+    does: 'two hit points back from every creature you kill',
+  },
+  {
+    cell: Cell.ElixirHush,
+    effect: { kind: 'boon', key: 'velvethood' },
+    framesPerCell: 200,
+    chip: { label: 'HUSHED', tint: '#a79fd8' },
+    does: 'a lantern hood that hides you in half-dark, as in full dark',
+  },
 ];
 
 /** Is `t` a potion cell (a product of the cauldron, never an ingredient)? */
@@ -135,6 +152,13 @@ export function addEffectFrames(status: EntityStatus, effect: ElixirEffect, fram
   if (effect.kind === 'status') status[effect.key] = next;
   else (status.boons ??= {})[effect.key] = next;
   return next - have;
+}
+
+/** Load a drunk cell of `def` onto a body: its effect, and its second one, each under the shared cap. Returns the frames the first took (0 = the cup is full). */
+export function addElixirFrames(status: EntityStatus, def: ElixirDef, frames: number): number {
+  const took = addEffectFrames(status, def.effect, frames);
+  if (def.also) addEffectFrames(status, def.also, frames);
+  return took;
 }
 
 /** Add to one of the numeric status timers under the shared cap (loot potions, the Sanctum's brew, the bench's tiles). */
