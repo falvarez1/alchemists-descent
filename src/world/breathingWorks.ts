@@ -9,7 +9,7 @@ import { makeValve } from '@/core/mechanismFactories';
 import { stampPhotocell } from './lightPuzzles';
 import { carveSeedCellar, plantWorksFlora, WORKS_SEED_CELLAR } from '@/world/worksFlora';
 import { carveWorksEchoNook, worksStorySites } from '@/world/worksStory';
-import { REFUGE_KETTLE, stampRefugeKettle } from '@/world/refugeKettle';
+import { stampRefugeKettle } from '@/world/refugeKettle';
 
 /** Authored encounter geometry; every ledge, reservoir and pipe below is real material. */
 export const WORKS_ROOMS = [
@@ -437,7 +437,7 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
       { kind: 'stonemaw', x: 755, y: 1008, sourceId: 'works-stonemaw-undertow' },
     ],
     placedPrefabs: [...WORKS_ROOMS.map(r => ({ id: `works-${r.id}`, x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.floor })),
-      { id: 'works-bell-tea-engine', ...TEA.bounds }, { id: 'works-refuge-kettle', ...REFUGE_KETTLE.bounds }],
+      { id: 'works-bell-tea-engine', ...TEA.bounds }],
     authoredLights: [lamp(180, 279, true, 150), lamp(30, 300, true, 70), lamp(394, 276, true, 80, .06, .7),
       lamp(WORKS_GATE.x, WORKS_GATE.arch.top + 4, true, 90, .05, .6), ...kettle.lights, lamp(675, 340), lamp(1235, 325), lamp(1450, 570, true),
       lamp(850, 702, true, 155), lamp(285, 740), lamp(1400, 948, true, 115, .1, .48), ...failingLights, ...machineLights, ...story.lights],

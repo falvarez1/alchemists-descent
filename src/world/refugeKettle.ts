@@ -37,8 +37,6 @@ export const REFUGE_KETTLE = {
   tank: { x0: 787, x1: 791, y0: 745, y1: 750, grateX0: 786, grateX1: 792, grateY: 744 },
   /** The shrub: an ellipse of leaf on the plinth's top row, west end. */
   shrub: { cx: 772.5, floorY: 743, rx: 5.5, ry: 4 },
-  /** The footprint the placed-room list keeps clear of repair tunnels. */
-  bounds: { x0: 764, y0: 728, x1: 808, y1: 752 },
 } as const;
 
 /** A cheap spatial hash for the shrub's ragged edge (no rng: the stamp draws nothing from any stream). */
