@@ -75,7 +75,7 @@ describe('the experiment', () => {
     const ctx = makeCtx(world, seen);
     const brewing = new Brewing();
     // Water 8 + Blood 3 is Life (Water 8 + Blood 5) short two Blood.
-    pour(world, [[Cell.Water, 8], [Cell.Blood, 3]]);
+    pour(world, [[Cell.Water, 8], [Cell.Glowshroom, 3]]);
     run(ctx, brewing, 23);
     expect(seen.attempts).toHaveLength(0); // not yet: it has to stand a moment
     run(ctx, brewing, 3);
@@ -84,12 +84,12 @@ describe('the experiment', () => {
     expect(a.verdict).toBe('close');
     expect(a.closeTo).toBe('life');
     expect(a.closeToKnown).toBe(false);
-    expect(a.feel).toEqual({ [Cell.Water]: 'hot', [Cell.Blood]: 'warm' });
+    expect(a.feel).toEqual({ [Cell.Water]: 'hot', [Cell.Glowshroom]: 'warm' });
     expect(a.first).toBe(true);
     expect(seen.toasts).toContain('CAULDRON: THE BREW SHIMMERS. YOU ARE CLOSE TO SOMETHING');
     expect(seen.toasts.join('\n')).not.toMatch(/LIFE/i);
     expect(seen.sfx).toContain('brew.shimmer');
-    expect(loadExperiments()).toMatchObject([{ sig: '2:8,18:3', verdict: 'close', closeTo: 'life', feel: { '2': 'hot', '18': 'warm' }, tries: 1 }]);
+    expect(loadExperiments()).toMatchObject([{ sig: '2:8,33:3', verdict: 'close', closeTo: 'life', feel: { '2': 'hot', '33': 'warm' }, tries: 1 }]);
     // and it is not judged again while the bowl stands as it is
     run(ctx, brewing, 200);
     expect(seen.attempts).toHaveLength(1);
@@ -98,7 +98,7 @@ describe('the experiment', () => {
     expect(last.verdict).toBe('close');
     expect(last.reagents).toEqual([
       { cell: Cell.Water, n: 8, feel: 'hot' },
-      { cell: Cell.Blood, n: 3, feel: 'warm' },
+      { cell: Cell.Glowshroom, n: 3, feel: 'warm' },
     ]);
   });
 
@@ -136,11 +136,11 @@ describe('the experiment', () => {
     const world = new World();
     const ctx = makeCtx(world, seen);
     const brewing = new Brewing();
-    pour(world, [[Cell.Water, 8], [Cell.Blood, 3]]);
+    pour(world, [[Cell.Water, 8], [Cell.Glowshroom, 3]]);
     run(ctx, brewing, 30);
     pour(world, [[Cell.Water, 12]]); // changes the mix
     run(ctx, brewing, 70); // past the gap between judgments
-    pour(world, [[Cell.Water, 8], [Cell.Blood, 3]]);
+    pour(world, [[Cell.Water, 8], [Cell.Glowshroom, 3]]);
     run(ctx, brewing, 70);
     expect(seen.attempts.map((a) => [a.first, a.tries])).toEqual([[true, 1], [true, 1], [false, 2]]);
     expect(loadExperiments()).toHaveLength(2);
@@ -151,10 +151,10 @@ describe('the experiment', () => {
     const world = new World();
     const ctx = makeCtx(world, seen);
     const brewing = new Brewing();
-    pour(world, [[Cell.Water, 8], [Cell.Blood, 5], [Cell.Oil, 1]]); // Life's amounts met, plus 1 stray: forgiven
+    pour(world, [[Cell.Water, 8], [Cell.Glowshroom, 5], [Cell.Oil, 1]]); // Life's amounts met, plus 1 stray: forgiven
     run(ctx, brewing, 5);
     expect(seen.attempts).toHaveLength(0);
-    pour(world, [[Cell.Water, 8], [Cell.Blood, 5], [Cell.Acid, 1]]);
+    pour(world, [[Cell.Water, 8], [Cell.Glowshroom, 5], [Cell.Acid, 1]]);
     run(ctx, brewing, 100);
     expect(seen.brewed).toContain('life'); // a stray cell or two never spoils a brew
 
@@ -162,7 +162,7 @@ describe('the experiment', () => {
     const world2 = new World();
     const ctx2 = makeCtx(world2, seen2);
     const b2 = new Brewing();
-    pour(world2, [[Cell.Water, 8], [Cell.Blood, 5], [Cell.Oil, 3]]);
+    pour(world2, [[Cell.Water, 8], [Cell.Glowshroom, 5], [Cell.Oil, 3]]);
     run(ctx2, b2, 30);
     expect(seen2.attempts[0].verdict).toBe('muddy');
     expect(seen2.attempts[0].feel[Cell.Oil]).toBe('cold');
@@ -185,14 +185,14 @@ describe('the experiment', () => {
     const world = new World();
     const ctx = makeCtx(world, seen);
     const brewing = new Brewing();
-    pour(world, [[Cell.Water, 8], [Cell.Blood, 3]], false);
+    pour(world, [[Cell.Water, 8], [Cell.Glowshroom, 3]], false);
     run(ctx, brewing, 100);
     expect(seen.attempts).toHaveLength(0);
     expect(seen.toasts).toContain('CAULDRON: NEEDS HEAT');
     pour(world, [[Cell.Water, 3]]); // a few drips over a fire
     run(ctx, brewing, 100);
     expect(seen.attempts).toHaveLength(0);
-    pour(world, [[Cell.Water, 8], [Cell.Blood, 3]]);
+    pour(world, [[Cell.Water, 8], [Cell.Glowshroom, 3]]);
     ctx.player.x = CAULDRON.x + 400;
     run(ctx, brewing, 100);
     expect(seen.attempts).toHaveLength(0);

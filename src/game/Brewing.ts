@@ -40,6 +40,12 @@ interface BasinSample {
 /** Basin interior + rim overflow: cauldron.x ± BASIN_HALF_W, rows y-2 .. y. */
 const BASIN_HALF_W = 3;
 const BASIN_TOP = -2;
+/**
+ * ...and what is heaped over the rim still counts: a leaf or a mushroom does not sink, so poured onto a
+ * bowl already full of water it piles up above the walls (measured: 24 glowshroom poured over 8 water, 4
+ * counted, the panel stuck at 4 and nothing said why). Counted and consumed with the rest, two rows up.
+ */
+const BASIN_HEAP_TOP = -4;
 const BASIN_BOTTOM = 0;
 /**
  * Heat: any flame hugging the cauldron counts — beside the walls, on the rim,
@@ -201,7 +207,7 @@ export class Brewing implements BrewingApi {
     const counts: Record<number, number> = {};
     const potions: Record<number, number> = {};
     let mass = 0;
-    for (let dy = BASIN_TOP; dy <= BASIN_BOTTOM; dy++) {
+    for (let dy = BASIN_HEAP_TOP; dy <= BASIN_BOTTOM; dy++) {
       for (let dx = -BASIN_HALF_W; dx <= BASIN_HALF_W; dx++) {
         const x = cauldron.x + dx, y = cauldron.y + dy;
         if (!world.inBounds(x, y)) continue;
@@ -231,7 +237,7 @@ export class Brewing implements BrewingApi {
     for (let dy = HEAT_TOP; dy <= HEAT_BOTTOM; dy++) {
       for (let dx = -HEAT_HALF_W; dx <= HEAT_HALF_W; dx++) {
         // The basin interior is an ingredient space, not a burner.
-        if (Math.abs(dx) <= BASIN_HALF_W && dy >= BASIN_TOP && dy <= BASIN_BOTTOM) continue;
+        if (Math.abs(dx) <= BASIN_HALF_W && dy >= BASIN_HEAP_TOP && dy <= BASIN_BOTTOM) continue;
         const x = cauldron.x + dx, y = cauldron.y + dy;
         if (!world.inBounds(x, y)) continue;
         const t = world.types[world.idx(x, y)];
@@ -245,7 +251,7 @@ export class Brewing implements BrewingApi {
   private finishBrew(ctx: Ctx, cauldron: { x: number; y: number }, recipe: Recipe): void {
     const world = ctx.world;
     const colorFn = COLOR_FN[recipe.elixir];
-    for (let dy = BASIN_TOP; dy <= BASIN_BOTTOM; dy++) {
+    for (let dy = BASIN_HEAP_TOP; dy <= BASIN_BOTTOM; dy++) {
       for (let dx = -BASIN_HALF_W; dx <= BASIN_HALF_W; dx++) {
         const x = cauldron.x + dx, y = cauldron.y + dy;
         if (!world.inBounds(x, y)) continue;

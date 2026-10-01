@@ -31,11 +31,11 @@ export interface Clue {
 }
 
 export const CLUES: readonly Clue[] = [
-  // ---- Elixir of Life: water and blood
-  { id: 'life.1', recipe: 'life', on: { on: 'kill', kind: '*' },
-    text: 'Pressed into the margin with a brown thumb: “The body keeps its own apothecary. Ask it politely, or otherwise.”' },
-  { id: 'life.2', recipe: 'life', on: { on: 'examine', cell: Cell.Blood },
-    text: 'Under “Blood”: “Never neat. Thinned with clean water it forgives you, and does not spoil.”' },
+  // ---- Elixir of Life: water and glowshroom (a broth)
+  { id: 'life.1', recipe: 'life', on: { on: 'floor', level: 'd1' },
+    text: 'In a physician’s copperplate beside Life: “The cellar mushroom, boiled, for the nerves and the other thing. Do not ask which patient.”' },
+  { id: 'life.2', recipe: 'life', on: { on: 'examine', cell: Cell.Glowshroom },
+    text: 'Beside Glowshroom: “Eat none. Bottle some.” A second hand adds: “Too late.” A third, smaller: “Broth.”' },
 
   // ---- Elixir of Levity: water and slime
   { id: 'levity.1', recipe: 'levity', on: { on: 'kill', kind: 'slime' },
@@ -43,11 +43,11 @@ export const CLUES: readonly Clue[] = [
   { id: 'levity.2', recipe: 'levity', on: { on: 'examine', cell: Cell.Slime },
     text: 'Beside the slime, a doodle of a balloon, and a small, doomed gentleman beneath it.' },
 
-  // ---- Elixir of Stone: blood and sand
+  // ---- Elixir of Stone: oil and sand (tar)
   { id: 'stone.1', recipe: 'stone', on: { on: 'examine', cell: Cell.Sand },
     text: 'In a mason’s square hand: “Sand is what skin becomes when it stops negotiating.”' },
   { id: 'stone.2', recipe: 'stone', on: { on: 'brewed', recipe: 'life' },
-    text: 'A torn second page: “Life takes the red. So does stone, if you harden it with something coarse.”' },
+    text: 'A torn second page: “Life takes the broth. Stone takes the tar: lamp oil worked in until the sand forgets it was ever loose.”' },
 
   // ---- Strong Tea: water and leaf
   { id: 'tea.1', recipe: 'tea', on: { on: 'floor', level: 'd1' },
@@ -56,24 +56,22 @@ export const CLUES: readonly Clue[] = [
     text: 'By “Leaf”: “Not for burning. For steeping.” Underlined, twice, by someone who had burned a great many.' },
 
   // ---- Glowing Draught: oil and glowshroom
-  { id: 'glow.1', recipe: 'glow', on: { on: 'examine', cell: Cell.Glowshroom },
-    text: 'Beside the Glowshroom: “Eat none. Bottle some.” A second hand adds: “Too late.”' },
-  { id: 'glow.2', recipe: 'glow', on: { on: 'floor', level: 'd2' },
+  { id: 'glow.1', recipe: 'glow', on: { on: 'floor', level: 'd2' },
     text: '“A lamp is only oil with ambitions. Give it something that already glows and it will stop being modest.”' },
+  { id: 'glow.2', recipe: 'glow', on: { on: 'examine', cell: Cell.Oil },
+    text: 'Under “Oil”: “Slippery, and lit more often than anyone admits. It will carry a light for you, if you ask the right passenger.”' },
 
-  // ---- Salamander’s Gall: coal, ash and water
+  // ---- Salamander’s Gall: oil and coal
   { id: 'salamander.1', recipe: 'salamander', on: { on: 'examine', cell: Cell.Coal },
     text: 'Under “Coal”: “It remembers the fire fondly. So, I am told, do salamanders.”' },
-  { id: 'salamander.2', recipe: 'salamander', on: { on: 'examine', cell: Cell.Ash },
-    text: 'Under “Ash”: “What the fire forgot. The salamander sleeps in it.” The ink gives out here.' },
-  { id: 'salamander.3', recipe: 'salamander', on: { on: 'floor', level: 'd4' },
-    text: 'Scratched in at the bottom of the page, from below: “Whatever you brew for the Kiln, bring water to thin it.”' },
+  { id: 'salamander.2', recipe: 'salamander', on: { on: 'floor', level: 'd4' },
+    text: 'Scratched in at the bottom of the page, from below: “Whatever you brew for the Kiln: the salamander eats fuel. Give it two kinds.”' },
 
-  // ---- Frostproof Tonic: brine and snow
+  // ---- Frostproof Tonic: brine and leaf
   { id: 'frostproof.1', recipe: 'frostproof', on: { on: 'floor', level: 'd2b' },
     text: '“Like cures like,” says the margin, in a shaking hand. “The cold’s own sweepings, sweetened with its own water.”' },
   { id: 'frostproof.2', recipe: 'frostproof', on: { on: 'examine', cell: Cell.Brine },
-    text: 'Next to “Brine”: “Salt keeps meat and makes frostbite. Make it keep you.”' },
+    text: 'Next to “Brine”: “Salt keeps meat and makes frostbite. Cure something green in it and make it keep you.”' },
 
   // ---- Gutta-Percha Tonic: oil and slime
   { id: 'guttapercha.1', recipe: 'guttapercha', on: { on: 'floor', level: 'd3' },
@@ -81,7 +79,7 @@ export const CLUES: readonly Clue[] = [
   { id: 'guttapercha.2', recipe: 'guttapercha', on: { on: 'brewed', recipe: 'levity' },
     text: 'In pencil, on the Levity page: “The slime again. Not only for floating.”' },
 
-  // ---- Charcoal Draught: coal and water
+  // ---- Charcoal Draught: water and coal
   { id: 'charcoal.1', recipe: 'charcoal', on: { on: 'floor', level: 'd2' },
     text: '“The sump here kills a mule a week. The apothecary on Cinder Row recommends charcoal, and a great deal of water, and not going.”' },
   { id: 'charcoal.2', recipe: 'charcoal', on: { on: 'brewed', recipe: 'tea' },
@@ -93,15 +91,15 @@ export const CLUES: readonly Clue[] = [
   { id: 'brimstone.2', recipe: 'brimstone', on: { on: 'floor', level: 'd3b' },
     text: '“Tincture of Brimstone. The fire goes UNDER the pot. Beside the lid is how we lost the east wing.”' },
 
-  // ---- Heartwine: blood and leaf (tea's cousin: the leaf steeped in something other than water)
+  // ---- Heartwine: slime and leaf (tea’s cousin: the leaf steeped in something other than water)
   { id: 'heartwine.1', recipe: 'heartwine', on: { on: 'brewed', recipe: 'tea' },
-    text: 'On the Strong Tea page, in red: “Same leaf. Different cup. Do not tell Pell what the cup was.”' },
-  { id: 'heartwine.2', recipe: 'heartwine', on: { on: 'kill', kind: 'bat' },
-    text: 'Pinned beside a bat’s sketch: “Everything that bleeds well is a vintage, if you are not squeamish. I was not. I am now.”' },
+    text: 'On the Strong Tea page, in red: “Same leaf. Not water this time: something thick and green, from the back of the cellar.”' },
+  { id: 'heartwine.2', recipe: 'heartwine', on: { on: 'kill', kind: 'acidslime' },
+    text: 'Pinned beside an acid slime’s sketch: “Even the sour ones ferment, given leaves and time. I was not squeamish. I am now.”' },
 
-  // ---- Hush Draught: snow and ash (the quiet pair)
+  // ---- Hush Draught: snow and coal (the quiet pair)
   { id: 'hush.1', recipe: 'hush', on: { on: 'examine', cell: Cell.Snow },
-    text: 'Under “Snow”: “It swallows footsteps. Pair it with something that has already finished burning.”' },
+    text: 'Under “Snow”: “It swallows footsteps. Pair it with something dark that remembers a fire.”' },
   { id: 'hush.2', recipe: 'hush', on: { on: 'floor', level: 'd3' },
     text: 'Scrawled low on the page, small: “They hear the lantern before they hear you. Hood it. Then be as quiet as a thing that has stopped.”' },
 ];

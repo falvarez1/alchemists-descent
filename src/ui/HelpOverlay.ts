@@ -76,7 +76,7 @@ const PAGES: readonly HandbookPage[] = [
       </dl>
       <ul>
         <li><b>Water</b> douses fire and conducts electricity. <b>Nitrogen</b> freezes water to ice. <b>Oil</b> burns long and hot.</li>
-        <li>Drop ingredients into a heated <b>cauldron</b> to brew elixirs; every recipe you discover is written into your <b>Grimoire</b> (J).</li>
+        <li>Siphon ingredients (E) and pour them (Q) into a heated <b>cauldron</b> to brew elixirs; every try, and every recipe you discover, is written into your <b>Grimoire</b> (J).</li>
         <li>A <b>heart</b> grows your vessel at once, but refilling it is a communion: you are rooted and unarmed while it runs.</li>
       </ul>`,
   },

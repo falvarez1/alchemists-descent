@@ -72,7 +72,7 @@ describe('brewing progress', () => {
 
     setBasin(world, [
       ...Array<Cell>(8).fill(Cell.Water),
-      ...Array<Cell>(5).fill(Cell.Blood),
+      ...Array<Cell>(5).fill(Cell.Glowshroom),
     ]);
     advance(ctx, brewing, 89);
     expect(basinCount(world, Cell.ElixirLife)).toBe(0);
@@ -95,7 +95,7 @@ describe('brewing progress', () => {
 
     setBasin(world, [
       ...Array<Cell>(8).fill(Cell.Water),
-      ...Array<Cell>(5).fill(Cell.Blood),
+      ...Array<Cell>(5).fill(Cell.Glowshroom),
     ]);
     advance(ctx, brewing, 89);
     expect(basinCount(world, Cell.ElixirLife)).toBe(0);
@@ -123,7 +123,7 @@ describe('brewing progress', () => {
 
     setBasin(world, [
       ...Array<Cell>(8).fill(Cell.Water),
-      ...Array<Cell>(5).fill(Cell.Blood),
+      ...Array<Cell>(5).fill(Cell.Glowshroom),
     ]);
     advance(ctx, brewing, 90);
 

@@ -41,7 +41,7 @@ describe('recipe data', () => {
       const total = specificity(r);
       expect(r.needs.length, r.id).toBeGreaterThanOrEqual(2);
       expect(r.needs.length, r.id).toBeLessThanOrEqual(3);
-      expect(total, `${r.id} total`).toBeLessThanOrEqual(BOWL_CAPACITY - 1); // one cell of slack for a drip
+      expect(total, `${r.id} total`).toBeLessThanOrEqual(BOWL_CAPACITY - 2); // two cells of slack: a hand pours one over, a sinking coal displaces a cell of water
       expect(total, `${r.id} total`).toBeGreaterThanOrEqual(10);
       for (const n of r.needs) {
         expect(Number.isInteger(n.min) && n.min >= 3, `${r.id} ${n.cell}`).toBe(true);
@@ -94,12 +94,35 @@ describe('recipe data', () => {
     }
   });
 
-  it('puts the harder-to-find recipes where the floors that have their ingredients are', () => {
-    // Coal and ash for the Kiln's ward, brine and snow for the Cold Store's: ingredients a floor really holds.
-    const need = (id: string) => RECIPES.find((r) => r.id === id)!.needs.map((n) => n.cell);
-    expect(need('frostproof')).toEqual([Cell.Brine, Cell.Snow]);
-    expect(need('salamander')).toContain(Cell.Ash);
-    expect(need('tea')).toContain(Cell.Leaf);
+  it('asks only for pairs some floor with a cauldron really holds both of', () => {
+    // Where each ingredient lies, from a census of the generated floors (seeds 5 and 777: cells of each kind per floor;
+    // oil is the kit's on floor 1, slime comes off slimes from floor 2). A recipe no floor can supply is a recipe nobody brews.
+    const holds: Record<number, string[]> = {
+      [Cell.Water]: ['d1', 'd2', 'd2b', 'd3', 'd3b', 'd4'],
+      [Cell.Oil]: ['d1', 'd2', 'd2b', 'd3', 'd3b', 'd4'],
+      [Cell.Gunpowder]: ['d1', 'd2', 'd2b', 'd3', 'd3b', 'd4'],
+      [Cell.Leaf]: ['d1', 'd2', 'd2b', 'd3', 'd3b', 'd4'],
+      [Cell.Sand]: ['d1', 'd2', 'd3b', 'd4'],
+      [Cell.Glowshroom]: ['d1', 'd2', 'd3', 'd3b'],
+      [Cell.Slime]: ['d2', 'd3', 'd3b'],
+      [Cell.Coal]: ['d2', 'd2b', 'd3b', 'd4'],
+      [Cell.Snow]: ['d2b'],
+      [Cell.Brine]: ['d2b'],
+    };
+    for (const r of RECIPES) {
+      for (const n of r.needs) expect(holds[n.cell], `${r.id}: where does ${n.cell} lie?`).toBeDefined();
+      const common = r.needs.map((n) => holds[n.cell]).reduce((a, b) => a.filter((f) => b.includes(f)));
+      expect(common.length, `${r.id} has a floor that holds both`).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps out of the bowl what the sim will not keep there: blood (dissolves in water, dries on stone), ash (dissolves in water), snow beside brine (melts)', () => {
+    for (const r of RECIPES) {
+      const cells = r.needs.map((n) => n.cell);
+      expect(cells, r.id).not.toContain(Cell.Blood);
+      expect(cells, r.id).not.toContain(Cell.Ash);
+      if (cells.includes(Cell.Snow)) expect(cells, r.id).not.toContain(Cell.Brine);
+    }
   });
 });
 
