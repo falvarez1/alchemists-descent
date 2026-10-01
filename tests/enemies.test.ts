@@ -506,7 +506,7 @@ describe('weaver encounter contract', () => {
     // Rot Gardens fodder, Drowned Cistern eels, Kiln Heart imps and bombers.
     expect(SPINE_ROSTERS.fungal).toMatchObject({ slime: 4, acidslime: 2, bat: 8, eggs: 2 });
     expect(SPINE_ROSTERS.flooded?.rillback).toBe(6);
-    expect(SPINE_ROSTERS.volcanic).toMatchObject({ imp: 5, bomber: 4, golem: 2 });
+    expect(SPINE_ROSTERS.volcanic).toMatchObject({ imp: 8, bomber: 6, golem: 3, stonemaw: 3 });
     // No spine roster places a boss: the Leviathan and the Colossus are structure-placed.
     for (const roster of Object.values(SPINE_ROSTERS)) {
       expect(roster?.leviathan).toBeUndefined();
@@ -543,11 +543,22 @@ describe('weaver encounter contract', () => {
         expect(base + reserved).toBeLessThanOrEqual(70);
       } else {
         // Predators stay few; the fodder crowd (bats hang in roosts) keeps a floor under ~24.
+        // The Kiln Heart (the deepest floor) holds the biggest crowd, 20: it was the
+        // emptiest floor (levels review #7), a 700-cell drop with one foe near it.
         expect(base).toBeGreaterThanOrEqual(4);
         expect(base).toBeLessThanOrEqual(24);
-        expect(base - (pop.bat ?? 0)).toBeLessThanOrEqual(16);
+        expect(base - (pop.bat ?? 0)).toBeLessThanOrEqual(def.biome === 'volcanic' ? 20 : 16);
       }
     }
+  });
+
+  it('never makes the deepest floor the emptiest (the crowd grows with depth)', () => {
+    const crowd = (biome: LevelDef['biome'], depth: number): number => {
+      const pop = populationForLevel({ id: 'x', name: 'X', biome, depth, nextLevelId: null }, EXTRAS[biome].foes);
+      return Object.entries(pop).reduce((sum, [kind, n]) => sum + (kind === 'bat' ? 0 : (n ?? 0)), 0);
+    };
+    expect(crowd('volcanic', 4)).toBeGreaterThan(crowd('flooded', 3));
+    expect(crowd('volcanic', 4)).toBeGreaterThan(crowd('fungal', 2));
   });
 
   it('keeps Builder enemy authoring in sync with runtime enemy definitions', () => {

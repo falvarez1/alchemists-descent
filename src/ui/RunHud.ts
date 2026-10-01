@@ -142,7 +142,7 @@ export class RunHud {
       this.deathRow.set(0, run.maxPhials);
       // A death after the Colossus fell (its last blast reaches far) is not a defeat.
       this.deathNote.textContent = run.lastResult?.summary.outcome === 'fallen'
-        ? 'No return phials left. The descent ends here.'
+        ? 'No return phials left. The descent ends here. The Guild’s accountants have been informed, and have gone quiet.'
         : 'The run is already over; the ledger is written.';
       if (respawn) respawn.hidden = true;
       this.ledgerButton.hidden = false;
@@ -163,8 +163,8 @@ export class RunHud {
     const run = this.ctx.run;
     if (!run) return;
     if (run.over) {
+      // Focus waits for the button to fade in (ui/deathCardGate, armed by the Hud).
       this.ctx.audio.sfx('ui.run.over');
-      this.later(() => this.ledgerButton.focus({ preventScroll: true }), 30);
       return;
     }
     if (this.pendingDrain < 0) return;

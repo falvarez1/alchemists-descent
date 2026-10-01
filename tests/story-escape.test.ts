@@ -56,6 +56,8 @@ function escapeHarness() {
     ctx, meta: () => meta, updateMeta: (fn) => { meta = fn(meta); }, run: () => run, setRun: (next) => { run = next; },
     say: (lines) => { said.push(...lines.map(l => l.text)); return true; }, lineSeconds: () => 3, unlockJournal: () => undefined,
     levelId: () => 'd4', biome: () => 'volcanic', floor: () => 4, now: () => clock,
+    facts: () => ({ floor: 4, kit: null, phials: 0, deaths: 0, hpFrac: 1, gold: 0, boons: [], difficulty: 3, daily: false }),
+    carryingCorpse: () => false, sees: () => true, voiced: () => true,
   };
   const escape = new KilnEscape(host);
   const tick = (seconds: number): void => {

@@ -18,7 +18,7 @@ import { PELL_ENDING } from './pell';
  */
 
 /** Which painted plate a beat stands on. */
-export type PlateArt = 'town' | 'lift' | 'works' | 'flue' | 'window' | 'pell' | 'lantern' | 'farewell';
+export type PlateArt = 'town' | 'lift' | 'works' | 'flue' | 'window' | 'pell' | 'pellcup' | 'lantern' | 'farewell';
 
 export interface Plate {
   art: PlateArt;
@@ -67,6 +67,53 @@ export const ENDING_AGAIN: EndingScript = {
   farewell: { art: 'farewell', seconds: 3, line: { speaker: 'docent', text: 'Go on up. Breathe for me.' } },
 };
 
+/* ---------------------------------------------------------------------------
+ * THE ENDING READS THE RUN (polish 2026-09). Four facts of the descent shade
+ * it: whether Pell waits at the top with a cup (the apprentice took his tea),
+ * and, on a later victory, the hardest tier and today's shared descent. Their
+ * lines are recorded (registered in `storyVoiceLines`); a plate holds for as
+ * long as its line runs.
+ * ------------------------------------------------------------------------- */
+
+export interface EndingFacts {
+  /** Pell made it up ahead (met on at least two floors). */
+  waiting: boolean;
+  /** The apprentice took Pell's tea at his camp, on some floor. */
+  tookTea: boolean;
+  /** Today's descent (the daily seed). */
+  daily: boolean;
+  /** Won on the hardest tier. */
+  archmage: boolean;
+}
+
+/** Pell, waiting at the top with the kettle. */
+export const PELL_CUP_ENDING = {
+  first: 'You made it! So did I. I brought the kettle. Don’t ask how. I have only mostly scalded myself.',
+  again: 'Top of the flue, and the kettle’s on. I did say I was good at further.',
+} as const;
+
+/** A later victory on the hardest tier. */
+export const ENDING_ARCHMAGE_RISE = 'Archmage, at the last. The Guild would have held a banquet. It has me, and the clean air, which I am assured is better.';
+/** A later victory on today's shared descent. */
+export const ENDING_DAILY_TOWN = 'Up in Kettleby, someone opens a window. Somewhere else, this very morning, a stranger opens the same one.';
+
+/**
+ * The plates of the ending for a run: the first victory keeps its reveal whole (only Pell's cup
+ * shades it); a later one is lighter and reads the tier and the day too.
+ */
+export function endingPlates(first: boolean, facts: EndingFacts): Plate[] {
+  const script = first ? ENDING_FIRST : ENDING_AGAIN;
+  let pell = facts.waiting ? script.pellWaiting : script.pellLantern;
+  if (facts.waiting && facts.tookTea) {
+    pell = { art: 'pellcup', seconds: first ? 4 : 3, line: { speaker: 'pell', text: first ? PELL_CUP_ENDING.first : PELL_CUP_ENDING.again } };
+  }
+  let rise = script.rise;
+  let town = script.town;
+  if (!first && facts.archmage) rise = { ...rise, seconds: 4, line: { speaker: 'docent', text: ENDING_ARCHMAGE_RISE } };
+  if (!first && facts.daily) town = { ...town, seconds: 3.6, line: { speaker: 'docent', text: ENDING_DAILY_TOWN } };
+  return [rise, town, pell, script.farewell];
+}
+
 /** Captions written on the plates under the spoken line (small, in the house serif). */
 export const PLATE_TITLES: Readonly<Record<PlateArt, string>> = {
   town: 'Kettleby, above the Works',
@@ -75,6 +122,7 @@ export const PLATE_TITLES: Readonly<Record<PlateArt, string>> = {
   flue: 'The old flue',
   window: 'Kettleby, morning',
   pell: 'The top of the flue',
+  pellcup: 'The top of the flue',
   lantern: 'The top of the flue',
   farewell: 'The Works',
 };

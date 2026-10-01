@@ -124,7 +124,9 @@ export const BIOMES: Record<BiomeId, BiomeDef> = {
     ],
     crown: 'ember',
     flowerChance: 0,
-    pools: 160,
+    // GEN 62: no 19x3 lenses (the old stage scanned x-ascending to its cap and piled
+    // them loose on the left); the Kiln Heart's lava is world/lavaLakes, contained.
+    pools: 0,
     poolElement: () => Cell.Lava,
     seedsOilBias: 0.15,
     beams: 8,

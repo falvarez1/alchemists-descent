@@ -304,6 +304,39 @@ export function deathCauseLine(source: string | null | undefined, frame = 0): st
   return lines[Math.abs(Math.floor(frame)) % lines.length];
 }
 
+/** The line this death shows, says and writes: picked once, reused by every reader of it. */
+let chosen: { key: string; frame: number; line: string } | null = null;
+/** The last line shown per cause, so the next death of that cause reads differently. */
+const lastShown = new Map<string, string>();
+
+/**
+ * The death's one line. The death screen, the narrator's voice, the run ledger's
+ * epitaph and the death clip all call this from the same `playerDied` dispatch
+ * with the same frame, so they all get the SAME line (they used to pick by
+ * frameCount, frameCount, seed, frameCount and disagree). A later death of the
+ * same cause skips the line shown last time when the cause has another.
+ * Selection only: the variants themselves are voiced and test-locked.
+ */
+export function deathLineFor(source: string | null | undefined, frame = 0): string {
+  const key = normalizeDeathSource(source);
+  const tick = Number.isFinite(frame) ? Math.abs(Math.floor(frame)) : 0;
+  if (chosen && chosen.key === key && chosen.frame === tick) return chosen.line;
+  const lines = DEATH_LINES[key] ?? DEATH_LINES.unknown;
+  const previous = lastShown.get(key);
+  const fresh = lines.length > 1 ? lines.filter((line) => line !== previous) : lines;
+  // A hashed frame, not `frame % n`: sequential frames would otherwise alternate between two of three lines forever.
+  const line = fresh[(Math.imul(tick + 1, 2654435761) >>> 16) % fresh.length];
+  chosen = { key, frame: tick, line };
+  lastShown.set(key, line);
+  return line;
+}
+
+/** Forget the chosen line and the per-cause memory (a new session, a test). */
+export function resetDeathLines(): void {
+  chosen = null;
+  lastShown.clear();
+}
+
 export function deathTitle(source: string | null | undefined): string {
   return DEATH_TITLES[normalizeDeathSource(source)] ?? DEATH_TITLES.unknown;
 }

@@ -1,5 +1,11 @@
 # The Dev Console — implementation plan (QA ticket #9)
 
+**Status update, 2026-09-30:** Phases 1-4 below are shipped (the registry, the overlay, the
+full command set, scripts and assertions, `watch`/`bind`/`screenshot`), and a fifth phase, **the
+tester's travel kit and a readable `help`**, is shipped too: see "Phase 5" below and
+`docs/DEVELOPER-CONSOLE-RUN-WORKFLOW.md` for the command list. The original proposal text
+follows, unchanged.
+
 **Status: PROPOSAL — drafted June 2026, revised same day after the 3-VP panel
 review** (1 Critical + 5 High findings, all code-verified, all folded in —
 see Review Summary at the bottom). A Quake/Minecraft-style in-game
@@ -156,7 +162,7 @@ Phase 3 automation contract:
   exposes Builder Author terrain under a fake `sandbox` target while Builder
   is open.
 
-**Phase 4 (polish, optional):** `watch <paramPath>` pins live values to a
+**Phase 4 (polish, shipped):** `watch <paramPath>` pins live values to a
 HUD corner; `bind <key> <command...>`; toast/JS-error mirroring into the
 log; `screenshot` (async, rAF readback — the parity-probe pattern).
 
@@ -289,6 +295,15 @@ Session policy:
 3. **Automation surface.** Scripts, `assert`, the probe migrations,
    `verify-console.mjs` joins the battery, contract docs.
 4. **Polish.** `watch`, `bind`, error mirroring. Only if 1-3 prove out.
+5. **The tester's travel kit and `help` (shipped 2026-09-30).** `help`/`?` print a grouped
+   list with `help <command|group|find word|taint>`; `levels`, `goto`, `skip`, `sanctum`,
+   `portal`, `boss`, `key`, `camp`, `echo`, `waystone`, `phials`, `boon`, `kit`, `tier`, `seed`,
+   `win`, `lose`, `respawn`, `seq`. Each goes through the owning system's own code
+   (`Levels.debugTravel` / `debugFinishFloor`, the Sanctum, Pickups, RunDirector), leaves the run
+   debug-tainted (`core/runTaint`) and is registered only under `__AUTHORING__`, so the public
+   player build does not contain it. `seed <n>` stays refused (the reseed API this plan gated it
+   on still does not exist: `goto <level> --seed n` rebuilds one floor from a chosen seed).
+   Contract and semantics: `docs/DEVELOPER-CONSOLE-RUN-WORKFLOW.md`.
 
 ## Acceptance gate
 
@@ -343,6 +358,13 @@ Session policy:
 | `src/styles/main.css` | console panel styles; later workspace dock/floating panel styles |
 | `tests/console.test.ts` (new) | parser/dispatch/completion units |
 | `scripts/verify-console.mjs` (new) | headless gate |
+| `src/game/console/help.ts`, `travelHelp.ts` (Phase 5) | the help pages: groups, per-command facts, formatting, search (pure) |
+| `src/game/console/travel.ts`, `travelTargets.ts` (Phase 5) | the travel commands (authoring builds only) and the pure level/flag parsing |
+| `src/game/console/kit.ts` (Phase 5) | the result/info/completion helpers the command files share |
+| `src/core/runTaint.ts` (Phase 5) | one definition of a tainted run; `StoryApi.untrack` switches the story to scratch memory |
+| `src/ui/consoleHelpView.ts` (Phase 5) | lays the help rows out in wrapping columns |
+| `tests/console-help.test.ts`, `tests/console-travel.test.ts` (Phase 5) | help pages; every travel command against a mock ctx |
+| `scripts/verify-console-travel.mjs`, `scripts/verify-console-bundle.mjs` (Phase 5) | the real-overlay journey; the public bundle carries none of it |
 
 ## Pointers
 

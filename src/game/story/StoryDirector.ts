@@ -8,26 +8,32 @@ import type {
   StorySpokenLine,
 } from '@/core/story';
 import {
+  ASH_BOONS,
   ASH_DOORS,
   ASH_GREETINGS,
+  ASH_PURCHASES,
+  ASIDE_REST_S,
+  BOSS_EPILOGUES,
   DOCENT_ASIDES,
   DOCENT_PIPES,
-  ENDING_AGAIN,
-  ENDING_FIRST,
   OPENING,
   OPENING_BREATH_SECONDS,
   OPENING_LEAD_SECONDS,
   OPENING_MAX_SECONDS,
   STORY_FLOOR_NAMES,
+  ashRunNote,
+  endingPlates,
   journalEntries,
-  type Plate,
 } from '@/content/story';
 import { NARRATION_CLIPS } from '@/content/audio/narration.generated';
 import { readingSeconds, speakerKey } from '@/audio/narrationText';
+import { heldCorpse } from '@/combat/Telekinesis';
+import { sightClear } from '@/creatures/perception';
 import { LEVELS, floorOf } from '@/config/worldgraph';
+import { isRunTainted } from '@/core/runTaint';
 import { beatLine, defaultStoryMeta, StoryMetaStore, withHeard, withJournal, type StoryMetaData } from './storyMeta';
 import { freshStoryRun, pipeLine, pellWaits, sanitizeStoryRun, withPipeSpoken } from './storyRun';
-import type { StoryHost } from './host';
+import type { PellFacts, StoryHost } from './host';
 import { PellCamp } from './PellCamp';
 import { EchoStage } from './EchoStage';
 import { BossPrologue } from './BossPrologue';
@@ -39,6 +45,16 @@ const PIPE_REACH_X = 30;
 const PIPE_REACH_UP = 64;
 /** Matron Ash's greeting and door line together, at most (s): longer and the door line waits for a look at the door. */
 const ASH_MAX_S = 11;
+/** Her greeting and her remark on the run together, at most (s): longer and the remark is left unsaid. */
+const ASH_NOTE_MAX_S = 14;
+/** An aside keeps this far (s) from the end of a pipe's line, and a pipe this far (s) from the end of an aside. */
+const ASIDE_AFTER_PIPE_S = 10;
+const PIPE_AFTER_ASIDE_S = 8;
+/** The Docent's word on a fallen guardian waits this long (s) for the sump to go quiet, and gives up after another few. */
+const EPILOGUE_DELAY_S = 1.6;
+const EPILOGUE_GIVE_UP_S = 8;
+/** The alchemist alight for this many ticks before the Docent mentions it. */
+const BURNING_TICKS = 40;
 /** A pipe passed while the air was taken stays armed this long, and speaks while you are within earshot. */
 const PIPE_ARMED_S = 12;
 const PIPE_EARSHOT = 150;
@@ -109,6 +125,10 @@ export class StoryDirector implements StoryApi {
       biome: () => this.biome(),
       floor: () => floorOf(this.levelId()),
       now: () => performance.now() / 1000,
+      voiced: (line) => NARRATION_CLIPS[speakerKey(line.speaker, line.text)] !== undefined,
+      facts: () => this.pellFacts(),
+      carryingCorpse: () => heldCorpse() !== null,
+      sees: (x0, y0, x1, y1) => sightClear(ctx.world, x0, y0, x1, y1),
     };
     this.pell = new PellCamp(this.host);
     this.echo = new EchoStage(this.host);
@@ -119,9 +139,24 @@ export class StoryDirector implements StoryApi {
     this.disposers.push(
       on('levelChanged', () => this.onLevelChanged()),
       on('telekinesis', ({ phase, target }) => { if (phase === 'grab' && target === 'corpse') this.aside('telekinesis'); }),
+      on('alchemyKill', ({ cause, chain }) => {
+        // The most particular one that is due: a chain of three, then a bowled kill, then the plain first.
+        if (!this.aside('chain', chain >= 3) && !this.aside('bowled', cause === 'bowled')) this.aside('alchemy');
+      }),
+      on('waystoneLit', () => { this.aside('waystone'); }),
+      on('recipeBrewed', () => { this.aside('brew'); }),
+      on('flaskDry', () => { this.aside('flask'); }),
+      on('lanternHooded', ({ hooded, quiet }) => { if (hooded && !quiet) this.aside('hood'); }),
+      on('eyeshineCaught', () => { this.aside('eyeshine'); }),
+      on('treeFelled', ({ x, y, cause }) => {
+        // A stand that came down beside the alchemist, by a cause he could have had a hand in (not the floor settling).
+        if (cause !== 'unknown' && Math.hypot(x - this.ctx.player.x, y - this.ctx.player.y) < 240) this.aside('tree');
+      }),
+      on('enemyKilled', ({ kind }) => { if (kind === 'leviathan') this.epilogueDue = { at: performance.now() / 1000 + EPILOGUE_DELAY_S, kind }; }),
       on('structureStrike', ({ x, y, radius }) => this.pell.noise(x, y, Math.min(1, radius / 30))),
       on('groundImpact', ({ x, y, strength }) => { if (strength > 0.6) this.pell.noise(x, y, strength * 0.5); }),
       on('playerDied', () => { this.echo.end(); this.pell.close(); }),
+      on('playerDied', () => this.pell.witnessDeath()),
       on('narration', ({ text, seconds, speaker }) => this.onNarration(text, seconds, speaker)),
     );
   }
@@ -150,6 +185,22 @@ export class StoryDirector implements StoryApi {
     return this.ctx.levels?.current?.def.biome ?? null;
   }
 
+  /** What Pell may notice of the run: read off the state the game already keeps. */
+  private pellFacts(): PellFacts {
+    const { player, run, state } = this.ctx;
+    return {
+      floor: floorOf(this.levelId()),
+      kit: run?.active ? run.kit : null,
+      phials: run?.active ? run.phials : 0,
+      deaths: run?.active ? run.deaths : 0,
+      hpFrac: player.maxHp > 0 ? player.hp / player.maxHp : 1,
+      gold: state.score,
+      boons: Object.keys(player.perks ?? {}),
+      difficulty: state.difficulty ?? 3,
+      daily: run?.active === true && run.daily !== null,
+    };
+  }
+
   /* ---------------- speaking ---------------- */
 
   private say(lines: readonly StorySpokenLine[], opts: StorySpeakOptions & { beats?: readonly string[] }): boolean {
@@ -168,12 +219,55 @@ export class StoryDirector implements StoryApi {
     return clip ? clip.seconds : readingSeconds(line.text);
   }
 
-  /** A one-time aside, said once ever. */
-  private aside(which: keyof typeof DOCENT_ASIDES): void {
+  /**
+   * A one-time aside, said once ever, when `when` holds. It never cuts in: not over another line
+   * (the narrator's queue), a scripted beat, the floor's arrival, a pipe that has just spoken, or
+   * another aside's rest. An aside that cannot be said is not spent: it waits for the next time
+   * the thing happens. True when it was said.
+   */
+  private aside(which: keyof typeof DOCENT_ASIDES, when = true): boolean {
+    if (!when) return false;
     const beat = DOCENT_ASIDES[which];
     const line = beatLine(this.meta(), beat);
-    if (!line?.fresh || this.ctx.state.mode !== 'play') return;
-    this.say([{ speaker: 'docent', text: line.text }], { priority: 'normal', source: 'aside', ttlMs: 4000, captioned: true, repeatable: true, beats: [beat.id] });
+    const ctx = this.ctx;
+    if (!line?.fresh || ctx.state.mode !== 'play' || ctx.state.paused || ctx.player.dead) return false;
+    const now = performance.now() / 1000;
+    if (now < this.asideRestUntil || now < this.pipesQuietUntil || this.beatActive || ctx.narrator?.busy) return false;
+    if (this.pipeRestUntil - now > PIPE_REST_S - ASIDE_AFTER_PIPE_S) return false;
+    const spoken = { speaker: 'docent', text: line.text } as const;
+    if (!this.say([spoken], { priority: 'normal', source: 'aside', ttlMs: 4000, captioned: true, repeatable: true, beats: [beat.id] })) return false;
+    const seconds = this.lineSeconds(spoken);
+    this.asideRestUntil = now + seconds + ASIDE_REST_S;
+    this.asideQuietUntil = now + seconds + PIPE_AFTER_ASIDE_S;
+    return true;
+  }
+  /** No aside before this (s, the clock of performance.now()/1000): the last one's line and its rest. */
+  private asideRestUntil = 0;
+  /** No pipe before this: the last aside's line and a breath. */
+  private asideQuietUntil = 0;
+  /** A guardian has fallen and the Docent has a word, once the air is clear. */
+  private epilogueDue: { at: number; kind: 'leviathan' } | null = null;
+
+  /** The Docent's word on the Colossus: rides with the heave (KilnEscape says it, then the heave, in one breath). */
+  private colossusEpilogue(): { lines: StorySpokenLine[]; beats: string[]; seconds: number } | null {
+    const beat = BOSS_EPILOGUES.colossus;
+    const line = beat ? beatLine(this.meta(), beat) : null;
+    if (!beat || !line?.fresh) return null;
+    const spoken: StorySpokenLine = { speaker: 'docent', text: line.text };
+    return { lines: [spoken], beats: [beat.id], seconds: this.lineSeconds(spoken) };
+  }
+
+  private updateEpilogue(now: number): void {
+    const due = this.epilogueDue;
+    if (!due || now < due.at) return;
+    const ctx = this.ctx;
+    const beat = BOSS_EPILOGUES[due.kind];
+    const line = beat ? beatLine(this.meta(), beat) : null;
+    if (!beat || !line?.fresh || now > due.at + EPILOGUE_GIVE_UP_S) { this.epilogueDue = null; return; }
+    // Wait out a toast's moment and whatever is being said; a pause or a cinematic holds it.
+    if (ctx.state.paused || ctx.narrator?.busy || this.cinema.active) return;
+    this.epilogueDue = null;
+    this.say([{ speaker: 'docent', text: line.text }], { priority: 'normal', source: 'epilogue', ttlMs: 5000, captioned: true, repeatable: true, beats: [beat.id] });
   }
 
   private onNarration(text: string, seconds: number, speaker: string | undefined): void {
@@ -208,6 +302,12 @@ export class StoryDirector implements StoryApi {
 
   snapshotForSave(): StoryRunSave | null {
     return this.tracked ? structuredClone(this.state) : null;
+  }
+
+  untrack(): void {
+    if (!this.tracked) return;
+    this.sessionMeta = structuredClone(this.store.data);
+    this.tracked = false;
   }
 
   restoreFromSave(save: StoryRunSave | undefined): void {
@@ -263,6 +363,8 @@ export class StoryDirector implements StoryApi {
     if (input & ~this.lastInput) this.prologue.skip();
     this.lastInput = input;
     this.updatePipes(now);
+    this.updateEpilogue(now);
+    if (ctx.player.status.burning > BURNING_TICKS && (ctx.state.frameCount % 10) === 0) this.aside('burning');
     this.pell.update(dt);
     this.echo.update(dt);
     this.prologue.update();
@@ -292,7 +394,7 @@ export class StoryDirector implements StoryApi {
     }
     // Never over a scripted beat: the arrival, the echo, Pell or a cinematic has the floor;
     // and never straight after another pipe (PIPE_REST_S).
-    if (now < this.pipesQuietUntil || now < this.pipeRestUntil || this.pendingPipe || this.echo.active || this.pell.talking || this.cinema.active || this.escape.active) return;
+    if (now < this.pipesQuietUntil || now < this.pipeRestUntil || now < this.asideQuietUntil || this.pendingPipe || this.echo.active || this.pell.talking || this.cinema.active || this.escape.active) return;
     if (ctx.narrator?.busy) return;
     const script = DOCENT_PIPES[biome];
     for (const pipe of pipes) {
@@ -340,6 +442,7 @@ export class StoryDirector implements StoryApi {
       lit: biome !== 'volcanic',
       abandoned: biome === 'volcanic',
       pageRead: this.state.pell[id]?.gift === 'page' && biome === 'volcanic',
+      dress: this.pell.dress(),
     } : null;
     v.pell = this.pell.view();
     v.valve = st?.valve ? { ...st.valve, ...this.echo.valveView() } : null;
@@ -382,7 +485,7 @@ export class StoryDirector implements StoryApi {
   get escapeActive(): boolean { return this.escape.active; }
 
   beginEscape(): boolean {
-    return this.escape.begin(() => this.onEscaped());
+    return this.escape.begin(() => this.onEscaped(), this.colossusEpilogue());
   }
 
   respawnPoint(): { x: number; y: number } | null {
@@ -393,14 +496,19 @@ export class StoryDirector implements StoryApi {
   private onEscaped(): void {
     const ctx = this.ctx;
     const first = this.meta().endings.waiting + this.meta().endings.lantern === 0;
-    const script = first ? ENDING_FIRST : ENDING_AGAIN;
     const waiting = pellWaits(this.state);
-    const plates: Plate[] = [script.rise, script.town, waiting ? script.pellWaiting : script.pellLantern, script.farewell];
+    // The ending reads the run: Pell's cup if his tea was taken, and (a later win) the tier and the day.
+    const plates = endingPlates(first, {
+      waiting,
+      tookTea: Object.values(this.state.pell).some(v => v.gift === 'tea'),
+      daily: !!ctx.run?.daily,
+      archmage: ctx.state.difficulty >= 4,
+    });
     this.updateMeta(m => withJournal({ ...m, endings: { waiting: m.endings.waiting + (waiting ? 1 : 0), lantern: m.endings.lantern + (waiting ? 0 : 1) } }, 'journal.ending'));
     const finish = (): void => {
       ctx.events.emit('runComplete', { gold: ctx.state.score });
-      // A finished run has nothing left to resume (RunDirector retires the save too).
-      ctx.levels.abandonExpedition();
+      // A finished run has nothing left to resume (RunDirector retires the save too); a test run leaves an older checkpoint alone.
+      if (!isRunTainted(ctx.state)) ctx.levels.abandonExpedition();
     };
     // The Docent's climb line is never cut by the first plate: the ending waits it out (at most 9 s).
     const start = (): void => { void this.cinema.play('ending', plates, { pause: true }).then(finish); };
@@ -424,7 +532,7 @@ export class StoryDirector implements StoryApi {
 
   /* ---------------- the Sanctum (Matron Ash) ---------------- */
 
-  sanctumOpened(nextBiome: string | null): void {
+  sanctumOpened(nextBiome: string | null, facts?: { phialsOnArrival: number }): void {
     this.sanctumDoors.clear();
     const floor = floorOf(this.levelId());
     const greet = ASH_GREETINGS[floor];
@@ -451,9 +559,26 @@ export class StoryDirector implements StoryApi {
         beats.length = 1;
         if (nextBiome) this.sanctumDoors.delete(nextBiome);
       }
+      // A third line reads the run (the glass, the purse) when there is room for it: only after the
+      // greeting alone (two doors below: the door lines wait for a look), and never past ASH_NOTE_MAX_S.
+      const run = this.ctx.run;
+      if (lines.length === 1 && run?.active) {
+        const note = ashRunNote({ floor, phialsOnArrival: facts?.phialsOnArrival ?? run.phials, maxPhials: run.maxPhials, gold: this.ctx.state.score });
+        const mine = { speaker: 'ash', text: note?.text ?? '' } as const;
+        if (note && this.lineSeconds(lines[0]) + this.lineSeconds(mine) <= ASH_NOTE_MAX_S) { lines.push(mine); beats.push(note.id); }
+      }
       this.say(lines, { priority: 'normal', source: 'sanctum-ash', ttlMs: 12000, captioned: false, repeatable: true, beats });
       this.updateMeta(m => withJournal(m, 'journal.ash'));
     }
+  }
+
+  /** Matron Ash answers a boon struck (once ever for each) and a purchase made (once per item per run). */
+  sanctumAct(act: { kind: 'boon' | 'buy'; id: string }): void {
+    const text = act.kind === 'boon' ? ASH_BOONS[act.id] : ASH_PURCHASES[act.id];
+    if (!text) return;
+    const id = `ash.${act.kind}.${act.id}`;
+    if (act.kind === 'boon' ? this.meta().heard.includes(id) : this.state.spoken.includes(id)) return;
+    this.say([{ speaker: 'ash', text }], { priority: 'normal', source: 'sanctum-ash', ttlMs: 9000, captioned: false, repeatable: true, beats: [id] });
   }
 
   sanctumDoor(biome: string): void {

@@ -124,6 +124,12 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     surfaceIntro.ts       Surface-intro arrival predicates (isOnIntroSurface /
                           introArrivalSpawn) for Levels; no generated level has
                           a surface since D1 became the Breathing Works
+    populationRoute.ts    Route-aware population (pure): traces the spawn -> key -> exit walk on the
+                          reach mask, a corridor field (path steps to it), guard/quantile slots and
+                          the cell finder Levels.placePopulation fills them with (fail-open to scatter)
+    keyLure.ts            The golden key's far-field lure clock (glint + chime, one per key; pure)
+    compass.ts            The game's own waypoint (the exit portal once the key is taken); never
+                          replaces a waypoint set by hand
   world/
     CaveGenerator.ts      Generation pipeline host: skeleton dispatch + paint + decorations
     carve.ts              Pure carve primitives over the work buffer (incl. ensureConnectivity)
@@ -132,6 +138,13 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     fixtureFooting.ts     The footing contract: fixtures' footings are sealed ground for
                           later tunnels; after the last carve every bowl/basin/body is
                           re-stamped and stood on ground (fail-open, never cuts a route)
+    lavaLakes.ts          The Kiln Heart's magma: carved halls + basin lakes, contained (rim fused,
+                          loose stock purged), dry-checked against the wizard mask (GEN 62)
+    fitWalks.ts           Body-fit BFS walks over computeFits (dist/prev, walkTo, reachedNear)
+    looseStock.ts         Clears oil/gunpowder/water/sand pockets from a fixture's room (only
+                          open-touching masses, never a room another pass owns)
+    portalShrine.ts       The exit shrine's stone pad and open ring, re-asserted after the carves
+    routeWaystones.ts     Waystone sites on the body-fit walk spawn->exit (35%/70%) + the key's brazier
     floraKit.ts           The 14 plant species as real-cell growers (Planter: writes only open cells)
     floraPass.ts          Floors 2-4: flora puzzle rooms + dressing on a forked 'flora' stream
     worksFlora.ts         Floor 1's hand-planted flora and the Seed Cellar puzzle
@@ -147,6 +160,10 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     assets/               Builder asset UI/import/export/file IO; pure SpriteAsset pieces live in authoring/
   render/
     Renderer.ts           Three.js renderer/composer/bloom/PostFx + camera quad transforms
+    farTells.ts           What lets the eye find small things across a cavern: the woken portal's
+                          column and rings, the key's glint, a set piece's lamp glint (additive pixels)
+    setPieceTells.ts      One small lamp per set piece (shrine coals, machine pilot lamp, flora moss,
+                          ...): shadow-casting light + drawn glint at the nearest open cell
     Camera.ts             Lerp follow, idle zoom, sim-bounds derivation
     Background.ts         Parallax backdrop layers (baked once): the classic two
                           refinery plates (sandbox, Builder playtests, author overrides)
@@ -229,6 +246,11 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     Callouts.ts           World-anchored combat words (alchemyKill / combatCallout), chains
     WandBench.ts          Card slotting plus debug-only potion/elixir/power controls
     ConsoleOverlay.ts     Backquote dev-console shell backed by game/console commands
+    consoleHelpView.ts    The console's help pages as wrapping columns (rows from game/console/help)
+                          (game/console: help, travel* — the tester's goto/skip/boss kit, authoring builds only;
+                          see docs/DEVELOPER-CONSOLE-RUN-WORKFLOW.md)
+    waypointRim.ts        Where the off-screen waypoint arrow rests: the view's rim, slid clear of the
+                          HUD blocks Minimap measures from the DOM (pure)
 ```
 
 ## Authoring modes

@@ -171,7 +171,7 @@
                         <div class="vitals">
                             <div class="vital-row"><div class="vital-label">HP</div><div class="vital-track"><div class="vital-fill" id="hp-fill"></div></div></div>
                             <div class="vital-row"><div class="vital-label">MANA</div><div class="vital-track"><div class="vital-fill" id="mana-fill"></div></div></div>
-                            <div class="vital-row"><div class="vital-label">LEV</div><div class="vital-track"><div class="vital-fill" id="levit-fill"></div></div></div>
+                            <div class="vital-row" title="Levitation"><div class="vital-label"><span aria-hidden="true">LEV</span><span class="sr-only">Levitation</span></div><div class="vital-track"><div class="vital-fill" id="levit-fill"></div></div></div>
                             <div class="vital-row"><div class="vital-label">FLSK</div><div class="vital-track"><div class="vital-fill" id="flask-fill" style="width:0%"></div></div></div>
                             <div id="flask-belt" aria-label="Potion belt"></div>
                             <div id="cramped-glyph" title="No headroom to stand — keep crawling">&#9660; CRAMPED</div>
@@ -257,8 +257,11 @@
                     <button id="respawn-btn">Return to your waystone</button>
                   </div>
                 </div>
+                <!-- The curtain is a picture of the wait; the wait is SAID here. A live region inside an aria-hidden
+                     subtree is never announced, so the announcement lives beside it, always exposed and empty at rest. -->
+                <div id="level-curtain-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
                 <div id="level-curtain" aria-hidden="true">
-                    <div class="level-curtain-panel" role="status" aria-live="polite" aria-atomic="true">
+                    <div class="level-curtain-panel">
                         <div class="run-launcher-loading-sigil" aria-hidden="true">
                             <span></span>
                             <span></span>

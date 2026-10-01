@@ -31,6 +31,7 @@ import {
 import { freshStoryRun, pellWaits, pipeLine, sanitizeStoryRun, withPipeSpoken } from '@/game/story/storyRun';
 import { actorAt } from '@/game/story/EchoStage';
 import { readingSeconds, speakerKey, narrationKey } from '@/audio/narrationText';
+import { NARRATION_CLIPS } from '@/content/audio/narration.generated';
 
 const beat = (id: string, again: string | null = null): Beat => ({ id, first: `${id} first`, again });
 
@@ -176,6 +177,12 @@ describe('the script', () => {
     expect(ENDING_FIRST.farewell.line?.text).toMatch(/never did leave/);
   });
 
+  it('every registered story line has a recording (run scripts/audio/gen-voice.mjs after adding one)', () => {
+    // The catalogue and the game read the same text; a line without a clip plays silently. Recorded 2026-09-30.
+    const missing = storyVoiceLines().filter(l => !NARRATION_CLIPS[speakerKey(l.speaker, l.text)]).map(l => `${l.speaker}: ${l.text.slice(0, 60)}`);
+    expect(missing).toEqual([]);
+  });
+
   it('every voice line keys by speaker (Pell and Ash apart from the Docent)', () => {
     expect(speakerKey('docent', 'Mind the duck')).toBe(narrationKey('Mind the duck'));
     expect(speakerKey('pell', 'Mind the duck')).not.toBe(narrationKey('Mind the duck'));
@@ -184,8 +191,9 @@ describe('the script', () => {
     expect(lines.some(l => l.speaker === 'ash')).toBe(true);
     const chars = new Map<string, number>();
     for (const l of new Map(lines.map(l => [`${l.speaker}|${l.text}`, l])).values()) chars.set(l.speaker, (chars.get(l.speaker) ?? 0) + l.text.length);
-    // The whole story fits the voice budget (eleven_v3 ≈ 1 credit a character).
-    expect([...chars.values()].reduce((a, b) => a + b, 0)).toBeLessThan(14000);
+    // The whole story fits the voice budget (eleven_v3 ≈ 1 credit a character). Raised from 14,000 on 2026-09-30,
+    // when the owner authorised recording the new Pell, Ash and Docent lines (17,129 characters registered then).
+    expect([...chars.values()].reduce((a, b) => a + b, 0)).toBeLessThan(20000);
     expect(readingSeconds('One two three four five six seven eight')).toBeGreaterThan(2);
   });
 

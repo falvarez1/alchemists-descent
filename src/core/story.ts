@@ -124,6 +124,15 @@ export interface StoryRunSave {
   /** Boss prologues played this run (kind). */
   prologues: string[];
   escape: EscapePhase;
+  /**
+   * What Pell has already said or offered this run, so he never says it twice:
+   * `notice.<id>`, `bark.<id>`, `once.<id>`. Older saves have none (sanitized to empty).
+   */
+  told: string[];
+  /** Pell's compass mark, live until the apprentice reaches it (level, the mark, and how many pickups near it were already taken). */
+  pin: { level: string; x: number; y: number; taken: number } | null;
+  /** Levels where Pell's mark led the apprentice to a pickup. */
+  pinsPaid: string[];
 }
 
 /* ---------------- what the story layer draws (render/story reads it every frame) ---------------- */
@@ -149,11 +158,31 @@ export interface StoryFigureView {
   lookY: number | null;
   /** A stable per-figure number (idle breathing phase, flicker). */
   seed: number;
+  /** Mouth opening 0..1 driven by the line being said (Pell's conversation); absent, the rig's own chatter. */
+  mouth?: number;
+  /** Which way the head faces, when it leads the body in a turn (Pell looks round before he turns); absent, with the body. */
+  headFacing?: 1 | -1;
+  /** Wears a bandage on the near hand (Pell from the third floor on). */
+  bandaged?: boolean;
+}
+
+/** What has accrued at Pell's camp over the run (presentation only: render/story reads it). */
+export interface StoryCampDress {
+  /** 1-based floor. */
+  floor: number;
+  /** Map pages pinned to the wall beside the crate: one for each floor Pell was met on before this one. */
+  pages: number;
+  /** The tin cup left on the crate: the apprentice took his tea. */
+  cup: boolean;
+  /** Frost on the floor (the Cold Store). */
+  frost: boolean;
+  /** His tea tin on the cold camp (floor 4): empty when the tea was taken, still closed when not. */
+  tin: 'none' | 'empty' | 'full';
 }
 
 export interface StoryRenderView {
   pipes: Array<{ x: number; top: number; floorY: number; speaking: number; spoken: boolean }>;
-  camp: (StoryCampSite & { lit: boolean; abandoned: boolean; pageRead: boolean }) | null;
+  camp: (StoryCampSite & { lit: boolean; abandoned: boolean; pageRead: boolean; dress?: StoryCampDress }) | null;
   pell: StoryFigureView | null;
   valve: (StoryValveSite & { turn: number; hum: number; used: boolean }) | null;
   echo: { alpha: number; actors: StoryFigureView[] } | null;
@@ -168,6 +197,12 @@ export interface StoryApi {
   beginRun(opts: { tracked: boolean }): void;
   snapshotForSave(): StoryRunSave | null;
   restoreFromSave(save: StoryRunSave | undefined): void;
+  /**
+   * A debug tool tainted the run mid-descent (core/runTaint): from here the story
+   * hears it from a scratch copy of the player's memory and writes nothing back
+   * (beats heard, journal pages, endings), as an untracked test run does from its start.
+   */
+  untrack?(): void;
   /** Fixed tick (runs while the player is dead too: the escape restarts itself). */
   update(): void;
   /** E pressed: talk to Pell, turn a resonant valve, read a page. True when the story took the key. */
@@ -189,8 +224,13 @@ export interface StoryApi {
   playOpening(opts?: { replay?: boolean }): Promise<void>;
   /** The player has seen the opening (the title offers to replay it). */
   readonly openingSeen: boolean;
-  /** The Sanctum opened (Matron Ash greets). `nextBiome`: the floor below (its door line). */
-  sanctumOpened(nextBiome: string | null): void;
+  /**
+   * The Sanctum opened (Matron Ash greets). `nextBiome`: the floor below (its door line).
+   * `facts`: what the old ones can read off the run (return phials in the glass before they top one up).
+   */
+  sanctumOpened(nextBiome: string | null, facts?: { phialsOnArrival: number }): void;
+  /** A boon was struck or a provision bought in the Sanctum (Matron Ash answers it, once). */
+  sanctumAct?(act: { kind: 'boon' | 'buy'; id: string }): void;
   /** A door in the Sanctum was pointed at or chosen (the Biomes workstream's door choice). */
   sanctumDoor(biome: string): void;
   /** The dialogue box: skip the typing / next line (E, click), pick a choice, or leave (Esc, walk away). */
@@ -225,6 +265,8 @@ export interface StoryDialogueView {
   instant?: boolean;
   /** Choices once the greeting is said (1-3); empty while talking or at the farewell. */
   choices: string[];
+  /** What each choice gives, beside its label ("Compass mark"); '' for a choice that only talks. Parallel to `choices`. */
+  hints?: string[];
   /** Where on screen: the speaker's world position (the box leans toward it). */
   x: number;
   y: number;

@@ -45,6 +45,9 @@ import { SKY } from '@/render/skyAtmosphere';
 import { backdropOrigin, backdropTexel } from '@/render/depth/parallax';
 import { openAtCell } from '@/core/darkness';
 import { PICKUP_COLOR } from '@/core/pickupDefs';
+import { LURE_RANGE, lureGlint } from '@/game/keyLure';
+import { drawKeyFlare, drawLampGlint, drawPortalTell, portalWakeAge } from '@/render/farTells';
+import { cachedSetPieceTells } from '@/render/setPieceTells';
 import { drawHeldLeg, drawLooseLeg } from '@/render/sprites/CreatureArt';
 import { drawTelekinesis } from '@/render/sprites/TelekinesisArt';
 import { looseLegPose } from '@/combat/LooseWeaverLeg';
@@ -2221,6 +2224,13 @@ export class FrameComposer implements PixelSurface {
     if (!runtime || ctx.state.mode !== 'play') return;
     const frame = ctx.state.frameCount;
 
+    // Each set piece's own small lamp, where the eye can find it from afar (render/setPieceTells).
+    if (runtime.placedPrefabs) {
+      for (const lamp of cachedSetPieceTells(runtime.placedPrefabs, ctx.world, blocksEntity)) {
+        drawLampGlint(this, lamp.x, lamp.y, lamp, lamp.flickerPhase, frame);
+      }
+    }
+
     for (const p of runtime.pickups) {
       if (p.taken || (p.kind === 'key' && runtime.living && !runtime.living.tea?.completed)) continue;
       if (p.kind === 'weaverleg') {
@@ -2269,6 +2279,12 @@ export class FrameComposer implements PixelSurface {
         for (let s = 0; s < 4; s++) this.setPx(x + dir * s + twitch, y, r * pulse * 1.35, g * pulse * 1.3, b * 0.7);
         this.setPx(x + dir * 3 + twitch, y + 1, r, g * 0.9, b * 0.45);
         if (frame % 14 < 3) this.addPx(x + dir * 4, y - 2, 0.8, 0.8, 0.6);
+        // FAR-FIELD LURE (game/keyLure): a cross of gold on the clock the chime rides
+        const flare = lureGlint(frame, p.x, p.y);
+        if (flare > 0) {
+          const far = Math.hypot(ctx.player.x - p.x, ctx.player.y - p.y);
+          if (far < LURE_RANGE) drawKeyFlare(this, x, y, flare, far);
+        }
       } else if (p.kind === 'heart') {
         // double-beat heart: a quick lub-dub instead of a generic bobbing gem
         const beat = (frame + Math.floor(p.x)) % 70;
@@ -2313,16 +2329,20 @@ export class FrameComposer implements PixelSurface {
       const pdx = ctx.player.x - portal.x,
         pdy = ctx.player.y - 6 - portal.y;
       const near = pdx * pdx + pdy * pdy < 70 * 70;
-      const lit = runtime.keyTaken ? (near ? 2.0 : 1.6) : near ? 0.75 : 0.5;
-      const ringR = 6 + (runtime.keyTaken ? Math.sin(frame * 0.08) * 0.7 : frame % 120 < 8 ? 1 : 0);
-      for (let k = 0; k < 14; k++) {
-        const a = (k / 14) * Math.PI * 2 + frame * (runtime.keyTaken ? 0.065 : 0.025);
+      const lit = runtime.keyTaken ? (near ? 2.0 : 1.6) : near ? 1.1 : 0.85;
+      // A woken gate is a bigger ring (9, was 6) with a column of light: from afar the
+      // sealed one was a 12-px mote (levels review #3).
+      const ringR = (runtime.keyTaken ? 9 : 7) + (runtime.keyTaken ? Math.sin(frame * 0.08) * 0.7 : frame % 120 < 8 ? 1 : 0);
+      const ringN = runtime.keyTaken ? 32 : 18;
+      for (let k = 0; k < ringN; k++) {
+        const a = (k / ringN) * Math.PI * 2 + frame * (runtime.keyTaken ? 0.065 : 0.025);
         const twitch = runtime.keyTaken ? 0 : Math.sin(frame * 0.11 + k) * 0.7;
         const px = Math.round(portal.x + Math.cos(a) * (ringR + twitch));
         const py = Math.round(portal.y - 4 + Math.sin(a) * (ringR + 2));
         const tw = 0.6 + Math.sin(frame * 0.2 + k) * 0.4;
         this.setPx(px, py, 0.55 * lit * tw, 0.18 * lit * tw, 0.95 * lit * tw);
       }
+      drawPortalTell(this, ctx, portal, frame, runtime.keyTaken, portalWakeAge(runtime.keyTaken, runtime.keyTakenFrame, frame));
       if (runtime.keyTaken && near) {
         this.drawDottedLine(ctx.player.x, ctx.player.y - 8, portal.x, portal.y - 4, 9, (frame % 18) / 18, 0.16, 0.05, 0.28);
       }

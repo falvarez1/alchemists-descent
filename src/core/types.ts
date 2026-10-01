@@ -1092,6 +1092,9 @@ export interface PostFxSettings {
   /** Screen vignette strength: the compose darkens edges by this × (r²/maxR²).
    *  0.52 is the shipped look; 0 disables it. */
   vignette: number;
+  /** The player's Brightness (ui/PlayerSettings): a final-frame gain in the post pass, 1 = as shipped.
+   *  (`exposure` only reaches the WebGPU backend; on WebGL it never changed the picture.) */
+  gain?: number;
 }
 
 export type RenderBackendMode = 'webgl' | 'webgpu' | 'auto';
@@ -1316,6 +1319,23 @@ export interface GameStateData {
   arrivalGraceUntil?: number;
   creatureCaptions?: boolean;
   reduceCameraShake?: boolean;
+  /** Player options (ui/PlayerSettings; config/playerPrefs). Unset means the shipped default. */
+  /** Pause when the window loses focus (input/focusPause). Unset = on. */
+  pauseOnBlur?: boolean;
+  /** Camera shake multiplier: 0 Off, 0.5 Half, 1 Full (render/Renderer). */
+  cameraShakeScale?: number;
+  /** Teaching cards: first time only (unset = shipped), once on every floor, or never (game/Hints). */
+  hintMode?: 'first' | 'always' | 'off';
+  /** The HUD size the player chose (1 = shipped), also on the root as --hud-scale; HUD insets that clamp to an edge follow it. */
+  hudScale?: number;
+  /** Stick dead zone the player chose (config/playerPrefs PAD_DEADZONE; 0.2 = shipped). Read by InputManager.pollGamepad. */
+  padDeadzone?: number;
+  /** Enemy health bars and damage numbers (ui/EnemyReadouts): a readout only, off = unset. */
+  showEnemyHp?: boolean;
+  /** Aim assist for aim with no cursor (combat/AimGuide): off (unset), light or strong. */
+  aimAssist?: 'off' | 'light' | 'strong';
+  /** Hold or toggle: which of crouch / levitate / pour / siphon are latched by a press instead of held (input/toggleLatches). Unset = all held. */
+  toggleModes?: Partial<Record<'down' | 'jump' | 'pour' | 'interact', boolean>>;
   reduceFlashes?: boolean;
   trickshot?: TrickshotSettings;
   /** The run's SECRET alchemy reaction (derived from worldSeed; see
@@ -2419,6 +2439,12 @@ export interface CommandInfo {
   description: string;
   shortcut?: string;
   enabled: boolean;
+  /** `help` files a command under one of its groups (game/console/help). */
+  group?: string;
+  /** Other names the command answers to. */
+  aliases?: string[];
+  /** Using it marks the run as a test run: no autosave, no ledger credit, no meta unlocks. */
+  taints?: boolean;
 }
 
 export interface ConsoleApi {
@@ -2647,6 +2673,8 @@ export interface HintApi {
    *  (the engine caption, a title card, the Sanctum, a notice) is on screen no
    *  teach-once fires; lessons wait, unspent, for a calm moment. */
   setTeachHeld?(held: boolean): void;
+  /** "Reset tutorials" (ui/PlayerSettings): forget every lesson taught so far, this session included. */
+  resetTaught?(): void;
 }
 
 export interface MechanismsApi {
@@ -2661,6 +2689,8 @@ export interface MechanismsApi {
 export interface PickupsApi {
   /** Bobbing, gravity, magnet-to-player, collection effects. */
   update(ctx: Ctx): void;
+  /** Dev console `key`: collect the level's golden key (D1's brass bell) through the same code a walk-over uses. */
+  grantKey?(ctx: Ctx): 'granted' | 'already-taken' | 'no-key';
 }
 
 export interface SanctumApi {
@@ -2675,6 +2705,15 @@ export interface SanctumApi {
   readonly chosenDoor?: string | null;
   /** Open the SHOP alone (the Refuge shrine's trade) — closing just resumes. */
   openShop(ctx: Ctx): void;
+  /**
+   * Dev console: with the Sanctum open, strike the first boon on offer, take `door`
+   * (else the first) and descend — the same clicks a player makes, the same code.
+   */
+  quickDescend?(door?: string): boolean;
+  /** Dev console: close without descending (something else is taking the alchemist out of the room). */
+  dismiss?(): void;
+  /** Dev console `boon`: strike a boon by id through the Sanctum's own code. False for an unknown id. */
+  applyBoon?(ctx: Ctx, id: string): boolean;
 }
 
 /* ============================================================
@@ -3187,6 +3226,10 @@ export interface LevelRuntime {
   portal: ExitPortal | null;
   /** The golden key has been collected in this level. */
   keyTaken: boolean;
+  /** Runtime only: the tick the key was taken (the exit portal's waking animation keys off it). */
+  keyTakenFrame?: number;
+  /** Runtime only: the floor's guardian has been heard or seen (the map then marks its arena, faintly). */
+  bossHeard?: boolean;
   /** Doors/plates/levers/braziers guarding this level's treasure. */
   mechanisms: Mechanism[];
   /** Transient actuator lookup: target mechanism id -> triggers in list order. */
@@ -3222,6 +3265,10 @@ export interface LevelRuntime {
     placed: Partial<Record<EnemyKind, number>>;
     skipped: Partial<Record<EnemyKind, number>>;
     lairs?: Partial<Record<EnemyKind, number>>;
+    /** How many of the placed foes hold the spawn -> key -> exit route (game/populationRoute). */
+    routed?: number;
+    /** The traced spawn -> key -> exit route (every 12th cell), for audits and probes. */
+    route?: { length: number; keyS: number | null; points: Array<[number, number]> };
   };
   /** D1 Noita-style surface intro: the open-air start above the cave mouth. The
    *  player begins HERE on first entry (revisits/respawns use the cave spawn). */
@@ -3403,6 +3450,55 @@ export interface LevelsApi {
   abandonExpedition(): void;
   /** QA/dev console level jump. The Levels system owns the transition semantics. */
   debugEnterLevel(ctx: Ctx, id: string): boolean;
+  /**
+   * Dev console `goto`: travel to a level through the real transition (curtain, arrival
+   * grace, findability repair, story hooks) with the run kept — phials, boons, kit, tier —
+   * and taint the run (core/runTaint). A level not built yet is built from the run seed
+   * exactly as the descent would; a visited one keeps its world unless `seed`/`fresh`.
+   */
+  debugTravel(ctx: Ctx, id: string, opts?: DebugTravelOptions): DebugTravelResult;
+  /**
+   * Dev console `skip`: take the current floor's exit the way the portal does (the
+   * Sanctum, then the floor below), without the key. `sanctum: false` has the Sanctum
+   * strike its first boon and take `door` for you. Taints the run.
+   */
+  debugFinishFloor(ctx: Ctx, opts?: { sanctum?: boolean; door?: string }): DebugFinishResult;
+  /** Dev console `kit`: reset the wands, satchel and flask belt to `kit`'s starting hand, through the loadout a fresh run starts with. Taints the run. */
+  debugApplyKit(ctx: Ctx, kit: KitId): boolean;
+  /** Dev console `waystone light`: the real ignition of waystone `index` of the current level. */
+  debugLightWaystone(ctx: Ctx, index: number): boolean;
+  /** Ids of the levels built so far this run. */
+  generatedLevels(): string[];
+  /** The seed the descent builds (or built) level `id` from: a `goto --seed` override, else the run seed salted with the id. */
+  levelSeed(ctx: Ctx, id: string): number;
+}
+
+export interface DebugTravelOptions {
+  /** Build the level again from this seed instead of the run's (a visited world is thrown away). */
+  seed?: number;
+  /** Throw a visited world away and build it again from the run seed. */
+  fresh?: boolean;
+}
+
+export interface DebugTravelResult {
+  ok: boolean;
+  reason?: 'unknown-level' | 'no-run';
+  from: string | null;
+  to: string;
+  /** Built for this trip (a first visit, or a rebuild), not restored. */
+  generated: boolean;
+  /** Wall ms the swap took: generation is synchronous, so this is the hitch a player sees behind the curtain. */
+  ms: number;
+}
+
+export interface DebugFinishResult {
+  ok: boolean;
+  reason?: 'no-run' | 'no-exit' | 'sanctum-open' | 'bad-door';
+  from: string | null;
+  /** The floor below's first door (null at the bottom of the descent). */
+  next: string | null;
+  /** The doors the floor below offers. */
+  doors: string[];
 }
 
 /* ============================================================
@@ -3454,6 +3550,8 @@ export interface RunSaveState {
   kit: KitId;
   daily: string | null;
   seed: number;
+  /** The player chose `seed` on the title (see RunSummary.seedChosen). Absent on an ordinary run. */
+  seedChosen?: boolean;
   timeMs: number;
   kills: number;
   alchemicalKills: number;
@@ -3532,6 +3630,8 @@ export interface RunApi {
   readonly maxPhials: number;
   readonly kit: KitId;
   readonly daily: string | null;
+  /** Times the alchemist has fallen on this run so far (Pell and the Old Ones read it). */
+  readonly deaths: number;
   /** The last finished run, for the ledger. */
   readonly lastResult: RunResult | null;
   beginRun(ctx: Ctx, opts: RunBeginOptions): void;
@@ -3546,13 +3646,18 @@ export interface RunApi {
   /**
    * A fresh run: a new seed (or today's daily seed) with the chosen kit, at the
    * chosen difficulty when it is open to the player (else Adept). The daily is
-   * always Adept: it is one seed for everyone.
+   * always Adept: it is one seed for everyone. `seed` (never for the daily) is a seed the player
+   * chose on the title; omitted, the descent rolls its own.
    */
-  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty }): RunStartResult;
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number }): RunStartResult;
   metaView(): RunMetaView;
   chooseKit(kit: KitId): void;
   /** Remember the tier chosen (ignored while it is still locked). */
   chooseDifficulty(difficulty: Difficulty): void;
+  /** Dev console `phials`: set the return phials of the tracked run (0 to the maximum). False with no run. */
+  debugSetPhials?(ctx: Ctx, phials: number): boolean;
+  /** Dev console `kit`: name another kit for the tracked run (the ledger and Pell read it). False with no run. */
+  debugSetKit?(kit: KitId): boolean;
 }
 
 export interface Ctx {

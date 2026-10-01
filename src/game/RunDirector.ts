@@ -10,6 +10,7 @@ import type {
 } from '@/core/types';
 import type { AlchemyKillInfo, KitId, RunOutcome } from '@/core/run';
 import { randomSeed } from '@/core/rng';
+import { isRunTainted } from '@/core/runTaint';
 import { FLOORS_TOTAL, doorTaken, floorDisplayName, floorOf } from '@/config/worldgraph';
 import { DEFAULT_KIT, KIT_DEFS, isKitId } from '@/content/kits';
 import {
@@ -32,7 +33,7 @@ import {
   spendPhial,
   utcDateKey,
 } from '@/game/runRules';
-import { deathCauseLine } from '@/ui/deathCauses';
+import { deathLineFor } from '@/ui/deathCauses';
 import { asDifficulty } from '@/config/difficulty';
 import { BASE_DIFFICULTY, openDifficulty } from '@/config/difficultyLadder';
 
@@ -45,13 +46,14 @@ const REFUGE_REARM_DISTANCE = 160;
 /** LivingExpedition's rest completes at this many still, unthreatened ticks. */
 const REFUGE_REST_TICKS = 120;
 
-function freshState(opts: RunBeginOptions, recorded: boolean): RunSaveState {
+function freshState(opts: RunBeginOptions, recorded: boolean, seedChosen = false): RunSaveState {
   return {
     v: 1,
     phials: PHIALS_PER_RUN,
     kit: opts.kit,
     daily: opts.daily,
     seed: opts.seed >>> 0,
+    ...(seedChosen && !opts.daily ? { seedChosen: true } : {}),
     timeMs: 0,
     kills: 0,
     alchemicalKills: 0,
@@ -75,6 +77,7 @@ function sanitizeSave(save: RunSaveState): RunSaveState | null {
     kit: isKitId(save.kit) ? save.kit : DEFAULT_KIT,
     daily: isDateKey(save.daily) ? save.daily : null,
     seed: whole(save.seed) >>> 0,
+    ...(save.seedChosen === true && !isDateKey(save.daily) ? { seedChosen: true } : {}),
     timeMs: whole(save.timeMs),
     kills: whole(save.kills),
     alchemicalKills: whole(save.alchemicalKills),
@@ -121,6 +124,8 @@ export class RunDirector implements RunApi {
   private restWasComplete = false;
   private leviathanPresent = false;
   private leviathanLevel: string | null = null;
+  /** startNewRun is about to begin a run on a seed the player chose; beginRun (called from inside startRun) consumes it. */
+  private chosenSeedPending = false;
   private readonly disposers: Array<() => void> = [];
 
   constructor(private readonly ctx: Ctx) {
@@ -163,6 +168,10 @@ export class RunDirector implements RunApi {
     return this.state?.daily ?? null;
   }
 
+  get deaths(): number {
+    return this.state?.deaths ?? 0;
+  }
+
   get lastResult(): RunResult | null {
     return this.result;
   }
@@ -177,12 +186,14 @@ export class RunDirector implements RunApi {
     this.runUnlocks = [];
     this.resetTracking(ctx);
     this.tracked = opts.tracked;
+    const seedChosen = this.chosenSeedPending;
+    this.chosenSeedPending = false;
     if (!opts.tracked) {
       this.state = null;
       return;
     }
     const recorded = !this.tainted(ctx);
-    this.state = freshState(opts, recorded);
+    this.state = freshState(opts, recorded, seedChosen);
     if (recorded) this.meta.commit(recordRunStarted(this.meta.profile, opts.kit));
     ctx.events.emit('phialsChanged', { phials: this.state.phials, max: PHIALS_PER_RUN, reason: 'start' });
   }
@@ -214,7 +225,7 @@ export class RunDirector implements RunApi {
     this.endRun(ctx, 'abandoned', true);
   }
 
-  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty }): RunStartResult {
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number }): RunStartResult {
     const today = utcDateKey(new Date());
     const kit = opts.daily ? DEFAULT_KIT : (this.meta.isKitUnlocked(opts.kit) ? opts.kit : DEFAULT_KIT);
     if (!opts.daily) this.meta.setLastKit(kit);
@@ -223,16 +234,23 @@ export class RunDirector implements RunApi {
     const profile = this.meta.profile;
     const difficulty = opts.daily ? BASE_DIFFICULTY : openDifficulty(opts.difficulty ?? profile.lastDifficulty, profile.bestVictoryDifficulty);
     if (!opts.daily) this.meta.setLastDifficulty(difficulty);
-    return ctx.levels.startRun(ctx, {
-      mode: 'normal',
-      worldSource: 'campaign',
-      continueSave: false,
-      loadout: 'fresh',
-      seed: opts.daily ? dailySeed(today) : randomSeed(),
-      starterKit: kit,
-      daily: opts.daily ? today : null,
-      difficulty,
-    });
+    // A chosen seed only ever rides a normal descent: today's is one seed for everyone.
+    const chosen = !opts.daily && typeof opts.seed === 'number' && Number.isFinite(opts.seed) && opts.seed > 0 ? opts.seed >>> 0 : null;
+    this.chosenSeedPending = chosen !== null;
+    try {
+      return ctx.levels.startRun(ctx, {
+        mode: 'normal',
+        worldSource: 'campaign',
+        continueSave: false,
+        loadout: 'fresh',
+        seed: opts.daily ? dailySeed(today) : chosen ?? randomSeed(),
+        starterKit: kit,
+        daily: opts.daily ? today : null,
+        difficulty,
+      });
+    } finally {
+      this.chosenSeedPending = false;
+    }
   }
 
   chooseKit(kit: KitId): void {
@@ -272,6 +290,19 @@ export class RunDirector implements RunApi {
     if (reason === 'refuge') {
       ctx.events.emit('toast', { text: `The refuge's warmth fills a return phial. ${next.phials} of ${PHIALS_PER_RUN}.` });
     }
+    return true;
+  }
+
+  debugSetPhials(ctx: Ctx, phials: number): boolean {
+    if (!this.active || !this.state) return false;
+    this.state.phials = clampPhials(phials);
+    ctx.events.emit('phialsChanged', { phials: this.state.phials, max: PHIALS_PER_RUN, reason: 'restore' });
+    return true;
+  }
+
+  debugSetKit(kit: KitId): boolean {
+    if (!this.active || !this.state || !isKitId(kit)) return false;
+    this.state.kit = kit;
     return true;
   }
 
@@ -449,6 +480,7 @@ export class RunDirector implements RunApi {
       outcome,
       seed: state.seed,
       daily: state.daily,
+      seedChosen: state.seedChosen,
       kit: state.kit,
       floor: outcome === 'victory' ? FLOORS_TOTAL : floor,
       floorName: floorDisplayName(floorId),
@@ -460,7 +492,8 @@ export class RunDirector implements RunApi {
       deaths: state.deaths,
       gold: present ? ctx.state.score : this.lastGold,
       cardsFound: state.cardsFound,
-      causeLine: outcome === 'fallen' ? deathCauseLine(this.lastCause, state.seed) : undefined,
+      // The very line the death screen showed and the narrator spoke (same dispatch, same frame).
+      causeLine: outcome === 'fallen' ? deathLineFor(this.lastCause, ctx.state.frameCount) : undefined,
       path: state.path ?? [],
       boons: state.boons ?? [],
       difficulty: asDifficulty(ctx.state.difficulty, BASE_DIFFICULTY),
@@ -481,8 +514,9 @@ export class RunDirector implements RunApi {
       this.state = null;
       this.tracked = false;
     }
-    // The run is over: nothing is left for Continue to resume.
-    ctx.levels.abandonExpedition();
+    // The run is over: nothing is left for Continue to resume. A test run leaves an
+    // older checkpoint alone: it is not this run's to delete (core/runTaint).
+    if (!this.tainted(ctx)) ctx.levels.abandonExpedition();
     ctx.events.emit('runEnded', summary);
   }
 
@@ -498,6 +532,6 @@ export class RunDirector implements RunApi {
   }
 
   private tainted(ctx: Ctx): boolean {
-    return ctx.state.debugGodMode === true || ctx.state.debugTainted === true;
+    return isRunTainted(ctx.state);
   }
 }

@@ -9,7 +9,7 @@ import { beatLine, type StoryMetaData } from './storyMeta';
  */
 
 export function freshStoryRun(runIndex: number): StoryRunSave {
-  return { v: 1, runIndex: Math.max(0, Math.floor(runIndex)), pipes: [], spoken: [], pell: {}, echoes: [], prologues: [], escape: 'none' };
+  return { v: 1, runIndex: Math.max(0, Math.floor(runIndex)), pipes: [], spoken: [], pell: {}, echoes: [], prologues: [], escape: 'none', told: [], pin: null, pinsPaid: [] };
 }
 
 const strings = (v: unknown, max = 200): string[] =>
@@ -28,6 +28,11 @@ export function sanitizeStoryRun(save: unknown, fallbackIndex = 0): StoryRunSave
     }
   }
   const escape: EscapePhase = s.escape === 'active' || s.escape === 'done' ? s.escape : 'none';
+  // Older saves (before Pell read the run) carry none of these: empty defaults, the save stays valid.
+  const rawPin = s.pin as Partial<NonNullable<StoryRunSave['pin']>> | null | undefined;
+  const pin = rawPin && typeof rawPin === 'object' && typeof rawPin.level === 'string' && rawPin.level.length < 40 && Number.isFinite(rawPin.x) && Number.isFinite(rawPin.y)
+    ? { level: rawPin.level, x: Math.round(rawPin.x as number), y: Math.round(rawPin.y as number), taken: typeof rawPin.taken === 'number' && Number.isFinite(rawPin.taken) ? Math.max(0, Math.floor(rawPin.taken)) : 0 }
+    : null;
   return {
     v: 1,
     runIndex: typeof s.runIndex === 'number' && Number.isFinite(s.runIndex) ? Math.max(0, Math.floor(s.runIndex)) : fallbackIndex,
@@ -37,6 +42,9 @@ export function sanitizeStoryRun(save: unknown, fallbackIndex = 0): StoryRunSave
     echoes: strings(s.echoes, 20),
     prologues: strings(s.prologues, 20),
     escape,
+    told: strings(s.told, 80),
+    pin,
+    pinsPaid: strings(s.pinsPaid, 10),
   };
 }
 

@@ -10,7 +10,8 @@ import { CARD_DEFS } from '@/combat/wands/cards';
 import { PERK_DEFS, isPerkActive, togglePerkActive } from '@/content/perks';
 import { nextWandSentence } from '@/combat/wands/sentenceView';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
-import { deathCauseLine, deathTitle } from '@/ui/deathCauses';
+import { deathLineFor, deathTitle } from '@/ui/deathCauses';
+import { DeathCardGate } from '@/ui/deathCardGate';
 import {
   INTRO_OBJECTIVE,
   INTRO_PRE_KEY_OBJECTIVES,
@@ -38,6 +39,9 @@ const NOTICE_HOLD_MS = 2600;
 /** The card's fade-out (main.css #wave-banner transition) plus a breath before the next. */
 const BANNER_GAP_MS = 750;
 const MAX_QUEUED_NOTICES = 3;
+/** A Grimoire toast waits at most this long behind a teach card (a card dismisses itself after 9 s). */
+const TOAST_WAIT_MAX_MS = 9500;
+const TOAST_WAIT_POLL_MS = 400;
 
 /**
  * One centre card. Arrival titles always play first and uninterrupted; event
@@ -296,7 +300,7 @@ export class Hud {
 
     // Victory (the Kiln Colossus) is the run ledger's job now (ui/RunSummary):
     // no overlay here, and no page reload to start again.
-    this.disposers.push(ctx.events.on('toast', ({ text }) => this.toastStack.push(text)));
+    this.disposers.push(ctx.events.on('toast', ({ text }) => this.pushToast(text)));
 
     // The hotbar mirrors the active wand; any loadout change rebuilds it.
     this.disposers.push(ctx.events.on('wandChanged', () => this.buildHotbar()));
@@ -306,7 +310,7 @@ export class Hud {
       // Campaign floors get "Floor 2 of 4 · The Rot Gardens" from RunHud.
       el('go-wave').textContent = 'D' + depth + ' · ' + titleCaseName(level);
       el('go-gold').textContent = String(gold);
-      el('go-cause').textContent = deathCauseLine(cause, this.ctx.state.frameCount);
+      el('go-cause').textContent = deathLineFor(cause, this.ctx.state.frameCount);
       el('death-title').textContent = deathTitle(cause);
     }));
     // The directed death (game/DeathCinema): letterbox bars slide in and the
@@ -317,13 +321,19 @@ export class Hud {
     letterbox.setAttribute('aria-hidden', 'true');
     el('canvas-holder').appendChild(letterbox);
     this.disposers.push(() => letterbox.remove());
+    // The way back stays disabled until it has faded in (a mashed Space/Enter
+    // must not respawn past a card nobody has seen); any key or click after a
+    // beat plays the rest of the reveal quickly. See ui/deathCardGate.
+    const deathGate = new DeathCardGate(el('gameover-overlay'));
+    this.disposers.push(() => deathGate.dispose());
     const revealDeath = (): void => {
       const overlay = el('gameover-overlay');
       if (overlay.classList.contains('visible')) return;
       overlay.classList.add('visible', 'cine');
-      el('respawn-btn').focus({ preventScroll: true });
+      deathGate.arm();
     };
     const clearDeath = (): void => {
+      deathGate.release();
       document.body.classList.remove('death-cine');
       el('gameover-overlay').classList.remove('visible', 'cine');
     };
@@ -403,6 +413,19 @@ export class Hud {
       belt.appendChild(root);
       this.flaskSlots.push({ root, fill, count, name });
     }
+  }
+
+  /**
+   * The event log. A Grimoire line ("Grimoire — observed: …") waits while a teach card is up: the card is
+   * already explaining the same thing, and card + toast + caption + hint was five text layers at the first cast.
+   */
+  private pushToast(text: string, waited = 0): void {
+    const teachUp = document.getElementById('hint-teach-overlay')?.classList.contains('visible') === true;
+    if (teachUp && waited < TOAST_WAIT_MAX_MS && /^Grimoire\b/.test(text)) {
+      this.setHudTimeout(() => this.pushToast(text, waited + TOAST_WAIT_POLL_MS), TOAST_WAIT_POLL_MS);
+      return;
+    }
+    this.toastStack.push(text);
   }
 
   /** The arrival title plays now, uninterrupted; queued notices wait for it. */

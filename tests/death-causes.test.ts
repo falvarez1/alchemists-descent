@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { deathCauseLine, deathTitle, knownDeathCauseSources } from '@/ui/deathCauses';
+import { deathCauseLine, deathLineFor, deathTitle, knownDeathCauseSources, resetDeathLines } from '@/ui/deathCauses';
+
+/** The Weaver's three bite lines, for the pick-once checks. */
+const DEATH_VARIANTS = { weaver: [0, 1, 2].map((i) => deathCauseLine('weaver-bite', i)) };
 
 describe('death cause copy', () => {
   it('has witty lines for key lethal sources', () => {
@@ -50,5 +53,41 @@ describe('death cause copy', () => {
       expect(knownDeathCauseSources()).toContain(source);
       expect(deathTitle(source)).not.toBe('You died.');
     }
+  });
+});
+
+describe('the one line per death', () => {
+  beforeEach(() => resetDeathLines());
+
+  it('gives every reader of the same death the same line', () => {
+    // The screen, the narrator, the ledger and the clip card all ask inside one playerDied dispatch (one frame).
+    const screen = deathLineFor('weaver-bite', 412);
+    expect(deathLineFor('weaver-bite', 412)).toBe(screen);
+    expect(deathLineFor('weaver-bite', 412)).toBe(screen);
+    expect(DEATH_VARIANTS.weaver).toContain(screen);
+  });
+
+  it('does not repeat the line it showed last time for the same cause', () => {
+    for (let frame = 0; frame < 60; frame++) {
+      const first = deathLineFor('fire', frame * 2);
+      const second = deathLineFor('fire', frame * 2 + 1);
+      expect(second, `frame ${frame}`).not.toBe(first);
+    }
+  });
+
+  it('cycles every variant of a three-line cause without stalling on one', () => {
+    const seen = new Set<string>();
+    for (let frame = 0; frame < 120; frame++) seen.add(deathLineFor('weaver-bite', frame));
+    expect(seen.size).toBe(3);
+  });
+
+  it('repeats a one-line cause rather than invent a second', () => {
+    expect(deathLineFor('probe', 1)).toBe(deathLineFor('probe', 2));
+  });
+
+  it('survives a missing or odd frame', () => {
+    expect(deathLineFor('bomber')).toBeTruthy();
+    expect(deathLineFor('bomber', Number.NaN)).toBeTruthy();
+    expect(deathLineFor(null, -7)).toBeTruthy();
   });
 });

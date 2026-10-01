@@ -38,6 +38,8 @@ export interface RunSummary {
   seed: number;
   /** YYYY-MM-DD when this was the daily seeded descent; null for a normal run. */
   daily: string | null;
+  /** The player chose this seed on the title: the ledger and the share line name it. Absent on an ordinary run. */
+  seedChosen?: boolean;
   kit: KitId;
   /** 1-based floor reached (the floor the run ended on). */
   floor: number;

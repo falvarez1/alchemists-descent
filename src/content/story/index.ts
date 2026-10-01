@@ -1,9 +1,9 @@
 import type { Beat, Speaker, StoryBiome, StoryLine } from './types';
-import { BOSS_PROLOGUES, DOCENT_ASIDES, DOCENT_PIPES, ESCAPE_LINES } from './docent';
-import { PELL, PELL_LAST_PAGE, PELL_MAP_PAGES } from './pell';
-import { ASH_DOORS, ASH_GREETINGS } from './oldOnes';
+import { BOSS_EPILOGUES, BOSS_PROLOGUES, DOCENT_ASIDES, DOCENT_PIPES, ESCAPE_LINES } from './docent';
+import { PELL, PELL_BARKS, PELL_LAST_PAGE, PELL_MAP_PAGES, PELL_NOTICES, PELL_PIN_PS, PELL_SECOND_TALK } from './pell';
+import { ASH_BOONS, ASH_DOORS, ASH_GREETINGS, ASH_NOTES, ASH_PURCHASES } from './oldOnes';
 import { ECHOES } from './echoes';
-import { ENDING_AGAIN, ENDING_FIRST, OPENING } from './cinematics';
+import { ENDING_AGAIN, ENDING_ARCHMAGE_RISE, ENDING_DAILY_TOWN, ENDING_FIRST, OPENING, PELL_CUP_ENDING } from './cinematics';
 
 export * from './types';
 export * from './docent';
@@ -11,6 +11,7 @@ export * from './pell';
 export * from './oldOnes';
 export * from './echoes';
 export * from './cinematics';
+export * from './clerk';
 
 /** Floor names for the Journal (a biome a floor can be). */
 export const STORY_FLOOR_NAMES: Readonly<Partial<Record<StoryBiome, string>>> = {
@@ -117,7 +118,7 @@ export function storyVoiceLines(): StoryVoiceLine[] {
       for (const visit of [pell.first, pell.again, pell.veteran]) {
         if (!visit) continue;
         for (const text of visit.greet) add('pell', text, `Story · Pell · ${name}`, false);
-        for (const c of visit.choices) for (const text of c.reply) add('pell', text, `Story · Pell · ${name}`, false);
+        for (const c of visit.choices) for (const text of [...c.reply, ...(c.refuse ?? [])]) add('pell', text, `Story · Pell · ${name}`, false);
         add('pell', visit.farewell, `Story · Pell · ${name}`, false);
       }
     }
@@ -125,10 +126,19 @@ export function storyVoiceLines(): StoryVoiceLine[] {
     if (page) add('pell', page.text, 'Story · Pell · map pages', false);
   }
   for (const text of [...PELL_LAST_PAGE.first.lines, ...PELL_LAST_PAGE.again.lines]) add('pell', text, 'Story · Pell · The Kiln Heart', false);
+  // The 2026-09-30 pass: what Pell says about the run, near his camp and when talked to twice; his P.S. to the last page.
+  for (const n of PELL_NOTICES) add('pell', n.text, 'Story · Pell · notices', false);
+  for (const b of [PELL_BARKS.fire, PELL_BARKS.corpse, PELL_BARKS.linger, PELL_BARKS.hurt, ...Object.values(PELL_BARKS.hostile)]) add('pell', b.text, 'Story · Pell · barks', true);
+  for (const text of [...PELL_SECOND_TALK.bye, ...PELL_SECOND_TALK.menu, ...Object.values(PELL_SECOND_TALK.floor).flat()]) add('pell', text, 'Story · Pell · second talk', false);
+  for (const text of [PELL_PIN_PS.first, PELL_PIN_PS.again]) add('pell', text, 'Story · Pell · The Kiln Heart', false);
   for (const b of Object.values(BOSS_PROLOGUES)) {
     if (!b) continue;
     add('docent', b.first, 'Story · Boss prologues', true);
     add('docent', b.again, 'Story · Boss prologues', true);
+  }
+  for (const b of Object.values(BOSS_EPILOGUES)) {
+    if (!b) continue;
+    add('docent', b.first, 'Story · Boss prologues', true);
   }
   for (const b of Object.values(ESCAPE_LINES)) {
     add('docent', b.first, 'Story · The Kiln escape', true);
@@ -144,11 +154,20 @@ export function storyVoiceLines(): StoryVoiceLine[] {
     add('ash', b.first, 'Story · Matron Ash · doors', false);
     add('ash', b.again, 'Story · Matron Ash · doors', false);
   }
+  // Matron Ash answers the state of the run, each bargain struck and each purchase made.
+  for (const lines of Object.values(ASH_NOTES)) for (const text of lines) add('ash', text, 'Story · Matron Ash · the run', false);
+  for (const text of Object.values(ASH_BOONS)) add('ash', text, 'Story · Matron Ash · bargains', false);
+  for (const text of Object.values(ASH_PURCHASES)) add('ash', text, 'Story · Matron Ash · the till', false);
   for (const plate of OPENING) if (plate.line) add(plate.line.speaker, plate.line.text, 'Story · Opening', false);
   for (const script of [ENDING_FIRST, ENDING_AGAIN]) {
     for (const plate of [script.rise, script.town, script.pellWaiting, script.pellLantern, script.farewell]) {
       if (plate.line) add(plate.line.speaker, plate.line.text, 'Story · Ending', false);
     }
   }
+  // The ending reads the run: Pell waiting with a cup, the hardest tier, today's shared descent.
+  add('pell', PELL_CUP_ENDING.first, 'Story · Ending', false);
+  add('pell', PELL_CUP_ENDING.again, 'Story · Ending', false);
+  add('docent', ENDING_ARCHMAGE_RISE, 'Story · Ending', false);
+  add('docent', ENDING_DAILY_TOWN, 'Story · Ending', false);
   return out;
 }

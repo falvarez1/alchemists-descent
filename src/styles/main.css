@@ -845,6 +845,33 @@ body.play-active.runtime-inspector-open #viewport-container {
 .dev-console-line.error { color: #fca5a5; }
 .dev-console-line.pending { color: #93c5fd; }
 .dev-console-line.mirror { color: #a7f3d0; }
+/* help pages: the command and its arguments, then what it does; wraps at any width */
+.dev-console-log { container-type: inline-size; }
+.dev-console-line.help { white-space: normal; }
+.dch-block {
+    display: grid; grid-template-columns: fit-content(46ch) minmax(0, 1fr);
+    column-gap: 2ch; row-gap: 1px; padding: 2px 0 6px;
+}
+.dch-wide { grid-column: 1 / -1; }
+.dch-text { color: #b7c6d6; }
+.dch-gap { height: 0.6em; }
+.dch-heading { display: flex; align-items: baseline; gap: 1.5ch; margin-top: 2px; padding-bottom: 1px; border-bottom: 1px solid rgba(49, 66, 87, 0.5); }
+.dch-title { color: #fcd34d; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; }
+.dch-hint { color: #64748b; font-size: 10px; }
+.dch-left { color: #8aa0b8; overflow-wrap: anywhere; }
+.dch-right { color: #e5f2ff; overflow-wrap: anywhere; }
+.dch-name { color: #7dd3fc; font-weight: 800; }
+.dch-args { color: #8aa0b8; }
+.dch-label { color: #64748b; }
+.dch-taints {
+    display: inline-block; padding: 0 5px; border: 1px solid rgba(252, 165, 165, 0.45); border-radius: 3px;
+    color: #fca5a5; font-size: 9px; letter-spacing: 0.5px; text-transform: uppercase; vertical-align: 1px;
+}
+.dch-code { padding-left: 2ch; color: #a7f3d0; }
+@container (max-width: 560px) {
+    .dch-block { grid-template-columns: minmax(0, 1fr); }
+    .dch-right { padding: 0 0 3px 2ch; }
+}
 .dev-console-hints {
     padding: 2px 10px 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     color: #7c8da1; font-size: 10px; border-top: 1px solid rgba(49,66,87,0.35);
@@ -876,7 +903,11 @@ body.play-active.runtime-inspector-open #viewport-container {
     padding: 18px; box-sizing: border-box; background: rgba(5, 3, 8, 0.94); opacity: 0;
     pointer-events: none; transition: opacity 0.35s ease; z-index: 6; font-family: var(--mono);
 }
-#level-curtain.visible { opacity: 1; }
+/* Quick to come up (a descent paints it before generation blocks the thread), slow to lift. */
+#level-curtain.visible { opacity: 1; transition: opacity 0.07s ease-out; }
+/* game/descentCurtain: over the menu it was raised from (Sanctum z 8, the ledger z 40), until the floor is built. */
+#level-curtain.over-menus { z-index: 60; }
+body.reduce-flashes #level-curtain.visible { transition-duration: 0.18s; }
 .level-curtain-panel {
     width: min(480px, 100%); display: grid; grid-template-columns: 46px minmax(0, 1fr);
     align-items: center; gap: 12px; padding: 12px; border: 1px solid rgba(125, 211, 252, 0.48);

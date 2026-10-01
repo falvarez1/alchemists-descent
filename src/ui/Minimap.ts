@@ -6,13 +6,20 @@ import { COLOR_FN, packRGB, unpackB, unpackG, unpackR } from '@/sim/colors';
 import { PICKUP_COLOR, POTION_DEFS } from '@/core/pickupDefs';
 import { humanizeIdentifier, titleCaseName } from '@/core/strings';
 import { PopoverHost, type RectLike } from '@/ui/editor/PopoverHost';
+import { isEditorTextEntryTarget } from '@/ui/editor/FocusRouter';
 import { fillMaterialPopover } from '@/ui/materialInfo';
 import { resetHeldSpellInputs } from '@/core/runtimeState';
 import { WORKS_ROOMS } from '@/world/breathingWorks';
 import { INTRO_OBJECTIVE } from '@/game/introObjectives';
+import { PORTAL_WAYPOINT_LABEL } from '@/game/compass';
+import { WAYPOINT_EDGE, rimPointAvoiding, type PctRect } from '@/ui/waypointRim';
 
 /** Fog color for unexplored map cells (#0a0a10). */
 const UNEXPLORED = packRGB(10, 10, 16);
+/** Fog hatch: every fourth diagonal of unexplored map cells sits a shade up, so a fresh chart is a worked sheet, not a black void. */
+const UNEXPLORED_HATCH = packRGB(15, 16, 24);
+/** Below this share charted the map says so (one line, in the frame). */
+const FOG_NOTE_BELOW_PCT = 5;
 /** Explored open air — lifted above the fog so visited caverns read on the map. */
 const EXPLORED_AIR = packRGB(22, 22, 30);
 
@@ -25,6 +32,18 @@ function el(id: string): HTMLElement {
 }
 
 const POI_POPOVER_ID = 'minimap-poi-pop';
+
+/**
+ * HUD blocks the off-screen waypoint arrow keeps clear of (feel review #6): the
+ * vitals, the wand and flask bar, the objective block, the pause button and the
+ * sound control. They
+ * are MEASURED from the DOM on a short cadence, so a HUD that grows (a HUD-scale
+ * option, a wider window) moves the arrow with it, and nothing here is an inset
+ * to keep in step.
+ */
+export const WAYPOINT_AVOID_SELECTORS: readonly string[] = ['#hud-left', '#spell-hotbar', '#flask-belt', '.wave-readout', '#expedition-pause', '#expedition-tools', '#sound-quick'];
+/** Frames between re-measuring those blocks. */
+const HUD_MEASURE_INTERVAL = 20;
 
 export type MinimapPoiKind =
   | 'spawn'
@@ -639,6 +658,28 @@ export function collectMinimapPois(ctx: Ctx, level: NonNullable<Ctx['levels']['c
       hitRadius: 9,
     }));
   }
+  // A guardian that has been heard (the far breath, game/story/BossPrologue) or whose
+  // floor has had its key taken is marked faintly before its arena is charted: a dim
+  // "?", not the red "!" of a chamber you have seen (levels review #15).
+  if (level.boss && !isWorldExplored(level, level.boss.x, level.boss.y) && (level.bossHeard || level.keyTaken)) {
+    pois.push(makePoi({
+      id: 'boss-arena-unseen',
+      kind: 'boss',
+      title: 'Unseen Guardian',
+      description: 'Heard, not yet seen: something holds this floor. Its arena is not charted yet.',
+      tags: ['boss', 'unseen'],
+      fields: [distanceField(ctx, level.boss.x, level.boss.y)],
+      worldX: level.boss.x,
+      worldY: level.boss.y,
+      width: 3,
+      height: 3,
+      offsetX: -1,
+      offsetY: -1,
+      color: '#8a3a3a',
+      glyph: '?',
+      hitRadius: 8,
+    }));
+  }
 
   level.placedPrefabs?.forEach((prefab, index) => {
     const encounterInfo = encounterLairInfo(prefab.id);
@@ -962,6 +1003,14 @@ export class Minimap {
   private readonly legendEl: HTMLUListElement;
   private readonly labelsEl: HTMLElement;
   private placesKey = '';
+  /** The waypoint object last seen, so a fresh game-set one pulses once (it was not set by a click here). */
+  private seenWaypoint: MapWaypoint | null = null;
+  /** Edge of the off-screen arrow's rim, in % of the view (a HUD-scale option may widen it). */
+  private waypointEdge = WAYPOINT_EDGE;
+  private hudObstacles: PctRect[] = [];
+  private hudMeasuredAt = -HUD_MEASURE_INTERVAL;
+  /** The "uncharted" note inside the map frame. */
+  private fogNote: HTMLElement | null = null;
   private legendKey = '';
   private labelsKey = '';
   private visible = false;
@@ -974,6 +1023,8 @@ export class Minimap {
   private readonly disposers: Array<() => void> = [];
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (e.repeat || this.ctx.state.mode !== 'play') return;
+    // The letter m typed into a text field (the dev console's `camp`, `time`) is text, not the map.
+    if (isEditorTextEntryTarget(e.target)) return;
     if (e.code === 'KeyM') {
       e.preventDefault();
       e.stopPropagation();
@@ -1232,9 +1283,43 @@ export class Minimap {
     if (this.portalPing > 0) this.portalPing--;
     if (this.refugePing > 0) this.refugePing--;
     if (this.waypointPulse > 0) this.waypointPulse--;
+    const gameWaypoint = ctx.levels.current?.mapWaypoint ?? null;
+    if (gameWaypoint !== this.seenWaypoint) {
+      // The compass the game points (the exit portal, once the key is taken) announces itself.
+      if (gameWaypoint && gameWaypoint.label === PORTAL_WAYPOINT_LABEL) this.waypointPulse = 150;
+      this.seenWaypoint = gameWaypoint;
+    }
     this.updateWaypointIndicator(ctx);
     if (!this.visible || ctx.state.frameCount % REDRAW_INTERVAL !== 0) return;
     this.redraw(ctx);
+  }
+
+  /** Widen (or narrow) the rim the off-screen arrow rests on, in % of the view: the hook a HUD-scale option drives. */
+  setWaypointEdge(percent: number): void {
+    this.waypointEdge = Math.min(20, Math.max(2, percent));
+  }
+
+  /** The HUD blocks in the way, as % rects of the game view, re-measured every HUD_MEASURE_INTERVAL frames. */
+  private measureHud(frame: number): PctRect[] {
+    if (Math.abs(frame - this.hudMeasuredAt) < HUD_MEASURE_INTERVAL) return this.hudObstacles;
+    this.hudMeasuredAt = frame;
+    const hud = document.getElementById('game-hud');
+    const box = hud?.getBoundingClientRect();
+    if (!hud || !box || box.width < 1 || box.height < 1) return (this.hudObstacles = []);
+    const out: PctRect[] = [];
+    for (const selector of WAYPOINT_AVOID_SELECTORS) {
+      const node = document.querySelector<HTMLElement>(selector);
+      if (!node) continue;
+      const r = node.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) continue;
+      out.push({
+        x0: ((r.left - box.left) / box.width) * 100,
+        y0: ((r.top - box.top) / box.height) * 100,
+        x1: ((r.right - box.left) / box.width) * 100,
+        y1: ((r.bottom - box.top) / box.height) * 100,
+      });
+    }
+    return (this.hudObstacles = out);
   }
 
   private updateWaypointIndicator(ctx: Ctx): void {
@@ -1255,7 +1340,7 @@ export class Minimap {
     const distance = Math.hypot(dx, dy);
     const rawX = ((waypoint.x - ctx.camera.renderX) / VIEW_W) * 100;
     const rawY = ((waypoint.y - ctx.camera.renderY) / VIEW_H) * 100;
-    const edge = 8;
+    const edge = this.waypointEdge;
     const onScreen = rawX >= edge && rawX <= 100 - edge && rawY >= edge && rawY <= 100 - edge;
     let posX = rawX;
     let posY = rawY;
@@ -1266,11 +1351,10 @@ export class Minimap {
         vx = dx;
         vy = dy;
       }
-      const scaleX = Math.abs(vx) > 0.001 ? (50 - edge) / Math.abs(vx) : Number.POSITIVE_INFINITY;
-      const scaleY = Math.abs(vy) > 0.001 ? (50 - edge) / Math.abs(vy) : Number.POSITIVE_INFINITY;
-      const scale = Math.min(scaleX, scaleY, 1);
-      posX = 50 + vx * scale;
-      posY = 50 + vy * scale;
+      // On the rim, but never under the HUD: slid along it to the nearest free spot (ui/waypointRim).
+      const rim = rimPointAvoiding(vx, vy, this.measureHud(ctx.state.frameCount), edge);
+      posX = rim.x;
+      posY = rim.y;
     }
 
     this.waypointEl.style.left = `${posX}%`;
@@ -1291,6 +1375,7 @@ export class Minimap {
     this.paintMarkers(this.c2d, ctx, level);
 
     const pct = Math.round((exploredCount / level.explored.length) * 100);
+    this.setFogNote(exploredCount / level.explored.length < FOG_NOTE_BELOW_PCT / 100);
     const waypointText = level.mapWaypoint
       ? ` · waypoint ${Math.round(Math.hypot(level.mapWaypoint.x - ctx.player.x, level.mapWaypoint.y - ctx.player.y))} cells`
       : '';
@@ -1298,6 +1383,18 @@ export class Minimap {
     el('minimap-caption').textContent =
       'D' + level.def.depth + ' · ' + level.def.name + ' — ' + pct + '% explored · ' + poiCount + ' markers' + waypointText;
     this.refreshChartPanel(ctx, level, pct);
+  }
+
+  /** The one-line note on a fresh chart (under 5% charted); created on first use inside the map frame. */
+  private setFogNote(on: boolean): void {
+    if (on && !this.fogNote) {
+      const note = document.createElement('p');
+      note.className = 'map-fog-note';
+      note.textContent = 'Uncharted. The ground draws itself in as you walk it. The marks are the places already known.';
+      this.labelsEl.parentElement?.appendChild(note);
+      this.fogNote = note;
+    }
+    if (this.fogNote) this.fogNote.hidden = !on;
   }
 
   private refreshChartPanel(ctx: Ctx, level: NonNullable<Ctx['levels']['current']>, pct: number): void {
@@ -1513,7 +1610,7 @@ export class Minimap {
     for (let y = 0; y < MINIMAP_H; y++) {
       for (let x = 0; x < MINIMAP_W; x++) {
         const i = x + y * MINIMAP_W;
-        let color = UNEXPLORED;
+        let color = (x + y) % 4 === 0 ? UNEXPLORED_HATCH : UNEXPLORED;
         this.mapTypes[i] = 255;
         if (explored[i] > 0) {
           exploredCount++;

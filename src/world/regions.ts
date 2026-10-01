@@ -21,6 +21,13 @@ import type { Region, RegionEdge, RegionGraph } from '@/core/types';
 import { blocksEntity } from '@/sim/CellType';
 import type { World } from '@/sim/World';
 
+/** The spawn each graph was extracted for (world/connect seeds its spawn-reachable walk there). */
+const graphSpawns = new WeakMap<RegionGraph, { x: number; y: number }>();
+
+export function graphSpawn(graph: RegionGraph): { x: number; y: number } | null {
+  return graphSpawns.get(graph) ?? null;
+}
+
 /** Downsample factor: one analysis cell covers a 4x4 world block. */
 const SCALE = 4;
 /** Edge scan reach (downsampled cells) each way from a solid cell. */
@@ -54,7 +61,9 @@ export function extractRegionGraph(
   const w = Math.max(1, Math.floor(world.width / SCALE));
   const h = Math.max(1, Math.floor(world.height / SCALE));
   try {
-    return extract(world, w, h, spawn, exit);
+    const graph = extract(world, w, h, spawn, exit);
+    graphSpawns.set(graph, { x: spawn.x, y: spawn.y });
+    return graph;
   } catch (err) {
     // Never let analysis failure take down level generation (fail-open). But a
     // throw here means a real bug in extract() (e.g. an OOB from a future edit),

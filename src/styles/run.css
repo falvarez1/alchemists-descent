@@ -200,6 +200,8 @@ body.play-active #gameover-overlay.cine #ledger-btn { animation: go-fade-in 1s e
 #run-summary.visible .rs-epitaph { animation: menu-fade 0.8s ease both; animation-delay: 0.7s; }
 
 .rs-body { display: grid; gap: 16px; }
+.rs-note { margin: -4px 0 0; font: italic 400 calc(14px * var(--text-scale, 1))/1.4 var(--m-serif); color: var(--m-text-soft); }
+.rs-note[hidden] { display: none; }
 .rs-floors { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 0; padding: 0; list-style: none; counter-reset: none; }
 .rs-floor { position: relative; display: grid; justify-items: center; gap: 6px; padding-top: 2px; color: #6f827a; }
 .rs-floor::before {

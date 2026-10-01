@@ -113,15 +113,36 @@ export function dressWorksHabitat(world: World, seed: number): void {
     [160,590,1,96],[645,570,-1,90],[310,880,1,78],[930,880,-1,75],[925,855,1,78]] as const) {
     wallIvy(x, y, dir, length);
   }
-  // Timber braces physically connect the catwalks to their knees. The crawl
-  // passage below remains open, including after the softer braces burn away.
+  // The timber catwalks hang in the Works' air on the great chains behind them;
+  // the deck is the only thing the alchemist ever meets. (They used to grow two
+  // diagonal "braces" each: one-cell solid sticks that ended in open air, held
+  // nothing up, looked like debris and caught every jump made beside the deck.)
+  // What carries the weight is a joist flush under the planks: deepest at the
+  // middle, stepping up at both ends, inset from the edges so nothing hangs in
+  // the lane a jump or a fall uses. It is at most two rows deep. Pure geometry,
+  // no rng draws.
   for (const [x, y, width] of [[570,341,63],[677,325,66],[789,349,48],[1015,390,195],[1230,390,167]]) {
-    for (const end of [x + 5, x + width - 6]) for (let d = 0; d < 20; d++) {
-      // The gallery's raised exit sits beneath this end. A diagonal there
-      // makes a narrowing wedge between the landing and the catwalk ceiling.
-      if (x === 1230 && end > x + width / 2) continue;
-      const xx = end + (end < x + width / 2 ? d : -d), yy = y + 7 + d;
-      if (world.type(xx, yy) === Cell.Empty) put(xx, yy, Cell.Wood, packRGB(80, 72, 50));
+    // Follow the deck as it really stands (other passes trim an end or two):
+    // the run of timber along its last plank row, within the authored span.
+    const deckRow = y + 6;
+    let first = -1, last = -1;
+    for (let xx = x - 4; xx < x + width + 4; xx++) {
+      if (world.type(xx, deckRow) !== Cell.Wood) continue;
+      if (first < 0) first = xx;
+      last = xx;
+    }
+    if (first < 0) continue;
+    const inset = 9;
+    // The gallery's raised exit sits beneath the east end of the last walkway:
+    // keep that stretch of ceiling as it was.
+    const from = first + inset, to = (x === 1230 ? last - 43 : last - inset + 1);
+    for (let xx = from; xx < to; xx++) {
+      if (world.type(xx, deckRow) !== Cell.Wood) continue;
+      const fromEnd = Math.min(xx - from, to - 1 - xx);
+      const depth = fromEnd >= 2 ? 2 : 1;
+      for (let d = 0; d < depth; d++) {
+        if (world.type(xx, y + 7 + d) === Cell.Empty) put(xx, y + 7 + d, Cell.Wood, packRGB(74 - d * 5, 60 - d * 4, 40 - d * 3));
+      }
     }
   }
   // Soft fungal shelves turn the garden bank into a habitat for the Root Loper.

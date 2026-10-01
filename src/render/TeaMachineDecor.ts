@@ -8,6 +8,19 @@ import { INK, Pen, cameraView, type RGB } from '@/render/sprites/FineArt';
 const DUCK: RGB = [0.88, 0.67, 0.16];
 const DUCK_D: RGB = [0.58, 0.4, 0.08];
 const BEAK: RGB = [0.85, 0.38, 0.09];
+const EYE_WHITE: RGB = [1.3, 1.3, 1.3];
+const BRASS: RGB = [0.86, 0.62, 0.2];
+const BRASS_D: RGB = [0.56, 0.38, 0.1];
+
+/**
+ * THE DUCK'S ATTENTION (presentation only): its pupil follows the alchemist within EYE_REACH cells,
+ * it blinks slowly (every BLINK_EVERY s, shut for BLINK_S), and once the engine has served it wears
+ * the brass bell on its head. `look` is the pupil's eased offset (local frame, -1..1).
+ */
+const EYE_REACH = 80;
+const BLINK_EVERY = 7.3;
+const BLINK_S = 0.2;
+const look = { x: 0.45, y: 0.1, at: 0 };
 
 /** Wheels, rods and cables follow the solver; the duck rides its carriage. */
 export function drawTeaMachineDecor(out: PixelSurface, light: LightField, ctx: Ctx, alpha = 1): void {
@@ -38,6 +51,32 @@ export function drawTeaMachineDecor(out: PixelSurface, light: LightField, ctx: C
   oval(6, -12.5, 4.6, 4.2, DUCK); // head
   p.polygon([at(9.5, -12), at(15, -11), at(9.5, -10)], BEAK, 1, 0.3);
   p.line(...at(10, -11), ...at(14.4, -11), INK);
-  const [ex, ey] = at(7.5, -13.5);
-  p.px(ex, ey, INK); p.px(ex - p.step, ey - p.step, [1, 1, 1], 1.1);
+  // The eye: a white, a pupil that turns toward the alchemist while he is near, a slow blink.
+  const eye = at(7.3, -13.4);
+  const player = ctx.player;
+  const wx = player.x - eye[0], wy = player.y - 8 - eye[1], dist = Math.hypot(wx, wy);
+  const near = !player.dead && dist <= EYE_REACH && dist > 0.5;
+  // The direction to him, turned into the duck's own (tilted) frame; at rest the pupil looks ahead and a little down.
+  const tx = near ? (wx / dist) * c + (wy / dist) * s : 0.45;
+  const ty = near ? -(wx / dist) * s + (wy / dist) * c : 0.1;
+  const now = performance.now();
+  const k = 1 - Math.exp(-Math.min(0.1, (now - look.at) / 1000) / 0.14);
+  look.at = now;
+  look.x += (tx - look.x) * k;
+  look.y += (ty - look.y) * k;
+  const seconds = ctx.state.frameCount / 60;
+  if (seconds % BLINK_EVERY < BLINK_S) {
+    p.line(...at(5.9, -13.3), ...at(8.7, -13.3), INK);
+  } else {
+    oval(7.3, -13.4, 1.5, 1.5, EYE_WHITE, false);
+    oval(7.3 + look.x * 0.7, -13.4 + look.y * 0.6, 0.8, 0.8, INK, false);
+  }
+  // Served: the brass bell from the gate sits on its head.
+  if (ctx.levels.current?.living?.tea?.completed) {
+    const sway = Math.sin(seconds * 2.4) * 0.5;
+    p.polygon([at(2.4, -16.4), at(8.8, -16.4), at(8.2, -17.6), at(3.0, -17.6)], BRASS_D, 1, 0.2);
+    oval(5.6 + sway, -19.1, 2.7, 2.2, BRASS);
+    p.px(...at(4.6 + sway, -19.9), [1, 0.95, 0.75], 1.1);
+    p.px(...at(5.6 + sway * 0.4, -16.1), BRASS_D);
+  }
 }

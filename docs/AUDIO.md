@@ -620,9 +620,9 @@ cue).
 | `pickup.leg` | pickup · ui | 0.25 | 0.49 | Pickups | Grabbing a long severed insect leg, a dry chitin rattle and a hollow knock, short |
 | `pickup.potion` | pickup · ui | 0.31 | 0.79 / 0.72 | audio.drinkPotion() | Drinking a potion in three quick gulps, then a small satisfied glassy fizz, short |
 | `player.chill.breath` | player · fx | 0.12 | 1.00 / 0.99 / 1.00 | EventCues | A man's shaky shivering exhale through chattering teeth in freezing cold, quiet, close-miked, wordless |
-| `player.chill.crack` | player · fx | 0.21 | 0.45 / 0.42 / 0.42 | EventCues | A sheet of ice cracking under strain: a sharp glassy snap with a short splintering tail, close, dry |
-| `player.chill.crackle` | player · fx | 0.15 | 0.55 / 0.47 / 0.53 | EventCues | Ice crystals forming on a wool coat: a few quick tiny crystalline crackles and glassy ticks, very close, delicate, dry, short |
-| `player.chill.shatter` | player · fx | 0.36 | 1.36 / 1.00 | EventCues | A shell of ice bursting apart off a body: a loud crystalline shatter, chunks of ice and snow thumping down, tinkling shards, close, dry |
+| `player.chill.crack` | player · fx | 0.16 | 0.45 / 0.42 / 0.42 | EventCues | A sheet of ice cracking under strain: a sharp glassy snap with a short splintering tail, close, dry |
+| `player.chill.crackle` | player · fx | 0.10 | 0.55 / 0.47 / 0.53 | EventCues | Ice crystals forming on a wool coat: a few quick tiny crystalline crackles and glassy ticks, very close, delicate, dry, short |
+| `player.chill.shatter` | player · fx | 0.32 | 1.36 / 1.00 | EventCues | A shell of ice bursting apart off a body: a loud crystalline shatter, chunks of ice and snow thumping down, tinkling shards, close, dry |
 | `player.chill.shell` | player · fx | 0.32 | 0.99 / 0.98 | EventCues | Water freezing solid around a body in an instant: a fast rising crystalline crackle that locks into a hard glassy crunch, close, dry |
 | `player.chill.thaw` | player · fx | 0.24 | 1.92 / 1.99 | EventCues | Frost cracking and sliding off a heavy coat, then a warm soft sigh of relief with meltwater dripping, gentle, close |
 | `player.chill.wind` ⟲ | loop · ambience | 0.34 | 6.00 | Chill | A cold draft howling softly through old iron pipes, with the slow creak and groan of thick ice under strain and faint ice ticks, bleak and continuous, no music |
@@ -704,7 +704,7 @@ cue).
 | `tea.cap` | tea · fx | 0.40 | 0.08 | TeaMachine | A percussion cap firing: a sharp small pop and a crackle of sparks |
 | `tea.counterweight` | tea · fx | 0.40 | 2.26 | Tea Engine stage 15 | A heavy counterweight descending on squeaking pulleys and rattling chains, ending in a clunk |
 | `tea.dominoes` | tea · fx | 0.40 | 1.63 | Tea Engine stage 7 | Six large wooden dominoes toppling one after another in a clattering chain, then a latch clicks |
-| `tea.duck` | tea · fx | 0.32 | 0.71 | Tea Engine stage 9 | A rubber duck squeak followed by a gentle water drip into a basin |
+| `tea.duck` | tea · fx | 0.32 | 0.71 | TeaMachine, Tea Engine stage 9 | A rubber duck squeak followed by a gentle water drip into a basin |
 | `tea.fault` | tea · fx | 0.32 | 1.08 | TeaMachine | A comedic machine failure: a dull hollow clonk and a gear winding down with a sad creak |
 | `tea.generator` | tea · fx | 0.40 | 1.76 | Tea Engine stage 13 | A copper coil generator surging to life: a rising electric hum and crackling current |
 | `tea.knocker` | tea · fx | 0.36 | 1.12 | TeaMachine | A clockwork knocker winding up with ticks, then whacking a hanging iron weight with a solid thunk |
@@ -786,7 +786,7 @@ cue).
 | `critter.skitter` | critter · ambience | 0.08 | 0.38 / 0.46 / 0.47 | EventCues, audio.skitter() | A small beetle skittering quickly across stone, tiny dry clicks, short |
 | `light.bloom.furl` | mechanism · fx | 0.17 | 1.03 / 0.93 | EventCues | Delicate glass petals folding shut: a dry crystalline creak and a soft descending tinkle, quiet, short |
 | `light.bloom.open` | mechanism · fx | 0.42 | 1.03 / 1.29 | EventCues | Glass flower petals growing and unfurling: delicate crystalline tinkling rising and a soft airy shimmer blooming open, short |
-| `light.bloom.petal` | mechanism · fx | 0.12 | 0.35 / 0.35 / 0.35 | lumenBlooms | A single tiny glass bell tink, delicate and bright, very short, dry |
+| `light.bloom.petal` | mechanism · fx | 0.12 | 0.35 / 0.35 / 0.35 | lumenBlooms, Pickups | A single tiny glass bell tink, delicate and bright, very short, dry |
 | `light.dark` | material · ambience | 0.27 | 2.45 | EventCues | Stepping into a pitch-black cave: a low hollow hush as the air goes still and close, a faint deep sub rumble and one distant water drip, subtle, no music |
 | `light.eyeshine` | mechanism · fx | 0.14 | 0.48 / 0.48 | EventCues | Two small animal eyes catching lamplight in the dark: a tiny bright glassy glint with a faint cold shimmer, very short, quiet |
 | `light.photocell.latch` | mechanism · fx | 0.52 | 0.54 / 0.36 | EventCues | A brass lens clicking home as it fills with light: a crisp metallic latch, a bright glassy chime ringing out and a tiny crackle of sparks, short |
@@ -802,7 +802,7 @@ cue).
 | `mat.ignite` | material · fx | 0.29 | 0.63 / 0.84 | RigidBodies, audio.brazier(), audio.flame() | Fire catching with a whoosh, a brazier bursting into flame, short |
 | `mat.lava.loop` ⟲ | loop · ambience | 0.27 | 3.00 | HabitatAudio (material scan) | Continuous thick bubbling molten lava, slow heavy gloops and a low hot rumble |
 | `mat.shatter` | material · fx | 0.41 | 0.72 / 0.79 / 0.80 | audio.shatter() | Glass and ice breaking: a bright crack and a cascade of tinkling shards, short |
-| `mat.sizzle` | material · fx | 0.12 | 0.60 / 0.60 | EventCues, audio.sizzle() | A small fire crackling and sizzling, short |
+| `mat.sizzle` | material · fx | 0.12 | 0.60 / 0.60 | EventCues, Levels, Mechanisms, audio.sizzle() | A small fire crackling and sizzling, short |
 | `mat.splash.big` | material · fx | 0.22 | 0.78 / 0.80 | audio.splash() | A heavy body plunging into a deep pool, a big splash and slosh, short |
 | `mat.splash.small` | material · fx | 0.10 | 0.60 / 0.60 / 0.59 | audio.splash() | A small object splashing into water, a short splash |
 | `mat.squelch` | material · fx | 0.31 | 0.52 / 0.60 / 0.55 | audio.squelch() | A wet slimy squelch, gooey and organic, short |
@@ -828,11 +828,13 @@ cue).
 | `mech.sensor` | mechanism · fx | 0.24 | 0.38 | Mechanisms | A soft brass mechanism tick engaging, short, quiet |
 | `mech.sequence.fail` | mechanism · fx | 0.35 | 0.60 | Mechanisms | A sour mechanical buzz and a clunk of gears resetting, short |
 | `mech.sequence.step` | mechanism · fx | 0.35 | 0.60 | Mechanisms | A single clear brass chime tone, bright and short |
-| `mech.shrine` | mechanism · fx | 0.24 | 1.00 | Mechanisms, EchoStage, StoryDirector | A soft warm humming chime of a small shrine, gentle and quiet, short |
+| `mech.shrine` | mechanism · fx | 0.24 | 1.00 | Mechanisms, Pickups, EchoStage, StoryDirector | A soft warm humming chime of a small shrine, gentle and quiet, short |
 | `mech.vault` | mechanism · fx | 0.38 | 0.84 | Mechanisms | A heavy vault door unsealing: a hiss of air, bolts retracting and a deep stone rumble |
 | `organism.fish.flop` | critter · ambience | 0.10 | 0.30 / 0.30 | Critters | A small fish flopping once on wet stone, a tiny wet slap, short, close-miked |
 | `organism.fish.scatter` | critter · ambience | 0.15 | 0.65 / 0.51 | EventCues | A small school of fish darting away underwater: a quick muffled flurry of fins and a burst of tiny bubbles, short |
 | `organism.moth.swarm.loop` ⟲ | loop · ambience | 0.17 | 3.00 | HabitatAudio | Continuous soft papery fluttering of many small moth wings close by, delicate and dry |
+| `pell.sip` | creature · voices | 0.19 | 1.38 / 1.60 / 1.54 | PellCamp | A careful sip of very hot tea from a tin cup: a small slurp, a quick sucked-in breath at the heat, then a contented little sigh, quiet and close |
+| `pell.sneeze` | creature · voices | 0.27 | 1.09 / 0.72 / 0.66 | PellCamp | A polite muffled man's sneeze into a handkerchief: one small breathy ah-choo, then a sheepish sniff, quiet, close, indoors |
 | `proj.fireball.loop` ⟲ | loop · fx | 0.24 | 3.00 | HabitatAudio (in flight) | Continuous whooshing roar of a small fireball flying through the air |
 | `tk.fizzle` | player · fx | 0.19 | 0.70 / 0.55 | EventCues | A magical grip failing: a brass wire snapping loose with a sputtering electric fizzle and a hollow click, short, dry |
 | `tk.grab` | player · fx | 0.23 | 0.70 / 0.70 | EventCues | A telekinetic seize: a quick taut brass wire twang and a soft airy tug of force pulling something heavy off the ground, a faint magical shimmer, short, close, dry |

@@ -17,7 +17,7 @@ import {
 import type { ClipEncodeStats, ClipWorkerRequest, ClipWorkerResponse } from '@/app/clipProtocol';
 import { renderDeathCard, renderWatermark } from '@/app/clipWatermark';
 import { ClipCard } from '@/ui/ClipCard';
-import { deathCauseLine, deathTitle } from '@/ui/deathCauses';
+import { deathLineFor, deathTitle } from '@/ui/deathCauses';
 
 type ClipReason = 'hotkey' | 'death' | 'summary' | 'button';
 
@@ -87,7 +87,7 @@ export class Clips {
   private encodeTimer: number | null = null;
   private deathAt: number | null = null;
   private deathCause: string | null = null;
-  private deathFrame = 0;
+  private deathLine = '';
   /** Capture waits until play has actually begun (never the boot frames or the title screen). */
   private armed = false;
   private sawTitle = false;
@@ -119,9 +119,9 @@ export class Clips {
       ctx.events.on('clipRequested', ({ reason }) => this.request(reason)),
       ctx.events.on('playerDied', ({ cause }) => {
         this.deathAt = performance.now();
-        // Same inputs the HUD uses for its obituary, so the GIF's card matches.
+        // The HUD's obituary line (one pick per death), so the GIF's card matches.
         this.deathCause = cause;
-        this.deathFrame = ctx.state.frameCount;
+        this.deathLine = deathLineFor(cause, ctx.state.frameCount);
       }),
       ctx.events.on('playerRespawned', () => { this.afterDeath(); this.card.dismiss(); }),
       ctx.events.on('playerDeathCleared', () => this.afterDeath()),
@@ -361,7 +361,7 @@ export class Clips {
     const endsOnDeath =
       this.ctx.player.dead && this.deathAt !== null && performance.now() - this.deathAt >= DEATH_TAIL_MS && this.held > DEATH_CARD_FRAMES * 2;
     const cards = endsOnDeath
-      ? renderDeathCard(deathTitle(this.deathCause), deathCauseLine(this.deathCause, this.deathFrame), w, h, DEATH_CARD_FRAMES, DEATH_CARD_FADE_FRAMES)
+      ? renderDeathCard(deathTitle(this.deathCause), this.deathLine, w, h, DEATH_CARD_FRAMES, DEATH_CARD_FADE_FRAMES)
       : Promise.resolve(null);
     void Promise.all([renderWatermark(GAME_TITLE, place, w, h), cards]).then(([mark, card]) => {
       if (id !== this.requestId || !this.encoding) return;

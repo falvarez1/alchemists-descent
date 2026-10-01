@@ -124,3 +124,13 @@ the `*-suite` runners, performance (`verify-living-performance`, `verify-fidelit
   full map (`M`); the portal/refuge pings still flash on it. `verify-minimap-popovers` now asserts there is no corner map and
   `verify-minimap-waypoint` reads the full map's canvas.
 - `verify-game.mjs` kept its own copy of the title-to-Sandbox helper; it uses `enterSandboxFromTitle` from `run-helpers` now.
+
+## Added 2026-09-30: the console's travel kit
+
+- `verify-console-travel.mjs [url]` — 58 checks, all passing against a frozen dev server (about 4 minutes: every
+  first build of a floor is 2.5 to 4 s of synchronous generation, and the settled findability repair lands about 12 s after
+  any arrival, so the walk over all six campaign levels waits for it each time). Drives the REAL overlay with real keys and
+  clicks; asserts the profile, the story memory, card discovery and the saved expedition are untouched by a tainted run.
+- `verify-console-bundle.mjs` — static, after `npm run build`: the public build carries none of the travel commands' text.
+- `verify-console` (the older one) still stops at its `#mode-build-btn` click (the play screen hides the header); its 35
+  checks before that point pass, and the frozen main server stops at the same place.

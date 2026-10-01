@@ -70,6 +70,7 @@ import { World } from '@/sim/World';
 import { setDetachedSandboxWorldSource } from '@/core/runtimeState';
 import { ParallelSim } from '@/sim/parallel/ParallelSim';
 import { createSharedWorld, sharedMemoryAvailable } from '@/sim/parallel/sharedWorld';
+import { readSavedQuality } from '@/config/playerPrefs';
 import { GpuNotice } from '@/ui/GpuNotice';
 import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
@@ -121,6 +122,8 @@ function sandboxSimThreads(): number {
   const raw = new URLSearchParams(window.location.search).get('threads');
   const touchFirst = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
   const auto = touchFirst ? 0 : Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 4) - 2));
+  // The player's Quality: Low keeps the Sandbox on the serial sweep (the choice is made at boot, so it applies on the next load).
+  if (raw === null && readSavedQuality(typeof localStorage === 'undefined' ? null : (key) => localStorage.getItem(key)) === 'low') return 0;
   if (raw === null || raw === 'auto') return auto;
   const n = Math.floor(Number(raw));
   return Number.isFinite(n) ? Math.max(0, Math.min(15, n)) : auto;
@@ -391,15 +394,21 @@ export class Game {
       if (detail && detailEl) detailEl.textContent = detail;
       if (visible) {
         curtain?.classList.add('visible');
-        curtain?.setAttribute('aria-hidden', 'false');
+        // Said aloud through the always-exposed live region beside the (decorative) curtain.
+        const live = document.getElementById('level-curtain-live');
+        if (live) live.textContent = [titleEl?.textContent, detailEl?.textContent].filter(Boolean).join('. ');
         // Force reflow so the curtain class commits before synchronous generation.
         if (curtain) void curtain.offsetHeight;
         return;
       }
       const hide = (): void => {
         curtain?.classList.remove('visible');
-        curtain?.setAttribute('aria-hidden', 'true');
         this.levelCurtainTimer = null;
+        // Empty at rest, so the next arrival's words are a change and get announced.
+        window.setTimeout(() => {
+          const live = document.getElementById('level-curtain-live');
+          if (live && !curtain?.classList.contains('visible')) live.textContent = '';
+        }, 1500);
       };
       if (holdMs > 0) this.levelCurtainTimer = window.setTimeout(hide, holdMs);
       else hide();
@@ -588,6 +597,9 @@ export class Game {
       get chosenDoor(): string | null { return real()?.chosenDoor ?? null; },
       open: (ctx, onDescend) => whenReady((sanctum) => sanctum.open(ctx, onDescend)),
       openShop: (ctx) => whenReady((sanctum) => sanctum.openShop(ctx)),
+      quickDescend: (door) => real()?.quickDescend?.(door) ?? false,
+      dismiss: () => real()?.dismiss?.(),
+      applyBoon: (ctx, id) => real()?.applyBoon?.(ctx, id) ?? false,
     };
   }
 
