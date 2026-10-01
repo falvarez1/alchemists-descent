@@ -84,7 +84,10 @@ describe('encounter lairs survive the tunnels carved after them', () => {
     { id: 'd3', exp: 27, lair: 'encounter-lair-rillback-pool', cells: POOL, min: 500 },
     // GEN 54: a flora-room connector bored out the ore seam, 186 -> 38 (under the audit's 45).
     // GEN 58 (the Kiln's flue moved the lair): the lair's OWN connector climbed through it, 175 -> 121.
-    { id: 'd4', exp: 21, lair: 'encounter-lair-stonemaw-seam', cells: [Cell.RawOre, Cell.Coal], min: 170 },
+    // GEN 62 re-rolled every world: the seam's natural stamp (random ore/coal) is 166-206 on the four seeds
+    // below, so the floor is 150 (a connector bite of 20+ cells still fails it; the four-seed test keeps 170 on
+    // the three whose stamps are big enough and 150 on this one).
+    { id: 'd4', exp: 21, lair: 'encounter-lair-stonemaw-seam', cells: [Cell.RawOre, Cell.Coal], min: 150 },
     // GEN 58: a story nook's connector ENDED on a floor inside the grove (a tunnel is never kept
     // out of the room it ends in) and cut the grove's west wall and floor, 142 -> 130 and 92 -> 85.
     { id: 'd2', exp: 10, lair: 'encounter-lair-rootloper-grove', cells: GROVE, min: 140 },
@@ -113,7 +116,7 @@ describe("a stonemaw's own connector leaves its seam whole", () => {
       expect(lair, 'lair placed').toBeTruthy();
       const floorY = lair!.y1 + 1 - 10;
       const seam = { x0: lair!.x1 - 25, y0: lair!.y0 + 9, x1: lair!.x1 - 7, y1: floorY + 4 };
-      expect(count(world, seam, [Cell.RawOre, Cell.Coal])).toBeGreaterThanOrEqual(170);
+      expect(count(world, seam, [Cell.RawOre, Cell.Coal])).toBeGreaterThanOrEqual(exp === 21 ? 150 : 170);
     });
   }
 });

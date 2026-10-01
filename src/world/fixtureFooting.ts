@@ -30,6 +30,8 @@ export const FOOTING_LABEL = 'footing-';
 const FOOTING_DEPTH = 8;
 /** The deepest undercut a plinth fills; a deeper one gets a lip instead. */
 const PLINTH_MAX = 12;
+/** The farthest the golden key is let fall to its floor (a longer drop is a shaft a body cannot follow). */
+const KEY_DROP_MAX = 24;
 /** How far along its own ground row a deep-undercut fixture looks for rock to hang a lip from. */
 const BRIDGE_MAX = 10;
 /** How far below a hand-trigger with nothing to hang from looks for ground to stand on... */
@@ -71,7 +73,7 @@ export function reserveTriggerFootings(ledger: PlacementLedger, mechanisms: read
   }
 }
 
-type Fill = [index: number, type: number, color: number];
+export type Fill = [index: number, type: number, color: number];
 
 /** Each mechanism body's cells as stamped: [index, type, color] of the blocking ones. */
 export type BodyRecord = Map<Mechanism, Fill[]>;
@@ -107,6 +109,8 @@ export interface FootingInput {
   story: LevelStorySites | null;
   bodies: BodyRecord;
   spawn: { x: number; y: number };
+  /** Cells that are open ON PURPOSE (a live circuit's one-cell port shaft): no footing fills them. */
+  keepOpen?: ReadonlyArray<readonly [number, number]>;
 }
 
 export interface FootingReport {
@@ -128,6 +132,10 @@ const isPowder = (t: number): boolean => t === Cell.Sand || t === Cell.Coal || t
  */
 export function holdFixtureFootings(world: World, input: FootingInput): FootingReport {
   const report: FootingReport = { restamped: 0, plinth: 0, undercut: [], reverted: [] };
+  // The live circuit's port shaft is one cell wide and sits between two levers' shelves: the
+  // lever at its right found (394, 196) open and hung a lip across it, sealing the latch
+  // (d4 seed 5, d3b seeds 5 and 7: 'chargelatch' unreachable at generation).
+  const keep = new Set((input.keepOpen ?? []).map(([x, y]) => world.idx(x, y)));
   // Every cell this pass turns solid (or moves), with what it was, grouped per
   // fixture: a group whose fill severs a route is taken back whole. Opening a
   // cell can never cost reachability, so opens are not recorded.
@@ -142,10 +150,23 @@ export function holdFixtureFootings(world: World, input: FootingInput): FootingR
   /** Hand-triggers with nothing near to stand on: they come down to the ground instead. */
   const unstood: Mechanism[] = [];
   const blocks = (x: number, y: number): boolean => !world.inBounds(x, y) || blocksEntity(world.types[world.idx(x, y)]);
+  /**
+   * How far open air runs down column x from `row` (capped one past PLINTH_MAX), and whether a kept-open
+   * cell lies in it: a plinth may not be poured down a shaft it would plug (d3b seed 7: a story pipe's
+   * plinth filled the live circuit vault's whole port column).
+   */
+  const dropOf = (x: number, row: number): { gap: number; kept: boolean } => {
+    let gap = 0;
+    while (gap <= PLINTH_MAX && !blocks(x, row + gap)) {
+      if (keep.has(world.idx(x, row + gap))) return { gap, kept: true };
+      gap++;
+    }
+    return { gap, kept: false };
+  };
   const fill = (x: number, y: number, t: number, color: number): boolean => {
     if (x < 2 || x >= WIDTH - 2 || y < 2 || y >= HEIGHT - 6) return false;
     const i = world.idx(x, y);
-    if (blocksEntity(world.types[i])) return false;
+    if (blocksEntity(world.types[i]) || keep.has(i)) return false;
     group.push([i, world.types[i], world.colors[i]]);
     world.replaceCellAt(i, t, color);
     return true;
@@ -167,7 +188,7 @@ export function holdFixtureFootings(world: World, input: FootingInput): FootingR
   const put = (x: number, y: number, t: number, color: number): void => {
     if (x < 2 || x >= WIDTH - 2 || y < 2 || y >= HEIGHT - 6) return;
     const i = world.idx(x, y);
-    if (world.types[i] === t || world.types[i] === Cell.Metal) return;
+    if (world.types[i] === t || world.types[i] === Cell.Metal || keep.has(i)) return;
     group.push([i, world.types[i], world.colors[i]]);
     world.replaceCellAt(i, t, color);
   };
@@ -211,9 +232,8 @@ export function holdFixtureFootings(world: World, input: FootingInput): FootingR
     begin(`${what}@${x0},${row}`, trigger);
     const deep: number[] = [];
     for (let x = x0; x <= x1; x++) {
-      let gap = 0;
-      while (gap <= PLINTH_MAX && !blocks(x, row + gap)) gap++;
-      if (gap > PLINTH_MAX) deep.push(x);
+      const { gap, kept } = dropOf(x, row);
+      if (gap > PLINTH_MAX || kept) deep.push(x);
       else for (let d = 0; d < gap; d++) ground(x, row + d);
     }
     if (deep.length === 0) return;
@@ -260,6 +280,20 @@ export function holdFixtureFootings(world: World, input: FootingInput): FootingR
     // (Its own stamp is not ground: it is what is moving.)
     const own = new Set((m.body ?? []).map(([x, y]) => world.idx(x, y)));
     const solid = (x: number, y: number): boolean => blocks(x, y) && !own.has(world.idx(x, y));
+    // The span the stamp will cover: a landing whose ground row is solid (or a short plinth from solid)
+    // across all of it is preferred over one that leaves columns hanging over a void (d2b expedition 42:
+    // a bowl landed on a ledge's last cell with two of its five columns over air).
+    const spanHalf = m.kind === 'lever' ? 1 : 2;
+    const spanOf = (x: number): [number, number] => (m.kind === 'plate' ? [x - (m.w >> 1), x - (m.w >> 1) + m.w - 1] : [x - spanHalf, x + spanHalf]);
+    const supported = (x: number, g: number): boolean => {
+      const [a, b] = spanOf(x);
+      for (let X = a; X <= b; X++) {
+        if (solid(X, g)) continue;
+        const d = dropOf(X, g);
+        if (d.gap > PLINTH_MAX || d.kept) return false;
+      }
+      return true;
+    };
     let land: { x: number; g: number } | null = null, cost = Infinity;
     for (let dx = -RELOCATE_REACH; dx <= RELOCATE_REACH; dx++) {
       const x = cx + dx;
@@ -269,8 +303,10 @@ export function holdFixtureFootings(world: World, input: FootingInput): FootingR
         if (!solid(x, g) || solid(x, g - 1)) continue;
         let room = true;
         for (let k = 1; k <= 8 && room; k++) room = !solid(x, g - k) && !isLiquid(world.types[world.idx(x, g - k)]);
-        if (room && Math.abs(dx) + Math.abs(g - from) / 2 < cost) {
-          cost = Math.abs(dx) + Math.abs(g - from) / 2;
+        // (a hanging span is a last resort: it costs more than any reach)
+        const here = Math.abs(dx) + Math.abs(g - from) / 2 + (room && !supported(x, g) ? 1000 : 0);
+        if (room && here < cost) {
+          cost = here;
           land = { x, g };
         }
         break;
@@ -326,9 +362,8 @@ export function holdFixtureFootings(world: World, input: FootingInput): FootingR
     const x1 = m.kind === 'plate' ? m.x + m.w - 1 : m.x + half;
     const row = m.kind === 'lever' ? m.y + 2 : m.y + 1;
     for (let x = x0; x <= x1; x++) {
-      let gap = 0;
-      while (gap <= PLINTH_MAX && !blocks(x, row + gap)) gap++;
-      if (gap <= PLINTH_MAX) for (let d = 0; d < gap; d++) ground(x, row + d);
+      const { gap, kept } = dropOf(x, row);
+      if (gap <= PLINTH_MAX && !kept) for (let d = 0; d < gap; d++) ground(x, row + d);
     }
     return true;
   };
@@ -405,8 +440,17 @@ export function holdFixtureFootings(world: World, input: FootingInput): FootingR
     // narrower than the key is floor (d2 expedition 1: the key fell down a
     // one-cell crack and sat four rows inside the rock, QA F4).
     begin(`key floor@${kx},${ky}`);
+    // ...and never down a shaft either: a key that fell 94 rows down a five-wide slot sat where no body
+    // could follow (d2b seed 8). A drop of more than KEY_DROP_MAX is cut short by a shelf under the key's
+    // own cell.
+    const ky0 = ky;
     while (ky < HEIGHT - 9 && !blocks(kx, ky + 1)) {
       if (blocks(kx - 1, ky + 1) || blocks(kx + 1, ky + 1)) {
+        for (let dx = -2; dx <= 2; dx++) ground(kx + dx, ky + 1);
+        break;
+      }
+      if (ky - ky0 >= KEY_DROP_MAX) {
+        ky = ky0;
         for (let dx = -2; dx <= 2; dx++) ground(kx + dx, ky + 1);
         break;
       }
@@ -439,7 +483,7 @@ export function holdFixtureFootings(world: World, input: FootingInput): FootingR
   return report;
 }
 
-interface Group {
+export interface Group {
   what: string;
   fills: Fill[];
   /** The hand-trigger this group stands (or moves). */
@@ -454,7 +498,7 @@ interface Group {
  * is the fill standing on the edge of what it cut off: the group with the most
  * lost standing room right beside its own cells (the nearest if none borders it).
  */
-function holdRoutes(world: World, groups: readonly Group[], spawn: { x: number; y: number }): Group[] {
+export function holdRoutes(world: World, groups: readonly Group[], spawn: { x: number; y: number }): Group[] {
   const W = world.width;
   const live = groups.filter((g) => g.fills.length > 0);
   const taken: Group[] = [];

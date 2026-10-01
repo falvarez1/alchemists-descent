@@ -844,15 +844,17 @@ export class WebGpuRenderBackend implements RendererBackend {
     const residual = cameraPresentationOffset(ctx.camera);
     let ox = -residual.x * (2 / VIEW_W);
     let oy = residual.y * (2 / VIEW_H);
-    if (ctx.fx.screenShake > 0.0005) {
-      ox += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
-      oy += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
+    if (!ctx.state.reduceCameraShake && ctx.fx.screenShake > 0.0005) {
+      // Same Off / Half / Full rule as the WebGL path (this one used to ignore the setting).
+      const shake = ctx.fx.screenShake * (ctx.state.cameraShakeScale ?? 1);
+      ox += (Math.random() - 0.5) * 2 * shake;
+      oy += (Math.random() - 0.5) * 2 * shake;
     }
 
     const post = ctx.state.postFx;
     this.bloomEnabled.value = post.enabled && post.bloomEnabled ? 1 : 0;
     this.lensEnabled.value = post.enabled && post.lensEnabled ? 1 : 0;
-    this.exposure.value = post.enabled ? post.exposure : 1.0;
+    this.exposure.value = (post.enabled ? post.exposure : 1.0) * (post.gain ?? 1);
     this.bloomStrength.value = post.bloomStrength + ctx.fx.bloomKick * post.bloomKickScale;
     this.bloomThreshold.value = post.bloomThreshold;
     this.bloomRadius.value = post.bloomRadius;

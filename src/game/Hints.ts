@@ -2,7 +2,7 @@ import type { Ctx, HintApi, HintInfo } from '@/core/types';
 import { Cell, isLiquid } from '@/sim/CellType';
 import { INTRO_REWARD_CARD } from '@/game/introObjectives';
 import { worksHint } from '@/game/LivingExpedition';
-import { getSeenHints, markHintSeen } from '@/game/hints/seenHints';
+import { getSeenHints, markHintSeen, resetSeenHints } from '@/game/hints/seenHints';
 import { corpses } from '@/creatures/corpses';
 import { heldCorpse } from '@/combat/Telekinesis';
 import { getBindings, keyLabel } from '@/input/bindings';
@@ -70,6 +70,8 @@ function bossNear(ctx: Ctx): boolean {
 export class HintSystem implements HintApi {
   private _current: HintInfo | null = null;
   private readonly taught: Set<string>;
+  /** "Every floor" mode: the lessons already shown on THIS floor (the persisted set keeps the first-time record). */
+  private readonly shownThisFloor = new Set<string>();
   private readonly disposers: Array<() => void> = [];
   /** Frame the last popover was shown, and event-driven lessons waiting their turn. */
   private lastTeachFrame = -Infinity;
@@ -115,6 +117,7 @@ export class HintSystem implements HintApi {
         // The line belonged to the floor behind (QA: "The portal is open" rode
         // through the Sanctum onto the next floor's arrival).
         this._current = null;
+        this.shownThisFloor.clear();
         // Arrival is the title card's beat: every lesson waits it out.
         this.teachCalmAt = Math.max(this.teachCalmAt, ctx.state.frameCount + TEACH_ARRIVAL_HOLD_FRAMES);
         // Taught on the first descent, not in the first 30 seconds: D2 arrival
@@ -131,6 +134,14 @@ export class HintSystem implements HintApi {
 
   dispose(): void {
     for (const dispose of this.disposers.splice(0)) dispose();
+  }
+
+  /** "Reset tutorials": every lesson teaches again, as on a first descent. */
+  resetTaught(): void {
+    resetSeenHints();
+    this.taught.clear();
+    this.shownThisFloor.clear();
+    this.pending.length = 0;
   }
 
   /** Nothing while the game is paused: the Sanctum, a menu or a card offer has the screen. */
@@ -157,12 +168,17 @@ export class HintSystem implements HintApi {
   }
 
   private teachOnce(ctx: Ctx, key: string, teach: Teach, queue = false): void {
-    if (this.taught.has(key)) return;
+    // The player's Teaching cards option: Off shows none (nothing is marked seen, so turning it
+    // back on still teaches); Every floor shows each lesson once per floor, not once ever.
+    const mode = ctx.state.hintMode;
+    if (mode === 'off') { this.pending.length = 0; return; }
+    if (mode === 'always' ? this.shownThisFloor.has(key) : this.taught.has(key)) return;
     if (ctx.state.frameCount - this.lastTeachFrame < TEACH_GAP || !this.teachCalm(ctx)) {
       if (queue && !this.pending.some((p) => p.key === key)) this.pending.push({ key, teach });
       return;
     }
     this.taught.add(key);
+    if (mode === 'always') this.shownThisFloor.add(key);
     markHintSeen(key);
     this.lastTeachFrame = ctx.state.frameCount;
     ctx.events.emit('hintTeach', { key, title: teach.title, body: teach.body });
@@ -449,16 +465,16 @@ export class HintSystem implements HintApi {
 }
 
 /** Per-mechanism-kind hint copy (only the kinds the player directly actuates). */
-const MECHANISM_HINTS: Partial<Record<string, { key: string; line: string; teach: Teach }>> = {
+export const MECHANISM_HINTS: Partial<Record<string, { key: string; line: string; teach: Teach }>> = {
   lever: {
     key: 'lever',
     line: 'Press E to pull the lever',
-    teach: { title: 'Levers', body: 'Pull a lever with E. It drives a linked door, gate, or dispenser somewhere nearby.' },
+    teach: { title: 'Levers', body: 'Pull a lever with E. It drives a linked door, gate, or dispenser somewhere nearby. Nobody labelled any of them; it was a busy decade.' },
   },
   plate: {
     key: 'plate',
     line: 'Stand on the plate to trigger it',
-    teach: { title: 'Pressure Plates', body: 'Step on a plate to trigger whatever it is wired to. Some need weight kept on them to stay down.' },
+    teach: { title: 'Pressure Plates', body: 'Step on a plate to trigger whatever it is wired to. Some need weight kept on them to stay down. Poured sand will do; so will a corpse, and nobody is judging.' },
   },
   dispenser: {
     key: 'dispenser',

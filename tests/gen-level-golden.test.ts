@@ -178,13 +178,13 @@ describe('marsh-gas ceiling pockets', () => {
 });
 
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: '30711f79' }, // GEN_VERSION 55: the Guild locker nook off the return shaft (the resonant valve), over v53's Undertow cache, flora and Seed Cellar
+  { id: 'd1', seed: 1337, hash: 'bdd5e871' }, // GEN_VERSION 62: the timber catwalks lose their diagonal braces and gain a flush joist under the deck (worksHabitat), over v55: the Guild locker nook off the return shaft (the resonant valve), over v53's Undertow cache, flora and Seed Cellar
   // GEN_VERSION 46 (four floors): the Drowned Cisterns inherit the old flooded
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
-  { id: 'd3', seed: 1337, hash: 'dc6e1693' }, // GEN_VERSION 61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v59's detours leave from their true start; no tunnel ends inside a sealed feature, over v56's story nooks + lair fix + v54's Sump rim
-  { id: 'd4', seed: 1337, hash: 'e53b6211' }, // GEN_VERSION 61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v60's story nooks on dry ground (no liquid level with the floor, the route no higher than a step), over v59's stonemaw connector + v55's Kiln flue + v54's Kiln flora
-  { id: 'd2', seed: 42, hash: '100386fa' }, // GEN_VERSION 61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v60's story nooks on dry ground, over v59's sealed-feature tunnels + v56's story nooks + grove vines + lair fix
+  { id: 'd3', seed: 1337, hash: '819fd970' }, // GEN_VERSION 62: ORGANIC CONNECTORS (every connector ends at the nearest spawn-walkable body-fit cell and wanders and swells: no hub starburst), over the loot/set-piece/shrine work, over v61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v59's detours leave from their true start; no tunnel ends inside a sealed feature, over v56's story nooks + lair fix + v54's Sump rim
+  { id: 'd4', seed: 1337, hash: '089c07b1' }, // GEN_VERSION 62: ORGANIC CONNECTORS (every connector ends at the nearest spawn-walkable body-fit cell and wanders and swells: no hub starburst), over the loot/set-piece/shrine work, over v61: (and the Kiln Heart volcanic), over v62: the Kiln Heart is volcanic (more rock, basin-filled lava lakes and carved magma halls, the boss hall rescued from its mouths) + loot on open ground, the latch port and fixture rooms held, the shrine pad/ring (see d3), over v61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v60's story nooks on dry ground (no liquid level with the floor, the route no higher than a step), over v59's stonemaw connector + v55's Kiln flue + v54's Kiln flora
+  { id: 'd2', seed: 42, hash: '9c948ee7' }, // GEN_VERSION 62: ORGANIC CONNECTORS (every connector ends at the nearest spawn-walkable body-fit cell and wanders and swells: no hub starburst), over the loot/set-piece/shrine work, over v61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v60's story nooks on dry ground, over v59's sealed-feature tunnels + v56's story nooks + grove vines + lair fix
 ];
 
 describe('full generateLevel golden hashes', () => {

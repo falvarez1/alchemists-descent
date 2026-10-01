@@ -313,6 +313,9 @@ export const SFX_CUES = {
   'mech.rune': wo('mechanism', { gain: 1.1, range: 0 }),
   'mech.shrine': wo('mechanism', { gain: 0.7, cooldownMs: 600 }),
   'mech.cauldron': wo('mechanism', { gain: 0.9 }),
+  // Pell's camp life (the surveyor's idle acts): small, close and human. Rare, so they carry a long cooldown.
+  'pell.sneeze': c('world', 'creature', { gain: 1.3, cooldownMs: 3000, pitchCents: 30 }),
+  'pell.sip': c('world', 'creature', { gain: 0.9, cooldownMs: 3000, pitchCents: 30 }),
   'critter.chirp': c('world', 'critter', { gain: 1.5 }),
   'critter.skitter': c('world', 'critter', { gain: 0.77 }),
   'creature.hit': c('world', 'impact', { gain: 0.63, range: 380, bus: 'voices' }),

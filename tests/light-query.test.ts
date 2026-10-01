@@ -124,8 +124,11 @@ describe('designed darkness follows the rock', () => {
     const box = bakeDarkMap([ZONE], { base: 0, deep: 1 });
     for (let x = 300; x <= 470; x += 2) { geometric += sampleDarkMap(box, x, 222); followed += sampleDarkMap(map, x, 222); }
     expect(geometric).toBeGreaterThan(1);
-    // …the rock-following dark does not reach it at all.
-    expect(followed).toBe(0);
+    // …the rock-following dark does not reach it: the wandering rim (DARKNESS.rimNoise 16)
+    // can nudge the fade's far tail a hair across (measured: a sum of about 0.1 over the 86
+    // samples, a mean near 0.001, so no pixel of the cave changes).
+    expect(followed).toBeLessThan(0.25);
+    expect(followed).toBeLessThan(geometric * 0.02);
   });
 
   it('fades along a corridor out of the zone instead of stopping at a drawn edge', () => {

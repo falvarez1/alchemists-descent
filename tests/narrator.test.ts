@@ -96,9 +96,10 @@ describe('the recorded lines match what the game shows', () => {
     // The story (wave 3) added ~140 lines: pipes, Pell, Matron Ash, echoes, prologues, the escape
     // and the ending. Clips are fetched one line at a time as they are spoken, never preloaded.
     // The second doors (wave 3) added ~38: their arrivals, Sanctum lines, guardians, deaths and ledger.
-    expect(NARRATION_LINES.length).toBeLessThanOrEqual(380);
+    // 2026-09-30: the owner authorised recording the new Pell, Ash and Docent lines (+99 lines, +6.5 MB); still lazy, one line at a time.
+    expect(NARRATION_LINES.length).toBeLessThanOrEqual(480);
     const bytes = [...shipped].reduce((s, f) => s + statSync(join('public', 'audio', 'voice', f)).size, 0);
-    expect(bytes / 1048576).toBeLessThan(20);
+    expect(bytes / 1048576).toBeLessThan(30);
     expect(NARRATOR_VOICE.model).toBe('eleven_v3');
   });
 });

@@ -30,6 +30,7 @@ const CENTRE_BEATS = [
   // an echo playing, the escape, Matron Ash speaking).
   '#story-dialogue.open', // Pell talking
   '#story-cinema.show', // the opening and the ending plates
+  '#narration-caption.show', // the Docent / Pell / Ash speaking (QA: five text layers at the first cast)
   '.story-letterbox.on', // a boss prologue
   '#callout-layer .callout-finisher', // a boss's name card rising over it
 ] as const;
@@ -111,6 +112,7 @@ export class HintTeachOverlay {
   /** A lesson arrives: shown now if the centre is calm, else it waits its turn
    *  (the HintSystem's hold is only as fresh as the last poll). */
   private offer(title: string, body: string): void {
+    if (this.ctx.state.hintMode === 'off') return; // the player's Teaching cards option (covers every emitter)
     if (this.centreBusy()) {
       this.interrupted ??= { title, body, level: this.levelId() };
       return;

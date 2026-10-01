@@ -5,6 +5,7 @@ import type { InstantiationSink } from '@/game/instantiate';
 import { Cell, isSoftGrowth, isSolid } from '@/sim/CellType';
 import {
   bloodColor,
+  EMPTY_COLOR,
   coalColor,
   fungusColor,
   glowshroomColor,
@@ -129,7 +130,10 @@ export function placeEncounterLairs(
       }
     }
 
-    if (spec.kind === 'rootloper') hangGroveVines(ctx.world, rng, at, spec);
+    if (spec.kind === 'rootloper') {
+      hangGroveVines(ctx.world, rng, at, spec);
+      dropLooseVines(ctx.world, at, spec);
+    }
 
     ledger.reserve(
       at.x0 - LAIR_MARGIN,
@@ -578,6 +582,33 @@ function stampRootLoperGrove(world: World, rng: Rng, at: LairSite, spec: LairSpe
  * rock overhead (an open-topped grove) gets no strand. Runs after the lair's
  * own connector and settle; later passes' tunnels route around the lair.
  */
+/**
+ * A vine left hanging in the grove's new pocket (GEN 62): the campaign dressing hangs tendrils from
+ * ceilings BEFORE the lair is stamped, and the pocket's carve takes the ceiling they hung from. A
+ * vine holds only under another vine or beside load-bearing rock (sim/elements/vines), so one
+ * left in the air detaches on the first sim step (d2 expedition 1: ten of them). Every vine in the
+ * grove's window that holds on nothing is cleared, then whatever its loss orphans, until none are.
+ */
+function dropLooseVines(world: World, at: LairSite, spec: LairSpec): void {
+  const x0 = at.x0 - 2, x1 = at.x0 + spec.w + 1, y0 = at.y0 - 8, y1 = at.y0 + spec.h + 8;
+  const rock = (x: number, y: number): boolean => {
+    const t = world.types[world.idx(x, y)];
+    return isSolid(t) && !isSoftGrowth(t);
+  };
+  for (let again = true; again; ) {
+    again = false;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (!world.inBounds(x, y) || world.types[world.idx(x, y)] !== Cell.Vines) continue;
+        const held = world.types[world.idx(x, y - 1)] === Cell.Vines || rock(x, y - 1) || rock(x, y + 1) || rock(x - 1, y) || rock(x + 1, y);
+        if (held) continue;
+        setCell(world, x, y, Cell.Empty, EMPTY_COLOR);
+        again = true;
+      }
+    }
+  }
+}
+
 function hangGroveVines(world: World, rng: Rng, at: LairSite, spec: LairSpec): void {
   const x1 = at.x0 + spec.w - 1;
   const floorY = at.y0 + spec.h - 10;

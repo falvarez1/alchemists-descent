@@ -1,6 +1,7 @@
 import type { Ctx, Difficulty, RunResult } from '@/core/types';
 import type { KitId } from '@/core/run';
-import { FLOOR_DOORS, doorTaken, floorDisplayName } from '@/config/worldgraph';
+import { FLOOR_DOORS, START_LEVEL, doorTaken, floorDisplayName } from '@/config/worldgraph';
+import { descendBehindCurtain, descentCurtainCopy } from '@/game/descentCurtain';
 import { KIT_DEFS } from '@/content/kits';
 import { boonNames, formatChain, formatRunTime, runHeadline, shareLine } from '@/game/runRules';
 import { KitPicker } from '@/ui/KitPicker';
@@ -8,6 +9,7 @@ import { DifficultyPicker } from '@/ui/DifficultyPicker';
 import { BASE_DIFFICULTY, DIFFICULTY_BLURBS } from '@/config/difficultyLadder';
 import { DIFFICULTY } from '@/config/difficulty';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
+import { ledgerNote } from '@/ui/ledgerNotes';
 
 /** Victory lands after the Colossus's last explosion has. */
 const VICTORY_REVEAL_MS = 2400;
@@ -52,6 +54,7 @@ export class RunSummary {
   private readonly epitaph = document.createElement('p');
   private readonly floors = document.createElement('ol');
   private readonly stats = document.createElement('dl');
+  private readonly note = document.createElement('p');
   private readonly daily = document.createElement('p');
   private readonly boons = document.createElement('p');
   private readonly unlocks = document.createElement('ul');
@@ -86,6 +89,7 @@ export class RunSummary {
     this.floors.className = 'rs-floors';
     this.floors.setAttribute('aria-label', 'Floors of the descent');
     this.stats.className = 'rs-stats';
+    this.note.className = 'rs-note';
     this.daily.className = 'rs-daily';
     this.boons.className = 'rs-boons';
     this.unlocks.className = 'rs-unlocks';
@@ -119,7 +123,7 @@ export class RunSummary {
     head.append(this.kicker, this.title, this.epitaph);
     const body = document.createElement('div');
     body.className = 'rs-body';
-    body.append(this.floors, this.stats, this.boons, this.daily, this.unlocks);
+    body.append(this.floors, this.stats, this.note, this.boons, this.daily, this.unlocks);
     const foot = document.createElement('div');
     foot.className = 'rs-foot';
     // The next descent's two choices sit side by side: the kit picker is the taller of the two, so the
@@ -210,11 +214,17 @@ export class RunSummary {
 
     // A tier other than Adept is named in the header, as the share line names it.
     const tier = summary.difficulty && summary.difficulty !== BASE_DIFFICULTY ? ` · ${DIFFICULTY[summary.difficulty].name}` : '';
-    this.kicker.textContent = (summary.daily ? `The ledger · Daily descent ${summary.daily}` : 'The ledger') + tier;
+    // A seed the player chose on the title is named here (and in the share line), so a friend can descend the same Works.
+    const seedNote = summary.seedChosen && !summary.daily ? ` · Seed ${summary.seed}` : '';
+    this.kicker.textContent = (summary.daily ? `The ledger · Daily descent ${summary.daily}` : 'The ledger') + seedNote + tier;
     this.title.textContent = runHeadline(summary);
     this.epitaph.textContent = summary.epitaph;
     this.renderFloors(result);
     const rows = this.renderStats(result);
+    // A remark for the runs whose numbers are strange, never the routine ones (ui/ledgerNotes).
+    const remark = ledgerNote(summary);
+    this.note.textContent = remark ?? '';
+    this.note.hidden = remark === null;
     this.renderBoons(result);
     this.renderDaily(result);
     this.renderUnlocks(result);
@@ -225,7 +235,8 @@ export class RunSummary {
     this.grades.render(view?.bestVictoryDifficulty ?? 0, this.chosenDifficulty, result.unlockedDifficulty);
     this.awaitingClip = false;
     this.status.textContent = result.recorded ? '' : 'A practice descent: debug tools were used, so the ledger keeps no record.';
-    this.shareText.textContent = shareLine(summary);
+    // A test run says so: its line must not pass for a result.
+    this.shareText.textContent = result.recorded ? shareLine(summary) : shareLine(summary) + ' — practice run (debug tools)';
     for (const b of this.actions.querySelectorAll('button')) b.disabled = false;
 
     ctx.state.paused = true;
@@ -447,9 +458,9 @@ export class RunSummary {
     this.busy = true;
     for (const b of this.actions.querySelectorAll('button')) b.disabled = true;
     this.status.textContent = `Opening the intake with ${KIT_DEFS[this.chosenKit].name}…`;
-    // Two frames so the status paints before generation blocks the thread.
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    const started = run.startNewRun(this.ctx, { kit: this.chosenKit, daily: false, difficulty: this.chosenDifficulty });
+    // The curtain (floor 1's name) comes up over the ledger and paints before generation blocks the thread.
+    const started = await descendBehindCurtain(this.ctx, descentCurtainCopy(START_LEVEL), () =>
+      run.startNewRun(this.ctx, { kit: this.chosenKit, daily: false, difficulty: this.chosenDifficulty }));
     this.busy = false;
     if (started.ok) {
       this.hide();

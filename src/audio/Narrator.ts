@@ -13,7 +13,7 @@ import { FLOOR_LORE, TWO_DOORS_LINE } from '@/content/floorLore';
 /** The second doors' guardians, by the name that rises over them as they wake → their floor's lore. */
 const GUARDIAN_NAMES: Readonly<Record<string, string>> = { 'THE RIME WARDEN': 'd2b', 'THE LENSWRIGHT': 'd3b' };
 import { TEA_COMPLETE_STAGE } from '@/world/teaMachine';
-import { deathCauseLine, deathTitle } from '@/ui/deathCauses';
+import { deathLineFor, deathTitle } from '@/ui/deathCauses';
 import { runHeadline } from '@/game/runRules';
 import { failSafe } from '@/audio/failSafe';
 
@@ -102,8 +102,8 @@ export class Narrator implements NarratorApi {
       }),
       on('contraptionView', view => this.onTeaView(view)),
       on('playerDied', ({ cause }) => {
-        // The same line the death screen prepares in this very emit (ui/Hud: frameCount picks the variant).
-        this.death = { title: deathTitle(cause), line: deathCauseLine(cause, ctx.state.frameCount) };
+        // The same line the death screen, the ledger and the clip card use: one pick per death (ui/deathCauses).
+        this.death = { title: deathTitle(cause), line: deathLineFor(cause, ctx.state.frameCount) };
       }),
       on('deathCinema', ({ phase }) => {
         if (phase !== 'title' || !this.death) return;

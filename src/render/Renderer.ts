@@ -298,8 +298,10 @@ class WebGLRenderBackend implements RendererBackend {
     let ox = -residual.x * (2 / VIEW_W);
     let oy = residual.y * (2 / VIEW_H);
     if (!ctx.state.reduceCameraShake && ctx.fx.screenShake > 0.0005) {
-      ox += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
-      oy += (Math.random() - 0.5) * 2 * ctx.fx.screenShake;
+      // The player's Off / Half / Full choice scales the jitter (Off also sets reduceCameraShake).
+      const shake = ctx.fx.screenShake * (ctx.state.cameraShakeScale ?? 1);
+      ox += (Math.random() - 0.5) * 2 * shake;
+      oy += (Math.random() - 0.5) * 2 * shake;
     }
     this.quadMesh.position.x = ox * ctx.camera.zoom;
     this.quadMesh.position.y = oy * ctx.camera.zoom;

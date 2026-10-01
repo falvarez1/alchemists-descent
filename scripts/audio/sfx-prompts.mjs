@@ -230,6 +230,8 @@ export const SFX_PROMPTS = {
   'mech.rune': { p: "A magic rune struck: a resonant shimmering chime rising, with a distant deep stone rumble", d: 1.5, t: 1, i: 0.55 },
   'mech.shrine': { p: "A soft warm humming chime of a small shrine, gentle and quiet, short", d: 1, t: 1, i: 0.6 },
   'mech.cauldron': { p: "A cauldron brew completing: a rich bubbling surge and a bright magical chime pop", d: 1.2, t: 1, i: 0.55 },
+  'pell.sneeze': { p: "A polite muffled man's sneeze into a handkerchief: one small breathy ah-choo, then a sheepish sniff, quiet, close, indoors", d: 1.4, t: 3, i: 0.6 },
+  'pell.sip': { p: "A careful sip of very hot tea from a tin cup: a small slurp, a quick sucked-in breath at the heat, then a contented little sigh, quiet and close", d: 1.6, t: 3, i: 0.6 },
   'critter.chirp': { p: "A single cave cricket chirp, tiny and quiet, short", d: 0.5, t: 3, i: 0.65 },
   'critter.skitter': { p: "A small beetle skittering quickly across stone, tiny dry clicks, short", d: 0.5, t: 3, i: 0.65 },
   'creature.hit': { p: "A punchy hit on a creature: a short fleshy thwack, close-miked", d: 0.5, t: 3, i: 0.6 },

@@ -331,6 +331,7 @@ await page.waitForFunction(() => !window.__game.ctx.player.dead, { timeout: 1000
 await page.keyboard.press('Escape');
 await page.waitForFunction(() => window.__game.ctx.state.paused, { timeout: 5000 });
 await clickEl('#pause-settings');
+await clickEl('#player-settings [data-tab="gameplay"]'); // the clip switch lives on the Gameplay tab
 await clickEl('#player-settings [name="recordClips"]');
 const recordOff = await page.evaluate(() => document.querySelector('#player-settings [name="recordClips"]').checked === false && localStorage.getItem('ad-clip-recording-v1') === 'off');
 check('Record clips toggle persists off', recordOff);

@@ -4126,5 +4126,25 @@
   ],
   "rejected": [],
   "failed": []
+ },
+ "pell.sneeze": {
+  "hash": "11fd03a6d4ad",
+  "variants": [
+   0,
+   1,
+   2
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "pell.sip": {
+  "hash": "cc0b7b569059",
+  "variants": [
+   0,
+   1,
+   2
+  ],
+  "rejected": [],
+  "failed": []
  }
 }

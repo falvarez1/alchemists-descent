@@ -38,7 +38,13 @@ export function chainLine(chain: number): string {
   if (chain === 3) return 'a chain reaction';
   if (chain === 4) return 'most irregular';
   if (chain === 5) return 'the Works approve';
-  return 'please mind the duck';
+  if (chain === 6) return 'please mind the duck';
+  // Past six is rare, and each step is told once: the duck, then the Guild, then the Guild giving up.
+  if (chain === 7) return 'the duck has been informed';
+  if (chain === 8) return 'the Guild requests that you stop';
+  if (chain === 9) return 'the Guild has stopped requesting';
+  if (chain === 10) return 'this is no longer chemistry, it is a hobby';
+  return 'the Clerk of Works has sat down';
 }
 
 /** Heat tier for the chain badge (drives its size and colour). */

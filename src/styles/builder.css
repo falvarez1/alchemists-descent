@@ -2511,3 +2511,31 @@ body.builder-playtest-active #mode-play-btn.active {
     color: var(--bui-accent); font-weight: 600; font-size: 12px; line-height: 1;
 }
 #builder-root #builder-bar .builder-menu-dropdown button.menu-checked::before { content: "\2713"; }
+/* Console help pages (added on main while the editor chrome was being tokenised): the command and its
+   arguments, then what it does; wraps at any width. */
+.dev-console-log { container-type: inline-size; }
+.dev-console-line.help { white-space: normal; }
+.dch-block {
+    display: grid; grid-template-columns: fit-content(46ch) minmax(0, 1fr);
+    column-gap: 2ch; row-gap: 1px; padding: 2px 0 6px;
+}
+.dch-wide { grid-column: 1 / -1; }
+.dch-text { color: var(--st-text-2); }
+.dch-gap { height: 0.6em; }
+.dch-heading { display: flex; align-items: baseline; gap: 1.5ch; margin-top: 2px; padding-bottom: 1px; border-bottom: 1px solid var(--st-line); }
+.dch-title { color: var(--st-warn-text); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+.dch-hint { color: var(--st-text-4); font-size: 10px; }
+.dch-left { color: var(--st-text-3); overflow-wrap: anywhere; }
+.dch-right { color: var(--st-text); overflow-wrap: anywhere; }
+.dch-name { color: var(--st-accent-text); font-weight: 600; }
+.dch-args { color: var(--st-text-3); }
+.dch-label { color: var(--st-text-4); }
+.dch-taints {
+    display: inline-block; padding: 0 5px; border: 1px solid var(--st-danger-line); border-radius: 3px;
+    color: var(--st-danger-text); font-size: 9px; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: 1px;
+}
+.dch-code { padding-left: 2ch; color: var(--st-ok-text); }
+@container (max-width: 560px) {
+    .dch-block { grid-template-columns: minmax(0, 1fr); }
+    .dch-right { padding: 0 0 3px 2ch; }
+}

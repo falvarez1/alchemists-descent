@@ -67,6 +67,7 @@ try {
   const paragraph = await fontSession.send('DOM.querySelector', { nodeId: documentRoot.root.nodeId, selector: '#player-settings p' });
   report.settingsFonts = await fontSession.send('CSS.getPlatformFontsForNode', { nodeId: paragraph.nodeId });
   await fontSession.detach();
+  await page.locator('#player-settings [data-tab="display"]').click(); // text size / comfort live on the Display tab
   await page.locator('#player-settings [name="textScale"]').selectOption('1.3');
   await page.locator('#player-settings [name="reducedFlashes"]').check();
   await page.locator('#player-settings [name="creatureCaptions"]').check();
@@ -114,6 +115,7 @@ try {
   await page.screenshot({ path: `${output}/refuge-compact.png` });
   await verifyFlaskLayout();
   await page.locator('#expedition-pause').click(); await page.locator('#pause-settings').click();
+  await page.locator('#player-settings [data-tab="display"]').click();
   await page.locator('#player-settings [name="highReadability"]').check();
   await page.locator('#player-settings button[value="close"]').click();
   await page.locator('#pause-resume').click(); await page.waitForTimeout(300);

@@ -5,6 +5,7 @@ import type { Ctx, Enemy, LevelRuntime } from '@/core/types';
 import type { RunSummary } from '@/core/run';
 import { LEVELS } from '@/config/worldgraph';
 import { RunDirector } from '@/game/RunDirector';
+import { deathLineFor } from '@/ui/deathCauses';
 
 interface Harness {
   ctx: Ctx;
@@ -81,6 +82,8 @@ describe('RunDirector', () => {
     expect(h.ended[0]).toMatchObject({ outcome: 'fallen', deaths: 4, floor: 1, floorName: 'The Bellows', kit: 'spark', seed: 5 });
     // The epitaph is one of the cause's own death lines.
     expect(['Gunpowder remembered it was gunpowder.', 'Powder line became a full stop.']).toContain(h.ended[0].epitaph);
+    // ...and it is THE line of that death: what the death screen and the narrator ask for in the same dispatch.
+    expect(h.ended[0].epitaph).toBe(deathLineFor('gunpowder', (h.ctx.state as { frameCount?: number }).frameCount));
     expect(h.phialEvents.map((e) => `${e.reason}:${e.phials}`)).toEqual(['start:3', 'death:2', 'death:1', 'death:0']);
     expect(h.run.snapshotForSave()).toBeNull();
   });

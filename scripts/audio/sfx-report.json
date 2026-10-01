@@ -14732,5 +14732,99 @@
     "bytes": 8612
    }
   ]
+ },
+ "pell.sneeze": {
+  "pack": "world",
+  "cat": "creature",
+  "prompt": "A polite muffled man's sneeze into a handkerchief: one small breathy ah-choo, then a sheepish sniff, quiet, close, indoors",
+  "dur": 1.4,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.36,
+    "peakDb": 2.7,
+    "onsetSec": 0,
+    "pinnedPct": 0.62,
+    "gainDb": -10.2,
+    "limitDb": 0,
+    "sec": 1.09,
+    "truncated": false,
+    "bytes": 9239
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.36,
+    "peakDb": 3,
+    "onsetSec": 0.432,
+    "pinnedPct": 0.33,
+    "gainDb": -8.8,
+    "limitDb": 0,
+    "sec": 0.722,
+    "truncated": false,
+    "bytes": 6313
+   },
+   {
+    "take": 3,
+    "variant": 2,
+    "rawSec": 1.36,
+    "peakDb": 3,
+    "onsetSec": 0.228,
+    "pinnedPct": 0.3,
+    "gainDb": -10.5,
+    "limitDb": 0,
+    "sec": 0.656,
+    "truncated": false,
+    "bytes": 5895
+   }
+  ]
+ },
+ "pell.sip": {
+  "pack": "world",
+  "cat": "creature",
+  "prompt": "A careful sip of very hot tea from a tin cup: a small slurp, a quick sucked-in breath at the heat, then a contented little sigh, quiet and close",
+  "dur": 1.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.6,
+    "peakDb": -5.2,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 5.3,
+    "limitDb": -1.2,
+    "sec": 1.377,
+    "truncated": false,
+    "bytes": 11537
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.6,
+    "peakDb": -22.3,
+    "onsetSec": 0.008,
+    "pinnedPct": 0,
+    "gainDb": 23.1,
+    "limitDb": -1.9,
+    "sec": 1.596,
+    "truncated": false,
+    "bytes": 13418
+   },
+   {
+    "take": 3,
+    "variant": 2,
+    "rawSec": 1.6,
+    "peakDb": -11.2,
+    "onsetSec": 0.05,
+    "pinnedPct": 0,
+    "gainDb": 13.2,
+    "limitDb": -3,
+    "sec": 1.539,
+    "truncated": false,
+    "bytes": 12791
+   }
+  ]
  }
 }

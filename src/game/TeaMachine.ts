@@ -37,6 +37,9 @@ const KICK_BACKUP_TICKS = TEA_BACKUP.kick;
 const POUR_FORCE_TICKS = 1800; // the seep always gets there first; this is a last resort
 /** One water cell seeps through the clogged downpipe every this many ticks. */
 const SEEP_EVERY = 6;
+/** The duck has risen this far (cells) off its rest when it squeaks. */
+const DUCK_SQUEAK_LIFT = 2.5;
+
 /** Pin travel (the duck's rise ×7, ratcheted) at which the marble rolls free under it. */
 const PIN_TRIP = 15;
 const HOLD_AFTER_DONE = 300;
@@ -81,6 +84,8 @@ export class TeaMachine {
   private publishedStage = -1;
   /** The tick the percussion cap last fired (one cap per tick). */
   private primedFrame = -1;
+  /** The duck has squeaked as the bath floated it (re-armed when it sinks back to rest). */
+  private duckFloated = false;
   private readonly disposers: Array<() => void>;
 
   constructor(private readonly ctx: Ctx) {
@@ -92,7 +97,7 @@ export class TeaMachine {
   dispose(): void { this.leave(); this.disposers.forEach(fn => fn()); }
 
   private leave(): void {
-    this.runtime = null; this.bodies.clear();
+    this.runtime = null; this.bodies.clear(); this.duckFloated = false;
     this.releaseCamera(); this.publish(false);
   }
 
@@ -274,6 +279,14 @@ export class TeaMachine {
     if (s.stage >= S.DOMINOES && domino) pullTeaValve(ctx.world, s, 'spring', Math.max(0, domino.angle) * 26);
     if (s.stage >= S.DOMINOES && rocker) pullTeaValve(ctx.world, s, 'tap', (.25 - rocker.angle) * 22);
     if (s.stage >= S.POUR && duck) pullTeaValve(ctx.world, s, 'pin', (TEA.duckRest - duck.y) * 7);
+    // The bath floats the duck: one tiny squeak (the duck's own cue, quieter and a little high), once per float.
+    if (duck) {
+      const lift = TEA.duckRest - duck.y;
+      if (!this.duckFloated && lift > DUCK_SQUEAK_LIFT) {
+        this.duckFloated = true;
+        ctx.audio.sfx('tea.duck', duck.x, duck.y, { gain: 0.55, pitch: 3 });
+      } else if (this.duckFloated && lift < 0.5) this.duckFloated = false;
+    }
     if (s.stage >= S.MAGNET && counterweight) pullTeaValve(ctx.world, s, 'bell', (counterweight.y - 96) / 4);
     this.wakeBesideMovedPlates(s);
     if ((s.travel?.tap ?? 0) >= 4 && s.ticks % SEEP_EVERY === 0) this.seep();

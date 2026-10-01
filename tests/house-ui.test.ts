@@ -11,9 +11,18 @@ describe('house text', () => {
     expect(calmCase('+20 MAX HP — A GIFT')).toBe('+20 max HP — a gift');
   });
 
+  it('calms a shouted run inside a mixed line, keeping the rest as written', () => {
+    expect(calmCase('16 oz SCATTERS WHERE YOU FELL')).toBe('16 oz scatters where you fell');
+    expect(calmCase('SECRET ALCHEMY — Gunpowder Bloom')).toBe('Secret alchemy — Gunpowder Bloom');
+    expect(calmCase('EXPEDITION ARCHIVED — start a new descent')).toBe('Expedition archived — start a new descent');
+    expect(calmCase('Pressed. THE DOOR GIVES. Quietly.')).toBe('Pressed. The door gives. Quietly.');
+  });
+
   it('leaves lines that already carry lowercase alone', () => {
     expect(isShouting('The brass bell is yours.')).toBe(false);
     expect(calmCase('Weaver leg equipped · LMB whip')).toBe('Weaver leg equipped · LMB whip');
+    expect(calmCase('Weaver leg equipped · LMB whip · RMB throw · G drop')).toBe('Weaver leg equipped · LMB whip · RMB throw · G drop');
+    expect(calmCase('Press F12 for the GPU HP readout')).toBe('Press F12 for the GPU HP readout');
   });
 });
 

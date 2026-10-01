@@ -241,9 +241,11 @@ export function drawStoryFigure(out: PixelSurface, field: LightField, ctx: Ctx, 
     const tail = Math.sin(ctx.state.frameCount * 0.06 + f.seed) * 0.4;
     r.capsule(s.neck.x - fc * 0.6, s.neck.y + 0.8, 0.7, s.neck.x - fc * (2.2 + tail), s.neck.y + 4.4, 0.55, 4.1, 4.0, SCARF, { group: 10 });
   }
-  // Head.
-  const ht = s.headTilt, hc = Math.cos(ht), hs = Math.sin(ht);
-  const H = (side: number, up: number): [number, number] => [s.head.x + (side * fc) * hc * k - (-up) * hs * k, s.head.y + (side * fc) * hs * k + (-up) * hc * k];
+  // Head. It can lead the body in a turn (Pell looks round before he turns): then it faces the other way.
+  const hfc = f.headFacing ?? fc;
+  const ht = s.headTilt * hfc * fc, hc = Math.cos(ht), hs = Math.sin(ht);
+  const brim = s.lean + ht * 0.6;
+  const H = (side: number, up: number): [number, number] => [s.head.x + (side * hfc) * hc * k - (-up) * hs * k, s.head.y + (side * hfc) * hs * k + (-up) * hc * k];
   if (c.hat === 'stoker') {
     // An iron dome with a grille for a face and one lamp-eye.
     r.ellipse(s.head.x, s.head.y, 2.8 * k, 2.5 * k, ht, 4, IRON, { group: 11 });
@@ -270,7 +272,7 @@ export function drawStoryFigure(out: PixelSurface, field: LightField, ctx: Ctx, 
     } else if (f.costume === 'foreman') {
       r.stamp(...H(1.6, -0.7), 1.0, 0.35, ht, HAIR, 1.4, false, 11); // a moustache
     }
-    drawHat(r, c.hat, H, s, fc, k);
+    drawHat(r, c.hat, H, brim, hfc, k);
   }
   // Near arm and whatever is in the hands.
   const armMat = c.bulky ? IRON : (f.costume === 'worker' || f.costume === 'grinder' ? SHIRT : COAT);
@@ -293,9 +295,33 @@ export function drawStoryFigure(out: PixelSurface, field: LightField, ctx: Ctx, 
     r.ellipse(lx, ly, 2.6, 2.6, 0, 7, GLASS, { group: 12, noOutline: true });
     r.glowStamp(lx, ly, 2.2, 2.2, 0, GLINT, 0.8, 0.2, 12);
   }
+  if (props.map) {
+    // The map held open at arm's length: a sheet between his hands, ink on it, a red cross where he is.
+    const mx = (s.backHand.x + s.frontHand.x) / 2 + fc * 1.4, my = Math.min(s.backHand.y, s.frontHand.y) - 0.6;
+    r.poly(crateBox(mx, my, 3.7, 2.7), 4, 7.6, PAPER, 0.05, { group: 12 });
+    r.stroke(mx - 2.8, my - 1.4, mx + 1.4, my - 1.1, LEATHER, 0, true);
+    r.stroke(mx - 2.5, my - 0.1, mx + 2.6, my + 0.3, LEATHER, 0, true);
+    r.stroke(mx - 0.8, my + 1.3, mx + 2.0, my + 1.0, LEATHER, 0, true);
+    r.dot(mx + 1.8, my - 0.5, SCARF, 2, 5);
+  }
   limb(r, s.chest, s.frontElbow, 0.95 * bulky, 0.82 * bulky, 8, armMat, 13);
   limb(r, s.frontElbow, s.frontHand, 0.82 * bulky, 0.62 * bulky, 8.5, armMat, 13);
   r.ellipse(s.frontHand.x, s.frontHand.y, 0.85 * bulky, 0.75 * bulky, 0, 8.8, c.bulky ? IRON : SKIN, { group: 13 });
+  if (f.bandaged && !ghost) {
+    // A bandage round his near wrist (he has been hurt by the Works since the second floor).
+    const wx = s.frontElbow.x + (s.frontHand.x - s.frontElbow.x) * 0.78, wy = s.frontElbow.y + (s.frontHand.y - s.frontElbow.y) * 0.78;
+    r.ellipse(wx, wy, 0.92, 0.85, 0, 8.9, PAPER, { group: 13 });
+  }
+  if (props.cup) {
+    // The tin cup: a brass body, a dark mouth, a little loop of a handle.
+    const hx = s.frontHand.x + fc * 0.5, hy = s.frontHand.y - 1.1;
+    r.capsule(hx - fc * 1.0, hy - 0.6, 0.25, hx - fc * 1.7, hy + 0.3, 0.25, 9.1, 9.1, BRASS, { group: 14 });
+    r.ellipse(hx, hy, 1.25, 1.35, 0, 9.2, BRASS, { group: 14 });
+    r.ellipse(hx, hy - 1.15, 1.25, 0.42, 0, 9.4, IRON, { group: 14 });
+  }
+  if (props.cloth) {
+    r.poly(crateBox(s.frontHand.x + fc * 0.4, s.frontHand.y - 0.6, 1.2, 1.0), 4, 9.2, PAPER, 0.05, { group: 14 });
+  }
   if (props.shovel) {
     const hx = s.frontHand.x, hy = s.frontHand.y, a = Math.atan2(hy - s.backHand.y, hx - s.backHand.x);
     const ex2 = hx + Math.cos(a) * 7, ey2 = hy + Math.sin(a) * 7;
@@ -317,6 +343,25 @@ export function drawStoryFigure(out: PixelSurface, field: LightField, ctx: Ctx, 
     LIGHT.r = Math.max(0.62, LIGHT.r); LIGHT.g = Math.max(0.6, LIGHT.g); LIGHT.b = Math.max(0.6, LIGHT.b);
   }
   r.resolve(out, LIGHT);
+  // Steam off the cup, and his breath in the cold (presentation only; none with reduced flashes).
+  if (!ghost && out.addFinePx && !ctx.state.reduceFlashes) {
+    if (props.cup) {
+      const hx = s.frontHand.x + fc * 0.5, hy = s.frontHand.y - 3.6;
+      for (let i = 0; i < 3; i++) {
+        const life = (ctx.state.frameCount * 0.011 + i / 3) % 1;
+        const a = (1 - life) * 0.26;
+        out.addFinePx(hx + Math.sin(life * 7 + i * 2) * 0.9, hy - life * 7, a, a, a * 0.96);
+      }
+    }
+    if (props.puff > 0.05) {
+      const [mx, my] = H(2.6, -1.0);
+      for (let i = 0; i < 4; i++) {
+        const life = (ctx.state.frameCount * 0.03 + i / 4) % 1;
+        const a = (1 - life) * 0.32 * props.puff;
+        out.addFinePx(mx + fc * (0.6 + life * 4.5) + Math.sin(i * 3 + life * 5) * 0.4, my - 0.6 - life * 2.4, a, a, a);
+      }
+    }
+  }
 }
 
 const BOX = new Float64Array(8);
@@ -325,8 +370,7 @@ function crateBox(cx: number, cy: number, hw: number, hh: number): Float64Array 
   return BOX;
 }
 
-function drawHat(r: CreatureRaster, hat: Costume['hat'], H: (side: number, up: number) => [number, number], s: Skeleton, fc: number, k: number): void {
-  const ba = s.brimAngle;
+function drawHat(r: CreatureRaster, hat: Costume['hat'], H: (side: number, up: number) => [number, number], ba: number, fc: number, k: number): void {
   if (hat === 'cap') {
     // A soft surveyor's cap, the peak shading the brow.
     const [cx, cy] = H(-0.2, 2.1);

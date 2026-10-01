@@ -18,6 +18,16 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   seconds: 9.68,
   captioned: true
  },
+ "65561469": {
+  url: "audio/voice/65561469.mp3",
+  seconds: 8.11,
+  captioned: true
+ },
+ "75087133": {
+  url: "audio/voice/75087133.mp3",
+  seconds: 6,
+  captioned: true
+ },
  "78213380": {
   url: "audio/voice/78213380.mp3",
   seconds: 4
@@ -33,6 +43,10 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  "95600347": {
   url: "audio/voice/95600347.mp3",
   seconds: 3.64
+ },
+ "98964914": {
+  url: "audio/voice/98964914.mp3",
+  seconds: 4.32
  },
  "d486ea84": {
   url: "audio/voice/d486ea84.mp3",
@@ -893,11 +907,6 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   seconds: 7.28,
   captioned: true
  },
- "492fe5fd": {
-  url: "audio/voice/492fe5fd.mp3",
-  seconds: 6.47,
-  captioned: true
- },
  "d3b8fbfd": {
   url: "audio/voice/d3b8fbfd.mp3",
   seconds: 8.16,
@@ -931,6 +940,11 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  "dd29d2e3": {
   url: "audio/voice/dd29d2e3.mp3",
   seconds: 3.84,
+  captioned: true
+ },
+ "6307eeaf": {
+  url: "audio/voice/6307eeaf.mp3",
+  seconds: 6.8,
   captioned: true
  },
  "07015bea": {
@@ -992,9 +1006,13 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/87d022c0.mp3",
   seconds: 7.43
  },
- "fdee1437": {
-  url: "audio/voice/fdee1437.mp3",
-  seconds: 2.93
+ "f34dda90": {
+  url: "audio/voice/f34dda90.mp3",
+  seconds: 9.75
+ },
+ "28252efe": {
+  url: "audio/voice/28252efe.mp3",
+  seconds: 7.52
  },
  "e896b5f5": {
   url: "audio/voice/e896b5f5-2.mp3",
@@ -1059,6 +1077,10 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/f97efe60.mp3",
   seconds: 5.86
  },
+ "f42a201c": {
+  url: "audio/voice/f42a201c.mp3",
+  seconds: 11.29
+ },
  "21fa84e3": {
   url: "audio/voice/21fa84e3.mp3",
   seconds: 3.89
@@ -1078,6 +1100,14 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  "25ccf368": {
   url: "audio/voice/25ccf368.mp3",
   seconds: 2.93
+ },
+ "be7fd9d1": {
+  url: "audio/voice/be7fd9d1.mp3",
+  seconds: 6.79
+ },
+ "46e90eca": {
+  url: "audio/voice/46e90eca.mp3",
+  seconds: 3.1
  },
  "bf27e090": {
   url: "audio/voice/bf27e090.mp3",
@@ -1101,6 +1131,11 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  "bcfc409c": {
   url: "audio/voice/bcfc409c.mp3",
   seconds: 8.55,
+  captioned: true
+ },
+ "ade0383e": {
+  url: "audio/voice/ade0383e.mp3",
+  seconds: 5.2,
   captioned: true
  },
  "c34b5c0f": {
@@ -1144,6 +1179,14 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/7c35e17b.mp3",
   seconds: 1.44
  },
+ "0e993769": {
+  url: "audio/voice/0e993769.mp3",
+  seconds: 6.32
+ },
+ "29d958db": {
+  url: "audio/voice/29d958db.mp3",
+  seconds: 1.98
+ },
  "ad1d38b6": {
   url: "audio/voice/ad1d38b6.mp3",
   seconds: 7.72
@@ -1183,6 +1226,11 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   seconds: 6.88,
   captioned: true
  },
+ "9cef8052": {
+  url: "audio/voice/9cef8052.mp3",
+  seconds: 6.2,
+  captioned: true
+ },
  "60ebcf4f": {
   url: "audio/voice/60ebcf4f.mp3",
   seconds: 8.64
@@ -1202,6 +1250,10 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  "b4b1afd3": {
   url: "audio/voice/b4b1afd3.mp3",
   seconds: 6.35
+ },
+ "0bffbfcf": {
+  url: "audio/voice/0bffbfcf.mp3",
+  seconds: 9.09
  },
  "1f499882": {
   url: "audio/voice/1f499882.mp3",
@@ -1223,9 +1275,21 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/f476027b.mp3",
   seconds: 3.29
  },
+ "bce3533f": {
+  url: "audio/voice/bce3533f.mp3",
+  seconds: 4.84
+ },
  "61d8ba0d": {
   url: "audio/voice/61d8ba0d.mp3",
   seconds: 3.89
+ },
+ "e68258e1": {
+  url: "audio/voice/e68258e1.mp3",
+  seconds: 6.72
+ },
+ "fce24c19": {
+  url: "audio/voice/fce24c19.mp3",
+  seconds: 5.92
  },
  "59e3ede6": {
   url: "audio/voice/59e3ede6.mp3",
@@ -1305,6 +1369,14 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/e00a492b.mp3",
   seconds: 3.3
  },
+ "eb54921e": {
+  url: "audio/voice/eb54921e.mp3",
+  seconds: 5.63
+ },
+ "fad4494f": {
+  url: "audio/voice/fad4494f.mp3",
+  seconds: 6.48
+ },
  "aeafe0aa": {
   url: "audio/voice/aeafe0aa.mp3",
   seconds: 7.28
@@ -1339,6 +1411,11 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   seconds: 9.44,
   captioned: true
  },
+ "04d15c0e": {
+  url: "audio/voice/04d15c0e.mp3",
+  seconds: 9.52,
+  captioned: true
+ },
  "8d8726af": {
   url: "audio/voice/8d8726af.mp3",
   seconds: 6.72,
@@ -1361,6 +1438,166 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/d70f2b25.mp3",
   seconds: 8.39
  },
+ "81c96fe7": {
+  url: "audio/voice/81c96fe7.mp3",
+  seconds: 9.36
+ },
+ "260fde13": {
+  url: "audio/voice/260fde13.mp3",
+  seconds: 12.09
+ },
+ "4848fadc": {
+  url: "audio/voice/4848fadc.mp3",
+  seconds: 6.79
+ },
+ "65d0017c": {
+  url: "audio/voice/65d0017c.mp3",
+  seconds: 6.74
+ },
+ "786091b2": {
+  url: "audio/voice/786091b2.mp3",
+  seconds: 10.2
+ },
+ "7cddf317": {
+  url: "audio/voice/7cddf317.mp3",
+  seconds: 8.07
+ },
+ "eae7f0a4": {
+  url: "audio/voice/eae7f0a4.mp3",
+  seconds: 8.35
+ },
+ "65bf5ede": {
+  url: "audio/voice/65bf5ede.mp3",
+  seconds: 7.04
+ },
+ "b8427023": {
+  url: "audio/voice/b8427023.mp3",
+  seconds: 6.37
+ },
+ "8305bb0d": {
+  url: "audio/voice/8305bb0d.mp3",
+  seconds: 4.64
+ },
+ "dc41f20b": {
+  url: "audio/voice/dc41f20b.mp3",
+  seconds: 7.04
+ },
+ "5c41e7dd": {
+  url: "audio/voice/5c41e7dd.mp3",
+  seconds: 7.65
+ },
+ "4745e23c": {
+  url: "audio/voice/4745e23c.mp3",
+  seconds: 7.44
+ },
+ "32b2ac9c": {
+  url: "audio/voice/32b2ac9c.mp3",
+  seconds: 7.22
+ },
+ "656c1349": {
+  url: "audio/voice/656c1349.mp3",
+  seconds: 6.56
+ },
+ "9cf7cf40": {
+  url: "audio/voice/9cf7cf40.mp3",
+  seconds: 6.5
+ },
+ "9e74b9f2": {
+  url: "audio/voice/9e74b9f2.mp3",
+  seconds: 6.49,
+  captioned: true
+ },
+ "174d71e1": {
+  url: "audio/voice/174d71e1.mp3",
+  seconds: 6.35,
+  captioned: true
+ },
+ "dd7784cc": {
+  url: "audio/voice/dd7784cc.mp3",
+  seconds: 7.28,
+  captioned: true
+ },
+ "7747ec18": {
+  url: "audio/voice/7747ec18.mp3",
+  seconds: 4.14,
+  captioned: true
+ },
+ "4d74cbe9": {
+  url: "audio/voice/4d74cbe9.mp3",
+  seconds: 6,
+  captioned: true
+ },
+ "bf8461bf": {
+  url: "audio/voice/bf8461bf.mp3",
+  seconds: 5.74,
+  captioned: true
+ },
+ "c643ee06": {
+  url: "audio/voice/c643ee06.mp3",
+  seconds: 3.52,
+  captioned: true
+ },
+ "2e7d24d8": {
+  url: "audio/voice/2e7d24d8.mp3",
+  seconds: 4.33,
+  captioned: true
+ },
+ "f31d7f36": {
+  url: "audio/voice/f31d7f36.mp3",
+  seconds: 0.64
+ },
+ "eab58557": {
+  url: "audio/voice/eab58557.mp3",
+  seconds: 2.56
+ },
+ "ababf508": {
+  url: "audio/voice/ababf508.mp3",
+  seconds: 3.86
+ },
+ "92e3e365": {
+  url: "audio/voice/92e3e365.mp3",
+  seconds: 3.31
+ },
+ "8a3c123e": {
+  url: "audio/voice/8a3c123e.mp3",
+  seconds: 3.12
+ },
+ "eb69922a": {
+  url: "audio/voice/eb69922a.mp3",
+  seconds: 2.06
+ },
+ "ad9749e9": {
+  url: "audio/voice/ad9749e9.mp3",
+  seconds: 2.72
+ },
+ "26eb1f47": {
+  url: "audio/voice/26eb1f47.mp3",
+  seconds: 3.19
+ },
+ "fdee1437": {
+  url: "audio/voice/fdee1437.mp3",
+  seconds: 2.93
+ },
+ "d961b047": {
+  url: "audio/voice/d961b047.mp3",
+  seconds: 3.58
+ },
+ "fab501a6": {
+  url: "audio/voice/fab501a6.mp3",
+  seconds: 2.56
+ },
+ "97c7eda5": {
+  url: "audio/voice/97c7eda5.mp3",
+  seconds: 4.61
+ },
+ "a504dcb4": {
+  url: "audio/voice/a504dcb4.mp3",
+  seconds: 9.28
+ },
+ "7ce09b51": {
+  url: "audio/voice/7ce09b51.mp3",
+  seconds: 8.43
+ },
  "949412aa": {
   url: "audio/voice/949412aa.mp3",
   seconds: 6.88,
@@ -1379,6 +1616,16 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  "ddaab8f3": {
   url: "audio/voice/ddaab8f3.mp3",
   seconds: 4,
+  captioned: true
+ },
+ "b444f717": {
+  url: "audio/voice/b444f717.mp3",
+  seconds: 7.36,
+  captioned: true
+ },
+ "04912924": {
+  url: "audio/voice/04912924.mp3",
+  seconds: 4.68,
   captioned: true
  },
  "7b37338a": {
@@ -1401,9 +1648,59 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   seconds: 2.72,
   captioned: true
  },
+ "966608a1": {
+  url: "audio/voice/966608a1.mp3",
+  seconds: 7.6,
+  captioned: true
+ },
+ "5595f92d": {
+  url: "audio/voice/5595f92d.mp3",
+  seconds: 3.28,
+  captioned: true
+ },
  "5e9b4885": {
   url: "audio/voice/5e9b4885.mp3",
   seconds: 5.95,
+  captioned: true
+ },
+ "f0c31eab": {
+  url: "audio/voice/f0c31eab.mp3",
+  seconds: 12.46,
+  captioned: true
+ },
+ "d5e04585": {
+  url: "audio/voice/d5e04585.mp3",
+  seconds: 8.51,
+  captioned: true
+ },
+ "bd819a66": {
+  url: "audio/voice/bd819a66.mp3",
+  seconds: 7.71,
+  captioned: true
+ },
+ "d6213c5a": {
+  url: "audio/voice/d6213c5a.mp3",
+  seconds: 5.89,
+  captioned: true
+ },
+ "2892b426": {
+  url: "audio/voice/2892b426.mp3",
+  seconds: 8.16,
+  captioned: true
+ },
+ "b564016e": {
+  url: "audio/voice/b564016e.mp3",
+  seconds: 5.81,
+  captioned: true
+ },
+ "3f04cc29": {
+  url: "audio/voice/3f04cc29.mp3",
+  seconds: 8.08,
+  captioned: true
+ },
+ "e4d0f76f": {
+  url: "audio/voice/e4d0f76f.mp3",
+  seconds: 8.31,
   captioned: true
  },
  "5a5c5f92": {
@@ -1450,6 +1747,126 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
   url: "audio/voice/b57605cc.mp3",
   seconds: 2.84
  },
+ "79ce496d": {
+  url: "audio/voice/79ce496d.mp3",
+  seconds: 8.74
+ },
+ "11a57bf2": {
+  url: "audio/voice/11a57bf2.mp3",
+  seconds: 8.55
+ },
+ "e25b023b": {
+  url: "audio/voice/e25b023b.mp3",
+  seconds: 7.34
+ },
+ "b8b78785": {
+  url: "audio/voice/b8b78785.mp3",
+  seconds: 8.44
+ },
+ "77ea9218": {
+  url: "audio/voice/77ea9218.mp3",
+  seconds: 8.87
+ },
+ "63d84408": {
+  url: "audio/voice/63d84408.mp3",
+  seconds: 6.62
+ },
+ "3874ad69": {
+  url: "audio/voice/3874ad69.mp3",
+  seconds: 7.17
+ },
+ "87565a16": {
+  url: "audio/voice/87565a16.mp3",
+  seconds: 8.34
+ },
+ "9f115bf3": {
+  url: "audio/voice/9f115bf3.mp3",
+  seconds: 4.53
+ },
+ "d4a6bbc3": {
+  url: "audio/voice/d4a6bbc3.mp3",
+  seconds: 5.9
+ },
+ "8f67f0eb": {
+  url: "audio/voice/8f67f0eb.mp3",
+  seconds: 7.1
+ },
+ "524cd2a4": {
+  url: "audio/voice/524cd2a4.mp3",
+  seconds: 8.77
+ },
+ "99a82380": {
+  url: "audio/voice/99a82380.mp3",
+  seconds: 6.41
+ },
+ "94e9cd04": {
+  url: "audio/voice/94e9cd04.mp3",
+  seconds: 4.37
+ },
+ "d931a76b": {
+  url: "audio/voice/d931a76b.mp3",
+  seconds: 5.36
+ },
+ "50fd8309": {
+  url: "audio/voice/50fd8309.mp3",
+  seconds: 8.79
+ },
+ "27a0334a": {
+  url: "audio/voice/27a0334a.mp3",
+  seconds: 9.52
+ },
+ "5722611b": {
+  url: "audio/voice/5722611b.mp3",
+  seconds: 5.01
+ },
+ "3e72ce43": {
+  url: "audio/voice/3e72ce43.mp3",
+  seconds: 4.99
+ },
+ "fbb0f409": {
+  url: "audio/voice/fbb0f409.mp3",
+  seconds: 4.74
+ },
+ "baf0bb1b": {
+  url: "audio/voice/baf0bb1b.mp3",
+  seconds: 7.5
+ },
+ "d0766581": {
+  url: "audio/voice/d0766581.mp3",
+  seconds: 6.22
+ },
+ "2a30b01f": {
+  url: "audio/voice/2a30b01f.mp3",
+  seconds: 6.78
+ },
+ "0e6aa869": {
+  url: "audio/voice/0e6aa869.mp3",
+  seconds: 7.58
+ },
+ "60acb964": {
+  url: "audio/voice/60acb964.mp3",
+  seconds: 5.65
+ },
+ "dce0b956": {
+  url: "audio/voice/dce0b956.mp3",
+  seconds: 6.86
+ },
+ "f5b82eb3": {
+  url: "audio/voice/f5b82eb3.mp3",
+  seconds: 2.14
+ },
+ "746a9eb2": {
+  url: "audio/voice/746a9eb2.mp3",
+  seconds: 6.54
+ },
+ "fd10323d": {
+  url: "audio/voice/fd10323d.mp3",
+  seconds: 7.98
+ },
+ "dcd94d36": {
+  url: "audio/voice/dcd94d36.mp3",
+  seconds: 4.53
+ },
  "f068157b": {
   url: "audio/voice/f068157b.mp3",
   seconds: 3.91
@@ -1457,10 +1874,6 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  "1960daf7": {
   url: "audio/voice/1960daf7.mp3",
   seconds: 3.68
- },
- "1c7cce28": {
-  url: "audio/voice/1c7cce28.mp3",
-  seconds: 2.72
  },
  "3393141f": {
   url: "audio/voice/3393141f.mp3",
@@ -1497,6 +1910,22 @@ export const NARRATION_CLIPS: Readonly<Record<string, NarrationClip>> = {
  "d7317cff": {
   url: "audio/voice/d7317cff.mp3",
   seconds: 2.48
+ },
+ "4e0adeb0": {
+  url: "audio/voice/4e0adeb0.mp3",
+  seconds: 7.03
+ },
+ "49c9714e": {
+  url: "audio/voice/49c9714e.mp3",
+  seconds: 4.59
+ },
+ "afb71759": {
+  url: "audio/voice/afb71759.mp3",
+  seconds: 9.42
+ },
+ "9309333c": {
+  url: "audio/voice/9309333c.mp3",
+  seconds: 7.68
  }
 };
 
@@ -3889,17 +4318,6 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "docent"
  },
  {
-  key: "492fe5fd",
-  text: "The creatures were not in the Guild’s plans. Then again, neither was most of what happened after.",
-  say: "The creatures were not in the Guild’s plans. Then again, neither was most of what happened after.",
-  group: "Story · Docent · The Bellows",
-  seconds: 6.47,
-  urls: [
-   "audio/voice/492fe5fd.mp3"
-  ],
-  speaker: "docent"
- },
- {
   key: "d3b8fbfd",
   text: "The Guild built the Tea Engine to settle an argument. Nobody remembers the argument. The tea was excellent.",
   say: "The Guild built the Tea Engine to settle an argument. Nobody remembers the argument. The tea was excellent.",
@@ -3973,6 +4391,17 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 3.84,
   urls: [
    "audio/voice/dd29d2e3.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "6307eeaf",
+  text: "Hobb on the wheel. Dunmore with the last crate. Wick on the bell, thanked by no one.",
+  say: "[softly] Hobb on the wheel. Dunmore with the last crate. Wick on the bell, thanked by no one.",
+  group: "Story · Echoes · The Bellows",
+  seconds: 6.8,
+  urls: [
+   "audio/voice/6307eeaf.mp3"
   ],
   speaker: "docent"
  },
@@ -4143,14 +4572,24 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "pell"
  },
  {
-  key: "fdee1437",
-  text: "I’ve started leaving the kettle on for you.",
-  say: "[warmly] I’ve started leaving the kettle on... for you.",
+  key: "f34dda90",
+  text: "Rot Gardens. Flammable. I go ahead, you follow. Same as always, and I still say it like it’s news.",
+  say: "Rot Gardens. Flammable. I go ahead, you follow. Same as always, and I still say it like it’s news.",
   group: "Story · Pell · The Bellows",
-  seconds: 2.93,
+  seconds: 9.75,
   urls: [
-   "audio/voice/fdee1437.mp3",
-   "audio/voice/fdee1437-2.mp3"
+   "audio/voice/f34dda90.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "28252efe",
+  text: "Ha! You ask every time. The answer is a very fond, very frightened no.",
+  say: "Ha! You ask every time. The answer is a very fond, very frightened no.",
+  group: "Story · Pell · The Bellows",
+  seconds: 7.52,
+  urls: [
+   "audio/voice/28252efe.mp3"
   ],
   speaker: "pell"
  },
@@ -4310,6 +4749,17 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "pell"
  },
  {
+  key: "f42a201c",
+  text: "The rope. Yes. I’d like it noted that it was a very good rope, and that I did not scream. I made a noise. It was a wheeze, scientifically speaking.",
+  say: "[nervous] The rope. Yes. I’d like it noted that it was a very good rope, and that I did not scream. I made a noise. It was a wheeze, scientifically speaking.",
+  group: "Story · Pell · The Rot Gardens",
+  seconds: 11.29,
+  urls: [
+   "audio/voice/f42a201c.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
   key: "21fa84e3",
   text: "Cisterns next. Bring a towel. I didn’t.",
   say: "Cisterns next. Bring a towel. I didn’t.",
@@ -4365,6 +4815,28 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "pell"
  },
  {
+  key: "be7fd9d1",
+  text: "You again. I’ve cleared the path. By which I mean I’ve stopped looking at the bits that are on fire.",
+  say: "You again. I’ve cleared the path. By which I mean I’ve stopped looking at the bits that are on fire.",
+  group: "Story · Pell · The Rot Gardens",
+  seconds: 6.79,
+  urls: [
+   "audio/voice/be7fd9d1.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "46e90eca",
+  text: "Cisterns. Towel. You know.",
+  say: "Cisterns. Towel. You know.",
+  group: "Story · Pell · The Rot Gardens",
+  seconds: 3.1,
+  urls: [
+   "audio/voice/46e90eca.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
   key: "bf27e090",
   text: "The Rot Gardens. Do not light anything. Do not light anything at all. I lit something.",
   say: "The Rot Gardens. Do not light anything. Do not light anything at all. I lit something.",
@@ -4416,6 +4888,17 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 8.55,
   urls: [
    "audio/voice/bcfc409c.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "ade0383e",
+  text: "Dunmore and Hobb had the trolleys, and were paid nothing extra for the cold.",
+  say: "[softly] Dunmore and Hobb had the trolleys, and were paid nothing extra for the cold.",
+  group: "Story · Echoes · The Cold Store",
+  seconds: 5.2,
+  urls: [
+   "audio/voice/ade0383e.mp3"
   ],
   speaker: "docent"
  },
@@ -4530,6 +5013,28 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "pell"
  },
  {
+  key: "0e993769",
+  text: "Still cold. You’ve stopped noticing, haven’t you? I haven’t stopped noticing for one second.",
+  say: "Still cold. You’ve stopped noticing, haven’t you? I haven’t stopped noticing for one second.",
+  group: "Story · Pell · The Cold Store",
+  seconds: 6.32,
+  urls: [
+   "audio/voice/0e993769.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "29d958db",
+  text: "Somewhere warmer. Please.",
+  say: "Somewhere warmer. Please.",
+  group: "Story · Pell · The Cold Store",
+  seconds: 1.98,
+  urls: [
+   "audio/voice/29d958db.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
   key: "ad1d38b6",
   text: "The Cold Store. Everything keeps. It kept my sandwich for a year. I did not eat it.",
   say: "The Cold Store. Everything keeps. It kept my sandwich for a year. I did not eat it.",
@@ -4618,6 +5123,17 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "docent"
  },
  {
+  key: "9cef8052",
+  text: "Hobb and Dunmore ran for the lift. Wick knelt to listen at the pipe, which was the sort of thing Wick did.",
+  say: "[softly] Hobb and Dunmore ran for the lift. Wick knelt to listen at the pipe, which was the sort of thing Wick did.",
+  group: "Story · Echoes · The Drowned Cisterns",
+  seconds: 6.2,
+  urls: [
+   "audio/voice/9cef8052.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
   key: "60ebcf4f",
   text: "I went down to the sump. I saw it. The Leviathan. I did not scream. Much.",
   say: "[nervous] I went down to the sump. I saw it. The Leviathan. I did not scream. Much.",
@@ -4669,6 +5185,17 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 6.35,
   urls: [
    "audio/voice/b4b1afd3.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "0bffbfcf",
+  text: "Do I? I’m fine, it’s only the coat. You, though, are the picture of health. Ask me again once something has had a bite.",
+  say: "Do I? I’m fine, it’s only the coat. You, though, are the picture of health. Ask me again once something has had a bite.",
+  group: "Story · Pell · The Drowned Cisterns",
+  seconds: 9.09,
+  urls: [
+   "audio/voice/0bffbfcf.mp3"
   ],
   speaker: "pell"
  },
@@ -4728,6 +5255,17 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "pell"
  },
  {
+  key: "bce3533f",
+  text: "Not yet. You’re far too pink. I’ll keep the tin warm for when you’ve been bitten.",
+  say: "Not yet. You’re far too pink. I’ll keep the tin warm for when you’ve been bitten.",
+  group: "Story · Pell · The Drowned Cisterns",
+  seconds: 4.84,
+  urls: [
+   "audio/voice/bce3533f.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
   key: "61d8ba0d",
   text: "Kiln next. I’ll go ahead. I always go ahead.",
   say: "Kiln next. I’ll go ahead. I always go ahead.",
@@ -4735,6 +5273,28 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 3.89,
   urls: [
    "audio/voice/61d8ba0d.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "e68258e1",
+  text: "The sump. You know the drill. I’ve stopped saying it, in case it’s rude. Drain it.",
+  say: "The sump. You know the drill. I’ve stopped saying it, in case it’s rude. Drain it.",
+  group: "Story · Pell · The Drowned Cisterns",
+  seconds: 6.72,
+  urls: [
+   "audio/voice/e68258e1.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "fce24c19",
+  text: "Kiln next. You could go ahead this time. No? Quite right.",
+  say: "Kiln next. You could go ahead this time. No? Quite right.",
+  group: "Story · Pell · The Drowned Cisterns",
+  seconds: 5.92,
+  urls: [
+   "audio/voice/fce24c19.mp3"
   ],
   speaker: "pell"
  },
@@ -4937,6 +5497,28 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "pell"
  },
  {
+  key: "eb54921e",
+  text: "The glass has stopped humming at you. I can’t decide if that’s affection or a grudge.",
+  say: "The glass has stopped humming at you. I can’t decide if that’s affection or a grudge.",
+  group: "Story · Pell · The Glass Galleries",
+  seconds: 5.63,
+  urls: [
+   "audio/voice/eb54921e.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "fad4494f",
+  text: "Kiln next. The glass has views. I’m not listening.",
+  say: "Kiln next. The glass has views. I’m not listening.",
+  group: "Story · Pell · The Glass Galleries",
+  seconds: 6.48,
+  urls: [
+   "audio/voice/fad4494f.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
   key: "aeafe0aa",
   text: "The Glass Galleries. The light bends, and so does your sense of direction. Follow the humming.",
   say: "The Glass Galleries. The light bends, and so does your sense of direction. Follow the humming.",
@@ -5025,6 +5607,17 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "docent"
  },
  {
+  key: "04d15c0e",
+  text: "Wick, the foreman, patted its shoulder and told it well done. It had not been built for praise. It kept the sound.",
+  say: "[softly] Wick, the foreman, patted its shoulder and told it well done. It had not been built for praise. It kept the sound.",
+  group: "Story · Echoes · The Kiln Heart",
+  seconds: 9.52,
+  urls: [
+   "audio/voice/04d15c0e.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
   key: "8d8726af",
   text: "When the Heart began to fail, it would not leave it. It still hasn’t.",
   say: "[softly] When the Heart began to fail, it would not leave it. It still hasn’t.",
@@ -5080,6 +5673,436 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "pell"
  },
  {
+  key: "81c96fe7",
+  text: "Oh dear. You’re wearing rather more of yourself on the outside than is usual. Sit. There’s a crate. It’s not load-bearing, I’ve checked.",
+  say: "[nervous] Oh dear. You’re wearing rather more of yourself on the outside than is usual. Sit. There’s a crate. It’s not load-bearing, I’ve checked.",
+  group: "Story · Pell · notices",
+  seconds: 9.36,
+  urls: [
+   "audio/voice/81c96fe7.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "260fde13",
+  text: "You opened it, didn’t you? The marked room. I can always tell; you’ve the look of somebody who’s found something. Don’t tell me what. I’d only wish I’d been braver.",
+  say: "[warmly] You opened it, didn’t you? The marked room. I can always tell; you’ve the look of somebody who’s found something. Don’t tell me what. I’d only wish I’d been braver.",
+  group: "Story · Pell · notices",
+  seconds: 12.09,
+  urls: [
+   "audio/voice/260fde13.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "4848fadc",
+  text: "One phial left. One’s plenty, so long as you don’t need it. That’s the whole trick with phials.",
+  say: "One phial left. One’s plenty, so long as you don’t need it. That’s the whole trick with phials.",
+  group: "Story · Pell · notices",
+  seconds: 6.79,
+  urls: [
+   "audio/voice/4848fadc.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "65d0017c",
+  text: "You’ve been put back together more than most. I keep your tally in pencil, in case you’d rather I rubbed it out.",
+  say: "You’ve been put back together more than most. I keep your tally in pencil, in case you’d rather I rubbed it out.",
+  group: "Story · Pell · notices",
+  seconds: 6.74,
+  urls: [
+   "audio/voice/65d0017c.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "786091b2",
+  text: "A Flame Jet. In the Rot Gardens. I’m going to stand a little further away, if that’s all right. Further. Yes, that’s better.",
+  say: "A Flame Jet. In the Rot Gardens. I’m going to stand a little further away, if that’s all right. Further. Yes, that’s better.",
+  group: "Story · Pell · notices",
+  seconds: 10.2,
+  urls: [
+   "audio/voice/786091b2.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "7cddf317",
+  text: "Chain Lightning, in the Cisterns. I’ve put the kettle down. I’d put myself down, but there’s nowhere dry.",
+  say: "Chain Lightning, in the Cisterns. I’ve put the kettle down. I’d put myself down, but there’s nowhere dry.",
+  group: "Story · Pell · notices",
+  seconds: 8.07,
+  urls: [
+   "audio/voice/7cddf317.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "eae7f0a4",
+  text: "A Frost Shard, in the Cold Store. Coals to Newcastle, the other way round. There must be a word for that.",
+  say: "A Frost Shard, in the Cold Store. Coals to Newcastle, the other way round. There must be a word for that.",
+  group: "Story · Pell · notices",
+  seconds: 8.35,
+  urls: [
+   "audio/voice/eae7f0a4.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "65bf5ede",
+  text: "A Flame Jet, in the Cold Store. Everyone else brings a scarf. I like your thinking.",
+  say: "A Flame Jet, in the Cold Store. Everyone else brings a scarf. I like your thinking.",
+  group: "Story · Pell · notices",
+  seconds: 7.04,
+  urls: [
+   "audio/voice/65bf5ede.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "b8427023",
+  text: "You’ve taken the bargain that drinks. I’m not going to ask what from. I’m going to stand over here.",
+  say: "You’ve taken the bargain that drinks. I’m not going to ask what from. I’m going to stand over here.",
+  group: "Story · Pell · notices",
+  seconds: 6.37,
+  urls: [
+   "audio/voice/b8427023.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "8305bb0d",
+  text: "Warm blood. Lucky you. Mine’s mostly tea and worry.",
+  say: "Warm blood. Lucky you. Mine’s mostly tea and worry.",
+  group: "Story · Pell · notices",
+  seconds: 4.64,
+  urls: [
+   "audio/voice/8305bb0d.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "dc41f20b",
+  text: "Rime on your soles, I see. You’ll walk on the water. I have only ever managed to walk in it.",
+  say: "Rime on your soles, I see. You’ll walk on the water. I have only ever managed to walk in it.",
+  group: "Story · Pell · notices",
+  seconds: 7.04,
+  urls: [
+   "audio/voice/dc41f20b.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "5c41e7dd",
+  text: "Archmage terms. On purpose? I’d like it noted that I’d have ticked whichever box said “lie down”.",
+  say: "Archmage terms. On purpose? I’d like it noted that I’d have ticked whichever box said “lie down”.",
+  group: "Story · Pell · notices",
+  seconds: 7.65,
+  urls: [
+   "audio/voice/5c41e7dd.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "4745e23c",
+  text: "Same Works for everyone today, I’m told. Does everybody get a duck? I do hope everybody gets a duck.",
+  say: "Same Works for everyone today, I’m told. Does everybody get a duck? I do hope everybody gets a duck.",
+  group: "Story · Pell · notices",
+  seconds: 7.44,
+  urls: [
+   "audio/voice/4745e23c.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "32b2ac9c",
+  text: "All that gold. It jingles, you know. Nothing down here can read, but everything can hear.",
+  say: "All that gold. It jingles, you know. Nothing down here can read, but everything can hear.",
+  group: "Story · Pell · notices",
+  seconds: 7.22,
+  urls: [
+   "audio/voice/32b2ac9c.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "656c1349",
+  text: "You look well! Horribly well. It’s suspicious. What have you been doing?",
+  say: "[surprised] You look well! Horribly well. It’s suspicious. What have you been doing?",
+  group: "Story · Pell · notices",
+  seconds: 6.56,
+  urls: [
+   "audio/voice/656c1349.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "9cf7cf40",
+  text: "The regulation case. I trust regulation. It has never once trusted me back.",
+  say: "The regulation case. I trust regulation. It has never once trusted me back.",
+  group: "Story · Pell · notices",
+  seconds: 6.5,
+  urls: [
+   "audio/voice/9cf7cf40.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "9e74b9f2",
+  text: "Is that — it’s fine. That’s fine. That is, I expect, what fire is like.",
+  say: "[nervous] Is that — it’s fine. That’s fine. That is, I expect, what fire is like.",
+  group: "Story · Pell · barks",
+  seconds: 6.49,
+  urls: [
+   "audio/voice/9e74b9f2.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "174d71e1",
+  text: "Is that — did you know them? Put them down. Gently. Not on the map.",
+  say: "[softly] Is that — did you know them? Put them down. Gently. Not on the map.",
+  group: "Story · Pell · barks",
+  seconds: 6.35,
+  urls: [
+   "audio/voice/174d71e1.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "dd7784cc",
+  text: "Sorry, were you waiting for me to say something? I never can tell. Hello. Again.",
+  say: "[nervous] Sorry, were you waiting for me to say something? I never can tell. Hello. Again.",
+  group: "Story · Pell · barks",
+  seconds: 7.28,
+  urls: [
+   "audio/voice/dd7784cc.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "7747ec18",
+  text: "You’re bleeding on the map. It’s fine. It’s a bit of colour.",
+  say: "[nervous] You’re bleeding on the map. It’s fine. It’s a bit of colour.",
+  group: "Story · Pell · barks",
+  seconds: 4.14,
+  urls: [
+   "audio/voice/7747ec18.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "4d74cbe9",
+  text: "Don’t look at it. If it doesn’t know I’m looking, it can’t know I’m here. It’s a new theory.",
+  say: "[nervous] Don’t look at it. If it doesn’t know I’m looking, it can’t know I’m here. It’s a new theory.",
+  group: "Story · Pell · barks",
+  seconds: 6,
+  urls: [
+   "audio/voice/4d74cbe9.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "bf8461bf",
+  text: "It’s just a slime. It’s just a slime. Tell me it’s just a slime.",
+  say: "[nervous] It’s just a slime. It’s just a slime. Tell me it’s just a slime.",
+  group: "Story · Pell · barks",
+  seconds: 5.74,
+  urls: [
+   "audio/voice/bf8461bf.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "c643ee06",
+  text: "Bats. They’re only ears with opinions.",
+  say: "Bats. They’re only ears with opinions.",
+  group: "Story · Pell · barks",
+  seconds: 3.52,
+  urls: [
+   "audio/voice/c643ee06.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "2e7d24d8",
+  text: "Eight legs. I counted. Then I counted again, hoping.",
+  say: "[nervous] Eight legs. I counted. Then I counted again, hoping.",
+  group: "Story · Pell · barks",
+  seconds: 4.33,
+  urls: [
+   "audio/voice/2e7d24d8.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "f31d7f36",
+  text: "Still here.",
+  say: "Still here.",
+  group: "Story · Pell · second talk",
+  seconds: 0.64,
+  urls: [
+   "audio/voice/f31d7f36.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "eab58557",
+  text: "Yes? Yes. Hello.",
+  say: "Yes? Yes. Hello.",
+  group: "Story · Pell · second talk",
+  seconds: 2.56,
+  urls: [
+   "audio/voice/eab58557.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "ababf508",
+  text: "I’ve nothing new. I have a great many old things.",
+  say: "I’ve nothing new. I have a great many old things.",
+  group: "Story · Pell · second talk",
+  seconds: 3.86,
+  urls: [
+   "audio/voice/ababf508.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "92e3e365",
+  text: "Don’t mind me. I’m only redrawing the same wall.",
+  say: "Don’t mind me. I’m only redrawing the same wall.",
+  group: "Story · Pell · second talk",
+  seconds: 3.31,
+  urls: [
+   "audio/voice/92e3e365.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "8a3c123e",
+  text: "Go on, then. I’ll be here. It’s rather the point of me.",
+  say: "Go on, then. I’ll be here. It’s rather the point of me.",
+  group: "Story · Pell · second talk",
+  seconds: 3.12,
+  urls: [
+   "audio/voice/8a3c123e.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "eb69922a",
+  text: "Changed your mind? Do say.",
+  say: "[warmly] Changed your mind? Do say.",
+  group: "Story · Pell · second talk",
+  seconds: 2.06,
+  urls: [
+   "audio/voice/eb69922a.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "ad9749e9",
+  text: "Yes? Was there something else?",
+  say: "[warmly] Yes? Was there something else?",
+  group: "Story · Pell · second talk",
+  seconds: 2.72,
+  urls: [
+   "audio/voice/ad9749e9.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "26eb1f47",
+  text: "Anything else? I’ve been practising saying that.",
+  say: "Anything else? I’ve been practising saying that.",
+  group: "Story · Pell · second talk",
+  seconds: 3.19,
+  urls: [
+   "audio/voice/26eb1f47.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "fdee1437",
+  text: "I’ve started leaving the kettle on for you.",
+  say: "[warmly] I’ve started leaving the kettle on... for you.",
+  group: "Story · Pell · second talk",
+  seconds: 2.93,
+  urls: [
+   "audio/voice/fdee1437.mp3",
+   "audio/voice/fdee1437-2.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "d961b047",
+  text: "Mind the spores. And the other spores.",
+  say: "Mind the spores. And the other spores.",
+  group: "Story · Pell · second talk",
+  seconds: 3.58,
+  urls: [
+   "audio/voice/d961b047.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "fab501a6",
+  text: "I’d say something warm, but it would freeze.",
+  say: "I’d say something warm, but it would freeze.",
+  group: "Story · Pell · second talk",
+  seconds: 2.56,
+  urls: [
+   "audio/voice/fab501a6.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "98964914",
+  text: "Mind the sump. I say that to everyone. There’s only you.",
+  say: "Mind the sump. I say that to everyone. There’s only you.",
+  group: "Story · Pell · second talk",
+  seconds: 4.32,
+  urls: [
+   "audio/voice/98964914.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "97c7eda5",
+  text: "Don’t look at the glass. I’m looking at it, so you needn’t.",
+  say: "Don’t look at the glass. I’m looking at it, so you needn’t.",
+  group: "Story · Pell · second talk",
+  seconds: 4.61,
+  urls: [
+   "audio/voice/97c7eda5.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "a504dcb4",
+  text: "P.S. If you opened the marked room, I hope it was gold. I did not open it. There was a noise, and I have a policy.",
+  say: "P.S. If you opened the marked room, I hope it was gold. I did not open it. There was a noise, and I have a policy.",
+  group: "Story · Pell · The Kiln Heart",
+  seconds: 9.28,
+  urls: [
+   "audio/voice/a504dcb4.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "7ce09b51",
+  text: "P.P.S. The marked room. Gold, I hope. I still haven’t opened it. The noise is still there.",
+  say: "P.P.S. The marked room. Gold, I hope. I still haven’t opened it. The noise is still there.",
+  group: "Story · Pell · The Kiln Heart",
+  seconds: 8.43,
+  urls: [
+   "audio/voice/7ce09b51.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
   key: "949412aa",
   text: "The sump. It was a pump, once. It has not been one for a very long time.",
   say: "The sump. It was a pump, once. It has not been one for a very long time.",
@@ -5120,6 +6143,28 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 4,
   urls: [
    "audio/voice/ddaab8f3.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "b444f717",
+  text: "Quiet. Somebody has switched the pump off at last. It took forty years and a stranger.",
+  say: "[softly] Quiet. Somebody has switched the pump off at last. It took forty years and a stranger.",
+  group: "Story · Boss prologues",
+  seconds: 7.36,
+  urls: [
+   "audio/voice/b444f717.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "04912924",
+  text: "It has stopped shovelling. Nobody thought to tell it that it could.",
+  say: "[softly] It has stopped shovelling. Nobody thought to tell it that it could.",
+  group: "Story · Boss prologues",
+  seconds: 4.68,
+  urls: [
+   "audio/voice/04912924.mp3"
   ],
   speaker: "docent"
  },
@@ -5168,6 +6213,28 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "docent"
  },
  {
+  key: "966608a1",
+  text: "Again, apprentice. The flue is patient. It has had a hundred years of practice.",
+  say: "[dryly] Again, apprentice. The flue is patient. It has had a hundred years of practice.",
+  group: "Story · The Kiln escape",
+  seconds: 7.6,
+  urls: [
+   "audio/voice/966608a1.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "5595f92d",
+  text: "Again. The flue is patient.",
+  say: "[dryly] Again. The flue is patient.",
+  group: "Story · The Kiln escape",
+  seconds: 3.28,
+  urls: [
+   "audio/voice/5595f92d.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
   key: "5e9b4885",
   text: "Guild regulations forbid that, strictly. The Guild, however, is not here.",
   say: "[dryly] Guild regulations forbid that, strictly. The Guild, however, is not here.",
@@ -5175,6 +6242,116 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 5.95,
   urls: [
    "audio/voice/5e9b4885.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "f0c31eab",
+  text: "That was not the wand, apprentice. That was the cellar, doing as it was told. The Guild called it yield. The insurers had another word.",
+  say: "[dryly] That was not the wand, apprentice. That was the cellar, doing as it was told. The Guild called it yield. The insurers had another word.",
+  group: "Story · Docent · asides",
+  seconds: 12.46,
+  urls: [
+   "audio/voice/f0c31eab.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "d5e04585",
+  text: "Three in a chain. The Guild gave medals for less. They were tin, and for punctuality.",
+  say: "[dryly] Three in a chain. The Guild gave medals for less. They were tin, and for punctuality.",
+  group: "Story · Docent · asides",
+  seconds: 8.51,
+  urls: [
+   "audio/voice/d5e04585.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "75087133",
+  text: "You are on fire. I mention it only because nobody else will.",
+  say: "[dryly] You are on fire. I mention it only because nobody else will.",
+  group: "Story · Docent · asides",
+  seconds: 6,
+  urls: [
+   "audio/voice/75087133.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "bd819a66",
+  text: "A waystone, lit. The Guild installed them so that nobody would get lost, and then mislaid the map.",
+  say: "A waystone, lit. The Guild installed them so that nobody would get lost, and then mislaid the map.",
+  group: "Story · Docent · asides",
+  seconds: 7.71,
+  urls: [
+   "audio/voice/bd819a66.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "d6213c5a",
+  text: "An elixir. Do not call it soup. The Guild was very sensitive on the point.",
+  say: "An elixir. Do not call it soup. The Guild was very sensitive on the point.",
+  group: "Story · Docent · asides",
+  seconds: 5.89,
+  urls: [
+   "audio/voice/d6213c5a.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "2892b426",
+  text: "An empty flask. There is no elegant way to be disappointed by one, and yet you have found it.",
+  say: "[dryly] An empty flask. There is no elegant way to be disappointed by one, and yet you have found it.",
+  group: "Story · Docent · asides",
+  seconds: 8.16,
+  urls: [
+   "audio/voice/2892b426.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "65561469",
+  text: "Hooded. Discretion, at last. The Works are watching you learn it, and taking notes.",
+  say: "Hooded. Discretion, at last. The Works are watching you learn it, and taking notes.",
+  group: "Story · Docent · asides",
+  seconds: 8.11,
+  urls: [
+   "audio/voice/65561469.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "b564016e",
+  text: "Eyes in the dark. Do not wave. They take it as an invitation.",
+  say: "Eyes in the dark. Do not wave. They take it as an invitation.",
+  group: "Story · Docent · asides",
+  seconds: 5.81,
+  urls: [
+   "audio/voice/b564016e.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "3f04cc29",
+  text: "A tree has come down. The Guild forbade shouting “timber” on safety grounds. I suggest you disregard them.",
+  say: "A tree has come down. The Guild forbade shouting “timber” on safety grounds. I suggest you disregard them.",
+  group: "Story · Docent · asides",
+  seconds: 8.08,
+  urls: [
+   "audio/voice/3f04cc29.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "e4d0f76f",
+  text: "You have hit one thing with another thing. The Guild had a word for that, and the word was “don’t”.",
+  say: "[dryly] You have hit one thing with another thing. The Guild had a word for that, and the word was “don’t”.",
+  group: "Story · Docent · asides",
+  seconds: 8.31,
+  urls: [
+   "audio/voice/e4d0f76f.mp3"
   ],
   speaker: "docent"
  },
@@ -5311,6 +6488,336 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   speaker: "ash"
  },
  {
+  key: "79ce496d",
+  text: "Not a drop left in the glass, little breath. We have poured one. Please do not spend it on anything clever.",
+  say: "[softly] Not a drop left in the glass, little breath. We have poured one. Please do not spend it on anything clever.",
+  group: "Story · Matron Ash · the run",
+  seconds: 8.74,
+  urls: [
+   "audio/voice/79ce496d.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "11a57bf2",
+  text: "The glass was empty when you came. We have filled it once. That is all we have, and all you may ask.",
+  say: "[softly] The glass was empty when you came. We have filled it once. That is all we have, and all you may ask.",
+  group: "Story · Matron Ash · the run",
+  seconds: 8.55,
+  urls: [
+   "audio/voice/11a57bf2.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "e25b023b",
+  text: "A phial short on the stairs. We have poured another. Try to keep this one.",
+  say: "[softly] A phial short on the stairs. We have poured another. Try to keep this one.",
+  group: "Story · Matron Ash · the run",
+  seconds: 7.34,
+  urls: [
+   "audio/voice/e25b023b.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "b8b78785",
+  text: "The glass runs thinner each time you visit. We keep pouring. Neither of us will say who tires first.",
+  say: "[softly] The glass runs thinner each time you visit. We keep pouring. Neither of us will say who tires first.",
+  group: "Story · Matron Ash · the run",
+  seconds: 8.44,
+  urls: [
+   "audio/voice/b8b78785.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "77ea9218",
+  text: "A great deal of gold to carry downstairs. We do trade, little breath. We have never been seen to spend it.",
+  say: "[softly] A great deal of gold to carry downstairs. We do trade, little breath. We have never been seen to spend it.",
+  group: "Story · Matron Ash · the run",
+  seconds: 8.87,
+  urls: [
+   "audio/voice/77ea9218.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "63d84408",
+  text: "You carry a great deal of gold, and the Heart takes no payment. We do.",
+  say: "[softly] You carry a great deal of gold, and the Heart takes no payment. We do.",
+  group: "Story · Matron Ash · the run",
+  seconds: 6.62,
+  urls: [
+   "audio/voice/63d84408.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "3874ad69",
+  text: "Not a phial spent. We are impressed, little breath, and a little worried for you.",
+  say: "[softly] Not a phial spent. We are impressed, little breath, and a little worried for you.",
+  group: "Story · Matron Ash · the run",
+  seconds: 7.17,
+  urls: [
+   "audio/voice/3874ad69.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "87565a16",
+  text: "Not a scratch on the glass. The Works will have noticed. It notices everything; it simply does not say.",
+  say: "[softly] Not a scratch on the glass. The Works will have noticed. It notices everything; it simply does not say.",
+  group: "Story · Matron Ash · the run",
+  seconds: 8.34,
+  urls: [
+   "audio/voice/87565a16.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "9f115bf3",
+  text: "Thirty more of you. Do try to bring them all back.",
+  say: "[softly] Thirty more of you. Do try to bring them all back.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 4.53,
+  urls: [
+   "audio/voice/9f115bf3.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "d4a6bbc3",
+  text: "Sharper. The Guild called that overtime, and did not pay it.",
+  say: "[softly] Sharper. The Guild called that overtime, and did not pay it.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 5.9,
+  urls: [
+   "audio/voice/d4a6bbc3.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "8f67f0eb",
+  text: "You take what you need from what you meet. We approve, and will not be looking.",
+  say: "[softly] You take what you need from what you meet. We approve, and will not be looking.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 7.1,
+  urls: [
+   "audio/voice/8f67f0eb.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "524cd2a4",
+  text: "Longer in the air. Do come down eventually, little breath. Everyone does.",
+  say: "[softly] Longer in the air. Do come down eventually, little breath. Everyone does.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 8.77,
+  urls: [
+   "audio/voice/524cd2a4.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "99a82380",
+  text: "Faster to refill. We envy you. Nobody ever refilled us.",
+  say: "[softly] Faster to refill. We envy you. Nobody ever refilled us.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 6.41,
+  urls: [
+   "audio/voice/99a82380.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "94e9cd04",
+  text: "Quicker feet. Do use them for leaving, as well as arriving.",
+  say: "[softly] Quicker feet. Do use them for leaving, as well as arriving.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 4.37,
+  urls: [
+   "audio/voice/94e9cd04.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "d931a76b",
+  text: "Padded, then. Good. The Heart is a great one for noise.",
+  say: "[softly] Padded, then. Good. The Heart is a great one for noise.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 5.36,
+  urls: [
+   "audio/voice/d931a76b.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "50fd8309",
+  text: "Skin that declines to burn. We had something similar once. It was bark, and it did burn.",
+  say: "[softly] Skin that declines to burn. We had something similar once. It was bark, and it did burn.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 8.79,
+  urls: [
+   "audio/voice/50fd8309.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "27a0334a",
+  text: "You will not mind the acid so much. We stopped minding years ago. That is not a recommendation.",
+  say: "[softly] You will not mind the acid so much. We stopped minding years ago. That is not a recommendation.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 9.52,
+  urls: [
+   "audio/voice/27a0334a.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "5722611b",
+  text: "The gold will come to you now. It was always a little keen.",
+  say: "[softly] The gold will come to you now. It was always a little keen.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 5.01,
+  urls: [
+   "audio/voice/5722611b.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "3e72ce43",
+  text: "The sextons would approve. They always did like a helpful pair of hands.",
+  say: "[softly] The sextons would approve. They always did like a helpful pair of hands.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 4.99,
+  urls: [
+   "audio/voice/3e72ce43.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "fbb0f409",
+  text: "You will walk on the pools. The pools will be cross about it.",
+  say: "[softly] You will walk on the pools. The pools will be cross about it.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 4.74,
+  urls: [
+   "audio/voice/fbb0f409.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "baf0bb1b",
+  text: "Patience, made into a weapon. Some of us have been at it a century, with less flair.",
+  say: "[softly] Patience, made into a weapon. Some of us have been at it a century, with less flair.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 7.5,
+  urls: [
+   "audio/voice/baf0bb1b.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "d0766581",
+  text: "A hood. Very sensible. The dark is easier to live in when it likes you.",
+  say: "[softly] A hood. Very sensible. The dark is easier to live in when it likes you.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 6.22,
+  urls: [
+   "audio/voice/d0766581.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "2a30b01f",
+  text: "The Cisterns are rude to the unshod. You will be the exception, for a while.",
+  say: "[softly] The Cisterns are rude to the unshod. You will be the exception, for a while.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 6.78,
+  urls: [
+   "audio/voice/2a30b01f.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "0e6aa869",
+  text: "Warm blood. A rare thing down here. We have moss instead. It does not help.",
+  say: "[softly] Warm blood. A rare thing down here. We have moss instead. It does not help.",
+  group: "Story · Matron Ash · bargains",
+  seconds: 7.58,
+  urls: [
+   "audio/voice/0e6aa869.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "60acb964",
+  text: "Hold still. There. Good as slightly used.",
+  say: "[softly] Hold still. There. Good as slightly used.",
+  group: "Story · Matron Ash · the till",
+  seconds: 5.65,
+  urls: [
+   "audio/voice/60acb964.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "dce0b956",
+  text: "A little sturdier. We have plenty more where that came from. It is mostly moss.",
+  say: "[softly] A little sturdier. We have plenty more where that came from. It is mostly moss.",
+  group: "Story · Matron Ash · the till",
+  seconds: 6.86,
+  urls: [
+   "audio/voice/dce0b956.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "f5b82eb3",
+  text: "You might have sat down first.",
+  say: "[softly] You might have sat down first.",
+  group: "Story · Matron Ash · the till",
+  seconds: 2.14,
+  urls: [
+   "audio/voice/f5b82eb3.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "746a9eb2",
+  text: "A finer frame. We will find a use for the old one. Kindling, probably.",
+  say: "[softly] A finer frame. We will find a use for the old one. Kindling, probably.",
+  group: "Story · Matron Ash · the till",
+  seconds: 6.54,
+  urls: [
+   "audio/voice/746a9eb2.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "fd10323d",
+  text: "The Void Lattice. We do not ask where it came from. It would only upset the moss.",
+  say: "[softly] The Void Lattice. We do not ask where it came from. It would only upset the moss.",
+  group: "Story · Matron Ash · the till",
+  seconds: 7.98,
+  urls: [
+   "audio/voice/fd10323d.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
+  key: "dcd94d36",
+  text: "Mislaid by better alchemists. Take care of it.",
+  say: "[softly] Mislaid by better alchemists. Take care of it.",
+  group: "Story · Matron Ash · the till",
+  seconds: 4.53,
+  urls: [
+   "audio/voice/dcd94d36.mp3"
+  ],
+  speaker: "ash"
+ },
+ {
   key: "f068157b",
   text: "Kettleby. A town with one breath left.",
   say: "Kettleby. A town with one breath left.",
@@ -5329,17 +6836,6 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 3.68,
   urls: [
    "audio/voice/1960daf7.mp3"
-  ],
-  speaker: "docent"
- },
- {
-  key: "1c7cce28",
-  text: "Welcome to the Works, apprentice.",
-  say: "Welcome to the Works, apprentice.",
-  group: "Story · Opening",
-  seconds: 2.72,
-  urls: [
-   "audio/voice/1c7cce28.mp3"
   ],
   speaker: "docent"
  },
@@ -5439,6 +6935,50 @@ export const NARRATION_LINES: readonly NarrationLine[] = [
   seconds: 2.48,
   urls: [
    "audio/voice/d7317cff.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "4e0adeb0",
+  text: "You made it! So did I. I brought the kettle. Don’t ask how. I have only mostly scalded myself.",
+  say: "[excited] You made it! So did I. I brought the kettle. Don’t ask how. I have only mostly scalded myself.",
+  group: "Story · Ending",
+  seconds: 7.03,
+  urls: [
+   "audio/voice/4e0adeb0.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "49c9714e",
+  text: "Top of the flue, and the kettle’s on. I did say I was good at further.",
+  say: "Top of the flue, and the kettle’s on. I did say I was good at further.",
+  group: "Story · Ending",
+  seconds: 4.59,
+  urls: [
+   "audio/voice/49c9714e.mp3"
+  ],
+  speaker: "pell"
+ },
+ {
+  key: "afb71759",
+  text: "Archmage, at the last. The Guild would have held a banquet. It has me, and the clean air, which I am assured is better.",
+  say: "[dryly] Archmage, at the last. The Guild would have held a banquet. It has me, and the clean air, which I am assured is better.",
+  group: "Story · Ending",
+  seconds: 9.42,
+  urls: [
+   "audio/voice/afb71759.mp3"
+  ],
+  speaker: "docent"
+ },
+ {
+  key: "9309333c",
+  text: "Up in Kettleby, someone opens a window. Somewhere else, this very morning, a stranger opens the same one.",
+  say: "Up in Kettleby, someone opens a window. Somewhere else, this very morning, a stranger opens the same one.",
+  group: "Story · Ending",
+  seconds: 7.68,
+  urls: [
+   "audio/voice/9309333c.mp3"
   ],
   speaker: "docent"
  }
