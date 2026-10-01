@@ -140,3 +140,15 @@ the `*-suite` runners, performance (`verify-living-performance`, `verify-fidelit
 - `verify-console-bundle.mjs` — static, after `npm run build`: the public build carries none of the travel commands' text.
 - `verify-console` (the older one) still stops at its `#mode-build-btn` click (the play screen hides the header); its 35
   checks before that point pass, and the frozen main server stops at the same place.
+
+## Added 2026-09-30: the Builder Studio shell
+
+The palette is now Terrain / Objects / Library tabs, the game header is hidden while the Builder is open, and the
+Builder panels were restyled. Probes follow through `run-helpers` (`clickBuilderTool`, `clickBuilderKind`,
+`clickBuilderControl`, `openBuilderPaletteTab`, `toggleBuilderMode`). Pass: builder-power (22), builder-prefabs (24),
+builder-dock-split (10), builder-responsive (18), overlay-hit. Pass a URL as the first argument (the default is :5173).
+
+- `verify-builder-ux` is **stale against the new shell**, not a game bug: it asserts the retired collapsible palette
+  sections (`palette.materials` toggle - dropped), old panel-header metrics (uppercase 11px chrome, `titleOk`), and hovers
+  `.bp-tool[data-kind=...]` while the Objects tab is hidden (use `clickBuilderKind`). Two steps were already repaired;
+  the rest needs a rewrite against the shell rather than a patch.

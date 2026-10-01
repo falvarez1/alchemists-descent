@@ -46,13 +46,13 @@ export class PrefabPanel {
     private hooks: PrefabPanelHooks,
   ) {
     host.innerHTML = `
-      <button id="bp-prefab-capture" aria-label="Save the selected region — cells, objects, links, lights — as a reusable prefab">CAPTURE REGION</button>
+      <button id="bp-prefab-capture" aria-label="Save the selected region — cells, objects, links, lights — as a reusable prefab">Capture selected region</button>
       <div class="bp-grid bp-grid3">
-        <button id="bp-prefab-import" aria-label="Import .prefab.json or terrain .png files">IMPORT</button>
-        <button id="bp-prefab-png" aria-label="Export the selected region's cells as a paintable PNG">PNG&#8599;</button>
-        <button id="bp-prefab-gpl" aria-label="Export the material palette as a .gpl swatch file (Aseprite/GIMP)">.GPL</button>
+        <button id="bp-prefab-import" aria-label="Import .prefab.json or terrain .png files">Import…</button>
+        <button id="bp-prefab-png" aria-label="Export the selected region's cells as a paintable PNG">Export PNG</button>
+        <button id="bp-prefab-gpl" aria-label="Export the material palette as a .gpl swatch file (Aseprite/GIMP)">Palette</button>
       </div>
-      <input id="bp-prefab-search" type="search" class="editor-search" placeholder="search prefabs" spellcheck="false">
+      <input id="bp-prefab-search" type="search" class="editor-search" placeholder="Search prefabs" spellcheck="false">
       <div id="bp-prefab-tags"></div>
       <div id="bp-prefab-list"></div>`;
     this.searchEl = host.querySelector('#bp-prefab-search') as HTMLInputElement;
@@ -121,7 +121,7 @@ export class PrefabPanel {
       empty.className = isFilterEmpty ? 'bp-hint b-empty' : 'bp-hint';
       empty.textContent = isFilterEmpty
         ? 'No matching prefabs.'
-        : 'Select a region, then CAPTURE — objects, links and lights inside come along.';
+        : 'Select a region, then Capture: the objects, links and lights inside come along.';
       this.listEl.appendChild(empty);
     }
     for (const p of mine) this.listEl.appendChild(this.card(p, false));

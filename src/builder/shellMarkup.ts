@@ -234,7 +234,7 @@ export function buildShellMarkup(options: ShellMarkupOptions): string {
         <div class="bp-panes">
           <div class="bp-pane" role="tabpanel" id="bp-pane-materials" aria-labelledby="bp-tab-materials" data-pane="materials">
             <div class="bp-armed" id="bp-armed"><span class="bp-armed-dot"></span><div><b id="bp-armed-name">Sand</b><span>Armed material</span></div></div>
-            <div><div class="bp-group-title"><span class="st-label">Materials</span></div><div id="bp-materials" class="bp-grid bp-grid6"></div></div>
+            <div><div class="bp-group-title"><span class="st-label">Materials</span><span class="bp-count" id="bp-mat-count"></span></div><input type="search" id="bp-mat-search" class="st-input bp-search" placeholder="Filter materials" aria-label="Filter materials" spellcheck="false"><div id="bp-materials" class="bp-grid bp-grid6"></div><p id="bp-mat-empty" class="bp-hint" hidden>No material matches that.</p></div>
           </div>
           <div class="bp-pane" role="tabpanel" id="bp-pane-objects" aria-labelledby="bp-tab-objects" data-pane="objects" hidden>
             <input type="search" id="bp-obj-search" class="st-input bp-search" placeholder="Filter objects" aria-label="Filter objects" spellcheck="false">
@@ -281,6 +281,7 @@ export function buildShellMarkup(options: ShellMarkupOptions): string {
           <button id="bt-zoom-fit" type="button" class="bt-tool" aria-label="Fit the level">${editorIcon('target', 14)}</button>
         </span>
       </div>
+      <div id="builder-contextbar" class="st-contextbar" role="toolbar" aria-label="Actions for the region" hidden></div>
       <div id="builder-center-slot"></div>
       <div id="builder-overlay"><canvas id="builder-canvas"></canvas><div id="builder-markers"></div></div>
       <div id="bp-matpop" style="display:none"></div>

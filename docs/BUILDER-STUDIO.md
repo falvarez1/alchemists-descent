@@ -142,6 +142,17 @@ prototype for a direction the game no longer takes.
 
 The **Reference gallery** moved to *Help*; it is an art browser, not a level tool.
 
+## Small things that carry the feel (second polish round)
+
+- **Context bar** (`#builder-contextbar`): selecting a region (or lifting one with `X`) shows its verbs at the foot of the
+  map: Lift & move / Save as prefab / Export PNG / Clear, then Rotate / Flip / Cancel / Place while a block is floating.
+  It runs the same commands as the keys and the Level menu; it sits at the bottom because the top edge is where tool
+  flyouts open (a bar there swallowed their clicks).
+- **Material filter** at the head of the Terrain tab: type to narrow the swatches, Enter arms the first match.
+- **Validation cards** use a severity icon plus a coloured left edge instead of a `[ERROR]` text prefix; the outliner,
+  Library tab, help dialog and playtest banner were moved onto the same tokens (sentence case, neutral resting surfaces).
+- The run's title card and narrator caption are hidden while the Builder is open; they belong to the game.
+
 ## Extending it
 
 - **Element ids are contract.** `Builder.ts` binds by id (`this.el('b-save')` throws on a miss) and

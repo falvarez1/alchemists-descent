@@ -231,24 +231,11 @@ check(
 );
 await page.keyboard.press('Escape');
 await page.waitForTimeout(80);
-await page.click('[data-section-toggle="palette.materials"]');
-await page.waitForTimeout(50);
-let materialSection = await page.evaluate(() => {
-  const section = document.querySelector('.bp-section[data-section="palette.materials"]');
-  const button = document.querySelector('[data-section-toggle="palette.materials"]');
-  return { collapsed: section?.classList.contains('collapsed') === true, expanded: button?.getAttribute('aria-expanded') };
-});
-check('palette sections collapse with aria state', materialSection.collapsed && materialSection.expanded === 'false', JSON.stringify(materialSection));
+// The palette is Terrain/Objects/Library tabs now; its collapsible sections (and their aria state) were cut.
 await page.click('#b-reset-workspace');
 await page.waitForTimeout(150);
-materialSection = await page.evaluate(() => {
-  const section = document.querySelector('.bp-section[data-section="palette.materials"]');
-  const button = document.querySelector('[data-section-toggle="palette.materials"]');
-  return { collapsed: section?.classList.contains('collapsed') === true, expanded: button?.getAttribute('aria-expanded') };
-});
-check('workspace reset restores collapsed palette sections', !materialSection.collapsed && materialSection.expanded === 'true', JSON.stringify(materialSection));
 const bodyDragStart = await page.evaluate(() => {
-  const body = document.querySelector('#builder-palette .bp-section-body');
+  const body = document.querySelector('#builder-palette .bp-pane:not([hidden]) #bp-materials');
   const r = body.getBoundingClientRect();
   return { x: r.left + Math.min(28, r.width / 2), y: r.top + Math.min(28, r.height / 2) };
 });

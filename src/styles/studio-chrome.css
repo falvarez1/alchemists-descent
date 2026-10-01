@@ -600,3 +600,70 @@ body.builder-open #sound-quick { display: none; }
 .builder-help-section { font-size: 11px; color: var(--st-accent-text); text-transform: uppercase; }
 .builder-help-title { font-size: 15px; }
 @media (max-width: 700px) { .builder-help-grid { grid-template-columns: 1fr; } }
+
+/* --------------------------------------------------------------- library tab */
+
+#builder-root #bp-prefab-host { display: flex; flex-direction: column; gap: 8px; }
+#builder-root #bp-prefab-capture {
+    height: 28px; background: var(--st-accent); border: 1px solid var(--st-accent); color: var(--st-accent-fg);
+    font: 600 12px/1 var(--st-font); letter-spacing: 0; text-transform: none;
+}
+#builder-root #bp-prefab-capture:hover:not(:disabled) { background: var(--st-accent-hi); border-color: var(--st-accent-hi); color: var(--st-accent-fg); }
+#builder-palette .bp-pane[data-pane='library'] .bp-grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+#builder-root #bp-prefab-import, #builder-root #bp-prefab-png, #builder-root #bp-prefab-gpl,
+#builder-root #bp-prefab-host .bp-grid button, #builder-root #bp-sprite-host > button {
+    height: 26px; padding: 0 8px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-2); background: var(--st-surface-3);
+    color: var(--st-text-2); font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none;
+}
+#builder-root #bp-prefab-import:hover, #builder-root #bp-prefab-png:hover, #builder-root #bp-prefab-gpl:hover,
+#builder-root #bp-sprite-host > button:hover { background: var(--st-surface-4); color: var(--st-text); border-color: var(--st-line-3); }
+#builder-root #bp-prefab-search, #builder-root #bp-sprite-host input[type='search'] {
+    height: 26px; padding: 0 8px; border: 1px solid var(--st-line-2); border-radius: var(--st-r-2); background: var(--st-well);
+    color: var(--st-text); font: 400 12px/1 var(--st-font);
+}
+#builder-root #bp-prefab-search:focus, #builder-root #bp-sprite-host input[type='search']:focus { outline: none; border-color: var(--st-accent-line); box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-accent) 22%, transparent); }
+#builder-palette .bp-hint { padding: 0; color: var(--st-text-3); font: 400 12px/1.5 var(--st-font); text-transform: none; }
+#builder-root .bp-prefab-tag { height: 20px; border-radius: 10px; text-transform: none; letter-spacing: 0; font: 500 11px/1 var(--st-font); }
+#builder-root #bp-assets-btn { height: 28px; justify-content: center; gap: 6px; background: var(--st-surface-3); border: 1px solid var(--st-line-2); color: var(--st-text-2); font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none; border-radius: var(--st-r-2); }
+#builder-root #bp-assets-btn:hover { background: var(--st-surface-4); color: var(--st-text); }
+
+/* playtest banner: the legacy amber button rule has more weight than .st-btn */
+#builder-playtest-banner .st-btn { background: var(--st-surface-3); border: 1px solid var(--st-line-2); color: var(--st-text-2); }
+#builder-playtest-banner .st-btn--primary { background: var(--st-accent); border-color: var(--st-accent); color: var(--st-accent-fg); }
+
+/* ---------------------------------------------------------------- context bar */
+
+/* Floats at the foot of the map while a region (or a lifted block) is selected; the top edge belongs to the tool flyouts. */
+#builder-contextbar.st-contextbar {
+    position: absolute; z-index: 5; bottom: 18px; left: 50%; transform: translateX(-50%); pointer-events: auto;
+    display: flex; align-items: center; gap: 4px; padding: 4px; max-width: calc(100% - 24px);
+    background: color-mix(in srgb, var(--st-surface-2) 96%, transparent); border: 1px solid var(--st-line-2);
+    border-radius: var(--st-r-3); box-shadow: var(--st-shadow-pop); font-family: var(--st-font);
+}
+#builder-contextbar[hidden] { display: none; }
+#builder-contextbar .cb-label { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; color: var(--st-text-2); font: 400 12px/1 var(--st-font); white-space: nowrap; }
+#builder-contextbar .cb-label b { color: var(--st-text); font-weight: 600; font-variant-numeric: tabular-nums; }
+#builder-contextbar .cb-label .st-icon { color: var(--st-accent-text); }
+#builder-root #builder-contextbar .cb-btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--st-r-2);
+    background: transparent; color: var(--st-text-2); font: 500 12px/1 var(--st-font); letter-spacing: 0; text-transform: none; white-space: nowrap; cursor: pointer;
+}
+#builder-root #builder-contextbar .cb-btn:hover { background: var(--st-surface-4); color: var(--st-text); }
+#builder-root #builder-contextbar .cb-btn.cb-primary { background: var(--st-accent); border-color: var(--st-accent); color: var(--st-accent-fg); }
+#builder-root #builder-contextbar .cb-btn.cb-primary:hover { background: var(--st-accent-hi); border-color: var(--st-accent-hi); }
+#builder-contextbar .st-kbd { background: color-mix(in srgb, var(--st-well) 70%, transparent); }
+#builder-root #builder-contextbar .cb-primary .st-kbd { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.28); color: var(--st-accent-fg); }
+
+/* ------------------------------------------------------------ material filter */
+
+#builder-palette .bp-group-title { display: flex; align-items: baseline; justify-content: space-between; }
+#builder-palette .bp-count { color: var(--st-text-4); font: 500 11px/1 var(--st-font); font-variant-numeric: tabular-nums; }
+#builder-palette #bp-mat-search {
+    width: 100%; box-sizing: border-box; height: 26px; margin: 4px 0 8px; padding: 0 8px; border: 1px solid var(--st-line-2);
+    border-radius: var(--st-r-2); background: var(--st-well); color: var(--st-text); font: 400 12px/1 var(--st-font);
+}
+#builder-palette #bp-mat-search:focus { outline: none; border-color: var(--st-accent-line); box-shadow: 0 0 0 2px color-mix(in srgb, var(--st-accent) 22%, transparent); }
+#builder-palette .bp-swatch[hidden] { display: none; }
+
+/* the run's title cards belong to the game; the editor map is not a level you are playing */
+body.builder-open #wave-banner, body.builder-open #narration-caption { display: none; }

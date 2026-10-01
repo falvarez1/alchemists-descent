@@ -4456,6 +4456,84 @@ export class Builder {
   private chipReady = false;
   private closeToolbarFlyouts: (except?: HTMLElement) => void = () => undefined;
 
+  private contextBarKey = '';
+
+  /** Region / floating-block actions: what you can DO with what you just selected, right where you are looking. */
+  private wireContextBar(): void {
+    const bar = this.el('builder-contextbar');
+    bar.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-cb]');
+      if (!btn) return;
+      switch (btn.dataset.cb) {
+        case 'lift':
+          this.runUiCommand('builder.liftRegion');
+          break;
+        case 'prefab':
+          this.runUiCommand('builder.capturePrefab');
+          break;
+        case 'png':
+          this.runUiCommand('builder.exportRegionPng');
+          break;
+        case 'clear':
+          this.clearRegion();
+          break;
+        case 'land':
+          this.commitFloat();
+          break;
+        case 'cancel':
+          this.cancelFloat();
+          break;
+        case 'rotate':
+        case 'flip':
+          if (this.floating) {
+            this.floating = btn.dataset.cb === 'rotate' ? rotateFloating(this.floating) : mirrorFloating(this.floating);
+            this.floatCanvas = null;
+          }
+          break;
+      }
+      this.contextBarKey = '?'; // force the next sync to rebuild (or hide) the bar
+    });
+  }
+
+  private clearRegion(): void {
+    if (!this.region) return;
+    this.region = null;
+    this.regionMask = null;
+    this.regionMaskCells = 0;
+    this.status('REGION CLEARED');
+    this.syncProcPanel();
+  }
+
+  private syncContextBar(): void {
+    const bar = this.root.querySelector<HTMLElement>('#builder-contextbar');
+    if (!bar) return;
+    const f = this.floating;
+    const r = this.region;
+    const key = f ? 'f' + f.w + 'x' + f.h : r ? 'r' + r.x0 + ',' + r.y0 + ',' + r.x1 + ',' + r.y1 : '';
+    if (key === this.contextBarKey) return;
+    this.contextBarKey = key;
+    if (!key) {
+      bar.hidden = true;
+      bar.innerHTML = '';
+      return;
+    }
+    const kbd = (k: string): string => '<kbd class="st-kbd">' + k + '</kbd>';
+    const btn = (id: string, label: string, hotkey?: string, cls = ''): string =>
+      '<button type="button" class="cb-btn' + (cls ? ' ' + cls : '') + '" data-cb="' + id + '">' + label + (hotkey ? kbd(hotkey) : '') + '</button>';
+    if (f) {
+      bar.innerHTML =
+        '<span class="cb-label">' + editorIcon('select', 14) + '<b>' + f.w + ' × ' + f.h + '</b> block lifted</span>' +
+        btn('rotate', 'Rotate', 'Q') + btn('flip', 'Flip', 'E') + btn('cancel', 'Cancel', 'Esc') + btn('land', 'Place', 'Enter', 'cb-primary');
+    } else if (r) {
+      const w = r.x1 - r.x0 + 1;
+      const h = r.y1 - r.y0 + 1;
+      bar.innerHTML =
+        '<span class="cb-label">' + editorIcon('region', 14) + '<b>' + w + ' × ' + h + '</b> region</span>' +
+        btn('lift', 'Lift &amp; move', 'X', 'cb-primary') + btn('prefab', 'Save as prefab') + btn('png', 'Export PNG') + btn('clear', 'Clear', 'Esc');
+    }
+    bar.hidden = false;
+  }
+
   /** Everything the shell adds on top of the document/tool wiring. Element ids stay the contract. */
   private wireStudioChrome(): void {
     this.decorateObjectCards();
@@ -4465,6 +4543,8 @@ export class Builder {
     this.wireGameLink();
     this.wireValidationChips();
     this.wireObjectFilter();
+    this.wireMaterialFilter();
+    this.wireContextBar();
     this.syncSnapButton();
     this.syncSymButton();
     this.syncMaterialReadout();
@@ -4520,6 +4600,35 @@ export class Builder {
       /* default */
     }
     select(saved);
+  }
+
+  /** Filter the Terrain tab's swatches by name as you type. */
+  private wireMaterialFilter(): void {
+    const input = this.el<HTMLInputElement>('bp-mat-search');
+    const count = this.el('bp-mat-count');
+    const empty = this.el('bp-mat-empty');
+    const swatches = [...this.root.querySelectorAll<HTMLButtonElement>('#bp-materials .bp-swatch')];
+    count.textContent = String(swatches.length);
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      let shown = 0;
+      for (const sw of swatches) {
+        const hit = q === '' || (sw.dataset.name ?? '').toLowerCase().includes(q);
+        sw.hidden = !hit;
+        if (hit) shown++;
+      }
+      count.textContent = q === '' ? String(swatches.length) : shown + ' of ' + swatches.length;
+      empty.hidden = shown > 0;
+    });
+    // Enter arms the first match, so "lava, Enter" is the whole gesture.
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const first = swatches.find((sw) => !sw.hidden);
+      if (first) {
+        e.preventDefault();
+        first.click();
+      }
+    });
   }
 
   /** Filter the Objects pane as you type; empty groups fold away. */
@@ -9660,6 +9769,7 @@ export class Builder {
     if (!this.isOpen) return;
     this.rafId = requestAnimationFrame(this.loop);
     this.syncWorkspaceFrame();
+    this.syncContextBar();
     const rect = this.overlay.getBoundingClientRect();
     if (rect.width === 0) return;
     this.syncWandLightPreview();
