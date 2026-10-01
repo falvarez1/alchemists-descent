@@ -64,6 +64,8 @@ export interface RunSummary {
   difficulty?: Difficulty;
   /** The wands the run ended with, in one line ("Frost-Charged Spark Bolt & Excavate Ray"); absent on old ledgers and wandless summaries. */
   build?: string;
+  /** The complications the run carried (content/mutators ids, canonical order); absent on an ordinary run, which keeps its share line byte for byte. */
+  mutators?: string[];
 }
 
 /** One alchemical kill, as announced to callouts, audio, stats and clips. */
