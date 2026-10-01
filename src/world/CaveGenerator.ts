@@ -1479,9 +1479,11 @@ export class WorldGen implements WorldGenApi {
       const placedWs = placeRouteWaystones({
         // (the walk ends where the floor does: its portal, or on the last floor the colossus's hall)
         world, ledger, spawn, exit: portal ?? boss ?? { x: wellX, y: sealY - 12 }, bowls, waystones,
-        key: pickups.find((p) => p.kind === 'key') ?? null,
+        key: pickups.find((p) => p.kind === 'key') ?? null, cauldron,
       });
-      if (shouldLogDevDiagnostics() && (placedWs.moved > 0 || placedWs.brazier)) console.warn(`[gen] ${def.id}: route waystones - ${placedWs.moved} moved, ${placedWs.kept} kept${placedWs.brazier ? ', key brazier' : ''}`);
+      if (shouldLogDevDiagnostics() && (placedWs.moved > 0 || placedWs.brazier || placedWs.cauldron.moved)) {
+        console.warn(`[gen] ${def.id}: route waystones - ${placedWs.moved} moved, ${placedWs.kept} kept${placedWs.brazier ? ', key brazier' : ''}; cauldron ${placedWs.cauldron.moved ? `moved ${placedWs.cauldron.from} -> ${placedWs.cauldron.to} cells off the route` : `kept, ${placedWs.cauldron.from} off`}`);
+      }
       stage('route-waystones');
     }
 

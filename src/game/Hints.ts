@@ -330,7 +330,7 @@ export class HintSystem implements HintApi {
         consider({
           priority: 2,
           dist2: d2,
-          info: { key: 'cauldron', line: 'Fill the bowl with materials, then heat it — Q pours from your flask', world: { x: cauldron.x, y: cauldron.y } },
+          info: { key: 'cauldron', line: ctx.brewing?.view().heated ? 'The fire is lit — E siphons from a pool or a plant, Q pours into the bowl' : 'Fill the bowl with materials, then heat it — Q pours from your flask', world: { x: cauldron.x, y: cauldron.y } },
           teach: { title: 'Brewing', body: 'Drop real materials into the cauldron bowl (or pour them from your flask) and add heat — it brews an elixir you can drink.' },
         });
       }
