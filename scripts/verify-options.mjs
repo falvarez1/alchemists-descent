@@ -701,7 +701,7 @@ try {
     const dom = () => page.evaluate(() => ({ layer: !!document.getElementById('enemy-readout-layer'), bars: document.querySelectorAll('.enemy-hp-bar').length, nums: [...document.querySelectorAll('.enemy-hp-num')].map((n) => n.textContent) }));
     await page.evaluate(() => { const c = window.__game.ctx; c.state.debugGodMode = true; c.player.invuln = 99999; });
     const a = await spawn('slime', 60);
-    const b = await spawn('slime', -60);
+    await spawn('slime', -60);
     await page.waitForTimeout(800);
     await hit(a, 10);
     await page.waitForTimeout(400);
@@ -730,7 +730,7 @@ try {
     await page.waitForTimeout(2600);
     const timing = await page.evaluate(([idx]) => new Promise((resolve) => {
       const c = window.__game.ctx; const e = c.enemies[idx]; c.enemyCtl.damage(e, 6, 0, 0, 'direct');
-      const t0 = performance.now(); const out = {};
+      const out = {};
       const snap = () => ({ bars: document.querySelectorAll('.enemy-hp-bar').length, nums: document.querySelectorAll('.enemy-hp-num').length });
       setTimeout(() => { out.at1200 = snap(); }, 1200);
       setTimeout(() => { out.at1750 = snap(); out.op1750 = Number(document.querySelector('.enemy-hp-bar')?.style.opacity ?? -1); }, 1750);
@@ -745,7 +745,6 @@ try {
     await page.waitForTimeout(1300);
     const total = await page.evaluate((idx) => { const e = window.__game.ctx.enemies[idx]; return e.maxHp - e.hp; }, a);
     await page.screenshot({ path: `${out}/enemyhp-burn.png` });
-    const streamNums = await page.evaluate(() => window.__burnSeen ?? null);
     check(total > 8, `(a 40-tick burn dealt ${total.toFixed(1)} damage)`);
 
     // a real spell: aim at the enemy with the real mouse and cast

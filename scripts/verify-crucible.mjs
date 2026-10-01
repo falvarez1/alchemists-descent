@@ -42,7 +42,7 @@ const lock = () => ctxEval(() => {
 });
 /** World x of outward distance u from the hall's flank (u = 0 is the first column outside the hall's rect). */
 const ox = (L, u) => (L.e > 0 ? L.plug.x - 4 + u : L.plug.x + 15 - u);
-const state = (L) => ctxEval(({ plugId, relayId, gaugeId, valveId, leverId, zone, Fr, room, e, plugX }) => {
+const state = (L) => ctxEval(({ plugId, relayId, gaugeId, valveId, leverId, zone, Fr, room }) => {
   const ctx = window.__game.ctx, rt = ctx.levels.current, w = ctx.world;
   const g = (id) => rt.mechanisms.find((m) => m.id === id);
   const count = (x0, y0, x1, y1, t) => { let n = 0; for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (w.types[w.idx(x, y)] === t) n++; return n; };

@@ -202,7 +202,7 @@ try {
     assert.ok(Math.abs(s.px - L.markX) < 8, `standing on the brass (${s.px} vs ${L.markX})`);
     if (mode === 'botch') {
       // the gas is lost before the shot (a leak, a stray flame elsewhere): all but a pinch is gone
-      await ctxEval(({ bx, by, sx, sy }) => {
+      await ctxEval(({ bx, by }) => {
         const w = window.__game.ctx.world; let kept = 0;
         for (let y = by - 30; y <= by + 2; y++) for (let x = bx - 20; x <= bx + 20; x++) { const i = w.idx(x, y); if (w.types[i] === 38) { if (kept < 5 && x > bx - 8) { kept++; } else w.replaceCellAt(i, 0, 0x08080c); } }
       }, { bx: L.bx, by: L.by });

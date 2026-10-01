@@ -221,7 +221,7 @@ describe('writing puddles, and checking the route', () => {
 });
 
 describe('a vent', () => {
-  const gasVent = (world: World): Vent => ({ kind: 'gas', x: 80, y: FLOOR, cell: Cell.MarshGas, dir: 180, rate: 22, burst: 4, phase: 0, budget: 10 });
+  const gasVent = (_world: World): Vent => ({ kind: 'gas', x: 80, y: FLOOR, cell: Cell.MarshGas, dir: 180, rate: 22, burst: 4, phase: 0, budget: 10 });
 
   it('emits gas upward into open air, only while it has budget', () => {
     const world = cave();
