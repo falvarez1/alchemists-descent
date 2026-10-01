@@ -338,6 +338,15 @@ export class RunDirector implements RunApi {
     return true;
   }
 
+  debugSetMutators(ctx: Ctx, ids: readonly string[]): boolean {
+    if (!this.active || !this.state) return false;
+    const next = cleanMutators(ids);
+    if (next.length > 0) this.state.mutators = next;
+    else delete this.state.mutators;
+    ctx.mutators?.activate(ctx, next);
+    return true;
+  }
+
   private onPlayerDied(cause: string): void {
     const ctx = this.ctx;
     if (!this.active || !this.state) return;

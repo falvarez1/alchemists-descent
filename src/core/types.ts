@@ -3678,6 +3678,8 @@ export interface RunApi {
   debugSetPhials?(ctx: Ctx, phials: number): boolean;
   /** Dev console `kit`: name another kit for the tracked run (the ledger and Pell read it). False with no run. */
   debugSetKit?(kit: KitId): boolean;
+  /** Dev console `mutator`: put another set of complications in force for the tracked run (its ledger and a resume read it). False with no run. */
+  debugSetMutators?(ctx: Ctx, ids: readonly string[]): boolean;
 }
 
 export interface Ctx {
