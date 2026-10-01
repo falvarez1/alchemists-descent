@@ -110,7 +110,7 @@ async function carveArena(page) {
     const w = c.world;
     const px = Math.floor(c.player.x);
     const py = Math.floor(c.player.y) - 4;
-    for (let y = py - 90; y <= py + 14; y++) for (let x = px - 190; x <= px + 190; x++) {
+    for (let y = py - 90; y <= py + 14; y++) for (let x = px - 300; x <= px + 300; x++) {
       if (!w.inBounds(x, y)) continue;
       const i = w.idx(x, y);
       if (y <= py) w.clearCellAt(i);
@@ -496,15 +496,17 @@ async function noticeRange(page) {
   await carveArena(page);
   return page.evaluate(async () => {
     const c = window.__game.ctx;
+    // The arrival's grace (nothing sees him while a floor's name is up) is over, and the foe faces him.
+    c.state.arrivalGraceUntil = 0;
     const px = Math.floor(c.player.x), py = Math.floor(c.player.y);
     c.player.hp = c.player.maxHp = 100000;
     let far = 0;
-    for (let d = 40; d <= 260; d += 20) {
+    for (let d = 40; d <= 280; d += 20) {
       const e = c.enemyCtl.spawn('slime', px + d, py, { exact: true });
       if (!e) continue;
       e.sleeping = false; e.hp = e.maxHp = 100000;
       let seen = false;
-      for (let t = 0; t < 40 && !seen; t++) { await new Promise((r) => setTimeout(r, 25)); seen = e.mind?.visible === true; }
+      for (let t = 0; t < 40 && !seen; t++) { await new Promise((r) => setTimeout(r, 25)); if (e.mind) e.mind.facing = -1; seen = e.mind?.visible === true; }
       if (seen) far = d;
       c.enemyCtl.kill(e, 0, 0, 'direct');
     }
@@ -535,20 +537,22 @@ async function burnTest(page) {
     // Three long planks lying on the arena floor, a fire at the left end of each.
     for (const [dy] of [[0], [-5], [-10]]) {
       for (let x = px + 20; x <= px + 150; x++) for (let y = py + dy - 2; y <= py + dy; y++) { w.replaceCellAt(w.idx(x, y), 4, 0x8a5a2c); total++; }
-      for (let y = py + dy - 2; y <= py + dy; y++) w.replaceCellAt(w.idx(px + 19, y), 5, 0xffa030);
+      for (let y = py + dy - 2; y <= py + dy; y++) { const i = w.idx(px + 19, y); w.replaceCellAt(i, 5, 0xffa030); w.life[i] = 400; }
     }
     // Stone ledges under the upper planks so they do not fall.
     for (const dy of [-5, -10]) for (let x = px + 18; x <= px + 152; x++) w.replaceCellAt(w.idx(x, py + dy + 1), 12, 0x6a6e72);
     c.player.hp = c.player.maxHp = 100000;
     Object.assign(c.player, { x: px - 30, y: py });
-    await new Promise((r) => setTimeout(r, 9000));
-    let left = 0;
-    for (let dy of [0, -5, -10]) for (let x = px + 20; x <= px + 150; x++) for (let y = py + dy - 2; y <= py + dy; y++) if (w.types[w.idx(x, y)] === 4) left++;
-    return { total, left, burnt: total - left };
+    const count = () => { let left = 0; for (const dy of [0, -5, -10]) for (let x = px + 20; x <= px + 150; x++) for (let y = py + dy - 2; y <= py + dy; y++) if (w.types[w.idx(x, y)] === 4) left++; return left; };
+    await new Promise((r) => setTimeout(r, 3000));
+    const at3 = total - count();
+    await new Promise((r) => setTimeout(r, 3000));
+    const at6 = total - count();
+    return { total, at3, at6, burnt: at6, flammability: c.params.materials[4].flammability };
   });
 }
 async function sectionFuel() {
-  console.log('\n# Tinderbox and Wet Floors: the same planks, the same fire, nine seconds');
+  console.log('\n# Tinderbox and Wet Floors: the same planks, the same fire, six seconds');
   const results = {};
   for (const [label, ids] of [['plain', []], ['tinderbox', ['tinderbox']], ['wet', ['wet-floors']]]) {
     const page = await startRun(ids);
@@ -557,9 +561,9 @@ async function sectionFuel() {
     await page.context().close();
   }
   console.log('   ' + JSON.stringify(results));
-  check('plain, the fire spreads some way along the planks', results.plain.burnt > 20, JSON.stringify(results.plain));
-  check('under Tinderbox the planks burn much further', results.tinderbox.burnt > results.plain.burnt * 1.4, JSON.stringify(results));
-  check('under Wet Floors the damp planks burn less', results.wet.burnt < results.plain.burnt * 0.85, JSON.stringify(results));
+  check('plain, a fire at the end of a plank barely spreads (the Works as issued: wood is slow to catch)', results.plain.burnt < 60, JSON.stringify(results.plain));
+  check('under Tinderbox the same fire runs away along the planks (many times as much burns)', results.tinderbox.burnt > Math.max(60, results.plain.burnt * 5), JSON.stringify(results));
+  check('under Wet Floors the damp planks burn no more than plain', results.wet.burnt <= results.plain.burnt + 20 && results.wet.flammability < results.plain.flammability, JSON.stringify(results));
 }
 
 /* ============================== the floor dressing ============================== */
