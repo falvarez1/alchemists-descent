@@ -72,7 +72,7 @@ export interface BrainOptions {
 
 export interface Brain {
   readonly id: BrainId;
-  readonly level: AiLevel;
+  level: AiLevel;
   /** Fixed tick: read the world, write this tick's inputs. */
   think(ctx: Ctx, self: BrainSelf, tick: number): void;
   readonly status: Readonly<BrainStatus>;

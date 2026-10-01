@@ -11,6 +11,7 @@ import { Cell, CELL_COUNT } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
 import { ConsoleCommandRegistry, parseConsoleLine, splitCommandSequence } from '@/game/console/registry';
 import { createFighterCommands } from '@/game/console/fighters';
+import { createAiCommands } from '@/game/console/ai';
 import { createTravelCommands } from '@/game/console/travel';
 import { createMutatorCommands } from '@/game/console/mutators';
 import type { CompletionRequest, ConsoleCommandDefinition } from '@/game/console/registry';
@@ -2520,6 +2521,7 @@ export function createConsoleApi(ctx: Ctx): ConsoleApi {
   if (__AUTHORING__) {
     for (const def of createTravelCommands()) add(def);
     for (const def of createFighterCommands()) add(def);
+    for (const def of createAiCommands()) add(def);
     for (const def of createMutatorCommands()) add(def);
     add(sequenceCommand());
   }

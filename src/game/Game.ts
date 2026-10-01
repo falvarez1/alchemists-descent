@@ -97,6 +97,7 @@ import { RunSummary } from '@/ui/RunSummary';
 import { RunHud } from '@/ui/RunHud';
 import { FighterChips } from '@/ui/FighterChips';
 import { FighterArenaPanel } from '@/ui/FighterArenaPanel';
+import { runBots } from '@/arena/ai/driver';
 import { DialogueBox } from '@/ui/story/DialogueBox';
 import { StoryCinemaOverlay } from '@/ui/story/StoryCinema';
 
@@ -860,6 +861,8 @@ export class Game {
 
       const tEnt = performance.now();
       if (!dbg.frozenPlayer()) {
+        // A computer fighter, if one is installed (src/arena/ai), writes this tick's inputs just before the body reads them.
+        runBots(ctx);
         ctx.playerCtl.update(ctx);
         // The body's temperature follows where it now stands (its moveK is read next tick).
         ctx.chill?.update(ctx);

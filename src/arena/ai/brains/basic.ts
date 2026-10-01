@@ -67,10 +67,9 @@ export class BasicBrain implements Brain {
   private zReadySince = -1;
   private tReadySince = -1;
   private deadSince = -1;
-  private holding = false;
   private wasHolding = false;
 
-  constructor(private readonly opts: BrainOptions) {
+  constructor(opts: BrainOptions) {
     this.rng = new Rng(opts.seed);
     this.exec = new Execution(this.rng, opts.level);
   }
@@ -95,7 +94,7 @@ export class BasicBrain implements Brain {
     this.noShotTicks = 0;
     this.zReadySince = this.tReadySince = -1;
     this.deadSince = -1;
-    this.holding = this.wasHolding = false;
+    this.wasHolding = false;
     const stats = this.status.stats;
     for (const k of Object.keys(stats)) stats[k] = 0;
     Object.assign(this.status, { intent: 'idle', target: '-', rule: '', aim: null, goalX: null, range: 0, idleTicks: 0 });
@@ -151,7 +150,6 @@ export class BasicBrain implements Brain {
 
     // ---- act: walking ----
     const nav = this.nav;
-    this.holding = false;
     if (target === null && foes.length === 0) {
       st.target = '-';
       st.aim = null;

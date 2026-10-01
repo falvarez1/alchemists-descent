@@ -138,3 +138,46 @@ set is in `ROSTER-IDENTITY.md` under "AI playbook"):
 5. **Perception rules differ per fighter** (Nox's darkness, Thorne's camouflage, Kest's smoke): the WorldView must read the
    same concealment the enemies read (`Enemies.ts` `observedPlayer`), or the bot will see through the abilities it is meant
    to be fooled by.
+
+## 9. Built and measured: v0 and v1 (2026-10-01)
+
+Built (a work package written by an agent that was stopped by a rate limit before it could verify anything; finished and verified
+by the integrator): `src/arena/ai/` (`brain.ts` the contract and `Hands`; `driver.ts` installs a brain on a slot, hands the keyboard
+back; `worldView.ts`; `control.ts` steering with traction awareness and aim with lead; `execution.ts` reaction delay, aim error,
+decision interval and lapses from the brain's own seeded `Rng`; `intent.ts`; `nav.ts` the Yard's hand-authored nodes; `brains/dummy.ts`
+and `brains/basic.ts`), `config/aiTiers.ts` (the five skill levels, live data with ranges), `input/externalControl.ts` (the
+keyboard-detach switch, a `WeakSet` keyed by the input object), the `InputManager` guards (gameplay keys, mouse, wheel and pad do nothing
+while a bot drives; Escape, the console and the panel's keys still work), `Game.updateFixedTick` (`runBots(ctx)` right before
+`playerCtl.update`), the console `ai` command, and the panel's **At the controls** section (You / dummy / basic, skill 1-5, one line
+of what the bot is thinking, and its counters).
+
+Measured (`node scripts/verify-ai-basic.mjs`: a level-3 `basic` brain, the keyboard detached, a ring wave of two slimes and a golem,
+a paused world stepped tick by tick; 3 seeds a fighter):
+
+| Fighter | cleared | median | idle (longest empty-handed run, ticks) | Z used | T used |
+|---|---|---|---|---|---|
+| Ilyra | 3/3 | 3.7 s | 51 | 3/3 | 0/3 |
+| Brann | 3/3 | 5.3 s | 39 | 3/3 | 3/3 |
+| Sable | 3/3 | 4.0 s | 46 | 3/3 | 1/3 |
+| Mara | 3/3 | 4.3 s | 54 | 3/3 | 3/3 |
+| Kest | 3/3 | 1.6 s | 9 | 3/3 | 0/3 |
+| Nox | 3/3 | 1.7 s | 5 | 3/3 | 3/3 |
+| Edda | 3/3 | 2.5 s | 3 | 3/3 | 2/3 |
+| Selene | 3/3 | 2.0 s | 7 | 3/3 | 3/3 |
+| Rusk | 3/3 | 3.0 s | 0 | 3/3 | 3/3 |
+| Thorne | 3/3 | 5.8 s | 1 | **0/3** (pressed 11 times, refused every time) | 0/3 |
+
+- The real `D` key does nothing while a bot drives and works again after `ai off`; the keys and the trigger are released on hand-back.
+- A level-5 bot beats a level-1 bot on a hard wave (two golems, two imps, a bat): clear time plus health lost, median over three
+  fighters x two seeds. Level 1 is slower and takes more damage; the dial works.
+- **The ring wave is easy.** The Yard grants lightning and bomb cards, so most fighters clear it with a chain-lightning on the wet
+  floor in under 5 s. It measures that the bot plays, not how well. The hard wave is the discriminating one.
+- **Father Thorne's tactical is refused every time.** Ironvine grows along a surface the aim crosses; the `basic` brain aims at the
+  foe, not at the ground. This is exactly what a v2 *playbook* is for (AI-FIGHTERS.md 4: "vines on the surface the opponent must
+  cross"). Known gap, not a bug in the kit.
+- One run in about thirty showed a 286-tick (4.8 s) empty-handed stretch for Ilyra; it did not reproduce in three repeats or in a
+  traced re-run. The probe now fails the run when any fight idles longer than 2 s, so it will surface if it recurs.
+
+Not built yet: v2 playbooks (Intent weighted per archetype, the ten rule lists, defence), v3 stocks, perception parity for Nox's
+and Thorne's concealment, a world overlay (the path, the aim line and the range ring: only the panel's line exists), a bot on a *second*
+fighter (the duel, phase 3), and the 1,000-fight soak.

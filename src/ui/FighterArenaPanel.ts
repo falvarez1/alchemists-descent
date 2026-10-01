@@ -8,6 +8,7 @@ import { BODY_RANGES, NEUTRAL_BODY, bodyBars } from '@/core/fighterBody';
 import { getBindings, keyLabel } from '@/input/bindings';
 import { YARD, resetFighterArena, standFighterAt } from '@/world/fighterArena';
 import { openFighterRoster } from '@/ui/fighterRosterHost';
+import { ArenaBotsPanel } from '@/ui/ArenaBotsPanel';
 
 /** The fighters the panel steps through: the classic Alchemist (null) first, then the ten. */
 const CYCLE: ReadonlyArray<FighterId | null> = [null, ...FIGHTER_ORDER];
@@ -48,6 +49,7 @@ export class FighterArenaPanel {
   private readonly unlimited: HTMLInputElement;
   private readonly safe: HTMLInputElement;
   private readonly foesLabel = el('div', 'fa-label', 'Foes');
+  private readonly bots: ArenaBotsPanel;
   private readonly barsEl = el('div', 'fa-bars');
   private readonly moveRead = el('div', 'fa-moveread');
   /** The fighter's movement technique: its name and how, a Go button, its state and a count of uses. */
@@ -151,8 +153,9 @@ export class FighterArenaPanel {
     toggles.append(this.unlimited.parentElement as HTMLElement, this.safe.parentElement as HTMLElement);
     tools.append(toolRow, toggles);
 
+    this.bots = new ArenaBotsPanel(ctx);
     this.body.className = 'fa-body';
-    this.body.append(who, bodyCard, moves, foes, where, tools);
+    this.body.append(who, bodyCard, moves, this.bots.root, foes, where, tools);
     this.root.append(head, this.body);
     (document.getElementById('canvas-holder') ?? document.body).append(this.root);
 
@@ -286,6 +289,7 @@ export class FighterArenaPanel {
       }
     }
     this.sampleMovement();
+    if (this.frame % 6 === 0) this.bots.update();
     if (this.frame++ % 6 !== 0 && this.equipped === fighters.id) return;
     this.draw();
   }

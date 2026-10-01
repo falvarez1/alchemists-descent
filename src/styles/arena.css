@@ -64,6 +64,10 @@
 .fa-btn:hover { background: var(--m-surface-3, #22393d); border-color: var(--fa-accent, #d5b982); }
 .fa-btn:active { transform: translateY(1px); }
 .fa-leave { margin-left: auto; border-color: #6f4b43; color: var(--m-danger, #e0957c); }
+.fa-bots .fa-btn.on { background: var(--m-surface-3, #22393d); border-color: var(--fa-accent, #d5b982); color: var(--m-brass-strong, #f2e3b6); }
+.fa-levels { align-items: center; gap: 4px; }
+.fa-level { min-width: 26px; padding: 2px 0; text-align: center; }
+.fa-think { min-height: 1.4em; font-size: 11.5px; color: var(--m-text-soft, #c9d1c2); }
 .fa-count { color: var(--m-muted, #97a89f); font-size: 11.5px; }
 .fa-toggles { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .fa-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }

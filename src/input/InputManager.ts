@@ -16,6 +16,7 @@ import { MobileControls } from '@/input/MobileControls';
 import { FocusPause } from '@/input/focusPause';
 import { ToggleLatches, type HoldAction } from '@/input/toggleLatches';
 import { padThresholds } from '@/config/playerPrefs';
+import { isExternallyDriven } from '@/input/externalControl';
 
 type KeyboardLockApi = {
   lock?: (keyCodes?: string[]) => Promise<void>;
@@ -127,6 +128,11 @@ export class InputManager {
   private readonly offLatchEvents: Array<() => void> = [];
   private readonly touchKeyCodes = new Set<string>();
 
+  /** A computer fighter is writing the game's input (src/arena/ai): the person's gameplay keys, mouse and pad stand down. */
+  private get botDriving(): boolean {
+    return this.ctx.state.mode === 'play' && isExternallyDriven(this.ctx.input);
+  }
+
   poll(): void {
     this.pollGamepad();
     this.mobile.update();
@@ -198,7 +204,7 @@ export class InputManager {
           else window.dispatchEvent(new Event('game-pause-request'));
         }
       }
-      if (!ctx.state.paused && !document.querySelector(KEYBOARD_UI_BLOCK_SELECTOR)) {
+      if (!ctx.state.paused && !document.querySelector(KEYBOARD_UI_BLOCK_SELECTOR) && !this.botDriving) {
         const ax = pad.axes[0] ?? 0, ay = pad.axes[1] ?? 0;
         const aimX = pad.axes[2] ?? 0, aimY = pad.axes[3] ?? 0;
         // The player's stick dead zone; at the shipped 0.2 these are exactly the old 0.2 / 0.35 / 0.4 / 0.25.
@@ -402,7 +408,7 @@ export class InputManager {
    * camera every frame (the gamepad writes its own aim point).
    */
   private refreshPointerWorld(): void {
-    if (!this.pointerClient || this.padDriving || this.ctx.state.mode !== 'play') return;
+    if (!this.pointerClient || this.padDriving || this.ctx.state.mode !== 'play' || this.botDriving) return;
     const coords = this.getMouseGridCoords(this.pointerClient);
     this.ctx.input.mouse.x = coords.x;
     this.ctx.input.mouse.y = coords.y;
@@ -430,6 +436,7 @@ export class InputManager {
   }
 
   private onMouseDown(e: MouseEvent): void {
+    if (this.botDriving) return;
     this.mobile.reset();
     const { ctx } = this;
     ctx.audio.ensure();
@@ -495,6 +502,7 @@ export class InputManager {
   }
 
   private onMouseMove(e: MouseEvent): void {
+    if (this.botDriving) return;
     this.mobile.reset();
     const { ctx } = this;
     this.pointerClient = { clientX: e.clientX, clientY: e.clientY };
@@ -517,6 +525,7 @@ export class InputManager {
   }
 
   private onMouseUp(): void {
+    if (this.botDriving) return;
     const { ctx } = this;
     if (ctx.debug.active && ctx.state.mode === 'play') {
       ctx.debug.release();
@@ -538,7 +547,7 @@ export class InputManager {
 
   private onWheel(e: WheelEvent): void {
     const { ctx } = this;
-    if (ctx.state.mode !== 'play' || e.deltaY === 0) return;
+    if (ctx.state.mode !== 'play' || e.deltaY === 0 || this.botDriving) return;
     e.preventDefault();
     this.selectWand(ctx.wands.active === 0 ? 1 : 0);
   }
@@ -603,6 +612,7 @@ export class InputManager {
   }
 
   private syncHeldKeys(): void {
+    if (this.botDriving) return;
     const keys = this.ctx.input.keys;
     keys.left = this.anyHeld(LEFT_KEY_CODES);
     keys.right = this.anyHeld(RIGHT_KEY_CODES);
@@ -687,6 +697,8 @@ export class InputManager {
   private onKeyDown(e: KeyboardEvent): void {
     if (e.defaultPrevented) return;
     if (this.shouldIgnoreKeyboard(e)) return;
+    // A computer fighter has the controls: the gameplay keys do nothing (Escape, the console and the panel's keys still work).
+    if (this.botDriving && isGameplayKeyCode(e.code)) return;
     const { ctx } = this;
     const code = ctx.state.mode === 'play' ? gameplayCode(e.code) : e.code;
     this.claimPlayKey(e);
@@ -828,6 +840,7 @@ export class InputManager {
   }
 
   private onKeyUp(e: KeyboardEvent): void {
+    if (this.botDriving && isGameplayKeyCode(e.code)) return;
     const { ctx } = this;
     const code = ctx.state.mode === 'play' ? gameplayCode(e.code) : e.code;
     if (!this.shouldIgnoreKeyboard(e)) this.claimPlayKey(e);

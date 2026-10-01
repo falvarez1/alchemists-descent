@@ -50,15 +50,15 @@ and the decision log refer to it. Update the box in the same commit as the work.
 
 ## P4: AI fighters (`AI-FIGHTERS.md`)
 
-- [ ] B4.1 the `Brain` interface and the input seam (writes an `InputState`; keyboard detachable for slot 0)
-- [ ] B4.2 v0 dummy brain + Bots section in the panel + console `ai`
-- [ ] B4.3 WorldView, Control (steering with traction awareness, aim with lead), Execution noise, skill tiers (`config/aiTiers.ts`)
-- [ ] B4.4 v1: approach, attack, kick, jump a slab; the Yard's `StageNav`
+- [x] B4.1 the `Brain` interface and the input seam (writes an `InputState`; keyboard detachable for slot 0)
+- [x] B4.2 v0 dummy brain + Bots section in the panel + console `ai`
+- [x] B4.3 WorldView, Control (steering with traction awareness, aim with lead), Execution noise, skill tiers (`config/aiTiers.ts`)
+- [x] B4.4 v1: approach, attack, kick, jump a slab; the Yard's `StageNav`
 - [ ] B4.5 v2: Intent (utility goals), the ten playbooks, defence
 - [ ] B4.6 perception parity: concealment, darkness, Nox/Thorne/Kest abilities fool the bot as they fool foes
 - [ ] B4.7 debug overlay (intent, path, aim, range ring) and a Watch mode with a result card
 - [ ] B4.8 v3 stocks: recovery, edge-guard, free-for-all targeting (after P5)
-- [ ] B4.9 tests and probes: planner scoring, seeded noise, scenario probes (approach, climb, raise plate), 1,000-fight soak with a stuck detector
+- [~] B4.9 tests and probes: planner scoring, seeded noise, scenario probes (approach, climb, raise plate), 1,000-fight soak with a stuck detector
 
 ## P5: match rules (`ARENA-RULES.md`)
 
