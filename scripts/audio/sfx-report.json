@@ -14826,5 +14826,39 @@
     "bytes": 12791
    }
   ]
+ },
+ "ui.card.bargain": {
+  "pack": "ui",
+  "cat": "ui",
+  "prompt": "A heavy iron ledger stamp pressed down onto parchment with a low dull thunk, then a single deep distant bell tolling once, ominous, short, dry",
+  "dur": 1.4,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.36,
+    "peakDb": -5.9,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 4.3,
+    "limitDb": 0,
+    "sec": 1.36,
+    "truncated": false,
+    "bytes": 11537
+   },
+   {
+    "take": 2,
+    "variant": 1,
+    "rawSec": 1.36,
+    "peakDb": -16.1,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 16.1,
+    "limitDb": -1,
+    "sec": 1.36,
+    "truncated": false,
+    "bytes": 11537
+   }
+  ]
  }
 }

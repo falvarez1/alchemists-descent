@@ -4146,5 +4146,14 @@
   ],
   "rejected": [],
   "failed": []
+ },
+ "ui.card.bargain": {
+  "hash": "453fd744a88e",
+  "variants": [
+   0,
+   1
+  ],
+  "rejected": [],
+  "failed": []
  }
 }
