@@ -1,5 +1,6 @@
 import type { FighterId } from '@/content/fighters';
 import type { Ctx, Enemy, EnemyDamageSource, Projectile } from '@/core/types';
+import type { BodyProfile } from '@/core/fighterBody';
 import type { LightField, PixelSurface } from '@/render/pixels';
 
 /**
@@ -89,6 +90,12 @@ export interface FighterApi {
   readonly view: FighterView;
   /** Everything the kit has placed in the world right now, for the renderer to walk. */
   readonly drawables: readonly FighterDrawable[];
+  /**
+   * The fighter's BODY now: its profile composed with its running effects (a glide's lowered gravity). Every field is a
+   * multiplier on the Alchemist, and the classic Alchemist (no fighter) gets `NEUTRAL_BODY`. `entities/Player` reads it
+   * once per update (docs/arena/FIGHTER-PHYSICS.md).
+   */
+  readonly body: Readonly<BodyProfile>;
 
   /** Equip a fighter (null = the classic Alchemist). Resets kit state, cooldowns and charge. The kit loads on demand: `whenReady` resolves when it has. */
   equip(id: FighterId | null): void;

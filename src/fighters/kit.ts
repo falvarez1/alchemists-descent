@@ -1,4 +1,5 @@
 import type { FighterId } from '@/content/fighters';
+import type { BodyMod } from '@/core/fighterBody';
 import type { Enemy, EnemyDamageSource, Projectile } from '@/core/types';
 import type { FighterMeter } from '@/core/fighters';
 import type { FighterSystem } from '@/fighters/FighterSystem';
@@ -70,7 +71,7 @@ export interface FighterKitDef {
 }
 
 /** What a modifier can change while it lasts. Several may be live at once; they combine (see `FighterSystem.setMod`). */
-export interface FighterMod {
+export interface FighterMod extends BodyMod {
   /** x run speed. */
   moveScale?: number;
   /** x climb rate. */

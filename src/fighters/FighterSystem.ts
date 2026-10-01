@@ -1,4 +1,6 @@
 import { FIGHTER_DEFS, isFighterId } from '@/content/fighters';
+import { bodyFor } from '@/content/fighterBodies';
+import { NEUTRAL_BODY, cloneBody, composeBody, type BodyProfile } from '@/core/fighterBody';
 import type { FighterId } from '@/content/fighters';
 import { playerBlow } from '@/core/bossWard';
 import type {
@@ -108,6 +110,12 @@ export class FighterSystem implements FighterApi {
   private cStagger = false;
   private cConceal = 0;
   private cImmune: readonly string[] = NO_IMMUNITY;
+  // ---- the body (core/fighterBody): the fighter's profile, the live composition with its running effects ----
+  private baseBody: Readonly<BodyProfile> = NEUTRAL_BODY;
+  private readonly liveBody: BodyProfile = cloneBody(NEUTRAL_BODY);
+  /** The health and levitation-tank factors already applied to the player, so a re-equip divides them out first. */
+  private bodyHpApplied = 1;
+  private bodyFuelApplied = 1;
 
   // ---- enemy effects ----
   private readonly enemyFx = new WeakMap<Enemy, EnemyFx>();
@@ -168,6 +176,9 @@ export class FighterSystem implements FighterApi {
     this.armorMax = 0;
     this.lastHp = -1;
     this.pendingTactical = this.pendingUltimate = -1;
+    this.baseBody = bodyFor(id);
+    this.recompute();
+    this.applyBodyTank();
     if (id) {
       const found = this.kits(id);
       if (found && typeof (found as Promise<unknown>).then === 'function') {
@@ -393,6 +404,27 @@ export class FighterSystem implements FighterApi {
     }
     this.cMove = move; this.cClimb = climb; this.cDamage = dmg; this.cConceal = conceal; this.cStagger = stagger;
     this.cImmune = immune ?? NO_IMMUNITY;
+    composeBody(this.liveBody, this.baseBody, Array.from(this.mods.values(), (m) => m.mod));
+  }
+
+  /** The fighter's health and levitation tank, scaled once per equip against what the player already has (the ratio is kept). */
+  private applyBodyTank(): void {
+    const p = this.ctx.player;
+    if (typeof p?.maxHp !== 'number' || typeof p.maxLevit !== 'number') return;
+    const hpF = this.baseBody.maxHp;
+    if (hpF !== this.bodyHpApplied && p.maxHp > 0) {
+      const ratio = p.hp / p.maxHp;
+      p.maxHp = Math.max(1, Math.round((p.maxHp / this.bodyHpApplied) * hpF));
+      p.hp = Math.min(p.maxHp, ratio * p.maxHp);
+      this.bodyHpApplied = hpF;
+    }
+    const fuelF = this.baseBody.jetFuel;
+    if (fuelF !== this.bodyFuelApplied && p.maxLevit > 0) {
+      const ratio = p.levit / p.maxLevit;
+      p.maxLevit = Math.max(1, (p.maxLevit / this.bodyFuelApplied) * fuelF);
+      p.levit = Math.min(p.maxLevit, ratio * p.maxLevit);
+      this.bodyFuelApplied = fuelF;
+    }
   }
 
   /** Raise the armor ceiling (a kit's call) and optionally fill the new room. */
@@ -424,7 +456,9 @@ export class FighterSystem implements FighterApi {
   }
 
   moveScale(): number { return this.cMove; }
-  climbScale(): number { return this.cClimb; }
+  climbScale(): number { return this.cClimb * this.baseBody.climb; }
+  /** The body the player controller reads (NEUTRAL_BODY for the classic Alchemist). */
+  get body(): Readonly<BodyProfile> { return this.id === null ? NEUTRAL_BODY : this.liveBody; }
   climbHold(x: number, y: number): boolean { return this.kit?.climbHold?.(x, y) === true; }
   get staggerResist(): boolean { return this.cStagger; }
   get ownsMovement(): boolean { return this.move !== null; }

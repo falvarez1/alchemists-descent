@@ -68,9 +68,10 @@ let hp0 = (await me(page)).hp;
 await page.evaluate(() => window.__fp.ctx.playerCtl.damage(20, 0, 0, 'probe'));
 check('armor absorbs a blow before health (20 of 30 armor spent, hp untouched)', Math.abs((await me(page)).hp - hp0) < 0.01 && (await view(page)).armor <= 10.5, JSON.stringify((await view(page)).armor));
 await tick(page, 40);
-await page.evaluate(() => { window.__fp.ctx.player.invuln = 0; window.__fp.ctx.playerCtl.damage(20, 0, 0, 'probe'); });
-hp0 = 100;
-check('past the armor, health takes the remainder (10 of 20)', Math.abs((await me(page)).hp - 90) < 0.6, String((await me(page)).hp));
+await page.evaluate(() => { window.__fp.ctx.player.invuln = 0; });
+hp0 = (await me(page)).hp; // (the fighter's body scales the health the arena gave it: compare against what it has)
+await page.evaluate(() => { window.__fp.ctx.playerCtl.damage(20, 0, 0, 'probe'); });
+check('past the armor, health takes the remainder (10 of 20)', Math.abs(hp0 - (await me(page)).hp - 10) < 0.6, `${hp0} -> ${(await me(page)).hp}`);
 await tick(page, 1);
 check('the kit hears the health that was lost', (await page.evaluate(() => window.__stub.hurts)) >= 1);
 

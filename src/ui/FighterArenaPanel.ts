@@ -3,6 +3,7 @@ import { FIGHTER_DEFS, FIGHTER_ORDER, type FighterId } from '@/content/fighters'
 import { ARENA_TIPS, FOE_PRESETS, YARD_STATIONS, type FoePreset, type YardStation } from '@/content/fighterArena';
 import type { AbilitySlot } from '@/core/fighters';
 import type { Ctx, EnemyKind } from '@/core/types';
+import { BODY_RANGES, NEUTRAL_BODY, bodyBars } from '@/core/fighterBody';
 import { getBindings, keyLabel } from '@/input/bindings';
 import { YARD, resetFighterArena, standFighterAt } from '@/world/fighterArena';
 import { openFighterRoster } from '@/ui/fighterRosterHost';
@@ -46,6 +47,10 @@ export class FighterArenaPanel {
   private readonly unlimited: HTMLInputElement;
   private readonly safe: HTMLInputElement;
   private readonly foesLabel = el('div', 'fa-label', 'Foes');
+  private readonly barsEl = el('div', 'fa-bars');
+  private readonly moveRead = el('div', 'fa-moveread');
+  /** The movement readout: this run's peak speed, the last jump's apex and the airtime, read off the player each frame. */
+  private readonly lab = { peak: 0, wasGrounded: true, startY: 0, minY: 0, airTicks: 0, lastApex: 0, lastAir: 0, lastPeakAtJump: 0 };
   private raf = 0;
   private frame = 0;
   private shown = false;
@@ -80,6 +85,13 @@ export class FighterArenaPanel {
     names.append(this.name, this.title);
     const roster = button('fa-roster', 'Roster', () => this.openRoster(), 'Open the roster');
     who.append(prev, names, next, roster);
+
+    // ---- the body (docs/arena/FIGHTER-PHYSICS.md): ten stats against the Alchemist's line, and what the body does right now
+    const bodyCard = el('div', 'fa-section fa-body-card');
+    const bodyHead = el('div', 'fa-label', 'Body');
+    this.moveRead.title = 'Speed now, peak speed since you chose the fighter, the last jump (height in cells, time in the air), the levitation tank';
+    bodyCard.append(bodyHead, this.barsEl, this.moveRead);
+    bodyHead.append(button('fa-mini', 'reset peak', () => { this.lab.peak = 0; this.lab.lastApex = 0; this.lab.lastAir = 0; }, 'Clear the peak speed and the last jump'));
 
     // ---- the three abilities
     const moves = el('div', 'fa-moves');
@@ -127,7 +139,7 @@ export class FighterArenaPanel {
     tools.append(toolRow, toggles);
 
     this.body.className = 'fa-body';
-    this.body.append(who, moves, foes, where, tools);
+    this.body.append(who, bodyCard, moves, foes, where, tools);
     this.root.append(head, this.body);
     (document.getElementById('canvas-holder') ?? document.body).append(this.root);
 
@@ -260,6 +272,7 @@ export class FighterArenaPanel {
         this.lastUsed[slot] = at;
       }
     }
+    this.sampleMovement();
     if (this.frame++ % 6 !== 0 && this.equipped === fighters.id) return;
     this.draw();
   }
@@ -277,9 +290,14 @@ export class FighterArenaPanel {
       this.uses.ultimate = 0;
       this.lastUsed.tactical = view.tactical.usedAt;
       this.lastUsed.ultimate = view.ultimate.usedAt;
+      this.lab.peak = 0; this.lab.lastApex = 0; this.lab.lastAir = 0;
       this.fillFighter(id, keyLabel(bindings.tactical), keyLabel(bindings.ultimate));
     }
     this.root.style.setProperty('--fa-accent', id ? FIGHTER_DEFS[id].accent : '#d5b982');
+    this.drawBody();
+    const p = ctx.player;
+    const lab = this.lab;
+    this.moveRead.textContent = `Speed ${(Math.abs(p.vx) * 60).toFixed(0)}  ·  peak ${(lab.peak * 60).toFixed(0)}  ·  last jump ${lab.lastApex.toFixed(0)} up, ${lab.lastAir.toFixed(2)} s  ·  LEV ${Math.round((p.levit / Math.max(1, p.maxLevit)) * 100)}%`;
     this.statusOf('tactical', view.tactical.ready, view.tactical.active, view.tactical.cooldownSeconds, 1, view.tactical.name);
     this.statusOf('ultimate', view.ultimate.ready, view.ultimate.active, view.ultimate.cooldownSeconds, view.ultimate.charge, view.ultimate.name);
     this.rows.tactical.uses.textContent = this.uses.tactical > 0 ? `✓ ×${this.uses.tactical}` : '';
@@ -288,6 +306,45 @@ export class FighterArenaPanel {
     this.rows.ultimate.root.classList.toggle('done', this.uses.ultimate > 0);
     const foes = ctx.enemies.length;
     this.foesLabel.textContent = foes === 0 ? 'Foes' : `Foes · ${foes} in the yard`;
+  }
+
+  /** One frame of the movement lab: peak speed, the apex and airtime of each jump. Cells and seconds (60 ticks). */
+  private sampleMovement(): void {
+    const p = this.ctx.player;
+    const lab = this.lab;
+    const speed = Math.hypot(p.vx, p.vy);
+    if (speed > lab.peak && Math.abs(p.vx) > 0) lab.peak = speed;
+    const grounded = p.grounded === true || p.climbing === true || p.inLiquid === true;
+    if (lab.wasGrounded && !grounded) { lab.startY = p.y; lab.minY = p.y; lab.airTicks = 0; lab.lastPeakAtJump = Math.abs(p.vx); }
+    if (!grounded) { lab.airTicks++; if (p.y < lab.minY) lab.minY = p.y; }
+    if (!lab.wasGrounded && grounded && lab.airTicks > 6) { lab.lastApex = lab.startY - lab.minY; lab.lastAir = lab.airTicks / 60; }
+    lab.wasGrounded = grounded;
+  }
+
+  private drawBody(): void {
+    const body = this.ctx.fighters?.body ?? NEUTRAL_BODY;
+    const neutralAt = (f: keyof typeof BODY_RANGES): number => ((1 - BODY_RANGES[f].min) / (BODY_RANGES[f].max - BODY_RANGES[f].min)) * 100;
+    const keys: Array<keyof typeof BODY_RANGES> = ['mass', 'maxHp', 'run', 'friction', 'airControl', 'jump', 'gravity', 'fall', 'jetFuel', 'dealt'];
+    const rows = this.barsEl.children;
+    const bars = bodyBars(body);
+    if (rows.length !== bars.length) {
+      this.barsEl.replaceChildren(...bars.map((bar, i) => {
+        const row = el('div', 'fa-bar');
+        const track = el('div', 'fa-bar-track');
+        const fill = el('i', 'fa-bar-fill');
+        const mark = el('b', 'fa-bar-mark');
+        mark.style.left = `${neutralAt(keys[i])}%`;
+        track.append(fill, mark);
+        row.append(el('span', 'fa-bar-label', bar.label), track, el('span', 'fa-bar-value', ''));
+        return row;
+      }));
+    }
+    bars.forEach((bar, i) => {
+      const row = this.barsEl.children[i] as HTMLElement;
+      (row.querySelector('.fa-bar-fill') as HTMLElement).style.width = `${Math.round(bar.unit * 100)}%`;
+      (row.querySelector('.fa-bar-value') as HTMLElement).textContent = `x${bar.value.toFixed(2)}`;
+      row.dataset.dir = bar.value > 1.04 ? 'up' : bar.value < 0.96 ? 'down' : 'flat';
+    });
   }
 
   private statusOf(slot: AbilitySlot, ready: boolean, active: number, seconds: number, charge: number, name: string): void {

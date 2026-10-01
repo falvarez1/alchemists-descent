@@ -601,7 +601,8 @@ export class Enemies implements EnemyControlApi {
     // COMPLICATIONS (content/mutators): the alchemist's own blows land harder or softer. This is a
     // separate multiplier at the point a blow reaches a creature, so it sits OUTSIDE the wand
     // compiler's x4 damage clamp (a wand still compiles to at most x4); 1 leaves every blow as it was.
-    if (playerBlow(source)) amount *= mutatorMods(ctx.state).playerDamage;
+    // (and the fighter's own power: a body-level multiplier, 1 for the classic Alchemist, core/fighterBody)
+    if (playerBlow(source)) amount *= mutatorMods(ctx.state).playerDamage * (ctx.fighters?.body.dealt ?? 1);
     // ...and on top of the ward, the boss brain (creatures/bosses): nothing
     // lands on a dying boss, its own tumbling armour is not a blow, and its
     // exposure windows (a quenched, kneeling kiln; a convulsing eel) bite harder.

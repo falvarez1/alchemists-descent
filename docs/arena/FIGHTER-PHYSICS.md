@@ -156,3 +156,52 @@ distance marks. Together with the body table these are the first thing the user 
    Brann hardest to launch, Selene slowest to stop...) and the Alchemist control is unchanged from before the change.
 4. `docs/arena/TASKS.md` P1.x ticked; the roster's checklist (`ROSTER-IDENTITY.md`) re-run: no two fighters share the
    quartet.
+
+## 7. Built and measured (P1a, 2026-10-01)
+
+Implemented: `core/fighterBody.ts` (the profile, `NEUTRAL_BODY`, `BODY_RANGES`, `composeBody`, `bodyBars`),
+`content/fighterBodies.ts` (the ten bodies), the `FighterApi.body` getter (`FighterSystem`: a base profile composed with the
+running `FighterMod`s, recomputed on equip and whenever a modifier changes), the reads in `entities/Player.ts` (one `body`
+local per update, about 25 edited lines), `Player.applyImpulse` (mass), `Enemies.damage` (`dealt`), the health and tank scaling at
+equip, the panel's Body card and movement readout, the height ruler and the run lane.
+
+Measured in the Proving Yard (`node scripts/verify-fighter-bodies.mjs`: 73 checks, every fighter run, stopped, jumped, dropped,
+pushed and flown on the grating bridge, paused world stepped tick by tick):
+
+| | run (cells/tick) | coast after letting go (cells) | jump apex | hang (ticks) | terminal fall | push of 3.0 | jet burn (ticks) | health | tank |
+|---|---|---|---|---|---|---|---|---|---|
+| control (Alchemist) | 2.85 | 2 | 27 | 28 | 5.00 | 3.00 | 116 | 154 | 125 |
+| Ilyra | 3.13 | 3 | 28 | 29 | 5.00 | 3.16 | 116 | 146 | 125 |
+| Brann | 2.22 | 1 | 22 | 23 | 6.25 | 2.07 | 67 | 207 | 69 |
+| Sable | 2.99 | 2 | 27 | 28 | 5.00 | 3.53 | 105 | 146 | 112 |
+| Mara | 2.56 | 2 | 26 | 31 | 3.75 | 3.75 | 170 | 131 | 187 |
+| Kest | 3.56 | 5 | 29 | 30 | 5.00 | 3.53 | 127 | 139 | 138 |
+| Nox | 2.71 | 2 | 25 | 28 | 5.00 | 3.00 | 116 | 154 | 125 |
+| Edda | 2.71 | 3 | 26 | 31 | 4.25 | 4.00 | 148 | 116 | 163 |
+| Selene | 3.28 | **13** | 29 | 30 | 5.00 | 3.33 | 116 | 139 | 125 |
+| Rusk | 2.56 | 1 | 22 | 24 | 6.00 | 2.31 | 72 | 193 | 75 |
+| Thorne | 2.34 | 1 | 23 | 27 | 5.00 | 2.61 | 94 | 170 | 100 |
+
+The control's measurements are **identical to the last digit** on a build without the body seam (the probe's
+`--baseline-url` mode against a server on the commit before). What the numbers show: Selene coasts 13 cells (6x the control)
+and Kest 5; Brann and Rusk stop dead; Mara hangs 3 ticks longer and falls at 3/4 the speed; Brann and Rusk have a jet that burns
+out in under 75 ticks against Mara's 170. The weight is exactly `1 / mass` (a push of 3.0 leaves Brann 2.07).
+
+### What changed from the design while building it, and why
+
+- **A jump is a height.** The launch speed is scaled by `sqrt(jump x gravity)`, so a floaty body (Mara, Edda) keeps the
+  control's apex and hangs longer (31 ticks against 28), rather than jumping higher. A heavy body (Brann, Rusk) both jumps lower
+  and falls harder. The ranges' `jump` is therefore an *apex multiplier at equal gravity*.
+- **The jet follows gravity.** Thrust is scaled by `body.gravity x jetThrust`, so the jet stays a hover instrument for a heavy
+  body (the net climb is what differs, and the tank, and how hard the body falls without it).
+- **The friction range widened** to 0.2-2.0: the stop decay is a per-tick factor (0.7 or so), so a *power* of it
+  (`decay^friction`) is what gives Selene a 13-cell coast; 0.55 was too timid to feel.
+- **Climb became a body field** (`climb`), composed with a kit's own `climbScale`; `FighterApi.climbScale()` returns
+  `kitMods x body.climb`.
+- Health and the levitation tank are scaled once per equip (the ratio is kept); the arena panel's equip is therefore the place
+  those two numbers change, and `verify-fighter-framework` now compares against the health the fighter actually has.
+- The probe's measured numbers are the evidence; the bodies in `ROSTER-IDENTITY.md` are starting points and will move with the
+  telemetry (P7), always inside `BODY_RANGES`.
+
+Not built yet: the ten movement techniques (P1b), a probe for the body under *effects* (a glide's lowered gravity), and the
+`jumpCut`, `coyote`, `buffer`, `stagger` and `invuln` fields have unit-level coverage only (no probe measures them).

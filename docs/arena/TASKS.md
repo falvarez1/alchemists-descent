@@ -12,14 +12,14 @@ and the decision log refer to it. Update the box in the same commit as the work.
 
 ## P1: bodies (fighters move differently)
 
-- [ ] P1.1 `BodyProfile`, `NEUTRAL_BODY`, ranges in `core/fighters.ts`; `FighterApi.body` (frozen, recomputed on equip and mod change)
-- [ ] P1.2 `content/fighterBodies.ts`: the ten bodies (`FIGHTER-PHYSICS.md` 4)
-- [ ] P1.3 `Player.ts`: read the body once per update and apply `run/accel/friction/airControl/jump/jumpCut/gravity/fall/jet/coyote/buffer/crawl/stagger/invuln` (raise `MOVE_ACCEL_CAP` and `maxRunCap` with `run`)
-- [ ] P1.4 `applyImpulse` reads `mass`; `Enemies.damage` reads `dealt`; equip applies `maxHp` (keeping the ratio)
-- [ ] P1.5 `FighterMod` extended (`gravity`, `fall`, `jump`, `airControl`, `accel`, `friction`, `jet`); effective = base x mods
-- [ ] P1.6 panel: the Body card (bars vs the Alchemist) and the live movement readout (speed, peak, jump apex, airtime, LEV)
-- [ ] P1.7 the hall: a height ruler beside the Bluff and a run lane with distance marks
-- [ ] P1.8 `tests/fighter-bodies.test.ts` (table, ranges, guard rails) and `scripts/verify-fighter-bodies.mjs` (the roster orders as the table says; the control is unchanged)
+- [x] P1.1 `BodyProfile`, `NEUTRAL_BODY`, ranges in `core/fighters.ts`; `FighterApi.body` (frozen, recomputed on equip and mod change)
+- [x] P1.2 `content/fighterBodies.ts`: the ten bodies (`FIGHTER-PHYSICS.md` 4)
+- [x] P1.3 `Player.ts`: read the body once per update and apply `run/accel/friction/airControl/jump/jumpCut/gravity/fall/jet/coyote/buffer/crawl/stagger/invuln` (raise `MOVE_ACCEL_CAP` and `maxRunCap` with `run`)
+- [x] P1.4 `applyImpulse` reads `mass`; `Enemies.damage` reads `dealt`; equip applies `maxHp` (keeping the ratio)
+- [x] P1.5 `FighterMod` extended (`gravity`, `fall`, `jump`, `airControl`, `accel`, `friction`, `jet`); effective = base x mods
+- [x] P1.6 panel: the Body card (bars vs the Alchemist) and the live movement readout (speed, peak, jump apex, airtime, LEV)
+- [x] P1.7 the hall: a height ruler beside the Bluff and a run lane with distance marks
+- [x] P1.8 `tests/fighter-bodies.test.ts` (table, ranges, guard rails) and `scripts/verify-fighter-bodies.mjs` (the roster orders as the table says; the control is unchanged)
 - [ ] P1.9 movement techniques (one task each; probe each): Ilyra Cinder Dash, Brann Piston Stomp, Sable Wall-cling, Mara Glide, Kest Wall-run, Nox Shadow-step, Edda Hover, Selene Carry, Rusk Skid, Thorne Root-walk
 - [ ] P1.10 the distinctness checklist (`ROSTER-IDENTITY.md`) passes on measured numbers
 

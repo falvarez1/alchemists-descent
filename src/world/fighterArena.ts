@@ -200,6 +200,16 @@ function stampYard(ctx: Ctx): void {
   lamp(1266, e.slabTop);
   mark(ctx, e.lip - 2, e.top - 4, e.x1 + 2, BOT, 'cell');
 
+  // ---- the movement lab: a height ruler on the Bluff's left face (a rung every 10 cells from 30 up, a long one every 50:
+  //      above head height, so it never blocks the corridor) and a run lane along the floor from the Muster to the far nook
+  //      (a stud every 50 cells, two high every 100) ----
+  for (let h = 30; h <= 90; h += 10) fill(b.x0 - (h % 50 === 0 ? 4 : 2), FLOOR - h, b.x0 - 1, FLOOR - h, Cell.Metal);
+  for (let x = 100; x <= 1500; x += 50) {
+    if (x > 560 && x < 920) continue; // (the kiln bay, the oil lane and the bluff keep their floor)
+    cell(x, FLOOR - 1, Cell.Metal);
+    if (x % 100 === 0) cell(x, FLOOR - 2, Cell.Metal);
+  }
+
   // ---- the far nook (1430-1540): a stone bench, two lamps ----
   fill(1470, FLOOR - 5, 1512, FLOOR - 4, Cell.Stone);
   fill(1470, FLOOR - 3, 1472, FLOOR - 1, Cell.Stone);

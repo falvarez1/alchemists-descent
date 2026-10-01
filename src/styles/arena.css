@@ -25,6 +25,18 @@
 .fa-name { font: 500 21px/1.1 var(--m-serif, Georgia, serif); color: var(--m-text, #e6dfca); }
 .fa-subtitle { color: var(--m-muted, #97a89f); font-size: 11.5px; }
 
+.fa-body-card { padding: 6px 9px 7px; border: 1px solid var(--m-line, #2f4548); background: rgba(14, 27, 32, 0.7); }
+.fa-mini { margin-left: 8px; padding: 0 6px; min-height: 16px; border: 1px solid var(--m-line-strong, #52665d); background: transparent; border-radius: 2px; font: inherit; font-size: 9.5px; letter-spacing: 0; text-transform: none; color: var(--m-muted, #97a89f); }
+.fa-mini:hover { color: var(--m-text, #e6dfca); border-color: var(--fa-accent, #d5b982); }
+.fa-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 14px; margin: 5px 0 4px; }
+.fa-bar { display: grid; grid-template-columns: 62px 1fr 38px; align-items: center; gap: 5px; font-size: 10.5px; color: var(--m-muted, #97a89f); }
+.fa-bar-track { position: relative; height: 6px; background: #0c171b; border: 1px solid var(--m-line, #2f4548); }
+.fa-bar-fill { position: absolute; inset: 0 auto 0 0; background: var(--m-line-strong, #52665d); }
+.fa-bar-mark { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--m-text-soft, #c9d1c2); opacity: 0.8; }
+.fa-bar[data-dir="up"] .fa-bar-fill { background: var(--fa-accent, #d5b982); }
+.fa-bar[data-dir="down"] .fa-bar-fill { background: #6f8b97; }
+.fa-bar-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--m-text-soft, #c9d1c2); }
+.fa-moveread { font-size: 10.5px; color: var(--m-text-soft, #c9d1c2); font-variant-numeric: tabular-nums; }
 .fa-moves { display: grid; gap: 8px; }
 .fa-move { padding: 6px 9px 6px; border: 1px solid var(--m-line, #2f4548); border-left: 3px solid var(--m-line-strong, #52665d); background: rgba(14, 27, 32, 0.7); }
 .fa-move.done { border-left-color: var(--m-good, #a6d5ab); }
@@ -57,4 +69,4 @@
 
 body.touch-enabled #fighter-arena { display: none; }
 @media (max-height: 760px) { #fighter-arena { top: 64px; max-height: calc(100% - 120px); } }
-@media (max-height: 640px) { .fa-tip { display: none; } }
+@media (max-height: 640px) { .fa-tip { display: none; } .fa-bars { display: none; } }
