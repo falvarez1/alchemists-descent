@@ -1,5 +1,6 @@
 import type { CardId, EnemyKind, TimeControlStatus } from '@/core/types';
 import type { AlchemyKillInfo, RunSummary } from '@/core/run';
+import type { BrewAttemptInfo, CauldronView } from '@/core/alchemy';
 import type { StoryCinemaView, StoryDialogueView, StorySpeaker } from '@/core/story';
 
 /** What an organism just did (the `organism` event). */
@@ -73,6 +74,12 @@ export interface EventMap {
   recipeDiscovered: { name: string; bounty: number };
   /** Any completed cauldron recipe, including recipes already known in the Grimoire. */
   recipeBrewed: { id: string; name: string; firstDiscovery: boolean };
+  /** The cauldron's bowl as it stands (game/Brewing): contents, fire, progress, verdict. The bowl panel listens; `visible: false` once when the player leaves. */
+  cauldronView: CauldronView;
+  /** A mix was heated long enough to judge and answered no recipe: what the cauldron made of it (the experiment log, the sounds). */
+  brewAttempt: BrewAttemptInfo;
+  /** A marginal note was written into the Grimoire by play (game/alchemy/clues). */
+  clueUnlocked: { id: string; recipe: string; text: string };
   /** Any first-time Grimoire entry persisted by the unified knowledge store. */
   grimoireEntryDiscovered: { kind: 'recipe' | 'material' | 'interaction'; id: string; title: string };
   /** A real sim/material interaction was observed near the player and may be inscribed. */

@@ -12,6 +12,8 @@ import { HintTeachOverlay } from '@/ui/HintTeachOverlay';
 import { HelpOverlay } from '@/ui/HelpOverlay';
 import { Grimoire } from '@/ui/Grimoire';
 import { TeaMachineOverlay } from '@/ui/TeaMachineOverlay';
+import { BowlPanel } from '@/ui/BowlPanel';
+import { ClueDirector } from '@/game/alchemy/clues';
 
 /**
  * THE PLAY SYSTEMS — what a run needs and the title screen does not, loaded as
@@ -69,5 +71,8 @@ export function installPlaySystems(ctx: Ctx, audio: StreamHost, gestured: boolea
   // The wizard's Grimoire book (toggle with `J`), with the Journal tab.
   disposables.push(new Grimoire(ctx));
   disposables.push(new TeaMachineOverlay(ctx));
+  // THE EXPERIMENT: the panel over the cauldron's bowl, and the margin notes play writes into the Grimoire.
+  disposables.push(new BowlPanel(ctx));
+  disposables.push(new ClueDirector(ctx));
   return { sanctum, disposables };
 }

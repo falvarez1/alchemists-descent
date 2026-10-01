@@ -324,6 +324,7 @@ export class Game {
     }
     ctx.worldgen = new WorldGen();
     ctx.flask = new Flask();
+    ctx.brewing = this.brewing;
     const telemetry = new Telemetry();
     ctx.telemetry = telemetry;
     this.disposables.push(telemetry);

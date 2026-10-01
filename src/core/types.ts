@@ -13,6 +13,7 @@ import type { ChillTuning } from '@/config/params';
 import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/run';
 import type { CreatureSfxAction, SfxId } from '@/content/audio/sfxCues';
 import type { LevelStorySites, StoryApi, StorySpeakOptions, StorySpokenLine } from '@/core/story';
+import type { BrewingApi } from '@/core/alchemy';
 
 /* ============================================================
  * Entity data
@@ -3728,6 +3729,8 @@ export interface Ctx {
   story?: StoryApi;
   /** The graded body cold (game/Chill); absent in small test contexts. */
   chill?: ChillApi;
+  /** The cauldron, read-only (game/Brewing): the bowl's contents and progress; absent in small test contexts. */
+  brewing?: BrewingApi;
 }
 
 /**
