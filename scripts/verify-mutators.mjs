@@ -865,11 +865,9 @@ async function sectionBargain() {
   console.log("\n# The Sanctum's bargain: a complication for a second boon (real clicks)");
   // A: declined, the Sanctum is exactly what it was (one boon, the rest shut).
   let page = await startRun([]);
-  const hp0 = (await snap(page)).maxHp;
   await openSanctum(page);
   const a0 = await sanctumState(page);
   check('a real run is offered a bargain at the Sanctum: a complication, its regulation, and what it pays', !!a0.row && a0.row.name && a0.row.text && /second boon/.test(a0.row.deal), JSON.stringify(a0.row));
-  const offeredName = a0.row?.name ?? '';
   check('it is offered with nothing yet in force, untainted', a0.mutators.length === 0 && a0.state === null && a0.tainted === false && a0.hint === 'Take one before you descend', JSON.stringify({ m: a0.mutators, t: a0.tainted, h: a0.hint }));
   await page.screenshot({ path: `${outDir}/sanctum-bargain-offered.png` });
   await page.locator('#perk-row .perk-card').nth(1).click();

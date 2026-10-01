@@ -13,7 +13,7 @@
 // Usage: node scripts/verify-builds.mjs [url] [shotsDir]   (dev server running; default http://localhost:5173/)
 import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright-core';
-import { chooseBoonAndDoor, execConsoleCommand, waitForOpeningEnd, waitForRunReady } from './run-helpers.mjs';
+import { execConsoleCommand, waitForOpeningEnd, waitForRunReady } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const shots = process.argv[3] ?? null;
