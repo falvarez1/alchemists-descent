@@ -131,6 +131,8 @@ export class Hud {
   private rechargeFill: HTMLElement | null = null;
   /** Readable spell sentence for the active wand's next click. */
   private castCaption: HTMLElement | null = null;
+  /** A modifier that did nothing on the card it rode: the cast caption says so for a few seconds. */
+  private deadCaption: { text: string; until: number } | null = null;
   private readonly godPowerButtons = new Map<PerkId, HTMLButtonElement>();
   /** Rolling gold display: ticks toward the true score instead of snapping. */
   private displayedGold = 0;
@@ -290,6 +292,11 @@ export class Hud {
         kicker: 'A new spell card', big: name, small: 'Tucked into the satchel.', priority: 3,
         onShow: () => this.showObjectiveNote(cardGrantBenchCue(this.ctx, name), name),
       });
+    }));
+
+    this.disposers.push(ctx.events.on('deadCardCast', ({ card, host }) => {
+      // The caption is one short line; the toast carries the whole sentence.
+      this.deadCaption = { text: `${CARD_DEFS[card].name} does nothing on ${CARD_DEFS[host].name}`, until: performance.now() + 5000 };
     }));
 
     // Descent meta layer: the objective line + short center toasts.
@@ -837,10 +844,11 @@ export class Hud {
     const sentence = nextWandSentence(wand.cards, wand.castIndex);
     const groupUnaffordable = player.mana < sentence.manaCost;
     if (this.castCaption) {
-      this.castCaption.textContent = groupUnaffordable
+      const dead = this.deadCaption && performance.now() < this.deadCaption.until ? this.deadCaption.text : null;
+      this.castCaption.textContent = dead ?? (groupUnaffordable
         ? sentence.label.replace(/^Next: /, '') + ' · Needs ' + sentence.manaCost + ' mana'
-        : sentence.label.replace(/^Next: /, '') + ' · ' + sentence.manaCost + ' mana';
-      this.castCaption.classList.toggle('overmana', groupUnaffordable);
+        : sentence.label.replace(/^Next: /, '') + ' · ' + sentence.manaCost + ' mana');
+      this.castCaption.classList.toggle('overmana', groupUnaffordable || dead !== null);
     }
     for (const s of this.hotbarSlots) {
       const isNext = !cooling && next.includes(s.slotIdx);

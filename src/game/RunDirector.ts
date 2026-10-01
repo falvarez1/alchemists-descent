@@ -36,6 +36,7 @@ import {
 import { deathLineFor } from '@/ui/deathCauses';
 import { asDifficulty } from '@/config/difficulty';
 import { BASE_DIFFICULTY, openDifficulty } from '@/config/difficultyLadder';
+import { buildLine } from '@/combat/wands/buildRecap';
 
 /** One 60 Hz tick of wall time, the most a single tick may add to the clock. */
 const TICK_MS = 1000 / 60;
@@ -497,6 +498,8 @@ export class RunDirector implements RunApi {
       path: state.path ?? [],
       boons: state.boons ?? [],
       difficulty: asDifficulty(ctx.state.difficulty, BASE_DIFFICULTY),
+      // The wands as they stand at the end: the ledger and the share line say what the run was built on.
+      build: ctx.wands ? buildLine(ctx.wands.wands) : '',
     });
     let unlocked = [...this.runUnlocks];
     let record: Pick<RunResult, 'dailyBest' | 'newDailyBest' | 'newBestFloor' | 'unlockedDifficulty'> = { dailyBest: null, newDailyBest: false, newBestFloor: false, unlockedDifficulty: null };

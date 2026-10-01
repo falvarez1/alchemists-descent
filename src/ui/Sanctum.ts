@@ -6,6 +6,9 @@ import {
   withDiscoveredCards,
 } from '@/combat/wands/rewardPools';
 import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
+import { makeFitter } from '@/combat/wands/cardFit';
+import { ARCHETYPE_FRAMES, pickFrameRack, requestWandOffer } from '@/combat/wands/wandFinds';
+import { renderBuildRecap } from '@/ui/buildRecapView';
 import type { CardId, Ctx, PerkId, SanctumApi } from '@/core/types';
 import { POTION_DEFS, POTION_KINDS } from '@/core/pickupDefs';
 import { SANCTUM_PERK_DEFS, draftBoons } from '@/content/perks';
@@ -516,6 +519,8 @@ export class Sanctum implements SanctumApi {
   private buildShop(ctx: Ctx): void {
     const shop = el('sanc-shop');
     shop.innerHTML = '';
+    // What the gold is about to be spent on: the wands, read back as the bench reads them.
+    shop.appendChild(renderBuildRecap(ctx));
     const items: Array<{ id: string; name: string; desc: string; cost: number; act(purchase: () => boolean): void }> = [
       {
         id: 'mend',
@@ -585,6 +590,32 @@ export class Sanctum implements SanctumApi {
               },
             },
           ]),
+      // The Wandwright's rack: three found frames, each a specialist; the stat diff and the cards a smaller
+      // frame would push out are shown first, and gold changes hands only if one is taken.
+      ...(ARCHETYPE_FRAMES.some((id) => !ctx.wands.wands.some((w) => w.frame.id === id))
+        ? [
+            {
+              id: 'rack',
+              name: 'Wandwright: the rack',
+              desc: 'Choose one of three found frames to refit wand I or II. You pay only if you take one',
+              cost: 200,
+              act: (purchase: () => boolean): void => {
+                const equipped = ctx.wands.wands.map((w) => w.frame.id);
+                requestWandOffer(ctx, {
+                  source: 'sanctum',
+                  title: 'The Wandwright’s rack',
+                  prompt: 'Choose a frame and the wand to refit. Cards that no longer fit go back to your satchel. You pay only if you take one.',
+                  frames: pickFrameRack({ equipped, depth: ctx.levels.current?.def.depth }),
+                  onChoose: (frameId, wand) => {
+                    if (!purchase()) return;
+                    ctx.wands.upgradeFrame(ctx, wand, frameId);
+                    this.buildShop(ctx);
+                  },
+                });
+              },
+            },
+          ]
+        : []),
       {
         id: 'pages',
         name: 'Lost pages',
@@ -592,7 +623,7 @@ export class Sanctum implements SanctumApi {
         cost: 160,
         act: (purchase) => {
           const pool = withDiscoveredCards(SANCTUM_LOST_PAGES_POOL, getDiscoveredCards());
-          const cards = buildCardOffer(pool, collectOwnedCards(ctx.wands), { ensureKind: 'projectile' });
+          const cards = buildCardOffer(pool, collectOwnedCards(ctx.wands), { ensureKind: 'projectile', dead: makeFitter(ctx.wands).dead });
           requestCardOffer(ctx, {
             source: 'sanctum',
             title: 'Lost pages',

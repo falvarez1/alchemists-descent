@@ -2757,10 +2757,16 @@ export type CardId =
   | 'pyrecrit'
   | 'aquajet'
   | 'trigger'
-  | 'bounce';
+  | 'bounce'
+  // devil's bargains (combat/wands/bargains): strong modifiers with a real cost, offered only by waystone altars
+  | 'overcharge'
+  | 'loosecannon'
+  | 'shortfuse'
+  | 'millstone'
+  | 'kickback';
 
 export type CardKind = 'projectile' | 'modifier' | 'multicast';
-export type CardTag = 'Damage' | 'Terrain' | 'Setup' | 'Trail' | 'Status' | 'Combo' | 'Movement' | 'Risk';
+export type CardTag = 'Damage' | 'Terrain' | 'Setup' | 'Trail' | 'Status' | 'Combo' | 'Movement' | 'Risk' | 'Bargain';
 
 export interface CastAction {
   card: CardId;
@@ -2790,6 +2796,12 @@ export interface CastAction {
   bounces: number;
   /** Cast at the impact point (depth-1 trigger payload), or null. */
   triggered: CastAction[] | null;
+  /** Bargain cost: scales the projectile's lifetime (absent = 1). */
+  lifeMul?: number;
+  /** Bargain cost: extra self-recoil impulse on the cast (absent = 0). */
+  recoil?: number;
+  /** The devil's bargains that actually landed on this cast (absent = none). */
+  bargains?: CardId[];
 }
 
 export interface CastActionExecutionContext {
@@ -2811,6 +2823,10 @@ export interface CardDef {
   manaCost: number;
   /** One-line bench tooltip. */
   blurb: string;
+  /** A devil's bargain: strong, with a real price (see `cost`). Offered by waystone altars only. */
+  bargain?: boolean;
+  /** The price, plainly (bargains only): shown on the offer tile and in the bench. */
+  cost?: string;
 }
 
 export interface WandFrame {
@@ -2826,6 +2842,8 @@ export interface WandFrame {
   manaRegen: number;
   /** Base aim jitter in radians. */
   spread: number;
+  /** What the frame is FOR, in a line (frames found as loot show it). */
+  blurb?: string;
 }
 
 export interface WandState {
@@ -2909,6 +2927,41 @@ export interface WandsApi {
    * cursor) — the HUD highlights them so the cycle is visible.
    */
   nextCastSlots(): number[];
+  /** A copy of the run's build-decision notes (offers, altars, frames, floor times). */
+  buildNotes?(): BuildNotes;
+}
+
+/**
+ * What a run has asked of the build, for the ledger's "Run notes" and the playtest report (combat/wands/
+ * BuildDirector keeps it; it rides the wand runtime snapshot, so a resumed run keeps counting).
+ */
+export interface BuildNotes {
+  /** Card offers put in front of the player, and how many were taken. */
+  offersShown: number;
+  offersTaken: number;
+  /** The same per source: tome, altar, depth, sanctum. */
+  bySource: Record<string, { shown: number; taken: number }>;
+  /** Waystone altars that answered. */
+  altars: number;
+  /** Devil's bargains taken (from any source). */
+  bargainsTaken: number;
+  /** Distinct dead-card captions shown (a modifier cast on a card it does nothing for). */
+  deadCardCasts: number;
+  /** Wand-frame offers shown, fitted and left. */
+  framesFound: number;
+  framesFitted: number;
+  framesLeft: number;
+  /** Unpaused play ticks spent on each depth (key: the depth). */
+  floorTicks: Record<string, number>;
+  /** Cards chosen from offers, in order (capped). */
+  picks: CardId[];
+  /** Cards whose dead-cast caption has already shown this run. */
+  deadCaptioned: CardId[];
+  /**
+   * Offers earned but not yet shown (a lit waystone, an arrival, a boss's wreckage waits for a calm moment): the
+   * runtime snapshot carries them so a run saved in that gap still gets its decision. Only the snapshot has it.
+   */
+  owed?: Partial<Record<'altar' | 'gift' | 'bossFrame' | 'altarFrame', number>>;
 }
 
 export interface WandLoadoutSave {
@@ -2932,6 +2985,8 @@ export interface WandRuntimeSnapshot {
   flameBurst: number;
   depthsGranted: number[];
   infuserGranted: boolean;
+  /** The run's decision notes; optional so saves from before them restore with an empty record. */
+  build?: BuildNotes;
 }
 
 /* ============================================================
