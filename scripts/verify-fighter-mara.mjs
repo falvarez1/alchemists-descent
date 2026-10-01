@@ -474,7 +474,10 @@ await shotFull('mara-chime-tolled-full');
 await shotAt('mara-chime-tolled', 385 + 100, 689 - 14, 70, 40);
 await toOffset(170);
 cur = await allFoes();
-check('2.8 s on: the casters are still held, the slowed still slowed', ['b80', 'sp120', 'm140'].every((n) => cur[n].knockT > 0) && cur.g60.slow === 0.45);
+// (a stun is the knock state re-pinned each tick, so read it over a few ticks: a single read can land between the pin and the foe's own update)
+const held = {};
+for (let k = 0; k < 4; k++) { const c = await allFoes(); for (const n of ['b80', 'sp120', 'm140']) held[n] = Math.max(held[n] ?? 0, c[n].knockT); await tick(page, 1); }
+check('2.8 s on: the casters are still held, the slowed still slowed', ['b80', 'sp120', 'm140'].every((n) => held[n] > 0) && cur.g60.slow === 0.45, JSON.stringify({ held, g60: cur.g60 }));
 await toOffset(200);
 cur = await allFoes();
 check('3.3 s on: the casters are free again (stun 3 s), the slow runs on', ['b80', 'sp120', 'm140', 'w30'].every((n) => cur[n].knockT === 0) && cur.g60.slow === 0.45 && cur.m140.slow === 0.45);
@@ -553,8 +556,8 @@ const ms = await evalM(() => {
 check('the wave\'s draw is cheap (' + ms.per.toFixed(2) + ' ms for ' + Math.round(ms.n) + ' fine pixels, no-op surface)', ms.per < 4, JSON.stringify(ms));
 note(`wave draw ${ms.per.toFixed(2)} ms, ${Math.round(ms.n)} fine pixels, recording surface`);
 
-// a crawler's own speed: the weaver's slow goes through its locomotion. It is forced to flee along the whole floor so it
-// crawls flat out (deterministic in the AI, but a weaver sometimes spends its first moments settling: a pair that did not get going is retried).
+// a crawler's ground covered: the slow is TIME (the foe takes its update on 45% of ticks), so a weaver covers ~45% of the ground.
+// It is forced to flee along the whole floor so it crawls flat out (deterministic in the AI, but a weaver sometimes spends its first moments settling: a pair that did not get going is retried).
 const weaverSpeed = async (cast) => {
   await reset();
   await hide();
@@ -563,11 +566,11 @@ const weaverSpeed = async (cast) => {
   await foeDo(w, 'e.alerted = true; window.__flee = () => { e.fleeT = 999; e.fleeDir = 1; };');
   await evalM(() => window.__fp.ctx.fighters.refill());
   if (cast) { await press(page, 'KeyT', 1); await tick(page, 22); } else await tick(page, 23);
-  return evalM(() => { let mx = 0; for (let k = 0; k < 60; k++) { window.__flee(); window.__fp.tick(1); mx = Math.max(mx, window.__foes[0].weaverLoco?.speed ?? 0); } return +mx.toFixed(3); });
+  return evalM(() => { const x0 = window.__foes[0].x; for (let k = 0; k < 60; k++) { window.__flee(); window.__fp.tick(1); } return +(Math.abs(window.__foes[0].x - x0) / 60).toFixed(3); });
 };
 let wFree = 0, wRung = 0;
-for (let attempt = 0; attempt < 4 && !(wFree > 1.2 && wRung > 0.3); attempt++) { wFree = await weaverSpeed(false); wRung = await weaverSpeed(true); }
-check('a weaver\'s crawl is slowed too (its own locomotion speed x0.45)', wFree > 1.2 && wRung <= wFree * 0.55 && wRung >= wFree * 0.3, `free ${wFree}, rung ${wRung}`);
+for (let attempt = 0; attempt < 4 && !(wFree > 0.8 && wRung > 0.2); attempt++) { wFree = await weaverSpeed(false); wRung = await weaverSpeed(true); }
+check('a weaver\'s crawl is slowed too (it covers ~x0.45 of the ground: time, not its locomotion speed)', wFree > 0.8 && wRung <= wFree * 0.6 && wRung >= wFree * 0.3, `free ${wFree}, rung ${wRung}`);
 note(`a fleeing weaver crawls at ${wFree} cells/tick, ${wRung} after the chime (ratio ${(wRung / wFree).toFixed(2)})`);
 
 // ======================================================================================== the classic Alchemist
