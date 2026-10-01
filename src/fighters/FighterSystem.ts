@@ -58,6 +58,8 @@ interface ModEntry {
 
 const NO_REVEAL: readonly [number, number, number] = [1, 1, 1];
 const NO_IMMUNITY: readonly string[] = [];
+/** The most armor a save may restore before the kit has set its own ceiling (the roster's largest is Kiln Heart's 80). */
+const ARMOR_RESTORE_CAP = 100;
 
 /**
  * THE FIGHTER SYSTEM (docs/FIGHTERS.md). Inert until a fighter is equipped (`id` null = the classic
@@ -768,8 +770,8 @@ export class FighterSystem implements FighterApi {
     const finite = (n: unknown, lo: number, hi: number): number => (typeof n === 'number' && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : 0);
     this.tacticalCd = finite(save.tacticalCooldown, 0, this.tacticalCdMax);
     this.charge = finite(save.charge, 0, 1);
-    // (clamped to the kit's own ceiling: it set it when it was created)
-    this.armor = finite(save.armor, 0, this.armorMax);
+    // (a kit that raises its ceiling on its first tick has not yet: clamp to a sane cap, and the kit re-asserts its own ceiling, trimming the pool, when it ticks)
+    this.armor = finite(save.armor, 0, Math.max(this.armorMax, ARMOR_RESTORE_CAP));
     if (this.kit?.load && save.kit && typeof save.kit === 'object') {
       const bag: Record<string, number> = {};
       for (const [k, v] of Object.entries(save.kit)) if (typeof v === 'number' && Number.isFinite(v)) bag[k] = v;
