@@ -30,8 +30,11 @@ function band(r: CreatureRaster, a: V, b: V, t: number, w: number, across: numbe
   r.stamp(x, y, w, across, Math.atan2(b.y - a.y, b.x - a.x), mat, tone, false, group);
 }
 
+/** The heat-cracked crust (half emissive); a dead body's is plain soot. */
+const crust = (c: LookCtx): number => (c.dead ? SOOT : CRUST);
+
 /** A fallen furnace goes out: every ember tone falls to dying coals, and the flames are not drawn at all. */
-const T = (c: LookCtx, t: number): number => (c.dead ? Math.min(t, 1.1) : t);
+const T = (c: LookCtx, t: number): number => (c.dead ? Math.min(t, 0.3) : t);
 
 /** 0..1 how hot he runs: the Kiln Heart at full, otherwise a smoulder that follows his armour. */
 function heat(c: LookCtx): number {
@@ -45,7 +48,7 @@ function heat(c: LookCtx): number {
 function tongue(c: LookCtx, x: number, y: number, w: number, h: number, lean: number, z: number): void {
   const { r } = c;
   r.ellipse(x + lean * h * 0.22, y - h * 0.5, w, h * 0.55, lean * 0.5, z, EMBER, { group: G.flame, noOutline: true });
-  r.glowStamp(x + lean * h * 0.1, y - h * 0.3, w * 0.8, h * 0.45, lean * 0.5, EMBER, 4.4, 1.2, G.flame);
+  r.glowStamp(x + lean * h * 0.1, y - h * 0.3, w * 0.8, h * 0.45, lean * 0.5, EMBER, 4.0, 1.2, G.flame);
 }
 
 /** Fire wrapped round a fist: three tongues that sway on their own phases and lean from his motion, plus a rising ember. */
@@ -70,7 +73,7 @@ function fistFire(c: LookCtx, hand: V, z: number, seed: number, scale: number): 
 function fist(c: LookCtx, hand: V, elbow: V, z: number, far: boolean, group: number): void {
   const { r, f } = c;
   const fx = hand.x + f * 0.5, fy = hand.y + 0.5;
-  r.ellipse(fx, fy, 2.55, 2.3, 0, z, CRUST, { group, far });
+  r.ellipse(fx, fy, 2.55, 2.3, 0, z, c.dead ? SLOT.leather : CRUST, { group, far });
   r.glowStamp(fx + f * 0.9, fy + 0.2, 1.5, 1.5, 0, EMBER, T(c, 3.4 + heat(c) * 0.8), 1.2, group);
   // The knuckle plate: iron across the back of the fist, split into four hot-seamed knuckles.
   r.stamp(fx - f * 0.4, fy - 0.9, 1.9, 0.85, 0, IRON, 1.6, false, group);
@@ -104,7 +107,7 @@ function legArmor(c: LookCtx, hip: V, knee: V, foot: V, z: number, far: boolean)
   r.ellipse(knee.x + f * 0.6, knee.y, 1.6, 1.5, 0, z + 2.0, IRON, { group: G.knee, far });
   r.dot(knee.x + f * 0.6, knee.y, EMBER, T(c, 2.5), 40);
   r.capsule(knee.x, knee.y + 0.8, 1.9, foot.x, foot.y - 0.9, 1.65, z + 0.6, z + 0.6, SOOT, { group: G.shin, far });
-  band(r, knee, foot, 0.62, 0.45, 1.9, CRUST, 1.5, G.shin);
+  band(r, knee, foot, 0.62, 0.45, 1.9, crust(c), 1.5, G.shin);
   r.ellipse(foot.x + f * 1.1, foot.y - 0.9, 3.0, 1.45, 0, z + 1.1, SLOT.boot, { group: G.boot, far });
   r.stamp(foot.x + f * 1.2, foot.y - 1.4, 1.9, 0.35, 0, EMBER, T(c, 2.4), true, G.boot);
   void hip;
@@ -146,7 +149,7 @@ function torso(c: LookCtx): void {
   // The furnace core: a rusted iron ring round a throbbing white-orange heart.
   const beat = calm ? 0 : Math.sin(c.frame * 0.12) * 0.4;
   r.ellipse(cx + f * 0.6, cy, 2.05, 2.05, 0, 3.6, IRON, { group: G.core });
-  r.ellipse(cx + f * 0.6, cy, 1.55, 1.55, 0, 4.2, CRUST, { group: G.core });
+  r.ellipse(cx + f * 0.6, cy, 1.55, 1.55, 0, 4.2, crust(c), { group: G.core });
   r.glowStamp(cx + f * 0.6, cy, 1.25, 1.25, 0, EMBER, T(c, 3.9 + heat(c) * 0.9 + beat), 1.4, G.core);
   // Belt: an iron slab with a square buckle.
   const bx = s.hip.x + c.ux * 0.12, by = s.hip.y + c.uy * 0.12;
@@ -168,7 +171,7 @@ function shoulders(c: LookCtx): void {
   r.ellipse(x, y - 0.2, 3.3, 2.0, s.lean * 0.8, 7.6, SOOT, { group: G.pauld });
   r.ellipse(x - f * 0.2, y + 1.5, 3.1, 0.95, s.lean * 0.8, 7.1, SOOT, { group: G.lame, depth: 0.6 });
   r.shade(x - f * 0.9, y + 0.9, 3.0, 0.8, s.lean, -0.9, G.pauld);
-  r.stamp(x + f * 1.3, y - 0.6, 1.0, 0.5, 0.3, CRUST, 1.8, false, G.pauld);
+  r.stamp(x + f * 1.3, y - 0.6, 1.0, 0.5, 0.3, crust(c), 1.8, false, G.pauld);
   r.dot(x + f * 2.3, y - 0.1, EMBER, T(c, 2.4), 30);
   r.dot(x - f * 2.2, y - 0.3, COPPER, 4, 30);
 }
@@ -189,7 +192,6 @@ function head(c: LookCtx): void {
   r.stamp(...H(1.25, -1.25), 1.55, 0.95, ht, EYE, 0, true, G.jaw);
   for (const dx of [0.35, 1.25, 2.15]) r.stroke(...H(dx, -1.85), ...H(dx, -0.65), EMBER, T(c, 3.4 + hot * 1.2), true);
   // A rust-orange brow plate, rivets, a hot vent wire on top.
-  r.stamp(...H(-0.9, 2.0), 1.3, 0.5, ht + 0.4, SLOT.trim, 1.6, false, G.mask);
   r.dot(...H(-0.4, 2.9), COPPER, 4, 30);
   r.dot(...H(-1.9, 0.2), COPPER, 4, 30);
   r.shade(...H(-0.5, 2.2), 2.0, 0.7, ht, 0.9, G.mask);
@@ -202,10 +204,10 @@ function front(c: LookCtx): void {
   legArmor(c, s.hip, s.frontKnee, s.frontFoot, 3.0, false);
   // The near arm: an iron forearm cuff, then the burning fist.
   r.capsule(s.frontElbow.x, s.frontElbow.y, 1.95, s.frontHand.x, s.frontHand.y, 1.7, 8.9, 8.9, SOOT, { group: G.cuff, depth: 0.9 });
-  band(r, s.frontElbow, s.frontHand, 0.18, 0.5, 1.9, CRUST, 1.4, G.cuff);
-  band(r, s.frontElbow, s.frontHand, 0.7, 0.5, 1.8, CRUST, 1.4, G.cuff);
+  band(r, s.frontElbow, s.frontHand, 0.18, 0.5, 1.9, crust(c), 1.4, G.cuff);
+  band(r, s.frontElbow, s.frontHand, 0.7, 0.5, 1.8, crust(c), 1.4, G.cuff);
   fist(c, s.frontHand, s.frontElbow, 9.4, false, G.fist);
-  fistFire(c, s.frontHand, 11.0, 0, 1);
+  fistFire(c, s.frontHand, 9.9, 0, 1);
 }
 
 /** Aim shows as a lick of flame off the near fist along the line of fire. */

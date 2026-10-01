@@ -148,14 +148,27 @@ function shield(c: LookCtx): void {
   const tilt = Math.max(0, Math.min(1, (Math.abs(fr.ux) - 0.4) / 0.3));
   const sling = s.kind === 'stand' ? Math.max(guardBlend(c), tilt) : dead ? 0 : 1;
   const mix = (a: number, b: number): number => a + (b - a) * sling;
-  const a0 = mix(-6.6, -3.0), a1 = mix(9.4, 8.5);
-  const bC = dead ? 5.6 : mix(4.7, -3.7);
+  const a0 = dead ? -4.5 : mix(-6.6, -3.0), a1 = dead ? 9.5 : mix(9.4, 8.5);
+  const bC = dead ? 0 : mix(4.7, -3.7);
   const w = mix(1.85, 1.8);
-  const z = sling < 0.5 ? 7.0 : -2.6;
-  const lean = mix(0.06, 0);
+  const z = dead ? -3.0 : sling < 0.5 ? 7.0 : -2.6;
+  const lean = dead ? 0 : mix(0.06, 0);
+  // Fallen, it is still in the near hand: it lies along the forearm, where the arm dropped it, under the body.
+  let ox = s.hip.x, oy = s.hip.y, ux = fr.ux, uy = fr.uy, px = fr.px, py = fr.py;
+  if (dead) {
+    const dx = s.frontHand.x - s.frontElbow.x, dy = s.frontHand.y - s.frontElbow.y, dl = Math.hypot(dx, dy) || 1;
+    ux = dx / dl; uy = dy / dl; px = -uy; py = ux; ox = s.frontHand.x; oy = s.frontHand.y;
+  }
+  // A fallen shield never sinks into the floor: the lowest of the body's points is the ground, and it stands on it.
+  let lift = 0;
+  if (dead) {
+    const ground = Math.max(s.hip.y, s.chest.y, s.head.y, s.backFoot.y, s.frontFoot.y, s.backHand.y, s.frontHand.y, s.backKnee.y, s.frontKnee.y) + 0.6;
+    const low = Math.max(oy + uy * a0 + Math.abs(px) * w, oy + uy * a1 + Math.abs(px) * w) + 0.6;
+    lift = Math.min(0, ground - low);
+  }
   const P = (a: number, b: number): [number, number] => {
     const bb = bC + b + (a - a0) * lean;
-    return [s.hip.x + fr.ux * a + fr.px * bb, s.hip.y + fr.uy * a + fr.py * bb];
+    return [ox + ux * a + px * bb, oy + uy * a + py * bb + lift];
   };
   const pts = (grow: number, notch: number): number[] => {
     const q: number[] = [];
@@ -229,9 +242,10 @@ function drawWand(c: LookCtx): void {
   const { r, s, a, frame: t } = c;
   const w = s.wand, ang = w.angle + w.spin, cc = Math.cos(ang), sn = Math.sin(ang);
   const glow = w.glow * (0.9 + Math.sin(t * 0.3) * 0.1);
-  r.capsule(w.x - cc * 2.0, w.y - sn * 2.0, 0.75, w.x + cc * 6.4, w.y + sn * 6.4, 0.62, 8.3, 8.3, SLOT.coat, { group: 14 });
-  for (const k of [0.6, 4.0]) r.capsule(w.x + cc * (k - 0.2), w.y + sn * (k - 0.2), 0.84, w.x + cc * (k + 0.2), w.y + sn * (k + 0.2), 0.84, 8.5, 8.5, BRASS, { group: 14 });
-  r.capsule(w.x + cc * 6.0, w.y + sn * 6.0, 0.9, w.x + cc * 6.9, w.y + sn * 6.9, 1.0, 8.6, 8.6, BRASS, { group: 14 });
+  // A brass barrel (bright against the dark iron it is drawn over), iron collars, a flared muzzle.
+  r.capsule(w.x - cc * 1.8, w.y - sn * 1.8, 0.82, w.x + cc * 6.4, w.y + sn * 6.4, 0.66, 8.3, 8.3, BRASS, { group: 14, tone: 1.3 });
+  for (const k of [0.3, 2.8, 4.9]) r.stamp(w.x + cc * k, w.y + sn * k, 0.38, 1.1, ang, PLATE, 1.4, false, 14);
+  r.capsule(w.x + cc * 6.3, w.y + sn * 6.3, 0.62, w.x + cc * 7.0, w.y + sn * 7.0, 0.85, 8.5, 8.5, PLATE, { group: 14 });
   const mx = w.x + cc * 7.4, my = w.y + sn * 7.4;
   const k = a.firing ? 1.4 : 1;
   r.ellipse(mx, my, 0.55 + glow * 0.3 * k, 0.55 + glow * 0.3 * k, 0, 9, GLOW, { group: 14, noOutline: true });
