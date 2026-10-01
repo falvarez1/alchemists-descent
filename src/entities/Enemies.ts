@@ -2784,7 +2784,8 @@ export class Enemies implements EnemyControlApi {
       const pdx = player.x - e.x,
         pdy = player.y - 9 - (e.y - 5);
       const pDist = Math.sqrt(pdx * pdx + pdy * pdy);
-      const canAttackTarget = !ctx.player.dead && mind.visible && mind.intent === 'hunt' && !debugEnemyAttacksSuppressed;
+      // (a decoy is a lure, not a body: a foe drawn to one swings at nothing, or its melee would land on the real player from where the decoy stands)
+      const canAttackTarget = !ctx.player.dead && mind.visible && mind.intent === 'hunt' && !debugEnemyAttacksSuppressed && decoy === null;
 
       // THE NOTICE: the first time a foe clocks you, it says so — a blip and
       // a spark of attention over its head. The colossus announces itself
