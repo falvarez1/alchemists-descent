@@ -8,6 +8,7 @@ import { ashColor, COLOR_FN, fireColor, packRGB, smokeColor } from '@/sim/colors
 import type { World } from '@/sim/World';
 import { RAPIER } from '@/entities/rapierInit';
 import { entityRandom } from '@/core/simRandom';
+import { mutatorMods } from '@/content/mutators';
 
 /**
  * Rigid-body layer backed by Rapier2D.
@@ -1063,6 +1064,9 @@ export class RigidBodies implements RigidBodiesApi {
       // do NOT substitute: CCD runs per world step, and the landing tears the
       // joints apart at any substep count; tests/player-ragdoll.test.ts.)
       const steps = this.playerRagdoll && !this.playerCorpse?.sleeping ? 6 : 1;
+      // The complications' gravity dial (content/mutators): 1 is today's pull, to the last bit.
+      const gravity = GRAVITY * mutatorMods(ctx.state).gravity;
+      if (this.world.gravity.y !== gravity) this.world.gravity = { x: 0, y: gravity };
       this.world.integrationParameters.dt = DT / steps;
       for (let i = 0; i < steps; i++) this.world.step();
       this.world.integrationParameters.dt = DT;
@@ -1225,7 +1229,7 @@ export class RigidBodies implements RigidBodiesApi {
           const v = rb.linvel();
           if (body.inWater !== true && v.y > SPLASH_MIN_SPEED) this.splash(ctx, body, v.y);
           const density = Math.max(0.2, body.density ?? 1);
-          const buoy = submerged * (WATER_DENSITY / density) * GRAVITY * DT; // upward (−y)
+          const buoy = submerged * (WATER_DENSITY / density) * GRAVITY * mutatorMods(ctx.state).gravity * DT; // upward (−y); follows the gravity dial so a prop still floats
           const drag = 1 - Math.min(0.5, submerged * WATER_DRAG);
           // Currents carry floating props, just as they carry suspended cells.
           const flowX = Math.max(-3, Math.min(3, world.flow.x(body.x, body.y))) * PF;

@@ -357,20 +357,24 @@ interface DarkSource {
   world?: DarkGrid;
 }
 
-const MAPS = new WeakMap<object, { zones: readonly DarkZone[] | undefined; map: Uint8Array | null }>();
+const MAPS = new WeakMap<object, { zones: readonly DarkZone[] | undefined; lift: number; map: Uint8Array | null }>();
 
 /**
  * The baked map for a level runtime (lazily, once per runtime; a runtime
  * whose zones array is replaced rebakes). Null when the level is fully
- * readable — callers skip all darkness work.
+ * readable — callers skip all darkness work. `lift` is the complications'
+ * darkness floor (0 = the floors as designed).
  */
-export function darkMapFor(runtime: DarkSource | null | undefined): Uint8Array | null {
+export function darkMapFor(runtime: DarkSource | null | undefined, lift = 0): Uint8Array | null {
   if (!runtime) return null;
   const cached = MAPS.get(runtime);
-  if (cached && cached.zones === runtime.darkZones) return cached.map;
-  const profile = darknessProfile(runtime.def.id);
+  if (cached && cached.zones === runtime.darkZones && cached.lift === lift) return cached.map;
+  const designed = darknessProfile(runtime.def.id);
+  // `lift` (the run's Dark Works complication, content/mutators) raises the base darkness of a floor that HAS a
+  // designed profile (the campaign floors) to at least that; a hub or a custom level stays readable. 0 is today's.
+  const profile = lift > 0 && FLOOR_DARKNESS[runtime.def.id] ? { ...designed, base: Math.max(designed.base, lift) } : designed;
   const zones = runtime.darkZones ?? [];
   const map = profile.base <= 0 && (zones.length === 0 || profile.deep <= 0) ? null : bakeDarkMap(zones, profile, undefined, runtime.world ?? null);
-  MAPS.set(runtime, { zones: runtime.darkZones, map });
+  MAPS.set(runtime, { zones: runtime.darkZones, lift, map });
   return map;
 }
