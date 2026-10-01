@@ -130,8 +130,13 @@ export interface FighterApi {
   concealment(): number;
   /** Where foe `e` believes the fighter is when a decoy draws its eye (Mirror Hunt), or null for the real body. */
   decoyFor(e: Enemy): { x: number; y: number; vx: number } | null;
-  /** A speed factor for an enemy while a fighter effect slows it (1 = unchanged). */
+  /** A speed factor for an enemy while a fighter effect slows it (1 = unchanged). Read-only: the enemy loop uses `enemyRuns`. */
   enemySlow(e: Enemy): number;
+  /**
+   * Does this foe take its update this tick? Always true unless a fighter slows it, when it is true on the
+   * matching fraction of ticks (a slow of 0.5 is every other tick): the slow is time, so everything the foe does slows alike.
+   */
+  enemyRuns(e: Enemy): boolean;
   /** A hostile projectile about to be tested against the player: true consumes it (a shield, a prism). */
   interceptProjectile(p: Projectile): boolean;
   /** An enemy took a blow from the player or the world on the player's behalf (Enemies.damage tells the system). */

@@ -256,6 +256,29 @@ describe('the fighter system', () => {
     expect(s.drawables.length).toBe(0);
   });
 
+  it('slows a foe as TIME: it runs its update on exactly the matching fraction of ticks', () => {
+    const { sys: s, enemies, step } = setup();
+    const e = makeEnemy(110, 100);
+    enemies.push(e);
+    expect(s.enemyRuns(e)).toBe(true); // nothing applied: every tick
+    s.slowEnemy(e, 0.45, 400);
+    let ran = 0;
+    for (let i = 0; i < 100; i++) { step(1); if (s.enemyRuns(e)) ran++; }
+    expect(ran).toBeGreaterThanOrEqual(44);
+    expect(ran).toBeLessThanOrEqual(46);
+    // Spread out, not clumped: never more than four skipped in a row at 0.45.
+    let gap = 0, worst = 0;
+    s.slowEnemy(e, 0.45, 400);
+    for (let i = 0; i < 60; i++) { step(1); if (s.enemyRuns(e)) gap = 0; else worst = Math.max(worst, ++gap); }
+    expect(worst).toBeLessThanOrEqual(4);
+    // It lapses: after the slow ends every tick runs again.
+    step(500);
+    expect(s.enemyRuns(e)).toBe(true);
+    expect(s.enemyRuns(e)).toBe(true);
+    // An un-slowed foe is never gated.
+    expect(s.enemyRuns(makeEnemy(300, 100))).toBe(true);
+  });
+
   it('finds foes near a point, nearest first, by body centre', () => {
     const { sys: s, enemies } = setup();
     enemies.push(makeEnemy(150, 100), makeEnemy(110, 100), makeEnemy(400, 100));

@@ -129,6 +129,25 @@ const slow = await page.evaluate(() => {
 });
 check('enemySlow answers the enemy loop', slow === 0.5);
 
+// --- a slow is TIME: a slowed foe takes its whole update on the matching fraction of ticks. Each foe counts its own
+// updates in `timer`, so the ratio is exact and does not depend on what the AI chooses to do.
+const updates = async (factor, kind) => page.evaluate(async ({ factor, kind }) => {
+  const c = window.__fp.ctx, p = c.player, f = c.fighters;
+  c.enemies.length = 0;
+  Object.assign(p, { x: window.__fp.ARENA.spawnX, y: window.__fp.ARENA.floorY - 1, vx: 0, vy: 0, hp: 100, invuln: 9999 });
+  const e = window.__fp.spawn(kind, 140);
+  const t0 = e.timer ?? 0;
+  if (factor < 1) f.slowEnemy(e, factor, 600);
+  window.__fp.tick(100);
+  return (e.timer ?? 0) - t0;
+}, { factor, kind });
+for (const kind of ['slime', 'golem', 'bat']) {
+  const free = await updates(1, kind);
+  const slowed = await updates(0.45, kind);
+  check('a free ' + kind + ' takes every update (the control)', free >= 95, String(free));
+  check('a x0.45 slow gives a ' + kind + ' ~45% of its updates (time, not a compounding stop)', slowed >= 40 && slowed <= 50, 'free ' + free + ' slowed ' + slowed);
+}
+
 // --- the classic Alchemist is untouched (the foes spawned above would otherwise bite while we measure)
 await page.evaluate(() => { window.__fp.ctx.enemies.length = 0; window.__fp.ctx.fighters.equip(null); });
 await tick(page, 3);

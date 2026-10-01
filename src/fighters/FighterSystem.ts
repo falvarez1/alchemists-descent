@@ -41,6 +41,9 @@ interface ActiveMove {
 
 interface EnemyFx {
   slowK: number;
+  /** Time-dilation sequence position and its per-foe offset (see `enemyRuns`). */
+  phase: number;
+  seed: number;
   slowUntil: number;
   revealUntil: number;
   revealRgb: readonly [number, number, number];
@@ -155,6 +158,14 @@ export class FighterSystem implements FighterApi {
     this.def = null;
     this.kit = null;
     this.loading = Promise.resolve();
+    // The numbers start clean BEFORE the kit is created, so a kit's create() may set its own armor ceiling.
+    this.tacticalCd = 0;
+    this.charge = 0;
+    this.ultimateLeft = 0;
+    this.armor = 0;
+    this.armorMax = 0;
+    this.lastHp = -1;
+    this.pendingTactical = this.pendingUltimate = -1;
     if (id) {
       const found = this.kits(id);
       if (found && typeof (found as Promise<unknown>).then === 'function') {
@@ -164,16 +175,9 @@ export class FighterSystem implements FighterApi {
         });
       } else if (found) this.adopt(found as FighterKitDef);
     }
-    this.tacticalCd = 0;
     const adopted = this.def as FighterKitDef | null; // (adopt() may have set it above)
     this.tacticalCdMax = Math.max(1, adopted?.tacticalCooldown ?? 1);
-    this.charge = 0;
-    this.ultimateLeft = 0;
     this.ultimateMax = Math.max(1, adopted?.ultimateDuration ?? 1);
-    this.armor = 0;
-    this.armorMax = 0;
-    this.lastHp = -1;
-    this.pendingTactical = this.pendingUltimate = -1;
     this.view.id = id;
     const copy = id ? FIGHTER_DEFS[id] : null;
     this.view.tactical.name = copy?.tactical.name ?? '';
@@ -426,6 +430,16 @@ export class FighterSystem implements FighterApi {
     return fx && this.ctx.state.frameCount < fx.slowUntil ? fx.slowK : 1;
   }
 
+  enemyRuns(e: Enemy): boolean {
+    if (this.touched.length === 0) return true;
+    const fx = this.enemyFx.get(e);
+    if (!fx || this.ctx.state.frameCount >= fx.slowUntil || fx.slowK >= 1) return true;
+    // A golden-ratio (Weyl) sequence: exactly the right long-run fraction of ticks, with no period an AI cadence
+    // (every 6th or 8th tick) could line up with and never see.
+    fx.phase++;
+    return (fx.phase * 0.6180339887498949 + fx.seed) % 1 < fx.slowK;
+  }
+
   decoyFor(e: Enemy): { x: number; y: number; vx: number } | null {
     return this.kit?.decoyFor?.(e) ?? null;
   }
@@ -444,7 +458,7 @@ export class FighterSystem implements FighterApi {
   private fxOf(e: Enemy): EnemyFx {
     let fx = this.enemyFx.get(e);
     if (!fx) {
-      fx = { slowK: 1, slowUntil: 0, revealUntil: 0, revealRgb: NO_REVEAL, markUntil: 0, stunUntil: 0 };
+      fx = { slowK: 1, phase: 0, seed: entityRandom(), slowUntil: 0, revealUntil: 0, revealRgb: NO_REVEAL, markUntil: 0, stunUntil: 0 };
       this.enemyFx.set(e, fx);
     }
     if (!this.touched.includes(e)) this.touched.push(e);
@@ -754,7 +768,8 @@ export class FighterSystem implements FighterApi {
     const finite = (n: unknown, lo: number, hi: number): number => (typeof n === 'number' && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : 0);
     this.tacticalCd = finite(save.tacticalCooldown, 0, this.tacticalCdMax);
     this.charge = finite(save.charge, 0, 1);
-    this.armor = finite(save.armor, 0, Math.max(this.armorMax, 1000));
+    // (clamped to the kit's own ceiling: it set it when it was created)
+    this.armor = finite(save.armor, 0, this.armorMax);
     if (this.kit?.load && save.kit && typeof save.kit === 'object') {
       const bag: Record<string, number> = {};
       for (const [k, v] of Object.entries(save.kit)) if (typeof v === 'number' && Number.isFinite(v)) bag[k] = v;

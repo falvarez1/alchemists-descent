@@ -2647,6 +2647,10 @@ export class Enemies implements EnemyControlApi {
       if (e._tickStamp === ctx.state.frameCount) continue;
       e._tickStamp = ctx.state.frameCount;
       const def = this.defs[e.kind];
+      // A fighter's slow (Dead Chime, Ironvine, Overgrowth) is TIME: a slowed foe gets its whole update on only
+      // the matching fraction of ticks, so walking, attacking and falling all slow by the same factor. (Scaling vx
+      // each sample, as a frozen body is, compounds into a stop.)
+      if (ctx.fighters && ctx.fighters.id !== null && !ctx.fighters.enemyRuns(e)) continue;
       // Debug freeze (Runtime panel): a posed/dragged foe skips its AI entirely
       // while the renderer keeps drawing it (and solving a held Weaver's legs).
       if (ctx.debug.frozenEnemy(e)) {
@@ -2743,9 +2747,6 @@ export class Enemies implements EnemyControlApi {
         }
         if (eff.teleportTouch && (e.tpCool ?? 0) <= 0) this.teleportEnemy(e, def);
         if (eff.slowFactor !== 1) e.vx *= eff.slowFactor;
-        // A fighter's slow (Dead Chime, Ironvine): the same per-sample scaling a frozen body gets.
-        const fighterSlow = ctx.fighters?.enemySlow(e) ?? 1;
-        if (fighterSlow !== 1) e.vx *= fighterSlow;
       }
 
       // Gust-launched foes fly ballistically (AI + flight cap suppressed) until
