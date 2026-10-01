@@ -88,3 +88,16 @@ export function lockProbeTools(page, output) {
 
   return { ctxEval, playerX, shot, waitFor, walkTo, pointAtWorld, aimToward, waitObjective, waitHint, plugOpen, dismissCards };
 }
+
+/**
+ * A floor's first arrival offers a gift - a three-card choice (BuildDirector, ~6 s in, once the arrival grace ends) - and the
+ * offer pauses the game. A lock probe plays far longer than that, so it takes the first card with a real click before it acts.
+ */
+export async function takeArrivalGift(page) {
+  try {
+    await page.waitForSelector('#card-offer-overlay.visible', { timeout: 12000 });
+    const card = await page.locator('#card-offer-overlay .card-offer-card').first().boundingBox();
+    await page.mouse.click(card.x + card.width / 2, card.y + card.height / 2);
+    await page.waitForFunction(() => !window.__game.ctx.state.paused, null, { timeout: 8000 });
+  } catch { /* no gift on this floor, or it was already taken */ }
+}

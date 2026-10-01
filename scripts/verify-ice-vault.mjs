@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
 import { execConsoleCommand, waitForRunReady } from './run-helpers.mjs';
-import { lockProbeTools } from './lock-probe-helpers.mjs';
+import { lockProbeTools, takeArrivalGift } from './lock-probe-helpers.mjs';
 
 // THE ICE VAULT (floor 2b's lock, world/coldStorePuzzles: the strongroom's wall of real ice is a route-seal plug), PLAYED with real input.
 //   default    the quick way in: three Spark Bolts at the coal bank under the ice wall blow a passage through it;
@@ -50,6 +50,7 @@ try {
   await page.goto(url);
   await execConsoleCommand(page, `run test --level d2b --world campaign-level --seed ${seed} --loadout fresh`);
   await waitForRunReady(page);
+  await takeArrivalGift(page);
   let L = await lock();
   report.layout = { room: L.room, wall: L.plug, key: L.key };
   await page.evaluate(() => { window.__game.ctx.enemies.length = 0; });

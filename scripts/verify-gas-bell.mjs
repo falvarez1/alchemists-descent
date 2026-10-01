@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
 import { execConsoleCommand, waitForRunReady } from './run-helpers.mjs';
+import { lockProbeTools, takeArrivalGift } from './lock-probe-helpers.mjs';
 
 // THE GAS BELL (floor 2's lock, world/lockGasBell), PLAYED with real input.
 //   default    the intended solution: walk to the brass inlay, one Spark Bolt up through the bell's porthole,
@@ -26,6 +27,7 @@ const report = { mode, seed, errors: [], stages: [] };
 page.on('pageerror', (e) => report.errors.push(String(e)));
 
 const ctxEval = (fn, arg) => page.evaluate(fn, arg);
+const { dismissCards } = lockProbeTools(page, output);
 const lock = () => ctxEval(() => {
   const ctx = window.__game.ctx, rt = ctx.levels.current;
   const plug = rt.mechanisms.find((m) => m.kind === 'plug' && m.lock);
@@ -112,6 +114,7 @@ try {
   // A resumable save needs a real expedition; test runs are disposable by design.
   await execConsoleCommand(page, resume ? `run new --seed ${seed}` : `run test --level d2 --world campaign-level --seed ${seed} --loadout fresh`);
   await waitForRunReady(page);
+  await takeArrivalGift(page);
   if (resume) {
     await execConsoleCommand(page, 'goto d2'); await waitForRunReady(page);
     await page.waitForFunction(() => window.__game.ctx.levels.current?.def.id === 'd2', null, { timeout: 90000 }); // (a floor takes a few seconds to build)

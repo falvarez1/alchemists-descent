@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
 import { execConsoleCommand, waitForRunReady } from './run-helpers.mjs';
-import { lockProbeTools } from './lock-probe-helpers.mjs';
+import { lockProbeTools, takeArrivalGift } from './lock-probe-helpers.mjs';
 
 // THE PERISCOPE (floor 3b's lock, world/galleryPuzzles: the attic lens's relay breaks the strongroom's gate), PLAYED with real input.
 //   default    stand on the brass inlay under the light well and shine straight up (the mouse): the beam runs up the well, off the silvered
@@ -66,6 +66,7 @@ try {
   await page.goto(url);
   await execConsoleCommand(page, `run test --level d3b --world campaign-level --seed ${seed} --loadout fresh`);
   await waitForRunReady(page);
+  await takeArrivalGift(page);
   let L = await lock();
   report.layout = { room: L.room, door: L.plug, well: L.wellX, lens: L.lens };
   await page.evaluate(() => { window.__game.ctx.enemies.length = 0; });

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
 import { execConsoleCommand, waitForRunReady } from './run-helpers.mjs';
-import { lockProbeTools } from './lock-probe-helpers.mjs';
+import { lockProbeTools, takeArrivalGift } from './lock-probe-helpers.mjs';
 
 // THE WEIR (floor 3's lock, world/lockWeir), PLAYED with real input.
 //   default    the intended solution: from the dais, a bolt at the DRY bowl does nothing (the coil in the well
@@ -87,6 +87,7 @@ try {
   const resume = mode === 'resume';
   await execConsoleCommand(page, resume ? `run new --seed ${seed}` : `run test --level d3 --world campaign-level --seed ${seed} --loadout fresh`);
   await waitForRunReady(page);
+  await takeArrivalGift(page);
   if (resume) {
     await execConsoleCommand(page, 'goto d3'); await waitForRunReady(page);
     await page.waitForFunction(() => window.__game.ctx.levels.current?.def.id === 'd3', null, { timeout: 90000 }); // (a floor takes a few seconds to build)
