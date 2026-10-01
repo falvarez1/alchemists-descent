@@ -6,10 +6,11 @@
 //   they pay, the light, a heal, a firework chain, and how far a foe notices. Then: nothing leaks (not into the
 //   next run, not into localStorage tuning, not across a reload), a save resumes with them and the floor's vents
 //   come back the same, the pause menu and the ledger name them, the daily takes the date's own and ignores
-//   the player's, and a win under an easy one does not open a tier.
+//   the player's, and a win under an easy one does not open a tier. And the Sanctum's bargain: a complication
+//   for the rest of the descent and a second boon, struck with real clicks, persisted through a reload.
 // Usage (dev server running; window.__game is DEV-only):
 //   node scripts/verify-mutators.mjs [url] [sections,comma,separated]
-//   sections: title,layers,gravity,glass,crowded,light,famine,fireworks,hush,fuel,wet,slime,gas,ledger,resume,daily,leak
+//   sections: title,layers,gravity,glass,crowded,light,famine,fireworks,hush,fuel,wet,slime,gas,ledger,resume,daily,leak,bargain
 // Screenshots land in verify-out/mutators/.
 import { mkdirSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
@@ -29,6 +30,7 @@ const check = (name, ok, detail = '') => {
 const wants = (section) => only.length === 0 || only.includes(section);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const SEED = 424242;
+const MUTATOR_NAME_OF = { 'wet-floors': 'Wet Floors', tinderbox: 'Tinderbox', 'slime-rain': 'Slime Rain', 'gas-leak': 'Gas Leak', 'glass-cannon': 'Glass Cannon', 'low-gravity': 'Low Gravity', 'crowded-house': 'Crowded House', 'dark-works': 'Dark Works', famine: 'Short Rations', fireworks: 'Fireworks', hush: 'Hush', 'nosy-neighbours': 'Nosy Neighbours' };
 const Cell = { Empty: 0, Water: 2, Wood: 4, Fire: 5, Oil: 6, Stone: 12, Slime: 19, Healium: 25, Grass: 37, MarshGas: 38, Ash: 30 };
 
 const browser = await launchBrowser();
@@ -823,6 +825,129 @@ async function sectionDaily() {
   await page.context().close();
 }
 
+/* ============================== the Sanctum's bargain ============================== */
+async function openSanctum(page) {
+  await page.evaluate(() => {
+    const c = window.__game.ctx;
+    c.state.paused = false;
+    window.__descendedTo = null;
+    c.sanctum.open(c, (id) => { window.__descendedTo = id; });
+  });
+  await page.locator('#sanctum-overlay.visible').waitFor({ state: 'visible', timeout: 10000 });
+  await sleep(500);
+}
+const sanctumState = (page) => page.evaluate(() => {
+  const c = window.__game.ctx;
+  const row = document.querySelector('#sanctum-overlay .sanc-bargain');
+  const cards = [...document.querySelectorAll('#perk-row .perk-card')].map((k) => ({ taken: k.classList.contains('taken'), disabled: k.disabled, faded: k.classList.contains('faded') }));
+  const descend = document.getElementById('descend-btn');
+  return {
+    row: row && !row.hidden ? { name: row.querySelector('.bargain-name b')?.textContent, text: row.querySelector('.bargain-body')?.textContent, deal: row.querySelector('.bargain-deal')?.textContent, status: row.querySelector('.bargain-status')?.textContent, struck: row.classList.contains('struck'), button: row.querySelector('.bargain-accept')?.textContent, buttonDisabled: row.querySelector('.bargain-accept')?.disabled } : null,
+    hint: document.querySelector('#sanctum-overlay .sanc-heading span')?.textContent,
+    cards,
+    descend: { disabled: descend.disabled, text: descend.textContent },
+    mutators: [...c.run.mutators],
+    state: c.state.mutators ?? null,
+    bargains: c.run.bargains.map((b) => ({ ...b })),
+    boons: c.run.snapshotForSave()?.boons ?? [],
+    maxHp: c.player.maxHp,
+    tainted: c.state.debugTainted === true || c.state.debugGodMode === true,
+    descendedTo: window.__descendedTo,
+  };
+});
+async function sectionBargain() {
+  console.log("\n# The Sanctum's bargain: a complication for a second boon (real clicks)");
+  // A: declined, the Sanctum is exactly what it was (one boon, the rest shut).
+  let page = await startRun([]);
+  const hp0 = (await snap(page)).maxHp;
+  await openSanctum(page);
+  const a0 = await sanctumState(page);
+  check('a real run is offered a bargain at the Sanctum: a complication, its regulation, and what it pays', !!a0.row && a0.row.name && a0.row.text && /second boon/.test(a0.row.deal), JSON.stringify(a0.row));
+  const offeredName = a0.row?.name ?? '';
+  check('it is offered with nothing yet in force, untainted', a0.mutators.length === 0 && a0.state === null && a0.tainted === false && a0.hint === 'Take one before you descend', JSON.stringify({ m: a0.mutators, t: a0.tainted, h: a0.hint }));
+  await page.screenshot({ path: `${outDir}/sanctum-bargain-offered.png` });
+  await page.locator('#perk-row .perk-card').nth(1).click();
+  const a1 = await sanctumState(page);
+  check('declined, one boon is all there is: it is taken and the others are shut (as ever)', a1.cards.filter((k) => k.taken).length === 1 && a1.cards.filter((k) => k.disabled).length === 3, JSON.stringify(a1.cards));
+  check('and nothing was put in force', a1.mutators.length === 0 && a1.bargains.length === 0, JSON.stringify(a1));
+  await page.context().close();
+
+  // B: accepted before the first boon: two of the three, the regulation in force, the run saved with it.
+  page = await startRun([]);
+  await openSanctum(page);
+  const b0 = await sanctumState(page);
+  await page.locator('#sanctum-overlay .bargain-accept').click();
+  const b1 = await sanctumState(page);
+  check('striking it puts the complication in force at once, for the run (state, run and the bargain record)', b1.mutators.length === 1 && JSON.stringify(b1.state) === JSON.stringify(b1.mutators) && b1.bargains.length === 1 && b1.bargains[0].floor === 1 && b1.bargains[0].id === b1.mutators[0], JSON.stringify({ m: b1.mutators, b: b1.bargains }));
+  check('the row says so, the button goes quiet, and the table now says to take two', b1.row?.struck === true && /^Struck\./.test(b1.row.status ?? '') && b1.row.buttonDisabled === true && b1.hint === 'Take two before you descend', JSON.stringify({ r: b1.row, h: b1.hint }));
+  check('the descent stays a real run: not tainted', b1.tainted === false, String(b1.tainted));
+  check('the offered name was the one struck', (b0.row?.name ?? '') === (MUTATOR_NAME_OF[b1.mutators[0]] ?? b1.mutators[0]), `${b0.row?.name} vs ${b1.mutators[0]}`);
+  if (b1.mutators[0] === 'glass-cannon') check('Glass Cannon takes the health with it', b1.maxHp === Math.round(b0.maxHp * 0.5), `${b0.maxHp} -> ${b1.maxHp}`);
+  else check('(a bargain that leaves the HP dial alone leaves the health alone)', b1.maxHp === b0.maxHp, `${b0.maxHp} -> ${b1.maxHp}`);
+  await page.screenshot({ path: `${outDir}/sanctum-bargain-struck.png` });
+  await page.locator('#perk-row .perk-card').nth(0).click();
+  const b2 = await sanctumState(page);
+  check('the first boon leaves the rest open: one more is owed, and the descent waits for it', b2.cards[0].taken && !b2.cards[1].disabled && !b2.cards[2].disabled && b2.descend.disabled === true, JSON.stringify({ c: b2.cards, d: b2.descend }));
+  await page.locator('#perk-row .perk-card').nth(2).click();
+  const b3 = await sanctumState(page);
+  check('the second is taken, and the third is shut: two boons struck from the three', b3.cards[0].taken && b3.cards[2].taken && b3.cards[1].disabled && b3.cards[1].faded, JSON.stringify({ c: b3.cards }));
+  const twoDoors = (await page.locator('#sanctum-overlay .sanc-door').count()) > 0;
+  if (twoDoors) await page.locator('#sanctum-overlay .sanc-door').first().click();
+  const b4 = await sanctumState(page);
+  check('and with a door chosen the descent is open', b4.descend.disabled === false && /^Descend/.test(b4.descend.text), JSON.stringify(b4.descend));
+  await page.screenshot({ path: `${outDir}/sanctum-bargain-two-boons.png` });
+  // Persisted: saved, reloaded, resumed with the bargain in force.
+  const saved = await page.evaluate(async () => {
+    const c = window.__game.ctx;
+    c.levels.saveExpedition(c);
+    for (let k = 0; k < 60 && !c.levels.hasSavedExpedition(); k++) await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 800));
+    const save = c.run.snapshotForSave();
+    return { has: c.levels.hasSavedExpedition(), mutators: save?.mutators ?? null, bargains: save?.bargains ?? null };
+  });
+  check('the run saves with the bargain on it', saved.has && saved.mutators?.length === 1 && saved.bargains?.length === 1, JSON.stringify(saved));
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play' && window.__game.ctx.run?.active && !window.__game.ctx.levels.transitioning, null, { timeout: 60000 });
+  await sleep(1200);
+  const resumed = await page.evaluate(() => { const c = window.__game.ctx; return { mutators: [...c.run.mutators], bargains: c.run.bargains.map((b) => ({ ...b })), state: c.state.mutators ?? null, boons: c.run.snapshotForSave()?.boons ?? [] }; });
+  check('a reload resumes the descent with the bargain still struck and in force', JSON.stringify(resumed.mutators) === JSON.stringify(b1.mutators) && resumed.bargains.length === 1 && JSON.stringify(resumed.state) === JSON.stringify(b1.mutators), JSON.stringify(resumed));
+  // The ledger carries it like any complication.
+  await page.evaluate(() => { const c = window.__game.ctx; c.events.emit('runComplete', { gold: 0 }); });
+  await page.locator('#run-summary:not([hidden])').waitFor({ state: 'visible', timeout: 20000 });
+  await sleep(1200);
+  const led = await page.evaluate(() => ({ chips: [...document.querySelectorAll('#run-summary .rs-comp-chip')].map((n) => n.textContent), share: document.querySelector('#run-summary .rs-share')?.textContent ?? '' }));
+  check('the ledger and the share line name the bargained complication', led.chips.length === 1 && led.share.includes(led.chips[0]), JSON.stringify(led));
+  await page.context().close();
+
+  // C: the daily is never bargained over (one descent for everyone); the row is simply not there.
+  page = await openTitle({ fixedDate: Date.UTC(2026, 9, 3, 12) });
+  await page.locator('#expedition-entry [data-entry="daily"]').click();
+  await waitForOpeningEnd(page);
+  await page.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play' && window.__game.ctx.run?.active, null, { timeout: 40000 });
+  await sleep(800);
+  await openSanctum(page);
+  const d0 = await sanctumState(page);
+  check('on the daily there is no bargain row, and the date\'s complications are all it carries', d0.row === null && JSON.stringify(d0.mutators) === JSON.stringify(['low-gravity', 'crowded-house']), JSON.stringify({ r: d0.row, m: d0.mutators }));
+  await page.context().close();
+
+  // D: the row fits on a short window (960x600): the boons and the row are both reachable by scrolling the body.
+  page = await openTitle({ viewport: { width: 960, height: 600 } });
+  await begin(page, { seed: SEED });
+  await openSanctum(page);
+  const fit = await page.evaluate(() => {
+    const body = document.querySelector('#sanctum-overlay .sanc-body');
+    const row = document.querySelector('#sanctum-overlay .sanc-bargain');
+    const btn = row?.querySelector('.bargain-accept');
+    btn?.scrollIntoView({ block: 'nearest' });
+    const b = body.getBoundingClientRect(), r = btn?.getBoundingClientRect();
+    const hit = r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+    return { shown: !!row && !row.hidden, inView: !!r && r.top >= b.top - 1 && r.bottom <= b.bottom + 1, hit: hit === btn || btn?.contains(hit) };
+  });
+  check('at 960x600 the bargain button can be scrolled into view and a click lands on it', fit.shown && fit.inView && fit.hit, JSON.stringify(fit));
+  await page.screenshot({ path: `${outDir}/sanctum-bargain-960x600.png` });
+  await page.context().close();
+}
+
 try {
   if (wants('title')) await sectionTitle();
   if (wants('leak')) await sectionLeak();
@@ -840,6 +965,7 @@ try {
   if (wants('ledger')) await sectionLedger();
   if (wants('resume')) await sectionResume();
   if (wants('daily')) await sectionDaily();
+  if (wants('bargain')) await sectionBargain();
 } catch (error) {
   fail++;
   console.log('  FAIL  probe crashed: ' + (error && error.stack ? error.stack : error));
