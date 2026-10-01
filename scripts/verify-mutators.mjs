@@ -936,22 +936,29 @@ async function sectionBargain() {
   check('on the daily there is no bargain row, and the date\'s complications are all it carries', d0.row === null && JSON.stringify(d0.mutators) === JSON.stringify(['low-gravity', 'crowded-house']), JSON.stringify({ r: d0.row, m: d0.mutators }));
   await page.context().close();
 
-  // D: the row fits on a short window (960x600): the boons and the row are both reachable by scrolling the body.
-  page = await openTitle({ viewport: { width: 960, height: 600 } });
-  await begin(page, { seed: SEED });
-  await openSanctum(page);
-  const fit = await page.evaluate(() => {
-    const body = document.querySelector('#sanctum-overlay .sanc-body');
-    const row = document.querySelector('#sanctum-overlay .sanc-bargain');
-    const btn = row?.querySelector('.bargain-accept');
-    btn?.scrollIntoView({ block: 'nearest' });
-    const b = body.getBoundingClientRect(), r = btn?.getBoundingClientRect();
-    const hit = r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
-    return { shown: !!row && !row.hidden, inView: !!r && r.top >= b.top - 1 && r.bottom <= b.bottom + 1, hit: hit === btn || btn?.contains(hit) };
-  });
-  check('at 960x600 the bargain button can be scrolled into view and a click lands on it', fit.shown && fit.inView && fit.hit, JSON.stringify(fit));
-  await page.screenshot({ path: `${outDir}/sanctum-bargain-960x600.png` });
-  await page.context().close();
+  // D: the row fits on short windows: with a real run the boon cards and the row are both in the body's view once the
+  // Sanctum has revealed them (the boons are the promise; the row sits right under them), and a click lands on the button.
+  for (const [w, h] of [[960, 600], [1024, 640], [800, 600], [1280, 720]]) {
+    page = await openTitle({ viewport: { width: w, height: h } });
+    await begin(page, { seed: SEED });
+    await openSanctum(page);
+    await sleep(1800);
+    const fit = await page.evaluate(() => {
+      const body = document.querySelector('#sanctum-overlay .sanc-body');
+      const row = document.querySelector('#sanctum-overlay .sanc-bargain');
+      const btn = row?.querySelector('.bargain-accept');
+      const b = body.getBoundingClientRect();
+      const cards = [...document.querySelectorAll('#perk-row .perk-card')].map((c) => c.getBoundingClientRect());
+      const cardsIn = cards.length > 0 && cards.every((r) => r.top >= b.top - 1 && r.bottom <= b.bottom + 1);
+      btn?.scrollIntoView({ block: 'nearest' });
+      const r = btn?.getBoundingClientRect();
+      const hit = r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+      return { shown: !!row && !row.hidden, cardsIn, inView: !!r && r.top >= b.top - 1 && r.bottom <= b.bottom + 1, hit: hit === btn || !!btn?.contains(hit) };
+    });
+    check(`${w}x${h}: the boon cards are in view, and the bargain button can be reached and a click lands on it`, fit.shown && fit.cardsIn && fit.inView && fit.hit, JSON.stringify(fit));
+    if (w === 960) await page.screenshot({ path: `${outDir}/sanctum-bargain-960x600.png` });
+    await page.context().close();
+  }
 }
 
 try {
