@@ -62,6 +62,7 @@ for (const [w, h] of sizes) {
   await click(page, '#fighter-roster .fr-card[data-entry="mara-quell"]');
   await page.waitForTimeout(250);
   check(`${tag}: her dossier shows`, /Mara Quell/.test(await page.locator('#fighter-roster .fr-name').textContent()));
+  await page.screenshot({ path: `verify-out/fighters/title-roster-mara-${tag}.png` });
   await click(page, '#fighter-roster .fr-choose');
   await page.waitForTimeout(600);
   const after = await page.evaluate(() => ({

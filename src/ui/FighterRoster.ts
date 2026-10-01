@@ -11,6 +11,7 @@ import {
 } from '@/content/fighters';
 import { createModalFocusTrap, type ModalFocusTrap } from '@/ui/modalFocusTrap';
 import { icon, roleIconName } from '@/ui/fighterRosterIcons';
+import { abilityIcon } from '@/ui/fighterIcons';
 import {
   ABILITY_KINDS,
   CLASSIC_COPY,
@@ -139,7 +140,7 @@ export class FighterRoster {
   private readonly lore = el('p', 'fr-lore');
   private readonly tags = el('ul', 'fr-tags');
   private readonly kit = el('section', 'fr-kit');
-  private readonly abilityRows = new Map<AbilityKind, { row: HTMLElement; name: HTMLElement; desc: HTMLElement; key: HTMLElement }>();
+  private readonly abilityRows = new Map<AbilityKind, { row: HTMLElement; badge: HTMLElement; name: HTMLElement; desc: HTMLElement; key: HTMLElement }>();
   private readonly profile = el('section', 'fr-profile');
   private readonly playstyle = el('p', 'fr-playstyle');
   private readonly statRows = new Map<string, { value: HTMLElement; ticks: HTMLElement[]; row: HTMLElement }>();
@@ -489,7 +490,7 @@ export class FighterRoster {
       text.append(type, name, desc);
       row.append(badge, text);
       kitList.appendChild(row);
-      this.abilityRows.set(kind, { row, name, desc, key });
+      this.abilityRows.set(kind, { row, badge, name, desc, key });
     }
     this.kit.append(kitLabel, kitList);
 
@@ -806,6 +807,7 @@ export class FighterRoster {
       for (const kind of ABILITY_KINDS) {
         const rowParts = this.abilityRows.get(kind);
         if (!rowParts) continue;
+        rowParts.badge.replaceChildren(icon(kind));
         rowParts.name.textContent = 'None';
         rowParts.desc.textContent = none[kind];
         rowParts.key.hidden = true;
@@ -835,6 +837,8 @@ export class FighterRoster {
       if (!rowParts) continue;
       const ability = def[kind];
       const key = abilityKeyLabel(kind, this.keyLabels);
+      // Each ability has its own glyph (ui/fighterIcons); the badge is tinted with the fighter's accent by its CSS.
+      rowParts.badge.innerHTML = abilityIcon(def.id, kind, 24);
       rowParts.name.textContent = ability.name;
       rowParts.desc.textContent = ability.description;
       rowParts.key.hidden = key === null;
