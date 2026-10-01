@@ -2,7 +2,7 @@ import { chainTube } from '@/render/creatures/anatomy';
 import { limb } from '@/render/player/AlchemistArt';
 import { EXTRA0, SLOT, matsFor, rgbOf } from '@/render/player/fighterLook';
 import type { FighterLook, LookCtx } from '@/render/player/fighterLook';
-import { bands, cuff, fract, mixP, rail, sheet, tailDir, tornHem } from '@/render/player/looks/cloakKit';
+import { bands, cuff, fract, mixP, rail, sheet, tailDir, tornHem, wisp } from '@/render/player/looks/cloakKit';
 import type { P } from '@/render/player/looks/cloakKit';
 
 /**
@@ -11,7 +11,7 @@ import type { P } from '@/render/player/looks/cloakKit';
  * Silhouette: narrow and tall, a long drooping hood peak, a torn cape streaming behind on the cloth rig,
  * and the weapon far longer than she is.
  */
-const CLOAK = EXTRA0, CLOAK_D = EXTRA0 + 1, VOID = EXTRA0 + 2, LINEN = EXTRA0 + 3, STEEL = EXTRA0 + 4;
+const CLOAK = EXTRA0, CLOAK_D = EXTRA0 + 1, VOID = EXTRA0 + 2, LINEN = EXTRA0 + 3, STEEL = EXTRA0 + 4, MIST = EXTRA0 + 5;
 const GLOW = SLOT.glow, WOOD = SLOT.wood, BRASS = SLOT.trim, LEATHER = SLOT.leather;
 
 /** Tongue lengths of the torn hems (cells); each tail gets its own so the two never march in step. */
@@ -34,6 +34,9 @@ function cape(c: LookCtx): void {
   // Folds: two dark creases down the cloth.
   const a = mixP(R[1], Q[1], 0.45), b = mixP(R[R.length - 1], Q[Q.length - 1], 0.3);
   r.stroke(a.x, a.y, b.x, b.y, CLOAK_D, 0, true);
+  // Mire mist clings to the hem and drifts off it.
+  const tip = t0.pts[t0.pts.length - 1];
+  wisp(r, tip.x, tip.y, frame, MIST, 28, -9, -f * 3, 4.5, 0.2, 4, 0.9, 110);
   // Spores lift off the damp cloth, glinting in turn.
   for (let k = 0; k < 3; k++) {
     const p = fract(frame / 70 + k / 3);
@@ -48,7 +51,7 @@ function backWraps(c: LookCtx): void {
   const { r, s } = c;
   cuff(r, s.backKnee, s.backFoot, 0.55, 0.95, 1.0, 0.92, -5, LINEN, 3);
   bands(r, s.backKnee, s.backFoot, 0.6, 0.92, 2, 1.1, 0.28, LEATHER, 1, 3);
-  bands(r, s.backElbow, s.backHand, 0.12, 0.8, 4, 0.9, 0.3, LINEN, 2, 2);
+  bands(r, s.backElbow, s.backHand, 0.15, 0.8, 3, 0.9, 0.2, LINEN, 2, 2);
 }
 
 /** The cloak's collar over the shoulders, the torn front flap over the near thigh, wrapped near boot, knee guard. */
@@ -81,32 +84,32 @@ function hood(c: LookCtx): void {
   const { r, s, costume, H } = c;
   const ht = s.headTilt;
   // The cowl: a shell over the crown and back of the head, the face left deep inside.
-  r.ellipse(...H(-0.8, 0.55), 3.0, 3.4, ht, 5.0, CLOAK, { group: 18 });
-  r.ellipse(...H(-1.9, -0.9), 2.3, 2.7, ht, 4.4, CLOAK_D, { group: 18 });
+  r.ellipse(...H(-0.8, 0.55), 3.0, 3.4, ht, 5.0, CLOAK, { group: 16 });
+  r.ellipse(...H(-1.9, -0.9), 2.3, 2.7, ht, 4.4, CLOAK_D, { group: 16 });
   if (costume) {
     // The peak droops back on the crown chain, drawn out into a point.
     const ch = costume.crown, root = ch.pts[0];
-    r.capsule(...H(-0.5, 2.3), 1.9, root.x, root.y, 1.5, 5.2, 5.4, CLOAK, { group: 18 });
-    chainTube(r, ch, 5.4, CLOAK, { group: 18 }, 1.5, 0.25);
+    r.capsule(...H(-0.5, 2.3), 1.9, root.x, root.y, 1.5, 5.2, 5.4, CLOAK, { group: 16 });
+    chainTube(r, ch, 5.4, CLOAK, { group: 16 }, 1.5, 0.25);
     const n = ch.pts.length, tip = ch.pts[n - 1], prev = ch.pts[n - 2];
     const dx = tip.x - prev.x, dy = tip.y - prev.y, l = Math.hypot(dx, dy) || 1;
-    r.capsule(tip.x, tip.y, 0.3, tip.x + dx / l * 1.5, tip.y + dy / l * 1.5, 0.05, 5.4, 5.4, CLOAK, { group: 18 });
+    r.capsule(tip.x, tip.y, 0.3, tip.x + dx / l * 1.5, tip.y + dy / l * 1.5, 0.05, 5.4, 5.4, CLOAK, { group: 16 });
   }
   // The opening: a dark mouth in the cowl and the lit lip of the cloth around it.
-  r.stamp(...H(1.45, 0.1), 1.65, 2.25, ht, VOID, 0, true, 18);
+  r.stamp(...H(1.45, 0.1), 1.65, 2.25, ht, VOID, 0, true, 16);
   r.stroke(...H(0.1, 2.4), ...H(1.9, 1.9), CLOAK, 4, true);
   r.stroke(...H(1.9, 1.9), ...H(2.65, 0.6), CLOAK, 3, true);
-  r.shade(...H(-0.4, 2.2), 2.4, 0.7, ht, 0.8, 18);
+  r.shade(...H(-0.4, 2.2), 2.4, 0.7, ht, 0.8, 16);
   if (!s.eyesShut && !c.dead) {
-    r.dot(...H(1.35, 0.55), GLOW, 3, 40);
-    r.dot(...H(2.2, 0.5), GLOW, 2, 40);
+    r.dot(...H(1.15, 0.55), GLOW, 3, 40);
+    r.dot(...H(2.3, 0.5), GLOW, 3, 40);
   }
 }
 
 /** Bandaged near forearm. */
 function front(c: LookCtx): void {
   const { r, s } = c;
-  bands(r, s.frontElbow, s.frontHand, 0.1, 0.78, 5, 1.0, 0.3, LINEN, 2, 13);
+  bands(r, s.frontElbow, s.frontHand, 0.14, 0.8, 4, 1.0, 0.2, LINEN, 2, 13);
   r.stamp(s.frontHand.x, s.frontHand.y, 1.0, 0.9, 0, LEATHER, 2, false, 13);
 }
 
@@ -173,6 +176,8 @@ export const look: FighterLook = {
     { keys: [0x1a1810, 0x3c3826, 0x69613f, 0x958b5c, 0xbab07c], gloss: 0.05, rim: 0.7, outline: 0x0e0c08 },
     // STEEL: the sickle, pitted and green-tinged.
     { keys: [0x141a1a, 0x3c4a48, 0x8aa09a, 0xd4e6e0, 0xffffff], gloss: 0.9, shine: 30, rim: 0.9, outline: 0x070a0a },
+    // MIST: the swamp's breath clinging to the hem (translucent, a faint self-light).
+    { keys: [0x0a2412, 0x174a26, 0x2a7a3c, 0x4fae5c], emissive: 0.5, translucent: 0.68, rim: 0.3, outline: 0x0a2412 },
   ]),
   accent: rgbOf(0x4ee86a),
   outfit: 'suit',

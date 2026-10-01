@@ -1,4 +1,3 @@
-import { chainTube } from '@/render/creatures/anatomy';
 import { limb } from '@/render/player/AlchemistArt';
 import { EXTRA0, SLOT, matsFor, rgbOf } from '@/render/player/fighterLook';
 import type { FighterLook, LookCtx } from '@/render/player/fighterLook';
@@ -26,14 +25,16 @@ function back(c: LookCtx): void {
   if (!costume) return;
   const t0 = costume.tails[0], t1 = costume.tails[1];
   const top: P = { x: s.chest.x - f * 1.4, y: s.chest.y - 1.5 };
-  const M = rail(costume.mantle, 1.2 * f), R = rail(t0, 1.8 * f), Q = rail(t1, 0.1 * f);
+  const M = rail(costume.mantle, 1.9 * f), R = rail(t0, 2.8 * f), Q = rail(t1, 0.1 * f);
   const hem = tornHem(R[R.length - 1], Q[Q.length - 1], tailDir(t0), HEM, 0.2, frame, 0.3);
   sheet(r, [top, ...M, ...R, ...hem, ...Q.reverse()], -8, COAT_DK, 4, 1.3);
   // Smoke sheds off the hem and the cape's tail and streams with the cloth.
   const e0 = t0.pts[t0.pts.length - 1], e1 = t1.pts[t1.pts.length - 1];
   const d = tailDir(t0);
-  wisp(r, e0.x, e0.y, frame, SMOKE, 40, -9, -f * 5 + d.x * 3, 7, 0.0, 5, 1.2);
-  wisp(r, e1.x, e1.y, frame, SMOKE, 44, -9, -f * 4, 6, 0.33, 4, 1.0);
+  wisp(r, e0.x, e0.y - 1, frame, SMOKE, 28, -9, -f * 2 + d.x * 2, 8, 0.0, 4, 0.95, 110);
+  wisp(r, e1.x, e1.y - 1, frame, SMOKE, 28, -9, -f * 3, 7, 0.4, 3, 0.8, 100);
+  const m = costume.mantle.pts[costume.mantle.pts.length - 1];
+  wisp(r, m.x, m.y, frame, SMOKE, 28, -9, -f * 2, 7, 0.7, 3, 0.85, 120);
 }
 
 /** The long coat's front: a split skirt to the shins, a brass-buttoned edge, the belt's brass buckle. */
@@ -64,7 +65,10 @@ function shoulders(c: LookCtx): void {
   r.ellipse(s.chest.x - f * 0.3, s.chest.y - 0.2, 3.5, 2.0, s.lean * 0.8 + f * 0.1, 2.5, SCARF, { group: 10 });
   r.shade(s.chest.x - f * 0.2, s.chest.y + 0.9, 3.2, 0.7, s.lean, -0.9, 10);
   // The scarf's long tail streams off the shoulder on the cloth chain.
-  if (costume) chainTube(r, costume.mantle, 2.8, SCARF, { group: 10 }, 1.1, 0.7);
+  if (costume) {
+    const m = costume.mantle.pts;
+    for (let i = 1; i < m.length; i++) r.capsule(m[i - 1].x, m[i - 1].y, 1.1 - (i - 1) * 0.12, m[i].x, m[i].y, 1.1 - i * 0.12, 2.8, 2.8, SCARF, { group: 10 });
+  }
   // The pauldron stud.
   r.dot(s.chest.x + f * 1.4, s.chest.y - 1.0, BRASS, 3, 6);
 }
@@ -79,14 +83,14 @@ function head(c: LookCtx): void {
 function hood(c: LookCtx): void {
   const { r, s, costume, H } = c;
   const ht = s.headTilt;
-  r.ellipse(...H(-0.6, 0.55), 3.3, 3.45, ht, 5.0, COAT_L, { group: 18 });
-  r.ellipse(...H(-1.8, -1.0), 2.5, 2.8, ht, 4.4, COAT_DK, { group: 18 });
+  r.ellipse(...H(-0.6, 0.5), 3.45, 3.5, ht, 5.0, COAT_L, { group: 16 });
+  r.ellipse(...H(-1.8, -1.0), 2.5, 2.8, ht, 4.4, COAT_DK, { group: 16 });
   if (costume) {
     const ch = costume.crown, root = ch.pts[0];
-    r.capsule(...H(-0.4, 2.1), 2.0, root.x, root.y, 1.7, 5.2, 5.4, COAT_L, { group: 18 });
-    chainTube(r, ch, 5.4, COAT_L, { group: 18 }, 1.6, 0.9);
+    r.capsule(...H(-0.4, 2.0), 2.1, root.x, root.y, 1.6, 5.2, 5.4, COAT_L, { group: 16 });
+    r.capsule(root.x, root.y, 1.6, ch.pts[2].x, ch.pts[2].y, 0.9, 5.4, 5.4, COAT_L, { group: 16 });
   }
-  r.stamp(...H(1.5, 0.15), 1.55, 2.05, ht, VOID, 0, true, 18);
+  r.stamp(...H(1.5, 0.15), 1.55, 2.05, ht, VOID, 0, true, 16);
   r.stroke(...H(0.2, 2.5), ...H(1.7, 2.1), COAT_L, 4, true);
   r.stroke(...H(1.7, 2.1), ...H(2.45, 1.0), COAT_L, 3, true);
   if (!s.eyesShut && !c.dead) {
@@ -94,8 +98,8 @@ function hood(c: LookCtx): void {
     r.dot(...H(2.0, 0.75), GLOW, 3, 40);
   }
   // The scarf: wound over the jaw and mouth.
-  r.ellipse(...H(1.1, -1.55), 2.5, 1.35, ht, 6.4, SCARF, { group: 19 });
-  r.shade(...H(0.8, -2.2), 2.2, 0.5, ht, -0.8, 19);
+  r.ellipse(...H(1.1, -1.55), 2.5, 1.35, ht, 6.4, SCARF, { group: 10 });
+  r.shade(...H(0.8, -2.2), 2.2, 0.5, ht, -0.8, 10);
 }
 
 /** Near arm: a grey bracer on the forearm. */
@@ -111,14 +115,16 @@ function lantern(c: LookCtx): void {
   const w = s.wand, ang = w.angle + w.spin, cc = Math.cos(ang), sn = Math.sin(ang);
   const hooded = ctx.state.lanternHooded === true && !a.firing;
   const swing = a.firing ? 1 : clamp(a.recoilT / 6, 0, 1);
-  const reach = 1.8 + 3.2 * swing;
+  const reach = 1.8 + 3.2 * swing + 3.0 * swing * Math.max(0, -sn);
   const px = w.x + cc * reach, py = w.y + sn * reach;
   const sway = clamp(-(a._svx || 0) * f * 0.6, -1.4, 1.4) * f + Math.sin(frame * 0.09) * 0.3 * (1 - swing);
   const cx = px + sway, cy = py + 4.0 * (1 - 0.55 * swing);
   // The glow the lantern throws, behind everything else (it only shows where nothing is drawn).
-  if (!hooded && a.staggerT <= 7) {
-    r.ellipse(cx, cy, 6.0, 6.0, 0, -12, HALO, { group: 58, noOutline: true });
-    r.glowStamp(cx, cy, 6.0, 6.0, 0, HALO, 3.0 + Math.sin(frame * 0.37) * 0.25, 0, 58);
+  // (Not through a hit's flash or the ice's glaze: both wash over every pixel, this faint disc included.)
+  const iced = (a.chill?.shell ?? 0) > 0 || (a.chill?.rime ?? 0) > 0.75;
+  if (!hooded && a.staggerT <= 7 && !iced) {
+    r.ellipse(cx, cy, 6.0, 6.0, 0, -12, HALO, { group: 29, noOutline: true });
+    r.glowStamp(cx, cy, 6.0, 6.0, 0, HALO, 3.0 + Math.sin(frame * 0.37) * 0.25, 0, 29);
   }
   // Handle and chain.
   r.capsule(w.x + cc * 0.6, w.y + sn * 0.6, 0.38, px, py, 0.34, 8.3, 8.3, IRON, { group: 14 });
@@ -132,15 +138,26 @@ function lantern(c: LookCtx): void {
   r.glowStamp(cx, cy + 0.1, 1.1, 1.5, 0, GLOW, hooded ? 0.9 : flick, hooded ? 0.2 : 0.9, 14);
   r.ellipse(cx, cy + 2.0, 1.65, 0.75, 0, 9.6, IRON, { group: 14 });
   r.stroke(cx, cy - 1.5, cx, cy + 1.6, IRON, 1, true);
-  if (hooded) r.ellipse(cx, cy - 0.2, 1.5, 1.2, 0, 9.6, IRON, { group: 14 });
-  else {
+  if (hooded) {
+    // The shutter is down: iron over the pane, one thread of light leaking under it.
+    r.ellipse(cx, cy - 0.1, 1.5, 1.75, 0, 9.6, IRON, { group: 14 });
+    r.stroke(cx - 0.8, cy + 1.45, cx + 0.8, cy + 1.45, GLOW, 1, true);
+  } else {
+    // Casting, a fan of embers streams off the swing.
+    if (a.firing) {
+      for (let k = 0; k < 7; k++) {
+        if (((frame >> 1) + k * 5) % 3 === 0) continue;
+        const th = ang + (k - 3) * 0.27, rad = 3.0 + (k % 3) * 0.9 + fract(frame / 16 + k * 0.3) * 1.6;
+        r.dot(cx + Math.cos(th) * rad, cy + Math.sin(th) * rad, GLOW, k % 2 === 0 ? 3 : 2, 50);
+      }
+    }
     // Embers lift off the flame, and a thread of smoke.
     for (let k = 0; k < 3; k++) {
       const p = fract(frame / 38 + k / 3);
       if (p > 0.85) continue;
       r.dot(cx + Math.sin(k * 2.7 + frame * 0.05) * 1.5, cy - 2.4 - p * 4.5, GLOW, p < 0.5 ? 3 : 2, 50);
     }
-    wisp(r, cx, cy - 2.8, frame, SMOKE, 56, 9.5, 1.2, 5, 0.5, 3, 0.9, 80);
+    wisp(r, cx, cy - 2.8, frame, SMOKE, 28, 9.5, 1.2, 5, 0.5, 3, 0.9, 80);
   }
 }
 

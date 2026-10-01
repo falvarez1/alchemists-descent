@@ -10,14 +10,17 @@ import type { P } from '@/render/player/looks/cloakKit';
  * a brass handbell that rings purple resonance. Silhouette: upright, a tall pointed cowl edged in gold, a robe
  * that sweeps to the boots in an A-line and swings on the cloth rig, wide cuffs, and the bell held out front.
  */
-const ROBE = EXTRA0, ROBE_D = EXTRA0 + 1, VOID = EXTRA0 + 2;
+const ROBE = EXTRA0, ROBE_D = EXTRA0 + 1, VOID = EXTRA0 + 2, GILD = EXTRA0 + 3;
 const GOLD = SLOT.trim, GLOW = SLOT.glow, RUNE = SLOT.rune;
 
 const HEM = [0.5, 1.5, 0.4, 1.9, 0.6, 1.3] as const;
 
-/** The robe's train: the sweep behind her, on the rear cloth chains. */
+/** The robe's train: the sweep behind her, on the rear cloth chains; and the far arm's bell sleeve. */
 function train(c: LookCtx): void {
-  const { r, f, costume, frame } = c;
+  const { r, s, f, costume, frame } = c;
+  cuff(r, s.backElbow, s.backHand, 0.1, 0.8, 1.0, 1.5, -5.8, ROBE_D, 2);
+  const ang = Math.atan2(s.backHand.y - s.backElbow.y, s.backHand.x - s.backElbow.x), q = mixP(s.backElbow, s.backHand, 0.78);
+  r.stamp(q.x, q.y, 0.3, 1.5, ang, GILD, 1, false, 2);
   if (!costume) return;
   const R = rail(costume.tails[0], 3.0 * f), Q = rail(costume.tails[1], 0.2 * f);
   const hem = tornHem(R[R.length - 1], Q[Q.length - 1], tailDir(costume.tails[0]), HEM, 0.1, frame + 5, 0.25);
@@ -56,7 +59,7 @@ function skirt(c: LookCtx): void {
 function belt(c: LookCtx): void {
   const { r, s, f, costume } = c;
   const bx = s.hip.x + c.ux * 0.12, by = s.hip.y + c.uy * 0.12;
-  r.stamp(bx, by, 2.35, 0.75, Math.atan2(c.uy, c.ux) + Math.PI / 2, GOLD, 1, false, 1);
+  r.stamp(bx, by, 2.35, 0.75, Math.atan2(c.uy, c.ux) + Math.PI / 2, GILD, 1, false, 1);
   r.dot(bx + f * 0.5, by, GOLD, 3, 6);
   const sw = costume?.vial ?? 0;
   r.ellipse(bx + f * 1.6 + sw * 0.3, by + 1.8, 0.62, 0.74, 0, 3.4, GOLD, { group: 7 });
@@ -82,20 +85,20 @@ function head(c: LookCtx): void {
 function hood(c: LookCtx): void {
   const { r, s, costume, H } = c;
   const ht = s.headTilt;
-  r.ellipse(...H(-0.7, 0.5), 3.0, 3.35, ht, 5.0, ROBE, { group: 18 });
-  r.ellipse(...H(-1.8, -0.9), 2.3, 2.7, ht, 4.4, ROBE_D, { group: 18 });
+  r.ellipse(...H(-0.7, 0.5), 3.0, 3.35, ht, 5.0, ROBE, { group: 16 });
+  r.ellipse(...H(-1.8, -0.9), 2.3, 2.7, ht, 4.4, ROBE_D, { group: 16 });
   if (costume) {
     const ch = costume.crown, root = ch.pts[0];
-    r.capsule(...H(-0.4, 2.3), 1.8, root.x, root.y, 1.3, 5.2, 5.4, ROBE, { group: 18 });
-    chainTube(r, ch, 5.4, ROBE, { group: 18 }, 1.3, 0.2);
+    r.capsule(...H(-0.4, 2.3), 1.8, root.x, root.y, 1.3, 5.2, 5.4, ROBE, { group: 16 });
+    chainTube(r, ch, 5.4, ROBE, { group: 16 }, 1.3, 0.2);
   }
-  r.stamp(...H(1.5, 0.05), 1.6, 2.2, ht, VOID, 0, true, 18);
+  r.stamp(...H(1.5, 0.05), 1.6, 2.2, ht, VOID, 0, true, 16);
   // The gold rim around the opening.
   const rim = [H(0.0, 2.55), H(0.9, 2.5), H(1.8, 2.0), H(2.5, 1.0), H(2.75, -0.1), H(2.5, -1.2)] as const;
   for (let i = 1; i < rim.length; i++) r.stroke(rim[i - 1][0], rim[i - 1][1], rim[i][0], rim[i][1], GOLD, 3, true);
   if (!s.eyesShut && !c.dead) {
-    r.dot(...H(1.3, 0.5), GLOW, 3, 40);
-    r.dot(...H(2.1, 0.45), GLOW, 2, 40);
+    r.dot(...H(1.1, 0.5), GLOW, 3, 40);
+    r.dot(...H(2.15, 0.45), GLOW, 3, 40);
   }
 }
 
@@ -192,6 +195,8 @@ export const look: FighterLook = {
     { keys: [0x05030a, 0x0c0618, 0x160c2c, 0x241544, 0x3a2762], gloss: 0.08, rim: 0.7, outline: 0x030106 },
     // VOID
     { keys: [0x010002, 0x040208, 0x0a0614, 0x150c24], rim: 0.15, outline: 0x010002 },
+    // GILD: gold cloth and braid (no lacquer, so it never blows out to white).
+    { keys: [0x3a2204, 0x8a5c0e, 0xc8941e, 0xe8bc48, 0xf6d878], gloss: 0, rim: 0.5, outline: 0x180c02 },
   ]),
   accent: rgbOf(0xb06cff),
   outfit: 'suit',

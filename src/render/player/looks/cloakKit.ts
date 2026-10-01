@@ -102,9 +102,13 @@ export function cuff(r: CreatureRaster, a: P, b: P, t0: number, t1: number, ra: 
 export function wisp(r: CreatureRaster, x: number, y: number, frame: number, mat: number, group: number, z: number, drift: number, rise: number, seed: number, n = 4, size = 1.5, period = 96): void {
   for (let k = 0; k < n; k++) {
     const p = fract(frame / period + k / n + seed);
-    const rad = size * Math.pow(Math.sin(Math.PI * p), 0.8) + 0.18;
+    // No two puffs alike: each has its own size.
+    const mine = 0.65 + 0.7 * fract(k * 0.618 + seed * 3.1);
+    const rad = size * mine * Math.pow(Math.sin(Math.PI * p), 0.8) + 0.18;
     if (rad < 0.42) continue;
-    const sway = Math.sin(frame * 0.045 + k * 2.1 + seed * 9) * 0.9 * p;
-    r.ellipse(x + drift * p + sway, y - rise * p, rad * 1.25, rad, 0, z, mat, { group: group + k, noOutline: true, depth: 0.6 });
+    // Each puff takes its own line off the column and thins into the dark as it ages (a darker ramp step, not a smaller blob).
+    const own = (((k * 37 + Math.floor(seed * 101)) % 5) - 2) * 0.45;
+    const sway = Math.sin(frame * 0.045 + k * 2.1 + seed * 9) * 0.9 * p + own * p;
+    r.ellipse(x + drift * p + sway, y - rise * Math.pow(p, 0.85), rad * 1.2, rad, 0, z, mat, { group, noOutline: true, depth: 0.6, tone: -2.4 * p * p });
   }
 }
