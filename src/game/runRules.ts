@@ -104,6 +104,8 @@ export interface RunStatsInput {
   boons?: readonly string[];
   /** The difficulty tier the run was played at. */
   difficulty?: Difficulty;
+  /** The wands the run ended with, in one line (combat/wands/buildRecap.buildLine). */
+  build?: string;
 }
 
 /**
@@ -173,7 +175,15 @@ export function buildRunSummary(input: RunStatsInput): RunSummary {
     ...(input.path ? { path: cleanRunPath(input.path).slice(0, FLOORS_TOTAL) } : {}),
     ...(cleanRunBoons(input.boons).length > 0 ? { boons: cleanRunBoons(input.boons) } : {}),
     ...(isDifficulty(input.difficulty) ? { difficulty: input.difficulty } : {}),
+    ...(cleanBuildLine(input.build) ? { build: cleanBuildLine(input.build) } : {}),
   };
+}
+
+/** A build line, trimmed to one tidy line (absent stays absent); a hand-edited ledger cannot stretch the share line. */
+export function cleanBuildLine(build: unknown): string {
+  if (typeof build !== 'string') return '';
+  const line = build.replace(/\s+/g, ' ').trim();
+  return line.length <= 96 ? line : line.slice(0, 95).trimEnd() + '…';
 }
 
 function runEpitaph(input: RunStatsInput): string {
@@ -244,6 +254,8 @@ export function shareLine(summary: RunSummary, title = GAME_TITLE): string {
     ...(boonNames(summary.boons) ? [`with ${boonNames(summary.boons)}`] : []),
     `${summary.alchemicalKills} alchemical kill${summary.alchemicalKills === 1 ? '' : 's'}`,
     ...(Math.round(summary.bestChain) > 0 ? [`best chain ${formatChain(summary.bestChain)}`] : []),
+    // The wands, last: a share line from a run with no build recorded is byte-identical to what it always was.
+    ...(cleanBuildLine(summary.build) ? [`wands: ${cleanBuildLine(summary.build)}`] : []),
   ].join(' · ');
   parts.push(tail);
   return parts.join(' — ');

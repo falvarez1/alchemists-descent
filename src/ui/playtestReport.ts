@@ -1,5 +1,7 @@
 import { difficultyMods } from '@/config/difficulty';
 import type { Ctx } from '@/core/types';
+import { recapRows } from '@/combat/wands/buildRecap';
+import { buildNotesReport } from '@/ui/runNotes';
 
 /** Commit hash + build time, baked in by vite.config's `define`. */
 export const BUILD_STAMP = __BUILD_STAMP__;
@@ -24,6 +26,12 @@ export function buildPlaytestReport(ctx: Ctx): string {
       gold: ctx.state.score,
       player: status.player,
       debugTainted: status.debugTainted,
+      // What this run asked of the build: the wands as sentences, and the decision notes (offers shown and
+      // taken, altars, dead-card captions, frames, seconds on each floor) — the answer to "what happens at minute five".
+      choices: {
+        wands: recapRows(ctx.wands.wands).map((r) => ({ wand: r.numeral, frame: r.frameName, slots: r.capacity, casts: r.sentence })),
+        notes: ctx.wands.buildNotes ? buildNotesReport(ctx.wands.buildNotes()) : null,
+      },
       counters: ctx.telemetry.all(),
     },
     null,
