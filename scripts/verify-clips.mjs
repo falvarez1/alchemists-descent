@@ -161,6 +161,7 @@ await page.evaluate(() => {
   window.__game.ctx.events.on('clipSaved', (e) => window.__clips.push(e));
 });
 await clickEl('[data-entry="begin"]');
+await clickEl('[data-entry="descend"]');
 await page.waitForFunction(() => {
   const ctx = window.__game.ctx;
   return ctx.state.mode === 'play' && !ctx.state.paused && !document.body.classList.contains('entry-active');

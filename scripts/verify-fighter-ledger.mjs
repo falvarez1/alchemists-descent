@@ -29,12 +29,15 @@ await page.waitForSelector('#expedition-entry:not([hidden])', { timeout: 20000 }
 await page.waitForTimeout(700);
 
 // A run as Ilyra, then end it.
-await click(page, '#expedition-entry .fighter-pick-chip');
+// (the title is a menu: New descent > the Fighter row opens the roster; choosing returns to the page, where Descend starts the run)
+await click(page, '#expedition-entry [data-entry="begin"]');
+await page.waitForTimeout(500);
+await click(page, '#expedition-entry [data-entry="fighter"]');
 await page.waitForSelector('#fighter-roster.visible');
 await click(page, '#fighter-roster .fr-card[data-entry="ilyra-voss"]');
 await click(page, '#fighter-roster .fr-choose');
-await page.waitForTimeout(400);
-await click(page, '#expedition-entry [data-entry="begin"]');
+await page.waitForTimeout(500);
+await click(page, '#expedition-entry [data-entry="descend"]');
 await page.waitForFunction(() => window.__game?.ctx?.run?.active === true && window.__game.ctx.state.mode === 'play', { timeout: 30000 });
 check('the first run is Ilyra\'s', (await page.evaluate(() => window.__game.ctx.fighters.id)) === 'ilyra-voss');
 await page.evaluate(() => { window.__game.ctx.state.arrivalGraceUntil = 0; window.__game.ctx.run.abandon(window.__game.ctx); });

@@ -29,7 +29,7 @@ await page.waitForTimeout(900);
 // Fresh sessions now boot at the expedition title. Enter the Sandbox before
 // testing its camera keys; otherwise the title correctly owns all input.
 if (await page.locator('#expedition-entry').isVisible()) {
-  await page.locator('.entry-workshops summary').click();
+  await page.locator('#expedition-entry [data-entry="workshops"]').click();
   await page.locator('[data-entry="sandbox"]').click();
   await page.waitForFunction(() => document.getElementById('expedition-entry')?.hidden);
 }

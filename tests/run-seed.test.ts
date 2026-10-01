@@ -8,7 +8,7 @@ import { RunDirector } from '@/game/RunDirector';
 import { dailySeed, shareLine, utcDateKey } from '@/game/runRules';
 
 /**
- * A chosen seed on the title (ui/SeedDisclosure -> RunDirector.startNewRun opts.seed): the
+ * A chosen seed on the title (ui/title/SeedPage -> RunDirector.startNewRun opts.seed): the
  * descent runs on it, the run remembers it was chosen (through a save and a resume), and only
  * then do the ledger and the share line print it. The daily and an ordinary Begin are unchanged.
  */

@@ -32,6 +32,7 @@ try {
   await page.screenshot({ path: `${output}/entry-compact.png` });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.locator('[data-entry="begin"]').click();
+  await page.locator('[data-entry="descend"]').click();
   await waitForRunReady(page);
   await waitForOpeningEnd(page); // the plates hold the world still; a key press would only skip them
   await page.waitForTimeout(600);

@@ -76,7 +76,7 @@ try {
   phase = 'builder';
   const entryBuilder = page.locator('#expedition-entry [data-entry="builder"]');
   if (await page.locator('#expedition-entry').isVisible().catch(() => false)) {
-    await page.locator('#expedition-entry .entry-workshops > summary').click();
+    await page.locator('#expedition-entry [data-entry="workshops"]').click();
     await entryBuilder.click();
   } else {
     await page.click('#mode-builder-btn');

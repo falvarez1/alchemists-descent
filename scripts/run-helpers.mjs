@@ -176,9 +176,7 @@ export async function openRuntimeInspector(page, { timeout = 15000 } = {}) {
  */
 export async function enterSandboxFromTitle(page, { timeout = 30000 } = {}) {
   await page.locator('#expedition-entry').waitFor({ state: 'visible', timeout });
-  if (!(await page.locator('#expedition-entry .entry-workshops').evaluate((d) => d.open))) {
-    await page.locator('#expedition-entry .entry-workshops > summary').click();
-  }
+  await page.locator('#expedition-entry [data-entry="workshops"]').click();
   await page.locator('#expedition-entry [data-entry="sandbox"]').click();
   await page.locator('#expedition-entry').waitFor({ state: 'hidden', timeout: 10000 });
 }

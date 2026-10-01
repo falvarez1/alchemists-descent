@@ -106,6 +106,7 @@ try {
 
   console.log('\n-- the Bellows');
   await clickReal('#expedition-entry [data-entry="begin"]');
+  await clickReal('#expedition-entry [data-entry="descend"]');
   await page.waitForFunction(() => window.__game.ctx.state.mode === 'play' && !document.body.classList.contains('entry-active'), null, { timeout: 60000 });
   check('a run on floor 1 plays the Bellows', Boolean(await cueIs('bellows', 8000)), (await music()).cue);
   await page.evaluate(() => { window.__game.ctx.state.debugGodMode = true; });

@@ -160,11 +160,15 @@ export class InputManager {
       if (pressed(0)) controls[index]?.click();
       if (pressed(1)) window.dispatchEvent(new Event('game-pause-request')); // (the roster treats it as Back)
     } else if (menu && !menu.hidden) {
-      // (visible ones only: a closed fold, such as "Choose a seed", holds buttons the stick could never land on)
-      const buttons = Array.from(menu.querySelectorAll<HTMLButtonElement>('nav button:not([hidden])')).filter(b => b.getClientRects().length > 0);
-      if (pressed(13) || pressed(12)) {
-        const index = Math.max(0, buttons.indexOf(document.activeElement as HTMLButtonElement));
-        buttons[(index + (pressed(13) ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+      // The title is a game menu (ui/title/TitleMenu): the pad presses the same keys it answers. D-pad = arrows
+      // (Up/Down select, Left/Right change a choice row), A = press, B = back. A dialog open over it (Options) keeps A.
+      const covered = document.querySelector('#player-settings[open], .app-dialog-root') !== null;
+      const active = document.activeElement instanceof HTMLElement && menu.contains(document.activeElement) ? document.activeElement : null;
+      if (!covered) {
+        const keys: ReadonlyArray<readonly [number, string]> = [[12, 'ArrowUp'], [13, 'ArrowDown'], [14, 'ArrowLeft'], [15, 'ArrowRight'], [1, 'Escape']];
+        if (keys.some(([index]) => pressed(index)) && !active) menu.querySelector<HTMLElement>('.tm-item')?.focus();
+        const target = active ?? (document.activeElement instanceof HTMLElement ? document.activeElement : menu);
+        for (const [index, key] of keys) if (pressed(index)) target.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, bubbles: true, cancelable: true }));
       }
       if (pressed(0) && document.activeElement instanceof HTMLButtonElement) document.activeElement.click();
     } else if (ctx.state.mode === 'play') {

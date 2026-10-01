@@ -175,6 +175,7 @@ try {
   const fresh = await freshContext.newPage();
   await fresh.goto(process.argv[3] ?? url, { waitUntil: 'networkidle' });
   await fresh.locator('[data-entry="begin"]').tap();
+  await fresh.locator('[data-entry="descend"]').tap();
   await fresh.waitForSelector('#story-cinema.show');
   await fresh.waitForTimeout(400); // The intentional opening skip guard.
   await fresh.locator('#story-cinema').tap();

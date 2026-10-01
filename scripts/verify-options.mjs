@@ -483,7 +483,7 @@ try {
 
   // ------------------------------------------------------------------ chosen seed
   if (want('seed')) {
-    console.log('\n== Choose a seed: title fold, determinism, ledger, share line, copy');
+    console.log('\n== Choose a seed: title page, determinism, ledger, share line, copy');
     /** Real title -> fold -> typed seed. Returns the page, still on the title. */
     const startWithSeed = async (text) => {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
@@ -493,15 +493,18 @@ try {
       await page.goto(url, { waitUntil: 'networkidle' });
       await page.locator('#expedition-entry').waitFor({ state: 'visible' });
       await page.waitForTimeout(800);
-      await click(page, page.locator('#expedition-entry .entry-seed summary'));
-      await page.waitForFunction(() => document.querySelector('#expedition-entry .entry-seed').open);
+      // (the title is a menu: New descent > Seed is a page with a field on it)
+      await click(page, page.locator('#expedition-entry [data-entry="begin"]'));
+      await click(page, page.locator('#expedition-entry [data-entry="seed"]'));
+      await page.locator('#entry-seed-input').waitFor({ state: 'visible' });
       await click(page, page.locator('#entry-seed-input'));
       await page.keyboard.type(text);
       return { context, page, errors };
     };
     const signature = (page) => page.evaluate(() => { const r = window.__game.ctx.levels.current; const st = window.__game.ctx.state; return JSON.stringify({ worldSeed: st.worldSeed, secret: st.secretReaction, id: r.def.id, spawn: r.spawn, portal: r.portal && [r.portal.x, r.portal.y], pickups: r.pickups.map((p) => [p.kind, p.x >> 4, p.y >> 4]), enemies: window.__game.ctx.enemies.map((e) => [e.kind, Math.round(e.x) >> 4, Math.round(e.y) >> 4]), mech: r.mechanisms.map((m) => [m.kind, m.x, m.y]), ways: r.waystones.map((w) => [w.x, w.y]) }); });
     const begin = async (page) => {
-      await click(page, page.locator('#expedition-entry [data-seed="begin"]'));
+      await click(page, page.locator('#expedition-entry [data-seed="use"]'));
+      await click(page, page.locator('#expedition-entry [data-entry="descend"]'));
       await page.waitForFunction(() => window.__game.ctx.state.mode === 'play' && window.__game.ctx.levels.current && !window.__game.ctx.levels.transitioning, null, { timeout: 60000 });
       await waitForOpeningEnd(page).catch(() => undefined);
     };
@@ -509,7 +512,7 @@ try {
     // the fold and the preview
     const a = await startWithSeed('1234567');
     check((await a.page.locator('#entry-seed-preview').textContent()) === 'Seed 1234567.', 'typing a number previews it: "Seed 1234567."');
-    check(await a.page.locator('#expedition-entry [data-seed="begin"]').isEnabled(), 'Begin with this seed is enabled');
+    check((await a.page.locator('#expedition-entry [data-seed="use"]').getAttribute('aria-disabled')) !== 'true', 'Use this seed is enabled');
     await a.page.screenshot({ path: `${out}/seed-fold.png` });
     await begin(a.page);
     const statusA = await a.page.evaluate(() => { const c = window.__game.ctx; return { seed: c.levels.runStatus(c).expeditionSeed, save: c.run.snapshotForSave() }; });
@@ -563,8 +566,9 @@ try {
     await d.page.evaluate(() => { const c = window.__game.ctx; c.state.paused = false; window.dispatchEvent(new CustomEvent('expedition-title-request')); });
     await d.page.locator('#expedition-entry').waitFor({ state: 'visible' });
     await d.page.waitForTimeout(600);
-    const foldOpen = await d.page.evaluate(() => document.querySelector('#expedition-entry .entry-seed').open);
-    if (!foldOpen) await click(d.page, d.page.locator('#expedition-entry .entry-seed summary'));
+    await click(d.page, d.page.locator('#expedition-entry [data-entry="begin"]'));
+    await click(d.page, d.page.locator('#expedition-entry [data-entry="seed"]'));
+    await d.page.locator('#entry-seed-input').waitFor({ state: 'visible' });
     const copyBtn = d.page.locator('#expedition-entry [data-seed="copy"]');
     check(await copyBtn.isVisible(), 'with a descent in hand the title offers the copy button');
     await click(d.page, copyBtn);

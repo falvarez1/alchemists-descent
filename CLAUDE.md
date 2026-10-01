@@ -68,6 +68,8 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # (footfalls/splashes/tracks/vines/critters), bench-creatures.mjs,
 # perf-creatures-live.mjs. Player (docs/PLAYER-ART.md): player-studio.mjs
 # (every action posed + costume-ticked, zoomed), probe-player-death.mjs
+# Title menu (dev server running): verify-title-menu.mjs (the menu at three sizes: keys, rows, lists, seed, pointer, a
+# fake pad the game polls, Descend starts what the rows say), shot-title.mjs (every page, for the eye).
 # Gameplay/runtime probes (dev server running): verify-tea-machine.mjs (floor 1 PLAYED with
 # real input: barricade, crank, the three faults, bell, gate), verify-living-traversal.mjs /
 # verify-living-progression.mjs / verify-run-lifecycle.mjs (route to the Sanctum, boon + door, all
@@ -123,6 +125,11 @@ dev server. `scripts/verify-*.mjs` show the pattern.
   (`render/player/looks/<id>.ts`) is the alchemist's own rig and cloth dressed differently, never a sprite. A
   fighter rides the run exactly as `kitId` does (config, `RunSaveState`, meta profile, ledger) and the daily is
   always the classic Alchemist. The arena mode they were designed for does not exist yet.
+- **The title is a game menu, not a page** (`src/ui/title/`, docs/TITLE-MENU.md): a short main list, each door a page
+  (New descent is the loadout: case / fighter / difficulty / seed / Descend), a detail card beside the focused row.
+  `titleMenuModel.ts` is the pure part (tested), `TitleMenu.ts` the engine, `ExpeditionEntry.ts` the pages. Items are
+  buttons with `data-entry` ids the probes click; the focused row is the selection (styled on `:focus`), and the pad
+  presses the same keys as the keyboard. Starting a run through the title is TWO clicks: `begin` then `descend`.
 - **Three authoring/save families, kept separate:** Sandbox (live-sim painting, raw grid v1
   saves), the Builder authoring tool (`EditorDocument` v2 in `src/builder/`, compiles disposable
   playtest runtimes — see `docs/BUILDER.md`), and expedition runtime saves. Don't grow one
@@ -235,6 +242,7 @@ loops degrade criteria progressively, never silently skip.
   `docs/BOONS.md` — the Sanctum's boons: the pool, each hook, tuning, and what was measured;
   `docs/DIFFICULTY.md` — the four-tier ladder: who may pick which, where it lives, why it fits;
   `docs/PROBE-HEALTH.md` — which `scripts/verify-*` probes pass, which are stale and why (run before trusting a red one)
+- `docs/TITLE-MENU.md` — the title as a game menu: the pages, the files, the rules (focus, pointer, key legend), the probes
 - `docs/FIGHTERS.md` — the ten fighters: the engine seams, every ability's spec, how to write a kit, the probes;
   `docs/fighters/<id>.md` — each fighter's numbers, measurements and deviations; `docs/fighters/KIT-BRIEF.md`
   — the working brief a kit is built to

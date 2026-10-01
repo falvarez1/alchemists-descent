@@ -32,13 +32,31 @@ const openTitle = async () => {
   await page.waitForTimeout(600);
   return page;
 };
-const chips = (page) => page.evaluate(() => [...document.querySelectorAll('#expedition-entry .difficulty-chip')].map((c) => ({
-  tier: Number(c.dataset.difficulty),
-  checked: c.getAttribute('aria-checked') === 'true',
-  locked: c.getAttribute('aria-disabled') === 'true',
-  label: c.getAttribute('aria-label'),
-})));
-const note = (page) => page.evaluate(() => document.querySelector('#expedition-entry .difficulty-picker .kit-note')?.textContent ?? '');
+// The title is a game menu: the tiers are a list two doors in (New descent > Difficulty), and the card beside it is the note.
+const ensureList = async (page) => {
+  const list = page.locator('#expedition-entry .tm-item[data-difficulty]').first();
+  if (await list.isVisible().catch(() => false)) return;
+  if (!(await page.locator('#expedition-entry [data-entry="difficulty"]').isVisible().catch(() => false))) await page.locator('#expedition-entry [data-entry="begin"]').click();
+  await page.locator('#expedition-entry [data-entry="difficulty"]').click();
+  await list.waitFor({ state: 'visible', timeout: 5000 });
+  await page.waitForTimeout(450);
+};
+const backToMain = async (page) => {
+  for (let n = 0; n < 4 && await page.locator('#expedition-entry [data-entry="back"]').isVisible().catch(() => false); n++) {
+    await page.locator('#expedition-entry [data-entry="back"]').click();
+    await page.waitForTimeout(450);
+  }
+};
+const chips = async (page) => {
+  await ensureList(page);
+  return page.evaluate(() => [...document.querySelectorAll('#expedition-entry .tm-item[data-difficulty]')].map((c) => ({
+    tier: Number(c.dataset.difficulty),
+    checked: c.getAttribute('aria-checked') === 'true',
+    locked: c.getAttribute('aria-disabled') === 'true',
+    label: c.textContent,
+  })));
+};
+const note = (page) => page.evaluate(() => document.querySelector('#expedition-entry .tm-detail')?.textContent ?? '');
 const state = (page) => page.evaluate(() => {
   const c = window.__game.ctx;
   return { difficulty: c.state.difficulty, maxHp: c.player.maxHp, daily: c.run?.daily ?? null };
@@ -51,20 +69,22 @@ try {
   check('the title offers four tiers', row.length === 4, JSON.stringify(row));
   check('a fresh profile has Adept chosen', row.find((c) => c.tier === 2)?.checked === true, JSON.stringify(row));
   check('Apprentice and Adept are open; Conjurer and Archmage are locked', row.filter((c) => !c.locked).map((c) => c.tier).join() === '1,2', JSON.stringify(row));
-  check('a locked chip says how it opens', /locked.*Quiet the Kiln on Adept or harder/.test(row.find((c) => c.tier === 3).label ?? ''), row.find((c) => c.tier === 3).label);
+  check('a locked chip says how it opens', /locked.*Quiet the Kiln on Adept or harder/i.test(row.find((c) => c.tier === 3).label ?? ''), row.find((c) => c.tier === 3).label);
 
   // A REAL click on a locked tier is refused, and its note explains.
-  await page.locator('#expedition-entry .difficulty-chip[data-difficulty="4"]').click({ force: true }); // a real mouse click on a chip marked aria-disabled
+  await page.locator('#expedition-entry .tm-item[data-difficulty="4"]').click({ force: true }); // a real mouse click on a row marked aria-disabled
   row = await chips(page);
   check('a click on Archmage changes nothing', row.find((c) => c.tier === 2).checked && !row.find((c) => c.tier === 4).checked, JSON.stringify(row));
-  check('and the note says how to earn it', /Archmage.*locked.*Quiet the Kiln on Conjurer or harder/.test(await note(page)), await note(page));
+  check('and the note says how to earn it', /Archmage.*locked.*Quiet the Kiln on Conjurer or harder/i.test(await note(page)), await note(page));
   await page.screenshot({ path: `${outDir}/title-locked.png` });
 
   // ---- choose Apprentice for real, and begin -------------------------------------------------------------
-  await page.locator('#expedition-entry .difficulty-chip[data-difficulty="1"]').click();
-  check('Apprentice can be chosen', (await chips(page)).find((c) => c.tier === 1).checked, await note(page));
+  await page.locator('#expedition-entry .tm-item[data-difficulty="1"]').click();
+  await page.waitForTimeout(450);
+  const rowValue = await page.locator('#expedition-entry [data-entry="difficulty"] .tm-value').textContent();
+  check('Apprentice can be chosen (the row on the loadout page now says so)', /Apprentice/.test(rowValue), rowValue);
   check('its note is the house line', /Apprentice.*[Gg]entler/.test(await note(page)), await note(page));
-  await page.locator('#expedition-entry [data-entry="begin"]').click();
+  await page.locator('#expedition-entry [data-entry="descend"]').click();
   await waitForOpeningEnd(page);
   await page.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play' && window.__game.ctx.run?.active, null, { timeout: 30000 });
   let s = await state(page);
@@ -98,6 +118,7 @@ try {
   // ---- a victory on Adept opens Conjurer, and the ledger announces it ------------------------------------
   page = await openTitle();
   await page.locator('#expedition-entry [data-entry="begin"]').click();
+  await page.locator('#expedition-entry [data-entry="descend"]').click();
   await waitForOpeningEnd(page);
   await page.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play' && window.__game.ctx.run?.active, null, { timeout: 30000 });
   s = await state(page);
@@ -135,6 +156,7 @@ try {
   row = await chips(page);
   check('a profile that has won on Adept opens Conjurer and remembers it was chosen', row.find((c) => c.tier === 3).locked === false && row.find((c) => c.tier === 3).checked === true, JSON.stringify(row));
   check('and Archmage waits', row.find((c) => c.tier === 4).locked === true, JSON.stringify(row));
+  await backToMain(page);
   await page.locator('#expedition-entry [data-entry="daily"]').click();
   await waitForOpeningEnd(page);
   await page.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play' && window.__game.ctx.run?.active, null, { timeout: 30000 });

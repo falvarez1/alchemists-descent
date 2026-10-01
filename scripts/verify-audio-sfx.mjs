@@ -65,6 +65,7 @@ try {
   // ---- First gesture: begin a run. ----
   gestured = true;
   await clickReal('#expedition-entry [data-entry="begin"]');
+  await clickReal('#expedition-entry [data-entry="descend"]');
   await page.waitForFunction(() => {
     const ctx = window.__game?.ctx;
     return ctx?.state?.mode === 'play' && ctx.levels?.current != null && !ctx.levels?.transitioning;

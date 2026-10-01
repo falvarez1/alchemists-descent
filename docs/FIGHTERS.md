@@ -13,6 +13,30 @@ What is NOT built is the arena (Battle Royale) mode these fighters were designed
 docs/BATTLE-ROYALE-AND-SPACETIMEDB.md. The abilities resolve against the Works' foes today and are written
 against `allyTargets` / `decoyFor`-style seams so a peer can stand where a foe stands.
 
+## Done and remaining
+
+**Done, and verified in the real game** (each line has a probe; see "Probes" below):
+
+- [x] The framework: modifiers, armor, foe slow / stun / reveal, body-owning moves, drawables, lights, save and restore
+- [x] All ten kits (passive, tactical on Z, ultimate on T), each against real foes, real cells and real terrain
+- [x] All ten looks on the alchemist's own rig, alive and fallen, plus an icon for every ability
+- [x] The Fighter Roster screen (filters, search, dossier cards, keyboard and pad)
+- [x] Title and ledger: the "Your fighter" choice; HUD chips with cooldown sweep and the ultimate's charge bar
+- [x] Run plumbing: a fighter is saved with the run, resumes, shows in the ledger; the daily descent is always the classic Alchemist
+- [x] Rebindable keys (Z / T), touch buttons, the `fighter` console command
+- [x] All ten played through a real run (Z and T, a floor change, a death, a respawn)
+
+**Remaining / not built:**
+
+- [ ] The arena (Battle Royale) mode these fighters were designed for (docs/BATTLE-ROYALE-AND-SPACETIMEDB.md)
+- [ ] Sounds of their own: every ability reuses an existing cue today, and nobody has listened to them
+- [ ] Balance by play: the numbers are first-pass, tuned by probes (`fighters/tuning.ts` and each kit's `TUNING`)
+- [ ] Unlocks: all ten are open from the start
+- [ ] Load the ten looks lazily (they ship in the main chunk, about 135 KB with the rest of the system)
+- [ ] Edge cases not probed: bosses, campaign floors other than floor 1 and d2, calm / reduce-flashes mode
+- [ ] Merge to main (the push deploys the game); the unmerged branches of other sessions touch the same
+  title, ledger, HUD, types and run-director files, so expect conflicts at whichever merges second
+
 ## How it plugs into the engine
 
 Every hook is guarded (`ctx.fighters?.…`, a no-op for the classic Alchemist, whose run is byte-identical):
@@ -70,8 +94,9 @@ and `verify-fighter-roster-play` (all ten through a real run: Z and T, a floor c
 Both are free in `input/bindings.ts` and in the pause/overlay key gates. Two chips sit under the flask belt
 (`#expedition-tools`): icon, key label, cooldown seconds, the ultimate's charge bar.
 
-**Ultimate charge** is 0..1. It fills from damage dealt (0.4% per point), damage taken (0.25% per point), kills
-(+4%) and a slow trickle (+1% per 10 s), and is spent whole by the ultimate. Charge is saved with the run.
+**Ultimate charge** is 0..1. It fills from damage dealt (0.15% per point), damage taken (0.2% per point), kills
+(+3%) and a slow trickle (+1% per 10 s), and is spent whole by the ultimate. Charge is saved with the run.
+(The numbers live in `fighters/tuning.ts`; harm the world does on the player's behalf counts for half.)
 
 ## Roster, solo adaptations and status
 

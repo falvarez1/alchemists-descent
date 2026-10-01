@@ -212,6 +212,7 @@ try {
   await real.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
   await real.locator('#expedition-entry').waitFor({ state: 'visible', timeout: 30000 });
   await real.locator('#expedition-entry [data-entry="begin"]').click();
+  await real.locator('#expedition-entry [data-entry="descend"]').click();
   await waitForOpeningEnd(real);
   await real.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play' && window.__game.ctx.run?.active, null, { timeout: 30000 });
 

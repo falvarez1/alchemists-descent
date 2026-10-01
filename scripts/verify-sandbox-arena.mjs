@@ -51,7 +51,7 @@ try {
     if (!box) throw new Error(`no visible ${selector}`);
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   };
-  await clickReal('#expedition-entry .entry-workshops summary');
+  await clickReal('#expedition-entry [data-entry="workshops"]');
   await clickReal('#expedition-entry [data-entry="sandbox"]');
   await page.waitForFunction(() => window.__game.ctx.state.frameCount > 5, { timeout: 20000 });
 

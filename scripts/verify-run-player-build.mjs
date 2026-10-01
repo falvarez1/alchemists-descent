@@ -17,11 +17,16 @@ const check = (n, ok, d = '') => { console.log(`${ok ? ' ok ' : 'FAIL'} ${n}${d 
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForSelector('#expedition-entry:not([hidden])', { timeout: 30000 });
 check('no __game debug handle in production', await page.evaluate(() => !('__game' in window)));
-check('no authoring Workshops fold on the title', await page.evaluate(() => !document.querySelector('.entry-workshops')));
+check('no authoring Workshops door on the title', await page.evaluate(() => !document.querySelector('#expedition-entry [data-entry="workshops"]')));
 const brand = (await page.innerText('#expedition-title')).replace(/\s+/g, ' ').trim();
 check('title reads the brand', brand === 'Breathing Works', brand);
-const b = await (await page.$('#expedition-entry [data-entry="begin"]')).boundingBox();
-await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+for (const id of ['begin', 'descend']) {
+  // (the title is a menu: New descent opens the loadout page, Descend starts the run)
+  await page.waitForSelector(`#expedition-entry [data-entry="${id}"]`, { state: 'visible', timeout: 10000 });
+  await page.waitForTimeout(450);
+  const b = await (await page.$(`#expedition-entry [data-entry="${id}"]`)).boundingBox();
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+}
 await page.waitForFunction(() => document.body.classList.contains('play-active') && document.getElementById('expedition-entry').hidden, null, { timeout: 30000 });
 await page.waitForFunction(() => !document.getElementById('level-curtain')?.classList.contains('visible'), null, { timeout: 30000 });
 await page.waitForTimeout(1500);

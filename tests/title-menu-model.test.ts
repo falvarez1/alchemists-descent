@@ -1,0 +1,159 @@
+import { describe, expect, test } from 'vitest';
+import { FIGHTER_DEFS, FIGHTER_ORDER } from '@/content/fighters';
+import { KIT_DEFS, KIT_ORDER } from '@/content/kits';
+import { DIFFICULTY_ORDER } from '@/config/difficulty';
+import {
+  FIGHTER_CYCLE,
+  continueLine,
+  cycleDifficulty,
+  cycleFighter,
+  cycleKit,
+  cycleOpen,
+  dailyLines,
+  difficultyDetail,
+  fighterDetail,
+  keyHints,
+  kitDetail,
+  moveFocusIndex,
+  seedDetail,
+  seedValue,
+} from '@/ui/title/titleMenuModel';
+
+describe('cycleOpen: Left / Right on a choice row', () => {
+  test('steps to the next open option, wrapping, and skips the locked ones', () => {
+    const order = ['a', 'b', 'c', 'd'] as const;
+    const open = (o: string): boolean => o !== 'b' && o !== 'c';
+    expect(cycleOpen(order, open, 'a', 1)).toBe('d');
+    expect(cycleOpen(order, open, 'd', 1)).toBe('a');
+    expect(cycleOpen(order, open, 'a', -1)).toBe('d');
+    expect(cycleOpen(order, open, 'd', -1)).toBe('a');
+  });
+
+  test('stays put when nothing else is open, or when the current one is not in the list', () => {
+    expect(cycleOpen(['a', 'b'], (o) => o === 'a', 'a', 1)).toBe('a');
+    expect(cycleOpen(['a', 'b'], () => true, 'z', 1)).toBe('a');
+  });
+
+  test('the kit row skips locked kits; a fresh profile only has the Sparkwright', () => {
+    expect(cycleKit(new Set(['spark']), 'spark', 1)).toBe('spark');
+    expect(cycleKit(new Set(['spark', 'storm']), 'spark', 1)).toBe('storm');
+    expect(cycleKit(new Set(['spark', 'frost']), 'spark', -1)).toBe('frost');
+    expect(KIT_ORDER).toContain('storm');
+  });
+
+  test('the difficulty row follows the ladder: a new player can only choose I and II', () => {
+    expect(cycleDifficulty(0, 2, 1)).toBe(1);
+    expect(cycleDifficulty(0, 1, 1)).toBe(2);
+    expect(cycleDifficulty(0, 2, -1)).toBe(1);
+    expect(DIFFICULTY_ORDER).toEqual([1, 2, 3, 4]);
+    expect(cycleDifficulty(4, 4, 1)).toBe(1);
+  });
+
+  test('the fighter row walks the classic Alchemist and then all ten', () => {
+    expect(FIGHTER_CYCLE).toHaveLength(11);
+    expect(FIGHTER_CYCLE[0]).toBeNull();
+    expect(cycleFighter(null, 1)).toBe(FIGHTER_ORDER[0]);
+    expect(cycleFighter(null, -1)).toBe(FIGHTER_ORDER[FIGHTER_ORDER.length - 1]);
+    expect(cycleFighter(FIGHTER_ORDER[FIGHTER_ORDER.length - 1], 1)).toBeNull();
+    expect(cycleFighter(FIGHTER_ORDER[0], -1)).toBeNull();
+  });
+});
+
+describe('moveFocusIndex: Up / Down wrap, Home / End jump', () => {
+  test('wraps in both directions', () => {
+    expect(moveFocusIndex(0, 4, 'ArrowDown')).toBe(1);
+    expect(moveFocusIndex(3, 4, 'ArrowDown')).toBe(0);
+    expect(moveFocusIndex(0, 4, 'ArrowUp')).toBe(3);
+    expect(moveFocusIndex(2, 4, 'ArrowUp')).toBe(1);
+  });
+  test('Home and End', () => {
+    expect(moveFocusIndex(2, 5, 'Home')).toBe(0);
+    expect(moveFocusIndex(1, 5, 'End')).toBe(4);
+  });
+  test('with nothing focused, Down lands on the first and Up on the first too', () => {
+    expect(moveFocusIndex(-1, 4, 'ArrowDown')).toBe(0);
+    expect(moveFocusIndex(-1, 4, 'ArrowUp')).toBe(3);
+  });
+  test('an empty list has nowhere to go', () => {
+    expect(moveFocusIndex(-1, 0, 'ArrowDown')).toBe(-1);
+  });
+});
+
+describe('what the main page says', () => {
+  test('Continue names where you are', () => {
+    expect(continueLine(null, 4, '0:00')).toBe('');
+    expect(continueLine({ maxFloor: 2, kit: 'spark', timeMs: 1, fighter: null }, 4, '12:41')).toBe(`Floor 2 of 4 · ${KIT_DEFS.spark.short} · 12:41`);
+    expect(continueLine({ maxFloor: 3, kit: 'frost', timeMs: 1, fighter: 'mara-quell' }, 4, '3:05')).toBe(`Floor 3 of 4 · ${KIT_DEFS.frost.short} · ${FIGHTER_DEFS['mara-quell'].name} · 3:05`);
+    expect(continueLine({ maxFloor: 0, kit: 'spark', timeMs: 0 }, 4, '0:00')).toContain('Floor 1 of 4');
+  });
+
+  test("Today's descent shows the date until there is a best to show", () => {
+    const time = (ms: number): string => `${ms}ms`;
+    expect(dailyLines({ today: '2026-10-01', best: null }, 4, time).sub).toBe('2026-10-01');
+    expect(dailyLines({ today: '2026-10-01', best: { victory: false, floor: 2, timeMs: 5 } }, 4, time).sub).toBe('Best: Floor 2 of 4 in 5ms');
+    expect(dailyLines({ today: '2026-10-01', best: { victory: true, floor: 4, timeMs: 9 } }, 4, time).sub).toBe('Best: the Kiln quieted in 9ms');
+    expect(dailyLines({ today: '2026-10-01', best: null }, 4, time).hint).toContain('one seed for everyone');
+  });
+
+  test('the seed row says Random until a seed is chosen', () => {
+    expect(seedValue(null)).toBe('Random');
+    expect(seedValue({ seed: 42 })).toBe('42');
+    expect(seedValue({ seed: -1 })).toBe('4294967295');
+    expect(seedDetail(null).heading).toMatch(/random/i);
+    expect(seedDetail({ seed: 42, phrase: false }).heading).toBe('Seed 42');
+  });
+});
+
+describe('the detail cards', () => {
+  test('a locked kit says how to earn it; an open one says what is in the case', () => {
+    for (const id of KIT_ORDER) {
+      expect(kitDetail(id, true).body).toBe(KIT_DEFS[id].blurb);
+      expect(kitDetail(id, true).locked).toBe(false);
+    }
+    const locked = kitDetail('storm', false);
+    expect(locked.locked).toBe(true);
+    expect(locked.body).toContain(KIT_DEFS.storm.unlockHint);
+  });
+
+  test('a locked difficulty says what opens it', () => {
+    expect(difficultyDetail(2, 0).locked).toBe(false);
+    const locked = difficultyDetail(4, 0);
+    expect(locked.locked).toBe(true);
+    expect(locked.body).toMatch(/Quiet the Kiln/);
+    expect(difficultyDetail(4, 3).locked).toBe(false);
+  });
+
+  test('the classic Alchemist has no abilities to list; every fighter lists three, with the keys', () => {
+    const classic = fighterDetail(null, { tactical: 'Z', ultimate: 'T' });
+    expect(classic.lines).toBeUndefined();
+    expect(classic.heading).toBe('The Alchemist');
+    for (const id of FIGHTER_ORDER) {
+      const card = fighterDetail(id, { tactical: 'Z', ultimate: 'T' });
+      expect(card.heading).toBe(FIGHTER_DEFS[id].name);
+      expect(card.lines?.map((line) => line.label)).toEqual(['Passive', 'Z', 'T']);
+      expect(card.lines?.map((line) => line.name)).toEqual([FIGHTER_DEFS[id].passive.name, FIGHTER_DEFS[id].tactical.name, FIGHTER_DEFS[id].ultimate.name]);
+      expect(card.icon?.kind).toBe('portrait');
+    }
+  });
+
+  test('a rebound key shows as the player bound it', () => {
+    const card = fighterDetail('ilyra-voss', { tactical: 'Q', ultimate: 'Shift' });
+    expect(card.lines?.map((line) => line.label)).toEqual(['Passive', 'Q', 'Shift']);
+  });
+});
+
+describe('the key legend', () => {
+  const labels = (hints: ReturnType<typeof keyHints>): string[] => hints.map((h) => h.label);
+  test('the main page has no Back; a drilled page does', () => {
+    expect(labels(keyHints('drill', 0, false))).toEqual(['Select', 'Open']);
+    expect(labels(keyHints('action', 1, false))).toEqual(['Select', 'Confirm', 'Back']);
+  });
+  test('a choice row also changes in place', () => {
+    expect(labels(keyHints('choice', 1, false))).toEqual(['Select', 'Change', 'Open', 'Back']);
+  });
+  test('a gamepad names its own buttons', () => {
+    const pad = keyHints('choice', 1, true);
+    expect(pad.flatMap((h) => h.keys)).toEqual(['D-pad', '◂', '▸', 'A', 'B']);
+    expect(keyHints('choice', 1, false).flatMap((h) => h.keys)).toEqual(['↑', '↓', '←', '→', 'Enter', 'Esc']);
+  });
+});

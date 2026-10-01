@@ -86,6 +86,7 @@ try {
 
   /* ---------------- a fresh run ---------------- */
   await realClick('#expedition-entry [data-entry="begin"]');
+  await realClick('#expedition-entry [data-entry="descend"]');
   await waitPlaying('d1');
   let s = await state();
   check('begin starts a tracked run with three phials', s.active && s.phials === 3, JSON.stringify({ active: s.active, phials: s.phials }));
@@ -264,23 +265,34 @@ try {
   await realClick('#run-summary [data-rs="title"]');
   await page.waitForSelector('#expedition-entry:not([hidden])', { timeout: 10000 });
   await page.waitForTimeout(400);
-  const entry = await page.evaluate(() => ({
-    locked: [...document.querySelectorAll('#expedition-entry .kit-chip[data-kit].locked')].map((n) => n.dataset.kit),
-    workshop: !document.querySelector('#expedition-entry [data-entry="workshop"]').hidden,
-    cont: !document.querySelector('#expedition-entry [data-entry="continue"]').hidden,
+  // (the title is a menu now: the case list is two doors in, and what a profile has not earned is not on the main page)
+  const entry0 = await page.evaluate(() => ({
+    workshop: !!document.querySelector('#expedition-entry [data-entry="workshop"]'),
+    cont: !!document.querySelector('#expedition-entry [data-entry="continue"]'),
   }));
+  await realClick('#expedition-entry [data-entry="begin"]');
+  await realClick('#expedition-entry [data-entry="case"]');
+  await page.waitForSelector('#expedition-entry .tm-item[data-kit]', { timeout: 5000 });
+  await page.waitForTimeout(500);
+  const entry = await page.evaluate(() => ({
+    locked: [...document.querySelectorAll('#expedition-entry .tm-item[data-kit].locked')].map((n) => n.dataset.kit),
+  }));
+  entry.workshop = entry0.workshop;
+  entry.cont = entry0.cont;
   check('every kit is unlocked on the title', entry.locked.length === 0, JSON.stringify(entry.locked));
   check('The Workshop opens after a run ends', entry.workshop);
   check('no Continue after a finished run', !entry.cont);
-  await realClick('#expedition-entry .kit-chip[data-kit="storm"]');
+  await shot('entry-unlocked');
+  await realClick('#expedition-entry .tm-item[data-kit="storm"]');
   await page.mouse.move(1200, 200);
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(450);
   const picked = await page.evaluate(() => ({
-    checked: [...document.querySelectorAll('#expedition-entry .kit-chip[data-kit][aria-checked="true"]')].map((n) => n.dataset.kit),
+    row: document.querySelector('#expedition-entry .tm-item[data-entry="case"] .tm-value')?.textContent ?? '',
     last: window.__game.ctx.run.metaView().lastKit,
   }));
-  check('choosing a kit on the title sticks and is remembered', picked.checked.join() === 'storm' && picked.last === 'storm', JSON.stringify(picked));
-  await shot('entry-unlocked');
+  check('choosing a kit on the title sticks and is remembered', picked.row === 'Storm' && picked.last === 'storm', JSON.stringify(picked));
+  await realClick('#expedition-entry [data-entry="back"]');
+  await page.waitForTimeout(450);
 
   /* ---------------- the daily seed ---------------- */
   const dailyRun = async () => {

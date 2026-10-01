@@ -66,8 +66,12 @@ let rows;
 try {
   await page.goto(url, { waitUntil: 'load', timeout: 60000 });
   await page.waitForFunction(() => window.__game?.ctx && document.body.classList.contains('entry-active'), null, { timeout: 60000 });
-  const box = await page.locator('#expedition-entry [data-entry="begin"]').first().boundingBox();
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  for (const id of ['begin', 'descend']) { // (the title is a menu: New descent opens the loadout page, Descend starts the run)
+    await page.waitForSelector(`#expedition-entry [data-entry="${id}"]`, { state: 'visible', timeout: 10000 });
+    await page.waitForTimeout(450);
+    const box = await page.locator(`#expedition-entry [data-entry="${id}"]`).first().boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  }
   await page.waitForFunction(() => window.__game.ctx.state.mode === 'play' && window.__game.ctx.levels.current, null, { timeout: 60000 });
   const packs = ['ui', 'player', 'spells', 'world', 'creature-weaver', 'creature-rillback', 'creature-rootloper', 'creature-stonemaw', 'creature-bat',
     'creature-colossus', 'creature-leviathan', 'org-snapjaw', 'org-puffer', 'org-leech', 'org-isopod', 'flora'];
