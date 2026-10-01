@@ -148,7 +148,7 @@ function shield(c: LookCtx): void {
   const tilt = Math.max(0, Math.min(1, (Math.abs(fr.ux) - 0.4) / 0.3));
   const sling = s.kind === 'stand' ? Math.max(guardBlend(c), tilt) : dead ? 0 : 1;
   const mix = (a: number, b: number): number => a + (b - a) * sling;
-  const a0 = dead ? -4.5 : mix(-6.6, -3.0), a1 = dead ? 9.5 : mix(9.4, 8.5);
+  const a0 = dead ? -4.5 : mix(-6.6, -3.0), a1 = dead ? 8.6 : mix(9.4, 8.5);
   const bC = dead ? 0 : mix(4.7, -3.7);
   const w = mix(1.85, 1.8);
   const z = dead ? -3.0 : sling < 0.5 ? 7.0 : -2.6;
