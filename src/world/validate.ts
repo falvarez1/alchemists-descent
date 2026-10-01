@@ -305,7 +305,7 @@ function lightLine(world: { width: number; height: number; types: Uint8Array }, 
 }
 
 /** Can the alchemist stand somewhere within `r` cells and put his beam on (x, y)? */
-function beamable(wiz: Uint8Array, world: { width: number; height: number; types: Uint8Array }, x: number, y: number, r: number): boolean {
+export function beamable(wiz: Uint8Array, world: { width: number; height: number; types: Uint8Array }, x: number, y: number, r: number): boolean {
   const W = world.width, H = world.height, tx = Math.floor(x), ty = Math.floor(y);
   for (let d = 0; d <= r; d += 4) {
     for (let a = 0; a < 32; a++) {

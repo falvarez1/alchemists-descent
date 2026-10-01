@@ -3341,6 +3341,7 @@ export class Levels implements LevelsApi {
     return score;
   }
 
+  /** A roost under a marsh-gas dome when the floor has one (a lit pocket over the brood), else the ordinary search. */
   private findRoostSpot(
     ctx: Ctx,
     rng: Rng,
@@ -3348,15 +3349,58 @@ export class Levels implements LevelsApi {
     regions: LevelRuntime['regions'],
     reachable: Uint8Array,
   ): { x: number; y: number } | null {
+    if (ctx.world.types.includes(Cell.MarshGas)) {
+      const domed = this.searchRoost(ctx, rng, spawn, regions, reachable, true);
+      if (domed) return domed;
+    }
+    return this.searchRoost(ctx, rng, spawn, regions, reachable, false);
+  }
+
+  /** Can the alchemist stand within 12 columns and 30 rows under (x, y)? */
+  private reachBelow(world: Ctx['world'], reachable: Uint8Array, x: number, y: number): boolean {
+    for (let dy = 0; dy <= 30; dy += 3) {
+      for (let dx = -12; dx <= 12; dx += 3) {
+        const px = x + dx, py = y + dy;
+        if (world.inBounds(px, py) && reachable[world.idx(px, py)] !== 0) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Is there a real pool of marsh gas round here (a dome, not a puff)? */
+  private gasNear(world: Ctx['world'], x: number, y: number): boolean {
+    let gas = 0;
+    for (let dy = -10; dy <= 6; dy += 2) {
+      for (let dx = -14; dx <= 14; dx += 2) {
+        const px = x + dx, py = y + dy;
+        if (world.inBounds(px, py) && world.types[world.idx(px, py)] === Cell.MarshGas) gas++;
+      }
+    }
+    return gas >= 12;
+  }
+
+  private searchRoost(
+    ctx: Ctx,
+    rng: Rng,
+    spawn: { x: number; y: number },
+    regions: LevelRuntime['regions'],
+    reachable: Uint8Array,
+    gasOnly: boolean,
+  ): { x: number; y: number } | null {
     const world = ctx.world;
     const batDef = ctx.enemyCtl.defs.bat;
     const regionPasses = regions && regions.mainPath.length > 0 ? [true, false] : [false];
+    // (a gas search samples the gas itself: a dome is a tiny share of the world, and 90% of random points are rock)
+    const gasAt: number[] = [];
+    if (gasOnly) for (let i = 0; i < world.types.length; i += 5) if (world.types[i] === Cell.MarshGas) gasAt.push(i);
+    if (gasOnly && gasAt.length === 0) return null;
     for (const mainPathOnly of regionPasses) {
       for (const clearance of [200, ARRIVAL_SAFE_RADIUS]) {
         const clearanceSq = clearance * clearance;
         for (let attempt = 0; attempt < ROOST_ATTEMPTS_PER_PASS; attempt++) {
-          const x = 40 + rng.int(WIDTH - 80);
-          let y = 50 + rng.int(Math.max(1, HEIGHT - 200));
+          const at = gasOnly ? gasAt[rng.int(gasAt.length)] : -1;
+          const x = gasOnly ? at % WIDTH : 40 + rng.int(WIDTH - 80);
+          let y = gasOnly ? Math.floor(at / WIDTH) : 50 + rng.int(Math.max(1, HEIGHT - 200));
           // A sample in open air climbs to the ceiling above it (a random point
           // almost never lands exactly under rock; this finds the roof it is under).
           // Gas is air to a bat: marsh gas pools under the Rot Gardens' ceilings.
@@ -3366,8 +3410,11 @@ export class Levels implements LevelsApi {
           const dy = footY - spawn.y;
           if (clearance > 0 && dx * dx + dy * dy < clearanceSq) continue;
           if (!world.inBounds(x, y - 1) || !world.inBounds(x, footY)) continue;
-          if (reachable[world.idx(x, footY)] === 0) continue;
+          // (a roost under a gas dome sits where the dome's ceiling is: no body stands there, so the walk is judged
+          // from the nearest standing cell under it)
+          if (gasOnly ? !this.reachBelow(world, reachable, x, footY) : reachable[world.idx(x, footY)] === 0) continue;
           if (mainPathOnly && !this.inMainPathRegion(regions, x, footY)) continue;
+          if (gasOnly && !this.gasNear(world, x, footY)) continue;
           // ceiling: something a bat can grip above (QA: roosts hung 8-95 cells
           // under a falling oil drip, a leaf or a wisp of gas), open air below
           if (!roostPerch(world.types[world.idx(x, y - 1)]) || !roostAir(world.types[world.idx(x, y)])) continue;

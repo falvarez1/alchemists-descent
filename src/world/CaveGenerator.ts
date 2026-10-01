@@ -45,7 +45,7 @@ import {
   woodColor,
 } from '@/sim/colors';
 import { applyBiomeExtras, applyCampaignDressing, fillMineralVugs, goldPocketBudgetForBiome } from '@/world/biomeExtras';
-import { type CarveAvoid, PlacementLedger, carveRect, sealedFootprints, tunnelTo } from '@/world/connect';
+import { type CarveAvoid, PlacementLedger, carveRect, sealedFootprints, setOrganicTunnels, tunnelTo } from '@/world/connect';
 import { applyFloraPass } from '@/world/floraPass';
 import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
@@ -61,7 +61,7 @@ import { placeColdStorePuzzles, type ColdStorePuzzleOutput } from '@/world/coldS
 import { dressGlassGalleries } from '@/world/glassGalleries';
 import { placeGalleryPuzzles, type GalleryPuzzleOutput } from '@/world/galleryPuzzles';
 import { stampSecrets } from '@/world/secrets';
-import { bodyCanCollect, computeFits, reachableMask, wizardMask } from '@/world/validate';
+import { beamable, bodyCanCollect, computeFits, reachableMask, wizardMask } from '@/world/validate';
 import {
   type BodyRecord,
   cauldronFooting,
@@ -73,6 +73,10 @@ import {
 } from '@/world/fixtureFooting';
 import { placeStructures } from '@/world/structures';
 import { placeStorySites } from '@/world/storySites';
+import { placeLavaLakes, type LakeTarget, type LavaLakeResult } from '@/world/lavaLakes';
+import { clearLooseStock, type StockSite } from '@/world/looseStock';
+import { holdPortalShrine } from '@/world/portalShrine';
+import { placeRouteWaystones } from '@/world/routeWaystones';
 import type { LevelStorySites } from '@/core/story';
 
 /* ===================== Procedural Generation Map Engines ===================== */
@@ -98,6 +102,9 @@ function shouldLogDevDiagnostics(): boolean {
 export class WorldGen implements WorldGenApi {
   /** Center of the carved spawn chamber (original caveSpawnHint). */
   spawnHint: { x: number; y: number } | null = null;
+
+  /** The last level's lava lakes (a tuning aid for probes; null off the volcanic floor). */
+  lastLavaLakes: LavaLakeResult | null = null;
 
   /** Paint seed for the most recent cave commit; captured by Builder docs. */
   paintSeed: number | null = null;
@@ -319,6 +326,7 @@ export class WorldGen implements WorldGenApi {
     let goldPlaced = 0,
       goldTries = 0;
     const goldPocketTarget = goldPocketBudgetForBiome(G.goldPockets, ctx.state.currentBiome);
+    const goldKeep = G.goldKeep ?? 1;
     while (goldPlaced < goldPocketTarget && goldTries < G.goldTriesCap) {
       goldTries++;
       const x = 14 + Math.floor(this.rng.next() * (WIDTH - 28));
@@ -332,13 +340,16 @@ export class WorldGen implements WorldGenApi {
         }
       }
       if (!nearOpen) continue;
+      // (a kept pocket is written; the rest draw the same numbers and leave the rock alone, GenDef.goldKeep)
+      const stamped = Math.floor((goldPlaced + 1) * goldKeep) > Math.floor(goldPlaced * goldKeep);
       for (let dy = -5; dy <= 5; dy++) {
         for (let dx = -5; dx <= 5; dx++) {
           if (
             dx * dx + dy * dy <= 24 &&
             world.inBounds(x + dx, y + dy) &&
             world.types[x + dx + (y + dy) * WIDTH] === Cell.Wall &&
-            this.rng.next() < 0.85
+            this.rng.next() < 0.85 &&
+            stamped
           ) {
             world.types[x + dx + (y + dy) * WIDTH] = Cell.Gold;
             world.colors[x + dx + (y + dy) * WIDTH] = goldColor();
@@ -583,6 +594,10 @@ export class WorldGen implements WorldGenApi {
     waystones: Waystone[],
     cauldron: { x: number; y: number } | null,
     sealed: readonly CarveAvoid[] = [],
+    boss: { x: number; y: number } | null = null,
+    arenaMouths: ReadonlyArray<{ x: number; y: number }> = [],
+    portal: { x: number; y: number } | null = null,
+    portalMouths: ReadonlyArray<{ x: number; y: number }> = [],
   ): void {
       let wiz = wizardMask({ world: ctx.world, spawn });
       let cell = reachableMask({ world: ctx.world, spawn });
@@ -774,7 +789,11 @@ export class WorldGen implements WorldGenApi {
           // A lens sealed behind optics (world/galleryPuzzles) is reached at its
           // port — the rescue must never carve into the sealed lens itself.
           const rx = m.lightPort?.x ?? m.x, ry = m.lightPort?.y ?? m.y;
-          const pass = (): boolean => cellNear(rx, ry - 2, 5);
+          // A photocell is judged by the BEAM (validate: photocell), not by a reachable cell beside it: a chandelier
+          // or a panel the dressing hung in the line of its port blanks a lens the puzzle had made beamable
+          // (d3b seed 3, d2b seed 7 after an unrelated gold change).
+          const photocell = m.kind === 'sensor' && m.sensorType === 'light' && m.state === 0 && !m.requiresCard;
+          const pass = (): boolean => cellNear(rx, ry - 2, 5) && (!photocell || beamable(wiz, ctx.world, rx, ry, 150));
           if (pass()) continue;
           if (labMechanism) {
             recordRescue(`spell-lab@${Math.floor(spellLab?.x ?? m.x)},${Math.floor(spellLab?.y ?? m.y)}`, () =>
@@ -821,6 +840,18 @@ export class WorldGen implements WorldGenApi {
         if (!pass() || wizNearCount(cx, cy, 10) < 64) {
           recordRescue(`cauldron@${cx},${cy}`, () => rescueAt(cx, cy, pass, cy - 1));
         }
+      }
+      // The boss hall is walked to like every lock (GEN 62): a hall whose flank
+      // connectors landed in a region the spawn cannot reach is re-joined from its
+      // mouths. Judged exactly as the validator does (validate: 'boss-arena').
+      if (boss && arenaMouths.length > 0) {
+        const pass = (): boolean => wizNear(boss.x, boss.y, 12);
+        if (!pass()) recordRescue(`boss@${Math.floor(boss.x)},${Math.floor(boss.y)}`, () => arenaMouths.some((m) => rescueAt(m.x, m.y, pass)));
+      }
+      // The exit shrine likewise (validate: 'portal'): judged as the validator does.
+      if (portal && portalMouths.length > 0) {
+        const pass = (): boolean => wizNear(portal.x, portal.y + 6, 12);
+        if (!pass()) recordRescue(`portal@${Math.floor(portal.x)},${Math.floor(portal.y)}`, () => portalMouths.some((m) => rescueAt(m.x, m.y, pass)));
       }
       for (const m of mechanisms) {
         if (!HANDS_ON.has(m.kind) || m.targetId < 0) continue;
@@ -895,6 +926,8 @@ export class WorldGen implements WorldGenApi {
       tPrev = now;
     };
 
+    this.lastLavaLakes = null;
+    setOrganicTunnels(!!(GEN[def.biome] || GEN.earthen).organicTunnels);
     // 1) Base caves for the level's biome, replayable from the seed.
     ctx.state.currentBiome = def.biome;
     ctx.state.worldSeed = seed >>> 0;
@@ -928,13 +961,36 @@ export class WorldGen implements WorldGenApi {
     //    cut an open shaft through the floor here; keep the plug/approach tell,
     //    but leave the bottom terrain closed.
     const halfW = 14;
-    const sealY = HEIGHT - 46;
+    let sealY = HEIGHT - 46;
     let wellX = spawn.x >= WIDTH / 2 ? Math.floor(WIDTH * 0.2) : Math.floor(WIDTH * 0.8);
     for (let attempt = 0; attempt < 100; attempt++) {
       const x = Math.floor(this.rng.range(WIDTH * 0.12, WIDTH * 0.88));
       if (Math.abs(x - spawn.x) < 300) continue;
       wellX = x;
       break;
+    }
+    // GEN 62: a flooded floor's exit shrine stands ABOVE the flood, in the rock band over the water
+    // line: at the world floor it was 100% under water (standing depth 42) and its light column
+    // could not be read. The seal row is the lowest one above the flood whose plug, ring and shrine
+    // are in solid rock; with none, the old row stands.
+    const floodRow = BIOMES[def.biome]?.flood ? Math.floor(HEIGHT * BIOMES[def.biome].flood) : 0;
+    if (floodRow > 0) {
+      let bestRow = -1, bestShare = 0.6;
+      for (let y = floodRow - 64; y >= Math.floor(HEIGHT * 0.38); y -= 4) {
+        let rock = 0, total = 0;
+        for (let yy = y - 34; yy <= y + 16; yy += 2) {
+          for (let xx = wellX - 36; xx <= wellX + 36; xx += 2) {
+            total++;
+            if (world.types[xx + yy * WIDTH] === Cell.Wall) rock++;
+          }
+        }
+        if (rock / total > bestShare) {
+          bestShare = rock / total;
+          bestRow = y;
+          if (bestShare >= 0.92) break;
+        }
+      }
+      if (bestRow > 0) sealY = bestRow;
     }
 
     // The old plug remains as a visible stone mound under the portal shrine,
@@ -1033,7 +1089,7 @@ export class WorldGen implements WorldGenApi {
     // 5) Biome extras first (fungus colonies, crystal clusters, snow drifts,
     //    coal seams, healing springs), so secrets can still find untouched
     //    thick wall masses afterward; then the placement brain.
-    applyBiomeExtras(ctx, this.rng, def.biome);
+    applyBiomeExtras(ctx, this.rng, def.biome, waystones.map((ws) => ({ x: ws.x, y: ws.y })));
     let graph = extractRegionGraph(ctx.world, spawn, { x: wellX, y: sealY - 12 });
     // Wizard-fit mask (9x17 erosion): connect tunnels target FIT cells, so
     // every guaranteed connection joins space the player can actually occupy
@@ -1158,6 +1214,9 @@ export class WorldGen implements WorldGenApi {
       kilnRepair,
       wardenRepair,
       kilnFlue,
+      arenaMouths,
+      portHoles,
+      portalMouths,
     } = placeStructures(
       ctx,
       this.rng,
@@ -1366,7 +1425,7 @@ export class WorldGen implements WorldGenApi {
     // Rescue tunnels route around the sealed features too (fail-open: a sealed
     // room is dear, never a wall), and each repairs after them below.
     const sealed = sealedFootprints(ledger);
-    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed);
+    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed, boss, arenaMouths, portal, portalMouths);
     stage('gauge-rescue');
 
     // 8d) The Sump self-repairs AFTER the rescue pass: rescue tunnels eat all
@@ -1394,7 +1453,7 @@ export class WorldGen implements WorldGenApi {
     // Final terrain dressing can invalidate a route that was clean during the
     // main rescue pass (D1's surface cap is the usual culprit). Validate the
     // finished cell field before handing it to Levels/runtime repair.
-    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed);
+    this.gaugeRescue(ctx, def, spawn, mechanisms, spellLab, runeVaults, pickups, waystones, cauldron, sealed, boss, arenaMouths, portal, portalMouths);
     // ...and the final rescue may carve again: the Kiln's seal is the player's
     // to dig, so re-assert its tank once more (idempotent; no-op off the Kiln).
     kilnRepair?.();
@@ -1414,18 +1473,91 @@ export class WorldGen implements WorldGenApi {
     for (const repair of setPieceRepairs) repair();
     stage('final-gauge-rescue');
 
+    // 8d++) WAYSTONES ON THE ROUTE (GEN 62): the route exists only now, so the two generated bowls move to
+    //      35% and 70% of the walk to the exit and one more is lit beside the key (world/routeWaystones).
+    if (genDef.routeWaystones) {
+      const placedWs = placeRouteWaystones({
+        // (the walk ends where the floor does: its portal, or on the last floor the colossus's hall)
+        world, ledger, spawn, exit: portal ?? boss ?? { x: wellX, y: sealY - 12 }, bowls, waystones,
+        key: pickups.find((p) => p.kind === 'key') ?? null,
+      });
+      if (shouldLogDevDiagnostics() && (placedWs.moved > 0 || placedWs.brazier)) console.warn(`[gen] ${def.id}: route waystones - ${placedWs.moved} moved, ${placedWs.kept} kept${placedWs.brazier ? ', key brazier' : ''}`);
+      stage('route-waystones');
+    }
+
+    // 8d+) FIXTURE STOCK (GEN 62): a seed pocket of oil or gunpowder, a stray dune or a puddle in
+    //     the room of anything the player stands at is cleared (the audit: levers 45% in oil, a
+    //     waystone in five liquid cells, an echo stage 31% sand, a portal ring half gunpowder).
+    //     Only opens cells; a mass inside a room another pass owns (a prefab, a lair, a puzzle
+    //     hall: any reserved rect but the waystone/spawn/well/footing ones) is its stock, left alone.
+    if (genDef.clearFixtureStock) {
+      const rooms = ledger.rects().filter((r) => !/^(waystone|spawn|exit-well|footing-)/.test(r.label));
+      const held = (x: number, y: number): boolean => rooms.some((r) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1);
+      const sites: StockSite[] = [];
+      for (const ws of waystones) sites.push({ x0: ws.x - 14, y0: ws.y - 36, x1: ws.x + 14, y1: ws.y + 6 });
+      sites.push({ x0: cauldron.x - 16, y0: cauldron.y - 16, x1: cauldron.x + 16, y1: cauldron.y + 6 });
+      for (const m of mechanisms) {
+        if (m.kind === 'lever' || m.kind === 'brazier' || m.kind === 'plate' || m.kind === 'scale') {
+          sites.push({ x0: m.x - 16, y0: m.y - 28, x1: m.x + m.w + 16, y1: m.y + 8 });
+        }
+      }
+      for (const v of runeVaults) sites.push({ x0: v.rx - 14, y0: v.ry - 20, x1: v.rx + 14, y1: v.ry + 8 });
+      for (const p of pickups) if (p.kind === 'key') sites.push({ x0: p.x - 18, y0: p.y - 30, x1: p.x + 18, y1: p.y + 8 });
+      if (portal) sites.push({ x0: portal.x - 34, y0: portal.y - 44, x1: portal.x + 34, y1: portal.y + 22 });
+      const camp = storyPlaced.sites.camp, valve = storyPlaced.sites.valve;
+      if (camp) sites.push({ x0: camp.x0 - 4, y0: camp.floorY - 34, x1: camp.x1 + 4, y1: camp.floorY + 2 });
+      if (valve) sites.push({ x0: valve.stageX - valve.stageHalfW - 4, y0: valve.floorY - 24, x1: valve.stageX + valve.stageHalfW + 4, y1: valve.floorY + 2 });
+      const cleared = clearLooseStock(world, sites, held);
+      if (shouldLogDevDiagnostics() && cleared > 0) console.warn(`[gen] ${def.id}: ${cleared} cells of loose stock cleared from fixture rooms`);
+      stage('fixture-stock');
+      // The exit shrine's floor and ring (the carve took the plug's top; a pocket of powder sat in the ring).
+      if (portal) {
+        const shrine = holdPortalShrine(world, portal, { x: wellX, sealY, halfW });
+        if (shouldLogDevDiagnostics() && shrine > 0) console.warn(`[gen] ${def.id}: exit shrine pad and ring restored (${shrine} cells)`);
+      }
+    }
+
     // 8e) THE FOOTING CONTRACT, after the last carve: every bowl, basin, body
     //     and glyph re-stamped, ground put back under anything a carve
     //     undercut, the key in open air on its floor under nothing that will
     //     fall. Fail-open: a fill that costs standing room elsewhere is undone.
     const footing = holdFixtureFootings(world, {
       bowls, cauldron, mechanisms, ownTriggers, runeVaults: ownRunes, pickups,
-      story: { ...storyPlaced.sites, flue: kilnFlue }, bodies, spawn,
+      story: { ...storyPlaced.sites, flue: kilnFlue }, bodies, spawn, keepOpen: portHoles,
     });
     if (shouldLogDevDiagnostics() && (footing.undercut.length > 0 || footing.reverted.length > 0)) {
       console.warn(`[gen] ${def.id}: footing undercut ${footing.undercut.join(' ') || '-'}; taken back ${footing.reverted.join(' ') || '-'}`);
     }
     stage('footing');
+
+    // 8f) LAVA LAKES (GEN 62): a floor with a budget (the Kiln Heart) gets its
+    //     basin-filled lakes LAST, on a forked stream, keeping clear of every
+    //     placement and of the walk to each (world/lavaLakes).
+    if (genDef.lavaLakes) {
+      const lakeTargets: LakeTarget[] = [
+        ...waystones.map((w) => ({ x: w.x, y: w.y, protect: 28 })),
+        { x: cauldron.x, y: cauldron.y, protect: 28 },
+        ...pickups.map((p) => ({ x: p.x, y: p.y, protect: 14 })),
+        ...mechanisms.map((m) => ({ x: m.x + m.w / 2, y: m.y + m.h / 2, protect: 16 + Math.max(m.w, m.h) / 2 })),
+        ...runeVaults.map((v) => ({ x: v.rx, y: v.ry, protect: 16 })),
+        ...(portal ? [{ x: portal.x, y: portal.y, protect: 40 }] : []),
+        ...(boss ? [{ x: boss.x, y: boss.y, protect: 70 }] : []),
+        ...(storyPlaced.sites.camp ? [{ x: storyPlaced.sites.camp.x, y: storyPlaced.sites.camp.floorY - 8, protect: 30 }] : []),
+        ...(storyPlaced.sites.valve ? [{ x: storyPlaced.sites.valve.stageX, y: storyPlaced.sites.valve.floorY - 8, protect: 34 }] : []),
+        ...storyPlaced.sites.pipes.map((p) => ({ x: p.x, y: p.floorY - 8, protect: 22 })),
+      ];
+      const lakes = this.lastLavaLakes = placeLavaLakes(world, new Rng(hashSeed(seed >>> 0, 'lava-lakes')), ledger, spawn, lakeTargets, genDef.lavaLakes);
+      pickups.push(...lakes.pickups);
+      // Repair routes walk around a lake as they do round any placed room ('encounter-lair-' keeps the
+      // terrain art off it: these are natural halls, not built ones).
+      placedPrefabs = placedPrefabs.concat(lakes.lakes.map((l) => ({ id: `encounter-lair-lava-${l.kind}`, x0: l.x0, y0: l.y0, x1: l.x1, y1: l.y1 })));
+      if (shouldLogDevDiagnostics()) {
+        console.warn(`[gen] ${def.id}: ${lakes.lakes.length} lava lake(s), ${lakes.cells} cells${lakes.dropped > 0 ? `, ${lakes.dropped} taken back for a route` : ''}`);
+      }
+      stage('lava-lakes');
+    }
+
+    setOrganicTunnels(false);
 
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
     matureVegetation(ctx.world);

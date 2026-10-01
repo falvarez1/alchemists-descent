@@ -49,6 +49,8 @@ export interface BiomeExtras {
   mossPatches?: number;
   /** Flammable marsh-gas pockets pooled under cave ceilings (fungal/flooded). */
   marshGasPockets?: number;
+  /** The level's biggest ceiling domes, each filled with 400-900 cells of gas: a lamp a bat can roost in and a fuse the player can light (GEN 62). */
+  gasDomes?: number;
   /** Gold veins threaded through wall rock (the Gilded Vault's hoard look). */
   goldVeins?: number;
   /** Aurum Catalyst seams embedded in wall rock — mine the philosopher's dust. */
@@ -64,14 +66,16 @@ export const EXTRAS: Record<BiomeId, BiomeExtras> = {
     healSprings: 3,
     shrooms: 26,
     mossPatches: 30,
-    marshGasPockets: 9,
+    marshGasPockets: 14,
+    gasDomes: 4,
   },
   frozen: { foes: { slime: 3, bat: 4, golem: 3, imp: 1 }, goldBonus: 1, snowDrifts: 90 },
   flooded: {
     foes: { slime: 5, spitter: 3, bat: 2, golem: 1, rillback: 0.45 },
     goldBonus: 1,
     mossPatches: 48,
-    marshGasPockets: 6,
+    marshGasPockets: 10,
+    gasDomes: 3,
   },
   timber: {
     foes: { imp: 4, slime: 3, bomber: 3, bat: 2, weaver: 0.25, rootloper: 0.4 },
@@ -709,7 +713,7 @@ export function applyCampaignDressing(
   return stats;
 }
 
-export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId): void {
+export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId, keepClear: ReadonlyArray<{ x: number; y: number }> = []): void {
   const w = ctx.world;
   const B = EXTRAS[biome];
   const FLOOR_BAND = HEIGHT - 52;
@@ -1060,6 +1064,85 @@ export function applyBiomeExtras(ctx: Ctx, rng: Rng, biome: BiomeId): void {
       if (painted > 14) gp++;
     }
   }
+
+  // GAS DOMES (GEN 62): the pockets above are decoration-scale (239-424 cells in 13-18 puffs of under
+  // 80), so a lit pocket over a bat roost never happened. The few biggest ceiling domes of the level
+  // get a real lamp of gas instead. Its own fork: nothing else's stream moves.
+  if (B.gasDomes) {
+    const domeRng = rng.fork(0x6d5b);
+    const found: Array<{ x: number; y: number; cells: number[] }> = [];
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const x = 60 + Math.floor(domeRng.next() * (WIDTH - 120));
+      const y = 50 + Math.floor(domeRng.next() * (FLOOR_BAND - 140));
+      if (w.types[w.idx(x, y)] !== Cell.Empty) continue;
+      let ceilY = -1;
+      for (let up = 1; up <= 40; up++) {
+        if (isSolid(w.types[w.idx(x, y - up)])) {
+          ceilY = y - up + 1;
+          break;
+        }
+      }
+      if (ceilY < 0) continue;
+      if (spawn && Math.hypot(x - spawn.x, ceilY - spawn.y) < 150) continue;
+      if (keepClear.some((k) => Math.hypot(x - k.x, ceilY - k.y) < 90)) continue;
+      if (found.some((f) => Math.abs(f.x - x) < 110 && Math.abs(f.y - ceilY) < 80)) continue;
+      const cells = domeCells(w, x, ceilY, 400, 900, keepClear);
+      if (cells.length >= 400) found.push({ x, y: ceilY, cells });
+    }
+    found.sort((a, b) => b.cells.length - a.cells.length);
+    for (const d of found.slice(0, B.gasDomes)) {
+      for (const i of d.cells) set(i % WIDTH, (i / WIDTH) | 0, Cell.MarshGas, marshGasColor());
+    }
+  }
+}
+
+/**
+ * The open cells under one ceiling: a flood from (x, y) through cells whose own ceiling is at most L
+ * above them (L grows from 3 to 14 until the pool holds minCells), nearest the seed first, at most
+ * maxCells. Empty when no L is enough. A cell within 40 of a keep-clear point (a waystone's bowl)
+ * is left out: gas over a fire is a fuse nobody chose.
+ */
+function domeCells(
+  w: { types: Uint8Array; idx(x: number, y: number): number; inBounds(x: number, y: number): boolean },
+  x: number,
+  y: number,
+  minCells: number,
+  maxCells: number,
+  keepClear: ReadonlyArray<{ x: number; y: number }>,
+): number[] {
+  const depthOf = (px: number, py: number, limit: number): number => {
+    for (let d = 0; d <= limit; d++) {
+      if (!w.inBounds(px, py - d - 1)) return -1;
+      if (isSolid(w.types[w.idx(px, py - d - 1)])) return d;
+    }
+    return -1;
+  };
+  for (let L = 3; L <= 14; L++) {
+    const out: number[] = [];
+    const seen = new Set<number>();
+    const queue: number[] = [];
+    const push = (px: number, py: number): void => {
+      if (!w.inBounds(px, py)) return;
+      const i = w.idx(px, py);
+      if (seen.has(i)) return;
+      seen.add(i);
+      if (w.types[i] !== Cell.Empty || depthOf(px, py, L) < 0) return;
+      if (keepClear.some((k) => Math.hypot(px - k.x, py - k.y) < 40)) return;
+      queue.push(i);
+    };
+    push(x, y);
+    for (let head = 0; head < queue.length && out.length < maxCells; head++) {
+      const i = queue[head];
+      out.push(i);
+      const px = i % WIDTH, py = (i / WIDTH) | 0;
+      push(px + 1, py);
+      push(px - 1, py);
+      push(px, py + 1);
+      push(px, py - 1);
+    }
+    if (out.length >= minCells) return out;
+  }
+  return [];
 }
 
 /**
