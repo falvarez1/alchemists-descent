@@ -41,6 +41,8 @@ export interface KitInstance {
   intercept?(p: Projectile): boolean;
   /** 0..1 how unseen the fighter is right now, beyond its modifiers (smoke around it, stillness in cover). */
   concealment?(): number;
+  /** The cell at (x, y) is a hand-hold the kit has grown (a root): the player can climb it like a wall. Called by `Player.hasClimbFaceAt`, so keep it cheap. */
+  climbHold?(x: number, y: number): boolean;
   /**
    * Where foe `e` believes the fighter is, when a decoy draws its eye (Mirror Hunt): the position and
    * horizontal velocity it should hunt instead of the real body, or null for the real one. Called once per

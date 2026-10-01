@@ -122,6 +122,11 @@ export interface FighterApi {
   moveScale(): number;
   /** Multiplies the climb and mantle rates (1 = unchanged). */
   climbScale(): number;
+  /**
+   * A cell the fighter's own growth makes a hand-hold even though it is not hard (Father Thorne's roots are living
+   * wood: walk-through Trunk). `Player.hasClimbFaceAt` asks this beside `cellBlocks`; false for every other fighter.
+   */
+  climbHold(x: number, y: number): boolean;
   /** True while a dash, blink, ram or tether owns the body: the player's own movement integration stands aside. */
   readonly ownsMovement: boolean;
   /** A blow neither shoves nor staggers the fighter (Pressure at full, Redline). */
