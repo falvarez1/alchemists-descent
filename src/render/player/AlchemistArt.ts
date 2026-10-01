@@ -18,10 +18,10 @@ import { hash2 } from '@/core/math';
  * entities/playerPose (the same skeleton the ragdoll produces), so the living
  * and the fallen share every stitch.
  */
-const COAT = 1, COAT_D = 2, MANTLE = 3, LEATHER = 4, COPPER = 5, SKIN = 6, BEARD = 7, BOOT = 8, EYE = 9, GLINT = 10,
+export const COAT = 1, COAT_D = 2, MANTLE = 3, LEATHER = 4, COPPER = 5, SKIN = 6, BEARD = 7, BOOT = 8, EYE = 9, GLINT = 10,
   CYAN = 11, WOOD = 12, GLASS = 13, BLOOD = 14, RUNE = 15, HEART = 16, ICE = 17, FLAME = 18, LIQUID = 19, RIME = 20, SHELL = 21;
 
-const MATS: CreatureMaterial[] = [
+export const ALCHEMIST_MATS: CreatureMaterial[] = [
   material({ keys: [0x0a1a1c, 0x133538, 0x1f5150, 0x347168, 0x5e9c88], gloss: 0.12, rim: 0.85, outline: 0x040a0b }),
   material({ keys: [0x061012, 0x0c2426, 0x153a3c, 0x245552, 0x3c7666], gloss: 0.1, rim: 0.7, outline: 0x040a0b }),
   material({ keys: [0x2a2519, 0x5c533f, 0x9a8d6c, 0xc9b991, 0xefe2bb], gloss: 0.1, rim: 0.75, outline: 0x0e0c08 }),
@@ -52,7 +52,7 @@ const MATS: CreatureMaterial[] = [
  * then sleeves, boots, the coat's tails, and the coat itself last; the face
  * barely (the beard frosts on its own); the glowing vial and the effects never.
  */
-const RIME_BIAS = ((): Float32Array => {
+export const RIME_BIAS = ((): Float32Array => {
   const b = new Float32Array(32).fill(-1);
   const set: Array<[number, number]> = [
     [1, 0.3], [2, 0.72], [3, 0.66], [4, 0.52], [5, 0.62], [6, 0.4], [8, 0.66], [9, 0.52], [10, 0.84],
@@ -67,13 +67,13 @@ const ICICLES: ReadonlyArray<readonly [number, number]> = [[-5.2, 0.9], [-4.1, 1
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
-const LIGHT = blankLight();
+export const LIGHT = blankLight();
 
-function limb(r: CreatureRaster, a: V, b: V, ra: number, rb: number, z: number, mat: number, group: number, far = false): void {
+export function limb(r: CreatureRaster, a: V, b: V, ra: number, rb: number, z: number, mat: number, group: number, far = false): void {
   r.capsule(a.x, a.y, ra, b.x, b.y, rb, z, z, mat, { group, far });
 }
 
-function boot(r: CreatureRaster, foot: V, knee: V, facing: number, z: number, group: number, far: boolean): void {
+export function boot(r: CreatureRaster, foot: V, knee: V, facing: number, z: number, group: number, far: boolean): void {
   // The boot points along the ground (forward), shaped by the shin's angle.
   const sx = foot.x - knee.x, sy = foot.y - knee.y;
   const ang = Math.atan2(sy, sx) - Math.PI / 2 * facing * (sx * facing >= -0.5 ? 1 : 0.5);
@@ -83,7 +83,7 @@ function boot(r: CreatureRaster, foot: V, knee: V, facing: number, z: number, gr
   r.stamp(fx, fy + 0.7, 1.9, 0.3, 0, BOOT, 0, true, group);
 }
 
-function hand(r: CreatureRaster, h: V, e: V, z: number, group: number, far: boolean): void {
+export function hand(r: CreatureRaster, h: V, e: V, z: number, group: number, far: boolean): void {
   const dx = h.x - e.x, dy = h.y - e.y, d = Math.hypot(dx, dy) || 1;
   r.ellipse(h.x + dx / d * 0.25, h.y + dy / d * 0.25, 0.95, 0.8, Math.atan2(dy, dx), z + 0.4, LEATHER, { group, far });
 }
@@ -107,7 +107,7 @@ export function drawAlchemistBody(out: PixelSurface, field: LightField, ctx: Ctx
   }
   if (s.wand.visible) { x0 = Math.min(x0, s.wand.x - 14); x1 = Math.max(x1, s.wand.x + 14); y0 = Math.min(y0, s.wand.y - 14); y1 = Math.max(y1, s.wand.y + 14); }
   if (hatBody) { x0 = Math.min(x0, hatBody.x - 8); x1 = Math.max(x1, hatBody.x + 8); y0 = Math.min(y0, hatBody.y - 8); y1 = Math.max(y1, hatBody.y + 8); }
-  r.begin(step, x0 - 8, y0 - 8, x1 + 8, y1 + 8, MATS, a.x, a.y);
+  r.begin(step, x0 - 8, y0 - 8, x1 + 8, y1 + 8, ALCHEMIST_MATS, a.x, a.y);
   r.outline = 1; r.bands = 0.7; r.dither = false; r.blend = 1.4;
   const dead = s.kind === 'dead';
 
@@ -241,7 +241,7 @@ const BREATH_LIFE = 52;
  * premultiplied blend over whatever is behind it), dimmed by the room's light
  * so it never glows in the dark.
  */
-function drawBreath(out: PixelSurface, field: LightField, ctx: Ctx, c: NonNullable<PlayerState['chill']>): void {
+export function drawBreath(out: PixelSurface, field: LightField, ctx: Ctx, c: NonNullable<PlayerState['chill']>): void {
   if (!out.blendFinePx || !(c.breathAt >= 0)) return;
   const age = ctx.state.frameCount - c.breathAt;
   if (age < 0 || age > BREATH_LIFE) return;
@@ -275,7 +275,7 @@ function drawBreath(out: PixelSurface, field: LightField, ctx: Ctx, c: NonNullab
  * shape limb by limb, crazed with the cracks each press puts in it. The fallen
  * keep their rime. Returns the glaze wash for the resolve (or undefined).
  */
-function drawChill(r: CreatureRaster, ctx: Ctx, a: PlayerState, s: Skeleton, f: number, dead: boolean, hatOn: boolean,
+export function drawChill(r: CreatureRaster, ctx: Ctx, a: PlayerState, s: Skeleton, f: number, dead: boolean, hatOn: boolean,
   H: (side: number, up: number) => [number, number]): SceneLight['tint'] {
   const ch = a.chill;
   const shell = !dead && (ch?.shell ?? 0) > 0;
@@ -399,7 +399,7 @@ function drawLooseHat(r: CreatureRaster, hat: RigidBody, alpha: number): void {
   r.stamp(...P(0, -0.9), 2.4, 0.5, ang, LEATHER, 1, false, 16);
 }
 
-function drawWand(r: CreatureRaster, s: Skeleton, frame: number, hooded = false): void {
+export function drawWand(r: CreatureRaster, s: Skeleton, frame: number, hooded = false): void {
   const w = s.wand, ang = w.angle + w.spin;
   const c = Math.cos(ang), sn = Math.sin(ang);
   const len = 9.5;
@@ -424,7 +424,7 @@ export function drawDroppedWand(out: PixelSurface, field: LightField, wand: Rigi
   const r = sharedRaster;
   const px = wand.previousX ?? wand.x, py = wand.previousY ?? wand.y;
   const x = px + (wand.x - px) * alpha, y = py + (wand.y - py) * alpha, c = Math.cos(wand.angle), sn = Math.sin(wand.angle);
-  r.begin(fine ? out.pixelStep ?? 1 : 1, x - 8, y - 8, x + 8, y + 8, MATS, x, y);
+  r.begin(fine ? out.pixelStep ?? 1 : 1, x - 8, y - 8, x + 8, y + 8, ALCHEMIST_MATS, x, y);
   r.capsule(x - c * 5.5, y - sn * 5.5, 0.45, x + c * 5.5, y + sn * 5.5, 0.3, 0, 0, WOOD, { group: 1 });
   r.capsule(x + c * 4.2, y + sn * 4.2, 0.42, x + c * 5.4, y + sn * 5.4, 0.42, 0.2, 0.2, COPPER, { group: 1 });
   if (glow > 0.03) {
