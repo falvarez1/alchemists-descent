@@ -42,7 +42,7 @@ export const ELIXIRS: readonly ElixirDef[] = [
   {
     cell: Cell.ElixirLife,
     effect: { kind: 'status', key: 'regen' },
-    framesPerCell: 100,
+    framesPerCell: 120,
     chip: { label: 'MENDING', tint: '#fb7185' },
     does: 'wounds that knit as you walk',
   },
