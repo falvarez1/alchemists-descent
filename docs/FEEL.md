@@ -1520,10 +1520,33 @@ ice and crystal pass it) to the lens or heart.
 
 ---
 
+## 11. Complications (run mutators, 2026-10-01 — `content/mutators`, `game/MutatorDirector`, docs/DIFFICULTY.md)
+
+Standing regulations for a descent: the feel of each is what the grid does, and every one was *played* with
+real input and measured (`scripts/verify-mutators.mjs`). A complication shows itself three ways: a Notice toast
+when the descent begins ("Notice posted: … in force"), a one-line instruction the first time the alchemist nears
+each kind of vent (once per kind per run), and the chips on the pause menu and the ledger.
+
+```
+tinderbox: every fuel's flammability ×2.4 (wood .1 → .24, oil igniteChance .08 → .19) — a flame at the end of a 3-thick plank that dies at ×1 (10 cells of 1,179 in 6 s) burns 278-657 at ×2.4 · wet-floors: ×0.55 (wood .055)
+low-gravity: gravity ×0.55 (0.28 → 0.154; liquid 0.12 → 0.066) in Player, the Rapier world + buoyancy, KNOCK_GRAV, the swing · a full-hold jump apex 23 → 45 cells (×1.9), a 36-cell drop 16 → 21 ticks · the levitation jet's thrust follows the dial (it was tuned against 0.28: unscaled it climbed 198 cells in the probe arena vs 112; scaled, 112 → 97) so jump + jet stays about the same reach, and it stays a hover instrument
+glass-cannon: alchemist HP ×0.5 (Adept 110 → 55, a Sanctum's Vitality +30 still lands on top) · alchemist's blows ×1.5 on 'direct'/'bowled' hits in Enemies.damage, AFTER the wand compiler's ×4 clamp (a real spark bolt: asked 18, dealt 27)
+crowded-house: enemyCount ×1.5 (floor 2, seed 424242: 14 → 21 placed) · bounty ×1.4 (slime 10 → 14 oz)
+dark-works: ambient ×0.6 (0.36 → 0.216) + a darkness FLOOR of 0.7 under every campaign floor (core/darkness.darkMapFor lift: a floor's base darkness becomes max(designed, 0.7); hubs and custom levels stay readable) — mean luma of floor 2 at the same spot 0.077 → 0.045 · ambient alone (0.45×) was only 12% darker: the compose pass's 0.40 readability floor dominates an unlit surface
+famine (Short Rations): a rise in health within one tick is halved unless it is a set piece (> max(6, 30% of max HP): a rest, a respawn) — a healium pool 80 → 38 in 2.5 s
+fireworks: a fallen creature (not a warden) bursts after 14 ticks: 160 sparks + 40 embers, kicks the bloom, boom(5); foes within 20 cells take 5-14 'detonated', the alchemist within 12 cells 3-7 · queue ≤ 24 · a chain of three slimes runs to the last
+hush ×0.5 / nosy-neighbours ×1.5: the creature's sight radius (265 × light scale × dial) — a slime notices from 200 cells plain, 100 under Hush, the arena's edge (280) under Nosy
+wet-floors dressing: ≤ 6 closed basins on the walk (14-110 cells, ≤ 4 deep, ≥ 60 apart, ≥ 40 from the arrival, ≥ 16 from a pickup), 5 drips (every 36 ticks, 1 droplet, budget 260 cells) · a spark placed in a puddle reached 58 of its 61 cells inside 1 s and shocked a wet alchemist standing in it
+slime-rain: 8 ceiling vents (every 30 ticks, 2 droplets, budget 300 each), ≥ 70 apart; fire turns the cup of slime to acid (the sim's own 4%/tick)
+gas-leak: 5 floor vents (every 22 ticks, 4 cells, budget 900), ≥ 70 apart; MarshGas has no lifetime, so it pools under the ceiling; a flame took all 32 cells of a plume in the probe
+```
+
+---
+
 ## Tuning quick-reference (this codex's load-bearing numbers)
 
 ```
-coyote 6f · jump buffer 8f · jump vy -3.7 paced by depth · gravity 0.28 (liquid 0.12)
+coyote 6f · jump buffer 8f · jump vy -3.7 paced by depth · gravity 0.28 (liquid 0.12), × the complications' gravity dial (1 unless Low Gravity: §11)
 levitation spool: 0.33 -> 0.57 thrust over 48f (t-cubed ease-in) + 0.92/f drag -> ~3.3 terminal climb
 wand recoil: base 6 + sum(proj speed×count), ×0.06 -> impulse, cap 4.0, ground ×0.55 (opposite aim; down+airborne = rocket-jump)
 levitation horizontal: own control (levitHorizControl 1.0×) — decoupled from ground Swift/Swift-Soles buffs

@@ -133,6 +133,17 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     keyLure.ts            The golden key's far-field lure clock (glint + chime, one per key; pure)
     compass.ts            The game's own waypoint (the exit portal once the key is taken); never
                           replaces a waypoint set by hand
+    MutatorDirector.ts    COMPLICATIONS at runtime (ctx.mutators, content/mutators): the per-run tuning
+                          clone (ctx.params swapped for a copy while a descent is played, so nothing
+                          reaches the tuning store), vents and drips, Short Rations, Fireworks, the notice;
+                          ticked from RunDirector.update (never reorder the tick for it)
+    mutatorDressing.ts    The complications' floor dressing (pure over a World + a level seed): real closed
+                          puddles on the walk, ceiling drips and floor gas vents; a TAIL pass planned from
+                          the pristine cells on createLevel AND restoreLevel, route-checked, never part of
+                          generation (no GEN_VERSION churn)
+  content/
+    mutators.ts           The complication registry (names, regulations, weights, ladder flags), the dial
+                          arithmetic, the append-only DAILY table, the Sanctum's bargain rules (pure)
   world/
     CaveGenerator.ts      Generation pipeline host: skeleton dispatch + paint + decorations
     carve.ts              Pure carve primitives over the work buffer (incl. ensureConnectivity)
@@ -303,6 +314,16 @@ player ↔ spells) without letting circular imports exist.
 **Flat typed arrays.** The grid is five `TypedArray`s indexed `x + y * width` instead
 of nested JS arrays of arrays — far less memory, far better cache behavior, and the
 foundation for future chunking/dirty-rect work. Colors are packed `0xRRGGBB` integers.
+
+**Complications are a layer, not a second place to look.** A run's mutators
+(`RunSaveState.mutators`, mirrored on `ctx.state.mutators`; never `player.perks`, which is the
+Sanctum's) reach the game through the funnels it already had: `difficultyMods(ctx.state)` folds
+them into the tier (an ordinary run still reads the tier's own object), `mutatorMods(ctx.state)` is
+the read for the rest (gravity, the alchemist's blows, bounty, healing, light), and floor dressing
+is a seeded tail pass on a finished floor — never a generation change. The shared tuning
+singletons are never written: while a descent is played, `ctx.params` is a per-run clone.
+docs/DIFFICULTY.md "Complications" is the contract (the catalog, where each dial sits, the
+daily table's append-only rule, the meta policy).
 
 **The GPU FX layer carries the sprites.** On a GPU-composed WebGL frame the
 composer no longer stages sprite pixels in a CPU float buffer (dirty-tracked,
