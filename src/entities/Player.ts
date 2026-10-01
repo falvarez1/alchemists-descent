@@ -299,7 +299,7 @@ export class PlayerControl implements PlayerControlApi {
         const sx = x + side * reach;
         const sy = y - dy;
         if (!world.inBounds(sx, sy)) continue;
-        hasHold ||= ctx.physics.cellBlocks(sx, sy);
+        hasHold ||= ctx.physics.cellBlocks(sx, sy) || ctx.fighters?.climbHold(sx, sy) === true;
       }
       samples++;
       if (hasHold) anchored++;

@@ -425,6 +425,7 @@ export class FighterSystem implements FighterApi {
 
   moveScale(): number { return this.cMove; }
   climbScale(): number { return this.cClimb; }
+  climbHold(x: number, y: number): boolean { return this.kit?.climbHold?.(x, y) === true; }
   get staggerResist(): boolean { return this.cStagger; }
   get ownsMovement(): boolean { return this.move !== null; }
 
