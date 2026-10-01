@@ -112,8 +112,12 @@ export interface FighterApi {
 
   // ---- engine hooks (all no-ops for the classic Alchemist) ----
 
-  /** Player damage path: armor, damage reduction, overshield. Returns the damage that reaches health. */
-  reduceIncoming(amount: number, source: string | undefined): number;
+  /**
+   * Player damage path: armor, damage reduction, overshield. Returns the damage that reaches health.
+   * `kx`/`ky` are the blow's knock vector (Player.damage's own arguments) when it has one, so a kit can
+   * tell a blow from the front from one from behind (Brann's plate); a hazard tick passes none.
+   */
+  reduceIncoming(amount: number, source: string | undefined, kx?: number, ky?: number): number;
   /** Multiplies the player's ground/air run speed (1 = unchanged). */
   moveScale(): number;
   /** Multiplies the climb and mantle rates (1 = unchanged). */
