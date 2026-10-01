@@ -13,6 +13,7 @@ import type { ChillTuning } from '@/config/params';
 import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/run';
 import type { CreatureSfxAction, SfxId } from '@/content/audio/sfxCues';
 import type { LevelStorySites, StoryApi, StorySpeakOptions, StorySpokenLine } from '@/core/story';
+import type { BrewingApi } from '@/core/alchemy';
 
 /* ============================================================
  * Entity data
@@ -40,7 +41,15 @@ export interface EntityStatus {
   swift: number;
   /** Buff: brighter, steadier, longer wand light. */
   torch: number;
+  /** Potions that hold a Sanctum boon for a while: boon id -> frames left (core/boons `hasBoon` reads it with the run's perks). */
+  boons?: Partial<Record<PerkId, number>>;
 }
+
+/** The numeric status timers (every EntityStatus field but the potion-boon map). */
+export type StatusTimerKey = Exclude<keyof EntityStatus, 'boons'>;
+
+/** The status timers a potion (a loot potion, a brewed elixir, the Sanctum's brew) may drive. */
+export type PotionStatusKey = Extract<StatusTimerKey, 'regen' | 'levity' | 'stoneskin' | 'swift' | 'torch'>;
 
 export interface Hat {
   ox: number;
@@ -3817,6 +3826,8 @@ export interface Ctx {
   chill?: ChillApi;
   /** The run's complications (game/MutatorDirector); absent in small test contexts. */
   mutators?: MutatorApi;
+  /** The cauldron, read-only (game/Brewing): the bowl's contents and progress; absent in small test contexts. */
+  brewing?: BrewingApi;
 }
 
 /** The part of a generated floor the complications' dressing reads (a structural subset of generateLevel's result). */

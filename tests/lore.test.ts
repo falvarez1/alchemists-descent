@@ -42,7 +42,7 @@ describe('material lore discovery', () => {
 
     expect(discoveredLore()[Cell.Water]).toBe(true);
     expect(JSON.parse(storage.get(GRIMOIRE_KEY) ?? '{}')).toMatchObject({
-      version: 2,
+      version: 3,
       materials: { [Cell.Water]: true },
     });
   });
@@ -60,7 +60,7 @@ describe('material lore discovery', () => {
 
     expect(discoveredLore()[Cell.Lava]).toBe(true);
     expect(JSON.parse(storage.get(GRIMOIRE_KEY) ?? '{}')).toMatchObject({
-      version: 2,
+      version: 3,
       materials: { [Cell.Lava]: true },
     });
   });

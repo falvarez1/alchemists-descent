@@ -23,6 +23,7 @@ import { ToastStack } from '@/ui/ToastStack';
 import { calmCase } from '@/ui/houseText';
 import { titleCaseName } from '@/core/strings';
 import { FLOOR_LOOKS, floorLookFor } from '@/config/floorLooks';
+import { PotionChips } from '@/ui/PotionChips';
 
 /** Non-null getElementById — all HUD elements exist statically in index.html. */
 function el(id: string): HTMLElement {
@@ -119,6 +120,8 @@ export class Hud {
   private readonly toastStack: ToastStack;
   /** Empty slot beside the vitals, reserved for the run layer's return-phial row. */
   private readonly vitalsAside = document.createElement('div');
+  /** The working potions, under the vitals (ui/PotionChips). */
+  private potionChips: PotionChips | null = null;
   /** Trailing "loss" bars behind HP/mana: the chunk you just lost lingers, then drains. */
   private readonly vitalGhosts: Array<{ ghost: HTMLElement; fraction: number; dropAt: number }> = [];
   private readonly bannerKicker = document.createElement('div');
@@ -189,6 +192,7 @@ export class Hud {
     this.vitalsAside.id = 'vitals-aside';
     this.vitalsAside.className = 'vitals-aside';
     el('hud-left').appendChild(this.vitalsAside);
+    this.potionChips = new PotionChips(ctx, this.vitalsAside);
     for (const id of ['hp-fill', 'mana-fill']) {
       const fill = el(id);
       const ghost = document.createElement('div');
@@ -376,6 +380,7 @@ export class Hud {
     this.bannerQueue.length = 0;
     this.pendingTitle = null;
     this.toastStack.clear();
+    this.potionChips?.dispose();
     this.vitalsAside.remove();
     for (const { ghost } of this.vitalGhosts.splice(0)) ghost.remove();
     this.bannerKicker.remove();
@@ -746,6 +751,7 @@ export class Hud {
     if (this.trickshotReadout.textContent !== trickText) this.trickshotReadout.textContent = trickText;
     this.trickshotReadout.classList.toggle('finisher', trickText === 'RETURNED WITH INTEREST');
     const player = ctx.player;
+    this.potionChips?.update();
     el('spell-hotbar').style.display = player.legClub ? 'none' : '';
     this.renderObjective();
     this.renderInteractionHint(ctx);

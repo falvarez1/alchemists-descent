@@ -93,6 +93,16 @@ export const slimeColor = () => packRGB(80 + rand(25), 200 + rand(30), 50 + rand
 export const elixirLifeColor = () => packRGB(255, 100 + rand(40), 130 + rand(40));
 export const elixirLevityColor = () => packRGB(130 + rand(40), 220 + rand(30), 255);
 export const elixirStoneColor = () => packRGB(155 + rand(30), 140 + rand(20), 100 + rand(20));
+// THE EXPERIMENT's potions (each colour sits >= 12 from every marker-palette entry: sim/cellPalette).
+export const elixirSwiftColor = () => packRGB(186 + rand(12), 106 + rand(14), 36 + rand(12)); //   strong tea: deep amber
+export const elixirTorchColor = () => packRGB(200 + rand(14), 238 + rand(14), 106 + rand(14)); //  glowing draught: lime-white lamp
+export const elixirFireColor = () => packRGB(250 + rand(6), 110 + rand(14), 30 + rand(12)); //    salamander's gall: vermilion
+export const elixirFrostColor = () => packRGB(146 + rand(10), 230 + rand(10), 210 + rand(10)); //  frostproof tonic: milky mint
+export const elixirShockColor = () => packRGB(36 + rand(10), 116 + rand(12), 146 + rand(12)); //  gutta-percha tonic: deep teal
+export const elixirToxinColor = () => packRGB(30 + rand(8), 54 + rand(8), 48 + rand(8)); //       charcoal draught: ink with a green glint
+export const elixirMightColor = () => packRGB(230 + rand(10), 200 + rand(10), 36 + rand(10)); //  brimstone tincture: sulphur
+export const elixirVampireColor = () => packRGB(112 + rand(12), 16 + rand(8), 74 + rand(10)); //  heartwine: claret
+export const elixirHushColor = () => packRGB(144 + rand(12), 136 + rand(12), 190 + rand(12)); //  hush draught: twilight lilac
 export const toxicColor = () => packRGB(64 + rand(18), 118 + rand(26), 36 + rand(12));
 export const healiumColor = () => packRGB(248 + rand(8), 110 + rand(30), 160 + rand(30));
 export const teleportiumColor = () => packRGB(150 + rand(30), 60 + rand(20), 235 + rand(20));
@@ -186,6 +196,15 @@ export const COLOR_FN: Record<number, () => number> = {
   [Cell.ElixirLife]: elixirLifeColor,
   [Cell.ElixirLevity]: elixirLevityColor,
   [Cell.ElixirStone]: elixirStoneColor,
+  [Cell.ElixirSwift]: elixirSwiftColor,
+  [Cell.ElixirTorch]: elixirTorchColor,
+  [Cell.ElixirFire]: elixirFireColor,
+  [Cell.ElixirFrost]: elixirFrostColor,
+  [Cell.ElixirShock]: elixirShockColor,
+  [Cell.ElixirToxin]: elixirToxinColor,
+  [Cell.ElixirMight]: elixirMightColor,
+  [Cell.ElixirVampire]: elixirVampireColor,
+  [Cell.ElixirHush]: elixirHushColor,
   [Cell.Toxic]: toxicColor,
   [Cell.Healium]: healiumColor,
   [Cell.Teleportium]: teleportiumColor,

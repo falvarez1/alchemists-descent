@@ -77,6 +77,7 @@ import { placeLavaLakes, type LakeTarget, type LavaLakeResult } from '@/world/la
 import { clearLooseStock, type StockSite } from '@/world/looseStock';
 import { holdPortalShrine } from '@/world/portalShrine';
 import { placeRouteWaystones } from '@/world/routeWaystones';
+import { bankFurnace } from '@/world/furnace';
 import type { LevelStorySites } from '@/core/story';
 
 /* ===================== Procedural Generation Map Engines ===================== */
@@ -1479,9 +1480,11 @@ export class WorldGen implements WorldGenApi {
       const placedWs = placeRouteWaystones({
         // (the walk ends where the floor does: its portal, or on the last floor the colossus's hall)
         world, ledger, spawn, exit: portal ?? boss ?? { x: wellX, y: sealY - 12 }, bowls, waystones,
-        key: pickups.find((p) => p.kind === 'key') ?? null,
+        key: pickups.find((p) => p.kind === 'key') ?? null, cauldron,
       });
-      if (shouldLogDevDiagnostics() && (placedWs.moved > 0 || placedWs.brazier)) console.warn(`[gen] ${def.id}: route waystones - ${placedWs.moved} moved, ${placedWs.kept} kept${placedWs.brazier ? ', key brazier' : ''}`);
+      if (shouldLogDevDiagnostics() && (placedWs.moved > 0 || placedWs.brazier || placedWs.cauldron.moved)) {
+        console.warn(`[gen] ${def.id}: route waystones - ${placedWs.moved} moved, ${placedWs.kept} kept${placedWs.brazier ? ', key brazier' : ''}; cauldron ${placedWs.cauldron.moved ? `moved ${placedWs.cauldron.from} -> ${placedWs.cauldron.to} cells off the route` : `kept, ${placedWs.cauldron.from} off`}`);
+      }
       stage('route-waystones');
     }
 
@@ -1558,6 +1561,13 @@ export class WorldGen implements WorldGenApi {
     }
 
     setOrganicTunnels(false);
+
+    // 8g) THE FURNACE UNDER THE POT (GEN 64), last of all so nothing carves it: a sealed pocket of embers in the
+    //     ground under the cauldron where the rock is sound (world/furnace; the player's own fire is the fallback).
+    if (genDef.routeWaystones) {
+      const banked = bankFurnace(world, cauldron);
+      if (shouldLogDevDiagnostics()) console.warn(`[gen] ${def.id}: furnace ${banked ? 'banked' : 'skipped (the ground under the cauldron is not sound)'}`);
+    }
 
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
     matureVegetation(ctx.world);

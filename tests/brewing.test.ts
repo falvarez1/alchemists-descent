@@ -71,8 +71,8 @@ describe('brewing progress', () => {
     const ctx = makeCtx(world);
 
     setBasin(world, [
-      ...Array<Cell>(10).fill(Cell.Water),
-      ...Array<Cell>(3).fill(Cell.Gold),
+      ...Array<Cell>(8).fill(Cell.Water),
+      ...Array<Cell>(5).fill(Cell.Glowshroom),
     ]);
     advance(ctx, brewing, 89);
     expect(basinCount(world, Cell.ElixirLife)).toBe(0);
@@ -94,8 +94,8 @@ describe('brewing progress', () => {
     const ctx = makeCtx(world, 'd1');
 
     setBasin(world, [
-      ...Array<Cell>(10).fill(Cell.Water),
-      ...Array<Cell>(3).fill(Cell.Gold),
+      ...Array<Cell>(8).fill(Cell.Water),
+      ...Array<Cell>(5).fill(Cell.Glowshroom),
     ]);
     advance(ctx, brewing, 89);
     expect(basinCount(world, Cell.ElixirLife)).toBe(0);
@@ -122,8 +122,8 @@ describe('brewing progress', () => {
     } as unknown as Ctx;
 
     setBasin(world, [
-      ...Array<Cell>(10).fill(Cell.Water),
-      ...Array<Cell>(3).fill(Cell.Gold),
+      ...Array<Cell>(8).fill(Cell.Water),
+      ...Array<Cell>(5).fill(Cell.Glowshroom),
     ]);
     advance(ctx, brewing, 90);
 
@@ -145,7 +145,7 @@ describe('cauldron notices', () => {
       ...makeCtx(world),
       events: { emit: (event: string, payload: { text?: string }) => { if (event === 'toast' && payload.text) toasts.push(payload.text); } },
     } as unknown as Ctx;
-    setBasin(world, Array<Cell>(6).fill(Cell.Water)); // settling drips over the burner: no recipe
+    setBasin(world, Array<Cell>(6).fill(Cell.Water)); // settling water over the burner: no recipe, so it is judged once
     const run = (frames: number): void => {
       for (let i = 0; i < frames; i++) { ctx.state.frameCount++; brewing.update(ctx); }
     };
@@ -154,6 +154,6 @@ describe('cauldron notices', () => {
     expect(toasts).toEqual([]);
     ctx.player.x = CAULDRON.x + 10; // at the bowl: told once, not every 2 s
     run(600);
-    expect(toasts).toEqual(['CAULDRON: WRONG MIX']);
+    expect(toasts).toEqual(['CAULDRON: NOTHING STIRS']);
   });
 });

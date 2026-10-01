@@ -6,7 +6,8 @@
 // rewrite of entity-vs-cell rules.
 
 import type { Ctx, EntityStatus } from '@/core/types';
-import { Cell, isLiquid } from '@/sim/CellType';
+import { Cell, isElixir, isLiquid } from '@/sim/CellType';
+import { tickBoons } from '@/core/boons';
 import { fireColor, packRGB, steamColor } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
 
@@ -231,9 +232,7 @@ export function sampleBodyCells(
         t === Cell.Nitrogen ||
         t === Cell.Blood ||
         t === Cell.Slime ||
-        t === Cell.ElixirLife ||
-        t === Cell.ElixirLevity ||
-        t === Cell.ElixirStone ||
+        isElixir(t) ||
         t === Cell.Toxic ||
         t === Cell.Healium ||
         t === Cell.Teleportium ||
@@ -367,6 +366,7 @@ export function sampleAndTickStatus(
   if (st.stoneskin > 0) st.stoneskin = Math.max(0, st.stoneskin - tickFrames);
   if (st.swift > 0) st.swift = Math.max(0, st.swift - tickFrames);
   if (st.torch > 0) st.torch = Math.max(0, st.torch - tickFrames);
+  tickBoons(st, tickFrames);
 
   // --- Active side effects: statuses write back into the world ---
   const frame = ctx.state.frameCount;

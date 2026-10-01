@@ -18,6 +18,7 @@ import { acidColor, emberColor, fireColor, glassColor, nitrogenColor, packRGB, s
 import { ALL_CARD_IDS, CARD_DEFS, isCardId } from './cards';
 import { markCardDiscovered } from './cardDiscovery';
 import { isRunTainted } from '@/core/runTaint';
+import { hasBoon } from '@/core/boons';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 import { BOUNCE_COUNTS, INFUSED, INFUSE_TRAIL_BUDGET, TRIGGERED, TRIGGER_SOURCE_SPREAD, ensureProjectileMods } from './projectileMarks';
 import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
@@ -425,7 +426,7 @@ export class WandSystem implements WandsApi {
   ): void {
     const frame = this.wands[this._active].frame;
     // Power Surge boon: +25% on every cast's damage multiplier.
-    const action: CastAction = ctx.player.perks.might
+    const action: CastAction = hasBoon(ctx.player, 'might')
       ? { ...actionIn, dmgMul: Math.min(4, actionIn.dmgMul * 1.25) }
       : actionIn;
     // God mode: every shot flies dead on the aim — no wand/card spread jitter.
@@ -761,7 +762,7 @@ export class WandSystem implements WandsApi {
     this.build.update();
     if (ctx.player.legClub) { this.flameBurst = 0; this.flameBurstAction = null; }
     // Mana Font boon: the old ones keep the tanks topped up 60% faster.
-    const regenK = ctx.player.perks.manafont ? 1.6 : 1;
+    const regenK = hasBoon(ctx.player, 'manafont') ? 1.6 : 1;
     for (const w of this.wands) {
       if (w.cooldown > 0) w.cooldown--;
       w.mana = Math.min(w.frame.manaMax, w.mana + w.frame.manaRegen * regenK);

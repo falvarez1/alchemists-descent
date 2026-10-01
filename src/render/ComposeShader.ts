@@ -37,7 +37,7 @@ import type {
 } from '@/render/pixels';
 import { cloudSumGlsl, glslFloat, SKY } from '@/render/skyAtmosphere';
 import { backdropOrigin } from '@/render/depth/parallax';
-import { Cell } from '@/sim/CellType';
+import { Cell, ELIXIR_CELL_IDS } from '@/sim/CellType';
 import type { World } from '@/sim/World';
 import { GpuFxLayer } from '@/render/GpuFxLayer';
 import { GpuSparkSim } from '@/render/GpuSparkSim';
@@ -65,7 +65,7 @@ const SUBCELL_POWDERS = [Cell.Sand, Cell.Gold, Cell.Catalyst, Cell.Gunpowder, Ce
 const SUBCELL_LOOSE = [
   ...SUBCELL_POWDERS, Cell.Seed,
   Cell.Water, Cell.Oil, Cell.Acid, Cell.Lava, Cell.Blood, Cell.Slime, Cell.Brine, Cell.Nitrogen,
-  Cell.Toxic, Cell.Healium, Cell.Teleportium, Cell.ElixirLife, Cell.ElixirLevity, Cell.ElixirStone,
+  Cell.Toxic, Cell.Healium, Cell.Teleportium, ...ELIXIR_CELL_IDS,
 ];
 /** Shapes that read as open air to the silhouette rule (a pile's edge against smoke is still an edge). */
 const SUBCELL_AIR = [Cell.Empty, Cell.Smoke, Cell.Steam, Cell.MarshGas];

@@ -145,6 +145,7 @@ export class StoryDirector implements StoryApi {
       }),
       on('waystoneLit', () => { this.aside('waystone'); }),
       on('recipeBrewed', () => { this.aside('brew'); }),
+      on('cauldronView', (view) => { if (view.visible) this.aside('kettle'); }),
       on('flaskDry', () => { this.aside('flask'); }),
       on('lanternHooded', ({ hooded, quiet }) => { if (hooded && !quiet) this.aside('hood'); }),
       on('eyeshineCaught', () => { this.aside('eyeshine'); }),
