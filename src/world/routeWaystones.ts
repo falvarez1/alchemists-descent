@@ -5,7 +5,7 @@ import { EMPTY_COLOR, stoneColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import type { PlacementLedger } from '@/world/connect';
 import { fitWalks, type FitWalks, walkTo } from '@/world/fitWalks';
-import { type Fill, type Group, holdRoutes, reserveFooting, waystoneFooting } from '@/world/fixtureFooting';
+import { cauldronFooting, type Fill, type Group, holdRoutes, reserveFooting, waystoneFooting } from '@/world/fixtureFooting';
 import { computeFits, wizardMask } from '@/world/validate';
 
 /**
@@ -207,6 +207,83 @@ export function keyBrazierSite(
   return best ? { cx: best.cx, baseY: best.baseY } : null;
 }
 
+/** A cauldron farther than this from the route (cells) is brought back to it: a brew is meant to be used on the way down. */
+export const CAULDRON_ROUTE_REACH = 30;
+
+/** Cells from (x, y) to the nearest cell of the walk (sampled every third step: the walk is a chain of adjacent cells). */
+export function routeDistance(path: readonly number[], x: number, y: number): number {
+  let best = Infinity;
+  for (let k = 0; k < path.length; k += 3) {
+    const d = Math.hypot((path[k] % WIDTH) - x, ((path[k] / WIDTH) | 0) - y);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/**
+ * A standing site for the cauldron beside a bowl: 14-56 cells off it on either side (the original
+ * stood 28 off), the ground and the room bowlSiteNear asks for, clear of every other bowl.
+ */
+export function cauldronSiteBeside(
+  world: World,
+  ledger: PlacementLedger,
+  walks: FitWalks,
+  anchor: { x: number; y: number },
+  waystones: ReadonlyArray<{ x: number; y: number }>,
+): { cx: number; baseY: number } | null {
+  for (const off of [26, 20, 32, 40]) {
+    for (const side of [-1, 1]) {
+      const site = bowlSiteNear(world, ledger, walks, Math.floor(anchor.x) + side * off, Math.floor(anchor.y), [], 8, 22);
+      if (!site) continue;
+      const apart = Math.abs(site.cx - anchor.x);
+      if (apart < 14 || apart > 56) continue;
+      if (waystones.some((w) => Math.hypot(w.x - site.cx, w.y - (site.baseY - 1)) < 14)) continue;
+      return site;
+    }
+  }
+  return null;
+}
+
+/** Take a basin's stone back out (its base row and 2-tall walls, as stamped): the room it opened stays. */
+function unstampCauldron(world: World, c: { x: number; y: number }, log: Fill[]): void {
+  const baseY = Math.floor(c.y) + 1, cx = Math.floor(c.x);
+  const clear = (x: number, y: number): void => {
+    if (x < 2 || x >= WIDTH - 2 || y < 2 || y >= HEIGHT - 8) return;
+    const i = world.idx(x, y);
+    if (world.types[i] !== Cell.Stone) return;
+    log.push([i, world.types[i], world.colors[i]]);
+    world.types[i] = Cell.Empty;
+    world.colors[i] = EMPTY_COLOR;
+    world.activity.touchIndex(i);
+  };
+  for (let dx = -4; dx <= 4; dx++) clear(cx + dx, baseY);
+  for (let t = 1; t <= 2; t++) {
+    clear(cx - 4, baseY - t);
+    clear(cx + 4, baseY - t);
+  }
+}
+
+/** Stamp a basin at (cx, baseY) exactly as the generator does (9 wide, a stone base, 2-tall walls, the room over it opened). */
+function stampCauldronBasin(world: World, cx: number, baseY: number, log: Fill[]): { x: number; y: number } {
+  const set = (x: number, y: number, t: Cell, c: number): void => {
+    if (x < 2 || x >= WIDTH - 2 || y < 2 || y >= HEIGHT - 8) return;
+    const i = world.idx(x, y);
+    log.push([i, world.types[i], world.colors[i]]);
+    world.types[i] = t;
+    world.colors[i] = c;
+    world.life[i] = 0;
+    world.charge[i] = 0;
+    world.activity.touchIndex(i);
+  };
+  for (let dy = 1; dy <= 6; dy++) for (let dx = -4; dx <= 4; dx++) set(cx + dx, baseY - dy, Cell.Empty, EMPTY_COLOR);
+  for (let dx = -4; dx <= 4; dx++) set(cx + dx, baseY, Cell.Stone, stoneColor());
+  for (let t = 1; t <= 2; t++) {
+    set(cx - 4, baseY - t, Cell.Stone, stoneColor());
+    set(cx + 4, baseY - t, Cell.Stone, stoneColor());
+  }
+  return { x: cx, y: baseY - 1 };
+}
+
 export interface RouteWaystoneReport {
   /** Generated bowls moved to their stop. */
   moved: number;
@@ -214,6 +291,8 @@ export interface RouteWaystoneReport {
   kept: number;
   /** The key's brazier was placed. */
   brazier: boolean;
+  /** The cauldron's cells from the route before the pass (null: none, or no route); 'moved' when it was brought beside the first bowl. */
+  cauldron: { from: number | null; to: number | null; moved: boolean };
 }
 
 /**
@@ -230,9 +309,11 @@ export function placeRouteWaystones(input: {
   bowls: Waystone[];
   waystones: Waystone[];
   key: { x: number; y: number } | null;
+  /** The floor's cauldron, moved in place when it stands off the route (GEN 64). */
+  cauldron?: { x: number; y: number } | null;
 }): RouteWaystoneReport {
-  const { world, ledger, spawn, exit, bowls, waystones, key } = input;
-  const report: RouteWaystoneReport = { moved: 0, kept: 0, brazier: false };
+  const { world, ledger, spawn, exit, bowls, waystones, key, cauldron } = input;
+  const report: RouteWaystoneReport = { moved: 0, kept: 0, brazier: false, cauldron: { from: null, to: null, moved: false } };
   const walks = fitWalks(computeFits(world), Math.floor(spawn.x), Math.floor(spawn.y));
   if (!walks) return report;
   // Every change is a group that can be taken back whole if it costs the alchemist standing room (holdRoutes).
@@ -270,6 +351,40 @@ export function placeRouteWaystones(input: {
       report.moved++;
     }
   }
+  // THE CAULDRON ON THE ROUTE (GEN 64): it was set 28 cells from where the first bowl USED to stand, and the
+  // bowls have since moved onto the walk (measured on d2/d3/d4 seeds 1, 5, 7: 7 of 9 cauldrons 50-500 cells
+  // from the route, none beside a checkpoint). One further than CAULDRON_ROUTE_REACH is brought beside the first
+  // bowl, where the player rests and decides what to carry down.
+  if (cauldron && path) {
+    report.cauldron.from = Math.round(routeDistance(path, cauldron.x, cauldron.y));
+    let site: { cx: number; baseY: number } | null = null;
+    if (report.cauldron.from > CAULDRON_ROUTE_REACH) {
+      // beside the bowl nearest the route (a bowl that found no site is still off it), else on the walk itself at 40%
+      const anchors = waystones.map((w) => ({ w, d: routeDistance(path, w.x, w.y) })).filter((a) => a.d <= 45).sort((a, b) => a.d - b.d);
+      for (const a of anchors) {
+        site = cauldronSiteBeside(world, ledger, walks, a.w, waystones);
+        if (site) break;
+      }
+      const at = Math.floor((path.length - 1) * 0.4);
+      for (let k = 0; k <= 400 && !site; k += 4) {
+        for (const at2 of k === 0 ? [at] : [at + k, at - k]) {
+          if (at2 < 0 || at2 >= path.length) continue;
+          const s = bowlSiteNear(world, ledger, walks, path[at2] % WIDTH, (path[at2] / WIDTH) | 0, [], 18, 34);
+          if (s && !waystones.some((w) => Math.hypot(w.x - s.cx, w.y - (s.baseY - 1)) < 14)) { site = s; break; }
+        }
+      }
+    }
+    if (site) {
+      const fills: Fill[] = [];
+      const was = { x: cauldron.x, y: cauldron.y };
+      unstampCauldron(world, cauldron, fills);
+      const made = stampCauldronBasin(world, site.cx, site.baseY, fills);
+      cauldron.x = made.x;
+      cauldron.y = made.y;
+      groups.push({ what: 'cauldron', fills, undo: (): void => { cauldron.x = was.x; cauldron.y = was.y; } });
+      report.cauldron.moved = true;
+    }
+  }
   if (key) {
     const site = keyBrazierSite(world, wizardMask({ world, spawn }), key, ledger);
     if (site && !waystones.some((o) => Math.hypot(o.x - site.cx, o.y - (site.baseY - 1)) < 50)) {
@@ -285,11 +400,17 @@ export function placeRouteWaystones(input: {
   for (const g of holdRoutes(world, groups, spawn)) {
     g.undo?.();
     if (g.what === 'bowl') report.moved--;
+    else if (g.what === 'cauldron') report.cauldron.moved = false;
     else report.brazier = false;
   }
   for (const ws of waystones) {
     ledger.reserve(ws.x - 12, ws.y - 12, ws.x + 12, ws.y + 12, 'waystone');
     reserveFooting(ledger, waystoneFooting(ws), 'waystone');
+  }
+  if (cauldron && path) report.cauldron.to = Math.round(routeDistance(path, cauldron.x, cauldron.y));
+  if (cauldron && report.cauldron.moved) {
+    ledger.reserve(cauldron.x - 12, cauldron.y - 12, cauldron.x + 12, cauldron.y + 6, 'cauldron');
+    reserveFooting(ledger, cauldronFooting(cauldron), 'cauldron');
   }
   return report;
 }

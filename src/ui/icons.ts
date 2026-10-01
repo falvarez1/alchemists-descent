@@ -187,6 +187,22 @@ export const PIXEL_ICONS: Record<string, PixelIconDef> = {
   'card-bounce': { p: { a: '#15803d', b: '#4ade80', c: '#6b7280' }, g: [
     "...........","...........",".a.......bb","..a......bb","...a....b..","....a..b...",
     ".....ab....",".....a.....","..ccccccc..","...........","..........."]},
+  // The devil's bargains (combat/wands/cardRules): one glyph each.
+  'card-overcharge': { p: { a: '#7f1d1d', b: '#f97316', c: '#fde047' }, g: [
+    "...c.c.c...","..c.....c..",".c.aaaaa.c.","...abbba...","...acccb...","...abbba...",
+    "...acccb...","...abbba...",".c.aaaaa.c.","..c.....c..","...c.c.c..."]},
+  'card-loosecannon': { p: { a: '#3f4754', b: '#7a8699', c: '#fbbf24' }, g: [
+    "..........c",".......c.c.","....aaa...c",".aaabbba.c.","aabbbbbbac.","aabbbbbba.c",
+    ".aaabbba.c.","....aaa...c",".......c.c.","..........c","..........."]},
+  'card-shortfuse': { p: { a: '#4b5563', b: '#9ca3af', c: '#fde047' }, g: [
+    "......c.c..",".......c...","......b....",".....b.....","....b......","..aaaaaa...",
+    ".abbbbbba..",".abbbbbba..",".abbbbbba..","..aaaaaa...","..........."]},
+  'card-millstone': { p: { a: '#4b4540', b: '#8d8680', c: '#c9c2ba' }, g: [
+    "...aaaaa...","..abbbbba..",".abbcccbba.",".abcaaacba.",".abcaaacba.",".abcaaacba.",
+    ".abbcccbba.","..abbbbba..","...aaaaa...","..aaaaaaa..","..........."]},
+  'card-kickback': { p: { a: '#7c2d12', b: '#fb923c', c: '#fde68a' }, g: [
+    "...........","..c....b...",".cc...bb...","ccc..bbbb..",".cc.bbbbbb.","..c.aaaaaa.",
+    "....aaaaaa.",".c...bbbbb.","cc....bbb..",".c.....b...","..........."]},
   // Dedicated card art from noita-sandbox (15).html
   emberstorm: { p: { a: '#7a2a08', b: '#ff7a1e', c: '#ffd23e' }, g: [
     "...........","..b...c....",".....b...b.","..c....b...",".b..c......","....b...c..",

@@ -38,6 +38,7 @@ export class TitleMenu {
   private readonly title = document.createElement('h2');
   private readonly body = document.createElement('div');
   private readonly list = document.createElement('nav');
+  private readonly note = document.createElement('p');
   private readonly hint = document.createElement('p');
   private readonly detail = document.createElement('aside');
   private items: MenuItem[] = [];
@@ -67,12 +68,14 @@ export class TitleMenu {
     this.list.className = 'tm-list';
     this.list.setAttribute('role', 'menu');
     this.list.setAttribute('aria-labelledby', 'expedition-title');
+    this.note.className = 'tm-note';
+    this.note.setAttribute('aria-live', 'polite');
     this.hint.className = 'tm-hint';
     this.hint.setAttribute('role', 'status');
     this.detail.className = 'tm-detail';
     this.detail.hidden = true;
     this.detail.setAttribute('aria-live', 'polite');
-    this.stage.append(this.head, this.body, this.list, this.hint);
+    this.stage.append(this.head, this.body, this.list, this.note, this.hint);
     this.root.append(this.stage, this.detail);
     this.keys.className = 'tm-keys';
     this.keys.setAttribute('aria-hidden', 'true');
@@ -156,6 +159,7 @@ export class TitleMenu {
     } else this.body.replaceChildren();
     this.body.hidden = !page.body;
     this.list.replaceChildren(...this.items.map((item, index) => this.makeItem(item, index)));
+    this.note.textContent = page.note?.() ?? '';
     if (dir !== 'none') {
       this.stage.dataset.dir = dir;
       this.stage.classList.remove('tm-enter');
@@ -185,8 +189,8 @@ export class TitleMenu {
     button.dataset.entry = item.id;
     button.tabIndex = -1;
     button.style.setProperty('--i', String(index));
-    button.setAttribute('role', item.kind === 'option' ? 'menuitemradio' : 'menuitem');
-    if (item.kind === 'option') button.setAttribute('aria-checked', String(item.checked === true));
+    button.setAttribute('role', item.kind === 'option' ? 'menuitemradio' : item.kind === 'toggle' ? 'menuitemcheckbox' : 'menuitem');
+    if (item.kind === 'option' || item.kind === 'toggle') button.setAttribute('aria-checked', String(item.checked === true));
     if (item.kind === 'drill' || item.kind === 'choice') button.setAttribute('aria-haspopup', 'true');
     if (item.locked) { button.setAttribute('aria-disabled', 'true'); button.classList.add('locked'); }
     if (item.checked) button.classList.add('checked');

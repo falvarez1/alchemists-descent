@@ -1,9 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import { FIGHTER_DEFS, FIGHTER_ORDER } from '@/content/fighters';
 import { KIT_DEFS, KIT_ORDER } from '@/content/kits';
+import { MAX_MUTATORS, MUTATOR_DEFS, MUTATOR_ORDER } from '@/content/mutators';
 import { DIFFICULTY_ORDER } from '@/config/difficulty';
 import {
   FIGHTER_CYCLE,
+  complicationDetail,
+  complicationsDetail,
+  complicationsTotal,
+  complicationsValue,
   continueLine,
   cycleDifficulty,
   cycleFighter,
@@ -14,9 +19,11 @@ import {
   fighterDetail,
   keyHints,
   kitDetail,
+  loadMark,
   moveFocusIndex,
   seedDetail,
   seedValue,
+  toggleComplication,
 } from '@/ui/title/titleMenuModel';
 
 describe('cycleOpen: Left / Right on a choice row', () => {
@@ -155,5 +162,73 @@ describe('the key legend', () => {
     const pad = keyHints('choice', 1, true);
     expect(pad.flatMap((h) => h.keys)).toEqual(['D-pad', '◂', '▸', 'A', 'B']);
     expect(keyHints('choice', 1, false).flatMap((h) => h.keys)).toEqual(['↑', '↓', '←', '→', 'Enter', 'Esc']);
+  });
+});
+
+describe('complications on the loadout page', () => {
+  test('toggling turns an entry on and off, and the set is never more than three', () => {
+    expect(toggleComplication([], 'tinderbox')).toEqual({ chosen: ['tinderbox'], refused: false, note: '' });
+    expect(toggleComplication(['tinderbox'], 'tinderbox')).toEqual({ chosen: [], refused: false, note: '' });
+    const full = toggleComplication(['wet-floors', 'tinderbox', 'famine'], 'fireworks');
+    expect(full.refused).toBe(true);
+    expect(full.chosen).toEqual(['wet-floors', 'tinderbox', 'famine']);
+    expect(full.note).toMatch(/3 at a time/);
+    expect(MAX_MUTATORS).toBe(3);
+  });
+
+  test('two that cancel swap, and the note names both', () => {
+    const swapped = toggleComplication(['famine', 'hush'], 'nosy-neighbours');
+    expect(swapped.chosen).toEqual(['famine', 'nosy-neighbours']);
+    expect(swapped.note).toMatch(/Nosy Neighbours takes the place of Hush/);
+    expect(swapped.refused).toBe(false);
+  });
+
+  test('a full set refuses even a swap: the limit is checked first, as on the old fold', () => {
+    const r = toggleComplication(['wet-floors', 'hush', 'famine'], 'nosy-neighbours');
+    expect(r.refused).toBe(true);
+  });
+
+  test('every complication has a card with its weight and its regulation', () => {
+    for (const id of MUTATOR_ORDER) {
+      const card = complicationDetail(id, []);
+      expect(card.heading).toBe(MUTATOR_DEFS[id].name);
+      expect(card.eyebrow).toContain(loadMark(MUTATOR_DEFS[id].weight));
+      expect(card.body).toContain(MUTATOR_DEFS[id].regulation);
+      expect(card.locked).toBe(false);
+    }
+  });
+
+  test('with three in force the others are locked and the card says why; the ones in force are not', () => {
+    const chosen = ['wet-floors', 'tinderbox', 'famine'] as const;
+    expect(complicationDetail('fireworks', chosen).locked).toBe(true);
+    expect(complicationDetail('fireworks', chosen).body).toMatch(/3 at a time/);
+    expect(complicationDetail('famine', chosen).locked).toBe(false);
+  });
+
+  test('the weight marks use a real minus', () => {
+    expect(loadMark(2)).toBe('+2');
+    expect(loadMark(0)).toBe('±0');
+    expect(loadMark(-1)).toBe('−1');
+  });
+
+  test('the row value and the totals', () => {
+    expect(complicationsValue([])).toBe('None');
+    expect(complicationsValue(['famine', 'hush'])).toBe('2 in force');
+    expect(complicationsTotal([])).toBe('None in force. The Works as issued.');
+    expect(complicationsTotal(['tinderbox'])).toMatch(/1 in force: \+1 pressure\. A win counts toward the next tier\./);
+    expect(complicationsTotal(['low-gravity'])).toMatch(/will not open a harder tier/);
+    expect(complicationsDetail([]).heading).toBe('The Works as issued');
+    expect(complicationsDetail(['tinderbox', 'famine']).lines?.map((l) => l.name)).toEqual(['Tinderbox', 'Short Rations']);
+  });
+
+  test("today's descent names what it carries", () => {
+    const lines = dailyLines({ today: '2026-10-01', best: null, carries: 'Wet Floors' }, 4, (ms) => `${ms}`);
+    expect(lines.sub).toBe('2026-10-01 · Wet Floors');
+    expect(lines.hint).toContain('on Adept · Wet Floors');
+    expect(dailyLines({ today: '2026-10-01', best: null }, 4, (ms) => `${ms}`).sub).toBe('2026-10-01');
+  });
+
+  test('a toggle row says Toggle in the legend', () => {
+    expect(keyHints('toggle', 1, false).map((h) => h.label)).toEqual(['Select', 'Toggle', 'Back']);
   });
 });

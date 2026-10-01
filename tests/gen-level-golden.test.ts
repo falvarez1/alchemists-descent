@@ -134,12 +134,15 @@ function emptyBottomExitCells(level: ReturnType<typeof generateLevelState>): num
 // swept wizard-gauge connectors so their hands-on controls stay walkable.
 describe('marsh-gas ceiling pockets', () => {
   it('fungal levels generate gas pockets pooled under ceilings', () => {
-    const { world } = generateLevelState(LEVELS.d2, 42);
+    const { world, placedPrefabs } = generateLevelState(LEVELS.d2, 42);
+    // (the floor's lock hangs a bell of gas in a closed vessel on purpose: its 680 cells are not natural pockets)
+    const bellRoom = placedPrefabs.find((p) => p.id === 'lock-gas-bell');
     let gas = 0;
     let ceilinged = 0;
     for (let y = 1; y < world.height - 1; y++) {
       for (let x = 1; x < world.width - 1; x++) {
         if (world.types[world.idx(x, y)] !== Cell.MarshGas) continue;
+        if (bellRoom && x >= bellRoom.x0 && x <= bellRoom.x1 && y >= bellRoom.y0 && y <= bellRoom.y1) continue;
         gas++;
         // pooled: solid rock within a short reach straight above
         for (let up = 1; up <= 8; up++) {
@@ -178,13 +181,13 @@ describe('marsh-gas ceiling pockets', () => {
 });
 
 const GOLDEN: Array<{ id: keyof typeof LEVELS; seed: number; hash: string }> = [
-  { id: 'd1', seed: 1337, hash: 'bdd5e871' }, // GEN_VERSION 62: the timber catwalks lose their diagonal braces and gain a flush joist under the deck (worksHabitat), over v55: the Guild locker nook off the return shaft (the resonant valve), over v53's Undertow cache, flora and Seed Cellar
+  { id: 'd1', seed: 1337, hash: '6cae95c3' }, // GEN_VERSION 64: the Refuge Kettle (a basin, an ember-banked furnace, a cistern under a grate and a tea shrub on the Warm Refuge plinth), over 62: the timber catwalks lose their diagonal braces and gain a flush joist under the deck (worksHabitat), over v55: the Guild locker nook off the return shaft (the resonant valve), over v53's Undertow cache, flora and Seed Cellar
   // GEN_VERSION 46 (four floors): the Drowned Cisterns inherit the old flooded
   // d4 bit-for-bit (same biome, same Leviathan sump); the Kiln Heart is the
   // volcanic Colossus floor at depth 4.
-  { id: 'd3', seed: 1337, hash: '819fd970' }, // GEN_VERSION 62: ORGANIC CONNECTORS (every connector ends at the nearest spawn-walkable body-fit cell and wanders and swells: no hub starburst), over the loot/set-piece/shrine work, over v61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v59's detours leave from their true start; no tunnel ends inside a sealed feature, over v56's story nooks + lair fix + v54's Sump rim
-  { id: 'd4', seed: 1337, hash: '089c07b1' }, // GEN_VERSION 62: ORGANIC CONNECTORS (every connector ends at the nearest spawn-walkable body-fit cell and wanders and swells: no hub starburst), over the loot/set-piece/shrine work, over v61: (and the Kiln Heart volcanic), over v62: the Kiln Heart is volcanic (more rock, basin-filled lava lakes and carved magma halls, the boss hall rescued from its mouths) + loot on open ground, the latch port and fixture rooms held, the shrine pad/ring (see d3), over v61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v60's story nooks on dry ground (no liquid level with the floor, the route no higher than a step), over v59's stonemaw connector + v55's Kiln flue + v54's Kiln flora
-  { id: 'd2', seed: 42, hash: '9c948ee7' }, // GEN_VERSION 62: ORGANIC CONNECTORS (every connector ends at the nearest spawn-walkable body-fit cell and wanders and swells: no hub starburst), over the loot/set-piece/shrine work, over v61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v60's story nooks on dry ground, over v59's sealed-feature tunnels + v56's story nooks + grove vines + lair fix
+  { id: 'd3', seed: 1337, hash: '9dab93a1' }, // GEN_VERSION 65: THE WEIR (the key vault is a lock chamber above the sea: a brass-lined pool a cistern floods, a coil in a well, a Metal vault door, no pocket vault), over GEN_VERSION 62: ORGANIC CONNECTORS (every connector ends at the nearest spawn-walkable body-fit cell and wanders and swells: no hub starburst), over the loot/set-piece/shrine work, over v61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v59's detours leave from their true start; no tunnel ends inside a sealed feature, over v56's story nooks + lair fix + v54's Sump rim
+  { id: 'd4', seed: 1337, hash: 'c2d465ee' }, // GEN_VERSION 65: THE CRUCIBLE (the Kiln hall's entrance flank is a Metal-sleeved gatehouse: a slag gate, a lava vat bridged by a gangway, a hung cistern, a lever; every cave that ran into the hall is filmed over in iron, so the gate is the only way in), over GEN_VERSION 62: ORGANIC CONNECTORS (every connector ends at the nearest spawn-walkable body-fit cell and wanders and swells: no hub starburst), over the loot/set-piece/shrine work, over v61: (and the Kiln Heart volcanic), over v62: the Kiln Heart is volcanic (more rock, basin-filled lava lakes and carved magma halls, the boss hall rescued from its mouths) + loot on open ground, the latch port and fixture rooms held, the shrine pad/ring (see d3), over v61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v60's story nooks on dry ground (no liquid level with the floor, the route no higher than a step), over v59's stonemaw connector + v55's Kiln flue + v54's Kiln flora
+  { id: 'd2', seed: 42, hash: 'd4e52293' }, // GEN_VERSION 65: THE GAS BELL (the key vault is a lock chamber on the route: a closed brass bell of marsh gas, a Metal vault door, no pocket vault), over GEN_VERSION 62: ORGANIC CONNECTORS (every connector ends at the nearest spawn-walkable body-fit cell and wanders and swells: no hub starburst), over the loot/set-piece/shrine work, over v61: the footing contract (fixtures on their own stamp and on ground; connectors leave from above them), over v60's story nooks on dry ground, over v59's sealed-feature tunnels + v56's story nooks + grove vines + lair fix
 ];
 
 describe('full generateLevel golden hashes', () => {

@@ -1,5 +1,6 @@
 import { startLegSwing } from '@/combat/WeaverLimbs';
 import type {
+  BuildNotes,
   CardId,
   CastActionExecutionContext,
   Ctx,
@@ -15,12 +16,15 @@ import type {
 import { Cell, isGas, isLiquid } from '@/sim/CellType';
 import { acidColor, emberColor, fireColor, glassColor, nitrogenColor, packRGB, smokeColor, stoneColor, waterColor } from '@/sim/colors';
 import { ALL_CARD_IDS, CARD_DEFS, isCardId } from './cards';
-import { getDiscoveredCards, markCardDiscovered } from './cardDiscovery';
+import { markCardDiscovered } from './cardDiscovery';
 import { isRunTainted } from '@/core/runTaint';
+import { hasBoon } from '@/core/boons';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 import { BOUNCE_COUNTS, INFUSED, INFUSE_TRAIL_BUDGET, TRIGGERED, TRIGGER_SOURCE_SPREAD, ensureProjectileMods } from './projectileMarks';
 import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
-import { buildCardOffer, collectOwnedCards, DEPTH_PROJECTILE_POOL, WAYSTONE_MOD_POOL, withDiscoveredCards } from './rewardPools';
+import { BuildDirector } from './BuildDirector';
+import { deadModifiers, type DeadModifier } from './cardRules';
+import { refitCards } from './wandFinds';
 import { REVIEW_WAND_LOADOUTS, WAND_FRAMES } from '@/combat/wands/wandCatalog';
 import { entityRandom } from '@/core/simRandom';
 import { getAimGuide } from '@/combat/AimGuide';
@@ -55,11 +59,6 @@ function kineticOf(action: CastAction, sp: Record<SpellId, SpellParams>): number
   }
 }
 
-/** waystoneLit grant: chance the gift is a modifier/multicast rather than a projectile. */
-const WAYSTONE_MOD_BIAS = 0.75;
-
-/** Extra aim jitter for the stacked bolts of a dmgMul > 1 spark cast. */
-const STACK_JITTER = 0.06;
 /**
  * God-mode HELD-fire cadence: a flat interval between auto-fired casts while the
  * button is held — ~3 casts/sec at the 60Hz tick (no per-frame firehose, no
@@ -127,11 +126,6 @@ function startingCollection(): CardId[] {
   return [...STARTING_COLLECTION];
 }
 
-/** A reward pool widened by every card discovered in any earlier run. */
-function rewardPoolWithDiscoveries(pool: readonly CardId[]): CardId[] {
-  return withDiscoveredCards(pool, getDiscoveredCards());
-}
-
 function shuffledCards(cards: readonly CardId[]): CardId[] {
   const out = [...cards];
   for (let i = out.length - 1; i > 0; i--) {
@@ -158,13 +152,14 @@ function takeUnused(pool: readonly CardId[], used: ReadonlySet<CardId>): CardId 
  * every update() (after PlayerControl's own regen ran), so the existing HUD
  * mana bar and hotbar affordability shading keep working without HUD surgery.
  *
- * "heavy = more bolts" v1: the frozen Projectile contract carries no damage
- * multiplier and bolt impact damage/radius are read from params at impact, so
- * dmgMul > 1 on a spark cast spawns round(dmgMul) stacked bolts at tiny
- * spread instead — the extra firepower reads honestly on screen. On lightning
- * dmgMul casts the arc floor(dmgMul) times (max 2); on dig it widens the
- * erosion radius x1.7. On bomb it scales blast damage/radius; on casts with no
- * damage surface the bench sentence warns instead of promising a no-op.
+ * A dmgMul > 1 on a spark cast is ONE bolt carrying the multiplier (Projectile.mul,
+ * read at impact like the bomb's and the shard's). It used to be round(dmgMul)
+ * stacked bolts ("heavy = more bolts" v1), but measured in real casts the extras
+ * detonated on the first bolt's debris or wandered off the target: Heavy Charm
+ * delivered x1.2, not x1.7 (docs/FEEL.md §5). On lightning dmgMul casts the arc
+ * floor(dmgMul) times (max 2); on dig it widens the erosion radius x1.7. On bomb it
+ * scales blast damage/radius; on casts with no damage surface the bench sentence
+ * warns instead of promising a no-op.
  */
 export class WandSystem implements WandsApi {
   peekCast(): { actions: readonly CastAction[]; spread: number; affordable: boolean } | null {
@@ -183,6 +178,10 @@ export class WandSystem implements WandsApi {
 
   /** Compiled programs, rebuilt lazily when a wand's slots change. */
   private readonly compiled: [CastGroup[] | null, CastGroup[] | null] = [null, null];
+  /** Modifiers that do nothing to the projectile they ride, per wand (rebuilt with the program). */
+  private readonly deadMods: [DeadModifier[], DeadModifier[]] = [[], []];
+  /** The decisions that sit on the route: altars, gifts, found frames, the dead-card caption, the run's notes. */
+  private readonly build: BuildDirector;
   /** Last dry-fire feedback frame (throttles the click while held). */
   private lastDryFire = -99;
   private _active: 0 | 1 = 0;
@@ -199,17 +198,17 @@ export class WandSystem implements WandsApi {
   private readonly eventDisposers: Array<() => void> = [];
 
   constructor(private readonly ctx: Ctx) {
-    // Card economy v1: the world hands out cards through existing events.
-    this.eventDisposers.push(ctx.events.on('waystoneLit', () => {
-      const pool = entityRandom() < WAYSTONE_MOD_BIAS ? WAYSTONE_MOD_POOL : DEPTH_PROJECTILE_POOL;
-      this.grantRandomCardFromPool(pool);
-    }));
+    this.build = new BuildDirector(ctx, this);
+    // Card economy: the world hands out cards through existing events - and since the choice update
+    // those are CHOICES: a lit waystone's altar is three cards (a host, a match for your wands, a wild
+    // bargain), a floor's arrival gift is three (a burst, a precise shot, a utility); see BuildDirector.
+    this.eventDisposers.push(ctx.events.on('waystoneLit', () => this.build.onWaystoneLit()));
     this.eventDisposers.push(ctx.events.on('levelChanged', ({ depth }) => {
       // A click buffered on the floor above is not a shot on arrival.
       ctx.player.firePressed = false;
       if (depth < 2 || this.depthsGranted.has(depth)) return;
       this.depthsGranted.add(depth);
-      this.grantRandomCardFromPool(DEPTH_PROJECTILE_POOL);
+      this.build.onDepthArrival();
     }));
     // Brewing real materials proves you speak material — the Infuser answers.
     this.eventDisposers.push(ctx.events.on('recipeBrewed', () => this.grantInfuser(ctx)));
@@ -226,6 +225,11 @@ export class WandSystem implements WandsApi {
 
   dispose(): void {
     for (const dispose of this.eventDisposers.splice(0).reverse()) dispose();
+    this.build.dispose();
+  }
+
+  buildNotes(): BuildNotes {
+    return this.build.view();
   }
 
   get active(): 0 | 1 {
@@ -331,9 +335,14 @@ export class WandSystem implements WandsApi {
     let momentum = lp.recoilBase;
     for (const a of group.actions) momentum += kineticOf(a, ctx.params.spells);
     let recoil = Math.min(momentum * lp.recoilPerMomentum, lp.recoilMaxImpulse);
+    // A devil's bargain's kick rides on top of the cap (the price is meant to be felt).
+    for (const a of group.actions) recoil += a.recoil ?? 0;
     if (ctx.player.grounded) recoil *= lp.recoilGroundDamp;
     ctx.player.vx -= Math.cos(ra) * recoil;
     ctx.player.vy -= Math.sin(ra) * recoil;
+
+    // A modifier that rode a card it does nothing for says so, once per card per run.
+    this.build.noteCast(this.deadMods[this._active], group.slots);
 
     const tip = ctx.spells.wandTip();
     for (const action of group.actions) {
@@ -417,7 +426,7 @@ export class WandSystem implements WandsApi {
   ): void {
     const frame = this.wands[this._active].frame;
     // Power Surge boon: +25% on every cast's damage multiplier.
-    const action: CastAction = ctx.player.perks.might
+    const action: CastAction = hasBoon(ctx.player, 'might')
       ? { ...actionIn, dmgMul: Math.min(4, actionIn.dmgMul * 1.25) }
       : actionIn;
     // God mode: every shot flies dead on the aim — no wand/card spread jitter.
@@ -433,16 +442,12 @@ export class WandSystem implements WandsApi {
     ctx.events.emit('cardCast', { id: action.card, origin: options.origin, x, y });
 
     if (action.card === 'spark') {
-      // 'heavy = more bolts' v1 (see class doc): one bolt, plus stacked
-      // extras for dmgMul > 1 at a touch more spread.
-      const count = Math.max(1, Math.round(action.dmgMul));
-      for (let n = 0; n < count; n++) {
-        const a = jitter() + (n > 0 && !godMode ? (entityRandom() * 2 - 1) * STACK_JITTER : 0);
-        const v = sp.bolt.velocityForce! * action.speedMul;
-        const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'bolt', life: PROJECTILE_LIFE.bolt, age: 0, charging: false, hostile: false };
-        ctx.projectiles.push(p);
-        this.markProjectile(ctx, p, action);
-      }
+      // One bolt carrying the multiplier (see class doc).
+      const a = jitter();
+      const v = sp.bolt.velocityForce! * action.speedMul;
+      const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'bolt', life: PROJECTILE_LIFE.bolt, age: 0, charging: false, hostile: false, mul: action.dmgMul };
+      ctx.projectiles.push(p);
+      this.markProjectile(ctx, p, action);
       ctx.audio.sfx('spell.spark.cast');
     } else if (action.card === 'bomb') {
       const a = jitter();
@@ -700,6 +705,8 @@ export class WandSystem implements WandsApi {
 
   /** Write the impact-time side-channel marks for a freshly spawned projectile. */
   private markProjectile(ctx: Ctx, p: Projectile, action: CastAction): void {
+    // A bargain's short life (Short Fuse): a bolt's range, a bomb's fuse.
+    if (action.lifeMul !== undefined) p.life = Math.max(3, Math.round(p.life * action.lifeMul));
     if (action.bounces > 0) BOUNCE_COUNTS.set(p, action.bounces);
     if (
       action.waterTrail > 0 ||
@@ -752,9 +759,10 @@ export class WandSystem implements WandsApi {
   /* ---------------- per-frame upkeep ---------------- */
 
   update(ctx: Ctx): void {
+    this.build.update();
     if (ctx.player.legClub) { this.flameBurst = 0; this.flameBurstAction = null; }
     // Mana Font boon: the old ones keep the tanks topped up 60% faster.
-    const regenK = ctx.player.perks.manafont ? 1.6 : 1;
+    const regenK = hasBoon(ctx.player, 'manafont') ? 1.6 : 1;
     for (const w of this.wands) {
       if (w.cooldown > 0) w.cooldown--;
       w.mana = Math.min(w.frame.manaMax, w.mana + w.frame.manaRegen * regenK);
@@ -793,19 +801,13 @@ export class WandSystem implements WandsApi {
 
   /* ---------------- collection + bench ---------------- */
 
-  private grantRandomCardFromPool(pool: readonly CardId[]): void {
-    // Unowned cards first (buildCardOffer), drawn from the pool plus every
-    // card this player has discovered in earlier runs.
-    const card = buildCardOffer(rewardPoolWithDiscoveries(pool), collectOwnedCards(this), { count: 1 })[0] ?? 'spark';
-    this.grantCard(this.ctx, card);
-  }
-
   grantCard(ctx: Ctx, id: CardId): void {
     if (id === 'infuser') this.infuserGranted = true;
     this.collection.push(id);
     // A test run (core/runTaint) discovers nothing for the player's later runs.
     if (!isRunTainted(ctx.state ?? {})) markCardDiscovered(id);
     ctx.telemetry.count('card.granted.' + id);
+    this.build.noteGranted(id);
     ctx.events.emit('cardGranted', { id, name: CARD_DEFS[id].name });
   }
 
@@ -828,15 +830,22 @@ export class WandSystem implements WandsApi {
     const frame = WAND_FRAMES[frameId];
     const w = this.wands[wand];
     if (!frame || w.frame.id === frameId) return false;
+    // A smaller frame no longer deletes what it cannot hold: the cards close up, and the ones that still
+    // do not fit go back to the satchel (the offer overlay named them beforehand).
+    const seated = refitCards(w.cards, frame.capacity);
     w.frame = frame;
-    while (w.cards.length < frame.capacity) w.cards.push(null);
-    w.cards.length = frame.capacity;
+    w.cards.length = 0;
+    w.cards.push(...seated.cards);
+    this.collection.push(...seated.displaced);
     w.mana = frame.manaMax;
     w.cooldown = 0;
     w.castIndex = 0;
     this.compiled[wand] = null;
     ctx.audio.learn();
-    ctx.events.emit('toast', { text: frame.name.toUpperCase() + ' FITTED' });
+    const back = seated.displaced.length;
+    ctx.events.emit('toast', {
+      text: frame.name.toUpperCase() + ' FITTED' + (back > 0 ? ' · ' + back + (back === 1 ? ' CARD' : ' CARDS') + ' BACK IN THE SATCHEL' : ''),
+    });
     ctx.events.emit('wandChanged');
     return true;
   }
@@ -875,6 +884,7 @@ export class WandSystem implements WandsApi {
       w.castIndex = 0;
       this.compiled[i as 0 | 1] = null;
     }
+    this.build.reset();
     this.ctx.events.emit('wandChanged');
   }
 
@@ -894,6 +904,7 @@ export class WandSystem implements WandsApi {
       flameBurst: 0,
       depthsGranted: [...this.depthsGranted],
       infuserGranted: this.infuserGranted,
+      build: this.build.snapshot(),
     };
   }
 
@@ -926,6 +937,7 @@ export class WandSystem implements WandsApi {
       if (Number.isFinite(depth)) this.depthsGranted.add(Math.floor(depth));
     }
     this.infuserGranted = data.infuserGranted;
+    this.build.restore(data.build);
     this.ctx.events.emit('wandChanged');
   }
 
@@ -961,6 +973,7 @@ export class WandSystem implements WandsApi {
     this.flameBurstAction = null;
     this.lastDryFire = -99;
     this._active = 0;
+    this.build.reset();
     this.ctx.events.emit('wandChanged');
   }
 
@@ -983,6 +996,7 @@ export class WandSystem implements WandsApi {
     this.collection.push(...collection.filter(isCardId));
     this.infuserGranted = this.collection.includes('infuser') || this.wands.some((wand) => wand.cards.includes('infuser'));
     this._active = 0;
+    this.build.reset();
     this.ctx.events.emit('wandChanged');
   }
 
@@ -1129,6 +1143,7 @@ export class WandSystem implements WandsApi {
     if (p === null) {
       p = compileWand(this.wands[wand].cards);
       this.compiled[wand] = p;
+      this.deadMods[wand] = deadModifiers(this.wands[wand].cards);
     }
     return p;
   }

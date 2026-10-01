@@ -7,6 +7,8 @@ import { titleCaseName } from '@/core/strings';
 import { FLOORS_TOTAL, floorOf } from '@/config/worldgraph';
 import { PERK_DEFS } from '@/content/perks';
 import { DIFFICULTY, asDifficulty } from '@/config/difficulty';
+import { recapRows } from '@/combat/wands/buildRecap';
+import { mutatorNames } from '@/content/mutators';
 
 /**
  * ESC pause. Owns its own pause claim so it never fights the Sanctum, the
@@ -203,6 +205,8 @@ export class PauseOverlay {
       ['Spell cards', String(ctx.wands.collection.length + ctx.wands.wands.reduce((n, w) => n + w.cards.filter(Boolean).length, 0))],
     ];
     if (level.living) rows.push(['Glowseeds', String(level.living.glowseeds)]);
+    // The build, read back: each wand and what a click of it casts.
+    for (const wand of recapRows(ctx.wands.wands)) rows.push([`Wand ${wand.numeral}`, `${wand.frameName}: ${wand.sentence}`]);
     // The Sanctum's bargains leave the screen the moment they are struck; this is where they are read back.
     const boons = PERK_DEFS.filter((perk) => ctx.player.perks[perk.id]);
     if (boons.length > 0 && ctx.run?.active) rows.push(['Boons', boons.map((perk) => perk.sanctumName).join(', ')]);
@@ -211,6 +215,8 @@ export class PauseOverlay {
       // Which tier this descent runs on (it is chosen once, on the title or the ledger, and then forgotten).
       const tier = DIFFICULTY[asDifficulty(ctx.state.difficulty)];
       rows.splice(1, 0, ['Difficulty', `${tier.name} (${tier.roman})`]);
+      // The standing regulations of this descent (chosen on the title, or set by the date for the daily).
+      if (ctx.run.mutators.length > 0) rows.splice(2, 0, ['Complications', mutatorNames(ctx.run.mutators)]);
     }
     stats.replaceChildren(...rows.flatMap(([label, value]) => {
       const dt = document.createElement('dt');

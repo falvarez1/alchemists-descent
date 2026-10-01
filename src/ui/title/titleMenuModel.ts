@@ -4,6 +4,15 @@ import { KIT_DEFS, KIT_ORDER } from '@/content/kits';
 import { FIGHTER_DEFS, FIGHTER_ORDER, fighterPortraitUrl, type FighterId } from '@/content/fighters';
 import { DIFFICULTY, DIFFICULTY_ORDER } from '@/config/difficulty';
 import { DIFFICULTY_BLURBS, difficultyUnlockHint, isDifficultyOpen } from '@/config/difficultyLadder';
+import {
+  MAX_MUTATORS,
+  MUTATOR_DEFS,
+  conflictsWith,
+  mutatorLoadText,
+  mutatorNames,
+  mutatorsCountForLadder,
+  type MutatorId,
+} from '@/content/mutators';
 import { CLASSIC_COPY } from '@/ui/fighterRosterModel';
 
 /**
@@ -16,9 +25,9 @@ import { CLASSIC_COPY } from '@/ui/fighterRosterModel';
 /**
  * action: does something (Today's descent). drill: opens a page. choice: a row with a current value that
  * Left / Right change in place and Enter opens the full list. option: one entry of such a list (radio).
- * back: leaves the page.
+ * toggle: one of several that may be on at once (a complication). back: leaves the page.
  */
-export type ItemKind = 'action' | 'drill' | 'choice' | 'option' | 'back';
+export type ItemKind = 'action' | 'drill' | 'choice' | 'option' | 'toggle' | 'back';
 
 export type ItemIcon =
   | { kind: 'kit'; kit: KitId }
@@ -74,6 +83,8 @@ export interface MenuPage {
   eyebrow?: string;
   /** Rebuilt on every render, so state changes show without bookkeeping. */
   items(): MenuItem[];
+  /** A line under the list that belongs to the whole page (the complications' total), not to the focused row. */
+  note?(): string;
   /** The item that takes focus when the page opens (a list opens on the current choice); the first item by default. */
   focus?: string | (() => string | undefined);
   /** Built once, kept between renders (the seed field must not lose what is typed). */
@@ -137,6 +148,8 @@ export function continueLine(save: ContinueFacts | null, floorsTotal: number, ti
 export interface DailyFacts {
   today: string;
   best: { victory: boolean; floor: number; timeMs: number } | null;
+  /** The names of the complications today's descent carries, set by the date ('' = none). */
+  carries?: string;
 }
 
 /** The daily's two lines: the short one under its name, and the full sentence for the hint line. */
@@ -144,9 +157,10 @@ export function dailyLines(daily: DailyFacts, floorsTotal: number, time: (ms: nu
   const best = daily.best
     ? daily.best.victory ? `Best: the Kiln quieted in ${time(daily.best.timeMs)}` : `Best: Floor ${daily.best.floor} of ${floorsTotal} in ${time(daily.best.timeMs)}`
     : '';
+  const carries = daily.carries ? ` · ${daily.carries}` : '';
   return {
-    sub: best || daily.today,
-    hint: `${daily.today} · one seed for everyone · the Alchemist with the Sparkwright’s case, on Adept`,
+    sub: best || `${daily.today}${carries}`,
+    hint: `${daily.today} · one seed for everyone · the Alchemist with the Sparkwright’s case, on Adept${carries}`,
   };
 }
 
@@ -194,6 +208,84 @@ export function difficultyDetail(tier: Difficulty, bestVictory: number): DetailS
   };
 }
 
+/* ---------------- complications ---------------- */
+
+/** The weight's mark: '+1', '±0', '−1' (a real minus, not a hyphen). */
+export function loadMark(weight: number): string {
+  if (weight > 0) return `+${weight}`;
+  if (weight < 0) return `−${-weight}`;
+  return '±0';
+}
+
+export const COMPLICATIONS_LEAD = `Standing regulations for one descent: up to ${MAX_MUTATORS}. Each changes how the floors behave, not what they are.`;
+
+export interface ComplicationToggle {
+  chosen: MutatorId[];
+  /** The set was full: nothing changed. */
+  refused: boolean;
+  /** What happened, when it is worth saying (a swap, a refusal); '' otherwise. */
+  note: string;
+}
+
+/**
+ * Turn `id` on or off in `chosen` (kept in the caller's order; the caller cleans). Three at a time; two that cancel
+ * (Hush and Nosy Neighbours) never share a descent, the new one takes the old one's place and the note says so.
+ */
+export function toggleComplication(chosen: readonly MutatorId[], id: MutatorId): ComplicationToggle {
+  if (chosen.includes(id)) return { chosen: chosen.filter((c) => c !== id), refused: false, note: '' };
+  if (chosen.length >= MAX_MUTATORS) return { chosen: [...chosen], refused: true, note: `${MAX_MUTATORS} at a time. Put one back to take another.` };
+  const displaced = chosen.find((c) => conflictsWith(c, id));
+  if (displaced) {
+    return {
+      chosen: [...chosen.filter((c) => c !== displaced), id],
+      refused: false,
+      note: `${MUTATOR_DEFS[id].name} takes the place of ${MUTATOR_DEFS[displaced].name}: the two cancel out.`,
+    };
+  }
+  return { chosen: [...chosen, id], refused: false, note: '' };
+}
+
+/** The Complications row's value on the loadout page. */
+export function complicationsValue(chosen: readonly MutatorId[]): string {
+  return chosen.length === 0 ? 'None' : `${chosen.length} in force`;
+}
+
+/** The card for the Complications row: what is in force, or what the page is for. */
+export function complicationsDetail(chosen: readonly MutatorId[]): DetailSpec {
+  if (chosen.length === 0) {
+    return { eyebrow: 'Complications', heading: 'The Works as issued', body: COMPLICATIONS_LEAD, icon: { kind: 'text', text: '±' } };
+  }
+  return {
+    eyebrow: 'Complications',
+    heading: mutatorNames(chosen),
+    body: complicationsTotal(chosen),
+    lines: chosen.map((id) => ({ label: loadMark(MUTATOR_DEFS[id].weight), name: MUTATOR_DEFS[id].name, text: MUTATOR_DEFS[id].regulation })),
+    icon: { kind: 'text', text: '±' },
+  };
+}
+
+/** "None in force. The Works as issued." / "2 in force: +2 pressure. A win counts toward the next tier." */
+export function complicationsTotal(chosen: readonly MutatorId[]): string {
+  if (chosen.length === 0) return 'None in force. The Works as issued.';
+  return `${chosen.length} in force: ${mutatorLoadText(chosen)}. ${
+    mutatorsCountForLadder(chosen) ? 'A win counts toward the next tier.' : 'A win under these will not open a harder tier.'
+  }`;
+}
+
+/** The card for one complication on its page; a full set says why the others refuse. */
+export function complicationDetail(id: MutatorId, chosen: readonly MutatorId[]): DetailSpec {
+  const def = MUTATOR_DEFS[id];
+  const full = !chosen.includes(id) && chosen.length >= MAX_MUTATORS;
+  const ladder = def.ladder ? '' : ' A win under it will not open a harder tier.';
+  return {
+    eyebrow: `Complication · ${loadMark(def.weight)}`,
+    heading: def.name,
+    body: `${def.regulation}${ladder}${full ? ` Full: ${MAX_MUTATORS} at a time. Put one back to take this.` : ''}`,
+    icon: { kind: 'text', text: loadMark(def.weight) },
+    locked: full,
+  };
+}
+
 export const SEED_NOTE = 'Same seed, same case, same Works. The ledger and share line print it for a friend. Leave it random for a fresh descent.';
 
 export function seedValue(chosen: { seed: number } | null): string {
@@ -215,7 +307,7 @@ export interface KeyHint { keys: readonly string[]; label: string }
 export function keyHints(kind: ItemKind | null, depth: number, pad: boolean): KeyHint[] {
   const move: KeyHint = pad ? { keys: ['D-pad'], label: 'Select' } : { keys: ['↑', '↓'], label: 'Select' };
   const change: KeyHint = pad ? { keys: ['◂', '▸'], label: 'Change' } : { keys: ['←', '→'], label: 'Change' };
-  const confirm: KeyHint = { keys: [pad ? 'A' : 'Enter'], label: kind === 'drill' || kind === 'choice' ? 'Open' : 'Confirm' };
+  const confirm: KeyHint = { keys: [pad ? 'A' : 'Enter'], label: kind === 'drill' || kind === 'choice' ? 'Open' : kind === 'toggle' ? 'Toggle' : 'Confirm' };
   const hints = [move];
   if (kind === 'choice') hints.push(change);
   hints.push(confirm);

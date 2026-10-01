@@ -130,6 +130,18 @@ export const TRAVEL_HELP_META: Readonly<Record<string, HelpMeta>> = {
     examples: ['tier', 'tier 4'],
     detail: ['Foes already placed on generated floors keep their stats; floors generated from now on, and damage and death penalties, follow the new tier. The remembered tier on the title is not touched.'],
   },
+  mutator: {
+    group: 'runs',
+    order: 135,
+    args: '[list|add|remove|set|clear] [id]',
+    summary: 'list the complications, or put them in force',
+    taints: true,
+    examples: ['mutator', 'mutator add wet-floors', 'mutator set low-gravity,tinderbox', 'mutator clear'],
+    detail: [
+      "Complications are the standing regulations a descent runs under (the title's Complications fold). Listing never taints; changing the set does, because a complication put on by hand is not the descent the player chose.",
+      "The dials follow at once: foes spawned from now on, gravity, the alchemist's damage and health, healing, bounties, fuel and light. The puddles and vents are laid when a floor is built, so a floor already built keeps what it had; goto a new floor to see them.",
+    ],
+  },
   seed: {
     group: 'runs',
     order: 140,

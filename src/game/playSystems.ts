@@ -8,10 +8,13 @@ import { AshVoice } from '@/ui/story/AshVoice';
 import { Sanctum } from '@/ui/Sanctum';
 import { Callouts } from '@/ui/Callouts';
 import { CardOfferOverlay } from '@/ui/CardOfferOverlay';
+import { WandOfferOverlay } from '@/ui/WandOfferOverlay';
 import { HintTeachOverlay } from '@/ui/HintTeachOverlay';
 import { HelpOverlay } from '@/ui/HelpOverlay';
 import { Grimoire } from '@/ui/Grimoire';
 import { TeaMachineOverlay } from '@/ui/TeaMachineOverlay';
+import { BowlPanel } from '@/ui/BowlPanel';
+import { ClueDirector } from '@/game/alchemy/clues';
 
 /**
  * THE PLAY SYSTEMS — what a run needs and the title screen does not, loaded as
@@ -63,11 +66,16 @@ export function installPlaySystems(ctx: Ctx, audio: StreamHost, gestured: boolea
   // World-anchored alchemical-kill words (listens to `alchemyKill`/`combatCallout`).
   disposables.push(new Callouts(ctx));
   disposables.push(new CardOfferOverlay(ctx));
+  // A found wand frame (a boss's wreckage, an altar, the Wandwright's rack): refit wand I or II, or leave it.
+  disposables.push(new WandOfferOverlay(ctx));
   disposables.push(new HintTeachOverlay(ctx));
   // The Handbook (H). Its ESC yields to the pause overlay registered before it.
   disposables.push(new HelpOverlay(ctx));
   // The wizard's Grimoire book (toggle with `J`), with the Journal tab.
   disposables.push(new Grimoire(ctx));
   disposables.push(new TeaMachineOverlay(ctx));
+  // THE EXPERIMENT: the panel over the cauldron's bowl, and the margin notes play writes into the Grimoire.
+  disposables.push(new BowlPanel(ctx));
+  disposables.push(new ClueDirector(ctx));
   return { sanctum, disposables };
 }

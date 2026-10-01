@@ -93,7 +93,7 @@ for (const [w, h] of sizes) {
   // ---- New descent: the loadout page ----
   await press('Enter'); await settle();
   const descent = await items();
-  check(`${tag}: Enter opens the loadout page`, JSON.stringify(descent) === JSON.stringify(['case', 'fighter', 'difficulty', 'seed', 'descend', 'back']), JSON.stringify(descent));
+  check(`${tag}: Enter opens the loadout page`, JSON.stringify(descent) === JSON.stringify(['case', 'fighter', 'difficulty', 'complications', 'seed', 'descend', 'back']), JSON.stringify(descent));
   check(`${tag}: it opens on Descend`, (await focused()) === 'descend', await focused());
   const small = await page.evaluate(() => document.querySelector('#expedition-entry h1').getBoundingClientRect().height);
   check(`${tag}: the title steps back to a wordmark`, small < 60 && small < big / 1.6, `${small} vs ${big}`);
@@ -101,8 +101,8 @@ for (const [w, h] of sizes) {
   check(`${tag}: Descend has no card (nothing to explain)`, (await card()) === '');
   check(`${tag}: the legend gains Back`, /Back/.test(await page.locator('#expedition-entry .tm-keys').textContent()));
   check(`${tag}: the rows show a fresh profile's choices`, (await rowValue('case')) === 'Sparkwright' && (await rowValue('fighter')) === 'The Alchemist' && /Adept/.test(await rowValue('difficulty')) && (await rowValue('seed')) === 'Random');
-  await press('ArrowUp'); await press('ArrowUp'); await press('ArrowUp'); await press('ArrowUp');
-  check(`${tag}: four Ups reach Case`, (await focused()) === 'case', await focused());
+  await press('ArrowUp'); await press('ArrowUp'); await press('ArrowUp'); await press('ArrowUp'); await press('ArrowUp');
+  check(`${tag}: five Ups reach Case`, (await focused()) === 'case', await focused());
   check(`${tag}: its card explains the case`, /Sparkwright/.test(await card()) && /Spark bolt/.test(await card()), (await card()).slice(0, 80));
   const fold1 = await inFold();
   check(`${tag}: the page and its card are above the fold`, fold1.bad.length === 0 && !fold1.hscroll, JSON.stringify(fold1));
@@ -156,8 +156,32 @@ for (const [w, h] of sizes) {
   await page.waitForTimeout(600);
   check(`${tag}: choosing in the roster updates the row and returns to it`, (await rowValue('fighter')) === 'Mara Quell' && (await focused()) === 'fighter', `${await rowValue('fighter')} / ${await focused()}`);
 
-  // ---- the seed page ----
+  // ---- the Complications page: toggles, three at a time ----
   await press('ArrowDown'); await press('ArrowDown');
+  check(`${tag}: Complications row`, (await focused()) === 'complications', await focused());
+  check(`${tag}: it says None, and its card says the Works as issued`, (await rowValue('complications')) === 'None' && /The Works as issued/.test(await card()), `${await rowValue('complications')} / ${(await card()).slice(0, 60)}`);
+  await press('Enter'); await settle();
+  const toggles = await page.evaluate(() => [...document.querySelectorAll('#expedition-entry .tm-item[data-mutator]')].map((n) => n.dataset.mutator));
+  check(`${tag}: Enter opens twelve toggles`, toggles.length === 12 && toggles[0] === 'wet-floors', JSON.stringify(toggles));
+  check(`${tag}: the legend says Toggle`, /Toggle/.test(await page.locator('#expedition-entry .tm-keys').textContent()));
+  await press('Enter'); await press('ArrowDown'); await press('ArrowDown'); await press('Enter'); await press('ArrowDown'); await press('Enter'); await press('ArrowDown');
+  const checkedNow = await page.evaluate(() => [...document.querySelectorAll('#expedition-entry .tm-item[data-mutator][aria-checked="true"]')].map((n) => n.dataset.mutator));
+  check(`${tag}: Enter toggles an entry on and stays on the page`, JSON.stringify(checkedNow) === JSON.stringify(['wet-floors', 'slime-rain', 'gas-leak']), JSON.stringify(checkedNow));
+  check(`${tag}: the page says what three add up to`, /3 in force/.test(await page.locator('#expedition-entry .tm-note').textContent()), await page.locator('#expedition-entry .tm-note').textContent());
+  const fullLocked = await page.evaluate(() => [...document.querySelectorAll('#expedition-entry .tm-item[data-mutator]:not([aria-checked="true"])')].every((n) => n.getAttribute('aria-disabled') === 'true'));
+  check(`${tag}: with three in force every other entry is locked`, fullLocked);
+  await press('Enter');
+  check(`${tag}: Enter on a locked entry refuses and its card says why`, /3 at a time/.test(await card()) && (await page.evaluate(() => document.querySelectorAll('#expedition-entry .tm-item[data-mutator][aria-checked="true"]').length)) === 3, (await card()).slice(0, 100));
+  const fold3 = await inFold();
+  check(`${tag}: the list may be taller than a short window, but nothing sticks out sideways`, !fold3.hscroll, JSON.stringify(fold3));
+  await page.screenshot({ path: `verify-out/title/menu-${tag}-complications.png` });
+  await press('Escape'); await settle();
+  check(`${tag}: Escape returns to the row, which now says 3 in force; the recap counts them`, (await focused()) === 'complications' && (await rowValue('complications')) === '3 in force' && /3 complications/.test(await page.locator('#expedition-entry [data-entry="descend"]').textContent()), `${await focused()} / ${await rowValue('complications')}`);
+  const storedMut = await page.evaluate(() => window.__game.ctx.run.metaView().lastMutators);
+  check(`${tag}: the profile remembers them`, JSON.stringify(storedMut) === JSON.stringify(['wet-floors', 'slime-rain', 'gas-leak']), JSON.stringify(storedMut));
+
+  // ---- the seed page ----
+  await press('ArrowDown');
   check(`${tag}: Seed row`, (await focused()) === 'seed', await focused());
   await press('Enter'); await settle();
   check(`${tag}: the seed page opens in its field`, (await focused()) === 'entry-seed-input', await focused());
@@ -231,8 +255,8 @@ for (const [w, h] of sizes) {
   await tap(0);
   await settle();
   check(`${tag}: pad A opens New descent, on Descend`, (await visible('#expedition-entry [data-entry="descend"]')) && (await focused()) === 'descend', await focused());
-  await tap(12); await tap(12);
-  check(`${tag}: two d-pad Ups reach Difficulty`, (await focused()) === 'difficulty', await focused());
+  await tap(12); await tap(12); await tap(12);
+  check(`${tag}: three d-pad Ups reach Difficulty`, (await focused()) === 'difficulty', await focused());
   const before = await rowValue('difficulty');
   await tap(15);
   const changed = await rowValue('difficulty');
@@ -250,8 +274,9 @@ for (const [w, h] of sizes) {
   await press('Enter'); // Descend
   await page.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play' && window.__game.ctx.run?.active === true, { timeout: 30000 });
   await page.evaluate(() => window.__game.ctx.fighters.whenReady());
-  const run = await page.evaluate(() => { const c = window.__game.ctx; return { fighter: c.fighters.id, difficulty: c.state.difficulty, kit: c.run.snapshotForSave()?.kit, seed: c.run.snapshotForSave()?.seed, chosen: c.run.snapshotForSave()?.seedChosen, hidden: document.getElementById('expedition-entry').hidden }; });
+  const run = await page.evaluate(() => { const c = window.__game.ctx; return { fighter: c.fighters.id, difficulty: c.state.difficulty, kit: c.run.snapshotForSave()?.kit, seed: c.run.snapshotForSave()?.seed, chosen: c.run.snapshotForSave()?.seedChosen, mutators: c.run.snapshotForSave()?.mutators ?? null, hidden: document.getElementById('expedition-entry').hidden }; });
   check(`${tag}: Descend starts the run as Mara Quell on Adept with the chosen seed`, run.fighter === 'mara-quell' && run.difficulty === 2 && run.kit === 'spark' && String(run.seed) === seedRow && run.chosen === true && run.hidden, JSON.stringify(run));
+  check(`${tag}: and carries the three complications`, JSON.stringify(run.mutators) === JSON.stringify(['wet-floors', 'slime-rain', 'gas-leak']), JSON.stringify(run.mutators));
   check(`${tag}: no page errors`, errors.length === 0, errors.slice(0, 2).join(' | '));
   await browser.close();
 }

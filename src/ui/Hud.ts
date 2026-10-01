@@ -1,6 +1,7 @@
 import type { Ctx, PerkId } from '@/core/types';
 import { touchHint } from '@/ui/touchLabels';
 import { livingObjective } from '@/game/LivingExpedition';
+import { lockObjective } from '@/game/lockText';
 import { canHumiliate } from '@/combat/Trickshot';
 import { worksPlaceName } from '@/world/breathingWorks';
 import { flaskSlotKey, getBindings, keyLabel } from '@/input/bindings';
@@ -23,6 +24,7 @@ import { ToastStack } from '@/ui/ToastStack';
 import { calmCase } from '@/ui/houseText';
 import { titleCaseName } from '@/core/strings';
 import { FLOOR_LOOKS, floorLookFor } from '@/config/floorLooks';
+import { PotionChips } from '@/ui/PotionChips';
 
 /** Non-null getElementById — all HUD elements exist statically in index.html. */
 function el(id: string): HTMLElement {
@@ -79,6 +81,9 @@ export function contextualObjectiveText(ctx: Ctx, fallback: string): string {
     return dx * dx + dy * dy <= WAYSTONE_OBJECTIVE_RADIUS_SQ;
   });
   if (nearUnlitWaystone && !runtime.keyTaken) return FLOOR_OBJECTIVE_WAYSTONE;
+  // A floor with a LOCK (world/locks) names its puzzle near the machine and its reward once the seal is open.
+  const lock = lockObjective(runtime, ctx.player);
+  if (lock) return lock;
   if (runtime.portal) {
     if (runtime.keyTaken) return INTRO_OBJECTIVE.returnPortal;
     return INTRO_PRE_KEY_OBJECTIVES.has(fallback) && !introCompletionCardSlotted(ctx)
@@ -119,6 +124,8 @@ export class Hud {
   private readonly toastStack: ToastStack;
   /** Empty slot beside the vitals, reserved for the run layer's return-phial row. */
   private readonly vitalsAside = document.createElement('div');
+  /** The working potions, under the vitals (ui/PotionChips). */
+  private potionChips: PotionChips | null = null;
   /** Trailing "loss" bars behind HP/mana: the chunk you just lost lingers, then drains. */
   private readonly vitalGhosts: Array<{ ghost: HTMLElement; fraction: number; dropAt: number }> = [];
   private readonly bannerKicker = document.createElement('div');
@@ -131,6 +138,8 @@ export class Hud {
   private rechargeFill: HTMLElement | null = null;
   /** Readable spell sentence for the active wand's next click. */
   private castCaption: HTMLElement | null = null;
+  /** A modifier that did nothing on the card it rode: the cast caption says so for a few seconds. */
+  private deadCaption: { text: string; until: number } | null = null;
   private readonly godPowerButtons = new Map<PerkId, HTMLButtonElement>();
   /** Rolling gold display: ticks toward the true score instead of snapping. */
   private displayedGold = 0;
@@ -187,6 +196,7 @@ export class Hud {
     this.vitalsAside.id = 'vitals-aside';
     this.vitalsAside.className = 'vitals-aside';
     el('hud-left').appendChild(this.vitalsAside);
+    this.potionChips = new PotionChips(ctx, this.vitalsAside);
     for (const id of ['hp-fill', 'mana-fill']) {
       const fill = el(id);
       const ghost = document.createElement('div');
@@ -292,6 +302,11 @@ export class Hud {
       });
     }));
 
+    this.disposers.push(ctx.events.on('deadCardCast', ({ card, host }) => {
+      // The caption is one short line; the toast carries the whole sentence.
+      this.deadCaption = { text: `${CARD_DEFS[card].name} does nothing on ${CARD_DEFS[host].name}`, until: performance.now() + 5000 };
+    }));
+
     // Descent meta layer: the objective line + short center toasts.
     this.disposers.push(ctx.events.on('objectiveChanged', ({ text }) => {
       this.objectiveBase = text;
@@ -369,6 +384,7 @@ export class Hud {
     this.bannerQueue.length = 0;
     this.pendingTitle = null;
     this.toastStack.clear();
+    this.potionChips?.dispose();
     this.vitalsAside.remove();
     for (const { ghost } of this.vitalGhosts.splice(0)) ghost.remove();
     this.bannerKicker.remove();
@@ -739,6 +755,7 @@ export class Hud {
     if (this.trickshotReadout.textContent !== trickText) this.trickshotReadout.textContent = trickText;
     this.trickshotReadout.classList.toggle('finisher', trickText === 'RETURNED WITH INTEREST');
     const player = ctx.player;
+    this.potionChips?.update();
     el('spell-hotbar').style.display = player.legClub ? 'none' : '';
     this.renderObjective();
     this.renderInteractionHint(ctx);
@@ -837,10 +854,11 @@ export class Hud {
     const sentence = nextWandSentence(wand.cards, wand.castIndex);
     const groupUnaffordable = player.mana < sentence.manaCost;
     if (this.castCaption) {
-      this.castCaption.textContent = groupUnaffordable
+      const dead = this.deadCaption && performance.now() < this.deadCaption.until ? this.deadCaption.text : null;
+      this.castCaption.textContent = dead ?? (groupUnaffordable
         ? sentence.label.replace(/^Next: /, '') + ' · Needs ' + sentence.manaCost + ' mana'
-        : sentence.label.replace(/^Next: /, '') + ' · ' + sentence.manaCost + ' mana';
-      this.castCaption.classList.toggle('overmana', groupUnaffordable);
+        : sentence.label.replace(/^Next: /, '') + ' · ' + sentence.manaCost + ' mana');
+      this.castCaption.classList.toggle('overmana', groupUnaffordable || dead !== null);
     }
     for (const s of this.hotbarSlots) {
       const isNext = !cooling && next.includes(s.slotIdx);

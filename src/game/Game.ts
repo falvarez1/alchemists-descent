@@ -91,6 +91,7 @@ import { SANDBOX_FOCUS, stampSandboxArena } from '@/world/sandboxArena';
 import { reseedTickStreams } from '@/core/simRandom';
 import { DeathCinema } from '@/game/DeathCinema';
 import { Clips } from '@/app/Clips';
+import { MutatorDirector } from '@/game/MutatorDirector';
 import { RunDirector } from '@/game/RunDirector';
 import { RunSummary } from '@/ui/RunSummary';
 import { RunHud } from '@/ui/RunHud';
@@ -331,6 +332,7 @@ export class Game {
     }
     ctx.worldgen = new WorldGen();
     ctx.flask = new Flask();
+    ctx.brewing = this.brewing;
     const telemetry = new Telemetry();
     ctx.telemetry = telemetry;
     this.disposables.push(telemetry);
@@ -342,6 +344,10 @@ export class Game {
     const run = new RunDirector(ctx);
     ctx.run = run;
     this.disposables.push(run);
+    // The run's complications (content/mutators): in force from the run's start, dressing the floors, ticked by RunDirector.
+    const mutators = new MutatorDirector(ctx);
+    ctx.mutators = mutators;
+    this.disposables.push(mutators);
     const wands = new WandSystem(ctx);
     ctx.wands = wands;
     this.disposables.push(wands);

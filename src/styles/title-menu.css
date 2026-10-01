@@ -84,6 +84,15 @@
 .tm-option .tm-mark::after { content: '\25CB'; }
 .tm-option.checked .tm-mark::after { content: '\25CF'; color: var(--m-brass); }
 .tm-item:focus .tm-mark { color: var(--m-brass); }
+/* a complication: a box that fills when it is in force, and its weight (+1 harder, -1 easier) */
+.tm-toggle { font-size: calc(21px * var(--text-scale, 1)); }
+.tm-toggle .tm-mark::after { content: '\25A1'; font-size: 15px; }
+.tm-toggle.checked .tm-mark::after { content: '\25A0'; color: var(--m-brass); }
+.tm-toggle.checked { color: #ecd9a6; }
+.tm-toggle .tm-value { min-width: 2.4em; justify-content: flex-end; color: #8a9a8e; }
+.tm-toggle[data-weight="1"] .tm-value, .tm-toggle[data-weight="2"] .tm-value { color: var(--m-danger); }
+.tm-toggle[data-weight="-1"] .tm-value { color: var(--m-good); }
+.tm-toggle.checked .tm-value { font-weight: 700; }
 .tm-option { font-size: calc(22px * var(--text-scale, 1)); }
 .tm-option .tm-sub { font-size: calc(12.5px * var(--text-scale, 1)); }
 
@@ -101,6 +110,8 @@
 .tm-item.locked .tm-mark::after { content: ''; display: inline-block; width: 9px; height: 7px; border: 1px solid #7d8f86; border-radius: 1px; background: #1c2d31; box-shadow: 0 -4px 0 -2px #7d8f86; }
 .tm-item.locked:focus { color: #a9b6ae; }
 
+.tm-note { margin: 14px 0 0 26px; max-width: 46ch; min-height: 1.5em; font: 400 calc(13px * var(--text-scale, 1))/1.5 var(--m-sans); color: #dcc7a1; }
+.tm-note:empty { display: none; }
 .tm-hint { margin: 16px 0 0 26px; max-width: 42ch; font: 400 calc(13.5px * var(--text-scale, 1))/1.5 var(--m-sans); color: #aebdb2; }
 .tm[data-depth="0"] .tm-hint { min-height: 3em; }
 .tm-hint:empty { display: none; }
@@ -157,6 +168,19 @@
 body.touch-enabled .tm-keys { display: none; }
 body.touch-enabled #expedition-entry .tm-item { min-height: 52px; touch-action: manipulation; }
 
+/* Twelve regulations are a long list: where the window is wide enough, two columns (Down walks the first, then the second). */
+@media (min-width: 1280px) {
+  #expedition-entry:has(.tm[data-page="complications"]) .entry-content { width: min(700px, 80%); }
+  .tm[data-page="complications"] .tm-list { display: block; columns: 2; column-gap: 10px; width: min(660px, 100%); }
+  .tm[data-page="complications"] .tm-item { break-inside: avoid; margin-bottom: 2px; }
+}
+
+/* Narrower than that the twelve share one column: compact rows, and the footer flows after the list instead of over it. */
+@media (max-width: 1279px) {
+  .tm[data-page="complications"] .tm-item { min-height: 36px; padding-top: 2px; padding-bottom: 2px; font-size: calc(18px * var(--text-scale, 1)); }
+  #expedition-entry:has(.tm[data-page="complications"]) .entry-footer { position: static; margin: 8px 28px 16px clamp(28px, 9vw, 172px); }
+}
+
 /* ---------- smaller windows: the whole menu stays above the fold ---------- */
 @media (max-height: 780px) {
   .entry-content { margin-top: clamp(18px, 4.5vh, 34px); margin-bottom: 70px; }
@@ -165,6 +189,7 @@ body.touch-enabled #expedition-entry .tm-item { min-height: 52px; touch-action: 
   .tm-slot { margin-top: 16px; }
   .tm-item { min-height: 46px; padding-top: 5px; padding-bottom: 5px; font-size: calc(23px * var(--text-scale, 1)); }
   .tm-option { font-size: calc(20px * var(--text-scale, 1)); }
+  .tm-toggle { font-size: calc(18px * var(--text-scale, 1)); }
   .tm[data-depth="0"] .tm-hint { min-height: 2.6em; }
 }
 @media (max-height: 700px) {
@@ -175,7 +200,7 @@ body.touch-enabled #expedition-entry .tm-item { min-height: 52px; touch-action: 
   .tm-card-lines dd { font-size: calc(12px * var(--text-scale, 1)); line-height: 1.4; }
 }
 @media (max-height: 640px) {
-  .tm-card-body { display: none; }
+  .tm-card:has(.tm-card-lines) .tm-card-body { display: none; }
   .tm-card-lines dd { font-size: 0; }
   .tm-card-lines dd b { font-size: calc(13px * var(--text-scale, 1)); }
 }
@@ -185,6 +210,7 @@ body.touch-enabled #expedition-entry .tm-item { min-height: 52px; touch-action: 
   .tm-brand h1 { font-size: 40px; }
   .tm-item { min-height: 40px; font-size: 20px; }
   .tm-option { font-size: 18px; }
+  .tm-toggle { font-size: 16px; min-height: 34px; }
 }
 /* Narrow windows and phones: the card drops under the list instead of beside it. */
 @media (max-width: 900px) {

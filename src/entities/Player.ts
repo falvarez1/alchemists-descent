@@ -7,12 +7,15 @@
 import { DEATH_SLOWMO_FRAMES, HEIGHT, WIDTH } from '@/config/constants';
 import { gustHabitat } from '@/game/HabitatMotion';
 import { difficultyMods } from '@/config/difficulty';
+import { mutatorMods } from '@/content/mutators';
 import { clamp } from '@/core/math';
 import type { Ctx, EnemyKind, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
 import { PLAYER_AIR_CEIL_SLIP, PLAYER_CEIL_SLIP, PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP, PLAYER_VERT_SLIP } from '@/core/types';
 import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus, sampleBodyCells } from '@/entities/status';
 import { playerMovementPace, playerVerticalPace } from '@/core/progressionPacing';
 import { PERK_IDS } from '@/content/perks';
+import { hasBoon } from '@/core/boons';
+import { drinkFlask } from '@/game/potions';
 import { makePickup } from '@/core/pickupDefs';
 import { startLegSwing } from '@/combat/WeaverLimbs';
 import { createSelfShockState, drawConductorArc, fairShockDamage } from '@/combat/SelfShock';
@@ -651,8 +654,8 @@ export class PlayerControl implements PlayerControlApi {
     const source = this.noteDamageSource(src);
     // Sanctum boon resistances by damage source
     if (src === 'explosion' && player.perks.ironhide) amount *= 0.4;
-    if (src === 'fire' && player.perks.flameward) amount *= 0.4;
-    if ((src === 'toxic' || src === 'acid') && player.perks.toxinward) amount *= 0.25;
+    if (src === 'fire' && hasBoon(player, 'flameward')) amount *= 0.4;
+    if ((src === 'toxic' || src === 'acid') && hasBoon(player, 'toxinward')) amount *= 0.25;
     // Stoneskin (Wave C potion): half damage, knockback shrugged off entirely
     amount = this.reduceIncomingDamage(amount, 0.5, source, kx, ky);
     // A blow shatters heart communion — the unhealed remainder is lost
@@ -928,7 +931,7 @@ export class PlayerControl implements PlayerControlApi {
   private updateSwing(ctx: Ctx): void {
     const player = ctx.player;
     const keys = ctx.input.keys;
-    player.vy += 0.28; // gravity drives the swing
+    player.vy += 0.28 * mutatorMods(ctx.state).gravity; // gravity drives the swing (the complications' dial: 1 = today's)
     const rx = player.x - this.swingAX;
     const ry = player.y - this.swingAY;
     const rd = Math.hypot(rx, ry) || 0.001;
@@ -1371,7 +1374,7 @@ export class PlayerControl implements PlayerControlApi {
         player,
         4,
         bodyH,
-        player.perks.flameward ? { burning: true } : undefined,
+        hasBoon(player, 'flameward') ? { burning: true } : undefined,
         2,
         { toxicScale: 0, healiumScale: 0, frostbiteScale: 1, gradedChill: true },
       );
@@ -1384,7 +1387,7 @@ export class PlayerControl implements PlayerControlApi {
         const fairShock = fairShockDamage(this.selfShock, status.shockDamage, status.maxCharge, ctx.state.frameCount);
         damage += fairShock - status.shockDamage;
         // Insulated Boots boon: the current finds a quarter of you (the arc still crawls).
-        if (player.perks.grounded) damage -= fairShock * 0.75;
+        if (hasBoon(player, 'grounded')) damage -= fairShock * 0.75;
         if (status.maxCharge > 0) drawConductorArc(ctx, player.x, player.y, 4, bodyH);
       }
       if (damage > 0) {
@@ -1584,8 +1587,8 @@ export class PlayerControl implements PlayerControlApi {
 
     // Sample body cells for liquid and hazards (Pyro Skin / Toxicology resist)
     if (player.tpCool > 0) player.tpCool--;
-    const pyro = player.perks.flameward ? 0.4 : 1;
-    const toxi = player.perks.toxinward ? 0.25 : 1;
+    const pyro = hasBoon(player, 'flameward') ? 0.4 : 1;
+    const toxi = hasBoon(player, 'toxinward') ? 0.25 : 1;
     let hazardDmg = 0;
     const hazardBySource: Record<string, number> = { fire: 0, lava: 0, acid: 0, toxic: 0 };
     const contact = sampleBodyCells(ctx, player, PLAYER_HALF_W, bodyH);
@@ -1864,7 +1867,9 @@ export class PlayerControl implements PlayerControlApi {
 
     if (!handledByClimb) {
       // Gravity / levitation
-      const grav = player.inLiquid ? 0.12 : 0.28;
+      // (the complications' gravity dial, content/mutators: 1 = today's exactly)
+      const gravityDial = mutatorMods(ctx.state).gravity;
+      const grav = (player.inLiquid ? 0.12 : 0.28) * gravityDial;
       player.vy += grav;
       if (player.inLiquid) player.vy *= 0.88;
 
@@ -1896,7 +1901,9 @@ export class PlayerControl implements PlayerControlApi {
           // also damps a fall you catch mid-air. Apply it EVERY frame (the
           // simulated curve depends on the drag hitting positive vy too).
           const t = Math.min(this.levitFrames / lp.levitRampFrames, 1);
-          const thrust = (lp.levitThrust0 + lp.levitThrustGain * t * t * t) * verticalPace;
+          // (the jet's thrust was tuned against gravity 0.28: it follows the complications' dial, so under Low Gravity it
+          // is still a hover instrument and not a rocket; the jump and the fall are what get floaty)
+          const thrust = (lp.levitThrust0 + lp.levitThrustGain * t * t * t) * verticalPace * gravityDial;
           player.vy -= thrust;
           player.vy *= lp.levitDrag;
           // Levity potion (Wave C): levitation burns no levit while the timer runs
@@ -2158,34 +2165,11 @@ export class PlayerControl implements PlayerControlApi {
   }
 
   /**
-   * DRINK (Wave C): swallow the flask's real cells, 2 per frame. Elixirs load
-   * the potion timers (a potion is a timed rewrite of entity-vs-cell rules);
-   * water soaks you and puts you out; anything else refuses to go down.
+   * DRINK (Wave C): swallow the flask's real cells. The rules (a potion loads its effect, water
+   * soaks and douses, anything else refuses) live in game/potions with the elixir table.
    */
   private drink(ctx: Ctx): void {
-    const s = ctx.flask.state;
-    const st = ctx.player.status;
-    if (s.material === null || s.count === 0) return;
-    const m = s.material;
-    if (m !== Cell.ElixirLife && m !== Cell.ElixirLevity && m !== Cell.ElixirStone && m !== Cell.Water) return;
-
-    const sips = Math.min(2, s.count);
-    for (let i = 0; i < sips; i++) {
-      if (m === Cell.ElixirLife) st.regen = Math.min(1800, st.regen + 10);
-      else if (m === Cell.ElixirLevity) st.levity = Math.min(1800, st.levity + 12);
-      else if (m === Cell.ElixirStone) st.stoneskin = Math.min(1800, st.stoneskin + 10);
-    }
-    if (m === Cell.Water) {
-      // Drinking water soaks you from the inside — and puts you out
-      st.wet = 120;
-      st.burning = 0;
-    }
-    if (!ctx.state.debugGodMode) {
-      s.count -= sips;
-      if (s.count === 0) s.material = null;
-    }
-    if (ctx.state.frameCount % 10 === 0) ctx.audio.sfx('player.drink');
-    ctx.events.emit('flaskUsed', { verb: 'drink', material: m, amount: sips });
+    drinkFlask(ctx);
   }
 
   /**

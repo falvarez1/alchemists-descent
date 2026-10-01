@@ -35,6 +35,13 @@ export const MATERIAL_LORE: Partial<Record<number, LoreEntry>> = {
   [Cell.Glowshroom]: { title: 'Glowshroom', body: 'Living light clinging to the rock, soft and breathing.' },
   [Cell.Crystal]: { title: 'Mana Crystal', body: 'Bright crystal that glints with stored magic.' },
   [Cell.Nitrogen]: { title: 'Liquid Nitrogen', body: 'Bitter cold — freezes surface water into ice bridges.', margin: '“Do not lick.” Underneath, in a second hand: “Noted.”' },
+  // The reagents of the cauldron's newer recipes: true facts, so the examine lens (and the margin notes it unlocks) reach them.
+  [Cell.Slime]: { title: 'Slime', body: 'Thick green gel, slow to pour and slow to settle.' },
+  [Cell.Leaf]: { title: 'Leaf', body: 'Foliage you walk straight through. It lets go when its branch does, floats on water, and burns fast and bright.' },
+  [Cell.Coal]: { title: 'Coal', body: 'Black fuel that piles like sand and smoulders long after wood has given up.' },
+  [Cell.Ash]: { title: 'Ash', body: 'What fire leaves: light, grey and inert. It settles on everything.' },
+  [Cell.Snow]: { title: 'Snow', body: 'Loose cold powder. It melts to water at a flame.' },
+  [Cell.Brine]: { title: 'Brine', body: 'Salt water kept below freezing: it will not freeze, it thaws the ice it touches, and it chills whoever wades in.' },
 };
 
 /** Snapshot of discovered lore ids (for the Grimoire render). */

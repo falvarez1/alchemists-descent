@@ -1,5 +1,6 @@
 import type { CardId, CastAction } from '@/core/types';
 import { CARD_DEFS, MULTICAST_SIZE, PROJECTILE_MOD_HOST_CARDS } from './cards';
+import { BARGAIN_RULES } from './cardRules';
 export type { CastAction } from '@/core/types';
 
 /**
@@ -19,6 +20,8 @@ export type { CastAction } from '@/core/types';
  * Clamps, enforced HERE so no execution path can dodge them:
  *  - total damage multiplier <= x4 per action;
  *  - <= 6 projectile actions per group (excess spills into the next group);
+ *  - a devil's bargain (cardRules.BARGAIN_RULES) folds its benefit AND its price into the host it applies to
+ *    (still inside the x4 clamp); on any other host it is a dud, its mana still charged;
  *  - 'trigger' nests at most depth 1: inside a triggered payload further
  *    triggers are IGNORED (the card's mana is still spent, but it casts
  *    nothing — an honest dud).
@@ -58,6 +61,8 @@ interface ModPack {
   pyreCrit: boolean;
   bounces: number;
   trigger: boolean;
+  /** The devil's bargains in the pack, folded in when the host is known. */
+  bargains: CardId[];
   /** Mana of the modifier cards in the pack, charged to the consuming group. */
   mana: number;
   /** Wand slot indices of the pack's modifier cards. */
@@ -80,6 +85,7 @@ function freshPack(): ModPack {
     pyreCrit: false,
     bounces: 0,
     trigger: false,
+    bargains: [],
     mana: 0,
     slots: [],
   };
@@ -132,6 +138,7 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
       else if (id === 'pyrecrit') pack.pyreCrit = true;
       else if (id === 'bounce') pack.bounces = 2;
       else if (id === 'trigger') pack.trigger = true;
+      else if (BARGAIN_RULES[id]) pack.bargains.push(id);
     } else if (def.kind === 'multicast') {
       const n = MULTICAST_SIZE[id] ?? 1;
       if (cur) {
@@ -153,12 +160,25 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
         pendingSlots = [];
       }
       const supportsProjectileMods = PROJECTILE_MOD_HOST_CARDS.has(id);
+      // A bargain lands (benefit and price together) only where its rule says it does.
+      let dmgMul = pack.dmgMul, speedMul = pack.speedMul, spreadAdd = pack.spreadAdd, lifeMul = 1, recoil = 0;
+      const struck: CardId[] = [];
+      for (const bargain of pack.bargains) {
+        const rule = BARGAIN_RULES[bargain];
+        if (!rule || !rule.appliesTo.has(id)) continue;
+        struck.push(bargain);
+        dmgMul *= rule.dmgMul ?? 1;
+        speedMul *= rule.speedMul ?? 1;
+        spreadAdd += rule.spreadAdd ?? 0;
+        lifeMul *= rule.lifeMul ?? 1;
+        recoil += rule.recoil ?? 0;
+      }
       cur.actions.push({
         action: {
           card: id,
-          speedMul: pack.speedMul,
-          dmgMul: Math.min(MAX_DMG_MUL, pack.dmgMul),
-          spreadAdd: pack.spreadAdd,
+          speedMul,
+          dmgMul: Math.min(MAX_DMG_MUL, dmgMul),
+          spreadAdd,
           infused: pack.infused,
           waterTrail: supportsProjectileMods ? pack.waterTrail : 0,
           oilTrail: supportsProjectileMods ? pack.oilTrail : 0,
@@ -170,6 +190,9 @@ export function compileWand(cards: (CardId | null)[]): CastGroup[] {
           pyreCrit: supportsProjectileMods ? pack.pyreCrit : false,
           bounces: pack.bounces,
           triggered: null,
+          ...(lifeMul !== 1 ? { lifeMul } : {}),
+          ...(recoil > 0 ? { recoil } : {}),
+          ...(struck.length > 0 ? { bargains: struck } : {}),
         },
         trig: pack.trigger,
       });

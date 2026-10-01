@@ -5,7 +5,7 @@ import type { Ctx, DarkZone, LevelDef, LumenBloom, Mechanism, Pickup, PlacedPref
 import { makePickup, POTION_KINDS } from '@/core/pickupDefs';
 import { makeValve } from '@/core/mechanismFactories';
 import { randomCard, TOME_REWARD_POOL } from '@/content/cardRewardPools';
-import { Cell } from '@/sim/CellType';
+import { blocksEntity, Cell } from '@/sim/CellType';
 import { acidColor, packRGB, stoneColor } from '@/sim/colors';
 import type { World } from '@/sim/World';
 import { type PlacementLedger, SEALED_LABEL, carvePocket, carveRect, connectToCaves, inFootprint, sealedFootprints, tunnelTo } from '@/world/connect';
@@ -214,6 +214,15 @@ export function carveRoom(
   }
   if (steps.length === 0) return false;
   return roomReachable(world, spawn, interior.x0, interior.y0, interior.x1, interior.y1);
+}
+
+/**
+ * Lay a room's floor slab again where the connector's carve took it (GEN 65). The connector is a long tunnel whose sweep reaches nine rows
+ * below its line, and when it runs along a hall it eats the whole five-row slab: the vault and the machine hang in a void. Only open
+ * cells become stone, from `fromX` (east of the entrance, which keeps its way in) to `toX`.
+ */
+export function relayRoomFloor(world: World, fromX: number, toX: number, floorY: number): void {
+  for (let y = floorY; y <= floorY + 4; y++) for (let x = fromX; x <= toX; x++) if (!blocksEntity(world.types[world.idx(x, y)])) setCell(world, x, y, Cell.Stone, stoneColor());
 }
 
 /**

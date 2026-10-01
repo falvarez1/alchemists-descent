@@ -1,9 +1,9 @@
-import type { EntityStatus, Pickup, PickupKind } from '@/core/types';
+import type { Pickup, PickupKind, PotionStatusKey } from '@/core/types';
 export { PICKUP_KINDS } from '@/core/types';
 import { packRGB } from '@/sim/colors';
 
 /** Instant potions: drinking applies a timed status; gameplay handles collection. */
-export const POTION_DEFS: Record<string, { name: string; status: keyof EntityStatus; frames: number }> = {
+export const POTION_DEFS: Record<string, { name: string; status: PotionStatusKey; frames: number }> = {
   vigor: { name: 'POTION OF VIGOR', status: 'regen', frames: 600 },
   levity: { name: 'POTION OF LEVITY', status: 'levity', frames: 700 },
   stoneskin: { name: 'POTION OF STONESKIN', status: 'stoneskin', frames: 700 },

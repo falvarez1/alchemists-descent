@@ -16,6 +16,7 @@ import { SFX_IDS, SFX_PACKS, packCues, sfxCue } from '@/content/audio/sfxCatalog
 import { SFX_PROMPTS } from '../scripts/audio/sfx-prompts.mjs';
 import { ENEMY_KINDS } from '@/core/types';
 import { SPINE_ROSTERS } from '@/config/worldgraph';
+import { PENDING_SFX_RECORDING } from './pendingSfx';
 
 const ROOT = join(__dirname, '..');
 const SRC = join(ROOT, 'src');
@@ -31,7 +32,9 @@ for (const f of walk(ASSETS)) {
   if (!m) continue;
   filesOnDisk.set(m[1], [...(filesOnDisk.get(m[1]) ?? []), f]);
 }
-const hasFiles = (id: string): boolean => (filesOnDisk.get(id)?.length ?? 0) > 0;
+/** Cues awaiting their recording (tests/pendingSfx.ts): in the catalog with a prompt and a fallback, no takes yet. */
+const PENDING = new Set<string>(PENDING_SFX_RECORDING);
+const hasFiles = (id: string): boolean => (filesOnDisk.get(id)?.length ?? 0) > 0 || PENDING.has(id);
 
 const srcFiles = walk(SRC).filter((f) => f.endsWith('.ts'));
 const read = (f: string): string => readFileSync(f, 'utf8');
@@ -62,6 +65,13 @@ describe('the sampled sound catalog', () => {
     expect(missing).toEqual([]);
     const unresolved = SFX_IDS.filter((id) => sfxUrls(id).length !== (filesOnDisk.get(id)?.length ?? 0));
     expect(unresolved).toEqual([]);
+  });
+
+  it('lists as pending only cues that really have no takes yet (so the list cannot rot)', () => {
+    for (const id of PENDING_SFX_RECORDING) {
+      expect(isSfxId(id), id).toBe(true);
+      expect(filesOnDisk.get(id)?.length ?? 0, id + ' has files: take it off tests/pendingSfx.ts').toBe(0);
+    }
   });
 
   it('keeps no stray files that no cue owns', () => {
@@ -209,7 +219,7 @@ describe('audition entries', () => {
     expect(AUDITION_ENTRIES.length).toBe(SFX_IDS.length);
     for (const e of AUDITION_ENTRIES) {
       expect(e.prompt.length, e.id).toBeGreaterThan(10);
-      expect(e.urls.length, e.id).toBeGreaterThan(0);
+      if (!PENDING.has(e.id)) expect(e.urls.length, e.id).toBeGreaterThan(0);
       expect(e.group.startsWith('SFX')).toBe(true);
       expect(isSfxId(e.id as SfxId)).toBe(true);
     }

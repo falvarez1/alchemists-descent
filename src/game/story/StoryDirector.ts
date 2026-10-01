@@ -144,7 +144,16 @@ export class StoryDirector implements StoryApi {
         if (!this.aside('chain', chain >= 3) && !this.aside('bowled', cause === 'bowled')) this.aside('alchemy');
       }),
       on('waystoneLit', () => { this.aside('waystone'); }),
+      // A floor's lock (world/locks): the Docent's word the first time its machine is in sight, and when the Works relent.
+      on('lockChanged', ({ kind, phase }) => {
+        if (phase === 'seen') {
+          if (kind === 'gasbell') this.aside('lockGasBell');
+          else if (kind === 'weir') this.aside('lockWeir');
+          else if (kind === 'crucible') this.aside('lockCrucible');
+        } else if (phase === 'relented') this.aside('lockRelent');
+      }),
       on('recipeBrewed', () => { this.aside('brew'); }),
+      on('cauldronView', (view) => { if (view.visible) this.aside('kettle'); }),
       on('flaskDry', () => { this.aside('flask'); }),
       on('lanternHooded', ({ hooded, quiet }) => { if (hooded && !quiet) this.aside('hood'); }),
       on('eyeshineCaught', () => { this.aside('eyeshine'); }),

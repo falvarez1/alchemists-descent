@@ -2,7 +2,7 @@ import type { SfxId } from '@/content/audio/sfxCues';
 import type { EventMap } from '@/core/events';
 import type { Ctx, GameParams, ParticleOpts } from '@/core/types';
 import { reseedSimChunk, simRandom } from '@/core/simRandom';
-import { Cell, isLiquid } from '@/sim/CellType';
+import { Cell, isElixir, isLiquid } from '@/sim/CellType';
 import { canDryBloodOnSurface, stainCell } from '@/sim/stains';
 import { handleGas, handleMarshGas } from '@/sim/elements/gas';
 import { maybeReact, refreshSecretReaction } from '@/sim/reactions';
@@ -292,8 +292,7 @@ export class Participant {
           else if (type === Cell.Ash) handleAsh(ctx, x, y);
           else if (type === Cell.Toxic || type === Cell.Healium || type === Cell.Teleportium) handleExoticLiquid(ctx, x, y, type);
           else if (
-            type === Cell.Blood || type === Cell.Slime || type === Cell.ElixirLife ||
-            type === Cell.ElixirLevity || type === Cell.ElixirStone
+            type === Cell.Blood || type === Cell.Slime || isElixir(type)
           ) {
             if (type === Cell.Blood) {
               if (simRandom() < 0.10) {

@@ -401,7 +401,7 @@ export interface CarveAvoid {
 }
 
 /** Ledger labels of sealed features (the light-puzzle intrusion guard shares it). */
-export const SEALED_LABEL = /^(encounter-lair|sump|light-|cold-|glass-|warden-|footing-)/; // + the second doors' rooms and guardian halls, and every fixture's footing (world/fixtureFooting)
+export const SEALED_LABEL = /^(encounter-lair|sump|light-|cold-|glass-|warden-|footing-|lock-)/; // + the second doors' rooms and guardian halls, every fixture's footing (world/fixtureFooting) and every floor's lock chamber (world/locks)
 
 /** The sealed footprints reserved so far: what every later tunnel routes around. */
 export function sealedFootprints(ledger: PlacementLedger): CarveAvoid[] {

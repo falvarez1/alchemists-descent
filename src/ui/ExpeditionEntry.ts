@@ -8,6 +8,7 @@ import { openFighterRoster } from '@/ui/FighterPick';
 import { FIGHTER_DEFS, fighterPortraitUrl } from '@/content/fighters';
 import type { FighterId } from '@/content/fighters';
 import { KIT_DEFS, KIT_ORDER } from '@/content/kits';
+import { MAX_MUTATORS, MUTATOR_DEFS, MUTATOR_ORDER, cleanMutators, mutatorNames, type MutatorId } from '@/content/mutators';
 import { DIFFICULTY, DIFFICULTY_ORDER } from '@/config/difficulty';
 import { BASE_DIFFICULTY, DIFFICULTY_BLURBS, difficultyUnlockHint, isDifficultyOpen, openDifficulty } from '@/config/difficultyLadder';
 import { getBindings, keyLabel } from '@/input/bindings';
@@ -17,6 +18,10 @@ import { launchLine } from '@/content/launchLines';
 import { TitleMenu, type MenuCue } from '@/ui/title/TitleMenu';
 import { SeedPage, type ChosenSeed } from '@/ui/title/SeedPage';
 import {
+  complicationDetail,
+  complicationsDetail,
+  complicationsTotal,
+  complicationsValue,
   continueLine,
   cycleDifficulty,
   cycleFighter,
@@ -25,8 +30,10 @@ import {
   difficultyDetail,
   fighterDetail,
   kitDetail,
+  loadMark,
   seedDetail,
   seedValue,
+  toggleComplication,
   type ContinueFacts,
   type DailyFacts,
   type MenuItem,
@@ -64,6 +71,11 @@ export class ExpeditionEntry {
   private selectedDifficulty: Difficulty = BASE_DIFFICULTY;
   private bestVictory = 0;
   private chosenSeed: ChosenSeed | null = null;
+  /** The complications chosen for the next descent (remembered by the profile), and what today's carries. */
+  private mutators: MutatorId[] = [];
+  private todayMutators: MutatorId[] = [];
+  /** A swap or a refusal worth saying, shown under the complications list until the next change. */
+  private complicationsNote = '';
   private daily: DailyFacts | null = null;
   private workshopUnlocked = false;
 
@@ -120,6 +132,10 @@ export class ExpeditionEntry {
     menu.register({ id: 'descent', title: 'Prepare your descent', eyebrow: 'New descent', focus: 'descend', items: () => [...this.descentItems(), back()] });
     menu.register({ id: 'case', title: 'Your case', eyebrow: 'New descent', focus: () => `kit-${this.selectedKit}`, items: () => [...this.caseItems(), back()] });
     menu.register({ id: 'difficulty', title: 'Difficulty', eyebrow: 'New descent', focus: () => `difficulty-${this.selectedDifficulty}`, items: () => [...this.difficultyItems(), back()] });
+    menu.register({
+      id: 'complications', title: 'Complications', eyebrow: 'New descent', items: () => [...this.complicationItems(), back()],
+      note: () => this.complicationsPageNote(),
+    });
     menu.register({ id: 'seed', title: 'Seed', eyebrow: 'New descent', items: () => [...this.seedItems(), back()], body: () => this.seed.body(), lead: () => this.seed.input });
     menu.register({ id: 'extras', title: 'Extras', items: () => [...this.extrasItems(), back()] });
     menu.register({ id: 'workshops', title: 'Workshops', items: () => [...this.workshopItems(), back()] });
@@ -175,6 +191,7 @@ export class ExpeditionEntry {
     const fighter = this.selectedFighter ? FIGHTER_DEFS[this.selectedFighter] : null;
     const tier = DIFFICULTY[this.selectedDifficulty];
     const recap = [kit.short, fighter ? fighter.name : CLASSIC_COPY.name, tier.name];
+    if (this.mutators.length > 0) recap.push(`${this.mutators.length} complication${this.mutators.length > 1 ? 's' : ''}`);
     if (this.chosenSeed) recap.push(`seed ${this.chosenSeed.seed >>> 0}`);
     return [
       {
@@ -195,6 +212,11 @@ export class ExpeditionEntry {
         detail: difficultyDetail(this.selectedDifficulty, this.bestVictory),
         activate: () => this.menu.push('difficulty'),
         step: (dir) => this.setDifficulty(cycleDifficulty(this.bestVictory, this.selectedDifficulty, dir)),
+      },
+      {
+        id: 'complications', label: 'Complications', kind: 'choice', value: complicationsValue(this.mutators), icon: { kind: 'text', text: '±' },
+        detail: complicationsDetail(this.mutators),
+        activate: () => { this.complicationsNote = ''; this.menu.push('complications'); },
       },
       {
         id: 'seed', label: 'Seed', kind: 'choice', value: seedValue(this.chosenSeed), icon: { kind: 'text', text: '#' },
@@ -236,6 +258,43 @@ export class ExpeditionEntry {
         activate: () => { this.setDifficulty(tier); this.menu.pop(); },
       };
     });
+  }
+
+  private complicationItems(): MenuItem[] {
+    const full = this.mutators.length >= MAX_MUTATORS;
+    const items = MUTATOR_ORDER.map((id): MenuItem => {
+      const def = MUTATOR_DEFS[id];
+      const on = this.mutators.includes(id);
+      return {
+        id: `comp-${id}`, label: def.name, kind: 'toggle', checked: on, locked: full && !on,
+        value: loadMark(def.weight),
+        attrs: { 'data-mutator': id, 'data-weight': String(def.weight) },
+        detail: complicationDetail(id, this.mutators),
+        activate: () => this.toggleComplication(id),
+      };
+    });
+    if (this.mutators.length > 0) {
+      items.push({ id: 'clear', label: 'Clear all', kind: 'action', attrs: { 'data-comp': 'clear' }, activate: () => this.setMutators([], '') });
+    }
+    return items;
+  }
+
+  private complicationsPageNote(): string {
+    const today = this.todayMutators.length > 0 ? ` Today’s descent carries ${mutatorNames(this.todayMutators)}, set by the date; it ignores this choice.` : '';
+    return `${this.complicationsNote || complicationsTotal(this.mutators)}${today}`;
+  }
+
+  private toggleComplication(id: MutatorId): void {
+    const result = toggleComplication(this.mutators, id);
+    if (result.refused) { this.complicationsNote = result.note; this.menu.refresh(); return; }
+    this.setMutators(result.chosen, result.note);
+  }
+
+  private setMutators(chosen: readonly MutatorId[], note: string): void {
+    this.mutators = cleanMutators(chosen);
+    this.complicationsNote = note;
+    this.ctx.run?.chooseMutators(this.mutators);
+    this.menu.refresh();
   }
 
   private seedItems(): MenuItem[] {
@@ -364,7 +423,10 @@ export class ExpeditionEntry {
     this.selectedFighter = view?.lastFighter ?? null;
     this.bestVictory = view?.bestVictoryDifficulty ?? 0;
     this.selectedDifficulty = openDifficulty(view?.lastDifficulty ?? BASE_DIFFICULTY, this.bestVictory);
-    this.daily = view ? { today: view.today, best: view.todayBest ? { victory: view.todayBest.victory, floor: view.todayBest.floor, timeMs: view.todayBest.timeMs } : null } : null;
+    this.mutators = cleanMutators(view?.lastMutators ?? []);
+    this.todayMutators = cleanMutators(view?.todayMutators ?? []);
+    this.complicationsNote = '';
+    this.daily = view ? { today: view.today, best: view.todayBest ? { victory: view.todayBest.victory, floor: view.todayBest.floor, timeMs: view.todayBest.timeMs } : null, carries: mutatorNames(this.todayMutators) } : null;
     // The material sandbox opens to players once a first run has ended.
     this.workshopUnlocked = view?.workshopUnlocked === true;
     this.seed.show(this.chosenSeed);
@@ -443,7 +505,7 @@ export class ExpeditionEntry {
     if (kind === 'continue' || !ctx.run) {
       return ctx.levels.startRun(ctx, { mode: 'normal', worldSource: 'campaign', continueSave: kind === 'continue', loadout: 'fresh' });
     }
-    return ctx.run.startNewRun(ctx, { kit: this.selectedKit, daily: kind === 'daily', difficulty: this.selectedDifficulty, seed, fighter: this.selectedFighter });
+    return ctx.run.startNewRun(ctx, { kit: this.selectedKit, daily: kind === 'daily', difficulty: this.selectedDifficulty, seed, fighter: this.selectedFighter, mutators: this.mutators });
   }
 
   dispose(): void {
