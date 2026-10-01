@@ -50,6 +50,13 @@ export interface MutatorMods {
   gravity: number;
   /** The cave's ambient light floor. */
   ambient: number;
+  /**
+   * A floor under the DESIGNED darkness of every campaign floor (0 = the floors as designed, 1 = black): the base
+   * darkness (config/darkness) is raised to at least this, so the lantern, a fire and the eyeshine are what light
+   * the way, and a creature's sight and the lantern's reach read it too. Unlike the others it composes by max, not
+   * by product, and 0 (not 1) is untouched. Read by core/darkness through `darkMapFor`.
+   */
+  darkness: number;
   /** How readily fuel catches (the fixed fuel list: wood, vines, leaves, grass, oil, coal...). */
   flammability: number;
 }
@@ -66,6 +73,7 @@ export const NEUTRAL_MODS: Readonly<MutatorMods> = Object.freeze({
   gold: 1,
   gravity: 1,
   ambient: 1,
+  darkness: 0,
   flammability: 1,
 });
 
@@ -162,7 +170,7 @@ export const MUTATOR_DEFS = {
     regulation: 'The Guild has economised on lighting. Your lantern, your spells and whatever is on fire will have to do.',
     weight: 1,
     ladder: true,
-    mods: { ambient: 0.45 },
+    mods: { ambient: 0.6, darkness: 0.7 },
   },
   famine: {
     id: 'famine',
@@ -274,7 +282,11 @@ export function composeMutatorMods(ids: readonly string[] | null | undefined): R
   for (const id of ids) {
     const mods = mutatorDef(id)?.mods;
     if (!mods) continue;
-    for (const key of Object.keys(mods) as Array<keyof MutatorMods>) out[key] *= mods[key] ?? 1;
+    for (const key of Object.keys(mods) as Array<keyof MutatorMods>) {
+      // A darkness floor composes by max (0 is untouched); every other dial is a multiplier on what is there.
+      if (key === 'darkness') out.darkness = Math.max(out.darkness, mods.darkness ?? 0);
+      else out[key] *= mods[key] ?? 1;
+    }
   }
   const frozen = Object.freeze(out);
   modCache.set(ids, frozen);

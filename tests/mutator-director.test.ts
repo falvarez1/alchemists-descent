@@ -74,7 +74,7 @@ describe('the tuning clone', () => {
     expect(h.ctx.params.global).not.toBe(GLOBAL_PARAMS);
     expect(h.ctx.params.materials[Cell.Wood].flammability).toBeCloseTo(dryShipped() * 2.4);
     expect(h.ctx.params.materials[Cell.Oil].igniteChance!).toBeGreaterThan(MATERIAL_PARAM_DEFAULTS[Cell.Oil].igniteChance!);
-    expect(h.ctx.params.global.ambient).toBeCloseTo(GLOBAL_PARAM_DEFAULTS.ambient * 0.45);
+    expect(h.ctx.params.global.ambient).toBeCloseTo(GLOBAL_PARAM_DEFAULTS.ambient * 0.6);
     // ...a fuel that was already as flammable as can be stays a probability, never above one.
     for (const m of Object.values(h.ctx.params.materials)) if (m.flammability !== undefined) expect(m.flammability).toBeLessThanOrEqual(1);
     // The shared objects are as shipped.

@@ -156,6 +156,15 @@ describe('the dials', () => {
     expect(mutatorMods({ mutators: ['famine'] }).healing).toBeCloseTo(0.5);
     expect(mutatorMods({ mutators: ['dark-works'] }).ambient).toBeLessThan(1);
   });
+
+  it('Dark Works raises the designed-darkness floor, which composes by max and is 0 (not 1) when untouched', () => {
+    expect(NEUTRAL_MODS.darkness).toBe(0);
+    expect(mutatorMods({ mutators: ['dark-works'] }).darkness).toBeGreaterThan(0.5);
+    expect(mutatorMods({ mutators: ['tinderbox', 'wet-floors'] }).darkness).toBe(0);
+    // Two floors of darkness would not stack to black: the deeper one stands.
+    const deeper = composeMutatorMods(['dark-works', 'dark-works']);
+    expect(deeper.darkness).toBe(mutatorMods({ mutators: ['dark-works'] }).darkness);
+  });
 });
 
 describe('the daily table', () => {

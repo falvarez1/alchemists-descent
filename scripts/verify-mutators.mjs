@@ -432,8 +432,8 @@ async function sectionLight() {
   const plain = await lumaAt([]);
   const dark = await lumaAt(['dark-works']);
   console.log(`   mean luma plain ${plain.luma.toFixed(3)} (ambient ${plain.ambient}), dark works ${dark.luma.toFixed(3)} (ambient ${dark.ambient.toFixed(3)})`);
-  check('the ambient floor is lowered for the run', dark.ambient < plain.ambient * 0.6, JSON.stringify({ plain, dark }));
-  check('and the picture is measurably darker at the same spot of the same floor', dark.luma < plain.luma * 0.85, JSON.stringify({ plain, dark }));
+  check('the ambient floor is lowered for the run', dark.ambient < plain.ambient * 0.65, JSON.stringify({ plain, dark }));
+  check('and the picture is measurably darker at the same spot of the same floor', dark.luma < plain.luma * 0.7, JSON.stringify({ plain, dark }));
 }
 
 /* ============================== short rations ============================== */

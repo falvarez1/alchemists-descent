@@ -1,4 +1,5 @@
 import type { Ctx, LightQueryApi } from '@/core/types';
+import { mutatorMods } from '@/content/mutators';
 import { darkMapFor, openAtCell, renderOpenLut, sampleDarkMap } from '@/core/darkness';
 import { LIGHT_CLAMP, renderAmbient } from '@/render/lightingModel';
 
@@ -60,7 +61,7 @@ export class LightQuery implements LightQueryApi {
         : 1;
       L = Math.max(f.lightR[i], f.lightG[i], f.lightB[i]);
     } else {
-      const d = sampleDarkMap(darkMapFor(this.ctx.levels?.current), x, y);
+      const d = sampleDarkMap(darkMapFor(this.ctx.levels?.current, mutatorMods(this.ctx.state).darkness), x, y);
       open = renderOpenLut(this.ctx.state.highReadability === true)[Math.round(d * 255)];
     }
     return Math.min(2, renderAmbient(this.ctx) * open + Math.min(LIGHT_CLAMP, L));
@@ -73,6 +74,6 @@ export class LightQuery implements LightQueryApi {
   }
 
   darkness(x: number, y: number): number {
-    return sampleDarkMap(darkMapFor(this.ctx.levels?.current), x, y);
+    return sampleDarkMap(darkMapFor(this.ctx.levels?.current, mutatorMods(this.ctx.state).darkness), x, y);
   }
 }
