@@ -718,7 +718,7 @@ async function sectionLedger() {
     meta: JSON.parse(localStorage.getItem('alchemists-descent-meta') ?? '{}'),
   }));
   check('the ledger shows what the run carried as a chip row', JSON.stringify(led.chips) === JSON.stringify(['Tinderbox', 'Glass Cannon']), JSON.stringify(led.chips));
-  check('the share line names them, after the tier', /^Breathing Works — Tinderbox \+ Glass Cannon — the Kiln quieted in/.test(led.share), led.share);
+  check('the share line names them, after the tier', /^Breathing Works — seed 424242 — Tinderbox \+ Glass Cannon — the Kiln quieted in/.test(led.share), led.share);
   check('a win under harder complications opens the next tier like any win', led.unlock.some((t) => /Conjurer \(III\) is open/.test(t)) && led.meta.bestVictoryDifficulty === 2, JSON.stringify({ unlock: led.unlock, best: led.meta.bestVictoryDifficulty }));
   check('but it does not set the fastest-victory record', led.meta.fastestVictoryMs === null || led.meta.fastestVictoryMs === undefined, String(led.meta.fastestVictoryMs));
   check('the ledger offers the choice for the next descent, starting from this one', /Complications: Tinderbox and Glass Cannon/.test(led.fold), led.fold);
@@ -748,31 +748,42 @@ async function sectionResume() {
   let page = await startRun(['gas-leak', 'wet-floors', 'hush']);
   await gotoFloor(page, 'd2');
   const before = await planOf(page);
-  const savedPlain = await page.evaluate(() => {
+  const savedPlain = await page.evaluate(async () => {
     const c = window.__game.ctx;
     c.state.debugTainted = false; // the probe only borrowed the console to reach floor 2; the save is what is under test
+    const debugActive = c.debug?.active === true;
     c.levels.saveExpedition(c);
-    const raw = localStorage.getItem('noita-expedition');
-    const save = raw ? JSON.parse(raw) : null;
-    return { has: !!save, runMutators: save?.run?.mutators ?? null, level: save?.currentId ?? null };
+    // The expedition is stored behind the async storage worker: wait for it to land.
+    for (let k = 0; k < 60 && !c.levels.hasSavedExpedition(); k++) await new Promise((r) => setTimeout(r, 100));
+    return { has: c.levels.hasSavedExpedition(), runMutators: c.run.snapshotForSave()?.mutators ?? null, level: c.levels.current?.def.id ?? null, debugActive };
   });
   check('the expedition save carries the complications (no version bump)', savedPlain.has && JSON.stringify(savedPlain.runMutators) === JSON.stringify(['wet-floors', 'gas-leak', 'hush']) && savedPlain.level === 'd2', JSON.stringify(savedPlain));
   const waterBefore = await countCells(page, Cell.Water, { x0: 0, y0: 0, x1: 1599, y1: 1063 });
-  const url2 = page.url();
+  const url = page.url();
+  // A reload in the middle of a descent resumes it straight away (the game's own behaviour)...
   await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play' && window.__game.ctx.levels.current?.def.id === 'd2' && !window.__game.ctx.levels.transitioning, null, { timeout: 60000 });
+  await sleep(1500);
+  const auto = await snap(page);
+  check('a reload resumes the descent with them in force (state, run and the tuning clone)', JSON.stringify(auto.mutators) === JSON.stringify(['wet-floors', 'gas-leak', 'hush']) && JSON.stringify(auto.runMutators) === JSON.stringify(['wet-floors', 'gas-leak', 'hush']) && auto.wood < 0.07, JSON.stringify(auto));
+  // ...and a fresh tab (nothing in session storage) finds the title with Continue on it.
+  const ctxb = page.context();
+  await page.close();
+  page = await ctxb.newPage();
+  page.on('pageerror', (err) => pageErrors.push(String(err)));
+  await page.goto(url, { waitUntil: 'load', timeout: 60000 });
   await page.locator('#expedition-entry').waitFor({ state: 'visible', timeout: 60000 });
-  await sleep(700);
+  await sleep(900);
   await page.locator('#expedition-entry [data-entry="continue"]').click();
   await page.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play' && window.__game.ctx.levels.current?.def.id === 'd2' && !window.__game.ctx.levels.transitioning, null, { timeout: 60000 });
   await sleep(1500);
   const after = await snap(page);
-  check('Continue resumes with them in force (state, run and the tuning clone)', JSON.stringify(after.mutators) === JSON.stringify(['wet-floors', 'gas-leak', 'hush']) && after.wood < 0.07, JSON.stringify(after));
+  check('Continue from the title resumes with them in force too', JSON.stringify(after.mutators) === JSON.stringify(['wet-floors', 'gas-leak', 'hush']) && after.wood < 0.07, JSON.stringify(after));
   const planAfter = await planOf(page);
   check('the floor\'s vents come back exactly: derived from the same seed and pristine cells', JSON.stringify(planAfter.vents.map((v) => [v.kind, v.x, v.y])) === JSON.stringify(before.vents.map((v) => [v.kind, v.x, v.y])), `${planAfter.vents.length} vs ${before.vents.length}`);
   const waterAfter = await countCells(page, Cell.Water, { x0: 0, y0: 0, x1: 1599, y1: 1063 });
   check('and the puddles came back with the floor\'s cells, not planned twice', Math.abs(waterAfter - waterBefore) <= Math.max(20, waterBefore * 0.05), `${waterBefore} -> ${waterAfter}`);
   await page.screenshot({ path: `${outDir}/resumed.png` });
-  void url2;
   await page.context().close();
 }
 
