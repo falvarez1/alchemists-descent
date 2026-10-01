@@ -1550,7 +1550,8 @@ export class PlayerControl implements PlayerControlApi {
     const accel = Math.min((player.grounded ? 0.65 : 0.575) * accelK * this.statusSlow * pacedSpeedK * stanceK * wadeSlow, MOVE_ACCEL_CAP * accelK),
       // Cap the boosted top speed (Swift/God Mode) so it stays inside the
       // precision curve; crawl/crouch then scale down from the capped run.
-      maxRun = Math.min(2.85 * pacedSpeedK, lp.maxRunCap * body.run) * stanceK * wadeSlow;
+      // (a fast body raises the cap with its run; a slow one keeps the shipped cap, so a buff can still lift it to the top)
+      maxRun = Math.min(2.85 * pacedSpeedK, lp.maxRunCap * Math.max(1, body.run)) * stanceK * wadeSlow;
     // Soft-start: ease in from a standstill (a tap stays slow + precise), ramping
     // to full accel with speed. Applies in the air too, so a fresh airborne tap is
     // gentle while CARRIED speed (already near maxRun) still gets full control.

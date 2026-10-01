@@ -1,6 +1,7 @@
 import '@/styles/arena.css';
 import { FIGHTER_DEFS, FIGHTER_ORDER, type FighterId } from '@/content/fighters';
 import { ARENA_TIPS, FOE_PRESETS, YARD_STATIONS, type FoePreset, type YardStation } from '@/content/fighterArena';
+import { FIGHTER_TECHNIQUES } from '@/content/fighterTechniques';
 import type { AbilitySlot } from '@/core/fighters';
 import type { Ctx, EnemyKind } from '@/core/types';
 import { BODY_RANGES, NEUTRAL_BODY, bodyBars } from '@/core/fighterBody';
@@ -49,6 +50,13 @@ export class FighterArenaPanel {
   private readonly foesLabel = el('div', 'fa-label', 'Foes');
   private readonly barsEl = el('div', 'fa-bars');
   private readonly moveRead = el('div', 'fa-moveread');
+  /** The fighter's movement technique: its name and how, a Go button, its state and a count of uses. */
+  private readonly techEl = el('div', 'fa-tech');
+  private readonly techName = el('span', 'fa-tech-name');
+  private readonly techState = el('span', 'fa-status');
+  private readonly techUses = el('span', 'fa-uses');
+  private readonly techHow = el('div', 'fa-tip');
+  private readonly techGo = el('button', 'fa-where') as HTMLButtonElement;
   /** The movement readout: this run's peak speed, the last jump's apex and the airtime, read off the player each frame. */
   private readonly lab = { peak: 0, wasGrounded: true, startY: 0, minY: 0, airTicks: 0, lastApex: 0, lastAir: 0, lastPeakAtJump: 0 };
   private raf = 0;
@@ -90,7 +98,12 @@ export class FighterArenaPanel {
     const bodyCard = el('div', 'fa-section fa-body-card');
     const bodyHead = el('div', 'fa-label', 'Body');
     this.moveRead.title = 'Speed now, peak speed since you chose the fighter, the last jump (height in cells, time in the air), the levitation tank';
-    bodyCard.append(bodyHead, this.barsEl, this.moveRead);
+    this.techGo.type = 'button';
+    this.techGo.addEventListener('mousedown', (event) => event.preventDefault());
+    const techTop = el('div', 'fa-move-top');
+    techTop.append(el('kbd', 'key', '↯'), this.techName, this.techGo, this.techUses, this.techState);
+    this.techEl.append(techTop, this.techHow);
+    bodyCard.append(bodyHead, this.barsEl, this.moveRead, this.techEl);
     bodyHead.append(button('fa-mini', 'reset peak', () => { this.lab.peak = 0; this.lab.lastApex = 0; this.lab.lastAir = 0; }, 'Clear the peak speed and the last jump'));
 
     // ---- the three abilities
@@ -295,6 +308,11 @@ export class FighterArenaPanel {
     }
     this.root.style.setProperty('--fa-accent', id ? FIGHTER_DEFS[id].accent : '#d5b982');
     this.drawBody();
+    const tech = view.technique;
+    this.techState.textContent = tech.state === 'idle' ? '' : tech.state.toUpperCase();
+    this.techState.dataset.state = tech.state === 'idle' ? 'passive' : 'active';
+    this.techUses.textContent = tech.uses > 0 ? `✓ ×${tech.uses}` : '';
+    this.techEl.classList.toggle('done', tech.uses > 0);
     const p = ctx.player;
     const lab = this.lab;
     this.moveRead.textContent = `Speed ${(Math.abs(p.vx) * 60).toFixed(0)}  ·  peak ${(lab.peak * 60).toFixed(0)}  ·  last jump ${lab.lastApex.toFixed(0)} up, ${lab.lastAir.toFixed(2)} s  ·  LEV ${Math.round((p.levit / Math.max(1, p.maxLevit)) * 100)}%`;
@@ -362,6 +380,14 @@ export class FighterArenaPanel {
 
   /** The fighter changed: the names, the keys, the tips and where to go. */
   private fillFighter(id: FighterId | null, tacticalKey: string, ultimateKey: string): void {
+    const move = id ? FIGHTER_TECHNIQUES[id] : null;
+    this.techEl.hidden = move === null;
+    if (move) {
+      this.techName.textContent = move.name;
+      this.techHow.textContent = `${move.how} ${move.why}`;
+      this.techGo.textContent = `Go: ${STATION_SHORT[move.where]}`;
+      this.techGo.onclick = () => standFighterAt(this.ctx, move.where);
+    }
     this.name.textContent = id ? FIGHTER_DEFS[id].name : 'The Alchemist';
     this.title.textContent = id ? `${FIGHTER_DEFS[id].title} · ${FIGHTER_DEFS[id].role}` : 'No fighter: no passive, no abilities';
     const rows = this.rows;

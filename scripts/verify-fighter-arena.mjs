@@ -141,7 +141,7 @@ for (const id of IDS) {
   // every Go button stands the player in a real station
   let wentOk = true; const wentBad = [];
   for (let n = 0; n < 3; n++) {
-    await page.locator('#fighter-arena .fa-where').nth(n).click();
+    await page.locator('#fighter-arena .fa-move .fa-where').nth(n).click();
     await page.waitForTimeout(120);
     const label = tips[n].go.replace(/^Go: /, '');
     const p = await me();

@@ -205,3 +205,44 @@ out in under 75 ticks against Mara's 170. The weight is exactly `1 / mass` (a pu
 
 Not built yet: the ten movement techniques (P1b), a probe for the body under *effects* (a glide's lowered gravity), and the
 `jumpCut`, `coyote`, `buffer`, `stagger` and `invuln` fields have unit-level coverage only (no probe measures them).
+
+## 8. The ten techniques, built and measured (P1b, 2026-10-01)
+
+`src/fighters/techniques.ts` (the rules; a registry `techniqueFor(id)`), `content/fighterTechniques.ts` (the copy and where in the
+Yard to try each), a `technique` slot on the fighter system run once per tick after the kit (`FighterSystem.update`), and a
+`view.technique` (`name`, `state`, `uses`, `usedAt`) the panel and the probes read. Each reads the keys a person presses
+(`ctx.input.keys`), so a bot drives it identically; each bends the body through `setMod` (gravity, fall, jet burn, air control,
+move scale, friction) or a body-owning `startMove`, and never writes a position. The panel's Body card shows the technique, how to
+do it, a Go button, its live state and a count of uses.
+
+Measured in the Yard (`node scripts/verify-fighter-moves.mjs`: 19 checks, a paused world stepped tick by tick, each technique
+against the classic Alchemist doing the same thing):
+
+| Fighter | Technique | Fighter | Control (the Alchemist) |
+|---|---|---|---|
+| Ilyra | Cinder Dash (tap a direction twice in the air) | dashes 27 cells, costs 15 LEV, 3 Ember cells left | drifts 2 cells |
+| Brann | Piston Stomp (plunge with down) | the landing does 14.3 damage and stuns | the slam does 1 |
+| Sable | Wall-cling (fall against a wall holding toward it) | slides 14 cells in 24 ticks at 0.55/tick; jump kicks off at (2.8, -3.6) | falls 79 cells at 5/tick |
+| Mara | Glide (hold jump falling with the jet nearly dry) | falls at 1.13/tick, 35 cells in 50 ticks | 5/tick, 177 cells |
+| Kest | Wall-run (run at a wall, hold jump toward it) | climbs 153 cells for 10 LEV | the jet climbs 124 cells for 61 LEV |
+| Nox | Shadow-step (hidden: smoke, darkness) | runs 3.38 hidden against 2.71 in the open (1.25x) | none |
+| Edda | Hover (hold jump; up + jump holds the height) | rises at 1.1/tick (3.5x gentler than 2.89), holds within 8 cells, burns 23 LEV vs 50 | the jet rockets up |
+| Selene | Carry (jump right after landing) | relaunches at 3.67 after running at 3.28 (+12%) | relaunches at its run speed, 2.85 |
+| Rusk | Skid (brake from speed) | leaves Ember cells where he brakes | none |
+| Thorne | Root-walk (stand in moss, vines, leaves, roots) | 3.51 on a moss carpet vs 2.34 bare (1.5x) | none |
+
+Findings while building it:
+- **The jet is a free climb for everyone**, so a technique that only climbs (Kest's wall-run) is distinct by what it *saves* (the fuel)
+  and by the vault, not by reaching new heights. The identity of Mara's and Edda's techniques is the same: they are what the jet
+  becomes when the tank is dry (Glide) and when you want to *stay* (Hover).
+- **The run cap bound a buff.** `maxRun` was capped at `maxRunCap * body.run`, which made Thorne's Root-walk (move x1.5 on a body of
+  0.82) top out at 2.95. The cap is now `maxRunCap * max(1, body.run)`: a fast body raises it, a slow one keeps the shipped cap so a
+  buff can still lift it. The classic Alchemist's cap is unchanged (`body.run` is 1).
+- **The player's own stop eats speed before a technique sees it** (the `groundStopDecay` runs inside the player's update), so a
+  brake (Skid) reads *last tick's* speed.
+- **The Yard has lamp posts and a ruler on the floor of the walkways**: a probe must start where the body fits (`verify-fighter-moves`
+  starts on the bridge at x=1098 and uses the hall's left wall and the Bluff's right face).
+
+Not yet: a probe of the techniques under real keyboard input in the live loop (one real double-tap dash was checked by eye: a
+screenshot with real `KeyD` presses showed the dash and the panel's use count), Brann's and Mara's techniques against a *moving*
+rival (P3), and balance of any number here (P7).

@@ -99,15 +99,18 @@ export function makeBody(partial: Readonly<Partial<BodyProfile>> = {}): Readonly
   return Object.freeze({ ...NEUTRAL_BODY, ...partial });
 }
 
+/** One running effect multiplied into a body, in place. */
+export function applyBodyMod(out: BodyProfile, mod: Readonly<BodyMod>): void {
+  for (const f of BODY_MOD_FIELDS) {
+    const k = mod[f];
+    if (k !== undefined) out[f] *= k;
+  }
+}
+
 /** `out = base x product(mods)`, in place (the fighter system keeps one live body and never allocates per tick). */
 export function composeBody(out: BodyProfile, base: Readonly<BodyProfile>, mods: Iterable<Readonly<BodyMod>>): BodyProfile {
   for (const f of BODY_FIELDS) out[f] = base[f];
-  for (const mod of mods) {
-    for (const f of BODY_MOD_FIELDS) {
-      const k = mod[f];
-      if (k !== undefined) out[f] *= k;
-    }
-  }
+  for (const mod of mods) applyBodyMod(out, mod);
   return out;
 }
 

@@ -36,6 +36,10 @@
 .fa-bar[data-dir="up"] .fa-bar-fill { background: var(--fa-accent, #d5b982); }
 .fa-bar[data-dir="down"] .fa-bar-fill { background: #6f8b97; }
 .fa-bar-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--m-text-soft, #c9d1c2); }
+.fa-tech { margin-top: 5px; padding: 5px 0 0; border-top: 1px solid var(--m-line, #2f4548); }
+.fa-tech[hidden] { display: none; }
+.fa-tech.done .fa-tech-name { color: var(--m-good, #a6d5ab); }
+.fa-tech-name { flex: 1; min-width: 0; font-weight: 600; color: var(--m-text-soft, #c9d1c2); }
 .fa-moveread { font-size: 10.5px; color: var(--m-text-soft, #c9d1c2); font-variant-numeric: tabular-nums; }
 .fa-moves { display: grid; gap: 8px; }
 .fa-move { padding: 6px 9px 6px; border: 1px solid var(--m-line, #2f4548); border-left: 3px solid var(--m-line-strong, #52665d); background: rgba(14, 27, 32, 0.7); }
@@ -69,4 +73,4 @@
 
 body.touch-enabled #fighter-arena { display: none; }
 @media (max-height: 760px) { #fighter-arena { top: 64px; max-height: calc(100% - 120px); } }
-@media (max-height: 640px) { .fa-tip { display: none; } .fa-bars { display: none; } }
+@media (max-height: 640px) { .fa-tip { display: none; } .fa-bars { display: none; } .fa-tech .fa-tip { display: none; } }

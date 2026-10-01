@@ -20,7 +20,7 @@ and the decision log refer to it. Update the box in the same commit as the work.
 - [x] P1.6 panel: the Body card (bars vs the Alchemist) and the live movement readout (speed, peak, jump apex, airtime, LEV)
 - [x] P1.7 the hall: a height ruler beside the Bluff and a run lane with distance marks
 - [x] P1.8 `tests/fighter-bodies.test.ts` (table, ranges, guard rails) and `scripts/verify-fighter-bodies.mjs` (the roster orders as the table says; the control is unchanged)
-- [ ] P1.9 movement techniques (one task each; probe each): Ilyra Cinder Dash, Brann Piston Stomp, Sable Wall-cling, Mara Glide, Kest Wall-run, Nox Shadow-step, Edda Hover, Selene Carry, Rusk Skid, Thorne Root-walk
+- [x] P1.9 the ten movement techniques (`src/fighters/techniques.ts`, copy in `content/fighterTechniques.ts`; `verify-fighter-moves.mjs`, 19 checks): Cinder Dash, Piston Stomp, Wall-cling, Glide, Wall-run, Shadow-step, Hover, Carry, Skid, Root-walk
 - [ ] P1.10 the distinctness checklist (`ROSTER-IDENTITY.md`) passes on measured numbers
 
 ## P2: telemetry foundation

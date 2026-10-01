@@ -1,6 +1,8 @@
 import { FIGHTER_DEFS, isFighterId } from '@/content/fighters';
 import { bodyFor } from '@/content/fighterBodies';
-import { NEUTRAL_BODY, cloneBody, composeBody, type BodyProfile } from '@/core/fighterBody';
+import { FIGHTER_TECHNIQUES } from '@/content/fighterTechniques';
+import { NEUTRAL_BODY, applyBodyMod, cloneBody, composeBody, type BodyProfile } from '@/core/fighterBody';
+import { techniqueFor, type Technique } from '@/fighters/techniques';
 import type { FighterId } from '@/content/fighters';
 import { playerBlow } from '@/core/bossWard';
 import type {
@@ -78,6 +80,7 @@ export class FighterSystem implements FighterApi {
   id: FighterId | null = null;
   readonly view: FighterView = {
     id: null,
+    technique: { name: '', state: 'idle', uses: 0, usedAt: -1 },
     tactical: blankAbility('tactical'),
     ultimate: blankAbility('ultimate'),
     armor: 0,
@@ -111,6 +114,8 @@ export class FighterSystem implements FighterApi {
   private cConceal = 0;
   private cImmune: readonly string[] = NO_IMMUNITY;
   // ---- the body (core/fighterBody): the fighter's profile, the live composition with its running effects ----
+  /** This fighter's movement technique (fighters/techniques): its own way of getting around. */
+  private technique: Technique | null = null;
   private baseBody: Readonly<BodyProfile> = NEUTRAL_BODY;
   private readonly liveBody: BodyProfile = cloneBody(NEUTRAL_BODY);
   /** The health and levitation-tank factors already applied to the player, so a re-equip divides them out first. */
@@ -177,6 +182,9 @@ export class FighterSystem implements FighterApi {
     this.lastHp = -1;
     this.pendingTactical = this.pendingUltimate = -1;
     this.baseBody = bodyFor(id);
+    this.technique?.reset();
+    this.technique = techniqueFor(id);
+    this.view.technique.name = id ? FIGHTER_TECHNIQUES[id].name : '';
     this.recompute();
     this.applyBodyTank();
     if (id) {
@@ -271,6 +279,8 @@ export class FighterSystem implements FighterApi {
     } else this.charge = Math.min(1, this.charge + FIGHTER_TUNING.chargeTrickle);
 
     this.guard(() => this.kit?.tick?.());
+    // (small test contexts have no input: a technique reads the keys a person presses, so it has nothing to read there)
+    if (this.technique && ctx.input) this.guard(() => this.technique?.tick(this));
     this.lastHp = p.hp;
     this.syncView();
   }
@@ -404,7 +414,8 @@ export class FighterSystem implements FighterApi {
     }
     this.cMove = move; this.cClimb = climb; this.cDamage = dmg; this.cConceal = conceal; this.cStagger = stagger;
     this.cImmune = immune ?? NO_IMMUNITY;
-    composeBody(this.liveBody, this.baseBody, Array.from(this.mods.values(), (m) => m.mod));
+    composeBody(this.liveBody, this.baseBody, []);
+    for (const { mod } of this.mods.values()) applyBodyMod(this.liveBody, mod);
   }
 
   /** The fighter's health and levitation tank, scaled once per equip against what the player already has (the ratio is kept). */
@@ -749,6 +760,7 @@ export class FighterSystem implements FighterApi {
       this.guard(() => this.kit?.ultimateEnd?.());
     }
     this.guard(() => this.kit?.reset?.());
+    this.technique?.reset();
     for (let i = this.lights.length - 1; i >= 0; i--) this.dropLight(i);
     this.mods.clear();
     this.recompute();
@@ -843,6 +855,10 @@ export class FighterSystem implements FighterApi {
     v.armor = this.armor;
     v.armorMax = this.armorMax;
     v.meter = this.kit?.meter?.() ?? null;
+    const tech = this.technique;
+    v.technique.state = tech?.state ?? 'idle';
+    v.technique.uses = tech?.uses ?? 0;
+    v.technique.usedAt = tech?.usedAt ?? -1;
   }
 }
 

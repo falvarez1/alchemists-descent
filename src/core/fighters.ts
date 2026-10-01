@@ -43,9 +43,19 @@ export interface FighterMeter {
   max: number;
 }
 
+/** What the fighter's movement technique is doing (docs/arena/ROSTER-IDENTITY.md): the panel and the probes read it. */
+export interface TechniqueView {
+  name: string;
+  /** 'idle' when nothing, else the technique's own word ('dashing', 'clinging', 'gliding', 'wallrun', 'rooted'...). */
+  state: string;
+  uses: number;
+  usedAt: number;
+}
+
 export interface FighterView {
   /** null = the classic Alchemist. */
   id: FighterId | null;
+  technique: TechniqueView;
   tactical: AbilityView;
   ultimate: AbilityView;
   /** Absorbed-before-health pool (armor / overshield), 0 when the fighter has none. */
