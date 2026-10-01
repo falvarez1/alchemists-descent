@@ -22,6 +22,9 @@ function spine(c: LookCtx, side: number, up: number): [number, number] {
   return [c.s.hip.x + vx * up + c.f * -vy * side, c.s.hip.y + vy * up + c.f * vx * side];
 }
 
+/** Where the coat ends: just below the knee, so the navy trousers and boots show under it. */
+function hemLine(c: LookCtx): number { return Math.max(c.s.backFoot.y, c.s.frontFoot.y) - 3.2 + c.s.crouch * 1.2; }
+
 /** Far arm and leg, rear coat and the hair that falls behind the shoulder; then the halo behind the head. */
 function back(c: LookCtx): void {
   const { r, s, costume } = c;
@@ -53,7 +56,7 @@ function halo(c: LookCtx): void {
   for (let i = 0; i < N; i++) {
     const a = (i / N) * Math.PI * 2;
     const [x, y] = P(Math.cos(a) * rx, Math.sin(a) * ry);
-    r.dot(x, y, HALO, Math.sin(a + 2.3) > 0.2 ? 3 : 2, Z);
+    r.dot(x, y, HALO, Math.sin(a + 2.3 + Math.sin(frame * 0.04) * 0.6) > 0.2 ? 3 : 2, Z);
   }
   // Rays: a long one straight up, four short ones on the diagonals.
   const ray = (ang: number, from: number, to: number, tone: number): void => {
@@ -76,14 +79,21 @@ function torso(c: LookCtx): void {
   r.capsule(mid.x, mid.y, 2.2, s.chest.x, s.chest.y, 2.5, 0, 0.5, WHITE, { group: 1 });
   r.shade(s.hip.x - f * 1.2 + (s.chest.x - s.hip.x) * 0.5, mid.y, 1.2, 3.2, s.lean, -0.8, 1);
   // The coat skirt, hem just below the knee so the navy legs and boots show under it.
-  const hemY = Math.max(s.backFoot.y, s.frontFoot.y) - 1.7 + s.crouch * 1.2;
+  const hemY = hemLine(c);
   const sway = (s.frontFoot.x - s.backFoot.x) * 0.25;
-  r.poly([
-    s.hip.x - 2.3, s.hip.y - 0.4, s.hip.x + 2.3, s.hip.y - 0.4,
-    s.hip.x + 3.4 + sway + f * 0.8, hemY, s.hip.x - 3.4 + sway - f * 0.8, hemY,
-  ], 4, 1.2, WHITE, 0.15, { group: 1 });
-  r.stroke(s.hip.x - 3.2 + sway - f * 0.8, hemY - 0.1, s.hip.x + 3.2 + sway + f * 0.8, hemY - 0.1, GOLD, 2.4, true);
-  r.stroke(s.hip.x - 3.2 + sway - f * 0.8, hemY - 0.6, s.hip.x + 3.2 + sway + f * 0.8, hemY - 0.6, GOLD, 3.2, true);
+  if (s.kind === 'stand') {
+    r.poly([
+      s.hip.x - 2.3, s.hip.y - 0.4, s.hip.x + 2.3, s.hip.y - 0.4,
+      s.hip.x + 3.4 + sway + f * 0.8, hemY, s.hip.x - 3.4 + sway - f * 0.8, hemY,
+    ], 4, 1.2, WHITE, 0.15, { group: 1 });
+    r.stroke(s.hip.x - 3.2 + sway - f * 0.8, hemY - 0.1, s.hip.x + 3.2 + sway + f * 0.8, hemY - 0.1, GOLD, 2.4, true);
+    r.stroke(s.hip.x - 3.2 + sway - f * 0.8, hemY - 0.6, s.hip.x + 3.2 + sway + f * 0.8, hemY - 0.6, GOLD, 3.2, true);
+  } else {
+    // Crawling, climbing, fallen: the skirt follows the legs instead of hanging to a floor line.
+    const kx = (s.backKnee.x + s.frontKnee.x) / 2, ky = (s.backKnee.y + s.frontKnee.y) / 2;
+    r.capsule(s.hip.x, s.hip.y, 2.6, kx, ky, 2.3, 1.2, 1.2, WHITE, { group: 1 });
+    r.stamp(kx, ky, 0.5, 2.1, Math.atan2(ky - s.hip.y, kx - s.hip.x), GOLD, 2.4, true, 1);
+  }
   // The sash: a gold band at the waist with a clasp.
   const belt = { x: s.hip.x + c.ux * 0.14, y: s.hip.y + c.uy * 0.14 };
   r.stamp(belt.x, belt.y, 2.35, 0.65, Math.atan2(c.uy, c.ux) + Math.PI / 2, GOLD, 2, false, 1);
@@ -119,7 +129,7 @@ function head(c: LookCtx): void {
   }
   r.stroke(...H(0.5, 1.4), ...H(1.9, 1.3), HAIR, 1, true);
   if (s.mouth > 0.3) r.stamp(...H(1.65, -0.95), 0.4, 0.15 + s.mouth * 0.3, ht, SLOT.eye, 0, true, 11);
-  else r.stamp(...H(1.8, -0.9), 0.35, 0.15, ht, SLOT.blood, 1, false, 11);
+  else r.stamp(...H(1.8, -0.9), 0.35, 0.15, ht, SLOT.blood, 0, false, 11);
   r.shade(...H(1.0, -0.2), 0.9, 0.7, ht, 0.35, 11);
 }
 
@@ -129,6 +139,9 @@ function shoulders(c: LookCtx): void {
   r.ellipse(s.chest.x - f * 0.1, s.chest.y - 0.5, 2.7, 1.8, s.lean * 0.8, 2.8, GOLD, { group: G_PLATE });
   r.shade(s.chest.x - f * 0.1, s.chest.y + 0.5, 2.4, 0.6, s.lean, -0.9, G_PLATE);
   r.stamp(s.chest.x + f * 0.3, s.chest.y - 1.2, 1.0, 0.45, s.lean, GOLD, 4, false, G_PLATE);
+  // Below the hem the coat's tails read as navy trousers.
+  const hem = hemLine(c), feet = Math.max(s.backFoot.y, s.frontFoot.y) + 1;
+  if (s.kind === 'stand') for (const g of [4, 9]) r.stamp(s.hip.x, (hem + feet) / 2 + 0.3, 10, (feet - hem) / 2, 0, NAVY, 0, false, g);
   // Greave: gold on the near boot's top.
   const k = { x: s.frontFoot.x + (s.frontKnee.x - s.frontFoot.x) * 0.3, y: s.frontFoot.y + (s.frontKnee.y - s.frontFoot.y) * 0.3 };
   r.stamp(k.x, k.y, 1.15, 0.5, 0, GOLD, 2, false, 8);
@@ -151,26 +164,33 @@ function shield(c: LookCtx): void {
     cx += (s.backHand.x - (s.hip.x - f * 2.2)) * 0.14; cy += (s.backHand.y - (s.hip.y + 0.2)) * 0.1;
     ang = s.lean;
   }
-  const z = slung ? -2 : 5;
+  const z = slung ? -2 : 9.4;
   const ca = Math.cos(ang), sa = Math.sin(ang);
   const P = (x: number, y: number): [number, number] => [cx + (x * f) * ca - y * sa, cy + (x * f) * sa + y * ca];
-  const rx = 2.5 * k, ry = 3.1 * k;
+  const rx = 2.8 * k, ry = 3.5 * k;
   r.ellipse(cx, cy, rx, ry, ang, z, GOLD, { group: G_SHIELD, depth: 0.9 });
   const pane = (x: number, y: number, px: number, py: number, mat: number, tone: number): void => {
     const [qx, qy] = P(x * k, y * k);
     r.stamp(qx, qy, px * k, py * k, ang, mat, tone, false, G_SHIELD);
   };
-  pane(0, 0, 1.85, 2.4, GLASS_BLUE, 1);
+  pane(0, 0, 2.15, 2.8, GLASS_BLUE, 1);
   // Four petals around a boss, each its own colour of glass.
-  pane(-1.0, -1.2, 0.85, 1.0, GLASS_PALE, 2);
-  pane(1.0, -1.2, 0.85, 1.0, GLASS_DEEP, 1);
-  pane(-1.0, 1.2, 0.85, 1.0, GLASS_DEEP, 0);
-  pane(1.0, 1.2, 0.85, 1.0, GLASS_PALE, 1);
+  pane(-1.15, -1.4, 0.95, 1.15, GLASS_PALE, 2);
+  pane(1.15, -1.4, 0.95, 1.15, GLASS_DEEP, 1);
+  pane(-1.15, 1.4, 0.95, 1.15, GLASS_DEEP, 0);
+  pane(1.15, 1.4, 0.95, 1.15, GLASS_PALE, 1);
   // Lead lines: a cross and a saltire in gold.
   const line = (x0: number, y0: number, x1: number, y1: number): void => { const [ax, ay] = P(x0 * k, y0 * k), [bx, by] = P(x1 * k, y1 * k); r.stroke(ax, ay, bx, by, GOLD, 3, true); };
-  line(0, -2.6, 0, 2.6); line(-2.1, 0, 2.1, 0);
-  line(-1.6, -2.0, 1.6, 2.0); line(1.6, -2.0, -1.6, 2.0);
-  r.ellipse(cx, cy, 0.5 * k, 0.55 * k, 0, z + 3, HALO, { group: G_SHIELD, noOutline: true });
+  line(0, -3.0, 0, 3.0); line(-2.4, 0, 2.4, 0);
+  line(-1.8, -2.3, 1.8, 2.3); line(1.8, -2.3, -1.8, 2.3);
+  r.ellipse(cx, cy, 0.55 * k, 0.6 * k, 0, z + 3, HALO, { group: G_SHIELD, noOutline: true });
+  // A glint now and then sweeps across the glass.
+  const sweep = (c.frame % 240) / 80;
+  if (sweep < 1 && !dead) {
+    const u = (sweep * 2 - 1) * 3.6;
+    const [ax, ay] = P((u - 1.3) * k, -3.2 * k), [bx, by] = P((u + 1.3) * k, 3.2 * k);
+    r.stroke(ax, ay, bx, by, GLASS_PALE, 4, true);
+  }
 }
 
 /** The staff: a gold shaft with a caged gem at its head, lit warm. The head sits where the spell leaves. */

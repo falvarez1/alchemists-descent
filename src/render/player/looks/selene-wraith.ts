@@ -13,37 +13,39 @@ const GLINT = 10;
 const SUIT_D = SLOT.coatD, ORANGE = SLOT.trim, BRACER = SLOT.mantle, HAIR = SLOT.hair, SHAFT = SLOT.wood;
 const SCARF = EXTRA0, BLADE = EXTRA0 + 1, EYE_ICE = EXTRA0 + 2, GHOST = EXTRA0 + 3; // GHOST, GHOST + 1: near to far
 
-const G_PONY = 33, G_SCARF = 36, G_GHOST = 50, G_PAD = 37;
+const G_PONY = 33, G_SCARF = 36, G_GHOST = 255, G_PAD = 37;
 
-interface Pts { xs: number[]; ys: number[]; }
+const XS = new Float64Array(24), YS = new Float64Array(24), RS = new Float64Array(24);
 
 /**
- * A chain's shape moved to a new root and lengthened `extra` links past its tip: a short verlet chain becomes a
- * long ponytail or scarf that follows the same wind. Deterministic from `frame`; the flutter grows with speed.
+ * Draw a chain's shape moved to a new root and lengthened `extra` links past its tip, as a tapering ribbon: a
+ * short verlet chain becomes a long ponytail or scarf that follows the same wind. Deterministic from `frame`;
+ * the flutter grows with speed. `rot` swings the whole shape about its root (a ponytail stands off the head).
  */
-function streamer(c: LookCtx, chain: ReadonlyArray<{ x: number; y: number }>, root: readonly [number, number], extra: number, seg: number, droop: number, flutter: number, phase: number, rot = 0): Pts {
-  const ox = chain[0].x, oy = chain[0].y;
+function streamer(c: LookCtx, chain: ReadonlyArray<{ x: number; y: number }>, root: readonly [number, number], extraLinks: number, seg: number,
+  droop: number, flutter: number, phase: number, rotation: number, r0: number, r1: number, z: number, mat: number, group: number, far = false): void {
+  // The fallen keep only the chain's own (terrain-collided) shape: no lengthening, no swing off the body.
+  const extra = c.dead ? 0 : extraLinks, rot = c.dead ? 0 : rotation;
+  const ox = chain[0].x, oy = chain[0].y, n = chain.length;
   const rc = Math.cos(rot), rs = Math.sin(rot);
-  const xs = chain.map((p) => root[0] + (p.x - ox) * rc - (p.y - oy) * rs), ys = chain.map((p) => root[1] + (p.x - ox) * rs + (p.y - oy) * rc);
-  const n = chain.length;
-  let hx = xs[n - 1] - xs[n - 2], hy = ys[n - 1] - ys[n - 2];
+  for (let i = 0; i < n; i++) {
+    XS[i] = root[0] + (chain[i].x - ox) * rc - (chain[i].y - oy) * rs;
+    YS[i] = root[1] + (chain[i].x - ox) * rs + (chain[i].y - oy) * rc;
+  }
+  let hx = XS[n - 1] - XS[n - 2], hy = YS[n - 1] - YS[n - 2];
   let l = Math.hypot(hx, hy) || 1; hx /= l; hy /= l;
   const speed = Math.min(1, Math.abs(c.a._svx || c.a.vx || 0) / 2.1);
+  const total = n + extra;
   for (let k = 1; k <= extra; k++) {
     hy += droop;
     l = Math.hypot(hx, hy) || 1; hx /= l; hy /= l;
     const wob = Math.sin(c.frame * 0.2 + k * 1.1 + phase) * flutter * (0.3 + 0.7 * speed);
     const cs = Math.cos(wob), sn = Math.sin(wob);
-    const dx = hx * cs - hy * sn, dy = hx * sn + hy * cs;
-    xs.push(xs[xs.length - 1] + dx * seg); ys.push(ys[ys.length - 1] + dy * seg);
+    XS[n + k - 1] = XS[n + k - 2] + (hx * cs - hy * sn) * seg;
+    YS[n + k - 1] = YS[n + k - 2] + (hx * sn + hy * cs) * seg;
   }
-  return { xs, ys };
-}
-
-function ribbon(c: LookCtx, p: Pts, r0: number, r1: number, z: number, mat: number, group: number, far = false): void {
-  const n = p.xs.length, rs = new Float64Array(n);
-  for (let i = 0; i < n; i++) rs[i] = r0 + (r1 - r0) * (i / (n - 1));
-  c.r.tube(p.xs, p.ys, rs, n, z, mat, { group, far });
+  for (let i = 0; i < total; i++) RS[i] = r0 + (r1 - r0) * (i / (total - 1));
+  c.r.tube(XS, YS, RS, total, z, mat, { group, far });
 }
 
 /** The mercury echo: when she is fast, two ghosts of her pose trail behind and quicksilver streaks run off her body. */
@@ -56,7 +58,7 @@ function ghosts(c: LookCtx): void {
   const k = Math.min(1, (sp - 1.5) / 0.9);
   const o = { group: G_GHOST, noOutline: true };
   for (let i = 2; i >= 1; i--) {
-    const off = -dir * i * (3.6 + sp * 1.2);
+    const off = -dir * i * (3.2 + sp * 1.1);
     const lift = Math.sin(c.frame * 0.3 + i * 1.7) * 0.3;
     const X = (p: { x: number }): number => p.x + off;
     const Y = (p: { y: number }): number => p.y + lift;
@@ -92,15 +94,15 @@ function back(c: LookCtx): void {
   // The ponytail: tied high at the back of the head, it takes the shoulder chain's wind and stands out from the back.
   const speed = Math.min(1, Math.abs(c.a._svx || c.a.vx || 0) / 2.1);
   const tie = c.H(-1.9, 1.1);
-  const pony = streamer(c, costume.mantle.pts, tie, 5, 1.4, 0.16 * (1 - 0.7 * speed), 0.14, 0, f * (0.6 + 0.5 * speed));
-  ribbon(c, pony, 1.35, 0.3, -3.2, HAIR, G_PONY);
+  const lift = 0.6 + 0.5 * speed, dr = 0.16 * (1 - 0.7 * speed);
+  streamer(c, costume.mantle.pts, tie, 5, 1.4, dr, 0.14, 0, f * lift, 1.25, 0.25, -3.2, HAIR, G_PONY);
+  streamer(c, costume.mantle.pts, [tie[0] + f * 0.1, tie[1] + 0.35], 5, 1.35, dr * 1.15, 0.16, 1.3, f * (lift - 0.07), 0.95, 0.2, -3.3, HAIR, G_PONY);
+  streamer(c, costume.mantle.pts, [tie[0], tie[1] - 0.3], 5, 1.4, dr * 0.85, 0.15, 2.6, f * (lift + 0.07), 0.85, 0.2, -3.1, HAIR, G_PONY);
   r.ellipse(tie[0], tie[1], 0.95, 0.95, 0, -2.8, HAIR, { group: G_PONY });
-  // The scarf: its tail streams from the knot at the nape on the coat-tail chain, lengthened.
+  // The scarf: two tails stream from the knot at the nape on the coat-tail chains, lengthened.
   const knot = c.H(-1.4, -1.5);
-  const tail = streamer(c, costume.tails[0].pts, knot, 4, 1.5, 0.05 * (1 - speed), 0.22, 1.6, f * (0.3 + 0.75 * speed));
-  ribbon(c, tail, 1.2, 0.5, -3.4, SCARF, G_SCARF);
-  const tail2 = streamer(c, costume.tails[1].pts, [knot[0] + f * 0.4, knot[1] + 0.8], 3, 1.4, 0.07 * (1 - speed), 0.28, 3.1, f * (0.55 + 0.6 * speed));
-  ribbon(c, tail2, 0.9, 0.35, -3.6, SCARF, G_SCARF, true);
+  streamer(c, costume.tails[0].pts, knot, 4, 1.5, 0.05 * (1 - speed), 0.22, 1.6, f * (0.3 + 0.75 * speed), 1.2, 0.5, -3.4, SCARF, G_SCARF);
+  streamer(c, costume.tails[1].pts, [knot[0] + f * 0.4, knot[1] + 0.8], 3, 1.4, 0.07 * (1 - speed), 0.28, 3.1, f * (0.55 + 0.6 * speed), 0.9, 0.35, -3.6, SCARF, G_SCARF, true);
 }
 
 /** The suit's fittings: a chest strap with a buckle, an orange belt band. */
@@ -113,14 +115,14 @@ function torso(c: LookCtx): void {
   r.dot(bx, by, ORANGE, 4, 5);
   // The belt band and a thigh pouch.
   r.stamp(s.hip.x + c.ux * 0.12, s.hip.y + c.uy * 0.12, 2.3, 0.35, Math.atan2(c.uy, c.ux) + Math.PI / 2, ORANGE, 1.5, false, 1);
-  r.stamp(s.hip.x - f * 2.1, s.hip.y + c.uy * 0.12 + 0.8, 0.8, 0.85, 0, BRACER, 1, false, 6);
-  r.stamp(s.hip.x + f * 1.9, s.hip.y + c.uy * 0.12 + 0.6, 0.7, 0.8, 0, BRACER, 1, false, 6);
+  r.stamp(s.hip.x - f * 2.1, s.hip.y + c.uy * 0.12 + 0.8, 0.65, 0.75, 0, BRACER, 1, false, 6);
+  r.stamp(s.hip.x + f * 1.9, s.hip.y + c.uy * 0.12 + 0.6, 0.55, 0.7, 0, BRACER, 1, false, 6);
 }
 
 /** Knee guard and boot cuff on the near leg. */
 function shoulders(c: LookCtx): void {
   const { r, s, f } = c;
-  r.ellipse(s.frontKnee.x + f * 0.55, s.frontKnee.y, 0.85, 0.9, 0, 3.7, ORANGE, { group: G_PAD });
+  r.ellipse(s.frontKnee.x + f * 0.55, s.frontKnee.y, 0.7, 0.75, 0, 3.7, ORANGE, { group: G_PAD });
   const ft = s.frontFoot, kn = s.frontKnee;
   r.stamp(ft.x + (kn.x - ft.x) * 0.3, ft.y + (kn.y - ft.y) * 0.3, 1.15, 0.4, 0, ORANGE, 2, false, 8);
 }
@@ -159,7 +161,7 @@ function head(c: LookCtx): void {
 /** Orange elbow guard and a glove. */
 function front(c: LookCtx): void {
   const { r, s } = c;
-  r.ellipse(s.frontElbow.x, s.frontElbow.y, 0.75, 0.7, 0, 8.9, ORANGE, { group: G_PAD });
+  r.ellipse(s.frontElbow.x, s.frontElbow.y, 0.6, 0.55, 0, 8.9, ORANGE, { group: G_PAD });
 }
 
 /** The spear: a black shaft with an orange collar and a leaf of mercury light for a blade. */
@@ -187,11 +189,11 @@ export const look: FighterLook = {
     coat: { keys: [0x06080e, 0x0f1520, 0x1b2638, 0x2c3f58, 0x4c6684], gloss: 0.4, shine: 20, rim: 1.0, outline: 0x02040a },
     coatD: { keys: [0x04060a, 0x0a0f18, 0x131b28, 0x1f2c3e, 0x34475e], gloss: 0.3, shine: 18, rim: 0.8, outline: 0x02040a },
     // Bracers and pouches: burnt orange leather.
-    mantle: { keys: [0x2a1204, 0x6a3008, 0xb85a14, 0xe8802c, 0xffb868], gloss: 0.3, rim: 0.7, outline: 0x120802 },
+    mantle: { keys: [0x20100a, 0x4a2410, 0x8a4a1c, 0xc07430, 0xe8a460], gloss: 0.3, rim: 0.7, outline: 0x120802 },
     leather: { keys: [0x080a10, 0x151a26, 0x232c3c, 0x384860, 0x58708c], gloss: 0.35, rim: 0.8, outline: 0x03050a },
-    trim: { keys: [0x3a1400, 0x8a3a08, 0xe07018, 0xffa848, 0xffe0a0], gloss: 0.7, shine: 20, rim: 0.8, outline: 0x180800 },
+    trim: { keys: [0x2a1004, 0x6a2c08, 0xb8581a, 0xe8883a, 0xffc078], gloss: 0.7, shine: 20, rim: 0.8, outline: 0x180800 },
     skin: { keys: [0x3a3040, 0x806e7c, 0xc4b0b8, 0xe8d8d8, 0xfff2f0], gloss: 0.15, rim: 0.7, outline: 0x140e14 },
-    hair: { keys: [0x202638, 0x4e5c78, 0x8c9ab6, 0xc0ccdf, 0xeef2fc], gloss: 0.5, shine: 16, rim: 0.9, outline: 0x141a28 },
+    hair: { keys: [0x161c2c, 0x384560, 0x6a7a98, 0x98a8c4, 0xd0dcf0], gloss: 0.5, shine: 16, rim: 0.9, outline: 0x10162a },
     boot: { keys: [0x04060a, 0x0c1018, 0x182030, 0x2a3850], gloss: 0.5, shine: 16, rim: 0.7, outline: 0x020306 },
     wood: { keys: [0x0a0c12, 0x1a2230, 0x2e3c52, 0x4a607e], gloss: 0.6, shine: 22, rim: 0.7, outline: 0x040508 },
     glow: { keys: [0x103a6a, 0x3a90e0, 0x9ad0ff, 0xf0faff], emissive: 1, glow: 0x1a4a8a, glowK: 1 },
@@ -215,7 +217,7 @@ export const look: FighterLook = {
   wand: 'spear',
   mantle: false,
   pouches: true,
-  build: { limb: 0.86, torso: 0.9, head: 0.94 },
+  build: { limb: 0.8, torso: 0.82, head: 0.94 },
   replace: ['back', 'head'],
   extras: { back, torso, shoulders, head, front },
   drawWand: spear,

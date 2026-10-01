@@ -13,7 +13,7 @@ const ROBE = SLOT.coat, ROBE_D = SLOT.coatD, BRASS = SLOT.trim, SKIN = SLOT.skin
 const MOSS = EXTRA0, LEAF = EXTRA0 + 1, VINE = EXTRA0 + 2, ORB = EXTRA0 + 3, BONE = EXTRA0 + 4, VOID = EXTRA0 + 5;
 
 // Groups: 16 (the hat's) frosts like a hat and 10 like a mantle; 8/9/13 are the near leg, its tail and the near arm.
-const G_HOOD = 16, G_CAPE = 10, G_LEAF = 36;
+const G_HOOD = 16, G_CAPE = 10, G_LEAF = 36, G_VINE = 37;
 
 /** The hunch: his head rides forward and low of the shared skeleton's, under the cowl. */
 const HUNCH_SIDE = 1.1, HUNCH_UP = -0.85;
@@ -22,6 +22,15 @@ function hh(c: LookCtx, side: number, up: number): [number, number] { return c.H
 /** A leaf: a small pointed ellipse. */
 function leaf(c: LookCtx, x: number, y: number, ang: number, size: number, z: number, group = G_LEAF): void {
   c.r.ellipse(x, y, 0.95 * size, 0.5 * size, ang, z, LEAF, { group });
+}
+
+/** A thin briar growing out of the cloth, swaying a little, with a leaf at its tip and another along it. */
+function sprig(c: LookCtx, x: number, y: number, ang: number, len: number, z: number, phase: number): void {
+  const a = ang + Math.sin(c.frame * 0.04 + phase) * 0.14;
+  const ex = x + Math.cos(a) * len, ey = y + Math.sin(a) * len;
+  c.r.capsule(x, y, 0.32, ex, ey, 0.12, z, z, VINE, { group: G_VINE });
+  leaf(c, ex + Math.cos(a) * 0.6, ey + Math.sin(a) * 0.6, a, 1.0, z + 0.1);
+  leaf(c, x + (ex - x) * 0.55, y + (ey - y) * 0.55, a + 1.0, 0.8, z + 0.1);
 }
 
 function lerp(a: { x: number; y: number }, b: { x: number; y: number }, t: number): [number, number] { return [a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t]; }
@@ -118,6 +127,7 @@ function shoulders(c: LookCtx): void {
     const x = s.chest.x - f * (3.2 - i * 1.4), y = s.chest.y + 1.5 + (i % 2) * 0.6;
     r.capsule(x, y - 0.6, 0.75, x - f * 0.2, y + 1.0 + (i % 3) * 0.3, 0.12, 2.9, 2.9, MOSS, { group: G_CAPE });
   }
+  sprig(c, s.chest.x - f * 3.2, s.chest.y - 0.8, -Math.PI / 2 - f * 1.0, 2.6, 3.0, 2.1);
   leaf(c, s.chest.x - f * 2.6, s.chest.y - 1.9, -0.9 * f, 1.2, 3.2);
   leaf(c, s.chest.x - f * 1.0, s.chest.y - 2.2, 0.5 * f, 0.95, 3.2);
   leaf(c, s.chest.x + f * 0.9, s.chest.y + 1.5, 0.7 * f, 0.8, 3.2);
@@ -131,10 +141,10 @@ function head(c: LookCtx): void {
   limb(r, s.neck, { x: hx, y: hy }, 0.95, 1.0, 3, SKIN, 11);
   r.ellipse(hx, hy, 2.3, 2.45, ht, 4, SKIN, { group: 11 });
   r.ellipse(...hh(c, 2.0, -1.0), 0.9, 0.85, ht, 4.5, SKIN, { group: 11 });
-  r.ellipse(...hh(c, 1.1, 0.5), 2.3, 2.3, ht, 4.9, VOID, { group: 11 });
+  r.ellipse(...hh(c, 1.3, 0.6), 2.3, 2.5, ht, 4.9, VOID, { group: 11 });
   if (!s.eyesShut && !c.dead) {
-    r.dot(...hh(c, 1.7, 0.7), SLOT.glow, 3, 40);
-    r.dot(...hh(c, 0.7, 0.72), SLOT.glow, 2, 40);
+    r.dot(...hh(c, 2.0, 0.8), SLOT.glow, 3, 40);
+    r.dot(...hh(c, 0.9, 0.82), SLOT.glow, 2, 40);
   }
   r.stamp(...hh(c, 1.5, -1.6), 1.2, 0.55, ht, SKIN, 1, false, 11);
 }
@@ -144,12 +154,12 @@ function hood(c: LookCtx): void {
   const { r, s, costume, f } = c;
   const ht = s.headTilt;
   // The shell over the back of the head and the shoulders' nape.
-  r.ellipse(...hh(c, -1.5, 0.6), 2.6, 3.5, ht, 6.0, MOSS, { group: G_HOOD });
-  r.ellipse(...hh(c, -2.0, -1.1), 2.4, 2.4, ht, 5.8, ROBE_D, { group: G_HOOD });
+  r.ellipse(...hh(c, -2.0, 0.6), 2.5, 3.5, ht, 6.0, MOSS, { group: G_HOOD });
+  r.ellipse(...hh(c, -2.3, -1.1), 2.3, 2.4, ht, 5.8, ROBE_D, { group: G_HOOD });
   // The rim round the face, hooded forward over the brow.
-  const rim: Array<[number, number]> = [hh(c, -0.2, 3.4), hh(c, 1.6, 3.2), hh(c, 3.0, 1.7), hh(c, 3.2, -0.2), hh(c, 2.7, -1.9)];
+  const rim: Array<[number, number]> = [hh(c, -0.3, 3.7), hh(c, 1.5, 3.6), hh(c, 3.0, 2.5), hh(c, 3.5, 0.3), hh(c, 3.0, -1.8)];
   const xs = rim.map((p) => p[0]), ys = rim.map((p) => p[1]);
-  r.tube(xs, ys, [1.2, 1.25, 1.15, 0.95, 0.75], rim.length, 6.4, MOSS, { group: G_HOOD });
+  r.tube(xs, ys, [1.2, 1.2, 1.05, 0.85, 0.65], rim.length, 6.4, MOSS, { group: G_HOOD });
   r.shade(...hh(c, 1.3, 3.7), 1.8, 0.6, ht, 0.9, G_HOOD);
   r.shade(...hh(c, -1.9, 0.0), 1.2, 2.4, ht, -0.9, G_HOOD);
   // The peak, drooping on the crown chain.
@@ -162,7 +172,7 @@ function hood(c: LookCtx): void {
   // The bone cross at the brow, and a leaf at the temple.
   const [bx, by] = hh(c, 2.1, 2.5);
   r.stamp(bx, by, 0.28, 0.9, 0, BONE, 3, true, G_HOOD); r.stamp(bx, by - 0.1, 0.8, 0.26, 0, BONE, 3, true, G_HOOD);
-  leaf(c, ...hh(c, -1.6, 3.1), 0.6 * f, 1.0, 6.6, G_LEAF);
+  { const [sx, sy] = hh(c, -2.2, 2.6); sprig(c, sx, sy, -Math.PI / 2 - f * 0.8, 2.0, 6.6, 1.3); }
 }
 
 /** The staff: crooked briar-wood wound with a vine, leaves along it, a bud of green light cradled at the head. */
@@ -197,6 +207,11 @@ function staff(c: LookCtx): void {
   const [gx, gy] = P(11.7, 0), gs = 0.75 + glow * 0.35;
   r.ellipse(gx, gy, gs, gs * 0.9, ang, 9, ORB, { group: 14, noOutline: true });
   r.glowStamp(gx, gy, gs * 1.1, gs, ang, ORB, 3.0 + glow * 0.6, 1.0, 14);
+  // Spores drift up off the bud.
+  for (let i = 0; i < 2; i++) {
+    const ph = (frame * 0.012 + i * 0.5) % 1;
+    r.dot(gx + Math.sin(ph * 6.3 + i * 2.4) * 1.5, gy - 1.2 - ph * 5.5, ORB, ph < 0.5 ? 3 : 2, 21);
+  }
   if (a.firing) for (let k = 0; k < 3; k++) {
     const t = frame * 0.3 + k * 2.1;
     leaf(c, gx + Math.cos(t) * 2.0, gy + Math.sin(t) * 2.0, t, 0.8, 20, 14);
@@ -219,7 +234,7 @@ export const look: FighterLook = {
     rune: { keys: [0x1a4a08, 0x5ab818, 0xb0f050, 0xf0ffc0], emissive: 1, glow: 0x1a4a0c, glowK: 1 },
   }, [
     // Moss cloth (cloak and hood), leaf, vine, the bud's light, the bone cross, the hood's inner dark.
-    { keys: [0x08120a, 0x142a10, 0x26441a, 0x3e6226, 0x658c40], gloss: 0.05, rim: 0.7, outline: 0x050a04 },
+    { keys: [0x08120a, 0x122610, 0x213c18, 0x355624, 0x547a38], gloss: 0.05, rim: 0.7, outline: 0x050a04 },
     { keys: [0x10300c, 0x2a6a1c, 0x58a830, 0x9ad850, 0xd0f890], gloss: 0.25, rim: 0.8, outline: 0x061406 },
     { keys: [0x0c1408, 0x1e2c10, 0x38481c, 0x58702c, 0x80a040], gloss: 0.1, rim: 0.5, outline: 0x060a04 },
     { keys: [0x3a8a10, 0x90e030, 0xd8ff80, 0xffffff], emissive: 1, glow: 0x2a6a0c, glowK: 1.2 },
