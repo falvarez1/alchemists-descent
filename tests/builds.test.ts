@@ -683,6 +683,34 @@ describe('the build director: choices on the route', () => {
     expect(sanitizeBuildNotes({ altars: 'x', picks: ['spark', 'nonsense', 4], floorTicks: { 2: 'y' }, bySource: { tome: 7 } })).toMatchObject({ altars: 0, picks: ['spark'], floorTicks: { 2: 0 }, bySource: {} });
   });
 
+  it('an offer earned but not yet shown survives a save: the resumed run still gets its decision', () => {
+    const ctx = makeCtx();
+    const wands = new WandSystem(ctx);
+    ctx.events.emit('waystoneLit', { index: 0, depth: 2, levelId: 'd2' });
+    ctx.events.emit('levelChanged', { depth: 3, name: 'THE DROWNED CISTERNS' });
+    // saved in the gap between "earned" and "shown"
+    const snap = JSON.parse(JSON.stringify(wands.snapshotRuntimeState()));
+    expect(snap.build.owed).toEqual({ altar: 1, gift: 1 });
+    // the ledger and the report never see the queue
+    expect(wands.buildNotes().owed).toBeUndefined();
+
+    const ctx2 = makeCtx();
+    const resumed = new WandSystem(ctx2);
+    const offers = collect(ctx2, 'cardOfferRequested');
+    resumed.restoreRuntimeState(snap);
+    tick(ctx2, resumed, 200);
+    expect(offers.map((o) => o.source).sort()).toEqual(['altar', 'depth']);
+    // once shown, the debt is gone: a second save owes nothing
+    expect(resumed.snapshotRuntimeState().build?.owed).toBeUndefined();
+    // a save with nothing owed (and an old save) resumes quietly
+    const ctx3 = makeCtx();
+    const quiet = new WandSystem(ctx3);
+    const seen = collect(ctx3, 'cardOfferRequested');
+    quiet.restoreRuntimeState({ ...snap, build: { ...snap.build, owed: undefined } });
+    tick(ctx3, quiet, 200);
+    expect(seen).toHaveLength(0);
+  });
+
   it('writes lifetime counters to telemetry as decisions happen', () => {
     const ctx = makeCtx();
     const wands = new WandSystem(ctx);

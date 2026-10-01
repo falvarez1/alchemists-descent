@@ -294,8 +294,9 @@ export class Hud {
       });
     }));
 
-    this.disposers.push(ctx.events.on('deadCardCast', ({ text }) => {
-      this.deadCaption = { text, until: performance.now() + 5000 };
+    this.disposers.push(ctx.events.on('deadCardCast', ({ card, host }) => {
+      // The caption is one short line; the toast carries the whole sentence.
+      this.deadCaption = { text: `${CARD_DEFS[card].name} does nothing on ${CARD_DEFS[host].name}`, until: performance.now() + 5000 };
     }));
 
     // Descent meta layer: the objective line + short center toasts.

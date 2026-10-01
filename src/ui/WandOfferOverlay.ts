@@ -176,12 +176,15 @@ export class WandOfferOverlay {
         const stats = document.createElement('dl');
         stats.className = 'wand-offer-stats';
         for (const rowStat of preview.rows) {
+          // Each stat is its own dt/dd group so a narrow column wraps whole stats, never a label from its number.
+          const group = document.createElement('div');
           const dt = document.createElement('dt');
           dt.textContent = rowStat.label;
           const dd = document.createElement('dd');
           dd.className = rowStat.trend === 'same' ? '' : rowStat.trend;
           dd.textContent = rowStat.trend === 'same' ? rowStat.to : `${rowStat.from} → ${rowStat.to}`;
-          stats.append(dt, dd);
+          group.append(dt, dd);
+          stats.append(group);
         }
         button.appendChild(stats);
 

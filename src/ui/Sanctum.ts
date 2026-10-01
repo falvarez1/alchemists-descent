@@ -6,6 +6,7 @@ import {
   withDiscoveredCards,
 } from '@/combat/wands/rewardPools';
 import { getDiscoveredCards } from '@/combat/wands/cardDiscovery';
+import { makeFitter } from '@/combat/wands/cardFit';
 import { ARCHETYPE_FRAMES, pickFrameRack, requestWandOffer } from '@/combat/wands/wandFinds';
 import { renderBuildRecap } from '@/ui/buildRecapView';
 import type { CardId, Ctx, PerkId, SanctumApi } from '@/core/types';
@@ -622,7 +623,7 @@ export class Sanctum implements SanctumApi {
         cost: 160,
         act: (purchase) => {
           const pool = withDiscoveredCards(SANCTUM_LOST_PAGES_POOL, getDiscoveredCards());
-          const cards = buildCardOffer(pool, collectOwnedCards(ctx.wands), { ensureKind: 'projectile' });
+          const cards = buildCardOffer(pool, collectOwnedCards(ctx.wands), { ensureKind: 'projectile', dead: makeFitter(ctx.wands).dead });
           requestCardOffer(ctx, {
             source: 'sanctum',
             title: 'Lost pages',

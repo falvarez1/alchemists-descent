@@ -78,9 +78,16 @@ export function sanitizeBuildNotes(raw: unknown): BuildNotes {
   return out;
 }
 
+/** The offers that wait for a calm moment; each can be saved and re-queued. */
+type OwedKind = 'altar' | 'gift' | 'bossFrame' | 'altarFrame';
+const OWED_KINDS: readonly OwedKind[] = ['altar', 'gift', 'bossFrame', 'altarFrame'];
+/** Ticks before an offer owed by a resumed run is shown. */
+const RESUME_DELAY = 90;
+
 interface Pending {
   /** Not before this tick (ctx.state.frameCount). */
   at: number;
+  kind: OwedKind;
   run(): void;
 }
 
@@ -120,13 +127,22 @@ export class BuildDirector {
     return sanitizeBuildNotes(this.notes);
   }
 
+  /** The notes plus the offers still waiting, so a save written in the gap between "earned" and "shown" keeps them. */
   snapshot(): BuildNotes {
-    return this.view();
+    const owed: NonNullable<BuildNotes['owed']> = {};
+    for (const p of this.pending) owed[p.kind] = (owed[p.kind] ?? 0) + 1;
+    return { ...this.view(), ...(this.pending.length > 0 ? { owed } : {}) };
   }
 
   restore(raw: unknown): void {
     this.notes = sanitizeBuildNotes(raw);
     this.pending.length = 0;
+    const owed = raw && typeof raw === 'object' ? (raw as { owed?: unknown }).owed : null;
+    if (!owed || typeof owed !== 'object') return;
+    for (const kind of OWED_KINDS) {
+      const n = Math.min(3, whole((owed as Record<string, unknown>)[kind]));
+      for (let i = 0; i < n; i++) this.enqueue(kind, RESUME_DELAY);
+    }
   }
 
   /** A new run: the record starts empty and nothing is waiting. */
@@ -196,8 +212,12 @@ export class BuildDirector {
 
   /* ---------------- waiting for a calm moment ---------------- */
 
-  private later(delay: number, run: () => void): void {
-    this.pending.push({ at: (this.ctx.state.frameCount ?? 0) + delay, run });
+  private enqueue(kind: OwedKind, delay: number): void {
+    const run = kind === 'altar' ? (): void => this.openAltar()
+      : kind === 'gift' ? (): void => this.openGift()
+      : kind === 'bossFrame' ? (): void => this.openFrameFind('boss')
+      : (): void => this.openFrameFind('altar');
+    this.pending.push({ at: (this.ctx.state.frameCount ?? 0) + delay, kind, run });
   }
 
   /** Nothing else owns the screen: no pause, no curtain, no story beat, no Sanctum, a living player. */
@@ -229,7 +249,7 @@ export class BuildDirector {
 
   /** A waystone caught: the altar will speak once the flare has had its moment. */
   onWaystoneLit(): void {
-    this.later(ALTAR_DELAY, () => this.openAltar());
+    this.enqueue('altar', ALTAR_DELAY);
   }
 
   private openAltar(): void {
@@ -248,7 +268,7 @@ export class BuildDirector {
         this.wands.grantCard(ctx, card);
         ctx.audio?.learn?.();
         // One altar in three also turns up a wand.
-        if (n % WAND_FIND_EVERY === 0) this.later(FOLLOW_DELAY, () => this.openFrameFind('altar'));
+        if (n % WAND_FIND_EVERY === 0) this.enqueue('altarFrame', FOLLOW_DELAY);
       },
     });
   }
@@ -257,21 +277,23 @@ export class BuildDirector {
 
   /** First arrival on a new floor: the gift is a choice now, offered once the floor has settled. */
   onDepthArrival(): void {
-    this.later(GIFT_DELAY, () => {
-      const ctx = this.ctx;
-      const owned = collectOwnedCards(this.wands);
-      const offer = composeDepthOffer({ holdings: this.wands, owned, discovered: getDiscoveredCards(), rng: entityRandom });
-      requestCardOffer(ctx, {
-        source: 'depth',
-        title: 'A gift for the way down',
-        prompt: 'Take one: a big hit, a clean one, or a way with the ground.',
-        cards: offer.cards,
-        labels: offer.labels,
-        onChoose: (card) => {
-          this.wands.grantCard(ctx, card);
-          ctx.audio?.learn?.();
-        },
-      });
+    this.enqueue('gift', GIFT_DELAY);
+  }
+
+  private openGift(): void {
+    const ctx = this.ctx;
+    const owned = collectOwnedCards(this.wands);
+    const offer = composeDepthOffer({ holdings: this.wands, owned, discovered: getDiscoveredCards(), rng: entityRandom });
+    requestCardOffer(ctx, {
+      source: 'depth',
+      title: 'A gift for the way down',
+      prompt: 'Take one: a big hit, a clean one, or a way with the ground.',
+      cards: offer.cards,
+      labels: offer.labels,
+      onChoose: (card) => {
+        this.wands.grantCard(ctx, card);
+        ctx.audio?.learn?.();
+      },
     });
   }
 
@@ -279,7 +301,7 @@ export class BuildDirector {
 
   private onKilled(kind: EnemyKind): void {
     if (!FRAME_BOSSES.has(kind)) return;
-    this.later(BOSS_DELAY, () => this.openFrameFind('boss'));
+    this.enqueue('bossFrame', BOSS_DELAY);
   }
 
   private openFrameFind(source: 'boss' | 'altar'): void {

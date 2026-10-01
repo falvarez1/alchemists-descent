@@ -40,6 +40,6 @@ export function runNotesLine(notes: BuildNotes): string | null {
 export function buildNotesReport(notes: BuildNotes): Record<string, unknown> {
   const floorSeconds: Record<string, number> = {};
   for (const [floor, ticks] of Object.entries(notes.floorTicks)) floorSeconds[floor] = Math.round((ticks / 60) * 10) / 10;
-  const { floorTicks: _ticks, ...rest } = notes;
+  const { floorTicks: _ticks, owed: _owed, ...rest } = notes;
   return { ...rest, floorSeconds, summary: runNotesLine(notes) };
 }

@@ -137,7 +137,30 @@ try {
   await page.waitForSelector('#wand-offer-overlay.visible', { timeout: 30000 });
   await page.waitForTimeout(300);
   check('a fallen boss leaves a frame in the wreckage', (await G(() => document.querySelector('#wand-offer-overlay .menu-title')?.textContent)) === 'A frame in the wreckage');
-  await realClick('#wand-offer-overlay .wand-offer-leave');
+  // PLAY the real find: refit wand II with whatever the wreckage held. Whatever the overlay promised
+  // (the slot count, the cards that would not fit) must be exactly what happens.
+  const bossFrame = await G(() => document.querySelector('#wand-offer-overlay .wand-offer-frame')?.dataset.wandOfferFrame ?? '');
+  const claim = await G(() => {
+    const target = document.querySelector('#wand-offer-overlay [data-offer-wand="1"]');
+    const slotsDd = [...target.querySelectorAll('dt')].find((n) => n.textContent === 'Slots')?.nextElementSibling?.textContent ?? '';
+    return { slots: Number(slotsDd.split('→').pop().trim()), displaced: target.querySelector('.wand-offer-displaced')?.textContent ?? '' };
+  });
+  await shot('3b-boss-frame');
+  const preBoss = await G(() => ({ cards: window.__game.ctx.wands.wands[1].cards.filter(Boolean), spare: window.__game.ctx.wands.collection.length }));
+  await realClick(`#wand-offer-overlay [data-offer-frame="${bossFrame}"][data-offer-wand="1"]`);
+  await page.waitForFunction(() => !document.getElementById('wand-offer-overlay')?.classList.contains('visible'), null, { timeout: 5000 });
+  const postBoss = await G(() => ({ frame: window.__game.ctx.wands.wands[1].frame.id, cap: window.__game.ctx.wands.wands[1].cards.length, cards: window.__game.ctx.wands.wands[1].cards.filter(Boolean), spare: window.__game.ctx.wands.collection.length, paused: window.__game.ctx.state.paused }));
+  const pushedOut = Math.max(0, preBoss.cards.length - claim.slots);
+  check('the boss frame really fits wand II, with the slot count the overlay promised', postBoss.frame === bossFrame && postBoss.cap === claim.slots, JSON.stringify({ bossFrame, claim, postBoss }));
+  check('the cards the overlay said would not fit are exactly the ones that went back to the satchel', postBoss.cards.length === preBoss.cards.length - pushedOut && postBoss.spare === preBoss.spare + pushedOut && (pushedOut > 0) === /Does not fit/.test(claim.displaced), JSON.stringify({ preBoss, postBoss, claim }));
+  // back to the bone crook for the controlled case below
+  await G(() => {
+    const w = window.__game.ctx.wands;
+    w.upgradeFrame(window.__game.ctx, 1, 'bone');
+    w.wands[1].cards.splice(0, 4, 'dig', 'spark', 'heavy', 'bomb');
+    w.collection.length = 0;
+    w.invalidatePrograms();
+  });
   await page.waitForTimeout(200);
   // the displaced-cards case, on a frame we choose: the same overlay, the same code path
   await G(() => {
@@ -179,7 +202,7 @@ try {
   await page.waitForTimeout(500);
   await shot('6-dead-card-caption');
   const toast1 = await G(() => [...document.querySelectorAll('.toast')].map((t) => t.textContent).filter((t) => /does nothing/.test(t)));
-  const cap1 = await G(() => document.querySelector('#hud-cast-caption, .cast-caption, [id*="caption"]')?.textContent ?? '');
+  const cap1 = await G(() => document.querySelector('.wand-cast-caption')?.textContent ?? '');
   check('casting a Water Trail on Chain Lightning says so in the toast stack', toast1.length === 1 && /Water Trail does nothing on Chain Lightning/.test(toast1[0]), JSON.stringify(toast1));
   const castCaption = await G(() => [...document.querySelectorAll('#hotbar *, #hud *')].map((n) => n.textContent ?? '').find((t) => /does nothing on/.test(t)) ?? '');
   check('...and in the hotbar caption the player is looking at', /does nothing on/.test(castCaption) || /does nothing on/.test(cap1), castCaption || cap1);
@@ -228,15 +251,40 @@ try {
     };
     ctx.wands.upgradeFrame(ctx, 0, 'oak');
     const out = {
-      sparkNear: measure(['spark'], 30), sparkFar: measure(['spark'], 120),
-      looseNear: measure(['loosecannon', 'spark'], 30), looseFar: measure(['loosecannon', 'spark'], 120),
-      heavyFar: measure(['heavy', 'spark'], 120),
+      sparkNear: measure(['spark'], 30), sparkFar: measure(['spark'], 200),
+      looseNear: measure(['loosecannon', 'spark'], 30), looseFar: measure(['loosecannon', 'spark'], 200),
+      heavyFar: measure(['heavy', 'spark'], 200),
     };
     return out;
   });
   check('Loose Cannon is strong point-blank (>= 1.6x the plain Spark Bolt)', price.looseNear >= 1.6 * price.sparkNear, JSON.stringify(price));
   check('...and its price is real: at range it falls under half of the plain bolt', price.looseFar < 0.5 * price.sparkFar, JSON.stringify(price));
   check('Heavy Charm is one bolt that really hits harder (>= 1.4x at range)', price.heavyFar >= 1.4 * price.sparkFar, JSON.stringify(price));
+  // The other prices, felt in ONE real cast each: Kickback shoves the alchemist, Overcharge empties the tank,
+  // Short Fuse's bolt dies within a few dozen cells, Millstone crawls.
+  const felt = await G(() => {
+    const ctx = window.__game.ctx;
+    const w = ctx.wands.wands[0];
+    const cast = (cards) => {
+      w.cards.fill(null);
+      cards.forEach((c, i) => { w.cards[i] = c; });
+      ctx.wands.invalidatePrograms();
+      ctx.projectiles.length = 0;
+      w.mana = w.frame.manaMax; w.cooldown = 0; w.castIndex = 0;
+      Object.assign(ctx.player, { x: 30, y: 120, vx: 0, vy: 0, grounded: false, aimAngle: 0, firing: true, firePressed: false, recharge: 0, invuln: 1e6, dead: false });
+      ctx.wands.update(ctx);
+      ctx.wands.fire(ctx);
+      const bolt = ctx.projectiles.find((p) => p.type === 'bolt') ?? null;
+      const out = { kick: Math.abs(ctx.player.vx), spent: w.frame.manaMax - w.mana, life: bolt?.life ?? null, speed: bolt ? Math.hypot(bolt.vx, bolt.vy) : null };
+      ctx.projectiles.length = 0;
+      return out;
+    };
+    return { plain: cast(['spark']), kick: cast(['kickback', 'spark']), over: cast(['overcharge', 'spark']), fuse: cast(['shortfuse', 'spark']), mill: cast(['millstone', 'spark']) };
+  });
+  check('Kickback really shoves the alchemist (>= 4x the plain cast)', felt.kick.kick >= 4 * Math.max(0.2, felt.plain.kick), JSON.stringify(felt));
+  check('Overcharged Coil really costs 26 mana more than the plain cast', Math.abs(felt.over.spent - felt.plain.spent - 26) < 0.5, JSON.stringify(felt));
+  check('Short Fuse gives the bolt a few ticks of life (under a tenth of the plain bolt)', felt.fuse.life !== null && felt.fuse.life < 0.1 * felt.plain.life, JSON.stringify(felt));
+  check('Millstone slows the bolt to under a third of the plain speed', felt.mill.speed !== null && felt.mill.speed < 0.35 * felt.plain.speed, JSON.stringify(felt));
 
   /* ---------------- the bench's fit tells ---------------- */
   await G(() => {
@@ -264,6 +312,7 @@ try {
   await page.waitForSelector('#pause-overlay.visible');
   const pauseRows = await G(() => document.querySelector('#pause-stats')?.textContent ?? '');
   check('the pause menu reads the wands back', /Wand I/.test(pauseRows) && /Wand II/.test(pauseRows), pauseRows.slice(-160));
+  await page.waitForTimeout(700);
   await shot('8-pause-recap');
   // the playtest report carries the decision record
   const reportToast = page.locator('#pause-copy-report');
@@ -286,6 +335,7 @@ try {
   await shot('9-sanctum-recap-rack');
   await realClick('#sanc-shop .shop-row:has(.sh-name:text("rack")) button');
   await page.waitForSelector('#wand-offer-overlay.visible');
+  await page.waitForTimeout(700);
   await shot('10-rack');
   const rack = await G(() => [...document.querySelectorAll('#wand-offer-overlay .wand-offer-frame')].map((f) => f.dataset.wandOfferFrame));
   check('the Wandwright’s rack offers up to three specialists', rack.length >= 1 && rack.length <= 3 && rack.every((id) => ['quill', 'pepperpot', 'mortar', 'samovar'].includes(id)), rack.join());

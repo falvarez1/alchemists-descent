@@ -303,7 +303,7 @@ export const CARD_DEFS: Record<CardId, CardDef> = {
     manaCost: 6,
     blurb: 'Next projectile hits x3 as hard',
     bargain: true,
-    cost: 'The shot lives a thirtieth as long: a bolt dies within about 50 cells, and a bomb goes off almost under your nose.',
+    cost: 'The shot lives a thirtieth as long: a bolt dies within about 50 cells, and a bomb bursts a few steps away, close enough to hurt you.',
   },
   millstone: {
     id: 'millstone',

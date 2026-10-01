@@ -37,21 +37,21 @@
 }
 .wand-offer-overlay.visible { display: flex; animation: menu-fade 0.16s ease-out; }
 .wand-offer-panel {
-  box-sizing: border-box; width: min(1080px, 100%); max-height: 100%; overflow-y: auto; padding: 24px 26px 20px;
+  box-sizing: border-box; width: min(1080px, 100%); max-height: 100%; overflow-y: auto; padding: 18px 26px 20px;
   background: var(--m-surface); border: 1px solid var(--m-line-strong); border-radius: 2px; box-shadow: var(--m-shadow);
   animation: menu-rise 0.22s var(--m-ease);
 }
-.wand-offer-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; margin-top: 18px; }
+.wand-offer-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; margin-top: 12px; }
 .wand-offer-frame {
-  display: grid; gap: 10px; align-content: start; padding: 16px; box-sizing: border-box;
+  display: grid; gap: 7px; align-content: start; padding: 12px; box-sizing: border-box;
   border: 1px solid var(--m-line); border-radius: 2px; background: var(--m-surface-2);
 }
-.wand-offer-name { font: 500 calc(24px * var(--text-scale, 1))/1.1 var(--m-serif); color: var(--m-text); }
+.wand-offer-name { font: 500 calc(22px * var(--text-scale, 1))/1.1 var(--m-serif); color: var(--m-text); }
 .wand-offer-kind { font: 700 calc(10.5px * var(--text-scale, 1))/1.2 var(--m-sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--m-brass); }
-.wand-offer-blurb { margin: 0; font: 400 calc(13.5px * var(--text-scale, 1))/1.5 var(--m-sans); color: var(--m-text-soft); }
+.wand-offer-blurb { margin: 0; font: 400 calc(13px * var(--text-scale, 1))/1.4 var(--m-sans); color: var(--m-text-soft); }
 .wand-offer-targets { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 10px; }
 .wand-offer-target {
-  display: grid; gap: 8px; padding: 10px; box-sizing: border-box; text-align: left; cursor: pointer;
+  display: grid; gap: 6px; padding: 8px 10px; box-sizing: border-box; text-align: left; cursor: pointer;
   border: 1px solid var(--m-line); border-radius: 2px; background: var(--m-sunk); color: var(--m-text);
   transition: border-color 0.15s, background 0.15s;
 }
@@ -59,7 +59,8 @@
 .wand-offer-target:focus-visible { box-shadow: 0 0 0 2px var(--m-mint); }
 .wand-offer-target-head { display: flex; align-items: center; gap: 8px; font: 600 calc(13.5px * var(--text-scale, 1))/1.2 var(--m-sans); }
 .wand-offer-target-head .wb-numeral { font-family: var(--m-serif); font-size: 18px; color: var(--m-brass); min-width: 22px; }
-.wand-offer-stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font: 500 calc(12.5px * var(--text-scale, 1))/1.4 var(--m-sans); }
+.wand-offer-stats { display: flex; flex-wrap: wrap; gap: 3px 16px; margin: 0; font: 500 calc(12.5px * var(--text-scale, 1))/1.4 var(--m-sans); }
+.wand-offer-stats > div { display: flex; gap: 6px; white-space: nowrap; }
 .wand-offer-stats dt { color: var(--m-muted); }
 .wand-offer-stats dd { margin: 0; color: var(--m-text-soft); font-variant-numeric: tabular-nums; }
 .wand-offer-stats dd.better { color: var(--m-good); }
@@ -71,7 +72,8 @@
   border-left: 3px solid var(--m-brass); background: rgba(213, 185, 130, 0.08); color: var(--m-text);
 }
 .wand-offer-displaced.cost { border-left-color: var(--m-danger); background: rgba(224, 149, 124, 0.09); }
-.wand-offer-foot { margin-top: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+/* The way out stays on screen however tall the rack gets: the panel scrolls, the foot does not. */
+.wand-offer-foot { position: sticky; bottom: -20px; margin: 12px -26px -20px; padding: 10px 26px 16px; background: var(--m-surface); border-top: 1px solid var(--m-line); display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
 .wand-offer-foot .menu-btn { min-width: 150px; }
 @media (max-width: 700px) {
   .wand-offer-row { grid-template-columns: 1fr; }

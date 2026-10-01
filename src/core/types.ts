@@ -2957,6 +2957,11 @@ export interface BuildNotes {
   picks: CardId[];
   /** Cards whose dead-cast caption has already shown this run. */
   deadCaptioned: CardId[];
+  /**
+   * Offers earned but not yet shown (a lit waystone, an arrival, a boss's wreckage waits for a calm moment): the
+   * runtime snapshot carries them so a run saved in that gap still gets its decision. Only the snapshot has it.
+   */
+  owed?: Partial<Record<'altar' | 'gift' | 'bossFrame' | 'altarFrame', number>>;
 }
 
 export interface WandLoadoutSave {
