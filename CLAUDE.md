@@ -49,6 +49,10 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # verify-builder-pro.mjs, verify-builder-ux.mjs, verify-builder-prefabs.mjs,
 # verify-builder-power.mjs, verify-sprites.mjs, verify-machines.mjs,
 # verify-gallery.mjs
+# Fighters (docs/FIGHTERS.md; dev server running): fighter-probe.mjs is the shared harness (a PAUSED world you
+# step with the game's own tick, REAL key presses, a carved arena); verify-fighter-framework (the engine seams),
+# verify-fighter-<name> per kit, verify-fighter-roster-play (all ten through a real run), fighter-studio.mjs
+# (every fighter in every pose: THE way to iterate a look). Never edit src while a probe runs (HMR reloads it).
 # Builder probes arm things through run-helpers (the shell groups tools, tabs the palette and
 # hides the game header while it is open): clickBuilderTool(page,'rectFill'),
 # clickBuilderKind(page,'door'), clickBuilderControl(page,'#b-save') (opens the menu/tab that
@@ -110,6 +114,15 @@ dev server. `scripts/verify-*.mjs` show the pattern.
   MOVE, it keeps its id (`tests/builder-shell-markup.test.ts`). The Builder owns the terrain while open:
   a document with none captures the live grid on save/validate/play, and opening over a changed Sandbox
   asks which copy to edit. See `docs/BUILDER-STUDIO.md`.
+- **Fighters are who you descend as** (`src/fighters/`, docs/FIGHTERS.md): ten, each a look, a passive, a tactical
+  (Z) and an ultimate (T). `ctx.fighters` is absent in test contexts and `id` is null for the classic Alchemist,
+  so every engine hook (`ctx.fighters?.…`) is a no-op by default; `FighterSystem` owns the shared machinery
+  (cooldowns, ultimate charge, modifiers, a foe's slow/stun/reveal, a body-owning `startMove`, armor, drawables,
+  lights) and a kit (`fighters/kits/<id>.ts`, lazy, found by filename: helper modules are `<id>-<what>.ts`) is
+  only the rules. A foe's slow is TIME (`enemyRuns`), never a per-sample velocity scale. The look
+  (`render/player/looks/<id>.ts`) is the alchemist's own rig and cloth dressed differently, never a sprite. A
+  fighter rides the run exactly as `kitId` does (config, `RunSaveState`, meta profile, ledger) and the daily is
+  always the classic Alchemist. The arena mode they were designed for does not exist yet.
 - **Three authoring/save families, kept separate:** Sandbox (live-sim painting, raw grid v1
   saves), the Builder authoring tool (`EditorDocument` v2 in `src/builder/`, compiles disposable
   playtest runtimes — see `docs/BUILDER.md`), and expedition runtime saves. Don't grow one
@@ -222,6 +235,9 @@ loops degrade criteria progressively, never silently skip.
   `docs/BOONS.md` — the Sanctum's boons: the pool, each hook, tuning, and what was measured;
   `docs/DIFFICULTY.md` — the four-tier ladder: who may pick which, where it lives, why it fits;
   `docs/PROBE-HEALTH.md` — which `scripts/verify-*` probes pass, which are stale and why (run before trusting a red one)
+- `docs/FIGHTERS.md` — the ten fighters: the engine seams, every ability's spec, how to write a kit, the probes;
+  `docs/fighters/<id>.md` — each fighter's numbers, measurements and deviations; `docs/fighters/KIT-BRIEF.md`
+  — the working brief a kit is built to
 - `docs/BUILDER-STUDIO.md` — the Builder's shell, design system, Sandbox↔Builder↔game flow and what was cut;
   `docs/BATTLE-ROYALE-AND-SPACETIMEDB.md` — why SpacetimeDB is NOT integrated now and what an arena
   mode needs first (a fighter roster; `ctx.player` is 701 refs in 103 files)

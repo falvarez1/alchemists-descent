@@ -5,8 +5,41 @@ concept sheets under `public/assets/fighters/`). A fighter is **who you descend 
 tactical ability on **Z** and an ultimate on **T**. Weapons still come from the kit and from loot, so a
 fighter and a starting kit are independent choices.
 
-**Status: in progress.** This file is the contract the code is built against; the "Status" column of the
-tables below is updated as each piece lands and is probed in the real game.
+**Status: implemented.** All ten fighters are playable in the single-player descent: choose one on the title
+(or the ledger's "Next descent"), and the run is theirs. This file is the contract the code was built against.
+Each fighter has its own write-up under `docs/fighters/<id>.md` (the numbers, what was measured in the real
+game, the deviations from the specs below and why), and the looks are written up in `docs/fighters/looks-*.md`.
+What is NOT built is the arena (Battle Royale) mode these fighters were designed for: see
+docs/BATTLE-ROYALE-AND-SPACETIMEDB.md. The abilities resolve against the Works' foes today and are written
+against `allyTargets` / `decoyFor`-style seams so a peer can stand where a foe stands.
+
+## How it plugs into the engine
+
+Every hook is guarded (`ctx.fighters?.…`, a no-op for the classic Alchemist, whose run is byte-identical):
+
+| Where | What the fighter asks or does |
+|---|---|
+| `Game.tick`, right after `chill.update` | `fighters.update`: presses, cooldowns, charge, the body-owning move, the kit's tick |
+| `Player.reduceIncomingDamage` | armor, damage reduction, immunity, the kit's own `reduceIncoming` (with the blow's knock) |
+| `Player` speed / climb / mantle / stagger / knockback / movement owner | `moveScale`, `climbScale`, `staggerResist`, `ownsMovement` |
+| `Enemies.update` | `concealment` (scales how far foes see), `enemyRuns` (a slow is TIME: the foe takes its update on the matching fraction of ticks, Weyl-spaced so it never aliases with an AI cadence), `decoyFor`, `noteEnemyHurt` |
+| `Projectiles` hostile branch | `interceptProjectile` (a plate eats a shot, a prism turns it) |
+| `FrameComposer` | `drawFighterFx`: every drawable a kit has placed, under or over the foes |
+| `Player.kick`, `WeaverLimbs` | `noteMelee` (a melee kill restores Rusk's armor) |
+| `PlayerSprite`, `PlayerRagdollSprite` | the fighter's look (`render/player/FighterArt`) on the alchemist's own rig, alive and fallen |
+| `Pickups` | a potion pickup emits `flaskUsed` (Edda's Stored Light) |
+
+The ultimate bar charges from damage dealt, damage taken, kills and time (`fighters/tuning.ts`); a kit's
+tuning lives in a `TUNING` object beside the kit; the live probes decided the final numbers.
+
+## Probes (dev server running; real key presses, a paused deterministic world)
+
+`scripts/fighter-probe.mjs` is the shared harness. `verify-fighter-framework` (the engine seams, 28 checks),
+`verify-fighter-run` (start, save, continue, daily), `verify-fighter-chips`, `verify-fighter-title`,
+`verify-fighter-ledger`, `verify-fighter-roster` (the roster screen at four sizes), one
+`verify-fighter-<name>` per kit (60 to 100 checks each, against real foes, real cells and real terrain),
+and `verify-fighter-roster-play` (all ten through a real run: Z and T, a floor change, a death and a respawn).
+`scripts/fighter-studio.mjs` draws every fighter in every pose.
 
 ## Principles
 
@@ -58,7 +91,10 @@ Both are free in `input/bindings.ts` and in the pause/overlay key gates. Two chi
 | 09 | Rusk Emberjaw | Bulwark | Scrap Recovery | Shoulder Ram | Kiln Heart |
 | 10 | Father Thorne | Controller | Rooted Camouflage | Ironvine | Overgrowth |
 
-Per-ability specs follow; probe results are recorded in each fighter's own file under `docs/fighters/`.
+Per-ability specs follow (the design intent). Where the real game forced a different answer, the fighter's own file
+under `docs/fighters/` says so under "Deviations": for example Kest's Updraft is a draft with a balance point
+rather than a constant lift, Rusk's ram breaks Wood rather than calling `Mechanisms.strike`, and Ilyra's
+"weapon" is the last card cast.
 
 ## Ability specs (the contract each kit is built to)
 

@@ -371,7 +371,8 @@ constants assume it — do not "unify" it without retuning the whole game.
 simulation.update (substeps:
 new moved epoch → harvester → electrical → projectiles → shockwave aging → material sweep →
 ice/vines pass) → playerCtl.update → chill.update (the body's cold follows where it now
-stands; movement reads its moveK next tick) → flask.update → enemyCtl.update → flora.update (a stand the
+stands; movement reads its moveK next tick) → fighters.update (the equipped fighter's presses, cooldowns, a
+dash it owns, its passive: after the body moved, before the foes think; a no-op for the classic Alchemist) → flask.update → enemyCtl.update → flora.update (a stand the
 sim severed becomes a hinged body that steps in the same solver pass; settled logs re-stamp) →
 rigidBodies.update →
 vineStrands.update → levels.update → pickups.update → mechanisms.update → critters.update →
