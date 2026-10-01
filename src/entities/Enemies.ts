@@ -3996,7 +3996,8 @@ export class Enemies implements EnemyControlApi {
           } else if (e.status.burning > 0) {
             intent.urgency = 1;
           }
-          intent.speedScale = spd * (e.status.frozen > 0 ? 0.5 : 1);
+          // (a fighter's slow, Dead Chime / Ironvine: the crawl's own speed, which the vx scaling above never reaches)
+          intent.speedScale = spd * (e.status.frozen > 0 ? 0.5 : 1) * (ctx.fighters?.enemySlow(e) ?? 1);
           if (intent.move === 'toward' && !fleeingNow && (mind.intent === 'investigate' || mind.intent === 'return')) {
             const route = localRoute(ctx.world, e, def, intent.tx, intent.ty, ctx.state.frameCount);
             intent.tx = route.x; intent.ty = route.y;
