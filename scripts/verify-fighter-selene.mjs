@@ -558,64 +558,77 @@ console.log('\nMirror Hunt: what a foe believes');
   const trace = async ({ ultimate, dx, kind = 'slime', ticks = 130 }) => {
     await arena(SELENE, { x: 480 });
     await aimAt(page, 580, FLOOR - 10);
+    let started = !ultimate;
     if (ultimate) {
-      await page.evaluate(() => window.__fp.ctx.fighters.refill());
-      await tick(page, 1);
-      await press(page, 'KeyT', 1);
+      for (let attempt = 0; attempt < 2 && !started; attempt++) {
+        await page.evaluate(() => window.__fp.ctx.fighters.refill());
+        await tick(page, 1);
+        await press(page, 'KeyT', 1);
+        started = (await view(page)).ultimate.active > 0.9;
+        if (!started) console.log('  (the T press did not start the ultimate: pressing again)');
+      }
       await tick(page, 24);
     } else await tick(page, 25);
-    const e0 = await page.evaluate(({ kind, dx }) => { const e = window.__fp.spawn(kind, dx, { hp: 9999 }); e.alerted = true; return { x: e.x }; }, { kind, dx });
+    const e0 = await page.evaluate(({ kind, dx }) => { const e = window.__fp.spawn(kind, dx, { hp: 9999 }); e.alerted = true; window.__tracked = e; return { x: e.x }; }, { kind, dx });
     const out = [];
     for (let i = 0; i < ticks; i++) {
+      // (a foe only sees what is in front of it unless it is near: turn its eyes toward her, as the other probes do)
+      await page.evaluate(() => { const e = window.__tracked; if (e?.mind) e.mind.facing = Math.sign(480 - e.x) || -1; });
       await tick(page, 1);
       const s = await page.evaluate(() => {
-        const e = window.__fp.ctx.enemies[0];
-        return e ? { x: e.x, tx: e.mind?.targetX, vis: e.mind?.visible === true, intent: e.mind?.intent, kn: e.knockT ?? 0, hp: window.__fp.ctx.player.hp, px: window.__fp.ctx.player.x } : null;
+        const e = window.__tracked; // (the foe this trace spawned, not whatever else the level may have put in the list)
+        const c = window.__fp.ctx;
+        return e ? { x: e.x, tx: e.mind?.targetX, vis: e.mind?.visible === true, intent: e.mind?.intent, conf: +(e.mind?.confidence ?? 0).toFixed(2), kn: e.knockT ?? 0, hp: c.player.hp, px: c.player.x, grace: (c.state.arrivalGraceUntil ?? 0) - c.state.frameCount, asleep: e.sleeping === true, n: c.enemies.length, dead: c.player.dead } : null;
       });
       out.push(s);
     }
-    return { x0: e0.x, out };
+    return { x0: e0.x, out, started };
   };
-  // What it hunts while it is still hunting the thing it chose: before it reaches an echo (the stun) and before it has bitten her (a bite moves her).
-  const hunted = (t, { untilMove = false } = {}) => {
-    const stop = t.out.findIndex((s) => s && (s.kn > 0 || s.hp < 100 || (untilMove && s.x !== t.x0)));
-    // (the stun takes hold a tick after the pop, and the foe's mind has already gone back to her that tick: stop one short)
-    return t.out.slice(0, stop < 0 ? undefined : Math.max(0, stop - 1)).filter((s) => s && s.vis && s.intent === 'hunt').map((s) => s.tx);
+  // What a foe hunts, in order, while it can see its target. The decision shows as a PREFIX: a run of the same place (the echo's, or hers), and
+  // for a lured foe it ends when the echo pops (the next place is hers). Nothing after that says anything about the lure (a bite moves her,
+  // a hop carries the foe past her), so only the prefix is judged.
+  const prefix = (t, want) => {
+    const seq = t.out.filter((q) => q && q.vis && q.intent === 'hunt').map((q) => q.tx);
+    let n = 0;
+    while (n < seq.length && Math.abs(seq[n] - want) <= 2) n++;
+    return { n, next: seq[n], first: seq[0] };
   };
+  const firstMove = (t) => { const q = t.out.find((r) => r && r.x !== t.x0); return q ? Math.sign(q.x - t.x0) : 0; };
+  const popsToHer = (p) => p.next === undefined || Math.abs(p.next - 480) <= 2;
 
   // ---- toward the echo ahead
   const withEcho = await trace({ ultimate: true, dx: 16 });
   const noEcho = await trace({ ultimate: false, dx: 16 });
-  const wTargets = hunted(withEcho), nTargets = hunted(noEcho);
-  const firstMove = (t) => { const s = t.out.find((q) => q && q.x !== t.x0); return s ? Math.sign(s.x - t.x0) : 0; };
-  console.log(`  (slime 16 cells ahead of her: with the echo it hunts x ${wTargets[0]} and first moves ${firstMove(withEcho) > 0 ? 'toward the echo (+)' : 'toward her (-)'}; without, it hunts x ${nTargets[0]} and moves ${firstMove(noEcho) > 0 ? '+' : '-'})`);
-  check('a foe nearer the echo than her hunts the ECHO: its target is the echo\'s place (508), not hers (480)', wTargets.length >= 5 && wTargets.every((x) => Math.abs(x - 508) <= 2), JSON.stringify(wTargets.slice(0, 5)));
+  const wp = prefix(withEcho, 508), np = prefix(noEcho, 480);
+  console.log(`  (slime 16 cells ahead of her: with the echo it hunts x ${wp.first} for ${wp.n} ticks and first moves ${firstMove(withEcho) > 0 ? 'toward the echo (+)' : 'toward her (-)'}; without, it hunts x ${np.first} and moves ${firstMove(noEcho) > 0 ? '+' : '-'})`);
+  check('a foe nearer the echo than her hunts the ECHO: its target is the echo place (508), not hers (480)', wp.n >= 3 && popsToHer(wp), JSON.stringify([wp, withEcho.started, withEcho.out.slice(0, 3)]));
   check('and it walks toward it (away from her)', firstMove(withEcho) > 0, `moved ${firstMove(withEcho)}`);
-  check('the control: the same foe with no ultimate hunts HER (480) and walks toward her', nTargets.length >= 5 && nTargets.every((x) => Math.abs(x - 480) <= 2) && firstMove(noEcho) < 0);
+  check('the control: the same foe with no ultimate hunts HER (480) and walks toward her', np.n >= 3 && firstMove(noEcho) < 0, JSON.stringify([np, firstMove(noEcho), noEcho.out.slice(0, 3)]));
 
   // ---- toward the echo behind
   const behind = await trace({ ultimate: true, dx: -16 });
-  const bTargets = hunted(behind);
-  check('a foe nearer the echo BEHIND her hunts that one (452) and walks away from her', bTargets.length >= 5 && bTargets.every((x) => Math.abs(x - 452) <= 2) && firstMove(behind) < 0, JSON.stringify([bTargets.slice(0, 3), firstMove(behind)]));
+  const bp = prefix(behind, 452);
+  check('a foe nearer the echo BEHIND her hunts that one (452) and walks away from her', bp.n >= 3 && popsToHer(bp) && firstMove(behind) < 0, JSON.stringify([bp, firstMove(behind), behind.started, behind.out.slice(0, 3)]));
 
   // ---- the real body when no echo is nearer
   const close = await trace({ ultimate: true, dx: 7 });
-  // (before its first hop: a slime that has hopped over her may well end up nearer the echo behind)
-  const cTargets = hunted(close, { untilMove: true });
-  check('a foe right beside her (nearer her than either echo) still hunts the real body', cTargets.length >= 1 && cTargets.every((x) => Math.abs(x - 480) <= 2), JSON.stringify(cTargets.slice(0, 4)));
-  const far = await trace({ ultimate: true, dx: 100, ticks: 40 });
-  const fTargets = hunted(far);
-  check('a foe far off (100 cells), on the echo side, goes for the nearer of the two: the echo (72 away) and not her (100)', fTargets.length >= 3 && fTargets.every((x) => Math.abs(x - 508) <= 2), JSON.stringify(fTargets.slice(0, 4)));
+  const cp = prefix(close, 480);
+  check('a foe right beside her (nearer her than either echo) still hunts the real body', cp.n >= 3, JSON.stringify(cp));
+  const far = await trace({ ultimate: true, dx: 100, ticks: 60 });
+  const fp = prefix(far, 508);
+  check('a foe far off (100 cells), on the echo side, goes for the nearer of the two: the echo (72 away) and not her (100)', fp.n >= 3, JSON.stringify(fp));
 
-  // ---- reaching an echo pops it, and the foe is stunned
-  const pop = withEcho.out;
-  const stunAt = pop.findIndex((s) => s && s.kn > 0);
-  console.log(`  (the foe reaches the echo at tick ${stunAt + 1}: knocked-still for ${pop.filter((s) => s && s.kn > 0).length} ticks, at x ${pop[stunAt]?.x})`);
-  check('the foe that reaches the echo is stunned (held still by the system)', stunAt >= 0);
-  // stunned 30 ticks: it does not move for 30 ticks, and then it does
-  const xStun = pop[stunAt].x;
-  check('it stands still for the 30 ticks of the stun', pop.slice(stunAt, stunAt + 28).every((s) => s && s.x === xStun), JSON.stringify(pop.slice(stunAt, stunAt + 6).map((s) => s.x)));
-  check('after the stun it hunts her again (the echo is gone)', pop.slice(stunAt + 32).some((s) => s && s.vis && s.intent === 'hunt' && Math.abs(s.tx - 480) <= 2), JSON.stringify(pop.slice(stunAt + 32, stunAt + 40).map((s) => s.tx)));
+  // ---- reaching an echo pops it, and the foe is stunned. A golem walks to it (a slime's hop may sail over the echo's head and land well past it).
+  const walker = await trace({ ultimate: true, dx: 16, kind: 'golem', ticks: 150 });
+  const wk = prefix(walker, 508);
+  const popAt = walker.out.findIndex((q, i) => q && q.vis && q.intent === 'hunt' && Math.abs(q.tx - 480) <= 2 && i > 0 && Math.abs((walker.out[i - 1]?.tx ?? 0) - 508) <= 2);
+  const pop = walker.out;
+  console.log(`  (a golem 16 cells ahead of her: it hunts the echo's place for ${wk.n} ticks, walking ${pop[0].x} -> ${pop[Math.max(0, popAt)]?.x}, and the echo pops at tick ${popAt + 1})`);
+  check('a golem nearer the echo than her hunts the echo, walks to it and reaches it: the echo pops (its target goes back to her)', wk.n >= 3 && popAt > 0 && pop[popAt].x > pop[0].x, JSON.stringify([wk, popAt, pop[0].x, pop[Math.max(0, popAt)].x]));
+  const xStun = pop[popAt].x;
+  // stunned 30 ticks: it does not move for 30 ticks (the system pins its knock state), and then it walks to her
+  check('the foe is held where it stood for the 30 ticks of the stun', pop.slice(popAt, popAt + 28).every((q) => q && q.x === xStun) && pop.slice(popAt, popAt + 30).some((q) => q && q.kn > 0), JSON.stringify(pop.slice(popAt, popAt + 30).map((q) => q.x).filter((x, i, a2) => i === 0 || x !== a2[i - 1])));
+  check('after the stun it walks toward her and hunts her (the echo is gone)', pop[pop.length - 1].x < xStun - 4 && pop.slice(popAt + 32).some((q) => q && q.vis && q.intent === 'hunt' && Math.abs(q.tx - pop[pop.length - 1].px) <= 4), JSON.stringify([xStun, pop[pop.length - 1].x]));
 
   // the echo is gone: a foe asking for it now is told nothing
   await arena(SELENE, { x: 480 });

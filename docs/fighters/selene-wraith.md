@@ -136,8 +136,10 @@ silver sparks, a ring, a flash of light, `flask.shatter` + `mat.shatter`) and th
 | beside her (7 cells) | her (x 480) | |
 | 100 cells off, on the echo's side | the nearer echo (72) | |
 
-It reaches the echo at about tick 40, pops it, stands still for 30 ticks (and the stun is real: the system pins its
-knock state), and then hunts her again. A foe with its bite ready, 2 cells from an echo, swings at nothing: she (28
+A golem 16 cells ahead (it walks, where a slime hops over an echo's head and may land well past it, so the pop is proved
+with the golem) hunts the echo's place for 14 ticks, walks to it, reaches it and the echo pops (its target goes back
+to her); it is held where it stood for 30 ticks (the system pins its knock state), then walks to her and hunts her.
+A slime 26 cells ahead of her, already on the echo, pops it on the first tick. A foe with its bite ready, 2 cells from an echo, swings at nothing: she (28
 away) takes no damage and is not knocked. After 540 ticks no foe is told about any echo and the drawable leaves the
 world. A floor change wipes the echoes and the echo she left.
 
@@ -167,6 +169,9 @@ world. A floor change wipes the echoes and the echo she left.
 
 ## Not verified / notes
 
+- The probe's slime checks judge the PREFIX of what a foe hunts (the run of the same place before the echo pops or a bite moves
+  her): a slime's random hop timing, its long arcs and its eyes (a foe only sees what is in front of it unless it is near) made
+  later samples noise. The probe tracks its own foe by reference, and turns the foe's eyes toward her as the other probes do.
 - Sound: only existing cues, and none of them can be heard here. `player.skid`, `player.crawl`, `body.impact.stone`,
   `player.land.soft`, `player.teleport`, `spell.warp.cast`, `pickup.bell`, `flask.shatter`, `mat.shatter`, `wand.dry`.
 - On a display above 60 Hz the presentation layer interpolates the body between ticks, and a 40-cell blink is under its
