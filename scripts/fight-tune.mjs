@@ -5,6 +5,8 @@
 //
 //   node scripts/fight-tune.mjs [url] [--rounds 6] [--seeds 3] [--step 0.12] [--gain 0.6] [--tolerance 0.08] [--knobs dealt,maxHp]
 //        [--level 3] [--out verify-out/fights/tune-<time>] [--start balance-patch.json]
+// The default knob is `dealt` ALONE: a fighter's body is its feel and its health its fantasy (Brann the wall, Kest the glass), so the lever
+// is how hard it hits. `--knobs dealt,maxHp` also turns health (the first pass did, and made Brann frail and Nox a tank: balanced, and wrong).
 //
 // A knob moves by at most `step` (a fraction) a round, in proportion to how far the fighter's win rate is from 50%, and only inside its
 // declared range (core/fighterBody BODY_RANGES). A fighter pinned at a range limit while still out of line is reported: that one needs
@@ -20,13 +22,13 @@ const seeds = opt('seeds', '3');
 const step = Number(opt('step', '0.12'));
 const gain = Number(opt('gain', '0.6'));
 const tolerance = Number(opt('tolerance', '0.08'));
-const knobs = opt('knobs', 'dealt,maxHp').split(',');
+const knobs = opt('knobs', 'dealt').split(',');
 const level = opt('level', '3');
 const out = opt('out', `verify-out/fights/tune-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`);
 mkdirSync(out, { recursive: true });
 
 const IDS = ['ilyra-voss', 'brann-rook', 'sable-fen', 'mara-quell', 'kest-rel', 'nox-calder', 'edda-morrow', 'selene-wraith', 'rusk-emberjaw', 'father-thorne'];
-const RANGES = { dealt: [0.8, 1.25], maxHp: [0.6, 1.6], mass: [0.6, 1.6], run: [0.7, 1.4] };
+const RANGES = { dealt: [0.6, 1.6], maxHp: [0.6, 1.6], mass: [0.6, 1.6], run: [0.7, 1.4] };
 // the shipped values (read from the source so a patch is relative to what is committed)
 const shipped = {};
 {
@@ -65,7 +67,7 @@ for (let r = 1; r <= rounds; r++) {
       const path = `body.${id}.${k}`;
       const [lo, hi] = RANGES[k] ?? [0.5, 1.5];
       const was = current[path];
-      const share = k === 'dealt' ? 0.5 : 1; // power is split: the hit and the hide
+      const share = knobs.length > 1 && k === 'dealt' ? 0.5 : 1; // two power knobs split the move; a lone knob takes it all
       let next = was * (1 + delta * share);
       next = Math.round(Math.min(hi, Math.max(lo, next)) * 1000) / 1000;
       if ((next === hi && delta > 0) || (next === lo && delta < 0)) pinned[path] = { value: next, wants: delta > 0 ? 'more' : 'less', winRate: rates[id].win };

@@ -25,7 +25,7 @@ and the decision log refer to it. Update the box in the same commit as the work.
 
 ## P2: telemetry foundation
 
-- [~] T2.1 measure: ticks/s of the paused-step regime, the replay-match rate, the live-vs-paused difference; write them in the report header
+- [x] T2.1 measure: ticks/s of the paused-step regime, the replay-match rate, the live-vs-paused difference; write them in the report header
 - [x] T2.2 `Game.advance(n, {render:false})`, a headless flag that idles `renderFrame`/clips, `resetForFight(seed)` (the reset recipe)
 - [x] T2.3 `src/fighters/telemetry/fightLog.ts` (schema v1, columnar buffers, the recorder) + the four instrumentation sites (hit, hurt, ability, hurt tag)
 - [x] T2.4 `src/fighters/paramOverride.ts` + `window.__paramOverride` + console `ftune` + the fighter range table + a generalised path resolver
@@ -44,7 +44,7 @@ and the decision log refer to it. Update the box in the same commit as the work.
 - [x] A3.6 `Projectiles.ts` + `markProjectile`: `owner` stamps, per-projectile bind, enemy-index invalidation, `interceptProjectile` for proxies
 - [x] A3.7 `Player.ts`: arena `kill`/`respawn` branches, `stunT`, `STOMP_IMMUNE`
 - [x] A3.8 render: the second fighter's sprite/shadow/pose/fx; proxies skipped in every enemy draw loop; camera multi-target + leash
-- [x] A3.9 the duel stage (symmetric, `ARENA-RULES.md` 1) and a second-input provider (keyboard-for-one + scripted/second pad)
+- [~] A3.9 the duel stage (done: symmetric, `world/duelStage.ts`) and a second-input provider for a second HUMAN (not done: a rival is driven by a brain or nothing)
 - [x] A3.10 the "every damage path exactly once" probe (spell, kick, explosion, flame, liquid, rigid body, each kit effect) and a regression run of all existing probes
 - [ ] A3.11 audit of the ~60 files that scan `ctx.enemies` (music, hints, minimap, readouts, sprite switches) for proxy leaks
 
@@ -56,7 +56,7 @@ and the decision log refer to it. Update the box in the same commit as the work.
 - [x] B4.4 v1: approach, attack, kick, jump a slab; the Yard's `StageNav`
 - [ ] B4.5 v2: Intent (utility goals), the ten playbooks, defence
 - [ ] B4.6 perception parity: concealment, darkness, Nox/Thorne/Kest abilities fool the bot as they fool foes
-- [ ] B4.7 debug overlay (intent, path, aim, range ring) and a Watch mode with a result card
+- [~] B4.7 debug overlay (intent, path, aim, range ring: not done) and a Watch mode with a result card (done: the panel's Watch button and the bout line)
 - [ ] B4.8 v3 stocks: recovery, edge-guard, free-for-all targeting (after P5)
 - [~] B4.9 tests and probes: planner scoring, seeded noise, scenario probes (approach, climb, raise plate), 1,000-fight soak with a stuck detector
 

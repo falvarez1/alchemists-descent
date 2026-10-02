@@ -134,7 +134,7 @@ reproduces today's player in a physics probe (the same jump apex and run speed w
 | `gravity` | 0.60 | 1.40 |
 | `fall` | 0.60 | 1.50 |
 | `jet.fuel`, `jet.thrust` | 0.40 | 1.80 |
-| `dealt` | 0.80 | 1.25 |
+| `dealt` | 0.60 | 1.60 |
 
 ## 5. How a person (or the AI) will see it: the movement lab
 

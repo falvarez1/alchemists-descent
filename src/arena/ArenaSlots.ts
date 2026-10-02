@@ -98,7 +98,17 @@ export class ArenaSlots implements ArenaApi {
     };
   }
 
+  /** A rival is being built (its kit is loading): a second `addRival` in that window waits for it instead of tearing it down. */
+  private adding: Promise<number> | null = null;
+
   async addRival(id: FighterId, x: number, y: number): Promise<number> {
+    if (this.adding !== null) await this.adding.catch(() => 1);
+    const job = this.build(id, x, y);
+    this.adding = job;
+    try { return await job; } finally { if (this.adding === job) this.adding = null; }
+  }
+
+  private async build(id: FighterId, x: number, y: number): Promise<number> {
     this.ensureBase();
     if (this.slots.length > 1) this.removeRival(1);
     const slot = this.slots.length;
