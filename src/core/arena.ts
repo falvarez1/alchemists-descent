@@ -61,6 +61,8 @@ export interface ArenaApi {
 
   /** A drive for a slot: called once per tick under that slot's binding, before its body phase. */
   setDriver(slot: number, drive: (() => void) | null): void;
+  /** Run `fn` once when this slot's fighter is removed (a driver unsubscribes its listeners). */
+  onSlotRemoved(slot: number, fn: () => void): void;
 
   /** Is this enemy a fighter's stand-in? (the slot it stands for) */
   isStandIn(e: Enemy): boolean;

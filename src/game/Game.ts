@@ -364,7 +364,8 @@ export class Game {
     // ARENA (core/arena): a second fighter's bundle is built here, the one place that names the concrete classes. Its player and
     // input stand in on the Ctx while its systems are constructed (they read them), and every subscription they make is tagged with
     // the slot, so a rival's `cardCast` or `flaskUsed` never feeds this fighter's passive.
-    ctx.arena = new ArenaSlots(ctx, (slot) => {
+    // (authoring builds only: the arena, its AI and its rival are test-mode tools; the player build drops all of it)
+    if (__AUTHORING__) ctx.arena = new ArenaSlots(ctx, (slot) => {
       const keepPlayer = ctx.player, keepInput = ctx.input;
       const player = createPlayer();
       const input: InputState = {
@@ -390,7 +391,7 @@ export class Game {
       }
     });
     const arena = ctx.arena;
-    this.disposables.push({ dispose: () => { arena.removeRival(1); } });
+    if (arena) this.disposables.push({ dispose: () => { arena.removeRival(1); } });
     ctx.pickups = new Pickups();
     const mechanisms = new Mechanisms(ctx);
     ctx.mechanisms = mechanisms;
@@ -984,7 +985,7 @@ export class Game {
         // (an arena: who resolves first is a seeded coin each tick, so neither fighter has the edge of landing its blow before the other moves)
         const rivalsFirst = ctx.arena !== undefined && ctx.arena.active && ctx.arena.rivalsFirst();
         if (rivalsFirst) ctx.arena?.runRivals('body');
-        runBots(ctx);
+        if (__AUTHORING__) runBots(ctx);
         // (an arena: a rival's slow is TIME, so a slowed fighter runs only a fraction of its ticks)
         if (ctx.arena === undefined || ctx.arena.runsBody(0)) {
           ctx.playerCtl.update(ctx);

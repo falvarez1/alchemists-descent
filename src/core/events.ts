@@ -297,6 +297,11 @@ export class EventBus {
     return true;
   }
 
+  /** How many handlers listen to `event` (a probe asserts a thrown-away fighter leaves none behind). */
+  listenerCount(event: keyof EventMap): number {
+    return this.handlers.get(event)?.size ?? 0;
+  }
+
   /** Register everything `fn` subscribes as belonging to fighter slot `slot`. */
   asSlot<T>(slot: number, fn: () => T): T {
     const was = this.registeringSlot;

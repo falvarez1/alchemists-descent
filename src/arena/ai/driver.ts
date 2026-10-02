@@ -180,6 +180,8 @@ export function rivalDriverFor(ctx: Ctx, slot: number): BotDriver | null {
     byCtx.set(slot, d);
     const driver = d;
     ctx.arena.setDriver(slot, () => driver.tick());
+    // (the rival is thrown away: so is its driver and what it listens to)
+    ctx.arena.onSlotRemoved(slot, () => { driver.dispose(); if (byCtx?.get(slot) === driver) byCtx.delete(slot); });
   }
   return d;
 }

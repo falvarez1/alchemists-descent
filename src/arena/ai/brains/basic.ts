@@ -11,6 +11,7 @@ import { edgeKey, stageNavFor } from '@/arena/ai/nav';
 import type { NavEdge, StageNav } from '@/arena/ai/nav';
 import { buildWorldView, createWorldView, lineClear } from '@/arena/ai/worldView';
 import type { WorldView } from '@/arena/ai/worldView';
+import { tacticalAim } from '@/arena/ai/playbooks';
 import type { AiLevel } from '@/config/aiTiers';
 import { YARD } from '@/world/fighterArena';
 
@@ -392,6 +393,9 @@ export class BasicBrain implements Brain {
       const inTip = d >= style.z[0] && d <= style.z[1] && (line || d < 40);
       const hoarded = tick - this.zReadySince >= Z_HOARD && d < 220;
       if (inTip || hoarded) {
+        // (a few tacticals need the cursor somewhere other than on the foe: arena/ai/playbooks)
+        const za = tacticalAim(me.fighter, me, target);
+        if (za !== null) hand.aim(za.x, za.y);
         self.hands.press('tactical');
         hand.pressed();
         this.lastZ = tick;

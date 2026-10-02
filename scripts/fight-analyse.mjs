@@ -6,6 +6,7 @@
 // Everything is per FIGHTER ID (a fight record names who stood in each slot), so a pair run both sides counts for both fighters once.
 // Win rate counts a decisive result (a knockout, or a timeout won on health); draws are half a win.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const dir = process.argv[2];
 if (!dir || !existsSync(dir)) { console.error('usage: node scripts/fight-analyse.mjs <dir>'); process.exit(2); }
@@ -185,7 +186,8 @@ for (const m of lopsided) L.push(`- **${m.a} vs ${m.b}** lopsided: ${m.aWins}/${
 writeFileSync(`${dir}/report.md`, L.join('\n') + '\n');
 
 if (!args.includes('--json-only')) {
+  try { execFileSync('node', ['scripts/fight-report-html.mjs', dir], { stdio: 'ignore' }); } catch { /* the page is a courtesy: the markdown and json are the record */ }
   console.log(`${index.length} fights, ${totalKO} KO, ${totalTimeout} timeout, median ${r1(report.medianSeconds)} s`);
   for (const r of rows) console.log(`  ${r.id.padEnd(14)} ${pct(r.winRate).padStart(4)} (${pct(r.lo)}-${pct(r.hi)})  BT ${String(r2(r.bt)).padEnd(5)} DPS ${String(r1(r.dps)).padEnd(5)} L/R ${pct(r.left)}/${pct(r.right)}`);
-  console.log(`${flags.length} flags, ${lopsided.length} lopsided matchups. Report: ${dir}/report.md`);
+  console.log(`${flags.length} flags, ${lopsided.length} lopsided matchups. Report: ${dir}/report.md and report.html (open it: a timeline of any fight)`);
 }

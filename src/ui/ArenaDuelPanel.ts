@@ -2,6 +2,7 @@ import { FIGHTER_DEFS, FIGHTER_ORDER, type FighterId } from '@/content/fighters'
 import type { Ctx } from '@/core/types';
 import { DUEL, resetDuelStage } from '@/world/duelStage';
 import { ArenaBotsPanel } from '@/ui/ArenaBotsPanel';
+import { botDriverFor, rivalDriverFor } from '@/arena/ai/driver';
 
 /**
  * THE DUEL section of the arena panel (docs/arena/ARENA-RULES.md 1): pick a rival and add it, give either fighter a brain and a skill,
@@ -13,6 +14,7 @@ export class ArenaDuelPanel {
   private readonly add = document.createElement('button');
   private readonly remove = document.createElement('button');
   private readonly rematch = document.createElement('button');
+  private readonly watch = document.createElement('button');
   private readonly bars: Array<{ name: HTMLElement; fill: HTMLElement; hp: HTMLElement }> = [];
   private readonly status = document.createElement('div');
   private readonly mine: ArenaBotsPanel;
@@ -48,7 +50,13 @@ export class ArenaDuelPanel {
     this.remove.textContent = 'Remove';
     this.remove.addEventListener('mousedown', (e) => e.preventDefault());
     this.remove.addEventListener('click', () => { ctx.arena?.removeRival(1); this.update(true); });
-    row.append(this.pick, this.add, this.remove);
+    this.watch.type = 'button';
+    this.watch.className = 'fa-btn';
+    this.watch.textContent = 'Watch';
+    this.watch.title = 'Put a computer brain on BOTH fighters (skill 3) and start a bout: watch two fighters fight';
+    this.watch.addEventListener('mousedown', (e) => e.preventDefault());
+    this.watch.addEventListener('click', () => { void this.watchBout(); });
+    row.append(this.pick, this.add, this.remove, this.watch);
 
     const lines: HTMLElement[] = [];
     for (let i = 0; i < 2; i++) {
@@ -85,6 +93,19 @@ export class ArenaDuelPanel {
     // slot 0 starts the bout at its own spawn too
     await arena.addRival(id, DUEL.spawns[1].x, DUEL.spawns[1].y);
     arena.reset();
+    // the rival comes with a mind (skill 3), so something happens at once; your own fighter stays yours (Watch gives it one too)
+    rivalDriverFor(this.ctx, 1)?.install('basic', 3);
+    this.update(true);
+  }
+
+  /** Both fighters computer-driven: a rival if there is none, a fresh bout, a brain each. */
+  private async watchBout(): Promise<void> {
+    const arena = this.ctx.arena;
+    if (!arena) return;
+    if (!arena.active) await this.addRival();
+    else this.newBout();
+    botDriverFor(this.ctx).install('basic', 3);
+    rivalDriverFor(this.ctx, 1)?.install('basic', 3);
     this.update(true);
   }
 

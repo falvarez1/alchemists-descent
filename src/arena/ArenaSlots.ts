@@ -28,6 +28,8 @@ import { ARENA_RULES } from '@/config/arenaRules';
 
 interface Slot {
   bundle: SlotBundle;
+  /** Run when the slot's fighter is removed. */
+  onRemoved: Array<() => void>;
   /** A scripted drive or a brain: called once a tick under this slot's binding, before its body phase. */
   driver: (() => void) | null;
   /** Gate: may this slot run its body this tick (a foe's slow is TIME, so a slowed fighter runs a fraction of its ticks). */
@@ -90,6 +92,7 @@ export class ArenaSlots implements ArenaApi {
     const c = this.ctx;
     this.slots[0] = {
       bundle: { player: c.player, input: c.input, playerCtl: c.playerCtl, wands: c.wands, flask: c.flask, fighters: c.fighters!, chill: c.chill },
+      onRemoved: [],
       driver: null,
       runs: true,
     };
@@ -100,7 +103,7 @@ export class ArenaSlots implements ArenaApi {
     if (this.slots.length > 1) this.removeRival(1);
     const slot = this.slots.length;
     const bundle = this.factory(slot);
-    this.slots[slot] = { bundle, driver: null, runs: true };
+    this.slots[slot] = { bundle, onRemoved: [], driver: null, runs: true };
     this.matchLoadout(this.slots[0]!.bundle, bundle);
     const f = bundle.fighters;
     // The kit's chunk lands later: its creation (and every subscription it makes) must happen under this slot's binding.
@@ -152,9 +155,11 @@ export class ArenaSlots implements ArenaApi {
     if (!rec || slot === 0) return;
     this.with(0, () => undefined);
     this.detachStand();
+    for (const fn of rec.onRemoved.splice(0)) fn();
     const b = rec.bundle;
     b.fighters.bindScope = null;
     b.fighters.dispose();
+    (b.playerCtl as { dispose?: () => void }).dispose?.();
     (b.wands as { dispose?: () => void }).dispose?.();
     (b.chill as { dispose?: () => void } | undefined)?.dispose?.();
     this.slots.length = slot;
@@ -169,6 +174,10 @@ export class ArenaSlots implements ArenaApi {
       this.bout.winner = null;
     }
     this.ctx.projectileCtl?.invalidateEnemyIndex?.();
+  }
+
+  onSlotRemoved(slot: number, fn: () => void): void {
+    this.slots[slot]?.onRemoved.push(fn);
   }
 
   setDriver(slot: number, drive: (() => void) | null): void {

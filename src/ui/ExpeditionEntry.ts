@@ -64,6 +64,8 @@ export class ExpeditionEntry {
   private selectedKit: KitId = 'spark';
   /** The fighter the Arena door last started with (the profile remembers it): the campaign never uses one. */
   private arenaFighter: FighterId | null = null;
+  /** Which arena the Arena doors open: the Proving Yard (every move, one fighter) or the Duel Stage (two fighters, one room). */
+  private arenaLevel: 'fighter-test' | 'fighter-duel' = 'fighter-test';
   private selectedDifficulty: Difficulty = BASE_DIFFICULTY;
   private bestVictory = 0;
   private chosenSeed: ChosenSeed | null = null;
@@ -171,7 +173,12 @@ export class ExpeditionEntry {
       items.push({
         id: 'arena', label: 'Arena', kind: 'action', sub: 'The Proving Yard',
         hint: 'Pick a fighter and walk through every move. Your descent is left as it is.',
-        activate: () => this.openArena(),
+        activate: () => this.openArena('fighter-test'),
+      });
+      items.push({
+        id: 'duel', label: 'Duel', kind: 'action', sub: 'The Duel Stage',
+        hint: 'Two fighters in one room: add a rival, give either a computer brain, and watch them fight (or fight it yourself).',
+        activate: () => this.openArena('fighter-duel'),
       });
       items.push({ id: 'workshops', label: 'Workshops', kind: 'drill', hint: 'The material sandbox, the level builder and the advanced run setup.', activate: () => this.menu.push('workshops') });
     } else if (this.workshopUnlocked) {
@@ -346,7 +353,8 @@ export class ExpeditionEntry {
   }
 
   /** The Arena door: the Fighter Roster over the title; choosing a fighter starts the Proving Yard as them, Back returns to the door. */
-  private openArena(): void {
+  private openArena(level: 'fighter-test' | 'fighter-duel'): void {
+    this.arenaLevel = level;
     openFighterRoster(
       this.ctx,
       this.arenaFighter,
@@ -355,7 +363,7 @@ export class ExpeditionEntry {
         this.ctx.run?.chooseFighter(id);
         void this.launch('arena', undefined, id);
       },
-      () => this.menu.focusItem('arena'),
+      () => this.menu.focusItem(level === 'fighter-duel' ? 'duel' : 'arena'),
     );
   }
 
@@ -465,7 +473,7 @@ export class ExpeditionEntry {
     for (const button of buttons) button.disabled = true;
     this.root.querySelector('.entry-status')!.textContent = kind === 'continue'
       ? 'Returning to the Works…'
-      : kind === 'arena' ? 'Opening the Proving Yard…' : launchLine(this.ctx.run?.metaView().runsEnded ?? 0);
+      : kind === 'arena' ? (this.arenaLevel === 'fighter-duel' ? 'Opening the Duel Stage…' : 'Opening the Proving Yard…') : launchLine(this.ctx.run?.metaView().runsEnded ?? 0);
     this.ctx.audio.ensure();
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     try {
@@ -491,7 +499,7 @@ export class ExpeditionEntry {
   private start(kind: 'continue' | 'begin' | 'daily' | 'arena', seed?: number, fighter: FighterId | null = null): RunStartResult {
     const ctx = this.ctx;
     if (kind === 'arena') {
-      return ctx.levels.startRun(ctx, { mode: 'test', worldSource: 'campaign-level', levelId: 'fighter-test', loadout: 'advanced', fighter });
+      return ctx.levels.startRun(ctx, { mode: 'test', worldSource: 'campaign-level', levelId: this.arenaLevel, loadout: 'advanced', fighter });
     }
     if (kind === 'continue' || !ctx.run) {
       return ctx.levels.startRun(ctx, { mode: 'normal', worldSource: 'campaign', continueSave: kind === 'continue', loadout: 'fresh' });

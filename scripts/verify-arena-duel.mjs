@@ -40,6 +40,8 @@ const R = await page.evaluate(async ({ A_ID, B_ID }) => {
   ctx.arena.signatureLoadouts = false; // (these checks count single blows: both fight with the one Spark Bolt; the loadouts have their own measurements)
   const enemiesBefore = ctx.enemies.length;
   const playerBefore = ctx.player;
+  const EVENTS = ['cardCast', 'flaskUsed', 'playerRespawned', 'playerDeathCleared', 'levelChanged', 'enemyKilled', 'waystoneLit', 'modeChanged', 'recipeBrewed', 'wandChanged'];
+  const counts0 = Object.fromEntries(EVENTS.map((e) => [e, ctx.events.listenerCount(e)]));
   const listenersBefore = { scoped: ctx.events.scoped };
   await ctx.console.exec(`arena add ${B_ID} 740 639`);
   const A = ctx.arena.bundle(0), B = ctx.arena.bundle(1);
@@ -151,6 +153,10 @@ const R = await page.evaluate(async ({ A_ID, B_ID }) => {
   // --- T10: remove the rival; nothing is left behind ---
   await ctx.console.exec('arena remove');
   step(3);
+  // three more add/remove cycles: nothing accumulates (a controller, a wand system, a kit and a chill system each subscribe)
+  for (let k = 0; k < 3; k++) { await ctx.console.exec(`arena add ${B_ID} 740 639`); step(2); await ctx.console.exec('arena remove'); }
+  const counts1 = Object.fromEntries(EVENTS.map((e) => [e, ctx.events.listenerCount(e)]));
+  out.leaks = EVENTS.filter((e) => counts1[e] !== counts0[e]).map((e) => [e, counts0[e], counts1[e]]);
   out.removed = { active: ctx.arena.active, enemies: ctx.enemies.length, scoped: ctx.events.scoped, samePlayer: ctx.player === playerBefore, enemiesBefore, scopedBefore: listenersBefore.scoped, focus: ctx.camera.inspectionFocus };
   return out;
 }, { A_ID, B_ID });
@@ -180,6 +186,7 @@ check('the rival\'s own controller, wands and fighter run with the rival bound',
 check('between ticks slot 0 is bound and the stand-in mirrors the rival', R.mirror.bound === 0 && R.mirror.isA && R.mirror.standFor === 1 && Math.abs(R.mirror.standX - R.mirror.bX) <= 1, JSON.stringify(R.mirror));
 // T10
 check('removing the rival leaves nothing behind: inactive, no enemies, scoping off, the same player object, no camera focus', !R.removed.active && R.removed.enemies === R.removed.enemiesBefore && !R.removed.scoped && R.removed.samePlayer && R.removed.focus === null, JSON.stringify(R.removed));
+check('add and remove four times: no event listener is left behind (a controller, wands, a kit and a chill system each subscribed)', R.leaks.length === 0, JSON.stringify(R.leaks));
 check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 
 await browser.close();

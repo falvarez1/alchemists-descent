@@ -580,11 +580,18 @@ export class PlayerControl implements PlayerControlApi {
   /** Self-shock fairness bookkeeping: the last cast and the capped damage window. */
   private readonly selfShock = createSelfShockState();
 
+  /** Unsubscribes the `cardCast` listener (a rival's controller is built and thrown away: it must not leave a listener behind). */
+  private readonly offCardCast: (() => void) | undefined;
+
   constructor(private ctx: Ctx) {
     // `?.` twice: minimal test contexts carry an events stub without `on`.
-    ctx.events?.on?.('cardCast', () => {
+    this.offCardCast = ctx.events?.on?.('cardCast', () => {
       this.selfShock.lastCast = ctx.state.frameCount;
     });
+  }
+
+  dispose(): void {
+    this.offCardCast?.();
   }
 
   private tryHorizontalGroundStep(ctx: Ctx, dir: -1 | 1, bodyH: number, stepUp: number, followGround: boolean): number | null {

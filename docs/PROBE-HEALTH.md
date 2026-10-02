@@ -175,3 +175,19 @@ corridor, the panel, every fighter's Z and T through the real key path, the tool
 `verify-title-menu` gained the Complications page and the Arena door (237 checks at three sizes). Main (Complications,
 alchemy, builds) is merged in: `verify-mutators` (title section) and `verify-builds` follow the menu. The fighter kit probes
 had 17 unused-variable lint errors (CI lints scripts too: `npm run lint`); fixed, not re-run.
+
+## 2026-10-02: the arena programme (docs/arena/)
+
+New probes, all green at the commit that added them (dev server running; run sequentially; NEVER while editing `src`: HMR reloads the page
+under them, and a long batch belongs on a frozen worktree server):
+- `verify-fighter-bodies.mjs` (73): every fighter run, stopped, jumped, dropped, pushed and flown on the grating bridge; the Alchemist control
+  is identical to the last digit against a pre-seam build (`--baseline-url`).
+- `verify-fighter-moves.mjs` (19): the ten movement techniques against the classic Alchemist doing the same thing.
+- `verify-ai-basic.mjs` (34): a `basic` brain clears a ring wave with each of the ten, the keyboard hands back, skill is a dial.
+- `verify-arena-duel.mjs` (15): two fighters in one world; every damage path lands on the right fighter, the caster never; removing the
+  rival leaves nothing behind. Runs on the plain Spark loadout (`ArenaSlots.signatureLoadouts = false`).
+- `verify-duel-ui.mjs` (11): the title's Duel door, the roster, the Duel Stage, Add rival, a brain each, the fight in REAL time, Rematch, Remove,
+  with real clicks.
+`verify-fighter-arena` (65) and `verify-fighter-framework` (28) were updated for the renamed Reset button and the Body-scaled health.
+`verify-title-menu` (237) allows seven rows in the authoring build (the Duel door). The measurement tools are not probes: `fight-batch`,
+`fight-analyse` (writes `report.md` and `report.html`), `fight-tune`, `fight-dps`, `loadout-lab`: see `docs/arena/TELEMETRY-AND-BALANCE.md` 9.
