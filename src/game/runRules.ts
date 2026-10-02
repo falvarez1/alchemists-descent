@@ -1,5 +1,6 @@
 import { GAME_TITLE } from '@/config/brand';
 import type { KitId, RunOutcome, RunSummary } from '@/core/run';
+import type { FighterId } from '@/content/fighters';
 import { fnv1aString } from '@/core/rng';
 import { FLOOR_DOORS, FLOORS_TOTAL, floorDisplayName, floorOf } from '@/config/worldgraph';
 import { SANCTUM_PERK_DEFS } from '@/content/perks';
@@ -87,6 +88,8 @@ export interface RunStatsInput {
   /** The player chose this seed on the title (the ledger and the share line then print it). */
   seedChosen?: boolean;
   kit: KitId;
+  /** Who the run descended as (omitted for the classic Alchemist, so old output is unchanged). */
+  fighter?: FighterId;
   floor: number;
   floorName: string;
   floorsTotal: number;
@@ -164,6 +167,7 @@ export function buildRunSummary(input: RunStatsInput): RunSummary {
     daily: input.daily,
     ...(input.seedChosen === true && !input.daily ? { seedChosen: true } : {}),
     kit: input.kit,
+    ...(input.fighter ? { fighter: input.fighter } : {}),
     floor: Math.max(1, Math.min(input.floorsTotal, whole(input.floor) || 1)),
     floorName: input.floorName,
     floorsTotal: input.floorsTotal,

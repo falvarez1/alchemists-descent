@@ -16,6 +16,7 @@ import { MobileControls } from '@/input/MobileControls';
 import { FocusPause } from '@/input/focusPause';
 import { ToggleLatches, type HoldAction } from '@/input/toggleLatches';
 import { padThresholds } from '@/config/playerPrefs';
+import { isExternallyDriven } from '@/input/externalControl';
 
 type KeyboardLockApi = {
   lock?: (keyCodes?: string[]) => Promise<void>;
@@ -54,6 +55,8 @@ const GAMEPLAY_KEY_CODES = new Set([
   'KeyV',
   'KeyL',
   'KeyR',
+  'KeyZ',
+  'KeyT',
   'Digit1',
   'Digit2',
   'Digit3',
@@ -86,6 +89,7 @@ export const KEYBOARD_UI_BLOCK_SELECTOR = [
   '#gameover-overlay.visible',
   '#grimoire-overlay.open',
   '#story-cinema.show',
+  '#fighter-roster.visible',
 ].join(', ');
 
 export function isKeyboardUiOwnerActive(doc: Document = document): boolean {
@@ -124,6 +128,11 @@ export class InputManager {
   private readonly offLatchEvents: Array<() => void> = [];
   private readonly touchKeyCodes = new Set<string>();
 
+  /** A computer fighter is writing the game's input (src/arena/ai): the person's gameplay keys, mouse and pad stand down. */
+  private get botDriving(): boolean {
+    return this.ctx.state.mode === 'play' && isExternallyDriven(this.ctx.input);
+  }
+
   poll(): void {
     this.pollGamepad();
     this.mobile.update();
@@ -147,12 +156,25 @@ export class InputManager {
     const held = (index: number): boolean => pad.buttons[index]?.pressed === true;
     const pressed = (index: number): boolean => held(index) && !this.previousPadButtons[index];
     const menu = document.getElementById('expedition-entry');
-    if (menu && !menu.hidden) {
-      // (visible ones only: a closed fold, such as "Choose a seed", holds buttons the stick could never land on)
-      const buttons = Array.from(menu.querySelectorAll<HTMLButtonElement>('nav button:not([hidden])')).filter(b => b.getClientRects().length > 0);
-      if (pressed(13) || pressed(12)) {
-        const index = Math.max(0, buttons.indexOf(document.activeElement as HTMLButtonElement));
-        buttons[(index + (pressed(13) ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+    // The Fighter Roster (over the title or a run) walks like any menu: d-pad focus, A to press, B to go back.
+    const roster = document.querySelector<HTMLElement>('#fighter-roster.visible');
+    if (roster) {
+      const controls = Array.from(roster.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input')).filter(el => el.getClientRects().length > 0 && !el.disabled);
+      let index = controls.indexOf(document.activeElement as HTMLButtonElement);
+      if (index < 0) { index = 0; controls[0]?.focus(); }
+      if (pressed(12) || pressed(13)) controls[(index + (pressed(13) ? 1 : controls.length - 1)) % controls.length]?.focus();
+      if (pressed(0)) controls[index]?.click();
+      if (pressed(1)) window.dispatchEvent(new Event('game-pause-request')); // (the roster treats it as Back)
+    } else if (menu && !menu.hidden) {
+      // The title is a game menu (ui/title/TitleMenu): the pad presses the same keys it answers. D-pad = arrows
+      // (Up/Down select, Left/Right change a choice row), A = press, B = back. A dialog open over it (Options) keeps A.
+      const covered = document.querySelector('#player-settings[open], .app-dialog-root') !== null;
+      const active = document.activeElement instanceof HTMLElement && menu.contains(document.activeElement) ? document.activeElement : null;
+      if (!covered) {
+        const keys: ReadonlyArray<readonly [number, string]> = [[12, 'ArrowUp'], [13, 'ArrowDown'], [14, 'ArrowLeft'], [15, 'ArrowRight'], [1, 'Escape']];
+        if (keys.some(([index]) => pressed(index)) && !active) menu.querySelector<HTMLElement>('.tm-item')?.focus();
+        const target = active ?? (document.activeElement instanceof HTMLElement ? document.activeElement : menu);
+        for (const [index, key] of keys) if (pressed(index)) target.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, bubbles: true, cancelable: true }));
       }
       if (pressed(0) && document.activeElement instanceof HTMLButtonElement) document.activeElement.click();
     } else if (ctx.state.mode === 'play') {
@@ -182,7 +204,7 @@ export class InputManager {
           else window.dispatchEvent(new Event('game-pause-request'));
         }
       }
-      if (!ctx.state.paused && !document.querySelector(KEYBOARD_UI_BLOCK_SELECTOR)) {
+      if (!ctx.state.paused && !document.querySelector(KEYBOARD_UI_BLOCK_SELECTOR) && !this.botDriving) {
         const ax = pad.axes[0] ?? 0, ay = pad.axes[1] ?? 0;
         const aimX = pad.axes[2] ?? 0, aimY = pad.axes[3] ?? 0;
         // The player's stick dead zone; at the shipped 0.2 these are exactly the old 0.2 / 0.35 / 0.4 / 0.25.
@@ -386,7 +408,7 @@ export class InputManager {
    * camera every frame (the gamepad writes its own aim point).
    */
   private refreshPointerWorld(): void {
-    if (!this.pointerClient || this.padDriving || this.ctx.state.mode !== 'play') return;
+    if (!this.pointerClient || this.padDriving || this.ctx.state.mode !== 'play' || this.botDriving) return;
     const coords = this.getMouseGridCoords(this.pointerClient);
     this.ctx.input.mouse.x = coords.x;
     this.ctx.input.mouse.y = coords.y;
@@ -414,6 +436,7 @@ export class InputManager {
   }
 
   private onMouseDown(e: MouseEvent): void {
+    if (this.botDriving) return;
     this.mobile.reset();
     const { ctx } = this;
     ctx.audio.ensure();
@@ -479,6 +502,7 @@ export class InputManager {
   }
 
   private onMouseMove(e: MouseEvent): void {
+    if (this.botDriving) return;
     this.mobile.reset();
     const { ctx } = this;
     this.pointerClient = { clientX: e.clientX, clientY: e.clientY };
@@ -501,6 +525,7 @@ export class InputManager {
   }
 
   private onMouseUp(): void {
+    if (this.botDriving) return;
     const { ctx } = this;
     if (ctx.debug.active && ctx.state.mode === 'play') {
       ctx.debug.release();
@@ -522,7 +547,7 @@ export class InputManager {
 
   private onWheel(e: WheelEvent): void {
     const { ctx } = this;
-    if (ctx.state.mode !== 'play' || e.deltaY === 0) return;
+    if (ctx.state.mode !== 'play' || e.deltaY === 0 || this.botDriving) return;
     e.preventDefault();
     this.selectWand(ctx.wands.active === 0 ? 1 : 0);
   }
@@ -587,6 +612,7 @@ export class InputManager {
   }
 
   private syncHeldKeys(): void {
+    if (this.botDriving) return;
     const keys = this.ctx.input.keys;
     keys.left = this.anyHeld(LEFT_KEY_CODES);
     keys.right = this.anyHeld(RIGHT_KEY_CODES);
@@ -671,6 +697,8 @@ export class InputManager {
   private onKeyDown(e: KeyboardEvent): void {
     if (e.defaultPrevented) return;
     if (this.shouldIgnoreKeyboard(e)) return;
+    // A computer fighter has the controls: the gameplay keys do nothing (Escape, the console and the panel's keys still work).
+    if (this.botDriving && isGameplayKeyCode(e.code)) return;
     const { ctx } = this;
     const code = ctx.state.mode === 'play' ? gameplayCode(e.code) : e.code;
     this.claimPlayKey(e);
@@ -772,6 +800,9 @@ export class InputManager {
     )
       this.setKeyHeld(code, true);
     else if (code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
+    // The fighter's tactical ability (Z) and ultimate (T): latched here, consumed inside the tick (src/fighters).
+    else if (code === 'KeyZ' && !repeat && !ctx.player.dead) ctx.fighters?.press('tactical');
+    else if (code === 'KeyT' && !repeat && !ctx.player.dead) ctx.fighters?.press('ultimate');
     else if (code === 'KeyE' && !ctx.player.climbing) {
       // E telekinesis (toggle): set down whatever the wand holds (a corpse, a
       // crate), else LIFT the body under the cursor — the fallen or a crate;
@@ -809,6 +840,7 @@ export class InputManager {
   }
 
   private onKeyUp(e: KeyboardEvent): void {
+    if (this.botDriving && isGameplayKeyCode(e.code)) return;
     const { ctx } = this;
     const code = ctx.state.mode === 'play' ? gameplayCode(e.code) : e.code;
     if (!this.shouldIgnoreKeyboard(e)) this.claimPlayKey(e);

@@ -129,7 +129,9 @@ export function respondToLight(ctx: Ctx, e: Enemy, def: EnemyDef, mind: Creature
     const tip = wandTipOf(ctx);
     if (sightClear(ctx.world, at.x, at.y, tip.x, tip.y)) {
       mind.visible = true;
-      mind.targetX = p.x; mind.targetY = p.y; mind.targetVx = p.vx;
+      // (a fighter's decoy, Mirror Hunt: a foe that was drawn to an echo finds the lantern on the echo, not on her)
+      const lure = ctx.fighters && ctx.fighters.id !== null ? ctx.fighters.decoyFor(e) : null;
+      mind.targetX = lure ? lure.x : p.x; mind.targetY = lure ? lure.y : p.y; mind.targetVx = lure ? lure.vx : p.vx;
       mind.lastSeen = ctx.state.frameCount;
       mind.confidence = Math.max(mind.confidence, 0.75);
     }

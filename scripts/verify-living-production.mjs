@@ -14,6 +14,7 @@ try {
   await page.locator('#expedition-entry:not([hidden])').waitFor();
   await page.screenshot({ path: `${output}/production-entry.png` });
   await page.locator('[data-entry="begin"]').click();
+  await page.locator('[data-entry="descend"]').click();
   await page.locator('#expedition-entry').waitFor({ state: 'hidden' });
   await waitForOpeningEnd(page); // the plates hold the world still; a key press would only skip them
   await page.waitForTimeout(600);

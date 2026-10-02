@@ -13,6 +13,9 @@ import type { ChillTuning } from '@/config/params';
 import type { AlchemyCause, AlchemyKillInfo, KitId, RunSummary } from '@/core/run';
 import type { CreatureSfxAction, SfxId } from '@/content/audio/sfxCues';
 import type { LevelStorySites, StoryApi, StorySpeakOptions, StorySpokenLine } from '@/core/story';
+import type { FighterApi } from '@/core/fighters';
+import type { ArenaApi } from '@/core/arena';
+import type { FighterId } from '@/content/fighters';
 import type { BrewingApi } from '@/core/alchemy';
 
 /* ============================================================
@@ -125,6 +128,8 @@ export interface PlayerState {
   recharge: number;
   /** Lever pull (frames left): gripping and driving the arm across. */
   pullT: number;
+  /** ARENA: ticks the body is held still by a rival's stun (it feeds `restrained`); 0 outside an arena. */
+  stunT: number;
   /** Direction (+-1) toward the lever being pulled. */
   pullDir: number;
   // fluidity pass: squash/stretch, skid, draw, recoil, stagger, fidget, cloth
@@ -327,7 +332,11 @@ export const ENEMY_KINDS = [
   'lenswright',
 ] as const;
 
-export type EnemyKind = (typeof ENEMY_KINDS)[number];
+/**
+ * The kinds a level can place, plus 'fighter': the stand-in an arena makes for the OTHER fighter (core/arena). It is not in
+ * `ENEMY_KINDS`, so no level, validator or Builder offers it; it exists only inside a duel.
+ */
+export type EnemyKind = (typeof ENEMY_KINDS)[number] | 'fighter';
 
 const ENEMY_KIND_SET: ReadonlySet<string> = new Set(ENEMY_KINDS);
 
@@ -473,6 +482,12 @@ export interface WeaverLocoState {
 }
 
 export interface Enemy {
+  /**
+   * ARENA (core/arena): set on the stand-in an arena makes for another fighter: the slot it stands for. To the bound fighter's
+   * spells, kicks, blasts and kit effects it is an enemy like any other; harm done to it lands on the real fighter
+   * (`Enemies.damage` redirects), and it never thinks or draws as an enemy.
+   */
+  fighter?: number;
   expression?: CreatureExpression;
   mind?: CreatureMind;
   body?: CreatureBody;
@@ -815,6 +830,8 @@ export interface Projectile {
   mul?: number;
   /** Optional player-facing source label for hostile projectile deaths. */
   source?: string;
+  /** ARENA: the fighter slot that cast it (undefined = slot 0). A projectile's pass runs bound to its owner. */
+  owner?: number;
 }
 
 export interface FlyingParticle {
@@ -1287,6 +1304,8 @@ export interface RunStartConfig {
   continueSave?: boolean;
   /** Fresh-loadout runs: the starting kit (Breathing Works). Defaults to spark. */
   starterKit?: KitId;
+  /** Who the run descends as (src/fighters); null or absent = the classic Alchemist. */
+  fighter?: FighterId | null;
   /** YYYY-MM-DD when this is the date-seeded daily descent. */
   daily?: string | null;
   /** Fresh campaign runs: the complications this descent carries (content/mutators); cleaned by the director. */
@@ -1762,6 +1781,8 @@ export interface LightningApi {
 
 export interface ProjectilesApi {
   update(ctx: Ctx): void;
+  /** The enemy index is keyed by (frame, count): an arena changes who the stand-in is mid-tick and must force a rebuild. */
+  invalidateEnemyIndex?(): void;
 }
 
 export interface PhysicsApi {
@@ -2126,6 +2147,8 @@ export interface VineStrandsApi {
 }
 
 export interface PlayerControlApi {
+  /** Own kick readiness; the same cooldown enforced by kick(), exposed for legal AI choices. */
+  readonly kickReady?: boolean;
   /** src tags ('explosion' | 'fire' | 'acid' | 'toxic' | 'impact') drive boon resistances. */
   damage(amount: number, kx: number, ky: number, src?: string): void;
   /** Add a velocity impulse (cells/frame) to the player. Stoneskin shrugs it off.
@@ -3639,6 +3662,8 @@ export interface RunSaveState {
   v: 1;
   phials: number;
   kit: KitId;
+  /** The fighter this run descends as; absent = the classic Alchemist. */
+  fighter?: FighterId;
   daily: string | null;
   seed: number;
   /** The player chose `seed` on the title (see RunSummary.seedChosen). Absent on an ordinary run. */
@@ -3688,6 +3713,8 @@ export interface RunResult {
 export interface RunMetaView {
   unlockedKits: KitId[];
   lastKit: KitId;
+  /** The fighter the player last chose (null = the classic Alchemist). */
+  lastFighter: FighterId | null;
   workshopUnlocked: boolean;
   runsEnded: number;
   bestFloor: number;
@@ -3710,6 +3737,7 @@ export interface RunMetaView {
 export interface RunBeginOptions {
   seed: number;
   kit: KitId;
+  fighter?: FighterId | null;
   daily: string | null;
   /** Normal campaign runs are tracked (phials, ledger); test runs are not. */
   tracked: boolean;
@@ -3730,6 +3758,8 @@ export interface RunApi {
   readonly phials: number;
   readonly maxPhials: number;
   readonly kit: KitId;
+  /** Who this run descends as (null = the classic Alchemist). */
+  readonly fighter: FighterId | null;
   readonly daily: string | null;
   /** The complications this run carries (empty when none). */
   readonly mutators: readonly string[];
@@ -3754,9 +3784,11 @@ export interface RunApi {
    * always Adept: it is one seed for everyone. `seed` (never for the daily) is a seed the player
    * chose on the title; omitted, the descent rolls its own.
    */
-  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number; mutators?: readonly string[] }): RunStartResult;
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number; fighter?: FighterId | null; mutators?: readonly string[] }): RunStartResult;
   metaView(): RunMetaView;
   chooseKit(kit: KitId): void;
+  /** Remember the fighter chosen on the title or the ledger (null = the classic Alchemist). */
+  chooseFighter(id: FighterId | null): void;
   /** Remember the tier chosen (ignored while it is still locked). */
   chooseDifficulty(difficulty: Difficulty): void;
   /** Remember the complications chosen for the next ordinary descent (cleaned; the daily ignores them). */
@@ -3829,6 +3861,10 @@ export interface Ctx {
   run?: RunApi;
   /** Kill attribution + alchemical-kill payouts; absent in small test contexts. */
   alchemy?: AlchemyKillsApi;
+  /** The equipped fighter: passive, tactical, ultimate (src/fighters); absent in small test contexts, id null = the classic Alchemist. */
+  fighters?: FighterApi;
+  /** Two fighters in one world (core/arena); absent in small test contexts and until a rival is added. */
+  arena?: ArenaApi;
   /** Light as a gameplay fact (render/LightQuery); absent in small test contexts. */
   lightQuery?: LightQueryApi;
   /** The streamed score; absent in small test contexts. */

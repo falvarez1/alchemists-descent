@@ -50,6 +50,7 @@ import { drawKeyFlare, drawLampGlint, drawPortalTell, portalWakeAge } from '@/re
 import { cachedSetPieceTells } from '@/render/setPieceTells';
 import { drawHeldLeg, drawLooseLeg } from '@/render/sprites/CreatureArt';
 import { drawTelekinesis } from '@/render/sprites/TelekinesisArt';
+import { drawFighterFx } from '@/render/FighterFx';
 import { looseLegPose } from '@/combat/LooseWeaverLeg';
 import { blocksEntity, Cell, isLiquid, isSoftGrowth } from '@/sim/CellType';
 import { COLOR_FN, unpackB, unpackG, unpackR } from '@/sim/colors';
@@ -156,6 +157,9 @@ export class FrameComposer implements PixelSurface {
   capturePoses(ctx: Ctx): void {
     this.poses.capture(ctx.camera); this.poses.capture(ctx.player);
     for (const enemy of ctx.enemies) this.poses.capture(enemy);
+    // ARENA: a rival's own body is posed (and drawn) like the player's; its stand-in in `ctx.enemies` is not drawn at all.
+    const arena = ctx.arena;
+    if (arena !== undefined && arena.active) for (let s = 1; s < arena.slotCount; s++) { const b = arena.bundle(s); if (b) this.poses.capture(b.player); }
   }
 
   hasMovingPoses(ctx: Ctx): boolean {
@@ -172,7 +176,8 @@ export class FrameComposer implements PixelSurface {
     // must still compose while one of them is in flight.
     const bodyMoving = ctx.rigidBodies.bodies.some(b => !b.sleeping && b.previousX !== undefined
       && (b.previousX !== b.x || b.previousY !== b.y || b.previousAngle !== b.angle));
-    return legMoving || looseMoving || bodyMoving || (!!ctx.rigidBodies.playerRagdoll && Object.values(ctx.rigidBodies.playerRagdoll.parts).some(b => !b.sleeping)) || this.poses.moving(ctx.camera) || this.poses.moving(ctx.player) || ctx.enemies.some(e => this.poses.moving(e));
+    const rival = ctx.arena !== undefined && ctx.arena.active && (() => { for (let s = 1; s < ctx.arena!.slotCount; s++) { const b = ctx.arena!.bundle(s); if (b && this.poses.moving(b.player)) return true; } return false; })();
+    return rival || legMoving || looseMoving || bodyMoving || (!!ctx.rigidBodies.playerRagdoll && Object.values(ctx.rigidBodies.playerRagdoll.parts).some(b => !b.sleeping)) || this.poses.moving(ctx.camera) || this.poses.moving(ctx.player) || ctx.enemies.some(e => this.poses.moving(e));
   }
 
   private positionSprite(body: { x: number; y: number }): void {
@@ -1177,9 +1182,12 @@ export class FrameComposer implements PixelSurface {
     drawStoryLayer(this, this.light, ctx);
     this.drawVineStrands(ctx, 'foreground');
 
+    drawFighterFx(this, this.light, ctx, 'under');
+    this.forRivals(ctx, () => drawFighterFx(this, this.light, ctx, 'under'));
     // Entities on top. Contact shadows first, under everything, so a body's
     // own sprite and its neighbours draw over the shared ground darkening.
     for (const e of ctx.enemies) {
+      if (e.fighter !== undefined) continue; // (a rival is drawn as the fighter it is, below)
       this.positionSprite(e);
       if (this.enemyInRenderView(ctx, e)) this.drawEnemyContactShadow(ctx, e);
     }
@@ -1187,10 +1195,16 @@ export class FrameComposer implements PixelSurface {
       this.positionSprite(ctx.player);
       this.drawContactShadow(ctx, ctx.player.x, ctx.player.y, PLAYER_HALF_W + 1, 0.58);
     }
+    this.forRivals(ctx, (p) => {
+      if (ctx.state.mode !== 'play' || p.dead) return;
+      this.positionSprite(p);
+      this.drawContactShadow(ctx, p.x, p.y, PLAYER_HALF_W + 1, 0.58);
+    });
     // The dead lie under the living (they are not interpolated: they barely move).
     this.drawOffsetX = 0; this.drawOffsetY = 0;
     if (ctx.state.mode === 'play') drawCorpses(this, this.light, ctx, e => this.enemyInRenderView(ctx, e));
     for (const e of ctx.enemies) {
+      if (e.fighter !== undefined) continue;
       this.positionSprite(e);
       if (this.enemyInRenderView(ctx, e)) this.drawEnemy(this, this.light, ctx, e);
     }
@@ -1201,6 +1215,11 @@ export class FrameComposer implements PixelSurface {
     // Peers draw BEFORE the local player so your own wizard is never hidden
     // behind a phantom you cannot interact with.
     this.drawPeers(this, this.light, ctx);
+    // (a rival fighter, then the player's own wizard on top)
+    this.forRivals(ctx, (p) => {
+      if (ctx.state.mode !== 'play' || p.dead) return;
+      this.positionSprite(p); this.drawPlayer(this, this.light, ctx);
+    });
     if (ctx.state.mode === 'play') {
       this.positionSprite(ctx.player); this.drawPlayer(this, this.light, ctx);
     }
@@ -1211,6 +1230,19 @@ export class FrameComposer implements PixelSurface {
     // Near depth particles: motes in front of everything, catching real light.
     if (depthParticles) this.layers.drawParticles?.(this, this.light, ctx, 'front');
     drawTrickshotOverlay(this, ctx);
+    drawFighterFx(this, this.light, ctx, 'over');
+    this.forRivals(ctx, () => drawFighterFx(this, this.light, ctx, 'over'));
+  }
+
+  /** ARENA: run `fn` once for each rival, with that fighter's bundle installed (so the sprite and fx read ITS body, wands and kit). */
+  private forRivals(ctx: Ctx, fn: (player: Ctx['player']) => void): void {
+    const arena = ctx.arena;
+    if (arena === undefined || !arena.active) return;
+    for (let s = 1; s < arena.slotCount; s++) {
+      const b = arena.bundle(s);
+      if (!b) continue;
+      arena.with(s, () => fn(b.player));
+    }
   }
 
   private enemyInRenderView(ctx: Ctx, e: Enemy): boolean {

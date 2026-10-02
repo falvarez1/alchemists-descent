@@ -64,6 +64,7 @@ try {
   await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
   await page.waitForSelector('#expedition-entry:not([hidden])', { timeout: 60000 });
   await realClick('#expedition-entry [data-entry="begin"]');
+  await realClick('#expedition-entry [data-entry="descend"]');
   await page.waitForFunction(() => window.__game?.ctx?.levels?.current?.def.id === 'd1', null, { timeout: 60000 });
   await waitForOpeningEnd(page);
 

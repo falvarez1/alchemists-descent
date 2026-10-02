@@ -15,6 +15,8 @@ let blastTouchedScratch = new Uint8Array(0);
 const DISPLACED_BY_BLAST = new Uint8Array(CELL_COUNT);
 for (let t = 0; t < CELL_COUNT; t++) if (isLiquid(t) && t !== Cell.Oil) DISPLACED_BY_BLAST[t] = 1;
 
+/** The most one blast does to a fighter (the cap the player always had); a rival fighter is held to it too (ARENA). */
+const FIGHTER_BLAST_CAP = 42;
 const BLAST_DEBRIS_MARGIN = 8;
 const BLAST_DEBRIS_DUST_CAP = 28;
 const BLAST_ASH_LIFE_MIN = 70;
@@ -427,14 +429,16 @@ export class Explosions implements ExplosionApi {
       const dy = e.y - cy;
       const d = Math.sqrt(dx * dx + dy * dy);
       const dmg = Math.max(4, (1 - d / blastReach) * radius * 2.4);
-      ctx.enemyCtl.damage(e, dmg * (options.enemyDamageMul ?? 1), (dx / (d || 1)) * 2.2, -1.6, source);
+      // A rival fighter takes a blast as a fighter does (the player's own cap below): a bomb is a heavy hit, never an instant kill.
+      const dealt = dmg * (options.enemyDamageMul ?? 1);
+      ctx.enemyCtl.damage(e, e.fighter !== undefined ? Math.min(FIGHTER_BLAST_CAP, dealt) : dealt, (dx / (d || 1)) * 2.2, -1.6, source);
     }
     if (ctx.state.mode === 'play' && !ctx.player.dead) {
       const dx = ctx.player.x - cx,
         dy = ctx.player.y - 3 - cy;
       const d = Math.sqrt(dx * dx + dy * dy);
       if (d < radius * 1.5) {
-        const dmg = Math.min(42, Math.max(3, (1 - d / (radius * 1.5)) * radius * 2.0));
+        const dmg = Math.min(FIGHTER_BLAST_CAP, Math.max(3, (1 - d / (radius * 1.5)) * radius * 2.0));
         ctx.playerCtl.damage(dmg, (dx / (d || 1)) * 2.4, -1.8, options.playerDamageSource ?? 'explosion');
       }
       // The blast wave billows the wizard's cloth (reaches past the damage radius).

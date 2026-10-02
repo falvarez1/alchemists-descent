@@ -5,6 +5,7 @@ import { PLAYER_PALETTE } from './playerPalette';
 import { CellCapture, finePixelStep } from './FineArt';
 import { drawAlchemistSprite } from './AlchemistSprite';
 import { drawAlchemist } from '@/render/player/AlchemistArt';
+import { drawFighter } from '@/render/player/FighterArt';
 
 type RGB = readonly [number, number, number];
 
@@ -59,6 +60,8 @@ export function drawPlayerSprite(out: PixelSurface, light: LightField, ctx: Ctx)
   if (!ctx.state.reduceFlashes && player.invuln > 0 && frameCount % 6 < 3) return;
   // The game surface has half-cell pixels and uses the joint-driven art pass.
   // Classic cell surfaces retain the legacy sprite for Builder compatibility.
+  // A fighter wears its own look on the same rig (render/player/FighterArt); no fighter, no change.
+  if (ctx.fighters?.id && drawFighter(out, light, ctx)) return;
   if (drawAlchemist(out, light, ctx)) return;
   if (!player.legClub && drawAlchemistSprite(out, light, ctx)) return;
 

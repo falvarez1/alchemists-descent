@@ -267,6 +267,8 @@ export class PauseOverlay {
             worldSource: 'campaign-level',
             levelId: status.level.id,
             seed,
+            // (a level restart keeps who you descend as; a test run takes its fighter from the console)
+            fighter: status.playtestSource === 'test' ? this.ctx.fighters?.id ?? null : this.ctx.run?.fighter ?? null,
             loadout: status.playtestSource === 'test' ? 'advanced' : 'fresh',
             continueSave: false,
           });

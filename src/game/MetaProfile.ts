@@ -1,3 +1,5 @@
+import { isFighterId } from '@/content/fighters';
+import type { FighterId } from '@/content/fighters';
 import type { CardId, Difficulty } from '@/core/types';
 import type { KitId, RunSummary } from '@/core/run';
 import { DEFAULT_KIT, KIT_ORDER, isKitId } from '@/content/kits';
@@ -54,6 +56,8 @@ export interface MetaProfileData {
   fastestVictoryMs: number | null;
   unlockedKits: KitId[];
   lastKit: KitId;
+  /** The fighter the player last chose (null = the classic Alchemist). Optional on disk: a profile from before fighters has none. */
+  lastFighter: FighterId | null;
   /**
    * The hardest difficulty tier (1–4) the Kiln has been quieted on; 0 before the
    * first victory. Opens the tier above it (config/difficultyLadder).
@@ -92,6 +96,7 @@ export function defaultMetaProfile(): MetaProfileData {
     fastestVictoryMs: null,
     unlockedKits: [DEFAULT_KIT],
     lastKit: DEFAULT_KIT,
+    lastFighter: null,
     bestVictoryDifficulty: 0,
     lastDifficulty: BASE_DIFFICULTY,
     workshopUnlocked: false,
@@ -164,6 +169,7 @@ export function migrateMetaProfile(value: unknown): { profile: MetaProfileData; 
     fastestVictoryMs: typeof fastest === 'number' && Number.isFinite(fastest) && fastest > 0 ? Math.floor(fastest) : null,
     unlockedKits,
     lastKit,
+    lastFighter: isFighterId(raw.lastFighter) ? raw.lastFighter : null,
     bestVictoryDifficulty,
     lastDifficulty: openDifficulty(raw.lastDifficulty, bestVictoryDifficulty),
     workshopUnlocked: raw.workshopUnlocked === true || count(raw.runsEnded) > 0,
@@ -323,6 +329,11 @@ export class MetaProfileStore {
   commit(next: MetaProfileData): void {
     this.data = next;
     this.write();
+  }
+
+  setLastFighter(id: FighterId | null): void {
+    if (this.data.lastFighter === id) return;
+    this.commit({ ...this.data, lastFighter: id });
   }
 
   setLastKit(kit: KitId): void {

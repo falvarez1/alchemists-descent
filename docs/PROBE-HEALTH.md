@@ -152,3 +152,42 @@ builder-dock-split (10), builder-responsive (18), overlay-hit. Pass a URL as the
   sections (`palette.materials` toggle - dropped), old panel-header metrics (uppercase 11px chrome, `titleOk`), and hovers
   `.bp-tool[data-kind=...]` while the Objects tab is hidden (use `clickBuilderKind`). Two steps were already repaired;
   the rest needs a rewrite against the shell rather than a patch.
+
+## 2026-10-01: the title became a menu (docs/TITLE-MENU.md)
+
+Starting a run through the title is now two clicks, `[data-entry="begin"]` then `[data-entry="descend"]`; the Workshops
+fold is a page (`[data-entry="workshops"]` first), and the seed, case and difficulty live on pages under New descent.
+About twenty probes were patched for it (`grep -l 'data-entry="descend"' scripts`). New: `verify-title-menu.mjs` (207
+checks at three sizes) and `shot-title.mjs`. Verified against the new title: verify-title-menu, verify-fighter-title,
+verify-fighter-ledger, verify-fighter-run, `verify-options --only seed`, verify-difficulty-ladder, verify-overlay-hit,
+verify-settings, verify-sandbox-arena. NOT exercised after the patch (patched blind, same pattern as the verified ones):
+the audio, boons, clips, living-*, mobile, hosted and builder-prod-network probes.
+
+`verify-run-lifecycle` fails at the first respawn wait (`waitPlaying('d1')` after `#respawn-btn`, 10 s) on main too (its
+original version run against main f63f2eb stops at the same check), so the title section it now carries (kit list via
+Case) has not run; verify-title-menu covers the same ground.
+
+## 2026-10-01 (later): fighters left the campaign; the Proving Yard
+
+`verify-fighter-title` and `verify-fighter-ledger` were rewritten: the title has an Arena door (not a Fighter row) and the
+ledger offers no fighter. New: `verify-fighter-arena.mjs` (65 checks: the Arena door to the yard, the hall and its open
+corridor, the panel, every fighter's Z and T through the real key path, the tools, Rusk's ram, the keg, Reset yard, Leave).
+`verify-title-menu` gained the Complications page and the Arena door (237 checks at three sizes). Main (Complications,
+alchemy, builds) is merged in: `verify-mutators` (title section) and `verify-builds` follow the menu. The fighter kit probes
+had 17 unused-variable lint errors (CI lints scripts too: `npm run lint`); fixed, not re-run.
+
+## 2026-10-02: the arena programme (docs/arena/)
+
+New probes, all green at the commit that added them (dev server running; run sequentially; NEVER while editing `src`: HMR reloads the page
+under them, and a long batch belongs on a frozen worktree server):
+- `verify-fighter-bodies.mjs` (73): every fighter run, stopped, jumped, dropped, pushed and flown on the grating bridge; the Alchemist control
+  is identical to the last digit against a pre-seam build (`--baseline-url`).
+- `verify-fighter-moves.mjs` (19): the ten movement techniques against the classic Alchemist doing the same thing.
+- `verify-ai-basic.mjs` (34): a `basic` brain clears a ring wave with each of the ten, the keyboard hands back, skill is a dial.
+- `verify-arena-duel.mjs` (15): two fighters in one world; every damage path lands on the right fighter, the caster never; removing the
+  rival leaves nothing behind. Runs on the plain Spark loadout (`ArenaSlots.signatureLoadouts = false`).
+- `verify-duel-ui.mjs` (11): the title's Duel door, the roster, the Duel Stage, Add rival, a brain each, the fight in REAL time, Rematch, Remove,
+  with real clicks.
+`verify-fighter-arena` (65) and `verify-fighter-framework` (28) were updated for the renamed Reset button and the Body-scaled health.
+`verify-title-menu` (237) allows seven rows in the authoring build (the Duel door). The measurement tools are not probes: `fight-batch`,
+`fight-analyse` (writes `report.md` and `report.html`), `fight-tune`, `fight-dps`, `loadout-lab`: see `docs/arena/TELEMETRY-AND-BALANCE.md` 9.

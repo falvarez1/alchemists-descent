@@ -82,8 +82,6 @@ body.touch-enabled :is(#pause-overlay, #help-overlay, #sanctum-overlay, #run-sum
 }
 body.touch-enabled #player-settings { max-width: calc(100% - 24px); max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); box-sizing: border-box; }
 body.touch-enabled #player-settings :is(select, input) { font-size: 16px; }
-body.touch-enabled #expedition-entry .entry-content { margin: max(28px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-left)) 60px; width: auto; }
-body.touch-enabled #expedition-entry .entry-footer { position: static; padding: 0 24px max(20px, env(safe-area-inset-bottom)); }
 body.touch-enabled #story-dialogue { bottom: 210px; max-height: 45%; overflow: auto; }
 body.touch-enabled #story-dialogue button { min-width: 44px; min-height: 44px; }
 body.touch-enabled:has(#wand-bench.visible, #pause-overlay.visible, #minimap-overlay.visible, #help-overlay.visible, #player-settings[open]) #narration-caption { display: none; }
@@ -100,7 +98,6 @@ body.touch-enabled:has(#wand-bench.visible, #pause-overlay.visible, #minimap-ove
   .touch-left, .touch-right { gap: 6px; }
   #touch-tools { max-height: calc(100% - 90px - env(safe-area-inset-bottom)); right: 190px; width: min(310px, calc(100% - 370px)); }
   body.touch-enabled #expedition-entry h1 { font-size: 48px; }
-  body.touch-enabled #expedition-entry .entry-tagline { display: none; }
   body.touch-enabled #story-dialogue { bottom: 16px; width: min(42%, 480px); }
   body.touch-enabled.play-active #interaction-hint { bottom: 18px; max-width: 40%; }
 }

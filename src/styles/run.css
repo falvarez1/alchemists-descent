@@ -158,19 +158,6 @@ body.play-active #gameover-overlay.cine #ledger-btn { animation: go-fade-in 1s e
 #expedition-entry .kit-picker p.kit-note { font-size: calc(12.5px * var(--text-scale, 1)); line-height: 1.5; color: #a9b8ad; max-width: 46ch; }
 #expedition-entry .kit-chips .kit-chip.fresh { border-color: var(--m-brass); color: var(--m-brass-strong); }
 
-/* ---------- the title screen's run additions ---------- */
-.entry-content h1 { margin-bottom: 10px; }
-.entry-content p.entry-subtitle {
-  margin: 0 0 22px; font: italic 500 calc(22px * var(--text-scale, 1))/1.2 var(--m-serif); color: #c8ad7c; letter-spacing: 0.01em;
-}
-.entry-content .entry-kits { margin: 4px 0 10px; }
-.entry-content .entry-grades { margin: 0 0 10px; }
-.entry-content nav .entry-note {
-  display: block; margin-top: 4px; font: 400 calc(12px * var(--text-scale, 1))/1.4 var(--m-sans); color: #9fb1a5;
-}
-.entry-content nav .entry-daily, .entry-content nav .entry-workshop { padding-top: 9px; padding-bottom: 9px; }
-.entry-content nav button[hidden] { display: none; }
-
 /* ---------- the run ledger ---------- */
 #run-summary {
   position: absolute; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;

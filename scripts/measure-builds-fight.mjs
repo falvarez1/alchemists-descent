@@ -17,6 +17,10 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
 await page.waitForSelector('#expedition-entry:not([hidden])', { timeout: 60000 });
 const bh = await page.waitForSelector('#expedition-entry [data-entry="begin"]', { state: 'visible' });
 const bb = await bh.boundingBox(); await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2);
+// (the title is a menu: New descent opens the loadout page, Descend starts the run)
+const dh = await page.waitForSelector('#expedition-entry [data-entry="descend"]', { state: 'visible' });
+await page.waitForTimeout(500);
+const db = await dh.boundingBox(); await page.mouse.click(db.x + db.width / 2, db.y + db.height / 2);
 await page.waitForFunction(() => window.__game?.ctx?.levels?.current?.def.id === 'd1', null, { timeout: 60000 });
 await waitForOpeningEnd(page);
 await page.waitForTimeout(3000);

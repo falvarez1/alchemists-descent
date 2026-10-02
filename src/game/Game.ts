@@ -29,6 +29,8 @@ import { Spells } from '@/combat/Spells';
 import { Enemies } from '@/entities/Enemies';
 import { createPlayer, PlayerControl } from '@/entities/Player';
 import { ChillSystem } from '@/game/Chill';
+import { FighterSystem } from '@/fighters/FighterSystem';
+import { ArenaSlots } from '@/arena/ArenaSlots';
 import { Physics } from '@/entities/physics';
 import { RigidBodies } from '@/entities/RigidBodies';
 import { VineStrands } from '@/entities/VineStrands';
@@ -67,7 +69,9 @@ import { Cell } from '@/sim/CellType';
 import { Explosions } from '@/sim/explosion';
 import { Simulation } from '@/sim/Simulation';
 import { World } from '@/sim/World';
-import { setDetachedSandboxWorldSource } from '@/core/runtimeState';
+import { cancelChargingBlackHole, resetCombatTransients, setDetachedSandboxWorldSource } from '@/core/runtimeState';
+import { fightSink } from '@/core/fightSink';
+import { createDefaultStatus } from '@/entities/status';
 import { ParallelSim } from '@/sim/parallel/ParallelSim';
 import { createSharedWorld, sharedMemoryAvailable } from '@/sim/parallel/sharedWorld';
 import { readSavedQuality } from '@/config/playerPrefs';
@@ -94,6 +98,9 @@ import { MutatorDirector } from '@/game/MutatorDirector';
 import { RunDirector } from '@/game/RunDirector';
 import { RunSummary } from '@/ui/RunSummary';
 import { RunHud } from '@/ui/RunHud';
+import { FighterChips } from '@/ui/FighterChips';
+import { FighterArenaPanel } from '@/ui/FighterArenaPanel';
+import { runBots } from '@/arena/ai/driver';
 import { DialogueBox } from '@/ui/story/DialogueBox';
 import { StoryCinemaOverlay } from '@/ui/story/StoryCinema';
 
@@ -170,6 +177,11 @@ export class Game {
   private animationFrameId: number | null = null;
   private started = false;
   private disposed = false;
+  /**
+   * Batch mode (docs/arena/TELEMETRY-AND-BALANCE.md 3.3): while set, the real-time loop idles (no ticks, no
+   * render, no clip capture, no input poll) and a harness steps the game with `advance`. Dev tooling only.
+   */
+  headless = false;
   private lastVisualFxDecayFrame = -1;
   private composeDirty = true;
   private lastComposeSignature = -1;
@@ -291,6 +303,10 @@ export class Game {
     const chill = new ChillSystem(ctx);
     ctx.chill = chill;
     this.disposables.push(chill);
+    // The fighter (src/fighters): inert until one is equipped, so the classic Alchemist is untouched.
+    const fighters = new FighterSystem(ctx);
+    ctx.fighters = fighters;
+    this.disposables.push(fighters);
     ctx.peers = new PeerGhosts();
     const enemyCtl = new Enemies(ctx);
     ctx.enemyCtl = enemyCtl;
@@ -345,6 +361,37 @@ export class Game {
     const wands = new WandSystem(ctx);
     ctx.wands = wands;
     this.disposables.push(wands);
+    // ARENA (core/arena): a second fighter's bundle is built here, the one place that names the concrete classes. Its player and
+    // input stand in on the Ctx while its systems are constructed (they read them), and every subscription they make is tagged with
+    // the slot, so a rival's `cardCast` or `flaskUsed` never feeds this fighter's passive.
+    // (authoring builds only: the arena, its AI and its rival are test-mode tools; the player build drops all of it)
+    if (__AUTHORING__) ctx.arena = new ArenaSlots(ctx, (slot) => {
+      const keepPlayer = ctx.player, keepInput = ctx.input;
+      const player = createPlayer();
+      const input: InputState = {
+        keys: { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false },
+        mouse: { x: 0, y: 0 },
+        isDrawing: false, lastX: null, lastY: null, buildSpellHeld: false, bombCharge: -1, activeChargingBlackHole: null,
+        siphonHeld: false, pourHeld: false, drinkHeld: false,
+      };
+      ctx.player = player;
+      ctx.input = input;
+      try {
+        return ctx.events.asSlot(slot, () => {
+          const playerCtl = new PlayerControl(ctx);
+          const chill = new ChillSystem(ctx);
+          const fighters = new FighterSystem(ctx);
+          const slotWands = new WandSystem(ctx);
+          const flask = new Flask();
+          return { player, input, playerCtl, wands: slotWands, flask, fighters, chill };
+        });
+      } finally {
+        ctx.player = keepPlayer;
+        ctx.input = keepInput;
+      }
+    });
+    const arena = ctx.arena;
+    if (arena) this.disposables.push({ dispose: () => { arena.removeRival(1); } });
     ctx.pickups = new Pickups();
     const mechanisms = new Mechanisms(ctx);
     ctx.mechanisms = mechanisms;
@@ -445,6 +492,10 @@ export class Game {
     const runSummary = new RunSummary(ctx);
     this.disposables.push(runSummary);
     this.disposables.push(new RunHud(ctx, () => runSummary.showLast()));
+    // The fighter's tactical and ultimate chips under the flask belt (nothing for the classic Alchemist).
+    this.disposables.push(new FighterChips(ctx));
+    // The Proving Yard's card (steps through the fighters, ticks off their moves); it shows only in that level.
+    this.disposables.push(new FighterArenaPanel(ctx));
     // The story's dialogue box (Pell) with its interact prompt, and the opening/ending plates.
     // (Matron Ash's voice comes with the play systems.)
     this.disposables.push(new DialogueBox(ctx), new StoryCinemaOverlay(ctx));
@@ -739,6 +790,7 @@ export class Game {
   private step = (now: number): void => {
     if (this.disposed) return;
     this.animationFrameId = requestAnimationFrame(this.step);
+    if (this.headless) return;
     if (this.workshopPending) this.settleDeferredWorkshop();
     if (this.sandboxPool !== null && !this.sandboxPool.isStarted) this.settleSandboxPool();
     // Poll on presentation frames so Start can also resume a paused simulation.
@@ -778,6 +830,85 @@ export class Game {
     this.updateFixedTick(options);
     if (render) this.renderFrame(frameWorkStart, 1);
   };
+
+  /**
+   * Step `ticks` fixed ticks of the game by hand, paused or not (a harness's loop: probes, the fight batch).
+   * Nothing is rendered unless `render` is set: compose, lighting and GL live only in `renderFrame`, which is
+   * most of a frame's cost. Dev tooling only, like the rest of this handle.
+   */
+  advance(ticks: number, options: { render?: boolean } = {}): void {
+    const render = options.render === true;
+    for (let i = 0; i < ticks; i++) this.tick(render, { forcePaused: true });
+  }
+
+  /**
+   * Put the game back to a repeatable starting state for one fight (docs/arena/TELEMETRY-AND-BALANCE.md 3.3, the
+   * recipe of scripts/verify-sim-determinism.mjs): the seed and the clocks, every transient store, the body's
+   * vitals and the seeded streams. `rebuild` re-stamps the terrain afterwards (the Proving Yard passes its own
+   * reset). The caller then equips the fighter, awaits its kit (`ctx.fighters.whenReady()`) and places the foes.
+   * Bot decisions use their own seeded Rng, never `entityRandom`: anything that draws from the entity stream
+   * outside a tick shifts it, and each tick reseeds it from (worldSeed, frameCount) alone.
+   */
+  resetForFight(seed: number, rebuild?: (ctx: Ctx) => void): void {
+    const ctx = this.ctx;
+    ctx.state.worldSeed = seed >>> 0;
+    ctx.state.frameCount = 0;
+    this.lastVisualFxDecayFrame = -1;
+    ctx.enemies.length = 0;
+    ctx.rigidBodies.clear();
+    ctx.vineStrands.clear();
+    ctx.critters.clear();
+    ctx.sparks?.clear();
+    resetCombatTransients(ctx, { projectiles: 'clear-all', simulationAccumulator: true });
+    ctx.fx.hitstop = 0;
+    ctx.fx.deathSlowMo = 0;
+    ctx.fx.bloomKick = 0;
+    ctx.fx.screenShake = 0;
+    ctx.input.queuedJump = undefined;
+    if (rebuild) rebuild(ctx);
+    // `World.clear` zeroes the moved plane but not its epoch: the wrap point would land at a different substep each fight.
+    ctx.world.movedTick = 1;
+    ctx.simulation.accumulator = 0;
+    // The body: whole, still, standing, with nothing left of the last fight on it.
+    const p = ctx.player;
+    ctx.playerCtl.resetTransientState(ctx);
+    cancelChargingBlackHole(ctx);
+    p.dead = false;
+    p.hp = p.maxHp;
+    p.mana = p.maxMana;
+    p.levit = p.maxLevit;
+    p.invuln = 0;
+    p.cooldown = 0;
+    p.firing = false;
+    p.firePressed = false;
+    p.lastDamageSource = null;
+    p.tpCool = 0;
+    p.vx = 0;
+    p.vy = 0;
+    p.fx = 0;
+    p.fy = 0;
+    p.recharge = 0;
+    p.pullT = 0;
+    p.inLiquid = false;
+    p.staggerT = 0;
+    p.recoilT = 0;
+    p.kickT = 0;
+    p.hat = { ox: 0, oy: 0, vx: 0, vy: 0, pvx: 0, pvy: 0 };
+    p.status = createDefaultStatus();
+    ctx.state.arrivalGraceUntil = 0;
+    for (const wand of ctx.wands.wands) {
+      wand.mana = wand.frame.manaMax;
+      wand.cooldown = 0;
+      wand.castIndex = 0;
+    }
+    // The sim window follows the camera: a camera left where the last fight parked it changes which cells are simulated at all.
+    ctx.camera.snapTo(p.x, p.y - 70);
+    ctx.camera.updateSimBounds(ctx.world);
+    // Subsystems that listen for a cleared death (the clip recorder, the score, the fighter, the chill) start clean too.
+    ctx.events.emit('playerDeathCleared');
+    // Last: the foes spawned and the fighter equipped next draw from streams that start where they started last time.
+    reseedTickStreams(ctx.state.worldSeed, 0);
+  }
 
   private updateFixedTick(options: { forcePaused?: boolean } = {}): void {
     const ctx = this.ctx;
@@ -828,6 +959,7 @@ export class Game {
       bounds.x1 = Math.min(ctx.world.width, Math.ceil(ctx.player.x + VIEW_W / 2 + 80));
       bounds.y0 = Math.max(0, Math.floor(ctx.player.y - VIEW_H / 2 - 80));
       bounds.y1 = Math.min(ctx.world.height, Math.ceil(ctx.player.y + VIEW_H / 2 + 80));
+      ctx.arena?.extendSimBounds(bounds); // (a rival's surroundings are simulated too)
     }
     ctx.contraption?.includeSimulation();
 
@@ -849,13 +981,24 @@ export class Game {
 
       const tEnt = performance.now();
       if (!dbg.frozenPlayer()) {
-        ctx.playerCtl.update(ctx);
-        // The body's temperature follows where it now stands (its moveK is read next tick).
-        ctx.chill?.update(ctx);
+        // A computer fighter, if one is installed (src/arena/ai), writes this tick's inputs just before the body reads them.
+        // (an arena: who resolves first is a seeded coin each tick, so neither fighter has the edge of landing its blow before the other moves)
+        const rivalsFirst = ctx.arena !== undefined && ctx.arena.active && ctx.arena.rivalsFirst();
+        if (rivalsFirst) ctx.arena?.runRivals('body');
+        if (__AUTHORING__) runBots(ctx);
+        // (an arena: a rival's slow is TIME, so a slowed fighter runs only a fraction of its ticks)
+        if (ctx.arena === undefined || ctx.arena.runsBody(0)) {
+          ctx.playerCtl.update(ctx);
+          // The body's temperature follows where it now stands (its moveK is read next tick).
+          ctx.chill?.update(ctx);
+          // The fighter's abilities act on the body that just moved, before the enemies think.
+          ctx.fighters?.update(ctx);
+        }
+        if (!rivalsFirst) ctx.arena?.runRivals('body');
         if (!ctx.player.dead) updateLegSwing(ctx);
         updateTelekinesis(ctx);
       }
-      if (!debugActive) ctx.flask.update(ctx);
+      if (!debugActive) { ctx.flask.update(ctx); ctx.arena?.runRivals('flask'); }
       const enemyStart = performance.now();
       ctx.enemyCtl.update(ctx); // self-gates per enemy via ctx.debug.frozenEnemy
       let creatureMs = performance.now() - enemyStart;
@@ -889,15 +1032,19 @@ export class Game {
         this.brewing.update(ctx);
         ctx.hints.update(ctx);
         ctx.wands.update(ctx);
+        ctx.arena?.runRivals('wands');
         ctx.particles.update(ctx);
         ctx.lightning.update();
         ctx.lightning.ambientDischarge();
       }
       this.updateBuildModeHeldSpells();
+      ctx.arena?.endTick();
       if (debugActive) dbg.update(); // drag the grabbed entity to the cursor
       this.perfHud.mark('entities', performance.now() - tEnt);
       const totalMs = performance.now() - tickStart;
       this.perfHud.recordTick(simMs, creatureMs, Math.max(0, totalMs - simMs - creatureMs), totalMs);
+      // A fight recorder samples after every system has run (dev only: null, and one check, otherwise).
+      fightSink?.tick();
     }
 
   }

@@ -33,6 +33,8 @@ export type RunOutcome = 'victory' | 'fallen' | 'abandoned';
 export type KitId = 'spark' | 'frost' | 'ember' | 'storm';
 
 /** What a finished run hands the summary screen, the share text and the meta profile. */
+import type { FighterId } from '@/content/fighters';
+
 export interface RunSummary {
   outcome: RunOutcome;
   seed: number;
@@ -41,6 +43,8 @@ export interface RunSummary {
   /** The player chose this seed on the title: the ledger and the share line name it. Absent on an ordinary run. */
   seedChosen?: boolean;
   kit: KitId;
+  /** Who the run descended as; absent for the classic Alchemist (the ledger and the share line stay as they were). */
+  fighter?: FighterId;
   /** 1-based floor reached (the floor the run ended on). */
   floor: number;
   floorName: string;

@@ -61,24 +61,51 @@ async function openTitle({ viewport = { width: 1280, height: 720 }, fixedDate = 
   return page;
 }
 
-/** The title's Complications fold, with REAL clicks: open it and press each chip. */
-async function chooseOnTitle(page, ids) {
-  const fold = page.locator('#expedition-entry .entry-comps');
-  if (!(await fold.evaluate((el) => el.open))) await fold.locator('summary').click();
-  for (const id of ids) await page.locator(`#expedition-entry .comp-chip[data-mutator="${id}"]`).click();
-}
-const chosenOnTitle = (page) => page.evaluate(() => [...document.querySelectorAll('#expedition-entry .comp-chip[aria-pressed="true"]')].map((c) => c.dataset.mutator));
-
-/** Begin with a seed typed into the seed fold (a real path), or plain. */
-async function begin(page, { seed = null } = {}) {
-  if (seed !== null) {
-    const fold = page.locator('#expedition-entry .entry-seed:not(.entry-comps)');
-    if (!(await fold.evaluate((el) => el.open))) await fold.locator('summary').click();
-    await page.locator('#entry-seed-input').fill(String(seed));
-    await page.locator('#expedition-entry [data-seed="begin"]').click();
-  } else {
-    await page.locator('#expedition-entry [data-entry="begin"]').click();
+/*
+ * The title is a game menu (docs/TITLE-MENU.md): New descent opens the loadout page, whose Complications row opens a page
+ * of twelve toggles (an item each, `.tm-item[data-mutator]`, `aria-checked`); a seed is a page with a field; Descend starts.
+ */
+const settle = (page) => page.waitForTimeout(520);
+const visibleIn = (page, selector) => page.locator(selector).first().isVisible().catch(() => false);
+/** From wherever the title is (main, a page under New descent) to the loadout page. */
+async function toLoadout(page) {
+  for (let n = 0; n < 4; n++) {
+    if (await visibleIn(page, '#expedition-entry [data-entry="descend"]')) return;
+    if (await visibleIn(page, '#expedition-entry [data-entry="back"]')) await page.locator('#expedition-entry [data-entry="back"]').click();
+    else await page.locator('#expedition-entry [data-entry="begin"]').click();
+    await settle(page);
   }
+}
+/** To the Complications page. */
+async function toComplications(page) {
+  if (await visibleIn(page, '#expedition-entry .tm-item[data-mutator]')) return;
+  await toLoadout(page);
+  await page.locator('#expedition-entry [data-entry="complications"]').click();
+  await settle(page);
+}
+/** The title's Complications page, with REAL clicks: press each toggle. */
+async function chooseOnTitle(page, ids) {
+  await toComplications(page);
+  for (const id of ids) await page.locator(`#expedition-entry .tm-item[data-mutator="${id}"]`).click();
+}
+const chosenOnTitle = async (page) => {
+  await toComplications(page);
+  return page.evaluate(() => [...document.querySelectorAll('#expedition-entry .tm-item[data-mutator][aria-checked="true"]')].map((c) => c.dataset.mutator));
+};
+const noteOnTitle = (page) => page.evaluate(() => document.querySelector('#expedition-entry .tm-note')?.textContent ?? '');
+const cardOnTitle = (page) => page.evaluate(() => document.querySelector('#expedition-entry .tm-detail:not([hidden])')?.textContent ?? '');
+
+/** Begin with a seed chosen on the seed page (a real path), or plain. */
+async function begin(page, { seed = null } = {}) {
+  await toLoadout(page);
+  if (seed !== null) {
+    await page.locator('#expedition-entry [data-entry="seed"]').click();
+    await settle(page);
+    await page.locator('#entry-seed-input').fill(String(seed));
+    await page.locator('#expedition-entry [data-seed="use"]').click();
+    await settle(page);
+  }
+  await page.locator('#expedition-entry [data-entry="descend"]').click();
   await waitForOpeningEnd(page);
   await page.waitForFunction(() => window.__game?.ctx?.state?.mode === 'play' && window.__game.ctx.run?.active && !window.__game.ctx.levels.transitioning, null, { timeout: 40000 });
   await page.waitForTimeout(600);
@@ -151,33 +178,34 @@ const teleport = (page, x, y, ms = 800) => page.evaluate(([x, y]) => {
 const planOf = (page) => page.evaluate(() => { const c = window.__game.ctx; const p = c.mutators.planFor(c.levels.current.def.id); return p ? { vents: p.vents.map((v) => ({ kind: v.kind, x: v.x, y: v.y, dir: v.dir, cell: v.cell, budget: v.budget })), puddles: p.puddles.map((q) => ({ x: q.x, y: q.y, depth: q.depth, n: q.cells.length, cells: q.cells })), skipped: p.skipped } : null; });
 const countCells = (page, type, box) => page.evaluate(([type, box]) => { const w = window.__game.ctx.world; let n = 0; for (let y = box.y0; y <= box.y1; y++) for (let x = box.x0; x <= box.x1; x++) if (w.inBounds(x, y) && w.types[w.idx(x, y)] === type) n++; return n; }, [type, box]);
 
-/* ============================== the title fold ============================== */
+/* ============================== the title page ============================== */
 async function sectionTitle() {
-  console.log('\n# The title: the Complications fold (real clicks)');
+  console.log('\n# The title: the Complications page (real clicks)');
   let page = await openTitle({ viewport: { width: 1280, height: 720 } });
-  const fold = await page.evaluate(() => {
-    const f = document.querySelector('#expedition-entry .entry-comps');
-    const seed = document.querySelector('#expedition-entry .entry-seed:not(.entry-comps)');
-    const sb = seed?.getBoundingClientRect(), cb = f?.getBoundingClientRect();
-    return { exists: !!f, closed: f && !f.open, summary: f?.querySelector('summary')?.textContent, chips: document.querySelectorAll('#expedition-entry .comp-chip').length, sameRow: !!sb && !!cb && Math.abs(sb.top - cb.top) < 4 };
-  });
-  check('the title has a Complications fold, closed, naming nothing', fold.exists && fold.closed && fold.summary === 'Complications', JSON.stringify(fold));
-  check('it offers all twelve complications as chips', fold.chips === 12, String(fold.chips));
-  check('closed, it shares the seed fold\'s row (no extra height on a short title)', fold.sameRow, JSON.stringify(fold));
+  const onMain = await page.evaluate(() => !document.querySelector('#expedition-entry [data-entry="complications"], #expedition-entry .tm-item[data-mutator]'));
+  check('the main page has no Complications controls on it (they are one door in)', onMain);
+  await toLoadout(page);
+  const row = await page.evaluate(() => ({ exists: !!document.querySelector('#expedition-entry [data-entry="complications"]'), value: document.querySelector('#expedition-entry [data-entry="complications"] .tm-value')?.textContent }));
+  check('the loadout page has a Complications row, naming nothing', row.exists && row.value === 'None', JSON.stringify(row));
+  await toComplications(page);
+  const chips = await page.evaluate(() => document.querySelectorAll('#expedition-entry .tm-item[data-mutator]').length);
+  check('the page offers all twelve complications', chips === 12, String(chips));
   await chooseOnTitle(page, ['wet-floors', 'low-gravity', 'tinderbox']);
   check('three can be chosen with real clicks', (await chosenOnTitle(page)).length === 3, JSON.stringify(await chosenOnTitle(page)));
-  await page.locator('#expedition-entry .comp-chip[data-mutator="hush"]').click();
-  const after4 = await page.evaluate(() => ({ on: [...document.querySelectorAll('#expedition-entry .comp-chip[aria-pressed="true"]')].map((c) => c.dataset.mutator), note: document.querySelector('#expedition-entry .comp-note')?.textContent }));
-  check('a fourth is refused, and the note says why', after4.on.length === 3 && !after4.on.includes('hush') && /3 at a time/.test(after4.note), JSON.stringify(after4));
-  const total = await page.evaluate(() => document.querySelector('#expedition-entry .comp-total')?.textContent ?? '');
+  await page.locator('#expedition-entry .tm-item[data-mutator="hush"]').click({ force: true }); // a real click on an entry marked aria-disabled
+  const after4 = await page.evaluate(() => ({ on: [...document.querySelectorAll('#expedition-entry .tm-item[data-mutator][aria-checked="true"]')].map((c) => c.dataset.mutator) }));
+  check('a fourth is refused, and its card says why', after4.on.length === 3 && !after4.on.includes('hush') && /3 at a time/.test(await cardOnTitle(page)), JSON.stringify(after4) + (await cardOnTitle(page)).slice(0, 120));
+  const total = await noteOnTitle(page);
   check('the total says what the three add up to (±0, +1 and −1: an even trade, with an easy one in the set)', /3 in force: an even trade/.test(total) && /will not open a harder tier/.test(total), total);
-  await page.locator('#expedition-entry .comp-chip[data-mutator="tinderbox"]').hover();
-  const note = await page.evaluate(() => document.querySelector('#expedition-entry .comp-note')?.textContent ?? '');
-  check('hovering a chip reads out its regulation', /Tinderbox — Every fuel in the Works is bone dry/.test(note), note);
+  await page.locator('#expedition-entry .tm-item[data-mutator="tinderbox"]').focus();
+  const card = await cardOnTitle(page);
+  check('focusing an entry reads out its regulation', /Tinderbox/.test(card) && /Every fuel in the Works is bone dry/.test(card), card.slice(0, 160));
   await page.screenshot({ path: `${outDir}/title-1280x720-open.png` });
-  await page.locator('#expedition-entry .entry-comps summary').click();
-  const closedText = await page.evaluate(() => document.querySelector('#expedition-entry .entry-comps summary')?.textContent ?? '');
-  check('closed again, the fold names what is chosen', /Complications: Wet Floors, Tinderbox and Low Gravity/.test(closedText), closedText);
+  await page.locator('#expedition-entry [data-entry="back"]').click();
+  await settle(page);
+  const closedRow = await page.evaluate(() => document.querySelector('#expedition-entry [data-entry="complications"] .tm-value')?.textContent ?? '');
+  const recap = await page.evaluate(() => document.querySelector('#expedition-entry [data-entry="descend"]')?.textContent ?? '');
+  check('back on the loadout page, the row and the recap name what is chosen', closedRow === '3 in force' && /3 complications/.test(recap), JSON.stringify({ closedRow, recap }));
   // The choice is remembered (the meta profile) the moment it is made: a reloaded title opens with it pressed.
   await page.close();
   page = await openTitle();
@@ -189,40 +217,43 @@ async function sectionTitle() {
   await page.waitForTimeout(700);
   check('a reloaded title opens with that choice already pressed', JSON.stringify(await chosenOnTitle(page)) === JSON.stringify(['famine', 'hush']), JSON.stringify(await chosenOnTitle(page)));
   await begin(page, { seed: SEED });
-  check('Begin carries the remembered choice into the run', JSON.stringify((await snap(page)).mutators) === JSON.stringify(['famine', 'hush']), JSON.stringify(await snap(page)));
+  check('Descend carries the remembered choice into the run', JSON.stringify((await snap(page)).mutators) === JSON.stringify(['famine', 'hush']), JSON.stringify(await snap(page)));
   await page.evaluate(() => { const c = window.__game.ctx; c.run.abandon(c); });
   await page.locator('#run-summary:not([hidden])').waitFor({ state: 'visible', timeout: 10000 });
   await page.locator('#run-summary [data-rs="title"]').click();
   await page.locator('#expedition-entry').waitFor({ state: 'visible', timeout: 20000 });
   await page.waitForTimeout(500);
   check('back at the title after the run, the choice is still pressed', JSON.stringify(await chosenOnTitle(page)) === JSON.stringify(['famine', 'hush']), JSON.stringify(await chosenOnTitle(page)));
-  await page.locator('#expedition-entry .entry-comps summary').click();
-  await page.locator('#expedition-entry .comp-clear').click();
-  check('Clear empties it', (await chosenOnTitle(page)).length === 0);
-  // Two that cancel (Hush and Nosy Neighbours) never share a descent: the new chip takes the old one's place, and the note says so.
-  await page.locator('#expedition-entry .comp-chip[data-mutator="hush"]').click();
-  await page.locator('#expedition-entry .comp-chip[data-mutator="nosy-neighbours"]').click();
-  const swapped = await page.evaluate(() => ({ on: [...document.querySelectorAll('#expedition-entry .comp-chip[aria-pressed="true"]')].map((c) => c.dataset.mutator), note: document.querySelector('#expedition-entry .comp-note')?.textContent ?? '' }));
+  await page.locator('#expedition-entry [data-comp="clear"]').click();
+  check('Clear all empties it', (await chosenOnTitle(page)).length === 0);
+  // Two that cancel (Hush and Nosy Neighbours) never share a descent: the new entry takes the old one's place, and the note says so.
+  await page.locator('#expedition-entry .tm-item[data-mutator="hush"]').click();
+  await page.locator('#expedition-entry .tm-item[data-mutator="nosy-neighbours"]').click();
+  const swapped = { on: await chosenOnTitle(page), note: await noteOnTitle(page) };
   check('Hush and Nosy Neighbours swap rather than cancel, and the note says so', JSON.stringify(swapped.on) === JSON.stringify(['nosy-neighbours']) && /takes the place of Hush/.test(swapped.note), JSON.stringify(swapped));
-  await page.locator('#expedition-entry .comp-clear').click();
+  await page.locator('#expedition-entry [data-comp="clear"]').click();
   await page.context().close();
 
   for (const [w, h] of [[960, 600], [1440, 900]]) {
     const small = await openTitle({ viewport: { width: w, height: h } });
-    const closed = await small.evaluate(() => {
-      const r = (sel) => { const e = document.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom) }; };
-      return { vh: innerHeight, begin: r('[data-entry="begin"]'), trailer: r('[data-entry="trailer"]'), comps: r('#expedition-entry .entry-comps summary'), footer: r('.entry-footer') };
-    });
-    check(`${w}x${h}: the fold sits above the fold of the window, and the trailer button is still reachable`, closed.comps && closed.comps.bottom < closed.vh && closed.trailer && closed.trailer.bottom <= closed.vh + 1, JSON.stringify(closed));
+    await toLoadout(small);
+    const rowBox = await small.evaluate(() => { const b = document.querySelector('#expedition-entry [data-entry="complications"]').getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), vh: innerHeight }; });
+    check(`${w}x${h}: the Complications row is on screen in the loadout page`, rowBox.top >= 0 && rowBox.bottom <= rowBox.vh, JSON.stringify(rowBox));
     await small.screenshot({ path: `${outDir}/title-${w}x${h}-closed.png` });
     await chooseOnTitle(small, ['gas-leak', 'fireworks']);
-    // A real click lands on every chip (nothing overlays the fold), at this window size.
-    const hit = await small.evaluate(() => [...document.querySelectorAll('#expedition-entry .comp-chip')].map((chip) => {
-      const b = chip.getBoundingClientRect();
-      const el = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
-      return chip === el || chip.contains(el);
-    }).filter((ok) => !ok).length);
-    check(`${w}x${h}: every chip is hit-testable when the fold is open`, hit === 0, `${hit} covered`);
+    // A real click lands on every entry (nothing overlays the list), at this window size.
+    const hit = await small.evaluate(async () => {
+      let covered = 0;
+      for (const item of document.querySelectorAll('#expedition-entry .tm-item[data-mutator]')) {
+        item.scrollIntoView({ block: 'nearest' });
+        await new Promise((r) => setTimeout(r, 30));
+        const b = item.getBoundingClientRect();
+        const el = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+        if (!(item === el || item.contains(el))) covered++;
+      }
+      return covered;
+    });
+    check(`${w}x${h}: every entry is hit-testable on the open page`, hit === 0, `${hit} covered`);
     await small.screenshot({ path: `${outDir}/title-${w}x${h}-open.png` });
     await small.context().close();
   }

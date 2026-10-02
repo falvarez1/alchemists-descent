@@ -49,6 +49,10 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # verify-builder-pro.mjs, verify-builder-ux.mjs, verify-builder-prefabs.mjs,
 # verify-builder-power.mjs, verify-sprites.mjs, verify-machines.mjs,
 # verify-gallery.mjs
+# Fighters (docs/FIGHTERS.md; dev server running): fighter-probe.mjs is the shared harness (a PAUSED world you
+# step with the game's own tick, REAL key presses, a carved arena); verify-fighter-framework (the engine seams),
+# verify-fighter-<name> per kit, verify-fighter-roster-play (all ten through a real run), fighter-studio.mjs
+# (every fighter in every pose: THE way to iterate a look). Never edit src while a probe runs (HMR reloads it).
 # Builder probes arm things through run-helpers (the shell groups tools, tabs the palette and
 # hides the game header while it is open): clickBuilderTool(page,'rectFill'),
 # clickBuilderKind(page,'door'), clickBuilderControl(page,'#b-save') (opens the menu/tab that
@@ -64,6 +68,10 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # (footfalls/splashes/tracks/vines/critters), bench-creatures.mjs,
 # perf-creatures-live.mjs. Player (docs/PLAYER-ART.md): player-studio.mjs
 # (every action posed + costume-ticked, zoomed), probe-player-death.mjs
+# Proving Yard (dev server running): verify-fighter-arena.mjs (the Arena door to the yard, the hall, the panel, every fighter's Z and T,
+# the ram, the keg), shot-blueprint.mjs fighter-test (the whole hall).
+# Title menu (dev server running): verify-title-menu.mjs (the menu at three sizes: keys, rows, lists, seed, pointer, a
+# fake pad the game polls, Descend starts what the rows say), shot-title.mjs (every page, for the eye).
 # Gameplay/runtime probes (dev server running): verify-tea-machine.mjs (floor 1 PLAYED with
 # real input: barricade, crank, the three faults, bell, gate), verify-living-traversal.mjs /
 # verify-living-progression.mjs / verify-run-lifecycle.mjs (route to the Sanctum, boon + door, all
@@ -110,6 +118,22 @@ dev server. `scripts/verify-*.mjs` show the pattern.
   MOVE, it keeps its id (`tests/builder-shell-markup.test.ts`). The Builder owns the terrain while open:
   a document with none captures the live grid on save/validate/play, and opening over a changed Sandbox
   asks which copy to edit. See `docs/BUILDER-STUDIO.md`.
+- **Fighters are for the ARENA mode, not the campaign** (`src/fighters/`, docs/FIGHTERS.md): ten, each a look, a passive,
+  a tactical (Z) and an ultimate (T). The campaign is the classic Alchemist only; the title's Arena door (authoring
+  builds) starts the Proving Yard (`world/fighterArena`, level `fighter-test`, `ui/FighterArenaPanel`), the test
+  arena where each is walked through every move. The arena MODE itself (rules, several fighters, bots) is not built. `ctx.fighters` is absent in test contexts and `id` is null for the classic Alchemist,
+  so every engine hook (`ctx.fighters?.…`) is a no-op by default; `FighterSystem` owns the shared machinery
+  (cooldowns, ultimate charge, modifiers, a foe's slow/stun/reveal, a body-owning `startMove`, armor, drawables,
+  lights) and a kit (`fighters/kits/<id>.ts`, lazy, found by filename: helper modules are `<id>-<what>.ts`) is
+  only the rules. A foe's slow is TIME (`enemyRuns`), never a per-sample velocity scale. The look
+  (`render/player/looks/<id>.ts`) is the alchemist's own rig and cloth dressed differently, never a sprite. A
+  fighter still rides a run the way `kitId` does (config, `RunSaveState`, meta profile) so the arena can reuse it, but
+  no campaign UI sets one and the daily is always the classic Alchemist.
+- **The title is a game menu, not a page** (`src/ui/title/`, docs/TITLE-MENU.md): a short main list, each door a page
+  (New descent is the loadout: case / fighter / difficulty / seed / Descend), a detail card beside the focused row.
+  `titleMenuModel.ts` is the pure part (tested), `TitleMenu.ts` the engine, `ExpeditionEntry.ts` the pages. Items are
+  buttons with `data-entry` ids the probes click; the focused row is the selection (styled on `:focus`), and the pad
+  presses the same keys as the keyboard. Starting a run through the title is TWO clicks: `begin` then `descend`.
 - **Three authoring/save families, kept separate:** Sandbox (live-sim painting, raw grid v1
   saves), the Builder authoring tool (`EditorDocument` v2 in `src/builder/`, compiles disposable
   playtest runtimes — see `docs/BUILDER.md`), and expedition runtime saves. Don't grow one
@@ -222,6 +246,10 @@ loops degrade criteria progressively, never silently skip.
   `docs/BOONS.md` — the Sanctum's boons: the pool, each hook, tuning, and what was measured;
   `docs/DIFFICULTY.md` — the four-tier ladder: who may pick which, where it lives, why it fits;
   `docs/PROBE-HEALTH.md` — which `scripts/verify-*` probes pass, which are stale and why (run before trusting a red one)
+- `docs/TITLE-MENU.md` — the title as a game menu: the pages, the files, the rules (focus, pointer, key legend), the probes
+- `docs/FIGHTERS.md` — the ten fighters and the Proving Yard: the engine seams, every ability's spec, how to write a kit, the probes;
+  `docs/fighters/<id>.md` — each fighter's numbers, measurements and deviations; `docs/fighters/KIT-BRIEF.md`
+  — the working brief a kit is built to
 - `docs/BUILDER-STUDIO.md` — the Builder's shell, design system, Sandbox↔Builder↔game flow and what was cut;
   `docs/BATTLE-ROYALE-AND-SPACETIMEDB.md` — why SpacetimeDB is NOT integrated now and what an arena
   mode needs first (a fighter roster; `ctx.player` is 701 refs in 103 files)

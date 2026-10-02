@@ -21,7 +21,7 @@ import { isRunTainted } from '@/core/runTaint';
 import { hasBoon } from '@/core/boons';
 import { compileWand, type CastAction, type CastGroup } from './compiler';
 import { BOUNCE_COUNTS, INFUSED, INFUSE_TRAIL_BUDGET, TRIGGERED, TRIGGER_SOURCE_SPREAD, ensureProjectileMods } from './projectileMarks';
-import { PROJECTILE_LIFE } from '@/combat/projectileDefs';
+import { PLAYER_PROJECTILE_SPEED, PROJECTILE_LIFE } from '@/combat/projectileDefs';
 import { BuildDirector } from './BuildDirector';
 import { deadModifiers, type DeadModifier } from './cardRules';
 import { refitCards } from './wandFinds';
@@ -47,13 +47,13 @@ function kineticOf(action: CastAction, sp: Record<SpellId, SpellParams>): number
     case 'warp':
       return sp.warp.velocityForce! * s;
     case 'frostshard':
-      return 11 * s;
+      return PLAYER_PROJECTILE_SPEED.frostshard * s;
     case 'icelance':
-      return 16 * s;
+      return PLAYER_PROJECTILE_SPEED.icelance * s;
     case 'wisp':
-      return 4.5 * s * (action.dmgMul >= 2 ? 2 : 1);
+      return PLAYER_PROJECTILE_SPEED.wisp * s * (action.dmgMul >= 2 ? 2 : 1);
     case 'meteor':
-      return 6.5 * s;
+      return PLAYER_PROJECTILE_SPEED.meteor * s;
     default:
       return 0;
   }
@@ -530,14 +530,14 @@ export class WandSystem implements WandsApi {
       if (ctx.state.frameCount % 6 === 0) ctx.audio.sfx('spell.aquajet.loop');
     } else if (action.card === 'frostshard') {
       const a = jitter();
-      const v = 11 * action.speedMul;
+      const v = PLAYER_PROJECTILE_SPEED.frostshard * action.speedMul;
       const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'iceshard', life: PROJECTILE_LIFE.iceshard, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
       ctx.audio.sfx('spell.frostshard.cast');
     } else if (action.card === 'icelance') {
       const a = jitter();
-      const v = 16 * action.speedMul;
+      const v = PLAYER_PROJECTILE_SPEED.icelance * action.speedMul;
       const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'icelance', life: PROJECTILE_LIFE.icelance, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
@@ -547,7 +547,7 @@ export class WandSystem implements WandsApi {
       const seekers = action.dmgMul >= 2 ? 2 : 1;
       for (let n = 0; n < seekers; n++) {
         const a = jitter() + (n > 0 ? 0.5 : 0);
-        const v = 4.5 * action.speedMul;
+        const v = PLAYER_PROJECTILE_SPEED.wisp * action.speedMul;
         const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, type: 'wisp', life: PROJECTILE_LIFE.wisp, age: 0, charging: false, hostile: false, mul: action.dmgMul };
         ctx.projectiles.push(p);
         this.markProjectile(ctx, p, action);
@@ -556,7 +556,7 @@ export class WandSystem implements WandsApi {
     } else if (action.card === 'meteor') {
       // Lobbed in a heavy arc — the upward bias makes the descent count.
       const a = jitter();
-      const v = 6.5 * action.speedMul;
+      const v = PLAYER_PROJECTILE_SPEED.meteor * action.speedMul;
       const p: Projectile = { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 2.2, type: 'meteor', life: PROJECTILE_LIFE.meteor, age: 0, charging: false, hostile: false, mul: action.dmgMul };
       ctx.projectiles.push(p);
       this.markProjectile(ctx, p, action);
@@ -705,6 +705,8 @@ export class WandSystem implements WandsApi {
 
   /** Write the impact-time side-channel marks for a freshly spawned projectile. */
   private markProjectile(ctx: Ctx, p: Projectile, action: CastAction): void {
+    // ARENA: a shot belongs to the fighter that cast it (its pass runs bound to that fighter).
+    if (ctx.arena !== undefined && ctx.arena.active && ctx.arena.bound !== 0) p.owner = ctx.arena.bound;
     // A bargain's short life (Short Fuse): a bolt's range, a bomb's fuse.
     if (action.lifeMul !== undefined) p.life = Math.max(3, Math.round(p.life * action.lifeMul));
     if (action.bounces > 0) BOUNCE_COUNTS.set(p, action.bounces);

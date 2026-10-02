@@ -12,6 +12,7 @@ try {
   await page.goto(report.url, { waitUntil: 'networkidle' });
   assert.equal(await page.evaluate(() => !!window.__game), false);
   await page.locator('[data-entry="begin"]').click();
+  await page.locator('[data-entry="descend"]').click();
   await page.locator('#expedition-entry').waitFor({ state: 'hidden' });
   // The Intake's oil-soaked barricade stands between the spawn and the crank.
   // Walk up to it, then Spark Bolt it just ahead of the alchemist (the camera

@@ -2,6 +2,7 @@ import type { Ctx, RigidBody } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { makeSkeleton, poseRagdoll } from '@/entities/playerPose';
 import { drawAlchemistBody, drawDroppedWand } from '@/render/player/AlchemistArt';
+import { drawFighterFallen } from '@/render/player/FighterArt';
 
 type Point = { x: number; y: number };
 
@@ -29,5 +30,6 @@ export function drawPlayerRagdollSprite(out: PixelSurface, field: LightField, ct
     const glow = Math.max(0, Math.min(1, 1 - (t - 0.5) / 1.4));
     for (const b of ctx.rigidBodies.bodies) if (b.tag === 'player-corpse-wand') drawDroppedWand(out, field, b, glow, alpha);
   }
+  if (ctx.fighters?.id && drawFighterFallen(out, field, ctx, SKEL, rig.parts.hat, alpha)) return;
   drawAlchemistBody(out, field, ctx, ctx.player, SKEL, ctx.player.costume, rig.parts.hat, alpha);
 }

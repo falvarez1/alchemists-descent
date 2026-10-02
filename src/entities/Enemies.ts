@@ -8,6 +8,7 @@ import { isRunTainted } from '@/core/runTaint';
 import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDamageSource, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
 import { causeForCell } from '@/core/alchemyCause';
 import { BossWard, playerBlow } from '@/core/bossWard';
+import { fightSink } from '@/core/fightSink';
 import { tickWeaverLocomotion, weaverKnockSync, weaverLeap } from '@/entities/weaverLocomotion';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
 import type { BossHost } from '@/creatures/bosses/types';
@@ -594,6 +595,8 @@ export class Enemies implements EnemyControlApi {
 
   damage(e: Enemy, amount: number, kx: number, ky: number, source: EnemyDamageSource = 'direct'): void {
     const ctx = this.ctx;
+    // ARENA (core/arena): a blow aimed at the stand-in for another fighter lands on that fighter, through ITS controller.
+    if (e.fighter !== undefined) { ctx.arena?.hit(e, amount, kx, ky, source); return; }
     // THE BOSS WARD: a warded boss's hp moves only for harm the player set in
     // motion (a direct blow, or the world's while he is engaged) — never for a
     // blast, fire or creature that went off on its own. core/bossWard.
@@ -601,7 +604,8 @@ export class Enemies implements EnemyControlApi {
     // COMPLICATIONS (content/mutators): the alchemist's own blows land harder or softer. This is a
     // separate multiplier at the point a blow reaches a creature, so it sits OUTSIDE the wand
     // compiler's x4 damage clamp (a wand still compiles to at most x4); 1 leaves every blow as it was.
-    if (playerBlow(source)) amount *= mutatorMods(ctx.state).playerDamage;
+    // (and the fighter's own power: a body-level multiplier, 1 for the classic Alchemist, core/fighterBody)
+    if (playerBlow(source)) amount *= mutatorMods(ctx.state).playerDamage * (ctx.fighters?.body.dealt ?? 1);
     // ...and on top of the ward, the boss brain (creatures/bosses): nothing
     // lands on a dying boss, its own tumbling armour is not a blow, and its
     // exposure windows (a quenched, kneeling kiln; a convulsing eel) bite harder.
@@ -642,6 +646,11 @@ export class Enemies implements EnemyControlApi {
     e.vx += kx || 0;
     e.vy += ky || 0;
     this.flinch(e, amount, kx || 0, ky || 0);
+    if (amount > 0) {
+      // A fight recorder hears the blow first (before a kit's reaction to it hurts anything else).
+      fightSink?.hit(e, amount, source, e.hp <= 0, kx || 0, ky || 0);
+      ctx.fighters?.noteEnemyHurt(e, amount, source, e.hp <= 0);
+    }
     // The rig answers the blow physically on its next tick (creatures/species).
     e.hitKx = kx || 0;
     e.hitKy = ky || 0;
@@ -737,6 +746,7 @@ export class Enemies implements EnemyControlApi {
    *  LAUNCH (AI + per-kind flight cap suppressed in tickKnock) so the shove actually
    *  carries — and a fast launch SMASHES into the first wall it meets, painting it. */
   gustShove(e: Enemy, dirX: number, dirY: number, strength: number): void {
+    if (e.fighter !== undefined) { this.ctx.arena?.shove(e, dirX, dirY, strength); return; }
     if (strength <= 0 || e.hp <= 0) return;
     if (BOSS_LAIRS[e.kind]) return; // a gust can't move a boss
     const def = this.defs[e.kind];
@@ -898,6 +908,8 @@ export class Enemies implements EnemyControlApi {
   }
 
   kill(e: Enemy, kx: number, ky: number, source?: EnemyDamageSource): void {
+    // (a fighter is never "killed" by an enemy call: only a blow that takes its health ends it, in its own controller)
+    if (e.fighter !== undefined) return;
     if (source) this.ctx.alchemy?.noteHit(e, source);
     if (this.deferBossDeath(e)) return;
     if (!this.removeEnemy(e)) return;
@@ -2625,7 +2637,9 @@ export class Enemies implements EnemyControlApi {
     const observedPlayer = {
       x: ctx.player.x, y: ctx.player.y, vx: ctx.player.vx, dead: ctx.player.dead || arrivalGrace || inHaven,
       // Light wave: the lantern, the hood and the place's darkness set how far eyes reach.
-      crouching: ctx.input?.keys.down === true, light: playerVisibility(ctx),
+      crouching: ctx.input?.keys.down === true,
+      // (a fighter's smoke, stillness in cover, an echo: src/fighters concealment scales how far eyes reach)
+      light: playerVisibility(ctx) * (1 - (ctx.fighters?.concealment() ?? 0)),
     };
     while (this.cues.length > 0 && ctx.state.frameCount - this.cues[0].tick > 90) this.cues.shift();
     if (ctx.player.grounded && !observedPlayer.crouching && Math.abs(ctx.player.vx) > 0.7 && ctx.state.frameCount % 14 === 0) {
@@ -2646,6 +2660,7 @@ export class Enemies implements EnemyControlApi {
     for (let i = enemies.length - 1; i >= 0; i--) {
       const e = enemies[i];
       if (!e) continue;
+      if (e.fighter !== undefined) continue; // ARENA: the stand-in for a real fighter never thinks (its body took the world's blows itself)
       // A mid-loop swap-remove (e.g. a bomber's death explosion killing a foe
       // at a lower index) can move an ALREADY-UPDATED element into a slot this
       // backwards sweep hasn't reached yet — the stamp turns that second visit
@@ -2653,6 +2668,10 @@ export class Enemies implements EnemyControlApi {
       if (e._tickStamp === ctx.state.frameCount) continue;
       e._tickStamp = ctx.state.frameCount;
       const def = this.defs[e.kind];
+      // A fighter's slow (Dead Chime, Ironvine, Overgrowth) is TIME: a slowed foe gets its whole update on only
+      // the matching fraction of ticks, so walking, attacking and falling all slow by the same factor. (Scaling vx
+      // each sample, as a frozen body is, compounds into a stop.)
+      if (ctx.fighters && ctx.fighters.id !== null && !ctx.fighters.enemyRuns(e)) continue;
       // Debug freeze (Runtime panel): a posed/dragged foe skips its AI entirely
       // while the renderer keeps drawing it (and solving a held Weaver's legs).
       if (ctx.debug.frozenEnemy(e)) {
@@ -2755,7 +2774,10 @@ export class Enemies implements EnemyControlApi {
       // they land, slow, or smash into a wall — see gustShove/tickKnock.
       if (this.tickKnock(e, def)) continue;
 
-      const mind = tickCreatureMind(ctx.world, e, observedPlayer, this.cues, ctx.state.frameCount, ctx.state.worldSeed, difficultyMods(ctx.state).enemySense);
+      // (a fighter's decoy, Mirror Hunt, can draw the foe's hunt to somewhere the body is not)
+      const decoy = ctx.fighters && ctx.fighters.id !== null ? ctx.fighters.decoyFor(e) : null;
+      const seen = decoy ? { ...observedPlayer, x: decoy.x, y: decoy.y, vx: decoy.vx } : observedPlayer;
+      const mind = tickCreatureMind(ctx.world, e, seen, this.cues, ctx.state.frameCount, ctx.state.worldSeed, difficultyMods(ctx.state).enemySense);
       respondToLight(ctx, e, def, mind); // light wave: lit fix, flinch, scatter, freeze
       const lair = BOSS_LAIRS[e.kind];
       if (lair) this.watchLair(e, def, lair, mind);
@@ -2783,7 +2805,8 @@ export class Enemies implements EnemyControlApi {
       const pdx = player.x - e.x,
         pdy = player.y - 9 - (e.y - 5);
       const pDist = Math.sqrt(pdx * pdx + pdy * pdy);
-      const canAttackTarget = !ctx.player.dead && mind.visible && mind.intent === 'hunt' && !debugEnemyAttacksSuppressed;
+      // (a decoy is a lure, not a body: a foe drawn to one swings at nothing, or its melee would land on the real player from where the decoy stands)
+      const canAttackTarget = !ctx.player.dead && mind.visible && mind.intent === 'hunt' && !debugEnemyAttacksSuppressed && decoy === null;
 
       // THE NOTICE: the first time a foe clocks you, it says so — a blip and
       // a spark of attention over its head. The colossus announces itself
@@ -3996,6 +4019,7 @@ export class Enemies implements EnemyControlApi {
           } else if (e.status.burning > 0) {
             intent.urgency = 1;
           }
+          // (a fighter's slow, Dead Chime / Ironvine: the crawl's own speed, which the vx scaling above never reaches)
           intent.speedScale = spd * (e.status.frozen > 0 ? 0.5 : 1);
           if (intent.move === 'toward' && !fleeingNow && (mind.intent === 'investigate' || mind.intent === 'return')) {
             const route = localRoute(ctx.world, e, def, intent.tx, intent.ty, ctx.state.frameCount);
@@ -4070,6 +4094,7 @@ export class Enemies implements EnemyControlApi {
       }
     }
     for (const enemy of enemies) {
+      if (enemy.fighter !== undefined) continue;
       if (ctx.debug.frozenEnemy(enemy)) continue;
       if (enemy.x < sim.x0 - 60 || enemy.x > sim.x1 + 60 || enemy.y < sim.y0 - 60 || enemy.y > sim.y1 + 60) continue;
       tickCreaturePose(ctx, enemy);

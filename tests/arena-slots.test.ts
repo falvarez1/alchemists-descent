@@ -1,0 +1,336 @@
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { ARENA_RULES } from '@/config/arenaRules';
+import { ArenaSlots } from '@/arena/ArenaSlots';
+import type { SlotBundle } from '@/core/arena';
+import { EventBus } from '@/core/events';
+import type { Ctx, Enemy, Projectile } from '@/core/types';
+
+/** The arena's slot machinery (src/arena/ArenaSlots, core/events scoping) against fakes: no game, no world. */
+
+interface FakeBody {
+  x: number; y: number; vx: number; vy: number; hp: number; maxHp: number; grounded: boolean; dead: boolean;
+  invuln: number; stunT: number; status: Record<string, number>; maxMana: number; mana: number; levit: number; maxLevit: number;
+  firing: boolean; fx: number; fy: number; crawling: boolean; climbing: boolean;
+}
+
+function body(x: number): FakeBody {
+  return { x, y: 100, vx: 0, vy: 0, hp: 100, maxHp: 100, grounded: true, dead: false, invuln: 0, stunT: 0, status: { burning: 0, wet: 0 }, maxMana: 100, mana: 100, levit: 50, maxLevit: 50, firing: false, fx: 0, fy: 0, crawling: false, climbing: false };
+}
+
+interface Calls { damage: Array<{ boundPlayer: unknown; amount: number; kx: number; ky: number; src?: string }>; impulse: Array<{ boundPlayer: unknown; vx: number; vy: number }> }
+
+function setup(): { ctx: Ctx; arena: ArenaSlots; calls: Calls; made: SlotBundle[]; base: SlotBundle } {
+  const calls: Calls = { damage: [], impulse: [] };
+  const events = new EventBus();
+  const ctx = {
+    events,
+    enemies: [] as Enemy[],
+    projectiles: [] as Projectile[],
+    state: { frameCount: 10 },
+    camera: { inspectionFocus: null },
+    world: { width: 1600, height: 1000 },
+    physics: { entityFree: () => true },
+    projectileCtl: { invalidateEnemyIndex: () => undefined },
+  } as unknown as Ctx;
+  const mk = (x: number, dealt: number): SlotBundle => {
+    const player = body(x);
+    const b: SlotBundle = {
+      player: player as unknown as SlotBundle['player'],
+      input: { keys: { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false }, mouse: { x: 0, y: 0 } } as unknown as SlotBundle['input'],
+      playerCtl: {
+        damage: (amount: number, kx: number, ky: number, src?: string) => { calls.damage.push({ boundPlayer: ctx.player, amount, kx, ky, src }); player.hp -= amount; },
+        applyImpulse: (vx: number, vy: number) => { calls.impulse.push({ boundPlayer: ctx.player, vx, vy }); player.vx += vx; player.vy += vy; },
+        update: () => undefined,
+        resetTransientState: () => undefined,
+        kick: () => undefined,
+        kill: () => undefined,
+        respawn: () => undefined,
+        grabVine: () => false,
+        releaseVine: () => undefined,
+        findSpawnPoint: () => ({ x: 0, y: 0 }),
+      } as unknown as SlotBundle['playerCtl'],
+      wands: { update: () => undefined, wands: [], dispose: () => undefined, snapshotLoadout: () => ({}), loadLoadout: () => undefined } as unknown as SlotBundle['wands'],
+      flask: { update: () => undefined, slots: [], clearSlots: () => undefined, setSlot: () => undefined } as unknown as SlotBundle['flask'],
+      fighters: {
+        id: null, body: { dealt, maxHp: 1, jetFuel: 1 }, bindScope: null, update: () => undefined, reset: () => undefined, refill: () => undefined,
+        equip(id: unknown) { (this as { id: unknown }).id = id; }, whenReady: () => Promise.resolve(), dispose: () => undefined,
+        enemyRuns: () => true, isStunned: () => false, interceptProjectile: () => false,
+      } as unknown as SlotBundle['fighters'],
+      chill: { update: () => undefined, reset: () => undefined } as unknown as SlotBundle['chill'],
+    };
+    return b;
+  };
+  const base = mk(100, 1);
+  Object.assign(ctx, { player: base.player, input: base.input, playerCtl: base.playerCtl, wands: base.wands, flask: base.flask, fighters: base.fighters, chill: base.chill });
+  const made: SlotBundle[] = [];
+  const arena = new ArenaSlots(ctx, (slot) => { const b = mk(300, 1.5); made[slot] = b; return b; });
+  ctx.arena = arena;
+  return { ctx, arena, calls, made, base };
+}
+
+describe('EventBus slot scoping', () => {
+  test('a tagged handler hears a per-fighter event only while its slot is bound; untagged and global events reach everyone', () => {
+    const bus = new EventBus();
+    const heard: string[] = [];
+    bus.on('cardCast', () => heard.push('shared'));
+    bus.asSlot(1, () => { bus.on('cardCast', () => heard.push('slot1')); bus.on('levelChanged', () => heard.push('slot1-level')); });
+    bus.asSlot(0, () => { bus.on('cardCast', () => heard.push('slot0')); });
+    bus.emit('cardCast', { id: 'spark' } as never);
+    expect(heard).toEqual(['shared', 'slot1', 'slot0']); // not scoped yet: everyone hears
+    heard.length = 0;
+    bus.scoped = true;
+    bus.boundSlot = 0;
+    bus.emit('cardCast', { id: 'spark' } as never);
+    expect(heard).toEqual(['shared', 'slot0']);
+    heard.length = 0;
+    bus.boundSlot = 1;
+    bus.emit('cardCast', { id: 'spark' } as never);
+    expect(heard).toEqual(['shared', 'slot1']);
+    heard.length = 0;
+    bus.emit('levelChanged', { depth: 1, name: 'x' });
+    expect(heard).toEqual(['slot1-level']); // a floor change is not a per-fighter event: it reaches every slot
+  });
+
+  test('registration is scoped to the callback and restores the previous tagging', () => {
+    const bus = new EventBus();
+    bus.asSlot(2, () => { expect(bus.registeringSlot).toBe(2); bus.asSlot(3, () => expect(bus.registeringSlot).toBe(3)); expect(bus.registeringSlot).toBe(2); });
+    expect(bus.registeringSlot).toBeNull();
+  });
+});
+
+describe('ArenaSlots', () => {
+  // (these tests count whole blows: the duel's tempo dial is 1 here; its own test is below)
+  const was = ARENA_RULES.blowScale;
+  beforeEach(() => { ARENA_RULES.blowScale = 1; });
+  afterEach(() => { ARENA_RULES.blowScale = was; });
+
+  test('the duel tempo is NOT applied by hit(): the victim controller applies it to everything it takes, blows and fire alike', async () => {
+    const { arena, ctx, calls } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    ARENA_RULES.blowScale = 0.4;
+    arena.hit(ctx.enemies[0], 10, 0, 0, 'direct');
+    expect(calls.damage[0].amount).toBeCloseTo(10, 5);
+  });
+
+  test('equal health: the victim body health multiplier is divided out of a blow (a x2 body takes half), and 0 turns it off', async () => {
+    const { arena, ctx, calls, made } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    (made[1].fighters.body as { maxHp: number }).maxHp = 2;
+    const eq = ARENA_RULES.healthEquality;
+    ARENA_RULES.healthEquality = 1;
+    arena.hit(ctx.enemies[0], 10, 0, 0, 'direct');
+    expect(calls.damage[0].amount).toBeCloseTo(5, 5);
+    ARENA_RULES.healthEquality = 0;
+    arena.hit(ctx.enemies[0], 10, 0, 0, 'direct');
+    expect(calls.damage[1].amount).toBeCloseTo(10, 5);
+    ARENA_RULES.healthEquality = eq;
+  });
+
+  test('is dormant with no rival: not active, slot 0 bound, nothing in the enemies', () => {
+    const { arena, ctx } = setup();
+    expect(arena.active).toBe(false);
+    expect(arena.bound).toBe(0);
+    expect(ctx.enemies.length).toBe(0);
+    expect(arena.ownerForNew).toBeUndefined();
+  });
+
+  test('adding a rival makes it active, puts exactly one stand-in in the enemies and tags the scoped bus', async () => {
+    const { arena, ctx } = setup();
+    const slot = await arena.addRival('brann-rook', 300, 100);
+    expect(slot).toBe(1);
+    expect(arena.active).toBe(true);
+    expect(ctx.enemies.length).toBe(1);
+    expect(ctx.enemies[0].kind).toBe('fighter');
+    expect(ctx.events.scoped).toBe(true);
+    expect(arena.fighterId(1)).toBe('brann-rook');
+  });
+
+  test('the stand-in mirrors the OTHER fighter, and flips with the binding', async () => {
+    const { arena, ctx, made, base } = await (async () => { const s = setup(); await s.arena.addRival('brann-rook', 300, 100); return s; })();
+    const stand = ctx.enemies[0];
+    expect(stand.fighter).toBe(1);
+    expect(stand.x).toBe(300);
+    arena.with(1, () => {
+      expect(ctx.player).toBe(made[1].player);
+      expect(stand.fighter).toBe(0);
+      expect(stand.x).toBe(100);
+      expect(arena.bound).toBe(1);
+      expect(arena.ownerForNew).toBe(1);
+    });
+    expect(ctx.player).toBe(base.player);
+    expect(stand.fighter).toBe(1);
+    expect(arena.bound).toBe(0);
+  });
+
+  test('a blow to the stand-in lands once on the real fighter, under ITS binding, with the attacker\'s power', async () => {
+    const { arena, ctx, calls, made } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    const stand = ctx.enemies[0];
+    ctx.enemyCtl = undefined as never;
+    arena.hit(stand, 10, 2, -1, 'direct'); // slot 0 hits the rival
+    expect(calls.damage.length).toBe(1);
+    expect(calls.damage[0].boundPlayer).toBe(made[1].player); // the victim's own controller ran with the victim bound
+    expect(calls.damage[0].amount).toBe(10); // slot 0's body.dealt is 1
+    expect(calls.damage[0].src).toBe('fighter');
+    expect(arena.bound).toBe(0);
+    arena.with(1, () => { arena.hit(ctx.enemies[0], 10, 2, -1, 'direct'); }); // the rival hits slot 0 with dealt 1.5
+    expect(calls.damage.length).toBe(2);
+    expect(calls.damage[1].amount).toBe(15);
+  });
+
+  test('a blow to the bound slot\'s own stand-in is dropped (a fighter never hurts itself through its mirror)', async () => {
+    const { arena, ctx, calls } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    const stand = ctx.enemies[0];
+    stand.fighter = 0; // as if it mirrored slot 0 while slot 0 is bound
+    arena.hit(stand, 10, 0, 0, 'direct');
+    expect(calls.damage.length).toBe(0);
+  });
+
+  test('a dead victim takes nothing, and a won bout takes nothing more', async () => {
+    const { arena, ctx, calls, made } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    const stand = ctx.enemies[0];
+    made[1].player.dead = true;
+    arena.hit(stand, 10, 0, 0, 'direct');
+    expect(calls.damage.length).toBe(0);
+    made[1].player.dead = false;
+    arena.noteDown(1, 'test');
+    expect(arena.bout.state).toBe('won');
+    arena.hit(stand, 10, 0, 0, 'direct');
+    expect(calls.damage.length).toBe(0);
+  });
+
+  test('a shove goes through the victim\'s own impulse path, with a touch of lift', async () => {
+    const { arena, ctx, calls, made } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    arena.shove(ctx.enemies[0], 1, 0, 2);
+    expect(calls.impulse.length).toBe(1);
+    expect(calls.impulse[0].boundPlayer).toBe(made[1].player);
+    expect(calls.impulse[0].vx).toBeCloseTo(2.2, 5);
+    expect(calls.impulse[0].vy).toBeLessThan(0);
+  });
+
+  test('a velocity an attacker wrote on the stand-in is carried to the real body once, when the binding changes', async () => {
+    const { arena, ctx, calls, made } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    const stand = ctx.enemies[0];
+    stand.vx += 3; // a kit "launches" the foe
+    arena.with(1, () => undefined); // any binding change bridges the stand-in back
+    expect(calls.impulse.length).toBe(1);
+    expect(calls.impulse[0].boundPlayer).toBe(made[1].player);
+    expect(calls.impulse[0].vx).toBe(3);
+    arena.with(1, () => undefined);
+    expect(calls.impulse.length).toBe(1); // exactly once
+  });
+
+  test('a launch started with the knock state (knockVx, knockT) is carried over once and cleared', async () => {
+    const { arena, ctx, calls } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    const stand = ctx.enemies[0];
+    stand.knockVx = 2; stand.knockVy = -1; stand.knockT = 6;
+    arena.with(1, () => undefined);
+    expect(calls.impulse.length).toBe(1);
+    expect(calls.impulse[0].vx).toBe(2);
+    expect(calls.impulse[0].vy).toBe(-1);
+    expect(stand.knockT).toBe(0);
+  });
+
+  test('a projectile\'s pass binds its owner, and releaseOwner returns to slot 0', async () => {
+    const { arena, ctx, made } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    arena.bindOwner(1);
+    expect(arena.bound).toBe(1);
+    expect(ctx.player).toBe(made[1].player);
+    arena.bindOwner(undefined);
+    expect(arena.bound).toBe(0);
+    arena.bindOwner(1);
+    arena.releaseOwner();
+    expect(arena.bound).toBe(0);
+  });
+
+  test('rival phases run the rival\'s own systems under its binding, and stamp the shots it made', async () => {
+    const { arena, ctx, made } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    const seen: unknown[] = [];
+    made[1].playerCtl.update = () => { seen.push(ctx.player); ctx.projectiles.push({ x: 0, y: 0, vx: 0, vy: 0, type: 'bolt', life: 5, age: 0, charging: false, hostile: false }); };
+    made[1].fighters.update = () => { seen.push(ctx.fighters); };
+    arena.runRivals('body');
+    expect(seen).toEqual([made[1].player, made[1].fighters]);
+    expect(ctx.projectiles[0].owner).toBe(1);
+    expect(arena.bound).toBe(0);
+  });
+
+  test('a driver runs under the rival\'s binding, before its body', async () => {
+    const { arena, ctx, made } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    const order: string[] = [];
+    arena.setDriver(1, () => { order.push(ctx.player === made[1].player ? 'drive' : 'WRONG'); });
+    made[1].playerCtl.update = () => { order.push('body'); };
+    arena.runRivals('body');
+    expect(order).toEqual(['drive', 'body']);
+  });
+
+  test('a slowed or stunned rival is gated: runs false skips its body', async () => {
+    const { arena, ctx, made, base } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    let ran = 0;
+    made[1].playerCtl.update = () => { ran++; };
+    // slot 0's effects on the stand-in slow the rival: the gate is decided at the end of the tick
+    (base.fighters as unknown as { id: string; enemyRuns: () => boolean }).id = 'ilyra-voss';
+    (base.fighters as unknown as { enemyRuns: () => boolean }).enemyRuns = () => false;
+    arena.endTick();
+    arena.runRivals('body');
+    expect(ran).toBe(0);
+    expect(arena.runsBody(1)).toBe(false);
+    expect(arena.runsBody(0)).toBe(true);
+    void ctx;
+  });
+
+  test('a knockout is recorded once, names the last blow\'s owner as the winner, and emits fighterDown', async () => {
+    const { arena, ctx, calls } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    const heard: unknown[] = [];
+    ctx.events.on('fighterDown', (e) => heard.push(e));
+    arena.hit(ctx.enemies[0], 5, 0, 0, 'direct'); // slot 0 landed a blow on slot 1
+    arena.noteDown(1, 'fighter');
+    arena.noteDown(0, 'late'); // a second down in the same bout changes nothing
+    expect(calls.damage.length).toBe(1);
+    expect(arena.bout.state).toBe('won');
+    expect(arena.bout.winner).toBe(0);
+    expect(arena.bout.downs.length).toBe(1);
+    expect(heard.length).toBe(1);
+  });
+
+  test('removing the rival restores the single-fighter state: no stand-in, scoping off, slot 0 on the ctx, the rival\'s shots gone', async () => {
+    const { arena, ctx, base } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    ctx.projectiles.push({ x: 0, y: 0, vx: 0, vy: 0, type: 'bolt', life: 5, age: 0, charging: false, hostile: false, owner: 1 });
+    ctx.projectiles.push({ x: 0, y: 0, vx: 0, vy: 0, type: 'bolt', life: 5, age: 0, charging: false, hostile: false });
+    arena.removeRival(1);
+    expect(arena.active).toBe(false);
+    expect(ctx.enemies.length).toBe(0);
+    expect(ctx.events.scoped).toBe(false);
+    expect(ctx.player).toBe(base.player);
+    expect(ctx.projectiles.length).toBe(1);
+    expect(ctx.camera.inspectionFocus).toBeNull();
+  });
+
+  test('a new floor removes the rival (it stays behind with the old world)', async () => {
+    const { arena, ctx } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    ctx.events.emit('levelChanged', { depth: 0, name: 'x' });
+    expect(arena.active).toBe(false);
+    expect(ctx.enemies.length).toBe(0);
+  });
+
+  test('the camera is told the midpoint of the fighters; the sim window grows to hold a rival', async () => {
+    const { arena, ctx } = setup();
+    await arena.addRival('brann-rook', 500, 100);
+    arena.endTick();
+    expect(ctx.camera.inspectionFocus).toEqual({ x: 300, y: 91 });
+    const bounds = { x0: 0, y0: 0, x1: 10, y1: 10 };
+    arena.extendSimBounds(bounds);
+    expect(bounds.x1).toBeGreaterThan(500);
+  });
+});

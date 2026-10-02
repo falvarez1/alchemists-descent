@@ -13,6 +13,7 @@
 //   a hidden transition.
 
 import type { StoryRunSave } from '@/core/story';
+import type { FighterSaveState } from '@/core/fighters';
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
 import { GEN_TUNE_DEFAULT_SIGNATURE, GEN_VERSION, genTuneSignature } from '@/config/gen';
 import { difficultyMods } from '@/config/difficulty';
@@ -102,6 +103,8 @@ import { extractRegionGraph } from '@/world/regions';
 import { buildPhysicsArena } from '@/world/physicsArena';
 import { buildWeaverArena } from '@/world/weaverArena';
 import { buildAlchemyArena, buildFrostArena, buildGasArena } from '@/world/provingGrounds';
+import { buildFighterArena } from '@/world/fighterArena';
+import { buildDuelStage } from '@/world/duelStage';
 import type {
   generateVirtualWindow,
   MaterializedScenePlacement,
@@ -145,7 +148,7 @@ const SETTLED_AUDIT_GUARD_MS = 10000;
  *  skip the procedural findability repair, which would otherwise "rescue" the now-
  *  wiped campaign features by carving braced tunnels through the authored level.
  *  They own their own reachability. */
-const AUTHORED_TEST_ARENAS = new Set(['weaver-test', 'physics-test', 'alchemy-test', 'gas-test', 'frost-test']);
+const AUTHORED_TEST_ARENAS = new Set(['weaver-test', 'physics-test', 'alchemy-test', 'gas-test', 'frost-test', 'fighter-test', 'fighter-duel']);
 /** Waystone bowl fire checks run every 4th frame; this many hot checks light it. */
 const WAYSTONE_LIGHT_TICKS = 30;
 /** Cold bowl checks tolerated before ignition progress resets — coyote time for
@@ -308,6 +311,8 @@ export interface ExpeditionSave {
    *  (restoreLevel regenerates pristine worlds from seed — a stale save
    *  against new generation silently desyncs). Absent = pre-guard save. */
   genVersion?: number;
+  /** The fighter's own numbers (cooldown, charge, armor, a kit's bag); who it is rides `run.fighter`. Absent for the classic Alchemist. */
+  fighter?: FighterSaveState;
   /** Signature of live GEN_TUNE at save time. Absent = pre-tuning-guard save. */
   genTuneSignature?: string;
   expeditionSeed: number;
@@ -872,6 +877,8 @@ export class Levels implements LevelsApi {
     }
     const starterKit: KitId = config.starterKit ?? DEFAULT_KIT;
     this.applyLoadoutPreset(ctx, preset, starterKit);
+    // Who the run descends as (src/fighters): resetRunState cleared the last one; null = the classic Alchemist.
+    ctx.fighters?.equip(config.fighter ?? null);
     // Difficulty cushion: scale the loadout's max HP, then top off (the kit can
     // still override below). Level 3 = ×1.0, so the shipped game is untouched.
     const hpScale = difficultyMods(ctx.state).playerHp;
@@ -881,7 +888,7 @@ export class Levels implements LevelsApi {
     }
     if (config.kit) this.applyTestKit(ctx, config.kit);
     // The run begins before the first checkpoint so the save carries its phials.
-    ctx.run?.beginRun(ctx, { seed, kit: starterKit, daily: config.daily ?? null, tracked: mode === 'normal', mutators: config.mutators });
+    ctx.run?.beginRun(ctx, { seed, kit: starterKit, fighter: config.fighter ?? null, daily: config.daily ?? null, tracked: mode === 'normal', mutators: config.mutators });
     ctx.story?.beginRun({ tracked: mode === 'normal' && !ctx.state.debugGodMode });
     this.enterLevel(ctx, levelId);
 
@@ -1309,6 +1316,7 @@ export class Levels implements LevelsApi {
       wands: this.snapshotWandsForSave(ctx),
       flasks: this.snapshotFlasks(ctx),
       run: ctx.run?.snapshotForSave() ?? undefined,
+      fighter: ctx.fighters?.snapshot() ?? undefined,
       story: ctx.story?.snapshotForSave() ?? undefined,
       levels: blobs,
     };
@@ -1531,6 +1539,7 @@ export class Levels implements LevelsApi {
     this.expeditionSeed = null;
 
     Object.assign(ctx.player, createPlayer());
+    ctx.fighters?.equip(null);
     ctx.playerCtl?.resetTransientState?.(ctx);
     ctx.state.score = 0;
     ctx.state.playerSpawned = false;
@@ -2257,6 +2266,9 @@ export class Levels implements LevelsApi {
       }
       this.restoreFlasks(ctx, save.flasks);
       ctx.run?.restoreFromSave(ctx, save.run);
+      // The run knows who it descends as; the fighter's own clocks, charge and armor come from its slice.
+      ctx.fighters?.equip(ctx.run?.fighter ?? null);
+      ctx.fighters?.restore(save.fighter);
       ctx.story?.restoreFromSave(save.story);
 
       this.checkpointSaveSuppression++;
@@ -2562,6 +2574,8 @@ export class Levels implements LevelsApi {
     if (id === 'alchemy-test') buildAlchemyArena(ctx);
     if (id === 'gas-test') buildGasArena(ctx);
     if (id === 'frost-test') buildFrostArena(ctx);
+    if (id === 'fighter-test') buildFighterArena(ctx);
+    if (id === 'fighter-duel') buildDuelStage(ctx);
     // Loose wood crates (carry-able fuel) AFTER levelChanged clears the body pool,
     // same as the arenas — so they persist for the visit.
     this.spawnLevelCrates(ctx, runtime);
@@ -2573,6 +2587,10 @@ export class Levels implements LevelsApi {
         ? 'THE GASWORKS — EVERY POCKET IS A FUSE'
         : id === 'frost-test'
         ? 'FREEZE A CROSSING — THROW WHAT BURNS'
+        : id === 'fighter-test'
+        ? 'THE PROVING YARD — TRY EVERY MOVE'
+        : id === 'fighter-duel'
+        ? 'THE DUEL STAGE — TWO FIGHTERS, ONE ROOM'
         : id === 'weaver-test'
         ? 'STUDY THE WEAVER LAIR'
         : runtime.portal

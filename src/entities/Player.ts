@@ -9,6 +9,7 @@ import { gustHabitat } from '@/game/HabitatMotion';
 import { difficultyMods } from '@/config/difficulty';
 import { mutatorMods } from '@/content/mutators';
 import { clamp } from '@/core/math';
+import { NEUTRAL_BODY } from '@/core/fighterBody';
 import type { Ctx, EnemyKind, PlayerControlApi, PlayerState, RigidBody } from '@/core/types';
 import { PLAYER_AIR_CEIL_SLIP, PLAYER_CEIL_SLIP, PLAYER_CRAWL_H, PLAYER_CRAWL_STEP_UP, PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP, PLAYER_VERT_SLIP } from '@/core/types';
 import { clearElementalStatus, createDefaultStatus, sampleAndTickStatus, sampleBodyCells } from '@/entities/status';
@@ -21,6 +22,8 @@ import { startLegSwing } from '@/combat/WeaverLimbs';
 import { createSelfShockState, drawConductorArc, fairShockDamage } from '@/combat/SelfShock';
 import { getAimGuide } from '@/combat/AimGuide';
 import { resetCombatTransients } from '@/core/runtimeState';
+import { ARENA_RULES } from '@/config/arenaRules';
+import { fightSink } from '@/core/fightSink';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { bloodColor, packRGB, smokeColor } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
@@ -90,7 +93,8 @@ const WADE_STAIN_GAIN = 18; // soak charge banked per frame of wading (×0.35–
 // See config/params.ts PLAYER_PARAMS and core/types.ts PlayerTuning.
 const ENEMY_STOMP_BOUNCE = 3.6; // upward pop after a Mario-style stomp kill (chains to the next foe)
 // Too big/heavy to stomp — a boot off these just bounces (handle them another way).
-const STOMP_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'rimewarden', 'lenswright', 'golem']);
+// (a rival fighter is not stomped flat: a dive onto one is a blow like any other, not an execution)
+const STOMP_IMMUNE: ReadonlySet<EnemyKind> = new Set<EnemyKind>(['colossus', 'leviathan', 'rimewarden', 'lenswright', 'golem', 'fighter']);
 const SWING_REACH = 16;
 const SWING_PUMP = 0.16;
 const SWING_MIN_LEN = 14;
@@ -182,6 +186,7 @@ export function createPlayer(): PlayerState {
     tpCool: 0,
     recharge: 0,
     pullT: 0,
+    stunT: 0,
     pullDir: 1,
     stretchT: 0,
     skidT: 0,
@@ -243,6 +248,7 @@ export class PlayerControl implements PlayerControlApi {
   private prevJumpHeld = false;
   /** Frames until the player can kick again. */
   private kickCooldownT = 0;
+  get kickReady(): boolean { return this.kickCooldownT <= 0; }
   /** Death ragdoll: the flung corpse body (null when alive), its settle flag + timer. */
   private corpse: RigidBody | null = null;
   private corpseSettled = false;
@@ -302,7 +308,7 @@ export class PlayerControl implements PlayerControlApi {
         const sx = x + side * reach;
         const sy = y - dy;
         if (!world.inBounds(sx, sy)) continue;
-        hasHold ||= ctx.physics.cellBlocks(sx, sy);
+        hasHold ||= ctx.physics.cellBlocks(sx, sy) || ctx.fighters?.climbHold(sx, sy) === true;
       }
       samples++;
       if (hasHold) anchored++;
@@ -457,7 +463,9 @@ export class PlayerControl implements PlayerControlApi {
   private tryMantle(ctx: Ctx): boolean {
     const { player } = ctx;
     const side = player.climbDir || 1;
-    for (let up = CLIMB_MANTLE_MIN_UP; up <= CLIMB_MANTLE_MAX_UP; up++) {
+    // A fighter who climbs well (Rooftop Runner) reads a ledge from further below.
+    const reach = (ctx.fighters?.climbScale() ?? 1) > 1 ? 4 : 0;
+    for (let up = CLIMB_MANTLE_MIN_UP; up <= CLIMB_MANTLE_MAX_UP + reach; up++) {
       for (let over = 0; over <= PLAYER_HALF_W + 3; over++) {
         const nx = player.x + side * over; // step onto the TOP of the wall (toward the face)
         const ny = player.y - up;
@@ -574,11 +582,18 @@ export class PlayerControl implements PlayerControlApi {
   /** Self-shock fairness bookkeeping: the last cast and the capped damage window. */
   private readonly selfShock = createSelfShockState();
 
+  /** Unsubscribes the `cardCast` listener (a rival's controller is built and thrown away: it must not leave a listener behind). */
+  private readonly offCardCast: (() => void) | undefined;
+
   constructor(private ctx: Ctx) {
     // `?.` twice: minimal test contexts carry an events stub without `on`.
-    ctx.events?.on?.('cardCast', () => {
+    this.offCardCast = ctx.events?.on?.('cardCast', () => {
       this.selfShock.lastCast = ctx.state.frameCount;
     });
+  }
+
+  dispose(): void {
+    this.offCardCast?.();
   }
 
   private tryHorizontalGroundStep(ctx: Ctx, dir: -1 | 1, bodyH: number, stepUp: number, followGround: boolean): number | null {
@@ -610,9 +625,18 @@ export class PlayerControl implements PlayerControlApi {
     return Math.max(1, Math.hypot(1, player.y - startY));
   }
 
-  private reduceIncomingDamage(amount: number, minimum = 0): number {
+  private reduceIncomingDamage(amount: number, minimum = 0, source?: string, kx?: number, ky?: number): number {
     if (this.ctx.state?.debugGodMode) return 0;
+    // ARENA: the duel's tempo applies to EVERYTHING a fighter takes (a blow, a blast, a flame, a current): the first version scaled only the
+    // blows and the world's fire became most of the damage (measured: fire 45-69 a fight against 19-75 from blows)
+    if (this.ctx.arena !== undefined && this.ctx.arena.active) amount *= ARENA_RULES.blowScale * (source === 'fighter' ? 1 : ARENA_RULES.hazardScale);
     if (this.ctx.player.status.stoneskin > 0) amount *= 0.5;
+    // A fighter's armor and damage reduction (src/fighters): a blow it fully absorbs is 0, not the floor.
+    const fighters = this.ctx.fighters;
+    if (fighters && fighters.id !== null) {
+      amount = fighters.reduceIncoming(amount, source, kx, ky);
+      if (amount <= 0) return 0;
+    }
     return Math.max(minimum, amount);
   }
 
@@ -644,25 +668,32 @@ export class PlayerControl implements PlayerControlApi {
       return;
     }
     const source = this.noteDamageSource(src);
+    const raw = amount; // (what arrived, for a fight recorder: raw less taken is what the armor and the rest absorbed)
     // Sanctum boon resistances by damage source
     if (src === 'explosion' && player.perks.ironhide) amount *= 0.4;
     if (src === 'fire' && hasBoon(player, 'flameward')) amount *= 0.4;
     if ((src === 'toxic' || src === 'acid') && hasBoon(player, 'toxinward')) amount *= 0.25;
     // Stoneskin (Wave C potion): half damage, knockback shrugged off entirely
-    amount = this.reduceIncomingDamage(amount, 0.5);
+    amount = this.reduceIncomingDamage(amount, 0.5, source, kx, ky);
     // A blow shatters heart communion — the unhealed remainder is lost
     if (player.recharge > 0) {
       player.recharge = 0;
       ctx.events.emit('toast', { text: 'COMMUNION BROKEN' });
     }
     player.hp -= amount;
+    fightSink?.hurt(raw, amount, source, kx || 0, ky || 0);
     this.applyImpulse(kx || 0, ky || 0);
-    player.invuln = 30;
+    const body = ctx.fighters?.body ?? NEUTRAL_BODY;
+    // (a duel keeps the window short, config/arenaRules: it favoured the big single hit over every other kind of weapon)
+    player.invuln = Math.round((ctx.arena !== undefined && ctx.arena.active ? ARENA_RULES.invulnTicks : 30) * body.invuln);
     // Hurt stagger: a lean away from the blow, and the hat whips with it
-    player.staggerT = 12;
-    player.staggerDir = kx !== 0 ? Math.sign(kx) : -player.facing;
-    player.hat.vx += player.staggerDir * 2.6;
-    player.hat.vy -= 1.2;
+    // (a fighter at full Pressure / in Redline keeps its footing: src/fighters)
+    if (ctx.fighters?.staggerResist !== true) {
+      player.staggerT = Math.round(12 * body.stagger);
+      player.staggerDir = kx !== 0 ? Math.sign(kx) : -player.facing;
+      player.hat.vx += player.staggerDir * 2.6;
+      player.hat.vy -= 1.2;
+    }
     ctx.audio.hurt();
     ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.018, 0.05);
     // hitstop: heavy hits freeze gameplay for a beat (Game consumes fx.hitstop)
@@ -678,8 +709,11 @@ export class PlayerControl implements PlayerControlApi {
   applyImpulse(vx: number, vy: number): void {
     const player = this.ctx.player;
     if (player.status.stoneskin > 0) return;
-    player.vx += vx;
-    player.vy += vy;
+    if (this.ctx.fighters?.staggerResist === true) return;
+    // (a fighter's weight: a heavy body is launched less, a light one more)
+    const mass = this.ctx.fighters?.body.mass ?? 1;
+    player.vx += mass === 1 ? vx : vx / mass;
+    player.vy += mass === 1 ? vy : vy / mass;
   }
 
   /**
@@ -739,6 +773,7 @@ export class PlayerControl implements PlayerControlApi {
       const nx = dx / d;
       const ny = dy / d;
       if (nx * dirX + ny * dirY < cosArc) continue;
+      ctx.fighters?.noteMelee();
       ctx.enemyCtl.damage(e, lp.kickDamage, dirX * 3.2, dirY * 2 - 1.4);
       reaction = Math.max(reaction, 0.5);
     }
@@ -974,6 +1009,26 @@ export class PlayerControl implements PlayerControlApi {
     }
   }
 
+  private killInArena(src?: string): void {
+    const ctx = this.ctx;
+    const player = ctx.player;
+    const source = src ?? player.lastDamageSource ?? this.noteDamageSource('unknown');
+    this.releaseVine(ctx);
+    player.dead = true;
+    player.hp = 0;
+    player.recharge = 0;
+    player.firePressed = false;
+    player.firing = false;
+    clearElementalStatus(player.status);
+    this.resetClimbState(player);
+    ctx.particles.burst(player.x, player.y - 7, 56, Cell.Blood, bloodColor, 4.2);
+    ctx.particles.burst(player.x, player.y - 7, 10, null, () => packRGB(221, 209, 159), 2.4, { glow: 2.4, grav: 0.04 });
+    ctx.fx.hitstop = Math.max(ctx.fx.hitstop ?? 0, 8);
+    ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.03, 0.06);
+    ctx.audio.hurt();
+    ctx.arena?.noteDown(ctx.arena.bound, source);
+  }
+
   /** Original: killPlayer() — lines 1577-1587. */
   kill(src?: string): void {
     const ctx = this.ctx;
@@ -983,6 +1038,11 @@ export class PlayerControl implements PlayerControlApi {
       player.dead = false;
       player.hp = player.maxHp;
       ctx.events.emit('playerDeathCleared');
+      return;
+    }
+    // ARENA (core/arena): a fighter knocked out of a bout. No purse, no checkpoint, no ragdoll, no death screen: the arena decides.
+    if (ctx.arena !== undefined && ctx.arena.active) {
+      this.killInArena(src);
       return;
     }
     const source = src ?? player.lastDamageSource ?? this.noteDamageSource('unknown');
@@ -1207,6 +1267,13 @@ export class PlayerControl implements PlayerControlApi {
     if (ctx.state.mode !== 'play' || player.dead) return;
     player.levitating = false;
     if (this.swinging) { player.firePressed = false; this.updateSwing(ctx); return; } // pendulum replaces normal movement (and the wand)
+    // A fighter's dash / ram / tether (src/fighters) moves the body itself; the pose still follows the real displacement.
+    if (ctx.fighters?.ownsMovement === true) {
+      player.firePressed = false;
+      player.levitating = false;
+      this.updatePlayerAnimation(ctx);
+      return;
+    }
     if (this.kickCooldownT > 0) this.kickCooldownT--;
 
     // Near death, you hear it: a slow heartbeat under 25% HP, urgent under 12%.
@@ -1225,7 +1292,8 @@ export class PlayerControl implements PlayerControlApi {
     }
     const channeling = player.recharge > 0;
     // (The chill's ice shell locks him too — briefly: entities/chill.)
-    const restrained = channeling || player.pullT > 0 || (player.chill?.shell ?? 0) > 0;
+    if (player.stunT > 0) player.stunT--;
+    const restrained = channeling || player.pullT > 0 || player.stunT > 0 || (player.chill?.shell ?? 0) > 0;
     const queuedJump = ctx.input.queuedJump;
     ctx.input.queuedJump = undefined;
     const keys = restrained
@@ -1374,7 +1442,7 @@ export class PlayerControl implements PlayerControlApi {
         // The Cold Store's frostbite names itself when it is most of the harm.
         const cause = status.frostbiteDamage > 0 && status.frostbiteDamage >= damage * 0.5 ? 'frostbite' : this.statusDamageSource(player);
         const source = this.noteDamageSource(cause);
-        player.hp -= this.reduceIncomingDamage(damage);
+        player.hp -= this.reduceIncomingDamage(damage, 0, source);
         if (player.hp <= 0) {
           this.kill(source);
           return;
@@ -1500,6 +1568,10 @@ export class PlayerControl implements PlayerControlApi {
     // sideways far faster than it climbs. This is also the hook for future
     // levitation enhancement cards/spells.
     const lp = ctx.params.player;
+    // The fighter's body (core/fighterBody): multipliers on everything below; NEUTRAL_BODY (all 1) for the classic Alchemist.
+    const body = ctx.fighters?.body ?? NEUTRAL_BODY;
+    // (the body's jump is a HEIGHT: the launch speed carries the gravity factor too, so a floaty body stays as high and hangs longer)
+    const jumpK = body.jump === 1 && body.gravity === 1 ? 1 : Math.sqrt(body.jump * body.gravity);
     // The chill (entities/chill) costs speed and a little jump as it deepens.
     const movePace = playerMovementPace(ctx) * (player.chill?.moveK ?? 1);
     const verticalPace = playerVerticalPace(ctx) * (player.chill?.jumpK ?? 1);
@@ -1508,25 +1580,28 @@ export class PlayerControl implements PlayerControlApi {
     const speedK = levitatingMove
       ? lp.levitHorizControl
       : (player.status.swift > 0 ? 1.5 : 1) * (player.perks.swiftfoot ? 1.18 : 1);
-    const pacedSpeedK = speedK * movePace;
+    const pacedSpeedK = speedK * movePace * (ctx.fighters?.moveScale() ?? 1) * body.run;
     // crouch-creep 0.38; crawl 0.32 — slow is the crawl's whole cost
-    const stanceK = player.crawling ? 0.32 : crouching ? 0.38 : 1;
+    const stanceK = player.crawling ? 0.32 * body.crawl : crouching ? 0.38 * body.crawl : 1;
     // Cap the per-frame speed gain so a high top speed builds up over several
     // frames (a natural ramp) instead of snapping to max in ~5 frames flat. The
     // cap only bites at high speedK (Swift/God Mode); normal, crawl, and the
     // gentle levitation accel stay well under it and are unchanged.
     // wadeSlow (≤1) bogs both the accel and the top speed when slogging through
     // blood — a leg-deep wade trudges, a thin film barely registers.
-    const accel = Math.min((player.grounded ? 0.65 : 0.575) * this.statusSlow * pacedSpeedK * stanceK * wadeSlow, MOVE_ACCEL_CAP),
+    // (the body's traction scales the ground's gain and its cap together, so a slidey body also ramps slowly where the cap binds)
+    const accelK = player.grounded ? body.accel : body.airControl;
+    const accel = Math.min((player.grounded ? 0.65 : 0.575) * accelK * this.statusSlow * pacedSpeedK * stanceK * wadeSlow, MOVE_ACCEL_CAP * accelK),
       // Cap the boosted top speed (Swift/God Mode) so it stays inside the
       // precision curve; crawl/crouch then scale down from the capped run.
-      maxRun = Math.min(2.85 * pacedSpeedK, lp.maxRunCap) * stanceK * wadeSlow;
+      // (a fast body raises the cap with its run; a slow one keeps the shipped cap, so a buff can still lift it to the top)
+      maxRun = Math.min(2.85 * pacedSpeedK, lp.maxRunCap * Math.max(1, body.run)) * stanceK * wadeSlow;
     // Soft-start: ease in from a standstill (a tap stays slow + precise), ramping
     // to full accel with speed. Applies in the air too, so a fresh airborne tap is
     // gentle while CARRIED speed (already near maxRun) still gets full control.
     const reversing = (keys.right && player.vx < -0.1) || (keys.left && player.vx > 0.1);
     const stepAccel = accel * (reversing ? 1.5 : 1) * (lp.moveSoftStart + (1 - lp.moveSoftStart) * Math.min(1, Math.abs(player.vx) / maxRun));
-    const airGlideSpeed = lp.airGlideSpeed * movePace;
+    const airGlideSpeed = lp.airGlideSpeed * movePace * body.airControl;
     if (!player.climbing) {
       // Powered input accelerates UP TO maxRun but never drags carried momentum
       // back DOWN — a fast run carried into a jump/levitate keeps its speed (you
@@ -1544,7 +1619,8 @@ export class PlayerControl implements PlayerControlApi {
         // On a surface: a quick, snappy stop on release so a tap is a small,
         // predictable nudge instead of a long coast (precision-platformer feel).
         if (!keys.left && !keys.right) {
-          player.vx *= lp.groundStopDecay;
+          // (traction: a body with less of it keeps its speed longer; the decay is a per-tick factor, so it is a power)
+          player.vx *= body.friction === 1 ? lp.groundStopDecay : Math.pow(lp.groundStopDecay, body.friction);
           if (Math.abs(player.vx) < lp.groundStopSnap) player.vx = 0;
         }
         player.vx = clamp(player.vx, -maxRun, maxRun);
@@ -1662,7 +1738,7 @@ export class PlayerControl implements PlayerControlApi {
           ['unknown', 0],
         )[0],
       );
-      player.hp -= this.reduceIncomingDamage(hazardDmg);
+      player.hp -= this.reduceIncomingDamage(hazardDmg, 0, source);
       if (ctx.state.frameCount % 14 === 0) {
         ctx.audio.hurt();
         ctx.particles.burst(player.x, player.y - 7, 4, Cell.Smoke, smokeColor, 1.1);
@@ -1686,7 +1762,7 @@ export class PlayerControl implements PlayerControlApi {
 
     // jump buffer: remember a fresh press for up to 8 frames before touchdown
     // (a press while crawling stands, and Space while climbing wall-jumps)
-    if (jumpPressed && !player.crawling && !player.climbing) this.jumpBufferFrames = 8;
+    if (jumpPressed && !player.crawling && !player.climbing) this.jumpBufferFrames = Math.round(8 * body.buffer);
     else if (this.jumpBufferFrames > 0) this.jumpBufferFrames--;
 
     // Mana regen
@@ -1808,7 +1884,7 @@ export class PlayerControl implements PlayerControlApi {
 
         if (climbIntent !== 0) {
           // accumulate fractional cells-per-frame; a whole cell of progress = one step
-          player.climbMoveT += climbIntent < 0 ? CLIMB_RATE_UP : CLIMB_RATE_DOWN;
+          player.climbMoveT += (climbIntent < 0 ? CLIMB_RATE_UP : CLIMB_RATE_DOWN) * (ctx.fighters?.climbScale() ?? 1);
           if (player.climbMoveT >= 1) {
             player.climbMoveT -= 1;
             if (this.tryClimbStep(ctx, climbIntent)) {
@@ -1849,18 +1925,18 @@ export class PlayerControl implements PlayerControlApi {
       // Gravity / levitation
       // (the complications' gravity dial, content/mutators: 1 = today's exactly)
       const gravityDial = mutatorMods(ctx.state).gravity;
-      const grav = (player.inLiquid ? 0.12 : 0.28) * gravityDial;
+      const grav = (player.inLiquid ? 0.12 : 0.28 * body.gravity) * gravityDial;
       player.vy += grav;
       if (player.inLiquid) player.vy *= 0.88;
 
       let levitating = false;
       if (keys.jump && !player.crawling) {
         // coyote time: a press within 6 frames of walking off a ledge still gets the full jump
-        const coyote = jumpPressed && this.framesSinceGrounded <= 6;
+        const coyote = jumpPressed && this.framesSinceGrounded <= Math.round(6 * body.coyote);
         // hold-to-hop stands down after a mantle until the key is re-pressed
         const groundedJumpOk = player.grounded && !this.jumpNeedsRelease;
         if (groundedJumpOk || player.inLiquid || coyote) {
-          player.vy = -3.7 * verticalPace;
+          player.vy = -3.7 * verticalPace * jumpK;
           player.grounded = false;
           player.stretchT = 6; // launch stretch (anti-squash)
           this.framesSinceGrounded = 99; // consumed — no double coyote jumps
@@ -1883,12 +1959,14 @@ export class PlayerControl implements PlayerControlApi {
           const t = Math.min(this.levitFrames / lp.levitRampFrames, 1);
           // (the jet's thrust was tuned against gravity 0.28: it follows the complications' dial, so under Low Gravity it
           // is still a hover instrument and not a rocket; the jump and the fall are what get floaty)
-          const thrust = (lp.levitThrust0 + lp.levitThrustGain * t * t * t) * verticalPace * gravityDial;
+          // (the body's gravity scales the thrust too: the jet stays a hover instrument for a heavy body, and what differs is its
+          // net climb (jetThrust), its tank (jetFuel) and how hard the body falls without it)
+          const thrust = (lp.levitThrust0 + lp.levitThrustGain * t * t * t) * verticalPace * gravityDial * body.gravity * body.jetThrust;
           player.vy -= thrust;
           player.vy *= lp.levitDrag;
           // Levity potion (Wave C): levitation burns no levit while the timer runs
           if (player.status.levity <= 0)
-            player.levit = Math.max(0, player.levit - 1.15 * (player.perks.featherweight ? 0.55 : 1));
+            player.levit = Math.max(0, player.levit - 1.15 * body.jetBurn * (player.perks.featherweight ? 0.55 : 1));
           this.levitFrames++;
           // SPUTTER WARNING: below 20% fuel the jet coughs — gaps in the
           // exhaust, a put-put under the hum — panic BEFORE the fall starts.
@@ -1934,14 +2012,14 @@ export class PlayerControl implements PlayerControlApi {
           if (this.jumpCutGraceFrames > 0) {
             this.jumpCutGraceFrames--;
           } else {
-            player.vy *= lp.jumpCut;
+            player.vy *= body.jumpCut === 1 ? lp.jumpCut : Math.pow(lp.jumpCut, body.jumpCut);
             this.jumpRiseFrames = 0;
           }
         }
       }
       if (!levitating) this.levitFrames = 0;
       player.levitating = levitating;
-      if (player.grounded || player.inLiquid) player.levit = Math.min(player.maxLevit, player.levit + 1.7);
+      if (player.grounded || player.inLiquid) player.levit = Math.min(player.maxLevit, player.levit + 1.7 * body.jetRegen);
 
       // DIVE SLAM (press S in the air): commit to the fall. The body locks
       // into a spear, horizontal drift bleeds off, and the landing pays it
@@ -1955,13 +2033,13 @@ export class PlayerControl implements PlayerControlApi {
         player.vy > -1
       ) {
         player.diveT = 1;
-        player.vy = Math.max(player.vy, 5.6);
+        player.vy = Math.max(player.vy, 5.6 * body.fall);
         player.hat.vy -= 2.6; // the hat objects to the decision
         ctx.audio.sfx('player.dive');
       }
       if (player.diveT > 0) {
         player.diveT++;
-        player.vy = Math.max(player.vy, 4.6); // stays committed
+        player.vy = Math.max(player.vy, 4.6 * body.fall); // stays committed
         player.vx *= 0.86;
         if (player.inLiquid) player.diveT = 0; // water catches you (splash plays)
         else if (ctx.state.frameCount % 2 === 0) {
@@ -1981,7 +2059,7 @@ export class PlayerControl implements PlayerControlApi {
       // dive overrides the normal terminal velocity (5.0). The up-cap is a pure
       // safety net (levitDrag settles the climb well under it); keep it ≤ -3.7
       // so it never clips the jump impulse.
-      player.vy = clamp(player.vy, ctx.params.player.vyCapUp * verticalPace, player.diveT > 0 ? 6.4 : 5.0);
+      player.vy = clamp(player.vy, ctx.params.player.vyCapUp * verticalPace, (player.diveT > 0 ? 6.4 : 5.0) * body.fall);
 
       // Move horizontally (sub-cell accumulator; step-up 5 standing, 2 crawling).
       // A step that also changes elevation spends its diagonal path length from
@@ -2040,7 +2118,7 @@ export class PlayerControl implements PlayerControlApi {
       if (player.grounded) {
         // jump buffer: a press made just before touchdown fires on the landing frame
         if (this.jumpBufferFrames > 0 && !player.crawling) {
-          player.vy = -3.7 * verticalPace;
+          player.vy = -3.7 * verticalPace * jumpK;
           player.grounded = false;
           player.fallPeak = 0; // this landing was consumed by the jump
           player.stretchT = 6;

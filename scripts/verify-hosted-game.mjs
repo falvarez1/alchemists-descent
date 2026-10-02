@@ -76,6 +76,8 @@ try {
   ]);
   if (await entryBegin.isVisible()) {
     await entryBegin.click();
+    // (the title is a menu: New descent opens the loadout page, Descend starts the run)
+    await page.locator('#expedition-entry [data-entry="descend"]').click();
   } else {
     await page.click('#mode-play-btn');
     await page.waitForSelector('#run-launcher.visible', { timeout: 30000 });

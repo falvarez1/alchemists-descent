@@ -114,6 +114,8 @@ requestAnimationFrame(() =>
         };
         debugWindow.__game = game;
         debugWindow.__authorLink = authorLink;
+        // The fight harness (docs/arena/TELEMETRY-AND-BALANCE.md): stage, run and record a whole duel in the page. A separate chunk, dev only.
+        void import('@/fighters/telemetry/fightHarness').then((m) => { (debugWindow as { __fight?: unknown }).__fight = m.installFightTools(game); });
         // Stream positions and draw counters, for the determinism probe and for
         // diagnosing a divergence by hand (which stream drifted, and when).
         debugWindow.__simRandom = simRandomDebug;
@@ -126,6 +128,7 @@ requestAnimationFrame(() =>
           if (debugWindow.__game === game) delete debugWindow.__game;
           delete debugWindow.__authorLink;
           delete debugWindow.__simRandom;
+          delete (debugWindow as { __fight?: unknown }).__fight;
         });
       }
 

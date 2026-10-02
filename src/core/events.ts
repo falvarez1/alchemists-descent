@@ -50,6 +50,11 @@ export interface EventMap {
   playerCorpseSettled: undefined;
   /** Player came back — UI hides the game-over overlay. */
   playerRespawned: undefined;
+  /** ARENA: a fighter was knocked out (core/arena FighterDownEvent). */
+  fighterDown: { slot: number; by: number; source: string; x: number; y: number };
+  /** Confirmed, visible health loss in an Arena exchange. No queued inputs or hidden cooldowns. */
+  fighterHit: { by: number; victim: number; damage: number; tick: number; attack?: string };
+  arenaReset: undefined;
   /** Death UI should clear without triggering gameplay respawn side effects. */
   playerDeathCleared: undefined;
   /** The directed death (game/DeathCinema): letterbox in, title card, and out. */
@@ -242,6 +247,21 @@ type Handler<T> = (payload: T) => void;
 
 export class EventBus {
   private handlers = new Map<keyof EventMap, Set<Handler<never>>>();
+  /**
+   * FIGHTER SLOTS (docs/arena/ARCHITECTURE.md 5). With two fighters in one world a per-fighter object (a kit, a wand system) that
+   * listens for `cardCast` or `flaskUsed` must hear only ITS fighter's. A handler registered while `registeringSlot` is set is
+   * tagged with that slot, and once the arena turns scoping on (`scoped`) it is called only while `boundSlot` is that slot.
+   * Untagged handlers (every shared system) always hear everything. With no rival the flag is off and none of this costs anything.
+   */
+  /** The events that belong to ONE fighter: with the arena on, a tagged handler hears them only while its slot is bound. */
+  private static readonly PER_FIGHTER: ReadonlySet<string> = new Set([
+    'cardCast', 'flaskUsed', 'playerRespawned', 'playerDeathCleared', 'enemyKilled', 'wandChanged',
+    'cardOfferRequested', 'wandOfferRequested',
+  ]);
+  registeringSlot: number | null = null;
+  boundSlot = 0;
+  scoped = false;
+  private readonly slotOf = new WeakMap<object, number>();
 
   on<K extends keyof EventMap>(event: K, handler: Handler<EventMap[K]>): () => void {
     let set = this.handlers.get(event);
@@ -249,6 +269,7 @@ export class EventBus {
       set = new Set();
       this.handlers.set(event, set);
     }
+    if (this.registeringSlot !== null) this.slotOf.set(handler, this.registeringSlot);
     set.add(handler as Handler<never>);
     return () => set.delete(handler as Handler<never>);
   }
@@ -260,6 +281,10 @@ export class EventBus {
     const set = this.handlers.get(event);
     if (!set || set.size === 0) return false;
     for (const h of set) {
+      if (this.scoped && EventBus.PER_FIGHTER.has(event)) {
+        const tag = this.slotOf.get(h);
+        if (tag !== undefined && tag !== this.boundSlot) continue;
+      }
       // One broken listener must not silence the others or abort the tick that
       // emitted (an audio scheduling error inside `playerDied` once skipped the
       // rest of a game tick). The error is re-thrown on a microtask, so it still
@@ -273,6 +298,18 @@ export class EventBus {
       }
     }
     return true;
+  }
+
+  /** How many handlers listen to `event` (a probe asserts a thrown-away fighter leaves none behind). */
+  listenerCount(event: keyof EventMap): number {
+    return this.handlers.get(event)?.size ?? 0;
+  }
+
+  /** Register everything `fn` subscribes as belonging to fighter slot `slot`. */
+  asSlot<T>(slot: number, fn: () => T): T {
+    const was = this.registeringSlot;
+    this.registeringSlot = slot;
+    try { return fn(); } finally { this.registeringSlot = was; }
   }
 
   clear(): void {

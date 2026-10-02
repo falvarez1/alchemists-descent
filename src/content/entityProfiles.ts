@@ -43,6 +43,15 @@ export const PLAYER_ENTITY_PROFILE: EntityProfile = {
 };
 
 export const ENEMY_ENTITY_PROFILES: Record<EnemyKind, EntityProfile> = {
+  fighter: {
+    description: 'A rival fighter, as the engine sees it from the other side: a stand-in that mirrors the real body and passes every blow on.',
+    traits: {
+      behaviors: ['Mirrors a real fighter: position, velocity and health come from the body it stands for.', 'Never thinks or attacks on its own.'],
+      emotions: ['None: the fighter it stands for has all of them.'],
+      strengths: ['Everything the real fighter has.'],
+      weaknesses: ['Everything the real fighter has.'],
+    },
+  },
   slime: {
     description: 'Squash-and-stretch hopper. Splits its gaze around the room until alerted.',
     traits: {

@@ -1,6 +1,9 @@
 import type { ProjectileType } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 
+/** Fixed player projectile launch speeds (cells/tick), shared by spawning, recoil and AI aiming. */
+export const PLAYER_PROJECTILE_SPEED = { frostshard: 11, icelance: 16, wisp: 4.5, meteor: 6.5 } as const;
+
 export const WEAVER_LIMB_DAMAGE: Partial<Record<ProjectileType, number>> = { bolt: 18, pellet: 8, iceshard: 16, wisp: 13, icelance: 25, fireball: 14 };
 
 export function isSpentGore(type: number): boolean { return type === Cell.Blood || type === Cell.Slime; }

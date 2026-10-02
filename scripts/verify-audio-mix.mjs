@@ -188,6 +188,7 @@ try {
   // ---- A run starts cleanly; the Grimoire art loads lazily as WebP. ----
   const grimoireBefore = requests.filter((u) => u.includes('grimoire-open-straight')).length;
   await clickReal('#expedition-entry [data-entry="begin"]');
+  await clickReal('#expedition-entry [data-entry="descend"]');
   await page.waitForFunction(() => {
     const ctx = window.__game?.ctx;
     return ctx?.state?.mode === 'play' && ctx.levels?.current != null && !ctx.levels?.transitioning;

@@ -9,6 +9,8 @@ import type {
   Difficulty,
 } from '@/core/types';
 import type { AlchemyKillInfo, KitId, RunOutcome } from '@/core/run';
+import { isFighterId } from '@/content/fighters';
+import type { FighterId } from '@/content/fighters';
 import { randomSeed } from '@/core/rng';
 import { isRunTainted } from '@/core/runTaint';
 import { FLOORS_TOTAL, doorTaken, floorDisplayName, floorOf } from '@/config/worldgraph';
@@ -53,6 +55,7 @@ function freshState(opts: RunBeginOptions, recorded: boolean, seedChosen = false
     v: 1,
     phials: PHIALS_PER_RUN,
     kit: opts.kit,
+    ...(opts.fighter ? { fighter: opts.fighter } : {}),
     daily: opts.daily,
     seed: opts.seed >>> 0,
     ...(seedChosen && !opts.daily ? { seedChosen: true } : {}),
@@ -86,6 +89,7 @@ function sanitizeSave(save: RunSaveState): RunSaveState | null {
     v: 1,
     phials: clampPhials(typeof save.phials === 'number' ? save.phials : PHIALS_PER_RUN),
     kit: isKitId(save.kit) ? save.kit : DEFAULT_KIT,
+    ...(isFighterId(save.fighter) ? { fighter: save.fighter } : {}),
     daily: isDateKey(save.daily) ? save.daily : null,
     seed: whole(save.seed) >>> 0,
     ...(save.seedChosen === true && !isDateKey(save.daily) ? { seedChosen: true } : {}),
@@ -194,6 +198,10 @@ export class RunDirector implements RunApi {
     return this.state?.kit ?? this.meta.profile.lastKit;
   }
 
+  get fighter(): FighterId | null {
+    return this.state?.fighter ?? null;
+  }
+
   get daily(): string | null {
     return this.state?.daily ?? null;
   }
@@ -268,10 +276,13 @@ export class RunDirector implements RunApi {
     this.endRun(ctx, 'abandoned', true);
   }
 
-  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number; mutators?: readonly string[] }): RunStartResult {
+  startNewRun(ctx: Ctx, opts: { kit: KitId; daily: boolean; difficulty?: Difficulty; seed?: number; fighter?: FighterId | null; mutators?: readonly string[] }): RunStartResult {
     const today = utcDateKey(new Date());
     const kit = opts.daily ? DEFAULT_KIT : (this.meta.isKitUnlocked(opts.kit) ? opts.kit : DEFAULT_KIT);
     if (!opts.daily) this.meta.setLastKit(kit);
+    // Today's descent is one seed for everyone, so it is always the classic Alchemist (like its fixed kit and tier).
+    const fighter = !opts.daily && isFighterId(opts.fighter) ? opts.fighter : null;
+    if (!opts.daily) this.meta.setLastFighter(fighter);
     // The tier asked for, if it is open to this player; Adept otherwise. Today's descent is one
     // seed for everyone, so it is always Adept (and does not move the remembered choice).
     const profile = this.meta.profile;
@@ -291,6 +302,7 @@ export class RunDirector implements RunApi {
         loadout: 'fresh',
         seed: opts.daily ? dailySeed(today) : chosen ?? randomSeed(),
         starterKit: kit,
+        fighter,
         daily: opts.daily ? today : null,
         difficulty,
         mutators,
@@ -302,6 +314,10 @@ export class RunDirector implements RunApi {
 
   chooseKit(kit: KitId): void {
     this.meta.setLastKit(kit);
+  }
+
+  chooseFighter(id: FighterId | null): void {
+    this.meta.setLastFighter(id);
   }
 
   chooseDifficulty(difficulty: Difficulty): void {
@@ -318,6 +334,7 @@ export class RunDirector implements RunApi {
     return {
       unlockedKits: [...profile.unlockedKits],
       lastKit: profile.lastKit,
+      lastFighter: profile.lastFighter,
       workshopUnlocked: profile.workshopUnlocked,
       runsEnded: profile.runsEnded,
       bestFloor: profile.bestFloor,
@@ -563,6 +580,7 @@ export class RunDirector implements RunApi {
       daily: state.daily,
       seedChosen: state.seedChosen,
       kit: state.kit,
+      fighter: state.fighter,
       floor: outcome === 'victory' ? FLOORS_TOTAL : floor,
       floorName: floorDisplayName(floorId),
       floorsTotal: FLOORS_TOTAL,

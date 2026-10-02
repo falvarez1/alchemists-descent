@@ -562,7 +562,8 @@ describe('weaver encounter contract', () => {
   });
 
   it('keeps Builder enemy authoring in sync with runtime enemy definitions', () => {
-    expect([...BUILDER_ENEMY_KINDS].sort()).toEqual(Object.keys(ENEMY_DEFS).sort());
+    // (the Builder offers every kind a level can place; 'fighter' is the arena's stand-in for a rival, never placed)
+    expect([...BUILDER_ENEMY_KINDS].sort()).toEqual(Object.keys(ENEMY_DEFS).filter((k) => k !== 'fighter').sort());
     expect(PATROL_KINDS.has('weaver')).toBe(true);
     expect(PATROL_KINDS.has('rootloper')).toBe(true);
     expect(PATROL_KINDS.has('stonemaw')).toBe(false);
