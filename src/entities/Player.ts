@@ -683,7 +683,8 @@ export class PlayerControl implements PlayerControlApi {
     fightSink?.hurt(raw, amount, source, kx || 0, ky || 0);
     this.applyImpulse(kx || 0, ky || 0);
     const body = ctx.fighters?.body ?? NEUTRAL_BODY;
-    player.invuln = Math.round(30 * body.invuln);
+    // (a duel keeps the window short, config/arenaRules: it favoured the big single hit over every other kind of weapon)
+    player.invuln = Math.round((ctx.arena !== undefined && ctx.arena.active ? ARENA_RULES.invulnTicks : 30) * body.invuln);
     // Hurt stagger: a lean away from the blow, and the hat whips with it
     // (a fighter at full Pressure / in Redline keeps its footing: src/fighters)
     if (ctx.fighters?.staggerResist !== true) {

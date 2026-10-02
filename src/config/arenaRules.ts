@@ -22,6 +22,12 @@ export const ARENA_RULES = {
    * as half of all damage) that the loser simply could not stand out of; a fight should be decided by what the fighters do to each other.
    */
   hazardScale: 0.35,
+  /**
+   * Ticks a fighter cannot be hurt after a blow (the campaign's is 30: half a second of nothing lands). In a duel that is a thumb on the scale
+   * for the big single hit: a pair of sparks, a fan of darts or a chain of lightning lose all but the first hit to the window (measured: the
+   * three heavy-hit loadouts took half the damage of the rapid ones and won 74-99%). A short window lets every kind of weapon count.
+   */
+  invulnTicks: 10,
 };
 
 export type ArenaRuleKey = keyof typeof ARENA_RULES;
@@ -31,4 +37,5 @@ export const ARENA_RULE_RANGES: Readonly<Record<ArenaRuleKey, { min: number; max
   blowScale: { min: 0.1, max: 2 },
   healthEquality: { min: 0, max: 1 },
   hazardScale: { min: 0, max: 2 },
+  invulnTicks: { min: 0, max: 60 },
 });
