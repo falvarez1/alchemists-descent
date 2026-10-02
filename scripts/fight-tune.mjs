@@ -28,7 +28,7 @@ const out = opt('out', `verify-out/fights/tune-${new Date().toISOString().replac
 mkdirSync(out, { recursive: true });
 
 const IDS = ['ilyra-voss', 'brann-rook', 'sable-fen', 'mara-quell', 'kest-rel', 'nox-calder', 'edda-morrow', 'selene-wraith', 'rusk-emberjaw', 'father-thorne'];
-const RANGES = { dealt: [0.6, 1.6], maxHp: [0.6, 1.6], mass: [0.6, 1.6], run: [0.7, 1.4] };
+const RANGES = { dealt: [0.3, 2.5], maxHp: [0.6, 1.6], mass: [0.6, 1.6], run: [0.7, 1.4] };
 // the shipped values (read from the source so a patch is relative to what is committed)
 const shipped = {};
 {

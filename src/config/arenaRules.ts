@@ -11,11 +11,12 @@ export const ARENA_RULES = {
   blowScale: 0.4,
   /**
    * 1: every fighter has the SAME effective health in a duel (a blow is divided by the victim's body health multiplier, so Brann's x1.35
-   * is no longer extra hit points); 0: the designed bodies stand (a wall has more health, glass less). The first tuning pass found that
-   * health is the strongest lever on who wins and the one that most erases a character (it made Brann frail and Nox a tank); a duel
-   * should be won with the weapon, the movement and the kit, so tankiness comes from mass, armor and the plate, not raw hit points.
+   * is no longer extra hit points); 0: the designed bodies stand (a wall has more health, glass less). OFF by default: equal health did not
+   * remove Brann's lead (a plain spark and a neutral body still won 86-93%: his closeness, weight and the bot's range did it), and the
+   * archetype trade is the classic one: the wall has the health and hits softly, the glass cannon hits hard and dies fast. The lever that
+   * balances it is `dealt`, over a wide range (0.3-2.5).
    */
-  healthEquality: 1,
+  healthEquality: 0,
   /**
    * What share of the WORLD's harm (a flame, a current, an acid, a blast it lit: anything not a fighter's own blow) reaches a fighter, on top of
    * the tempo. The measurement: after the opening exchange most duels settled into a slow drip of fire and electricity (20-46 a fight, as much

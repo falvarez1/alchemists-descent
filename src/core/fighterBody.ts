@@ -88,7 +88,7 @@ export const BODY_RANGES: Readonly<Record<BodyField, { min: number; max: number 
   stagger: { min: 0.4, max: 1.6 },
   invuln: { min: 0.5, max: 1.5 },
   // (the balance lever: a fighter's body is its feel and its health is its fantasy, so the tuner turns THIS, over a wide range)
-  dealt: { min: 0.6, max: 1.6 },
+  dealt: { min: 0.3, max: 2.5 },
 });
 
 export function cloneBody(from: Readonly<BodyProfile>): BodyProfile {
