@@ -343,7 +343,10 @@ export class ArenaSlots implements ArenaApi {
     const was = this.blow;
     this.blow = { by: attacker, tag: this.slots[attacker]?.bundle.fighters.attribute?.(source) ?? (source === 'direct' ? 'spell' : 'world') };
     try {
+      const hpBefore = rec.bundle.player.hp;
       this.with(victim, () => { rec.bundle.playerCtl.damage(dmg, kx, ky, tag); });
+      const lost = hpBefore - rec.bundle.player.hp;
+      if (lost > 0) this.ctx.events.emit('fighterHit', { by: attacker, victim, damage: lost, tick: this.ctx.state.frameCount, attack: this.blow.tag });
     } finally {
       this.blow = was;
     }
@@ -521,5 +524,6 @@ export class ArenaSlots implements ArenaApi {
     this.bout.downs.length = 0;
     this.syncStand();
     this.ctx.projectileCtl?.invalidateEnemyIndex?.();
+    this.ctx.events.emit('arenaReset');
   }
 }

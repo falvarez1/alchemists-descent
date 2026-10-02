@@ -22,5 +22,5 @@ export function createBrain(id: BrainId, opts: BrainOptions): Brain {
 /** One line for the panel and the console: what each brain is. */
 export const BRAIN_BLURBS: Readonly<Record<BrainId, string>> = {
   dummy: 'stands, turns to the nearest foe, presses Z every 4 s and T every 9 s',
-  basic: 'walks to a good range, aims with lead, shoots, kicks, hops slabs, uses Z and T by simple rules',
+  basic: 'fights at weapon range, varies its footwork, dodges shots, saves mana, and uses fighter-specific abilities',
 };

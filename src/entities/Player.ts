@@ -248,6 +248,7 @@ export class PlayerControl implements PlayerControlApi {
   private prevJumpHeld = false;
   /** Frames until the player can kick again. */
   private kickCooldownT = 0;
+  get kickReady(): boolean { return this.kickCooldownT <= 0; }
   /** Death ragdoll: the flung corpse body (null when alive), its settle flag + timer. */
   private corpse: RigidBody | null = null;
   private corpseSettled = false;

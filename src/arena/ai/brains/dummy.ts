@@ -4,6 +4,7 @@ import type { Brain, BrainOptions, BrainSelf, BrainStatus } from '@/arena/ai/bra
 import { Hand } from '@/arena/ai/control';
 import { SHOULDER } from '@/arena/ai/worldView';
 import type { AiLevel } from '@/config/aiTiers';
+import type { PersonalityId } from '@/config/aiPersonalities';
 
 /**
  * THE DUMMY (v0, docs/arena/AI-FIGHTERS.md 7): a computer fighter that stands where it is, turns to face the nearest foe
@@ -17,11 +18,13 @@ const T_EVERY = 540;
 export class DummyBrain implements Brain {
   readonly id = 'dummy' as const;
   level: AiLevel;
+  personality: PersonalityId;
   readonly status: BrainStatus = blankStatus();
   private hand: Hand | null = null;
 
   constructor(opts: BrainOptions) {
     this.level = opts.level;
+    this.personality = opts.personality ?? 'duelist';
   }
 
   reset(): void {

@@ -197,5 +197,84 @@ ordered pair, level-3 bots):
 - The playbook seam exists (`arena/ai/playbooks.ts`): Father Thorne's Ironvine is aimed at the floor under the foe (it was refused every
   time: now it fires in about one fight in three). Every other entry will be there because a measurement showed a tactical failing.
 
-What a better duelist needs (v2, not built): a defensive reflex (the shot in flight at it, the foe's tactical wind-up), the ability rules per
-fighter (when Brann's plate is worth raising, when Kest's dash is worth the cooldown), and perception parity (Nox's smoke, Thorne's cover).
+The combat revision below adds projectile defense and fighter-specific ability decisions. Tactical wind-up recognition and concealment parity remain future work.
+
+## 10. Combat revision and tuning
+
+See [AI-TUNING.md](AI-TUNING.md) for the current personality system, named difficulties, all setting ranges and score diagnostics.
+This section records the underlying combat/navigation improvements; earlier sections are historical design notes.
+
+Arena and Duel both use the revised `basic` brain, so existing CPU selections pick it up automatically. It still controls the ordinary keys,
+cursor, trigger and ability buttons. Health, damage, mana costs, movement speed and cooldowns follow the same rules as the player's.
+
+The bot chooses an opponent with a usable firing lane, keeps the equipped weapon's range, varies its footwork and pressures wounded targets
+when it has the health advantage. Low mana starts a recovery interval with a separate resume threshold. It avoids closing into its own blast
+radius. Rusk switches to his equipped flame wand for close combat and back to bombs at long range, with a cooldown and separate distance
+thresholds to prevent constant switching.
+
+Incoming shots use the same reaction delay as opponents. Rival-owned spells count as threats even when their `hostile` flag is false.
+The bot predicts body crossings, checks for intervening cover, and jumps or steps away with a cooldown. Nearby fire, lava, acid and unsupported
+ground affect movement; a short hazard can be jumped when a safe landing exists. Cornered bots can jump across an opponent to recover space.
+The Duel platforms now have navigation routes, alongside the existing Proving Yard routes.
+
+Weapon aim reads the next compiled cast's speed modifier, uses gravity compensation and bounds motion prediction. Opponent health and grounding
+come from the delayed observation too. A newly installed bot must wait for its first observation. There is no immediate startup targeting.
+
+Ability rules live in `src/arena/ai/playbooks.ts`. Brann guards a ranged exchange, Edda shields before trading and heals after taking damage,
+Ilyra overcharges while she can attack, and Kest and Selene aim their mobility toward useful spacing. Other kits check their effective range,
+target health or nearby combat. An unrelated ready-time timeout no longer spends an ability. A movement ability's escape aim does not also
+fire the wand backward that tick.
+
+### Tune a running bot
+
+In a development or authoring build, open the game console:
+
+```text
+ai behavior
+ai behavior aggression 1.15
+ai behavior caution 0.9
+ai behavior strafeDistance 24
+ai behavior dodgeLookahead 22
+ai behavior reset
+ai tier 3 reaction 11
+ai tiers
+ai status
+arena status
+```
+
+`ai behavior` lists every characteristic, value, accepted range and description. Changes affect all running `basic` bots in both modes.
+They last for the page session. `ai behavior reset` restores combat defaults; `ai reset` restores only the skill tiers. To ship new defaults,
+edit `src/config/aiBehavior.ts` and run the checks below. The existing difficulty levels still control reaction delay, aim error, decision
+interval and mistakes in `src/config/aiTiers.ts`.
+
+| Characteristics | Effect |
+| --- | --- |
+| `aggression`, `caution` | Scale approach and retreat preferences. |
+| `finishHealth`, `retreatHealth` | Opponent and own health fractions that change risk-taking. |
+| `manaReserve`, `manaResume` | Separate thresholds for starting and ending mana recovery. |
+| `strafeDistance`, `strafeTicks` | Footwork distance in cells and average time between direction choices. |
+| `dodgeLookahead`, `dodgeCooldown`, `dodgeHold` | Prediction horizon, jump frequency and jump duration, in ticks. |
+| `aimLead`, `maxLeadTicks` | Velocity prediction weight and maximum prediction time. |
+| `targetStickiness`, `pressureRange` | Target commitment and minimum finishing distance. |
+| `blockedTicks`, `hazardLookahead` | How quickly blocked shots cause movement and how far footing is checked. |
+| `cornerEscapeCooldown`, `weaponSwapTicks` | Minimum time between corner escapes and weapon changes. |
+
+Times are fixed ticks at 60 Hz. The per-fighter preferred ranges and aggression weights remain in `FIGHTER_STYLES` in `src/arena/ai/intent.ts`.
+The Bots panel reports the current decision and counters, including `dodges`, `hazardHops`, `flanks` and `swaps`. The `arena status` structured
+result includes both fighters' brain status so probes can inspect the same brains that the game runs.
+
+### Verification and limits
+
+```text
+npx vitest run tests/ai-execution.test.ts tests/ai-combat.test.ts
+node scripts/verify-ai-combat.mjs http://127.0.0.1:5194/
+node scripts/verify-ai-basic.mjs http://127.0.0.1:5194/ --seeds 1
+```
+
+The combat probe uses fresh Duel stages, exercises all ten fighters and checks actual input-driven dodging, mana recovery, tuning and input
+release. Results and a screenshot go under ignored `verify-out/ai-combat/`. The Arena probe checks wave combat and the difficulty dial.
+Run probes against an unchanged dev server: hot reload during a match changes the experiment.
+
+This is a utility-based opponent, with bounded prediction and seeded hesitation. It does not learn across matches. Fighter smoke and echoes use
+the existing kit perception API. Navigation is authored for the two shipped stages, and complex
+terrain destruction can invalidate a route. A full matchup balance sweep and the proposed 1,000-fight soak remain separate work.

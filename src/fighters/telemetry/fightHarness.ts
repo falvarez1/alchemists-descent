@@ -15,6 +15,9 @@ import { FIGHTER_LOADOUTS } from '@/content/fighterLoadouts';
 import { ARENA_RULES, ARENA_RULE_RANGES } from '@/config/arenaRules';
 import type { ArenaRuleKey } from '@/config/arenaRules';
 import type { FighterLoadout } from '@/content/fighterLoadouts';
+import { defaultPersonality } from '@/config/aiPersonalities';
+import type { PersonalityId } from '@/config/aiPersonalities';
+import type { BrainStatus } from '@/arena/ai/brain';
 
 /**
  * THE FIGHT HARNESS (docs/arena/TELEMETRY-AND-BALANCE.md 3.3), dev builds only: one call stages, runs and records a whole duel in the
@@ -26,6 +29,7 @@ import type { FighterLoadout } from '@/content/fighterLoadouts';
  */
 
 export interface FightSide {
+  personality?: PersonalityId;
   id: FighterId;
   brain: BrainId;
   level: number;
@@ -53,6 +57,7 @@ export interface FightSpec {
 }
 
 export interface FightOutcome {
+  bots: Array<BrainStatus | null>;
   winner: number | null;
   reason: 'ko' | 'timeout';
   ticks: number;
@@ -136,9 +141,9 @@ export function installFightTools(game: FightGame): FightTools {
       arena.setSpawns(spawns);
       await arena.addRival(spec.b.id, spawns[1].x, spawns[1].y);
       arena.reset();
-      d0.install(spec.a.brain, spec.a.level, { seed: spec.seed });
+      d0.install(spec.a.brain, spec.a.level, { seed: spec.seed, personality: spec.a.personality ?? defaultPersonality(spec.a.id) });
       const d1 = rivalDriverFor(ctx, 1);
-      d1?.install(spec.b.brain, spec.b.level, { seed: spec.seed });
+      d1?.install(spec.b.brain, spec.b.level, { seed: spec.seed, personality: spec.b.personality ?? defaultPersonality(spec.b.id) });
       const p0 = arena.bundle(0)!.player, p1 = arena.bundle(1)!.player;
       recorder.install();
       recorder.start({
@@ -147,8 +152,8 @@ export function installFightTools(game: FightGame): FightTools {
         seed: spec.seed,
         yard: 'fighter-duel',
         fighters: [
-          { slot: 0, id: spec.a.id, brain: `${spec.a.brain}:${spec.a.level}`, hp: p0.maxHp, maxHp: p0.maxHp },
-          { slot: 1, id: spec.b.id, brain: `${spec.b.brain}:${spec.b.level}`, hp: p1.maxHp, maxHp: p1.maxHp },
+          { slot: 0, id: spec.a.id, brain: `${spec.a.brain}:${spec.a.level}:${d0.brain?.personality}`, hp: p0.maxHp, maxHp: p0.maxHp },
+          { slot: 1, id: spec.b.id, brain: `${spec.b.brain}:${spec.b.level}:${d1?.brain?.personality}`, hp: p1.maxHp, maxHp: p1.maxHp },
         ],
         overrides: params.snapshot(),
         git: spec.git,
@@ -172,7 +177,8 @@ export function installFightTools(game: FightGame): FightTools {
         winner = Math.abs(f0 - f1) < 0.005 ? null : f0 > f1 ? 0 : 1;
       }
       recorder.end({ winner, reason });
-      return { winner, reason, ticks: recorder.ticks, hp, jsonl: recorder.toJSONL(), totals: recorder.totals(), ms: performance.now() - t0 };
+      const bots = structuredClone([d0.brain?.status ?? null, d1?.brain?.status ?? null]);
+      return { winner, reason, ticks: recorder.ticks, hp, jsonl: recorder.toJSONL(), totals: recorder.totals(), ms: performance.now() - t0, bots };
     } finally {
       recorder.uninstall();
       d0.off();

@@ -52,6 +52,12 @@ function stampStage(ctx: Ctx): void {
   fill(x0 - 20, roof - 12, x1 + 20, roof - 1, Cell.Wall);
   fill(x0, floor, x1, floor + 40, Cell.Stone);
   fill(x0 - 20, floor + 41, x1 + 20, floor + 60, Cell.Wall);
+  // Wall cells crumble in explosions. Back the shell with actual blast-proof metal
+  // so bombs can crater the interior without dropping a duelist outside the stage.
+  fill(x0 - 20, roof - 12, x0 - 18, floor + 60, Cell.Metal);
+  fill(x1 + 18, roof - 12, x1 + 20, floor + 60, Cell.Metal);
+  fill(x0 - 20, roof - 12, x1 + 20, roof - 10, Cell.Metal);
+  fill(x0 - 20, floor + 41, x1 + 20, floor + 60, Cell.Metal);
   // platforms: a metal slab on a short stone bracket at the wall end (never down to the floor: that is where a fighter spawns)
   for (const p of DUEL.platforms) {
     fill(p.x0, p.y, p.x1, p.y + 2, Cell.Metal);

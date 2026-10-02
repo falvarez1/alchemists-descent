@@ -102,6 +102,16 @@ function setup(opts: Parameters<typeof makeKit>[1] = {}, walls?: (x: number, y: 
 }
 
 describe('the fighter system', () => {
+  it('releasing buffered inputs prevents a pending ability without cancelling an active ultimate', () => {
+    const { spy, sys: s, step } = setup();
+    s.refill(); s.press('ultimate'); step();
+    expect(spy.ultimateCalls).toBe(1);
+    s.press('tactical'); s.releaseInputs(); step();
+    expect(spy.tacticalCalls).toBe(0);
+    expect(s.view.tactical.ready).toBe(true);
+    expect(spy.ultimateEnds).toBe(0);
+    expect(spy.ultimateTicks.length).toBeGreaterThan(0);
+  });
   it('is inert for the classic Alchemist', () => {
     const world = makeCtx();
     const classic = new FighterSystem(world.ctx, () => undefined);

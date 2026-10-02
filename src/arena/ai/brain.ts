@@ -1,6 +1,9 @@
 import type { AiLevel } from '@/config/aiTiers';
 import type { AbilitySlot, FighterApi } from '@/core/fighters';
 import type { Ctx, InputState, PlayerState } from '@/core/types';
+import type { PersonalityId } from '@/config/aiPersonalities';
+import type { ObservedHit } from '@/arena/ai/memory';
+import type { UtilityScore } from '@/arena/ai/utility';
 
 /**
  * THE BRAIN CONTRACT (docs/arena/AI-FIGHTERS.md 2-3). A brain is a computer fighter's mind: every fixed tick it is
@@ -28,6 +31,8 @@ export interface Hands {
   kick(): void;
   /** The right mouse button: throw the flask. */
   flask(): void;
+  /** Number keys / wheel: change to an equipped wand through the normal selection path. */
+  wand(index: 0 | 1): void;
   /** R on the death screen: get back up. */
   respawn(): void;
 }
@@ -45,6 +50,12 @@ export interface BrainSelf {
 
 /** What a brain is doing, for the Bots panel's one-line readout and the world overlay. */
 export interface BrainStatus {
+  personality?: PersonalityId;
+  action?: string;
+  scores?: UtilityScore[];
+  targetScores?: UtilityScore[];
+  threat?: boolean;
+  memory?: { opponents: number; confidence: number; caution: number };
   /** The goal: `approach`, `retreat`, `zone`, `pressure`, `reposition`, `search`, or the dummy's `idle`. */
   intent: string;
   /** Who it is after (a foe's kind and distance), or `-`. */
@@ -64,6 +75,7 @@ export interface BrainStatus {
 }
 
 export interface BrainOptions {
+  personality?: PersonalityId;
   level: AiLevel;
   /** Seed for the brain's own `Rng` (`hashSeed(seed, 'bot:' + slot)`): never `entityRandom`. */
   seed: number;
@@ -73,6 +85,9 @@ export interface BrainOptions {
 export interface Brain {
   readonly id: BrainId;
   level: AiLevel;
+  personality: PersonalityId;
+  observeHit?(hit: ObservedHit): void;
+  actionPerformed?(action: string): void;
   /** Fixed tick: read the world, write this tick's inputs. */
   think(ctx: Ctx, self: BrainSelf, tick: number): void;
   readonly status: Readonly<BrainStatus>;
@@ -83,6 +98,6 @@ export interface Brain {
 export function blankStatus(): BrainStatus {
   return {
     intent: 'idle', target: '-', rule: '', aim: null, goalX: null, range: 0, idleTicks: 0,
-    stats: { shots: 0, kicks: 0, z: 0, t: 0, hops: 0, lapses: 0, stuck: 0, idleMax: 0, edges: 0 },
+    stats: { shots: 0, kicks: 0, z: 0, t: 0, hops: 0, lapses: 0, stuck: 0, idleMax: 0, edges: 0, dodges: 0, hazardStops: 0, hazardHops: 0, swaps: 0, flanks: 0 },
   };
 }

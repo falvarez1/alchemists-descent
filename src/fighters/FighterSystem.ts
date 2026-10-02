@@ -248,6 +248,8 @@ export class FighterSystem implements FighterApi {
     else this.pendingUltimate = now;
   }
 
+  releaseInputs(): void { this.pendingTactical = this.pendingUltimate = -1; }
+
   // ======================================================================== tick
 
   update(ctx: Ctx): void {

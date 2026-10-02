@@ -2,18 +2,20 @@ import type { FighterId } from '@/content/fighters';
 import type { CardId, Ctx, Enemy, EnemyKind } from '@/core/types';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { BrainSelf } from '@/arena/ai/brain';
+import { threatensSlot, weaponView } from '@/arena/ai/combat';
+import type { WeaponView } from '@/arena/ai/combat';
 
 /**
  * WORLDVIEW (docs/arena/AI-FIGHTERS.md 2.1): what the bot SEES, as a read-only snapshot refilled every tick. It holds the
  * fighter's own body and abilities (the HUD shows all of it), every foe a person could see (see `isVisible`), and the
  * hostile shots in the air. It is built once and refilled in place (the arrays are mutated, never reassigned), so a
- * thinking bot costs no allocation.
+ * each bot owns its observations.
  *
  * What a bot may and may not know (the "no cheating" contract):
  *  - OWN body, health, mana, LEV, cooldowns, charge: on the HUD, so known exactly and now.
  *  - FOES: anything inside the screen rectangle around the fighter, unless it is `sleeping` with no line of sight to it
- *    (a roosting bat in the dark is not seen). v1 keeps it that simple: no darkness, smoke or concealment test and no
- *    last-known memory (docs/arena/AI-FIGHTERS.md B4.6 does those); a foe a bot sees through a wall is one a person
+ *    (a roosting bat in the dark is not seen). Fighter concealment and decoys use the existing kit perception API;
+ *    a foe a bot sees through a wall is one a person
  *    would see on the screen too (the Locked Cell's foes glow behind its door).
  *  - The Execution layer then makes the foes' kinematics `reaction` ticks old (execution.ts): this module is the truth.
  */
@@ -65,9 +67,15 @@ export interface MeView {
   shotAffordable: boolean;
   wandCooldown: number;
   shotCard: CardId | null;
+  manaFrac: number;
+  weapon: WeaponView;
 }
 
 export interface FoeView {
+  /** Observable concealment; one is fully clear. Captured with the delayed body snapshot. */
+  clarity?: number;
+  staggered?: boolean;
+  slot?: number;
   ref: Enemy;
   kind: EnemyKind;
   /** Feet. */
@@ -93,6 +101,10 @@ export interface FoeView {
 }
 
 export interface ShotView {
+  ref: object;
+  /** Ticks since this observation was made. */
+  age: number;
+  owner?: number;
   x: number;
   y: number;
   vx: number;
@@ -100,6 +112,8 @@ export interface ShotView {
 }
 
 export interface WorldView {
+  /** Stable observer identity for the existing kit decoy-perception API; never added to the world. */
+  observer: Enemy;
   tick: number;
   me: MeView;
   foes: FoeView[];
@@ -116,11 +130,13 @@ export function createWorldView(): WorldView {
   const foes: FoeView[] = [];
   const shots: ShotView[] = [];
   return {
+    observer: { kind: 'fighter', hp: 1, x: 0, y: 0 } as Enemy,
     tick: 0,
     me: {
       x: 0, y: 0, vx: 0, vy: 0, sy: 0, hp: 1, maxHp: 1, hpFrac: 1, armor: 0, grounded: true, climbing: false, inLiquid: false,
       crawling: false, dead: false, facing: 1, levit: 0, maxLevit: 1, fighter: null, tactical: blankAbility(), ultimate: blankAbility(),
       shotAffordable: false, wandCooldown: 0, shotCard: null,
+      manaFrac: 1, weapon: { speed: 9.5, gravity: 0, minRange: 16, maxRange: 250 },
     },
     foes,
     shots,
@@ -195,9 +211,14 @@ export function buildWorldView(ctx: Ctx, self: BrainSelf, tick: number, out: Wor
   const wands = ctx.wands;
   const wand = wands?.wands[wands.active];
   const peek = wands?.peekCast?.() ?? null;
-  me.shotAffordable = wand !== undefined && (peek === null || peek.affordable);
+  me.shotAffordable = wand !== undefined && peek !== null && peek.actions.length > 0 && peek.affordable;
   me.wandCooldown = wand?.cooldown ?? 0;
   me.shotCard = peek && peek.actions.length > 0 ? peek.actions[0].card : null;
+  me.manaFrac = wand ? wand.mana / Math.max(1, wand.frame.manaMax) : 0;
+  me.weapon = weaponView(ctx, peek?.actions[0]);
+  me.weapon.cycleTicks = wand ? wand.frame.castDelay + wand.frame.recharge : 0;
+  // A multicast can contain a more dangerous explosive after its first card.
+  for (const action of peek?.actions ?? []) me.weapon.minRange = Math.max(me.weapon.minRange, weaponView(ctx, action).minRange);
 
   // foes
   const foes = out.foes;
@@ -216,6 +237,7 @@ export function buildWorldView(ctx: Ctx, self: BrainSelf, tick: number, out: Wor
     let f = out.pool.foes[foes.length];
     if (!f) { f = {} as FoeView; out.pool.foes[foes.length] = f; }
     f.ref = e;
+    f.slot = e.fighter;
     f.kind = e.kind;
     f.x = e.x;
     f.y = e.y;
@@ -233,17 +255,35 @@ export function buildWorldView(ctx: Ctx, self: BrainSelf, tick: number, out: Wor
     f.dist = Math.hypot(f.dx, f.dy);
     f.grounded = e.grounded;
     f.sleeping = sleeping;
+    f.clarity = 1;
+    f.staggered = false;
+    const arena = ctx.arena;
+    if (e.fighter !== undefined && arena?.active) {
+      // Reuse the kit's existing perception of smoke/echoes, under its own slot binding.
+      // This reads appearance, never a rival's input queue, cooldowns or mana.
+      Object.assign(out.observer, { x: me.x, y: me.y, hp: me.hp });
+      arena.with(e.fighter, () => {
+        f.staggered = ctx.player.stunT > 0;
+        f.clarity = 1 - (ctx.fighters?.concealment() ?? 0);
+        const decoy = ctx.fighters?.decoyFor(out.observer);
+        if (decoy) { f.x = f.cx = decoy.x; f.y = decoy.y; f.cy = decoy.y - h * BODY_CENTRE; f.vx = decoy.vx; }
+      });
+      f.dx = f.cx - me.x; f.dy = f.cy - me.sy; f.dist = Math.hypot(f.dx, f.dy);
+    }
     foes.push(f);
   }
 
-  // hostile shots near the fighter (v1 does not dodge, v2 does: the data is here so the playbooks need no new plumbing)
+  // Hostile creature shots and spells owned by the opposing Duel slot.
   const shots = out.shots;
   shots.length = 0;
   for (const s of ctx.projectiles) {
-    if (!s.hostile || shots.length >= MAX_SHOTS) continue;
+    if (!threatensSlot(s, self.slot, (ctx.arena?.slotCount ?? 0) > 1) || shots.length >= MAX_SHOTS) continue;
     if (Math.abs(s.x - me.x) > SIGHT_HALF_W || Math.abs(s.y - me.y) > SIGHT_HALF_H) continue;
     let v = out.pool.shots[shots.length];
-    if (!v) { v = { x: 0, y: 0, vx: 0, vy: 0 }; out.pool.shots[shots.length] = v; }
+    if (!v) { v = { ref: s, age: 0, x: 0, y: 0, vx: 0, vy: 0 }; out.pool.shots[shots.length] = v; }
+    v.ref = s;
+    v.age = 0;
+    v.owner = s.hostile ? undefined : s.owner ?? 0;
     v.x = s.x;
     v.y = s.y;
     v.vx = s.vx;

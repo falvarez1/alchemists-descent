@@ -1,7 +1,7 @@
 import { aiTier } from '@/config/aiTiers';
 import type { AiLevel, AiTier } from '@/config/aiTiers';
 import type { Rng } from '@/core/rng';
-import type { FoeView, WorldView } from '@/arena/ai/worldView';
+import type { FoeView, ShotView, WorldView } from '@/arena/ai/worldView';
 
 /**
  * EXECUTION (docs/arena/AI-FIGHTERS.md 2.5): skill noise on top of Control, so one brain is a clumsy opponent at level 1
@@ -13,8 +13,8 @@ import type { FoeView, WorldView } from '@/arena/ai/worldView';
  *  - AIM ERROR: a slowly drifting angular bias, up to `aimError` degrees, wider the faster the target moves. It drifts
  *    (re-aimed each decision and smoothed) rather than jitters, so the crosshair wanders like a hand and does not buzz.
  *  - DECISION RATE: Intent and the plan re-evaluate every `decision` ticks (a little jittered), not every tick.
- *  - MISTAKES: at each decision a `mistake` chance of a lapse: a hesitation (keeps the old plan), a whiff (no shot, kick
- *    or ability for an interval), or a misstep (a few ticks of walking the wrong way).
+ *  - HESITATION: one bounded chance to keep the previous plausible plan. No independent mistake rolls per action.
+ * See docs/arena/AI-TUNING.md for awareness, prediction, spacing, adaptation and commitment settings.
  */
 
 const RING = 64;
@@ -23,6 +23,7 @@ const MAX_SNAP = 16;
 const DEG = Math.PI / 180;
 
 interface SnapFoe {
+  body: FoeView | null;
   ref: object | null;
   x: number;
   y: number;
@@ -36,6 +37,7 @@ interface Snap {
   tick: number;
   n: number;
   foes: SnapFoe[];
+  shots: ShotView[];
 }
 
 /** A foe as the bot sees it: the current identity and body, with the position and velocity from `age` ticks ago. */
@@ -52,21 +54,24 @@ export interface PerceivedFoe {
   dist: number;
 }
 
-export type LapseKind = 'hesitate' | 'whiff' | 'misstep';
+export type LapseKind = 'hesitate';
 
 export interface Lapse {
   kind: LapseKind;
   until: number;
-  /** For a misstep: which way it walks (+-1). */
-  dir: number;
 }
 
 export class Execution {
   private readonly ring: Snap[] = [];
   private readonly seen: PerceivedFoe[] = [];
+  private readonly seenShots: ShotView[] = [];
   private nextDecision = 0;
   private aimBias = 0;
   private aimGoal = 0;
+  private reactionOffset = 0;
+  private observationTick = -Infinity;
+  spacingBias = 0;
+  variation = 0;
   lapse: Lapse | null = null;
   /** How many lapses have happened: the probes and the tests read it. */
   lapses = 0;
@@ -77,8 +82,8 @@ export class Execution {
   ) {
     for (let i = 0; i < RING; i++) {
       const foes: SnapFoe[] = [];
-      for (let k = 0; k < MAX_SNAP; k++) foes.push({ ref: null, x: 0, y: 0, cx: 0, cy: 0, vx: 0, vy: 0 });
-      this.ring.push({ tick: -1, n: 0, foes });
+      for (let k = 0; k < MAX_SNAP; k++) foes.push({ body: null, ref: null, x: 0, y: 0, cx: 0, cy: 0, vx: 0, vy: 0 });
+      this.ring.push({ tick: -1, n: 0, foes, shots: [] });
     }
   }
 
@@ -89,12 +94,17 @@ export class Execution {
 
   /** Forget everything that was seen and planned (a respawn, a new floor). */
   reset(): void {
-    for (const s of this.ring) { s.tick = -1; s.n = 0; }
+    for (const s of this.ring) { s.tick = -1; s.n = 0; s.shots.length = 0; }
     this.seen.length = 0;
+    this.seenShots.length = 0;
     this.nextDecision = 0;
     this.aimBias = 0;
     this.aimGoal = 0;
     this.lapse = null;
+    this.lapses = 0;
+    this.reactionOffset = 0;
+    this.observationTick = -Infinity;
+    this.spacingBias = this.variation = 0;
   }
 
   /** Remember this tick's foes (call once per tick, with the truth). */
@@ -106,6 +116,8 @@ export class Execution {
     for (let i = 0; i < n; i++) {
       const f = view.foes[i];
       const d = s.foes[i];
+      if (d.body === null) d.body = { ...f };
+      else Object.assign(d.body, f);
       d.ref = f.ref;
       d.x = f.x;
       d.y = f.y;
@@ -114,6 +126,12 @@ export class Execution {
       d.vx = f.vx;
       d.vy = f.vy;
     }
+    const shots = view.shots ?? [];
+    for (let i = 0; i < shots.length; i++) {
+      if (s.shots[i]) Object.assign(s.shots[i], shots[i]);
+      else s.shots[i] = { ...shots[i] };
+    }
+    s.shots.length = shots.length;
   }
 
   /**
@@ -124,25 +142,43 @@ export class Execution {
   perceive(view: WorldView): readonly PerceivedFoe[] {
     const seen = this.seen;
     seen.length = 0;
-    const delay = Math.max(0, Math.round(this.tier.reaction));
-    const want = view.tick - delay;
+    const want = this.observedAt(view.tick);
+    const delay = view.tick - want;
     const snap = this.ring[want & RING_MASK];
     const live = snap.tick === want;
+    if (!live) return seen; // A new brain must acquire its first observation, too.
     const me = view.me;
     for (const f of view.foes) {
       let x = f.x, y = f.y, cx = f.cx, cy = f.cy, vx = f.vx, vy = f.vy, age = 0;
+      let body = f;
       if (live) {
         let found: SnapFoe | null = null;
         for (let i = 0; i < snap.n; i++) if (snap.foes[i].ref === f.ref) { found = snap.foes[i]; break; }
         if (!found) continue; // it was not there `reaction` ticks ago: not yet noticed
         x = found.x; y = found.y; cx = found.cx; cy = found.cy; vx = found.vx; vy = found.vy;
         age = delay;
+        body = found.body ?? f;
       }
       const dx = cx - me.x;
       const dy = cy - me.sy;
-      seen.push({ foe: f, x, y, cx, cy, vx, vy, age, dist: Math.hypot(dx, dy) });
+      const dist = Math.hypot(dx, dy);
+      if (dist <= Math.max(48, this.tier.awareness * (body.clarity ?? 1))) seen.push({ foe: body, x, y, cx, cy, vx, vy, age, dist });
     }
     return seen;
+  }
+
+  /** Projectile recognition obeys the same reaction delay as target recognition. */
+  perceiveShots(view: WorldView): readonly ShotView[] {
+    const want = this.observedAt(view.tick);
+    const delay = view.tick - want;
+    const snap = this.ring[want & RING_MASK];
+    this.seenShots.length = 0;
+    if (snap.tick !== want) return this.seenShots;
+    for (const old of snap.shots) {
+      if (!view.shots.some((s) => s.ref === old.ref)) continue;
+      this.seenShots.push({ ...old, age: delay });
+    }
+    return this.seenShots;
   }
 
   /** Is it time to decide again? (The first call always is.) */
@@ -150,16 +186,24 @@ export class Execution {
     return tick >= this.nextDecision;
   }
 
+  private observedAt(tick: number): number {
+    const age = Math.max(1, Math.min(60, Math.round(this.tier.reaction + this.reactionOffset)));
+    this.observationTick = Math.max(this.observationTick, tick - age);
+    return this.observationTick;
+  }
+
   /** A decision was made at `tick`: schedule the next, and roll for a lapse. */
   decided(tick: number): void {
     const t = this.tier;
+    this.reactionOffset = Math.round((this.rng.next() * 2 - 1) * t.reactionVariance);
+    this.spacingBias = (this.rng.next() * 2 - 1) * t.spacingError;
+    this.variation = (this.rng.next() * 2 - 1) * t.decisionNoise;
     const gap = Math.max(2, Math.round(t.decision * (0.85 + 0.3 * this.rng.next())));
     this.nextDecision = tick + gap;
     if (this.lapse && tick >= this.lapse.until) this.lapse = null;
     if (!this.lapse && t.mistake > 0 && this.rng.next() < t.mistake) {
-      const roll = this.rng.next();
-      const kind: LapseKind = roll < 0.4 ? 'hesitate' : roll < 0.8 ? 'whiff' : 'misstep';
-      this.lapse = { kind, until: tick + (kind === 'misstep' ? 8 : gap), dir: this.rng.next() < 0.5 ? -1 : 1 };
+      // One imperfection roll: a short hesitation, never a deliberately unsafe misstep.
+      this.lapse = { kind: 'hesitate', until: tick + gap };
       this.lapses++;
     }
     // a new aim error for this interval; the crosshair drifts to it (tickAim)

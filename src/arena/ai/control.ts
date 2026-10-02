@@ -2,6 +2,7 @@ import type { NavEdge } from '@/arena/ai/nav';
 import type { BrainSelf } from '@/arena/ai/brain';
 import type { MeView } from '@/arena/ai/worldView';
 import { PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP } from '@/core/types';
+import { AI_BEHAVIOR } from '@/config/aiBehavior';
 
 /**
  * CONTROL (docs/arena/AI-FIGHTERS.md 2.4): turns a goal into this tick's inputs. It owns the hands (`Hand`: the keys,
@@ -111,6 +112,8 @@ export class Hand {
     const k = input.keys;
     k.left = k.right = k.up = k.jump = k.wallJump = k.down = k.grab = false;
     input.queuedJump = undefined;
+    this.self.player.firePressed = false;
+    this.self.fighters?.releaseInputs?.();
     this.jumpHeld = false;
     if (this.fireHeld) {
       this.self.player.firing = false;
@@ -443,14 +446,16 @@ export function leadPoint(
   target: { cx: number; cy: number; vx: number; vy: number; age: number },
   projSpeed: number,
   errorRad: number,
+  gravity = 0,
+  prediction = 1,
 ): { x: number; y: number } {
   const dx0 = target.cx - shoulder.x;
   const dy0 = target.cy - shoulder.y;
   const flight = projSpeed > 0 ? Math.hypot(dx0, dy0) / projSpeed : 0;
-  const t = target.age + flight;
+  const t = Math.min(AI_BEHAVIOR.maxLeadTicks * prediction, target.age + flight) * AI_BEHAVIOR.aimLead * prediction;
   // the horizontal velocity leads in full; the vertical (a hop's arc, a fall) only half: it is not a straight line
   let ax = target.cx + target.vx * t - shoulder.x;
-  let ay = target.cy + target.vy * t * 0.5 - shoulder.y;
+  let ay = target.cy + target.vy * t * 0.5 - shoulder.y - gravity * flight * (flight + 1) * 0.5;
   if (errorRad !== 0) {
     const c = Math.cos(errorRad);
     const s = Math.sin(errorRad);

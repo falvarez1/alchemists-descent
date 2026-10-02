@@ -1,15 +1,17 @@
 import { FIGHTER_ORDER, isFighterId } from '@/content/fighters';
 import { BRAIN_BLURBS, isBrainId } from '@/arena/ai';
-import { botDriverFor, rivalDriverFor } from '@/arena/ai/driver';
+import { botDriverFor, brainForSlot, rivalDriverFor } from '@/arena/ai/driver';
 import type { ConsoleCommandDefinition } from '@/game/console/registry';
 import { currentToken, info, matching, result } from '@/game/console/kit';
+import { difficultyLevel } from '@/config/aiTiers';
+import { isPersonality, PERSONALITY_IDS } from '@/config/aiPersonalities';
 
 /**
  * The tester's `arena` command (src/arena, docs/arena): put a second fighter in the world, give either one a computer brain, restart
  * the bout. Slot 0 is the fighter you hold; slot 1 is the rival. `ai` (src/game/console/ai) drives slot 0 alone; `arena bot` drives either.
  */
 
-const USAGE = 'arena [status | add <fighter> [x y] | remove | reset | bot <0|1> <dummy|basic|off> [level 1-5]]';
+const USAGE = 'arena [status | add <fighter> [x y] | remove | reset | bot <0|1> <dummy|basic|off> [easy|normal|hard|expert|1-5] [personality]]';
 
 export function createArenaCommands(): ConsoleCommandDefinition[] {
   return [{
@@ -28,7 +30,11 @@ export function createArenaCommands(): ConsoleCommandDefinition[] {
           const p = bn.player;
           lines.push(`  slot ${s}: ${arena.fighterId(s) ?? 'the Alchemist'}  hp ${Math.round(p.hp)}/${Math.round(p.maxHp)}${p.dead ? ' DOWN' : ''}  at ${Math.round(p.x)},${Math.round(p.y)}`);
         }
-        return result(true, lines.join('\n'), { state: b.state, winner: b.winner, slots: arena.slotCount });
+        const bots = Array.from({ length: arena.slotCount }, (_, slot) => {
+          const brain = brainForSlot(ctx, slot);
+          return brain ? { brain: brain.id, level: brain.level, ...brain.status, personality: brain.personality } : null;
+        });
+        return result(true, lines.join('\n'), { state: b.state, winner: b.winner, slots: arena.slotCount, bots });
       }
       if (verb === 'add') {
         const id = args[1];
@@ -55,10 +61,10 @@ export function createArenaCommands(): ConsoleCommandDefinition[] {
         if (!driver) return result(false, `arena bot: no fighter in slot ${slot}.`, { code: 'no-slot' });
         if (brain === 'off') { driver.off(); return result(true, `Slot ${slot}: no brain.`, { slot, active: false }); }
         if (!isBrainId(brain)) return result(false, `Usage: ${USAGE}`, { code: 'usage' });
-        const level = args[3] === undefined ? 3 : Number(args[3]);
-        if (!Number.isFinite(level)) return result(false, 'arena bot: the level is 1-5.', { code: 'usage' });
-        const made = driver.install(brain, level);
-        return result(true, `Slot ${slot}: ${made.id} level ${made.level} (${BRAIN_BLURBS[made.id]}).`, { slot, brain: made.id, level: made.level });
+        const level = difficultyLevel(args[3] ?? 'normal');
+        if (level === null || (args[4] !== undefined && !isPersonality(args[4]))) return result(false, USAGE, { code: 'usage' });
+        const made = driver.install(brain, level, { personality: isPersonality(args[4]) ? args[4] : undefined });
+        return result(true, `Slot ${slot}: ${made.id} ${made.personality} level ${made.level} (${BRAIN_BLURBS[made.id]}).`, { slot, brain: made.id, level: made.level, personality: made.personality });
       }
       return result(false, `Unknown arena verb "${args[0]}". ${USAGE}`, { code: 'usage' });
     },
@@ -66,6 +72,7 @@ export function createArenaCommands(): ConsoleCommandDefinition[] {
       if (req.completingArg === 0) return matching(['status', 'add', 'remove', 'reset', 'bot'], currentToken(req));
       if (req.completingArg === 1 && req.args[0]?.toLowerCase() === 'add') return matching(FIGHTER_ORDER, currentToken(req));
       if (req.completingArg === 2 && req.args[0]?.toLowerCase() === 'bot') return matching(['dummy', 'basic', 'off'], currentToken(req));
+      if (req.completingArg === 4 && req.args[0]?.toLowerCase() === 'bot') return matching(PERSONALITY_IDS, currentToken(req));
       return [];
     },
   }];

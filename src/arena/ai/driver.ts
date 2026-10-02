@@ -5,6 +5,8 @@ import type { AiLevel } from '@/config/aiTiers';
 import { setExternalControl } from '@/input/externalControl';
 import type { Brain, BrainId, BrainSelf, Hands } from '@/arena/ai/brain';
 import { createBrain } from '@/arena/ai';
+import { defaultPersonality } from '@/config/aiPersonalities';
+import type { PersonalityId } from '@/config/aiPersonalities';
 
 /**
  * THE DRIVER (docs/arena/AI-FIGHTERS.md 3): installs a brain on a fighter slot and runs it every fixed tick.
@@ -26,6 +28,7 @@ import { createBrain } from '@/arena/ai';
  */
 
 export interface BotInstallOptions {
+  personality?: PersonalityId;
   /** Seed for the bot's own `Rng`: `hashSeed(seed, 'bot:' + slot)`. Defaults to the world's seed. */
   seed?: number;
 }
@@ -36,6 +39,7 @@ export function playerHands(ctx: Ctx): Hands {
     press: (slot) => ctx.fighters?.press(slot),
     kick: () => { if (!ctx.player.dead) ctx.playerCtl.kick(ctx); },
     flask: () => { if (!ctx.player.dead) ctx.flask.throwFlask(ctx); },
+    wand: (index) => { ctx.wands.active = index; ctx.events.emit('wandChanged'); },
     respawn: () => { if (ctx.player.dead) ctx.playerCtl.respawn(); },
   };
 }
@@ -57,6 +61,7 @@ export function slotSelf(ctx: Ctx, slot: number): BrainSelf | null {
       press: (s) => b.fighters.press(s),
       kick: () => { if (!b.player.dead) b.playerCtl.kick(ctx); },
       flask: () => { if (!b.player.dead) b.flask.throwFlask(ctx); },
+      wand: (index) => { b.wands.active = index; ctx.events.emit('wandChanged'); },
       respawn: () => undefined,
     },
   };
@@ -67,6 +72,7 @@ export class BotDriver {
   private levelId: string | undefined;
   private seedUsed = 0;
   private ticks = 0;
+  private preferredPersonality: PersonalityId | null = null;
   private readonly offs: Array<() => void> = [];
 
   constructor(
@@ -77,6 +83,13 @@ export class BotDriver {
     this.offs.push(
       ctx.events.on('levelChanged', () => this.off()),
       ctx.events.on('modeChanged', ({ mode }) => { if (mode !== 'play') this.off(); }),
+      ctx.events.on('arenaReset', () => this.current?.reset()),
+      ctx.events.on('playerRespawned', () => { if ((ctx.arena?.bound ?? 0) === this.self.slot) this.current?.reset(); }),
+      ctx.events.on('fighterHit', (hit) => this.current?.observeHit?.(hit)),
+      ctx.events.on('cardCast', ({ origin }) => { if (origin === 'wand' && (ctx.arena?.bound ?? 0) === this.self.slot) this.current?.actionPerformed?.('shoot'); }),
+      ctx.events.on('fighterDown', (down) => {
+        if (down.slot === this.self.slot && down.by === this.self.slot && this.current) this.current.status.stats.selfKos = (this.current.status.stats.selfKos ?? 0) + 1;
+      }),
     );
   }
 
@@ -102,7 +115,8 @@ export class BotDriver {
     this.off();
     const seed = opts.seed ?? this.ctx.state.worldSeed;
     this.seedUsed = seed >>> 0;
-    const brain = createBrain(id, { level: clampAiLevel(level), seed: hashSeed(seed, `bot:${this.self.slot}`), slot: this.self.slot });
+    if (opts.personality) this.preferredPersonality = opts.personality;
+    const brain = createBrain(id, { level: clampAiLevel(level), seed: hashSeed(seed, `bot:${this.self.slot}`), slot: this.self.slot, personality: this.preferredPersonality ?? defaultPersonality(this.self.fighters?.id ?? null) });
     this.current = brain;
     this.levelId = this.ctx.levels?.current?.def.id;
     this.ticks = 0;
@@ -114,6 +128,11 @@ export class BotDriver {
     const l = clampAiLevel(level);
     if (this.current) this.current.level = l;
     return l;
+  }
+
+  setPersonality(id: PersonalityId): void {
+    this.preferredPersonality = id;
+    if (this.current) { this.current.personality = id; this.current.reset(); }
   }
 
   /** Hand the slot back: every key, the trigger and the cursor stand down and the keyboard is the person's again. */
@@ -128,6 +147,8 @@ export class BotDriver {
     input.queuedJump = undefined;
     this.self.player.firing = false;
     this.self.player.fireBlockedUntilRelease = false;
+    this.self.player.firePressed = false;
+    this.self.fighters?.releaseInputs?.();
     if (this.self.slot === 0) setExternalControl(input, false);
   }
 
@@ -136,6 +157,14 @@ export class BotDriver {
     const brain = this.current;
     if (brain === null) return;
     const ctx = this.ctx;
+    if (ctx.arena?.active && ctx.arena.bout.state === 'won') {
+      const k = this.self.input.keys;
+      k.left = k.right = k.up = k.jump = k.wallJump = k.down = k.grab = false;
+      this.self.input.queuedJump = undefined;
+      this.self.player.firing = this.self.player.firePressed = false;
+      this.self.fighters?.releaseInputs?.();
+      return;
+    }
     // a bot plays only the level it was installed on, in play mode
     if (ctx.state.mode !== 'play' || ctx.levels?.current?.def.id !== this.levelId) { this.off(); return; }
     brain.think(ctx, this.self, ctx.state.frameCount);
@@ -163,6 +192,11 @@ export function botDriverFor(ctx: Ctx): BotDriver {
 }
 
 const RIVAL_DRIVERS = new WeakMap<Ctx, Map<number, BotDriver>>();
+
+/** Read-only diagnostics: do not install a driver over a scripted fighter. */
+export function brainForSlot(ctx: Ctx, slot: number): Brain | null {
+  return (slot === 0 ? DRIVERS.get(ctx) : RIVAL_DRIVERS.get(ctx)?.get(slot))?.brain ?? null;
+}
 
 /**
  * A driver for a RIVAL slot (the duel): its brain thinks under that slot's binding, once a tick, right before the slot's body phase

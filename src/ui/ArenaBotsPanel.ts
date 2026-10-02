@@ -2,6 +2,8 @@ import { BRAIN_BLURBS, BRAIN_IDS } from '@/arena/ai';
 import type { BrainId } from '@/arena/ai';
 import { botDriverFor, rivalDriverFor, type BotDriver } from '@/arena/ai/driver';
 import type { Ctx } from '@/core/types';
+import { AI_DIFFICULTIES } from '@/config/aiTiers';
+import { PERSONALITY_IDS, isPersonality } from '@/config/aiPersonalities';
 
 /**
  * THE BOTS SECTION of the Proving Yard's panel (docs/arena/AI-FIGHTERS.md 5): who is at the controls of the fighter in hand.
@@ -15,6 +17,8 @@ export class ArenaBotsPanel {
   private readonly levelBtns: HTMLButtonElement[] = [];
   private readonly think = document.createElement('div');
   private readonly stats = document.createElement('div');
+  private readonly personality = document.createElement('select');
+  private readonly scores = document.createElement('div');
   private level = 3;
   private last = '';
 
@@ -47,11 +51,11 @@ export class ArenaBotsPanel {
     lv.className = 'fa-bar-label';
     lv.textContent = 'Skill';
     levels.append(lv);
-    for (let n = 1; n <= 5; n++) {
+    for (const [name, n] of Object.entries(AI_DIFFICULTIES)) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'fa-btn fa-level';
-      b.textContent = String(n);
+      b.textContent = name[0].toUpperCase() + name.slice(1);
       b.dataset.level = String(n);
       b.title = n === 1 ? 'Clumsy: slow to react, wide of the mark' : n === 5 ? 'Sharp: quick eyes and a steady aim' : `Skill ${n}`;
       b.addEventListener('mousedown', (e) => e.preventDefault());
@@ -61,7 +65,19 @@ export class ArenaBotsPanel {
     }
     this.think.className = 'fa-think';
     this.stats.className = 'fa-count';
-    this.root.append(label, row, levels, this.think, this.stats);
+    this.personality.className = 'fa-select';
+    this.personality.setAttribute('aria-label', `Slot ${slot} personality`);
+    for (const id of PERSONALITY_IDS) {
+      const option = document.createElement('option'); option.value = id; option.textContent = id;
+      this.personality.append(option);
+    }
+    this.personality.value = 'duelist';
+    this.personality.addEventListener('change', () => {
+      if (isPersonality(this.personality.value)) this.driver()?.setPersonality(this.personality.value);
+      this.update(true);
+    });
+    this.scores.className = 'fa-count';
+    this.root.append(label, row, levels, this.personality, this.think, this.scores, this.stats);
   }
 
   private driver(): BotDriver | null {
@@ -87,19 +103,23 @@ export class ArenaBotsPanel {
   update(force = false): void {
     const d = this.driver();
     const brain = d?.brain ?? null;
-    const key = brain ? `${brain.id}|${brain.level}|${brain.status.intent}|${brain.status.target}|${brain.status.rule}|${Object.values(brain.status.stats).join(',')}` : `off|${this.level}`;
+    const key = brain ? `${brain.id}|${brain.level}|${brain.personality}|${brain.status.intent}|${brain.status.target}|${brain.status.rule}|${Object.values(brain.status.stats).join(',')}` : `off|${this.level}`;
     if (!force && key === this.last) return;
     this.last = key;
     for (const [id, b] of this.brainBtns) b.classList.toggle('on', brain ? brain.id === id : id === 'off');
     const shown = brain ? brain.level : this.level;
-    this.levelBtns.forEach((b, i) => { b.classList.toggle('on', i + 1 === shown); });
+    this.levelBtns.forEach(b => { b.classList.toggle('on', Number(b.dataset.level) === shown); });
     if (!brain) {
       this.think.textContent = this.slot === 0 ? 'The keyboard is yours.' : d === null ? 'No rival.' : 'No brain: it stands still.';
       this.stats.textContent = '';
+      this.scores.textContent = '';
       return;
     }
     const s = brain.status;
+    this.personality.value = brain.personality;
     this.think.textContent = `${s.intent}${s.target !== '-' ? ` → ${s.target}` : ''}${s.rule ? `  ·  ${s.rule}` : ''}`;
-    this.stats.textContent = Object.entries(s.stats).filter(([, v]) => v > 0).map(([k, v]) => `${k} ${v}`).join('  ·  ');
+    this.scores.textContent = (s.scores ?? []).slice(0, 3).map(r => `${r.action} ${r.total.toFixed(2)}`).join(' · ');
+    this.scores.title = (s.scores ?? []).map(r => `${r.action}: ${Object.entries(r.terms).map(([k, n]) => `${k} ${n.toFixed(2)}`).join(', ')}`).join('\n');
+    this.stats.textContent = Object.entries(s.stats).filter(([, v]) => v > 0).map(([k, v]) => `${k} ${Math.round(v)}`).join('  ·  ');
   }
 }

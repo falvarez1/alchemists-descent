@@ -2147,6 +2147,8 @@ export interface VineStrandsApi {
 }
 
 export interface PlayerControlApi {
+  /** Own kick readiness; the same cooldown enforced by kick(), exposed for legal AI choices. */
+  readonly kickReady?: boolean;
   /** src tags ('explosion' | 'fire' | 'acid' | 'toxic' | 'impact') drive boon resistances. */
   damage(amount: number, kx: number, ky: number, src?: string): void;
   /** Add a velocity impulse (cells/frame) to the player. Stoneskin shrugs it off.

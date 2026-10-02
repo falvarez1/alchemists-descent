@@ -112,6 +112,8 @@ export interface FighterApi {
   whenReady(): Promise<void>;
   /** A tactical/ultimate press edge from the input layer (and the touch buttons). */
   press(slot: AbilitySlot): void;
+  /** Release buffered input only; does not cancel an active move or alter its cooldown. */
+  releaseInputs?(): void;
   /** Fixed tick, after the player moves and before the enemies think (Game.tick). */
   update(ctx: Ctx): void;
   /** Wipe transient state (a respawn, a new floor, a run ending): placed gadgets, active effects. */

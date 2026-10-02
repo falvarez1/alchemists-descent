@@ -52,6 +52,9 @@ export interface EventMap {
   playerRespawned: undefined;
   /** ARENA: a fighter was knocked out (core/arena FighterDownEvent). */
   fighterDown: { slot: number; by: number; source: string; x: number; y: number };
+  /** Confirmed, visible health loss in an Arena exchange. No queued inputs or hidden cooldowns. */
+  fighterHit: { by: number; victim: number; damage: number; tick: number; attack?: string };
+  arenaReset: undefined;
   /** Death UI should clear without triggering gameplay respawn side effects. */
   playerDeathCleared: undefined;
   /** The directed death (game/DeathCinema): letterbox in, title card, and out. */
