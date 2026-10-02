@@ -140,21 +140,20 @@ check('edit current scene opens Builder on a detached snapshot', adopted.mode ==
 check('current scene snapshot matches the visible play terrain', adopted.probeSum === playSpot.sum, `play ${playSpot.sum} builder ${adopted.probeSum}`);
 check('scene snapshot gets a named Builder document', /scene edit/i.test(adopted.name ?? ''), String(adopted.name));
 
-/* ---------- PLAY from inside Builder exits to the game, even with an invalid doc ---------- */
-console.log('-- header play exits builder');
+/* ---------- return to the game, even with an invalid Builder doc ---------- */
+console.log('-- leave invalid builder document and resume play');
 await clickBuilderControl(page, '#b-new'); // no terrain / no spawn: invalid for Builder playtest, still fine for game Play
 const newDialog = page.locator('.app-dialog-root');
 if (await newDialog.isVisible({ timeout: 1000 }).catch(() => false)) {
   await newDialog.locator('.app-dialog-btn.primary').click();
 }
+// Builder owns the title bar and hides the game's header. Leave through its
+// visible Sandbox control, then use Play/Continue as in the earlier round trip.
+await page.click('#b-exit');
 await page.click('#mode-play-btn');
-await page.waitForFunction(
-  () => {
-    const ctx = window.__game.ctx;
-    return ctx.state.mode === 'play' && ctx.levels.current?.def?.id !== 'custom' && !ctx.levels.transitioning;
-  },
-  { timeout: 30000 },
-);
+await page.waitForSelector('#run-launcher.visible', { timeout: 20000 });
+await page.click('#run-launcher [data-action="continue"]');
+await waitForRunReady(page);
 await page.waitForTimeout(500);
 const playAgain = await page.evaluate(() => {
   const ctx = window.__game.ctx;
@@ -165,7 +164,7 @@ const playAgain = await page.evaluate(() => {
     attached: rt ? ctx.world === rt.world : false,
   };
 });
-check('header Play exits Builder and resumes the game', playAgain.id !== 'custom' && playAgain.rootHidden && playAgain.attached, JSON.stringify(playAgain));
+check('leaving an invalid Builder document resumes the expedition', playAgain.id !== 'custom' && playAgain.rootHidden && playAgain.attached, JSON.stringify(playAgain));
 
 check('no page or console errors', pageErrors.length === 0 && consoleErrors.length === 0, [...pageErrors, ...consoleErrors].join(' | '));
 
