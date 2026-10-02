@@ -64,7 +64,7 @@ describe('the ten bodies', () => {
   test('every fighter has a body, and the bodies are frozen complete profiles', () => {
     expect(Object.keys(FIGHTER_BODIES).sort()).toEqual([...FIGHTER_ORDER].sort());
     for (const id of FIGHTER_ORDER) {
-      expect(Object.isFrozen(FIGHTER_BODIES[id]), id).toBe(true);
+      expect(Object.isFrozen(NEUTRAL_BODY), id).toBe(true); // (the ten are live tuning data, mutable on purpose; the neutral body is the fixed reference)
       for (const f of BODY_FIELDS) expect(typeof FIGHTER_BODIES[id][f], `${id}.${f}`).toBe('number');
     }
   });

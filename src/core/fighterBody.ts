@@ -99,6 +99,15 @@ export function makeBody(partial: Readonly<Partial<BodyProfile>> = {}): Readonly
   return Object.freeze({ ...NEUTRAL_BODY, ...partial });
 }
 
+/**
+ * A complete profile from a partial one, as plain MUTABLE data: the ten fighters' bodies are live tuning data like `config/params`
+ * (the param registry writes them for a balance run; `FighterSystem` re-reads them whenever its modifiers change), so unlike
+ * `NEUTRAL_BODY` they are not frozen.
+ */
+export function tunableBody(partial: Readonly<Partial<BodyProfile>> = {}): BodyProfile {
+  return { ...NEUTRAL_BODY, ...partial };
+}
+
 /** One running effect multiplied into a body, in place. */
 export function applyBodyMod(out: BodyProfile, mod: Readonly<BodyMod>): void {
   for (const f of BODY_MOD_FIELDS) {

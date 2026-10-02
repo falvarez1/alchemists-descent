@@ -5,6 +5,8 @@ import { NEUTRAL_BODY, applyBodyMod, cloneBody, composeBody, type BodyProfile } 
 import { techniqueFor, type Technique } from '@/fighters/techniques';
 import type { FighterId } from '@/content/fighters';
 import { playerBlow } from '@/core/bossWard';
+import { fightSink } from '@/core/fightSink';
+import type { FightTag } from '@/core/fightSink';
 import type {
   AbilitySlot, AbilityView, FighterApi, FighterDrawable, FighterSaveState, FighterView,
 } from '@/core/fighters';
@@ -64,6 +66,8 @@ const NO_REVEAL: readonly [number, number, number] = [1, 1, 1];
 const NO_IMMUNITY: readonly string[] = [];
 /** The most armor a save may restore before the kit has set its own ceiling (the roster's largest is Kiln Heart's 80). */
 const ARMOR_RESTORE_CAP = 100;
+/** A kit's damage with no explicit tag counts as the tactical's for this many ticks after it fired (a ram or a thrown vial lands later). */
+const TACTICAL_TAG_WINDOW = 120;
 
 /**
  * THE FIGHTER SYSTEM (docs/FIGHTERS.md). Inert until a fighter is equipped (`id` null = the classic
@@ -136,6 +140,10 @@ export class FighterSystem implements FighterApi {
   private move: ActiveMove | null = null;
   /** True while a kit callback is running (guards a kit's own damage from re-entering its hooks). */
   private inKit = false;
+  /** Attribution for a fight recorder (docs/arena/TELEMETRY-AND-BALANCE.md 3.2): the ability whose callback is running, the tag of the `hurt(...)` in flight, and when each ability last fired. */
+  private inAbility: FightTag | null = null;
+  private hitTag: FightTag | null = null;
+  private readonly firedAt = { tactical: -1000, ultimate: -1000 };
 
   private readonly disposers: Array<() => void> = [];
   private readonly revealDrawable: FighterDrawable = {
@@ -187,6 +195,7 @@ export class FighterSystem implements FighterApi {
     this.view.technique.name = id ? FIGHTER_TECHNIQUES[id].name : '';
     this.recompute();
     this.applyBodyTank();
+    this.firedAt.tactical = this.firedAt.ultimate = -1000;
     if (id) {
       const found = this.kits(id);
       if (found && typeof (found as Promise<unknown>).then === 'function') {
@@ -295,14 +304,19 @@ export class FighterSystem implements FighterApi {
       // A kit may answer a press while its tactical cools (Z lowers a raised plate): consumed, never a refusal.
       let again = false;
       if (this.kit.tacticalAgain) this.guard(() => { again = this.kit?.tacticalAgain?.() === true; });
-      if (!again) this.refuse('tactical', now);
+      if (again) fightSink?.ability('tactical', 'again');
+      else this.refuse('tactical', now);
       return;
     }
     let fired = false;
+    this.inAbility = 'ability.tactical';
     this.guard(() => { fired = this.kit?.tactical() === true; });
+    this.inAbility = null;
     if (!fired) return this.refuse('tactical', now);
     this.tacticalCd = this.tacticalCdMax = Math.max(1, this.def.tacticalCooldown);
     this.view.tactical.usedAt = now;
+    this.firedAt.tactical = now;
+    fightSink?.ability('tactical', 'fired');
   }
 
   private tryUltimate(now: number): void {
@@ -310,10 +324,14 @@ export class FighterSystem implements FighterApi {
     if (!this.kit || !this.def) return;
     if (this.ultimateLeft > 0 || this.charge < 1 || this.rooted(p)) return this.refuse('ultimate', now);
     let began = false;
+    this.inAbility = 'ability.ultimate';
     this.guard(() => { began = this.kit?.ultimate() === true; });
+    this.inAbility = null;
     if (!began) return this.refuse('ultimate', now);
     this.charge = 0;
     this.view.ultimate.usedAt = now;
+    this.firedAt.ultimate = now;
+    fightSink?.ability('ultimate', 'fired');
     if (this.def.ultimateDuration > 0) {
       this.ultimateLeft = this.ultimateMax = this.def.ultimateDuration;
     } else this.guard(() => this.kit?.ultimateEnd?.());
@@ -327,6 +345,7 @@ export class FighterSystem implements FighterApi {
   private refuse(slot: AbilitySlot, now: number): void {
     if (slot === 'tactical') this.view.tactical.refusedAt = now;
     else this.view.ultimate.refusedAt = now;
+    fightSink?.ability(slot, 'refused');
   }
 
   /**
@@ -618,11 +637,38 @@ export class FighterSystem implements FighterApi {
     return out;
   }
 
-  /** A blow from the fighter (credited as the player's own). Kit hooks do not re-enter. */
-  hurt(e: Enemy, amount: number, kx: number, ky: number): void {
+  /**
+   * A blow from the fighter (credited as the player's own). Kit hooks do not re-enter. `tag` names the ability
+   * it belongs to for a fight recorder; left out, `attribute` infers it from what the fighter is doing.
+   */
+  hurt(e: Enemy, amount: number, kx: number, ky: number, tag?: FightTag): void {
     const was = this.inKit;
+    const wasTag = this.hitTag;
     this.inKit = true;
-    try { this.ctx.enemyCtl.damage(e, amount, kx, ky, 'direct'); } finally { this.inKit = was; }
+    this.hitTag = tag ?? null;
+    try { this.ctx.enemyCtl.damage(e, amount, kx, ky, 'direct'); } finally { this.inKit = was; this.hitTag = wasTag; }
+  }
+
+  /**
+   * What the blow `Enemies.damage` is landing right now belongs to (a fight recorder asks inside its `hit` call).
+   * The kit's own damage: the tag `hurt(...)` was given, else the ability whose callback is running, else the
+   * one that fired most recently (a ram's steps land ticks after the press), else the passive. A blow that is
+   * not the kit's: the kick, the wand ('spell'), or the world's own harm done on its behalf.
+   */
+  attribute(source: EnemyDamageSource): FightTag {
+    if (this.hitTag !== null) return this.hitTag;
+    if (this.inKit) {
+      if (this.inAbility !== null) return this.inAbility;
+      const now = this.ctx.state.frameCount;
+      const tacticalAge = now - this.firedAt.tactical;
+      const ultimateOn = this.ultimateLeft > 0 || now - this.firedAt.ultimate <= 2;
+      const tacticalOn = tacticalAge <= TACTICAL_TAG_WINDOW;
+      if (ultimateOn && tacticalOn) return this.firedAt.tactical > this.firedAt.ultimate ? 'ability.tactical' : 'ability.ultimate';
+      if (ultimateOn) return 'ability.ultimate';
+      return tacticalOn ? 'ability.tactical' : 'passive';
+    }
+    if (source !== 'direct') return 'world';
+    return this.recentMelee ? 'kick' : 'spell';
   }
 
   // ======================================================================== the body-owning move
@@ -797,6 +843,7 @@ export class FighterSystem implements FighterApi {
     this.charge = 0;
     this.armor = 0;
     this.lastHp = -1;
+    this.firedAt.tactical = this.firedAt.ultimate = -1000;
     this.syncView();
   }
 

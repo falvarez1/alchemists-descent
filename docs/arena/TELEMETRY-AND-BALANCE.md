@@ -211,3 +211,55 @@ T2.1 measure ticks/s and the replay-match rate -> T2.2 `Game.advance` / headless
 + the four instrumentation sites -> T2.4 `paramOverride` + `ftune` -> T2.5 `fight-batch.mjs` on gauntlets -> T2.6
 `fight-analyse.mjs` -> T2.7 the dev endpoint + `fightlog` -> (phase 4) bots -> (phase 3) PvP schema fields -> T7.x the
 tuner, the matchup matrix, the review overlay, an optional Node `HeadlessGame`.
+
+## 9. Built and measured (2026-10-01)
+
+**What exists.** `core/fightSink.ts` (the one seam), `fighters/telemetry/fightLog.ts` (schema v1: a header, 10 Hz samples of EVERY
+fighter, `hit` / `hurt` / `ability` / `end` events; a `hurt` carries the attacker slot and the blow's tag from the arena),
+`fighters/telemetry/fightHarness.ts` (`window.__fight.run(spec)`: stage, run and record a whole duel in the page, headless),
+`fighters/paramOverride.ts` + `paramRanges.ts` (every kit number and every fighter body named by a dotted path, ranged, restorable),
+`Game.advance / resetForFight / headless`, `scripts/fight-batch.mjs` (N pages, a job queue, every ordered pair x seeds, overrides),
+`scripts/fight-analyse.mjs` (win rates with Wilson intervals, Bradley-Terry, matchup matrix, damage by tag, ability use, movement
+profile, flags) and unit tests. The recorder and the override registry were first written by an agent that was then stopped by a rate
+limit; the integrator reviewed them, ported them onto the duel core, made the recorder two-fighter, and wrote the harness, the batch
+runner and the analyser.
+
+**The numbers (T2.1).** A headless duel runs at about **3,700 ticks a second** on this laptop (a 25 s fight in 0.4 s; a 90 s one in
+about 1.5 s). The full matrix (90 ordered pairs x 3 seeds = 270 fights) takes **3 minutes on one page**. Fights are deterministic:
+the same seeds and the same build give the same outcome to the last digit (the mirror run, repeated, gave identical win counts).
+
+**What the first runs found.** The pipeline earned its keep before a single balance number was moved:
+1. A **huge slot bias** (the left fighter won 83-100%): the rival was built from a default player (100 hp, the base 100 levitation)
+   while slot 0 carried the test run's kit (154 hp). Fixed: the rival is built from slot 0's UNSCALED health and levitation, its
+   wands, cards and flasks, then its body scales them. (`ArenaSlots.matchLoadout`.)
+2. A **second bias from the stage**: a 16-high pedestal in the middle blocked shots at shoulder height and sat next to one fighter in
+   the scripted test. It is 8 high now. The scripted mirror (both fire at each other, no AI) went from 40-0 to **20-20**; the AI
+   mirror matches from 12-0 to 8-6 / 8-6 / 9-5.
+3. The fighters take turns **resolving first by tick parity** (`Game`): that alone did not remove the bias (the health did), but it is
+   what makes the mirror even.
+The side is read from the report's `left` / `right` columns on every run: a side-bias flag fires past 20 points.
+
+**The first baseline (270 fights, level-3 `basic` bots, 2026-10-01):**
+
+| fighter | win rate | 95% | note |
+|---|---|---|---|
+| Rusk | 91% | 80-96 | the second heaviest body, hp x1.25, power x1.1 |
+| Brann | 85% | 73-92 | the heaviest, hp x1.35, power x1.1 |
+| Ilyra | 70% | 57-81 | the only one whose tactical deals real damage (21 a fight) |
+| Edda | 57% | 44-70 | |
+| Kest | 56% | 43-69 | |
+| Sable | 39% | 27-52 | |
+| Nox | 29% | 18-42 | |
+| Selene | 29% | 18-42 | |
+| Thorne | 27% | 17-40 | |
+| Mara | 17% | 9-29 | the floaty glass cannon |
+
+Median fight 20 s; 256 knockouts, 14 timeouts. **The finding that matters:** 80% of the damage in every fight is the shared Spark Bolt
+and the shared kick (`spell` 40-88 a fight, `kick` 12-24); the tactical and the ultimate deal almost nothing (0-0.3 a fight, Ilyra's
+21 the exception). So the fights are decided by the BODY (health and power multipliers), not by the kits: this is the measurement
+behind "all the fighters feel the same". The fix is not a stat nudge. It is (a) a signature primary attack per fighter
+(MOVESETS-V2.md 6a, the data-only loadouts), (b) bots that use the abilities with intent (AI-FIGHTERS.md playbooks), then (c) the
+tuner (V7). The report names it as a flag: ability uptime low and tactical damage near zero.
+
+**Not built yet:** `fight-tune.mjs` (the A/B tuner and `balance-patch.json`), the dev endpoint and `fightlog` console toggle (T2.7), the
+in-game review overlay (V7.3), the replay-match rate and live-vs-paused measurement (T2.1's other half), console `ftune`.

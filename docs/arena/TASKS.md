@@ -25,14 +25,14 @@ and the decision log refer to it. Update the box in the same commit as the work.
 
 ## P2: telemetry foundation
 
-- [ ] T2.1 measure: ticks/s of the paused-step regime, the replay-match rate, the live-vs-paused difference; write them in the report header
-- [ ] T2.2 `Game.advance(n, {render:false})`, a headless flag that idles `renderFrame`/clips, `resetForFight(seed)` (the reset recipe)
-- [ ] T2.3 `src/fighters/telemetry/fightLog.ts` (schema v1, columnar buffers, the recorder) + the four instrumentation sites (hit, hurt, ability, hurt tag)
-- [ ] T2.4 `src/fighters/paramOverride.ts` + `window.__paramOverride` + console `ftune` + the fighter range table + a generalised path resolver
-- [ ] T2.5 `scripts/fight-batch.mjs` (N pages, a job queue, scenario x fighter x seed x override, files under `verify-out/fights/<runId>/`)
-- [ ] T2.6 `scripts/fight-analyse.mjs` (win rates with Wilson intervals, Bradley-Terry, time-to-kill, damage by source, ability uptime, movement profile, stalemate flags)
+- [~] T2.1 measure: ticks/s of the paused-step regime, the replay-match rate, the live-vs-paused difference; write them in the report header
+- [x] T2.2 `Game.advance(n, {render:false})`, a headless flag that idles `renderFrame`/clips, `resetForFight(seed)` (the reset recipe)
+- [x] T2.3 `src/fighters/telemetry/fightLog.ts` (schema v1, columnar buffers, the recorder) + the four instrumentation sites (hit, hurt, ability, hurt tag)
+- [~] T2.4 `src/fighters/paramOverride.ts` + `window.__paramOverride` + console `ftune` + the fighter range table + a generalised path resolver
+- [x] T2.5 `scripts/fight-batch.mjs` (N pages, a job queue, scenario x fighter x seed x override, files under `verify-out/fights/<runId>/`)
+- [x] T2.6 `scripts/fight-analyse.mjs` (win rates with Wilson intervals, Bradley-Terry, time-to-kill, damage by source, ability uptime, movement profile, stalemate flags)
 - [ ] T2.7 the dev endpoint plugin and the `fightlog start|stop` console toggle
-- [ ] T2.8 tests: `fight-log`, `param-override`, `fight-analyse`; a probe that records one fight and re-reads it
+- [x] T2.8 tests: `fight-log`, `param-override`, `fight-analyse`; a probe that records one fight and re-reads it
 
 ## P3: combatants (D-001, `ARCHITECTURE.md`)
 
@@ -79,7 +79,7 @@ and the decision log refer to it. Update the box in the same commit as the work.
 
 ## P7: balance and review
 
-- [ ] V7.1 the first full matchup matrix (45 pairs x both sides, bots level 3 and 5) and `docs/fighters/balance/baseline-<date>.json`
+- [~] V7.1 the first full matchup matrix (45 pairs x both sides, bots level 3 and 5) and `docs/fighters/balance/baseline-<date>.json`
 - [ ] V7.2 `scripts/fight-tune.mjs` (interleaved A/B, a `balance-patch.json` with evidence, +-15% per round)
 - [ ] V7.3 the fight-review overlay in the Yard (timeline, ghosts, damage graph, heatmap)
 - [ ] V7.4 balance passes until the targets hold; every pass writes `docs/fighters/balance/pass-NN.md`

@@ -27,7 +27,7 @@ export const DUEL = {
   /** Where each fighter starts: on the floor, either side, facing in. */
   spawns: [{ x: 580, y: 639 }, { x: 1020, y: 639 }] as ReadonlyArray<{ x: number; y: number }>,
   platforms: [{ x0: 580, x1: 650, y: 640 - 72 }, { x0: 950, x1: 1020, y: 640 - 72 }] as ReadonlyArray<{ x0: number; x1: number; y: number }>,
-  pedestal: { x0: 780, x1: 820, top: 640 - 16 },
+  pedestal: { x0: 780, x1: 820, top: 640 - 8 },
   perch: { x0: 760, x1: 840, y: 640 - 120 },
 } as const;
 

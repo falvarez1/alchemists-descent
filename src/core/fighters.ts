@@ -154,6 +154,8 @@ export interface FighterApi {
   decoyFor(e: Enemy): { x: number; y: number; vx: number } | null;
   /** A speed factor for an enemy while a fighter effect slows it (1 = unchanged). Read-only: the enemy loop uses `enemyRuns`. */
   enemySlow(e: Enemy): number;
+  /** A fight recorder asks what the blow in flight belongs to (spell, kick, ability.tactical, ability.ultimate, passive, world). Optional: only the real system has it. */
+  attribute?(source: EnemyDamageSource): string;
   /** Is `e` held by a stun this fighter put on it? (An arena asks about the other fighter's stand-in.) */
   isStunned(e: Enemy): boolean;
   /**

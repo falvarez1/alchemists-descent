@@ -8,6 +8,7 @@ import { isRunTainted } from '@/core/runTaint';
 import type { Critter, CritterKind, Ctx, Enemy, EnemyControlApi, EnemyDamageSource, EnemyDef, EnemyKind, EnemySpawnOptions, WeaverIntent } from '@/core/types';
 import { causeForCell } from '@/core/alchemyCause';
 import { BossWard, playerBlow } from '@/core/bossWard';
+import { fightSink } from '@/core/fightSink';
 import { tickWeaverLocomotion, weaverKnockSync, weaverLeap } from '@/entities/weaverLocomotion';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
 import type { BossHost } from '@/creatures/bosses/types';
@@ -645,7 +646,11 @@ export class Enemies implements EnemyControlApi {
     e.vx += kx || 0;
     e.vy += ky || 0;
     this.flinch(e, amount, kx || 0, ky || 0);
-    if (amount > 0) ctx.fighters?.noteEnemyHurt(e, amount, source, e.hp <= 0);
+    if (amount > 0) {
+      // A fight recorder hears the blow first (before a kit's reaction to it hurts anything else).
+      fightSink?.hit(e, amount, source, e.hp <= 0, kx || 0, ky || 0);
+      ctx.fighters?.noteEnemyHurt(e, amount, source, e.hp <= 0);
+    }
     // The rig answers the blow physically on its next tick (creatures/species).
     e.hitKx = kx || 0;
     e.hitKy = ky || 0;

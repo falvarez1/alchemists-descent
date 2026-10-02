@@ -88,6 +88,8 @@ export interface ArenaApi {
   extendSimBounds(bounds: { x0: number; y0: number; x1: number; y1: number }): void;
   /** Slot 0 respawns and a rival returns to its spawn: a new bout. */
   reset(): void;
+  /** While a fighter's blow is being landed on the other (inside `hit`): who landed it and what it belongs to (spell, kick, ability.tactical ...). Null otherwise. */
+  readonly activeBlow: { by: number; tag: string } | null;
   /** The result of the bout so far. */
   readonly bout: Readonly<Bout>;
   /** Set the clock and the stage the arena is on (a duel stage with a width the camera need not leash). */

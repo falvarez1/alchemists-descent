@@ -59,6 +59,9 @@ export class ArenaSlots implements ArenaApi {
   private readonly focus = { x: 0, y: 0 };
   private ownerBound = false;
   readonly bout: Bout = { state: 'idle', winner: null, startedAt: -1, endedAt: -1, downs: [] };
+  private blow: { by: number; tag: string } | null = null;
+
+  get activeBlow(): { by: number; tag: string } | null { return this.blow; }
 
   constructor(private readonly ctx: Ctx, private readonly factory: BundleFactory) {
     // A new floor is a new world: the rival stays behind with the old one.
@@ -91,6 +94,7 @@ export class ArenaSlots implements ArenaApi {
     const slot = this.slots.length;
     const bundle = this.factory(slot);
     this.slots[slot] = { bundle, driver: null, runs: true };
+    this.matchLoadout(this.slots[0]!.bundle, bundle);
     const f = bundle.fighters;
     // The kit's chunk lands later: its creation (and every subscription it makes) must happen under this slot's binding.
     f.bindScope = (fn) => { this.with(slot, fn); };
@@ -107,6 +111,22 @@ export class ArenaSlots implements ArenaApi {
     this.bout.downs.length = 0;
     this.syncStand();
     return slot;
+  }
+
+  /**
+   * The rival fights with what slot 0 carries: the same health and levitation BEFORE the fighter's body scales them, the same wands,
+   * cards and flasks. A fight between two kits and two bodies, not between two armouries or two health pools. (A fresh player is 100 hp
+   * and the run's test kit raised slot 0's: without this the rival was a third weaker, and slot 0 won nine fights in ten.)
+   */
+  private matchLoadout(from: SlotBundle, to: SlotBundle): void {
+    const body = from.fighters.body;
+    to.player.maxHp = Math.max(1, Math.round(from.player.maxHp / (body.maxHp || 1)));
+    to.player.hp = to.player.maxHp;
+    to.player.maxLevit = from.player.maxLevit / (body.jetFuel || 1);
+    to.player.levit = to.player.maxLevit;
+    to.wands.loadLoadout(from.wands.snapshotLoadout());
+    to.flask.clearSlots();
+    from.flask.slots.forEach((s, i) => { to.flask.setSlot(i, s.material, s.count); });
   }
 
   removeRival(slot: number): void {
@@ -279,7 +299,14 @@ export class ArenaSlots implements ArenaApi {
     const dmg = amount * dealt;
     if (dmg > 0) this.lastBlow[victim] = { by: attacker, at: this.ctx.state.frameCount };
     const tag = source === 'direct' ? 'fighter' : String(source);
-    this.with(victim, () => { rec.bundle.playerCtl.damage(dmg, kx, ky, tag); });
+    // What the blow belongs to is the ATTACKER's to say (its kit knows which ability is acting): a fight recorder reads it inside the victim's damage().
+    const was = this.blow;
+    this.blow = { by: attacker, tag: this.slots[attacker]?.bundle.fighters.attribute?.(source) ?? (source === 'direct' ? 'spell' : 'world') };
+    try {
+      this.with(victim, () => { rec.bundle.playerCtl.damage(dmg, kx, ky, tag); });
+    } finally {
+      this.blow = was;
+    }
   }
 
   shove(stand: Enemy, dirX: number, dirY: number, strength: number): void {

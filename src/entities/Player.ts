@@ -22,6 +22,7 @@ import { startLegSwing } from '@/combat/WeaverLimbs';
 import { createSelfShockState, drawConductorArc, fairShockDamage } from '@/combat/SelfShock';
 import { getAimGuide } from '@/combat/AimGuide';
 import { resetCombatTransients } from '@/core/runtimeState';
+import { fightSink } from '@/core/fightSink';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { bloodColor, packRGB, smokeColor } from '@/sim/colors';
 import { entityRandom } from '@/core/simRandom';
@@ -655,6 +656,7 @@ export class PlayerControl implements PlayerControlApi {
       return;
     }
     const source = this.noteDamageSource(src);
+    const raw = amount; // (what arrived, for a fight recorder: raw less taken is what the armor and the rest absorbed)
     // Sanctum boon resistances by damage source
     if (src === 'explosion' && player.perks.ironhide) amount *= 0.4;
     if (src === 'fire' && hasBoon(player, 'flameward')) amount *= 0.4;
@@ -667,6 +669,7 @@ export class PlayerControl implements PlayerControlApi {
       ctx.events.emit('toast', { text: 'COMMUNION BROKEN' });
     }
     player.hp -= amount;
+    fightSink?.hurt(raw, amount, source, kx || 0, ky || 0);
     this.applyImpulse(kx || 0, ky || 0);
     const body = ctx.fighters?.body ?? NEUTRAL_BODY;
     player.invuln = Math.round(30 * body.invuln);

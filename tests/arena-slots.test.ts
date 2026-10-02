@@ -48,10 +48,10 @@ function setup(): { ctx: Ctx; arena: ArenaSlots; calls: Calls; made: SlotBundle[
         releaseVine: () => undefined,
         findSpawnPoint: () => ({ x: 0, y: 0 }),
       } as unknown as SlotBundle['playerCtl'],
-      wands: { update: () => undefined, wands: [], dispose: () => undefined } as unknown as SlotBundle['wands'],
-      flask: { update: () => undefined } as unknown as SlotBundle['flask'],
+      wands: { update: () => undefined, wands: [], dispose: () => undefined, snapshotLoadout: () => ({}), loadLoadout: () => undefined } as unknown as SlotBundle['wands'],
+      flask: { update: () => undefined, slots: [], clearSlots: () => undefined, setSlot: () => undefined } as unknown as SlotBundle['flask'],
       fighters: {
-        id: null, body: { dealt }, bindScope: null, update: () => undefined, reset: () => undefined, refill: () => undefined,
+        id: null, body: { dealt, maxHp: 1, jetFuel: 1 }, bindScope: null, update: () => undefined, reset: () => undefined, refill: () => undefined,
         equip(id: unknown) { (this as { id: unknown }).id = id; }, whenReady: () => Promise.resolve(), dispose: () => undefined,
         enemyRuns: () => true, isStunned: () => false, interceptProjectile: () => false,
       } as unknown as SlotBundle['fighters'],
