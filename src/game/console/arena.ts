@@ -43,6 +43,7 @@ export function createArenaCommands(): ConsoleCommandDefinition[] {
         const y = args[3] === undefined ? ctx.player.y : Number(args[3]);
         if (!Number.isFinite(x) || !Number.isFinite(y)) return result(false, 'arena add: x and y must be numbers.', { code: 'usage' });
         const slot = await arena.addRival(id, x, y);
+        if (slot < 0) return result(false, 'Rival creation was cancelled.', { code: 'cancelled' });
         return result(true, `${id} joined as slot ${slot} at ${Math.round(x)},${Math.round(y)}. \`arena bot 1 basic 3\` gives it a brain.`, { slot });
       }
       if (verb === 'remove') {

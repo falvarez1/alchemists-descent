@@ -102,6 +102,25 @@ function setup(opts: Parameters<typeof makeKit>[1] = {}, walls?: (x: number, y: 
 }
 
 describe('the fighter system', () => {
+  it('does not adopt a lazy kit after disposal or a newer equip of the same fighter', async () => {
+    for (const replace of [false, true]) {
+      const { ctx } = makeCtx();
+      const pending = Promise.withResolvers<FighterKitDef>();
+      let created = 0;
+      const { def } = makeKit(newSpy());
+      const kit = { ...def, create: (host: FighterSystem) => { created++; return def.create(host); } };
+      const s = new FighterSystem(ctx, () => pending.promise);
+      s.equip('ilyra-voss');
+      const oldReady = s.whenReady();
+      if (replace) s.equip('ilyra-voss');
+      else s.dispose();
+      pending.resolve(kit);
+      await oldReady;
+      await s.whenReady();
+      expect(created).toBe(replace ? 1 : 0);
+      s.dispose();
+    }
+  });
   it('releasing buffered inputs prevents a pending ability without cancelling an active ultimate', () => {
     const { spy, sys: s, step } = setup();
     s.refill(); s.press('ultimate'); step();

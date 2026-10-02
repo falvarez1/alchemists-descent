@@ -53,7 +53,7 @@ export interface ArenaApi {
   bundle(slot: number): SlotBundle | undefined;
   /** The fighter's id in a slot, or null. */
   fighterId(slot: number): FighterId | null;
-  /** Put a fighter in the next free slot; resolves when its kit is loaded. The slot number. */
+  /** Put a fighter in the next free slot; resolves to its slot, or -1 if removed while loading. */
   addRival(id: FighterId, x: number, y: number): Promise<number>;
   removeRival(slot: number): void;
   /** Run `fn` with `slot`'s bundle installed (nests; restores the previous binding). */

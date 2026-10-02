@@ -100,9 +100,14 @@ export class ArenaSlots implements ArenaApi {
 
   /** A rival is being built (its kit is loading): a second `addRival` in that window waits for it instead of tearing it down. */
   private adding: Promise<number> | null = null;
+  private removalVersion = 0;
 
   async addRival(id: FighterId, x: number, y: number): Promise<number> {
-    if (this.adding !== null) await this.adding.catch(() => 1);
+    const version = this.removalVersion;
+    while (this.adding !== null) {
+      await this.adding.catch(() => -1);
+      if (version !== this.removalVersion) return -1;
+    }
     const job = this.build(id, x, y);
     this.adding = job;
     try { return await job; } finally { if (this.adding === job) this.adding = null; }
@@ -121,6 +126,8 @@ export class ArenaSlots implements ArenaApi {
     this.ctx.events.scoped = true;
     this.with(slot, () => { f.equip(id); });
     await f.whenReady();
+    // Removal or a level change may have disposed this bundle while its kit loaded.
+    if (this.slots[slot]?.bundle !== bundle) return -1;
     this.applySignature(this.slots[0]!.bundle);
     this.applySignature(bundle);
     this.spawns[slot] = { x, y };
@@ -163,6 +170,7 @@ export class ArenaSlots implements ArenaApi {
   removeRival(slot: number): void {
     const rec = this.slots[slot];
     if (!rec || slot === 0) return;
+    this.removalVersion++;
     this.with(0, () => undefined);
     this.detachStand();
     for (const fn of rec.onRemoved.splice(0)) fn();

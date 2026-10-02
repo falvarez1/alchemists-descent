@@ -1538,8 +1538,9 @@ export class Levels implements LevelsApi {
     this._transitioning = false;
     this.expeditionSeed = null;
 
-    Object.assign(ctx.player, createPlayer());
+    // Remove the old body's scaling before replacing its already-scaled stats.
     ctx.fighters?.equip(null);
+    Object.assign(ctx.player, createPlayer());
     ctx.playerCtl?.resetTransientState?.(ctx);
     ctx.state.score = 0;
     ctx.state.playerSpawned = false;

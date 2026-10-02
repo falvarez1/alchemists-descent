@@ -153,6 +153,7 @@ export class FighterSystem implements FighterApi {
 
   /** The kit's chunk is still loading (equip returns at once; abilities arrive when it lands). */
   private loading: Promise<void> = Promise.resolve();
+  private equipVersion = 0;
   private pendingRestore: FighterSaveState | null = null;
 
   /** `kits` resolves a fighter id to its kit, now or later (tests pass their own). */
@@ -177,6 +178,7 @@ export class FighterSystem implements FighterApi {
 
   equip(id: FighterId | null): void {
     this.teardown();
+    const version = this.equipVersion;
     this.id = id;
     this.def = null;
     this.kit = null;
@@ -201,7 +203,7 @@ export class FighterSystem implements FighterApi {
       if (found && typeof (found as Promise<unknown>).then === 'function') {
         this.loading = (found as Promise<FighterKitDef | undefined>).then((def) => {
           // Only if this fighter is still the chosen one when its chunk lands.
-          if (def && this.id === id && this.kit === null) this.adopt(def);
+          if (def && version === this.equipVersion && this.id === id && this.kit === null) this.adopt(def);
         });
       } else if (found) this.adopt(found as FighterKitDef);
     }
@@ -854,6 +856,7 @@ export class FighterSystem implements FighterApi {
   }
 
   private teardown(): void {
+    this.equipVersion++;
     this.cancelEffects();
     this.guard(() => this.kit?.dispose?.());
     this.kit = null;

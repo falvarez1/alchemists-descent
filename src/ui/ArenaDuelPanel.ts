@@ -91,7 +91,7 @@ export class ArenaDuelPanel {
     arena.setSpawns(DUEL.spawns);
     const id = this.pick.value as FighterId;
     // slot 0 starts the bout at its own spawn too
-    await arena.addRival(id, DUEL.spawns[1].x, DUEL.spawns[1].y);
+    if (await arena.addRival(id, DUEL.spawns[1].x, DUEL.spawns[1].y) < 0) return;
     arena.reset();
     // the rival comes with a mind (skill 3), so something happens at once; your own fighter stays yours (Watch gives it one too)
     rivalDriverFor(this.ctx, 1)?.install('basic', 3);
@@ -104,6 +104,7 @@ export class ArenaDuelPanel {
     if (!arena) return;
     if (!arena.active) await this.addRival();
     else this.newBout();
+    if (!arena.active) return;
     botDriverFor(this.ctx).install('basic', 3);
     rivalDriverFor(this.ctx, 1)?.install('basic', 3);
     this.update(true);

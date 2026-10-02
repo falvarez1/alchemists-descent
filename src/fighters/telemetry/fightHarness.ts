@@ -139,7 +139,7 @@ export function installFightTools(game: FightGame): FightTools {
       ctx.state.arrivalGraceUntil = 0;
       const spawns = spec.swapSpawns ? [DUEL.spawns[1], DUEL.spawns[0]] : DUEL.spawns;
       arena.setSpawns(spawns);
-      await arena.addRival(spec.b.id, spawns[1].x, spawns[1].y);
+      if (await arena.addRival(spec.b.id, spawns[1].x, spawns[1].y) < 0) throw new Error('Fight cancelled while loading the rival.');
       arena.reset();
       d0.install(spec.a.brain, spec.a.level, { seed: spec.seed, personality: spec.a.personality ?? defaultPersonality(spec.a.id) });
       const d1 = rivalDriverFor(ctx, 1);

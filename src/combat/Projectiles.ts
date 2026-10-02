@@ -710,6 +710,10 @@ export class Projectiles implements ProjectilesApi {
     for (let i = ctx.projectiles.length - 1; i >= 0; i--) {
       const p = ctx.projectiles[i];
       if (p.type === 'blackhole') {
+        if (ctx.arena?.active) {
+          ctx.arena.bindOwner(p.owner);
+          this.ensureEnemyIndex(ctx);
+        }
         const vortexRad = Math.floor(p.vortexRad!);
         const centerX = Math.floor(p.x);
         const centerY = Math.floor(p.y);
@@ -953,6 +957,11 @@ export class Projectiles implements ProjectilesApi {
             const lanceHits = LANCE_HITS.get(p);
             if (e.flash > 2 || lanceHits?.has(e)) continue;
             if (pointHitsCreature(e, ctx.enemyCtl.defs[e.kind], p.x, p.y, 3)) {
+              if (e.fighter !== undefined && arena !== undefined && arena.intercept(e, p)) {
+                this.removeAt(projectiles, i);
+                removed = true;
+                break;
+              }
               if (lanceHits) lanceHits.add(e);
               else LANCE_HITS.set(p, new Set([e]));
               const wetCrit = wetCritArmed(ctx, p, e);
@@ -974,6 +983,7 @@ export class Projectiles implements ProjectilesApi {
               ctx.audio.sfx('spell.ice.impact', e.x, e.y);
             }
           }
+          if (removed) break;
           // freeze water in the wake
           for (let fz = -2; fz <= 2; fz++) {
             for (let fzx = -2; fzx <= 2; fzx++) {

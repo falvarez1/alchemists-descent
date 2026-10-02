@@ -4,6 +4,9 @@ import { ArenaSlots } from '@/arena/ArenaSlots';
 import type { SlotBundle } from '@/core/arena';
 import { EventBus } from '@/core/events';
 import type { Ctx, Enemy, Projectile } from '@/core/types';
+import { Projectiles } from '@/combat/Projectiles';
+import { ENEMY_DEFS } from '@/content/enemyDefs';
+import { World } from '@/sim/World';
 
 /** The arena's slot machinery (src/arena/ArenaSlots, core/events scoping) against fakes: no game, no world. */
 
@@ -14,12 +17,12 @@ interface FakeBody {
 }
 
 function body(x: number): FakeBody {
-  return { x, y: 100, vx: 0, vy: 0, hp: 100, maxHp: 100, grounded: true, dead: false, invuln: 0, stunT: 0, status: { burning: 0, wet: 0 }, maxMana: 100, mana: 100, levit: 50, maxLevit: 50, firing: false, fx: 0, fy: 0, crawling: false, climbing: false };
+  return { x, y: 100, vx: 0, vy: 0, hp: 100, maxHp: 100, grounded: true, dead: false, invuln: 0, stunT: 0, status: { burning: 0, wet: 0, frozen: 0 }, maxMana: 100, mana: 100, levit: 50, maxLevit: 50, firing: false, fx: 0, fy: 0, crawling: false, climbing: false };
 }
 
 interface Calls { damage: Array<{ boundPlayer: unknown; amount: number; kx: number; ky: number; src?: string }>; impulse: Array<{ boundPlayer: unknown; vx: number; vy: number }> }
 
-function setup(): { ctx: Ctx; arena: ArenaSlots; calls: Calls; made: SlotBundle[]; base: SlotBundle } {
+function setup(ready = Promise.resolve()): { ctx: Ctx; arena: ArenaSlots; calls: Calls; made: SlotBundle[]; base: SlotBundle } {
   const calls: Calls = { damage: [], impulse: [] };
   const events = new EventBus();
   const ctx = {
@@ -53,7 +56,7 @@ function setup(): { ctx: Ctx; arena: ArenaSlots; calls: Calls; made: SlotBundle[
       flask: { update: () => undefined, slots: [], clearSlots: () => undefined, setSlot: () => undefined } as unknown as SlotBundle['flask'],
       fighters: {
         id: null, body: { dealt, maxHp: 1, jetFuel: 1 }, bindScope: null, update: () => undefined, reset: () => undefined, refill: () => undefined,
-        equip(id: unknown) { (this as { id: unknown }).id = id; }, whenReady: () => Promise.resolve(), dispose: () => undefined,
+        equip(id: unknown) { (this as { id: unknown }).id = id; }, whenReady: () => ready, dispose: () => undefined,
         enemyRuns: () => true, isStunned: () => false, interceptProjectile: () => false,
       } as unknown as SlotBundle['fighters'],
       chill: { update: () => undefined, reset: () => undefined } as unknown as SlotBundle['chill'],
@@ -103,6 +106,78 @@ describe('ArenaSlots', () => {
   const was = ARENA_RULES.blowScale;
   beforeEach(() => { ARENA_RULES.blowScale = 1; });
   afterEach(() => { ARENA_RULES.blowScale = was; });
+
+  test.each(['remove', 'level change'] as const)('cancels pending and queued rival loads on %s', async (cause) => {
+    const ready = Promise.withResolvers<void>();
+    const { ctx, arena, made } = setup(ready.promise);
+    const adding = arena.addRival('brann-rook', 500, 200);
+    const queued = arena.addRival('edda-morrow', 600, 200);
+    const removed = made[1];
+    if (cause === 'remove') arena.removeRival(1);
+    else ctx.events.emit('levelChanged', { depth: 1, name: 'next' });
+    ready.resolve();
+    expect(await adding).toBe(-1);
+    expect(await queued).toBe(-1);
+    expect(arena.active).toBe(false);
+    expect(ctx.enemies).toHaveLength(0);
+    expect(removed.player.x).toBe(300); // never respawned after removal
+    expect(arena.bout.state).toBe('idle');
+    expect(ctx.events.scoped).toBe(false);
+    expect(await arena.addRival('edda-morrow', 600, 200)).toBe(1);
+    expect(ctx.enemies).toHaveLength(1);
+  });
+
+  function projectileSetup(ctx: Ctx, arena: ArenaSlots): Projectiles {
+    const projectiles = new Projectiles();
+    for (let slot = 0; slot < arena.slotCount; slot++) arena.bundle(slot)!.player.invuln = 0;
+    arena.with(1, () => undefined);
+    Object.assign(ctx, {
+      world: new World(600, 300),
+      state: { mode: 'play', frameCount: 10 },
+      projectileCtl: projectiles,
+      enemyCtl: { defs: ENEMY_DEFS, damage: (e: Enemy, amount: number, kx: number, ky: number) => arena.hit(e, amount, kx, ky, 'direct') },
+      particles: { spawn: () => undefined, burst: () => undefined },
+      audio: { sfx: () => undefined },
+      params: { spells: {} },
+      fx: {},
+    });
+    return projectiles;
+  }
+
+  test.each([0, 1])('slot %s black holes damage the opponent and attribute its knockout to the caster', async (owner) => {
+    const { ctx, arena, calls, base, made } = setup();
+    await arena.addRival('nox-calder', 300, 100);
+    const projectiles = projectileSetup(ctx, arena);
+    const caster = owner === 0 ? base : made[1];
+    const victim = owner === 0 ? made[1] : base;
+    // A harmless well at the caster also checks that ownership cannot hit itself.
+    for (const b of [victim, caster]) ctx.projectiles.push({ x: b.player.x - 2, y: b.player.y, vx: 0, vy: 0, type: 'blackhole', vortexRad: 8, life: 30, age: 0, charging: false, hostile: false, owner });
+    projectiles.update(ctx);
+    expect(caster.player.hp).toBe(100);
+    expect(victim.player.hp).toBeLessThan(100);
+    expect(calls.damage).toHaveLength(1);
+    expect(calls.damage[0].boundPlayer).toBe(victim.player);
+    expect(arena.bound).toBe(0);
+    arena.noteDown(1 - owner, 'fighter');
+    expect(arena.bout.winner).toBe(owner);
+  });
+
+  test.each([true, false])('ice lance interception consumed=%s preserves shield and piercing behavior', async (consumed) => {
+    const { ctx, arena, calls, made } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    const projectiles = projectileSetup(ctx, arena);
+    let intercepts = 0;
+    made[1].fighters.interceptProjectile = () => { intercepts++; expect(arena.bound).toBe(1); return consumed; };
+    const lance: Projectile = { x: 300, y: 95, vx: 0, vy: 0, type: 'icelance', life: 30, age: 0, charging: false, hostile: false };
+    ctx.projectiles.push(lance);
+    projectiles.update(ctx);
+    expect(intercepts).toBe(1);
+    expect(ctx.projectiles.includes(lance)).toBe(!consumed);
+    expect(calls.damage).toHaveLength(consumed ? 0 : 1);
+    expect(made[1].player.status.frozen ?? 0).toBe(consumed ? 0 : 150);
+    projectiles.update(ctx);
+    expect(calls.damage).toHaveLength(consumed ? 0 : 1); // a piercing lance cannot hit the same victim twice
+  });
 
   test('the duel tempo is NOT applied by hit(): the victim controller applies it to everything it takes, blows and fire alike', async () => {
     const { arena, ctx, calls } = setup();
