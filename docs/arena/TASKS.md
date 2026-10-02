@@ -28,7 +28,7 @@ and the decision log refer to it. Update the box in the same commit as the work.
 - [~] T2.1 measure: ticks/s of the paused-step regime, the replay-match rate, the live-vs-paused difference; write them in the report header
 - [x] T2.2 `Game.advance(n, {render:false})`, a headless flag that idles `renderFrame`/clips, `resetForFight(seed)` (the reset recipe)
 - [x] T2.3 `src/fighters/telemetry/fightLog.ts` (schema v1, columnar buffers, the recorder) + the four instrumentation sites (hit, hurt, ability, hurt tag)
-- [~] T2.4 `src/fighters/paramOverride.ts` + `window.__paramOverride` + console `ftune` + the fighter range table + a generalised path resolver
+- [x] T2.4 `src/fighters/paramOverride.ts` + `window.__paramOverride` + console `ftune` + the fighter range table + a generalised path resolver
 - [x] T2.5 `scripts/fight-batch.mjs` (N pages, a job queue, scenario x fighter x seed x override, files under `verify-out/fights/<runId>/`)
 - [x] T2.6 `scripts/fight-analyse.mjs` (win rates with Wilson intervals, Bradley-Terry, time-to-kill, damage by source, ability uptime, movement profile, stalemate flags)
 - [ ] T2.7 the dev endpoint plugin and the `fightlog start|stop` console toggle

@@ -263,3 +263,21 @@ tuner (V7). The report names it as a flag: ability uptime low and tactical damag
 
 **Not built yet:** `fight-tune.mjs` (the A/B tuner and `balance-patch.json`), the dev endpoint and `fightlog` console toggle (T2.7), the
 in-game review overlay (V7.3), the replay-match rate and live-vs-paused measurement (T2.1's other half), console `ftune`.
+
+## 10. The tuner and the replay-match rate (2026-10-02)
+
+**Replay-match rate (T2.1).** The same 30-fight batch (three pairs, five seeds, both sides) run in two separate page loads: **30 of 30
+fights had the same winner, 27 of 30 the same duration and end health, and the first fight was byte-identical** (records, to the last
+sample). So a batch is reproducible in outcome (a re-run answers "did the change do it, or noise?") and almost always bit-for-bit; the
+three that differ are tick-level drift (a Rapier or wall-clock path), not a different result. D-010 in `DECISIONS.md` records it.
+
+**The tuner (`scripts/fight-tune.mjs`).** One round is a full matrix (every ordered pair x seeds); each fighter's win rate is its distance
+from 50%; its `dealt` and `maxHp` move by `gain` times that distance (at most `step` a round, and only inside `BODY_RANGES`); the next
+round measures again. A fighter pinned at a range limit is reported. First pass (level-3 bots, 6 seeds, gain 0.4, step 0.10, ten rounds,
+`verify-out/fights/tune3`): from [15%, 94%] to [39%, 62%] by round 5. What it cannot do: it moves two stat knobs per fighter, so it equalises
+power, not style; and win rates are noisy (about 13 points either way at 54 fights per fighter, 7 at 144: use more seeds before trusting
+a small move).
+
+**What a balanced roster still is not.** Equal win rates say the ten are *equally strong*, not that they are *different*. The distinctness
+checks are the other half: the style table (speed, airborne share, gap to the foe, ability use), the damage-by-source split, and the eye.
+A fighter whose tactical never matters is a flag (dead-ability) however even its win rate.

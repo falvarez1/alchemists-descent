@@ -143,6 +143,17 @@ export const TRAVEL_HELP_META: Readonly<Record<string, HelpMeta>> = {
       'bot <slot> <dummy|basic|off> [level] gives either fighter a computer brain (the keyboard is yours only for a slot with none). The Duel Stage is run test --level fighter-duel --world campaign-level; the Proving Yard works too.',
     ],
   },
+  ftune: {
+    group: 'runs',
+    order: 128,
+    args: '[list|get|set|diff|reset]',
+    summary: 'turn any fighter number live: bodies, kits, duel tempo',
+    examples: ['ftune list body.brann', 'ftune get arena.blowScale', 'ftune set arena.blowScale 0.6', 'ftune set body.rusk-emberjaw.dealt 1.1', 'ftune diff', 'ftune reset'],
+    detail: [
+      'The same registry the balance tuner turns (docs/arena/TELEMETRY-AND-BALANCE.md): every number a kit reads, every fighter body field and the duel stage tempo, each with its declared range; a value outside it, or of the wrong type, is refused. Watch the Duel Stage while you turn a number.',
+      'A kit cooldown or an ultimate length is read when the fighter is equipped: re-equip (or start the next bout) to see it. diff lists what differs from the shipped numbers; reset puts everything back. Dev builds only.',
+    ],
+  },
   tier: {
     group: 'runs',
     order: 130,

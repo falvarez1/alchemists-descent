@@ -73,6 +73,8 @@ let bodiesRegistered = false;
 
 export interface FightTools {
   run(spec: FightSpec): Promise<FightOutcome>;
+  /** Load every kit's tuning and register the body and arena roots (the first `run` does it; the console's `ftune` asks first). */
+  ready(): Promise<void>;
   params: ReturnType<typeof getParamOverride>;
   fighters: readonly FighterId[];
   /** Everything a tuner may turn: path, default, range. */
@@ -180,5 +182,5 @@ export function installFightTools(game: FightGame): FightTools {
     }
   }
 
-  return { run, params, fighters: FIGHTER_ORDER, knobs: (prefix) => params.list(prefix) };
+  return { run, ready, params, fighters: FIGHTER_ORDER, knobs: (prefix) => params.list(prefix) };
 }

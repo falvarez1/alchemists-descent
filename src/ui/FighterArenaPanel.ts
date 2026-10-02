@@ -11,6 +11,7 @@ import { openFighterRoster } from '@/ui/fighterRosterHost';
 import { ArenaBotsPanel } from '@/ui/ArenaBotsPanel';
 import { ArenaDuelPanel } from '@/ui/ArenaDuelPanel';
 import { resetDuelStage, standAtSpawn } from '@/world/duelStage';
+import { FIGHTER_LOADOUTS, loadoutSave } from '@/content/fighterLoadouts';
 
 /** The fighters the panel steps through: the classic Alchemist (null) first, then the ten. */
 const CYCLE: ReadonlyArray<FighterId | null> = [null, ...FIGHTER_ORDER];
@@ -51,6 +52,7 @@ export class FighterArenaPanel {
   private readonly rows: Record<'passive' | AbilitySlot, MoveRow>;
   private readonly unlimited: HTMLInputElement;
   private readonly safe: HTMLInputElement;
+  private readonly signature: HTMLInputElement;
   private readonly foesLabel = el('div', 'fa-label', 'Foes');
   private readonly bots: ArenaBotsPanel;
   private readonly duel: ArenaDuelPanel;
@@ -145,6 +147,7 @@ export class FighterArenaPanel {
     const toolRow = el('div', 'fa-buttons');
     toolRow.append(
       button('fa-btn', 'Refill', () => this.ctx.fighters?.refill(), 'Skip the cooldowns and fill the ultimate'),
+      button('fa-btn', 'Own wands', () => this.ownWands(), 'Swap to the signature wands, cards and flasks of the fighter in hand (what it carries in a duel)'),
       button('fa-btn', 'Heal', () => this.heal(), 'Full health'),
       button('fa-btn', 'Hurt 25', () => this.ctx.playerCtl.damage(25, 0, 0, 'proving-yard'), 'Take a blow (Brann\'s Pressure, Rusk\'s armor, Edda\'s shield)'),
       button('fa-btn', 'Start', () => this.toStart(), 'Back to the dais (the yard) or your spawn (the duel stage)'),
@@ -155,7 +158,9 @@ export class FighterArenaPanel {
     const toggles = el('div', 'fa-toggles');
     this.unlimited = toggle('Unlimited abilities', 'Refill every cooldown and the ultimate as they run down');
     this.safe = toggle('Safe mode', 'Foes ignore you and nothing hurts you (the arrival grace, held open)');
-    toggles.append(this.unlimited.parentElement as HTMLElement, this.safe.parentElement as HTMLElement);
+    this.signature = toggle('Signature wands', 'Choosing a fighter here also hands it its own wands, cards and flasks (what it carries in a duel). Off: the yard keeps whatever you hold.');
+    this.signature.checked = true;
+    toggles.append(this.unlimited.parentElement as HTMLElement, this.safe.parentElement as HTMLElement, this.signature.parentElement as HTMLElement);
     tools.append(toolRow, toggles);
 
     this.bots = new ArenaBotsPanel(ctx);
@@ -211,6 +216,7 @@ export class FighterArenaPanel {
     this.ctx.fighters?.equip(id);
     this.ctx.run?.chooseFighter(id);
     this.ctx.audio.sfx('ui.click');
+    if (id !== null && this.signature.checked) this.ownWands(false);
   }
 
   private openRoster(): void {
@@ -276,6 +282,16 @@ export class FighterArenaPanel {
     this.uses.ultimate = 0;
   }
 
+  /** The fighter's signature loadout, now (a duel hands it over by itself; in the yard it is a button). */
+  private ownWands(announce = true): void {
+    const id = this.ctx.fighters?.id;
+    if (!id) return;
+    this.ctx.wands.loadLoadout(loadoutSave(id));
+    this.ctx.flask.clearSlots();
+    FIGHTER_LOADOUTS[id].flasks.forEach((f, i) => { this.ctx.flask.setSlot(i, f.material, f.count); });
+    if (announce) this.ctx.events.emit('toast', { text: `${FIGHTER_DEFS[id].name}: ${FIGHTER_LOADOUTS[id].idea}` });
+  }
+
   private toStart(): void {
     if (this.ctx.levels.current?.def.id === DUEL_LEVEL_ID) standAtSpawn(this.ctx, 0);
     else standFighterAt(this.ctx, 'muster');
@@ -300,6 +316,8 @@ export class FighterArenaPanel {
     if (active !== this.shown) {
       this.shown = active;
       this.root.hidden = !active;
+      // arriving as a fighter chosen at the door: it carries its own wands from the first step
+      if (active && ctx.fighters?.id && this.signature.checked) void ctx.fighters.whenReady().then(() => this.ownWands(false));
       if (!active) { ctx.state.arrivalGraceUntil = 0; this.safe.checked = false; }
     }
     if (!active) return;

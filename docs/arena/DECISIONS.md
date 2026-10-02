@@ -70,3 +70,30 @@ stopped once by memory pressure during a probe batch on this machine.
 
 **Decision.** The Arena door shows only in authoring builds; nothing in this programme merges to `main` (which deploys) without
 an explicit go-ahead. **Why.** A push to `main` deploys the public game.
+
+## D-010 (2026-10-01): D-007 revised: fights ARE reproducible from a seed
+
+**Decision.** Treat a headless duel as reproducible from (build, seeds, overrides): the same inputs gave the same outcome, to the last
+digit, across separate page loads (a repeated mirror run gave identical win counts), so a batch can be compared with a previous one and a
+single fight re-run to look at it. Still not promised: bit-identical replays of a live (rendered, real-time) fight. **Why.** The paused-step
+regime reseeds every stream from (worldSeed, tick); the bots draw from their own seeded Rng; nothing in a duel reads the wall clock. The
+replay-match rate over many pages is still to be measured (T2.1).
+
+## D-011 (2026-10-01): a fighter's primary attack is its signature wand, as data
+
+**Decision.** In a duel each fighter carries its own wands, cards and flasks (`content/fighterLoadouts.ts`), applied by the arena; they are
+chosen by measurement (`loadout-lab`, `fight-dps`) and kept in one TTK band with different shapes. **Why.** 80% of all damage in a fight is
+the primary; while it was the shared Spark Bolt the bodies decided every fight and the kits decided none. **Rejected:** new combat code per
+fighter first (6b: it comes after the data version shows which fighters still feel alike).
+
+## D-012 (2026-10-01): the duel's tempo is a dial, and blasts are capped for a fighter
+
+**Decision.** `config/arenaRules.ts` `blowScale` (0.4) scales every fighter's blow on a fighter; a blast does at most 42 to a fighter (the
+player's old cap). **Why.** At 1.0 a fight lasted 6 s and the abilities never mattered; an uncapped bomb did 746 damage to a standing foe.
+Both are numbers the registry turns (`ftune set arena.blowScale ...`), so they stay open to the telemetry.
+
+## D-013 (2026-10-01): one stand-in, not one per slot
+
+**Decision.** `ArenaSlots` rewrites ONE stand-in enemy to mirror the opponent of the bound slot (1v1) rather than toggling a proxy per slot in
+and out of `ctx.enemies`. **Why.** The array is never mutated while a system iterates it (an explosion loops the enemies and calls `damage`,
+which binds the victim). **Revisit** when a third fighter is wanted: that needs one stand-in each and the toggling D-001 describes.

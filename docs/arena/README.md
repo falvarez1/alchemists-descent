@@ -22,7 +22,8 @@ stat knobs toward 50%; `loadout-lab.mjs` and `fight-dps.mjs` choose a primary at
 
 | Read this | When |
 |---|---|
-| [`MASTER-PLAN.md`](MASTER-PLAN.md) | first: vision, phases, exit criteria, risks, how the work is organised |
+| [`GUIDE.md`](GUIDE.md) | to use what exists: see it, play it, measure it, tune it, extend it |
+| [`MASTER-PLAN.md`](MASTER-PLAN.md) | vision, phases, exit criteria, risks, how the work is organised |
 | [`TASKS.md`](TASKS.md) | what to do next (ids, status) |
 | [`DECISIONS.md`](DECISIONS.md) | why things are the way they are |
 | [`FIGHTER-PHYSICS.md`](FIGHTER-PHYSICS.md) | building a fighter's *body* (phase 1) |
