@@ -297,3 +297,16 @@ into one band with the DPS rig and the lab, (2) sweep candidate loadouts for who
 few points, (4) check the style table so equal strength did not erase difference.
 
 `scripts/loadout-sweep.mjs` is step 2: one fighter against the other nine, both sides, with each of several candidate loadouts.
+
+## 12. The third pass: converged and validated (2026-10-02, `docs/fighters/balance/pass-01.md`)
+
+With the designed health standing and `dealt` as the only lever over a wide range (0.3-2.5), the tuner converged in 12 rounds (`tune5`), and a
+validation run of the tuned numbers (**1,080 fights**, every ordered pair x 12 seeds) put **every fighter between 43% and 56%, with no flag**.
+Brann 0.47 and Edda 0.375 are the two that moved most: the wall hits softly, and Edda's loadout (the premium void frame with piercing
+lances) is too strong by about a third (the pass document says so: a lighter frame is the next pass). `scripts/fight-apply-patch.mjs` writes a
+patch into `content/fighterBodies.ts` (a dry run by default).
+
+How the roster got here is the most useful result: the tuner found each of the things that decide a bot duel before any kit does
+(`ARENA-RULES.md`: the primary's real damage per second, the bot's range, the post-hit window, the world's fire) by failing on them, and
+the rules now in force (`blowScale`, `hazardScale`, `invulnTicks`, the blast cap) are what those failures turned into. A different rule
+set, a better bot or a new loadout is a different pass: re-run the matrix, do not trust the old numbers.

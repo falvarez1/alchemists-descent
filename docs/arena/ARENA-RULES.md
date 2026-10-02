@@ -142,3 +142,21 @@ carries its own wands and flasks (`fighterLoadouts`).
 Open in this document, by priority: the clock and sudden death (a rising lava floor), volatility and scaled knockback, blast zones and
 stocks, the second stage (the Kiln Floor), the collapse. None changes the contract of the slots; each is a few lines in `ArenaSlots.hit`
 / `endTick` and a `MatchDirector` (`TASKS.md` R5.x).
+
+### The dials of the duel (config/arenaRules.ts: live data, ranged, turned by `ftune` and the tuner as `arena.<key>`)
+
+| Dial | Value | What it does, and what measured it into existence |
+|---|---|---|
+| `blowScale` | 0.4 | the share of EVERYTHING a fighter takes that reaches its health (applied once, in the victim's controller: a blow, a blast, a flame, a current alike). At 1.0 a signature primary kills in 6 s and no ability ever matters; the first version scaled only blows and the world's fire became half the damage |
+| `hazardScale` | 0.35 | the world's harm (fire, electricity, acid, a blast it lit) on top of the tempo: after the opening exchange most duels settled into a drip that the loser could not stand out of (a 66 s timeline showed it) |
+| `invulnTicks` | 10 | ticks nothing lands after a blow (the campaign's is 30). The long window threw away every hit of a pair of sparks, a fan or a chain: the heavy-hit loadouts took half the damage of the rapid ones |
+| `healthEquality` | 0 | 1 divides the victim's body health multiplier out of a blow, so every fighter has the same effective health. Off: equal health did not remove Brann's lead (a plain spark and a neutral body still won 86-93%), and the wall-has-health / glass-hits-hard trade is the classic archetype balance |
+
+And in code, not dials: a blast does at most 42 to a fighter (`sim/explosion`), a rival is built from slot 0's unscaled health (`ArenaSlots`),
+and who resolves first each tick is a seeded coin.
+
+**What the measurements say about balancing a duel (2026-10-02):** three things decide a bot duel before any kit does. (1) The primary
+attack's *real* damage per second, which differs from its damage against a standing foe by a factor of three (heavy and piercing shots land,
+fans and darts miss a moving target). (2) The bot's range: a fighter whose style stands close (Brann 40, Rusk 30) wins against fighters whose
+style stands off (Mara 112) because the bot cannot kite or dodge. (3) The post-hit window. A tuner that turns only stats will find any of
+these and "fix" it with health, which is why the lever is `dealt` and the weapons and the bot are tuned first.

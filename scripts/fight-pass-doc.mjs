@@ -18,11 +18,12 @@ const vrate = (id) => validate?.fighters.find((f) => f.id === id);
 const L = [];
 L.push(`# Balance pass ${n}`, '');
 L.push(`Generated ${patch.generated} by \`scripts/fight-tune.mjs\`. Basis: ${patch.basis}. Level-3 \`basic\` bots, every ordered pair, both sides.`, '');
-L.push('## What moved', '', '| fighter | start | tuned | change (dealt, max health) |', '|---|---|---|---|');
+const KNOBS = [...new Set(Object.keys(patch.shipped).map((k) => k.split('.').pop()))];
+L.push('## What moved', '', `| fighter | start | tuned | change (${KNOBS.join(', ')}) |`, '|---|---|---|---|');
 for (const id of IDS) {
-  const d0 = patch.shipped[`body.${id}.dealt`], h0 = patch.shipped[`body.${id}.maxHp`];
-  const d1 = patch.overrides[`body.${id}.dealt`] ?? d0, h1 = patch.overrides[`body.${id}.maxHp`] ?? h0;
-  L.push(`| ${id} | dealt ${d0}, hp ${h0} | dealt ${d1}, hp ${h1} | ${d1 === d0 && h1 === h0 ? 'none' : `dealt ${(d1 / d0 * 100 - 100).toFixed(0)}%, hp ${(h1 / h0 * 100 - 100).toFixed(0)}%`} |`);
+  const s = KNOBS.map((k) => patch.shipped[`body.${id}.${k}`]);
+  const t = KNOBS.map((k, i) => patch.overrides[`body.${id}.${k}`] ?? s[i]);
+  L.push(`| ${id} | ${KNOBS.map((k, i) => `${k} ${s[i]}`).join(', ')} | ${KNOBS.map((k, i) => `${k} ${t[i]}`).join(', ')} | ${t.every((v, i) => v === s[i]) ? 'none' : KNOBS.map((k, i) => `${k} ${(t[i] / s[i] * 100 - 100).toFixed(0)}%`).join(', ')} |`);
 }
 L.push('', '## Win rates', '', `| fighter | before | after (last round)${validate ? ' | validated (' + validate.fights + ' fights)' : ''} |`, `|---|---|---|${validate ? '---|' : ''}`);
 for (const id of IDS) {

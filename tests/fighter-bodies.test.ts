@@ -103,12 +103,12 @@ describe('the ten bodies', () => {
     expect(by('jetFuel', 'max')).toBe('mara-quell');
     expect(by('maxHp', 'min')).toBe('edda-morrow');
     expect(by('maxHp', 'max')).toBe('brann-rook');
-    expect(by('dealt', 'max')).not.toBe('mara-quell');
+    // (power, `dealt`, is not an identity field: it is the balance lever the tuner turns, so the design does not say who hits hardest)
   });
 
   test('Nox is the plain body on purpose: close to the Alchemist in every field', () => {
     const b = FIGHTER_BODIES['nox-calder'];
-    for (const f of BODY_FIELDS) expect(Math.abs(b[f] - 1), f).toBeLessThanOrEqual(0.12);
+    for (const f of BODY_FIELDS) if (f !== 'dealt') expect(Math.abs(b[f] - 1), f).toBeLessThanOrEqual(0.12);
   });
 });
 
