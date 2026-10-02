@@ -122,10 +122,10 @@ const R = await page.evaluate(async ({ A_ID, B_ID }) => {
   step(10);
   snap('blastOnBoth', h0, 10);
 
-  // --- T6: lightning from A at B ---
-  place(640, 740);
+  // --- T6: lightning from A at B (close: the arc random-walks and only reaches so far) ---
+  place(670, 716);
   h0 = hp();
-  for (let k = 0; k < 4; k++) { ctx.arena.with(0, () => { ctx.lightning.cast(A.player.x + 4, A.player.y - 9, 0); }); step(8); if (B.player.invuln <= 0 || counts[1].length) break; }
+  for (let k = 0; k < 4; k++) { ctx.arena.with(0, () => { ctx.lightning.cast(A.player.x + 4, A.player.y - 9, 0); }); step(8); if (counts[1].length) break; }
   step(4);
   snap('lightningAtoB', h0, 10);
 

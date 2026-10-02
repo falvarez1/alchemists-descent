@@ -104,12 +104,12 @@ describe('ArenaSlots', () => {
   beforeEach(() => { ARENA_RULES.blowScale = 1; });
   afterEach(() => { ARENA_RULES.blowScale = was; });
 
-  test('the duel tempo dial scales a fighter blow on a fighter, and only that', async () => {
+  test('the duel tempo is NOT applied by hit(): the victim controller applies it to everything it takes, blows and fire alike', async () => {
     const { arena, ctx, calls } = setup();
     await arena.addRival('brann-rook', 300, 100);
     ARENA_RULES.blowScale = 0.4;
     arena.hit(ctx.enemies[0], 10, 0, 0, 'direct');
-    expect(calls.damage[0].amount).toBeCloseTo(4, 5);
+    expect(calls.damage[0].amount).toBeCloseTo(10, 5);
   });
 
   test('equal health: the victim body health multiplier is divided out of a blow (a x2 body takes half), and 0 turns it off', async () => {
