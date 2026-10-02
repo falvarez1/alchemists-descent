@@ -16,6 +16,12 @@ export const ARENA_RULES = {
    * should be won with the weapon, the movement and the kit, so tankiness comes from mass, armor and the plate, not raw hit points.
    */
   healthEquality: 1,
+  /**
+   * What share of the WORLD's harm (a flame, a current, an acid, a blast it lit: anything not a fighter's own blow) reaches a fighter, on top of
+   * the tempo. The measurement: after the opening exchange most duels settled into a slow drip of fire and electricity (20-46 a fight, as much
+   * as half of all damage) that the loser simply could not stand out of; a fight should be decided by what the fighters do to each other.
+   */
+  hazardScale: 0.35,
 };
 
 export type ArenaRuleKey = keyof typeof ARENA_RULES;
@@ -24,4 +30,5 @@ export type ArenaRuleKey = keyof typeof ARENA_RULES;
 export const ARENA_RULE_RANGES: Readonly<Record<ArenaRuleKey, { min: number; max: number }>> = Object.freeze({
   blowScale: { min: 0.1, max: 2 },
   healthEquality: { min: 0, max: 1 },
+  hazardScale: { min: 0, max: 2 },
 });

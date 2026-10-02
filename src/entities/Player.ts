@@ -628,7 +628,7 @@ export class PlayerControl implements PlayerControlApi {
     if (this.ctx.state?.debugGodMode) return 0;
     // ARENA: the duel's tempo applies to EVERYTHING a fighter takes (a blow, a blast, a flame, a current): the first version scaled only the
     // blows and the world's fire became most of the damage (measured: fire 45-69 a fight against 19-75 from blows)
-    if (this.ctx.arena !== undefined && this.ctx.arena.active) amount *= ARENA_RULES.blowScale;
+    if (this.ctx.arena !== undefined && this.ctx.arena.active) amount *= ARENA_RULES.blowScale * (source === 'fighter' ? 1 : ARENA_RULES.hazardScale);
     if (this.ctx.player.status.stoneskin > 0) amount *= 0.5;
     // A fighter's armor and damage reduction (src/fighters): a blow it fully absorbs is 0, not the floor.
     const fighters = this.ctx.fighters;
