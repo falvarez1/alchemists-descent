@@ -3,6 +3,7 @@
 //
 //   node scripts/fight-batch.mjs [url] [--pairs all | a,b;c,d] [--seeds 3] [--level 3] [--max-ticks 5400] [--pages 1]
 //        [--out verify-out/fights/<run>] [--set path=value ...] [--one-way] [--sample-every 6] [--limit N] [--swap-spawns]
+//        [--loadouts file.json]
 //        [--a-brain basic|dummy] [--b-brain basic|dummy] [--a-level 1-5] [--b-level 1-5]   (a dummy stands still: a target for a DPS measurement)
 //
 // --pairs all     every ordered pair of the ten (90): each pair runs both sides, so a fighter is never only on the left
@@ -10,7 +11,7 @@
 // --set k=v       a parameter override for the whole batch (the path syntax of src/fighters/paramOverride: body.brann-rook.dealt=1.05)
 // --pages N       N browser pages in parallel (each a full game: it is CPU-bound, so about one per physical core)
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, appendFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, appendFileSync, writeFileSync, readFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
 import { leaveTitleIfShown, waitForConsoleApi } from './run-helpers.mjs';
 
@@ -28,6 +29,8 @@ const pagesN = Math.max(1, Number(opt('pages', '1')));
 const sampleEvery = Number(opt('sample-every', '6'));
 const oneWay = args.includes('--one-way');
 const swapSpawns = args.includes('--swap-spawns');
+// --loadouts file.json: { "<fighter id>": { "wands": [ {frameId, cards}, {frameId, cards} ], "flasks": [...] } }: try a signature loadout without editing the source
+const loadouts = opt('loadouts', '') ? JSON.parse(readFileSync(opt('loadouts', ''), 'utf8')) : undefined;
 const limit = Number(opt('limit', '0'));
 const pairsArg = opt('pairs', 'all');
 const overrides = {};
@@ -84,7 +87,7 @@ async function worker(n) {
     if (!job) break;
     const spec = {
       a: { id: job.a, brain: aBrain, level: aLevel }, b: { id: job.b, brain: bBrain, level: bLevel },
-      seed: job.seed, maxTicks, sampleEvery, overrides, runId, fight: job.i, git, dirty, swapSpawns,
+      seed: job.seed, maxTicks, sampleEvery, overrides, runId, fight: job.i, git, dirty, swapSpawns, loadouts,
     };
     try {
       const r = await page.evaluate((s) => window.__fight.run(s), spec);

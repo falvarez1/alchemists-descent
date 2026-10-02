@@ -9,6 +9,13 @@ export const ARENA_RULES = {
    * (measured: tactical and ultimate damage were near zero in every fight); at 0.4 a fight is 15-20 s, long enough for two cooldowns.
    */
   blowScale: 0.4,
+  /**
+   * 1: every fighter has the SAME effective health in a duel (a blow is divided by the victim's body health multiplier, so Brann's x1.35
+   * is no longer extra hit points); 0: the designed bodies stand (a wall has more health, glass less). The first tuning pass found that
+   * health is the strongest lever on who wins and the one that most erases a character (it made Brann frail and Nox a tank); a duel
+   * should be won with the weapon, the movement and the kit, so tankiness comes from mass, armor and the plate, not raw hit points.
+   */
+  healthEquality: 1,
 };
 
 export type ArenaRuleKey = keyof typeof ARENA_RULES;
@@ -16,4 +23,5 @@ export type ArenaRuleKey = keyof typeof ARENA_RULES;
 /** The declared range of each rule: a tuner moves a value only inside it. */
 export const ARENA_RULE_RANGES: Readonly<Record<ArenaRuleKey, { min: number; max: number }>> = Object.freeze({
   blowScale: { min: 0.1, max: 2 },
+  healthEquality: { min: 0, max: 1 },
 });

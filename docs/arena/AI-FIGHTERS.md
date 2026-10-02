@@ -181,3 +181,21 @@ a paused world stepped tick by tick; 3 seeds a fighter):
 Not built yet: v2 playbooks (Intent weighted per archetype, the ten rule lists, defence), v3 stocks, perception parity for Nox's
 and Thorne's concealment, a world overlay (the path, the aim line and the range ring: only the panel's line exists), a bot on a *second*
 fighter (the duel, phase 3), and the 1,000-fight soak.
+
+### 9b. In the duel (2026-10-02)
+
+The same `basic` brain drives either fighter of a duel (`arena/ai/driver`: `botDriverFor` for slot 0, `rivalDriverFor` for a rival, run under
+that slot's binding, each with its own seeded Rng, so a duel is reproducible from its seed). Measured over 270-540 fights a batch (every
+ordered pair, level-3 bots):
+
+- Fights end: 270 of 270 knockouts in the first signature-loadout runs; the median is **10-11 s** at `blowScale` 0.4 (6 s at 1.0). The
+  earlier stalemates (a 29% timeout rate while every fighter shared one bolt and the stage had a wall through it) are gone.
+- The bots approach, shoot, kick and hop (the plinth is a 5-high step); they use Z about once and T about half a time a fight (the cooldowns
+  are 9-12 s and the fight is 11): the abilities are *available*, not *decisive*, in a duel this short. The `dead-ability` flag in the
+  report is what to watch.
+- A rival is always seen (the duel's camera holds both): `buildWorldView` skips the sight rectangle for a fighter stand-in.
+- The playbook seam exists (`arena/ai/playbooks.ts`): Father Thorne's Ironvine is aimed at the floor under the foe (it was refused every
+  time: now it fires in about one fight in three). Every other entry will be there because a measurement showed a tactical failing.
+
+What a better duelist needs (v2, not built): a defensive reflex (the shot in flight at it, the foe's tactical wind-up), the ability rules per
+fighter (when Brann's plate is worth raising, when Kest's dash is worth the cooldown), and perception parity (Nox's smoke, Thorne's cover).

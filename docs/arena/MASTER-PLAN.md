@@ -1,6 +1,8 @@
 # The arena programme: master plan
 
-**Status: planning (2026-10-01).** This is the entry point. It states the vision, the phases with their exit criteria, the
+**Status: phases 1-4 and 6a built and measured (2026-10-02); 5, 6b and 7 open.** The first playable slice exists: two fighters in one
+room, a computer brain for each, every fight recorded and analysed, the roster tuned to 43-57% win rates by data. `README.md` has the
+state table, `GUIDE.md` the commands. This is the entry point. It states the vision, the phases with their exit criteria, the
 dependencies and the risks. The detail lives in the documents it links; the checklist lives in `TASKS.md`; the reasons behind
 choices live in `DECISIONS.md`.
 
@@ -21,7 +23,13 @@ choices live in `DECISIONS.md`.
 4. **Fair to play against.** The AI uses the same inputs and the same senses as a person. (`AI-FIGHTERS.md`)
 5. **Always finishes.** Every match has a stalemate answer. (`ARENA-RULES.md`)
 
-## 2. What exists today (2026-10-01)
+## 2. What exists today (2026-10-02)
+
+**Built since this plan was written:** a body per fighter, ten movement techniques, two fighters in one world (the Duel Stage), a computer
+fighter with five skill levels, the telemetry stack (recorder, headless harness, batch runner, analyser with an HTML report, parameter
+registry, a tuner), signature loadouts, the `ftune` console, a Duel door and a one-click Watch. **Still open:** the match rules (stocks,
+volatility, ring-outs, the collapse: P5), signature melee primaries (P6b), the bot's playbooks and defence (P4 v2), the in-game fight review
+(P7), a second human on the same machine. The list below is what the plan started from.
 
 - Ten fighters on branch `bw/fighters`: looks, kits (a passive, Z, T), a roster screen, HUD chips, per-fighter probes, all
   verified against real foes; the **Proving Yard** (`world/fighterArena.ts`, level `fighter-test`): a test hall with seven

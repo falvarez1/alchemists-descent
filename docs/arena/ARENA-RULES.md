@@ -123,3 +123,22 @@ the sides swapped must not change the result beyond noise: a telemetry check, `d
 | `config/arenaRules.ts` | the match constants, live-tunable and range-declared | 3 |
 | the Yard's `fighterArena.ts` | symmetric duel stage, respawn platform, collapse emitters | 3, 5 |
 | the camera | multi-target framing | 5 |
+
+## Built (2026-10-02): Stage A, the health duel, as it plays today
+
+`world/duelStage.ts`, level `fighter-duel` ("THE DUEL STAGE"): a walled, roofed room 560 cells wide (x 520-1080) and 230 tall, dry, lit
+(ambient 0.92), symmetric about x = 800: a stone floor over an indestructible base (a blast can crater it, never open the stage), a
+5-high plinth in the middle (a step, never cover: a 16-high block blocked shots at shoulder height and split the bots), two metal platforms
+72 above the floor (x 580-650 and 950-1020) and a perch 120 up over the middle (a floating slab: nothing hangs between it and the floor).
+Spawns are on the floor at x = 580 and 1020, facing in. The 640-wide view holds the whole room, so there is no camera to leash.
+A *Rematch* clears and re-stamps it.
+
+The rules in force: a bout is **fighting** until a knockout, then **won** (the winner named, the time shown); **there is no clock, no
+sudden death, no stocks and no respawn yet** (a fight that nobody wins ends by a tick cap in the batch only: 90 s, won on health). A
+fighter's blows reach the other at `ARENA_RULES.blowScale` (0.4), a blast at most 42, and **who resolves first each tick is a seeded coin**
+(`ArenaSlots.rivalsFirst`). Hazards and the world's own drip (fire, acid, electricity) hurt a fighter at their normal rate. Each fighter
+carries its own wands and flasks (`fighterLoadouts`).
+
+Open in this document, by priority: the clock and sudden death (a rising lava floor), volatility and scaled knockback, blast zones and
+stocks, the second stage (the Kiln Floor), the collapse. None changes the contract of the slots; each is a few lines in `ArenaSlots.hit`
+/ `endTick` and a `MatchDirector` (`TASKS.md` R5.x).

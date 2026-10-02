@@ -112,6 +112,20 @@ describe('ArenaSlots', () => {
     expect(calls.damage[0].amount).toBeCloseTo(4, 5);
   });
 
+  test('equal health: the victim body health multiplier is divided out of a blow (a x2 body takes half), and 0 turns it off', async () => {
+    const { arena, ctx, calls, made } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    (made[1].fighters.body as { maxHp: number }).maxHp = 2;
+    const eq = ARENA_RULES.healthEquality;
+    ARENA_RULES.healthEquality = 1;
+    arena.hit(ctx.enemies[0], 10, 0, 0, 'direct');
+    expect(calls.damage[0].amount).toBeCloseTo(5, 5);
+    ARENA_RULES.healthEquality = 0;
+    arena.hit(ctx.enemies[0], 10, 0, 0, 'direct');
+    expect(calls.damage[1].amount).toBeCloseTo(10, 5);
+    ARENA_RULES.healthEquality = eq;
+  });
+
   test('is dormant with no rival: not active, slot 0 bound, nothing in the enemies', () => {
     const { arena, ctx } = setup();
     expect(arena.active).toBe(false);

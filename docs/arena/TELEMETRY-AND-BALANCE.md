@@ -281,3 +281,19 @@ a small move).
 **What a balanced roster still is not.** Equal win rates say the ten are *equally strong*, not that they are *different*. The distinctness
 checks are the other half: the style table (speed, airborne share, gap to the foe, ability use), the damage-by-source split, and the eye.
 A fighter whose tactical never matters is a flag (dead-ability) however even its win rate.
+
+## 11. Two tuning passes, and what they taught about the lever (2026-10-02)
+
+| pass | knobs | result | cost |
+|---|---|---|---|
+| 1 (`tune3`, 7 rounds, 6 seeds) | `dealt` + `maxHp` | worst fighter 7 points from 50% (43-57%) | Brann hp x0.81 (the wall is frail), Kest x0.73, Edda x0.79, Nox x1.47 (a tank): balanced, and the fantasy inverted |
+| 2 (`tune4`, 10 rounds, 6 seeds) | `dealt` alone (0.6-1.6) | stuck: worst 35 points; five fighters pinned at a limit (Ilyra, Brann too strong; Sable, Mara, Nox too weak) | none, and none of it fixed |
+
+**Lesson.** A stat lever can balance anything, and will, by erasing the character: the tuner found that making Brann frail and Nox tough
+evens the table. The balance lever has to be one that does not carry the fantasy. `dealt` is that lever, but it is weak against a body
+that survives (Brann at x0.6 power still wins 85%: his health, armor and mass do the work), so the remainder belongs to the *loadout*
+(the weapon's own power: `loadout-sweep`) and to the kit's defensive numbers. The order that works: (1) set each primary's raw power
+into one band with the DPS rig and the lab, (2) sweep candidate loadouts for whoever is pinned, (3) let the tuner turn `dealt` for the last
+few points, (4) check the style table so equal strength did not erase difference.
+
+`scripts/loadout-sweep.mjs` is step 2: one fighter against the other nine, both sides, with each of several candidate loadouts.

@@ -333,8 +333,9 @@ export class ArenaSlots implements ArenaApi {
     if (!rec || rec.bundle.player.dead || this.bout.state === 'won') return;
     const attacker = this.boundSlot;
     const dealt = playerBlow(source) ? this.slots[attacker]?.bundle.fighters.body.dealt ?? 1 : 1;
-    // (the duel's tempo: a share of every blow, config/arenaRules)
-    const dmg = amount * dealt * ARENA_RULES.blowScale;
+    // (the duel's tempo: a share of every blow, config/arenaRules; and equal health: the victim's body health multiplier divided out)
+    const hpFactor = this.slots[victim]?.bundle.fighters.body.maxHp ?? 1;
+    const dmg = amount * dealt * ARENA_RULES.blowScale * Math.pow(hpFactor || 1, -ARENA_RULES.healthEquality);
     if (dmg > 0) this.lastBlow[victim] = { by: attacker, at: this.ctx.state.frameCount };
     const tag = source === 'direct' ? 'fighter' : String(source);
     // What the blow belongs to is the ATTACKER's to say (its kit knows which ability is acting): a fight recorder reads it inside the victim's damage().
