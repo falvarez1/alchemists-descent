@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { ARENA_RULES } from '@/config/arenaRules';
 import { ArenaSlots } from '@/arena/ArenaSlots';
 import type { SlotBundle } from '@/core/arena';
 import { EventBus } from '@/core/events';
@@ -98,6 +99,19 @@ describe('EventBus slot scoping', () => {
 });
 
 describe('ArenaSlots', () => {
+  // (these tests count whole blows: the duel's tempo dial is 1 here; its own test is below)
+  const was = ARENA_RULES.blowScale;
+  beforeEach(() => { ARENA_RULES.blowScale = 1; });
+  afterEach(() => { ARENA_RULES.blowScale = was; });
+
+  test('the duel tempo dial scales a fighter blow on a fighter, and only that', async () => {
+    const { arena, ctx, calls } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    ARENA_RULES.blowScale = 0.4;
+    arena.hit(ctx.enemies[0], 10, 0, 0, 'direct');
+    expect(calls.damage[0].amount).toBeCloseTo(4, 5);
+  });
+
   test('is dormant with no rival: not active, slot 0 bound, nothing in the enemies', () => {
     const { arena, ctx } = setup();
     expect(arena.active).toBe(false);

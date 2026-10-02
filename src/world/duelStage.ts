@@ -27,7 +27,7 @@ export const DUEL = {
   /** Where each fighter starts: on the floor, either side, facing in. */
   spawns: [{ x: 580, y: 639 }, { x: 1020, y: 639 }] as ReadonlyArray<{ x: number; y: number }>,
   platforms: [{ x0: 580, x1: 650, y: 640 - 72 }, { x0: 950, x1: 1020, y: 640 - 72 }] as ReadonlyArray<{ x0: number; x1: number; y: number }>,
-  pedestal: { x0: 780, x1: 820, top: 640 - 8 },
+  pedestal: { x0: 780, x1: 820, top: 640 - 5 },
   perch: { x0: 760, x1: 840, y: 640 - 120 },
 } as const;
 
@@ -58,10 +58,9 @@ function stampStage(ctx: Ctx): void {
     const wall = p.x0 < DUEL.cx ? p.x0 : p.x1 - 1;
     fill(wall, p.y + 3, wall + 1, p.y + 10, Cell.Stone);
   }
-  // the pedestal and the perch
+  // the pedestal and the perch (a floating slab: nothing hangs between them, so the middle of the stage is open air)
   fill(DUEL.pedestal.x0, DUEL.pedestal.top, DUEL.pedestal.x1, floor - 1, Cell.Stone);
   fill(DUEL.perch.x0, DUEL.perch.y, DUEL.perch.x1, DUEL.perch.y + 2, Cell.Metal);
-  fill(DUEL.cx - 1, DUEL.perch.y + 3, DUEL.cx, DUEL.pedestal.top - 1, Cell.Stone);
   // lamps: stone posts topped with glowshrooms at the walls, and a row under the roof
   for (const lx of [x0 + 14, x1 - 15]) {
     fill(lx, floor - 12, lx + 1, floor - 1, Cell.Stone);

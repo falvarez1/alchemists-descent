@@ -125,3 +125,46 @@ documented limitation of a duel (slot >= 1 cannot carry crates or ragdoll), not 
 8. `ctx.params.player` is shared and persisted (`tuningStore.ts:105`).
 9. Hitbox variation is its own project (70+ sites, a fixed skeleton): not promised in phase 1.
 10. Perf: two player/wand updates per tick are cheap; the sim-window union is not: budget it against `docs/PERF-2026-09.md`.
+
+## 10. Built (2026-10-01): what shipped, and every deviation from the design
+
+`core/arena.ts` (the contract: `ArenaApi`, `SlotBundle`), `arena/ArenaSlots.ts` (the slots, the stand-in, the bridge back, blows, the
+tick phases, the bout), the seams (each a few lines, all behind `ctx.arena?.active`): `Enemies.damage / kill / gustShove` and the AI-loop
+skips, `Projectiles` (the per-owner pass, `invalidateEnemyIndex`, `intercept`), `WandSystem.markProjectile` (the `owner` stamp),
+`Player` (`stunT` in `restrained`, `STOMP_IMMUNE`, the arena branch of `kill`), `Game` (the factory, the phase hooks, the sim-window
+union), `FrameComposer` (the rival's sprite, shadow, pose and fx), `core/events` (slot-scoped handlers). The Duel Stage (`world/duelStage`,
+level `fighter-duel`), the panel's Duel section, the console `arena` command and `scripts/verify-arena-duel.mjs` (15 checks, every
+damage path lands exactly once on the right fighter) and `tests/arena-slots.test.ts` (19) are the surface.
+
+**Deviations, and why:**
+1. **One stand-in, not one per slot.** The design toggled a proxy per slot in and out of `ctx.enemies`. That mutates the array while a
+   system may be iterating it (an explosion loops the enemies and calls `damage`, which binds the victim). One stand-in object is
+   rewritten to mirror "the opponent of the bound slot" at each binding change (`syncStand`), so `ctx.enemies` never changes mid-tick.
+   Two fighters only; more need one stand-in each and the toggling.
+2. **Who resolves first is a seeded coin per tick**, not a parity (`ArenaSlots.rivalsFirst`): a bot's fire cadence is a multiple of
+   two and locked to a parity. (The coin did not remove the side bias seen in mirror matches: see 11.)
+3. **The stand-in's knock is bridged by differencing**, not by a hook in every kit: a velocity an attacker wrote on it since it was last
+   copied, a launch started in its knock state, a position written (a pull) are carried to the real body once, through its own
+   `applyImpulse` (weight, stoneskin and stagger resistance apply), whenever the binding changes.
+4. **A rival is built from slot 0's UNSCALED health and levitation, wands and flasks** (`matchLoadout`), then its body scales them; or
+   from its own signature loadout (`fighterLoadouts`, 6a). The first version built it from a default player (100 hp against 154) and
+   the left fighter won 83-100%: the telemetry found it (`docs/arena/TELEMETRY-AND-BALANCE.md` 9).
+5. **A rival fighter takes a blast as a fighter does** (capped at 42, `sim/explosion`): a cast bomb did 746 damage to a standing foe
+   and ended every duel it appeared in. The player always had this cap; the rival now shares it.
+6. **The AI always sees a rival fighter** (`arena/ai/worldView`): the duel's camera holds both fighters, so a person sees it wherever it
+   stands; the 640-wide sight rectangle would have hidden a fighter 440 cells away.
+
+**Measured:** see `docs/arena/TELEMETRY-AND-BALANCE.md` 9 (the cost per tick is inside the 3,700 ticks a second of a headless duel: two
+player updates, two wand updates and two fighter updates per tick are cheap beside the cell sim).
+
+**Fidelity gaps still open (write them on the box):** real foes see only slot 0 (a duel runs with no real foes); telekinesis, ragdolls and
+the rigid-body player collision are single-instance (slot >= 1 cannot carry crates); fighter reveals and slows on the victim apply to the
+attacker's view only; a kit's reaction to being HURT that scans for attackers (Rusk's Kiln Heart scorching the foe that hit him) sees
+the attacker's stand-in only while the attacker is bound (the nested victim call), which it is not: it misses; the cell sim is not
+mirror-symmetric (asymmetric neighbour lists, charge and fire spread), so a mirror match can lean to one side: read every pair over both
+sides (the batch does).
+
+**Risks, retired or still live:** retired: the enemy index (invalidated on every binding change), the event bus (scoped per fighter
+events), death and respawn leaks into global systems (the arena branch). Still live: scanners of `ctx.enemies` that were not audited
+(A3.11: the readouts, the music director and the minimap tolerate a `'fighter'` kind today; each was exercised in the probes but not
+read), the single-instance modules, and perf of a third slot.

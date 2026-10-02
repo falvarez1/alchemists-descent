@@ -11,6 +11,10 @@ import type { FightTotals } from '@/fighters/telemetry/fightLog';
 import { getParamOverride } from '@/fighters/paramOverride';
 import type { ParamValue } from '@/fighters/paramOverride';
 import { DUEL, resetDuelStage } from '@/world/duelStage';
+import { FIGHTER_LOADOUTS } from '@/content/fighterLoadouts';
+import { ARENA_RULES, ARENA_RULE_RANGES } from '@/config/arenaRules';
+import type { ArenaRuleKey } from '@/config/arenaRules';
+import type { FighterLoadout } from '@/content/fighterLoadouts';
 
 /**
  * THE FIGHT HARNESS (docs/arena/TELEMETRY-AND-BALANCE.md 3.3), dev builds only: one call stages, runs and records a whole duel in the
@@ -44,6 +48,8 @@ export interface FightSpec {
   render?: boolean;
   /** Slot 0 spawns on the RIGHT and slot 1 on the left (to tell a slot's edge from a side's). */
   swapSpawns?: boolean;
+  /** Signature loadouts to use for this fight only (the data of content/fighterLoadouts, by fighter id): a loadout is tuned like a number. */
+  loadouts?: Partial<Record<FighterId, Partial<Pick<FighterLoadout, 'wands' | 'flasks'>>>>;
 }
 
 export interface FightOutcome {
@@ -79,6 +85,9 @@ export function installFightTools(game: FightGame): FightTools {
     await params.ready();
     if (!bodiesRegistered) {
       bodiesRegistered = true;
+      params.addRoot('arena', ARENA_RULES, {
+        range: (path) => { const r = ARENA_RULE_RANGES[path.slice(path.lastIndexOf('.') + 1) as ArenaRuleKey]; return r ? { min: r.min, max: r.max, step: 0.01 } : null; },
+      });
       params.addRoot('body', FIGHTER_BODIES, {
         range: (path) => {
           const leaf = path.slice(path.lastIndexOf('.') + 1) as BodyField;
@@ -95,7 +104,16 @@ export function installFightTools(game: FightGame): FightTools {
     const ctx = game.ctx;
     const arena = ctx.arena;
     if (!arena) throw new Error('fight harness: no arena on this ctx');
-    const restore = params.apply(spec.overrides ?? {});
+    const restoreParams = params.apply(spec.overrides ?? {});
+    const savedLoadouts: Array<[FighterId, FighterLoadout]> = [];
+    for (const [id, patch] of Object.entries(spec.loadouts ?? {}) as Array<[FighterId, Partial<FighterLoadout>]>) {
+      savedLoadouts.push([id, { ...FIGHTER_LOADOUTS[id] }]);
+      (FIGHTER_LOADOUTS as Record<FighterId, FighterLoadout>)[id] = { ...FIGHTER_LOADOUTS[id], ...patch };
+    }
+    const restore = (): void => {
+      restoreParams();
+      for (const [id, was] of savedLoadouts) (FIGHTER_LOADOUTS as Record<FighterId, FighterLoadout>)[id] = was;
+    };
     const recorder = new FightRecorder({
       player: ctx.player,
       enemies: ctx.enemies,

@@ -3,6 +3,7 @@
 //
 //   node scripts/fight-batch.mjs [url] [--pairs all | a,b;c,d] [--seeds 3] [--level 3] [--max-ticks 5400] [--pages 1]
 //        [--out verify-out/fights/<run>] [--set path=value ...] [--one-way] [--sample-every 6] [--limit N] [--swap-spawns]
+//        [--a-brain basic|dummy] [--b-brain basic|dummy] [--a-level 1-5] [--b-level 1-5]   (a dummy stands still: a target for a DPS measurement)
 //
 // --pairs all     every ordered pair of the ten (90): each pair runs both sides, so a fighter is never only on the left
 // --pairs a,b;c,d the listed pairs (ids), both sides unless --one-way
@@ -20,6 +21,8 @@ const all = (n) => args.flatMap((a, i) => (a === `--${n}` ? [args[i + 1]] : []))
 const IDS = ['ilyra-voss', 'brann-rook', 'sable-fen', 'mara-quell', 'kest-rel', 'nox-calder', 'edda-morrow', 'selene-wraith', 'rusk-emberjaw', 'father-thorne'];
 const seeds = Number(opt('seeds', '3'));
 const level = Number(opt('level', '3'));
+const aBrain = opt('a-brain', 'basic'), bBrain = opt('b-brain', 'basic');
+const aLevel = Number(opt('a-level', String(level))), bLevel = Number(opt('b-level', String(level)));
 const maxTicks = Number(opt('max-ticks', '5400'));
 const pagesN = Math.max(1, Number(opt('pages', '1')));
 const sampleEvery = Number(opt('sample-every', '6'));
@@ -80,7 +83,7 @@ async function worker(n) {
     const job = jobs[next++];
     if (!job) break;
     const spec = {
-      a: { id: job.a, brain: 'basic', level }, b: { id: job.b, brain: 'basic', level },
+      a: { id: job.a, brain: aBrain, level: aLevel }, b: { id: job.b, brain: bBrain, level: bLevel },
       seed: job.seed, maxTicks, sampleEvery, overrides, runId, fight: job.i, git, dirty, swapSpawns,
     };
     try {

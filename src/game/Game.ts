@@ -981,8 +981,8 @@ export class Game {
       const tEnt = performance.now();
       if (!dbg.frozenPlayer()) {
         // A computer fighter, if one is installed (src/arena/ai), writes this tick's inputs just before the body reads them.
-        // (an arena: the fighters take turns going first, by tick parity, so neither has the edge of resolving its blow before the other moves)
-        const rivalsFirst = ctx.arena !== undefined && ctx.arena.active && (ctx.state.frameCount & 1) === 1;
+        // (an arena: who resolves first is a seeded coin each tick, so neither fighter has the edge of landing its blow before the other moves)
+        const rivalsFirst = ctx.arena !== undefined && ctx.arena.active && ctx.arena.rivalsFirst();
         if (rivalsFirst) ctx.arena?.runRivals('body');
         runBots(ctx);
         // (an arena: a rival's slow is TIME, so a slowed fighter runs only a fraction of its ticks)

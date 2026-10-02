@@ -4,6 +4,22 @@ Ten fighters, each with its own body, techniques, spells and effects, fighting o
 controlled by people or by computer AI, every fight recorded and analysed so the roster can be balanced from data: a
 Smash-style mode for this falling-sand world. Start with `MASTER-PLAN.md`.
 
+## Where it stands (2026-10-01)
+
+| Phase | State |
+|---|---|
+| P1a bodies (weight, speed, traction, jump, gravity, fall, jet, health, power) | **built and measured** (`verify-fighter-bodies`, 73 checks) |
+| P1b ten movement techniques | **built and measured** (`verify-fighter-moves`, 19 checks) |
+| P2 telemetry (recorder, harness, batch, analyser, parameter registry, tuner) | **built**; first baselines and a tuning run done |
+| P3 two fighters in one world (the Duel Stage, a rival, every damage path exactly once) | **built** (`verify-arena-duel`, 15 checks) |
+| P4 computer fighter (v0 dummy, v1 basic brain, five skill levels) | **built**; playbooks (v2) next |
+| P6a signature loadouts | **built**, chosen with the loadout lab |
+| P5 match rules (stocks, volatility, ring-outs, the collapse), P6b melee primaries, P7 balance passes | planned |
+
+**See it:** `npm run dev`, the title's Arena door, the panel's *Other stage* button (the Duel Stage), *Add rival*, a brain for each fighter.
+**Measure it:** `node scripts/fight-batch.mjs <url> --pairs all --seeds 3` then `node scripts/fight-analyse.mjs <dir>`; `fight-tune.mjs` turns the
+stat knobs toward 50%; `loadout-lab.mjs` and `fight-dps.mjs` choose a primary attack.
+
 | Read this | When |
 |---|---|
 | [`MASTER-PLAN.md`](MASTER-PLAN.md) | first: vision, phases, exit criteria, risks, how the work is organised |

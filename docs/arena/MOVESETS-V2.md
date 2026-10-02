@@ -67,3 +67,44 @@ until it can be measured.
 2. (6a) the signature loadouts as data; the Yard's panel shows them; a bot uses its fighter's loadout.
 3. (6b) Brann and Rusk's signature primaries, then the telemetry decides which of the rest need one.
 4. (6c) direction variants and universal defence, once the match rules exist.
+
+## 6. Built (2026-10-01): the signature loadouts (6a), and what the telemetry said about them
+
+`content/fighterLoadouts.ts` (data: a frame and cards for two wands and a flask belt per fighter), applied by `ArenaSlots` to BOTH
+fighters when a bout starts (`applySignature`; off with `ArenaSlots.signatureLoadouts = false`), `scripts/loadout-lab.mjs` (try candidate
+loadouts against a standing or a fighting target: the way the cards below were chosen), `scripts/fight-dps.mjs` (the DPS rig). The
+harness takes `loadouts` per fight, so a loadout is tuned like a number.
+
+**Why it had to come first.** While every fighter carried the shared Spark Bolt, 80% of all damage in a duel was that bolt and the kick
+(`spell` 40-88 a fight, tactical and ultimate near 0), so fights were decided by the body's health and power multipliers: Rusk 91%,
+Brann 85%, Mara 17%, whatever their kits said. The signature primary is where a style lives.
+
+**The loadouts (wand I is the weapon a bot holds; wand II is the second slot a person can swap to):**
+
+| Fighter | Wand I | Shape | Idea |
+|---|---|---|---|
+| Ilyra | quill: double + spark + spark | pairs of fast sparks | rapid rushdown; the flame jet waits in wand II |
+| Brann | mortar: heavy + spark | slow, hard, long recharge | the body walks the heavy shot in |
+| Sable | oak: shorthoming + wisp | homing motes | pokes that keep the wounds coming |
+| Mara | samovar: electriccharge + spark | electrified bolts, a big tank | the bells and the chime control; the arcs wait in wand II |
+| Kest | pepperpot: triple + speed + spark + spark | a fan of fast darts | always moving |
+| Nox | bone: trigger + spark + lightning | a spark that releases a chain where it lands | the trap shot; acid and a black hole in wand II |
+| Edda | void: frostcharge + icelance + shattercrit + icelance | piercing, freezing, harder on the frozen | precision |
+| Selene | oak: bounce + spread + spark | a fan of ricochets | the blink does the rest |
+| Rusk | brass: kickback + bomb | a lobbed charge, twice as hard | close and loud; the flame jet waits in wand II |
+| Thorne | oak: bounce + millstone + spark | a heavy rebounding bolt | a thorn that comes back; the stone disc waits in wand II |
+
+**The DPS rig (a level-5 bot against a standing Nox, median of 5):** Brann 5.0 s, Sable 5.5, Selene 5.5, Thorne 5.5, Kest 6.0,
+Edda 6.0, Ilyra 6.5, Mara 7.5 (9 s after the swap to electrified sparks), Rusk 25 s with the flame jet (a flame is a terrain tool: 0.7 a
+contact). One band of 5-9 s with different shapes: that was the aim.
+
+**Findings the lab turned up (they decide what a card is FOR, and are not obvious):**
+- The **flame jet is not a weapon** (36 s to kill a standing foe): it lights things. It lives in wand II for the fire fighters.
+- **Chain lightning is a poor bot weapon** (16-25 s): the arc only reaches what it touches. Mara and Nox keep it, behind another card.
+- **A bomb ends a duel** (746 damage to a standing foe): the fix is not the loadout, it is the rule that a fighter takes a blast as a
+  fighter always has (capped at 42, `sim/explosion`).
+- `overcharge + spark` kills in 5 s and `millstone + bomb` in 4.5 s: the multiplier cards are the strongest and need the rarest slots.
+- A **vitriol spray** does almost nothing to a fighter that steps out of the pool (0-18 damage in 60 s).
+
+**Not built:** the signature melee primaries (6b: Brann's piston fist, Rusk's gauntlet, Kest's hook-knife, Selene's shuriken, Thorne's
+thorn-bow), direction variants (6c), a panel readout of the loadout. A bot holds only wand I (it never swaps).

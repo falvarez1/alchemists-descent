@@ -4,6 +4,8 @@ import type { FighterId } from '@/content/fighters';
 import type { Ctx, Enemy, EnemyDamageSource, EntityStatus, Projectile } from '@/core/types';
 import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { VIEW_H, VIEW_W } from '@/config/constants';
+import { FIGHTER_LOADOUTS, loadoutSave } from '@/content/fighterLoadouts';
+import { ARENA_RULES } from '@/config/arenaRules';
 
 /**
  * ARENA SLOTS (docs/arena/ARCHITECTURE.md, D-001): two fighters in one world.
@@ -60,6 +62,11 @@ export class ArenaSlots implements ArenaApi {
   private ownerBound = false;
   readonly bout: Bout = { state: 'idle', winner: null, startedAt: -1, endedAt: -1, downs: [] };
   private blow: { by: number; tag: string } | null = null;
+  /**
+   * Each fighter carries ITS signature wands, cards and flasks (content/fighterLoadouts) instead of the run's: the primary attack is
+   * where 80% of the damage comes from, so it is where a fighter's style has to live. Off: both fight with slot 0's.
+   */
+  signatureLoadouts = true;
 
   get activeBlow(): { by: number; tag: string } | null { return this.blow; }
 
@@ -101,6 +108,8 @@ export class ArenaSlots implements ArenaApi {
     this.ctx.events.scoped = true;
     this.with(slot, () => { f.equip(id); });
     await f.whenReady();
+    this.applySignature(this.slots[0]!.bundle);
+    this.applySignature(bundle);
     this.spawns[slot] = { x, y };
     this.with(slot, () => { this.respawnBody(bundle, x, y); });
     this.attachStand();
@@ -127,6 +136,15 @@ export class ArenaSlots implements ArenaApi {
     to.wands.loadLoadout(from.wands.snapshotLoadout());
     to.flask.clearSlots();
     from.flask.slots.forEach((s, i) => { to.flask.setSlot(i, s.material, s.count); });
+  }
+
+  /** Install a fighter's own wands, cards and flask belt (when signature loadouts are on and it is one of the ten). */
+  private applySignature(b: SlotBundle): void {
+    const id = b.fighters.id;
+    if (!this.signatureLoadouts || id === null) return;
+    b.wands.loadLoadout(loadoutSave(id));
+    b.flask.clearSlots();
+    FIGHTER_LOADOUTS[id].flasks.forEach((f, i) => { b.flask.setSlot(i, f.material, f.count); });
   }
 
   removeRival(slot: number): void {
@@ -296,7 +314,8 @@ export class ArenaSlots implements ArenaApi {
     if (!rec || rec.bundle.player.dead || this.bout.state === 'won') return;
     const attacker = this.boundSlot;
     const dealt = playerBlow(source) ? this.slots[attacker]?.bundle.fighters.body.dealt ?? 1 : 1;
-    const dmg = amount * dealt;
+    // (the duel's tempo: a share of every blow, config/arenaRules)
+    const dmg = amount * dealt * ARENA_RULES.blowScale;
     if (dmg > 0) this.lastBlow[victim] = { by: attacker, at: this.ctx.state.frameCount };
     const tag = source === 'direct' ? 'fighter' : String(source);
     // What the blow belongs to is the ATTACKER's to say (its kit knows which ability is acting): a fight recorder reads it inside the victim's damage().
@@ -372,6 +391,12 @@ export class ArenaSlots implements ArenaApi {
         }
       });
     }
+  }
+
+  rivalsFirst(): boolean {
+    const s = this.ctx.state;
+    const h = Math.imul((s.frameCount | 0) ^ Math.imul((s.worldSeed | 0) + 0x632be5ab, 0x85ebca6b), 0x9e3779b1);
+    return ((h ^ (h >>> 16)) & 1) === 1;
   }
 
   /** May slot 0 run its body this tick (a rival's slow is time)? */
@@ -462,6 +487,7 @@ export class ArenaSlots implements ArenaApi {
         this.respawnBody(rec.bundle, at.x, at.y);
         rec.runs = true;
         rec.bundle.wands.clearTransientState?.();
+        this.applySignature(rec.bundle);
         for (const w of rec.bundle.wands.wands) { w.mana = w.frame.manaMax; w.cooldown = 0; w.castIndex = 0; }
       });
     }

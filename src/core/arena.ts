@@ -72,6 +72,8 @@ export interface ArenaApi {
   intercept(stand: Enemy, p: Projectile): boolean;
   /** One slot's tick, after slot 0's own (the base game calls this at the three phase points). */
   runRivals(phase: RivalPhase): void;
+  /** Does the rival resolve BEFORE slot 0 this tick? A seeded coin per tick (not parity: a bot's fire cadence is a multiple of two and would lock to it). */
+  rivalsFirst(): boolean;
   /** May this slot run its body this tick? (A rival's slow is TIME: a slowed fighter runs a fraction of its ticks.) */
   runsBody(slot: number): boolean;
   /** The controller's arena branch: a fighter was knocked out. */

@@ -71,7 +71,7 @@ and the decision log refer to it. Update the box in the same commit as the work.
 
 ## P6: movesets v2 (`MOVESETS-V2.md`)
 
-- [ ] M6.1 `content/fighterLoadouts.ts` (signature wands and flask belts as data) + grant on equip in an arena
+- [x] M6.1 `content/fighterLoadouts.ts` (signature wands and flask belts as data) + grant on equip in an arena
 - [ ] M6.2 Brann and Rusk signature primaries (`kit.primary?()`)
 - [ ] M6.3 the other signature primaries the telemetry asks for
 - [ ] M6.4 direction variants of Z (optional)
