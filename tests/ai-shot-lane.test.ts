@@ -107,6 +107,22 @@ describe('observed firing paths', () => {
     expect(self.input.keys.left).toBe(true);
     expect(self.input.keys.jump).toBe(false);
   });
+  test('brakes and descends at a checked hazard landing instead of flying beyond it', () => {
+    const self = { player: { firing: false }, input: { keys: {}, mouse: {} } } as BrainSelf;
+    const control = new Control(self, { free: () => true }, .8);
+    const body = { ...createWorldView().me, x: 330, y: 639, sy: 630, grounded: true, levit: 80 };
+    control.observe(body, 0);
+    control.startHop(1, 609, 639, 392);
+    Object.assign(body, { x: 360, y: 607, grounded: false });
+    control.observe(body, 10); control.walkTo(body, 740, { tol: 6 });
+    Object.assign(body, { x: 392, y: 610, vx: 2 });
+    control.observe(body, 11); control.walkTo(body, 740, { tol: 6 });
+    expect(self.input.keys.jump).toBe(false);
+    expect(self.input.keys.right).toBe(false);
+    Object.assign(body, { x: 393, y: 615, vx: 0 });
+    control.observe(body, 12); control.walkTo(body, 740, { tol: 6 });
+    expect(self.input.keys.jump).toBe(false);
+  });
   test('finds a safe gap between coarse landing samples without extending hop reach', () => {
     const world = new World();
     for (let x = 300; x <= 460; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);

@@ -198,7 +198,7 @@ export class StuckDetector {
 // --------------------------------------------------------------------------------------------------------------- control
 
 export type EdgeStatus = 'running' | 'done' | 'failed';
-type HopPhase = 'none' | 'rise' | 'cross';
+type HopPhase = 'none' | 'rise' | 'cross' | 'land';
 type EdgePhase = 'approach' | 'rise' | 'cross' | 'land';
 
 /** How the walk steering behaves. */
@@ -213,7 +213,7 @@ export class Control {
   readonly hand: Hand;
   readonly traction: Traction;
   readonly stuck = new StuckDetector();
-  private hop: { phase: HopPhase; dir: number; topY: number; until: number } = { phase: 'none', dir: 0, topY: 0, until: 0 };
+  private hop: { phase: HopPhase; dir: number; topY: number; until: number; landingX?: number } = { phase: 'none', dir: 0, topY: 0, until: 0 };
   private edge: { phase: EdgePhase; since: number; edge: NavEdge | null; holdJump: boolean } = { phase: 'approach', since: 0, edge: null, holdJump: false };
   private escapeUntil = 0;
   private escapeDir = 0;
@@ -304,10 +304,24 @@ export class Control {
       return;
     }
     if (hop.phase === 'cross') {
+      if (hop.landingX !== undefined && (me.x - hop.landingX) * hop.dir >= -2) {
+        hop.phase = 'land'; hop.until = this.tick + 60;
+        this.hand.move(this.steer(me, hop.landingX, 2));
+        this.hand.jump(false);
+        return;
+      }
       this.hand.move(hop.dir);
       // hold the clearance while the body is still over the obstacle: the jet comes on again if it sinks below the top
       this.hand.jump(me.y > hop.topY - 2 && !me.grounded && me.levit > 6);
       if ((me.grounded && this.tick > hop.until - 36) || this.tick > hop.until) hop.phase = 'none';
+      return;
+    }
+    if (hop.phase === 'land') {
+      // Brake over the planner's checked island and let go of the jet,
+      // even if combat has already chosen a farther movement goal.
+      this.hand.move(this.steer(me, hop.landingX ?? me.x, 2));
+      this.hand.jump(false);
+      if (me.grounded || this.tick > hop.until) hop.phase = 'none';
       return;
     }
     this.hand.jump(false);
@@ -330,8 +344,8 @@ export class Control {
   }
 
   /** A terrain-checked rise over a hazard uses the same height control as cover. */
-  startHop(dir: number, topY: number, fromY: number): void {
-    this.hop = { phase: 'rise', dir, topY, until: this.tick + 20 + fromY - topY };
+  startHop(dir: number, topY: number, fromY: number, landingX?: number): void {
+    this.hop = { phase: 'rise', dir, topY, until: this.tick + 20 + fromY - topY, landingX };
     this.escapeUntil = 0;
     this.hand.move(dir);
     this.hand.jump(true);
