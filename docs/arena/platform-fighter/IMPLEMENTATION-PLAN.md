@@ -5,6 +5,8 @@ Baseline: c90e850
 Working branch: feature/arena-stock-matches
 Status: implementation started; milestone completion requires the evidence below.
 
+Latest camera checkpoint: Foundry main platform is 480 cells wide, with a separate 1120-by-760-cell blast box. Fighter-follow framing now pans and zooms from 0.4 to 1.65, preserving recovery margin. Expanded world sampling fills wide views on WebGL and WebGPU; wide shots currently use CPU composition. Live performance and visual captures are recorded in EVIDENCE.md. Further camera polish, CPU footwork, controller remapping, combat balance, and music remain active work.
+
 ## Objective
 
 Build a readable local platform fighter around damage, launch, recovery, and ring-outs while retaining Alchemist's Descent's material simulation and fighter identities. Use the ImageGen concept sheets as visual targets, then compare real gameplay captures against them. A generated concept is not evidence of implemented gameplay or visual parity.

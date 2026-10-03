@@ -121,6 +121,7 @@ export class FrameComposer implements PixelSurface {
   /** Integer camera snapshot for the current frame (original renderCamX/renderCamY). */
   private renderCamX = 0;
   private renderCamY = 0;
+  private viewScale = 1;
   private lastLightBuildFrame = -1;
   private lastLightBuildRenderX = Number.NaN;
   private lastLightBuildRenderY = Number.NaN;
@@ -207,8 +208,8 @@ export class FrameComposer implements PixelSurface {
   // GPU path the same writes land in the overlay (a=1 tells the shader to
   // drop the terrain underneath — exactly what overwriting the buffer did).
   setPx(x: number, y: number, r: number, g: number, b: number): void {
-    const vx = Math.round(x + this.drawOffsetX) - this.renderCamX,
-      vy = Math.round(y + this.drawOffsetY) - this.renderCamY;
+    const vx = Math.round((x + this.drawOffsetX - this.renderCamX) / this.viewScale),
+      vy = Math.round((y + this.drawOffsetY - this.renderCamY) / this.viewScale);
     if (vx < 0 || vx >= VIEW_W || vy < 0 || vy >= VIEW_H) return;
     const pi = (VIEW_H - 1 - vy) * VIEW_W + vx;
     const idx = pi * 4;
@@ -268,8 +269,8 @@ export class FrameComposer implements PixelSurface {
     if (a <= 0.001) { this.addFinePx(x, y, r, g, b); return; }
     const overlay = this.overlay, scale = overlay?.scale ?? 1;
     if (!overlay) {
-      const vx = Math.round(x + this.drawOffsetX) - this.renderCamX,
-        vy = Math.round(y + this.drawOffsetY) - this.renderCamY;
+      const vx = Math.round((x + this.drawOffsetX - this.renderCamX) / this.viewScale),
+        vy = Math.round((y + this.drawOffsetY - this.renderCamY) / this.viewScale);
       if (vx < 0 || vx >= VIEW_W || vy < 0 || vy >= VIEW_H) return;
       const idx = ((VIEW_H - 1 - vy) * VIEW_W + vx) * 4, d = this.target.pixelData, k = 1 - a;
       d[idx] = d[idx] * k + r; d[idx + 1] = d[idx + 1] * k + g; d[idx + 2] = d[idx + 2] * k + b; d[idx + 3] = 1;
@@ -365,8 +366,8 @@ export class FrameComposer implements PixelSurface {
   }
 
   addPx(x: number, y: number, r: number, g: number, b: number): void {
-    const vx = Math.round(x + this.drawOffsetX) - this.renderCamX,
-      vy = Math.round(y + this.drawOffsetY) - this.renderCamY;
+    const vx = Math.round((x + this.drawOffsetX - this.renderCamX) / this.viewScale),
+      vy = Math.round((y + this.drawOffsetY - this.renderCamY) / this.viewScale);
     if (vx < 0 || vx >= VIEW_W || vy < 0 || vy >= VIEW_H) return;
     const pi = (VIEW_H - 1 - vy) * VIEW_W + vx;
     const idx = pi * 4;
@@ -450,9 +451,10 @@ export class FrameComposer implements PixelSurface {
 
   compose(ctx: Ctx, alpha = 1): void {
     this.alpha = alpha;
+    this.viewScale = ctx.camera.viewScale ?? 1;
     this.drawOffsetX = 0; this.drawOffsetY = 0;
-    ctx.camera.presentationX = ctx.camera.x + this.poses.offset(ctx.camera, 'x', alpha);
-    ctx.camera.presentationY = ctx.camera.y + this.poses.offset(ctx.camera, 'y', alpha);
+    ctx.camera.presentationX = ctx.camera.x + this.poses.offset(ctx.camera, 'x', alpha) + VIEW_W * (1 - this.viewScale) / 2;
+    ctx.camera.presentationY = ctx.camera.y + this.poses.offset(ctx.camera, 'y', alpha) + VIEW_H * (1 - this.viewScale) / 2;
     ctx.camera.renderX = Math.floor(ctx.camera.presentationX);
     ctx.camera.renderY = Math.floor(ctx.camera.presentationY);
     this.renderCamX = ctx.camera.renderX;
@@ -496,8 +498,10 @@ export class FrameComposer implements PixelSurface {
     // busy frame) could land on odd frames indefinitely and never relight.
     const lightBuildDue = frameCount % 2 === 0 || frameCount - this.lastLightBuildFrame >= 2 || frameCount < 5;
     const webGpuLiveComposeDisabled = ctx.state.render?.backend === 'webgpu' && !ctx.state.render.compose;
+    // GPU terrain windows currently encode one cell per texel. The CPU reference
+    // path samples expanded stock views until both GPU samplers support that extent.
     const gpuComposeRequested =
-      ctx.state.postFx.gpuCompose && !webGpuLiveComposeDisabled && this.target.gpuComposeAvailable;
+      this.viewScale === 1 && ctx.state.postFx.gpuCompose && !webGpuLiveComposeDisabled && this.target.gpuComposeAvailable;
     const lightRebuilt =
       lightBuildDue &&
       (this.lastLightBuildFrame !== frameCount ||
@@ -669,12 +673,12 @@ export class FrameComposer implements PixelSurface {
       const originY = backdropOrigin(renderCamY, presentationY, setting.speed);
       const offsetX = setting.offsetX + backdropOffsetX;
       for (let vx = 0; vx < VIEW_W; vx++) {
-        const sx = backdropTexel(originX, vx, scale, offsetX, layer.width);
+        const sx = backdropTexel(originX, vx * this.viewScale, scale, offsetX, layer.width);
         // Byte offsets: the hot loop reads pixels[ySamples[vy] + xSamples[vx]].
         xSamples[vx] = (backdropMirror ? layer.width - 1 - sx : sx) * 4;
       }
       for (let vy = 0; vy < VIEW_H; vy++) {
-        ySamples[vy] = backdropTexel(originY, vy, scale, setting.offsetY, layer.height) * layer.width * 4;
+        ySamples[vy] = backdropTexel(originY, vy * this.viewScale, scale, setting.offsetY, layer.height) * layer.width * 4;
       }
       const descriptor = this.backdropLayerPool[activeBackdropLayers.length];
       descriptor.pixels = layer.pixels;
@@ -736,7 +740,7 @@ export class FrameComposer implements PixelSurface {
     const boostG = ctx.params.global.maxBrightness;
 
     for (let vy = 0; vy < VIEW_H; vy++) {
-      const wy = renderCamY + vy;
+      const wy = renderCamY + Math.floor(vy * this.viewScale);
       // Below the world floor (the camera is allowed to pan past the edge to keep
       // the wizard framed): flat black void, not a smear of the bottom row.
       if (wy >= worldFloor) {
@@ -750,7 +754,7 @@ export class FrameComposer implements PixelSurface {
         continue;
       }
       for (let vx = 0; vx < VIEW_W; vx++) {
-        const wx = renderCamX + vx;
+        const wx = renderCamX + Math.floor(vx * this.viewScale);
         let lookupX = wx,
           lookupY = wy;
         let ringGlow = 0;
@@ -1131,7 +1135,7 @@ export class FrameComposer implements PixelSurface {
     // Painting a whole black strip here needlessly converts/uploads thousands
     // of half-float sprite pixels whenever the player reaches a deep floor.
     if (this.overlay !== null && ctx.world.height === HEIGHT) return;
-    const firstVoidVy = ctx.world.height - this.renderCamY;
+    const firstVoidVy = Math.ceil((ctx.world.height - this.renderCamY) / this.viewScale);
     if (firstVoidVy >= VIEW_H) return; // the floor is below the view — nothing to mask
     const pixelData = this.target.pixelData;
     const overlay = this.overlay;

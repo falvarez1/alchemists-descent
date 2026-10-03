@@ -1,10 +1,10 @@
 /** Foundry collision and framing. All platforms are real cells, inside the world bounds. */
 export const STOCK_STAGE = {
-  zone: { left: 490, right: 1110, top: 390, bottom: 730 },
-  center: { x: 800, y: 560 },
-  main: { x0: 620, x1: 980, y: 610, depth: 65 },
-  platforms: [{ x0: 570, x1: 670, y: 530, depth: 22 }, { x0: 930, x1: 1030, y: 530, depth: 22 }],
-  spawns: [{ x: 690, y: 609 }, { x: 910, y: 609 }],
+  zone: { left: 240, right: 1360, top: 180, bottom: 940 },
+  center: { x: 800, y: 570 },
+  main: { x0: 560, x1: 1040, y: 640, depth: 65 },
+  platforms: [{ x0: 540, x1: 700, y: 560, depth: 12 }, { x0: 900, x1: 1060, y: 560, depth: 12 }],
+  spawns: [{ x: 680, y: 639 }, { x: 920, y: 639 }],
   // Outer lamp positions leave the inner ascent/recovery columns clear for a full fighter body.
-  lamps: [{ x: 584, y: 553 }, { x: 1016, y: 553 }, { x: 710, y: 670 }, { x: 890, y: 670 }],
+  lamps: [{ x: 552, y: 576 }, { x: 1048, y: 576 }, { x: 710, y: 700 }, { x: 890, y: 700 }],
 } as const;

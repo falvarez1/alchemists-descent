@@ -582,16 +582,14 @@ export class ArenaSlots implements ArenaApi {
       if (stunned) rec.bundle.player.stunT = Math.max(rec.bundle.player.stunT ?? 0, 2);
     }
     this.syncStand();
-    // The camera holds both fighters.
+    // Health duels use the shared midpoint. StockCameraRig owns stock framing.
     const a = this.slots[0]!.bundle.player;
     const rivals = this.slots.slice(1).filter((r): r is Slot => r !== undefined).map((r) => r.bundle.player);
     let sx = a.x, sy = a.y - 9, n = 1;
     for (const r of rivals) { sx += r.x; sy += r.y - 9; n++; }
     this.focus.x = sx / n;
     this.focus.y = sy / n;
-    ctx.camera.inspectionFocus = this.match
-      ? { x: (this.match.zone.left + this.match.zone.right) / 2, y: (this.match.zone.top + this.match.zone.bottom) / 2 }
-      : this.focus;
+    ctx.camera.inspectionFocus = this.match ? null : this.focus;
     void VIEW_W; void VIEW_H;
   }
 

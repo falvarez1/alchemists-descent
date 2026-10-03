@@ -17,16 +17,22 @@
     "moveInput": 38,
     "healing": 50,
     "recovery": {
-      "minimumY": 567,
-      "x": 703,
-      "y": 609,
+      "minimumY": 558,
+      "x": 645,
+      "y": 639,
       "stocks": 3,
       "grounded": true
     },
     "winner": 0,
     "finished": "finished",
     "stage": 13,
-    "open": 0
+    "open": 0,
+    "main": {
+      "x0": 560,
+      "x1": 1040,
+      "y": 640,
+      "depth": 65
+    }
   },
   "errors": []
 }

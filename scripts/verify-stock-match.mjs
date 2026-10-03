@@ -27,7 +27,8 @@ try {
   });
   await page.waitForTimeout(6500);
   await page.screenshot({ path: `${out}/foundry-first-pass.png` });
-  const results = await page.evaluate(() => {
+  const results = await page.evaluate(async () => {
+    const { STOCK_STAGE: S } = await import('/src/config/stockStage.ts');
     const g = window.__game, c = g.ctx, a = c.arena;
     c.state.paused = true;
     const step = n => { for (let i = 0; i < n; i++) g.tick(false, { forcePaused: true }); };
@@ -43,7 +44,7 @@ try {
     const start = B.x;
     step(3);
     const moved = B.x - start;
-    B.x = 1111; step(1);
+    B.x = a.stockMatch.zone.right + 1; step(1);
     const lost = a.stockMatch.fighters[1].stocks;
     step(62);
     const respawn = { dead: B.dead, percent: a.stockMatch.fighters[1].volatility, protected: a.stockMatch.fighters[1].protection > 0 };
@@ -57,22 +58,22 @@ try {
     const healing = a.stockMatch.fighters[0].volatility;
     // Recover with ordinary directional/jump input, then land on real platform cells.
     a.reset(); step(125);
-    Object.assign(A, { x: 599, y: 650, vx: 0, vy: 1, grounded: false, fx: 0, fy: 0 });
+    Object.assign(A, { x: S.main.x0 - 21, y: S.main.y + 40, vx: 0, vy: 1, grounded: false, fx: 0, fy: 0 });
     a.bundle(0).input.keys.up = true; a.bundle(0).input.keys.jump = true;
     let minimumY = A.y;
     for (let i = 0; i < 100; i++) {
-      a.bundle(0).input.keys.right = A.y < 593 && A.x < 680;
-      if (A.x > 650) { a.bundle(0).input.keys.jump = false; a.bundle(0).input.keys.up = false; }
+      a.bundle(0).input.keys.right = A.y < S.main.y - 17 && A.x < S.main.x0 + 60;
+      if (A.x > S.main.x0 + 30) { a.bundle(0).input.keys.jump = false; a.bundle(0).input.keys.up = false; }
       step(1); minimumY = Math.min(minimumY, A.y);
     }
     const recovery = { minimumY, x: A.x, y: A.y, stocks: a.stockMatch.fighters[0].stocks, grounded: A.grounded };
     a.reset(); step(125);
-    for (let i = 0; i < 3; i++) { B.x = 1111; step(1); if (i < 2) step(62); }
+    for (let i = 0; i < 3; i++) { B.x = a.stockMatch.zone.right + 1; step(1); if (i < 2) step(62); }
     const winner = a.stockMatch.winner;
     const finished = a.stockMatch.state;
     a.reset(); step(125);
     c.state.paused = false;
-    return { before, low, high, moved, lost, respawn, moveInput, healing, recovery, winner, finished, stage: c.world.type(800, 610), open: c.world.type(550, 610) };
+    return { before, low, high, moved, lost, respawn, moveInput, healing, recovery, winner, finished, stage: c.world.type(S.center.x, S.main.y), open: c.world.type(S.main.x0 - 70, S.main.y), main: S.main };
   });
   console.log(JSON.stringify(results, null, 2));
   assert.equal(results.low.hp, results.before, 'Stock damage must not lower health');
@@ -84,7 +85,7 @@ try {
   assert.ok(results.moveInput > 10, 'Ordinary movement inputs work');
   assert.equal(results.healing, 50); assert.equal(results.winner, 0); assert.equal(results.finished, 'finished');
   assert.equal(results.recovery.stocks, 3, 'Recovery returns without losing a stock');
-  assert.ok(results.recovery.minimumY < 610 && results.recovery.x > 625 && results.recovery.grounded, 'Input-driven recovery lands on the platform');
+  assert.ok(results.recovery.minimumY < results.main.y && results.recovery.x > results.main.x0 + 5 && results.recovery.grounded, 'Input-driven recovery lands on the platform');
   assert.equal(results.stage, 13); assert.equal(results.open, 0);
   await page.waitForTimeout(1800);
   await page.screenshot({ path: `${out}/foundry-verified.png` });
@@ -93,19 +94,20 @@ try {
   const recoveries = [];
   for (const fighter of ['ilyra-voss', 'brann-rook', 'mara-quell']) for (const side of [-1, 1]) {
     const recovery = await page.evaluate(async ({ fighter, side }) => {
+      const { STOCK_STAGE: S } = await import('/src/config/stockStage.ts');
       const g = window.__game, c = g.ctx, a = c.arena;
       c.state.paused = true;
       c.fighters.equip(fighter); await c.fighters.whenReady();
       const step = n => { for (let i = 0; i < n; i++) g.tick(false, { forcePaused: true }); };
       a.reset(); step(125);
       const p = a.bundle(0).player, keys = a.bundle(0).input.keys;
-      Object.assign(p, { x: side < 0 ? 599 : 1001, y: 650, vx: 0, vy: 1, grounded: false, fx: 0, fy: 0 });
+      Object.assign(p, { x: side < 0 ? S.main.x0 - 21 : S.main.x1 + 21, y: S.main.y + 40, vx: 0, vy: 1, grounded: false, fx: 0, fy: 0 });
       keys.up = true; keys.jump = true;
       let minimumY = p.y;
       for (let i = 0; i < 120; i++) {
-        keys.right = side < 0 && p.y < 593 && p.x < 680;
-        keys.left = side > 0 && p.y < 593 && p.x > 920;
-        if (side < 0 ? p.x > 650 : p.x < 950) { keys.up = false; keys.jump = false; }
+        keys.right = side < 0 && p.y < S.main.y - 17 && p.x < S.main.x0 + 60;
+        keys.left = side > 0 && p.y < S.main.y - 17 && p.x > S.main.x1 - 60;
+        if (side < 0 ? p.x > S.main.x0 + 30 : p.x < S.main.x1 - 30) { keys.up = false; keys.jump = false; }
         step(1); minimumY = Math.min(minimumY, p.y);
       }
       keys.left = false; keys.right = false; keys.up = false; keys.jump = false;
@@ -117,13 +119,13 @@ try {
   console.log('Recovery matrix:', JSON.stringify(recoveries));
   for (const recovery of recoveries) {
     assert.equal(recovery.stocks, 3, `${recovery.fighter} side ${recovery.side} must recover without a stock loss`);
-    assert.ok(recovery.grounded && recovery.x > 625 && recovery.x < 975 && recovery.minimumY < 610, 'Recover onto real stage');
+    assert.ok(recovery.grounded && recovery.x > results.main.x0 + 5 && recovery.x < results.main.x1 - 5 && recovery.minimumY < results.main.y, 'Recover onto real stage');
   }
   // Both readouts must report a simultaneous final-stock draw.
   await page.evaluate(() => {
     const g = window.__game, c = g.ctx, a = c.arena;
     a.reset(); for (let i = 0; i < 125; i++) g.tick(false, { forcePaused: true });
-    for (let slot = 0; slot < 2; slot++) { a.stockMatch.fighters[slot].stocks = 1; a.bundle(slot).player.x = 1111; }
+    for (let slot = 0; slot < 2; slot++) { a.stockMatch.fighters[slot].stocks = 1; a.bundle(slot).player.x = a.stockMatch.zone.right + 1; }
     g.tick(false, { forcePaused: true });
     c.state.paused = false;
   });
@@ -141,7 +143,7 @@ try {
   assert.deepEqual(errors, []);
   writeFileSync(`${out}/stock-dogfood.json`, JSON.stringify(dogfood, null, 2));
   console.log('Bot dogfood:', JSON.stringify(dogfood));
-  assert.equal(await page.evaluate(() => window.__game.ctx.camera.zoom), 1, 'Stock framing survives a live bout');
+  assert.ok(await page.evaluate(() => { const z = window.__game.ctx.camera.zoom; return z >= .4 && z <= 1.65; }), 'Stock framing stays within its authored range');
   await page.evaluate(async () => { await window.__game.ctx.console.exec('run test --level fighter-test --world campaign-level'); });
   await page.waitForFunction(() => window.__game.ctx.levels.current?.def.id === 'fighter-test');
   assert.equal(await page.evaluate(() => document.body.classList.contains('stock-match')), false, 'Leaving stocks restores the normal HUD');

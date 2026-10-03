@@ -81,6 +81,7 @@ function makeCtx(frameCount: number): Ctx {
     enemyCtl: { defs: {} },
     levels: {
       current: {
+        def: { id: 'physics-test' },
         decors: [],
         waystones: [],
         mechanisms: [],
@@ -98,6 +99,19 @@ function makeCtx(frameCount: number): Ctx {
 }
 
 describe('FrameComposer light rebuild cadence', () => {
+  it('draws world sprites beyond the original window into an expanded view', () => {
+    const target = makeTarget([]), ctx = makeCtx(10);
+    ctx.camera.x = 480; ctx.camera.y = 350; ctx.camera.viewScale = 2;
+    const composer = new FrameComposer(target, makeLight(), { backdropLayers: [], ready: true },
+      () => undefined, out => out.setPx(1100, 600, .9, .2, .1), () => undefined, () => undefined);
+    composer.compose(ctx);
+    expect(ctx.camera.renderX).toBe(160); expect(ctx.camera.renderY).toBe(170);
+    const x = (1100 - 160) / 2, y = (600 - 170) / 2;
+    const i = ((VIEW_H - 1 - y) * VIEW_W + x) * 4;
+    expect(target.pixelData[i]).toBeCloseTo(.9);
+    expect(target.pixelData[i + 1]).toBeCloseTo(.2);
+    expect(target.pixelData[i + 3]).toBe(1);
+  });
   it('lets GPU composition mask the deep void without writing a full sprite strip', () => {
     const target = makeTarget([]), overlay = makeOverlay();
     let marked = 0;

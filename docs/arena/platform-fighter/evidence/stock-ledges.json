@@ -7,8 +7,8 @@
         "protectedDamage": 0,
         "clear": true,
         "grounded": true,
-        "x": 636,
-        "y": 609,
+        "x": 576,
+        "y": 639,
         "phase": "idle"
       },
       {
@@ -17,8 +17,8 @@
         "protectedDamage": 0,
         "clear": true,
         "grounded": true,
-        "x": 964,
-        "y": 609,
+        "x": 1024,
+        "y": 639,
         "phase": "idle"
       }
     ],
@@ -43,12 +43,18 @@
       "grounded": true,
       "active": false,
       "dive": 0
+    },
+    "main": {
+      "x0": 560,
+      "x1": 1040,
+      "y": 640,
+      "depth": 65
     }
   },
   "keyboard": {
     "phase": "hang",
-    "x": 615,
-    "y": 625
+    "x": 555,
+    "y": 655
   },
   "gallery": [
     {

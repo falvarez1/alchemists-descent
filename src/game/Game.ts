@@ -1124,6 +1124,7 @@ export class Game {
     const mixFloat = (value: number): void => mix(Math.round(value * 1000));
     mix(Math.floor(ctx.camera.x));
     mix(Math.floor(ctx.camera.y));
+    mixFloat(ctx.camera.viewScale ?? 1);
     mix(ctx.state.mode === 'play' ? 1 : 0);
     mix(ctx.state.frameCount);
     mix(ctx.world.mutationVersion);

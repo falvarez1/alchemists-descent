@@ -27,11 +27,12 @@ try {
   });
   const mechanics = await page.evaluate(async () => {
     const { PLAYER_H, PLAYER_HALF_W } = await import('/src/core/types.ts');
+    const { STOCK_STAGE: S } = await import('/src/config/stockStage.ts');
     const g = window.__game, c = g.ctx, a = c.arena, p = c.player;
     const step = n => { for (let i = 0; i < n; i++) g.tick(false, { forcePaused: true }); };
     const fresh = side => {
       a.reset(); step(125);
-      Object.assign(p, { x: side > 0 ? 620 - PLAYER_HALF_W - 2 : 980 + PLAYER_HALF_W + 2, y: 610 + PLAYER_H - 2, vx: side, vy: 1, fx: 0, fy: 0, grounded: false, invuln: 0 });
+      Object.assign(p, { x: side > 0 ? S.main.x0 - PLAYER_HALF_W - 2 : S.main.x1 + PLAYER_HALF_W + 2, y: S.main.y + PLAYER_H - 2, vx: side, vy: 1, fx: 0, fy: 0, grounded: false, invuln: 0 });
       c.input.keys.right = side > 0; c.input.keys.left = side < 0; step(1);
     };
     const climbs = [];
@@ -48,18 +49,18 @@ try {
     fresh(1); c.input.keys.down = true; step(1); c.input.keys.down = false;
     const drop = { phase: a.stockLedge(0).phase, ready: a.stockLedge(0).airReady, vx: p.vx };
     step(2); const regrabbed = a.stockLedge(0).busy;
-    fresh(1); const edge = c.world.idx(620, 610), color = c.world.colors[edge]; c.world.clearCellAt(edge); step(1);
+    fresh(1); const edge = c.world.idx(S.main.x0, S.main.y), color = c.world.colors[edge]; c.world.clearCellAt(edge); step(1);
     const destroyed = a.stockLedge(0).phase; c.world.replaceCellAt(edge, 13, color);
-    a.reset(); step(125); Object.assign(p, { x: 800, y: 565, grounded: false, vx: 0, vy: 1, fx: 0, fy: 0 });
+    a.reset(); step(125); Object.assign(p, { x: S.center.x, y: S.main.y - 45, grounded: false, vx: 0, vy: 1, fx: 0, fy: 0 });
     c.input.keys.down = true; c.input.keys.right = true; step(2);
     const fastFall = { active: p.stockFastFall, dive: p.diveT, vy: p.vy, vx: p.vx };
     c.input.keys.down = false; step(20); const landed = { grounded: p.grounded, active: p.stockFastFall, dive: p.diveT };
-    return { climbs, punished, drop, regrabbed, destroyed, fastFall, landed };
+    return { climbs, punished, drop, regrabbed, destroyed, fastFall, landed, main: S.main };
   });
   console.log(JSON.stringify(mechanics, null, 2));
   for (const c of mechanics.climbs) {
     assert.equal(c.catchPhase, 'hang'); assert.equal(c.protectedDamage, 0); assert.ok(c.clear);
-    assert.equal(c.grounded, true); assert.equal(c.y, 609); assert.equal(c.phase, 'idle');
+    assert.equal(c.grounded, true); assert.equal(c.y, mechanics.main.y - 1); assert.equal(c.phase, 'idle');
   }
   assert.ok(mechanics.punished.volatility > 0); assert.equal(mechanics.punished.phase, 'idle');
   assert.equal(mechanics.drop.phase, 'idle'); assert.equal(mechanics.drop.ready, false); assert.ok(mechanics.drop.vx < 0);
@@ -70,8 +71,9 @@ try {
   // Exercise the real keyboard after placing the body beside the collision corner.
   await page.evaluate(async () => {
     const c = window.__game.ctx, g = window.__game, { PLAYER_H, PLAYER_HALF_W } = await import('/src/core/types.ts');
+    const { STOCK_STAGE: S } = await import('/src/config/stockStage.ts');
     c.arena.reset(); for (let i = 0; i < 125; i++) g.tick(false, { forcePaused: true });
-    Object.assign(c.player, { x: 620 - PLAYER_HALF_W - 2, y: 610 + PLAYER_H - 2, vx: 0, vy: 0, fx: 0, fy: 0, grounded: false });
+    Object.assign(c.player, { x: S.main.x0 - PLAYER_HALF_W - 2, y: S.main.y + PLAYER_H - 2, vx: 0, vy: 0, fx: 0, fy: 0, grounded: false });
     c.state.paused = false;
   });
   await page.keyboard.down('d');
@@ -84,10 +86,11 @@ try {
     for (const action of ['ledge-catch', 'ledge-climb', 'ledge-drop', 'fast-fall']) {
       await page.evaluate(async action => {
         const { PLAYER_H, PLAYER_HALF_W } = await import('/src/core/types.ts');
+    const { STOCK_STAGE: S } = await import('/src/config/stockStage.ts');
         const g = window.__game, c = g.ctx, p = c.player;
         const step = n => { for (let i = 0; i < n; i++) g.tick(false, { forcePaused: true }); };
         c.arena.reset(); step(125);
-        Object.assign(p, { x: action === 'fast-fall' ? 800 : 620 - PLAYER_HALF_W - 2, y: action === 'fast-fall' ? 540 : 610 + PLAYER_H - 2,
+        Object.assign(p, { x: action === 'fast-fall' ? S.center.x : S.main.x0 - PLAYER_HALF_W - 2, y: action === 'fast-fall' ? S.main.y - 70 : S.main.y + PLAYER_H - 2,
           vx: 0, vy: 1, fx: 0, fy: 0, grounded: false, invuln: 0, facing: 1 });
         c.input.keys.right = true;
         if (action === 'fast-fall') { c.input.keys.down = true; step(3); }
@@ -100,7 +103,10 @@ try {
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const clip = await page.evaluate(() => {
         const c = window.__game.ctx, box = document.querySelector('#canvas-holder > canvas').getBoundingClientRect();
-        return { x: Math.round(box.x + (c.player.x - c.camera.renderX) / 640 * box.width - 70), y: Math.round(box.y + (c.player.y - c.camera.renderY) / 360 * box.height - 90), width: 180, height: 145 };
+        const cam=c.camera, scale=cam.viewScale??1, zoom=cam.zoom*scale;
+        const sx=box.x+box.width*(.5+((c.player.x-cam.renderX)/(640*scale)-.5)*(1+4/640)*zoom-(cam.presentationX-cam.renderX)/640/scale*zoom);
+        const sy=box.y+box.height*(.5+((c.player.y-cam.renderY)/(360*scale)-.5)*(1+4/360)*zoom-(cam.presentationY-cam.renderY)/360/scale*zoom);
+        return { x: Math.max(0,Math.min(1100,Math.round(sx-70))), y: Math.max(0,Math.min(575,Math.round(sy-90))), width: 180, height: 145 };
       });
       const file = `${fighter}-${action}.png`; await page.screenshot({ path: `${out}/${file}`, clip }); gallery.push({ fighter, action, file });
     }

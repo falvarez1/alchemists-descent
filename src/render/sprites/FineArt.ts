@@ -33,13 +33,13 @@ export const HEMP_D: RGB = [0.42, 0.32, 0.14];
 export const WHEEL_FACE: RGB = [0.34, 0.24, 0.1];
 
 /** The composed view in world cells, padded so edge sprites are not clipped early. */
-export function cameraView(camera: { renderX: number; renderY: number }, margin = 12): ViewRect {
-  return { x0: camera.renderX - margin, y0: camera.renderY - margin, x1: camera.renderX + VIEW_W + margin, y1: camera.renderY + VIEW_H + margin };
+export function cameraView(camera: { renderX: number; renderY: number; viewScale?: number }, margin = 12): ViewRect {
+  return { x0: camera.renderX - margin, y0: camera.renderY - margin, x1: camera.renderX + VIEW_W * (camera.viewScale ?? 1) + margin, y1: camera.renderY + VIEW_H * (camera.viewScale ?? 1) + margin };
 }
 
 /** True when a world-space box touches the composed view (plus margin). */
-export function viewIntersects(camera: { renderX: number; renderY: number }, x0: number, y0: number, x1: number, y1: number, margin = 8): boolean {
-  return x1 >= camera.renderX - margin && x0 <= camera.renderX + VIEW_W + margin && y1 >= camera.renderY - margin && y0 <= camera.renderY + VIEW_H + margin;
+export function viewIntersects(camera: { renderX: number; renderY: number; viewScale?: number }, x0: number, y0: number, x1: number, y1: number, margin = 8): boolean {
+  return x1 >= camera.renderX - margin && x0 <= camera.renderX + VIEW_W * (camera.viewScale ?? 1) + margin && y1 >= camera.renderY - margin && y0 <= camera.renderY + VIEW_H * (camera.viewScale ?? 1) + margin;
 }
 
 export function finePixelStep(out: PixelSurface): number {

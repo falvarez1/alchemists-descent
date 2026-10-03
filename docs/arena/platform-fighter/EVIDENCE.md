@@ -7,9 +7,28 @@ Local environment: isolated worktree, Vite 127.0.0.1:5217, headless Edge through
 
 The Markdown and responsive offline HTML plans cover the full roadmap. Four ImageGen sheets cover the primary match, four stages, ten fighters/actions, and local-versus flow. A fifth output is the runtime Foundry backdrop in public/assets/arena/foundry-backdrop.png. The sixth, concepts/motion-defense.png, guides defensive poses and effects using the existing fighter portraits as references. The seventh, concepts/core-attacks.png, guides the three prototype fighters' melee moves. Each supplemental sheet has its exact prompt beside it. The HTML shows actual gameplay, twelve movement details, and twenty-four startup/contact captures.
 
-The next ImageGen sheets, ledge-movement.png and camera-direction.png, cover ledge movement and revised framing after the user playtest. Twelve additional native captures document ledge catch, climb, release, and fast fall. The camera storyboard is a proposal; the fixed camera has not yet been replaced.
+The next ImageGen sheets, ledge-movement.png and camera-direction.png, cover ledge movement and revised framing after the user playtest. Twelve additional native captures document ledge catch, climb, release, and fast fall. The camera storyboard guides the implemented camera checkpoint below.
 
-## Movement and playtest-response checkpoint
+## Larger stage and camera checkpoint
+
+The Foundry's main platform grew from 360 to 480 cells wide. Raised platforms grew from 100 to 160 cells wide and became thinner. The blast box is now x=240..1360, y=180..940, leaving 320 cells beyond each main-platform side and 300 below its top. These coordinates stay fixed while the camera pans and zooms.
+
+The first larger layout put raised platforms 90 cells above the main top. Browser testing found Brann's normal jump and levitation stopped two cells short. The final layout keeps an 80-cell rise so the heavy fighter can traverse upward without spending the dedicated recovery burst.
+
+StockCameraRig frames living fighters using their bounds and limited velocity lookahead. It pulls back faster than it closes, uses a small positional dead zone, reserves recovery/HUD clearance, and fits extreme vertical separation. Its range is 0.4..1.65. The frame composer expands world sampling below 1.0 instead of shrinking the presentation quad. Terrain, sprites, lighting, simulation bounds, and mouse-to-world input use the same extent. Campaign framing returns to its normal extent when stock play ends.
+
+- scripts/verify-stock-camera.mjs passed on actual WebGL2 and WebGPU backends. It captures close, wide, and offstage views, checks both fighters' usable framing, tests pointer mapping against a real fighter position, and proves survival at x=1190 beyond the old right boundary. The first capture attempt exposed stale paused-frame textures; the probe now explicitly refreshes the frame before capturing.
+- A real high-volatility launch was stepped and rendered for 90 frames on each backend. Every living fighter remained inside the frame, and the launch pulled the camera below zoom 1.0, exercising the change between normal and expanded composition.
+- Visual iteration fixed repeated background seams in wide shots and paints platform top highlights after their undersides so downsampling retains the collision rim. The current wide view has no repeated background seam or blank canvas border.
+- The stock-match probe passed damage, launch, stocks, respawn, real input recovery, results, simultaneous draw, and live framing. Six player recovery cases and all 22 CPU recovery cases passed on the enlarged geometry.
+- A live 300-frame bot sample measured median frame work 5.84 ms, p95 12.16 ms; median presentation interval 8.34 ms and p95 16.70 ms. This is one local headless Edge sample, not a hardware-wide guarantee. The associated HUD checks passed at 1280 and 390 pixels.
+- Wide shots currently use the shared CPU composition path on both presentation backends. The final fixed-scene WebGPU run measured 12.85 ms median frame submission work for a wide shot versus 2.93..3.47 ms for the closer shots. These synchronous costs exclude asynchronous GPU completion. Improving wide-shot sprite detail and composition cost remains required polish.
+- Live AI dogfood still recorded two self-attributed falls. The camera work does not resolve the reported CPU direction changes or all recovery decisions. Controller mapping, shield/grab, melee balance, and the soundtrack remain pending.
+- Whole suite passed 3,236 tests in 257 files. Typecheck, lint, and production build passed. The enlarged-stage ledge probe passed both climbs, protection, release, destruction, and fast fall. The final 80-cell raised-platform layout passed upward traversal and landing for both Ilyra and Brann.
+
+Evidence: camera-close.png, camera-wide.png, camera-recovery.png and their WebGPU counterparts; stock-camera.json, stock-camera-webgpu.json, stock-performance.json, stock-match-results.json, and stock-recovery-ai.json. These show an implemented camera checkpoint, not full concept-art parity.
+
+## Earlier movement checkpoint
 
 - Added a finite ledge hang, short initial protection, collision-checked climb, release, destruction handling, and one catch per airborne sequence. Ledge catches do not refill recovery or dodge resources. HUD and poses show the state.
 - Added stock fast fall with horizontal control; it does not trigger the campaign dive attack. A final review caught fast-fall state surviving a reset without a vine swing. A failing regression test now covers unconditional reset.
@@ -23,7 +42,7 @@ The next ImageGen sheets, ledge-movement.png and camera-direction.png, cover led
 - The unchanged health-duel browser probe passed all 16 checks. The updated illustrated plan loads every image and fits desktop and 390-pixel widths.
 - The rebuilt production player flow passed its 13 checks, including visible title launch, CPU play, controller joining, two-controller assignment, pause, disconnect/reconnect, and narrow layout, with no page errors. Current evidence: local-versus-player.json and refreshed versus player screenshots.
 
-Highest-priority remaining work from the user playtest: larger stage and independent blast bounds, polished fighter-follow camera with true zoom-out sampling, melee/projectile balance, movement commitments for CPU footwork, the confirmed Xbox layout with shield/grab support, and an original battle soundtrack. Visual parity is not achieved. Hanging bodies should sit lower relative to their grip, and the camera concept requires 16:9 adaptation and additional lower clearance.
+Remaining after the current camera pass: improve wide-shot rendering detail and cost, tune camera transitions during respawn, address melee/projectile balance and CPU movement commitments, implement the confirmed Xbox layout with shield/grab support, and create an original battle soundtrack. Visual parity is not achieved. Hanging bodies should sit lower relative to their grip.
 
 Inspection found that the baseline constructed ArenaSlots and exposed Arena/Duel only with __AUTHORING__. The new player-facing Duel entry, runtime, lobby, stock HUD, and CPU driver now run in the production player build. Training panels and the console remain authoring-only. Both builds have been exercised locally; nothing has been deployed.
 

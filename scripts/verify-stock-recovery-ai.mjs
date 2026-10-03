@@ -30,14 +30,15 @@ try {
   for (const fighter of fighters) for (const side of [-1, 1]) for (const scenario of fighter === 'brann-rook' ? ['baseline', 'late-hitstun'] : ['baseline']) {
     const result = await page.evaluate(async ({ fighter, side, scenario }) => {
       const g = window.__game, c = g.ctx, a = c.arena, p = c.player;
+      const { STOCK_STAGE: S } = await import('/src/config/stockStage.ts');
       await c.console.exec('arena bot 0 off'); c.fighters.equip(fighter); await c.fighters.whenReady();
       a.reset(); for (let i = 0; i < 125; i++) g.tick(false, { forcePaused: true });
-      Object.assign(p, { x: side < 0 ? 599 : 1001, y: 650, vx: 0, vy: 1, fx: 0, fy: 0, grounded: false, invuln: 0 });
+      Object.assign(p, { x: side < 0 ? S.main.x0 - 21 : S.main.x1 + 21, y: S.main.y + 40, vx: 0, vy: 1, fx: 0, fy: 0, grounded: false, invuln: 0 });
       if (scenario === 'late-hitstun') {
         // Reproduce the last live-bout stun tick. The launch lock still runs for this body tick.
         a.takeStockDamage(8, side * 3, 0);
         while (p.stunT > 1) g.tick(false, { forcePaused: true });
-        Object.assign(p, { x: side < 0 ? 567 : 1033, y: 606, vx: side * 7.84, vy: 3.5, fx: 0, fy: 0, levit: 60.7 });
+        Object.assign(p, { x: side < 0 ? S.main.x0 - 53 : S.main.x1 + 53, y: S.main.y - 4, vx: side * 7.84, vy: 3.5, fx: 0, fy: 0, levit: 60.7 });
       }
       await c.console.exec('arena bot 0 basic 3');
       const trace = []; let landed = false;
@@ -45,7 +46,7 @@ try {
         g.tick(false, { forcePaused: true });
         if (i % 6 === 0) trace.push({ tick: i, x: p.x, y: p.y, vx: p.vx, vy: p.vy, fuel: p.levit, burst: a.canRecover(0), up: c.input.keys.up, jump: c.input.keys.jump });
         if (p.dead || a.stockMatch.fighters[0].stocks < 3) break;
-        if (p.grounded && p.x >= 620 && p.x <= 980 && p.y <= 610) { landed = true; break; }
+        if (p.grounded && p.x >= S.main.x0 && p.x <= S.main.x1 && p.y <= S.main.y) { landed = true; break; }
       }
       return { fighter, side, scenario, landed, stocks: a.stockMatch.fighters[0].stocks, x: p.x, y: p.y, trace };
     }, { fighter, side, scenario });

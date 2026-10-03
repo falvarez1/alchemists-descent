@@ -189,7 +189,7 @@ export class DepthScene implements ParallaxLayers {
 
   sync(ctx: Ctx): void {
     if (ctx.arena?.stockMatch && ctx.levels.current?.def.id === 'fighter-duel') {
-      this.useStockBackdrop();
+      this.useStockBackdrop(ctx);
       return;
     }
     const kit = this.kitFor(ctx);
@@ -256,7 +256,7 @@ export class DepthScene implements ParallaxLayers {
 
   /* ------------------------------ slots ------------------------------ */
 
-  private useStockBackdrop(): void {
+  private useStockBackdrop(ctx: Ctx): void {
     const bmp = this.image(`${import.meta.env.BASE_URL}assets/arena/foundry-backdrop.png`);
     this.foreground.enabled = false;
     this.foreground.particles.set(false, null, null);
@@ -275,7 +275,7 @@ export class DepthScene implements ParallaxLayers {
         to.loaded = true; to.lit = 0; to.version = versionCounter++;
       }
       Object.assign(this.kitProfile.layers[to.id], NEUTRAL_LAYER, {
-        visible: i === 0, opacity: i === 0 ? 1 : 0, scale: ready ? VIEW_W / bmp.width : 1,
+        visible: i === 0, opacity: i === 0 ? 1 : 0, scale: ready ? VIEW_W * (ctx.camera.viewScale ?? 1) / bmp.width : 1,
       });
     }
     Object.assign(this.kitProfile.grade, DEFAULT_BACKDROP_GRADE);

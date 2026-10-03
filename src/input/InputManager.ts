@@ -424,9 +424,10 @@ export class InputManager {
     const rect = this.canvas.getBoundingClientRect();
     const u = (e.clientX - rect.left) / rect.width;
     const v = (e.clientY - rect.top) / rect.height;
-    const zoom = this.ctx.camera.zoom;
-    const fracX = this.ctx.camera.x - Math.floor(this.ctx.camera.x);
-    const fracY = this.ctx.camera.y - Math.floor(this.ctx.camera.y);
+    const viewScale = this.ctx.camera.viewScale ?? 1;
+    const zoom = this.ctx.camera.zoom * viewScale;
+    const fracX = ((this.ctx.camera.presentationX ?? this.ctx.camera.x) - this.ctx.camera.renderX) / viewScale;
+    const fracY = ((this.ctx.camera.presentationY ?? this.ctx.camera.y) - this.ctx.camera.renderY) / viewScale;
     const scaleX = (1 + 4 / VIEW_W) * zoom;
     const scaleY = (1 + 4 / VIEW_H) * zoom;
     const offsetX = -fracX * (2 / VIEW_W) * zoom;
@@ -436,8 +437,8 @@ export class InputManager {
     const texU = 0.5 + ((ndcX - offsetX) / scaleX) * 0.5;
     const texV = 0.5 - ((ndcY - offsetY) / scaleY) * 0.5;
     return {
-      x: Math.floor(texU * VIEW_W) + this.ctx.camera.renderX,
-      y: Math.floor(texV * VIEW_H) + this.ctx.camera.renderY,
+      x: Math.floor(texU * VIEW_W * viewScale) + this.ctx.camera.renderX,
+      y: Math.floor(texV * VIEW_H * viewScale) + this.ctx.camera.renderY,
     };
   }
 

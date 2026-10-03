@@ -2269,6 +2269,8 @@ export interface SpellsApi {
 }
 
 export interface CameraApi {
+  /** World cells per composed texel; stock wide shots expand sampling instead of shrinking the quad. */
+  viewScale?: number;
   actionFocus?: { x: number; y: number; zoom: number } | null;
   x: number;
   y: number;

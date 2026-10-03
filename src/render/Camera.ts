@@ -2,6 +2,7 @@ import { HEIGHT, SIM_MARGIN, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { clamp, smoothstep } from '@/core/math';
 import type { CameraApi, Ctx } from '@/core/types';
 import type { World } from '@/sim/World';
+import { StockCameraRig } from '@/render/StockCameraRig';
 
 const AIM_LOOKAHEAD_DEADZONE = 28;
 const AIM_LOOKAHEAD_FULL_DISTANCE = 150;
@@ -37,6 +38,9 @@ export class Camera implements CameraApi {
   tx = 0;
   ty = 0;
   zoom = 1;
+  viewScale = 1;
+  private readonly stockRig = new StockCameraRig();
+  private stockFraming = false;
   /** Editor zoom override (Builder wheel); null = the game's idle-zoom. */
   zoomLock: number | null = null;
   /** Runtime inspector/debug focus target; null means normal play follow. */
@@ -59,12 +63,24 @@ export class Camera implements CameraApi {
   update(ctx: Ctx): void {
     const { player, state, input } = ctx;
     const stock = state.mode === 'play' ? ctx.arena?.stockMatch : null;
-    const action = state.mode === 'play' && !stock ? this.actionFocus : null;
     if (stock) {
-      this.tx = (stock.zone.left + stock.zone.right - VIEW_W) / 2;
-      this.ty = (stock.zone.top + stock.zone.bottom - VIEW_H) / 2;
-      this.zoom = 1;
-    } else if (action) {
+      if (!this.stockFraming) this.stockRig.reset(this.x + VIEW_W / 2, this.y + VIEW_H / 2);
+      this.stockFraming = true;
+      const subjects = [];
+      for (let slot = 0; slot < (ctx.arena?.slotCount ?? 0); slot++) {
+        const p = ctx.arena?.bundle(slot)?.player, f = stock.fighters[slot];
+        if (p && !p.dead && f && f.stocks > 0 && f.respawn <= 0) subjects.push(p);
+      }
+      this.stockRig.step(subjects);
+      this.x = this.tx = this.stockRig.x - VIEW_W / 2;
+      this.y = this.ty = this.stockRig.y - VIEW_H / 2;
+      this.zoom = this.stockRig.zoom; this.viewScale = 1 / Math.min(1, this.zoom);
+      return;
+    }
+    if (this.stockFraming) this.zoom = 1;
+    this.stockFraming = false; this.viewScale = 1;
+    const action = state.mode === 'play' ? this.actionFocus : null;
+    if (action) {
       this.tx = action.x - VIEW_W / 2;
       this.ty = action.y - VIEW_H / 2;
     } else if (state.mode === 'play' && this.inspectionFocus !== null) {
@@ -160,17 +176,17 @@ export class Camera implements CameraApi {
       player.firing;
     this.idleFrames = busy ? 0 : this.idleFrames + 1;
     const dying = state.mode === 'play' && player.dead && !action && this.zoomLock === null;
-    const zTarget = stock ? 1 : action ? actionCameraZoom(action.zoom, actionDistance) : this.zoomLock ?? (dying ? 1 + 0.85 * deathPush(ctx.fx.deathTime ?? 0) : this.cineZoom);
+    const zTarget = action ? actionCameraZoom(action.zoom, actionDistance) : this.zoomLock ?? (dying ? 1 + 0.85 * deathPush(ctx.fx.deathTime ?? 0) : this.cineZoom);
     this.zoom += (zTarget - this.zoom) * (action ? .035 : this.zoomLock !== null ? 0.16 : dying ? 0.06 : this.cineZoom !== 1 ? 0.09 : 0.035);
   }
 
   updateSimBounds(world: World): void {
-    const cx = Math.floor(this.x);
-    const cy = Math.floor(this.y);
+    const cx = Math.floor(this.x + VIEW_W * (1 - this.viewScale) / 2);
+    const cy = Math.floor(this.y + VIEW_H * (1 - this.viewScale) / 2);
     world.simBounds.x0 = Math.max(0, cx - SIM_MARGIN);
-    world.simBounds.x1 = Math.min(WIDTH, cx + VIEW_W + SIM_MARGIN);
+    world.simBounds.x1 = Math.min(WIDTH, Math.ceil(cx + VIEW_W * this.viewScale + SIM_MARGIN));
     world.simBounds.y0 = Math.max(0, cy - SIM_MARGIN);
-    world.simBounds.y1 = Math.min(HEIGHT, cy + VIEW_H + SIM_MARGIN);
+    world.simBounds.y1 = Math.min(HEIGHT, Math.ceil(cy + VIEW_H * this.viewScale + SIM_MARGIN));
   }
 
   setInspectionFocus(x: number, y: number, options: { snap?: boolean } = {}): void {
@@ -184,6 +200,8 @@ export class Camera implements CameraApi {
 
   /** Hard-snap camera + render snapshot to center on a world position (bypasses smoothing). */
   snapTo(x: number, y: number): void {
+    if (this.stockFraming) { this.zoom = 1; this.viewScale = 1; }
+    this.stockFraming = false;
     this.x = this.tx = clamp(x - VIEW_W / 2, 0, WIDTH - VIEW_W);
     this.y = this.ty = clamp(y - VIEW_H / 2, 0, HEIGHT - VIEW_H);
     this.renderX = Math.floor(this.x);

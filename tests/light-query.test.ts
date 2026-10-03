@@ -250,6 +250,13 @@ describe('designed darkness reads smooth', () => {
 });
 
 describe('LightQuery (the LightQueryApi contract)', () => {
+  it('queries the correct world point when the camera expands the light field', () => {
+    const f = { ...field(), originScale: 2 };
+    f.wandField[5 + 7 * f.LW] = .8;
+    const query = new LightQuery(ctxWith(null), f);
+    expect(query.wandLight(120, 228)).toBeCloseTo(.8);
+    expect(query.wandLight(110, 214)).toBe(0);
+  });
   it('level: ambient + the built field, clamped to 2', () => {
     const f = field();
     const i = ((210 - 200) >> 1) * f.LW + ((120 - 100) >> 1);

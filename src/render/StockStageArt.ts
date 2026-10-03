@@ -22,7 +22,8 @@ function buildArtwork(): ArtPixel[] {
     pixels.push({ x, y, r, g, b, type: Cell.Metal });
   } };
   for (const slab of [STOCK_STAGE.main, ...STOCK_STAGE.platforms]) {
-    for (let y = slab.y; y < slab.y + slab.depth; y++) for (let x = slab.x0; x <= slab.x1; x++) {
+    // Paint the collision rim last so a wide camera never loses its thin highlight to downsampling.
+    for (let y = slab.y + slab.depth - 1; y >= slab.y; y--) for (let x = slab.x0; x <= slab.x1; x++) {
       const dy = y - slab.y, dx = x - slab.x0;
       const inset = dy > 8 ? Math.floor((dy - 8) * 1.7) : 0;
       if (x < slab.x0 + inset || x > slab.x1 - inset) continue;
@@ -51,8 +52,9 @@ function buildArtwork(): ArtPixel[] {
     }
   }
   // A riveted copper housing, toothed gear, and flask cutout on the real central body.
-  for (let y = 616; y <= 670; y++) for (let x = 773; x <= 827; x++) {
-    const dx = x - 800, dy = y - 643, radius = Math.hypot(dx, dy);
+  const emblemY = STOCK_STAGE.main.y + 33, emblemX = STOCK_STAGE.center.x;
+  for (let y = emblemY - 27; y <= emblemY + 27; y++) for (let x = emblemX - 27; x <= emblemX + 27; x++) {
+    const dx = x - emblemX, dy = y - emblemY, radius = Math.hypot(dx, dy);
     const angle = Math.atan2(dy, dx);
     const bevel = dx + dy < 0 ? 1 : .64;
     if (radius < 26) out.setPx(x, y, .095, .115, .13);

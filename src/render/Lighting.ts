@@ -157,6 +157,7 @@ export class Lighting implements LightField {
   /** Camera origin of the last build: gameplay reads index the field with it. */
   originX = 0;
   originY = 0;
+  get originScale(): number { return this.viewScale; }
   /** True once the field has been built at least once. */
   built = false;
 
@@ -186,6 +187,7 @@ export class Lighting implements LightField {
    * frame, so it reads the live camera snapshot and ambient through this.
    */
   private ctx!: Ctx;
+  private viewScale = 1;
 
   /** Reused result object (approved deviation 5: replaces _ltR/_ltG/_ltB out-globals). */
   private readonly lit: LightSample = { r: 1, g: 1, b: 1 };
@@ -217,8 +219,8 @@ export class Lighting implements LightField {
   sample(wx: number, wy: number): LightSample {
     const ctx = this.ctx;
     const AMBIENT = renderAmbient(ctx);
-    const fx = Math.floor(wx) - ctx.camera.renderX,
-      fy = Math.floor(wy) - ctx.camera.renderY;
+    const fx = Math.floor((wx - ctx.camera.renderX) / this.viewScale),
+      fy = Math.floor((wy - ctx.camera.renderY) / this.viewScale);
     const lx = fx >> 1,
       ly = fy >> 1;
     let Lr = 0,
@@ -290,9 +292,9 @@ export class Lighting implements LightField {
         this.seedLight(al.x, al.y + 2, I * al.r, I * al.g, I * al.b);
         continue;
       }
-      const R = Math.max(2, al.radius >> 1); // light-field pixels (half-res)
-      const clx = (al.x - renderCamX) >> 1,
-        cly = (al.y - renderCamY) >> 1;
+      const R = Math.max(2, Math.floor(al.radius / (2 * this.viewScale))); // light-field pixels (half-res)
+      const clx = Math.floor((al.x - renderCamX) / (2 * this.viewScale)),
+        cly = Math.floor((al.y - renderCamY) / (2 * this.viewScale));
       if (clx < -R || clx > LW + R || cly < -R || cly > LH + R) continue;
       for (const cell of this.authoredFalloffMask(R, al.falloff, al.bloom)) {
         const py = cly + cell.dy;
@@ -332,8 +334,8 @@ export class Lighting implements LightField {
   private readonly seedCreature = (x: number, y: number, r: number, g: number, b: number): void => this.seedLight(x, y, r, g, b);
 
   private seedLight(wx: number, wy: number, r: number, g: number, b: number): void {
-    const lx = (Math.floor(wx) - this.ctx.camera.renderX) >> 1,
-      ly = (Math.floor(wy) - this.ctx.camera.renderY) >> 1;
+    const lx = Math.floor((wx - this.ctx.camera.renderX) / (2 * this.viewScale)),
+      ly = Math.floor((wy - this.ctx.camera.renderY) / (2 * this.viewScale));
     if (lx < 0 || lx >= this.LW || ly < 0 || ly >= this.LH) return;
     const i = ly * this.LW + lx;
     if (r > this.lightR[i]) this.lightR[i] = r;
@@ -343,6 +345,7 @@ export class Lighting implements LightField {
 
   build(ctx: Ctx): void {
     this.ctx = ctx;
+    this.viewScale = ctx.camera.viewScale ?? 1;
     const { LW, LH, lightR, lightG, lightB, lightAtt } = this;
     const beamKindMap = this.beamKind;
     lightR.fill(0);
@@ -385,10 +388,10 @@ export class Lighting implements LightField {
 
     // Attenuation map + emissive material seeding
     for (let ly = 0; ly < LH; ly++) {
-      const wy = renderCamY + (ly << 1);
+      const wy = renderCamY + Math.floor((ly << 1) * this.viewScale);
       const row = ly * LW;
       for (let lx = 0; lx < LW; lx++) {
-        const wx = renderCamX + (lx << 1);
+        const wx = renderCamX + Math.floor((lx << 1) * this.viewScale);
         const wi = world.idx(wx, wy);
         const t = world.types[wi];
         const i = row + lx;
@@ -906,9 +909,9 @@ export class Lighting implements LightField {
     // In designed darkness the beam loses less per cell of air: the one thing
     // the wizard can see by is the thing he points.
     const stepAir = BEAM_STEP_AIR + (LANTERN.darkBeamStepAir - BEAM_STEP_AIR) * darkK;
-    const radiusHalf = Math.max(1, Math.round(Math.max(1, radius) * BEAM_RADIUS_SCALE * 0.5));
-    const ox = (wx - this.ctx.camera.renderX) / 2,
-      oy = (wy - this.ctx.camera.renderY) / 2;
+    const radiusHalf = Math.max(1, Math.round(Math.max(1, radius) * BEAM_RADIUS_SCALE * 0.5 / this.viewScale));
+    const ox = (wx - this.ctx.camera.renderX) / (2 * this.viewScale),
+      oy = (wy - this.ctx.camera.renderY) / (2 * this.viewScale);
     if (ox < -radiusHalf || ox > LW + radiusHalf || oy < -radiusHalf || oy > LH + radiusHalf)
       return;
     const beamKindMap = this.beamKind;
@@ -938,7 +941,7 @@ export class Lighting implements LightField {
         const kind = beamKindMap[i];
         if (kind === BEAM_MIRROR && bends < MAX_BEAM_DEPTH && leg > 0) {
           // Reflect off the face at the last open point, then carry on.
-          const [nx, ny] = mirrorNormal(world, camX + (lx << 1), camY + (ly << 1), dx, dy);
+          const [nx, ny] = mirrorNormal(world, camX + Math.floor((lx << 1) * this.viewScale), camY + Math.floor((ly << 1) * this.viewScale), dx, dy);
           const back = leg - 1;
           rx += dx * back; ry += dy * back;
           [dx, dy] = reflect(dx, dy, nx, ny);
@@ -993,9 +996,9 @@ export class Lighting implements LightField {
     const s = Math.max(0, intensity) * GLOW_INTENSITY_SCALE;
     if (s <= 0) return;
     const { LW, LH, lightR, lightG, lightB } = this;
-    const radiusHalf = Math.max(1, Math.round(Math.max(1, radius) * GLOW_RADIUS_SCALE * 0.5));
-    const ox = (wx - this.ctx.camera.renderX) / 2,
-      oy = (wy - this.ctx.camera.renderY) / 2;
+    const radiusHalf = Math.max(1, Math.round(Math.max(1, radius) * GLOW_RADIUS_SCALE * 0.5 / this.viewScale));
+    const ox = (wx - this.ctx.camera.renderX) / (2 * this.viewScale),
+      oy = (wy - this.ctx.camera.renderY) / (2 * this.viewScale);
     if (ox < -radiusHalf || ox > LW + radiusHalf || oy < -radiusHalf || oy > LH + radiusHalf)
       return;
     for (let k = 0; k < GLOW_RAYS; k++) {
@@ -1044,8 +1047,9 @@ export class Lighting implements LightField {
     wandGain = 0,
   ): void {
     const { LW, LH, lightR, lightG, lightB, lightAtt, wandField } = this;
-    const ox = (wx - this.ctx.camera.renderX) / 2,
-      oy = (wy - this.ctx.camera.renderY) / 2;
+    radiusHalf /= this.viewScale;
+    const ox = (wx - this.ctx.camera.renderX) / (2 * this.viewScale),
+      oy = (wy - this.ctx.camera.renderY) / (2 * this.viewScale);
     if (ox < -radiusHalf || ox > LW + radiusHalf || oy < -radiusHalf || oy > LH + radiusHalf)
       return;
     const STEP_AIR = 0.988,

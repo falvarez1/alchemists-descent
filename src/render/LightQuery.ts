@@ -17,6 +17,7 @@ export interface QueryableLightField {
   /** Camera origin the field was built at (half-res texel = (x - originX) >> 1). */
   readonly originX: number;
   readonly originY: number;
+  readonly originScale?: number;
   readonly built: boolean;
 }
 
@@ -44,7 +45,8 @@ export class LightQuery implements LightQueryApi {
   private texel(x: number, y: number): number {
     const f = this.field;
     if (!f.built) return -1;
-    const lx = (Math.floor(x) - f.originX) >> 1, ly = (Math.floor(y) - f.originY) >> 1;
+    const scale = f.originScale ?? 1;
+    const lx = Math.floor((x - f.originX) / (2 * scale)), ly = Math.floor((y - f.originY) / (2 * scale));
     if (lx < 0 || ly < 0 || lx >= f.LW || ly >= f.LH) return -1;
     return ly * f.LW + lx;
   }
@@ -57,7 +59,7 @@ export class LightQuery implements LightQueryApi {
     if (i >= 0) {
       // The darkness reads smooth, exactly as drawn (core/darkness openAtCell).
       open = f.lightOpen && f.openFlat !== true
-        ? openAtCell(f.lightOpen, f.LW, f.LH, Math.floor(x) - f.originX, Math.floor(y) - f.originY)
+        ? openAtCell(f.lightOpen, f.LW, f.LH, (Math.floor(x) - f.originX) / (f.originScale ?? 1), (Math.floor(y) - f.originY) / (f.originScale ?? 1))
         : 1;
       L = Math.max(f.lightR[i], f.lightG[i], f.lightB[i]);
     } else {

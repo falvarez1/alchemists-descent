@@ -25,8 +25,9 @@ describe('action camera travel', () => {
 });
 
 describe('camera inspection focus', () => {
-  it('holds the stock stage framing while a fighter is down or a cinematic requests focus', () => {
+  it('holds the last stock view with no living subjects despite a cinematic request', () => {
     const camera = new Camera(), ctx = makeCtx(camera);
+    camera.snapTo(800, 560);
     ctx.arena = { stockMatch: { zone: { left: 490, right: 1110, top: 390, bottom: 730 } } } as unknown as Ctx['arena'];
     camera.inspectionFocus = { x: 800, y: 560 };
     camera.actionFocus = { x: 1200, y: 900, zoom: 1.5 };

@@ -2,54 +2,54 @@
   {
     "fighter": "ilyra-voss",
     "side": -1,
-    "x": 703,
-    "y": 609,
-    "minimumY": 567,
+    "x": 645,
+    "y": 639,
+    "minimumY": 558,
     "stocks": 3,
     "grounded": true
   },
   {
     "fighter": "ilyra-voss",
     "side": 1,
-    "x": 897,
-    "y": 609,
-    "minimumY": 567,
+    "x": 955,
+    "y": 639,
+    "minimumY": 558,
     "stocks": 3,
     "grounded": true
   },
   {
     "fighter": "brann-rook",
     "side": -1,
-    "x": 666,
-    "y": 609,
-    "minimumY": 582,
+    "x": 606,
+    "y": 639,
+    "minimumY": 612,
     "stocks": 3,
     "grounded": true
   },
   {
     "fighter": "brann-rook",
     "side": 1,
-    "x": 934,
-    "y": 609,
-    "minimumY": 582,
+    "x": 994,
+    "y": 639,
+    "minimumY": 612,
     "stocks": 3,
     "grounded": true
   },
   {
     "fighter": "mara-quell",
     "side": -1,
-    "x": 691,
-    "y": 609,
-    "minimumY": 566,
+    "x": 633,
+    "y": 549,
+    "minimumY": 544,
     "stocks": 3,
     "grounded": true
   },
   {
     "fighter": "mara-quell",
     "side": 1,
-    "x": 909,
-    "y": 609,
-    "minimumY": 566,
+    "x": 967,
+    "y": 549,
+    "minimumY": 544,
     "stocks": 3,
     "grounded": true
   }

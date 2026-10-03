@@ -842,8 +842,9 @@ export class WebGpuRenderBackend implements RendererBackend {
     if (this.disposed) return;
     if (this.initState !== 'active') return;
     const residual = cameraPresentationOffset(ctx.camera);
-    let ox = -residual.x * (2 / VIEW_W);
-    let oy = residual.y * (2 / VIEW_H);
+    const viewScale = ctx.camera.viewScale ?? 1, zoom = ctx.camera.zoom * viewScale;
+    let ox = -residual.x * (2 / VIEW_W) / viewScale;
+    let oy = residual.y * (2 / VIEW_H) / viewScale;
     if (!ctx.state.reduceCameraShake && ctx.fx.screenShake > 0.0005) {
       // Same Off / Half / Full rule as the WebGL path (this one used to ignore the setting).
       const shake = ctx.fx.screenShake * (ctx.state.cameraShakeScale ?? 1);
@@ -871,11 +872,11 @@ export class WebGpuRenderBackend implements RendererBackend {
     this.chillFrost.value = lens.frost;
     this.chillCap.value = lens.cap;
 
-    this.quadOffset.value.set(ox * ctx.camera.zoom, oy * ctx.camera.zoom);
+    this.quadOffset.value.set(ox * zoom, oy * zoom);
     this.syncForeground(ctx);
     this.quadScale.value.set(
-      (1 + 4 / VIEW_W) * ctx.camera.zoom,
-      (1 + 4 / VIEW_H) * ctx.camera.zoom,
+      (1 + 4 / VIEW_W) * zoom,
+      (1 + 4 / VIEW_H) * zoom,
     );
 
     const liveComposePipeline =

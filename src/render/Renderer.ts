@@ -295,19 +295,20 @@ class WebGLRenderBackend implements RendererBackend {
 
     // Sub-cell camera smoothing + screen shake + idle zoom on the render quad
     const residual = cameraPresentationOffset(ctx.camera);
-    let ox = -residual.x * (2 / VIEW_W);
-    let oy = residual.y * (2 / VIEW_H);
+    const viewScale = ctx.camera.viewScale ?? 1, zoom = ctx.camera.zoom * viewScale;
+    let ox = -residual.x * (2 / VIEW_W) / viewScale;
+    let oy = residual.y * (2 / VIEW_H) / viewScale;
     if (!ctx.state.reduceCameraShake && ctx.fx.screenShake > 0.0005) {
       // The player's Off / Half / Full choice scales the jitter (Off also sets reduceCameraShake).
       const shake = ctx.fx.screenShake * (ctx.state.cameraShakeScale ?? 1);
       ox += (Math.random() - 0.5) * 2 * shake;
       oy += (Math.random() - 0.5) * 2 * shake;
     }
-    this.quadMesh.position.x = ox * ctx.camera.zoom;
-    this.quadMesh.position.y = oy * ctx.camera.zoom;
+    this.quadMesh.position.x = ox * zoom;
+    this.quadMesh.position.y = oy * zoom;
     this.quadMesh.scale.set(
-      (1 + 4 / VIEW_W) * ctx.camera.zoom,
-      (1 + 4 / VIEW_H) * ctx.camera.zoom,
+      (1 + 4 / VIEW_W) * zoom,
+      (1 + 4 / VIEW_H) * zoom,
       1,
     );
     this.postEnabled = ctx.state.postFx.enabled;
