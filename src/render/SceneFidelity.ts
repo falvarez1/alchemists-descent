@@ -10,7 +10,7 @@ import { Pen, BRASS, BRASS_D, BRASS_L, INK, cameraView, finePixelStep, viewInter
 import type { RGB } from '@/render/sprites/FineArt';
 import { visibleSurfaceFoliage, type SurfacePlant } from '@/game/SurfaceFoliage';
 import { buildFlora, createFloraBlades, floraLean } from '@/world/flora';
-import { blitFloraCache, createFloraCache, floraPalette, paintFlora, pruneFloraCaches, type FloraCache } from '@/render/FloraPainter';
+import { blitFloraCache, createFloraCache, floraPalette, paintFlora, pruneFloraCaches, settleFloraLight, type FloraCache } from '@/render/FloraPainter';
 import { surfaceFoliageHash as hash } from '@/world/surfaceFoliage';
 import { lanternFlicker } from '@/config/ambientMotion';
 
@@ -49,10 +49,12 @@ function drawSurfaceGrowth(out: PixelSurface, light: LightField, ctx: Ctx, foreg
     if (!viewIntersects(camera, root.x - reach, root.y - reach, root.x + reach, root.y + reach, 4)) continue;
     const time = frame - ((frame + root.seed) % bucket + bucket) % bucket;
     const motion = foreground || root.burning ? time : Math.round(floraLean(root, time) * 4) * 7919;
-    const s = light.sample(root.x, root.y - root.height * .5);
-    let key = mix(mix(mix(mix(frameKey, motion), Math.round(root.angle * 48)), Math.round(root.part * 24)),
-      Math.round(root.burn * 45) * 2 + (root.burning ? 1 : 0));
-    key = mix(mix(mix(mix(key, Math.round(s.r * 32)), Math.round(s.g * 32)), Math.round(s.b * 32)), Math.round((s.open ?? 1) * 32));
+    let cache = caches.get(root);
+    if (!cache) { cache = createFloraCache(); caches.set(root, cache); }
+    const H = root.height * (1 - root.burn * .75);
+    const lit = settleFloraLight(cache, light, root.x + .5, root.side !== 0 ? root.y + .5 : root.y + 1, H, foreground, frame);
+    let key = mix(mix(mix(mix(mix(frameKey, motion), Math.round(root.angle * 48)), Math.round(root.part * 24)),
+      Math.round(root.burn * 45) * 2 + (root.burning ? 1 : 0)), lit);
     // Terrain edits (digging, a door) under the plant change what it may paint over.
     if (a.ready) {
       for (let cy = Math.max(0, Math.floor((root.y - reach) / 64)); cy <= Math.min(a.rows - 1, Math.floor((root.y + reach) / 64)); cy++) {
@@ -60,8 +62,6 @@ function drawSurfaceGrowth(out: PixelSurface, light: LightField, ctx: Ctx, foreg
       }
     } else key = mix(key, world.mutationVersion);
     if (see) key = mix(key, see.key(root.x - reach, root.y - reach, root.x + reach, root.y + reach));
-    let cache = caches.get(root);
-    if (!cache) { cache = createFloraCache(); caches.set(root, cache); }
     if (blitFloraCache(out, cache, key, frame)) continue;
     const blades = buildFlora(root, time, plant), rootY = blades.rootY;
     // Leaves never paint into rock, except the base, which tucks over the floor lip.

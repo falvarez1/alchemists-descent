@@ -107,7 +107,29 @@ ticks are freed.
 measures six Intake spots in the real compose path with the clock advancing.
 Ground cover went from 2.32 to 0.35 ms per frame (97% cache hits). Cover plants
 went from 0.73 to 0.56 ms, about 1 ms at the busiest spot. These are single
-local runs on one machine, with run-to-run noise of about ±0.2 ms.
+local runs on one machine. After the flicker fix, with its eased light and extra samples, they measure 0.26 ms (ground) and 0.43 ms (cover), with run-to-run noise of about ±0.2 ms.
+
+## Flicker
+
+Playtesting showed tufts and a fern near a lamp flickering. There were two causes:
+
+- **Light:** each plant took its whole brightness from one light sample per
+  frame. Lamp flames and the alternate-tick lighting rebuild made that sample
+  jump for single frames (0.94 → 0.59 → 1.20), so the whole plant pulsed. Plants
+  now average samples across the crown and ease toward them
+  (`settleFloraLight`, about an 8-tick time constant; a plant unseen for 30
+  ticks snaps). The rim side changes only past a margin.
+- **Leaf faces:** each leaf's lit face was the side whose normal pointed up. On
+  an upright blade, a sliver of sway flipped the shading across the whole
+  blade. Faces are now lit continuously by how squarely they face a key light
+  from above.
+
+`node scripts/probe-flora-flicker.mjs` (it starts its own server) walks the
+alchemist through three d1 spots with real keys. It tracks every flora bitmap
+the painter emits and fails if an untouched plant swings more than 60% in one
+frame, or changes visibly in more than 25 frames. On the previous commit it
+failed two spots (40 changes; a 13× single-frame swing with 96 changes). Now
+the worst untouched plant swings 17%, with at most 8 changes.
 
 ## Results
 

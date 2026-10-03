@@ -90,6 +90,8 @@ const glow = new Float32Array(MAX * 3);
 const orderBlade = new Int16Array(1024);
 const lightR = new Float32Array(3), lightG = new Float32Array(3), lightB = new Float32Array(3);
 let bw = 0, bh = 0, ox = 0, oy = 0, step = 1, inv = 1, glowing = false;
+/** Key light direction for leaf faces: from above, leaning toward the brighter side. */
+let keyX = 0, keyY = -1;
 
 /** Stable 0..1 hash of a world presentation pixel (dither that never swims). */
 const grain = (i: number, j: number): number => (((Math.imul(i, 73856093) ^ Math.imul(j, 19349663)) >>> 0) % 1000) / 1000;
@@ -124,9 +126,9 @@ function rasterCurve(b: FloraBlades, k: number, order: number, rootY: number, he
     const x = u * u * ax + 2 * u * t * cx + t * t * bx, y = u * u * ay + 2 * u * t * cy + t * t * by;
     let dx = 2 * u * (cx - ax) + 2 * t * (bx - cx), dy = 2 * u * (cy - ay) + 2 * t * (by - cy);
     const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
-    // Normal oriented to the sky: its positive half is the leaf's lit face.
-    let nx = -dy, ny = dx;
-    if (ny > 0 || (ny === 0 && nx > 0)) { nx = -nx; ny = -ny; }
+    // The side of the midrib that faces the key light is lit, by how squarely it
+    // faces it. Continuous: an upright blade swaying past vertical never swaps faces.
+    const nx = -dy, ny = dx, facing = (nx * keyX + ny * keyY) * .19;
     const hf = Math.max(0, Math.min(1, (rootY - y) / height));
     const ao = .52 + .48 * Math.min(1, hf / .42);
     const along = kind === FLORA_BLADE ? t * .1 : 0;
@@ -134,7 +136,7 @@ function rasterCurve(b: FloraBlades, k: number, order: number, rootY: number, he
     if (w <= step * .6) { plot(x, y, order, (base + along) * ao); continue; }
     for (let o = -w; o <= w + 1e-6; o += across) {
       const v = o / w;
-      let value = base + along + (v > 0 ? .1 : -.08) + (1 - Math.abs(v)) * .05;
+      let value = base + along + v * facing + (1 - Math.abs(v)) * .05;
       if (veined && t > .04 && t < .9) {
         if (Math.abs(o) < step * .6) value += .2;
         else if (Math.abs(((t * 6.5 - Math.abs(v) * .9) % 1 + 1) % 1) < .11) value += .1;
@@ -178,6 +180,8 @@ export interface FloraCache {
   ox: number; oy: number; w: number; h: number;
   rgb: Float32Array; a: Float32Array; glow: Float32Array | null;
   usedAt: number;
+  /** Eased light (r,g,b per band), visibility and rim side: see settleFloraLight. */
+  light: Float32Array; seen: number; sideV: number; side: number; litAt: number;
 }
 
 const EMPTY = new Float32Array(0);
@@ -187,7 +191,8 @@ let clock = 0;
 export const floraCacheStats = { hits: 0, paints: 0 };
 
 export function createFloraCache(): FloraCache {
-  return { key: NaN, ox: 0, oy: 0, w: 0, h: 0, rgb: EMPTY, a: EMPTY, glow: null, usedAt: 0 };
+  return { key: NaN, ox: 0, oy: 0, w: 0, h: 0, rgb: EMPTY, a: EMPTY, glow: null, usedAt: 0,
+    light: new Float32Array(9), seen: 0, sideV: 0, side: 0, litAt: -1 };
 }
 
 /** Write a cached plant; returns false when the key has moved and it must be re-painted. */
@@ -243,6 +248,59 @@ function flush(out: PixelSurface, x0: number, y0: number, w: number, h: number,
   }
 }
 
+const measured = new Float32Array(9);
+const WIDE = [-1, 0, 1] as const, NARROW = [-.5, .5] as const;
+let measuredSeen = 0, measuredSide = 0;
+
+/** The light over a plant: base, middle and crown bands (one for small plants), each the
+ * average of samples across the crown, so one lit or dark cell cannot swing the whole plant. */
+function measureLight(light: LightField, rootX: number, rootY: number, H: number, foreground: boolean): void {
+  const floor = foreground ? .5 : .62, bands = H > 14 ? 3 : 1, spread = Math.min(5, Math.max(1.5, H * .25));
+  measuredSeen = 0;
+  for (let n = 0; n < 3; n++) {
+    if (n >= bands) { measured[n * 3] = measured[0]; measured[n * 3 + 1] = measured[1]; measured[n * 3 + 2] = measured[2]; continue; }
+    const y = rootY - 1 - H * n * .45;
+    let r = 0, g = 0, b = 0, open = 0, count = 0;
+    for (const dx of bands === 3 ? WIDE : NARROW) {
+      const s = light.sample(rootX + dx * spread, y);
+      r += s.r; g += s.g; b += s.b; open += s.open ?? 1; count++;
+    }
+    r /= count; g /= count; b /= count; open /= count;
+    measured[n * 3] = Math.min(1.25, Math.max(floor * open, r));
+    measured[n * 3 + 1] = Math.min(1.25, Math.max(floor * open, g));
+    measured[n * 3 + 2] = Math.min(1.25, Math.max(floor * open, b));
+    measuredSeen = Math.max(measuredSeen, open, (r + g + b) / 3);
+  }
+  measuredSide = 0;
+  if (bands === 3) {
+    const left = light.sample(rootX - H * .5, rootY - H * .6), right = light.sample(rootX + H * .5, rootY - H * .6);
+    measuredSide = (left.r + left.g + left.b) - (right.r + right.g + right.b);
+  }
+}
+
+/**
+ * Ease a plant's light toward what is measured now (about an 8-tick time constant;
+ * a plant unseen for a while snaps). Point light flickers (a lamp's flame, the
+ * alternate-tick lighting rebuild) then cannot pulse a whole plant at once, while a
+ * passing lantern still lights it promptly. Returns the light's part of the cache key.
+ */
+export function settleFloraLight(c: FloraCache, light: LightField, rootX: number, rootY: number, H: number,
+  foreground: boolean, frame: number): number {
+  measureLight(light, rootX, rootY, H, foreground);
+  const gap = frame - c.litAt;
+  const k = c.litAt < 0 || gap < 0 || gap > 30 ? 1 : gap === 0 ? 0 : 1 - Math.pow(.88, gap);
+  for (let i = 0; i < 9; i++) c.light[i] += (measured[i] - c.light[i]) * k;
+  c.seen += (measuredSeen - c.seen) * k;
+  c.sideV += (measuredSide - c.sideV) * k;
+  // The rim changes side only past a margin, never back and forth on a tie.
+  if (Math.abs(c.sideV) > .16) c.side = c.sideV > 0 ? -1 : 1;
+  else if (Math.abs(c.sideV) < .06) c.side = 0;
+  c.litAt = frame;
+  let key = 0;
+  for (let i = 0; i < 9; i++) key = Math.imul(key ^ Math.round(c.light[i] * 32), 16777619) >>> 0;
+  return Math.imul(key ^ (c.side + 2) ^ (c.seen < .05 ? 8 : 0), 16777619) >>> 0;
+}
+
 /** Rasterise a plant into a scratch bitmap at presentation resolution, shade, then write it once
  * (and, given a cache, keep the result under `key`). */
 export function paintFlora(out: PixelSurface, o: FloraPaint, cache?: FloraCache, key = 0, frame = 0): void {
@@ -263,26 +321,20 @@ export function paintFlora(out: PixelSurface, o: FloraPaint, cache?: FloraCache,
   const size = bw * bh;
   ids.fill(0, 0, size); glow.fill(0, 0, size * 3);
 
-  // Light at the base, the middle and the crown; the crown's sides tell which way the rim faces.
-  const H = b.height, rootY = b.rootY, floor = o.foreground ? .5 : .62;
+  // Light at the base, the middle and the crown, eased per plant when cached (settleFloraLight).
+  const H = b.height, rootY = b.rootY;
+  let seen: number, lightSide: number;
+  if (cache && cache.litAt >= 0) {
+    for (let n = 0; n < 3; n++) { lightR[n] = cache.light[n * 3]; lightG[n] = cache.light[n * 3 + 1]; lightB[n] = cache.light[n * 3 + 2]; }
+    seen = cache.seen; lightSide = cache.side;
+  } else {
+    measureLight(o.light, b.rootX, rootY, H, o.foreground);
+    for (let n = 0; n < 3; n++) { lightR[n] = measured[n * 3]; lightG[n] = measured[n * 3 + 1]; lightB[n] = measured[n * 3 + 2]; }
+    seen = measuredSeen;
+    lightSide = Math.abs(measuredSide) < .12 ? 0 : measuredSide > 0 ? -1 : 1;
+  }
   // Designed darkness hides a plant only when no real light (a lantern, a lamp) reaches it.
-  let seen = 0;
-  // Small plants sit in one light; tall ones read it at the base, middle and crown.
-  const bands = H > 14 ? 3 : 1;
-  for (let n = 0; n < 3; n++) {
-    if (n >= bands) { lightR[n] = lightR[0]; lightG[n] = lightG[0]; lightB[n] = lightB[0]; continue; }
-    const s = o.light.sample(b.rootX, rootY - 1 - H * n * .45), so = s.open ?? 1;
-    lightR[n] = Math.min(1.25, Math.max(floor * so, s.r)); lightG[n] = Math.min(1.25, Math.max(floor * so, s.g));
-    lightB[n] = Math.min(1.25, Math.max(floor * so, s.b));
-    seen = Math.max(seen, so, (s.r + s.g + s.b) / 3);
-  }
   if (seen < .05) { if (cache) { cache.key = key; cache.w = 0; cache.usedAt = frame; } return; }
-  let lightSide = 0;
-  if (bands === 3) {
-    const left = o.light.sample(b.rootX - H * .5, rootY - H * .6), right = o.light.sample(b.rootX + H * .5, rootY - H * .6);
-    const lsum = left.r + left.g + left.b, rsum = right.r + right.g + right.b;
-    lightSide = Math.abs(lsum - rsum) < .12 ? 0 : lsum > rsum ? -1 : 1;
-  }
   const top = (lightR[2] + lightG[2] + lightB[2]) / 3;
   const rimK = Math.min(1, Math.max(0, (top - (o.foreground ? .32 : .5)) * 1.6)) * (o.foreground ? .55 : .5);
 
@@ -300,6 +352,7 @@ export function paintFlora(out: PixelSurface, o: FloraPaint, cache?: FloraCache,
     }
     order++;
   }
+  { const l = Math.hypot(lightSide * .45, 1); keyX = lightSide * .45 / l; keyY = -1 / l; }
   for (let layer = 0; layer < 3; layer++) for (let k = 0; k < b.count; k++) {
     if (b.layer[k] !== layer || order >= orderBlade.length) continue;
     orderBlade[order] = k;
