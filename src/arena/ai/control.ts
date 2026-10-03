@@ -176,11 +176,11 @@ export class StuckDetector {
   private moveTicks = 0;
 
   /** Returns true on the tick the bot decides it is stuck (and starts a fresh window). */
-  update(me: Pick<MeView, 'x' | 'y'>, wantsMove: boolean, tick: number): boolean {
+  update(me: Pick<MeView, 'x' | 'y'>, wantsMove: boolean, tick: number, idleTicks = 0): boolean {
     if (!wantsMove) { this.moveTicks = 0; this.anchor(me, tick); return false; }
     this.moveTicks++;
     if (Math.abs(me.x - this.x) > 3 || Math.abs(me.y - this.y) > 6) { this.anchor(me, tick); this.moveTicks = 1; return false; }
-    if (tick - this.since >= StuckDetector.WINDOW && this.moveTicks >= StuckDetector.WINDOW) {
+    if (idleTicks >= 90 || (tick - this.since >= StuckDetector.WINDOW && this.moveTicks >= StuckDetector.WINDOW)) {
       this.anchor(me, tick);
       this.moveTicks = 0;
       return true;
@@ -198,7 +198,7 @@ export class StuckDetector {
 // --------------------------------------------------------------------------------------------------------------- control
 
 export type EdgeStatus = 'running' | 'done' | 'failed';
-type HopPhase = 'none' | 'rise' | 'cross';
+type HopPhase = 'none' | 'rise' | 'cross' | 'land';
 type EdgePhase = 'approach' | 'rise' | 'cross' | 'land';
 
 /** How the walk steering behaves. */
@@ -213,10 +213,11 @@ export class Control {
   readonly hand: Hand;
   readonly traction: Traction;
   readonly stuck = new StuckDetector();
-  private hop: { phase: HopPhase; dir: number; topY: number; until: number } = { phase: 'none', dir: 0, topY: 0, until: 0 };
+  private hop: { phase: HopPhase; dir: number; topY: number; until: number; landingX?: number } = { phase: 'none', dir: 0, topY: 0, until: 0 };
   private edge: { phase: EdgePhase; since: number; edge: NavEdge | null; holdJump: boolean } = { phase: 'approach', since: 0, edge: null, holdJump: false };
   private escapeUntil = 0;
   private escapeDir = 0;
+  private escapeJump = true;
   /** Ticks of the current rise/cross: a timeout turns a hop that never lands into a failure. */
   private tick = 0;
   /** How many hops started, for the probes. */
@@ -303,10 +304,24 @@ export class Control {
       return;
     }
     if (hop.phase === 'cross') {
+      if (hop.landingX !== undefined && (me.x - hop.landingX) * hop.dir >= -2) {
+        hop.phase = 'land'; hop.until = this.tick + 60;
+        this.hand.move(this.steer(me, hop.landingX, 2));
+        this.hand.jump(false);
+        return;
+      }
       this.hand.move(hop.dir);
       // hold the clearance while the body is still over the obstacle: the jet comes on again if it sinks below the top
       this.hand.jump(me.y > hop.topY - 2 && !me.grounded && me.levit > 6);
       if ((me.grounded && this.tick > hop.until - 36) || this.tick > hop.until) hop.phase = 'none';
+      return;
+    }
+    if (hop.phase === 'land') {
+      // Brake over the planner's checked island and let go of the jet,
+      // even if combat has already chosen a farther movement goal.
+      this.hand.move(this.steer(me, hop.landingX ?? me.x, 2));
+      this.hand.jump(false);
+      if (me.grounded || this.tick > hop.until) hop.phase = 'none';
       return;
     }
     this.hand.jump(false);
@@ -326,6 +341,15 @@ export class Control {
   /** Is a hop or an edge in progress (the brain does not change plans mid-air)? */
   get committed(): boolean {
     return this.hop.phase !== 'none' || (this.edge.edge !== null && this.edge.phase !== 'approach');
+  }
+
+  /** A terrain-checked rise over a hazard uses the same height control as cover. */
+  startHop(dir: number, topY: number, fromY: number, landingX?: number): void {
+    this.hop = { phase: 'rise', dir, topY, until: this.tick + 20 + fromY - topY, landingX };
+    this.escapeUntil = 0;
+    this.hand.move(dir);
+    this.hand.jump(true);
+    this.hops++;
   }
 
   // ---------------------------------------------------------------------------------------------------------- nav edges
@@ -415,7 +439,8 @@ export class Control {
   // ------------------------------------------------------------------------------------------------------ getting unstuck
 
   /** Shake loose: walk one way for a while, tapping jump. The brain calls it when the stuck detector fires. */
-  startEscape(dir: number, ticks: number): void {
+  startEscape(dir: number, ticks: number, jump = true): void {
+    this.escapeJump = jump;
     this.escapeDir = dir < 0 ? -1 : 1;
     this.escapeUntil = this.tick + ticks;
     this.hop.phase = 'none';
@@ -427,7 +452,7 @@ export class Control {
     this.hand.move(this.escapeDir);
     // a jump held for 14 ticks out of 24: over a low obstacle, and through the jet for a tall one
     const phase = (this.escapeUntil - this.tick) % 24;
-    this.hand.jump(phase < 14 && (me.grounded || me.levit > 6));
+    this.hand.jump(this.escapeJump && phase < 14 && (me.grounded || me.levit > 6));
   }
 
   get escaping(): boolean {

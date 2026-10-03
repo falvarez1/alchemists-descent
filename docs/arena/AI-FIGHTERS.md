@@ -214,16 +214,22 @@ thresholds to prevent constant switching.
 
 Incoming shots use the same reaction delay as opponents. Rival-owned spells count as threats even when their `hostile` flag is false.
 The bot predicts body crossings, checks for intervening cover, and jumps or steps away with a cooldown. Nearby fire, lava, acid and unsupported
-ground affect movement; a short hazard can be jumped when a safe landing exists. Cornered bots can jump across an opponent to recover space.
+ground affect movement; a short hazard can be jumped when a safe landing exists. The planner searches the bounded landing interval, checks
+every descending body column and retains the selected landing. The controller brakes over that patch and releases the jet to descend.
+Cornered bots can jump across an opponent to recover space.
 The Duel platforms now have navigation routes, alongside the existing Proving Yard routes.
 
 Weapon aim reads the next compiled cast's speed modifier, uses gravity compensation and bounds motion prediction. Opponent health and grounding
 come from the delayed observation too. A newly installed bot must wait for its first observation. There is no immediate startup targeting.
 
 Ability rules live in `src/arena/ai/playbooks.ts`. Brann guards a ranged exchange, Edda shields before trading and heals after taking damage,
-Ilyra overcharges while she can attack, and Kest and Selene aim their mobility toward useful spacing. Other kits check their effective range,
+Ilyra overcharges while she can attack, and Kest and Selene aim their mobility toward useful spacing. Selene waits for footing before an Echo
+blink; Kest can still dash in midair. Other kits check their effective range,
 target health or nearby combat. An unrelated ready-time timeout no longer spends an ability. A movement ability's escape aim does not also
 fire the wand backward that tick.
+
+The wave probe retains altered terrain between fights. Separate clear-ground scenarios verify Kest's dash and Selene's blink under close
+pressure. Duel participation checks actual attacks, movement and damage on both sides; a safe tactical opportunity depends on the terrain.
 
 ### Tune a running bot
 
