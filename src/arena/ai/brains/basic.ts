@@ -132,6 +132,7 @@ export class BasicBrain implements Brain {
     this.lastKick = this.lastZ = this.lastT = this.lastWand = -999;
     this.range = 0;
     this.deadSince = -1;
+
     this.wasHolding = false;
     const stats = this.status.stats;
     for (const k of Object.keys(stats)) stats[k] = 0;
@@ -167,6 +168,12 @@ export class BasicBrain implements Brain {
     }
     this.deadSince = -1;
 
+    const ledge = ctx.arena?.stockMatch ? ctx.arena.stockLedge(self.slot) : null;
+    if (ledge?.busy) {
+      hand.move(ledge.side); self.input.keys.up = true; hand.down(false); hand.jump(false); hand.fire(false);
+      st.intent = 'recover'; st.rule = 'climb from the ledge'; hand.end(); return;
+    }
+
     // ---- the stage's nav (the level can change under a running bot) ----
     // Offstage survival takes priority over aiming or attacking. Inputs still use the normal body controller.
     if (ctx.arena?.stockMatch && (p.y > STOCK_STAGE.main.y + 5 || p.x < STOCK_STAGE.main.x0 - 8 || p.x > STOCK_STAGE.main.x1 + 8) && !p.grounded) {
@@ -175,7 +182,8 @@ export class BasicBrain implements Brain {
       const under = p.y > main.y - 8;
       const target = under ? (p.x < STOCK_STAGE.center.x ? main.x0 - 12 : main.x1 + 12) : Math.max(main.x0 + 18, Math.min(main.x1 - 18, p.x));
       hand.move(Math.abs(target - p.x) > 4 ? Math.sign(target - p.x) : 0);
-      self.input.keys.up = true;
+      // A held recovery request is edge-triggered. Do not spend that edge on the final locked stun tick.
+      self.input.keys.up = ctx.arena.canRecover(self.slot) && !ctx.arena.isActionLocked(self.slot);
       hand.down(false); hand.jump(true); hand.fire(false);
       st.intent = 'recover'; st.rule = 'rise beside the ledge, then return'; st.goalX = target;
       hand.end(); return;

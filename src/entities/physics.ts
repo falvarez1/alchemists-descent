@@ -3,6 +3,7 @@
 // (cellBlocks / entityFree / crushLooseDebris / tryMoveEntity).
 
 import { HEIGHT, WIDTH } from '@/config/constants';
+import { STOCK_STAGE } from '@/config/stockStage';
 import type { Ctx, PhysicsApi } from '@/core/types';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { cellBlocksEntityWithLooseRubble } from '@/sim/collision';
@@ -16,6 +17,8 @@ export class Physics implements PhysicsApi {
   private readonly _cfY = new Int32Array(24);
   private readonly _collisionScratch = { x: this._cfX, y: this._cfY };
   private readonly _moveBlockMemo = new Map<number, boolean>();
+  private movingStockPlayer = false;
+  private movingUp = false;
 
   constructor(private ctx: Ctx) {}
 
@@ -23,7 +26,17 @@ export class Physics implements PhysicsApi {
     return cellBlocksEntityWithLooseRubble(this.ctx.world, X, Y, this._collisionScratch);
   }
 
+  /** Only the authored raised Metal platforms are one-way. Destruction stays grid-real. */
+  private stockPlatform(X: number, Y: number) {
+    if (!this.ctx.arena?.stockMatch || this.ctx.world.type(X, Y) !== Cell.Metal) return undefined;
+    return STOCK_STAGE.platforms.find(p => X >= p.x0 && X <= p.x1 && Y >= p.y && Y < p.y + p.depth);
+  }
+
   private cellBlocksForMove(X: number, Y: number): boolean {
+    if (this.movingStockPlayer) {
+      const platform = this.stockPlatform(X, Y);
+      if (platform && (this.movingUp || this.ctx.player.y >= platform.y)) return false;
+    }
     const key = X + Y * WIDTH;
     const cached = this._moveBlockMemo.get(key);
     if (cached !== undefined) return cached;
@@ -52,6 +65,8 @@ export class Physics implements PhysicsApi {
           Y = cy - dy;
         if (X < 0 || X >= WIDTH || Y >= HEIGHT) return false;
         if (Y < 0) continue;
+        const platform = this.stockPlatform(X, Y);
+        if (platform && (this.ctx.player.y >= platform.y || this.ctx.player.vy < 0)) continue;
         if (this.cellBlocks(X, Y)) return false;
       }
     }
@@ -70,6 +85,8 @@ export class Physics implements PhysicsApi {
         if (!world.inBounds(X, Y)) continue;
         const i = world.idx(X, Y);
         const t = world.types[i];
+        // Passing through a platform is not loose rubble and must never erase it.
+        if (ent === this.ctx.player && this.stockPlatform(X, Y)) continue;
         if (!blocksEntity(t) || isLiquid(t) || isGas(t)) continue;
         // it's inside the body, so it must be loose — kick it out. Gold stays
         // real gold: it pops free and re-settles as a cell (Particles conserves
@@ -114,6 +131,8 @@ export class Physics implements PhysicsApi {
     slip = 0,
   ): boolean {
     this._moveBlockMemo.clear();
+    this.movingStockPlayer = ent === this.ctx.player && !!this.ctx.arena?.stockMatch;
+    this.movingUp = dy < 0;
     if (dy !== 0) {
       if (this.tryMoveTo(ent, ent.x, ent.y + dy, halfW, h)) return true;
       // Lateral "slip": the vertical mirror of stepUp. A small wall nub catching

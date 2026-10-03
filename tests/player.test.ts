@@ -38,13 +38,21 @@ function testEnemy(x: number, y: number): Enemy {
 }
 
 describe('player death economy', () => {
+  it('clears fast fall on respawn even when the player was not swinging', () => {
+    const player = createPlayer(); player.stockFastFall = true;
+    const ctx = { player, events: new EventBus() } as unknown as Ctx;
+    const control = new PlayerControl(ctx);
+    control.resetTransientState(ctx);
+    expect(player.stockFastFall).toBe(false);
+    control.dispose();
+  });
   it.each(['kit', 'vine'])('cancels dodge protection when %s takes over body movement', (owner) => {
     const player = createPlayer();
     let cancelled = false;
     let attackCancelled = false;
     const ctx = { player, world: new World(), state: { mode: 'play', frameCount: 0 }, input: { queuedDodge: false },
       fighters: { ownsMovement: owner === 'kit' },
-      arena: { stockAttack: () => null, stockDodge: () => null, isRecovering: () => false, updateStockAttack: (canAct: boolean) => { attackCancelled = !canAct; }, updateStockDodge: (request: boolean, canAct: boolean) => { cancelled = !request && !canAct; } },
+      arena: { stockAttack: () => null, stockDodge: () => null, isRecovering: () => false, updateStockLedge: () => false, updateStockAttack: (canAct: boolean) => { attackCancelled = !canAct; }, updateStockDodge: (request: boolean, canAct: boolean) => { cancelled = !request && !canAct; } },
     } as unknown as Ctx;
     const ctl = new PlayerControl(ctx);
     const internals = ctl as unknown as { updatePlayerAnimation: () => void; updateSwing: () => void; swinging: boolean };

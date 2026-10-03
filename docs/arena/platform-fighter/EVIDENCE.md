@@ -7,6 +7,24 @@ Local environment: isolated worktree, Vite 127.0.0.1:5217, headless Edge through
 
 The Markdown and responsive offline HTML plans cover the full roadmap. Four ImageGen sheets cover the primary match, four stages, ten fighters/actions, and local-versus flow. A fifth output is the runtime Foundry backdrop in public/assets/arena/foundry-backdrop.png. The sixth, concepts/motion-defense.png, guides defensive poses and effects using the existing fighter portraits as references. The seventh, concepts/core-attacks.png, guides the three prototype fighters' melee moves. Each supplemental sheet has its exact prompt beside it. The HTML shows actual gameplay, twelve movement details, and twenty-four startup/contact captures.
 
+The next ImageGen sheets, ledge-movement.png and camera-direction.png, cover ledge movement and revised framing after the user playtest. Twelve additional native captures document ledge catch, climb, release, and fast fall. The camera storyboard is a proposal; the fixed camera has not yet been replaced.
+
+## Movement and playtest-response checkpoint
+
+- Added a finite ledge hang, short initial protection, collision-checked climb, release, destruction handling, and one catch per airborne sequence. Ledge catches do not refill recovery or dodge resources. HUD and poses show the state.
+- Added stock fast fall with horizontal control; it does not trigger the campaign dive attack. A final review caught fast-fall state surviving a reset without a vine swing. A failing regression test now covers unconditional reset.
+- The raised Foundry platforms allow upward passage and catch descending fighters on actual surviving cells. A rise that ends inside the slab falls back through it. The main platform remains solid. Tests preserve health-mode collision and confirm that passage never destroys Metal cells.
+- Replaced the dedicated-GPU message with an Xbox controller recommendation during Arena/Duel. It hides when a standard controller connects. The approved button-role remapping is recorded in the plan and remains pending alongside shield/grab implementation.
+- Fixed a CPU recovery request consumed on the last locked hitstun tick. The bot now waits until it can act before issuing the recovery edge. This is a specific recovery fix, not a claim that the reported back-and-forth footwork is resolved.
+- Whole suite: 256 files and 3,229 tests passed. Vitest printed worker-termination timeout warnings but completed with exit code 0. The subsequent reset regression and focused player/platform/ledge/recovery suite passed all 27 tests. Typecheck, lint, and production build passed; the existing large-chunk warning remains.
+- Browser verification: both fighter slots rose through and landed on the raised platforms without losing stocks or deleting terrain. The controller notice showed without a pad and hid on connection. Evidence: stock-platforms.json and controller-notice.png.
+- All 22 CPU recovery cases passed: all ten fighters from both sides, plus two Brann cases starting on the final hitstun frame. Evidence: stock-recovery-ai.json. The three seeded post-change bouts finished without unattributed falls; seed 29 includes one self-attributed KO, so these are not evidence of perfect CPU survival or balance. Before/after traces are stock-bots-before.json and stock-bots.json.
+- The ledge browser probe verified both corners, initial protection, vulnerability after protection, body clearance during climbs, destroyed-corner release, no immediate regrab, keyboard catch, and fast-fall landing. Evidence: stock-ledges.json and the twelve fighter/action captures.
+- The unchanged health-duel browser probe passed all 16 checks. The updated illustrated plan loads every image and fits desktop and 390-pixel widths.
+- The rebuilt production player flow passed its 13 checks, including visible title launch, CPU play, controller joining, two-controller assignment, pause, disconnect/reconnect, and narrow layout, with no page errors. Current evidence: local-versus-player.json and refreshed versus player screenshots.
+
+Highest-priority remaining work from the user playtest: larger stage and independent blast bounds, polished fighter-follow camera with true zoom-out sampling, melee/projectile balance, movement commitments for CPU footwork, the confirmed Xbox layout with shield/grab support, and an original battle soundtrack. Visual parity is not achieved. Hanging bodies should sit lower relative to their grip, and the camera concept requires 16:9 adaptation and additional lower clearance.
+
 Inspection found that the baseline constructed ArenaSlots and exposed Arena/Duel only with __AUTHORING__. The new player-facing Duel entry, runtime, lobby, stock HUD, and CPU driver now run in the production player build. Training panels and the console remain authoring-only. Both builds have been exercised locally; nothing has been deployed.
 
 ## First implementation slice

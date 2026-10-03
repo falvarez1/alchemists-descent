@@ -1,0 +1,116 @@
+{
+  "mechanics": {
+    "climbs": [
+      {
+        "side": 1,
+        "catchPhase": "hang",
+        "protectedDamage": 0,
+        "clear": true,
+        "grounded": true,
+        "x": 636,
+        "y": 609,
+        "phase": "idle"
+      },
+      {
+        "side": -1,
+        "catchPhase": "hang",
+        "protectedDamage": 0,
+        "clear": true,
+        "grounded": true,
+        "x": 964,
+        "y": 609,
+        "phase": "idle"
+      }
+    ],
+    "punished": {
+      "volatility": 8,
+      "phase": "idle"
+    },
+    "drop": {
+      "phase": "idle",
+      "ready": false,
+      "vx": -1.5
+    },
+    "regrabbed": false,
+    "destroyed": "idle",
+    "fastFall": {
+      "active": true,
+      "dive": 0,
+      "vy": 6.4,
+      "vx": 1.0539284336842107
+    },
+    "landed": {
+      "grounded": true,
+      "active": false,
+      "dive": 0
+    }
+  },
+  "keyboard": {
+    "phase": "hang",
+    "x": 615,
+    "y": 625
+  },
+  "gallery": [
+    {
+      "fighter": "ilyra-voss",
+      "action": "ledge-catch",
+      "file": "ilyra-voss-ledge-catch.png"
+    },
+    {
+      "fighter": "ilyra-voss",
+      "action": "ledge-climb",
+      "file": "ilyra-voss-ledge-climb.png"
+    },
+    {
+      "fighter": "ilyra-voss",
+      "action": "ledge-drop",
+      "file": "ilyra-voss-ledge-drop.png"
+    },
+    {
+      "fighter": "ilyra-voss",
+      "action": "fast-fall",
+      "file": "ilyra-voss-fast-fall.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "ledge-catch",
+      "file": "brann-rook-ledge-catch.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "ledge-climb",
+      "file": "brann-rook-ledge-climb.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "ledge-drop",
+      "file": "brann-rook-ledge-drop.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "fast-fall",
+      "file": "brann-rook-fast-fall.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "ledge-catch",
+      "file": "mara-quell-ledge-catch.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "ledge-climb",
+      "file": "mara-quell-ledge-climb.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "ledge-drop",
+      "file": "mara-quell-ledge-drop.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "fast-fall",
+      "file": "mara-quell-fast-fall.png"
+    }
+  ],
+  "errors": []
+}

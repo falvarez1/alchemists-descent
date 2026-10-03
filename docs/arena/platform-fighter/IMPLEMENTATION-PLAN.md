@@ -25,6 +25,19 @@ Duel is the controlled competitive mode. Arena is the training ground and home f
 - docs/arena/ARENA-RULES.md already proposes stocks and volatility. Its proposed weight and HP formula must be reconciled with current body.mass and body.maxHp, avoiding double weight scaling.
 - Direct hazard damage paths also exist outside Player.damage. All of them need auditing for stock rules.
 
+## Playtest feedback and revised priorities
+
+The 3 October playtest found the Duel space too small, ring-outs too close to the screen, distracting CPU direction changes, excessive projectile use, solid raised-platform undersides, and unsatisfying music. This feedback supersedes the initial fixed-camera tuning. Finish these revisions before adding more stages or expanding the roster's movesets.
+
+1. Camera and stage scale: enlarge playable space and recovery room together. Derive framing from the bounds and velocity of living fighters. Ease into close combat, pull back promptly for launches, and pan without reversing on every small movement. Keep a stable vertical composition and reserve HUD space. Blast boundaries must remain fixed world coordinates independent of the camera. A fighter leaving a close view must trigger reframing, not death. Implement true expanded world sampling so zooming out never reveals blank image borders. Verify both renderer backends, mouse/world mapping, narrow windows, sudden launches, respawn transitions, and frame times. Capture a repeatable camera sequence for visual review.
+2. Raised platforms: pass upward through them and land on the surviving top cells when descending. A jump that ends inside the slab must fall back through it. Preserve the main stage's solid underside and actual destructible-cell geometry. Add deliberate drop-through separately, with a short ignore window instead of disabling all collisions.
+3. Close combat: make attack the primary action; constrain projectile cadence with a visible special budget and meaningful recovery. Tune reach, approach movement, hit confirmation, shield pressure, grabs, and throws together so opponents have reasons to close distance. Audit fighter-specific projectiles and abilities, not just the default wand. Measure attack mix and long-range stalling in CPU bouts.
+4. Human-like CPU movement: retain a direction or destination long enough to express an approach, retreat, or bait. Add distance hysteresis and minimum commitments instead of repeatedly crossing a single range threshold. Allow urgent threats and edge safety to interrupt. Record reversal counts, idle time, melee attempts, and unforced falls across fighters and seeds, then watch the bouts.
+5. Controller-first Duel and Arena: default to an available Xbox-compatible standard controller. User-confirmed button roles are A attack, B special, X/Y jump, LT/RT shield or dodge, LB/RB grab, right stick directional smash, Start pause. Implement shield and grab together before advertising those actions. Keep A confirm/B back in menus. Preserve explicit device ownership, reconnection handling, keyboard accessibility, and two-controller play. Replace the dedicated-GPU tip with a controller recommendation that hides when a controller is connected.
+6. Music: replace the current versus soundtrack with an original energetic battle arrangement, using strong melodic phrases, driving percussion, bass, and orchestral/rock instrumentation. Avoid copying existing game melodies. Include a clean looping section and match-opening, final-stock, and result transitions. Listen to actual game playback and check relative loudness against hits, recovery, and KO cues; generated waveforms or code alone do not prove a satisfying score.
+
+Completion means the revised behavior is visible and audible in the playable build, with recordings and measurements in EVIDENCE.md. The existing screenshots document earlier checkpoints and are not approval of the fixed camera or current stage dimensions.
+
 ## Visual direction and concept inventory
 
 Use crisp pixel clusters, wet blue slate, worn copper, ivory silhouettes, amber edges, and teal lamps. Quiet backgrounds establish scale; platform tops, fighters, and attacks carry the highest useful contrast. Preserve existing character identities where generated faces or clothing drift.
@@ -35,6 +48,8 @@ Use crisp pixel clusters, wet blue slate, worn copper, ivory silhouettes, amber 
 - concepts/local-versus.png: controller lobby, stage selection, match HUD, and results.
 - concepts/motion-defense.png: prototype fighter poses, ground and air dodges, recovery, and restrained state accents. Uses the existing portraits to correct identity drift in the first general sheet.
 - concepts/core-attacks.png: Ilyra, Brann, and Mara opener, launcher, aerial, and finisher targets. Exact prompt and portrait references are in concepts/core-attacks-prompt.md.
+- concepts/ledge-movement.png: ledge catch, climb, release, and fast-fall targets for the three prototype fighters. Compare against the native runtime captures in the illustrated plan.
+- concepts/camera-direction.png: revised close-combat, wide-separation, and offstage-recovery compositions. The generated panels are panoramic; actual camera acceptance uses the game's 16:9 frame and greater bottom clearance.
 - concepts/prompts.md: exact ImageGen prompts and provenance.
 
 These are concept sheets, not sprite atlases. Do not paste a flattened gameplay painting over the game. Build collision from real cells; decorative art must remain distinguishable from playable surfaces. Generate separate background or sprite assets when the renderer needs them.

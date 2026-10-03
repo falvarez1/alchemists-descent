@@ -11,7 +11,7 @@ export function drawStockMovementFx(out: PixelSurface, ctx: Ctx): void {
   const arena = ctx.arena, p = ctx.player;
   if (!arena?.stockMatch || p.dead) return;
   const dodge = arena.stockDodge(arena.bound), recovering = arena.isRecovering(arena.bound);
-  if (!dodge?.busy && !recovering && !arena.isLaunching(arena.bound)) return;
+  if (!dodge?.busy && !recovering && !arena.isLaunching(arena.bound) && !p.stockFastFall) return;
   const id = ctx.fighters?.id;
   const hex = Number.parseInt((id ? FIGHTER_DEFS[id].accent : '#65cac5').slice(1), 16);
   const color = [(hex >> 16 & 255) / 255, (hex >> 8 & 255) / 255, (hex & 255) / 255];
@@ -39,6 +39,7 @@ export function drawStockMovementFx(out: PixelSurface, ctx: Ctx): void {
       else out.addPx(x + px, y + py, r, g, b);
     }
   };
+  if (p.stockFastFall) for (const side of [-1, 1]) for (let i = 0; i < (quiet ? 5 : 12); i++) dot(p.x + side * 7, p.y - 18 - i, .5 * (1 - i / 12), true);
   if (dodge?.phase === 'startup') {
     for (let i = -2; i <= 2; i++) { dot(p.x + i, p.y - 24 + Math.abs(i), .8); dot(p.x + i, p.y - 20 - Math.abs(i), .8); }
   }

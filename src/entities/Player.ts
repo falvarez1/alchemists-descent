@@ -23,6 +23,7 @@ import { createSelfShockState, drawConductorArc, fairShockDamage } from '@/comba
 import { getAimGuide } from '@/combat/AimGuide';
 import { resetCombatTransients } from '@/core/runtimeState';
 import { ARENA_RULES } from '@/config/arenaRules';
+import { STOCK_FAST_FALL } from '@/config/stockMovement';
 import { fightSink } from '@/core/fightSink';
 import { blocksEntity, Cell, isGas, isLiquid } from '@/sim/CellType';
 import { bloodColor, packRGB, smokeColor } from '@/sim/colors';
@@ -201,6 +202,7 @@ export function createPlayer(): PlayerState {
     fidgetT: 0,
     crouchT: 0,
     diveT: 0,
+    stockFastFall: false,
     crawling: false,
     crawlT: 0,
     crawlSlope: 0,
@@ -911,6 +913,7 @@ export class PlayerControl implements PlayerControlApi {
     if (!this.swinging) return;
     this.swinging = false;
     ctx.player.swinging = false;
+    ctx.player.stockFastFall = false;
     this.swingJumpPrev = false;
     // `grounded` is frozen at its pre-swing value (the normal update — which
     // re-detects ground — was skipped every swinging frame). If it's stale-true,
@@ -928,6 +931,7 @@ export class PlayerControl implements PlayerControlApi {
     ctx.player.crawling = false;
     ctx.player.crawlT = 0;
     ctx.player.swinging = false;
+    ctx.player.stockFastFall = false;
     this.animStarted = false;
     this.framesSinceGrounded = 99;
     this.jumpBufferFrames = 0;
@@ -1278,6 +1282,7 @@ export class PlayerControl implements PlayerControlApi {
     player.levitating = false;
     if (this.swinging || ctx.fighters?.ownsMovement === true) ctx.arena?.updateStockDodge(false, false);
     if (this.swinging || ctx.fighters?.ownsMovement === true) ctx.arena?.updateStockAttack(false);
+    if (this.swinging || ctx.fighters?.ownsMovement === true) ctx.arena?.updateStockLedge(false);
     if (this.swinging) { player.firePressed = false; this.updateSwing(ctx); return; } // pendulum replaces normal movement (and the wand)
     // A fighter's dash / ram / tether (src/fighters) moves the body itself; the pose still follows the real displacement.
     if (ctx.fighters?.ownsMovement === true) {
@@ -1315,6 +1320,7 @@ export class PlayerControl implements PlayerControlApi {
         : stockAttack?.busy ? { ...ctx.input.keys, jump: false, wallJump: false }
           : queuedJump ? { ...ctx.input.keys, jump: true, wallJump: queuedJump === 'wall' || ctx.input.keys.wallJump } : ctx.input.keys;
     const stockRecovering = ctx.arena?.updateStockRecovery(keys.up && keys.jump) === true;
+    if (!ctx.arena?.stockMatch || player.grounded || player.inLiquid || restrained || stockRecovering || stockDodge?.busy || ctx.arena.isLaunching(ctx.arena.bound)) player.stockFastFall = false;
     if (ctx.arena?.isActionLocked(ctx.arena.bound)) { player.firing = false; player.firePressed = false; }
     if (channeling) {
       player.recharge--;
@@ -1794,7 +1800,9 @@ export class PlayerControl implements PlayerControlApi {
     player.mana = Math.min(player.maxMana, player.mana + 0.45);
     if (player.cooldown > 0) player.cooldown--;
 
+    const stockLedgeHandled = ctx.arena?.updateStockLedge(!restrained, { dir: Number(keys.right) - Number(keys.left), up: keys.up, down: keys.down, jump: keys.jump }) === true;
     const canClimb =
+      !stockLedgeHandled &&
       !player.dead &&
       !player.crawling &&
       !player.inLiquid &&
@@ -1806,7 +1814,7 @@ export class PlayerControl implements PlayerControlApi {
       if (side !== 0) this.startClimb(ctx, side);
     }
 
-    let handledByClimb = false;
+    let handledByClimb = stockLedgeHandled;
     if (player.climbing) {
       const stillOnFace = this.hasClimbFace(ctx, player.climbDir, PLAYER_H);
       // The local rock angle: drives the wall-hug tilt, and if it's steeper than
@@ -1955,7 +1963,7 @@ export class PlayerControl implements PlayerControlApi {
       if (player.inLiquid) player.vy *= 0.88;
 
       let levitating = false;
-      if (keys.jump && !player.crawling) {
+      if (keys.jump && !player.crawling && !player.stockFastFall) {
         // coyote time: a press within 6 frames of walking off a ledge still gets the full jump
         const coyote = jumpPressed && this.framesSinceGrounded <= Math.round(6 * body.coyote);
         // hold-to-hop stands down after a mantle until the key is re-pressed
@@ -2050,6 +2058,7 @@ export class PlayerControl implements PlayerControlApi {
       // into a spear, horizontal drift bleeds off, and the landing pays it
       // all back (see the slam in updatePlayerAnimation).
       if (
+        !ctx.arena?.stockMatch &&
         keys.down &&
         !player.grounded &&
         !player.inLiquid &&
@@ -2081,11 +2090,13 @@ export class PlayerControl implements PlayerControlApi {
           );
         }
       }
+      if (ctx.arena?.stockMatch && keys.down && !player.grounded && !player.inLiquid && !player.crawling && !restrained && !stockLaunching && player.vy > 0 && !stockDodge?.busy && !stockAttack?.busy) player.stockFastFall = true;
+      if (player.stockFastFall) { player.vy = STOCK_FAST_FALL * body.fall; player.levitating = false; }
       // dive overrides the normal terminal velocity (5.0). The up-cap is a pure
       // safety net (levitDrag settles the climb well under it); keep it ≤ -3.7
       // so it never clips the jump impulse.
       player.vy = stockLaunching ? clamp(player.vy, -24, 24) : stockRecovering || stockDodge?.phase === 'evade' ? clamp(player.vy, -9, 6)
-        : clamp(player.vy, ctx.params.player.vyCapUp * verticalPace, (player.diveT > 0 ? 6.4 : 5.0) * body.fall);
+        : clamp(player.vy, ctx.params.player.vyCapUp * verticalPace, (player.stockFastFall ? STOCK_FAST_FALL : player.diveT > 0 ? 6.4 : 5.0) * body.fall);
 
       // Move horizontally (sub-cell accumulator; step-up 5 standing, 2 crawling).
       // A step that also changes elevation spends its diagonal path length from
@@ -2142,6 +2153,7 @@ export class PlayerControl implements PlayerControlApi {
         !ctx.physics.entityFree(player.x, player.y + 1, PLAYER_HALF_W, 1) ||
         this.supportedByRigidBody(ctx, bodyH);
       if (player.grounded) {
+        player.stockFastFall = false;
         // jump buffer: a press made just before touchdown fires on the landing frame
         if (this.jumpBufferFrames > 0 && !player.crawling) {
           player.vy = -3.7 * verticalPace * jumpK;

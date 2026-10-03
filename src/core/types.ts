@@ -161,6 +161,8 @@ export interface PlayerState {
   crouchT: number;
   /** Dive slam: >0 while committed to the fast-fall, cleared by the landing. */
   diveT: number;
+  /** Stock-only fast fall: retains air steering and never triggers a dive attack. */
+  stockFastFall: boolean;
   /**
    * CRAWL (docs/CRAWL.md): the second collision tier is active — the body is
    * the 9x9 box. The key expresses intent; geometry decides this flag, and it

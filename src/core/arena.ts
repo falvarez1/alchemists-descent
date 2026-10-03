@@ -1,7 +1,7 @@
 import type { ChillApi, Enemy, EnemyDamageSource, FlaskApi, InputState, PlayerControlApi, PlayerState, Projectile, WandsApi } from '@/core/types';
 import type { FighterApi } from '@/core/fighters';
 import type { FighterId } from '@/content/fighters';
-import type { BlastZone, StockDodgeView, StockMatchView } from '@/core/arenaMatch';
+import type { BlastZone, StockDodgeView, StockLedgeInput, StockLedgeView, StockMatchView } from '@/core/arenaMatch';
 import type { StockAttackView } from '@/core/stockAttacks';
 
 /**
@@ -54,6 +54,9 @@ export interface ArenaApi {
   isActionLocked(slot: number): boolean;
   isEvading(slot: number): boolean;
   stockDodge(slot: number): StockDodgeView | null;
+  stockLedge(slot: number): StockLedgeView | null;
+  /** Returns true when ledge motion owns this tick's body integration. */
+  updateStockLedge(canAct: boolean, keys?: StockLedgeInput): boolean;
   stockAttack(slot: number): StockAttackView | null;
   requestStockAttack(): boolean;
   updateStockAttack(canAct: boolean): StockAttackView | null;

@@ -76,9 +76,9 @@ export class StockMatchHud {
       card.stocks.textContent = f ? '●'.repeat(f.stocks) + '○'.repeat(Math.max(0, 3 - f.stocks)) : '○ ○ ○';
       card.stocks.setAttribute('aria-label', `${f?.stocks ?? 0} stocks remaining`);
       card.fuel.value = b ? b.player.levit / Math.max(1, b.player.maxLevit) : 1;
-      const dodge = arena.stockDodge(slot), burst = arena.canRecover(slot);
-      card.defense.textContent = `BURST ${burst ? '◆' : '◇'}  AIR ${dodge?.airReady ? '◆' : '◇'}`;
-      card.defense.setAttribute('aria-label', `Recovery burst ${burst ? 'ready' : 'spent'}, air dodge ${dodge?.airReady ? 'ready' : 'spent'}`);
+      const dodge = arena.stockDodge(slot), burst = arena.canRecover(slot), ledge = arena.stockLedge(slot);
+      card.defense.textContent = `BURST ${burst ? '◆' : '◇'}  AIR ${dodge?.airReady ? '◆' : '◇'}  LEDGE ${ledge?.airReady ? '◆' : '◇'}`;
+      card.defense.setAttribute('aria-label', `Recovery burst ${burst ? 'ready' : 'spent'}, air dodge ${dodge?.airReady ? 'ready' : 'spent'}, ledge catch ${ledge?.airReady ? 'ready' : 'spent'}`);
     }
     let message = '';
     if (match.state === 'idle') message = 'Choose a rival to begin';

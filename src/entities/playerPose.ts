@@ -88,8 +88,9 @@ function chillPose(ctx: Ctx, a: PlayerState, frame: number): { hug: number; stif
  * everything with gameplay meaning reads the player's own timers.
  */
 export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
+  const ledge = a === ctx.player && ctx.arena?.stockMatch ? ctx.arena.stockLedge(ctx.arena.bound) : null;
   const attack = a === ctx.player ? ctx.arena?.stockAttack(ctx.arena.bound) : null;
-  const frame = ctx.state.frameCount, f = (attack?.busy ? attack.facing : a.facing) < 0 ? -1 : 1;
+  const frame = ctx.state.frameCount, f = (ledge?.busy ? ledge.side : attack?.busy ? attack.facing : a.facing) < 0 ? -1 : 1;
   const strike = attack?.busy && attack.spec ? attack : null;
   const windup = strike?.phase === 'startup' ? ease(strike.age / strike.spec!.startup) : 0;
   const follow = strike?.phase === 'active' ? 1 : strike?.phase === 'recovery'
@@ -109,6 +110,7 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   const flask = ctx.input?.drinkHeld ? 'drink' : ctx.input?.siphonHeld ? 'siphon' : ctx.input?.pourHeld ? 'pour' : (a.throwT ?? 0) > 0 ? 'throw' : null;
 
   if (a.crawling) return poseCrawl(a, s);
+  if (ledge?.busy) return poseLedge(a, s, ledge.x, ledge.y, ledge.phase === 'climb');
   if (a.climbing || a.wallGrabT > 0) return poseClimb(a, s, frame);
 
   s.kind = 'stand';
@@ -198,6 +200,7 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
     bK = mixP(bK, at(-2.8, air ? 5.5 : 3), follow);
     fK = mixP(fK, at(3.2, air ? 5.8 : 3.7), follow);
   }
+  if (a.stockFastFall) { bF = at(-2.3, 4.5); fF = at(1.5, 6); bK = at(-1, 6); fK = at(3, 7); }
   set(s.backFoot, bF); set(s.frontFoot, fF); set(s.backKnee, bK); set(s.frontKnee, fK);
   // Head: tilts with gaze, snaps back when hit, tips back to drink.
   s.headTilt = f * (s.gazeY * 0.28 * f) - (a.staggerDir || -f) * hurt * 0.35 * f * f + f * 0.12 * cold.hug;
@@ -267,6 +270,7 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
     fE = mixP(fE, at(2.8, 9.5), evadePose); fH = mixP(fH, at(4.1, 10.1), evadePose);
   }
   if (recovering) { bE = at(-1.5, 13.2); bH = at(-.5, 18); fE = at(2.7, 10.5); fH = at(3.5, 12); }
+  if (a.stockFastFall) { bE = at(-2, 9.5); bH = at(-.5, 10); fE = at(3, 9.5); fH = at(3.5, 12); }
   if (strike) {
     fE = mixP(fE, at(-2.2, finish ? 12 : 9), windup); fH = mixP(fH, at(-4, finish ? 14 : 8), windup);
     fE = mixP(fE, at(risingStrike ? 3.5 : 5, risingStrike ? 15 : 10.5), follow);
@@ -310,6 +314,36 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
     s.wand.x += d;
     if (s.held) s.held.x += d;
   }
+  return s;
+}
+
+function poseLedge(a: PlayerState, s: Skeleton, gripX: number, gripY: number, climbing: boolean): Skeleton {
+  const f = s.facing;
+  s.kind = 'stand'; s.lean = climbing ? f * .3 : -f * .08;
+  s.crouch = climbing ? .45 : 0; s.flare = .15; s.lift = 0; s.commune = 0;
+  s.gazeX = 1; s.gazeY = -.5; s.headTilt = -f * .2;
+  s.hip.x = a.x; s.hip.y = a.y - 6;
+  s.chest.x = a.x + f; s.chest.y = a.y - 11;
+  s.neck.x = a.x + f; s.neck.y = a.y - 13;
+  s.head.x = a.x + f; s.head.y = a.y - 15;
+  s.frontHand.x = gripX - f * .3; s.frontHand.y = gripY - .5;
+  // Once the hips clear the lip, the hand releases into the final step instead of stretching the arm.
+  if (a.y < gripY + 4) { s.frontHand.x = a.x + f * 3; s.frontHand.y = a.y - 9; }
+  s.frontElbow.x = (s.chest.x + s.frontHand.x) / 2 - f;
+  s.frontElbow.y = (s.chest.y + s.frontHand.y) / 2 + 1;
+  s.backElbow.x = a.x - f * 2; s.backElbow.y = a.y - 9;
+  s.backHand.x = a.x - f * 3; s.backHand.y = a.y - 6;
+  s.backKnee.x = a.x - f * 1.5; s.backKnee.y = a.y - 3;
+  s.backFoot.x = a.x - f * 2; s.backFoot.y = a.y;
+  s.frontKnee.x = a.x + f * (climbing ? 3.5 : 2); s.frontKnee.y = a.y - (climbing ? 7 : 4.5);
+  s.frontFoot.x = a.x + f * 2.8; s.frontFoot.y = a.y - (climbing ? 5 : 2);
+  if (climbing && s.hip.y < gripY + 2 && a.y >= gripY + 4) {
+    s.frontKnee.x = gripX + f * 2; s.frontKnee.y = gripY - 2;
+    s.frontFoot.x = gripX + f * 4; s.frontFoot.y = gripY - .5;
+  }
+  s.wand.visible = true; s.wand.x = s.backHand.x; s.wand.y = s.backHand.y; s.wand.angle = Math.PI / 2; s.wand.glow = .35;
+  s.crown.x = s.head.x - f * .5; s.crown.y = s.head.y - 3;
+  s.brimAngle = -f * .1;
   return s;
 }
 
