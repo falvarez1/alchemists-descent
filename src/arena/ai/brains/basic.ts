@@ -367,7 +367,12 @@ export class BasicBrain implements Brain {
     const stock = !!ctx.arena?.stockMatch;
     if (stock && choice.target) {
       // Stocks reward closing for a launch. A wand's preferred firing distance must not keep melee fighters apart.
-      choice.intent = Math.abs(choice.target.y - me.y) > 40 && choice.target.foe.grounded ? 'reposition' : choice.target.dist > 36 ? 'approach' : 'pressure';
+      // Equal-height platforms can still be separated by a gap. Follow their route
+      // even with a clear firing lane, instead of repeatedly retreating from the lip.
+      const targetNode = nav?.nodeAt(choice.target.x, choice.target.y);
+      const otherSurface = myNode !== null && targetNode != null && myNode.id !== targetNode.id;
+      choice.intent = choice.target.foe.grounded && (otherSurface || Math.abs(choice.target.y - me.y) > 40)
+        ? 'reposition' : choice.target.dist > 36 ? 'approach' : 'pressure';
       choice.range = 24;
     }
     if (choice.intent !== this.intent) { this.intent = choice.intent; this.intentSince = tick; }

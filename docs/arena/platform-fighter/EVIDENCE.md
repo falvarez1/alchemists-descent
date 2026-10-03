@@ -191,6 +191,16 @@ The goal remains active. The plans and first implementation slice are delivered;
 
 ## CPU spacing checkpoint
 
+### Stationary opponent across the upper platforms
+
+The stock intent override compared fighter heights but ignored separate navigation surfaces. Two fighters on opposite upper platforms therefore selected ordinary approach. The terrain guard repeatedly backed the CPU away from the gap. A browser regression reproduced 1,200 ticks of pacing in both directions, never closing within 317 cells.
+
+The override now requests a route whenever grounded opponents occupy different navigation surfaces, including platforms at equal height with a clear firing lane. The CPU uses the existing drop-to-main and climb-to-opponent routes.
+
+Run `node scripts/verify-stock-stationary.mjs http://127.0.0.1:5217/`. It enters Duel through the player lobby, places an idle human on the opposite upper platform, and runs the real CPU and physics across seeds 11/29/43, skill levels 1/3/5, and both directions. All 18 cases crossed the gap and engaged within 258–318 ticks, with no CPU falls or browser errors. Eleven ended with melee contact; seven knocked the idle human out with a spell during the approach. The probe stops at that first knockout, since respawn would invalidate the upper-platform fixture. Traces and screenshots go to ignored `verify-out/stock-stationary/`.
+
+Typecheck, lint, all 3,268 tests across 264 files, and the production build passed. This regression covers the reported platform pacing loop; broader CPU balance and recovery work remain separate.
+
 Stock CPUs now approach melee range instead of retaining their wand's preferred firing distance. They stop inside 24 cells, restart outside 36, and pause an abrupt reversal for an 18-tick direction commitment. They reserve projectiles for targets farther than 65 cells and prefer openers over repeatedly selecting a finisher. Health/campaign spacing remains unchanged.
 
 Three seeded browser bouts before/after this pass recorded 4 versus 24 melee contacts and 336 versus 247 spell casts. Time within 40 cells rose from roughly 3% to 8–16%. This is a limited deterministic sample, not a balance claim. Short reversals fell from 17 to 15 across both fighters; overall reversals increased as fighters met more often. Unforced falls remain. Recovery decisions and visible footwork need further iteration; human-like movement is not yet verified. The before/after JSON files retain movement and contact evidence.
