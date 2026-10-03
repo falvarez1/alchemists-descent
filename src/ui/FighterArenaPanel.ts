@@ -473,6 +473,7 @@ export class FighterArenaPanel {
   }
 
   dispose(): void {
+    this.duel.dispose();
     cancelAnimationFrame(this.raf);
     for (const off of this.offs) off();
     this.root.remove();

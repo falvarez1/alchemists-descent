@@ -1,0 +1,48 @@
+{
+  "state": "fighting",
+  "fighters": [
+    {
+      "stocks": 1,
+      "volatility": 12.82936000000002,
+      "respawn": 0,
+      "protection": 0
+    },
+    {
+      "stocks": 1,
+      "volatility": 0.7503999999999994,
+      "respawn": 0,
+      "protection": 0
+    }
+  ],
+  "downs": [
+    {
+      "slot": 0,
+      "by": 1,
+      "source": "ring-out",
+      "x": 481,
+      "y": 613
+    },
+    {
+      "slot": 1,
+      "by": 0,
+      "source": "ring-out",
+      "x": 488,
+      "y": 585
+    },
+    {
+      "slot": 0,
+      "by": 1,
+      "source": "ring-out",
+      "x": 486,
+      "y": 550
+    },
+    {
+      "slot": 1,
+      "by": 0,
+      "source": "ring-out",
+      "x": 487,
+      "y": 617
+    }
+  ],
+  "remaining": 20547
+}

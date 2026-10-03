@@ -122,12 +122,12 @@ const R = await page.evaluate(async ({ A_ID, B_ID }) => {
   step(10);
   snap('blastOnBoth', h0, 10);
 
-  // --- T6: lightning from A at B (close: the arc random-walks and only reaches so far) ---
-  place(670, 716);
+  // --- T6: ownership at guaranteed initial contact range. Random walk accuracy is a different test. ---
+  place(670, 684);
   h0 = hp();
-  for (let k = 0; k < 4; k++) { ctx.arena.with(0, () => { ctx.lightning.cast(A.player.x + 4, A.player.y - 9, 0); }); step(8); if (counts[1].length) break; }
+  ctx.arena.with(0, () => { ctx.lightning.cast(A.player.x + 4, A.player.y - 9, 0); });
   step(4);
-  snap('lightningAtoB', h0, 10);
+  snap('lightningAtoB', h0, 4);
 
   // --- T7: fire on B's body: only B burns ---
   place(600, 740);
@@ -178,7 +178,7 @@ check('A kick pushes B twice (the blow knock and the gust, as for any foe), both
 check('a blast on B hurts B exactly once and not A (A is outside it)', R.blastOnB.callsB === 1 && R.blastOnB.callsA === 0, JSON.stringify(R.blastOnB));
 check('a blast covering both hurts each exactly once', R.blastOnBoth.callsA === 1 && R.blastOnBoth.callsB === 1, JSON.stringify(R.blastOnBoth));
 // T6
-check('A\'s lightning hurts B and not A', R.lightningAtoB.callsB >= 1 && R.lightningAtoB.callsA === 0, JSON.stringify(R.lightningAtoB));
+check('A\'s lightning makes exactly one direct hit under B\'s binding', R.lightningAtoB.callsB === 1 && R.lightningAtoB.callsA === 0 && R.lightningAtoB.bounds[1].every(b => b === 1), JSON.stringify(R.lightningAtoB));
 // T7
 check('fire on B\'s body burns B and not A', R.fireOnB.dB < -1 && R.fireOnB.callsA === 0, JSON.stringify(R.fireOnB));
 // T8/T9

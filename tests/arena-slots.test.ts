@@ -108,6 +108,43 @@ describe('EventBus slot scoping', () => {
 });
 
 describe('ArenaSlots', () => {
+  test('health-duel body slow does not suppress the rival wand phase', async () => {
+    const { arena, base, made } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    base.fighters.equip('ilyra-voss');
+    base.fighters.enemyRuns = () => false;
+    let casts = 0;
+    made[1].wands.update = () => { casts++; };
+    arena.endTick(); arena.runRivals('wands');
+    expect(casts).toBe(1);
+  });
+  test('removing the opponent idles the stock match, and the next opponent starts fresh', async () => {
+    const { arena } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    arena.configureStocks({ left: 0, right: 600, top: 0, bottom: 500 });
+    arena.removeRival(1);
+    expect(arena.stockMatch?.state).toBe('idle');
+    expect(arena.stockMatch?.fighters).toHaveLength(0);
+    await arena.addRival('brann-rook', 300, 100);
+    expect(arena.stockMatch?.state).toBe('countdown');
+    expect(arena.stockMatch?.fighters[0].stocks).toBe(3);
+  });
+  test('stock recovery is consumed once in the air and restored only by landing', async () => {
+    const { arena, base } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    arena.configureStocks({ left: 0, right: 600, top: 0, bottom: 500 });
+    for (let i = 0; i < 121; i++) arena.endTick();
+    base.player.grounded = false;
+    arena.updateStockRecovery(true);
+    expect(base.player.vy).toBe(-7.5);
+    for (let i = 0; i < 20; i++) arena.updateStockRecovery(false);
+    base.player.vy = 2;
+    arena.updateStockRecovery(true);
+    expect(base.player.vy).toBe(2);
+    base.player.grounded = true; arena.updateStockRecovery(false);
+    base.player.grounded = false; arena.updateStockRecovery(true);
+    expect(base.player.vy).toBe(-7.5);
+  });
   // (these tests count whole blows: the duel's tempo dial is 1 here; its own test is below)
   const was = ARENA_RULES.blowScale;
   const equality = ARENA_RULES.healthEquality;

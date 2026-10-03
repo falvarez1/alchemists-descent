@@ -680,9 +680,10 @@ export class PlayerControl implements PlayerControlApi {
       player.recharge = 0;
       ctx.events.emit('toast', { text: 'COMMUNION BROKEN' });
     }
-    player.hp -= amount;
+    const stockHit = ctx.arena?.takeStockDamage(amount, kx || 0, ky || 0) === true;
+    if (!stockHit) player.hp -= amount;
     fightSink?.hurt(raw, amount, source, kx || 0, ky || 0);
-    this.applyImpulse(kx || 0, ky || 0);
+    if (!stockHit) this.applyImpulse(kx || 0, ky || 0);
     const body = ctx.fighters?.body ?? NEUTRAL_BODY;
     // (a duel keeps the window short, config/arenaRules: it favoured the big single hit over every other kind of weapon)
     player.invuln = Math.round((ctx.arena !== undefined && ctx.arena.active ? ARENA_RULES.invulnTicks : 30) * body.invuln);
@@ -724,6 +725,7 @@ export class PlayerControl implements PlayerControlApi {
    */
   kick(ctx: Ctx): void {
     const player = ctx.player;
+    if (ctx.arena?.stockMatch && (!ctx.arena.runsBody(ctx.arena.bound) || ctx.arena.isLaunching(ctx.arena.bound))) return;
     if (player.dead || player.climbing || ctx.state.mode !== 'play') return;
     if (startLegSwing(ctx)) return;
     if (this.kickCooldownT > 0) return;
@@ -1216,6 +1218,7 @@ export class PlayerControl implements PlayerControlApi {
   respawn(): void {
     const ctx = this.ctx;
     if (ctx.arena?.active) {
+      if (ctx.arena.stockMatch && ctx.arena.stockMatch.state !== 'finished') return;
       ctx.arena.reset();
       return;
     }
@@ -1303,6 +1306,8 @@ export class PlayerControl implements PlayerControlApi {
     const keys = restrained
       ? { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false }
       : queuedJump ? { ...ctx.input.keys, jump: true, wallJump: queuedJump === 'wall' || ctx.input.keys.wallJump } : ctx.input.keys;
+    const stockRecovering = ctx.arena?.updateStockRecovery(keys.up && keys.jump) === true;
+    if (ctx.arena?.isLaunching(ctx.arena.bound)) { player.firing = false; player.firePressed = false; }
     if (channeling) {
       player.recharge--;
       player.hp = Math.min(player.maxHp, player.hp + 0.19);
@@ -1446,7 +1451,8 @@ export class PlayerControl implements PlayerControlApi {
         // The Cold Store's frostbite names itself when it is most of the harm.
         const cause = status.frostbiteDamage > 0 && status.frostbiteDamage >= damage * 0.5 ? 'frostbite' : this.statusDamageSource(player);
         const source = this.noteDamageSource(cause);
-        player.hp -= this.reduceIncomingDamage(damage, 0, source);
+        const taken = this.reduceIncomingDamage(damage, 0, source);
+        if (!ctx.arena?.takeStockDamage(taken, 0, 0)) player.hp -= taken;
         if (player.hp <= 0) {
           this.kill(source);
           return;
@@ -1606,7 +1612,8 @@ export class PlayerControl implements PlayerControlApi {
     const reversing = (keys.right && player.vx < -0.1) || (keys.left && player.vx > 0.1);
     const stepAccel = accel * (reversing ? 1.5 : 1) * (lp.moveSoftStart + (1 - lp.moveSoftStart) * Math.min(1, Math.abs(player.vx) / maxRun));
     const airGlideSpeed = lp.airGlideSpeed * movePace * body.airControl;
-    if (!player.climbing) {
+    const stockLaunching = ctx.arena?.isLaunching(ctx.arena.bound) === true;
+    if (!player.climbing && !stockLaunching) {
       // Powered input accelerates UP TO maxRun but never drags carried momentum
       // back DOWN — a fast run carried into a jump/levitate keeps its speed (you
       // can still actively brake or reverse). Pressing past maxRun is a no-op;
@@ -1640,7 +1647,7 @@ export class PlayerControl implements PlayerControlApi {
         }
         player.vx = clamp(player.vx, -12, 12);
       }
-    } else {
+    } else if (player.climbing) {
       player.vx = 0;
       player.fx = 0;
     }
@@ -1742,7 +1749,8 @@ export class PlayerControl implements PlayerControlApi {
           ['unknown', 0],
         )[0],
       );
-      player.hp -= this.reduceIncomingDamage(hazardDmg, 0, source);
+      const taken = this.reduceIncomingDamage(hazardDmg, 0, source);
+      if (!ctx.arena?.takeStockDamage(taken, 0, 0)) player.hp -= taken;
       if (ctx.state.frameCount % 14 === 0) {
         ctx.audio.hurt();
         ctx.particles.burst(player.x, player.y - 7, 4, Cell.Smoke, smokeColor, 1.1);
@@ -2063,7 +2071,8 @@ export class PlayerControl implements PlayerControlApi {
       // dive overrides the normal terminal velocity (5.0). The up-cap is a pure
       // safety net (levitDrag settles the climb well under it); keep it ≤ -3.7
       // so it never clips the jump impulse.
-      player.vy = clamp(player.vy, ctx.params.player.vyCapUp * verticalPace, (player.diveT > 0 ? 6.4 : 5.0) * body.fall);
+      player.vy = stockLaunching ? clamp(player.vy, -24, 24) : stockRecovering ? clamp(player.vy, -9, 6)
+        : clamp(player.vy, ctx.params.player.vyCapUp * verticalPace, (player.diveT > 0 ? 6.4 : 5.0) * body.fall);
 
       // Move horizontally (sub-cell accumulator; step-up 5 standing, 2 crawling).
       // A step that also changes elevation spends its diagonal path length from

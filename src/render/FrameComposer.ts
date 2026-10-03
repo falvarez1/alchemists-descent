@@ -1,4 +1,5 @@
 import { drawStoryLayer } from '@/render/story/StoryLayer';
+import { drawStockStageArt } from '@/render/StockStageArt';
 import { drawPlayerRagdollSprite } from '@/render/sprites/PlayerRagdollSprite';
 import { drawTrickshotOverlay } from '@/render/TrickshotOverlay';
 import { drawFallingWater } from '@/render/FallingWater';
@@ -1150,6 +1151,7 @@ export class FrameComposer implements PixelSurface {
   }
 
   private composeOverlays(ctx: Ctx): void {
+    drawStockStageArt(this, ctx);
     // Depth particles behind the play layer (over open air only), under every
     // sprite — unless the presentation draws them as GL points.
     const depthParticles = this.target.nativeDepthParticles !== true;
@@ -1181,7 +1183,7 @@ export class FrameComposer implements PixelSurface {
     drawFallingFlora(this, this.light, ctx, this.alpha);
     drawTeaMachineDecor(this, this.light, ctx, this.alpha);
     // STORY (wave 3): the speaking-pipes, Pell's camp and Pell, the resonant valve, the echoes.
-    drawStoryLayer(this, this.light, ctx);
+    if (!ctx.arena?.stockMatch) drawStoryLayer(this, this.light, ctx);
     this.drawVineStrands(ctx, 'foreground');
 
     drawFighterFx(this, this.light, ctx, 'under');

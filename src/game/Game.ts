@@ -1003,7 +1003,10 @@ export class Game {
         if (!ctx.player.dead) updateLegSwing(ctx);
         updateTelekinesis(ctx);
       }
-      if (!debugActive) { ctx.flask.update(ctx); ctx.arena?.runRivals('flask'); }
+      if (!debugActive) {
+        if (!ctx.arena?.stockMatch || ctx.arena.runsBody(0)) ctx.flask.update(ctx);
+        ctx.arena?.runRivals('flask');
+      }
       const enemyStart = performance.now();
       ctx.foliageCover?.update(ctx);
       ctx.enemyCtl.update(ctx); // self-gates per enemy via ctx.debug.frozenEnemy
@@ -1022,7 +1025,7 @@ export class Game {
         // transitions, waystones, and the explored mask.
         ctx.levels.update(ctx);
         ctx.run?.update(ctx);
-        ctx.story?.update();
+        if (!ctx.arena?.stockMatch) ctx.story?.update();
         ctx.pickups.update(ctx);
         ctx.mechanisms.update(ctx);
         this.lightDevices?.update(ctx);
@@ -1038,7 +1041,7 @@ export class Game {
       if (!debugActive) {
         this.brewing.update(ctx);
         ctx.hints.update(ctx);
-        ctx.wands.update(ctx);
+        if (!ctx.arena?.stockMatch || ctx.arena.runsBody(0)) ctx.wands.update(ctx);
         ctx.arena?.runRivals('wands');
         ctx.particles.update(ctx);
         ctx.lightning.update();

@@ -1,0 +1,32 @@
+{
+  "results": {
+    "before": 208,
+    "low": {
+      "speed": 5.939404106896261,
+      "hp": 208,
+      "percent": 8
+    },
+    "high": 10.84285238275833,
+    "moved": 29,
+    "lost": 2,
+    "respawn": {
+      "dead": false,
+      "percent": 0,
+      "protected": true
+    },
+    "moveInput": 38,
+    "healing": 50,
+    "recovery": {
+      "minimumY": 567,
+      "x": 703,
+      "y": 609,
+      "stocks": 3,
+      "grounded": true
+    },
+    "winner": 0,
+    "finished": "finished",
+    "stage": 13,
+    "open": 0
+  },
+  "errors": []
+}

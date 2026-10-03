@@ -25,6 +25,15 @@ describe('action camera travel', () => {
 });
 
 describe('camera inspection focus', () => {
+  it('holds the stock stage framing while a fighter is down or a cinematic requests focus', () => {
+    const camera = new Camera(), ctx = makeCtx(camera);
+    ctx.arena = { stockMatch: { zone: { left: 490, right: 1110, top: 390, bottom: 730 } } } as unknown as Ctx['arena'];
+    camera.inspectionFocus = { x: 800, y: 560 };
+    camera.actionFocus = { x: 1200, y: 900, zoom: 1.5 };
+    ctx.player.dead = true; camera.cineZoom = 1.4;
+    camera.update(ctx);
+    expect(camera.tx).toBe(480); expect(camera.ty).toBe(380); expect(camera.zoom).toBe(1);
+  });
   it('holds play camera on an inspection target until cleared', () => {
     const camera = new Camera();
     const ctx = makeCtx(camera);

@@ -182,6 +182,7 @@ export class Flask implements FlaskApi {
   }
 
   throwFlask(ctx: Ctx): void {
+    if (ctx.arena?.stockMatch && (!ctx.arena.runsBody(ctx.arena.bound) || ctx.arena.isLaunching(ctx.arena.bound))) return;
     if (ctx.state.mode !== 'play' || ctx.player.dead || ctx.player.climbing) return;
     if (this.state.count === 0 && !this.bottle) {
       this.refuse(ctx); // hurling an empty bottle helps no one

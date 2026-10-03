@@ -249,6 +249,8 @@ export class FighterSystem implements FighterApi {
 
   press(slot: AbilitySlot): void {
     if (this.id === null) return;
+    const arena = this.ctx.arena;
+    if (arena?.stockMatch && (!arena.runsBody(arena.bound) || arena.isLaunching(arena.bound))) return;
     const now = this.ctx.state.frameCount;
     if (slot === 'tactical') this.pendingTactical = now;
     else this.pendingUltimate = now;

@@ -1,0 +1,41 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const folder = new URL('../docs/arena/platform-fighter/', import.meta.url);
+const escape = (s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+const md = readFileSync(new URL('IMPLEMENTATION-PLAN.md', folder), 'utf8');
+const sections = md.split(/^## /m).slice(1).map((section, i) => {
+  const [title, ...lines] = section.trim().split('\n');
+  let list = null;
+  const body = [];
+  for (const line of lines) {
+    const kind = /^- /.test(line) ? 'ul' : /^\d+\. /.test(line) ? 'ol' : null;
+    if (kind !== list && list) { body.push(`</${list}>`); list = null; }
+    if (!line.trim()) continue;
+    if (kind && !list) { body.push(`<${kind}>`); list = kind; }
+    body.push(kind ? `<li>${escape(line.replace(/^(- |\d+\. )/, ''))}</li>` : `<p>${escape(line)}</p>`);
+  }
+  if (list) body.push(`</${list}>`);
+  return { title, id: `section-${i}`, html: body.join('\n') };
+});
+const concepts = [
+  ['foundry-match.png', 'The Foundry', 'Primary match target: open recovery space, copper-edged platforms, and a quiet industrial backdrop.'],
+  ['stages.png', 'Four places to fight', 'Foundry first. Kiln, Cistern, and Gallery follow once the stock loop is dependable.'],
+  ['fighters-actions.png', 'Silhouettes and attacks', 'Ten fighter identities and the first action vocabulary. Concepts guide playable sprites, animation, and effects.'],
+  ['local-versus.png', 'From joining to rematch', 'Controller ownership, stage selection, an unobstructed match, and a quick return to play.'],
+];
+const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Arena & Duel | Alchemist's Descent implementation atlas</title>
+<style>
+:root{color-scheme:dark;--slate:#142334;--steel:#293e51;--copper:#ac744b;--ivory:#e8dcc0;--amber:#efac58;--teal:#65cac5}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--slate);color:var(--ivory);font:17px/1.65 system-ui,sans-serif}a{color:var(--teal);text-underline-offset:4px}a:focus-visible,summary:focus-visible{outline:3px solid var(--amber);outline-offset:5px}header,main,footer{max-width:1180px;margin:auto;padding:36px 32px}header{padding-top:60px}h1,h2,h3{font-family:Georgia,serif;font-weight:normal;line-height:1.12}h1{font-size:clamp(44px,7vw,86px);margin:10px 0 22px}h2{font-size:clamp(28px,4vw,42px);margin:0 0 22px}h3{font-size:25px;margin:0 0 8px}p,li{max-width:76ch}.intro{font-size:21px;max-width:65ch}.byline{color:#b6c7ce;font-size:14px}.links{display:flex;gap:24px;flex-wrap:wrap;margin-top:26px}.hero{margin:0;background:#0c1723}.hero img{display:block;width:100%;height:auto}.hero figcaption{padding:14px 24px;color:#c1d0d6;font-size:14px}nav{padding:24px 0 44px;border-bottom:1px solid var(--steel)}nav ol{columns:2;column-gap:48px;padding-left:23px}nav li{break-inside:avoid;margin:0 0 9px}section{padding:56px 0;border-bottom:1px solid var(--steel)}.concept{margin:0 0 45px}.concept img{display:block;width:100%;height:auto;background:#101d2b}.concept figcaption{padding:20px 0 0}.concept p{margin:5px 0}.status{padding:18px 22px;border-left:4px solid var(--amber);background:#213344;max-width:76ch}li{padding-left:5px;margin-bottom:12px}footer{color:#b6c7ce;font-size:14px}summary{cursor:pointer;color:var(--teal);font-size:21px}details{margin-top:24px}.document-section{scroll-margin-top:24px}@media(max-width:650px){header,main,footer{padding-left:20px;padding-right:20px}header{padding-top:30px}nav ol{columns:1}.intro{font-size:18px}section{padding:36px 0}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}@media print{body{background:white;color:black;font-size:11pt}a{color:#174552}header,main,footer{padding:12px}section{break-inside:avoid}.hero,.concept{break-inside:avoid}.status{background:#eee}details{display:block}}
+</style></head><body>
+<header><p>Alchemist's Descent</p><h1>Arena &amp; Duel</h1><p class="intro">Build the fight around the fall. A production plan for launches, recoveries, stocks, and an industrial world that reacts to every exchange.</p><p class="byline">Implementation atlas · 3 October 2026 · Baseline c90e850</p><div class="links"><a href="IMPLEMENTATION-PLAN.md">Read the Markdown plan</a><a href="EVIDENCE.md">Implementation evidence</a><a href="concepts/prompts.md">ImageGen prompts</a></div></header>
+<figure class="hero"><img src="concepts/foundry-match.png" alt="ImageGen concept of the Foundry: three copper-edged floating platforms in a blue slate industrial cavern, with launch and recovery trails and stock HUD."><figcaption>ImageGen concept target. This is not an in-game screenshot.</figcaption></figure>
+<main><p class="status">Implementation is in progress. The concepts define the target; the evidence log records what has actually been built and verified.</p><nav aria-label="Plan contents"><h2>The implementation route</h2><ol>${sections.map(s => `<li><a href="#${s.id}">${escape(s.title)}</a></li>`).join('')}</ol><a href="#concepts">Explore the concept sheets</a></nav>
+<section id="concepts"><h2>The visual targets</h2>${concepts.map(([file,title,caption])=>`<figure class="concept"><a href="concepts/${file}"><img loading="lazy" src="concepts/${file}" alt="${escape(title + ': ' + caption)}"></a><figcaption><h3>${escape(title)}</h3><p>${escape(caption)}</p></figcaption></figure>`).join('')}</section>
+<section><h2>First playable Foundry</h2><figure class="concept"><img loading="lazy" src="evidence/stock-hud-1280.png" alt="Actual local game capture of Ilyra and Brann on the new Foundry, with copper platforms, a furnace emblem, teal lamps, a blue refinery background, and portrait and stock HUD."><figcaption><h3>Actual gameplay, 3 October 2026</h3><p>Stock damage, launches, ring-outs, respawns, recovery, and the new stage are running locally. The silhouette and palette follow the concept; fighter art, finer platform detail, combat effects, local controller ownership, and the complete lobby still need work. This is an implementation checkpoint, not a visual-parity claim.</p></figcaption></figure><p><a href="EVIDENCE.md">Read the checks, observed failures, fixes, and remaining work</a></p></section>
+${sections.map(s=>`<section class="document-section" id="${s.id}"><h2>${escape(s.title)}</h2>${s.html}</section>`).join('')}
+</main><footer>Concepts generated with the built-in ImageGen tool. Gameplay implementation and visual comparisons are tracked separately. All images are local files; this document works offline.</footer></body></html>`;
+writeFileSync(new URL('IMPLEMENTATION-PLAN.html', folder), html);
+console.log('Built docs/arena/platform-fighter/IMPLEMENTATION-PLAN.html');

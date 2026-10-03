@@ -38,6 +38,12 @@ function testEnemy(x: number, y: number): Enemy {
 }
 
 describe('player death economy', () => {
+  it('manual respawn cannot reset a stock match while a stock is being respawned', () => {
+    let resets = 0;
+    const ctx = { arena: { active: true, stockMatch: { state: 'fighting' }, reset: () => { resets++; } } } as unknown as Ctx;
+    new PlayerControl(ctx).respawn();
+    expect(resets).toBe(0);
+  });
   it.each([false, true])('routes manual arena respawn through a bout reset even when the campaign is over=%s', (over) => {
     const player = createPlayer();
     player.dead = true;

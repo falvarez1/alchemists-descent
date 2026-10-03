@@ -6,6 +6,9 @@ import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { FIGHTER_LOADOUTS, loadoutSave } from '@/content/fighterLoadouts';
 import { ARENA_RULES } from '@/config/arenaRules';
+import { STOCK_RULES } from '@/config/stockRules';
+import type { BlastZone, StockMatchView } from '@/core/arenaMatch';
+import { MatchDirector, stockLaunch, influenceLaunch } from '@/arena/MatchDirector';
 
 /**
  * ARENA SLOTS (docs/arena/ARCHITECTURE.md, D-001): two fighters in one world.
@@ -51,6 +54,55 @@ function newStand(): Enemy {
 }
 
 export class ArenaSlots implements ArenaApi {
+  private match: MatchDirector | null = null;
+  private readonly launchTicks = [0, 0];
+  private readonly recovery = [{ used: false, held: false, ticks: 0 }, { used: false, held: false, ticks: 0 }];
+  get stockMatch(): StockMatchView | null { return this.match; }
+
+  configureStocks(zone: BlastZone | null): void {
+    this.match = zone ? new MatchDirector(STOCK_RULES, { ...zone }) : null;
+    this.launchTicks.fill(0);
+    if (this.active) this.reset();
+  }
+
+  isLaunching(slot: number): boolean { return this.active && this.match !== null && this.launchTicks[slot] > 0; }
+
+  updateStockRecovery(requested: boolean): boolean {
+    if (!this.active || !this.match) return false;
+    const slot = this.boundSlot, r = this.recovery[slot], p = this.slots[slot]!.bundle.player;
+    const fresh = requested && !r.held;
+    r.held = requested;
+    if (p.grounded && !this.isLaunching(slot)) { r.used = false; r.ticks = 0; }
+    if (r.ticks > 0) r.ticks--;
+    if (fresh && !p.grounded && !p.dead && p.stunT <= 0 && !r.used && this.runsBody(slot)) {
+      r.used = true; r.ticks = 18;
+      p.vy = -7.5; p.diveT = 0; p.climbing = false;
+      p.levit = Math.max(0, p.levit - 12);
+      this.ctx.audio.sfx('player.jump');
+    }
+    return r.ticks > 0;
+  }
+
+  takeStockDamage(amount: number, kx: number, ky: number): boolean {
+    if (!this.active || !this.match) return false;
+    const slot = this.boundSlot, rec = this.slots[slot];
+    if (!rec || !this.match.hurt(slot, amount)) return true;
+    const p = rec.bundle.player;
+    const blow = this.activeBlow;
+    this.ctx.events.emit('fighterHit', { by: blow?.by ?? slot, victim: slot, damage: amount, tick: this.ctx.state.frameCount, attack: blow?.tag ?? 'world' });
+    if (p.status.stoneskin <= 0 && !rec.bundle.fighters.staggerResist) {
+      const launch = stockLaunch(kx, ky, amount, this.match.fighters[slot].volatility, rec.bundle.fighters.body.mass ?? 1);
+      if (launch.stun > 0) {
+        const k = rec.bundle.input.keys;
+        const influenced = influenceLaunch(launch.x, launch.y, Number(k.right) - Number(k.left), Number(k.down) - Number(k.up));
+        p.vx = influenced.x; p.vy = influenced.y; p.grounded = false;
+        p.climbing = false; p.crawling = false; p.diveT = 0;
+        p.stunT = Math.max(p.stunT, launch.stun);
+        this.launchTicks[slot] = launch.stun;
+      }
+    }
+    return true;
+  }
   private readonly slots: Array<Slot | undefined> = [];
   private boundSlot = 0;
   private readonly stand: Enemy = newStand();
@@ -74,7 +126,7 @@ export class ArenaSlots implements ArenaApi {
 
   constructor(private readonly ctx: Ctx, private readonly factory: BundleFactory) {
     // A new floor is a new world: the rival stays behind with the old one.
-    ctx.events.on('levelChanged', () => { if (this.active) this.removeRival(1); });
+    ctx.events.on('levelChanged', () => { if (this.active) this.removeRival(1); this.match = null; this.launchTicks.fill(0); });
   }
 
   // ================================================================================== the slots
@@ -138,6 +190,7 @@ export class ArenaSlots implements ArenaApi {
     this.bout.startedAt = this.ctx.state.frameCount;
     this.bout.endedAt = -1;
     this.bout.downs.length = 0;
+    this.match?.start(this.slots.length);
     this.syncStand();
     return slot;
   }
@@ -190,6 +243,7 @@ export class ArenaSlots implements ArenaApi {
       this.ctx.camera.inspectionFocus = null;
       this.bout.state = 'idle';
       this.bout.winner = null;
+      this.match?.stop();
     }
     this.ctx.projectileCtl?.invalidateEnemyIndex?.();
   }
@@ -383,6 +437,8 @@ export class ArenaSlots implements ArenaApi {
   noteDown(slot: number, source: string): void {
     const p = this.slots[slot]?.bundle.player;
     if (!p || this.bout.state === 'won') return;
+    // Resolve all stock losses together at endTick, including simultaneous final stocks.
+    if (this.match) { p.dead = true; return; }
     const blow = this.lastBlow[slot];
     const by = this.ctx.state.frameCount - blow.at <= OPPONENT_WINDOW && blow.by >= 0 ? blow.by : slot;
     const ev = { slot, by, source, x: p.x, y: p.y };
@@ -403,6 +459,7 @@ export class ArenaSlots implements ArenaApi {
       if (!rec) continue;
       this.with(s, () => {
         const b = rec.bundle;
+        if (this.match && !this.runsBody(s)) { b.player.firing = false; return; }
         if (phase === 'body') {
           const n0 = ctx.projectiles.length;
           rec.driver?.();
@@ -433,6 +490,10 @@ export class ArenaSlots implements ArenaApi {
 
   /** May slot 0 run its body this tick (a rival's slow is time)? */
   runsBody(slot: number): boolean {
+    if (this.match) {
+      const f = this.match.fighters[slot];
+      if (this.match.state !== 'fighting' || !f || f.stocks <= 0 || f.respawn > 0) return false;
+    }
     return this.slots[slot]?.runs ?? true;
   }
 
@@ -446,6 +507,7 @@ export class ArenaSlots implements ArenaApi {
     if (this.boundSlot !== 0) this.install(0);
     this.bridgeBack();
     const ctx = this.ctx;
+    if (this.match) this.tickStockMatch();
     // Each fighter's slow and stun, set by the other's effects on its stand-in, apply to the NEXT tick.
     for (let victim = 0; victim < this.slots.length; victim++) {
       const rec = this.slots[victim];
@@ -466,7 +528,9 @@ export class ArenaSlots implements ArenaApi {
     for (const r of rivals) { sx += r.x; sy += r.y - 9; n++; }
     this.focus.x = sx / n;
     this.focus.y = sy / n;
-    ctx.camera.inspectionFocus = this.focus;
+    ctx.camera.inspectionFocus = this.match
+      ? { x: (this.match.zone.left + this.match.zone.right) / 2, y: (this.match.zone.top + this.match.zone.bottom) / 2 }
+      : this.focus;
     void VIEW_W; void VIEW_H;
   }
 
@@ -484,8 +548,40 @@ export class ArenaSlots implements ArenaApi {
 
   // ================================================================================== a new bout
 
+  private tickStockMatch(): void {
+    const match = this.match!;
+    const changes = match.step(this.slots.map(s => s!.bundle.player));
+    for (let s = 0; s < this.launchTicks.length; s++) this.launchTicks[s] = Math.max(0, this.launchTicks[s] - 1);
+    for (const slot of changes.downs) {
+      const p = this.slots[slot]!.bundle.player;
+      const blow = this.lastBlow[slot];
+      const by = this.ctx.state.frameCount - blow.at <= OPPONENT_WINDOW && blow.by >= 0 ? blow.by : slot;
+      const ev = { slot, by, source: 'ring-out', x: p.x, y: p.y };
+      this.bout.downs.push(ev);
+      p.dead = true; p.firing = false; p.vx = 0; p.vy = 0;
+      this.launchTicks[slot] = 0;
+      this.ctx.events.emit('fighterDown', ev);
+    }
+    for (const slot of changes.respawns) {
+      if (match.state === 'finished') break;
+      const b = this.slots[slot]!.bundle;
+      const at = this.spawns[slot] ?? this.spawns[0];
+      this.with(slot, () => {
+        this.respawnBody(b, at.x, at.y - 30);
+        b.player.invuln = STOCK_RULES.protectionTicks;
+        b.wands.clearTransientState?.();
+      });
+      this.lastBlow[slot] = { by: -1, at: -1e9 };
+    }
+    if (match.state !== 'fighting') for (const s of this.slots) if (s) s.bundle.player.firing = false;
+    if (match.state === 'finished' && this.bout.state !== 'won') {
+      this.bout.state = 'won'; this.bout.winner = match.winner; this.bout.endedAt = this.ctx.state.frameCount;
+    }
+  }
+
   /** Stand the body at (x, y), whole, still and ready (a bout's start; under the slot's binding). */
   private respawnBody(b: SlotBundle, x: number, y: number): void {
+    Object.assign(this.recovery[this.boundSlot], { used: false, held: false, ticks: 0 });
     const p = b.player;
     p.dead = false;
     p.x = x; p.y = y; p.vx = 0; p.vy = 0; p.fx = 0; p.fy = 0;
@@ -530,6 +626,8 @@ export class ArenaSlots implements ArenaApi {
     this.bout.startedAt = this.ctx.state.frameCount;
     this.bout.endedAt = -1;
     this.bout.downs.length = 0;
+    this.match?.start(this.slots.length);
+    this.launchTicks.fill(0);
     this.syncStand();
     this.ctx.projectileCtl?.invalidateEnemyIndex?.();
     this.ctx.events.emit('arenaReset');

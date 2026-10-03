@@ -189,7 +189,7 @@ export class HintSystem implements HintApi {
     if (ctx.state.frameCount % 4 !== 0) return;
     // A story beat has the stage (Pell, a prologue, an echo, the escape, a cinematic,
     // Matron Ash): no hint line under it, and no lesson either.
-    if (ctx.state.mode !== 'play' || ctx.state.paused || ctx.player.dead || !ctx.levels.current || ctx.story?.beatActive) {
+    if (ctx.state.mode !== 'play' || ctx.state.paused || ctx.player.dead || !ctx.levels.current || ctx.story?.beatActive || ctx.arena?.stockMatch) {
       this._current = null;
       return;
     }

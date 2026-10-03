@@ -3,6 +3,7 @@ import { HEIGHT, WIDTH } from '@/config/constants';
 import type { Ctx } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, packRGB } from '@/sim/colors';
+import { stampStockStage } from '@/world/stockStage';
 
 /**
  * THE DUEL STAGE (worldgraph id 'fighter-duel', docs/arena/ARENA-RULES.md 1): one symmetric room for two fighters. 560 cells wide (the
@@ -94,8 +95,19 @@ export function resetDuelStage(ctx: Ctx): void {
     runtime.mechanisms.length = 0;
     runtime.emitters = [];
     runtime.pickups.length = 0;
+    if (ctx.arena?.stockMatch) {
+      runtime.decors = [];
+      runtime.authoredLights = [];
+      runtime.placedPrefabs = [];
+      runtime.story = undefined;
+      runtime.cauldron = null;
+      runtime.exit = null;
+      runtime.portal = null;
+      runtime.runeVaults.length = 0;
+    }
   }
-  stampStage(ctx);
+  if (ctx.arena?.stockMatch) stampStockStage(ctx);
+  else stampStage(ctx);
 }
 
 /** Entering the stage: wipe the generated level, light it, stamp the room, stand the fighter at its spawn. */

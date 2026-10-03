@@ -2,6 +2,41 @@
  * THE PROVING YARD's panel (ui/FighterArenaPanel): a developer's card on
  * the right edge while the yard is the level. Tokens from menus.css.
  * ===================================================================== */
+body.stock-match #hud-left, body.stock-match .wave-readout, body.stock-match #expedition-tools,
+body.stock-match #field-note, body.stock-match #fighter-hud, body.stock-match #controls-hint { display: none !important; }
+body.stock-match #treasure-row, body.stock-match #wave-banner, body.stock-match #fighter-chips { display: none !important; }
+body.stock-match #hint-teach-overlay, body.stock-match #callout-layer, body.stock-match .story-letterbox, body.stock-match #death-letterbox { display: none !important; }
+body.stock-match #fighter-arena.collapsed { top: 18px; right: 18px; width: 156px; }
+body.stock-match #fighter-arena.collapsed .fa-title { font-size: 9px; letter-spacing: .04em; }
+#stock-match-hud { position: absolute; inset: 0; z-index: 55; pointer-events: none; color: #e8dcc0; font-family: var(--m-sans, system-ui, sans-serif); }
+#stock-match-hud[hidden] { display: none; }
+.stock-timer { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); padding: 5px 28px; border: 1px solid #ac744b; border-block: 3px double #ac744b; background: #101b27ed; box-shadow: 0 0 0 3px #142334; font: 600 28px/1.25 var(--m-sans, system-ui, sans-serif); font-variant-numeric: tabular-nums; }
+.stock-fighter { position: absolute; bottom: 22px; box-sizing: border-box; width: 320px; height: 82px; padding: 9px 12px 8px 76px; background: #101b27ed; border: 1px solid #ac744b; border-top: 3px solid #efac58; box-shadow: inset 0 0 0 3px #293e5155, 0 3px 12px #070f1880; }
+.stock-fighter-0 { left: 5%; color: #efac58; }
+.stock-fighter-1 { right: 5%; color: #65cac5; border-top-color: #65cac5; }
+.stock-portrait { position: absolute; left: 7px; top: 6px; width: 58px; height: 63px; object-fit: cover; object-position: 50% 14%; border: 1px solid currentColor; image-rendering: pixelated; }
+.stock-portrait[hidden] { display: none; }
+.stock-name { color: #e8dcc0; font-size: 13px; letter-spacing: .04em; }
+.stock-controls { position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #c0d0d8; width: 90%; text-align: center; }
+.stock-percent { position: absolute; right: 14px; bottom: 15px; font-size: 38px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stock-percent[data-danger="true"] { color: #f17f5e; }
+.stock-lives { letter-spacing: 4px; font-size: 18px; margin-top: 8px; }
+.stock-fighter meter { position: absolute; bottom: 5px; left: 76px; width: calc(100% - 90px); height: 6px; accent-color: currentColor; }
+.stock-message { position: absolute; top: 35%; left: 50%; transform: translateX(-50%); text-align: center; font: 38px/1.2 var(--m-serif, Georgia, serif); padding: 18px 28px; background: #142334ed; border: 1px solid #ac744b; }
+.stock-rematch { position: absolute; top: 54%; left: 50%; transform: translateX(-50%); pointer-events: auto; color: #e8dcc0; border: 1px solid #ac744b; background: #293e51; padding: 12px 28px; cursor: pointer; font: inherit; }
+.stock-rematch:focus-visible { outline: 3px solid #65cac5; outline-offset: 3px; }
+body.play-active.stock-match #sound-quick { left: 18px; right: auto; bottom: auto; top: 18px; }
+body.play-active.stock-match #sound-panel { left: 0; right: auto; bottom: auto; top: calc(100% + 8px); transform-origin: top left; }
+body.play-active.stock-match #expedition-pause { left: 18px; right: auto; top: 58px; bottom: auto; }
+@media(max-width:800px) { .stock-fighter { width: 42%; padding-left: 56px; } .stock-portrait { width: 40px; } .stock-percent { font-size: 30px; right: 8px; } .stock-name { font-size: 11px; } .stock-fighter meter { left: 56px; width: calc(100% - 64px); } .stock-lives { letter-spacing: 2px; font-size: 15px; } }
+@media(max-width:500px) { .stock-fighter { width: 44%; height: 72px; bottom: 20px; padding-left: 8px; } .stock-fighter-0 { left: 3%; } .stock-fighter-1 { right: 3%; } .stock-portrait { display: none; } .stock-fighter meter { left: 8px; width: calc(100% - 16px); } .stock-percent { font-size: 27px; bottom: 15px; } .stock-timer { top: 8px; font-size: 19px; padding-inline: 12px; } .stock-message { font-size: 24px; } .stock-controls { font-size: 8px; } }
+@media(max-width:500px) and (min-height:600px) {
+  .stock-fighter { position: fixed; top: calc(50% + 28.125vw + 12px); bottom: auto; }
+  .stock-controls { position: fixed; top: calc(50% + 28.125vw + 91px); bottom: auto; }
+  body.stock-match #fighter-arena.collapsed { width: 44px; }
+  body.stock-match #fighter-arena.collapsed .fa-title { display: none; }
+  body.stock-match #fighter-arena.collapsed .fa-head { padding: 8px; justify-content: center; }
+}
 #fighter-arena {
   position: absolute; z-index: 60; right: 14px; top: 118px; width: 376px; max-height: calc(100% - 158px); overflow-y: auto; box-sizing: border-box;
   padding: 0 0 10px; color: var(--m-text, #e6dfca); font: 400 12.5px/1.45 var(--m-sans, system-ui, sans-serif);

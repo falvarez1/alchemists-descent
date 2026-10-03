@@ -18,6 +18,7 @@ import { AI_BEHAVIOR } from '@/config/aiBehavior';
 import type { AiLevel } from '@/config/aiTiers';
 import { YARD } from '@/world/fighterArena';
 import { DUEL } from '@/world/duelStage';
+import { STOCK_STAGE } from '@/config/stockStage';
 import { AI_PERSONALITIES } from '@/config/aiPersonalities';
 import type { PersonalityId } from '@/config/aiPersonalities';
 import { CombatMemory } from '@/arena/ai/memory';
@@ -164,7 +165,20 @@ export class BasicBrain implements Brain {
     this.deadSince = -1;
 
     // ---- the stage's nav (the level can change under a running bot) ----
-    const levelId = ctx.levels?.current?.def.id;
+    // Offstage survival takes priority over aiming or attacking. Inputs still use the normal body controller.
+    if (ctx.arena?.stockMatch && (p.y > STOCK_STAGE.main.y + 5 || p.x < STOCK_STAGE.main.x0 - 8 || p.x > STOCK_STAGE.main.x1 + 8) && !p.grounded) {
+      const main = STOCK_STAGE.main;
+      // Rise beside the lip first; steering under a solid platform cannot recover through its underside.
+      const under = p.y > main.y - 8;
+      const target = under ? (p.x < STOCK_STAGE.center.x ? main.x0 - 12 : main.x1 + 12) : Math.max(main.x0 + 18, Math.min(main.x1 - 18, p.x));
+      hand.move(Math.abs(target - p.x) > 4 ? Math.sign(target - p.x) : 0);
+      self.input.keys.up = true;
+      hand.down(false); hand.jump(true); hand.fire(false);
+      st.intent = 'recover'; st.rule = 'rise beside the ledge, then return'; st.goalX = target;
+      hand.end(); return;
+    }
+    if (ctx.arena?.stockMatch) self.input.keys.up = false;
+    const levelId = ctx.arena?.stockMatch ? 'fighter-stock' : ctx.levels?.current?.def.id;
     if (this.navFor !== levelId) { this.navFor = levelId; this.nav = stageNavFor(levelId); this.blocked.clear(); }
 
     // ---- see ----
@@ -364,7 +378,7 @@ export class BasicBrain implements Brain {
       }
     }
     if (control.activeEdge !== null && !control.committed) { control.cancelEdge(); this.edgeTarget = null; }
-    const stage = this.navFor === 'fighter-duel' ? DUEL : YARD;
+    const stage = this.navFor === 'fighter-stock' ? STOCK_STAGE.main : this.navFor === 'fighter-duel' ? DUEL : YARD;
     const x0 = stage.x0 + 16;
     const x1 = stage.x1 - 16;
     const lo = this.range - style.band;

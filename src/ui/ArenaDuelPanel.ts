@@ -3,6 +3,8 @@ import type { Ctx } from '@/core/types';
 import { DUEL, resetDuelStage } from '@/world/duelStage';
 import { ArenaBotsPanel } from '@/ui/ArenaBotsPanel';
 import { botDriverFor, rivalDriverFor } from '@/arena/ai/driver';
+import { STOCK_STAGE } from '@/config/stockStage';
+import { StockMatchHud } from '@/ui/StockMatchHud';
 
 /**
  * THE DUEL section of the arena panel (docs/arena/ARENA-RULES.md 1): pick a rival and add it, give either fighter a brain and a skill,
@@ -20,14 +22,30 @@ export class ArenaDuelPanel {
   private readonly mine: ArenaBotsPanel;
   private readonly theirs: ArenaBotsPanel;
   private last = '';
+  private readonly rules = document.createElement('select');
+  private readonly stockHud: StockMatchHud;
 
   constructor(private readonly ctx: Ctx) {
+    this.stockHud = new StockMatchHud(ctx, () => this.newBout());
     this.root.className = 'fa-section fa-duel';
     this.mine = new ArenaBotsPanel(ctx, 0, 'Your mind');
     this.theirs = new ArenaBotsPanel(ctx, 1, "The rival's mind");
     const label = document.createElement('div');
     label.className = 'fa-label';
     label.textContent = 'The duel';
+    this.rules.className = 'fa-select';
+    this.rules.setAttribute('aria-label', 'Match rules');
+    for (const [value, text] of [['health', 'Health duel'], ['stocks', 'Stock duel · The Foundry']]) {
+      const option = document.createElement('option'); option.value = value; option.textContent = text; this.rules.append(option);
+    }
+    this.rules.addEventListener('change', () => {
+      if (ctx.levels.current?.def.id !== 'fighter-duel') return;
+      ctx.arena?.configureStocks(this.rules.value === 'stocks' ? STOCK_STAGE.zone : null);
+      resetDuelStage(ctx);
+      ctx.arena?.setSpawns(this.rules.value === 'stocks' ? STOCK_STAGE.spawns : DUEL.spawns);
+      ctx.arena?.reset();
+      this.rules.blur(); this.update(true);
+    });
 
     const row = document.createElement('div');
     row.className = 'fa-buttons';
@@ -82,16 +100,17 @@ export class ArenaDuelPanel {
     this.rematch.title = 'A new bout: both fighters whole at their spawns';
     this.rematch.addEventListener('mousedown', (e) => e.preventDefault());
     this.rematch.addEventListener('click', () => this.newBout());
-    this.root.append(label, row, ...lines, this.status, this.rematch, this.mine.root, this.theirs.root);
+    this.root.append(label, this.rules, row, ...lines, this.status, this.rematch, this.mine.root, this.theirs.root);
   }
 
   private async addRival(): Promise<void> {
     const arena = this.ctx.arena;
     if (!arena) return;
-    arena.setSpawns(DUEL.spawns);
+    const spawns = arena.stockMatch ? STOCK_STAGE.spawns : DUEL.spawns;
+    arena.setSpawns(spawns);
     const id = this.pick.value as FighterId;
     // slot 0 starts the bout at its own spawn too
-    if (await arena.addRival(id, DUEL.spawns[1].x, DUEL.spawns[1].y) < 0) return;
+    if (await arena.addRival(id, spawns[1].x, spawns[1].y) < 0) return;
     arena.reset();
     // the rival comes with a mind (skill 3), so something happens at once; your own fighter stays yours (Watch gives it one too)
     rivalDriverFor(this.ctx, 1)?.install('basic', 3);
@@ -120,8 +139,11 @@ export class ArenaDuelPanel {
 
   /** Redraw from the arena (the panel calls it a few times a second). */
   update(force = false): void {
+    this.stockHud.update();
     const ctx = this.ctx;
     const arena = ctx.arena;
+    this.rules.disabled = ctx.levels.current?.def.id !== 'fighter-duel';
+    this.rules.value = arena?.stockMatch ? 'stocks' : 'health';
     const on = arena?.active === true;
     this.add.disabled = false;
     this.remove.disabled = !on;
@@ -132,17 +154,26 @@ export class ArenaDuelPanel {
       const bar = this.bars[s];
       if (!b) { bar.name.textContent = s === 0 ? 'You' : 'No rival'; bar.fill.style.width = '0%'; bar.hp.textContent = ''; parts.push('-'); continue; }
       const p = b.player;
+      const stock = arena?.stockMatch?.fighters[s];
       const id = arena?.fighterId(s) ?? null;
       bar.name.textContent = id ? FIGHTER_DEFS[id].name.split(' ')[0] : 'Alchemist';
-      const frac = Math.max(0, Math.min(1, p.hp / Math.max(1, p.maxHp)));
+      const frac = stock ? stock.stocks / 3 : Math.max(0, Math.min(1, p.hp / Math.max(1, p.maxHp)));
       bar.fill.style.width = `${(frac * 100).toFixed(0)}%`;
       bar.fill.dataset.low = frac < 0.3 ? '1' : '0';
-      bar.hp.textContent = p.dead ? 'DOWN' : `${Math.round(p.hp)}`;
-      parts.push(`${Math.round(p.hp)}`);
+      bar.hp.textContent = stock ? `${Math.round(stock.volatility)}%` : p.dead ? 'DOWN' : `${Math.round(p.hp)}`;
+      parts.push(stock ? `${stock.stocks}:${Math.round(stock.volatility)}` : `${Math.round(p.hp)}`);
     }
     const bout = arena?.bout;
+    const match = arena?.stockMatch;
     let text = 'Add a rival to start a bout.';
-    if (bout && on) {
+    if (match && on) {
+      if (match.state === 'countdown') text = `Ready · ${Math.ceil(match.countdown / 60)}`;
+      if (match.state === 'fighting') text = `Stock match · ${Math.ceil(match.remainingTicks / 60)} s remaining`;
+      if (match.state === 'finished') {
+        const id = match.winner !== null ? arena?.fighterId(match.winner) : null;
+        text = match.winner === null ? 'Draw' : `${id ? FIGHTER_DEFS[id].name : 'The Alchemist'} wins`;
+      }
+    } else if (bout && on) {
       if (bout.state === 'fighting') text = `Fighting · ${((ctx.state.frameCount - bout.startedAt) / 60).toFixed(0)} s`;
       else if (bout.state === 'won') {
         const w = bout.winner ?? 0;
@@ -157,4 +188,6 @@ export class ArenaDuelPanel {
     this.mine.update(force);
     this.theirs.update(force);
   }
+
+  dispose(): void { this.stockHud.dispose(); }
 }

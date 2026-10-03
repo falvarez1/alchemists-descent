@@ -1,0 +1,203 @@
+{
+  "joined": {
+    "slots": 2,
+    "enemies": 1,
+    "kinds": [
+      "fighter"
+    ],
+    "scoped": true
+  },
+  "sparkAtoB": {
+    "dA": 0,
+    "dB": -12,
+    "callsA": 0,
+    "callsB": 1,
+    "amountsB": [
+      25.72
+    ],
+    "amountsA": [],
+    "srcA": [],
+    "srcB": [
+      "fighter"
+    ],
+    "bounds": [
+      [],
+      [
+        1
+      ]
+    ],
+    "ticks": 66
+  },
+  "sparkBtoA": {
+    "dA": -3.9,
+    "dB": 0,
+    "callsA": 1,
+    "callsB": 0,
+    "amountsB": [],
+    "amountsA": [
+      8.41
+    ],
+    "srcA": [
+      "fighter"
+    ],
+    "srcB": [],
+    "bounds": [
+      [
+        0
+      ],
+      []
+    ],
+    "ticks": 66,
+    "owners": "n/a"
+  },
+  "kickAtoB": {
+    "dA": 0,
+    "dB": -4.6,
+    "callsA": 0,
+    "callsB": 1,
+    "amountsB": [
+      11.43
+    ],
+    "amountsA": [],
+    "srcA": [],
+    "srcB": [
+      "fighter"
+    ],
+    "bounds": [
+      [],
+      [
+        1
+      ]
+    ],
+    "ticks": 20,
+    "pushesB": [
+      {
+        "vx": 3.2,
+        "vy": -1.4,
+        "bound": 1
+      },
+      {
+        "vx": 3.21,
+        "vy": -0.58,
+        "bound": 1
+      }
+    ],
+    "pushesA": [
+      {
+        "vx": -1.5,
+        "vy": 0,
+        "bound": 0
+      }
+    ],
+    "bVx": 0,
+    "bX": 740,
+    "startX": 738
+  },
+  "blastOnB": {
+    "dA": 0,
+    "dB": -29.1,
+    "callsA": 0,
+    "callsB": 1,
+    "amountsB": [
+      60.02
+    ],
+    "amountsA": [],
+    "srcA": [],
+    "srcB": [
+      "fighter"
+    ],
+    "bounds": [
+      [],
+      [
+        1
+      ]
+    ],
+    "ticks": 10
+  },
+  "blastOnBoth": {
+    "dA": -9.7,
+    "dB": -29,
+    "callsA": 1,
+    "callsB": 1,
+    "amountsB": [
+      60.02
+    ],
+    "amountsA": [
+      42
+    ],
+    "srcA": [
+      "explosion"
+    ],
+    "srcB": [
+      "fighter"
+    ],
+    "bounds": [
+      [
+        0
+      ],
+      [
+        1
+      ]
+    ],
+    "ticks": 10
+  },
+  "lightningAtoB": {
+    "dA": -0.3,
+    "dB": -16,
+    "callsA": 0,
+    "callsB": 1,
+    "amountsB": [
+      40.01
+    ],
+    "amountsA": [],
+    "srcA": [],
+    "srcB": [
+      "fighter"
+    ],
+    "bounds": [
+      [],
+      [
+        1
+      ]
+    ],
+    "ticks": 4
+  },
+  "fireOnB": {
+    "dA": 0,
+    "dB": -5.4,
+    "callsA": 0,
+    "callsB": 0,
+    "amountsB": [],
+    "amountsA": [],
+    "srcA": [],
+    "srcB": [],
+    "bounds": [
+      [],
+      []
+    ],
+    "ticks": 30
+  },
+  "binding": {
+    "runs": 3,
+    "allBound": true
+  },
+  "mirror": {
+    "bound": 0,
+    "isA": true,
+    "standFor": 1,
+    "standX": 740,
+    "bX": 740,
+    "standHp": 208,
+    "bHp": 208
+  },
+  "leaks": [],
+  "removed": {
+    "active": false,
+    "enemies": 0,
+    "scoped": false,
+    "samePlayer": true,
+    "enemiesBefore": 0,
+    "scopedBefore": false,
+    "focus": null
+  }
+}

@@ -58,8 +58,13 @@ export class Camera implements CameraApi {
 
   update(ctx: Ctx): void {
     const { player, state, input } = ctx;
-    const action = state.mode === 'play' ? this.actionFocus : null;
-    if (action) {
+    const stock = state.mode === 'play' ? ctx.arena?.stockMatch : null;
+    const action = state.mode === 'play' && !stock ? this.actionFocus : null;
+    if (stock) {
+      this.tx = (stock.zone.left + stock.zone.right - VIEW_W) / 2;
+      this.ty = (stock.zone.top + stock.zone.bottom - VIEW_H) / 2;
+      this.zoom = 1;
+    } else if (action) {
       this.tx = action.x - VIEW_W / 2;
       this.ty = action.y - VIEW_H / 2;
     } else if (state.mode === 'play' && this.inspectionFocus !== null) {
@@ -155,7 +160,7 @@ export class Camera implements CameraApi {
       player.firing;
     this.idleFrames = busy ? 0 : this.idleFrames + 1;
     const dying = state.mode === 'play' && player.dead && !action && this.zoomLock === null;
-    const zTarget = action ? actionCameraZoom(action.zoom, actionDistance) : this.zoomLock ?? (dying ? 1 + 0.85 * deathPush(ctx.fx.deathTime ?? 0) : this.cineZoom);
+    const zTarget = stock ? 1 : action ? actionCameraZoom(action.zoom, actionDistance) : this.zoomLock ?? (dying ? 1 + 0.85 * deathPush(ctx.fx.deathTime ?? 0) : this.cineZoom);
     this.zoom += (zTarget - this.zoom) * (action ? .035 : this.zoomLock !== null ? 0.16 : dying ? 0.06 : this.cineZoom !== 1 ? 0.09 : 0.035);
   }
 

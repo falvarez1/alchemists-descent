@@ -1,5 +1,6 @@
 import { YARD } from '@/world/fighterArena';
 import { DUEL } from '@/world/duelStage';
+import { STOCK_STAGE } from '@/config/stockStage';
 
 /**
  * STAGE NAV (docs/arena/AI-FIGHTERS.md 2.4): where a bot can stand on a stage and how it gets between those places.
@@ -166,6 +167,20 @@ export function yardNav(): StageNav {
 
 let yard: StageNav | null = null;
 let duel: StageNav | null = null;
+let stock: StageNav | null = null;
+
+export function stockNav(): StageNav {
+  const main = STOCK_STAGE.main;
+  const nodes: NavNode[] = [{ id: 'floor', name: 'Foundry platform', x0: main.x0 + 8, x1: main.x1 - 8, y: main.y - 1 }];
+  const edges: NavEdge[] = [];
+  for (const [i, p] of STOCK_STAGE.platforms.entries()) {
+    const id = `side${i}`, dir = i === 0 ? -1 : 1;
+    nodes.push({ id, name: 'upper platform', x0: p.x0 + 8, x1: p.x1 - 8, y: p.y - 1 });
+    edges.push({ from: 'floor', to: id, kind: 'levitate', launchX: i === 0 ? p.x1 + 12 : p.x0 - 12, landX: (p.x0 + p.x1) / 2, clearY: p.y - 5, dir, cost: 85 });
+    edges.push({ from: id, to: 'floor', kind: 'drop', launchX: i === 0 ? p.x1 - 3 : p.x0 + 3, landX: i === 0 ? p.x1 + 20 : p.x0 - 20, clearY: p.y - 1, dir: i === 0 ? 1 : -1, cost: 25 });
+  }
+  return new StageNav(nodes, edges, STOCK_STAGE.center.x);
+}
 
 /** The Duel side platforms and centre perch need deliberate rises beside their lips. */
 export function duelNav(): StageNav {
@@ -185,6 +200,7 @@ export function duelNav(): StageNav {
 
 /** The nav for a level id, or null when the stage has none (the bot then only walks and hops). */
 export function stageNavFor(levelId: string | undefined): StageNav | null {
+  if (levelId === 'fighter-stock') return (stock ??= stockNav());
   if (levelId === 'fighter-duel') return (duel ??= duelNav());
   if (levelId !== 'fighter-test') return null;
   return (yard ??= yardNav());

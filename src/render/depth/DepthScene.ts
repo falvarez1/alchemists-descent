@@ -84,7 +84,7 @@ export function authoredZones(runtime: LevelRuntime): readonly AuthoredZone[] {
  * hitches; planes appear under the level curtain.
  */
 
-type SlotSource = { kind: 'kit'; key: string } | { kind: 'classic' };
+type SlotSource = { kind: 'kit'; key: string } | { kind: 'classic' } | { kind: 'stock' };
 
 interface BakedKit {
   readonly kit: DepthKit;
@@ -173,6 +173,7 @@ export class DepthScene implements ParallaxLayers {
   }
 
   get ready(): boolean {
+    if (this.source.kind === 'stock') return this.slotVersions[0] === 1;
     return this.source.kind === 'classic' ? this.classic.ready : (this.activeKit?.done.every(Boolean) ?? false);
   }
 
@@ -187,6 +188,10 @@ export class DepthScene implements ParallaxLayers {
   }
 
   sync(ctx: Ctx): void {
+    if (ctx.arena?.stockMatch && ctx.levels.current?.def.id === 'fighter-duel') {
+      this.useStockBackdrop();
+      return;
+    }
     const kit = this.kitFor(ctx);
     const runtime = ctx.levels?.current ?? null;
     if (!kit) {
@@ -250,6 +255,32 @@ export class DepthScene implements ParallaxLayers {
   }
 
   /* ------------------------------ slots ------------------------------ */
+
+  private useStockBackdrop(): void {
+    const bmp = this.image(`${import.meta.env.BASE_URL}assets/arena/foundry-backdrop.png`);
+    this.foreground.enabled = false;
+    this.foreground.particles.set(false, null, null);
+    this.activeKit = null; this.shaftPlane = null; this.grade = null;
+    if (this.source.kind !== 'stock') {
+      this.source = { kind: 'stock' }; this.slotVersions.fill(-1);
+    }
+    for (let i = 0; i < this.backdropLayers.length; i++) {
+      const to = this.backdropLayers[i];
+      const ready = i === 0 && typeof bmp !== 'string';
+      const stamp = ready ? 1 : 0;
+      if (this.slotVersions[i] !== stamp) {
+        this.slotVersions[i] = stamp;
+        to.pixels = ready ? bmp.pixels : new Uint8ClampedArray([20, 35, 52, 255]);
+        to.width = ready ? bmp.width : 1; to.height = ready ? bmp.height : 1;
+        to.loaded = true; to.lit = 0; to.version = versionCounter++;
+      }
+      Object.assign(this.kitProfile.layers[to.id], NEUTRAL_LAYER, {
+        visible: i === 0, opacity: i === 0 ? 1 : 0, scale: ready ? VIEW_W / bmp.width : 1,
+      });
+    }
+    Object.assign(this.kitProfile.grade, DEFAULT_BACKDROP_GRADE);
+    this.profile = this.kitProfile;
+  }
 
   private useClassic(): void {
     this.foreground.particles.set(false, null, null);
