@@ -11,7 +11,7 @@ import type { World } from '@/sim/World';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { entityRandom } from '@/core/simRandom';
 import { foliageContactFuel, foliageHeatNearby, foliageTouchesHeat } from '@/game/FoliageHeat';
-import { AMBIENT_FOLIAGE_LIFE, FOLIAGE_MAX_FUEL } from '@/config/foliage';
+import { AMBIENT_FOLIAGE_LIFE, FOLIAGE_BURN_TICKS, foliageBurnLife, foliageBurnState, FOLIAGE_MAX_FUEL } from '@/config/foliage';
 
 const SUPPORT_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
@@ -270,6 +270,7 @@ export class VineStrands implements VineStrandsApi {
         py: queueY[i] + 0.5 - fall,
         contact: false,
       });
+      if (lowFuel) restoreVineBurn(nodes[i], world.life[cellIndexes[i]]);
       world.clearCellAt(cellIndexes[i]);
     }
 
@@ -797,8 +798,9 @@ export class VineStrands implements VineStrandsApi {
     for (let i = 0; i < count; i++) {
       origin.push(cellIndexes[i]);
       if (world.life[cellIndexes[i]] > AMBIENT_FOLIAGE_LIFE) lowFuel = false;
-      world.clearCellAt(cellIndexes[i]); // the strand now holds these cells
     }
+    if (lowFuel) for (const node of nodes) for (const index of node.sourceCells ?? []) restoreVineBurn(node, world.life[index]);
+    for (let i = 0; i < count; i++) world.clearCellAt(cellIndexes[i]); // the strand now holds these cells
     this.strands.push({
       nodes,
       segments,
@@ -824,13 +826,13 @@ export class VineStrands implements VineStrandsApi {
       return;
     }
     const color = strand.originColor ?? strand.color;
-    const residue = new Map<number, Cell>();
-    for (const node of strand.nodes) if (node.burn) for (const index of node.sourceCells ?? []) residue.set(index, node.burning && !strand.lowFuel ? Cell.Ember : Cell.Ash);
+    const material = new Map<number, VineNode>();
+    for (const node of strand.nodes) for (const index of node.sourceCells ?? []) material.set(index, node);
     for (const i of strand.originCells) {
       if (world.types[i] !== Cell.Empty) continue;
-      const type = residue.get(i) ?? Cell.Vines;
+      const node = material.get(i), type = vineResidue(node, strand.lowFuel);
       world.replaceCellAt(i, type, type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : color);
-      world.life[i] = type === Cell.Vines ? strand.lowFuel ? AMBIENT_FOLIAGE_LIFE : -1 : 90;
+      world.life[i] = type === Cell.Vines ? vineLife(node, strand.lowFuel) : 90;
       world.moved[i] = world.movedTick;
     }
   }
@@ -877,26 +879,25 @@ export class VineStrands implements VineStrandsApi {
   }
 
   writeSnapshotCells(world: World, types: Uint8Array, life: Int16Array): void {
-    let vineLife = -1;
-    const put = (index: number, type: Cell = Cell.Vines) => {
+    const put = (index: number, node: VineNode | undefined, lowFuel = false) => {
       if (index < 0 || index >= types.length || types[index] !== Cell.Empty) return;
-      types[index] = type; life[index] = type === Cell.Vines ? vineLife : 90;
+      const type = vineResidue(node, lowFuel);
+      types[index] = type; life[index] = type === Cell.Vines ? vineLife(node, lowFuel) : 90;
     };
     for (const strand of this.strands) {
       if (strand.web || strand.originWorld !== world) continue;
-      vineLife = strand.lowFuel ? AMBIENT_FOLIAGE_LIFE : -1;
       if (strand.tendril && strand.originCells) {
-        const residue = new Map<number, Cell>();
-        for (const node of strand.nodes) if (node.burn) for (const index of node.sourceCells ?? []) residue.set(index, node.burning && !strand.lowFuel ? Cell.Ember : Cell.Ash);
-        for (const index of strand.originCells) put(index, residue.get(index) ?? Cell.Vines);
+        const material = new Map<number, VineNode>();
+        for (const node of strand.nodes) for (const index of node.sourceCells ?? []) material.set(index, node);
+        for (const index of strand.originCells) put(index, material.get(index), strand.lowFuel);
         continue;
       }
       // Detached material is saved at its actual position, never at the old root.
-      for (const node of strand.nodes) put(world.idx(Math.floor(node.x), Math.floor(node.y)), vineResidue(node, strand.lowFuel));
+      for (const node of strand.nodes) put(world.idx(Math.floor(node.x), Math.floor(node.y)), node, strand.lowFuel);
       for (const edge of strand.segments) {
         const a = strand.nodes[edge.a], b = strand.nodes[edge.b], count = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) * 1.6);
-        const type = vineResidue((a.burn ?? 0) > (b.burn ?? 0) ? a : b, strand.lowFuel);
-        for (let i = 1; i < count; i++) put(world.idx(Math.floor(a.x + (b.x - a.x) * i / count), Math.floor(a.y + (b.y - a.y) * i / count)), type);
+        const node = (a.burn ?? 0) > (b.burn ?? 0) ? a : b;
+        for (let i = 1; i < count; i++) put(world.idx(Math.floor(a.x + (b.x - a.x) * i / count), Math.floor(a.y + (b.y - a.y) * i / count)), node, strand.lowFuel);
       }
     }
   }
@@ -1205,14 +1206,14 @@ export class VineStrands implements VineStrandsApi {
   }
 
   private settleStrand(world: World, strand: VineStrand): void {
-    if (!strand.nodes.some(node => node.burn)) { this.settleStrandAs(world, strand, Cell.Vines, () => strand.color, 1.6); return; }
+    if (!strand.nodes.some(node => node.burn || node.burning)) { this.settleStrandAs(world, strand, Cell.Vines, () => strand.color, 1.6); return; }
     for (const edge of strand.segments) {
-      const a = strand.nodes[edge.a], b = strand.nodes[edge.b], type = vineResidue((a.burn ?? 0) > (b.burn ?? 0) ? a : b, strand.lowFuel);
-      this.paintLineAs(world, a.x, a.y, b.x, b.y, type, () => type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : strand.color, 1.6, strand.lowFuel ? AMBIENT_FOLIAGE_LIFE : -1);
+      const a = strand.nodes[edge.a], b = strand.nodes[edge.b], node = (a.burn ?? 0) > (b.burn ?? 0) ? a : b, type = vineResidue(node, strand.lowFuel);
+      this.paintLineAs(world, a.x, a.y, b.x, b.y, type, () => type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : strand.color, 1.6, vineLife(node, strand.lowFuel));
     }
     if (strand.segments.length === 0) for (const node of strand.nodes) {
       const type = vineResidue(node, strand.lowFuel);
-      this.paintCellAt(world, node.x, node.y, type, type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : strand.color, strand.lowFuel ? AMBIENT_FOLIAGE_LIFE : -1);
+      this.paintCellAt(world, node.x, node.y, type, type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : strand.color, vineLife(node, strand.lowFuel));
     }
   }
 
@@ -1295,7 +1296,30 @@ function isLoadBearingAnchor(t: number): boolean {
   return isSolid(t) && !isSoftGrowth(t);
 }
 
-function vineResidue(node: VineNode, lowFuel = false): Cell { return node.burn ? node.burning && !lowFuel ? Cell.Ember : Cell.Ash : Cell.Vines; }
+function vineResidue(node: VineNode | undefined, lowFuel = false): Cell {
+  if (lowFuel) return (node?.burn ?? 0) >= 1 ? Cell.Ash : Cell.Vines;
+  return node?.burn ? node.burning ? Cell.Ember : Cell.Ash : Cell.Vines;
+}
+
+function vineLife(node: VineNode | undefined, lowFuel = false): number {
+  if (!lowFuel) return -1;
+  if (!node?.burn && !node?.burning) return AMBIENT_FOLIAGE_LIFE;
+  // The shared life plane stores a normalized smoulder age. It retains the
+  // remaining material while either the grid or the physical strand owns it.
+  const age = Math.round((node.burn ?? 0) * FOLIAGE_BURN_TICKS);
+  return node.burning ? foliageBurnLife(node.fuel ?? FOLIAGE_MAX_FUEL, age) : -10 - Math.min(FOLIAGE_BURN_TICKS - 1, age);
+}
+
+function restoreVineBurn(node: VineNode, life: number): void {
+  const saved = foliageBurnState(life);
+  if (!saved.age && !saved.burning) return;
+  const burn = Math.min(1, saved.age / FOLIAGE_BURN_TICKS);
+  if (burn < (node.burn ?? 0)) return;
+  node.burn = burn; node.burning = saved.burning; node.fuel = saved.fuel;
+  // A nonzero saved age has already passed ignition. Lifting and reloading
+  // must never replenish the one real flame a damp stem can emit.
+  node.flameSpent = saved.age > 0;
+}
 
 function segmentDistanceSq(x: number, y: number, a: VineNode, b: VineNode): number {
   const dx = b.x - a.x, dy = b.y - a.y;

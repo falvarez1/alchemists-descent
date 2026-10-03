@@ -3,6 +3,7 @@ import type { Ctx } from '@/core/types';
 import { VineStrands } from '@/entities/VineStrands';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
+import { foliageBurnLife, foliageBurnState } from '@/config/foliage';
 
 function garden() {
   const world = new World(800, 600), callbacks: Array<() => void> = [];
@@ -22,6 +23,80 @@ function garden() {
 }
 
 describe('Living vine continuity', () => {
+  it.each([true, false])('saves a partially burned damp tendril as vine material (burning=%s)', burning => {
+    const { system, world, cells, tick } = garden();
+    for (const i of cells) world.life[i] = -2;
+    tick(8);
+    const node = system.strands[0].nodes[7];
+    Object.assign(node, { burn: .5, fuel: 3, burning, flameSpent: true });
+    const types = world.types.slice(), life = world.life.slice();
+    system.writeSnapshotCells(world, types, life);
+    for (const i of node.sourceCells!) {
+      expect(types[i]).toBe(Cell.Vines);
+      expect(foliageBurnState(life[i])).toEqual({ age: 45, fuel: burning ? 3 : 0, burning });
+      expect(world.types[i]).toBe(Cell.Empty);
+    }
+    expect(life[cells[0]]).toBe(-2);
+  });
+
+  it.each([
+    ['leaving', true], ['leaving', false], ['offscreen', true], ['offscreen', false],
+  ] as const)('retains damp burn progress through %s and lifting again (burning=%s)', (path, burning) => {
+    const { ctx, system, world, cells, tick, leave } = garden();
+    for (const i of cells) world.life[i] = -2;
+    tick(8);
+    const node = system.strands[0].nodes[7], source = node.sourceCells![0];
+    Object.assign(node, { burn: .5, fuel: 3, burning, flameSpent: true });
+    if (path === 'leaving') leave();
+    else { ctx.player.x = 760; tick(1); }
+    expect(system.strands).toHaveLength(0);
+    expect(world.types[source]).toBe(Cell.Vines);
+    const saved = foliageBurnState(world.life[source]);
+    expect(saved.burning).toBe(burning);
+    expect(saved.age).toBeGreaterThanOrEqual(45);
+    expect(saved.age).toBeLessThanOrEqual(46);
+    expect(saved.fuel).toBe(burning ? 3 : 0);
+    ctx.player.x = 210; tick(8);
+    const restored = system.strands.flatMap(s => s.nodes).find(n => n.sourceCells?.includes(source))!;
+    expect(restored).toBeDefined();
+    expect(restored.burn).toBeGreaterThanOrEqual(.5);
+    expect(restored.burn).toBeLessThan(.6);
+    expect(restored.burning).toBe(burning);
+    expect(restored.fuel).toBe(burning ? 3 : 0);
+    expect(restored.flameSpent).toBe(true);
+  });
+
+  it.each([true, false])('restores encoded damp burn state when unsupported cells detach (burning=%s)', burning => {
+    const { system, world, cells } = garden();
+    for (const i of cells) world.life[i] = burning ? foliageBurnLife(3, 45) : -55;
+    world.clearCell(160, 96);
+    expect(system.detachCluster(160, 97)).toBe(true);
+    for (const node of system.strands[0].nodes) {
+      expect(node.burn).toBe(.5);
+      expect(node.burning).toBe(burning);
+      expect(node.fuel).toBe(burning ? 3 : 0);
+      expect(node.flameSpent).toBe(true);
+    }
+    const types = world.types.slice(), life = world.life.slice();
+    system.writeSnapshotCells(world, types, life);
+    for (const i of cells) {
+      expect(types[i]).toBe(Cell.Vines);
+      expect(foliageBurnState(life[i])).toEqual({ age: 45, fuel: burning ? 3 : 0, burning });
+    }
+  });
+
+  it.each([true, false])('settles detached damp material with its remaining burn state (burning=%s)', burning => {
+    const { system, world, cells, leave } = garden();
+    for (const i of cells) world.life[i] = burning ? foliageBurnLife(3, 45) : -55;
+    world.clearCell(160, 96);
+    expect(system.detachCluster(160, 97)).toBe(true);
+    leave();
+    for (const i of cells) {
+      expect(world.types[i]).toBe(Cell.Vines);
+      expect(foliageBurnState(world.life[i])).toEqual({ age: 45, fuel: burning ? 3 : 0, burning });
+    }
+  });
+
   it('preserves damp ambient fuel through lifting, saving and leaving the level', () => {
     const { system, world, cells, tick, leave } = garden();
     for (const i of cells) world.life[i] = -2;
