@@ -14,6 +14,10 @@ The Bellows, Rot Gardens, Sunken Cistern and Kiln Heart use richer distant archi
 
 The HUD uses original SVG brass frames and a glass-vial badge. Existing resources, equipment, bindings, objectives and treasure values drive it. Touch layouts and larger text remain supported.
 
+Captured from the running game after the final playtests:
+
+![Rillback Sluice with layered waterworks scenery, clear water, terrain-bound vegetation and brass HUD](images/visual-polish-sluice.png)
+
 `src/config/visualFidelity.ts` holds presentation controls. `?fidelity=0` disables the new detail overlays and lamp gain for comparisons; it retains the new plates, water palette and HUD. It is not a complete old-art preset.
 
 ## Art provenance
