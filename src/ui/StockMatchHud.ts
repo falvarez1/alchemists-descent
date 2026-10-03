@@ -59,7 +59,7 @@ export class StockMatchHud {
     document.body.classList.toggle('stock-match', visible);
     if (!visible || !match || !arena) return;
     const keys = getBindings();
-    this.hint.textContent = `${keyLabel(keys.jump)}: jump   ·   ${keyLabel(keys.up)} + ${keyLabel(keys.jump)} in air: recover   ·   ${keyLabel(keys.dodge)} / LB: dodge   ·   Aim + fire: build volatility`;
+    this.hint.textContent = `${keyLabel(keys.jump)}: jump · ${keyLabel(keys.up)} + jump: recover · ${keyLabel(keys.dodge)} / LB: dodge · ${keyLabel(keys.kick)} / B: melee · up + melee: launch · down + melee: finish`;
     const seconds = Math.ceil(match.remainingTicks / 60);
     this.timer.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
     this.timer.setAttribute('aria-label', `${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds remaining`);

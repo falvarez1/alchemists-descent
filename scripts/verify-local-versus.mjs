@@ -106,7 +106,7 @@ try {
   await pressPad(0, 0); await pressPad(1, 0); await pressPad(1, 9);
   await page.locator('#versus-lobby').waitFor({ state: 'hidden' });
   await page.waitForFunction(() => document.querySelector('.stock-message')?.hidden === true);
-  let ownership = null;
+  let ownership = null, meleeOwnership = null;
   if (!production) {
     const before = await page.evaluate(() => {
       const c = window.__game.ctx;
@@ -123,6 +123,13 @@ try {
     }, before);
     assert.ok(ownership.after[0] > ownership.before[0] + 5, 'assigned controller moves player 1');
     assert.equal(ownership.after[1], ownership.before[1], 'other fighter remains still');
+    await page.evaluate(() => { window.testPads[1].axes[1] = 1; });
+    await pressPad(1, 1);
+    meleeOwnership = await page.evaluate(() => {
+      const c = window.__game.ctx; window.testPads[1].axes[1] = 0;
+      return [0, 1].map(slot => ({ kind: c.arena.stockAttack(slot).kind, busy: c.arena.stockAttack(slot).busy }));
+    });
+    assert.equal(meleeOwnership[0].kind, 'finisher'); assert.equal(meleeOwnership[1].busy, false, 'B affects only its assigned fighter');
   }
   await pressPad(0, 9); await page.locator('#pause-overlay.visible').waitFor();
   await pressPad(1, 9); await page.locator('#pause-overlay.visible').waitFor({ state: 'hidden' });
@@ -156,7 +163,7 @@ try {
     assert.equal(await page.locator('#stock-match-hud').isVisible(), false, 'Continue restores campaign presentation');
   }
   assert.deepEqual(errors, []);
-  const result = { production, narrow, ownership, mixedOwnership, savedDescentUnchanged, checks: ['visible title launch', 'CPU match', 'signature loadout locked', 'restart match', 'quit to title', 'press to join', 'keyboard plus controller match', 'two controller assignment', 'narrow layout', 'controller pause', 'disconnect freezes timer', 'reconnect requires resume', ...(!production ? ['slot movement isolation', 'controller rematch', 'saved descent preserved', 'Continue restores campaign'] : ['debug handle absent'])], errors };
+  const result = { production, narrow, ownership, meleeOwnership, mixedOwnership, savedDescentUnchanged, checks: ['visible title launch', 'CPU match', 'signature loadout locked', 'restart match', 'quit to title', 'press to join', 'keyboard plus controller match', 'two controller assignment', 'narrow layout', 'controller pause', 'disconnect freezes timer', 'reconnect requires resume', ...(!production ? ['slot movement isolation', 'controller melee isolation', 'controller rematch', 'saved descent preserved', 'Continue restores campaign'] : ['debug handle absent'])], errors };
   writeFileSync(`${out}/local-versus${production ? '-player' : ''}.json`, JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
 } catch (error) {

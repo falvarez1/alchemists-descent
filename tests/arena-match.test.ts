@@ -1,12 +1,21 @@
 import { describe, expect, test } from 'vitest';
 import { MatchDirector, stockLaunch, influenceLaunch } from '@/arena/MatchDirector';
-import { STOCK_RULES } from '@/config/stockRules';
+import { STOCK_RULES, STOCK_LAUNCH } from '@/config/stockRules';
 
 const box = { left: 100, right: 700, top: 100, bottom: 450 };
 const alive = [{ x: 300, y: 300 }, { x: 500, y: 300 }];
 const rules = { ...STOCK_RULES, countdownTicks: 0 };
 
 describe('stock matches', () => {
+  test('attack growth changes high-volatility launch, mass applies once, and stun remains bounded', () => {
+    const opener = stockLaunch(2, -1, 10, 100, 1, .35, .65);
+    const finisher = stockLaunch(2, -1, 10, 100, 1, 1.5, 1.2);
+    const heavy = stockLaunch(2, -1, 10, 100, 1.5, 1.5, 1.2);
+    expect(Math.hypot(finisher.x, finisher.y)).toBeGreaterThan(Math.hypot(opener.x, opener.y));
+    expect(Math.hypot(heavy.x, heavy.y)).toBeCloseTo(Math.hypot(finisher.x, finisher.y) / 1.5);
+    expect(finisher.stun).toBeGreaterThan(opener.stun);
+    expect(stockLaunch(6, -2, 100, 999, 1, 5, 10).stun).toBeLessThanOrEqual(STOCK_LAUNCH.maxStun);
+  });
   test('directional influence bends a launch at most twelve degrees without adding speed', () => {
     const up = influenceLaunch(10, 0, 0, -1);
     expect(Math.hypot(up.x, up.y)).toBeCloseTo(10);

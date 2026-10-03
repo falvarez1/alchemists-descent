@@ -88,9 +88,19 @@ function chillPose(ctx: Ctx, a: PlayerState, frame: number): { hug: number; stif
  * everything with gameplay meaning reads the player's own timers.
  */
 export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
-  const frame = ctx.state.frameCount, f = a.facing < 0 ? -1 : 1;
+  const attack = a === ctx.player ? ctx.arena?.stockAttack(ctx.arena.bound) : null;
+  const frame = ctx.state.frameCount, f = (attack?.busy ? attack.facing : a.facing) < 0 ? -1 : 1;
+  const strike = attack?.busy && attack.spec ? attack : null;
+  const windup = strike?.phase === 'startup' ? ease(strike.age / strike.spec!.startup) : 0;
+  const follow = strike?.phase === 'active' ? 1 : strike?.phase === 'recovery'
+    ? 1 - ease(clamp((strike.age - strike.spec!.startup - strike.spec!.active) / strike.spec!.recovery, 0, 1)) : 0;
+  const heavy = ctx.fighters?.id === 'brann-rook';
+  const bell = ctx.fighters?.id === 'mara-quell';
+  const finish = strike?.kind === 'finisher';
+  const risingStrike = strike?.kind === 'launcher';
   s.facing = f; s.eyesShut = a.blinkTimer > 0; s.mouth = 0; s.held = null;
   s.wand.visible = !a.legClub && a.pullT === 0; s.wand.spin = a.swapT > 0 ? (a.swapT / 12) * Math.PI * 2 : 0;
+  if (strike && heavy) s.wand.visible = false;
   s.lift = a.levitating ? 1 : 0;
   s.commune = a.recharge > 0 ? 1 : 0;
   // Gaze follows the aim (where the wizard is looking is where he casts).
@@ -107,7 +117,7 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   if (recovering) s.lift = 1;
   const evadePose = dodge?.busy ? dodge.phase === 'evade' ? 1 : dodge.phase === 'startup' ? .45 : .25 : 0;
   const cold = chillPose(ctx, a, frame);
-  const crouch = Math.max(clamp(a.crouchT / 10, 0, 1), evadePose * .8), landing = clamp(a.landTimer / 10, 0, 1);
+  const crouch = Math.max(clamp(a.crouchT / 10, 0, 1), evadePose * .8, windup * (finish ? .8 : .25), finish && (heavy || bell) ? follow * .7 : 0), landing = clamp(a.landTimer / 10, 0, 1);
   const air = a.grounded ? 0 : 1, skid = clamp(a.skidT / 10, 0, 1), hurt = clamp(a.staggerT / 10, 0, 1);
   const pulling = a.pullT > 0 ? 1 : 0;
   const speed = Math.min(1, Math.abs(a._svx || a.vx) / 2.1);
@@ -133,6 +143,7 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   if (a.kickT > 0) lean -= f * 0.18;
   if (flask === 'drink') lean -= f * 0.08;
   lean += f * evadePose * .38;
+  lean += f * (-windup * (finish ? .3 : .12) + follow * (risingStrike ? -.12 : finish ? .42 : .18));
   // Hunched into the cold.
   if (a.grounded && !swim) lean += f * 0.07 * cold.hug;
   s.lean = lean;
@@ -179,6 +190,13 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
     fF = mixP(fF, at(1.4, air ? 6 : .15), evadePose);
     bK = mixP(bK, at(-2.8, 4.1), evadePose);
     fK = mixP(fK, at(3.1, air ? 6.8 : 3.6), evadePose);
+  }
+  if (strike) {
+    const spread = finish ? 5.6 : 3.8;
+    bF = mixP(bF, at(-spread, air ? 4.2 : .1), Math.max(windup, follow));
+    fF = mixP(fF, at(spread, air ? 2.5 : .1), Math.max(windup, follow));
+    bK = mixP(bK, at(-2.8, air ? 5.5 : 3), follow);
+    fK = mixP(fK, at(3.2, air ? 5.8 : 3.7), follow);
   }
   set(s.backFoot, bF); set(s.frontFoot, fF); set(s.backKnee, bK); set(s.frontKnee, fK);
   // Head: tilts with gaze, snaps back when hit, tips back to drink.
@@ -249,6 +267,20 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
     fE = mixP(fE, at(2.8, 9.5), evadePose); fH = mixP(fH, at(4.1, 10.1), evadePose);
   }
   if (recovering) { bE = at(-1.5, 13.2); bH = at(-.5, 18); fE = at(2.7, 10.5); fH = at(3.5, 12); }
+  if (strike) {
+    fE = mixP(fE, at(-2.2, finish ? 12 : 9), windup); fH = mixP(fH, at(-4, finish ? 14 : 8), windup);
+    fE = mixP(fE, at(risingStrike ? 3.5 : 5, risingStrike ? 15 : 10.5), follow);
+    fH = mixP(fH, at(risingStrike ? 4 : 8, risingStrike ? 20 : 12), follow);
+    bE = mixP(bE, at(heavy ? 4 : -3.5, risingStrike ? 14 : 9), follow);
+    bH = mixP(bH, at(heavy ? (risingStrike ? 5 : 9) : -5, heavy && risingStrike ? 19 : 11), follow);
+    if (heavy) {
+      bE = mixP(bE, at(-1.5, 8), windup); bH = mixP(bH, at(.5, 9), windup);
+      fE = mixP(fE, at(-2.5, 8), follow); fH = mixP(fH, at(-5, 10), follow);
+      if (finish) bH = mixP(bH, at(9, 6), follow);
+    }
+    if (bell && finish) { fE = mixP(fE, at(5, 8), follow); fH = mixP(fH, at(9, 6), follow); }
+    s.gazeX = 1; s.gazeY = risingStrike ? -.7 : 0;
+  }
   const club = a.legClub?.rig;
   if (club) {
     // Both fists on the severed leg: the grip is the club's own hand point.
@@ -263,6 +295,10 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   // few pixels off the aim ray — the muzzle is only 9 cells out.)
   s.wand.x = fH[0]; s.wand.y = fH[1];
   s.wand.angle = evadePose > 0 ? (f > 0 ? .45 : Math.PI - .45) : a.aimAngle;
+  if (strike) {
+    const angle = risingStrike ? -1.25 * follow + .6 * windup : -.15 * follow - 1.7 * windup;
+    s.wand.angle = f > 0 ? angle : Math.PI - angle;
+  }
   s.wand.glow = a.firing ? 1 : a.swapT > 6 ? 0.2 : 0.55 + Math.sin(frame * 0.2) * 0.07;
   set(s.crown, at(-0.2 + 0.3 * cold.hug, 17.2 - 0.6 * cold.hug));
   s.brimAngle = lean + s.headTilt * 0.6;

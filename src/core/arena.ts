@@ -2,6 +2,7 @@ import type { ChillApi, Enemy, EnemyDamageSource, FlaskApi, InputState, PlayerCo
 import type { FighterApi } from '@/core/fighters';
 import type { FighterId } from '@/content/fighters';
 import type { BlastZone, StockDodgeView, StockMatchView } from '@/core/arenaMatch';
+import type { StockAttackView } from '@/core/stockAttacks';
 
 /**
  * THE ARENA CONTRACT (docs/arena/ARCHITECTURE.md, D-001): two fighters in one world.
@@ -53,6 +54,9 @@ export interface ArenaApi {
   isActionLocked(slot: number): boolean;
   isEvading(slot: number): boolean;
   stockDodge(slot: number): StockDodgeView | null;
+  stockAttack(slot: number): StockAttackView | null;
+  requestStockAttack(): boolean;
+  updateStockAttack(canAct: boolean): StockAttackView | null;
   updateStockDodge(requested: boolean, canAct: boolean): StockDodgeView | null;
   canRecover(slot: number): boolean;
   isRecovering(slot: number): boolean;
@@ -108,7 +112,7 @@ export interface ArenaApi {
   /** Slot 0 respawns and a rival returns to its spawn: a new bout. */
   reset(): void;
   /** While a fighter's blow is being landed on the other (inside `hit`): who landed it and what it belongs to (spell, kick, ability.tactical ...). Null otherwise. */
-  readonly activeBlow: { by: number; tag: string } | null;
+  readonly activeBlow: { by: number; tag: string; growth?: number; stun?: number } | null;
   /** The result of the bout so far. */
   readonly bout: Readonly<Bout>;
   /** Set the clock and the stage the arena is on (a duel stage with a width the camera need not leash). */

@@ -41,9 +41,10 @@ describe('player death economy', () => {
   it.each(['kit', 'vine'])('cancels dodge protection when %s takes over body movement', (owner) => {
     const player = createPlayer();
     let cancelled = false;
+    let attackCancelled = false;
     const ctx = { player, world: new World(), state: { mode: 'play', frameCount: 0 }, input: { queuedDodge: false },
       fighters: { ownsMovement: owner === 'kit' },
-      arena: { stockDodge: () => null, isRecovering: () => false, updateStockDodge: (request: boolean, canAct: boolean) => { cancelled = !request && !canAct; } },
+      arena: { stockAttack: () => null, stockDodge: () => null, isRecovering: () => false, updateStockAttack: (canAct: boolean) => { attackCancelled = !canAct; }, updateStockDodge: (request: boolean, canAct: boolean) => { cancelled = !request && !canAct; } },
     } as unknown as Ctx;
     const ctl = new PlayerControl(ctx);
     const internals = ctl as unknown as { updatePlayerAnimation: () => void; updateSwing: () => void; swinging: boolean };
@@ -51,6 +52,7 @@ describe('player death economy', () => {
     internals.swinging = owner === 'vine'; internals.updateSwing = () => undefined;
     ctl.update(ctx);
     expect(cancelled).toBe(true);
+    expect(attackCancelled).toBe(true);
   });
   it('manual respawn cannot reset a stock match while a stock is being respawned', () => {
     let resets = 0;

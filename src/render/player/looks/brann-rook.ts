@@ -155,6 +155,10 @@ function shield(c: LookCtx): void {
   const lean = dead ? 0 : mix(0.06, 0);
   // Fallen, it is still in the near hand: it lies along the forearm, where the arm dropped it, under the body.
   let ox = s.hip.x, oy = s.hip.y, ux = fr.ux, uy = fr.uy, px = fr.px, py = fr.py;
+  if (!dead && c.ctx.arena?.stockAttack(c.ctx.arena.bound)?.busy) {
+    // The attacking shield follows the authored off-hand, including the upward launcher.
+    ox = s.backHand.x - px * bC - ux * 2; oy = s.backHand.y - py * bC - uy * 2;
+  }
   if (dead) {
     const dx = s.frontHand.x - s.frontElbow.x, dy = s.frontHand.y - s.frontElbow.y, dl = Math.hypot(dx, dy) || 1;
     ux = dx / dl; uy = dy / dl; px = -uy; py = ux; ox = s.frontHand.x; oy = s.frontHand.y;

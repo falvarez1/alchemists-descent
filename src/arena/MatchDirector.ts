@@ -10,15 +10,15 @@ export function influenceLaunch(x: number, y: number, inputX: number, inputY: nu
 }
 
 /** Returns final velocity: mass is applied HERE, never again by Player.applyImpulse. */
-export function stockLaunch(kx: number, ky: number, damage: number, volatility: number, mass: number): { x: number; y: number; stun: number } {
+export function stockLaunch(kx: number, ky: number, damage: number, volatility: number, mass: number, growth = 1, stun = 1): { x: number; y: number; stun: number } {
   const length = Math.hypot(kx, ky);
   if (!Number.isFinite(length) || length < 0.001) return { x: 0, y: 0, stun: 0 };
   const k = STOCK_LAUNCH;
-  const speed = Math.min(k.maxSpeed, (k.base + Math.min(6, length) + damage * k.damage + volatility * k.growth) / Math.max(0.25, mass));
+  const speed = Math.min(k.maxSpeed, (k.base + Math.min(6, length) + damage * k.damage + volatility * k.growth * growth) / Math.max(0.25, mass));
   // A horizontal blow lifts a grounded body clear of friction. Downward spikes retain their direction.
   const dx = kx / length, dy = ky === 0 ? -0.35 : ky / length;
   const norm = Math.hypot(dx, dy);
-  return { x: dx / norm * speed, y: dy / norm * speed, stun: Math.min(k.maxStun, Math.round(speed * k.stunPerSpeed)) };
+  return { x: dx / norm * speed, y: dy / norm * speed, stun: Math.min(k.maxStun, Math.round(speed * k.stunPerSpeed * stun)) };
 }
 
 /** Pure tick-driven stock lifecycle. It resolves all boundary exits together, before picking a winner. */

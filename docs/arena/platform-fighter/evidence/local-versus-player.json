@@ -6,6 +6,7 @@
     "lobby": 390
   },
   "ownership": null,
+  "meleeOwnership": null,
   "mixedOwnership": null,
   "savedDescentUnchanged": null,
   "checks": [

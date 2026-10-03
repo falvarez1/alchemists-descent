@@ -35,7 +35,7 @@ function setup(ready = Promise.resolve(), realFighters = false): { ctx: Ctx; are
     audio: { sfx: () => undefined },
     camera: { inspectionFocus: null },
     world: { width: 1600, height: 1000 },
-    physics: { entityFree: () => true },
+    physics: { entityFree: () => true, cellBlocks: () => false },
     projectileCtl: { invalidateEnemyIndex: () => undefined },
   } as unknown as Ctx;
   const mk = (x: number, dealt: number, slot: number): SlotBundle => {
@@ -78,6 +78,64 @@ function setup(ready = Promise.resolve(), realFighters = false): { ctx: Ctx; are
 }
 
 describe('EventBus slot scoping', () => {
+  async function meleeSetup() {
+    const result = setup();
+    const { arena, base, ctx } = result;
+    await arena.addRival('ilyra-voss', 120, 100);
+    arena.configureStocks({ left: 0, right: 600, top: 0, bottom: 500 });
+    for (let i = 0; i < 121; i++) arena.endTick();
+    const rival = arena.bundle(1)!;
+    for (const [slot, bundle] of [base, rival].entries()) {
+      Object.assign(bundle.player, { x: slot ? 120 : 100, y: 100, facing: slot ? -1 : 1, invuln: 0, grounded: true });
+      bundle.player.status.stoneskin = 0;
+      bundle.playerCtl.damage = (damage, x, y) => { arena.takeStockDamage(damage, x, y); };
+    }
+    const step = (ticks: number) => { for (let i = 0; i < ticks; i++) {
+      arena.with(0, () => arena.updateStockAttack(true)); arena.with(1, () => arena.updateStockAttack(true)); arena.endTick();
+    } };
+    return { ...result, ctx, rival, step };
+  }
+  test('stock melee waits for contact, hits once, locks end lag and preserves HP', async () => {
+    const { arena, base, rival, step } = await meleeSetup();
+    expect(arena.requestStockAttack()).toBe(true);
+    step(3); expect(arena.stockMatch?.fighters[1].volatility).toBe(0);
+    step(1); const damage = arena.stockMatch!.fighters[1].volatility;
+    expect(damage).toBeGreaterThan(0); expect(rival.player.hp).toBe(rival.player.maxHp);
+    rival.player.x = 120; step(3);
+    expect(arena.stockMatch?.fighters[1].volatility).toBe(damage);
+    expect(arena.stockAttack(0)?.phase).toBe('recovery'); expect(arena.isActionLocked(0)).toBe(true);
+    expect(arena.requestStockAttack()).toBe(false);
+    arena.updateStockDodge(true, true); expect(arena.stockDodge(0)?.busy).toBe(false);
+    step(10); expect(arena.isActionLocked(0)).toBe(false);
+    base.input.keys.down = true; expect(arena.requestStockAttack()).toBe(true);
+    expect(arena.stockAttack(0)?.kind).toBe('finisher');
+    arena.takeStockDamage(5, 2, -1); expect(arena.stockAttack(0)?.busy).toBe(false);
+  });
+  test('stock melee cannot hit through solid cells or dodge invulnerability', async () => {
+    const { arena, ctx, step } = await meleeSetup();
+    ctx.physics.cellBlocks = () => true;
+    arena.requestStockAttack(); step(7);
+    expect(arena.stockMatch?.fighters[1].volatility).toBe(0);
+    ctx.physics.cellBlocks = () => false; step(10);
+    arena.with(1, () => { arena.updateStockDodge(true, true); for (let i = 0; i < 3; i++) arena.updateStockDodge(false, true); });
+    arena.requestStockAttack(); step(4);
+    expect(arena.stockMatch?.fighters[1].volatility).toBe(0);
+  });
+  test('simultaneous stock contacts trade and interrupt both attackers', async () => {
+    const { arena, step } = await meleeSetup();
+    arena.requestStockAttack(); arena.with(1, () => arena.requestStockAttack()); step(4);
+    expect(arena.stockMatch!.fighters.every(f => f.volatility > 0)).toBe(true);
+    expect(arena.stockAttack(0)?.busy).toBe(false); expect(arena.stockAttack(1)?.busy).toBe(false);
+    expect(arena.bound).toBe(0);
+  });
+  test('stock melee rejects restrained bodies and clears on rematch', async () => {
+    const { arena, base } = await meleeSetup();
+    base.player.climbing = true; expect(arena.requestStockAttack()).toBe(false);
+    base.player.climbing = false; base.player.recharge = 4; expect(arena.requestStockAttack()).toBe(false);
+    base.player.recharge = 0; base.player.grounded = false; expect(arena.requestStockAttack()).toBe(true);
+    expect(arena.stockAttack(0)?.kind).toBe('aerial');
+    arena.reset(); expect(arena.stockAttack(0)?.busy).toBe(false);
+  });
   test('stock dodges reject blows during evasion and lock attacks through end lag', async () => {
     const { arena, base } = setup();
     await arena.addRival('brann-rook', 300, 100);

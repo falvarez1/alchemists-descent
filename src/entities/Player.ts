@@ -725,8 +725,9 @@ export class PlayerControl implements PlayerControlApi {
    */
   kick(ctx: Ctx): void {
     const player = ctx.player;
-    if (ctx.arena?.isActionLocked(ctx.arena.bound)) return;
     if (player.dead || player.climbing || ctx.state.mode !== 'play') return;
+    if (ctx.arena?.stockMatch) { ctx.arena.requestStockAttack(); return; }
+    if (ctx.arena?.isActionLocked(ctx.arena.bound)) return;
     if (startLegSwing(ctx)) return;
     if (this.kickCooldownT > 0) return;
     const lp = ctx.params.player;
@@ -1276,6 +1277,7 @@ export class PlayerControl implements PlayerControlApi {
     ctx.input.queuedDodge = false;
     player.levitating = false;
     if (this.swinging || ctx.fighters?.ownsMovement === true) ctx.arena?.updateStockDodge(false, false);
+    if (this.swinging || ctx.fighters?.ownsMovement === true) ctx.arena?.updateStockAttack(false);
     if (this.swinging) { player.firePressed = false; this.updateSwing(ctx); return; } // pendulum replaces normal movement (and the wand)
     // A fighter's dash / ram / tether (src/fighters) moves the body itself; the pose still follows the real displacement.
     if (ctx.fighters?.ownsMovement === true) {
@@ -1305,11 +1307,13 @@ export class PlayerControl implements PlayerControlApi {
     if (player.stunT > 0) player.stunT--;
     const restrained = channeling || player.pullT > 0 || player.stunT > 0 || (player.chill?.shell ?? 0) > 0;
     const stockDodge = ctx.arena?.updateStockDodge(dodgeRequested, !restrained);
+    const stockAttack = ctx.arena?.updateStockAttack(!restrained);
     const queuedJump = ctx.input.queuedJump;
     ctx.input.queuedJump = undefined;
-    const keys = restrained || stockDodge?.busy
+    const keys = restrained || stockDodge?.busy || (stockAttack?.busy && player.grounded)
       ? { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false }
-      : queuedJump ? { ...ctx.input.keys, jump: true, wallJump: queuedJump === 'wall' || ctx.input.keys.wallJump } : ctx.input.keys;
+        : stockAttack?.busy ? { ...ctx.input.keys, jump: false, wallJump: false }
+          : queuedJump ? { ...ctx.input.keys, jump: true, wallJump: queuedJump === 'wall' || ctx.input.keys.wallJump } : ctx.input.keys;
     const stockRecovering = ctx.arena?.updateStockRecovery(keys.up && keys.jump) === true;
     if (ctx.arena?.isActionLocked(ctx.arena.bound)) { player.firing = false; player.firePressed = false; }
     if (channeling) {

@@ -20,6 +20,8 @@ import { YARD } from '@/world/fighterArena';
 import { DUEL } from '@/world/duelStage';
 import { STOCK_STAGE } from '@/config/stockStage';
 import { STOCK_DODGE } from '@/config/stockMovement';
+import { stockMoveset } from '@/config/stockAttacks';
+import { stockAttackOverlaps } from '@/arena/StockAttack';
 import { AI_PERSONALITIES } from '@/config/aiPersonalities';
 import type { PersonalityId } from '@/config/aiPersonalities';
 import { CombatMemory } from '@/arena/ai/memory';
@@ -500,7 +502,8 @@ export class BasicBrain implements Brain {
     const remembered = this.memory.get(target.foe.ref);
     const damage = remembered?.damageEstimate ?? 0;
     const finishing = damage > 0 && damage >= target.foe.hp;
-    const canAct = !me.climbing && self.player.stunT <= 0 && self.player.pullT <= 0;
+    const canAct = !me.climbing && self.player.stunT <= 0 && self.player.pullT <= 0 &&
+      (!ctx.arena?.stockMatch || !ctx.arena.isActionLocked(self.slot));
 
     // ---- the kick: anything inside the cone, off cooldown ----
     const lp = ctx.params.player;
@@ -511,19 +514,30 @@ export class BasicBrain implements Brain {
     const oy = me.y - 8 + dirY * 3;
     const cosArc = Math.cos(lp.kickArc);
     let kick = false;
+    const stock = !!ctx.arena?.stockMatch;
+    // Use delayed position and speed, just as aiming does. A still nearby target is a commitment opportunity.
+    const meleeKind = !me.grounded ? 'aerial' : target.cy < me.y - 20 ? 'launcher'
+      : Math.hypot(target.vx, target.vy) < .6 && target.dist < 25 ? 'finisher' : 'opener';
+    const melee = stockMoveset(me.fighter)[meleeKind];
+    const meleeFacing = Math.sign(target.x - me.x) || me.facing;
     if (canAct && ctx.playerCtl.kickReady !== false && tick - this.lastKick >= lp.kickCooldown + 1) {
-      for (const f of foes) {
-        const fx = f.x - ox;
-        const fy = f.y - 5 - oy;
-        const fd = Math.hypot(fx, fy) || 1;
-        if (fd > lp.kickRange + 4) continue; // (the game's reach is kickRange + 6; a margin for a foe stepping away)
-        if ((fx / fd) * dirX + (fy / fd) * dirY < cosArc + 0.05) continue;
-        if (!lineClear(cellBlocks, ox, oy, f.cx, f.cy)) continue;
-        // kick() runs immediately, before Player.update consumes the new cursor.
-        // Its cone uses player.aimAngle, so wait until last tick's aim agrees.
-        if (Math.cos(self.player.aimAngle - angle) < cosArc) continue;
-        kick = true;
-        break;
+      if (stock) {
+        kick = stockAttackOverlaps(melee, meleeFacing, me.x, me.y, target.x, target.y) &&
+          lineClear(cellBlocks, me.x, me.y - 10, target.cx, target.cy);
+      } else {
+        for (const f of foes) {
+          const fx = f.x - ox;
+          const fy = f.y - 5 - oy;
+          const fd = Math.hypot(fx, fy) || 1;
+          if (fd > lp.kickRange + 4) continue; // (the game's reach is kickRange + 6; a margin for a foe stepping away)
+          if ((fx / fd) * dirX + (fy / fd) * dirY < cosArc + 0.05) continue;
+          if (!lineClear(cellBlocks, ox, oy, f.cx, f.cy)) continue;
+          // kick() runs immediately, before Player.update consumes the new cursor.
+          // Its cone uses player.aimAngle, so wait until last tick's aim agrees.
+          if (Math.cos(self.player.aimAngle - angle) < cosArc) continue;
+          kick = true;
+          break;
+        }
       }
     }
 
@@ -561,6 +575,10 @@ export class BasicBrain implements Brain {
     this.wasHolding = fire;
     st.rule = this.action === 'wait' ? this.recovering ? 'saving mana' : !line ? 'seeking clear lane' : 'waiting for a ready action' : this.action;
     if (this.action === 'kick' && eligible.kick) {
+      if (stock) {
+        hand.move(meleeFacing);
+        self.input.keys.up = meleeKind === 'launcher'; hand.down(meleeKind === 'finisher');
+      }
       self.hands.kick(); hand.pressed(); this.lastKick = tick; st.stats.kicks++;
       this.actionPerformed('kick');
     } else if (this.action === 'ultimate' && eligible.ultimate) {

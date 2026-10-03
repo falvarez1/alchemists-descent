@@ -1,0 +1,179 @@
+{
+  "keyboard": {
+    "kind": "finisher",
+    "phase": "startup",
+    "locked": true
+  },
+  "mechanics": {
+    "beforeActive": 0,
+    "contact": 10.288800000000002,
+    "afterSwing": 10.288800000000002,
+    "hp": 208,
+    "maxHp": 208,
+    "lag": "recovery",
+    "locked": {
+      "dodge": false,
+      "id": 3,
+      "previousId": 3,
+      "projectiles": 0,
+      "spent": 0
+    },
+    "punished": {
+      "damage": 8,
+      "busy": false
+    },
+    "wallDamage": 0,
+    "aerial": {
+      "kind": "aerial",
+      "jumpHeld": true,
+      "recovering": false
+    }
+  },
+  "gallery": [
+    {
+      "fighter": "ilyra-voss",
+      "action": "opener",
+      "phase": "startup",
+      "file": "ilyra-voss-opener-startup.png"
+    },
+    {
+      "fighter": "ilyra-voss",
+      "action": "opener",
+      "phase": "active",
+      "file": "ilyra-voss-opener-active.png"
+    },
+    {
+      "fighter": "ilyra-voss",
+      "action": "launcher",
+      "phase": "startup",
+      "file": "ilyra-voss-launcher-startup.png"
+    },
+    {
+      "fighter": "ilyra-voss",
+      "action": "launcher",
+      "phase": "active",
+      "file": "ilyra-voss-launcher-active.png"
+    },
+    {
+      "fighter": "ilyra-voss",
+      "action": "aerial",
+      "phase": "startup",
+      "file": "ilyra-voss-aerial-startup.png"
+    },
+    {
+      "fighter": "ilyra-voss",
+      "action": "aerial",
+      "phase": "active",
+      "file": "ilyra-voss-aerial-active.png"
+    },
+    {
+      "fighter": "ilyra-voss",
+      "action": "finisher",
+      "phase": "startup",
+      "file": "ilyra-voss-finisher-startup.png"
+    },
+    {
+      "fighter": "ilyra-voss",
+      "action": "finisher",
+      "phase": "active",
+      "file": "ilyra-voss-finisher-active.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "opener",
+      "phase": "startup",
+      "file": "brann-rook-opener-startup.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "opener",
+      "phase": "active",
+      "file": "brann-rook-opener-active.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "launcher",
+      "phase": "startup",
+      "file": "brann-rook-launcher-startup.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "launcher",
+      "phase": "active",
+      "file": "brann-rook-launcher-active.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "aerial",
+      "phase": "startup",
+      "file": "brann-rook-aerial-startup.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "aerial",
+      "phase": "active",
+      "file": "brann-rook-aerial-active.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "finisher",
+      "phase": "startup",
+      "file": "brann-rook-finisher-startup.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "finisher",
+      "phase": "active",
+      "file": "brann-rook-finisher-active.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "opener",
+      "phase": "startup",
+      "file": "mara-quell-opener-startup.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "opener",
+      "phase": "active",
+      "file": "mara-quell-opener-active.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "launcher",
+      "phase": "startup",
+      "file": "mara-quell-launcher-startup.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "launcher",
+      "phase": "active",
+      "file": "mara-quell-launcher-active.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "aerial",
+      "phase": "startup",
+      "file": "mara-quell-aerial-startup.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "aerial",
+      "phase": "active",
+      "file": "mara-quell-aerial-active.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "finisher",
+      "phase": "startup",
+      "file": "mara-quell-finisher-startup.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "finisher",
+      "phase": "active",
+      "file": "mara-quell-finisher-active.png"
+    }
+  ],
+  "errors": []
+}

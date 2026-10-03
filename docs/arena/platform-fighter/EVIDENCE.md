@@ -5,7 +5,7 @@ Local environment: isolated worktree, Vite 127.0.0.1:5217, headless Edge through
 
 ## Delivered
 
-The Markdown and responsive offline HTML plans cover the full roadmap. Four ImageGen sheets cover the primary match, four stages, ten fighters/actions, and local-versus flow. A fifth output is the runtime Foundry backdrop in public/assets/arena/foundry-backdrop.png. The sixth, concepts/motion-defense.png, guides defensive poses and effects using the existing fighter portraits as references. Exact prompts are in concepts/prompts.md and concepts/motion-defense-prompt.md. The HTML shows actual gameplay and twelve native-resolution movement details.
+The Markdown and responsive offline HTML plans cover the full roadmap. Four ImageGen sheets cover the primary match, four stages, ten fighters/actions, and local-versus flow. A fifth output is the runtime Foundry backdrop in public/assets/arena/foundry-backdrop.png. The sixth, concepts/motion-defense.png, guides defensive poses and effects using the existing fighter portraits as references. The seventh, concepts/core-attacks.png, guides the three prototype fighters' melee moves. Each supplemental sheet has its exact prompt beside it. The HTML shows actual gameplay, twelve movement details, and twenty-four startup/contact captures.
 
 Inspection found that the baseline constructed ArenaSlots and exposed Arena/Duel only with __AUTHORING__. The new player-facing Duel entry, runtime, lobby, stock HUD, and CPU driver now run in the production player build. Training panels and the console remain authoring-only. Both builds have been exercised locally; nothing has been deployed.
 
@@ -23,7 +23,7 @@ Inspection found that the baseline constructed ArenaSlots and exposed Arena/Duel
 
 ## Validation
 
-- Whole suite after local versus: 252 files and 3,208 tests passed.
+- Whole suite after the core attack prototype: 253 files and 3,218 tests passed.
 - Typecheck, ESLint, and production build passed. Vite reports large output chunks; no bundle optimization is claimed.
 - Existing health-duel runtime probe: 16 checks passed, including exactly-once damage, owner binding, and listener cleanup.
 - Stock browser probe passed: damage, launch movement, stocks, protected respawn, recovery by ordinary inputs, winner, geometry, stable camera, and HUD restoration.
@@ -40,7 +40,7 @@ The real damage path produced launch speeds of 5.94 and 10.84 cells/tick at low/
 
 Ilyra recovered using ordinary direction and jump inputs from x=599, y=650. After the platform refinement, her feet rose to y=567, then she landed at x=703, y=609 with three stocks intact. Brann reached y=582; Mara reached y=566. Mirrored checks passed on the right.
 
-The latest mechanics-probe bot sample produced three attributed ring-outs in about twenty seconds. Earlier samples included four attributed ring-outs and an unforced CPU ring-out. Recovery strategy needs longer multi-fighter sampling.
+The latest mechanics-probe bot sample after the melee pass produced one attributed ring-out and one unforced CPU ring-out in about twenty seconds; both fighters had two stocks remaining. Earlier samples produced three or four attributed ring-outs. Recovery strategy needs longer multi-fighter sampling and further correction; no CPU balance or recovery-completion claim is made.
 
 A separate 300-frame local bot sample after the defensive movement pass, with GPU composition enabled, recorded median frame work of 3.27 ms and p95 of 7.275 ms. Render p95 was 5.425 ms, above the 5 ms budget; composition p95 was 5.115 ms, above the 3.5 ms budget. A maximum frame interval of 485.365 ms was also recorded and has not been attributed. Earlier samples varied, including larger entity spikes. This is a short development-server measurement, not a controlled before/after benchmark or a performance pass. Fixed platform material calculations are cached; the renderer still checks surviving cells each frame.
 
@@ -68,7 +68,7 @@ The actual stage follows the concept's slate refinery depth, amber platform edge
 
 The platform now has a deeper tapered body, copper ribs, inset gear-and-flask medallion, and teal lamps. It remains simpler than the concept. Existing fighters retain their authored clothing and proportions; existing portraits are reused in the HUD. The first general sheet's amber Ilyra and ivory Brann differed from the established teal coat and black iron; the new motion sheet uses the established portraits to correct that drift. Dodge anticipation, tucked air poses, silhouette echoes, evasion arcs, and recovery/launch accents are implemented. The native sprites and echoes remain simpler than the new concept. Richer structural detail, full roster animation, and additional stage selection remain unfinished. The concepts have NOT been declared matched.
 
-The next checkpoint below brings the lobby, controller ownership, and results into the player build. Broader recovery coverage, attack roles, full roster art, and additional stages remain in progress.
+The checkpoints below bring the lobby, controller ownership, results, and the first three melee movesets into the player build. Broader recovery coverage, the remaining roster, richer attack animation, and additional stages remain in progress.
 
 ## Local versus implementation
 
@@ -110,3 +110,15 @@ Run node scripts/verify-stock-match.mjs for mechanics and recovery; node scripts
 The goal remains active. The plans and first implementation slice are delivered; the complete roadmap and concept-to-runtime visual match are not finished.
 
 For the player-facing flow, choose Duel at the title, choose fighters/devices, ready each human seat, and enter the Foundry. Run node scripts/verify-local-versus.mjs for the development probe. After npm run build and node scripts/serve-dist.mjs --port 5218, run node scripts/verify-local-versus.mjs http://127.0.0.1:5218/ --production to check the player build without debug access.
+
+## Core attacks and art iteration
+
+- New ImageGen concept: concepts/core-attacks.png, using the existing Ilyra, Brann, and Mara portraits. Prompt provenance is in concepts/core-attacks-prompt.md.
+- Three authored movesets: quick opener, upward launcher, aerial, and finisher. The other seven fighters use common prototype timing until their dedicated pass. All are stock-only; health duels retain the existing kick.
+- Data includes startup, active time, end lag, raw damage, contact bounds, launch direction, growth, and stun. Each swing has an ID and a victim set. Damage still passes through arena tempo and the defender's armor.
+- Tests cover delayed contact, one hit per swing, solid-cell occlusion, evasion, end lag, simultaneous trades, interruption, reset, restrained bodies, mass scaling, and stun limits.
+- The live probe measured 0 volatility before active contact, then 10.2888 on Brann through his actual damage path, with HP remaining 208/208. Remaining active ticks did not hit again. A metal wall blocked all damage. End lag rejected a second attack, dodge, casting, flask throw/pour, and tactical ability; an incoming blow added 8 volatility and interrupted the action. Air attacks retained the held jump input without starting recovery.
+- The controller probe used down plus B on the pad assigned to player 1. Player 1 entered a finisher; player 2 remained idle. Both independent movement assignments, reconnect, rematch, and durable campaign checkpoint checks still passed.
+- First visual comparison found overly similar crescents. The second pass gave Ilyra a straight finishing thrust, Brann a crouched shield slam with a small spark fan, and Mara a low bell sweep. The shield and bell move with the skeleton. Reduced flashes lower accent density and opacity.
+- Evidence: evidence/stock-attacks.json, evidence/stock-melee-match.png, and the twenty-four fighter/action/startup-or-active PNGs. Reproduce with node scripts/verify-stock-attacks.mjs.
+- Remaining: native silhouettes remain smaller and less detailed than the concepts. Current attacks are single-hit prototypes; multi-hit accounting across the wider combat system, true combo tuning, audio/rumble differentiation, and the seven remaining authored movesets are unfinished.

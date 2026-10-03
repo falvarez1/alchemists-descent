@@ -122,7 +122,8 @@ function bell(c: LookCtx): void {
   const { r, s, a, f, frame } = c;
   const w = s.wand, ang = w.angle + w.spin, cc = Math.cos(ang), sn = Math.sin(ang);
   const glow = w.glow * (0.9 + Math.sin(frame * 0.3) * 0.1);
-  const ring = a.firing ? 1 : Math.min(1, Math.max(0, a.recoilT / 6));
+  const attack = c.ctx.arena?.stockAttack(c.ctx.arena.bound);
+  const ring = a.firing || attack?.busy ? 1 : Math.min(1, Math.max(0, a.recoilT / 6));
   // Idle, the bell hangs from her hand, mouth down, swinging a little with her stride; casting, it swings out
   // along the aim (the handle grows with it) and rings.
   const hang = Math.PI / 2 + Math.sin(frame * 0.11) * 0.07 + Math.max(-0.5, Math.min(0.5, (a._svx || 0) * 0.12));

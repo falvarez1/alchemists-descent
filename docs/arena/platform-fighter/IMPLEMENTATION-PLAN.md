@@ -34,6 +34,7 @@ Use crisp pixel clusters, wet blue slate, worn copper, ivory silhouettes, amber 
 - concepts/fighters-actions.png: all ten silhouette targets and an initial action vocabulary.
 - concepts/local-versus.png: controller lobby, stage selection, match HUD, and results.
 - concepts/motion-defense.png: prototype fighter poses, ground and air dodges, recovery, and restrained state accents. Uses the existing portraits to correct identity drift in the first general sheet.
+- concepts/core-attacks.png: Ilyra, Brann, and Mara opener, launcher, aerial, and finisher targets. Exact prompt and portrait references are in concepts/core-attacks-prompt.md.
 - concepts/prompts.md: exact ImageGen prompts and provenance.
 
 These are concept sheets, not sprite atlases. Do not paste a flattened gameplay painting over the game. Build collision from real cells; decorative art must remain distinguishable from playable surfaces. Generate separate background or sprite assets when the renderer needs them.
@@ -186,3 +187,15 @@ Browser dogfood uncovered an existing lifecycle problem: entering a disposable a
 The lobby and result screen now follow the concept's composition and slate/copper palette using established portraits. Ornamental framing, more stage choices, richer native fighter animation, attack roles, and the remaining Arena variants still need implementation. Synthetic gamepads verify ownership and reconnect behavior; physical controller feel remains unverified. See EVIDENCE.md for the latest checks and captures.
 
 Validation at this checkpoint: 3,208 tests across 252 files, typecheck, lint, build, development and production local-versus probes, the 16-check health-duel probe, and stock mechanics/recovery dogfood. The performance limits from the preceding sample still apply.
+
+## Core attack prototype checkpoint
+
+Ilyra, Brann, and Mara now have four stock-only melee roles with separate authored timing, reach, damage, launch direction, volatility growth, and hitstun. F / controller B uses an opener on the ground and an aerial in the air; up plus melee launches, and down plus melee commits to a finisher. Bindings remain configurable. Existing spells and tactical abilities remain available outside the attack commitment.
+
+An attack locks its facing, waits through startup, hits each victim once, and has punishable end lag. Real solid cells block contact. Both contacts are collected before damage so simultaneous attacks can trade. Incoming launch interrupts the attack; existing armor resistance still applies. Dodge, casting, flasks, and abilities cannot cancel the commitment. The other seven fighters currently use Ilyra's common prototype timings pending their authored pass.
+
+The new ImageGen sheet uses the three existing portraits. Native poses now show a drawn-back windup, extended or raised striking arm, airborne leg spread, and finishing follow-through. Brann's shield follows the attacking hand; Mara's bell follows the strike. Browser comparison prompted a second art pass: quick strikes and Ilyra's finisher use a narrow contact spark, Brann ends in a low shield slam, and Mara keeps violet sweeps. The HTML includes startup/contact pairs from the running game.
+
+The attack browser probe covers real keyboard input, delayed and exactly-once contact, unchanged HP, solid-wall blocking, punishable end lag, action/resource locks, interruption, and preservation of held jump during an aerial. The local-versus probe also verifies that controller B attacks only its assigned fighter. Unit coverage includes simultaneous trades and bounded growth/stun. The complete suite passed 3,218 tests across 253 files at this checkpoint.
+
+This is a prototype milestone. The shared post-hit immunity still applies; no multi-hit moves or guaranteed launcher-to-aerial combos are claimed. Full roster moves, ledges, broader recovery/balance trials, differentiated impact audio and rumble, remaining stages, Arena variants, and final art parity remain in scope. Native character detail and some weapon arcs remain simpler than the concepts.

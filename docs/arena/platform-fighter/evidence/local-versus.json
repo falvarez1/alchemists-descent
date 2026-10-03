@@ -19,6 +19,16 @@
       "pad:0"
     ]
   },
+  "meleeOwnership": [
+    {
+      "kind": "finisher",
+      "busy": true
+    },
+    {
+      "kind": null,
+      "busy": false
+    }
+  ],
   "mixedOwnership": {
     "before": [
       690,
@@ -44,6 +54,7 @@
     "disconnect freezes timer",
     "reconnect requires resume",
     "slot movement isolation",
+    "controller melee isolation",
     "controller rematch",
     "saved descent preserved",
     "Continue restores campaign"
