@@ -176,11 +176,11 @@ export class StuckDetector {
   private moveTicks = 0;
 
   /** Returns true on the tick the bot decides it is stuck (and starts a fresh window). */
-  update(me: Pick<MeView, 'x' | 'y'>, wantsMove: boolean, tick: number): boolean {
+  update(me: Pick<MeView, 'x' | 'y'>, wantsMove: boolean, tick: number, idleTicks = 0): boolean {
     if (!wantsMove) { this.moveTicks = 0; this.anchor(me, tick); return false; }
     this.moveTicks++;
     if (Math.abs(me.x - this.x) > 3 || Math.abs(me.y - this.y) > 6) { this.anchor(me, tick); this.moveTicks = 1; return false; }
-    if (tick - this.since >= StuckDetector.WINDOW && this.moveTicks >= StuckDetector.WINDOW) {
+    if (idleTicks >= 90 || (tick - this.since >= StuckDetector.WINDOW && this.moveTicks >= StuckDetector.WINDOW)) {
       this.anchor(me, tick);
       this.moveTicks = 0;
       return true;

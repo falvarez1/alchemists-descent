@@ -5,7 +5,7 @@ import { Cell } from '@/sim/CellType';
 import type { Ctx } from '@/core/types';
 import { lineClear } from '@/arena/ai/worldView';
 import { createWorldView } from '@/arena/ai/worldView';
-import { Control } from '@/arena/ai/control';
+import { Control, StuckDetector } from '@/arena/ai/control';
 import type { BrainSelf } from '@/arena/ai/brain';
 
 describe('observed firing paths', () => {
@@ -26,6 +26,19 @@ describe('observed firing paths', () => {
   });
   test('thin cover cannot fall between the firing-lane samples', () => {
     expect(lineClear(x => x === 655, 650, 630, 662, 630)).toBe(false);
+  });
+  test.each([600, 601])('traces an upward ballistic shot beyond its first tick at target x=%s', x => {
+    const above = { x, y: 540 };
+    expect(weaponLaneClear(origin, above, above, weapon, (_ax, ay, _bx, by) => Math.min(ay, by) > 580)).toBe(false);
+    expect(weaponLaneClear(origin, above, above, weapon, () => true)).toBe(true);
+  });
+  test('traces a downward ballistic shot through the full vertical lane', () => {
+    const below = { x: origin.x, y: 730 };
+    expect(weaponLaneClear(origin, below, below, weapon, (_ax, ay, _bx, by) => Math.max(ay, by) < 680)).toBe(false);
+  });
+  test('rejects an upward shot that cannot reach the target before falling', () => {
+    const above = { x: origin.x, y: 330 };
+    expect(weaponLaneClear(origin, above, above, weapon, () => true)).toBe(false);
   });
   test('checks the ground between us and the landing, including thin flames', () => {
     const world = new World();
@@ -59,6 +72,14 @@ describe('observed firing paths', () => {
     const ctx = { world, physics: { entityFree: () => true, cellBlocks: (x: number, y: number) => world.type(x, y) === Cell.Metal } } as unknown as Pick<Ctx, 'world' | 'physics'>;
     expect(safeDrop(ctx, 630, 610)).toBe(false);
   });
+  test('a descent checks hazards between sampled columns and above the final standing pose', () => {
+    const world = new World();
+    for (let x = 590; x <= 650; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);
+    world.replaceCellAt(world.idx(632, 616), Cell.Fire, 0);
+    const ctx = { world, physics: { entityFree: () => true, cellBlocks: (x: number, y: number) => world.type(x, y) === Cell.Metal } } as unknown as Pick<Ctx, 'world' | 'physics'>;
+    expect(safeDrop(ctx, 630, 610)).toBe(false);
+    expect(safeMobilityLanding(ctx, 600, 610, 630)).toBe(false);
+  });
   test('finds a clear hop over cinders onto cover, bounded by ceiling clearance and fuel', () => {
     const world = new World();
     for (let x = 300; x <= 440; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);
@@ -85,5 +106,21 @@ describe('observed firing paths', () => {
     control.walkTo(body, 740, { tol: 6 });
     expect(self.input.keys.left).toBe(true);
     expect(self.input.keys.jump).toBe(false);
+  });
+  test('retries a blocked route within 1.5 seconds instead of standing idle for three', () => {
+    const stuck = new StuckDetector(), position = { x: 330, y: 637 };
+    stuck.update(position, false, 0);
+    let retry = false;
+    for (let tick = 1; tick <= 90; tick++) retry ||= stuck.update(position, true, tick, tick);
+    expect(retry).toBe(true);
+  });
+  test('movement and deliberate holds do not cause premature route retries', () => {
+    const moving = new StuckDetector(), waiting = new StuckDetector();
+    for (let tick = 0; tick < 240; tick++) {
+      expect(moving.update({ x: 330 + tick * .2, y: 637 }, true, tick)).toBe(false);
+      expect(waiting.update({ x: 330, y: 637 }, false, tick)).toBe(false);
+    }
+    const firing = new StuckDetector();
+    for (let tick = 0; tick < 120; tick++) expect(firing.update({ x: 330, y: 637 }, true, tick, 0)).toBe(false);
   });
 });

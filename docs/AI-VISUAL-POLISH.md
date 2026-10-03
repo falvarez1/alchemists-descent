@@ -43,6 +43,7 @@ npm run lint
 node scripts/verify-ai-basic.mjs http://127.0.0.1:5182/ --seeds 3 --shots
 node scripts/verify-ai-combat.mjs http://127.0.0.1:5182/ --seeds 3
 node scripts/verify-visual-fidelity.mjs http://127.0.0.1:5182/
+node scripts/verify-presentation-contracts.mjs http://127.0.0.1:5182/
 node scripts/verify-mobile.mjs http://127.0.0.1:5182/
 node scripts/probe-fidelity-parity.mjs http://127.0.0.1:5182/
 node scripts/probe-fidelity-parity.mjs "http://127.0.0.1:5182/?renderBackend=webgpu&enableWebGpuLiveCompose=1"
@@ -54,7 +55,8 @@ Evidence goes to ignored `verify-out/`. Combat verification includes an eight-se
 ## Acceptance and limits
 
 - All 30 roster waves cleared; the longest period without input was 41 ticks. All 15 seeded duels resolved inside 60 seconds. The wave and combat probes passed 34 and 58 checks respectively. Focused regressions were run failing before their fixes.
-- The final suite passed 3,104 tests in 244 files, along with typecheck, build and lint. Mobile gameplay passed 38 checks. The visual probe passed 27 checks. Native sluice play advanced 364 ticks in six seconds and moved the player 205 cells. Cached detail reduced its additional median composition cost from about 4.7 ms to 2.3 ms in the final pool scene.
+- The original suite passed 3,104 tests in 244 files. After review corrections the full suite passed 3,109 tests, with another 64 focused AI cases after the idle-retry tuning. Typecheck, build and lint passed. Mobile gameplay passed 38 checks. The visual probe passed 27 checks. Native sluice play advanced 364 ticks in six seconds and moved the player 205 cells. Cached detail reduced its additional median composition cost from about 4.7 ms to 2.3 ms in the final pool scene.
+- Review corrections trace vertical ballistic lanes and every descent column, retry idle blocked routes within 1.5 seconds, and preserve established commitments while firing. The treasure readout follows both HUD sliders from its bottom-right anchor. The five-check browser contract probe runs the real settings dialog and compares actual gameplay light queries with presentation detail disabled versus lamp gain tripled: all 40 queries are identical. Lamp gain affects the visible fixture overlay only.
 - The clear-water probe compares consecutive warm frames at classic resolution. Decimal plate scales previously disagreed at exact texel boundaries; CPU, GLSL and WGSL now share the same small rounding bias. Fine WebGL presentation retains continuous backdrop sampling.
 - The final 700-frame chaos run measured 17.70 ms frame p95, below the existing 25 ms frame budget. Its render p95 was 13.34 ms versus 9.14 ms on the unchanged base. The old 5 ms render threshold fails on both revisions; the richer scene does cost more. Simulation and entity thresholds passed in the final run.
 - Focused clear-water verification passed in actual WebGL2 and WebGPU backends. Both compared over 64,000 water pixels, with no difference larger than one color step. The WebGPU bridge reported `validated`.
