@@ -61,7 +61,11 @@ try {
     rows.push(row);
     console.log(JSON.stringify({ ids: row.ids, ticks: row.bout.endedAt - row.bout.startedAt, endHp: row.endHp, stats: row.stats }));
     check.check(`${pair.join(' vs ')}: fights resolve inside 60 seconds`, row.bout.state === 'won');
-    check.check(`${pair.join(' vs ')}: both fighters take part`, row.stats.every(s => s.shots > 0 && s.z > 0) && row.moves > 0);
+    // A safe tactical opportunity is not guaranteed in every terrain-damaged
+    // bout. Activation has its own clear-ground checks in verify-ai-basic;
+    // participation here means both attack, move and actually lose health.
+    check.check(`${pair.join(' vs ')}: both fighters take part`, row.stats.every(s => s.shots > 0) && row.moves > 0 &&
+      row.endHp.every((hp, slot) => hp < row.startHp[slot]));
     check.check(`${pair.join(' vs ')}: no five-second stretch without action`, row.stats.every(s => s.idleMax < 300));
   }
   await freshStage();
