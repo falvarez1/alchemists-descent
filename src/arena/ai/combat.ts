@@ -77,7 +77,10 @@ export function safeFooting(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: n
 /** A crater is traversable when every cell along the descent is safe and its floor is nearby. */
 export function safeDrop(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: number): boolean {
   for (let down = 0; down <= 48; down++) {
-    if (!ctx.physics.entityFree(x, y + down, PLAYER_HALF_W, PLAYER_H) || bodyHazardExposure(ctx, x, y + down) !== 0) return false;
+    for (let dx = -PLAYER_HALF_W; dx <= PLAYER_HALF_W; dx++) {
+      const gx = Math.round(x + dx), gy = Math.round(y + down);
+      if (!ctx.world.inBounds(gx, gy) || dangerousCell(ctx.world.types[ctx.world.idx(gx, gy)])) return false;
+    }
     // Test the eventual standing pose. Support twelve cells below a midair
     // pose does not establish that the descent itself is safe.
     if (ctx.physics.cellBlocks(Math.round(x), Math.round(y + down + 1))) return safeFooting(ctx, x, y + down);
