@@ -111,7 +111,7 @@ describe('observed firing paths', () => {
     const stuck = new StuckDetector(), position = { x: 330, y: 637 };
     stuck.update(position, false, 0);
     let retry = false;
-    for (let tick = 1; tick <= 90; tick++) retry ||= stuck.update(position, true, tick);
+    for (let tick = 1; tick <= 90; tick++) retry ||= stuck.update(position, true, tick, tick);
     expect(retry).toBe(true);
   });
   test('movement and deliberate holds do not cause premature route retries', () => {
@@ -120,5 +120,7 @@ describe('observed firing paths', () => {
       expect(moving.update({ x: 330 + tick * .2, y: 637 }, true, tick)).toBe(false);
       expect(waiting.update({ x: 330, y: 637 }, false, tick)).toBe(false);
     }
+    const firing = new StuckDetector();
+    for (let tick = 0; tick < 120; tick++) expect(firing.update({ x: 330, y: 637 }, true, tick, 0)).toBe(false);
   });
 });
