@@ -10,7 +10,8 @@ import { ashColor, emberColor, fireColor, packRGB, smokeColor, unpackB, unpackG,
 import type { World } from '@/sim/World';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { entityRandom } from '@/core/simRandom';
-import { foliageHeatNearby, foliageTouchesHeat } from '@/game/FoliageHeat';
+import { foliageContactFuel, foliageHeatNearby, foliageTouchesHeat } from '@/game/FoliageHeat';
+import { AMBIENT_FOLIAGE_LIFE, FOLIAGE_MAX_FUEL } from '@/config/foliage';
 
 const SUPPORT_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
@@ -58,6 +59,8 @@ const WEB_ASH_MAX_FLECKS = 9;
 const WEB_ASH_LIFETIME = 180;
 
 interface VineNode extends VineStrandNodeView {
+  fuel?: number;
+  flameSpent?: boolean;
   burn?: number;
   burning?: boolean;
   leafLength?: number;
@@ -79,6 +82,7 @@ interface VineSegment extends VineStrandSegmentView {
 }
 
 interface VineStrand extends VineStrandView {
+  lowFuel?: boolean;
   nodes: VineNode[];
   segments: VineSegment[];
   color: number;
@@ -245,8 +249,10 @@ export class VineStrands implements VineStrandsApi {
     let colorR = 0;
     let colorG = 0;
     let colorB = 0;
+    let lowFuel = true;
     for (let i = 0; i < count; i++) {
       nodeByCell.set(cellIndexes[i], i);
+      if (world.life[cellIndexes[i]] > AMBIENT_FOLIAGE_LIFE) lowFuel = false;
       const color = world.colors[cellIndexes[i]];
       colorR += unpackR(color);
       colorG += unpackG(color);
@@ -289,6 +295,7 @@ export class VineStrands implements VineStrandsApi {
       settleT: 0,
       originWorld: world,
       foliage: count >= TENDRIL_MIN_CELLS,
+      lowFuel,
     });
     return true;
   }
@@ -786,8 +793,10 @@ export class VineStrands implements VineStrandsApi {
     const inv = 1 / count;
     const color = packRGB(Math.round(colorR * inv), Math.round(colorG * inv), Math.round(colorB * inv));
     const origin: number[] = [];
+    let lowFuel = true;
     for (let i = 0; i < count; i++) {
       origin.push(cellIndexes[i]);
+      if (world.life[cellIndexes[i]] > AMBIENT_FOLIAGE_LIFE) lowFuel = false;
       world.clearCellAt(cellIndexes[i]); // the strand now holds these cells
     }
     this.strands.push({
@@ -803,6 +812,7 @@ export class VineStrands implements VineStrandsApi {
       originColor: color,
       originWorld: world,
       foliage: true,
+      lowFuel,
     });
     return true;
   }
@@ -815,12 +825,12 @@ export class VineStrands implements VineStrandsApi {
     }
     const color = strand.originColor ?? strand.color;
     const residue = new Map<number, Cell>();
-    for (const node of strand.nodes) if (node.burn) for (const index of node.sourceCells ?? []) residue.set(index, node.burning ? Cell.Ember : Cell.Ash);
+    for (const node of strand.nodes) if (node.burn) for (const index of node.sourceCells ?? []) residue.set(index, node.burning && !strand.lowFuel ? Cell.Ember : Cell.Ash);
     for (const i of strand.originCells) {
       if (world.types[i] !== Cell.Empty) continue;
       const type = residue.get(i) ?? Cell.Vines;
       world.replaceCellAt(i, type, type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : color);
-      world.life[i] = type === Cell.Vines ? -1 : 90;
+      world.life[i] = type === Cell.Vines ? strand.lowFuel ? AMBIENT_FOLIAGE_LIFE : -1 : 90;
       world.moved[i] = world.movedTick;
     }
   }
@@ -867,23 +877,25 @@ export class VineStrands implements VineStrandsApi {
   }
 
   writeSnapshotCells(world: World, types: Uint8Array, life: Int16Array): void {
+    let vineLife = -1;
     const put = (index: number, type: Cell = Cell.Vines) => {
       if (index < 0 || index >= types.length || types[index] !== Cell.Empty) return;
-      types[index] = type; life[index] = type === Cell.Vines ? -1 : 90;
+      types[index] = type; life[index] = type === Cell.Vines ? vineLife : 90;
     };
     for (const strand of this.strands) {
       if (strand.web || strand.originWorld !== world) continue;
+      vineLife = strand.lowFuel ? AMBIENT_FOLIAGE_LIFE : -1;
       if (strand.tendril && strand.originCells) {
         const residue = new Map<number, Cell>();
-        for (const node of strand.nodes) if (node.burn) for (const index of node.sourceCells ?? []) residue.set(index, node.burning ? Cell.Ember : Cell.Ash);
+        for (const node of strand.nodes) if (node.burn) for (const index of node.sourceCells ?? []) residue.set(index, node.burning && !strand.lowFuel ? Cell.Ember : Cell.Ash);
         for (const index of strand.originCells) put(index, residue.get(index) ?? Cell.Vines);
         continue;
       }
       // Detached material is saved at its actual position, never at the old root.
-      for (const node of strand.nodes) put(world.idx(Math.floor(node.x), Math.floor(node.y)), vineResidue(node));
+      for (const node of strand.nodes) put(world.idx(Math.floor(node.x), Math.floor(node.y)), vineResidue(node, strand.lowFuel));
       for (const edge of strand.segments) {
         const a = strand.nodes[edge.a], b = strand.nodes[edge.b], count = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) * 1.6);
-        const type = vineResidue((a.burn ?? 0) > (b.burn ?? 0) ? a : b);
+        const type = vineResidue((a.burn ?? 0) > (b.burn ?? 0) ? a : b, strand.lowFuel);
         for (let i = 1; i < count; i++) put(world.idx(Math.floor(a.x + (b.x - a.x) * i / count), Math.floor(a.y + (b.y - a.y) * i / count)), type);
       }
     }
@@ -900,12 +912,19 @@ export class VineStrands implements VineStrandsApi {
     if (!nearby && !strand.nodes.some(n => n.burning)) return;
     for (let i = 0; i < strand.nodes.length; i++) {
       const node = strand.nodes[i], previous = strand.nodes[Math.max(0, i - 1)];
+      let incomingFuel = 0;
       const touches = (water: boolean) => {
-        if (foliageTouchesHeat(ctx, node.x, node.y, node.x, node.y, water)) return true;
+        const trace = (ax: number, ay: number, bx: number, by: number): boolean => {
+          if (water || !strand.lowFuel) return foliageTouchesHeat(ctx, ax, ay, bx, by, water);
+          const fuel = foliageContactFuel(ctx, ax, ay, bx, by);
+          incomingFuel = Math.max(incomingFuel, fuel);
+          return fuel > 0;
+        };
+        if (trace(node.x, node.y, node.x, node.y)) return true;
         for (const edge of strand.segments) {
           if (edge.a !== i && edge.b !== i) continue;
           const other = strand.nodes[edge.a === i ? edge.b : edge.a];
-          if (foliageTouchesHeat(ctx, node.x, node.y, other.x, other.y, water)) return true;
+          if (trace(node.x, node.y, other.x, other.y)) return true;
         }
         const length = (node.leafLength ?? 0) * (1 - (node.burn ?? 0));
         const dx = node.x - previous.x, dy = node.y - previous.y, distance = Math.hypot(dx, dy) || 1;
@@ -915,13 +934,13 @@ export class VineStrands implements VineStrandsApi {
           for (let k = 1; k <= Math.ceil(length); k++) {
             const t = k / Math.ceil(length), curl = t * t * length * .5;
             const bx = node.x - ty * side * length * t + tx * curl, by = node.y + tx * side * length * t + ty * curl;
-            if (foliageTouchesHeat(ctx, ax, ay, bx, by, water)) return true;
+            if (trace(ax, ay, bx, by)) return true;
             ax = bx; ay = by;
           }
         }
         return false;
       };
-      if (!node.burning && nearby && touches(false)) node.burning = true;
+      if (!node.burning && nearby && touches(false)) { node.burning = true; node.fuel = strand.lowFuel ? incomingFuel : 18; }
       if (!node.burning) continue;
       if (touches(true)) { node.burning = false; continue; }
       node.burn = Math.min(1, (node.burn ?? 0) + 1 / 140);
@@ -931,11 +950,12 @@ export class VineStrands implements VineStrandsApi {
         continue;
       }
       if ((ctx.state.frameCount + i * 3) % 12 !== 0) continue;
-      ctx.particles?.spawn(node.x, node.y, Math.sin(i + ctx.state.frameCount) * .2, -.5, Cell.Fire, fireColor(), 16, { grav: -.03, glow: 1.1 });
+      ctx.particles?.spawn(node.x, node.y, Math.sin(i + ctx.state.frameCount) * .2, -.5, strand.lowFuel ? null : Cell.Fire, fireColor(), 16, { grav: -.03, glow: 1.1 });
       ctx.particles?.spawn(node.x, node.y - 1, .1, -.3, Cell.Smoke, smokeColor(), 35, { grav: -.02 });
       const x = Math.floor(node.x), y = Math.floor(node.y);
-      if (ctx.world.inBounds(x, y) && ctx.world.type(x, y) === Cell.Empty) {
-        const index = ctx.world.idx(x, y); ctx.world.replaceCellAt(index, Cell.Fire, fireColor()); ctx.world.life[index] = 18;
+      if ((!strand.lowFuel || !node.flameSpent) && ctx.world.inBounds(x, y) && ctx.world.type(x, y) === Cell.Empty) {
+        const index = ctx.world.idx(x, y); ctx.world.replaceCellAt(index, Cell.Fire, fireColor()); ctx.world.life[index] = strand.lowFuel ? node.fuel ?? FOLIAGE_MAX_FUEL : 18;
+        node.flameSpent = true;
       }
     }
   }
@@ -968,7 +988,7 @@ export class VineStrands implements VineStrandsApi {
         const fragment: VineStrand = {
           nodes: component.map(index => nodes[index]),
           segments: edges.filter(edge => remap.has(edge.a) && remap.has(edge.b)).map(edge => ({ a: remap.get(edge.a)!, b: remap.get(edge.b)!, rest: edge.rest })),
-          color: strand.color, thickness: strand.thickness, foliage: strand.foliage,
+          color: strand.color, thickness: strand.thickness, foliage: strand.foliage, lowFuel: strand.lowFuel,
           age: 0, settleT: 0, originWorld: strand.originWorld ?? this.ctx.world,
           persistent: keepsRoot && strand.persistent, tendril: keepsRoot && strand.tendril,
           anchorX: strand.anchorX, anchorY: strand.anchorY,
@@ -1187,12 +1207,12 @@ export class VineStrands implements VineStrandsApi {
   private settleStrand(world: World, strand: VineStrand): void {
     if (!strand.nodes.some(node => node.burn)) { this.settleStrandAs(world, strand, Cell.Vines, () => strand.color, 1.6); return; }
     for (const edge of strand.segments) {
-      const a = strand.nodes[edge.a], b = strand.nodes[edge.b], type = vineResidue((a.burn ?? 0) > (b.burn ?? 0) ? a : b);
-      this.paintLineAs(world, a.x, a.y, b.x, b.y, type, () => type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : strand.color, 1.6);
+      const a = strand.nodes[edge.a], b = strand.nodes[edge.b], type = vineResidue((a.burn ?? 0) > (b.burn ?? 0) ? a : b, strand.lowFuel);
+      this.paintLineAs(world, a.x, a.y, b.x, b.y, type, () => type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : strand.color, 1.6, strand.lowFuel ? AMBIENT_FOLIAGE_LIFE : -1);
     }
     if (strand.segments.length === 0) for (const node of strand.nodes) {
-      const type = vineResidue(node);
-      this.paintCellAt(world, node.x, node.y, type, type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : strand.color);
+      const type = vineResidue(node, strand.lowFuel);
+      this.paintCellAt(world, node.x, node.y, type, type === Cell.Ember ? emberColor() : type === Cell.Ash ? ashColor() : strand.color, strand.lowFuel ? AMBIENT_FOLIAGE_LIFE : -1);
     }
   }
 
@@ -1233,10 +1253,10 @@ export class VineStrands implements VineStrandsApi {
     for (const segment of strand.segments) {
       const a = strand.nodes[segment.a];
       const b = strand.nodes[segment.b];
-      this.paintLineAs(world, a.x, a.y, b.x, b.y, cellType, colorFn, density);
+      this.paintLineAs(world, a.x, a.y, b.x, b.y, cellType, colorFn, density, strand.lowFuel ? AMBIENT_FOLIAGE_LIFE : -1);
     }
     if (strand.segments.length === 0) {
-      for (const node of strand.nodes) this.paintCellAt(world, node.x, node.y, cellType, colorFn());
+      for (const node of strand.nodes) this.paintCellAt(world, node.x, node.y, cellType, colorFn(), strand.lowFuel ? AMBIENT_FOLIAGE_LIFE : -1);
     }
   }
 
@@ -1249,22 +1269,23 @@ export class VineStrands implements VineStrandsApi {
     cellType: Cell,
     colorFn: () => number,
     density: number,
+    vineLife = -1,
   ): void {
     const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * density));
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
-      this.paintCellAt(world, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, cellType, colorFn());
+      this.paintCellAt(world, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, cellType, colorFn(), vineLife);
     }
   }
 
-  private paintCellAt(world: World, x: number, y: number, cellType: Cell, color: number): void {
+  private paintCellAt(world: World, x: number, y: number, cellType: Cell, color: number, vineLife = -1): void {
     const cx = Math.floor(x);
     const cy = Math.floor(y);
     if (!world.inBounds(cx, cy)) return;
     const i = world.idx(cx, cy);
     if (world.types[i] !== Cell.Empty) return;
     world.replaceCellAt(i, cellType, color);
-    world.life[i] = cellType === Cell.Vines ? -1 : 90;
+    world.life[i] = cellType === Cell.Vines ? vineLife : 90;
     world.moved[i] = world.movedTick;
   }
 
@@ -1274,7 +1295,7 @@ function isLoadBearingAnchor(t: number): boolean {
   return isSolid(t) && !isSoftGrowth(t);
 }
 
-function vineResidue(node: VineNode): Cell { return node.burn ? node.burning ? Cell.Ember : Cell.Ash : Cell.Vines; }
+function vineResidue(node: VineNode, lowFuel = false): Cell { return node.burn ? node.burning && !lowFuel ? Cell.Ember : Cell.Ash : Cell.Vines; }
 
 function segmentDistanceSq(x: number, y: number, a: VineNode, b: VineNode): number {
   const dx = b.x - a.x, dy = b.y - a.y;

@@ -3,6 +3,7 @@ import type { KitPalette, Rgb } from '@/config/depthKits';
 import { basalt, chain, gear, hook, kelp, mushroom, root, stalactites, type Rand } from '@/render/depth/motifs';
 import { framingAnchor } from '@/render/depth/parallax';
 import { type Bitmap, MaskPlane, type Material, mixRgb, rng, shade } from '@/render/depth/raster';
+import { registerPlaneMotion } from '@/render/depth/MachineryMotion';
 
 /**
  * The foreground occluder plane: near-black silhouettes that pass IN FRONT
@@ -277,7 +278,7 @@ function fgMaterials(pal: KitPalette): (Material | null)[] {
 export function buildForegroundArt(art: string, palette: KitPalette, planeW: number, planeH: number, scale: number, seed: number,
   levelId: string | null, parallax = 1.4): Bitmap {
   const w = Math.ceil(planeW / scale), h = Math.ceil(planeH / scale);
-  const p = new MaskPlane(w, h, false);
+  const p = new MaskPlane(w, h, false, true);
   const r = rng(seed);
   const place: Placer = {
     scale,
@@ -287,5 +288,6 @@ export function buildForegroundArt(art: string, palette: KitPalette, planeW: num
     t: (cells) => Math.round(cells / scale),
   };
   (FOREGROUND_ART[art] ?? genericFg)(p, r, palette, place, levelId);
-  return shade(p, { materials: fgMaterials(palette), light: palette.light, grain: 2, seed });
+  const options = { materials: fgMaterials(palette), light: palette.light, grain: 2, seed };
+  return registerPlaneMotion(shade(p, options), p, piece => shade(piece, options));
 }

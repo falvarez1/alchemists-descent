@@ -4,6 +4,7 @@ import type { AuthoredLight, Ctx, Mechanism, Pickup, WorldGenApi } from '@/core/
 import { Cell, blocksEntity } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR, packRGB } from '@/sim/colors';
 import { dressWorksHabitat } from './worksHabitat';
+import { dressSurfaceFoliage } from './surfaceFoliage';
 import { stampTeaMachine, TEA } from './teaMachine';
 import { makeValve } from '@/core/mechanismFactories';
 import { stampPhotocell } from './lightPuzzles';
@@ -412,6 +413,11 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
     intensity, radius, bloom: 0.12, flicker, flickerPhase: hash(x, y) % 600,
     falloff: 'soft', occluded: true,
   });
+  dressSurfaceFoliage(world, seed, 'earthen', [
+    ...mechanisms.map(p => ({ ...p, radius: 18 })),
+    { x: 170, y: 314, radius: 25 }, { ...kettle.cauldron, radius: 22 },
+    { x: TEA.receiver.x, y: TEA.receiver.y, radius: 30 }, { x: 1400, y: 1008, radius: 22 },
+  ]);
   return {
     spawn: { x: 170, y: 314 }, exit: { x: 1400, sealY: 1010, halfW: 14 },
     waystones: [{ x: 192, y: 314, lit: true }, { x: 857, y: 743, lit: true }],

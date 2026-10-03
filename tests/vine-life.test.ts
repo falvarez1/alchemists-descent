@@ -22,6 +22,29 @@ function garden() {
 }
 
 describe('Living vine continuity', () => {
+  it('preserves damp ambient fuel through lifting, saving and leaving the level', () => {
+    const { system, world, cells, tick, leave } = garden();
+    for (const i of cells) world.life[i] = -2;
+    tick(8);
+    const types = world.types.slice(), life = world.life.slice();
+    system.writeSnapshotCells(world, types, life);
+    expect(cells.every(i => types[i] === Cell.Vines && life[i] === -2)).toBe(true);
+    leave();
+    expect(cells.every(i => world.type(i % world.width, Math.floor(i / world.width)) === Cell.Vines && world.life[i] === -2)).toBe(true);
+  });
+
+  it('does not renew a long grid flame from a burning damp lifted vine', () => {
+    const { ctx, system, world, cells, tick } = garden();
+    for (const i of cells) world.life[i] = -2;
+    tick(8);
+    const node = system.strands[0].nodes[7];
+    ctx.particles = { list: [{ x: node.x, y: node.y, vx: 0, vy: 0, type: Cell.Ember }], spawn() {} } as unknown as Ctx['particles'];
+    tick(1); ctx.particles.list.length = 0; tick(24);
+    const flames = [...world.types].flatMap((t, i) => t === Cell.Fire ? [world.life[i]] : []);
+    expect(flames.length).toBeGreaterThan(0);
+    expect(Math.max(...flames)).toBeLessThanOrEqual(5);
+  });
+
   it('ignites from an ember on a lifted leaf, chars, and severs its burned stem', () => {
     const { ctx, system, tick } = garden(); tick(8);
     const vine = system.strands[0], node = vine.nodes[8], previous = vine.nodes[7];

@@ -80,6 +80,7 @@ import { clearLooseStock, type StockSite } from '@/world/looseStock';
 import { holdPortalShrine } from '@/world/portalShrine';
 import { placeRouteWaystones } from '@/world/routeWaystones';
 import { bankFurnace } from '@/world/furnace';
+import { dressSurfaceFoliage } from '@/world/surfaceFoliage';
 import type { LevelStorySites } from '@/core/story';
 
 /* ===================== Procedural Generation Map Engines ===================== */
@@ -1599,6 +1600,12 @@ export class WorldGen implements WorldGenApi {
 
     // 9) Spawn reuses the carved spawn chamber center; manager fine-tunes footing.
     matureVegetation(ctx.world);
+    dressSurfaceFoliage(world, seed, def.biome, [
+      ...waystones.map(p => ({ ...p, radius: 14 })),
+      ...mechanisms.map(p => ({ ...p, radius: 16 })),
+      ...pickups.map(p => ({ ...p, radius: 10 })),
+      { ...cauldron, radius: 18 }, { ...spawn, radius: 18 }, ...(portal ? [{ ...portal, radius: 20 }] : []),
+    ]);
     return {
       exit: { x: wellX, sealY, halfW },
       waystones,

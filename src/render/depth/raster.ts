@@ -25,6 +25,11 @@ export interface Bitmap {
   readonly pixels: Uint8ClampedArray;
 }
 
+/** Mechanical pieces kept separate from a plane's stationary architecture. */
+export type MotionMotif =
+  | { kind: 'gear'; x: number; y: number; radius: number; teeth: number; spokes: number; material: number }
+  | { kind: 'chain'; x: number; y: number; length: number; size: number; material: number };
+
 /** Deterministic mulberry32 stream; kits fork one per plane. */
 export function rng(seed: number): () => number {
   let a = seed >>> 0;
@@ -90,13 +95,14 @@ export interface Material {
 
 /** A plane being painted: material ids + signed tone offsets, wrapped writes. */
 export class MaskPlane {
+  readonly motions: MotionMotif[] = [];
   readonly mat: Uint8Array;
   readonly tone: Int8Array;
   /** Optional per-texel coverage for soft (light-shaft, fog) materials: 0–255. */
   readonly cover: Uint8Array;
 
   /** wrap = false: writes outside the plane are dropped (the non-tiling foreground). */
-  constructor(readonly width: number, readonly height: number, readonly wrap = true) {
+  constructor(readonly width: number, readonly height: number, readonly wrap = true, readonly captureMotion = false) {
     this.mat = new Uint8Array(width * height);
     this.tone = new Int8Array(width * height);
     this.cover = new Uint8Array(width * height);

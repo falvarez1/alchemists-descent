@@ -8,6 +8,7 @@ import { Background } from '@/render/Background';
 import { bakeForeground, bakePlane } from '@/render/depth/bake';
 import { drawDepthParticles, type ShaftPlane } from '@/render/depth/depthParticles';
 import { foregroundExtent, pulseOpacity } from '@/render/depth/parallax';
+import { updatePlaneMotion } from '@/render/depth/MachineryMotion';
 import type { Bitmap } from '@/render/depth/raster';
 import { type RevealPoint, type RevealRect, RevealField } from '@/render/depth/reveal';
 import type {
@@ -100,6 +101,7 @@ const NEUTRAL_LAYER: BackdropLayerSettings = { speed: 0, opacity: 0, offsetX: 0,
 let depthEnabled = true;
 let foregroundEnabled = true;
 let particlesEnabled = true;
+let motionEnabled = true;
 
 /** Dev-only switches for A/B probes and perf runs. */
 if (import.meta.env.DEV && typeof window !== 'undefined') {
@@ -107,6 +109,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
     setEnabled: (on: boolean): void => { depthEnabled = on; },
     setForeground: (on: boolean): void => { foregroundEnabled = on; },
     setParticles: (on: boolean): void => { particlesEnabled = on; },
+    setMotion: (on: boolean): void => { motionEnabled = on; },
   };
 }
 
@@ -218,6 +221,12 @@ export class DepthScene implements ParallaxLayers {
       this.baked.set(key, baked);
     }
     this.bakeStep(baked);
+    const motionTick = motionEnabled ? ctx.state.frameCount : 0;
+    for (let i = 0; i < baked.planes.length; i++) {
+      const plane = baked.planes[i];
+      if (plane && updatePlaneMotion(plane, motionTick)) this.slotVersions[i] = -1;
+    }
+    if (baked.foreground && updatePlaneMotion(baked.foreground, motionTick)) this.foreground.version = versionCounter++;
     const switched = this.source.kind !== 'kit' || this.source.key !== key;
     if (switched) {
       this.source = { kind: 'kit', key };

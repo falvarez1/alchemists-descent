@@ -1,6 +1,7 @@
 import type { Ctx } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import type { World } from '@/sim/World';
+import { foliageFuel, FOLIAGE_MAX_FUEL } from '@/config/foliage';
 
 type HeatTrace = { ax: number; ay: number; bx: number; by: number; wet: boolean };
 type HeatIndex = { tick: number; buckets: Map<number, HeatTrace[]> };
@@ -85,4 +86,29 @@ export function foliageTouchesHeat(ctx: Ctx, ax: number, ay: number, bx: number,
     }
   }
   return false;
+}
+
+/** The actual contact's remaining energy, used by damp ambient foliage.
+ * A little transmitted flame cannot renew itself at each new leaf. */
+export function foliageContactFuel(ctx: Ctx, ax: number, ay: number, bx: number, by: number): number {
+  const index = traces(ctx), world = ctx.world, steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
+  let fuel = 0;
+  for (let step = 0; step <= steps; step++) {
+    const x = ax + (bx - ax) * step / steps, y = ay + (by - ay) * step / steps;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const gx = Math.floor(x) + dx, gy = Math.floor(y) + dy;
+      if (!world.inBounds(gx, gy)) continue;
+      const i = world.idx(gx, gy), t = world.types[i];
+      if (t === Cell.Fire) fuel = Math.max(fuel, foliageFuel(world.life[i]));
+      else if (t === Cell.Ember || t === Cell.Lava || (t === Cell.Oil && world.life[i] > 0)) fuel = FOLIAGE_MAX_FUEL;
+    }
+    for (const trace of index.buckets.get(bucketKey(x, y)) ?? []) {
+      if (trace.wet) continue;
+      const dx = trace.bx - trace.ax, dy = trace.by - trace.ay;
+      const t = Math.max(0, Math.min(1, ((x - trace.ax) * dx + (y - trace.ay) * dy) / (dx * dx + dy * dy || 1)));
+      if ((x - trace.ax - t * dx) ** 2 + (y - trace.ay - t * dy) ** 2 < 2.25) fuel = FOLIAGE_MAX_FUEL;
+    }
+    if (fuel === FOLIAGE_MAX_FUEL) break;
+  }
+  return fuel;
 }

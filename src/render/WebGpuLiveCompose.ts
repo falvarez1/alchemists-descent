@@ -1314,19 +1314,27 @@ export class WebGpuLiveCompose {
       const layer = layers.backdropLayers[i];
       const version = layer?.version ?? -1;
       if (this.backdropTextures[i]?.version === version) continue;
-      this.backdropTextures[i]?.texture.destroy();
       const width = Math.max(1, layer?.width ?? 1);
       const height = Math.max(1, layer?.height ?? 1);
       const metrics = this.currentMetrics;
       const start = performance.now();
-      this.backdropTextures[i] = this.createBackdropTexture(layer, i);
+      const current = this.backdropTextures[i];
+      if (current && current.width === width && current.height === height) {
+        this.uploadTexture(current.texture,
+          layer ? new Uint8Array(layer.pixels.buffer, layer.pixels.byteOffset, layer.pixels.byteLength) : new Uint8Array(4),
+          width, height, width * 4);
+        current.version = version;
+      } else {
+        current?.texture.destroy();
+        this.backdropTextures[i] = this.createBackdropTexture(layer, i);
+        changed = true;
+      }
       if (metrics) {
         metrics.backdropTextureUploads++;
         metrics.backdropLogicalUploadBytes += width * height * 4;
         metrics.backdropSubmittedUploadBytes += align(width * 4, 256) * height;
         metrics.backdropUploadCpuMs += performance.now() - start;
       }
-      changed = true;
     }
     return changed;
   }

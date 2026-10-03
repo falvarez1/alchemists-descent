@@ -16,6 +16,7 @@ import { igniteTrunk } from '@/sim/elements/flora';
 // FIRE_REACTION_OFFSETS was the local name for the shared asymmetric ignition list.
 import { CARDINAL_OFFSETS, IGNITION_OFFSETS as FIRE_REACTION_OFFSETS } from '@/sim/neighborOffsets';
 import { fxRandom, simRandom } from '@/core/simRandom';
+import { AMBIENT_FOLIAGE_LIFE, foliageBurnLife, foliageFuel, FOLIAGE_MAX_FUEL } from '@/config/foliage';
 
 /** EXPORTED for cross-handler use: handleFire melts adjacent ice via this. */
 export function handleIce(ctx: Ctx, x: number, y: number): void {
@@ -75,8 +76,9 @@ export function handleEmber(ctx: Ctx, x: number, y: number): void {
     }
     if ((n === Cell.Wood || n === Cell.Vines || n === Cell.Leaf || n === Cell.Seed) && simRandom() < P.igniteChance!) {
       // slow smoulder: a small, short-lived flame that grows or fizzles with the fuel
+      const damp = n === Cell.Vines && w.life[ni] <= AMBIENT_FOLIAGE_LIFE;
       w.replaceCellAt(ni, Cell.Fire, fireColor());
-      w.life[ni] = 40 + Math.floor(simRandom() * 50);
+      w.life[ni] = damp ? FOLIAGE_MAX_FUEL : 40 + Math.floor(simRandom() * 50);
     }
     // living wood takes an ember as a smoulder in place (FLORA)
     if (n === Cell.Trunk && simRandom() < P.igniteChance!) igniteTrunk(ctx, ni);
@@ -166,8 +168,11 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         if (simRandom() < ctx.params.materials[Cell.Wood].carbonSmokeGen!) spawnSmoke(ctx, x, y);
       }
       if (n === Cell.Vines && simRandom() < ctx.params.materials[Cell.Vines].flammability!) {
+        const damp = w.life[ti] <= AMBIENT_FOLIAGE_LIFE;
+        const fuel = foliageFuel(w.life[ci]);
+        if (damp && fuel === 0) continue;
         w.replaceCellAt(ti, Cell.Fire, fireColor());
-        w.life[ti] = 30;
+        w.life[ti] = damp ? fuel : 30;
         if (simRandom() < 0.6) spawnSmoke(ctx, x, y);
       }
       if (n === Cell.Fungus && simRandom() < ctx.params.materials[Cell.Fungus].flammability!) {
@@ -184,9 +189,19 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
         if (simRandom() < 0.5) spawnSmoke(ctx, x, y);
       }
       if (n === Cell.Moss && simRandom() < ctx.params.materials[Cell.Moss].flammability!) {
-        w.replaceCellAt(ti, Cell.Fire, fireColor());
-        w.life[ti] = 26; // damp greenery burns short and smoky
-        if (simRandom() < 0.7) spawnSmoke(ctx, x, y);
+        if (w.life[ti] <= AMBIENT_FOLIAGE_LIFE) {
+          // Rich ambient crowns smoulder in place. Each transmission spends
+          // fuel; it cannot turn a two-tick ember into a new long fire.
+          const fuel = foliageFuel(w.life[ci]);
+          if (fuel > 0 && w.life[ti] > -100) {
+            w.life[ti] = foliageBurnLife(fuel);
+            w.activity.touchIndex(ti);
+          }
+        } else {
+          w.replaceCellAt(ti, Cell.Fire, fireColor());
+          w.life[ti] = 26; // ordinary puzzle moss keeps its existing fuel
+          if (simRandom() < 0.7) spawnSmoke(ctx, x, y);
+        }
       }
       if (n === Cell.Leaf && simRandom() < ctx.params.materials[Cell.Leaf].flammability!) {
         // a canopy goes up fast and bright (FLORA)

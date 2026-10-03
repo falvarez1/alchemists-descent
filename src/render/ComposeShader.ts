@@ -1524,10 +1524,16 @@ export class GpuCompose {
       const layer = sourceLayers[i];
       const nextVersion = layer?.version ?? -1;
       if (this.backdropVersions[i] === nextVersion) continue;
-      this.backdropTex[i].dispose();
-      const tex = this.createBackdropTexture(layer);
-      this.backdropTex[i] = tex;
-      this.material.uniforms[`uBackdrop${i}`].value = tex;
+      const tex = this.backdropTex[i], image = tex.image;
+      if (image.width === (layer?.width ?? 1) && image.height === (layer?.height ?? 1)) {
+        image.data = layer ? new Uint8Array(layer.pixels.buffer, layer.pixels.byteOffset, layer.pixels.byteLength) : new Uint8Array(4);
+        tex.needsUpdate = true;
+      } else {
+        tex.dispose();
+        const next = this.createBackdropTexture(layer);
+        this.backdropTex[i] = next;
+        this.material.uniforms[`uBackdrop${i}`].value = next;
+      }
       this.backdropVersions[i] = nextVersion;
     }
   }
