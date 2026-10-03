@@ -13,7 +13,7 @@ import type { NavEdge, StageNav } from '@/arena/ai/nav';
 import { buildWorldView, createWorldView, lineClear } from '@/arena/ai/worldView';
 import type { WorldView } from '@/arena/ai/worldView';
 import { abilityPlan } from '@/arena/ai/playbooks';
-import { incomingShot, safeDrop, safeFooting, safeTravel, safeMobilityLanding, safeHopClearance, weaponLaneClear } from '@/arena/ai/combat';
+import { incomingShot, safeDrop, safeFooting, safeTravel, safeMobilityLanding, hazardHopClearance, weaponLaneClear } from '@/arena/ai/combat';
 import { AI_BEHAVIOR } from '@/config/aiBehavior';
 import type { AiLevel } from '@/config/aiTiers';
 import { YARD } from '@/world/fighterArena';
@@ -241,9 +241,7 @@ export class BasicBrain implements Brain {
         let clearY: number | null = null;
         if (!control.escaping) {
           const maxRise = Math.min(64, 24 + Math.max(0, me.levit - AI_BEHAVIOR.dodgeLevitReserve) * .8);
-          for (let span = 2; span <= 4 && clearY === null; span++) {
-            clearY = safeHopClearance(ctx, me.x, me.y, me.x + dir * AI_BEHAVIOR.hazardLookahead * span, maxRise);
-          }
+          clearY = hazardHopClearance(ctx, me.x, me.y, dir, AI_BEHAVIOR.hazardLookahead, maxRise);
         }
         if (clearY !== null) {
           control.startHop(dir, clearY, me.y);
