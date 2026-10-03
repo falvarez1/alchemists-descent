@@ -88,6 +88,45 @@ try {
   check.check('existing foreground cogs/chains also animate through the shared bitmap', mechanics.fgChanged && mechanics.fgChangedVersion, JSON.stringify(mechanics));
   check.check('authored lanterns vary without blinking off', mechanics.lampMax - mechanics.lampMin > .08 && mechanics.lampMin > .7, JSON.stringify(mechanics));
 
+  const continuity = await page.evaluate(async () => {
+    const ctx = window.__game.ctx, w = ctx.world, system = ctx.vineStrands;
+    const { Cell } = await import('/src/sim/CellType.ts');
+    const { foliageBurnState } = await import('/src/config/foliage.ts');
+    const rows = [];
+    const tick = count => { for (let n = 0; n < count; n++) { ctx.state.frameCount++; system.update(ctx); } };
+    for (const burning of [true, false]) {
+      system.clear(); ctx.particles.list.length = 0; ctx.projectiles.length = 0;
+      Object.assign(ctx.player, { x: 210, y: 310, vx: 0, vy: 0 });
+      for (let y = 80; y <= 200; y++) for (let x = 140; x <= 215; x++) w.clearCell(x, y);
+      w.replaceCellAt(w.idx(160, 96), Cell.Stone, 0x888888);
+      const cells = [];
+      for (let d = 0; d < 76; d++) {
+        const index = w.idx(160 + Math.round(Math.sin(d * .065 + 160) * d * .1), 97 + d);
+        cells.push(index); w.replaceCellAt(index, Cell.Vines, 0x446644); w.life[index] = -2;
+      }
+      tick(8);
+      const strand = system.strands.find(s => s.originCells?.includes(cells[0])), node = strand.nodes[7];
+      Object.assign(node, { burn: .5, fuel: 3, burning, flameSpent: true });
+      const source = node.sourceCells[0], types = w.types.slice(), life = w.life.slice();
+      system.writeSnapshotCells(w, types, life);
+      const saved = foliageBurnState(life[source]), liveUntouched = w.types[source] === Cell.Empty;
+      system.clear();
+      for (const index of cells) { w.replaceCellAt(index, types[index], 0x446644); w.life[index] = life[index]; }
+      tick(8);
+      const restored = system.strands.flatMap(s => s.nodes).find(n => n.sourceCells?.includes(source));
+      tick(24);
+      let flames = 0;
+      for (let y = 80; y <= 200; y++) for (let x = 140; x <= 215; x++) if (w.type(x, y) === Cell.Fire) flames++;
+      rows.push({ burning, isVine: types[source] === Cell.Vines, saved, liveUntouched, restoredBurn: restored?.burn,
+        restoredBurning: restored?.burning, restoredFuel: restored?.fuel, flameSpent: restored?.flameSpent, flames });
+    }
+    return rows;
+  });
+  for (const row of continuity) check.check(`burning=${row.burning}: native damp-vine snapshot resumes without turning to ash or renewing flame`,
+    row.isVine && row.saved.age === 45 && row.saved.burning === row.burning && row.liveUntouched &&
+    row.restoredBurn >= .5 && row.restoredBurn < .8 && row.restoredBurning === row.burning &&
+    row.restoredFuel === (row.burning ? 3 : 0) && row.flameSpent && row.flames === 0, JSON.stringify(row));
+
   const fire = [];
   for (const seed of [1, 7, 42]) {
     const row = await page.evaluate(async seed => {
@@ -122,7 +161,7 @@ try {
   }
   await page.screenshot({ path: `${dir}/contained-fire.png` });
   check.check('browser play and material/motion probes have no uncaught errors', errors.length === 0, errors.join('\n'));
-  writeFileSync(`${dir}/measured.json`, JSON.stringify({ initial, brushed, mechanics, fire, errors, pass: check.pass, fail: check.fail }, null, 2));
+  writeFileSync(`${dir}/measured.json`, JSON.stringify({ initial, brushed, mechanics, continuity, fire, errors, pass: check.pass, fail: check.fail }, null, 2));
   console.log(`\n${check.pass} passed, ${check.fail} failed`);
   if (check.fail > 0) process.exitCode = 1;
 } finally { await browser.close(); }
