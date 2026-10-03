@@ -69,12 +69,7 @@ export function dangerousCell(type: number): boolean {
 /** Local landing/footing check; uses real cells and the normal body collision test. */
 export function safeFooting(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: number): boolean {
   if (!ctx.physics.entityFree(x, y, PLAYER_HALF_W, PLAYER_H)) return false;
-  for (const dx of [-4, 0, 4]) {
-    for (let dy = -PLAYER_H; dy <= 3; dy++) {
-      const gx = Math.round(x + dx), gy = Math.round(y + dy);
-      if (!ctx.world.inBounds(gx, gy) || dangerousCell(ctx.world.types[ctx.world.idx(gx, gy)])) return false;
-    }
-  }
+  if (bodyHazardExposure(ctx, x, y) !== 0) return false;
   for (let drop = 1; drop <= 12; drop++) if (ctx.physics.cellBlocks(Math.round(x), Math.round(y + drop))) return true;
   return false;
 }
@@ -82,10 +77,7 @@ export function safeFooting(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: n
 /** A crater is traversable when every cell along the descent is safe and its floor is nearby. */
 export function safeDrop(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: number): boolean {
   for (let down = 0; down <= 48; down++) {
-    for (const dx of [-PLAYER_HALF_W, 0, PLAYER_HALF_W]) {
-      const gx = Math.round(x + dx), gy = Math.round(y + down);
-      if (!ctx.world.inBounds(gx, gy) || dangerousCell(ctx.world.types[ctx.world.idx(gx, gy)])) return false;
-    }
+    if (!ctx.physics.entityFree(x, y + down, PLAYER_HALF_W, PLAYER_H) || bodyHazardExposure(ctx, x, y + down) !== 0) return false;
     // Test the eventual standing pose. Support twelve cells below a midair
     // pose does not establish that the descent itself is safe.
     if (ctx.physics.cellBlocks(Math.round(x), Math.round(y + down + 1))) return safeFooting(ctx, x, y + down);
@@ -149,8 +141,9 @@ export function safeHopClearance(ctx: Pick<Ctx, 'world' | 'physics'>, x: number,
   return null;
 }
 
-/** Check the actual launch direction and ballistic arc up to the target's
- * horizontal distance. Instant/straight spells retain their direct aim line.
+/** Check the actual launch direction and ballistic arc until its progress
+ * toward the target reaches the full distance, including vertical shots.
+ * Instant/straight spells retain their direct aim line.
  * Every segment uses the game's terrain query, including thin ceilings. */
 export function weaponLaneClear(
   origin: { x: number; y: number }, target: { x: number; y: number }, aim: { x: number; y: number },
@@ -160,8 +153,21 @@ export function weaponLaneClear(
   const dx = aim.x - origin.x, dy = aim.y - origin.y, length = Math.hypot(dx, dy) || 1;
   const vx = dx / length * weapon.speed;
   let vy = dy / length * weapon.speed, x = origin.x, y = origin.y;
-  const flight = Math.abs(target.x - origin.x) / Math.max(.5, Math.abs(vx));
-  const steps = Math.min(60, Math.max(1, Math.ceil(flight)));
+  const tx = target.x - origin.x, ty = target.y - origin.y, distance = Math.hypot(tx, ty);
+  if (distance === 0) return clear(x, y, aim.x, aim.y);
+  // Project discrete ballistic displacement v*t + g*t*(t+1)/2 onto
+  // the full target direction. Its first positive crossing gives flight
+  // time without dividing by a zero or tiny horizontal launch velocity.
+  const a = .5 * weapon.gravity * ty / distance;
+  const b = (vx * tx + vy * ty) / distance + a;
+  const discriminant = b * b + 4 * a * distance;
+  if (discriminant < 0 || (a <= 0 && b <= 0)) return false;
+  const flight = Math.abs(a) < 1e-8 ? distance / b
+    : b > 0 ? 2 * distance / (b + Math.sqrt(discriminant))
+      : (Math.sqrt(discriminant) - b) / (2 * a);
+  // Never approve a lane after tracing only an arbitrary initial portion.
+  if (!Number.isFinite(flight) || flight <= 0 || flight > 120) return false;
+  const steps = Math.max(1, Math.ceil(flight));
   for (let i = 0; i < steps; i++) {
     vy += weapon.gravity;
     const nx = x + vx, ny = y + vy;
