@@ -204,7 +204,7 @@ function drawLamp(pen: Pen, fixture: AuthoredLight, tick: number, world: World):
   const warm = fixture.r > fixture.b * 1.2;
   const glass: RGB = warm ? [1.9, 1.12, .36] : [.30, 1.24, .9];
   const flicker = 1 + Math.sin(tick * .09 + fixture.flickerPhase) * fixture.flicker;
-  const glow = VISUAL_FIDELITY.fixtureGlow * fixture.intensity * flicker;
+  const glow = VISUAL_FIDELITY.fixtureGlow * VISUAL_FIDELITY.lampIntensity * fixture.intensity * flicker;
   for (let dy = -20; dy <= 20; dy += 1) for (let dx = -20; dx <= 20; dx += 1) {
     const d = dx * dx + dy * dy;
     if (d > 400 || !air(world.type(Math.round(x + dx), Math.round(y + dy)))) continue;

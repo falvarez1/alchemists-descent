@@ -33,7 +33,8 @@ body.vitals-numeric .vital-num {
 body.hud-custom #hud-left { transform: scale(var(--hud-scale, 1)); transform-origin: 0 0; }
 body.hud-custom #expedition-tools { transform: scale(var(--hud-scale, 1)); transform-origin: 0 100%; }
 body.hud-custom .wave-readout { transform: scale(var(--hud-scale, 1)); transform-origin: 100% 0; }
-body.hud-custom :is(#hud-left, #expedition-tools, .wave-readout) { opacity: var(--hud-opacity, 1); }
+body.hud-custom #treasure-row { transform: scale(var(--hud-scale, 1)); transform-origin: 100% 100%; }
+body.hud-custom :is(#hud-left, #expedition-tools, .wave-readout, #treasure-row) { opacity: var(--hud-opacity, 1); }
 /* The Pause button is a control, not a readout: it keeps its size and place (it would otherwise grow over the corner speaker). */
 
 /* ---------- Enemy health bars and damage numbers (ui/EnemyReadouts) ---------- */
