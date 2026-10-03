@@ -1,4 +1,5 @@
 import { SCORE_TRACKS } from '@/content/audio/score.generated';
+import { ARENA_SCORE_TRACKS } from '@/content/audio/arenaScore.generated';
 import { NARRATION_LINES, NARRATOR_CANDIDATES, NARRATOR_SAMPLE, NARRATOR_VOICE } from '@/content/audio/narration.generated';
 
 /**
@@ -20,7 +21,7 @@ const base = import.meta.env.BASE_URL;
 const minutes = (s: number): string => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
 export const AUDITION_ENTRIES: AuditionEntry[] = [
-  ...SCORE_TRACKS.map(t => ({
+  ...[...SCORE_TRACKS, ...ARENA_SCORE_TRACKS].map(t => ({
     id: `score-${t.id}`,
     group: t.group,
     label: `${t.label} · ${minutes(t.seconds)}`,

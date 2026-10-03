@@ -1,5 +1,6 @@
 import type { BiomeId, EnemyKind } from '@/core/types';
 import { DARKNESS } from '@/config/darkness';
+import type { VersusPhase } from '@/core/versus';
 
 /**
  * The music director's rules, pure (tests/music-director.test.ts): which cue
@@ -143,6 +144,8 @@ export class BossGate {
 /* ---------------- which cue does this moment want? ---------------- */
 
 export interface DirectorInput {
+  /** Arena owns its score even if a discarded campaign verdict is still pending. */
+  arenaCue?: string | null;
   /** A user gesture has happened (autoplay policy): nothing plays before one. */
   gestured: boolean;
   /** The engine has a running context to play into. */
@@ -169,6 +172,7 @@ export interface DirectorInput {
 
 export function chooseCue(i: DirectorInput): string | null {
   if (!i.gestured || !i.soundOn) return null;
+  if (i.arenaCue) return i.arenaCue;
   if (i.verdictPending) return null;
   if (i.verdict) return i.verdict;
   const want = ((): string | null => {
@@ -188,6 +192,14 @@ export function chooseCue(i: DirectorInput): string | null {
     return i.tension ? pair.tension : pair.explore;
   })();
   return want ?? (i.preview ? 'title' : null);
+}
+
+/** Real mode/level facts, shared by stock matches, health duels and solo training. */
+export function arenaCueFor(i: { mode: string; level?: string; phase?: VersusPhase; rival?: boolean; finished?: boolean; resultsDone?: boolean; entryActive?: boolean }): string | null {
+  if (i.phase === 'lobby' || i.phase === 'loading') return 'arena-lobby';
+  if (i.entryActive || i.mode !== 'play') return null;
+  if (!i.rival && i.phase !== 'playing' && i.phase !== 'reconnect' && i.level !== 'fighter-test' && i.level !== 'fighter-duel') return null;
+  return i.finished ? i.resultsDone ? 'arena-lobby' : 'arena-results' : 'arena-battle';
 }
 
 export interface DipInput {
@@ -229,6 +241,7 @@ export function phaseDipActive(sincePhaseMs: number | undefined): boolean {
  */
 export function dipFor(d: DipInput): number {
   if (d.hidden) return 0;
+  if (d.cue?.startsWith('arena-')) return d.paused ? 0.6 : 1;
   if (d.ledgerOpen) return 0.55;
   if (d.mode === 'play' && d.playerDead) return 0.3;
   if (d.mode === 'play' && d.paused) return 0.6;
@@ -244,6 +257,9 @@ export function isCalmFloorCue(id: string): boolean {
 
 /** Cue loudness relative to its master: exploration sits under the action; hunted and boss cues lead. */
 export function cueLevel(id: string): number {
+  if (id === 'arena-battle') return 0.88;
+  if (id === 'arena-results') return 0.95;
+  if (id === 'arena-lobby') return 0.78;
   if (id.endsWith('-tension') || id.startsWith('boss-') || id === 'escape' || id === 'ending') return 1;
   if (id === 'victory' || id === 'fallen' || id === 'tea-engine') return 1;
   if (id === 'title') return 0.95;
@@ -257,6 +273,8 @@ const floorOfCue = (id: string): string | null => {
 
 /** Seconds to crossfade `from` into `to` (either may be silence). */
 export function fadeSeconds(from: string | null, to: string | null): number {
+  if (to === 'arena-results') return 0.16;
+  if (to?.startsWith('arena-') || from?.startsWith('arena-')) return 0.65;
   if (to === 'victory' || to === 'fallen') return 0.35; // the verdict enters on its own attack
   if (!from && !to) return 0;
   if (!to) return from === 'victory' || from === 'fallen' ? 3 : 1.6;
@@ -269,6 +287,7 @@ export function fadeSeconds(from: string | null, to: string | null): number {
 
 /** Seconds of crossfade when a looping cue wraps its tail into its head. */
 export function loopFadeSeconds(id: string): number {
+  if (id.startsWith('arena-')) return 0.18;
   if (id.endsWith('-tension') || id.startsWith('boss-') || id === 'tea-engine' || id === 'escape') return 3;
   return 5;
 }

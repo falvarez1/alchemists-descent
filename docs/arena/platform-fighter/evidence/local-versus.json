@@ -7,12 +7,12 @@
   },
   "ownership": {
     "before": [
-      690,
-      910
+      680,
+      920
     ],
     "after": [
-      703,
-      910
+      693,
+      920
     ],
     "assigned": [
       "pad:1",
@@ -31,12 +31,12 @@
   ],
   "mixedOwnership": {
     "before": [
-      690,
-      910
+      680,
+      920
     ],
     "after": [
-      706,
-      898
+      696,
+      908
     ]
   },
   "savedDescentUnchanged": true,

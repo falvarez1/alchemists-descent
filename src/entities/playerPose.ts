@@ -91,7 +91,9 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   const ledge = a === ctx.player && ctx.arena?.stockMatch ? ctx.arena.stockLedge(ctx.arena.bound) : null;
   const attack = a === ctx.player ? ctx.arena?.stockAttack(ctx.arena.bound) : null;
   const shield = a === ctx.player ? ctx.arena?.stockShield?.(ctx.arena.bound) : null;
-  const frame = ctx.state.frameCount, f = (ledge?.busy ? ledge.side : attack?.busy ? attack.facing : a.facing) < 0 ? -1 : 1;
+  const grab = a === ctx.player ? ctx.arena?.stockGrab?.(ctx.arena.bound) : null;
+  const grabbed = a === ctx.player && ctx.arena?.isGrabbed?.(ctx.arena.bound);
+  const frame = ctx.state.frameCount, f = (ledge?.busy ? ledge.side : attack?.busy ? attack.facing : grab?.busy ? grab.facing : a.facing) < 0 ? -1 : 1;
   const strike = attack?.busy && attack.spec ? attack : null;
   const windup = strike?.phase === 'startup' ? ease(strike.age / strike.spec!.startup) : 0;
   const follow = strike?.phase === 'active' ? 1 : strike?.phase === 'recovery'
@@ -277,6 +279,15 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
     bE = at(-1, broken ? 7 : 11); bH = at(1, broken ? 4 : 14);
     fE = at(4, broken ? 6 : 10); fH = at(5, broken ? 3 : 14);
     s.gazeY = broken ? .8 : 0; s.eyesShut = broken;
+  }
+  if (grab?.busy) {
+    s.wand.visible = false;
+    const extension = grab.phase === 'startup' ? ease(grab.age / 6) : grab.phase === 'recovery' ? 1 - ease(grab.age / 22) : 1;
+    fE = mixP(fE, at(6, grab.throwY ? 15 : 10), extension); fH = mixP(fH, at(grab.throwY ? 7 : 14, grab.throwY ? 20 : 12), extension);
+    bE = mixP(bE, at(3, 9), extension); bH = mixP(bH, at(10, 10), extension);
+  }
+  if (grabbed) {
+    s.wand.visible = false; fE = at(3, 8); fH = at(3, 12); bE = at(-3, 8); bH = at(-4, 12);
   }
   if (a.stockFastFall) { bE = at(-2, 9.5); bH = at(-.5, 10); fE = at(3, 9.5); fH = at(3.5, 12); }
   if (strike) {

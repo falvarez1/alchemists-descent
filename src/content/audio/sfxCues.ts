@@ -96,6 +96,15 @@ const org = (kind: string, cat: SfxCategory, o?: Omit<SfxCueDef, 'pack' | 'cat'>
 const fl = (cat: SfxCategory, o?: Omit<SfxCueDef, 'pack' | 'cat'>): SfxCueDef => c('flora', cat, o);
 
 export const SFX_CUES = {
+  'arena.hit.light': c('arena', 'impact', { gain: 1.5, range: 1400, cooldownMs: 30, pitchCents: 35, priority: 5 }),
+  'arena.hit.heavy': c('arena', 'impact', { gain: 2.1, range: 1400, cooldownMs: 45, pitchCents: 25, priority: 5 }),
+  'arena.shield.block': c('arena', 'impact', { gain: 1.2, range: 1400, cooldownMs: 45, pitchCents: 25, priority: 5 }),
+  'arena.shield.break': c('arena', 'impact', { gain: 2, range: 1400, cooldownMs: 150, pitchCents: 10, priority: 5 }),
+  'arena.grab': c('arena', 'impact', { gain: 1.1, range: 1400, cooldownMs: 70, pitchCents: 35, priority: 4 }),
+  'arena.throw': c('arena', 'impact', { gain: 1.8, range: 1400, cooldownMs: 70, pitchCents: 30, priority: 5 }),
+  'arena.hurt.agile': c('arena', 'creature', { gain: 2, range: 1400, cooldownMs: 100, voices: 2, pitchCents: 25, priority: 5 }),
+  'arena.hurt.armored': c('arena', 'creature', { gain: 2.15, range: 1400, cooldownMs: 100, voices: 2, pitchCents: 20, priority: 5 }),
+  'arena.hurt.duelist': c('arena', 'creature', { gain: 2, range: 1400, cooldownMs: 100, voices: 2, pitchCents: 25, priority: 5 }),
   // ------------------------------------------------------------------ UI
   'ui.hover': ui({ gain: 0.31, cooldownMs: 60, voices: 1 }),
   'ui.click': ui({ gain: 0.7 }),

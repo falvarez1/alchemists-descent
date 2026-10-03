@@ -57,7 +57,8 @@ export function drawPlayerSprite(out: PixelSurface, light: LightField, ctx: Ctx)
   const player = ctx.player;
   const frameCount = ctx.state.frameCount;
   if (ctx.state.mode !== 'play' || player.dead) return;
-  if (!ctx.state.reduceFlashes && player.invuln > 0 && frameCount % 6 < 3) return;
+  // A launched stock fighter must stay trackable throughout its recovery.
+  if (!ctx.arena?.stockMatch && !ctx.state.reduceFlashes && player.invuln > 0 && frameCount % 6 < 3) return;
   // The game surface has half-cell pixels and uses the joint-driven art pass.
   // Classic cell surfaces retain the legacy sprite for Builder compatibility.
   // A fighter wears its own look on the same rig (render/player/FighterArt); no fighter, no change.

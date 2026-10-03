@@ -9,6 +9,24 @@ The Markdown and responsive offline HTML plans cover the full roadmap. Four Imag
 
 The next ImageGen sheets, ledge-movement.png and camera-direction.png, cover ledge movement and revised framing after the user playtest. Twelve additional native captures document ledge catch, climb, release, and fast fall. The camera storyboard guides the implemented camera checkpoint below.
 
+## Controller, grab, and throw checkpoint
+
+The confirmed Xbox layout is implemented in the player-facing Duel and Arena stock-match input paths. Controller zero and one retain independent ownership. The first lobby opening selects an already-connected standard controller for player one; later explicit keyboard choices are preserved. A/B menu roles and Start pause remain intact. Up + B has a dedicated recovery request, including from the ground. The right stick requires returning to neutral before another attack; upward smash has longer startup and recovery than the regular launcher. Down + B uses the existing tactical ability.
+
+Grabs have six startup ticks, three contact ticks, and twenty-two recovery ticks. A successful grounded grab defeats a shield and holds the opponent for up to fifty ticks. Directions throw after eight hold ticks; releasing through damage, invalid terrain, or reset clears ownership. Both bodies use real collision clearance. Simultaneous contacting grabs clash without slot priority. The keyboard carry binding, G by default, requests a grab in stock mode. Pummels and escape mashing are not implemented.
+
+scripts/verify-stock-controls.mjs verifies both jump buttons, both triggers, both bumpers, melee ownership, neutral special casting, recovery, air dodge, shield-to-roll, shield-countering grabs, directional throws, and right-stick edge handling in both Duel seats and the Arena path. It also captures reach, hold, and throw for all three prototype fighters. The synthetic standard gamepads prove browser wiring, not physical Xbox hardware feel.
+
+Visual dogfood caught the thrown fighter disappearing during the campaign's invulnerability blink. Stock fighters now stay visible through hurt and respawn protection, while campaign flashing is unchanged. A failing regression test covers all six blink frames. Native poses extend the grabbing hand to the opponent and show a short throw-release arc. Character detail still falls short of the ImageGen reference.
+
+The combined controller, grab, CPU-spacing and audio checkpoint passed 3,260 tests in 263 files, typecheck, build and lint. The production local-versus probe passed 13 checks without page errors. Runtime evidence is stock-controls.json, local-versus-player.json and the nine *-grab-*.png captures.
+
+## Premium audio checkpoint
+
+Three original ElevenLabs music_v2_5 recordings now replace the campaign score in Arena/Duel: battle, lobby/rematch and results. Twenty-three eleven_text_to_sound_v2 takes replace light/heavy contact and grunts, with shield, grab and throw accents. Victim binding selects the correct voice family; tagged melee and throws avoid duplicate impact layers. Music continues through stock loss, plays the results cue once, and restores campaign/title routing on exit.
+
+The music browser probe passed 16 checks. The SFX probe verified real contact timing, victim voices, blocks without grunts, idle silence, decoded signal and a 180-request mix stress test with peak 0.61. Production verification confirmed actual lobby/battle playback and all 23 hashed effect files loading, with no debug API or page errors. The illustrated HTML now includes the three mastered score players; desktop and 390-pixel layouts and all three media durations were checked. See AUDIO.md for prompts, provenance, mastering, reproductions and limits. These are technical playback checks; human listening approval remains open.
+
 ## Shield checkpoint
 
 The new built-in ImageGen output concepts/shield-grab.png defines shield, depletion, break, grab, hold, and throw poses. Its exact prompt is concepts/shield-grab-prompt.txt. Only the shield actions are implemented in this checkpoint; the grab and throw panels remain targets.
@@ -157,6 +175,12 @@ Run npm run dev -- --host 127.0.0.1 --port 5217 --strictPort from the isolated w
 Run node scripts/verify-stock-match.mjs for mechanics and recovery; node scripts/verify-stock-movement.mjs for defensive movement and native captures; node scripts/verify-stock-presentation.mjs for HUD and the short timing sample; node scripts/capture-arena-baseline.mjs http://127.0.0.1:5217/ --docs-only for the illustrated plan. The baseline script without --docs-only captures the health room; preserve the saved original when comparing later versions.
 
 The goal remains active. The plans and first implementation slice are delivered; the complete roadmap and concept-to-runtime visual match are not finished.
+
+## CPU spacing checkpoint
+
+Stock CPUs now approach melee range instead of retaining their wand's preferred firing distance. They stop inside 24 cells, restart outside 36, and pause an abrupt reversal for an 18-tick direction commitment. They reserve projectiles for targets farther than 65 cells and prefer openers over repeatedly selecting a finisher. Health/campaign spacing remains unchanged.
+
+Three seeded browser bouts before/after this pass recorded 4 versus 24 melee contacts and 336 versus 247 spell casts. Time within 40 cells rose from roughly 3% to 8–16%. This is a limited deterministic sample, not a balance claim. Short reversals fell from 17 to 15 across both fighters; overall reversals increased as fighters met more often. Unforced falls remain. Recovery decisions and visible footwork need further iteration; human-like movement is not yet verified. The before/after JSON files retain movement and contact evidence.
 
 For the player-facing flow, choose Duel at the title, choose fighters/devices, ready each human seat, and enter the Foundry. Run node scripts/verify-local-versus.mjs for the development probe. After npm run build and node scripts/serve-dist.mjs --port 5218, run node scripts/verify-local-versus.mjs http://127.0.0.1:5218/ --production to check the player build without debug access.
 

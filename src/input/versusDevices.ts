@@ -35,18 +35,23 @@ export class VersusDevices {
 }
 
 export function readVersusPad(pad: Gamepad, previous: Uint8Array, deadzone: number) {
-  const held = (i: number): boolean => pad.buttons[i]?.pressed === true;
+  const held = (i: number): boolean => pad.buttons[i]?.pressed === true || ((i === 6 || i === 7) && (pad.buttons[i]?.value ?? 0) > .45);
   const pressed = (i: number): boolean => held(i) && !previous[i];
   const [x = 0, y = 0, aimX = 0, aimY = 0] = pad.axes;
   const th = padThresholds(deadzone), aiming = Math.hypot(aimX, aimY) > th.aim;
+  const stickDirection = !aiming ? 0 : Math.abs(aimX) > Math.abs(aimY) ? aimX < 0 ? 1 : 2 : aimY < 0 ? 3 : 4;
+  const direction = x < -th.move || held(14) ? 1 : x > th.move || held(15) ? 2 : y > th.down || held(13) ? 3 : 0;
+  const defense = held(6) || held(7);
+  const smash = stickDirection && !previous[18] ? (['left', 'right', 'up', 'down'] as const)[stickDirection - 1] : null;
   const actions = {
     left: x < -th.move || held(14), right: x > th.move || held(15), up: y < -th.up || held(12), down: y > th.down || held(13),
-    jump: held(0), jumpPressed: pressed(0), dodge: pressed(4), fire: held(7), firePressed: pressed(7),
-    tactical: pressed(2), ultimate: pressed(3), kick: pressed(1) || pressed(11), flask: pressed(5), pour: held(6), wand: pressed(10),
-    aimX: aiming ? aimX : 0, aimY: aiming ? aimY : 0,
+    jump: held(2) || held(3), jumpPressed: pressed(2) || pressed(3),
+    defense, defensePressed: pressed(6) || pressed(7), dodgeDirection: defense && direction !== 0 && previous[19] !== direction,
+    grab: pressed(4) || pressed(5), attack: pressed(0), special: held(1), specialPressed: pressed(1), smash,
     confirm: pressed(0), back: pressed(1), previous: pressed(14), next: pressed(15), pause: pressed(9),
     menuPrevious: pressed(12) || pressed(14), menuNext: pressed(13) || pressed(15),
   };
-  for (let i = 0; i < previous.length; i++) previous[i] = held(i) ? 1 : 0;
+  for (let i = 0; i < 18; i++) previous[i] = held(i) ? 1 : 0;
+  previous[18] = stickDirection; previous[19] = defense ? direction : 0;
   return actions;
 }

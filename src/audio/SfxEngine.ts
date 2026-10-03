@@ -7,6 +7,7 @@ import { chainPitch } from '@/audio/mix';
 import { audioFault } from '@/audio/failSafe';
 import { CORE_SFX_PACKS, isSfxId, type CreatureSfxAction, type SfxId } from '@/content/audio/sfxCues';
 import { sfxCue, type ResolvedSfxCue } from '@/content/audio/sfxCatalog';
+import type { ArenaHurtSound } from '@/audio/arenaAudio';
 
 /**
  * The game's sound: ElevenLabs-generated samples through the procedural
@@ -79,6 +80,10 @@ export class SfxAudioEngine extends AudioEngine {
   private dropped = 0;
   private stolen = 0;
   private readonly recent: string[] = [];
+  private arenaHurt: (() => ArenaHurtSound | null) | null = null;
+
+  /** Director supplies current slot facts; hurt() is called while that slot is bound. */
+  setArenaHurtProvider(provider: (() => ArenaHurtSound | null) | null): void { this.arenaHurt = provider; }
 
   constructor() {
     super();
@@ -457,7 +462,14 @@ export class SfxAudioEngine extends AudioEngine {
   override coin(streak = 0): void {
     this.mapped('pickup.coin', undefined, undefined, () => super.coin(streak), { pitch: Math.min(Math.max(0, streak - 1), 12) });
   }
-  override hurt(): void { this.mapped('player.hurt', undefined, undefined, () => super.hurt()); }
+  override hurt(): void {
+    const arena = this.arenaHurt?.();
+    if (!arena) { this.mapped('player.hurt', undefined, undefined, () => super.hurt()); return; }
+    if (arena.impact) this.sfx('arena.hit.light', arena.x, arena.y);
+    // Never layer the old generic hurt recording over a fighter performance.
+    // Voice loading stays silent instead of substituting the old grunt.
+    if (this.bank.has(arena.cue)) this.sfx(arena.cue, arena.x, arena.y, { pitch: arena.pitch });
+  }
   override jump(): void { this.mapped('player.jump', undefined, undefined, () => super.jump()); }
   override pickup(): void { this.mapped('pickup.generic', undefined, undefined, () => super.pickup()); }
   override chest(): void { this.mapped('pickup.chest', undefined, undefined, () => super.chest()); }

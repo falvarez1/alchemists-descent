@@ -25,6 +25,12 @@ function setup(ready = async () => true, rival = async () => 1) {
 }
 
 describe('local versus lifecycle', () => {
+  it('prefers an already-connected controller for player one and remembers a later keyboard choice', () => {
+    const { session } = setup(); session.poll([pad(0)], false); session.open();
+    expect(session.seats[0].device).toBe('pad:0'); expect(session.seats[1].device).toBe('cpu');
+    session.chooseDevice(0, 'keyboard'); session.close(); session.open();
+    expect(session.seats[0].device).toBe('keyboard'); session.dispose();
+  });
   it('starts a disposable fixed-difficulty match only after readiness and preserves the existing save contract', async () => {
     const { session, starts, ctx } = setup(); session.open();
     expect(await session.start()).toBe(false); session.ready(0);
@@ -55,7 +61,7 @@ describe('local versus lifecycle', () => {
     session.close(); expect(isExternallyDriven(ctx.input)).toBe(false);
   });
   it('preserves an existing menu pause across a disconnect and reconnect', async () => {
-    const { session, ctx } = setup(); session.poll([pad(0)], false); session.open(); session.chooseDevice(1, 'pad:0'); session.ready(0); session.ready(1); await session.start();
+    const { session, ctx } = setup(); session.poll([pad(0)], false); session.open(); session.chooseDevice(0, 'keyboard'); session.chooseDevice(1, 'pad:0'); session.ready(0); session.ready(1); await session.start();
     ctx.state.paused = true; session.poll([], true); session.poll([pad(0)], true); session.resume();
     expect(ctx.state.paused).toBe(true); expect(session.phase).toBe('playing'); session.dispose();
   });

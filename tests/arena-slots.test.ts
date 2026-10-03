@@ -111,6 +111,53 @@ describe('EventBus slot scoping', () => {
     expect(arena.stockAttack(0)?.kind).toBe('finisher');
     arena.takeStockDamage(5, 2, -1); expect(arena.stockAttack(0)?.busy).toBe(false);
   });
+  test('grabs counter shields, hold both bodies, and throw with opponent attribution', async () => {
+    const { arena, base, rival, step } = await meleeSetup();
+    rival.player.x = 118;
+    arena.with(1, () => arena.updateStockShield(true, true));
+    expect(arena.requestStockGrab()).toBe(true); step(6);
+    expect(arena.stockGrab(0)?.phase).toBe('hold'); expect(arena.isGrabbed(1)).toBe(true);
+    expect(arena.isActionLocked(0)).toBe(true); expect(arena.isActionLocked(1)).toBe(true);
+    expect(arena.stockShield(1)?.guarding).toBe(false);
+    expect(arena.with(1, () => arena.requestStockAttack())).toBe(false);
+    base.input.keys.up = true; step(8);
+    expect(arena.stockGrab(0)?.phase).toBe('recovery'); expect(arena.isGrabbed(1)).toBe(false);
+    expect(arena.stockMatch!.fighters[1].volatility).toBeGreaterThan(0);
+    expect(rival.player.vy).toBeLessThan(-3); expect(rival.player.hp).toBe(rival.player.maxHp);
+    expect(arena.bound).toBe(0);
+  });
+  test('grabs respect terrain and evasion, release on damage, and clear on reset', async () => {
+    const { arena, ctx, rival, step } = await meleeSetup(); rival.player.x = 118;
+    ctx.physics.cellBlocks = () => true; arena.requestStockGrab(); step(9);
+    expect(arena.isGrabbed(1)).toBe(false); expect(arena.stockGrab(0)?.phase).toBe('recovery');
+    step(22); ctx.physics.cellBlocks = () => false;
+    arena.with(1, () => { arena.updateStockDodge(true, true); for (let i = 0; i < 3; i++) arena.updateStockDodge(false, true); });
+    arena.requestStockGrab(); step(9); expect(arena.isGrabbed(1)).toBe(false);
+    step(22); arena.with(1, () => { for (let i = 0; i < 30; i++) arena.updateStockDodge(false, true); });
+    arena.requestStockGrab(); step(6); expect(arena.isGrabbed(1)).toBe(true);
+    arena.takeStockDamage(6, -2, -1); expect(arena.isGrabbed(1)).toBe(false);
+    arena.reset(); expect(arena.stockGrab(0)?.busy).toBe(false);
+  });
+  test('simultaneous grabs clash and a captured body is released when terrain closes', async () => {
+    const { arena, ctx, rival, step } = await meleeSetup(); rival.player.x = 118;
+    arena.requestStockGrab(); arena.with(1, () => arena.requestStockGrab()); step(6);
+    expect(arena.stockGrab(0)?.phase).toBe('recovery'); expect(arena.stockGrab(1)?.phase).toBe('recovery');
+    expect(arena.isGrabbed(0) || arena.isGrabbed(1)).toBe(false);
+    step(22); arena.requestStockGrab(); step(6); expect(arena.isGrabbed(1)).toBe(true);
+    ctx.physics.entityFree = () => false; step(1); expect(arena.isGrabbed(1)).toBe(false);
+  });
+  test('side, back, up and down throws keep their launch direction and attacker attribution', async () => {
+    for (const direction of ['left', 'right', 'up', 'down'] as const) {
+      const { arena, ctx, base, rival, step } = await meleeSetup(); rival.player.x = 118;
+      const hits: Array<{ by: number; victim: number; attack: string }> = [];
+      ctx.events.on('fighterHit', hit => hits.push(hit));
+      arena.requestStockGrab(); step(6); base.input.keys[direction] = true; step(8);
+      expect(hits).toHaveLength(1); expect(hits[0]).toMatchObject({ by: 0, victim: 1, attack: `throw.${direction}` });
+      expect(rival.player.vy).toBeLessThan(0);
+      expect(Math.sign(rival.player.vx)).toBe(direction === 'left' ? -1 : 1);
+      expect(arena.isGrabbed(1)).toBe(false);
+    }
+  });
   test('stock shield consumes opponent contacts without volatility and cannot cover attacks or dodge end lag', async () => {
     const { arena, base, rival, step } = await meleeSetup();
     rival.playerCtl.damage = (damage, x, y) => { if (!arena.blockStockHit(damage)) arena.takeStockDamage(damage, x, y); };

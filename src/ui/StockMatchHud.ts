@@ -59,7 +59,9 @@ export class StockMatchHud {
     document.body.classList.toggle('stock-match', visible);
     if (!visible || !match || !arena) return;
     const keys = getBindings();
-    this.hint.textContent = `${keyLabel(keys.jump)}: jump · ${keyLabel(keys.up)} + jump: recover · hold ${keyLabel(keys.dodge)}: shield · direction + ${keyLabel(keys.dodge)} / LB: dodge · ${keyLabel(keys.kick)} / B: melee · up + melee: launch · down + melee: finish`;
+    const pad = typeof navigator.getGamepads === 'function' && Array.from(navigator.getGamepads()).some(p => p?.connected && p.mapping === 'standard');
+    this.hint.textContent = pad ? 'A attack · B special · X/Y jump · LT/RT shield + direction to dodge · LB/RB grab + direction to throw · right stick smash · up + B recover · Start pause'
+      : `${keyLabel(keys.jump)} jump · ${keyLabel(keys.up)} + jump recover · hold ${keyLabel(keys.dodge)} shield + direction to dodge · ${keyLabel(keys.kick)} melee · ${keyLabel(keys.carry)} grab + direction to throw`;
     const seconds = Math.ceil(match.remainingTicks / 60);
     this.timer.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
     this.timer.setAttribute('aria-label', `${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds remaining`);

@@ -124,12 +124,12 @@ try {
     assert.ok(ownership.after[0] > ownership.before[0] + 5, 'assigned controller moves player 1');
     assert.equal(ownership.after[1], ownership.before[1], 'other fighter remains still');
     await page.evaluate(() => { window.testPads[1].axes[1] = 1; });
-    await pressPad(1, 1);
+    await pressPad(1, 0);
     meleeOwnership = await page.evaluate(() => {
       const c = window.__game.ctx; window.testPads[1].axes[1] = 0;
       return [0, 1].map(slot => ({ kind: c.arena.stockAttack(slot).kind, busy: c.arena.stockAttack(slot).busy }));
     });
-    assert.equal(meleeOwnership[0].kind, 'finisher'); assert.equal(meleeOwnership[1].busy, false, 'B affects only its assigned fighter');
+    assert.equal(meleeOwnership[0].kind, 'finisher'); assert.equal(meleeOwnership[1].busy, false, 'A affects only its assigned fighter');
   }
   await pressPad(0, 9); await page.locator('#pause-overlay.visible').waitFor();
   await pressPad(1, 9); await page.locator('#pause-overlay.visible').waitFor({ state: 'hidden' });

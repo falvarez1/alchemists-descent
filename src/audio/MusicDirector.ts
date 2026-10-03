@@ -2,11 +2,12 @@ import type { Ctx, MusicApi } from '@/core/types';
 import type { StreamHost } from '@/audio/streamHost';
 import type { ScoreTrack } from '@/content/audio/scoreTypes';
 import { SCORE_TRACKS } from '@/content/audio/score.generated';
+import { ARENA_SCORE_TRACKS } from '@/content/audio/arenaScore.generated';
 import { TEA_COMPLETE_STAGE } from '@/world/teaMachine';
 import { failSafe } from '@/audio/failSafe';
 import { equalPowerRamp } from '@/audio/paramRamps';
 import {
-  BossGate, TensionGate, bossAlive, chooseCue, cueLevel, dipFor, engagedBoss, fadeSeconds,
+  BossGate, TensionGate, arenaCueFor, bossAlive, chooseCue, cueLevel, dipFor, engagedBoss, fadeSeconds,
   floorForLevel, inDeepDark, loopFadeSeconds, phaseDipActive, rampValue, threatScore, type DirectorInput, type Ramp, type Verdict,
 } from '@/audio/musicRules';
 
@@ -100,8 +101,9 @@ export class MusicDirector implements MusicApi {
   /** Each living boss's phase as last seen, and when one last broke into a new phase. */
   private readonly bossPhase = new WeakMap<object, number>();
   private phaseAt = -Infinity;
+  private arenaResultsDone = false;
 
-  constructor(private readonly ctx: Ctx, private readonly host: StreamHost, tracks: readonly ScoreTrack[] = SCORE_TRACKS) {
+  constructor(private readonly ctx: Ctx, private readonly host: StreamHost, tracks: readonly ScoreTrack[] = [...SCORE_TRACKS, ...ARENA_SCORE_TRACKS]) {
     for (const t of tracks) this.tracks.set(t.id, t);
     // Every listener runs fail-safe: the director is reached from inside the game tick
     // (a playerDied emit), and a sound must never abort the tick that asked for it.
@@ -127,6 +129,7 @@ export class MusicDirector implements MusicApi {
       on('playerDeathCleared', () => { this.playerDead = false; this.update(); }),
       on('levelChanged', () => { this.tension.reset(); this.bossGate.reset(); this.teaActive = false; this.dark = false; this.phaseAt = -Infinity; this.update(); }),
       on('modeChanged', () => this.update()),
+      on('versusChanged', () => this.update()),
     );
     // Autoplay policy: the first real gesture unlocks the score (and the engine's context with it).
     const gesture = failSafe('MusicDirector gesture', () => this.onGesture());
@@ -202,12 +205,16 @@ export class MusicDirector implements MusicApi {
     const q = play && !player.dead ? ctx.lightQuery : undefined;
     this.dark = q ? inDeepDark(this.dark, q.darkness(player.x, player.y - 9)) : false;
     const level = ctx.levels?.current;
+    const finished = ctx.arena?.active === true && (ctx.arena.stockMatch?.state === 'finished' || (!ctx.arena.stockMatch && ctx.arena.bout.state === 'won'));
+    if (!finished) this.arenaResultsDone = false;
+    const arenaCue = arenaCueFor({ mode: ctx.state.mode, level: level?.def.id, phase: ctx.versus?.phase, rival: ctx.arena?.active, finished, resultsDone: this.arenaResultsDone, entryActive: body.contains('entry-active') && !ctx.versus?.active });
     let verdict: Verdict | null = null, verdictPending = false;
     if (this.verdict && !this.verdict.done) {
       if (now < this.verdict.startAt) verdictPending = true;
       else verdict = this.verdict.id;
     }
     return {
+      arenaCue,
       gestured: this.gestured,
       soundOn: this.host.streamContext() !== null,
       verdict, verdictPending,
@@ -269,7 +276,7 @@ export class MusicDirector implements MusicApi {
     const sincePhaseMs = now - this.phaseAt;
     const dip = dipFor({
       hidden, paused: this.ctx.state.paused, playerDead: this.playerDead || this.ctx.player.dead, ledgerOpen: this.ledgerOpen, mode: i.mode,
-      dark: this.dark, cue: this.current, sincePhaseMs,
+      dark: this.dark, cue: i.arenaCue ?? this.current, sincePhaseMs,
     });
     // Under a phase roar the score drops at once and swells back over the usual glide; the dark thins slowly.
     this.setMaster(ac, dip, hidden ? 0.3 : phaseDipActive(sincePhaseMs) ? 0.2 : this.dark ? 2.5 : 1.2);
@@ -297,7 +304,8 @@ export class MusicDirector implements MusicApi {
    */
   private tape(): void {
     const ctx = this.ctx, p = ctx.player, c = p?.chill;
-    const live = ctx.state?.mode === 'play' && p !== undefined && !p.dead && c !== undefined;
+    // One fighter's ice status must not detune a competitive match for everyone.
+    const live = ctx.state?.mode === 'play' && !this.current?.startsWith('arena-') && p !== undefined && !p.dead && c !== undefined;
     const rate = live ? c.musicRate : 1, cut = live ? c.musicCutoff : 20000;
     const snap = live && c.thawAt >= 0 && ctx.state.frameCount - c.thawAt < TAPE_SNAP_TICKS;
     const k = rate < this.tapeRate ? TAPE_COOL : snap ? TAPE_SNAP : TAPE_WARM;
@@ -358,7 +366,7 @@ export class MusicDirector implements MusicApi {
     const track = to ? this.track(to) : undefined;
     this.ctx.events.emit('musicCue', { cue: to, previous: from });
     if (!track) { fadeOutgoing(); return; }
-    const resume = this.resumeAt.get(track.id);
+    const resume = track.id.startsWith('arena-') ? undefined : this.resumeAt.get(track.id);
     const offset = track.loop && resume && now - resume.at < RESUME_WINDOW_MS && resume.pos < track.seconds - track.tailSec - 12 ? resume.pos : track.headSec;
     this.start(ac, track, offset, fade, fadeOutgoing);
     // A stream that will not start must not hold the old cue forever.
@@ -368,6 +376,7 @@ export class MusicDirector implements MusicApi {
   private start(ac: AudioContext, track: ScoreTrack, offset: number, fade: number, onSounding?: () => void): void {
     const el = new Audio();
     el.preload = 'auto';
+    el.loop = track.gaplessLoop === true;
     el.src = `${import.meta.env.BASE_URL}${track.url}`;
     // A cue that starts while the body is cold starts on the same slowed tape.
     this.tapeVoice(el);
@@ -382,6 +391,7 @@ export class MusicDirector implements MusicApi {
     const voice: Voice = { track, el, src, gain, ramp: { from: 0, to: 0, t0: ac.currentTime, t1: ac.currentTime }, stopping: false, wrapped: false, started: false, offset };
     this.voices.push(voice);
     el.addEventListener('ended', failSafe('MusicDirector ended', () => {
+      if (voice.track.id === 'arena-results' && !voice.stopping) this.arenaResultsDone = true;
       if (voice.track.id === 'victory' || voice.track.id === 'fallen') { if (this.verdict && this.verdict.id === voice.track.id) this.verdict.done = true; }
       this.drop(voice);
       this.update();
@@ -395,6 +405,7 @@ export class MusicDirector implements MusicApi {
       this.schedule(gain.gain, 0, level, t, fade);
       onSounding?.();
     }).catch(() => {
+      if (voice.track.id === 'arena-results') this.arenaResultsDone = true;
       // Autoplay refused or the file is missing: stay silent rather than retry in a loop.
       this.drop(voice);
       onSounding?.();
@@ -414,7 +425,7 @@ export class MusicDirector implements MusicApi {
   /** Loops: when the current voice reaches its way out, a fresh copy enters at the head and they crossfade. */
   private maintain(ac: AudioContext, now: number): void {
     for (const v of [...this.voices]) {
-      if (v.stopping || v.wrapped || !v.started || !v.track.loop || v.track.id !== this.current) continue;
+      if (v.stopping || v.wrapped || !v.started || !v.track.loop || v.track.gaplessLoop || v.track.id !== this.current) continue;
       const fade = loopFadeSeconds(v.track.id);
       const duration = Number.isFinite(v.el.duration) && v.el.duration > 0 ? v.el.duration : v.track.seconds;
       const out = duration - v.track.tailSec;

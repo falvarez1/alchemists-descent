@@ -17,6 +17,8 @@ import { FocusPause } from '@/input/focusPause';
 import { ToggleLatches, type HoldAction } from '@/input/toggleLatches';
 import { padThresholds } from '@/config/playerPrefs';
 import { isExternallyDriven } from '@/input/externalControl';
+import { readVersusPad } from '@/input/versusDevices';
+import { applyStockPad } from '@/input/stockPad';
 
 type KeyboardLockApi = {
   lock?: (keyCodes?: string[]) => Promise<void>;
@@ -141,7 +143,7 @@ export class InputManager {
     this.mobile.update();
     this.settleLatches();
   }
-  private readonly previousPadButtons = new Uint8Array(18);
+  private readonly previousPadButtons = new Uint8Array(20);
   private padDriving = false;
   /** X just lifted or set down a body: holding it on must not start a siphon. */
   private padLifted = false;
@@ -217,6 +219,11 @@ export class InputManager {
         const active = Math.hypot(ax, ay) > th.move || Math.hypot(aimX, aimY) > th.aim || pad.buttons.some(b => b.pressed);
         if (active) this.mobile.reset();
         if (active || this.padDriving) {
+          if (ctx.arena?.stockMatch) {
+            applyStockPad(ctx, readVersusPad(pad, this.previousPadButtons, ctx.state.padDeadzone ?? .2));
+            if (active) ctx.audio.ensure();
+            this.padDriving = active; return;
+          }
           this.syncHeldKeys();
           const keys = ctx.input.keys;
           keys.left ||= ax < -th.move || held(14); keys.right ||= ax > th.move || held(15);
@@ -254,7 +261,8 @@ export class InputManager {
         this.padDriving = false;
       }
     }
-    for (let i = 0; i < this.previousPadButtons.length; i++) this.previousPadButtons[i] = held(i) ? 1 : 0;
+    if (ctx.arena?.stockMatch) readVersusPad(pad, this.previousPadButtons, ctx.state.padDeadzone ?? .2);
+    else for (let i = 0; i < this.previousPadButtons.length; i++) this.previousPadButtons[i] = held(i) ? 1 : 0;
   }
   private keyboardLocked = false;
   private readonly heldKeyCodes = new Set<string>();
@@ -635,6 +643,7 @@ export class InputManager {
   private clearHeldInput(): void {
     this.ctx.input.queuedDodge = false;
     this.ctx.input.shieldHeld = false;
+    this.ctx.input.queuedRecovery = false;
     this.mobile?.reset();
     this.touchKeyCodes.clear();
     const { ctx } = this;
@@ -813,6 +822,7 @@ export class InputManager {
       if (!repeat && ctx.input.shieldHeld && ctx.arena?.stockMatch && (LEFT_KEY_CODES.has(code) || RIGHT_KEY_CODES.has(code) || DOWN_KEY_CODES.has(code))) ctx.input.queuedDodge = true;
     }
     else if (code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
+    else if (code === 'KeyG' && ctx.arena?.stockMatch && !repeat) ctx.arena.requestStockGrab();
     // The fighter's tactical ability (Z) and ultimate (T): latched here, consumed inside the tick (src/fighters).
     else if (code === 'KeyZ' && !repeat && !ctx.player.dead) ctx.fighters?.press('tactical');
     else if (code === 'KeyT' && !repeat && !ctx.player.dead) ctx.fighters?.press('ultimate');

@@ -11,6 +11,7 @@ import type { BlastZone, StockLedgeInput, StockMatchView } from '@/core/arenaMat
 import { MatchDirector, stockLaunch, influenceLaunch } from '@/arena/MatchDirector';
 import { StockDodge } from '@/arena/StockDodge';
 import { StockShield } from '@/arena/StockShield';
+import { StockGrab } from '@/arena/StockGrab';
 import { StockLedge } from '@/arena/StockLedge';
 import { StockAttack, stockAttackOverlaps } from '@/arena/StockAttack';
 import { stockMoveset } from '@/config/stockAttacks';
@@ -64,6 +65,7 @@ export class ArenaSlots implements ArenaApi {
   private readonly launchTicks = [0, 0];
   private readonly dodges = [new StockDodge(), new StockDodge()];
   private readonly shields = [new StockShield(), new StockShield()];
+  private readonly grabs = [new StockGrab(), new StockGrab()];
   private readonly ledges = [new StockLedge(), new StockLedge()];
   private readonly attacks = [new StockAttack(), new StockAttack()];
   private readonly recovery = [{ used: false, held: false, ticks: 0 }, { used: false, held: false, ticks: 0 }];
@@ -74,6 +76,7 @@ export class ArenaSlots implements ArenaApi {
     this.launchTicks.fill(0);
     for (const dodge of this.dodges) dodge.reset();
     for (const shield of this.shields) shield.reset();
+    for (const grab of this.grabs) grab.reset();
     for (const ledge of this.ledges) ledge.reset();
     for (const attack of this.attacks) attack.reset();
     if (this.active) this.reset();
@@ -84,20 +87,31 @@ export class ArenaSlots implements ArenaApi {
   canRecover(slot: number): boolean { return this.match !== null && this.recovery[slot]?.used === false; }
   isRecovering(slot: number): boolean { return this.match !== null && (this.recovery[slot]?.ticks ?? 0) > 0; }
   isEvading(slot: number): boolean { return this.active && this.match !== null && (this.dodges[slot]?.evading === true || this.ledges[slot]?.protected === true); }
-  isActionLocked(slot: number): boolean { return this.match !== null && (!this.runsBody(slot) || this.isLaunching(slot) || this.dodges[slot]?.busy === true || this.shields[slot]?.busy === true || this.attacks[slot]?.busy === true || this.ledges[slot]?.busy === true); }
+  isActionLocked(slot: number): boolean { return this.match !== null && (!this.runsBody(slot) || this.isLaunching(slot) || this.dodges[slot]?.busy === true || this.shields[slot]?.busy === true || this.attacks[slot]?.busy === true || this.ledges[slot]?.busy === true || this.grabs[slot]?.busy === true || this.isGrabbed(slot)); }
+  stockGrab(slot: number): StockGrab | null { return this.match ? this.grabs[slot] ?? null : null; }
+  isGrabbed(slot: number): boolean { return this.match !== null && this.grabs.some(g => g.victim === slot); }
+  requestStockGrab(): boolean {
+    const slot = this.boundSlot, b = this.slots[slot]?.bundle;
+    if (!b || !this.match || !this.runsBody(slot) || this.isLaunching(slot) || this.isGrabbed(slot) ||
+      this.attacks[slot].busy || this.dodges[slot].busy || this.ledges[slot].busy || !this.shields[slot].canDodge ||
+      !b.player.grounded || b.player.dead || b.player.stunT > 0 || b.fighters.ownsMovement || b.player.climbing || b.player.recharge > 0 || b.player.pullT > 0 || (b.player.chill?.shell ?? 0) > 0) return false;
+    const k = b.input.keys, facing = k.left !== k.right ? (k.left ? -1 : 1) : b.player.facing;
+    if (!this.grabs[slot].start(facing)) return false;
+    this.shields[slot].drop(); b.player.firing = b.player.firePressed = false; b.wands.clearTransientState?.(); return true;
+  }
   stockShield(slot: number): StockShield | null { return this.match ? this.shields[slot] ?? null : null; }
   updateStockShield(held: boolean, canAct: boolean): StockShield | null {
     if (!this.active || !this.match) return null;
     const slot = this.boundSlot, b = this.slots[slot]!.bundle, shield = this.shields[slot];
     shield.step(held, canAct && this.runsBody(slot) && !this.isLaunching(slot) && !b.player.dead &&
-      !b.player.climbing && !b.fighters.ownsMovement && !this.dodges[slot].busy && !this.attacks[slot].busy && !this.ledges[slot].busy, b.player.grounded);
+      !b.player.climbing && !b.fighters.ownsMovement && !this.dodges[slot].busy && !this.attacks[slot].busy && !this.ledges[slot].busy && !this.grabs[slot].busy && !this.isGrabbed(slot), b.player.grounded);
     if (shield.busy) { b.player.firing = b.player.firePressed = false; b.wands.clearTransientState?.(); }
     return shield;
   }
   blockStockHit(amount: number): boolean {
     const slot = this.boundSlot;
     if (!this.active || !this.match || !this.blow || this.blow.by === slot || !this.shields[slot].block(amount)) return false;
-    this.ctx.audio.sfx('player.kick');
+    this.ctx.audio.sfx(this.shields[slot].phase === 'broken' ? 'arena.shield.break' : 'arena.shield.block');
     return true;
   }
   stockLedge(slot: number): StockLedge | null { return this.match ? this.ledges[slot] ?? null : null; }
@@ -105,7 +119,7 @@ export class ArenaSlots implements ArenaApi {
     if (!this.active || !this.match) return false;
     const slot = this.boundSlot, b = this.slots[slot]!.bundle, p = b.player;
     const next = this.ledges[slot].step(p, keys, canAct && this.runsBody(slot) && !this.isLaunching(slot) &&
-      !p.dead && !p.climbing && !this.dodges[slot].busy && !this.attacks[slot].busy,
+      !p.dead && !p.climbing && !this.dodges[slot].busy && !this.attacks[slot].busy && !this.grabs[slot].busy && !this.isGrabbed(slot),
     (x, y) => this.ctx.physics.cellBlocks(x, y), (x, y) => this.ctx.physics.entityFree(x, y, PLAYER_HALF_W, PLAYER_H));
     if (!next) return false;
     Object.assign(p, next, { fx: 0, fy: 0, diveT: 0, stockFastFall: false, crawling: false, levitating: false });
@@ -113,14 +127,18 @@ export class ArenaSlots implements ArenaApi {
     return true;
   }
   stockAttack(slot: number): StockAttack | null { return this.match ? this.attacks[slot] ?? null : null; }
-  requestStockAttack(): boolean {
+  requestStockAttack(requestedKind?: StockAttackKind, requestedFacing?: number): boolean {
     const slot = this.boundSlot, b = this.slots[slot]?.bundle;
     if (!b || !this.match || this.isActionLocked(slot) || b.player.dead || b.player.stunT > 0 || b.fighters.ownsMovement ||
       b.player.climbing || b.player.recharge > 0 || b.player.pullT > 0 || (b.player.chill?.shell ?? 0) > 0) return false;
     const keys = b.input.keys;
-    const kind: StockAttackKind = !b.player.grounded ? 'aerial' : keys.up ? 'launcher' : keys.down ? 'finisher' : 'opener';
-    const facing = keys.left !== keys.right ? (keys.left ? -1 : 1) : b.player.facing;
-    if (!this.attacks[slot].start(kind, stockMoveset(b.fighters.id)[kind], facing)) return false;
+    const kind: StockAttackKind = !b.player.grounded ? 'aerial' : requestedKind ?? (keys.up ? 'launcher' : keys.down ? 'finisher' : 'opener');
+    const facing = requestedFacing || (keys.left !== keys.right ? (keys.left ? -1 : 1) : b.player.facing);
+    const base = stockMoveset(b.fighters.id)[kind];
+    const spec = requestedKind === 'launcher' && b.player.grounded
+      ? { ...base, name: 'Up smash', startup: Math.round(base.startup * 1.8), recovery: Math.round(base.recovery * 1.5), damage: base.damage * 1.4, growth: base.growth * 1.8 }
+      : base;
+    if (!this.attacks[slot].start(kind, spec, facing)) return false;
     b.player.firing = b.player.firePressed = false; b.wands.clearTransientState?.();
     return true;
   }
@@ -135,7 +153,7 @@ export class ArenaSlots implements ArenaApi {
     const slot = this.boundSlot, b = this.slots[slot]!.bundle, d = this.dodges[slot];
     const k = b.input.keys;
     const wasBusy = d.busy;
-    d.step(requested, canAct && this.runsBody(slot) && !this.isLaunching(slot) && !this.attacks[slot].busy && !this.ledges[slot].busy && this.shields[slot].canDodge, b.player.grounded, Number(k.right) - Number(k.left), Number(k.down) - Number(k.up));
+    d.step(requested, canAct && this.runsBody(slot) && !this.isLaunching(slot) && !this.attacks[slot].busy && !this.ledges[slot].busy && !this.grabs[slot].busy && !this.isGrabbed(slot) && this.shields[slot].canDodge, b.player.grounded, Number(k.right) - Number(k.left), Number(k.down) - Number(k.up));
     if (!wasBusy && d.busy) { this.shields[slot].drop(); b.wands.clearTransientState?.(); }
     return d;
   }
@@ -143,13 +161,15 @@ export class ArenaSlots implements ArenaApi {
   updateStockRecovery(requested: boolean): boolean {
     if (!this.active || !this.match) return false;
     const slot = this.boundSlot, r = this.recovery[slot], p = this.slots[slot]!.bundle.player;
+    const input = this.slots[slot]!.bundle.input, queued = input.queuedRecovery === true;
+    input.queuedRecovery = false;
     const fresh = requested && !r.held;
     r.held = requested;
     if (p.grounded && !this.isLaunching(slot)) { r.used = false; r.ticks = 0; }
     if (r.ticks > 0) r.ticks--;
-    if (fresh && !p.grounded && !p.dead && p.stunT <= 0 && !r.used && !this.isActionLocked(slot)) {
+    if ((fresh || queued) && (!p.grounded || queued) && !p.dead && p.stunT <= 0 && !r.used && !this.isActionLocked(slot)) {
       r.used = true; r.ticks = 18;
-      p.vy = -7.5; p.diveT = 0; p.climbing = false;
+      p.vy = -7.5; p.diveT = 0; p.climbing = false; p.grounded = false;
       p.levit = Math.max(0, p.levit - 12);
       this.ctx.audio.sfx('player.jump');
     }
@@ -161,6 +181,8 @@ export class ArenaSlots implements ArenaApi {
     const slot = this.boundSlot, rec = this.slots[slot];
     if (this.isEvading(slot)) return true;
     if (!rec || !this.match.hurt(slot, amount)) return true;
+    this.grabs[slot].reset();
+    for (const grab of this.grabs) if (grab.victim === slot) grab.release();
     const p = rec.bundle.player;
     const blow = this.activeBlow;
     this.ctx.events.emit('fighterHit', { by: blow?.by ?? slot, victim: slot, damage: amount, tick: this.ctx.state.frameCount, attack: blow?.tag ?? 'world' });
@@ -587,7 +609,7 @@ export class ArenaSlots implements ArenaApi {
     if (this.boundSlot !== 0) this.install(0);
     this.bridgeBack();
     const ctx = this.ctx;
-    if (this.match) { this.resolveStockAttacks(); this.tickStockMatch(); }
+    if (this.match) { this.resolveStockAttacks(); this.resolveStockGrabs(); this.tickStockMatch(); }
     // Each fighter's slow and stun, set by the other's effects on its stand-in, apply to the NEXT tick.
     for (let victim = 0; victim < this.slots.length; victim++) {
       const rec = this.slots[victim];
@@ -626,6 +648,56 @@ export class ArenaSlots implements ArenaApi {
 
   // ================================================================================== a new bout
 
+  private clearGrabContact(ax: number, ay: number, bx: number, by: number): boolean {
+    const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
+    for (let i = 1; i < steps; i++) if (this.ctx.physics.cellBlocks(Math.round(ax + (bx - ax) * i / steps), Math.round(ay + (by - ay) * i / steps))) return false;
+    return true;
+  }
+
+  private resolveStockGrabs(): void {
+    if (this.match?.state !== 'fighting') return;
+    const contacts: number[] = [];
+    for (let slot = 0; slot < this.slots.length; slot++) {
+      const grab = this.grabs[slot], b = this.slots[slot]!.bundle, p = b.player;
+      grab.step(this.runsBody(slot) && !p.dead && !this.isLaunching(slot) && p.stunT <= 0 && p.grounded && !b.fighters.ownsMovement);
+      if (grab.phase === 'active') {
+        const victim = 1 - slot, target = this.slots[victim]?.bundle.player;
+        if (!target || target.dead || target.invuln > 0 || this.isEvading(victim) || this.isLaunching(victim) || this.isGrabbed(victim) || (this.match.fighters[victim]?.protection ?? 0) > 0) continue;
+        const dx = (target.x - p.x) * grab.facing;
+        if (dx >= 3 && dx <= 22 && Math.abs(target.y - p.y) <= 12 && this.clearGrabContact(p.x, p.y - 10, target.x, target.y - 10) &&
+          this.ctx.physics.entityFree(Math.round(p.x + grab.facing * 18), Math.round(p.y), PLAYER_HALF_W, PLAYER_H)) contacts.push(slot);
+      }
+      if (grab.phase !== 'hold' || grab.victim === null) continue;
+      const victim = grab.victim, target = this.slots[victim]!.bundle.player;
+      const x = p.x + grab.facing * 18, y = p.y;
+      if (target.dead || !this.clearGrabContact(p.x, p.y - 10, x, y - 10) || !this.ctx.physics.entityFree(Math.round(x), Math.round(y), PLAYER_HALF_W, PLAYER_H)) { grab.release(); continue; }
+      Object.assign(target, { x, y, vx: 0, vy: 0, fx: 0, fy: 0, grounded: true, firing: false });
+      p.vx = p.vy = 0;
+      const k = b.input.keys;
+      if (grab.canThrow && (k.left || k.right || k.up || k.down)) {
+        const direction = k.up ? 'up' : k.down ? 'down' : k.left ? 'left' : 'right';
+        const dx = direction === 'left' ? -1 : direction === 'right' ? 1 : grab.facing;
+        const kx = direction === 'up' ? dx * .6 : direction === 'down' ? dx * 1.8 : dx * 5;
+        const ky = direction === 'up' ? -5.8 : direction === 'down' ? -2.8 : -1.5;
+        grab.release(dx, direction === 'up' || direction === 'down' ? -1 : 0); this.shields[victim].drop(); target.invuln = 0;
+        const was = this.blow; this.blow = { by: slot, tag: `throw.${direction}`, growth: 1.2, stun: 1.1 };
+        try {
+          this.with(victim, () => this.slots[victim]!.bundle.playerCtl.damage(18 * (b.fighters.body.dealt ?? 1), kx, ky, 'fighter'));
+          this.lastBlow[victim] = { by: slot, at: this.ctx.state.frameCount }; this.ctx.audio.sfx('arena.throw');
+        } finally { this.blow = was; }
+      }
+    }
+    // Two simultaneous grabs clash instead of giving the first slot priority.
+    if (contacts.length > 1) { for (const slot of contacts) this.grabs[slot].release(); return; }
+    for (const slot of contacts) {
+      const victim = 1 - slot, b = this.slots[victim]!.bundle;
+      this.grabs[victim].reset(); this.attacks[victim].reset(); this.shields[victim].drop();
+      b.player.firing = b.player.firePressed = false; b.wands.clearTransientState?.();
+      this.grabs[slot].catch(victim);
+      this.ctx.audio.sfx('arena.grab');
+    }
+  }
+
   private resolveStockAttacks(): void {
     if (this.match?.state !== 'fighting') return;
     const hits: Array<{ attacker: number; victim: number; kind: StockAttackKind; spec: StockAttackSpec; facing: number }> = [];
@@ -654,7 +726,7 @@ export class ArenaSlots implements ArenaApi {
         this.with(hit.victim, () => b.playerCtl.damage(hit.spec.damage * dealt, hit.spec.knockX * hit.facing, hit.spec.knockY, 'fighter'));
         if (this.match.fighters[hit.victim].volatility > before) {
           this.lastBlow[hit.victim] = { by: hit.attacker, at: this.ctx.state.frameCount };
-          this.ctx.audio.sfx('player.kick');
+          this.ctx.audio.sfx(hit.kind === 'finisher' || hit.spec.name === 'Up smash' ? 'arena.hit.heavy' : 'arena.hit.light');
         }
       } finally { this.blow = was; }
     }
@@ -696,10 +768,13 @@ export class ArenaSlots implements ArenaApi {
     Object.assign(this.recovery[this.boundSlot], { used: false, held: false, ticks: 0 });
     this.dodges[this.boundSlot].reset();
     this.shields[this.boundSlot].reset();
+    this.grabs[this.boundSlot].reset();
+    for (const grab of this.grabs) if (grab.victim === this.boundSlot) grab.release();
     this.ledges[this.boundSlot].reset();
     this.attacks[this.boundSlot].reset();
     b.input.queuedDodge = false;
     b.input.shieldHeld = false;
+    b.input.queuedRecovery = false;
     const p = b.player;
     p.dead = false;
     p.x = x; p.y = y; p.vx = 0; p.vy = 0; p.fx = 0; p.fy = 0;

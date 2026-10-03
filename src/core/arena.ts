@@ -1,8 +1,8 @@
 import type { ChillApi, Enemy, EnemyDamageSource, FlaskApi, InputState, PlayerControlApi, PlayerState, Projectile, WandsApi } from '@/core/types';
 import type { FighterApi } from '@/core/fighters';
 import type { FighterId } from '@/content/fighters';
-import type { BlastZone, StockDodgeView, StockLedgeInput, StockLedgeView, StockMatchView, StockShieldView } from '@/core/arenaMatch';
-import type { StockAttackView } from '@/core/stockAttacks';
+import type { BlastZone, StockDodgeView, StockGrabView, StockLedgeInput, StockLedgeView, StockMatchView, StockShieldView } from '@/core/arenaMatch';
+import type { StockAttackKind, StockAttackView } from '@/core/stockAttacks';
 
 /**
  * THE ARENA CONTRACT (docs/arena/ARCHITECTURE.md, D-001): two fighters in one world.
@@ -58,11 +58,14 @@ export interface ArenaApi {
   updateStockShield(held: boolean, canAct: boolean): StockShieldView | null;
   /** Consumes a direct opponent hit before hurt effects or health invulnerability. */
   blockStockHit(amount: number): boolean;
+  stockGrab(slot: number): StockGrabView | null;
+  isGrabbed(slot: number): boolean;
+  requestStockGrab(): boolean;
   stockLedge(slot: number): StockLedgeView | null;
   /** Returns true when ledge motion owns this tick's body integration. */
   updateStockLedge(canAct: boolean, keys?: StockLedgeInput): boolean;
   stockAttack(slot: number): StockAttackView | null;
-  requestStockAttack(): boolean;
+  requestStockAttack(kind?: StockAttackKind, facing?: number): boolean;
   updateStockAttack(canAct: boolean): StockAttackView | null;
   updateStockDodge(requested: boolean, canAct: boolean): StockDodgeView | null;
   canRecover(slot: number): boolean;

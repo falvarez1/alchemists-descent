@@ -4,6 +4,7 @@ import { LEVELS, SPINE_ROSTERS, nextDoors } from '@/config/worldgraph';
 import { FLOOR_FAUNA } from '@/game/organisms/placement';
 import { failSafe } from '@/audio/failSafe';
 import { BIOME_BEDS, CORE_SFX_PACKS, FLOOR_BEDS, SFX_CUES, type SfxId } from '@/content/audio/sfxCues';
+import { arenaHurtVoice, needsArenaHurtImpact } from '@/audio/arenaAudio';
 
 /**
  * Decides what the sampled layer holds in memory and which bed is playing.
@@ -54,12 +55,18 @@ function rosterPacks(levelId: string | undefined): string[] {
 
 export function installAudioDirector(ctx: Ctx, engine: SfxAudioEngine): () => void {
   const core = new Set(CORE_SFX_PACKS);
+  engine.setArenaHurtProvider(() => {
+    const id = ctx.levels?.current?.def.id;
+    if (ctx.state.mode !== 'play' || (!ctx.arena?.active && id !== 'fighter-test' && id !== 'fighter-duel')) return null;
+    return { ...arenaHurtVoice(ctx.fighters?.id ?? null), x: ctx.player.x, y: ctx.player.y - 9, impact: needsArenaHurtImpact(!!ctx.arena?.stockMatch, ctx.arena?.activeBlow?.tag) };
+  });
 
   const tick = (): void => {
     const now = performance.now();
     const wanted = new Set<string>();
     let bed: SfxId | null = null;
     const runtime = ctx.state.mode === 'play' ? ctx.levels?.current : null;
+    if (ctx.versus?.active || ctx.arena?.active || runtime?.def.id === 'fighter-test' || runtime?.def.id === 'fighter-duel') wanted.add('arena');
     if (runtime) {
       const def = runtime.def;
       bed = levelBed(def.id, def.biome);
@@ -104,5 +111,5 @@ export function installAudioDirector(ctx: Ctx, engine: SfxAudioEngine): () => vo
   const look = failSafe('AudioDirector', tick);
   look();
   const timer = setInterval(look, CADENCE_MS);
-  return () => clearInterval(timer);
+  return () => { clearInterval(timer); engine.setArenaHurtProvider(null); };
 }

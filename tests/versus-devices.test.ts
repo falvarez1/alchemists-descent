@@ -38,15 +38,23 @@ describe('versus device ownership', () => {
 });
 
 describe('versus pad actions', () => {
-  it('maps independent movement, aim, fire and fresh action edges', () => {
-    const previous = new Uint8Array(18);
+  it('maps Smash-style attack, jump, grab, defense and stick attack edges', () => {
+    const previous = new Uint8Array(20);
     const controller = pad(1, [0, 2, 4, 7], [-1, -1, .7, .5]);
     const first = readVersusPad(controller, previous, .2);
-    expect(first).toMatchObject({ left: true, right: false, up: true, jump: true, jumpPressed: true, dodge: true, tactical: true, fire: true, firePressed: true, aimX: .7, aimY: .5 });
+    expect(first).toMatchObject({ left: true, right: false, up: true, jump: true, jumpPressed: true, defense: true, defensePressed: true, grab: true, attack: true, special: false, smash: 'right' });
     const next = readVersusPad(controller, previous, .2);
-    expect(next).toMatchObject({ jump: true, jumpPressed: false, dodge: false, tactical: false, fire: true, firePressed: false });
+    expect(next).toMatchObject({ jump: true, jumpPressed: false, defense: true, defensePressed: false, grab: false, attack: false, special: false, smash: null });
   });
   it('does not move or aim inside the chosen dead zone', () => {
-    expect(readVersusPad(pad(0, [], [.1, -.1, .1, .1]), new Uint8Array(18), .3)).toMatchObject({ left: false, right: false, up: false, down: false, aimX: 0, aimY: 0 });
+    expect(readVersusPad(pad(0, [], [.1, -.1, .1, .1]), new Uint8Array(20), .3)).toMatchObject({ left: false, right: false, up: false, down: false, smash: null });
+  });
+  it('keeps A/B menu roles separate, supports either jump/defense/grab button, and rearms the stick after neutral', () => {
+    const previous = new Uint8Array(20);
+    expect(readVersusPad(pad(0, [1, 3, 5, 6], [0, 0, 0, -1]), previous, .2)).toMatchObject({ special: true, specialPressed: true, back: true, confirm: false, jump: true, grab: true, defense: true, smash: 'up' });
+    expect(readVersusPad(pad(0, [], [0, 0, 0, -1]), previous, .2).smash).toBeNull();
+    readVersusPad(pad(0), previous, .2);
+    expect(readVersusPad(pad(0, [], [0, 0, 0, -1]), previous, .2).smash).toBe('up');
+    expect(readVersusPad(pad(0, [0, 9]), previous, .2)).toMatchObject({ attack: true, jump: false, confirm: true, pause: true });
   });
 });

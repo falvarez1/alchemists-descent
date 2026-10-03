@@ -5,11 +5,13 @@ Baseline: c90e850
 Working branch: feature/arena-stock-matches
 Status: implementation started; milestone completion requires the evidence below.
 
-Latest camera checkpoint: Foundry main platform is 480 cells wide, with a separate 1120-by-760-cell blast box. Fighter-follow framing now pans and zooms from 0.4 to 1.65, preserving recovery margin. Expanded world sampling fills wide views on WebGL and WebGPU; wide shots currently use CPU composition. Live performance and visual captures are recorded in EVIDENCE.md. Further camera polish, CPU footwork, controller remapping, combat balance, and music remain active work.
+Latest camera checkpoint: Foundry main platform is 480 cells wide, with a separate 1120-by-760-cell blast box. Fighter-follow framing now pans and zooms from 0.4 to 1.65, preserving recovery margin. Expanded world sampling fills wide views on WebGL and WebGPU; wide shots currently use CPU composition. Live performance and visual captures are recorded in EVIDENCE.md. Further camera polish, CPU recovery, projectile balance, and full roster art remain active work.
+
+Latest audio checkpoint: Arena and Duel now select an original orchestral-rock battle loop, selection/rematch loop, and results fanfare generated with ElevenLabs music_v2_5. Premium eleven_text_to_sound_v2 recordings replace fighter contact and hurt sounds with 23 takes across nine cues. The HTML includes score playback; AUDIO.md records generation, mastering, routing, and browser checks. This work is local to the feature branch and has not been deployed.
 
 ## Objective
 
-Latest defense checkpoint: finite grounded shields are implemented with contact stun, release lag, gradual regeneration, break vulnerability, and a roll exit. Hold the keyboard defense binding to guard; add direction to dodge. The ImageGen shield/grab sheet and nine native shield captures are included in the illustrated plan. Grabs, throws, and the complete approved Xbox mapping remain pending; current controller hints retain their implemented roles until that change lands.
+Latest controller checkpoint: the approved Xbox roles now operate both Duel seats and Arena stock matches through one shared mapping. A attacks, B casts a special, X/Y jump, triggers shield or dodge, bumpers grab, and the right stick performs directional attacks. Up + B uses the recovery burst; down + B uses the fighter tactical. Grabs counter shields, expire after a finite hold, and throw with a direction. The lobby prefers an already-connected controller for player one. Existing health/campaign controls remain separate. Physical-controller feel, CPU combat choices, projectile cadence, and the full moveset remain work in progress.
 
 Build a readable local platform fighter around damage, launch, recovery, and ring-outs while retaining Alchemist's Descent's material simulation and fighter identities. Use the ImageGen concept sheets as visual targets, then compare real gameplay captures against them. A generated concept is not evidence of implemented gameplay or visual parity.
 

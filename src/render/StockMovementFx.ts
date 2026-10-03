@@ -12,7 +12,8 @@ export function drawStockMovementFx(out: PixelSurface, ctx: Ctx): void {
   if (!arena?.stockMatch || p.dead) return;
   const dodge = arena.stockDodge(arena.bound), recovering = arena.isRecovering(arena.bound);
   const shield = arena.stockShield(arena.bound);
-  if (!dodge?.busy && !shield?.busy && !recovering && !arena.isLaunching(arena.bound) && !p.stockFastFall) return;
+  const grab = arena.stockGrab(arena.bound);
+  if (!dodge?.busy && !shield?.busy && !grab?.busy && !recovering && !arena.isLaunching(arena.bound) && !p.stockFastFall) return;
   const id = ctx.fighters?.id;
   const hex = Number.parseInt((id ? FIGHTER_DEFS[id].accent : '#65cac5').slice(1), 16);
   const color = [(hex >> 16 & 255) / 255, (hex >> 8 & 255) / 255, (hex & 255) / 255];
@@ -56,6 +57,16 @@ export function drawStockMovementFx(out: PixelSurface, ctx: Ctx): void {
       dot(x, y, alpha); dot(x + .5, y, alpha);
     }
   };
+  if (grab?.phase === 'active' || grab?.phase === 'hold') {
+    for (let i = -1; i <= 1; i++) dot(p.x + grab.facing * 14 + i, p.y - 12 + Math.abs(i), quiet ? .3 : .65, true);
+  }
+  if (grab?.phase === 'recovery' && (grab.throwX || grab.throwY) && grab.age < 8) {
+    const fade = (1 - grab.age / 8) * (quiet ? .3 : .7);
+    for (let i = 0; i < 24; i++) {
+      const t = i / 23, x = p.x + grab.throwX * (8 + t * 18), y = p.y - 12 + grab.throwY * t * 18 - Math.sin(t * Math.PI) * 5;
+      dot(x, y, fade * (1 - t * .6), true);
+    }
+  }
   const shadow = (x: number, y: number, rx: number, ry: number, alpha: number): void => {
     for (let py = -ry; py <= ry; py += .5) for (let px = -rx; px <= rx; px += .5) {
       if (px * px / (rx * rx) + py * py / (ry * ry) > 1) continue;

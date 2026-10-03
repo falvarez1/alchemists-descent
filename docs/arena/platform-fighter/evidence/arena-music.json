@@ -1,0 +1,91 @@
+{
+  "checks": [
+    {
+      "name": "no music download before gesture"
+    },
+    {
+      "name": "Duel lobby starts the new select cue"
+    },
+    {
+      "name": "visible match launch starts battle music"
+    },
+    {
+      "name": "decoded battle audio produces a nonzero WebAudio signal",
+      "data": 0.07443486319566592
+    },
+    {
+      "name": "individual stock death keeps battle cue and full master target",
+      "data": 1
+    },
+    {
+      "name": "fighter chill cannot detune competitive music"
+    },
+    {
+      "name": "pause ducks battle music"
+    },
+    {
+      "name": "native authored loop wraps without a second simultaneous battle voice",
+      "data": {
+        "time": 0.348299,
+        "loop": true,
+        "paused": false,
+        "ready": 4,
+        "elements": 1
+      }
+    },
+    {
+      "name": "match result starts the new fanfare"
+    },
+    {
+      "name": "completed fanfare yields to rematch lobby groove"
+    },
+    {
+      "name": "rematch restarts battle at the opening"
+    },
+    {
+      "name": "leaving versus restores title cue"
+    },
+    {
+      "name": "solo Arena also uses battle music"
+    },
+    {
+      "name": "campaign restores its own score"
+    },
+    {
+      "name": "all new music responses succeed",
+      "data": [
+        {
+          "url": "http://127.0.0.1:5217/audio/music/arena/arena-lobby.mp3",
+          "status": 206
+        },
+        {
+          "url": "http://127.0.0.1:5217/audio/music/arena/arena-battle.mp3",
+          "status": 206
+        },
+        {
+          "url": "http://127.0.0.1:5217/audio/music/arena/arena-results.mp3",
+          "status": 206
+        }
+      ]
+    },
+    {
+      "name": "no browser exceptions",
+      "data": []
+    }
+  ],
+  "errors": [],
+  "requests": [
+    {
+      "url": "http://127.0.0.1:5217/audio/music/arena/arena-lobby.mp3",
+      "status": 206
+    },
+    {
+      "url": "http://127.0.0.1:5217/audio/music/arena/arena-battle.mp3",
+      "status": 206
+    },
+    {
+      "url": "http://127.0.0.1:5217/audio/music/arena/arena-results.mp3",
+      "status": 206
+    }
+  ]
+}

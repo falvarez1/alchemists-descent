@@ -1,0 +1,173 @@
+{
+  "rows": [
+    {
+      "kind": "opener",
+      "volatility": 10.288800000000002,
+      "played": [
+        "player.step.stone",
+        "arena.hurt.armored",
+        "arena.hit.light"
+      ]
+    },
+    {
+      "kind": "finisher",
+      "volatility": 24.0072,
+      "played": [
+        "player.step.stone",
+        "arena.hurt.armored",
+        "arena.hit.heavy"
+      ]
+    },
+    {
+      "idle": []
+    },
+    {
+      "slot": 0,
+      "played": [
+        "arena.hit.light",
+        "arena.hurt.agile"
+      ]
+    },
+    {
+      "slot": 1,
+      "played": [
+        "arena.hit.light",
+        "arena.hurt.armored"
+      ]
+    },
+    {
+      "amount": 8,
+      "absorbed": true,
+      "phase": "guard",
+      "played": [
+        "player.step.stone",
+        "arena.shield.block"
+      ]
+    },
+    {
+      "amount": 250,
+      "absorbed": true,
+      "phase": "broken",
+      "played": [
+        "arena.shield.break"
+      ]
+    },
+    {
+      "grab": {
+        "played": [
+          "arena.grab",
+          "arena.hurt.armored",
+          "arena.throw"
+        ],
+        "volatility": 10.288800000000002
+      }
+    }
+  ],
+  "mixed": {
+    "singles": [
+      {
+        "id": "arena.hit.light",
+        "peak": 0.17106084525585175,
+        "rms": 0.016730243259744967
+      },
+      {
+        "id": "arena.hit.heavy",
+        "peak": 0.2711254954338074,
+        "rms": 0.049834196192046536
+      },
+      {
+        "id": "arena.shield.block",
+        "peak": 0.12575063109397888,
+        "rms": 0.011314442471653738
+      },
+      {
+        "id": "arena.shield.break",
+        "peak": 0.2646777927875519,
+        "rms": 0.023452341651093667
+      },
+      {
+        "id": "arena.grab",
+        "peak": 0.1497582197189331,
+        "rms": 0.012542713325565037
+      },
+      {
+        "id": "arena.throw",
+        "peak": 0.2319105714559555,
+        "rms": 0.038032869900428465
+      },
+      {
+        "id": "arena.hurt.agile",
+        "peak": 0.12220196425914764,
+        "rms": 0.017777404618993933
+      },
+      {
+        "id": "arena.hurt.armored",
+        "peak": 0.12323900312185287,
+        "rms": 0.024728281582225516
+      },
+      {
+        "id": "arena.hurt.duelist",
+        "peak": 0.12203498929738998,
+        "rms": 0.02193849490453159
+      }
+    ],
+    "crowded": {
+      "peak": 0.609484076499939,
+      "rms": 0.11485813601004076
+    },
+    "samples": {
+      "started": true,
+      "packs": {
+        "ui": "ready",
+        "player": "ready",
+        "spells": "ready",
+        "world": "ready",
+        "arena": "ready",
+        "amb-d1": "ready",
+        "creature-weaver": "ready",
+        "creature-rillback": "ready",
+        "flora": "ready"
+      },
+      "decodedBytes": 73827452,
+      "filesDecoded": 586,
+      "filesFailed": 0,
+      "bytesFetched": 4713765,
+      "played": 241,
+      "fellBack": 37,
+      "dropped": 66,
+      "stolen": 156,
+      "activeVoices": 8,
+      "loops": [
+        "mat.water.loop"
+      ],
+      "bed": "amb.bellows",
+      "lastPlayed": [
+        "arena.shield.break",
+        "arena.grab",
+        "arena.throw",
+        "arena.hurt.agile",
+        "arena.hurt.armored",
+        "arena.hurt.duelist",
+        "arena.hit.light",
+        "arena.hit.heavy",
+        "arena.shield.block",
+        "arena.shield.break",
+        "arena.grab",
+        "arena.throw",
+        "arena.hurt.agile",
+        "arena.hurt.armored",
+        "arena.hurt.duelist",
+        "arena.hit.light",
+        "arena.hit.heavy",
+        "arena.shield.block",
+        "arena.shield.break",
+        "arena.grab",
+        "arena.throw",
+        "arena.hurt.agile",
+        "arena.hurt.armored",
+        "arena.hurt.duelist"
+      ]
+    }
+  },
+  "errors": []
+}

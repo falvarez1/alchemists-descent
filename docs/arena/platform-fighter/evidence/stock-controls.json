@@ -1,0 +1,259 @@
+{
+  "duel": [
+    {
+      "slot": 0,
+      "attack": {
+        "kind": "opener",
+        "otherBusy": false,
+        "jump": false
+      },
+      "jumps": [
+        {
+          "button": 2,
+          "vy": -3.568242360156127,
+          "y": 632,
+          "grounded": false
+        },
+        {
+          "button": 3,
+          "vy": -3.568242360156127,
+          "y": 632,
+          "grounded": false
+        }
+      ],
+      "shields": [
+        {
+          "button": 6,
+          "phase": "guard",
+          "firing": false
+        },
+        {
+          "button": 7,
+          "phase": "guard",
+          "firing": false
+        }
+      ],
+      "roll": "startup",
+      "airDodge": true,
+      "grabs": [
+        {
+          "button": 4,
+          "hold": {
+            "phase": "hold",
+            "caught": true,
+            "shield": "idle"
+          },
+          "released": true,
+          "vy": -7.225410385674083,
+          "volatility": 10.288800000000002
+        },
+        {
+          "button": 5,
+          "hold": {
+            "phase": "hold",
+            "caught": true,
+            "shield": "idle"
+          },
+          "released": true,
+          "vy": -7.225410385674083,
+          "volatility": 10.288800000000002
+        }
+      ],
+      "smash": {
+        "kind": "finisher",
+        "facing": -1
+      },
+      "repeats": false,
+      "upSmash": {
+        "name": "Up smash",
+        "startup": 13
+      },
+      "recovery": {
+        "active": true,
+        "ready": false,
+        "vy": -6.9399999999999995
+      },
+      "special": {
+        "firing": true,
+        "casts": [
+          "spark",
+          "spark"
+        ]
+      }
+    },
+    {
+      "slot": 1,
+      "attack": {
+        "kind": "opener",
+        "otherBusy": false,
+        "jump": false
+      },
+      "jumps": [
+        {
+          "button": 2,
+          "vy": -3.463872703696336,
+          "y": 632,
+          "grounded": false
+        },
+        {
+          "button": 3,
+          "vy": -3.463872703696336,
+          "y": 632,
+          "grounded": false
+        }
+      ],
+      "shields": [
+        {
+          "button": 6,
+          "phase": "guard",
+          "firing": false
+        },
+        {
+          "button": 7,
+          "phase": "guard",
+          "firing": false
+        }
+      ],
+      "roll": "startup",
+      "airDodge": true,
+      "grabs": [
+        {
+          "button": 4,
+          "hold": {
+            "phase": "hold",
+            "caught": true,
+            "shield": "idle"
+          },
+          "released": true,
+          "vy": -9.476277416531294,
+          "volatility": 3.3624000000000005
+        },
+        {
+          "button": 5,
+          "hold": {
+            "phase": "hold",
+            "caught": true,
+            "shield": "idle"
+          },
+          "released": true,
+          "vy": -9.476277416531294,
+          "volatility": 3.3624000000000005
+        }
+      ],
+      "smash": {
+        "kind": "finisher",
+        "facing": -1
+      },
+      "repeats": false,
+      "upSmash": {
+        "name": "Up smash",
+        "startup": 18
+      },
+      "recovery": {
+        "active": true,
+        "ready": false,
+        "vy": -6.800000000000001
+      },
+      "special": {
+        "firing": true,
+        "casts": [
+          "spark"
+        ]
+      }
+    }
+  ],
+  "arena": [
+    {
+      "slot": 0,
+      "attack": {
+        "kind": "opener",
+        "otherBusy": false,
+        "jump": false
+      },
+      "jumps": [
+        {
+          "button": 2,
+          "vy": -3.4754999999999994,
+          "y": 632,
+          "grounded": false
+        },
+        {
+          "button": 3,
+          "vy": -3.4754999999999994,
+          "y": 632,
+          "grounded": false
+        }
+      ],
+      "shields": [
+        {
+          "button": 6,
+          "phase": "guard",
+          "firing": false
+        },
+        {
+          "button": 7,
+          "phase": "guard",
+          "firing": false
+        }
+      ],
+      "roll": "startup",
+      "airDodge": true,
+      "grabs": [
+        {
+          "button": 4,
+          "hold": {
+            "phase": "hold",
+            "caught": true,
+            "shield": "idle"
+          },
+          "released": true,
+          "vy": -6.771965931375399,
+          "volatility": 7.2
+        },
+        {
+          "button": 5,
+          "hold": {
+            "phase": "hold",
+            "caught": true,
+            "shield": "idle"
+          },
+          "released": true,
+          "vy": -6.771965931375399,
+          "volatility": 7.2
+        }
+      ],
+      "smash": {
+        "kind": "finisher",
+        "facing": -1
+      },
+      "repeats": false,
+      "upSmash": {
+        "name": "Up smash",
+        "startup": 13
+      },
+      "recovery": {
+        "active": true,
+        "ready": false,
+        "vy": -6.9399999999999995
+      },
+      "special": {
+        "firing": true,
+        "casts": [
+          "spark"
+        ]
+      }
+    }
+  ],
+  "gallery": [
+    "ilyra-voss-grab-reach.png",
+    "ilyra-voss-grab-hold.png",
+    "ilyra-voss-grab-throw.png",
+    "brann-rook-grab-reach.png",
+    "brann-rook-grab-hold.png",
+    "brann-rook-grab-throw.png",
+    "mara-quell-grab-reach.png",
+    "mara-quell-grab-hold.png",
+    "mara-quell-grab-throw.png"
+  ],
+  "errors": []
+}

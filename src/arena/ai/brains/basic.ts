@@ -22,6 +22,7 @@ import { STOCK_STAGE } from '@/config/stockStage';
 import { STOCK_DODGE } from '@/config/stockMovement';
 import { stockMoveset } from '@/config/stockAttacks';
 import { stockAttackOverlaps } from '@/arena/StockAttack';
+import { StockFootwork } from '@/arena/ai/stockFootwork';
 import { AI_PERSONALITIES } from '@/config/aiPersonalities';
 import type { PersonalityId } from '@/config/aiPersonalities';
 import { CombatMemory } from '@/arena/ai/memory';
@@ -86,6 +87,7 @@ export class BasicBrain implements Brain {
   private threatened = false;
   private deadSince = -1;
   private wasHolding = false;
+  private readonly stockFootwork = new StockFootwork();
 
   constructor(opts: BrainOptions) {
     this.rng = new Rng(opts.seed);
@@ -110,6 +112,7 @@ export class BasicBrain implements Brain {
   }
 
   reset(): void {
+    this.stockFootwork.reset();
     this.control?.reset();
     this.exec.reset();
     this.memory.reset();
@@ -361,11 +364,17 @@ export class BasicBrain implements Brain {
       tick,
     });
     this.status.targetScores = targetUtilities(engageable, this.targetRef, personality, this.memory, hasLine);
+    const stock = !!ctx.arena?.stockMatch;
+    if (stock && choice.target) {
+      // Stocks reward closing for a launch. A wand's preferred firing distance must not keep melee fighters apart.
+      choice.intent = Math.abs(choice.target.y - me.y) > 40 && choice.target.foe.grounded ? 'reposition' : choice.target.dist > 36 ? 'approach' : 'pressure';
+      choice.range = 24;
+    }
     if (choice.intent !== this.intent) { this.intent = choice.intent; this.intentSince = tick; }
     const nextTarget = choice.target?.foe.ref ?? null;
     if (this.targetRef && nextTarget && nextTarget !== this.targetRef) this.status.stats.targetSwitches = (this.status.stats.targetSwitches ?? 0) + 1;
     this.targetRef = nextTarget;
-    this.range = Math.max(me.weapon.minRange + 8, choice.range + this.exec.spacingBias);
+    this.range = stock ? 24 : Math.max(me.weapon.minRange + 8, choice.range + this.exec.spacingBias);
     const target = choice.target;
     const st = this.status;
     st.intent = this.intent;
@@ -398,7 +407,7 @@ export class BasicBrain implements Brain {
     const hi = this.range + style.band;
     switch (this.intent) {
       case 'approach':
-        this.goalX = target.cx - dir * (hi - 6);
+        this.goalX = stock ? this.stockFootwork.goal(me.x, target.x, tick) : target.cx - dir * (hi - 6);
         break;
       case 'recover':
       case 'retreat': {
@@ -421,7 +430,7 @@ export class BasicBrain implements Brain {
         break;
       }
       case 'pressure':
-        this.goalX = target.cx - dir * Math.max(AI_BEHAVIOR.pressureRange, me.weapon.minRange + 12, this.range * 0.65);
+        this.goalX = stock ? this.stockFootwork.goal(me.x, target.x, tick) : target.cx - dir * Math.max(AI_BEHAVIOR.pressureRange, me.weapon.minRange + 12, this.range * 0.65);
         break;
       case 'reposition':
         this.goalX = target.cx - dir * 12;
@@ -439,8 +448,10 @@ export class BasicBrain implements Brain {
       }
     }
     // A modest bias away from the nearest wall; never replaces weapon spacing or a nav route.
-    if (this.intent === 'zone' && (me.x - x0 < 65 || x1 - me.x < 65)) this.goalX += Math.sign((x0 + x1) / 2 - me.x) * 12 * personality.strongPosition;
-    this.goalX = Math.max(x0, Math.min(x1, this.goalX));
+    if (this.goalX !== null) {
+      if (this.intent === 'zone' && (me.x - x0 < 65 || x1 - me.x < 65)) this.goalX += Math.sign((x0 + x1) / 2 - me.x) * 12 * personality.strongPosition;
+      this.goalX = Math.max(x0, Math.min(x1, this.goalX));
+    }
     void self;
   }
 
@@ -525,7 +536,7 @@ export class BasicBrain implements Brain {
     const stock = !!ctx.arena?.stockMatch;
     // Use delayed position and speed, just as aiming does. A still nearby target is a commitment opportunity.
     const meleeKind = !me.grounded ? 'aerial' : target.cy < me.y - 20 ? 'launcher'
-      : Math.hypot(target.vx, target.vy) < .6 && target.dist < 25 ? 'finisher' : 'opener';
+      : st.stats.kicks % 4 === 3 && Math.hypot(target.vx, target.vy) < .6 && target.dist < 25 ? 'finisher' : 'opener';
     const melee = stockMoveset(me.fighter)[meleeKind];
     const meleeFacing = Math.sign(target.x - me.x) || me.facing;
     if (canAct && ctx.playerCtl.kickReady !== false && tick - this.lastKick >= lp.kickCooldown + 1) {
@@ -554,7 +565,7 @@ export class BasicBrain implements Brain {
     const mobility = me.fighter === 'kest-rel' || me.fighter === 'selene-wraith';
     const safeAbility = !plan.tactical || !mobility || !plan.aim || safeMobilityLanding(ctx, me.x, me.y, plan.aim.x);
     const eligible: Record<CombatAction, boolean> = {
-      shoot: canAct && closeEnough && lane && me.shotAffordable && me.wandCooldown <= 0 && (!this.recovering || finishing),
+      shoot: canAct && (!stock || target.dist > 65) && closeEnough && lane && me.shotAffordable && me.wandCooldown <= 0 && (!this.recovering || finishing),
       kick,
       tactical: canAct && !!self.fighters && !!plan.tactical && safeAbility && tick - this.lastZ >= PRESS_GAP,
       ultimate: canAct && !!self.fighters && !!plan.ultimate && tick - this.lastT >= PRESS_GAP,

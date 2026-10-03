@@ -1,4 +1,13 @@
 export interface BlastZone { left: number; right: number; top: number; bottom: number }
+export interface StockGrabView {
+  readonly phase: 'idle' | 'startup' | 'active' | 'hold' | 'recovery';
+  readonly busy: boolean;
+  readonly age: number;
+  readonly facing: number;
+  readonly victim: number | null;
+  readonly throwX: number;
+  readonly throwY: number;
+}
 export interface StockShieldView {
   readonly phase: 'idle' | 'guard' | 'release' | 'broken';
   readonly busy: boolean;

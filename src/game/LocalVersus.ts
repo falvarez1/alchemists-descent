@@ -5,6 +5,7 @@ import { STOCK_STAGE } from '@/config/stockStage';
 import { resetDuelStage } from '@/world/duelStage';
 import { botDriverFor, rivalDriverFor } from '@/arena/ai/driver';
 import { readVersusPad, VersusDevices } from '@/input/versusDevices';
+import { applyStockPad } from '@/input/stockPad';
 import { setExternalControl } from '@/input/externalControl';
 
 /** Composes disposable local matches. Expedition saves remain owned by Levels. */
@@ -21,6 +22,7 @@ export class LocalVersus implements VersusApi {
   private revision = 0;
   private connectedKey = '';
   private pausedBeforeDisconnect = false;
+  private openedBefore = false;
   get active(): boolean { return this.phase !== 'idle'; }
   get devices() { return this.ownership.available; }
   get disconnected(): readonly number[] { return this.ownership.missing; }
@@ -39,6 +41,7 @@ export class LocalVersus implements VersusApi {
       for (const key of Object.keys(b.input.keys) as Array<keyof typeof b.input.keys>) b.input.keys[key] = false;
       b.input.queuedJump = undefined; b.input.queuedDodge = false;
       b.input.shieldHeld = false;
+      b.input.queuedRecovery = false;
       b.input.pourHeld = b.input.siphonHeld = b.input.drinkHeld = false;
       b.player.firing = b.player.firePressed = false;
       b.fighters.releaseInputs?.();
@@ -46,6 +49,11 @@ export class LocalVersus implements VersusApi {
   }
   open(): void {
     this.revision++; this.release(); this.phase = 'lobby'; this.message = '';
+    if (!this.openedBefore) {
+      const controller = this.ownership.available.find(d => d.device.startsWith('pad:'));
+      if (controller && this.ownership.assign(0, controller.device)) this.seats[0].device = controller.device;
+      this.openedBefore = true;
+    }
     this.ctx.state.paused = true;
     for (const seat of this.seats) seat.ready = seat.device === 'cpu';
     this.changed();
@@ -120,7 +128,7 @@ export class LocalVersus implements VersusApi {
     for (const pad of pads) {
       if (!pad?.connected || pad.mapping !== 'standard') continue;
       let previous = this.buttons.get(pad.index);
-      if (!previous) { previous = new Uint8Array(18); this.buttons.set(pad.index, previous); }
+      if (!previous) { previous = new Uint8Array(20); this.buttons.set(pad.index, previous); }
       const action = readVersusPad(pad, previous, this.ctx.state.padDeadzone ?? .2);
       let slot = this.seats.findIndex(s => s.device === `pad:${pad.index}`);
       if (this.phase === 'lobby') {
@@ -143,22 +151,7 @@ export class LocalVersus implements VersusApi {
           if (menuAction) this.ctx.events.emit('versusMenu', { action: menuAction });
           this.release(); continue;
         }
-        this.ctx.arena?.with(slot, () => {
-          const ctx = this.ctx, input = ctx.input, player = ctx.player;
-          Object.assign(input.keys, { left: action.left, right: action.right, up: action.up, down: action.down, jump: action.jump, wallJump: action.jump, grab: false });
-          if (action.jumpPressed) input.queuedJump = 'wall';
-          if (action.dodge) input.queuedDodge = true;
-          if (action.aimX || action.aimY) { input.mouse.x = player.x + action.aimX * 130; input.mouse.y = player.y - 9 + action.aimY * 130; }
-          if (!action.fire) player.fireBlockedUntilRelease = false;
-          player.firing = action.fire && !player.fireBlockedUntilRelease;
-          if (action.firePressed) player.firePressed = true;
-          input.pourHeld = action.pour;
-          if (action.kick) ctx.playerCtl.kick(ctx);
-          if (action.flask) ctx.flask.throwFlask(ctx);
-          if (action.tactical) ctx.fighters?.press('tactical');
-          if (action.ultimate) ctx.fighters?.press('ultimate');
-          if (action.wand) { ctx.wands.active = ctx.wands.active === 0 ? 1 : 0; ctx.events.emit('wandChanged'); }
-        });
+        this.ctx.arena?.with(slot, () => applyStockPad(this.ctx, action));
       }
     }
     return true;

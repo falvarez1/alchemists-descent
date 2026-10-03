@@ -59,6 +59,9 @@ export function resetHeldSpellInputs(ctx: Ctx): void {
   input.siphonHeld = false;
   input.pourHeld = false;
   input.drinkHeld = false;
+  input.shieldHeld = false;
+  input.queuedDodge = false;
+  input.queuedRecovery = false;
   if (ctx.player) { ctx.player.firing = false; ctx.player.fireBlockedUntilRelease = false; }
 }
 

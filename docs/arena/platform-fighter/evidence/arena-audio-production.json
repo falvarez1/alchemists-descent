@@ -1,0 +1,113 @@
+{
+  "debugApiAbsent": true,
+  "battle": {
+    "time": 10.475102,
+    "duration": 110.769229,
+    "loop": true,
+    "paused": false
+  },
+  "sfxCount": 23,
+  "requests": [
+    {
+      "url": "http://127.0.0.1:5218/audio/music/arena/arena-lobby.mp3",
+      "status": 206
+    },
+    {
+      "url": "http://127.0.0.1:5218/audio/music/arena/arena-battle.mp3",
+      "status": 206
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hit.light-1-BHF5j1Nb.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hit.light-2-BlJpD3Ae.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hit.light-3-sy64RZAD.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hit.heavy-1-DkbL4vCA.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hit.heavy-2-CnPG2vf3.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.shield.block-1-BSM7pWPA.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hit.heavy-3-aKdYRsYU.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.shield.block-2-CYYKDhTn.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.shield.break-1-sFPyC26g.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.shield.break-2-CF5SNJhg.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.grab-1-D-lRw-lS.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.grab-2-Do7WzpaR.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.throw-1-MGZKSD-N.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.throw-2-B9P6nKow.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hurt.agile-1-C-GeIynm.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hurt.agile-2-Bwet336j.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hurt.agile-3-Bmh752_c.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hurt.armored-1-DBG5w_q0.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hurt.armored-2-BbllI9Ng.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hurt.armored-3-DRNyue3U.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hurt.duelist-2-B7kRnZUJ.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hurt.duelist-1-DM9OzvdU.mp3",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:5218/assets/arena.hurt.duelist-3-dhi3V8Ge.mp3",
+      "status": 200
+    }
+  ],
+  "errors": []
+}

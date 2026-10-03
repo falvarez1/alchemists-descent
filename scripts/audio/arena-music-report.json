@@ -1,0 +1,51 @@
+[
+  {
+    "id": "arena-battle",
+    "model": "music_v2_5",
+    "songId": "hCOSZ4kMVl989cS8zNf0",
+    "cacheKey": "623a67ba893b74a25ef6720fce7c23dbef0b6686",
+    "sha256": "60dec01ab1b12bce337ec2263aebd7c99ef61ef5e3dbd02bf56ca7c9c61ac9b7",
+    "duration": 110.77000000000001,
+    "lufs": -15.9,
+    "truePeak": -4.9,
+    "tailSec": 0,
+    "loopEdit": {
+      "start": 0.025,
+      "bars": 72,
+      "period": 110.76923076923077,
+      "seam": 0.04
+    },
+    "bytes": 2300743
+  },
+  {
+    "id": "arena-lobby",
+    "model": "music_v2_5",
+    "songId": "Gb4QDKW0HYO6EmZ9VY7I",
+    "cacheKey": "3b4ba90a8ab66a9adcd2a9595ce14b6054673b5e",
+    "sha256": "daa4796044646454039f67acb9b7c8fee4fb9208117d7e83266264a2843446ce",
+    "duration": 30.48,
+    "lufs": -16,
+    "truePeak": -4.8,
+    "tailSec": 0,
+    "loopEdit": {
+      "start": 1.45,
+      "bars": 16,
+      "period": 30.476190476190474,
+      "seam": 0.04
+    },
+    "bytes": 634138
+  },
+  {
+    "id": "arena-results",
+    "model": "music_v2_5",
+    "songId": "85JQo5JYLhfAwdYUaRkQ",
+    "cacheKey": "3fa61592b38d3d8e560d0ebd5e1e3c28ff4986ce",
+    "sha256": "6b7d780d00a09fdccb19553dbe07569254cacb3a15fef4c7b74ad926b3051a2d",
+    "duration": 12.04,
+    "lufs": -15.9,
+    "truePeak": -4.8,
+    "tailSec": 1.9,
+    "loopEdit": null,
+    "bytes": 231799
+  }
+]

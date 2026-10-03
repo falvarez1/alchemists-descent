@@ -888,7 +888,9 @@ export class PlayerControl implements PlayerControlApi {
       const spread = a + (entityRandom() - 0.5) * lp.kickArc * 1.6;
       ctx.particles.spawn(ox + dirX * 4, oy + dirY * 4, Math.cos(spread) * 1.6, Math.sin(spread) * 1.6, null, packRGB(190, 178, 158), 12, { grav: 0.05 });
     }
-    ctx.audio.sfx('player.kick'); // thud + whoosh
+    const arenaAudio = ctx.arena?.active || ctx.levels?.current?.def.id === 'fighter-test' || ctx.levels?.current?.def.id === 'fighter-duel';
+    // Arena contact owns the new impact and grunt. A miss still has an air swing.
+    ctx.audio.sfx(arenaAudio ? 'player.club.swing' : 'player.kick');
   }
 
   /** Latch onto the nearest hanging vine for a pendulum swing; true if latched. */
@@ -1315,9 +1317,10 @@ export class PlayerControl implements PlayerControlApi {
     const stockDodge = ctx.arena?.updateStockDodge(dodgeRequested, !restrained);
     const stockAttack = ctx.arena?.updateStockAttack(!restrained);
     const stockShield = ctx.arena?.updateStockShield(ctx.input.shieldHeld === true, !restrained);
+    const stockGrab = ctx.arena?.stockGrab(ctx.arena.bound);
     const queuedJump = ctx.input.queuedJump;
     ctx.input.queuedJump = undefined;
-    const keys = restrained || stockDodge?.busy || stockShield?.busy || (stockAttack?.busy && player.grounded)
+    const keys = restrained || stockDodge?.busy || stockShield?.busy || stockGrab?.busy || ctx.arena?.isGrabbed(ctx.arena.bound) || (stockAttack?.busy && player.grounded)
       ? { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false }
         : stockAttack?.busy ? { ...ctx.input.keys, jump: false, wallJump: false }
           : queuedJump ? { ...ctx.input.keys, jump: true, wallJump: queuedJump === 'wall' || ctx.input.keys.wallJump } : ctx.input.keys;

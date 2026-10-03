@@ -101,7 +101,7 @@ describe('the sampled sound catalog', () => {
     }
   });
 
-  it('keeps the payload inside budget (≲ 8 MB of sfx + ambience)', () => {
+  it('keeps the payload inside budget (less than 8.3 MiB of sfx + ambience)', () => {
     // A guard against runaway takes (a long take, a stray stereo encode, a third take nobody
     // needs), not a first-load cost: nothing here is fetched before the first gesture, and
     // everything past the core packs loads with its floor (audio/AudioDirector). Raised from
@@ -112,7 +112,9 @@ describe('the sampled sound catalog', () => {
     // guardians, organisms and their two stereo beds — packs that load only
     // with their own floor, and a run visits one door per floor.
     const bytes = [...filesOnDisk.values()].flat().reduce((n, f) => n + statSync(f).size, 0);
-    expect(bytes).toBeLessThan(8 * 1024 * 1024);
+    // Arena adds 23 short high-quality impact and voice takes in a lazy pack.
+    // The campaign still does not request this pack.
+    expect(bytes).toBeLessThan(8.3 * 1024 * 1024);
   });
 });
 
