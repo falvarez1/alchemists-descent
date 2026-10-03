@@ -263,10 +263,11 @@ export class BasicBrain implements Brain {
       }
     }
 
-    // ---- the stuck detector: the same place for 3 s while the goal said move ----
+    // A blocked route gets another attempt within 1.5 s, including search
+    // after cover hides a foe. Deliberate holds never count as wanting to move.
     const goalX = this.goalX;
     const wantsMove = control.activeEdge !== null || (this.intent === 'reposition' && this.noShotTicks > AI_BEHAVIOR.blockedTicks) || (goalX !== null && Math.abs(goalX - me.x) > 10 && this.intent !== 'zone');
-    if (control.stuck.update(me, wantsMove && foes.length > 0 && !p.dead, tick)) {
+    if (control.stuck.update(me, wantsMove && !p.dead, tick)) {
       st.stats.stuck++;
       const edge = control.activeEdge;
       if (edge !== null) { this.blocked.add(edgeKey(edge)); this.blockedAt = tick; control.cancelEdge(); this.edgeTarget = null; }

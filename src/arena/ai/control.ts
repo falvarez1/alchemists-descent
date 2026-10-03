@@ -169,7 +169,7 @@ export class Traction {
  * The brain answers by dropping the plan and trying another way (docs/arena/AI-FIGHTERS.md 8.3: a stuck bot is a bug).
  */
 export class StuckDetector {
-  static readonly WINDOW = 180;
+  static readonly WINDOW = 90;
   private x = 0;
   private y = 0;
   private since = 0;
