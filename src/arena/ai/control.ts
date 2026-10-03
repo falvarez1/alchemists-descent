@@ -112,6 +112,7 @@ export class Hand {
     const k = input.keys;
     k.left = k.right = k.up = k.jump = k.wallJump = k.down = k.grab = false;
     input.queuedJump = undefined;
+    input.queuedDodge = false;
     this.self.player.firePressed = false;
     this.self.fighters?.releaseInputs?.();
     this.jumpHeld = false;

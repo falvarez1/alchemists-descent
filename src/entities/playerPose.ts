@@ -102,8 +102,12 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   if (a.climbing || a.wallGrabT > 0) return poseClimb(a, s, frame);
 
   s.kind = 'stand';
+  const dodge = a === ctx.player ? ctx.arena?.stockDodge(ctx.arena.bound) : null;
+  const recovering = a === ctx.player && ctx.arena?.isRecovering(ctx.arena.bound) === true;
+  if (recovering) s.lift = 1;
+  const evadePose = dodge?.busy ? dodge.phase === 'evade' ? 1 : dodge.phase === 'startup' ? .45 : .25 : 0;
   const cold = chillPose(ctx, a, frame);
-  const crouch = clamp(a.crouchT / 10, 0, 1), landing = clamp(a.landTimer / 10, 0, 1);
+  const crouch = Math.max(clamp(a.crouchT / 10, 0, 1), evadePose * .8), landing = clamp(a.landTimer / 10, 0, 1);
   const air = a.grounded ? 0 : 1, skid = clamp(a.skidT / 10, 0, 1), hurt = clamp(a.staggerT / 10, 0, 1);
   const pulling = a.pullT > 0 ? 1 : 0;
   const speed = Math.min(1, Math.abs(a._svx || a.vx) / 2.1);
@@ -128,6 +132,7 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
     - (a.staggerDir || -f) * hurt * 0.22;
   if (a.kickT > 0) lean -= f * 0.18;
   if (flask === 'drink') lean -= f * 0.08;
+  lean += f * evadePose * .38;
   // Hunched into the cold.
   if (a.grounded && !swim) lean += f * 0.07 * cold.hug;
   s.lean = lean;
@@ -169,6 +174,12 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
     fK = at(3.0 + k * 0.6, 4.4 + k * 0.8); fF = at(4.5 + k * 4.4, 3.2 + k * 2.2);
   }
   if (commune) { bF = at(-2.6, 0.1); fF = at(2.2, 0.1); bK = at(-0.4, 1.0); fK = at(2.6, 2.8); }
+  if (evadePose > 0) {
+    bF = mixP(bF, at(-5, air ? 4.5 : .2), evadePose);
+    fF = mixP(fF, at(1.4, air ? 6 : .15), evadePose);
+    bK = mixP(bK, at(-2.8, 4.1), evadePose);
+    fK = mixP(fK, at(3.1, air ? 6.8 : 3.6), evadePose);
+  }
   set(s.backFoot, bF); set(s.frontFoot, fF); set(s.backKnee, bK); set(s.frontKnee, fK);
   // Head: tilts with gaze, snaps back when hit, tips back to drink.
   s.headTilt = f * (s.gazeY * 0.28 * f) - (a.staggerDir || -f) * hurt * 0.35 * f * f + f * 0.12 * cold.hug;
@@ -233,6 +244,11 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
     bH = [hx, hy];
     s.held = { kind: 'flask', x: hx, y: hy, angle: ang };
   }
+  if (evadePose > 0) {
+    bE = mixP(bE, at(-2.5, 9), evadePose); bH = mixP(bH, at(-.5, 10.4), evadePose);
+    fE = mixP(fE, at(2.8, 9.5), evadePose); fH = mixP(fH, at(4.1, 10.1), evadePose);
+  }
+  if (recovering) { bE = at(-1.5, 13.2); bH = at(-.5, 18); fE = at(2.7, 10.5); fH = at(3.5, 12); }
   const club = a.legClub?.rig;
   if (club) {
     // Both fists on the severed leg: the grip is the club's own hand point.
@@ -246,7 +262,7 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   // it at the muzzle point from the hand skews it badly when the hand sits a
   // few pixels off the aim ray — the muzzle is only 9 cells out.)
   s.wand.x = fH[0]; s.wand.y = fH[1];
-  s.wand.angle = a.aimAngle;
+  s.wand.angle = evadePose > 0 ? (f > 0 ? .45 : Math.PI - .45) : a.aimAngle;
   s.wand.glow = a.firing ? 1 : a.swapT > 6 ? 0.2 : 0.55 + Math.sin(frame * 0.2) * 0.07;
   set(s.crown, at(-0.2 + 0.3 * cold.hug, 17.2 - 0.6 * cold.hug));
   s.brimAngle = lean + s.headTilt * 0.6;

@@ -1429,6 +1429,8 @@ export interface Keys {
 export interface InputState {
   /** Short taps survive a keyup between two fixed ticks. */
   queuedJump?: 'jump' | 'wall';
+  /** One fresh defensive input, consumed by stock-mode movement at the next body tick. */
+  queuedDodge?: boolean;
   keys: Keys;
   /** Cursor position in world-grid coordinates (original mouseGridPosition). */
   mouse: { x: number; y: number };

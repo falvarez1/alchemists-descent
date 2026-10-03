@@ -250,7 +250,7 @@ export class FighterSystem implements FighterApi {
   press(slot: AbilitySlot): void {
     if (this.id === null) return;
     const arena = this.ctx.arena;
-    if (arena?.stockMatch && (!arena.runsBody(arena.bound) || arena.isLaunching(arena.bound))) return;
+    if (arena?.isActionLocked(arena.bound)) return;
     const now = this.ctx.state.frameCount;
     if (slot === 'tactical') this.pendingTactical = now;
     else this.pendingUltimate = now;
@@ -278,6 +278,7 @@ export class FighterSystem implements FighterApi {
     if (this.tacticalCd > 0) this.tacticalCd--;
 
     // Presses are latched between ticks and consumed here, inside the tick.
+    if (ctx.arena?.isActionLocked(ctx.arena.bound)) this.releaseInputs();
     const window = FIGHTER_TUNING.pressWindow;
     if (this.pendingTactical >= 0) {
       if (now - this.pendingTactical <= window) this.tryTactical(now);

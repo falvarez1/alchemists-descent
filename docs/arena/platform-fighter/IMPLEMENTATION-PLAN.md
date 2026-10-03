@@ -33,6 +33,7 @@ Use crisp pixel clusters, wet blue slate, worn copper, ivory silhouettes, amber 
 - concepts/stages.png: Foundry, Kiln, Cistern, and Gallery environment targets.
 - concepts/fighters-actions.png: all ten silhouette targets and an initial action vocabulary.
 - concepts/local-versus.png: controller lobby, stage selection, match HUD, and results.
+- concepts/motion-defense.png: prototype fighter poses, ground and air dodges, recovery, and restrained state accents. Uses the existing portraits to correct identity drift in the first general sheet.
 - concepts/prompts.md: exact ImageGen prompts and provenance.
 
 These are concept sheets, not sprite atlases. Do not paste a flattened gameplay painting over the game. Build collision from real cells; decorative art must remain distinguishable from playable surfaces. Generate separate background or sprite assets when the renderer needs them.
@@ -87,6 +88,8 @@ Map actions to a coherent keyboard/gamepad vocabulary. Animation anticipation, c
 Acceptance: players can punish a missed finisher, launch into an aerial, and choose an attack by position. Tests cover exactly-once hits, multihits, interruption, trade hits, and projectile ownership. Browser captures show silhouette and active-hit readability.
 
 ## Milestone 4: local versus as a complete flow
+
+Make the versus runtime and title entry available in the player build. The baseline constructs ArenaSlots and exposes Arena/Duel only behind __AUTHORING__; shipping the existing authoring controls is not the player flow. Keep debug panels and console restricted to authoring builds, and verify the production player build through visible controls.
 
 Add independent input devices per slot, press-to-join, per-player fighter selection, stage/rules selection, readiness, countdown, pause, results, rematch, and change-fighter flow. Keyboard plus gamepad and two gamepads must both work. Disconnect pauses with a clear reconnect path; one controller cannot operate both fighters.
 
@@ -157,3 +160,15 @@ The documents and five ImageGen outputs are saved. The first stock-match impleme
 Local verification passed 3,185 tests, typecheck, lint, production build, stock mechanics and presentation probes, and six mirrored recovery cases across Ilyra, Brann, and Mara. Visual iterations deepened the platform and furnace emblem, moved lamps out of recovery paths, and moved portrait-screen HUD cards below the game view.
 
 The complete roadmap and visual match remain in progress. The art still needs fighter/action refinement, detailed stage structures, trails, and complete lobby/results screens. Local controller ownership and defensive/attack depth remain upcoming work. The short performance sample exceeded render sub-budgets; it is not a performance pass. EVIDENCE.md records the exact measurements and limitations.
+
+## Defensive movement checkpoint
+
+Ground and air dodges now have three startup ticks, ten movement ticks, eight protected ticks, twelve end-lag ticks, and ten further cooldown ticks. Air dodge is available once before landing; rematch and respawn reset it. Damage during startup/end lag can punish the move. Dodging follows ordinary body collision and cannot tunnel through metal.
+
+The default keyboard action is K, rebindable in Controls. Left bumper dodges in stock matches. Existing campaign bindings remain intact, including older saved layouts whose clip key already occupied K. CPU fighters can request the same dodge after their existing delayed projectile perception and check the full roll distance before choosing a direction.
+
+The HUD shows separate recovery-burst and air-dodge resources. The renderer uses lowered/tucked poses, short silhouette echoes, a broken evasion arc, and fighter-colored recovery/launch trails. Reduced-flash settings suppress the echoes and reduce effect density. The illustrated plan includes native gameplay details for ready, ground dodge, air dodge, and recovery across Ilyra, Brann, and Mara.
+
+Milestone 2 still needs broader movement tuning, ledge behavior, and complete recovery-distance coverage. Later attack, controller, lobby, stage, and multiplayer work remains in scope.
+
+This checkpoint passed 3,194 tests across 250 files and the defensive movement browser probe. The current mode still runs through authoring-only entry points. The next implementation slice brings versus into the player build and assigns independent devices before further content expansion.

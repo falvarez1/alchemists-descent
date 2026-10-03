@@ -57,6 +57,7 @@ const GAMEPLAY_KEY_CODES = new Set([
   'KeyR',
   'KeyZ',
   'KeyT',
+  'KeyK',
   'Digit1',
   'Digit2',
   'Digit3',
@@ -228,7 +229,8 @@ export class InputManager {
           if (pressed(7)) ctx.player.firePressed = true;
           ctx.input.pourHeld = held(6);
           if (pressed(5) && !telekinesisHurl(ctx) && !releaseWeaverLeg(ctx, true)) ctx.flask.throwFlask(ctx);
-          if (pressed(4) && ctx.player.legClub) releaseWeaverLeg(ctx, false);
+          if (pressed(4) && ctx.arena?.stockMatch) ctx.input.queuedDodge = true;
+          else if (pressed(4) && ctx.player.legClub) releaseWeaverLeg(ctx, false);
           else if (pressed(4)) throwGlowseed(ctx);
           if (pressed(3)) this.selectWand(ctx.wands.active === 0 ? 1 : 0);
           // X: set down what the wand holds, else lift the body along the aim, else interact.
@@ -624,6 +626,7 @@ export class InputManager {
   }
 
   private clearHeldInput(): void {
+    this.ctx.input.queuedDodge = false;
     this.mobile?.reset();
     this.touchKeyCodes.clear();
     const { ctx } = this;
@@ -803,6 +806,7 @@ export class InputManager {
     // The fighter's tactical ability (Z) and ultimate (T): latched here, consumed inside the tick (src/fighters).
     else if (code === 'KeyZ' && !repeat && !ctx.player.dead) ctx.fighters?.press('tactical');
     else if (code === 'KeyT' && !repeat && !ctx.player.dead) ctx.fighters?.press('ultimate');
+    else if (code === 'KeyK' && !repeat && !ctx.player.dead && ctx.arena?.stockMatch) ctx.input.queuedDodge = true;
     else if (code === 'KeyE' && !ctx.player.climbing) {
       // E telekinesis (toggle): set down whatever the wand holds (a corpse, a
       // crate), else LIFT the body under the cursor — the fallen or a crate;

@@ -657,7 +657,7 @@ export class PlayerControl implements PlayerControlApi {
   damage(amount: number, kx: number, ky: number, src?: string): void {
     const ctx = this.ctx;
     const player = ctx.player;
-    if (player.dead || player.invuln > 0) return;
+    if (player.dead || player.invuln > 0 || ctx.arena?.isEvading(ctx.arena.bound)) return;
     // The arrival's grace (game/arrival): nothing lands while the floor's name is up.
     if (ctx.state.frameCount < (ctx.state.arrivalGraceUntil ?? -1)) return;
     if (ctx.state.debugGodMode) {
@@ -725,7 +725,7 @@ export class PlayerControl implements PlayerControlApi {
    */
   kick(ctx: Ctx): void {
     const player = ctx.player;
-    if (ctx.arena?.stockMatch && (!ctx.arena.runsBody(ctx.arena.bound) || ctx.arena.isLaunching(ctx.arena.bound))) return;
+    if (ctx.arena?.isActionLocked(ctx.arena.bound)) return;
     if (player.dead || player.climbing || ctx.state.mode !== 'play') return;
     if (startLegSwing(ctx)) return;
     if (this.kickCooldownT > 0) return;
@@ -1272,7 +1272,10 @@ export class PlayerControl implements PlayerControlApi {
     this.tickCorpse(ctx); // runs while dead too (watches the ragdoll settle)
     stepPlayerCostume(ctx, player, ctx.rigidBodies?.playerRagdoll ?? null); // cloth + hat, alive or fallen
     if (ctx.state.mode !== 'play' || player.dead) return;
+    const dodgeRequested = ctx.input.queuedDodge === true;
+    ctx.input.queuedDodge = false;
     player.levitating = false;
+    if (this.swinging || ctx.fighters?.ownsMovement === true) ctx.arena?.updateStockDodge(false, false);
     if (this.swinging) { player.firePressed = false; this.updateSwing(ctx); return; } // pendulum replaces normal movement (and the wand)
     // A fighter's dash / ram / tether (src/fighters) moves the body itself; the pose still follows the real displacement.
     if (ctx.fighters?.ownsMovement === true) {
@@ -1301,13 +1304,14 @@ export class PlayerControl implements PlayerControlApi {
     // (The chill's ice shell locks him too — briefly: entities/chill.)
     if (player.stunT > 0) player.stunT--;
     const restrained = channeling || player.pullT > 0 || player.stunT > 0 || (player.chill?.shell ?? 0) > 0;
+    const stockDodge = ctx.arena?.updateStockDodge(dodgeRequested, !restrained);
     const queuedJump = ctx.input.queuedJump;
     ctx.input.queuedJump = undefined;
-    const keys = restrained
+    const keys = restrained || stockDodge?.busy
       ? { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false }
       : queuedJump ? { ...ctx.input.keys, jump: true, wallJump: queuedJump === 'wall' || ctx.input.keys.wallJump } : ctx.input.keys;
     const stockRecovering = ctx.arena?.updateStockRecovery(keys.up && keys.jump) === true;
-    if (ctx.arena?.isLaunching(ctx.arena.bound)) { player.firing = false; player.firePressed = false; }
+    if (ctx.arena?.isActionLocked(ctx.arena.bound)) { player.firing = false; player.firePressed = false; }
     if (channeling) {
       player.recharge--;
       player.hp = Math.min(player.maxHp, player.hp + 0.19);
@@ -1613,7 +1617,12 @@ export class PlayerControl implements PlayerControlApi {
     const stepAccel = accel * (reversing ? 1.5 : 1) * (lp.moveSoftStart + (1 - lp.moveSoftStart) * Math.min(1, Math.abs(player.vx) / maxRun));
     const airGlideSpeed = lp.airGlideSpeed * movePace * body.airControl;
     const stockLaunching = ctx.arena?.isLaunching(ctx.arena.bound) === true;
-    if (!player.climbing && !stockLaunching) {
+    if (stockDodge?.phase === 'evade') {
+      player.vx = stockDodge.vx;
+      if (stockDodge.inAir) player.vy = stockDodge.vy;
+      player.climbing = false; player.crawling = false; player.diveT = 0;
+    }
+    if (!player.climbing && !stockLaunching && stockDodge?.phase !== 'evade') {
       // Powered input accelerates UP TO maxRun but never drags carried momentum
       // back DOWN — a fast run carried into a jump/levitate keeps its speed (you
       // can still actively brake or reverse). Pressing past maxRun is a no-op;
@@ -2071,7 +2080,7 @@ export class PlayerControl implements PlayerControlApi {
       // dive overrides the normal terminal velocity (5.0). The up-cap is a pure
       // safety net (levitDrag settles the climb well under it); keep it ≤ -3.7
       // so it never clips the jump impulse.
-      player.vy = stockLaunching ? clamp(player.vy, -24, 24) : stockRecovering ? clamp(player.vy, -9, 6)
+      player.vy = stockLaunching ? clamp(player.vy, -24, 24) : stockRecovering || stockDodge?.phase === 'evade' ? clamp(player.vy, -9, 6)
         : clamp(player.vy, ctx.params.player.vyCapUp * verticalPace, (player.diveT > 0 ? 6.4 : 5.0) * body.fall);
 
       // Move horizontally (sub-cell accumulator; step-up 5 standing, 2 crawling).

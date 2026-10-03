@@ -3,7 +3,7 @@ export const DEFAULT_BINDINGS = {
   climb: 'ShiftLeft', interact: 'KeyE', pour: 'KeyQ', drink: 'KeyX', kick: 'KeyF', carry: 'KeyG', lure: 'KeyV',
   clip: 'KeyP', mute: 'KeyN', lantern: 'KeyL',
   // The fighter's tactical ability and ultimate (src/fighters).
-  tactical: 'KeyZ', ultimate: 'KeyT',
+  tactical: 'KeyZ', ultimate: 'KeyT', dodge: 'KeyK',
 } as const;
 export type BindingAction = keyof typeof DEFAULT_BINDINGS;
 type Bindings = Record<BindingAction, string>;
@@ -14,7 +14,7 @@ let cached: Bindings | undefined;
  * predates one may already use its default key for something else; the new
  * action then takes a free spare key instead of invalidating the whole layout.
  */
-const LATE_ACTIONS: readonly BindingAction[] = ['clip', 'mute', 'lantern', 'tactical', 'ultimate'];
+const LATE_ACTIONS: readonly BindingAction[] = ['clip', 'mute', 'lantern', 'tactical', 'ultimate', 'dodge'];
 const SPARE_KEYS = ['KeyP', 'KeyK', 'KeyL', 'KeyO', 'KeyU', 'KeyY', 'KeyT', 'KeyN', 'KeyZ'];
 
 function allowed(code: unknown): code is string {
@@ -29,9 +29,15 @@ export function sanitizeBindings(value: unknown): Bindings {
     const code = (value as Partial<Bindings>)[action];
     if (allowed(code)) result[action] = code;
   }
-  for (const action of LATE_ACTIONS) {
+  for (const [order, action] of LATE_ACTIONS.entries()) {
     if (allowed((value as Partial<Bindings>)[action])) continue;
-    const taken = (code: string): boolean => Object.entries(result).some(([other, c]) => other !== action && c === code);
+    // Allocate older missing actions first. A newly added default must not steal
+    // the spare key an existing layout's earlier migration already chose.
+    const taken = (code: string): boolean => Object.entries(result).some(([other, c]) => {
+      if (other === action || c !== code) return false;
+      const later = LATE_ACTIONS.indexOf(other as BindingAction) > order;
+      return !later || allowed((value as Partial<Bindings>)[other as BindingAction]);
+    });
     if (taken(result[action])) result[action] = SPARE_KEYS.find((code) => !taken(code)) ?? result[action];
   }
   // Reject the whole malformed map rather than silently bind two actions to

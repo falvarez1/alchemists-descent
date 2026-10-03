@@ -19,6 +19,7 @@ import type { AiLevel } from '@/config/aiTiers';
 import { YARD } from '@/world/fighterArena';
 import { DUEL } from '@/world/duelStage';
 import { STOCK_STAGE } from '@/config/stockStage';
+import { STOCK_DODGE } from '@/config/stockMovement';
 import { AI_PERSONALITIES } from '@/config/aiPersonalities';
 import type { PersonalityId } from '@/config/aiPersonalities';
 import { CombatMemory } from '@/arena/ai/memory';
@@ -235,11 +236,13 @@ export class BasicBrain implements Brain {
         (me.grounded || me.levit > AI_BEHAVIOR.dodgeLevitReserve) && !me.climbing && self.player.stunT <= 0 && self.player.pullT <= 0) {
         const dir = Math.sign(me.x - incoming.shot.x) || this.strafeDir;
         this.dodgeJump = Math.abs(incoming.shot.vx) >= Math.abs(incoming.shot.vy) && ctx.physics.entityFree(me.x, me.y - 24, PLAYER_HALF_W, PLAYER_H);
-        this.dodgeDir = safeFooting(ctx, me.x + dir * AI_BEHAVIOR.hazardLookahead, me.y) ? dir : safeFooting(ctx, me.x - dir * AI_BEHAVIOR.hazardLookahead, me.y) ? -dir : 0;
+        const dodgeDistance = ctx.arena?.stockMatch ? STOCK_DODGE.groundSpeed * STOCK_DODGE.active + PLAYER_HALF_W + 6 : AI_BEHAVIOR.hazardLookahead;
+        this.dodgeDir = safeFooting(ctx, me.x + dir * dodgeDistance, me.y) ? dir : safeFooting(ctx, me.x - dir * dodgeDistance, me.y) ? -dir : 0;
         if (this.dodgeJump || this.dodgeDir !== 0) {
           this.dodgeUntil = tick + AI_BEHAVIOR.dodgeHold;
           this.nextDodge = tick + AI_BEHAVIOR.dodgeCooldown * (1.5 - 0.6 * personality.dodge - 0.25 * personality.defense);
           st.stats.dodges++;
+          if (ctx.arena?.stockMatch && !ctx.arena.isActionLocked(self.slot)) self.input.queuedDodge = true;
         }
       }
       if (tick < this.dodgeUntil) {

@@ -78,6 +78,23 @@ function setup(ready = Promise.resolve(), realFighters = false): { ctx: Ctx; are
 }
 
 describe('EventBus slot scoping', () => {
+  test('stock dodges reject blows during evasion and lock attacks through end lag', async () => {
+    const { arena, base } = setup();
+    await arena.addRival('brann-rook', 300, 100);
+    arena.configureStocks({ left: 0, right: 600, top: 0, bottom: 500 });
+    for (let i = 0; i < 121; i++) arena.endTick();
+    base.player.grounded = true;
+    arena.updateStockDodge(true, true);
+    expect(arena.isActionLocked(0)).toBe(true); expect(arena.isEvading(0)).toBe(false);
+    for (let i = 0; i < 3; i++) arena.updateStockDodge(false, true);
+    expect(arena.isEvading(0)).toBe(true);
+    arena.takeStockDamage(40, 3, 0); expect(arena.stockMatch?.fighters[0].volatility).toBe(0);
+    for (let i = 0; i < 11; i++) arena.updateStockDodge(false, true);
+    expect(arena.isEvading(0)).toBe(false); expect(arena.isActionLocked(0)).toBe(true);
+    arena.takeStockDamage(40, 0, 0); expect(arena.stockMatch?.fighters[0].volatility).toBe(40);
+    arena.reset(); expect(arena.stockDodge(0)?.phase).toBe('idle'); expect(arena.stockDodge(0)?.airReady).toBe(true);
+    arena.configureStocks(null); expect(arena.isActionLocked(0)).toBe(false);
+  });
   test('a tagged handler hears a per-fighter event only while its slot is bound; untagged and global events reach everyone', () => {
     const bus = new EventBus();
     const heard: string[] = [];

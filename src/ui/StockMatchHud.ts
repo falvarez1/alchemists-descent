@@ -1,5 +1,6 @@
 import type { Ctx } from '@/core/types';
 import { FIGHTER_DEFS, fighterPortraitUrl } from '@/content/fighters';
+import { getBindings, keyLabel } from '@/input/bindings';
 
 /** Player-facing stock readout; the existing arena panel remains the training control. */
 export class StockMatchHud {
@@ -7,8 +8,9 @@ export class StockMatchHud {
   private readonly timer = document.createElement('div');
   private readonly message = document.createElement('div');
   private readonly rematch = document.createElement('button');
+  private readonly hint = document.createElement('div');
   private readonly offs: Array<() => void> = [];
-  private readonly cards: Array<{ root: HTMLElement; portrait: HTMLImageElement; name: HTMLElement; percent: HTMLElement; stocks: HTMLElement; fuel: HTMLMeterElement }> = [];
+  private readonly cards: Array<{ root: HTMLElement; portrait: HTMLImageElement; name: HTMLElement; percent: HTMLElement; stocks: HTMLElement; defense: HTMLElement; fuel: HTMLMeterElement }> = [];
 
   constructor(private readonly ctx: Ctx, onRematch: () => void) {
     this.offs.push(ctx.events.on('levelChanged', () => this.update()), ctx.events.on('modeChanged', () => this.update()));
@@ -21,19 +23,19 @@ export class StockMatchHud {
     this.rematch.type = 'button'; this.rematch.textContent = 'Rematch';
     this.rematch.addEventListener('click', () => { this.rematch.blur(); onRematch(); });
     this.root.append(this.timer, this.message, this.rematch);
-    const hint = document.createElement('div'); hint.className = 'stock-controls';
-    hint.textContent = 'Space: jump / levitate   ·   Up + Space in air: recovery burst   ·   Aim + fire: build volatility';
-    this.root.append(hint);
+    this.hint.className = 'stock-controls';
+    this.root.append(this.hint);
     for (let slot = 0; slot < 2; slot++) {
       const root = document.createElement('div'), name = document.createElement('div');
       const percent = document.createElement('strong'), stocks = document.createElement('div'), fuel = document.createElement('meter');
       const portrait = document.createElement('img');
+      const defense = document.createElement('div'); defense.className = 'stock-defense';
       portrait.className = 'stock-portrait'; portrait.alt = ''; portrait.hidden = true;
       root.className = `stock-fighter stock-fighter-${slot}`;
       name.className = 'stock-name'; percent.className = 'stock-percent'; stocks.className = 'stock-lives';
       fuel.min = 0; fuel.max = 1; fuel.setAttribute('aria-label', `Player ${slot + 1} recovery fuel`);
-      root.append(portrait, name, percent, stocks, fuel); this.root.append(root);
-      this.cards.push({ root, portrait, name, percent, stocks, fuel });
+      root.append(portrait, name, percent, stocks, defense, fuel); this.root.append(root);
+      this.cards.push({ root, portrait, name, percent, stocks, defense, fuel });
     }
     (document.getElementById('canvas-holder') ?? document.body).append(this.root);
   }
@@ -44,6 +46,8 @@ export class StockMatchHud {
     this.root.hidden = !visible;
     document.body.classList.toggle('stock-match', visible);
     if (!visible || !match || !arena) return;
+    const keys = getBindings();
+    this.hint.textContent = `${keyLabel(keys.jump)}: jump   ·   ${keyLabel(keys.up)} + ${keyLabel(keys.jump)} in air: recover   ·   ${keyLabel(keys.dodge)} / LB: dodge   ·   Aim + fire: build volatility`;
     const seconds = Math.ceil(match.remainingTicks / 60);
     this.timer.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
     this.timer.setAttribute('aria-label', `${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds remaining`);
@@ -60,6 +64,9 @@ export class StockMatchHud {
       card.stocks.textContent = f ? '●'.repeat(f.stocks) + '○'.repeat(Math.max(0, 3 - f.stocks)) : '○ ○ ○';
       card.stocks.setAttribute('aria-label', `${f?.stocks ?? 0} stocks remaining`);
       card.fuel.value = b ? b.player.levit / Math.max(1, b.player.maxLevit) : 1;
+      const dodge = arena.stockDodge(slot), burst = arena.canRecover(slot);
+      card.defense.textContent = `BURST ${burst ? '◆' : '◇'}  AIR ${dodge?.airReady ? '◆' : '◇'}`;
+      card.defense.setAttribute('aria-label', `Recovery burst ${burst ? 'ready' : 'spent'}, air dodge ${dodge?.airReady ? 'ready' : 'spent'}`);
     }
     let message = '';
     if (match.state === 'idle') message = 'Choose a rival to begin';

@@ -194,8 +194,10 @@ test('ordinary input execution does not move the body or grant resources, and re
   expect(self.input.keys.right).toBe(true);
   expect(self.input.queuedJump).toBe('jump');
   expect(self.player).toMatchObject({ x: 20, y: 30, hp: 80, firing: true });
+  self.input.queuedDodge = true;
   hand.release();
   expect(self.player.firing).toBe(false);
   expect(self.input.queuedJump).toBeUndefined();
+  expect(self.input.queuedDodge).toBe(false);
   expect(self.input.keys.right).toBe(false);
 });

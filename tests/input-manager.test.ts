@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { isGameplayKeyCode, isKeyboardUiOwnerActive } from '@/input/InputManager';
+import { sanitizeBindings } from '@/input/bindings';
 
 describe('gameplay input contract', () => {
+  it('claims dodge and preserves a legacy assignment of its new default key', () => {
+    expect(isGameplayKeyCode('KeyK')).toBe(true);
+    const legacy = sanitizeBindings({ clip: 'KeyK' });
+    expect(legacy.clip).toBe('KeyK'); expect(legacy.dodge).not.toBe('KeyK');
+    expect(new Set(Object.values(legacy)).size).toBe(Object.keys(legacy).length);
+  });
   it('claims the vine/body grab key as gameplay input', () => {
     expect(isGameplayKeyCode('KeyG')).toBe(true);
   });

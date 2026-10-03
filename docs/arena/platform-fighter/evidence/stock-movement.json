@@ -1,0 +1,95 @@
+{
+  "keyboard": {
+    "phase": "evade",
+    "x": 706,
+    "locked": true,
+    "queued": false,
+    "stun": 0,
+    "match": "fighting",
+    "ownMove": false,
+    "focused": "",
+    "keys": {
+      "left": false,
+      "right": true,
+      "up": false,
+      "jump": false,
+      "wallJump": false,
+      "down": false,
+      "grab": false
+    }
+  },
+  "mechanics": {
+    "startup": "startup",
+    "evadeDamage": 0,
+    "distance": 38,
+    "attackProjectiles": 0,
+    "spentDuringDodge": 0,
+    "lag": "recovery",
+    "lagDamage": 8,
+    "airUsed": true,
+    "wallX": 775
+  },
+  "gallery": [
+    {
+      "fighter": "ilyra-voss",
+      "action": "ready",
+      "file": "ilyra-voss-ready.png"
+    },
+    {
+      "fighter": "ilyra-voss",
+      "action": "ground-dodge",
+      "file": "ilyra-voss-ground-dodge.png"
+    },
+    {
+      "fighter": "ilyra-voss",
+      "action": "air-dodge",
+      "file": "ilyra-voss-air-dodge.png"
+    },
+    {
+      "fighter": "ilyra-voss",
+      "action": "recover",
+      "file": "ilyra-voss-recover.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "ready",
+      "file": "brann-rook-ready.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "ground-dodge",
+      "file": "brann-rook-ground-dodge.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "air-dodge",
+      "file": "brann-rook-air-dodge.png"
+    },
+    {
+      "fighter": "brann-rook",
+      "action": "recover",
+      "file": "brann-rook-recover.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "ready",
+      "file": "mara-quell-ready.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "ground-dodge",
+      "file": "mara-quell-ground-dodge.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "air-dodge",
+      "file": "mara-quell-air-dodge.png"
+    },
+    {
+      "fighter": "mara-quell",
+      "action": "recover",
+      "file": "mara-quell-recover.png"
+    }
+  ],
+  "errors": []
+}

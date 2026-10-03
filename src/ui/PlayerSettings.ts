@@ -38,7 +38,7 @@ export const BINDING_LABELS: Readonly<Record<BindingAction, string>> = {
   jump: 'Jump / levitate', climb: 'Grab a wall', interact: 'Interact / lift / siphon', pour: 'Pour',
   drink: 'Drink', kick: 'Kick / hurl', carry: 'Swing on vines / carry', lure: 'Throw a glowseed', clip: 'Save a clip', mute: 'Mute all sound',
   lantern: 'Hood the lantern',
-  tactical: 'Fighter: tactical ability', ultimate: 'Fighter: ultimate',
+  tactical: 'Fighter: tactical ability', ultimate: 'Fighter: ultimate', dodge: 'Stock duel: dodge',
 };
 
 /**

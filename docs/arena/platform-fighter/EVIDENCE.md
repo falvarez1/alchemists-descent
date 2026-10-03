@@ -5,7 +5,9 @@ Local environment: isolated worktree, Vite 127.0.0.1:5217, headless Edge through
 
 ## Delivered
 
-The Markdown and responsive offline HTML plans cover the full roadmap. Four ImageGen sheets cover the primary match, four stages, ten fighters/actions, and local-versus flow. A fifth ImageGen output is the runtime Foundry backdrop in public/assets/arena/foundry-backdrop.png. Exact prompts are in concepts/prompts.md. The HTML also shows an actual gameplay capture.
+The Markdown and responsive offline HTML plans cover the full roadmap. Four ImageGen sheets cover the primary match, four stages, ten fighters/actions, and local-versus flow. A fifth output is the runtime Foundry backdrop in public/assets/arena/foundry-backdrop.png. The sixth, concepts/motion-defense.png, guides defensive poses and effects using the existing fighter portraits as references. Exact prompts are in concepts/prompts.md and concepts/motion-defense-prompt.md. The HTML shows actual gameplay and twelve native-resolution movement details.
+
+The current playable implementation is available in the local authoring build. Inspection confirmed that Game constructs ArenaSlots only with __AUTHORING__, and the title's Arena/Duel entries have the same gate. Player-build access and independent local controller ownership are required next steps, not delivered features.
 
 ## First implementation slice
 
@@ -21,7 +23,7 @@ The Markdown and responsive offline HTML plans cover the full roadmap. Four Imag
 
 ## Validation
 
-- Whole suite: 249 files and 3,185 tests passed.
+- Whole suite after defensive movement: 250 files and 3,194 tests passed.
 - Typecheck, ESLint, and production build passed. Vite reports large output chunks; no bundle optimization is claimed.
 - Existing health-duel runtime probe: 16 checks passed, including exactly-once damage, owner binding, and listener cleanup.
 - Stock browser probe passed: damage, launch movement, stocks, protected respawn, recovery by ordinary inputs, winner, geometry, stable camera, and HUD restoration.
@@ -29,6 +31,7 @@ The Markdown and responsive offline HTML plans cover the full roadmap. Four Imag
 - Stock presentation: portrait images load, cards fit at 1280 and 390 pixels, pause does not overlap the cards, and sound settings open inside the view. Portrait layouts place the cards below the small game view.
 - Six input-driven recovery cases passed: Ilyra, Brann, and Mara from both sides, all landing with three stocks intact.
 - Real-time bot dogfood: twenty-second bouts with actual simulation/rendering and no page errors. These are smoke playtests, not a full balance or performance study.
+- Defensive movement browser probe passed: a real keyboard press starts the dodge; protected hits add no volatility; the active move travels 38 cells in the measured seven ticks; startup/end lag remain vulnerable; one air dodge is consumed; a metal wall stops the body. Casting, kick, flask throw, held pouring, and tactical actions cannot bypass dodge commitment. Twelve fighter/pose captures were saved.
 
 ## Measured behavior
 
@@ -38,7 +41,7 @@ Ilyra recovered using ordinary direction and jump inputs from x=599, y=650. Afte
 
 The final mechanics-probe bot sample produced four attributed ring-outs in about twenty seconds. Earlier samples included an unforced CPU ring-out. Recovery strategy needs longer multi-fighter sampling.
 
-A separate 300-frame local bot sample with GPU composition enabled recorded median frame work of 4.46 ms and p95 of 8.82 ms. Render p95 was 6.17 ms, above the 5 ms budget; composition p95 was 5.81 ms, above the 3.5 ms budget. A maximum frame interval of 486 ms was also recorded and has not been attributed. Earlier samples varied, including larger entity spikes. This is a short development-server measurement, not a controlled before/after benchmark or a performance pass. Fixed platform material calculations are cached; the renderer still checks surviving cells each frame.
+A separate 300-frame local bot sample after the defensive movement pass, with GPU composition enabled, recorded median frame work of 3.27 ms and p95 of 7.275 ms. Render p95 was 5.425 ms, above the 5 ms budget; composition p95 was 5.115 ms, above the 3.5 ms budget. A maximum frame interval of 485.365 ms was also recorded and has not been attributed. Earlier samples varied, including larger entity spikes. This is a short development-server measurement, not a controlled before/after benchmark or a performance pass. Fixed platform material calculations are cached; the renderer still checks surviving cells each frame.
 
 ## Dogfood corrections
 
@@ -52,14 +55,19 @@ A separate 300-frame local bot sample with GPU composition enabled recorded medi
 8. The training panel mislabeled a simultaneous final-stock draw as a win. A browser regression reproduced it; both result readouts now agree and the panel shows percentages for stock play.
 9. Pause obscured the lower-right stock card, and the portrait HUD covered the fight despite fitting inside the screen. Browser assertions reproduced both issues. Controls moved to the upper left; portrait cards moved below the game view.
 10. The existing health-duel lightning ownership probe intermittently missed because it relied on a random arc crossing a gap. Its fixture now starts at guaranteed contact range and asserts exactly one damage call, preserving the ownership check without relying on aim randomness.
+11. Adding K for dodge displaced a legacy saved clip binding. The existing regression failed; migration now allocates older missing actions first and preserves their key.
+12. Bot handoff left a queued dodge behind. The failing release regression now proves the action is cleared.
+13. Fighter-owned movement and vine swinging bypassed dodge advancement, potentially leaving protection active. Two failing regressions now prove the handoff cancels the dodge.
+14. Held pouring consumed 70 flask units during the dodge browser scenario. The action lock now covers held pouring and siphoning; the same probe records zero units spent.
+15. Initial motion echoes were thin stick figures. The second art pass fills heads and clothing silhouettes and raises the recovery arm. The gallery retains actual native game detail for comparison.
 
 ## Visual comparison and remaining gaps
 
 The actual stage follows the concept's slate refinery depth, amber platform edges, teal lamps, symmetric geometry, and open space underneath. The renderer samples the generated backdrop; platforms and lamp housings are real cells.
 
-The platform now has a deeper tapered body, copper ribs, inset gear-and-flask medallion, and teal lamps. It remains simpler than the concept. Existing fighters retain their authored clothing and proportions; existing portraits are reused in the HUD. The new concept sheet's amber Ilyra and ivory Brann differ from the established teal coat and black iron, so character art needs a reconciled art pass. Authored launch/recovery trails, richer structural detail, and complete screen flows remain unfinished. The concepts have NOT been declared matched.
+The platform now has a deeper tapered body, copper ribs, inset gear-and-flask medallion, and teal lamps. It remains simpler than the concept. Existing fighters retain their authored clothing and proportions; existing portraits are reused in the HUD. The first general sheet's amber Ilyra and ivory Brann differed from the established teal coat and black iron; the new motion sheet uses the established portraits to correct that drift. Dodge anticipation, tucked air poses, silhouette echoes, evasion arcs, and recovery/launch accents are implemented. The native sprites and echoes remain simpler than the new concept. Richer structural detail, full roster animation, and complete screen flows remain unfinished. The concepts have NOT been declared matched.
 
-Next: broader recovery distances and all-roster coverage, universal dodges, distinct attack roles/animations, independent local controllers, full lobby/results, full roster art, remaining stages, optional hazards/items, and the group-match proxy redesign. Controlled performance comparison, renderer parity, physical-controller feel, and human enjoyment remain unverified.
+Next: player-build versus access, independent local controllers, broader recovery distances and all-roster coverage, distinct attack roles/animations, full lobby/results, full roster art, remaining stages, optional hazards/items, and the group-match proxy redesign. Controlled performance comparison, renderer parity, physical-controller feel, and human enjoyment remain unverified.
 
 ## Saved evidence
 
@@ -71,11 +79,12 @@ Next: broader recovery distances and all-roster coverage, universal dodges, dist
 - evidence/stock-sound-1280.png and evidence/stock-sound-390.png: sound controls inside the view.
 - evidence/stock-match-results.json and evidence/stock-dogfood.json: mechanics and bout snapshots.
 - evidence/stock-recovery-matrix.json, evidence/stock-presentation.json, and evidence/stock-performance.json: recovery, layout, and timing results.
+- evidence/stock-movement.json, evidence/stock-dodge.png, and the fighter/action PNGs: defensive mechanics and rendered motion details.
 
 ## Reproduce locally
 
 Run npm run dev -- --host 127.0.0.1 --port 5217 --strictPort from the isolated worktree. The HTML is at /docs/arena/platform-fighter/IMPLEMENTATION-PLAN.html. The stock browser probe opens the Duel test level, chooses Ilyra, selects Stock duel in Match rules, and adds Brann through visible controls.
 
-Run node scripts/verify-stock-match.mjs for mechanics and recovery; node scripts/verify-stock-presentation.mjs for HUD and the short timing sample; node scripts/capture-arena-baseline.mjs http://127.0.0.1:5217/ --docs-only for the illustrated plan. The baseline script without --docs-only captures the health room; preserve the saved original when comparing later versions.
+Run node scripts/verify-stock-match.mjs for mechanics and recovery; node scripts/verify-stock-movement.mjs for defensive movement and native captures; node scripts/verify-stock-presentation.mjs for HUD and the short timing sample; node scripts/capture-arena-baseline.mjs http://127.0.0.1:5217/ --docs-only for the illustrated plan. The baseline script without --docs-only captures the health room; preserve the saved original when comparing later versions.
 
 The goal remains active. The plans and first implementation slice are delivered; the complete roadmap and concept-to-runtime visual match are not finished.

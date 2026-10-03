@@ -145,6 +145,7 @@ export class BotDriver {
     const k = input.keys;
     k.left = k.right = k.up = k.jump = k.wallJump = k.down = k.grab = false;
     input.queuedJump = undefined;
+    input.queuedDodge = false;
     this.self.player.firing = false;
     this.self.player.fireBlockedUntilRelease = false;
     this.self.player.firePressed = false;
@@ -161,6 +162,7 @@ export class BotDriver {
       const k = this.self.input.keys;
       k.left = k.right = k.up = k.jump = k.wallJump = k.down = k.grab = false;
       this.self.input.queuedJump = undefined;
+      this.self.input.queuedDodge = false;
       this.self.player.firing = this.self.player.firePressed = false;
       this.self.fighters?.releaseInputs?.();
       return;

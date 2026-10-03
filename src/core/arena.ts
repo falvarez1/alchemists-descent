@@ -1,7 +1,7 @@
 import type { ChillApi, Enemy, EnemyDamageSource, FlaskApi, InputState, PlayerControlApi, PlayerState, Projectile, WandsApi } from '@/core/types';
 import type { FighterApi } from '@/core/fighters';
 import type { FighterId } from '@/content/fighters';
-import type { BlastZone, StockMatchView } from '@/core/arenaMatch';
+import type { BlastZone, StockDodgeView, StockMatchView } from '@/core/arenaMatch';
 
 /**
  * THE ARENA CONTRACT (docs/arena/ARCHITECTURE.md, D-001): two fighters in one world.
@@ -50,6 +50,12 @@ export interface ArenaApi {
   /** Consumes already-reduced damage in a stock match; true means health must not change. */
   takeStockDamage(amount: number, kx: number, ky: number): boolean;
   isLaunching(slot: number): boolean;
+  isActionLocked(slot: number): boolean;
+  isEvading(slot: number): boolean;
+  stockDodge(slot: number): StockDodgeView | null;
+  updateStockDodge(requested: boolean, canAct: boolean): StockDodgeView | null;
+  canRecover(slot: number): boolean;
+  isRecovering(slot: number): boolean;
   /** One upward recovery burst per airborne sequence, requested by up + a fresh jump. */
   updateStockRecovery(requested: boolean): boolean;
   /** True while a rival exists. Every arena branch in the engine is behind this. */

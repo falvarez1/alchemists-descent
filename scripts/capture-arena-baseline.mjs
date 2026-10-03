@@ -9,7 +9,7 @@ mkdirSync(out, { recursive: true });
 const browser = await launchBrowser();
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-  await page.goto(url + 'docs/arena/platform-fighter/IMPLEMENTATION-PLAN.html');
+  await page.goto(url + 'docs/arena/platform-fighter/IMPLEMENTATION-PLAN.html', { waitUntil: 'networkidle' });
   await page.locator('img').evaluateAll(async images => { for (const image of images) image.loading = 'eager'; await Promise.all(images.map(image => image.decode())); });
   assert.ok(await page.locator('img').evaluateAll(images => images.every(i => i.naturalWidth > 0)), 'Every plan image loads');
   await page.screenshot({ path: `${out}/plan-desktop.png` });

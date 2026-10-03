@@ -1,4 +1,13 @@
 export interface BlastZone { left: number; right: number; top: number; bottom: number }
+export interface StockDodgeView {
+  readonly phase: 'idle' | 'startup' | 'evade' | 'recovery';
+  readonly busy: boolean;
+  readonly evading: boolean;
+  readonly airReady: boolean;
+  readonly inAir: boolean;
+  readonly vx: number;
+  readonly vy: number;
+}
 export interface StockRules {
   stocks: number;
   timeTicks: number;
