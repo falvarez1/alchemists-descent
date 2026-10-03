@@ -228,6 +228,9 @@ blink; Kest can still dash in midair. Other kits check their effective range,
 target health or nearby combat. An unrelated ready-time timeout no longer spends an ability. A movement ability's escape aim does not also
 fire the wand backward that tick.
 
+The wave probe retains altered terrain between fights. Separate clear-ground scenarios verify Kest's dash and Selene's blink under close
+pressure. Duel participation checks actual attacks, movement and damage on both sides; a safe tactical opportunity depends on the terrain.
+
 ### Tune a running bot
 
 In a development or authoring build, open the game console:
