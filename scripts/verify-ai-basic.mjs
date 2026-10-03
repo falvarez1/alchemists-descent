@@ -58,7 +58,7 @@ async function fight(id, seed, lvl, wave = 'ring') {
   }, { id, seed, wave });
   const r = await page.evaluate(async ({ lvl }) => {
     const ctx = window.__game.ctx, p = ctx.player;
-    const { safeDrop, safeTravel, dangerousCell } = await import('/src/arena/ai/combat.ts');
+    const { safeDrop, safeTravel, safeHopClearance, dangerousCell } = await import('/src/arena/ai/combat.ts');
     const out = await ctx.console.exec(`ai basic ${lvl}`);
     let cleared = -1, diedAt = -1, idleMax = 0, idle = 0, zUsed = 0, tUsed = 0;
     const z0 = ctx.fighters.view.tactical.usedAt, t0 = ctx.fighters.view.ultimate.usedAt;
@@ -81,6 +81,7 @@ async function fight(id, seed, lvl, wave = 'ring') {
             if (dangerousCell(type)) cells.push({ x, y, type });
           }
           hazardTrace.push({ t: i, x: p.x, y: p.y, goal: state.goalX, stats: { ...state.stats },
+            levit: p.levit, hops: [2, 3, 4].map(span => safeHopClearance(ctx, p.x, p.y, p.x + dir * 18 * span, Math.min(64, 24 + Math.max(0, p.levit - 16) * .8))),
             nearDrop: safeDrop(ctx, p.x + dir * 18, p.y), farDrop: safeDrop(ctx, p.x + dir * 36, p.y),
             corridor: safeTravel(ctx, p.x, p.y, p.x + dir * 18), cells: cells.slice(0, 40) });
         }
