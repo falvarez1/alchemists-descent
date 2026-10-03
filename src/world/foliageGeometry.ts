@@ -1,6 +1,7 @@
 export interface SurfaceFrondPose {
   x: number; y: number; height: number; seed: number; side: number;
   angle: number; part: number; burn: number;
+  foreground?: boolean;
 }
 
 /** Small real-cell crowns share their bent outline with heat contact. Roots
@@ -19,14 +20,14 @@ export function visitSurfaceFronds(p: SurfaceFrondPose,
     }
     return;
   }
-  for (const dir of [-1, 0, 1]) {
+  for (const dir of p.foreground ? [-2, -1, 0, 1, 2] : [-1, 0, 1]) {
     let ax = p.x + .5, ay = p.y + .5;
-    const spread = dir * (2 + p.seed % 3 + p.part * 5);
+    const spread = dir * (2 + p.seed % 3 + (p.foreground ? 2 : 0) + p.part * 5);
     for (let k = 1; k <= 6; k++) {
       const t = k / 6, bx = p.x + .5 + spread * t + p.angle * height * t * t;
       const by = p.y + .5 - height * t + Math.abs(dir) * t * 2;
       visit(ax, ay, bx, by, false);
-      if (k < 6) visit(bx, by, bx + (k % 2 ? -1 : 1) * (2 - t * .7), by - 1.2, true);
+      if (k < 6) visit(bx, by, bx + (k % 2 ? -1 : 1) * ((p.foreground ? 4 : 2) - t * .7), by - 1.2, true);
       ax = bx; ay = by;
     }
   }

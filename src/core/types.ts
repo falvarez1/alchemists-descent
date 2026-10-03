@@ -3875,6 +3875,8 @@ export interface Ctx {
   narrator?: NarratorApi;
   /** Living plants that fall (game/Flora); absent in small test contexts. */
   flora?: FloraApi;
+  /** Real foreground plants conceal a settled player; independent of rendering quality. */
+  foliageCover?: FoliageCoverApi;
   /** Remains as physical objects (creatures/corpses); absent in small test contexts. */
   corpses?: CorpsesApi;
   /** The story: pipes, Pell, echoes, prologues, the Kiln escape (game/story); absent in small test contexts. */
@@ -3994,4 +3996,12 @@ export interface LightQueryApi {
   darkness(x: number, y: number): number;
   /** True while the player has hooded their lantern (stealth). */
   readonly hooded: boolean;
+}
+
+export interface FoliageCoverApi {
+  readonly hidden: boolean;
+  readonly coverage: number;
+  readonly progress: number;
+  update(ctx: Ctx): void;
+  reveal(): void;
 }

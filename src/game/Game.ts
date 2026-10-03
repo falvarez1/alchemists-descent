@@ -5,6 +5,7 @@ import { EventBus } from '@/core/events';
 import { updateLivingExpedition } from '@/game/LivingExpedition';
 import { updateHabitatMotion } from '@/game/HabitatMotion';
 import { updateSurfaceFoliage } from '@/game/SurfaceFoliage';
+import { FoliageCover } from '@/game/FoliageCover';
 import { Flora } from '@/game/Flora';
 import { advanceTrickshotClock } from '@/combat/Trickshot';
 import { TeaMachine } from '@/game/TeaMachine';
@@ -299,6 +300,9 @@ export class Game {
     const flora = new Flora(ctx);
     ctx.flora = flora;
     this.disposables.push(flora);
+    const foliageCover = new FoliageCover(ctx);
+    ctx.foliageCover = foliageCover;
+    this.disposables.push(foliageCover);
     ctx.playerCtl = new PlayerControl(ctx);
     // The graded body cold (brine, nitrogen, frost in; fire, lava, embers out).
     const chill = new ChillSystem(ctx);
@@ -1001,6 +1005,7 @@ export class Game {
       }
       if (!debugActive) { ctx.flask.update(ctx); ctx.arena?.runRivals('flask'); }
       const enemyStart = performance.now();
+      ctx.foliageCover?.update(ctx);
       ctx.enemyCtl.update(ctx); // self-gates per enemy via ctx.debug.frozenEnemy
       let creatureMs = performance.now() - enemyStart;
       // Rigid bodies integrate against THIS frame's settled terrain, after the

@@ -64,6 +64,18 @@ describe('sight scales with the light on the alchemist', () => {
 });
 
 describe('creatures answer the beam', () => {
+  it('does not recover an exact lantern fix through concealing foliage', () => {
+    const ctx = makeCtx(query({ wand: .4 }));
+    ctx.foliageCover = { hidden: true, coverage: 1, progress: 1, update: () => {}, reveal: () => {} };
+    const e = enemy('slime', 470, 500), mind = ensureCreatureMind(e, 1);
+    respondToLight(ctx, e, DEF, mind);
+    expect(mind.visible).toBe(false);
+    expect(mind.targetX).toBe(e.x);
+    ctx.foliageCover = undefined;
+    respondToLight(ctx, e, DEF, mind);
+    expect(mind.visible).toBe(true);
+  });
+
   it('reads the aimed cone, not the omni spill', () => {
     const ctx = makeCtx(query());
     expect(inBeamCone(ctx, 480, 491)).toBe(true); // straight down the aim (+x)

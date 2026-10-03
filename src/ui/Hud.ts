@@ -1,4 +1,5 @@
 import type { Ctx, PerkId } from '@/core/types';
+import { FOLIAGE_COVER } from '@/config/foliage';
 import { touchHint } from '@/ui/touchLabels';
 import { livingObjective } from '@/game/LivingExpedition';
 import { lockObjective } from '@/game/lockText';
@@ -121,6 +122,7 @@ export class Hud {
   private flaskMaterial: number | null | undefined = undefined;
   private readonly flaskSlots: Array<{ root: HTMLElement; fill: HTMLElement; count: HTMLElement; name: HTMLElement }> = [];
   private readonly soundCaption = document.createElement('div');
+  private readonly foliageReadout = document.createElement('div');
   private readonly toastStack: ToastStack;
   /** Empty slot beside the vitals, reserved for the run layer's return-phial row. */
   private readonly vitalsAside = document.createElement('div');
@@ -197,6 +199,10 @@ export class Hud {
     this.vitalsAside.id = 'vitals-aside';
     this.vitalsAside.className = 'vitals-aside';
     el('hud-left').appendChild(this.vitalsAside);
+    this.foliageReadout.id = 'foliage-cover';
+    this.foliageReadout.hidden = true;
+    this.foliageReadout.setAttribute('role', 'status');
+    el('hud-left').appendChild(this.foliageReadout);
     this.potionChips = new PotionChips(ctx, this.vitalsAside);
     for (const id of ['hp-fill', 'mana-fill']) {
       const fill = el(id);
@@ -388,6 +394,7 @@ export class Hud {
     el('objective').closest('.wave-readout')!.appendChild(el('treasure-row'));
     this.potionChips?.dispose();
     this.vitalsAside.remove();
+    this.foliageReadout.remove();
     for (const { ghost } of this.vitalGhosts.splice(0)) ghost.remove();
     this.bannerKicker.remove();
     this.bannerRule.remove();
@@ -751,6 +758,15 @@ export class Hud {
   }
 
   update(ctx: Ctx): void {
+    const cover = ctx.foliageCover;
+    const coverVisible = ctx.state.mode === 'play' && !ctx.player.dead && (cover?.coverage ?? 0) >= FOLIAGE_COVER.minCoverage;
+    this.foliageReadout.hidden = !coverVisible;
+    if (coverVisible) {
+      const text = cover!.hidden ? 'Concealed in foliage' : cover!.progress > 0 ? 'Settling into cover…' : 'Keep still to hide';
+      if (this.foliageReadout.textContent !== text) this.foliageReadout.textContent = text;
+      this.foliageReadout.classList.toggle('concealed', cover!.hidden);
+      this.foliageReadout.title = 'Dark teal fronds conceal you when still. Attacks and close contact reveal you. Creatures can still hear you.';
+    }
     const trick = ctx.fx.trickshot;
     this.trickshotReadout.hidden = !ctx.state.trickshot?.enabled || !trick || trick.labelMs <= 0 || ctx.player.dead;
     const trickText = trick && trick.labelMs > 0 ? trick.label : '';

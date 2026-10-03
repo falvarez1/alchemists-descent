@@ -1181,7 +1181,7 @@ export class Enemies implements EnemyControlApi {
   private watchLair(e: Enemy, def: EnemyDef, lair: BossLair, mind: CreatureMind): void {
     const ctx = this.ctx;
     const p = ctx.player;
-    if (p.dead || e.hp <= 0) return;
+    if (p.dead || e.hp <= 0 || ctx.foliageCover?.hidden) return;
     const dx = p.x - mind.homeX;
     const dy = p.y - mind.homeY;
     if (Math.abs(dx) > lair.halfW || dy < -lair.up || dy > lair.down) return;
@@ -2640,6 +2640,7 @@ export class Enemies implements EnemyControlApi {
       crouching: ctx.input?.keys.down === true,
       // (a fighter's smoke, stillness in cover, an echo: src/fighters concealment scales how far eyes reach)
       light: playerVisibility(ctx) * (1 - (ctx.fighters?.concealment() ?? 0)),
+      concealed: ctx.foliageCover?.hidden === true,
     };
     while (this.cues.length > 0 && ctx.state.frameCount - this.cues[0].tick > 90) this.cues.shift();
     if (ctx.player.grounded && !observedPlayer.crouching && Math.abs(ctx.player.vx) > 0.7 && ctx.state.frameCount % 14 === 0) {
@@ -2776,7 +2777,7 @@ export class Enemies implements EnemyControlApi {
 
       // (a fighter's decoy, Mirror Hunt, can draw the foe's hunt to somewhere the body is not)
       const decoy = ctx.fighters && ctx.fighters.id !== null ? ctx.fighters.decoyFor(e) : null;
-      const seen = decoy ? { ...observedPlayer, x: decoy.x, y: decoy.y, vx: decoy.vx } : observedPlayer;
+      const seen = decoy ? { ...observedPlayer, x: decoy.x, y: decoy.y, vx: decoy.vx, concealed: false } : observedPlayer;
       const mind = tickCreatureMind(ctx.world, e, seen, this.cues, ctx.state.frameCount, ctx.state.worldSeed, difficultyMods(ctx.state).enemySense);
       respondToLight(ctx, e, def, mind); // light wave: lit fix, flinch, scatter, freeze
       const lair = BOSS_LAIRS[e.kind];

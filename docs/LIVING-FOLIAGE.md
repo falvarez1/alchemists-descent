@@ -1,5 +1,10 @@
 # Living foliage and machinery
 
+The subsequent [foreground cover pass](FOREGROUND-COVER.md) gives some tall
+clumps a dark teal palette and draws them over actors. Settling inside these
+real plants conceals the player from creature sight; attacks and close contact
+reveal them.
+
 Moss crowns part around the player's swept body, keep momentum and settle with damped springs. Enemies brush them too, and submerged fronds follow water flow. The leaves drawn and the leaves touched by heat use the same geometry. The roots are real `Cell.Moss`; existing `Cell.Vines` supply hanging soft strands, cutting, collision, settling and saves.
 
 A deterministic dressing pass adds moss along supported surfaces and separated vine clusters in the Bellows, gardens and waterworks. Dry floors receive fewer moss patches. It uses a separate spatial hash, preserves solid cells and leaves clearance around controls, pickups, camps and gates.

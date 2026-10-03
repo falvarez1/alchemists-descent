@@ -19,6 +19,26 @@ function creature(kind: Enemy['kind'] = 'weaver'): Enemy {
 }
 
 describe('living creature perception', () => {
+  it('loses visual tracking in foliage, keeps the last sighting and still hears disturbances', () => {
+    const world = new World(240, 120), enemy = creature('golem');
+    ensureCreatureMind(enemy, 7).facing = 1;
+    const player = { x: 120, y: 64, vx: 0, dead: false, crouching: false, light: 1, concealed: false };
+    for (let tick = 0; tick < 20; tick++) tickCreatureMind(world, enemy, player, [], tick, 7);
+    expect(enemy.mind?.visible).toBe(true);
+    player.concealed = true; player.x = 130;
+    for (let tick = 20; tick < 40; tick++) tickCreatureMind(world, enemy, player, [], tick, 7);
+    expect(enemy.mind?.visible).toBe(false);
+    expect(enemy.mind?.targetX).toBe(120);
+    expect(enemy.mind?.intent).toBe('investigate');
+    for (let tick = 40; tick < 50; tick++) tickCreatureMind(world, enemy, player,
+      [{ x: 160, y: 64, radius: 230, strength: .8, tick: 40, kind: 'sound' }], tick, 7);
+    expect(enemy.mind?.targetX).toBe(160);
+    expect(enemy.mind?.visible).toBe(false);
+    player.x = 55;
+    for (let tick = 50; tick < 60; tick++) tickCreatureMind(world, enemy, player, [], tick, 7);
+    expect(enemy.mind?.visible).toBe(true);
+  });
+
   it('loses sight behind a wall and investigates the observed position', () => {
     const world = new World(240, 120);
     const enemy = creature('golem');

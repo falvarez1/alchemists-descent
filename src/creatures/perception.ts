@@ -3,6 +3,7 @@ import type { World } from '@/sim/World';
 import { blocksEntity, Cell } from '@/sim/CellType';
 import type { CreatureCue, CreatureMind } from './types';
 import { SIGHT } from '@/config/darkness';
+import { FOLIAGE_COVER } from '@/config/foliage';
 
 export interface PerceivedPlayer {
   x: number;
@@ -11,6 +12,7 @@ export interface PerceivedPlayer {
   dead: boolean;
   crouching: boolean;
   light: number;
+  concealed?: boolean;
 }
 
 /**
@@ -93,7 +95,9 @@ export function tickCreatureMind(
     // A Stone Maw is blind but not numb: a body within a few lengths presses
     // on the rock and water around it, lit or dark, in front or behind.
     const felt = enemy.kind === 'stonemaw' && distance < 64 * senseScale;
-    mind.visible = !player.dead && !enemy.sleeping && (felt || (distance < range && facing)) && sightClear(world, enemy.x, enemy.y - (bossEye ?? 6), player.x, player.y - 9);
+    const concealed = player.concealed === true && distance > FOLIAGE_COVER.contactRadius && !felt;
+    if (concealed && mind.visible) mind.nextDecision = 0;
+    mind.visible = !player.dead && !enemy.sleeping && !concealed && (felt || (distance < range && facing)) && sightClear(world, enemy.x, enemy.y - (bossEye ?? 6), player.x, player.y - 9);
     if (mind.visible) {
       mind.targetX = player.x;
       mind.targetY = player.y;

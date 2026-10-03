@@ -18,7 +18,7 @@ Captured from the running game after the final playtests:
 
 ![Rillback Sluice with layered waterworks scenery, clear water, terrain-bound vegetation and brass HUD](images/visual-polish-sluice.png)
 
-`src/config/visualFidelity.ts` holds presentation controls. `?fidelity=0` disables the new detail overlays and lamp gain for comparisons; it retains the new plates, water palette and HUD. It is not a complete old-art preset.
+`src/config/visualFidelity.ts` holds presentation controls. `?fidelity=0` disables cosmetic detail overlays and lamp gain for comparisons; it retains the new plates, water palette and HUD. The later [foreground foliage](FOREGROUND-COVER.md) remains visible because it supplies gameplay cover. It is not a complete old-art preset.
 
 ## Art provenance
 

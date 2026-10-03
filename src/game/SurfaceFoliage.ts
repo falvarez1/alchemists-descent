@@ -3,7 +3,7 @@ import type { World } from '@/sim/World';
 import { Cell, isGas } from '@/sim/CellType';
 import { ashColor, fireColor, packRGB, smokeColor } from '@/sim/colors';
 import { VIEW_H, VIEW_W } from '@/config/constants';
-import { AMBIENT_FOLIAGE_LIFE, FOLIAGE_BURN_TICKS, foliageBurnLife, foliageBurnState } from '@/config/foliage';
+import { AMBIENT_FOLIAGE_LIFE, FOLIAGE_BURN_TICKS, foliageBurnLife, foliageBurnState, foregroundFoliage } from '@/config/foliage';
 import { foliageSupport, surfaceFoliageHash } from '@/world/surfaceFoliage';
 import { visitSurfaceFronds, type SurfaceFrondPose } from '@/world/foliageGeometry';
 import { foliageContactFuel, foliageHeatNearby, foliageTouchesHeat } from '@/game/FoliageHeat';
@@ -22,7 +22,14 @@ const gardens = new WeakMap<World, Garden>();
 /** Current material roots, shared by simulation and presentation. Discovery
  * is chunk-cached; querying a pose never advances its spring or burn clock. */
 export function visibleSurfaceFoliage(ctx: Ctx): readonly SurfacePlant[] {
-  const { world, camera } = ctx, a = world.activity;
+  const { camera } = ctx;
+  return surfaceFoliageInBounds(ctx.world, camera.renderX - 40, camera.renderY - 40,
+    camera.renderX + VIEW_W + 40, camera.renderY + VIEW_H + 40);
+}
+
+/** Gameplay queries the player's surroundings, independently of the camera. */
+export function surfaceFoliageInBounds(world: World, left: number, top: number, right: number, bottom: number): readonly SurfacePlant[] {
+  const a = world.activity;
   let garden = gardens.get(world);
   if (!garden || garden.epoch !== a.epoch) {
     garden = { epoch: a.epoch, revision: -1, chunks: new Map(), poses: new Map(), visible: [] };
@@ -36,9 +43,9 @@ export function visibleSurfaceFoliage(ctx: Ctx): readonly SurfacePlant[] {
   }
   garden.revision = world.mutationVersion;
   const roots = garden.visible; roots.length = 0;
-  const x0 = Math.max(0, Math.floor((camera.renderX - 36) / 64)), y0 = Math.max(0, Math.floor((camera.renderY - 36) / 64));
-  const x1 = Math.min(a.columns - 1, Math.floor((camera.renderX + VIEW_W + 36) / 64));
-  const y1 = Math.min(a.rows - 1, Math.floor((camera.renderY + VIEW_H + 36) / 64));
+  const x0 = Math.max(0, Math.floor(left / 64)), y0 = Math.max(0, Math.floor(top / 64));
+  const x1 = Math.min(a.columns - 1, Math.floor(right / 64));
+  const y1 = Math.min(a.rows - 1, Math.floor(bottom / 64));
   for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
     const key = cy * a.columns + cx, version = a.versions[key];
     let chunk = garden.chunks.get(key);
@@ -59,11 +66,12 @@ export function visibleSurfaceFoliage(ctx: Ctx): readonly SurfacePlant[] {
         let p = garden.poses.get(i);
         if (!p) {
           const aquatic = world.types[i - world.width] === Cell.Water;
-          p = { x, y, side, seed, height: side ? 10 + seed % 22 : aquatic ? 12 + seed % 22 : 5 + seed % 13,
+          const foreground = foregroundFoliage(x, y, side);
+          p = { x, y, side, seed, foreground, height: foreground ? 28 + seed % 9 : side ? 10 + seed % 22 : aquatic ? 12 + seed % 22 : 5 + seed % 13,
             angle: 0, velocity: 0, part: 0, burn: 0, burning: false, color: world.colors[i] };
           garden.poses.set(i, p);
         }
-        p.side = side; found.push(p);
+        p.side = side; p.foreground = foregroundFoliage(x, y, side); found.push(p);
       };
       // The sim already maintains sorted growth indexes. Water or smoke
       // changing the chunk need not trigger another 4,096-cell root scan.

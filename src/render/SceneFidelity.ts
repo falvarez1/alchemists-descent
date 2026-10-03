@@ -1,7 +1,7 @@
 import type { Ctx, AuthoredLight } from '@/core/types';
 import type { World } from '@/sim/World';
 import type { LightField, PixelSurface } from '@/render/pixels';
-import { Cell, isGas, isSoftGrowth } from '@/sim/CellType';
+import { blocksEntity, Cell, isGas, isSoftGrowth } from '@/sim/CellType';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { VISUAL_FIDELITY } from '@/config/visualFidelity';
 // Export the actual shared table for browser isolation probes, including HMR.
@@ -22,23 +22,25 @@ const waterWarpX = new Float64Array(VIEW_W + 2), waterWarpY = new Float64Array(V
 
 /** Current moss cells own the crown, motion and fuel. Render only reads
  * those poses; repeated compose calls never advance a spring or smoulder. */
-function drawSurfaceGrowth(out: PixelSurface, light: LightField, ctx: Ctx): void {
-  if (VISUAL_FIDELITY.surfaceGrowth <= 0) return;
-  const pen = new Pen(out, cameraView(ctx.camera, 36));
+function drawSurfaceGrowth(out: PixelSurface, light: LightField, ctx: Ctx, foreground = false): void {
+  if (!foreground && VISUAL_FIDELITY.surfaceGrowth <= 0) return;
+  const pen = new Pen(out, cameraView(ctx.camera, 40));
   for (const root of visibleSurfaceFoliage(ctx)) {
+    if (Boolean(root.foreground) !== foreground) continue;
     const { x, y, seed, burn } = root;
     if (!pen.inView(x - root.height, y - root.height, x + root.height, y + root.height)) continue;
     const s = light.sample(x, y - 2), open = s.open ?? 1;
     if (open < .08) continue;
     const lr = Math.min(1.2, Math.max(.64 * open, s.r)), lg = Math.min(1.2, Math.max(.72 * open, s.g)), lb = Math.min(1.2, Math.max(.55 * open, s.b));
     const live = 1 - burn * .82;
-    const color: RGB = [(.30 + (seed & 3) * .025) * lr * live, (.43 + (seed & 3) * .045) * lg * live, .14 * lb * live];
-    const shade: RGB = [.12 * lr * live, .23 * lg * live, .11 * lb * live];
-    const rim: RGB = [.65 * lr * live, .72 * lg * live, .27 * lb * live];
+    const color: RGB = foreground ? [.12 * lr * live, (.31 + (seed & 3) * .015) * lg * live, .28 * lb * live] :
+      [(.30 + (seed & 3) * .025) * lr * live, (.43 + (seed & 3) * .045) * lg * live, .14 * lb * live];
+    const shade: RGB = foreground ? [.055 * lr * live, .15 * lg * live, .16 * lb * live] : [.12 * lr * live, .23 * lg * live, .11 * lb * live];
+    const rim: RGB = foreground ? [.27 * lr * live, .49 * lg * live, .42 * lb * live] : [.65 * lr * live, .72 * lg * live, .27 * lb * live];
     visitSurfaceFronds(root, (ax, ay, bx, by, leaf) => {
       const t = ctx.world.type(Math.round(bx), Math.round(by));
       if (!air(t) && t !== Cell.Water && !masonry(t)) return;
-      pen.line(ax, ay, bx, by, leaf ? color : shade, leaf ? 1.2 : 1);
+      pen.line(ax, ay, bx, by, leaf ? color : shade, leaf ? foreground ? 2.6 : 1.2 : foreground ? 1.4 : 1);
       if (leaf) pen.px((ax + bx) * .5, (ay + by) * .5, rim, .65);
     });
     // The thin moss fringe also belongs to the combustible root, so charring
@@ -53,6 +55,27 @@ function drawSurfaceGrowth(out: PixelSurface, light: LightField, ctx: Ctx): void
       pen.glow(x + .5 + root.angle * 2, y - Math.max(1, root.height * (1 - burn) * .35), flame, .6 + Math.sin(ctx.state.frameCount * .3 + seed) * .12);
     }
   }
+}
+
+/** Functional cover always draws, including with cosmetic fidelity disabled.
+ * Leaves cover bodies, but never paint through terrain or bury control glyphs. */
+export function drawForegroundFoliage(out: PixelSurface, light: LightField, ctx: Ctx): void {
+  const level = ctx.levels.current;
+  if (!level || ctx.state.mode !== 'play') return;
+  const protectedPoints = [
+    ...(level.pickups ?? []).filter(p => !p.taken).map(p => ({ x: p.x, y: p.y, radius: 8 })),
+    ...(level.mechanisms ?? []).map(m => ({ x: m.x, y: m.y, radius: 12 })),
+    ...(level.portal ? [{ x: level.portal.x, y: level.portal.y, radius: 16 }] : []),
+  ].filter(p => Math.abs(p.x - ctx.camera.renderX - VIEW_W / 2) < VIEW_W / 2 + 40 &&
+    Math.abs(p.y - ctx.camera.renderY - VIEW_H / 2) < VIEW_H / 2 + 40);
+  const cell = (v: number): number => (out.pixelStep ?? 1) < 1 ? Math.floor(v) : Math.round(v);
+  const allowed = (x: number, y: number): boolean => !blocksEntity(ctx.world.type(cell(x), cell(y))) &&
+    !protectedPoints.some(p => Math.abs(x - p.x) < p.radius && Math.abs(y - p.y) < p.radius);
+  const set = (out.setFinePx ?? out.setPx).bind(out), add = (out.addFinePx ?? out.addPx).bind(out);
+  const setPx: PixelSurface['setPx'] = (x, y, r, g, b) => { if (allowed(x, y)) set(x, y, r, g, b); };
+  const addPx: PixelSurface['addPx'] = (x, y, r, g, b) => { if (allowed(x, y)) add(x, y, r, g, b); };
+  drawSurfaceGrowth({ pixelStep: out.pixelStep, setPx, addPx, setFinePx: out.setFinePx ? setPx : undefined,
+    addFinePx: out.addFinePx ? addPx : undefined }, light, ctx, true);
 }
 
 /** Fine material edges, caustics and foam belong to real cells, including draining and newly

@@ -1,5 +1,6 @@
 /** Presentation controls, independent of generation, saves and combat. Probes
- * can isolate each detail layer; ?fidelity=0 disables these overlays and lamp gain. */
+ * can isolate each detail layer; ?fidelity=0 disables cosmetic overlays and lamp
+ * gain. Foreground foliage remains visible because it supplies gameplay cover. */
 export const VISUAL_FIDELITY = {
   enabled: typeof window === 'undefined' || new URLSearchParams(window.location.search).get('fidelity') !== '0',
   waterCaustics: .65,

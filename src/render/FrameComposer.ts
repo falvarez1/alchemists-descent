@@ -2,7 +2,7 @@ import { drawStoryLayer } from '@/render/story/StoryLayer';
 import { drawPlayerRagdollSprite } from '@/render/sprites/PlayerRagdollSprite';
 import { drawTrickshotOverlay } from '@/render/TrickshotOverlay';
 import { drawFallingWater } from '@/render/FallingWater';
-import { drawSceneFidelity } from '@/render/SceneFidelity';
+import { drawSceneFidelity, drawForegroundFoliage } from '@/render/SceneFidelity';
 import { drawOrganism } from '@/render/organisms';
 import { isOrganism } from '@/game/organisms/types';
 import type { Ctx, Enemy, RigidBody, RuntimeDecor } from '@/core/types';
@@ -1229,6 +1229,7 @@ export class FrameComposer implements PixelSurface {
     drawHeldLeg(this, this.light, ctx, this.alpha);
     drawTelekinesis(this, ctx);
     drawPlayerRagdollSprite(this, this.light, ctx, this.alpha);
+    drawForegroundFoliage(this, this.light, ctx);
     // Near depth particles: motes in front of everything, catching real light.
     if (depthParticles) this.layers.drawParticles?.(this, this.light, ctx, 'front');
     drawTrickshotOverlay(this, ctx);

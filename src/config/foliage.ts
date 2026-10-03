@@ -4,6 +4,23 @@ export const AMBIENT_FOLIAGE_LIFE = -2;
 export const FOLIAGE_BURN_TICKS = 90;
 export const FOLIAGE_MAX_FUEL = 5;
 
+/** Foreground cover is tall, cool-green growth rooted in the existing moss.
+ * A stable patch choice makes its depth readable before a player enters it. */
+export const FOLIAGE_COVER = {
+  settleTicks: 30,
+  revealTicks: 90,
+  contactRadius: 24,
+  maxSpeed: .35,
+  minCoverage: .55,
+  maxChar: .3,
+} as const;
+
+export function foregroundFoliage(x: number, y: number, side: number): boolean {
+  if (side !== 0) return false;
+  const patch = Math.imul(Math.floor(x / 48), 374761393) ^ Math.imul(Math.floor(y / 32), 668265263);
+  return (patch >>> 0) % 3 === 0;
+}
+
 export function foliageFuel(sourceLife: number): number {
   return Math.max(0, Math.min(FOLIAGE_MAX_FUEL, Math.floor(sourceLife) - 2));
 }

@@ -44,9 +44,13 @@ try {
     recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
     recorder.start(); window.__foliageRecording = { recorder, stream, chunks };
   });
-  await page.keyboard.down('KeyD'); await page.waitForTimeout(1200);
+  await page.keyboard.down('KeyD');
+  // Measure simulation time: wall-clock waits under recording/load can finish
+  // before the required native ticks, even after the player crosses the patch.
+  await page.waitForFunction(() => window.__game.ctx.state.frameCount - window.__foliageSample.frame >= 45, null, { timeout: 15000 });
   await page.screenshot({ path: `${dir}/player-contact.png` });
-  await page.waitForTimeout(1200); await page.keyboard.up('KeyD');
+  await page.waitForFunction(() => window.__game.ctx.state.frameCount - window.__foliageSample.frame >= 90, null, { timeout: 15000 });
+  await page.keyboard.up('KeyD');
   const brushed = await page.evaluate(() => {
     const ctx = window.__game.ctx; window.__foliageSampling = false; ctx.state.paused = true;
     return { ...window.__foliageSample, ticks: ctx.state.frameCount - window.__foliageSample.frame, distance: ctx.player.x - window.__foliageSample.x, mode: ctx.state.mode, dead: ctx.player.dead };

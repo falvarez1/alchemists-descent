@@ -72,6 +72,14 @@ body.play-active .flask-slot { border-bottom-color: #98773e; }
   body.play-active .wave-readout .objective { margin-top: 6px; font-size: calc(11px * var(--text-scale)); }
 }
 /* Touch controls and comfort scaling still own the usable screen area. */
+#foliage-cover {
+  width: fit-content; max-width: 100%; margin-top: 7px; padding: 5px 9px;
+  border-left: 2px solid #709987; background: #071512ed; color: #d4e6d9;
+  font: 500 calc(12px * var(--text-scale))/1.3 var(--house-sans);
+  pointer-events: none;
+}
+#foliage-cover[hidden] { display: none; }
+#foliage-cover.concealed { border-left-color: #b4dbc3; color: #e0f5e7; }
 body.touch-enabled.play-active .vitals { width: 182px; padding: 5px 5px 5px 18px; border-width: 8px; gap: 5px; }
 body.touch-enabled.play-active .vitals::before { display: none; }
 body.touch-enabled.play-active .wave-readout { padding: 7px; }
