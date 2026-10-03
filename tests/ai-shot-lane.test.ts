@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { weaponLaneClear, safeTravel, safeMobilityLanding, safeDrop, safeHopClearance } from '@/arena/ai/combat';
+import { weaponLaneClear, safeTravel, safeMobilityLanding, safeDrop, safeHopClearance, hazardHopClearance } from '@/arena/ai/combat';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import type { Ctx } from '@/core/types';
@@ -106,6 +106,16 @@ describe('observed firing paths', () => {
     control.walkTo(body, 740, { tol: 6 });
     expect(self.input.keys.left).toBe(true);
     expect(self.input.keys.jump).toBe(false);
+  });
+  test('finds a safe gap between coarse landing samples without extending hop reach', () => {
+    const world = new World();
+    for (let x = 300; x <= 460; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);
+    for (let x = 350; x <= 430; x++) if (x < 388 || x > 401) world.replaceCellAt(world.idx(x, 637), Cell.Ember, 0);
+    const ctx = { world, physics: { entityFree: () => true, cellBlocks: (x: number, y: number) => world.type(x, y) === Cell.Metal } } as unknown as Pick<Ctx, 'world' | 'physics'>;
+    expect([366, 384, 402].map(x => safeHopClearance(ctx, 330, 639, x, 40))).toEqual([null, null, null]);
+    expect(hazardHopClearance(ctx, 330, 639, 1, 18, 40)).not.toBeNull();
+    for (let x = 388; x <= 401; x++) world.replaceCellAt(world.idx(x, 637), Cell.Ember, 0);
+    expect(hazardHopClearance(ctx, 330, 639, 1, 18, 40)).toBeNull();
   });
   test('retries a blocked route within 1.5 seconds instead of standing idle for three', () => {
     const stuck = new StuckDetector(), position = { x: 330, y: 637 };
