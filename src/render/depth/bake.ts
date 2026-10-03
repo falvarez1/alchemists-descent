@@ -2,6 +2,7 @@ import type { DepthKit, DepthPlaneSpec } from '@/config/depthKits';
 import { buildForegroundArt } from '@/render/depth/foregroundArt';
 import { buildPlaneArt } from '@/render/depth/kitArt';
 import { type Bitmap, applyHaze } from '@/render/depth/raster';
+import { finalizePlaneMotion } from '@/render/depth/MachineryMotion';
 
 /**
  * Baking a depth kit: procedural planes are painted from the kit palette,
@@ -30,6 +31,7 @@ export function bakePlane(kit: DepthKit, slot: number, image: Bitmap | null): Bi
   if (haze.mix > 0 || haze.contrast !== 1 || (haze.saturation ?? 1) !== 1 || (haze.mist ?? 0) !== 0) {
     applyHaze(bmp, { color: kit.palette.haze, mix: haze.mix, contrast: haze.contrast, saturation: haze.saturation, mist: haze.mist });
   }
+  finalizePlaneMotion(bmp, { color: kit.palette.haze, mix: haze.mix, contrast: haze.contrast, saturation: haze.saturation, mist: haze.mist });
   return bmp;
 }
 

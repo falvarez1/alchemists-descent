@@ -327,10 +327,15 @@ export class ForegroundLayerGL {
     const u = this.material.uniforms;
     if (this.fgVersion !== src.version) {
       this.fgVersion = src.version;
-      this.fgTex.dispose();
-      this.fgTex = byteTexture(new Uint8Array(bmp.pixels.buffer, bmp.pixels.byteOffset, bmp.pixels.byteLength),
-        bmp.width, bmp.height, THREE.NearestFilter);
-      u.uFg.value = this.fgTex;
+      const data = new Uint8Array(bmp.pixels.buffer, bmp.pixels.byteOffset, bmp.pixels.byteLength);
+      const image = this.fgTex.image;
+      if (image.width === bmp.width && image.height === bmp.height) {
+        image.data = data; this.fgTex.needsUpdate = true;
+      } else {
+        this.fgTex.dispose();
+        this.fgTex = byteTexture(data, bmp.width, bmp.height, THREE.NearestFilter);
+        u.uFg.value = this.fgTex;
+      }
       (u.uFgSize.value as THREE.Vector2).set(bmp.width, bmp.height);
     }
     const cam = ctx.camera;

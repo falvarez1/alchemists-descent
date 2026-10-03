@@ -7,6 +7,7 @@ import {
   M_ACCENT, M_BODY, M_GLOW, M_SOFT, M_TINT, type SilhouetteOptions, lightField, paintLight, paintSilhouettes, paletteRamp, rampColor,
 } from '@/render/depth/lightArt';
 import { type Bitmap, MaskPlane, rng, smoothstep, tileFbm } from '@/render/depth/raster';
+import { registerPlaneMotion } from '@/render/depth/MachineryMotion';
 
 /**
  * The procedural depth-plane art, by id (config/depthKits names them).
@@ -58,9 +59,23 @@ function painter(pal: KitPalette, w: number, h: number, seed: number): Painter {
   return {
     ramp,
     field,
-    paint: (p, o) => paintSilhouettes(p, {
-      ramp, field, rimDir: [pal.light[0], pal.light[1]], glow: pal.glow, soft: pal.shaft, ...o,
-    }),
+    paint: (p, o) => {
+      const opts: SilhouetteOptions = { ramp, field, rimDir: [pal.light[0], pal.light[1]], glow: pal.glow, soft: pal.shaft, ...o };
+      const fields = new Map<string, Float32Array>();
+      return registerPlaneMotion(paintSilhouettes(p, opts), p, (piece, x0, y0) => {
+        const key = `${x0}:${y0}`;
+        let local = fields.get(key);
+        if (!local) {
+          local = new Float32Array(piece.width * piece.height);
+          for (let y = 0; y < piece.height; y++) for (let x = 0; x < piece.width; x++) {
+            const px = ((x0 + x) % w + w) % w, py = ((y0 + y) % h + h) % h;
+            local[y * piece.width + x] = field[py * w + px];
+          }
+          fields.set(key, local);
+        }
+        return paintSilhouettes(piece, { ...opts, field: local });
+      });
+    },
     light: (scale = 1) => paintLight(w, h, field, ramp, scale),
   };
 }
@@ -131,7 +146,7 @@ function bellowsShafts(pal: KitPalette, w: number, h: number, seed: number): Bit
 
 function bellowsNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   const r = rng(seed);
-  const p = new MaskPlane(w, h);
+  const p = new MaskPlane(w, h, true, true);
   pipeColumn(p, Math.round(w * 0.08), 16, M_BODY, r, M_ACCENT);
   pipeColumn(p, Math.round(w * 0.63), 12, M_BODY, r, M_ACCENT);
   const gy = Math.round(h * 0.2);
@@ -196,7 +211,7 @@ function rotMid(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
 
 function rotNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   const r = rng(seed);
-  const p = new MaskPlane(w, h);
+  const p = new MaskPlane(w, h, true, true);
   for (const x of [Math.round(w * 0.1), Math.round(w * 0.5), Math.round(w * 0.82)]) {
     const sw = Math.round(between(r, 16, 26));
     for (let y = 0; y < h; y++) {
@@ -265,7 +280,7 @@ function cisternMid(pal: KitPalette, w: number, h: number, seed: number): Bitmap
 
 function cisternNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   const r = rng(seed);
-  const p = new MaskPlane(w, h);
+  const p = new MaskPlane(w, h, true, true);
   for (const x of [Math.round(w * 0.06), Math.round(w * 0.55)]) {
     const cw = Math.round(between(r, 28, 40));
     for (let y = 0; y < h; y++) for (let xx = 0; xx < cw; xx++) {
@@ -359,7 +374,7 @@ function kilnMid(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
 
 function kilnNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   const r = rng(seed);
-  const p = new MaskPlane(w, h);
+  const p = new MaskPlane(w, h, true, true);
   for (const x of [Math.round(w * 0.04), Math.round(w * 0.5)]) {
     for (let j = 0; j < 2; j++) basalt(p, r, x + j * 16, 15, Math.round(r() * h * 0.3), Math.round(r() * h * 0.3) + h, M_BODY);
   }
@@ -430,7 +445,7 @@ function coldMid(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
 function coldNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   // Heavy frost-rimed pipe columns with icicles at their flanges, hooks on heavy chains.
   const r = rng(seed);
-  const p = new MaskPlane(w, h);
+  const p = new MaskPlane(w, h, true, true);
   for (const x of [Math.round(w * 0.1), Math.round(w * 0.58)]) {
     pipeColumn(p, x, 18, M_BODY, r, M_ACCENT);
     for (let y = Math.round(r() * 120); y < h; y += Math.round(between(r, 120, 200))) stalactites(p, r, x - 4, x + 24, y, 22, M_ACCENT);
@@ -504,7 +519,7 @@ function glassMid(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
 function glassNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   // Slender columns with glass capitals, a great lens frame, chains.
   const r = rng(seed);
-  const p = new MaskPlane(w, h);
+  const p = new MaskPlane(w, h, true, true);
   for (const x of [Math.round(w * 0.08), Math.round(w * 0.56)]) {
     const cw = Math.round(between(r, 18, 26));
     for (let y = 0; y < h; y++) for (let xx = 0; xx < cw; xx++) {
@@ -550,7 +565,7 @@ function genericShafts(pal: KitPalette, w: number, h: number, seed: number): Bit
 
 function genericNear(pal: KitPalette, w: number, h: number, seed: number): Bitmap {
   const r = rng(seed);
-  const p = new MaskPlane(w, h);
+  const p = new MaskPlane(w, h, true, true);
   pipeColumn(p, Math.round(w * 0.12), 18, M_BODY, r, M_ACCENT);
   pipeColumn(p, Math.round(w * 0.66), 14, M_BODY, r, M_ACCENT);
   stalactites(p, r, Math.round(w * 0.25), Math.round(w * 0.5), Math.round(h * 0.4), 80, M_BODY);

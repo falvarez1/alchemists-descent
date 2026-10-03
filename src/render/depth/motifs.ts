@@ -60,7 +60,12 @@ export function hPipe(p: MaskPlane, x0: number, x1: number, y: number, thick: nu
 }
 
 /** A hanging chain of alternating face/edge links from (x, y0) downward. */
-export function chain(p: MaskPlane, x: number, y0: number, len: number, m: number, size = 1): void {
+export function chain(p: MaskPlane, x: number, y0: number, len: number, m: number, size = 1, bend = 0): void {
+  if (p.captureMotion) { p.motions.push({ kind: 'chain', x, y: y0, length: len, material: m, size }); return; }
+  const set = (px: number, py: number, tone: number): void => {
+    const t = Math.max(0, Math.min(1, (py - y0) / Math.max(1, len)));
+    p.set(px + Math.sin(t * Math.PI) * bend, py, m, tone);
+  };
   if (size > 1) {
     // A heavy chain: oval face links (a ring with a hole) alternating with edge-on bars.
     const lh = 5 * size, lw = 2 * size;
@@ -71,11 +76,11 @@ export function chain(p: MaskPlane, x: number, y0: number, len: number, m: numbe
           const half = lw * Math.sqrt(Math.max(0, 1 - t * t * 0.7));
           for (let xx = -Math.round(half); xx <= Math.round(half); xx++) {
             const hole = Math.abs(xx) < half - size && yy > size - 1 && yy < lh - size + 1;
-            if (!hole) p.set(x + xx, y0 + k + yy, m, -xx * 8);
+            if (!hole) set(x + xx, y0 + k + yy, -xx * 8);
           }
         }
       } else {
-        for (let yy = -size; yy < lh + size; yy++) for (let xx = 0; xx < size; xx++) p.set(x + xx - (size >> 1), y0 + k + yy, m, 14);
+        for (let yy = -size; yy < lh + size; yy++) for (let xx = 0; xx < size; xx++) set(x + xx - (size >> 1), y0 + k + yy, 14);
       }
     }
     return;
@@ -84,19 +89,20 @@ export function chain(p: MaskPlane, x: number, y0: number, len: number, m: numbe
     const face = ((k / 6) & 1) === 0;
     if (face) {
       for (let yy = 0; yy < 6; yy++) {
-        p.set(x - 1, y0 + k + yy, m, 20);
-        p.set(x + 1, y0 + k + yy, m, -10);
+        set(x - 1, y0 + k + yy, 20);
+        set(x + 1, y0 + k + yy, -10);
       }
-      p.set(x, y0 + k, m, 30);
-      p.set(x, y0 + k + 5, m, 0);
+      set(x, y0 + k, 30);
+      set(x, y0 + k + 5, 0);
     } else {
-      for (let yy = -1; yy < 7; yy++) p.set(x, y0 + k + yy, m, 10);
+      for (let yy = -1; yy < 7; yy++) set(x, y0 + k + yy, 10);
     }
   }
 }
 
 /** A big gear: toothed rim, spokes and a hub. */
-export function gear(p: MaskPlane, cx: number, cy: number, radius: number, teeth: number, spokes: number, m: number): void {
+export function gear(p: MaskPlane, cx: number, cy: number, radius: number, teeth: number, spokes: number, m: number, angle = 0): void {
+  if (p.captureMotion && radius > 12) { p.motions.push({ kind: 'gear', x: cx, y: cy, radius, teeth, spokes, material: m }); return; }
   const rim = Math.max(2, Math.round(radius * 0.16));
   p.ring(cx, cy, radius - rim, radius, m, 10);
   // A thin inner lip reads as a machined face.
@@ -105,7 +111,7 @@ export function gear(p: MaskPlane, cx: number, cy: number, radius: number, teeth
     const pitch = (Math.PI * 2) / teeth;
     const toothH = Math.max(2, radius * 0.17);
     for (let k = 0; k < teeth; k++) {
-      const a = k * pitch;
+      const a = k * pitch + angle;
       const ca = Math.cos(a), sa = Math.sin(a);
       const hw0 = radius * pitch * 0.3, hw1 = radius * pitch * 0.2;
       const r0 = radius - 1, r1 = radius + toothH;
@@ -119,7 +125,7 @@ export function gear(p: MaskPlane, cx: number, cy: number, radius: number, teeth
   }
   const sw = Math.max(1, Math.round(radius * 0.1));
   for (let k = 0; k < spokes; k++) {
-    const a = (k / spokes) * Math.PI * 2 + 0.3;
+    const a = (k / spokes) * Math.PI * 2 + 0.3 + angle;
     p.line(cx, cy, cx + Math.cos(a) * (radius - rim), cy + Math.sin(a) * (radius - rim), sw, m, -6);
   }
   p.disc(cx, cy, Math.max(2, radius * 0.22), m, 16);

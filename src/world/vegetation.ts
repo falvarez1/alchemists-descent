@@ -7,6 +7,6 @@ export function matureVegetation(world: World): void {
   const types = world.types, life = world.life;
   for (let i = 0; i < types.length; i++) {
     const type = types[i];
-    if (type === Cell.Vines || type === Cell.Moss || type === Cell.Fungus || type === Cell.Grass) life[i] = -1;
+    if ((type === Cell.Vines || type === Cell.Moss || type === Cell.Fungus || type === Cell.Grass) && life[i] >= 0) life[i] = -1;
   }
 }

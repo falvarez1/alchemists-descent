@@ -4,6 +4,7 @@ import { installTuningPersistence } from '@/config/tuningStore';
 import { EventBus } from '@/core/events';
 import { updateLivingExpedition } from '@/game/LivingExpedition';
 import { updateHabitatMotion } from '@/game/HabitatMotion';
+import { updateSurfaceFoliage } from '@/game/SurfaceFoliage';
 import { Flora } from '@/game/Flora';
 import { advanceTrickshotClock } from '@/combat/Trickshot';
 import { TeaMachine } from '@/game/TeaMachine';
@@ -1023,6 +1024,7 @@ export class Game {
         ctx.contraption?.update();
         updateLivingExpedition(ctx);
         updateHabitatMotion(ctx);
+        updateSurfaceFoliage(ctx);
         this.habitatAudio.update(ctx);
       }
       const preyStart = performance.now();
