@@ -52,19 +52,41 @@ async function fight(id, seed, lvl, wave = 'ring') {
     p.hp = p.maxHp; p.levit = p.maxLevit; p.mana = p.maxMana;
     for (const k of Object.keys(ctx.input.keys)) ctx.input.keys[k] = false;
     const foe = (kind, x) => { ctx.enemyCtl.spawn(kind, x, 638); const e = ctx.enemies[ctx.enemies.length - 1]; Object.assign(e, { x, y: 638, vx: 0, vy: 0, sleeping: false, alerted: false }); return e; };
-    if (wave === 'hard') { foe('golem', 450); foe('golem', 520); foe('imp', 490); foe('imp', 540); foe('bat', 560); }
+    if (wave === 'mobility') {
+      const { Cell } = await import('/src/sim/CellType.ts');
+      // The stress waves deliberately share their altered terrain. A dash
+      // should be withheld when there is nowhere safe to land. Give its
+      // separate activation check real clear footing and close pressure.
+      for (let x = 180; x <= 750; x++) {
+        for (let y = 540; y < 640; y++) ctx.world.clearCell(x, y);
+        ctx.world.replaceCellAt(ctx.world.idx(x, 640), Cell.Metal, 0x606870);
+      }
+      p.hp = p.maxHp * .4;
+      const e = foe('golem', 370); e.hp = e.maxHp = 10000;
+    }
+    else if (wave === 'hard') { foe('golem', 450); foe('golem', 520); foe('imp', 490); foe('imp', 540); foe('bat', 560); }
     else { foe('slime', 470); foe('slime', 520); foe('golem', 545); }
     for (let i = 0; i < 4; i++) window.__game.tick(false, { forcePaused: true });
   }, { id, seed, wave });
-  const r = await page.evaluate(async ({ lvl }) => {
+  const r = await page.evaluate(async ({ lvl, wave }) => {
     const ctx = window.__game.ctx, p = ctx.player;
-    const { safeDrop, safeTravel, dangerousCell } = await import('/src/arena/ai/combat.ts');
+    const { safeDrop, safeTravel, safeHopClearance, dangerousCell } = await import('/src/arena/ai/combat.ts');
     const out = await ctx.console.exec(`ai basic ${lvl}`);
     let cleared = -1, diedAt = -1, idleMax = 0, idle = 0, zUsed = 0, tUsed = 0;
     const z0 = ctx.fighters.view.tactical.usedAt, t0 = ctx.fighters.view.ultimate.usedAt;
-    const samples = [], hazardTrace = [];
+    const samples = [], hazardTrace = [], abilityTrace = [];
+    let lastPresses = 0;
     for (let i = 0; i < 2400; i++) {
       window.__game.tick(false, { forcePaused: true });
+      const presses = (await ctx.console.exec('ai status')).data.status.stats.z;
+      if (presses > lastPresses && abilityTrace.length < 12) {
+        const tactical = ctx.fighters.view.tactical;
+        abilityTrace.push({ t: i, x: p.x, y: p.y, grounded: p.grounded,
+          aim: (await ctx.console.exec('ai status')).data.status.aim,
+          usedAt: tactical.usedAt, refusedAt: tactical.refusedAt });
+      }
+      lastPresses = presses;
+      if (wave === 'mobility' && ctx.fighters.view.tactical.usedAt !== z0) { cleared = i; break; }
       if (p.dead) { diedAt = i; break; }
       if (ctx.enemies.length === 0) { cleared = i; break; }
       const k = ctx.input.keys;
@@ -81,6 +103,7 @@ async function fight(id, seed, lvl, wave = 'ring') {
             if (dangerousCell(type)) cells.push({ x, y, type });
           }
           hazardTrace.push({ t: i, x: p.x, y: p.y, goal: state.goalX, stats: { ...state.stats },
+            levit: p.levit, hops: [2, 3, 4].map(span => safeHopClearance(ctx, p.x, p.y, p.x + dir * 18 * span, Math.min(64, 24 + Math.max(0, p.levit - 16) * .8))),
             nearDrop: safeDrop(ctx, p.x + dir * 18, p.y), farDrop: safeDrop(ctx, p.x + dir * 36, p.y),
             corridor: safeTravel(ctx, p.x, p.y, p.x + dir * 18), cells: cells.slice(0, 40) });
         }
@@ -91,8 +114,8 @@ async function fight(id, seed, lvl, wave = 'ring') {
     tUsed = v.ultimate.usedAt !== t0 ? 1 : 0;
     const status = JSON.parse(JSON.stringify((await ctx.console.exec('ai status')).data ?? {}));
     return { cleared, diedAt, idleMax, zUsed, tUsed, hp: Math.round(p.hp), maxHp: Math.round(p.maxHp), foesLeft: ctx.enemies.length,
-      finalFoes: ctx.enemies.map(e => ({ kind: e.kind, x: e.x, y: e.y, hp: e.hp, grounded: e.grounded, sleeping: e.sleeping })), samples, hazardTrace, status, ok: out.ok, text: out.text };
-  }, { lvl });
+      finalFoes: ctx.enemies.map(e => ({ kind: e.kind, x: e.x, y: e.y, hp: e.hp, grounded: e.grounded, sleeping: e.sleeping })), samples, hazardTrace, abilityTrace, status, ok: out.ok, text: out.text };
+  }, { lvl, wave });
   return r;
 }
 
@@ -110,6 +133,11 @@ for (const id of fighters) {
   console.log(`  ${id.padEnd(14)} cleared ${clears.length}/${runs.length}  median ${med < 0 ? '-' : (med / 60).toFixed(1) + ' s'}  deaths ${runs.filter((r) => r.diedAt >= 0).length}  idleMax ${Math.max(...runs.map((r) => r.idleMax))} ticks  Z ${runs.filter((r) => r.zUsed).length}/${runs.length} T ${runs.filter((r) => r.tUsed).length}/${runs.length}  stats ${JSON.stringify(runs[0].status?.status?.stats ?? {})}`);
 }
 writeFileSync('verify-out/ai/measured.json', JSON.stringify(rows, null, 2));
+const mobilityRuns = new Map();
+for (const id of fighters.filter(id => id === 'kest-rel' || id === 'selene-wraith')) {
+  mobilityRuns.set(id, await fight(id, 3781, level, 'mobility'));
+}
+writeFileSync('verify-out/ai/mobility.json', JSON.stringify([...mobilityRuns], null, 2));
 
 for (const { id, runs } of rows) {
   const clears = runs.filter((r) => r.cleared >= 0).length;
@@ -117,7 +145,10 @@ for (const { id, runs } of rows) {
   check(`${id}: never empty-handed for more than 2 s with a foe alive`, Math.max(...runs.map((r) => r.idleMax)) <= 120, `idleMax ${Math.max(...runs.map((r) => r.idleMax))}`);
   // (Father Thorne's Ironvine wants a surface to grow along: the basic brain presses Z at the foe, not the floor; a v2 playbook aims it. Pressed, counted.)
   const pressed = runs.some((r) => (r.status?.status?.stats?.z ?? 0) > 0);
-  check(`${id}: presses its tactical (Z) in at least one fight${runs.some((r) => r.zUsed) ? '' : ' (it was refused every time: see the playbook note)'}`, runs.some((r) => r.zUsed) || (id === 'father-thorne' && pressed), JSON.stringify(runs.map((r) => [r.zUsed, r.status?.status?.stats?.z])));
+  if (mobilityRuns.has(id)) {
+    const run = mobilityRuns.get(id);
+    check(`${id}: uses its mobility tactical under close pressure with clear landing ground`, run.zUsed === 1, JSON.stringify({ used: run.zUsed, presses: run.status?.status?.stats?.z, trace: run.abilityTrace }));
+  } else check(`${id}: presses its tactical (Z) in at least one fight${runs.some((r) => r.zUsed) ? '' : ' (it was refused every time: see the playbook note)'}`, runs.some((r) => r.zUsed) || (id === 'father-thorne' && pressed), JSON.stringify(runs.map((r) => [r.zUsed, r.status?.status?.stats?.z])));
 }
 
 // the keyboard is handed back

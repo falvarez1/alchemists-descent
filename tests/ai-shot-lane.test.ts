@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { weaponLaneClear, safeTravel, safeMobilityLanding, safeDrop, safeHopClearance } from '@/arena/ai/combat';
+import { weaponLaneClear, safeTravel, safeMobilityLanding, safeDrop, safeHopClearance, hazardHopClearance } from '@/arena/ai/combat';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import type { Ctx } from '@/core/types';
@@ -106,6 +106,32 @@ describe('observed firing paths', () => {
     control.walkTo(body, 740, { tol: 6 });
     expect(self.input.keys.left).toBe(true);
     expect(self.input.keys.jump).toBe(false);
+  });
+  test('brakes and descends at a checked hazard landing instead of flying beyond it', () => {
+    const self = { player: { firing: false }, input: { keys: {}, mouse: {} } } as BrainSelf;
+    const control = new Control(self, { free: () => true }, .8);
+    const body = { ...createWorldView().me, x: 330, y: 639, sy: 630, grounded: true, levit: 80 };
+    control.observe(body, 0);
+    control.startHop(1, 609, 639, 392);
+    Object.assign(body, { x: 360, y: 607, grounded: false });
+    control.observe(body, 10); control.walkTo(body, 740, { tol: 6 });
+    Object.assign(body, { x: 392, y: 610, vx: 2 });
+    control.observe(body, 11); control.walkTo(body, 740, { tol: 6 });
+    expect(self.input.keys.jump).toBe(false);
+    expect(self.input.keys.right).toBe(false);
+    Object.assign(body, { x: 393, y: 615, vx: 0 });
+    control.observe(body, 12); control.walkTo(body, 740, { tol: 6 });
+    expect(self.input.keys.jump).toBe(false);
+  });
+  test('finds a safe gap between coarse landing samples without extending hop reach', () => {
+    const world = new World();
+    for (let x = 300; x <= 460; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);
+    for (let x = 350; x <= 430; x++) if (x < 388 || x > 401) world.replaceCellAt(world.idx(x, 637), Cell.Ember, 0);
+    const ctx = { world, physics: { entityFree: () => true, cellBlocks: (x: number, y: number) => world.type(x, y) === Cell.Metal } } as unknown as Pick<Ctx, 'world' | 'physics'>;
+    expect([366, 384, 402].map(x => safeHopClearance(ctx, 330, 639, x, 40))).toEqual([null, null, null]);
+    expect(hazardHopClearance(ctx, 330, 639, 1, 18, 40)).not.toBeNull();
+    for (let x = 388; x <= 401; x++) world.replaceCellAt(world.idx(x, 637), Cell.Ember, 0);
+    expect(hazardHopClearance(ctx, 330, 639, 1, 18, 40)).toBeNull();
   });
   test('retries a blocked route within 1.5 seconds instead of standing idle for three', () => {
     const stuck = new StuckDetector(), position = { x: 330, y: 637 };

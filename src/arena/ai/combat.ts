@@ -149,6 +149,15 @@ export function safeHopClearance(ctx: Pick<Ctx, 'world' | 'physics'>, x: number,
   return null;
 }
 
+/** Search the bounded hop's reachable landing interval for safe footing. */
+export function hazardHopClearance(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: number, dir: number, lookahead: number, maxRise: number): { clearY: number; landingX: number } | null {
+  for (let distance = lookahead * 2; distance <= lookahead * 4; distance += 2) {
+    const topY = safeHopClearance(ctx, x, y, x + dir * distance, maxRise);
+    if (topY !== null) return { clearY: topY, landingX: x + dir * distance };
+  }
+  return null;
+}
+
 /** Check the actual launch direction and ballistic arc until its progress
  * toward the target reaches the full distance, including vertical shots.
  * Instant/straight spells retain their direct aim line.

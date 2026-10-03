@@ -12,6 +12,17 @@ await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 await startConsoleTestRun(page, { level: 'weaver-test', world: 'campaign-level', seed: 1, settleMs: 400 });
 
 const GAIT_TARGET_X = 512;
+const placeGaiter = (targetX) => {
+  const ctx = window.__game.ctx;
+  const gaiter = ctx.enemies.filter(e => e.kind === 'weaver')
+    .sort((a, b) => Math.abs(a.x - targetX) - Math.abs(b.x - targetX))[0];
+  if (!gaiter) return;
+  Object.assign(gaiter, { x: targetX, y: 741, vx: 0, vy: 0, fx: 0, fy: 0,
+    grounded: true, sleeping: false, alerted: true, attackCd: 9999, cranky: 0, windup: 0,
+    blink: 0, weaverFeedT: 0, weaverLoco: undefined, patrol: [[492, 742], [522, 742]], patrolIdx: 1 });
+  Object.assign(ctx.player, { x: targetX - 60, y: 741, vx: 0, vy: 0, fx: 0, fy: 0 });
+  ctx.camera.snapTo(targetX + 100, 640);
+};
 
 // A real click (boundingBox + mouse, hit-tested by the browser) without
 // Playwright's frame-to-frame "stable" heuristic, which headless Chromium
@@ -134,6 +145,10 @@ await openRuntimeInspector(page);
 await realClick('#brt-debug');
 const reactivated = await page.evaluate(() => window.__game.ctx.debug.active === true);
 ok(reactivated, 'Debug toggle did not reactivate after returning to Play');
+// UI setup can take hundreds of simulation ticks on CI. Reset the real
+// gaiter after freezing, on the flat part of its authored shelf, so it has
+// not already walked into the stepped shelf before LIVE is tested.
+await page.evaluate(placeGaiter, GAIT_TARGET_X);
 
 const unsupportedLiveRows = await page.evaluate(() =>
   [...document.querySelectorAll('#runtime-inspector .brt-row')]
@@ -386,7 +401,9 @@ await realClick('#brt-debug');
 const offState = await page.evaluate(() => ({ active: window.__game.ctx.debug.active, live: window.__game.ctx.debug.live.size }));
 ok(!offState.active && offState.live === 0, `Debug off did not clear state (${JSON.stringify(offState)})`);
 const beforeOff = await page.evaluate(() => window.__game.ctx.enemies.filter((e) => e.kind === 'weaver').map((e) => e.x));
-await page.waitForTimeout(500);
+await page.waitForFunction((before) => window.__game.ctx.enemies
+  .filter(e => e.kind === 'weaver').some((e, i) => Math.abs(e.x - before[i]) > .5),
+  beforeOff, { timeout: 20000 }).catch(() => undefined);
 const resumed = await page.evaluate((b) => {
   const xs = window.__game.ctx.enemies.filter((e) => e.kind === 'weaver').map((e) => e.x);
   return xs.some((x, i) => Math.abs(x - b[i]) > 0.5);

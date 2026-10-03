@@ -130,12 +130,18 @@ describe('weapon and ability choices', () => {
     expect(abilityPlan(body, foe(900), 'approach', false, false).ultimate).toBeNull();
   });
   test('Edda saves healing until hurt; escape skills aim away while withdrawing', () => {
-    const body = { ...me(), tactical: { ...me().tactical, ready: true }, ultimate: { ...me().ultimate, ready: true } };
+    const body = { ...me(), grounded: true, tactical: { ...me().tactical, ready: true }, ultimate: { ...me().ultimate, ready: true } };
     expect(abilityPlan({ ...body, fighter: 'edda-morrow' }, foe(), 'zone', true, false).ultimate).toBeNull();
     expect(abilityPlan({ ...body, fighter: 'edda-morrow', hpFrac: 0.5 }, foe(), 'zone', true, false).ultimate).toBeTruthy();
     const escape = abilityPlan({ ...body, fighter: 'selene-wraith' }, foe(), 'retreat', true, false);
     expect(escape.tactical).toBeTruthy();
     expect(escape.aim!.x).toBeLessThan(body.x);
+  });
+  test('Selene waits for footing before a blink while Kest can dash in midair', () => {
+    const body = { ...me(), grounded: false, tactical: { ...me().tactical, ready: true } };
+    expect(abilityPlan({ ...body, fighter: 'selene-wraith' }, foe(), 'retreat', true, true).tactical).toBeNull();
+    expect(abilityPlan({ ...body, grounded: true, fighter: 'selene-wraith' }, foe(), 'retreat', true, true).tactical).toBeTruthy();
+    expect(abilityPlan({ ...body, fighter: 'kest-rel' }, foe(), 'retreat', true, true).tactical).toBeTruthy();
   });
 });
 
