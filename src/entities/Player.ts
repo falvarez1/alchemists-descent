@@ -662,6 +662,7 @@ export class PlayerControl implements PlayerControlApi {
     if (player.dead || player.invuln > 0 || ctx.arena?.isEvading(ctx.arena.bound)) return;
     // The arrival's grace (game/arrival): nothing lands while the floor's name is up.
     if (ctx.state.frameCount < (ctx.state.arrivalGraceUntil ?? -1)) return;
+    if (ctx.arena?.blockStockHit(amount)) return;
     if (ctx.state.debugGodMode) {
       this.noteDamageSource(src);
       player.dead = false;
@@ -1313,9 +1314,10 @@ export class PlayerControl implements PlayerControlApi {
     const restrained = channeling || player.pullT > 0 || player.stunT > 0 || (player.chill?.shell ?? 0) > 0;
     const stockDodge = ctx.arena?.updateStockDodge(dodgeRequested, !restrained);
     const stockAttack = ctx.arena?.updateStockAttack(!restrained);
+    const stockShield = ctx.arena?.updateStockShield(ctx.input.shieldHeld === true, !restrained);
     const queuedJump = ctx.input.queuedJump;
     ctx.input.queuedJump = undefined;
-    const keys = restrained || stockDodge?.busy || (stockAttack?.busy && player.grounded)
+    const keys = restrained || stockDodge?.busy || stockShield?.busy || (stockAttack?.busy && player.grounded)
       ? { left: false, right: false, up: false, jump: false, wallJump: false, down: false, grab: false }
         : stockAttack?.busy ? { ...ctx.input.keys, jump: false, wallJump: false }
           : queuedJump ? { ...ctx.input.keys, jump: true, wallJump: queuedJump === 'wall' || ctx.input.keys.wallJump } : ctx.input.keys;

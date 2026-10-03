@@ -9,6 +9,8 @@ Latest camera checkpoint: Foundry main platform is 480 cells wide, with a separa
 
 ## Objective
 
+Latest defense checkpoint: finite grounded shields are implemented with contact stun, release lag, gradual regeneration, break vulnerability, and a roll exit. Hold the keyboard defense binding to guard; add direction to dodge. The ImageGen shield/grab sheet and nine native shield captures are included in the illustrated plan. Grabs, throws, and the complete approved Xbox mapping remain pending; current controller hints retain their implemented roles until that change lands.
+
 Build a readable local platform fighter around damage, launch, recovery, and ring-outs while retaining Alchemist's Descent's material simulation and fighter identities. Use the ImageGen concept sheets as visual targets, then compare real gameplay captures against them. A generated concept is not evidence of implemented gameplay or visual parity.
 
 Duel is the controlled competitive mode. Arena is the training ground and home for optional hazards, destructible terrain, items, and eventual group matches. Keep health duels selectable. Campaign behavior and save formats stay independent.

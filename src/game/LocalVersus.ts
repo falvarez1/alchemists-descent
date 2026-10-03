@@ -38,6 +38,7 @@ export class LocalVersus implements VersusApi {
       if (!b) continue;
       for (const key of Object.keys(b.input.keys) as Array<keyof typeof b.input.keys>) b.input.keys[key] = false;
       b.input.queuedJump = undefined; b.input.queuedDodge = false;
+      b.input.shieldHeld = false;
       b.input.pourHeld = b.input.siphonHeld = b.input.drinkHeld = false;
       b.player.firing = b.player.firePressed = false;
       b.fighters.releaseInputs?.();

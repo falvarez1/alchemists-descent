@@ -1436,6 +1436,7 @@ export interface InputState {
   queuedJump?: 'jump' | 'wall';
   /** One fresh defensive input, consumed by stock-mode movement at the next body tick. */
   queuedDodge?: boolean;
+  shieldHeld?: boolean;
   keys: Keys;
   /** Cursor position in world-grid coordinates (original mouseGridPosition). */
   mouse: { x: number; y: number };

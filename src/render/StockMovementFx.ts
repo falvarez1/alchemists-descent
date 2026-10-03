@@ -11,11 +11,36 @@ export function drawStockMovementFx(out: PixelSurface, ctx: Ctx): void {
   const arena = ctx.arena, p = ctx.player;
   if (!arena?.stockMatch || p.dead) return;
   const dodge = arena.stockDodge(arena.bound), recovering = arena.isRecovering(arena.bound);
-  if (!dodge?.busy && !recovering && !arena.isLaunching(arena.bound) && !p.stockFastFall) return;
+  const shield = arena.stockShield(arena.bound);
+  if (!dodge?.busy && !shield?.busy && !recovering && !arena.isLaunching(arena.bound) && !p.stockFastFall) return;
   const id = ctx.fighters?.id;
   const hex = Number.parseInt((id ? FIGHTER_DEFS[id].accent : '#65cac5').slice(1), 16);
   const color = [(hex >> 16 & 255) / 255, (hex >> 8 & 255) / 255, (hex & 255) / 255];
   const quiet = ctx.state.reduceFlashes === true;
+  if (shield?.guarding) {
+    const fraction = shield.strength / 100, radius = 10 + 4 * fraction;
+    const low = fraction < .3, r = low ? 1 : .28, g = low ? .64 : .84, b = low ? .22 : .78;
+    const guardDot = (x: number, y: number, alpha: number): void => {
+      if (out.blendFinePx) out.blendFinePx(x, y, r * alpha, g * alpha, b * alpha, alpha);
+      else out.addPx(x, y, r * alpha, g * alpha, b * alpha);
+    };
+    // A thin complete ring reads as defense; depletion breaks the ring into amber dashes.
+    for (let i = 0; i < 160; i++) {
+      if (low && i % 16 > 10) continue;
+      const angle = i / 160 * Math.PI * 2;
+      const x = p.x + Math.cos(angle) * radius, y = p.y - 11 + Math.sin(angle) * (radius + 3);
+      const alpha = quiet ? .4 : .72;
+      guardDot(x, y, alpha);
+      if (!low && i % 40 < 20) guardDot(p.x + Math.cos(angle) * (radius - 1.7), p.y - 11 + Math.sin(angle) * (radius + 1.3), alpha * .35);
+    }
+    if (!low) for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+      const x = p.x + Math.cos(angle) * radius, y = p.y - 11 + Math.sin(angle) * (radius + 3);
+      for (let i = -1.5; i <= 1.5; i += .5) {
+        guardDot(x + i, y + Math.abs(i) - 1.5, quiet ? .4 : .9);
+        guardDot(x + i, y - Math.abs(i) + 1.5, quiet ? .4 : .9);
+      }
+    }
+  }
   const dot = (x: number, y: number, alpha: number, ivory = false): void => {
     const r = ivory ? .93 : color[0], g = ivory ? .85 : color[1], b = ivory ? .67 : color[2];
     if (out.blendFinePx) {

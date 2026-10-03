@@ -59,7 +59,7 @@ export class StockMatchHud {
     document.body.classList.toggle('stock-match', visible);
     if (!visible || !match || !arena) return;
     const keys = getBindings();
-    this.hint.textContent = `${keyLabel(keys.jump)}: jump · ${keyLabel(keys.up)} + jump: recover · ${keyLabel(keys.dodge)} / LB: dodge · ${keyLabel(keys.kick)} / B: melee · up + melee: launch · down + melee: finish`;
+    this.hint.textContent = `${keyLabel(keys.jump)}: jump · ${keyLabel(keys.up)} + jump: recover · hold ${keyLabel(keys.dodge)}: shield · direction + ${keyLabel(keys.dodge)} / LB: dodge · ${keyLabel(keys.kick)} / B: melee · up + melee: launch · down + melee: finish`;
     const seconds = Math.ceil(match.remainingTicks / 60);
     this.timer.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
     this.timer.setAttribute('aria-label', `${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds remaining`);
@@ -77,8 +77,9 @@ export class StockMatchHud {
       card.stocks.setAttribute('aria-label', `${f?.stocks ?? 0} stocks remaining`);
       card.fuel.value = b ? b.player.levit / Math.max(1, b.player.maxLevit) : 1;
       const dodge = arena.stockDodge(slot), burst = arena.canRecover(slot), ledge = arena.stockLedge(slot);
-      card.defense.textContent = `BURST ${burst ? '◆' : '◇'}  AIR ${dodge?.airReady ? '◆' : '◇'}  LEDGE ${ledge?.airReady ? '◆' : '◇'}`;
-      card.defense.setAttribute('aria-label', `Recovery burst ${burst ? 'ready' : 'spent'}, air dodge ${dodge?.airReady ? 'ready' : 'spent'}, ledge catch ${ledge?.airReady ? 'ready' : 'spent'}`);
+      const shield = arena.stockShield(slot);
+      card.defense.textContent = `${shield?.phase === 'broken' ? 'SHIELD BROKEN' : `SHIELD ${Math.ceil(shield?.strength ?? 100)}`}  BURST ${burst ? '◆' : '◇'}  AIR ${dodge?.airReady ? '◆' : '◇'}  LEDGE ${ledge?.airReady ? '◆' : '◇'}`;
+      card.defense.setAttribute('aria-label', `Shield ${shield?.phase === 'broken' ? 'broken' : `${Math.ceil(shield?.strength ?? 100)} percent`}, recovery burst ${burst ? 'ready' : 'spent'}, air dodge ${dodge?.airReady ? 'ready' : 'spent'}, ledge catch ${ledge?.airReady ? 'ready' : 'spent'}`);
     }
     let message = '';
     if (match.state === 'idle') message = 'Choose a rival to begin';

@@ -9,6 +9,18 @@ The Markdown and responsive offline HTML plans cover the full roadmap. Four Imag
 
 The next ImageGen sheets, ledge-movement.png and camera-direction.png, cover ledge movement and revised framing after the user playtest. Twelve additional native captures document ledge catch, climb, release, and fast fall. The camera storyboard guides the implemented camera checkpoint below.
 
+## Shield checkpoint
+
+The new built-in ImageGen output concepts/shield-grab.png defines shield, depletion, break, grab, hold, and throw poses. Its exact prompt is concepts/shield-grab-prompt.txt. Only the shield actions are implemented in this checkpoint; the grab and throw panels remain targets.
+
+Grounded shields drain while held, absorb opponent contacts before hurt effects, regenerate after a quiet delay, and break under pressure. Contact stun prevents an immediate roll; release has seven ticks of lag. A break leaves ninety ticks of vulnerability and requires releasing the defense input before raising a new shield. Unowned environmental damage remains dangerous. The existing keyboard defense binding now guards when held and dodges with direction or in the air. The approved Xbox remap is still pending with grabs.
+
+The shield browser probe exercises actual melee contact, the opponent-owned direct-hit redirect, damage after a break, environmental damage, release lag, and real held-key transitions. It captures three states for Ilyra, Brann, and Mara. An initial probe was inconsistent because the run's arrival protection was still active; the controlled combat fixture now explicitly ends that grace period before attacking. The hit trace records the actual startup and contact frames.
+
+Visual iteration added a second partial ring and alchemical marks after the first plain ellipse looked too sparse beside the concept. Depletion changes the shield to a broken amber rim; guarded hands and lowered stance distinguish defense. Native character detail and break effects still fall short of the sheet. These are comparison captures, not a visual-parity claim.
+
+The full suite passed 3,241 tests in 258 files. Typecheck, lint, and production build passed. The camera checkpoint was committed as 31e78d2; the health-duel browser regression passed all sixteen checks before that commit.
+
 ## Larger stage and camera checkpoint
 
 The Foundry's main platform grew from 360 to 480 cells wide. Raised platforms grew from 100 to 160 cells wide and became thinner. The blast box is now x=240..1360, y=180..940, leaving 320 cells beyond each main-platform side and 300 below its top. These coordinates stay fixed while the camera pans and zooms.

@@ -1,0 +1,114 @@
+{
+  "mechanics": {
+    "block": {
+      "started": true,
+      "fighter": "brann-rook",
+      "trace": [
+        {
+          "phase": "startup",
+          "facing": -1,
+          "x": 822,
+          "y": 639,
+          "shield": 99.19999999999999
+        },
+        {
+          "phase": "startup",
+          "facing": -1,
+          "x": 822,
+          "y": 639,
+          "shield": 98.79999999999998
+        },
+        {
+          "phase": "startup",
+          "facing": -1,
+          "x": 822,
+          "y": 639,
+          "shield": 98.39999999999998
+        },
+        {
+          "phase": "startup",
+          "facing": -1,
+          "x": 822,
+          "y": 639,
+          "shield": 97.99999999999997
+        },
+        {
+          "phase": "startup",
+          "facing": -1,
+          "x": 822,
+          "y": 639,
+          "shield": 97.59999999999997
+        },
+        {
+          "phase": "active",
+          "facing": -1,
+          "x": 822,
+          "y": 639,
+          "shield": 80.69249999999997
+        },
+        {
+          "phase": "active",
+          "facing": -1,
+          "x": 822,
+          "y": 639,
+          "shield": 80.29249999999996
+        },
+        {
+          "phase": "active",
+          "facing": -1,
+          "x": 822,
+          "y": 639,
+          "shield": 79.89249999999996
+        }
+      ],
+      "shield": 79.89249999999996,
+      "volatility": 0,
+      "invuln": 0,
+      "hp": 146,
+      "maxHp": 146
+    },
+    "contactCancel": false,
+    "roll": {
+      "dodge": "startup",
+      "shield": "idle"
+    },
+    "ranged": {
+      "shield": 90.2376,
+      "volatility": 0,
+      "invuln": 0
+    },
+    "broken": "broken",
+    "locked": true,
+    "punish": 1.868,
+    "environment": 1.1199999999999999,
+    "release": "release",
+    "idle": "idle"
+  },
+  "keyboard": "hold K guards; K + direction dodges; release clears hold",
+  "gallery": [
+    "ilyra-voss-shield-guard.png",
+    "ilyra-voss-shield-depleted.png",
+    "ilyra-voss-shield-broken.png",
+    "brann-rook-shield-guard.png",
+    "brann-rook-shield-depleted.png",
+    "brann-rook-shield-broken.png",
+    "mara-quell-shield-guard.png",
+    "mara-quell-shield-depleted.png",
+    "mara-quell-shield-broken.png"
+  ],
+  "layout": {
+    "width": 390,
+    "scrollWidth": 390,
+    "cards": [
+      {
+        "width": 170,
+        "scrollWidth": 170
+      },
+      {
+        "width": 170,
+        "scrollWidth": 170
+      }
+    ]
+  },
+  "errors": []
+}

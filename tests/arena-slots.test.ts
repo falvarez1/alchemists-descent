@@ -111,6 +111,26 @@ describe('EventBus slot scoping', () => {
     expect(arena.stockAttack(0)?.kind).toBe('finisher');
     arena.takeStockDamage(5, 2, -1); expect(arena.stockAttack(0)?.busy).toBe(false);
   });
+  test('stock shield consumes opponent contacts without volatility and cannot cover attacks or dodge end lag', async () => {
+    const { arena, base, rival, step } = await meleeSetup();
+    rival.playerCtl.damage = (damage, x, y) => { if (!arena.blockStockHit(damage)) arena.takeStockDamage(damage, x, y); };
+    arena.with(1, () => arena.updateStockShield(true, true));
+    arena.requestStockAttack(); step(4);
+    expect(arena.stockMatch!.fighters[1].volatility).toBe(0);
+    expect(arena.stockShield(1)?.strength).toBeLessThan(99);
+    expect(arena.stockShield(0)?.strength).toBe(100);
+    arena.with(1, () => {
+      expect(arena.requestStockAttack()).toBe(false);
+      arena.updateStockDodge(true, true); expect(arena.stockDodge(1)?.busy).toBe(false);
+      for (let i = 0; i < 20; i++) arena.updateStockShield(true, true);
+      arena.updateStockDodge(true, true); expect(arena.stockDodge(1)?.busy).toBe(true);
+      arena.updateStockShield(true, true); expect(arena.stockShield(1)?.guarding).toBe(false);
+    });
+    step(20); base.player.grounded = true; arena.updateStockShield(true, true);
+    expect(arena.blockStockHit(10)).toBe(false); // unowned environmental damage cannot be shielded
+    arena.reset(); expect(arena.stockShield(1)?.strength).toBe(100); expect(arena.stockShield(0)?.busy).toBe(false);
+    arena.configureStocks(null); expect(arena.stockShield(0)).toBeNull();
+  });
   test('stock melee cannot hit through solid cells or dodge invulnerability', async () => {
     const { arena, ctx, step } = await meleeSetup();
     ctx.physics.cellBlocks = () => true;

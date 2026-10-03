@@ -90,6 +90,7 @@ function chillPose(ctx: Ctx, a: PlayerState, frame: number): { hug: number; stif
 export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   const ledge = a === ctx.player && ctx.arena?.stockMatch ? ctx.arena.stockLedge(ctx.arena.bound) : null;
   const attack = a === ctx.player ? ctx.arena?.stockAttack(ctx.arena.bound) : null;
+  const shield = a === ctx.player ? ctx.arena?.stockShield?.(ctx.arena.bound) : null;
   const frame = ctx.state.frameCount, f = (ledge?.busy ? ledge.side : attack?.busy ? attack.facing : a.facing) < 0 ? -1 : 1;
   const strike = attack?.busy && attack.spec ? attack : null;
   const windup = strike?.phase === 'startup' ? ease(strike.age / strike.spec!.startup) : 0;
@@ -119,7 +120,7 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
   if (recovering) s.lift = 1;
   const evadePose = dodge?.busy ? dodge.phase === 'evade' ? 1 : dodge.phase === 'startup' ? .45 : .25 : 0;
   const cold = chillPose(ctx, a, frame);
-  const crouch = Math.max(clamp(a.crouchT / 10, 0, 1), evadePose * .8, windup * (finish ? .8 : .25), finish && (heavy || bell) ? follow * .7 : 0), landing = clamp(a.landTimer / 10, 0, 1);
+  const crouch = Math.max(clamp(a.crouchT / 10, 0, 1), shield?.busy ? .55 : 0, evadePose * .8, windup * (finish ? .8 : .25), finish && (heavy || bell) ? follow * .7 : 0), landing = clamp(a.landTimer / 10, 0, 1);
   const air = a.grounded ? 0 : 1, skid = clamp(a.skidT / 10, 0, 1), hurt = clamp(a.staggerT / 10, 0, 1);
   const pulling = a.pullT > 0 ? 1 : 0;
   const speed = Math.min(1, Math.abs(a._svx || a.vx) / 2.1);
@@ -270,6 +271,13 @@ export function poseAlchemist(ctx: Ctx, a: PlayerState, s: Skeleton): Skeleton {
     fE = mixP(fE, at(2.8, 9.5), evadePose); fH = mixP(fH, at(4.1, 10.1), evadePose);
   }
   if (recovering) { bE = at(-1.5, 13.2); bH = at(-.5, 18); fE = at(2.7, 10.5); fH = at(3.5, 12); }
+  if (shield?.busy) {
+    s.wand.visible = false;
+    const broken = shield.phase === 'broken';
+    bE = at(-1, broken ? 7 : 11); bH = at(1, broken ? 4 : 14);
+    fE = at(4, broken ? 6 : 10); fH = at(5, broken ? 3 : 14);
+    s.gazeY = broken ? .8 : 0; s.eyesShut = broken;
+  }
   if (a.stockFastFall) { bE = at(-2, 9.5); bH = at(-.5, 10); fE = at(3, 9.5); fH = at(3.5, 12); }
   if (strike) {
     fE = mixP(fE, at(-2.2, finish ? 12 : 9), windup); fH = mixP(fH, at(-4, finish ? 14 : 8), windup);

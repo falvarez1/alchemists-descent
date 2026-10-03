@@ -602,6 +602,7 @@ export class InputManager {
       UP_KEY_CODES.has(code) ||
       DOWN_KEY_CODES.has(code) ||
       JUMP_KEY_CODES.has(code) ||
+      code === 'KeyK' ||
       GRAB_KEY_CODES.has(code)
     );
   }
@@ -628,10 +629,12 @@ export class InputManager {
     keys.jump = this.anyHeld(JUMP_KEY_CODES);
     keys.wallJump = this.heldKeyCodes.has('Space') || this.touchKeyCodes.has('Space');
     keys.grab = this.anyHeld(GRAB_KEY_CODES);
+    this.ctx.input.shieldHeld = this.heldKeyCodes.has('KeyK') || this.touchKeyCodes.has('KeyK');
   }
 
   private clearHeldInput(): void {
     this.ctx.input.queuedDodge = false;
+    this.ctx.input.shieldHeld = false;
     this.mobile?.reset();
     this.touchKeyCodes.clear();
     const { ctx } = this;
@@ -805,13 +808,19 @@ export class InputManager {
       code === 'KeyS' ||
       code === 'ArrowDown' ||
       GRAB_KEY_CODES.has(code)
-    )
+    ) {
       this.setKeyHeld(code, true);
+      if (!repeat && ctx.input.shieldHeld && ctx.arena?.stockMatch && (LEFT_KEY_CODES.has(code) || RIGHT_KEY_CODES.has(code) || DOWN_KEY_CODES.has(code))) ctx.input.queuedDodge = true;
+    }
     else if (code === 'KeyR' && ctx.player.dead) ctx.playerCtl.respawn();
     // The fighter's tactical ability (Z) and ultimate (T): latched here, consumed inside the tick (src/fighters).
     else if (code === 'KeyZ' && !repeat && !ctx.player.dead) ctx.fighters?.press('tactical');
     else if (code === 'KeyT' && !repeat && !ctx.player.dead) ctx.fighters?.press('ultimate');
-    else if (code === 'KeyK' && !repeat && !ctx.player.dead && ctx.arena?.stockMatch) ctx.input.queuedDodge = true;
+    else if (code === 'KeyK' && !ctx.player.dead && ctx.arena?.stockMatch) {
+      this.setKeyHeld(code, true);
+      const k = ctx.input.keys;
+      if (!repeat && (!ctx.player.grounded || k.left || k.right || k.down)) ctx.input.queuedDodge = true;
+    }
     else if (code === 'KeyE' && !ctx.player.climbing) {
       // E telekinesis (toggle): set down whatever the wand holds (a corpse, a
       // crate), else LIFT the body under the cursor — the fallen or a crate;

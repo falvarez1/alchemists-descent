@@ -1,4 +1,10 @@
 export interface BlastZone { left: number; right: number; top: number; bottom: number }
+export interface StockShieldView {
+  readonly phase: 'idle' | 'guard' | 'release' | 'broken';
+  readonly busy: boolean;
+  readonly guarding: boolean;
+  readonly strength: number;
+}
 export interface StockLedgeInput { dir: number; up: boolean; down: boolean; jump: boolean }
 export interface StockLedgeView {
   readonly phase: 'idle' | 'hang' | 'climb';

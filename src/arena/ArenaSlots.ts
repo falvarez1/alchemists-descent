@@ -10,6 +10,7 @@ import { STOCK_RULES } from '@/config/stockRules';
 import type { BlastZone, StockLedgeInput, StockMatchView } from '@/core/arenaMatch';
 import { MatchDirector, stockLaunch, influenceLaunch } from '@/arena/MatchDirector';
 import { StockDodge } from '@/arena/StockDodge';
+import { StockShield } from '@/arena/StockShield';
 import { StockLedge } from '@/arena/StockLedge';
 import { StockAttack, stockAttackOverlaps } from '@/arena/StockAttack';
 import { stockMoveset } from '@/config/stockAttacks';
@@ -62,6 +63,7 @@ export class ArenaSlots implements ArenaApi {
   private match: MatchDirector | null = null;
   private readonly launchTicks = [0, 0];
   private readonly dodges = [new StockDodge(), new StockDodge()];
+  private readonly shields = [new StockShield(), new StockShield()];
   private readonly ledges = [new StockLedge(), new StockLedge()];
   private readonly attacks = [new StockAttack(), new StockAttack()];
   private readonly recovery = [{ used: false, held: false, ticks: 0 }, { used: false, held: false, ticks: 0 }];
@@ -71,6 +73,7 @@ export class ArenaSlots implements ArenaApi {
     this.match = zone ? new MatchDirector(STOCK_RULES, { ...zone }) : null;
     this.launchTicks.fill(0);
     for (const dodge of this.dodges) dodge.reset();
+    for (const shield of this.shields) shield.reset();
     for (const ledge of this.ledges) ledge.reset();
     for (const attack of this.attacks) attack.reset();
     if (this.active) this.reset();
@@ -81,7 +84,22 @@ export class ArenaSlots implements ArenaApi {
   canRecover(slot: number): boolean { return this.match !== null && this.recovery[slot]?.used === false; }
   isRecovering(slot: number): boolean { return this.match !== null && (this.recovery[slot]?.ticks ?? 0) > 0; }
   isEvading(slot: number): boolean { return this.active && this.match !== null && (this.dodges[slot]?.evading === true || this.ledges[slot]?.protected === true); }
-  isActionLocked(slot: number): boolean { return this.match !== null && (!this.runsBody(slot) || this.isLaunching(slot) || this.dodges[slot]?.busy === true || this.attacks[slot]?.busy === true || this.ledges[slot]?.busy === true); }
+  isActionLocked(slot: number): boolean { return this.match !== null && (!this.runsBody(slot) || this.isLaunching(slot) || this.dodges[slot]?.busy === true || this.shields[slot]?.busy === true || this.attacks[slot]?.busy === true || this.ledges[slot]?.busy === true); }
+  stockShield(slot: number): StockShield | null { return this.match ? this.shields[slot] ?? null : null; }
+  updateStockShield(held: boolean, canAct: boolean): StockShield | null {
+    if (!this.active || !this.match) return null;
+    const slot = this.boundSlot, b = this.slots[slot]!.bundle, shield = this.shields[slot];
+    shield.step(held, canAct && this.runsBody(slot) && !this.isLaunching(slot) && !b.player.dead &&
+      !b.player.climbing && !b.fighters.ownsMovement && !this.dodges[slot].busy && !this.attacks[slot].busy && !this.ledges[slot].busy, b.player.grounded);
+    if (shield.busy) { b.player.firing = b.player.firePressed = false; b.wands.clearTransientState?.(); }
+    return shield;
+  }
+  blockStockHit(amount: number): boolean {
+    const slot = this.boundSlot;
+    if (!this.active || !this.match || !this.blow || this.blow.by === slot || !this.shields[slot].block(amount)) return false;
+    this.ctx.audio.sfx('player.kick');
+    return true;
+  }
   stockLedge(slot: number): StockLedge | null { return this.match ? this.ledges[slot] ?? null : null; }
   updateStockLedge(canAct: boolean, keys: StockLedgeInput = { dir: 0, up: false, down: false, jump: false }): boolean {
     if (!this.active || !this.match) return false;
@@ -117,8 +135,8 @@ export class ArenaSlots implements ArenaApi {
     const slot = this.boundSlot, b = this.slots[slot]!.bundle, d = this.dodges[slot];
     const k = b.input.keys;
     const wasBusy = d.busy;
-    d.step(requested, canAct && this.runsBody(slot) && !this.isLaunching(slot) && !this.attacks[slot].busy && !this.ledges[slot].busy, b.player.grounded, Number(k.right) - Number(k.left), Number(k.down) - Number(k.up));
-    if (!wasBusy && d.busy) b.wands.clearTransientState?.();
+    d.step(requested, canAct && this.runsBody(slot) && !this.isLaunching(slot) && !this.attacks[slot].busy && !this.ledges[slot].busy && this.shields[slot].canDodge, b.player.grounded, Number(k.right) - Number(k.left), Number(k.down) - Number(k.up));
+    if (!wasBusy && d.busy) { this.shields[slot].drop(); b.wands.clearTransientState?.(); }
     return d;
   }
 
@@ -156,6 +174,7 @@ export class ArenaSlots implements ArenaApi {
         p.stunT = Math.max(p.stunT, launch.stun);
         this.launchTicks[slot] = launch.stun;
         this.attacks[slot].reset();
+        this.shields[slot].drop();
         this.ledges[slot].cancel();
       }
     }
@@ -420,7 +439,7 @@ export class ArenaSlots implements ArenaApi {
    */
   private bridgeBack(): void {
     const v = this.slots[this.standFor];
-    if (!v || this.isEvading(this.standFor)) return;
+    if (!v || this.isEvading(this.standFor) || this.stockShield(this.standFor)?.guarding) return;
     const s = this.stand;
     const sent = this.sent;
     let dvx = s.vx - sent.vx, dvy = s.vy - sent.vy;
@@ -460,7 +479,7 @@ export class ArenaSlots implements ArenaApi {
     // The victim's controller applies ARENA_RULES.blowScale to everything it takes, including fire.
     const hpFactor = this.slots[victim]?.bundle.fighters.body.maxHp ?? 1;
     const dmg = amount * dealt * Math.pow(hpFactor || 1, ARENA_RULES.healthEquality);
-    if (dmg > 0) this.lastBlow[victim] = { by: attacker, at: this.ctx.state.frameCount };
+    if (dmg > 0 && !this.stockShield(victim)?.guarding) this.lastBlow[victim] = { by: attacker, at: this.ctx.state.frameCount };
     const tag = source === 'direct' ? 'fighter' : String(source);
     // What the blow belongs to is the ATTACKER's to say (its kit knows which ability is acting): a fight recorder reads it inside the victim's damage().
     const was = this.blow;
@@ -479,7 +498,7 @@ export class ArenaSlots implements ArenaApi {
     const victim = stand.fighter;
     if (victim === undefined || victim === this.boundSlot || strength <= 0) return;
     const rec = this.slots[victim];
-    if (!rec || rec.bundle.player.dead || this.bout.state === 'won' || this.isEvading(victim)) return;
+    if (!rec || rec.bundle.player.dead || this.bout.state === 'won' || this.isEvading(victim) || this.stockShield(victim)?.guarding) return;
     const push = strength * 1.1;
     this.with(victim, () => { rec.bundle.playerCtl.applyImpulse(dirX * push, dirY * push - push * 0.18); });
   }
@@ -676,9 +695,11 @@ export class ArenaSlots implements ArenaApi {
   private respawnBody(b: SlotBundle, x: number, y: number): void {
     Object.assign(this.recovery[this.boundSlot], { used: false, held: false, ticks: 0 });
     this.dodges[this.boundSlot].reset();
+    this.shields[this.boundSlot].reset();
     this.ledges[this.boundSlot].reset();
     this.attacks[this.boundSlot].reset();
     b.input.queuedDodge = false;
+    b.input.shieldHeld = false;
     const p = b.player;
     p.dead = false;
     p.x = x; p.y = y; p.vx = 0; p.vy = 0; p.fx = 0; p.fy = 0;
