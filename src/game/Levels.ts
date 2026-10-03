@@ -897,7 +897,7 @@ export class Levels implements LevelsApi {
     const prefix = mode === 'test' ? 'Test run' : 'Fresh expedition';
     // A player's run announces itself with the floor's title card; only an
     // authoring test run still names its difficulty tier, for the tester.
-    if (mode === 'test') {
+    if (mode === 'test' && config.presentation !== 'versus') {
       const diff = difficultyMods(ctx.state);
       ctx.events.emit('toast', { text: `${prefix}: ${titleCaseName(label)} · ${diff.roman} ${diff.name}` });
     }

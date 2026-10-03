@@ -7,7 +7,7 @@ Local environment: isolated worktree, Vite 127.0.0.1:5217, headless Edge through
 
 The Markdown and responsive offline HTML plans cover the full roadmap. Four ImageGen sheets cover the primary match, four stages, ten fighters/actions, and local-versus flow. A fifth output is the runtime Foundry backdrop in public/assets/arena/foundry-backdrop.png. The sixth, concepts/motion-defense.png, guides defensive poses and effects using the existing fighter portraits as references. Exact prompts are in concepts/prompts.md and concepts/motion-defense-prompt.md. The HTML shows actual gameplay and twelve native-resolution movement details.
 
-The current playable implementation is available in the local authoring build. Inspection confirmed that Game constructs ArenaSlots only with __AUTHORING__, and the title's Arena/Duel entries have the same gate. Player-build access and independent local controller ownership are required next steps, not delivered features.
+Inspection found that the baseline constructed ArenaSlots and exposed Arena/Duel only with __AUTHORING__. The new player-facing Duel entry, runtime, lobby, stock HUD, and CPU driver now run in the production player build. Training panels and the console remain authoring-only. Both builds have been exercised locally; nothing has been deployed.
 
 ## First implementation slice
 
@@ -23,7 +23,7 @@ The current playable implementation is available in the local authoring build. I
 
 ## Validation
 
-- Whole suite after defensive movement: 250 files and 3,194 tests passed.
+- Whole suite after local versus: 252 files and 3,208 tests passed.
 - Typecheck, ESLint, and production build passed. Vite reports large output chunks; no bundle optimization is claimed.
 - Existing health-duel runtime probe: 16 checks passed, including exactly-once damage, owner binding, and listener cleanup.
 - Stock browser probe passed: damage, launch movement, stocks, protected respawn, recovery by ordinary inputs, winner, geometry, stable camera, and HUD restoration.
@@ -32,6 +32,7 @@ The current playable implementation is available in the local authoring build. I
 - Six input-driven recovery cases passed: Ilyra, Brann, and Mara from both sides, all landing with three stocks intact.
 - Real-time bot dogfood: twenty-second bouts with actual simulation/rendering and no page errors. These are smoke playtests, not a full balance or performance study.
 - Defensive movement browser probe passed: a real keyboard press starts the dodge; protected hits add no volatility; the active move travels 38 cells in the measured seven ticks; startup/end lag remain vulnerable; one air dodge is consumed; a metal wall stops the body. Casting, kick, flask throw, held pouring, and tactical actions cannot bypass dodge commitment. Twelve fighter/pose captures were saved.
+- Local versus passed in the development and production builds: visible title/lobby launch, CPU match, locked signature loadouts, keyboard plus controller, two controllers, restart, title return, pause, reconnect, and narrow layout. The development probe additionally verifies movement isolation, controller rematch, an unchanged durable campaign checkpoint, and Continue restoring the campaign. No page errors were recorded.
 
 ## Measured behavior
 
@@ -39,7 +40,7 @@ The real damage path produced launch speeds of 5.94 and 10.84 cells/tick at low/
 
 Ilyra recovered using ordinary direction and jump inputs from x=599, y=650. After the platform refinement, her feet rose to y=567, then she landed at x=703, y=609 with three stocks intact. Brann reached y=582; Mara reached y=566. Mirrored checks passed on the right.
 
-The final mechanics-probe bot sample produced four attributed ring-outs in about twenty seconds. Earlier samples included an unforced CPU ring-out. Recovery strategy needs longer multi-fighter sampling.
+The latest mechanics-probe bot sample produced three attributed ring-outs in about twenty seconds. Earlier samples included four attributed ring-outs and an unforced CPU ring-out. Recovery strategy needs longer multi-fighter sampling.
 
 A separate 300-frame local bot sample after the defensive movement pass, with GPU composition enabled, recorded median frame work of 3.27 ms and p95 of 7.275 ms. Render p95 was 5.425 ms, above the 5 ms budget; composition p95 was 5.115 ms, above the 3.5 ms budget. A maximum frame interval of 485.365 ms was also recorded and has not been attributed. Earlier samples varied, including larger entity spikes. This is a short development-server measurement, not a controlled before/after benchmark or a performance pass. Fixed platform material calculations are cached; the renderer still checks surviving cells each frame.
 
@@ -65,9 +66,25 @@ A separate 300-frame local bot sample after the defensive movement pass, with GP
 
 The actual stage follows the concept's slate refinery depth, amber platform edges, teal lamps, symmetric geometry, and open space underneath. The renderer samples the generated backdrop; platforms and lamp housings are real cells.
 
-The platform now has a deeper tapered body, copper ribs, inset gear-and-flask medallion, and teal lamps. It remains simpler than the concept. Existing fighters retain their authored clothing and proportions; existing portraits are reused in the HUD. The first general sheet's amber Ilyra and ivory Brann differed from the established teal coat and black iron; the new motion sheet uses the established portraits to correct that drift. Dodge anticipation, tucked air poses, silhouette echoes, evasion arcs, and recovery/launch accents are implemented. The native sprites and echoes remain simpler than the new concept. Richer structural detail, full roster animation, and complete screen flows remain unfinished. The concepts have NOT been declared matched.
+The platform now has a deeper tapered body, copper ribs, inset gear-and-flask medallion, and teal lamps. It remains simpler than the concept. Existing fighters retain their authored clothing and proportions; existing portraits are reused in the HUD. The first general sheet's amber Ilyra and ivory Brann differed from the established teal coat and black iron; the new motion sheet uses the established portraits to correct that drift. Dodge anticipation, tucked air poses, silhouette echoes, evasion arcs, and recovery/launch accents are implemented. The native sprites and echoes remain simpler than the new concept. Richer structural detail, full roster animation, and additional stage selection remain unfinished. The concepts have NOT been declared matched.
 
-Next: player-build versus access, independent local controllers, broader recovery distances and all-roster coverage, distinct attack roles/animations, full lobby/results, full roster art, remaining stages, optional hazards/items, and the group-match proxy redesign. Controlled performance comparison, renderer parity, physical-controller feel, and human enjoyment remain unverified.
+The next checkpoint below brings the lobby, controller ownership, and results into the player build. Broader recovery coverage, attack roles, full roster art, and additional stages remain in progress.
+
+## Local versus implementation
+
+- A title-menu Duel entry opens the two-seat lobby with all ten existing fighters and the Foundry stage. CPU, keyboard plus controller, and two-controller assignments are supported.
+- Each controller has one owner. Press A to join, d-pad left/right to choose a fighter, A to ready, Start to launch. CPU seats are ready automatically.
+- Disconnect pauses the game and reserves the missing controller's seat. Reconnection waits for explicit resume and retains a pre-existing pause.
+- Match results now show a portrait, remaining stocks, and attributed ring-outs, with rematch and change-fighter actions. Pause restarts the match or returns to the title. The wand bench cannot alter signature loadouts during versus.
+- The browser probe launches through visible controls in the production build and confirms the debug handle is absent. Development-only state reads measure movement ownership and inspect the saved campaign checkpoint.
+- A failed rival join now returns to the lobby with a message. A failing regression reproduced the prior stuck loading screen.
+- Visual review found a clipped mobile heading from inherited global header styles. Explicit lobby header layout fixed it. Desktop and 390-pixel captures show the revised result.
+- Save isolation dogfood found that RunDirector treated entering an untracked arena as campaign abandonment. A failing unit regression and the real browser save check reproduced it. Disposable matches now suspend the campaign, preserving its checkpoint and run history for Continue.
+- The mixed-input sample moved the keyboard fighter from x=690 to 706 while its controller rival moved from x=910 to 898. With two controllers, the assigned pad moved Player 1 from x=690 to 703 while Player 2 remained at x=910. Controller button fixtures now wait for presentation frames, avoiding missed synthetic presses during heavy build/test load.
+
+The actual lobby follows the concept's paired portrait layout, amber/teal identity, slate panels, copper borders, and stage preview. Results follow its portrait/statistics/actions arrangement. The game's established portraits replace the generated sheet's drifted character identities. Native gameplay sprites, fine frame ornament, and additional stages remain unfinished; this is not a claim that the whole game matches every concept.
+
+Next: distinct attack roles and animations, broader recovery distances and all-roster coverage, ledge behavior, full roster art, the remaining stages, optional hazards/items, and the group-match proxy redesign. Physical controller feel, controlled performance comparison, and human enjoyment remain unverified.
 
 ## Saved evidence
 
@@ -80,6 +97,9 @@ Next: player-build versus access, independent local controllers, broader recover
 - evidence/stock-match-results.json and evidence/stock-dogfood.json: mechanics and bout snapshots.
 - evidence/stock-recovery-matrix.json, evidence/stock-presentation.json, and evidence/stock-performance.json: recovery, layout, and timing results.
 - evidence/stock-movement.json, evidence/stock-dodge.png, and the fighter/action PNGs: defensive mechanics and rendered motion details.
+- evidence/versus-lobby-desktop.png, versus-lobby-mobile.png, and versus-lobby-player.png: local lobby captures, including the production build.
+- evidence/versus-match-player.png, versus-results.png, and versus-reconnect.png: player-build combat, the revised results card, and the reconnect pause.
+- evidence/local-versus.json and local-versus-player.json: visible-flow and input-ownership checks.
 
 ## Reproduce locally
 
@@ -88,3 +108,5 @@ Run npm run dev -- --host 127.0.0.1 --port 5217 --strictPort from the isolated w
 Run node scripts/verify-stock-match.mjs for mechanics and recovery; node scripts/verify-stock-movement.mjs for defensive movement and native captures; node scripts/verify-stock-presentation.mjs for HUD and the short timing sample; node scripts/capture-arena-baseline.mjs http://127.0.0.1:5217/ --docs-only for the illustrated plan. The baseline script without --docs-only captures the health room; preserve the saved original when comparing later versions.
 
 The goal remains active. The plans and first implementation slice are delivered; the complete roadmap and concept-to-runtime visual match are not finished.
+
+For the player-facing flow, choose Duel at the title, choose fighters/devices, ready each human seat, and enter the Foundry. Run node scripts/verify-local-versus.mjs for the development probe. After npm run build and node scripts/serve-dist.mjs --port 5218, run node scripts/verify-local-versus.mjs http://127.0.0.1:5218/ --production to check the player build without debug access.

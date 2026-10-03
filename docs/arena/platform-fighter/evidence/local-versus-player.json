@@ -1,0 +1,27 @@
+{
+  "production": true,
+  "narrow": {
+    "width": 390,
+    "viewport": 390,
+    "lobby": 390
+  },
+  "ownership": null,
+  "mixedOwnership": null,
+  "savedDescentUnchanged": null,
+  "checks": [
+    "visible title launch",
+    "CPU match",
+    "signature loadout locked",
+    "restart match",
+    "quit to title",
+    "press to join",
+    "keyboard plus controller match",
+    "two controller assignment",
+    "narrow layout",
+    "controller pause",
+    "disconnect freezes timer",
+    "reconnect requires resume",
+    "debug handle absent"
+  ],
+  "errors": []
+}

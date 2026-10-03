@@ -5,44 +5,37 @@
       "stocks": 1,
       "volatility": 0,
       "respawn": 0,
-      "protection": 26
+      "protection": 88
     },
     {
-      "stocks": 1,
-      "volatility": 16.375000000000004,
-      "respawn": 23,
+      "stocks": 2,
+      "volatility": 10.451200000000002,
+      "respawn": 0,
       "protection": 0
     }
   ],
   "downs": [
     {
-      "slot": 1,
-      "by": 0,
-      "source": "ring-out",
-      "x": 983,
-      "y": 734
-    },
-    {
       "slot": 0,
       "by": 1,
       "source": "ring-out",
-      "x": 1118,
-      "y": 587
-    },
-    {
-      "slot": 0,
-      "by": 1,
-      "source": "ring-out",
-      "x": 1111,
-      "y": 606
+      "x": 1117,
+      "y": 599
     },
     {
       "slot": 1,
       "by": 0,
       "source": "ring-out",
-      "x": 1116,
-      "y": 651
+      "x": 1022,
+      "y": 735
+    },
+    {
+      "slot": 0,
+      "by": 1,
+      "source": "ring-out",
+      "x": 488,
+      "y": 621
     }
   ],
-  "remaining": 20648
+  "remaining": 20586
 }

@@ -1,0 +1,45 @@
+#versus-lobby, #versus-reconnect { position: fixed; inset: 0; z-index: 220; overflow: auto; color: #e8dcc0; background: #0d1823f7; font-family: var(--m-sans, system-ui, sans-serif); }
+#versus-lobby[hidden], #versus-reconnect[hidden] { display: none; }
+.versus-shell { max-width: 1060px; margin: 20px auto; padding: 22px 30px 14px; border: 1px solid #ac744b; outline: 1px solid #ac744b66; outline-offset: 5px; background: radial-gradient(ellipse at 50% 30%, #293e5155, transparent 70%), #111d28; box-shadow: inset 0 0 0 5px #293e5140; }
+.versus-header { display: block; height: auto; text-align: center; background: transparent; padding: 0; }
+.versus-header h1 { font: 48px/1 var(--m-serif, Georgia, serif); letter-spacing: .13em; text-transform: uppercase; margin: 6px 0 8px; width: auto; text-align: center; white-space: normal; overflow: visible; text-overflow: clip; }
+.versus-header p { font-size: 12px; color: #b7c9ca; margin: 5px 0; }
+.versus-header p:first-child { color: #ac744b; letter-spacing: .16em; text-transform: uppercase; }
+.versus-seats { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin: 20px 0; }
+.versus-seat { position: relative; display: grid; grid-template-columns: 42% 58%; min-width: 0; min-height: 245px; border: 1px solid #ac744b; border-top: 3px solid #efac58; background: #142334; }
+.versus-seat-1 { border-top-color: #65cac5; }
+.versus-portrait { width: 100%; height: 100%; max-height: 280px; object-fit: cover; object-position: 50% 12%; image-rendering: pixelated; mask-image: linear-gradient(to right, black 70%, transparent); }
+.versus-seat-copy { min-width: 0; padding: 17px 17px 16px 0; }
+.versus-kicker { display: block; margin: 0 0 6px; text-transform: uppercase; font-size: 10px; letter-spacing: .16em; color: #efac58; }
+.versus-seat-1 .versus-kicker { color: #65cac5; }
+.versus-seat h2 { font: 28px/1.1 var(--m-serif, Georgia, serif); margin: 0; }
+.versus-fighter-title { font-size: 11px; color: #b7c9ca; margin: 5px 0 16px; min-height: 26px; }
+#versus-lobby select, #versus-lobby button, #versus-reconnect button { font: inherit; font-size: 13px; border: 1px solid #ac744b; color: #e8dcc0; background: #182b3a; border-radius: 0; min-height: 38px; padding: 8px 12px; cursor: pointer; }
+#versus-lobby select { width: 100%; margin-bottom: 8px; padding: 7px; }
+#versus-lobby button:disabled, #versus-reconnect button:disabled { cursor: default; opacity: .5; }
+#versus-lobby button:focus-visible, #versus-lobby select:focus-visible, #versus-reconnect button:focus-visible { outline: 3px solid #65cac5; outline-offset: 3px; }
+.versus-ready { width: 100%; }
+.versus-seat[data-ready="true"] .versus-ready { color: #a9e5cf !important; border-color: #65cac5 !important; opacity: 1 !important; }
+.versus-stage { display: flex; position: relative; align-items: center; justify-content: flex-end; min-height: 105px; border: 1px solid #ac744b; overflow: hidden; }
+.versus-stage-art { position: absolute; inset: 0; background: linear-gradient(to right, transparent, #142334 70%), url('/assets/arena/foundry-backdrop.png') center 55% / cover; opacity: .8; }
+.versus-stage > div:last-child { z-index: 1; width: 49%; padding: 12px 18px; }
+.versus-stage h2 { font: 29px/1.1 var(--m-serif, Georgia, serif); margin: 0; }
+.versus-stage p { font-size: 13px; margin: 9px 0 0; }.versus-stage p span { padding: 0 7px; color: #ac744b; }
+.versus-footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 18px; }
+#versus-start { background: #62462e; border-color: #efac58; min-width: 205px; }
+.versus-status { color: #b7c9ca; font-size: 12px; text-align: center; margin: 0; }
+.versus-keys, .versus-controls { font-size: 11px; line-height: 1.5; color: #b7c9ca; text-align: center; margin: 14px 0 0; }
+.versus-controls { font-size: 10px; color: #90a9b8; margin-top: 5px; }
+#versus-reconnect { display: grid; place-items: center; background: #0d1823e8; }
+#versus-reconnect > div { max-width: 480px; padding: 30px; border: 1px solid #ac744b; background: #142334; text-align: center; }
+#versus-reconnect h2 { font: 30px var(--m-serif, Georgia, serif); }#versus-reconnect button { margin: 6px; }
+body.versus-active #fighter-arena { display: none !important; }
+body.versus-active [data-pause-open="KeyB"] { display: none; }
+.stock-change { position: absolute; top: 64%; left: 50%; transform: translateX(-50%); pointer-events: auto; color: #e8dcc0; border: 1px solid #ac744b; background: #142334; padding: 10px 20px; cursor: pointer; font: inherit; }
+.stock-change:focus-visible { outline: 3px solid #65cac5; outline-offset: 3px; }
+@media(max-width:700px) {
+  .versus-shell { padding: 16px; margin: 12px; }.versus-header h1 { font-size: 34px; }.versus-header p { font-size: 10px; }
+  .versus-seats { gap: 12px; margin: 14px 0; }.versus-seat { display: block; }.versus-portrait { height: 140px; max-height: none; mask-image: linear-gradient(to bottom, black 65%, transparent); }.versus-seat-copy { padding: 0 10px 12px; margin-top: -14px; position: relative; }.versus-seat h2 { font-size: 21px; }.versus-fighter-title { margin-bottom: 9px; }
+  #versus-lobby select, #versus-lobby button { font-size: 11px; padding: 6px; }.versus-stage > div:last-child { width: 75%; }.versus-stage h2 { font-size: 25px; }.versus-stage p { font-size: 11px; }.versus-stage p span { padding: 0 3px; }
+  .versus-footer { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.versus-status { grid-column: 1 / -1; grid-row: 1; }#versus-start { min-width: 0; }
+}

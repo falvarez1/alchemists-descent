@@ -225,8 +225,9 @@ export class RunDirector implements RunApi {
   /* ---------------- lifecycle ---------------- */
 
   beginRun(ctx: Ctx, opts: RunBeginOptions): void {
-    // A run replaced by a new one still counts: record it, show nothing.
-    if (this.active) this.endRun(ctx, 'abandoned', false);
+    // A new tracked descent replaces the old one. A disposable arena suspends
+    // it; Continue restores its existing checkpoint without an abandonment.
+    if (this.active && opts.tracked) this.endRun(ctx, 'abandoned', false);
     this.finished = false;
     this.result = null;
     this.runUnlocks = [];

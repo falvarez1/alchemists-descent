@@ -169,16 +169,16 @@ export class ExpeditionEntry {
       id: 'daily', label: 'Today’s descent', kind: 'action', sub: daily?.sub, hint: daily?.hint,
       activate: () => void this.launch('daily'),
     });
+    items.push({
+      id: 'duel', label: 'Duel', kind: 'action', sub: 'Local versus · The Foundry',
+      hint: 'Three stocks. Fight a friend or a CPU rival. Your descent stays saved.',
+      activate: () => this.ctx.versus?.open(),
+    });
     if (__AUTHORING__) {
       items.push({
         id: 'arena', label: 'Arena', kind: 'action', sub: 'The Proving Yard',
         hint: 'Pick a fighter and walk through every move. Your descent is left as it is.',
         activate: () => this.openArena('fighter-test'),
-      });
-      items.push({
-        id: 'duel', label: 'Duel', kind: 'action', sub: 'The Duel Stage',
-        hint: 'Two fighters in one room: add a rival, give either a computer brain, and watch them fight (or fight it yourself).',
-        activate: () => this.openArena('fighter-duel'),
       });
       items.push({ id: 'workshops', label: 'Workshops', kind: 'drill', hint: 'The material sandbox, the level builder and the advanced run setup.', activate: () => this.menu.push('workshops') });
     } else if (this.workshopUnlocked) {

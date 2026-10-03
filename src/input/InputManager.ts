@@ -91,6 +91,8 @@ export const KEYBOARD_UI_BLOCK_SELECTOR = [
   '#grimoire-overlay.open',
   '#story-cinema.show',
   '#fighter-roster.visible',
+  '#versus-lobby:not([hidden])',
+  '#versus-reconnect:not([hidden])',
 ].join(', ');
 
 export function isKeyboardUiOwnerActive(doc: Document = document): boolean {
@@ -148,7 +150,9 @@ export class InputManager {
   pollGamepad(): void {
     this.refreshPointerWorld();
     if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
-    const pad = Array.from(navigator.getGamepads()).find(p => p?.connected && p.mapping === 'standard');
+    const pads = Array.from(navigator.getGamepads());
+    if (this.ctx.versus?.poll(pads, isKeyboardUiOwnerActive())) return;
+    const pad = pads.find(p => p?.connected && p.mapping === 'standard');
     if (!pad) {
       if (this.padDriving) { this.syncHeldKeys(); this.ctx.player.firing = false; this.ctx.input.pourHeld = false; this.ctx.input.siphonHeld = false; }
       this.padDriving = false; this.previousPadButtons.fill(0); return;

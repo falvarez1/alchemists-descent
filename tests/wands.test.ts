@@ -1311,4 +1311,7 @@ describe('wand bench access', () => {
     expect(canOpenWandBench(benchCtx({ player: { x: 100, y: 100, dead: true } } as Partial<Ctx>))).toBe(false);
     expect(canOpenWandBench(benchCtx({ levels: { current: null } } as Partial<Ctx>))).toBe(false);
   });
+  it('keeps signature loadouts fixed during local versus', () => {
+    expect(canOpenWandBench(benchCtx({ versus: { active: true } } as Partial<Ctx>))).toBe(false);
+  });
 });

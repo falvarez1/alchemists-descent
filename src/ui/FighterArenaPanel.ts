@@ -311,7 +311,7 @@ export class FighterArenaPanel {
     this.raf = requestAnimationFrame(this.loop);
     const ctx = this.ctx;
     const levelId = ctx.levels.current?.def.id;
-    const active = ctx.state.mode === 'play' && (levelId === LEVEL_ID || levelId === DUEL_LEVEL_ID) && !document.body.classList.contains('entry-active');
+    const active = ctx.state.mode === 'play' && !ctx.versus?.active && (levelId === LEVEL_ID || levelId === DUEL_LEVEL_ID) && !document.body.classList.contains('entry-active');
     this.root.dataset.level = levelId === DUEL_LEVEL_ID ? 'duel' : 'yard';
     if (active !== this.shown) {
       this.shown = active;

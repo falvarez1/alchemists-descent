@@ -15,6 +15,7 @@ import type { CreatureSfxAction, SfxId } from '@/content/audio/sfxCues';
 import type { LevelStorySites, StoryApi, StorySpeakOptions, StorySpokenLine } from '@/core/story';
 import type { FighterApi } from '@/core/fighters';
 import type { ArenaApi } from '@/core/arena';
+import type { VersusApi } from '@/core/versus';
 import type { FighterId } from '@/content/fighters';
 import type { BrewingApi } from '@/core/alchemy';
 
@@ -1286,6 +1287,8 @@ export interface RunTestKitConfig {
 export type Difficulty = 1 | 2 | 3 | 4;
 
 export interface RunStartConfig {
+  /** Player-facing disposable duel, without authoring run announcements. */
+  presentation?: 'versus';
   /** Normal progression persists; test mode is disposable and never autosaved. */
   mode: RunMode;
   /** Run difficulty 1–4 (3 = shipped balance). Defaults to the run's current level. */
@@ -3869,6 +3872,7 @@ export interface Ctx {
   fighters?: FighterApi;
   /** Two fighters in one world (core/arena); absent in small test contexts and until a rival is added. */
   arena?: ArenaApi;
+  versus?: VersusApi;
   /** Light as a gameplay fact (render/LightQuery); absent in small test contexts. */
   lightQuery?: LightQueryApi;
   /** The streamed score; absent in small test contexts. */

@@ -1,0 +1,52 @@
+{
+  "production": false,
+  "narrow": {
+    "width": 390,
+    "viewport": 390,
+    "lobby": 390
+  },
+  "ownership": {
+    "before": [
+      690,
+      910
+    ],
+    "after": [
+      703,
+      910
+    ],
+    "assigned": [
+      "pad:1",
+      "pad:0"
+    ]
+  },
+  "mixedOwnership": {
+    "before": [
+      690,
+      910
+    ],
+    "after": [
+      706,
+      898
+    ]
+  },
+  "savedDescentUnchanged": true,
+  "checks": [
+    "visible title launch",
+    "CPU match",
+    "signature loadout locked",
+    "restart match",
+    "quit to title",
+    "press to join",
+    "keyboard plus controller match",
+    "two controller assignment",
+    "narrow layout",
+    "controller pause",
+    "disconnect freezes timer",
+    "reconnect requires resume",
+    "slot movement isolation",
+    "controller rematch",
+    "saved descent preserved",
+    "Continue restores campaign"
+  ],
+  "errors": []
+}

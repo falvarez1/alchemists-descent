@@ -1,6 +1,7 @@
 import type { Ctx } from '@/core/types';
 import { FIGHTER_DEFS, fighterPortraitUrl } from '@/content/fighters';
 import { getBindings, keyLabel } from '@/input/bindings';
+import '@/styles/arena.css';
 
 /** Player-facing stock readout; the existing arena panel remains the training control. */
 export class StockMatchHud {
@@ -9,6 +10,11 @@ export class StockMatchHud {
   private readonly message = document.createElement('div');
   private readonly rematch = document.createElement('button');
   private readonly hint = document.createElement('div');
+  private readonly change = document.createElement('button');
+  private readonly result = document.createElement('section');
+  private readonly resultBody = document.createElement('div');
+  private resultKey = '';
+  private raf = 0;
   private readonly offs: Array<() => void> = [];
   private readonly cards: Array<{ root: HTMLElement; portrait: HTMLImageElement; name: HTMLElement; percent: HTMLElement; stocks: HTMLElement; defense: HTMLElement; fuel: HTMLMeterElement }> = [];
 
@@ -23,6 +29,10 @@ export class StockMatchHud {
     this.rematch.type = 'button'; this.rematch.textContent = 'Rematch';
     this.rematch.addEventListener('click', () => { this.rematch.blur(); onRematch(); });
     this.root.append(this.timer, this.message, this.rematch);
+    this.change.className = 'stock-change'; this.change.type = 'button'; this.change.textContent = 'Change fighters';
+    this.change.addEventListener('click', () => this.ctx.versus?.open()); this.root.append(this.change);
+    this.result.className = 'stock-result'; this.result.hidden = true;
+    this.result.setAttribute('aria-label', 'Match result'); this.resultBody.className = 'stock-result-body'; this.root.append(this.result);
     this.hint.className = 'stock-controls';
     this.root.append(this.hint);
     for (let slot = 0; slot < 2; slot++) {
@@ -38,6 +48,8 @@ export class StockMatchHud {
       this.cards.push({ root, portrait, name, percent, stocks, defense, fuel });
     }
     (document.getElementById('canvas-holder') ?? document.body).append(this.root);
+    const tick = (): void => { this.update(); this.raf = requestAnimationFrame(tick); };
+    this.raf = requestAnimationFrame(tick);
   }
 
   update(): void {
@@ -75,10 +87,27 @@ export class StockMatchHud {
       const id = match.winner !== null ? arena.fighterId(match.winner) : null;
       message = match.winner === null ? 'Draw' : `${id ? FIGHTER_DEFS[id].name : 'Alchemist'} wins`;
     }
+    const resultKey = match.state === 'finished' ? `${message}|${arena.bout.endedAt}|${match.fighters.map(f => f.stocks).join(',')}` : '';
+    if (resultKey !== this.resultKey) {
+      this.resultKey = resultKey; this.result.hidden = resultKey === '';
+      if (resultKey) {
+        const winner = match.winner, id = winner !== null ? arena.fighterId(winner) : null;
+        this.resultBody.replaceChildren();
+        if (id) { const portrait = document.createElement('img'); portrait.src = fighterPortraitUrl(id); portrait.alt = ''; this.resultBody.append(portrait); }
+        const stats = document.createElement('dl');
+        const rows: Array<[string, string]> = winner === null
+          ? match.fighters.map((f, slot) => [`Player ${slot + 1}`, `${f.stocks} stocks · ${Math.round(f.volatility)}%`])
+          : [['Stocks remaining', String(match.fighters[winner].stocks)], ['Ring-outs scored', String(arena.bout.downs.filter(d => d.by === winner && d.slot !== winner).length)]];
+        for (const [label, value] of rows) { const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = label; dd.textContent = value; stats.append(dt, dd); }
+        this.resultBody.append(stats);
+        this.result.append(this.message, this.resultBody, this.rematch, this.change);
+      } else this.root.append(this.message, this.rematch, this.change);
+    }
     if (this.message.textContent !== message) this.message.textContent = message;
     this.message.hidden = message === '';
     this.rematch.hidden = match.state !== 'finished';
+    this.change.hidden = match.state !== 'finished' || !this.ctx.versus?.active;
   }
 
-  dispose(): void { for (const off of this.offs) off(); this.root.remove(); document.body.classList.remove('stock-match'); }
+  dispose(): void { cancelAnimationFrame(this.raf); for (const off of this.offs) off(); this.root.remove(); document.body.classList.remove('stock-match'); }
 }

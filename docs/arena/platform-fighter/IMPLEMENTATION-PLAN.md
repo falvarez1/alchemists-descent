@@ -171,4 +171,18 @@ The HUD shows separate recovery-burst and air-dodge resources. The renderer uses
 
 Milestone 2 still needs broader movement tuning, ledge behavior, and complete recovery-distance coverage. Later attack, controller, lobby, stage, and multiplayer work remains in scope.
 
-This checkpoint passed 3,194 tests across 250 files and the defensive movement browser probe. The current mode still runs through authoring-only entry points. The next implementation slice brings versus into the player build and assigns independent devices before further content expansion.
+This checkpoint passed 3,194 tests across 250 files and the defensive movement browser probe. At that point the mode still ran through authoring-only entry points. The following implementation slice brought versus into the player build and assigned independent devices before further content expansion.
+
+## Player-facing versus checkpoint
+
+The title now opens a dedicated Duel lobby in both player and authoring builds. Two portrait cards follow the local-versus concept with amber/teal player identity, fighter and device selection, individual readiness, the Foundry stage card, and fixed three-stock/six-minute rules. All ten existing fighters are selectable. Other stages remain planned.
+
+Keyboard plus controller and two controllers have independent seat ownership. A controller joins by pressing A, changes its fighter with the d-pad, readies with A, and starts with Start. One controller cannot own both seats. Unplugging a controller pauses the match; reconnecting requires explicit resume. A CPU can fill either seat.
+
+The stock HUD runs independently of the authoring panel. Results use the winner's existing portrait, stocks remaining, attributed ring-outs, rematch, and change-fighter actions. Pause can restart the match or return to the title. Signature wand loadouts stay fixed during versus.
+
+Browser dogfood uncovered an existing lifecycle problem: entering a disposable arena ended the tracked campaign and removed its checkpoint. RunDirector now suspends that run when starting an untracked arena. The regression covers checkpoint preservation and restoring phials; the browser checks the actual saved checkpoint and Continue flow.
+
+The lobby and result screen now follow the concept's composition and slate/copper palette using established portraits. Ornamental framing, more stage choices, richer native fighter animation, attack roles, and the remaining Arena variants still need implementation. Synthetic gamepads verify ownership and reconnect behavior; physical controller feel remains unverified. See EVIDENCE.md for the latest checks and captures.
+
+Validation at this checkpoint: 3,208 tests across 252 files, typecheck, lint, build, development and production local-versus probes, the 16-check health-duel probe, and stock mechanics/recovery dogfood. The performance limits from the preceding sample still apply.

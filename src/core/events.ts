@@ -55,6 +55,9 @@ export interface EventMap {
   /** Confirmed, visible health loss in an Arena exchange. No queued inputs or hidden cooldowns. */
   fighterHit: { by: number; victim: number; damage: number; tick: number; attack?: string };
   arenaReset: undefined;
+  versusChanged: undefined;
+  versusPause: undefined;
+  versusMenu: { action: 'previous' | 'next' | 'confirm' | 'back' };
   /** Death UI should clear without triggering gameplay respawn side effects. */
   playerDeathCleared: undefined;
   /** The directed death (game/DeathCinema): letterbox in, title card, and out. */

@@ -26,6 +26,14 @@ body.stock-match #fighter-arena.collapsed .fa-title { font-size: 9px; letter-spa
 .stock-message { position: absolute; top: 35%; left: 50%; transform: translateX(-50%); text-align: center; font: 38px/1.2 var(--m-serif, Georgia, serif); padding: 18px 28px; background: #142334ed; border: 1px solid #ac744b; }
 .stock-rematch { position: absolute; top: 54%; left: 50%; transform: translateX(-50%); pointer-events: auto; color: #e8dcc0; border: 1px solid #ac744b; background: #293e51; padding: 12px 28px; cursor: pointer; font: inherit; }
 .stock-rematch:focus-visible { outline: 3px solid #65cac5; outline-offset: 3px; }
+.stock-result { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(570px, 86vw); padding: 26px; box-sizing: border-box; background: #101b27f5; border: 1px solid #ac744b; outline: 1px solid #ac744b66; outline-offset: 5px; text-align: center; pointer-events: auto; }
+.stock-result[hidden] { display: none; }
+.stock-result .stock-message { position: static; transform: none; background: none; border: 0; padding: 0 0 20px; font-size: 32px; }
+.stock-result-body { display: flex; align-items: center; gap: 24px; margin-bottom: 22px; text-align: left; }
+.stock-result-body img { width: 38%; height: 170px; object-fit: cover; object-position: 50% 12%; image-rendering: pixelated; border: 1px solid #ac744b; }
+.stock-result-body dl { flex: 1; margin: 0; }.stock-result-body dt { font-size: 13px; color: #b7c9ca; }.stock-result-body dd { font-size: 30px; margin: 4px 0 16px; color: #efac58; border-bottom: 1px solid #ac744b66; }
+.stock-result .stock-rematch, .stock-result .stock-change { position: static; transform: none; margin: 0 6px; padding: 11px 18px; font-size: 14px; }
+@media(max-width:500px) { .stock-result { padding: 18px 12px; }.stock-result .stock-message { font-size: 25px; }.stock-result-body { gap: 14px; }.stock-result-body img { height: 128px; }.stock-result-body dd { font-size: 25px; }.stock-result .stock-rematch, .stock-result .stock-change { padding: 9px; margin: 0 3px; font-size: 12px; } }
 body.play-active.stock-match #sound-quick { left: 18px; right: auto; bottom: auto; top: 18px; }
 body.play-active.stock-match #sound-panel { left: 0; right: auto; bottom: auto; top: calc(100% + 8px); transform-origin: top left; }
 body.play-active.stock-match #expedition-pause { left: 18px; right: auto; top: 58px; bottom: auto; }

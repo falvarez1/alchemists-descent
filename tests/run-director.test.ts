@@ -60,6 +60,18 @@ function die(h: Harness, cause = 'lava'): void {
 }
 
 describe('RunDirector', () => {
+  it('suspends a tracked descent for a disposable duel without ending it or deleting its checkpoint', () => {
+    const h = harness();
+    h.run.beginRun(h.ctx, { seed: 5, kit: 'spark', daily: null, tracked: true }); h.enter('d1'); die(h);
+    const saved = h.run.snapshotForSave()!;
+    const meta = h.run.metaView();
+    h.ctx.state.playtestSource = 'test';
+    h.run.beginRun(h.ctx, { seed: 77, kit: 'spark', daily: null, tracked: false });
+    expect(h.calls.abandoned).toBe(0); expect(h.ended).toEqual([]);
+    expect(h.run.active).toBe(false); expect(h.run.metaView().runsEnded).toBe(meta.runsEnded);
+    h.ctx.state.playtestSource = null; h.run.restoreFromSave(h.ctx, saved);
+    expect(h.run.active).toBe(true); expect(h.run.snapshotForSave()).toMatchObject({ seed: 5, phials: 2, deaths: 1 });
+  });
   it('spends a phial per death and ends the run on the death with none left', () => {
     const h = harness();
     h.run.beginRun(h.ctx, { seed: 5, kit: 'spark', daily: null, tracked: true });

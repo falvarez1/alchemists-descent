@@ -4,7 +4,6 @@ import { DUEL, resetDuelStage } from '@/world/duelStage';
 import { ArenaBotsPanel } from '@/ui/ArenaBotsPanel';
 import { botDriverFor, rivalDriverFor } from '@/arena/ai/driver';
 import { STOCK_STAGE } from '@/config/stockStage';
-import { StockMatchHud } from '@/ui/StockMatchHud';
 
 /**
  * THE DUEL section of the arena panel (docs/arena/ARENA-RULES.md 1): pick a rival and add it, give either fighter a brain and a skill,
@@ -23,10 +22,8 @@ export class ArenaDuelPanel {
   private readonly theirs: ArenaBotsPanel;
   private last = '';
   private readonly rules = document.createElement('select');
-  private readonly stockHud: StockMatchHud;
 
   constructor(private readonly ctx: Ctx) {
-    this.stockHud = new StockMatchHud(ctx, () => this.newBout());
     this.root.className = 'fa-section fa-duel';
     this.mine = new ArenaBotsPanel(ctx, 0, 'Your mind');
     this.theirs = new ArenaBotsPanel(ctx, 1, "The rival's mind");
@@ -139,7 +136,6 @@ export class ArenaDuelPanel {
 
   /** Redraw from the arena (the panel calls it a few times a second). */
   update(force = false): void {
-    this.stockHud.update();
     const ctx = this.ctx;
     const arena = ctx.arena;
     this.rules.disabled = ctx.levels.current?.def.id !== 'fighter-duel';
@@ -189,5 +185,5 @@ export class ArenaDuelPanel {
     this.theirs.update(force);
   }
 
-  dispose(): void { this.stockHud.dispose(); }
+  dispose(): void { /* DOM and listeners are owned by the parent panel. */ }
 }

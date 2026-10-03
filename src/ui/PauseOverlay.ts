@@ -21,8 +21,10 @@ export class PauseOverlay {
   private ending = false;
   private readonly abandonButton = document.createElement('button');
   private readonly titleButton = document.createElement('button');
+  private readonly offVersusPause: () => void;
 
   constructor(private ctx: Ctx) {
+    this.offVersusPause = ctx.events.on('versusPause', this.onPauseRequest);
     // The run's two ways out: end it here (the ledger follows), or step back
     // to the title with the descent saved for Continue.
     this.titleButton.type = 'button';
@@ -113,6 +115,7 @@ export class PauseOverlay {
   }
 
   dispose(): void {
+    this.offVersusPause();
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('game-pause-request', this.onPauseRequest);
     document.getElementById('expedition-pause')?.removeEventListener('click', this.onPauseRequest);
@@ -189,6 +192,14 @@ export class PauseOverlay {
     const goal = document.getElementById('pause-goal');
     const stats = document.getElementById('pause-stats');
     if (!place || !goal || !stats) return;
+    if (ctx.versus?.active && ctx.arena?.stockMatch) {
+      place.textContent = 'The Foundry · Duel'; goal.textContent = 'Launch your rival beyond the stage. Last stock standing wins.';
+      stats.replaceChildren(...ctx.arena.stockMatch.fighters.flatMap((fighter, slot) => {
+        const dt = document.createElement('dt'), dd = document.createElement('dd');
+        dt.textContent = `Player ${slot + 1}`; dd.textContent = `${fighter.stocks} stocks · ${Math.round(fighter.volatility)}%`;
+        return [dt, dd];
+      })); return;
+    }
     if (!level) { place.textContent = ''; goal.textContent = ''; stats.replaceChildren(); return; }
     const room = level.living ? WORKS_ROOMS.find((r) => r.id === level.living?.room)?.name : undefined;
     const name = titleCaseName(level.def.name);
@@ -243,6 +254,7 @@ export class PauseOverlay {
    *  launcher uses (inferring mode/world/seed from the live run). A normal expedition is a
    *  persistent descent, so restarting it is confirmed first. */
   private async restartLevel(): Promise<void> {
+    if (this.ctx.versus?.active) { this.resume(); this.ctx.versus.rematch(); return; }
     if (this.restarting) return;
     if (document.body.classList.contains('builder-open')) return;
     const status = this.ctx.levels.runStatus(this.ctx);
@@ -313,7 +325,9 @@ export class PauseOverlay {
     this.abandonButton.hidden = !tracked;
     this.titleButton.hidden = this.ctx.state.mode !== 'play';
     const restart = document.getElementById('pause-restart');
-    if (restart) restart.hidden = tracked;
+    if (restart) { restart.hidden = tracked; restart.textContent = this.ctx.versus?.active ? 'Restart match' : 'Restart level'; }
+    const resume = document.getElementById('pause-resume');
+    if (resume) resume.textContent = this.ctx.versus?.active ? 'Resume match' : 'Resume descent';
   }
 
   private syncFullscreenButton(): void {

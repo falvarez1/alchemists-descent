@@ -33,6 +33,10 @@ import { createPlayer, PlayerControl } from '@/entities/Player';
 import { ChillSystem } from '@/game/Chill';
 import { FighterSystem } from '@/fighters/FighterSystem';
 import { ArenaSlots } from '@/arena/ArenaSlots';
+import { LocalVersus } from '@/game/LocalVersus';
+import { VersusLobby } from '@/ui/VersusLobby';
+import { StockMatchHud } from '@/ui/StockMatchHud';
+import { resetDuelStage } from '@/world/duelStage';
 import { Physics } from '@/entities/physics';
 import { RigidBodies } from '@/entities/RigidBodies';
 import { VineStrands } from '@/entities/VineStrands';
@@ -369,8 +373,8 @@ export class Game {
     // ARENA (core/arena): a second fighter's bundle is built here, the one place that names the concrete classes. Its player and
     // input stand in on the Ctx while its systems are constructed (they read them), and every subscription they make is tagged with
     // the slot, so a rival's `cardCast` or `flaskUsed` never feeds this fighter's passive.
-    // (authoring builds only: the arena, its AI and its rival are test-mode tools; the player build drops all of it)
-    if (__AUTHORING__) ctx.arena = new ArenaSlots(ctx, (slot) => {
+    // Local versus uses the same slot runtime in both player and authoring builds.
+    ctx.arena = new ArenaSlots(ctx, (slot) => {
       const keepPlayer = ctx.player, keepInput = ctx.input;
       const player = createPlayer();
       const input: InputState = {
@@ -500,7 +504,13 @@ export class Game {
     // The fighter's tactical and ultimate chips under the flask belt (nothing for the classic Alchemist).
     this.disposables.push(new FighterChips(ctx));
     // The Proving Yard's card (steps through the fighters, ticks off their moves); it shows only in that level.
-    this.disposables.push(new FighterArenaPanel(ctx));
+    if (__AUTHORING__) this.disposables.push(new FighterArenaPanel(ctx));
+    const versus = new LocalVersus(ctx, () => this.loadPlaySystems().then(systems => systems !== null));
+    ctx.versus = versus;
+    this.disposables.push(versus, new VersusLobby(ctx), new StockMatchHud(ctx, () => {
+      if (versus.active) versus.rematch();
+      else { resetDuelStage(ctx); ctx.arena?.reset(); }
+    }));
     // The story's dialogue box (Pell) with its interact prompt, and the opening/ending plates.
     // (Matron Ash's voice comes with the play systems.)
     this.disposables.push(new DialogueBox(ctx), new StoryCinemaOverlay(ctx));
@@ -990,7 +1000,7 @@ export class Game {
         // (an arena: who resolves first is a seeded coin each tick, so neither fighter has the edge of landing its blow before the other moves)
         const rivalsFirst = ctx.arena !== undefined && ctx.arena.active && ctx.arena.rivalsFirst();
         if (rivalsFirst) ctx.arena?.runRivals('body');
-        if (__AUTHORING__) runBots(ctx);
+        runBots(ctx);
         // (an arena: a rival's slow is TIME, so a slowed fighter runs only a fraction of its ticks)
         if (ctx.arena === undefined || ctx.arena.runsBody(0)) {
           ctx.playerCtl.update(ctx);
