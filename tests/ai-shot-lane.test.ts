@@ -5,7 +5,7 @@ import { Cell } from '@/sim/CellType';
 import type { Ctx } from '@/core/types';
 import { lineClear } from '@/arena/ai/worldView';
 import { createWorldView } from '@/arena/ai/worldView';
-import { Control } from '@/arena/ai/control';
+import { Control, StuckDetector } from '@/arena/ai/control';
 import type { BrainSelf } from '@/arena/ai/brain';
 
 describe('observed firing paths', () => {
@@ -106,5 +106,19 @@ describe('observed firing paths', () => {
     control.walkTo(body, 740, { tol: 6 });
     expect(self.input.keys.left).toBe(true);
     expect(self.input.keys.jump).toBe(false);
+  });
+  test('retries a blocked route within 1.5 seconds instead of standing idle for three', () => {
+    const stuck = new StuckDetector(), position = { x: 330, y: 637 };
+    stuck.update(position, false, 0);
+    let retry = false;
+    for (let tick = 1; tick <= 90; tick++) retry ||= stuck.update(position, true, tick);
+    expect(retry).toBe(true);
+  });
+  test('movement and deliberate holds do not cause premature route retries', () => {
+    const moving = new StuckDetector(), waiting = new StuckDetector();
+    for (let tick = 0; tick < 240; tick++) {
+      expect(moving.update({ x: 330 + tick * .2, y: 637 }, true, tick)).toBe(false);
+      expect(waiting.update({ x: 330, y: 637 }, false, tick)).toBe(false);
+    }
   });
 });
