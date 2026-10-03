@@ -81,6 +81,19 @@ describe('Current-cell surface foliage', () => {
     expect(visibleSurfaceFoliage(ctx)).toHaveLength(0);
   });
 
+  it('discovers new indexed roots after a running simulation edits the terrain', () => {
+    const { world, ctx } = garden(); world.activity.beginStep(world);
+    const first = visibleSurfaceFoliage(ctx).find(p => p.x === 126)!;
+    world.replaceCellAt(world.idx(130, 150), Cell.Moss, 0x447744);
+    world.life[world.idx(130, 150)] = AMBIENT_FOLIAGE_LIFE;
+    world.replaceCellAt(world.idx(130, 151), Cell.Stone, 0x667777);
+    world.activity.beginStep(world);
+    const roots = visibleSurfaceFoliage(ctx);
+    expect(roots).toHaveLength(2);
+    expect(roots.find(p => p.x === 126)).toBe(first);
+    expect(roots.find(p => p.x === 130)).toBeDefined();
+  });
+
   it('resumes the saved burn age and remaining transmission budget', () => {
     const { world, tick, plant } = garden();
     world.life[world.idx(126, 150)] = foliageBurnLife(2, 65);

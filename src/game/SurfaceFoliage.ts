@@ -39,9 +39,10 @@ export function visibleSurfaceFoliage(ctx: Ctx): readonly SurfacePlant[] {
     let chunk = garden.chunks.get(key);
     if (!chunk || chunk.version !== version) {
       const found: SurfacePlant[] = [];
-      for (let y = Math.max(1, cy * 64); y < Math.min(world.height - 1, cy * 64 + 64); y++) for (let x = Math.max(1, cx * 64); x < Math.min(world.width - 1, cx * 64 + 64); x++) {
-        const i = world.idx(x, y);
-        if (world.types[i] !== Cell.Moss || world.life[i] > AMBIENT_FOLIAGE_LIFE) continue;
+      const add = (i: number): void => {
+        if (world.types[i] !== Cell.Moss || world.life[i] > AMBIENT_FOLIAGE_LIFE) return;
+        const x = i % world.width, y = Math.floor(i / world.width);
+        if (x < 1 || y < 1 || x >= world.width - 1 || y >= world.height - 1) return;
         const side = foliageSupport(world.types[i + world.width]) ? 0 : foliageSupport(world.types[i - 1]) ? 1 : foliageSupport(world.types[i + 1]) ? -1 : 0;
         const seed = surfaceFoliageHash(x, y);
         let p = garden.poses.get(i);
@@ -52,6 +53,12 @@ export function visibleSurfaceFoliage(ctx: Ctx): readonly SurfacePlant[] {
           garden.poses.set(i, p);
         }
         p.side = side; found.push(p);
+      };
+      // The sim already maintains sorted growth indexes. Water or smoke
+      // changing the chunk need not trigger another 4,096-cell root scan.
+      if (a.ready) { for (const i of a.growthCells[key]) add(i); }
+      else for (let y = Math.max(1, cy * 64); y < Math.min(world.height - 1, cy * 64 + 64); y++) {
+        for (let x = Math.max(1, cx * 64); x < Math.min(world.width - 1, cx * 64 + 64); x++) add(world.idx(x, y));
       }
       chunk = { version, roots: found }; garden.chunks.set(key, chunk);
     }

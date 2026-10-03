@@ -44,6 +44,7 @@ const SUMMARY_THRESHOLDS = {
   ...(parseThresholdEnv('PERF_SCENE_THRESHOLDS') ?? {}),
 };
 const MAX_REGRESSION_PCT = Number(process.env.PERF_MAX_REGRESSION_PCT ?? NaN);
+const CPU_PROFILE = process.env.PERF_CPU_PROFILE === '1';
 if (!['0', '1', 'current'].includes(GPU_COMPOSE_MODE)) {
   throw new Error('PERF_GPU_COMPOSE must be 0, 1, or current');
 }
@@ -77,6 +78,8 @@ for (let run = 0; run < RUNS; run++) {
   firstRunCapabilities ??= await collectBackendCapabilities(page, 'current');
   webgpuCapabilities ??= await collectWebGpuAdapterCapabilities(page);
 
+  const profiler = CPU_PROFILE ? await page.context().newCDPSession(page) : null;
+  if (profiler) { await profiler.send('Profiler.enable'); await profiler.send('Profiler.start'); }
   const result = await page.evaluate(
     async ({ FRAMES }) => {
       const ctx = window.__game.ctx;
@@ -212,6 +215,11 @@ for (let run = 0; run < RUNS; run++) {
     { FRAMES },
   );
 
+  if (profiler) {
+    const { profile } = await profiler.send('Profiler.stop');
+    writeJson(`verify-out/perf-${label}-run-${run + 1}.cpuprofile`, profile);
+    await profiler.detach();
+  }
   await page.screenshot({ path: `verify-out/perf-${label}-run-${run + 1}.png` });
   await execConsoleCommand(page, 'run new --seed 777');
   await waitForRunReady(page); await page.waitForTimeout(3000);
