@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <path d="M12 6H52M58 12V52M52 58H12M6 52V12" stroke="#b88a44" stroke-width="1"/>
+  <path d="M14 8H50M56 14V50M50 56H14M8 50V14" stroke="#514020" stroke-width=".7"/>
+  <g id="corner" stroke="#d4ac60" stroke-width=".9">
+    <path d="M3 16c3-3 3-7 6-7s5-3 7-6M5 14C1 9 4 4 9 5s5 4 2 6-6-1-4-3M7 3v3M3 7h3M12 6l2 2-2 2-2-2z"/>
+    <circle cx="6" cy="6" r="1.1" fill="#f4daa0" stroke="none"/>
+  </g>
+  <use href="#corner" transform="translate(64 0) rotate(90)"/>
+  <use href="#corner" transform="translate(64 64) rotate(180)"/>
+  <use href="#corner" transform="translate(0 64) rotate(270)"/>
+</svg>

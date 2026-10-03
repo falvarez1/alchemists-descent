@@ -46,6 +46,10 @@ export interface FloorLook {
   /** Water albedo: the exposed, supported surface row and the body below. */
   readonly waterSurface: Rgb;
   readonly waterBody: Rgb;
+  /** Refraction for classic masonry pools as well as natural cave water. */
+  readonly waterClarity?: number;
+  readonly waterSeen?: Rgb;
+  readonly waterSeenSat?: number;
   /** Backdrop grade applied after the player's own grade (0–1 space). */
   readonly backdropMul: Rgb;
   readonly backdropLift: Rgb;
@@ -147,9 +151,12 @@ const BELLOWS: FloorLook = {
   crownDepth: 1,
   masonryPanels: 16,
   rockRow: 810,
-  waterSurface: [101, 142, 148],
-  waterBody: [49, 91, 103],
-  backdropMul: [1, 1, 1],
+  waterSurface: [136, 211, 211],
+  waterBody: [32, 113, 129],
+  waterClarity: .45,
+  waterSeen: [.3, .85, .92],
+  waterSeenSat: .85,
+  backdropMul: [1.25, 1.25, 1.2],
   backdropLift: [0, 0, 0],
   backdropOffsetX: 0,
   backdropMirror: false,

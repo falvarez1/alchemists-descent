@@ -1,0 +1,82 @@
+/* Brass and glass match the Works' machinery. These frames decorate the
+   existing controls; resource states, bindings and captions keep their meaning. */
+body.play-active {
+  --hud-frame: url('/assets/ui/alchemical-frame.svg');
+  --hud-gold: #d9b36d;
+}
+body.play-active #hud-left { top: 18px; left: 18px; }
+body.play-active .vitals {
+  box-sizing: border-box;
+  position: relative; width: calc(302px * var(--text-scale)); gap: 8px;
+  padding: 12px 13px 12px 80px; border: 12px solid transparent;
+  border-image: var(--hud-frame) 16 / 12px stretch;
+  background: linear-gradient(110deg, #081011e8, #080e10bd 75%, #080e1000);
+  filter: drop-shadow(0 2px 3px #0009);
+}
+body.play-active .vitals::before {
+  content: ''; position: absolute; left: -20px; top: 50%; width: 94px; height: 110px;
+  transform: translateY(-50%); background: url('/assets/ui/alchemical-vial.svg') center / contain no-repeat;
+  pointer-events: none;
+}
+body.play-active .vital-row { gap: 7px; }
+body.play-active .vital-label { width: calc(36px * var(--text-scale)); font-size: calc(11px * var(--text-scale)); color: #f1e7c9; }
+body.play-active .vital-track {
+  position: relative; height: 11px; padding: 2px; border: 1px solid #bd9857;
+  border-radius: 4px 2px 4px 2px; background: #070e11;
+  box-shadow: 0 0 0 1px #3b2e18, inset 0 1px 2px #000;
+}
+body.play-active .vital-fill { border-radius: 1px; box-shadow: inset 0 1px 0 #ffffff65 !important; }
+body.play-active #hp-fill { background: linear-gradient(#f97853, #b42826) !important; }
+body.play-active #mana-fill { background: linear-gradient(#8ae5ff, #2581b6) !important; }
+body.play-active #levit-fill { background: linear-gradient(#fff2b5, #c19240) !important; }
+body.play-active #phial-row.hud-phials { padding: 0; margin-top: -5px; }
+body.play-active .wave-readout {
+  top: 22px; right: 22px; padding: 13px 15px 14px; width: max-content;
+  max-width: min(360px, 40%); text-align: left;
+  border: 12px solid transparent; border-image: var(--hud-frame) 16 / 12px stretch;
+  background: linear-gradient(120deg, #081011ed, #091116dc); box-shadow: 0 3px 14px #0005;
+}
+body.play-active .wave-readout::before { display: none; }
+body.play-active .wave-readout .wave-num { font-size: calc(27px * var(--text-scale)); font-weight: 600; color: #f0e0b4; }
+body.play-active .wave-readout .objective { margin-top: 10px; font-size: calc(12px * var(--text-scale)); color: #eee8d9; }
+body.play-active .wave-readout .objective::before { content: '◇'; color: var(--hud-gold); font-size: 19px; margin-right: 8px; vertical-align: -1px; }
+body.play-active .objective-row { justify-content: flex-start; }
+body.play-active #treasure-row {
+  display: flex; position: absolute; bottom: 76px; right: 24px; gap: 8px; margin: 0;
+}
+body.play-active .treasure-chip {
+  border: 10px solid transparent; border-image: var(--hud-frame) 16 / 10px stretch;
+  padding: 3px 12px; min-width: 92px; color: #edcf88; background: #091011d9;
+  border-radius: 0; font: 600 calc(16px * var(--text-scale))/1.1 var(--house-serif);
+  text-shadow: 0 1px 2px #000; box-shadow: none;
+}
+body.play-active #cards-chip { min-width: 60px; }
+body.play-active .treasure-chip .t-unit { font-family: var(--house-sans); color: #af996d; }
+body.play-active #expedition-tools { left: 25px; bottom: 25px; gap: 10px; }
+body.play-active .hot-slot {
+  width: 44px; height: 44px; border: 7px solid transparent;
+  border-image: var(--hud-frame) 16 / 7px stretch; background: #081419db; padding: 0;
+  box-shadow: inset 0 0 8px #000a;
+}
+body.play-active .hot-slot.active { filter: drop-shadow(0 0 3px #d0a05560); }
+body.play-active .wand-cast-caption { font: 600 calc(16px * var(--text-scale))/1.2 var(--house-serif); color: #f0dda9; }
+body.play-active .wand-label { font-size: calc(10px * var(--text-scale)); color: #bfac82; }
+body.play-active .flask-slot { border-bottom-color: #98773e; }
+
+@media (max-width: 900px) {
+  body.play-active #hud-left { top: 10px; left: 10px; }
+  body.play-active .vitals { width: calc(248px * var(--text-scale)); padding: 9px 8px 9px 55px; gap: 6px; }
+  body.play-active .vitals::before { width: 70px; height: 86px; left: -18px; }
+  body.play-active .wave-readout { top: 12px; right: 12px; padding: 8px 10px; }
+  body.play-active .wave-readout .wave-num { font-size: calc(22px * var(--text-scale)); }
+  body.play-active .wave-readout .objective { margin-top: 6px; font-size: calc(11px * var(--text-scale)); }
+}
+/* Touch controls and comfort scaling still own the usable screen area. */
+body.touch-enabled.play-active .vitals { width: 182px; padding: 5px 5px 5px 18px; border-width: 8px; gap: 5px; }
+body.touch-enabled.play-active .vitals::before { display: none; }
+body.touch-enabled.play-active .wave-readout { padding: 7px; }
+body.touch-enabled.play-active #treasure-row { bottom: auto; top: 14px; right: 16px; }
+body.touch-enabled.play-active .treasure-chip { min-width: 0; padding: 1px 5px; font-size: 13px; }
+@media (prefers-reduced-motion: reduce) {
+  body.play-active .hot-slot.active { filter: none; }
+}

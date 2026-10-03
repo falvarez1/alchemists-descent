@@ -31,16 +31,16 @@ export const BACKDROP_LAYER_SPECS: readonly BackdropLayerSpec[] = [
   {
     id: 'back',
     label: 'Distant refinery',
-    file: 'refinery-distance.png',
-    src: `${import.meta.env.BASE_URL}assets/living-descent/refinery-distance.png`,
+    file: 'refinery-waterworks.webp',
+    src: `${import.meta.env.BASE_URL}assets/living-descent/refinery-waterworks.webp`,
     defaultSpeed: 0.1,
     defaultOpacity: 1,
   },
   {
     id: 'second',
     label: 'Copper machinery',
-    file: 'refinery-machinery.png',
-    src: `${import.meta.env.BASE_URL}assets/living-descent/refinery-machinery.png`,
+    file: 'refinery-machinery-rich.webp',
+    src: `${import.meta.env.BASE_URL}assets/living-descent/refinery-machinery-rich.webp`,
     defaultSpeed: 0.15,
     defaultOpacity: 0.52,
   },
@@ -81,7 +81,7 @@ function createDefaultLayer(spec: BackdropLayerSpec): BackdropLayerSettings {
     opacity: spec.defaultOpacity,
     offsetX: 0,
     offsetY: 0,
-    scale: spec.id === 'back' || spec.id === 'second' ? 0.5 : 1,
+    scale: spec.id === 'back' ? 0.48 : spec.id === 'second' ? 0.5 : 1,
     visible: true,
   };
 }

@@ -4,6 +4,7 @@ import { DataUtils } from 'three';
 import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import { PIXEL_H, PIXEL_SCALE, PIXEL_W } from '@/render/presentation';
+import { BACKDROP_TEXEL_EPSILON } from '@/render/depth/parallax';
 import { COMPOSE_MAX_LENSES, COMPOSE_MAX_WAVES } from '@/render/composeLimits';
 import {
   COMPOSE_PAD,
@@ -253,7 +254,7 @@ vec2 detailSubpixel() {
 // rode the world for a cell and then jumped back.
 void overBackdrop(inout vec3 c, inout float lw, sampler2D tex, vec4 cfg, vec2 invSize, vec2 offset, vec2 origin, float lit, vec2 view) {
   if (cfg.z < 0.5 || cfg.y <= 0.0 || cfg.w <= 0.0) return;
-  vec2 samplePx = floor((origin + view) / max(cfg.w, 0.25) + offset);
+  vec2 samplePx = floor((origin + view) / max(cfg.w, 0.25) + offset + vec2(${BACKDROP_TEXEL_EPSILON}));
   vec2 p = (samplePx + vec2(0.5)) * invSize;
   vec4 s = texture(tex, p);
   float a = clamp(s.a * cfg.y, 0.0, 1.0);
@@ -593,7 +594,9 @@ void main() {
             // sway. FrameComposer (CPU) and the WebGPU compose mirror it.
             int sway = int(floor(sin(float(wy) * 0.19 + uPhaseWater * 0.35) * 1.6));
             int svx = clamp(vx + sway, 0, ${VIEW_W - 1});
-            vec2 sv = vec2(viewPos.x + float(svx - vx), viewPos.y);
+            // Classic presentation shares the CPU's cell sample. Fine mode
+            // retains continuous parallax at each presentation pixel.
+            vec2 sv = ${PIXEL_SCALE === 1 ? 'vec2(float(svx), float(vy))' : 'vec2(viewPos.x + float(svx - vx), viewPos.y)'};
             vec3 seen = vec3(0.004, 0.005, 0.009);
             float slw = 1.0;
             overBackdrop(seen, slw, uBackdrop0, uBackdropCfg0, uBackdropInv0, uBackdropOff0, uBackdropOrg[0], uBackdropLit[0], sv);
@@ -1494,10 +1497,10 @@ export class GpuCompose {
     // The backdrop tint and the natural floors' haze/saturation are set per
     // frame in updateBackdropUniforms (a depth kit may substitute them).
     const natural = look.natural;
-    const wet = natural?.wetLip ?? [0, 0, 0], seen = natural?.waterSeen ?? [1, 1, 1];
+    const wet = natural?.wetLip ?? [0, 0, 0], seen = natural?.waterSeen ?? look.waterSeen ?? [1, 1, 1];
     (u.uNatWet.value as THREE.Vector4).set(wet[0], wet[1], wet[2], natural?.wetLipMix ?? 0);
-    (u.uWaterSeen.value as THREE.Vector4).set(seen[0], seen[1], seen[2], natural?.waterSeenSat ?? 1);
-    u.uWaterClarity.value = natural?.waterClarity ?? 0;
+    (u.uWaterSeen.value as THREE.Vector4).set(seen[0], seen[1], seen[2], natural?.waterSeenSat ?? look.waterSeenSat ?? 1);
+    u.uWaterClarity.value = natural?.waterClarity ?? look.waterClarity ?? 0;
     set3('uWaterPocket', natural?.waterPocket ?? look.waterBody);
     if (!natural) return;
     (u.uNatTile.value as THREE.Vector2).set((natural.tile & 1) * FLOOR_TILE, (natural.tile >> 1) * FLOOR_TILE);

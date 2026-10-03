@@ -407,6 +407,7 @@ export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<World
   // STORY: the pipes, Pell's camp and the valve, resolved against the finished rock.
   const story = worksStorySites(world);
   const lamp = (x: number, y: number, warm = false, radius = 120, flicker = .04, intensity = .65): AuthoredLight => ({
+    fixture: 'lantern',
     x, y, r: warm ? 1 : 0.46, g: warm ? 0.66 : 0.81, b: warm ? 0.30 : 0.75,
     intensity, radius, bloom: 0.12, flicker, flickerPhase: hash(x, y) % 600,
     falloff: 'soft', occluded: true,

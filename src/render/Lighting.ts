@@ -9,6 +9,7 @@ import { mutatorMods } from '@/content/mutators';
 import { darkMapFor, fillOpenField, openAtCell, renderDarkness, renderOpenLut, sampleDarkMap } from '@/core/darkness';
 import type { LightField, LightSample } from '@/render/pixels';
 import { creatureLights } from '@/render/creatures/lights';
+import { VISUAL_FIDELITY } from '@/config/visualFidelity';
 import { lureGlint } from '@/game/keyLure';
 import { cachedSetPieceTells } from '@/render/setPieceTells';
 import { BEAM_MIRROR, BEAM_PRISM, MAX_BEAM_DEPTH, MIRROR_REFLECTANCE, PRISM_SHARE, PRISM_SPLIT, mirrorNormal, reflect, rotate } from '@/sim/beam';
@@ -279,7 +280,8 @@ export class Lighting implements LightField {
                 0.2 * Math.sin(ctx.state.frameCount * 0.11 + al.flickerPhase) +
                 0.15 * Math.sin(ctx.state.frameCount * 0.043 + al.flickerPhase * 2.7))
           : 1;
-      const I = al.intensity * flick;
+      const gain = al.fixture === 'lantern' && VISUAL_FIDELITY.enabled ? VISUAL_FIDELITY.lampIntensity : 1;
+      const I = al.intensity * flick * gain;
       if (I <= 0) continue;
       if (al.occluded) {
         const core = I * (1 + al.bloom);
