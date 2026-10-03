@@ -5,6 +5,7 @@ import { Cell } from '@/sim/CellType';
 import { GLOBAL_PARAMS, MATERIAL_PARAMS } from '@/config/params';
 import { handleFire, handleEmber } from '@/sim/elements/thermal';
 import { setRandomOverrideForTests } from '@/core/simRandom';
+import { foliageBurnState } from '@/config/foliage';
 
 function patch() {
   const world = new World(64, 64);
@@ -18,6 +19,13 @@ function patch() {
 }
 
 describe('Damp ambient foliage fuel', () => {
+  it('retains quenched moss charring when a nearby grid flame reignites it', () => {
+    const { ctx, world, moss } = patch();
+    world.life[moss] = -10 - 65;
+    handleFire(ctx, 30, 30);
+    expect(foliageBurnState(world.life[moss])).toEqual({ age: 65, fuel: 5, burning: true });
+  });
+
   it('starts a finite smoulder in added moss rather than creating a long-lived flame', () => {
     const { ctx, world, moss } = patch();
     handleFire(ctx, 30, 30);

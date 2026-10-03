@@ -1,4 +1,6 @@
 // Native player contact, contained burning, saved fuel and real depth motion.
+// Use a freshly started Vite server: timestamped reload imports can otherwise
+// give this probe a separate module-local pose cache from the running game.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
 import { leaveTitleIfShown, startConsoleTestRun } from './run-helpers.mjs';
@@ -160,8 +162,31 @@ try {
     check.check(`seed ${seed}: one ember burns a local patch while most foliage survives`, row.burned > 0 && row.burned < row.total * .35 && row.remaining > row.total * .65, JSON.stringify(row));
   }
   await page.screenshot({ path: `${dir}/contained-fire.png` });
+  const review = await page.evaluate(async () => {
+    const ctx = window.__game.ctx, w = ctx.world;
+    const { Cell } = await import('/src/sim/CellType.ts');
+    const { visibleSurfaceFoliage, updateSurfaceFoliage } = await import('/src/game/SurfaceFoliage.ts');
+    const { foliageBurnLife } = await import('/src/config/foliage.ts');
+    const x = 240, y = 500, root = w.idx(x, y);
+    for (let yy = y - 30; yy <= y + 5; yy++) for (let xx = x - 25; xx <= x + 25; xx++) w.clearCell(xx, yy);
+    w.replaceCellAt(w.idx(x, y + 1), Cell.Stone, 0x586768);
+    w.replaceCellAt(root, Cell.Moss, 0x447744); w.life[root] = foliageBurnLife(2, 65);
+    w.activity.beginStep(w);
+    const restored = visibleSurfaceFoliage(ctx).find(p => p.x === x && p.y === y);
+    const savedPose = restored.burning && restored.burn === 65 / 90 && w.life[root] === foliageBurnLife(2, 65);
+    for (let i = 0; i < 25; i++) { ctx.state.frameCount++; updateSurfaceFoliage(ctx); }
+    const finiteBurn = w.types[root] === Cell.Ash;
+    w.activity.beginStep(w); visibleSurfaceFoliage(ctx);
+    w.replaceCellAt(root, Cell.Moss, 0x447744); w.life[root] = -2;
+    w.activity.beginStep(w);
+    const fresh = visibleSurfaceFoliage(ctx).find(p => p.x === x && p.y === y);
+    return { savedPose, finiteBurn, freshPose: fresh !== restored && fresh.burn === 0 && fresh.angle === 0 && !fresh.burning };
+  });
+  check.check('restored moss shows saved charring before a simulation tick', review.savedPose, JSON.stringify(review));
+  check.check('restored moss consumes only its remaining burn time', review.finiteBurn, JSON.stringify(review));
+  check.check('replacement moss receives a fresh crown after the old plant burns away', review.freshPose, JSON.stringify(review));
   check.check('browser play and material/motion probes have no uncaught errors', errors.length === 0, errors.join('\n'));
-  writeFileSync(`${dir}/measured.json`, JSON.stringify({ initial, brushed, mechanics, continuity, fire, errors, pass: check.pass, fail: check.fail }, null, 2));
+  writeFileSync(`${dir}/measured.json`, JSON.stringify({ initial, brushed, mechanics, continuity, fire, review, errors, pass: check.pass, fail: check.fail }, null, 2));
   console.log(`\n${check.pass} passed, ${check.fail} failed`);
   if (check.fail > 0) process.exitCode = 1;
 } finally { await browser.close(); }

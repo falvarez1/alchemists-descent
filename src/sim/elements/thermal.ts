@@ -16,7 +16,7 @@ import { igniteTrunk } from '@/sim/elements/flora';
 // FIRE_REACTION_OFFSETS was the local name for the shared asymmetric ignition list.
 import { CARDINAL_OFFSETS, IGNITION_OFFSETS as FIRE_REACTION_OFFSETS } from '@/sim/neighborOffsets';
 import { fxRandom, simRandom } from '@/core/simRandom';
-import { AMBIENT_FOLIAGE_LIFE, foliageBurnLife, foliageFuel, FOLIAGE_MAX_FUEL } from '@/config/foliage';
+import { AMBIENT_FOLIAGE_LIFE, foliageBurnLife, foliageBurnState, foliageFuel, FOLIAGE_MAX_FUEL } from '@/config/foliage';
 
 /** EXPORTED for cross-handler use: handleFire melts adjacent ice via this. */
 export function handleIce(ctx: Ctx, x: number, y: number): void {
@@ -194,7 +194,7 @@ export function handleFire(ctx: Ctx, x: number, y: number): void {
           // fuel; it cannot turn a two-tick ember into a new long fire.
           const fuel = foliageFuel(w.life[ci]);
           if (fuel > 0 && w.life[ti] > -100) {
-            w.life[ti] = foliageBurnLife(fuel);
+            w.life[ti] = foliageBurnLife(fuel, foliageBurnState(w.life[ti]).age);
             w.activity.touchIndex(ti);
           }
         } else {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { weaponLaneClear, safeTravel, safeMobilityLanding, safeDrop, safeHopClearance, hazardHopClearance } from '@/arena/ai/combat';
+import { weaponLaneClear, safeTravel, safeMobilityLanding, safeDrop, safeFooting, safeHopClearance, hazardHopClearance } from '@/arena/ai/combat';
 import { World } from '@/sim/World';
 import { Cell } from '@/sim/CellType';
 import type { Ctx } from '@/core/types';
@@ -9,6 +9,16 @@ import { Control, StuckDetector } from '@/arena/ai/control';
 import type { BrainSelf } from '@/arena/ai/brain';
 
 describe('observed firing paths', () => {
+  test('rejects a one-cell flame inside the standing body between its centre and edge', () => {
+    const world = new World();
+    for (let x = 590; x <= 650; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);
+    const ctx = { world, physics: { entityFree: () => true, cellBlocks: (x: number, y: number) => world.type(x, y) === Cell.Metal } } as unknown as Pick<Ctx, 'world' | 'physics'>;
+    expect(safeFooting(ctx, 630, 639)).toBe(true);
+    world.replaceCellAt(world.idx(632, 630), Cell.Fire, 0);
+    expect(safeFooting(ctx, 630, 639)).toBe(false);
+    expect(safeDrop(ctx, 630, 639)).toBe(false);
+  });
+
   const weapon = { speed: 7.5, gravity: .14, minRange: 90, maxRange: 220 };
   const origin = { x: 600, y: 630 }, target = { x: 740, y: 630 }, aim = { x: 740, y: 604 };
   test('checks the thrown arc against a low ceiling before committing a bomb', () => {

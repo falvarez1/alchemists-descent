@@ -69,7 +69,7 @@ export function dangerousCell(type: number): boolean {
 /** Local landing/footing check; uses real cells and the normal body collision test. */
 export function safeFooting(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: number): boolean {
   if (!ctx.physics.entityFree(x, y, PLAYER_HALF_W, PLAYER_H)) return false;
-  for (const dx of [-PLAYER_HALF_W, 0, PLAYER_HALF_W]) {
+  for (let dx = -PLAYER_HALF_W; dx <= PLAYER_HALF_W; dx++) {
     for (let dy = -PLAYER_H; dy <= 3; dy++) {
       const gx = Math.round(x + dx), gy = Math.round(y + dy);
       if (!ctx.world.inBounds(gx, gy) || dangerousCell(ctx.world.types[ctx.world.idx(gx, gy)])) return false;

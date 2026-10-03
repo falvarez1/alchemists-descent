@@ -18,6 +18,16 @@ function garden() {
 }
 
 describe('Frond contact response', () => {
+  it('does not carry a heat trace into another level during the same tick', () => {
+    const { ctx } = garden();
+    (ctx.particles.list as unknown[]).push({ x: 226, y: 302, vx: 0, vy: 0, type: Cell.Ember });
+    ctx.state.frameCount++;
+    expect(foliageHeatNearby(ctx, 226, 303, 24)).toBe(true);
+    ctx.world = new World(500, 400);
+    (ctx.particles.list as unknown[]).length = 0;
+    expect(foliageHeatNearby(ctx, 226, 303, 24)).toBe(false);
+  });
+
   it('invalidates a cold-region cache on material edits and bulk world replacement', () => {
     const { ctx, world } = garden(); world.activity.beginStep(world);
     expect(foliageHeatNearby(ctx, 226, 303, 24)).toBe(false);

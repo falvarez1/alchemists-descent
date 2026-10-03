@@ -22,6 +22,36 @@ function garden() {
 }
 
 describe('Current-cell surface foliage', () => {
+  it('reads saved charring before the first update, without advancing the burn clock', () => {
+    const { ctx, world } = garden();
+    const restored = new World(700, 400);
+    restored.replaceCellAt(restored.idx(126, 150), Cell.Moss, 0x447744);
+    restored.life[restored.idx(126, 150)] = foliageBurnLife(2, 45);
+    restored.replaceCellAt(restored.idx(126, 151), Cell.Stone, 0);
+    ctx.world = restored;
+    const root = visibleSurfaceFoliage(ctx)[0];
+    expect(root.burn).toBe(.5);
+    expect(root.burning).toBe(true);
+    expect(restored.life[restored.idx(126, 150)]).toBe(foliageBurnLife(2, 45));
+    ctx.world = world;
+  });
+
+  it('forgets a removed crown before new moss grows at the same address', () => {
+    const { ctx, world, plant } = garden();
+    world.activity.beginStep(world);
+    const previous = plant(); previous.angle = .8; previous.velocity = .1;
+    world.clearCell(126, 150);
+    world.activity.beginStep(world);
+    expect(visibleSurfaceFoliage(ctx)).toHaveLength(0);
+    world.replaceCellAt(world.idx(126, 150), Cell.Moss, 0x447744);
+    world.life[world.idx(126, 150)] = AMBIENT_FOLIAGE_LIFE;
+    world.activity.beginStep(world);
+    const next = plant();
+    expect(next).not.toBe(previous);
+    expect(next.angle).toBe(0);
+    expect(next.velocity).toBe(0);
+  });
+
   it('parts around a passing body, retains momentum and settles after it leaves', () => {
     const { ctx, tick, plant } = garden();
     ctx.player.x = 121; ctx.player.vx = 2; tick(14);

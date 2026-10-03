@@ -28,7 +28,12 @@ export function visibleSurfaceFoliage(ctx: Ctx): readonly SurfacePlant[] {
     garden = { epoch: a.epoch, revision: -1, chunks: new Map(), poses: new Map(), visible: [] };
     gardens.set(world, garden);
   }
-  if (!a.ready && garden.revision !== world.mutationVersion) garden.chunks.clear();
+  if (!a.ready && garden.revision !== world.mutationVersion) {
+    garden.chunks.clear();
+    for (const i of garden.poses.keys()) {
+      if (world.types[i] !== Cell.Moss || world.life[i] > AMBIENT_FOLIAGE_LIFE) garden.poses.delete(i);
+    }
+  }
   garden.revision = world.mutationVersion;
   const roots = garden.visible; roots.length = 0;
   const x0 = Math.max(0, Math.floor((camera.renderX - 36) / 64)), y0 = Math.max(0, Math.floor((camera.renderY - 36) / 64));
@@ -38,6 +43,12 @@ export function visibleSurfaceFoliage(ctx: Ctx): readonly SurfacePlant[] {
     const key = cy * a.columns + cx, version = a.versions[key];
     let chunk = garden.chunks.get(key);
     if (!chunk || chunk.version !== version) {
+      // Prune the old membership before replacing it. Otherwise removed roots
+      // leave poses behind and a later plant inherits their spring momentum.
+      for (const p of chunk?.roots ?? []) {
+        const i = world.idx(p.x, p.y);
+        if (world.types[i] !== Cell.Moss || world.life[i] > AMBIENT_FOLIAGE_LIFE) garden.poses.delete(i);
+      }
       const found: SurfacePlant[] = [];
       const add = (i: number): void => {
         if (world.types[i] !== Cell.Moss || world.life[i] > AMBIENT_FOLIAGE_LIFE) return;
@@ -64,7 +75,13 @@ export function visibleSurfaceFoliage(ctx: Ctx): readonly SurfacePlant[] {
     }
     for (const p of chunk.roots) {
       const i = world.idx(p.x, p.y);
-      if (world.types[i] === Cell.Moss && world.life[i] <= AMBIENT_FOLIAGE_LIFE) roots.push(p);
+      if (world.types[i] === Cell.Moss && world.life[i] <= AMBIENT_FOLIAGE_LIFE) {
+        // Saves and grid ignition can change life without rebuilding a chunk.
+        // Hydrate presentation here, but leave burn advancement to the tick.
+        const saved = foliageBurnState(world.life[i]);
+        p.burn = Math.min(1, saved.age / FOLIAGE_BURN_TICKS); p.burning = saved.burning;
+        roots.push(p);
+      }
       else garden.poses.delete(i);
     }
   }

@@ -4,7 +4,7 @@ import type { World } from '@/sim/World';
 import { foliageFuel, FOLIAGE_MAX_FUEL } from '@/config/foliage';
 
 type HeatTrace = { ax: number; ay: number; bx: number; by: number; wet: boolean };
-type HeatIndex = { tick: number; buckets: Map<number, HeatTrace[]> };
+type HeatIndex = { tick: number; world: World; buckets: Map<number, HeatTrace[]> };
 const indexes = new WeakMap<Ctx, HeatIndex>();
 const regions = new WeakMap<World, { epoch: number; chunks: Map<number, { version: number; flags: number }> }>();
 const bucketKey = (x: number, y: number) => (Math.floor(y / 32) + 2048) * 4096 + Math.floor(x / 32) + 2048;
@@ -18,9 +18,10 @@ for (const type of [Cell.Water, Cell.Nitrogen]) thermalClass[type] = 2;
  * Swept traces catch fast embers crossing a leaf between simulation samples. */
 function traces(ctx: Ctx): HeatIndex {
   let index = indexes.get(ctx);
-  if (index && index.tick === ctx.state.frameCount) return index;
-  index ??= { tick: -1, buckets: new Map() };
-  index.tick = ctx.state.frameCount; index.buckets.clear(); indexes.set(ctx, index);
+  if (index && index.tick === ctx.state.frameCount && index.world === ctx.world) return index;
+  index ??= { tick: -1, world: ctx.world, buckets: new Map() };
+  index.tick = ctx.state.frameCount; index.world = ctx.world;
+  index.buckets.clear(); indexes.set(ctx, index);
   const add = (ax: number, ay: number, vx: number, vy: number, isWet: boolean) => {
     const trace = { ax, ay, bx: ax + vx, by: ay + vy, wet: isWet };
     const x0 = Math.min(ax, trace.bx) - 2, x1 = Math.max(ax, trace.bx) + 2;
