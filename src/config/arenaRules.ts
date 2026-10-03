@@ -10,11 +10,9 @@ export const ARENA_RULES = {
    */
   blowScale: 0.4,
   /**
-   * 1: every fighter has the SAME effective health in a duel (a blow is divided by the victim's body health multiplier, so Brann's x1.35
-   * is no longer extra hit points); 0: the designed bodies stand (a wall has more health, glass less). OFF by default: equal health did not
-   * remove Brann's lead (a plain spark and a neutral body still won 86-93%: his closeness, weight and the bot's range did it), and the
-   * archetype trade is the classic one: the wall has the health and hits softly, the glass cannon hits hard and dies fast. The lever that
-   * balances it is `dealt`, over a wide range (0.3-2.5).
+   * 1: every fighter has the SAME effective health in a duel (a blow is multiplied by the victim's body health multiplier, so Brann's x1.35
+   * is no longer extra hit points); 0: retain the designed body health differences. OFF by default: the wall has the health and hits
+   * softly, the glass cannon hits hard and dies fast. Earlier win-rate measurements used the inverted adjustment.
    */
   healthEquality: 0,
   /**

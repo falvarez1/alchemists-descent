@@ -38,6 +38,38 @@ function testEnemy(x: number, y: number): Enemy {
 }
 
 describe('player death economy', () => {
+  it.each([false, true])('routes manual arena respawn through a bout reset even when the campaign is over=%s', (over) => {
+    const player = createPlayer();
+    player.dead = true;
+    const stand = { ...testEnemy(50, 60), kind: 'fighter' as const, fighter: 1 };
+    const enemies = [stand];
+    let resets = 0;
+    let checkpointReads = 0;
+    const ctx = {
+      player,
+      enemies,
+      world: new World(),
+      run: { over },
+      state: { score: 0, mode: 'play' },
+      arena: { active: true, reset: () => { resets++; } },
+      levels: {
+        current: { pickups: [] },
+        respawnPoint: () => { checkpointReads++; return { x: 44, y: 55 }; },
+      },
+      events: new EventBus(),
+      telemetry: { count: () => undefined },
+      particles: { burst: () => undefined },
+      fx: {},
+    } as unknown as Ctx;
+
+    new PlayerControl(ctx).respawn();
+
+    expect(resets).toBe(1);
+    expect(checkpointReads).toBe(0);
+    expect(ctx.enemies).toBe(enemies);
+    expect(enemies).toEqual([stand]);
+  });
+
   it('halves incoming damage while stoneskin is active', () => {
     const player = createPlayer();
     const control = new PlayerControl({ player } as unknown as Ctx) as unknown as {

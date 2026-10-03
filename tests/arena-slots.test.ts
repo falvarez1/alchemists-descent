@@ -7,6 +7,8 @@ import type { Ctx, Enemy, Projectile } from '@/core/types';
 import { Projectiles } from '@/combat/Projectiles';
 import { ENEMY_DEFS } from '@/content/enemyDefs';
 import { World } from '@/sim/World';
+import { FighterSystem } from '@/fighters/FighterSystem';
+import { kit as ruskKit } from '@/fighters/kits/rusk-emberjaw';
 
 /** The arena's slot machinery (src/arena/ArenaSlots, core/events scoping) against fakes: no game, no world. */
 
@@ -22,20 +24,21 @@ function body(x: number): FakeBody {
 
 interface Calls { damage: Array<{ boundPlayer: unknown; amount: number; kx: number; ky: number; src?: string }>; impulse: Array<{ boundPlayer: unknown; vx: number; vy: number }> }
 
-function setup(ready = Promise.resolve()): { ctx: Ctx; arena: ArenaSlots; calls: Calls; made: SlotBundle[]; base: SlotBundle } {
+function setup(ready = Promise.resolve(), realFighters = false): { ctx: Ctx; arena: ArenaSlots; calls: Calls; made: SlotBundle[]; base: SlotBundle } {
   const calls: Calls = { damage: [], impulse: [] };
   const events = new EventBus();
   const ctx = {
     events,
     enemies: [] as Enemy[],
     projectiles: [] as Projectile[],
-    state: { frameCount: 10 },
+    state: { frameCount: 10, mode: 'play' },
+    audio: { sfx: () => undefined },
     camera: { inspectionFocus: null },
     world: { width: 1600, height: 1000 },
     physics: { entityFree: () => true },
     projectileCtl: { invalidateEnemyIndex: () => undefined },
   } as unknown as Ctx;
-  const mk = (x: number, dealt: number): SlotBundle => {
+  const mk = (x: number, dealt: number, slot: number): SlotBundle => {
     const player = body(x);
     const b: SlotBundle = {
       player: player as unknown as SlotBundle['player'],
@@ -61,12 +64,15 @@ function setup(ready = Promise.resolve()): { ctx: Ctx; arena: ArenaSlots; calls:
       } as unknown as SlotBundle['fighters'],
       chill: { update: () => undefined, reset: () => undefined } as unknown as SlotBundle['chill'],
     };
+    if (realFighters) b.fighters = slot === 0
+      ? new FighterSystem(ctx, () => ready.then(() => ruskKit))
+      : events.asSlot(slot, () => new FighterSystem(ctx, () => ready.then(() => ruskKit)));
     return b;
   };
-  const base = mk(100, 1);
+  const base = mk(100, 1, 0);
   Object.assign(ctx, { player: base.player, input: base.input, playerCtl: base.playerCtl, wands: base.wands, flask: base.flask, fighters: base.fighters, chill: base.chill });
   const made: SlotBundle[] = [];
-  const arena = new ArenaSlots(ctx, (slot) => { const b = mk(300, 1.5); made[slot] = b; return b; });
+  const arena = new ArenaSlots(ctx, (slot) => { const b = mk(300, 1.5, slot); made[slot] = b; return b; });
   ctx.arena = arena;
   return { ctx, arena, calls, made, base };
 }
@@ -104,8 +110,67 @@ describe('EventBus slot scoping', () => {
 describe('ArenaSlots', () => {
   // (these tests count whole blows: the duel's tempo dial is 1 here; its own test is below)
   const was = ARENA_RULES.blowScale;
+  const equality = ARENA_RULES.healthEquality;
   beforeEach(() => { ARENA_RULES.blowScale = 1; });
-  afterEach(() => { ARENA_RULES.blowScale = was; });
+  afterEach(() => { ARENA_RULES.blowScale = was; ARENA_RULES.healthEquality = equality; });
+
+  test('a rematch respawns each Rusk kit in its own slot and restores starting armor', async () => {
+    const { ctx, arena, base, made } = setup(Promise.resolve(), true);
+    base.fighters.equip('rusk-emberjaw');
+    await base.fighters.whenReady();
+    base.fighters.update(ctx);
+    await arena.addRival('rusk-emberjaw', 300, 100);
+    expect(base.fighters.armor).toBe(40); // the rival's arrival cannot respawn slot 0
+    const fighters = [base, made[1]];
+    const tick = () => fighters.forEach((b, slot) => arena.with(slot, () => b.fighters.update(ctx)));
+    tick();
+    expect(fighters.map(b => b.fighters.armor)).toEqual([40, 40]);
+    const heard: number[] = [];
+    fighters.forEach((b, slot) => ctx.events.asSlot(slot, () => ctx.events.on('playerRespawned', () => {
+      expect(ctx.player).toBe(b.player);
+      heard.push(slot);
+    })));
+    for (let bout = 0; bout < 2; bout++) {
+      arena.noteDown(0, 'fighter');
+      arena.reset();
+      tick();
+      expect(fighters.map(b => b.fighters.armor)).toEqual([40, 40]);
+      expect(fighters.map(b => b.fighters.view.ultimate.ready)).toEqual([true, true]);
+    }
+    expect(heard).toEqual([0, 1, 0, 1]);
+  });
+
+  test('a rematch clears both fighters effects on the reused stand-in before endTick', async () => {
+    const { ctx, arena, base, made } = setup(Promise.resolve(), true);
+    base.fighters.equip('rusk-emberjaw');
+    await base.fighters.whenReady();
+    await arena.addRival('rusk-emberjaw', 300, 100);
+    const fighters = [base, made[1]];
+    const stand = ctx.enemies[0];
+    for (const b of fighters) {
+      const f = b.fighters as FighterSystem;
+      f.stunEnemy(stand, 120);
+      f.slowEnemy(stand, 0, 120);
+      f.markEnemy(stand, 120);
+      f.revealEnemy(stand, 120);
+    }
+    arena.endTick();
+    expect(fighters.map(b => b.player.stunT)).toEqual([2, 2]);
+    arena.reset();
+    arena.endTick();
+    expect(ctx.enemies[0]).toBe(stand);
+    expect(fighters.map(b => b.player.stunT)).toEqual([0, 0]);
+    for (const [slot, b] of fighters.entries()) {
+      const f = b.fighters as FighterSystem;
+      expect(arena.runsBody(slot)).toBe(true);
+      expect(f.isStunned(stand)).toBe(false);
+      expect(f.isMarked(stand)).toBe(false);
+      expect(f.isRevealed(stand)).toBe(false);
+      // Touching the same stand-in again must not resurrect its old slow.
+      f.markEnemy(stand, 10);
+      expect(f.enemySlow(stand)).toBe(1);
+    }
+  });
 
   test.each(['remove', 'level change'] as const)('cancels pending and queued rival loads on %s', async (cause) => {
     const ready = Promise.withResolvers<void>();
@@ -187,18 +252,15 @@ describe('ArenaSlots', () => {
     expect(calls.damage[0].amount).toBeCloseTo(10, 5);
   });
 
-  test('equal health: the victim body health multiplier is divided out of a blow (a x2 body takes half), and 0 turns it off', async () => {
+  test.each([0, 0.5, 1])('health equality %s offsets the victim health multiplier in incoming damage', async (equality) => {
     const { arena, ctx, calls, made } = setup();
     await arena.addRival('brann-rook', 300, 100);
     (made[1].fighters.body as { maxHp: number }).maxHp = 2;
-    const eq = ARENA_RULES.healthEquality;
-    ARENA_RULES.healthEquality = 1;
+    made[1].player.maxHp = made[1].player.hp = 200;
+    ARENA_RULES.healthEquality = equality;
     arena.hit(ctx.enemies[0], 10, 0, 0, 'direct');
-    expect(calls.damage[0].amount).toBeCloseTo(5, 5);
-    ARENA_RULES.healthEquality = 0;
-    arena.hit(ctx.enemies[0], 10, 0, 0, 'direct');
-    expect(calls.damage[1].amount).toBeCloseTo(10, 5);
-    ARENA_RULES.healthEquality = eq;
+    expect(calls.damage[0].amount).toBeCloseTo(10 * 2 ** equality, 5);
+    if (equality === 1) expect((200 - made[1].player.hp) / 200).toBeCloseTo(10 / 100, 5);
   });
 
   test('is dormant with no rival: not active, slot 0 bound, nothing in the enemies', () => {

@@ -146,6 +146,7 @@ export class FighterSystem implements FighterApi {
   private readonly firedAt = { tactical: -1000, ultimate: -1000 };
 
   private readonly disposers: Array<() => void> = [];
+  private readonly slot: number;
   private readonly revealDrawable: FighterDrawable = {
     layer: 'over',
     draw: (out, field, ctx) => { drawReveals(out, field, ctx, this.touched, (e) => this.revealOf(e)); },
@@ -161,12 +162,13 @@ export class FighterSystem implements FighterApi {
     readonly ctx: Ctx,
     private readonly kits: (id: FighterId) => FighterKitDef | Promise<FighterKitDef | undefined> | undefined = kitFor,
   ) {
-    this.disposers.push(
+    this.slot = ctx.events.registeringSlot ?? 0;
+    this.disposers.push(...ctx.events.asSlot(this.slot, () => [
       ctx.events.on('playerRespawned', () => this.resetAll()),
       ctx.events.on('playerDeathCleared', () => this.resetAll()),
       // A new floor: what was placed stays behind with the old World; the fighter itself carries on.
       ctx.events.on('levelChanged', () => this.onLevelChanged()),
-    );
+    ]));
   }
 
   dispose(): void {
@@ -225,8 +227,10 @@ export class FighterSystem implements FighterApi {
   private adopt(def: FighterKitDef): void {
     this.def = def;
     const scope = this.bindScope;
-    if (scope) scope(() => { this.kit = def.create(this); });
-    else this.kit = def.create(this);
+    // Lazy kit subscriptions must keep their fighter's scope after construction returns.
+    const create = () => this.ctx.events.asSlot(this.slot, () => { this.kit = def.create(this); });
+    if (scope) scope(create);
+    else create();
     this.tacticalCdMax = Math.max(1, def.tacticalCooldown);
     this.ultimateMax = Math.max(1, def.ultimateDuration);
     const copy = this.id ? FIGHTER_DEFS[this.id] : null;
@@ -827,6 +831,7 @@ export class FighterSystem implements FighterApi {
     for (let i = this.drawables.length - 1; i >= 0; i--) {
       if (this.drawables[i] !== this.revealDrawable) this.drawables.splice(i, 1);
     }
+    for (const e of this.touched) this.enemyFx.delete(e);
     this.touched.length = 0;
     this.revealing = 0;
     const at = this.drawables.indexOf(this.revealDrawable);

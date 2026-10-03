@@ -150,7 +150,7 @@ stocks, the second stage (the Kiln Floor), the collapse. None changes the contra
 | `blowScale` | 0.4 | the share of EVERYTHING a fighter takes that reaches its health (applied once, in the victim's controller: a blow, a blast, a flame, a current alike). At 1.0 a signature primary kills in 6 s and no ability ever matters; the first version scaled only blows and the world's fire became half the damage |
 | `hazardScale` | 0.35 | the world's harm (fire, electricity, acid, a blast it lit) on top of the tempo: after the opening exchange most duels settled into a drip that the loser could not stand out of (a 66 s timeline showed it) |
 | `invulnTicks` | 10 | ticks nothing lands after a blow (the campaign's is 30). The long window threw away every hit of a pair of sparks, a fan or a chain: the heavy-hit loadouts took half the damage of the rapid ones |
-| `healthEquality` | 0 | 1 divides the victim's body health multiplier out of a blow, so every fighter has the same effective health. Off: equal health did not remove Brann's lead (a plain spark and a neutral body still won 86-93%), and the wall-has-health / glass-hits-hard trade is the classic archetype balance |
+| `healthEquality` | 0 | 1 multiplies a blow by the victim's body health multiplier, offsetting that body's extra health. Off: retain the designed body health differences. Earlier balance measurements used an inverted adjustment and do not establish the corrected setting's effect on win rates. |
 
 And in code, not dials: a blast does at most 42 to a fighter (`sim/explosion`), a rival is built from slot 0's unscaled health (`ArenaSlots`),
 and who resolves first each tick is a seeded coin.

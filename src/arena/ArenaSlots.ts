@@ -341,10 +341,10 @@ export class ArenaSlots implements ArenaApi {
     if (!rec || rec.bundle.player.dead || this.bout.state === 'won') return;
     const attacker = this.boundSlot;
     const dealt = playerBlow(source) ? this.slots[attacker]?.bundle.fighters.body.dealt ?? 1 : 1;
-    // (equal health: the victim's body health multiplier divided out. The duel's tempo, `ARENA_RULES.blowScale`, is applied by the victim's
-    // own controller to everything it takes, so a blow and the fire it lit are scaled alike)
+    // Equal health: scale damage with the victim's body health so a blow costs the same health fraction.
+    // The victim's controller applies ARENA_RULES.blowScale to everything it takes, including fire.
     const hpFactor = this.slots[victim]?.bundle.fighters.body.maxHp ?? 1;
-    const dmg = amount * dealt * Math.pow(hpFactor || 1, -ARENA_RULES.healthEquality);
+    const dmg = amount * dealt * Math.pow(hpFactor || 1, ARENA_RULES.healthEquality);
     if (dmg > 0) this.lastBlow[victim] = { by: attacker, at: this.ctx.state.frameCount };
     const tag = source === 'direct' ? 'fighter' : String(source);
     // What the blow belongs to is the ATTACKER's to say (its kit knows which ability is acting): a fight recorder reads it inside the victim's damage().
@@ -502,7 +502,7 @@ export class ArenaSlots implements ArenaApi {
     }
     for (const key of Object.keys(b.input.keys) as Array<keyof typeof b.input.keys>) b.input.keys[key] = false;
     b.playerCtl.resetTransientState(this.ctx);
-    b.fighters.reset();
+    this.ctx.events.emit('playerRespawned');
     b.fighters.refill();
     b.chill?.reset();
   }
