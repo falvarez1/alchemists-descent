@@ -17,7 +17,7 @@ body.stock-match #fighter-arena.collapsed .fa-title { font-size: 9px; letter-spa
 .stock-portrait { position: absolute; left: 7px; top: 6px; width: 58px; height: 63px; object-fit: cover; object-position: 50% 14%; border: 1px solid currentColor; image-rendering: pixelated; }
 .stock-portrait[hidden] { display: none; }
 .stock-name { color: #e8dcc0; font-size: 13px; letter-spacing: .04em; }
-.stock-defense { position: absolute; left: 76px; top: 28px; color: #b7c9ca; font-size: 8px; letter-spacing: .07em; }
+.stock-defense { position: absolute; left: 76px; top: 28px; color: #b7c9ca; font-size: 8px; line-height: 1.3; letter-spacing: .07em; }
 .stock-controls { position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #c0d0d8; width: 90%; text-align: center; }
 .stock-percent { position: absolute; right: 14px; bottom: 15px; font-size: 38px; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .stock-percent[data-danger="true"] { color: #f17f5e; }
@@ -48,6 +48,18 @@ body.play-active.stock-match #expedition-pause { left: 18px; right: auto; top: 5
 }
 @media(max-width:800px) { .stock-defense { left: 56px; } }
 @media(max-width:500px) { .stock-defense { left: 8px; font-size: 7px; top: 26px; } .stock-lives { margin-top: 18px; } }
+.stock-fighter { height: 108px; }
+.stock-portrait { height: 86px; }
+.stock-percent { bottom: 42px; }
+.stock-special { position: absolute; left: 76px; right: 12px; bottom: 15px; display: flex; align-items: center; gap: 7px; color: #d1dcda; font-size: 9px; letter-spacing: .08em; border-top: 1px solid #4a686c; padding-top: 6px; }
+.stock-special-cell { flex: 0 0 29px; height: 11px; padding: 2px; border: 1px solid #698184; background: #08141d; clip-path: polygon(3px 0,calc(100% - 3px) 0,100% 3px,100% calc(100% - 3px),calc(100% - 3px) 100%,3px 100%,0 calc(100% - 3px),0 3px); }
+.stock-special-cell::after { content: ''; display: block; width: var(--charge,0%); height: 100%; background: linear-gradient(#b7f3e8,#55a8a6); box-shadow: inset 0 1px #e0fff0; }
+.stock-special-cell[data-filled="true"] { border-color: #edb45c; }
+.stock-special-cell[data-filled="true"]::after { background: linear-gradient(#ffe89f,#d69636); box-shadow: inset 0 1px #fff4d0; }
+.stock-special-hint { color: #7cdad0; font-size: 7px; letter-spacing: .03em; }
+@media(max-width:800px) { .stock-special { left: 56px; gap: 5px; } .stock-special-hint { display: none; } }
+@media(max-width:500px) { .stock-fighter { height: 114px; } .stock-special { left: 8px; right: 8px; font-size: 8px; } .stock-special-cell { flex-basis: 25px; } .stock-percent { bottom: 43px; } }
+@media(max-width:500px) and (min-height:600px) { .stock-controls { top: calc(50% + 28.125vw + 133px); } }
 #fighter-arena {
   position: absolute; z-index: 60; right: 14px; top: 118px; width: 376px; max-height: calc(100% - 158px); overflow-y: auto; box-sizing: border-box;
   padding: 0 0 10px; color: var(--m-text, #e6dfca); font: 400 12.5px/1.45 var(--m-sans, system-ui, sans-serif);

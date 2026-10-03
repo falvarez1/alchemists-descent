@@ -1,0 +1,4882 @@
+{
+  "bouts": [
+    {
+      "seed": 11,
+      "state": "fighting",
+      "remaining": 18120,
+      "fighters": [
+        {
+          "stocks": 1,
+          "volatility": 0,
+          "respawn": 0,
+          "protection": 117
+        },
+        {
+          "stocks": 2,
+          "volatility": 56.607600000000076,
+          "respawn": 0,
+          "protection": 0
+        }
+      ],
+      "downs": [
+        {
+          "slot": 0,
+          "by": 1,
+          "source": "ring-out",
+          "x": 1365,
+          "y": 631,
+          "trace": [
+            {
+              "tick": 1908,
+              "x": 983,
+              "y": 612,
+              "vx": 1.12,
+              "vy": 1.4,
+              "fuel": 88.1,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1912,
+              "x": 990,
+              "y": 620,
+              "vx": 1.18,
+              "vy": 2.52,
+              "fuel": 88.1,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1916,
+              "x": 994,
+              "y": 633,
+              "vx": 0.5,
+              "vy": 3.64,
+              "fuel": 88.1,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1920,
+              "x": 997,
+              "y": 639,
+              "vx": 1.17,
+              "vy": 0.56,
+              "fuel": 91.5,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1924,
+              "x": 1007,
+              "y": 639,
+              "vx": 3.33,
+              "vy": 0,
+              "fuel": 98.3,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1928,
+              "x": 1023,
+              "y": 639,
+              "vx": 3.92,
+              "vy": 0.28,
+              "fuel": 105.1,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1932,
+              "x": 1027,
+              "y": 639,
+              "vx": 0.21,
+              "vy": 0.56,
+              "fuel": 111.9,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1936,
+              "x": 1027,
+              "y": 639,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 118.7,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1940,
+              "x": 1027,
+              "y": 639,
+              "vx": 0,
+              "vy": 0.28,
+              "fuel": 125,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1944,
+              "x": 1027,
+              "y": 639,
+              "vx": 0,
+              "vy": 0.56,
+              "fuel": 125,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1948,
+              "x": 1027,
+              "y": 639,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 125,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1952,
+              "x": 1027,
+              "y": 639,
+              "vx": 0,
+              "vy": 0.28,
+              "fuel": 125,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1956,
+              "x": 1027,
+              "y": 639,
+              "vx": 0,
+              "vy": 0.56,
+              "fuel": 125,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1960,
+              "x": 1027,
+              "y": 636,
+              "vx": -0.48,
+              "vy": -3.85,
+              "fuel": 125,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1964,
+              "x": 1020,
+              "y": 624,
+              "vx": -2.65,
+              "vy": -2.73,
+              "fuel": 125,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1968,
+              "x": 1005,
+              "y": 615,
+              "vx": -3.86,
+              "vy": -1.93,
+              "fuel": 122.7,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1972,
+              "x": 990,
+              "y": 609,
+              "vx": -3.86,
+              "vy": -1.57,
+              "fuel": 118.1,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1976,
+              "x": 974,
+              "y": 603,
+              "vx": -3.86,
+              "vy": -1.31,
+              "fuel": 113.5,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1980,
+              "x": 959,
+              "y": 598,
+              "vx": -3.86,
+              "vy": -1.17,
+              "fuel": 108.9,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1984,
+              "x": 943,
+              "y": 594,
+              "vx": -3.86,
+              "vy": -0.85,
+              "fuel": 105.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1988,
+              "x": 937,
+              "y": 593,
+              "vx": -0.12,
+              "vy": 0.27,
+              "fuel": 105.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1992,
+              "x": 942,
+              "y": 596,
+              "vx": 2.29,
+              "vy": 1.39,
+              "fuel": 105.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1996,
+              "x": 956,
+              "y": 604,
+              "vx": 3.86,
+              "vy": 2.51,
+              "fuel": 105.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 48.9,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2000,
+              "x": 969,
+              "y": 602,
+              "vx": 3.2,
+              "vy": 0,
+              "fuel": 90.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 21,
+              "volatility": 54.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2004,
+              "x": 982,
+              "y": 602,
+              "vx": 3.2,
+              "vy": 0,
+              "fuel": 90.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 21,
+              "volatility": 54.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2008,
+              "x": 990,
+              "y": 602,
+              "vx": 2.6,
+              "vy": 0.56,
+              "fuel": 90.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 19,
+              "volatility": 54.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2012,
+              "x": 1000,
+              "y": 607,
+              "vx": 2.6,
+              "vy": 1.68,
+              "fuel": 90.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 15,
+              "volatility": 54.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2016,
+              "x": 1011,
+              "y": 617,
+              "vx": 2.6,
+              "vy": 2.8,
+              "fuel": 90.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 11,
+              "volatility": 54.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2020,
+              "x": 1021,
+              "y": 631,
+              "vx": 2.47,
+              "vy": 3.92,
+              "fuel": 90.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 7,
+              "volatility": 54.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2024,
+              "x": 1027,
+              "y": 639,
+              "vx": 0.51,
+              "vy": 0.56,
+              "fuel": 93.8,
+              "burst": true,
+              "grounded": true,
+              "stun": 3,
+              "volatility": 54.3,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2028,
+              "x": 1027,
+              "y": 639,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 100.6,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 54.3,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2032,
+              "x": 1027,
+              "y": 639,
+              "vx": 0,
+              "vy": 0.28,
+              "fuel": 107.4,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 54.3,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2036,
+              "x": 1028,
+              "y": 639,
+              "vx": 0.39,
+              "vy": 0.5,
+              "fuel": 114.2,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 54.3,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2040,
+              "x": 1028,
+              "y": 639,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 121,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 54.3,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2044,
+              "x": 1028,
+              "y": 639,
+              "vx": 0,
+              "vy": 0.28,
+              "fuel": 125,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 54.5,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2048,
+              "x": 1028,
+              "y": 639,
+              "vx": 0,
+              "vy": 0.56,
+              "fuel": 125,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 54.5,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2052,
+              "x": 1028,
+              "y": 639,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 125,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 54.5,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2056,
+              "x": 1028,
+              "y": 639,
+              "vx": 0,
+              "vy": 0.28,
+              "fuel": 125,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 54.5,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2060,
+              "x": 1041,
+              "y": 636,
+              "vx": 13.03,
+              "vy": -3.41,
+              "fuel": 125,
+              "burst": true,
+              "grounded": false,
+              "stun": 24,
+              "volatility": 60.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2064,
+              "x": 1093,
+              "y": 626,
+              "vx": 13.03,
+              "vy": -2.29,
+              "fuel": 125,
+              "burst": true,
+              "grounded": false,
+              "stun": 20,
+              "volatility": 60.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2068,
+              "x": 1145,
+              "y": 619,
+              "vx": 13.03,
+              "vy": -1.17,
+              "fuel": 125,
+              "burst": true,
+              "grounded": false,
+              "stun": 16,
+              "volatility": 60.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2072,
+              "x": 1197,
+              "y": 617,
+              "vx": 13.03,
+              "vy": -0.05,
+              "fuel": 125,
+              "burst": true,
+              "grounded": false,
+              "stun": 12,
+              "volatility": 60.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2076,
+              "x": 1249,
+              "y": 619,
+              "vx": 13.03,
+              "vy": 1.07,
+              "fuel": 125,
+              "burst": true,
+              "grounded": false,
+              "stun": 8,
+              "volatility": 60.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2080,
+              "x": 1301,
+              "y": 626,
+              "vx": 13.03,
+              "vy": 2.19,
+              "fuel": 125,
+              "burst": true,
+              "grounded": false,
+              "stun": 4,
+              "volatility": 60.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2084,
+              "x": 1353,
+              "y": 637,
+              "vx": 13.03,
+              "vy": 2.74,
+              "fuel": 123.8,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 60.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            }
+          ]
+        },
+        {
+          "slot": 1,
+          "by": 1,
+          "source": "ring-out",
+          "x": 1151,
+          "y": 945,
+          "trace": [
+            {
+              "tick": 2132,
+              "x": 1039,
+              "y": 609,
+              "vx": -0.86,
+              "vy": 2.69,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 79.8,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2136,
+              "x": 1035,
+              "y": 623,
+              "vx": -0.49,
+              "vy": 4.09,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 79.8,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2140,
+              "x": 1034,
+              "y": 639,
+              "vx": -0.44,
+              "vy": 0,
+              "fuel": 0,
+              "burst": false,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 79.8,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2144,
+              "x": 1029,
+              "y": 639,
+              "vx": -1.68,
+              "vy": 0,
+              "fuel": 6.8,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 80.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2148,
+              "x": 1026,
+              "y": 639,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 13.6,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 80.3,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2152,
+              "x": 1026,
+              "y": 639,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 20.4,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 80.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2156,
+              "x": 1026,
+              "y": 639,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 27.2,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 80.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2160,
+              "x": 1026,
+              "y": 639,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 34,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 80.5,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2164,
+              "x": 1026,
+              "y": 639,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 40.8,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 80.5,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2168,
+              "x": 1026,
+              "y": 639,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 47.6,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 80.6,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2172,
+              "x": 1025,
+              "y": 634,
+              "vx": -0.72,
+              "vy": -0.76,
+              "fuel": 48.2,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 80.6,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2176,
+              "x": 1019,
+              "y": 632,
+              "vx": -1.63,
+              "vy": -0.41,
+              "fuel": 43.6,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 80.6,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2180,
+              "x": 1011,
+              "y": 631,
+              "vx": -2.19,
+              "vy": -0.17,
+              "fuel": 39,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 80.6,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2184,
+              "x": 1002,
+              "y": 631,
+              "vx": -2.19,
+              "vy": -0.02,
+              "fuel": 34.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 80.7,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2188,
+              "x": 993,
+              "y": 631,
+              "vx": -2.19,
+              "vy": 0.03,
+              "fuel": 29.8,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 80.7,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2192,
+              "x": 986,
+              "y": 631,
+              "vx": -1.43,
+              "vy": -0.06,
+              "fuel": 25.2,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 80.7,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2196,
+              "x": 984,
+              "y": 633,
+              "vx": -0.2,
+              "vy": 1.34,
+              "fuel": 25.2,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 80.7,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2200,
+              "x": 984,
+              "y": 639,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 26.9,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 80.7,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2204,
+              "x": 982,
+              "y": 633,
+              "vx": -0.95,
+              "vy": -0.66,
+              "fuel": 24.6,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 80.7,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2208,
+              "x": 1010,
+              "y": 627,
+              "vx": 10.08,
+              "vy": -1.57,
+              "fuel": 23.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 17,
+              "volatility": 91.1,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2212,
+              "x": 1050,
+              "y": 624,
+              "vx": 10.08,
+              "vy": -0.17,
+              "fuel": 23.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 13,
+              "volatility": 91.1,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2216,
+              "x": 1090,
+              "y": 626,
+              "vx": 10.08,
+              "vy": 1.23,
+              "fuel": 23.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 9,
+              "volatility": 91.1,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2220,
+              "x": 1131,
+              "y": 635,
+              "vx": 10.08,
+              "vy": 2.63,
+              "fuel": 23.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 5,
+              "volatility": 91.1,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2224,
+              "x": 1171,
+              "y": 649,
+              "vx": 10.08,
+              "vy": 4.03,
+              "fuel": 23.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 1,
+              "volatility": 91.1,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2228,
+              "x": 1208,
+              "y": 634,
+              "vx": 8.43,
+              "vy": -5.74,
+              "fuel": 6.8,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2232,
+              "x": 1237,
+              "y": 616,
+              "vx": 6.34,
+              "vy": -3.98,
+              "fuel": 2.2,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2236,
+              "x": 1257,
+              "y": 604,
+              "vx": 4.37,
+              "vy": -2.61,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2240,
+              "x": 1270,
+              "y": 597,
+              "vx": 2.52,
+              "vy": -1.21,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2244,
+              "x": 1276,
+              "y": 595,
+              "vx": 0.84,
+              "vy": 0.19,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2248,
+              "x": 1276,
+              "y": 599,
+              "vx": -0.43,
+              "vy": 1.59,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2252,
+              "x": 1273,
+              "y": 608,
+              "vx": -1.33,
+              "vy": 2.99,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2256,
+              "x": 1265,
+              "y": 624,
+              "vx": -2.19,
+              "vy": 4.39,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2260,
+              "x": 1256,
+              "y": 645,
+              "vx": -2.19,
+              "vy": 5.79,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2264,
+              "x": 1248,
+              "y": 670,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2268,
+              "x": 1239,
+              "y": 695,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2272,
+              "x": 1230,
+              "y": 720,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2276,
+              "x": 1221,
+              "y": 745,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2280,
+              "x": 1212,
+              "y": 770,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2284,
+              "x": 1204,
+              "y": 795,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2288,
+              "x": 1195,
+              "y": 820,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2292,
+              "x": 1186,
+              "y": 845,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2296,
+              "x": 1177,
+              "y": 870,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2300,
+              "x": 1169,
+              "y": 895,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2304,
+              "x": 1160,
+              "y": 920,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 2308,
+              "x": 1151,
+              "y": 945,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 91.2,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            }
+          ]
+        },
+        {
+          "slot": 0,
+          "by": 0,
+          "source": "ring-out",
+          "x": 549,
+          "y": 944,
+          "trace": [
+            {
+              "tick": 3360,
+              "x": 758,
+              "y": 629,
+              "vx": 3.09,
+              "vy": 0.78,
+              "fuel": 16.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 30.4,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3364,
+              "x": 768,
+              "y": 634,
+              "vx": 1.38,
+              "vy": 1.49,
+              "fuel": 15.3,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 30.4,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3368,
+              "x": 768,
+              "y": 639,
+              "vx": -0.27,
+              "vy": -0.89,
+              "fuel": 17,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 30.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3372,
+              "x": 759,
+              "y": 635,
+              "vx": -3.2,
+              "vy": 0,
+              "fuel": 2,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 30.4,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3376,
+              "x": 749,
+              "y": 635,
+              "vx": -2.6,
+              "vy": 0,
+              "fuel": 2,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 30.4,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3380,
+              "x": 737,
+              "y": 637,
+              "vx": -3.09,
+              "vy": 1.12,
+              "fuel": 2,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 30.4,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3384,
+              "x": 727,
+              "y": 635,
+              "vx": -1.43,
+              "vy": -0.89,
+              "fuel": 3.7,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 30.4,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3388,
+              "x": 727,
+              "y": 634,
+              "vx": 0.98,
+              "vy": 0.23,
+              "fuel": 3.7,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 30.4,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3392,
+              "x": 736,
+              "y": 637,
+              "vx": 2.92,
+              "vy": 1.35,
+              "fuel": 3.7,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 30.4,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3396,
+              "x": 719,
+              "y": 632,
+              "vx": -11.78,
+              "vy": -3.5,
+              "fuel": 5.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 21,
+              "volatility": 36.2,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3400,
+              "x": 672,
+              "y": 621,
+              "vx": -11.78,
+              "vy": -2.38,
+              "fuel": 5.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 17,
+              "volatility": 36.2,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3404,
+              "x": 625,
+              "y": 614,
+              "vx": -11.78,
+              "vy": -1.26,
+              "fuel": 5.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 13,
+              "volatility": 36.2,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3408,
+              "x": 578,
+              "y": 612,
+              "vx": -11.78,
+              "vy": -0.14,
+              "fuel": 5.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 9,
+              "volatility": 36.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3412,
+              "x": 531,
+              "y": 613,
+              "vx": -11.78,
+              "vy": 0.98,
+              "fuel": 5.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 5,
+              "volatility": 36.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3416,
+              "x": 484,
+              "y": 620,
+              "vx": -11.78,
+              "vy": 2.1,
+              "fuel": 5.4,
+              "burst": true,
+              "grounded": false,
+              "stun": 1,
+              "volatility": 36.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3420,
+              "x": 443,
+              "y": 602,
+              "vx": -8.76,
+              "vy": -6.66,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3424,
+              "x": 417,
+              "y": 578,
+              "vx": -4.95,
+              "vy": -5.54,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3428,
+              "x": 407,
+              "y": 559,
+              "vx": -1.41,
+              "vy": -4.42,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3432,
+              "x": 407,
+              "y": 544,
+              "vx": 0.99,
+              "vy": -3.3,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3436,
+              "x": 415,
+              "y": 534,
+              "vx": 2.93,
+              "vy": -2.18,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3440,
+              "x": 428,
+              "y": 528,
+              "vx": 3.09,
+              "vy": -1.06,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3444,
+              "x": 440,
+              "y": 526,
+              "vx": 3.09,
+              "vy": 0.06,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3448,
+              "x": 452,
+              "y": 528,
+              "vx": 3.09,
+              "vy": 1.18,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3452,
+              "x": 465,
+              "y": 536,
+              "vx": 3.09,
+              "vy": 2.3,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3456,
+              "x": 477,
+              "y": 548,
+              "vx": 3.09,
+              "vy": 3.42,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3460,
+              "x": 489,
+              "y": 564,
+              "vx": 3.09,
+              "vy": 4.54,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3464,
+              "x": 502,
+              "y": 584,
+              "vx": 3.09,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3468,
+              "x": 514,
+              "y": 604,
+              "vx": 3.09,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3472,
+              "x": 526,
+              "y": 624,
+              "vx": 3.09,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3476,
+              "x": 539,
+              "y": 644,
+              "vx": 3.09,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3480,
+              "x": 551,
+              "y": 664,
+              "vx": 2.79,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3484,
+              "x": 556,
+              "y": 684,
+              "vx": 0.25,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3488,
+              "x": 553,
+              "y": 704,
+              "vx": -2,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3492,
+              "x": 543,
+              "y": 724,
+              "vx": -2.21,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3496,
+              "x": 542,
+              "y": 744,
+              "vx": 0.96,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3500,
+              "x": 548,
+              "y": 764,
+              "vx": 0.96,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3504,
+              "x": 549,
+              "y": 784,
+              "vx": 0.2,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3508,
+              "x": 549,
+              "y": 804,
+              "vx": 0,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3512,
+              "x": 549,
+              "y": 824,
+              "vx": 0,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3516,
+              "x": 549,
+              "y": 844,
+              "vx": 0,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3520,
+              "x": 549,
+              "y": 864,
+              "vx": 0,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3524,
+              "x": 549,
+              "y": 884,
+              "vx": 0,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3528,
+              "x": 549,
+              "y": 904,
+              "vx": 0,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3532,
+              "x": 549,
+              "y": 924,
+              "vx": 0,
+              "vy": 5,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 3536,
+              "x": 549,
+              "y": 944,
+              "vx": 0,
+              "vy": 0,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 36.4,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            }
+          ]
+        }
+      ],
+      "movement": [
+        {
+          "reversals": 12,
+          "shortReversals": 3,
+          "closeTicks": 553,
+          "combatTicks": 3301,
+          "distance": 513828.71765676996,
+          "dir": 1,
+          "since": 3394,
+          "lastMotion": 3394
+        },
+        {
+          "reversals": 6,
+          "shortReversals": 2,
+          "closeTicks": 553,
+          "combatTicks": 3301,
+          "distance": 513828.71765676996,
+          "dir": -1,
+          "since": 3312,
+          "lastMotion": 3599
+        }
+      ],
+      "hits": [
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "melee.opener"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "melee.opener"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "melee.opener"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "spell"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "spell"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "melee.aerial"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "spell"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "melee.aerial"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "spell"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "spell"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "melee.aerial"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "melee.opener"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "melee.opener"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "ability.tactical"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "spell"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "melee.launcher"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "spell"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "spell"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "spell"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "melee.aerial"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "melee.aerial"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "melee.aerial"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "melee.aerial"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "spell"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "spell"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "ability.tactical"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "spell"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "spell"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "spell"
+        }
+      ],
+      "worldHits": 1146,
+      "casts": [
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark"
+      ],
+      "stats": [
+        {
+          "shots": 0,
+          "kicks": 0,
+          "z": 0,
+          "t": 0,
+          "hops": 38,
+          "lapses": 0,
+          "stuck": 0,
+          "idleMax": 0,
+          "edges": 0,
+          "dodges": 0,
+          "hazardStops": 0,
+          "hazardHops": 0,
+          "swaps": 0,
+          "flanks": 0,
+          "combatTicks": 0,
+          "distanceTotal": 0,
+          "approachTicks": 0,
+          "attacks": 0,
+          "repeatedActions": 0,
+          "pressureTicks": 0,
+          "repositionTicks": 0,
+          "hazardRepositions": 0,
+          "landings": 0,
+          "defensiveChoices": 0,
+          "selfKos": 0
+        },
+        {
+          "shots": 6,
+          "kicks": 4,
+          "z": 2,
+          "t": 0,
+          "hops": 65,
+          "lapses": 4,
+          "stuck": 4,
+          "idleMax": 91,
+          "edges": 0,
+          "dodges": 0,
+          "hazardStops": 285,
+          "hazardHops": 37,
+          "swaps": 0,
+          "flanks": 0,
+          "combatTicks": 991,
+          "distanceTotal": 165032.72421127654,
+          "approachTicks": 870,
+          "attacks": 6,
+          "hazardRepositions": 0,
+          "repositionTicks": 0,
+          "pressureTicks": 121,
+          "repeatedActions": 4,
+          "defensiveChoices": 0,
+          "landings": 0,
+          "selfKos": 0
+        }
+      ],
+      "final": [
+        {
+          "x": 683,
+          "y": 610,
+          "stun": 0,
+          "bot": {
+            "brain": "basic",
+            "level": 3,
+            "intent": "search",
+            "target": "-",
+            "rule": "",
+            "aim": null,
+            "goalX": 800,
+            "range": 24,
+            "idleTicks": 0,
+            "stats": {
+              "shots": 0,
+              "kicks": 0,
+              "z": 0,
+              "t": 0,
+              "hops": 38,
+              "lapses": 0,
+              "stuck": 0,
+              "idleMax": 0,
+              "edges": 0,
+              "dodges": 0,
+              "hazardStops": 0,
+              "hazardHops": 0,
+              "swaps": 0,
+              "flanks": 0,
+              "combatTicks": 0,
+              "distanceTotal": 0,
+              "approachTicks": 0,
+              "attacks": 0,
+              "repeatedActions": 0,
+              "pressureTicks": 0,
+              "repositionTicks": 0,
+              "hazardRepositions": 0,
+              "landings": 0,
+              "defensiveChoices": 0,
+              "selfKos": 0
+            },
+            "personality": "berserker",
+            "memory": {
+              "opponents": 0,
+              "confidence": 0,
+              "caution": 0
+            },
+            "threat": false,
+            "targetScores": [],
+            "scores": [],
+            "action": "wait"
+          }
+        },
+        {
+          "x": 980,
+          "y": 639,
+          "stun": 0,
+          "bot": {
+            "brain": "basic",
+            "level": 3,
+            "intent": "search",
+            "target": "-",
+            "rule": "stuck: shaking loose",
+            "aim": null,
+            "goalX": 800,
+            "range": 24,
+            "idleTicks": 0,
+            "stats": {
+              "shots": 6,
+              "kicks": 4,
+              "z": 2,
+              "t": 0,
+              "hops": 65,
+              "lapses": 4,
+              "stuck": 4,
+              "idleMax": 91,
+              "edges": 0,
+              "dodges": 0,
+              "hazardStops": 285,
+              "hazardHops": 37,
+              "swaps": 0,
+              "flanks": 0,
+              "combatTicks": 991,
+              "distanceTotal": 165032.72421127654,
+              "approachTicks": 870,
+              "attacks": 6,
+              "hazardRepositions": 0,
+              "repositionTicks": 0,
+              "pressureTicks": 121,
+              "repeatedActions": 4,
+              "defensiveChoices": 0,
+              "landings": 0,
+              "selfKos": 0
+            },
+            "personality": "guardian",
+            "memory": {
+              "opponents": 1,
+              "confidence": 0.21721501473582075,
+              "caution": 0
+            },
+            "threat": false,
+            "targetScores": [],
+            "scores": [
+              {
+                "action": "wait",
+                "total": 0.22374349759891632,
+                "terms": {
+                  "reset": 0.05,
+                  "patience": 0.17,
+                  "resource": 0,
+                  "danger": 0,
+                  "repetition": 0,
+                  "variation": 0.0037434975989162917
+                }
+              }
+            ],
+            "action": "wait"
+          }
+        }
+      ]
+    },
+    {
+      "seed": 29,
+      "state": "fighting",
+      "remaining": 18120,
+      "fighters": [
+        {
+          "stocks": 3,
+          "volatility": 42.22489999999974,
+          "respawn": 0,
+          "protection": 0
+        },
+        {
+          "stocks": 2,
+          "volatility": 10.288800000000002,
+          "respawn": 0,
+          "protection": 0
+        }
+      ],
+      "downs": [
+        {
+          "slot": 1,
+          "by": 1,
+          "source": "ring-out",
+          "x": 1054,
+          "y": 942,
+          "trace": [
+            {
+              "tick": 1396,
+              "x": 815,
+              "y": 639,
+              "vx": -0.71,
+              "vy": 0,
+              "fuel": 68.8,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 37.1,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1400,
+              "x": 815,
+              "y": 639,
+              "vx": 0.77,
+              "vy": 0,
+              "fuel": 68.8,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 37.2,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1404,
+              "x": 821,
+              "y": 639,
+              "vx": 2.06,
+              "vy": 0,
+              "fuel": 68.8,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 37.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1408,
+              "x": 830,
+              "y": 639,
+              "vx": 2.22,
+              "vy": 0,
+              "fuel": 68.8,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 37.3,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1412,
+              "x": 838,
+              "y": 639,
+              "vx": 1.69,
+              "vy": 0,
+              "fuel": 68.8,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 37.4,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1416,
+              "x": 840,
+              "y": 639,
+              "vx": -0.19,
+              "vy": 0,
+              "fuel": 68.8,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 37.4,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1420,
+              "x": 838,
+              "y": 639,
+              "vx": -1.4,
+              "vy": 0,
+              "fuel": 68.8,
+              "burst": true,
+              "grounded": true,
+              "stun": 0,
+              "volatility": 37.5,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1424,
+              "x": 836,
+              "y": 638,
+              "vx": 5.95,
+              "vy": -1.77,
+              "fuel": 68.8,
+              "burst": true,
+              "grounded": false,
+              "stun": 10,
+              "volatility": 51.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1428,
+              "x": 860,
+              "y": 634,
+              "vx": 5.95,
+              "vy": -0.37,
+              "fuel": 68.8,
+              "burst": true,
+              "grounded": false,
+              "stun": 6,
+              "volatility": 51.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1432,
+              "x": 884,
+              "y": 636,
+              "vx": 5.95,
+              "vy": 1.03,
+              "fuel": 68.8,
+              "burst": true,
+              "grounded": false,
+              "stun": 2,
+              "volatility": 51.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1436,
+              "x": 899,
+              "y": 635,
+              "vx": 1.78,
+              "vy": -0.87,
+              "fuel": 68.8,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 51.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1440,
+              "x": 903,
+              "y": 632,
+              "vx": 0.23,
+              "vy": -0.49,
+              "fuel": 64.1,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 51.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1444,
+              "x": 902,
+              "y": 631,
+              "vx": -0.76,
+              "vy": -0.22,
+              "fuel": 59.5,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 51.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1448,
+              "x": 897,
+              "y": 631,
+              "vx": -1.68,
+              "vy": -0.05,
+              "fuel": 54.9,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 51.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1452,
+              "x": 888,
+              "y": 631,
+              "vx": -2.19,
+              "vy": 0.03,
+              "fuel": 50.3,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 51.3,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1456,
+              "x": 891,
+              "y": 628,
+              "vx": 9.77,
+              "vy": -2.28,
+              "fuel": 46.9,
+              "burst": true,
+              "grounded": false,
+              "stun": 17,
+              "volatility": 61.8,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1460,
+              "x": 930,
+              "y": 623,
+              "vx": 9.77,
+              "vy": -0.88,
+              "fuel": 46.9,
+              "burst": true,
+              "grounded": false,
+              "stun": 13,
+              "volatility": 61.8,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1464,
+              "x": 969,
+              "y": 622,
+              "vx": 9.77,
+              "vy": 0.52,
+              "fuel": 46.9,
+              "burst": true,
+              "grounded": false,
+              "stun": 9,
+              "volatility": 61.8,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1468,
+              "x": 1008,
+              "y": 627,
+              "vx": 9.77,
+              "vy": 1.92,
+              "fuel": 46.9,
+              "burst": true,
+              "grounded": false,
+              "stun": 5,
+              "volatility": 61.8,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": false,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1472,
+              "x": 1048,
+              "y": 639,
+              "vx": 9.77,
+              "vy": 3.32,
+              "fuel": 46.9,
+              "burst": true,
+              "grounded": false,
+              "stun": 1,
+              "volatility": 61.8,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1476,
+              "x": 1083,
+              "y": 650,
+              "vx": 8.13,
+              "vy": 2.51,
+              "fuel": 42.3,
+              "burst": true,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 61.8,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1480,
+              "x": 1111,
+              "y": 634,
+              "vx": 6.06,
+              "vy": -5.74,
+              "fuel": 25.7,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 61.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1484,
+              "x": 1130,
+              "y": 616,
+              "vx": 4.11,
+              "vy": -4.01,
+              "fuel": 21.1,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 61.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1488,
+              "x": 1142,
+              "y": 603,
+              "vx": 2.27,
+              "vy": -2.81,
+              "fuel": 16.5,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 61.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1492,
+              "x": 1147,
+              "y": 594,
+              "vx": 0.63,
+              "vy": -2.03,
+              "fuel": 11.9,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 61.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1496,
+              "x": 1147,
+              "y": 587,
+              "vx": -0.5,
+              "vy": -1.6,
+              "fuel": 7.3,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 61.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1500,
+              "x": 1143,
+              "y": 581,
+              "vx": -1.4,
+              "vy": -1.47,
+              "fuel": 2.7,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 61.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1504,
+              "x": 1135,
+              "y": 575,
+              "vx": -2.19,
+              "vy": -1.21,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 61.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1508,
+              "x": 1126,
+              "y": 574,
+              "vx": -2.19,
+              "vy": 0.19,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 61.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1512,
+              "x": 1118,
+              "y": 577,
+              "vx": -2.19,
+              "vy": 1.59,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 61.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1516,
+              "x": 1109,
+              "y": 587,
+              "vx": -2.19,
+              "vy": 2.99,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 61.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1520,
+              "x": 1100,
+              "y": 602,
+              "vx": -2.19,
+              "vy": 4.39,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 61.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1524,
+              "x": 1091,
+              "y": 623,
+              "vx": -2.19,
+              "vy": 5.79,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 61.9,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1528,
+              "x": 1082,
+              "y": 648,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 62,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1532,
+              "x": 1074,
+              "y": 673,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 62,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1536,
+              "x": 1065,
+              "y": 698,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 62,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1540,
+              "x": 1056,
+              "y": 723,
+              "vx": -2.19,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 62,
+              "keys": {
+                "left": true,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1544,
+              "x": 1048,
+              "y": 748,
+              "vx": -1.78,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 62,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1548,
+              "x": 1045,
+              "y": 773,
+              "vx": -0.29,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 62,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1552,
+              "x": 1046,
+              "y": 798,
+              "vx": 0.94,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 62,
+              "keys": {
+                "left": false,
+                "right": true,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1556,
+              "x": 1051,
+              "y": 823,
+              "vx": 1.36,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 62,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1560,
+              "x": 1054,
+              "y": 848,
+              "vx": 0.29,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 62,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1564,
+              "x": 1054,
+              "y": 873,
+              "vx": 0,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 62,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1568,
+              "x": 1054,
+              "y": 898,
+              "vx": 0,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 62,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            },
+            {
+              "tick": 1572,
+              "x": 1054,
+              "y": 923,
+              "vx": 0,
+              "vy": 6.25,
+              "fuel": 0,
+              "burst": false,
+              "grounded": false,
+              "stun": 0,
+              "volatility": 62,
+              "keys": {
+                "left": false,
+                "right": false,
+                "up": false,
+                "jump": true,
+                "wallJump": false,
+                "down": false,
+                "grab": false
+              }
+            }
+          ]
+        }
+      ],
+      "movement": [
+        {
+          "reversals": 5,
+          "shortReversals": 1,
+          "closeTicks": 1937,
+          "combatTicks": 3421,
+          "distance": 302246.0667574876,
+          "dir": 1,
+          "since": 1814,
+          "lastMotion": 1941
+        },
+        {
+          "reversals": 4,
+          "shortReversals": 1,
+          "closeTicks": 1937,
+          "combatTicks": 3421,
+          "distance": 302246.0667574876,
+          "dir": -1,
+          "since": 1412,
+          "lastMotion": 1911
+        }
+      ],
+      "hits": [
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "spell"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "ability.tactical"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "melee.aerial"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "spell"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "spell"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "spell"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "melee.opener"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "melee.aerial"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "spell"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "ability.tactical"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "melee.aerial"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "spell"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "spell"
+        },
+        {
+          "by": 1,
+          "victim": 0,
+          "attack": "spell"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "melee.opener"
+        }
+      ],
+      "worldHits": 659,
+      "casts": [
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark"
+      ],
+      "stats": [
+        {
+          "shots": 6,
+          "kicks": 9,
+          "z": 3,
+          "t": 1,
+          "hops": 15,
+          "lapses": 14,
+          "stuck": 0,
+          "idleMax": 1623,
+          "edges": 3,
+          "dodges": 2,
+          "hazardStops": 84,
+          "hazardHops": 15,
+          "swaps": 0,
+          "flanks": 0,
+          "combatTicks": 3271,
+          "distanceTotal": 220200.3095985726,
+          "approachTicks": 1232,
+          "attacks": 12,
+          "repeatedActions": 11,
+          "defensiveChoices": 2,
+          "pressureTicks": 1877,
+          "repositionTicks": 162,
+          "hazardRepositions": 6
+        },
+        {
+          "shots": 2,
+          "kicks": 1,
+          "z": 3,
+          "t": 0,
+          "hops": 56,
+          "lapses": 11,
+          "stuck": 0,
+          "idleMax": 600,
+          "edges": 1,
+          "dodges": 0,
+          "hazardStops": 0,
+          "hazardHops": 1,
+          "swaps": 0,
+          "flanks": 0,
+          "combatTicks": 1951,
+          "distanceTotal": 82378.02244643649,
+          "approachTicks": 111,
+          "attacks": 2,
+          "pressureTicks": 1694,
+          "repeatedActions": 3,
+          "repositionTicks": 146,
+          "hazardRepositions": 0,
+          "selfKos": 0
+        }
+      ],
+      "final": [
+        {
+          "x": 658,
+          "y": 639,
+          "stun": 0,
+          "bot": {
+            "brain": "basic",
+            "level": 3,
+            "intent": "pressure",
+            "target": "fighter 31",
+            "rule": "waiting for a ready action",
+            "aim": {
+              "x": 688.9871095530766,
+              "y": 631.0242272919754
+            },
+            "goalX": null,
+            "range": 24,
+            "idleTicks": 1623,
+            "stats": {
+              "shots": 6,
+              "kicks": 9,
+              "z": 3,
+              "t": 1,
+              "hops": 15,
+              "lapses": 14,
+              "stuck": 0,
+              "idleMax": 1623,
+              "edges": 3,
+              "dodges": 2,
+              "hazardStops": 84,
+              "hazardHops": 15,
+              "swaps": 0,
+              "flanks": 0,
+              "combatTicks": 3271,
+              "distanceTotal": 220200.3095985726,
+              "approachTicks": 1232,
+              "attacks": 12,
+              "repeatedActions": 11,
+              "defensiveChoices": 2,
+              "pressureTicks": 1877,
+              "repositionTicks": 162,
+              "hazardRepositions": 6
+            },
+            "personality": "berserker",
+            "memory": {
+              "opponents": 1,
+              "confidence": 0.006276121154772222,
+              "caution": 0
+            },
+            "threat": false,
+            "targetScores": [
+              {
+                "action": "fighter@689",
+                "total": 0.7435962360840783,
+                "terms": {
+                  "engagement": 0.37933064533609673,
+                  "vulnerability": 0,
+                  "opportunity": 0,
+                  "threat": 0.06899596800414502,
+                  "isolation": 0.075,
+                  "retaliation": 0.0002696227438365533,
+                  "persistence": 0.22,
+                  "blocked": 0,
+                  "crowdRisk": 0
+                }
+              }
+            ],
+            "scores": [
+              {
+                "action": "wait",
+                "total": 0.05371519391121486,
+                "terms": {
+                  "reset": 0.05,
+                  "patience": 0.03,
+                  "resource": 0,
+                  "danger": -0.031102151120322254,
+                  "repetition": 0,
+                  "variation": 0.004817345031537115
+                }
+              }
+            ],
+            "action": "wait"
+          }
+        },
+        {
+          "x": 689,
+          "y": 639,
+          "stun": 0,
+          "bot": {
+            "brain": "basic",
+            "level": 3,
+            "intent": "pressure",
+            "target": "fighter 31",
+            "rule": "waiting for a ready action",
+            "aim": {
+              "x": 658.0163529788645,
+              "y": 631.124107321245
+            },
+            "goalX": null,
+            "range": 24,
+            "idleTicks": 545,
+            "stats": {
+              "shots": 2,
+              "kicks": 1,
+              "z": 3,
+              "t": 0,
+              "hops": 56,
+              "lapses": 11,
+              "stuck": 0,
+              "idleMax": 600,
+              "edges": 1,
+              "dodges": 0,
+              "hazardStops": 0,
+              "hazardHops": 1,
+              "swaps": 0,
+              "flanks": 0,
+              "combatTicks": 1951,
+              "distanceTotal": 82378.02244643649,
+              "approachTicks": 111,
+              "attacks": 2,
+              "pressureTicks": 1694,
+              "repeatedActions": 3,
+              "repositionTicks": 146,
+              "hazardRepositions": 0,
+              "selfKos": 0
+            },
+            "personality": "guardian",
+            "memory": {
+              "opponents": 1,
+              "confidence": 0.002064060641241116,
+              "caution": 0
+            },
+            "threat": false,
+            "targetScores": [
+              {
+                "action": "fighter@658",
+                "total": 0.7849272118723818,
+                "terms": {
+                  "engagement": 0.37933064533609673,
+                  "vulnerability": 0,
+                  "opportunity": 0,
+                  "threat": 0.11039354880663205,
+                  "isolation": 0.075,
+                  "retaliation": 0.00020301772965305642,
+                  "persistence": 0.22,
+                  "blocked": 0,
+                  "crowdRisk": 0
+                }
+              }
+            ],
+            "scores": [
+              {
+                "action": "wait",
+                "total": 0.1942276514472827,
+                "terms": {
+                  "reset": 0.05,
+                  "patience": 0.17,
+                  "resource": 0,
+                  "danger": -0.031102151120322254,
+                  "repetition": 0,
+                  "variation": 0.00532980256760493
+                }
+              }
+            ],
+            "action": "wait"
+          }
+        }
+      ]
+    },
+    {
+      "seed": 43,
+      "state": "fighting",
+      "remaining": 18120,
+      "fighters": [
+        {
+          "stocks": 3,
+          "volatility": 2.6592999999999964,
+          "respawn": 0,
+          "protection": 0
+        },
+        {
+          "stocks": 3,
+          "volatility": 25.689,
+          "respawn": 0,
+          "protection": 0
+        }
+      ],
+      "downs": [],
+      "movement": [
+        {
+          "reversals": 0,
+          "shortReversals": 0,
+          "closeTicks": 3337,
+          "combatTicks": 3481,
+          "distance": 108862.3484037011,
+          "dir": 1,
+          "since": 120,
+          "lastMotion": 182
+        },
+        {
+          "reversals": 0,
+          "shortReversals": 0,
+          "closeTicks": 3337,
+          "combatTicks": 3481,
+          "distance": 108862.3484037011,
+          "dir": 1,
+          "since": 239,
+          "lastMotion": 258
+        }
+      ],
+      "hits": [
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "melee.aerial"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "ability.tactical"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "melee.aerial"
+        },
+        {
+          "by": 0,
+          "victim": 1,
+          "attack": "melee.aerial"
+        }
+      ],
+      "worldHits": 108,
+      "casts": [
+        "spark",
+        "spark",
+        "spark",
+        "spark",
+        "spark"
+      ],
+      "stats": [
+        {
+          "shots": 2,
+          "kicks": 5,
+          "z": 1,
+          "t": 1,
+          "hops": 6,
+          "lapses": 13,
+          "stuck": 0,
+          "idleMax": 3107,
+          "edges": 0,
+          "dodges": 0,
+          "hazardStops": 1,
+          "hazardHops": 6,
+          "swaps": 0,
+          "flanks": 0,
+          "combatTicks": 3586,
+          "distanceTotal": 133002.6357361209,
+          "approachTicks": 235,
+          "attacks": 4,
+          "repeatedActions": 6,
+          "pressureTicks": 3351
+        },
+        {
+          "shots": 1,
+          "kicks": 4,
+          "z": 6,
+          "t": 0,
+          "hops": 5,
+          "lapses": 11,
+          "stuck": 0,
+          "idleMax": 600,
+          "edges": 0,
+          "dodges": 1,
+          "hazardStops": 8,
+          "hazardHops": 5,
+          "swaps": 0,
+          "flanks": 0,
+          "combatTicks": 3464,
+          "distanceTotal": 108151.42980749077,
+          "approachTicks": 182,
+          "attacks": 1,
+          "pressureTicks": 3282,
+          "repeatedActions": 7
+        }
+      ],
+      "final": [
+        {
+          "x": 798,
+          "y": 639,
+          "stun": 0,
+          "bot": {
+            "brain": "basic",
+            "level": 3,
+            "intent": "pressure",
+            "target": "fighter 29",
+            "rule": "waiting for a ready action",
+            "aim": {
+              "x": 826.9739269481165,
+              "y": 632.485043422852
+            },
+            "goalX": null,
+            "range": 24,
+            "idleTicks": 3107,
+            "stats": {
+              "shots": 2,
+              "kicks": 5,
+              "z": 1,
+              "t": 1,
+              "hops": 6,
+              "lapses": 13,
+              "stuck": 0,
+              "idleMax": 3107,
+              "edges": 0,
+              "dodges": 0,
+              "hazardStops": 1,
+              "hazardHops": 6,
+              "swaps": 0,
+              "flanks": 0,
+              "combatTicks": 3586,
+              "distanceTotal": 133002.6357361209,
+              "approachTicks": 235,
+              "attacks": 4,
+              "repeatedActions": 6,
+              "pressureTicks": 3351
+            },
+            "personality": "berserker",
+            "memory": {
+              "opponents": 1,
+              "confidence": 0.00029674672830055406,
+              "caution": 0
+            },
+            "threat": false,
+            "targetScores": [
+              {
+                "action": "fighter@827",
+                "total": 0.7466594832924227,
+                "terms": {
+                  "engagement": 0.38066379331696915,
+                  "vulnerability": 0,
+                  "opportunity": 0,
+                  "threat": 0.07099568997545365,
+                  "isolation": 0.075,
+                  "retaliation": 0,
+                  "persistence": 0.22,
+                  "blocked": 0,
+                  "crowdRisk": 0
+                }
+              }
+            ],
+            "scores": [
+              {
+                "action": "wait",
+                "total": 0.05131566354827518,
+                "terms": {
+                  "reset": 0.05,
+                  "patience": 0.03,
+                  "resource": 0,
+                  "danger": -0.03554597772323033,
+                  "repetition": 0,
+                  "variation": 0.006861641271505505
+                }
+              }
+            ],
+            "action": "wait"
+          }
+        },
+        {
+          "x": 827,
+          "y": 639,
+          "stun": 0,
+          "bot": {
+            "brain": "basic",
+            "level": 3,
+            "intent": "pressure",
+            "target": "fighter 29",
+            "rule": "waiting for a ready action",
+            "aim": {
+              "x": 798.0274234422649,
+              "y": 631.3563950774665
+            },
+            "goalX": null,
+            "range": 24,
+            "idleTicks": 429,
+            "stats": {
+              "shots": 1,
+              "kicks": 4,
+              "z": 6,
+              "t": 0,
+              "hops": 5,
+              "lapses": 11,
+              "stuck": 0,
+              "idleMax": 600,
+              "edges": 0,
+              "dodges": 1,
+              "hazardStops": 8,
+              "hazardHops": 5,
+              "swaps": 0,
+              "flanks": 0,
+              "combatTicks": 3464,
+              "distanceTotal": 108151.42980749077,
+              "approachTicks": 182,
+              "attacks": 1,
+              "pressureTicks": 3282,
+              "repeatedActions": 7
+            },
+            "personality": "guardian",
+            "memory": {
+              "opponents": 1,
+              "confidence": 0,
+              "caution": 0
+            },
+            "threat": false,
+            "targetScores": [
+              {
+                "action": "fighter@798",
+                "total": 0.7892703060014095,
+                "terms": {
+                  "engagement": 0.38066379331696915,
+                  "vulnerability": 0,
+                  "opportunity": 0,
+                  "threat": 0.11359310396072586,
+                  "isolation": 0.075,
+                  "retaliation": 0.000013408723714438082,
+                  "persistence": 0.22,
+                  "blocked": 0,
+                  "crowdRisk": 0
+                }
+              }
+            ],
+            "scores": [
+              {
+                "action": "wait",
+                "total": 0.18268645428502497,
+                "terms": {
+                  "reset": 0.05,
+                  "patience": 0.17,
+                  "resource": 0,
+                  "danger": -0.03554597772323033,
+                  "repetition": 0,
+                  "variation": -0.0017675679917447268
+                }
+              }
+            ],
+            "action": "wait"
+          }
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

@@ -95,6 +95,28 @@ describe('EventBus slot scoping', () => {
     } };
     return { ...result, ctx, rival, step };
   }
+  test('special reserve belongs to each seat, locks defensive cancels, rewards real melee and resets', async () => {
+    const { arena, base, step } = await meleeSetup();
+    expect(arena.spendStockSpecial()).toBe(true);
+    expect(arena.stockSpecial(0)?.charges).toBe(1);
+    expect(arena.stockSpecial(1)?.charges).toBe(2);
+    expect(arena.requestStockAttack()).toBe(false);
+    expect(arena.requestStockGrab()).toBe(false);
+    expect(arena.updateStockShield(true, true)?.busy).toBe(false);
+    expect(arena.updateStockDodge(true, true)?.busy).toBe(false);
+    step(24);
+    const before = arena.stockSpecial(0)!.progress;
+    expect(arena.requestStockAttack('opener')).toBe(true);
+    step(10);
+    expect(arena.stockSpecial(0)!.progress - before).toBeGreaterThan(60 / 180);
+    arena.reset();
+    expect(arena.stockSpecial(0)?.charges).toBe(2);
+    expect(arena.stockSpecial(0)?.busy).toBe(false);
+    arena.configureStocks(null);
+    expect(arena.spendStockSpecial()).toBe(true);
+    expect(arena.stockSpecial(0)).toBeNull();
+    expect(base.player.hp).toBe(base.player.maxHp);
+  });
   test('stock melee waits for contact, hits once, locks end lag and preserves HP', async () => {
     const { arena, base, rival, step } = await meleeSetup();
     expect(arena.requestStockAttack()).toBe(true);

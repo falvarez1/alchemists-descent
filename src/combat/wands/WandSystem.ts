@@ -307,6 +307,8 @@ export class WandSystem implements WandsApi {
       return;
     }
 
+    // Charge one group, not each child projectile. Refusal leaves mana and the cast cycle intact.
+    if (ctx.arena?.stockMatch && !ctx.arena.spendStockSpecial()) return;
     const aimGuide = ctx.state.trickshot?.enabled ? getAimGuide(ctx) : null;
     const precision = !!aimGuide?.assisted && !aimGuide.uncertain;
     if (!godMode) wand.mana -= group.manaCost;

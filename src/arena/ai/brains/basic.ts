@@ -565,10 +565,10 @@ export class BasicBrain implements Brain {
     const mobility = me.fighter === 'kest-rel' || me.fighter === 'selene-wraith';
     const safeAbility = !plan.tactical || !mobility || !plan.aim || safeMobilityLanding(ctx, me.x, me.y, plan.aim.x);
     const eligible: Record<CombatAction, boolean> = {
-      shoot: canAct && (!stock || target.dist > 65) && closeEnough && lane && me.shotAffordable && me.wandCooldown <= 0 && (!this.recovering || finishing),
+      shoot: canAct && (!stock || (target.dist > 65 && ctx.arena!.canStockSpecial())) && closeEnough && lane && me.shotAffordable && me.wandCooldown <= 0 && (!this.recovering || finishing),
       kick,
-      tactical: canAct && !!self.fighters && !!plan.tactical && safeAbility && tick - this.lastZ >= PRESS_GAP,
-      ultimate: canAct && !!self.fighters && !!plan.ultimate && tick - this.lastT >= PRESS_GAP,
+      tactical: canAct && (!stock || ctx.arena!.canStockSpecial()) && !!self.fighters && !!plan.tactical && safeAbility && tick - this.lastZ >= PRESS_GAP,
+      ultimate: canAct && (!stock || ctx.arena!.canStockSpecial(2)) && !!self.fighters && !!plan.ultimate && tick - this.lastT >= PRESS_GAP,
       defend: canAct && this.threatened && (tick < this.dodgeUntil || tick >= this.nextDodge),
       wait: true,
     };

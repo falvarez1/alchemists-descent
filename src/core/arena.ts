@@ -1,7 +1,7 @@
 import type { ChillApi, Enemy, EnemyDamageSource, FlaskApi, InputState, PlayerControlApi, PlayerState, Projectile, WandsApi } from '@/core/types';
 import type { FighterApi } from '@/core/fighters';
 import type { FighterId } from '@/content/fighters';
-import type { BlastZone, StockDodgeView, StockGrabView, StockLedgeInput, StockLedgeView, StockMatchView, StockShieldView } from '@/core/arenaMatch';
+import type { BlastZone, StockDodgeView, StockGrabView, StockLedgeInput, StockLedgeView, StockMatchView, StockShieldView, StockSpecialView } from '@/core/arenaMatch';
 import type { StockAttackKind, StockAttackView } from '@/core/stockAttacks';
 
 /**
@@ -52,6 +52,10 @@ export interface ArenaApi {
   takeStockDamage(amount: number, kx: number, ky: number): boolean;
   isLaunching(slot: number): boolean;
   isActionLocked(slot: number): boolean;
+  stockSpecial(slot: number): StockSpecialView | null;
+  canStockSpecial(cost?: 1 | 2): boolean;
+  spendStockSpecial(cost?: 1 | 2): boolean;
+  refundStockSpecial(cost?: 1 | 2): void;
   isEvading(slot: number): boolean;
   stockDodge(slot: number): StockDodgeView | null;
   stockShield(slot: number): StockShieldView | null;

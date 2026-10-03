@@ -67,7 +67,8 @@ try {
       offHit(); offCast();
       const status = await c.console.exec('arena status');
       return { seed, state: a.stockMatch.state, remaining: a.stockMatch.remainingTicks, fighters: a.stockMatch.fighters,
-        downs, movement, hits, worldHits, casts, stats: status.data.bots.map(bot => bot?.stats) };
+        downs, movement, hits, worldHits, casts, stats: status.data.bots.map(bot => bot?.stats),
+        final: [0, 1].map(slot => ({x:a.bundle(slot).player.x,y:a.bundle(slot).player.y,stun:a.bundle(slot).player.stunT,bot:status.data.bots[slot]})) };
     }, seed);
     bouts.push(result);
     console.log(JSON.stringify({ seed, state: result.state, downs: result.downs.map(d => ({ slot: d.slot, by: d.by, x: d.x, y: d.y })), stats: result.stats }));

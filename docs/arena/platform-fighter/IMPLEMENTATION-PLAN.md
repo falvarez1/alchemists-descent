@@ -11,6 +11,8 @@ Latest audio checkpoint: Arena and Duel now select an original orchestral-rock b
 
 ## Objective
 
+Latest special-charge checkpoint: stock matches share two special charges across wand cast groups and fighter abilities. A wand group or tactical costs one, an ultimate costs two, and accepted use has 24 ticks of attack/defense recovery. One charge returns per 180 active ticks; each accepted melee contact adds 60 ticks of refill. Upward recovery uses its separate burst resource. The new ImageGen special-charges.png sheet guides the two-cell gold/teal HUD; native desktop, phone, ready, spent and empty captures appear in the HTML. All ten fighters' empty-reserve ability paths were checked in the browser. Full balance and CPU recovery remain open.
+
 Latest controller checkpoint: the approved Xbox roles now operate both Duel seats and Arena stock matches through one shared mapping. A attacks, B casts a special, X/Y jump, triggers shield or dodge, bumpers grab, and the right stick performs directional attacks. Up + B uses the recovery burst; down + B uses the fighter tactical. Grabs counter shields, expire after a finite hold, and throw with a direction. The lobby prefers an already-connected controller for player one. Existing health/campaign controls remain separate. Physical-controller feel, CPU combat choices, projectile cadence, and the full moveset remain work in progress.
 
 Build a readable local platform fighter around damage, launch, recovery, and ring-outs while retaining Alchemist's Descent's material simulation and fighter identities. Use the ImageGen concept sheets as visual targets, then compare real gameplay captures against them. A generated concept is not evidence of implemented gameplay or visual parity.

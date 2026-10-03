@@ -34,6 +34,11 @@ export interface StockDodgeView {
   readonly vx: number;
   readonly vy: number;
 }
+export interface StockSpecialView {
+  readonly charges: number;
+  readonly progress: number;
+  readonly busy: boolean;
+}
 export interface StockRules {
   stocks: number;
   timeTicks: number;

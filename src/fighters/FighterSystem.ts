@@ -320,10 +320,12 @@ export class FighterSystem implements FighterApi {
       return;
     }
     let fired = false;
+    const stock = this.ctx.arena?.stockMatch ? this.ctx.arena : null;
+    if (stock && !stock.spendStockSpecial()) return this.refuse('tactical', now);
     this.inAbility = 'ability.tactical';
     this.guard(() => { fired = this.kit?.tactical() === true; });
     this.inAbility = null;
-    if (!fired) return this.refuse('tactical', now);
+    if (!fired) { stock?.refundStockSpecial(); return this.refuse('tactical', now); }
     this.tacticalCd = this.tacticalCdMax = Math.max(1, this.def.tacticalCooldown);
     this.view.tactical.usedAt = now;
     this.firedAt.tactical = now;
@@ -335,10 +337,12 @@ export class FighterSystem implements FighterApi {
     if (!this.kit || !this.def) return;
     if (this.ultimateLeft > 0 || this.charge < 1 || this.rooted(p)) return this.refuse('ultimate', now);
     let began = false;
+    const stock = this.ctx.arena?.stockMatch ? this.ctx.arena : null;
+    if (stock && !stock.spendStockSpecial(2)) return this.refuse('ultimate', now);
     this.inAbility = 'ability.ultimate';
     this.guard(() => { began = this.kit?.ultimate() === true; });
     this.inAbility = null;
-    if (!began) return this.refuse('ultimate', now);
+    if (!began) { stock?.refundStockSpecial(2); return this.refuse('ultimate', now); }
     this.charge = 0;
     this.view.ultimate.usedAt = now;
     this.firedAt.ultimate = now;

@@ -16,7 +16,7 @@ export class StockMatchHud {
   private resultKey = '';
   private raf = 0;
   private readonly offs: Array<() => void> = [];
-  private readonly cards: Array<{ root: HTMLElement; portrait: HTMLImageElement; name: HTMLElement; percent: HTMLElement; stocks: HTMLElement; defense: HTMLElement; fuel: HTMLMeterElement }> = [];
+  private readonly cards: Array<{ root: HTMLElement; portrait: HTMLImageElement; name: HTMLElement; percent: HTMLElement; stocks: HTMLElement; defense: HTMLElement; fuel: HTMLMeterElement; special: HTMLElement; cells: HTMLElement[]; specialHint: HTMLElement }> = [];
 
   constructor(private readonly ctx: Ctx, onRematch: () => void) {
     this.offs.push(ctx.events.on('levelChanged', () => this.update()), ctx.events.on('modeChanged', () => this.update()));
@@ -40,12 +40,17 @@ export class StockMatchHud {
       const percent = document.createElement('strong'), stocks = document.createElement('div'), fuel = document.createElement('meter');
       const portrait = document.createElement('img');
       const defense = document.createElement('div'); defense.className = 'stock-defense';
+      const special = document.createElement('div'), label = document.createElement('span'), specialHint = document.createElement('span');
+      special.className = 'stock-special'; special.setAttribute('role', 'meter'); special.setAttribute('aria-valuemin', '0'); special.setAttribute('aria-valuemax', '2');
+      label.textContent = 'SPECIAL'; specialHint.className = 'stock-special-hint';
+      const cells = Array.from({ length: 2 }, () => { const cell = document.createElement('span'); cell.className = 'stock-special-cell'; cell.setAttribute('aria-hidden', 'true'); return cell; });
+      special.append(label, ...cells, specialHint);
       portrait.className = 'stock-portrait'; portrait.alt = ''; portrait.hidden = true;
       root.className = `stock-fighter stock-fighter-${slot}`;
       name.className = 'stock-name'; percent.className = 'stock-percent'; stocks.className = 'stock-lives';
       fuel.min = 0; fuel.max = 1; fuel.setAttribute('aria-label', `Player ${slot + 1} recovery fuel`);
-      root.append(portrait, name, percent, stocks, defense, fuel); this.root.append(root);
-      this.cards.push({ root, portrait, name, percent, stocks, defense, fuel });
+      root.append(portrait, name, percent, stocks, defense, fuel, special); this.root.append(root);
+      this.cards.push({ root, portrait, name, percent, stocks, defense, fuel, special, cells, specialHint });
     }
     (document.getElementById('canvas-holder') ?? document.body).append(this.root);
     const tick = (): void => { this.update(); this.raf = requestAnimationFrame(tick); };
@@ -80,6 +85,16 @@ export class StockMatchHud {
       card.fuel.value = b ? b.player.levit / Math.max(1, b.player.maxLevit) : 1;
       const dodge = arena.stockDodge(slot), burst = arena.canRecover(slot), ledge = arena.stockLedge(slot);
       const shield = arena.stockShield(slot);
+      const special = arena.stockSpecial(slot), charges = special?.charges ?? 2;
+      card.special.setAttribute('aria-label', `Player ${slot + 1} special charges`);
+      card.special.setAttribute('aria-valuenow', String(charges));
+      card.special.setAttribute('aria-valuetext', `${charges} of 2 charges. Melee hits recharge faster. Recovery burst is separate.`);
+      card.specialHint.textContent = charges === 0 ? 'MELEE REFILLS' : special?.busy ? 'RECOVERY' : '';
+      for (let i = 0; i < card.cells.length; i++) {
+        const filled = i < charges;
+        card.cells[i].dataset.filled = String(filled);
+        card.cells[i].style.setProperty('--charge', `${filled ? 100 : i === charges ? Math.round((special?.progress ?? 0) * 100) : 0}%`);
+      }
       card.defense.textContent = `${shield?.phase === 'broken' ? 'SHIELD BROKEN' : `SHIELD ${Math.ceil(shield?.strength ?? 100)}`}  BURST ${burst ? '◆' : '◇'}  AIR ${dodge?.airReady ? '◆' : '◇'}  LEDGE ${ledge?.airReady ? '◆' : '◇'}`;
       card.defense.setAttribute('aria-label', `Shield ${shield?.phase === 'broken' ? 'broken' : `${Math.ceil(shield?.strength ?? 100)} percent`}, recovery burst ${burst ? 'ready' : 'spent'}, air dodge ${dodge?.airReady ? 'ready' : 'spent'}, ledge catch ${ledge?.airReady ? 'ready' : 'spent'}`);
     }

@@ -1,0 +1,396 @@
+{
+  "shots": {
+    "readings": [
+      {
+        "tick": 0,
+        "charges": 1,
+        "casts": 2
+      },
+      {
+        "tick": 60,
+        "charges": 0,
+        "casts": 4
+      },
+      {
+        "tick": 119,
+        "charges": 0,
+        "casts": 4
+      },
+      {
+        "tick": 179,
+        "charges": 1,
+        "casts": 4
+      }
+    ],
+    "groups": 2,
+    "casts": [
+      {
+        "tick": 1,
+        "id": "spark"
+      },
+      {
+        "tick": 1,
+        "id": "spark"
+      },
+      {
+        "tick": 26,
+        "id": "spark"
+      },
+      {
+        "tick": 26,
+        "id": "spark"
+      }
+    ]
+  },
+  "empty": {
+    "charges": 0,
+    "other": 2,
+    "recovered": true,
+    "vy": -7.5,
+    "before": 0.13333333333333333
+  },
+  "reward": {
+    "before": 0.13333333333333333,
+    "after": 0.5222222222222223,
+    "damage": 10.288800000000002
+  },
+  "respawn": {
+    "lost": 2,
+    "alive": true,
+    "charges": 2,
+    "other": 1
+  },
+  "roster": [
+    {
+      "id": "ilyra-voss",
+      "before": [
+        -1,
+        -1
+      ],
+      "after": [
+        -1,
+        -1
+      ],
+      "charges": 0,
+      "ready": [
+        {
+          "ability": "tactical",
+          "fired": true,
+          "charges": 1
+        },
+        {
+          "ability": "ultimate",
+          "fired": true,
+          "charges": 0
+        }
+      ]
+    },
+    {
+      "id": "brann-rook",
+      "before": [
+        1346,
+        1471
+      ],
+      "after": [
+        1346,
+        1471
+      ],
+      "charges": 0,
+      "ready": [
+        {
+          "ability": "tactical",
+          "fired": true,
+          "charges": 1
+        },
+        {
+          "ability": "ultimate",
+          "fired": true,
+          "charges": 0
+        }
+      ]
+    },
+    {
+      "id": "sable-fen",
+      "before": [
+        1745,
+        1870
+      ],
+      "after": [
+        1745,
+        1870
+      ],
+      "charges": 0,
+      "ready": [
+        {
+          "ability": "tactical",
+          "fired": true,
+          "charges": 1
+        },
+        {
+          "ability": "ultimate",
+          "fired": true,
+          "charges": 0
+        }
+      ]
+    },
+    {
+      "id": "mara-quell",
+      "before": [
+        2144,
+        2269
+      ],
+      "after": [
+        2144,
+        2269
+      ],
+      "charges": 0,
+      "ready": [
+        {
+          "ability": "tactical",
+          "fired": true,
+          "charges": 1
+        },
+        {
+          "ability": "ultimate",
+          "fired": true,
+          "charges": 0
+        }
+      ]
+    },
+    {
+      "id": "kest-rel",
+      "before": [
+        2543,
+        2668
+      ],
+      "after": [
+        2543,
+        2668
+      ],
+      "charges": 0,
+      "ready": [
+        {
+          "ability": "tactical",
+          "fired": true,
+          "charges": 1
+        },
+        {
+          "ability": "ultimate",
+          "fired": true,
+          "charges": 0
+        }
+      ]
+    },
+    {
+      "id": "nox-calder",
+      "before": [
+        2942,
+        3067
+      ],
+      "after": [
+        2942,
+        3067
+      ],
+      "charges": 0,
+      "ready": [
+        {
+          "ability": "tactical",
+          "fired": true,
+          "charges": 1
+        },
+        {
+          "ability": "ultimate",
+          "fired": true,
+          "charges": 0
+        }
+      ]
+    },
+    {
+      "id": "edda-morrow",
+      "before": [
+        3341,
+        3466
+      ],
+      "after": [
+        3341,
+        3466
+      ],
+      "charges": 0,
+      "ready": [
+        {
+          "ability": "tactical",
+          "fired": true,
+          "charges": 1
+        },
+        {
+          "ability": "ultimate",
+          "fired": true,
+          "charges": 0
+        }
+      ]
+    },
+    {
+      "id": "selene-wraith",
+      "before": [
+        3740,
+        3865
+      ],
+      "after": [
+        3740,
+        3865
+      ],
+      "charges": 0,
+      "ready": [
+        {
+          "ability": "tactical",
+          "fired": true,
+          "charges": 1
+        },
+        {
+          "ability": "ultimate",
+          "fired": true,
+          "charges": 0
+        }
+      ]
+    },
+    {
+      "id": "rusk-emberjaw",
+      "before": [
+        4139,
+        4264
+      ],
+      "after": [
+        4139,
+        4264
+      ],
+      "charges": 0,
+      "ready": [
+        {
+          "ability": "tactical",
+          "fired": true,
+          "charges": 1
+        },
+        {
+          "ability": "ultimate",
+          "fired": true,
+          "charges": 0
+        }
+      ]
+    },
+    {
+      "id": "father-thorne",
+      "before": [
+        4538,
+        4663
+      ],
+      "after": [
+        4538,
+        4663
+      ],
+      "charges": 0,
+      "ready": [
+        {
+          "ability": "tactical",
+          "fired": false,
+          "charges": 2
+        },
+        {
+          "ability": "ultimate",
+          "fired": true,
+          "charges": 0
+        }
+      ]
+    }
+  ],
+  "layout": [
+    {
+      "width": 170,
+      "scroll": 170,
+      "charge": {
+        "x": 20.6875,
+        "y": 617.6875,
+        "width": 153.59375,
+        "height": 24,
+        "top": 617.6875,
+        "right": 174.28125,
+        "bottom": 641.6875,
+        "left": 20.6875
+      },
+      "box": {
+        "x": 11.6875,
+        "y": 543.6875,
+        "width": 171.59375,
+        "height": 114,
+        "top": 543.6875,
+        "right": 183.28125,
+        "bottom": 657.6875,
+        "left": 11.6875
+      },
+      "defense": {
+        "x": 20.6875,
+        "y": 572.6875,
+        "width": 131.3125,
+        "height": 9.09375,
+        "top": 572.6875,
+        "right": 152,
+        "bottom": 581.78125,
+        "left": 20.6875
+      },
+      "percent": {
+        "x": 135.328125,
+        "y": 584,
+        "width": 38.953125,
+        "height": 29.6875,
+        "top": 584,
+        "right": 174.28125,
+        "bottom": 613.6875,
+        "left": 135.328125
+      }
+    },
+    {
+      "width": 170,
+      "scroll": 170,
+      "charge": {
+        "x": 215.71875,
+        "y": 617.6875,
+        "width": 153.59375,
+        "height": 24,
+        "top": 617.6875,
+        "right": 369.3125,
+        "bottom": 641.6875,
+        "left": 215.71875
+      },
+      "box": {
+        "x": 206.71875,
+        "y": 543.6875,
+        "width": 171.59375,
+        "height": 114,
+        "top": 543.6875,
+        "right": 378.3125,
+        "bottom": 657.6875,
+        "left": 206.71875
+      },
+      "defense": {
+        "x": 215.71875,
+        "y": 572.6875,
+        "width": 131.3125,
+        "height": 9.09375,
+        "top": 572.6875,
+        "right": 347.03125,
+        "bottom": 581.78125,
+        "left": 215.71875
+      },
+      "percent": {
+        "x": 330.359375,
+        "y": 584,
+        "width": 38.953125,
+        "height": 29.6875,
+        "top": 584,
+        "right": 369.3125,
+        "bottom": 613.6875,
+        "left": 330.359375
+      }
+    }
+  ],
+  "errors": []
+}

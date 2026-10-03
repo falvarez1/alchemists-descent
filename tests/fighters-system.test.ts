@@ -102,6 +102,33 @@ function setup(opts: Parameters<typeof makeKit>[1] = {}, walls?: (x: number, y: 
 }
 
 describe('the fighter system', () => {
+  it('pays before an accepted ability changes the fighters action state', () => {
+    const world = makeCtx(), { ctx } = world, { def } = makeKit(newSpy());
+    const original = def.create;
+    def.create = host => ({ ...original(host), tactical: () => { ctx.player.stunT = 8; return true; } });
+    const s = new FighterSystem(ctx, () => def); sys = s; s.equip('ilyra-voss');
+    let charges = 2;
+    const can = () => !ctx.player.stunT && charges > 0;
+    ctx.arena = { stockMatch: {}, bound: 0, isActionLocked: () => false, canStockSpecial: can,
+      spendStockSpecial: () => { if (!can()) return false; charges--; return true; } } as unknown as Ctx['arena'];
+    s.press('tactical'); world.step();
+    expect(ctx.player.stunT).toBe(8); expect(charges).toBe(1); s.dispose();
+  });
+  it('gates both ability kinds on the shared stock reserve and spends only accepted abilities', () => {
+    for (const fires of [false, true]) {
+      const { spy, sys: s, ctx, step } = setup({ tacticalFires: fires, ultimateFires: fires });
+      let ready = false; const costs: number[] = [];
+      ctx.arena = { stockMatch: {}, bound: 0, isActionLocked: () => false,
+        canStockSpecial: () => ready, spendStockSpecial: (cost = 1) => { if (!ready) return false; costs.push(cost); return true; },
+        refundStockSpecial: () => { costs.pop(); } } as unknown as Ctx['arena'];
+      s.refill(); s.press('tactical'); s.press('ultimate'); step();
+      expect(spy.tacticalCalls).toBe(0); expect(spy.ultimateCalls).toBe(0); expect(costs).toEqual([]);
+      ready = true; s.press('tactical'); s.press('ultimate'); step();
+      expect(spy.tacticalCalls).toBe(1); expect(spy.ultimateCalls).toBe(1);
+      expect(costs).toEqual(fires ? [1, 2] : []);
+      s.dispose();
+    }
+  });
   it('does not adopt a lazy kit after disposal or a newer equip of the same fighter', async () => {
     for (const replace of [false, true]) {
       const { ctx } = makeCtx();

@@ -1061,6 +1061,20 @@ function makeCastCtx(): Ctx & { spawned: Array<{ x: number; y: number; type: num
   return ctx;
 }
 
+describe('stock special cast gate', () => {
+  it('refuses a cast without spending mana, advancing the group or spawning projectiles', () => {
+    const ctx = makeCastCtx(), wands = new WandSystem(ctx); ctx.wands = wands;
+    const spend = vi.fn(() => false);
+    ctx.arena = { stockMatch: {}, spendStockSpecial: spend } as unknown as Ctx['arena'];
+    wands.wands[0].cards.splice(0, wands.wands[0].cards.length, 'spark');
+    const w = wands.wands[0], mana = w.mana;
+    wands.fire(ctx);
+    expect(spend).toHaveBeenCalledOnce(); expect(w.mana).toBe(mana); expect(w.castIndex).toBe(0);
+    expect(ctx.projectiles).toHaveLength(0); expect(w.cooldown).toBe(0);
+    spend.mockReturnValue(true); wands.fire(ctx);
+    expect(ctx.projectiles.length).toBeGreaterThan(0); expect(w.mana).toBeLessThan(mana);
+  });
+});
 describe('equipped leg primary action', () => {
   it('whips instead of casting and restores the untouched wand after a fresh press', () => {
     const ctx = makeCastCtx(), wands = new WandSystem(ctx); ctx.wands = wands;
