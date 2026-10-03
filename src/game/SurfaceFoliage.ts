@@ -1,15 +1,18 @@
 import type { Ctx } from '@/core/types';
 import type { World } from '@/sim/World';
-import { Cell, isGas } from '@/sim/CellType';
+import { blocksEntity, Cell, isGas } from '@/sim/CellType';
 import { ashColor, fireColor, packRGB, smokeColor } from '@/sim/colors';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { AMBIENT_FOLIAGE_LIFE, FOLIAGE_BURN_TICKS, foliageBurnLife, foliageBurnState, foregroundFoliage } from '@/config/foliage';
 import { foliageSupport, surfaceFoliageHash } from '@/world/surfaceFoliage';
 import { visitSurfaceFronds, type SurfaceFrondPose } from '@/world/foliageGeometry';
+import { floraHeight } from '@/world/flora';
 import { foliageContactFuel, foliageHeatNearby, foliageTouchesHeat } from '@/game/FoliageHeat';
 
 export interface SurfacePlant extends SurfaceFrondPose {
   velocity: number; burning: boolean; color: number;
+  /** Tick of the last audible rustle (a body shoving through a cover plant). */
+  rustleAt: number;
 }
 interface Garden {
   epoch: number; revision: number;
@@ -63,15 +66,15 @@ export function surfaceFoliageInBounds(world: World, left: number, top: number, 
         if (x < 1 || y < 1 || x >= world.width - 1 || y >= world.height - 1) return;
         const side = foliageSupport(world.types[i + world.width]) ? 0 : foliageSupport(world.types[i - 1]) ? 1 : foliageSupport(world.types[i + 1]) ? -1 : 0;
         const seed = surfaceFoliageHash(x, y);
+        const aquatic = world.types[i - world.width] === Cell.Water;
+        const foreground = !aquatic && foregroundFoliage(x, y, side, (cx, cy) => world.type(cx, cy), blocksEntity);
         let p = garden.poses.get(i);
         if (!p) {
-          const aquatic = world.types[i - world.width] === Cell.Water;
-          const foreground = foregroundFoliage(x, y, side);
-          p = { x, y, side, seed, foreground, height: foreground ? 28 + seed % 9 : side ? 10 + seed % 22 : aquatic ? 12 + seed % 22 : 5 + seed % 13,
-            angle: 0, velocity: 0, part: 0, burn: 0, burning: false, color: world.colors[i] };
+          p = { x, y, side, seed, foreground, height: 0,
+            angle: 0, velocity: 0, part: 0, burn: 0, burning: false, color: world.colors[i], rustleAt: -999 };
           garden.poses.set(i, p);
         }
-        p.side = side; p.foreground = foregroundFoliage(x, y, side); found.push(p);
+        p.side = side; p.foreground = foreground; p.height = floraHeight(seed, side, foreground, aquatic); found.push(p);
       };
       // The sim already maintains sorted growth indexes. Water or smoke
       // changing the chunk need not trigger another 4,096-cell root scan.
@@ -134,6 +137,17 @@ export function updateSurfaceFoliage(ctx: Ctx): void {
     p.velocity = p.velocity * (aquatic ? .89 : .82) + (Math.max(-.85, Math.min(.85, target)) - p.angle) * (aquatic ? .035 : .075);
     p.angle = Math.max(-.95, Math.min(.95, p.angle + p.velocity));
     p.part += (part - p.part) * .16;
+    // Shoving through a cover plant rustles it and shakes loose a leaf or two.
+    const shove = Math.abs(ctx.player.vx);
+    if (p.foreground && !p.burning && part > .4 && shove > .8 && tick - p.rustleAt > 26 && !ctx.player.dead) {
+      p.rustleAt = tick;
+      ctx.events.emit('floraMoment', { kind: 'rustle', x: p.x, y: p.y - p.height * .5, strength: Math.min(1, .35 + shove * .2) });
+      const leaves = 1 + (tick + p.seed) % 2;
+      for (let n = 0; n < leaves; n++) {
+        ctx.particles?.spawn(ctx.player.x + (n - .5) * 4, p.y - p.height * (.45 + n * .15), Math.sign(ctx.player.vx) * .25 + (n - .5) * .3, -.15,
+          null, packRGB(26 + p.seed % 12, 58 + p.seed % 18, 44), 70, { grav: .012 });
+      }
+    }
     let saved = foliageBurnState(world.life[i]);
     p.burn = Math.min(1, saved.age / FOLIAGE_BURN_TICKS); p.burning = saved.burning;
     if (!p.burning) {

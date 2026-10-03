@@ -1,36 +1,16 @@
+import { visitFloraSegments } from '@/world/flora';
+
 export interface SurfaceFrondPose {
   x: number; y: number; height: number; seed: number; side: number;
   angle: number; part: number; burn: number;
   foreground?: boolean;
 }
 
-/** Small real-cell crowns share their bent outline with heat contact. Roots
- * stay fixed; the upper leaves take most of the body/wind displacement. */
+/** A root's whole plant (world/flora), as midrib segments: heat contact
+ * sweeps the same organs the painter fills and cover samples. */
 export function visitSurfaceFronds(p: SurfaceFrondPose,
   visit: (ax: number, ay: number, bx: number, by: number, leaf: boolean) => void): void {
-  const height = p.height * (1 - p.burn * .75);
-  if (p.side !== 0) {
-    let ax = p.x + .5, ay = p.y + .5;
-    for (let k = 1; k <= height; k += 2) {
-      const t = k / height, bx = p.x + .5 + p.side * (1 + Math.sin(k * .17 + p.seed) * 1.3) + p.angle * height * t * t;
-      const by = p.y + .5 + k;
-      visit(ax, ay, bx, by, false);
-      visit(bx, by, bx + p.side * (2.3 + p.part * 2), by + 1, true);
-      ax = bx; ay = by;
-    }
-    return;
-  }
-  for (const dir of p.foreground ? [-2, -1, 0, 1, 2] : [-1, 0, 1]) {
-    let ax = p.x + .5, ay = p.y + .5;
-    const spread = dir * (2 + p.seed % 3 + (p.foreground ? 2 : 0) + p.part * 5);
-    for (let k = 1; k <= 6; k++) {
-      const t = k / 6, bx = p.x + .5 + spread * t + p.angle * height * t * t;
-      const by = p.y + .5 - height * t + Math.abs(dir) * t * 2;
-      visit(ax, ay, bx, by, false);
-      if (k < 6) visit(bx, by, bx + (k % 2 ? -1 : 1) * ((p.foreground ? 4 : 2) - t * .7), by - 1.2, true);
-      ax = bx; ay = by;
-    }
-  }
+  visitFloraSegments(p, visit);
 }
 
 /** Shared leaf/stem geometry for drawing, heat contact, and falling crowns.

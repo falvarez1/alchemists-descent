@@ -4,29 +4,17 @@ import { blocksEntity } from '@/sim/CellType';
 import { FOLIAGE_COVER } from '@/config/foliage';
 import { surfaceFoliageInBounds } from '@/game/SurfaceFoliage';
 import { foliageSupport } from '@/world/surfaceFoliage';
-import { visitSurfaceFronds } from '@/world/foliageGeometry';
+import { floraCoverMask } from '@/world/flora';
 
-/** Nine torso samples inside the current crowns' outlines. The canopy's gaps
- * still show fragments of the player, but a knee-high tuft cannot hide a body. */
+/** Nine torso samples inside the current plants' outlines (world/flora). The
+ * canopy's gaps still show fragments of the player, but a knee-high tuft cannot hide a body. */
 export function foliageCoverage(world: World, x: number, y: number): number {
   let covered = 0;
-  for (const root of surfaceFoliageInBounds(world, x - 44, y - 44, x + 44, y + 44)) {
+  for (const root of surfaceFoliageInBounds(world, x - 50, y - 50, x + 50, y + 50)) {
     if (!root.foreground || root.side !== 0 || root.burning || root.burn >= FOLIAGE_COVER.maxChar ||
-      Math.abs(root.x - x) > 38 || Math.abs(root.y - y) > 40 || !foliageSupport(world.type(root.x, root.y + 1))) continue;
-    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-    visitSurfaceFronds(root, (ax, ay, bx, by) => {
-      for (let row = 0; row < 3; row++) {
-        const sy = y - 14 + row * 4;
-        if (sy < Math.min(ay, by) - 1 || sy > Math.max(ay, by) + 1) continue;
-        const t = Math.max(0, Math.min(1, (sy - ay) / (by - ay || 1)));
-        const sx = ax + (bx - ax) * t;
-        lo[row] = Math.min(lo[row], sx - 1); hi[row] = Math.max(hi[row], sx + 1);
-      }
-    });
-    for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
-      const sx = x - 3 + col * 3;
-      if (sx >= lo[row] && sx <= hi[row]) covered |= 1 << (row * 3 + col);
-    }
+      Math.abs(root.x - x) > 44 || Math.abs(root.y - y) > 44 || !foliageSupport(world.type(root.x, root.y + 1))) continue;
+    covered |= floraCoverMask(root, x, y);
+    if (covered === 511) break;
   }
   let count = 0;
   for (let bit = covered; bit; bit &= bit - 1) count++;
