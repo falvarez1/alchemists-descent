@@ -32,3 +32,9 @@ node scripts/perf-scene.mjs living http://127.0.0.1:5184/ 1 700
 The foliage probe records native keyboard contact, inspects real moving depth bitmaps and runs 240 actual material-simulation steps per fire seed. Seeds 1, 7 and 42 leave 47–48 of 49 tufts intact after one ember. Unit regressions cover swept contact, momentum, quenches, saved burn state, limited fuel, vine snapshots, fixed mechanical attachments and GPU texture reuse.
 
 Runtime captures and measurements are written to ignored `verify-out/`. Use `window.__depth.setMotion(false)` for a machinery comparison; this returns the pieces to their original pose without changing gameplay.
+
+The integrated suite passed 3,132 tests in 247 files, typecheck, lint and the production build. Native contact and material motion passed 10 browser checks, the presentation/settings contract passed 5, and clear-water parity passed in actual WebGL2 and WebGPU across more than 64,000 water pixels each with a maximum difference of one color step. Three seeds across all six generated doors passed findability, placing 217 prefabs.
+
+![Native keyboard play through supported surface moss](images/living-foliage-contact.png)
+
+[Native contact and spring recovery clip](images/living-foliage-contact.webm)
