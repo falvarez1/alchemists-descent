@@ -27,6 +27,19 @@ describe('observed firing paths', () => {
   test('thin cover cannot fall between the firing-lane samples', () => {
     expect(lineClear(x => x === 655, 650, 630, 662, 630)).toBe(false);
   });
+  test.each([600, 601])('traces an upward ballistic shot beyond its first tick at target x=%s', x => {
+    const above = { x, y: 540 };
+    expect(weaponLaneClear(origin, above, above, weapon, (_ax, ay, _bx, by) => Math.min(ay, by) > 580)).toBe(false);
+    expect(weaponLaneClear(origin, above, above, weapon, () => true)).toBe(true);
+  });
+  test('traces a downward ballistic shot through the full vertical lane', () => {
+    const below = { x: origin.x, y: 730 };
+    expect(weaponLaneClear(origin, below, below, weapon, (_ax, ay, _bx, by) => Math.max(ay, by) < 680)).toBe(false);
+  });
+  test('rejects an upward shot that cannot reach the target before falling', () => {
+    const above = { x: origin.x, y: 330 };
+    expect(weaponLaneClear(origin, above, above, weapon, () => true)).toBe(false);
+  });
   test('checks the ground between us and the landing, including thin flames', () => {
     const world = new World();
     for (let x = 590; x <= 650; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);
@@ -58,6 +71,14 @@ describe('observed firing paths', () => {
     world.replaceCellAt(world.idx(630, 635), Cell.Acid, 0);
     const ctx = { world, physics: { entityFree: () => true, cellBlocks: (x: number, y: number) => world.type(x, y) === Cell.Metal } } as unknown as Pick<Ctx, 'world' | 'physics'>;
     expect(safeDrop(ctx, 630, 610)).toBe(false);
+  });
+  test('a descent checks hazards between sampled columns and above the final standing pose', () => {
+    const world = new World();
+    for (let x = 590; x <= 650; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);
+    world.replaceCellAt(world.idx(632, 616), Cell.Fire, 0);
+    const ctx = { world, physics: { entityFree: () => true, cellBlocks: (x: number, y: number) => world.type(x, y) === Cell.Metal } } as unknown as Pick<Ctx, 'world' | 'physics'>;
+    expect(safeDrop(ctx, 630, 610)).toBe(false);
+    expect(safeMobilityLanding(ctx, 600, 610, 630)).toBe(false);
   });
   test('finds a clear hop over cinders onto cover, bounded by ceiling clearance and fuel', () => {
     const world = new World();
