@@ -150,10 +150,10 @@ export function safeHopClearance(ctx: Pick<Ctx, 'world' | 'physics'>, x: number,
 }
 
 /** Search the bounded hop's reachable landing interval for safe footing. */
-export function hazardHopClearance(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: number, dir: number, lookahead: number, maxRise: number): number | null {
+export function hazardHopClearance(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: number, dir: number, lookahead: number, maxRise: number): { clearY: number; landingX: number } | null {
   for (let distance = lookahead * 2; distance <= lookahead * 4; distance += 2) {
     const topY = safeHopClearance(ctx, x, y, x + dir * distance, maxRise);
-    if (topY !== null) return topY;
+    if (topY !== null) return { clearY: topY, landingX: x + dir * distance };
   }
   return null;
 }

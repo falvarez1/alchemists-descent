@@ -27,6 +27,9 @@ export function abilityPlan(me: MeView, target: PerceivedFoe, intent: IntentId, 
     case 'kest-rel':
     case 'selene-wraith': {
       plan.tactical = line && (withdrawing || threatened || (d > style.range + 20 && d < 135)) ? 'dash to better spacing' : null;
+      // Echo needs firm ground near its destination. A horizontal blink
+      // from a hazard hop has no landing within its short search radius.
+      if (id === 'selene-wraith' && !me.grounded) plan.tactical = null;
       const dir = Math.sign(target.cx - me.x) || me.facing;
       plan.aim = { x: me.x + dir * (withdrawing || threatened ? -45 : 45), y: me.sy };
       plan.ultimate = id === 'kest-rel' ? (close && (threatened || withdrawing) ? 'break close pressure' : null) : (trading ? 'disrupt tracking' : null);

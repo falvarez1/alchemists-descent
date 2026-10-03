@@ -238,13 +238,13 @@ export class BasicBrain implements Brain {
       const x = me.x + hand.dir * AI_BEHAVIOR.hazardLookahead * (0.75 + 0.5 * personality.hazardAvoidance);
       if (ctx.physics.entityFree(x, me.y, PLAYER_HALF_W, PLAYER_H) && (!safeDrop(ctx, x, me.y) || !safeTravel(ctx, me.x, me.y, x))) {
         const dir = hand.dir;
-        let clearY: number | null = null;
+        let hop: { clearY: number; landingX: number } | null = null;
         if (!control.escaping) {
           const maxRise = Math.min(64, 24 + Math.max(0, me.levit - AI_BEHAVIOR.dodgeLevitReserve) * .8);
-          clearY = hazardHopClearance(ctx, me.x, me.y, dir, AI_BEHAVIOR.hazardLookahead, maxRise);
+          hop = hazardHopClearance(ctx, me.x, me.y, dir, AI_BEHAVIOR.hazardLookahead, maxRise);
         }
-        if (clearY !== null) {
-          control.startHop(dir, clearY, me.y);
+        if (hop !== null) {
+          control.startHop(dir, hop.clearY, me.y, hop.landingX);
           st.stats.hazardHops++;
         } else if (!control.escaping && safeMobilityLanding(ctx, me.x, me.y, me.x - dir * AI_BEHAVIOR.hazardLookahead * 2)) {
           // A broad patch cannot be cleared by the short hop. Walk back to
