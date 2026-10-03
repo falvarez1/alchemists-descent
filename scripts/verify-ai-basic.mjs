@@ -58,10 +58,11 @@ async function fight(id, seed, lvl, wave = 'ring') {
   }, { id, seed, wave });
   const r = await page.evaluate(async ({ lvl }) => {
     const ctx = window.__game.ctx, p = ctx.player;
+    const { safeDrop, safeTravel, dangerousCell } = await import('/src/arena/ai/combat.ts');
     const out = await ctx.console.exec(`ai basic ${lvl}`);
     let cleared = -1, diedAt = -1, idleMax = 0, idle = 0, zUsed = 0, tUsed = 0;
     const z0 = ctx.fighters.view.tactical.usedAt, t0 = ctx.fighters.view.ultimate.usedAt;
-    const samples = [];
+    const samples = [], hazardTrace = [];
     for (let i = 0; i < 2400; i++) {
       window.__game.tick(false, { forcePaused: true });
       if (p.dead) { diedAt = i; break; }
@@ -71,12 +72,26 @@ async function fight(id, seed, lvl, wave = 'ring') {
       idle = empty ? idle + 1 : 0;
       idleMax = Math.max(idleMax, idle);
       if (i % 300 === 0) samples.push({ t: i, x: Math.round(p.x), y: Math.round(p.y), hp: Math.round(p.hp), foes: ctx.enemies.length });
+      if (i % 60 === 0 && hazardTrace.length < 16) {
+        const state = (await ctx.console.exec('ai status')).data.status;
+        if ((state.stats.hazardRepositions ?? 0) > 0 || state.stats.hazardStops > 0) {
+          const dir = Math.sign((state.goalX ?? p.x) - p.x) || 1, cells = [];
+          for (let x = Math.round(p.x); x <= Math.round(p.x) + 48; x++) for (let y = Math.round(p.y) - 16; y <= Math.round(p.y) + 3; y++) {
+            const type = ctx.world.type(x, y);
+            if (dangerousCell(type)) cells.push({ x, y, type });
+          }
+          hazardTrace.push({ t: i, x: p.x, y: p.y, goal: state.goalX, stats: { ...state.stats },
+            nearDrop: safeDrop(ctx, p.x + dir * 18, p.y), farDrop: safeDrop(ctx, p.x + dir * 36, p.y),
+            corridor: safeTravel(ctx, p.x, p.y, p.x + dir * 18), cells: cells.slice(0, 40) });
+        }
+      }
     }
     const v = ctx.fighters.view;
     zUsed = v.tactical.usedAt !== z0 ? 1 : 0;
     tUsed = v.ultimate.usedAt !== t0 ? 1 : 0;
     const status = JSON.parse(JSON.stringify((await ctx.console.exec('ai status')).data ?? {}));
-    return { cleared, diedAt, idleMax, zUsed, tUsed, hp: Math.round(p.hp), maxHp: Math.round(p.maxHp), foesLeft: ctx.enemies.length, samples, status, ok: out.ok, text: out.text };
+    return { cleared, diedAt, idleMax, zUsed, tUsed, hp: Math.round(p.hp), maxHp: Math.round(p.maxHp), foesLeft: ctx.enemies.length,
+      finalFoes: ctx.enemies.map(e => ({ kind: e.kind, x: e.x, y: e.y, hp: e.hp, grounded: e.grounded, sleeping: e.sleeping })), samples, hazardTrace, status, ok: out.ok, text: out.text };
   }, { lvl });
   return r;
 }

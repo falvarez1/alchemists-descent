@@ -1,0 +1,89 @@
+import { describe, expect, test } from 'vitest';
+import { weaponLaneClear, safeTravel, safeMobilityLanding, safeDrop, safeHopClearance } from '@/arena/ai/combat';
+import { World } from '@/sim/World';
+import { Cell } from '@/sim/CellType';
+import type { Ctx } from '@/core/types';
+import { lineClear } from '@/arena/ai/worldView';
+import { createWorldView } from '@/arena/ai/worldView';
+import { Control } from '@/arena/ai/control';
+import type { BrainSelf } from '@/arena/ai/brain';
+
+describe('observed firing paths', () => {
+  const weapon = { speed: 7.5, gravity: .14, minRange: 90, maxRange: 220 };
+  const origin = { x: 600, y: 630 }, target = { x: 740, y: 630 }, aim = { x: 740, y: 604 };
+  test('checks the thrown arc against a low ceiling before committing a bomb', () => {
+    const clear = (_ax: number, ay: number, _bx: number, by: number) => Math.min(ay, by) > 625;
+    expect(weaponLaneClear(origin, target, aim, weapon, clear)).toBe(false);
+  });
+  test('permits a clear lob over a low obstacle that blocks a direct shot', () => {
+    const clear = (ax: number, ay: number, bx: number, by: number) => !(Math.max(ax, bx) >= 660 && Math.min(ax, bx) <= 670 && Math.max(ay, by) > 625);
+    expect(weaponLaneClear(origin, target, aim, weapon, clear)).toBe(true);
+  });
+  test('a straight spell still respects cover and an instant spell uses its aim line', () => {
+    const straight = { ...weapon, gravity: 0 }, point = { x: 740, y: 630 };
+    expect(weaponLaneClear(origin, target, point, straight, () => false)).toBe(false);
+    expect(weaponLaneClear(origin, target, point, { ...straight, speed: 0 }, () => true)).toBe(true);
+  });
+  test('thin cover cannot fall between the firing-lane samples', () => {
+    expect(lineClear(x => x === 655, 650, 630, 662, 630)).toBe(false);
+  });
+  test('checks the ground between us and the landing, including thin flames', () => {
+    const world = new World();
+    for (let x = 590; x <= 650; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);
+    const ctx = { world, physics: { entityFree: () => true, cellBlocks: (x: number, y: number) => world.type(x, y) === Cell.Metal } } as unknown as Pick<Ctx, 'world' | 'physics'>;
+    expect(safeTravel(ctx, 600, 639, 630)).toBe(true);
+    world.replaceCellAt(world.idx(611, 627), Cell.Fire, 0);
+    expect(safeTravel(ctx, 600, 639, 630)).toBe(false);
+  });
+  test('permits leaving an existing flame patch along a corridor with decreasing exposure', () => {
+    const world = new World();
+    world.replaceCellAt(world.idx(600, 627), Cell.Fire, 0);
+    const ctx = { world } as Pick<Ctx, 'world' | 'physics'>;
+    expect(safeTravel(ctx, 600, 639, 630)).toBe(true);
+    world.replaceCellAt(world.idx(617, 627), Cell.Fire, 0);
+    expect(safeTravel(ctx, 600, 639, 630)).toBe(false);
+  });
+  test('an airborne dash can land over a shallow safe descent without demanding ground at flight height', () => {
+    const world = new World();
+    for (let x = 590; x <= 650; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);
+    const ctx = { world, physics: { entityFree: () => true, cellBlocks: (x: number, y: number) => world.type(x, y) === Cell.Metal } } as unknown as Pick<Ctx, 'world' | 'physics'>;
+    expect(safeMobilityLanding(ctx, 600, 610, 630)).toBe(true);
+    world.replaceCellAt(world.idx(630, 631), Cell.Fire, 0);
+    expect(safeMobilityLanding(ctx, 600, 610, 630)).toBe(false);
+    expect(safeMobilityLanding(ctx, 600, 560, 630)).toBe(false);
+  });
+  test('a drop checks the actual standing position before approving a floor below acid', () => {
+    const world = new World();
+    for (let x = 590; x <= 650; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);
+    world.replaceCellAt(world.idx(630, 635), Cell.Acid, 0);
+    const ctx = { world, physics: { entityFree: () => true, cellBlocks: (x: number, y: number) => world.type(x, y) === Cell.Metal } } as unknown as Pick<Ctx, 'world' | 'physics'>;
+    expect(safeDrop(ctx, 630, 610)).toBe(false);
+  });
+  test('finds a clear hop over cinders onto cover, bounded by ceiling clearance and fuel', () => {
+    const world = new World();
+    for (let x = 300; x <= 440; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);
+    for (let y = 614; y < 640; y++) for (let x = 360; x <= 367; x++) world.replaceCellAt(world.idx(x, y), Cell.Stone, 0);
+    world.replaceCellAt(world.idx(353, 637), Cell.Ember, 0);
+    const blocks = (x: number, y: number) => world.type(Math.round(x), Math.round(y)) === Cell.Metal || world.type(Math.round(x), Math.round(y)) === Cell.Stone;
+    const ctx = { world, physics: { cellBlocks: blocks, entityFree: (x: number, y: number, hw: number, h: number) => {
+      for (let dx = -hw; dx <= hw; dx++) for (let dy = -h; dy <= 0; dy++) if (blocks(x + dx, y + dy)) return false;
+      return true;
+    } } } as unknown as Pick<Ctx, 'world' | 'physics'>;
+    expect(safeHopClearance(ctx, 330, 639, 366, 40)).toBe(611);
+    expect(safeHopClearance(ctx, 330, 639, 366, 24)).toBeNull();
+    world.replaceCellAt(world.idx(330, 638), Cell.Ember, 0);
+    expect(safeHopClearance(ctx, 330, 639, 366, 40)).toBe(611);
+    for (let x = 315; x <= 350; x++) world.replaceCellAt(world.idx(x, 603), Cell.Stone, 0);
+    expect(safeHopClearance(ctx, 330, 639, 366, 40)).toBeNull();
+  });
+  test('retreating along safe ground does not spend levitation on an unnecessary escape jump', () => {
+    const self = { player: { firing: false }, input: { keys: {}, mouse: {} } } as BrainSelf;
+    const control = new Control(self, { free: () => true }, .8);
+    const body = { ...createWorldView().me, x: 600, y: 639, sy: 630, grounded: true, levit: 60 };
+    control.observe(body, 100);
+    control.startEscape(-1, 12, false);
+    control.walkTo(body, 740, { tol: 6 });
+    expect(self.input.keys.left).toBe(true);
+    expect(self.input.keys.jump).toBe(false);
+  });
+});

@@ -13,7 +13,7 @@ import type { NavEdge, StageNav } from '@/arena/ai/nav';
 import { buildWorldView, createWorldView, lineClear } from '@/arena/ai/worldView';
 import type { WorldView } from '@/arena/ai/worldView';
 import { abilityPlan } from '@/arena/ai/playbooks';
-import { incomingShot, safeDrop, safeFooting } from '@/arena/ai/combat';
+import { incomingShot, safeDrop, safeFooting, safeTravel, safeMobilityLanding, safeHopClearance, weaponLaneClear } from '@/arena/ai/combat';
 import { AI_BEHAVIOR } from '@/config/aiBehavior';
 import type { AiLevel } from '@/config/aiTiers';
 import { YARD } from '@/world/fighterArena';
@@ -216,8 +216,9 @@ export class BasicBrain implements Brain {
 
     // ---- act: walking ----
     this.moveToGoal(ctx, me, tick);
-    if (!control.committed) {
-      if (incoming && (this.action === 'defend' || incoming.ticks <= 3) && tick >= this.nextDodge && me.grounded && !me.climbing) {
+    if (!control.committed || control.activeEdge === null) {
+      if (incoming && (this.action === 'defend' || incoming.ticks <= 3) && tick >= this.nextDodge &&
+        (me.grounded || me.levit > AI_BEHAVIOR.dodgeLevitReserve) && !me.climbing && self.player.stunT <= 0 && self.player.pullT <= 0) {
         const dir = Math.sign(me.x - incoming.shot.x) || this.strafeDir;
         this.dodgeJump = Math.abs(incoming.shot.vx) >= Math.abs(incoming.shot.vy) && ctx.physics.entityFree(me.x, me.y - 24, PLAYER_HALF_W, PLAYER_H);
         this.dodgeDir = safeFooting(ctx, me.x + dir * AI_BEHAVIOR.hazardLookahead, me.y) ? dir : safeFooting(ctx, me.x - dir * AI_BEHAVIOR.hazardLookahead, me.y) ? -dir : 0;
@@ -229,19 +230,31 @@ export class BasicBrain implements Brain {
       }
       if (tick < this.dodgeUntil) {
         hand.move(this.dodgeDir);
-        hand.jump(this.dodgeJump);
+        hand.jump(this.dodgeJump && (me.grounded || me.levit > AI_BEHAVIOR.dodgeLevitReserve));
       }
     }
     // Do not walk or strafe into acid, fire or an unsupported drop. Navigation owns deliberate crossings.
     if (me.grounded && control.activeEdge === null && !control.committed && hand.dir !== 0) {
       const x = me.x + hand.dir * AI_BEHAVIOR.hazardLookahead * (0.75 + 0.5 * personality.hazardAvoidance);
-      if (ctx.physics.entityFree(x, me.y, PLAYER_HALF_W, PLAYER_H) && !safeDrop(ctx, x, me.y)) {
+      if (ctx.physics.entityFree(x, me.y, PLAYER_HALF_W, PLAYER_H) && (!safeDrop(ctx, x, me.y) || !safeTravel(ctx, me.x, me.y, x))) {
         const dir = hand.dir;
-        const landingX = me.x + dir * AI_BEHAVIOR.hazardLookahead * 2;
-        if (!control.escaping && safeDrop(ctx, landingX, me.y) && ctx.physics.entityFree(me.x, me.y - 24, PLAYER_HALF_W, PLAYER_H)) {
-          control.startEscape(dir, 18);
-          hand.jump(true);
+        let clearY: number | null = null;
+        if (!control.escaping) {
+          const maxRise = Math.min(64, 24 + Math.max(0, me.levit - AI_BEHAVIOR.dodgeLevitReserve) * .8);
+          for (let span = 2; span <= 4 && clearY === null; span++) {
+            clearY = safeHopClearance(ctx, me.x, me.y, me.x + dir * AI_BEHAVIOR.hazardLookahead * span, maxRise);
+          }
+        }
+        if (clearY !== null) {
+          control.startHop(dir, clearY, me.y);
           st.stats.hazardHops++;
+        } else if (!control.escaping && safeMobilityLanding(ctx, me.x, me.y, me.x - dir * AI_BEHAVIOR.hazardLookahead * 2)) {
+          // A broad patch cannot be cleared by the short hop. Walk back to
+          // safe ground for another angle, rather than waiting for a stuck timeout.
+          control.startEscape(-dir, 18, false);
+          hand.move(-dir);
+          hand.jump(false);
+          st.stats.hazardRepositions = (st.stats.hazardRepositions ?? 0) + 1;
         } else {
           hand.move(0);
           this.strafeUntil = 0;
@@ -461,12 +474,13 @@ export class BasicBrain implements Brain {
     const d = target.dist;
     st.target = `${target.foe.kind} ${Math.round(d)}`;
     const line = lineClear(cellBlocks, shoulder.x, shoulder.y, target.cx, target.cy);
-    if (!line) this.noShotTicks++;
+    const lane = weaponLaneClear(shoulder, { x: target.cx, y: target.cy }, aim, me.weapon,
+      (ax, ay, bx, by) => lineClear(cellBlocks, ax, ay, bx, by));
+    if (!lane) this.noShotTicks++;
     else this.noShotTicks = 0;
 
     // ---- the wand: the trigger is held while the shot is clear, in range and not too close to burst on its owner ----
     const closeEnough = d <= me.weapon.maxRange && d >= me.weapon.minRange + target.foe.halfW * 0.5;
-    const aimLine = lineClear(cellBlocks, shoulder.x, shoulder.y, aim.x, aim.y);
     const remembered = this.memory.get(target.foe.ref);
     const damage = remembered?.damageEstimate ?? 0;
     const finishing = damage > 0 && damage >= target.foe.hp;
@@ -500,9 +514,9 @@ export class BasicBrain implements Brain {
     // ---- Z and T ----
     const plan = abilityPlan(me, target, this.intent, line, this.threatened);
     const mobility = me.fighter === 'kest-rel' || me.fighter === 'selene-wraith';
-    const safeAbility = !mobility || !plan.aim || (safeFooting(ctx, plan.aim.x, me.y) && lineClear(cellBlocks, me.x, me.sy, plan.aim.x, me.sy));
+    const safeAbility = !plan.tactical || !mobility || !plan.aim || safeMobilityLanding(ctx, me.x, me.y, plan.aim.x);
     const eligible: Record<CombatAction, boolean> = {
-      shoot: canAct && closeEnough && line && aimLine && me.shotAffordable && me.wandCooldown <= 0 && (!this.recovering || finishing),
+      shoot: canAct && closeEnough && lane && me.shotAffordable && me.wandCooldown <= 0 && (!this.recovering || finishing),
       kick,
       tactical: canAct && !!self.fighters && !!plan.tactical && safeAbility && tick - this.lastZ >= PRESS_GAP,
       ultimate: canAct && !!self.fighters && !!plan.ultimate && tick - this.lastT >= PRESS_GAP,

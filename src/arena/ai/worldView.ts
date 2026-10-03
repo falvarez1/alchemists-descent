@@ -4,6 +4,7 @@ import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { BrainSelf } from '@/arena/ai/brain';
 import { threatensSlot, weaponView } from '@/arena/ai/combat';
 import type { WeaponView } from '@/arena/ai/combat';
+import { projectileGravity } from '@/combat/projectileDefs';
 
 /**
  * WORLDVIEW (docs/arena/AI-FIGHTERS.md 2.1): what the bot SEES, as a read-only snapshot refilled every tick. It holds the
@@ -109,6 +110,9 @@ export interface ShotView {
   y: number;
   vx: number;
   vy: number;
+  /** Observable ballistic motion and remaining fuse/lifetime, captured with the position. */
+  gravity?: number;
+  life?: number;
 }
 
 export interface WorldView {
@@ -144,7 +148,8 @@ export function createWorldView(): WorldView {
   };
 }
 
-/** Is the straight line between two world points free of anything solid? Samples every second cell. */
+/** Is the straight line free of cover? One-cell spacing also sees thin plates.
+ * The origin is excluded because it can lie against the caster's own footing. */
 export function lineClear(
   cellBlocks: (x: number, y: number) => boolean,
   x0: number,
@@ -154,8 +159,8 @@ export function lineClear(
 ): boolean {
   const dx = x1 - x0;
   const dy = y1 - y0;
-  const steps = Math.max(1, Math.floor(Math.max(Math.abs(dx), Math.abs(dy)) / 2));
-  for (let s = 1; s < steps; s++) {
+  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy))));
+  for (let s = 1; s <= steps; s++) {
     const t = s / steps;
     if (cellBlocks(Math.round(x0 + dx * t), Math.round(y0 + dy * t))) return false;
   }
@@ -288,6 +293,8 @@ export function buildWorldView(ctx: Ctx, self: BrainSelf, tick: number, out: Wor
     v.y = s.y;
     v.vx = s.vx;
     v.vy = s.vy;
+    v.gravity = projectileGravity(s.type);
+    v.life = s.life;
     shots.push(v);
   }
   return out;

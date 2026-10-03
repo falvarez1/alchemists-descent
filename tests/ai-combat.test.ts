@@ -3,7 +3,9 @@ import { AI_BEHAVIOR, AI_BEHAVIOR_DEFAULTS, AI_BEHAVIOR_KEYS, AI_BEHAVIOR_RANGES
 import { setAiTierValue, resetAiTiers } from '@/config/aiTiers';
 import { chooseIntent, styleFor } from '@/arena/ai/intent';
 import { abilityPlan } from '@/arena/ai/playbooks';
-import { incomingShot, threatensSlot, weaponView } from '@/arena/ai/combat';
+import { incomingShot, safeFooting, threatensSlot, weaponView } from '@/arena/ai/combat';
+import { World } from '@/sim/World';
+import { Cell } from '@/sim/CellType';
 import { leadPoint } from '@/arena/ai/control';
 import { Execution } from '@/arena/ai/execution';
 import { createWorldView } from '@/arena/ai/worldView';
@@ -54,6 +56,25 @@ describe('combat decisions', () => {
 });
 
 describe('recognizing and avoiding shots', () => {
+  test('does not dodge a shot that expires before reaching the body', () => {
+    const shot = { ref: {}, age: 0, x: 680, y: 630, vx: -5, vy: 0, life: 4 };
+    expect(incomingShot(me(), [shot], () => true)).toBeNull();
+  });
+  test('recognizes a falling arc from the delayed projectile observation', () => {
+    const shot = { ref: {}, age: 4, x: 655, y: 600, vx: -3, vy: 0, gravity: .2, life: 100 };
+    expect(incomingShot(me(), [shot], () => true)).not.toBeNull();
+  });
+  test('ignores an arc that falls below us instead of treating it as a straight shot', () => {
+    const shot = { ref: {}, age: 0, x: 680, y: 630, vx: -5, vy: 0, gravity: .8, life: 100 };
+    expect(incomingShot(me(), [shot], () => true)).toBeNull();
+  });
+  test('a landing with fire touching the head is unsafe even when the feet are clear', () => {
+    const world = new World();
+    for (let x = 596; x <= 604; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);
+    world.replaceCellAt(world.idx(600, 622), Cell.Fire, 0);
+    const ctx = { world, physics: { entityFree: () => true, cellBlocks: (x: number, y: number) => world.type(x, y) === Cell.Metal } } as unknown as Pick<Ctx, 'world' | 'physics'>;
+    expect(safeFooting(ctx, 600, 639)).toBe(false);
+  });
   test('Duel ownership works for both sides, including implicit owner zero', () => {
     expect(threatensSlot({ hostile: false, owner: 1 }, 0, true)).toBe(true);
     expect(threatensSlot({ hostile: false }, 1, true)).toBe(true);

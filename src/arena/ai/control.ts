@@ -217,6 +217,7 @@ export class Control {
   private edge: { phase: EdgePhase; since: number; edge: NavEdge | null; holdJump: boolean } = { phase: 'approach', since: 0, edge: null, holdJump: false };
   private escapeUntil = 0;
   private escapeDir = 0;
+  private escapeJump = true;
   /** Ticks of the current rise/cross: a timeout turns a hop that never lands into a failure. */
   private tick = 0;
   /** How many hops started, for the probes. */
@@ -328,6 +329,15 @@ export class Control {
     return this.hop.phase !== 'none' || (this.edge.edge !== null && this.edge.phase !== 'approach');
   }
 
+  /** A terrain-checked rise over a hazard uses the same height control as cover. */
+  startHop(dir: number, topY: number, fromY: number): void {
+    this.hop = { phase: 'rise', dir, topY, until: this.tick + 20 + fromY - topY };
+    this.escapeUntil = 0;
+    this.hand.move(dir);
+    this.hand.jump(true);
+    this.hops++;
+  }
+
   // ---------------------------------------------------------------------------------------------------------- nav edges
 
   /** Begin a nav edge (the brain calls this once, then `runEdge` every tick until it is no longer 'running'). */
@@ -415,7 +425,8 @@ export class Control {
   // ------------------------------------------------------------------------------------------------------ getting unstuck
 
   /** Shake loose: walk one way for a while, tapping jump. The brain calls it when the stuck detector fires. */
-  startEscape(dir: number, ticks: number): void {
+  startEscape(dir: number, ticks: number, jump = true): void {
+    this.escapeJump = jump;
     this.escapeDir = dir < 0 ? -1 : 1;
     this.escapeUntil = this.tick + ticks;
     this.hop.phase = 'none';
@@ -427,7 +438,7 @@ export class Control {
     this.hand.move(this.escapeDir);
     // a jump held for 14 ticks out of 24: over a low obstacle, and through the jet for a tall one
     const phase = (this.escapeUntil - this.tick) % 24;
-    this.hand.jump(phase < 14 && (me.grounded || me.levit > 6));
+    this.hand.jump(this.escapeJump && phase < 14 && (me.grounded || me.levit > 6));
   }
 
   get escaping(): boolean {

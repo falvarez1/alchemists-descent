@@ -52,10 +52,12 @@ try {
   };
   const pairs = [['ilyra-voss', 'brann-rook'], ['sable-fen', 'mara-quell'], ['kest-rel', 'nox-calder'], ['edda-morrow', 'selene-wraith'], ['rusk-emberjaw', 'father-thorne']];
   const rows = [];
-  for (const [index, pair] of pairs.entries()) {
+  const seedIndex = process.argv.indexOf('--seeds');
+  const seeds = seedIndex >= 0 ? Math.max(1, Math.min(10, Number(process.argv[seedIndex + 1]) || 1)) : 1;
+  for (const [index, pair] of pairs.entries()) for (let seedRun = 0; seedRun < seeds; seedRun++) {
     if (process.argv.includes('--scenarios')) continue;
     if (process.argv.includes('--rusk') && index !== 4) continue;
-    const row = await run(pair, 7301 + index * 41);
+    const row = await run(pair, 7301 + index * 41 + seedRun * 997);
     rows.push(row);
     console.log(JSON.stringify({ ids: row.ids, ticks: row.bout.endedAt - row.bout.startedAt, endHp: row.endHp, stats: row.stats }));
     check.check(`${pair.join(' vs ')}: fights resolve inside 60 seconds`, row.bout.state === 'won');
@@ -81,7 +83,11 @@ try {
     step(8);
     const beforeDodge = (await status()).stats.dodges;
     ctx.projectiles.push({ x: a.player.x + 100, y: a.player.y - 9, vx: -5, vy: 0, type: 'bolt', life: 100, age: 0, hostile: false, charging: false, owner: 1 });
-    step(15);
+    const dodgeTrace = [];
+    for (let i = 0; i < 15; i++) {
+      step(1);
+      dodgeTrace.push({ tick: ctx.state.frameCount, body: { x: a.player.x, y: a.player.y, vx: a.player.vx, vy: a.player.vy, grounded: a.player.grounded }, shots: ctx.projectiles.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, life: p.life })), threat: (await status()).threat, action: (await status()).action, dodges: (await status()).stats.dodges });
+    }
     const dodged = (await status()).stats.dodges > beforeDodge;
     ctx.projectiles.length = 0;
     const wand = a.wands.wands[a.wands.active];
@@ -122,6 +128,24 @@ try {
     }
     const navigation = { climbed, edges: (await status()).stats.edges, x: a.player.x, y: a.player.y };
     await ctx.console.exec('ai off');
+    ctx.arena.reset();
+    Object.assign(a.player, { x: 640, y: 639, vx: 0, vy: 0, grounded: true, invuln: 99999 });
+    Object.assign(b.player, { x: 770, y: 639, vx: 0, vy: 0, grounded: true, invuln: 99999 });
+    const { Cell } = await import('/src/sim/CellType.ts');
+    // A broad acid patch has no safe forward landing inside the short hop.
+    // The clear ground behind us must be used before the three-second stuck timer.
+    for (let y = 633; y <= 639; y++) for (let x = 654; x <= 728; x++) ctx.world.replaceCellAt(ctx.world.idx(x, y), Cell.Acid, 0x76b63c);
+    const hazardBot = await ctx.console.exec('ai basic 5');
+    let minX = a.player.x;
+    const hazardTrace = [];
+    for (let i = 0; i < 60; i++) {
+      step(1); minX = Math.min(minX, a.player.x);
+      if (i % 10 === 0) hazardTrace.push({ tick: ctx.state.frameCount, mode: ctx.state.mode, bout: { ...ctx.arena.bout },
+        a: { x: a.player.x, y: a.player.y, dead: a.player.dead, hp: a.player.hp, stun: a.player.stunT },
+        b: { x: b.player.x, y: b.player.y, dead: b.player.dead, hp: b.player.hp }, status: JSON.parse(JSON.stringify(await status())) });
+    }
+    const hazardReposition = { minX, stats: { ...(await status()).stats }, bot: hazardBot, trace: hazardTrace };
+    await ctx.console.exec('ai off');
     // Repeated large explosions must not punch a route through the Duel enclosure.
     for (let i = 0; i < 3; i++) {
       ctx.explosions.trigger(800, 663, 76);
@@ -129,7 +153,7 @@ try {
     }
     const cell = (x, y) => ctx.world.types[ctx.world.idx(x, y)];
     const shellIntact = cell(800, 690) === 13 && cell(501, 620) === 13;
-    return { dodged, lowMana, stunned, cooling, independent, resetClean, tuned: tuned.ok && applied === 28, released, navigation, shellIntact };
+    return { dodged, dodgeTrace, lowMana, stunned, cooling, independent, resetClean, tuned: tuned.ok && applied === 28, released, navigation, hazardReposition, shellIntact };
   });
   check.check('dodges a rival-owned, non-hostile projectile through normal jump input', scenarios.dodged);
   check.check('low mana preserves combat distance and releases the trigger', scenarios.lowMana.intent === 'recover' && !scenarios.lowMana.firing && scenarios.lowMana.range > 30, JSON.stringify(scenarios.lowMana));
@@ -139,7 +163,55 @@ try {
   check.check('rematch clears targets, observations, commitments and pending input', scenarios.resetClean);
   check.check('switching the bot off releases its inputs', scenarios.released);
   check.check('reaches a rival on the Duel platform through normal movement', scenarios.navigation.climbed && scenarios.navigation.edges > 0, JSON.stringify(scenarios.navigation));
+  check.check('a broad hazard triggers safe backward footwork within one second', scenarios.hazardReposition.minX < 632 && scenarios.hazardReposition.stats.hazardRepositions > 0, JSON.stringify(scenarios.hazardReposition));
   check.check('repeated bomb-sized blasts cannot open the Duel shell', scenarios.shellIntact);
+  // Also observe the normal fixed clock and real render loop. The fast batch
+  // above must agree with visible play, rather than only a forced-tick harness.
+  await freshStage();
+  const liveStart = await page.evaluate(async () => {
+    const ctx = window.__game.ctx;
+    await ctx.console.exec('arena remove');
+    ctx.fighters.equip('kest-rel'); await ctx.fighters.whenReady();
+    await ctx.console.exec('arena add nox-calder 1020 639');
+    ctx.arena.reset(); ctx.state.arrivalGraceUntil = 0; ctx.state.worldSeed = 8298;
+    await ctx.console.exec('arena bot 0 basic 4');
+    await ctx.console.exec('arena bot 1 basic 4');
+    ctx.state.paused = false;
+    const canvas = document.querySelector('#canvas-holder > canvas');
+    const stream = canvas.captureStream(24), chunks = [];
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 3500000 });
+    recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    recorder.start(); window.__aiMotion = { recorder, stream, chunks };
+    return { frame: ctx.state.frameCount, hp: [ctx.arena.bundle(0).player.hp, ctx.arena.bundle(1).player.hp] };
+  });
+  const liveSamples = [];
+  for (let i = 0; i < 8; i++) {
+    await page.waitForTimeout(1000);
+    liveSamples.push(await page.evaluate(async () => {
+      const ctx = window.__game.ctx;
+      const bots = (await ctx.console.exec('arena status')).data.bots;
+      return { frame: ctx.state.frameCount, bout: ctx.arena.bout.state,
+        bodies: [0, 1].map(s => { const p = ctx.arena.bundle(s).player; return { x: p.x, y: p.y, hp: p.hp }; }),
+        bots: bots.map(b => ({ intent: b.intent, stats: { ...b.stats } })) };
+    }));
+  }
+  const clip = await page.evaluate(() => new Promise(resolve => {
+    const { recorder, stream, chunks } = window.__aiMotion;
+    recorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const bytes = new Uint8Array(await new Blob(chunks, { type: recorder.mimeType }).arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 16384) binary += String.fromCharCode(...bytes.subarray(i, i + 16384));
+      resolve(btoa(binary));
+    };
+    recorder.stop();
+  }));
+  writeFileSync('verify-out/ai-combat/live-duel.webm', Buffer.from(clip, 'base64'));
+  const liveEnd = liveSamples.at(-1);
+  check.check('normal-speed play advances the real clock and both opponents deal damage',
+    liveEnd.frame - liveStart.frame >= 100 && liveEnd.bodies.every((p, i) => p.hp < liveStart.hp[i]), JSON.stringify({ liveStart, liveEnd }));
+  await page.screenshot({ path: 'verify-out/ai-combat/live-duel.png' });
+  await page.evaluate(() => { window.__game.ctx.state.paused = true; });
   // Exercise the visible controls, not just their console equivalents.
   const personality = page.locator('select[aria-label="Slot 1 personality"]');
   await personality.selectOption('assassin');
@@ -149,7 +221,7 @@ try {
   const ui = await page.evaluate(async () => (await window.__game.ctx.console.exec('arena status')).data.bots[1]);
   check.check('developer panel selects personality and named difficulty independently', ui.personality === 'assassin' && ui.level === 4, JSON.stringify(ui));
   check.check('no page errors', errors.length === 0, errors.join('\n'));
-  writeFileSync(`verify-out/ai-combat/${process.argv.includes('--scenarios') ? 'scenarios' : 'measured'}.json`, JSON.stringify({ rows, scenarios, errors }, null, 2));
+  writeFileSync(`verify-out/ai-combat/${process.argv.includes('--scenarios') ? 'scenarios' : 'measured'}.json`, JSON.stringify({ rows, scenarios, liveStart, liveSamples, errors }, null, 2));
   await controls.scrollIntoViewIfNeeded();
   await page.screenshot({ path: 'verify-out/ai-combat/duel.png' });
 } finally {
