@@ -3153,6 +3153,8 @@ export interface LevelExitWell {
  * carve shadows, non-occluded lights paint their whole falloff disk.
  */
 export interface AuthoredLight {
+  /** Optional presentation fixture; machine and spell lights keep their own art. */
+  fixture?: 'lantern';
   x: number;
   y: number;
   /** Channel weights 0..1 (parsed from the authored hex color). */

@@ -2,6 +2,7 @@ import { drawStoryLayer } from '@/render/story/StoryLayer';
 import { drawPlayerRagdollSprite } from '@/render/sprites/PlayerRagdollSprite';
 import { drawTrickshotOverlay } from '@/render/TrickshotOverlay';
 import { drawFallingWater } from '@/render/FallingWater';
+import { drawSceneFidelity } from '@/render/SceneFidelity';
 import { drawOrganism } from '@/render/organisms';
 import { isOrganism } from '@/game/organisms/types';
 import type { Ctx, Enemy, RigidBody, RuntimeDecor } from '@/core/types';
@@ -530,6 +531,7 @@ export class FrameComposer implements PixelSurface {
     }
 
     drawWorksLandmarks(this, this.light, ctx);
+    drawSceneFidelity(this, this.light, ctx);
     drawHabitatScenery(this, this.light, ctx);
     this.composeOverlays(ctx);
     this.maskVoidBelowWorldFloor(ctx);
@@ -686,9 +688,9 @@ export class FrameComposer implements PixelSurface {
     // CLEAR WATER (floorLooks waterClarity; ComposeShader mirrors it): a water
     // body shows the kit's planes through it, graded like the open backdrop,
     // washed toward grey and tinted by the water, with a slow refraction sway.
-    const waterClarity = natural?.waterClarity ?? 0;
+    const waterClarity = natural?.waterClarity ?? floorLook.waterClarity ?? 0;
     const waterBodyRgb = (floorLook.waterBody[0] << 16) | (floorLook.waterBody[1] << 8) | floorLook.waterBody[2];
-    const waterSeen = natural?.waterSeen ?? WATER_SEEN_NONE, waterSeenSat = natural?.waterSeenSat ?? 1;
+    const waterSeen = natural?.waterSeen ?? floorLook.waterSeen ?? WATER_SEEN_NONE, waterSeenSat = natural?.waterSeenSat ?? floorLook.waterSeenSat ?? 1;
     const seenPhase = ((frameCount * 0.16) % (Math.PI * 2)) * 0.35;
     const seen = this.waterSeenRgb;
     const sampleSeen = (svx: number, svy: number): void => {

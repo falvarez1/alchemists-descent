@@ -7,7 +7,7 @@ import { resolveBackdropProfileForRuntime } from '@/config/backdrop';
 import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import type { Ctx, MaterialParams } from '@/core/types';
 import { COMPOSE_MAX_LENSES, COMPOSE_MAX_WAVES } from '@/render/composeLimits';
-import { backdropOrigin } from '@/render/depth/parallax';
+import { backdropOrigin, BACKDROP_TEXEL_EPSILON } from '@/render/depth/parallax';
 import type {
   CompositorLens,
   LightField,
@@ -474,8 +474,8 @@ fn backdropCoord(base: u32, origin: u32, vx: i32, vy: i32) -> vec2<i32> {
   let scale = max(0.25, p(base + 3u));
   let width = max(1, i32(round(1.0 / max(0.000001, p(base + 4u)))));
   let height = max(1, i32(round(1.0 / max(0.000001, p(base + 5u)))));
-  let sx = i32(floor((p(origin) + f32(vx)) / scale + p(base + 6u)));
-  let sy = i32(floor((p(origin + 1u) + f32(vy)) / scale + p(base + 7u)));
+  let sx = i32(floor((p(origin) + f32(vx)) / scale + p(base + 6u) + ${BACKDROP_TEXEL_EPSILON}));
+  let sy = i32(floor((p(origin + 1u) + f32(vy)) / scale + p(base + 7u) + ${BACKDROP_TEXEL_EPSILON}));
   var wx = wrapI(sx, width);
   // Per-floor composition variant: mirror the sample column (floorLooks).
   if (p(26u) > 0.5) {
@@ -1386,12 +1386,12 @@ export class WebGpuLiveCompose {
     params[NATURAL_BASE + 4] = natural && haze ? haze[2] : 0;
     params[NATURAL_BASE + 5] = natural ? (kit ? kit.hazeMix : natural.backdropHazeMix) : 0;
     params[DARK_ON_PARAM] = this.darkOn ? 1 : 0;
-    const seen = natural?.waterSeen ?? [1, 1, 1];
-    params[WATER_BASE] = natural?.waterClarity ?? 0;
+    const seen = natural?.waterSeen ?? look.waterSeen ?? [1, 1, 1];
+    params[WATER_BASE] = natural?.waterClarity ?? look.waterClarity ?? 0;
     params[WATER_BASE + 1] = seen[0];
     params[WATER_BASE + 2] = seen[1];
     params[WATER_BASE + 3] = seen[2];
-    params[WATER_BASE + 4] = natural?.waterSeenSat ?? 1;
+    params[WATER_BASE + 4] = natural?.waterSeenSat ?? look.waterSeenSat ?? 1;
     params[WATER_BASE + 5] = look.waterBody[0];
     params[WATER_BASE + 6] = look.waterBody[1];
     params[WATER_BASE + 7] = look.waterBody[2];

@@ -83,28 +83,32 @@ describe('depth plane art', () => {
     expect(bakePlane(depthKitFor('earthen'), 0, null)).toBeNull();
   });
 
-  it('atmospheric perspective: far planes are flatter, near silhouettes darker', () => {
+  it('near planes remain sparse and darker; procedural far fills remain opaque', () => {
     for (const biome of ['fungal', 'flooded', 'volcanic', 'frozen'] as BiomeId[]) {
       const kit = depthKitFor(biome);
       const solid = kit.planes.map((p, i) => ({ p, i })).filter(({ p }) => !p.shafts && p.source.kind === 'art');
-      const far = valueStats(bakePlane(kit, solid[0].i, null)!);
       const near = valueStats(bakePlane(kit, solid[solid.length - 1].i, null)!);
-      // The far fill is opaque; near planes are sparse silhouettes.
-      expect(far.coverage).toBeGreaterThan(0.99);
       expect(near.coverage).toBeLessThan(0.5);
-      expect(near.mean).toBeLessThan(far.mean);
+      expect(near.mean).toBeLessThan(110);
+      if (kit.planes[0].source.kind === 'art') {
+        const far = valueStats(bakePlane(kit, 0, null)!);
+        expect(far.coverage).toBeGreaterThan(0.99);
+        expect(near.mean).toBeLessThan(far.mean);
+      }
     }
   });
 
-  it('the Kiln far plane is a hot core with falloff, not a flat wash', () => {
-    const bmp = bakePlane(depthKitFor('volcanic'), 0, null)!;
-    const l: number[] = [];
-    for (let o = 0; o < bmp.pixels.length; o += 4) l.push(bmp.pixels[o] * 0.2126 + bmp.pixels[o + 1] * 0.7152 + bmp.pixels[o + 2] * 0.0722);
-    l.sort((a, b) => a - b);
-    expect(l[l.length - 1]).toBeGreaterThan(180);
-    // The white-hot core is small; most of the plane sits in soot and ember.
-    expect(l.filter((v) => v > 150).length / l.length).toBeLessThan(0.08);
-    expect(l[l.length >> 1]).toBeLessThan(90);
+  it('authored planes preserve source pixels and transparency while baking their haze', () => {
+    // Actual asset exposure and hot-core distributions are checked in
+    // verify-visual-fidelity.mjs after the browser decodes the WebP images.
+    const image = { width: 2, height: 1, pixels: new Uint8ClampedArray([255, 185, 90, 255, 0, 0, 0, 0]) };
+    const original = image.pixels.slice();
+    const baked = bakePlane(depthKitFor('volcanic'), 0, image)!;
+    expect(image.pixels).toEqual(original);
+    expect(baked.pixels).not.toBe(image.pixels);
+    expect(baked.pixels[3]).toBe(255);
+    expect(baked.pixels[7]).toBe(0);
+    expect(baked.pixels.slice(0, 3)).not.toEqual(original.slice(0, 3));
   });
 
   it('lit silhouettes step down the ramp toward the viewer', () => {

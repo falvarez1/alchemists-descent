@@ -14,6 +14,10 @@ export function wrap(v: number, n: number): number {
   return ((v % n) + n) % n;
 }
 
+/** Decimal plate scales can land just below an exact texel boundary in
+ * double or shader float precision. Keep their floor decision consistent. */
+export const BACKDROP_TEXEL_EPSILON = .001;
+
 /**
  * A backdrop plane's coordinate (cells) under view position 0 of the compose
  * quad. The frame is composed at the integer `renderCam` and the quad slides
@@ -33,7 +37,7 @@ export function backdropOrigin(renderCam: number, cam: number, speed: number): n
  * with `origin` from backdropOrigin.
  */
 export function backdropTexel(origin: number, view: number, scale: number, offset: number, size: number): number {
-  return wrap(Math.floor((origin + view) / Math.max(0.25, scale) + offset), size);
+  return wrap(Math.floor((origin + view) / Math.max(0.25, scale) + offset + BACKDROP_TEXEL_EPSILON), size);
 }
 
 /** Foreground plane coordinate (cells) of a world point while the camera sits at `cam`. */

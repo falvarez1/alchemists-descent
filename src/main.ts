@@ -10,6 +10,7 @@ import '@/styles/run.css';
 import '@/styles/complications.css';
 import '@/styles/sound.css';
 import '@/styles/trailer.css';
+import '@/styles/alchemical-hud.css';
 import { Game } from '@/game/Game';
 import type { AuthorLinkHandle } from '@/app/AuthorLink';
 import type { AuthorLinkIndicator } from '@/app/AuthorLinkIndicator';

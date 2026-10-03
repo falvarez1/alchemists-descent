@@ -192,6 +192,7 @@ export class Hud {
     // its caption, so no length of objective can ever overlap them.
     const toastHost = el('toast-stack');
     el('objective').closest('.wave-readout')!.appendChild(toastHost);
+    el('game-hud').appendChild(el('treasure-row'));
     this.toastStack = new ToastStack(toastHost);
     this.vitalsAside.id = 'vitals-aside';
     this.vitalsAside.className = 'vitals-aside';
@@ -384,6 +385,7 @@ export class Hud {
     this.bannerQueue.length = 0;
     this.pendingTitle = null;
     this.toastStack.clear();
+    el('objective').closest('.wave-readout')!.appendChild(el('treasure-row'));
     this.potionChips?.dispose();
     this.vitalsAside.remove();
     for (const { ghost } of this.vitalGhosts.splice(0)) ghost.remove();

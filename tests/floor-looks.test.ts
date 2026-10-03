@@ -23,14 +23,14 @@ beforeAll(async () => {
 afterAll(() => vi.unstubAllGlobals());
 
 describe('floor looks', () => {
-  it('keeps the hand-built Works on the atlas identity', () => {
+  it('keeps the Works masonry identity while exposing the richer scenic plate', () => {
     const d1 = FLOOR_LOOKS.earthen;
     expect(d1.gain).toEqual([1.28, 1.28, 1.28]);
     expect(d1.lift).toEqual([15, 20, 21]);
     expect(d1.lip).toEqual([115, 111, 94]);
     expect(d1.crownStrength).toBe(0);
     expect(d1.masonryPanels).toBe(16);
-    expect(d1.backdropMul).toEqual([1, 1, 1]);
+    expect(d1.backdropMul).toEqual([1.25, 1.25, 1.2]);
     expect(d1.backdropMirror).toBe(false);
   });
 
