@@ -88,11 +88,14 @@ and the decision log refer to it. Update the box in the same commit as the work.
 ## P8: the Balance Lab (`BALANCE-LAB.md`, `BALANCE-LAB-PLAN.md`)
 
 Milestones: M1 see and run (BL0, BL1), M2 edit safely (BL2, BL3, BL6.2), M3 new moves (BL4), M4 understand (BL5), M5 automate (BL6).
+**Starts after the CLASHFORGED split reaches its phase 6** (D-021); decisions D-014 to D-021 shape every package. Until
+then, every fighter change follows the interim routine in `BALANCE-LAB-PLAN.md` ("Before the Lab").
 
 - [ ] BL0.1 every knob registered at boot (`fighters/tuningRoots.ts`)
 - [ ] BL0.2 the analyser as a library (`tools/lab/analysis.mjs`; `duel-analyse` byte-identical)
 - [ ] BL0.3 stock-match determinism probe (`verify-duel-determinism.mjs`)
 - [ ] BL0.4 the balance store (`balance/`: contract, baseline, changelog, waivers)
+- [ ] BL0.5 can a match run without a browser? (decides the runner: kernel workers or pages)
 - [ ] BL1.1 frozen lab builds (content-hashed, immune to editing `src`)
 - [ ] BL1.2 the Lab server (Vite plugin: queue, runner pool, server-sent events, run store)
 - [ ] BL1.3 `/lab.html` route and shell (dev and authoring builds only)
@@ -122,6 +125,7 @@ Milestones: M1 see and run (BL0, BL1), M2 edit safely (BL2, BL3, BL6.2), M3 new 
 - [ ] BL4.10 the CPU uses any move (coverage gate)
 - [ ] BL4.11 the Move Lab
 - [ ] BL4.12 art for new moves (dependency: `platform-fighter/SPRITES.md`)
+- [ ] BL4.13 stale-move negation (a match rule, on by default: D-018)
 - [ ] BL5.1 run records v2
 - [ ] BL5.2 replay and seek
 - [ ] BL5.3 the fight timeline
@@ -133,6 +137,6 @@ Milestones: M1 see and run (BL0, BL1), M2 edit safely (BL2, BL3, BL6.2), M3 new 
 - [ ] BL6.5 degenerate-strategy and loop detectors
 - [ ] BL6.6 identity fingerprints
 - [ ] BL6.7 promote to baseline
-- [ ] BL7.1 the headless kernel runner (after the split)
+- [ ] BL7.1 unblock the headless kernel (only if BL0.5 found blockers)
 - [ ] BL7.2 human match telemetry
 - [ ] BL7.3 a hosted Lab

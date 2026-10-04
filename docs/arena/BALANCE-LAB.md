@@ -1,7 +1,9 @@
 # The Balance Lab: a developer control panel for the roster
 
 **Status: design (2026-10-04). Nothing in this document is built yet except what section 1 lists as existing.** The
-implementation plan, phase by phase with files, tests and exit criteria, is `BALANCE-LAB-PLAN.md`.
+implementation plan, phase by phase with files, tests and exit criteria, is `BALANCE-LAB-PLAN.md`. The open decisions
+were settled on 2026-10-04 (section 12; `DECISIONS.md` D-014 to D-021). The main consequence: **the Lab is built
+after the CLASHFORGED split**, directly in the monorepo.
 
 The roster is about to grow: character-specific moves, combinations, special skills and attribute changes. Each one can
 make a fighter overpowered without anyone noticing until players do. The Balance Lab is the one place, in dev builds only,
@@ -69,7 +71,7 @@ the Lab, and are read by every gate.
 
 | Metric | Target | Gate |
 |---|---|---|
-| Fighter win rate, official setup (section 9) | 45-55% | **Fail** outside 40-60% when the 95% interval excludes 50% (at least 144 matches per fighter) |
+| Fighter win rate, official setup (section 9: Hard AND Expert, mirrored personality rotation) | 45-55% at each level | **Fail** outside 40-60% at either level when the 95% interval excludes 50% (at least 144 matches per fighter per level) |
 | Worst matchup per fighter | 35% or better | Warn below 35%; **fail** below 25% (at least 24 matches in the cell) |
 | Matchup spread (standard deviation of a fighter's matchup win rates) | 12 points or less | Warn above 15: a fighter that is 50% overall but 90/10 against half the roster |
 | Skill gap: Normal CPU vs Expert CPU win rate | both inside the band, difference 15 points or less | Warn |
@@ -81,7 +83,8 @@ the Lab, and are read by every gate.
 | Side bias | slot 0 wins 45-55% | Warn |
 | CPU coverage | Every move used at least 0.5 times a fight-minute by its own fighter | Warn: an unused move is untested |
 | Identity | Each fighter's fingerprint metrics hold their claimed rank | Warn |
-| Static power budget | Every move inside its cohort envelope (z of 2.5 or less on value per frame of commitment) | **Fail** above z 3 unless waived |
+| Static power budget | Every move inside its cohort envelope (z of 2.5 or less on value per frame of commitment), measured on FRESH values (stale-move negation never hides a move) | **Fail** above z 3 unless waived |
+| Moveset completeness | Every fighter fills the core slots (section 5.2) | **Fail** |
 | CPU behaviour | Under 6 crossings a minute on one surface; under 35% of the fight airborne outside hitstun | **Fail** (a CPU regression invalidates every other number) |
 
 ## 4. Architecture
@@ -125,8 +128,13 @@ the Lab, and are read by every gate.
   today the workaround is a frozen worktree made by hand.
 - The run records exactly what it played.
 
-**D-L4. Tunables become data: fighter sheets.**
-- One JSON sheet per fighter (`content/fighters/sheets/<id>.json`) holds:
+**D-L4. Tunables become data: fighter sheets (decided, D-016).**
+- A JSON Schema generated from the TypeScript types (`fighter-sheet.schema.json`, referenced by each sheet's `$schema`)
+  gives editors autocomplete and validation. A runtime validator gives precise errors. CI fails when the generated
+  schema is stale.
+- Comments that document numbers today move to a `notes` map in the sheet (keyed by field path), which the Lab shows
+  as field help.
+- One JSON sheet per fighter (`packages/fighters/src/sheets/<id>.json`) holds:
   - its body;
   - its Duel levers;
   - its moves;
@@ -147,13 +155,19 @@ the Lab, and are read by every gate.
 
 **D-L6. Draft, evidence, apply.**
 - An edit lives in a named **draft** (a set of overrides).
+- Drafts are local working state (decided, D-019): kept in `.lab/drafts/` (git-ignored), and exportable to a file to
+  share.
 - The draft is tried live, then A/B-tested in a batch against the baseline, then applied to the sheets.
 - *Apply* writes a changelog entry that links the evidence runs.
 - Nothing writes source without an explicit *Apply*, and *Apply* refuses a failing gate unless a waiver is written.
+- The repository's durable record is what was applied: the sheets, the balance changelog, the baseline.
 
-**D-L7. Reproducible by construction.**
-- A run records: the git commit, a dirty flag, a hash of every sheet, the draft overrides, the CPU levels and
-  personalities, the stage and the seed.
+**D-L7. Reproducible by construction: every run is self-contained (decided, D-019).**
+- A run records:
+  - the git commit and a dirty flag;
+  - the build hash, and a hash of every sheet;
+  - the **complete override set** it played (not a reference to a draft that may change later);
+  - the CPU levels and personalities, the stage and the seed.
 - A replay re-runs that spec with rendering on (D-010).
 
 **D-L8. Dev only.**
@@ -161,25 +175,35 @@ the Lab, and are read by every gate.
 - The Lab server is a Vite plugin that exists only in `serve`.
 - `verify:builder-bundle` gains a check that no Lab module reaches a player build.
 
-### Where it lives (and the CLASHFORGED split)
+### Where it lives: after the CLASHFORGED split (decided, D-021)
 
-The Lab is CLASHFORGED tooling (`docs/split/SPLIT-PLAN.md`):
+The Lab is built once the split (`docs/split/SPLIT-PLAN.md`) has moved the code into the monorepo, at least through its
+phase 6 (the physical move). It is then built directly where it belongs, with no path churn:
 
-| Part | Built now in | Moves at split phase 6 to |
+| Part | Lives in | Allowed to import |
 |---|---|---|
-| The page | `src/lab/` | `apps/clashforged/lab/` |
-| The server | `tools/lab/` | `tools/clashforged/lab/` |
-| Sheets and the static analyser | `src/content/fighters/sheets/`, `src/fighters/analysis/` | `packages/fighters/` |
+| Fighter sheets, the schema, the static analyser (power budget, KO calculator, combo finder) | `packages/fighters` | `engine` |
+| The page (`lab.html`, the screens, the bridge's Lab side) | `apps/clashforged/lab/` (dev entry only) | `engine`, `fighters`, `ui-kit`, `authoring` |
+| The bridge's game side | `apps/clashforged/src/dev/` | the app |
+| The Lab server, runner, store, gates | `tools/clashforged/lab/` | anything (tools drive the apps) |
 
-Lab code may import only fighters, arena, telemetry and config modules (and the engine). The split survey gains a rule
-for it, so the physical move is a path change and new Lab work does not add forbidden edges.
+The analyser lives in `packages/fighters` so that the Lab, the CPU (which reads the link table) and the tests all use one
+implementation. It must stay free of DOM and browser APIs.
+
+**Consequence: the split now gates balance tooling.** Until the Lab exists:
+- New moves and attribute changes are guarded only by today's tests and the command-line tools.
+- After each change, run `duel-batch` on the pass-1 confirmation spec (`--pairs all --seeds 4 --stage all
+  --personality duelist --seed-base 30000`) and `duel-analyse --compare` against that run's report. `confirm-final` is
+  in the main checkout's `verify-out/duels/`; the same command re-creates it.
+- The split's own phases decide the Lab's start date. `BALANCE-LAB-PLAN.md` "Before the Lab" lists what the split must
+  deliver for it.
 
 ## 5. Data model
 
 ### 5.1 The fighter sheet
 
 ```jsonc
-// src/content/fighters/sheets/rusk-emberjaw.json
+// packages/fighters/src/sheets/rusk-emberjaw.json
 {
   "id": "rusk-emberjaw",
   "schema": 1,
@@ -268,6 +292,33 @@ The four kinds the engine has today map onto this with no change in play: opener
 aerial -> `nair`, finisher -> `fsmash`, the right-stick up smash -> `usmash`. The adapter is the first step of the
 engine work, so nothing breaks while the engine grows.
 
+**Scope: the full vocabulary, a required core (decided, D-017).** The engine, the inputs, the schema, the analyser and
+the CPU support every slot above. Each fighter must fill the **core**, and fills optional slots where its identity calls
+for them:
+
+| | Slots |
+|---|---|
+| **Core (16, required)** | `jab1`, `ftilt`, `utilt`, `dtilt`, `fsmash`, `usmash`, `nair`, `fair`, `bair`, `grab`, `fthrow`, `bthrow`, `nspecial`, `sspecial`, `uspecial` (the recovery), `dspecial` |
+| **Optional (12)** | `jab2`, `jab3`, `rapidJab`, `dashAttack`, `dsmash`, `uair`, `dair`, `pummel`, `uthrow`, `dthrow`, `ledgeAttack`, `getupAttack` |
+
+An unfilled optional slot is never a dead input. It resolves through an **explicit fallback** declared in the sheet
+schema and visible in the Lab:
+
+| Optional slot | Falls back to |
+|---|---|
+| `jab2`, `jab3`, `rapidJab` | the jab chain simply ends (no fallback move) |
+| `dashAttack` | `ftilt` |
+| `dsmash` | `fsmash`, both directions |
+| `uair` | `nair` |
+| `dair` | `nair` |
+| `uthrow`, `dthrow` | `fthrow` |
+| `pummel` | none |
+| `ledgeAttack`, `getupAttack` | a shared roster default |
+
+The L0 gate fails a sheet with a core slot missing. The Lab lists every fallback in use, so a fighter that leans on
+fallbacks is visible as unfinished, not hidden. Art follows the same rule: a slot's sheet entry names its pose set, so
+missing animation is listed.
+
 ### 5.3 Special skills as moves
 
 A kit's tactical and ultimate keep their behaviour in code (`fighters/kits/<id>.ts`). A special move adds a
@@ -295,8 +346,10 @@ balance/
   baseline.json         the last accepted full-matrix report and its spec (git commit, sheets hash)
   CHANGELOG.md          generated patch notes: change, evidence runs, measured delta, who applied it
   waivers.json          justified exceptions to a gate: move or fighter, reason, expiry date
-  drafts/<name>.json    named override sets (not shipped; ignored or committed by choice)
 ```
+
+Drafts are not here: they are local working state in `.lab/drafts/` (git-ignored), exportable to share (D-019). Runs are
+self-contained, so nothing in the repository depends on a draft file.
 
 ## 6. Screens
 
@@ -324,9 +377,11 @@ The Lab wears the Studio design language (`styles/studio.css` tokens, as the Bui
 
 ### 6.2 Runs
 
-- A launcher, with presets: Smoke (90 matches), A/B (2 x 180), Full (90 pairs x 8 seeds x 2 CPU levels: 1,440).
+- A launcher, with presets: Smoke (90 pairs at Hard and Expert: 180 matches), A/B (two sides of the same fresh seeds),
+  Full (2,160 matches, section 7).
   - Pairs: all, one fighter against the roster, or a hand-picked list.
-  - Seeds and the seed base, stages, CPU levels, personality mode.
+  - Seeds and the seed base, stages, CPU levels, personality mode (mirrored rotation by default; one profile; the lobby
+    personalities).
   - A draft to apply, and a label.
 - A queue with live progress:
   - matches done, the ETA;
@@ -448,8 +503,8 @@ ships.
 |---|---|---|---|
 | **L0 Schema and invariants** | Sheet validation, ranges, structural rules | milliseconds | in the editor, in `vitest` |
 | **L1 Static power budget** | Per-move value against cost within its cohort; dominance; fighter offense/defense balance; combo and loop search | under a second | in the editor, in `vitest` (a gate) |
-| **L2 Smoke simulation** | 90 pairs x 1 seed at Hard, stages rotating, with early stopping, compared with the baseline | about 2-3 minutes | before merging fighter changes (`npm run balance:smoke`, CI on fighter paths) |
-| **L3 Full matrix** | 90 pairs x 8 seeds (the four stages round-robin) x 2 CPU levels: 1,440 matches; then the lobby personalities | about 30 minutes today (minutes with the headless kernel) | nightly and before release; produces baseline candidates |
+| **L2 Smoke simulation** | 90 pairs x 1 seed at Hard and at Expert, mirrored personalities rotating, stages rotating, with early stopping, compared with the baseline | about 5 minutes on pages (well under that on the headless kernel) | a **required check** on pull requests touching fighter, move or arena code (`npm run balance:smoke`) |
+| **L3 Full matrix** | 90 pairs x 12 seeds (four stages and six mirrored personalities rotating) x Hard and Expert: 2,160 matches; then the lobby personalities, reported | about 45 minutes on pages (minutes on the headless kernel) | nightly and before release; a failure opens an issue and blocks releases; produces baseline candidates |
 | **L4 Deep checks** | Sensitivity sweeps, degenerate-strategy and combo-loop detection over all runs, identity fingerprints, per-stage and skill-gap | on demand | the Lab, nightly |
 | **L5 Human telemetry** | Real Duel matches recorded in the same format | as played | opt-in, dev builds |
 
@@ -528,10 +583,14 @@ matchups they lose) once there are enough matches.
 
 Every balance number is the CPU's, so the CPU has to be good enough, and consistent enough, to trust.
 
-- **The official setup.**
-  - Hard CPU (level 4) on both sides, with one personality for both (`duelist`), measures the kits.
-  - Each fighter's own personality measures the game as the lobby plays it.
-  - Both are run, but the gates read the first. This is decision D-L9 for you to confirm (section 12).
+- **The official setup (decided, D-014 and D-015).**
+  - **Skill:** Hard (level 4) AND Expert (level 5). A fighter must be inside the band at both. One that is strong only
+    at low skill, or only at high skill, fails.
+  - **Playstyle: mirrored rotation.** Each match gives both sides the same personality, and the personality rotates
+    through all six across the seeds. The gates read this: it measures the kits across every playstyle without either
+    side having a style advantage.
+  - Each fighter's own lobby personality is run and reported alongside, as the CPU-opponent experience, but does not
+    gate.
 - **Moves are data to the CPU as well.**
   - `stockTactics` already chooses blows by hitbox coverage at the moment they come out. Version 3 generalises it from
     the four kinds to any `MoveSpec`: frames, hitbox windows, safety on shield, cancels.
@@ -559,29 +618,42 @@ The Lab can edit and measure only what the engine can play. Version 3 movesets n
 7. Move-driven projectiles; command grabs.
 8. Per-move hitlag, hitstun and shield damage multipliers; clank and priority for trades.
 9. `MoveScript` hooks so kits implement special moves with declared frames and costs.
-10. Optional, a decision for you: **stale-move negation** (a repeated move deals less), the classic tool against
-    spamming one move.
+10. **Stale-move negation (decided, D-018): a match rule, on by default.**
+    - A fighter's recent landed moves form a short queue. A move already in the queue deals less damage and knockback;
+      variety refreshes it.
+    - The queue length and scaling are rule data (`config/stockRules`), tuned with telemetry. The rule can be turned off
+      per mode.
+    - **It never hides an overpowered move.** The static power budget and the KO calculator measure fresh values.
+      Telemetry records each hit's staleness. The dominant-blow gate reads usage, which staleness does not change.
+    - Turning it on changes every match, so the baseline is re-measured in the same change.
 
 Every step keeps today's play identical until a sheet uses the new field. The v1-to-v3 adapter and the batch
 equivalence check prove it.
 
 ## 11. Later
 
-- **The headless kernel.** After split phases 1-3, the engine runs without a DOM, and matches can run in Node worker
-  threads without a browser. That is an expected 5-10 times the throughput, enough to make the full matrix a
-  pre-merge check.
-- **A hosted Lab.** Share runs and drafts across machines through the AuthorLink relay (the original "Tuning Lab" idea
-  in `docs/REALTIME-TUNING-LAB-AND-MULTIPLAYER-SERVER-SPEC.md`).
+- **The headless kernel: evaluated first, not later.** Because the Lab now starts after the split, the runner is built
+  on the engine package running without a browser (Node worker threads) if the split delivers a kernel that can run a
+  match with no DOM, WebGL or audio. That is an expected 5-10 times the throughput: the L3 matrix becomes minutes and
+  can become a pre-merge check. Headless pages stay as the fallback, and as the path for anything that renders
+  (replays, the Move Lab). The plan's BL0.5 makes the call with a measurement.
+- **A hosted Lab.** Share runs and exported drafts across machines through the AuthorLink relay (the original "Tuning
+  Lab" idea in `docs/REALTIME-TUNING-LAB-AND-MULTIPLAYER-SERVER-SPEC.md`).
 - **More than two fighters.** If an arena mode with more fighters arrives, the contract gains free-for-all metrics
   (placement, damage share).
 
-## 12. Decisions for you
+## 12. Decisions (settled 2026-10-04)
 
-| Id | Question | Recommendation |
+Each was chosen for the best long-term architecture, not for the least work. The arena decision log (`DECISIONS.md`) holds
+the reasoning, what was rejected and what would make us revisit each one.
+
+| Id | Question | Decision |
 |---|---|---|
-| D-L9 | Which CPU setup is "official" for the gates? | Hard (level 4), one personality both sides; also report Expert and the lobby personalities |
-| D-L10 | Fighter sheets as JSON (D-L4)? | Yes: it makes *Apply*, diffs and the analyser simple. Behaviour stays in TypeScript. |
-| D-L11 | Stale-move negation? | Try it behind a rule flag and measure (blow concentration, the dominant-move warnings) before deciding |
-| D-L12 | Gate strictness in CI | L0 and L1 fail the build. L2 warns on pull requests touching fighter paths. L3 nightly opens an issue on failure. |
-| D-L13 | Do drafts get committed? | Only when shared: `balance/drafts/` holds named drafts people want to keep; the Lab ignores the rest |
-| D-L14 | Build before or after the split's physical move? | Before, in the isolated folders of section 4, so balance work is not blocked. The move script carries them. |
+| D-014 | Which CPU skill levels do the gates measure? | **Hard and Expert, both must pass** |
+| D-015 | Which CPU personalities do the gates use? | **Mirrored rotation**: both sides the same personality, rotating through all six; the lobby personalities are reported, not gated |
+| D-016 | How is fighter data stored? | **JSON sheets** per fighter, a JSON Schema generated from the TypeScript types, a runtime validator, a `notes` map for field help; behaviour stays in code |
+| D-017 | How complete is a moveset? | **The full slot vocabulary in the engine; 16 core slots required per fighter**; optional slots resolve through explicit fallbacks |
+| D-018 | Stale-move negation? | **A match rule, on by default**; the analyser and the gates measure fresh values, so it never hides a move |
+| D-019 | Drafts and provenance? | **Runs are self-contained** (they embed their complete overrides); drafts are local and git-ignored, exportable to share |
+| D-020 | How strict are the gates in CI? | **Strict, with waivers**: L0 and L1 fail every build; the L2 smoke is a required check on fighter, move and arena changes; the nightly L3 opens an issue and blocks releases; exceptions are written, expiring waivers |
+| D-021 | When is the Lab built? | **After the CLASHFORGED split** (at least its phase 6), directly in the monorepo packages |

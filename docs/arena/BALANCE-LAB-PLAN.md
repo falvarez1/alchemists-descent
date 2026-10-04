@@ -11,6 +11,59 @@ package has:
 
 Ids are stable (`BL<phase>.<n>`). `TASKS.md` P8 tracks them; update the box in the same commit as the work.
 
+**The decisions are settled** (`BALANCE-LAB.md` section 12, `DECISIONS.md` D-014 to D-021). They shape this plan:
+
+- the gates measure Hard and Expert with mirrored personality rotation;
+- fighter data is JSON sheets with a generated schema;
+- the full move vocabulary, with a required core;
+- stale-move negation as a match rule, on by default;
+- self-contained runs and local drafts;
+- strict CI gates with waivers;
+- **the Lab starts after the CLASHFORGED split**.
+
+## Before the Lab
+
+### What the split must deliver
+
+The Lab's first package starts when the split (`docs/split/SPLIT-PLAN.md`) has reached at least its phase 6 (the
+physical move). It needs:
+
+1. **`packages/fighters`**: the roster, bodies, kits, loadouts and `FighterSystem`, where the sheets and the analyser
+   will live.
+2. **`apps/clashforged`** with its own dev entry points (the Lab adds `lab.html` beside the app's `index.html` and
+   `builder.html`) and the app's Vite config and `__AUTHORING__` gate.
+3. **The boundary test** (`tools/shared/split/survey.mjs` as a test) and pnpm's strict resolution, so Lab code cannot
+   reach into Descent.
+4. **The arena code in `apps/clashforged`** (`ArenaSlots`, the stock rules, the CPU, the harness), where the moveset
+   engine work (Phase 4) happens.
+5. **Ideally, a game kernel that can run a match with no DOM, WebGL or audio** (split phases 1-3: the kernel, the
+   actor-slot runtime, the `Ctx` split). It is not required; BL0.5 measures whether it exists and what it gives.
+
+### Until then: the interim routine
+
+New moves and attribute changes keep landing before the Lab exists. Guard each one with today's tools:
+
+1. Run the pass-1 confirmation spec on the changed code:
+   `node scripts/duel-batch.mjs <frozen url> --pairs all --seeds 4 --stage all --pages 3 --personality duelist --seed-base 30000`
+2. Compare it with the pass-1 run: `node scripts/duel-analyse.mjs <new run> --compare <confirm-final>`. `confirm-final`
+   is in the main checkout's `verify-out/duels/`; the same command on `0437216` re-creates it.
+3. Read the flags and any fighter whose rate moved outside its interval. Re-tune with `duel-tune.mjs --resume` when a
+   change moved the balance.
+
+### Paths
+
+This plan names files by where they live **after the split**:
+
+| Today | After the split |
+|---|---|
+| `src/fighters/...`, `src/content/fighters...` | `packages/fighters/src/...` |
+| `src/arena/...`, `src/config/stock*`, `src/input/stockPad.ts` | `apps/clashforged/src/...` |
+| `scripts/duel-*.mjs`, `scripts/verify-stock-*.mjs` | `tools/clashforged/...` |
+| (new) the Lab page | `apps/clashforged/lab/` |
+| (new) the Lab server, runner, store, gates | `tools/clashforged/lab/` |
+
+Where a package below still says `src/...` or `tools/lab/...`, read it through this table.
+
 ## Milestones
 
 | Milestone | Phases | What you can do when it lands | Rough size |
@@ -19,11 +72,12 @@ Ids are stable (`BL<phase>.<n>`). `TASKS.md` P8 tracks them; update the box in t
 | **M2. Edit safely** | 2, 3, BL6.2 | Edit any attribute, Duel lever, blow or kit number as a draft; see it live in the embedded game; the power budget recomputes as you type; one click A/Bs the draft; *Apply* writes the sheet and the changelog; the static gate fails a build on an outlier | about 3 weeks |
 | **M3. New moves** | 4 | Author character-specific moves, chains and specials in the Move Lab; frame-step them with hitboxes drawn; the KO calculator and combo finder answer at once; the CPU uses every new move | about 4 weeks |
 | **M4. Understand** | 5 | Replay any match from any run with a timeline of blows, shields, KOs and what each CPU was thinking; drill from a matchup cell to its matches | about 1 week |
-| **M5. Automate** | rest of 6 | Smoke gate on pull requests that touch fighters; the nightly full matrix; baseline promotion; sensitivity sweeps; identity checks | about 1.5 weeks |
-| Later | 7 | Headless kernel (after the split), human match telemetry, a hosted Lab | |
+| **M5. Automate** | rest of 6 | The smoke matrix as a required check on pull requests that touch fighters, moves or the arena; the nightly full matrix blocking releases; baseline promotion; sensitivity sweeps; identity checks | about 1.5 weeks |
+| Later | 7 | Human match telemetry, a hosted Lab | |
 
-M2 is the point where attribute work becomes safe. M3 is the point where new moves become safe. If time is short, build
-M1 and M2 first, then BL3.3 (the combo finder) before any chained moves.
+All milestones start after the split's phase 6. M2 is the point where attribute work becomes safe. M3 is the point
+where new moves become safe. If time is short, build M1 and M2 first, then BL3.3 (the combo finder) before any chained
+moves.
 
 ## Order and dependencies
 
@@ -85,9 +139,25 @@ Phase 0 (prep) --> Phase 1 (Lab MVP) --+--> Phase 2 (sheets, drafts, roster) --+
   - `balance/CHANGELOG.md`: pass 1 written up.
   - `balance/waivers.json`: empty.
   - `tests/balance-store.test.ts`: the files parse; every waiver names a real fighter or move and has a future expiry.
-- **Note:** `confirm-final` was measured at Normal (level 3). Once D-L9 fixes the official setup (Hard is recommended),
-  the first BL6.2 full run at that setup replaces it.
+- **Note:** `confirm-final` was measured at Normal with Duelist on both sides. The official setup is Hard and Expert with
+  mirrored rotation (D-014, D-015), so the first full run at that setup (BL6.2) replaces it. Until then it is the
+  reference for direction only, not for the gates.
 - **Exit:** the files are in the repo and validated.
+
+### BL0.5 Can a match run without a browser? (M)
+
+- **Goal:** decide, by measurement, whether the runner is built on the split's game kernel running in Node worker
+  threads (no DOM, WebGL or audio) or on headless browser pages (today's harness).
+- **Files:** `tools/clashforged/lab/kernel-spike.mjs`. It boots the engine package and the arena code in a Node worker,
+  plays the BL0.3 determinism spec, and compares the record with the browser's.
+- **Measure:**
+  - Identical records (the same seed gives the same match in Node as in the browser).
+  - Matches per second per core.
+  - The list of browser-only dependencies that had to be stubbed.
+- **Exit, one of two:**
+  - Records match and throughput is at least 3 times the pages: the runner (BL1.2) uses kernel workers, with pages kept
+    for anything that renders.
+  - Otherwise, a written list of what blocks it, filed against the split's engine boundary; the runner uses pages.
 
 ---
 
@@ -120,15 +190,23 @@ Phase 0 (prep) --> Phase 1 (Lab MVP) --+--> Phase 2 (sheets, drafts, roster) --+
     - `DELETE /__lab/runs/:id` (cancel);
     - `GET /__lab/events` (server-sent events: progress, partial standings, done);
     - `GET /__lab/contract`, `GET /__lab/baseline`.
-  - `tools/lab/runner.mjs`: the page pool, extracted from `duel-batch.mjs`, which becomes a CLI over it.
+  - `tools/lab/runner.mjs`: the worker pool, extracted from `duel-batch.mjs`, which becomes a CLI over it. Kernel
+    workers or headless pages, as BL0.5 decided, behind one interface.
   - `tools/lab/store.mjs`: the run index over `verify-out/duels/`.
+- **Specs it understands:**
+  - CPU levels as a list (the official setup is `[4, 5]`, D-014).
+  - Personality modes: `mirrored` (both sides the same profile, rotating through all six across seeds: the default,
+    D-015), `fixed:<profile>`, and `lobby` (each fighter's own).
 - **Rules:**
   - Localhost only.
   - Child processes spawned with argument arrays (no shell strings).
   - Writes only under `verify-out/` and `balance/`.
-  - One queue, with N pages (default: physical cores minus one, at most 4).
+  - One queue, with N workers (default: physical cores minus one; at most 4 for pages).
+  - Every record embeds the complete override set it played, the build hash and every sheet hash (D-019): a run never
+    depends on a draft file.
 - **Tests:** `tests/lab-server.test.ts` (spec validation, queue order, cancel, path guards) with the runner mocked.
-- **Exit:** a 90-match smoke posted with `curl` runs, streams progress and lands in the index. Concurrent posts queue.
+- **Exit:** a smoke spec (180 matches, the official setup) posted with `curl` runs, streams progress and lands in the
+  index. Concurrent posts queue.
 
 ### BL1.3 The `/lab.html` route and shell (M)
 
@@ -180,12 +258,17 @@ Phase 0 (prep) --> Phase 1 (Lab MVP) --+--> Phase 2 (sheets, drafts, roster) --+
 
 ### BL2.1 Fighter sheets (L)
 
-- **Goal:** tunables become data (D-L4, design 5.1).
-- **Files:**
-  - `src/content/fighters/sheets/<id>.json` (ten).
-  - `src/content/fighters/sheets.ts`: loader and types.
-  - `src/content/fighters/sheetSchema.ts`: a hand-written validator with precise error messages and ranges taken from
-    `BODY_RANGES`, `STOCK_ATTACK_RANGES` and `STOCK_BALANCE_RANGES`.
+- **Goal:** tunables become data (D-L4, D-016, design 5.1).
+- **Files** (in `packages/fighters`):
+  - `src/sheets/<id>.json` (ten), each with `"$schema": "../fighter-sheet.schema.json"` and a `notes` map (field path to
+    help text) that carries today's explanatory comments.
+  - `src/sheets/types.ts`: the `FighterSheet` TypeScript types, the single source of truth.
+  - `src/sheets/schema.ts`: the runtime validator, with precise error messages and ranges taken from `BODY_RANGES`,
+    `STOCK_ATTACK_RANGES` and `STOCK_BALANCE_RANGES`.
+  - `fighter-sheet.schema.json`: the JSON Schema, generated from the types by
+    `tools/clashforged/gen-sheet-schema.mjs`. A `--check` mode fails CI when it is stale, as `gen:tuning-ranges --check`
+    does today.
+  - `src/sheets/index.ts`: the loader.
 - **The tables become views over the sheets, each keeping its export:** `FIGHTER_BODIES`, `STOCK_BALANCE`,
   `STOCK_ATTACKS`, `FIGHTER_LOADOUTS`, `FIGHTER_PERSONALITIES`.
 - **Kit numbers:** BL2.2.
@@ -209,12 +292,14 @@ Phase 0 (prep) --> Phase 1 (Lab MVP) --+--> Phase 2 (sheets, drafts, roster) --+
 
 ### BL2.3 Drafts, Apply and the changelog (M)
 
-- **Goal:** draft, evidence, apply (D-L6).
+- **Goal:** draft, evidence, apply (D-L6, D-019).
 - **Files:**
   - `tools/lab/sheets.mjs`: read; validate; apply a draft to the sheets (a JSON write with stable key order and
     formatting); and a diff.
+  - `tools/lab/drafts.mjs`: drafts as local working state in `.lab/drafts/<name>.json` (added to `.gitignore`), with
+    export to and import from a file to share one.
   - Endpoints:
-    - `GET` and `PUT /__lab/drafts/:name`;
+    - `GET` and `PUT /__lab/drafts/:name`; `POST /__lab/drafts/import`, `GET /__lab/drafts/:name/export`;
     - `POST /__lab/apply` with a draft, the evidence run ids and a note.
   - The changelog writer: an entry in `balance/CHANGELOG.md` with the diff table, evidence links, measured deltas,
     date and git commit.
@@ -325,8 +410,18 @@ three checks prove it:
   - `src/core/moves.ts`: types.
   - `src/fighters/moves/adapter.ts`: v1 kinds to v3 slots.
   - The sheet schema accepts v3.
-  - `ArenaSlots` reads moves through one `moveFor(fighter, slot)` accessor.
-- **Exit:** the equivalence batch is identical. Every v1 move round-trips through the adapter.
+  - `ArenaSlots` reads moves through one `moveFor(fighter, slot)` accessor. It resolves an unfilled optional slot
+    through the fallback table (design 5.2, D-017), declared in the schema, never ad hoc in engine code.
+  - The core set (16 slots) and the fallback table live in `src/moves/slots.ts`, shared by the engine, the schema, the
+    analyser, the CPU and the Lab.
+- **The completeness gate starts honest.** Today's fighters fill five of the sixteen core slots, through the adapter.
+  - The L0 core-completeness check is a **fail** from day one.
+  - Each fighter carries an explicit waiver in `balance/waivers.json` listing its missing core slots, with an expiry at
+    the milestone its moveset is due.
+  - The debt is visible in the Lab and shrinks as moves are authored; a waiver can only list slots that are actually
+    missing.
+- **Exit:** the equivalence batch is identical. Every v1 move round-trips through the adapter. The waivers list exactly
+  the missing core slots.
 
 ### BL4.2 Hitbox windows and per-move multipliers (L)
 
@@ -425,6 +520,28 @@ Each new move needs poses. The Move Lab plays any move on the nearest existing p
 exists. `docs/arena/platform-fighter/SPRITES.md` owns the pipeline; a move's sheet entry can name its pose set so missing
 art is listed, not silent.
 
+### BL4.13 Stale-move negation (M)
+
+- **Goal:** D-018, a match rule, on by default.
+- **Files:**
+  - `config/stockRules` (rule data: queue length, scale per position, refresh rule);
+  - the stock blow resolution (damage and knockback scaled by the move's staleness);
+  - the HUD (an optional, subtle cue);
+  - telemetry (each hit records its staleness factor);
+  - the analyser (always FRESH values).
+- **Order:**
+  1. Built with the rule off: the equivalence batch must be identical.
+  2. Turned on in its own change, with a full official-setup run that becomes the new baseline in the same commit.
+- **Tests:**
+  - A repeated move decays and refreshes as specified.
+  - Projectiles and throws follow the rule's scope.
+  - The power budget and the KO calculator ignore staleness.
+- **Measure, in the change that turns it on:**
+  - Blow concentration (the dominant-blow gate) before and after.
+  - Match length.
+  - The win-rate spread.
+  - Any fighter whose rate moves more than its interval is re-tuned before the change merges.
+
 ---
 
 ## Phase 5. Review and matchups: understand (about 1 week)
@@ -468,17 +585,24 @@ art is listed, not silent.
 - **Files:**
   - `tools/lab/gates.mjs`: contract and baseline in, a pass/warn/fail list out, written as markdown.
   - `package.json` scripts:
-    - `balance:smoke`: a lab build, 90 matches at Hard, early stopping, gates, about 3 minutes;
-    - `balance:full`: L3.
+    - `balance:smoke`: a lab build; 90 pairs at Hard and at Expert, mirrored personalities rotating (180 matches);
+      early stopping; gates; about 5 minutes on pages;
+    - `balance:full`: L3 (2,160 matches at the official setup), then the lobby personalities, reported.
 - **Exit:** smoke on `main` passes. Smoke with a planted overpowered draft (`stockBalance.mara-quell.dealt=1.6`) fails
   and names Mara.
 
 ### BL6.3 CI (M)
 
-- **Workflow:**
-  - On pull requests touching `src/content/fighters/`, `src/config/stock*`, `src/fighters/` or `src/arena/`:
-    `balance:smoke` runs as a warning with its summary as a job summary.
-  - Nightly, scheduled: `balance:full`; artifacts uploaded; an issue opened when a fail-level gate trips.
+- **Workflow (D-020: strict, with waivers):**
+  - Every build: the L0 and L1 gates (`tests/balance-static.test.ts` and the sheet-schema `--check`) fail the build.
+  - On pull requests touching `packages/fighters/` or the arena, move or stock-rule code in `apps/clashforged/`:
+    `balance:smoke` is a **required check**. Its summary is the job summary; a fail-level gate blocks the merge.
+  - Nightly, scheduled: `balance:full`; artifacts uploaded. A fail-level gate opens an issue and **blocks releases**
+    (the release workflow reads the last nightly result) until fixed or waived.
+  - **The only escape hatch is a waiver:** an entry in `balance/waivers.json` naming the gate, the fighter or move, the
+    reason and an expiry date, reviewed like code. An expired waiver fails the build.
+- **Determinism makes it fair:** the smoke uses fixed seeds and a frozen build, so a required check cannot fail at
+  random (BL0.3 proves this; a non-deterministic result is a bug, not a retry).
 - **Note:** the CI browser step has been red for unrelated reasons (`docs/PROBE-HEALTH.md`). Fix or quarantine it
   first, so a balance warning is not lost among old failures.
 
@@ -508,8 +632,9 @@ art is listed, not silent.
 
 ## Phase 7. Later
 
-- **BL7.1 The headless kernel runner (XL, after split phases 1-3).** Matches run in Node worker threads with no browser,
-  using the engine package with no DOM. Target: 5-10 times the throughput, so the full matrix is a pre-merge check.
+- **BL7.1 Unblock the headless kernel (XL, only if BL0.5 found blockers).** Remove the browser-only dependencies BL0.5
+  listed from the engine's simulation path, so matches run in Node worker threads. Target: 5-10 times the throughput, so
+  the full matrix can become a pre-merge check. If BL0.5 already succeeded, this package is done.
 - **BL7.2 Human match telemetry (M).** The live Duel writes v2 records (dev builds, opt-in). The Lab shows human against
   CPU usage and matchup tables once there are enough matches.
 - **BL7.3 A hosted Lab (L).** Runs and drafts shared through the AuthorLink relay, per the original Tuning Lab idea.
@@ -532,16 +657,23 @@ Probes click with real mouse events (CLAUDE.md), run against a frozen build, and
 | **The CPU is the instrument.** A CPU weakness reads as a fighter weakness. | The behaviour gate in every layer; coverage; skill-gap tracking; the baseline is re-run after any CPU change; L5 human data when it exists |
 | **Noise is read as signal.** Seeds alone move a fighter about 10 points at 72 matches. | Intervals everywhere; significance on every delta; early stopping that needs evidence; enough seeds per decision; never tune on one run |
 | **Scope.** Ten screens and a moveset engine is a lot. | The milestones are independently useful. M1 and M2 alone make attribute work safe. |
-| **The split moves files under this work.** | Isolated folders (design section 4); the move script carries them; split phase 6 is announced and Lab branches merge first |
-| **JSON sheets lose TypeScript comments that document numbers.** | A `notes` field per section in the sheet; the schema module documents each field; the editor shows field help from it |
-| **Batches are slow until the headless kernel.** | Early stopping; smoke before full; a cache of runs by spec hash, so an identical spec is never re-run |
+| **The split slips, and balance tooling waits with it** (D-021). | The interim routine ("Before the Lab") after every fighter change; the split's phases are the Lab's critical path, so its progress is tracked here; the Lab starts the day phase 6 lands |
+| **JSON sheets lose TypeScript comments that document numbers.** | The `notes` map in each sheet (field path to help text) carries them; the generated JSON Schema carries the type documentation into editors; the Lab shows both as field help |
+| **Batches are slow on pages** (the official setup doubles them: two CPU levels). | BL0.5 measures the kernel route first; early stopping; smoke before full; a cache of runs by spec hash, so an identical spec is never re-run |
+| **Required CI checks feel heavy.** | Deterministic seeds and frozen builds (no flaky failures); the smoke runs only on fighter, move and arena changes; waivers are the explicit, reviewed escape hatch |
 | **A frozen build drifts from the source being edited.** | Builds are keyed by content hash and recorded in every run; the Lab shows "this run played build X, your source is now Y" |
 
-## First steps (the next session)
+## First steps
+
+**Now, before the split:** the interim routine after every fighter change. Nothing of the Lab is built yet.
+
+**The day the split's phase 6 lands:**
 
 1. BL0.1 and BL0.4: register every root at boot; write the balance store from `confirm-final` and pass 1.
-2. BL0.2: extract the analyser library; prove a byte-identical report.
-3. BL1.1: frozen lab builds. Every later batch, and every agent working in parallel, depends on them.
-4. BL1.2 and BL1.3, then BL1.4-1.6: the MVP.
+2. BL0.3 and BL0.5: prove determinism, and measure whether a match runs without a browser. This decides the runner.
+3. BL0.2: extract the analyser library; prove a byte-identical report.
+4. BL1.1: frozen lab builds. Every later batch, and every agent working in parallel, depends on them.
+5. BL1.2 and BL1.3, then BL1.4-1.6: the MVP.
+6. The first official-setup full run (Hard and Expert, mirrored rotation) as the new baseline.
 
 Briefs for parallel agents go in `docs/arena/briefs/` as each package starts (`WORKFLOW.md` has the template).
