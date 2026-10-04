@@ -66,10 +66,10 @@ try {
       ready: document.querySelector('#versus-start')?.textContent?.trim(),
       art: imgs.map(i => i.dataset.art),
       mirrored: imgs.map(i => new DOMMatrix(getComputedStyle(i).transform).a < 0),
-      cards: [...document.querySelectorAll('.versus-device-label')].map(e => e.textContent),
+      cards: [...document.querySelectorAll('#versus-lobby .versus-device-label')].map(e => e.textContent),
       selects: document.querySelectorAll('#versus-lobby select').length,
       cyclers: [...document.querySelectorAll('#versus-lobby .versus-cycler')].filter(c => !c.hidden).map(c => c.getAttribute('aria-label')),
-      backdrop: document.querySelector('.versus-backdrop > div.on')?.dataset.stage,
+      backdrop: document.querySelector('#versus-lobby .versus-backdrop > div.on')?.dataset.stage,
       focus: document.activeElement?.getAttribute('aria-label'),
     };
   });
@@ -108,7 +108,7 @@ try {
   const stage = await page.evaluate(() => ({
     chosen: window.__game.ctx.versus.stage,
     checked: document.querySelector('.versus-stage-tile[aria-checked="true"]')?.dataset.stage,
-    backdrop: document.querySelector('.versus-backdrop > div.on')?.dataset.stage,
+    backdrop: document.querySelector('#versus-lobby .versus-backdrop > div.on')?.dataset.stage,
   }));
   check(`clicking ${STAGE} chooses it: the tile is checked and the backdrop behind becomes that stage`, stage.chosen === STAGE && stage.checked === STAGE && stage.backdrop === STAGE, JSON.stringify(stage));
   if (shots) await page.screenshot({ path: 'verify-out/duel-ui/1-lobby.png' });
@@ -116,10 +116,10 @@ try {
   // ---- two CPUs: both cards ready, READY reads FIGHT! ----
   await cycleTo(page, 'Player 1 device', 'cpu');
   const ready = await page.evaluate(() => ({
-    status: document.querySelector('.versus-status')?.textContent,
+    status: document.querySelector('#versus-lobby .versus-status')?.textContent,
     go: document.querySelector('#versus-start')?.dataset.go, label: document.querySelector('#versus-start')?.textContent,
-    badges: [...document.querySelectorAll('.versus-ready')].map(b => b.getAttribute('aria-pressed')),
-    glow: [...document.querySelectorAll('.versus-device')].map(c => c.dataset.ready),
+    badges: [...document.querySelectorAll('#versus-lobby .versus-ready')].map(b => b.getAttribute('aria-pressed')),
+    glow: [...document.querySelectorAll('#versus-lobby .versus-device')].map(c => c.dataset.ready),
   }));
   check('with both seats on CPU both cards show ready and READY becomes FIGHT!', ready.go === 'true' && ready.label === 'Fight!' && ready.badges.join() === 'true,true' && ready.glow.join() === 'true,true', JSON.stringify(ready));
 
@@ -178,6 +178,17 @@ try {
   });
   check('the HUD keeps to the corners (cards bottom-left and bottom-right, the timer top-centre) and nothing sits in the middle', layout.clear && layout.corners && layout.timer && layout.art.join() === 'bust,bust', JSON.stringify(layout));
 
+  // ---- the super cut-in: a diagonal band from the caster's side with its bust and the ultimate's name, gone in under 0.6 s ----
+  const cut = await page.evaluate(() => new Promise((resolve) => {
+    const c = window.__game.ctx, el = document.querySelector('.stock-cutin'), at = performance.now();
+    c.events.emit('stockUltimate', { slot: 1, fighter: c.arena.fighterId(1), name: 'Redline' });
+    const shown = { visible: !el.hidden, slot: el.dataset.slot, name: el.querySelector('b')?.textContent, art: el.querySelector('img')?.dataset.art, mirrored: new DOMMatrix(getComputedStyle(el.querySelector('img')).transform).a < 0 };
+    const poll = () => el.hidden ? resolve({ ...shown, goneMs: Math.round(performance.now() - at) }) : requestAnimationFrame(poll);
+    requestAnimationFrame(poll);
+  }));
+  check('an ultimate (stockUltimate) slams the super cut-in: P2\'s band with its bust mirrored and the ultimate\'s name, gone within 0.6 s',
+    cut.visible && cut.slot === '1' && cut.name === 'Redline' && cut.art === 'bust' && cut.mirrored && cut.goneMs <= 700, JSON.stringify(cut));
+
   // ---- the Duel's own pause menu ----
   await page.keyboard.press('Escape');
   await page.locator('#pause-overlay.visible').waitFor({ timeout: 5000 });
@@ -196,7 +207,14 @@ try {
   await page.locator('#pause-overlay.visible').waitFor({ state: 'hidden', timeout: 5000 });
 
   // ---- GAME!, then <NAME> WINS over the pose, then the card; Esc there opens nothing ----
+  await page.evaluate(() => {
+    window.__beats = [];
+    const hud = document.getElementById('stock-match-hud'), banner = hud.querySelector('.stock-banner'), card = hud.querySelector('.stock-result');
+    new MutationObserver(() => window.__beats.push({ what: card.hidden ? (banner.hidden ? 'none' : banner.dataset.kind) : 'card', at: performance.now() }))
+      .observe(hud, { attributes: true, subtree: true, attributeFilter: ['hidden', 'data-kind'] });
+  });
   check('the match can be finished (a ring-out per stock)', await finish(page) === 'finished');
+  const finishedAt = await page.evaluate(() => performance.now());
   const game = await page.evaluate(() => ({ banner: document.querySelector('.stock-banner:not([hidden])')?.textContent, card: document.querySelector('.stock-result').hidden }));
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
@@ -205,7 +223,12 @@ try {
   const wins = await page.locator('.stock-banner').textContent();
   if (shots) await page.screenshot({ path: 'verify-out/duel-ui/4-wins.png' });
   await page.locator('.stock-result').waitFor({ state: 'visible', timeout: 10000 });
-  check('GAME! slams in at once with the card held back, then <NAME> WINS, then the results card', game.banner === 'Game!' && game.card === true && / wins$/.test(wins ?? ''), JSON.stringify({ game, wins }));
+  const timing = await page.evaluate((t0) => {
+    const first = (what) => window.__beats.find(b => b.what === what)?.at;
+    return { wins: Math.round(first('wins') - t0), card: Math.round(first('card') - t0) };
+  }, finishedAt);
+  check('GAME! slams in at once with the card held back, then <NAME> WINS (~0.95 s), then the results card (~2.2 s)',
+    game.banner === 'Game!' && game.card === true && / wins$/.test(wins ?? '') && Math.abs(timing.wins - 950) < 350 && Math.abs(timing.card - 2200) < 450, JSON.stringify({ game, wins, timing }));
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
   const escOnCard = await page.evaluate(() => document.querySelector('#pause-overlay.visible') !== null);

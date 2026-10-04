@@ -89,6 +89,7 @@ export const DUEL_ICON = {
   shield: svg('<path d="M12 3.2 19 6v5.4c0 4.4-3 7.7-7 9.4-4-1.7-7-5-7-9.4V6Z"/>'),
   burst: svg('<path d="M12 20V5M6.5 10.5 12 5l5.5 5.5"/>'),
   air: svg('<path d="M3.5 9.5h11a3 3 0 1 0-3-3M3.5 14.5h14a3 3 0 1 1-3 3"/>'),
+  lan: svg('<rect x="2.5" y="4" width="8" height="6" rx="1"/><rect x="13.5" y="14" width="8" height="6" rx="1"/><path d="M6.5 10v4h11"/><path d="M15 11.5 17.5 14 15 16.5"/>'),
   check: svg('<path d="M5 12.6 9.6 17.2 19 7.4" stroke-width="2.6"/>'),
   ledge: svg('<path d="M4 6h9v14M13 6c3.5 0 6 2.2 6 5"/><path d="M17 9.5l2 1.6 1.6-2"/>'),
   /** The house mark beside the game's name: a circle in a triangle, a line through both. */

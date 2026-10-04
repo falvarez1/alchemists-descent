@@ -198,7 +198,14 @@ try {
       await probe('duel-end', '.stock-result', 600);
       await page.keyboard.press('Escape'); await page.waitForTimeout(250);
       if (await page.evaluate(() => document.querySelector('#pause-overlay.visible') !== null)) { bad++; console.log(`  FAIL  ${w}x${h} duel-end  Esc on the results opened the pause menu`); }
-      await page.evaluate(() => window.__game.ctx.versus.close());
+      // The LAN lobby (ui/DuelLobby) from the select screen's footer: Host, the room code, Join, Back.
+      await page.evaluate(() => { window.__game.ctx.versus.open(); });
+      await page.locator('#versus-lobby').waitFor({ state: 'visible', timeout: 10000 });
+      const lan = await page.getByRole('button', { name: 'Play over LAN', exact: true }).boundingBox();
+      if (lan) await page.mouse.click(lan.x + lan.width / 2, lan.y + lan.height / 2);
+      await page.locator('#duel-network').waitFor({ state: 'visible', timeout: 10000 });
+      await probe('duel-lan', '#duel-network', 400);
+      await page.evaluate(() => { window.__game.ctx.duel?.leave(); window.__game.ctx.versus.close(); document.getElementById('duel-network').hidden = true; });
     }
     if (errs.length) console.log('  page errors:', errs.slice(0, 3));
     await page.close();

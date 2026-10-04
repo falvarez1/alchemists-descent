@@ -51,6 +51,12 @@ export class StockMatchHud {
   private readonly clock = document.createElement('span');
   private readonly message = document.createElement('div');
   private readonly banner = document.createElement('div');
+  /** The super cut-in (stockUltimate): a diagonal band with the caster's bust and the ultimate's name. */
+  private readonly cutin = document.createElement('div');
+  private readonly cutinBust = document.createElement('img');
+  private readonly cutinName = document.createElement('b');
+  private readonly cutinWho = document.createElement('small');
+  private cutinTimer = 0;
   private readonly bannerText = document.createElement('span');
   private readonly rematch = document.createElement('button');
   private readonly change = document.createElement('button');
@@ -72,6 +78,7 @@ export class StockMatchHud {
     this.offs.push(ctx.events.on('levelChanged', () => this.update()), ctx.events.on('modeChanged', () => this.update()));
     // A confirm (a pad's A, Enter, a click) skips the GAME! / WINS beat straight to the results card.
     this.offs.push(ctx.events.on('versusMenu', ({ action }) => { if (action === 'confirm') this.skipToResults(); }));
+    this.offs.push(ctx.events.on('stockUltimate', ({ slot, fighter, name }) => this.superCutIn(slot, fighter, name)));
     this.root.id = 'stock-match-hud';
     this.root.hidden = true;
     this.timer.className = 'stock-timer'; this.timer.setAttribute('role', 'timer');
@@ -127,7 +134,12 @@ export class StockMatchHud {
       root.append(side, body); this.root.append(root);
       this.cards.push({ root, portrait, name, percent, value, stocks, dots, defense, glyphs, special, cells, specialHint });
     }
-    this.root.append(this.banner, this.result);
+    this.cutin.className = 'stock-cutin'; this.cutin.hidden = true; this.cutin.setAttribute('aria-hidden', 'true');
+    const cutBust = document.createElement('span'); cutBust.className = 'stock-cutin-bust';
+    this.cutinBust.className = 'bust-fit'; this.cutinBust.alt = ''; cutBust.append(this.cutinBust);
+    const cutText = document.createElement('span'); cutText.className = 'stock-cutin-text'; cutText.append(this.cutinWho, this.cutinName);
+    this.cutin.append(cutBust, cutText);
+    this.root.append(this.cutin, this.banner, this.result);
     (document.getElementById('canvas-holder') ?? document.body).append(this.root);
     window.addEventListener('keydown', this.onKey, true);
     const tick = (): void => { this.update(); this.raf = requestAnimationFrame(tick); };
@@ -241,6 +253,32 @@ export class StockMatchHud {
     return winner === null ? 'Draw' : `${id ? duelShortName(id) : 'Alchemist'} wins`;
   }
 
+  /**
+   * The super cut-in, under 0.6 s and over by the time the 0.3 s super freeze lets go: the band sweeps in from the caster's
+   * side, holds while the name slams, and carries on out the far side. A second ultimate restarts it.
+   */
+  private superCutIn(slot: number, fighter: FighterId, name: string): void {
+    if (this.root.hidden) return;
+    window.clearTimeout(this.cutinTimer);
+    for (const a of this.cutin.getAnimations({ subtree: true })) a.cancel();
+    this.cutin.dataset.slot = String(slot);
+    showFighterArt(this.cutinBust, fighter);
+    this.cutinName.textContent = name; this.cutinWho.textContent = duelShortName(fighter);
+    this.cutin.hidden = false;
+    const from = slot === 1 ? 1 : -1;
+    if (!reducedMotion()) {
+      this.cutin.animate([
+        { transform: `translateX(${from * 110}%)` },
+        { transform: 'translateX(0)', offset: .2, easing: 'linear' },
+        { transform: `translateX(${-from * 2}%)`, offset: .76, easing: 'cubic-bezier(.5, 0, .9, .4)' },
+        { transform: `translateX(${-from * 110}%)` },
+      ], { duration: 560, easing: 'cubic-bezier(.16, 1, .3, 1)' });
+      this.cutinName.animate([{ transform: 'scale(2.2)', opacity: 0 }, { transform: 'scale(2.2)', opacity: 0, offset: .18 }, { transform: 'scale(.94)', opacity: 1, offset: .4 }, { transform: 'none', offset: .5 }, { transform: 'none' }], { duration: 560, easing: 'ease-out' });
+      this.cutinBust.parentElement?.animate([{ transform: `translateX(${from * 30}px)` }, { transform: `translateX(${-from * 14}px)` }], { duration: 560, easing: 'linear' });
+    }
+    this.cutinTimer = window.setTimeout(() => { this.cutin.hidden = true; }, 560);
+  }
+
   /** A banner slams in across the middle; `ms` 0 holds it until something replaces it. */
   private showBanner(text: string, kind: 'fight' | 'game' | 'wins', ms: number): void {
     this.bannerText.textContent = text; this.banner.dataset.kind = kind;
@@ -308,7 +346,7 @@ export class StockMatchHud {
   }
 
   dispose(): void {
-    cancelAnimationFrame(this.raf); window.removeEventListener('keydown', this.onKey, true);
+    cancelAnimationFrame(this.raf); window.removeEventListener('keydown', this.onKey, true); window.clearTimeout(this.cutinTimer);
     for (const off of this.offs) off(); this.root.remove(); document.body.classList.remove('stock-match');
   }
 }

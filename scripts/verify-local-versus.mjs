@@ -173,8 +173,8 @@ try {
   console.log(JSON.stringify(result, null, 2));
 } catch (error) {
   console.error(await page?.evaluate(() => ({
-    message: document.querySelector('.versus-status')?.textContent,
-    ready: [...document.querySelectorAll('.versus-ready')].map(el => el.getAttribute('aria-pressed')),
+    message: document.querySelector('#versus-lobby .versus-status')?.textContent,
+    ready: [...document.querySelectorAll('#versus-lobby .versus-ready')].map(el => el.getAttribute('aria-pressed')),
     phase: window.__game?.ctx?.versus?.phase, paused: window.__game?.ctx?.state.paused,
     match: window.__game?.ctx?.arena?.stockMatch?.state,
     errors: [...document.querySelectorAll('[role="status"]')].map(el => el.textContent).filter(Boolean).slice(-5),

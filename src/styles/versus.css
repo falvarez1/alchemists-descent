@@ -31,16 +31,16 @@
   --d-flourish: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 12' fill='none'%3E%3Cpath d='M0 6h47' stroke='%23ac744b' stroke-width='1.2'/%3E%3Cpath d='M54 1.4 58.6 6 54 10.6 49.4 6z' stroke='%23dda36c' stroke-width='1.3'/%3E%3Ccircle cx='54' cy='6' r='1.3' fill='%23dda36c'/%3E%3C/svg%3E");
 }
 
-#versus-lobby, #versus-reconnect {
+#versus-lobby, #versus-reconnect, #duel-network {
   --u: min(1vw, 1.7778vh);
   position: fixed; inset: 0; z-index: 220; overflow: auto; box-sizing: border-box;
   color: var(--d-ivory); font-family: var(--d-sans); background: #0b0f13;
 }
-#versus-lobby[hidden], #versus-reconnect[hidden] { display: none; }
-#versus-lobby *, #versus-reconnect * { box-sizing: border-box; }
-#versus-lobby button, #versus-lobby select, #versus-reconnect button { font: inherit; color: inherit; border-radius: 0; cursor: pointer; }
-#versus-lobby button:disabled, #versus-reconnect button:disabled { cursor: default; }
-#versus-lobby :is(button, select):focus-visible, #versus-reconnect button:focus-visible { outline: 2px solid var(--d-teal); outline-offset: 3px; }
+#versus-lobby[hidden], #versus-reconnect[hidden], #duel-network[hidden] { display: none; }
+#versus-lobby *, #versus-reconnect *, #duel-network * { box-sizing: border-box; }
+#versus-lobby button, #versus-lobby select, #versus-reconnect button, #duel-network :is(button, input) { font: inherit; color: inherit; border-radius: 0; cursor: pointer; }
+#versus-lobby button:disabled, #versus-reconnect button:disabled, #duel-network button:disabled { cursor: default; }
+#versus-lobby :is(button, select):focus-visible, #versus-reconnect button:focus-visible, #duel-network :is(button, input):focus-visible { outline: 2px solid var(--d-teal); outline-offset: 3px; }
 
 /* ---------- the room: the chosen stage, dimmed and vignetted, cross-fading with the choice ---------- */
 .versus-backdrop { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
@@ -121,7 +121,7 @@
 /* ---------- a ◀ value ▶ row: chunky copper arrows that flash and nudge on a press and repeat while held ---------- */
 .versus-cycler { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px; outline: none; border-radius: 4px; }
 .versus-cycle-value { min-width: 0; text-align: center; }
-#versus-lobby .versus-arrow {
+:is(#versus-lobby, #duel-network) .versus-arrow {
   display: grid; place-items: center; width: max(26px, calc(var(--u) * 2.3)); height: max(30px, calc(var(--u) * 2.7)); padding: 0; border: 0; background: none;
   color: var(--d-copper-hi); touch-action: none; transition: color .08s, filter .08s;
 }
@@ -130,8 +130,8 @@
   clip-path: polygon(0 50%, 100% 0, 78% 50%, 100% 100%); filter: drop-shadow(0 2px 0 #000c);
 }
 .versus-arrow-next::before { clip-path: polygon(100% 50%, 0 0, 22% 50%, 0 100%); }
-#versus-lobby .versus-arrow:hover:not(:disabled), #versus-lobby .versus-arrow.held { color: var(--seat, var(--d-amber)); filter: brightness(1.25) drop-shadow(0 0 6px color-mix(in srgb, var(--seat, var(--d-amber)) 70%, transparent)); }
-#versus-lobby .versus-arrow:disabled { opacity: .22; }
+:is(#versus-lobby, #duel-network) .versus-arrow:hover:not(:disabled), :is(#versus-lobby, #duel-network) .versus-arrow.held { color: var(--seat, var(--d-amber)); filter: brightness(1.25) drop-shadow(0 0 6px color-mix(in srgb, var(--seat, var(--d-amber)) 70%, transparent)); }
+:is(#versus-lobby, #duel-network) .versus-arrow:disabled { opacity: .22; }
 /* the arcade cursor: the row the keyboard rests on glows in the seat's colour and its arrows bob outward */
 .versus-cycler:focus { outline: none; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--seat, var(--d-amber)) 18%, transparent) 25%, color-mix(in srgb, var(--seat, var(--d-amber)) 18%, transparent) 75%, transparent); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--seat, var(--d-amber)) 70%, transparent); }
 /* (the arrow's glyph bobs, not the button: the hit target holds still) */
@@ -170,7 +170,7 @@
 .versus-device-label { text-align: center; font: 800 max(13px, calc(var(--u) * 1.18))/1.1 var(--d-display); font-variant-numeric: lining-nums; letter-spacing: .12em; text-transform: uppercase; color: var(--seat); }
 .versus-device .versus-cycler { grid-template-columns: auto auto minmax(0, max-content) auto; justify-content: center; gap: calc(var(--u) * .35); }
 .versus-device .versus-cycler.versus-cpu { grid-template-columns: auto minmax(0, max-content) auto; }
-#versus-lobby .versus-device .versus-arrow { width: max(22px, calc(var(--u) * 1.8)); height: max(24px, calc(var(--u) * 2)); }
+:is(#versus-lobby, #duel-network) .versus-device .versus-arrow { width: max(22px, calc(var(--u) * 1.8)); height: max(24px, calc(var(--u) * 2)); }
 .versus-device-icon { display: inline-flex; flex: none; width: max(18px, calc(var(--u) * 1.75)); color: var(--d-paper); }
 .versus-device-icon svg { width: 100%; height: auto; }
 .versus-device .versus-cycle-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 max(12px, calc(var(--u) * 1.05))/1.3 var(--d-sans); letter-spacing: .04em; text-transform: uppercase; color: var(--d-ivory); }
@@ -181,18 +181,18 @@
 .versus-level i { width: max(4px, calc(var(--u) * .42)); height: max(9px, calc(var(--u) * .9)); background: #39424a; transform: skewX(-14deg); }
 .versus-level i.on { background: linear-gradient(#f3b766, #c76a2c); box-shadow: 0 0 4px #ef9a5588; }
 /* readiness: a seal on the card's inner corner, and the card glowing in the seat's colour */
-#versus-lobby .versus-ready {
+:is(#versus-lobby, #duel-network) .versus-ready {
   position: absolute; top: calc(var(--u) * -.85); display: grid; place-items: center; width: max(26px, calc(var(--u) * 2.2)); aspect-ratio: 1; padding: 0;
   border: 1.5px solid color-mix(in srgb, var(--seat) 55%, #000); border-radius: 50%; background: #0b1014; color: transparent;
   box-shadow: 0 0 0 2px #0b1014, 0 2px 6px #000a; transition: background .1s, color .1s, border-color .1s, box-shadow .15s;
 }
 .versus-device-0 .versus-ready { right: calc(var(--u) * -.85); }
 .versus-device-1 .versus-ready { left: calc(var(--u) * -.85); }
-#versus-lobby .versus-ready svg { width: 62%; height: auto; }
-#versus-lobby .versus-ready:hover:not(:disabled) { border-color: var(--seat); color: color-mix(in srgb, var(--seat) 70%, #0b1014); }
-#versus-lobby .versus-ready:focus-visible { outline: none; box-shadow: 0 0 0 2px #0b1014, 0 0 0 4px var(--seat); }
-#versus-lobby .versus-ready[aria-pressed="true"] { border-color: color-mix(in srgb, var(--seat) 70%, #fff); background: var(--seat); color: #10161b; box-shadow: 0 0 0 2px #0b1014, 0 0 calc(var(--u) * 1.1) color-mix(in srgb, var(--seat) 70%, transparent); }
-#versus-lobby .versus-ready:disabled:not([aria-pressed="true"]) { opacity: .45; }
+:is(#versus-lobby, #duel-network) .versus-ready svg { width: 62%; height: auto; }
+:is(#versus-lobby, #duel-network) .versus-ready:hover:not(:disabled) { border-color: var(--seat); color: color-mix(in srgb, var(--seat) 70%, #0b1014); }
+:is(#versus-lobby, #duel-network) .versus-ready:focus-visible { outline: none; box-shadow: 0 0 0 2px #0b1014, 0 0 0 4px var(--seat); }
+:is(#versus-lobby, #duel-network) .versus-ready[aria-pressed="true"] { border-color: color-mix(in srgb, var(--seat) 70%, #fff); background: var(--seat); color: #10161b; box-shadow: 0 0 0 2px #0b1014, 0 0 calc(var(--u) * 1.1) color-mix(in srgb, var(--seat) 70%, transparent); }
+:is(#versus-lobby, #duel-network) .versus-ready:disabled:not([aria-pressed="true"]) { opacity: .45; }
 .versus-device[data-ready="true"] {
   border-color: var(--seat);
   box-shadow: 0 0 calc(var(--u) * 1.4) color-mix(in srgb, var(--seat) 38%, transparent), inset 0 0 calc(var(--u) * 1.6) color-mix(in srgb, var(--seat) 14%, transparent);
@@ -201,7 +201,7 @@
 
 
 /* the copper call to action (and the results' Rematch, arena.css) */
-#versus-lobby #versus-start, .stock-rematch {
+#versus-lobby #versus-start, #duel-network .duel-go, .stock-rematch {
   position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .9em;
   min-width: max(200px, calc(var(--u) * 21)); min-height: max(40px, calc(var(--u) * 3.5)); padding: 0 calc(var(--u) * 3);
   border: 1.5px solid #e38c4c; border-radius: 6px; corner-shape: bevel; color: #f3dfc0;
@@ -210,10 +210,10 @@
   box-shadow: inset 0 0 0 2px #24150f, inset 0 0 0 3px #e38c4c40, 0 0 calc(var(--u) * .9) #e0894a59, 0 calc(var(--u) * .35) calc(var(--u) * 1.2) #000a;
   transition: filter .14s, transform .1s, box-shadow .3s;
 }
-#versus-start::before, #versus-start::after, .stock-rematch::before, .stock-rematch::after { content: ''; flex: none; width: .34em; height: .34em; background: #e9a066; transform: rotate(45deg); box-shadow: 0 0 0 2px #2e1c18, 0 0 0 3px #e9a06688; }
-#versus-start:hover:not(:disabled), .stock-rematch:hover { filter: brightness(1.14); }
-#versus-start:active:not(:disabled), .stock-rematch:active { transform: translateY(1px); }
-#versus-lobby #versus-start:disabled { filter: saturate(.55) brightness(.72); }
+#versus-start::before, #versus-start::after, #duel-network .duel-go::before, #duel-network .duel-go::after, .stock-rematch::before, .stock-rematch::after { content: ''; flex: none; width: .34em; height: .34em; background: #e9a066; transform: rotate(45deg); box-shadow: 0 0 0 2px #2e1c18, 0 0 0 3px #e9a06688; }
+#versus-start:hover:not(:disabled), #duel-network .duel-go:hover:not(:disabled), .stock-rematch:hover { filter: brightness(1.14); }
+#versus-start:active:not(:disabled), #duel-network .duel-go:active:not(:disabled), .stock-rematch:active { transform: translateY(1px); }
+#versus-lobby #versus-start:disabled, #duel-network .duel-go:disabled { filter: saturate(.55) brightness(.72); }
 /* READY straddles the panel's lower frame, as in the concept; everyone ready: it breathes */
 #versus-lobby #versus-start { grid-area: 4 / 1 / 5 / -1; justify-self: center; justify-content: space-between; min-width: max(220px, calc(var(--u) * 21)); padding: 0 calc(var(--u) * 1.2); margin: calc(var(--u) * .7) 0 calc(var(--u) * -2.3); z-index: 2; }
 #versus-lobby #versus-start[data-go="true"] { animation: versus-go .7s ease-in-out infinite; border-color: #ffb36a; color: #fff1d8; }
@@ -256,9 +256,11 @@
 .versus-glyph-a, .versus-glyph-b { min-width: 1.75em; padding: 0; border-radius: 50%; border: 0; color: #08100b; }
 .versus-glyph-a { background: radial-gradient(circle at 40% 35%, #b6f3a4, #4caf3c 70%); }
 .versus-glyph-b { background: radial-gradient(circle at 40% 35%, #ffb3a4, #d0402c 70%); color: #1a0705; }
-#versus-lobby .versus-back { justify-self: start; display: inline-flex; align-items: center; gap: .2em; min-height: 30px; padding: 4px 8px; border: 0; background: none; font: 800 max(11px, calc(var(--u) * 1))/1 var(--d-display); letter-spacing: .14em; text-transform: uppercase; color: var(--d-paper); transition: color .08s; }
-#versus-lobby .versus-back:hover, #versus-lobby .versus-back:focus-visible { color: var(--d-ivory); outline: none; }
-#versus-lobby .versus-back:focus-visible .versus-glyph { border-color: var(--d-teal); }
+.versus-actions { justify-self: start; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; }
+:is(#versus-lobby, #duel-network) .versus-lan svg { width: 1.5em; height: auto; margin-right: .3em; color: var(--d-copper-hi); }
+:is(#versus-lobby, #duel-network) .versus-back { justify-self: start; display: inline-flex; align-items: center; gap: .2em; min-height: 30px; padding: 4px 8px; border: 0; background: none; font: 800 max(11px, calc(var(--u) * 1))/1 var(--d-display); letter-spacing: .14em; text-transform: uppercase; color: var(--d-paper); transition: color .08s; }
+:is(#versus-lobby, #duel-network) .versus-back:hover, :is(#versus-lobby, #duel-network) .versus-back:focus-visible { color: var(--d-ivory); outline: none; }
+:is(#versus-lobby, #duel-network) .versus-back:focus-visible .versus-glyph { border-color: var(--d-teal); }
 .versus-status { margin: 0; text-align: center; white-space: pre; font: 800 max(13px, calc(var(--u) * 1.3))/1.2 var(--d-display); letter-spacing: .12em; text-transform: uppercase; color: var(--d-ivory); text-shadow: 0 2px 0 #000c, 0 0 10px #000; animation: versus-blink 1.1s steps(1) infinite; }
 .versus-status[data-go="true"] { color: var(--d-amber); animation: none; }
 @keyframes versus-blink { 60% { opacity: .35; } }
@@ -277,7 +279,10 @@
 /* speed lines raking across the whole card */
 .versus-splash::before { content: ''; position: absolute; inset: -20%; z-index: 1; pointer-events: none; background: repeating-linear-gradient(115deg, #ffffff07 0 2px, transparent 2px 26px); animation: versus-rake .5s linear infinite; }
 @keyframes versus-rake { to { transform: translateX(-28px); } }
-#versus-lobby[data-phase="loading"] .versus-splash:not(.skipped) { display: grid; }
+#versus-lobby[data-phase="loading"] .versus-splash { display: grid; }
+/* skipped: a white punch; the card stays until the stage is built, then the countdown takes over at once */
+.versus-splash.skipped::after { content: ''; position: absolute; inset: 0; z-index: 3; background: #fff; pointer-events: none; animation: versus-flash .22s ease-out forwards; }
+@keyframes versus-flash { from { opacity: .5; } to { opacity: 0; } }
 .versus-splash-side { position: relative; height: 100%; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 14vh; container-type: size; }
 .versus-splash-side .bust-fit { --bd: calc(100cqh * 1.05); --ay: .34; z-index: 0; }
 /* each half fades into the dark at its foot and toward the middle, so the two halves meet behind the VS */
@@ -387,7 +392,7 @@ body.versus-active #pause-overlay .pause-menu button[data-pause-open="KeyB"] { d
 .pause-duel-controls dd { margin: 0; color: var(--m-muted, #97a89f); }
 
 @media (prefers-reduced-motion: reduce) {
-  #versus-lobby *, #versus-reconnect *, #pause-overlay.duel-pause * { transition: none !important; animation: none !important; }
+  #versus-lobby *, #versus-reconnect *, #duel-network *, #pause-overlay.duel-pause * { transition: none !important; animation: none !important; }
   .versus-backdrop > div { transform: none; }
 }
 
@@ -405,7 +410,7 @@ body.versus-active #pause-overlay .pause-menu button[data-pause-open="KeyB"] { d
 
 /* ---------- narrow screens: one column that scrolls ---------- */
 @media (max-width: 760px) {
-  #versus-lobby, #versus-reconnect { --u: 10px; }
+  #versus-lobby, #versus-reconnect, #duel-network { --u: 10px; }
   .versus-shell { gap: 12px; padding: 12px 12px 16px; }
   .versus-top { flex-wrap: wrap; }
   .versus-motto { display: none; }
@@ -434,6 +439,6 @@ body.versus-active #pause-overlay .pause-menu button[data-pause-open="KeyB"] { d
   .versus-rules li { padding: 0 10px; }
   .versus-stage-foot { white-space: normal; letter-spacing: .16em; }
   .versus-footer { grid-template-columns: 1fr; justify-items: center; text-align: center; }
-  #versus-lobby .versus-back, .versus-prompts, .versus-keys, .controller-notice { justify-self: center; justify-content: center; align-items: center; }
+  .versus-actions, :is(#versus-lobby, #duel-network) .versus-back, .versus-prompts, .versus-keys, .controller-notice { justify-self: center; justify-content: center; align-items: center; }
   .controller-notice span { text-align: center; }
 }

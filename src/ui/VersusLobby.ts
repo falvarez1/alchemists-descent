@@ -144,9 +144,10 @@ export class VersusLobby {
     const prompts = document.createElement('div'); prompts.className = 'versus-prompts'; prompts.append(this.keys, this.notice);
     // Network play (docs/DUEL-LAN.md): the LAN lobby, styled like Back (a footer action, not a website link).
     const lan = document.createElement('button'); lan.type = 'button'; lan.className = 'versus-back versus-lan'; lan.dataset.sfx = 'move';
-    lan.innerHTML = '<span>Play over LAN</span>';
+    lan.innerHTML = `${DUEL_ICON.lan}<span>Play over LAN</span>`;
     lan.addEventListener('click', () => ctx.events.emit('duelOpen'));
-    this.root.querySelector('footer')!.append(back, lan, this.status, prompts);
+    const actions = document.createElement('div'); actions.className = 'versus-actions'; actions.append(back, lan);
+    this.root.querySelector('footer')!.append(actions, this.status, prompts);
 
     // The VS card while the stage loads: both busts slam in, the names under them, the stage at the foot.
     this.splash.className = 'versus-splash'; this.splash.setAttribute('aria-hidden', 'true');
@@ -304,8 +305,11 @@ export class VersusLobby {
     if (action === 'previous' || action === 'next') { at = (at + (action === 'next' ? 1 : controls.length - 1)) % controls.length; this.ctx.audio.duel?.menu('move'); }
     controls[at]?.focus(); if (action === 'confirm') controls[at]?.click();
   }
+  /** Any key, click or pad button on the VS card: stop holding it (LocalVersus.skipIntro); the countdown follows as soon as the stage is built. */
   private skipSplash(): void {
-    if (this.root.dataset.phase === 'loading') this.splash.classList.add('skipped');
+    if (this.root.dataset.phase !== 'loading' || this.splash.classList.contains('skipped')) return;
+    this.splash.classList.add('skipped');
+    this.ctx.versus?.skipIntro();
   }
   /** The chosen stage's backdrop behind the lobby, cross-faded between two layers. */
   private showBackdrop(id: StockStageId): void {
@@ -350,6 +354,8 @@ export class VersusLobby {
     const loading = session.phase === 'loading';
     this.root.dataset.phase = session.phase;
     if (loading && !this.wasLoading) { this.fillSplash(session); this.splash.classList.remove('skipped'); }
+    // (a pad's skip comes through the session)
+    if (loading && session.introCut) this.splash.classList.add('skipped');
     this.wasLoading = loading;
     const opening = !this.shown;
     const deviceKey = JSON.stringify([session.devices, session.seats.map(s => s.device)]);

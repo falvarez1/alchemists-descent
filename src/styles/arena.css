@@ -128,6 +128,32 @@ body.versus-active #stock-match-hud { z-index: 61; }
 .stock-banner[data-kind="fight"] > span { font-size: max(64px, calc(var(--hu) * 13)); font-style: italic; transform: skewX(-6deg); }
 .stock-banner[data-kind="wins"] > span { font-size: max(40px, calc(var(--hu) * 8)); }
 .stock-banner[data-kind="wins"][data-slot="1"] > span { background-image: linear-gradient(180deg, #effffd 8%, #a8f0ea 38%, #65cac5 62%, #2f7f7c 92%); filter: drop-shadow(0 4px 0 #04201e) drop-shadow(0 0 calc(var(--hu) * 2.6) #65cac599); }
+/* ---------- the super cut-in (stockUltimate): a diagonal band from the caster's side, the bust, the ultimate's name ---------- */
+.stock-cutin {
+  --seat: var(--d-amber); --seat-deep: #3a1e0c;
+  position: absolute; left: -4%; right: -4%; top: 28%; height: calc(var(--hu) * 15); z-index: 2; pointer-events: none;
+  display: flex; align-items: center; gap: calc(var(--hu) * 1.5); padding: 0 calc(var(--hu) * 10);
+  clip-path: polygon(0 22%, 100% 0, 100% 78%, 0 100%);
+  background:
+    repeating-linear-gradient(100deg, #ffffff10 0 2px, transparent 2px 34px),
+    linear-gradient(90deg, var(--seat-deep) 0%, color-mix(in srgb, var(--seat) 70%, #000) 46%, var(--seat-deep) 100%);
+  box-shadow: inset 0 3px 0 color-mix(in srgb, var(--seat) 80%, #fff), inset 0 -3px 0 color-mix(in srgb, var(--seat) 80%, #fff);
+  filter: drop-shadow(0 6px 0 #0009);
+}
+.stock-cutin[hidden] { display: none; }
+.stock-cutin[data-slot="1"] { --seat: var(--d-teal); --seat-deep: #0a2d2c; flex-direction: row-reverse; clip-path: polygon(0 0, 100% 22%, 100% 100%, 0 78%); }
+.stock-cutin-bust { position: relative; flex: none; align-self: stretch; width: calc(var(--hu) * 24); overflow: hidden; container-type: size;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 78%, transparent); mask-image: linear-gradient(90deg, transparent, #000 18%, #000 78%, transparent); }
+.stock-cutin-bust .bust-fit { --bd: calc(100cqh / (var(--face, .105) * 2.7)); --ax: .5; --ay: .44; }
+.stock-cutin[data-slot="1"] .bust-fit[data-art="bust"] { --exu: calc(1 - var(--ex, .5)); transform: scaleX(-1); }
+.stock-cutin-text { display: flex; flex-direction: column; min-width: 0; }
+.stock-cutin[data-slot="1"] .stock-cutin-text { align-items: flex-end; text-align: right; }
+.stock-cutin-text small { font: 800 max(12px, calc(var(--hu) * 1.5))/1 var(--d-display); letter-spacing: .3em; text-transform: uppercase; color: #fff1d8; text-shadow: 0 2px 0 #0008; }
+.stock-cutin-text b {
+  display: block; white-space: nowrap; font: 800 max(34px, calc(var(--hu) * 6.4))/1 var(--d-display); font-style: italic; letter-spacing: .02em; text-transform: uppercase;
+  background: linear-gradient(180deg, #ffffff 10%, #fff1d2 40%, color-mix(in srgb, var(--seat) 60%, #fff) 75%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 4px 0 #000b) drop-shadow(0 0 calc(var(--hu) * 1.6) color-mix(in srgb, var(--seat) 80%, transparent));
+}
 /* a lost stock: a ring flies out from its bead */
 .stock-dot { position: relative; }
 .stock-burst { position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--seat); pointer-events: none; }
