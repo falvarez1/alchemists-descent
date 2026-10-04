@@ -1,5 +1,5 @@
 import type { CastAction, Ctx, Projectile } from '@/core/types';
-import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
+import { PLAYER_H, PLAYER_HALF_W, PLAYER_STEP_UP } from '@/core/types';
 import type { MeView, ShotView } from '@/arena/ai/worldView';
 import { AI_BEHAVIOR } from '@/config/aiBehavior';
 import { PLAYER_PROJECTILE_SPEED, projectileGravity } from '@/combat/projectileDefs';
@@ -97,7 +97,14 @@ export function safeDrop(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: numb
     }
     // Test the eventual standing pose. Support twelve cells below a midair
     // pose does not establish that the descent itself is safe.
-    if (ctx.physics.cellBlocks(Math.round(x), Math.round(y + down + 1))) return safeFooting(ctx, x, y + down, danger);
+    if (ctx.physics.cellBlocks(Math.round(x), Math.round(y + down + 1))) {
+      // A lump of rubble, ice or ash beside the column is a step the body climbs on its own (PLAYER_STEP_UP), not a wall:
+      // judged at the feet row alone, one frozen shard on a stock deck froze both CPUs for minutes.
+      for (let up = 0; up <= PLAYER_STEP_UP; up++) {
+        if (ctx.physics.entityFree(x, y + down - up, PLAYER_HALF_W, PLAYER_H)) return safeFooting(ctx, x, y + down - up, danger);
+      }
+      return false;
+    }
   }
   return false;
 }

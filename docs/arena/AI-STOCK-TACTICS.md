@@ -24,8 +24,20 @@ Normal) measured **37.8 crossings a minute, 33.6 of them in the air, each fighte
    stuck detector's "shake loose" jump on the first step. Up and down are now taps; idle hands count as stuck only while the
    bot has wanted to move.
 
-After the rebuild the same bout measures 1.4-2.3 crossings a minute on one surface (respawns and fighters on different
-platforms excluded), about 20% of the fight airborne outside hitstun, and the match ends by stocks.
+After the rebuild the same seeded bout (`diag-duel-cpu.mjs`, which counts every crossing, respawns included) measures
+3.3 airborne crossings a minute (was 33.6), about 6 voluntary jumps a minute per fighter (was about 45), 29 melee hits in 55
+seconds (was 7), and both fighters throw all four blows. Across the roster (`duel-batch`, 180 matches, every ordered pair
+on all four stages, Normal):
+
+| Check | Before (main, 5527cc4) | After |
+| --- | --- | --- |
+| Crossings through each other on one surface | (37.8 a minute, any surface, in the traced bout) | 2.9 a minute |
+| Airborne outside hitstun | about 50% (traced bout) | 22% |
+| Matches reaching the 6-minute clock | 27% (first rebuild, before the ember-wall fix) | 6% |
+| Self-destructs | n/a | 0.04 a match |
+| Median match | n/a | 94 s |
+
+The remaining timeouts are matchups where neither can finish (both heavy, or a light fighter kiting); the analyser lists them.
 
 ## The rules
 

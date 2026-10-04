@@ -41,7 +41,7 @@ try {
     let lastSide = 0, crossings = 0, airCross = 0;
     const air = [0, 0], jumps = [0, 0], wasGround = [true, true], kinds = [{}, {}];
     let fighting = 0, close = 0, dist = 0;
-    const hopLog = [], lastHops = [0, 0];
+    const hopLog = [], lastHops = [0, 0], lastAtk = [0, 0];
     for (let i = 0; i < ticks && a.stockMatch.state !== 'finished'; i++) {
       g.tick(false, { forcePaused: true });
       if (a.stockMatch.state !== 'fighting') continue;
@@ -73,10 +73,10 @@ try {
         }
         lastHops[s] = hopsNow;
         if (!p[s].grounded) air[s]++;
-        if (wasGround[s] && !p[s].grounded && p[s].vy < -1) jumps[s]++;
+        if (wasGround[s] && !p[s].grounded && p[s].vy < -1 && p[s].stunT <= 0) jumps[s]++; // a jump, not a launch
         wasGround[s] = p[s].grounded;
         const atk = a.stockAttack(s);
-        if (atk?.busy && atk.age === 0) kinds[s][atk.kind] = (kinds[s][atk.kind] ?? 0) + 1;
+        if (atk?.busy && atk.id !== lastAtk[s]) { kinds[s][atk.kind] = (kinds[s][atk.kind] ?? 0) + 1; lastAtk[s] = atk.id; }
       }
       if (i % 2 === 0) trace.push({ t: c.state.frameCount, p: [0, 1].map(s => {
         const b = a.bundle(s), k = b.input.keys, bot = status[s];

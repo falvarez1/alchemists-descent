@@ -66,6 +66,7 @@ for (let r = 1; r <= rounds; r++) {
   const spread = Math.max(...Object.values(rates)) - Math.min(...Object.values(rates));
   console.log(IDS.map((id) => `${id.split('-')[0]} ${(rates[id] * 100).toFixed(0)}%`).join('  '), `| spread ${(spread * 100).toFixed(0)} pts`);
   history.push({ round: r, overrides: { ...current }, rates, spread, flags: report.flags });
+  savePatch();
   const out_ = IDS.filter((id) => Math.abs(rates[id] - 0.5) > tolerance);
   if (out_.length === 0) { console.log('every fighter is inside the band: done'); break; }
   if (r === rounds) break;
@@ -84,8 +85,15 @@ for (let r = 1; r <= rounds; r++) {
   }
   if (Object.keys(pinned).length) console.log('pinned at a range limit (needs a moveset or kit change):', Object.keys(pinned).join(', '));
 }
-const patch = { url, seeds, stage, level, personality, knobs, overrides: Object.fromEntries(Object.entries(current).filter(([k, v]) => v !== shipped[k])), history, pinned };
-writeFileSync(`${out}/balance-patch.json`, JSON.stringify(patch, null, 2));
+// The best round so far (the smallest spread) is what a stopped or finished run hands over, not merely the last one.
+function savePatch() {
+  const best = history.reduce((a, b) => (b.spread < a.spread ? b : a), history[0]);
+  const patch = { url, seeds, stage, level, personality, knobs, bestRound: best?.round, overrides: Object.fromEntries(Object.entries(best?.overrides ?? current).filter(([k, v]) => v !== shipped[k])), history, pinned };
+  writeFileSync(`${out}/balance-patch.json`, JSON.stringify(patch, null, 2));
+  return patch;
+}
+const patch = savePatch();
+current = { ...shipped, ...patch.overrides }; // --apply writes the best round
 console.log(`\nwrote ${out}/balance-patch.json (${Object.keys(patch.overrides).length} overrides)`);
 
 if (args.includes('--apply')) {

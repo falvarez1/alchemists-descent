@@ -25,9 +25,11 @@ try {
       await c.console.exec('arena bot 0 off'); await c.console.exec('arena bot 1 off');
       c.state.worldSeed = 43; a.reset();
       for (let i = 0; i < 125; i++) g.tick(false, { forcePaused: true });
+      // The stage's own heights (the raised platforms were lowered in the arcade pass: never hard-code them).
+      const deckY = a.stockStage.main.y - 1, platY = a.stockStage.platforms[0].y - 1;
       for (const slot of [0, 1]) {
         const b = a.bundle(slot), baseX = slot ? startX : 630, x = mirror ? 1600 - baseX : baseX;
-        Object.assign(b.player, { x, y: slot ? 639 : 559, vx: 0, vy: 0, fx: 0, fy: 0, grounded: true, invuln: 0, stunT: 0 });
+        Object.assign(b.player, { x, y: slot ? deckY : platY, vx: 0, vy: 0, fx: 0, fy: 0, grounded: true, invuln: 0, stunT: 0 });
         if (slot === 1) b.player.levit = fuel;
         for (const key of Object.keys(b.input.keys)) b.input.keys[key] = false;
         b.input.mouse.down = false;
@@ -51,7 +53,7 @@ try {
           trace.push({ tick, x: p.x, y: p.y, vx: p.vx, vy: p.vy, fuel: p.levit, maxFuel: p.maxLevit, grounded: p.grounded,
             target: { x: rival.x, y: rival.y }, keys: { ...a.bundle(1).input.keys }, bot: structuredClone(status.data.bots[1]) });
         }
-        if (p.grounded && p.y === 559 && Math.abs(p.x - rival.x) < 30) { landed = tick; break; }
+        if (p.grounded && p.y === platY && Math.abs(p.x - rival.x) < 30) { landed = tick; break; }
       }
       return { startX, fuel, mirror, obstructed, landed, downs: a.bout.downs, trace };
     }, scenario);

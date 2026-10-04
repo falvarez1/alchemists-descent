@@ -9,6 +9,20 @@ import { Control, StuckDetector } from '@/arena/ai/control';
 import type { BrainSelf } from '@/arena/ai/brain';
 
 describe('observed firing paths', () => {
+  test('a one-cell lump of ice beside the column is a step, not unsafe ground (the frozen-deck stall)', () => {
+    const world = new World();
+    for (let x = 590; x <= 650; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);
+    world.replaceCellAt(world.idx(628, 639), Cell.Ice, 0);
+    const blocks = (x: number, y: number): boolean => { const t = world.type(Math.round(x), Math.round(y)); return t === Cell.Metal || t === Cell.Ice; };
+    const free = (cx: number, cy: number, hw: number, h: number): boolean => {
+      for (let dx = -hw; dx <= hw; dx++) for (let dy = 0; dy < h; dy++) if (blocks(cx + dx, cy - dy)) return false;
+      return true;
+    };
+    const ctx = { world, physics: { entityFree: free, cellBlocks: blocks } } as unknown as Pick<Ctx, 'world' | 'physics'>;
+    expect(free(630, 639, 4, 17)).toBe(false); // the lump is inside the body box at the feet row...
+    expect(safeDrop(ctx, 630, 639)).toBe(true); // ...but the body steps onto it
+    expect(safeDrop(ctx, 640, 639)).toBe(true);
+  });
   test('rejects a one-cell flame inside the standing body between its centre and edge', () => {
     const world = new World();
     for (let x = 590; x <= 650; x++) world.replaceCellAt(world.idx(x, 640), Cell.Metal, 0);

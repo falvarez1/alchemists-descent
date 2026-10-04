@@ -24,7 +24,6 @@ import { STOCK_STAGE, type StockStageDef } from '@/config/stockStage';
 import { STOCK_DODGE } from '@/config/stockMovement';
 import { stockMoveset } from '@/config/stockAttacks';
 import { stockAttackOverlaps } from '@/arena/StockAttack';
-import { StockFootwork } from '@/arena/ai/stockFootwork';
 import { AdaptiveMemory } from '@/arena/ai/adaptiveMemory';
 import { planPursuit } from '@/arena/ai/pursuit';
 import type { PursuitPlan } from '@/arena/ai/pursuit';
@@ -95,7 +94,6 @@ export class BasicBrain implements Brain {
   private threatened = false;
   private deadSince = -1;
   private wasHolding = false;
-  private readonly stockFootwork = new StockFootwork();
   private readonly learning = new AdaptiveMemory();
   private pursuit: (PursuitPlan & { started: number }) | null = null;
   private lastApproach: (PursuitPlan & { until: number }) | null = null;
@@ -158,7 +156,6 @@ export class BasicBrain implements Brain {
     this.status.navigation = null;
     this.meleeChoice = null; this.meleeUntil = 0; this.meleeContext = '';
     this.attackTarget = null;
-    this.stockFootwork.reset();
     this.tactics.reset(keepLearning); this.order = null; this.beat = false;
     this.control?.reset();
     this.exec.reset();
@@ -515,7 +512,7 @@ export class BasicBrain implements Brain {
     const hi = this.range + style.band;
     switch (this.intent) {
       case 'approach':
-        this.goalX = stock ? this.stockFootwork.goal(me.x, target.x, tick) : target.cx - dir * (hi - 6);
+        this.goalX = target.cx - dir * (hi - 6);
         break;
       case 'recover':
       case 'retreat': {
@@ -538,7 +535,7 @@ export class BasicBrain implements Brain {
         break;
       }
       case 'pressure':
-        this.goalX = stock ? this.stockFootwork.goal(me.x, target.x, tick) : target.cx - dir * Math.max(AI_BEHAVIOR.pressureRange, me.weapon.minRange + 12, this.range * 0.65);
+        this.goalX = target.cx - dir * Math.max(AI_BEHAVIOR.pressureRange, me.weapon.minRange + 12, this.range * 0.65);
         break;
       case 'reposition':
         this.goalX = target.cx - dir * 12;

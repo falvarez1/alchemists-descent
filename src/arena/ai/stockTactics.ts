@@ -471,7 +471,7 @@ export class StockTactics {
         order.strike = strike; this.count(`strike_${strike}`);
         const spec = me.moves[strike];
         this.approachAfter = tick + spec.startup + spec.active + spec.recovery + 8 + rng.int(10);
-        order.why = `whiff-punish range ${strike}`;
+        order.why = `poke what walked in: ${strike}`;
       }
     }
     // Turn to face the opponent while standing (a one-tick tap, as a person turns).

@@ -286,7 +286,12 @@ export function installDuelTools(game: DuelGame): DuelTools {
         } else lastSide = 0;
         if (spec.traceEvery && spec.traceStatus && fighting % spec.traceEvery === 0) {
           const brains = [d0.brain, rivalDriverFor(ctx, 1)?.brain ?? null];
-          notes.push(brains.map(b => b ? `${b.status.intent}:${b.status.rule}:${b.status.goalX === null ? '-' : Math.round(b.status.goalX)}:${b.status.action ?? ''}` : '-').join(' | '));
+          notes.push(brains.map((b, s) => {
+            if (!b) return '-';
+            const k = arena.bundle(s)!.input.keys, st = b.status;
+            const keys = `${k.left ? 'L' : ''}${k.right ? 'R' : ''}${k.jump ? 'J' : ''}${k.up ? 'U' : ''}${k.down ? 'D' : ''}`;
+            return `${st.intent}:${st.rule}:${st.goalX === null ? '-' : Math.round(st.goalX)}:${st.action ?? ''} keys[${keys}] hz${st.stats.hazardWaits ?? 0}/${st.stats.hazardStops ?? 0} stuck${st.stats.stuck ?? 0}`;
+          }).join(' | '));
         }
         if (spec.traceEvery && fighting % spec.traceEvery === 0) trace.push([fighting, Math.round(p[0].x), Math.round(p[0].y - PLAYER_H / 2), Math.round(p[1].x), Math.round(p[1].y - PLAYER_H / 2)]);
       }
