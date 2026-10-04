@@ -91,16 +91,21 @@ const BEAT_SECONDS = 0.6;
 const SEAT_WORDS = ['one', 'two'] as const;
 
 /**
- * Deliveries that differ from the words. Speech-to-text heard the plain 'Kest' as 'Cast' (and 'Kest Rel' as
- * 'Castrol') in every take: written in capitals the voice holds the E and it comes back as KEST.
+ * Deliveries that differ from the words. NEVER a name in capitals: the voice spells it (the user heard
+ * "K. E. S. T." for KEST). "Rusk wins!" lost its K ("Russ wins"); a beat after the name keeps the K's
+ * closure (scripts/audio/voice-metrics stopGap 130 ms, heard "Rusk wins").
  */
-const SAY: Readonly<Record<string, string>> = { 'fighter.kest-rel': 'KEST REL!', 'wins.kest-rel': 'KEST wins!', ko: 'K. O.!' };
-/** At the fast read (1.2) every delivery of 'Kest Rel' tried was spelled out (K-E-S-T) or heard as 'Castrol': it keeps the voice's own pace. */
-const SPEED: Readonly<Record<string, number>> = { 'fighter.kest-rel': 1 };
+const SAY: Readonly<Record<string, string>> = { 'wins.rusk-emberjaw': 'Rusk! Wins!', ko: 'K. O.!' };
+/**
+ * Winner calls that use more than the short name. Shouted on its own, "Kest" comes back as "Cast" in every
+ * delivery and model tried (respellings, a CMU phoneme tag on eleven_flash_v2/turbo_v2); the whole name,
+ * "Kest Rel", is said as one word ("Kestrel") with the right vowel.
+ */
+const WINS_TEXT: Readonly<Partial<Record<FighterId, string>>> = { 'kest-rel': 'Kest Rel wins!' };
 
 export const DUEL_LINES: readonly DuelLine[] = [
   { id: 'choose', text: 'Choose your fighter!', group: 'select' },
-  ...(Object.entries(DUEL_FIGHTER_NAMES) as Array<[FighterId, string]>).map(([id, name]): DuelLine => ({ id: duelFighterLine(id), text: `${name}!`, say: SAY[duelFighterLine(id)], speed: SPEED[duelFighterLine(id)], group: 'select' })),
+  ...(Object.entries(DUEL_FIGHTER_NAMES) as Array<[FighterId, string]>).map(([id, name]): DuelLine => ({ id: duelFighterLine(id), text: `${name}!`, say: SAY[duelFighterLine(id)], group: 'select' })),
   ...(Object.entries(DUEL_STAGE_NAMES) as Array<[StockStageId, string]>).map(([id, name]): DuelLine => ({ id: duelStageLine(id), text: `${name}!`, group: 'select' })),
   ...SEAT_WORDS.map((word, slot): DuelLine => ({ id: duelReadyLine(slot), text: `Player ${word}, ready!`, group: 'select' })),
   { id: 'challenger', text: 'Here comes a new challenger!', group: 'select' },
@@ -118,7 +123,7 @@ export const DUEL_LINES: readonly DuelLine[] = [
   ...(Object.entries(DUEL_ULTIMATE_NAMES) as Array<[FighterId, string]>).map(([id, name]): DuelLine => ({ id: duelUltimateLine(id), text: `${name}!`, group: 'match' })),
   { id: 'time', text: 'Time!', group: 'result' },
   { id: 'game', text: 'Game!', group: 'result' },
-  ...(Object.entries(DUEL_SHORT_NAMES) as Array<[FighterId, string]>).map(([id, name]): DuelLine => ({ id: duelWinsLine(id), text: `${name} wins!`, say: SAY[duelWinsLine(id)], group: 'result' })),
+  ...(Object.entries(DUEL_SHORT_NAMES) as Array<[FighterId, string]>).map(([id, name]): DuelLine => ({ id: duelWinsLine(id), text: WINS_TEXT[id] ?? `${name} wins!`, say: SAY[duelWinsLine(id)], group: 'result' })),
   { id: 'draw', text: 'Draw game!', group: 'result' },
   // Said on a rematch's first countdown beat, in place of "Three!".
   { id: 'rematch', text: 'Rematch!', group: 'result', maxSeconds: BEAT_SECONDS },

@@ -21,9 +21,9 @@
       "name": "a name is called within 400 ms of being chosen",
       "pass": true,
       "data": [
-        20,
-        12,
-        25
+        38,
+        27,
+        24
       ]
     },
     {
@@ -32,15 +32,15 @@
       "data": [
         {
           "cut": true,
-          "ms": 142
+          "ms": 137
         },
         {
           "cut": true,
-          "ms": 150
+          "ms": 141
         },
         {
           "cut": false,
-          "ms": 1384
+          "ms": 1365
         }
       ]
     },
@@ -66,6 +66,19 @@
       ]
     },
     {
+      "name": "the VS card calls \"Mara Quell! Versus! Brann Rook!\" in order as the match loads, before Three",
+      "pass": true,
+      "data": {
+        "lines": [
+          "fighter.mara-quell",
+          "versus",
+          "fighter.brann-rook"
+        ],
+        "firstLagMs": 8,
+        "loadMs": 4253
+      }
+    },
+    {
       "name": "Three, Two, One, FIGHT are called in order",
       "pass": true,
       "data": [
@@ -79,10 +92,10 @@
       "name": "each countdown call lands on its beat (within 250 ms of the tick that changed it)",
       "pass": true,
       "data": {
-        "count.3": 40.40999999642372,
-        "count.2": 2.080000013113022,
-        "count.1": 2.300000011920929,
-        "fight": 2.1299999952316284
+        "count.3": 10.020000010728836,
+        "count.2": 9.88500002026558,
+        "count.1": 9.770000010728836,
+        "fight": 10.115000009536743
       }
     },
     {
@@ -92,6 +105,14 @@
         39,
         40,
         40
+      ]
+    },
+    {
+      "name": "an ultimate is called by its name on the super sting",
+      "pass": true,
+      "data": [
+        "fight",
+        "ultimate.mara-quell"
       ]
     },
     {
@@ -114,9 +135,9 @@
         ],
         "landed": 27.04,
         "lines": [
-          "count.2",
           "count.1",
           "fight",
+          "ultimate.mara-quell",
           "ring-out",
           "self-destruct",
           "last-stock",
@@ -159,6 +180,11 @@
       ]
     },
     {
+      "name": "the winner's name lands on the HUD banner's beat (950 ms after GAME)",
+      "pass": true,
+      "data": 950
+    },
+    {
       "name": "a rematch opens with \"Rematch!\" and fights again",
       "pass": true,
       "data": [
@@ -177,6 +203,28 @@
       ]
     },
     {
+      "name": "skipping the VS card fades its call where it stands: the rest is never said",
+      "pass": true,
+      "data": [
+        {
+          "line": "fighter.mara-quell",
+          "cut": false
+        },
+        {
+          "line": "versus",
+          "cut": false
+        },
+        {
+          "line": "fighter.brann-rook",
+          "cut": true
+        },
+        {
+          "line": "count.3",
+          "cut": false
+        }
+      ]
+    },
+    {
       "name": "no campaign narrator line after the Duel door (arrival, tagline, toasts, callouts)",
       "pass": true,
       "data": {
@@ -192,6 +240,17 @@
           "duel.count",
           "duel.fight",
           "player.step.stone",
+          "spell.spark.cast",
+          "world.gong",
+          "duel.super",
+          "spell.spark.impact",
+          "boom.small",
+          "mat.zap",
+          "mat.sizzle",
+          "mat.fire.loop",
+          "arena.hit.light",
+          "arena.hurt.duelist",
+          "mat.electric.loop",
           "arena.hurt.armored",
           "arena.hit.heavy",
           "duel.ko",
@@ -222,6 +281,17 @@
           "duel.count",
           "duel.fight",
           "player.step.stone",
+          "spell.spark.cast",
+          "world.gong",
+          "duel.super",
+          "spell.spark.impact",
+          "boom.small",
+          "mat.zap",
+          "mat.sizzle",
+          "mat.fire.loop",
+          "arena.hit.light",
+          "arena.hurt.duelist",
+          "mat.electric.loop",
           "arena.hurt.armored",
           "arena.hit.heavy",
           "duel.ko",
@@ -247,10 +317,10 @@
       "fight"
     ],
     "lagMs": {
-      "count.3": 40.40999999642372,
-      "count.2": 2.080000013113022,
-      "count.1": 2.300000011920929,
-      "fight": 2.1299999952316284
+      "count.3": 10.020000010728836,
+      "count.2": 9.88500002026558,
+      "count.1": 9.770000010728836,
+      "fight": 10.115000009536743
     },
     "beatTicks": [
       39,
@@ -280,10 +350,14 @@
       "fighter.mara-quell",
       "stage.kiln",
       "ready.1",
+      "fighter.mara-quell",
+      "versus",
+      "fighter.brann-rook",
       "count.3",
       "count.2",
       "count.1",
       "fight",
+      "ultimate.mara-quell",
       "ring-out",
       "self-destruct",
       "last-stock",
@@ -296,10 +370,12 @@
       "duel.ui.move",
       "duel.stage",
       "duel.ready",
+      "duel.stage",
       "duel.count",
       "duel.count",
       "duel.count",
       "duel.fight",
+      "duel.super",
       "duel.ko",
       "duel.ko",
       "duel.ko",
@@ -328,6 +404,17 @@
       "duel.count",
       "duel.fight",
       "player.step.stone",
+      "spell.spark.cast",
+      "world.gong",
+      "duel.super",
+      "spell.spark.impact",
+      "boom.small",
+      "mat.zap",
+      "mat.sizzle",
+      "mat.fire.loop",
+      "arena.hit.light",
+      "arena.hurt.duelist",
+      "mat.electric.loop",
       "arena.hurt.armored",
       "arena.hit.heavy",
       "duel.ko",

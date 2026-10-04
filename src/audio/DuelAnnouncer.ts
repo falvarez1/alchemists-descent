@@ -23,6 +23,8 @@ const LINE_GAP_MS = 60;
 const STALE_MS = 6000;
 /** A cut call fades this fast: the next name is already on its way. */
 const CUT_FADE_S = 0.05;
+/** A skipped VS card's call fades a touch slower: nothing replaces it, so it must not click off. */
+const SKIP_FADE_S = 0.12;
 /** After the last word, the score comes back up after this. */
 const DUCK_RELEASE_MS = 250;
 /** The same VS card asked for twice (the session, then a screen) within this is one call. */
@@ -103,11 +105,17 @@ export class DuelAnnouncer implements DuelAudioApi {
     this.call({ steps: [{ line: duelStageLine(id) }], priority: DUEL_PRIORITY.select, lobbyOnly: true });
   }
 
-  announceVersus(p1: FighterId, p2: FighterId, stage?: StockStageId): void {
-    const key = `${p1}|${p2}|${stage ?? ''}`, now = performance.now();
+  announceVersus(p1: FighterId, p2: FighterId): void {
+    const key = `${p1}|${p2}`, now = performance.now();
     if (key === this.lastVersus.key && now - this.lastVersus.at < VERSUS_REPEAT_MS) return;
     this.lastVersus = { key, at: now };
-    this.call(versusCall(p1, p2, stage));
+    this.call(versusCall(p1, p2));
+  }
+
+  cutVersus(): void {
+    if (this.speaking?.call.tag !== 'versus') return;
+    this.cut(SKIP_FADE_S);
+    this.duck(false);
   }
 
   /* ---------------- the moments ---------------- */
@@ -121,7 +129,7 @@ export class DuelAnnouncer implements DuelAudioApi {
     const calls = lobbyCalls(this.lobby, next);
     if (calls.length) this.call({ steps: calls.flatMap((c) => c.steps), priority: Math.max(...calls.map((c) => c.priority)), lobbyOnly: true });
     // READY pressed: the VS card is up while the stage builds.
-    if (next.phase === 'loading' && this.lobby?.phase === 'lobby') this.announceVersus(next.seats[0].fighter, next.seats[1].fighter, next.stage);
+    if (next.phase === 'loading' && this.lobby?.phase === 'lobby') this.announceVersus(next.seats[0].fighter, next.seats[1].fighter);
     // Leaving the Duel: the cabinet goes quiet.
     if (next.phase === 'idle') this.stop();
     this.lobby = next.phase === 'idle' ? null : next;
@@ -232,7 +240,7 @@ export class DuelAnnouncer implements DuelAudioApi {
   }
 
   /** Stop the call in progress quickly (a newer call has the floor); its lines not yet begun are never said. */
-  private cut(): void {
+  private cut(fadeS = CUT_FADE_S): void {
     const s = this.speaking;
     if (!s) return;
     s.cancelled = true;
@@ -254,8 +262,8 @@ export class DuelAnnouncer implements DuelAudioApi {
       try {
         line.gain.gain.cancelScheduledValues(t);
         line.gain.gain.setValueAtTime(line.gain.gain.value, t);
-        line.gain.gain.linearRampToValueAtTime(0, t + CUT_FADE_S);
-        line.node.stop(t + CUT_FADE_S + 0.01);
+        line.gain.gain.linearRampToValueAtTime(0, t + fadeS);
+        line.node.stop(t + fadeS + 0.01);
       } catch { /* already stopped */ }
     }
   }

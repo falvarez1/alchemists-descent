@@ -11,7 +11,7 @@ export const DUEL_CLIPS: Readonly<Record<string, { readonly url: string; readonl
  },
  "fighter.ilyra-voss": {
   url: "audio/duel/fighter.ilyra-voss.mp3",
-  seconds: 1.69
+  seconds: 1.65
  },
  "fighter.brann-rook": {
   url: "audio/duel/fighter.brann-rook.mp3",
@@ -27,11 +27,11 @@ export const DUEL_CLIPS: Readonly<Record<string, { readonly url: string; readonl
  },
  "fighter.kest-rel": {
   url: "audio/duel/fighter.kest-rel.mp3",
-  seconds: 1.84
+  seconds: 1.32
  },
  "fighter.nox-calder": {
   url: "audio/duel/fighter.nox-calder.mp3",
-  seconds: 1.41
+  seconds: 1.59
  },
  "fighter.edda-morrow": {
   url: "audio/duel/fighter.edda-morrow.mp3",
@@ -63,11 +63,11 @@ export const DUEL_CLIPS: Readonly<Record<string, { readonly url: string; readonl
  },
  "stage.gallery": {
   url: "audio/duel/stage.gallery.mp3",
-  seconds: 1.12
+  seconds: 1.02
  },
  "ready.1": {
   url: "audio/duel/ready.1.mp3",
-  seconds: 1.61
+  seconds: 1.42
  },
  "ready.2": {
   url: "audio/duel/ready.2.mp3",
@@ -75,7 +75,7 @@ export const DUEL_CLIPS: Readonly<Record<string, { readonly url: string; readonl
  },
  challenger: {
   url: "audio/duel/challenger.mp3",
-  seconds: 2.02
+  seconds: 1.84
  },
  versus: {
   url: "audio/duel/versus.mp3",
@@ -99,15 +99,15 @@ export const DUEL_CLIPS: Readonly<Record<string, { readonly url: string; readonl
  },
  ko: {
   url: "audio/duel/ko.mp3",
-  seconds: 0.76
+  seconds: 0.89
  },
  "ring-out": {
   url: "audio/duel/ring-out.mp3",
-  seconds: 1.19
+  seconds: 1.41
  },
  "self-destruct": {
   url: "audio/duel/self-destruct.mp3",
-  seconds: 1.11
+  seconds: 1.47
  },
  "last-stock": {
   url: "audio/duel/last-stock.mp3",
@@ -119,11 +119,11 @@ export const DUEL_CLIPS: Readonly<Record<string, { readonly url: string; readonl
  },
  "ultimate.ilyra-voss": {
   url: "audio/duel/ultimate.ilyra-voss.mp3",
-  seconds: 1.42
+  seconds: 1.43
  },
  "ultimate.brann-rook": {
   url: "audio/duel/ultimate.brann-rook.mp3",
-  seconds: 0.95
+  seconds: 1.02
  },
  "ultimate.sable-fen": {
   url: "audio/duel/ultimate.sable-fen.mp3",
@@ -175,7 +175,7 @@ export const DUEL_CLIPS: Readonly<Record<string, { readonly url: string; readonl
  },
  "wins.sable-fen": {
   url: "audio/duel/wins.sable-fen.mp3",
-  seconds: 1.55
+  seconds: 1.38
  },
  "wins.mara-quell": {
   url: "audio/duel/wins.mara-quell.mp3",
@@ -183,7 +183,7 @@ export const DUEL_CLIPS: Readonly<Record<string, { readonly url: string; readonl
  },
  "wins.kest-rel": {
   url: "audio/duel/wins.kest-rel.mp3",
-  seconds: 2.33
+  seconds: 1.46
  },
  "wins.nox-calder": {
   url: "audio/duel/wins.nox-calder.mp3",
@@ -199,7 +199,7 @@ export const DUEL_CLIPS: Readonly<Record<string, { readonly url: string; readonl
  },
  "wins.rusk-emberjaw": {
   url: "audio/duel/wins.rusk-emberjaw.mp3",
-  seconds: 1.3
+  seconds: 1.48
  },
  "wins.father-thorne": {
   url: "audio/duel/wins.father-thorne.mp3",
@@ -256,7 +256,7 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   id: "fighter.kest-rel",
   text: "Kest Rel!",
   group: "select",
-  heard: "KEST Rel",
+  heard: "Kestrel",
   confirmed: true
  },
  {
@@ -382,7 +382,7 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   id: "ko",
   text: "K.O.!",
   group: "match",
-  heard: "KO",
+  heard: "KO!",
   confirmed: true
  },
  {
@@ -396,7 +396,7 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   id: "self-destruct",
   text: "Self-destruct!",
   group: "match",
-  heard: "Self-destruct",
+  heard: "Self-destruct!",
   confirmed: true
  },
  {
@@ -424,7 +424,7 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   id: "ultimate.brann-rook",
   text: "Redline!",
   group: "match",
-  heard: "Red line",
+  heard: "Redline",
   confirmed: true
  },
  {
@@ -527,9 +527,9 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
  },
  {
   id: "wins.kest-rel",
-  text: "Kest wins!",
+  text: "Kest Rel wins!",
   group: "result",
-  heard: "KEST wins",
+  heard: "Kestrel wins",
   confirmed: true
  },
  {
@@ -557,7 +557,7 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   id: "wins.rusk-emberjaw",
   text: "Rusk wins!",
   group: "result",
-  heard: "Russ wins",
+  heard: "Rusk wins",
   confirmed: true
  },
  {

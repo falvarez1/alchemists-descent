@@ -21,14 +21,14 @@
 
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
 process.env.AUDIO_LOG_NAME ??= 'generation-log.duel-voice.jsonl';
 const { CACHE_DIR, LOG_FILE, LedgerBudget, designVoice, measure, speech, transcribe } = await import('./elevenlabs.mjs');
 const { sibilance } = await import('./cast-voices.mjs');
-const { heardAsAsked, voiceShape } = await import('./voice-metrics.mjs');
+const { bursts, heardAsAsked, syllables, voiceShape } = await import('./voice-metrics.mjs');
 const { DUEL_LINES, DUEL_FIGHTER_NAMES, DUEL_SHORT_NAMES, DUEL_STAGE_NAMES, DUEL_ULTIMATE_NAMES } = await import('../../src/content/audio/duelLines.ts');
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -249,13 +249,22 @@ async function record(budget) {
       const mastered = masterCall(res.file, file, { punch: true, maxSeconds: line.maxSeconds });
       const heard = await transcribe(file, {}, budget);
       const check = heardAsAsked(line.text, heard.text, NAMES, 0.6, HOMOPHONES);
-      takes.push({ take: take + 1, file, heard: heard.text, ok: check.ok, closeness: check.closeness, misses: check.misses, cacheKey: res.key, ...mastered, ...profile(file) });
+      // A spelled name is a voiced burst a letter ("K. E. S. T.": the user heard it; speech-to-text wrote KEST):
+      // more bursts than the line has syllables, by more than a shout's stretched vowel explains, is refused.
+      const voiced = bursts(file).count, expected = syllables(line.text), spelled = voiced > expected + 2;
+      takes.push({ take: take + 1, file, heard: heard.text, ok: check.ok && !spelled, bursts: voiced, syllables: expected, spelled, closeness: check.closeness, misses: check.misses, cacheKey: res.key, ...mastered, ...profile(file) });
     }
     // The take the game plays: of those speech-to-text confirms, the one whose names came back
-    // closest to their spelling ("Brian Rook" over "Fran Rooke"), then the brisker read (a call
-    // that drags is the weaker take); with none confirmed, take 1, flagged for a human.
+    // closest to their spelling ("Brian Rook" over "Fran Rooke"), then the cleaner burst count, then
+    // the brisker read (a call that drags is the weaker take); with none confirmed, take 1, flagged for a human.
     const confirmed = takes.filter((t) => t.ok);
-    const better = (a, b) => (b.closeness > a.closeness + 0.02 || (Math.abs(b.closeness - a.closeness) <= 0.02 && b.seconds < a.seconds * 0.85) ? b : a);
+    // Ties: the take whose voiced bursts sit nearest the line's syllables (no stray letters, no stretched vowels).
+    const stray = (t) => Math.abs(t.bursts - t.syllables);
+    const better = (a, b) => {
+      if (Math.abs(b.closeness - a.closeness) > 0.02) return b.closeness > a.closeness ? b : a;
+      if (stray(b) !== stray(a)) return stray(b) < stray(a) ? b : a;
+      return b.seconds < a.seconds * 0.85 ? b : a;
+    };
     const chosen = confirmed.length ? confirmed.reduce(better) : takes[0];
     rows.push({ ...line, say, takes: takes.map(({ file, ...t }) => ({ ...t, url: `audio/duel/${file.split(/[\\/]/).pop()}` })), chosen: chosen.take, confirmed: confirmed.length > 0 });
     const flag = confirmed.length ? '' : '   <-- NOT CONFIRMED';
@@ -323,4 +332,5 @@ async function main() {
   else await record(budget);
 }
 
-await main();
+// Run as a script; imported (masterCall, for a one-off audition), it does nothing by itself.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();

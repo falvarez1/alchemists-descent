@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { EventBus } from '@/core/events';
 import type { Ctx } from '@/core/types';
 import type { StreamHost } from '@/audio/streamHost';
-import { inArena } from '@/audio/arenaAudio';
+import { inArena, lanLobbyShown } from '@/audio/arenaAudio';
 import { Narrator } from '@/audio/Narrator';
 import { installAudioStingers } from '@/audio/Stingers';
 import { installUiSounds } from '@/audio/UiSounds';
@@ -82,6 +82,15 @@ describe('the arena gate', () => {
     expect(inArena(facts('play', 'd3b'))).toBe(false);
     // The title after a Duel: the world behind it is still the Duel stage, but nobody is in the arena.
     expect(inArena(facts('build', 'fighter-duel'))).toBe(false);
+  });
+
+  it('places a LAN Duel in the arena: the session, and its screen before anyone hosts', () => {
+    expect(inArena({ state: { mode: 'build' }, duel: { active: true } })).toBe(true);
+    const doc = (hidden: boolean | null) => ({ getElementById: (id: string) => (id === 'duel-network' && hidden !== null ? { hidden } : null) }) as unknown as Document;
+    expect(lanLobbyShown(doc(false))).toBe(true);
+    expect(lanLobbyShown(doc(true))).toBe(false);
+    expect(lanLobbyShown(doc(null))).toBe(false);
+    expect(lanLobbyShown(null)).toBe(false);
   });
 });
 
@@ -268,6 +277,10 @@ describe('the announcer\'s recordings', () => {
     expect(DUEL_CLIP_LINES.filter((l) => !l.confirmed).map((l) => `${l.id}: heard "${l.heard}"`)).toEqual([]);
   });
 
+  it('never writes a name in capitals for the voice: it spells capitals out (the user heard "K. E. S. T.")', () => {
+    for (const line of DUEL_LINES) expect(line.say ?? line.text, line.id).not.toMatch(/[A-Z]{3,}/);
+  });
+
   it('names every fighter and stage the way the game does', () => {
     for (const id of FIGHTER_ORDER) {
       expect(DUEL_FIGHTER_NAMES[id]).toBe(FIGHTER_DEFS[id].name);
@@ -332,7 +345,8 @@ describe('the announcer at work', () => {
     events.emit('versusChanged');
     // Scheduled synchronously, before the stage build can block the thread: every line already has its time.
     const card = said().filter((s) => s.line !== 'choose');
-    expect(card.map((s) => s.line)).toEqual(['fighter.ilyra-voss', 'versus', 'fighter.brann-rook', 'stage.kiln']);
+    // The card shows the stage; the call is the two names.
+    expect(card.map((s) => s.line)).toEqual(['fighter.ilyra-voss', 'versus', 'fighter.brann-rook']);
     for (let i = 1; i < card.length; i++) expect(card[i].at).toBeGreaterThan(card[i - 1].at);
     expect(sfx).toContain('duel.stage');
     // The match starts while the card is still talking: "Three!" cuts it, and what had not begun was never said.
@@ -342,7 +356,30 @@ describe('the announcer at work', () => {
     await wait(20);
     const lines = said().map((s) => s.line);
     expect(lines.at(-1)).toBe('count.3');
-    expect(lines).not.toContain('stage.kiln');
+    expect(lines).not.toContain('fighter.brann-rook');
+    announcer.dispose();
+  });
+
+  it('fades the VS call out when the card is skipped, and leaves anything else alone', async () => {
+    const { events, ctx, said, wait, announcer, h } = rig();
+    ctx.versus.phase = 'lobby';
+    events.emit('versusChanged');
+    await wait(20);
+    ctx.versus.phase = 'loading';
+    events.emit('versusChanged');
+    await wait(300);
+    announcer.cutVersus();
+    const card = said().filter((s) => s.line !== 'choose');
+    expect(card.map((s) => [s.line, !!s.cut])).toEqual([['fighter.ilyra-voss', true]]); // the rest never begun: never said
+    expect(announcer.debugSnapshot().busy).toBe(false);
+    await wait(300);
+    expect(h.ducks.at(-1)).toBe(false); // the score comes back up
+    // Not the VS call: nothing happens.
+    events.emit('stockMatchBeat', { state: 'countdown', count: 3, winner: null, reason: null });
+    await wait(20);
+    announcer.cutVersus();
+    expect(said().at(-1)).toMatchObject({ line: 'count.3' });
+    expect(said().at(-1)?.cut).toBeUndefined();
     announcer.dispose();
   });
 
@@ -401,6 +438,6 @@ describe('the announcer at work', () => {
 describe('the cabinet\'s other calls', () => {
   it('shouts an ultimate\'s own name on the super sting, and the VS card in one call', () => {
     expect(ultimateCall('rusk-emberjaw').steps).toEqual([{ sfx: 'duel.super', line: 'ultimate.rusk-emberjaw' }]);
-    expect(versusCall('mara-quell', 'nox-calder', 'gallery').steps.map((s) => s.line)).toEqual(['fighter.mara-quell', 'versus', 'fighter.nox-calder', 'stage.gallery']);
+    expect(versusCall('mara-quell', 'nox-calder').steps.map((s) => s.line)).toEqual(['fighter.mara-quell', 'versus', 'fighter.nox-calder']);
   });
 });

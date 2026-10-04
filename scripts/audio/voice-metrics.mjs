@@ -140,3 +140,63 @@ export function heardAsAsked(asked, heard, names = [], nameSimilarity = 0.6, hom
   }
   return { wer: +(d[a.length][h.length] / Math.max(1, a.length)).toFixed(3), ok: d[a.length][h.length] === 0, closeness: +(closeness / Math.max(1, a.length, h.length)).toFixed(3), misses: misses.reverse(), heardWords: h };
 }
+
+/**
+ * Voiced bursts (syllable nuclei) between `from` and `to` seconds: peaks of the 30 ms-smoothed energy
+ * envelope of the voice below 900 Hz (vowels; an S or a T's release barely reaches it) over -20 dB of the clip's loudest, each standing at least 6 dB above the dip that separates
+ * it from the next. A spoken name is its syllables ("Kest" 1); a SPELLED one is a burst a letter
+ * ("K-E-S-T" 4), which is how a spelled take is caught without listening.
+ */
+export function bursts(file, from = 0, to = Infinity) {
+  const x = pcm(file);
+  // Two passes of a one-pole low-pass at ~900 Hz.
+  const k = Math.exp((-2 * Math.PI * 900) / SR);
+  for (let pass = 0; pass < 2; pass++) { let y = 0; for (let i = 0; i < x.length; i++) { y = (1 - k) * x[i] + k * y; x[i] = y; } }
+  const hop = 160, env = [];
+  for (let off = 0; off + hop <= x.length; off += hop) { let e = 0; for (let i = off; i < off + hop; i++) e += x[i] * x[i]; env.push(e / hop); }
+  const smooth = env.map((_, i) => { let s = 0, n = 0; for (let k = i - 1; k <= i + 1; k++) if (k >= 0 && k < env.length) { s += env[k]; n++; } return 10 * Math.log10(s / n + 1e-12); });
+  const top = Math.max(...smooth);
+  const a = Math.max(0, Math.floor((from * SR) / hop)), b = Math.min(smooth.length, Math.ceil((to * SR) / hop));
+  const peaks = [];
+  for (let i = a + 1; i < b - 1; i++) if (smooth[i] >= smooth[i - 1] && smooth[i] > smooth[i + 1] && smooth[i] > top - 20) peaks.push(i);
+  // Merge peaks that no 6 dB dip separates.
+  const kept = [];
+  for (const p of peaks) {
+    const last = kept.at(-1);
+    if (last === undefined) { kept.push(p); continue; }
+    let dip = Infinity; for (let i = last; i <= p; i++) dip = Math.min(dip, smooth[i]);
+    if (Math.min(smooth[last], smooth[p]) - dip >= 6) kept.push(p);
+    else if (smooth[p] > smooth[last]) kept[kept.length - 1] = p;
+  }
+  return { count: kept.length, at: kept.map((i) => +((i * hop) / SR).toFixed(2)) };
+}
+
+/**
+ * The longest stop closure between `from` and `to` seconds (ms): a run of 5 ms frames at least 18 dB under
+ * the loudest frame of that stretch, with louder sound on both sides. "Rusk wins" closes for the K between
+ * the S and its release; "Russ wins" runs the S straight into the W, so a missing K shows as no gap.
+ */
+export function stopGap(file, from, to) {
+  const x = pcm(file), hop = 80;
+  const a = Math.max(0, Math.floor((from * SR) / hop)), b = Math.min(Math.floor(x.length / hop), Math.ceil((to * SR) / hop));
+  const db = [];
+  for (let f = a; f < b; f++) { let e = 0; for (let i = f * hop; i < (f + 1) * hop; i++) e += x[i] * x[i]; db.push(10 * Math.log10(e / hop + 1e-12)); }
+  if (db.length < 3) return 0;
+  const floor = Math.max(...db) - 18;
+  let best = 0, run = 0, seenLoud = false;
+  for (const v of db) {
+    if (v < floor) { if (seenLoud) run++; }
+    else { if (run > best) best = run; run = 0; seenLoud = true; }
+  }
+  return best * (hop / SR) * 1000;
+}
+
+/** Syllables a line should have (vowel groups a word, a silent final E dropped): the yardstick for bursts. */
+export function syllables(text) {
+  return words(text).reduce((n, w) => {
+    let groups = (w.match(/[aeiouy]+/g) ?? []).length;
+    // A silent final E ("Thorne"), but not a sounded -LE ("Sable", "Castle").
+    if (groups > 1 && /[^aeiouy]e$/.test(w) && !/[^aeiouy]le$/.test(w)) groups--;
+    return n + Math.max(1, groups);
+  }, 0);
+}

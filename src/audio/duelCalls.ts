@@ -29,6 +29,8 @@ export interface DuelCall {
   priority: number;
   /** A select-screen call: not made once the lobby has closed (a name still loading as the match starts). */
   lobbyOnly?: boolean;
+  /** Which call this is, when something outside it can end it (the VS card skipped). */
+  tag?: 'versus';
 }
 
 /**
@@ -107,13 +109,11 @@ export function downCall(ev: EventMap['fighterDown'], opts: { stocksLeft: number
 }
 
 /**
- * The VS card (the match loading): "<P1>! Versus! <P2>!" and the stage, one call so the names never cut
- * each other; the first countdown beat cuts whatever is left of it.
+ * The VS card (the match loading): "<P1>! Versus! <P2>!", one call so the names never cut each other (the
+ * card itself shows the stage). Skipping the card or the first countdown beat cuts whatever is left of it.
  */
-export function versusCall(p1: FighterId, p2: FighterId, stage?: StockStageId): DuelCall {
-  const steps: DuelStep[] = [{ line: duelFighterLine(p1) }, { sfx: 'duel.stage', line: 'versus' }, { line: duelFighterLine(p2) }];
-  if (stage) steps.push({ line: duelStageLine(stage) });
-  return { steps, priority: DUEL_PRIORITY.select };
+export function versusCall(p1: FighterId, p2: FighterId): DuelCall {
+  return { steps: [{ line: duelFighterLine(p1) }, { sfx: 'duel.stage', line: 'versus' }, { line: duelFighterLine(p2) }], priority: DUEL_PRIORITY.select, tag: 'versus' };
 }
 
 /** An ultimate fires (the super freeze): the super sting and the ultimate's own name, shouted. */

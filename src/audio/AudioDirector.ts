@@ -4,7 +4,7 @@ import { LEVELS, SPINE_ROSTERS, nextDoors } from '@/config/worldgraph';
 import { FLOOR_FAUNA } from '@/game/organisms/placement';
 import { failSafe } from '@/audio/failSafe';
 import { BIOME_BEDS, CORE_SFX_PACKS, FLOOR_BEDS, SFX_CUES, type SfxId } from '@/content/audio/sfxCues';
-import { arenaHurtVoice, inArena, needsArenaHurtImpact } from '@/audio/arenaAudio';
+import { arenaHurtVoice, inDuelOrArena, needsArenaHurtImpact } from '@/audio/arenaAudio';
 
 /**
  * Decides what the sampled layer holds in memory and which bed is playing.
@@ -68,7 +68,7 @@ export function installAudioDirector(ctx: Ctx, engine: SfxAudioEngine): () => vo
     const runtime = ctx.state.mode === 'play' ? ctx.levels?.current : null;
     // The arena (the Duel, its lobby, the arena levels) has its own pack and none of the descent's floor beds:
     // the Duel stage borrows the earthen biome, which used to bring the Bellows' bed into every match.
-    const arena = inArena(ctx);
+    const arena = inDuelOrArena(ctx);
     if (arena) wanted.add('arena');
     if (runtime) {
       const def = runtime.def;

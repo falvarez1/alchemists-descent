@@ -83,7 +83,9 @@ The fix is one gate, `inArena()` in `src/audio/arenaAudio.ts`. It is true for th
 
 ## The Duel announcer
 
-An arcade cabinet's voice, entirely separate from the Docent (library "Daniel"): **David, the ElevenLabs library's "Sports Arena Announcer"** (`DduhIyyKkOosbP8VefhP`), `eleven_v3`, stability 0.5, with every call tagged `[shouting]`.
+An arcade cabinet's voice, entirely separate from the Docent (library "Daniel"): **David, the ElevenLabs library's "Sports Arena Announcer"** (`DduhIyyKkOosbP8VefhP`), `eleven_v3`, stability 0.5, every call tagged `[shouting]`.
+
+The user's direction, 2026-10-03: "Everything about Duel mode should scream fast-paced, adrenaline-pumping ARCADE." So the shipped calls are read at eleven_v3's top speed (1.2) and mastered dense and loud: see "The recordings".
 
 ### Casting (measured, since we cannot listen)
 
@@ -105,7 +107,7 @@ Candidates were dropped if speech-to-text did not hear the script back word for 
 | 10 | Jerry B. — broadcast | 267 | 13.6 | −6.7 | 6.12 | 15.0 | −1.24 |
 | 11 | Xavier — dominating, metallic | 157 | 20.0 | −8.6 | 4.85 | 20.2 | dropped: "Selene Wraith" heard as "Sameen, Rafe" |
 
-For scale, the narrator Daniel measures 115 Hz and −15.5 dB presence on his Bellows line. All the clips are in `audition/announcer/` (never shipped), and the audition page lists them in rank order.
+For scale, the narrator Daniel measures 115 Hz and −15.5 dB presence on his Bellows line. All the clips are in `audition/announcer/` (never shipped), and the audition page lists them in rank order. The casting was read at speed 1.0; the shipped calls at 1.2.
 
 ### The calls, each tied to a real moment
 
@@ -116,54 +118,154 @@ For scale, the narrator Daniel measures 115 Hz and −15.5 dB presence on his Be
 | The stage changes | "The Foundry!" / "The Kiln!" / "The Cistern!" / "The Gallery!" | `duel.stage` |
 | A player's seat readies (never the CPU, which is always ready) | "Player one, ready!" / "Player two, ready!" | `duel.ready` |
 | A CPU seat becomes a player's device | "Here comes a new challenger!" | `duel.join` (coin) |
-| Each countdown beat (`stockMatchBeat`, `config/stockRules` `stockCountdownBeat`, the HUD's own number) | "Three!" "Two!" "One!" | `duel.count` |
+| READY starts the match (`versusChanged` lobby → loading: the VS card) | "<P1 full name>! Versus! <P2 full name>!" (the card shows the stage), one call laid on the audio clock at once, so the stage build blocking the thread cannot stretch it; skipping the card (`cutVersus()`) fades it out, and "Three!" cuts any tail | `duel.stage` on "Versus!" |
+| Each countdown beat (`stockMatchBeat`, three 40-tick beats: `config/stockRules` `stockCountdownBeat`) | "Three!" "Two!" "One!" (each read inside 0.6 s) | `duel.count` |
 | The fight starts (`stockMatchBeat` fighting) | "Fight!" | `duel.fight` |
+| An ultimate fires (`stockUltimate`, the 18-tick super freeze) | the ultimate's own name: "PHOENIX DRAFT!", "REDLINE!", "BLOODSENSE!", "DEAD CHIME!", "UPDRAFT!", "LONG NIGHT!", "ROSE WINDOW!", "MIRROR HUNT!", "KILN HEART!", "OVERGROWTH!" | `duel.super` |
 | A ring-out (`fighterDown`) while the match goes on | "Ring out!" and "K.O.!" in turn; "Self-destruct!" when nobody's blow sent them out; then "Last stock!" if one is left | `duel.ko` (every ring-out) |
 | A shield gives out (`stockShieldBreak`) | "Shield break!" (never over a bigger call) | the existing `arena.shield.break` |
-| The match ends (`stockMatchBeat` finished) | "Game!" (or "Time!" when the clock ran out), then "&lt;Name&gt; wins!" (the results card's short name; 10 recorded) or "Draw game!" | `duel.game`, then `duel.results` with the name |
+| The match ends (`stockMatchBeat` finished) | "Game!" (or "Time!" when the clock ran out), then "<Name> wins!" (the results card's short name; 10 recorded) or "Draw game!" **exactly 950 ms later** (`RESULT_NAME_MS`), with the HUD's banner | `duel.game`, then `duel.results` with the name |
 | A rematch's first countdown beat | "Rematch!" in place of "Three!" | `duel.count` |
 
-Only one call plays at a time, on the engine's `voice` bus, under the Voice slider. It ducks the score (`TALK_DUCK`) while talking. A call cuts the one in progress when it ranks as high: select < ring-out < countdown and result. A lower call is not voiced, but its sound still plays. The select screen's calls are dropped once the match is loading. The select clips preload when the lobby opens, and the match clips when it starts.
+**How a call plays.** Every call is laid on the AudioContext's clock the moment it is made, all its lines at once. A line with its own beat (the winner's name at +950 ms) cuts the one before it short rather than waiting.
 
-`audio/duelCalls.ts` decides (pure, tested) and `audio/DuelAnnouncer.ts` plays. The announcer subscribes to events and never polls. Two events were added: `stockMatchBeat` (ArenaSlots `tickStockMatch`, the first tick each countdown number, FIGHT or the end holds) and `stockShieldBreak` (ArenaSlots `blockStockHit`).
+Only one call plays at a time, on the engine's `voice` bus, under the Voice slider. It ducks the score (`TALK_DUCK`) while talking.
+
+A call cuts the one in progress when it ranks as high: select < ring-out = ultimate < countdown and result. When a call is cut, the lines that had not begun are never said. A lower call is not voiced, but its sound still plays.
+
+The select screen's own calls are dropped once the match is loading. The VS card is not a select-screen call. The select clips (with "Versus!") preload when the lobby opens, and the match clips when it starts.
+
+**The VS card and its hold.** The call takes about 4.2 s at the fast read, so the card holds at least `VS_CARD_HOLD_MS` (4200 ms, `game/LocalVersus.ts`) from READY, and the match waits paused for it. The probe measured the whole call before "Three!", with the countdown starting 4.26 s after READY. A skip (`LocalVersus.skipIntro`: any key, click or pad button) calls `ctx.audio.duel.cutVersus()`, which fades the line in progress over 120 ms; lines that had not begun are never said. A click made while the stage build blocks the page lands when the build lets go, and the call is cut at that point.
+
+**Code.** `audio/duelCalls.ts` decides (pure, tested) and `audio/DuelAnnouncer.ts` plays. The announcer subscribes to events and never polls. Two events were added: `stockMatchBeat` (ArenaSlots, the first tick each countdown number, FIGHT or the end holds) and `stockShieldBreak` (ArenaSlots `blockStockHit`). `stockUltimate` is the team lead's (FighterSystem).
 
 ### The screens' API (`ctx.audio.duel`, absent in test contexts)
 
 - `menu('move' | 'confirm' | 'back')`: keyboard or pad navigation sounds. Pointer hovers and clicks already sound (UiSounds), so call it only for non-pointer navigation.
 - `announceFighter(id)` / `announceStage(id)`: a cursor previewing a fighter or stage not chosen yet. Choosing calls the name by itself, and a repeat of the name in progress is ignored.
-- `debugSnapshot()`: `{ said: [{ line, at, ended, cut }], sounds, speaking, lobby }`, for probes.
+- `announceVersus(p1, p2)`: the VS card. The announcer already makes it on lobby → loading, and a repeat within 3 s is ignored, so screens should not call it.
+- `cutVersus()`: the VS card was skipped. The VS call fades out; it does nothing if any other call is playing.
+- `debugSnapshot()`: `{ said: [{ line, at, ended, cut }], sounds, speaking, busy, lobby }`, for probes. `at` is the line's time on the page clock, scheduled ahead for a call's later lines.
 
 ### The recordings
 
-There are 41 lines (`src/content/audio/duelLines.ts`). Each has two takes, and a line with no take that speech-to-text confirms gets up to two more. The game plays the confirmed take whose names came back closest to their spelling ("Brian Rook" over "Fran Rooke"), then the brisker one. All 41 shipped takes are confirmed; `DUEL_CLIP_LINES` in the manifest records what was heard. Two notes:
+There are 52 lines (`src/content/audio/duelLines.ts`). Each has two takes, and a line with no take that speech-to-text confirms gets up to two more. The game plays the confirmed take whose names came back closest to their spelling ("Brian Rook" over "Fran Rooke"), then the brisker one. All 52 shipped takes are confirmed; `DUEL_CLIP_LINES` in the manifest records what was heard.
 
-- "Kest" came back as "Cast" ("Kest Rel" as "Castrol") in every plain take, so both Kest lines are delivered in capitals, `KEST REL!` and `KEST wins!`. With the caps, three takes of the name line were spelled out letter by letter ("K-E-S-T"), and take 4 came back as the words "KEST Rel" (0.74 s for "KEST", a held syllable).
-- "Edda" is heard as "Etta" (American English flaps both d and t). That is accepted as a homophone, written into the generator.
+**Delivery:** eleven_v3 at speed 1.2 (accepted by v3: "Choose your fighter!" went from 1.68 s to 1.36 s raw).
 
-Mastering: both ends trimmed, the loudest momentary (400 ms) loudness set to −13 LUFS, a −1.5 dBTP ceiling, mono 96 kbps. Measured, the shipped momentary maxima are −13.5 to −13.4 LUFS and the true peaks −2.4 dBTP or lower. That sits about 3 dB over the narrator's −17 LUFS integrated, on purpose: shouted calls over the battle score, which ducks under them. The payload is 792 KB in `public/audio/duel/`, fetched only in the Duel.
+**Mastering (`masterCall({ punch: true })`):**
+- both ends are trimmed relative to the take's own peak (−30 dB at the head, −36 dB at the tail), so soft lead-ins go;
+- a 70 Hz high-pass;
+- a fast 4:1 compressor;
+- the loudest momentary (400 ms) loudness is set to −12 LUFS;
+- a −1.5 dBTP limiter, then mono 96 kbps.
+
+Measured: momentary maxima −12.6 to −12.4 LUFS, true peaks −1.2 dBTP at most (MP3 overshoot). That is about 4–5 dB over the narrator, and the score ducks under it. Calls that must fit a 40-tick beat (`maxSeconds` 0.6: the three counts and "Rematch!") are sped up with `atempo` (pitch kept, at most 1.4×) when they run over. "Three!" took 1.15× to 0.61 s, "Two!" is 0.49 s, "One!" 0.57 s, and "Rematch!" took 1.4× to 0.69 s.
+
+Pronunciation notes. The voice spells out any name written in capitals. The user heard "K. E. S. T." from the old `KEST REL!` and `KEST wins!` deliveries, which speech-to-text had written as "KEST". So:
+- No delivery writes a name in capitals; a test holds that.
+- The generator refuses any take with more voiced bursts (`voice-metrics.mjs` `bursts`: syllable nuclei under 900 Hz) than the line has syllables, plus 2. A spelled name is one burst a letter.
+- Among confirmed takes, the one whose burst count is closest to the line's syllables wins.
+
+**Kest Rel (2026-10-04).** For scale, "Sable" in "Sable Fen!" measures 520 ms with 2 bursts, and "Nox" (heard "Knox") 420–660 ms with 1–2 bursts. The candidates:
+
+| Delivery | Model | Heard | Name (ms) | Name bursts | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| `KEST REL!` (shipped before) | v3 | "KEST Rel" | 1200 | 5 | spelled, which is what the user heard |
+| `Kesst Rell!` ×2 | v3 | "Castro", "Castrell" | 1020 | 2 | the wrong vowel |
+| `Kehst Rel!` ×2 | v3 | "Kestrel" ×2 | 1080 / 1280 (whole) | 2 / 3 | right |
+| `Kest-Rel!` ×2 | v3 | "Cast roll", "Castrell" | 680–1000 | 2–3 | the wrong vowel |
+| **`Kest Rel!` ×2** | v3 | **"Kestrel" ×2** | 1320 / 1300 (whole) | **2** / 3 | **shipped, take 2: the plain spelling** |
+| `Kest, Rel!` ×2 | v3 | "Cast, row" | 520–540 | 1 | the wrong vowel |
+| `Kesst wins!`, `Kehst wins!`, `Kest wins!` (×2 each; also at stability 1.0 and `[excited]`) | v3 | "Cast wins" every time | 500–740 | 1–3 | the wrong vowel |
+| `Kessst wins!` ×2 | v3 | "Undercast wins", "The cast wins" | 680–720 | 2 | no |
+| `Kest... wins!` ×2 | v3 | "Cast wins" | 1340–1380 | 2–3 | no |
+| `<phoneme ph="K EH1 S T">Kest</phoneme> wins!` ×2 | eleven_flash_v2 | "Kes wins", "Guess wins" | 340 | 1–2 | closest vowel, but not the shouting voice |
+| the same phoneme tag ×2 | eleven_turbo_v2 | "Cast wins", "The guest wins" | 320–360 | 1–2 | no |
+| **`Kest Rel wins!` ×2** | v3 | **"Kestrel wins" ×2** | 780 (take 2) | 3 | **shipped, take 2** |
+
+Shouted on its own, "Kest" opens to "Cast" in every delivery and model tried. Said together, "Kest Rel" comes out as one word with the right vowel: "Kestrel", which is the name. So the winner's call for Kest uses the full name, "Kest Rel wins!" (`WINS_TEXT` in `duelLines.ts`). The HUD banner still shows the short "Kest wins". The ultimate's call ("Updraft!") never says the name.
+
+**Rusk.** "Rusk wins!" lost its K: speech-to-text heard "Russ wins" in both takes, and the closure before the K's release was only 50 ms (`voice-metrics.mjs` `stopGap`; "Rusk Emberjaw!" measures 105 ms, "Brann wins!" 0). It is now delivered as `Rusk! Wins!`, which comes back "Rusk wins" in both takes with a 130–140 ms closure. `Russk wins!` gave "Rusk wins" and "Rose Quinns" (a 45 ms closure).
+
+**The others:**
+- **Edda:** heard as "Etta" (American English flaps both d and t). It is accepted as a homophone.
+- **Kiln Heart:** heard as "Kilnhart" (heart and hart sound alike). It is accepted as a compound within 85% of its spelling.
+- **Spelled-out letters never count.** A transcript of single letters ("K-E-S-T") is never accepted as the word.
+
+The new tie-break moved 11 lines to their other confirmed take: Ilyra and Nox's names, The Gallery, "Player one, ready!", the challenger, K.O., Ring out, Self-destruct, and the Phoenix Draft and Redline calls. Each now has fewer stray bursts.
+
+The payload is 936 KB in `public/audio/duel/`, fetched only in the Duel.
+
+## LAN Duel (host and guest)
+
+Checked on 5242 with a host page and a guest page (`scripts/verify-duel-lan.mjs`'s setup), 2026-10-04.
+
+**The narrator.** `inArena` now covers the LAN session (`ctx.duel.active`). The LAN screen before anyone hosts is covered by `lanLobbyShown()`: `Play over LAN` closes the local lobby, and before this the title tagline was read over the LAN screen. Measured after the fix, neither page says a line.
+
+**The host** runs the match, so its events fire and its announcer calls everything: the countdown, FIGHT, the ultimate, the ring-outs, GAME and the winner.
+
+**The guest is a replica and does not tick ArenaSlots or FighterSystem**, so it never sees `stockMatchBeat`, `fighterDown`, `stockUltimate` or `stockShieldBreak` (measured: 0 of each).
+
+- **No announcer voice on the guest.** Its voice is streamed audio, not a replicated sound.
+- **No visuals hung on those events either.** The KO burst and the super cut-in depend on them.
+- **The guest still hears the host's cabinet SFX.** The host's sampled sounds are recorded into each snapshot's `sounds`, and the guest replays them. That replay drops options, so the winner slam's 950 ms delay is lost and it plays with GAME. Sounds the host made before the guest's audio was ready are missed: one run lost the countdown and FIGHT.
+- **No select-screen calls in the LAN lobby on either side.** The LAN lobby does not run on `versusChanged`, so there are no fighter names and no VS card. "Choose your fighter!" is heard only from the local lobby, before switching to LAN.
+
+**What the guest would need** (not built; the network code is not this workstream's):
+
+- **Record the moments.** The snapshot carries the match moments the way it already carries `sounds`: the host records `stockMatchBeat`, `fighterDown`, `stockUltimate` and `stockShieldBreak` as they are emitted, and `DuelRuntime.receive` re-emits them on the replica, in order. The announcer, the KO burst and the cut-in then work unchanged on the guest, one snapshot late.
+- **Stop the doubled sounds.** Leave the cabinet's own `duel.*` sounds out of the replicated `sounds`, because the guest's announcer makes them from the re-emitted moments, with their timing. Otherwise they double.
+- **Derive, as a fallback.** Diffing the replicated match view would also work (countdown, state, stocks, `bout.downs`, `ultimate.usedAt`), but its timing would ride the snapshot rate.
+- **The LAN lobby.** It could call `ctx.audio.duel.announceFighter(id)` when a seat chooses.
 
 ## Arcade cabinet SFX
 
-There are twelve cues in the lazy `arena` pack (`duel.*` in `sfxCues.ts` and `sfx-prompts.mjs`). They were generated and mastered by the house chain (`gen-sfx.mjs`: QC, trim, loudest-100 ms at −15 LUFS, a −1 dBFS limiter), one take each, because a cabinet's sounds are always the same:
+There are thirteen cues in the lazy `arena` pack (`duel.*` in `sfxCues.ts` and `sfx-prompts.mjs`). They are generated and mastered by the house chain (`gen-sfx.mjs`: QC, trim, loudest-100 ms at −15 LUFS, a −1 dBFS limiter), one take each, because a cabinet's sounds are always the same.
 
-`duel.ui.move` (cursor blip, 0.14 s), `duel.ui.confirm` (0.35 s), `duel.ui.back` (0.28 s), `duel.ui.pause` (0.45 s), `duel.ready` (lock-in slam, 0.8 s), `duel.join` (coin in, 0.86 s), `duel.stage` (whoosh and impact, 0.69 s), `duel.count` (countdown tick, 0.41 s), `duel.fight` (round-start sting, 0.75 s), `duel.ko` (knockout blast, 1.11 s), `duel.game` (match-end sting, 1.4 s) and `duel.results` (the results card's slam, 0.61 s).
+For the arcade direction every one is marked `fast`. `gen-sfx.mjs` refuses a `fast` take whose loudest 10 ms comes more than 40 ms after its onset, and buys the next variant. The prompts now open with "instant hard transient at full level from the very first millisecond, no fade-in, no build-up, no whoosh before it", and the tails are shorter. `scripts/audio/sfx-attack.mjs` measures attack times for any file.
 
-The KO blast's first prompt asked for "crunchy distortion", and all five takes failed QC as crushed. The rewrite asks for "clean … plenty of headroom" and passed first time.
+| Cue | Use | Length (s) | Attack (ms) | Before |
+| --- | --- | --- | --- | --- |
+| `duel.ui.move` | cursor step (hover; `data-sfx="move"`; `menu('move')`) | 0.10 | 0 | 70 ms, 0.14 s |
+| `duel.ui.confirm` | confirm | 0.35 | 0 | — |
+| `duel.ui.back` | back | 0.28 | 0 | — |
+| `duel.ui.pause` | the pause menu opens | 0.30 | 20 | 220 ms |
+| `duel.ready` | a seat locks in | 0.55 | 30 | 100 ms |
+| `duel.join` | coin in: a challenger | 0.70 | 0 | 210 ms |
+| `duel.stage` | stage chosen; "Versus!" | 0.55 | 30 | 110 ms |
+| `duel.count` | each countdown beat | 0.41 | 0 | — |
+| `duel.fight` | FIGHT | 0.75 | 10 | 50 ms |
+| `duel.super` | an ultimate fires (new) | 0.57 | 0 | — |
+| `duel.ko` | every ring-out | 0.57 | 0 | 410 ms, 1.11 s |
+| `duel.game` | GAME / TIME | 1.40 | 30 | — |
+| `duel.results` | the winner banner's slam | 0.47 | 30 | 270 ms |
 
-There is no separate results *jingle*: the score already plays the 12 s `arena-results` fanfare at the end, so `duel.results` is the card's slam under the winner's name. The Duel's hit sounds (`arena.hit.light`/`heavy`) were left alone, because nothing measurable showed new takes would beat them. The lobby and battle music loops also already existed (above).
+Generation notes:
+- The super sting took six tries: a "whoosh-hit with a rising tail" peaks on the tail. The prompt now makes the impact the loudest moment.
+- The first KO prompt's "crunchy distortion" was crushed on every take, so the KO prompt asks for "crunchy … plenty of headroom".
 
-## Costs (2026-10-03)
+There is no separate results *jingle*: the score already plays the 12 s `arena-results` fanfare at the end, so `duel.results` is the banner's slam.
 
-The logged estimates are 7,697 credits of the 25,000 allowance:
+**Heavy hits.** Two of the three `arena.hit.heavy` takes reached their peak 120 and 80 ms after the blow, so the biggest hits landed late. They were swapped for re-rolls of the same prompt (variants 5 and 8, 20 ms each) with `gen-arena-sfx.mjs --only arena.hit.heavy --takes 1,3`, using the new `v` variant list in `sfx-prompts.mjs`. Take 2 (20 ms) is unchanged.
 
-- voice, 6,717: speech 4,315 including casting, voice design 423, and speech-to-text 1,979 estimated at 4/s;
-- SFX, 980: 24.5 s requested at 40/s, including the five crushed KO takes.
+`arena.hit.light` (10–20 ms) was already immediate and is unchanged. Do not run `gen-arena-sfx.mjs` without `--only`: 20 of the 23 shipped arena takes' paid responses live only in the arena-stock-matches worktree's local cache, so a full run against the shared cache would re-buy and replace them.
 
-Speech-to-text measured about 0.5 credit/s on the counter (12.8 s cost 6), so its true cost was roughly 250, and the client now estimates 1/s. The account counter rose from 188,065 to 233,264 over the same session, but that includes other workstreams' spend. Logs are `scripts/audio/generation-log.duel-voice.jsonl` and `generation-log.duel-sfx.jsonl`.
+No new music was made. The battle loop is already 156 BPM, and re-cutting a loop needs the beat analysis that set its seams, which we cannot check by ear.
+
+## Costs (2026-10-03 to 2026-10-04)
+
+The logged estimates come to 14,132 credits of the 25,000 allowance:
+
+- voice, 12,406: speech 9,274 (the first recording, its casting, the fast re-recording, and the Kest and Rusk candidates), voice design 423, and speech-to-text 2,709;
+- SFX, 1,492: requested seconds at 40/s, including QC rejects;
+- heavy-hit re-rolls, 234, logged in `generation-log.arena-sfx.jsonl`.
+
+The speech-to-text estimate was 4/s at first and is now 1/s. It measured about 0.5 credit/s on the counter, and 975 s were transcribed, so its true cost is about 490. That puts the real total at about 11,900. The account counter rose by about 45k over the session, but that includes other workstreams. Logs are `scripts/audio/generation-log.duel-voice.jsonl` and `generation-log.duel-sfx.jsonl`.
 
 ## Regenerating
 
-Everything is cached in the shared content-addressed cache, so re-running with an unchanged script costs nothing:
+Everything is cached in the shared content-addressed cache, so re-running with an unchanged script costs nothing. A re-master changes the bytes, though, and each re-master's speech-to-text check costs about 0.5 credit per second of audio:
 
 ```powershell
 $env:ELEVENLABS_API_KEY_FILE='Y:\elevenlabs-api-key.txt'; $env:AUDIO_CACHE_DIR='Y:\Projects\alchemists-descent-worktrees\audio-cache'
@@ -172,11 +274,16 @@ node scripts/audio/gen-duel-announcer.mjs --cast --design   # casting: audition/
 node scripts/audio/gen-duel-announcer.mjs                   # every line, speech-to-text checked: public/audio/duel, the manifest
 $env:AUDIO_LOG_NAME='generation-log.duel-sfx.jsonl'; $env:AUDIO_BUDGET_CREDITS=<prior + allowance>
 node scripts/audio/gen-sfx.mjs --only 'duel.*'
-npx vitest run tests/duel-audio.test.ts tests/audio-sfx.test.ts tests/narrator.test.ts
+node scripts/audio/sfx-attack.mjs src/assets/audio/sfx/arena/duel.*.mp3
+npx vitest run tests/duel-audio.test.ts tests/audio-sfx.test.ts tests/narrator.test.ts tests/arena-audio.test.ts
 node scripts/verify-duel-audio.mjs http://127.0.0.1:5242/
 ```
 
-To change voices, pass `--voice <key|voice_id>`, or change `ANNOUNCER` in the generator. A new call needs a line in `duelLines.ts`, a moment in `duelCalls.ts`, and a generator run.
+- **Changing voices:** pass `--voice <key|voice_id>`, or change `ANNOUNCER` in the generator.
+- **A new call:** add a line in `duelLines.ts` and a moment in `duelCalls.ts`, then run the generator.
+- **After adding new SFX files:** touch `src/content/audio/sfxManifest.ts`. A running dev server can keep its old `import.meta.glob` and silently play the procedural fallback.
+
+### The probe
 
 `scripts/verify-duel-audio.mjs` drives the real title and lobby with real clicks, after a campaign session the moment before (the QA path). It checks:
 
@@ -185,9 +292,14 @@ To change voices, pass `--voice <key|voice_id>`, or change `ANNOUNCER` in the ge
 - "Choose your fighter!";
 - three names on three fast clicks, each within 400 ms, the first two cut;
 - the stage and ready calls with their sounds;
-- Three, Two, One, FIGHT within 250 ms of the ticks that changed them, on three equal 40-tick beats;
-- an attributed ring-out after a landed finisher ("Ring out!"), an unforced one ("Self-destruct!", "Last stock!"), and GAME plus the winner;
+- the whole VS call in order, its first name within 10 ms of READY, before "Three!";
+- Three, Two, One, FIGHT within 10 ms of the ticks that changed them, on three equal 40-tick beats;
+- an ultimate's name with the super sting;
+- an attributed ring-out after a landed finisher ("Ring out!");
+- an unforced one ("Self-destruct!", "Last stock!");
+- GAME, then the winner's name 950 ms later (measured exactly 950);
 - "Rematch!";
-- the cabinet's pause.
+- the cabinet's pause;
+- a skipped VS card cut where it stood.
 
-Result: `evidence/duel-audio.json`. As with everything above, these are instruments, not ears: whether David's shout is the right arcade voice is the user's call. The audition page lists every call, and the casting, under "Duel announcer".
+That is 24 checks. Result: `evidence/duel-audio.json`. As with everything above, these are instruments, not ears: whether the fast shouted reads hit the arcade feel, and the Kest and Rusk names in particular, is the user's call. The audition page lists every call, and the casting, under "Duel announcer".

@@ -113,9 +113,9 @@ try {
     const fight = p.beats.find((b) => b.state === 'countdown' && b.count === 3);
     return { lines: s.slice(from, upTo).map((x) => x.line), firstLagMs: from >= 0 ? Math.round(s[from].at - p.loadingAt) : null, loadMs: fight ? Math.round(fight.at - p.loadingAt) : null };
   });
-  // The card lasts as long as the stage takes to build; the first count beat cuts what is left (a fast load hears less).
-  const VS = ['fighter.mara-quell', 'versus', 'fighter.brann-rook', 'stage.kiln'];
-  check('the VS card calls "Mara Quell! Versus! Brann Rook!" in order as the match loads, until Three cuts it', card.lines.length >= 1 && card.lines.every((l, i) => l === VS[i]) && card.firstLagMs !== null && card.firstLagMs < 150, card);
+  // The card holds at least VS_CARD_HOLD_MS (4.2 s) from READY, so the whole call is heard before "Three!".
+  const VS = ['fighter.mara-quell', 'versus', 'fighter.brann-rook'];
+  check('the VS card calls "Mara Quell! Versus! Brann Rook!" in order as the match loads, before Three', card.lines.join() === VS.join() && card.firstLagMs !== null && card.firstLagMs < 150, card);
   const count = await page.evaluate(() => {
     const p = window.probe, s = window.__game.ctx.audio.duel.debugSnapshot().said;
     const at = (line) => s.find((x) => x.line === line)?.at;
@@ -212,6 +212,26 @@ try {
   const pauseSounds = await page.evaluate((t) => window.probe.played.filter((p) => p.at > t).map((p) => p.id).filter((id) => id.startsWith('duel.ui.') || id.startsWith('ui.')), pauseFrom);
   check('pausing the Duel sounds the cabinet pause and back', pauseSounds.includes('duel.ui.pause') && pauseSounds.includes('duel.ui.back') && !pauseSounds.some((id) => id.startsWith('ui.')), pauseSounds);
 
+  // A skipped VS card: back to the title and into a new match, then a real click on the card while it talks.
+  // The trip through the title is the title's own sound (its buttons tick like the descent's menus); it is left out below.
+  await page.evaluate(() => { window.probe.titleTrip = [performance.now()]; });
+  await page.keyboard.press('Escape');
+  await page.locator('#pause-title-btn').click();
+  await clickAt(page.locator('[data-entry="duel"]'));
+  await page.locator('#versus-lobby').waitFor({ state: 'visible' });
+  await page.evaluate(() => { window.probe.titleTrip.push(performance.now() + 300); });
+  await page.getByRole('button', { name: 'Ready player 1', exact: true }).click();
+  const skipFrom = await page.evaluate(() => performance.now());
+  await page.locator('#versus-start').click();
+  await page.waitForFunction((t) => window.__game.ctx.audio.duel.debugSnapshot().said.some((s) => s.line === 'fighter.mara-quell' && s.at > t), skipFrom);
+  await page.waitForTimeout(500);
+  await clickAt(page.locator('.versus-splash'));
+  await page.waitForFunction((t) => window.__game.ctx.audio.duel.debugSnapshot().said.some((s) => s.line === 'count.3' && s.at > t), skipFrom, { timeout: 20000 });
+  const skipped = await page.evaluate((t) => window.__game.ctx.audio.duel.debugSnapshot().said.filter((s) => s.at > t).map((s) => ({ line: s.line, cut: !!s.cut })), skipFrom);
+  const card2 = skipped.slice(0, skipped.findIndex((s) => s.line === 'count.3'));
+  // The click lands once the stage build lets the page breathe; from then on the call fades and nothing more of it begins.
+  check('skipping the VS card fades its call where it stands: the rest is never said', card2.length >= 1 && card2.at(-1).cut === true && card2.every((s, i) => s.line === VS[i]), skipped);
+
   // The descent stayed out the whole time.
   const descent = await page.evaluate(() => {
     const p = window.probe, n = window.__game.ctx.narrator?.debugSnapshot?.();
@@ -219,7 +239,7 @@ try {
       narration: p.narration.filter((x) => x.at >= p.duelAt).map((x) => x.text),
       narratorSpoken: (n?.spoken ?? []).filter((x) => x.at >= p.duelAt).map((x) => x.text),
       before: (n?.spoken ?? []).filter((x) => x.at < p.duelAt).map((x) => x.text),
-      played: [...new Set(p.played.filter((x) => x.at > p.lobbyAt + 60).map((x) => x.id))],
+      played: [...new Set(p.played.filter((x) => x.at > p.lobbyAt + 60 && !(p.titleTrip && x.at > p.titleTrip[0] && x.at < p.titleTrip[1])).map((x) => x.id))],
       beds: [...p.beds].filter((b) => b.startsWith('duel:')),
     };
   });

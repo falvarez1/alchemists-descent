@@ -23,7 +23,7 @@ import { HabitatAudio } from '@/audio/HabitatAudio';
 import { installAudioStingers } from '@/audio/Stingers';
 import { installEventCues } from '@/audio/EventCues';
 import { DuelAnnouncer } from '@/audio/DuelAnnouncer';
-import { inArena } from '@/audio/arenaAudio';
+import { inDuelOrArena } from '@/audio/arenaAudio';
 import { Flask } from '@/combat/Flask';
 import { AlchemyKills } from '@/combat/AlchemyKills';
 import { Lightning } from '@/combat/Lightning';
@@ -284,11 +284,11 @@ export class Game {
     } as unknown as Ctx;
     this.disposables.push(audio);
     // Run-event stingers (alchemy chime, phial crack/fill, run verdict, clip shutter).
-    this.disposables.push({ dispose: installAudioStingers(ctx.events, audio, () => inArena(ctx)) });
+    this.disposables.push({ dispose: installAudioStingers(ctx.events, audio, () => inDuelOrArena(ctx)) });
     // Announced moments: the light devices, organisms, boss moves and plants (audio/EventCues).
     this.disposables.push({ dispose: installEventCues(ctx.events, audio, { biome: () => ctx.levels?.current?.def.biome }) });
     // Sampled layer: per-floor packs and beds, and the interface's own sounds.
-    this.disposables.push({ dispose: installAudioDirector(ctx, audio) }, { dispose: installUiSounds(ctx.events, audio, document, () => inArena(ctx)) });
+    this.disposables.push({ dispose: installAudioDirector(ctx, audio) }, { dispose: installUiSounds(ctx.events, audio, document, () => inDuelOrArena(ctx)) });
     // The Duel's arcade announcer and cabinet sounds (ctx.audio.duel); the descent's narrator keeps out of the arena.
     const duelAudio = new DuelAnnouncer(ctx, audio);
     audio.duel = duelAudio;

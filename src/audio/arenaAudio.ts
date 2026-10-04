@@ -30,6 +30,8 @@ export const ARENA_LEVEL_IDS: readonly string[] = ['fighter-test', 'fighter-duel
 export interface ArenaAudioFacts {
   readonly state: { readonly mode: string };
   readonly versus?: { readonly active: boolean } | null;
+  /** The LAN Duel session (hosting, joined, or in a match). */
+  readonly duel?: { readonly active: boolean } | null;
   readonly arena?: { readonly active: boolean } | null;
   readonly levels?: { readonly current?: { readonly def: { readonly id: string } } | null } | null;
 }
@@ -40,7 +42,20 @@ export interface ArenaAudioFacts {
  * line, scheduled before the player left the descent, was read out over the Duel lobby).
  */
 export function inArena(f: ArenaAudioFacts): boolean {
-  if (f.versus?.active) return true;
+  if (f.versus?.active || f.duel?.active) return true;
   if (f.state.mode !== 'play') return false;
   return f.arena?.active === true || ARENA_LEVEL_IDS.includes(f.levels?.current?.def.id ?? '');
+}
+
+/**
+ * The LAN Duel's screen is up but no session has begun yet (`Play over LAN` closes the local lobby before
+ * the player hosts or joins). The screen owns that state, so it is read off its root (ui/DuelLobby).
+ */
+export function lanLobbyShown(doc: Pick<Document, 'getElementById'> | null = typeof document !== 'undefined' ? document : null): boolean {
+  return typeof doc?.getElementById === 'function' && doc.getElementById('duel-network')?.hidden === false;
+}
+
+/** inArena, and the LAN Duel's screen before a session begins (QA: the title tagline played over it). */
+export function inDuelOrArena(f: ArenaAudioFacts): boolean {
+  return inArena(f) || lanLobbyShown();
 }

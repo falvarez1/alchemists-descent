@@ -16,7 +16,7 @@ import { TEA_COMPLETE_STAGE } from '@/world/teaMachine';
 import { deathLineFor, deathTitle } from '@/ui/deathCauses';
 import { runHeadline } from '@/game/runRules';
 import { failSafe } from '@/audio/failSafe';
-import { inArena } from '@/audio/arenaAudio';
+import { inDuelOrArena } from '@/audio/arenaAudio';
 
 /** The HUD reveals a floor's title card this long after the curtain lifts (ui/Hud), or after this fallback. */
 const TITLE_CARD_AFTER_CURTAIN_MS = 120;
@@ -99,6 +99,7 @@ export class Narrator implements NarratorApi {
       on('levelChanged', () => this.onLevelChanged()),
       // The Duel's lobby opening: what the descent still had to say (an arrival scheduled a moment ago) is not said.
       on('versusChanged', () => { if (this.offStage) this.leaveDescent(); }),
+      on('duelOpen', () => this.leaveDescent()),
       on('levelCurtain', ({ visible, holdMs = 0 }) => {
         if (visible || !this.arrival) return;
         this.scheduleArrival(holdMs + TITLE_CARD_AFTER_CURTAIN_MS + AFTER_TITLE_CARD_MS);
@@ -143,8 +144,8 @@ export class Narrator implements NarratorApi {
 
   get enabled(): boolean { return this.on; }
 
-  /** The Duel or an arena level: the narrator belongs to the descent and keeps out (audio/arenaAudio inArena). */
-  private get offStage(): boolean { return inArena(this.ctx); }
+  /** The Duel (local or LAN) or an arena level: the narrator belongs to the descent and keeps out (audio/arenaAudio). */
+  private get offStage(): boolean { return inDuelOrArena(this.ctx); }
 
   /** Something is being said, or waits its turn. */
   get busy(): boolean { return this.speaking !== null || this.queue.length > 0; }

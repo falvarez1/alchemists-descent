@@ -1699,10 +1699,12 @@ export interface DuelAudioApi {
   /** Read a stage's name now, cutting the call in progress (a stage previewed, not chosen yet). */
   announceStage(id: StockStageId): void;
   /**
-   * The VS card: "<P1>! Versus! <P2>!" (and the stage) as one call laid on the audio clock at once. The
-   * announcer makes it by itself when the session goes from the lobby to loading; a repeat within 3 s is ignored.
+   * The VS card: "<P1>! Versus! <P2>!" as one call laid on the audio clock at once. The announcer makes it by
+   * itself when the session goes from the lobby to loading; a repeat within 3 s is ignored.
    */
-  announceVersus(p1: FighterId, p2: FighterId, stage?: StockStageId): void;
+  announceVersus(p1: FighterId, p2: FighterId): void;
+  /** The VS card was skipped: what is left of its call fades out (nothing else is touched). */
+  cutVersus(): void;
   /** Read-only state for in-page probes. */
   debugSnapshot(): Record<string, unknown>;
 }
