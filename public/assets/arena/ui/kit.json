@@ -1,0 +1,800 @@
+{
+ "version": 1,
+ "scale": 2,
+ "note": "Art pixels: show every piece at an integer CSS scale (kit.scale) with image-rendering: pixelated. 9-slice: border-image-slice = slice (art px), border-width = slice x scale, border-image-repeat as given (each edge is one seamless period). Hollow frames: put a fill tile behind, reaching band x scale in from the outer edge.",
+ "pieces": {
+  "frame-panel": {
+   "file": "frame-panel.png",
+   "size": [
+    91,
+    90
+   ],
+   "kind": "frame",
+   "slice": [
+    30,
+    32,
+    30,
+    32
+   ],
+   "band": [
+    14,
+    15,
+    14,
+    14
+   ],
+   "fill": false,
+   "repeat": "round",
+   "period": [
+    27,
+    30
+   ],
+   "use": "lobby, pause, results and connect panels",
+   "scale": 2,
+   "css": [
+    182,
+    180
+   ]
+  },
+  "frame-card": {
+   "file": "frame-card.png",
+   "size": [
+    54,
+    46
+   ],
+   "kind": "frame",
+   "slice": [
+    13,
+    13,
+    13,
+    13
+   ],
+   "band": [
+    7,
+    8,
+    7,
+    8
+   ],
+   "fill": false,
+   "repeat": "round",
+   "period": [
+    28,
+    20
+   ],
+   "use": "seat cards, HUD cards (P1, copper)",
+   "scale": 2,
+   "css": [
+    108,
+    92
+   ]
+  },
+  "frame-card-teal": {
+   "file": "frame-card-teal.png",
+   "size": [
+    49,
+    54
+   ],
+   "kind": "frame",
+   "slice": [
+    13,
+    13,
+    13,
+    13
+   ],
+   "band": [
+    8,
+    8,
+    7,
+    8
+   ],
+   "fill": false,
+   "repeat": "round",
+   "period": [
+    23,
+    28
+   ],
+   "use": "seat cards, HUD cards (P2, teal)",
+   "scale": 2,
+   "css": [
+    98,
+    108
+   ]
+  },
+  "frame-slot": {
+   "file": "frame-slot.png",
+   "size": [
+    49,
+    22
+   ],
+   "kind": "frame",
+   "slice": [
+    7,
+    7,
+    7,
+    7
+   ],
+   "band": [
+    5,
+    6,
+    6,
+    6
+   ],
+   "fill": false,
+   "repeat": "round",
+   "period": [
+    35,
+    8
+   ],
+   "use": "room code, value boxes, rules bar",
+   "scale": 2,
+   "css": [
+    98,
+    44
+   ]
+  },
+  "frame-stage": {
+   "file": "frame-stage.png",
+   "size": [
+    48,
+    78
+   ],
+   "kind": "frame",
+   "slice": [
+    12,
+    12,
+    34,
+    12
+   ],
+   "band": [
+    8,
+    7,
+    29,
+    7
+   ],
+   "fill": false,
+   "repeat": "round",
+   "period": [
+    24,
+    32
+   ],
+   "use": "stage tile; the bottom slice is the label plate (the name sits on it)",
+   "scale": 2,
+   "css": [
+    96,
+    156
+   ]
+  },
+  "button-copper": {
+   "file": "button-copper.png",
+   "size": [
+    55,
+    34
+   ],
+   "kind": "plate",
+   "slice": [
+    8,
+    20,
+    8,
+    20
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    15,
+    null
+   ],
+   "states": {
+    "normal": "button-copper.png",
+    "hot": "button-copper-hot.png",
+    "pressed": "button-copper-pressed.png"
+   },
+   "height": "fixed: show it size[1] x scale tall",
+   "use": "primary: READY, REMATCH, HOST A MATCH",
+   "scale": 2,
+   "css": [
+    110,
+    68
+   ]
+  },
+  "button-iron": {
+   "file": "button-iron.png",
+   "size": [
+    66,
+    34
+   ],
+   "kind": "plate",
+   "slice": [
+    8,
+    20,
+    8,
+    20
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    26,
+    null
+   ],
+   "states": {
+    "normal": "button-iron.png",
+    "hot": "button-iron-hot.png",
+    "pressed": "button-iron-pressed.png"
+   },
+   "height": "fixed: show it size[1] x scale tall",
+   "use": "secondary: CHANGE FIGHTERS, JOIN MATCH, menu rows",
+   "scale": 2,
+   "css": [
+    132,
+    68
+   ]
+  },
+  "keycap-wide": {
+   "file": "keycap-wide.png",
+   "size": [
+    30,
+    17
+   ],
+   "kind": "plate",
+   "slice": [
+    5,
+    5,
+    5,
+    5
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    20,
+    null
+   ],
+   "states": {
+    "normal": "keycap-wide.png"
+   },
+   "height": "fixed: show it size[1] x scale tall",
+   "use": "key glyph frame for words (Esc, Enter, Space)",
+   "scale": 2,
+   "css": [
+    60,
+    34
+   ]
+  },
+  "band": {
+   "file": "band.png",
+   "size": [
+    151,
+    36
+   ],
+   "kind": "plate",
+   "slice": [
+    8,
+    18,
+    8,
+    18
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    115,
+    null
+   ],
+   "states": {
+    "normal": "band.png"
+   },
+   "height": "fixed: show it size[1] x scale tall",
+   "use": "the super cut-in band (horizontal)",
+   "scale": 2,
+   "css": [
+    302,
+    72
+   ]
+  },
+  "divider": {
+   "file": "divider.png",
+   "size": [
+    205,
+    11
+   ],
+   "kind": "image",
+   "use": "heading rule, whole, as drawn",
+   "scale": 2,
+   "css": [
+    410,
+    22
+   ]
+  },
+  "divider-cap-left": {
+   "file": "divider-cap-left.png",
+   "size": [
+    4,
+    11
+   ],
+   "kind": "image",
+   "use": "divider: left end",
+   "scale": 2,
+   "css": [
+    8,
+    22
+   ]
+  },
+  "divider-line": {
+   "file": "divider-line.png",
+   "size": [
+    10,
+    11
+   ],
+   "kind": "tile",
+   "repeat": "repeat-x",
+   "use": "divider: the line, repeat across",
+   "scale": 2,
+   "css": [
+    20,
+    22
+   ]
+  },
+  "divider-diamond": {
+   "file": "divider-diamond.png",
+   "size": [
+    8,
+    11
+   ],
+   "kind": "image",
+   "use": "divider: centre diamond",
+   "scale": 2,
+   "css": [
+    16,
+    22
+   ]
+  },
+  "divider-cap-right": {
+   "file": "divider-cap-right.png",
+   "size": [
+    4,
+    11
+   ],
+   "kind": "image",
+   "use": "divider: right end",
+   "scale": 2,
+   "css": [
+    8,
+    22
+   ]
+  },
+  "chain": {
+   "file": "chain.png",
+   "size": [
+    10,
+    17
+   ],
+   "kind": "tile",
+   "repeat": "repeat-y",
+   "use": "hanging chain, repeat down from the mount",
+   "scale": 2,
+   "css": [
+    20,
+    34
+   ]
+  },
+  "chain-mount": {
+   "file": "chain-mount.png",
+   "size": [
+    24,
+    41
+   ],
+   "kind": "image",
+   "use": "wall bracket the chain hangs from (ring at the bottom)",
+   "scale": 2,
+   "css": [
+    48,
+    82
+   ]
+  },
+  "lantern": {
+   "file": "lantern.png",
+   "size": [
+    24,
+    57
+   ],
+   "kind": "image",
+   "states": {
+    "lit": "lantern.png",
+    "unlit": "lantern-unlit.png",
+    "glow": "lantern-glow.png"
+   },
+   "use": "hanging lantern; glow overlay for a CSS flicker",
+   "scale": 2,
+   "css": [
+    48,
+    114
+   ]
+  },
+  "keycap": {
+   "file": "keycap.png",
+   "size": [
+    19,
+    17
+   ],
+   "kind": "image",
+   "use": "single-letter key glyph frame (A, D, F)",
+   "scale": 2,
+   "css": [
+    38,
+    34
+   ]
+  },
+  "or-gear": {
+   "file": "or-gear.png",
+   "size": [
+    29,
+    32
+   ],
+   "kind": "image",
+   "use": "small gear medallion (the OR between HOST and JOIN)",
+   "scale": 2,
+   "css": [
+    58,
+    64
+   ]
+  },
+  "arrow-left": {
+   "file": "arrow-left.png",
+   "size": [
+    9,
+    16
+   ],
+   "kind": "image",
+   "use": "cycler arrow",
+   "states": {
+    "normal": "arrow-left.png",
+    "hot": "arrow-left-hot.png"
+   },
+   "scale": 2,
+   "css": [
+    18,
+    32
+   ]
+  },
+  "arrow-right": {
+   "file": "arrow-right.png",
+   "size": [
+    9,
+    16
+   ],
+   "kind": "image",
+   "use": "cycler arrow",
+   "states": {
+    "normal": "arrow-right.png",
+    "hot": "arrow-right-hot.png"
+   },
+   "scale": 2,
+   "css": [
+    18,
+    32
+   ]
+  },
+  "arrow-left-hot": {
+   "file": "arrow-left-hot.png",
+   "size": [
+    9,
+    16
+   ],
+   "kind": "image",
+   "use": "cycler arrow, focused",
+   "scale": 2,
+   "css": [
+    18,
+    32
+   ]
+  },
+  "arrow-right-hot": {
+   "file": "arrow-right-hot.png",
+   "size": [
+    9,
+    16
+   ],
+   "kind": "image",
+   "use": "cycler arrow, focused",
+   "scale": 2,
+   "css": [
+    18,
+    32
+   ]
+  },
+  "gear-crest": {
+   "file": "gear-crest.png",
+   "size": [
+    78,
+    27
+   ],
+   "kind": "image",
+   "use": "top-centre crest on the big panels",
+   "scale": 2,
+   "css": [
+    156,
+    54
+   ]
+  },
+  "vs-medallion": {
+   "file": "vs-medallion.png",
+   "size": [
+    75,
+    73
+   ],
+   "kind": "image",
+   "use": "VS gear medallion (blank face: put word-vs on it)",
+   "scale": 2,
+   "css": [
+    150,
+    146
+   ]
+  },
+  "seal-copper": {
+   "file": "seal-copper.png",
+   "size": [
+    19,
+    19
+   ],
+   "kind": "image",
+   "use": "readiness seal, P1",
+   "scale": 2,
+   "css": [
+    38,
+    38
+   ]
+  },
+  "seal-teal": {
+   "file": "seal-teal.png",
+   "size": [
+    19,
+    19
+   ],
+   "kind": "image",
+   "use": "readiness seal, P2",
+   "scale": 2,
+   "css": [
+    38,
+    38
+   ]
+  },
+  "bead-copper": {
+   "file": "bead-copper.png",
+   "size": [
+    11,
+    11
+   ],
+   "kind": "image",
+   "use": "stock bead, P1, lit",
+   "scale": 2,
+   "css": [
+    22,
+    22
+   ]
+  },
+  "bead-copper-spent": {
+   "file": "bead-copper-spent.png",
+   "size": [
+    11,
+    11
+   ],
+   "kind": "image",
+   "use": "stock bead, P1, spent",
+   "scale": 2,
+   "css": [
+    22,
+    22
+   ]
+  },
+  "bead-teal": {
+   "file": "bead-teal.png",
+   "size": [
+    11,
+    11
+   ],
+   "kind": "image",
+   "use": "stock bead, P2, lit",
+   "scale": 2,
+   "css": [
+    22,
+    22
+   ]
+  },
+  "bead-teal-spent": {
+   "file": "bead-teal-spent.png",
+   "size": [
+    11,
+    11
+   ],
+   "kind": "image",
+   "use": "stock bead, P2, spent",
+   "scale": 2,
+   "css": [
+    22,
+    22
+   ]
+  },
+  "timer-sign": {
+   "file": "timer-sign.png",
+   "size": [
+    140,
+    65
+   ],
+   "kind": "image",
+   "use": "hanging timer sign with lantern mounts (blank face)",
+   "scale": 2,
+   "css": [
+    280,
+    130
+   ]
+  },
+  "banner-plate": {
+   "file": "banner-plate.png",
+   "size": [
+    333,
+    115
+   ],
+   "kind": "image",
+   "use": "the plate behind FIGHT!, GAME!, TIME! (blank face)",
+   "scale": 2,
+   "css": [
+    666,
+    230
+   ]
+  },
+  "word-fight": {
+   "file": "word-fight.png",
+   "size": [
+    305,
+    77
+   ],
+   "kind": "word",
+   "use": "FIGHT!",
+   "scale": 2,
+   "css": [
+    610,
+    154
+   ]
+  },
+  "word-game": {
+   "file": "word-game.png",
+   "size": [
+    296,
+    76
+   ],
+   "kind": "word",
+   "use": "GAME!",
+   "scale": 2,
+   "css": [
+    592,
+    152
+   ]
+  },
+  "word-time": {
+   "file": "word-time.png",
+   "size": [
+    289,
+    78
+   ],
+   "kind": "word",
+   "use": "TIME!",
+   "scale": 2,
+   "css": [
+    578,
+    156
+   ]
+  },
+  "word-vs": {
+   "file": "word-vs.png",
+   "size": [
+    158,
+    82
+   ],
+   "kind": "word",
+   "use": "VS",
+   "scale": 2,
+   "css": [
+    316,
+    164
+   ]
+  },
+  "word-3": {
+   "file": "word-3.png",
+   "size": [
+    96,
+    105
+   ],
+   "kind": "word",
+   "use": "3",
+   "scale": 2,
+   "css": [
+    192,
+    210
+   ]
+  },
+  "word-2": {
+   "file": "word-2.png",
+   "size": [
+    87,
+    105
+   ],
+   "kind": "word",
+   "use": "2",
+   "scale": 2,
+   "css": [
+    174,
+    210
+   ]
+  },
+  "word-1": {
+   "file": "word-1.png",
+   "size": [
+    64,
+    105
+   ],
+   "kind": "word",
+   "use": "1",
+   "scale": 2,
+   "css": [
+    128,
+    210
+   ]
+  },
+  "fill-iron": {
+   "file": "fill-iron.png",
+   "size": [
+    192,
+    101
+   ],
+   "kind": "tile",
+   "repeat": "repeat",
+   "use": "dark iron plate: panel interiors",
+   "scale": 2,
+   "css": [
+    384,
+    202
+   ]
+  },
+  "fill-worn": {
+   "file": "fill-worn.png",
+   "size": [
+    192,
+    192
+   ],
+   "kind": "tile",
+   "repeat": "repeat",
+   "use": "lighter worn iron: slots, value boxes",
+   "scale": 2,
+   "css": [
+    384,
+    384
+   ]
+  },
+  "text-copper": {
+   "file": "text-copper.png",
+   "size": [
+    96,
+    170
+   ],
+   "kind": "texture",
+   "repeat": "repeat-x",
+   "use": "cast copper for background-clip: text (background-size: auto 100%)",
+   "scale": 2,
+   "css": [
+    192,
+    340
+   ]
+  },
+  "text-iron": {
+   "file": "text-iron.png",
+   "size": [
+    96,
+    170
+   ],
+   "kind": "texture",
+   "repeat": "repeat-x",
+   "use": "cast iron for background-clip: text (background-size: auto 100%)",
+   "scale": 2,
+   "css": [
+    192,
+    340
+   ]
+  }
+ }
+}
