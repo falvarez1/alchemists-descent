@@ -114,7 +114,7 @@ try {
   }
   // Key-to-screen: a key press until the pressing player's own fighter moves on THEIR screen.
   for (const [who, page] of [['guest', guest], ['host', host]]) {
-    for (let n = 0; n < 8; n++) {
+    for (let n = 0; n < 16; n++) {
       const ms = await page.evaluate(async code => {
         const g = window.__game, d = g.ctx.duel, player = g.ctx.arena.bundle(d.slot).player, startX = player.x;
         const at = performance.now();
@@ -142,6 +142,9 @@ try {
   assert.ok(results.host.publishHz > 55, `The host publishes every tick (${results.host.publishHz.toFixed(1)}/s)`);
   assert.ok(results.guest.foe.heldFramesInWalk <= Math.ceil(results.guest.foe.framesInWalk * 0.05), 'The opponent walks without holds on the guest');
   assert.ok(results.guest.own.heldFramesInWalk <= Math.ceil(results.guest.own.framesInWalk * 0.1), 'The guest\'s fighter walks without holds');
-  assert.ok(results.response.guestStat.p50 < (oneWayDelay + jitter) * 2 + 60, 'Guest key-to-screen median exceeds network delay plus 60 ms');
+  // The guest answers a key one round trip (plus its playback lead) after the host would: judged against the host's own
+  // key-to-screen on the same machine, so machine speed and display rate cancel out. Before the playback rework: +61 ms.
+  const behind = results.response.guestStat.p50 - results.response.hostStat.p50;
+  assert.ok(behind < (oneWayDelay + jitter) * 2 + 50, 'Guest key-to-screen trails the host by ' + behind.toFixed(1) + ' ms: more than the network delay plus 50 ms');
   await host.evaluate(() => window.__game.ctx.duel.leave());
 } finally { await Promise.all(browsers.map(b => b.close())); }
