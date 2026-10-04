@@ -1,5 +1,10 @@
 # Opponent personalities
 
+> **Stock matches (the Duel)** have their own close game since 2026-10-04: spacing, shields, grabs, punishes and edge-guards
+> are `AI-STOCK-TACTICS.md`; CPU vs CPU telemetry and the Duel's balance levers are `STOCK-TELEMETRY.md`. This page describes
+> the shared brain, the personalities and the skill tiers, and the health duel (where the statements below about missing
+> shields, grabs and stocks still hold).
+
 Arena and Duel use the existing `basic` controller for both fighter slots. The controller writes ordinary movement keys, aim, trigger,
 wand selection, kick and ability presses. It does not write position, velocity, damage, mana, cooldowns or invulnerability.
 

@@ -31,6 +31,8 @@ stat knobs toward 50%; `loadout-lab.mjs` and `fight-dps.mjs` choose a primary at
 | [`MOVESETS-V2.md`](MOVESETS-V2.md) | signature loadouts, weapons, techniques, direction variants |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | two fighters in one world (slots + proxy enemies) |
 | [`AI-FIGHTERS.md`](AI-FIGHTERS.md) | the computer fighter |
+| [`AI-STOCK-TACTICS.md`](AI-STOCK-TACTICS.md) | the CPU's close game in a stock match (the Duel): spacing, answers, punishes, edge-guards; why two CPUs used to leapfrog |
+| [`STOCK-TELEMETRY.md`](STOCK-TELEMETRY.md) | CPU vs CPU stock matches recorded and analysed: `duel-batch`, `duel-analyse`, `duel-tune`, the Duel's balance levers |
 | [`ARENA-RULES.md`](ARENA-RULES.md) | health duel, stock match, volatility, ring-outs, the collapse, stages |
 | [`TELEMETRY-AND-BALANCE.md`](TELEMETRY-AND-BALANCE.md) | recording fights, batch runs, analysis, the tuner, the review overlay |
 | [`TEST-PLAN.md`](TEST-PLAN.md) | what proves each phase; probe hygiene |

@@ -1,4 +1,5 @@
 import type { FighterId } from '@/content/fighters';
+import type { StockAttackKind, StockAttackSpec } from '@/core/stockAttacks';
 import type { CardId, Ctx, Enemy, EnemyKind } from '@/core/types';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import type { BrainSelf } from '@/arena/ai/brain';
@@ -99,6 +100,21 @@ export interface FoeView {
   grounded: boolean;
   /** Awake and notice-able (a roosting bat, or one hanging in the dark, is `sleeping`). */
   sleeping: boolean;
+  /**
+   * Stock match only: what is visible on a rival fighter's body: its swing (which blow, its timing card, which way, how
+   * many ticks in), a raised shield, a dodge, a ledge hang, a grab reach, and the HUD's percent. Flat primitives (and an
+   * immutable spec), so the Execution ring's snapshot copies them with the position: the bot sees the wind-up late too.
+   */
+  atkKind?: StockAttackKind | null;
+  atkSpec?: StockAttackSpec | null;
+  atkFacing?: number;
+  atkAge?: number;
+  shielding?: boolean;
+  dodging?: boolean;
+  onLedge?: boolean;
+  grabbing?: boolean;
+  percent?: number;
+  fighterId?: FighterId | null;
 }
 
 export interface ShotView {
@@ -262,6 +278,8 @@ export function buildWorldView(ctx: Ctx, self: BrainSelf, tick: number, out: Wor
     f.sleeping = sleeping;
     f.clarity = 1;
     f.staggered = false;
+    f.atkKind = f.atkSpec = null; f.atkFacing = 1; f.atkAge = 0;
+    f.shielding = f.dodging = f.onLedge = f.grabbing = false; f.percent = 0; f.fighterId = null;
     const arena = ctx.arena;
     if (e.fighter !== undefined && arena?.active) {
       // Reuse the kit's existing perception of smoke/echoes, under its own slot binding.
@@ -272,7 +290,17 @@ export function buildWorldView(ctx: Ctx, self: BrainSelf, tick: number, out: Wor
         f.clarity = 1 - (ctx.fighters?.concealment() ?? 0);
         const decoy = ctx.fighters?.decoyFor(out.observer);
         if (decoy) { f.x = f.cx = decoy.x; f.y = decoy.y; f.cy = decoy.y - h * BODY_CENTRE; f.vx = decoy.vx; }
+        f.fighterId = ctx.fighters?.id ?? null;
       });
+      if (arena.stockMatch) {
+        const slot = e.fighter, attack = arena.stockAttack(slot), grab = arena.stockGrab(slot);
+        if (attack?.busy && attack.kind && attack.spec) { f.atkKind = attack.kind; f.atkSpec = attack.spec; f.atkFacing = attack.facing; f.atkAge = attack.age; }
+        f.shielding = arena.stockShield(slot)?.guarding === true;
+        f.dodging = arena.stockDodge(slot)?.busy === true;
+        f.onLedge = arena.stockLedge(slot)?.busy === true;
+        f.grabbing = grab?.phase === 'startup' || grab?.phase === 'active';
+        f.percent = arena.stockMatch.fighters[slot]?.volatility ?? 0;
+      }
       f.dx = f.cx - me.x; f.dy = f.cy - me.sy; f.dist = Math.hypot(f.dx, f.dy);
     }
     foes.push(f);

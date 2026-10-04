@@ -13,7 +13,9 @@ import type { NavEdge, StageNav } from '@/arena/ai/nav';
 import { buildWorldView, createWorldView, lineClear } from '@/arena/ai/worldView';
 import type { WorldView } from '@/arena/ai/worldView';
 import { abilityPlan } from '@/arena/ai/playbooks';
-import { incomingShot, safeDrop, safeFooting, safeTravel, safeMobilityLanding, hazardHopClearance, weaponLaneClear } from '@/arena/ai/combat';
+import { incomingShot, safeDrop, safeFooting, safeTravel, safeMobilityLanding, hazardHopClearance, weaponLaneClear, stockHazardCell, bodyHazardExposure } from '@/arena/ai/combat';
+import { StockTactics } from '@/arena/ai/stockTactics';
+import type { StockOrder, StockStrike } from '@/arena/ai/stockTactics';
 import { AI_BEHAVIOR } from '@/config/aiBehavior';
 import type { AiLevel } from '@/config/aiTiers';
 import { YARD } from '@/world/fighterArena';
@@ -103,6 +105,11 @@ export class BasicBrain implements Brain {
   private meleeContext = '';
   private meleeUntil = 0;
   private attackTarget: { context: string; victim: number; tick: number } | null = null;
+  /** The stock-match close game (stockTactics.ts) and this tick's order from it; null outside a stock match or on a nav leg. */
+  private readonly tactics = new StockTactics();
+  private order: StockOrder | null = null;
+  /** A decision beat ran this tick (decide() was called and did not hesitate). */
+  private beat = false;
 
   constructor(opts: BrainOptions) {
     this.slot = opts.slot;
@@ -114,7 +121,10 @@ export class BasicBrain implements Brain {
 
   observeHit(hit: ObservedHit): void {
     this.memory.hear(hit);
+    // The bot's own blow is on its own screen at once (the hitstop); being struck ends whatever it was doing.
+    if (hit.by === this.slot && hit.victim !== this.slot && hit.attack !== 'world') this.tactics.landed(hit.tick);
     if (hit.victim === this.slot && hit.attack !== 'world') {
+      this.tactics.hurt(hit.tick);
       this.learning.interrupt();
       // Being knocked off an approach is not evidence that the route itself is impossible.
       // Lingering elemental damage has no launch. Restarting on each damage tick
@@ -149,6 +159,7 @@ export class BasicBrain implements Brain {
     this.meleeChoice = null; this.meleeUntil = 0; this.meleeContext = '';
     this.attackTarget = null;
     this.stockFootwork.reset();
+    this.tactics.reset(keepLearning); this.order = null; this.beat = false;
     this.control?.reset();
     this.exec.reset();
     this.memory.reset();
@@ -174,7 +185,8 @@ export class BasicBrain implements Brain {
 
     this.wasHolding = false;
     const stats = this.status.stats;
-    for (const k of Object.keys(stats)) stats[k] = 0;
+    // A stock respawn keeps the match's counters (telemetry reads them at the end); a new bout clears them.
+    if (!keepLearning) for (const k of Object.keys(stats)) stats[k] = 0;
     Object.assign(this.status, { intent: 'idle', target: '-', rule: '', aim: null, goalX: null, range: 0, idleTicks: 0 });
   }
 
@@ -198,6 +210,8 @@ export class BasicBrain implements Brain {
     const control = this.controlFor(ctx, self);
     const hand = control.hand;
     hand.begin();
+    this.beat = false;
+    this.order = null;
     const st = this.status;
     const personality = AI_PERSONALITIES[this.personality];
     st.personality = this.personality;
@@ -236,7 +250,9 @@ export class BasicBrain implements Brain {
       st.intent = 'recover'; st.rule = 'rise beside the ledge, then return'; st.goalX = target;
       hand.end(); return;
     }
-    if (ctx.arena?.stockMatch) self.input.keys.up = false;
+    // Stock keys are taps: up and down mean a launcher or a finisher on the tick they are pressed, never a held stance
+    // (a held down turned every later jump into a fast fall), and the shield is held only while the plan says so.
+    if (ctx.arena?.stockMatch) { self.input.keys.up = false; hand.down(false); self.input.shieldHeld = false; }
     const levelId = ctx.arena?.stockMatch ? `fighter-stock:${stockStage.id}` : ctx.levels?.current?.def.id;
     if (this.navFor !== levelId) { this.navFor = levelId; this.nav = stageNavFor(ctx.arena?.stockMatch ? 'fighter-stock' : levelId, stockStage); this.blocked.clear(); this.navStage = stockStage; }
 
@@ -278,6 +294,8 @@ export class BasicBrain implements Brain {
         this.decide(ctx, self, foes, tick);
       }
     }
+    // The stock close game: one order per tick (spacing, strike, shield, dodge, hop). Nav legs and recovery own the body otherwise.
+    if (ctx.arena?.stockMatch && target !== null && control.activeEdge === null) this.order = this.stockOrder(ctx, self, target, incoming?.ticks ?? null, tick);
     // Choose inputs before footwork so a defensive commitment can request an evasion this tick.
     if (target !== null) this.fight(ctx, self, view, foes, target, tick);
     else { hand.fire(false); st.aim = null; st.target = '-'; this.action = 'wait'; }
@@ -290,7 +308,8 @@ export class BasicBrain implements Brain {
     // ---- act: walking ----
     this.moveToGoal(ctx, me, tick);
     if (!control.committed || control.activeEdge === null) {
-      if (incoming && (this.action === 'defend' || incoming.ticks <= 3) && tick >= this.nextDodge &&
+      const ordered = this.order !== null && (this.order.shield || this.order.strike !== null || this.order.dodge !== null);
+      if (incoming && !ordered && (this.action === 'defend' || incoming.ticks <= 3) && tick >= this.nextDodge &&
         (me.grounded || me.levit > AI_BEHAVIOR.dodgeLevitReserve) && !me.climbing && self.player.stunT <= 0 && self.player.pullT <= 0) {
         const dir = Math.sign(me.x - incoming.shot.x) || this.strafeDir;
         this.dodgeJump = Math.abs(incoming.shot.vx) >= Math.abs(incoming.shot.vy) && ctx.physics.entityFree(me.x, me.y - 24, PLAYER_HALF_W, PLAYER_H);
@@ -317,17 +336,18 @@ export class BasicBrain implements Brain {
         ahead = Math.min(ahead, Math.max(Math.abs(this.goalX - me.x), Math.abs(control.traction.stopDistance(me.vx))));
       }
       const x = me.x + hand.dir * ahead;
-      if (ctx.physics.entityFree(x, me.y, PLAYER_HALF_W, PLAYER_H) && (!safeDrop(ctx, x, me.y) || !safeTravel(ctx, me.x, me.y, x))) {
+      const danger = ctx.arena?.stockMatch ? stockHazardCell : undefined;
+      if (ctx.physics.entityFree(x, me.y, PLAYER_HALF_W, PLAYER_H) && (!safeDrop(ctx, x, me.y, danger) || !safeTravel(ctx, me.x, me.y, x, danger))) {
         const dir = hand.dir;
         let hop: { clearY: number; landingX: number } | null = null;
-        if (!control.escaping) {
+        if (!control.escaping && !ctx.arena?.stockMatch) {
           const maxRise = Math.min(64, 24 + Math.max(0, me.levit - AI_BEHAVIOR.dodgeLevitReserve) * .8);
           hop = hazardHopClearance(ctx, me.x, me.y, dir, AI_BEHAVIOR.hazardLookahead, maxRise);
         }
         if (hop !== null) {
           control.startHop(dir, hop.clearY, me.y, hop.landingX);
           st.stats.hazardHops++;
-        } else if (ctx.arena?.stockMatch && safeFooting(ctx, me.x, me.y)) {
+        } else if (ctx.arena?.stockMatch && safeFooting(ctx, me.x, me.y, stockHazardCell)) {
           // Safe ground is a useful position. Hold it until the lane clears or
           // the target opens another route; repeated backsteps do not clear fire.
           hand.move(0); hand.jump(false);
@@ -388,6 +408,7 @@ export class BasicBrain implements Brain {
       this.status.rule = 'hesitates';
       return; // a lapse: the old plan stands for this beat
     }
+    this.beat = true;
     const nav = this.nav;
     const cellBlocks = (x: number, y: number): boolean => ctx.physics.cellBlocks(x, y);
     const hasLine = (f: PerceivedFoe): boolean => lineClear(cellBlocks, me.x, me.sy, f.cx, f.cy);
@@ -483,7 +504,9 @@ export class BasicBrain implements Brain {
       }
     }
     if (control.activeEdge !== null && !control.committed) { control.cancelEdge(); this.edgeTarget = null; }
-    const stage = this.navFor?.startsWith('fighter-stock') ? this.navStage.main : this.navFor === 'fighter-duel' ? DUEL : YARD;
+    // Same surface (or an opponent in the air): stockTactics chooses the footing every tick.
+    if (stock) { this.goalX = null; return; }
+    const stage =this.navFor?.startsWith('fighter-stock') ? this.navStage.main : this.navFor === 'fighter-duel' ? DUEL : YARD;
     // Upper platforms extend beyond the main deck. Keep ordinary footwork on the
     // surface we occupy; the nav owns movement to another surface.
     const x0 = stock && myNode ? myNode.x0 + PLAYER_HALF_W + 4 : stage.x0 + 16;
@@ -578,6 +601,24 @@ export class BasicBrain implements Brain {
       // after an edge the next decision picks the next leg; until then, stand
       return;
     }
+    const order = this.order;
+    if (order !== null) {
+      this.goalX = order.goalX;
+      this.status.goalX = order.goalX;
+      if (order.goalX === null) control.hold(me);
+      else control.walkTo(me, order.goalX, { tol: order.tol });
+      const hand = control.hand;
+      if (order.jump) hand.jump(true);
+      // The body reads these keys after the bot: a roll's direction, a throw's direction, an aerial's drift.
+      if (order.dodge !== null) hand.move(order.dodge);
+      else if (order.throwDir !== null) {
+        hand.move(order.throwDir === 'left' ? -1 : order.throwDir === 'right' ? 1 : 0);
+        hand.up(order.throwDir === 'up'); hand.down(order.throwDir === 'down');
+      } else if (order.strike !== null) hand.move(order.facing);
+      // A launch the bot could not stop is leaned toward the middle (influence acts on the tick the blow lands).
+      else if (order.influence !== 0 && !order.shield) hand.move(order.influence);
+      return;
+    }
     const goalX = this.goalX;
     this.status.goalX = goalX;
     if (goalX === null) { control.hold(me); return; }
@@ -631,10 +672,13 @@ export class BasicBrain implements Brain {
     let kick = false;
     const stock = !!ctx.arena?.stockMatch;
     // Use delayed position and speed, just as aiming does. A still nearby target is a commitment opportunity.
-    const context = `${target.foe.slot ?? -1}:${Math.round(target.x / 48)}:${me.grounded ? 'ground' : 'air'}:${target.y < me.y - 16 ? 'above' : 'level'}`;
+    const context = meleeContext(target, me);
     this.attackTarget = { context, victim: target.foe.slot ?? -1, tick };
     const meleeFacing = Math.sign(target.x - me.x) || me.facing;
-    if (stock && canAct && (tick >= this.meleeUntil || context !== this.meleeContext)) {
+    // In a stock match the close game (blows, grabs, shields, dodges) is stockTactics' order; the utilities below still
+    // choose the special-charge spends (a wand group, Z, T). The old overlap-and-swing path runs only without an order.
+    const order = this.order;
+    if (stock && order === null && canAct && (tick >= this.meleeUntil || context !== this.meleeContext)) {
       const kinds: StockAttackKind[] = me.grounded ? ['opener', 'launcher', 'finisher'] : ['aerial'];
       const style = AI_PERSONALITIES[this.personality];
       const options = kinds.filter(kind => {
@@ -648,7 +692,7 @@ export class BasicBrain implements Brain {
     }
     const meleeKind = this.meleeChoice ?? 'opener';
     const melee = stockMoveset(me.fighter)[meleeKind];
-    if (canAct && ctx.playerCtl.kickReady !== false && tick - this.lastKick >= lp.kickCooldown + 1) {
+    if (canAct && order === null && ctx.playerCtl.kickReady !== false && tick - this.lastKick >= lp.kickCooldown + 1) {
       if (stock) {
         kick = this.meleeChoice !== null && this.learning.ready(context, meleeKind) && stockAttackOverlaps(melee, meleeFacing, me.x, me.y, target.x, target.y) &&
           lineClear(cellBlocks, me.x, me.y - 10, target.cx, target.cy);
@@ -678,7 +722,7 @@ export class BasicBrain implements Brain {
       kick,
       tactical: canAct && (!stock || ctx.arena!.canStockSpecial()) && !!self.fighters && !!plan.tactical && safeAbility && tick - this.lastZ >= PRESS_GAP,
       ultimate: canAct && (!stock || ctx.arena!.canStockSpecial(2)) && !!self.fighters && !!plan.ultimate && tick - this.lastT >= PRESS_GAP,
-      defend: canAct && this.threatened && (tick < this.dodgeUntil || tick >= this.nextDodge),
+      defend: canAct && order === null && this.threatened && (tick < this.dodgeUntil || tick >= this.nextDodge),
       wait: true,
     };
     // Only an observed threat or an invalid action can interrupt the tactical cadence.
@@ -698,11 +742,15 @@ export class BasicBrain implements Brain {
     }
     this.actionThreatened = this.threatened;
     st.action = this.action;
+    if (order !== null && (order.strike !== null || order.shield || order.dodge !== null || order.throwDir !== null)) {
+      this.stockHands(self, order, context, target, tick);
+      return;
+    }
     const fire = this.action === 'shoot' && eligible.shoot;
     hand.fire(fire);
     if (fire && !this.wasHolding) st.stats.shots++;
     this.wasHolding = fire;
-    st.rule = this.action === 'wait' ? this.recovering ? 'saving mana' : !line ? 'seeking clear lane' : 'waiting for a ready action' : this.action;
+    if (order === null || this.action !== 'wait') st.rule = this.action === 'wait' ? this.recovering ? 'saving mana' : !line ? 'seeking clear lane' : 'waiting for a ready action' : this.action;
     if (this.action === 'kick' && eligible.kick) {
       if (stock) {
         hand.move(meleeFacing);
@@ -741,4 +789,81 @@ export class BasicBrain implements Brain {
       st.rule = `Z: ${plan.tactical}`;
     }
   }
+
+  // ==================================================================================================== the stock game
+
+  /** The tactics' view of this tick: the bot's own body now, the opponent as it was perceived, and the footing. */
+  private stockOrder(ctx: Ctx, self: BrainSelf, target: PerceivedFoe, shotIn: number | null, tick: number): StockOrder {
+    const arena = ctx.arena!;
+    const me = this.view.me, p = self.player, slot = self.slot, f = target.foe;
+    const shield = arena.stockShield(slot), dodge = arena.stockDodge(slot), grab = arena.stockGrab(slot), attack = arena.stockAttack(slot);
+    const main = this.navStage.main;
+    // Ordinary footwork stays on the surface the bot stands on (the nav owns moving to another one).
+    const node = this.nav?.nodeAt(me.x, me.y) ?? null;
+    const inset = PLAYER_HALF_W + 4;
+    const deck = node ? { x0: node.x0 + inset, x1: node.x1 - inset, y: node.y } : { x0: main.x0 + inset, x1: main.x1 - inset, y: main.y - 1 };
+    const context = meleeContext(target, me);
+    const order = this.tactics.next({
+      tick,
+      me: {
+        x: me.x, y: me.y, vx: me.vx, vy: me.vy, grounded: me.grounded, facing: me.facing,
+        percent: arena.stockMatch?.fighters[slot]?.volatility ?? 0,
+        canAct: !me.climbing && p.stunT <= 0 && p.pullT <= 0 && !arena.isActionLocked(slot) && !attack?.busy && !grab?.busy && !dodge?.busy && !arena.isGrabbed(slot) &&
+          !arena.stockSpecial(slot)?.busy && !arena.isLaunching(slot),
+        shieldStrength: shield?.strength ?? 0, shielding: shield?.guarding === true,
+        dodgeReady: dodge?.busy !== true, canThrow: grab?.phase === 'hold' && grab.age >= 8,
+        moves: stockMoveset(me.fighter),
+      },
+      foe: {
+        x: target.x, y: target.y, vx: target.vx, vy: target.vy, age: target.age, grounded: f.grounded,
+        attack: f.atkKind && f.atkSpec ? { kind: f.atkKind, spec: f.atkSpec, facing: f.atkFacing ?? 1, age: f.atkAge ?? 0 } : null,
+        shielding: f.shielding === true, dodging: f.dodging === true, stunned: f.staggered === true, onLedge: f.onLedge === true,
+        grabbing: f.grabbing === true, percent: f.percent ?? 0, moves: stockMoveset(f.fighterId ?? null),
+      },
+      deck,
+      stage: { x0: main.x0, x1: main.x1, y: main.y - 1 },
+      personality: AI_PERSONALITIES[this.personality],
+      skill: { level: this.exec.level, prediction: this.exec.tier.prediction, spacing: this.exec.spacingBias },
+      shotIn,
+      heat: (x: number) => bodyHazardExposure(ctx, x, deck.y),
+      rng: this.rng,
+      decide: this.beat,
+      learned: (s: StockStrike) => s === 'grab' ? 0 : this.learning.bias(context, s, this.exec.tier.adaptation),
+      ready: (s: StockStrike) => s === 'grab' || this.learning.ready(context, s),
+    });
+    this.status.intent = order.mode;
+    this.status.rule = order.why;
+    this.status.tactics = this.tactics.counts;
+    return order;
+  }
+
+  /** Press what the order asks for, the way a person's hands do (a held shield, a queued dodge, a direction to throw, a blow). */
+  private stockHands(self: BrainSelf, order: StockOrder, context: string, target: PerceivedFoe, tick: number): void {
+    const control = this.control!;
+    const hand = control.hand, st = this.status;
+    hand.fire(false); this.wasHolding = false;
+    if (order.shield) { self.input.shieldHeld = true; st.action = 'shield'; return; }
+    if (order.dodge !== null) { self.input.queuedDodge = true; st.action = 'dodge'; st.stats.dodges++; return; }
+    if (order.throwDir !== null) { st.action = 'throw'; return; } // the direction is held by moveToGoal (after footwork)
+    const strike = order.strike!;
+    if (strike === 'grab') {
+      hand.move(order.facing); self.hands.grab?.(); hand.pressed();
+      st.action = 'grab'; st.stats.grabs = (st.stats.grabs ?? 0) + 1;
+      return;
+    }
+    hand.move(order.facing);
+    self.input.keys.up = strike === 'launcher'; hand.down(strike === 'finisher');
+    // Hitstop pauses the swing while the observation clock runs on: a bounded confirmation window.
+    this.learning.attempt(context, strike, tick, tick + 90 + this.exec.tier.reaction, `melee.${strike}`, target.foe.slot ?? -1,
+      this.lastApproach && tick < this.lastApproach.until ? this.lastApproach : undefined);
+    st.stats[`move_${strike}`] = (st.stats[`move_${strike}`] ?? 0) + 1;
+    self.hands.kick(); hand.pressed(); this.lastKick = tick; st.stats.kicks++;
+    st.action = 'kick';
+    this.actionPerformed('kick');
+  }
+}
+
+/** The learning context of a blow: which opponent, roughly where on the stage, from the ground or the air, at a body above or level. */
+function meleeContext(target: PerceivedFoe, me: { y: number; grounded: boolean }): string {
+  return `${target.foe.slot ?? -1}:${Math.round(target.x / 48)}:${me.grounded ? 'ground' : 'air'}:${target.y < me.y - 16 ? 'above' : 'level'}`;
 }

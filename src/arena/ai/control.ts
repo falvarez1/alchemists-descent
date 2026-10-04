@@ -88,6 +88,10 @@ export class Hand {
     this.self.input.keys.down = held;
   }
 
+  up(held: boolean): void {
+    this.self.input.keys.up = held;
+  }
+
   /** The cursor's world point (a whole cell, as the pointer's is). */
   aim(x: number, y: number): void {
     const m = this.self.input.mouse;
@@ -113,6 +117,7 @@ export class Hand {
     k.left = k.right = k.up = k.jump = k.wallJump = k.down = k.grab = false;
     input.queuedJump = undefined;
     input.queuedDodge = false;
+    input.shieldHeld = false;
     this.self.player.firePressed = false;
     this.self.fighters?.releaseInputs?.();
     this.jumpHeld = false;
@@ -181,7 +186,9 @@ export class StuckDetector {
     if (!wantsMove) { this.moveTicks = 0; this.anchor(me, tick); return false; }
     this.moveTicks++;
     if (Math.abs(me.x - this.x) > 3 || Math.abs(me.y - this.y) > 6) { this.anchor(me, tick); this.moveTicks = 1; return false; }
-    if (idleTicks >= 90 || (tick - this.since >= StuckDetector.WINDOW && this.moveTicks >= StuckDetector.WINDOW)) {
+    // Empty hands count only while the bot has WANTED to move: a deliberate wait (holding spacing, guarding an edge) that
+    // ends is not 90 ticks of being stuck, and must not set off a shake-loose jump on the first step.
+    if (Math.min(idleTicks, this.moveTicks) >= 90 || (tick - this.since >= StuckDetector.WINDOW && this.moveTicks >= StuckDetector.WINDOW)) {
       this.anchor(me, tick);
       this.moveTicks = 0;
       return true;

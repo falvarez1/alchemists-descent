@@ -66,13 +66,22 @@ export function dangerousCell(type: number): boolean {
   return type === Cell.Lava || type === Cell.Acid || type === Cell.Fire || type === Cell.Ember;
 }
 
+/**
+ * What a stock match's footwork refuses to walk into. Spell fire and embers on a deck are a few percent (the arena's
+ * hazard scale): a fighter steps through them rather than hopping 40 cells over its opponent or freezing beside them.
+ * Lava and acid are still real.
+ */
+export function stockHazardCell(type: number): boolean {
+  return type === Cell.Lava || type === Cell.Acid;
+}
+
 /** Local landing/footing check; uses real cells and the normal body collision test. */
-export function safeFooting(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: number): boolean {
+export function safeFooting(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: number, danger: (type: number) => boolean = dangerousCell): boolean {
   if (!ctx.physics.entityFree(x, y, PLAYER_HALF_W, PLAYER_H)) return false;
   for (let dx = -PLAYER_HALF_W; dx <= PLAYER_HALF_W; dx++) {
     for (let dy = -PLAYER_H; dy <= 3; dy++) {
       const gx = Math.round(x + dx), gy = Math.round(y + dy);
-      if (!ctx.world.inBounds(gx, gy) || dangerousCell(ctx.world.types[ctx.world.idx(gx, gy)])) return false;
+      if (!ctx.world.inBounds(gx, gy) || danger(ctx.world.types[ctx.world.idx(gx, gy)])) return false;
     }
   }
   for (let drop = 1; drop <= 12; drop++) if (ctx.physics.cellBlocks(Math.round(x), Math.round(y + drop))) return true;
@@ -80,27 +89,27 @@ export function safeFooting(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: n
 }
 
 /** A crater is traversable when every cell along the descent is safe and its floor is nearby. */
-export function safeDrop(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: number): boolean {
+export function safeDrop(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: number, danger: (type: number) => boolean = dangerousCell): boolean {
   for (let down = 0; down <= 48; down++) {
     for (let dx = -PLAYER_HALF_W; dx <= PLAYER_HALF_W; dx++) {
       const gx = Math.round(x + dx), gy = Math.round(y + down);
-      if (!ctx.world.inBounds(gx, gy) || dangerousCell(ctx.world.types[ctx.world.idx(gx, gy)])) return false;
+      if (!ctx.world.inBounds(gx, gy) || danger(ctx.world.types[ctx.world.idx(gx, gy)])) return false;
     }
     // Test the eventual standing pose. Support twelve cells below a midair
     // pose does not establish that the descent itself is safe.
-    if (ctx.physics.cellBlocks(Math.round(x), Math.round(y + down + 1))) return safeFooting(ctx, x, y + down);
+    if (ctx.physics.cellBlocks(Math.round(x), Math.round(y + down + 1))) return safeFooting(ctx, x, y + down, danger);
   }
   return false;
 }
 
 /** Scan the body corridor, rather than trusting only the far endpoint. The
  * walk's support is checked separately so traversable craters remain usable. */
-export function safeTravel(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: number, toX: number): boolean {
+export function safeTravel(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: number, toX: number, danger: (type: number) => boolean = dangerousCell): boolean {
   const steps = Math.ceil(Math.abs(toX - x));
   let previous = Infinity, initial = 0, final = 0;
   for (let i = 0; i <= steps; i++) {
     const cx = x + (toX - x) * i / Math.max(1, steps);
-    const exposure = bodyHazardExposure(ctx, cx, y);
+    const exposure = bodyHazardExposure(ctx, cx, y, danger);
     if (!Number.isFinite(exposure)) return false;
     // Fire can appear around the bot after it commits. Let it leave that
     // patch without walking through a fresh one or increasing its exposure.
@@ -111,12 +120,13 @@ export function safeTravel(ctx: Pick<Ctx, 'world' | 'physics'>, x: number, y: nu
   return final === 0 || final < initial;
 }
 
-function bodyHazardExposure(ctx: Pick<Ctx, 'world'>, x: number, y: number): number {
+/** Harmful cells a standing body at (x, feet y) touches (Infinity out of the world). */
+export function bodyHazardExposure(ctx: Pick<Ctx, 'world'>, x: number, y: number, danger: (type: number) => boolean = dangerousCell): number {
   let exposure = 0;
   for (let dx = -PLAYER_HALF_W; dx <= PLAYER_HALF_W; dx++) for (let dy = -PLAYER_H; dy <= 3; dy++) {
     const gx = Math.round(x + dx), gy = Math.round(y + dy);
     if (!ctx.world.inBounds(gx, gy)) return Infinity;
-    if (dangerousCell(ctx.world.types[ctx.world.idx(gx, gy)])) exposure++;
+    if (danger(ctx.world.types[ctx.world.idx(gx, gy)])) exposure++;
   }
   return exposure;
 }

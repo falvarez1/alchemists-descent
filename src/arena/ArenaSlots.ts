@@ -16,6 +16,7 @@ import { StockSpecial } from '@/arena/StockSpecial';
 import { StockLedge } from '@/arena/StockLedge';
 import { StockAttack, stockAttackOverlaps } from '@/arena/StockAttack';
 import { stockMoveset } from '@/config/stockAttacks';
+import { stockDealt, stockLaunchTaken } from '@/config/stockBalance';
 import type { StockAttackKind, StockAttackSpec, StockAttackView } from '@/core/stockAttacks';
 import { DEFAULT_STOCK_STAGE, STOCK_STAGES, type StockStageDef, type StockStageId } from '@/config/stockStage';
 import { earthStockStage } from '@/arena/stockEarthing';
@@ -209,7 +210,9 @@ export class ArenaSlots implements ArenaApi {
       // proportion to the victim's percent, so an opening shot at 0% is a flinch and the same shot at 120% sends.
       const volatility = this.match.fighters[slot].volatility, tag = blow?.tag ?? '';
       const tuned = tag.startsWith('melee.') || tag.startsWith('throw.');
-      const launch = stockLaunch(kx, ky, amount, volatility, rec.bundle.fighters.body.mass ?? 1, blow?.growth, blow?.stun, tuned ? 1 : stockProjectileScale(volatility));
+      // The Duel's launch lever (config/stockBalance) scales how far this fighter flies, apart from its body's mass (its feel).
+      const mass = (rec.bundle.fighters.body.mass ?? 1) / stockLaunchTaken(rec.bundle.fighters.id);
+      const launch = stockLaunch(kx, ky, amount, volatility, mass, blow?.growth, blow?.stun, tuned ? 1 : stockProjectileScale(volatility));
       if (!tuned && launch.stun > 0 && Math.hypot(launch.x, launch.y) < STOCK_PROJECTILE_LAUNCH.tumbleSpeed) {
         // A flinch: knocked back a step and briefly stunned, never tumbling or losing the next action to a launch.
         p.vx = launch.x; p.vy = Math.min(p.vy, launch.y);
@@ -531,7 +534,9 @@ export class ArenaSlots implements ArenaApi {
     const rec = this.slots[victim];
     if (!rec || rec.bundle.player.dead || this.bout.state === 'won' || this.isEvading(victim)) return;
     const attacker = this.boundSlot;
-    const dealt = playerBlow(source) ? this.slots[attacker]?.bundle.fighters.body.dealt ?? 1 : 1;
+    // A stock match has its own per-fighter lever (config/stockBalance); body.dealt is the health duel's.
+    const by = this.slots[attacker]?.bundle.fighters;
+    const dealt = !playerBlow(source) ? 1 : this.match ? stockDealt(by?.id) : by?.body.dealt ?? 1;
     // Equal health: scale damage with the victim's body health so a blow costs the same health fraction.
     // The victim's controller applies ARENA_RULES.blowScale to everything it takes, including fire.
     const hpFactor = this.slots[victim]?.bundle.fighters.body.maxHp ?? 1;
@@ -723,7 +728,7 @@ export class ArenaSlots implements ArenaApi {
         grab.release(dx, direction === 'up' || direction === 'down' ? -1 : 0); this.shields[victim].drop(); target.invuln = 0;
         const was = this.blow; this.blow = { by: slot, tag: `throw.${direction}`, growth: 1.2, stun: 1.1 };
         try {
-          this.with(victim, () => this.slots[victim]!.bundle.playerCtl.damage(18 * (b.fighters.body.dealt ?? 1), kx, ky, 'fighter'));
+          this.with(victim, () => this.slots[victim]!.bundle.playerCtl.damage(18 * stockDealt(b.fighters.id), kx, ky, 'fighter'));
           this.lastBlow[victim] = { by: slot, at: this.ctx.state.frameCount, landed: false }; this.ctx.audio.sfx('arena.throw');
         } finally { this.blow = was; }
       }
@@ -763,7 +768,7 @@ export class ArenaSlots implements ArenaApi {
       const was = this.blow;
       this.blow = { by: hit.attacker, tag: `melee.${hit.kind}`, growth: hit.spec.growth, stun: hit.spec.stun };
       try {
-        const dealt = this.slots[hit.attacker]!.bundle.fighters.body.dealt ?? 1;
+        const dealt = stockDealt(this.slots[hit.attacker]!.bundle.fighters.id);
         this.with(hit.victim, () => b.playerCtl.damage(hit.spec.damage * dealt, hit.spec.knockX * hit.facing, hit.spec.knockY, 'fighter'));
         if (this.match.fighters[hit.victim].volatility > before) {
           this.specials[hit.attacker].rewardMelee();

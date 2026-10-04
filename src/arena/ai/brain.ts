@@ -35,6 +35,8 @@ export interface Hands {
   wand(index: 0 | 1): void;
   /** R on the death screen: get back up. */
   respawn(): void;
+  /** G / a bumper in a stock match: reach for a grab (the arena refuses it whenever a person's press would be refused). */
+  grab?(): void;
 }
 
 export interface BrainSelf {
@@ -57,6 +59,8 @@ export interface BrainStatus {
   threat?: boolean;
   memory?: { opponents: number; confidence: number; caution: number };
   navigation?: { action: string; context: string; started: number } | null;
+  /** Stock match: what the close game did (modes entered, strikes, punishes, shields, edgeguards...), counted over the match. */
+  tactics?: Readonly<Record<string, number>>;
   /** The goal: `approach`, `retreat`, `zone`, `pressure`, `reposition`, `search`, or the dummy's `idle`. */
   intent: string;
   /** Who it is after (a foe's kind and distance), or `-`. */

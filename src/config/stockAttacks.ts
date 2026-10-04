@@ -1,9 +1,10 @@
+import { FIGHTER_ORDER } from '@/content/fighters';
 import type { FighterId } from '@/content/fighters';
 import type { StockAttackKind, StockAttackSpec } from '@/core/stockAttacks';
 
 export type StockMoveset = Readonly<Record<StockAttackKind, StockAttackSpec>>;
 /** Fixed-tick prototypes. Raw damage is reduced by arena tempo and fighter armor. */
-export const STOCK_ATTACKS: Readonly<Partial<Record<FighterId, StockMoveset>>> = {
+const AUTHORED: Readonly<Partial<Record<FighterId, StockMoveset>>> = {
   'ilyra-voss': {
     opener: { name: 'Brass jab', startup: 4, active: 3, recovery: 10, damage: 18, reach: 22, top: -18, bottom: -5, knockX: 1.4, knockY: -.4, growth: .35, stun: .65 },
     launcher: { name: 'Rising spark', startup: 7, active: 5, recovery: 14, damage: 23, reach: 20, top: -33, bottom: -7, knockX: .65, knockY: -2.8, growth: .7, stun: 1.2 },
@@ -23,7 +24,35 @@ export const STOCK_ATTACKS: Readonly<Partial<Record<FighterId, StockMoveset>>> =
     finisher: { name: 'Last toll', startup: 21, active: 6, recovery: 30, damage: 40, reach: 34, top: -29, bottom: -2, knockX: 4.3, knockY: -2.6, growth: 1.4, stun: 1.1 },
   },
 };
-/** The other seven fighters retain a common prototype until their authored attack pass. */
+/**
+ * Every fighter's LIVE moveset: intentionally mutable live-tuning data (like config/params), so a balance run can turn
+ * one fighter's blow (`stock.<id>.<kind>.<field>` in the fight harness's parameter registry) and put it back. The three
+ * authored sets, and for the other seven a COPY of the shared prototype (Ilyra's) until their authored attack pass: the
+ * copies start identical, but tuning one fighter never moves another.
+ */
+export const STOCK_ATTACKS: Readonly<Record<FighterId, StockMoveset>> = Object.fromEntries(FIGHTER_ORDER.map(id => {
+  const set = AUTHORED[id] ?? AUTHORED['ilyra-voss']!;
+  return [id, Object.fromEntries(Object.entries(set).map(([kind, spec]) => [kind, { ...spec }]))];
+})) as Record<FighterId, StockMoveset>;
+
+/** True for the fighters with an authored set (the rest share the prototype's numbers). */
+export function hasAuthoredMoveset(fighter: FighterId): boolean { return AUTHORED[fighter] !== undefined; }
+
 export function stockMoveset(fighter: FighterId | null): StockMoveset {
-  return (fighter ? STOCK_ATTACKS[fighter] : undefined) ?? STOCK_ATTACKS['ilyra-voss']!;
+  return (fighter ? STOCK_ATTACKS[fighter] : undefined) ?? STOCK_ATTACKS['ilyra-voss'];
 }
+
+/** Guardrails for the tuner (not balance targets): frame data in whole ticks, distances in cells. */
+export const STOCK_ATTACK_RANGES: Readonly<Record<Exclude<keyof StockAttackSpec, 'name'>, { min: number; max: number; step: number; integer?: boolean }>> = {
+  startup: { min: 1, max: 40, step: 1, integer: true },
+  active: { min: 1, max: 20, step: 1, integer: true },
+  recovery: { min: 1, max: 60, step: 1, integer: true },
+  damage: { min: 0, max: 90, step: 0.5 },
+  reach: { min: 4, max: 60, step: 1 },
+  top: { min: -70, max: 0, step: 1 },
+  bottom: { min: -20, max: 20, step: 1 },
+  knockX: { min: -10, max: 10, step: 0.05 },
+  knockY: { min: -10, max: 10, step: 0.05 },
+  growth: { min: 0, max: 3, step: 0.05 },
+  stun: { min: 0, max: 3, step: 0.05 },
+};

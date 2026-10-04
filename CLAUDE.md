@@ -49,6 +49,11 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # verify-builder-pro.mjs, verify-builder-ux.mjs, verify-builder-prefabs.mjs,
 # verify-builder-power.mjs, verify-sprites.mjs, verify-machines.mjs,
 # verify-gallery.mjs
+# Duel CPU + balance (docs/arena/AI-STOCK-TACTICS.md, STOCK-TELEMETRY.md; dev server running, a FROZEN one for batches):
+# duel-batch.mjs <url> --pairs all --seeds 2 --stage all --pages 3 [--personality duelist] [--set stockBalance.<id>.dealt=N]
+# -> duel-analyse.mjs <dir> [--compare <dir>] (report.md: win rates, matchups, KO blows, behaviour flags); duel-tune.mjs
+# (rounds of batches nudging config/stockBalance.ts, --apply); diag-duel-cpu.mjs (one bout, per-tick trace);
+# shot-duel-cpu.mjs (rendered real-time CPU vs CPU contact sheet: THE way to see whether they fight like people).
 # Fighters (docs/FIGHTERS.md; dev server running): fighter-probe.mjs is the shared harness (a PAUSED world you
 # step with the game's own tick, REAL key presses, a carved arena); verify-fighter-framework (the engine seams),
 # verify-fighter-<name> per kit, verify-fighter-roster-play (all ten through a real run), fighter-studio.mjs

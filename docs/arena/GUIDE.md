@@ -34,6 +34,9 @@ a blast is capped at 42, and who resolves first each tick is a coin.
 
 ## 3. Measure it
 
+**The Duel (stock matches) has its own loop**: `duel-batch` / `duel-analyse` / `duel-tune` and the per-fighter levers in
+`config/stockBalance.ts` (`STOCK-TELEMETRY.md`). The commands below measure the older health duel.
+
 Headless (nothing is rendered, about 3,700 ticks a second: a 270-fight matrix in one to five minutes). **Use a frozen worktree server
 for anything long** (see `WORKFLOW.md`): editing `src` reloads the page under a running batch.
 

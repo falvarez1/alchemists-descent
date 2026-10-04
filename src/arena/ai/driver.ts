@@ -41,6 +41,7 @@ export function playerHands(ctx: Ctx): Hands {
     flask: () => { if (!ctx.player.dead) ctx.flask.throwFlask(ctx); },
     wand: (index) => { ctx.wands.active = index; ctx.events.emit('wandChanged'); },
     respawn: () => { if (ctx.player.dead) ctx.playerCtl.respawn(); },
+    grab: () => { if (!ctx.player.dead) ctx.arena?.requestStockGrab(); },
   };
 }
 
@@ -63,6 +64,8 @@ export function slotSelf(ctx: Ctx, slot: number): BrainSelf | null {
       flask: () => { if (!b.player.dead) b.flask.throwFlask(ctx); },
       wand: (index) => { b.wands.active = index; ctx.events.emit('wandChanged'); },
       respawn: () => undefined,
+      // (think runs under this slot's binding, so the arena's request is this slot's)
+      grab: () => { if (!b.player.dead) ctx.arena?.requestStockGrab(); },
     },
   };
 }
@@ -146,6 +149,7 @@ export class BotDriver {
     k.left = k.right = k.up = k.jump = k.wallJump = k.down = k.grab = false;
     input.queuedJump = undefined;
     input.queuedDodge = false;
+    input.shieldHeld = false;
     this.self.player.firing = false;
     this.self.player.fireBlockedUntilRelease = false;
     this.self.player.firePressed = false;
@@ -163,6 +167,7 @@ export class BotDriver {
       k.left = k.right = k.up = k.jump = k.wallJump = k.down = k.grab = false;
       this.self.input.queuedJump = undefined;
       this.self.input.queuedDodge = false;
+      this.self.input.shieldHeld = false;
       this.self.player.firing = this.self.player.firePressed = false;
       this.self.fighters?.releaseInputs?.();
       return;
