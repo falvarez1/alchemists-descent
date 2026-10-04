@@ -64,9 +64,11 @@ for (const [w, h] of sizes) {
 
   // ---- the main page: only the doors ----
   const main = await items();
-  check(`${tag}: the main page lists the doors, in order`, JSON.stringify(main.filter((id) => id !== 'workshops')) === JSON.stringify(['begin', 'daily', 'duel', 'arena', 'extras', 'settings']), JSON.stringify(main));
-  // (the player build has no Arena doors; the authoring build adds Arena, Duel and Workshops: seven rows, each a door and none a wall of options)
-  check(`${tag}: it is short (seven rows at most in the authoring build)`, main.length <= 7, String(main.length));
+  check(`${tag}: the main page lists the doors, in order`, JSON.stringify(main.filter((id) => id !== 'workshops')) === JSON.stringify(['begin', 'daily', 'extras', 'settings']), JSON.stringify(main));
+  // (the authoring build adds Workshops: five rows, each a door and none a wall of options. No Duel or Arena door: the Duel
+  // is its own game now, CLASHFORGED, in its own repository)
+  check(`${tag}: it is short (five rows at most in the authoring build)`, main.length <= 5, String(main.length));
+  check(`${tag}: no Duel or Arena door (the Duel is CLASHFORGED's)`, !main.includes('duel') && !main.includes('arena'), JSON.stringify(main));
   const dumped = await page.evaluate(() => ['.kit-chip', '.difficulty-chip', '.fighter-pick-chip', '[data-entry="case"]', '[data-entry="fighter"]', '[data-entry="seed"]', '[data-entry="trailer"]', '#fighter-roster.visible'].filter((s) => document.querySelector(`#expedition-entry ${s}`)));
   check(`${tag}: no case, fighter, difficulty, seed or trailer controls on the main page`, dumped.length === 0, JSON.stringify(dumped));
   check(`${tag}: New descent holds the focus (the call to action)`, (await focused()) === 'begin', await focused());
@@ -136,17 +138,7 @@ for (const [w, h] of sizes) {
   await click('#expedition-entry .tm-item[data-difficulty="2"]');
   check(`${tag}: choosing Adept returns to the loadout page with the row updated`, (await visible('#expedition-entry [data-entry="descend"]')) && /Adept/.test(await rowValue('difficulty')), await rowValue('difficulty'));
 
-  // ---- the Arena door: the roster over the title, Back returns to the door (the Proving Yard itself: verify-fighter-arena) ----
   await press('Escape'); await settle();
-  for (let n = 0; n < 6 && (await focused()) !== 'arena'; n++) await press('ArrowDown');
-  check(`${tag}: the Arena door is on the main page`, (await focused()) === 'arena', await focused());
-  check(`${tag}: it says what it is`, /Pick a fighter/.test(await page.locator('#expedition-entry .tm-hint').textContent()), await page.locator('#expedition-entry .tm-hint').textContent());
-  await press('Enter');
-  await page.waitForSelector('#fighter-roster.visible', { timeout: 5000 });
-  check(`${tag}: Enter on Arena opens the roster`, await visible('#fighter-roster.visible'));
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(500);
-  check(`${tag}: Escape leaves the roster and returns to the door; nothing started`, !(await visible('#fighter-roster.visible')) && (await focused()) === 'arena' && (await page.evaluate(() => window.__game.ctx.levels.current?.def.id !== 'fighter-test')), await focused());
   await press('Home'); await press('Enter'); await settle();
 
   // ---- the Complications page: toggles, three at a time ----
