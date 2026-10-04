@@ -234,6 +234,32 @@ try {
   // The click lands once the stage build lets the page breathe; from then on the call fades and nothing more of it begins.
   check('skipping the VS card fades its call where it stands: the rest is never said', card2.length >= 1 && card2.at(-1).cut === true && card2.every((s, i) => s.line === VS[i]), skipped);
 
+  // Straight back in after a result (QA): finish this match, Enter to the card while GAME's call is still out,
+  // Change fighters, READY at once. A new match from the select screen is new: "Choose your fighter!", the
+  // whole VS call, then "Three!" (never "Rematch!"); the winner's call gives way to them.
+  await page.waitForFunction(() => window.__game.ctx.arena?.stockMatch?.state === 'fighting', null, { timeout: 20000 });
+  await page.evaluate(async () => {
+    const c = window.__game.ctx;
+    await c.console.exec('arena bot 0 off'); await c.console.exec('arena bot 1 off');
+    c.state.paused = true;
+    for (let i = 0; i < 3; i++) { window.ring.out(); window.ring.respawn(); }
+    c.state.paused = false;
+  });
+  const backFrom = await page.evaluate(() => performance.now());
+  await page.waitForFunction((t) => window.__game.ctx.audio.duel.debugSnapshot().said.some((s) => s.line === 'game' && s.at > t - 4000), backFrom, { timeout: 10000 });
+  await page.keyboard.press('Enter');
+  await page.locator('.stock-change').waitFor({ state: 'visible' });
+  await clickAt(page.locator('.stock-change'));
+  await page.locator('#versus-lobby').waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Ready player 1', exact: true }).click();
+  await page.locator('#versus-start').click();
+  await page.waitForFunction((t) => window.__game.ctx.audio.duel.debugSnapshot().said.some((s) => s.at > t && (s.line === 'count.3' || s.line === 'rematch')), backFrom, { timeout: 20000 });
+  const back = await page.evaluate((t) => window.__game.ctx.audio.duel.debugSnapshot().said.filter((s) => s.at > t - 4000).map((s) => ({ line: s.line, cut: !!s.cut })), backFrom);
+  const backLines = back.map((s) => s.line), chooseAt = backLines.lastIndexOf('choose');
+  const reentry = backLines.slice(chooseAt);
+  check('READY straight after a result: "Choose your fighter!", the whole VS call, then "Three!", not "Rematch!"',
+    chooseAt >= 0 && reentry.join().includes(VS.join()) && reentry.includes('count.3') && !reentry.includes('rematch'), back);
+
   // The descent stayed out the whole time.
   const descent = await page.evaluate(() => {
     const p = window.probe, n = window.__game.ctx.narrator?.debugSnapshot?.();

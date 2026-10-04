@@ -21,9 +21,9 @@
       "name": "a name is called within 400 ms of being chosen",
       "pass": true,
       "data": [
+        38,
         26,
-        20,
-        19
+        24
       ]
     },
     {
@@ -32,15 +32,15 @@
       "data": [
         {
           "cut": true,
-          "ms": 138
+          "ms": 146
         },
         {
           "cut": true,
-          "ms": 130
+          "ms": 141
         },
         {
           "cut": false,
-          "ms": 1364
+          "ms": 1368
         }
       ]
     },
@@ -74,8 +74,8 @@
           "versus",
           "fighter.brann-rook"
         ],
-        "firstLagMs": 9,
-        "loadMs": 4240
+        "firstLagMs": 10,
+        "loadMs": 4253
       }
     },
     {
@@ -92,10 +92,10 @@
       "name": "each countdown call lands on its beat (within 250 ms of the tick that changed it)",
       "pass": true,
       "data": {
-        "count.3": 9.900000005960464,
-        "count.2": 10.310000002384186,
-        "count.1": 9.819999992847443,
-        "fight": 9.599999994039536
+        "count.3": 9.895000010728836,
+        "count.2": 10.215000003576279,
+        "count.1": 10.13000002503395,
+        "fight": 9.645000010728836
       }
     },
     {
@@ -207,12 +207,78 @@
       "pass": true,
       "data": [
         {
+          "line": "ready.1",
+          "cut": true
+        },
+        {
           "line": "fighter.mara-quell",
           "cut": false
         },
         {
           "line": "versus",
           "cut": true
+        },
+        {
+          "line": "count.3",
+          "cut": false
+        }
+      ]
+    },
+    {
+      "name": "READY straight after a result: \"Choose your fighter!\", the whole VS call, then \"Three!\", not \"Rematch!\"",
+      "pass": true,
+      "data": [
+        {
+          "line": "ready.1",
+          "cut": true
+        },
+        {
+          "line": "fighter.mara-quell",
+          "cut": false
+        },
+        {
+          "line": "versus",
+          "cut": true
+        },
+        {
+          "line": "count.3",
+          "cut": false
+        },
+        {
+          "line": "count.2",
+          "cut": false
+        },
+        {
+          "line": "count.1",
+          "cut": false
+        },
+        {
+          "line": "fight",
+          "cut": true
+        },
+        {
+          "line": "game",
+          "cut": true
+        },
+        {
+          "line": "choose",
+          "cut": true
+        },
+        {
+          "line": "ready.1",
+          "cut": true
+        },
+        {
+          "line": "fighter.mara-quell",
+          "cut": false
+        },
+        {
+          "line": "versus",
+          "cut": false
+        },
+        {
+          "line": "fighter.brann-rook",
+          "cut": false
         },
         {
           "line": "count.3",
@@ -235,14 +301,15 @@
           "pickup.bell",
           "duel.count",
           "duel.fight",
-          "spell.spark.cast",
           "player.step.stone",
+          "spell.spark.cast",
           "world.gong",
           "duel.super",
           "spell.spark.impact",
           "boom.small",
           "mat.zap",
           "mat.fire.loop",
+          "mat.sizzle",
           "arena.hit.light",
           "arena.hurt.duelist",
           "arena.hurt.armored",
@@ -275,14 +342,15 @@
           "pickup.bell",
           "duel.count",
           "duel.fight",
-          "spell.spark.cast",
           "player.step.stone",
+          "spell.spark.cast",
           "world.gong",
           "duel.super",
           "spell.spark.impact",
           "boom.small",
           "mat.zap",
           "mat.fire.loop",
+          "mat.sizzle",
           "arena.hit.light",
           "arena.hurt.duelist",
           "arena.hurt.armored",
@@ -310,10 +378,10 @@
       "fight"
     ],
     "lagMs": {
-      "count.3": 9.900000005960464,
-      "count.2": 10.310000002384186,
-      "count.1": 9.819999992847443,
-      "fight": 9.599999994039536
+      "count.3": 9.895000010728836,
+      "count.2": 10.215000003576279,
+      "count.1": 10.13000002503395,
+      "fight": 9.645000010728836
     },
     "beatTicks": [
       39,
@@ -396,14 +464,15 @@
       "pickup.bell",
       "duel.count",
       "duel.fight",
-      "spell.spark.cast",
       "player.step.stone",
+      "spell.spark.cast",
       "world.gong",
       "duel.super",
       "spell.spark.impact",
       "boom.small",
       "mat.zap",
       "mat.fire.loop",
+      "mat.sizzle",
       "arena.hit.light",
       "arena.hurt.duelist",
       "arena.hurt.armored",

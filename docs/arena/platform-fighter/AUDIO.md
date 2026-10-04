@@ -300,6 +300,7 @@ node scripts/verify-duel-audio.mjs http://127.0.0.1:5242/
 - GAME, then the winner's name 950 ms later (measured exactly 950);
 - "Rematch!";
 - the cabinet's pause;
-- a skipped VS card cut where it stood.
+- a skipped VS card cut where it stood;
+- READY straight after a result (Enter to the card, Change fighters, READY at once): "Choose your fighter!", the whole VS call, then "Three!", never "Rematch!". The winner's call gives way to the new screen.
 
-That is 22 checks. Result: `evidence/duel-audio.json`. As with everything above, these are instruments, not ears: whether the fast shouted reads hit the arcade feel, and the Kest and Rusk names in particular, is the user's call. The audition page lists every call, and the casting, under "Duel announcer".
+That is 23 checks. Result: `evidence/duel-audio.json`. As with everything above, these are instruments, not ears: whether the fast shouted reads hit the arcade feel, and the Kest and Rusk names in particular, is the user's call. The audition page lists every call, and the casting, under "Duel announcer".
