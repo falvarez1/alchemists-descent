@@ -46,6 +46,12 @@ describe('versus pad actions', () => {
     const next = readVersusPad(controller, previous, .2);
     expect(next).toMatchObject({ jump: true, jumpPressed: false, defense: true, defensePressed: false, grab: false, attack: false, special: false, smash: null });
   });
+  it('reports the bumpers as the lobby stage picker on their press edge', () => {
+    const previous = new Uint8Array(20);
+    expect(readVersusPad(pad(0, [5]), previous, .2)).toMatchObject({ stageNext: true, stagePrevious: false, grab: true });
+    expect(readVersusPad(pad(0, [5]), previous, .2)).toMatchObject({ stageNext: false, stagePrevious: false });
+    expect(readVersusPad(pad(0, [4]), previous, .2)).toMatchObject({ stageNext: false, stagePrevious: true });
+  });
   it('does not move or aim inside the chosen dead zone', () => {
     expect(readVersusPad(pad(0, [], [.1, -.1, .1, .1]), new Uint8Array(20), .3)).toMatchObject({ left: false, right: false, up: false, down: false, smash: null });
   });

@@ -1,7 +1,7 @@
 import type { Ctx } from '@/core/types';
 import type { VersusApi, VersusDevice, VersusPhase, VersusSeat } from '@/core/versus';
 import { FIGHTER_ORDER, type FighterId } from '@/content/fighters';
-import { DEFAULT_STOCK_STAGE, STOCK_STAGES, isStockStageId, type StockStageId } from '@/config/stockStage';
+import { DEFAULT_STOCK_STAGE, STOCK_STAGES, STOCK_STAGE_ORDER, isStockStageId, type StockStageId } from '@/config/stockStage';
 import { resetDuelStage } from '@/world/duelStage';
 import { botDriverFor, rivalDriverFor } from '@/arena/ai/driver';
 import { readVersusPad, VersusDevices } from '@/input/versusDevices';
@@ -152,6 +152,8 @@ export class LocalVersus implements VersusApi {
         if (slot < 0) continue;
         const seat = this.seats[slot];
         if ((action.previous || action.next) && !seat.ready) this.chooseFighter(slot, FIGHTER_ORDER[(FIGHTER_ORDER.indexOf(seat.fighter) + (action.next ? 1 : FIGHTER_ORDER.length - 1)) % FIGHTER_ORDER.length]);
+        // Either joined seat turns the shared stage picker with the bumpers.
+        if (action.stagePrevious || action.stageNext) this.chooseStage(STOCK_STAGE_ORDER[(STOCK_STAGE_ORDER.indexOf(this.stage) + (action.stageNext ? 1 : STOCK_STAGE_ORDER.length - 1)) % STOCK_STAGE_ORDER.length]);
         if (action.confirm) this.ready(slot);
         if (action.back && seat.ready) this.ready(slot);
         if (action.pause && this.canStart) void this.start();

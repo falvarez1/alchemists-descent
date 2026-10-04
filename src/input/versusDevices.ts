@@ -49,6 +49,8 @@ export function readVersusPad(pad: Gamepad, previous: Uint8Array, deadzone: numb
     defense, defensePressed: pressed(6) || pressed(7), dodgeDirection: defense && direction !== 0 && previous[19] !== direction,
     grab: pressed(4) || pressed(5), attack: pressed(0), special: held(1), specialPressed: pressed(1), smash,
     confirm: pressed(0), back: pressed(1), previous: pressed(14), next: pressed(15), pause: pressed(9),
+    // The lobby's stage picker (in a match LB/RB are grab).
+    stagePrevious: pressed(4), stageNext: pressed(5),
     menuPrevious: pressed(12) || pressed(14), menuNext: pressed(13) || pressed(15),
   };
   for (let i = 0; i < 18; i++) previous[i] = held(i) ? 1 : 0;

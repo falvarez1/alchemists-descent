@@ -73,6 +73,19 @@ describe('local versus lifecycle', () => {
     ctx.state.paused = true; session.poll([], true); session.poll([pad(0)], true); session.resume();
     expect(ctx.state.paused).toBe(true); expect(session.phase).toBe('playing'); session.dispose();
   });
+  it('lets a joined controller turn the stage picker with the bumpers, wrapping at either end', () => {
+    const { session } = setup(); const p0 = pad(0), p1 = pad(1);
+    session.poll([p0], false); session.open(); expect(session.seats[0].device).toBe('pad:0');
+    const press = (p: Gamepad, button: number): void => {
+      (p.buttons[button] as { pressed: boolean }).pressed = true; session.poll([p0, p1], false);
+      (p.buttons[button] as { pressed: boolean }).pressed = false; session.poll([p0, p1], false);
+    };
+    expect(session.stage).toBe('foundry');
+    press(p0, 5); expect(session.stage).toBe('kiln');
+    press(p0, 4); press(p0, 4); expect(session.stage).toBe('gallery');
+    press(p1, 5); expect(session.stage).toBe('gallery');
+    session.dispose();
+  });
   it('clears match input ownership when leaving the level', async () => {
     const { session, ctx } = setup(); session.open(); session.ready(0); await session.start();
     ctx.events.emit('levelChanged', { name: 'Elsewhere', depth: 1 }); expect(session.phase).toBe('idle');

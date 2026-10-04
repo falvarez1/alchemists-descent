@@ -9,6 +9,15 @@ import { PERK_DEFS } from '@/content/perks';
 import { DIFFICULTY, asDifficulty } from '@/config/difficulty';
 import { recapRows } from '@/combat/wands/buildRecap';
 import { mutatorNames } from '@/content/mutators';
+import { STOCK_STAGES } from '@/config/stockStage';
+import { getBindings, keyLabel } from '@/input/bindings';
+
+/** The Duel's Xbox layout (input/versusDevices, input/stockPad), read back in the pause menu. */
+const DUEL_PAD_CONTROLS: ReadonlyArray<[string, string]> = [
+  ['Move', 'Left stick'], ['Jump', 'X / Y'], ['Attack', 'A · right stick smashes'],
+  ['Special', 'B · up + B recovers · down + B tactical'], ['Shield', 'LT / RT · add a direction to dodge'],
+  ['Grab', 'LB / RB, then a direction to throw'], ['Pause', 'Start'],
+];
 
 /**
  * ESC pause. Owns its own pause claim so it never fights the Sanctum, the
@@ -192,13 +201,30 @@ export class PauseOverlay {
     const goal = document.getElementById('pause-goal');
     const stats = document.getElementById('pause-stats');
     if (!place || !goal || !stats) return;
+    const duelControls = this.duelControls();
+    duelControls.hidden = true;
     if (ctx.versus?.active && ctx.arena?.stockMatch) {
-      place.textContent = 'The Foundry · Duel'; goal.textContent = 'Launch your rival beyond the stage. Last stock standing wins.';
+      place.textContent = `${STOCK_STAGES[ctx.versus.stage].name} · Duel`; goal.textContent = 'Launch your rival beyond the stage. Last stock standing wins.';
       stats.replaceChildren(...ctx.arena.stockMatch.fighters.flatMap((fighter, slot) => {
         const dt = document.createElement('dt'), dd = document.createElement('dd');
         dt.textContent = `Player ${slot + 1}`; dd.textContent = `${fighter.stocks} stocks · ${Math.round(fighter.volatility)}%`;
         return [dt, dd];
-      })); return;
+      }));
+      // The fight's controls live here, not across the bottom of the match: one list per kind of seat in play.
+      const devices = ctx.versus.seats.map(s => s.device);
+      const keys = getBindings(), rows: Array<[string, string] | string> = [];
+      if (devices.some(d => d.startsWith('pad:'))) rows.push('Controller', ...DUEL_PAD_CONTROLS);
+      if (devices.includes('keyboard')) {
+        rows.push('Keyboard', ['Move', `${keyLabel(keys.left)} ${keyLabel(keys.right)}`], ['Jump', `${keyLabel(keys.jump)} · ${keyLabel(keys.up)} + ${keyLabel(keys.jump)} recovers`],
+          ['Melee', keyLabel(keys.kick)], ['Special', `Click · ${keyLabel(keys.tactical)} tactical`],
+          ['Shield', `Hold ${keyLabel(keys.dodge)} · add a direction to dodge`], ['Grab', `${keyLabel(keys.carry)}, then a direction to throw`]);
+      }
+      duelControls.replaceChildren(...rows.flatMap(row => {
+        if (typeof row === 'string') { const h = document.createElement('h4'); h.textContent = row; return [h]; }
+        const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = row[0]; dd.textContent = row[1]; return [dt, dd];
+      }));
+      duelControls.hidden = rows.length === 0;
+      return;
     }
     if (!level) { place.textContent = ''; goal.textContent = ''; stats.replaceChildren(); return; }
     const room = level.living ? WORKS_ROOMS.find((r) => r.id === level.living?.room)?.name : undefined;
@@ -236,6 +262,16 @@ export class PauseOverlay {
       dd.textContent = value;
       return [dt, dd];
     }));
+  }
+
+  /** The Duel's controls list, made once beside the pause status (styled in versus.css). */
+  private duelControls(): HTMLDListElement {
+    let list = document.querySelector<HTMLDListElement>('.pause-duel-controls');
+    if (!list) {
+      list = document.createElement('dl'); list.className = 'pause-duel-controls'; list.setAttribute('aria-label', 'Duel controls');
+      document.getElementById('pause-stats')?.after(list);
+    }
+    return list;
   }
 
   /** Release the ESC pause (if this overlay owns it) before handing off to a run action. */

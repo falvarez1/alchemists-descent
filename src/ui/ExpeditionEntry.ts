@@ -170,7 +170,7 @@ export class ExpeditionEntry {
       activate: () => void this.launch('daily'),
     });
     items.push({
-      id: 'duel', label: 'Duel', kind: 'action', sub: 'Local versus · The Foundry',
+      id: 'duel', label: 'Duel', kind: 'action', sub: 'Local versus · Four stages',
       hint: 'Three stocks. Fight a friend or a CPU rival. Your descent stays saved.',
       activate: () => this.ctx.versus?.open(),
     });

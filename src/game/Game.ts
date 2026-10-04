@@ -84,7 +84,6 @@ import { createDefaultStatus } from '@/entities/status';
 import { ParallelSim } from '@/sim/parallel/ParallelSim';
 import { createSharedWorld, sharedMemoryAvailable } from '@/sim/parallel/sharedWorld';
 import { readSavedQuality } from '@/config/playerPrefs';
-import { ControllerNotice } from '@/ui/ControllerNotice';
 import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
 import { Hud } from '@/ui/Hud';
@@ -528,7 +527,6 @@ export class Game {
     this.disposables.push(this.minimap);
     // (Callouts and the card-offer and teach overlays: play systems. The unlit
     // waystone teaches by a teach card now — game/waystoneHelp — not a modal.)
-    this.disposables.push(new ControllerNotice(ctx));
     // Self-binds the B key; lives for the page lifetime.
     this.disposables.push(new WandBench(ctx));
     // Authoring/debug surface. Not constructed at all in a play build — the

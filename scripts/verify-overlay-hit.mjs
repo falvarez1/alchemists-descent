@@ -162,6 +162,27 @@ try {
       await page.evaluate(() => { const c = window.__game.ctx; c.sanctum.close?.(); c.state.paused = false; });
       await closeAll();
     }
+    if (want('versus')) {
+      // The Duel (ui/VersusLobby, ui/StockMatchHud): the lobby's seats, stage tiles and Fight, then a CPU match
+      // finished at once for the results card's Rematch and Change fighters. The Sanctum step above can leave its
+      // shop up (nothing closes it there), so dismiss it, then come through the title's own door as a player does.
+      await page.evaluate(() => { window.__game.ctx.sanctum.dismiss?.(); window.dispatchEvent(new Event('expedition-title-request')); });
+      await page.locator('[data-entry="duel"]').click();
+      await probe('duel', '#versus-lobby', 500);
+      await page.evaluate(async () => { const v = window.__game.ctx.versus; v.chooseDevice(0, 'cpu'); await v.start(); });
+      await page.waitForFunction(() => window.__game.ctx.arena?.stockMatch?.state === 'fighting', null, { timeout: 30000 });
+      await page.evaluate(() => {
+        const g = window.__game, c = g.ctx; c.state.paused = true;
+        // (a teleport during a respawn or a CPU recovery can be undone: try until the last stock is gone)
+        for (let tries = 0; tries < 12 && c.arena.stockMatch.state !== 'finished'; tries++) {
+          Object.assign(c.arena.bundle(1).player, { x: c.arena.stockStage.zone.right - 140, vx: 0, grounded: false });
+          for (let tick = 0; tick < 140; tick++) g.tick(false, { forcePaused: true });
+        }
+        c.state.paused = false;
+      });
+      await probe('duel-end', '.stock-result', 600);
+      await page.evaluate(() => window.__game.ctx.versus.close());
+    }
     if (errs.length) console.log('  page errors:', errs.slice(0, 3));
     await page.close();
   }
