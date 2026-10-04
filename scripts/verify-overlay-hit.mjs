@@ -170,8 +170,14 @@ try {
       await page.evaluate(() => { window.__game.ctx.sanctum.dismiss?.(); window.dispatchEvent(new Event('expedition-title-request')); });
       await page.locator('[data-entry="duel"]').click();
       await probe('duel', '#versus-lobby', 500);
-      await page.evaluate(async () => { const v = window.__game.ctx.versus; v.chooseDevice(0, 'cpu'); await v.start(); });
-      await page.waitForFunction(() => window.__game.ctx.arena?.stockMatch?.state === 'fighting', null, { timeout: 30000 });
+      const begun = await page.evaluate(async () => { const v = window.__game.ctx.versus; v.chooseDevice(0, 'cpu'); const started = await v.start(); return { started, phase: v.phase, message: v.message, seats: v.seats.map(s => `${s.device}:${s.ready}`) }; });
+      const fighting = begun.started && await page.waitForFunction(() => window.__game.ctx.arena?.stockMatch?.state === 'fighting', null, { timeout: 30000 }).then(() => true, () => false);
+      if (!fighting) {
+        bad++;
+        const why = await page.evaluate(() => ({ match: window.__game.ctx.arena?.stockMatch?.state, level: window.__game.ctx.levels.current?.def.id, paused: window.__game.ctx.state.paused }));
+        console.log(`  FAIL  ${w}x${h} duel-start  the CPU match never began ${JSON.stringify({ ...begun, ...why })}`);
+        await page.close(); continue;
+      }
       await page.waitForFunction(() => document.querySelector('.stock-banner')?.hidden !== false, null, { timeout: 5000 }).catch(() => {});
       await page.keyboard.press('Escape');
       const paused = await page.locator('#pause-overlay.visible.duel-pause').waitFor({ timeout: 5000 }).then(() => true, () => false);

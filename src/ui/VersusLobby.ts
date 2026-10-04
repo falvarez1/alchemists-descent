@@ -165,7 +165,13 @@ export class VersusLobby {
     (document.getElementById('canvas-holder') ?? document.body).append(this.root, this.reconnect);
     this.offs.push(ctx.events.on('versusChanged', () => this.update()), ctx.events.on('versusMenu', ({ action }) => this.walkMenu(action)));
     this.root.addEventListener('keydown', this.onKey); this.reconnect.addEventListener('keydown', this.onKey);
+    // The VS card takes any key wherever focus is (READY, which had it, is disabled while the stage loads).
+    window.addEventListener('keydown', this.onSplashKey, true);
   }
+  private readonly onSplashKey = (event: KeyboardEvent): void => {
+    if (this.root.hidden || this.root.dataset.phase !== 'loading' || event.repeat) return;
+    event.preventDefault(); event.stopPropagation(); this.skipSplash();
+  };
 
   /** A ◀ value ▶ row. Its arrows step on press (the cabinet clicks at once) and repeat while held. */
   private cycler(label: string, prevLabel: string, nextLabel: string, step: (dir: -1 | 1) => void): Cycler {
@@ -244,7 +250,6 @@ export class VersusLobby {
     return rows;
   }
   private readonly onKey = (event: KeyboardEvent): void => {
-    if (!this.root.hidden && this.root.dataset.phase === 'loading') { this.skipSplash(); return; }
     if (this.root.hidden) {
       if (event.key === 'Tab') this.trapTab(event, this.reconnect);
       return;
@@ -431,5 +436,5 @@ export class VersusLobby {
     pop(view.box, [{ transform: 'scale(1)' }, { transform: 'scale(1.08)', filter: 'brightness(1.6)', offset: .35 }, { transform: 'none', filter: 'none' }], 300, 'ease-out');
     pop(view.ready, [{ transform: 'scale(.4)' }, { transform: 'scale(1.35)', offset: .55 }, { transform: 'none' }], 300, 'ease-out');
   }
-  dispose(): void { for (const off of this.offs) off(); this.root.remove(); this.reconnect.remove(); document.body.classList.remove('versus-active'); }
+  dispose(): void { window.removeEventListener('keydown', this.onSplashKey, true); for (const off of this.offs) off(); this.root.remove(); this.reconnect.remove(); document.body.classList.remove('versus-active'); }
 }

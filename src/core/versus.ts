@@ -27,6 +27,10 @@ export interface VersusApi {
   chooseDifficulty(slot: number, level: number): void;
   ready(slot: number): void;
   start(): Promise<boolean>;
+  /** The VS card (phase 'loading'): stop holding it; the countdown starts as soon as the stage is built. */
+  skipIntro(): void;
+  /** The VS card was skipped this load. */
+  readonly introCut: boolean;
   rematch(): void;
   resume(): void;
   /** Returns true when this session owns gamepad polling. Menus still poll while paused. */

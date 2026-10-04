@@ -10,6 +10,13 @@ import { applyStockPad } from '@/input/stockPad';
 import { setExternalControl } from '@/input/externalControl';
 import { clampAiLevel } from '@/config/aiTiers';
 
+/**
+ * The VS card's least time on screen from READY (ui/VersusLobby): long enough for the announcer's "<P1>! Versus! <P2>!"
+ * (audio/DuelAnnouncer, about 4.2 s) even when the stage builds faster. The match stays paused, before its countdown,
+ * until it has passed or a player skips (skipIntro).
+ */
+export const VS_CARD_HOLD_MS = 4200;
+
 /** Composes disposable local matches. Expedition saves remain owned by Levels. */
 export class LocalVersus implements VersusApi {
   phase: VersusPhase = 'idle';
@@ -28,12 +35,15 @@ export class LocalVersus implements VersusApi {
   private connectedKey = '';
   private pausedBeforeDisconnect = false;
   private openedBefore = false;
+  /** Ends the VS card's hold early (a skip, or the session closing); null outside a hold. */
+  private releaseIntro: (() => void) | null = null;
+  private introSkipped = false;
   get active(): boolean { return this.phase !== 'idle'; }
   get devices() { return this.ownership.available; }
   get disconnected(): readonly number[] { return this.ownership.missing; }
   get canStart(): boolean { return this.phase === 'lobby' && this.seats.every(s => s.ready) && this.disconnected.length === 0; }
 
-  constructor(private readonly ctx: Ctx, private readonly playReady: () => Promise<boolean>) {
+  constructor(private readonly ctx: Ctx, private readonly playReady: () => Promise<boolean>, private readonly introMs = VS_CARD_HOLD_MS) {
     this.offs.push(ctx.events.on('modeChanged', ({ mode }) => { if (mode !== 'play' && this.phase !== 'lobby') this.close(); }));
     this.offs.push(ctx.events.on('levelChanged', () => { if (this.active && this.phase !== 'loading') this.close(); }));
   }
@@ -65,6 +75,7 @@ export class LocalVersus implements VersusApi {
   }
   close(): void {
     if (!this.active) return;
+    this.releaseIntro?.();
     this.revision++; this.release(); botDriverFor(this.ctx).off();
     this.ctx.arena?.removeRival(1); this.ctx.arena?.configureStocks(null);
     setExternalControl(this.ctx.input, false);
@@ -94,10 +105,14 @@ export class LocalVersus implements VersusApi {
   async start(): Promise<boolean> {
     const ctx = this.ctx, arena = ctx.arena;
     if (!this.canStart || !arena) return false;
-    const revision = ++this.revision;
+    const revision = ++this.revision, readyAt = performance.now();
+    this.introSkipped = false;
     this.phase = 'loading'; this.message = `Opening ${STOCK_STAGES[this.stage].name}…`; this.changed();
     try {
       if (!(await prepareDuel(ctx, this.seats.map(s => s.fighter), this.playReady, () => revision === this.revision, this.stage))) return false;
+      // Built: the VS card still holds (paused, before the countdown) until its least time has passed or someone skips.
+      await this.holdIntro(readyAt);
+      if (revision !== this.revision) return false;
       botDriverFor(ctx).off(); rivalDriverFor(ctx, 1)?.off();
       for (let slot = 0; slot < 2; slot++) if (this.seats[slot].device === 'cpu') {
         (slot === 0 ? botDriverFor(ctx) : rivalDriverFor(ctx, slot))?.install('basic', this.seats[slot].cpuLevel);
@@ -108,6 +123,24 @@ export class LocalVersus implements VersusApi {
       if (revision === this.revision) { this.phase = 'lobby'; this.message = error instanceof Error ? error.message : 'Could not open the match.'; ctx.state.paused = true; this.changed(); }
       return false;
     }
+  }
+  /** Any button on the VS card: the countdown starts as soon as the stage is built. */
+  skipIntro(): void {
+    if (this.phase !== 'loading' || this.introSkipped) return;
+    this.introSkipped = true; this.releaseIntro?.();
+    // The skip is heard: the cabinet's confirm, and the VS call fades (a no-op unless the VS call is the one playing).
+    this.ctx.audio.duel?.cutVersus(); this.ctx.audio.duel?.menu('confirm');
+    this.changed();
+  }
+  /** True once the VS card has been skipped (the lobby shows the card's skip). */
+  get introCut(): boolean { return this.introSkipped; }
+  private holdIntro(readyAt: number): Promise<void> {
+    const left = this.introMs - (performance.now() - readyAt);
+    if (this.introSkipped || left <= 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => this.releaseIntro?.(), left);
+      this.releaseIntro = () => { clearTimeout(timer); this.releaseIntro = null; resolve(); };
+    });
   }
   rematch(): void {
     if (this.phase !== 'playing' || !this.ctx.arena?.active) return;
@@ -151,6 +184,9 @@ export class LocalVersus implements VersusApi {
         if (action.confirm) this.ready(slot);
         if (action.back && seat.ready) { this.ready(slot); this.ctx.audio.duel?.menu('back'); }
         if (action.pause && this.canStart) void this.start();
+      } else if (this.phase === 'loading') {
+        // The VS card: any face button or Start skips it.
+        if (action.confirm || action.back || action.pause || action.jumpPressed) this.skipIntro();
       } else if (slot >= 0 && this.phase === 'reconnect' && action.pause) this.resume();
       else if (slot >= 0 && this.phase === 'playing') {
         if (action.pause) this.ctx.events.emit('versusPause');

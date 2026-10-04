@@ -234,6 +234,8 @@ export class DuelLobby {
       if (view.shown !== seat.fighter) {
         const side = slot === 0 ? -1 : 1;
         if (view.shown) {
+          // Either seat's new fighter is called by name on both computers (a newer name cuts the last).
+          this.ctx.audio.duel?.announceFighter(seat.fighter);
           pop(view.frame, [{ transform: `translateX(${side * 46}px)`, opacity: 0, filter: 'brightness(2.6)' }, { transform: 'none', opacity: 1, filter: 'none' }], 190, 'cubic-bezier(.16, 1, .3, 1)');
           pop(view.name, [{ transform: 'scale(1.7)', opacity: 0 }, { transform: 'scale(.94)', opacity: 1, offset: .7 }, { transform: 'none' }], 200, 'ease-out');
         }

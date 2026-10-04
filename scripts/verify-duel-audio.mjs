@@ -44,12 +44,12 @@ try {
       if (c.versus?.phase === 'loading' && p.loadingAt === undefined) p.loadingAt = performance.now();
     });
     c.events.on('fighterDown', (d) => p.downs.push({ ...d, at: performance.now() }));
+    // Every cue asked of the engine, timed when it is asked (a poll of the played list lags behind a busy frame).
+    const sfx = c.audio.sfx;
+    c.audio.sfx = function (id, ...rest) { p.played.push({ id, at: performance.now() }); return sfx.call(this, id, ...rest); };
     setInterval(() => {
       const s = c.audio.debugSamples?.();
       if (!s) return;
-      const n = Math.min(24, s.played - p.prev);
-      p.prev = s.played;
-      for (const id of n > 0 ? s.lastPlayed.slice(-n) : []) p.played.push({ id, at: performance.now() });
       p.beds.add(`${performance.now() > (p.duelAt ?? Infinity) ? 'duel' : 'before'}:${s.bed}`);
     }, 50);
   });
@@ -108,10 +108,11 @@ try {
   // The VS card: both names and Versus laid on the audio clock the moment READY started the load.
   const card = await page.evaluate(() => {
     const s = window.__game.ctx.audio.duel.debugSnapshot().said, p = window.probe;
-    const from = s.findIndex((x) => x.line === 'fighter.mara-quell' && x.at >= p.loadingAt - 5);
+    // The VS call is laid down inside the session's own versusChanged, a moment before this probe's listener runs.
     const upTo = s.findIndex((x) => x.line === 'count.3');
+    const from = s.slice(0, upTo).map((x) => x.line).lastIndexOf('fighter.mara-quell');
     const fight = p.beats.find((b) => b.state === 'countdown' && b.count === 3);
-    return { lines: s.slice(from, upTo).map((x) => x.line), firstLagMs: from >= 0 ? Math.round(s[from].at - p.loadingAt) : null, loadMs: fight ? Math.round(fight.at - p.loadingAt) : null };
+    return { lines: s.slice(from, upTo).map((x) => x.line), firstLagMs: from >= 0 ? Math.round(Math.abs(s[from].at - p.loadingAt)) : null, loadMs: fight ? Math.round(fight.at - p.loadingAt) : null };
   });
   // The card holds at least VS_CARD_HOLD_MS (4.2 s) from READY, so the whole call is heard before "Three!".
   const VS = ['fighter.mara-quell', 'versus', 'fighter.brann-rook'];
@@ -228,7 +229,8 @@ try {
   await clickAt(page.locator('.versus-splash'));
   await page.waitForFunction((t) => window.__game.ctx.audio.duel.debugSnapshot().said.some((s) => s.line === 'count.3' && s.at > t), skipFrom, { timeout: 20000 });
   const skipped = await page.evaluate((t) => window.__game.ctx.audio.duel.debugSnapshot().said.filter((s) => s.at > t).map((s) => ({ line: s.line, cut: !!s.cut })), skipFrom);
-  const card2 = skipped.slice(0, skipped.findIndex((s) => s.line === 'count.3'));
+  const beforeThree = skipped.slice(0, skipped.findIndex((s) => s.line === 'count.3'));
+  const card2 = beforeThree.slice(beforeThree.map((s) => s.line).lastIndexOf('fighter.mara-quell'));
   // The click lands once the stage build lets the page breathe; from then on the call fades and nothing more of it begins.
   check('skipping the VS card fades its call where it stands: the rest is never said', card2.length >= 1 && card2.at(-1).cut === true && card2.every((s, i) => s.line === VS[i]), skipped);
 
@@ -244,7 +246,7 @@ try {
     };
   });
   check('no campaign narrator line after the Duel door (arrival, tagline, toasts, callouts)', descent.narration.length === 0 && descent.narratorSpoken.length === 0, descent);
-  check('no floor bed and none of the descent\'s cues in the Duel', descent.beds.every((b) => b === 'duel:null') && !descent.played.some((id) => DESCENT_CUES.test(id)), { beds: descent.beds, played: descent.played });
+  check('no floor bed and none of the descent\'s cues in the Duel', descent.beds.every((b) => b === 'duel:null') && !descent.played.some((id) => DESCENT_CUES.test(id)), { beds: descent.beds, offending: descent.played.filter((id) => DESCENT_CUES.test(id)), played: descent.played });
   check('no browser exceptions', errors.length === 0, errors);
   mkdirSync(out, { recursive: true });
   writeFileSync(`${out}/duel-audio.json`, JSON.stringify({ url, checks, count, end, rematch: tail, descent, errors }, null, 2) + '\n');
