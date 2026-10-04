@@ -1,33 +1,40 @@
 # Foundry UI kit
 
-The duel's interface is built from illustrated pieces that look made inside the game's foundry, replacing clean,
-vector-like panels. The materials are blackened iron, aged copper, reinforced corners, restrained mechanical ornament
-and warm furnace-lit highlights. Major headings use cast-metal lettering; small labels stay plain and readable.
+The game's interface is built from illustrated pieces that look as if they were made inside its foundry, not from
+clean, vector-like panels. The materials are blackened iron, aged copper, reinforced corners, restrained mechanical
+ornament and warm furnace-lit highlights. Major headings use cast-metal lettering; small labels stay plain and readable.
+
+The kit is general on purpose. It serves the Duel screens now. It will also serve every interface of the planned
+standalone fighter game: title, options, controls, dialogs, tooltips, toasts, loading and credits. Piece names are
+therefore generic (`panel-large`, `button-primary`, `list-row`), never screen-specific.
 
 The targets are the approved screens in `alchemists-descent-worktrees/UI/V1/` (the `ChatGPT Image Oct 4, 2026 ...`
 files): results, HUD, pause, lobby and connect. The `Screenshot*.png` files in that folder show the old UI being
 replaced.
 
-- **Pieces:** `public/assets/arena/ui/*.png`, indexed by `public/assets/arena/ui/kit.json`.
-- **Sources:** `docs/arena/platform-fighter/ui-sources/*.webp`, the seven generated sheets (lossy WebP, q92).
+- **Pieces:** `public/assets/arena/ui/*.png` (64 pieces, 77 files with their states, about 375 KB), indexed by
+  `public/assets/arena/ui/kit.json`.
+- **Sources:** `docs/arena/platform-fighter/ui-sources/*.webp`, the ten generated sheets (lossy WebP, q92).
 - **Build:** `node scripts/arena-sprites/build-ui-kit.mjs` cuts every piece from the sources and writes the PNGs and
-  kit.json. It is deterministic, so rerunning it never needs a new generation.
+  kit.json. It is deterministic, so rerunning it never needs a new generation. It deletes any PNG in the folder that no
+  piece references, so the folder always matches kit.json exactly.
 - **Preview:** `node scripts/arena-sprites/preview-ui-kit.mjs [http://127.0.0.1:<port>/]` writes
-  `verify-out/ui-kit/preview.html`, which uses the real CSS recipes below. Given a dev-server URL, it also
-  screenshots each section to `verify-out/ui-kit/preview-*.png`.
+  `verify-out/ui-kit/preview.html`, which uses the real CSS recipes below. It has a sample options panel, a dialog, a
+  pause list, the HUD cards with portraits, every frame stretched, every state, ornaments, word art and textures. Given
+  a dev-server URL, it also screenshots each section to `verify-out/ui-kit/preview-*.png`.
 - **Picking rectangles on a new sheet:** `node scripts/arena-sprites/cut-ui.mjs list <sheet> --preview out.png` numbers
   every piece. `cut-ui.mjs cut <sheet> --rect ... --factor F` tries one piece exactly as the kit would cut it.
 - **Library:** `scripts/arena-sprites/ui-kit-lib.mjs` holds the image operations: key, cut, regularise, 9-slice,
-  seamless tile, flatten and lift.
+  seamless tile, flatten, lift, transpose, mirror and hole bounds.
 
 ## The one display rule
 
 **1 art pixel = 2 CSS px** (`kit.scale`, and `scale` on each piece), always with `image-rendering: pixelated`. The
 panels, buttons and beads then share the chunky pixel of the fighters' sprites.
 
-Every size, slice and band in kit.json is in **art pixels**; multiply by 2 for CSS. Each piece's `css` field gives its
-natural CSS size. Do not scale pieces by non-integer amounts. Do not use the text textures at sizes where their grain
-turns to mush; see Lettering below.
+Every size, slice, band and offset in kit.json is in **art pixels**; multiply by 2 for CSS. Each piece's `css` field
+gives its natural CSS size. Never scale a piece by a non-integer amount. PNG, not WebP: pixel art compresses better
+losslessly, and lossy compression smears the pixels.
 
 ## kit.json
 
@@ -41,30 +48,36 @@ turns to mush; see Lettering below.
   this far, so it shows inside the frame without poking out of its corners.
 - `fill`: whether the 9-slice centre is drawn
 - `repeat`: the `border-image-repeat` to use
-- `period`: the length of one seamless edge repeat
-- `states`
+- `period`: `[x, y]`, the length of one seamless edge repeat
+- `fixed`: plates only; which side keeps its natural size. A plate keeps its height (`size[1] x scale`), a vertical
+  plate keeps its width, and `null` means it stretches both ways.
+- `states`: state name to file. The names are `normal`, `hot` (hover or focus) and `pressed`, plus `active` for a tab,
+  `off` / `on` for a toggle or checkbox, and `lit` / `unlit` / `glow` for the lantern.
+- `window`: HUD cards only; the portrait hole, measured from the end it sits at (`left` or `right`) plus `top`, `width`
+  and `height`
 - `use`
 - `scale`
 - `css`
 
 | Kind | Pieces |
 |---|---|
-| frame (hollow 9-slice, transparent centre) | `frame-panel` (lobby, pause, results, connect), `frame-card` (P1 copper), `frame-card-teal` (P2), `frame-slot` (room code, value boxes, rules bar), `frame-stage` (stage tile; its bottom 34 px are the label plate) |
-| plate (filled 9-slice, fixed height) | `button-copper` and `button-iron` (each with normal / hot / pressed), `keycap-wide` (Esc, Enter), `band` (super cut-in) |
-| image | `keycap`; `arrow-left` / `arrow-right` (normal, hot); `or-gear`; `gear-crest`; `vs-medallion`; `seal-copper`; `seal-teal`; `bead-copper` / `bead-teal` and their `-spent` versions; `timer-sign`; `banner-plate`; `chain-mount`; `lantern` (lit, unlit, glow); `divider` (whole) and its parts `divider-cap-left`, `divider-diamond`, `divider-cap-right` |
+| frame (hollow 9-slice, transparent centre, fill behind) | `panel-large` (menus, lobby, pause, results, connect, options), `panel-small` (dialogs, confirmations, sub-panels), `card` and `card-teal` (seats, info boxes; teal is the second player), `slot` (text fields, value boxes, status and rules bars), `picture-frame` (stage, level or save tiles; its bottom 34 px are the caption plate) |
+| plate (filled 9-slice) | `button-primary` and `button-secondary` (each normal / hot / pressed), `list-row` (normal / hot: the menu cursor), `tab` (normal / active), `title-plate`, `ribbon`, `nameplate`, `nameplate-hanging`, `tooltip` (stretches both ways), `keycap`, `band`, `hud-card` and `hud-card-teal`, `meter`, `slider-track`, `slider-fill`, `scroll-track` (vertical) |
+| image | `slider-handle`, `scroll-thumb` (normal / hot); `toggle`, `checkbox` (off / on); `meter-cell`, `meter-cell-teal`; `keycap-square`; `arrow-left` / `arrow-right` (normal / hot: the value cycler); `gear-small`; `gear-crest`; `medallion`; `seal`, `seal-teal`; `bead`, `bead-spent`, `bead-teal`, `bead-teal-spent`; `hanging-sign`; `banner-plate`; `chain-mount`; `lantern` (lit / unlit / glow); `divider` (whole) and its parts `divider-cap-left`, `divider-diamond`, `divider-cap-right` |
 | tile | `divider-line` (repeat-x), `chain` (repeat-y), `fill-iron` (panel interiors), `fill-worn` (lighter, for slots) |
 | texture | `text-copper`, `text-iron` (for `background-clip: text`) |
 | word | `word-fight`, `word-game`, `word-time`, `word-vs`, `word-3`, `word-2`, `word-1` |
 
-The faces of the timer sign, banner plate and VS medallion are blank on purpose: the game puts the time, word art or
-VS on them. The lantern's `glow` state is the lit flame alone. Lay it over the unlit lantern and animate its opacity
-for a flicker.
+Copper is the base piece, and `-teal` is the second-player accent. The faces of the hanging sign, banner plate,
+medallion, keycaps and every plate are blank on purpose: the game writes on them. The lantern's `glow` state is the lit
+flame alone. Lay it over the unlit lantern and animate its opacity for a flicker.
 
 ## CSS recipes
 
-In these recipes, `S` = 2 and `U` = `/assets/arena/ui/`. The values are frame-panel's.
+In these recipes, `S` = 2 and `U` = `/assets/arena/ui/`.
 
-**Hollow frame.** The fill goes behind and the frame goes over, so the element's children are never affected:
+**Hollow frame.** The fill goes behind and the frame goes over, so the element's children are never affected. The
+values are panel-large's:
 
 ```css
 .panel { position: relative; isolation: isolate; box-sizing: border-box; padding: 60px 64px 60px 64px; /* slice x S */ }
@@ -72,28 +85,68 @@ In these recipes, `S` = 2 and `U` = `/assets/arena/ui/`. The values are frame-pa
   background: url(U/fill-iron.png) 0 0 / 384px auto repeat; image-rendering: pixelated; }
 .panel::after { content: ''; position: absolute; inset: 0; pointer-events: none; border-style: solid;
   border-width: 60px 64px 60px 64px;
-  border-image: url(U/frame-panel.png) 30 32 30 32 / 60px 64px 60px 64px round; image-rendering: pixelated; }
+  border-image: url(U/panel-large.png) 30 32 30 32 / 60px 64px 60px 64px round; image-rendering: pixelated; }
 ```
 
-The cards and slots work the same way; slots use `fill-worn.png` at 384px. A frame cannot be smaller than its slices:
-frame-panel's minimum is 64 x 60 art px (128 x 120 CSS).
+The small panel, cards and slots work the same way; slots use `fill-worn.png` at 384px. A frame cannot be smaller than
+its slices: panel-large's minimum is 64 x 60 art px (128 x 120 CSS).
 
-**Plate or button.** The height is fixed at `size[1] x S`, and the states swap `border-image-source`:
+**Plate or button.** The fixed side comes from `fixed`, and each state other than `normal` swaps `border-image-source`:
 
 ```css
-.btn { box-sizing: border-box; height: 68px; display: inline-flex; align-items: center; justify-content: center;
+.btn { box-sizing: border-box; height: 68px; /* size[1] x S */ display: inline-flex; align-items: center; justify-content: center;
   border-style: solid; border-width: 16px 40px;
-  border-image: url(U/button-copper.png) 8 20 8 20 fill / 16px 40px round stretch; image-rendering: pixelated; }
-.btn:hover, .btn:focus-visible { border-image-source: url(U/button-copper-hot.png); }
-.btn:active { border-image-source: url(U/button-copper-pressed.png); }
+  border-image: url(U/button-primary.png) 8 20 8 20 fill / 16px 40px round stretch; image-rendering: pixelated; }
+.btn:hover, .btn:focus-visible { border-image-source: url(U/button-primary-hot.png); }
+.btn:active { border-image-source: url(U/button-primary-pressed.png); }
 ```
 
-The cut-in band is used the same way (`8 18 8 18`, 72px tall). Its period is long, 115 art px, so it reads best at
-least about 150 art px wide.
+The other plates follow the same pattern:
+- The list row is 52px tall (`6 22 6 22`); its `hot` state is the menu cursor.
+- The tab's `active` state is the open tab.
+- The title plate sits across a panel's top edge, absolutely positioned and centred, overlapping the frame by about
+  half its height.
+- The tooltip has no fixed side: `repeat: round` both ways, so it grows with its text.
+- `scroll-track` is vertical: a fixed width of 24px, `border-image-repeat: stretch round`, and any height.
+- The band's period is long (115 art px), so it reads best at least about 150 art px wide.
+- The HUD cards read best at least about 150 art px wide.
+
+**Slider.** A plain wrapper with three layers:
+
+```css
+.slider { position: relative; height: 34px; }                    /* slider-track height x S */
+.slider .track { /* plate: slider-track, 6 9 6 9, width 100% */ }
+.slider .fill  { position: absolute; left: 16px; top: 8px; height: 14px; width: calc(var(--v) * (100% - 32px)); }
+                 /* plate: slider-fill, 2 4 2 4; the groove's inside is 8 art px in from each end, 4 down, 7 tall */
+.slider .handle { position: absolute; top: -6px; left: calc(16px + var(--v) * (100% - 32px) - 22px); }
+                 /* slider-handle img, 22 x 23 art; swap to the hot state while dragging or focused */
+```
+
+Hide the fill at value 0: it has a minimum width of its two end slices, 8 art px.
+
+**Toggle and checkbox.** Swap the image between the `off` and `on` states. Each state image is drawn at the same size.
+
+**Scroll bar.** Use a `scroll-track` plate at the list's height, with a `scroll-thumb` image (13 x 34 art, fixed size)
+absolutely positioned on it at the scroll position, inset 7 art px at each end. Swap the thumb to its `hot` state while
+it is dragged.
+
+**Meter.** A `meter` plate whose width is 12 + 13n art px for n cells, so `round` never resamples it. Cell k's inside
+is at left 7 + 13k and top 3, and is 11 x 9. Put a `meter-cell` (gold) or `meter-cell-teal` image there for each
+filled or refilling cell; an empty cell shows the dark housing.
+
+**HUD card.** A `hud-card` plate, 168px tall: the portrait window sits in the 82-art-px end slice, and the body
+stretches. Put the portrait in a sibling element behind the card (`z-index: -1` inside an `isolation: isolate`
+wrapper). Size and position it to `window`, with `background-size: cover`. For example, `left: 30px; top: 30px;
+width: 108px; height: 110px` for the copper card; the teal card measures its window from the right. The card's content
+box, between the slices, holds the name, beads, percent and meter.
+
+**Hanging nameplate.** Its top slice is 65 art px and holds the two chains, so the text sits in the bottom 20 art px
+(the plate's face). Flank it with `lantern` images for the footer sign of the lobby target.
 
 **Divider.** A flex row of five parts: `divider-cap-left`, then a `flex: 1` div with
 `background: url(U/divider-line.png) 0 0 / 20px 22px repeat-x`, then `divider-diamond`, then the same line div, then
-`divider-cap-right`. The images are 22px tall. For a fixed width, use `divider.png` whole.
+`divider-cap-right`. The images are 22px tall. For a fixed width, use `divider.png` whole. For an OR between two
+choices, put `gear-small` with the word on it in place of the diamond.
 
 **Chain.** `width: 20px; background: url(U/chain.png) 0 0 / 20px 34px repeat-y;`. Hang it from `chain-mount`, whose ring
 is at the bottom.
@@ -111,24 +164,28 @@ foot), so `auto 100%` fits one gradient to the line box. Small labels and body t
 
 ## Pipeline
 
-1. **Generate.** gpt-image-2 (ElevenLabs flow `dm0rRnzJZIFo7p38WDLO`) made seven 2K sheets at high quality. Each sheet
+1. **Generate.** gpt-image-2 (ElevenLabs flow `dm0rRnzJZIFo7p38WDLO`) made ten 2K sheets at high quality. Each sheet
    has every piece isolated on flat `#FF00FF` magenta, apart from the textures sheet, which is a 2 x 2 grid of
    edge-to-edge swatches.
    - **References** are the approved target screens. Lobby `0fOkpcA4ZvRsW7F1ns9k`, results `Pi9vnoi2yw5BKHQPvhwb`,
      pause `FGlICm3jtixaiDJYHRCO`, connect `xpgJxgixB4i03KwFIlK7` and HUD `pmQFQDbqr7u3Q1JAyqYK` are
      `UI/V1/ChatGPT Image Oct 4, 2026 ...`. The arena backdrop, `public/assets/arena/foundry-backdrop.png`, is
      `hDbkWpZwlMeQkhzhzu3D`.
+   - The later sheets (controls, menus, hud) also take the kit's own frames and buttons sheets as references, so new
+     pieces match the existing material and pixel size.
    - **Prompt rules:**
      - Ask for each art pixel to be about 4 image pixels.
      - Ask for blank faces: text is added by the game.
      - Keep every glow inside its piece's outline, because a halo on the magenta cannot be keyed.
-     - Edges that will repeat must be "plain and uniform along their whole length".
+     - Runs that will repeat must be "plain and uniform along their whole length".
 2. **Key.** Each pixel gets a magenta-ness: high and balanced red and blue, with low green. An anti-aliased fringe is
    decontaminated (the key colour is un-mixed), not just cut.
 3. **Cut.** Each piece's loose rectangle is tightened to its drawn pixels, then area-downsampled to art pixels.
    - The downsample is a box filter with fractional footprints, weighted by coverage so the key never tints an edge.
    - The factor (source px per art px) or exact size is chosen per piece, so the piece is the right size at the one
-     display scale. A panel is cut at 5, a card at 4, word art at 3, the gear crest at 9, and a bead at exactly 11 x 11.
+     display scale.
+   - Pieces that must fit together are cut to each other's measured insides. The slider fill is cut to the groove's
+     7 art px. The meter's cell fills are cut to a cell's 11 x 9. A toggle's two states share one size.
    - Alpha is made crisp (coverage >= 0.5), and colours are snapped to the piece's own k-means palette (40 colours).
 4. **Regularise the 9-slices** (`regularise`).
    - The corners are kept exactly as drawn.
@@ -139,10 +196,13 @@ foot), so `auto 100%` fits one gradient to the line box. Small labels and body t
      - how source-like the seam is;
      - how smoothly the stretch meets both corners.
    - Top and bottom share a period, as do left and right. Hollow frames keep a transparent centre; plates keep their
-     filled centre and fixed height. The centre slice is exactly one period, so CSS `round` tiles whole periods.
-   - Plate states are forced to the normal state's period, so hover and press never shift the pattern.
+     filled centre. The centre slice is exactly one period, so CSS `round` tiles whole periods.
+   - Vertical plates are regularised transposed. A piece's states are forced to its first state's period, so swapping
+     states never shifts the pattern.
    - Judging only the seam was not enough: on the panel, it picked a stretch near a corner that held two unevenly
      spaced rivets, so a long edge showed rivets in pairs.
+   - A short period on a textured plate makes the noise visibly repeat. The HUD cards and the tooltip therefore search
+     long periods (60-120 and 24-76 art px).
 5. **Tiles.**
    - The fills are cropped opaque, then made seamless by cross-fading a wrap margin (`seamlessTile`), then flattened.
      Flattening divides out the sheet's broad lighting with a wrapping box blur; otherwise the gradient striped the
@@ -151,16 +211,25 @@ foot), so `auto 100%` fits one gradient to the line box. Small labels and body t
    - The text textures repeat only across, and are lifted (gamma and gain: copper 0.75 x 1.15, iron 0.6 x 1.4). As
      generated, they were shaded for a plate and too dark to read as lettering on dark iron.
    - The divider line and the chain are the most periodic strip of their piece.
-6. **Check.**
-   - Each frame was stretched to three sizes, and each button state to three widths, with `nineSlice` (zoomed contact
-     sheets).
+6. **Measure.** The HUD cards' portrait windows are measured from the art (the transparent pixels the card encloses)
+   and written into kit.json as `window`.
+7. **Check.**
+   - Each frame and plate was stretched to three sizes, and each state to three widths, with `nineSlice` (zoomed
+     contact sheets).
    - The preview page shows everything through the real CSS, over the game's backdrop:
-     `verify-out/ui-kit/preview-frames.png`, `-buttons`, `-divider`, `-ornaments`, `-words`, `-type`, `-fills`.
+     `verify-out/ui-kit/preview-controls.png`, `-menus`, `-hud`, `-frames`, `-buttons`, `-divider`, `-ornaments`,
+     `-words`, `-type`, `-fills`.
 
 ## Spend
 
-The seven sheets cost 17,320 credits, $3.80 at gpt-image-2 high, 2K, one generation each. No re-generation was needed.
-Every later fix (rivet period, tile width, lighting, text lift) was a rebuild from the same sources.
+Each sheet is gpt-image-2 high, 2K, one generation, with no re-generations. Every later fix (rivet period, tile width,
+lighting, text lift, periods, fits) was a rebuild from the same sources.
+
+| Round | Sheets | Credits | Cost |
+|---|---|---|---|
+| Round 4 (frames, pieces, buttons, ornaments, signs, words, textures) | 7 | 17,320 | $3.80 |
+| Round 5 (controls, menus, hud) | 3 | 7,878 | $1.73 |
+| **Total** | **10** | **25,198** | **$5.53** |
 
 ## Prompts
 
@@ -285,4 +354,63 @@ BOTTOM LEFT: CAST COPPER for letter fills: hot cast copper with rust and grit an
 BOTTOM RIGHT: CAST IRON for letter fills: grey cast iron with grit and pitting, lighter at the TOP fading to near black at the BOTTOM (a vertical gradient), evenly textured from left to right.
 
 RULES: no text, no letters, no objects, no rivet borders around the squares, no frames, no gaps between the squares.
+```
+
+### controls.webp (G1)
+
+Node `6C6grTAtoHVDpFppMlZS`, generation `bzOWDRCkwlzRDiSDwy4Z`: gpt-image-2, high, 2K 3:2 (2048x1360), 2786 credits ($0.61). References: lobby, pause, connect, results, then the kit's frames and buttons sheets.
+
+```text
+Game asset: a UI KIT SHEET of illustrated pixel-art interface CONTROLS (for options and settings screens) for a dark industrial fantasy game set in a foundry. The pieces will be cut out; long pieces are stretched, so their long runs must be plain and uniform.
+
+LOOK: the same material, pixel size and colours as the last two references (pieces of this interface kit already made: frames and buttons on magenta), and the approved target screens of this game (the other references). Hand-made, heavy, manufactured inside the foundry, never a clean vector or website look: blackened pitted iron, aged copper with rust and verdigris, copper rivets, warm orange furnace light on the top edges, grime and wear. Pixel art with clearly visible square pixels (each art pixel about 4 image pixels), crisp dark outlines, three-to-five tone shading.
+
+PIECES (each one isolated, with wide gaps of flat magenta between pieces):
+1. SLIDER TRACK, top row, long: a long horizontal recessed groove (about 14 wide to 1 tall) sunk into an iron bar, with small riveted end caps. The inside of the groove is EMPTY dark iron, shadowed along its top inner edge. Uniform along its whole length.
+2. SLIDER FILL, under the track: a long horizontal bar of glowing hot molten copper, as long as the track and exactly as tall as the inside of its groove, with rounded ends and a bright top edge, uniform along its length. No groove around it.
+3. SLIDER HANDLES, right of the fill: two chunky copper knob handles the same size (a squat riveted copper block with a grip line down its middle, taller than the track): NORMAL (dull copper) and HOT (glowing bright hot copper, lit from within).
+4. TOGGLE SWITCHES, middle row left: two identical lever switch plates (about 2 wide to 1 tall: a recessed iron slot with a copper knob in it): OFF (the knob at the LEFT end, the slot dark and cold) and ON (the knob at the RIGHT end, the slot glowing warm orange around it).
+5. CHECKBOXES, middle row right: two identical small square recessed iron boxes with a thin copper rim: UNCHECKED (empty dark inside) and CHECKED (a bold embossed copper check mark inside, glowing warm).
+6. SCROLL BAR, bottom row: a tall vertical recessed iron track (about 1 wide to 8 tall) with small riveted end caps, its groove EMPTY dark iron, uniform along its length; beside it two identical vertical THUMBS (a riveted copper bar about 1 wide to 3 tall with three grip lines across its middle): NORMAL (dull copper) and HOT (glowing bright hot copper).
+
+RULES: the whole background is solid flat pure magenta (#FF00FF). No text, no letters, no numbers, no icons, no drop shadows on the magenta, no glow halos outside the pieces (keep every glow inside the piece's outline).
+```
+
+### menus.webp (G2)
+
+Node `06OimTI1lGPvmtkxkPOt`, generation `eykceqwAR0LMor2t7Jnr`: gpt-image-2, high, 2K 3:2 (2048x1360), 2546 credits ($0.56). References: pause, lobby, connect, then the kit's frames and buttons sheets.
+
+```text
+Game asset: a UI KIT SHEET of illustrated pixel-art MENU pieces (dialogs, tabs, menu lists, tooltips) for a dark industrial fantasy game set in a foundry. The pieces will be cut out and stretched as 9-slices, so every straight run between the ends or corners must be plain and uniform.
+
+LOOK: the same material, pixel size and colours as the last two references (pieces of this interface kit already made: frames and buttons on magenta), and the approved target screens of this game (the other references; the first is the pause menu). Hand-made, heavy, manufactured inside the foundry, never a clean vector or website look: blackened pitted iron, aged copper with rust and verdigris, copper rivets, warm orange furnace light on the top edges, grime and wear. Pixel art with clearly visible square pixels (each art pixel about 4 image pixels), crisp dark outlines, three-to-five tone shading.
+
+PIECES (each one isolated, with wide gaps of flat magenta between pieces):
+1. DIALOG FRAME, left half of the image: a hollow rectangular frame (about 1.5 wide to 1 tall), lighter than a big panel: a medium border of blackened iron with an aged copper inner trim, small riveted copper corner plates, uniform straight sides (the same rivet spacing all along, no ornament in the middle of any side). The inside of the frame is EMPTY: flat magenta shows through the hole.
+2. TITLE PLATE, top right: a heading plate that sits across the top edge of a dialog (about 5 wide to 1 tall): a dark iron plate with a copper frame, both ends clipped and bolted with a rivet, blank face, uniform between the ends.
+3. TABS, right, under the title plate: two identical tab plates side by side (about 3.5 wide to 1 tall, the two top corners clipped, the bottom edge flat as if joined to a panel below): INACTIVE (dark blackened iron face, dull aged copper trim) and ACTIVE (the face warm lit copper and the trim bright, glowing as if heated).
+4. LIST ROWS, right, under the tabs: two identical slim menu row plates one above the other (about 9 wide to 1 tall, like the menu rows of the pause reference), each with a tiny copper diamond stud near each short end: NORMAL (dark iron face, thin dull copper edge) and HOT (the focused row: a glowing lit copper bar with a bright orange rim, like RESUME MATCH in the pause reference).
+5. TOOLTIP PLATE, bottom right: a compact dark iron plate (about 3 wide to 1 tall) with a thin bright copper border and a tiny rivet in each corner, blank face, uniform sides.
+
+RULES: every face is BLANK. The whole background is solid flat pure magenta (#FF00FF). No text, no letters, no numbers, no icons, no drop shadows on the magenta, no glow halos outside the pieces (keep every glow inside the piece's outline).
+```
+
+### hud.webp (G3)
+
+Node `8Be13fsdQmeBShCBQtCl`, generation `AZQs7AXl9C8ZVI0e4IOu`: gpt-image-2, high, 2K 3:2 (2048x1360), 2546 credits ($0.56). References: HUD, lobby, connect, then the kit's frames and buttons sheets.
+
+```text
+Game asset: a UI KIT SHEET of illustrated pixel-art HUD CARDS and PLATES for a dark industrial fantasy fighting game set in a foundry. The pieces will be cut out and stretched as 9-slices, so every straight run between the ends or corners must be plain and uniform.
+
+LOOK: the same material, pixel size and colours as the last two references (pieces of this interface kit already made: frames and buttons on magenta), and the approved target screens of this game (the other references; the first is the match screen with its two player cards at the bottom). Hand-made, heavy, manufactured inside the foundry, never a clean vector or website look: blackened pitted iron, aged copper with rust and verdigris, copper rivets, warm orange furnace light on the top edges, grime and wear. Pixel art with clearly visible square pixels (each art pixel about 4 image pixels), crisp dark outlines, three-to-five tone shading.
+
+PIECES (each one isolated, with wide gaps of flat magenta between pieces):
+1. HUD CARD, COPPER, top left: like the player card at the bottom left of the first reference: a horizontal card (about 3.4 wide to 1 tall): an iron card body with copper trim and corner rivets, and at its LEFT end a square PORTRAIT WINDOW: a hollow square frame with a heavier copper rim whose inside is EMPTY (flat magenta shows through; a portrait goes there later). The body to the right of the window is a plain dark iron plate, blank, uniform along its length.
+2. HUD CARD, TEAL, top right: exactly the same card MIRRORED: the portrait window at its RIGHT end, and its trim and window rim oxidised teal-green (verdigris teal, the colour of player two) instead of copper.
+3. METER, middle left: a long thin recessed iron meter housing (about 8 wide to 1 tall) divided into equal cells by small iron ribs, every cell the same width, with small end caps; the cells are EMPTY dark iron. Beside it two loose CELL FILLS, each exactly the size of the inside of one cell: one glowing molten GOLD, one glowing TEAL.
+4. NAMEPLATE, middle right: a small iron name plate (about 4 wide to 1 tall) with a copper rim and a tiny rivet at each end, blank face, uniform between the ends.
+5. HANGING NAMEPLATE, bottom left: the same kind of plate, a little larger (about 5 wide to 1 tall), hanging from two short iron chains that rise straight up from its top corners (the chains about as tall as the plate), blank face, uniform between the ends.
+6. SUBTITLE RIBBON, bottom right: a thin long riveted iron plate (about 12 wide to 1 tall, like the plate under the CONNECT heading in the references) with small clipped and bolted end caps and a thin copper edge, blank face, uniform along its length.
+
+RULES: every face is BLANK. The whole background is solid flat pure magenta (#FF00FF). No text, no letters, no numbers, no icons, no portraits, no drop shadows on the magenta, no glow halos outside the pieces (keep every glow inside the piece's outline).
 ```

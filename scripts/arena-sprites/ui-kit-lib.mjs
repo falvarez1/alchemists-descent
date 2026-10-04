@@ -312,3 +312,38 @@ export function flatten(img, r) {
   }
   return { data: out, w, h };
 }
+
+// Swap x and y (a vertical piece is regularised as a horizontal one, then swapped back).
+export function transpose(img) {
+  const out = Buffer.alloc(img.w * img.h * 4);
+  for (let y = 0; y < img.h; y++) for (let x = 0; x < img.w; x++) img.data.copy(out, (y + x * img.h) * 4, (x + y * img.w) * 4, (x + y * img.w) * 4 + 4);
+  return { data: out, w: img.h, h: img.w };
+}
+
+// Mirror left to right.
+export function mirror(img) {
+  const out = Buffer.alloc(img.w * img.h * 4);
+  for (let y = 0; y < img.h; y++) for (let x = 0; x < img.w; x++) img.data.copy(out, (img.w - 1 - x + y * img.w) * 4, (x + y * img.w) * 4, (x + y * img.w) * 4 + 4);
+  return { data: out, w: img.w, h: img.h };
+}
+
+// The bounds [x0, y0, x1, y1] of the transparent pixels enclosed by the piece (a window in a card), or null.
+export function holeRect(img) {
+  const { w, h, data } = img, outside = new Uint8Array(w * h), stack = [];
+  for (let x = 0; x < w; x++) stack.push(x, x + (h - 1) * w);
+  for (let y = 0; y < h; y++) stack.push(y * w, y * w + w - 1);
+  while (stack.length) {
+    const i = stack.pop();
+    if (outside[i] || data[i * 4 + 3] >= 128) continue;
+    outside[i] = 1;
+    const x = i % w, y = (i / w) | 0;
+    if (x > 0) stack.push(i - 1); if (x < w - 1) stack.push(i + 1); if (y > 0) stack.push(i - w); if (y < h - 1) stack.push(i + w);
+  }
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let i = 0; i < w * h; i++) {
+    if (data[i * 4 + 3] >= 128 || outside[i]) continue;
+    const x = i % w, y = (i / w) | 0;
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  }
+  return x1 < 0 ? null : [x0, y0, x1, y1];
+}

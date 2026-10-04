@@ -7,9 +7,9 @@
 // has the right size at that scale.
 //
 // Usage: node scripts/arena-sprites/build-ui-kit.mjs [--raw <dir>]   (--raw: only the plain cuts, to choose slices)
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadSheet, tightRect, cutPiece, regularise, seamlessTile, crop, savePng, periodicStrip, columnHeights, difference, lift, flatten } from './ui-kit-lib.mjs';
+import { loadSheet, tightRect, cutPiece, regularise, seamlessTile, crop, savePng, periodicStrip, columnHeights, difference, lift, flatten, transpose, holeRect } from './ui-kit-lib.mjs';
 
 const SRC = 'docs/arena/platform-fighter/ui-sources', OUT = 'public/assets/arena/ui', SCALE = 2;
 const args = process.argv.slice(2);
@@ -22,47 +22,73 @@ const sheet = async name => (sheets[name] ??= await loadSheet(join(SRC, `${name}
 
 // Every piece: sheet, loose rect (tightened to the drawn pixels), factor or size.
 const PIECES = {
-  'frame-panel':       { sheet: 'frames', rect: [44, 116, 1247, 1003], factor: 5 },
-  'frame-card':        { sheet: 'frames', rect: [1304, 136, 1999, 427], factor: 4 },
-  'frame-card-teal':   { sheet: 'frames', rect: [1304, 472, 1999, 763], factor: 4 },
-  'frame-slot':        { sheet: 'frames', rect: [1304, 836, 1999, 979], factor: 4 },
-  'frame-stage':       { sheet: 'pieces', rect: [56, 64, 703, 1147], factor: 7 },
-  'band':              { sheet: 'pieces', rect: [784, 72, 1983, 215], factor: 4 },
-  'divider':           { sheet: 'pieces', rect: [760, 348, 1995, 415], factor: 6 },
-  'keycap':            { sheet: 'pieces', rect: [988, 572, 1175, 743], height: 17 },
-  'keycap-wide':       { sheet: 'pieces', rect: [1332, 580, 1787, 743], height: 17 },
-  'or-gear':           { sheet: 'pieces', rect: [784, 1016, 1019, 1271], factor: 8 },
-  'arrow-left':        { sheet: 'pieces', rect: [1120, 1048, 1227, 1239], size: [9, 16] },
-  'arrow-right':       { sheet: 'pieces', rect: [1340, 1048, 1447, 1239], size: [9, 16] },
-  'arrow-left-hot':    { sheet: 'pieces', rect: [1516, 1048, 1623, 1239], size: [9, 16] },
-  'arrow-right-hot':   { sheet: 'pieces', rect: [1740, 1048, 1847, 1239], size: [9, 16] },
-  'button-copper':         { sheet: 'buttons', rect: [40, 292, 659, 495], size: [100, 34] },
-  'button-copper-hot':     { sheet: 'buttons', rect: [728, 292, 1331, 495], size: [100, 34] },
-  'button-copper-pressed': { sheet: 'buttons', rect: [1396, 292, 1999, 495], size: [100, 34] },
-  'button-iron':           { sheet: 'buttons', rect: [40, 756, 659, 959], size: [100, 34] },
-  'button-iron-hot':       { sheet: 'buttons', rect: [728, 756, 1331, 959], size: [100, 34] },
-  'button-iron-pressed':   { sheet: 'buttons', rect: [1396, 756, 1999, 959], size: [100, 34] },
-  'chain':             { sheet: 'ornaments', rect: [908, 52, 987, 647], factor: 8 },
-  'lantern':           { sheet: 'ornaments', rect: [1412, 52, 1647, 619], size: [24, 57] },
-  'lantern-unlit':     { sheet: 'ornaments', rect: [1720, 52, 1951, 619], size: [24, 57] },
-  'chain-mount':       { sheet: 'ornaments', rect: [1088, 196, 1283, 523], factor: 8 },
-  'gear-crest':        { sheet: 'ornaments', rect: [72, 232, 779, 479], factor: 9 },
-  'vs-medallion':      { sheet: 'ornaments', rect: [284, 612, 887, 1195], factor: 8 },
-  'seal-copper':       { sheet: 'ornaments', rect: [1108, 688, 1311, 891], size: [19, 19] },
-  'seal-teal':         { sheet: 'ornaments', rect: [1376, 688, 1579, 891], size: [19, 19] },
-  'bead-copper':       { sheet: 'ornaments', rect: [1128, 964, 1251, 1087], size: [11, 11] },
-  'bead-copper-spent': { sheet: 'ornaments', rect: [1468, 964, 1591, 1087], size: [11, 11] },
-  'bead-teal':         { sheet: 'ornaments', rect: [1128, 1136, 1251, 1259], size: [11, 11] },
-  'bead-teal-spent':   { sheet: 'ornaments', rect: [1468, 1136, 1591, 1259], size: [11, 11] },
-  'timer-sign':        { sheet: 'signs', rect: [452, 0, 1575, 519], factor: 8 },
-  'banner-plate':      { sheet: 'signs', rect: [24, 604, 2023, 1291], factor: 6 },
-  'word-fight':        { sheet: 'words', rect: [72, 96, 991, 331], factor: 3 },
-  'word-game':         { sheet: 'words', rect: [1108, 100, 1999, 331], factor: 3 },
-  'word-time':         { sheet: 'words', rect: [112, 508, 979, 743], factor: 3 },
-  'word-vs':           { sheet: 'words', rect: [1316, 508, 1791, 755], factor: 3 },
-  'word-3':            { sheet: 'words', rect: [280, 912, 567, 1231], factor: 3 },
-  'word-2':            { sheet: 'words', rect: [912, 908, 1179, 1227], factor: 3 },
-  'word-1':            { sheet: 'words', rect: [1556, 912, 1751, 1227], factor: 3 },
+  'panel-large':             { sheet: 'frames', rect: [44, 116, 1247, 1003], factor: 5 },
+  'card':                    { sheet: 'frames', rect: [1304, 136, 1999, 427], factor: 4 },
+  'card-teal':               { sheet: 'frames', rect: [1304, 472, 1999, 763], factor: 4 },
+  'slot':                    { sheet: 'frames', rect: [1304, 836, 1999, 979], factor: 4 },
+  'picture-frame':           { sheet: 'pieces', rect: [56, 64, 703, 1147], factor: 7 },
+  'band':                    { sheet: 'pieces', rect: [784, 72, 1983, 215], factor: 4 },
+  'divider':                 { sheet: 'pieces', rect: [760, 348, 1995, 415], factor: 6 },
+  'keycap-square':           { sheet: 'pieces', rect: [988, 572, 1175, 743], height: 17 },
+  'keycap':                  { sheet: 'pieces', rect: [1332, 580, 1787, 743], height: 17 },
+  'gear-small':              { sheet: 'pieces', rect: [784, 1016, 1019, 1271], factor: 8 },
+  'arrow-left':              { sheet: 'pieces', rect: [1120, 1048, 1227, 1239], size: [9, 16] },
+  'arrow-right':             { sheet: 'pieces', rect: [1340, 1048, 1447, 1239], size: [9, 16] },
+  'arrow-left-hot':          { sheet: 'pieces', rect: [1516, 1048, 1623, 1239], size: [9, 16] },
+  'arrow-right-hot':         { sheet: 'pieces', rect: [1740, 1048, 1847, 1239], size: [9, 16] },
+  'button-primary':          { sheet: 'buttons', rect: [40, 292, 659, 495], size: [100, 34] },
+  'button-primary-hot':      { sheet: 'buttons', rect: [728, 292, 1331, 495], size: [100, 34] },
+  'button-primary-pressed':  { sheet: 'buttons', rect: [1396, 292, 1999, 495], size: [100, 34] },
+  'button-secondary':        { sheet: 'buttons', rect: [40, 756, 659, 959], size: [100, 34] },
+  'button-secondary-hot':    { sheet: 'buttons', rect: [728, 756, 1331, 959], size: [100, 34] },
+  'button-secondary-pressed':{ sheet: 'buttons', rect: [1396, 756, 1999, 959], size: [100, 34] },
+  'chain':                   { sheet: 'ornaments', rect: [908, 52, 987, 647], factor: 8 },
+  'lantern':                 { sheet: 'ornaments', rect: [1412, 52, 1647, 619], size: [24, 57] },
+  'lantern-unlit':           { sheet: 'ornaments', rect: [1720, 52, 1951, 619], size: [24, 57] },
+  'chain-mount':             { sheet: 'ornaments', rect: [1088, 196, 1283, 523], factor: 8 },
+  'gear-crest':              { sheet: 'ornaments', rect: [72, 232, 779, 479], factor: 9 },
+  'medallion':               { sheet: 'ornaments', rect: [284, 612, 887, 1195], factor: 8 },
+  'seal':                    { sheet: 'ornaments', rect: [1108, 688, 1311, 891], size: [19, 19] },
+  'seal-teal':               { sheet: 'ornaments', rect: [1376, 688, 1579, 891], size: [19, 19] },
+  'bead':                    { sheet: 'ornaments', rect: [1128, 964, 1251, 1087], size: [11, 11] },
+  'bead-spent':              { sheet: 'ornaments', rect: [1468, 964, 1591, 1087], size: [11, 11] },
+  'bead-teal':               { sheet: 'ornaments', rect: [1128, 1136, 1251, 1259], size: [11, 11] },
+  'bead-teal-spent':         { sheet: 'ornaments', rect: [1468, 1136, 1591, 1259], size: [11, 11] },
+  'hanging-sign':            { sheet: 'signs', rect: [452, 0, 1575, 519], factor: 8 },
+  'banner-plate':            { sheet: 'signs', rect: [24, 604, 2023, 1291], factor: 6 },
+  'word-fight':              { sheet: 'words', rect: [72, 96, 991, 331], factor: 3 },
+  'word-game':               { sheet: 'words', rect: [1108, 100, 1999, 331], factor: 3 },
+  'word-time':               { sheet: 'words', rect: [112, 508, 979, 743], factor: 3 },
+  'word-vs':                 { sheet: 'words', rect: [1316, 508, 1791, 755], factor: 3 },
+  'word-3':                  { sheet: 'words', rect: [280, 912, 567, 1231], factor: 3 },
+  'word-2':                  { sheet: 'words', rect: [912, 908, 1179, 1227], factor: 3 },
+  'word-1':                  { sheet: 'words', rect: [1556, 912, 1751, 1227], factor: 3 },
+  'slider-track':            { sheet: 'controls', rect: [168, 80, 1883, 219], factor: 8 },
+  'slider-fill':             { sheet: 'controls', rect: [168, 312, 1399, 395], height: 7 },
+  'slider-handle':           { sheet: 'controls', rect: [1464, 260, 1639, 447], factor: 8 },
+  'slider-handle-hot':       { sheet: 'controls', rect: [1712, 260, 1883, 447], factor: 8 },
+  'toggle':                  { sheet: 'controls', rect: [160, 508, 591, 663], size: [52, 19] },
+  'toggle-on':               { sheet: 'controls', rect: [676, 508, 1083, 663], size: [52, 19] },
+  'checkbox':                { sheet: 'controls', rect: [1400, 512, 1563, 675], factor: 8 },
+  'checkbox-on':             { sheet: 'controls', rect: [1652, 512, 1819, 675], factor: 8 },
+  'scroll-track':            { sheet: 'controls', rect: [348, 740, 471, 1287], factor: 10 },
+  'scroll-thumb':            { sheet: 'controls', rect: [612, 872, 739, 1207], factor: 10 },
+  'scroll-thumb-hot':        { sheet: 'controls', rect: [868, 872, 999, 1207], factor: 10 },
+  'panel-small':             { sheet: 'menus', rect: [76, 160, 915, 1151], factor: 5 },
+  'title-plate':             { sheet: 'menus', rect: [996, 136, 1943, 291], factor: 6 },
+  'tab':                     { sheet: 'menus', rect: [996, 364, 1442, 535], factor: 7 },
+  'tab-active':              { sheet: 'menus', rect: [1471, 364, 1955, 535], factor: 7 },
+  'list-row':                { sheet: 'menus', rect: [996, 628, 1967, 743], factor: 4.5 },
+  'list-row-hot':            { sheet: 'menus', rect: [996, 784, 1967, 903], factor: 4.5 },
+  'tooltip':                 { sheet: 'menus', rect: [1236, 976, 1687, 1191], factor: 5 },
+  'hud-card':                { sheet: 'hud', rect: [68, 108, 967, 443], factor: 4 },
+  'hud-card-teal':           { sheet: 'hud', rect: [1076, 108, 1975, 443], factor: 4 },
+  'meter':                   { sheet: 'hud', rect: [52, 612, 927, 719], factor: 7 },
+  'meter-cell':              { sheet: 'hud', rect: [966, 612, 1081, 723], size: [11, 9] },
+  'meter-cell-teal':         { sheet: 'hud', rect: [1113, 612, 1227, 723], size: [11, 9] },
+  'nameplate':               { sheet: 'hud', rect: [1388, 600, 1915, 731], factor: 4 },
+  'nameplate-hanging':       { sheet: 'hud', rect: [60, 824, 643, 1195], factor: 4 },
+  'ribbon':                  { sheet: 'hud', rect: [716, 1072, 1999, 1195], factor: 5 },
 };
 
 const cuts = {};
@@ -94,37 +120,68 @@ const put = async (name, img, meta) => {
 
 // Hollow 9-slice frames: corners as drawn, each edge one seamless period, the centre empty.
 const FRAMES = {
-  'frame-panel':     { slice: [30, 32, 30, 32], periodX: [26, 44], periodY: [22, 40], use: 'lobby, pause, results and connect panels' },
-  'frame-card':      { slice: [13, 13, 13, 13], periodX: [10, 40], periodY: [8, 30], use: 'seat cards, HUD cards (P1, copper)' },
-  'frame-card-teal': { slice: [13, 13, 13, 13], periodX: [10, 40], periodY: [8, 30], use: 'seat cards, HUD cards (P2, teal)' },
-  'frame-slot':      { slice: [7, 7, 7, 7], periodX: [8, 40], periodY: [4, 16], use: 'room code, value boxes, rules bar' },
-  'frame-stage':     { slice: [12, 12, 34, 12], periodX: [8, 30], periodY: [10, 40], use: 'stage tile; the bottom slice is the label plate (the name sits on it)' },
+  'panel-large':   { slice: [30, 32, 30, 32], periodX: [26, 44], periodY: [22, 40], use: 'large panel: menus, lobby, pause, results, connect, options' },
+  'card':          { slice: [13, 13, 13, 13], periodX: [10, 40], periodY: [8, 30], use: 'card: player seats, info boxes (copper; the first player)' },
+  'card-teal':     { slice: [13, 13, 13, 13], periodX: [10, 40], periodY: [8, 30], use: 'card, teal accent (the second player)' },
+  'slot':          { slice: [7, 7, 7, 7], periodX: [8, 40], periodY: [4, 16], use: 'inset slot: text fields, value boxes, status and rules bars' },
+  'panel-small':   { slice: [18, 18, 18, 18], periodX: [10, 40], periodY: [10, 40], use: 'small panel: dialogs, confirmations, sub-panels' },
+  'picture-frame': { slice: [12, 12, 34, 12], periodX: [8, 30], periodY: [10, 40], use: 'picture tile with a caption plate (the bottom slice): stage, level or save tiles' },
 };
 for (const [name, f] of Object.entries(FRAMES)) {
   const r = regularise(cuts[name], f.slice, { periodX: f.periodX, periodY: f.periodY });
   await put(name, r, { kind: 'frame', slice: r.slice, band: r.band, fill: false, repeat: 'round', period: [r.periodX, r.periodY], use: f.use });
 }
 
-// Filled, fixed-height plates: buttons (the three states share slice and period), the wide keycap, the cut-in band.
+// Filled plates. Most keep their height and stretch across ('round stretch'); `both` ones stretch both ways (a
+// tooltip grows with its text); `vertical` ones keep their width and stretch down (regularised transposed). A piece's
+// states share its slice and are forced to its first state's period, so swapping states never shifts the pattern.
 const PLATES = {
-  'button-copper': { slice: [8, 20, 8, 20], periodX: [6, 30], states: ['button-copper', 'button-copper-hot', 'button-copper-pressed'], use: 'primary: READY, REMATCH, HOST A MATCH' },
-  'button-iron':   { slice: [8, 20, 8, 20], periodX: [6, 30], states: ['button-iron', 'button-iron-hot', 'button-iron-pressed'], use: 'secondary: CHANGE FIGHTERS, JOIN MATCH, menu rows' },
-  'keycap-wide':   { slice: [5, 5, 5, 5], periodX: [4, 20], states: ['keycap-wide'], use: 'key glyph frame for words (Esc, Enter, Space)' },
-  'band':          { slice: [8, 18, 8, 18], periodX: [48, 120], states: ['band'], use: 'the super cut-in band (horizontal)' },
+  'button-primary':    { slice: [8, 20, 8, 20], periodX: [6, 30], states: ['button-primary', 'button-primary-hot', 'button-primary-pressed'], use: 'primary button (hot copper): confirm, ready, host' },
+  'button-secondary':  { slice: [8, 20, 8, 20], periodX: [6, 30], states: ['button-secondary', 'button-secondary-hot', 'button-secondary-pressed'], use: 'secondary button (dark iron): back, change, join' },
+  'keycap':            { slice: [5, 5, 5, 5], periodX: [4, 20], states: ['keycap'], use: 'key glyph at any width (A, Esc, Enter, Space, Click)' },
+  'band':              { slice: [8, 18, 8, 18], periodX: [48, 120], states: ['band'], use: 'long horizontal band: cut-ins, announcements' },
+  'list-row':          { slice: [6, 22, 6, 22], periodX: [12, 60], states: ['list-row', 'list-row-hot'], use: 'menu list row; hot = the focused row (the menu cursor)' },
+  'title-plate':       { slice: [6, 16, 6, 16], periodX: [12, 60], states: ['title-plate'], use: 'heading plate across the top edge of a panel or dialog' },
+  'tab':               { slice: [6, 9, 6, 9], periodX: [8, 30], states: ['tab', 'tab-active'], stateNames: ['normal', 'active'], use: 'tab of a tab strip; active = the open tab' },
+  'ribbon':            { slice: [6, 16, 6, 16], periodX: [8, 40], states: ['ribbon'], use: 'thin subtitle plate under a heading, status line' },
+  'nameplate':         { slice: [8, 12, 8, 12], periodX: [8, 40], states: ['nameplate'], use: 'name plate, one or two lines (fighter name and title)' },
+  'tooltip':           { slice: [7, 7, 7, 7], periodX: [24, 76], periodY: [16, 29], both: true, states: ['tooltip'], use: 'tooltip and toast plate, grows with its text' },
+  'nameplate-hanging': { slice: [65, 22, 8, 22], periodX: [8, 40], states: ['nameplate-hanging'], use: 'sign hanging on two chains (the top slice holds the chains): footer prompts' },
+  'hud-card':          { slice: [12, 18, 12, 82], periodX: [60, 120], states: ['hud-card'], use: 'player HUD card, portrait window at the left end (put the portrait behind it)' },
+  'hud-card-teal':     { slice: [12, 82, 12, 18], periodX: [60, 120], states: ['hud-card-teal'], use: 'player HUD card, teal, portrait window at the right end' },
+  'meter':             { slice: [5, 6, 5, 6], periodX: [10, 20], states: ['meter'], use: 'segmented meter housing, one cell per period: width = 12 + 13n art px; cell k inside at left 7 + 13k, top 3 (11 x 9)' },
+  'slider-track':      { slice: [6, 9, 6, 9], periodX: [8, 40], states: ['slider-track'], use: 'slider groove; its inside is 4 art px down, 8 in from each end, 7 tall (where the fill goes)' },
+  'slider-fill':       { slice: [2, 4, 2, 4], periodX: [8, 40], states: ['slider-fill'], use: 'slider fill (molten copper), 7 tall: laid in the groove at the value width' },
+  'scroll-track':      { slice: [7, 4, 7, 4], periodY: [6, 30], vertical: true, states: ['scroll-track'], use: 'vertical scroll bar groove' },
 };
 for (const [name, p] of Object.entries(PLATES)) {
-  const first = regularise(cuts[p.states[0]], p.slice, { periodX: p.periodX, fill: true, keepY: true });
+  const reg = (img, periodX, periodY) => {
+    if (!p.vertical) return regularise(img, p.slice, { periodX, periodY, fill: true, keepY: !p.both });
+    const [t, r, b, l] = p.slice, v = regularise(transpose(img), [l, b, r, t], { periodX: periodY, fill: true, keepY: true });
+    return { ...transpose(v), slice: p.slice, periodX: null, periodY: v.periodX };
+  };
+  const first = reg(cuts[p.states[0]], p.periodX, p.periodY);
   const states = {};
   for (const [k, s] of p.states.entries()) {
-    const r = k === 0 ? first : regularise(cuts[s], p.slice, { periodX: [first.periodX, first.periodX], fill: true, keepY: true });
+    const r = k === 0 ? first : reg(cuts[s], first.periodX ? [first.periodX, first.periodX] : undefined, first.periodY ? [first.periodY, first.periodY] : undefined);
     await savePng(r, join(OUT, `${s}.png`));
-    states[['normal', 'hot', 'pressed'][k]] = `${s}.png`;
+    states[(p.stateNames ?? ['normal', 'hot', 'pressed'])[k]] = `${s}.png`;
   }
   kit.pieces[name] = {
-    file: `${p.states[0]}.png`, size: [first.w, first.h], kind: 'plate', slice: first.slice, fill: true, repeat: 'round stretch',
-    period: [first.periodX, null], states, height: 'fixed: show it size[1] x scale tall', use: p.use,
+    file: `${p.states[0]}.png`, size: [first.w, first.h], kind: 'plate', slice: first.slice, fill: true,
+    repeat: p.both ? 'round' : p.vertical ? 'stretch round' : 'round stretch', period: [first.periodX, first.periodY], states,
+    fixed: p.both ? null : p.vertical ? 'width: show it size[0] x scale wide' : 'height: show it size[1] x scale tall', use: p.use,
+    _img: first,
   };
 }
+
+// The HUD cards' portrait windows, measured from the art, from the end the window sits at (it stays fixed there).
+for (const name of ['hud-card', 'hud-card-teal']) {
+  const p = kit.pieces[name], [x0, y0, x1, y1] = holeRect(p._img);
+  const end = x0 < p.size[0] / 2 ? { left: x0 } : { right: p.size[0] - 1 - x1 };
+  p.window = { ...end, top: y0, width: x1 - x0 + 1, height: y1 - y0 + 1 };
+}
+for (const p of Object.values(kit.pieces)) delete p._img;
 
 // The divider in parts (and whole): left cap, a repeatable line, the centre diamond, right cap.
 {
@@ -155,17 +212,24 @@ await savePng(difference(cuts.lantern, cuts['lantern-unlit']), join(OUT, 'lanter
 
 // Single images.
 const IMAGES = {
-  'keycap': 'single-letter key glyph frame (A, D, F)', 'or-gear': 'small gear medallion (the OR between HOST and JOIN)',
-  'arrow-left': 'cycler arrow', 'arrow-right': 'cycler arrow', 'arrow-left-hot': 'cycler arrow, focused', 'arrow-right-hot': 'cycler arrow, focused',
-  'gear-crest': 'top-centre crest on the big panels', 'vs-medallion': 'VS gear medallion (blank face: put word-vs on it)',
-  'seal-copper': 'readiness seal, P1', 'seal-teal': 'readiness seal, P2',
-  'bead-copper': 'stock bead, P1, lit', 'bead-copper-spent': 'stock bead, P1, spent', 'bead-teal': 'stock bead, P2, lit', 'bead-teal-spent': 'stock bead, P2, spent',
-  'timer-sign': 'hanging timer sign with lantern mounts (blank face)', 'banner-plate': 'the plate behind FIGHT!, GAME!, TIME! (blank face)',
+  'keycap-square': 'square key glyph, as drawn (the keycap 9-slice covers every width)', 'gear-small': 'small gear badge, blank centre (OR between two choices, a counter)',
+  'arrow-left': 'value cycler arrow', 'arrow-right': 'value cycler arrow', 'arrow-left-hot': 'value cycler arrow, focused', 'arrow-right-hot': 'value cycler arrow, focused',
+  'gear-crest': 'crest on the top edge of a large panel', 'medallion': 'large gear medallion, blank face (VS, a rank, an emblem)',
+  'seal': 'check seal (ready, done), copper', 'seal-teal': 'check seal, teal',
+  'bead': 'counter bead (stocks, lives), copper, lit', 'bead-spent': 'counter bead, copper, spent', 'bead-teal': 'counter bead, teal, lit', 'bead-teal-spent': 'counter bead, teal, spent',
+  'hanging-sign': 'hanging sign with two lanterns, blank face (timer, score)', 'banner-plate': 'big banner plate, blank face (behind word art)',
+  'slider-handle': 'slider handle (lay it over the track at the value)', 'toggle': 'on/off lever switch', 'checkbox': 'checkbox',
+  'scroll-thumb': 'scroll bar thumb (fixed size)', 'meter-cell': 'meter cell fill, gold (one per filled cell)', 'meter-cell-teal': 'meter cell fill, teal (refilling)',
   'word-fight': 'FIGHT!', 'word-game': 'GAME!', 'word-time': 'TIME!', 'word-vs': 'VS', 'word-3': '3', 'word-2': '2', 'word-1': '1',
 };
 for (const [name, use] of Object.entries(IMAGES)) await put(name, cuts[name], { kind: name.startsWith('word-') ? 'word' : 'image', use });
 kit.pieces['arrow-left'].states = { normal: 'arrow-left.png', hot: 'arrow-left-hot.png' };
 kit.pieces['arrow-right'].states = { normal: 'arrow-right.png', hot: 'arrow-right-hot.png' };
+for (const [name, states] of Object.entries({ 'slider-handle': ['normal', 'hot'], 'scroll-thumb': ['normal', 'hot'], 'toggle': ['off', 'on'], 'checkbox': ['off', 'on'] })) {
+  const other = name + (states[1] === 'hot' ? '-hot' : '-on');
+  await savePng(cuts[other], join(OUT, `${other}.png`));
+  kit.pieces[name].states = { [states[0]]: `${name}.png`, [states[1]]: `${other}.png` };
+}
 
 // Fills and text textures: seamless tiles from the texture sheet (quadrants: dark iron, worn iron, copper, iron).
 {
@@ -188,6 +252,10 @@ kit.pieces['arrow-right'].states = { normal: 'arrow-right.png', hot: 'arrow-righ
 
 // Every piece carries its recommended CSS scale and the CSS size it has at that scale (a 9-slice's natural size).
 for (const p of Object.values(kit.pieces)) { p.scale = SCALE; p.css = p.size.map(v => v * SCALE); }
+
+// Drop PNGs no piece references any more (a renamed or retired piece), so the folder is exactly the kit.
+const referenced = new Set(Object.values(kit.pieces).flatMap(p => [p.file, ...Object.values(p.states ?? {})]));
+for (const f of readdirSync(OUT)) if (f.endsWith('.png') && !referenced.has(f)) rmSync(join(OUT, f));
 
 writeFileSync(join(OUT, 'kit.json'), JSON.stringify(kit, null, 1) + '\n');
 console.log(Object.entries(kit.pieces).map(([n, p]) => `${n} ${p.size.join('x')}${p.slice ? ' slice ' + p.slice.join(',') : ''}` +
