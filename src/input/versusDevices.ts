@@ -12,7 +12,7 @@ export class VersusDevices {
   }
   get available(): ReadonlyArray<{ device: VersusDevice; label: string }> {
     return [
-      { device: 'keyboard', label: 'Keyboard + mouse' }, { device: 'cpu', label: 'CPU · skill 3' },
+      { device: 'keyboard', label: 'Keyboard + mouse' }, { device: 'cpu', label: 'CPU' },
       ...this.pads.filter((p): p is Gamepad => !!p?.connected && p.mapping === 'standard')
         .map(p => ({ device: `pad:${p.index}` as VersusDevice, label: `Controller ${p.index + 1}` })),
     ];

@@ -25,6 +25,12 @@ export interface NavNode {
 }
 
 export interface NavEdge {
+  /** One-way platform: rise directly through it instead of detouring around its lip. */
+  through?: boolean;
+  /** Fuel to bank on the ground before committing to this ascent. */
+  minFuel?: number;
+  /** Stable variant identity for outcome learning. */
+  planId?: string;
   from: string;
   to: string;
   kind: NavEdgeKind;
@@ -171,11 +177,13 @@ const stockNavs = new Map<string, StageNav>();
 
 export function stockNav(stage: StockStageDef = STOCK_STAGE): StageNav {
   const main = stage.main;
-  const nodes: NavNode[] = [{ id: 'floor', name: `${stage.caption.toLowerCase()} platform`, x0: main.x0 + 8, x1: main.x1 - 8, y: main.y - 1 }];
+  // Recognition covers the whole supporting surface, including a body overhanging its lip.
+  // Insets belong to movement destinations, not to deciding which platform a fighter occupies.
+  const nodes: NavNode[] = [{ id: 'floor', name: `${stage.caption.toLowerCase()} platform`, x0: main.x0, x1: main.x1, y: main.y - 1 }];
   const edges: NavEdge[] = [];
   for (const [i, p] of stage.platforms.entries()) {
     const id = `side${i}`, mid = (p.x0 + p.x1) / 2;
-    nodes.push({ id, name: 'upper platform', x0: p.x0 + 8, x1: p.x1 - 8, y: p.y - 1 });
+    nodes.push({ id, name: 'upper platform', x0: p.x0, x1: p.x1, y: p.y - 1 });
     // Rise beside the platform's inner lip (from the main deck), or up through a centred platform's middle.
     const centred = Math.abs(mid - stage.center.x) < 40;
     const left = mid < stage.center.x, dir = centred ? 1 : left ? -1 : 1;

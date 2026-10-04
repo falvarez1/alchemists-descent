@@ -56,6 +56,7 @@ export interface BrainStatus {
   targetScores?: UtilityScore[];
   threat?: boolean;
   memory?: { opponents: number; confidence: number; caution: number };
+  navigation?: { action: string; context: string; started: number } | null;
   /** The goal: `approach`, `retreat`, `zone`, `pressure`, `reposition`, `search`, or the dummy's `idle`. */
   intent: string;
   /** Who it is after (a foe's kind and distance), or `-`. */
@@ -92,7 +93,7 @@ export interface Brain {
   think(ctx: Ctx, self: BrainSelf, tick: number): void;
   readonly status: Readonly<BrainStatus>;
   /** Forget the plan (a respawn, a new floor); keeps the seed and the Rng stream. */
-  reset(): void;
+  reset(keepLearning?: boolean): void;
 }
 
 export function blankStatus(): BrainStatus {

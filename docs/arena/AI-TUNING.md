@@ -108,7 +108,7 @@ of human reaction performance. The same personality remains active at every diff
 | awareness | 240–800 cells | Maximum recognition distance, within the stage's existing visibility rules. |
 | prediction | 0–1 | Motion lead and prediction horizon; does not inspect future inputs. |
 | spacingError | 0–24 cells | Bounded spacing offset per tactical decision. |
-| adaptation | 0–1 | Strength of modest defensive adaptation to observed projectile use. |
+| adaptation | 0–1 | Strength of learning from confirmed attacks, failed moves and successful approaches, plus defensive adaptation to projectile use. |
 | decisionNoise | 0–0.1 utility units | Bounded seeded variation between eligible options. |
 | overcommit | 0–0.5 | Additional action commitment as a fraction of the tactical interval. |
 

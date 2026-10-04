@@ -7,6 +7,7 @@ export interface VersusSeat {
   fighter: FighterId;
   device: VersusDevice;
   ready: boolean;
+  cpuLevel: number;
 }
 export interface VersusApi {
   readonly phase: VersusPhase;
@@ -23,6 +24,7 @@ export interface VersusApi {
   chooseFighter(slot: number, fighter: FighterId): void;
   chooseDevice(slot: number, device: VersusDevice): boolean;
   chooseStage(stage: StockStageId): void;
+  chooseDifficulty(slot: number, level: number): void;
   ready(slot: number): void;
   start(): Promise<boolean>;
   rematch(): void;

@@ -84,7 +84,7 @@ export class BotDriver {
       ctx.events.on('levelChanged', () => this.off()),
       ctx.events.on('modeChanged', ({ mode }) => { if (mode !== 'play') this.off(); }),
       ctx.events.on('arenaReset', () => this.current?.reset()),
-      ctx.events.on('playerRespawned', () => { if ((ctx.arena?.bound ?? 0) === this.self.slot) this.current?.reset(); }),
+      ctx.events.on('playerRespawned', () => { if ((ctx.arena?.bound ?? 0) === this.self.slot) this.current?.reset(!!ctx.arena?.stockMatch); }),
       ctx.events.on('fighterHit', (hit) => this.current?.observeHit?.(hit)),
       ctx.events.on('cardCast', ({ origin }) => { if (origin === 'wand' && (ctx.arena?.bound ?? 0) === this.self.slot) this.current?.actionPerformed?.('shoot'); }),
       ctx.events.on('fighterDown', (down) => {

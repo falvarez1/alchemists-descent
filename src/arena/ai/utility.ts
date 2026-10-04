@@ -45,6 +45,7 @@ export interface ActionSituation {
   damage: number;
   variation: number;
   defensiveKit: boolean;
+  learnedBias?: Partial<Record<CombatAction, number>>;
 }
 
 /** Utilities are estimates, not calibrated probabilities. Damage is normalized by target health,
@@ -62,7 +63,7 @@ export function actionUtilities(s: ActionSituation): UtilityScore[] {
   const add = (action: CombatAction, terms: Record<string, number>): void => {
     if (!s.eligible[action]) return;
     const repetition = memory.lastAction === action ? memory.repetitions / 8 : 0;
-    rows.push(score(action, { ...terms, repetition: -0.12 * p.variety * repetition, variation: s.variation * (0.25 + p.variety) * VARIATION[action] }));
+    rows.push(score(action, { ...terms, learned: s.learnedBias?.[action] ?? 0, repetition: -0.12 * p.variety * repetition, variation: s.variation * (0.25 + p.variety) * VARIATION[action] }));
   };
   add('shoot', {
     connect: 0.45 * hitEstimate, initiate: 0.22 * p.aggression, ranged: 0.18 * p.ranged, confidence: 0.06 * memory.confidence,

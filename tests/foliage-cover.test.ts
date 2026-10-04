@@ -114,7 +114,8 @@ describe('Living foreground cover', () => {
         if (c[0] < .5 && c[1] < .55 && c[2] > c[0]) occluded++;
       }
       expect(occluded).toBeGreaterThan(35);
-      expect(pixels.has(`${root.x},151`)).toBe(false);
+      // The moss mat tucks over the floor's top row only; rock below stays clear.
+      for (let y = 153; y < 165; y++) for (let x = root.x - 12; x <= root.x + 12; x++) expect(pixels.has(`${x},${y}`)).toBe(false);
     } finally { VISUAL_FIDELITY.enabled = enabled; cover.dispose(); }
   });
 });

@@ -7,6 +7,7 @@ import { botDriverFor, rivalDriverFor } from '@/arena/ai/driver';
 import { readVersusPad, VersusDevices } from '@/input/versusDevices';
 import { applyStockPad } from '@/input/stockPad';
 import { setExternalControl } from '@/input/externalControl';
+import { clampAiLevel } from '@/config/aiTiers';
 
 /** Composes disposable local matches. Expedition saves remain owned by Levels. */
 export class LocalVersus implements VersusApi {
@@ -14,8 +15,8 @@ export class LocalVersus implements VersusApi {
   message = '';
   stage: StockStageId = DEFAULT_STOCK_STAGE;
   readonly seats: [VersusSeat, VersusSeat] = [
-    { fighter: 'ilyra-voss', device: 'keyboard', ready: false },
-    { fighter: 'brann-rook', device: 'cpu', ready: true },
+    { fighter: 'ilyra-voss', device: 'keyboard', ready: false, cpuLevel: 3 },
+    { fighter: 'brann-rook', device: 'cpu', ready: true, cpuLevel: 3 },
   ];
   private readonly ownership = new VersusDevices();
   private readonly buttons = new Map<number, Uint8Array>();
@@ -83,6 +84,10 @@ export class LocalVersus implements VersusApi {
     if (this.phase !== 'lobby' || !seat || this.disconnected.includes(slot) || seat.device === 'cpu') return;
     seat.ready = !seat.ready; this.changed();
   }
+  chooseDifficulty(slot: number, level: number): void {
+    if (this.phase !== 'lobby' || !this.seats[slot]) return;
+    this.seats[slot].cpuLevel = clampAiLevel(level); this.changed();
+  }
   async start(): Promise<boolean> {
     const ctx = this.ctx, arena = ctx.arena;
     if (!this.canStart || !arena) return false;
@@ -106,7 +111,7 @@ export class LocalVersus implements VersusApi {
       arena.reset();
       botDriverFor(ctx).off(); rivalDriverFor(ctx, 1)?.off();
       for (let slot = 0; slot < 2; slot++) if (this.seats[slot].device === 'cpu') {
-        (slot === 0 ? botDriverFor(ctx) : rivalDriverFor(ctx, slot))?.install('basic', 3);
+        (slot === 0 ? botDriverFor(ctx) : rivalDriverFor(ctx, slot))?.install('basic', this.seats[slot].cpuLevel);
       }
       this.release(); setExternalControl(ctx.input, this.seats[0].device !== 'keyboard');
       this.phase = 'playing'; this.message = ''; ctx.state.paused = false; this.changed(); return true;

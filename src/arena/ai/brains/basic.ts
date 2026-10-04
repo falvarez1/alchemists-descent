@@ -23,6 +23,11 @@ import { STOCK_DODGE } from '@/config/stockMovement';
 import { stockMoveset } from '@/config/stockAttacks';
 import { stockAttackOverlaps } from '@/arena/StockAttack';
 import { StockFootwork } from '@/arena/ai/stockFootwork';
+import { AdaptiveMemory } from '@/arena/ai/adaptiveMemory';
+import { planPursuit } from '@/arena/ai/pursuit';
+import type { PursuitPlan } from '@/arena/ai/pursuit';
+import { chooseMelee } from '@/arena/ai/meleeChoice';
+import type { StockAttackKind } from '@/core/stockAttacks';
 import { AI_PERSONALITIES } from '@/config/aiPersonalities';
 import type { PersonalityId } from '@/config/aiPersonalities';
 import { CombatMemory } from '@/arena/ai/memory';
@@ -89,19 +94,44 @@ export class BasicBrain implements Brain {
   private deadSince = -1;
   private wasHolding = false;
   private readonly stockFootwork = new StockFootwork();
+  private readonly learning = new AdaptiveMemory();
+  private pursuit: (PursuitPlan & { started: number }) | null = null;
+  private lastApproach: (PursuitPlan & { until: number }) | null = null;
+  private readonly observedHits: ObservedHit[] = [];
+  private readonly slot: number;
+  private meleeChoice: StockAttackKind | null = null;
+  private meleeContext = '';
+  private meleeUntil = 0;
+  private attackTarget: { context: string; victim: number; tick: number } | null = null;
 
   constructor(opts: BrainOptions) {
+    this.slot = opts.slot;
     this.rng = new Rng(opts.seed);
     this.exec = new Execution(this.rng, opts.level);
     this.personality = opts.personality ?? 'duelist';
     this.memory = new CombatMemory(opts.slot);
   }
 
-  observeHit(hit: ObservedHit): void { this.memory.hear(hit); }
+  observeHit(hit: ObservedHit): void {
+    this.memory.hear(hit);
+    if (hit.victim === this.slot && hit.attack !== 'world') {
+      this.learning.interrupt();
+      // Being knocked off an approach is not evidence that the route itself is impossible.
+      // Lingering elemental damage has no launch. Restarting on each damage tick
+      // prevents the bot from ever finishing a route out of that hazard.
+      this.pursuit = null; this.status.navigation = null; this.control?.cancelEdge(); this.edgeTarget = null;
+    }
+    if (hit.by === this.slot) { this.observedHits.push(hit); if (this.observedHits.length > 32) this.observedHits.shift(); }
+  }
   actionPerformed(action: string): void {
     if (this.memory.lastAction === action) this.status.stats.repeatedActions = (this.status.stats.repeatedActions ?? 0) + 1;
     this.memory.acted(action);
     if (action === 'shoot') this.status.stats.attacks = (this.status.stats.attacks ?? 0) + 1;
+    if (action === 'shoot' && this.attackTarget) {
+      const { context, victim, tick } = this.attackTarget;
+      this.learning.attempt(context, action, tick, tick + 120 + this.exec.tier.reaction, 'spell', victim,
+        this.lastApproach && tick < this.lastApproach.until ? this.lastApproach : undefined);
+    }
   }
 
   get level(): AiLevel {
@@ -112,7 +142,12 @@ export class BasicBrain implements Brain {
     this.exec.level = level;
   }
 
-  reset(): void {
+  reset(keepLearning = false): void {
+    if (!keepLearning) this.learning.reset();
+    this.learning.interrupt(); this.observedHits.length = 0; this.pursuit = this.lastApproach = null;
+    this.status.navigation = null;
+    this.meleeChoice = null; this.meleeUntil = 0; this.meleeContext = '';
+    this.attackTarget = null;
     this.stockFootwork.reset();
     this.control?.reset();
     this.exec.reset();
@@ -152,6 +187,14 @@ export class BasicBrain implements Brain {
   }
 
   think(ctx: Ctx, self: BrainSelf, tick: number): void {
+    for (let i = this.observedHits.length - 1; i >= 0; i--) {
+      const hit = this.observedHits[i];
+      if (tick - hit.tick < this.exec.tier.reaction) continue;
+      this.learning.hit(hit.victim, hit.attack ?? 'spell', hit.tick, hit.damage); this.observedHits.splice(i, 1);
+    }
+    this.learning.expire(tick);
+    this.status.stats.learnedHits = this.learning.confirmed;
+    this.status.stats.learnedMisses = this.learning.misses;
     const control = this.controlFor(ctx, self);
     const hand = control.hand;
     hand.begin();
@@ -266,8 +309,14 @@ export class BasicBrain implements Brain {
       }
     }
     // Do not walk or strafe into acid, fire or an unsupported drop. Navigation owns deliberate crossings.
+    let holdingForHazard = false;
     if (me.grounded && control.activeEdge === null && !control.committed && hand.dir !== 0) {
-      const x = me.x + hand.dir * AI_BEHAVIOR.hazardLookahead * (0.75 + 0.5 * personality.hazardAvoidance);
+      let ahead = AI_BEHAVIOR.hazardLookahead * (0.75 + 0.5 * personality.hazardAvoidance);
+      if (!control.escaping && tick >= this.dodgeUntil && this.goalX !== null && (this.goalX - me.x) * hand.dir > 0) {
+        // Do not retreat from a gap beyond a destination that already stops short of the lip.
+        ahead = Math.min(ahead, Math.max(Math.abs(this.goalX - me.x), Math.abs(control.traction.stopDistance(me.vx))));
+      }
+      const x = me.x + hand.dir * ahead;
       if (ctx.physics.entityFree(x, me.y, PLAYER_HALF_W, PLAYER_H) && (!safeDrop(ctx, x, me.y) || !safeTravel(ctx, me.x, me.y, x))) {
         const dir = hand.dir;
         let hop: { clearY: number; landingX: number } | null = null;
@@ -278,6 +327,12 @@ export class BasicBrain implements Brain {
         if (hop !== null) {
           control.startHop(dir, hop.clearY, me.y, hop.landingX);
           st.stats.hazardHops++;
+        } else if (ctx.arena?.stockMatch && safeFooting(ctx, me.x, me.y)) {
+          // Safe ground is a useful position. Hold it until the lane clears or
+          // the target opens another route; repeated backsteps do not clear fire.
+          hand.move(0); hand.jump(false);
+          holdingForHazard = true;
+          st.stats.hazardWaits = (st.stats.hazardWaits ?? 0) + 1;
         } else if (!control.escaping && safeMobilityLanding(ctx, me.x, me.y, me.x - dir * AI_BEHAVIOR.hazardLookahead * 2)) {
           // A broad patch cannot be cleared by the short hop. Walk back to
           // safe ground for another angle, rather than waiting for a stuck timeout.
@@ -297,10 +352,10 @@ export class BasicBrain implements Brain {
     // after cover hides a foe. Deliberate holds never count as wanting to move.
     const goalX = this.goalX;
     const wantsMove = control.activeEdge !== null || (this.intent === 'reposition' && this.noShotTicks > AI_BEHAVIOR.blockedTicks) || (goalX !== null && Math.abs(goalX - me.x) > 10 && this.intent !== 'zone');
-    if (control.stuck.update(me, wantsMove && !p.dead, tick, hand.idle)) {
+    if (control.stuck.update(me, wantsMove && !p.dead && !holdingForHazard, tick, hand.idle)) {
       st.stats.stuck++;
       const edge = control.activeEdge;
-      if (edge !== null) { this.blocked.add(edgeKey(edge)); this.blockedAt = tick; control.cancelEdge(); this.edgeTarget = null; }
+      if (edge !== null) { this.finishPursuit(false, tick); this.blocked.add(edgeKey(edge)); this.blockedAt = tick; control.cancelEdge(); this.edgeTarget = null; }
       const away = goalX !== null && goalX > me.x ? -1 : 1;
       control.startEscape(this.rng.next() < 0.7 ? away : -away, ESCAPE_TICKS);
       st.rule = 'stuck: shaking loose';
@@ -389,16 +444,37 @@ export class BasicBrain implements Brain {
 
     // ---- the goal: a place to walk to (or an edge of the nav to run) ----
     if (target === null) {
+      // Losing sight of a fighter must not turn a planned crossing into a blind
+      // walk toward the patrol point across empty air. Finish the current leg,
+      // then search from the main deck using the same platform routes.
+      if (stock && control.activeEdge !== null) return;
       this.edgeTarget = null;
       this.goalX = this.nav?.patrolX ?? YARD.ring.cx;
+      if (stock && nav && myNode) {
+        const route = nav.route(myNode.id, 'floor', this.blocked);
+        if (route?.length) this.startEdgeIfNew(control, route[0]);
+      }
       return;
     }
     const dx = target.cx - me.x;
     const dir = Math.sign(dx) || me.facing || 1;
+    if (stock && this.pursuit && control.activeEdge !== null) return;
     // the nav: a foe on another surface that cannot be shot from here is walked, hopped or levitated to
     if (nav !== null && myNode !== null && this.intent === 'reposition') {
       const toNode = nav.nodeAt(target.x, target.y);
       if (toNode !== null && toNode.id !== myNode.id) {
+        if (stock) {
+          const plan = planPursuit(nav, myNode, toNode, me, target.x, target.foe.slot ?? -1, this.learning, this.exec.tier.adaptation, this.rng,
+            (x, y) => safeFooting(ctx, x, y));
+          if (plan) {
+            this.pursuit = { ...plan, started: tick };
+            st.navigation = { action: plan.action, context: plan.context, started: tick };
+            this.startEdgeIfNew(control, plan.edge);
+          } else {
+            this.goalX = null; control.hold(me); st.rule = 'reassessing failed approaches';
+          }
+          return;
+        }
         const route = nav.route(myNode.id, toNode.id, this.blocked);
         if (route !== null && route.length > 0 && me.levit > 12 + personality.recoveryCaution * 20) {
           this.startEdgeIfNew(control, route[0]);
@@ -408,8 +484,10 @@ export class BasicBrain implements Brain {
     }
     if (control.activeEdge !== null && !control.committed) { control.cancelEdge(); this.edgeTarget = null; }
     const stage = this.navFor?.startsWith('fighter-stock') ? this.navStage.main : this.navFor === 'fighter-duel' ? DUEL : YARD;
-    const x0 = stage.x0 + 16;
-    const x1 = stage.x1 - 16;
+    // Upper platforms extend beyond the main deck. Keep ordinary footwork on the
+    // surface we occupy; the nav owns movement to another surface.
+    const x0 = stock && myNode ? myNode.x0 + PLAYER_HALF_W + 4 : stage.x0 + 16;
+    const x1 = stock && myNode ? myNode.x1 - PLAYER_HALF_W - 4 : stage.x1 - 16;
     const lo = this.range - style.band;
     const hi = this.range + style.band;
     switch (this.intent) {
@@ -463,7 +541,7 @@ export class BasicBrain implements Brain {
   }
 
   private startEdgeIfNew(control: Control, edge: NavEdge): void {
-    const key = edgeKey(edge);
+    const key = `${edgeKey(edge)}:${edge.planId ?? ''}`;
     if (this.edgeTarget === key && control.activeEdge !== null) return;
     this.edgeTarget = key;
     control.startEdge(edge);
@@ -473,15 +551,26 @@ export class BasicBrain implements Brain {
 
   // =========================================================================================================== moving
 
+  private finishPursuit(success: boolean, tick: number): void {
+    const plan = this.pursuit;
+    if (!plan) return;
+    this.learning.record(plan.context, plan.action, success);
+    if (success) this.lastApproach = { ...plan, until: tick + 180 };
+    else this.status.stats.routeFailures = (this.status.stats.routeFailures ?? 0) + 1;
+    this.pursuit = null;
+    this.status.navigation = null;
+  }
+
   private moveToGoal(ctx: Ctx, me: WorldView['me'], tick: number): void {
     const control = this.control;
     if (control === null) return;
     const edge = control.activeEdge;
     if (edge !== null) {
       const onTarget = this.nav?.nodeAt(me.x, me.y)?.id === edge.to;
-      const status = control.runEdge(me, onTarget);
+      const status = this.pursuit && tick - this.pursuit.started > 360 ? 'failed' : control.runEdge(me, onTarget);
       if (status === 'running') { this.status.goalX = edge.landX; return; }
-      if (status === 'failed') { this.blocked.add(edgeKey(edge)); this.blockedAt = tick; }
+      this.finishPursuit(status === 'done', tick);
+      if (status === 'failed') { control.cancelEdge(); this.blocked.add(edgeKey(edge)); this.blockedAt = tick; }
       if (status === 'done') this.status.stats.landings = (this.status.stats.landings ?? 0) + 1;
       this.edgeTarget = null;
       this.goalX = null;
@@ -542,13 +631,26 @@ export class BasicBrain implements Brain {
     let kick = false;
     const stock = !!ctx.arena?.stockMatch;
     // Use delayed position and speed, just as aiming does. A still nearby target is a commitment opportunity.
-    const meleeKind = !me.grounded ? 'aerial' : target.cy < me.y - 20 ? 'launcher'
-      : st.stats.kicks % 4 === 3 && Math.hypot(target.vx, target.vy) < .6 && target.dist < 25 ? 'finisher' : 'opener';
-    const melee = stockMoveset(me.fighter)[meleeKind];
+    const context = `${target.foe.slot ?? -1}:${Math.round(target.x / 48)}:${me.grounded ? 'ground' : 'air'}:${target.y < me.y - 16 ? 'above' : 'level'}`;
+    this.attackTarget = { context, victim: target.foe.slot ?? -1, tick };
     const meleeFacing = Math.sign(target.x - me.x) || me.facing;
+    if (stock && canAct && (tick >= this.meleeUntil || context !== this.meleeContext)) {
+      const kinds: StockAttackKind[] = me.grounded ? ['opener', 'launcher', 'finisher'] : ['aerial'];
+      const style = AI_PERSONALITIES[this.personality];
+      const options = kinds.filter(kind => {
+        const attack = stockMoveset(me.fighter)[kind];
+        return stockAttackOverlaps(attack, meleeFacing, me.x, me.y, target.x, target.y) &&
+          stockAttackOverlaps(attack, meleeFacing, me.x, me.y, target.x + target.vx * attack.startup * this.exec.tier.prediction, target.y);
+      }).map(kind => ({ kind, value: kind === 'opener' ? .7 + style.fastAttack * .2 : kind === 'launcher' ? .5 + style.combo * .2 + (target.cy < me.y - 20 ? .4 : 0)
+        : kind === 'finisher' ? .35 + style.heavyAttack * .3 + (target.foe.staggered ? .6 : 0) : .8 }));
+      this.meleeChoice = chooseMelee(options, context, this.learning, this.exec.tier.adaptation, this.rng);
+      this.meleeContext = context; this.meleeUntil = tick + 18 + this.rng.int(13);
+    }
+    const meleeKind = this.meleeChoice ?? 'opener';
+    const melee = stockMoveset(me.fighter)[meleeKind];
     if (canAct && ctx.playerCtl.kickReady !== false && tick - this.lastKick >= lp.kickCooldown + 1) {
       if (stock) {
-        kick = stockAttackOverlaps(melee, meleeFacing, me.x, me.y, target.x, target.y) &&
+        kick = this.meleeChoice !== null && this.learning.ready(context, meleeKind) && stockAttackOverlaps(melee, meleeFacing, me.x, me.y, target.x, target.y) &&
           lineClear(cellBlocks, me.x, me.y - 10, target.cx, target.cy);
       } else {
         for (const f of foes) {
@@ -572,7 +674,7 @@ export class BasicBrain implements Brain {
     const mobility = me.fighter === 'kest-rel' || me.fighter === 'selene-wraith';
     const safeAbility = !plan.tactical || !mobility || !plan.aim || safeMobilityLanding(ctx, me.x, me.y, plan.aim.x);
     const eligible: Record<CombatAction, boolean> = {
-      shoot: canAct && (!stock || (target.dist > 65 && ctx.arena!.canStockSpecial())) && closeEnough && lane && me.shotAffordable && me.wandCooldown <= 0 && (!this.recovering || finishing),
+      shoot: canAct && this.learning.ready(context, 'shoot') && (!stock || (target.dist > 65 && ctx.arena!.canStockSpecial())) && closeEnough && lane && me.shotAffordable && me.wandCooldown <= 0 && (!this.recovering || finishing),
       kick,
       tactical: canAct && (!stock || ctx.arena!.canStockSpecial()) && !!self.fighters && !!plan.tactical && safeAbility && tick - this.lastZ >= PRESS_GAP,
       ultimate: canAct && (!stock || ctx.arena!.canStockSpecial(2)) && !!self.fighters && !!plan.ultimate && tick - this.lastT >= PRESS_GAP,
@@ -583,7 +685,8 @@ export class BasicBrain implements Brain {
     if (tick >= this.nextAction || !eligible[this.action] || (this.threatened && !this.actionThreatened)) {
       const rows = actionUtilities({ me, target, personality: AI_PERSONALITIES[this.personality], skill: this.exec.tier,
         memory: this.memory, tick, threatened: this.threatened, eligible, damage, variation: this.exec.variation,
-        defensiveKit: me.fighter === 'brann-rook' || me.fighter === 'edda-morrow' });
+        defensiveKit: me.fighter === 'brann-rook' || me.fighter === 'edda-morrow',
+        learnedBias: { shoot: this.learning.bias(context, 'shoot', this.exec.tier.adaptation), kick: this.learning.bias(context, meleeKind, this.exec.tier.adaptation) } });
       const next = selectAction(rows, this.action, tick < this.actionUntil, this.threatened);
       if (next !== this.action) {
         this.actionUntil = tick + Math.round(this.exec.tier.decision * (1 + this.exec.tier.overcommit));
@@ -604,6 +707,12 @@ export class BasicBrain implements Brain {
       if (stock) {
         hand.move(meleeFacing);
         self.input.keys.up = meleeKind === 'launcher'; hand.down(meleeKind === 'finisher');
+        // Hitstop pauses attack animation while the observation clock continues.
+        // Keep a bounded confirmation window through the swing and reaction delay.
+        this.learning.attempt(context, meleeKind, tick, tick + 90 + this.exec.tier.reaction,
+          `melee.${meleeKind}`, target.foe.slot ?? -1, this.lastApproach && tick < this.lastApproach.until ? this.lastApproach : undefined);
+        st.stats[`move_${meleeKind}`] = (st.stats[`move_${meleeKind}`] ?? 0) + 1;
+        this.meleeUntil = tick + melee.startup + melee.active + melee.recovery + 2;
       }
       self.hands.kick(); hand.pressed(); this.lastKick = tick; st.stats.kicks++;
       this.actionPerformed('kick');
