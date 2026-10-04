@@ -3,13 +3,18 @@ import type { Ctx } from '@/core/types';
 import { makeSkeleton, poseAlchemist } from '@/entities/playerPose';
 import type { V } from '@/entities/playerPose';
 import type { PixelSurface } from '@/render/pixels';
+import { drawDuelGhost, noteDuelPresence } from '@/render/duel/DuelFighterSprites';
+import { drawDuelDust } from '@/render/duel/DuelDust';
 
 const pose = makeSkeleton();
 
 /** Narrow motion accents from concepts/motion-defense.png, tied to real action state. */
 export function drawStockMovementFx(out: PixelSurface, ctx: Ctx): void {
   const arena = ctx.arena, p = ctx.player;
-  if (!arena?.stockMatch || p.dead) return;
+  if (!arena?.stockMatch) return;
+  noteDuelPresence(ctx);
+  drawDuelDust(out, ctx);
+  if (p.dead) return;
   const dodge = arena.stockDodge(arena.bound), recovering = arena.isRecovering(arena.bound);
   const shield = arena.stockShield(arena.bound);
   const grab = arena.stockGrab(arena.bound);
@@ -25,6 +30,16 @@ export function drawStockMovementFx(out: PixelSurface, ctx: Ctx): void {
       if (out.blendFinePx) out.blendFinePx(x, y, r * alpha, g * alpha, b * alpha, alpha);
       else out.addPx(x, y, r * alpha, g * alpha, b * alpha);
     };
+    // shield-grab.png: a translucent sphere around the guard (faint at the core, thicker toward the rim), then the ring.
+    if (!quiet && out.blendFinePx) {
+      const step = out.pixelStep ?? 1, rx = radius, ry = radius + 3, cy = p.y - 11;
+      for (let y = -ry; y <= ry; y += step) for (let x = -rx; x <= rx; x += step) {
+        const d = (x * x) / (rx * rx) + (y * y) / (ry * ry);
+        if (d >= 1) continue;
+        const a = (low ? .05 : .07) + (low ? .08 : .14) * d * d;
+        out.blendFinePx(p.x + x, cy + y, r * a, g * a, b * a, a);
+      }
+    }
     // A thin complete ring reads as defense; depletion breaks the ring into amber dashes.
     for (let i = 0; i < 160; i++) {
       if (low && i % 16 > 10) continue;
@@ -80,7 +95,9 @@ export function drawStockMovementFx(out: PixelSurface, ctx: Ctx): void {
     for (let i = -2; i <= 2; i++) { dot(p.x + i, p.y - 24 + Math.abs(i), .8); dot(p.x + i, p.y - 20 - Math.abs(i), .8); }
   }
   if (dodge?.phase === 'evade') {
-    if (!quiet) {
+    // Echoes: two see-through copies of the fighter's own sprite trailing the dodge (the rig's silhouettes otherwise).
+    const ghosts = !quiet && [2, 4].map(n => drawDuelGhost(out, ctx, -dodge.vx * n, -dodge.vy * n, n === 2 ? .38 : .2, color as [number, number, number])).every(Boolean);
+    if (!quiet && !ghosts) {
       const s = poseAlchemist(ctx, p, pose);
       for (const n of [2, 4]) {
         const dx = -dodge.vx * n, dy = -dodge.vy * n;
@@ -113,6 +130,14 @@ export function drawStockMovementFx(out: PixelSurface, ctx: Ctx): void {
       if (i % 5 === 0) continue;
       const offset = Math.sin(i * 1.7) * 2;
       dot(p.x + dx * i * 1.5 - dy * offset, p.y - 7 + dy * i * 1.5 + dx * offset, (1 - i / count) * .8);
+    }
+    if (!quiet && speed > 5 && arena.isLaunching(arena.bound)) {
+      // Speed lines behind a hard launch: long parallel streaks across the body, longer the faster it flies.
+      const len = Math.min(26, 6 + speed * 1.6);
+      for (let k = -2; k <= 2; k++) {
+        const off = k * 3.2 + Math.sin(ctx.state.frameCount * .9 + k) * .6, start = 6 + Math.abs(k) * 2;
+        for (let s = start; s < start + len; s += .5) dot(p.x + dx * s - dy * off, p.y - 9 + dy * s + dx * off, (1 - (s - start) / len) * .55, true);
+      }
     }
   }
 }

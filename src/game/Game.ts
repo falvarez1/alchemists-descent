@@ -22,6 +22,8 @@ import { installUiSounds } from '@/audio/UiSounds';
 import { HabitatAudio } from '@/audio/HabitatAudio';
 import { installAudioStingers } from '@/audio/Stingers';
 import { installEventCues } from '@/audio/EventCues';
+import { DuelAnnouncer } from '@/audio/DuelAnnouncer';
+import { inDuelOrArena } from '@/audio/arenaAudio';
 import { Flask } from '@/combat/Flask';
 import { AlchemyKills } from '@/combat/AlchemyKills';
 import { Lightning } from '@/combat/Lightning';
@@ -38,9 +40,12 @@ import { DuelSession } from '@/net/duel/DuelSession';
 import { WebSocketTransport } from '@/net/SessionTransport';
 import { DuelLobby } from '@/ui/DuelLobby';
 import { LocalVersus } from '@/game/LocalVersus';
+import { preloadDuelSprites } from '@/render/duel/DuelFighterSprites';
+import { STOCK_STAGES } from '@/config/stockStage';
 import { VersusLobby } from '@/ui/VersusLobby';
 import { StockMatchHud } from '@/ui/StockMatchHud';
 import { resetDuelStage } from '@/world/duelStage';
+import { preloadStockStageArt } from '@/world/stockStage';
 import { Physics } from '@/entities/physics';
 import { RigidBodies } from '@/entities/RigidBodies';
 import { VineStrands } from '@/entities/VineStrands';
@@ -85,7 +90,6 @@ import { createDefaultStatus } from '@/entities/status';
 import { ParallelSim } from '@/sim/parallel/ParallelSim';
 import { createSharedWorld, sharedMemoryAvailable } from '@/sim/parallel/sharedWorld';
 import { readSavedQuality } from '@/config/playerPrefs';
-import { ControllerNotice } from '@/ui/ControllerNotice';
 import { PauseOverlay } from '@/ui/PauseOverlay';
 import { ConsoleOverlay } from '@/ui/ConsoleOverlay';
 import { Hud } from '@/ui/Hud';
@@ -280,11 +284,15 @@ export class Game {
     } as unknown as Ctx;
     this.disposables.push(audio);
     // Run-event stingers (alchemy chime, phial crack/fill, run verdict, clip shutter).
-    this.disposables.push({ dispose: installAudioStingers(ctx.events, audio) });
+    this.disposables.push({ dispose: installAudioStingers(ctx.events, audio, () => inDuelOrArena(ctx)) });
     // Announced moments: the light devices, organisms, boss moves and plants (audio/EventCues).
     this.disposables.push({ dispose: installEventCues(ctx.events, audio, { biome: () => ctx.levels?.current?.def.biome }) });
     // Sampled layer: per-floor packs and beds, and the interface's own sounds.
-    this.disposables.push({ dispose: installAudioDirector(ctx, audio) }, { dispose: installUiSounds(ctx.events, audio) });
+    this.disposables.push({ dispose: installAudioDirector(ctx, audio) }, { dispose: installUiSounds(ctx.events, audio, document, () => inDuelOrArena(ctx)) });
+    // The Duel's arcade announcer and cabinet sounds (ctx.audio.duel); the descent's narrator keeps out of the arena.
+    const duelAudio = new DuelAnnouncer(ctx, audio);
+    audio.duel = duelAudio;
+    this.disposables.push(duelAudio);
     ctx.events.on('paramsChanged', () => {
       this.composeDirty = true;
     });
@@ -511,6 +519,13 @@ export class Game {
     if (__AUTHORING__) this.disposables.push(new FighterArenaPanel(ctx));
     const versus = new LocalVersus(ctx, () => this.loadPlaySystems().then(systems => systems !== null));
     ctx.versus = versus;
+    // While the lobby is open, fetch what the match will draw: each seat's fighter atlas and the chosen stage's art.
+    const offPreload = ctx.events.on('versusChanged', () => {
+      if (versus.phase !== 'lobby') return;
+      for (const seat of versus.seats) preloadDuelSprites(seat.fighter);
+      preloadStockStageArt(STOCK_STAGES[versus.stage]);
+    });
+    this.disposables.push({ dispose: offPreload });
     const duelRuntime = new DuelRuntime(ctx, lighting, () => this.renderer.domElement, () => this.loadPlaySystems().then(systems => systems !== null));
     const duel = new DuelSession(() => new WebSocketTransport({ url: `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/__duel` }), duelRuntime, __BUILD_STAMP__, () => ctx.events.emit('duelChanged'));
     ctx.duel = duel;
@@ -527,7 +542,6 @@ export class Game {
     this.disposables.push(this.minimap);
     // (Callouts and the card-offer and teach overlays: play systems. The unlit
     // waystone teaches by a teach card now — game/waystoneHelp — not a modal.)
-    this.disposables.push(new ControllerNotice(ctx));
     // Self-binds the B key; lives for the page lifetime.
     this.disposables.push(new WandBench(ctx));
     // Authoring/debug surface. Not constructed at all in a play build — the

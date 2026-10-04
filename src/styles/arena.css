@@ -1,6 +1,10 @@
 /* =====================================================================
- * THE PROVING YARD's panel (ui/FighterArenaPanel): a developer's card on
- * the right edge while the yard is the level. Tokens from menus.css.
+ * THE DUEL'S MATCH HUD (ui/StockMatchHud), drawn to concepts/local-versus.png,
+ * foundry-match.png and special-charges.png: a framed timer tab at the top,
+ * a card in each bottom corner, nothing in the middle. Tokens: versus.css.
+ * --hu is 1% of the letterboxed 16:9 view (its width is min(100vw, 16/9 dvh)).
+ * Below the HUD: THE PROVING YARD's panel (ui/FighterArenaPanel), a
+ * developer's card on the right edge while the yard is the level.
  * ===================================================================== */
 body.stock-match #hud-left, body.stock-match .wave-readout, body.stock-match #expedition-tools,
 body.stock-match #field-note, body.stock-match #fighter-hud, body.stock-match #controls-hint { display: none !important; }
@@ -8,58 +12,204 @@ body.stock-match #treasure-row, body.stock-match #wave-banner, body.stock-match 
 body.stock-match #hint-teach-overlay, body.stock-match #callout-layer, body.stock-match .story-letterbox, body.stock-match #death-letterbox { display: none !important; }
 body.stock-match #fighter-arena.collapsed { top: 18px; right: 18px; width: 156px; }
 body.stock-match #fighter-arena.collapsed .fa-title { font-size: 9px; letter-spacing: .04em; }
-#stock-match-hud { position: absolute; inset: 0; z-index: 55; pointer-events: none; color: #e8dcc0; font-family: var(--m-sans, system-ui, sans-serif); }
+#stock-match-hud {
+  --hu: max(6.5px, min(1vw, 1.7778dvh));
+  --u: var(--hu); /* the copper button rules shared with the lobby (versus.css) size by --u */
+  /* over the level curtain (6, still fading as the countdown starts), under a Duel's pause (9, versus.css) */
+  position: absolute; inset: 0; z-index: 7; pointer-events: none; color: var(--d-ivory); font-family: var(--d-sans);
+}
+/* in a Duel the beats ride over the level curtain (60) as it lifts on the countdown; a Duel's pause sits over them (versus.css) */
+body.versus-active #stock-match-hud { z-index: 61; }
 #stock-match-hud[hidden] { display: none; }
-.stock-timer { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); padding: 5px 28px; border: 1px solid #ac744b; border-block: 3px double #ac744b; background: #101b27ed; box-shadow: 0 0 0 3px #142334; font: 600 28px/1.25 var(--m-sans, system-ui, sans-serif); font-variant-numeric: tabular-nums; }
-.stock-fighter { position: absolute; bottom: 22px; box-sizing: border-box; width: 320px; height: 82px; padding: 9px 12px 8px 76px; background: #101b27ed; border: 1px solid #ac744b; border-top: 3px solid #efac58; box-shadow: inset 0 0 0 3px #293e5155, 0 3px 12px #070f1880; }
-.stock-fighter-0 { left: 5%; color: #efac58; }
-.stock-fighter-1 { right: 5%; color: #65cac5; border-top-color: #65cac5; }
-.stock-portrait { position: absolute; left: 7px; top: 6px; width: 58px; height: 63px; object-fit: cover; object-position: 50% 14%; border: 1px solid currentColor; image-rendering: pixelated; }
+#stock-match-hud * { box-sizing: border-box; }
+
+/* ---------- the timer: the kit's hanging sign (.fk-hanging-sign), hung from the top edge ---------- */
+.stock-timer { position: absolute; top: 0; left: 50%; transform: translateX(-50%); text-align: center; }
+
+/* ---------- the fighter cards ---------- */
+.stock-fighter { --seat: var(--d-amber); position: absolute; bottom: calc(var(--hu) * 1.6); left: calc(var(--hu) * 2.4); width: calc(var(--hu) * 27); }
+.stock-fighter-1 { --seat: var(--d-teal); left: auto; right: calc(var(--hu) * 2.4); }
+.stock-fighter[data-out="true"] { filter: saturate(.3) brightness(.7); }
+.stock-portrait-frame { position: relative; width: 100%; height: 100%; overflow: hidden; container-type: size; }
+.stock-portrait { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0; image-rendering: pixelated; }
+/* the bust framed close on the face by its anchor (concepts/foundry-match.png: a square of 3.4 faces round the eyes);
+   player 2's looks back across the screen. A full-figure roster portrait (no bust) is cropped to the head instead. */
+.stock-portrait-frame .bust-fit { --bd: calc(100cqw / (var(--face, .105) * 3.4)); --ax: .5; --ay: .5; --dy: .02; }
+.stock-fighter-1 .bust-fit[data-art="bust"] { --exu: calc(1 - var(--ex, .5)); transform: scaleX(-1); }
+.stock-portrait[data-art="portrait"] { object-position: 50% 0; transform: scale(1.55); transform-origin: 50% 6%; }
+.stock-fighter-1 .stock-portrait[data-art="portrait"] { transform: scaleX(-1) scale(1.55); }
 .stock-portrait[hidden] { display: none; }
-.stock-name { color: #e8dcc0; font-size: 13px; letter-spacing: .04em; }
-.stock-defense { position: absolute; left: 76px; top: 28px; color: #b7c9ca; font-size: 8px; line-height: 1.3; letter-spacing: .07em; }
-.stock-controls { position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #c0d0d8; width: 90%; text-align: center; }
-.stock-percent { position: absolute; right: 14px; bottom: 15px; font-size: 38px; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.stock-percent[data-danger="true"] { color: #f17f5e; }
-.stock-lives { letter-spacing: 4px; font-size: 18px; margin-top: 18px; }
-.stock-fighter meter { position: absolute; bottom: 5px; left: 76px; width: calc(100% - 90px); height: 6px; accent-color: currentColor; }
-.stock-message { position: absolute; top: 35%; left: 50%; transform: translateX(-50%); text-align: center; font: 38px/1.2 var(--m-serif, Georgia, serif); padding: 18px 28px; background: #142334ed; border: 1px solid #ac744b; }
-.stock-rematch { position: absolute; top: 54%; left: 50%; transform: translateX(-50%); pointer-events: auto; color: #e8dcc0; border: 1px solid #ac744b; background: #293e51; padding: 12px 28px; cursor: pointer; font: inherit; }
-.stock-rematch:focus-visible { outline: 3px solid #65cac5; outline-offset: 3px; }
-.stock-result { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(570px, 86vw); padding: 26px; box-sizing: border-box; background: #101b27f5; border: 1px solid #ac744b; outline: 1px solid #ac744b66; outline-offset: 5px; text-align: center; pointer-events: auto; }
+.stock-card-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name pct" "lives pct" "special special"; align-items: center; min-width: 0; }
+.stock-fighter-1 .stock-card-body { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "pct name" "pct lives" "special special"; }
+.stock-name { grid-area: name; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 800 max(11px, calc(var(--hu) * 1.25))/1.25 var(--d-display); letter-spacing: .09em; text-transform: uppercase; color: var(--seat); text-shadow: 0 1px 0 #000; }
+.stock-slot { margin-right: .5em; font: 600 .72em/1 var(--d-sans); letter-spacing: .08em; color: var(--d-muted); }
+.stock-fighter-1 :is(.stock-name, .stock-lives) { text-align: right; justify-content: flex-end; }
+.stock-percent {
+  grid-area: pct; align-self: center; padding: 0 calc(var(--hu) * .2); font: 800 max(26px, calc(var(--hu) * 4.6))/.9 var(--d-display); font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: -.01em; white-space: nowrap; color: var(--d-ivory); text-shadow: 0 2px 0 #000c, 0 0 calc(var(--hu) * 1.2) #0008; transition: color .2s;
+}
+.stock-percent small { margin-left: .04em; font-size: .52em; letter-spacing: 0; }
+.stock-lives { grid-area: lives; display: flex; gap: calc(var(--hu) * .45); margin-top: calc(var(--hu) * .35); }
+.stock-special {
+  grid-area: special; display: flex; align-items: center; gap: calc(var(--hu) * .5); min-width: 0; margin-top: calc(var(--hu) * .55); padding-top: calc(var(--hu) * .5);
+  border-top: 1px solid color-mix(in srgb, var(--d-teal) 40%, transparent); color: #d3d8d4; white-space: nowrap;
+}
+.stock-fighter-1 .stock-special { justify-content: flex-end; }
+.stock-special-label { font: 600 max(8px, calc(var(--hu) * .74))/1 var(--d-sans); letter-spacing: .16em; text-transform: uppercase; }
+.stock-special[data-busy="true"] .stock-special-cell[data-filled="true"] { filter: brightness(.75); }
+.stock-special-hint { overflow: hidden; text-overflow: ellipsis; font: 700 max(7.5px, calc(var(--hu) * .66))/1 var(--d-sans); letter-spacing: .07em; text-transform: uppercase; color: var(--d-teal); }
+.stock-special-hint:empty { display: none; }
+/* empty: the hint takes the label's place (concepts/special-charges.png, EMPTY) */
+.stock-special:has(.stock-special-hint:not(:empty)) .stock-special-label { display: none; }
+/* the readiness glyphs ride the foot of the portrait */
+.stock-defense { position: absolute; left: 2px; right: 2px; bottom: 2px; display: flex; justify-content: center; gap: calc(var(--hu) * .32); padding: calc(var(--hu) * .5) 0 calc(var(--hu) * .22); border-radius: 0 0 calc(var(--hu) * .5) calc(var(--hu) * .5); background: linear-gradient(#0000, #05080bd9 55%); }
+.stock-glyph { display: inline-flex; width: max(8px, calc(var(--hu) * 1.05)); color: var(--d-ivory); opacity: .85; transition: opacity .15s, color .15s; }
+.stock-glyph svg { width: 100%; height: auto; }
+.stock-glyph[data-state="spent"] { opacity: .25; }
+.stock-glyph[data-state="worn"] { opacity: calc(.25 + var(--strength, 1) * .55); }
+.stock-glyph[data-state="broken"] { opacity: 1; color: var(--d-red); }
+
+/* ---------- the countdown, centre stage before the fight only ---------- */
+.stock-message { position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: var(--d-ivory); font: 800 max(20px, calc(var(--hu) * 2.4))/1.15 var(--d-display); letter-spacing: .07em; text-transform: uppercase; text-shadow: 0 2px 0 #000c, 0 0 calc(var(--hu) * 2) #000; }
+.stock-message[data-kind="idle"] { padding: calc(var(--hu) * .8) calc(var(--hu) * 2); border: 1px solid var(--d-copper-dim); background: #0b1015e6; }
+
+/* ---------- the beats: FIGHT!, GAME! / TIME!, <NAME> WINS, slammed across the middle ---------- */
+.stock-banner { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; pointer-events: none; }
+.stock-banner[hidden] { display: none; }
+.stock-banner:is([data-kind="game"], [data-kind="wins"]) { pointer-events: auto; cursor: pointer; background: radial-gradient(ellipse 70% 34% at 50% 46%, #06090cb8, #06090c00 100%); }
+/* ---------- the super cut-in (stockUltimate): a diagonal band from the caster's side, the bust, the ultimate's name ---------- */
+.stock-cutin {
+  --seat: var(--d-amber); --seat-deep: #3a1e0c;
+  position: absolute; left: -4%; right: -4%; top: 28%; height: calc(var(--hu) * 15); z-index: 2; pointer-events: none;
+  display: flex; align-items: center; gap: calc(var(--hu) * 1.5); padding: 0 calc(var(--hu) * 10);
+}
+.stock-cutin[hidden] { display: none; }
+.stock-cutin[data-slot="1"] { --seat: var(--d-teal); --seat-deep: #0a2d2c; flex-direction: row-reverse; }
+.stock-cutin-bust { position: relative; flex: none; align-self: stretch; width: calc(var(--hu) * 24); overflow: hidden; container-type: size;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 78%, transparent); mask-image: linear-gradient(90deg, transparent, #000 18%, #000 78%, transparent); }
+.stock-cutin-bust .bust-fit { --bd: calc(100cqh / (var(--face, .105) * 2.7)); --ax: .5; --ay: .44; }
+.stock-cutin[data-slot="1"] .bust-fit[data-art="bust"] { --exu: calc(1 - var(--ex, .5)); transform: scaleX(-1); }
+.stock-cutin-text { display: flex; flex-direction: column; min-width: 0; }
+.stock-cutin[data-slot="1"] .stock-cutin-text { align-items: flex-end; text-align: right; }
+.stock-cutin-text small { font: 800 max(12px, calc(var(--hu) * 1.5))/1 var(--d-display); letter-spacing: .3em; text-transform: uppercase; color: #fff1d8; text-shadow: 0 2px 0 #0008; }
+.stock-cutin-text b {
+  display: block; white-space: nowrap; font: 800 max(34px, calc(var(--hu) * 6.4))/1 var(--d-display); font-style: italic; letter-spacing: .02em; text-transform: uppercase;
+}
+/* a lost stock: a ring flies out from its bead */
+.stock-dot { position: relative; }
+.stock-burst { position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--seat); pointer-events: none; }
+
+/* ---------- the results card ---------- */
+.stock-result { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; padding: calc(var(--hu) * 2); overflow: auto; pointer-events: auto; background: radial-gradient(ellipse at 50% 50%, #060a0dc4 0%, #060a0dec 75%); }
 .stock-result[hidden] { display: none; }
-.stock-result .stock-message { position: static; transform: none; background: none; border: 0; padding: 0 0 20px; font-size: 32px; }
-.stock-result-body { display: flex; align-items: center; gap: 24px; margin-bottom: 22px; text-align: left; }
-.stock-result-body img { width: 38%; height: 170px; object-fit: cover; object-position: 50% 12%; image-rendering: pixelated; border: 1px solid #ac744b; }
-.stock-result-body dl { flex: 1; margin: 0; }.stock-result-body dt { font-size: 13px; color: #b7c9ca; }.stock-result-body dd { font-size: 30px; margin: 4px 0 16px; color: #efac58; border-bottom: 1px solid #ac744b66; }
-.stock-result .stock-rematch, .stock-result .stock-change { position: static; transform: none; margin: 0 6px; padding: 11px 18px; font-size: 14px; }
-@media(max-width:500px) { .stock-result { padding: 18px 12px; }.stock-result .stock-message { font-size: 25px; }.stock-result-body { gap: 14px; }.stock-result-body img { height: 128px; }.stock-result-body dd { font-size: 25px; }.stock-result .stock-rematch, .stock-result .stock-change { padding: 9px; margin: 0 3px; font-size: 12px; } }
+/* the winner's rays turn slowly behind the card: the results celebrate */
+.stock-result::before {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 160vmax; aspect-ratio: 1; translate: -50% -50%; pointer-events: none; opacity: .55;
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--rays, var(--d-amber)) 22%, transparent) 0deg 6deg, transparent 6deg 18deg);
+  -webkit-mask-image: radial-gradient(circle, #000 0%, #0000 46%); mask-image: radial-gradient(circle, #000 0%, #0000 46%);
+  animation: stock-rays 22s linear infinite;
+}
+.stock-result[data-slot="1"] { --rays: var(--d-teal); }
+.stock-result[data-slot="draw"] { --rays: var(--d-ivory); }
+.stock-result > * { position: relative; }
+@keyframes stock-rays { to { rotate: 1turn; } }
+.stock-result-panel {
+  --seat: var(--d-amber); width: min(calc(var(--hu) * 60), 100%); padding: calc(var(--hu) * 1.6) calc(var(--hu) * 2.6) calc(var(--hu) * 2.2); text-align: center;
+}
+.stock-result[data-slot="1"] .stock-result-panel { --seat: var(--d-teal); }
+.stock-result[data-slot="draw"] .stock-result-panel { --seat: var(--d-ivory); }
+.stock-result-title { margin: 0; font: 800 max(28px, calc(var(--hu) * 4.4))/1.05 var(--d-display); letter-spacing: .05em; }
+.stock-result-tagline { margin: calc(var(--hu) * .5) 0 0; font: 700 max(11px, calc(var(--hu) * 1.3))/1.3 var(--d-serif); letter-spacing: .18em; text-transform: uppercase; color: var(--d-paper); }
+.stock-result-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr); gap: calc(var(--hu) * 1.3); margin: calc(var(--hu) * 1.6) 0 calc(var(--hu) * 1.7); text-align: left; }
+.stock-result-body:not(:has(figure)) { grid-template-columns: 1fr; }
+.stock-result-portrait {
+  position: relative; display: flex; margin: 0; aspect-ratio: 1; overflow: hidden;
+}
+.stock-result-bust { position: relative; flex: 1 1 0; min-width: 0; overflow: hidden; container-type: size; }
+.stock-result-bust img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%; image-rendering: pixelated; }
+/* the winner's bust by its face anchor: head and shoulders with the prop hand, the eyes a little above the middle */
+.stock-result-bust .bust-fit { --bd: calc(100cqw * 1.45); --ax: .46; --ay: .4; }
+/* a draw shows both, the second looking back at the first */
+.stock-result-bust-1 { border-left: 1px solid #b47a52; }
+.stock-result-bust-1 .bust-fit[data-art="bust"] { --exu: calc(1 - var(--ex, .5)); transform: scaleX(-1); }
+.stock-result-portrait:has(.stock-result-bust-1) .bust-fit { --bd: calc(100cqh * 1.3); --ax: .5; }
+.stock-result-portrait::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 calc(var(--hu) * 2) #000b; pointer-events: none; }
+.stock-result-stats { display: flex; flex-direction: column; padding: calc(var(--hu) * .9) calc(var(--hu) * 1.5) calc(var(--hu) * 1.2); }
+.stock-result-stats dl { margin: 0; }
+.stock-result-stats dl > div { position: relative; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: calc(var(--hu) * .5) 0 calc(var(--hu) * .6); border-bottom: 1px solid #6a4a32; }
+.stock-result-stats dl > div::after { content: ''; position: absolute; left: 50%; bottom: -4px; width: 7px; height: 7px; background: #0d0b0a; border: 1px solid #8a5a36; transform: translateX(-50%) rotate(45deg); }
+.stock-result-stats dt { font: 600 max(15px, calc(var(--hu) * 2))/1.2 var(--d-serif); letter-spacing: .03em; color: var(--d-ivory); }
+.stock-result-stats dd { margin: 0; font: 800 max(24px, calc(var(--hu) * 3.4))/1 var(--d-display); font-variant-numeric: lining-nums; color: var(--d-ivory); }
+.stock-result-stats blockquote { margin: auto 0 0; padding-top: calc(var(--hu) * 1.1); font: 700 max(12px, calc(var(--hu) * 1.42))/1.5 var(--d-serif); font-variant: small-caps; letter-spacing: .1em; color: var(--d-paper); }
+.stock-result-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: calc(var(--hu) * 1.3); }
+.stock-result .stock-rematch, .stock-result .stock-change { width: 100%; min-width: 0; font: 800 max(14px, calc(var(--hu) * 1.65))/1 var(--d-display); letter-spacing: .1em; white-space: nowrap; cursor: pointer; }
+:is(.stock-rematch, .stock-change):focus-visible { outline: none; } /* (the kit plate lights instead) */
+.stock-rematch[hidden], .stock-change[hidden] { display: none; }
+
+/* =====================================================================
+ * THE FOUNDRY KIT IN THE MATCH (foundry-ui.css; the classes are on
+ * StockMatchHud's markup): the hanging sign for the timer, the HUD cards
+ * with their portrait windows, beads and meters, the painted numerals,
+ * the banner plate and its words, the band for WINS and the cut-in, the
+ * hung results panel. These rules only size and place them here.
+ * ===================================================================== */
+.stock-timer.fk-hanging-sign[data-low="true"] { color: #ffb36a; text-shadow: 0 2px 0 #000, 0 0 10px #ff7a2acc; }
+
+/* the cards and their meters at the HUD's own scale (a card is 84 art px: 9.3 --hu tall) */
+.stock-fighter.fk-hud-card, .stock-meter.fk-meter { --fk-b: calc(var(--hu) / 9); }
+.stock-name { font-family: var(--d-display); }
+.stock-percent { filter: drop-shadow(0 -1px 0 #ffffff30) drop-shadow(0 2px 0 #120703); }
+.stock-special-label { font-family: var(--d-display); font-weight: 800; }
+
+/* 3 · 2 · 1: the kit's painted numerals */
+.stock-message.fk-word { filter: drop-shadow(0 4px 0 #000) drop-shadow(0 0 calc(var(--hu) * 2.4) #efac5866); }
+
+/* FIGHT! GAME! TIME! on the banner plate; <NAME> WINS in cast letters on the band at twice the kit's scale; above the fighters */
+.stock-sign { position: relative; translate: 0 calc(var(--hu) * -5); }
+.stock-sign.fk-band { --fk-h: calc(72 * var(--fk-s)); filter: drop-shadow(0 18px 26px #000d); }
+.stock-sign.fk-band > span { display: block; white-space: nowrap; font-size: max(40px, calc(var(--hu) * 6.2)); line-height: 1.05; letter-spacing: .03em; text-transform: uppercase; font-variant-numeric: lining-nums; }
+.stock-banner[data-kind="wins"][data-slot="1"] .stock-sign > span { filter: drop-shadow(0 -1px 0 #e0fffa88) drop-shadow(0 3px 0 #04201e) drop-shadow(0 0 .3em #65cac599); }
+
+/* the super cut-in: the band's riveted rims over iron, lit in the caster's colour */
+.stock-cutin.fk-band--rims { background: linear-gradient(90deg, #0000 8%, color-mix(in srgb, var(--seat) 16%, #0000) 46%, #0000 92%), var(--fk-fill-iron); background-origin: border-box; background-clip: padding-box; filter: drop-shadow(0 8px 0 #0009); }
+.stock-cutin-text b.fk-heading-cast { filter: drop-shadow(0 -1px 0 #ffe0b088) drop-shadow(0 4px 0 #0009) drop-shadow(0 0 calc(var(--hu) * 1.2) color-mix(in srgb, var(--seat) 70%, transparent)); }
+.stock-cutin-text small { font-family: var(--d-display); color: #f2dfbd; }
+
+/* the results */
+.stock-result-title.fk-heading-cast { font-size: max(30px, calc(var(--hu) * 5.3)); letter-spacing: .04em; text-transform: uppercase; font-variant: normal; }
+.stock-result-tagline.fk-ribbon { margin-top: calc(var(--hu) * .6); padding: calc(var(--hu) * .3) calc(var(--hu) * 2); }
+.stock-result .stock-rematch, .stock-result .stock-change { --fk-h: max(40px, calc(var(--hu) * 4.2)); filter: drop-shadow(0 6px 10px #000c); }
+
+@media (prefers-reduced-motion: reduce) {
+  .stock-result::before { animation: none; }
+  .stock-percent, .stock-glyph { transition: none; }
+}
+
+/* the game's own sound and pause buttons keep the top-left corner, clear of the timer and the cards */
 body.play-active.stock-match #sound-quick { left: 18px; right: auto; bottom: auto; top: 18px; }
 body.play-active.stock-match #sound-panel { left: 0; right: auto; bottom: auto; top: calc(100% + 8px); transform-origin: top left; }
 body.play-active.stock-match #expedition-pause { left: 18px; right: auto; top: 58px; bottom: auto; }
-@media(max-width:800px) { .stock-fighter { width: 42%; padding-left: 56px; } .stock-portrait { width: 40px; } .stock-percent { font-size: 30px; right: 8px; } .stock-name { font-size: 11px; } .stock-fighter meter { left: 56px; width: calc(100% - 64px); } .stock-lives { letter-spacing: 2px; font-size: 15px; } }
-@media(max-width:500px) { .stock-fighter { width: 44%; height: 72px; bottom: 20px; padding-left: 8px; } .stock-fighter-0 { left: 3%; } .stock-fighter-1 { right: 3%; } .stock-portrait { display: none; } .stock-fighter meter { left: 8px; width: calc(100% - 16px); } .stock-percent { font-size: 27px; bottom: 15px; } .stock-timer { top: 8px; font-size: 19px; padding-inline: 12px; } .stock-message { font-size: 24px; } .stock-controls { font-size: 8px; } }
-@media(max-width:500px) and (min-height:600px) {
-  .stock-fighter { position: fixed; top: calc(50% + 28.125vw + 12px); bottom: auto; }
-  .stock-controls { position: fixed; top: calc(50% + 28.125vw + 91px); bottom: auto; }
+
+/* a phone held upright: the 16:9 view is a strip; the cards sit under it, in the black, full size */
+@media (max-width: 500px) and (min-height: 600px) {
+  #stock-match-hud { --hu: 6.6px; }
+  .stock-fighter { position: fixed; top: calc(50% + 28.125vw + 12px); bottom: auto; left: 8px; width: calc(50% - 12px); column-gap: 6px; }
+  .stock-fighter-1 { left: auto; right: 8px; }
+  .stock-special-label { display: none; }
+  .stock-special-hint { font-size: 7px; letter-spacing: 0; }
+  .stock-fighter .stock-dot { width: 9px; height: 9px; }
+  .stock-fighter .stock-percent { font-size: 22px; } /* (the HUD card's portrait window takes its share of a half-width card) */
   body.stock-match #fighter-arena.collapsed { width: 44px; }
   body.stock-match #fighter-arena.collapsed .fa-title { display: none; }
   body.stock-match #fighter-arena.collapsed .fa-head { padding: 8px; justify-content: center; }
 }
-@media(max-width:800px) { .stock-defense { left: 56px; } }
-@media(max-width:500px) { .stock-defense { left: 8px; font-size: 7px; top: 26px; } .stock-lives { margin-top: 18px; } }
-.stock-fighter { height: 108px; }
-.stock-portrait { height: 86px; }
-.stock-percent { bottom: 42px; }
-.stock-special { position: absolute; left: 76px; right: 12px; bottom: 15px; display: flex; align-items: center; gap: 7px; color: #d1dcda; font-size: 9px; letter-spacing: .08em; border-top: 1px solid #4a686c; padding-top: 6px; }
-.stock-special-cell { flex: 0 0 29px; height: 11px; padding: 2px; border: 1px solid #698184; background: #08141d; clip-path: polygon(3px 0,calc(100% - 3px) 0,100% 3px,100% calc(100% - 3px),calc(100% - 3px) 100%,3px 100%,0 calc(100% - 3px),0 3px); }
-.stock-special-cell::after { content: ''; display: block; width: var(--charge,0%); height: 100%; background: linear-gradient(#b7f3e8,#55a8a6); box-shadow: inset 0 1px #e0fff0; }
-.stock-special-cell[data-filled="true"] { border-color: #edb45c; }
-.stock-special-cell[data-filled="true"]::after { background: linear-gradient(#ffe89f,#d69636); box-shadow: inset 0 1px #fff4d0; }
-.stock-special-hint { color: #7cdad0; font-size: 7px; letter-spacing: .03em; }
-@media(max-width:800px) { .stock-special { left: 56px; gap: 5px; } .stock-special-hint { display: none; } }
-@media(max-width:500px) { .stock-fighter { height: 114px; } .stock-special { left: 8px; right: 8px; font-size: 8px; } .stock-special-cell { flex-basis: 25px; } .stock-percent { bottom: 43px; } }
-@media(max-width:500px) and (min-height:600px) { .stock-controls { top: calc(50% + 28.125vw + 133px); } }
+/* a narrow window that is not a tall phone: smaller cards, still in the view's corners */
+@media (max-width: 500px) and (max-height: 599px) {
+  .stock-fighter { width: calc(50% - 10px); left: 4px; }
+  .stock-fighter-1 { right: 4px; left: auto; }
+  .stock-special-label, .stock-defense { display: none; }
+}
+
 #fighter-arena {
   position: absolute; z-index: 60; right: 14px; top: 118px; width: 376px; max-height: calc(100% - 158px); overflow-y: auto; box-sizing: border-box;
   padding: 0 0 10px; color: var(--m-text, #e6dfca); font: 400 12.5px/1.45 var(--m-sans, system-ui, sans-serif);

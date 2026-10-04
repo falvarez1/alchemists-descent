@@ -4,7 +4,7 @@ import { LEVELS, SPINE_ROSTERS, nextDoors } from '@/config/worldgraph';
 import { FLOOR_FAUNA } from '@/game/organisms/placement';
 import { failSafe } from '@/audio/failSafe';
 import { BIOME_BEDS, CORE_SFX_PACKS, FLOOR_BEDS, SFX_CUES, type SfxId } from '@/content/audio/sfxCues';
-import { arenaHurtVoice, needsArenaHurtImpact } from '@/audio/arenaAudio';
+import { arenaHurtVoice, inDuelOrArena, needsArenaHurtImpact } from '@/audio/arenaAudio';
 
 /**
  * Decides what the sampled layer holds in memory and which bed is playing.
@@ -66,17 +66,21 @@ export function installAudioDirector(ctx: Ctx, engine: SfxAudioEngine): () => vo
     const wanted = new Set<string>();
     let bed: SfxId | null = null;
     const runtime = ctx.state.mode === 'play' ? ctx.levels?.current : null;
-    if (ctx.versus?.active || ctx.arena?.active || runtime?.def.id === 'fighter-test' || runtime?.def.id === 'fighter-duel') wanted.add('arena');
+    // The arena (the Duel, its lobby, the arena levels) has its own pack and none of the descent's floor beds:
+    // the Duel stage borrows the earthen biome, which used to bring the Bellows' bed into every match.
+    const arena = inDuelOrArena(ctx);
+    if (arena) wanted.add('arena');
     if (runtime) {
       const def = runtime.def;
-      bed = levelBed(def.id, def.biome);
+      bed = arena ? null : levelBed(def.id, def.biome);
       const bp = bedPack(bed);
       if (bp) wanted.add(bp);
       for (const e of ctx.enemies) wanted.add(creaturePack(e.kind));
       if (runtime.boss) wanted.add(creaturePack(runtime.boss.kind ?? 'colossus'));
-      for (const p of rosterPacks(def.id)) wanted.add(p);
+      // The floor's roster and fauna are the descent's; an arena level only loads what is really in it.
+      if (!arena) for (const p of rosterPacks(def.id)) wanted.add(p);
       // Organisms load with their floor (and with any level an author seeded them in).
-      for (const p of faunaPacks(def.id)) wanted.add(p);
+      if (!arena) for (const p of faunaPacks(def.id)) wanted.add(p);
       for (const c of ctx.critters?.list ?? []) wanted.add(organismPack(c.kind));
       if (runtime.living) wanted.add('tea');
       // Plants grow on every floor (world/floraPass): their felling, seeds, fires and brush.

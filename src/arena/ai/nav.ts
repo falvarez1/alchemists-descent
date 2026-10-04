@@ -1,6 +1,6 @@
 import { YARD } from '@/world/fighterArena';
 import { DUEL } from '@/world/duelStage';
-import { STOCK_STAGE } from '@/config/stockStage';
+import { STOCK_STAGE, type StockStageDef } from '@/config/stockStage';
 
 /**
  * STAGE NAV (docs/arena/AI-FIGHTERS.md 2.4): where a bot can stand on a stage and how it gets between those places.
@@ -173,21 +173,27 @@ export function yardNav(): StageNav {
 
 let yard: StageNav | null = null;
 let duel: StageNav | null = null;
-let stock: StageNav | null = null;
+const stockNavs = new Map<string, StageNav>();
 
-export function stockNav(): StageNav {
-  const main = STOCK_STAGE.main;
+export function stockNav(stage: StockStageDef = STOCK_STAGE): StageNav {
+  const main = stage.main;
   // Recognition covers the whole supporting surface, including a body overhanging its lip.
   // Insets belong to movement destinations, not to deciding which platform a fighter occupies.
-  const nodes: NavNode[] = [{ id: 'floor', name: 'Foundry platform', x0: main.x0, x1: main.x1, y: main.y - 1 }];
+  const nodes: NavNode[] = [{ id: 'floor', name: `${stage.caption.toLowerCase()} platform`, x0: main.x0, x1: main.x1, y: main.y - 1 }];
   const edges: NavEdge[] = [];
-  for (const [i, p] of STOCK_STAGE.platforms.entries()) {
-    const id = `side${i}`, dir = i === 0 ? -1 : 1;
+  for (const [i, p] of stage.platforms.entries()) {
+    const id = `side${i}`, mid = (p.x0 + p.x1) / 2;
     nodes.push({ id, name: 'upper platform', x0: p.x0, x1: p.x1, y: p.y - 1 });
-    edges.push({ from: 'floor', to: id, kind: 'levitate', launchX: i === 0 ? p.x1 + 12 : p.x0 - 12, landX: (p.x0 + p.x1) / 2, clearY: p.y - 5, dir, cost: 85 });
-    edges.push({ from: id, to: 'floor', kind: 'drop', launchX: i === 0 ? p.x1 - 3 : p.x0 + 3, landX: i === 0 ? p.x1 + 20 : p.x0 - 20, clearY: p.y - 1, dir: i === 0 ? 1 : -1, cost: 25 });
+    // Rise beside the platform's inner lip (from the main deck), or up through a centred platform's middle.
+    const centred = Math.abs(mid - stage.center.x) < 40;
+    const left = mid < stage.center.x, dir = centred ? 1 : left ? -1 : 1;
+    const launchX = centred ? p.x0 - 12 : left ? Math.min(p.x1 + 12, main.x1 - 10) : Math.max(p.x0 - 12, main.x0 + 10);
+    edges.push({ from: 'floor', to: id, kind: 'levitate', launchX, landX: mid, clearY: p.y - 5, dir: centred ? 1 : dir, cost: 85 });
+    const dropX = centred ? p.x1 - 3 : left ? p.x1 - 3 : p.x0 + 3;
+    const landX = Math.max(main.x0 + 10, Math.min(main.x1 - 10, centred ? p.x1 + 20 : left ? p.x1 + 20 : p.x0 - 20));
+    edges.push({ from: id, to: 'floor', kind: 'drop', launchX: dropX, landX, clearY: p.y - 1, dir: centred || left ? 1 : -1, cost: 25 });
   }
-  return new StageNav(nodes, edges, STOCK_STAGE.center.x);
+  return new StageNav(nodes, edges, stage.center.x);
 }
 
 /** The Duel side platforms and centre perch need deliberate rises beside their lips. */
@@ -207,8 +213,12 @@ export function duelNav(): StageNav {
 }
 
 /** The nav for a level id, or null when the stage has none (the bot then only walks and hops). */
-export function stageNavFor(levelId: string | undefined): StageNav | null {
-  if (levelId === 'fighter-stock') return (stock ??= stockNav());
+export function stageNavFor(levelId: string | undefined, stage: StockStageDef = STOCK_STAGE): StageNav | null {
+  if (levelId === 'fighter-stock') {
+    let nav = stockNavs.get(stage.id);
+    if (!nav) { nav = stockNav(stage); stockNavs.set(stage.id, nav); }
+    return nav;
+  }
   if (levelId === 'fighter-duel') return (duel ??= duelNav());
   if (levelId !== 'fighter-test') return null;
   return (yard ??= yardNav());

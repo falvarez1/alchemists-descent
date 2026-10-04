@@ -19,6 +19,9 @@ import { drawReveals } from '@/render/fighterReveal';
 import { entityRandom } from '@/core/simRandom';
 import type { AuthoredLight } from '@/core/types';
 
+/** Ticks the whole game holds when an ultimate fires in a stock match (the arcade super freeze; the HUD's cut-in plays over it). */
+const STOCK_SUPER_FREEZE = 18;
+
 /** A move the system carries out for the body (a dash, a blink-in, a ram, a tether pull). */
 export interface MovePlan {
   /** Ticks at most; the plan ends sooner when `step` returns null or the body is blocked. */
@@ -350,6 +353,12 @@ export class FighterSystem implements FighterApi {
     this.charge = 0;
     this.view.ultimate.usedAt = now;
     this.firedAt.ultimate = now;
+    if (stock && this.def) {
+      // The arcade super: the whole game holds for a beat while the HUD cuts in the caster's portrait.
+      const fx = this.ctx.fx as Ctx['fx'] | undefined;
+      if (fx) fx.hitstop = Math.max(fx.hitstop ?? 0, STOCK_SUPER_FREEZE);
+      this.ctx.events.emit('stockUltimate', { slot: stock.bound, fighter: this.def.id, name: this.view.ultimate.name });
+    }
     fightSink?.ability('ultimate', 'fired');
     if (this.def.ultimateDuration > 0) {
       this.ultimateLeft = this.ultimateMax = this.def.ultimateDuration;

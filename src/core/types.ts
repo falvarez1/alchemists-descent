@@ -17,6 +17,7 @@ import type { FighterApi } from '@/core/fighters';
 import type { ArenaApi } from '@/core/arena';
 import type { VersusApi } from '@/core/versus';
 import type { FighterId } from '@/content/fighters';
+import type { StockStageId } from '@/config/stockStage';
 import type { BrewingApi } from '@/core/alchemy';
 
 /* ============================================================
@@ -1674,6 +1675,38 @@ export interface AudioApi {
   sfx(id: SfxId, x?: number, y?: number, opts?: SfxOptions): void;
   /** A creature's own voice for an action (alert, hurt, death, idle, step…), at the current placement. */
   creature(kind: EnemyKind, action: CreatureSfxAction): void;
+  /** The Duel's arcade cabinet (audio/DuelAnnouncer): the announcer and the menu sounds. Absent in test contexts. */
+  duel?: DuelAudioApi;
+}
+
+/** A Duel menu sound (audio/DuelAnnouncer): a cursor step, a confirm, a back. */
+export type DuelMenuSound = 'move' | 'confirm' | 'back';
+
+/**
+ * The Duel's arcade layer (audio/DuelAnnouncer). The match calls (countdown, FIGHT, ring-outs, last stock,
+ * GAME, the winner) and the select screen's model calls (Choose your fighter, a fighter or stage chosen, a
+ * seat ready, a challenger joining) follow the events by themselves; the screens only add what the model
+ * cannot see.
+ */
+export interface DuelAudioApi {
+  /**
+   * A menu sound for keyboard or pad navigation on the Duel's screens. Pointer hovers and clicks there
+   * already sound (audio/UiSounds swaps in this set; `data-sfx="move"` marks a cursor step).
+   */
+  menu(kind: DuelMenuSound): void;
+  /** Read a fighter's name now, cutting the call in progress (a cursor resting on a fighter not chosen yet). */
+  announceFighter(id: FighterId): void;
+  /** Read a stage's name now, cutting the call in progress (a stage previewed, not chosen yet). */
+  announceStage(id: StockStageId): void;
+  /**
+   * The VS card: "<P1>! Versus! <P2>!" as one call laid on the audio clock at once. The announcer makes it by
+   * itself when the session goes from the lobby to loading; a repeat within 3 s is ignored.
+   */
+  announceVersus(p1: FighterId, p2: FighterId): void;
+  /** The VS card was skipped: what is left of its call fades out (nothing else is touched). */
+  cutVersus(): void;
+  /** Read-only state for in-page probes. */
+  debugSnapshot(): Record<string, unknown>;
 }
 
 /** The streamed score (audio/MusicDirector). Absent in small test contexts. */

@@ -61,6 +61,9 @@ try {
     // A projectile can knock an idle human out during the approach. That ends
     // this fixture: a respawn would no longer test the stationary upper-platform target.
     const knockedOutTarget = result.downs.some(down => down.slot === 0 && down.by === 1);
-    assert.ok(knockedOutTarget || (result.closest < 30 && result.hits.length > 0), 'CPU lands melee or knocks out the stationary opponent');
+    // `hits` holds melee hits only, so a hit is contact; the distance bar just guards against a scoring glitch, at the
+    // longest melee reach (Mara's 34-cell finisher) plus contact. The concept-height ledges land the CPU at the lip,
+    // so its finisher fires from 27-31 cells.
+    assert.ok(knockedOutTarget || (result.closest <= 36 && result.hits.length > 0), 'CPU lands melee or knocks out the stationary opponent');
   }
 } finally { await browser.close(); }

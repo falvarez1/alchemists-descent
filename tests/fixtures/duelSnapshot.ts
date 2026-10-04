@@ -16,6 +16,6 @@ export function snapshotFixture(): DuelSnapshot {
       slots: [0, 1].map(() => ({ attack: null, shield: null, dodge: null, ledge: null, grab: null, special: null, canRecover: true, recovering: false, grabbed: false, launching: false })),
     },
     camera: { x: 0, y: 0, tx: 0, ty: 0, zoom: 1, viewScale: 1 },
-    projectiles: [], particles: [], arcs: [], lights: [], bloom: 0, shake: 0, sounds: [],
+    projectiles: [], particles: [], arcs: [], lights: [], bloom: 0, shake: 0, sounds: [], moments: [],
   };
 }

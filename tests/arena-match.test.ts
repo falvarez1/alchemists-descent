@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { MatchDirector, stockLaunch, influenceLaunch } from '@/arena/MatchDirector';
-import { STOCK_RULES, STOCK_LAUNCH } from '@/config/stockRules';
+import { STOCK_RULES, STOCK_LAUNCH, STOCK_PROJECTILE_LAUNCH, stockProjectileScale } from '@/config/stockRules';
 
 const box = { left: 100, right: 700, top: 100, bottom: 450 };
 const alive = [{ x: 300, y: 300 }, { x: 500, y: 300 }];
@@ -15,6 +15,18 @@ describe('stock matches', () => {
     expect(Math.hypot(heavy.x, heavy.y)).toBeCloseTo(Math.hypot(finisher.x, finisher.y) / 1.5);
     expect(finisher.stun).toBeGreaterThan(opener.stun);
     expect(stockLaunch(6, -2, 100, 999, 1, 5, 10).stun).toBeLessThanOrEqual(STOCK_LAUNCH.maxStun);
+  });
+  test('a projectile pushes in proportion to the percent: a nudge when fresh, full force late', () => {
+    const speed = (pct: number): number => { const l = stockLaunch(3, -1, 12, pct, 1, 1, 1, stockProjectileScale(pct)); return Math.hypot(l.x, l.y); };
+    expect(stockProjectileScale(0)).toBe(STOCK_PROJECTILE_LAUNCH.floor);
+    expect(stockProjectileScale(STOCK_PROJECTILE_LAUNCH.full)).toBe(1);
+    expect(stockProjectileScale(999)).toBe(1);
+    // Fresh, the shot is under the tumble speed (a flinch); every step of percent pushes harder.
+    expect(speed(12)).toBeLessThan(STOCK_PROJECTILE_LAUNCH.tumbleSpeed);
+    const curve = [12, 50, 100, 150, 200].map(speed);
+    for (let i = 1; i < curve.length; i++) expect(curve[i]).toBeGreaterThan(curve[i - 1]);
+    // Melee (fixed scale 1) is unchanged by the projectile rule.
+    expect(stockLaunch(3, -1, 12, 12, 1)).toEqual(stockLaunch(3, -1, 12, 12, 1, 1, 1, 1));
   });
   test('directional influence bends a launch at most twelve degrees without adding speed', () => {
     const up = influenceLaunch(10, 0, 0, -1);

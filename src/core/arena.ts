@@ -3,6 +3,7 @@ import type { FighterApi } from '@/core/fighters';
 import type { FighterId } from '@/content/fighters';
 import type { BlastZone, StockDodgeView, StockGrabView, StockLedgeInput, StockLedgeView, StockMatchView, StockShieldView, StockSpecialView } from '@/core/arenaMatch';
 import type { StockAttackKind, StockAttackView } from '@/core/stockAttacks';
+import type { StockStageDef, StockStageId } from '@/config/stockStage';
 
 /**
  * THE ARENA CONTRACT (docs/arena/ARCHITECTURE.md, D-001): two fighters in one world.
@@ -46,6 +47,10 @@ export type RivalPhase = 'body' | 'flask' | 'wands';
 
 export interface ArenaApi {
   readonly stockMatch: StockMatchView | null;
+  /** The stock stage the arena stamps and reads (geometry, platforms, art). Defaults to the Foundry. */
+  readonly stockStage: StockStageDef;
+  /** Choose the stage for the next stamp; the caller re-stamps (resetDuelStage) and re-configures the zone. */
+  selectStockStage(id: StockStageId): void;
   /** Select stock rules for this stage, or return to the existing health duel. */
   configureStocks(zone: BlastZone | null): void;
   /** Consumes already-reduced damage in a stock match; true means health must not change. */

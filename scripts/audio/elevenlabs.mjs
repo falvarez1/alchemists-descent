@@ -251,6 +251,49 @@ export const designVoice = (body) => request('/v1/text-to-voice/design', { metho
 export const createVoice = (body) => request('/v1/text-to-voice', { method: 'POST', body });
 
 /**
+ * Speech-to-text (Scribe) of a local audio file: what a recording actually says,
+ * the only way a generator that cannot listen checks its words. Cached by the
+ * file's bytes, so re-checking an unchanged clip is free. Measured on the
+ * counter 2026-10-03: ~0.5 credit per second of audio (12.8 s cost 6); the
+ * budget estimate rounds that up to 1 credit a second.
+ */
+export async function transcribe(file, { modelId = 'scribe_v1', languageCode = 'en' } = {}, budget) {
+  mkdirSync(CACHE_DIR, { recursive: true });
+  const bytes = readFileSync(file);
+  const key = createHash('sha1').update(`stt\n${modelId}\n${languageCode}\n`).update(bytes).digest('hex');
+  const out = join(CACHE_DIR, `${key}.stt.json`);
+  if (existsSync(out)) return { ...JSON.parse(readFileSync(out, 'utf8')), cached: true, key };
+  const seconds = measure(file).duration;
+  const estimate = Math.ceil(Math.max(1, seconds));
+  if (budget) await budget.guard(estimate);
+  for (let attempt = 0; ; attempt++) {
+    const form = new FormData();
+    form.append('model_id', modelId);
+    form.append('language_code', languageCode);
+    form.append('tag_audio_events', 'false');
+    form.append('file', new Blob([bytes], { type: 'audio/mpeg' }), 'clip.mp3');
+    let res;
+    try {
+      res = await fetch(`${API}/v1/speech-to-text`, { method: 'POST', headers: { 'xi-api-key': loadApiKey() }, body: form });
+    } catch (error) {
+      if (attempt < 3) { await sleep(2000 * 2 ** attempt); continue; }
+      throw new Error(`ElevenLabs speech-to-text -> network error: ${error.cause?.code ?? error.message}`);
+    }
+    if (res.ok) {
+      const body = await res.json();
+      const result = { text: body.text ?? '', words: (body.words ?? []).filter(w => w.type === 'word').map(w => ({ text: w.text, start: w.start, end: w.end })) };
+      writeFileSync(out, JSON.stringify(result));
+      if (budget) budget.note(estimate);
+      appendFileSync(LOG_FILE, JSON.stringify({ at: new Date().toISOString(), kind: 'stt', key, estimate, payload: { modelId, languageCode, seconds } }) + '\n');
+      return { ...result, cached: false, key };
+    }
+    const text = await res.text().catch(() => '');
+    if ((res.status === 429 || res.status >= 500) && attempt < 6) { await sleep(1500 * 2 ** attempt + Math.random() * 500); continue; }
+    throw new Error(`ElevenLabs speech-to-text -> ${res.status}: ${text.slice(0, 400)}`);
+  }
+}
+
+/**
  * ffmpeg post-process: trim leading/trailing silence (one-shots), loudness-
  * normalise (EBU R128 single pass), downmix, and encode MP3 at `bitrate`.
  */

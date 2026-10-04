@@ -4173,5 +4173,113 @@
   ],
   "rejected": [],
   "failed": []
+ },
+ "duel.ui.move": {
+  "hash": "413e020c3aa1",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "duel.ui.confirm": {
+  "hash": "e04fceca7f0c",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "duel.ui.back": {
+  "hash": "ee1ff249826d",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "duel.ui.pause": {
+  "hash": "0ed48f313439",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "duel.ready": {
+  "hash": "52ccb8a7fccc",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "duel.join": {
+  "hash": "c1bb3c54997c",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "duel.stage": {
+  "hash": "1204a7f692c3",
+  "variants": [
+   1
+  ],
+  "rejected": [],
+  "failed": [
+   0
+  ]
+ },
+ "duel.count": {
+  "hash": "20d9e257d445",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "duel.fight": {
+  "hash": "dae60a09abb4",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "duel.ko": {
+  "hash": "f21e10ca276e",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "duel.game": {
+  "hash": "4d8179c5ebbf",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
+ },
+ "duel.results": {
+  "hash": "187115ebee0a",
+  "variants": [
+   1
+  ],
+  "rejected": [],
+  "failed": [
+   0
+  ]
+ },
+ "duel.super": {
+  "hash": "50c3ae25b669",
+  "variants": [
+   0
+  ],
+  "rejected": [],
+  "failed": []
  }
 }

@@ -20,6 +20,23 @@ const numbers = (v: unknown, keys: string): boolean => fields(v, finite, keys);
 const optional = (v: unknown, check: Check): boolean => v === undefined || check(v);
 const nullable = (v: unknown, check: Check): boolean => v === null || check(v);
 const point: Check = (v) => numbers(v, 'x y');
+/** A host match moment (snapshot.ts DuelMoment), re-emitted on the replica: its data must be the event's exact shape. */
+const moment: Check = (v) => {
+  if (!record(v) || !record(v.data)) return false;
+  const d = v.data;
+  switch (v.type) {
+    case 'stockMatchBeat':
+      return oneOf('countdown', 'fighting', 'finished')(d.state) && finite(d.count) && nullable(d.winner, finite) && nullable(d.reason, oneOf('stocks', 'timeout', 'draw'));
+    case 'fighterDown':
+      return numbers(d, 'slot by x y') && text(d.source);
+    case 'stockUltimate':
+      return finite(d.slot) && isFighterId(d.fighter) && text(d.name);
+    case 'stockShieldBreak':
+      return finite(d.slot);
+    default:
+      return false;
+  }
+};
 
 const ability: Check = (v) =>
   record(v) &&
@@ -227,6 +244,13 @@ export function validPresentation(v: Record<string, unknown>): boolean {
         bool(l.occluded),
       1024,
     )(v.lights) &&
-    array((s) => record(s) && text(s.id) && optional(s.x, finite) && optional(s.y, finite), 64)(v.sounds)
+    array(
+      (s) =>
+        record(s) &&
+        text(s.id) &&
+        ['x', 'y', 'gain', 'pitch', 'rate', 'delay'].every((k) => optional(s[k], finite)),
+      64,
+    )(v.sounds) &&
+    optional(v.moments, array(moment, 32))
   );
 }

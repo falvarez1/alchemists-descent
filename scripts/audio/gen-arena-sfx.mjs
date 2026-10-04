@@ -6,12 +6,20 @@ import { SFX_PROMPTS } from './sfx-prompts.mjs';
 process.env.AUDIO_LOG_NAME = 'generation-log.arena-sfx.jsonl';
 const { soundEffect, Budget, measure } = await import('./elevenlabs.mjs');
 const budget = new Budget(1500), report = [];
+// Re-take only some takes of one cue (`--only arena.hit.heavy --takes 1,3`): every other take and its report row stay
+// as they are (most of the shipped takes' paid responses live in another worktree's cache, so a full run re-buys them).
+const arg = (n) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1] : undefined; };
+const only = arg('only'), onlyTakes = arg('takes')?.split(',').map(Number);
+const picked = (id, take) => (!only || id === only) && (!onlyTakes || onlyTakes.includes(take));
+const previous = only ? JSON.parse(readFileSync('scripts/audio/arena-sfx-report.json', 'utf8')) : [];
 mkdirSync('src/assets/audio/sfx/arena', { recursive: true });
 try {
   for (const [id, p] of Object.entries(SFX_PROMPTS).filter(([id]) => id.startsWith('arena.'))) {
     for (let take = 1; take <= p.t; take++) {
+      if (!picked(id, take)) { const kept = previous.find((r) => r.id === id && r.take === take); if (kept) report.push(kept); continue; }
       console.log(`Generating ${id} take ${take}`);
-      const result = await soundEffect({ text: p.p, durationSeconds: p.d, promptInfluence: p.i, outputFormat: 'mp3_44100_192', variant: take }, budget);
+      // `v`: the paid variant each take uses (default: the take's number), so a slow take can be swapped for a re-roll.
+      const result = await soundEffect({ text: p.p, durationSeconds: p.d, promptInfluence: p.i, outputFormat: 'mp3_44100_192', variant: p.v?.[take - 1] ?? take }, budget);
       const file = `src/assets/audio/sfx/arena/${id}-${take}.mp3`;
       // Remove generation dead air and preserve the attack. Short tails leave
       // rapid hits readable. Peak-normalize a measured file, never crush the transient.
@@ -31,7 +39,7 @@ try {
       }
       // EBU's 400 ms gate cannot report integrated LUFS for the shortest hits.
       if (measured.lufs <= -69) measured.lufs = null;
-      report.push({ id, take, model: 'eleven_text_to_sound_v2', cacheKey: result.key, ...measured, bytes: statSync(file).size, sha256: createHash('sha256').update(readFileSync(file)).digest('hex') });
+      report.push({ id, take, model: 'eleven_text_to_sound_v2', ...(p.v ? { variant: p.v[take - 1] } : {}), cacheKey: result.key, ...measured, bytes: statSync(file).size, sha256: createHash('sha256').update(readFileSync(file)).digest('hex') });
     }
   }
   writeFileSync('scripts/audio/arena-sfx-report.json', JSON.stringify(report, null, 2) + '\n');

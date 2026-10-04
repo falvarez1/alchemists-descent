@@ -1,0 +1,1394 @@
+{
+ "version": 1,
+ "scale": 2,
+ "note": "Art pixels: show every piece at an integer CSS scale (kit.scale) with image-rendering: pixelated. 9-slice: border-image-slice = slice (art px), border-width = slice x scale, border-image-repeat as given (each edge is one seamless period). Hollow frames: put a fill tile behind, reaching band x scale in from the outer edge.",
+ "pieces": {
+  "panel-large": {
+   "file": "panel-large.png",
+   "size": [
+    91,
+    90
+   ],
+   "kind": "frame",
+   "slice": [
+    30,
+    32,
+    30,
+    32
+   ],
+   "band": [
+    14,
+    15,
+    14,
+    14
+   ],
+   "fill": false,
+   "repeat": "round",
+   "period": [
+    27,
+    30
+   ],
+   "use": "large panel: menus, lobby, pause, results, connect, options",
+   "scale": 2,
+   "css": [
+    182,
+    180
+   ]
+  },
+  "card": {
+   "file": "card.png",
+   "size": [
+    54,
+    46
+   ],
+   "kind": "frame",
+   "slice": [
+    13,
+    13,
+    13,
+    13
+   ],
+   "band": [
+    7,
+    8,
+    7,
+    8
+   ],
+   "fill": false,
+   "repeat": "round",
+   "period": [
+    28,
+    20
+   ],
+   "use": "card: player seats, info boxes (copper; the first player)",
+   "scale": 2,
+   "css": [
+    108,
+    92
+   ]
+  },
+  "card-teal": {
+   "file": "card-teal.png",
+   "size": [
+    49,
+    54
+   ],
+   "kind": "frame",
+   "slice": [
+    13,
+    13,
+    13,
+    13
+   ],
+   "band": [
+    8,
+    8,
+    7,
+    8
+   ],
+   "fill": false,
+   "repeat": "round",
+   "period": [
+    23,
+    28
+   ],
+   "use": "card, teal accent (the second player)",
+   "scale": 2,
+   "css": [
+    98,
+    108
+   ]
+  },
+  "slot": {
+   "file": "slot.png",
+   "size": [
+    49,
+    22
+   ],
+   "kind": "frame",
+   "slice": [
+    7,
+    7,
+    7,
+    7
+   ],
+   "band": [
+    5,
+    6,
+    6,
+    6
+   ],
+   "fill": false,
+   "repeat": "round",
+   "period": [
+    35,
+    8
+   ],
+   "use": "inset slot: text fields, value boxes, status and rules bars",
+   "scale": 2,
+   "css": [
+    98,
+    44
+   ]
+  },
+  "panel-small": {
+   "file": "panel-small.png",
+   "size": [
+    62,
+    68
+   ],
+   "kind": "frame",
+   "slice": [
+    18,
+    18,
+    18,
+    18
+   ],
+   "band": [
+    12,
+    12,
+    11,
+    12
+   ],
+   "fill": false,
+   "repeat": "round",
+   "period": [
+    26,
+    32
+   ],
+   "use": "small panel: dialogs, confirmations, sub-panels",
+   "scale": 2,
+   "css": [
+    124,
+    136
+   ]
+  },
+  "picture-frame": {
+   "file": "picture-frame.png",
+   "size": [
+    48,
+    78
+   ],
+   "kind": "frame",
+   "slice": [
+    12,
+    12,
+    34,
+    12
+   ],
+   "band": [
+    8,
+    7,
+    29,
+    7
+   ],
+   "fill": false,
+   "repeat": "round",
+   "period": [
+    24,
+    32
+   ],
+   "use": "picture tile with a caption plate (the bottom slice): stage, level or save tiles",
+   "scale": 2,
+   "css": [
+    96,
+    156
+   ]
+  },
+  "button-primary": {
+   "file": "button-primary.png",
+   "size": [
+    55,
+    34
+   ],
+   "kind": "plate",
+   "slice": [
+    8,
+    20,
+    8,
+    20
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    15,
+    null
+   ],
+   "states": {
+    "normal": "button-primary.png",
+    "hot": "button-primary-hot.png",
+    "pressed": "button-primary-pressed.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "primary button (hot copper): confirm, ready, host",
+   "scale": 2,
+   "css": [
+    110,
+    68
+   ]
+  },
+  "button-secondary": {
+   "file": "button-secondary.png",
+   "size": [
+    66,
+    34
+   ],
+   "kind": "plate",
+   "slice": [
+    8,
+    20,
+    8,
+    20
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    26,
+    null
+   ],
+   "states": {
+    "normal": "button-secondary.png",
+    "hot": "button-secondary-hot.png",
+    "pressed": "button-secondary-pressed.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "secondary button (dark iron): back, change, join",
+   "scale": 2,
+   "css": [
+    132,
+    68
+   ]
+  },
+  "keycap": {
+   "file": "keycap.png",
+   "size": [
+    30,
+    17
+   ],
+   "kind": "plate",
+   "slice": [
+    5,
+    5,
+    5,
+    5
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    20,
+    null
+   ],
+   "states": {
+    "normal": "keycap.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "key glyph at any width (A, Esc, Enter, Space, Click)",
+   "scale": 2,
+   "css": [
+    60,
+    34
+   ]
+  },
+  "band": {
+   "file": "band.png",
+   "size": [
+    151,
+    36
+   ],
+   "kind": "plate",
+   "slice": [
+    8,
+    18,
+    8,
+    18
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    115,
+    null
+   ],
+   "states": {
+    "normal": "band.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "long horizontal band: cut-ins, announcements",
+   "scale": 2,
+   "css": [
+    302,
+    72
+   ]
+  },
+  "list-row": {
+   "file": "list-row.png",
+   "size": [
+    97,
+    26
+   ],
+   "kind": "plate",
+   "slice": [
+    6,
+    22,
+    6,
+    22
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    53,
+    null
+   ],
+   "states": {
+    "normal": "list-row.png",
+    "hot": "list-row-hot.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "menu list row; hot = the focused row (the menu cursor)",
+   "scale": 2,
+   "css": [
+    194,
+    52
+   ]
+  },
+  "title-plate": {
+   "file": "title-plate.png",
+   "size": [
+    59,
+    26
+   ],
+   "kind": "plate",
+   "slice": [
+    6,
+    16,
+    6,
+    16
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    27,
+    null
+   ],
+   "states": {
+    "normal": "title-plate.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "heading plate across the top edge of a panel or dialog",
+   "scale": 2,
+   "css": [
+    118,
+    52
+   ]
+  },
+  "tab": {
+   "file": "tab.png",
+   "size": [
+    42,
+    24
+   ],
+   "kind": "plate",
+   "slice": [
+    6,
+    9,
+    6,
+    9
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    24,
+    null
+   ],
+   "states": {
+    "normal": "tab.png",
+    "active": "tab-active.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "tab of a tab strip; active = the open tab",
+   "scale": 2,
+   "css": [
+    84,
+    48
+   ]
+  },
+  "ribbon": {
+   "file": "ribbon.png",
+   "size": [
+    68,
+    24
+   ],
+   "kind": "plate",
+   "slice": [
+    6,
+    16,
+    6,
+    16
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    36,
+    null
+   ],
+   "states": {
+    "normal": "ribbon.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "thin subtitle plate under a heading, status line",
+   "scale": 2,
+   "css": [
+    136,
+    48
+   ]
+  },
+  "nameplate": {
+   "file": "nameplate.png",
+   "size": [
+    63,
+    33
+   ],
+   "kind": "plate",
+   "slice": [
+    8,
+    12,
+    8,
+    12
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    39,
+    null
+   ],
+   "states": {
+    "normal": "nameplate.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "name plate, one or two lines (fighter name and title)",
+   "scale": 2,
+   "css": [
+    126,
+    66
+   ]
+  },
+  "tooltip": {
+   "file": "tooltip.png",
+   "size": [
+    73,
+    30
+   ],
+   "kind": "plate",
+   "slice": [
+    7,
+    7,
+    7,
+    7
+   ],
+   "fill": true,
+   "repeat": "round",
+   "period": [
+    59,
+    16
+   ],
+   "states": {
+    "normal": "tooltip.png"
+   },
+   "fixed": null,
+   "use": "tooltip and toast plate, grows with its text",
+   "scale": 2,
+   "css": [
+    146,
+    60
+   ]
+  },
+  "nameplate-hanging": {
+   "file": "nameplate-hanging.png",
+   "size": [
+    83,
+    93
+   ],
+   "kind": "plate",
+   "slice": [
+    65,
+    22,
+    8,
+    22
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    39,
+    null
+   ],
+   "states": {
+    "normal": "nameplate-hanging.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "sign hanging on two chains (the top slice holds the chains): footer prompts",
+   "scale": 2,
+   "css": [
+    166,
+    186
+   ]
+  },
+  "hud-card": {
+   "file": "hud-card.png",
+   "size": [
+    187,
+    84
+   ],
+   "kind": "plate",
+   "slice": [
+    12,
+    18,
+    12,
+    82
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    87,
+    null
+   ],
+   "states": {
+    "normal": "hud-card.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "player HUD card, portrait window at the left end (put the portrait behind it)",
+   "window": {
+    "left": 15,
+    "top": 15,
+    "width": 54,
+    "height": 55
+   },
+   "scale": 2,
+   "css": [
+    374,
+    168
+   ]
+  },
+  "hud-card-teal": {
+   "file": "hud-card-teal.png",
+   "size": [
+    171,
+    84
+   ],
+   "kind": "plate",
+   "slice": [
+    12,
+    82,
+    12,
+    18
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    71,
+    null
+   ],
+   "states": {
+    "normal": "hud-card-teal.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "player HUD card, teal, portrait window at the right end",
+   "window": {
+    "right": 15,
+    "top": 15,
+    "width": 53,
+    "height": 55
+   },
+   "scale": 2,
+   "css": [
+    342,
+    168
+   ]
+  },
+  "meter": {
+   "file": "meter.png",
+   "size": [
+    25,
+    15
+   ],
+   "kind": "plate",
+   "slice": [
+    5,
+    6,
+    5,
+    6
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    13,
+    null
+   ],
+   "states": {
+    "normal": "meter.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "segmented meter housing, one cell per period: width = 12 + 13n art px; cell k inside at left 7 + 13k, top 3 (11 x 9)",
+   "scale": 2,
+   "css": [
+    50,
+    30
+   ]
+  },
+  "slider-track": {
+   "file": "slider-track.png",
+   "size": [
+    58,
+    17
+   ],
+   "kind": "plate",
+   "slice": [
+    6,
+    9,
+    6,
+    9
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    40,
+    null
+   ],
+   "states": {
+    "normal": "slider-track.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "slider groove; its inside is 4 art px down, 8 in from each end, 7 tall (where the fill goes)",
+   "scale": 2,
+   "css": [
+    116,
+    34
+   ]
+  },
+  "slider-fill": {
+   "file": "slider-fill.png",
+   "size": [
+    30,
+    7
+   ],
+   "kind": "plate",
+   "slice": [
+    2,
+    4,
+    2,
+    4
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    22,
+    null
+   ],
+   "states": {
+    "normal": "slider-fill.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "slider fill (molten copper), 7 tall: laid in the groove at the value width",
+   "scale": 2,
+   "css": [
+    60,
+    14
+   ]
+  },
+  "scroll-track": {
+   "file": "scroll-track.png",
+   "size": [
+    12,
+    24
+   ],
+   "kind": "plate",
+   "slice": [
+    7,
+    4,
+    7,
+    4
+   ],
+   "fill": true,
+   "repeat": "stretch round",
+   "period": [
+    null,
+    10
+   ],
+   "states": {
+    "normal": "scroll-track.png"
+   },
+   "fixed": "width: show it size[0] x scale wide",
+   "use": "vertical scroll bar groove",
+   "scale": 2,
+   "css": [
+    24,
+    48
+   ]
+  },
+  "meter-wide": {
+   "file": "meter-wide.png",
+   "size": [
+    38,
+    15
+   ],
+   "kind": "plate",
+   "slice": [
+    5,
+    6,
+    5,
+    6
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    26,
+    null
+   ],
+   "states": {
+    "normal": "meter-wide.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "segmented meter housing with long cells, one per period: width = 12 + 26n art px; cell k inside at left 7 + 26k, top 3 (24 x 9)",
+   "scale": 2,
+   "css": [
+    76,
+    30
+   ]
+  },
+  "meter-wide-cell": {
+   "file": "meter-wide-cell.png",
+   "size": [
+    24,
+    9
+   ],
+   "kind": "image",
+   "use": "long meter cell fill, gold",
+   "scale": 2,
+   "css": [
+    48,
+    18
+   ]
+  },
+  "meter-wide-cell-teal": {
+   "file": "meter-wide-cell-teal.png",
+   "size": [
+    24,
+    9
+   ],
+   "kind": "image",
+   "use": "long meter cell fill, teal (refilling)",
+   "scale": 2,
+   "css": [
+    48,
+    18
+   ]
+  },
+  "divider": {
+   "file": "divider.png",
+   "size": [
+    205,
+    11
+   ],
+   "kind": "image",
+   "use": "heading rule, whole, as drawn",
+   "scale": 2,
+   "css": [
+    410,
+    22
+   ]
+  },
+  "divider-cap-left": {
+   "file": "divider-cap-left.png",
+   "size": [
+    4,
+    11
+   ],
+   "kind": "image",
+   "use": "divider: left end",
+   "scale": 2,
+   "css": [
+    8,
+    22
+   ]
+  },
+  "divider-line": {
+   "file": "divider-line.png",
+   "size": [
+    10,
+    11
+   ],
+   "kind": "tile",
+   "repeat": "repeat-x",
+   "use": "divider: the line, repeat across",
+   "scale": 2,
+   "css": [
+    20,
+    22
+   ]
+  },
+  "divider-diamond": {
+   "file": "divider-diamond.png",
+   "size": [
+    8,
+    11
+   ],
+   "kind": "image",
+   "use": "divider: centre diamond",
+   "scale": 2,
+   "css": [
+    16,
+    22
+   ]
+  },
+  "divider-cap-right": {
+   "file": "divider-cap-right.png",
+   "size": [
+    4,
+    11
+   ],
+   "kind": "image",
+   "use": "divider: right end",
+   "scale": 2,
+   "css": [
+    8,
+    22
+   ]
+  },
+  "chain": {
+   "file": "chain.png",
+   "size": [
+    10,
+    17
+   ],
+   "kind": "tile",
+   "repeat": "repeat-y",
+   "use": "hanging chain, repeat down from the mount",
+   "scale": 2,
+   "css": [
+    20,
+    34
+   ]
+  },
+  "chain-mount": {
+   "file": "chain-mount.png",
+   "size": [
+    24,
+    41
+   ],
+   "kind": "image",
+   "use": "wall bracket the chain hangs from (ring at the bottom)",
+   "scale": 2,
+   "css": [
+    48,
+    82
+   ]
+  },
+  "lantern": {
+   "file": "lantern.png",
+   "size": [
+    24,
+    57
+   ],
+   "kind": "image",
+   "states": {
+    "lit": "lantern.png",
+    "unlit": "lantern-unlit.png",
+    "glow": "lantern-glow.png"
+   },
+   "use": "hanging lantern; glow overlay for a CSS flicker",
+   "scale": 2,
+   "css": [
+    48,
+    114
+   ]
+  },
+  "keycap-square": {
+   "file": "keycap-square.png",
+   "size": [
+    19,
+    17
+   ],
+   "kind": "image",
+   "use": "square key glyph, as drawn (the keycap 9-slice covers every width)",
+   "scale": 2,
+   "css": [
+    38,
+    34
+   ]
+  },
+  "gear-small": {
+   "file": "gear-small.png",
+   "size": [
+    29,
+    32
+   ],
+   "kind": "image",
+   "use": "small gear badge, blank centre (OR between two choices, a counter)",
+   "scale": 2,
+   "css": [
+    58,
+    64
+   ]
+  },
+  "arrow-left": {
+   "file": "arrow-left.png",
+   "size": [
+    9,
+    16
+   ],
+   "kind": "image",
+   "use": "value cycler arrow",
+   "states": {
+    "normal": "arrow-left.png",
+    "hot": "arrow-left-hot.png"
+   },
+   "scale": 2,
+   "css": [
+    18,
+    32
+   ]
+  },
+  "arrow-right": {
+   "file": "arrow-right.png",
+   "size": [
+    9,
+    16
+   ],
+   "kind": "image",
+   "use": "value cycler arrow",
+   "states": {
+    "normal": "arrow-right.png",
+    "hot": "arrow-right-hot.png"
+   },
+   "scale": 2,
+   "css": [
+    18,
+    32
+   ]
+  },
+  "arrow-left-hot": {
+   "file": "arrow-left-hot.png",
+   "size": [
+    9,
+    16
+   ],
+   "kind": "image",
+   "use": "value cycler arrow, focused",
+   "scale": 2,
+   "css": [
+    18,
+    32
+   ]
+  },
+  "arrow-right-hot": {
+   "file": "arrow-right-hot.png",
+   "size": [
+    9,
+    16
+   ],
+   "kind": "image",
+   "use": "value cycler arrow, focused",
+   "scale": 2,
+   "css": [
+    18,
+    32
+   ]
+  },
+  "gear-crest": {
+   "file": "gear-crest.png",
+   "size": [
+    78,
+    27
+   ],
+   "kind": "image",
+   "use": "crest on the top edge of a large panel",
+   "scale": 2,
+   "css": [
+    156,
+    54
+   ]
+  },
+  "medallion": {
+   "file": "medallion.png",
+   "size": [
+    75,
+    73
+   ],
+   "kind": "image",
+   "use": "large gear medallion, blank face (VS, a rank, an emblem)",
+   "scale": 2,
+   "css": [
+    150,
+    146
+   ]
+  },
+  "seal": {
+   "file": "seal.png",
+   "size": [
+    19,
+    19
+   ],
+   "kind": "image",
+   "use": "check seal (ready, done), copper",
+   "scale": 2,
+   "css": [
+    38,
+    38
+   ]
+  },
+  "seal-teal": {
+   "file": "seal-teal.png",
+   "size": [
+    19,
+    19
+   ],
+   "kind": "image",
+   "use": "check seal, teal",
+   "scale": 2,
+   "css": [
+    38,
+    38
+   ]
+  },
+  "bead": {
+   "file": "bead.png",
+   "size": [
+    11,
+    11
+   ],
+   "kind": "image",
+   "use": "counter bead (stocks, lives), copper, lit",
+   "scale": 2,
+   "css": [
+    22,
+    22
+   ]
+  },
+  "bead-spent": {
+   "file": "bead-spent.png",
+   "size": [
+    11,
+    11
+   ],
+   "kind": "image",
+   "use": "counter bead, copper, spent",
+   "scale": 2,
+   "css": [
+    22,
+    22
+   ]
+  },
+  "bead-teal": {
+   "file": "bead-teal.png",
+   "size": [
+    11,
+    11
+   ],
+   "kind": "image",
+   "use": "counter bead, teal, lit",
+   "scale": 2,
+   "css": [
+    22,
+    22
+   ]
+  },
+  "bead-teal-spent": {
+   "file": "bead-teal-spent.png",
+   "size": [
+    11,
+    11
+   ],
+   "kind": "image",
+   "use": "counter bead, teal, spent",
+   "scale": 2,
+   "css": [
+    22,
+    22
+   ]
+  },
+  "hanging-sign": {
+   "file": "hanging-sign.png",
+   "size": [
+    140,
+    65
+   ],
+   "kind": "image",
+   "use": "hanging sign with two lanterns, blank face (timer, score)",
+   "scale": 2,
+   "css": [
+    280,
+    130
+   ]
+  },
+  "banner-plate": {
+   "file": "banner-plate.png",
+   "size": [
+    333,
+    115
+   ],
+   "kind": "image",
+   "use": "big banner plate, blank face (behind word art)",
+   "scale": 2,
+   "css": [
+    666,
+    230
+   ]
+  },
+  "slider-handle": {
+   "file": "slider-handle.png",
+   "size": [
+    22,
+    23
+   ],
+   "kind": "image",
+   "use": "slider handle (lay it over the track at the value)",
+   "states": {
+    "normal": "slider-handle.png",
+    "hot": "slider-handle-hot.png"
+   },
+   "scale": 2,
+   "css": [
+    44,
+    46
+   ]
+  },
+  "toggle": {
+   "file": "toggle.png",
+   "size": [
+    52,
+    19
+   ],
+   "kind": "image",
+   "use": "on/off lever switch",
+   "states": {
+    "off": "toggle.png",
+    "on": "toggle-on.png"
+   },
+   "scale": 2,
+   "css": [
+    104,
+    38
+   ]
+  },
+  "checkbox": {
+   "file": "checkbox.png",
+   "size": [
+    21,
+    20
+   ],
+   "kind": "image",
+   "use": "checkbox",
+   "states": {
+    "off": "checkbox.png",
+    "on": "checkbox-on.png"
+   },
+   "scale": 2,
+   "css": [
+    42,
+    40
+   ]
+  },
+  "scroll-thumb": {
+   "file": "scroll-thumb.png",
+   "size": [
+    13,
+    34
+   ],
+   "kind": "image",
+   "use": "scroll bar thumb (fixed size)",
+   "states": {
+    "normal": "scroll-thumb.png",
+    "hot": "scroll-thumb-hot.png"
+   },
+   "scale": 2,
+   "css": [
+    26,
+    68
+   ]
+  },
+  "meter-cell": {
+   "file": "meter-cell.png",
+   "size": [
+    11,
+    9
+   ],
+   "kind": "image",
+   "use": "meter cell fill, gold (one per filled cell)",
+   "scale": 2,
+   "css": [
+    22,
+    18
+   ]
+  },
+  "meter-cell-teal": {
+   "file": "meter-cell-teal.png",
+   "size": [
+    11,
+    9
+   ],
+   "kind": "image",
+   "use": "meter cell fill, teal (refilling)",
+   "scale": 2,
+   "css": [
+    22,
+    18
+   ]
+  },
+  "word-fight": {
+   "file": "word-fight.png",
+   "size": [
+    305,
+    77
+   ],
+   "kind": "word",
+   "use": "FIGHT!",
+   "scale": 2,
+   "css": [
+    610,
+    154
+   ]
+  },
+  "word-game": {
+   "file": "word-game.png",
+   "size": [
+    296,
+    76
+   ],
+   "kind": "word",
+   "use": "GAME!",
+   "scale": 2,
+   "css": [
+    592,
+    152
+   ]
+  },
+  "word-time": {
+   "file": "word-time.png",
+   "size": [
+    289,
+    78
+   ],
+   "kind": "word",
+   "use": "TIME!",
+   "scale": 2,
+   "css": [
+    578,
+    156
+   ]
+  },
+  "word-vs": {
+   "file": "word-vs.png",
+   "size": [
+    158,
+    82
+   ],
+   "kind": "word",
+   "use": "VS",
+   "scale": 2,
+   "css": [
+    316,
+    164
+   ]
+  },
+  "word-3": {
+   "file": "word-3.png",
+   "size": [
+    96,
+    105
+   ],
+   "kind": "word",
+   "use": "3",
+   "scale": 2,
+   "css": [
+    192,
+    210
+   ]
+  },
+  "word-2": {
+   "file": "word-2.png",
+   "size": [
+    87,
+    105
+   ],
+   "kind": "word",
+   "use": "2",
+   "scale": 2,
+   "css": [
+    174,
+    210
+   ]
+  },
+  "word-1": {
+   "file": "word-1.png",
+   "size": [
+    64,
+    105
+   ],
+   "kind": "word",
+   "use": "1",
+   "scale": 2,
+   "css": [
+    128,
+    210
+   ]
+  },
+  "fill-iron": {
+   "file": "fill-iron.png",
+   "size": [
+    192,
+    101
+   ],
+   "kind": "tile",
+   "repeat": "repeat",
+   "use": "dark iron plate: panel interiors",
+   "scale": 2,
+   "css": [
+    384,
+    202
+   ]
+  },
+  "fill-worn": {
+   "file": "fill-worn.png",
+   "size": [
+    192,
+    192
+   ],
+   "kind": "tile",
+   "repeat": "repeat",
+   "use": "lighter worn iron: slots, value boxes",
+   "scale": 2,
+   "css": [
+    384,
+    384
+   ]
+  },
+  "text-copper": {
+   "file": "text-copper.png",
+   "size": [
+    96,
+    170
+   ],
+   "kind": "texture",
+   "repeat": "repeat-x",
+   "use": "cast copper for background-clip: text (background-size: auto 100%)",
+   "scale": 2,
+   "css": [
+    192,
+    340
+   ]
+  },
+  "text-iron": {
+   "file": "text-iron.png",
+   "size": [
+    96,
+    170
+   ],
+   "kind": "texture",
+   "repeat": "repeat-x",
+   "use": "cast iron for background-clip: text (background-size: auto 100%)",
+   "scale": 2,
+   "css": [
+    192,
+    340
+   ]
+  }
+ }
+}

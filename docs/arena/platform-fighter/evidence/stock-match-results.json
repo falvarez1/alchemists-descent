@@ -2,7 +2,7 @@
   "results": {
     "before": 208,
     "low": {
-      "speed": 5.939404106896261,
+      "speed": 1.3599429125585638,
       "hp": 208,
       "percent": 8
     },
@@ -29,9 +29,11 @@
     "open": 0,
     "main": {
       "x0": 560,
-      "x1": 1040,
+      "x1": 1039,
       "y": 640,
-      "depth": 65
+      "depth": 43,
+      "art": "foundry/main",
+      "mirror": false
     }
   },
   "errors": []

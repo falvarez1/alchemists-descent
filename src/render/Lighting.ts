@@ -1,6 +1,7 @@
 import { propagateLight } from '@/render/propagateLight';
 import { propagateLightWasm } from '@/render/wasm/lightKernel';
 import { VIEW_H, VIEW_W } from '@/config/constants';
+import { stockLampCells, stockLampLevel, type StockLampCells } from '@/config/stockStage';
 import { DARK_ADAPT, renderAmbient, VIGNETTE_BASE } from '@/render/lightingModel';
 import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import type { AuthoredLight, Ctx } from '@/core/types';
@@ -261,6 +262,29 @@ export class Lighting implements LightField {
   }
 
   /**
+   * A Duel stage's lanterns (config/stockStage stockLampCells): each glass cell still standing seeds its texel in the
+   * glass's own colour while the hull cell its lantern hangs from is still Metal. Seeded per cell, not from the texel's
+   * sampled cell, so a small lantern never blinks out as the camera moves. Alive (stockLampLevel: the Foundry pulses,
+   * the Kiln flickers) but local: the stage already sits in a 0.92 ambient, so even at its peak a lamp only tints what
+   * is close to it and never pushes a deck to bloom.
+   */
+  private seedStockLamps(ctx: Ctx, lamps: StockLampCells, renderCamX: number, renderCamY: number): void {
+    const { LW, LH, lightR, lightG, lightB } = this, types = ctx.world.types, width = ctx.world.width, vs = this.viewScale;
+    const tick = ctx.state.frameCount;
+    for (let k = 0; k < lamps.cells.length; k++) {
+      const wi = lamps.cells[k];
+      if (types[wi] !== Cell.Glowshroom || types[lamps.anchors[k]] !== Cell.Metal) continue;
+      const wx = wi % width, wy = (wi - wx) / width;
+      const lx = Math.floor((wx - renderCamX) / vs) >> 1, ly = Math.floor((wy - renderCamY) / vs) >> 1;
+      if (lx < 0 || ly < 0 || lx >= LW || ly >= LH) continue;
+      const i = ly * LW + lx, f = STOCK_LAMP_LIGHT * stockLampLevel(lamps, k, tick);
+      lightR[i] = Math.max(lightR[i], f * lamps.rgb[k * 3]);
+      lightG[i] = Math.max(lightG[i], f * lamps.rgb[k * 3 + 1]);
+      lightB[i] = Math.max(lightB[i], f * lamps.rgb[k * 3 + 2]);
+    }
+  }
+
+  /**
    * Authored lights (Builder): occluded lights seed a point cluster and let
    * the directional sweeps carve shadows; non-occluded lights paint their
    * whole falloff disk straight into the field.
@@ -385,6 +409,8 @@ export class Lighting implements LightField {
     const kilnFlora = ctx.state.mode === 'play' && ctx.levels?.current?.def.biome === 'volcanic';
     const px = glowReact ? ctx.player.x : -1e9;
     const py = glowReact ? ctx.player.y : -1e9;
+    // A Duel stage's lantern glass is seeded on its own below (its colour, its anchor), never as a glow-cap.
+    const stockLamps = ctx.arena?.stockMatch ? stockLampCells(ctx.arena.stockStage) : null;
 
     // Attenuation map + emissive material seeding
     for (let ly = 0; ly < LH; ly++) {
@@ -454,7 +480,7 @@ export class Lighting implements LightField {
             lightG[i] = Math.max(lightG[i], f * 0.42);
             lightB[i] = Math.max(lightB[i], f * 0.12);
           }
-        } else if (t === Cell.Glowshroom) {
+        } else if (t === Cell.Glowshroom && !stockLamps?.index.has(wi)) {
           // Bioluminescent (finally living up to the name): a slow pulse ripples
           // across a colony (phase from cell position), and the caps FLARE as
           // the alchemist passes close — light that answers what moves through it.
@@ -552,6 +578,8 @@ export class Lighting implements LightField {
       }
     }
 
+    if (stockLamps) this.seedStockLamps(ctx, stockLamps, renderCamX, renderCamY);
+
     // A faint fill around the wizard keeps him readable even in self-shadow;
     // the wand itself is raycast after the sweeps so its shadows stay crisp
     // The lantern's state: the hood shutter eases (a visible, audible beat;
@@ -570,7 +598,7 @@ export class Lighting implements LightField {
         const spread = Math.max(0, wand.flicker);
         this.wandFlickerTarget = spread > 0 ? 1.04 - spread + Math.random() * spread * 2 : 1;
       }
-      const fill = 1 + (LANTERN.hoodFill - 1) * this.hoodK;
+      const fill = (1 + (LANTERN.hoodFill - 1) * this.hoodK) * stockWandLight(ctx);
       this.seedLight(ctx.player.x, ctx.player.y - 9, wand.fillR * fill, wand.fillG * fill, wand.fillB * fill);
       // Active flask siphon (hold E): pulse a cool light over the drained patch
       // at the cursor so the pull reads even against the bright wand light.
@@ -804,7 +832,7 @@ export class Lighting implements LightField {
     // carries further; hooded, the lantern is an ember and the beam is out.
     const hoodK = this.hoodK, darkK = this.playerDark;
     const spillRadius = (1 + (LANTERN.darkOmniRadius - 1) * darkK) * (1 + (LANTERN.hoodRadius - 1) * hoodK);
-    const spillIntensity = 1 + (LANTERN.hoodIntensity - 1) * hoodK;
+    const spillIntensity = (1 + (LANTERN.hoodIntensity - 1) * hoodK) * stockWandLight(ctx);
     this.wandWrite = ctx.state.lanternHooded === true ? 0 : 1;
     if (ctx.state.mode === 'play' && !ctx.player.dead && ctx.player.legClub) {
       // The stowed wand lights the belt; no detached muzzle or aiming beam.
@@ -832,7 +860,7 @@ export class Lighting implements LightField {
       const beamY = ctx.player.y - 9 + Math.sin(ctx.player.aimAngle) * BEAM_ORIGIN_DIST;
       if (hoodK < 0.999) {
         const beamK = (1 - hoodK) * (1 + (LANTERN.darkBeamIntensity - 1) * darkK);
-        this.raycastWandBeam(beamX, beamY, ctx.player.aimAngle, baseIntensity * beamK, baseRadius, darkK);
+        this.raycastWandBeam(beamX, beamY, ctx.player.aimAngle, baseIntensity * beamK * stockWandLight(ctx), baseRadius, darkK);
       }
       // Third light: non-occluded ambient glow over the same cone, on its OWN
       // faster flicker (candle-like life) instead of the steady wand flicker.
@@ -843,7 +871,7 @@ export class Lighting implements LightField {
         Math.sin(fc * 0.57 + 2.1) * 0.07 +
         (Math.random() - 0.5) * 0.05;
       if (hoodK < 0.999) {
-        this.raycastWandGlow(beamX, beamY, ctx.player.aimAngle, rawBase * glowFlick * (1 - hoodK),
+        this.raycastWandGlow(beamX, beamY, ctx.player.aimAngle, rawBase * glowFlick * (1 - hoodK) * stockWandLight(ctx),
           baseRadius * (1 + (LANTERN.darkGlowRadius - 1) * darkK));
       }
     } else if (ctx.state.mode === 'build' && ctx.state.builderWandLightPreview.enabled) {
@@ -1079,3 +1107,14 @@ export class Lighting implements LightField {
     }
   }
 }
+
+/**
+ * A stock stage is lit for play (ambient, its own lanterns, the furnace beyond): the wand and lantern that carve the
+ * campaign's designed darkness would wash the deck white around both fighters (measured 1.7x at the feet; light is
+ * additive over the 0.92 ambient, so even 30% left 1.37x). In a stock
+ * match they keep only a faint presence; elsewhere they are unchanged.
+ */
+const STOCK_WAND_LIGHT = 0.1;
+/** A Duel lantern's light at its glass at full flame (seedStockLamps): a local tint over the 0.92 ambient, never a bloom. */
+const STOCK_LAMP_LIGHT = 0.36;
+function stockWandLight(ctx: Ctx): number { return ctx.arena?.stockMatch ? STOCK_WAND_LIGHT : 1; }

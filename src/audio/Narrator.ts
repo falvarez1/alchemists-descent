@@ -16,6 +16,7 @@ import { TEA_COMPLETE_STAGE } from '@/world/teaMachine';
 import { deathLineFor, deathTitle } from '@/ui/deathCauses';
 import { runHeadline } from '@/game/runRules';
 import { failSafe } from '@/audio/failSafe';
+import { inDuelOrArena } from '@/audio/arenaAudio';
 
 /** The HUD reveals a floor's title card this long after the curtain lifts (ui/Hud), or after this fallback. */
 const TITLE_CARD_AFTER_CURTAIN_MS = 120;
@@ -96,6 +97,9 @@ export class Narrator implements NarratorApi {
     this.disposers.push(
       on('musicCue', ({ cue, previous }) => this.onCue(cue, previous)),
       on('levelChanged', () => this.onLevelChanged()),
+      // The Duel's lobby opening: what the descent still had to say (an arrival scheduled a moment ago) is not said.
+      on('versusChanged', () => { if (this.offStage) this.leaveDescent(); }),
+      on('duelOpen', () => this.leaveDescent()),
       on('levelCurtain', ({ visible, holdMs = 0 }) => {
         if (visible || !this.arrival) return;
         this.scheduleArrival(holdMs + TITLE_CARD_AFTER_CURTAIN_MS + AFTER_TITLE_CARD_MS);
@@ -140,6 +144,9 @@ export class Narrator implements NarratorApi {
 
   get enabled(): boolean { return this.on; }
 
+  /** The Duel (local or LAN) or an arena level: the narrator belongs to the descent and keeps out (audio/arenaAudio). */
+  private get offStage(): boolean { return inDuelOrArena(this.ctx); }
+
   /** Something is being said, or waits its turn. */
   get busy(): boolean { return this.speaking !== null || this.queue.length > 0; }
 
@@ -156,7 +163,7 @@ export class Narrator implements NarratorApi {
    * drops it.
    */
   speak(lines: readonly StorySpokenLine[], opts: StorySpeakOptions): boolean {
-    if (document.hidden) return false;
+    if (document.hidden || this.offStage) return false;
     const list = lines.filter(l => l.text.trim());
     if (list.length === 0) return false;
     const voiced = this.on && this.host.streamContext() !== null;
@@ -286,7 +293,7 @@ export class Narrator implements NarratorApi {
    * was started, queued or deferred. `guard` is re-checked if the line has to wait.
    */
   say(texts: readonly string[], priority: NarrationPriority, source: string, ttlMs = 4000, guard?: () => boolean): boolean {
-    if (!this.on || document.hidden || !this.host.streamContext() || (guard && !guard())) return false;
+    if (!this.on || document.hidden || this.offStage || !this.host.streamContext() || (guard && !guard())) return false;
     // A floor's title card is the arrival's to voice: a passing line waits it out (or lapses).
     const titleWait = this.titleQuietUntil - performance.now();
     if (priority !== 'high' && titleWait > 0) {
@@ -433,7 +440,15 @@ export class Narrator implements NarratorApi {
 
   /** A waiting utterance may still start: its moment has not passed, and it can be heard (or is caption-only). */
   private canRun(u: Utterance): boolean {
-    return performance.now() < u.expiresAt && (this.on || (u.silent?.every(Boolean) ?? false));
+    return performance.now() < u.expiresAt && !this.offStage && (this.on || (u.silent?.every(Boolean) ?? false));
+  }
+
+  /** The arena took the stage: a pending arrival is dropped and whatever is being said fades out. */
+  private leaveDescent(): void {
+    if (this.arrival) window.clearTimeout(this.arrival.timer);
+    this.arrival = null;
+    this.death = null;
+    this.silence(true, LEVEL_CHANGE_FADE_S);
   }
 
   /** Everything stops: the setting went off or the tab was hidden. */

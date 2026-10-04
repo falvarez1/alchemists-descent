@@ -3,32 +3,17 @@
   "fighters": [
     {
       "stocks": 3,
-      "volatility": 20.489340000000116,
+      "volatility": 29.094240000000163,
       "respawn": 0,
       "protection": 0
     },
     {
-      "stocks": 1,
-      "volatility": 0,
+      "stocks": 3,
+      "volatility": 88.14199999999987,
       "respawn": 0,
-      "protection": 76
+      "protection": 0
     }
   ],
-  "downs": [
-    {
-      "slot": 1,
-      "by": 1,
-      "source": "ring-out",
-      "x": 1053,
-      "y": 945
-    },
-    {
-      "slot": 1,
-      "by": 1,
-      "source": "ring-out",
-      "x": 1051,
-      "y": 942
-    }
-  ],
-  "remaining": 20523
+  "downs": [],
+  "remaining": 20513
 }

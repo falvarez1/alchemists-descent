@@ -1,0 +1,471 @@
+/* =====================================================================
+ * THE FOUNDRY KIT: the game's interface, made in its foundry. Blackened
+ * iron, aged copper, reinforced corners, rivets, gear crests, chains and
+ * lit lanterns, textured interiors, cast-metal letters. Every piece is
+ * sprite-forge's painted art (public/assets/arena/ui, kit.json; the art's
+ * own notes: docs/arena/platform-fighter/UI-KIT.md); ui/foundryKit.ts
+ * preloads it. The Duel's screens wear it today; any screen can: import
+ * this file and put the classes on plain markup. Every component on one
+ * page: docs/arena/platform-fighter/foundry-kit-gallery.html (dev server).
+ *
+ * SCALE. The kit is pixel art. One art pixel is --fk-s: :root gives it the
+ * window's integer scale (--fk-px: 2 at 1280x720, 3 at 1920x1080, 1 on small
+ * views) and it inherits, so a screen or a component may set its own
+ * (.fk-card--small draws at half: --fk-px-half). Frames are drawn at it.
+ * Plates (buttons, list rows, ribbons, keycaps, bands, tabs) are drawn
+ * whole at the element's height --fk-h (set it to size one), so their
+ * studs and bevels keep their proportions. Cast-metal text wants about
+ * 14px or more; smaller labels stay plain cream (.fk-engraved).
+ *
+ * COMPONENTS (BEM)
+ *   frames  .fk-panel (--crested --hung --small; lanterns: .fk-lantern --left --right inside)
+ *           .fk-card (--teal --small) · .fk-slot · .fk-picture-frame (+ __caption)
+ *           .fk-hud-card (--teal; + __window, __body)
+ *   plates  .fk-button (--primary --secondary) · .fk-list-row · .fk-keycap · .fk-nameplate · .fk-ribbon
+ *           .fk-title-plate · .fk-tab (--active) · .fk-tooltip · .fk-band (--rims)
+ *           .fk-hanging-nameplate (--lit) · .fk-hanging-sign · .fk-banner-plate
+ *   type    .fk-heading-cast (--iron --ruled) · .fk-engraved · .fk-word (--fight --game --time --vs --1 --2 --3)
+ *   marks   .fk-divider · .fk-or · .fk-medallion · .fk-seal (--teal) · .fk-bead (--teal) · .fk-arrow (--prev --next)
+ *           .fk-meter (--wide; + __cell)
+ *   inputs  .fk-toggle · .fk-checkbox · .fk-slider (input[type=range])
+ * STATES  :hover / :focus-visible light a plate (hot); :active presses it. A seal, bead, toggle or tab is lit by
+ *         [aria-pressed="true"], [aria-checked="true"], [aria-selected="true"], [data-on="true"] or :checked;
+ *         a meter cell by [data-filled="true"] (and refills to --fk-fill).
+ * ===================================================================== */
+@font-face {
+  /* Google Fonts' Latin subset of Alegreya SC ExtraBold (OFL, public/assets/fonts/OFL-AlegreyaSC.txt), 30 KB;
+     kept: kern, liga, lnum/onum, smcp (the font IS small caps: lowercase sets as small capitals). */
+  font-family: 'Alegreya SC'; src: url('/assets/fonts/alegreya-sc-800-latin.woff2') format('woff2');
+  font-style: normal; font-weight: 800; font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+:root {
+  /* the art pixel: an integer scale for the window (a custom property's var() resolves where it is declared, so these are
+     viewport units, not a screen's own unit) */
+  --fk-px: max(1px, round(down, (min(1vw, 1.7778vh) + .2px) / 6.4, 1px));
+  --fk-px-half: max(1px, round(down, (min(1vw, 1.7778vh) + .2px) / 12.8, 1px));
+  --fk-s: var(--fk-px);
+
+  /* type and ink */
+  --fk-font-display: 'Alegreya SC', 'Cormorant Garamond', Georgia, serif;
+  --fk-font-serif: 'Cormorant Garamond', Georgia, serif;
+  --fk-ink: #e8dcc0; --fk-ink-soft: #d9c8a8; --fk-ink-dim: #a99f8b; --fk-ink-hot: #fff2dc;
+  --fk-copper-ink: #ffe9c8; --fk-glow: #ff9a4a; --fk-teal: #65cac5; --fk-amber: #efac58;
+
+  /* the pieces */
+  --fk-img-panel-large: url('/assets/arena/ui/panel-large.png');
+  --fk-img-panel-small: url('/assets/arena/ui/panel-small.png');
+  --fk-img-card: url('/assets/arena/ui/card.png');
+  --fk-img-card-teal: url('/assets/arena/ui/card-teal.png');
+  --fk-img-slot: url('/assets/arena/ui/slot.png');
+  --fk-img-picture-frame: url('/assets/arena/ui/picture-frame.png');
+  --fk-img-hud-card: url('/assets/arena/ui/hud-card.png');
+  --fk-img-hud-card-teal: url('/assets/arena/ui/hud-card-teal.png');
+  --fk-img-button-primary: url('/assets/arena/ui/button-primary.png');
+  --fk-img-button-primary-hot: url('/assets/arena/ui/button-primary-hot.png');
+  --fk-img-button-primary-pressed: url('/assets/arena/ui/button-primary-pressed.png');
+  --fk-img-button-secondary: url('/assets/arena/ui/button-secondary.png');
+  --fk-img-button-secondary-hot: url('/assets/arena/ui/button-secondary-hot.png');
+  --fk-img-button-secondary-pressed: url('/assets/arena/ui/button-secondary-pressed.png');
+  --fk-img-list-row: url('/assets/arena/ui/list-row.png');
+  --fk-img-list-row-hot: url('/assets/arena/ui/list-row-hot.png');
+  --fk-img-keycap: url('/assets/arena/ui/keycap.png');
+  --fk-img-nameplate: url('/assets/arena/ui/nameplate.png');
+  --fk-img-nameplate-hanging: url('/assets/arena/ui/nameplate-hanging.png');
+  --fk-img-ribbon: url('/assets/arena/ui/ribbon.png');
+  --fk-img-title-plate: url('/assets/arena/ui/title-plate.png');
+  --fk-img-tab: url('/assets/arena/ui/tab.png');
+  --fk-img-tab-active: url('/assets/arena/ui/tab-active.png');
+  --fk-img-tooltip: url('/assets/arena/ui/tooltip.png');
+  --fk-img-band: url('/assets/arena/ui/band.png');
+  --fk-img-hanging-sign: url('/assets/arena/ui/hanging-sign.png');
+  --fk-img-banner-plate: url('/assets/arena/ui/banner-plate.png');
+  --fk-img-chain: url('/assets/arena/ui/chain.png');
+  --fk-img-lantern: url('/assets/arena/ui/lantern.png');
+  --fk-img-lantern-glow: url('/assets/arena/ui/lantern-glow.png');
+  --fk-img-gear-crest: url('/assets/arena/ui/gear-crest.png');
+  --fk-img-gear-small: url('/assets/arena/ui/gear-small.png');
+  --fk-img-medallion: url('/assets/arena/ui/medallion.png');
+  --fk-img-seal: url('/assets/arena/ui/seal.png');
+  --fk-img-seal-teal: url('/assets/arena/ui/seal-teal.png');
+  --fk-img-bead: url('/assets/arena/ui/bead.png');
+  --fk-img-bead-spent: url('/assets/arena/ui/bead-spent.png');
+  --fk-img-bead-teal: url('/assets/arena/ui/bead-teal.png');
+  --fk-img-bead-teal-spent: url('/assets/arena/ui/bead-teal-spent.png');
+  --fk-img-arrow-left: url('/assets/arena/ui/arrow-left.png');
+  --fk-img-arrow-left-hot: url('/assets/arena/ui/arrow-left-hot.png');
+  --fk-img-arrow-right: url('/assets/arena/ui/arrow-right.png');
+  --fk-img-arrow-right-hot: url('/assets/arena/ui/arrow-right-hot.png');
+  --fk-img-meter: url('/assets/arena/ui/meter.png');
+  --fk-img-meter-cell: url('/assets/arena/ui/meter-cell.png');
+  --fk-img-meter-cell-teal: url('/assets/arena/ui/meter-cell-teal.png');
+  --fk-img-meter-wide: url('/assets/arena/ui/meter-wide.png');
+  --fk-img-meter-wide-cell: url('/assets/arena/ui/meter-wide-cell.png');
+  --fk-img-meter-wide-cell-teal: url('/assets/arena/ui/meter-wide-cell-teal.png');
+  --fk-img-toggle: url('/assets/arena/ui/toggle.png');
+  --fk-img-toggle-on: url('/assets/arena/ui/toggle-on.png');
+  --fk-img-checkbox: url('/assets/arena/ui/checkbox.png');
+  --fk-img-checkbox-on: url('/assets/arena/ui/checkbox-on.png');
+  --fk-img-slider-track: url('/assets/arena/ui/slider-track.png');
+  --fk-img-slider-fill: url('/assets/arena/ui/slider-fill.png');
+  --fk-img-slider-handle: url('/assets/arena/ui/slider-handle.png');
+  --fk-img-slider-handle-hot: url('/assets/arena/ui/slider-handle-hot.png');
+  --fk-img-divider-line: url('/assets/arena/ui/divider-line.png');
+  --fk-img-divider-diamond: url('/assets/arena/ui/divider-diamond.png');
+  --fk-img-divider-cap-left: url('/assets/arena/ui/divider-cap-left.png');
+  --fk-img-divider-cap-right: url('/assets/arena/ui/divider-cap-right.png');
+  --fk-img-fill-iron: url('/assets/arena/ui/fill-iron.png');
+  --fk-img-fill-worn: url('/assets/arena/ui/fill-worn.png');
+  --fk-img-text-copper: url('/assets/arena/ui/text-copper.png');
+  --fk-img-text-iron: url('/assets/arena/ui/text-iron.png');
+  --fk-img-word-fight: url('/assets/arena/ui/word-fight.png');
+  --fk-img-word-game: url('/assets/arena/ui/word-game.png');
+  --fk-img-word-time: url('/assets/arena/ui/word-time.png');
+  --fk-img-word-vs: url('/assets/arena/ui/word-vs.png');
+  --fk-img-word-1: url('/assets/arena/ui/word-1.png');
+  --fk-img-word-2: url('/assets/arena/ui/word-2.png');
+  --fk-img-word-3: url('/assets/arena/ui/word-3.png');
+
+  /* the fills (background layers): dark iron warmed from below by the furnace; a lighter plate for cards; worn iron sunk
+     in shadow for slots. The tiles are drawn at the window's scale. */
+  --fk-fill-iron: radial-gradient(130% 90% at 50% 118%, #ff8a3a2a, #0000 62%), var(--fk-img-fill-iron) 0 0 / calc(192 * var(--fk-px)) calc(101 * var(--fk-px));
+  --fk-fill-iron-lit: radial-gradient(100% 90% at 50% 20%, #ffd9a612, #0000 70%), var(--fk-img-fill-iron) 0 0 / calc(192 * var(--fk-px)) calc(101 * var(--fk-px));
+  --fk-fill-slot: linear-gradient(#0a0807d9, #0a0807b8), var(--fk-img-fill-worn) 0 0 / calc(192 * var(--fk-px)) calc(192 * var(--fk-px));
+  /* cast metal for background-clip: text (kit.json: background-size auto 100%) */
+  --fk-text-copper: var(--fk-img-text-copper) 0 0 / auto 100% repeat-x;
+  --fk-text-iron: var(--fk-img-text-iron) 0 0 / auto 100% repeat-x;
+}
+
+/* =========================== FRAMES ===========================
+   A hollow 9-slice: the layout border is the frame's own band (kit.json band x scale), so the fill behind (clipped to the
+   padding box) reaches exactly under it and never past the frame's outer edge; the slices are drawn at slice x scale over
+   the padding. The corner plates reach further in than the band: content keeps clear of them by padding. */
+
+/* the large panel: menus, lobby, pause, results, dialogs */
+.fk-panel {
+  position: relative; border: solid transparent; border-width: calc(14 * var(--fk-s)); border-radius: 0;
+  border-image: var(--fk-img-panel-large) 30 32 30 32 / calc(30 * var(--fk-s)) calc(32 * var(--fk-s)) round;
+  background: var(--fk-fill-iron); background-origin: border-box; background-clip: padding-box; image-rendering: pixelated;
+  box-shadow: 0 14px 44px #000d, inset 0 0 calc(10 * var(--fk-s)) #000c;
+}
+/* the small panel: dialogs, confirmations, sub-panels */
+.fk-panel--small { border-width: calc(11 * var(--fk-s)); border-image: var(--fk-img-panel-small) 18 / calc(18 * var(--fk-s)) round; }
+/* the gear crest on the top edge, its base plate seated on the frame */
+.fk-panel--crested::before {
+  content: ''; position: absolute; left: 50%; bottom: calc(100% + 4 * var(--fk-s)); width: calc(78 * var(--fk-s)); height: calc(27 * var(--fk-s));
+  translate: -50% 0; z-index: 3; pointer-events: none; background: var(--fk-img-gear-crest) 0 0 / 100% 100% no-repeat; image-rendering: pixelated;
+}
+/* hung from the ceiling on two chains (they run up off the screen) */
+.fk-panel--hung::after {
+  content: ''; position: absolute; left: 10%; right: 10%; bottom: calc(100% + 10 * var(--fk-s)); height: 100vh; z-index: 0; pointer-events: none;
+  background: var(--fk-img-chain) left bottom / calc(10 * var(--fk-s)) calc(17 * var(--fk-s)) repeat-y, var(--fk-img-chain) right bottom / calc(10 * var(--fk-s)) calc(17 * var(--fk-s)) repeat-y;
+  image-rendering: pixelated; filter: drop-shadow(0 2px 2px #000a);
+}
+/* lit lanterns hung on a panel's sides (two spans inside it): a flickering glow and a pool of warm light */
+.fk-lantern {
+  position: absolute; top: 22%; width: calc(24 * var(--fk-s)); height: calc(57 * var(--fk-s)); z-index: 3; pointer-events: none;
+  background: var(--fk-img-lantern) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; filter: drop-shadow(0 4px 4px #000a);
+}
+.fk-lantern--left { right: calc(100% + 7 * var(--fk-s)); }
+.fk-lantern--right { left: calc(100% + 7 * var(--fk-s)); }
+.fk-lantern::before { content: ''; position: absolute; left: 50%; top: 58%; width: 520%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; background: radial-gradient(circle, #ffa04a2e, #ff7a2a10 40%, #0000 68%); animation: fk-flicker 2.6s steps(6) infinite; }
+.fk-lantern::after { content: ''; position: absolute; inset: 0; background: var(--fk-img-lantern-glow) 0 0 / 100% 100% no-repeat; mix-blend-mode: screen; animation: fk-flicker 1.9s steps(5) infinite; }
+@keyframes fk-flicker { 30% { opacity: .72; } 55% { opacity: 1; } 80% { opacity: .84; } }
+
+/* a card: player seats, info boxes; copper (the first player) or teal (the second); --small draws it at half scale */
+.fk-card {
+  border: solid transparent; border-width: calc(7 * var(--fk-s)); border-radius: 0; border-image: var(--fk-img-card) 13 / calc(13 * var(--fk-s)) round;
+  background: var(--fk-fill-iron-lit); background-origin: border-box; background-clip: padding-box; image-rendering: pixelated;
+  box-shadow: 0 6px 16px #000b, inset 0 0 calc(6 * var(--fk-s)) #000b;
+}
+.fk-card--teal { border-image-source: var(--fk-img-card-teal); }
+.fk-card--small { --fk-s: var(--fk-px-half); }
+/* an inset slot: text fields, value boxes, status and rules bars, a stats box */
+.fk-slot {
+  border: solid transparent; border-width: calc(5 * var(--fk-s)); border-radius: 0; border-image: var(--fk-img-slot) 7 / calc(7 * var(--fk-s)) round;
+  background: var(--fk-fill-slot); background-origin: border-box; background-clip: padding-box; image-rendering: pixelated;
+  box-shadow: inset 0 calc(2 * var(--fk-s)) calc(8 * var(--fk-s)) #000d;
+}
+/* a picture tile (stages, levels, saves): the frame round the picture; the frame's bottom band is a caption plate */
+.fk-picture-frame {
+  position: relative; border: solid transparent; border-width: calc(7 * var(--fk-s)) calc(7 * var(--fk-s)) calc(29 * var(--fk-s)); border-radius: 0;
+  border-image: var(--fk-img-picture-frame) 12 12 34 12 / calc(12 * var(--fk-s)) calc(12 * var(--fk-s)) calc(34 * var(--fk-s)) round;
+  background: #0a0807; background-clip: padding-box; image-rendering: pixelated;
+}
+.fk-picture-frame__caption {
+  position: absolute; left: 0; right: 0; bottom: calc(-26 * var(--fk-s)); height: calc(26 * var(--fk-s)); z-index: 1; display: grid; place-items: center; overflow: hidden;
+  font: 800 1em/1 var(--fk-font-display); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; color: var(--fk-ink-soft); text-shadow: 0 2px 0 #000, 0 0 4px #000;
+}
+/* a player's HUD card: the portrait in the riveted window at its outer end (kit.json window: 15 art px in, 54 x 55), the
+   name, counters and meters on the plate. Drawn whole at --fk-b (84 art px tall). */
+.fk-hud-card {
+  --fk-b: var(--fk-s); display: grid; grid-template-columns: calc(54 * var(--fk-b)) minmax(0, 1fr); column-gap: calc(13 * var(--fk-b)); align-items: stretch;
+  height: calc(84 * var(--fk-b)); padding: 0; border: solid transparent; border-width: calc(15 * var(--fk-b)) calc(16 * var(--fk-b)) calc(14 * var(--fk-b)) calc(15 * var(--fk-b));
+  border-radius: 0; border-image: var(--fk-img-hud-card) 12 18 12 82 fill / calc(12 * var(--fk-b)) calc(18 * var(--fk-b)) calc(12 * var(--fk-b)) calc(82 * var(--fk-b)) round stretch;
+  background: none; box-shadow: none; image-rendering: pixelated; filter: drop-shadow(0 6px 10px #000c);
+}
+.fk-hud-card--teal {
+  grid-template-columns: minmax(0, 1fr) calc(54 * var(--fk-b)); border-width: calc(15 * var(--fk-b)) calc(15 * var(--fk-b)) calc(14 * var(--fk-b)) calc(16 * var(--fk-b));
+  border-image: var(--fk-img-hud-card-teal) 12 82 12 18 fill / calc(12 * var(--fk-b)) calc(82 * var(--fk-b)) calc(12 * var(--fk-b)) calc(18 * var(--fk-b)) round stretch;
+}
+.fk-hud-card__window { position: relative; grid-row: 1; grid-column: 1; height: calc(55 * var(--fk-b)); overflow: hidden; background: #0b0908; box-shadow: inset 0 0 calc(4 * var(--fk-b)) #000; }
+.fk-hud-card--teal .fk-hud-card__window { grid-column: 2; }
+/* (the lines use the plate's full height, deeper than the window's rims, and keep clear of the window's rim: the teal one is wider) */
+.fk-hud-card__body { grid-row: 1; grid-column: 2; align-self: center; min-width: 0; margin: calc(-5 * var(--fk-b)) 0; padding-left: calc(4 * var(--fk-b)); }
+.fk-hud-card--teal .fk-hud-card__body { grid-column: 1; padding-left: 0; padding-right: calc(9 * var(--fk-b)); }
+
+/* =========================== PLATES ===========================
+   Filled 9-slices with a fixed height: drawn whole at the element's height --fk-h (--fk-b is one art pixel of it). */
+
+/* plate buttons: copper (primary: confirm, ready, host) and dark iron (secondary: back, change, join) */
+.fk-button {
+  --fk-h: calc(34 * var(--fk-s)); --fk-b: calc(var(--fk-h) / 34);
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .6em; box-sizing: border-box; min-height: var(--fk-h);
+  padding: 0 calc(4 * var(--fk-b)); border: solid transparent; border-width: calc(5 * var(--fk-b)) calc(20 * var(--fk-b)); border-radius: 0;
+  border-image: var(--fk-img-button-primary) 8 20 fill / calc(8 * var(--fk-b)) calc(20 * var(--fk-b)) round stretch;
+  background: none; box-shadow: none; color: var(--fk-copper-ink); cursor: pointer; image-rendering: pixelated;
+  font: 800 1em/1 var(--fk-font-display); letter-spacing: .1em; text-transform: uppercase; text-shadow: 0 2px 0 #2a1206, 0 0 8px #ff8a3a55;
+  transition: filter .08s, transform .06s;
+}
+.fk-button--secondary { border-image-source: var(--fk-img-button-secondary); color: var(--fk-ink); text-shadow: 0 2px 0 #000; }
+.fk-button:is(:hover, :focus-visible):not(:disabled) { border-image-source: var(--fk-img-button-primary-hot); outline: none; color: #fff4de; text-shadow: 0 2px 0 #3a1404, 0 0 6px #2a0e04; filter: drop-shadow(0 0 10px #ff9a4a88); }
+.fk-button--secondary:is(:hover, :focus-visible):not(:disabled) { border-image-source: var(--fk-img-button-secondary-hot); filter: drop-shadow(0 0 8px #ff9a4a66); }
+.fk-button:active:not(:disabled) { border-image-source: var(--fk-img-button-primary-pressed); transform: translateY(1px); }
+.fk-button--secondary:active:not(:disabled) { border-image-source: var(--fk-img-button-secondary-pressed); }
+.fk-button:disabled { filter: grayscale(.6) brightness(.6); cursor: default; }
+/* a menu list row (26 art px tall, a diamond stud at each end); the cursor (focus) is its lit copper state */
+.fk-list-row {
+  --fk-h: calc(20 * var(--fk-s)); --fk-b: calc(var(--fk-h) / 26);
+  display: flex; align-items: center; justify-content: flex-start; gap: .6em; box-sizing: border-box; width: 100%; min-height: var(--fk-h);
+  padding: 0 calc(4 * var(--fk-b)); border: solid transparent; border-width: calc(4 * var(--fk-b)) calc(22 * var(--fk-b)); border-radius: 0;
+  border-image: var(--fk-img-list-row) 6 22 fill / calc(6 * var(--fk-b)) calc(22 * var(--fk-b)) round stretch;
+  background: none; color: var(--fk-ink-soft); cursor: pointer; image-rendering: pixelated;
+  font: 800 1em/1 var(--fk-font-display); letter-spacing: .12em; text-transform: uppercase; text-shadow: 0 2px 0 #000;
+}
+.fk-list-row:is(:focus, :focus-visible, [aria-current="true"]) { border-image-source: var(--fk-img-list-row-hot); outline: none; color: var(--fk-ink-hot); text-shadow: 0 2px 0 #3a1404, 0 0 3px #3a1404; filter: drop-shadow(0 0 10px #ff7a2a88); }
+/* a key glyph at any width (A, Esc, Enter, Space, Click): 17 art px tall */
+.fk-keycap {
+  --fk-h: calc(13 * var(--fk-s)); --fk-b: calc(var(--fk-h) / 17);
+  display: inline-grid; place-items: center; min-width: calc(19 * var(--fk-b)); height: var(--fk-h); padding: 0 calc(2 * var(--fk-b)) calc(1 * var(--fk-b)); box-sizing: border-box; vertical-align: middle;
+  border: solid transparent; border-width: 0 calc(4 * var(--fk-b)); border-radius: 0; border-image: var(--fk-img-keycap) 5 fill / calc(5 * var(--fk-b)) round stretch;
+  background: none; font: 800 .82em/1 var(--fk-font-display); letter-spacing: .02em; color: #efe4cc; text-transform: none; text-shadow: 0 1px 0 #000; image-rendering: pixelated;
+}
+/* a nameplate, one or two lines (a fighter's name and title): a dark plate in a chamfered copper rim, a rivet at each end */
+.fk-nameplate {
+  border: solid transparent; border-width: calc(5 * var(--fk-s)) calc(11 * var(--fk-s)); border-radius: 0;
+  border-image: var(--fk-img-nameplate) 8 12 fill / calc(8 * var(--fk-s)) calc(12 * var(--fk-s)) round stretch;
+  background: none; image-rendering: pixelated; filter: drop-shadow(0 4px 6px #000a);
+}
+/* a subtitle ribbon (a status line, a tagline): the thin riveted plate with a sunk slot for the line; 24 art px tall */
+.fk-ribbon {
+  --fk-h: calc(18 * var(--fk-s)); --fk-b: calc(var(--fk-h) / 24);
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--fk-h); padding: 0 calc(4 * var(--fk-b));
+  border: solid transparent; border-width: calc(5 * var(--fk-b)) calc(16 * var(--fk-b)); border-radius: 0;
+  border-image: var(--fk-img-ribbon) 6 16 fill / calc(6 * var(--fk-b)) calc(16 * var(--fk-b)) round stretch; background: none; image-rendering: pixelated;
+  font: 800 .9em/1.1 var(--fk-font-display); letter-spacing: .24em; text-transform: uppercase; color: #e6d4b2; text-shadow: 0 1px 0 #000;
+}
+/* a heading plate across the top edge of a panel or dialog; 26 art px tall */
+.fk-title-plate {
+  --fk-h: calc(26 * var(--fk-s)); --fk-b: calc(var(--fk-h) / 26);
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--fk-h); padding: 0 calc(4 * var(--fk-b));
+  border: solid transparent; border-width: calc(5 * var(--fk-b)) calc(16 * var(--fk-b)); border-radius: 0;
+  border-image: var(--fk-img-title-plate) 6 16 fill / calc(6 * var(--fk-b)) calc(16 * var(--fk-b)) round stretch; background: none; image-rendering: pixelated;
+}
+/* a tab of a tab strip; the open one is --active (or [aria-selected="true"]); 24 art px tall */
+.fk-tab {
+  --fk-h: calc(20 * var(--fk-s)); --fk-b: calc(var(--fk-h) / 24);
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: var(--fk-h); padding: 0 calc(3 * var(--fk-b));
+  border: solid transparent; border-width: calc(5 * var(--fk-b)) calc(9 * var(--fk-b)); border-radius: 0;
+  border-image: var(--fk-img-tab) 6 9 fill / calc(6 * var(--fk-b)) calc(9 * var(--fk-b)) round stretch; background: none; cursor: pointer; image-rendering: pixelated;
+  font: 800 .9em/1 var(--fk-font-display); letter-spacing: .1em; text-transform: uppercase; color: var(--fk-ink-dim); text-shadow: 0 1px 0 #000;
+}
+.fk-tab:is(.fk-tab--active, [aria-selected="true"]) { border-image-source: var(--fk-img-tab-active); color: var(--fk-ink-hot); }
+.fk-tab:focus-visible { outline: none; filter: drop-shadow(0 0 6px #ff9a4a99); }
+/* a tooltip or toast: grows both ways with its text */
+.fk-tooltip {
+  display: inline-block; box-sizing: border-box; padding: calc(2 * var(--fk-s)) calc(4 * var(--fk-s)); border: solid transparent; border-width: calc(6 * var(--fk-s)); border-radius: 0;
+  border-image: var(--fk-img-tooltip) 7 fill / calc(7 * var(--fk-s)) round; background: none; image-rendering: pixelated;
+  font: 700 1em/1.35 var(--fk-font-serif); color: var(--fk-ink); text-shadow: 0 1px 0 #000;
+}
+/* the long band (cut-ins, announcements): 36 art px tall; --rims keeps only its riveted rims top and bottom over an iron
+   fill, for a band much taller than the plate */
+.fk-band {
+  --fk-h: calc(36 * var(--fk-s)); --fk-b: calc(var(--fk-h) / 36);
+  box-sizing: border-box; min-height: var(--fk-h); padding: 0 calc(10 * var(--fk-b)); border: solid transparent; border-width: calc(6 * var(--fk-b)) calc(18 * var(--fk-b)); border-radius: 0;
+  border-image: var(--fk-img-band) 8 18 fill / calc(8 * var(--fk-b)) calc(18 * var(--fk-b)) round stretch; background: none; image-rendering: pixelated;
+}
+.fk-band--rims {
+  min-height: 0; border-width: calc(8 * var(--fk-s)) 0; border-image: var(--fk-img-band) 8 18 / calc(8 * var(--fk-s)) calc(18 * var(--fk-s)) round stretch;
+  background: var(--fk-fill-iron); background-origin: border-box; background-clip: padding-box;
+  box-shadow: inset 0 calc(3 * var(--fk-s)) calc(8 * var(--fk-s)) #000c, inset 0 calc(-3 * var(--fk-s)) calc(8 * var(--fk-s)) #000c;
+}
+/* a sign hung on two chains (prompts, a status line): the chains rise above the box (outside it), the text sits on the
+   plate's face; --lit hangs a small lantern each side. --fk-b sizes it (93 art px tall, 28 of them the plate). */
+.fk-hanging-nameplate {
+  --fk-b: var(--fk-s); position: relative; box-sizing: border-box; border: solid transparent; border-width: calc(8 * var(--fk-b)) calc(18 * var(--fk-b)); border-radius: 0;
+  border-image: var(--fk-img-nameplate-hanging) 65 22 8 22 fill / calc(65 * var(--fk-b)) calc(22 * var(--fk-b)) calc(8 * var(--fk-b)) / calc(57 * var(--fk-b)) 0 0 round stretch;
+  background: none; image-rendering: pixelated;
+}
+.fk-hanging-nameplate--lit::before, .fk-hanging-nameplate--lit::after {
+  content: ''; position: absolute; top: 50%; width: calc(12 * var(--fk-s)); height: calc(28.5 * var(--fk-s)); translate: 0 -60%; pointer-events: none; image-rendering: pixelated;
+  background: var(--fk-img-lantern-glow) 0 0 / 100% 100% no-repeat, var(--fk-img-lantern) 0 0 / 100% 100% no-repeat; filter: drop-shadow(0 0 8px #ff9a3c88);
+}
+.fk-hanging-nameplate--lit::before { right: calc(100% + 18 * var(--fk-b)); }
+.fk-hanging-nameplate--lit::after { left: calc(100% + 18 * var(--fk-b)); }
+/* the hanging sign with two lit lanterns (a timer, a score): its own chains at the top, the text on its blank face */
+.fk-hanging-sign {
+  display: grid; justify-items: center; align-content: start; box-sizing: border-box; width: calc(140 * var(--fk-s)); height: calc(65 * var(--fk-s)); padding: calc(23 * var(--fk-s)) 0 0;
+  border: 0; border-radius: 0; background: var(--fk-img-hanging-sign) 0 0 / 100% 100% no-repeat; box-shadow: none; image-rendering: pixelated;
+  font: 800 calc(16 * var(--fk-s))/calc(28 * var(--fk-s)) var(--fk-font-display); font-variant-numeric: lining-nums tabular-nums; letter-spacing: .04em;
+  color: #f6e8ca; text-shadow: 0 2px 0 #000, 0 0 8px #ff9a4a55; filter: drop-shadow(0 6px 8px #000a);
+}
+/* the big banner plate (gears above and below, spikes either side), blank: a word goes on it */
+.fk-banner-plate {
+  display: grid; place-items: center; width: calc(333 * var(--fk-s)); height: calc(115 * var(--fk-s));
+  background: var(--fk-img-banner-plate) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; filter: drop-shadow(0 18px 26px #000d);
+}
+/* (the word sits inside the plate's face with the frame showing round it: .8 of the plate's scale, smoothed) */
+.fk-banner-plate > .fk-word { --fk-word-s: calc(var(--fk-s) * .8); image-rendering: auto; filter: drop-shadow(0 0 calc(5 * var(--fk-s)) #ff8a3a66); }
+
+/* =========================== TYPE =========================== */
+/* cast-metal signage: the kit's cast copper clipped to the letters, a dark outline, a bevel and the furnace glow. (The
+   transparent ink and the shadowless text are what make the clipped fill show: a screen's own colour or text-shadow on the
+   same element would paint over it, so they are forced.) */
+.fk-heading-cast {
+  background: var(--fk-text-copper); -webkit-background-clip: text; background-clip: text; color: transparent !important;
+  -webkit-text-stroke: .016em #2a1206; text-shadow: none !important; font-family: var(--fk-font-display); font-weight: 800;
+  filter: drop-shadow(0 -1px 0 #ffe0b066) drop-shadow(0 2px 0 #1a0a03) drop-shadow(0 4px 3px #000a) drop-shadow(0 0 .3em #ff8a3a40);
+}
+.fk-heading-cast--iron { background: var(--fk-text-iron); -webkit-background-clip: text; background-clip: text; }
+/* ruled: a copper divider either side, a diamond toward the words */
+.fk-heading-cast--ruled { display: flex; align-items: center; justify-content: center; gap: .35em; }
+.fk-heading-cast--ruled::before, .fk-heading-cast--ruled::after {
+  content: ''; flex: none; width: calc(36 * var(--fk-s)); height: calc(11 * var(--fk-s)); -webkit-text-stroke: 0; image-rendering: pixelated;
+  background: var(--fk-img-divider-diamond) right center / calc(8 * var(--fk-s)) 100% no-repeat, var(--fk-img-divider-cap-left) left center / calc(4 * var(--fk-s)) 100% no-repeat,
+    var(--fk-img-divider-line) left center / calc(10 * var(--fk-s)) 100% repeat-x;
+}
+.fk-heading-cast--ruled::after { transform: scaleX(-1); }
+/* engraved small capitals (subtitles, labels): readable, warm, slightly sunk */
+.fk-engraved { color: var(--fk-ink-soft); text-shadow: 0 1px 0 #000, 0 -1px 0 #ffffff12; }
+/* painted word art in place of letters (the text stays in the element, transparent, for assistive tech) */
+.fk-word {
+  --fk-word-s: var(--fk-s); display: inline-block; flex: none; width: calc(var(--fk-word-w, 100) * var(--fk-word-s)); height: calc(var(--fk-word-h, 80) * var(--fk-word-s));
+  font-size: 0; color: transparent !important; -webkit-text-stroke: 0; text-shadow: none !important;
+  background: var(--fk-word) center / 100% 100% no-repeat; -webkit-background-clip: border-box; background-clip: border-box; image-rendering: pixelated;
+}
+.fk-word--fight { --fk-word: var(--fk-img-word-fight); --fk-word-w: 305; --fk-word-h: 77; }
+.fk-word--game { --fk-word: var(--fk-img-word-game); --fk-word-w: 296; --fk-word-h: 76; }
+.fk-word--time { --fk-word: var(--fk-img-word-time); --fk-word-w: 289; --fk-word-h: 78; }
+.fk-word--vs { --fk-word: var(--fk-img-word-vs); --fk-word-w: 158; --fk-word-h: 82; }
+.fk-word--3 { --fk-word: var(--fk-img-word-3); --fk-word-w: 96; --fk-word-h: 105; }
+.fk-word--2 { --fk-word: var(--fk-img-word-2); --fk-word-w: 87; --fk-word-h: 105; }
+.fk-word--1 { --fk-word: var(--fk-img-word-1); --fk-word-w: 64; --fk-word-h: 105; }
+
+/* =========================== MARKS =========================== */
+/* a heading rule: copper line, a diamond at the centre, capped ends */
+.fk-divider {
+  height: calc(11 * var(--fk-s)); image-rendering: pixelated;
+  background: var(--fk-img-divider-cap-left) left center / calc(4 * var(--fk-s)) 100% no-repeat, var(--fk-img-divider-cap-right) right center / calc(4 * var(--fk-s)) 100% no-repeat,
+    var(--fk-img-divider-diamond) center / calc(8 * var(--fk-s)) 100% no-repeat, var(--fk-img-divider-line) center / calc(10 * var(--fk-s)) 100% repeat-x;
+}
+/* "or" between two choices: the small gear between two copper rules (the word in a span) */
+.fk-or { display: flex; align-items: center; gap: .6em; }
+.fk-or::before, .fk-or::after {
+  content: ''; flex: 1; height: calc(11 * var(--fk-s)); image-rendering: pixelated;
+  background: var(--fk-img-divider-cap-left) left center / calc(4 * var(--fk-s)) 100% no-repeat, var(--fk-img-divider-line) center / calc(10 * var(--fk-s)) 100% repeat-x;
+}
+.fk-or::after { transform: scaleX(-1); }
+.fk-or > span {
+  display: grid; place-items: center; flex: none; width: calc(29 * var(--fk-s)); height: calc(32 * var(--fk-s)); background: var(--fk-img-gear-small) 0 0 / 100% 100% no-repeat; image-rendering: pixelated;
+  font: 800 .9em/1 var(--fk-font-display); color: #f0d6aa; text-shadow: 0 1px 0 #000, 0 0 4px #000;
+}
+/* the large gear medallion (VS, a rank, an emblem): a word on its face */
+.fk-medallion { display: grid; place-items: center; width: calc(75 * var(--fk-s)); aspect-ratio: 75 / 73; background: var(--fk-img-medallion) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; filter: drop-shadow(0 4px 8px #000c); }
+.fk-medallion > .fk-word { width: 72%; height: auto; aspect-ratio: var(--fk-word-w) / var(--fk-word-h); image-rendering: auto; filter: drop-shadow(0 2px 0 #120703) drop-shadow(0 0 .3em #ff8a3a55); }
+/* a check seal (ready, done): dark until lit */
+.fk-seal {
+  width: calc(19 * var(--fk-s)); height: calc(19 * var(--fk-s)); padding: 0; border: 0; border-radius: 50%; color: transparent; image-rendering: pixelated;
+  background: var(--fk-img-seal) 0 0 / 100% 100% no-repeat; box-shadow: none; filter: grayscale(1) brightness(.42) drop-shadow(0 2px 3px #000c);
+}
+.fk-seal--teal { background-image: var(--fk-img-seal-teal); }
+.fk-seal:is([aria-pressed="true"], [aria-checked="true"], [data-on="true"]) { filter: drop-shadow(0 2px 3px #000c) drop-shadow(0 0 calc(4 * var(--fk-s)) var(--fk-seal-glow, #ffb36acc)); }
+.fk-seal--teal:is([aria-pressed="true"], [aria-checked="true"], [data-on="true"]) { --fk-seal-glow: #65cac5cc; }
+/* a counter bead (stocks, lives): spent until [data-on="true"] */
+.fk-bead {
+  display: inline-block; flex: none; width: calc(11 * var(--fk-s)); height: calc(11 * var(--fk-s)); border: 0; border-radius: 50%; box-shadow: none; image-rendering: pixelated;
+  background: var(--fk-img-bead-spent) 0 0 / 100% 100% no-repeat;
+}
+.fk-bead[data-on="true"] { background-image: var(--fk-img-bead); filter: drop-shadow(0 0 calc(2 * var(--fk-s)) #ffb36a99); }
+.fk-bead--teal { background-image: var(--fk-img-bead-teal-spent); }
+.fk-bead--teal[data-on="true"] { background-image: var(--fk-img-bead-teal); filter: drop-shadow(0 0 calc(2 * var(--fk-s)) #65cac599); }
+/* a value cycler's arrows (the glyph is the button's ::before): lit when hot, held (.held) or when its row has focus */
+.fk-arrow { display: inline-grid; place-items: center; padding: 0; border: 0; background: none; }
+.fk-arrow::before {
+  content: ''; width: auto; height: min(100%, calc(16 * var(--fk-s))); aspect-ratio: 9 / 16; clip-path: none; image-rendering: pixelated;
+  background: var(--fk-img-arrow-left) 0 0 / 100% 100% no-repeat; filter: drop-shadow(0 2px 0 #000c);
+}
+.fk-arrow--next::before { background-image: var(--fk-img-arrow-right); }
+:is(.fk-arrow:hover:not(:disabled), .fk-arrow.held, :focus > .fk-arrow, :focus-within > .fk-arrow)::before { background-image: var(--fk-img-arrow-left-hot); }
+:is(.fk-arrow--next:hover:not(:disabled), .fk-arrow--next.held, :focus > .fk-arrow--next, :focus-within > .fk-arrow--next)::before { background-image: var(--fk-img-arrow-right-hot); }
+/* a segmented meter: --fk-cells cells (12 + 13n art px wide, 15 tall; cell k inside at 7 + 13k, 3 down, 11 x 9); a cell is
+   gold when [data-filled="true"], refilling teal to --fk-fill, empty otherwise */
+.fk-meter {
+  --fk-b: var(--fk-s); --fk-cells: 2; position: relative; display: inline-block; flex: none; box-sizing: border-box;
+  width: calc((12 + 13 * var(--fk-cells)) * var(--fk-b)); height: calc(15 * var(--fk-b)); image-rendering: pixelated;
+  border: 0 solid transparent; border-image: var(--fk-img-meter) 5 6 fill / calc(5 * var(--fk-b)) calc(6 * var(--fk-b)) round stretch;
+}
+.fk-meter__cell {
+  --fk-i: 0; position: absolute; top: calc(3 * var(--fk-b)); left: calc((7 + 13 * var(--fk-i)) * var(--fk-b)); width: calc(11 * var(--fk-b)); height: calc(9 * var(--fk-b));
+  overflow: hidden; border: 0; border-radius: 0; background: none; box-shadow: none;
+}
+.fk-meter__cell:nth-child(2) { --fk-i: 1; } .fk-meter__cell:nth-child(3) { --fk-i: 2; } .fk-meter__cell:nth-child(4) { --fk-i: 3; }
+.fk-meter__cell:nth-child(5) { --fk-i: 4; } .fk-meter__cell:nth-child(6) { --fk-i: 5; }
+.fk-meter__cell::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--fk-fill, 0%); max-width: 100%; border-radius: 0; box-shadow: none; background: var(--fk-img-meter-cell-teal) 0 0 / calc(11 * var(--fk-b)) 100% no-repeat; }
+.fk-meter__cell[data-filled="true"] { background: var(--fk-img-meter-cell) 0 0 / 100% 100% no-repeat; filter: drop-shadow(0 0 calc(2 * var(--fk-b)) #f2b63088); }
+.fk-meter__cell[data-filled="true"]::after { content: none; }
+/* --wide: long bars (12 + 26n art px wide; cell k inside at 7 + 26k, 3 down, 24 x 9) */
+.fk-meter--wide { width: calc((12 + 26 * var(--fk-cells)) * var(--fk-b)); border-image-source: var(--fk-img-meter-wide); }
+.fk-meter--wide .fk-meter__cell { left: calc((7 + 26 * var(--fk-i)) * var(--fk-b)); width: calc(24 * var(--fk-b)); }
+.fk-meter--wide .fk-meter__cell::after { background-image: var(--fk-img-meter-wide-cell-teal); background-size: calc(24 * var(--fk-b)) 100%; }
+.fk-meter--wide .fk-meter__cell[data-filled="true"] { background-image: var(--fk-img-meter-wide-cell); }
+
+/* =========================== INPUTS =========================== */
+/* an on/off lever: a button with aria-pressed (or [data-on]) */
+.fk-toggle {
+  width: calc(52 * var(--fk-s)); height: calc(19 * var(--fk-s)); padding: 0; border: 0; border-radius: 0; cursor: pointer; image-rendering: pixelated;
+  background: var(--fk-img-toggle) 0 0 / 100% 100% no-repeat; color: transparent; font-size: 0;
+}
+.fk-toggle:is([aria-pressed="true"], [aria-checked="true"], [data-on="true"]) { background-image: var(--fk-img-toggle-on); }
+.fk-toggle:focus-visible, .fk-checkbox:focus-visible { outline: none; filter: drop-shadow(0 0 4px #ffb36a) drop-shadow(0 0 10px #ff9a4a88); }
+/* a checkbox: input[type=checkbox] (or a role=checkbox element with aria-checked) */
+.fk-checkbox {
+  appearance: none; -webkit-appearance: none; flex: none; width: calc(21 * var(--fk-s)); height: calc(20 * var(--fk-s)); margin: 0; padding: 0; border: 0; border-radius: 0; cursor: pointer;
+  background: var(--fk-img-checkbox) 0 0 / 100% 100% no-repeat; image-rendering: pixelated;
+}
+.fk-checkbox:is(:checked, [aria-checked="true"]) { background-image: var(--fk-img-checkbox-on); }
+/* a slider: input[type=range]; the groove (17 art px, its inside 4 down, 8 in, 7 tall), the molten fill to --fk-value
+   (set it from the input's value), the handle (22 x 23) lit when hot */
+.fk-slider {
+  --fk-b: var(--fk-s); appearance: none; -webkit-appearance: none; display: block; box-sizing: border-box; width: 100%; height: calc(23 * var(--fk-b)); margin: 0; background: none; cursor: pointer;
+}
+.fk-slider::-webkit-slider-runnable-track {
+  /* (the layout border runs to the groove's inside, so the content box is where the fill goes; the plate has no fill slice
+     here, or it would paint over the molten copper) */
+  box-sizing: border-box; height: calc(17 * var(--fk-b)); border: solid transparent; border-width: calc(4 * var(--fk-b)) calc(8 * var(--fk-b)) calc(6 * var(--fk-b)); image-rendering: pixelated;
+  border-image: var(--fk-img-slider-track) 6 9 / calc(6 * var(--fk-b)) calc(9 * var(--fk-b)) round stretch;
+  background: var(--fk-img-slider-fill) 0 0 / var(--fk-value, 0%) 100% no-repeat content-box, #120b08 content-box;
+}
+.fk-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: calc(22 * var(--fk-b)); height: calc(23 * var(--fk-b)); margin-top: calc(-8 * var(--fk-b)); border: 0;
+  background: var(--fk-img-slider-handle) 0 0 / 100% 100% no-repeat; image-rendering: pixelated;
+}
+.fk-slider:is(:hover, :focus-visible)::-webkit-slider-thumb { background-image: var(--fk-img-slider-handle-hot); }
+.fk-slider::-moz-range-track {
+  height: calc(17 * var(--fk-b)); border: solid transparent; border-width: calc(6 * var(--fk-b)) calc(9 * var(--fk-b)); box-sizing: border-box;
+  border-image: var(--fk-img-slider-track) 6 9 fill / calc(6 * var(--fk-b)) calc(9 * var(--fk-b)) round stretch;
+}
+.fk-slider::-moz-range-progress { height: calc(7 * var(--fk-b)); background: var(--fk-img-slider-fill) 0 0 / 100% 100% no-repeat; }
+.fk-slider::-moz-range-thumb { width: calc(22 * var(--fk-b)); height: calc(23 * var(--fk-b)); border: 0; border-radius: 0; background: var(--fk-img-slider-handle) 0 0 / 100% 100% no-repeat; }
+.fk-slider:focus-visible { outline: none; }
+
+@media (prefers-reduced-motion: reduce) { .fk-lantern::before, .fk-lantern::after { animation: none; } }

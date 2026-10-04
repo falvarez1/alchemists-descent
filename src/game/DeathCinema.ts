@@ -56,7 +56,9 @@ export class DeathCinema {
   /** Advance on real time (seconds since the last rendered frame). */
   update(dt: number): void {
     const ctx = this.ctx;
-    if (!ctx.player.dead || ctx.state.mode !== 'play') { if ((ctx.fx.deathTime ?? 0) > 0) this.end(); return; }
+    // An arena knockout (a Duel ring-out, a bout's loss) belongs to the arena: its announcer and results, never the
+    // descent's heartbeats, letterbox, drained colour or death card (Player.kill makes the same call).
+    if (!ctx.player.dead || ctx.state.mode !== 'play' || ctx.arena?.active) { if ((ctx.fx.deathTime ?? 0) > 0) this.end(); return; }
     // A fall in the Kiln escape is not a death scene: the story fades and restarts the climb.
     if (ctx.story?.escapeActive) { if ((ctx.fx.deathTime ?? 0) > 0) this.end(); return; }
     if (ctx.state.paused) return;

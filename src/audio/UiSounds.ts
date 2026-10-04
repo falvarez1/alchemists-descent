@@ -39,9 +39,16 @@ const OVERLAYS: OverlayWatch[] = [
   { selector: '#player-settings', isOpen: (el) => el.hasAttribute('open'), open: 'ui.open', close: 'ui.close' },
 ];
 
-export function installUiSounds(events: EventBus, audio: Pick<AudioApi, 'sfx'>, doc: Document | null = typeof document !== 'undefined' ? document : null): () => void {
+/**
+ * `arcade`: true while the Duel (its lobby, a stock match) has the screen. There the buttons sound
+ * like the cabinet (audio/DuelAnnouncer's cue family: `[data-sfx="move"]` marks a cursor step, a
+ * back button backs out, anything else confirms) and the descent's run cues (a toast's tick, the
+ * objective's tube, the curtain's sweep) stay quiet.
+ */
+export function installUiSounds(events: EventBus, audio: Pick<AudioApi, 'sfx'>, doc: Document | null = typeof document !== 'undefined' ? document : null, arcade: () => boolean = () => false): () => void {
   let lastEventCue = -1e9;
   const eventCue = (id: SfxId, quietAfterOther = false): void => {
+    if (arcade()) return;
     const now = performance.now();
     // A toast that lands with a bigger cue (a key pickup, an objective) stays quiet.
     if (quietAfterOther && now - lastEventCue < 300) return;
@@ -72,7 +79,9 @@ export function installUiSounds(events: EventBus, audio: Pick<AudioApi, 'sfx'>, 
     const el = buttonAt(e.target);
     if (!el || el === hovered) return;
     hovered = el;
-    if (!el.matches('[data-sfx="none"]')) audio.sfx('ui.hover');
+    if (el.matches('[data-sfx="none"]')) return;
+    if (arcade()) audio.sfx('duel.ui.move', undefined, undefined, { gain: 0.6 });
+    else audio.sfx('ui.hover');
   });
   const onOut = (e: Event): void => {
     if (hovered && !(e instanceof MouseEvent && e.relatedTarget instanceof Node && hovered.contains(e.relatedTarget))) hovered = null;
@@ -83,7 +92,8 @@ export function installUiSounds(events: EventBus, audio: Pick<AudioApi, 'sfx'>, 
     if (el.matches('.card-offer-card.bargain')) { audio.sfx('ui.card.bargain'); return; }
     if (el.matches('.card-offer-card')) { audio.sfx('ui.card.choose'); return; }
     if (el.closest(OWN_SOUND)) return;
-    audio.sfx(el.matches(BACKISH) ? 'ui.back' : 'ui.click');
+    if (arcade()) audio.sfx(el.matches(BACKISH) ? 'duel.ui.back' : el.matches('[data-sfx="move"]') ? 'duel.ui.move' : 'duel.ui.confirm');
+    else audio.sfx(el.matches(BACKISH) ? 'ui.back' : 'ui.click');
   });
   doc.addEventListener('pointerover', onOver, { passive: true });
   doc.addEventListener('pointerout', onOut, { passive: true });
@@ -101,7 +111,9 @@ export function installUiSounds(events: EventBus, audio: Pick<AudioApi, 'sfx'>, 
         const now = w.isOpen(el);
         if (now === open) return;
         open = now;
-        audio.sfx(now ? w.open : w.close);
+        // The Duel pauses like a cabinet: one arcade blip in, a back step out.
+        if (arcade()) audio.sfx(now ? 'duel.ui.pause' : 'duel.ui.back');
+        else audio.sfx(now ? w.open : w.close);
       }));
       mo.observe(el, { attributes: true, attributeFilter: ['class', 'open', 'hidden'] });
       observers.push(mo);

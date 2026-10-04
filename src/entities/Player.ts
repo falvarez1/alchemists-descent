@@ -702,8 +702,10 @@ export class PlayerControl implements PlayerControlApi {
     ctx.fx.screenShake = Math.min(ctx.fx.screenShake + 0.018, 0.05);
     // hitstop: heavy hits freeze gameplay for a beat (Game consumes fx.hitstop)
     if (amount >= 8) ctx.fx.hitstop = 3;
-    // Blood spray — the Noita way
-    ctx.particles.burst(player.x, player.y - 7, Math.min(16, 5 + amount * 0.4), Cell.Blood, bloodColor, 2.4);
+    // Blood spray — the Noita way. A Duel blow throws hot sparks instead: an arcade fighter flashes light, and no blood
+    // cells pool on the stage deck between stocks.
+    if (ctx.arena?.stockMatch) ctx.particles.burst(player.x, player.y - 9, Math.min(14, 6 + amount * 0.3), null, () => packRGB(255, 214, 140), 2.8, { glow: 2.4, grav: 0.05 });
+    else ctx.particles.burst(player.x, player.y - 7, Math.min(16, 5 + amount * 0.4), Cell.Blood, bloodColor, 2.4);
     if (player.hp <= 0) this.kill(source);
   }
 

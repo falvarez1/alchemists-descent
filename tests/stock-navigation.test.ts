@@ -16,14 +16,16 @@ describe('stock platform navigation', () => {
   });
 
   test('routes from either upper lip to an opponent on the opposite lip', () => {
-    const nav = stockNav();
-    for (const [fromX, toX] of [[699, 900], [1059, 540]]) {
-      const from = nav.nodeAt(fromX, 559), to = nav.nodeAt(toX, 559);
+    const nav = stockNav(), [left, right] = STOCK_STAGE.platforms, top = left.y - 1;
+    // The inner lips of the two raised platforms, both ways (derived from the stage, not its old coordinates).
+    for (const [fromX, toX] of [[left.x1 - 1, right.x0], [right.x1 - 1, left.x0]]) {
+      const from = nav.nodeAt(fromX, top), to = nav.nodeAt(toX, top);
       expect(from).not.toBeNull(); expect(to).not.toBeNull();
       expect(nav.route(from!.id, to!.id)?.map(edge => edge.to)).toEqual(['floor', to!.id]);
     }
-    expect(nav.nodeAt(800, 559)).toBeNull();
-    expect(nav.nodeAt(530, 559)).toBeNull();
+    // Open air between the raised platforms and beyond their outer lips is no surface.
+    expect(nav.nodeAt(STOCK_STAGE.center.x, top)).toBeNull();
+    expect(nav.nodeAt(left.x0 - 30, top)).toBeNull();
   });
 
   test('lingering world damage does not abandon a crossing on every damage tick', () => {

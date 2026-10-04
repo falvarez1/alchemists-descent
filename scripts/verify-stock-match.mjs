@@ -143,7 +143,8 @@ try {
   assert.deepEqual(errors, []);
   writeFileSync(`${out}/stock-dogfood.json`, JSON.stringify(dogfood, null, 2));
   console.log('Bot dogfood:', JSON.stringify(dogfood));
-  assert.ok(await page.evaluate(() => { const z = window.__game.ctx.camera.zoom; return z >= .4 && z <= 1.65; }), 'Stock framing stays within its authored range');
+  // The authored range: 0.4 (whole blast box) to 2.3 (camera-direction.png close combat; render/StockCameraRig STOCK_ZOOM_MAX).
+  assert.ok(await page.evaluate(() => { const z = window.__game.ctx.camera.zoom; return z >= .4 && z <= 2.3 + 1e-9; }), 'Stock framing stays within its authored range');
   await page.evaluate(async () => { await window.__game.ctx.console.exec('run test --level fighter-test --world campaign-level'); });
   await page.waitForFunction(() => window.__game.ctx.levels.current?.def.id === 'fighter-test');
   assert.equal(await page.evaluate(() => document.body.classList.contains('stock-match')), false, 'Leaving stocks restores the normal HUD');

@@ -8,7 +8,8 @@ vi.mock('@/world/duelStage', () => ({ resetDuelStage: vi.fn() }));
 vi.mock('@/arena/ai/driver', () => ({ botDriverFor: () => ({ off: vi.fn(), install: vi.fn() }), rivalDriverFor: () => ({ off: vi.fn(), install: vi.fn() }) }));
 
 const pad = (index: number): Gamepad => ({ index, id: `test ${index}`, connected: true, mapping: 'standard', axes: [0, 0, 0, 0], buttons: Array.from({ length: 18 }, () => ({ pressed: false, touched: false, value: 0 })) } as Gamepad);
-function setup(ready = async () => true, rival = async () => 1) {
+// (the VS card's hold is 0 here unless a test sets it: these tests are about the session, not the card)
+function setup(ready = async () => true, rival = async () => 1, introMs = 0) {
   const events = new EventBus(), starts: RunStartConfig[] = [];
   const input = { keys: {}, mouse: {}, releaseHeldInput: vi.fn() };
   const bundle = { input, player: {}, fighters: { releaseInputs: vi.fn() } };
@@ -19,8 +20,9 @@ function setup(ready = async () => true, rival = async () => 1) {
     } },
     fighters: { whenReady: async () => undefined },
     arena: { bundle: () => bundle, active: true, configureStocks: vi.fn(), setSpawns: vi.fn(), addRival: rival, reset: vi.fn(), removeRival: vi.fn() },
+    audio: { duel: { cutVersus: vi.fn(), menu: vi.fn() } },
   } as unknown as Ctx;
-  const session = new LocalVersus(ctx, ready); ctx.versus = session;
+  const session = new LocalVersus(ctx, ready, introMs); ctx.versus = session;
   return { session, ctx, starts };
 }
 
@@ -74,6 +76,45 @@ describe('local versus lifecycle', () => {
     const { session, ctx } = setup(); session.poll([pad(0)], false); session.open(); session.chooseDevice(0, 'keyboard'); session.chooseDevice(1, 'pad:0'); session.ready(0); session.ready(1); await session.start();
     ctx.state.paused = true; session.poll([], true); session.poll([pad(0)], true); session.resume();
     expect(ctx.state.paused).toBe(true); expect(session.phase).toBe('playing'); session.dispose();
+  });
+  it('lets a joined controller turn the stage picker with the bumpers, wrapping at either end', () => {
+    const { session } = setup(); const p0 = pad(0), p1 = pad(1);
+    session.poll([p0], false); session.open(); expect(session.seats[0].device).toBe('pad:0');
+    const press = (p: Gamepad, button: number): void => {
+      (p.buttons[button] as { pressed: boolean }).pressed = true; session.poll([p0, p1], false);
+      (p.buttons[button] as { pressed: boolean }).pressed = false; session.poll([p0, p1], false);
+    };
+    expect(session.stage).toBe('foundry');
+    press(p0, 5); expect(session.stage).toBe('kiln');
+    press(p0, 4); press(p0, 4); expect(session.stage).toBe('gallery');
+    press(p1, 5); expect(session.stage).toBe('gallery');
+    session.dispose();
+  });
+  it('holds the VS card, paused before the countdown, for its least time even when the stage builds at once', async () => {
+    const { session, ctx } = setup(undefined, undefined, 120); session.open(); session.ready(0);
+    const t0 = performance.now(), started = session.start();
+    await new Promise(r => setTimeout(r, 40));
+    expect(session.phase).toBe('loading'); expect(ctx.state.paused).toBe(true);
+    expect(await started).toBe(true);
+    expect(performance.now() - t0).toBeGreaterThanOrEqual(110); expect(session.phase).toBe('playing'); expect(ctx.state.paused).toBe(false);
+    session.dispose();
+  });
+  it('a skip on the VS card starts the countdown at once and cuts the VS call', async () => {
+    const { session, ctx } = setup(undefined, undefined, 10_000); session.open(); session.ready(0);
+    const t0 = performance.now(), started = session.start();
+    await new Promise(r => setTimeout(r, 20));
+    session.skipIntro();
+    expect(await started).toBe(true); expect(performance.now() - t0).toBeLessThan(1000);
+    expect(session.phase).toBe('playing'); expect(session.introCut).toBe(true);
+    expect(ctx.audio.duel?.cutVersus).toHaveBeenCalledTimes(1);
+    session.dispose();
+  });
+  it('closing during the VS card ends the hold without starting the match', async () => {
+    const { session } = setup(undefined, undefined, 10_000); session.open(); session.ready(0);
+    const started = session.start();
+    await new Promise(r => setTimeout(r, 20));
+    session.close();
+    expect(await started).toBe(false); expect(session.phase).toBe('idle');
   });
   it('clears match input ownership when leaving the level', async () => {
     const { session, ctx } = setup(); session.open(); session.ready(0); await session.start();

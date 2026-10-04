@@ -78,7 +78,7 @@ try {
   await page.screenshot({path:`${out}/special-desktop.png`});
   await page.setViewportSize({width:390,height:844});await page.waitForTimeout(150);
   const layout=await page.locator('.stock-fighter').evaluateAll(cards=>cards.map(card=>({width:card.clientWidth,scroll:card.scrollWidth,charge:card.querySelector('.stock-special').getBoundingClientRect().toJSON(),box:card.getBoundingClientRect().toJSON(),defense:card.querySelector('.stock-defense').getBoundingClientRect().toJSON(),percent:card.querySelector('.stock-percent').getBoundingClientRect().toJSON()})));
-  for(const card of layout){assert.ok(card.scroll<=card.width);assert.ok(card.charge.bottom<=card.box.bottom);assert.ok(card.defense.bottom<=card.percent.top,'percent does not overlap defense');assert.ok(card.percent.bottom<=card.charge.top,'percent does not overlap charge row');}
+  for(const card of layout){assert.ok(card.scroll<=card.width);assert.ok(card.charge.bottom<=card.box.bottom);const apart=(a,b)=>a.right<=b.left||b.right<=a.left||a.bottom<=b.top||b.bottom<=a.top;assert.ok(apart(card.defense,card.percent),'percent does not overlap defense');assert.ok(apart(card.defense,card.charge),'charge row does not overlap defense');assert.ok(card.percent.bottom<=card.charge.top,'percent does not overlap charge row');}
   await page.screenshot({path:`${out}/special-mobile.png`});
   assert.deepEqual(errors,[]);writeFileSync(`${out}/stock-special.json`,JSON.stringify({shots,empty,reward,respawn,roster,layout,errors},null,2));
   console.log(JSON.stringify({shots,empty,reward,respawn,rosterCount:roster.length,errors},null,2));

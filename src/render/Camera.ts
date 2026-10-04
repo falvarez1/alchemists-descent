@@ -74,7 +74,9 @@ export class Camera implements CameraApi {
       this.stockRig.step(subjects);
       this.x = this.tx = this.stockRig.x - VIEW_W / 2;
       this.y = this.ty = this.stockRig.y - VIEW_H / 2;
-      this.zoom = this.stockRig.zoom; this.viewScale = 1 / Math.min(1, this.zoom);
+      // A heavy blow punches the frame in for the length of its hitstop, then snaps back (the rig's framing never moves).
+      const stop = (ctx.fx as Ctx['fx'] | undefined)?.hitstop ?? 0;
+      this.zoom = this.stockRig.zoom * (1 + (stop >= 5 ? .06 : stop >= 4 ? .035 : 0)); this.viewScale = 1 / Math.min(1, this.zoom);
       return;
     }
     if (this.stockFraming) this.zoom = 1;

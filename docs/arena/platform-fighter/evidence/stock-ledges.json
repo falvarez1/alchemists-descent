@@ -17,7 +17,7 @@
         "protectedDamage": 0,
         "clear": true,
         "grounded": true,
-        "x": 1024,
+        "x": 1023,
         "y": 639,
         "phase": "idle"
       }
@@ -46,9 +46,11 @@
     },
     "main": {
       "x0": 560,
-      "x1": 1040,
+      "x1": 1039,
       "y": 640,
-      "depth": 65
+      "depth": 43,
+      "art": "foundry/main",
+      "mirror": false
     }
   },
   "keyboard": {

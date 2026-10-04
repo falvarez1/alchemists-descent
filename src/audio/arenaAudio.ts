@@ -22,3 +22,40 @@ export function arenaHurtVoice(fighter: FighterId | null): { cue: SfxId; pitch: 
 export function needsArenaHurtImpact(stock: boolean, tag: string | undefined): boolean {
   return !stock || !(tag?.startsWith('melee.') || tag?.startsWith('throw.'));
 }
+
+/** The arena's own levels (the Proving Yard, the Duel stage): never a floor of the descent, whatever biome they borrow. */
+export const ARENA_LEVEL_IDS: readonly string[] = ['fighter-test', 'fighter-duel'];
+
+/** The facts that place the game in the arena rather than the descent (a narrow view of Ctx). */
+export interface ArenaAudioFacts {
+  readonly state: { readonly mode: string };
+  readonly versus?: { readonly active: boolean } | null;
+  /** The LAN Duel session (hosting, joined, or in a match). */
+  readonly duel?: { readonly active: boolean } | null;
+  readonly arena?: { readonly active: boolean } | null;
+  readonly levels?: { readonly current?: { readonly def: { readonly id: string } } | null } | null;
+}
+
+/**
+ * The Duel (its lobby, a stock match) or an arena level in play. Here the descent's voice and
+ * furniture stay out: the narrator, the floor beds and the run's UI cues (QA: the Bellows' arrival
+ * line, scheduled before the player left the descent, was read out over the Duel lobby).
+ */
+export function inArena(f: ArenaAudioFacts): boolean {
+  if (f.versus?.active || f.duel?.active) return true;
+  if (f.state.mode !== 'play') return false;
+  return f.arena?.active === true || ARENA_LEVEL_IDS.includes(f.levels?.current?.def.id ?? '');
+}
+
+/**
+ * The LAN Duel's screen is up but no session has begun yet (`Play over LAN` closes the local lobby before
+ * the player hosts or joins). The screen owns that state, so it is read off its root (ui/DuelLobby).
+ */
+export function lanLobbyShown(doc: Pick<Document, 'getElementById'> | null = typeof document !== 'undefined' ? document : null): boolean {
+  return typeof doc?.getElementById === 'function' && doc.getElementById('duel-network')?.hidden === false;
+}
+
+/** inArena, and the LAN Duel's screen before a session begins (QA: the title tagline played over it). */
+export function inDuelOrArena(f: ArenaAudioFacts): boolean {
+  return inArena(f) || lanLobbyShown();
+}

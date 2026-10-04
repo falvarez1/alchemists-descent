@@ -1,0 +1,484 @@
+{
+  "url": "http://127.0.0.1:5242/",
+  "checks": [
+    {
+      "name": "the lobby opens with \"Choose your fighter!\"",
+      "pass": true,
+      "data": [
+        "choose"
+      ]
+    },
+    {
+      "name": "each name follows its selection",
+      "pass": true,
+      "data": [
+        "fighter.brann-rook",
+        "fighter.sable-fen",
+        "fighter.mara-quell"
+      ]
+    },
+    {
+      "name": "a name is called within 400 ms of being chosen",
+      "pass": true,
+      "data": [
+        34,
+        21,
+        20
+      ]
+    },
+    {
+      "name": "a fast change cuts the previous call",
+      "pass": true,
+      "data": [
+        {
+          "cut": true,
+          "ms": 132
+        },
+        {
+          "cut": true,
+          "ms": 128
+        },
+        {
+          "cut": false,
+          "ms": 1367
+        }
+      ]
+    },
+    {
+      "name": "stage and ready land with their cabinet sounds",
+      "pass": true,
+      "data": [
+        "duel.ui.move",
+        "duel.ui.move",
+        "duel.ui.move",
+        "duel.stage",
+        "duel.ready"
+      ]
+    },
+    {
+      "name": "lobby buttons sound like the cabinet, not the descent",
+      "pass": true,
+      "data": [
+        "duel.ui.move",
+        "duel.stage",
+        "duel.ui.confirm",
+        "duel.ready"
+      ]
+    },
+    {
+      "name": "the VS card calls \"Mara Quell! Versus! Brann Rook!\" in order as the match loads, before Three",
+      "pass": true,
+      "data": {
+        "lines": [
+          "fighter.mara-quell",
+          "versus",
+          "fighter.brann-rook"
+        ],
+        "firstLagMs": 10,
+        "loadMs": 4237
+      }
+    },
+    {
+      "name": "Three, Two, One, FIGHT are called in order",
+      "pass": true,
+      "data": [
+        "count.3",
+        "count.2",
+        "count.1",
+        "fight"
+      ]
+    },
+    {
+      "name": "each countdown call lands on its beat (within 250 ms of the tick that changed it)",
+      "pass": true,
+      "data": {
+        "count.3": 9.46000000834465,
+        "count.2": 10.265000015497208,
+        "count.1": 10.325000017881393,
+        "fight": 10.155000001192093
+      }
+    },
+    {
+      "name": "the beats are the countdown's own ticks (three equal beats)",
+      "pass": true,
+      "data": [
+        39,
+        40,
+        40
+      ]
+    },
+    {
+      "name": "an ultimate is called by its name on the super sting",
+      "pass": true,
+      "data": [
+        "fight",
+        "ultimate.mara-quell"
+      ]
+    },
+    {
+      "name": "three ring-outs end the match for player 1 (the first after a landed finisher)",
+      "pass": true,
+      "data": {
+        "downs": [
+          {
+            "slot": 1,
+            "by": 0
+          },
+          {
+            "slot": 1,
+            "by": 1
+          },
+          {
+            "slot": 1,
+            "by": 1
+          }
+        ],
+        "landed": 27.04,
+        "lines": [
+          "count.1",
+          "fight",
+          "ultimate.mara-quell",
+          "ring-out",
+          "self-destruct",
+          "last-stock",
+          "game",
+          "wins.mara-quell"
+        ]
+      }
+    },
+    {
+      "name": "an attributed ring-out is called \"Ring out!\" with the KO blast",
+      "pass": true,
+      "data": [
+        "ring-out",
+        "self-destruct",
+        "last-stock",
+        "game",
+        "wins.mara-quell"
+      ]
+    },
+    {
+      "name": "an unforced one is a self-destruct, and the last stock is called",
+      "pass": true,
+      "data": [
+        "ring-out",
+        "self-destruct",
+        "last-stock",
+        "game",
+        "wins.mara-quell"
+      ]
+    },
+    {
+      "name": "the end calls GAME and the winner's name",
+      "pass": true,
+      "data": [
+        "ring-out",
+        "self-destruct",
+        "last-stock",
+        "game",
+        "wins.mara-quell"
+      ]
+    },
+    {
+      "name": "the winner's name lands on the HUD banner's beat (950 ms after GAME)",
+      "pass": true,
+      "data": 950
+    },
+    {
+      "name": "a rematch opens with \"Rematch!\" and fights again",
+      "pass": true,
+      "data": [
+        "rematch",
+        "count.2",
+        "count.1",
+        "fight"
+      ]
+    },
+    {
+      "name": "pausing the Duel sounds the cabinet pause and back",
+      "pass": true,
+      "data": [
+        "duel.ui.pause",
+        "duel.ui.back"
+      ]
+    },
+    {
+      "name": "skipping the VS card fades its call where it stands: the rest is never said",
+      "pass": true,
+      "data": [
+        {
+          "line": "ready.1",
+          "cut": true
+        },
+        {
+          "line": "fighter.mara-quell",
+          "cut": false
+        },
+        {
+          "line": "versus",
+          "cut": true
+        },
+        {
+          "line": "count.3",
+          "cut": false
+        }
+      ]
+    },
+    {
+      "name": "READY straight after a result: \"Choose your fighter!\", the whole VS call, then \"Three!\", not \"Rematch!\"",
+      "pass": true,
+      "data": [
+        {
+          "line": "versus",
+          "cut": true
+        },
+        {
+          "line": "count.3",
+          "cut": false
+        },
+        {
+          "line": "count.2",
+          "cut": false
+        },
+        {
+          "line": "count.1",
+          "cut": false
+        },
+        {
+          "line": "fight",
+          "cut": true
+        },
+        {
+          "line": "game",
+          "cut": true
+        },
+        {
+          "line": "choose",
+          "cut": true
+        },
+        {
+          "line": "ready.1",
+          "cut": true
+        },
+        {
+          "line": "fighter.mara-quell",
+          "cut": false
+        },
+        {
+          "line": "versus",
+          "cut": false
+        },
+        {
+          "line": "fighter.brann-rook",
+          "cut": false
+        },
+        {
+          "line": "count.3",
+          "cut": false
+        }
+      ]
+    },
+    {
+      "name": "no campaign narrator line after the Duel door (arrival, tagline, toasts, callouts)",
+      "pass": true,
+      "data": {
+        "narration": [],
+        "narratorSpoken": [],
+        "before": [],
+        "played": [
+          "duel.ui.move",
+          "duel.stage",
+          "duel.ui.confirm",
+          "duel.ready",
+          "pickup.bell",
+          "duel.count",
+          "duel.fight",
+          "player.step.stone",
+          "spell.spark.cast",
+          "world.gong",
+          "duel.super",
+          "spell.spark.impact",
+          "boom.small",
+          "mat.zap",
+          "mat.fire.loop",
+          "arena.hit.light",
+          "arena.hurt.duelist",
+          "mat.electric.loop",
+          "arena.hurt.armored",
+          "arena.hit.heavy",
+          "duel.ko",
+          "player.land.soft",
+          "duel.game",
+          "duel.results",
+          "duel.ui.pause",
+          "duel.ui.back"
+        ],
+        "beds": [
+          "duel:null"
+        ]
+      }
+    },
+    {
+      "name": "no floor bed and none of the descent's cues in the Duel",
+      "pass": true,
+      "data": {
+        "beds": [
+          "duel:null"
+        ],
+        "offending": [],
+        "played": [
+          "duel.ui.move",
+          "duel.stage",
+          "duel.ui.confirm",
+          "duel.ready",
+          "pickup.bell",
+          "duel.count",
+          "duel.fight",
+          "player.step.stone",
+          "spell.spark.cast",
+          "world.gong",
+          "duel.super",
+          "spell.spark.impact",
+          "boom.small",
+          "mat.zap",
+          "mat.fire.loop",
+          "arena.hit.light",
+          "arena.hurt.duelist",
+          "mat.electric.loop",
+          "arena.hurt.armored",
+          "arena.hit.heavy",
+          "duel.ko",
+          "player.land.soft",
+          "duel.game",
+          "duel.results",
+          "duel.ui.pause",
+          "duel.ui.back"
+        ]
+      }
+    },
+    {
+      "name": "no browser exceptions",
+      "pass": true,
+      "data": []
+    }
+  ],
+  "count": {
+    "lines": [
+      "count.3",
+      "count.2",
+      "count.1",
+      "fight"
+    ],
+    "lagMs": {
+      "count.3": 9.46000000834465,
+      "count.2": 10.265000015497208,
+      "count.1": 10.325000017881393,
+      "fight": 10.155000001192093
+    },
+    "beatTicks": [
+      39,
+      40,
+      40
+    ]
+  },
+  "end": {
+    "downs": [
+      {
+        "slot": 1,
+        "by": 0
+      },
+      {
+        "slot": 1,
+        "by": 1
+      },
+      {
+        "slot": 1,
+        "by": 1
+      }
+    ],
+    "lines": [
+      "choose",
+      "fighter.brann-rook",
+      "fighter.sable-fen",
+      "fighter.mara-quell",
+      "stage.kiln",
+      "ready.1",
+      "fighter.mara-quell",
+      "versus",
+      "fighter.brann-rook",
+      "count.3",
+      "count.2",
+      "count.1",
+      "fight",
+      "ultimate.mara-quell",
+      "ring-out",
+      "self-destruct",
+      "last-stock",
+      "game",
+      "wins.mara-quell"
+    ],
+    "sounds": [
+      "duel.ui.move",
+      "duel.ui.move",
+      "duel.ui.move",
+      "duel.stage",
+      "duel.ready",
+      "duel.stage",
+      "duel.count",
+      "duel.count",
+      "duel.count",
+      "duel.fight",
+      "duel.super",
+      "duel.ko",
+      "duel.ko",
+      "duel.ko",
+      "duel.game",
+      "duel.results"
+    ],
+    "state": "finished",
+    "winner": 0
+  },
+  "rematch": [
+    "rematch",
+    "count.2",
+    "count.1",
+    "fight"
+  ],
+  "descent": {
+    "narration": [],
+    "narratorSpoken": [],
+    "before": [],
+    "played": [
+      "duel.ui.move",
+      "duel.stage",
+      "duel.ui.confirm",
+      "duel.ready",
+      "pickup.bell",
+      "duel.count",
+      "duel.fight",
+      "player.step.stone",
+      "spell.spark.cast",
+      "world.gong",
+      "duel.super",
+      "spell.spark.impact",
+      "boom.small",
+      "mat.zap",
+      "mat.fire.loop",
+      "arena.hit.light",
+      "arena.hurt.duelist",
+      "mat.electric.loop",
+      "arena.hurt.armored",
+      "arena.hit.heavy",
+      "duel.ko",
+      "player.land.soft",
+      "duel.game",
+      "duel.results",
+      "duel.ui.pause",
+      "duel.ui.back"
+    ],
+    "beds": [
+      "duel:null"
+    ]
+  },
+  "errors": []
+}

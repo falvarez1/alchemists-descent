@@ -1,45 +1,464 @@
-#versus-lobby, #versus-reconnect { position: fixed; inset: 0; z-index: 220; overflow: auto; color: #e8dcc0; background: #0d1823f7; font-family: var(--m-sans, system-ui, sans-serif); }
-#versus-lobby[hidden], #versus-reconnect[hidden] { display: none; }
-.versus-shell { max-width: 1060px; margin: 20px auto; padding: 22px 30px 14px; border: 1px solid #ac744b; outline: 1px solid #ac744b66; outline-offset: 5px; background: radial-gradient(ellipse at 50% 30%, #293e5155, transparent 70%), #111d28; box-shadow: inset 0 0 0 5px #293e5140; }
-.versus-header { display: block; height: auto; text-align: center; background: transparent; padding: 0; }
-.versus-header h1 { font: 48px/1 var(--m-serif, Georgia, serif); letter-spacing: .13em; text-transform: uppercase; margin: 6px 0 8px; width: auto; text-align: center; white-space: normal; overflow: visible; text-overflow: clip; }
-.versus-header p { font-size: 12px; color: #b7c9ca; margin: 5px 0; }
-.versus-header p:first-child { color: #ac744b; letter-spacing: .16em; text-transform: uppercase; }
-.versus-seats { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin: 20px 0; }
-.versus-seat { position: relative; display: grid; grid-template-columns: 42% 58%; min-width: 0; min-height: 245px; border: 1px solid #ac744b; border-top: 3px solid #efac58; background: #142334; }
-.versus-seat-1 { border-top-color: #65cac5; }
-.versus-portrait { width: 100%; height: 100%; max-height: 280px; object-fit: cover; object-position: 50% 12%; image-rendering: pixelated; mask-image: linear-gradient(to right, black 70%, transparent); }
-.versus-seat-copy { min-width: 0; padding: 17px 17px 16px 0; }
-.versus-kicker { display: block; margin: 0 0 6px; text-transform: uppercase; font-size: 10px; letter-spacing: .16em; color: #efac58; }
-.versus-seat-1 .versus-kicker { color: #65cac5; }
-.versus-seat h2 { font: 28px/1.1 var(--m-serif, Georgia, serif); margin: 0; }
-.versus-fighter-title { font-size: 11px; color: #b7c9ca; margin: 5px 0 16px; min-height: 26px; }
-#versus-lobby select, #versus-lobby button, #versus-reconnect button { font: inherit; font-size: 13px; border: 1px solid #ac744b; color: #e8dcc0; background: #182b3a; border-radius: 0; min-height: 38px; padding: 8px 12px; cursor: pointer; }
-#versus-lobby select { width: 100%; margin-bottom: 8px; padding: 7px; }
-#versus-lobby button:disabled, #versus-reconnect button:disabled { cursor: default; opacity: .5; }
-#versus-lobby button:focus-visible, #versus-lobby select:focus-visible, #versus-reconnect button:focus-visible { outline: 3px solid #65cac5; outline-offset: 3px; }
-.versus-ready { width: 100%; }
-.versus-seat[data-ready="true"] .versus-ready { color: #a9e5cf !important; border-color: #65cac5 !important; opacity: 1 !important; }
-.versus-stage { display: flex; position: relative; align-items: center; justify-content: flex-end; min-height: 105px; border: 1px solid #ac744b; overflow: hidden; }
-.versus-stage-art { position: absolute; inset: 0; background: linear-gradient(to right, transparent, #142334 70%), url('/assets/arena/foundry-backdrop.png') center 55% / cover; opacity: .8; }
-.versus-stage > div:last-child { z-index: 1; width: 49%; padding: 12px 18px; }
-.versus-stage h2 { font: 29px/1.1 var(--m-serif, Georgia, serif); margin: 0; }
-.versus-stage p { font-size: 13px; margin: 9px 0 0; }.versus-stage p span { padding: 0 7px; color: #ac744b; }
-.versus-footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 18px; }
-#versus-start { background: #62462e; border-color: #efac58; min-width: 205px; }
-.versus-status { color: #b7c9ca; font-size: 12px; text-align: center; margin: 0; }
-.versus-keys, .versus-controls { font-size: 11px; line-height: 1.5; color: #b7c9ca; text-align: center; margin: 14px 0 0; }
-.versus-controls { font-size: 10px; color: #90a9b8; margin-top: 5px; }
-#versus-reconnect { display: grid; place-items: center; background: #0d1823e8; }
-#versus-reconnect > div { max-width: 480px; padding: 30px; border: 1px solid #ac744b; background: #142334; text-align: center; }
-#versus-reconnect h2 { font: 30px var(--m-serif, Georgia, serif); }#versus-reconnect button { margin: 6px; }
+/* =====================================================================
+ * THE DUEL'S SCREENS (ui/VersusLobby, ui/DuelLobby, ui/StockMatchHud): the
+ * layout, drawn to docs/arena/platform-fighter/concepts/local-versus.png and
+ * the UI/V1 targets. The look is the foundry kit's (foundry-ui.css: its
+ * classes are on the markup); a heavy small-caps display serif (Alegreya SC)
+ * for names, headings and the big buttons, letter-spaced Cormorant capitals
+ * under them, amber for player 1 and teal for player 2.
+ * The lobby covers the window (it is fixed), so it scales by the window:
+ * --u is 1% of a 16:9 box fitted to it. Its two panels keep the concept's
+ * proportions (745 x 480) and the chosen stage's backdrop fills the room
+ * around them. The HUD (arena.css) scales the same way by the view.
+ * ===================================================================== */
+:root {
+  --d-ink: #0a121a; --d-slate: #142334; --d-slate-2: #182b3d; --d-steel: #293e51;
+  --d-copper: #ac744b; --d-copper-hi: #dda36c; --d-copper-dim: #ac744b80; --d-copper-faint: #ac744b38;
+  --d-ivory: #e8dcc0; --d-paper: #cfc3a8; --d-muted: #a99f8b; --d-cool: #94a7b2;
+  --d-amber: #efac58; --d-teal: #65cac5; --d-red: #e5553f;
+  --d-display: 'Alegreya SC', 'Cormorant Garamond', Georgia, serif;
+  --d-serif: 'Cormorant Garamond', Georgia, serif;
+  --d-sans: Inter, ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+}
+
+#versus-lobby, #versus-reconnect, #duel-network {
+  --u: min(1vw, 1.7778vh);
+  position: fixed; inset: 0; z-index: 220; overflow: auto; box-sizing: border-box;
+  color: var(--d-ivory); font-family: var(--d-sans); background: #0b0f13;
+}
+#versus-lobby[hidden], #versus-reconnect[hidden], #duel-network[hidden] { display: none; }
+#versus-lobby *, #versus-reconnect *, #duel-network * { box-sizing: border-box; }
+/* (zero specificity: the kit's classes dress the buttons) */
+:where(#versus-lobby, #versus-reconnect) :is(button, select), :where(#duel-network) :is(button, input) { font: inherit; color: inherit; border-radius: 0; cursor: pointer; }
+#versus-lobby button:disabled, #versus-reconnect button:disabled, #duel-network button:disabled { cursor: default; }
+#versus-lobby :is(button, select):focus-visible, #versus-reconnect button:focus-visible, #duel-network :is(button, input):focus-visible { outline: 2px solid var(--d-teal); outline-offset: 3px; }
+
+/* ---------- the room: the chosen stage, dimmed and vignetted, cross-fading with the choice ---------- */
+.versus-backdrop { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
+.versus-backdrop > div {
+  position: absolute; inset: -2%; background: center 40% / cover no-repeat; opacity: 0; transform: scale(1.035);
+  filter: brightness(.58) saturate(.9); transition: opacity .7s ease, transform 6s cubic-bezier(.16, 1, .3, 1);
+}
+.versus-backdrop > div.on { opacity: 1; transform: none; }
+.versus-backdrop::after {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse 72% 64% at 50% 50%, #090c1000 35%, #090c10c4 100%), linear-gradient(#090c10b8, #090c1000 16%, #090c1000 80%, #090c10cc);
+}
+
+.versus-shell { position: relative; display: grid; grid-template-rows: auto 1fr auto; gap: calc(var(--u) * .8); min-height: 100%; padding: calc(var(--u) * .9) calc(var(--u) * 1.3) calc(var(--u) * .7); }
+
+/* ---------- the top line ---------- */
+.versus-top, .versus-head { height: auto; padding: 0; border: 0; background: none; }
+.versus-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.versus-top p { margin: 0; }
+.versus-brand { display: flex; align-items: center; gap: calc(var(--u) * .7); font: 800 max(15px, calc(var(--u) * 1.6))/1 var(--d-display); letter-spacing: .05em; color: var(--d-copper-hi); text-shadow: 0 1px 0 #000a; }
+.versus-sigil { display: inline-flex; width: max(20px, calc(var(--u) * 2.1)); color: var(--d-copper); }
+.versus-sigil svg { width: 100%; height: auto; }
+.versus-motto { font: 500 max(10px, calc(var(--u) * .8))/1 var(--d-sans); letter-spacing: .34em; text-transform: uppercase; color: var(--d-muted); }
+
+/* ---------- the two panels, at the concept's proportions ---------- */
+.versus-panels { align-self: center; display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 1.3); }
+.versus-panel { position: relative; min-width: 0; aspect-ratio: 605 / 470; }
+.versus-head { text-align: center; }
+.versus-head :is(h1, h2) {
+  margin: 0; padding: 0; font: 800 max(26px, calc(var(--u) * 2.95))/1.05 var(--d-display); letter-spacing: .05em; text-transform: uppercase;
+  white-space: nowrap; font-variant-numeric: lining-nums;
+}
+.versus-head p { margin: calc(var(--u) * .4) 0 0; font: 600 max(10px, calc(var(--u) * .86))/1.3 var(--d-serif); letter-spacing: .26em; text-transform: uppercase; color: var(--d-paper); }
+
+/* ---------- DUEL: busts facing across the compass ---------- */
+.versus-duel { display: grid; grid-template-columns: 1fr calc(var(--u) * 8.6) 1fr; grid-template-rows: auto 1fr auto auto; column-gap: calc(var(--u) * .5); padding: calc(var(--u) * .5) calc(var(--u) * .9) 0; }
+.versus-duel > .versus-head { grid-area: 1 / 1 / 2 / -1; justify-self: center; z-index: 2; position: relative; padding-top: calc(var(--u) * .3); pointer-events: none; }
+/* the heading reads over the busts: a soft dark halo hugs its letters */
+.versus-duel > .versus-head :is(h1, p) { text-shadow: 0 2px 0 #0009, 0 0 4px #12171d, 0 0 9px #12171d, 0 0 16px #12171dcc; }
+.versus-seats, .versus-devices, .versus-go { display: contents; }
+.versus-seat { position: relative; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; min-height: 0; }
+.versus-seat-0 { grid-area: 1 / 1 / 3 / 2; --seat: var(--d-amber); }
+.versus-seat-1 { grid-area: 1 / 3 / 3 / 4; --seat: var(--d-teal); }
+/* the bust feathers into the panel on every side but the floor of its name */
+.versus-portrait-frame {
+  position: absolute; inset: calc(var(--u) * -.2) calc(var(--u) * -.6) calc(var(--u) * .2); container-type: size; overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10%, #000 66%, transparent 100%), linear-gradient(to var(--outer, left), transparent 0, #000 10%, #000 64%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 10%, #000 66%, transparent 100%), linear-gradient(to var(--outer, left), transparent 0, #000 10%, #000 64%, transparent 100%);
+  -webkit-mask-composite: source-in; mask-composite: intersect;
+}
+.versus-seat-0 .versus-portrait-frame { --outer: right; --ax: .44; }
+.versus-seat-1 .versus-portrait-frame { --outer: left; --ax: .56; }
+.versus-portrait { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 16%; image-rendering: pixelated; }
+/* the roster portrait (a full figure, used only if a bust is missing) is cropped toward the head */
+.versus-portrait[data-art="portrait"] { transform: scale(1.12); transform-origin: 50% 28%; }
+.versus-seat-1 .versus-portrait[data-art="portrait"] { transform: scaleX(-1) scale(1.12); }
+.versus-portrait-frame .bust-fit { --bd: calc(100cqh * 1.22); --ay: .32; }
+
+/* ---------- a bust placed by its face (duelCopy.showFighterArt sets --ex/--ey/--face from the bust's bust.json):
+   a frame says how big (--bd), where the eyes go (--ax/--ay, fractions of the frame) and is a size container;
+   the image is clamped to keep the frame covered. Busts face right; a mirrored one reads its eye from the other side. */
+.bust-fit[data-art="bust"] {
+  --exu: var(--ex, .5);
+  position: absolute; inset: auto; max-width: none; max-height: none; object-fit: fill; transform: none;
+  width: var(--bd); height: var(--bd);
+  left: clamp(calc(100cqw - var(--bd)), calc(var(--ax, .5) * 100cqw - var(--exu) * var(--bd)), 0px);
+  top: clamp(calc(100cqh - var(--bd)), calc(var(--ay, .4) * 100cqh - (var(--ey, .38) + var(--dy, 0)) * var(--bd)), 0px);
+}
+.versus-seat-1 .bust-fit[data-art="bust"], .versus-splash-1 .bust-fit[data-art="bust"] { --exu: calc(1 - var(--ex, .5)); transform: scaleX(-1); }
+
+/* ---------- a ◀ value ▶ row: chunky copper arrows that flash and nudge on a press and repeat while held ---------- */
+.versus-cycler { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px; outline: none; border-radius: 4px; }
+.versus-cycle-value { min-width: 0; text-align: center; }
+:is(#versus-lobby, #duel-network) .versus-arrow {
+  display: grid; place-items: center; width: max(26px, calc(var(--u) * 2.3)); height: max(30px, calc(var(--u) * 2.7)); padding: 0; border: 0; background: none;
+  color: var(--d-copper-hi); touch-action: none; transition: color .08s, filter .08s;
+}
+:is(#versus-lobby, #duel-network) .versus-arrow:hover:not(:disabled), :is(#versus-lobby, #duel-network) .versus-arrow.held { color: var(--seat, var(--d-amber)); filter: brightness(1.25) drop-shadow(0 0 6px color-mix(in srgb, var(--seat, var(--d-amber)) 70%, transparent)); }
+:is(#versus-lobby, #duel-network) .versus-arrow:disabled { opacity: .22; }
+/* the arcade cursor: the row the keyboard rests on glows in the seat's colour and its arrows bob outward */
+.versus-cycler:focus { outline: none; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--seat, var(--d-amber)) 18%, transparent) 25%, color-mix(in srgb, var(--seat, var(--d-amber)) 18%, transparent) 75%, transparent); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--seat, var(--d-amber)) 70%, transparent); }
+/* (the arrow's glyph bobs, not the button: the hit target holds still) */
+.versus-cycler:focus .versus-arrow-prev::before { animation: versus-bob-l .5s ease-in-out infinite alternate; }
+.versus-cycler:focus .versus-arrow-next::before { animation: versus-bob-r .5s ease-in-out infinite alternate; }
+@keyframes versus-bob-l { to { transform: translateX(-4px); } }
+@keyframes versus-bob-r { to { transform: translateX(4px); } }
+
+/* ◀ NAME ▶ under the bust, the ten pips under the title */
+.versus-plate { z-index: 1; padding: calc(var(--u) * .2) 0 calc(var(--u) * .6); }
+.versus-names { display: flex; flex-direction: column; align-items: center; }
+.versus-seat h2 { max-width: 100%; margin: 0; font: 800 max(20px, calc(var(--u) * 2.4))/1 var(--d-display); letter-spacing: .06em; text-transform: uppercase; color: var(--seat); text-shadow: 0 2px 0 #000c, 0 0 calc(var(--u) * 1.4) #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.versus-fighter-title { margin: calc(var(--u) * .3) 0 0; font: 700 max(9.5px, calc(var(--u) * .82))/1.25 var(--d-serif); letter-spacing: .22em; text-transform: uppercase; color: color-mix(in srgb, var(--seat) 80%, var(--d-ivory)); text-shadow: 0 1px 0 #000, 0 0 6px #000; }
+.versus-pips { display: flex; gap: calc(var(--u) * .32); margin-top: calc(var(--u) * .45); }
+.versus-pips i { width: max(5px, calc(var(--u) * .5)); aspect-ratio: 1; transform: rotate(45deg); background: #3b444c; box-shadow: 0 0 0 1px #0008; transition: background .1s, transform .1s; }
+.versus-pips i.on { background: var(--seat); transform: rotate(45deg) scale(1.5); box-shadow: 0 0 6px var(--seat); }
+
+.versus-vs { grid-area: 2 / 2 / 3 / 3; align-self: center; justify-self: center; position: relative; z-index: 1; margin-top: calc(var(--u) * -2.4); pointer-events: none; }
+
+/* ---------- the seat card: PLAYER N, its readiness badge, ◀ device ▶ (and a CPU's ◀ level ▶) ---------- */
+.versus-device {
+  --seat: var(--d-amber); position: relative; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: calc(var(--u) * .15); min-width: 0;
+  padding: calc(var(--u) * .45) calc(var(--u) * .3) calc(var(--u) * .35); transition: box-shadow .15s;
+}
+.versus-device-0 { grid-area: 3 / 1 / 4 / 2; }
+.versus-device-1 { grid-area: 3 / 3 / 4 / 4; --seat: var(--d-teal); }
+.versus-device.fk-card .versus-device-label { letter-spacing: .07em; white-space: nowrap; }
+.versus-device-label { text-align: center; font: 800 max(13px, calc(var(--u) * 1.18))/1.1 var(--d-display); font-variant-numeric: lining-nums; letter-spacing: .12em; text-transform: uppercase; color: var(--seat); }
+.versus-device .versus-cycler { grid-template-columns: auto auto minmax(0, max-content) auto; justify-content: center; gap: calc(var(--u) * .35); }
+.versus-device .versus-cycler.versus-cpu { grid-template-columns: auto minmax(0, max-content) auto; }
+:is(#versus-lobby, #duel-network) .versus-device .versus-arrow { width: max(22px, calc(var(--u) * 1.8)); height: max(24px, calc(var(--u) * 2)); }
+.versus-device-icon { display: inline-flex; flex: none; width: max(18px, calc(var(--u) * 1.75)); color: var(--d-paper); }
+.versus-device-icon svg { width: 100%; height: auto; }
+.versus-device .versus-cycle-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 max(12px, calc(var(--u) * 1.05))/1.3 var(--d-sans); letter-spacing: .04em; text-transform: uppercase; color: var(--d-ivory); }
+/* a CPU's level: LV n NAME and five pips */
+.versus-cpu .versus-cycle-value { display: flex; align-items: center; justify-content: center; gap: .5em; font-size: max(10.5px, calc(var(--u) * .88)); color: color-mix(in srgb, var(--seat) 50%, var(--d-paper)); }
+.versus-cpu .versus-cycle-value b { font: 800 1.15em/1 var(--d-display); color: var(--d-ivory); letter-spacing: .06em; }
+.versus-level { display: inline-flex; gap: 2px; }
+.versus-level i { width: max(4px, calc(var(--u) * .42)); height: max(9px, calc(var(--u) * .9)); background: #39424a; transform: skewX(-14deg); }
+.versus-level i.on { background: linear-gradient(#f3b766, #c76a2c); box-shadow: 0 0 4px #ef9a5588; }
+/* readiness: a seal on the card's inner corner, and the card glowing in the seat's colour */
+/* readiness: the kit's seal on the card's inner corner (dark until the seat is ready), and the card glowing in the seat's colour */
+:is(#versus-lobby, #duel-network) .versus-ready { position: absolute; top: calc(-8 * var(--fk-px)); display: grid; place-items: center; }
+.versus-device-0 .versus-ready { right: calc(-8 * var(--fk-px)); }
+.versus-device-1 .versus-ready { left: calc(-8 * var(--fk-px)); }
+:is(#versus-lobby, #duel-network) .versus-ready svg { display: none; }
+:is(#versus-lobby, #duel-network) .versus-ready:hover:not(:disabled, [aria-pressed="true"]) { filter: grayscale(.5) brightness(.75) drop-shadow(0 2px 3px #000c); }
+:is(#versus-lobby, #duel-network) .versus-ready:focus-visible { outline: 2px solid #ffd29a; outline-offset: 2px; }
+:is(#versus-lobby, #duel-network) .versus-ready:disabled:not([aria-pressed="true"]) { opacity: .6; }
+.versus-device[data-ready="true"] .versus-device-label::after { content: ' · ready'; }
+
+
+/* the copper call to action (and the LAN lobby's buttons, the results' Rematch): the kit's plate button (.fk-button) */
+#versus-lobby #versus-start, #duel-network .duel-go, .stock-rematch {
+  min-width: max(200px, calc(var(--u) * 21)); font: 800 max(17px, calc(var(--u) * 1.55))/1 var(--d-display); letter-spacing: .12em;
+}
+#versus-lobby #versus-start:focus-visible, #duel-network .duel-go:focus-visible { outline: none; }
+#versus-lobby #versus-start:disabled, #duel-network .duel-go:disabled { filter: saturate(.55) brightness(.72); }
+/* READY straddles the panel's lower frame, as in the concept; everyone ready: it glows and breathes */
+#versus-lobby #versus-start {
+  --fk-h: max(46px, calc(var(--u) * 4.6)); grid-area: 4 / 1 / 5 / -1; justify-self: center; min-width: max(220px, calc(var(--u) * 21));
+  margin: calc(var(--u) * .5) 0 calc(var(--u) * -2.6); z-index: 2; font-size: max(20px, calc(var(--u) * 2.1)); letter-spacing: .14em; filter: drop-shadow(0 6px 10px #000c);
+}
+#versus-lobby #versus-start:is(:hover, :focus-visible):not(:disabled), #duel-network .duel-go:is(:hover, :focus-visible):not(:disabled) { filter: drop-shadow(0 0 12px #ff9a4aaa) drop-shadow(0 6px 10px #000c); }
+#versus-lobby #versus-start[data-go="true"] { border-image-source: var(--fk-img-button-primary-hot); color: #fff4de; animation: versus-plate-go .7s ease-in-out infinite; }
+@keyframes versus-plate-go { 50% { filter: drop-shadow(0 0 18px #ffb36a) drop-shadow(0 6px 10px #000c) brightness(1.1); } }
+
+/* ---------- CHOOSE A STAGE ---------- */
+.versus-stages { display: flex; flex-direction: column; justify-content: space-between; gap: calc(var(--u) * .9); padding: calc(var(--u) * .8) calc(var(--u) * 1.2) calc(var(--u) * .6); }
+.versus-stage-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: calc(var(--u) * 1.1); align-items: start; }
+#versus-lobby .versus-stage-tile { display: flex; flex-direction: column; align-items: stretch; min-width: 0; padding: 0; text-align: center; transition: filter .14s; }
+.versus-stage-art {
+  position: relative; display: block; aspect-ratio: 336 / 404; overflow: hidden;
+}
+.versus-stage-art img { display: block; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; filter: saturate(.9) brightness(.86); transition: filter .16s; }
+.versus-stage-art::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 calc(var(--u) * 1.6) #000c; pointer-events: none; }
+.versus-stage-name { font: 800 max(12px, calc(var(--u) * 1.1))/1 var(--d-display); letter-spacing: .1em; text-transform: uppercase; color: var(--d-paper); transition: color .14s; }
+#versus-lobby .versus-stage-tile:hover .versus-stage-art img { filter: saturate(.95) brightness(.95); }
+#versus-lobby .versus-stage-tile:focus-visible { outline: none; }
+.versus-stage-tile[aria-checked="true"] .versus-stage-art img { filter: none; }
+.versus-stage-tile[aria-checked="true"] .versus-stage-name { color: var(--d-ivory); }
+.versus-stage-tile:disabled { opacity: .6; }
+.versus-rules {
+  display: flex; align-items: center; justify-content: space-evenly; margin: 0; padding: calc(var(--u) * .8) calc(var(--u) * 1); list-style: none;
+}
+.versus-rules li { display: flex; align-items: center; gap: calc(var(--u) * .75); padding: 0 calc(var(--u) * 1); font: 400 max(12px, calc(var(--u) * 1.1))/1.2 var(--d-sans); letter-spacing: .03em; color: var(--d-ivory); white-space: nowrap; }
+.versus-rules li + li { border-left: 1px solid #6a4a32; }
+.versus-rules svg { flex: none; width: max(17px, calc(var(--u) * 1.7)); height: auto; color: var(--d-paper); }
+.versus-stage-foot { margin: 0; text-align: center; font: 700 max(9.5px, calc(var(--u) * .8))/1.4 var(--d-serif); letter-spacing: .26em; text-transform: uppercase; color: var(--d-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- the footer: short arcade prompts and button glyphs ---------- */
+.versus-footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px 18px; min-height: max(30px, calc(var(--u) * 2.6)); }
+.versus-glyph { margin-right: .35em; }
+.versus-glyph + .versus-glyph { margin-left: -.15em; }
+.versus-glyph:is(.versus-glyph-a, .versus-glyph-b) { min-width: 0; width: var(--fk-h, 1.75em); padding: 0; border: 0; border-image: none; border-radius: 50%; color: #08100b; }
+.versus-glyph.versus-glyph-a { background: radial-gradient(circle at 40% 35%, #b6f3a4, #4caf3c 70%); }
+.versus-glyph.versus-glyph-b { background: radial-gradient(circle at 40% 35%, #ffb3a4, #d0402c 70%); color: #1a0705; }
+.versus-actions { justify-self: start; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; }
+:is(#versus-lobby, #duel-network) .versus-lan svg { width: 1.5em; height: auto; margin-right: .3em; color: var(--d-copper-hi); }
+:is(#versus-lobby, #duel-network) .versus-back { justify-self: start; display: inline-flex; align-items: center; gap: .2em; min-height: 30px; padding: 4px 8px; border: 0; background: none; font: 800 max(11px, calc(var(--u) * 1))/1 var(--d-display); letter-spacing: .14em; text-transform: uppercase; color: var(--d-paper); transition: color .08s; }
+:is(#versus-lobby, #duel-network) .versus-back:hover, :is(#versus-lobby, #duel-network) .versus-back:focus-visible { color: var(--d-ivory); outline: none; }
+:is(#versus-lobby, #duel-network) .versus-back:focus-visible .versus-glyph { filter: drop-shadow(0 0 4px #ffb36a); }
+.versus-status { margin: 0; text-align: center; white-space: pre; font: 800 max(13px, calc(var(--u) * 1.3))/1.2 var(--d-display); letter-spacing: .12em; text-transform: uppercase; color: var(--d-ivory); text-shadow: 0 2px 0 #000c, 0 0 10px #000; animation: versus-blink 1.1s steps(1) infinite; }
+.versus-status[data-go="true"] { color: var(--d-amber); animation: none; }
+@keyframes versus-blink { 60% { opacity: .35; } }
+#versus-lobby[data-phase="loading"] .versus-status { color: var(--d-amber); animation: none; }
+.versus-prompts { justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; }
+.versus-keys, .controller-notice { justify-self: end; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 14px; margin: 0; font: 800 max(10px, calc(var(--u) * .86))/1.3 var(--d-display); letter-spacing: .1em; text-transform: uppercase; color: var(--d-paper); text-shadow: 0 1px 2px #000; }
+.versus-keys > span, .controller-notice > span { display: inline-flex; align-items: center; white-space: nowrap; }
+.versus-keys > svg, .controller-notice > svg { width: max(18px, calc(var(--u) * 1.6)); height: auto; color: var(--d-paper); }
+.versus-keys:empty, .versus-keys[hidden], .controller-notice[hidden] { display: none; }
+
+/* ---------- the VS card while the stage loads: both fighters slam in, the stage at the foot ---------- */
+.versus-splash {
+  position: fixed; inset: 0; z-index: 5; display: none; grid-template-columns: 1fr auto 1fr; align-items: center; overflow: hidden;
+  background: #111a24; /* the busts' own ground (sprite-forge: every edge fades to #111a24), so the halves meet without a seam */
+}
+/* speed lines raking across the whole card */
+.versus-splash::before { content: ''; position: absolute; inset: -20%; z-index: 1; pointer-events: none; background: repeating-linear-gradient(115deg, #ffffff07 0 2px, transparent 2px 26px); animation: versus-rake .5s linear infinite; }
+@keyframes versus-rake { to { transform: translateX(-28px); } }
+#versus-lobby[data-phase="loading"] .versus-splash { display: grid; }
+/* skipped: a white punch; the card stays until the stage is built, then the countdown takes over at once */
+.versus-splash.skipped::after { content: ''; position: absolute; inset: 0; z-index: 3; background: #fff; pointer-events: none; animation: versus-flash .22s ease-out forwards; }
+@keyframes versus-flash { from { opacity: .5; } to { opacity: 0; } }
+.versus-splash-side { position: relative; height: 100%; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 14vh; container-type: size; }
+.versus-splash-side .bust-fit { --bd: calc(100cqh * 1.05); --ay: .34; z-index: 0; }
+/* each half fades into the dark at its foot and toward the middle, so the two halves meet behind the VS */
+.versus-splash-side::after { content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none; background: linear-gradient(to bottom, transparent 50%, #111a24 90%), linear-gradient(to var(--inward), transparent 70%, #111a24 100%); }
+.versus-splash-0 { --inward: right; }
+.versus-splash-1 { --inward: left; }
+.versus-splash-0 .bust-fit { --ax: .5; }
+.versus-splash-1 .bust-fit { --ax: .5; }
+.versus-splash-side b, .versus-splash-side small { position: relative; z-index: 1; }
+.versus-splash-side b { font: 800 clamp(34px, 7vw, 120px)/1 var(--d-display); letter-spacing: .04em; text-transform: uppercase; filter: drop-shadow(0 4px 0 #000) drop-shadow(0 0 22px #000); }
+.versus-splash-0 b { color: var(--d-amber); }
+.versus-splash-1 b { color: var(--d-teal); }
+.versus-splash-side small { margin-top: .4em; font: 700 clamp(11px, 1.2vw, 20px)/1 var(--d-serif); letter-spacing: .3em; text-transform: uppercase; color: var(--d-paper); text-shadow: 0 2px 6px #000; }
+.versus-splash-vs { position: relative; z-index: 2; padding: 0 1vw; }
+.versus-splash-stage { position: absolute; left: 0; right: 0; bottom: 5vh; z-index: 2; margin: 0; text-align: center; font: 800 clamp(16px, 2.2vw, 36px)/1 var(--d-display); letter-spacing: .3em; text-transform: uppercase; color: var(--d-ivory); text-shadow: 0 3px 0 #000, 0 0 16px #000; }
+#versus-lobby[data-phase="loading"] .versus-splash-0 { animation: versus-slam-l .32s cubic-bezier(.16, 1, .3, 1) both; }
+#versus-lobby[data-phase="loading"] .versus-splash-1 { animation: versus-slam-r .32s cubic-bezier(.16, 1, .3, 1) both; }
+#versus-lobby[data-phase="loading"] .versus-splash-vs { animation: versus-vs .42s .18s cubic-bezier(.2, 1.4, .4, 1) both, versus-throb 1.4s .6s ease-in-out infinite; }
+#versus-lobby[data-phase="loading"] .versus-splash-stage { animation: versus-rise .3s .35s ease-out both; }
+@keyframes versus-slam-l { from { transform: translateX(-60vw); } }
+@keyframes versus-slam-r { from { transform: translateX(60vw); } }
+@keyframes versus-vs { from { transform: scale(3.4); opacity: 0; } }
+@keyframes versus-throb { 50% { transform: scale(1.06); } }
+@keyframes versus-rise { from { transform: translateY(40px); opacity: 0; } }
+
+
+
+/* ---------- reconnect ---------- */
+#versus-reconnect { display: grid; place-items: center; padding: 16px; background: #0a1118e8; }
+#versus-reconnect .versus-panel { width: min(520px, 100%); aspect-ratio: auto; padding: 22px 26px 24px; text-align: center; }
+#versus-reconnect .versus-head h2 { font-size: max(22px, calc(var(--u) * 2.2)); white-space: normal; }
+#versus-reconnect p { margin: 14px 0 20px; font: 400 14px/1.5 var(--d-sans); color: var(--d-paper); }
+.versus-reconnect-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+#versus-reconnect button:disabled { opacity: .45; }
+
+/* ---------- a Duel's pause (ui/PauseOverlay.dressForDuel): the cabinet's, not the descent's ---------- */
+body.play-active #pause-overlay.duel-pause, #pause-overlay.duel-pause { z-index: 62; }
+#pause-overlay.duel-pause { background: radial-gradient(ellipse 70% 70% at 50% 50%, #0b0f13cc, #05080bf0); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+/* the foundry sign, in the kit's pieces (foundry-ui.css). The markup is the campaign's pause, whose own rules outrank a
+   class, so the kit's recipes are restated here under the Duel's scope: the large panel with the gear crest, hung on two
+   chains, a lit lantern each side (the .fk-lantern spans dressForDuel adds), the menu as list rows, the match on a slot */
+#pause-overlay.duel-pause .pause-shell {
+  position: relative; width: min(700px, 100%); overflow: visible; border: solid transparent; border-width: calc(14 * var(--fk-s)); border-radius: 0;
+  border-image: var(--fk-img-panel-large) 30 32 30 32 / calc(30 * var(--fk-s)) calc(32 * var(--fk-s)) round;
+  background: var(--fk-fill-iron); background-origin: border-box; background-clip: padding-box; image-rendering: pixelated;
+  box-shadow: 0 18px 60px #000d, inset 0 0 calc(10 * var(--fk-s)) #000c; animation: duel-pause-in .16s cubic-bezier(.2, 1.3, .4, 1);
+}
+#pause-overlay.duel-pause .pause-shell::before {
+  content: ''; position: absolute; left: 50%; bottom: calc(100% + 4 * var(--fk-s)); width: calc(78 * var(--fk-s)); height: calc(27 * var(--fk-s));
+  translate: -50% 0; z-index: 3; pointer-events: none; background: var(--fk-img-gear-crest) 0 0 / 100% 100% no-repeat;
+}
+#pause-overlay.duel-pause .pause-shell::after {
+  content: ''; position: absolute; left: 9%; right: 9%; bottom: calc(100% + 10 * var(--fk-s)); height: 100vh; z-index: -1; pointer-events: none;
+  background: var(--fk-img-chain) left bottom / calc(10 * var(--fk-s)) calc(17 * var(--fk-s)) repeat-y, var(--fk-img-chain) right bottom / calc(10 * var(--fk-s)) calc(17 * var(--fk-s)) repeat-y;
+}
+#pause-overlay:not(.duel-pause) .fk-lantern { display: none; }
+#pause-overlay.duel-pause .fk-lantern { top: 18%; }
+@keyframes duel-pause-in { from { transform: scale(1.08); opacity: 0; } }
+#pause-overlay.duel-pause .pause-main { padding: calc(8 * var(--fk-s)) calc(6 * var(--fk-s)) calc(8 * var(--fk-s)) calc(10 * var(--fk-s)); }
+body.play-active #pause-overlay.duel-pause .pause-title, #pause-overlay.duel-pause .pause-title {
+  font: 800 calc(58px * var(--text-scale, 1))/1 var(--d-display); letter-spacing: .04em; text-transform: uppercase;
+}
+body.play-active #pause-overlay.duel-pause .pause-sub, #pause-overlay.duel-pause .pause-sub { margin-top: 4px; font: 800 11px/1.4 var(--d-display); letter-spacing: .16em; text-transform: uppercase; color: var(--fk-ink-soft); }
+/* the descent's doors, its tools and its copy have no place in a Duel */
+#pause-overlay.duel-pause :is([data-pause-open], .pause-actions, #pause-abandon), #pause-overlay.duel-pause .pause-tools { display: none !important; }
+/* the rows: the kit's list rows, drawn whole at the row's height (26 art px); the cursor is the row lit copper */
+#pause-overlay.duel-pause .pause-menu { gap: calc(3 * var(--fk-s)); }
+body.play-active #pause-overlay.duel-pause #pause-resume, #pause-overlay.duel-pause #pause-resume,
+body.play-active #pause-overlay.duel-pause .pause-menu button, #pause-overlay.duel-pause .pause-menu button {
+  --fk-h: max(36px, calc(20 * var(--fk-s))); --fk-b: calc(var(--fk-h) / 26);
+  display: flex; align-items: center; justify-content: flex-start; gap: .6em; width: 100%; min-height: var(--fk-h); margin: 0; padding: 0 calc(4 * var(--fk-b));
+  border: solid transparent; border-width: calc(4 * var(--fk-b)) calc(22 * var(--fk-b)); border-radius: 0;
+  border-image: var(--fk-img-list-row) 6 22 fill / calc(6 * var(--fk-b)) calc(22 * var(--fk-b)) round stretch; background: none; color: var(--fk-row-ink, var(--fk-ink-soft));
+  font: 800 calc(16px * var(--text-scale, 1))/1 var(--d-display); letter-spacing: .12em; text-transform: uppercase; text-shadow: 0 2px 0 #000; transition: filter .06s, color .06s; image-rendering: pixelated;
+}
+#pause-overlay.duel-pause #pause-resume { margin: calc(7 * var(--fk-s)) 0 calc(3 * var(--fk-s)); }
+#pause-overlay.duel-pause #pause-resume::after { content: none; }
+#pause-overlay.duel-pause .pause-menu :is(#pause-restart, #pause-title-btn),
+#pause-overlay.duel-pause .pause-menu #pause-restart:not([hidden]) + #pause-title-btn { margin-top: 0; border-top: solid transparent; border-top-width: calc(4 * var(--fk-b)); padding-top: 0; color: var(--fk-row-ink, var(--fk-ink-soft)); }
+/* the cursor is one row: focus (keys, pad, a click) lights it; a hover lights only the row under the pointer when nothing is focused */
+body.play-active #pause-overlay.duel-pause :is(#pause-resume, .pause-menu button):focus,
+#pause-overlay.duel-pause :is(#pause-resume, .pause-menu button):focus,
+#pause-overlay.duel-pause:not(:has(:is(#pause-resume, .pause-menu button):focus)) :is(#pause-resume, .pause-menu button):hover {
+  --fk-row-ink: var(--fk-ink-hot); outline: none; color: var(--fk-row-ink); border-image-source: var(--fk-img-list-row-hot); background: none; box-shadow: none; text-shadow: 0 2px 0 #3a1404, 0 0 3px #3a1404; filter: drop-shadow(0 0 10px #ff7a2a88);
+}
+/* the pointer moves the cursor: hovering a row focuses it (PauseOverlay) */
+#pause-overlay.duel-pause #pause-duel-controls[aria-expanded="true"] { color: var(--d-teal); }
+/* the side card: the match (stage, both fighters' stocks and percent), or the button layout behind Controls */
+#pause-overlay.duel-pause .pause-status {
+  margin: calc(6 * var(--fk-s)) calc(6 * var(--fk-s)) calc(6 * var(--fk-s)) calc(2 * var(--fk-s)); padding: calc(7 * var(--fk-s)) calc(9 * var(--fk-s));
+  border: solid transparent; border-width: calc(5 * var(--fk-s)); border-image: var(--fk-img-slot) 7 / calc(7 * var(--fk-s)) round;
+  background: var(--fk-fill-slot); background-origin: border-box; background-clip: padding-box; box-shadow: inset 0 calc(2 * var(--fk-s)) calc(8 * var(--fk-s)) #000d;
+}
+#pause-overlay.duel-pause .pause-status .menu-label { font: 800 11px/1 var(--d-display); letter-spacing: .2em; color: var(--d-copper-hi); }
+#pause-overlay.duel-pause #pause-place { font: 800 calc(24px * var(--text-scale, 1))/1.05 var(--d-display); letter-spacing: .04em; text-transform: uppercase; color: var(--d-ivory); }
+#pause-overlay.duel-pause #pause-goal { font: 700 12px/1.4 var(--d-serif); letter-spacing: .14em; text-transform: uppercase; color: var(--d-paper); }
+#pause-overlay.duel-pause #pause-stats { font: 800 calc(15px * var(--text-scale, 1))/1.2 var(--d-display); letter-spacing: .05em; border-top-color: var(--d-copper-dim); }
+/* the stocks as the kit's beads */
+#pause-overlay.duel-pause .pause-beads { --fk-s: calc(var(--fk-px) * .75); display: inline-flex; gap: calc(2 * var(--fk-s)); margin-right: .45em; vertical-align: -.12em; }
+#pause-overlay.duel-pause #pause-stats dt[data-slot="0"], #pause-overlay.duel-pause #pause-stats dd[data-slot="0"] { color: var(--d-amber); }
+#pause-overlay.duel-pause #pause-stats dt[data-slot="1"], #pause-overlay.duel-pause #pause-stats dd[data-slot="1"] { color: var(--d-teal); }
+#pause-overlay.duel-pause .pause-status:not(.showing-controls) .pause-duel-controls { display: none; }
+#pause-overlay.duel-pause .pause-status.showing-controls :is(#pause-goal, #pause-stats) { display: none; }
+#pause-overlay.duel-pause .pause-duel-controls { border-top-color: var(--d-copper-dim); }
+#pause-overlay.duel-pause .pause-duel-controls h4 { font: 800 11px/1 var(--d-display); letter-spacing: .18em; color: var(--d-copper-hi); }
+#pause-overlay.duel-pause .pause-duel-controls dt { font: 800 12px/1.2 var(--d-display); letter-spacing: .08em; text-transform: uppercase; color: var(--d-ivory); }
+@media (max-width: 760px), (max-height: 600px) {
+  #pause-overlay.duel-pause .pause-status.showing-controls { display: flex; }
+}
+
+/* the training panel and the wandsmith's bench stay out of a Duel */
 body.versus-active #fighter-arena { display: none !important; }
-body.versus-active [data-pause-open="KeyB"] { display: none; }
-.stock-change { position: absolute; top: 64%; left: 50%; transform: translateX(-50%); pointer-events: auto; color: #e8dcc0; border: 1px solid #ac744b; background: #142334; padding: 10px 20px; cursor: pointer; font: inherit; }
-.stock-change:focus-visible { outline: 3px solid #65cac5; outline-offset: 3px; }
-@media(max-width:700px) {
-  .versus-shell { padding: 16px; margin: 12px; }.versus-header h1 { font-size: 34px; }.versus-header p { font-size: 10px; }
-  .versus-seats { gap: 12px; margin: 14px 0; }.versus-seat { display: block; }.versus-portrait { height: 140px; max-height: none; mask-image: linear-gradient(to bottom, black 65%, transparent); }.versus-seat-copy { padding: 0 10px 12px; margin-top: -14px; position: relative; }.versus-seat h2 { font-size: 21px; }.versus-fighter-title { margin-bottom: 9px; }
-  #versus-lobby select, #versus-lobby button { font-size: 11px; padding: 6px; }.versus-stage > div:last-child { width: 75%; }.versus-stage h2 { font-size: 25px; }.versus-stage p { font-size: 11px; }.versus-stage p span { padding: 0 3px; }
-  .versus-footer { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.versus-status { grid-column: 1 / -1; grid-row: 1; }#versus-start { min-width: 0; }
+body.versus-active #pause-overlay .pause-menu button[data-pause-open="KeyB"] { display: none; }
+
+/* the Duel's controls, read back in the pause menu (ui/PauseOverlay) */
+.pause-duel-controls { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 6px 0 0; padding-top: 12px; border-top: 1px solid var(--m-line, #2f4548); font: 400 calc(12.5px * var(--text-scale, 1))/1.3 var(--m-sans); }
+.pause-duel-controls[hidden] { display: none; }
+.pause-duel-controls h4 { grid-column: 1 / -1; margin: 4px 0 0; font: 600 calc(11px * var(--text-scale, 1))/1.2 var(--m-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--m-copper, #bd9460); }
+.pause-duel-controls dt { margin: 0; color: var(--m-text, #e6dfca); font-weight: 600; white-space: nowrap; }
+.pause-duel-controls dd { margin: 0; color: var(--m-muted, #97a89f); }
+
+/* =====================================================================
+ * THE FOUNDRY KIT ON THE SELECT SCREENS (foundry-ui.css): the panels,
+ * headings, medallion, nameplates, cards, seals, arrows, picture tiles,
+ * plate buttons, keycaps and the hanging status sign are the kit's
+ * classes on the markup (VersusLobby, DuelLobby); the rules here only
+ * place and size them for these screens.
+ * ===================================================================== */
+.versus-head :is(h1, h2).fk-heading-cast { font-size: max(28px, calc(var(--u) * 3.5)); letter-spacing: .06em; }
+.versus-head .fk-heading-cast--ruled::before, .versus-head .fk-heading-cast--ruled::after { width: max(22px, calc(var(--u) * 3.4)); }
+/* (DUEL reads over the busts: a dark halo hugs its letters) */
+.versus-duel > .versus-head h1.fk-heading-cast { filter: drop-shadow(0 -1px 0 #ffd49a66) drop-shadow(0 2px 0 #120703) drop-shadow(0 3px 0 #0008) drop-shadow(0 0 6px #0c0a09) drop-shadow(0 0 .35em #ff8a3a44); }
+.versus-head p.fk-engraved { letter-spacing: .28em; font-family: var(--d-display); font-weight: 800; font-size: max(10px, calc(var(--u) * .82)); }
+.versus-brand .fk-heading-cast { font-size: 1.1em; }
+.versus-motto.fk-engraved { font-family: var(--d-display); font-weight: 800; color: #cbb999; }
+
+/* the fighter's nameplate under the bust (the arrows outside it) */
+/* (at half the kit's scale: a long name needs the room its end slices would take) */
+.versus-names.fk-nameplate { --fk-s: var(--fk-px-half); padding: calc(var(--u) * .15) calc(var(--u) * .9) calc(var(--u) * .3); min-width: calc(var(--u) * 13); }
+.versus-names.fk-nameplate .versus-fighter-title { margin-top: calc(var(--u) * .15); }
+.versus-names.fk-nameplate .versus-pips { margin-top: calc(var(--u) * .3); }
+/* (a long name shrinks to its plate: --name-len, its letters, set by the lobby; the plate is the size container) */
+.versus-names.fk-nameplate { container-type: inline-size; }
+.versus-seat h2.fk-heading-cast { font-size: min(max(20px, calc(var(--u) * 2.3)), calc(100cqi / (var(--name-len, 5) * .8))); letter-spacing: .05em; }
+.versus-fighter-title { color: var(--fk-ink-soft); text-shadow: 0 1px 0 #000; }
+
+/* the seat cards (.fk-card--small): a ready seat's card glows in its colour */
+.versus-device.fk-card[data-ready="true"], #duel-network .versus-device.fk-card[data-locked="true"] { box-shadow: 0 6px 16px #000b, inset 0 0 calc(6 * var(--fk-s)) #000b, 0 0 calc(var(--u) * 1.6) color-mix(in srgb, var(--seat) 45%, transparent); }
+.versus-device .versus-cycle-value, .versus-cpu .versus-cycle-value { font-family: var(--d-display); font-weight: 800; letter-spacing: .08em; }
+.versus-device-icon { color: var(--fk-ink-soft); }
+
+/* the stage tiles (.fk-picture-frame at half scale): the chosen one glows, the name on the caption plate */
+#versus-lobby .versus-stage-tile.fk-picture-frame { --fk-s: var(--fk-px-half); }
+#versus-lobby .versus-stage-tile[aria-checked="true"] { filter: drop-shadow(0 0 2px #ffb36a) drop-shadow(0 0 calc(var(--u) * 1.2) #ff9a4a99); }
+#versus-lobby .versus-stage-tile:focus-visible { filter: drop-shadow(0 0 2px #ffd29a) drop-shadow(0 0 calc(var(--u) * 1.4) #ffb36acc); }
+.versus-stage-tile .versus-stage-name { font-size: max(11px, calc(var(--u) * 1.05)); }
+.versus-stage-tile[aria-checked="true"] .versus-stage-name { color: #ffd9a6; text-shadow: 0 2px 0 #000, 0 0 8px #ff9a4a88; }
+
+/* the rules bar on a slot */
+.versus-rules.fk-slot li { font: 700 max(13px, calc(var(--u) * 1.25))/1.2 var(--d-serif); letter-spacing: .04em; color: #e3d4b6; }
+.versus-stage-foot { color: #cbb999; font-family: var(--d-display); font-weight: 800; letter-spacing: .24em; }
+
+/* the footer: keycaps, and the status on the hanging nameplate between two lanterns (its chains rise to the panels) */
+.versus-footer .fk-keycap { --fk-h: max(22px, calc(11 * var(--fk-s))); font-size: max(11px, calc(var(--u) * .95)); }
+.versus-status.fk-hanging-nameplate { --fk-b: max(1px, calc(var(--fk-s) * .7)); padding: calc(var(--u) * .2) calc(var(--u) * 1); animation: none; }
+/* (waiting, the words blink, not the sign) */
+.versus-status.fk-hanging-nameplate:not([data-go="true"]) { animation: versus-status-blink 1.1s steps(1) infinite; }
+@keyframes versus-status-blink { 60% { color: #8f826c; } }
+:is(#versus-lobby, #duel-network) .versus-back { font-family: var(--d-display); font-weight: 800; color: var(--fk-ink-soft); }
+
+/* the VS card's painted VS */
+.versus-splash-vs .fk-word { filter: drop-shadow(0 6px 0 #1a0c06) drop-shadow(0 0 40px #ef9a48aa); }
+
+/* the reconnect card */
+#versus-reconnect .versus-panel.fk-panel { width: min(560px, 100%); }
+#versus-reconnect .fk-button { --fk-h: 48px; font-size: 15px; }
+
+@media (prefers-reduced-motion: reduce) {
+  #versus-lobby *, #versus-reconnect *, #duel-network *, #pause-overlay.duel-pause * { transition: none !important; animation: none !important; }
+  .versus-backdrop > div { transform: none; }
+}
+
+/* ---------- a small window: taller panels (a 4:3 window has the height), the device row drops its arrows ---------- */
+@media (max-width: 1000px) {
+  .versus-panel { aspect-ratio: 745 / 640; }
+  .versus-duel { grid-template-columns: 1fr calc(var(--u) * 6.4) 1fr; }
+  .versus-device-icon { display: none; }
+  .versus-seat h2 { font-size: max(17px, calc(var(--u) * 2.2)); }
+  .versus-cpu .versus-level { display: none; }
+  .versus-device[data-ready="true"] .versus-device-label::after { content: none; }
+  .versus-keys > span:nth-child(n+3) { display: none; }
+}
+
+/* ---------- narrow screens: one column that scrolls ---------- */
+@media (max-width: 760px) {
+  #versus-lobby, #versus-reconnect, #duel-network { --u: 10px; }
+  .versus-shell { gap: 12px; padding: 12px 12px 16px; }
+  .versus-top { flex-wrap: wrap; }
+  .versus-motto { display: none; }
+  .versus-panels { grid-template-columns: 1fr; gap: 14px; align-self: start; }
+  .versus-panel { aspect-ratio: auto; }
+  .versus-duel { grid-template-columns: 1fr 52px 1fr; grid-template-rows: auto 190px auto auto auto; column-gap: 4px; padding: 6px 4px 14px; }
+  .versus-seat { min-height: 230px; }
+  .versus-vs { margin-top: 0; }
+  .versus-device-icon { display: inline-flex; }
+  .versus-cpu .versus-level { display: inline-flex; }
+  .versus-keys > span:nth-child(n+3) { display: inline-flex; }
+  .versus-portrait-frame { inset: 0 -4px 40px; }
+  .versus-seat h2 { font-size: 19px; }
+  .versus-fighter-title { letter-spacing: .14em; }
+  .versus-names.fk-nameplate { min-width: 0; padding: 2px 3px 4px; }
+  .versus-seat h2.fk-heading-cast { font-size: min(17px, calc(100cqi / (var(--name-len, 5) * .8))); letter-spacing: .03em; }
+  .versus-head :is(h1, h2) { font-size: 24px; gap: 8px; }
+  .versus-head :is(h1, h2)::before, .versus-head :is(h1, h2)::after { width: 22px; min-width: 22px; }
+  .versus-head p { letter-spacing: .18em; }
+  .versus-device-0 { grid-area: 3 / 1 / 4 / -1; margin-top: 8px; }
+  .versus-device-1 { grid-area: 4 / 1 / 5 / -1; margin-top: 14px; }
+  .versus-device-0 .versus-ready, .versus-device-1 .versus-ready { left: auto; right: -8px; }
+  #versus-lobby #versus-start { grid-area: 5 / 1 / 6 / -1; width: 100%; min-width: 0; margin: 16px 0 0; }
+  .versus-stages { padding: 10px 6px 8px; gap: 14px; }
+  .versus-stage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
+  .versus-rules { flex-wrap: wrap; justify-content: center; gap: 8px 0; padding: 10px 4px; }
+  .versus-rules li { padding: 0 10px; }
+  .versus-stage-foot { white-space: normal; letter-spacing: .16em; }
+  .versus-footer { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .versus-actions, :is(#versus-lobby, #duel-network) .versus-back, .versus-prompts, .versus-keys, .controller-notice { justify-self: center; justify-content: center; align-items: center; }
+  .controller-notice span { text-align: center; }
 }

@@ -84,7 +84,7 @@ export function authoredZones(runtime: LevelRuntime): readonly AuthoredZone[] {
  * hitches; planes appear under the level curtain.
  */
 
-type SlotSource = { kind: 'kit'; key: string } | { kind: 'classic' } | { kind: 'stock' };
+type SlotSource = { kind: 'kit'; key: string } | { kind: 'classic' } | { kind: 'stock'; stage: string };
 
 interface BakedKit {
   readonly kit: DepthKit;
@@ -257,12 +257,14 @@ export class DepthScene implements ParallaxLayers {
   /* ------------------------------ slots ------------------------------ */
 
   private useStockBackdrop(ctx: Ctx): void {
-    const bmp = this.image(`${import.meta.env.BASE_URL}assets/arena/foundry-backdrop.png`);
+    const stage = ctx.arena?.stockStage;
+    const bmp = this.image(`${import.meta.env.BASE_URL}${stage?.backdrop ?? 'assets/arena/foundry/backdrop.webp'}`);
     this.foreground.enabled = false;
     this.foreground.particles.set(false, null, null);
     this.activeKit = null; this.shaftPlane = null; this.grade = null;
-    if (this.source.kind !== 'stock') {
-      this.source = { kind: 'stock' }; this.slotVersions.fill(-1);
+    const stageId = stage?.id ?? 'foundry';
+    if (this.source.kind !== 'stock' || this.source.stage !== stageId) {
+      this.source = { kind: 'stock', stage: stageId }; this.slotVersions.fill(-1);
     }
     for (let i = 0; i < this.backdropLayers.length; i++) {
       const to = this.backdropLayers[i];
@@ -274,9 +276,8 @@ export class DepthScene implements ParallaxLayers {
         to.width = ready ? bmp.width : 1; to.height = ready ? bmp.height : 1;
         to.loaded = true; to.lit = 0; to.version = versionCounter++;
       }
-      Object.assign(this.kitProfile.layers[to.id], NEUTRAL_LAYER, {
-        visible: i === 0, opacity: i === 0 ? 1 : 0, scale: ready ? VIEW_W * (ctx.camera.viewScale ?? 1) / bmp.width : 1,
-      });
+      Object.assign(this.kitProfile.layers[to.id], NEUTRAL_LAYER, { visible: i === 0, opacity: i === 0 ? 1 : 0 },
+        ready ? stockPlateFraming(ctx, bmp.width, bmp.height) : { scale: 1 });
     }
     Object.assign(this.kitProfile.grade, DEFAULT_BACKDROP_GRADE);
     this.profile = this.kitProfile;
@@ -535,4 +536,23 @@ export class ParticleFrameState implements DepthParticleFrame {
     this.seed = kit ? kit.seed : 0;
     this.version = versionCounter++;
   }
+}
+
+/**
+ * The stock backdrop is a far wall, not a screen overlay: it magnifies gently as the camera closes in (a fraction of the
+ * world's zoom), drifts a little as the camera pans away from the stage centre, and is clamped so the plate never runs out
+ * at any zoom. Speed stays 0 (screen-anchored sampling); scale and offsets carry the motion.
+ */
+const PLATE_PAN = 0.12, PLATE_ZOOM = 0.4, PLATE_MARGIN = 1.1, PLATE_ANCHOR_Y = 0.52;
+function stockPlateFraming(ctx: Ctx, width: number, height: number): { scale: number; offsetX: number; offsetY: number } {
+  const cam = ctx.camera, zoom = cam.zoom || 1, vs = cam.viewScale ?? 1;
+  const fit = Math.max(VIEW_W / width, VIEW_H / height);
+  const magnify = PLATE_MARGIN * Math.pow(Math.max(1, zoom), PLATE_ZOOM);
+  const scale = Math.max(0.25, fit * magnify / zoom);
+  const stage = ctx.arena?.stockStage;
+  const dx = cam.x + VIEW_W / 2 - (stage?.center.x ?? cam.x + VIEW_W / 2), dy = cam.y + VIEW_H / 2 - (stage?.center.y ?? cam.y + VIEW_H / 2);
+  const halfW = VIEW_W * vs / 2 / scale, halfH = VIEW_H * vs / 2 / scale;
+  const cx = Math.min(width - halfW, Math.max(halfW, width / 2 + PLATE_PAN * dx / (scale * zoom)));
+  const cy = Math.min(height - halfH, Math.max(halfH, height * PLATE_ANCHOR_Y + PLATE_PAN * dy / (scale * zoom)));
+  return { scale, offsetX: cx - halfW, offsetY: cy - halfH };
 }

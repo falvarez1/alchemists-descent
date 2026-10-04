@@ -21,14 +21,13 @@ try {
   await page.getByRole('combobox', { name: 'Match rules', exact: true }).selectOption('stocks');
   await page.getByRole('button', { name: 'Add rival', exact: true }).click();
   await page.waitForFunction(() => window.__game.ctx.arena.stockMatch?.state === 'fighting');
-  await page.locator('.controller-notice').waitFor();
+  // The controller recommendation lives in the Duel lobby (ui/VersusLobby): nothing pops over a match.
+  assert.equal(await page.locator('.controller-notice').isVisible(), false, 'no controller notice covers the match');
   assert.equal(await page.locator('.gpu-notice').count(), 0);
-  await page.screenshot({ path: `${out}/controller-notice.png` });
   await page.evaluate(() => {
     window.testPads = [{ connected: true, mapping: 'standard', index: 0, axes: [0,0,0,0], buttons: Array.from({ length: 18 }, () => ({ pressed: false, value: 0 })) }];
     window.dispatchEvent(new Event('gamepadconnected'));
   });
-  await page.locator('.controller-notice').waitFor({ state: 'hidden' });
   await page.evaluate(async () => {
     const c = window.__game.ctx;
     await c.console.exec('arena bot 0 off'); await c.console.exec('arena bot 1 off');
@@ -41,7 +40,8 @@ try {
     for (const slot of [0, 1]) {
       c.arena.reset(); for (let i = 0; i < 125; i++) step();
       const b = c.arena.bundle(slot), p = b.player, platform = STOCK_STAGE.platforms[slot];
-      Object.assign(p, { x: (platform.x0 + platform.x1) / 2, y: STOCK_STAGE.main.y - 1, vy: 0, vx: 0, fx: 0, fy: 0, grounded: true });
+      // Bodies live on whole cells: the centre of an even-width platform is a half cell.
+      Object.assign(p, { x: Math.round((platform.x0 + platform.x1) / 2), y: STOCK_STAGE.main.y - 1, vy: 0, vx: 0, fx: 0, fy: 0, grounded: true });
       b.input.keys.jump = true;
       const trace = [];
       for (let i = 0; i < 150; i++) {
@@ -59,6 +59,6 @@ try {
     assert.equal(row.material, 13); assert.equal(row.stocks, 3);
   }
   assert.deepEqual(errors, []);
-  writeFileSync(`${out}/stock-platforms.json`, JSON.stringify({ results, controllerNotice: 'shown without pad; hidden on connection; GPU tip absent', errors }, null, 2));
-  console.log('Both fighters rise through and land on platforms; material preserved; controller notice verified.');
+  writeFileSync(`${out}/stock-platforms.json`, JSON.stringify({ results, controllerNotice: 'none over the match (it lives in the Duel lobby); GPU tip absent', errors }, null, 2));
+  console.log('Both fighters rise through and land on platforms; material preserved; no notice covers the match.');
 } finally { await browser.close(); }

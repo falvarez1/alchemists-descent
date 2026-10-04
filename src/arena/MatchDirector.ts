@@ -9,12 +9,15 @@ export function influenceLaunch(x: number, y: number, inputX: number, inputY: nu
   return { x: x * Math.cos(turn) - y * Math.sin(turn), y: x * Math.sin(turn) + y * Math.cos(turn) };
 }
 
-/** Returns final velocity: mass is applied HERE, never again by Player.applyImpulse. */
-export function stockLaunch(kx: number, ky: number, damage: number, volatility: number, mass: number, growth = 1, stun = 1): { x: number; y: number; stun: number } {
+/**
+ * Returns final velocity: mass is applied HERE, never again by Player.applyImpulse. `fixed` scales the push that does
+ * not grow with percent (base, the blow's knock, damage): 1 for melee, stockProjectileScale(percent) for a projectile.
+ */
+export function stockLaunch(kx: number, ky: number, damage: number, volatility: number, mass: number, growth = 1, stun = 1, fixed = 1): { x: number; y: number; stun: number } {
   const length = Math.hypot(kx, ky);
   if (!Number.isFinite(length) || length < 0.001) return { x: 0, y: 0, stun: 0 };
   const k = STOCK_LAUNCH;
-  const speed = Math.min(k.maxSpeed, (k.base + Math.min(6, length) + damage * k.damage + volatility * k.growth * growth) / Math.max(0.25, mass));
+  const speed = Math.min(k.maxSpeed, ((k.base + Math.min(6, length) + damage * k.damage) * fixed + volatility * k.growth * growth) / Math.max(0.25, mass));
   // A horizontal blow lifts a grounded body clear of friction. Downward spikes retain their direction.
   const dx = kx / length, dy = ky === 0 ? -0.35 : ky / length;
   const norm = Math.hypot(dx, dy);

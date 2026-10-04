@@ -1,3 +1,4 @@
+import { STOCK_PROJECTILE_LAUNCH } from '@/config/stockRules';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { ARENA_RULES } from '@/config/arenaRules';
 import { ArenaSlots } from '@/arena/ArenaSlots';
@@ -132,6 +133,18 @@ describe('EventBus slot scoping', () => {
     base.input.keys.down = true; expect(arena.requestStockAttack()).toBe(true);
     expect(arena.stockAttack(0)?.kind).toBe('finisher');
     arena.takeStockDamage(5, 2, -1); expect(arena.stockAttack(0)?.busy).toBe(false);
+  });
+  test('a projectile flinches a fresh fighter but launches one at high percent (melee keeps its own knock)', async () => {
+    const fresh = await meleeSetup();
+    fresh.arena.with(1, () => fresh.arena.takeStockDamage(12, 3, -1));
+    expect(fresh.arena.isLaunching(1)).toBe(false);
+    const nudge = Math.hypot(fresh.rival.player.vx, fresh.rival.player.vy);
+    expect(nudge).toBeLessThan(STOCK_PROJECTILE_LAUNCH.tumbleSpeed);
+    const late = await meleeSetup();
+    late.arena.stockMatch!.fighters[1].volatility = 120;
+    late.arena.with(1, () => late.arena.takeStockDamage(12, 3, -1));
+    expect(late.arena.isLaunching(1)).toBe(true);
+    expect(Math.hypot(late.rival.player.vx, late.rival.player.vy)).toBeGreaterThan(nudge * 3);
   });
   test('grabs counter shields, hold both bodies, and throw with opponent attribution', async () => {
     const { arena, base, rival, step } = await meleeSetup();
@@ -623,6 +636,26 @@ describe('ArenaSlots', () => {
     expect(arena.runsBody(1)).toBe(false);
     expect(arena.runsBody(0)).toBe(true);
     void ctx;
+  });
+
+  test('a stock ring-out credits the last hitter until the victim lands, however long the fall', async () => {
+    const run = async (landFirst: boolean) => {
+      const { arena, ctx } = setup();
+      await arena.addRival('brann-rook', 300, 100);
+      arena.configureStocks({ left: 0, right: 600, top: 0, bottom: 500 });
+      for (let i = 0; i < 121; i++) arena.endTick();
+      const victim = arena.bundle(1)!.player;
+      arena.hit(ctx.enemies[0], 5, 0, 0, 'direct'); // slot 0 lands a blow on slot 1
+      Object.assign(victim, { grounded: false, invuln: 0 });
+      for (let i = 0; i < 20; i++) { ctx.state.frameCount++; arena.endTick(); } // launched: airborne past the grace
+      if (landFirst) { victim.grounded = true; ctx.state.frameCount++; arena.endTick(); victim.grounded = false; }
+      // A long fall: well past the 90-tick hazard window before the blast line is crossed.
+      for (let i = 0; i < 150; i++) { ctx.state.frameCount++; arena.endTick(); }
+      victim.y = 600; ctx.state.frameCount++; arena.endTick();
+      return arena.bout.downs[0];
+    };
+    expect(await run(false)).toMatchObject({ slot: 1, by: 0, source: 'ring-out' });
+    expect(await run(true)).toMatchObject({ slot: 1, by: 1 });
   });
 
   test('a knockout is recorded once, names the last blow\'s owner as the winner, and emits fighterDown', async () => {

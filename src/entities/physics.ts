@@ -29,7 +29,7 @@ export class Physics implements PhysicsApi {
   /** Only the authored raised Metal platforms are one-way. Destruction stays grid-real. */
   private stockPlatform(X: number, Y: number) {
     if (!this.ctx.arena?.stockMatch || this.ctx.world.type(X, Y) !== Cell.Metal) return undefined;
-    return STOCK_STAGE.platforms.find(p => X >= p.x0 && X <= p.x1 && Y >= p.y && Y < p.y + p.depth);
+    return (this.ctx.arena?.stockStage ?? STOCK_STAGE).platforms.find(p => X >= p.x0 && X <= p.x1 && Y >= p.y && Y < p.y + p.depth);
   }
 
   private cellBlocksForMove(X: number, Y: number): boolean {

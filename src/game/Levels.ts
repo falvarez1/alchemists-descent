@@ -12,6 +12,8 @@
 // - Falling to the bottom of any level is clamped for safety, never treated as
 //   a hidden transition.
 
+import { STOCK_STAGES } from '@/config/stockStage';
+import { versusMatchUnderway } from '@/core/versus';
 import type { StoryRunSave } from '@/core/story';
 import type { FighterSaveState } from '@/core/fighters';
 import { HEIGHT, MINIMAP_H, MINIMAP_W, WIDTH } from '@/config/constants';
@@ -2488,8 +2490,12 @@ export class Levels implements LevelsApi {
     this._transitioning = true;
 
     const floor = floorOf(id);
+    // A Duel's curtain names its stage, never the descent.
+    const versus = versusMatchUnderway(ctx.versus) ? ctx.versus : undefined;
     this.showTransitionCurtain(ctx, floor > 0
       ? { title: floorDisplayName(id), detail: `Floor ${floor} of ${FLOORS_TOTAL}` }
+      : versus
+      ? { title: STOCK_STAGES[versus.stage].name, detail: 'Duel · get ready' }
       : { title: 'Opening the descent', detail: `Preparing ${def.name}.` });
 
     // This level is about to become CURRENT and mutate — its cached blob dies.
@@ -2591,7 +2597,7 @@ export class Levels implements LevelsApi {
         : id === 'fighter-test'
         ? 'THE PROVING YARD — TRY EVERY MOVE'
         : id === 'fighter-duel'
-        ? 'THE DUEL STAGE — TWO FIGHTERS, ONE ROOM'
+        ? versusMatchUnderway(ctx.versus) ? 'LAST FIGHTER STANDING' : 'THE DUEL STAGE — TWO FIGHTERS, ONE ROOM'
         : id === 'weaver-test'
         ? 'STUDY THE WEAVER LAIR'
         : runtime.portal
