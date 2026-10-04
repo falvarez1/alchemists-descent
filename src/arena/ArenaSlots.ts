@@ -6,7 +6,7 @@ import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { FIGHTER_LOADOUTS, loadoutSave } from '@/content/fighterLoadouts';
 import { ARENA_RULES } from '@/config/arenaRules';
-import { STOCK_RULES, stockCountdownBeat, stockHitstopTicks } from '@/config/stockRules';
+import { STOCK_PROJECTILE_LAUNCH, STOCK_RULES, stockCountdownBeat, stockHitstopTicks, stockProjectileScale } from '@/config/stockRules';
 import type { BlastZone, StockLedgeInput, StockMatchView, StockDodgeView, StockShieldView, StockGrabView, StockLedgeView, StockSpecialView } from '@/core/arenaMatch';
 import { MatchDirector, stockLaunch, influenceLaunch } from '@/arena/MatchDirector';
 import { StockDodge } from '@/arena/StockDodge';
@@ -205,8 +205,17 @@ export class ArenaSlots implements ArenaApi {
     const blow = this.activeBlow;
     this.ctx.events.emit('fighterHit', { by: blow?.by ?? slot, victim: slot, damage: amount, tick: this.ctx.state.frameCount, attack: blow?.tag ?? 'world' });
     if (p.status.stoneskin <= 0 && !rec.bundle.fighters.staggerResist) {
-      const launch = stockLaunch(kx, ky, amount, this.match.fighters[slot].volatility, rec.bundle.fighters.body.mass ?? 1, blow?.growth, blow?.stun);
-      if (launch.stun > 0) {
+      // Melee and throws carry their own tuned knock; anything else (a projectile, a spell, the world) pushes in
+      // proportion to the victim's percent, so an opening shot at 0% is a flinch and the same shot at 120% sends.
+      const volatility = this.match.fighters[slot].volatility, tag = blow?.tag ?? '';
+      const tuned = tag.startsWith('melee.') || tag.startsWith('throw.');
+      const launch = stockLaunch(kx, ky, amount, volatility, rec.bundle.fighters.body.mass ?? 1, blow?.growth, blow?.stun, tuned ? 1 : stockProjectileScale(volatility));
+      if (!tuned && launch.stun > 0 && Math.hypot(launch.x, launch.y) < STOCK_PROJECTILE_LAUNCH.tumbleSpeed) {
+        // A flinch: knocked back a step and briefly stunned, never tumbling or losing the next action to a launch.
+        p.vx = launch.x; p.vy = Math.min(p.vy, launch.y);
+        p.stunT = Math.max(p.stunT, Math.min(8, launch.stun));
+        this.attacks[slot].reset();
+      } else if (launch.stun > 0) {
         const k = rec.bundle.input.keys;
         const influenced = influenceLaunch(launch.x, launch.y, Number(k.right) - Number(k.left), Number(k.down) - Number(k.up));
         p.vx = influenced.x; p.vy = influenced.y; p.grounded = false;
@@ -488,6 +497,9 @@ export class ArenaSlots implements ArenaApi {
     const s = this.stand;
     const sent = this.sent;
     let dvx = s.vx - sent.vx, dvy = s.vy - sent.vy;
+    // In a stock match the launch (takeStockDamage) is the only knockback: the stand-in's own flinch shove is dropped,
+    // or a projectile would push twice, and not in proportion to the percent.
+    if (this.match && (s.knockT ?? 0) > 0) { s.knockVx = 0; s.knockVy = 0; s.knockT = 0; }
     if ((s.knockT ?? 0) > 0) {
       dvx += s.knockVx ?? 0;
       dvy += s.knockVy ?? 0;

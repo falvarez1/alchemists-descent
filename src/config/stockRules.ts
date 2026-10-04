@@ -10,6 +10,20 @@ export const STOCK_LAUNCH = Object.freeze({
 });
 
 /**
+ * A projectile's (or spell's, or the world's) push grows with the victim's percent, as a platform fighter's does: its
+ * fixed part (base, the blow's own knock, the damage term) is scaled from `floor` at 0% to full at `full` percent;
+ * the percent growth term is unchanged. Melee and throws keep their own tuned specs. A push slower than `tumbleSpeed`
+ * is a flinch (a short stun, control kept), not a launch.
+ */
+export const STOCK_PROJECTILE_LAUNCH = Object.freeze({ floor: 0.15, full: 150, tumbleSpeed: 4 });
+
+/** The fixed-push scale for a non-melee blow at this (post-hit) percent. */
+export function stockProjectileScale(volatility: number): number {
+  const k = STOCK_PROJECTILE_LAUNCH;
+  return k.floor + (1 - k.floor) * Math.min(1, Math.max(0, volatility) / k.full);
+}
+
+/**
  * Impact hitstop for a landed stock blow: the whole game holds for a beat that grows with the damage (a jab 3 ticks, a
  * finisher 5, Brann's slam 6). A fixed-step freeze, so it never changes an outcome, only how hard it reads.
  */
