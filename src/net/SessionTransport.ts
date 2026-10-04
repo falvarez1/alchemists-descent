@@ -69,6 +69,8 @@ export interface SessionTransport {
    * binary-incapable transport later cannot break authoring.
    */
   readonly supportsBinary?: boolean;
+  /** Optional outbound queue depth, for clients that produce large state frames. */
+  readonly bufferedBytes?: number;
   /** Deliver one packed frame. Returns false when unsupported or not up. */
   sendBinary?(data: Uint8Array): boolean;
   /** Tear down; no handler may fire afterwards. */
@@ -110,6 +112,7 @@ export class WebSocketTransport implements SessionTransport {
   }
 
   readonly supportsBinary = true;
+  get bufferedBytes(): number { return this.socket?.bufferedAmount ?? 0; }
 
   open(handlers: TransportHandlers): void {
     if (this.closed || this.socket) return;

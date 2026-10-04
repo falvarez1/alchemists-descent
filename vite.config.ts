@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { duelPlugin } from './servers/duel/plugin.ts';
 // @ts-expect-error -- plain-JS dev plugin; it must also run standalone under node
 import { authorLinkPlugin } from './scripts/vite-plugin-authorlink.mjs';
 
@@ -81,7 +82,7 @@ const ISOLATION_HEADERS = {
 };
 
 export default defineConfig(({ mode }) => ({
-  plugins: [authorLinkPlugin()],
+  plugins: [authorLinkPlugin(), duelPlugin()],
   define: {
     __BUILD_STAMP__: JSON.stringify(buildStamp()),
     __APP_VERSION__: JSON.stringify(appVersion()),

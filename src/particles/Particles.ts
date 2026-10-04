@@ -73,6 +73,10 @@ export class Particles implements ParticlesApi {
   private readonly pool = new EntityPool<FlyingParticle>({ max: MAX_PARTICLES, untracked: true });
   private readonly free: FlyingParticle[] = [];
   readonly list = this.pool.list;
+  applyPresentation(particles: readonly FlyingParticle[]): void {
+    this.clear();
+    for (const particle of particles) { if (this.pool.full) break; this.pool.add({ ...particle }); }
+  }
   /** Loot cascade: coins vacuumed up in quick succession ring up the scale. */
   private coinStreak = 0;
   private lastCoinFrame = -999;

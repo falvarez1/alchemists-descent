@@ -142,7 +142,11 @@ export class VersusLobby {
     this.notice.className = 'controller-notice';
     this.notice.innerHTML = `${DUEL_ICON.controller}<span>${glyph('A', 'a')} on a pad to join</span>`;
     const prompts = document.createElement('div'); prompts.className = 'versus-prompts'; prompts.append(this.keys, this.notice);
-    this.root.querySelector('footer')!.append(back, this.status, prompts);
+    // Network play (docs/DUEL-LAN.md): the LAN lobby, styled like Back (a footer action, not a website link).
+    const lan = document.createElement('button'); lan.type = 'button'; lan.className = 'versus-back versus-lan'; lan.dataset.sfx = 'move';
+    lan.innerHTML = '<span>Play over LAN</span>';
+    lan.addEventListener('click', () => ctx.events.emit('duelOpen'));
+    this.root.querySelector('footer')!.append(back, lan, this.status, prompts);
 
     // The VS card while the stage loads: both busts slam in, the names under them, the stage at the foot.
     this.splash.className = 'versus-splash'; this.splash.setAttribute('aria-hidden', 'true');
@@ -152,7 +156,6 @@ export class VersusLobby {
       <p class="versus-splash-stage"></p>`;
     this.splash.addEventListener('pointerdown', () => this.skipSplash());
     this.root.append(this.splash);
-
     this.reconnect.id = 'versus-reconnect'; this.reconnect.hidden = true;
     this.reconnect.setAttribute('role', 'dialog'); this.reconnect.setAttribute('aria-modal', 'true'); this.reconnect.setAttribute('aria-labelledby', 'versus-reconnect-heading');
     this.reconnect.innerHTML = `<div class="versus-panel"><div class="versus-head"><h2 id="versus-reconnect-heading">Controller lost</h2></div><p role="status"></p><div class="versus-reconnect-actions"><button type="button" data-resume>Resume</button><button type="button" data-lobby>Change players</button></div></div>`;

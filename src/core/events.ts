@@ -66,6 +66,8 @@ export interface EventMap {
   /** ARENA stock match: a fighter's shield gave out under a blow. */
   stockShieldBreak: { slot: number };
   versusChanged: undefined;
+  duelChanged: undefined;
+  duelOpen: undefined;
   versusPause: undefined;
   versusMenu: { action: 'previous' | 'next' | 'confirm' | 'back' };
   /** Death UI should clear without triggering gameplay respawn side effects. */

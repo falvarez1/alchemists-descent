@@ -106,6 +106,7 @@ export class PauseOverlay {
   };
 
   private readonly onPauseRequest = (): void => {
+    if (this.ctx.duel?.active) { this.ctx.duel.pause(); return; }
     if (this.ctx.state.mode !== 'play' || document.querySelector('#player-settings[open]') || this.ctx.sanctum.isOpen) return;
     if (this.ctx.state.paused && !this.active) return;
     if (!this.active && this.duelOver()) return;

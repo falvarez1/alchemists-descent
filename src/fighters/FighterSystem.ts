@@ -95,6 +95,10 @@ export class FighterSystem implements FighterApi {
     meter: null,
   };
   readonly drawables: FighterDrawable[] = [];
+  applyPresentation(view: FighterView, body: BodyProfile, concealment: number, drawables: FighterDrawable[]): void {
+    Object.assign(this.view, view); Object.assign(this.liveBody, body); this.cConceal = concealment;
+    this.drawables.length = 0; this.drawables.push(...drawables);
+  }
 
   // ---- the equipped kit and its clocks ----
   private def: FighterKitDef | null = null;

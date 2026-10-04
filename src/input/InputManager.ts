@@ -139,6 +139,7 @@ export class InputManager {
   }
 
   poll(): void {
+    if (this.ctx.duel?.active) return;
     this.pollGamepad();
     this.mobile.update();
     this.settleLatches();

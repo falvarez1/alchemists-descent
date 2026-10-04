@@ -59,7 +59,7 @@ export class FocusPause {
       builderOpen: document.body.classList.contains('builder-open'),
       uiOwnerActive: this.uiOwnerActive(),
       dialogueOpen: this.dialogueOpen,
-      linkedPeers: (this.ctx.peers?.count ?? 0) > 0,
+      linkedPeers: (this.ctx.peers?.count ?? 0) > 0 || this.ctx.duel?.active === true,
     };
   }
 

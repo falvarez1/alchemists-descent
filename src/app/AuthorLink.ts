@@ -167,12 +167,14 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
     build: typeof __BUILD_STAMP__ === 'string' ? __BUILD_STAMP__ : 'unknown',
     clientId: makeClientId(role),
     token: config.token,
+    suspended: () => ctx.duel?.active === true,
   });
 
   let applyingRemote = false;
   let lastPublished: TuningChange[] = captureTuningChanges();
   let publishTimer: ReturnType<typeof setTimeout> | null = null;
   const disposers: Array<() => void> = [];
+  disposers.push(ctx.events.on('duelChanged', () => { if (ctx.duel?.active) ctx.peers.clear(); }));
 
   /* -------------------- world identity -------------------- */
 
@@ -265,6 +267,7 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
   };
 
   const shouldStream = (): boolean =>
+    !ctx.duel?.active &&
     client.connected &&
     pullBlock() !== null &&
     [...peerWorlds.values()].some((p) => p.role !== 'play' && sameWorld(p.world, myWorld));

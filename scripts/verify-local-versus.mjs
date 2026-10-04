@@ -32,7 +32,7 @@ try {
   }
   await page.locator('[data-entry="duel"]').click();
   await page.locator('#versus-lobby').waitFor({ state: 'visible' });
-  await page.waitForFunction(() => [...document.querySelectorAll('.versus-portrait')].every(img => img.complete && img.naturalWidth > 0));
+  await page.waitForFunction(() => [...document.querySelectorAll('#versus-lobby .versus-portrait')].every(img => img.complete && img.naturalWidth > 0));
   assert.equal(await page.locator('#versus-heading').evaluate(el => el.scrollWidth <= el.clientWidth), true, 'lobby heading is not clipped');
   await page.screenshot({ path: `${out}/versus-lobby-${production ? 'player' : 'desktop'}.png` });
   // No dropdowns: each device is a ◀ value ▶ cycler (scripts/versus-helpers.mjs).

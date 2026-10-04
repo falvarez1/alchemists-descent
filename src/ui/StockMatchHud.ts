@@ -85,7 +85,7 @@ export class StockMatchHud {
     this.rematch.type = 'button'; this.rematch.textContent = 'Rematch';
     this.rematch.addEventListener('click', () => { this.rematch.blur(); onRematch(); });
     this.change.className = 'stock-change'; this.change.type = 'button'; this.change.textContent = 'Change fighters'; this.change.dataset.sfx = 'back';
-    this.change.addEventListener('click', () => this.ctx.versus?.open());
+    this.change.addEventListener('click', () => { if (this.ctx.duel?.active) this.ctx.duel.lobby(); else this.ctx.versus?.open(); });
     this.result.className = 'stock-result'; this.result.hidden = true;
     this.result.setAttribute('aria-label', 'Match result');
     const panel = document.createElement('div'); panel.className = 'stock-result-panel';
@@ -231,7 +231,9 @@ export class StockMatchHud {
       if (resultKey) this.fillResult(); else this.result.hidden = true;
     }
     this.rematch.hidden = match.state !== 'finished';
-    this.change.hidden = match.state !== 'finished' || !this.ctx.versus?.active;
+    this.rematch.disabled = this.ctx.duel?.replica === true;
+    this.change.hidden = match.state !== 'finished' || (!this.ctx.versus?.active && !this.ctx.duel?.active);
+    this.change.disabled = this.ctx.duel?.replica === true;
   }
 
   private winnerLine(): string {
