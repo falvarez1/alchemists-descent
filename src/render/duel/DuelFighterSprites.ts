@@ -1,7 +1,8 @@
 import type { Ctx, PlayerState } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { STOCK_RULES } from '@/config/stockRules';
-import { FIGHTER_DEFS, FIGHTER_ORDER } from '@/content/fighters';
+import { FIGHTER_DEFS, FIGHTER_ORDER, type FighterId } from '@/content/fighters';
+import { COSTUMES, recolorPixel } from '@/render/duel/costumes';
 
 /**
  * DUEL FIGHTER SPRITES (docs/arena/platform-fighter/IMPLEMENTATION-PLAN.md, "Concept sprites"): in stock matches a fighter
@@ -153,6 +154,41 @@ const FALLBACK: Record<string, readonly string[]> = {
   tactical: ['cast'], ultimate: ['cast'], victory: ['launcher_strike', 'idle0'],
 };
 
+/**
+ * The mirror match's second colourway (render/duel/costumes): the whole atlas recoloured once, the first time a fighter
+ * faces itself, and kept. Nothing is stored on disk: one rule per fighter names its signature cloth by colour.
+ */
+const alternates = new Map<string, Atlas>();
+function alternateAtlas(id: FighterId, atlas: Atlas): Atlas {
+  let alt = alternates.get(id);
+  if (alt) return alt;
+  const rule = COSTUMES[id], frames = new Map<string, Frame>();
+  for (const [name, f] of atlas.frames) {
+    const rgb = new Float32Array(f.rgb.length);
+    for (let k = 0; k < f.a.length; k++) {
+      if (f.a[k] <= 0) continue;
+      const [r, g, b] = recolorPixel(f.rgb[k * 3], f.rgb[k * 3 + 1], f.rgb[k * 3 + 2], rule);
+      rgb[k * 3] = r; rgb[k * 3 + 1] = g; rgb[k * 3 + 2] = b;
+    }
+    frames.set(name, { ...f, rgb, coarse: coarsen(f.w, f.h, rgb, f.a) });
+  }
+  alt = { step: atlas.step, frames }; alternates.set(id, alt);
+  return alt;
+}
+
+/** Both seats on the same fighter: a mirror match (P2 wears the second colourway, and both carry their player tags). */
+function isMirrorMatch(ctx: Ctx): boolean {
+  const a = ctx.arena?.bundle(0)?.fighters.id, b = ctx.arena?.bundle(1)?.fighters.id;
+  return !!a && a === b;
+}
+
+/** The atlas this slot draws from: its fighter's, recoloured for P2 in a mirror match. */
+function atlasForSlot(ctx: Ctx, id: FighterId): Atlas | null {
+  const atlas = atlasFor(id);
+  if (!atlas) return null;
+  return ctx.arena?.bound === 1 && isMirrorMatch(ctx) ? alternateAtlas(id, atlas) : atlas;
+}
+
 function frameFor(atlas: Atlas, name: string): Frame | null {
   let f = atlas.frames.get(name);
   if (f) return f;
@@ -282,7 +318,7 @@ function drawEntrance(out: PixelSurface, a: PlayerState, age: number, color: rea
 export function drawDuelFighter(out: PixelSurface, light: LightField, ctx: Ctx): boolean {
   const id = ctx.fighters?.id;
   if (!id || !ctx.arena?.stockMatch) return false;
-  const atlas = atlasFor(id);
+  const atlas = atlasForSlot(ctx, id);
   if (!atlas) return false;
   const a = ctx.player;
   const pose = duelPose(ctx, a);
@@ -318,6 +354,7 @@ export function drawDuelFighter(out: PixelSurface, light: LightField, ctx: Ctx):
       if (!c.a[k]) continue;
       out.setPx(ox + i - cax, oy + j - cay, c.rgb[k * 3] * tr, c.rgb[k * 3 + 1] * tg, c.rgb[k * 3 + 2] * tb);
     }
+    drawPlayerTag(out, ctx, slot, a.x + dx, oy - cay - 2, sinceEntrance);
     return true;
   }
   const n = fr.w * fr.h;
@@ -357,7 +394,46 @@ export function drawDuelFighter(out: PixelSurface, light: LightField, ctx: Ctx):
       out.blendFinePx(x0 + px * step, y0 + rim[i + 1] * step, r * al, g * al, b * al, al);
     }
   }
+  drawPlayerTag(out, ctx, slot, a.x + dx, y0 - 2, sinceEntrance);
   return true;
+}
+
+/** 3 x 5 glyphs for the player tags (one cell a pixel), drawn rather than typeset so they share the sprites' grain. */
+const GLYPHS: Readonly<Record<string, readonly string[]>> = {
+  P: ['111', '101', '111', '100', '100'], C: ['111', '100', '100', '100', '111'], U: ['101', '101', '101', '101', '111'],
+  1: ['010', '110', '010', '010', '111'], 2: ['111', '001', '111', '100', '111'],
+};
+const TAG_TICKS = 150, TAG_FADE = 30;
+const SEAT_COLOUR: readonly (readonly [number, number, number])[] = [[1, .62, .25], [.4, .87, .83]];
+
+/**
+ * The arcade player tag over a fighter's head: "P1", "P2" or "CPU" in its seat's colour, with a chevron pointing down.
+ * Always shown in a mirror match (who's who), otherwise for a moment after each entrance (the bout's start, a respawn).
+ */
+function drawPlayerTag(out: PixelSurface, ctx: Ctx, slot: number, cx: number, top: number, sinceEntrance: number): void {
+  const mirror = isMirrorMatch(ctx);
+  if (!mirror && sinceEntrance >= TAG_TICKS) return;
+  const fade = mirror ? 1 : Math.min(1, (TAG_TICKS - sinceEntrance) / TAG_FADE);
+  const seat = ctx.versus?.active ? ctx.versus.seats[slot] : undefined;
+  const label = seat?.device === 'cpu' ? 'CPU' : `P${slot + 1}`;
+  const [cr, cg, cb] = SEAT_COLOUR[slot] ?? SEAT_COLOUR[0];
+  const width = label.length * 4 - 1, x0 = Math.round(cx - width / 2), y0 = Math.round(top) - 9;
+  const plot = (x: number, y: number, r: number, g: number, b: number, al: number): void => {
+    for (let fy = 0; fy < 1; fy += .5) for (let fx = 0; fx < 1; fx += .5) {
+      if (out.blendFinePx && (out.pixelStep ?? 1) < 1) out.blendFinePx(x + fx, y + fy, r * al, g * al, b * al, al);
+      else if (al > .5 && fx === 0 && fy === 0) out.setPx(x, y, r, g, b);
+    }
+  };
+  // A dark plate behind the letters, so they read over the brightest furnace.
+  for (let y = -1; y <= 5; y++) for (let x = -1; x <= width; x++) plot(x0 + x, y0 + y, .05, .06, .08, .72 * fade);
+  for (let c = 0; c < label.length; c++) {
+    const glyph = GLYPHS[label[c]];
+    if (!glyph) continue;
+    for (let y = 0; y < 5; y++) for (let x = 0; x < 3; x++) if (glyph[y][x] === '1') plot(x0 + c * 4 + x, y0 + y, cr, cg, cb, fade);
+  }
+  // The chevron, pointing at the head.
+  const mid = Math.round(cx);
+  for (let row = 0; row < 3; row++) for (let x = -2 + row; x <= 2 - row; x++) plot(mid + x, y0 + 6 + row, cr, cg, cb, fade);
 }
 
 /**
@@ -367,7 +443,7 @@ export function drawDuelFighter(out: PixelSurface, light: LightField, ctx: Ctx):
 export function drawDuelGhost(out: PixelSurface, ctx: Ctx, dx: number, dy: number, alpha: number, tint: readonly [number, number, number]): boolean {
   const id = ctx.fighters?.id;
   if (!id || !ctx.arena?.stockMatch || !out.blendFinePx || (out.pixelStep ?? 1) >= 1) return false;
-  const atlas = atlasFor(id);
+  const atlas = atlasForSlot(ctx, id);
   if (!atlas) return false;
   const a = ctx.player, pose = duelPose(ctx, a), fr = frameFor(atlas, pose.name);
   if (!fr) return false;
