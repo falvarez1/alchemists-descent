@@ -4,7 +4,19 @@ import type { Ctx } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { packRGB } from '@/sim/colors';
 
-const RIM = packRGB(225, 155, 78), BODY = packRGB(60, 69, 77), GLASS = packRGB(101, 202, 197);
+const RIM = packRGB(225, 155, 78), BODY = packRGB(60, 69, 77);
+
+/**
+ * A lantern's glass cell colour: the glass's own hue (teal when the art names none), its brightest channel held to 70.
+ * Glowshroom is emissive (bloomWeight 0.4: x1.6, self-glow, a breath on green), so the cell composes at ~2.4x its colour
+ * by its own lamp; 70 lands it near 0.8, under the 0.85 bloom threshold. The glass reads through the lantern art drawn
+ * over it; its LIGHT is seeded separately in the same hue (render/Lighting seedStockLamps).
+ */
+const GLASS_MAX = 70;
+function glassColor(c: readonly [number, number, number] | null): number {
+  const [r, g, b] = c ?? [101, 202, 197], k = GLASS_MAX / Math.max(1, r, g, b);
+  return packRGB(Math.round(r * k), Math.round(g * k), Math.round(b * k));
+}
 
 /** The baked colour of a slab cell, or the plain slab colours while (or if) the art is not loaded. */
 function cellColor(slab: StockSlab, img: StageArtImage | null, x: number, y: number): number {
@@ -32,18 +44,20 @@ export function stampStockStage(ctx: Ctx): void {
         if (slab.art) w.colorOverrides.add(i);
       }
     }
-    // Hanging lantern glass: real light, soft growth (bodies pass through), so a lantern never becomes a ledge.
+    // Hanging lantern glass: real light in the glass's own colour (render/Lighting reads it while the lantern's hull
+    // stands), soft growth (bodies pass through), so a lantern never becomes a ledge.
     const art = slabArt(slab);
+    const glass = glassColor(art?.glassColor ?? null);
     if (art) for (const [gx, gy] of art.glass) {
       const x = slab.mirror ? slab.x0 + art.width - 1 - gx : slab.x0 + gx, y = slab.y + gy;
-      if (w.inBounds(x, y) && w.type(x, y) === Cell.Empty) w.replaceCellAt(w.idx(x, y), Cell.Glowshroom, GLASS);
+      if (w.inBounds(x, y) && w.type(x, y) === Cell.Empty) { const i = w.idx(x, y); w.replaceCellAt(i, Cell.Glowshroom, glass); w.colorOverrides.add(i); }
     }
   }
   for (const lamp of stage.lamps) {
     for (let y = lamp.y - 4; y <= lamp.y + 6; y++) for (let x = lamp.x - 3; x <= lamp.x + 3; x++) {
       const glass = x > lamp.x - 2 && x < lamp.x + 2 && y >= lamp.y && y <= lamp.y + 3;
       const shell = x === lamp.x - 3 || x === lamp.x + 3 || y === lamp.y - 1 || y === lamp.y + 5;
-      if (glass || shell) w.replaceCellAt(w.idx(x, y), glass ? Cell.Glowshroom : Cell.Metal, glass ? GLASS : packRGB(65, 83, 90));
+      if (glass || shell) w.replaceCellAt(w.idx(x, y), glass ? Cell.Glowshroom : Cell.Metal, glass ? glassColor(null) : packRGB(65, 83, 90));
     }
   }
   ctx.arena?.setSpawns(stage.spawns);

@@ -1,6 +1,8 @@
 # Stage art prompts (gpt-image-2)
 
-Provenance for `public/assets/arena/<stage>/` art. Sources kept in `stage-sources/`.
+Provenance for `public/assets/arena/<stage>/` art. Sources kept in `stage-sources/`. The bake parameters for every source (width, concept depth,
+repeated spans, lantern glass) live in `scripts/arena-stages/bake-stages.mjs`, which supersedes the per-stage bake flags
+noted below (those were the first, uniformly scaled bakes; see STAGES.md, "Scale").
 
 ## The Foundry
 
@@ -71,6 +73,23 @@ The second reference image is a finished asset from the same game: match its lay
 Proportions: the platform runs from 2% to 98% of the image width with finished end caps at both ends. The top walking surface is perfectly flat and horizontal, at about 6% from the top of the image, and is the brightest edge. The iron-and-brick deck band is about 9% of the image height thick. The undercarriage is about 25% of the image height deep at the ends and deepens toward the centre to about 60%. The fire-lamps end at about 88%. Perfectly symmetric left to right.
 
 Rendering: exactly the same pixel-art style, palette and detail density as the Kiln reference: crisp square pixels, dark outlines, blackened iron (#2b2826) and charred brick (#3d2a26) bodies, dull brass (#a07a3c) bands and rivets, an ember-orange (#f0903c) lit top edge, glowing orange-yellow (#ffb347) lamp glass. Repeat the plate, brick and truss rhythm along the length.
+
+Nothing else: no characters, no background scenery, no lava, no sky, no text, no drop shadows on the background, no glow haze outside the object. Only the platform and its hangings on flat magenta.
+
+Main platform, second render (concept proportions; the Kiln quadrant + the first main render as a material reference;
+custom 3840 x 1280, high). The first render's body band was thin and its truss deep, so baked at the concept's depth it
+read as a thin bridge; stage-sources/kiln-main.webp is now this render (the first stays in git history). About $0.64
+(two generations, the first chosen):
+
+Game asset for a 2D side-view pixel-art platform fighter: the MAIN STAGE PLATFORM of "The Kiln", isolated on a flat, pure magenta (#FF00FF) background. Strict side view, orthographic, no perspective.
+
+Design target: the floating central platform in the first reference image (The Kiln), with ITS proportions: a heavy, thick body and a shallow truss. The second reference image is an earlier render of the same platform: keep its materials, pixel scale and finish, but NOT its proportions (its body band is too thin and its truss too deep).
+
+The platform: a flat walking surface with a bright ember-lit orange top edge; under it ONE thick solid body band that runs the full length, end cap to end cap: blackened riveted iron plates over a course of charred dark brick, crossed by a dull brass band with rivets, a small riveted boss at the centre. Under the middle half of the length only, a shallow inverted-trapezoid undercarriage of blackened iron girders in an X-truss pattern with brass rivets, ending in short downward iron spikes. The left and right quarters of the body band are plain and regular: identical repeating riveted plate-and-brick panels, nothing hanging from them except one short thin chain at each end cap. Two small fire-lamps (black iron cages with glowing orange-yellow fire glass) hang on thin chains from the two outer corners of the truss, with a clear gap of magenta between each lamp and the truss.
+
+Proportions: the platform runs from 2% to 98% of the image width with finished end caps at both ends. The top walking surface is perfectly flat and horizontal at about 8% from the top of the image, and is the brightest edge. The solid body band is about 20% of the image height thick, the same thickness along the whole length. The truss below it reaches about 42% of the image height at the centre (it is shallower than the body band is long: a squat trapezoid). The fire-lamps end at about 60%. Perfectly symmetric left to right.
+
+Rendering: exactly the same pixel-art style, palette and detail density as the references: crisp square pixels, dark outlines, blackened iron (#2b2826) and charred brick (#3d2a26), dull brass (#a07a3c) bands and rivets, an ember-orange (#f0903c) lit top edge, glowing orange-yellow (#ffb347) lamp glass.
 
 Nothing else: no characters, no background scenery, no lava, no sky, no text, no drop shadows on the background, no glow haze outside the object. Only the platform and its hangings on flat magenta.
 

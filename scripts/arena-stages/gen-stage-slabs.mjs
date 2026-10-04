@@ -26,6 +26,8 @@ const lines = [
   '  readonly runs: readonly (readonly number[])[];',
   '  readonly decor: { readonly file: string; readonly x: number; readonly y: number; readonly w: number; readonly h: number } | null;',
   '  readonly glass: readonly (readonly [number, number])[];',
+  '  /** The lantern glass colour (the mean of the glass in the render): the colour of the light the lanterns give. */',
+  '  readonly glassColor: readonly [number, number, number] | null;',
   '  /** The hull face at presentation (half-cell) resolution, drawn over surviving cells by close framings. */',
   '  readonly fine: string | null;',
   '}',
@@ -38,6 +40,7 @@ for (const s of slabs) {
   lines.push(`    runs: [${s.runs.map(r => `[${r.join(',')}]`).join(',')}],`);
   lines.push(`    decor: ${s.decor ? JSON.stringify(s.decor).replace(/"(\w+)":/g, '$1: ').replace(/"/g, "'") : 'null'},`);
   lines.push(`    glass: [${s.glass.map(([x, y]) => `[${x},${y}]`).join(',')}],`);
+  lines.push(`    glassColor: ${s.glassColor ? `[${s.glassColor.join(',')}]` : 'null'},`);
   lines.push(`    fine: ${s.fine ? `'${s.fine}'` : 'null'},`);
   lines.push('  },');
 }

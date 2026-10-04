@@ -5,6 +5,7 @@
  * ledge corners, and one-way RAISED platforms that straddle or flank it.
  */
 
+import { WIDTH } from '@/config/constants';
 import { STAGE_SLAB_ART, type StageSlabArt } from '@/content/arena/stageSlabs.generated';
 
 export type StockStageId = 'foundry' | 'kiln' | 'cistern' | 'gallery';
@@ -63,11 +64,12 @@ const FOUNDRY: StockStageDef = {
   id: 'foundry', name: 'The Foundry', caption: 'FOUNDRY', tagline: 'Copper decks over a sleepless furnace.',
   zone: { left: 240, right: 1360, top: 180, bottom: 940 },
   center: { x: 800, y: 570 },
-  // foundry-match.png: the raised platforms straddle the main platform's ends, 80 cells up (Brann's jump reaches it).
+  // foundry-match.png: the raised platforms straddle the main platform's ends, 56 cells up (the concept's ~2.4 fighters;
+  // verify-stock-stationary: below 80 the CPU lands its finisher from the lip at 27-31 cells, around the probe's 30 bar).
   main: fromArt('foundry/main', 560, 640),
-  platforms: [fromArt('foundry/side', 480, 560), fromArt('foundry/side', 960, 560, true)],
+  platforms: [fromArt('foundry/side', 480, 584), fromArt('foundry/side', 960, 584, true)],
   spawns: [{ x: 680, y: 639 }, { x: 920, y: 639 }],
-  // Every lantern is baked art: hanging decor with real, soft, light-giving glass.
+  // Every lantern is baked art: hanging decor with real, soft, light-giving glass (stockLampCells).
   lamps: [],
   thumbnail: art('foundry', 'thumb.webp'), backdrop: art('foundry', 'backdrop.webp'), accent: '#efac58',
 };
@@ -76,11 +78,11 @@ const KILN: StockStageDef = {
   id: 'kiln', name: 'The Kiln', caption: 'KILN', tagline: 'Brick and slag above the firing pit.',
   zone: { left: 240, right: 1360, top: 180, bottom: 940 },
   center: { x: 800, y: 578 },
-  // stages.png (Kiln): the ledges sit low and wide apart, only 40 cells up, their inner ends just over the main's ends.
-  main: fromArt('kiln/main', 580, 648),
-  platforms: [fromArt('kiln/side', 446, 608), fromArt('kiln/side', 1004, 608, true)],
+  // stages.png (Kiln): the ledges sit low and wide apart, 30 cells up, their inner lips just over the main's ends.
+  main: fromArt('kiln/main', 590, 648),
+  platforms: [fromArt('kiln/side', 444, 618), fromArt('kiln/side', 1006, 618, true)],
   spawns: [{ x: 690, y: 647 }, { x: 910, y: 647 }],
-  // The fire-lamps are baked hanging decor (warm glass: no Glowshroom, which glows teal).
+  // The fire-lamps are baked art: furnace-orange glass that lights in its own colour (stockLampCells).
   lamps: [],
   thumbnail: art('kiln', 'thumb.webp'), backdrop: art('kiln', 'backdrop.webp'), accent: '#ff7a36',
 };
@@ -89,11 +91,11 @@ const CISTERN: StockStageDef = {
   id: 'cistern', name: 'The Cistern', caption: 'CISTERN', tagline: 'Brass walkways over the drowned works.',
   zone: { left: 240, right: 1360, top: 180, bottom: 940 },
   center: { x: 800, y: 580 },
-  // stages.png (Cistern): the raised walkways stand at the outer ends, 70 cells up, overlapping the main's ends.
+  // stages.png (Cistern): the raised walkways stand at the outer ends, 40 cells up, overlapping the main's ends.
   main: fromArt('cistern/main', 570, 650),
-  platforms: [fromArt('cistern/side', 441, 580), fromArt('cistern/side', 999, 580, true)],
+  platforms: [fromArt('cistern/side', 441, 610), fromArt('cistern/side', 999, 610, true)],
   spawns: [{ x: 690, y: 649 }, { x: 910, y: 649 }],
-  // Every lantern is baked art: hanging decor with real, soft, light-giving glass.
+  // Every lantern is baked art: hanging decor with real, soft, light-giving glass (stockLampCells).
   lamps: [],
   thumbnail: art('cistern', 'thumb.webp'), backdrop: art('cistern', 'backdrop.webp'), accent: '#65cac5',
 };
@@ -102,14 +104,14 @@ const GALLERY: StockStageDef = {
   id: 'gallery', name: 'The Gallery', caption: 'GALLERY', tagline: 'Pale stone, old vows, and the long drop.',
   zone: { left: 240, right: 1360, top: 180, bottom: 940 },
   center: { x: 800, y: 582 },
-  // stages.png (Gallery): two side ledges 45 cells up over the main's ends, and a centred perch 78 up (rise beside it).
+  // stages.png (Gallery): two side ledges 42 cells up over the main's ends, and a centred perch 78 up (rise beside it).
   main: fromArt('gallery/main', 580, 652),
   platforms: [
-    fromArt('gallery/side', 490, 607), fromArt('gallery/side', 980, 607, true),
+    fromArt('gallery/side', 490, 610), fromArt('gallery/side', 980, 610, true),
     fromArt('gallery/top', 740, 574),
   ],
   spawns: [{ x: 690, y: 651 }, { x: 910, y: 651 }],
-  // The lanterns and the bell jar are baked hanging decor (warm and violet glass: no Glowshroom, which glows teal).
+  // The amber lanterns and the violet bell jar are baked art whose glass lights in its own colour (stockLampCells).
   lamps: [],
   thumbnail: art('gallery', 'thumb.webp'), backdrop: art('gallery', 'backdrop.webp'), accent: '#b49ae8',
 };
@@ -152,4 +154,54 @@ export function slabRow(slab: StockSlab, y: number): { x0: number; x1: number } 
   const deck = slab.deck ?? 8, taper = slab.taper ?? 1.7;
   const inset = dy > deck ? Math.floor((dy - deck) * taper) : 0;
   return inset * 2 > slab.x1 - slab.x0 ? null : { x0: slab.x0 + inset, x1: slab.x1 - inset };
+}
+
+/**
+ * Every lamp's glass on a stage, as world cells: where the glass is (real Glowshroom, stamped by world/stockStage), the
+ * hull cell it hangs from (the first hull cell straight above it, or the lamp's own metal shell), and the colour of its
+ * light (the glass's own, brightest channel 1). A lamp lights only while its glass stands AND its anchor is Metal: knock
+ * the hull away and the lantern goes dark with its hangings (render/Lighting).
+ */
+export interface StockLampCells {
+  readonly cells: Int32Array;
+  readonly anchors: Int32Array;
+  readonly rgb: Float32Array;
+  /** World index -> slot in `cells`, so the light seeding can tell a lamp's glass from any other Glowshroom. */
+  readonly index: ReadonlyMap<number, number>;
+}
+
+const TEAL: readonly [number, number, number] = [101, 202, 197];
+const lampCache = new Map<StockStageId, StockLampCells>();
+
+export function stockLampCells(stage: StockStageDef): StockLampCells {
+  const hit = lampCache.get(stage.id);
+  if (hit) return hit;
+  const cells: number[] = [], anchors: number[] = [], rgb: number[] = [];
+  const add = (x: number, y: number, ax: number, ay: number, c: readonly [number, number, number]): void => {
+    const top = Math.max(1, c[0], c[1], c[2]);
+    cells.push(x + y * WIDTH); anchors.push(ax + ay * WIDTH); rgb.push(c[0] / top, c[1] / top, c[2] / top);
+  };
+  for (const slab of [stage.main, ...stage.platforms]) {
+    const art = slabArt(slab);
+    if (!art) continue;
+    const solidAt = (cx: number, cy: number): boolean => {
+      const row = art.runs[cy];
+      if (!row) return false;
+      for (let k = 0; k < row.length; k += 2) if (cx >= row[k] && cx <= row[k + 1]) return true;
+      return false;
+    };
+    for (const [gx, gy] of art.glass) {
+      let ay = gy - 1;
+      while (ay > 0 && !solidAt(gx, ay)) ay--;
+      const wx = (cx: number): number => slab.mirror ? slab.x0 + art.width - 1 - cx : slab.x0 + cx;
+      add(wx(gx), slab.y + gy, wx(gx), slab.y + Math.max(0, ay), art.glassColor ?? TEAL);
+    }
+  }
+  for (const lamp of stage.lamps) for (let y = lamp.y; y <= lamp.y + 3; y++) for (let x = lamp.x - 1; x <= lamp.x + 1; x++) add(x, y, lamp.x, lamp.y - 1, TEAL);
+  const out: StockLampCells = {
+    cells: Int32Array.from(cells), anchors: Int32Array.from(anchors), rgb: Float32Array.from(rgb),
+    index: new Map(cells.map((c, k) => [c, k])),
+  };
+  lampCache.set(stage.id, out);
+  return out;
 }

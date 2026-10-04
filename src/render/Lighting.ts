@@ -1,6 +1,7 @@
 import { propagateLight } from '@/render/propagateLight';
 import { propagateLightWasm } from '@/render/wasm/lightKernel';
 import { VIEW_H, VIEW_W } from '@/config/constants';
+import { stockLampCells, type StockLampCells } from '@/config/stockStage';
 import { DARK_ADAPT, renderAmbient, VIGNETTE_BASE } from '@/render/lightingModel';
 import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import type { AuthoredLight, Ctx } from '@/core/types';
@@ -261,6 +262,28 @@ export class Lighting implements LightField {
   }
 
   /**
+   * A Duel stage's lanterns (config/stockStage stockLampCells): each glass cell still standing seeds its texel in the
+   * glass's own colour while the hull cell its lantern hangs from is still Metal. Seeded per cell, not from the texel's
+   * sampled cell, so a small lantern never blinks out as the camera moves. Weak and steady (a slow breath, no flare):
+   * the stage already sits in a 0.92 ambient, so a lamp only tints what is close to it and never pushes a deck to bloom.
+   */
+  private seedStockLamps(ctx: Ctx, lamps: StockLampCells, renderCamX: number, renderCamY: number): void {
+    const { LW, LH, lightR, lightG, lightB } = this, types = ctx.world.types, width = ctx.world.width, vs = this.viewScale;
+    const phase = ctx.state.frameCount * 0.05;
+    for (let k = 0; k < lamps.cells.length; k++) {
+      const wi = lamps.cells[k];
+      if (types[wi] !== Cell.Glowshroom || types[lamps.anchors[k]] !== Cell.Metal) continue;
+      const wx = wi % width, wy = (wi - wx) / width;
+      const lx = Math.floor((wx - renderCamX) / vs) >> 1, ly = Math.floor((wy - renderCamY) / vs) >> 1;
+      if (lx < 0 || ly < 0 || lx >= LW || ly >= LH) continue;
+      const i = ly * LW + lx, f = STOCK_LAMP_LIGHT * (1 + 0.12 * Math.sin(phase + wx * 0.19 + wy * 0.23));
+      lightR[i] = Math.max(lightR[i], f * lamps.rgb[k * 3]);
+      lightG[i] = Math.max(lightG[i], f * lamps.rgb[k * 3 + 1]);
+      lightB[i] = Math.max(lightB[i], f * lamps.rgb[k * 3 + 2]);
+    }
+  }
+
+  /**
    * Authored lights (Builder): occluded lights seed a point cluster and let
    * the directional sweeps carve shadows; non-occluded lights paint their
    * whole falloff disk straight into the field.
@@ -385,6 +408,8 @@ export class Lighting implements LightField {
     const kilnFlora = ctx.state.mode === 'play' && ctx.levels?.current?.def.biome === 'volcanic';
     const px = glowReact ? ctx.player.x : -1e9;
     const py = glowReact ? ctx.player.y : -1e9;
+    // A Duel stage's lantern glass is seeded on its own below (its colour, its anchor), never as a glow-cap.
+    const stockLamps = ctx.arena?.stockMatch ? stockLampCells(ctx.arena.stockStage) : null;
 
     // Attenuation map + emissive material seeding
     for (let ly = 0; ly < LH; ly++) {
@@ -454,7 +479,7 @@ export class Lighting implements LightField {
             lightG[i] = Math.max(lightG[i], f * 0.42);
             lightB[i] = Math.max(lightB[i], f * 0.12);
           }
-        } else if (t === Cell.Glowshroom) {
+        } else if (t === Cell.Glowshroom && !stockLamps?.index.has(wi)) {
           // Bioluminescent (finally living up to the name): a slow pulse ripples
           // across a colony (phase from cell position), and the caps FLARE as
           // the alchemist passes close — light that answers what moves through it.
@@ -551,6 +576,8 @@ export class Lighting implements LightField {
         }
       }
     }
+
+    if (stockLamps) this.seedStockLamps(ctx, stockLamps, renderCamX, renderCamY);
 
     // A faint fill around the wizard keeps him readable even in self-shadow;
     // the wand itself is raycast after the sweeps so its shadows stay crisp
@@ -1087,4 +1114,6 @@ export class Lighting implements LightField {
  * match they keep only a faint presence; elsewhere they are unchanged.
  */
 const STOCK_WAND_LIGHT = 0.1;
+/** A Duel lantern's light at its glass (seedStockLamps): a local tint over the stage's 0.92 ambient, never a bloom. */
+const STOCK_LAMP_LIGHT = 0.3;
 function stockWandLight(ctx: Ctx): number { return ctx.arena?.stockMatch ? STOCK_WAND_LIGHT : 1; }
