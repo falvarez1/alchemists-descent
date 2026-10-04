@@ -388,8 +388,10 @@ export class Control {
     }
     switch (st.phase) {
       case 'approach': {
-        this.walkTo(me, e.launchX, { tol: 2 });
+        this.walkTo(me, e.launchX, { tol: 2, noHop: e.through });
         if (Math.abs(me.x - e.launchX) <= 3 && me.grounded && Math.abs(me.vx) < 0.7) {
+          this.hand.jump(false);
+          if (me.levit < (e.minFuel ?? 0)) break;
           st.phase = 'rise';
           st.since = this.tick;
           this.hand.move(0);
@@ -401,7 +403,10 @@ export class Control {
         // keep the column: a nudge back toward the launch x when the jet drifts the body
         const off = e.launchX - me.x;
         this.hand.move(Math.abs(off) > 3 ? Math.sign(off) : 0);
-        if (apexY(me) <= e.clearY - 1 && !me.grounded) { st.phase = 'cross'; st.since = this.tick; }
+        if (e.through ? me.y <= e.clearY && !me.grounded : apexY(me) <= e.clearY - 1 && !me.grounded) {
+          st.phase = e.through ? 'land' : 'cross'; st.since = this.tick;
+          if (e.through) this.hand.jump(false);
+        }
         else if (this.tick - st.since > 110 || me.levit < 2) return this.failEdge();
         break;
       }

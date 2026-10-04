@@ -36,6 +36,7 @@ export interface AiTier {
   awareness: number;
   prediction: number;
   spacingError: number;
+  /** 0..1 strength of match-local learning from confirmed attacks, missed moves and successful approaches. */
   adaptation: number;
   decisionNoise: number;
   overcommit: number;

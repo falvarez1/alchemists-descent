@@ -25,6 +25,12 @@ export interface NavNode {
 }
 
 export interface NavEdge {
+  /** One-way platform: rise directly through it instead of detouring around its lip. */
+  through?: boolean;
+  /** Fuel to bank on the ground before committing to this ascent. */
+  minFuel?: number;
+  /** Stable variant identity for outcome learning. */
+  planId?: string;
   from: string;
   to: string;
   kind: NavEdgeKind;

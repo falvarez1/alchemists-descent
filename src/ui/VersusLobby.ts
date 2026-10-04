@@ -7,7 +7,7 @@ import '@/styles/versus.css';
 export class VersusLobby {
   private readonly root = document.createElement('section');
   private readonly reconnect = document.createElement('section');
-  private readonly seats: Array<{ card: HTMLElement; image: HTMLImageElement; name: HTMLElement; title: HTMLElement; fighter: HTMLSelectElement; device: HTMLSelectElement; ready: HTMLButtonElement }> = [];
+  private readonly seats: Array<{ card: HTMLElement; image: HTMLImageElement; name: HTMLElement; title: HTMLElement; fighter: HTMLSelectElement; device: HTMLSelectElement; difficulty: HTMLSelectElement; ready: HTMLButtonElement }> = [];
   private readonly start = document.createElement('button');
   private readonly status = document.createElement('p');
   private readonly offs: Array<() => void> = [];
@@ -30,10 +30,14 @@ export class VersusLobby {
       fighter.addEventListener('change', () => ctx.versus?.chooseFighter(slot, fighter.value as FighterId));
       const device = document.createElement('select'); device.setAttribute('aria-label', `Player ${slot + 1} device`);
       device.addEventListener('change', () => { ctx.versus?.chooseDevice(slot, device.value as VersusDevice); this.update(); });
+      const difficulty = document.createElement('select'); difficulty.setAttribute('aria-label', `Player ${slot + 1} CPU difficulty`);
+      ['1 · Gentle', '2 · Easy', '3 · Normal', '4 · Hard', '5 · Expert'].forEach((label, i) => difficulty.add(new Option(label, String(i + 1))));
+      difficulty.title = 'Higher levels react faster and adapt more strongly to moves that work against you.';
+      difficulty.addEventListener('change', () => ctx.versus?.chooseDifficulty(slot, Number(difficulty.value)));
       const ready = document.createElement('button'); ready.type = 'button'; ready.className = 'versus-ready';
       ready.addEventListener('click', () => ctx.versus?.ready(slot));
-      copy.append(identity, name, title, fighter, device, ready); card.append(image, copy); cards.append(card);
-      this.seats.push({ card, image, name, title, fighter, device, ready });
+      copy.append(identity, name, title, fighter, device, difficulty, ready); card.append(image, copy); cards.append(card);
+      this.seats.push({ card, image, name, title, fighter, device, difficulty, ready });
     }
     const back = document.createElement('button'); back.type = 'button'; back.textContent = 'Back to title'; back.addEventListener('click', () => this.leave());
     this.start.type = 'button'; this.start.id = 'versus-start'; this.start.textContent = 'Enter the Foundry'; this.start.addEventListener('click', () => { ctx.audio.ensure(); void ctx.versus?.start(); });
@@ -103,6 +107,7 @@ export class VersusLobby {
         }));
       }
       view.device.value = seat.device; view.device.disabled = session.phase === 'loading';
+      view.difficulty.value = String(seat.cpuLevel); view.difficulty.hidden = seat.device !== 'cpu'; view.difficulty.disabled = session.phase === 'loading';
       view.ready.textContent = seat.device === 'cpu' ? 'CPU ready' : seat.ready ? `Player ${slot + 1} ready ✓` : `Ready player ${slot + 1}`;
       view.ready.setAttribute('aria-pressed', String(seat.ready)); view.ready.disabled = seat.device === 'cpu' || session.phase === 'loading' || session.disconnected.includes(slot);
       view.card.dataset.ready = String(seat.ready);

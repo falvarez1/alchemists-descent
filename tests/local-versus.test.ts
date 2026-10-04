@@ -25,6 +25,14 @@ function setup(ready = async () => true, rival = async () => 1) {
 }
 
 describe('local versus lifecycle', () => {
+  it('keeps independent CPU difficulty per seat, clamps values, and locks settings during play', async () => {
+    const { session } = setup(); session.open();
+    session.chooseDifficulty(0, -2); session.chooseDifficulty(1, 9);
+    expect(session.seats.map(seat => seat.cpuLevel)).toEqual([1, 5]);
+    session.ready(0); await session.start(); session.chooseDifficulty(1, 2);
+    expect(session.seats[1].cpuLevel).toBe(5);
+    session.open(); expect(session.seats[1].cpuLevel).toBe(5); session.dispose();
+  });
   it('prefers an already-connected controller for player one and remembers a later keyboard choice', () => {
     const { session } = setup(); session.poll([pad(0)], false); session.open();
     expect(session.seats[0].device).toBe('pad:0'); expect(session.seats[1].device).toBe('cpu');
