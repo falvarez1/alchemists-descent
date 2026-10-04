@@ -3,8 +3,8 @@ import type { FighterId } from '@/content/fighters';
 import { isFighterId } from '../../content/fighters.ts';
 import type { DuelInput } from './input.ts';
 
-/** Bump for incompatible wire or simulation presentation changes. */
-export const DUEL_PROTOCOL = 1;
+/** Bump for incompatible wire or simulation presentation changes. 2: a snapshot every tick, carrying the input it acknowledges. */
+export const DUEL_PROTOCOL = 2;
 export const DUEL_PATH = '/__duel';
 export const MAX_CONTROL_BYTES = 4096;
 export const MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024;

@@ -12,18 +12,54 @@ import { botDriverFor, rivalDriverFor } from '@/arena/ai/driver';
 import { TerrainReplicator } from '@/net/duel/TerrainReplicator';
 import type { DuelRuntime as RuntimeContract } from '@/net/duel/DuelSession';
 import { DuelButtons as B, type DuelTickInput } from '@/net/duel/input';
-import { DUEL_MOMENT_TYPES, MAX_DUEL_MOMENTS, type ArenaPresentation, type DuelMoment, type DuelSnapshot } from '@/net/duel/snapshot';
+import {
+  DUEL_MOMENT_TYPES,
+  DUEL_SNAPSHOT_TICKS,
+  MAX_DUEL_MOMENTS,
+  type ArenaPresentation,
+  type DuelMoment,
+  type DuelSnapshot,
+} from '@/net/duel/snapshot';
+import { HostClock, PlaybackCursor, TICK_MS } from '@/net/duel/timeline';
 import { captureDuelEffects, replicaDuelEffects } from '@/render/duelEffects';
 
+interface Frame {
+  snapshot: DuelSnapshot;
+  cells: CellPatch;
+}
+type SlotView = ArenaPresentation['slots'][number];
+/** Frames buffered beyond this are applied at once (a hidden tab keeps receiving but never presents). */
+const MAX_FRAMES = 240;
+/** A presentation that passes more frames than this is catching up: only the last few frames' sounds still play. */
+const CATCH_UP_FRAMES = 4;
+/** The world and the opponent play back late enough that 98% of frames have arrived (smooth); the controlled fighter
+ * plays back as early as 80% allows (responsive). Both are lateness quantiles of the measured arrival jitter. */
+const WORLD_LATENESS = 0.98;
+const OWN_LATENESS = 0.8;
+const WORLD_MARGIN_TICKS = 0.25;
+
 /** Adapts the existing game to host authority or a strictly render-only client.
- * Wire state is explicit observable data, never a dump of class internals. */
+ * Wire state is explicit observable data, never a dump of class internals.
+ *
+ * The replica plays the host's ticks back on the host's clock (HostClock), not as they arrive: arrivals bunch and
+ * gap with network jitter, the host's ticks do not. Two playheads read one buffer of frames. The world (terrain,
+ * the opponent, the camera, effects, the match) runs a little behind, by the jitter it must absorb; the controlled
+ * fighter runs as close to the newest frame as the network allows. Both interpolate positions between the two
+ * frames around their playhead at display rate, exactly as the host draws between its own last two ticks. */
 export class DuelRuntime implements RuntimeContract {
   private terrain = new TerrainReplicator();
   private readonly controls: DuelControls;
-  private latest: DuelSnapshot | null = null;
-  private previous: DuelSnapshot | null = null;
-  private receivedAt = 0;
-  private presentationDirty = false;
+  private readonly frames: Frame[] = [];
+  /** Index in `frames` of the newest frame each view has applied. */
+  private worldAt = -1;
+  private ownAt = -1;
+  private readonly clock = new HostClock();
+  private readonly worldHead = new PlaybackCursor();
+  private readonly ownHead = new PlaybackCursor();
+  private worldArena: ArenaPresentation | null = null;
+  private ownSlotView: SlotView | null = null;
+  private view: ArenaPresentation | null = null;
+  private dirty = false;
   private readonly sounds: DuelSnapshot['sounds'] = [];
   private readonly moments: DuelMoment[] = [];
   private restoreAudio: (() => void) | null = null;
@@ -45,7 +81,7 @@ export class DuelRuntime implements RuntimeContract {
     setExternalControl(c.input, true);
     this.clearInput();
     this.terrain = new TerrainReplicator();
-    this.latest = this.previous = null;
+    this.resetPlayback();
     if (!c.duel?.replica) {
       const original = c.audio.sfx;
       c.audio.sfx = (id, x, y, options) => {
@@ -76,9 +112,8 @@ export class DuelRuntime implements RuntimeContract {
     this.sounds.length = 0;
     this.moments.length = 0;
     this.controls.clear();
-    this.latest = this.previous = null;
+    this.resetPlayback();
     const c = this.ctx;
-    this.presentationDirty = false;
     c.arena?.removeRival(1);
     c.arena?.configureStocks(null);
     setExternalControl(c.input, false);
@@ -150,7 +185,7 @@ export class DuelRuntime implements RuntimeContract {
       c.input.mouse.y = c.player.y - 10 + Math.sin(input.aim) * 130;
     });
   }
-  capture(meta: Pick<DuelSnapshot, 'epoch' | 'seq' | 'base' | 'baseline'>): {
+  capture(meta: Pick<DuelSnapshot, 'epoch' | 'seq' | 'base' | 'baseline' | 'ack'>): {
     snapshot: DuelSnapshot;
     cells: CellPatch;
   } {
@@ -265,70 +300,185 @@ export class DuelRuntime implements RuntimeContract {
   receive(snapshot: DuelSnapshot, cells: CellPatch, now: number): boolean {
     const c = this.ctx;
     if (snapshot.width !== c.world.width || snapshot.height !== c.world.height || !c.arena?.active) return false;
-    if (snapshot.baseline) c.world.clear();
-    applyCellPatch(c.world, cells);
-    this.previous = this.latest;
-    this.latest = snapshot;
-    this.receivedAt = now;
-    this.presentationDirty = true;
-    c.state.frameCount = snapshot.tick;
-    for (const slot of [0, 1]) {
-      const b = c.arena.bundle(slot)!,
-        f = snapshot.fighters[slot];
-      this.replacePlayer(b.player, f.player);
-      b.fighters.applyPresentation?.(f.fighter, f.body, f.concealment, replicaDuelEffects(f.effects));
+    this.clock.observe(snapshot.tick, now);
+    this.frames.push({ snapshot, cells });
+    if (this.frames.length > MAX_FRAMES) this.catchUp(this.frames.length - MAX_FRAMES / 2);
+    this.dirty = true;
+    return true;
+  }
+  present(now: number): boolean {
+    let changed = this.dirty;
+    this.dirty = false;
+    const frames = this.frames;
+    if (frames.length === 0) return changed;
+    const own = this.ownSlot(),
+      newest = frames[frames.length - 1].snapshot.tick,
+      host = this.clock.hostTick(now);
+    const worldTick = this.worldHead.advance(
+      now,
+      host - DUEL_SNAPSHOT_TICKS - this.clock.lateness(WORLD_LATENESS) - WORLD_MARGIN_TICKS,
+      newest,
+    );
+    const ownTick = Math.max(
+      worldTick,
+      this.ownHead.advance(now, host - DUEL_SNAPSHOT_TICKS - this.clock.lateness(OWN_LATENESS), newest),
+    );
+    const worldTo = this.frameAt(worldTick),
+      ownTo = Math.max(worldTo, this.frameAt(ownTick));
+    while (this.ownAt < ownTo) {
+      const quiet = ownTo - this.ownAt > CATCH_UP_FRAMES;
+      this.applyOwn(frames[++this.ownAt].snapshot, own, quiet);
+      changed = true;
     }
+    while (this.worldAt < worldTo) {
+      this.applyWorld(frames[++this.worldAt], own);
+      changed = true;
+    }
+    for (const slot of [0, 1]) {
+      changed = (slot === own ? this.placeFighter(slot, ownTo, ownTick) : this.placeFighter(slot, worldTo, worldTick)) || changed;
+    }
+    changed = this.placeCamera(worldTo, worldTick) || changed;
+    this.prune();
+    return changed;
+  }
+  presentation(): ArenaPresentation | null {
+    const world = this.worldArena;
+    if (!world) return null;
+    if (!this.view) {
+      const slots = world.slots.slice();
+      if (this.ownSlotView) slots[this.ownSlot()] = this.ownSlotView;
+      this.view = { match: world.match, bout: world.bout, slots };
+    }
+    return this.view;
+  }
+  /** Dev instrumentation (the latency probe): the buffer and both playheads, in host ticks. */
+  playback(): { newest: DuelSnapshot | null; world: number; own: number; frames: number; delayMs: number } {
+    const newest = this.frames.at(-1)?.snapshot ?? null;
+    return {
+      newest,
+      world: this.worldHead.tick,
+      own: this.ownHead.tick,
+      frames: this.frames.length,
+      delayMs: newest ? (newest.tick - this.ownHead.tick) * TICK_MS : 0,
+    };
+  }
+  private ownSlot(): number {
+    return this.ctx.duel?.slot ?? 1;
+  }
+  /** The first frame at or after `tick` (the one a playhead there shows), or the newest. */
+  private frameAt(tick: number): number {
+    const frames = this.frames;
+    for (let i = 0; i < frames.length; i++) if (frames[i].snapshot.tick >= tick) return i;
+    return frames.length - 1;
+  }
+  private applyWorld(frame: Frame, own: number): void {
+    const c = this.ctx,
+      s = frame.snapshot;
+    if (s.baseline) c.world.clear();
+    applyCellPatch(c.world, frame.cells);
+    c.state.frameCount = s.tick;
+    for (const slot of [0, 1]) if (slot !== own) this.applyFighter(slot, s);
     c.projectiles.length = 0;
-    c.projectiles.push(...snapshot.projectiles);
-    c.particles.applyPresentation?.(snapshot.particles);
+    c.projectiles.push(...s.projectiles);
+    c.particles.applyPresentation?.(s.particles);
     c.lightning.arcs.length = 0;
-    c.lightning.arcs.push(...snapshot.arcs);
-    if (c.levels.current) c.levels.current.authoredLights = snapshot.lights;
-    Object.assign(c.camera, snapshot.camera);
-    c.fx.bloomKick = snapshot.bloom;
-    c.fx.screenShake = snapshot.shake;
-    for (const sound of snapshot.sounds) {
+    c.lightning.arcs.push(...s.arcs);
+    if (c.levels.current) c.levels.current.authoredLights = s.lights;
+    Object.assign(c.camera, s.camera);
+    c.fx.bloomKick = s.bloom;
+    c.fx.screenShake = s.shake;
+    this.worldArena = s.arena;
+    this.view = null;
+    // The host's moments, re-raised here after the state they belong to is in place: the replica's announcer, KO burst
+    // and super cut-in answer them exactly as they do on the host.
+    for (const m of s.moments ?? []) c.events.emit(m.type, m.data as never);
+  }
+  private applyOwn(s: DuelSnapshot, own: number, quiet: boolean): void {
+    this.applyFighter(own, s);
+    this.ownSlotView = s.arena.slots[own];
+    this.view = null;
+    // Sounds follow the earliest playhead: a fighter's own swing or landing should not wait for the world's buffer.
+    if (quiet) return;
+    const c = this.ctx;
+    for (const sound of s.sounds) {
       if (!isSfxId(sound.id)) continue;
       const { gain, pitch, rate, delay } = sound;
       c.audio.sfx(sound.id, sound.x, sound.y, { gain, pitch, rate, delay });
     }
-    // The host's moments, re-raised here after the state they belong to is in place: the replica's announcer, KO burst
-    // and super cut-in answer them exactly as they do on the host.
-    for (const m of snapshot.moments ?? []) c.events.emit(m.type, m.data as never);
-    return true;
+  }
+  private applyFighter(slot: number, s: DuelSnapshot): void {
+    const b = this.ctx.arena?.bundle(slot);
+    if (!b) return;
+    const f = s.fighters[slot];
+    this.replacePlayer(b.player, f.player);
+    b.fighters.applyPresentation?.(f.fighter, f.body, f.concealment, replicaDuelEffects(f.effects));
+  }
+  /** Where a playhead at `tick` sits between frame `to` and the one before it (1 = at `to`). */
+  private between(to: number, tick: number): number {
+    const b = this.frames[to].snapshot,
+      a = this.frames[to - 1]?.snapshot;
+    return a && b.tick > a.tick ? Math.max(0, Math.min(1, (tick - a.tick) / (b.tick - a.tick))) : 1;
+  }
+  /** A fighter between the two frames around its playhead. Respawns, teleports and ring-outs snap. */
+  private placeFighter(slot: number, to: number, tick: number): boolean {
+    const p = this.ctx.arena?.bundle(slot)?.player;
+    if (!p) return false;
+    const pb = this.frames[to].snapshot.fighters[slot].player,
+      pa = this.frames[to - 1]?.snapshot.fighters[slot].player ?? pb,
+      t = this.between(to, tick);
+    const near = Math.hypot(pb.x - pa.x, pb.y - pa.y) < 100 && pa.dead === pb.dead;
+    const x = near ? pa.x + (pb.x - pa.x) * t : pb.x,
+      y = near ? pa.y + (pb.y - pa.y) * t : pb.y;
+    const changed = p.x !== x || p.y !== y;
+    p.x = x;
+    p.y = y;
+    return changed;
+  }
+  private placeCamera(to: number, tick: number): boolean {
+    const b = this.frames[to].snapshot.camera,
+      a = this.frames[to - 1]?.snapshot.camera ?? b,
+      t = this.between(to, tick),
+      cam = this.ctx.camera;
+    const x = a.x + (b.x - a.x) * t,
+      y = a.y + (b.y - a.y) * t,
+      zoom = a.zoom + (b.zoom - a.zoom) * t,
+      viewScale = a.viewScale + (b.viewScale - a.viewScale) * t;
+    const changed = cam.x !== x || cam.y !== y || cam.zoom !== zoom || cam.viewScale !== viewScale;
+    Object.assign(cam, { x, y, tx: a.tx + (b.tx - a.tx) * t, ty: a.ty + (b.ty - a.ty) * t, zoom, viewScale });
+    return changed;
+  }
+  /** Drop frames both playheads have passed, keeping the one each interpolates from. */
+  private prune(): void {
+    const drop = Math.min(this.worldAt, this.ownAt) - 1;
+    if (drop <= 0) return;
+    this.frames.splice(0, drop);
+    this.worldAt -= drop;
+    this.ownAt -= drop;
+  }
+  /** Apply the oldest `count` frames now (state and terrain, no sounds) and move both playheads past them. */
+  private catchUp(count: number): void {
+    const own = this.ownSlot(),
+      last = Math.min(this.frames.length, count) - 1;
+    while (this.ownAt < last) this.applyOwn(this.frames[++this.ownAt].snapshot, own, true);
+    while (this.worldAt < last) this.applyWorld(this.frames[++this.worldAt], own);
+    const tick = this.frames[last].snapshot.tick;
+    for (const head of [this.worldHead, this.ownHead]) if (!(head.tick >= tick)) head.tick = tick;
+    this.prune();
+  }
+  private resetPlayback(): void {
+    this.frames.length = 0;
+    this.worldAt = this.ownAt = -1;
+    this.clock.reset();
+    this.worldHead.reset();
+    this.ownHead.reset();
+    this.worldArena = this.ownSlotView = this.view = null;
+    this.dirty = false;
   }
   private replacePlayer(player: PlayerState, data: PlayerState): void {
     // Optional transient fields must disappear when absent in the next snapshot.
     for (const key of Object.keys(player))
       if (!(key in data)) delete (player as unknown as Record<string, unknown>)[key];
     Object.assign(player, structuredClone(data));
-  }
-  present(now: number): boolean {
-    let changed = this.presentationDirty;
-    this.presentationDirty = false;
-    const latest = this.latest,
-      prev = this.previous;
-    if (!latest || !prev) return changed;
-    const interval = Math.max(16, Math.min(150, ((latest.tick - prev.tick) * 1000) / 60));
-    const alpha = Math.min(1, Math.max(0, (now - this.receivedAt) / interval));
-    for (const slot of [0, 1]) {
-      // The controlled fighter uses the latest confirmed pose immediately.
-      // Delaying it for smoothing adds a full snapshot interval to every action.
-      if (slot === this.ctx.duel?.slot) continue;
-      const p = this.ctx.arena?.bundle(slot)?.player;
-      if (!p) continue;
-      const a = prev.fighters[slot].player,
-        b = latest.fighters[slot].player;
-      // Respawns, teleports and ring-outs snap. Interpolating them crosses the stage.
-      if (Math.hypot(b.x - a.x, b.y - a.y) < 100 && a.dead === b.dead) {
-        const x = a.x + (b.x - a.x) * alpha;
-        const y = a.y + (b.y - a.y) * alpha;
-        changed ||= p.x !== x || p.y !== y;
-        p.x = x;
-        p.y = y;
-      }
-    }
-    return changed;
   }
   dispose(): void {
     this.stop();
