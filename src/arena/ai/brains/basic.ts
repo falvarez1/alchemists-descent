@@ -113,9 +113,11 @@ export class BasicBrain implements Brain {
 
   observeHit(hit: ObservedHit): void {
     this.memory.hear(hit);
-    if (hit.victim === this.slot) {
+    if (hit.victim === this.slot && hit.attack !== 'world') {
       this.learning.interrupt();
       // Being knocked off an approach is not evidence that the route itself is impossible.
+      // Lingering elemental damage has no launch. Restarting on each damage tick
+      // prevents the bot from ever finishing a route out of that hazard.
       this.pursuit = null; this.status.navigation = null; this.control?.cancelEdge(); this.edgeTarget = null;
     }
     if (hit.by === this.slot) { this.observedHits.push(hit); if (this.observedHits.length > 32) this.observedHits.shift(); }
@@ -305,8 +307,14 @@ export class BasicBrain implements Brain {
       }
     }
     // Do not walk or strafe into acid, fire or an unsupported drop. Navigation owns deliberate crossings.
+    let holdingForHazard = false;
     if (me.grounded && control.activeEdge === null && !control.committed && hand.dir !== 0) {
-      const x = me.x + hand.dir * AI_BEHAVIOR.hazardLookahead * (0.75 + 0.5 * personality.hazardAvoidance);
+      let ahead = AI_BEHAVIOR.hazardLookahead * (0.75 + 0.5 * personality.hazardAvoidance);
+      if (!control.escaping && tick >= this.dodgeUntil && this.goalX !== null && (this.goalX - me.x) * hand.dir > 0) {
+        // Do not retreat from a gap beyond a destination that already stops short of the lip.
+        ahead = Math.min(ahead, Math.max(Math.abs(this.goalX - me.x), Math.abs(control.traction.stopDistance(me.vx))));
+      }
+      const x = me.x + hand.dir * ahead;
       if (ctx.physics.entityFree(x, me.y, PLAYER_HALF_W, PLAYER_H) && (!safeDrop(ctx, x, me.y) || !safeTravel(ctx, me.x, me.y, x))) {
         const dir = hand.dir;
         let hop: { clearY: number; landingX: number } | null = null;
@@ -317,6 +325,12 @@ export class BasicBrain implements Brain {
         if (hop !== null) {
           control.startHop(dir, hop.clearY, me.y, hop.landingX);
           st.stats.hazardHops++;
+        } else if (ctx.arena?.stockMatch && safeFooting(ctx, me.x, me.y)) {
+          // Safe ground is a useful position. Hold it until the lane clears or
+          // the target opens another route; repeated backsteps do not clear fire.
+          hand.move(0); hand.jump(false);
+          holdingForHazard = true;
+          st.stats.hazardWaits = (st.stats.hazardWaits ?? 0) + 1;
         } else if (!control.escaping && safeMobilityLanding(ctx, me.x, me.y, me.x - dir * AI_BEHAVIOR.hazardLookahead * 2)) {
           // A broad patch cannot be cleared by the short hop. Walk back to
           // safe ground for another angle, rather than waiting for a stuck timeout.
@@ -336,7 +350,7 @@ export class BasicBrain implements Brain {
     // after cover hides a foe. Deliberate holds never count as wanting to move.
     const goalX = this.goalX;
     const wantsMove = control.activeEdge !== null || (this.intent === 'reposition' && this.noShotTicks > AI_BEHAVIOR.blockedTicks) || (goalX !== null && Math.abs(goalX - me.x) > 10 && this.intent !== 'zone');
-    if (control.stuck.update(me, wantsMove && !p.dead, tick, hand.idle)) {
+    if (control.stuck.update(me, wantsMove && !p.dead && !holdingForHazard, tick, hand.idle)) {
       st.stats.stuck++;
       const edge = control.activeEdge;
       if (edge !== null) { this.finishPursuit(false, tick); this.blocked.add(edgeKey(edge)); this.blockedAt = tick; control.cancelEdge(); this.edgeTarget = null; }
@@ -428,8 +442,16 @@ export class BasicBrain implements Brain {
 
     // ---- the goal: a place to walk to (or an edge of the nav to run) ----
     if (target === null) {
+      // Losing sight of a fighter must not turn a planned crossing into a blind
+      // walk toward the patrol point across empty air. Finish the current leg,
+      // then search from the main deck using the same platform routes.
+      if (stock && control.activeEdge !== null) return;
       this.edgeTarget = null;
       this.goalX = this.nav?.patrolX ?? YARD.ring.cx;
+      if (stock && nav && myNode) {
+        const route = nav.route(myNode.id, 'floor', this.blocked);
+        if (route?.length) this.startEdgeIfNew(control, route[0]);
+      }
       return;
     }
     const dx = target.cx - me.x;
@@ -460,8 +482,10 @@ export class BasicBrain implements Brain {
     }
     if (control.activeEdge !== null && !control.committed) { control.cancelEdge(); this.edgeTarget = null; }
     const stage = this.navFor === 'fighter-stock' ? STOCK_STAGE.main : this.navFor === 'fighter-duel' ? DUEL : YARD;
-    const x0 = stage.x0 + 16;
-    const x1 = stage.x1 - 16;
+    // Upper platforms extend beyond the main deck. Keep ordinary footwork on the
+    // surface we occupy; the nav owns movement to another surface.
+    const x0 = stock && myNode ? myNode.x0 + PLAYER_HALF_W + 4 : stage.x0 + 16;
+    const x1 = stock && myNode ? myNode.x1 - PLAYER_HALF_W - 4 : stage.x1 - 16;
     const lo = this.range - style.band;
     const hi = this.range + style.band;
     switch (this.intent) {
