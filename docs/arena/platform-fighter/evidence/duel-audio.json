@@ -21,9 +21,9 @@
       "name": "a name is called within 400 ms of being chosen",
       "pass": true,
       "data": [
-        38,
-        26,
-        24
+        34,
+        21,
+        20
       ]
     },
     {
@@ -32,15 +32,15 @@
       "data": [
         {
           "cut": true,
-          "ms": 146
+          "ms": 132
         },
         {
           "cut": true,
-          "ms": 141
+          "ms": 128
         },
         {
           "cut": false,
-          "ms": 1368
+          "ms": 1367
         }
       ]
     },
@@ -75,7 +75,7 @@
           "fighter.brann-rook"
         ],
         "firstLagMs": 10,
-        "loadMs": 4253
+        "loadMs": 4237
       }
     },
     {
@@ -92,10 +92,10 @@
       "name": "each countdown call lands on its beat (within 250 ms of the tick that changed it)",
       "pass": true,
       "data": {
-        "count.3": 9.895000010728836,
-        "count.2": 10.215000003576279,
-        "count.1": 10.13000002503395,
-        "fight": 9.645000010728836
+        "count.3": 9.46000000834465,
+        "count.2": 10.265000015497208,
+        "count.1": 10.325000017881393,
+        "fight": 10.155000001192093
       }
     },
     {
@@ -229,14 +229,6 @@
       "pass": true,
       "data": [
         {
-          "line": "ready.1",
-          "cut": true
-        },
-        {
-          "line": "fighter.mara-quell",
-          "cut": false
-        },
-        {
           "line": "versus",
           "cut": true
         },
@@ -309,9 +301,9 @@
           "boom.small",
           "mat.zap",
           "mat.fire.loop",
-          "mat.sizzle",
           "arena.hit.light",
           "arena.hurt.duelist",
+          "mat.electric.loop",
           "arena.hurt.armored",
           "arena.hit.heavy",
           "duel.ko",
@@ -350,9 +342,9 @@
           "boom.small",
           "mat.zap",
           "mat.fire.loop",
-          "mat.sizzle",
           "arena.hit.light",
           "arena.hurt.duelist",
+          "mat.electric.loop",
           "arena.hurt.armored",
           "arena.hit.heavy",
           "duel.ko",
@@ -378,10 +370,10 @@
       "fight"
     ],
     "lagMs": {
-      "count.3": 9.895000010728836,
-      "count.2": 10.215000003576279,
-      "count.1": 10.13000002503395,
-      "fight": 9.645000010728836
+      "count.3": 9.46000000834465,
+      "count.2": 10.265000015497208,
+      "count.1": 10.325000017881393,
+      "fight": 10.155000001192093
     },
     "beatTicks": [
       39,
@@ -472,9 +464,9 @@
       "boom.small",
       "mat.zap",
       "mat.fire.loop",
-      "mat.sizzle",
       "arena.hit.light",
       "arena.hurt.duelist",
+      "mat.electric.loop",
       "arena.hurt.armored",
       "arena.hit.heavy",
       "duel.ko",

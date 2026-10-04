@@ -237,3 +237,11 @@ For the player-facing flow, choose Duel at the title, choose fighters/devices, r
 - First visual comparison found overly similar crescents. The second pass gave Ilyra a straight finishing thrust, Brann a crouched shield slam with a small spark fan, and Mara a low bell sweep. The shield and bell move with the skeleton. Reduced flashes lower accent density and opacity.
 - Evidence: evidence/stock-attacks.json, evidence/stock-melee-match.png, and the twenty-four fighter/action/startup-or-active PNGs. Reproduce with node scripts/verify-stock-attacks.mjs.
 - Remaining: native silhouettes remain smaller and less detailed than the concepts. Current attacks are single-hit prototypes; multi-hit accounting across the wider combat system, true combo tuning, audio/rumble differentiation, and the seven remaining authored movesets are unfinished.
+
+## Arcade and foundry checkpoint
+
+- Concept-versus-build sheets for the five UI targets, the VS card, the cut-in, the beats, the mirror match and the HUD meter: produced by verify-duel-ui and the comparison scripts in verify-out/duel-ui/compare/ (not committed); refreshed fidelity sheets in evidence/fidelity/.
+- Mirror colourways for all ten fighters (poses and busts): scripts/arena-sprites/costume-studio.mjs.
+- Projectile push by victim percent (one wand shot on the Foundry): before 119 / 139 / 169 / 406 cells of slide at 0 / 25 / 50 / 100%; after 0 / 1 / 59 / 159. verify-stock-stationary 18/18, every case a CPU melee hit.
+- LAN guest moments, two browsers: host and guest each raised 5 match beats and 3 ring-outs and played the same 9 cabinet sounds once; the guest drew the ring-out blast.
+- Duel audio: evidence/duel-audio.json (verify-duel-audio, 23 checks).

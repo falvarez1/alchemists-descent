@@ -3,17 +3,17 @@
   "fighters": [
     {
       "stocks": 3,
-      "volatility": 30.84636000000011,
+      "volatility": 29.094240000000163,
       "respawn": 0,
       "protection": 0
     },
     {
       "stocks": 3,
-      "volatility": 63.683400000000006,
+      "volatility": 88.14199999999987,
       "respawn": 0,
       "protection": 0
     }
   ],
   "downs": [],
-  "remaining": 20518
+  "remaining": 20513
 }

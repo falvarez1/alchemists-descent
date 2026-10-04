@@ -2,7 +2,7 @@
   "results": {
     "before": 208,
     "low": {
-      "speed": 5.939404106896261,
+      "speed": 1.3599429125585638,
       "hp": 208,
       "percent": 8
     },
@@ -18,8 +18,8 @@
     "healing": 50,
     "recovery": {
       "minimumY": 558,
-      "x": 638,
-      "y": 559,
+      "x": 645,
+      "y": 639,
       "stocks": 3,
       "grounded": true
     },
@@ -31,7 +31,7 @@
       "x0": 560,
       "x1": 1039,
       "y": 640,
-      "depth": 87,
+      "depth": 43,
       "art": "foundry/main",
       "mirror": false
     }

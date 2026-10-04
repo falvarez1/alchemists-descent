@@ -2,8 +2,8 @@
   {
     "fighter": "ilyra-voss",
     "side": -1,
-    "x": 638,
-    "y": 559,
+    "x": 645,
+    "y": 639,
     "minimumY": 558,
     "stocks": 3,
     "grounded": true
@@ -11,8 +11,8 @@
   {
     "fighter": "ilyra-voss",
     "side": 1,
-    "x": 961,
-    "y": 559,
+    "x": 954,
+    "y": 639,
     "minimumY": 558,
     "stocks": 3,
     "grounded": true
@@ -39,7 +39,7 @@
     "fighter": "mara-quell",
     "side": -1,
     "x": 633,
-    "y": 559,
+    "y": 583,
     "minimumY": 544,
     "stocks": 3,
     "grounded": true
@@ -48,7 +48,7 @@
     "fighter": "mara-quell",
     "side": 1,
     "x": 966,
-    "y": 559,
+    "y": 583,
     "minimumY": 544,
     "stocks": 3,
     "grounded": true
