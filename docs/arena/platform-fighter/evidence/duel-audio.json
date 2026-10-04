@@ -21,9 +21,9 @@
       "name": "a name is called within 400 ms of being chosen",
       "pass": true,
       "data": [
-        38,
-        27,
-        24
+        26,
+        20,
+        19
       ]
     },
     {
@@ -32,15 +32,15 @@
       "data": [
         {
           "cut": true,
-          "ms": 137
+          "ms": 138
         },
         {
           "cut": true,
-          "ms": 141
+          "ms": 130
         },
         {
           "cut": false,
-          "ms": 1365
+          "ms": 1364
         }
       ]
     },
@@ -74,8 +74,8 @@
           "versus",
           "fighter.brann-rook"
         ],
-        "firstLagMs": 8,
-        "loadMs": 4253
+        "firstLagMs": 9,
+        "loadMs": 4240
       }
     },
     {
@@ -92,10 +92,10 @@
       "name": "each countdown call lands on its beat (within 250 ms of the tick that changed it)",
       "pass": true,
       "data": {
-        "count.3": 10.020000010728836,
-        "count.2": 9.88500002026558,
-        "count.1": 9.770000010728836,
-        "fight": 10.115000009536743
+        "count.3": 9.900000005960464,
+        "count.2": 10.310000002384186,
+        "count.1": 9.819999992847443,
+        "fight": 9.599999994039536
       }
     },
     {
@@ -212,10 +212,6 @@
         },
         {
           "line": "versus",
-          "cut": false
-        },
-        {
-          "line": "fighter.brann-rook",
           "cut": true
         },
         {
@@ -239,18 +235,16 @@
           "pickup.bell",
           "duel.count",
           "duel.fight",
-          "player.step.stone",
           "spell.spark.cast",
+          "player.step.stone",
           "world.gong",
           "duel.super",
           "spell.spark.impact",
           "boom.small",
           "mat.zap",
-          "mat.sizzle",
           "mat.fire.loop",
           "arena.hit.light",
           "arena.hurt.duelist",
-          "mat.electric.loop",
           "arena.hurt.armored",
           "arena.hit.heavy",
           "duel.ko",
@@ -272,6 +266,7 @@
         "beds": [
           "duel:null"
         ],
+        "offending": [],
         "played": [
           "duel.ui.move",
           "duel.stage",
@@ -280,18 +275,16 @@
           "pickup.bell",
           "duel.count",
           "duel.fight",
-          "player.step.stone",
           "spell.spark.cast",
+          "player.step.stone",
           "world.gong",
           "duel.super",
           "spell.spark.impact",
           "boom.small",
           "mat.zap",
-          "mat.sizzle",
           "mat.fire.loop",
           "arena.hit.light",
           "arena.hurt.duelist",
-          "mat.electric.loop",
           "arena.hurt.armored",
           "arena.hit.heavy",
           "duel.ko",
@@ -317,10 +310,10 @@
       "fight"
     ],
     "lagMs": {
-      "count.3": 10.020000010728836,
-      "count.2": 9.88500002026558,
-      "count.1": 9.770000010728836,
-      "fight": 10.115000009536743
+      "count.3": 9.900000005960464,
+      "count.2": 10.310000002384186,
+      "count.1": 9.819999992847443,
+      "fight": 9.599999994039536
     },
     "beatTicks": [
       39,
@@ -403,18 +396,16 @@
       "pickup.bell",
       "duel.count",
       "duel.fight",
-      "player.step.stone",
       "spell.spark.cast",
+      "player.step.stone",
       "world.gong",
       "duel.super",
       "spell.spark.impact",
       "boom.small",
       "mat.zap",
-      "mat.sizzle",
       "mat.fire.loop",
       "arena.hit.light",
       "arena.hurt.duelist",
-      "mat.electric.loop",
       "arena.hurt.armored",
       "arena.hit.heavy",
       "duel.ko",

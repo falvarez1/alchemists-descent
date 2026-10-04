@@ -360,6 +360,39 @@ describe('the announcer at work', () => {
     announcer.dispose();
   });
 
+  it('Change fighters right after a result: the winner call gives way, and the next match is new, not a rematch', async () => {
+    const { events, ctx, match, said, wait, announcer } = rig();
+    ctx.versus.phase = 'lobby';
+    events.emit('versusChanged');
+    await wait(20);
+    ctx.versus.phase = 'loading';
+    events.emit('versusChanged');
+    ctx.versus.phase = 'playing';
+    events.emit('versusChanged');
+    await wait(20);
+    match.state = 'finished';
+    events.emit('stockMatchBeat', { state: 'finished', count: 0, winner: 0, reason: 'stocks' });
+    await wait(1000); // "Game!" said, "Ilyra wins!" talking
+    expect(said().at(-1)?.line).toBe('wins.ilyra-voss');
+    // Change fighters, then READY at once.
+    ctx.versus.phase = 'lobby';
+    events.emit('versusChanged');
+    await wait(20);
+    expect(said().at(-1)?.line).toBe('choose');
+    expect(said().find((s) => s.line === 'wins.ilyra-voss')?.cut).toBe(true);
+    ctx.versus.phase = 'loading';
+    events.emit('versusChanged');
+    await wait(20);
+    expect(said().map((s) => s.line).slice(-3)).toEqual(['fighter.ilyra-voss', 'versus', 'fighter.brann-rook']);
+    await wait(5000);
+    match.state = 'countdown';
+    events.emit('arenaReset');
+    events.emit('stockMatchBeat', { state: 'countdown', count: 3, winner: null, reason: null });
+    await wait(20);
+    expect(said().at(-1)?.line).toBe('count.3');
+    announcer.dispose();
+  });
+
   it('fades the VS call out when the card is skipped, and leaves anything else alone', async () => {
     const { events, ctx, said, wait, announcer, h } = rig();
     ctx.versus.phase = 'lobby';

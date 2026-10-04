@@ -302,4 +302,4 @@ node scripts/verify-duel-audio.mjs http://127.0.0.1:5242/
 - the cabinet's pause;
 - a skipped VS card cut where it stood.
 
-That is 24 checks. Result: `evidence/duel-audio.json`. As with everything above, these are instruments, not ears: whether the fast shouted reads hit the arcade feel, and the Kest and Rusk names in particular, is the user's call. The audition page lists every call, and the casting, under "Duel announcer".
+That is 22 checks. Result: `evidence/duel-audio.json`. As with everything above, these are instruments, not ears: whether the fast shouted reads hit the arcade feel, and the Kest and Rusk names in particular, is the user's call. The audition page lists every call, and the casting, under "Duel announcer".

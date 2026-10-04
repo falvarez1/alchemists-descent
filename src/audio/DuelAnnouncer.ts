@@ -126,6 +126,15 @@ export class DuelAnnouncer implements DuelAudioApi {
     const next = lobbyView(v);
     if (next.phase === 'lobby' && this.lobby?.phase !== 'lobby') this.preload(['select']);
     if (next.phase === 'loading' || next.phase === 'playing') this.preload(['match', 'result']);
+    // A new screen (the select screen opening, or READY starting a match): what the last screen was saying
+    // ("<Name> wins!" as Change fighters is pressed) gives way, and a match started from the select screen
+    // is a new one, not a rematch (QA: it opened with "Rematch!" and lost "Choose your fighter!" and the VS call).
+    if ((next.phase === 'lobby' || next.phase === 'loading') && this.lobby?.phase !== next.phase) {
+      this.finished = false;
+      // The VS repeat guard is for one load: a lobby opening starts the next.
+      if (next.phase === 'lobby') this.lastVersus = { key: '', at: -Infinity };
+      if (this.speaking) { this.cut(); this.duck(false); }
+    }
     const calls = lobbyCalls(this.lobby, next);
     if (calls.length) this.call({ steps: calls.flatMap((c) => c.steps), priority: Math.max(...calls.map((c) => c.priority)), lobbyOnly: true });
     // READY pressed: the VS card is up while the stage builds.
