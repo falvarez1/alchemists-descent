@@ -1,11 +1,14 @@
-// THE DUEL, AS A PERSON SEES IT (docs/arena/platform-fighter/concepts/local-versus.png): the title's Duel door, the lobby
-// (busts, the fighter arrows, a stage tile and its backdrop, the seat cards, one big READY), the match played in REAL
-// TIME (rendered, not stepped) with the HUD in the corners and nothing in the middle, the results card, Rematch,
-// Change fighters back to the lobby with the choices kept, and Back to title. Every press is a real click.
+// THE DUEL, AS A PERSON SEES IT (docs/arena/platform-fighter/concepts/local-versus.png): the title's Duel door, the arcade
+// select screen (busts, ◀ ▶ cyclers instead of dropdowns, arrows that repeat while held, the keyboard's own cursor, a stage
+// tile and its backdrop, the seat cards' readiness, one big READY), the VS card while the stage loads, the match in REAL TIME
+// (rendered, not stepped): 3 · 2 · 1, FIGHT!, a percent that pops on a hit, the HUD in the corners and nothing in the
+// middle, the Duel's own pause menu, GAME! then <NAME> WINS then the results card (Esc there opens nothing; a confirm
+// skips ahead), Rematch, Change fighters back to the lobby with the choices kept, and Back to title. Real clicks and keys.
 //   node scripts/verify-duel-ui.mjs [url] [--stage kiln] [--shots]
 import { mkdirSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
 import { makeChecker } from './fighter-probe.mjs';
+import { cycleTo } from './versus-helpers.mjs';
 
 const args = process.argv.slice(2);
 const url = args[0] && !args[0].startsWith('--') ? args[0] : 'http://localhost:5173/';
@@ -35,6 +38,8 @@ const finish = (page) => page.evaluate(() => {
   c.state.paused = false;
   return c.arena.stockMatch.state;
 });
+const fighterIndex = (page, slot) => page.evaluate((slot) => { const c = window.__game.ctx; return ['ilyra-voss', 'brann-rook', 'sable-fen', 'mara-quell', 'kest-rel', 'nox-calder', 'edda-morrow', 'selene-wraith', 'rusk-emberjaw', 'father-thorne'].indexOf(c.versus.seats[slot].fighter); }, slot);
+const focusName = (page) => page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.id ?? '');
 
 const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
@@ -49,7 +54,7 @@ try {
   await page.waitForSelector('#expedition-entry:not([hidden])', { timeout: 20000 });
   await page.waitForTimeout(600);
 
-  // ---- the door and the lobby ----
+  // ---- the door and the select screen ----
   const door = await page.locator('#expedition-entry [data-entry="duel"]').textContent();
   check('the title has a Duel door that says what it is', /Duel/.test(door ?? '') && /Local versus/.test(door ?? ''), JSON.stringify(door));
   await click(page, '#expedition-entry [data-entry="duel"]', 600);
@@ -62,22 +67,41 @@ try {
       art: imgs.map(i => i.dataset.art),
       mirrored: imgs.map(i => new DOMMatrix(getComputedStyle(i).transform).a < 0),
       cards: [...document.querySelectorAll('.versus-device-label')].map(e => e.textContent),
+      selects: document.querySelectorAll('#versus-lobby select').length,
+      cyclers: [...document.querySelectorAll('#versus-lobby .versus-cycler')].filter(c => !c.hidden).map(c => c.getAttribute('aria-label')),
       backdrop: document.querySelector('.versus-backdrop > div.on')?.dataset.stage,
-      focus: document.activeElement?.id,
+      focus: document.activeElement?.getAttribute('aria-label'),
     };
   });
-  check('the lobby opens on DUEL with both busts (or the roster portrait while a bust is unpainted), player 2 mirrored to face player 1',
-    lobby.heading === 'Duel' && lobby.art.length === 2 && lobby.art.every(a => a === 'bust' || a === 'portrait') && !lobby.mirrored[0] && lobby.mirrored[1], JSON.stringify(lobby));
-  check('one big READY under two seat cards (PLAYER 1, PLAYER 2), focused, with the stage backdrop behind',
-    lobby.ready === 'Ready' && lobby.cards.join() === 'Player 1,Player 2' && lobby.focus === 'versus-start' && !!lobby.backdrop, JSON.stringify(lobby));
+  check('the select screen opens on DUEL with both busts, player 2 mirrored to face player 1', lobby.heading === 'Duel' && lobby.art.join() === 'bust,bust' && !lobby.mirrored[0] && lobby.mirrored[1], JSON.stringify(lobby));
+  check('no dropdowns: every choice is a ◀ value ▶ cycler (fighters, devices, the CPU\'s level)',
+    lobby.selects === 0 && ['Player 1 fighter', 'Player 1 device', 'Player 2 fighter', 'Player 2 device', 'Player 2 CPU difficulty'].every(n => lobby.cyclers.includes(n)), JSON.stringify(lobby.cyclers));
+  check('one big READY under two seat cards, the keyboard\'s cursor on its own fighter, the stage backdrop behind',
+    lobby.ready === 'Ready' && lobby.cards[0].startsWith('Player 1') && lobby.focus === 'Player 1 fighter' && !!lobby.backdrop, JSON.stringify(lobby));
 
-  // ---- the fighter arrows ----
-  const before = await page.evaluate(() => window.__game.ctx.versus.seats[0].fighter);
-  await click(page, page.getByRole('button', { name: 'Next fighter for player 1', exact: true }));
-  const after = await page.evaluate(() => ({ id: window.__game.ctx.versus.seats[0].fighter, name: document.querySelector('.versus-seat-0 h2')?.textContent }));
-  await click(page, page.getByRole('button', { name: 'Previous fighter for player 1', exact: true }));
-  const back = await page.evaluate(() => window.__game.ctx.versus.seats[0].fighter);
-  check('◂ ▸ beside the name step player 1 through the roster and back', after.id !== before && back === before && !!after.name, JSON.stringify({ before, after, back }));
+  // ---- the arrows: a click steps once, a held arrow keeps stepping ----
+  const start0 = await fighterIndex(page, 0);
+  await click(page, page.getByRole('button', { name: 'Next fighter for player 1', exact: true }), 150);
+  const one = await fighterIndex(page, 0);
+  const next = await page.getByRole('button', { name: 'Next fighter for player 1', exact: true }).boundingBox();
+  await page.mouse.move(next.x + next.width / 2, next.y + next.height / 2); await page.mouse.down();
+  await page.waitForTimeout(900); await page.mouse.up();
+  const held = await fighterIndex(page, 0);
+  check('▶ steps the roster once per click, and keeps stepping while held', one === (start0 + 1) % 10 && (held - one + 10) % 10 >= 4, JSON.stringify({ start0, one, held }));
+
+  // ---- the keyboard drives its own seat: ← → turn the row under the cursor, ↑ ↓ move the cursor ----
+  await page.getByRole('group', { name: 'Player 1 fighter', exact: true }).focus();
+  const k0 = await fighterIndex(page, 0);
+  await page.keyboard.press('ArrowLeft'); await page.keyboard.press('ArrowLeft');
+  const k1 = await fighterIndex(page, 0);
+  await page.keyboard.press('ArrowDown');
+  const down = await focusName(page);
+  await page.keyboard.press('ArrowDown');
+  const down2 = await focusName(page);
+  await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowUp');
+  const up = await focusName(page);
+  check('the keyboard\'s ← → step its fighter and ↑ ↓ walk the cursor row by row (fighter, device, the rival\'s fighter)',
+    k1 === (k0 + 8) % 10 && down === 'Player 1 device' && down2 === 'Player 2 fighter' && up === 'Player 1 fighter', JSON.stringify({ k0, k1, down, down2, up }));
 
   // ---- a stage tile, and the room behind follows it ----
   await click(page, `.versus-stage-tile[data-stage="${STAGE}"]`, 900);
@@ -85,28 +109,43 @@ try {
     chosen: window.__game.ctx.versus.stage,
     checked: document.querySelector('.versus-stage-tile[aria-checked="true"]')?.dataset.stage,
     backdrop: document.querySelector('.versus-backdrop > div.on')?.dataset.stage,
-    line: document.querySelector('.versus-stage-foot')?.textContent,
   }));
-  check(`clicking ${STAGE} chooses it: the tile is checked, the backdrop behind the lobby becomes that stage, the line names it`,
-    stage.chosen === STAGE && stage.checked === STAGE && stage.backdrop === STAGE && /·/.test(stage.line ?? ''), JSON.stringify(stage));
+  check(`clicking ${STAGE} chooses it: the tile is checked and the backdrop behind becomes that stage`, stage.chosen === STAGE && stage.checked === STAGE && stage.backdrop === STAGE, JSON.stringify(stage));
   if (shots) await page.screenshot({ path: 'verify-out/duel-ui/1-lobby.png' });
 
-  // ---- two computer fighters, one READY ----
-  await page.getByRole('combobox', { name: 'Player 1 device', exact: true }).selectOption('cpu');
+  // ---- two CPUs: both cards ready, READY reads FIGHT! ----
+  await cycleTo(page, 'Player 1 device', 'cpu');
   const ready = await page.evaluate(() => ({
     status: document.querySelector('.versus-status')?.textContent,
-    go: document.querySelector('#versus-start')?.dataset.go,
+    go: document.querySelector('#versus-start')?.dataset.go, label: document.querySelector('#versus-start')?.textContent,
     badges: [...document.querySelectorAll('.versus-ready')].map(b => b.getAttribute('aria-pressed')),
     glow: [...document.querySelectorAll('.versus-device')].map(c => c.dataset.ready),
   }));
-  check('with both seats on CPU both cards show ready (badge and glow) and READY is armed', ready.go === 'true' && ready.badges.join() === 'true,true' && ready.glow.join() === 'true,true', JSON.stringify(ready));
+  check('with both seats on CPU both cards show ready and READY becomes FIGHT!', ready.go === 'true' && ready.label === 'Fight!' && ready.badges.join() === 'true,true' && ready.glow.join() === 'true,true', JSON.stringify(ready));
+
+  // ---- the VS card while the stage loads ----
+  await page.evaluate(() => {
+    const lobby = document.getElementById('versus-lobby');
+    new MutationObserver(() => {
+      if (lobby.dataset.phase !== 'loading' || window.__splash) return;
+      const s = lobby.querySelector('.versus-splash');
+      window.__splash = { display: getComputedStyle(s).display, names: [...s.querySelectorAll('b')].map(b => b.textContent), stage: s.querySelector('.versus-splash-stage')?.textContent, z: getComputedStyle(lobby).zIndex };
+    }).observe(lobby, { attributes: true, attributeFilter: ['data-phase'] });
+  });
   await click(page, '#versus-start', 0);
   await page.locator('#versus-lobby').waitFor({ state: 'hidden', timeout: 30000 });
+  const splash = await page.evaluate(() => window.__splash);
+  check('READY shows the VS card while the stage loads: both names and the stage, over the loading curtain', splash?.display === 'grid' && splash.names.every(Boolean) && /Kiln|Foundry|Cistern|Gallery/.test(splash.stage ?? '') && Number(splash.z) > 60, JSON.stringify(splash));
+
+  // ---- 3 · 2 · 1, FIGHT! ----
   await page.locator('#stock-match-hud').waitFor({ state: 'visible' });
+  await page.waitForFunction(() => /^[123]$/.test(document.querySelector('.stock-message')?.textContent ?? ''), null, { timeout: 15000 });
   const count = await page.locator('.stock-message').textContent();
-  await page.waitForFunction(() => document.querySelector('.stock-message')?.hidden === true, null, { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('.stock-banner[data-kind="fight"]:not([hidden])'), null, { timeout: 20000 });
+  const fight = await page.locator('.stock-banner').textContent();
   const onStage = await page.evaluate(() => window.__game.ctx.arena.stockStage.id);
-  check('READY starts the match on the chosen stage after a countdown', /^[123]$/.test(count ?? '') && onStage === STAGE, JSON.stringify({ count, onStage }));
+  check('the countdown slams 3 · 2 · 1 then FIGHT! on the chosen stage', /^[123]$/.test(count ?? '') && fight === 'Fight!' && onStage === STAGE, JSON.stringify({ count, fight, onStage }));
+  await page.waitForFunction(() => document.querySelector('.stock-banner').hidden, null, { timeout: 5000 });
 
   // ---- REAL time: they fight, the HUD follows, the middle stays clear ----
   const start = await page.evaluate(() => { const c = window.__game.ctx; return { a: c.arena.bundle(0).player.x, b: c.arena.bundle(1).player.x, clock: document.querySelector('.stock-timer')?.textContent }; });
@@ -120,6 +159,12 @@ try {
   }
   if (shots) await page.screenshot({ path: 'verify-out/duel-ui/2-fighting.png' });
   check('both computer fighters move in real time, blows land (a percent rises), and the timer runs', seen.moved && seen.hit && seen.clock !== start.clock, JSON.stringify({ seen, start }));
+  const popped = await page.evaluate(() => new Promise((resolve) => {
+    const c = window.__game.ctx, f = c.arena.stockMatch.fighters[1], el = document.querySelectorAll('.stock-percent')[1];
+    f.volatility += 25;
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve(el.getAnimations().length)));
+  }));
+  check('a hit makes the percent pop (an animation runs on the number when it rises)', popped > 0, String(popped));
   const layout = await page.evaluate(() => {
     const W = innerWidth, H = innerHeight, mid = { l: W * .25, r: W * .75, t: H * .2, b: H * .7 };
     const boxes = [...document.querySelectorAll('#stock-match-hud .stock-fighter, #stock-match-hud .stock-timer')].map(e => e.getBoundingClientRect());
@@ -131,33 +176,69 @@ try {
       art: [...document.querySelectorAll('.stock-portrait')].map(i => i.dataset.art),
     };
   });
-  check('the HUD keeps to the corners (cards bottom-left and bottom-right, the timer top-centre) and nothing sits in the middle', layout.clear && layout.corners && layout.timer && layout.art.every(a => a === 'bust' || a === 'portrait'), JSON.stringify(layout));
+  check('the HUD keeps to the corners (cards bottom-left and bottom-right, the timer top-centre) and nothing sits in the middle', layout.clear && layout.corners && layout.timer && layout.art.join() === 'bust,bust', JSON.stringify(layout));
 
-  // ---- results, Rematch ----
+  // ---- the Duel's own pause menu ----
+  await page.keyboard.press('Escape');
+  await page.locator('#pause-overlay.visible').waitFor({ timeout: 5000 });
+  const pause = await page.evaluate(() => {
+    const o = document.getElementById('pause-overlay');
+    const rows = [...o.querySelectorAll('#pause-resume, .pause-menu button')].filter(b => b.getClientRects().length > 0).map(b => b.textContent.trim());
+    return { duel: o.classList.contains('duel-pause'), title: document.getElementById('pause-title').textContent, rows, tools: [...o.querySelectorAll('.pause-tools button')].some(b => b.getClientRects().length > 0) };
+  });
+  if (shots) await page.screenshot({ path: 'verify-out/duel-ui/3-pause.png' });
+  check('Esc opens the Duel\'s pause: PAUSED, Resume / Restart match / Change fighters / Controls / Quit to title, nothing of the descent\'s',
+    pause.duel && pause.title === 'Paused' && pause.rows.join() === 'Resume match,Restart match,Change fighters,Controls,Quit to title' && !pause.tools, JSON.stringify(pause));
+  await click(page, '#pause-duel-controls', 200);
+  const controls = await page.evaluate(() => ({ shown: document.querySelector('.pause-duel-controls')?.getClientRects().length > 0, stats: document.getElementById('pause-stats')?.getClientRects().length > 0 }));
+  check('Controls turns the side card from the match to the button layout', controls.shown && !controls.stats, JSON.stringify(controls));
+  await page.keyboard.press('Escape');
+  await page.locator('#pause-overlay.visible').waitFor({ state: 'hidden', timeout: 5000 });
+
+  // ---- GAME!, then <NAME> WINS over the pose, then the card; Esc there opens nothing ----
   check('the match can be finished (a ring-out per stock)', await finish(page) === 'finished');
+  const game = await page.evaluate(() => ({ banner: document.querySelector('.stock-banner:not([hidden])')?.textContent, card: document.querySelector('.stock-result').hidden }));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  const escDuringGame = await page.evaluate(() => document.querySelector('#pause-overlay.visible') !== null);
+  await page.waitForFunction(() => document.querySelector('.stock-banner[data-kind="wins"]:not([hidden])'), null, { timeout: 5000 });
+  const wins = await page.locator('.stock-banner').textContent();
+  if (shots) await page.screenshot({ path: 'verify-out/duel-ui/4-wins.png' });
   await page.locator('.stock-result').waitFor({ state: 'visible', timeout: 10000 });
+  check('GAME! slams in at once with the card held back, then <NAME> WINS, then the results card', game.banner === 'Game!' && game.card === true && / wins$/.test(wins ?? ''), JSON.stringify({ game, wins }));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  const escOnCard = await page.evaluate(() => document.querySelector('#pause-overlay.visible') !== null);
+  check('Esc on the results opens no pause menu (the card owns that moment)', !escDuringGame && !escOnCard, JSON.stringify({ escDuringGame, escOnCard }));
   const result = await page.evaluate(() => ({
     title: document.querySelector('.stock-result-title')?.textContent,
     tagline: document.querySelector('.stock-result-tagline')?.textContent,
     rows: [...document.querySelectorAll('.stock-result-stats dt')].map(e => e.textContent),
     bust: [...document.querySelectorAll('.stock-result-portrait img')].map(i => i.dataset.art),
+    focus: document.activeElement?.textContent,
   }));
-  if (shots) await page.screenshot({ path: 'verify-out/duel-ui/3-result.png' });
-  check('the results card names the winner, a line under it, the framed bust, Stocks and Ring-outs',
-    / wins$/.test(result.title ?? '') && !!result.tagline && result.rows.join() === 'Stocks,Ring-outs' && result.bust.length === 1, JSON.stringify(result));
+  if (shots) await page.screenshot({ path: 'verify-out/duel-ui/5-result.png' });
+  check('the results card names the winner, a line under it, the framed bust, Stocks and Ring-outs, Rematch under the cursor',
+    / wins$/.test(result.title ?? '') && !!result.tagline && result.rows.join() === 'Stocks,Ring-outs' && result.bust.join() === 'bust' && result.focus === 'Rematch', JSON.stringify(result));
   await click(page, page.getByRole('button', { name: 'Rematch', exact: true }), 200);
-  const again = await page.evaluate(() => ({ state: window.__game.ctx.arena.stockMatch.state, stocks: window.__game.ctx.arena.stockMatch.fighters.map(f => f.stocks), result: document.querySelector('.stock-result').hidden, count: document.querySelector('.stock-message')?.textContent }));
+  const again = await page.evaluate(() => ({ state: window.__game.ctx.arena.stockMatch.state, stocks: window.__game.ctx.arena.stockMatch.fighters.map(f => f.stocks), result: document.querySelector('.stock-result').hidden }));
   check('Rematch starts a fresh match: the card goes, a countdown, three stocks each', again.result && (again.state === 'countdown' || again.state === 'fighting') && again.stocks.join() === '3,3', JSON.stringify(again));
 
-  // ---- Change fighters, then Back to title ----
+  // ---- a confirm skips GAME! straight to the card ----
   await page.waitForFunction(() => document.querySelector('.stock-message')?.hidden === true, null, { timeout: 20000 });
   check('the rematch can be finished too', await finish(page) === 'finished');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(150);
+  const skipped = await page.evaluate(() => !document.querySelector('.stock-result').hidden);
+  check('Enter during GAME! skips straight to the results card', skipped);
+
+  // ---- Change fighters, then Back to title ----
   await click(page, page.getByRole('button', { name: 'Change fighters', exact: true }), 600);
   const lobbyAgain = await page.evaluate(() => ({ visible: !document.querySelector('#versus-lobby').hidden, stage: window.__game.ctx.versus.stage, checked: document.querySelector('.versus-stage-tile[aria-checked="true"]')?.dataset.stage, devices: window.__game.ctx.versus.seats.map(s => s.device) }));
-  check('Change fighters returns to the lobby with the stage and the seats as they were', lobbyAgain.visible && lobbyAgain.stage === STAGE && lobbyAgain.checked === STAGE && lobbyAgain.devices.join() === 'cpu,cpu', JSON.stringify(lobbyAgain));
+  check('Change fighters returns to the select screen with the stage and the seats as they were', lobbyAgain.visible && lobbyAgain.stage === STAGE && lobbyAgain.checked === STAGE && lobbyAgain.devices.join() === 'cpu,cpu', JSON.stringify(lobbyAgain));
   await click(page, '.versus-back', 800);
   const title = await page.evaluate(() => ({ title: !document.querySelector('#expedition-entry')?.hidden, phase: window.__game.ctx.versus.phase, lobby: document.querySelector('#versus-lobby').hidden }));
-  check('Back to title closes the Duel and shows the title', title.title && title.phase === 'idle' && title.lobby, JSON.stringify(title));
+  check('Back closes the Duel and shows the title', title.title && title.phase === 'idle' && title.lobby, JSON.stringify(title));
   check('no page errors in the whole path', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   check('the path ran to the end', false, String(error).split('\n')[0]);

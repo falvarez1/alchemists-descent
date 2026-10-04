@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
+import { cycleTo } from './versus-helpers.mjs';
 const browser = await launchBrowser(), out = 'verify-out/stock-learning';
 mkdirSync(out, { recursive: true });
 try {
@@ -8,9 +9,9 @@ try {
   page.on('pageerror', error => errors.push(String(error)));
   await page.goto((process.argv[2] ?? 'http://127.0.0.1:5221/') + '?link=off', { waitUntil: 'networkidle' });
   await page.locator('[data-entry="duel"]').click();
-  const difficulty = page.getByRole('combobox', { name: 'Player 2 CPU difficulty', exact: true });
-  await difficulty.selectOption('5');
-  assert.equal(await page.getByRole('combobox', { name: 'Player 1 CPU difficulty', exact: true }).count(), 0);
+  const difficulty = page.getByRole('group', { name: 'Player 2 CPU difficulty', exact: true });
+  await cycleTo(page, 'Player 2 CPU difficulty', '5');
+  assert.equal(await page.getByRole('group', { name: 'Player 1 CPU difficulty', exact: true }).count(), 0);
   await page.screenshot({ path: `${out}/difficulty-desktop.png` });
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await difficulty.isVisible());

@@ -16,9 +16,25 @@ export function duelBustUrl(id: FighterId): string {
   return `${import.meta.env.BASE_URL}assets/arena/fighters/${id}/bust.webp`;
 }
 
+/** Where the face is in a bust (its bust.json, fractions of the image): the eye point and the eye-to-chin height. */
+interface BustAnchor { eye: [number, number]; face: number }
+const anchors = new Map<FighterId, Promise<BustAnchor | null>>();
+function bustAnchor(id: FighterId): Promise<BustAnchor | null> {
+  let anchor = anchors.get(id);
+  if (!anchor) {
+    anchor = fetch(`${import.meta.env.BASE_URL}assets/arena/fighters/${id}/bust.json`)
+      .then(r => r.ok ? r.json() as Promise<BustAnchor> : null)
+      .then(a => a && Array.isArray(a.eye) && typeof a.face === 'number' ? a : null, () => null);
+    anchors.set(id, anchor);
+  }
+  return anchor;
+}
+
 /**
  * Show a fighter's bust in `img`, falling back to the roster portrait when the bust is missing. `data-art` says which
- * one is showing ('bust' | 'portrait') so the styles can frame each (a full-body portrait needs a tighter crop).
+ * one is showing ('bust' | 'portrait') so the styles can frame each (a full-body portrait needs a tighter crop). The
+ * bust's face anchor lands on the img as --ex / --ey / --face, so every frame (lobby, HUD, results) places the face the
+ * same way for all ten (versus.css `.bust-fit`).
  */
 export function showFighterArt(img: HTMLImageElement, id: FighterId): void {
   if (img.dataset.fighter === id) return;
@@ -28,7 +44,17 @@ export function showFighterArt(img: HTMLImageElement, id: FighterId): void {
     img.dataset.art = 'portrait'; img.src = fighterPortraitUrl(id);
   };
   img.src = duelBustUrl(id);
+  void bustAnchor(id).then(a => {
+    if (!a || img.dataset.fighter !== id) return;
+    img.style.setProperty('--ex', String(a.eye[0])); img.style.setProperty('--ey', String(a.eye[1])); img.style.setProperty('--face', String(a.face));
+  });
 }
+
+/** The arcade names of the select screen's choices. */
+export function duelDeviceLabel(device: string): string {
+  return device === 'keyboard' ? 'Keyboard' : device === 'cpu' ? 'CPU' : device.startsWith('pad:') ? `Pad ${Number(device.slice(4)) + 1}` : device;
+}
+export const DUEL_CPU_LEVELS = ['Gentle', 'Easy', 'Normal', 'Hard', 'Expert'] as const;
 
 /** 'The Cinder Alchemist' -> 'Cinder Alchemist'. */
 export function duelTitle(id: FighterId): string {

@@ -163,14 +163,22 @@ try {
       await closeAll();
     }
     if (want('versus')) {
-      // The Duel (ui/VersusLobby, ui/StockMatchHud): the lobby's seats, stage tiles and Fight, then a CPU match
-      // finished at once for the results card's Rematch and Change fighters. The Sanctum step above can leave its
+      // The Duel (ui/VersusLobby, ui/StockMatchHud, ui/PauseOverlay's Duel dress): the select screen's cyclers, stage
+      // tiles and READY; the Duel's own pause menu in a CPU match; then the match finished at once for the results card's
+      // Rematch and Change fighters (and Esc there must open no pause menu). The Sanctum step above can leave its
       // shop up (nothing closes it there), so dismiss it, then come through the title's own door as a player does.
       await page.evaluate(() => { window.__game.ctx.sanctum.dismiss?.(); window.dispatchEvent(new Event('expedition-title-request')); });
       await page.locator('[data-entry="duel"]').click();
       await probe('duel', '#versus-lobby', 500);
       await page.evaluate(async () => { const v = window.__game.ctx.versus; v.chooseDevice(0, 'cpu'); await v.start(); });
       await page.waitForFunction(() => window.__game.ctx.arena?.stockMatch?.state === 'fighting', null, { timeout: 30000 });
+      await page.waitForFunction(() => document.querySelector('.stock-banner')?.hidden !== false, null, { timeout: 5000 }).catch(() => {});
+      await page.keyboard.press('Escape');
+      const paused = await page.locator('#pause-overlay.visible.duel-pause').waitFor({ timeout: 5000 }).then(() => true, () => false);
+      if (!paused) { bad++; console.log(`  FAIL  ${w}x${h} duel-pause  Esc opened no Duel pause menu`); }
+      await probe('duel-pause', '#pause-overlay', 300);
+      await page.keyboard.press('Escape');
+      await page.locator('#pause-overlay.visible').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
       await page.evaluate(() => {
         const g = window.__game, c = g.ctx; c.state.paused = true;
         // (a teleport during a respawn or a CPU recovery can be undone: try until the last stock is gone)
@@ -188,6 +196,8 @@ try {
         console.log(`  FAIL  ${w}x${h} duel-end  the results card never showed ${JSON.stringify(why)}`);
       }
       await probe('duel-end', '.stock-result', 600);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(250);
+      if (await page.evaluate(() => document.querySelector('#pause-overlay.visible') !== null)) { bad++; console.log(`  FAIL  ${w}x${h} duel-end  Esc on the results opened the pause menu`); }
       await page.evaluate(() => window.__game.ctx.versus.close());
     }
     if (errs.length) console.log('  page errors:', errs.slice(0, 3));

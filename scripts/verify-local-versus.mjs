@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
+import { cyclerValue } from './versus-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://127.0.0.1:5217/';
 const production = process.argv.includes('--production');
@@ -34,9 +35,10 @@ try {
   await page.waitForFunction(() => [...document.querySelectorAll('.versus-portrait')].every(img => img.complete && img.naturalWidth > 0));
   assert.equal(await page.locator('#versus-heading').evaluate(el => el.scrollWidth <= el.clientWidth), true, 'lobby heading is not clipped');
   await page.screenshot({ path: `${out}/versus-lobby-${production ? 'player' : 'desktop'}.png` });
-  const keyboard = page.getByRole('combobox', { name: 'Player 1 device', exact: true });
-  const rival = page.getByRole('combobox', { name: 'Player 2 device', exact: true });
-  assert.equal(await keyboard.inputValue(), 'keyboard'); assert.equal(await rival.inputValue(), 'cpu');
+  // No dropdowns: each device is a ◀ value ▶ cycler (scripts/versus-helpers.mjs).
+  assert.equal(await page.locator('#versus-lobby select').count(), 0, 'the select screen has no dropdowns');
+  const keyboard = page.getByRole('group', { name: 'Player 1 device', exact: true });
+  assert.equal(await cyclerValue(page, 'Player 1 device'), 'keyboard'); assert.equal(await cyclerValue(page, 'Player 2 device'), 'cpu');
   // One big READY (concepts/local-versus.png); each seat shows its own readiness. A lone keyboard player against a CPU
   // readies and starts with one click.
   assert.equal((await page.locator('#versus-start').textContent())?.trim(), 'Ready');
@@ -68,7 +70,7 @@ try {
   await page.keyboard.press('Escape'); await page.locator('#pause-title-btn').click();
   await page.locator('[data-entry="duel"]').click();
   await page.evaluate(() => { window.testPads = [window.makeTestPad(0), window.makeTestPad(1)]; });
-  await page.waitForFunction(() => document.querySelector('[aria-label="Player 2 device"] option[value="pad:1"]'));
+  await page.waitForFunction(() => document.querySelector('[aria-label="Player 2 device"]')?.dataset.options?.split(',').includes('pad:1'));
   const pressPad = async (index, button) => {
     await page.evaluate(async ([index, button]) => {
       const frames = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -78,8 +80,8 @@ try {
       await frames();
     }, [index, button]);
   };
-  await pressPad(0, 0); assert.equal(await rival.inputValue(), 'pad:0', 'A joins the CPU seat');
-  assert.equal(await keyboard.locator('option[value="pad:0"]').isDisabled(), true, 'one controller cannot own both seats');
+  await pressPad(0, 0); assert.equal(await cyclerValue(page, 'Player 2 device'), 'pad:0', 'A joins the CPU seat');
+  assert.equal((await keyboard.getAttribute('data-options')).split(',').includes('pad:0'), false, 'one controller cannot own both seats');
   await page.getByRole('button', { name: 'Ready player 1', exact: true }).click();
   await pressPad(0, 0); await pressPad(0, 9);
   await page.locator('#versus-lobby').waitFor({ state: 'hidden' });
@@ -99,7 +101,7 @@ try {
   }
   await pressPad(0, 9); await page.locator('#pause-title-btn').click();
   await page.locator('[data-entry="duel"]').click();
-  await pressPad(1, 0); assert.equal(await keyboard.inputValue(), 'pad:1');
+  await pressPad(1, 0); assert.equal(await cyclerValue(page, 'Player 1 device'), 'pad:1');
   await page.setViewportSize({ width: 390, height: 844 });
   const narrow = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth, lobby: document.querySelector('#versus-lobby').scrollWidth }));
   assert.ok(narrow.width <= 390 && narrow.lobby <= 390, 'lobby has no narrow horizontal overflow');

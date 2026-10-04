@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
+import { cycleTo, cyclerValue } from './versus-helpers.mjs';
 const browser = await launchBrowser(), errors = [], out = 'docs/arena/platform-fighter/evidence';
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
@@ -13,8 +14,8 @@ try {
   await page.goto((process.argv[2] ?? 'http://127.0.0.1:5217/') + '?link=off', { waitUntil: 'networkidle' });
   await page.locator('[data-entry="duel"]').click();
   await page.locator('#versus-lobby').waitFor({ state: 'visible' });
-  assert.equal(await page.getByRole('combobox', { name: 'Player 1 device', exact: true }).inputValue(), 'pad:0');
-  await page.getByRole('combobox', { name: 'Player 2 device', exact: true }).selectOption('pad:1');
+  assert.equal(await cyclerValue(page, 'Player 1 device'), 'pad:0');
+  await cycleTo(page, 'Player 2 device', 'pad:1');
   await page.getByRole('button', { name: 'Ready player 1', exact: true }).click();
   await page.getByRole('button', { name: 'Ready player 2', exact: true }).click();
   await page.locator('#versus-start').click();

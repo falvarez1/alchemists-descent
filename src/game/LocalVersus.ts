@@ -20,6 +20,8 @@ export class LocalVersus implements VersusApi {
   ];
   private readonly ownership = new VersusDevices();
   private readonly buttons = new Map<number, Uint8Array>();
+  /** A pad's held left/right in the lobby: the direction and when it next repeats (an arcade select screen cycles on hold). */
+  private readonly held = new Map<number, { dir: number; at: number }>();
   private readonly offs: Array<() => void> = [];
   private revision = 0;
   private connectedKey = '';
@@ -151,11 +153,16 @@ export class LocalVersus implements VersusApi {
         }
         if (slot < 0) continue;
         const seat = this.seats[slot];
-        if ((action.previous || action.next) && !seat.ready) this.chooseFighter(slot, FIGHTER_ORDER[(FIGHTER_ORDER.indexOf(seat.fighter) + (action.next ? 1 : FIGHTER_ORDER.length - 1)) % FIGHTER_ORDER.length]);
+        // The d-pad or the stick steps through the roster, and keeps stepping while held.
+        const dir = this.heldStep(pad.index, action.left ? -1 : action.right ? 1 : 0);
+        if (dir && !seat.ready) {
+          this.chooseFighter(slot, FIGHTER_ORDER[(FIGHTER_ORDER.indexOf(seat.fighter) + FIGHTER_ORDER.length + dir) % FIGHTER_ORDER.length]);
+          this.ctx.audio.duel?.menu('move');
+        }
         // Either joined seat turns the shared stage picker with the bumpers.
         if (action.stagePrevious || action.stageNext) this.chooseStage(STOCK_STAGE_ORDER[(STOCK_STAGE_ORDER.indexOf(this.stage) + (action.stageNext ? 1 : STOCK_STAGE_ORDER.length - 1)) % STOCK_STAGE_ORDER.length]);
         if (action.confirm) this.ready(slot);
-        if (action.back && seat.ready) this.ready(slot);
+        if (action.back && seat.ready) { this.ready(slot); this.ctx.audio.duel?.menu('back'); }
         if (action.pause && this.canStart) void this.start();
       } else if (slot >= 0 && this.phase === 'reconnect' && action.pause) this.resume();
       else if (slot >= 0 && this.phase === 'playing') {
@@ -169,6 +176,14 @@ export class LocalVersus implements VersusApi {
       }
     }
     return true;
+  }
+  /** A step now (a fresh press), then again after 360 ms and every 110 ms while held; 0 otherwise. */
+  private heldStep(index: number, dir: number): number {
+    const now = performance.now(), held = this.held.get(index);
+    if (!dir) { this.held.delete(index); return 0; }
+    if (!held || held.dir !== dir) { this.held.set(index, { dir, at: now + 360 }); return dir; }
+    if (now < held.at) return 0;
+    held.at = now + 110; return dir;
   }
   dispose(): void { this.close(); for (const off of this.offs) off(); }
 }

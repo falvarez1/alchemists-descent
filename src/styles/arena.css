@@ -16,9 +16,11 @@ body.stock-match #fighter-arena.collapsed .fa-title { font-size: 9px; letter-spa
   --hu: max(6.5px, min(1vw, 1.7778dvh));
   --u: var(--hu); /* the copper button rules shared with the lobby (versus.css) size by --u */
   --d-frame-sm: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30' viewBox='0 0 30 30' fill='none'%3E%3Crect x='.75' y='.75' width='28.5' height='28.5' stroke='%23b97c50' stroke-width='1.5'/%3E%3Crect x='3.5' y='3.5' width='23' height='23' stroke='%23ac744b' stroke-opacity='.4'/%3E%3Cg fill='%23c98a57'%3E%3Cpath d='M0 0h6v1.6H1.6V6H0z'/%3E%3Cpath d='M30 0h-6v1.6h4.4V6H30z'/%3E%3Cpath d='M0 30h6v-1.6H1.6V24H0z'/%3E%3Cpath d='M30 30h-6v-1.6h4.4V24H30z'/%3E%3C/g%3E%3C/svg%3E");
-  /* under every menu (map 5, pause 6, handbook 7) and the level curtain: a paused Duel dims its HUD with the scene */
-  position: absolute; inset: 0; z-index: 3; pointer-events: none; color: var(--d-ivory); font-family: var(--d-sans);
+  /* over the level curtain (6, still fading as the countdown starts), under a Duel's pause (9, versus.css) */
+  position: absolute; inset: 0; z-index: 7; pointer-events: none; color: var(--d-ivory); font-family: var(--d-sans);
 }
+/* in a Duel the beats ride over the level curtain (60) as it lifts on the countdown; a Duel's pause sits over them (versus.css) */
+body.versus-active #stock-match-hud { z-index: 61; }
 #stock-match-hud[hidden] { display: none; }
 #stock-match-hud * { box-sizing: border-box; }
 
@@ -52,14 +54,15 @@ body.stock-match #fighter-arena.collapsed .fa-title { font-size: 9px; letter-spa
 .stock-fighter[data-out="true"] { filter: saturate(.3) brightness(.7); }
 .stock-card-side { position: relative; align-self: center; }
 .stock-portrait-frame {
-  position: relative; width: calc(var(--hu) * 6.6); aspect-ratio: 1; overflow: hidden;
+  position: relative; width: calc(var(--hu) * 6.6); aspect-ratio: 1; overflow: hidden; container-type: size;
   border: 2px solid color-mix(in srgb, var(--seat) 55%, #ac744b); border-radius: calc(var(--hu) * .8); corner-shape: bevel;
   background: #0b1116; box-shadow: inset 0 0 0 1px #000, 0 0 calc(var(--hu) * .7) color-mix(in srgb, var(--seat) 25%, transparent);
 }
-.stock-portrait { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0; image-rendering: pixelated; transform: scale(1.6); transform-origin: 48% 26%; }
-/* the bust faces right, framed close on the face (concepts/foundry-match.png); player 2's looks back across the screen.
-   A full-figure roster portrait (no bust yet) is cropped to the head instead. */
-.stock-fighter-1 .stock-portrait { transform: scaleX(-1) scale(1.6); }
+.stock-portrait { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0; image-rendering: pixelated; }
+/* the bust framed close on the face by its anchor (concepts/foundry-match.png: a square of 3.4 faces round the eyes);
+   player 2's looks back across the screen. A full-figure roster portrait (no bust) is cropped to the head instead. */
+.stock-portrait-frame .bust-fit { --bd: calc(100cqw / (var(--face, .105) * 3.4)); --ax: .5; --ay: .5; --dy: .02; }
+.stock-fighter-1 .bust-fit[data-art="bust"] { --exu: calc(1 - var(--ex, .5)); transform: scaleX(-1); }
 .stock-portrait[data-art="portrait"] { object-position: 50% 0; transform: scale(1.55); transform-origin: 50% 6%; }
 .stock-fighter-1 .stock-portrait[data-art="portrait"] { transform: scaleX(-1) scale(1.55); }
 .stock-portrait[hidden] { display: none; }
@@ -106,15 +109,43 @@ body.stock-match #fighter-arena.collapsed .fa-title { font-size: 9px; letter-spa
 .stock-message { position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: var(--d-ivory); font: 800 max(20px, calc(var(--hu) * 2.4))/1.15 var(--d-display); letter-spacing: .07em; text-transform: uppercase; text-shadow: 0 2px 0 #000c, 0 0 calc(var(--hu) * 2) #000; }
 .stock-message[data-kind="idle"] { padding: calc(var(--hu) * .8) calc(var(--hu) * 2); border: 1px solid var(--d-copper-dim); background: #0b1015e6; }
 .stock-message[data-kind="countdown"] {
-  font-size: max(64px, calc(var(--hu) * 10)); letter-spacing: 0; line-height: 1; font-variant-numeric: lining-nums;
+  font-size: max(72px, calc(var(--hu) * 13)); letter-spacing: 0; line-height: 1; font-variant-numeric: lining-nums;
+  text-shadow: none; /* a text-shadow paints over a background-clip:text fill and browns the gold; the drop-shadows below do the work */
   background: linear-gradient(180deg, #fff1d2 10%, #efac58 55%, #b06a35 95%); -webkit-background-clip: text; background-clip: text; color: transparent;
-  filter: drop-shadow(0 3px 0 #000) drop-shadow(0 0 calc(var(--hu) * 2.4) #efac5866); animation: stock-count 1s cubic-bezier(.16, 1, .3, 1) infinite;
+  filter: drop-shadow(0 3px 0 #000) drop-shadow(0 0 calc(var(--hu) * 2.4) #efac5866);
 }
-@keyframes stock-count { from { opacity: .2; transform: translate(-50%, -50%) scale(1.35); } 35% { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+
+/* ---------- the beats: FIGHT!, GAME! / TIME!, <NAME> WINS, slammed across the middle ---------- */
+.stock-banner { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; pointer-events: none; }
+.stock-banner[hidden] { display: none; }
+.stock-banner:is([data-kind="game"], [data-kind="wins"]) { pointer-events: auto; cursor: pointer; background: radial-gradient(ellipse 70% 34% at 50% 46%, #06090cb8, #06090c00 100%); }
+.stock-banner > span {
+  display: block; padding: 0 .2em; transform-origin: 50% 55%;
+  font: 800 max(56px, calc(var(--hu) * 11))/1 var(--d-display); letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; font-variant-numeric: lining-nums;
+  background: linear-gradient(180deg, #fff6df 8%, #ffd08a 38%, #ef9a48 62%, #a85428 92%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 4px 0 #1a0c06) drop-shadow(0 0 calc(var(--hu) * 2.6) #ef9a4899);
+}
+.stock-banner[data-kind="fight"] > span { font-size: max(64px, calc(var(--hu) * 13)); font-style: italic; transform: skewX(-6deg); }
+.stock-banner[data-kind="wins"] > span { font-size: max(40px, calc(var(--hu) * 8)); }
+.stock-banner[data-kind="wins"][data-slot="1"] > span { background-image: linear-gradient(180deg, #effffd 8%, #a8f0ea 38%, #65cac5 62%, #2f7f7c 92%); filter: drop-shadow(0 4px 0 #04201e) drop-shadow(0 0 calc(var(--hu) * 2.6) #65cac599); }
+/* a lost stock: a ring flies out from its bead */
+.stock-dot { position: relative; }
+.stock-burst { position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--seat); pointer-events: none; }
 
 /* ---------- the results card ---------- */
 .stock-result { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; padding: calc(var(--hu) * 2); overflow: auto; pointer-events: auto; background: radial-gradient(ellipse at 50% 50%, #060a0dc4 0%, #060a0dec 75%); }
 .stock-result[hidden] { display: none; }
+/* the winner's rays turn slowly behind the card: the results celebrate */
+.stock-result::before {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 160vmax; aspect-ratio: 1; translate: -50% -50%; pointer-events: none; opacity: .55;
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--rays, var(--d-amber)) 22%, transparent) 0deg 6deg, transparent 6deg 18deg);
+  -webkit-mask-image: radial-gradient(circle, #000 0%, #0000 46%); mask-image: radial-gradient(circle, #000 0%, #0000 46%);
+  animation: stock-rays 22s linear infinite;
+}
+.stock-result[data-slot="1"] { --rays: var(--d-teal); }
+.stock-result[data-slot="draw"] { --rays: var(--d-ivory); }
+.stock-result > * { position: relative; }
+@keyframes stock-rays { to { rotate: 1turn; } }
 .stock-result-panel {
   --seat: var(--d-amber); width: min(calc(var(--hu) * 60), 100%); padding: calc(var(--hu) * 1.6) calc(var(--hu) * 2.6) calc(var(--hu) * 2.2); text-align: center;
   border: 14px solid transparent; border-image: var(--d-frame) 14 / 14px stretch;
@@ -136,11 +167,14 @@ body.stock-match #fighter-arena.collapsed .fa-title { font-size: 9px; letter-spa
   position: relative; display: flex; margin: 0; aspect-ratio: 1; overflow: hidden; border: 1px solid #b47a52;
   box-shadow: inset 0 0 0 1px #000, 0 0 0 3px #0d1217, 0 0 0 4px #ac744b55; background: #0b1116;
 }
-.stock-result-portrait img { flex: 1 1 0; min-width: 0; height: 100%; object-fit: cover; object-position: 50% 8%; image-rendering: pixelated; transform: scale(1.22); transform-origin: 48% 24%; }
-.stock-result-portrait:has(img + img) img { transform: none; }
-.stock-result-portrait img[data-art="portrait"] { object-position: 50% 10%; transform: none; }
+.stock-result-bust { position: relative; flex: 1 1 0; min-width: 0; overflow: hidden; container-type: size; }
+.stock-result-bust img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%; image-rendering: pixelated; }
+/* the winner's bust by its face anchor: head and shoulders with the prop hand, the eyes a little above the middle */
+.stock-result-bust .bust-fit { --bd: calc(100cqw * 1.45); --ax: .46; --ay: .4; }
 /* a draw shows both, the second looking back at the first */
-.stock-result-portrait img + img { transform: scaleX(-1); border-right: 1px solid #b47a52; }
+.stock-result-bust-1 { border-left: 1px solid #b47a52; }
+.stock-result-bust-1 .bust-fit[data-art="bust"] { --exu: calc(1 - var(--ex, .5)); transform: scaleX(-1); }
+.stock-result-portrait:has(.stock-result-bust-1) .bust-fit { --bd: calc(100cqh * 1.3); --ax: .5; }
 .stock-result-portrait::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 calc(var(--hu) * 2) #000b; pointer-events: none; }
 .stock-result-stats { display: flex; flex-direction: column; padding: calc(var(--hu) * .9) calc(var(--hu) * 1.5) calc(var(--hu) * 1.2); border: 1px solid #ac744b99; border-radius: calc(var(--hu) * .6); corner-shape: bevel; background: #0a0f13b3; box-shadow: inset 0 0 0 3px #0a0f13, inset 0 0 0 4px #ac744b2e; }
 .stock-result-stats dl { margin: 0; }
@@ -162,9 +196,8 @@ body.stock-match #fighter-arena.collapsed .fa-title { font-size: 9px; letter-spa
 :is(.stock-rematch, .stock-change):focus-visible { outline: 2px solid var(--d-teal); outline-offset: 3px; }
 .stock-rematch[hidden], .stock-change[hidden] { display: none; }
 
-body.reduce-flashes .stock-message[data-kind="countdown"] { animation: none; }
 @media (prefers-reduced-motion: reduce) {
-  .stock-message[data-kind="countdown"] { animation: none; }
+  .stock-result::before { animation: none; }
   .stock-percent, .stock-glyph { transition: none; }
 }
 

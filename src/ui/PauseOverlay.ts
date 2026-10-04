@@ -11,6 +11,7 @@ import { recapRows } from '@/combat/wands/buildRecap';
 import { mutatorNames } from '@/content/mutators';
 import { STOCK_STAGES } from '@/config/stockStage';
 import { getBindings, keyLabel } from '@/input/bindings';
+import { duelShortName } from '@/ui/duelCopy';
 
 /** The Duel's Xbox layout (input/versusDevices, input/stockPad), read back in the pause menu. */
 const DUEL_PAD_CONTROLS: ReadonlyArray<[string, string]> = [
@@ -30,6 +31,9 @@ export class PauseOverlay {
   private ending = false;
   private readonly abandonButton = document.createElement('button');
   private readonly titleButton = document.createElement('button');
+  /** A Duel's own rows: back to the select screen, and the button layout in the side card. */
+  private readonly changeButton = document.createElement('button');
+  private readonly controlsButton = document.createElement('button');
   private readonly offVersusPause: () => void;
 
   constructor(private ctx: Ctx) {
@@ -43,7 +47,13 @@ export class PauseOverlay {
     this.abandonButton.id = 'pause-abandon';
     this.abandonButton.innerHTML = '<span>Abandon run</span>';
     const restart = document.getElementById('pause-restart');
-    restart?.after(this.titleButton, this.abandonButton);
+    this.changeButton.type = 'button'; this.changeButton.id = 'pause-change-fighters'; this.changeButton.hidden = true;
+    this.changeButton.innerHTML = '<span>Change fighters</span>';
+    this.changeButton.addEventListener('click', () => { this.resume(); this.ctx.versus?.open(); });
+    this.controlsButton.type = 'button'; this.controlsButton.id = 'pause-duel-controls'; this.controlsButton.hidden = true;
+    this.controlsButton.innerHTML = '<span>Controls</span>'; this.controlsButton.setAttribute('aria-expanded', 'false');
+    this.controlsButton.addEventListener('click', () => this.showDuelControls(this.controlsButton.getAttribute('aria-expanded') !== 'true'));
+    restart?.after(this.changeButton, this.controlsButton, this.titleButton, this.abandonButton);
     this.titleButton.addEventListener('click', this.onTitleClick);
     this.abandonButton.addEventListener('click', this.onAbandonClick);
     // Player builds: the run launcher (test levels, god kits) is an authoring
@@ -62,6 +72,7 @@ export class PauseOverlay {
     document.getElementById('pause-copy-report')?.addEventListener('click', this.onCopyReportClick);
     document.getElementById('pause-overlay')?.addEventListener('click', this.onMenuClick);
     document.getElementById('pause-overlay')?.addEventListener('keydown', this.onMenuKeys);
+    document.getElementById('pause-overlay')?.addEventListener('pointerover', this.onMenuHover);
     const build = document.getElementById('pause-build');
     if (build) build.textContent = `build ${BUILD_STAMP}`;
     document.addEventListener('fullscreenchange', this.onFullscreenChange);
@@ -79,6 +90,8 @@ export class PauseOverlay {
     if (document.getElementById('help-overlay')?.classList.contains('visible')) return;
     if (document.getElementById('run-summary')?.classList.contains('visible')) return;
     if (!this.active && this.ctx.state.paused) return; // someone else paused
+    // A Duel's results own that moment (Rematch, Change fighters): Esc there opens nothing.
+    if (!this.active && this.duelOver()) return;
     e.preventDefault();
     e.stopPropagation();
     this.toggle();
@@ -95,8 +108,13 @@ export class PauseOverlay {
   private readonly onPauseRequest = (): void => {
     if (this.ctx.state.mode !== 'play' || document.querySelector('#player-settings[open]') || this.ctx.sanctum.isOpen) return;
     if (this.ctx.state.paused && !this.active) return;
+    if (!this.active && this.duelOver()) return;
     this.toggle();
   };
+
+  private duelOver(): boolean {
+    return this.ctx.versus?.active === true && this.ctx.arena?.stockMatch?.state === 'finished';
+  }
 
   private readonly onRestartClick = (): void => void this.restartLevel();
   private readonly onTitleClick = (): void => this.quitToTitle();
@@ -135,6 +153,7 @@ export class PauseOverlay {
     document.getElementById('pause-copy-report')?.removeEventListener('click', this.onCopyReportClick);
     document.getElementById('pause-overlay')?.removeEventListener('click', this.onMenuClick);
     document.getElementById('pause-overlay')?.removeEventListener('keydown', this.onMenuKeys);
+    document.getElementById('pause-overlay')?.removeEventListener('pointerover', this.onMenuHover);
     document.removeEventListener('fullscreenchange', this.onFullscreenChange);
     this.titleButton.removeEventListener('click', this.onTitleClick);
     this.abandonButton.removeEventListener('click', this.onAbandonClick);
@@ -181,6 +200,18 @@ export class PauseOverlay {
     window.dispatchEvent(new KeyboardEvent('keydown', { code, key: code.replace('Key', '').toLowerCase(), bubbles: true }));
   };
 
+  /** In a Duel the menu has one cursor: the pointer moves it like the keys and the pad do. */
+  private hoverAt = '';
+  private readonly onMenuHover = (event: PointerEvent): void => {
+    if (!this.ctx.versus?.active) return;
+    // (a row sliding under a still pointer, e.g. as Controls grows the card, is not the player pointing at it)
+    const at = `${event.clientX},${event.clientY}`;
+    if (at === this.hoverAt) return;
+    this.hoverAt = at;
+    const row = (event.target as HTMLElement | null)?.closest<HTMLElement>('#pause-resume, .pause-menu button');
+    if (row && document.activeElement !== row) row.focus({ preventScroll: true });
+  };
+
   /** Arrow keys walk the menu; the list wraps. */
   private readonly onMenuKeys = (event: KeyboardEvent): void => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
@@ -204,17 +235,21 @@ export class PauseOverlay {
     const duelControls = this.duelControls();
     duelControls.hidden = true;
     if (ctx.versus?.active && ctx.arena?.stockMatch) {
-      place.textContent = `${STOCK_STAGES[ctx.versus.stage].name} · Duel`; goal.textContent = 'Launch your rival beyond the stage. Last stock standing wins.';
+      place.textContent = STOCK_STAGES[ctx.versus.stage].name; goal.textContent = 'Ring them out. Last stock standing wins.';
+      const arena = ctx.arena;
       stats.replaceChildren(...ctx.arena.stockMatch.fighters.flatMap((fighter, slot) => {
-        const dt = document.createElement('dt'), dd = document.createElement('dd');
-        dt.textContent = `Player ${slot + 1}`; dd.textContent = `${fighter.stocks} stocks · ${Math.round(fighter.volatility)}%`;
+        const dt = document.createElement('dt'), dd = document.createElement('dd'), id = arena.fighterId(slot);
+        dt.textContent = `P${slot + 1} ${id ? duelShortName(id) : ''}`; dd.textContent = `${'●'.repeat(fighter.stocks)}${'○'.repeat(Math.max(0, 3 - fighter.stocks))}  ${Math.round(fighter.volatility)}%`;
+        dt.dataset.slot = dd.dataset.slot = String(slot);
         return [dt, dd];
       }));
       // The fight's controls live here, not across the bottom of the match: one list per kind of seat in play.
       const devices = ctx.versus.seats.map(s => s.device);
       const keys = getBindings(), rows: Array<[string, string] | string> = [];
-      if (devices.some(d => d.startsWith('pad:'))) rows.push('Controller', ...DUEL_PAD_CONTROLS);
-      if (devices.includes('keyboard')) {
+      // (a CPU against a CPU: both layouts, for whoever picks up next)
+      const pads = devices.some(d => d.startsWith('pad:')), keyboard = devices.includes('keyboard') || !pads;
+      if (pads || !devices.includes('keyboard')) rows.push('Controller', ...DUEL_PAD_CONTROLS);
+      if (keyboard) {
         rows.push('Keyboard', ['Move', `${keyLabel(keys.left)} ${keyLabel(keys.right)}`], ['Jump', `${keyLabel(keys.jump)} · ${keyLabel(keys.up)} + ${keyLabel(keys.jump)} recovers`],
           ['Melee', keyLabel(keys.kick)], ['Special', `Click · ${keyLabel(keys.tactical)} tactical`],
           ['Shield', `Hold ${keyLabel(keys.dodge)} · add a direction to dodge`], ['Grab', `${keyLabel(keys.carry)}, then a direction to throw`]);
@@ -343,9 +378,12 @@ export class PauseOverlay {
   private toggle(): void {
     this.active = !this.active;
     this.ctx.state.paused = this.active;
+    if (this.active) this.dressForDuel(this.ctx.versus?.active === true);
     document.getElementById('pause-overlay')?.classList.toggle('visible', this.active);
     const hint = document.getElementById('pause-input-hint');
-    if (hint) hint.textContent = document.body.classList.contains('touch-enabled') ? 'Tap Resume descent to continue' : Array.from(navigator.getGamepads?.() ?? []).some(p => p?.connected)
+    const pad = Array.from(navigator.getGamepads?.() ?? []).some(p => p?.connected);
+    if (hint && this.ctx.versus?.active) hint.textContent = pad ? 'Start resume · A choose' : 'Esc resume · ↑↓ choose';
+    else if (hint) hint.textContent = document.body.classList.contains('touch-enabled') ? 'Tap Resume descent to continue' : pad
       ? 'Start to resume · A to choose' : 'Escape to resume · H for the handbook';
     if (this.active) {
       this.fillStatus();
@@ -364,6 +402,27 @@ export class PauseOverlay {
     if (restart) { restart.hidden = tracked; restart.textContent = this.ctx.versus?.active ? 'Restart match' : 'Restart level'; }
     const resume = document.getElementById('pause-resume');
     if (resume) resume.textContent = this.ctx.versus?.active ? 'Resume match' : 'Resume descent';
+  }
+
+  /**
+   * A Duel's pause is the cabinet's, not the descent's: PAUSED, Resume / Restart match / Change fighters / Controls /
+   * Quit to title, the match on the side card (the button layout behind Controls), and none of the descent's doors,
+   * copy or tester tools (versus.css `#pause-overlay.duel-pause`).
+   */
+  private dressForDuel(duel: boolean): void {
+    document.getElementById('pause-overlay')?.classList.toggle('duel-pause', duel);
+    const title = document.getElementById('pause-title');
+    if (title) title.textContent = duel ? 'Paused' : 'Take a breath';
+    const label = document.querySelector('#pause-overlay .pause-status .menu-label');
+    if (label) label.textContent = duel ? 'Match' : 'Where you are';
+    this.changeButton.hidden = this.controlsButton.hidden = !duel;
+    this.showDuelControls(false);
+  }
+
+  /** Controls: the side card turns from the match to the button layout and back. */
+  private showDuelControls(on: boolean): void {
+    this.controlsButton.setAttribute('aria-expanded', String(on));
+    document.querySelector('#pause-overlay .pause-status')?.classList.toggle('showing-controls', on);
   }
 
   private syncFullscreenButton(): void {
