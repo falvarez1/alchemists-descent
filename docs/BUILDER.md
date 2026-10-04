@@ -330,7 +330,7 @@ prefab instead). Documents embed exactly the sprites their decor references
 - **Decoration passes**: `crowns` writes the armed material onto solid top
   surfaces (clump-biased, skips underwater); `crownTint` recolors surface
   rock with the biome crown palette (colors only, types untouched) via
-  `src/world/crownPalette.ts`.
+  `src/sim/worldPaint.ts` (the crown stage the generated caves are painted with).
 
 ### Procedural
 

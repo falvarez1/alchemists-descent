@@ -765,12 +765,12 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
       // is answering" by this announce, which travels ahead of it on the same
       // ordered socket.
       announceWorld();
-      const paintSeed = ctx.worldgen?.paintSeed;
+      // The cells and the world's paint descriptor: a generated world is its
+      // rle plus a few KB of authored colour (authoring/worldLayer).
       const layer = captureWorldLayer({
         world: ctx.world,
         biome: ctx.state.currentBiome,
         seed: ctx.state.worldSeed >>> 0,
-        paintSeed: typeof paintSeed === 'number' && Number.isFinite(paintSeed) ? paintSeed : null,
       });
       // The snapshot IS the peer's baseline: the mirror must diff against
       // exactly this moment, or the sim's next few frames slip between the

@@ -1,14 +1,15 @@
 import { BIOMES } from '@/config/biomes';
 import { HEIGHT, WIDTH } from '@/config/constants';
-import { GEN, GEN_TUNE, scaleSkeletonSpec } from '@/config/gen';
-import { clamp, hash2, valueNoise } from '@/core/math';
+import { GEN, GEN_TUNE, scaleSkeletonSpec, type SkeletonSpec } from '@/config/gen';
+import { clamp, hash2 } from '@/core/math';
 import { Rng, hashSeed, randomSeed } from '@/core/rng';
 import { reseedAllStreams } from '@/core/simRandom';
-import { generateBreathingWorks } from '@/world/breathingWorks';
+import { generateBreathingWorks, worksPaint } from '@/world/breathingWorks';
 import { matureVegetation } from '@/world/vegetation';
 import { makeInstantiationSink } from '@/game/instantiate';
 import type {
   AuthoredLight,
+  BiomeId,
   Ctx,
   DarkZone,
   LumenBloom,
@@ -38,9 +39,7 @@ import {
   oilColor,
   packRGB,
   stoneColor,
-  unpackB,
-  unpackG,
-  unpackR,
+  wallColor,
   waterColor,
   woodColor,
 } from '@/sim/colors';
@@ -51,7 +50,14 @@ import { spawnFortress as stampFortress } from '@/world/fortress';
 import { SKELETONS } from '@/world/skeleton';
 import type { SkeletonIO } from '@/world/skeleton';
 import { polishCaveTerrain, consolidateRock, fillEnclosedHoles, solidifyRock, type PolishTarget } from '@/world/terrainPolish';
-import { dressWalkSurface, plantGroundCover } from '@/world/surfaceDress';
+import { plantGroundCover } from '@/world/surfaceDress';
+import {
+  beginGenerationTint,
+  endGenerationTint,
+  settleGenerationPaint,
+  type PaintRgb,
+  type StrataPaint,
+} from '@/sim/worldPaint';
 import { extractRegionGraph } from '@/world/regions';
 import { placePrefabs } from '@/world/prefabs/place';
 import { placeEncounterLairs } from '@/world/encounterLairs';
@@ -85,15 +91,55 @@ import type { LevelStorySites } from '@/core/story';
 
 /* ===================== Procedural Generation Map Engines ===================== */
 
-/** 4-connected neighbor offsets, hoisted out of the rim-light distance BFS so
- *  that pass allocates no per-cell neighbor literals (the open-cell frontier is
- *  10^5-10^6 cells over 13 levels). */
-const N4: ReadonlyArray<readonly [number, number]> = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-];
+
+/** A campaign floor's bottom rows are bedrock metal. */
+const BEDROCK_ROWS = 6;
+
+/**
+ * The pore texture a skeleton's rock carries: its 2x2 noise fill and first
+ * smoothing, the porous start the polish passes fill solid. A skeleton that
+ * starts from solid rock (the crevasses, the scaffold) has none.
+ */
+function skeletonPores(spec: SkeletonSpec): StrataPaint['pores'] {
+  switch (spec.kind) {
+    case 'baseline':
+      return { density: spec.params.noiseDensity, smooth: spec.params.caPasses };
+    case 'fungalPockets':
+    case 'crystalVaults':
+    case 'volcanicTubes':
+      return { density: spec.params.fillDensity, smooth: spec.params.caPasses };
+    case 'floodedGalleries':
+      return { density: spec.params.fillDensity, smooth: spec.params.fillCAPasses };
+    default:
+      return null;
+  }
+}
+
+/**
+ * The paint a generated cave of `biome` wears (sim/worldPaint): the biome's
+ * bands and crown carried as data, so a world saved today repaints the same
+ * after the biome is retuned. The pores stand in for the skeleton's filled
+ * holes, so only where the polish passes fill them (not the Gilded Vault or
+ * the timber scaffold, whose holes stay open air).
+ */
+export function cavePaint(biome: BiomeId, seed: number, bedrockRows: number): StrataPaint {
+  const B = BIOMES[biome] || BIOMES.earthen;
+  const G = GEN[biome] || GEN.earthen;
+  const band = (k: number): PaintRgb => {
+    const c = B.bands[k] ?? B.bands[0];
+    return [c[0], c[1], c[2]];
+  };
+  return {
+    v: 2,
+    style: 'strata',
+    seed,
+    bands: [band(0), band(1), band(2), band(3)],
+    crown: B.crown,
+    flowerChance: B.flowerChance,
+    pores: biome !== 'gilded' && biome !== 'timber' ? skeletonPores(G.skeleton) : null,
+    bedrockRows,
+  };
+}
 
 function shouldLogDevDiagnostics(): boolean {
   if (!import.meta.env.DEV || import.meta.env.MODE === 'test') return false;
@@ -120,13 +166,19 @@ export class WorldGen implements WorldGenApi {
     // The regenerate button always rolls a fresh world; generateCaves itself
     // never re-rolls the seed, so a fixed worldSeed replays the same layout.
     ctx.state.worldSeed = randomSeed();
-    this.generateCaves(ctx);
-    // Dress the DISPOSABLE sandbox preview (ore veins, moss, crystals, coal, gold,
-    // then the campaign-recipe ore/glow/liquid/rubble/vine densities) so biome
-    // look-tuning is visible right here, not only in a played expedition — the
-    // expedition path does both passes inside generateLevel.
-    applyBiomeExtras(ctx, this.rng, ctx.state.currentBiome);
-    applyCampaignDressing(ctx, new Rng(hashSeed(ctx.state.worldSeed >>> 0, 'sandbox-dress')), ctx.state.currentBiome, new PlacementLedger());
+    beginGenerationTint();
+    try {
+      this.carveCaves(ctx);
+      // Dress the DISPOSABLE sandbox preview (ore veins, moss, crystals, coal, gold,
+      // then the campaign-recipe ore/glow/liquid/rubble/vine densities) so biome
+      // look-tuning is visible right here, not only in a played expedition — the
+      // expedition path does both passes inside generateLevel.
+      applyBiomeExtras(ctx, this.rng, ctx.state.currentBiome);
+      applyCampaignDressing(ctx, new Rng(hashSeed(ctx.state.worldSeed >>> 0, 'sandbox-dress')), ctx.state.currentBiome, new PlacementLedger());
+    } finally {
+      endGenerationTint();
+    }
+    settleGenerationPaint(ctx.world, cavePaint(ctx.state.currentBiome, this.paintSeed ?? 0, 0));
     if (this.spawnHint) {
       ctx.camera.snapTo(this.spawnHint.x, this.spawnHint.y);
     }
@@ -137,7 +189,19 @@ export class WorldGen implements WorldGenApi {
     stampFortress(ctx);
   }
 
+  /** The bare biome caves, painted (sim/worldPaint) and replayable from state.worldSeed. */
   generateCaves(ctx: Ctx): void {
+    beginGenerationTint();
+    try {
+      this.carveCaves(ctx);
+    } finally {
+      endGenerationTint();
+    }
+    settleGenerationPaint(ctx.world, cavePaint(ctx.state.currentBiome, this.paintSeed ?? 0, 0));
+  }
+
+  /** generateCaves' cells, inside a generation's tint scope; the caller paints. */
+  private carveCaves(ctx: Ctx): void {
     this.rng = new Rng(ctx.state.worldSeed >>> 0);
     // Generation paints tint through the fx stream (sim/colors.ts). Anchoring
     // every stream here is what makes a fresh world reproducible from its seed
@@ -171,157 +235,21 @@ export class WorldGen implements WorldGenApi {
     // skeletons return null; any future tunnelY dependency must fall back to
     // spawnHint.y or an open-cell scan.
 
-    // --- 4) Commit with layered material palette + depth shading ---
+    // --- 4) Commit. Every colour is the paint's, at the end of the generation
+    //     (sim/worldPaint, settleGenerationPaint): rock gets its bands, rim
+    //     light, crowns and dressed ground from the FINISHED grid. A cell needs
+    //     only a natural tint here, which marks it as the paint's to colour.
+    //     (The paint seed is drawn where the old paint drew it: later layout
+    //     draws keep their order.)
     const seed = Math.floor(this.rng.next() * 100000);
     this.paintSeed = seed;
-
-    // Distance-from-air (multi-source BFS, capped) drives rim-light shading
-    const dist = new Uint8Array(WIDTH * HEIGHT).fill(99);
-    let frontier: Array<[number, number]> = [];
-    for (let x = 0; x < WIDTH; x++) {
-      for (let y = 0; y < HEIGHT; y++) {
-        if (!work[x + y * WIDTH]) {
-          dist[x + y * WIDTH] = 0;
-          frontier.push([x, y]);
-        }
-      }
-    }
-    for (let d = 1; d <= 13 && frontier.length; d++) {
-      const nf: Array<[number, number]> = [];
-      for (const [fx2, fy2] of frontier) {
-        for (const [dx, dy] of N4) {
-          const X = fx2 + dx,
-            Y = fy2 + dy;
-          if (X < 0 || X >= WIDTH || Y < 0 || Y >= HEIGHT) continue;
-          if (work[X + Y * WIDTH] && dist[X + Y * WIDTH] > d) {
-            dist[X + Y * WIDTH] = d;
-            nf.push([X, Y]);
-          }
-        }
-      }
-      frontier = nf;
-    }
-
-    for (let x = 0; x < WIDTH; x++) {
-      for (let y = 0; y < HEIGHT; y++) {
-        const i = x + y * WIDTH;
-        if (!work[i]) {
-          world.types[i] = Cell.Empty;
-          world.colors[i] = EMPTY_COLOR;
-          continue;
-        }
+    for (let i = 0; i < WIDTH * HEIGHT; i++) {
+      if (work[i]) {
         world.types[i] = Cell.Wall;
-
-        // Material banding: packed dirt, dry soil, frosted stone, pale rock
-        let m = valueNoise(x, y, 0.014, seed);
-        m = clamp((m - 0.5) * 2.1 + 0.5, 0, 1);
-        const grain = 0.85 + valueNoise(x, y, 0.12, seed + 5) * 0.3;
-        const band = m < 0.4 ? B.bands[0] : m < 0.58 ? B.bands[1] : m < 0.84 ? B.bands[2] : B.bands[3];
-        const r = band[0],
-          g = band[1],
-          b = band[2];
-
-        // Rim-lit edges fading to dark cores
-        const d = dist[i];
-        const shade = d <= 2 ? 1.08 : d <= 4 ? 0.88 : d <= 6 ? 0.7 : d <= 8 ? 0.58 : d <= 10 ? 0.5 : 0.44;
-        const jit = 0.92 + hash2(x, y, seed + 11) * 0.16;
-        world.colors[i] = packRGB(
-          Math.min(255, Math.floor(r * grain * shade * jit)),
-          Math.min(255, Math.floor(g * grain * shade * jit)),
-          Math.min(255, Math.floor(b * grain * shade * jit)),
-        );
-      }
-    }
-
-    // Moss + grass crowns on top surfaces, wildflowers, mossy ceiling fringe
-    // (TRANSCRIBED in src/world/crownPalette.ts for the Builder's crownTint
-    // pass. This stage is locked bit-for-bit by tests/gen-golden.test.ts —
-    // never refactor it to call the transcription; sync both by hand.)
-    for (let x = 0; x < WIDTH; x++) {
-      for (let y = 1; y < HEIGHT - 1; y++) {
-        const i = x + y * WIDTH;
-        if (world.types[i] !== Cell.Wall) continue;
-        const topish =
-          world.types[x + (y - 1) * WIDTH] === Cell.Empty &&
-          (y < 2 || world.types[x + (y - 2) * WIDTH] === Cell.Empty);
-        const nbTop = (xx: number): boolean =>
-          xx >= 0 &&
-          xx < WIDTH &&
-          world.types[xx + y * WIDTH] === Cell.Wall &&
-          world.types[xx + (y - 1) * WIDTH] === Cell.Empty;
-        if (topish && (nbTop(x - 1) || nbTop(x + 1))) {
-          const t = hash2(x, y, seed + 21);
-          if (B.crown === 'frost') {
-            if (t < B.flowerChance) world.colors[i] = packRGB(165, 215, 255);
-            else
-              world.colors[i] = packRGB(
-                192 + Math.floor(hash2(x, 0, seed) * 40),
-                206 + Math.floor(hash2(x, 1, seed) * 34),
-                228 + Math.floor(hash2(x, 2, seed) * 27),
-              );
-            if (world.types[x + (y + 1) * WIDTH] === Cell.Wall && hash2(x, y, seed + 23) < 0.5) {
-              const i2 = x + (y + 1) * WIDTH;
-              const c2 = world.colors[i2];
-              world.colors[i2] = packRGB(
-                Math.floor(unpackR(c2) * 0.85 + 18),
-                Math.floor(unpackG(c2) * 0.88 + 22),
-                Math.min(255, Math.floor(unpackB(c2) * 0.9 + 32)),
-              );
-            }
-          } else if (B.crown === 'ember') {
-            if (t < 0.06) world.colors[i] = packRGB(255, 110 + Math.floor(hash2(x, 1, seed) * 70), 22);
-            else
-              world.colors[i] = packRGB(
-                68 + Math.floor(hash2(x, 0, seed) * 22),
-                60 + Math.floor(hash2(x, 1, seed) * 16),
-                54 + Math.floor(hash2(x, 2, seed) * 12),
-              );
-          } else {
-            if (t < B.flowerChance) world.colors[i] = packRGB(212, 118, 166);
-            else if (t < B.flowerChance + 0.05) world.colors[i] = packRGB(194, 176, 86);
-            else
-              world.colors[i] = packRGB(
-                54 + Math.floor(hash2(x, 0, seed) * 26),
-                126 + Math.floor(hash2(x, 1, seed) * 48),
-                42 + Math.floor(hash2(x, 2, seed) * 22),
-              );
-            if (world.types[x + (y + 1) * WIDTH] === Cell.Wall) {
-              world.colors[x + (y + 1) * WIDTH] = packRGB(
-                44 + Math.floor(hash2(x, 3, seed) * 22),
-                104 + Math.floor(hash2(x, 4, seed) * 40),
-                36 + Math.floor(hash2(x, 5, seed) * 18),
-              );
-            }
-            if (y + 2 < HEIGHT && world.types[x + (y + 2) * WIDTH] === Cell.Wall && hash2(x, y, seed + 23) < 0.6) {
-              const i2 = x + (y + 2) * WIDTH;
-              const c2 = world.colors[i2];
-              world.colors[i2] = packRGB(
-                Math.floor(unpackR(c2) * 0.7),
-                Math.min(255, Math.floor(unpackG(c2) * 0.85 + 26)),
-                Math.floor(unpackB(c2) * 0.7),
-              );
-            }
-          }
-        } else if (
-          B.crown !== 'ember' &&
-          world.types[x + (y + 1) * WIDTH] === Cell.Empty &&
-          world.types[x + Math.min(HEIGHT - 1, y + 2) * WIDTH] === Cell.Empty &&
-          hash2(x, y, seed + 29) < 0.22
-        ) {
-          const c = world.colors[i];
-          if (B.crown === 'frost')
-            world.colors[i] = packRGB(
-              Math.floor(unpackR(c) * 0.9 + 14),
-              Math.floor(unpackG(c) * 0.92 + 18),
-              Math.min(255, Math.floor(unpackB(c) * 0.95 + 28)),
-            );
-          else
-            world.colors[i] = packRGB(
-              Math.floor(unpackR(c) * 0.75),
-              Math.min(255, Math.floor(unpackG(c) * 0.9 + 18)),
-              Math.floor(unpackB(c) * 0.75),
-            );
-        }
+        world.colors[i] = wallColor();
+      } else {
+        world.types[i] = Cell.Empty;
+        world.colors[i] = EMPTY_COLOR;
       }
     }
 
@@ -550,11 +478,9 @@ export class WorldGen implements WorldGenApi {
         notchPasses: GEN_TUNE.notchPasses,
         surfacePits: GEN_TUNE.fillSurfacePits,
       });
-      // Cap the remaining shallow walk-surface snags and lay dirt + grass/moss/
-      // flowers on the ledges the player walks (runs after polish so it dresses the
-      // filled surface). See world/surfaceDress.ts.
+      // The walk surface's dirt, grass and flowers are paint (sim/worldPaint);
+      // the cover that stands on it is cells.
       const dressOpts = { seed, minY: MIN_Y, floorBand: FLOOR_BAND, crown: B.crown, flowerChance: B.flowerChance };
-      dressWalkSurface(pristine, dressOpts);
       // Living, walk-through ground cover (grass blades + sparse mushroom tufts) on
       // the dressed surface — real soft-growth cells that sway-spread, burn, and
       // wither on their own. See world/surfaceDress.plantGroundCover.
@@ -565,21 +491,13 @@ export class WorldGen implements WorldGenApi {
     // removed fall-through wells) becomes real rock, so a level never ends in an
     // empty void above the bedrock — terrain runs all the way down. Flood biomes
     // already filled their bottom with water, so only genuinely-empty cells pack.
-    // Deep-core shade + grain keep it from reading as a flat slab.
-    const deepBand = B.bands[2];
+    // (Rock, like every cell, is coloured by the paint at the end of the generation.)
     for (let y = FLOOR_BAND; y < HEIGHT; y++) {
       for (let x = 0; x < WIDTH; x++) {
         const i = x + y * WIDTH;
         if (world.types[i] !== Cell.Empty) continue;
         world.types[i] = Cell.Wall;
-        const grain = 0.85 + valueNoise(x, y, 0.12, seed + 5) * 0.3;
-        const jit = 0.92 + hash2(x, y, seed + 11) * 0.16;
-        const shade = 0.44; // deep core, far from any air
-        world.colors[i] = packRGB(
-          Math.min(255, Math.floor(deepBand[0] * grain * shade * jit)),
-          Math.min(255, Math.floor(deepBand[1] * grain * shade * jit)),
-          Math.min(255, Math.floor(deepBand[2] * grain * shade * jit)),
-        );
+        world.colors[i] = wallColor();
       }
     }
   }
@@ -881,8 +799,24 @@ export class WorldGen implements WorldGenApi {
    * only) the two onboarding moments near spawn. Layout randomness flows through this.rng
    * (re-seeded by generateCaves from worldSeed), so a level replays identically
    * from its seed. No enemies here — the levels manager places those.
+   *
+   * Colour comes last: the whole generation runs in a tint scope and the
+   * finished grid is painted (sim/worldPaint), so the level's colours are the
+   * paint's wherever a stamp did not choose its own.
    */
-  generateLevel(
+  generateLevel(ctx: Ctx, def: LevelDef, seed: number): ReturnType<WorldGenApi['generateLevel']> {
+    beginGenerationTint();
+    let level: ReturnType<WorldGenApi['generateLevel']>;
+    try {
+      level = this.buildLevel(ctx, def, seed);
+    } finally {
+      endGenerationTint();
+    }
+    settleGenerationPaint(ctx.world, def.id === 'd1' ? worksPaint(seed) : cavePaint(def.biome, this.paintSeed ?? 0, BEDROCK_ROWS));
+    return level;
+  }
+
+  private buildLevel(
     ctx: Ctx,
     def: LevelDef,
     seed: number,
@@ -939,7 +873,7 @@ export class WorldGen implements WorldGenApi {
     // 1) Base caves for the level's biome, replayable from the seed.
     ctx.state.currentBiome = def.biome;
     ctx.state.worldSeed = seed >>> 0;
-    this.generateCaves(ctx);
+    this.carveCaves(ctx);
     stage('caves');
 
     const world = ctx.world;
@@ -961,7 +895,7 @@ export class WorldGen implements WorldGenApi {
     // 2) Bedrock: the bottom 6 rows become metal (explosion/acid/dig-proof).
     //    Descent is explicit through the key portal now, so the terrain never
     //    ends in a hidden fall-through shaft.
-    for (let y = HEIGHT - 6; y < HEIGHT; y++) {
+    for (let y = HEIGHT - BEDROCK_ROWS; y < HEIGHT; y++) {
       for (let x = 0; x < WIDTH; x++) setCell(x, y, Cell.Metal, bedrockColor());
     }
 

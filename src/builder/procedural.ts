@@ -8,7 +8,7 @@ import {
   crownFringeTint,
   crownTopColor,
   mossUnderColor,
-} from '@/world/crownPalette';
+} from '@/sim/worldPaint';
 import { writeCell } from '@/builder/terrain';
 import type { PatchRecorder, Region } from '@/builder/terrain';
 
@@ -402,8 +402,8 @@ const crownRock = (t: number): boolean => t === Cell.Wall || t === Cell.Stone;
 
 /**
  * Crown tint: COLOR-ONLY recolor of top-surface rock with the biome crown
- * palette (src/world/crownPalette.ts — the transcription of CaveGenerator's
- * crown stage). Cell types never change; undo restores the old colors.
+ * palette (sim/worldPaint, the crown stage the generated caves are painted
+ * with). Cell types never change; undo restores the old colors.
  * The topish/neighbor-top gates mirror the generator's exactly.
  */
 function crownTintPass(p: PassInput): PassResult {

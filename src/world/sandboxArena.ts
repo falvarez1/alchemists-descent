@@ -2,6 +2,7 @@ import { HEIGHT, VIEW_H, VIEW_W, WIDTH } from '@/config/constants';
 import type { Ctx } from '@/core/types';
 import { Cell } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR } from '@/sim/colors';
+import { PLAIN_PAINT, beginGenerationTint, endGenerationTint, settleGenerationPaint } from '@/sim/worldPaint';
 
 /**
  * THE WORKSHOP — the sandbox's own world.
@@ -45,7 +46,21 @@ export const SANDBOX_FOCUS = {
   y: Math.floor((CEIL_Y + FLOOR_Y) / 2) + 14,
 };
 
+/**
+ * Stamp the Workshop, then paint it (sim/worldPaint): every material wears its
+ * natural palette by position, so the bench travels and saves as its cells.
+ */
 export function stampSandboxArena(ctx: Ctx): void {
+  beginGenerationTint();
+  try {
+    stampWorkshop(ctx);
+  } finally {
+    endGenerationTint();
+  }
+  settleGenerationPaint(ctx.world, PLAIN_PAINT);
+}
+
+function stampWorkshop(ctx: Ctx): void {
   const world = ctx.world;
 
   const set = (x: number, y: number, type: Cell): void => {

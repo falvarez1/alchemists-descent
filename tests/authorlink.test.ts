@@ -24,6 +24,8 @@ import {
 } from '@/net/authorLinkProtocol';
 import type { WorldIdentity } from '@/net/authorLinkProtocol';
 import { applyWorldLayer, captureWorldLayer } from '@/authoring/worldLayer';
+import { paintCells } from '@/sim/worldPaint';
+import { cavePaint } from '@/world/CaveGenerator';
 import { isAuthoredSet } from '@/app/authorLinkObjects';
 import { BroadcastStorageOwner, createStorageOwner } from '@/core/storageOwner';
 import type { OwnerChannel } from '@/core/storageOwner';
@@ -407,7 +409,7 @@ describe('world identity', () => {
 /* ===================== world layer transfer ===================== */
 
 describe('world layer codec', () => {
-  it('round-trips terrain, life, and charge through a snapshot', () => {
+  it('round-trips terrain, life, charge and colour through a snapshot', () => {
     const source = new World();
     // A few distinguishable cells, including charge (which must go through
     // setChargeAt on the way back in) and life.
@@ -417,38 +419,54 @@ describe('world layer codec', () => {
     source.types[wall] = Cell.Wall;
     source.types[metal] = Cell.Metal;
     source.types[fire] = Cell.Fire;
+    source.colors[metal] = 0x8a8a92;
+    source.colorOverrides.add(metal);
     source.life[fire] = 42;
     source.setChargeAt(metal, 500);
 
-    const layer = captureWorldLayer({ world: source, biome: 'earthen', seed: 4242, paintSeed: 77 });
+    const layer = captureWorldLayer({ world: source, biome: 'earthen', seed: 4242 });
     expect(typeof layer.rle).toBe('string');
-    expect(layer.paintSeed).toBe(77);
+    // An unpainted world travels against the plain paint.
+    expect(layer.paint).toEqual({ v: 2, style: 'plain', seed: 0 });
 
     const target = new World();
     applyWorldLayer({ world: target, biome: 'earthen', seed: 4242 }, layer);
     expect(target.types[wall]).toBe(Cell.Wall);
     expect(target.types[metal]).toBe(Cell.Metal);
     expect(target.types[fire]).toBe(Cell.Fire);
+    expect(target.colors).toEqual(source.colors);
+    expect(target.colorOverrides.has(metal)).toBe(true);
+    expect(target.colorOverrides.has(wall)).toBe(false);
     expect(target.life[fire]).toBe(42);
     expect(target.charge[metal]).toBe(500);
     expect(target.activeCharges.has(metal)).toBe(true);
   });
 
-  it('reconstructs wall colors from the paint seed rather than shipping them', () => {
-    // This is what keeps a cave world at ~75KB instead of ~6.6MB: the receiver
-    // re-derives the biome banding, so identical paint costs nothing on the wire.
+  it('ships a painted world as its cells, not its colours', () => {
+    // This is what keeps a world at ~75KB instead of ~9MB: the receiver paints
+    // the same grid with the same function (sim/worldPaint), so a painted cell
+    // costs nothing on the wire and only a genuine difference travels.
     const source = new World();
     for (let x = 40; x < 90; x++) {
       for (let y = 40; y < 90; y++) source.types[source.idx(x, y)] = Cell.Wall;
     }
-    const layer = captureWorldLayer({ world: source, biome: 'earthen', seed: 5, paintSeed: 31337 });
+    const paint = cavePaint('earthen', 31337, 0);
+    paintCells(source, paint, source.colors);
+    source.paint = paint;
+    const scar = source.idx(60, 60);
+    source.colors[scar] = 0x7a1010;
+    source.colorOverrides.add(scar);
+
+    const layer = captureWorldLayer({ world: source, biome: 'earthen', seed: 5 });
     const target = new World();
     applyWorldLayer({ world: target, biome: 'earthen', seed: 5 }, layer);
-    const probe = target.idx(60, 60);
-    expect(target.types[probe]).toBe(Cell.Wall);
-    // Repainted, not left at the empty default.
-    expect(target.colors[probe]).not.toBe(0);
-    expect(JSON.stringify(layer).length).toBeLessThan(200_000);
+    expect(target.colors).toEqual(source.colors);
+    expect(target.colorOverrides.has(scar)).toBe(true);
+    expect(target.colorOverrides.size).toBe(1);
+    expect(target.paint).toEqual(paint);
+    // The rle, the descriptor, and one tinted cell.
+    expect(layer.tints?.length ?? 0).toBeLessThan(16);
+    expect(JSON.stringify(layer).length).toBeLessThan(2_000);
   });
 
   it('fails safe on a malformed rle instead of throwing at the caller', () => {

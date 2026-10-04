@@ -3,6 +3,7 @@ import { reseedAllStreams } from '@/core/simRandom';
 import type { AuthoredLight, Ctx, Mechanism, Pickup, WorldGenApi } from '@/core/types';
 import { Cell, blocksEntity } from '@/sim/CellType';
 import { COLOR_FN, EMPTY_COLOR, packRGB } from '@/sim/colors';
+import type { BedsPaint } from '@/sim/worldPaint';
 import { dressWorksHabitat } from './worksHabitat';
 import { dressSurfaceFoliage } from './surfaceFoliage';
 import { stampTeaMachine, TEA } from './teaMachine';
@@ -86,6 +87,15 @@ export function worksRoomAt(x: number, y: number): (typeof WORKS_ROOMS)[number] 
 export function worksPlaceName(x: number, y: number): string {
   if (x > TEA.bounds.x0 - 4 && x < TEA.bounds.x1 && y < 318) return 'The Bell & Tea Engine';
   return worksRoomAt(x, y).name;
+}
+
+/**
+ * The Works' paint (sim/worldPaint 'beds'): the slate mineral beds, seams and
+ * chalk lips below are what it paints on the finished grid, Stone and the
+ * eight-cell metal frame alike, so the rock never travels as colour.
+ */
+export function worksPaint(seed: number): BedsPaint {
+  return { v: 2, style: 'beds', seed: seed >>> 0, frame: 8 };
 }
 
 export function generateBreathingWorks(ctx: Ctx, seed: number): ReturnType<WorldGenApi['generateLevel']> {

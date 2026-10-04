@@ -2378,8 +2378,7 @@ export interface TimeControlApi {
 
 export interface WorldGenApi {
   spawnHint: { x: number; y: number } | null;
-  /** Last terrain paint seed consumed by generateCaves; Builder documents use it to restore biome colors. */
-  paintSeed: number | null;
+  /** Generates and paints the bare caves (the paint descriptor lands on ctx.world.paint, sim/worldPaint). */
   generateCaves(ctx: Ctx): void;
   /** generateCaves + snap camera onto the spawn hint. */
   regenerate(ctx: Ctx): void;
