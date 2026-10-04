@@ -16,7 +16,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
 
 const url = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 'http://127.0.0.1:5242/';
-const out = 'docs/arena/platform-fighter/evidence';
+// Evidence lands in docs/ by default; the split's gate runner points it at verify-out so a gate run never dirties docs.
+const out = process.env.PROBE_EVIDENCE_DIR ?? 'docs/arena/platform-fighter/evidence';
 const checks = [], errors = [];
 const check = (name, pass, data) => { checks.push({ name, pass: !!pass, data }); console.log(`${pass ? 'PASS' : 'FAIL'} ${name}${data !== undefined ? `  ${JSON.stringify(data).slice(0, 300)}` : ''}`); assert.ok(pass, name); };
 /** A real mouse click at the element's centre (the lobby's arrows animate, so they never count as stable). */

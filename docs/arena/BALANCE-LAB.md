@@ -3,7 +3,8 @@
 **Status: design (2026-10-04). Nothing in this document is built yet except what section 1 lists as existing.** The
 implementation plan, phase by phase with files, tests and exit criteria, is `BALANCE-LAB-PLAN.md`. The open decisions
 were settled on 2026-10-04 (section 12; `DECISIONS.md` D-014 to D-021). The main consequence: **the Lab is built in
-the CLASHFORGED repository**, starting the day the split copies it out (split phase 1; D-021 as revised).
+the CLASHFORGED repository**, by dependency: what needs no game loop from the day the split copies it out (split
+phase 1), the batch runner on split phase 3's headless root (D-021 as revised; split D16).
 
 The roster is about to grow: character-specific moves, combinations, special skills and attribute changes. Each one can
 make a fighter overpowered without anyone noticing until players do. The Balance Lab is the one place, in dev builds only,
@@ -179,7 +180,8 @@ the Lab, and are read by every gate.
 
 The split (`docs/split/SPLIT-PLAN.md`) copies this repository in two: CLASHFORGED gets a copy with the full history and
 keeps the arena, and Descent deletes it. The CLASHFORGED repository keeps this repository's layout, so the Lab is built
-there from the day of the copy (split phase 1), directly where it belongs, with no path churn:
+there directly where it belongs, with no path churn. What needs no game loop starts the day of the copy (split phase 1);
+the batch runner and anything that plays a match start on split phase 3's headless, deterministic root (D-024, D-023):
 
 | Part | Lives in | Imports |
 |---|---|---|
@@ -192,13 +194,14 @@ there from the day of the copy (split phase 1), directly where it belongs, with 
 The analyser lives beside the fighters so that the Lab, the CPU (which reads the link table) and the tests all use one
 implementation. It must stay free of DOM and browser APIs.
 
-**Consequence: the copy gates balance tooling.** It is the split's first, short step. Until it lands:
+**Consequence: the split gates balance tooling.** The copy (its first, short step) unblocks everything that needs no
+game loop; the runner waits for split phase 3. Until the runner exists:
 - New moves and attribute changes are guarded only by today's tests and the command-line tools.
 - After each change, run `duel-batch` on the pass-1 confirmation spec (`--pairs all --seeds 4 --stage all
   --personality duelist --seed-base 30000`) and `duel-analyse --compare` against that run's report. `confirm-final` is
   in the main checkout's `verify-out/duels/`; the same command re-creates it.
-- The copy decides the Lab's start date. `BALANCE-LAB-PLAN.md` "Before the Lab" lists what the Lab needs from the
-  split.
+- `BALANCE-LAB-PLAN.md` "Before the Lab" lists what the Lab needs from the split, and "First steps" what starts
+  when.
 
 ## 5. Data model
 
@@ -634,11 +637,11 @@ equivalence check prove it.
 
 ## 11. Later
 
-- **The headless kernel: evaluated first, not later.** The runner is built on the game running without a browser (Node
-  worker threads) if CLASHFORGED's composition root can run a match with no DOM, WebGL or audio. The split's phase 3
-  writes that root (the Duel's own `Game`), and should aim for this. That is an expected 5-10 times the throughput: the L3 matrix becomes minutes and
-  can become a pre-merge check. Headless pages stay as the fallback, and as the path for anything that renders
-  (replays, the Move Lab). The plan's BL0.5 makes the call with a measurement.
+- **The headless kernel: the runner's foundation, not a later option.** Split phase 3 writes CLASHFORGED's composition
+  root so that it runs a whole match with no DOM, WebGL or audio, deterministically (D-024, D-023). The runner is built
+  on it, in Node worker threads: an expected 5-10 times the throughput of headless pages. The L3 matrix becomes minutes
+  and can become a pre-merge check. Headless pages stay for anything that renders (replays, the Move Lab). The plan's
+  BL0.5 measures the gain on the real root.
 - **A hosted Lab.** Share runs and exported drafts across machines through the AuthorLink relay (the original "Tuning
   Lab" idea in `docs/REALTIME-TUNING-LAB-AND-MULTIPLAYER-SERVER-SPEC.md`).
 - **More than two fighters.** If an arena mode with more fighters arrives, the contract gains free-for-all metrics
@@ -658,4 +661,4 @@ the reasoning, what was rejected and what would make us revisit each one.
 | D-018 | Stale-move negation? | **A match rule, on by default**; the analyser and the gates measure fresh values, so it never hides a move |
 | D-019 | Drafts and provenance? | **Runs are self-contained** (they embed their complete overrides); drafts are local and git-ignored, exportable to share |
 | D-020 | How strict are the gates in CI? | **Strict, with waivers**: L0 and L1 fail every build; the L2 smoke is a required check on fighter, move and arena changes; the nightly L3 opens an issue and blocks releases; exceptions are written, expiring waivers |
-| D-021 | When is the Lab built? | **In the CLASHFORGED repository, from the day the split copies it out** (split phase 1), directly in its final paths. Revised when the split became two repositories; it first said "after the monorepo's phase 6". |
+| D-021 | When is the Lab built? | **In the CLASHFORGED repository, by dependency**, directly in its final paths: what needs no game loop from the day the split copies it out (split phase 1), the batch runner on split phase 3's headless root. Revised when the split became two repositories; it first said "after the monorepo's phase 6". |

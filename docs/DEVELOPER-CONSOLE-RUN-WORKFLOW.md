@@ -125,6 +125,10 @@ Tab completes level ids, floor numbers, `next`/`prev`, `--at` spots, boon and ki
 - Generation is synchronous: a first visit takes about 2.5 to 4 s behind the curtain (measured;
   see the probe), a revisit a few ms. The findability repair settles about 12 s after any
   arrival, and a probe that needs the settled floor waits for `ctx.levels.findabilityReady`.
+  The floor is not still then: exposed powder seams drain for minutes, so later checks (18 s
+  to 3 min of sim time, each carving only on an error) keep repairing. A probe that judges
+  reachability steps a fixed sim window in manual time and counts only an error that holds for
+  the whole window (`verify-findability.mjs`), never one sample at whatever step it reached.
 
 ### Test runs ("taint")
 

@@ -19,7 +19,8 @@ Ids are stable (`BL<phase>.<n>`). `TASKS.md` P8 tracks them; update the box in t
 - stale-move negation as a match rule, on by default;
 - self-contained runs and local drafts;
 - strict CI gates with waivers;
-- **the Lab is built in the CLASHFORGED repository, from the day the split copies it out** (split phase 1).
+- **the Lab is built in the CLASHFORGED repository, by dependency** (split D16): what needs no game loop from the day
+  of the copy (split phase 1), the batch runner on split phase 3's headless root.
 
 ## Before the Lab
 
@@ -35,9 +36,10 @@ needs:
    and `builder.html`; and the `__AUTHORING__` gate.
 2. **Nothing else to start.** The campaign code is still there until split phase 3 deletes it. Lab code imports only the
    fighters, the arena, telemetry, config and the engine, so that deletion does not touch it.
-3. **Ideally, a composition root that can run a match with no DOM, WebGL or audio.** Split phase 3 writes CLASHFORGED's
-   own `Game` and should aim for it. It is not required; BL0.5 measures whether it exists and what it gives, and is
-   re-run after phase 3 if it was blocked.
+3. **For the runner only: a composition root that runs a match with no DOM, WebGL or audio, deterministically.** Split
+   phase 3 writes CLASHFORGED's own `Game` to that standard (D-024, D-023). The Lab is therefore built by dependency
+   (split D16): what needs no game loop starts the day of the copy, and the batch runner and everything that plays
+   matches start on phase 3's root (see "First steps").
 
 ### Until then: the interim routine
 
@@ -74,7 +76,9 @@ at. Its new folders:
 | **M5. Automate** | rest of 6 | The smoke matrix as a required check on pull requests that touch fighters, moves or the arena; the nightly full matrix blocking releases; baseline promotion; sensitivity sweeps; identity checks | about 1.5 weeks |
 | Later | 7 | Human match telemetry, a hosted Lab | |
 
-All milestones are built in the CLASHFORGED repository, from the day the split copies it out (split phase 1). M2 is the point where attribute work becomes safe. M3 is the point
+All milestones are built in the CLASHFORGED repository, by dependency (split D16). M1's "see" half (dashboard,
+matchups, compare over stored runs) and the static parts of M2 start the day of the copy; anything that launches or
+embeds a match starts on split phase 3's headless root. M2 is the point where attribute work becomes safe. M3 is the point
 where new moves become safe. If time is short, build M1 and M2 first, then BL3.3 (the combo finder) before any chained
 moves.
 
@@ -657,7 +661,7 @@ Probes click with real mouse events (CLAUDE.md), run against a frozen build, and
 | **The CPU is the instrument.** A CPU weakness reads as a fighter weakness. | The behaviour gate in every layer; coverage; skill-gap tracking; the baseline is re-run after any CPU change; L5 human data when it exists |
 | **Noise is read as signal.** Seeds alone move a fighter about 10 points at 72 matches. | Intervals everywhere; significance on every delta; early stopping that needs evidence; enough seeds per decision; never tune on one run |
 | **Scope.** Ten screens and a moveset engine is a lot. | The milestones are independently useful. M1 and M2 alone make attribute work safe. |
-| **The copy slips, and balance tooling waits with it** (D-021). | The interim routine ("Before the Lab") after every fighter change; the copy is the split's first, short step and the Lab's only dependency; the Lab starts the day it lands |
+| **The split slips, and balance tooling waits with it** (D-021, split D16). | The interim routine ("Before the Lab") after every fighter change; the copy (short, first) unblocks everything that needs no game loop; the runner waits for split phase 3, whose progress is tracked here |
 | **JSON sheets lose TypeScript comments that document numbers.** | The `notes` map in each sheet (field path to help text) carries them; the generated JSON Schema carries the type documentation into editors; the Lab shows both as field help |
 | **Batches are slow on pages** (the official setup doubles them: two CPU levels). | BL0.5 measures the kernel route first; early stopping; smoke before full; a cache of runs by spec hash, so an identical spec is never re-run |
 | **Required CI checks feel heavy.** | Deterministic seeds and frozen builds (no flaky failures); the smoke runs only on fighter, move and arena changes; waivers are the explicit, reviewed escape hatch |
@@ -667,13 +671,21 @@ Probes click with real mouse events (CLAUDE.md), run against a frozen build, and
 
 **Now, before the copy:** the interim routine after every fighter change. Nothing of the Lab is built yet.
 
-**The day the split copies CLASHFORGED out (split phase 1), in the new repository:**
+**The day the split copies CLASHFORGED out (split phase 1), in the new repository: what needs no game loop.**
 
 1. BL0.1 and BL0.4: register every root at boot; write the balance store from `confirm-final` and pass 1.
-2. BL0.3 and BL0.5: prove determinism, and measure whether a match runs without a browser. This decides the runner.
-3. BL0.2: extract the analyser library; prove a byte-identical report.
-4. BL1.1: frozen lab builds. Every later batch, and every agent working in parallel, depends on them.
-5. BL1.2 and BL1.3, then BL1.4-1.6: the MVP.
-6. The first official-setup full run (Hard and Expert, mirrored rotation) as the new baseline.
+2. BL0.2: extract the analyser library; prove a byte-identical report.
+3. BL1.3, BL1.4 and BL1.6 over the stored runs: the `/lab.html` route, the dashboard and compare. They read records,
+   they do not play matches.
+4. BL2.1 (the fighter sheets) and Phase 3's static safety net (BL3.1-3.5), in parallel.
+
+**On split phase 3's root (headless and deterministic, D-024 and D-023): what plays matches.**
+
+1. BL0.3 is phase 3's replay test (D-023); the Lab adopts it rather than building its own.
+2. BL0.5: the kernel runner against headless pages, parity and throughput, on the root built for it.
+3. BL1.1: frozen lab builds. Every later batch, and every agent working in parallel, depends on them.
+4. BL1.2 and BL1.5: the Lab server, its runner, and runs launched from the page. Then BL2.4, the embedded game and
+   its bridge.
+5. The first official-setup full run (Hard and Expert, mirrored rotation) as the new baseline.
 
 Briefs for parallel agents go in `docs/arena/briefs/` as each package starts (`WORKFLOW.md` has the template).
