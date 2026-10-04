@@ -28,7 +28,13 @@ async function shot(name, clip) {
 }
 
 async function realClick(selector) {
-  const handle = await page.waitForSelector(selector, { state: 'visible', timeout: 20000 });
+  // Enabled too: the death card holds its buttons disabled until their staged fade-in ends (ui/deathCardGate.ts),
+  // which on a loaded machine runs past any fixed wait, and a click on a disabled button does nothing.
+  const handle = await page.waitForSelector(`${selector}:not([disabled])`, { state: 'visible', timeout: 20000 })
+    .catch((e) => { throw new Error(`realClick: ${selector} never visible and enabled`, { cause: e }); });
+  // The victory ledger is taller than a 1600x900 view: its action row is below the fold of a scrolling panel, so
+  // scroll to it the way a player does (a click at an off-screen point lands on nothing).
+  await handle.scrollIntoViewIfNeeded();
   const box = await handle.boundingBox();
   if (!box) throw new Error(`no box for ${selector}`);
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -60,10 +66,19 @@ async function waitFor(fn, arg, timeout = 30000) {
 }
 
 async function waitPlaying(levelId, timeout = 30000) {
-  await waitFor((id) => {
-    const ctx = window.__game?.ctx;
-    return ctx && ctx.state.mode === 'play' && ctx.levels.current?.def.id === id && !ctx.levels.transitioning && !ctx.state.paused && !ctx.player.dead;
-  }, levelId, timeout);
+  try {
+    await waitFor((id) => {
+      const ctx = window.__game?.ctx;
+      return ctx && ctx.state.mode === 'play' && ctx.levels.current?.def.id === id && !ctx.levels.transitioning && !ctx.state.paused && !ctx.player.dead;
+    }, levelId, timeout);
+  } catch (e) {
+    // Name the condition that never came true: a timeout alone cannot tell a slow curtain from a stuck pause.
+    const why = await page.evaluate(() => {
+      const ctx = window.__game?.ctx;
+      return ctx && { mode: ctx.state.mode, level: ctx.levels.current?.def.id, transitioning: ctx.levels.transitioning, paused: ctx.state.paused, dead: ctx.player.dead, overlays: [...document.querySelectorAll('.visible[id$="-overlay"]')].map((n) => n.id) };
+    }).catch(() => null);
+    throw new Error(`not playing ${levelId} after ${timeout} ms: ${JSON.stringify(why)}`, { cause: e });
+  }
 }
 
 /** Kill the alchemist and wait for the title card. */
@@ -266,8 +281,11 @@ try {
   await page.waitForSelector('#expedition-entry:not([hidden])', { timeout: 10000 });
   await page.waitForTimeout(400);
   // (the title is a menu now: the case list is two doors in, and what a profile has not earned is not on the main page)
+  // The unlock is the profile's; the door is the build's: the player build shows The Workshop once it is unlocked,
+  // an authoring build (this dev server) always has the Workshops drill in its place.
   const entry0 = await page.evaluate(() => ({
-    workshop: !!document.querySelector('#expedition-entry [data-entry="workshop"]'),
+    workshop: window.__game.ctx.run.metaView()?.workshopUnlocked === true &&
+      !!document.querySelector('#expedition-entry :is([data-entry="workshop"], [data-entry="workshops"])'),
     cont: !!document.querySelector('#expedition-entry [data-entry="continue"]'),
   }));
   await realClick('#expedition-entry [data-entry="begin"]');

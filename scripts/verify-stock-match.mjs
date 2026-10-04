@@ -129,7 +129,10 @@ try {
     g.tick(false, { forcePaused: true });
     c.state.paused = false;
   });
-  await page.waitForTimeout(350);
+  const drawn = await page.evaluate(() => ({ state: window.__game.ctx.arena.stockMatch.state, reason: window.__game.ctx.arena.stockMatch.reason }));
+  assert.deepEqual(drawn, { state: 'finished', reason: 'draw' }, 'A simultaneous last-stock ring-out is a draw');
+  // The panel redraws every 6th animation frame, which on a loaded headless browser can be well over 350 ms.
+  await page.waitForFunction(() => /draw/i.test(document.querySelector('.fa-bout')?.textContent ?? ''), null, { timeout: 5000 }).catch(() => {});
   assert.match(await page.locator('.fa-bout').innerText(), /draw/i, 'Training panel must agree with stock HUD about a draw');
   await page.evaluate(async () => { const c = window.__game.ctx; c.fighters.equip('ilyra-voss'); await c.fighters.whenReady(); c.arena.reset(); });
   // Let normal clocks, AI, sim, and rendering run together for a visible bout.

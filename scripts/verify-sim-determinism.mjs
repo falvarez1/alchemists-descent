@@ -43,6 +43,7 @@
 //
 // Usage: node scripts/verify-sim-determinism.mjs [url]   (dev server running)
 import { launchBrowser } from './browser-launch.mjs';
+import { startConsoleTestRun } from './run-helpers.mjs';
 
 const url = process.argv[2] || 'http://localhost:5173/';
 let pass = 0;
@@ -69,12 +70,8 @@ try {
 
   // REAL play mode. The sandbox exercises the cell sim and almost nothing else;
   // the entity and particle streams only earn their keep with a live wizard.
-  await page.click('#mode-play-btn');
-  await page.waitForSelector('#run-launcher.visible', { timeout: 20000 });
-  await page.click('#run-launcher .run-launcher-start');
-  await page.waitForFunction(() => document.body.classList.contains('play-active'), null, {
-    timeout: 60000,
-  });
+  // (The title menu fronts the app now; the console starts the run behind it.)
+  await startConsoleTestRun(page, { seed: 1, timeout: 60000 });
   await page.waitForFunction(
     () => {
       const p = window.__game.ctx.player;
@@ -220,6 +217,9 @@ try {
     JSON.stringify(first.draws) === JSON.stringify(second.draws),
     `${JSON.stringify(first.draws)} vs ${JSON.stringify(second.draws)}`,
   );
+  // The absolute values, for the split's behaviour oracle (scripts/split/oracles.mjs): a refactor that keeps the
+  // sim deterministic but changes what it computes passes every check above and changes this line.
+  console.log(`ORACLE cell-sim seed=${SEED} ticks=${TICKS} planes=${first.planes} draws=${JSON.stringify(first.draws)}`);
   check(
     'a different seed produces a different world',
     (await runIt(SEED + 1, 'idle', { simOnly: true })).planes !== first.planes,

@@ -64,7 +64,7 @@ for (const [w, h] of sizes) {
 
   // ---- the main page: only the doors ----
   const main = await items();
-  check(`${tag}: the main page lists the doors, in order`, JSON.stringify(main.filter((id) => id !== 'workshops')) === JSON.stringify(['begin', 'daily', 'arena', 'duel', 'extras', 'settings']), JSON.stringify(main));
+  check(`${tag}: the main page lists the doors, in order`, JSON.stringify(main.filter((id) => id !== 'workshops')) === JSON.stringify(['begin', 'daily', 'duel', 'arena', 'extras', 'settings']), JSON.stringify(main));
   // (the player build has no Arena doors; the authoring build adds Arena, Duel and Workshops: seven rows, each a door and none a wall of options)
   check(`${tag}: it is short (seven rows at most in the authoring build)`, main.length <= 7, String(main.length));
   const dumped = await page.evaluate(() => ['.kit-chip', '.difficulty-chip', '.fighter-pick-chip', '[data-entry="case"]', '[data-entry="fighter"]', '[data-entry="seed"]', '[data-entry="trailer"]', '#fighter-roster.visible'].filter((s) => document.querySelector(`#expedition-entry ${s}`)));
