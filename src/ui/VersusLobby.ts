@@ -5,6 +5,8 @@ import { STOCK_STAGES, STOCK_STAGE_ORDER, type StockStageId } from '@/config/sto
 import { STOCK_RULES } from '@/config/stockRules';
 import { GAME_TITLE } from '@/config/brand';
 import { DUEL_CPU_LEVELS, DUEL_ICON, duelDeviceLabel, duelShortName, duelTitle, showFighterArt } from '@/ui/duelCopy';
+import { preloadFoundryKit } from '@/ui/foundryKit';
+import '@/styles/foundry-ui.css';
 import '@/styles/versus.css';
 
 /** One ◀ value ▶ row of a seat: the fighter, the device, a CPU's level. A focusable group the keyboard cursor rests on. */
@@ -22,7 +24,7 @@ const reducedMotion = (): boolean => document.body.classList.contains('reduce-fl
 function pop(el: Element, frames: Keyframe[], duration: number, easing = 'cubic-bezier(.2, 1.5, .45, 1)'): void {
   if (!reducedMotion()) el.animate(frames, { duration, easing });
 }
-const glyph = (text: string, kind = ''): string => `<kbd class="versus-glyph${kind ? ` versus-glyph-${kind}` : ''}">${text}</kbd>`;
+const glyph = (text: string, kind = ''): string => `<kbd class="versus-glyph fk-keycap${kind ? ` versus-glyph-${kind}` : ''}">${text}</kbd>`;
 
 /** The keyboard player's seat while it still has to ready (the big READY is the keyboard and mouse's own confirm). */
 function keyboardWaiting(session: VersusApi): number {
@@ -59,22 +61,23 @@ export class VersusLobby {
 
   constructor(private readonly ctx: Ctx) {
     this.root.id = 'versus-lobby'; this.root.hidden = true;
+    preloadFoundryKit();
     this.root.setAttribute('role', 'dialog'); this.root.setAttribute('aria-modal', 'true'); this.root.setAttribute('aria-labelledby', 'versus-heading');
     const minutes = Math.round(STOCK_RULES.timeTicks / 3600);
     this.root.innerHTML = `<div class="versus-backdrop" aria-hidden="true"><div></div><div></div></div>
     <div class="versus-shell">
-      <div class="versus-top"><p class="versus-brand"><span class="versus-sigil">${DUEL_ICON.sigil}</span>${GAME_TITLE}</p><p class="versus-motto">Matter fights back.</p></div>
+      <div class="versus-top"><p class="versus-brand"><span class="versus-sigil">${DUEL_ICON.sigil}</span><span class="fk-heading-cast">${GAME_TITLE}</span></p><p class="versus-motto fk-engraved">Matter fights back.</p></div>
       <div class="versus-panels">
-        <section class="versus-panel versus-duel">
-          <div class="versus-head"><h1 id="versus-heading">Duel</h1><p>Two alchemists. A deeper truth.</p></div>
-          <div class="versus-seats"><div class="versus-vs" aria-hidden="true">${DUEL_ICON.compass}<span>VS</span></div></div>
+        <section class="versus-panel versus-duel fk-panel fk-panel--crested">
+          <div class="versus-head"><h1 id="versus-heading" class="fk-heading-cast fk-heading-cast--ruled">Duel</h1><p class="fk-engraved">Two alchemists. A deeper truth.</p></div>
+          <div class="versus-seats"><div class="versus-vs fk-medallion" aria-hidden="true"><span class="fk-word fk-word--vs">VS</span></div></div>
           <div class="versus-devices"></div>
           <div class="versus-go"></div>
         </section>
-        <section class="versus-panel versus-stages" aria-labelledby="versus-stage-heading">
-          <div class="versus-head"><h2 id="versus-stage-heading">Choose a stage</h2><p>Different grounds. The same hunger.</p></div>
+        <section class="versus-panel versus-stages fk-panel fk-panel--crested" aria-labelledby="versus-stage-heading">
+          <div class="versus-head"><h2 id="versus-stage-heading" class="fk-heading-cast fk-heading-cast--ruled">Choose a stage</h2><p class="fk-engraved">Different grounds. The same hunger.</p></div>
           <div class="versus-stage-grid" role="radiogroup" aria-labelledby="versus-stage-heading"></div>
-          <ul class="versus-rules" aria-label="Duel rules">
+          <ul class="versus-rules fk-slot" aria-label="Duel rules">
             <li>${DUEL_ICON.stock}<span>${STOCK_RULES.stocks} stocks</span></li>
             <li>${DUEL_ICON.hourglass}<span>${minutes} minutes</span></li>
             <li>${DUEL_ICON.noHazards}<span>Hazards off</span></li>
@@ -94,17 +97,17 @@ export class VersusLobby {
       // ◀ NAME ▶ under the bust, with a pip for each of the ten and the one shown lit.
       const fighter = this.cycler(`${player} fighter`, `Previous fighter for ${who}`, `Next fighter for ${who}`, dir => this.stepFighter(slot, dir));
       fighter.root.classList.add('versus-plate'); fighter.root.dataset.row = 'fighter';
-      const name = document.createElement('h2'), title = document.createElement('p'); title.className = 'versus-fighter-title';
+      const name = document.createElement('h2'), title = document.createElement('p'); title.className = 'versus-fighter-title'; name.className = 'fk-heading-cast';
       const pipRow = document.createElement('span'); pipRow.className = 'versus-pips'; pipRow.setAttribute('aria-hidden', 'true');
       const pips = FIGHTER_ORDER.map(() => { const pip = document.createElement('i'); pipRow.append(pip); return pip; });
-      fighter.value.classList.add('versus-names'); fighter.value.append(name, title, pipRow);
+      fighter.value.classList.add('versus-names', 'fk-nameplate'); fighter.value.append(name, title, pipRow);
       card.append(frame, fighter.root);
       if (slot === 0) seatRow.prepend(card); else seatRow.append(card);
 
       // The seat card: PLAYER N, its readiness badge, ◀ device ▶ and (a CPU's) ◀ level ▶.
-      const box = document.createElement('div'); box.className = `versus-device versus-device-${slot}`;
+      const box = document.createElement('div'); box.className = `versus-device versus-device-${slot} fk-card fk-card--small${slot ? ' fk-card--teal' : ''}`;
       const label = document.createElement('span'); label.className = 'versus-device-label'; label.textContent = player;
-      const ready = document.createElement('button'); ready.type = 'button'; ready.className = 'versus-ready';
+      const ready = document.createElement('button'); ready.type = 'button'; ready.className = `versus-ready fk-seal${slot ? ' fk-seal--teal' : ''}`;
       ready.setAttribute('aria-label', `Ready player ${slot + 1}`); ready.innerHTML = DUEL_ICON.check;
       ready.addEventListener('click', () => ctx.versus?.ready(slot));
       const device = this.cycler(`${player} device`, `Previous device for ${who}`, `Next device for ${who}`, dir => this.stepDevice(slot, dir));
@@ -118,16 +121,16 @@ export class VersusLobby {
       this.seats.push({ card, frame, box, image, name, title, pips, fighter, device, difficulty, icon, ready, shown: { fighter: '', ready: false } });
     }
 
-    this.start.type = 'button'; this.start.id = 'versus-start'; this.start.textContent = 'Ready';
+    this.start.type = 'button'; this.start.id = 'versus-start'; this.start.className = 'fk-button fk-button--primary'; this.start.textContent = 'Ready';
     this.start.addEventListener('click', () => this.readyUp(false));
     this.root.querySelector('.versus-go')!.append(this.start);
 
     const grid = this.root.querySelector<HTMLElement>('.versus-stage-grid')!;
     for (const id of STOCK_STAGE_ORDER) {
       const def = STOCK_STAGES[id];
-      const tile = document.createElement('button'); tile.type = 'button'; tile.className = 'versus-stage-tile';
+      const tile = document.createElement('button'); tile.type = 'button'; tile.className = 'versus-stage-tile fk-picture-frame';
       tile.setAttribute('role', 'radio'); tile.dataset.stage = id; tile.dataset.sfx = 'move'; tile.style.setProperty('--stage-accent', def.accent);
-      tile.innerHTML = `<span class="versus-stage-art"><img alt="" decoding="async" src="${import.meta.env.BASE_URL}${def.thumbnail}"></span><span class="versus-stage-name">${def.caption.charAt(0)}${def.caption.slice(1).toLowerCase()}</span>`;
+      tile.innerHTML = `<span class="versus-stage-art"><img alt="" decoding="async" src="${import.meta.env.BASE_URL}${def.thumbnail}"></span><span class="versus-stage-name fk-picture-frame__caption">${def.caption.charAt(0)}${def.caption.slice(1).toLowerCase()}</span>`;
       tile.addEventListener('click', () => ctx.versus?.chooseStage(id));
       grid.append(tile); this.stages.set(id, tile);
     }
@@ -137,7 +140,7 @@ export class VersusLobby {
     const back = document.createElement('button'); back.type = 'button'; back.className = 'versus-back'; back.dataset.sfx = 'back';
     back.innerHTML = `${glyph('Esc')}<span>Back</span>`; back.setAttribute('aria-label', 'Back to title');
     back.addEventListener('click', () => this.leave());
-    this.status.className = 'versus-status'; this.status.setAttribute('role', 'status');
+    this.status.className = 'versus-status fk-hanging-nameplate fk-hanging-nameplate--lit'; this.status.setAttribute('role', 'status');
     this.keys.className = 'versus-keys';
     this.notice.className = 'controller-notice';
     this.notice.innerHTML = `${DUEL_ICON.controller}<span>${glyph('A', 'a')} on a pad to join</span>`;
@@ -151,15 +154,15 @@ export class VersusLobby {
 
     // The VS card while the stage loads: both busts slam in, the names under them, the stage at the foot.
     this.splash.className = 'versus-splash'; this.splash.setAttribute('aria-hidden', 'true');
-    this.splash.innerHTML = `<div class="versus-splash-side versus-splash-0"><img class="bust-fit" alt=""><b></b><small></small></div>
-      <div class="versus-splash-vs"><span>VS</span></div>
-      <div class="versus-splash-side versus-splash-1"><img class="bust-fit" alt=""><b></b><small></small></div>
-      <p class="versus-splash-stage"></p>`;
+    this.splash.innerHTML = `<div class="versus-splash-side versus-splash-0"><img class="bust-fit" alt=""><b class="fk-heading-cast"></b><small></small></div>
+      <div class="versus-splash-vs"><span class="fk-word fk-word--vs">VS</span></div>
+      <div class="versus-splash-side versus-splash-1"><img class="bust-fit" alt=""><b class="fk-heading-cast"></b><small></small></div>
+      <p class="versus-splash-stage fk-heading-cast"></p>`;
     this.splash.addEventListener('pointerdown', () => this.skipSplash());
     this.root.append(this.splash);
     this.reconnect.id = 'versus-reconnect'; this.reconnect.hidden = true;
     this.reconnect.setAttribute('role', 'dialog'); this.reconnect.setAttribute('aria-modal', 'true'); this.reconnect.setAttribute('aria-labelledby', 'versus-reconnect-heading');
-    this.reconnect.innerHTML = `<div class="versus-panel"><div class="versus-head"><h2 id="versus-reconnect-heading">Controller lost</h2></div><p role="status"></p><div class="versus-reconnect-actions"><button type="button" data-resume>Resume</button><button type="button" data-lobby>Change players</button></div></div>`;
+    this.reconnect.innerHTML = `<div class="versus-panel fk-panel fk-panel--crested"><div class="versus-head"><h2 id="versus-reconnect-heading" class="fk-heading-cast fk-heading-cast--ruled">Controller lost</h2></div><p role="status"></p><div class="versus-reconnect-actions"><button type="button" class="fk-button fk-button--primary" data-resume>Resume</button><button type="button" class="fk-button fk-button--secondary" data-lobby>Change players</button></div></div>`;
     this.reconnect.querySelector('[data-resume]')!.addEventListener('click', () => ctx.versus?.resume());
     this.reconnect.querySelector('[data-lobby]')!.addEventListener('click', () => ctx.versus?.open());
     (document.getElementById('canvas-holder') ?? document.body).append(this.root, this.reconnect);
@@ -180,7 +183,7 @@ export class VersusLobby {
     const value = document.createElement('span'); value.className = 'versus-cycle-value';
     const arrow = (dir: -1 | 1, name: string): HTMLButtonElement => {
       const button = document.createElement('button'); button.type = 'button'; button.tabIndex = -1;
-      button.className = `versus-arrow versus-arrow-${dir < 0 ? 'prev' : 'next'}`; button.setAttribute('aria-label', name);
+      button.className = `versus-arrow versus-arrow-${dir < 0 ? 'prev' : 'next'} fk-arrow fk-arrow--${dir < 0 ? 'prev' : 'next'}`; button.setAttribute('aria-label', name);
       button.dataset.sfx = 'none'; // this screen sounds its own steps (one per step, held repeats too)
       const press = (): void => {
         step(dir); this.ctx.audio.duel?.menu('move');
@@ -367,7 +370,7 @@ export class VersusLobby {
     for (let slot = 0; slot < 2; slot++) {
       const seat = session.seats[slot], view = this.seats[slot], def = FIGHTER_DEFS[seat.fighter];
       showFighterArt(view.image, seat.fighter);
-      view.name.textContent = duelShortName(seat.fighter); view.name.title = def.name; view.title.textContent = duelTitle(seat.fighter);
+      view.name.textContent = duelShortName(seat.fighter); view.name.title = def.name; view.name.style.setProperty('--name-len', String(view.name.textContent.length)); view.title.textContent = duelTitle(seat.fighter);
       view.fighter.root.dataset.value = seat.fighter;
       const index = FIGHTER_ORDER.indexOf(seat.fighter);
       view.pips.forEach((pip, i) => pip.classList.toggle('on', i === index));

@@ -262,8 +262,7 @@ try {
   await click(page, page.getByRole('button', { name: 'Change fighters', exact: true }), 600);
   const lobbyAgain = await page.evaluate(() => ({ visible: !document.querySelector('#versus-lobby').hidden, stage: window.__game.ctx.versus.stage, checked: document.querySelector('.versus-stage-tile[aria-checked="true"]')?.dataset.stage, devices: window.__game.ctx.versus.seats.map(s => s.device) }));
   check('Change fighters returns to the select screen with the stage and the seats as they were', lobbyAgain.visible && lobbyAgain.stage === STAGE && lobbyAgain.checked === STAGE && lobbyAgain.devices.join() === 'cpu,cpu', JSON.stringify(lobbyAgain));
-  // (let the winner's call finish first, as a player would: a call still playing outranks the VS call)
-  await page.waitForFunction(() => !window.__game.ctx.audio.duel?.debugSnapshot().speaking, null, { timeout: 6000 }).catch(() => {});
+  // (READY at once, the winner's call still playing: a new screen cuts a stale call, so the VS call is heard whole)
   const loadingAt = await page.evaluate(() => performance.now());
   await click(page, '#versus-start', 0);
   await page.waitForFunction(() => window.__game.ctx.versus.phase === 'loading', null, { timeout: 5000 });

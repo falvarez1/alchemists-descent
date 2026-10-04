@@ -413,7 +413,10 @@ export class PauseOverlay {
   private dressForDuel(duel: boolean): void {
     document.getElementById('pause-overlay')?.classList.toggle('duel-pause', duel);
     const title = document.getElementById('pause-title');
-    if (title) title.textContent = duel ? 'Paused' : 'Take a breath';
+    if (title) { title.textContent = duel ? 'Paused' : 'Take a breath'; title.classList.toggle('fk-heading-cast', duel); }
+    // the foundry sign's two lit lanterns (foundry-ui.css .fk-lantern; hidden outside a Duel)
+    const shell = document.querySelector('#pause-overlay .pause-shell');
+    if (duel && shell && !shell.querySelector('.fk-lantern')) shell.insertAdjacentHTML('afterbegin', '<span class="fk-lantern fk-lantern--left" aria-hidden="true"></span><span class="fk-lantern fk-lantern--right" aria-hidden="true"></span>');
     const label = document.querySelector('#pause-overlay .pause-status .menu-label');
     if (label) label.textContent = duel ? 'Match' : 'Where you are';
     this.changeButton.hidden = this.controlsButton.hidden = !duel;

@@ -4,6 +4,8 @@ import { STOCK_STAGES, DEFAULT_STOCK_STAGE } from '@/config/stockStage';
 import { getBindings, keyLabel } from '@/input/bindings';
 import { GAME_TITLE } from '@/config/brand';
 import { DUEL_ICON, duelShortName, duelTitle, showFighterArt } from '@/ui/duelCopy';
+import { preloadFoundryKit } from '@/ui/foundryKit';
+import '@/styles/foundry-ui.css';
 import '@/styles/versus.css';
 import '@/styles/duel-lan.css';
 
@@ -11,7 +13,7 @@ const reducedMotion = (): boolean => document.body.classList.contains('reduce-fl
 function pop(el: Element, frames: Keyframe[], duration: number, easing = 'cubic-bezier(.2, 1.5, .45, 1)'): void {
   if (!reducedMotion()) el.animate(frames, { duration, easing });
 }
-const glyph = (text: string): string => `<kbd class="versus-glyph">${text}</kbd>`;
+const glyph = (text: string): string => `<kbd class="versus-glyph fk-keycap">${text}</kbd>`;
 
 interface SeatView { card: HTMLElement; frame: HTMLElement; image: HTMLImageElement; name: HTMLElement; title: HTMLElement; pips: HTMLElement[]; cycler: HTMLElement; prev: HTMLButtonElement; next: HTMLButtonElement; select: HTMLSelectElement; state: HTMLElement; badge: HTMLElement; box: HTMLElement; shown: string }
 
@@ -33,6 +35,7 @@ export class DuelLobby {
   private addresses: string[] = [];
   constructor(private readonly ctx: Ctx) {
     this.root.id = 'duel-network';
+    preloadFoundryKit();
     this.root.hidden = true;
     this.root.setAttribute('role', 'dialog');
     this.root.setAttribute('aria-modal', 'true');
@@ -40,33 +43,34 @@ export class DuelLobby {
     const stage = STOCK_STAGES[DEFAULT_STOCK_STAGE];
     this.root.innerHTML = `<div class="versus-backdrop" aria-hidden="true"><div class="on" style="background-image:url('${import.meta.env.BASE_URL}${stage.backdrop}')"></div></div>
     <div class="versus-shell">
-      <div class="versus-top"><p class="versus-brand"><span class="versus-sigil">${DUEL_ICON.sigil}</span>${GAME_TITLE}</p><p class="versus-motto">LAN · Two computers. One ${stage.caption.charAt(0)}${stage.caption.slice(1).toLowerCase()}.</p></div>
+      <div class="versus-top"><p class="versus-brand"><span class="versus-sigil">${DUEL_ICON.sigil}</span><span class="fk-heading-cast">${GAME_TITLE}</span></p><p class="versus-motto fk-engraved">LAN · Two computers. One ${stage.caption.charAt(0)}${stage.caption.slice(1).toLowerCase()}.</p></div>
       <div class="versus-panels">
-        <section class="versus-panel versus-duel duel-lan-duel">
-          <div class="versus-head"><h1 id="duel-network-heading">Duel</h1><p>Over LAN · three stocks each</p></div>
-          <div class="versus-seats"><div class="versus-vs" aria-hidden="true">${DUEL_ICON.compass}<span>VS</span></div></div>
+        <section class="versus-panel versus-duel duel-lan-duel fk-panel fk-panel--crested">
+          <div class="versus-head"><h1 id="duel-network-heading" class="fk-heading-cast fk-heading-cast--ruled">Duel</h1><p class="fk-engraved">Over LAN · three stocks each</p></div>
+          <div class="versus-seats"><div class="versus-vs fk-medallion" aria-hidden="true"><span class="fk-word fk-word--vs">VS</span></div></div>
           <div class="versus-devices"></div>
           <div class="versus-go duel-go-row">
-            <button type="button" class="duel-go" data-ready>Ready</button>
-            <button type="button" class="duel-go" data-start>Start match</button>
-            <button type="button" class="duel-go" data-resume>Resume match</button>
-            <button type="button" class="duel-go duel-go-quiet" data-fighters>Change fighters</button>
+            <button type="button" class="duel-go fk-button fk-button--primary" data-ready>Ready</button>
+            <button type="button" class="duel-go fk-button fk-button--primary" data-start>Start match</button>
+            <button type="button" class="duel-go fk-button fk-button--primary" data-resume>Resume match</button>
+            <button type="button" class="duel-go fk-button fk-button--secondary" data-fighters>Change fighters</button>
           </div>
         </section>
-        <section class="versus-panel duel-lan-connect" aria-labelledby="duel-connect-heading">
-          <div class="versus-head"><h2 id="duel-connect-heading">Connect</h2><p>Same network. Same server.</p></div>
+        <section class="versus-panel duel-lan-connect fk-panel fk-panel--crested fk-panel--hung" aria-labelledby="duel-connect-heading">
+          <span class="fk-lantern fk-lantern--left"></span><span class="fk-lantern fk-lantern--right"></span>
+          <div class="versus-head"><h2 id="duel-connect-heading" class="fk-heading-cast fk-heading-cast--ruled">Connect</h2><p class="fk-ribbon">Same network. Same server.</p></div>
           <div class="duel-connect">
-            <button type="button" class="duel-go" data-host>Host a match</button>
-            <p class="duel-or" aria-hidden="true">or</p>
-            <form><label class="duel-code-label">Room code <input aria-label="Room code" maxlength="6" autocomplete="off" spellcheck="false" pattern="[A-Za-z0-9]{6}" required placeholder="······"></label><button type="submit" class="duel-go duel-go-quiet">Join match</button></form>
+            <button type="button" class="duel-go fk-button fk-button--primary" data-host>Host a match</button>
+            <p class="duel-or fk-or" aria-hidden="true"><span>or</span></p>
+            <form><label class="duel-code-label">Room code <input class="fk-slot" aria-label="Room code" maxlength="6" autocomplete="off" spellcheck="false" pattern="[A-Za-z0-9]{6}" required placeholder="······"></label><button type="submit" class="duel-go fk-button fk-button--secondary">Join match</button></form>
           </div>
           <div class="duel-room">
             <p class="duel-room-label">Room</p>
-            <p class="duel-room-code"></p>
+            <p class="duel-room-code fk-heading-cast"></p>
             <p class="duel-you"></p>
             <p class="duel-address"></p>
           </div>
-          <p class="duel-status" role="status" aria-live="polite"></p>
+          <p class="duel-status fk-slot" role="status" aria-live="polite"></p>
           <p class="duel-help"></p>
         </section>
       </div>
@@ -78,9 +82,9 @@ export class DuelLobby {
       card.className = `versus-seat versus-seat-${slot}`;
       card.innerHTML = `<div class="versus-portrait-frame"><img class="versus-portrait bust-fit" alt="" decoding="async"></div>
         <div class="versus-cycler versus-plate" role="group" aria-label="Player ${slot + 1} fighter">
-          <button type="button" class="versus-arrow versus-arrow-prev" aria-label="Previous fighter for player ${slot + 1}" data-sfx="none" tabindex="-1"></button>
-          <span class="versus-cycle-value versus-names"><h2></h2><p class="versus-fighter-title"></p><span class="versus-pips" aria-hidden="true">${FIGHTER_ORDER.map(() => '<i></i>').join('')}</span></span>
-          <button type="button" class="versus-arrow versus-arrow-next" aria-label="Next fighter for player ${slot + 1}" data-sfx="none" tabindex="-1"></button>
+          <button type="button" class="versus-arrow versus-arrow-prev fk-arrow fk-arrow--prev" aria-label="Previous fighter for player ${slot + 1}" data-sfx="none" tabindex="-1"></button>
+          <span class="versus-cycle-value versus-names fk-nameplate"><h2 class="fk-heading-cast"></h2><p class="versus-fighter-title"></p><span class="versus-pips" aria-hidden="true">${FIGHTER_ORDER.map(() => '<i></i>').join('')}</span></span>
+          <button type="button" class="versus-arrow versus-arrow-next fk-arrow fk-arrow--next" aria-label="Next fighter for player ${slot + 1}" data-sfx="none" tabindex="-1"></button>
           <select class="duel-fighter-select" aria-label="LAN Player ${slot + 1} fighter" tabindex="-1"></select>
         </div>`;
       const select = card.querySelector('select')!;
@@ -111,8 +115,8 @@ export class DuelLobby {
         if (dir) { e.preventDefault(); step(dir); }
       });
       if (slot === 0) seatRow.prepend(card); else seatRow.append(card);
-      const box = document.createElement('div'); box.className = `versus-device versus-device-${slot}`;
-      box.innerHTML = `<span class="versus-device-label">Player ${slot + 1}</span><span class="versus-ready" aria-hidden="true">${DUEL_ICON.check}</span><p class="duel-seat-state"></p>`;
+      const box = document.createElement('div'); box.className = `versus-device versus-device-${slot} fk-card fk-card--small${slot ? ' fk-card--teal' : ''}`;
+      box.innerHTML = `<span class="versus-device-label">Player ${slot + 1}</span><span class="versus-ready fk-seal${slot ? ' fk-seal--teal' : ''}" aria-hidden="true">${DUEL_ICON.check}</span><p class="duel-seat-state"></p>`;
       devices.append(box);
       this.seats.push({
         card, frame: card.querySelector('.versus-portrait-frame')!, image: card.querySelector('img')!, name: card.querySelector('h2')!, title: card.querySelector('.versus-fighter-title')!,
@@ -155,7 +159,7 @@ export class DuelLobby {
       }
     });
     // In a match: a framed tab under the timer's corner with the ping and the shared pause.
-    this.bar.id = 'duel-network-bar';
+    this.bar.id = 'duel-network-bar'; this.bar.className = 'fk-nameplate';
     this.bar.hidden = true;
     this.bar.innerHTML = `<span></span><button type="button">${glyph('Esc')}Pause match</button>`;
     this.bar.querySelector('button')!.setAttribute('aria-label', 'Pause match');
@@ -216,7 +220,7 @@ export class DuelLobby {
       if (!seat) continue;
       const def = FIGHTER_DEFS[seat.fighter];
       showFighterArt(view.image, seat.fighter);
-      view.name.textContent = duelShortName(seat.fighter); view.name.title = def.name;
+      view.name.textContent = duelShortName(seat.fighter); view.name.title = def.name; view.name.style.setProperty('--name-len', String(view.name.textContent.length));
       view.title.textContent = duelTitle(seat.fighter);
       const index = FIGHTER_ORDER.indexOf(seat.fighter);
       view.pips.forEach((pip, i) => pip.classList.toggle('on', i === index));

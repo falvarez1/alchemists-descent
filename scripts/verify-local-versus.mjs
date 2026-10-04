@@ -103,6 +103,8 @@ try {
   await page.locator('[data-entry="duel"]').click();
   await pressPad(1, 0); assert.equal(await cyclerValue(page, 'Player 1 device'), 'pad:1');
   await page.setViewportSize({ width: 390, height: 844 });
+  // (the panels slide in when the screen opens: measure the layout, not a frame of that entrance)
+  await page.waitForFunction(() => [...document.querySelectorAll('#versus-lobby .versus-panel')].every(panel => panel.getAnimations().length === 0));
   const narrow = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth, lobby: document.querySelector('#versus-lobby').scrollWidth }));
   assert.ok(narrow.width <= 390 && narrow.lobby <= 390, 'lobby has no narrow horizontal overflow');
   assert.equal(await page.locator('#versus-heading').evaluate(el => el.scrollWidth <= el.clientWidth), true, 'narrow heading is not clipped');

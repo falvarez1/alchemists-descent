@@ -3,6 +3,7 @@ import type { FighterId } from '@/content/fighters';
 import { FIGHTER_DEFS } from '@/content/fighters';
 import { stockCountdownBeat } from '@/config/stockRules';
 import { DUEL_ICON, DUEL_VICTORY, duelShortName, showFighterArt } from '@/ui/duelCopy';
+import '@/styles/foundry-ui.css';
 import '@/styles/versus.css';
 import '@/styles/arena.css';
 
@@ -58,6 +59,8 @@ export class StockMatchHud {
   private readonly cutinWho = document.createElement('small');
   private cutinTimer = 0;
   private readonly bannerText = document.createElement('span');
+  /** The banner's cast sign plate (the kit's word art, or the letters cast on an iron plate). */
+  private readonly bannerSign = document.createElement('div');
   private readonly rematch = document.createElement('button');
   private readonly change = document.createElement('button');
   private readonly result = document.createElement('section');
@@ -81,22 +84,24 @@ export class StockMatchHud {
     this.offs.push(ctx.events.on('stockUltimate', ({ slot, fighter, name }) => this.superCutIn(slot, fighter, name)));
     this.root.id = 'stock-match-hud';
     this.root.hidden = true;
-    this.timer.className = 'stock-timer'; this.timer.setAttribute('role', 'timer');
+    this.timer.className = 'stock-timer fk-hanging-sign'; this.timer.setAttribute('role', 'timer');
     this.clock.className = 'stock-clock'; this.timer.append(this.clock);
-    this.message.className = 'stock-message';
+    this.message.className = 'stock-message fk-heading-cast';
     this.message.setAttribute('role', 'status');
     this.banner.className = 'stock-banner'; this.banner.hidden = true; this.banner.setAttribute('role', 'status');
-    this.banner.append(this.bannerText);
+    this.bannerSign.className = 'stock-sign'; this.bannerText.className = 'fk-heading-cast';
+    this.bannerSign.append(this.bannerText); this.banner.append(this.bannerSign);
     this.banner.addEventListener('pointerdown', () => this.skipToResults());
-    this.rematch.className = 'stock-rematch';
+    this.rematch.className = 'stock-rematch fk-button fk-button--primary';
     this.rematch.type = 'button'; this.rematch.textContent = 'Rematch';
     this.rematch.addEventListener('click', () => { this.rematch.blur(); onRematch(); });
-    this.change.className = 'stock-change'; this.change.type = 'button'; this.change.textContent = 'Change fighters'; this.change.dataset.sfx = 'back';
+    this.change.className = 'stock-change fk-button fk-button--secondary'; this.change.type = 'button'; this.change.textContent = 'Change fighters'; this.change.dataset.sfx = 'back';
     this.change.addEventListener('click', () => { if (this.ctx.duel?.active) this.ctx.duel.lobby(); else this.ctx.versus?.open(); });
     this.result.className = 'stock-result'; this.result.hidden = true;
     this.result.setAttribute('aria-label', 'Match result');
-    const panel = document.createElement('div'); panel.className = 'stock-result-panel';
-    this.resultTitle.className = 'stock-result-title'; this.resultTagline.className = 'stock-result-tagline';
+    const panel = document.createElement('div'); panel.className = 'stock-result-panel fk-panel fk-panel--crested fk-panel--hung';
+    panel.innerHTML = '<span class="fk-lantern fk-lantern--left"></span><span class="fk-lantern fk-lantern--right"></span>';
+    this.resultTitle.className = 'stock-result-title fk-heading-cast fk-heading-cast--ruled'; this.resultTagline.className = 'stock-result-tagline fk-ribbon';
     this.resultBody.className = 'stock-result-body';
     const actions = document.createElement('div'); actions.className = 'stock-result-actions';
     actions.append(this.rematch, this.change);
@@ -104,40 +109,42 @@ export class StockMatchHud {
     this.result.append(panel);
     this.root.append(this.timer, this.message);
     for (let slot = 0; slot < 2; slot++) {
-      const root = document.createElement('div'); root.className = `stock-fighter stock-fighter-${slot}`;
+      const root = document.createElement('div'); root.className = `stock-fighter stock-fighter-${slot} fk-hud-card${slot ? ' fk-hud-card--teal' : ''}`;
       const frame = document.createElement('div'); frame.className = 'stock-portrait-frame';
       const portrait = document.createElement('img'); portrait.className = 'stock-portrait bust-fit'; portrait.alt = ''; portrait.hidden = true;
       frame.append(portrait);
-      const body = document.createElement('div'); body.className = 'stock-card-body';
+      const body = document.createElement('div'); body.className = 'stock-card-body fk-hud-card__body';
       const name = document.createElement('div'); name.className = 'stock-name';
       const percent = document.createElement('strong'); percent.className = 'stock-percent';
       const value = document.createTextNode('0'), sign = document.createElement('small'); sign.textContent = '%';
       percent.append(value, sign);
       const stocks = document.createElement('div'); stocks.className = 'stock-lives'; stocks.setAttribute('role', 'img');
-      const dots = Array.from({ length: MAX_STOCKS }, () => { const dot = document.createElement('span'); dot.className = 'stock-dot'; return dot; });
+      const dots = Array.from({ length: MAX_STOCKS }, () => { const dot = document.createElement('span'); dot.className = `stock-dot fk-bead${slot ? ' fk-bead--teal' : ''}`; return dot; });
       stocks.append(...dots);
       const special = document.createElement('div'), label = document.createElement('span'), specialHint = document.createElement('span');
       special.className = 'stock-special'; special.setAttribute('role', 'meter'); special.setAttribute('aria-valuemin', '0'); special.setAttribute('aria-valuemax', '2');
       special.setAttribute('aria-label', `Player ${slot + 1} special charges`);
       label.className = 'stock-special-label'; label.textContent = 'Special'; specialHint.className = 'stock-special-hint';
-      const cells = Array.from({ length: 2 }, () => { const cell = document.createElement('span'); cell.className = 'stock-special-cell'; cell.setAttribute('aria-hidden', 'true'); return cell; });
-      special.append(label, ...cells, specialHint);
+      const cells = Array.from({ length: 2 }, () => { const cell = document.createElement('span'); cell.className = 'stock-special-cell fk-meter__cell'; cell.setAttribute('aria-hidden', 'true'); return cell; });
+      // the two charges sit in the kit's segmented meter housing (arena.css .stock-meter)
+      const meter = document.createElement('span'); meter.className = 'stock-meter fk-meter'; meter.append(...cells);
+      special.append(label, meter, specialHint);
       // Shield, recovery burst, air dodge and ledge catch: four quiet glyphs, lit while ready.
       const defense = document.createElement('div'); defense.className = 'stock-defense'; defense.setAttribute('role', 'img');
       const glyph = (kind: 'shield' | 'burst' | 'air' | 'ledge'): HTMLElement => {
         const el = document.createElement('span'); el.className = `stock-glyph stock-glyph-${kind}`; el.innerHTML = DUEL_ICON[kind]; defense.append(el); return el;
       };
       const glyphs = { shield: glyph('shield'), burst: glyph('burst'), air: glyph('air'), ledge: glyph('ledge') };
-      const side = document.createElement('div'); side.className = 'stock-card-side';
+      const side = document.createElement('div'); side.className = 'stock-card-side fk-hud-card__window';
       side.append(frame, defense);
       body.append(name, percent, stocks, special);
       root.append(side, body); this.root.append(root);
       this.cards.push({ root, portrait, name, percent, value, stocks, dots, defense, glyphs, special, cells, specialHint });
     }
-    this.cutin.className = 'stock-cutin'; this.cutin.hidden = true; this.cutin.setAttribute('aria-hidden', 'true');
+    this.cutin.className = 'stock-cutin fk-band fk-band--rims'; this.cutin.hidden = true; this.cutin.setAttribute('aria-hidden', 'true');
     const cutBust = document.createElement('span'); cutBust.className = 'stock-cutin-bust';
     this.cutinBust.className = 'bust-fit'; this.cutinBust.alt = ''; cutBust.append(this.cutinBust);
-    const cutText = document.createElement('span'); cutText.className = 'stock-cutin-text'; cutText.append(this.cutinWho, this.cutinName);
+    const cutText = document.createElement('span'); cutText.className = 'stock-cutin-text'; this.cutinName.className = 'fk-heading-cast'; cutText.append(this.cutinWho, this.cutinName);
     this.cutin.append(cutBust, cutText);
     this.root.append(this.cutin, this.banner, this.result);
     (document.getElementById('canvas-holder') ?? document.body).append(this.root);
@@ -207,7 +214,7 @@ export class StockMatchHud {
       for (let i = 0; i < card.cells.length; i++) {
         const filled = i < charges;
         setData(card.cells[i], 'filled', String(filled));
-        setVar(card.cells[i], '--charge', `${filled ? 100 : i === charges ? Math.round((special?.progress ?? 0) * 100) : 0}%`);
+        setVar(card.cells[i], '--fk-fill', `${filled ? 100 : i === charges ? Math.round((special?.progress ?? 0) * 100) : 0}%`);
       }
       setData(card.glyphs.shield, 'state', broken ? 'broken' : strength < 100 ? 'worn' : 'ready');
       setVar(card.glyphs.shield, '--strength', String(Math.max(0, Math.min(100, strength)) / 100));
@@ -223,6 +230,11 @@ export class StockMatchHud {
     if (this.message.textContent !== message) this.message.textContent = message;
     if (this.message.hidden !== (message === '')) this.message.hidden = message === '';
     setData(this.message, 'kind', match.state);
+    if (beat !== this.shown.beat) {
+      // the kit's painted numeral stands in for the digit (which stays in the text)
+      this.message.classList.toggle('fk-word', beat > 0);
+      for (const n of [1, 2, 3]) this.message.classList.toggle(`fk-word--${n}`, beat === n);
+    }
     if (beat && beat !== this.shown.beat) pop(this.message, [{ transform: 'translate(-50%, -50%) scale(2.6)', opacity: 0 }, { transform: 'translate(-50%, -50%) scale(.9)', opacity: 1, offset: .55 }, { transform: 'translate(-50%, -50%)' }], 260, 'cubic-bezier(.2, 1.2, .4, 1)');
     this.shown.beat = beat;
     // FIGHT! as the countdown ends; GAME! (or TIME!) when it is over, then <NAME> WINS, then the card.
@@ -282,10 +294,14 @@ export class StockMatchHud {
   /** A banner slams in across the middle; `ms` 0 holds it until something replaces it. */
   private showBanner(text: string, kind: 'fight' | 'game' | 'wins', ms: number): void {
     this.bannerText.textContent = text; this.banner.dataset.kind = kind;
+    // FIGHT!, GAME! and TIME! are the kit's painted words on its banner plate; a WINS line is cast letters on its band
+    const word = kind === 'wins' ? '' : text === 'Time!' ? 'time' : kind;
+    this.bannerSign.className = word ? 'stock-sign fk-banner-plate' : 'stock-sign fk-band';
+    this.bannerText.className = word ? `fk-word fk-word--${word}` : 'fk-heading-cast';
     const winner = this.ctx.arena?.stockMatch?.winner;
     this.banner.dataset.slot = kind === 'wins' && winner !== null && winner !== undefined ? String(winner) : '';
     this.banner.hidden = false; this.bannerUntil = ms ? performance.now() + ms : 0;
-    pop(this.bannerText, [
+    pop(this.bannerSign, [
       { transform: 'scale(3.2)', opacity: 0, filter: 'blur(6px) brightness(2)' },
       { transform: 'scale(.92)', opacity: 1, filter: 'none', offset: .6 },
       { transform: 'none' },
@@ -323,14 +339,14 @@ export class StockMatchHud {
     this.result.dataset.slot = winner === null ? 'draw' : String(winner);
     this.resultTitle.textContent = this.winnerLine();
     this.resultTagline.textContent = id ? DUEL_VICTORY[id].tagline : 'Neither fell further than the other.';
-    const figure = document.createElement('figure'); figure.className = 'stock-result-portrait';
+    const figure = document.createElement('figure'); figure.className = 'stock-result-portrait fk-slot';
     const portraits: FighterId[] = id ? [id] : ids.filter((f): f is FighterId => f !== null);
     portraits.forEach((f, i) => {
       const frame = document.createElement('span'); frame.className = `stock-result-bust stock-result-bust-${i}`;
       const img = document.createElement('img'); img.className = 'bust-fit'; img.alt = FIGHTER_DEFS[f].name; showFighterArt(img, f);
       frame.append(img); figure.append(frame);
     });
-    const stats = document.createElement('div'); stats.className = 'stock-result-stats';
+    const stats = document.createElement('div'); stats.className = 'stock-result-stats fk-slot';
     const list = document.createElement('dl');
     const rows: Array<[string, string]> = winner === null
       ? match.fighters.map((f, slot) => { const who = ids[slot]; return [who ? duelShortName(who) : `Player ${slot + 1}`, `${f.stocks} · ${Math.round(f.volatility)}%`]; })

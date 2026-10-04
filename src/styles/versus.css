@@ -1,22 +1,15 @@
 /* =====================================================================
- * THE DUEL'S SCREENS (ui/VersusLobby, ui/StockMatchHud), drawn to
- * docs/arena/platform-fighter/concepts/local-versus.png: near-black slate
- * panels in a worn copper double frame with small corner plates, a heavy
- * small-caps display serif (Alegreya SC) for names, headings and the big
- * buttons, letter-spaced Cormorant capitals under them, amber for player 1
- * and teal for player 2.
+ * THE DUEL'S SCREENS (ui/VersusLobby, ui/DuelLobby, ui/StockMatchHud): the
+ * layout, drawn to docs/arena/platform-fighter/concepts/local-versus.png and
+ * the UI/V1 targets. The look is the foundry kit's (foundry-ui.css: its
+ * classes are on the markup); a heavy small-caps display serif (Alegreya SC)
+ * for names, headings and the big buttons, letter-spaced Cormorant capitals
+ * under them, amber for player 1 and teal for player 2.
  * The lobby covers the window (it is fixed), so it scales by the window:
  * --u is 1% of a 16:9 box fitted to it. Its two panels keep the concept's
  * proportions (745 x 480) and the chosen stage's backdrop fills the room
  * around them. The HUD (arena.css) scales the same way by the view.
  * ===================================================================== */
-@font-face {
-  /* Google Fonts' Latin subset of Alegreya SC ExtraBold (OFL, public/assets/fonts/OFL-AlegreyaSC.txt), 30 KB;
-     kept: kern, liga, lnum/onum, smcp (the font IS small caps: lowercase sets as small capitals). */
-  font-family: 'Alegreya SC'; src: url('/assets/fonts/alegreya-sc-800-latin.woff2') format('woff2');
-  font-style: normal; font-weight: 800; font-display: swap;
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
 :root {
   --d-ink: #0a121a; --d-slate: #142334; --d-slate-2: #182b3d; --d-steel: #293e51;
   --d-copper: #ac744b; --d-copper-hi: #dda36c; --d-copper-dim: #ac744b80; --d-copper-faint: #ac744b38;
@@ -25,10 +18,6 @@
   --d-display: 'Alegreya SC', 'Cormorant Garamond', Georgia, serif;
   --d-serif: 'Cormorant Garamond', Georgia, serif;
   --d-sans: Inter, ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
-  /* the panel frame: an outer and an inner copper rule, an L-plate and a diamond rivet in every corner */
-  --d-frame: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48' fill='none'%3E%3Crect x='.5' y='.5' width='47' height='47' stroke='%235e3b2b'/%3E%3Crect x='2' y='2' width='44' height='44' stroke='%23a66c49' stroke-width='1.6'/%3E%3Crect x='5.5' y='5.5' width='37' height='37' stroke='%23ac744b' stroke-opacity='.38'/%3E%3Cg fill='%23c98a57'%3E%3Cpath d='M0 0h11v3H3v8H0z'/%3E%3Cpath d='M48 0H37v3h8v8h3z'/%3E%3Cpath d='M0 48h11v-3H3v-8H0z'/%3E%3Cpath d='M48 48H37v-3h8v-8h3z'/%3E%3Cpath d='M6.5 3.6 9.4 6.5 6.5 9.4 3.6 6.5z'/%3E%3Cpath d='M41.5 3.6 44.4 6.5 41.5 9.4 38.6 6.5z'/%3E%3Cpath d='M6.5 38.6 9.4 41.5 6.5 44.4 3.6 41.5z'/%3E%3Cpath d='M41.5 38.6 44.4 41.5 41.5 44.4 38.6 41.5z'/%3E%3C/g%3E%3C/svg%3E");
-  /* a heading flourish (left side; the right is the same mirrored): a rule into a hollow diamond */
-  --d-flourish: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 12' fill='none'%3E%3Cpath d='M0 6h47' stroke='%23ac744b' stroke-width='1.2'/%3E%3Cpath d='M54 1.4 58.6 6 54 10.6 49.4 6z' stroke='%23dda36c' stroke-width='1.3'/%3E%3Ccircle cx='54' cy='6' r='1.3' fill='%23dda36c'/%3E%3C/svg%3E");
 }
 
 #versus-lobby, #versus-reconnect, #duel-network {
@@ -38,7 +27,8 @@
 }
 #versus-lobby[hidden], #versus-reconnect[hidden], #duel-network[hidden] { display: none; }
 #versus-lobby *, #versus-reconnect *, #duel-network * { box-sizing: border-box; }
-#versus-lobby button, #versus-lobby select, #versus-reconnect button, #duel-network :is(button, input) { font: inherit; color: inherit; border-radius: 0; cursor: pointer; }
+/* (zero specificity: the kit's classes dress the buttons) */
+:where(#versus-lobby, #versus-reconnect) :is(button, select), :where(#duel-network) :is(button, input) { font: inherit; color: inherit; border-radius: 0; cursor: pointer; }
 #versus-lobby button:disabled, #versus-reconnect button:disabled, #duel-network button:disabled { cursor: default; }
 #versus-lobby :is(button, select):focus-visible, #versus-reconnect button:focus-visible, #duel-network :is(button, input):focus-visible { outline: 2px solid var(--d-teal); outline-offset: 3px; }
 
@@ -67,19 +57,12 @@
 
 /* ---------- the two panels, at the concept's proportions ---------- */
 .versus-panels { align-self: center; display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 1.3); }
-.versus-panel {
-  position: relative; min-width: 0; aspect-ratio: 745 / 480; border: 14px solid transparent; border-image: var(--d-frame) 14 / 14px stretch;
-  background: radial-gradient(110% 80% at 50% 30%, #1c242df5 0%, #141a21f5 58%, #0f1419f7 100%);
-  box-shadow: 0 calc(var(--u) * .8) calc(var(--u) * 3) #000c;
-}
+.versus-panel { position: relative; min-width: 0; aspect-ratio: 605 / 470; }
 .versus-head { text-align: center; }
 .versus-head :is(h1, h2) {
-  display: flex; align-items: center; justify-content: center; gap: calc(var(--u) * .9); margin: 0; padding: 0;
-  font: 800 max(26px, calc(var(--u) * 2.95))/1.05 var(--d-display); letter-spacing: .05em; text-transform: uppercase; color: #ecdcbc;
-  white-space: nowrap; background: none; text-shadow: 0 2px 0 #0009; font-variant-numeric: lining-nums;
+  margin: 0; padding: 0; font: 800 max(26px, calc(var(--u) * 2.95))/1.05 var(--d-display); letter-spacing: .05em; text-transform: uppercase;
+  white-space: nowrap; font-variant-numeric: lining-nums;
 }
-.versus-head :is(h1, h2)::before, .versus-head :is(h1, h2)::after { content: ''; flex: none; width: calc(var(--u) * 3.4); min-width: 30px; height: calc(var(--u) * .75); min-height: 7px; background: var(--d-flourish) center / 100% 100% no-repeat; }
-.versus-head :is(h1, h2)::after { transform: scaleX(-1); }
 .versus-head p { margin: calc(var(--u) * .4) 0 0; font: 600 max(10px, calc(var(--u) * .86))/1.3 var(--d-serif); letter-spacing: .26em; text-transform: uppercase; color: var(--d-paper); }
 
 /* ---------- DUEL: busts facing across the compass ---------- */
@@ -125,11 +108,6 @@
   display: grid; place-items: center; width: max(26px, calc(var(--u) * 2.3)); height: max(30px, calc(var(--u) * 2.7)); padding: 0; border: 0; background: none;
   color: var(--d-copper-hi); touch-action: none; transition: color .08s, filter .08s;
 }
-.versus-arrow::before {
-  content: ''; width: 58%; height: 70%; background: linear-gradient(180deg, #f6c48c, currentColor 55%, #9a5a30);
-  clip-path: polygon(0 50%, 100% 0, 78% 50%, 100% 100%); filter: drop-shadow(0 2px 0 #000c);
-}
-.versus-arrow-next::before { clip-path: polygon(100% 50%, 0 0, 22% 50%, 0 100%); }
 :is(#versus-lobby, #duel-network) .versus-arrow:hover:not(:disabled), :is(#versus-lobby, #duel-network) .versus-arrow.held { color: var(--seat, var(--d-amber)); filter: brightness(1.25) drop-shadow(0 0 6px color-mix(in srgb, var(--seat, var(--d-amber)) 70%, transparent)); }
 :is(#versus-lobby, #duel-network) .versus-arrow:disabled { opacity: .22; }
 /* the arcade cursor: the row the keyboard rests on glows in the seat's colour and its arrows bob outward */
@@ -149,24 +127,16 @@
 .versus-pips i { width: max(5px, calc(var(--u) * .5)); aspect-ratio: 1; transform: rotate(45deg); background: #3b444c; box-shadow: 0 0 0 1px #0008; transition: background .1s, transform .1s; }
 .versus-pips i.on { background: var(--seat); transform: rotate(45deg) scale(1.5); box-shadow: 0 0 6px var(--seat); }
 
-.versus-vs { grid-area: 2 / 2 / 3 / 3; align-self: center; justify-self: center; position: relative; z-index: 1; width: calc(var(--u) * 10); aspect-ratio: 1; margin-top: calc(var(--u) * -2.4); color: var(--d-copper); }
-.versus-vs svg { width: 100%; height: 100%; animation: versus-turn 24s linear infinite; }
-@keyframes versus-turn { to { transform: rotate(1turn); } }
-.versus-vs span {
-  position: absolute; inset: 0; display: grid; place-items: center; font: 800 calc(var(--u) * 3.4)/1 var(--d-display); letter-spacing: .02em;
-  background: linear-gradient(180deg, #f4d3a2 15%, #c98a57 55%, #8a5531 90%); -webkit-background-clip: text; background-clip: text; color: transparent;
-  filter: drop-shadow(0 2px 0 #000c) drop-shadow(0 0 calc(var(--u) * .8) #ac744b55);
-}
+.versus-vs { grid-area: 2 / 2 / 3 / 3; align-self: center; justify-self: center; position: relative; z-index: 1; margin-top: calc(var(--u) * -2.4); pointer-events: none; }
 
 /* ---------- the seat card: PLAYER N, its readiness badge, ◀ device ▶ (and a CPU's ◀ level ▶) ---------- */
 .versus-device {
   --seat: var(--d-amber); position: relative; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: calc(var(--u) * .15); min-width: 0;
-  padding: calc(var(--u) * .45) calc(var(--u) * .3) calc(var(--u) * .35);
-  border: 1px solid color-mix(in srgb, var(--seat) 55%, #000); border-radius: 6px; corner-shape: bevel; background: #0e1317eb;
-  box-shadow: 0 0 calc(var(--u) * 1.2) color-mix(in srgb, var(--seat) 10%, transparent); transition: border-color .12s, box-shadow .15s;
+  padding: calc(var(--u) * .45) calc(var(--u) * .3) calc(var(--u) * .35); transition: box-shadow .15s;
 }
 .versus-device-0 { grid-area: 3 / 1 / 4 / 2; }
 .versus-device-1 { grid-area: 3 / 3 / 4 / 4; --seat: var(--d-teal); }
+.versus-device.fk-card .versus-device-label { letter-spacing: .07em; white-space: nowrap; }
 .versus-device-label { text-align: center; font: 800 max(13px, calc(var(--u) * 1.18))/1.1 var(--d-display); font-variant-numeric: lining-nums; letter-spacing: .12em; text-transform: uppercase; color: var(--seat); }
 .versus-device .versus-cycler { grid-template-columns: auto auto minmax(0, max-content) auto; justify-content: center; gap: calc(var(--u) * .35); }
 .versus-device .versus-cycler.versus-cpu { grid-template-columns: auto minmax(0, max-content) auto; }
@@ -181,86 +151,67 @@
 .versus-level i { width: max(4px, calc(var(--u) * .42)); height: max(9px, calc(var(--u) * .9)); background: #39424a; transform: skewX(-14deg); }
 .versus-level i.on { background: linear-gradient(#f3b766, #c76a2c); box-shadow: 0 0 4px #ef9a5588; }
 /* readiness: a seal on the card's inner corner, and the card glowing in the seat's colour */
-:is(#versus-lobby, #duel-network) .versus-ready {
-  position: absolute; top: calc(var(--u) * -.85); display: grid; place-items: center; width: max(26px, calc(var(--u) * 2.2)); aspect-ratio: 1; padding: 0;
-  border: 1.5px solid color-mix(in srgb, var(--seat) 55%, #000); border-radius: 50%; background: #0b1014; color: transparent;
-  box-shadow: 0 0 0 2px #0b1014, 0 2px 6px #000a; transition: background .1s, color .1s, border-color .1s, box-shadow .15s;
-}
-.versus-device-0 .versus-ready { right: calc(var(--u) * -.85); }
-.versus-device-1 .versus-ready { left: calc(var(--u) * -.85); }
-:is(#versus-lobby, #duel-network) .versus-ready svg { width: 62%; height: auto; }
-:is(#versus-lobby, #duel-network) .versus-ready:hover:not(:disabled) { border-color: var(--seat); color: color-mix(in srgb, var(--seat) 70%, #0b1014); }
-:is(#versus-lobby, #duel-network) .versus-ready:focus-visible { outline: none; box-shadow: 0 0 0 2px #0b1014, 0 0 0 4px var(--seat); }
-:is(#versus-lobby, #duel-network) .versus-ready[aria-pressed="true"] { border-color: color-mix(in srgb, var(--seat) 70%, #fff); background: var(--seat); color: #10161b; box-shadow: 0 0 0 2px #0b1014, 0 0 calc(var(--u) * 1.1) color-mix(in srgb, var(--seat) 70%, transparent); }
-:is(#versus-lobby, #duel-network) .versus-ready:disabled:not([aria-pressed="true"]) { opacity: .45; }
-.versus-device[data-ready="true"] {
-  border-color: var(--seat);
-  box-shadow: 0 0 calc(var(--u) * 1.4) color-mix(in srgb, var(--seat) 38%, transparent), inset 0 0 calc(var(--u) * 1.6) color-mix(in srgb, var(--seat) 14%, transparent);
-}
+/* readiness: the kit's seal on the card's inner corner (dark until the seat is ready), and the card glowing in the seat's colour */
+:is(#versus-lobby, #duel-network) .versus-ready { position: absolute; top: calc(-8 * var(--fk-px)); display: grid; place-items: center; }
+.versus-device-0 .versus-ready { right: calc(-8 * var(--fk-px)); }
+.versus-device-1 .versus-ready { left: calc(-8 * var(--fk-px)); }
+:is(#versus-lobby, #duel-network) .versus-ready svg { display: none; }
+:is(#versus-lobby, #duel-network) .versus-ready:hover:not(:disabled, [aria-pressed="true"]) { filter: grayscale(.5) brightness(.75) drop-shadow(0 2px 3px #000c); }
+:is(#versus-lobby, #duel-network) .versus-ready:focus-visible { outline: 2px solid #ffd29a; outline-offset: 2px; }
+:is(#versus-lobby, #duel-network) .versus-ready:disabled:not([aria-pressed="true"]) { opacity: .6; }
 .versus-device[data-ready="true"] .versus-device-label::after { content: ' · ready'; }
 
 
-/* the copper call to action (and the results' Rematch, arena.css) */
+/* the copper call to action (and the LAN lobby's buttons, the results' Rematch): the kit's plate button (.fk-button) */
 #versus-lobby #versus-start, #duel-network .duel-go, .stock-rematch {
-  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .9em;
-  min-width: max(200px, calc(var(--u) * 21)); min-height: max(40px, calc(var(--u) * 3.5)); padding: 0 calc(var(--u) * 3);
-  border: 1.5px solid #e38c4c; border-radius: 6px; corner-shape: bevel; color: #f3dfc0;
-  font: 800 max(17px, calc(var(--u) * 1.55))/1 var(--d-display); letter-spacing: .12em; text-transform: uppercase; text-shadow: 0 1px 0 #1a0c06;
-  background: linear-gradient(180deg, #4d3027 0%, #3b241e 50%, #2e1c18 100%);
-  box-shadow: inset 0 0 0 2px #24150f, inset 0 0 0 3px #e38c4c40, 0 0 calc(var(--u) * .9) #e0894a59, 0 calc(var(--u) * .35) calc(var(--u) * 1.2) #000a;
-  transition: filter .14s, transform .1s, box-shadow .3s;
+  min-width: max(200px, calc(var(--u) * 21)); font: 800 max(17px, calc(var(--u) * 1.55))/1 var(--d-display); letter-spacing: .12em;
 }
-#versus-start::before, #versus-start::after, #duel-network .duel-go::before, #duel-network .duel-go::after, .stock-rematch::before, .stock-rematch::after { content: ''; flex: none; width: .34em; height: .34em; background: #e9a066; transform: rotate(45deg); box-shadow: 0 0 0 2px #2e1c18, 0 0 0 3px #e9a06688; }
-#versus-start:hover:not(:disabled), #duel-network .duel-go:hover:not(:disabled), .stock-rematch:hover { filter: brightness(1.14); }
-#versus-start:active:not(:disabled), #duel-network .duel-go:active:not(:disabled), .stock-rematch:active { transform: translateY(1px); }
+#versus-lobby #versus-start:focus-visible, #duel-network .duel-go:focus-visible { outline: none; }
 #versus-lobby #versus-start:disabled, #duel-network .duel-go:disabled { filter: saturate(.55) brightness(.72); }
-/* READY straddles the panel's lower frame, as in the concept; everyone ready: it breathes */
-#versus-lobby #versus-start { grid-area: 4 / 1 / 5 / -1; justify-self: center; justify-content: space-between; min-width: max(220px, calc(var(--u) * 21)); padding: 0 calc(var(--u) * 1.2); margin: calc(var(--u) * .7) 0 calc(var(--u) * -2.3); z-index: 2; }
-#versus-lobby #versus-start[data-go="true"] { animation: versus-go .7s ease-in-out infinite; border-color: #ffb36a; color: #fff1d8; }
-@keyframes versus-go { 50% { box-shadow: inset 0 0 0 2px #24150f, inset 0 0 0 3px #e38c4c66, 0 0 calc(var(--u) * 2.2) #ef9a55aa, 0 calc(var(--u) * .35) calc(var(--u) * 1.2) #000a; } }
+/* READY straddles the panel's lower frame, as in the concept; everyone ready: it glows and breathes */
+#versus-lobby #versus-start {
+  --fk-h: max(46px, calc(var(--u) * 4.6)); grid-area: 4 / 1 / 5 / -1; justify-self: center; min-width: max(220px, calc(var(--u) * 21));
+  margin: calc(var(--u) * .5) 0 calc(var(--u) * -2.6); z-index: 2; font-size: max(20px, calc(var(--u) * 2.1)); letter-spacing: .14em; filter: drop-shadow(0 6px 10px #000c);
+}
+#versus-lobby #versus-start:is(:hover, :focus-visible):not(:disabled), #duel-network .duel-go:is(:hover, :focus-visible):not(:disabled) { filter: drop-shadow(0 0 12px #ff9a4aaa) drop-shadow(0 6px 10px #000c); }
+#versus-lobby #versus-start[data-go="true"] { border-image-source: var(--fk-img-button-primary-hot); color: #fff4de; animation: versus-plate-go .7s ease-in-out infinite; }
+@keyframes versus-plate-go { 50% { filter: drop-shadow(0 0 18px #ffb36a) drop-shadow(0 6px 10px #000c) brightness(1.1); } }
 
 /* ---------- CHOOSE A STAGE ---------- */
 .versus-stages { display: flex; flex-direction: column; justify-content: space-between; gap: calc(var(--u) * .9); padding: calc(var(--u) * .8) calc(var(--u) * 1.2) calc(var(--u) * .6); }
 .versus-stage-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: calc(var(--u) * 1.1); align-items: start; }
-#versus-lobby .versus-stage-tile { display: flex; flex-direction: column; align-items: stretch; gap: calc(var(--u) * .6); min-width: 0; padding: 0; border: 0; background: none; text-align: center; }
+#versus-lobby .versus-stage-tile { display: flex; flex-direction: column; align-items: stretch; min-width: 0; padding: 0; text-align: center; transition: filter .14s; }
 .versus-stage-art {
-  position: relative; display: block; aspect-ratio: 336 / 404; overflow: hidden; border: 1px solid var(--d-copper-dim);
-  box-shadow: inset 0 0 0 1px #000, 0 0 0 1px #0008; transition: border-color .14s, box-shadow .14s;
+  position: relative; display: block; aspect-ratio: 336 / 404; overflow: hidden;
 }
 .versus-stage-art img { display: block; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; filter: saturate(.9) brightness(.86); transition: filter .16s; }
 .versus-stage-art::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 calc(var(--u) * 1.6) #000c; pointer-events: none; }
 .versus-stage-name { font: 800 max(12px, calc(var(--u) * 1.1))/1 var(--d-display); letter-spacing: .1em; text-transform: uppercase; color: var(--d-paper); transition: color .14s; }
 #versus-lobby .versus-stage-tile:hover .versus-stage-art img { filter: saturate(.95) brightness(.95); }
 #versus-lobby .versus-stage-tile:focus-visible { outline: none; }
-.versus-stage-tile[aria-checked="true"] .versus-stage-art { border: 2px solid var(--stage-accent, var(--d-amber)); box-shadow: inset 0 0 0 1px #000, 0 0 0 1px #000, 0 0 calc(var(--u) * 1.5) color-mix(in srgb, var(--stage-accent, var(--d-amber)) 50%, transparent); }
 .versus-stage-tile[aria-checked="true"] .versus-stage-art img { filter: none; }
 .versus-stage-tile[aria-checked="true"] .versus-stage-name { color: var(--d-ivory); }
 .versus-stage-tile:disabled { opacity: .6; }
 .versus-rules {
   display: flex; align-items: center; justify-content: space-evenly; margin: 0; padding: calc(var(--u) * .8) calc(var(--u) * 1); list-style: none;
-  border: 1px solid var(--d-copper-dim); border-radius: 2px; background: #0a131cb3; box-shadow: inset 0 0 0 3px #0a131c, inset 0 0 0 4px var(--d-copper-faint);
 }
 .versus-rules li { display: flex; align-items: center; gap: calc(var(--u) * .75); padding: 0 calc(var(--u) * 1); font: 400 max(12px, calc(var(--u) * 1.1))/1.2 var(--d-sans); letter-spacing: .03em; color: var(--d-ivory); white-space: nowrap; }
-.versus-rules li + li { border-left: 1px solid var(--d-copper-dim); }
+.versus-rules li + li { border-left: 1px solid #6a4a32; }
 .versus-rules svg { flex: none; width: max(17px, calc(var(--u) * 1.7)); height: auto; color: var(--d-paper); }
 .versus-stage-foot { margin: 0; text-align: center; font: 700 max(9.5px, calc(var(--u) * .8))/1.4 var(--d-serif); letter-spacing: .26em; text-transform: uppercase; color: var(--d-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- the footer: short arcade prompts and button glyphs ---------- */
 .versus-footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px 18px; min-height: max(30px, calc(var(--u) * 2.6)); }
-.versus-glyph {
-  display: inline-grid; place-items: center; min-width: 1.9em; height: 1.75em; margin-right: .35em; padding: 0 .4em; box-sizing: border-box;
-  border: 1px solid #c98a57aa; border-bottom-width: 2px; border-radius: 4px; background: linear-gradient(#1b252e, #0d141a);
-  font: 800 .86em/1 var(--d-sans); letter-spacing: .02em; color: var(--d-ivory); text-transform: none; text-shadow: none;
-}
+.versus-glyph { margin-right: .35em; }
 .versus-glyph + .versus-glyph { margin-left: -.15em; }
-.versus-glyph-a, .versus-glyph-b { min-width: 1.75em; padding: 0; border-radius: 50%; border: 0; color: #08100b; }
-.versus-glyph-a { background: radial-gradient(circle at 40% 35%, #b6f3a4, #4caf3c 70%); }
-.versus-glyph-b { background: radial-gradient(circle at 40% 35%, #ffb3a4, #d0402c 70%); color: #1a0705; }
+.versus-glyph:is(.versus-glyph-a, .versus-glyph-b) { min-width: 0; width: var(--fk-h, 1.75em); padding: 0; border: 0; border-image: none; border-radius: 50%; color: #08100b; }
+.versus-glyph.versus-glyph-a { background: radial-gradient(circle at 40% 35%, #b6f3a4, #4caf3c 70%); }
+.versus-glyph.versus-glyph-b { background: radial-gradient(circle at 40% 35%, #ffb3a4, #d0402c 70%); color: #1a0705; }
 .versus-actions { justify-self: start; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; }
 :is(#versus-lobby, #duel-network) .versus-lan svg { width: 1.5em; height: auto; margin-right: .3em; color: var(--d-copper-hi); }
 :is(#versus-lobby, #duel-network) .versus-back { justify-self: start; display: inline-flex; align-items: center; gap: .2em; min-height: 30px; padding: 4px 8px; border: 0; background: none; font: 800 max(11px, calc(var(--u) * 1))/1 var(--d-display); letter-spacing: .14em; text-transform: uppercase; color: var(--d-paper); transition: color .08s; }
 :is(#versus-lobby, #duel-network) .versus-back:hover, :is(#versus-lobby, #duel-network) .versus-back:focus-visible { color: var(--d-ivory); outline: none; }
-:is(#versus-lobby, #duel-network) .versus-back:focus-visible .versus-glyph { border-color: var(--d-teal); }
+:is(#versus-lobby, #duel-network) .versus-back:focus-visible .versus-glyph { filter: drop-shadow(0 0 4px #ffb36a); }
 .versus-status { margin: 0; text-align: center; white-space: pre; font: 800 max(13px, calc(var(--u) * 1.3))/1.2 var(--d-display); letter-spacing: .12em; text-transform: uppercase; color: var(--d-ivory); text-shadow: 0 2px 0 #000c, 0 0 10px #000; animation: versus-blink 1.1s steps(1) infinite; }
 .versus-status[data-go="true"] { color: var(--d-amber); animation: none; }
 @keyframes versus-blink { 60% { opacity: .35; } }
@@ -297,11 +248,6 @@
 .versus-splash-1 b { color: var(--d-teal); }
 .versus-splash-side small { margin-top: .4em; font: 700 clamp(11px, 1.2vw, 20px)/1 var(--d-serif); letter-spacing: .3em; text-transform: uppercase; color: var(--d-paper); text-shadow: 0 2px 6px #000; }
 .versus-splash-vs { position: relative; z-index: 2; padding: 0 1vw; }
-.versus-splash-vs span {
-  display: block; font: 800 clamp(60px, 12vw, 220px)/1 var(--d-display); font-style: italic;
-  background: linear-gradient(180deg, #fff1d2 10%, #ffc070 45%, #d0702e 70%, #7a3a18 95%); -webkit-background-clip: text; background-clip: text; color: transparent;
-  filter: drop-shadow(0 6px 0 #1a0c06) drop-shadow(0 0 40px #ef9a48aa);
-}
 .versus-splash-stage { position: absolute; left: 0; right: 0; bottom: 5vh; z-index: 2; margin: 0; text-align: center; font: 800 clamp(16px, 2.2vw, 36px)/1 var(--d-display); letter-spacing: .3em; text-transform: uppercase; color: var(--d-ivory); text-shadow: 0 3px 0 #000, 0 0 16px #000; }
 #versus-lobby[data-phase="loading"] .versus-splash-0 { animation: versus-slam-l .32s cubic-bezier(.16, 1, .3, 1) both; }
 #versus-lobby[data-phase="loading"] .versus-splash-1 { animation: versus-slam-r .32s cubic-bezier(.16, 1, .3, 1) both; }
@@ -313,9 +259,6 @@
 @keyframes versus-throb { 50% { transform: scale(1.06); } }
 @keyframes versus-rise { from { transform: translateY(40px); opacity: 0; } }
 
-/* the cursor on READY and the stage tiles: the arcade's glow, no browser ring */
-#versus-lobby #versus-start:focus-visible { outline: none; box-shadow: inset 0 0 0 2px #24150f, inset 0 0 0 3px #e38c4c80, 0 0 0 2px #0b0f13, 0 0 0 4px var(--d-amber), 0 0 calc(var(--u) * 2) #ef9a55aa; }
-#versus-lobby .versus-stage-tile:focus-visible .versus-stage-art { outline: none; box-shadow: 0 0 0 2px #0b0f13, 0 0 0 4px var(--d-amber), 0 0 calc(var(--u) * 1.6) #ef9a55aa; }
 
 
 /* ---------- reconnect ---------- */
@@ -324,47 +267,66 @@
 #versus-reconnect .versus-head h2 { font-size: max(22px, calc(var(--u) * 2.2)); white-space: normal; }
 #versus-reconnect p { margin: 14px 0 20px; font: 400 14px/1.5 var(--d-sans); color: var(--d-paper); }
 .versus-reconnect-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
-#versus-reconnect button { min-height: 40px; padding: 8px 18px; border: 1px solid var(--d-copper); background: #0e1a25; font: 600 13px/1 var(--d-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--d-ivory); box-shadow: inset 0 0 0 2px #0e1a25, inset 0 0 0 3px var(--d-copper-faint); }
 #versus-reconnect button:disabled { opacity: .45; }
 
 /* ---------- a Duel's pause (ui/PauseOverlay.dressForDuel): the cabinet's, not the descent's ---------- */
 body.play-active #pause-overlay.duel-pause, #pause-overlay.duel-pause { z-index: 62; }
 #pause-overlay.duel-pause { background: radial-gradient(ellipse 70% 70% at 50% 50%, #0b0f13cc, #05080bf0); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+/* the foundry sign, in the kit's pieces (foundry-ui.css). The markup is the campaign's pause, whose own rules outrank a
+   class, so the kit's recipes are restated here under the Duel's scope: the large panel with the gear crest, hung on two
+   chains, a lit lantern each side (the .fk-lantern spans dressForDuel adds), the menu as list rows, the match on a slot */
 #pause-overlay.duel-pause .pause-shell {
-  width: min(760px, 100%); border: 14px solid transparent; border-image: var(--d-frame) 14 / 14px stretch; border-radius: 0;
-  background: radial-gradient(110% 80% at 50% 30%, #1c242df7 0%, #141a21f7 58%, #0f1419fa 100%); box-shadow: 0 18px 60px #000c; animation: duel-pause-in .16s cubic-bezier(.2, 1.3, .4, 1);
+  position: relative; width: min(700px, 100%); overflow: visible; border: solid transparent; border-width: calc(14 * var(--fk-s)); border-radius: 0;
+  border-image: var(--fk-img-panel-large) 30 32 30 32 / calc(30 * var(--fk-s)) calc(32 * var(--fk-s)) round;
+  background: var(--fk-fill-iron); background-origin: border-box; background-clip: padding-box; image-rendering: pixelated;
+  box-shadow: 0 18px 60px #000d, inset 0 0 calc(10 * var(--fk-s)) #000c; animation: duel-pause-in .16s cubic-bezier(.2, 1.3, .4, 1);
 }
+#pause-overlay.duel-pause .pause-shell::before {
+  content: ''; position: absolute; left: 50%; bottom: calc(100% + 4 * var(--fk-s)); width: calc(78 * var(--fk-s)); height: calc(27 * var(--fk-s));
+  translate: -50% 0; z-index: 3; pointer-events: none; background: var(--fk-img-gear-crest) 0 0 / 100% 100% no-repeat;
+}
+#pause-overlay.duel-pause .pause-shell::after {
+  content: ''; position: absolute; left: 9%; right: 9%; bottom: calc(100% + 10 * var(--fk-s)); height: 100vh; z-index: -1; pointer-events: none;
+  background: var(--fk-img-chain) left bottom / calc(10 * var(--fk-s)) calc(17 * var(--fk-s)) repeat-y, var(--fk-img-chain) right bottom / calc(10 * var(--fk-s)) calc(17 * var(--fk-s)) repeat-y;
+}
+#pause-overlay:not(.duel-pause) .fk-lantern { display: none; }
+#pause-overlay.duel-pause .fk-lantern { top: 18%; }
 @keyframes duel-pause-in { from { transform: scale(1.08); opacity: 0; } }
-#pause-overlay.duel-pause .pause-main { padding: 18px 22px 18px; }
+#pause-overlay.duel-pause .pause-main { padding: calc(8 * var(--fk-s)) calc(6 * var(--fk-s)) calc(8 * var(--fk-s)) calc(10 * var(--fk-s)); }
 body.play-active #pause-overlay.duel-pause .pause-title, #pause-overlay.duel-pause .pause-title {
-  font: 800 calc(48px * var(--text-scale, 1))/1 var(--d-display); letter-spacing: .06em; text-transform: uppercase; color: #ecdcbc; text-shadow: 0 3px 0 #000a;
+  font: 800 calc(58px * var(--text-scale, 1))/1 var(--d-display); letter-spacing: .04em; text-transform: uppercase;
 }
-body.play-active #pause-overlay.duel-pause .pause-sub, #pause-overlay.duel-pause .pause-sub { font: 800 11px/1.4 var(--d-display); letter-spacing: .16em; text-transform: uppercase; color: var(--d-paper); }
+body.play-active #pause-overlay.duel-pause .pause-sub, #pause-overlay.duel-pause .pause-sub { margin-top: 4px; font: 800 11px/1.4 var(--d-display); letter-spacing: .16em; text-transform: uppercase; color: var(--fk-ink-soft); }
 /* the descent's doors, its tools and its copy have no place in a Duel */
 #pause-overlay.duel-pause :is([data-pause-open], .pause-actions, #pause-abandon), #pause-overlay.duel-pause .pause-tools { display: none !important; }
-/* the rows: big display-face buttons, the cursor a copper bar */
+/* the rows: the kit's list rows, drawn whole at the row's height (26 art px); the cursor is the row lit copper */
+#pause-overlay.duel-pause .pause-menu { gap: calc(3 * var(--fk-s)); }
 body.play-active #pause-overlay.duel-pause #pause-resume, #pause-overlay.duel-pause #pause-resume,
 body.play-active #pause-overlay.duel-pause .pause-menu button, #pause-overlay.duel-pause .pause-menu button {
-  display: flex; align-items: center; justify-content: flex-start; gap: .6em; width: 100%; min-height: 44px; margin: 0; padding: 8px 14px;
-  border: 1px solid transparent; border-radius: 4px; corner-shape: bevel; background: none; color: var(--d-paper);
-  font: 800 calc(19px * var(--text-scale, 1))/1 var(--d-display); letter-spacing: .1em; text-transform: uppercase; transition: background .06s, color .06s;
+  --fk-h: max(36px, calc(20 * var(--fk-s))); --fk-b: calc(var(--fk-h) / 26);
+  display: flex; align-items: center; justify-content: flex-start; gap: .6em; width: 100%; min-height: var(--fk-h); margin: 0; padding: 0 calc(4 * var(--fk-b));
+  border: solid transparent; border-width: calc(4 * var(--fk-b)) calc(22 * var(--fk-b)); border-radius: 0;
+  border-image: var(--fk-img-list-row) 6 22 fill / calc(6 * var(--fk-b)) calc(22 * var(--fk-b)) round stretch; background: none; color: var(--fk-row-ink, var(--fk-ink-soft));
+  font: 800 calc(16px * var(--text-scale, 1))/1 var(--d-display); letter-spacing: .12em; text-transform: uppercase; text-shadow: 0 2px 0 #000; transition: filter .06s, color .06s; image-rendering: pixelated;
 }
-#pause-overlay.duel-pause #pause-resume { margin: 14px 0 4px; }
+#pause-overlay.duel-pause #pause-resume { margin: calc(7 * var(--fk-s)) 0 calc(3 * var(--fk-s)); }
 #pause-overlay.duel-pause #pause-resume::after { content: none; }
-#pause-overlay.duel-pause .pause-menu #pause-restart { margin-top: 0; border-top: 1px solid transparent; padding-top: 8px; }
-#pause-overlay.duel-pause :is(#pause-resume, .pause-menu button)::before { content: ''; width: .5em; height: .5em; flex: none; transform: rotate(45deg) scale(0); background: var(--d-amber); transition: transform .08s; }
+#pause-overlay.duel-pause .pause-menu :is(#pause-restart, #pause-title-btn),
+#pause-overlay.duel-pause .pause-menu #pause-restart:not([hidden]) + #pause-title-btn { margin-top: 0; border-top: solid transparent; border-top-width: calc(4 * var(--fk-b)); padding-top: 0; color: var(--fk-row-ink, var(--fk-ink-soft)); }
 /* the cursor is one row: focus (keys, pad, a click) lights it; a hover lights only the row under the pointer when nothing is focused */
 body.play-active #pause-overlay.duel-pause :is(#pause-resume, .pause-menu button):focus,
 #pause-overlay.duel-pause :is(#pause-resume, .pause-menu button):focus,
 #pause-overlay.duel-pause:not(:has(:is(#pause-resume, .pause-menu button):focus)) :is(#pause-resume, .pause-menu button):hover {
-  outline: none; color: #fff1d8; border-color: #e38c4c; background: linear-gradient(90deg, #4d3027, #2e1c18 80%, #2e1c1800); box-shadow: 0 0 14px #e0894a40;
+  --fk-row-ink: var(--fk-ink-hot); outline: none; color: var(--fk-row-ink); border-image-source: var(--fk-img-list-row-hot); background: none; box-shadow: none; text-shadow: 0 2px 0 #3a1404, 0 0 3px #3a1404; filter: drop-shadow(0 0 10px #ff7a2a88);
 }
-#pause-overlay.duel-pause :is(#pause-resume, .pause-menu button):focus::before,
-#pause-overlay.duel-pause:not(:has(:is(#pause-resume, .pause-menu button):focus)) :is(#pause-resume, .pause-menu button):hover::before { transform: rotate(45deg) scale(1); }
 /* the pointer moves the cursor: hovering a row focuses it (PauseOverlay) */
 #pause-overlay.duel-pause #pause-duel-controls[aria-expanded="true"] { color: var(--d-teal); }
 /* the side card: the match (stage, both fighters' stocks and percent), or the button layout behind Controls */
-#pause-overlay.duel-pause .pause-status { border-left: 1px solid var(--d-copper-dim); background: #0d1217b3; padding: 18px 20px; }
+#pause-overlay.duel-pause .pause-status {
+  margin: calc(6 * var(--fk-s)) calc(6 * var(--fk-s)) calc(6 * var(--fk-s)) calc(2 * var(--fk-s)); padding: calc(7 * var(--fk-s)) calc(9 * var(--fk-s));
+  border: solid transparent; border-width: calc(5 * var(--fk-s)); border-image: var(--fk-img-slot) 7 / calc(7 * var(--fk-s)) round;
+  background: var(--fk-fill-slot); background-origin: border-box; background-clip: padding-box; box-shadow: inset 0 calc(2 * var(--fk-s)) calc(8 * var(--fk-s)) #000d;
+}
 #pause-overlay.duel-pause .pause-status .menu-label { font: 800 11px/1 var(--d-display); letter-spacing: .2em; color: var(--d-copper-hi); }
 #pause-overlay.duel-pause #pause-place { font: 800 calc(24px * var(--text-scale, 1))/1.05 var(--d-display); letter-spacing: .04em; text-transform: uppercase; color: var(--d-ivory); }
 #pause-overlay.duel-pause #pause-goal { font: 700 12px/1.4 var(--d-serif); letter-spacing: .14em; text-transform: uppercase; color: var(--d-paper); }
@@ -391,6 +353,62 @@ body.versus-active #pause-overlay .pause-menu button[data-pause-open="KeyB"] { d
 .pause-duel-controls dt { margin: 0; color: var(--m-text, #e6dfca); font-weight: 600; white-space: nowrap; }
 .pause-duel-controls dd { margin: 0; color: var(--m-muted, #97a89f); }
 
+/* =====================================================================
+ * THE FOUNDRY KIT ON THE SELECT SCREENS (foundry-ui.css): the panels,
+ * headings, medallion, nameplates, cards, seals, arrows, picture tiles,
+ * plate buttons, keycaps and the hanging status sign are the kit's
+ * classes on the markup (VersusLobby, DuelLobby); the rules here only
+ * place and size them for these screens.
+ * ===================================================================== */
+.versus-head :is(h1, h2).fk-heading-cast { font-size: max(28px, calc(var(--u) * 3.5)); letter-spacing: .06em; }
+.versus-head .fk-heading-cast--ruled::before, .versus-head .fk-heading-cast--ruled::after { width: max(22px, calc(var(--u) * 3.4)); }
+/* (DUEL reads over the busts: a dark halo hugs its letters) */
+.versus-duel > .versus-head h1.fk-heading-cast { filter: drop-shadow(0 -1px 0 #ffd49a66) drop-shadow(0 2px 0 #120703) drop-shadow(0 3px 0 #0008) drop-shadow(0 0 6px #0c0a09) drop-shadow(0 0 .35em #ff8a3a44); }
+.versus-head p.fk-engraved { letter-spacing: .28em; font-family: var(--d-display); font-weight: 800; font-size: max(10px, calc(var(--u) * .82)); }
+.versus-brand .fk-heading-cast { font-size: 1.1em; }
+.versus-motto.fk-engraved { font-family: var(--d-display); font-weight: 800; color: #cbb999; }
+
+/* the fighter's nameplate under the bust (the arrows outside it) */
+/* (at half the kit's scale: a long name needs the room its end slices would take) */
+.versus-names.fk-nameplate { --fk-s: var(--fk-px-half); padding: calc(var(--u) * .15) calc(var(--u) * .9) calc(var(--u) * .3); min-width: calc(var(--u) * 13); }
+.versus-names.fk-nameplate .versus-fighter-title { margin-top: calc(var(--u) * .15); }
+.versus-names.fk-nameplate .versus-pips { margin-top: calc(var(--u) * .3); }
+/* (a long name shrinks to its plate: --name-len, its letters, set by the lobby; the plate is the size container) */
+.versus-names.fk-nameplate { container-type: inline-size; }
+.versus-seat h2.fk-heading-cast { font-size: min(max(20px, calc(var(--u) * 2.3)), calc(100cqi / (var(--name-len, 5) * .8))); letter-spacing: .05em; }
+.versus-fighter-title { color: var(--fk-ink-soft); text-shadow: 0 1px 0 #000; }
+
+/* the seat cards (.fk-card--small): a ready seat's card glows in its colour */
+.versus-device.fk-card[data-ready="true"], #duel-network .versus-device.fk-card[data-locked="true"] { box-shadow: 0 6px 16px #000b, inset 0 0 calc(6 * var(--fk-s)) #000b, 0 0 calc(var(--u) * 1.6) color-mix(in srgb, var(--seat) 45%, transparent); }
+.versus-device .versus-cycle-value, .versus-cpu .versus-cycle-value { font-family: var(--d-display); font-weight: 800; letter-spacing: .08em; }
+.versus-device-icon { color: var(--fk-ink-soft); }
+
+/* the stage tiles (.fk-picture-frame at half scale): the chosen one glows, the name on the caption plate */
+#versus-lobby .versus-stage-tile.fk-picture-frame { --fk-s: var(--fk-px-half); }
+#versus-lobby .versus-stage-tile[aria-checked="true"] { filter: drop-shadow(0 0 2px #ffb36a) drop-shadow(0 0 calc(var(--u) * 1.2) #ff9a4a99); }
+#versus-lobby .versus-stage-tile:focus-visible { filter: drop-shadow(0 0 2px #ffd29a) drop-shadow(0 0 calc(var(--u) * 1.4) #ffb36acc); }
+.versus-stage-tile .versus-stage-name { font-size: max(11px, calc(var(--u) * 1.05)); }
+.versus-stage-tile[aria-checked="true"] .versus-stage-name { color: #ffd9a6; text-shadow: 0 2px 0 #000, 0 0 8px #ff9a4a88; }
+
+/* the rules bar on a slot */
+.versus-rules.fk-slot li { font: 700 max(13px, calc(var(--u) * 1.25))/1.2 var(--d-serif); letter-spacing: .04em; color: #e3d4b6; }
+.versus-stage-foot { color: #cbb999; font-family: var(--d-display); font-weight: 800; letter-spacing: .24em; }
+
+/* the footer: keycaps, and the status on the hanging nameplate between two lanterns (its chains rise to the panels) */
+.versus-footer .fk-keycap { --fk-h: max(22px, calc(11 * var(--fk-s))); font-size: max(11px, calc(var(--u) * .95)); }
+.versus-status.fk-hanging-nameplate { --fk-b: max(1px, calc(var(--fk-s) * .7)); padding: calc(var(--u) * .2) calc(var(--u) * 1); animation: none; }
+/* (waiting, the words blink, not the sign) */
+.versus-status.fk-hanging-nameplate:not([data-go="true"]) { animation: versus-status-blink 1.1s steps(1) infinite; }
+@keyframes versus-status-blink { 60% { color: #8f826c; } }
+:is(#versus-lobby, #duel-network) .versus-back { font-family: var(--d-display); font-weight: 800; color: var(--fk-ink-soft); }
+
+/* the VS card's painted VS */
+.versus-splash-vs .fk-word { filter: drop-shadow(0 6px 0 #1a0c06) drop-shadow(0 0 40px #ef9a48aa); }
+
+/* the reconnect card */
+#versus-reconnect .versus-panel.fk-panel { width: min(560px, 100%); }
+#versus-reconnect .fk-button { --fk-h: 48px; font-size: 15px; }
+
 @media (prefers-reduced-motion: reduce) {
   #versus-lobby *, #versus-reconnect *, #duel-network *, #pause-overlay.duel-pause * { transition: none !important; animation: none !important; }
   .versus-backdrop > div { transform: none; }
@@ -400,7 +418,6 @@ body.versus-active #pause-overlay .pause-menu button[data-pause-open="KeyB"] { d
 @media (max-width: 1000px) {
   .versus-panel { aspect-ratio: 745 / 640; }
   .versus-duel { grid-template-columns: 1fr calc(var(--u) * 6.4) 1fr; }
-  .versus-vs { width: calc(var(--u) * 7); }
   .versus-device-icon { display: none; }
   .versus-seat h2 { font-size: max(17px, calc(var(--u) * 2.2)); }
   .versus-cpu .versus-level { display: none; }
@@ -415,17 +432,18 @@ body.versus-active #pause-overlay .pause-menu button[data-pause-open="KeyB"] { d
   .versus-top { flex-wrap: wrap; }
   .versus-motto { display: none; }
   .versus-panels { grid-template-columns: 1fr; gap: 14px; align-self: start; }
-  .versus-panel { aspect-ratio: auto; border-width: 12px; border-image-width: 12px; }
+  .versus-panel { aspect-ratio: auto; }
   .versus-duel { grid-template-columns: 1fr 52px 1fr; grid-template-rows: auto 190px auto auto auto; column-gap: 4px; padding: 6px 4px 14px; }
   .versus-seat { min-height: 230px; }
-  .versus-vs { width: 58px; margin-top: 0; }
+  .versus-vs { margin-top: 0; }
   .versus-device-icon { display: inline-flex; }
   .versus-cpu .versus-level { display: inline-flex; }
   .versus-keys > span:nth-child(n+3) { display: inline-flex; }
   .versus-portrait-frame { inset: 0 -4px 40px; }
-  .versus-vs span { font-size: 22px; }
   .versus-seat h2 { font-size: 19px; }
   .versus-fighter-title { letter-spacing: .14em; }
+  .versus-names.fk-nameplate { min-width: 0; padding: 2px 3px 4px; }
+  .versus-seat h2.fk-heading-cast { font-size: min(17px, calc(100cqi / (var(--name-len, 5) * .8))); letter-spacing: .03em; }
   .versus-head :is(h1, h2) { font-size: 24px; gap: 8px; }
   .versus-head :is(h1, h2)::before, .versus-head :is(h1, h2)::after { width: 22px; min-width: 22px; }
   .versus-head p { letter-spacing: .18em; }

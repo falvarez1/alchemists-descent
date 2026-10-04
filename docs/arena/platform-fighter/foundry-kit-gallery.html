@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foundry kit gallery</title>
+<!-- Every class of src/styles/foundry-ui.css on plain markup: a reference for screens adopting the kit. Open it from the dev
+     server (npm run dev): /docs/arena/platform-fighter/foundry-kit-gallery.html. The art itself: UI-KIT.md. -->
+<link rel="stylesheet" href="/src/styles/foundry-ui.css">
+<style>
+  body { margin: 0; padding: 40px 60px 80px; background: #0d1217; color: var(--fk-ink); font: 15px/1.4 var(--fk-font-serif); }
+  h3 { margin: 28px 0 10px; font: 700 12px/1 system-ui, sans-serif; letter-spacing: .2em; color: #7d8a94; text-transform: uppercase; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 24px; }
+  .col { display: flex; flex-direction: column; gap: 6px; width: 340px; }
+</style>
+</head>
+<body>
+  <div class="row" style="align-items: flex-start; gap: 90px; padding-top: 50px">
+    <section class="fk-panel fk-panel--crested fk-panel--hung" style="width: 520px; padding: 18px 26px 24px; text-align: center">
+      <span class="fk-lantern fk-lantern--left"></span><span class="fk-lantern fk-lantern--right"></span>
+      <h1 class="fk-heading-cast fk-heading-cast--ruled" style="margin: 0; font-size: 46px; text-transform: uppercase">Options</h1>
+      <p class="fk-ribbon" style="margin: 10px 0 18px">The furnace keeps its own.</p>
+      <div class="col" style="margin: 0 auto; text-align: left">
+        <button class="fk-list-row">Resume</button>
+        <button class="fk-list-row" aria-current="true">Audio (current row)</button>
+        <button class="fk-list-row">Controls</button>
+      </div>
+      <div class="row" style="justify-content: center; margin-top: 18px">
+        <button class="fk-button fk-button--primary" style="min-width: 190px">Confirm</button>
+        <button class="fk-button fk-button--secondary" style="min-width: 190px">Back</button>
+      </div>
+    </section>
+    <section class="fk-panel fk-panel--small" style="width: 380px; padding: 16px 22px; text-align: center">
+      <span class="fk-title-plate"><span class="fk-heading-cast" style="font-size: 22px; text-transform: uppercase">Quit the match?</span></span>
+      <p class="fk-engraved" style="margin: 14px 0">The furnace will not wait. Your progress here is lost.</p>
+      <div class="row" style="justify-content: center"><button class="fk-button fk-button--primary" style="--fk-h: 48px">Quit</button><button class="fk-button fk-button--secondary" style="--fk-h: 48px">Stay</button></div>
+    </section>
+  </div>
+
+  <h3>Cards, slots, nameplates, tiles</h3>
+  <div class="row">
+    <div class="fk-card" style="width: 220px; padding: 10px">Player 1 card</div>
+    <div class="fk-card fk-card--teal" style="width: 220px; padding: 10px">Player 2 card</div>
+    <div class="fk-card fk-card--small" style="width: 180px; padding: 8px">Small card</div>
+    <div class="fk-slot" style="width: 260px; padding: 8px 14px">3 stocks · 6 minutes</div>
+    <div class="fk-nameplate" style="padding: 4px 18px; text-align: center"><div class="fk-heading-cast" style="font-size: 26px">BRANN</div><small class="fk-engraved">IRON PILGRIM</small></div>
+    <button class="fk-picture-frame" style="width: 130px; padding: 0"><span style="display: block; height: 130px; background: linear-gradient(#5a2a12, #120806)"></span><span class="fk-picture-frame__caption">Foundry</span></button>
+  </div>
+
+  <h3>HUD card, meter, beads, hanging sign</h3>
+  <div class="row">
+    <div class="fk-hud-card" style="width: 340px"><div class="fk-hud-card__window"></div><div class="fk-hud-card__body"><div>P1 ILYRA <b style="font-size: 28px">42%</b></div><span class="fk-bead" data-on="true"></span> <span class="fk-bead" data-on="true"></span> <span class="fk-bead"></span><div><span class="fk-meter"><span class="fk-meter__cell" data-filled="true"></span><span class="fk-meter__cell" style="--fk-fill: 60%"></span></span></div></div></div>
+    <div class="fk-hud-card fk-hud-card--teal" style="width: 340px"><div class="fk-hud-card__window"></div><div class="fk-hud-card__body" style="text-align: right">P2 BRANN <span class="fk-bead fk-bead--teal" data-on="true"></span><span class="fk-bead fk-bead--teal"></span><div><span class="fk-meter" style="--fk-cells: 3"><span class="fk-meter__cell" data-filled="true"></span><span class="fk-meter__cell" data-filled="true"></span><span class="fk-meter__cell"></span></span></div></div></div>
+    <div class="fk-hanging-sign" style="margin-top: 0">5:58</div>
+  </div>
+
+  <h3>Hanging nameplate, band, banner plate, words</h3>
+  <div class="row" style="padding-top: 120px">
+    <p class="fk-hanging-nameplate fk-hanging-nameplate--lit" style="margin: 0 40px; padding: 4px 16px; font: 800 16px/1.2 var(--fk-font-display); letter-spacing: .12em">P1 · PRESS ENTER</p>
+    <div class="fk-band"><span class="fk-heading-cast" style="font-size: 34px">ILYRA WINS</span></div>
+    <div class="fk-banner-plate" style="--fk-s: 1px"><span class="fk-word fk-word--fight">Fight!</span></div>
+    <span class="fk-word fk-word--3" style="--fk-word-s: 1px">3</span>
+    <span class="fk-medallion"><span class="fk-word fk-word--vs">VS</span></span>
+  </div>
+
+  <h3>Marks and inputs</h3>
+  <div class="row">
+    <div class="fk-divider" style="width: 260px"></div>
+    <p class="fk-or" style="width: 260px; margin: 0"><span>or</span></p>
+    <span class="fk-seal"></span><span class="fk-seal" data-on="true"></span><span class="fk-seal fk-seal--teal" data-on="true"></span>
+    <button class="fk-arrow fk-arrow--prev" style="width: 26px; height: 34px"></button><button class="fk-arrow fk-arrow--next" style="width: 26px; height: 34px"></button>
+    <kbd class="fk-keycap">A</kbd><kbd class="fk-keycap">Esc</kbd><kbd class="fk-keycap">Enter</kbd><kbd class="fk-keycap">Space</kbd>
+  </div>
+  <div class="row" style="margin-top: 20px">
+    <button class="fk-toggle" aria-pressed="false">Off</button><button class="fk-toggle" aria-pressed="true">On</button>
+    <input type="checkbox" class="fk-checkbox"><input type="checkbox" class="fk-checkbox" checked>
+    <input type="range" class="fk-slider" style="width: 260px; --fk-value: 65%" value="65">
+    <span class="fk-tab">Audio</span><span class="fk-tab fk-tab--active">Video</span><span class="fk-tab">Controls</span>
+    <span class="fk-tooltip">Melee hits recharge faster.<br>The burst is separate.</span>
+  </div>
+</body>
+</html>
