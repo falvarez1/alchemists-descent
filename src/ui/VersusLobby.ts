@@ -1,10 +1,10 @@
 import type { Ctx } from '@/core/types';
-import type { VersusDevice } from '@/core/versus';
-import { FIGHTER_DEFS, FIGHTER_ORDER, fighterPortraitUrl } from '@/content/fighters';
+import type { VersusApi, VersusDevice } from '@/core/versus';
+import { FIGHTER_DEFS, FIGHTER_ORDER } from '@/content/fighters';
 import { STOCK_STAGES, STOCK_STAGE_ORDER, type StockStageId } from '@/config/stockStage';
 import { STOCK_RULES } from '@/config/stockRules';
 import { GAME_TITLE } from '@/config/brand';
-import { DUEL_ICON, duelShortName, duelTitle } from '@/ui/duelCopy';
+import { DUEL_ICON, duelShortName, duelTitle, showFighterArt } from '@/ui/duelCopy';
 import '@/styles/versus.css';
 
 interface SeatView {
@@ -17,31 +17,41 @@ const CPU_LEVELS = ['1 · Gentle', '2 · Easy', '3 · Normal', '4 · Hard', '5 �
 
 const deviceIcon = (device: VersusDevice): string => device === 'cpu' ? DUEL_ICON.cpu : device === 'keyboard' ? DUEL_ICON.keyboard : DUEL_ICON.controller;
 
+/** The keyboard player's seat while it still has to ready (the big READY is the keyboard and mouse's own confirm). */
+function keyboardWaiting(session: VersusApi): number {
+  return session.seats.findIndex((s, slot) => s.device === 'keyboard' && !s.ready && !session.disconnected.includes(slot));
+}
+
 /**
  * Player-facing selection and reconnect screens (docs/arena/platform-fighter/concepts/local-versus.png): the DUEL panel
- * (two portraits facing across a compass VS, each seat's device and ready), the CHOOSE A STAGE panel (four tiles and
- * the rules), and a quiet footer for the way back, the status and the controller legend.
+ * (two busts facing across a compass VS, each seat's card: player, device, readiness) with one big READY under them,
+ * the CHOOSE A STAGE panel (four tiles and the rules), the chosen stage's backdrop behind both, and a quiet footer for
+ * the way back, the status and the controller legend. Readiness is per player: a controller readies its own seat with
+ * A, the keyboard and mouse with READY (which also starts the match once everyone is ready, so a lone keyboard player
+ * against a CPU is one click); a seat's check badge toggles it by pointer too.
  */
 export class VersusLobby {
   private readonly root = document.createElement('section');
   private readonly reconnect = document.createElement('section');
   private readonly seats: SeatView[] = [];
   private readonly stages = new Map<StockStageId, HTMLButtonElement>();
+  private readonly backdrops: HTMLElement[] = [];
   private readonly start = document.createElement('button');
   private readonly status = document.createElement('p');
-  private readonly stageName = document.createElement('h3');
-  private readonly stageTagline = document.createElement('p');
+  private readonly stageLine = document.createElement('p');
   private readonly keys = document.createElement('p');
   private readonly notice = document.createElement('p');
   private readonly offs: Array<() => void> = [];
   private deviceKey = '';
+  private backdropStage = '';
   private shown = false;
 
   constructor(private readonly ctx: Ctx) {
     this.root.id = 'versus-lobby'; this.root.hidden = true;
     this.root.setAttribute('role', 'dialog'); this.root.setAttribute('aria-modal', 'true'); this.root.setAttribute('aria-labelledby', 'versus-heading');
     const minutes = Math.round(STOCK_RULES.timeTicks / 3600);
-    this.root.innerHTML = `<div class="versus-shell">
+    this.root.innerHTML = `<div class="versus-backdrop" aria-hidden="true"><div></div><div></div></div>
+    <div class="versus-shell">
       <div class="versus-top"><p class="versus-brand"><span class="versus-sigil">${DUEL_ICON.sigil}</span>${GAME_TITLE}</p><p class="versus-motto">Matter fights back.</p></div>
       <div class="versus-panels">
         <section class="versus-panel versus-duel">
@@ -53,17 +63,16 @@ export class VersusLobby {
         <section class="versus-panel versus-stages" aria-labelledby="versus-stage-heading">
           <div class="versus-head"><h2 id="versus-stage-heading">Choose a stage</h2><p>Different grounds. The same hunger.</p></div>
           <div class="versus-stage-grid" role="radiogroup" aria-labelledby="versus-stage-heading"></div>
-          <div class="versus-stage-detail" aria-live="polite"></div>
           <ul class="versus-rules" aria-label="Duel rules">
             <li>${DUEL_ICON.stock}<span>${STOCK_RULES.stocks} stocks</span></li>
             <li>${DUEL_ICON.hourglass}<span>${minutes} minutes</span></li>
             <li>${DUEL_ICON.noHazards}<span>Hazards off</span></li>
           </ul>
-          <p class="versus-stage-foot">Same elements. New perspective.</p>
         </section>
       </div>
       <footer class="versus-footer"></footer>
     </div>`;
+    this.backdrops.push(...this.root.querySelectorAll<HTMLElement>('.versus-backdrop > div'));
     const seatRow = this.root.querySelector('.versus-seats')!, devices = this.root.querySelector('.versus-devices')!;
     for (let slot = 0; slot < 2; slot++) {
       const player = `Player ${slot + 1}`;
@@ -88,8 +97,12 @@ export class VersusLobby {
       card.append(frame, plate);
       if (slot === 0) seatRow.prepend(card); else seatRow.append(card);
 
+      // The seat card: "PLAYER N" and its readiness badge, then ◂ device ▸ (and a CPU's difficulty).
       const box = document.createElement('div'); box.className = `versus-device versus-device-${slot}`;
       const label = document.createElement('span'); label.className = 'versus-device-label'; label.textContent = player;
+      const ready = document.createElement('button'); ready.type = 'button'; ready.className = 'versus-ready';
+      ready.setAttribute('aria-label', `Ready player ${slot + 1}`); ready.innerHTML = DUEL_ICON.check;
+      ready.addEventListener('click', () => ctx.versus?.ready(slot));
       const row = document.createElement('div'); row.className = 'versus-device-row';
       const icon = document.createElement('span'); icon.className = 'versus-device-icon';
       const device = document.createElement('select'); device.setAttribute('aria-label', `${player} device`);
@@ -108,10 +121,7 @@ export class VersusLobby {
         return arrow;
       };
       row.append(cycle(-1), icon, device, cycle(1));
-      const ready = document.createElement('button'); ready.type = 'button'; ready.className = 'versus-ready';
-      ready.setAttribute('aria-label', `Ready player ${slot + 1}`);
-      ready.addEventListener('click', () => ctx.versus?.ready(slot));
-      // A CPU seat is always ready: its strip chooses how hard it plays instead (arena/ai, LocalVersus.chooseDifficulty).
+      // A CPU seat is always ready; its card says how hard it plays (arena/ai, LocalVersus.chooseDifficulty).
       const cpu = document.createElement('label'); cpu.className = 'versus-cpu'; cpu.hidden = true;
       const cpuLabel = document.createElement('span'); cpuLabel.textContent = 'Difficulty';
       const difficulty = document.createElement('select'); difficulty.setAttribute('aria-label', `${player} CPU difficulty`);
@@ -119,12 +129,12 @@ export class VersusLobby {
       difficulty.title = 'Higher levels react faster and adapt more strongly to moves that work against you.';
       difficulty.addEventListener('change', () => ctx.versus?.chooseDifficulty(slot, Number(difficulty.value)));
       cpu.append(cpuLabel, difficulty);
-      box.append(label, row, cpu, ready); devices.append(box);
+      box.append(label, ready, row, cpu); devices.append(box);
       this.seats.push({ card, box, image, name, title, prev, next, icon, device, ready, cpu, difficulty });
     }
 
-    this.start.type = 'button'; this.start.id = 'versus-start'; this.start.textContent = 'Fight';
-    this.start.addEventListener('click', () => { ctx.audio.ensure(); void ctx.versus?.start(); });
+    this.start.type = 'button'; this.start.id = 'versus-start'; this.start.textContent = 'Ready';
+    this.start.addEventListener('click', () => this.readyUp());
     this.root.querySelector('.versus-go')!.append(this.start);
 
     const grid = this.root.querySelector<HTMLElement>('.versus-stage-grid')!;
@@ -137,8 +147,8 @@ export class VersusLobby {
       grid.append(tile); this.stages.set(id, tile);
     }
     grid.addEventListener('keydown', this.onStageKey);
-    this.stageName.className = 'versus-stage-title'; this.stageTagline.className = 'versus-stage-tagline';
-    this.root.querySelector('.versus-stage-detail')!.append(this.stageName, this.stageTagline);
+    this.stageLine.className = 'versus-stage-foot'; this.stageLine.setAttribute('aria-live', 'polite');
+    this.root.querySelector('.versus-stages')!.append(this.stageLine);
 
     const back = document.createElement('button'); back.type = 'button'; back.className = 'versus-back'; back.textContent = 'Back to title';
     back.addEventListener('click', () => this.leave());
@@ -160,6 +170,15 @@ export class VersusLobby {
   }
   private leave(): void {
     this.ctx.versus?.close(); window.dispatchEvent(new Event('expedition-title-request'));
+  }
+  /** READY: the keyboard and mouse player's confirm. It readies their seat, and starts the match once everyone is ready. */
+  private readyUp(): void {
+    const session = this.ctx.versus;
+    if (!session || session.phase !== 'lobby') return;
+    this.ctx.audio.ensure();
+    const waiting = keyboardWaiting(session);
+    if (!session.canStart && waiting >= 0) session.ready(waiting);
+    if (session.canStart) void session.start();
   }
   private readonly onKey = (event: KeyboardEvent): void => {
     if (event.key === 'Escape' && !this.root.hidden) { event.preventDefault(); event.stopPropagation(); this.leave(); return; }
@@ -192,6 +211,21 @@ export class VersusLobby {
     if (action === 'previous' || action === 'next') at = (at + (action === 'next' ? 1 : controls.length - 1)) % controls.length;
     controls[at]?.focus(); if (action === 'confirm') controls[at]?.click();
   }
+  /** The chosen stage's backdrop behind the lobby, cross-faded between two layers. */
+  private showBackdrop(id: StockStageId): void {
+    if (this.backdropStage === id) return;
+    this.backdropStage = id;
+    const [a, b] = this.backdrops, next = a.classList.contains('on') ? b : a, prev = next === a ? b : a;
+    next.style.backgroundImage = `url("${import.meta.env.BASE_URL}${STOCK_STAGES[id].backdrop}")`;
+    next.dataset.stage = id; next.classList.add('on'); prev.classList.remove('on');
+  }
+  private statusText(session: VersusApi): string {
+    if (session.message) return session.message;
+    if (session.disconnected.length) return 'Reconnect the missing controller or choose another device.';
+    if (session.canStart) return 'Both fighters are ready.';
+    const waiting = session.seats.flatMap((seat, slot) => seat.ready ? [] : [`Player ${slot + 1}: ${seat.device === 'keyboard' ? 'press Ready' : 'press A'}`]);
+    return waiting.join(' · ');
+  }
   private update(): void {
     const session = this.ctx.versus;
     if (!session) return;
@@ -214,7 +248,7 @@ export class VersusLobby {
     const deviceKey = JSON.stringify([session.devices, session.seats.map(s => s.device)]);
     for (let slot = 0; slot < 2; slot++) {
       const seat = session.seats[slot], view = this.seats[slot], def = FIGHTER_DEFS[seat.fighter];
-      if (view.image.dataset.fighter !== seat.fighter) { view.image.src = fighterPortraitUrl(seat.fighter); view.image.dataset.fighter = seat.fighter; }
+      showFighterArt(view.image, seat.fighter);
       view.name.textContent = duelShortName(seat.fighter); view.name.title = def.name; view.title.textContent = duelTitle(seat.fighter);
       view.prev.disabled = view.next.disabled = loading;
       if (deviceKey !== this.deviceKey) {
@@ -227,11 +261,11 @@ export class VersusLobby {
       }
       view.device.value = seat.device; view.device.disabled = loading;
       const isCpu = seat.device === 'cpu';
-      view.ready.textContent = isCpu ? 'CPU ready' : 'Ready'; view.ready.hidden = isCpu;
       view.ready.setAttribute('aria-pressed', String(seat.ready)); view.ready.disabled = isCpu || loading || session.disconnected.includes(slot);
+      view.ready.title = isCpu ? 'The CPU is always ready' : seat.ready ? `Player ${slot + 1} is ready` : `Ready player ${slot + 1}`;
       view.cpu.hidden = !isCpu; view.difficulty.value = String(seat.cpuLevel); view.difficulty.disabled = loading;
       view.card.dataset.ready = view.box.dataset.ready = String(seat.ready);
-      view.box.dataset.device = seat.device === 'cpu' || seat.device === 'keyboard' ? seat.device : 'pad';
+      view.box.dataset.device = isCpu || seat.device === 'keyboard' ? seat.device : 'pad';
     }
     this.deviceKey = deviceKey;
     for (const [id, tile] of this.stages) {
@@ -239,12 +273,14 @@ export class VersusLobby {
       tile.setAttribute('aria-checked', String(on)); tile.tabIndex = on ? 0 : -1; tile.disabled = loading;
     }
     const stage = STOCK_STAGES[session.stage];
-    this.stageName.textContent = stage.name; this.stageTagline.textContent = stage.tagline;
-    this.start.disabled = !session.canStart;
-    this.status.textContent = session.message || (session.disconnected.length ? 'Reconnect the missing controller or choose another device.' : session.canStart ? 'Both fighters are ready.' : 'Choose your fighters and ready each player.');
+    this.stageLine.textContent = `${stage.name} · ${stage.tagline}`;
+    this.showBackdrop(session.stage);
+    this.start.disabled = loading || (!session.canStart && keyboardWaiting(session) < 0);
+    this.start.dataset.go = String(session.canStart);
+    this.status.textContent = this.statusText(session);
     const pads = session.devices.some(d => d.device.startsWith('pad:'));
     this.keys.hidden = !pads; this.notice.hidden = pads;
-    if (!this.shown) { (this.seats[0].ready.disabled ? this.start : this.seats[0].ready).focus({ preventScroll: true }); this.shown = true; }
+    if (!this.shown) { this.start.focus({ preventScroll: true }); this.shown = true; }
   }
   dispose(): void { for (const off of this.offs) off(); this.root.remove(); this.reconnect.remove(); document.body.classList.remove('versus-active'); }
 }

@@ -37,8 +37,11 @@ try {
   const keyboard = page.getByRole('combobox', { name: 'Player 1 device', exact: true });
   const rival = page.getByRole('combobox', { name: 'Player 2 device', exact: true });
   assert.equal(await keyboard.inputValue(), 'keyboard'); assert.equal(await rival.inputValue(), 'cpu');
-  assert.equal(await page.locator('#versus-start').isDisabled(), true);
-  await page.getByRole('button', { name: 'Ready player 1', exact: true }).click();
+  // One big READY (concepts/local-versus.png); each seat shows its own readiness. A lone keyboard player against a CPU
+  // readies and starts with one click.
+  assert.equal((await page.locator('#versus-start').textContent())?.trim(), 'Ready');
+  assert.equal(await page.getByRole('button', { name: 'Ready player 1', exact: true }).getAttribute('aria-pressed'), 'false');
+  assert.equal(await page.getByRole('button', { name: 'Ready player 2', exact: true }).getAttribute('aria-pressed'), 'true', 'a CPU seat is ready');
   await page.locator('#versus-start').click();
   await page.locator('#versus-lobby').waitFor({ state: 'hidden', timeout: 30000 });
   await page.locator('#stock-match-hud').waitFor({ state: 'visible' });

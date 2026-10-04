@@ -1,4 +1,4 @@
-import { FIGHTER_DEFS, type FighterId } from '@/content/fighters';
+import { FIGHTER_DEFS, fighterPortraitUrl, type FighterId } from '@/content/fighters';
 
 /**
  * The Duel screens' words and small glyphs (docs/arena/platform-fighter/concepts/local-versus.png): the short name a
@@ -9,6 +9,25 @@ import { FIGHTER_DEFS, type FighterId } from '@/content/fighters';
 export function duelShortName(id: FighterId): string {
   const words = FIGHTER_DEFS[id].name.split(' ');
   return words[0] === 'Father' ? words[words.length - 1] : words[0];
+}
+
+/** The Duel's painted bust of a fighter (facing right), under public/assets/arena/fighters/<id>/. */
+export function duelBustUrl(id: FighterId): string {
+  return `${import.meta.env.BASE_URL}assets/arena/fighters/${id}/bust.webp`;
+}
+
+/**
+ * Show a fighter's bust in `img`, falling back to the roster portrait when the bust is missing. `data-art` says which
+ * one is showing ('bust' | 'portrait') so the styles can frame each (a full-body portrait needs a tighter crop).
+ */
+export function showFighterArt(img: HTMLImageElement, id: FighterId): void {
+  if (img.dataset.fighter === id) return;
+  img.dataset.fighter = id; img.dataset.art = 'bust';
+  img.onerror = () => {
+    if (img.dataset.fighter !== id || img.dataset.art !== 'bust') return;
+    img.dataset.art = 'portrait'; img.src = fighterPortraitUrl(id);
+  };
+  img.src = duelBustUrl(id);
 }
 
 /** 'The Cinder Alchemist' -> 'Cinder Alchemist'. */
@@ -44,6 +63,7 @@ export const DUEL_ICON = {
   shield: svg('<path d="M12 3.2 19 6v5.4c0 4.4-3 7.7-7 9.4-4-1.7-7-5-7-9.4V6Z"/>'),
   burst: svg('<path d="M12 20V5M6.5 10.5 12 5l5.5 5.5"/>'),
   air: svg('<path d="M3.5 9.5h11a3 3 0 1 0-3-3M3.5 14.5h14a3 3 0 1 1-3 3"/>'),
+  check: svg('<path d="M5 12.6 9.6 17.2 19 7.4" stroke-width="2.6"/>'),
   ledge: svg('<path d="M4 6h9v14M13 6c3.5 0 6 2.2 6 5"/><path d="M17 9.5l2 1.6 1.6-2"/>'),
   /** The house mark beside the game's name: a circle in a triangle, a line through both. */
   sigil: svg('<path d="M12 2.8 21.4 19.6H2.6Z"/><circle cx="12" cy="13.6" r="5.2"/><path d="M12 2.8v16.8M7 19.6l5-5.8 5 5.8"/>'),

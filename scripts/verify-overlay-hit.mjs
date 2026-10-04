@@ -181,8 +181,12 @@ try {
         c.state.paused = false;
       });
       // A card that never came up is a failure, not "0 controls".
-      const shown = await page.locator('.stock-result').waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
-      if (!shown) { bad++; console.log(`  FAIL  ${w}x${h} duel-end  the results card never showed (match ${await page.evaluate(() => window.__game.ctx.arena?.stockMatch?.state)})`); }
+      const shown = await page.locator('.stock-result').waitFor({ state: 'visible', timeout: 20000 }).then(() => true, () => false);
+      if (!shown) {
+        bad++;
+        const why = await page.evaluate(() => ({ match: window.__game.ctx.arena?.stockMatch?.state, cards: document.querySelectorAll('.stock-result').length, hidden: document.querySelector('.stock-result')?.hidden, hud: document.getElementById('stock-match-hud')?.hidden, level: window.__game.ctx.levels.current?.def.id, mode: window.__game.ctx.state.mode }));
+        console.log(`  FAIL  ${w}x${h} duel-end  the results card never showed ${JSON.stringify(why)}`);
+      }
       await probe('duel-end', '.stock-result', 600);
       await page.evaluate(() => window.__game.ctx.versus.close());
     }

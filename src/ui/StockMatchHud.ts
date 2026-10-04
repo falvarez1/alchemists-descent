@@ -1,7 +1,7 @@
 import type { Ctx } from '@/core/types';
 import type { FighterId } from '@/content/fighters';
-import { FIGHTER_DEFS, fighterPortraitUrl } from '@/content/fighters';
-import { DUEL_ICON, DUEL_VICTORY, duelShortName } from '@/ui/duelCopy';
+import { FIGHTER_DEFS } from '@/content/fighters';
+import { DUEL_ICON, DUEL_VICTORY, duelShortName, showFighterArt } from '@/ui/duelCopy';
 import '@/styles/versus.css';
 import '@/styles/arena.css';
 
@@ -127,9 +127,7 @@ export class StockMatchHud {
       const card = this.cards[slot], f = match.fighters[slot];
       const id = arena.fighterId(slot);
       if (card.portrait.hidden !== !id) card.portrait.hidden = !id;
-      if (id && card.portrait.dataset.fighter !== id) {
-        card.portrait.src = fighterPortraitUrl(id); card.portrait.dataset.fighter = id;
-      }
+      if (id) showFighterArt(card.portrait, id);
       const name = id ? duelShortName(id) : slot === 0 ? 'Alchemist' : 'Add a rival';
       if (card.name.dataset.name !== name) { card.name.dataset.name = name; card.name.innerHTML = `<span class="stock-slot">P${slot + 1}</span>`; card.name.append(name); }
       const volatility = Math.round(f?.volatility ?? 0);
@@ -188,7 +186,7 @@ export class StockMatchHud {
     this.resultTagline.textContent = id ? DUEL_VICTORY[id].tagline : 'Neither fell further than the other.';
     const figure = document.createElement('figure'); figure.className = 'stock-result-portrait';
     const portraits: FighterId[] = id ? [id] : ids.filter((f): f is FighterId => f !== null);
-    for (const f of portraits) { const img = document.createElement('img'); img.src = fighterPortraitUrl(f); img.alt = FIGHTER_DEFS[f].name; figure.append(img); }
+    for (const f of portraits) { const img = document.createElement('img'); img.alt = FIGHTER_DEFS[f].name; showFighterArt(img, f); figure.append(img); }
     const stats = document.createElement('div'); stats.className = 'stock-result-stats';
     const list = document.createElement('dl');
     const rows: Array<[string, string]> = winner === null
