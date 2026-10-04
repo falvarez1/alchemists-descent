@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { attachDuelServer } from '../servers/duel/server';
 import type { DuelHello, DuelServerMessage } from '@/net/duel/protocol';
+import { DUEL_PROTOCOL } from '@/net/duel/protocol';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
@@ -20,7 +21,7 @@ async function server() {
       socket.on('message', (data, isBinary) => { if (isBinary) binary.push(Buffer.from(data as Buffer)); else messages.push(JSON.parse(data.toString()) as DuelServerMessage); });
       socket.on('error', () => {});
       await once(socket, 'open');
-      socket.send(JSON.stringify({ type: 'hello', protocol: 1, build: 'test', role: 'host', room: '', ...hello }));
+      socket.send(JSON.stringify({ type: 'hello', protocol: DUEL_PROTOCOL, build: 'test', role: 'host', room: '', ...hello }));
       return { socket, messages, binary };
     },
   };

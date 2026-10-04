@@ -1,0 +1,457 @@
+{
+  "version": 2,
+  "id": "brann-rook/unarmed/jump",
+  "kind": "fighter",
+  "image": "atlas.png",
+  "status": "animation-validation-candidate",
+  "source": "sources/brann-rook/unarmed/jump.png",
+  "extractionMethod": "connected-figure",
+  "extractionReview": null,
+  "detachedComponents": [],
+  "description": "One jump takeoff. Frames 1-3 lower knees in anticipation. Frames 4-6 push off and extend ankles. Frames 7-9 rise with knees folding. Frames 10-12 settle into airborne ascent. No landing. The root remains centered; local leg poses convey flight, game physics moves the body.",
+  "review": {
+    "status": "generated-motion-review-required"
+  },
+  "frameSize": 384,
+  "grid": {
+    "columns": 4,
+    "rows": 3
+  },
+  "simulationHz": 60,
+  "scale": 0.569659,
+  "pivot": {
+    "x": 192,
+    "y": 320
+  },
+  "anchorType": "feet",
+  "registration": "planted-feet",
+  "loop": false,
+  "endBehavior": "hold",
+  "totalTicks": 24,
+  "facing": {
+    "authored": "right",
+    "left": "mirror-around-root"
+  },
+  "frames": [
+    {
+      "index": 0,
+      "image": "000.png",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 2,
+      "durationMs": 33.333333333333336,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 197.5,
+        "y": 361
+      },
+      "sourceRect": {
+        "x": 59,
+        "y": 34,
+        "w": 275,
+        "h": 331
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 115.278636,
+        "y": 136.278636,
+        "w": 152.098953,
+        "h": 183.99985700000002
+      },
+      "sha256": "51ebaad54f128828ee6adbe678afef8e5ad4c8d305df1dc5c6b10e150b7c58f0"
+    },
+    {
+      "index": 1,
+      "image": "001.png",
+      "rect": {
+        "x": 384,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 2,
+      "durationMs": 33.333333333333336,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 565.5,
+        "y": 359
+      },
+      "sourceRect": {
+        "x": 430,
+        "y": 80,
+        "w": 276,
+        "h": 283
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 117.84829500000001,
+        "y": 163.848295,
+        "w": 151.529294,
+        "h": 156.086566
+      },
+      "sha256": "95c584d59e4a4d403af73222e5e9c45d16bedb8647396933d2a394128eb24aab"
+    },
+    {
+      "index": 2,
+      "image": "002.png",
+      "rect": {
+        "x": 768,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 2,
+      "durationMs": 33.333333333333336,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 923.5,
+        "y": 359
+      },
+      "sourceRect": {
+        "x": 793,
+        "y": 105,
+        "w": 282,
+        "h": 258
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 120.278636,
+        "y": 177.848295,
+        "w": 156.086566,
+        "h": 141.845091
+      },
+      "sha256": "144bc1ce92f47d8c5c5d9afa0244ca2d04f532c9000902339546e1323d9ed128"
+    },
+    {
+      "index": 3,
+      "image": "003.png",
+      "rect": {
+        "x": 1152,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 2,
+      "durationMs": 33.333333333333336,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 1267.5,
+        "y": 359
+      },
+      "sourceRect": {
+        "x": 1142,
+        "y": 20,
+        "w": 285,
+        "h": 343
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 124.417954,
+        "y": 129.848295,
+        "w": 156.086566,
+        "h": 190.266106
+      },
+      "sha256": "3d23f9996c44723d299566e9ddcff742d45f1cba94adaaf157cb2ae274558b09"
+    },
+    {
+      "index": 4,
+      "image": "004.png",
+      "rect": {
+        "x": 0,
+        "y": 384,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 2,
+      "durationMs": 33.333333333333336,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 195,
+        "y": 717
+      },
+      "sourceRect": {
+        "x": 55,
+        "y": 379,
+        "w": 302,
+        "h": 343
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 114.278636,
+        "y": 129.848295,
+        "w": 166.910087,
+        "h": 189.696447
+      },
+      "sha256": "6e0b9eb135727300034d9e5a114f2f6f678872f39a70d00b9a09cad7b8c894a3"
+    },
+    {
+      "index": 5,
+      "image": "005.png",
+      "rect": {
+        "x": 384,
+        "y": 384,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 2,
+      "durationMs": 33.333333333333336,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 556.5,
+        "y": 716
+      },
+      "sourceRect": {
+        "x": 430,
+        "y": 367,
+        "w": 282,
+        "h": 353
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 122.84829500000001,
+        "y": 123.84829500000001,
+        "w": 154.947248,
+        "h": 195.96269600000002
+      },
+      "sha256": "bd7faee75cf7a61de19d4346f63588a7ada3ddd1a1bf32bc8719a1a10389b2db"
+    },
+    {
+      "index": 6,
+      "image": "006.png",
+      "rect": {
+        "x": 768,
+        "y": 384,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 2,
+      "durationMs": 33.333333333333336,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 921.5,
+        "y": 713
+      },
+      "sourceRect": {
+        "x": 784,
+        "y": 391,
+        "w": 287,
+        "h": 326
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 116.278636,
+        "y": 139.278636,
+        "w": 158.934861,
+        "h": 181.151562
+      },
+      "sha256": "b51dc52820bba55e7371d2a204255dc9745615a30a3582a32011fac6cd0eed64"
+    },
+    {
+      "index": 7,
+      "image": "007.png",
+      "rect": {
+        "x": 1152,
+        "y": 384,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 2,
+      "durationMs": 33.333333333333336,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 1240,
+        "y": 701
+      },
+      "sourceRect": {
+        "x": 1147,
+        "y": 392,
+        "w": 276,
+        "h": 313
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 141.278636,
+        "y": 146.848295,
+        "w": 152.668612,
+        "h": 173.17633600000002
+      },
+      "sha256": "b2238c7c1e72acefac9da6d8f25f7014c97151b1e85a28643853ce2c6c4877c6"
+    },
+    {
+      "index": 8,
+      "image": "008.png",
+      "rect": {
+        "x": 0,
+        "y": 768,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 2,
+      "durationMs": 33.333333333333336,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 198,
+        "y": 1051
+      },
+      "sourceRect": {
+        "x": 62,
+        "y": 734,
+        "w": 294,
+        "h": 322
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 117.278636,
+        "y": 141.278636,
+        "w": 162.922474,
+        "h": 178.303267
+      },
+      "sha256": "94631caf135fb608b7c50811c029899148e59b3a2292b2fa3ae238bd4fd4861e"
+    },
+    {
+      "index": 9,
+      "image": "009.png",
+      "rect": {
+        "x": 384,
+        "y": 768,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 2,
+      "durationMs": 33.333333333333336,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 569,
+        "y": 1046
+      },
+      "sourceRect": {
+        "x": 429,
+        "y": 726,
+        "w": 278,
+        "h": 324
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 114.278636,
+        "y": 140.848295,
+        "w": 152.668612,
+        "h": 179.442585
+      },
+      "sha256": "e07c411011fa1d7c9f24972ad11d80d8f0ee27fb3d7f14d8e2bdb4cd99bc2e19"
+    },
+    {
+      "index": 10,
+      "image": "010.png",
+      "rect": {
+        "x": 768,
+        "y": 768,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 2,
+      "durationMs": 33.333333333333336,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 933.5,
+        "y": 1045
+      },
+      "sourceRect": {
+        "x": 792,
+        "y": 731,
+        "w": 283,
+        "h": 318
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 113.84829500000001,
+        "y": 143.848295,
+        "w": 156.086566,
+        "h": 176.024631
+      },
+      "sha256": "4b12941a534c1c4e0df10c10fe6ea8e5b80449a06379cf6607fe5ebac5046b13"
+    },
+    {
+      "index": 11,
+      "image": "011.png",
+      "rect": {
+        "x": 1152,
+        "y": 768,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 2,
+      "durationMs": 33.333333333333336,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 1303,
+        "y": 1046
+      },
+      "sourceRect": {
+        "x": 1156,
+        "y": 726,
+        "w": 277,
+        "h": 324
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 110.278636,
+        "y": 140.278636,
+        "w": 152.668612,
+        "h": 180.012244
+      },
+      "sha256": "2874b8ad2d7ddfc3123d4ccf9be712a0cc9b2fdebc58b495822efa0457fc6f4d"
+    }
+  ]
+}

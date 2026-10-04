@@ -176,6 +176,8 @@ export interface FighterApi {
   interceptProjectile(p: Projectile): boolean;
   /** An enemy took a blow from the player or the world on the player's behalf (Enemies.damage tells the system). */
   noteEnemyHurt(e: Enemy, amount: number, source: EnemyDamageSource, killed: boolean): void;
+  /** Accepted Stock damage replaces health loss; feed damage-taken passives exactly once. */
+  noteStockHurt?(amount: number): void;
   /** The blows landing this tick are melee: a kick, a limb swing, a ram (Player.kick and the weaver limbs call this). */
   noteMelee(): void;
 }

@@ -121,6 +121,7 @@ export class DuelRuntime implements RuntimeContract {
         defensePressed: pressed(B.shield),
         dodgeDirection: held(B.shield) && pressed(B.left | B.right | B.down),
         grab: pressed(B.grab),
+        climbHeld: held(B.grab),
         attack: pressed(B.attack),
         special: held(B.special),
         specialPressed: pressed(B.special),

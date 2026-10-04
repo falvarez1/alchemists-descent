@@ -164,6 +164,8 @@ export interface PlayerState {
   diveT: number;
   /** Stock-only fast fall: retains air steering and never triggers a dive attack. */
   stockFastFall: boolean;
+  /** Presentation of an expanded fighter's one-per-airborne-sequence extra jump. */
+  stockAirJumpT?: number;
   /**
    * CRAWL (docs/CRAWL.md): the second collision tier is active — the body is
    * the 9x9 box. The key expresses intent; geometry decides this flag, and it

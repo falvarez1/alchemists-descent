@@ -1,0 +1,44 @@
+{
+  "frames": {
+    "000.png": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "sourceSize": {
+        "w": 384,
+        "h": 384
+      },
+      "pivot": {
+        "x": 0.5,
+        "y": 0.8333333333333334
+      }
+    }
+  },
+  "meta": {
+    "app": "Alchemists Descent sprite exporter",
+    "version": "2",
+    "image": "atlas.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 384,
+      "h": 384
+    },
+    "scale": "1"
+  },
+  "animations": {
+    "wooden_crate": [
+      "000.png"
+    ]
+  }
+}

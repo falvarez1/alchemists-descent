@@ -1,5 +1,7 @@
 # Brann Rook, the Iron Pilgrim (Bulwark)
 
+Duel now adds four directional/neutral aerial attacks, up/down heavy attacks and a double jump to Brann's existing kit. See [Duel controls, animation coverage and verification](../arena/platform-fighter/sprite-library/animation-v2/DUO-COMPLETION.md). Both characters now have their armed animation sets integrated. Stock damage feeds Pressure, and accepted attacks feed charge.
+
 Files: `src/fighters/kits/brann-rook.ts` (the kit), `brann-rook-logic.ts` (the maths: pure, no engine imports, all
 the numbers in one `TUNING`), `brann-rook-plate.ts` (the two drawables). Tests: `tests/fighters-brann.test.ts`.
 Probe: `scripts/verify-fighter-brann.mjs` (`node scripts/verify-fighter-brann.mjs http://localhost:<port>/`,

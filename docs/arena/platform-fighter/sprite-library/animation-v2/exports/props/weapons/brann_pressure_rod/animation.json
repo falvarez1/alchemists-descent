@@ -1,0 +1,72 @@
+{
+  "version": 2,
+  "id": "props/weapons/brann_pressure_rod",
+  "kind": "prop",
+  "image": "atlas.png",
+  "status": "animation-validation-candidate",
+  "source": "sources/props/weapons/brann_pressure_rod.png",
+  "extractionMethod": "fixed-asset-grid",
+  "extractionReview": null,
+  "detachedComponents": [],
+  "description": "One short straight brass pressure rod, dark iron reinforcing collars, flared muzzle pointed right, small amber gem and practical dark grip at left. Side view, entire object.",
+  "review": {
+    "status": "generated-motion-review-required"
+  },
+  "frameSize": 384,
+  "grid": {
+    "columns": 1,
+    "rows": 1
+  },
+  "simulationHz": 60,
+  "scale": 0.25,
+  "pivot": {
+    "x": 192,
+    "y": 192
+  },
+  "anchorType": "center",
+  "registration": "center",
+  "loop": false,
+  "endBehavior": "hold",
+  "totalTicks": 1,
+  "facing": {
+    "authored": "right",
+    "left": "mirror-around-root"
+  },
+  "frames": [
+    {
+      "index": 0,
+      "image": "000.png",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 1,
+      "durationMs": 16.666666666666668,
+      "pivot": {
+        "x": 192,
+        "y": 192
+      },
+      "sourceRoot": {
+        "x": 809.5,
+        "y": 485.5
+      },
+      "sourceRect": {
+        "x": 0,
+        "y": 0,
+        "w": 1619,
+        "h": 971
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 63,
+        "y": 163.25,
+        "w": 259.25,
+        "h": 58.75
+      },
+      "sha256": "0da941d37e20e43e0b1312ca52bca4cd1046b75611a79efdd6dbc75e154a14aa"
+    }
+  ]
+}

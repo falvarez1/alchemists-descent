@@ -1,0 +1,72 @@
+{
+  "version": 2,
+  "id": "props/stage/wooden_crate",
+  "kind": "prop",
+  "image": "atlas.png",
+  "status": "animation-validation-candidate",
+  "source": "sources/props/stage/wooden_crate.png",
+  "extractionMethod": "fixed-asset-grid",
+  "extractionReview": null,
+  "detachedComponents": [],
+  "description": "One small reinforced wooden arena supply crate, dark brown planks, iron corner bands, brass bolt heads, alchemy circle on front. Flat side view with a tiny top bevel; solid closed state, no contents, no floor.",
+  "review": {
+    "status": "generated-motion-review-required"
+  },
+  "frameSize": 384,
+  "grid": {
+    "columns": 1,
+    "rows": 1
+  },
+  "simulationHz": 60,
+  "scale": 0.25,
+  "pivot": {
+    "x": 192,
+    "y": 320
+  },
+  "anchorType": "ground",
+  "registration": "ground",
+  "loop": false,
+  "endBehavior": "hold",
+  "totalTicks": 1,
+  "facing": {
+    "authored": "right",
+    "left": "mirror-around-root"
+  },
+  "frames": [
+    {
+      "index": 0,
+      "image": "000.png",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 1,
+      "durationMs": 16.666666666666668,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 686.5,
+        "y": 813
+      },
+      "sourceRect": {
+        "x": 0,
+        "y": 0,
+        "w": 1374,
+        "h": 1145
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 127.75,
+        "y": 200,
+        "w": 128,
+        "h": 120.25
+      },
+      "sha256": "4e5bc5201a8d8d84819d3764170fa0a40ca0b318977778f57257d914f7a86a54"
+    }
+  ]
+}

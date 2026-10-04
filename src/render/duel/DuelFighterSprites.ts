@@ -1,8 +1,11 @@
 import type { Ctx, PlayerState } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
 import { STOCK_RULES } from '@/config/stockRules';
+import { STOCK_DODGE } from '@/config/stockMovement';
 import { FIGHTER_DEFS, FIGHTER_ORDER, type FighterId } from '@/content/fighters';
 import { COSTUMES, recolorPixel } from '@/render/duel/costumes';
+import { advanceAnimation, animationFrame, type AnimationClock, type DuelAnimation } from '@/render/duel/animation';
+import { detailAnimation } from '@/render/duel/pose';
 
 /**
  * DUEL FIGHTER SPRITES (docs/arena/platform-fighter/IMPLEMENTATION-PLAN.md, "Concept sprites"): in stock matches a fighter
@@ -15,8 +18,10 @@ import { COSTUMES, recolorPixel } from '@/render/duel/costumes';
 
 /** [x, y, w, h, anchorX, anchorY] in atlas pixels (anchorY is the lowest solid row). */
 type FrameRect = [number, number, number, number, number, number];
-interface AtlasJson { version: number; step: number; frames: Record<string, FrameRect> }
+type Sockets = Partial<Record<'muzzle' | 'hand' | 'chest' | 'feet', { x: number; y: number }>>;
+interface AtlasJson { version: number; step: number; frames: Record<string, FrameRect>; animations?: Record<string, DuelAnimation>; sockets?: Record<string, Sockets> }
 interface Frame {
+  sockets?: Sockets;
   w: number; h: number; ax: number; ay: number; rgb: Float32Array; a: Float32Array;
   /** The same frame at cell resolution (2x2 blocks), for surfaces without the fine overlay (expanded wide shots). */
   coarse: { w: number; h: number; rgb: Float32Array; a: Uint8Array };
@@ -37,7 +42,7 @@ function coarsen(w: number, h: number, rgb: Float32Array, a: Float32Array): Fram
   }
   return { w: cw, h: ch, rgb: crgb, a: ca };
 }
-interface Atlas { step: number; frames: Map<string, Frame> }
+interface Atlas { step: number; frames: Map<string, Frame>; animations?: Record<string, DuelAnimation> }
 
 const atlases = new Map<string, Atlas | 'loading' | 'missing'>();
 
@@ -77,9 +82,9 @@ function load(id: string): void {
           a[k] = al >= 0.5 ? 1 : 0;
           rgb[k * 3] = px[s] / 255; rgb[k * 3 + 1] = px[s + 1] / 255; rgb[k * 3 + 2] = px[s + 2] / 255;
         }
-        frames.set(name, { w, h, ax, ay, rgb, a, coarse: coarsen(w, h, rgb, a) });
+        frames.set(name, { w, h, ax, ay, rgb, a, sockets: json.sockets?.[name], coarse: coarsen(w, h, rgb, a) });
       }
-      atlases.set(id, { step: json.step, frames });
+      atlases.set(id, { step: json.step, frames, animations: json.animations });
     } catch {
       atlases.set(id, 'missing');
     }
@@ -98,6 +103,7 @@ export function duelPose(ctx: Ctx, a: PlayerState): { name: string; facing: numb
   const facing = a.facing < 0 ? -1 : 1;
   const ledge = arena.stockLedge(slot);
   if (ledge?.busy) return { name: ledge.phase === 'climb' ? 'ledge_climb' : 'ledge_hang', facing: ledge.side < 0 ? -1 : 1 };
+  if (a.climbing) return { name: 'wall_cling', facing: a.climbDir < 0 ? -1 : 1 };
   if (arena.isGrabbed?.(slot)) return { name: 'hurt', facing };
   if (arena.isLaunching(slot)) return { name: 'tumble', facing: a.vx > 0.4 ? -1 : a.vx < -0.4 ? 1 : facing };
   const attack = arena.stockAttack(slot);
@@ -128,6 +134,7 @@ export function duelPose(ctx: Ctx, a: PlayerState): { name: string; facing: numb
   if (arena.isRecovering(slot)) return { name: 'recover', facing };
   if (a.staggerT > 0) return { name: 'hurt', facing };
   if (!a.grounded) {
+    if ((a.stockAirJumpT ?? 0) > 0) return { name: 'double_jump', facing };
     if (a.stockFastFall) return { name: 'fastfall', facing };
     if (a.vy < -1.2) return { name: 'rise', facing };
     if (a.vy < 0.8) return { name: 'apex', facing };
@@ -172,7 +179,7 @@ function alternateAtlas(id: FighterId, atlas: Atlas): Atlas {
     }
     frames.set(name, { ...f, rgb, coarse: coarsen(f.w, f.h, rgb, f.a) });
   }
-  alt = { step: atlas.step, frames }; alternates.set(id, alt);
+  alt = { step: atlas.step, frames, animations: atlas.animations }; alternates.set(id, alt);
   return alt;
 }
 
@@ -195,6 +202,56 @@ function frameFor(atlas: Atlas, name: string): Frame | null {
   for (const alt of FALLBACK[name] ?? []) { f = atlas.frames.get(alt); if (f) return f; }
   if (name.startsWith('idle') || name.startsWith('run')) return atlas.frames.get('idle0') ?? null;
   return atlas.frames.get('idle0') ?? null;
+}
+
+const animationClocks = new WeakMap<PlayerState, AnimationClock>();
+const shieldReactions = new WeakMap<PlayerState, { strength: number; until: number }>();
+const ACTIONS: Readonly<Record<string, string>> = {
+  rise: 'jump', apex: 'fall', fastfall: 'fast_fall', airdodge: 'air_dodge',
+  shield_broken: 'shield_break', recover: 'recovery', throw: 'throw_forward', cast: 'cast_forward',
+};
+function animatedFrame(atlas: Atlas, pose: string, ctx: Ctx): { frame: Frame | null; anchor?: DuelAnimation['anchor'] } {
+  if (!atlas.animations) return { frame: frameFor(atlas, pose) };
+  const attack = ctx.arena?.stockAttack(ctx.arena.bound);
+  const attackPose = attack?.busy && attack.kind && pose.startsWith(attack.kind + '_');
+  let action = attackPose ? attack.kind! : pose.startsWith('idle') ? 'idle' : pose.startsWith('run') ? 'run' : ACTIONS[pose] ?? pose;
+  if (pose === 'hurt' && ctx.arena?.isGrabbed(ctx.arena.bound)) action = 'grabbed';
+  if (pose === 'cast') {
+    const vertical = Math.sin(ctx.player.aimAngle);
+    action = Math.abs(vertical) > .92 ? (vertical < 0 ? 'cast_up' : 'cast_down')
+      : Math.abs(vertical) > .38 ? (vertical < 0 ? 'cast_diagonal_up' : 'cast_diagonal_down') : 'cast_forward';
+  }
+  if (pose === 'throw') {
+    const grab = ctx.arena?.stockGrab(ctx.arena.bound);
+    if (grab) action = grab.throwY !== 0 ? (grab.throwY < 0 ? 'throw_up' : 'throw_down')
+      : grab.throwX * grab.facing < 0 ? 'throw_back' : 'throw_forward';
+  }
+  const a = ctx.player, arena = ctx.arena!, frame = ctx.state.frameCount;
+  const strength = arena.stockShield(arena.bound)?.strength ?? 100;
+  const lastShield = shieldReactions.get(a);
+  const until = lastShield && strength < lastShield.strength - 1 ? frame + 8 : lastShield?.until ?? -1;
+  shieldReactions.set(a, { strength, until });
+  const rival = arena.bundle(1 - arena.bound)?.player;
+  action = detailAnimation(action, {
+    grounded: a.grounded, crawling: a.crawling, crouch: a.crouchT, stun: a.stunT,
+    frozen: (a.chill?.shell ?? 0) > 0, burning: a.status.burning > 0,
+    stagger: a.staggerT, staggerDir: a.staggerDir, facing: a.facing, skid: a.skidT,
+    swap: a.swapT, fidget: a.fidgetT, speed: Math.abs(a._svx || a.vx),
+    near: !!rival && Math.abs(rival.x - a.x) < 90, dead: a.dead,
+    finished: arena.stockMatch?.state === 'finished', winner: arena.stockMatch?.winner === arena.bound,
+    entrance: frame - (entrances.get(arena.bound)?.at ?? -1e9), shieldHit: until > frame,
+  }, animationClocks.get(a));
+  const clip = atlas.animations[action];
+  if (!clip) return { frame: frameFor(atlas, pose) };
+  const key = attackPose ? `${action}:${attack.id}` : action;
+  const clock = advanceAnimation(animationClocks.get(ctx.player), key, ctx.state.frameCount, ctx.fx.hitstop > 0 || ctx.state.paused);
+  animationClocks.set(ctx.player, clock);
+  const timing = attackPose && attack.spec && attack.phase !== 'idle' ? { age: attack.age, phase: attack.phase, spec: attack.spec } : undefined;
+  const window = action === 'tactical' ? 18 : action === 'ultimate' ? 26 : action === 'double_jump' ? 12
+    : action === 'dodge' || action === 'air_dodge' ? STOCK_DODGE.startup + STOCK_DODGE.active + STOCK_DODGE.recovery : 0;
+  const age = window ? clock.age / window * clip.frames.reduce((n, f) => n + f.ticks, 0) : clock.age;
+  const name = animationFrame(clip, age, timing);
+  return { frame: name ? atlas.frames.get(name) ?? frameFor(atlas, pose) : frameFor(atlas, pose), anchor: clip.anchor };
 }
 
 let scratchRgb = new Float32Array(64 * 64 * 3);
@@ -322,19 +379,23 @@ export function drawDuelFighter(out: PixelSurface, light: LightField, ctx: Ctx):
   if (!atlas) return false;
   const a = ctx.player;
   const pose = duelPose(ctx, a);
-  let fr = frameFor(atlas, pose.name);
+  const animated = animatedFrame(atlas, pose.name, ctx);
+  let fr = animated.frame;
   if (!fr) return false;
   const step = atlas.step, frame = ctx.state.frameCount, slot = ctx.arena.bound;
   // A launched body spins in quarter turns, forward along its flight (faster the harder it flies).
   const spinning = pose.name === 'tumble' && ctx.arena.isLaunching(slot);
-  if (spinning) {
+  if (spinning && !atlas.animations?.tumble) {
     const speed = Math.hypot(a.vx, a.vy), rate = speed > 9 ? 2 : speed > 5 ? 3 : 4;
     fr = quarterTurn(fr, Math.floor(frame / rate) * (a.vx < 0 ? -1 : 1));
   }
   const sinceEntrance = frame - (entrances.get(slot)?.at ?? -1e9);
   const protectedNow = sinceEntrance < STOCK_RULES.protectionTicks && a.invuln > 0;
   const color = accentRgb(id);
-  const { dx, dy } = motionOffset(ctx, a);
+  const { dx, dy } = atlas.animations ? { dx: 0, dy: 0 } : motionOffset(ctx, a);
+  const ledge = animated.anchor === 'grip' ? ctx.arena.stockLedge(slot) : null;
+  const bodyX = ledge?.busy ? ledge.x : a.x + dx;
+  const bodyY = ledge?.busy ? ledge.y : (spinning ? a.y - 8 : a.y) + dy;
   // Light: the scene's own light at the chest, kept bright enough that silhouettes always read (the concept's fighters are
   // the highest-contrast thing on screen), warmed slightly by fire and cooled by the teal lamps.
   const sample = typeof light?.sample === 'function' ? light.sample(a.x, a.y - 9) : { r: 1, g: 1, b: 1 };
@@ -347,8 +408,9 @@ export function drawDuelFighter(out: PixelSurface, light: LightField, ctx: Ctx):
   if (!out.blitFine || (out.pixelStep ?? 1) >= 1) {
     // Cell-resolution surface (an expanded wide shot): the coarse frame, one cell per 2x2 block.
     const c = fr.coarse;
-    const cax = spinning ? c.w >> 1 : Math.floor((mirror ? fr.w - 1 - fr.ax : fr.ax) / 2), cay = spinning ? c.h >> 1 : Math.floor(fr.ay / 2);
-    const ox = Math.round(a.x + dx), oy = Math.round((spinning ? a.y - 8 : a.y) + dy);
+    const legacySpin = spinning && !atlas.animations?.tumble;
+    const cax = legacySpin ? c.w >> 1 : Math.floor((mirror ? fr.w - 1 - fr.ax : fr.ax) / 2), cay = legacySpin ? c.h >> 1 : Math.floor(fr.ay / 2);
+    const ox = Math.round(bodyX), oy = Math.round(bodyY);
     for (let j = 0; j < c.h; j++) for (let i = 0; i < c.w; i++) {
       const k = j * c.w + (mirror ? c.w - 1 - i : i);
       if (!c.a[k]) continue;
@@ -367,11 +429,12 @@ export function drawDuelFighter(out: PixelSurface, light: LightField, ctx: Ctx):
     const r = fr.rgb[src * 3] * tr, g = fr.rgb[src * 3 + 1] * tg, b = fr.rgb[src * 3 + 2] * tb;
     scratchRgb[dst * 3] = r + (1 - r) * flash; scratchRgb[dst * 3 + 1] = g + (1 - g) * flash; scratchRgb[dst * 3 + 2] = b + (1 - b) * flash;
   }
-  const ax = spinning ? fr.w / 2 - .5 : mirror ? fr.w - 1 - fr.ax : fr.ax;
-  const ay = spinning ? fr.h / 2 - .5 : fr.ay;
+  const legacySpin = spinning && !atlas.animations?.tumble;
+  const ax = legacySpin ? fr.w / 2 - .5 : mirror ? fr.w - 1 - fr.ax : fr.ax;
+  const ay = legacySpin ? fr.h / 2 - .5 : fr.ay;
   // Body centre-bottom: the hitbox spans cells x-halfW..x+halfW and its feet row is y (a spin turns about the waist).
-  const x0 = a.x + dx + 0.5 - (ax + 0.5) * step;
-  const y0 = (spinning ? a.y - 8 : a.y) + dy + 1 - (ay + 1) * step;
+  const x0 = bodyX + 0.5 - (ax + 0.5) * step;
+  const y0 = bodyY + 1 - (ay + 1) * step;
   const quiet = ctx.state.reduceFlashes === true;
   if (sinceEntrance < ENTRANCE_TICKS && !quiet) drawEntrance(out, a, sinceEntrance, color);
   // The strike's smear: for its first two ticks the windup frame lingers, half-faded, a step behind.
@@ -445,7 +508,7 @@ export function drawDuelGhost(out: PixelSurface, ctx: Ctx, dx: number, dy: numbe
   if (!id || !ctx.arena?.stockMatch || !out.blendFinePx || (out.pixelStep ?? 1) >= 1) return false;
   const atlas = atlasForSlot(ctx, id);
   if (!atlas) return false;
-  const a = ctx.player, pose = duelPose(ctx, a), fr = frameFor(atlas, pose.name);
+  const a = ctx.player, pose = duelPose(ctx, a), fr = animatedFrame(atlas, pose.name, ctx).frame;
   if (!fr) return false;
   const mirror = pose.facing < 0, step = atlas.step, ax = mirror ? fr.w - 1 - fr.ax : fr.ax;
   const x0 = a.x + dx + 0.5 - (ax + 0.5) * step, y0 = a.y + dy + 1 - (fr.ay + 1) * step;
@@ -459,6 +522,48 @@ export function drawDuelGhost(out: PixelSurface, ctx: Ctx, dx: number, dy: numbe
   return true;
 }
 
+/** Presentation attachment only. Combat origins and collision remain authoritative simulation geometry. */
+export function duelSocket(ctx: Ctx, socket: keyof Sockets): { x: number; y: number } | null {
+  const id=ctx.fighters?.id;
+  if(!id || !ctx.arena?.stockMatch) return null;
+  const atlas=atlasForSlot(ctx,id);
+  if(!atlas) return null;
+  const pose=duelPose(ctx,ctx.player), selected=animatedFrame(atlas,pose.name,ctx), fr=selected.frame;
+  const point=fr?.sockets?.[socket];
+  if(!fr || !point) return null;
+  const ledge=selected.anchor==='grip'?ctx.arena.stockLedge(ctx.arena.bound):null;
+  const x=ledge?.busy?ledge.x:ctx.player.x;
+  const y=ledge?.busy?ledge.y:ctx.player.y-(pose.name==='tumble'&&ctx.arena.isLaunching(ctx.arena.bound)?8:0);
+  return {x:x+.5+((point.x-fr.ax)*(pose.facing<0?-1:1)-.5)*atlas.step,
+    y:y+1+(point.y-fr.ay-1)*atlas.step};
+}
+
+/** Kit-owned cosmetic effects use the same atlas and simulation ages, including LAN's coarse capture surface. */
+export function drawDuelEffect(out: PixelSurface, ctx: Ctx, action: string, age: number, x: number, y: number,
+  mirror = false, opacity = 1, angle = 0): boolean {
+  const fighter = ctx.fighters?.id;
+  if (!ctx.arena?.stockMatch || !fighter) return false;
+  const atlas = atlasFor(fighter), clip = atlas?.animations?.['fx/' + action];
+  if (!atlas || !clip) return false;
+  if (age >= clip.frames.reduce((n, f) => n + f.ticks, 0)) return true;
+  const name = animationFrame(clip, age), fr = name ? atlas.frames.get(name) : null;
+  if (!fr) return false;
+  const fine = (out.pixelStep ?? 1) < 1 && !!out.blendFinePx;
+  const stride = fine ? 1 : 2, cos = Math.cos(angle), sin = Math.sin(angle);
+  const alpha = opacity * (ctx.state.reduceFlashes && action !== 'guard_plate' ? .4 : 1);
+  for (let j = 0; j < fr.h; j += stride) for (let i = 0; i < fr.w; i += stride) {
+    const k = j * fr.w + i;
+    if (!fr.a[k]) continue;
+    const dx = (i - fr.ax) * atlas.step * (mirror ? -1 : 1), dy = (j - fr.ay) * atlas.step;
+    const px = x + dx * cos - dy * sin, py = y + dx * sin + dy * cos;
+    const r = fr.rgb[k * 3] * alpha, g = fr.rgb[k * 3 + 1] * alpha, b = fr.rgb[k * 3 + 2] * alpha;
+    if (fine) out.blendFinePx!(px, py, r, g, b, alpha);
+    else if (action === 'guard_plate') out.setPx(px, py, r, g, b);
+    else out.addPx(px, py, r, g, b);
+  }
+  return true;
+}
+
 if (import.meta.env.DEV && typeof window !== 'undefined') {
-  (window as unknown as { __duelSprites?: unknown }).__duelSprites = { atlases, duelPose, drawDuelFighter };
+  (window as unknown as { __duelSprites?: unknown }).__duelSprites = { atlases, duelPose, animatedFrame, drawDuelFighter, drawDuelEffect, duelSocket };
 }

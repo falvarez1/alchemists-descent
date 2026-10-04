@@ -243,6 +243,7 @@ export class StockTactics {
     // Standing in fire: out to the nearest clean ground. Walking THROUGH a few embers to clean ground beyond them is
     // fine (stepping back out of every ember on the way turned one burning cell into a wall). A shield blocks the burn.
     const { me, heat } = v;
+    if (!me.grounded && me.moves.neutral_air.name !== me.moves.aerial.name && order.strike && order.strike !== 'grab') order.facing = me.facing;
     if (heat && me.grounded && this.mode !== 'punish' && order.strike === null && !order.shield && order.dodge === null && heat(me.x) > 0) {
       const g = order.goalX;
       const passing = g !== null && Math.abs(g - me.x) > 12 && heat(g) === 0;
@@ -563,7 +564,10 @@ export class StockTactics {
     if (!me.canAct) return null;
     if (foe.dodging) return null; // swinging into a dodge is a free punish for it
     const p = v.personality;
-    const kinds: readonly StockAttackKind[] = me.grounded ? ['opener', 'launcher', 'finisher'] : ['aerial'];
+    const expanded = me.moves.neutral_air.name !== me.moves.aerial.name;
+    const kinds: readonly StockAttackKind[] = me.grounded
+      ? expanded ? ['opener', 'launcher', 'finisher', 'up_smash', 'down_smash'] : ['opener', 'launcher', 'finisher']
+      : expanded ? ['aerial', 'neutral_air', 'back_air', 'up_air', 'down_air'] : ['aerial'];
     let best: StockAttackKind | null = null, bestValue = -Infinity;
     for (const kind of kinds) {
       const spec = me.moves[kind];
@@ -571,7 +575,8 @@ export class StockTactics {
       const later = predictFoe(foe, v.skill.prediction, spec.startup, { x0: v.stage.x0, x1: v.stage.x1 });
       const sx = me.grounded ? me.x : me.x + me.vx * spec.startup;
       const sy = me.grounded ? me.y : me.y + me.vy * spec.startup * 0.5;
-      if (!strikeCovers(spec, facing, sx, sy, later.x, later.y, slop) || !strikeCovers(spec, facing, sx, sy, at.x, at.y, slop + 2)) continue;
+      const strikeFacing = me.grounded || !expanded ? facing : me.facing;
+      if (!strikeCovers(spec, strikeFacing, sx, sy, later.x, later.y, slop) || !strikeCovers(spec, strikeFacing, sx, sy, at.x, at.y, slop + 2)) continue;
       let value = kind === 'opener' ? 0.7 + 0.25 * p.fastAttack : kind === 'launcher' ? 0.35 + 0.2 * p.combo : kind === 'finisher' ? 0.3 + 0.3 * p.heavyAttack : 0.8;
       if (kind === planned) value += 0.25;
       // Percent decides what a blow is FOR: build damage early, launch late.

@@ -85,6 +85,7 @@ const player: Check = (v) =>
     'x y fx fy vx vy hp maxHp mana maxMana levit maxLevit facing aimAngle invuln cooldown stridePhase landTimer blinkTimer fallPeak _px _py _svx _svy tpCool recharge pullT stunT pullDir stretchT skidT skidDir swapT recoilT kickT kickDir staggerT staggerDir fidgetT crouchT diveT crawlT crawlSlope wallGrabT wallGrabDir climbDir climbT climbPhase climbMoveT climbIntentY climbLean bloodStain',
   ) &&
   fields(v, bool, 'grounded inLiquid dead firing prevGrounded stockFastFall crawling climbing') &&
+  optional(v.stockAirJumpT, finite) &&
   text(v.spell) &&
   record(v.perks) &&
   numbers(v.hat, 'ox oy vx vy pvx pvy') &&
@@ -114,7 +115,7 @@ const player: Check = (v) =>
 
 const attack: Check = (v) =>
   record(v) &&
-  oneOf(null, 'opener', 'launcher', 'aerial', 'finisher')(v.kind) &&
+  oneOf(null, 'opener', 'launcher', 'aerial', 'finisher', 'neutral_air', 'back_air', 'up_air', 'down_air', 'up_smash', 'down_smash')(v.kind) &&
   oneOf('idle', 'startup', 'active', 'recovery')(v.phase) &&
   bool(v.busy) &&
   numbers(v, 'facing age id') &&
@@ -123,7 +124,8 @@ const attack: Check = (v) =>
     (s) =>
       record(s) &&
       text(s.name) &&
-      numbers(s, 'startup active recovery damage reach top bottom knockX knockY growth stun'),
+      numbers(s, 'startup active recovery damage reach top bottom knockX knockY growth stun') &&
+      optional(s.minReach, finite),
   );
 const slots: Check = (v) =>
   record(v) &&

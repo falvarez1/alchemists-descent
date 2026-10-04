@@ -1228,7 +1228,7 @@ export class FrameComposer implements PixelSurface {
     this.drawPeers(this, this.light, ctx);
     // (a rival fighter, then the player's own wizard on top)
     this.forRivals(ctx, (p) => {
-      if (ctx.state.mode !== 'play' || p.dead) return;
+      if (ctx.state.mode !== 'play' || (p.dead && !ctx.arena?.stockMatch)) return;
       this.positionSprite(p); this.drawPlayer(this, this.light, ctx);
     });
     if (ctx.state.mode === 'play') {

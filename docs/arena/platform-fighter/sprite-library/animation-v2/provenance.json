@@ -1,0 +1,2381 @@
+{
+  "version": 2,
+  "tool": "built-in ImageGen",
+  "references": [
+    "public/assets/fighters/ilyra-voss.webp",
+    "public/assets/fighters/brann-rook.webp"
+  ],
+  "workflow": "One animation per generated image; technical extraction and registration preserve source artwork.",
+  "promptFiles": [
+    "prompts/pilot.json",
+    "prompts/ilyra-complete-pass.json",
+    "prompts/ilyra-mobility-specials.json",
+    "prompts/effects-pass.json",
+    "prompts/motion-corrections.json",
+    "prompts/brann-idle-pass.json",
+    "prompts/brann-core-pass.json",
+    "prompts/artifacts-pass.json",
+    "prompts/brann-completion.json",
+    "prompts/brann-repairs.json",
+    "prompts/brann-guard-repair.txt",
+    "prompts/duo-completion.json"
+  ],
+  "generationReceipts": [
+    "prompts/receipts/",
+    "prompts/ilyra-pass-receipt.json"
+  ],
+  "selected": [
+    {
+      "id": "ilyra-voss/unarmed/idle",
+      "source": "sources/ilyra-voss/unarmed/idle.png",
+      "prompt": "prompts/pilot.json",
+      "promptId": "ilyra-voss/unarmed/idle",
+      "sha256": "03d547765b0b0c4ed2abd7ad96a8616060b8a01bd15eba62c23bc0981d4d0bf1",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/duck",
+      "source": "sources/ilyra-voss/unarmed/duck.png",
+      "prompt": "prompts/pilot.json",
+      "promptId": "ilyra-voss/unarmed/duck",
+      "sha256": "5cab7b568daffd83bb710d0030ae12b563da8c61f450a40e9e46faec2e6e45e5",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/run",
+      "source": "sources/ilyra-voss/unarmed/run-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "ilyra-voss/unarmed/run",
+      "sha256": "93fc55b73c6739b9ffe7c79fc49bd39317244a48d68cf4f95ee9b4d6074f48ab",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "ilyra-voss/unarmed/idle_ready",
+      "source": "sources/ilyra-voss/unarmed/idle_ready.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/idle_ready",
+      "sha256": "b35d0b64dd27526822bb8d470abf57ba6f8f76f987c2ad42b258a758e8c36e20",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/stand_up",
+      "source": "sources/ilyra-voss/unarmed/stand_up.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/stand_up",
+      "sha256": "bc5d78ea4f3b5dae3d296a39dcd2ce4beee26d3b64186b1caff31f701f94cb10",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/jump",
+      "source": "sources/ilyra-voss/unarmed/jump.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/jump",
+      "sha256": "edcd2b7eb9013cbe486e593380d929f04a7e0abc1f5f866e9f5d8c2dc4ce28e1",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/fall",
+      "source": "sources/ilyra-voss/unarmed/fall.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/fall",
+      "sha256": "66caec8c93f116a7ddc7dd4f06e2c95198aaad839eb9e7712dbe943134e00b15",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/land",
+      "source": "sources/ilyra-voss/unarmed/land.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/land",
+      "sha256": "cc55bf8bd82006342dfdc29fe9b425ecc279bbced94ec8e814ac4a6c3c1e5f9e",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/hurt",
+      "source": "sources/ilyra-voss/unarmed/hurt.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/hurt",
+      "sha256": "890955ce503f9018ad7b14071efe8bdb21c8399aed0a1771bf68e19f3ee04013",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/hurt_crouch",
+      "source": "sources/ilyra-voss/unarmed/hurt_crouch.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/hurt_crouch",
+      "sha256": "0e2f67c7beb484bc9d3e542d3c5cea122817fde35fe23342c25705cb31888896",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/hurt_air",
+      "source": "sources/ilyra-voss/unarmed/hurt_air.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/hurt_air",
+      "sha256": "683580d5f55f699468605251871c1859ff763c6c081df213619a4a9c24ca6bdb",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/hurt_back",
+      "source": "sources/ilyra-voss/unarmed/hurt_back.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/hurt_back",
+      "sha256": "49f81791d57606a9eba4b4ccc70fc9ebd485bf4c3d8507cc34e95563b93f1fd1",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/shield",
+      "source": "sources/ilyra-voss/unarmed/shield.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/shield",
+      "sha256": "e5e579d6285c9762267e9943bcefbb94f0d6d624b41d7da2a18e6bd39c638cb2",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/shield_hit",
+      "source": "sources/ilyra-voss/unarmed/shield_hit.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/shield_hit",
+      "sha256": "5206161581d557861ca432fda0e6c70fd2d49d51a16202e11366ef10a4a1723f",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/opener",
+      "source": "sources/ilyra-voss/unarmed/opener.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/opener",
+      "sha256": "2a91b6578fed69ea923c765dc60e401d59aa8f7f325bf553cefadb2403390329",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/launcher",
+      "source": "sources/ilyra-voss/unarmed/launcher.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/launcher",
+      "sha256": "52f375fbcc9858fbc5ab134be744480e974f5c6d299ea2aa35a5a781f9c47f9c",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/aerial",
+      "source": "sources/ilyra-voss/unarmed/aerial.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/aerial",
+      "sha256": "012e0c50491fb14fb96287ed2d9182a4bfa818365916beb33f64cd305dd1a0eb",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/finisher",
+      "source": "sources/ilyra-voss/unarmed/finisher.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/finisher",
+      "sha256": "1dc63db2e6385c5ddd61db1a9a9656e09f0062abed69475e8cbedd396da1d22a",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/grab",
+      "source": "sources/ilyra-voss/unarmed/grab.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/grab",
+      "sha256": "cf465622dd50d2af7196060eb2822e5dac5776886c5e4110a57710a13b36eb70",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/throw_forward",
+      "source": "sources/ilyra-voss/unarmed/throw_forward.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/throw_forward",
+      "sha256": "f88b12bf7bf4b380380f2313713027b8f3d8b3dcf210235f3562a2b43e35c63b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/cast_forward",
+      "source": "sources/ilyra-voss/unarmed/cast_forward.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/cast_forward",
+      "sha256": "d75a40dfd6d00f60647ec095217f37ff7496e4a382512b33dce86d96107ae50b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/pickup",
+      "source": "sources/ilyra-voss/unarmed/pickup.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/pickup",
+      "sha256": "c99ec3b88f4e4aa83adedaf0c37128e54652df2ba16aee6671bf940a88ead4c0",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/stun",
+      "source": "sources/ilyra-voss/unarmed/stun.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/stun",
+      "sha256": "0b44611ed38af4b6142515133c760739494f479b9a1b4f2cfe61631daf452fd5",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/defeat",
+      "source": "sources/ilyra-voss/unarmed/defeat.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/unarmed/defeat",
+      "sha256": "33e5ad67133d4e481b34424588b65b16160350d38b951703120980f6ce5ee1f1",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/idle",
+      "source": "sources/ilyra-voss/armed/idle.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/idle",
+      "sha256": "146c546750cd4f15ac76a78cb35b732b5047b53f7d3275881ebb1e36818d2013",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/idle_ready",
+      "source": "sources/ilyra-voss/armed/idle_ready.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/idle_ready",
+      "sha256": "09c68429471d2003e9b4339be6de5a8ac590a54a0612fd6b13befc3b3d0a46f7",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/crouch_idle",
+      "source": "sources/ilyra-voss/armed/crouch_idle.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/crouch_idle",
+      "sha256": "5ec89278528709bbefb75e8f553024ec78d974aa5eeac47ec09c0a5f4c466757",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/duck",
+      "source": "sources/ilyra-voss/armed/duck.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/duck",
+      "sha256": "e2850699a53343f398104d05a784b06e62f18c1fa518071a98f8a9785fbba174",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/stand_up",
+      "source": "sources/ilyra-voss/armed/stand_up.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/stand_up",
+      "sha256": "a1717d97d2466c8a8aaf3baa2df6aac6898eedc96a967e7f405d57c8e04eb8a4",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/jump",
+      "source": "sources/ilyra-voss/armed/jump.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/jump",
+      "sha256": "afda447e2bf6f499ce099c5a395db448aba4301a48d68ea5e75d5b51672cf81b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/fall",
+      "source": "sources/ilyra-voss/armed/fall.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/fall",
+      "sha256": "11cd165dceb10fadc521d86ec85623c8a67901f1778be1dbbca7db0bfe302ecd",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/land",
+      "source": "sources/ilyra-voss/armed/land.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/land",
+      "sha256": "5aa2779641d2e79ac5669cd7048bc0e6bf0c8c13999d0bc1ca15b80aefbaf23e",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/hurt",
+      "source": "sources/ilyra-voss/armed/hurt.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/hurt",
+      "sha256": "75d40b3148af3696c92c9088f2f56495e3ad28923d8de9d5e5dc6c97a8eb903c",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/hurt_crouch",
+      "source": "sources/ilyra-voss/armed/hurt_crouch.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/hurt_crouch",
+      "sha256": "1cd5d8d54f8363c0f75800fd3e8023b18a98ee1b7739464b9f7e13949b081a8e",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/hurt_air",
+      "source": "sources/ilyra-voss/armed/hurt_air.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/hurt_air",
+      "sha256": "66047475b0e04635171709ea641c3a233c3868b1eef04a0f1022cde74b836806",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/hurt_back",
+      "source": "sources/ilyra-voss/armed/hurt_back.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/hurt_back",
+      "sha256": "ee6e133cf651c047c5b4937f00c3ea94d3cf72857e4e6299c511bbd9c7d2bbbb",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/shield",
+      "source": "sources/ilyra-voss/armed/shield.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/shield",
+      "sha256": "be852a2e21e225127eb8ab38ca35b0d59a7b5d8004eecf1ef22b4c374b9e55ed",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/shield_hit",
+      "source": "sources/ilyra-voss/armed/shield_hit.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/shield_hit",
+      "sha256": "d37f7a4c9fbc107088d770dc5550b4ad7f205a1ce18aa4eec2c38d39502eac3d",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/opener",
+      "source": "sources/ilyra-voss/armed/opener.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/opener",
+      "sha256": "bfeb3f56d11f0d227fbad3f71846ef019353eb3f3a371e406d546466d3835efe",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/launcher",
+      "source": "sources/ilyra-voss/armed/launcher.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/launcher",
+      "sha256": "0a9eb55c62f312b357e19d34ccd3bee74c03c69f224d461adf55fbcb49073aba",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/aerial",
+      "source": "sources/ilyra-voss/armed/aerial.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/aerial",
+      "sha256": "46d54a7a9c25b5a82526da1d683007d4f4bb96b5e922cb892040d9e708c8cb12",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/finisher",
+      "source": "sources/ilyra-voss/armed/finisher.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/finisher",
+      "sha256": "050d290e8ea70d6a2062a67d8755499cfbd569a828e84c25fa4956c9ecf1ae96",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/grab",
+      "source": "sources/ilyra-voss/armed/grab.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/grab",
+      "sha256": "bccc395b40f5b4d5517b36fe380dd99152903350a2c6deea7dadff1eccc460f8",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/throw_forward",
+      "source": "sources/ilyra-voss/armed/throw_forward-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "ilyra-voss/armed/throw_forward",
+      "sha256": "7417f2e24a1ae8170e02d349389bb2a50dc448de896ee213142e1708da279ad4",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "ilyra-voss/armed/pickup",
+      "source": "sources/ilyra-voss/armed/pickup.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/pickup",
+      "sha256": "2751d900f7205b7b87adf8ec62e7950142dd773083cfd99db1f7ab782956f693",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/stun",
+      "source": "sources/ilyra-voss/armed/stun.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/stun",
+      "sha256": "87573852bc3805ec47de75dfd3e46c43c56ae731d6c40050de25ee0594adffe8",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/cast_forward",
+      "source": "sources/ilyra-voss/armed/cast_forward.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/cast_forward",
+      "sha256": "55ff42777878e3b2717e05a90de3c18c9bf3bfc3ddbec5baac352a5a9f5cd287",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/defeat",
+      "source": "sources/ilyra-voss/armed/defeat.png",
+      "prompt": "prompts/ilyra-complete-pass.json",
+      "promptId": "ilyra-voss/armed/defeat",
+      "sha256": "24463a62b21f2edc108f692e21a0bc40c1ce23b1e5a1b4092eb4b655e50d9d7d",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/dodge",
+      "source": "sources/ilyra-voss/unarmed/dodge.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/dodge",
+      "sha256": "54411c8869eceee659190b557e26e25111198d6f1fff263a8612e506698ee21c",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/ultimate",
+      "source": "sources/ilyra-voss/unarmed/ultimate.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/ultimate",
+      "sha256": "ffb896403a309dc2f2b0b0792946b866852355f1b4958172aead4fd4b485144b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/dash",
+      "source": "sources/ilyra-voss/unarmed/dash.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/dash",
+      "sha256": "ee4b00535386e566848a6a6fed382ed042cbef1a819b9ddf88c3e6ce5be1bab4",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/brake",
+      "source": "sources/ilyra-voss/unarmed/brake.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/brake",
+      "sha256": "5d81b958d6f017eab199ab850172fc9628635f3ecda0af41a5b686fde7884d91",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/double_jump",
+      "source": "sources/ilyra-voss/unarmed/double_jump.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/double_jump",
+      "sha256": "8d77768f1d454933838615d680c13b9e4ef334be9ab3e0053f83167767d18976",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/fast_fall",
+      "source": "sources/ilyra-voss/unarmed/fast_fall.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/fast_fall",
+      "sha256": "f0bbd998462bdab379840a6b462a6320c56e97fb0d68981ed0c342284bdfe432",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/air_dodge",
+      "source": "sources/ilyra-voss/unarmed/air_dodge.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/air_dodge",
+      "sha256": "111036324ec1c40e51c6f145b08239efd860c081a086f9682c75e7a089e20eb8",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/wall_cling",
+      "source": "sources/ilyra-voss/unarmed/wall_cling.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/wall_cling",
+      "sha256": "c15a25bfba8c2af03143139070a55f1f39eec18d98b6f161165efbbefebb2144",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/ledge_hang",
+      "source": "sources/ilyra-voss/unarmed/ledge_hang.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/ledge_hang",
+      "sha256": "12bf48d64e0ee19b59e494b2cb96778d753986270f06a9b31f9638fac70572dc",
+      "review": "grip-registered-motion-review-pending"
+    },
+    {
+      "id": "ilyra-voss/unarmed/ledge_climb",
+      "source": "sources/ilyra-voss/unarmed/ledge_climb.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/ledge_climb",
+      "sha256": "585ad1f0adc87f94138161da65b810ca2afb88ca654aa223c281f2d5a379da36",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/get_up",
+      "source": "sources/ilyra-voss/unarmed/get_up.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/get_up",
+      "sha256": "b8142a155a27493468878104a6760ea0e6e1b9d57a9708cf8b1b790043c89906",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/ko",
+      "source": "sources/ilyra-voss/unarmed/ko.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/ko",
+      "sha256": "e50272cef3d92820e719b2b5e0fd8387ffd66ef997d1a970e4eafc8fc80ed692",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/respawn",
+      "source": "sources/ilyra-voss/unarmed/respawn.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/respawn",
+      "sha256": "da9acf1d3f35f851f01ef3b6d5e6594c0cadf59d443c60538643dc6718af5d61",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/victory",
+      "source": "sources/ilyra-voss/unarmed/victory.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/victory",
+      "sha256": "a0ab224b931544db7450eb51e3cf835c374e1562b157c1355a5ca19eee8acb21",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/neutral_air",
+      "source": "sources/ilyra-voss/unarmed/neutral_air.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/neutral_air",
+      "sha256": "f17cc005b6f02f72109c1cd36e912d2ecf92ffa77f9cc6daee73b8dcb8c169fe",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/back_air",
+      "source": "sources/ilyra-voss/unarmed/back_air.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/back_air",
+      "sha256": "2d5ca9b1fcb687664da2bf687cf21dd0371138e8e7cb0cd50a209845016c7fab",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/up_air",
+      "source": "sources/ilyra-voss/unarmed/up_air.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/up_air",
+      "sha256": "9a64c0595a5314e1d2c689deec5c737a2763650e999082318025141b3d3f64a9",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/down_air",
+      "source": "sources/ilyra-voss/unarmed/down_air.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/down_air",
+      "sha256": "000e401ae4929635d9011eece2e89a85c43bd84262f394e5ff6fdd90712334b9",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/up_smash",
+      "source": "sources/ilyra-voss/unarmed/up_smash.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/up_smash",
+      "sha256": "35a45cc430a635e3758fbea8f719c314e619949ac6d3cad2fe6d9ddd6c477494",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/down_smash",
+      "source": "sources/ilyra-voss/unarmed/down_smash.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/down_smash",
+      "sha256": "8662e721fbe31498db2eb9c93c39d0dfe479248342af40d8e8877ac06e2d4451",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/throw_back",
+      "source": "sources/ilyra-voss/unarmed/throw_back.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/throw_back",
+      "sha256": "56990711e908454988df81ce946e5cbd1b19a662d34f8d2ef716a581e665dc9e",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/cast_up",
+      "source": "sources/ilyra-voss/unarmed/cast_up.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/cast_up",
+      "sha256": "b7e884f25c31cf88c43cc15dd674e7d2c4a285122efb2b3ce4e77890bab69077",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/throw_up",
+      "source": "sources/ilyra-voss/unarmed/throw_up.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/throw_up",
+      "sha256": "d455759911585d0614aad51db557c4534f7ca448bc81326293ca5379c1b1e6f9",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/throw_down",
+      "source": "sources/ilyra-voss/unarmed/throw_down.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/throw_down",
+      "sha256": "2e19f106aa76ba1dc6d1e4256e304d4134340fcfba595e802ea20313773e7e67",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/cast_down",
+      "source": "sources/ilyra-voss/unarmed/cast_down.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/cast_down",
+      "sha256": "cb91a968807516306c889e8a6348fd262635a17aa20a1c0dbd8e216a7f2eb4c4",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/cast_diagonal_up",
+      "source": "sources/ilyra-voss/unarmed/cast_diagonal_up.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/cast_diagonal_up",
+      "sha256": "004ecf7ef9204627f1a2521576774c9bb841c4c1ff224482265d7b70d50003a6",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/cast_diagonal_down",
+      "source": "sources/ilyra-voss/unarmed/cast_diagonal_down.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/cast_diagonal_down",
+      "sha256": "c3a9718082d2d2933f0218367a9844312a3a9467a766805f2a7f8ced3e718a2d",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/taunt",
+      "source": "sources/ilyra-voss/unarmed/taunt.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/taunt",
+      "sha256": "f33a1c75fe1bb33f260b527fbf32609b96d27d0d31ef114e09be3cb29c42d8ee",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/crouch_walk",
+      "source": "sources/ilyra-voss/unarmed/crouch_walk.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/crouch_walk",
+      "sha256": "62a59fc60f0923c70370501736611a4bc8ba9167e1b8bebf2af1fa14cc69994d",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/shield_break",
+      "source": "sources/ilyra-voss/unarmed/shield_break.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/shield_break",
+      "sha256": "7d97c5c2d1e1e233dbbda246db86b465336e606098d9a69454cc36376b44e4f2",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/frozen",
+      "source": "sources/ilyra-voss/unarmed/frozen.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/frozen",
+      "sha256": "a24428d85eb9dd6088c36e76c5a43b61d36ffb30d2290c811250d6e857aace0b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/burning",
+      "source": "sources/ilyra-voss/unarmed/burning.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/burning",
+      "sha256": "c841324e41d8c00643b1a9611c026d1e0bfc7e73d9dbdfb58979a08840e54c50",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/grabbed",
+      "source": "sources/ilyra-voss/unarmed/grabbed.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/grabbed",
+      "sha256": "26a3536c5cd193d764953b786a6b88e770b018ba8fe791d943579ce80f3e92fc",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/ledge_release",
+      "source": "sources/ilyra-voss/unarmed/ledge_release.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/ledge_release",
+      "sha256": "15eeaf1cda78c84b3a491652573c75e5ad6433b24b8ff2bf90667fd81ade57d8",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/dodge",
+      "source": "sources/ilyra-voss/armed/dodge.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/dodge",
+      "sha256": "378ec210dd96690e6f2933a2fd2e778b92ad558b9dc25a001fecbaac21c8e84e",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/tactical",
+      "source": "sources/ilyra-voss/armed/tactical-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "ilyra-voss/armed/tactical",
+      "sha256": "c0b383cda17701d88d45226ad39909fe5912844b960a8ef2e6c43f70e5e50294",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "ilyra-voss/armed/dash",
+      "source": "sources/ilyra-voss/armed/dash.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/dash",
+      "sha256": "5bfcdcfa8d918e2ec53395750accefacbafee9d4fe291847794ee676334b96b5",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/brake",
+      "source": "sources/ilyra-voss/armed/brake.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/brake",
+      "sha256": "e91660355199bca002b80d0e8888e90b84e41bf2b793fac9b77e17947a6a3d87",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/double_jump",
+      "source": "sources/ilyra-voss/armed/double_jump.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/double_jump",
+      "sha256": "7715e41cd50c9dc4d3d70666d9e33b0ee43bcf9e1282f84252c939db913ce30f",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/fast_fall",
+      "source": "sources/ilyra-voss/armed/fast_fall.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/fast_fall",
+      "sha256": "1109c40308d7ea68900c4fc831cf8698a8440339d292ed3c49c045146da13d5e",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/air_dodge",
+      "source": "sources/ilyra-voss/armed/air_dodge.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/air_dodge",
+      "sha256": "432481afe1126a1140212aecb46dd085563e78aec0dff78781f3f8b85f1a55ad",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/wall_cling",
+      "source": "sources/ilyra-voss/armed/wall_cling.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/wall_cling",
+      "sha256": "974b4fadaa300ef1285a7584910cc8382619f43897bdb318fafb436d34cd7600",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/ledge_hang",
+      "source": "sources/ilyra-voss/armed/ledge_hang.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/ledge_hang",
+      "sha256": "78bdb8437269afed93296c2756c12593f37f0b96777a01fe1ca7542aab033163",
+      "review": "grip-registered-motion-review-pending"
+    },
+    {
+      "id": "ilyra-voss/armed/ledge_climb",
+      "source": "sources/ilyra-voss/armed/ledge_climb.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/ledge_climb",
+      "sha256": "13fd57e8d2e44ea364b5be110b0d783ce693b4fca43523e8bebc737a24a7fa0b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/get_up",
+      "source": "sources/ilyra-voss/armed/get_up.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/get_up",
+      "sha256": "1cb808514fa0a9ffddaf995f6c7a78700e7474ccc1e7053ab17121f23c1f5b0f",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/ko",
+      "source": "sources/ilyra-voss/armed/ko.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/ko",
+      "sha256": "c7444b149136bb680ebbba9ba6b67466b3566e1954ef7922a90570ad1bc6537b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/respawn",
+      "source": "sources/ilyra-voss/armed/respawn.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/respawn",
+      "sha256": "c7fb33f7abf65541cdb15e8e97bd43df7f47046850a52bfbee0c04cbaec5330d",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/victory",
+      "source": "sources/ilyra-voss/armed/victory.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/victory",
+      "sha256": "bbbdfb674208e4ec0059c36860ff21b691ab0b216c0d3c13e43e62efc9d30874",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/neutral_air",
+      "source": "sources/ilyra-voss/armed/neutral_air.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/neutral_air",
+      "sha256": "646c04d30a0f2d6e143fefab73070b7ab946852800bd0aa33df4919d21cae6f1",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/back_air",
+      "source": "sources/ilyra-voss/armed/back_air.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/back_air",
+      "sha256": "82fffef8bd1ca6dbd2b8178f0008adf4174ac3a795b2efa0d31b4e0889990054",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/up_air",
+      "source": "sources/ilyra-voss/armed/up_air.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/up_air",
+      "sha256": "a1aeaa67253b44bbd69940b0408daa7f5be5b5a16e84b5c0075edfc86370dc2b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/down_air",
+      "source": "sources/ilyra-voss/armed/down_air.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/down_air",
+      "sha256": "11f38e66586dd013ed642d36ac9a95915c118d60be55619e9ba48ee1f73720a0",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/up_smash",
+      "source": "sources/ilyra-voss/armed/up_smash-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "ilyra-voss/armed/up_smash",
+      "sha256": "1f96d7cb98c23676f6b1d497beed12da3575681f67bdedd0eb867451622369aa",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "ilyra-voss/armed/down_smash",
+      "source": "sources/ilyra-voss/armed/down_smash.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/down_smash",
+      "sha256": "fd91e9c3508bc861aa13f19c474066acea1bc70d8406ac6a685cdfe55d7d1986",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/throw_back",
+      "source": "sources/ilyra-voss/armed/throw_back.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/throw_back",
+      "sha256": "cbe8b8f703e793d3a342faba6989967f86ad0b389f8b16c8c7e3164d0f3739f2",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/throw_down",
+      "source": "sources/ilyra-voss/armed/throw_down.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/throw_down",
+      "sha256": "4f746ca5b0d134cca2535985a8ce3724edb9cd80e16700829a33d941f9fe082a",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/combat/hit_light",
+      "source": "sources/effects/combat/hit_light.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/combat/hit_light",
+      "sha256": "1bdbb91188e3a100b207de1c40fbb09e12c72625ba7ff07170f03b90400fa1f7",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/combat/hit_heavy",
+      "source": "sources/effects/combat/hit_heavy.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/combat/hit_heavy",
+      "sha256": "390495647b43811fe7e9fb4acfb074bef3c9ba87db3d33553f3d7fbcdb10a10d",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/combat/parry",
+      "source": "sources/effects/combat/parry.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/combat/parry",
+      "sha256": "481a4ef5114ad881ccc86cad2bac844e164c7f22fb6e55876fadfbd84a779db7",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/combat/shield_break",
+      "source": "sources/effects/combat/shield_break.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/combat/shield_break",
+      "sha256": "db7b95898b42222c1998e3fb04f05fcefd6b615ab1c3258e6209e40c261b7d90",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/combat/slash_horizontal",
+      "source": "sources/effects/combat/slash_horizontal.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/combat/slash_horizontal",
+      "sha256": "42420ccb700d25df73847556a24699d1de167cce0e2a1c6176656b7a0d2e1c27",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/combat/ko_burst",
+      "source": "sources/effects/combat/ko_burst.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/combat/ko_burst",
+      "sha256": "8bd3c465c8492e4bff364e48e0b1f8de5b99c1c331ff43343670b9a38a6e4921",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/movement/run_dust",
+      "source": "sources/effects/movement/run_dust.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/movement/run_dust",
+      "sha256": "8184f533842ec4574521505ec2d75ef76982f4ad0da341c576d036af2c41d498",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/movement/land_dust",
+      "source": "sources/effects/movement/land_dust.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/movement/land_dust",
+      "sha256": "f34c6837eb6fdf8803766ad517c38c037cdca78a29b0d9c48dcea065964fce1d",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/movement/double_jump_ring",
+      "source": "sources/effects/movement/double_jump_ring.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/movement/double_jump_ring",
+      "sha256": "a268ca48e442c430324121509b9c44fb82474c5eb9c96a915244fdc9d85b6fee",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/status/burn",
+      "source": "sources/effects/status/burn.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/status/burn",
+      "sha256": "0df20388e18634a679ab514ac1ec4f5b1265869e9de7c6732db491e5110efc40",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/status/frost",
+      "source": "sources/effects/status/frost.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/status/frost",
+      "sha256": "b1003c8f7f4123037bfc4500123d2ca79053b010cba803e4f12b4dcdff034f22",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/crouch_idle",
+      "source": "sources/ilyra-voss/unarmed/crouch_idle-v2.png",
+      "prompt": "prompts/crouch-idle-correction.txt",
+      "sha256": "a27340a9c399d3950990ba4e181133daf3ab5ba253530af75e4865d2750bb9fb",
+      "review": "corrected-from-duck-end-pose"
+    },
+    {
+      "id": "ilyra-voss/unarmed/tactical",
+      "source": "sources/ilyra-voss/unarmed/tactical-v2.png",
+      "prompt": "prompts/motion-corrections.json",
+      "promptId": "ilyra-voss/unarmed/tactical",
+      "sha256": "a988fce463f14346a7ba777f9879fd75e0ca436f36f4f29cffb586f842a8802d",
+      "review": "corrected-release-continuity-review-pending"
+    },
+    {
+      "id": "ilyra-voss/unarmed/walk",
+      "source": "sources/ilyra-voss/unarmed/walk-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "ilyra-voss/unarmed/walk",
+      "sha256": "c2607788e049b9eb27e4344589bcf986d52f4f3babdd2c09acb0ff5eed56c1fb",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "ilyra-voss/unarmed/recovery",
+      "source": "sources/ilyra-voss/unarmed/recovery.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/unarmed/recovery",
+      "sha256": "0cfd752ba84904628348ef4a819d490f2190eda97a17a71ca8091ef6a9b3be5d",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/unarmed/tumble",
+      "source": "sources/ilyra-voss/unarmed/tumble-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "ilyra-voss/unarmed/tumble",
+      "sha256": "dc9ace8fd06982dde8b23a953b11c916bb3dc76261cc05a7c30f3f2dc21b0394",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "ilyra-voss/armed/run",
+      "source": "sources/ilyra-voss/armed/run-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "ilyra-voss/armed/run",
+      "sha256": "74a0aeb546eaaee9492021c1ecb8b3c20c941dbb2650c03bd6c4a1d37fc4bce2",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "ilyra-voss/armed/ultimate",
+      "source": "sources/ilyra-voss/armed/ultimate-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "ilyra-voss/armed/ultimate",
+      "sha256": "db5da7b72e5c55b6e653eff9289952f78b71cbc1b480ade27e32d37285324f96",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "ilyra-voss/armed/walk",
+      "source": "sources/ilyra-voss/armed/walk-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "ilyra-voss/armed/walk",
+      "sha256": "e7beafd5cf188572fb122a9ba8389fce1e9ee93821501ffdcf65304fd5e4375b",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "ilyra-voss/armed/recovery",
+      "source": "sources/ilyra-voss/armed/recovery.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/recovery",
+      "sha256": "3eb969ff417eff3e4cce2eaf2a0f23ad1fda23deefd555beb8fcd27f69e7388f",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/tumble",
+      "source": "sources/ilyra-voss/armed/tumble-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "ilyra-voss/armed/tumble",
+      "sha256": "a52fddb44c00d89cd3b8c4531afc28c7156f488c0f8bbcf3631ea6350922f12d",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "ilyra-voss/armed/throw_up",
+      "source": "sources/ilyra-voss/armed/throw_up.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/throw_up",
+      "sha256": "9ab4c24acd212fb901f32c7e7c4d35372e69724af3ea7ea714f2148eae81ee4c",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/cast_up",
+      "source": "sources/ilyra-voss/armed/cast_up.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/cast_up",
+      "sha256": "b584ee094344d087267538d4f0ff41a2095b01f62789e06034ee182752b68c91",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/cast_down",
+      "source": "sources/ilyra-voss/armed/cast_down.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/cast_down",
+      "sha256": "11b11f689d3b9d9d6df7fb46a42b55e78813169f6b8b7f8e3823068a7748406f",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/cast_diagonal_up",
+      "source": "sources/ilyra-voss/armed/cast_diagonal_up.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/cast_diagonal_up",
+      "sha256": "11d87d4a385a046410f27e25d05baa6504e1b4e4cc508ffc654ed57b985e0707",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/cast_diagonal_down",
+      "source": "sources/ilyra-voss/armed/cast_diagonal_down.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/cast_diagonal_down",
+      "sha256": "730d4cce4787e803e2b63f0b19459f45b68039dca91d226f343af2eb42f24f85",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/taunt",
+      "source": "sources/ilyra-voss/armed/taunt.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/taunt",
+      "sha256": "4a5e2c7c70d079bfa4b90d53f9d6911a367a348622b916fa4e464a235306ff78",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/crouch_walk",
+      "source": "sources/ilyra-voss/armed/crouch_walk.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/crouch_walk",
+      "sha256": "ecbd3fa0acb3db11f32f8f252b0cf28e8c67221035dec886f40eb21fa1879f48",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/shield_break",
+      "source": "sources/ilyra-voss/armed/shield_break.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/shield_break",
+      "sha256": "ac119e118d72bc54745d49cafc2fa4c59f9023607ffae8fbcc790874c9f6d881",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/frozen",
+      "source": "sources/ilyra-voss/armed/frozen.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/frozen",
+      "sha256": "acbb98d67657e5632ad0b54ef0f88582073602ed3e569e5c41d6bff48a7298f5",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/burning",
+      "source": "sources/ilyra-voss/armed/burning.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/burning",
+      "sha256": "26ce5743cc7bfe37296f975a12a92d82c70bd78b7fff4f74894c16955f99622d",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/grabbed",
+      "source": "sources/ilyra-voss/armed/grabbed.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/grabbed",
+      "sha256": "db770cf5c80bb3145fb382f418705d0b2141b1049a6af94a7b3f80c05c5d1c3f",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "ilyra-voss/armed/ledge_release",
+      "source": "sources/ilyra-voss/armed/ledge_release.png",
+      "prompt": "prompts/ilyra-mobility-specials.json",
+      "promptId": "ilyra-voss/armed/ledge_release",
+      "sha256": "5d3da35dc709549a9e16422b9e64b97266a419621c93aa231b1bb486e4b8bcf8",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/status/stun_stars",
+      "source": "sources/effects/status/stun_stars.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/status/stun_stars",
+      "sha256": "c4a6c7d1cb40c64fbab5f2866ff2335f65ea1fc2f09252bbd48519762edffb1b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/ilyra-voss/crucible_spin",
+      "source": "sources/effects/ilyra-voss/crucible_spin-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "effects/ilyra-voss/crucible_spin",
+      "sha256": "6b94fd3fdc9ae2e3f56c2d6b770febac2bc9c9fe4ec5034f307ab63604414506",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "effects/ilyra-voss/crucible_burst",
+      "source": "sources/effects/ilyra-voss/crucible_burst.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/ilyra-voss/crucible_burst",
+      "sha256": "2dd0249a436cd7e50b1bfbf7493a16a93c669916c0c47228ae3c59fcc7e44f3b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/ilyra-voss/phoenix_aura",
+      "source": "sources/effects/ilyra-voss/phoenix_aura.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/ilyra-voss/phoenix_aura",
+      "sha256": "c81b31638f9ae57f1e9a00bbbdc81d4e1944ccf31d3f4eaa80cc224803c60343",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/ilyra-voss/fire_trail",
+      "source": "sources/effects/ilyra-voss/fire_trail.png",
+      "prompt": "prompts/effects-pass.json",
+      "promptId": "effects/ilyra-voss/fire_trail",
+      "sha256": "d2693dc5ab7a9facfe0574b85b8b39c9d8ee532f9a063316d1c635b76254a247",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/idle",
+      "source": "sources/brann-rook/unarmed/idle.png",
+      "prompt": "prompts/brann-idle-pass.json",
+      "promptId": "brann-rook/unarmed/idle",
+      "sha256": "dca6d60ece255169de598fe18545316855421f7977d838146e6bb7e0012c2ea9",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/idle",
+      "source": "sources/brann-rook/armed/idle.png",
+      "prompt": "prompts/brann-idle-pass.json",
+      "promptId": "brann-rook/armed/idle",
+      "sha256": "0ca00118807b1b46c81a278520d81f832af5152d4d78e552f3820228e818d655",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/idle_ready",
+      "source": "sources/brann-rook/unarmed/idle_ready.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/idle_ready",
+      "sha256": "85b18f8f7515cb51b09bdef94d010822a79131dbebc8b5a8ab6df3cd62118992",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/crouch_idle",
+      "source": "sources/brann-rook/unarmed/crouch_idle.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/crouch_idle",
+      "sha256": "a332db20c24fff271be17b6c5eb1e3d99aa3d033195da4bb8e597f43ba5142c8",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/duck",
+      "source": "sources/brann-rook/unarmed/duck.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/duck",
+      "sha256": "1eaa2b86bd89ae9f13d15fea5228fa11addf847e6ce7f45ff3729c9640aecf08",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/stand_up",
+      "source": "sources/brann-rook/unarmed/stand_up.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/stand_up",
+      "sha256": "5670b602e3da57a176f3cb6974711bd2573989186da70b4b55851d65ae504a26",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/jump",
+      "source": "sources/brann-rook/unarmed/jump.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/jump",
+      "sha256": "ab4cbe693a6208ea094e18d46ee47b0678057dd56af99517106daad7affe0e4b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/fall",
+      "source": "sources/brann-rook/unarmed/fall.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/fall",
+      "sha256": "5b83ac33eff5368892533cf70e2dcf22d337b18cf51afa261a689691ca814ece",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/land",
+      "source": "sources/brann-rook/unarmed/land.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/land",
+      "sha256": "b0f2905ba163e430f7bc2101a658bab6e3f89f43c9dd04d9748256f19e5646cc",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/hurt",
+      "source": "sources/brann-rook/unarmed/hurt.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/hurt",
+      "sha256": "bb961b6c1e7f73e00ca06e8e3507e9a74467afc79bb3ea76d1683421061b39eb",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/hurt_crouch",
+      "source": "sources/brann-rook/unarmed/hurt_crouch.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/hurt_crouch",
+      "sha256": "7013b4ee3ea66a106070d0ca956bf0348c0c71f8847dc987a1e355889496b120",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/hurt_air",
+      "source": "sources/brann-rook/unarmed/hurt_air.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/hurt_air",
+      "sha256": "bbc5d99ac44d1ec4f58a22b927ccb292eb5e8cf99e2e612a256f011e288ecdfc",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/hurt_back",
+      "source": "sources/brann-rook/unarmed/hurt_back.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/hurt_back",
+      "sha256": "9b9a90962b9ab279b14f981e70c91fdea295851ec1a2269772a8d2c9bb0ad121",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/shield",
+      "source": "sources/brann-rook/unarmed/shield.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/shield",
+      "sha256": "204e496f93167c691bdeaf7fa75d051269d996672426df042a9ff9109de7d6cb",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/shield_hit",
+      "source": "sources/brann-rook/unarmed/shield_hit.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/shield_hit",
+      "sha256": "d99a720d1603227f6a1010ff8991b72d795f88be81bbef5d0fd5c863148e6215",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/opener",
+      "source": "sources/brann-rook/unarmed/opener.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/opener",
+      "sha256": "d8204a49e22248349e6b467b108c38e2ae730da4fc16ca2bfcb2495f53ffc272",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/launcher",
+      "source": "sources/brann-rook/unarmed/launcher.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/launcher",
+      "sha256": "74b2e336bccf38bc6f418029aa4e6f13d679d5f04e334e695c0c6f835e023a88",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/aerial",
+      "source": "sources/brann-rook/unarmed/aerial.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/aerial",
+      "sha256": "451f9b4a8e684f92dee16430b55998fc541445c6a380875a1956812372910764",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/finisher",
+      "source": "sources/brann-rook/unarmed/finisher-v2.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/finisher",
+      "sha256": "f9fb5e0688a539c4b8885bbba64828cdf445211ac61f9a1f9c211a5b3612d96a",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/grab",
+      "source": "sources/brann-rook/unarmed/grab.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/grab",
+      "sha256": "5d1c7e412d81b98bd31b9a7b63aff102066da996904805e05b5b00ea940355aa",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/throw_forward",
+      "source": "sources/brann-rook/unarmed/throw_forward.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/throw_forward",
+      "sha256": "9f6cb577426139d92f30f7a056fe8850a98809f15df144f7c042b3c6e81c3f08",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/cast_forward",
+      "source": "sources/brann-rook/unarmed/cast_forward.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/cast_forward",
+      "sha256": "fb4eba79018e997c053e24185172b6980b342776fed8852fcb37e305c46e0f76",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/pickup",
+      "source": "sources/brann-rook/unarmed/pickup.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/pickup",
+      "sha256": "5619e4d1c186e8235ad65c3e0a179d750fa1abb9bb2a4a4c41fd04c8e9048693",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/stun",
+      "source": "sources/brann-rook/unarmed/stun.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/stun",
+      "sha256": "c70576e7748d8d756e08afcdb703ae43990a6c69c7b8ce863e51e611077eae26",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/defeat",
+      "source": "sources/brann-rook/unarmed/defeat.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/unarmed/defeat",
+      "sha256": "6ce7326988bc0aa6fb0dc70c6ce0c2c9c48285ddb697d90269399511a9f89a86",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/idle_ready",
+      "source": "sources/brann-rook/armed/idle_ready.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/idle_ready",
+      "sha256": "d7998161850e69b154694e0488d36adb1540d8a53d661aa228d92b396f761aef",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/crouch_idle",
+      "source": "sources/brann-rook/armed/crouch_idle.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/crouch_idle",
+      "sha256": "e52c1b033ff3c5154953c45882cbed6200490d018280c3143556cb26f1748ffd",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/duck",
+      "source": "sources/brann-rook/armed/duck.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/duck",
+      "sha256": "c98a030b39f7c81b163a984606b0a153c5381eb8b156db5cd5efc02c1c18b81a",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/stand_up",
+      "source": "sources/brann-rook/armed/stand_up.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/stand_up",
+      "sha256": "ad46f26c57ee5ef1a4b4f1b3e62ff879b09cd71a032d97d5936c3316896f9cef",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/jump",
+      "source": "sources/brann-rook/armed/jump.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/jump",
+      "sha256": "e3a7a68c20c593a6c8b02f6765b43e7e2bd8c35b4e8994f1e1430da1d9c8769d",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/fall",
+      "source": "sources/brann-rook/armed/fall.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/fall",
+      "sha256": "3c9b0660b29a8ddc52cbe3007bb08eb2c0fe3673480e918b698b7de4990fee80",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/land",
+      "source": "sources/brann-rook/armed/land.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/land",
+      "sha256": "801bebcf912cb422d3c5f509807d3d1a9030e66c34bdadcd8286a5e076006b16",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/hurt",
+      "source": "sources/brann-rook/armed/hurt.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/hurt",
+      "sha256": "fab6511cfcb9f2c71f241ca64eb76ec4fec4485aeabced940875da0a4c5742a4",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/hurt_crouch",
+      "source": "sources/brann-rook/armed/hurt_crouch.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/hurt_crouch",
+      "sha256": "bc89b3e48be350b3bc196371d4f508c9eaaa89b4223cff1657ab8d7b9bc3ad39",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/hurt_air",
+      "source": "sources/brann-rook/armed/hurt_air.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/hurt_air",
+      "sha256": "4dd388709882933563b210422bd385c9c7530cbd13eea5d22df03647c899d9c1",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/hurt_back",
+      "source": "sources/brann-rook/armed/hurt_back.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/hurt_back",
+      "sha256": "30c62fe3c329dafbef107bae506cdf3bcc99d5f45bbf1c9e4474137f488463e5",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/shield",
+      "source": "sources/brann-rook/armed/shield.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/shield",
+      "sha256": "e4108031aeda99187de1f80ec51bac009fd9d7c016518d452d5b96b1be20b0d5",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/shield_hit",
+      "source": "sources/brann-rook/armed/shield_hit.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/shield_hit",
+      "sha256": "4b3d6b09de8598dd3d169f3a40a7e87f4250bc2a0a6ae99c0a4ae2b82016157c",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/opener",
+      "source": "sources/brann-rook/armed/opener.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/opener",
+      "sha256": "4752e3df9d118a997c45e081d376d7ce7dd92959edce9d7e596a67b337c6cc13",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/launcher",
+      "source": "sources/brann-rook/armed/launcher.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/launcher",
+      "sha256": "3a43a792e0aa4837b02368417b466b51a54b7f337ea0736c4f6ca95d08ec62ef",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/aerial",
+      "source": "sources/brann-rook/armed/aerial.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/aerial",
+      "sha256": "16617d065fbb2a2d6fcb26e437139cee8d01d5d72d9b54fa2eb83738805a74d2",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/finisher",
+      "source": "sources/brann-rook/armed/finisher.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/finisher",
+      "sha256": "f9d5e630c9d5e11a047f106635cbc3416bbc1d1c3f85136d62efde56eb0dba2f",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/grab",
+      "source": "sources/brann-rook/armed/grab.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/grab",
+      "sha256": "125c4d1bde2463d813ae0aaf1fa6e362745e9b9c46f2d7fefaca00b83f233d6f",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/throw_forward",
+      "source": "sources/brann-rook/armed/throw_forward.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/throw_forward",
+      "sha256": "6cb808eda5aa0bb7a06c331619b3f2f0aa80686e7bb4c66741edc6ebf997c9c7",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/cast_forward",
+      "source": "sources/brann-rook/armed/cast_forward.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/cast_forward",
+      "sha256": "ecbfa110268d9d8948c6f5de709d9b17ee6558be7db6e843cb5f7dcf717c8ab4",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/pickup",
+      "source": "sources/brann-rook/armed/pickup.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/pickup",
+      "sha256": "43a33e3d9e66b3524c65134cf6a16ecb59cf5da4ef6d813e246c6e19bdf28499",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/stun",
+      "source": "sources/brann-rook/armed/stun.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/stun",
+      "sha256": "613e2a33f1d6aaed056ed8b8434742133b5fe7f41c3d38525359b87847cfc4bd",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/defeat",
+      "source": "sources/brann-rook/armed/defeat.png",
+      "prompt": "prompts/brann-core-pass.json",
+      "promptId": "brann-rook/armed/defeat",
+      "sha256": "84eea39fe66aff0a3f583a333354cd6d8ab49bbd0e8ac86aad325a3385b7055a",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "props/weapons/ilyra_pistol",
+      "source": "sources/props/weapons/ilyra_pistol.png",
+      "prompt": "prompts/artifacts-pass.json",
+      "promptId": "props/weapons/ilyra_pistol",
+      "sha256": "197557d80001dff12be89b57620c469da73fed776790b52a0c99de64adf1d87f",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "props/weapons/brann_pressure_rod",
+      "source": "sources/props/weapons/brann_pressure_rod.png",
+      "prompt": "prompts/artifacts-pass.json",
+      "promptId": "props/weapons/brann_pressure_rod",
+      "sha256": "aa0af838c6337ae5a222a5c9fe9531614c39345b4d54f2446bf9a73ec0f18aee",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "props/weapons/brann_tower_shield",
+      "source": "sources/props/weapons/brann_tower_shield.png",
+      "prompt": "prompts/artifacts-pass.json",
+      "promptId": "props/weapons/brann_tower_shield",
+      "sha256": "b1423d27c3018155017dd29249af973928a7bf43d81137756ef3a3ca9338b0ea",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "props/pickups/health_vial",
+      "source": "sources/props/pickups/health_vial.png",
+      "prompt": "prompts/artifacts-pass.json",
+      "promptId": "props/pickups/health_vial",
+      "sha256": "6bd0ef47e41c00576c0d9c8150b1ebebb2ac7a3f4ed79a403b16569eb17ac4f3",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "props/pickups/shield_shard",
+      "source": "sources/props/pickups/shield_shard.png",
+      "prompt": "prompts/artifacts-pass.json",
+      "promptId": "props/pickups/shield_shard",
+      "sha256": "f15a1e316af66a37f57356e22f2d2c0ece65bf6edf617d2a1578d9d09de07116",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "props/stage/wooden_crate",
+      "source": "sources/props/stage/wooden_crate.png",
+      "prompt": "prompts/artifacts-pass.json",
+      "promptId": "props/stage/wooden_crate",
+      "sha256": "9c58b68b97d4c5b9de09202b85135db164d799b2ec834193d4fc40d56900a1e7",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "props/stage/powder_barrel",
+      "source": "sources/props/stage/powder_barrel.png",
+      "prompt": "prompts/artifacts-pass.json",
+      "promptId": "props/stage/powder_barrel",
+      "sha256": "bead51c2616c140878400d4890d54348942cd282dc0acdb5fdcef625d2ea7e42",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/brann-rook/boiler_vent",
+      "source": "sources/effects/brann-rook/boiler_vent.png",
+      "prompt": "prompts/artifacts-pass.json",
+      "promptId": "effects/brann-rook/boiler_vent",
+      "sha256": "81740c8acb5cda57ed73a3423dbccde3ac89e6786b22c558858651de0e626504",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/brann-rook/redline_heat",
+      "source": "sources/effects/brann-rook/redline_heat.png",
+      "prompt": "prompts/artifacts-pass.json",
+      "promptId": "effects/brann-rook/redline_heat",
+      "sha256": "80dfe0e891a146ff2852e5d3fb6910c495252b30be1dea95b78870c97d470fbc",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/run",
+      "source": "sources/brann-rook/unarmed/run.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/run",
+      "sha256": "683d60bf8e842fd5d8ab5fc92d309faf62e06acdc45329f1cf068aa584e854ef",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/dodge",
+      "source": "sources/brann-rook/unarmed/dodge.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/dodge",
+      "sha256": "c0d1824d107fdb1e13a1d3c238ca99c4819540c0c85e60448b98b75a32b466cc",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/tactical",
+      "source": "sources/brann-rook/unarmed/tactical.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/tactical",
+      "sha256": "1c153ff1df1d3fab7deb54666dc80d6e571f20f6e02ad851e1cce28c8fa89935",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/ultimate",
+      "source": "sources/brann-rook/unarmed/ultimate.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/ultimate",
+      "sha256": "78d762083f86bf71480d943d098cf111712de036c73cbac67ec8f66752d84e7a",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/walk",
+      "source": "sources/brann-rook/unarmed/walk.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/walk",
+      "sha256": "6fbc2486d78ee4748bd871d282c2a839d293c4fb85f8289fb75b19c10d914cd3",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/dash",
+      "source": "sources/brann-rook/unarmed/dash.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/dash",
+      "sha256": "97bb9481c285f0e4ac31da87e7cc13c48264407904b92312e858a441836cc81b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/brake",
+      "source": "sources/brann-rook/unarmed/brake.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/brake",
+      "sha256": "c603119b5802b67bb270ca1469bcd69253a446f8bb58a9eaeed28478a8fc6505",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/double_jump",
+      "source": "sources/brann-rook/unarmed/double_jump.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/double_jump",
+      "sha256": "61c6d373cd3530ea48e270e0ec6364e85af85fa7370390004272798a71bc9737",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/fast_fall",
+      "source": "sources/brann-rook/unarmed/fast_fall.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/fast_fall",
+      "sha256": "b9f0970d5944bb67273de68a753c29fe8aaf21d1a8f48cb5996e4074e662d8fd",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/air_dodge",
+      "source": "sources/brann-rook/unarmed/air_dodge.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/air_dodge",
+      "sha256": "22c5abb8d67596b28707a489aab88b6680282e8643bfc162cc97f30cf8151990",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/recovery",
+      "source": "sources/brann-rook/unarmed/recovery.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/recovery",
+      "sha256": "9bcec5d93f5e0b6974ebc38b4660cbd8962a27c8c86f1cdae059ae9f868bdf94",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/wall_cling",
+      "source": "sources/brann-rook/unarmed/wall_cling.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/wall_cling",
+      "sha256": "f3b1b7c66fb8291b0961cc1ffdc5824315c557b04bd00ba25eee7b3607d57629",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/ledge_hang",
+      "source": "sources/brann-rook/unarmed/ledge_hang.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/ledge_hang",
+      "sha256": "0a303501f42ffc9e8bcd812a777bd0ccaddd5309f3350dbadc6e778c97b9a47e",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/ledge_climb",
+      "source": "sources/brann-rook/unarmed/ledge_climb.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/ledge_climb",
+      "sha256": "fb9cab5915c98406805f224c98dafc346c3aff9fc92bab1d2ae94dc5480dde48",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/tumble",
+      "source": "sources/brann-rook/unarmed/tumble-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "brann-rook/unarmed/tumble",
+      "sha256": "550f2fb8782bafd45ee7ce8769e6dc78018ecd5489489a6b7b49698db7aa0642",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "brann-rook/unarmed/get_up",
+      "source": "sources/brann-rook/unarmed/get_up.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/get_up",
+      "sha256": "fc0383de6f00bf482314a587fec0daf210a5897663be9ffd85e43aaf8d9080d7",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/ko",
+      "source": "sources/brann-rook/unarmed/ko.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/ko",
+      "sha256": "d4f15f8a5320f6f3943a77b7ba8b7985cba98cedce1b71065905c53256b9aef4",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/respawn",
+      "source": "sources/brann-rook/unarmed/respawn.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/respawn",
+      "sha256": "746e5df831cbc68a5882e45f1e2f29c337f2c303e333399d51629637318314c7",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/victory",
+      "source": "sources/brann-rook/unarmed/victory.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/victory",
+      "sha256": "8fe88539b91fa07e1f01c96b738c872e3af2546d3479473f35555526052afae2",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/back_air",
+      "source": "sources/brann-rook/unarmed/back_air.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/back_air",
+      "sha256": "36a50b588f5faec5c775d9dccd036ccd61c3ed4ca5f3a6c2e0602ced22e59566",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/up_air",
+      "source": "sources/brann-rook/unarmed/up_air.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/up_air",
+      "sha256": "93870834c2d4e723313760b9fa95111aad531c325b83b5a8f2f28be9b397dab9",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/run",
+      "source": "sources/brann-rook/armed/run.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/run",
+      "sha256": "d31289582a16e4326892fb2ae6a139b208408c99084f6c140fa06bac9a5d3fa1",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/neutral_air",
+      "source": "sources/brann-rook/unarmed/neutral_air.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/neutral_air",
+      "sha256": "cfe5f8a02316d81cf9f7ad1c4b93e7f3e385791603a08f0c1a4ecf1809a88cd3",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/down_air",
+      "source": "sources/brann-rook/unarmed/down_air.png",
+      "prompt": "prompts/brann-repairs.json",
+      "promptId": "brann-rook/unarmed/down_air",
+      "sha256": "130fe74e185f1c73a009ed948e7b6db996579c4c1d9eeffef956378558c9c63b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/up_smash",
+      "source": "sources/brann-rook/unarmed/up_smash.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/up_smash",
+      "sha256": "d5784aa207f31b4ebada17f7458e9ae8fc647727867bf87c332e4ac6c1649d89",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/down_smash",
+      "source": "sources/brann-rook/unarmed/down_smash.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/down_smash",
+      "sha256": "11d13e7802d7befaaee6a16512555af4b11ee8de9d0f86ea7c584b18755743c2",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/throw_back",
+      "source": "sources/brann-rook/unarmed/throw_back.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/throw_back",
+      "sha256": "0fabd2cb059fef2688eac6b23ae7f0a8d6bf9d9ecc56271814d154067d7d831a",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/throw_up",
+      "source": "sources/brann-rook/unarmed/throw_up.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/throw_up",
+      "sha256": "b1ee2cf893376a891bcfd135d7bb7ba045e7f493c047d323df11455c15d932f5",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/throw_down",
+      "source": "sources/brann-rook/unarmed/throw_down.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/throw_down",
+      "sha256": "21e2816a56c1d4e89c22d4e569eeaecf7796eb0bf76b0902ac09382a64c5ffa7",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/cast_up",
+      "source": "sources/brann-rook/unarmed/cast_up.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/cast_up",
+      "sha256": "a992a87a8674085db8b645e98aa4e312973de7bfc08b3c9c7e6b238dd8fa6827",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/cast_down",
+      "source": "sources/brann-rook/unarmed/cast_down.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/cast_down",
+      "sha256": "65d560dac154684153a57bb70198b348e986ff0f4de24da37cf175f4b4cee5d4",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/cast_diagonal_up",
+      "source": "sources/brann-rook/unarmed/cast_diagonal_up.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/cast_diagonal_up",
+      "sha256": "b9923f2f5a35d89f44892183af1422c71cb604e8c70d8a3259da6bd013e687ae",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/cast_diagonal_down",
+      "source": "sources/brann-rook/unarmed/cast_diagonal_down.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/cast_diagonal_down",
+      "sha256": "fc2185b16424d19b205cc90ae62a6716eaefd08109d449b448dba185fb778e38",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/taunt",
+      "source": "sources/brann-rook/unarmed/taunt.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/taunt",
+      "sha256": "9690679530d71ffcaee312a16860f4fb54f62afee94cecfac2f2b72f7311067b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/crouch_walk",
+      "source": "sources/brann-rook/unarmed/crouch_walk.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/crouch_walk",
+      "sha256": "76944a6a87cb5d925ff707403900ec5055cc0efeab3bb1527bc5a035ea3610bf",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/shield_break",
+      "source": "sources/brann-rook/unarmed/shield_break.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/shield_break",
+      "sha256": "9ec80faee7f4bf9290c8f10aa21cca748bb2fe96567689737e6893b5b8bd8094",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/frozen",
+      "source": "sources/brann-rook/unarmed/frozen.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/frozen",
+      "sha256": "ecbf52083539c4473e58c5764f5544fba1daf59f599bc9c16342e6971b4bbacc",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/burning",
+      "source": "sources/brann-rook/unarmed/burning.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/burning",
+      "sha256": "b5b49cb9cf76ecdfce68c9e1a57765696aa5d0d9c7b21d5ff598da14e97b13e2",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/grabbed",
+      "source": "sources/brann-rook/unarmed/grabbed.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/grabbed",
+      "sha256": "72adff413ca841043ddc16ba4bb7b450fa03f71bcacb7284555d8299ae27225e",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/unarmed/ledge_release",
+      "source": "sources/brann-rook/unarmed/ledge_release.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/unarmed/ledge_release",
+      "sha256": "ff5f1b8230089477afd498503a4bf4dd049d8e4ef01f2f9f7734046f86e023de",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/dodge",
+      "source": "sources/brann-rook/armed/dodge.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/dodge",
+      "sha256": "1df7edc3cfe78da6d75298a8c61bc2fc0a66b331413d8dc6687a785e8d0a3bc0",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/tactical",
+      "source": "sources/brann-rook/armed/tactical.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/tactical",
+      "sha256": "f8e7b9917502a43e6e769a0e8fd16d881c6f38dc71299de157c053a9609fc9f6",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/ultimate",
+      "source": "sources/brann-rook/armed/ultimate.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/ultimate",
+      "sha256": "6fb8bb1854170c980d11a76dfcfcf20995d2ec8053da72e82fab3db4c76cb344",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/walk",
+      "source": "sources/brann-rook/armed/walk.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/walk",
+      "sha256": "fbb0631e48a21a3b06944364c71b9f4c959bfa83240bfda2a8bcffe6488c60ac",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/dash",
+      "source": "sources/brann-rook/armed/dash.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/dash",
+      "sha256": "fe7226a47ceb254be801f9f33aa1f37b89769dea181c70cf9ea8cebaae63012b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/brake",
+      "source": "sources/brann-rook/armed/brake.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/brake",
+      "sha256": "df3c20b12eedc6c4f52a8b966a878996030296006659470f44e636f90fb0c202",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/double_jump",
+      "source": "sources/brann-rook/armed/double_jump.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/double_jump",
+      "sha256": "bc698d236bfe79dbc524a7f1a471ff884e94aba7576715d0e0cdddf252283c3c",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/fast_fall",
+      "source": "sources/brann-rook/armed/fast_fall.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/fast_fall",
+      "sha256": "7bcb138722c6fcfc8680b3a88b52ef4fccbbc5cfab298ac78ad6c2e1f0fe69b1",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/air_dodge",
+      "source": "sources/brann-rook/armed/air_dodge.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/air_dodge",
+      "sha256": "333eb5cd0cce6786e044ba80ae5a2a3af49edf5b265354baea8433d8c268b168",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/recovery",
+      "source": "sources/brann-rook/armed/recovery.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/recovery",
+      "sha256": "ae825e928084e4e2354d129660e0c15701656903f40b7708a3633e633499f400",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/wall_cling",
+      "source": "sources/brann-rook/armed/wall_cling.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/wall_cling",
+      "sha256": "5f2a57d5d7b97f513697a5136cc8fd40052a997c13dfdec9fb1c6e9e973b87d3",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/ledge_hang",
+      "source": "sources/brann-rook/armed/ledge_hang.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/ledge_hang",
+      "sha256": "2a37e715116b71d070c0bf93efec9c0e85fbb845aa6c55b16c4866f82e7520d4",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/ledge_climb",
+      "source": "sources/brann-rook/armed/ledge_climb.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/ledge_climb",
+      "sha256": "b9c4257dc29cd560b681d52c786716c545d92878c2beb9a7df28adaac09fe38a",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/tumble",
+      "source": "sources/brann-rook/armed/tumble-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "brann-rook/armed/tumble",
+      "sha256": "36dd749b1b72057f886b9f3c6efc6aeb78f6a3ed6ba41e265ee53fefc55c2df7",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "brann-rook/armed/get_up",
+      "source": "sources/brann-rook/armed/get_up.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/get_up",
+      "sha256": "7369f04cea86464ec5d5827c80fffe04d6a4f63a88134931e634aa38729971b5",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/ko",
+      "source": "sources/brann-rook/armed/ko.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/ko",
+      "sha256": "18c8928453b1ff41330a6be5758fce91b1db7730e4bf70ea69153eb60cae76c2",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/respawn",
+      "source": "sources/brann-rook/armed/respawn.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/respawn",
+      "sha256": "a67666eee9b0e4ae42b5d901514fa7df30a0206c8aa2a17be539d34356d98a8b",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/victory",
+      "source": "sources/brann-rook/armed/victory.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/victory",
+      "sha256": "f29ce069fa748db9eb21d8d185d7aef60b48f1eb328682693b8530430fa6bad4",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/neutral_air",
+      "source": "sources/brann-rook/armed/neutral_air.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/neutral_air",
+      "sha256": "1b16cee56f37a868df4f2f6b07c0896c42ed8f27530b540bdaccf7395cb5b3e4",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/back_air",
+      "source": "sources/brann-rook/armed/back_air.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/back_air",
+      "sha256": "e61639a00e6f22b6b9eb48aa38c9faefe0cb79059547f4c784550010da08ccd4",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/up_air",
+      "source": "sources/brann-rook/armed/up_air.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/up_air",
+      "sha256": "94ebee88680c776108d730255229b805a968caddcb81b5a6fed624aeb386ce78",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/down_air",
+      "source": "sources/brann-rook/armed/down_air.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/down_air",
+      "sha256": "212c434c9e247258cec2a92de5de54aad8fad4d7fe7c3eca0ccc3618d2e29acc",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/up_smash",
+      "source": "sources/brann-rook/armed/up_smash.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/up_smash",
+      "sha256": "03b12150b1e2d5b8691ac961a2900b8b66eff812f448e44d67684ede0d3abad8",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/down_smash",
+      "source": "sources/brann-rook/armed/down_smash.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/down_smash",
+      "sha256": "45134a9d7c2d884ce10a33b25d9c5016933524e69b344eee3cdd974747cf0349",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/throw_back",
+      "source": "sources/brann-rook/armed/throw_back.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/throw_back",
+      "sha256": "29654319967d8a8833053211a9a2898c3dcadfa58cd76f081f63de5b522491d8",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/throw_up",
+      "source": "sources/brann-rook/armed/throw_up.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/throw_up",
+      "sha256": "2c416cc31e660f97a0322f3d6f714147a3b79530ef7e7e3349fd4d3caf56980f",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/throw_down",
+      "source": "sources/brann-rook/armed/throw_down.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/throw_down",
+      "sha256": "f5f31f3e0928b1d25acade321849b7b314c627af569f1df8c312508fbb0a8600",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/cast_up",
+      "source": "sources/brann-rook/armed/cast_up.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/cast_up",
+      "sha256": "1e4045204cd161e3c74b3f68a9cf9e5072c657aa3a64ea5f3ccd02643f4378a4",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/cast_down",
+      "source": "sources/brann-rook/armed/cast_down.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/cast_down",
+      "sha256": "f654ce89b9a6d4c377990b8534664f2232c1961a987fe5cd55e65d42ccf8e53a",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/cast_diagonal_up",
+      "source": "sources/brann-rook/armed/cast_diagonal_up.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/cast_diagonal_up",
+      "sha256": "c0854bd5304a75a03db8f2c93e140e760dc39c6d6d78b385f4bec959a3bad93e",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/cast_diagonal_down",
+      "source": "sources/brann-rook/armed/cast_diagonal_down.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/cast_diagonal_down",
+      "sha256": "33291fb2330dbc639f724b0c7b6a0c1320bd0e1c17581b3a95f783aa19374cc8",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/taunt",
+      "source": "sources/brann-rook/armed/taunt.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/taunt",
+      "sha256": "9b254e21c7e8c8fce317cdd9bf8228dcdc85f16e800947d858932d53402228d0",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/crouch_walk",
+      "source": "sources/brann-rook/armed/crouch_walk.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/crouch_walk",
+      "sha256": "963b5384c0333bb97fe687d6dba477d197e1d28d167f3bedbb0a6f1422849e95",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/shield_break",
+      "source": "sources/brann-rook/armed/shield_break.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/shield_break",
+      "sha256": "e67f00fc15f0e71b76f52aeafa82c50b88fc0d9466fffeff0c21314e7129e67e",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/frozen",
+      "source": "sources/brann-rook/armed/frozen.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/frozen",
+      "sha256": "1b5ac20217d9b8036c39ab61847c1ab8dd07d211c92eaa20561b7a413e723cb7",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/grabbed",
+      "source": "sources/brann-rook/armed/grabbed.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/grabbed",
+      "sha256": "907008e01a835ab7245847fd8950286ea0d9c0f59ca34daa98a75397a3f762d7",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/ledge_release",
+      "source": "sources/brann-rook/armed/ledge_release.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/ledge_release",
+      "sha256": "0b16aadc4dedc038eb9ef104a232fe112f45531d86ffcb5f332cb7b259f96b5a",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/brann-rook/guard_impact",
+      "source": "sources/effects/brann-rook/guard_impact.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "effects/brann-rook/guard_impact",
+      "sha256": "c5cf8dd20660861c69fdbff824a53f7cba2248b7984d1d0c5165e158c47bfa79",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "brann-rook/armed/burning",
+      "source": "sources/brann-rook/armed/burning.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "brann-rook/armed/burning",
+      "sha256": "74923e0b980be92c090f338c460513799b4e5ddd3a0439574f1d3ca010040096",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/brann-rook/guard_plate",
+      "source": "sources/effects/brann-rook/guard_plate.png",
+      "prompt": "prompts/brann-guard-repair.txt",
+      "promptId": "effects/brann-rook/guard_plate",
+      "sha256": "eee1da65d8e219cbbfbe0ed2b3de27ee3e0d4a185e11682fa14c4a35437bfda6",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/brann-rook/pressure",
+      "source": "sources/effects/brann-rook/pressure.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "effects/brann-rook/pressure",
+      "sha256": "f8e8f9c5b17b316aae4a1eb6261a12b277c0db3c5c2f4427eaff627b13f3f270",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/brann-rook/redline_aura",
+      "source": "sources/effects/brann-rook/redline_aura.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "effects/brann-rook/redline_aura",
+      "sha256": "0c30c61e1324d757017813b5523af687eec66dc6f0801eb671e88b75b72f49fd",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/brann-rook/steam_jet",
+      "source": "sources/effects/brann-rook/steam_jet.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "effects/brann-rook/steam_jet",
+      "sha256": "a6afdd521711997fafa7d725cd1d0ce5ab6857c7994b470dc285428e6dcb356a",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/brann-rook/vent_cloud",
+      "source": "sources/effects/brann-rook/vent_cloud.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "effects/brann-rook/vent_cloud",
+      "sha256": "2ffa03ef8d181a8eb8ae5f4db7fce2258850ef2b5b43782876ebd091853eb641",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/brann-rook/armor_scraps",
+      "source": "sources/effects/brann-rook/armor_scraps.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "effects/brann-rook/armor_scraps",
+      "sha256": "6e4b63484202c61a51d01bc98e949899ac599f0133c707c77db4a168ef1003d0",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/brann-rook/boiler_flare",
+      "source": "sources/effects/brann-rook/boiler_flare.png",
+      "prompt": "prompts/brann-completion.json",
+      "promptId": "effects/brann-rook/boiler_flare",
+      "sha256": "d7538252610859a45e723150adb0ea630200e61e11677b0471ac923529004a07",
+      "review": "generated-motion-review-required"
+    },
+    {
+      "id": "effects/ilyra-voss/scorch",
+      "source": "sources/effects/ilyra-voss/scorch-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "effects/ilyra-voss/scorch",
+      "sha256": "425e4b261d4e3e0ead612aeb0145108ce2054ad1b714eb059c2d38fa23c70c3a",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "effects/ilyra-voss/volatile_spark",
+      "source": "sources/effects/ilyra-voss/volatile_spark-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "effects/ilyra-voss/volatile_spark",
+      "sha256": "0174c679dcd03f6c24409230f7f50bde80ce35b681728de21e780a76de80104c",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "effects/ilyra-voss/phoenix_charge",
+      "source": "sources/effects/ilyra-voss/phoenix_charge-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "effects/ilyra-voss/phoenix_charge",
+      "sha256": "5e17a9def45be6336c5cb6d41a30fceeef16699d94ea40c6b071c060e45c2a64",
+      "review": "motion-reviewed"
+    },
+    {
+      "id": "effects/ilyra-voss/crucible_fragments",
+      "source": "sources/effects/ilyra-voss/crucible_fragments-complete.png",
+      "prompt": "prompts/duo-completion.json",
+      "promptId": "effects/ilyra-voss/crucible_fragments",
+      "sha256": "1d548e49f79578ce876016e7a1a6d8cc2edeb5f35f8fa1bfff8040e772037cc7",
+      "review": "motion-reviewed"
+    }
+  ],
+  "rejected": [
+    {
+      "source": "sources/ilyra-voss/unarmed/run.png",
+      "prompt": "prompts/pilot.json",
+      "promptId": "ilyra-voss/unarmed/run",
+      "reason": "Incorrect gait sequence; frame count did not produce complete motion."
+    },
+    {
+      "source": "sources/ilyra-voss/unarmed/run-v3.png",
+      "prompt": "prompts/run-inbetweens.txt",
+      "reason": "Repeated gait phases instead of requested intermediate positions; not promoted to exports."
+    }
+  ],
+  "unselectedCorrections": [
+    {
+      "source": "sources/ilyra-voss/armed/run-v2.png",
+      "prompt": "prompts/motion-corrections.json",
+      "promptId": "ilyra-voss/armed/run",
+      "reason": "Not promoted; the revision did not resolve the recorded motion or equipment problem."
+    },
+    {
+      "source": "sources/ilyra-voss/armed/tumble-v2.png",
+      "prompt": "prompts/motion-corrections.json",
+      "promptId": "ilyra-voss/armed/tumble",
+      "reason": "Not promoted; the revision did not resolve the recorded motion or equipment problem."
+    },
+    {
+      "source": "sources/ilyra-voss/armed/ultimate-v2.png",
+      "prompt": "prompts/motion-corrections.json",
+      "promptId": "ilyra-voss/armed/ultimate",
+      "reason": "Not promoted; the revision did not resolve the recorded motion or equipment problem."
+    }
+  ],
+  "unselectedOther": [
+    {
+      "source": "sources/effects/ilyra-voss/fire_trail-v2.png",
+      "prompt": "prompts/fire-trail-correction.txt",
+      "reason": "Original alpha was confirmed transparent; original remains selected."
+    }
+  ],
+  "productionReady": false
+}

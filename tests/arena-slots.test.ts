@@ -79,6 +79,33 @@ function setup(ready = Promise.resolve(), realFighters = false): { ctx: Ctx; are
 }
 
 describe('EventBus slot scoping', () => {
+  test('accepted projectile hits notify the attacker kit, while protected targets do not', async () => {
+    const { arena, base, ctx } = await meleeSetup();
+    const dealt: number[] = [];
+    base.fighters.noteEnemyHurt = (enemy, amount) => { expect(ctx.player).toBe(base.player); expect(enemy.fighter).toBe(1); dealt.push(amount); };
+    arena.with(0, () => arena.hit(ctx.enemies.find(e => e.fighter === 1)!, 20, 0, 0, 'direct'));
+    expect(dealt).toHaveLength(1);
+    expect(dealt[0]).toBe(arena.stockMatch!.fighters[1].volatility);
+    arena.stockMatch!.fighters[1].protection = 20;
+    arena.with(0, () => arena.hit(ctx.enemies.find(e => e.fighter === 1)!, 20, 0, 0, 'direct'));
+    expect(dealt).toHaveLength(1);
+  });
+  test('accepted Stock hits notify the victim kit and landed melee notifies the attacker kit in their own scopes', async () => {
+    const { arena, base, ctx, step } = await meleeSetup();
+    const rival = arena.bundle(1)!;
+    const taken: number[] = [], dealt: number[] = [];
+    rival.fighters.noteStockHurt = amount => { expect(ctx.player).toBe(rival.player); taken.push(amount); };
+    base.fighters.noteMelee = () => { expect(ctx.player).toBe(base.player); };
+    base.fighters.noteEnemyHurt = (enemy, amount) => { expect(ctx.player).toBe(base.player); expect(enemy.fighter).toBe(1); dealt.push(amount); };
+    arena.requestStockAttack('opener', 1);
+    step(30);
+    expect(taken).toHaveLength(1);
+    expect(dealt).toEqual(taken);
+    expect(rival.player.hp).toBe(100);
+    arena.stockMatch!.fighters[1].protection = 30;
+    arena.with(1, () => arena.takeStockDamage(20, 0, 0));
+    expect(taken).toHaveLength(1);
+  });
   async function meleeSetup() {
     const result = setup();
     const { arena, base, ctx } = result;
@@ -148,6 +175,8 @@ describe('EventBus slot scoping', () => {
   });
   test('grabs counter shields, hold both bodies, and throw with opponent attribution', async () => {
     const { arena, base, rival, step } = await meleeSetup();
+    const credit: number[] = [];
+    base.fighters.noteEnemyHurt = (_e, amount) => credit.push(amount);
     rival.player.x = 118;
     arena.with(1, () => arena.updateStockShield(true, true));
     expect(arena.requestStockGrab()).toBe(true); step(6);
@@ -158,6 +187,7 @@ describe('EventBus slot scoping', () => {
     base.input.keys.up = true; step(8);
     expect(arena.stockGrab(0)?.phase).toBe('recovery'); expect(arena.isGrabbed(1)).toBe(false);
     expect(arena.stockMatch!.fighters[1].volatility).toBeGreaterThan(0);
+    expect(credit).toEqual([arena.stockMatch!.fighters[1].volatility]);
     expect(rival.player.vy).toBeLessThan(-3); expect(rival.player.hp).toBe(rival.player.maxHp);
     expect(arena.bound).toBe(0);
   });

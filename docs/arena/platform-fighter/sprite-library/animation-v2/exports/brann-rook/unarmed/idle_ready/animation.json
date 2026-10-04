@@ -1,0 +1,457 @@
+{
+  "version": 2,
+  "id": "brann-rook/unarmed/idle_ready",
+  "kind": "fighter",
+  "image": "atlas.png",
+  "status": "animation-validation-candidate",
+  "source": "sources/brann-rook/unarmed/idle_ready.png",
+  "extractionMethod": "connected-figure",
+  "extractionReview": null,
+  "detachedComponents": [],
+  "description": "One subtle 12-frame combat-ready weight-shift cycle. Feet planted in a stable guard, knees soft, arms ready, gentle breath. Return smoothly to the starting guard at frame 12.",
+  "review": {
+    "status": "generated-motion-review-required"
+  },
+  "frameSize": 384,
+  "grid": {
+    "columns": 4,
+    "rows": 3
+  },
+  "simulationHz": 60,
+  "scale": 0.550898,
+  "pivot": {
+    "x": 192,
+    "y": 320
+  },
+  "anchorType": "feet",
+  "registration": "planted-feet",
+  "loop": true,
+  "endBehavior": "loop",
+  "totalTicks": 72,
+  "facing": {
+    "authored": "right",
+    "left": "mirror-around-root"
+  },
+  "frames": [
+    {
+      "index": 0,
+      "image": "000.png",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 6,
+      "durationMs": 100,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 202,
+        "y": 357
+      },
+      "sourceRect": {
+        "x": 71,
+        "y": 19,
+        "w": 259,
+        "h": 342
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 122.203592,
+        "y": 136.75449,
+        "w": 137.7245,
+        "h": 183.449034
+      },
+      "sha256": "d72e513c2d3f6ad99850f224c597d910b89b880bd86bebf8f6655a153391c176"
+    },
+    {
+      "index": 1,
+      "image": "001.png",
+      "rect": {
+        "x": 384,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 6,
+      "durationMs": 100,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 557,
+        "y": 357
+      },
+      "sourceRect": {
+        "x": 426,
+        "y": 20,
+        "w": 261,
+        "h": 341
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 122.203592,
+        "y": 136.203592,
+        "w": 138.826296,
+        "h": 183.449034
+      },
+      "sha256": "d2fb65cee4c5e0356c40f46548f18c988e5bb9ae4842e182d545f8a7cf341784"
+    },
+    {
+      "index": 2,
+      "image": "002.png",
+      "rect": {
+        "x": 768,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 6,
+      "durationMs": 100,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 910,
+        "y": 358
+      },
+      "sourceRect": {
+        "x": 780,
+        "y": 20,
+        "w": 260,
+        "h": 342
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 122.203592,
+        "y": 136.203592,
+        "w": 138.826296,
+        "h": 183.999932
+      },
+      "sha256": "0ef03032fc04cd08def86894a5dc39701c5ed410a8932bb9aca723688dc217df"
+    },
+    {
+      "index": 3,
+      "image": "003.png",
+      "rect": {
+        "x": 1152,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 6,
+      "durationMs": 100,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 1269,
+        "y": 357
+      },
+      "sourceRect": {
+        "x": 1140,
+        "y": 20,
+        "w": 259,
+        "h": 342
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 123.203592,
+        "y": 136.203592,
+        "w": 138.275398,
+        "h": 183.449034
+      },
+      "sha256": "c87c08023f90b73d59f90d68321f572ade4507dc3776cf195dfcec0c3f49ac12"
+    },
+    {
+      "index": 4,
+      "image": "004.png",
+      "rect": {
+        "x": 0,
+        "y": 384,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 6,
+      "durationMs": 100,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 202,
+        "y": 711
+      },
+      "sourceRect": {
+        "x": 66,
+        "y": 373,
+        "w": 270,
+        "h": 343
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 119.75449,
+        "y": 136.203592,
+        "w": 143.23348,
+        "h": 183.999932
+      },
+      "sha256": "4716ba32e9f80a15cc9588d004fb8817ad3c33adb3f4efa187cbb825c8036abc"
+    },
+    {
+      "index": 5,
+      "image": "005.png",
+      "rect": {
+        "x": 384,
+        "y": 384,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 6,
+      "durationMs": 100,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 558.5,
+        "y": 711
+      },
+      "sourceRect": {
+        "x": 428,
+        "y": 376,
+        "w": 266,
+        "h": 340
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 122.203592,
+        "y": 137.203592,
+        "w": 141.580786,
+        "h": 182.347238
+      },
+      "sha256": "5a8b8e8db5958da2baa5db71160aa3fc039dd8fc01ab6d7ba231b5db284af644"
+    },
+    {
+      "index": 6,
+      "image": "006.png",
+      "rect": {
+        "x": 768,
+        "y": 384,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 6,
+      "durationMs": 100,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 912,
+        "y": 711
+      },
+      "sourceRect": {
+        "x": 785,
+        "y": 376,
+        "w": 264,
+        "h": 340
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 124.203592,
+        "y": 137.203592,
+        "w": 141.029888,
+        "h": 182.347238
+      },
+      "sha256": "5ff49ead37ad0373667d6f95eb4a18afb4e3337d6524b2045ab2d75e5af577b5"
+    },
+    {
+      "index": 7,
+      "image": "007.png",
+      "rect": {
+        "x": 1152,
+        "y": 384,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 6,
+      "durationMs": 100,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 1270.5,
+        "y": 711
+      },
+      "sourceRect": {
+        "x": 1141,
+        "y": 378,
+        "w": 264,
+        "h": 338
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 123.203592,
+        "y": 139.75449,
+        "w": 141.029888,
+        "h": 180.694544
+      },
+      "sha256": "b35708ab0482dc11a6f2a5ea3b54c0efd6689b76274b81d98304263302a7177f"
+    },
+    {
+      "index": 8,
+      "image": "008.png",
+      "rect": {
+        "x": 0,
+        "y": 768,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 6,
+      "durationMs": 100,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 202,
+        "y": 1062
+      },
+      "sourceRect": {
+        "x": 69,
+        "y": 727,
+        "w": 268,
+        "h": 339
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 121.203592,
+        "y": 137.203592,
+        "w": 142.131684,
+        "h": 182.347238
+      },
+      "sha256": "d7466a698fdb91c7937986b093f7f843bb645fb24e8541637895170d641b7e43"
+    },
+    {
+      "index": 9,
+      "image": "009.png",
+      "rect": {
+        "x": 384,
+        "y": 768,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 6,
+      "durationMs": 100,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 558,
+        "y": 1062
+      },
+      "sourceRect": {
+        "x": 425,
+        "y": 727,
+        "w": 269,
+        "h": 339
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 121.203592,
+        "y": 137.203592,
+        "w": 142.682582,
+        "h": 182.347238
+      },
+      "sha256": "d3d9cf7a9d15e669df95818c057ea02d972a97f89aafb526c4232ee45133fb24"
+    },
+    {
+      "index": 10,
+      "image": "010.png",
+      "rect": {
+        "x": 768,
+        "y": 768,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 6,
+      "durationMs": 100,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 912.5,
+        "y": 1062
+      },
+      "sourceRect": {
+        "x": 782,
+        "y": 727,
+        "w": 266,
+        "h": 339
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 122.75449,
+        "y": 137.203592,
+        "w": 141.029888,
+        "h": 182.347238
+      },
+      "sha256": "c7031139c3cc141b3993d87fef41b038ef45972bc4300688dbfbb4aa81a81bfb"
+    },
+    {
+      "index": 11,
+      "image": "011.png",
+      "rect": {
+        "x": 1152,
+        "y": 768,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 6,
+      "durationMs": 100,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 1270,
+        "y": 1062
+      },
+      "sourceRect": {
+        "x": 1139,
+        "y": 727,
+        "w": 262,
+        "h": 339
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 122.75449,
+        "y": 137.203592,
+        "w": 137.7245,
+        "h": 182.347238
+      },
+      "sha256": "4d783f6c121c7fae2787c9c95967eac01a0d33e76c9b898af3a827435789cfc2"
+    }
+  ]
+}

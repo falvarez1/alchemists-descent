@@ -8,6 +8,7 @@ import { DuelButtons as B, type DuelInput } from '@/net/duel/input';
 export class DuelControls {
   private held = 0;
   private taps = 0;
+  private heavyHeld = false;
   private pointer: { x: number; y: number } | null = null;
   private padPause = false;
   private padConnected = false;
@@ -36,6 +37,23 @@ export class DuelControls {
     }
     if (event.target instanceof HTMLElement && event.target.closest('input,select,textarea,[contenteditable]')) return;
     const keys = getBindings();
+    if (event.code === keys.climb) {
+      this.heavyHeld = event.type === 'keydown';
+      if (this.heavyHeld && this.ctx.arena?.bundle(duel.slot ?? 0)?.player.grounded === false) this.taps |= B.grab;
+      event.preventDefault(); event.stopImmediatePropagation();
+      duel.flushInput();
+      return;
+    }
+    if (event.code === keys.kick && event.type === 'keydown' && this.heavyHeld) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (!event.repeat) {
+        const facing = this.ctx.arena?.bundle(duel.slot ?? 0)?.player.facing ?? 1;
+        this.taps |= this.held & B.up ? B.smashUp : this.held & B.down ? B.smashDown
+          : this.held & B.left ? B.smashLeft : this.held & B.right ? B.smashRight : facing < 0 ? B.smashLeft : B.smashRight;
+        duel.flushInput();
+      }
+      return;
+    }
     const map: Record<string, number> = {
       [keys.left]: B.left,
       [keys.right]: B.right,
@@ -76,6 +94,7 @@ export class DuelControls {
   };
   readonly clear = (): void => {
     this.held = this.taps = 0;
+    this.heavyHeld = false;
   };
   private gamepad(): Gamepad | null {
     return typeof navigator.getGamepads === 'function'
@@ -103,6 +122,7 @@ export class DuelControls {
     const c = this.ctx,
       slot = c.duel?.slot ?? 0,
       player = c.arena?.bundle(slot)?.player ?? c.player;
+    if (this.heavyHeld && !player.grounded) buttons |= B.grab;
     let aim = buttons & B.left ? Math.PI : buttons & B.right ? 0 : player.facing < 0 ? Math.PI : 0;
     if (this.pointer) {
       const rect = this.canvas().getBoundingClientRect(),

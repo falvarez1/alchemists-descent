@@ -1,0 +1,2480 @@
+{
+  "brann-rook/unarmed/idle": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/armed/idle": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/unarmed/idle_ready": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/crouch_idle": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/duck": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/stand_up": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/jump": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/fall": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/land": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/hurt": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/hurt_crouch": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/hurt_air": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/hurt_back": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/shield": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/shield_hit": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/opener": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/launcher": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/aerial": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/finisher": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/grab": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/throw_forward": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/cast_forward": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/pickup": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/stun": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/defeat": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/armed/idle_ready": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/crouch_idle": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/duck": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/stand_up": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/jump": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/fall": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/land": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/hurt": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/hurt_crouch": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/hurt_air": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/hurt_back": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/shield": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/shield_hit": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/opener": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/launcher": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/aerial": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/finisher": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/grab": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/throw_forward": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/cast_forward": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/pickup": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/stun": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/defeat": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/brann-rook/boiler_vent": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/brann-rook/redline_heat": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/unarmed/run": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/dodge": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/tactical": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/ultimate": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/walk": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/dash": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/brake": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/double_jump": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/fast_fall": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/air_dodge": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/recovery": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/wall_cling": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/ledge_hang": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/ledge_climb": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/tumble": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/get_up": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/ko": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/respawn": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/victory": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/back_air": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/up_air": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/armed/run": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/unarmed/neutral_air": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/down_air": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/up_smash": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/down_smash": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/throw_back": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/throw_up": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/throw_down": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/cast_up": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/cast_down": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/cast_diagonal_up": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/cast_diagonal_down": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/taunt": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character. Detached component report reviewed: gesture marks or shield impact fragments, not a joined/missing body."
+  },
+  "brann-rook/unarmed/crouch_walk": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/shield_break": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character. Detached component report reviewed: gesture marks or shield impact fragments, not a joined/missing body."
+  },
+  "brann-rook/unarmed/frozen": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/burning": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/grabbed": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/unarmed/ledge_release": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "brann-rook/armed/dodge": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/tactical": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/ultimate": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/walk": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/dash": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/brake": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/double_jump": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/fast_fall": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/air_dodge": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/recovery": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/wall_cling": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/ledge_hang": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/ledge_climb": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/tumble": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/get_up": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/ko": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/respawn": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/victory": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/neutral_air": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/back_air": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/up_air": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/down_air": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/up_smash": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/down_smash": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/throw_back": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/throw_up": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/throw_down": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/cast_up": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/cast_down": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/cast_diagonal_up": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/cast_diagonal_down": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/taunt": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/crouch_walk": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/shield_break": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md. Detached component report reviewed: gesture marks or shield impact fragments, not a joined/missing body."
+  },
+  "brann-rook/armed/frozen": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/grabbed": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/ledge_release": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/brann-rook/guard_impact": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "brann-rook/armed/burning": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/brann-rook/guard_plate": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/brann-rook/pressure": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/brann-rook/redline_aura": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/brann-rook/steam_jet": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/brann-rook/vent_cloud": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/brann-rook/armor_scraps": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/brann-rook/boiler_flare": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/brann-runtime.json",
+      "evidence/brann-playable.json",
+      "evidence/brann-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "integration/brann-rook/playback": {
+    "status": "runtime-verified"
+  },
+  "integration/brann-rook/anchors": {
+    "status": "runtime-verified"
+  },
+  "integration/brann-rook/sockets": {
+    "status": "runtime-verified"
+  },
+  "integration/brann-rook/effects": {
+    "status": "runtime-verified"
+  },
+  "integration/brann-rook/browser": {
+    "status": "runtime-verified"
+  },
+  "ilyra-voss/unarmed/idle": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/duck": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/run": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/idle_ready": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/stand_up": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/jump": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/fall": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/land": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/hurt": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/hurt_crouch": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/hurt_air": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/hurt_back": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/shield": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/shield_hit": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/opener": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/launcher": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/aerial": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/finisher": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/grab": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/throw_forward": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/cast_forward": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/pickup": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/stun": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/defeat": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/armed/idle": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/idle_ready": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/crouch_idle": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/duck": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/stand_up": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/jump": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/fall": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/land": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/hurt": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/hurt_crouch": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/hurt_air": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/hurt_back": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/shield": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/shield_hit": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/opener": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/launcher": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/aerial": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/finisher": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/grab": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/throw_forward": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/pickup": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/stun": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/cast_forward": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/defeat": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/unarmed/dodge": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/ultimate": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/dash": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/brake": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/double_jump": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/fast_fall": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/air_dodge": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/wall_cling": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/ledge_hang": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/ledge_climb": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/get_up": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/ko": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/respawn": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/victory": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/neutral_air": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/back_air": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/up_air": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/down_air": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/up_smash": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/down_smash": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/throw_back": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/cast_up": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/throw_up": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/throw_down": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/cast_down": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/cast_diagonal_up": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/cast_diagonal_down": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/taunt": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/crouch_walk": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/shield_break": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/frozen": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/burning": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/grabbed": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/ledge_release": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/armed/dodge": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/tactical": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/dash": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/brake": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/double_jump": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/fast_fall": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/air_dodge": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/wall_cling": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/ledge_hang": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/ledge_climb": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/get_up": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/ko": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/respawn": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/victory": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/neutral_air": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/back_air": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/up_air": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/down_air": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/up_smash": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/down_smash": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/throw_back": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/throw_down": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/unarmed/crouch_idle": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/tactical": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/walk": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/recovery": {
+    "artAcceptance": "export-verified",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/unarmed/tumble": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "export-only",
+    "evidence": [
+      "evidence/checks.json"
+    ],
+    "notes": "Alternate equipment export; Duel uses the armed character."
+  },
+  "ilyra-voss/armed/run": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/ultimate": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/walk": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/recovery": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/tumble": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/throw_up": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/cast_up": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/cast_down": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/cast_diagonal_up": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/cast_diagonal_down": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/taunt": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/crouch_walk": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/shield_break": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/frozen": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/burning": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/grabbed": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "ilyra-voss/armed/ledge_release": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/ilyra-voss/crucible_spin": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/ilyra-voss/crucible_burst": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/ilyra-voss/phoenix_aura": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/ilyra-voss/fire_trail": {
+    "artAcceptance": "runtime-sampled",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/ilyra-voss/scorch": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/ilyra-voss/volatile_spark": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/ilyra-voss/phoenix_charge": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "effects/ilyra-voss/crucible_fragments": {
+    "artAcceptance": "replacement-reviewed",
+    "runtime": "integrated",
+    "evidence": [
+      "evidence/ilyra-runtime.json",
+      "evidence/ilyra-playable.json",
+      "evidence/ilyra-completion.json"
+    ],
+    "notes": "Connected to the existing body state or kit event; see DUO-COMPLETION.md."
+  },
+  "integration/ilyra-voss/playback": {
+    "status": "runtime-verified"
+  },
+  "integration/ilyra-voss/anchors": {
+    "status": "runtime-verified"
+  },
+  "integration/ilyra-voss/sockets": {
+    "status": "runtime-verified"
+  },
+  "integration/ilyra-voss/effects": {
+    "status": "runtime-verified"
+  },
+  "integration/ilyra-voss/browser": {
+    "status": "runtime-verified"
+  }
+}

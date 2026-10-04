@@ -1,0 +1,2108 @@
+{
+  "animations": [
+    "idle",
+    "idle_ready",
+    "crouch_idle",
+    "duck",
+    "stand_up",
+    "jump",
+    "fall",
+    "land",
+    "hurt",
+    "hurt_crouch",
+    "hurt_air",
+    "hurt_back",
+    "shield",
+    "shield_hit",
+    "opener",
+    "launcher",
+    "aerial",
+    "finisher",
+    "grab",
+    "throw_forward",
+    "pickup",
+    "stun",
+    "cast_forward",
+    "defeat",
+    "dodge",
+    "tactical",
+    "dash",
+    "brake",
+    "double_jump",
+    "fast_fall",
+    "air_dodge",
+    "wall_cling",
+    "ledge_hang",
+    "ledge_climb",
+    "get_up",
+    "ko",
+    "respawn",
+    "victory",
+    "neutral_air",
+    "back_air",
+    "up_air",
+    "down_air",
+    "up_smash",
+    "down_smash",
+    "throw_back",
+    "throw_down",
+    "run",
+    "ultimate",
+    "walk",
+    "recovery",
+    "tumble",
+    "throw_up",
+    "cast_up",
+    "cast_down",
+    "cast_diagonal_up",
+    "cast_diagonal_down",
+    "taunt",
+    "crouch_walk",
+    "shield_break",
+    "frozen",
+    "burning",
+    "grabbed",
+    "ledge_release"
+  ],
+  "attacks": [
+    {
+      "action": "opener",
+      "samples": [
+        {
+          "phase": "startup",
+          "pose": "opener_windup",
+          "name": "clip:opener:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "opener_windup",
+          "name": "clip:opener:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "opener_windup",
+          "name": "clip:opener:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "opener_windup",
+          "name": "clip:opener:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "opener_strike",
+          "name": "clip:opener:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "opener_strike",
+          "name": "clip:opener:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "opener_strike",
+          "name": "clip:opener:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "opener_strike",
+          "name": "clip:opener:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "opener_strike",
+          "name": "clip:opener:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "opener_strike",
+          "name": "clip:opener:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "opener_strike",
+          "name": "clip:opener:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "opener_recover",
+          "name": "clip:opener:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "opener_recover",
+          "name": "clip:opener:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "opener_recover",
+          "name": "clip:opener:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "opener_recover",
+          "name": "clip:opener:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "opener_recover",
+          "name": "clip:opener:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "opener_recover",
+          "name": "clip:opener:11",
+          "anchor": "feet"
+        }
+      ]
+    },
+    {
+      "action": "launcher",
+      "samples": [
+        {
+          "phase": "startup",
+          "pose": "launcher_windup",
+          "name": "clip:launcher:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "launcher_windup",
+          "name": "clip:launcher:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "launcher_windup",
+          "name": "clip:launcher:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "launcher_windup",
+          "name": "clip:launcher:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "launcher_windup",
+          "name": "clip:launcher:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "launcher_windup",
+          "name": "clip:launcher:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "launcher_windup",
+          "name": "clip:launcher:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "launcher_strike",
+          "name": "clip:launcher:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "launcher_strike",
+          "name": "clip:launcher:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "launcher_strike",
+          "name": "clip:launcher:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "launcher_strike",
+          "name": "clip:launcher:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "launcher_strike",
+          "name": "clip:launcher:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_strike",
+          "name": "clip:launcher:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_strike",
+          "name": "clip:launcher:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_strike",
+          "name": "clip:launcher:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_strike",
+          "name": "clip:launcher:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_strike",
+          "name": "clip:launcher:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_recover",
+          "name": "clip:launcher:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_recover",
+          "name": "clip:launcher:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_recover",
+          "name": "clip:launcher:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_recover",
+          "name": "clip:launcher:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_recover",
+          "name": "clip:launcher:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_recover",
+          "name": "clip:launcher:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_recover",
+          "name": "clip:launcher:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_recover",
+          "name": "clip:launcher:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "launcher_recover",
+          "name": "clip:launcher:11",
+          "anchor": "feet"
+        }
+      ]
+    },
+    {
+      "action": "aerial",
+      "samples": [
+        {
+          "phase": "startup",
+          "pose": "aerial_windup",
+          "name": "clip:aerial:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "aerial_windup",
+          "name": "clip:aerial:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "aerial_windup",
+          "name": "clip:aerial:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "aerial_windup",
+          "name": "clip:aerial:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "aerial_windup",
+          "name": "clip:aerial:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "aerial_strike",
+          "name": "clip:aerial:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "aerial_strike",
+          "name": "clip:aerial:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "aerial_strike",
+          "name": "clip:aerial:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "aerial_strike",
+          "name": "clip:aerial:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "aerial_strike",
+          "name": "clip:aerial:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_strike",
+          "name": "clip:aerial:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_strike",
+          "name": "clip:aerial:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_strike",
+          "name": "clip:aerial:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_strike",
+          "name": "clip:aerial:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_strike",
+          "name": "clip:aerial:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_strike",
+          "name": "clip:aerial:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_recover",
+          "name": "clip:aerial:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_recover",
+          "name": "clip:aerial:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_recover",
+          "name": "clip:aerial:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_recover",
+          "name": "clip:aerial:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_recover",
+          "name": "clip:aerial:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_recover",
+          "name": "clip:aerial:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_recover",
+          "name": "clip:aerial:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_recover",
+          "name": "clip:aerial:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "aerial_recover",
+          "name": "clip:aerial:11",
+          "anchor": "feet"
+        }
+      ]
+    },
+    {
+      "action": "finisher",
+      "samples": [
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "finisher_windup",
+          "name": "clip:finisher:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_strike",
+          "name": "clip:finisher:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:12",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:12",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:12",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:12",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:13",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:13",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:13",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:13",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:14",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:14",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:14",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:14",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:15",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:15",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:15",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "finisher_recover",
+          "name": "clip:finisher:15",
+          "anchor": "feet"
+        }
+      ]
+    },
+    {
+      "action": "neutral_air",
+      "samples": [
+        {
+          "phase": "startup",
+          "pose": "neutral_air_windup",
+          "name": "clip:neutral_air:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "neutral_air_windup",
+          "name": "clip:neutral_air:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "neutral_air_windup",
+          "name": "clip:neutral_air:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "neutral_air_windup",
+          "name": "clip:neutral_air:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "neutral_air_strike",
+          "name": "clip:neutral_air:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "neutral_air_strike",
+          "name": "clip:neutral_air:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "neutral_air_strike",
+          "name": "clip:neutral_air:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "neutral_air_strike",
+          "name": "clip:neutral_air:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "neutral_air_strike",
+          "name": "clip:neutral_air:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "neutral_air_strike",
+          "name": "clip:neutral_air:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "neutral_air_strike",
+          "name": "clip:neutral_air:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "neutral_air_strike",
+          "name": "clip:neutral_air:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_strike",
+          "name": "clip:neutral_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_strike",
+          "name": "clip:neutral_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_strike",
+          "name": "clip:neutral_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_strike",
+          "name": "clip:neutral_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_strike",
+          "name": "clip:neutral_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_recover",
+          "name": "clip:neutral_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_recover",
+          "name": "clip:neutral_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_recover",
+          "name": "clip:neutral_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_recover",
+          "name": "clip:neutral_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_recover",
+          "name": "clip:neutral_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_recover",
+          "name": "clip:neutral_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_recover",
+          "name": "clip:neutral_air:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_recover",
+          "name": "clip:neutral_air:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "neutral_air_recover",
+          "name": "clip:neutral_air:11",
+          "anchor": "feet"
+        }
+      ]
+    },
+    {
+      "action": "back_air",
+      "samples": [
+        {
+          "phase": "startup",
+          "pose": "back_air_windup",
+          "name": "clip:back_air:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "back_air_windup",
+          "name": "clip:back_air:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "back_air_windup",
+          "name": "clip:back_air:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "back_air_windup",
+          "name": "clip:back_air:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "back_air_windup",
+          "name": "clip:back_air:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "back_air_windup",
+          "name": "clip:back_air:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "back_air_windup",
+          "name": "clip:back_air:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "back_air_strike",
+          "name": "clip:back_air:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "back_air_strike",
+          "name": "clip:back_air:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "back_air_strike",
+          "name": "clip:back_air:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "back_air_strike",
+          "name": "clip:back_air:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "back_air_strike",
+          "name": "clip:back_air:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_strike",
+          "name": "clip:back_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_strike",
+          "name": "clip:back_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_strike",
+          "name": "clip:back_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_strike",
+          "name": "clip:back_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_strike",
+          "name": "clip:back_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_strike",
+          "name": "clip:back_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_strike",
+          "name": "clip:back_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_recover",
+          "name": "clip:back_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_recover",
+          "name": "clip:back_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_recover",
+          "name": "clip:back_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_recover",
+          "name": "clip:back_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_recover",
+          "name": "clip:back_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_recover",
+          "name": "clip:back_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_recover",
+          "name": "clip:back_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_recover",
+          "name": "clip:back_air:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_recover",
+          "name": "clip:back_air:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_recover",
+          "name": "clip:back_air:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "back_air_recover",
+          "name": "clip:back_air:11",
+          "anchor": "feet"
+        }
+      ]
+    },
+    {
+      "action": "up_air",
+      "samples": [
+        {
+          "phase": "startup",
+          "pose": "up_air_windup",
+          "name": "clip:up_air:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_air_windup",
+          "name": "clip:up_air:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_air_windup",
+          "name": "clip:up_air:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_air_windup",
+          "name": "clip:up_air:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_air_windup",
+          "name": "clip:up_air:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "up_air_strike",
+          "name": "clip:up_air:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "up_air_strike",
+          "name": "clip:up_air:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "up_air_strike",
+          "name": "clip:up_air:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "up_air_strike",
+          "name": "clip:up_air:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "up_air_strike",
+          "name": "clip:up_air:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "up_air_strike",
+          "name": "clip:up_air:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_strike",
+          "name": "clip:up_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_strike",
+          "name": "clip:up_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_strike",
+          "name": "clip:up_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_strike",
+          "name": "clip:up_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_strike",
+          "name": "clip:up_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_strike",
+          "name": "clip:up_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_recover",
+          "name": "clip:up_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_recover",
+          "name": "clip:up_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_recover",
+          "name": "clip:up_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_recover",
+          "name": "clip:up_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_recover",
+          "name": "clip:up_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_recover",
+          "name": "clip:up_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_recover",
+          "name": "clip:up_air:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_recover",
+          "name": "clip:up_air:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_air_recover",
+          "name": "clip:up_air:11",
+          "anchor": "feet"
+        }
+      ]
+    },
+    {
+      "action": "down_air",
+      "samples": [
+        {
+          "phase": "startup",
+          "pose": "down_air_windup",
+          "name": "clip:down_air:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_air_windup",
+          "name": "clip:down_air:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_air_windup",
+          "name": "clip:down_air:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_air_windup",
+          "name": "clip:down_air:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_air_windup",
+          "name": "clip:down_air:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_air_windup",
+          "name": "clip:down_air:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_air_windup",
+          "name": "clip:down_air:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_air_windup",
+          "name": "clip:down_air:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_air_windup",
+          "name": "clip:down_air:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_air_windup",
+          "name": "clip:down_air:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "down_air_strike",
+          "name": "clip:down_air:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "down_air_strike",
+          "name": "clip:down_air:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "down_air_strike",
+          "name": "clip:down_air:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "down_air_strike",
+          "name": "clip:down_air:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "down_air_strike",
+          "name": "clip:down_air:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_strike",
+          "name": "clip:down_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_strike",
+          "name": "clip:down_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_strike",
+          "name": "clip:down_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_strike",
+          "name": "clip:down_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_strike",
+          "name": "clip:down_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_strike",
+          "name": "clip:down_air:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_strike",
+          "name": "clip:down_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_strike",
+          "name": "clip:down_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_air_recover",
+          "name": "clip:down_air:11",
+          "anchor": "feet"
+        }
+      ]
+    },
+    {
+      "action": "up_smash",
+      "samples": [
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "up_smash_windup",
+          "name": "clip:up_smash:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_strike",
+          "name": "clip:up_smash:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "up_smash_recover",
+          "name": "clip:up_smash:11",
+          "anchor": "feet"
+        }
+      ]
+    },
+    {
+      "action": "down_smash",
+      "samples": [
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:0",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:1",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:2",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "startup",
+          "pose": "down_smash_windup",
+          "name": "clip:down_smash:3",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:4",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:5",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:6",
+          "anchor": "feet"
+        },
+        {
+          "phase": "active",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:7",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:8",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:9",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_strike",
+          "name": "clip:down_smash:10",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:11",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:12",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:12",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:12",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:13",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:13",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:13",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:14",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:14",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:14",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:15",
+          "anchor": "feet"
+        },
+        {
+          "phase": "recovery",
+          "pose": "down_smash_recover",
+          "name": "clip:down_smash:15",
+          "anchor": "feet"
+        }
+      ]
+    }
+  ],
+  "idle0": {
+    "pose": "idle0",
+    "name": "clip:idle:0",
+    "anchor": "feet"
+  },
+  "idle1": {
+    "pose": "idle1",
+    "name": "clip:idle:1",
+    "anchor": "feet"
+  },
+  "held": {
+    "pose": "idle2",
+    "name": "clip:idle:1",
+    "anchor": "feet"
+  },
+  "frames": 921,
+  "ledges": [
+    {
+      "side": 1,
+      "phase": "hang",
+      "anchor": "grip",
+      "errorX": 0,
+      "errorY": 0
+    },
+    {
+      "side": -1,
+      "phase": "hang",
+      "anchor": "grip",
+      "errorX": 0,
+      "errorY": 0
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,13 @@
+Use case: stylized-concept. Create ONE game animation sprite sheet: an anatomically correct full RUN CYCLE for Ilyra Voss from the attached character reference. Unarmed, empty hands. Cream wide brim hat, silver braid, teal coat with gold edging, leather trousers and boots.
+EIGHT frames only in a strict FOUR COLUMN TWO ROW grid. Each cell is the same size. Generous TRANSPARENT margins around every character: draw character only in the central 65 percent of each cell, entire hat and both feet visible, never touch canvas edges. Transparent background with no labels, shadows, floor or extra props. Detailed clean pixel art; same proportions, same hat silhouette and same outfit in all frames.
+Facing RIGHT, run IN PLACE. The camera sees the character from the SIDE, no turning. One FULL stride with the RIGHT leg and LEFT leg taking turns in front. The nearer leg is on the viewer's side and lighter; the far leg is naturally darker. Make their alternation unambiguous. The knee of the passing leg must cross FORWARD, and the planted leg travels BACKWARD. Arms counter-swing.
+Read frames left to right, top row then bottom row:
+1. FIRST CONTACT: near leg extends forward/right, far leg extends back/left, both legs widely separated. Far arm forward, near arm back.
+2. FIRST DOWN: near/front knee bends under the weight, near foot below pelvis; far/back heel folds up close to buttocks.
+3. FIRST PASS: near leg now behind pelvis with toe pushing off; far knee passes FORWARD IN FRONT of pelvis, far shin folded below thigh.
+4. FIRST FLIGHT: far leg reaches fully forward, near leg folds behind; both feet off ground.
+5. SECOND CONTACT: FAR leg extends forward/right, NEAR leg extends back/left, opposite of frame 1. Near arm forward, far arm back.
+6. SECOND DOWN: far/front knee bends under weight, far foot below pelvis; near/back heel folds up close to buttocks.
+7. SECOND PASS: far leg behind pelvis toe pushing off; near knee passes FORWARD IN FRONT of pelvis, near shin folded below thigh.
+8. SECOND FLIGHT: near leg reaches forward, far leg folds behind, both feet off ground, ready for frame 1.
+Each frame must be the next actual gait pose specified. Do not repeat the same leg-forward stance throughout. Keep head/hat proportions, hip width and limb lengths absolutely constant. Fixed center of pelvis horizontally, gentle natural vertical hip bob. Camera never zooms. This is one eight-frame animation, not eight versions of an illustration.
