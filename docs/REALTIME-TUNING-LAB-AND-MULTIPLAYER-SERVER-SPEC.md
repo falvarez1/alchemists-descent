@@ -98,6 +98,15 @@ So every window publishes a `WorldIdentity`:
 - Patches carry it and are **refused** when it is not ours (amber pill + toast).
 - `genVersion` is part of it, so two tabs on different builds are never peers.
 - The `LINK ≠` pill pulls the peer's live grid over `world.snapshot`.
+- **A pull waits for the peer, not the clock** (`src/app/authorLinkPull.ts`). The
+  target answers `world.request` at once with a `world.announce`, then sends the
+  snapshot. Only that answer has a deadline (20 s: nobody there, or a Duel has
+  the peer suspended). The snapshot itself is ~9 MB today (the paint repaint has
+  drifted from the generator, so the whole color plane ships) and a browser
+  moves it in chunks the page's main thread services between frames: on a
+  window rendering a few frames a second (a GPU-less CI runner) it took 50 s at
+  an 8x CPU throttle. The pull ends when it lands, the link drops, or the room
+  empties; a 10 min ceiling only guards a peer that answered and never sent.
 
 **A pulled world keeps the SENDER's identity.** After pulling a peer's live
 `d2`, this window holds d2's cells but has no level runtime, so a ctx-derived
@@ -514,7 +523,7 @@ Message types:
 | `cells` | relayed | `{ width, height, patch, label }` |
 | `cmd` | relayed | `{ line }`, run through `ctx.console.exec` |
 | `world.announce` | relayed | this window's `WorldIdentity` |
-| `world.request` | directed | ask ONE peer for its grid (directed, so three windows do not all answer) |
+| `world.request` | directed | ask ONE peer for its grid (directed, so three windows do not all answer); it answers with a `world.announce`, then the snapshot |
 | `world.snapshot` | relayed | `EditorWorldLayer` for the whole world |
 | `ping` / `pong` | both | heartbeat |
 | `error` | relay → client | `protocol` / `rejected` / `rate-limit` / `too-large` |
