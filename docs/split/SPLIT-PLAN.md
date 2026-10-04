@@ -1,8 +1,10 @@
 # Splitting into two games, in two repositories
 
-Status: **plan, revised 2026-10-04: two repositories, copy first.** Phase 0 is done on `feature/split-phase-0`
-except the findability fix. This version replaces the monorepo plan (PR #20, `e81d94e`); section 8 says what that
-plan was and why it was dropped.
+Status: **plan, revised 2026-10-04: two repositories, copy first; decisions D9-D16 taken the same day.** Phase 0 on
+`feature/split-phase-0`: main's red-CI causes are fixed, and locally the oracles are identical and all 15 gate probes
+green; `main` is protected (D15). **The owner's focus after the copy is CLASHFORGED**: Descent's own work (Phase 2,
+D13, D14) waits, except hiding its Duel door. This version replaces the monorepo plan (PR #20, `e81d94e`); section 8
+says what that plan was and why it was dropped.
 
 The Duel has grown into its own game. The repository is copied in two, and each copy deletes the other game:
 
@@ -26,6 +28,14 @@ ports it.
 | D6 | Repositories | **Descent stays in `falvarez1/alchemists-descent`** (no rename; its URLs do not change). **CLASHFORGED is a new private repository, `falvarez1/clashforged`**, created from `main` with the full history. | The history keeps `git log` and blame working, lets a branch made before the copy be pushed to either repository, and lets early fixes cherry-pick cleanly. |
 | D7 | Package manager | **npm in both**, as today | pnpm workspaces were for the monorepo. |
 | D8 | Order of work | **Copy first, then each repository deletes the other game, in parallel** | Untangling before the copy only pays when the copies keep sharing code. Here each side's untangling is a deletion in its own repository. |
+| D9 | CLASHFORGED's match determinism | **Deterministic, enforced**: the same inputs give a bit-identical match, held by a replay test | Rollback netcode (the standard for competitive fighters), input-only replays, server-verified results and a Balance Lab without a noise floor all need it. Cost: no unseeded randomness or clock read in match code, ever. `docs/arena/DECISIONS.md` D-023. |
+| D10 | CLASHFORGED's composition root | **It must run a whole match with no DOM, WebGL or audio** (a Phase 3 exit) | Server-run matches (D5's Containers), the Lab's fast runner and headless tests all need a pure simulation core, with rendering, audio and input as its clients. That is far cheaper designed in than retrofitted. D-024. |
+| D11 | Training's targets | **The fighters themselves, as scripted dummies** (stand, shield, jump, DI, recover, attack on a loop) | Training then teaches the actual game: real hurtboxes, knockback, percent and ledge play. No creature framework survives in CLASHFORGED for it. D-025. |
+| D12 | CLASHFORGED's AuthorLink relay | **Its own small relay Worker**, deployed apart from the game's Worker | Dev tooling stays out of the player-facing deployment: no dev endpoints or write tokens near the game, its own deploy cadence, and a relay bug cannot take the game down. D-026. |
+| D13 | Descent's settling hard-locks | **Fixed at generation.** Route-critical powder can no longer pour: it is fused or settled where it borders carved air. This needs a GEN bump and a 16-seed sweep. The late runtime checks stay as a safety net that logs when it fires. | Levels become correct by construction, and no repair ever digs on screen. |
+| D14 | The 9 MB world pull | **A cell's colour is a pure function of the final grid and the seed**, computed the same way by the generator and the receiver. **On Descent's own track** (moved off the copy's path, the owner's call): CLASHFORGED deletes the cave generator, and its stages, mostly empty and coloured by stage art, already travel small. | A world is then fully described by its cells: pulls and Builder documents return to about 75 KB and can never drift. |
+| D15 | What GitHub CI runs | **Fast checks on every PR, the full suite nightly, both required by branch protection.** Local checks are the gate; CI is a backstop nobody waits on. | PRs stay quick, a seed-specific regression is caught within a day, and main can no longer stay red unnoticed. |
+| D16 | When the Balance Lab starts | **By dependency.** The parts that need no game loop start the day of the copy; the batch runner waits for Phase 3's headless root (D10). | Every part is built once, on the foundation it needs. D-021 as revised. |
 
 ## 2. What each repository deletes
 
@@ -97,6 +107,7 @@ from `Game.ts` or `main.ts`, because CLASHFORGED writes its own.
     - The 19 matches that replay identically are held exactly (winner, ticks, stocks); the other is held to its
       winner only.
     - Both unstable matches seen so far were on the gallery stage.
+    - After Phase 3 makes matches deterministic (D9), all 20 are held exactly.
 
   Descent keeps `sim`, `cellSim` and `genGolden`. CLASHFORGED keeps `sim` and `duels`, because the cave generator and
   the in-game cell-sim scene go with the campaign. A deliberate behaviour change re-records, and its commit says so.
@@ -107,7 +118,9 @@ from `Game.ts` or `main.ts`, because CLASHFORGED writes its own.
     `verify-fighter-arena`, `verify-fighter-roster-play`, `verify-duel-audio`.
 - **Both against a FROZEN worktree's dev server.** A `src` edit hot-reloads a probe's page mid-run, and the failure
   looks real.
-- **Each repository's CI is green**: typecheck, lint, tests, production build and its browser checks.
+- **Local checks are the gate (D15).** Typecheck, lint, tests, the production build, the oracles and the gate probes
+  all run locally before a PR merges. GitHub CI re-runs the fast checks on the PR and the full suite nightly, as a
+  backstop that nobody waits on.
 
 ## 4. Phases
 
@@ -117,32 +130,45 @@ Every phase is its own PR in its own repository and leaves that game playable. P
 
 Whatever is on `main` at the copy lands in both repositories, so its fixes and checks are made once, here.
 
-- **CI green on main.**
-  - Fixed: the AuthorLink world pull. It gave up 20 s after asking, while a 9.2 MB world was still arriving on a slow
-    CI runner (`src/app/authorLinkPull.ts`). The 9 MB itself is a separate bug: the receiver's recolouring no longer
-    matches the cave generator, so every cell's colour is sent.
-  - Open: the findability audits (`verify:findability`, seed 5). They fail on some runs and not others, because they
-    audit a running sim against the wall clock.
-- **Oracles recorded**, and identical on a rerun.
-- **Gate probes.** Five of the 15 were stale, not the game, and were repaired (`docs/PROBE-HEALTH.md`). All are
-  green when run alone, except findability, which waits on its fix.
+- **What made main's CI red, fixed.**
+  - The AuthorLink world pull gave up 20 s after asking, while a 9.2 MB world was still arriving on a slow runner. It
+    now waits for the peer's answer, then for the world (`src/app/authorLinkPull.ts`).
+  - The findability audits judged a running sim at whatever step a machine had reached. They now judge a fixed window
+    of sim steps.
+  - Behind them was a real game bug: seed 5's levels kept settling after the 12 s repair checks stopped, and two of
+    them hard-locked. Late checks now run up to 3 minutes (`docs/PROBE-HEALTH.md`). D13 fixes the cause at
+    generation, on Descent's own track.
+- **CI restructured (D15)**:
+  - pull requests run the fast checks and a one-seed findability smoke;
+  - a nightly job runs every seed and all gate probes, and opens an issue when it fails;
+  - branch protection on `main` requires the PR checks.
+- **Oracles recorded**, and identical on every rerun since, including after the findability fix: its late checks do
+  not change a Duel.
+- **Gate probes.** Five of the 15 were stale, not the game, and were repaired (`docs/PROBE-HEALTH.md`). All 15 are
+  green in one local run of `gate-probes.mjs all`. That run writes the Duel probes' evidence to
+  `verify-out/split/gates/evidence` (`PROBE_EVIDENCE_DIR`), so it changes no tracked file.
 - **The pruning map and the survey**, above.
-- **Exit:** CI green on main; oracles recorded; the 15 gate probes green.
+- **Exit:** the local checks, the oracles and the 15 gate probes green; D15 landed; CI green on main.
 
 ### Phase 1: the copy
 
-1. Land or re-target open arena work first (the Balance Lab, any fighter branch). Both repositories share the
-   history, so a branch made before the copy can be pushed to either remote afterwards.
+1. Land the open Duel work first, so the copy carries it: PRs #21, #22 and #23 (the owner's condition). A branch made
+   before the copy can still be pushed to either remote afterwards, since both repositories share the history.
 2. Create `falvarez1/clashforged` (private) and push `main` with its history and tags, but not the other branches.
 3. Disable GitHub Actions on the new repository until Phase 4 gives it its own CI and deploy. Otherwise the first
    push runs Descent's probes and a GitHub Pages deploy.
 4. Clone it to `Y:\Projects\clashforged`, with its worktrees in `Y:\Projects\clashforged-worktrees\`.
 5. Move the untracked Duel sprite library (`Y:\Projects\alchemists-descent-worktrees\sprite-library`, 986 MB, never in
    git) to `docs/arena/platform-fighter/sprite-library` in that checkout, where it stays ignored.
+6. Seed Claude's memory for the new checkout (it is per path) with the arena, fighter, Duel and split notes.
+7. **In Descent, hide the Duel and Arena doors** on the title right away. Since `dff9d1a` the player build offers the
+   Duel, and from the copy on Descent's copy of it only goes stale. The rest of Phase 2 waits until the owner returns to
+   Descent.
 
 - **Exit:** both repositories build, test and pass their gate probes, unchanged (each still holds the whole game).
-- **Downstream: the Balance Lab starts in the new repository the day this phase lands** (`docs/arena/DECISIONS.md`
-  D-021, revised for two repositories). Until then every fighter change follows the interim routine in
+- **Downstream: the Balance Lab's first parts start in the new repository the day this phase lands** (D16;
+  `docs/arena/DECISIONS.md` D-021, revised): the knob registry, the analyser library, the fighter sheets and the
+  static checks. Its batch runner waits for Phase 3. Until then every fighter change follows the interim routine in
   `docs/arena/BALANCE-LAB-PLAN.md`.
 
 ### Phase 2: Descent deletes the arena (this repository)
@@ -164,8 +190,11 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
 - **Exit:**
   - the survey finds no arena modules and nothing to cut;
   - the Descent oracles are identical and its gate probes green;
-  - the production bundle holds no fighter or Duel module (a check like `verify:builder-bundle`);
-  - CI is green.
+  - the production bundle holds no fighter or Duel module (a check like `verify:builder-bundle`).
+
+**Descent's own fixes do not wait for this phase.** The settling fix at generation (D13) is Descent-only, because
+CLASHFORGED deletes the cave generator. It runs on its own branch in this repository, before or after the copy. Its
+GEN bump re-records `genGolden`, and its commit says so.
 
 ### Phase 3: CLASHFORGED deletes the campaign (the new repository)
 
@@ -173,9 +202,14 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
    - It is `Game.ts` without the campaign's systems: the run director, story, Sanctum, waves, mutators, brewing, the
      tea machine and flora.
    - The Duel lobby is the front door until Phase 4 builds the shell.
-   - Worth aiming for: a root that can play a match with no DOM, WebGL or audio. The Balance Lab's first measurement
-     (BL0.5 in `docs/arena/BALANCE-LAB-PLAN.md`) decides whether its batch runner uses Node worker threads (an expected
-     5-10 times the throughput of headless pages) or browser pages.
+   - **A pure simulation core (D10).** The root runs a whole match with no DOM, WebGL or audio; rendering, audio and
+     input are clients of it. A Node test plays a seeded match through the core alone and gets the browser's record.
+     It is the foundation for server-run matches (D5's Containers) and for the Balance Lab's batch runner, an expected
+     5-10 times the throughput of headless pages (BL0.5 in `docs/arena/BALANCE-LAB-PLAN.md` measures it).
+   - **Deterministic matches (D9).** Find and remove every source of whole-tick drift in match code: unseeded random
+     draws, clock reads, iteration over unordered collections, and work that depends on asynchronous start-up. The
+     determinism probe already names suspects (the flyers, an async start-up race). A replay test plays the seeded
+     batch twice and requires identical records, and the `duels` oracle then holds all 20 matches exactly.
 2. **Delete what nothing reaches:** the 219 modules, the campaign assets, the 141 Descent tests, and the Descent
    probes and docs.
 3. **Trim the 113 kept modules** by cutting their 145 imports.
@@ -184,13 +218,17 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
    - The Builder gets the Duel's content (stages, platforms, its own placeables) instead of the campaign's palette,
      prefabs and levels.
    - Rerun the survey after each cut and delete what it no longer reaches.
-4. **Training gets its own dummies**, registered by the Duel. Then the creature roster goes.
+4. **Training's targets are the fighters themselves (D11):** scripted dummies on the CPU framework (stand, shield,
+   jump, DI, recover, attack on a loop), in place of the Proving Yard's roster creatures. Kit abilities that act on
+   "foes" (slow, stun, reveal) act on the dummy fighter. Then the creature roster goes.
 5. **Storage.** CLASHFORGED is its own origin (its Worker's domain, and another port in dev), so its
    `localStorage` is already separate. Its keys still get their own prefix in place of `alchemists-descent-*` and
    `noita-*`.
 
 - **Exit:**
-  - the CLASHFORGED oracles are identical and its gate probes green;
+  - the CLASHFORGED oracles are identical and its gate probes green, with all 20 duels held exactly;
+  - a seeded match plays in Node, with no DOM, WebGL or audio, and matches the browser's record;
+  - the replay test passes;
   - no Descent screen, string or asset is reachable;
   - the survey's campaign count is what the remaining imports justify.
 
@@ -199,7 +237,8 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
 - **Its shell, from the foundry kit:** title, options, controls, dialogs, toasts, loading and credits (references in
   `Y:\Projects\alchemists-descent-worktrees\UI\V1`). Training becomes a player-facing mode.
 - **Brand:** `config/brand.ts`, favicon and `package.json` name.
-- **Its CI**: typecheck, lint, tests, build and its own browser checks.
+- **Its CI (D15)**: fast checks on every PR (typecheck, lint, tests including the replay test, build), the full suite
+  nightly, both required by branch protection.
 - **Its deploy:**
   - its own Worker with static assets (D5): `_headers` (COOP/COEP) served natively, and the Duel room Durable Object
     in the same deployment;
@@ -208,7 +247,8 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
     (`servers/duel/Room.ts`, already free of sockets and browser APIs) is hosted once;
   - a hosted probe like `verify-hosted-game`;
   - its own deploy skill;
-  - its own `AUTHORLINK_URL` variable and Cloudflare credentials. No relay token ships in a public build.
+  - its own AuthorLink relay Worker (D12), deployed apart from the game's Worker, with its own `AUTHORLINK_URL`
+    variable and Cloudflare credentials. No relay token ships in a public build.
 - **Its docs:** `CLAUDE.md`, `ARCHITECTURE.md`, `PROBE-HEALTH.md`, the arena docs at the top level. Claude's memory
   is per checkout path, so it starts empty there; seed it with the arena notes.
 
@@ -221,10 +261,14 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
   diverge.
 - **Tooling** is copied once and then owned by each repository: the probe harness (`run-helpers`, `browser-launch`),
   the ElevenLabs client and the perf benches. The paid ElevenLabs cache on this machine stays shared.
-- **The Balance Lab** (`docs/arena/BALANCE-LAB.md`) is CLASHFORGED tooling and is built in the CLASHFORGED
-  repository, starting the day the copy lands (D-021 as revised). It keeps this repository's layout, so its planned
-  paths are final: `src/content/fighters/sheets/`, `src/fighters/analysis/`, `lab.html` with `src/lab/`, `src/dev/`
-  and `tools/lab/`.
+- **The Balance Lab** (`docs/arena/BALANCE-LAB.md`) is CLASHFORGED tooling, built in the CLASHFORGED repository by
+  dependency (D16):
+  - the parts that need no game loop (the knob registry, the analyser library, the fighter sheets, the static checks)
+    start the day the copy lands;
+  - the batch runner starts on Phase 3's headless root.
+
+  It keeps this repository's layout, so its planned paths are final: `src/content/fighters/sheets/`,
+  `src/fighters/analysis/`, `lab.html` with `src/lab/`, `src/dev/` and `tools/lab/`.
 
 ## 6. Risks
 
@@ -237,15 +281,14 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
 | A secret or variable is missing in the new repository | Phase 4 adds `AUTHORLINK_URL` and the Cloudflare credentials; no relay token in a public build |
 | A bug fixed in one repository lives on in the other | Accepted (D1); port it while the histories are close |
 | The untracked sprite library is lost | It moves by hand in Phase 1 and stays ignored |
-| The copy slips, and balance tooling waits with it (the Lab starts the day it lands, D-021) | The copy is short and comes first; the interim balance routine (`docs/arena/BALANCE-LAB-PLAN.md`) covers every fighter change until then |
+| The copy slips, and balance tooling waits with it (D16) | The copy is short and comes first; the interim balance routine (`docs/arena/BALANCE-LAB-PLAN.md`) covers every fighter change until then |
+| Phase 3 grows (the headless core, D10, and determinism, D9), and the Lab's runner waits on it | The Lab's other parts proceed from the copy; Phase 3 lands in small PRs, each with the oracles identical; the determinism probe names the drift sources to chase first |
+| A late findability check digs on screen before D13 lands | The checks carve only on an error; D13 removes the cause at generation, and the checks then log when they fire |
 
-## 7. Open questions (recommendation first)
+## 7. Settled details
 
-- **The AuthorLink relay for CLASHFORGED:** a Durable Object in CLASHFORGED's own Worker, beside the Duel rooms
-  (recommended: one deployment, as D5 argues, and the protocol and tuning ranges will diverge); or share Descent's
-  relay, with both origins allowlisted.
-- **CLASHFORGED's dev port:** 5175 (recommended), so both dev servers can run side by side.
-- **CLASHFORGED's visibility:** private until it launches, then decide.
+- **CLASHFORGED's dev port:** 5175, so both games' dev servers run side by side.
+- **CLASHFORGED's visibility:** private until it launches, then decided again.
 
 ## 8. The superseded monorepo plan
 

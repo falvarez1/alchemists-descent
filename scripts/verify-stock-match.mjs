@@ -4,7 +4,8 @@ import { launchBrowser } from './browser-launch.mjs';
 import { leaveTitleIfShown, waitForConsoleApi } from './run-helpers.mjs';
 
 const url = process.argv[2] ?? 'http://127.0.0.1:5217/';
-const out = 'docs/arena/platform-fighter/evidence';
+// Evidence lands in docs/ by default; the split's gate runner points it at verify-out so a gate run never dirties docs.
+const out = process.env.PROBE_EVIDENCE_DIR ?? 'docs/arena/platform-fighter/evidence';
 mkdirSync(out, { recursive: true });
 const browser = await launchBrowser();
 const errors = [];

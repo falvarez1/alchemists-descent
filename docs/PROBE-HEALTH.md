@@ -218,8 +218,18 @@ baseline, the first batch failed six. Five were stale probes, not the game, and 
   It now waits for an enabled control, scrolls to it as a player would, and checks the profile's unlock. It also
   names the condition a wait never met.
 
-The sixth, `verify:findability` (seed 5: `verify-findability` on d3b in CI, `verify-encounter-lairs` on d4 here), fails
-on some runs and not others because it audits a running sim against the wall clock. Its fix is in progress.
+The sixth, `verify:findability` (seed 5: `verify-findability` on d3b in CI, `verify-encounter-lairs` on d4 here), was
+half probe and half game.
+
+- **The game.** A level keeps settling for minutes as exposed gunpowder seams drain, and the settled repair checks
+  stopped at 12 s. In real-time play, seed 5 d4's boss approach was plugged for good at about 33 s (a 9-tall heap under
+  a water tank) and d3b's charge latch buried at about 40 s. Levels now runs late checks at 18, 26, 36, 48, 64, 90,
+  120 and 180 s, each carving only on an error. Every check starts on the tick its sim-step deadline is reached, not
+  on the wall clock.
+- **The probe.** It audited at whatever step the machine had reached when its wall-clock waits ended: about 3,840 on a
+  desktop and about 840 on the GPU-less runner, where a falling curtain of powder was crossing d3b's portal corridor.
+  `verify-findability` and `verify-encounter-lairs` now step exact tick counts and count only an error that holds
+  through sim steps 2400 to 3000 after entry. The suite takes 16 to 19 minutes locally.
 
 `verify-sim-determinism` (an oracle, not a gate) had been stale since the title menu: it started its run through a
 Play button the menu hides. The console starts it now, and it prints the absolute cell-sim hash

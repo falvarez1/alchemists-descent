@@ -51,7 +51,10 @@ for (const [name, ...extra] of list) {
   const log = createWriteStream(join(OUT, `${name}.log`));
   let tail = '';
   const code = await new Promise((resolve) => {
-    const child = spawn(process.execPath, [`scripts/${name}.mjs`, url, ...extra], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+    // Probes that save evidence into docs/ by default (the Duel's) write it here instead: a gate run changes no
+    // tracked file.
+    const env = { ...process.env, PROBE_EVIDENCE_DIR: join(OUT, 'evidence') };
+    const child = spawn(process.execPath, [`scripts/${name}.mjs`, url, ...extra], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
     const take = (b) => { log.write(b); tail = (tail + b.toString()).slice(-4000); };
     child.stdout.on('data', take);
     child.stderr.on('data', take);

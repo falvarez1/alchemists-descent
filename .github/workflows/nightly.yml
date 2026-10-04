@@ -1,0 +1,79 @@
+name: Nightly
+
+# The full suite (docs/split/SPLIT-PLAN.md D15): every findability seed with the encounter lairs, then the 15 split
+# gate probes, one at a time, on a GPU-less runner. Too slow for every PR (the findability suite alone takes 16-19 min
+# on a desktop). A failure opens an issue labelled `nightly-red`, or comments on the open one, so a red night is seen
+# the next morning instead of sitting unnoticed.
+on:
+  schedule:
+    - cron: '0 7 * * *' # 07:00 UTC, the small hours in the Americas
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium for browser probes
+        run: npx playwright-core install --with-deps chromium
+
+      - name: Findability (every seed) and the gate probes
+        env:
+          PLAYWRIGHT_BROWSER_CHANNEL: chromium
+        run: |
+          npm run dev -- --host 127.0.0.1 --port 5173 &
+          DEV_PID=$!
+          trap "kill $DEV_PID" EXIT
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:5173/ >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:5173/ >/dev/null
+          # The gate list includes the full findability suite (verify:findability: every seed, every floor, then the
+          # encounter lairs). It runs every probe even after a failure and exits non-zero if any was red.
+          node scripts/split/gate-probes.mjs all http://127.0.0.1:5173/
+
+      - name: Keep the probe logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-probe-logs
+          path: verify-out/split/gates/
+          retention-days: 14
+
+      - name: Report a red night
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          body="The nightly full suite failed on ${GITHUB_SHA::7}: ${run_url} (logs in the gate-probe-logs artifact)."
+          gh label create nightly-red --color B60205 --description "The nightly full suite failed" --force >/dev/null 2>&1 || true
+          open=$(gh issue list --label nightly-red --state open --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "$body"
+          else
+            gh issue create --title "Nightly full suite is red" --label nightly-red --body "$body"
+          fi
