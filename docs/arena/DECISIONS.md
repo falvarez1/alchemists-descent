@@ -214,28 +214,30 @@ logic was written to be hosted that way).
 **Revisit** if CLASHFORGED needs a domain whose DNS cannot move to Cloudflare, or if Cloudflare closes the gap (Durable
 Objects defined inside Pages projects).
 
-## D-023 (2026-10-04): a Duel replica plays the host's ticks back on the host's clock; own-fighter prediction is built in CLASHFORGED after the copy
+## D-027 (2026-10-04): a Duel replica plays the host's ticks back on the host's clock; the guest's round trip is removed in CLASHFORGED after the copy
 
 **Decision.** The LAN Duel's host publishes a frame at the end of every tick (counted in ticks, never a wall-clock timer),
 and its terrain capture compares only what the renderer's contract says can have changed. The guest buffers frames and
 plays them back on an estimate of the host's clock: the world and the opponent late enough to absorb measured jitter, its
 own fighter as early as the network allows, both interpolated at display rate (`docs/DUEL-LAN.md`, "Replication").
-Prediction of the guest's own fighter (restorable slot state, per-tick input stamps, replay of unacknowledged inputs,
-terrain write isolation) is the next step, and it is built **in the CLASHFORGED repository after the copy** (split
-phase 1), not here. Each snapshot's `ack` (the newest guest input the host applied) is its starting point.
+Removing the round trip the guest's own fighter still waits is the next step, built **in the CLASHFORGED repository after
+the copy** (split phase 1), not here. The user chose prediction of the controlled fighter (restorable slot state, per-tick
+input stamps, replay of unacknowledged inputs, terrain write isolation); each snapshot's `ack` (the newest guest input the
+host applied) is its starting point. Once matches replay exactly (D-023) and run headless (D-024), rollback becomes the
+alternative to weigh against it when that work starts.
 
 **Why.** The guest's lag was measured, not assumed: a 33 ms wall-clock timer beat against the 16.7 ms tick and delivered
 23 uneven frames a second, the full-grid diff cost the host 6-7 ms a frame, and frames were applied on arrival. Fixed,
-guest key-to-screen fell from 91 to 53 ms (host: 30-33 ms) and its fighters no longer freeze between frames. This
-playback is needed whatever comes later: with server-run matches (D-022) both players are replicas, and prediction only
-replaces the controlled fighter's playhead. Prediction waits for the copy (the user's choice, recommended) because it is
-Duel-only work that reaches deep into shared engine code (`Player.ts`, `ArenaSlots`) while the split is moving files.
+guest key-to-screen fell from 91 to 53 ms (host: 30-33 ms) and its fighters no longer freeze between frames. The playback
+is needed whatever comes later: with server-run matches (D-022) both players are replicas, prediction replaces only the
+controlled fighter's playhead, and even rollback shows the world from confirmed frames. The next step waits for the copy
+(the user's choice, recommended) because it is Duel-only work that reaches deep into shared engine code (`Player.ts`,
+`ArenaSlots`) while the split is moving files.
 
-**Accepted cost.** Until prediction lands, the guest's own fighter answers one network round trip after the host's would:
-about 20 ms on one machine, plus the network round trip over a real link. Fine on a LAN; not for Internet play.
+**Accepted cost.** Until then, the guest's own fighter answers one network round trip after the host's would: about 20 ms
+on one machine, plus the network round trip over a real link. Fine on a LAN; not for Internet play.
 
-**Rejected:** rollback (the whole tick is not deterministic and resimulating the cell grid per frame is out of budget,
-`docs/BATTLE-ROYALE-AND-SPACETIMEDB.md`); prediction now in this repository (conflicts with the split in progress);
-extrapolating the own fighter past the newest frame (overshoots on every stop and turn).
+**Rejected:** prediction now in this repository (conflicts with the split in progress); extrapolating the own fighter past
+the newest frame (overshoots on every stop and turn); rollback today (the whole tick does not yet replay exactly, D-023).
 
-**Revisit** when online play is scheduled: prediction becomes a requirement then, not a refinement.
+**Revisit** when online play is scheduled: removing the round trip becomes a requirement then, not a refinement.

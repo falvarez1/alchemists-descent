@@ -146,7 +146,8 @@ moves: about 20 ms more than the host on one machine, and the whole network roun
 trip on top over a real network (136 ms key-to-screen at an added 80 ms round
 trip, against the host's 32 ms). That is acceptable on a LAN and not over the
 Internet. The next step is **prediction of the controlled fighter** on the guest, built in the
-CLASHFORGED repository after the split copy (`docs/arena/DECISIONS.md` D-023):
+CLASHFORGED repository after the split copy (`docs/arena/DECISIONS.md` D-027; once matches replay
+exactly, D-023, rollback is the alternative to weigh):
 inputs stamped with the guest's own tick, the host acknowledging per tick (`ack`
 is the start), the slot's complete simulation state restorable (`PlayerState`, the
 controller's private timers, the stock modules, the kit's state), the guest
