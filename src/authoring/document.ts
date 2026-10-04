@@ -96,9 +96,15 @@ export interface EditorWorldLayer {
   tints?: string;
   /** Version 2: packed runs of the cells flagged as colour scars (core/rle packIndexRuns). */
   scars?: string;
+  /** Version 2: packed runs of the non-zero life plane (core/rle packValueRuns). */
+  lifeRuns?: string;
+  /** Version 2: packed runs of the non-zero charge plane. */
+  chargeRuns?: string;
   /** Version 1: CaveGenerator's material/crown paint seed. */
   paintSeed?: number;
+  /** Version 1: [index, life] pairs. */
   life?: Array<[number, number]>;
+  /** Version 1: [index, charge] pairs. */
   charge?: Array<[number, number]>;
   /** Version 1: a full packed-color plane, for a layer whose differences were not sparse. */
   colors?: string;

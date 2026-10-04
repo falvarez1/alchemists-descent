@@ -5,11 +5,12 @@ import {
   bytesToBase64,
   packColorDiffs,
   packIndexRuns,
+  packValueRuns,
   rleDecodeExact,
   rleEncode,
-  sparsePairs,
   unpackColorDiffs,
   unpackIndexRuns,
+  unpackValueRuns,
 } from '@/core/rle';
 import { Cell } from '@/sim/CellType';
 import type { ColorOverrides } from '@/sim/ColorOverrides';
@@ -39,7 +40,8 @@ import { isLegacyBiome, legacyFallbackSeed, paintLegacyV1 } from '@/authoring/le
  * therefore carries the cell types (rle), the descriptor (`paint`), and only
  * the cells whose colour differs from what the paint gives: authored colours, a
  * stamp's own palette, scars, cells the sim has moved since (`tints`, packed
- * runs), plus which cells are flagged as scars for the renderer (`scars`). The
+ * runs), plus which cells are flagged as scars for the renderer (`scars`), and
+ * the life and charge planes as packed runs too (`lifeRuns`, `chargeRuns`). The
  * receiver paints the same grid with the same function and lays the
  * differences on top. A fresh 1600x1064 world costs its rle and a few KB.
  *
@@ -73,29 +75,21 @@ export interface WorldLayerTarget {
   seed: number;
 }
 
-/** Sparse-pair budget for life/charge in one document/message. */
-const SPARSE_CAP = 200_000;
-
 /** Snapshot the LIVE world cells into a terrain layer. */
 export function captureWorldLayer(src: WorldLayerSource): EditorWorldLayer {
   const w = src.world;
-  // Transient gas life is noise; keep authored/fire life so generated braziers survive restore.
-  const life: Array<[number, number]> = [];
-  for (let i = 0; i < w.life.length && life.length < SPARSE_CAP; i++) {
-    if (w.life[i] === 0) continue;
-    const t = w.types[i];
-    if (t === Cell.Smoke || t === Cell.Steam) continue;
-    life.push([i, w.life[i]]);
-  }
   const paint = w.paint ?? PLAIN_PAINT;
   const layer: EditorWorldLayer = {
     rle: rleEncode(w.types),
     biome: src.biome,
     seed: src.seed >>> 0,
-    life,
-    charge: sparsePairs(w.charge, 20000),
     paint: structuredClone(paint),
   };
+  // Transient gas life is noise; keep authored/fire life so generated braziers survive restore.
+  const life = packValueRuns(w.life, (i) => w.types[i] !== Cell.Smoke && w.types[i] !== Cell.Steam);
+  if (life) layer.lifeRuns = life;
+  const charge = packValueRuns(w.charge);
+  if (charge) layer.chargeRuns = charge;
   const base = new Uint32Array(w.colors.length);
   paintBase(w, paint, base, null);
   const tints = packColorDiffs(w.colors, base);
@@ -118,8 +112,11 @@ export function applyWorldLayer(target: WorldLayerTarget, layer: EditorWorldLaye
   }
   if (layer.paint !== undefined) applyPaintedLayer(w, layer);
   else applyLegacyLayer(target, layer);
+  const n = w.types.length;
   for (const [i, v] of layer.life ?? []) w.life[i] = v;
   for (const [i, v] of layer.charge ?? []) w.setChargeAt(i, v);
+  if (typeof layer.lifeRuns === 'string') unpackValueRuns(layer.lifeRuns, n, (i, v) => { w.life[i] = v; });
+  if (typeof layer.chargeRuns === 'string') unpackValueRuns(layer.chargeRuns, n, (i, v) => w.setChargeAt(i, v));
 }
 
 /** A version-2 layer: paint the grid, lay the differences on, flag the scars. */

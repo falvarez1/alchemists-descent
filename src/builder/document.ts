@@ -1,5 +1,5 @@
 import type { BiomeId, Ctx } from '@/core/types';
-import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, unpackColorDiffs, unpackIndexRuns } from '@/core/rle';
+import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, unpackColorDiffs, unpackIndexRuns, unpackValueRuns } from '@/core/rle';
 import {
   applyWorldLayer as applyNeutralWorldLayer,
   captureWorldLayer as captureNeutralWorldLayer,
@@ -314,24 +314,29 @@ function sanitizeWorldLayer(value: unknown): EditorWorldLayer | null {
     rle: dirty ? rleEncode(decoded) : layer.rle,
     ...(isBiomeId(layer.biome) ? { biome: layer.biome } : {}),
     ...(num(layer.seed) ? { seed: Math.floor(layer.seed) >>> 0 } : {}),
-    life: sanitizeSparsePairs(layer.life, DOC_SPARSE_CAP, -32768, 32767),
-    charge: sanitizeSparsePairs(layer.charge, DOC_SPARSE_CAP, 0, 65535),
   };
   if (layer.paint !== undefined) {
-    // Version 2: the descriptor and the packed differences. A descriptor this
+    // Version 2: the descriptor and the packed planes. A descriptor this
     // build cannot paint still marks the layer as version 2 (its tints are not
     // version-1 pairs); it decodes against the plain paint.
-    const tints = sanitizePacked(layer.tints, (s) => unpackColorDiffs(s, new Uint32Array(WIDTH * HEIGHT)));
-    const scars = sanitizePacked(layer.scars, (s) => unpackIndexRuns(s, WIDTH * HEIGHT, () => undefined));
+    const n = WIDTH * HEIGHT;
+    const tints = sanitizePacked(layer.tints, (s) => unpackColorDiffs(s, new Uint32Array(n)));
+    const scars = sanitizePacked(layer.scars, (s) => unpackIndexRuns(s, n, () => undefined));
+    const lifeRuns = sanitizePacked(layer.lifeRuns, (s) => unpackValueRuns(s, n, () => undefined));
+    const chargeRuns = sanitizePacked(layer.chargeRuns, (s) => unpackValueRuns(s, n, () => undefined));
     return {
       ...common,
       paint: sanitizeLayerPaint(layer.paint) ?? PLAIN_PAINT,
       ...(tints ? { tints } : {}),
       ...(scars ? { scars } : {}),
+      ...(lifeRuns ? { lifeRuns } : {}),
+      ...(chargeRuns ? { chargeRuns } : {}),
     };
   }
   return {
     ...common,
+    life: sanitizeSparsePairs(layer.life, DOC_SPARSE_CAP, -32768, 32767),
+    charge: sanitizeSparsePairs(layer.charge, DOC_SPARSE_CAP, 0, 65535),
     ...(num(layer.paintSeed) ? { paintSeed: clampInt(layer.paintSeed, 0, 99999) } : {}),
     colors: sanitizeColorPlane(layer.colors),
     colorOverrides: sanitizeSparsePairs(layer.colorOverrides, DOC_SPARSE_CAP, 0, 0xffffff),

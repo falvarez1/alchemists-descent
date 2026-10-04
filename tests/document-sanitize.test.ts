@@ -13,6 +13,11 @@ import {
 import type { EditorDocument } from '@/builder/document';
 import { rleEncode } from '@/core/rle';
 import { WIDTH, HEIGHT } from '@/config/constants';
+import { captureWorldLayer } from '@/authoring/worldLayer';
+import { Cell } from '@/sim/CellType';
+import { World } from '@/sim/World';
+import { paintCells } from '@/sim/worldPaint';
+import { cavePaint } from '@/world/CaveGenerator';
 
 // Locks the save/share-ingestion hardening from the 2026-06-17 code review:
 // every Builder document load path routes through sanitizeImportedDoc.
@@ -111,6 +116,32 @@ describe('document sanitizer — save/share ingestion (review hardening)', () =>
     const short = baseDoc();
     short.world = { rle: rleEncode(new Uint8Array(WIDTH * HEIGHT - 64)) };
     expect(sanitizeImportedDoc(short)).toBeNull();
+  });
+
+  it('keeps a version-2 terrain layer whole, and drops what does not decode', () => {
+    const world = new World();
+    for (let i = 0; i < world.types.length; i += 3) world.types[i] = Cell.Wall;
+    const paint = cavePaint('frozen', 77, 6);
+    paintCells(world, paint, world.colors);
+    world.paint = paint;
+    world.colors[500] = 0x7a1010;
+    world.colorOverrides.add(500);
+    world.types[900] = Cell.Fire;
+    world.life[900] = 300;
+    world.setChargeAt(901, 40);
+    const layer = captureWorldLayer({ world, biome: 'frozen', seed: 77 });
+    const doc = baseDoc();
+    doc.world = JSON.parse(JSON.stringify(layer));
+    const out = sanitizeImportedDoc(doc);
+    expect(out?.world).toEqual(layer);
+
+    const hostile = baseDoc();
+    hostile.world = { ...layer, paint: { v: 2, style: 'strata', seed: 'x' } as never, tints: '!!!', lifeRuns: '////' };
+    const cleaned = sanitizeImportedDoc(hostile)?.world;
+    expect(cleaned?.paint).toEqual({ v: 2, style: 'plain', seed: 0 });
+    expect(cleaned?.tints).toBeUndefined();
+    expect(cleaned?.lifeRuns).toBeUndefined();
+    expect(cleaned?.scars).toBe(layer.scars);
   });
 
   it('keeps every canonical object and link kind during sanitization', () => {

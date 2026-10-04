@@ -82,6 +82,11 @@ function travel(world: World, biome: BiomeId, seed: number): { bytes: number; ti
   expect(back.colors).toEqual(world.colors);
   expect(back.colorOverrides.mask).toEqual(world.colorOverrides.mask);
   expect(back.paint).toEqual(world.paint);
+  // Life too, but for the transient gases' (deliberately not shipped), and charge.
+  const life = world.life.slice();
+  for (let i = 0; i < life.length; i++) if (world.types[i] === Cell.Smoke || world.types[i] === Cell.Steam) life[i] = 0;
+  expect(back.life).toEqual(life);
+  expect(back.charge).toEqual(world.charge);
   return { bytes: json.length, tinted };
 }
 

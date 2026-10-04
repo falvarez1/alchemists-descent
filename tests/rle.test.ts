@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { packColorDiffs, packIndexRuns, rleDecodeExact, rleEncode, unpackColorDiffs, unpackIndexRuns } from '@/core/rle';
+import {
+  packColorDiffs,
+  packIndexRuns,
+  packValueRuns,
+  rleDecodeExact,
+  rleEncode,
+  unpackColorDiffs,
+  unpackIndexRuns,
+  unpackValueRuns,
+} from '@/core/rle';
 
 describe('rle codec', () => {
   it('decodes only streams that exactly cover the destination buffer', () => {
@@ -76,5 +85,25 @@ describe('packed index runs (world layer scars)', () => {
     expect(seen).toEqual([0, 1, 2, 3, 99, 1000, 1001, 4999]);
     expect(unpackIndexRuns(packed, 4000, () => undefined)).toBe(false);
     expect(packIndexRuns(new Uint8Array(10))).toBe('');
+  });
+});
+
+describe('packed value runs (world layer life and charge)', () => {
+  it('round-trips signed values, keeps only what keep() allows, and refuses an overrun', () => {
+    const life = new Int16Array(3000);
+    for (let i = 100; i < 160; i++) life[i] = -1; // a settled lawn
+    life[5] = 321;
+    life[6] = -32768;
+    life[7] = 32767;
+    life[2999] = 4;
+    life[2000] = 77; // dropped by keep
+    const packed = packValueRuns(life, (i) => i !== 2000);
+    const back = new Int16Array(life.length);
+    expect(unpackValueRuns(packed, life.length, (i, v) => { back[i] = v; })).toBe(true);
+    const expected = life.slice();
+    expected[2000] = 0;
+    expect(back).toEqual(expected);
+    expect(unpackValueRuns(packed, 2500, () => undefined)).toBe(false);
+    expect(packValueRuns(new Uint16Array(9))).toBe('');
   });
 });

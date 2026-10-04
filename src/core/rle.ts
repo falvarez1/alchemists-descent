@@ -287,3 +287,88 @@ export function unpackIndexRuns(encoded: string, limit: number, onIndex: (i: num
   }
   return true;
 }
+
+const zigzag = (v: number): number => (v >= 0 ? v * 2 : -v * 2 - 1);
+const unzigzag = (u: number): number => (u % 2 === 0 ? u / 2 : -(u + 1) / 2);
+
+/**
+ * The non-zero cells of an integer plane (life, charge), packed like
+ * packColorDiffs: runs of `varint(gap) varint((len - 1) << 1 | literal)`, then
+ * one zigzag varint (a flat run) or `len` of them. `keep(i)` false drops a cell
+ * (transient life). A settled lawn's -1s cost a few bytes a ledge; JSON pairs
+ * cost ~12 a cell. '' when nothing is kept.
+ */
+export function packValueRuns(values: ArrayLike<number>, keep: (i: number) => boolean = () => true): string {
+  const n = values.length;
+  const at = (i: number): number => (values[i] !== 0 && keep(i) ? values[i] : 0);
+  const out = new ByteSink();
+  let end = 0;
+  let i = 0;
+  while (i < n) {
+    if (at(i) === 0) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < n && at(j) !== 0) j++;
+    let litStart = i;
+    let k = i;
+    while (k < j) {
+      const v = at(k);
+      let m = k + 1;
+      while (m < j && at(m) === v) m++;
+      if (m - k >= FLAT_RUN_MIN) {
+        if (litStart < k) {
+          out.varint(litStart - end);
+          out.varint((k - litStart - 1) * 2 + 1);
+          for (let q = litStart; q < k; q++) out.varint(zigzag(at(q)));
+          end = k;
+        }
+        out.varint(k - end);
+        out.varint((m - k - 1) * 2);
+        out.varint(zigzag(v));
+        end = m;
+        litStart = m;
+      }
+      k = m;
+    }
+    if (litStart < j) {
+      out.varint(litStart - end);
+      out.varint((j - litStart - 1) * 2 + 1);
+      for (let q = litStart; q < j; q++) out.varint(zigzag(at(q)));
+      end = j;
+    }
+    i = j;
+  }
+  return out.length === 0 ? '' : out.base64();
+}
+
+/** Call `onValue` for every cell packValueRuns packed, below `limit`. False on malformed input. */
+export function unpackValueRuns(encoded: string, limit: number, onValue: (i: number, v: number) => void): boolean {
+  const bytes = decodeBase64Bytes(encoded);
+  if (!bytes) return false;
+  const src = new ByteSource(bytes);
+  let end = 0;
+  while (!src.done) {
+    const gap = src.varint();
+    const header = src.varint();
+    if (gap === null || header === null) return false;
+    const start = end + gap;
+    const len = Math.floor(header / 2) + 1;
+    if (start + len > limit) return false;
+    if (header & 1) {
+      for (let q = start; q < start + len; q++) {
+        const u = src.varint();
+        if (u === null) return false;
+        onValue(q, unzigzag(u));
+      }
+    } else {
+      const u = src.varint();
+      if (u === null) return false;
+      const v = unzigzag(u);
+      for (let q = start; q < start + len; q++) onValue(q, v);
+    }
+    end = start + len;
+  }
+  return true;
+}
