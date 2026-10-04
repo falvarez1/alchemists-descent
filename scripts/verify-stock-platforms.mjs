@@ -41,7 +41,8 @@ try {
     for (const slot of [0, 1]) {
       c.arena.reset(); for (let i = 0; i < 125; i++) step();
       const b = c.arena.bundle(slot), p = b.player, platform = STOCK_STAGE.platforms[slot];
-      Object.assign(p, { x: (platform.x0 + platform.x1) / 2, y: STOCK_STAGE.main.y - 1, vy: 0, vx: 0, fx: 0, fy: 0, grounded: true });
+      // Bodies live on whole cells: the centre of an even-width platform is a half cell.
+      Object.assign(p, { x: Math.round((platform.x0 + platform.x1) / 2), y: STOCK_STAGE.main.y - 1, vy: 0, vx: 0, fx: 0, fy: 0, grounded: true });
       b.input.keys.jump = true;
       const trace = [];
       for (let i = 0; i < 150; i++) {

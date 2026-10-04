@@ -1,4 +1,5 @@
 import type { FighterId } from '@/content/fighters';
+import type { StockStageId } from '@/config/stockStage';
 
 export type VersusDevice = 'keyboard' | 'cpu' | `pad:${number}`;
 export type VersusPhase = 'idle' | 'lobby' | 'loading' | 'playing' | 'reconnect';
@@ -11,6 +12,8 @@ export interface VersusApi {
   readonly phase: VersusPhase;
   readonly active: boolean;
   readonly seats: readonly Readonly<VersusSeat>[];
+  /** The stage the next match is played on (lobby choice; kept for rematches). */
+  readonly stage: StockStageId;
   readonly message: string;
   readonly canStart: boolean;
   readonly disconnected: readonly number[];
@@ -19,6 +22,7 @@ export interface VersusApi {
   close(): void;
   chooseFighter(slot: number, fighter: FighterId): void;
   chooseDevice(slot: number, device: VersusDevice): boolean;
+  chooseStage(stage: StockStageId): void;
   ready(slot: number): void;
   start(): Promise<boolean>;
   rematch(): void;

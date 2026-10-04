@@ -34,9 +34,12 @@ import { ChillSystem } from '@/game/Chill';
 import { FighterSystem } from '@/fighters/FighterSystem';
 import { ArenaSlots } from '@/arena/ArenaSlots';
 import { LocalVersus } from '@/game/LocalVersus';
+import { preloadDuelSprites } from '@/render/duel/DuelFighterSprites';
+import { STOCK_STAGES } from '@/config/stockStage';
 import { VersusLobby } from '@/ui/VersusLobby';
 import { StockMatchHud } from '@/ui/StockMatchHud';
 import { resetDuelStage } from '@/world/duelStage';
+import { preloadStockStageArt } from '@/world/stockStage';
 import { Physics } from '@/entities/physics';
 import { RigidBodies } from '@/entities/RigidBodies';
 import { VineStrands } from '@/entities/VineStrands';
@@ -507,6 +510,13 @@ export class Game {
     if (__AUTHORING__) this.disposables.push(new FighterArenaPanel(ctx));
     const versus = new LocalVersus(ctx, () => this.loadPlaySystems().then(systems => systems !== null));
     ctx.versus = versus;
+    // While the lobby is open, fetch what the match will draw: each seat's fighter atlas and the chosen stage's art.
+    const offPreload = ctx.events.on('versusChanged', () => {
+      if (versus.phase !== 'lobby') return;
+      for (const seat of versus.seats) preloadDuelSprites(seat.fighter);
+      preloadStockStageArt(STOCK_STAGES[versus.stage]);
+    });
+    this.disposables.push({ dispose: offPreload });
     this.disposables.push(versus, new VersusLobby(ctx), new StockMatchHud(ctx, () => {
       if (versus.active) versus.rematch();
       else { resetDuelStage(ctx); ctx.arena?.reset(); }

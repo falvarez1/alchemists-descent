@@ -37,9 +37,9 @@ export class ArenaDuelPanel {
     }
     this.rules.addEventListener('change', () => {
       if (ctx.levels.current?.def.id !== 'fighter-duel') return;
-      ctx.arena?.configureStocks(this.rules.value === 'stocks' ? STOCK_STAGE.zone : null);
+      ctx.arena?.configureStocks(this.rules.value === 'stocks' ? (ctx.arena?.stockStage ?? STOCK_STAGE).zone : null);
       resetDuelStage(ctx);
-      ctx.arena?.setSpawns(this.rules.value === 'stocks' ? STOCK_STAGE.spawns : DUEL.spawns);
+      ctx.arena?.setSpawns(this.rules.value === 'stocks' ? (ctx.arena?.stockStage ?? STOCK_STAGE).spawns : DUEL.spawns);
       ctx.arena?.reset();
       this.rules.blur(); this.update(true);
     });
@@ -103,7 +103,7 @@ export class ArenaDuelPanel {
   private async addRival(): Promise<void> {
     const arena = this.ctx.arena;
     if (!arena) return;
-    const spawns = arena.stockMatch ? STOCK_STAGE.spawns : DUEL.spawns;
+    const spawns = arena.stockMatch ? arena.stockStage.spawns : DUEL.spawns;
     arena.setSpawns(spawns);
     const id = this.pick.value as FighterId;
     // slot 0 starts the bout at its own spawn too

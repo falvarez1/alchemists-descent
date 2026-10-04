@@ -6,6 +6,7 @@ import { CellCapture, finePixelStep } from './FineArt';
 import { drawAlchemistSprite } from './AlchemistSprite';
 import { drawAlchemist } from '@/render/player/AlchemistArt';
 import { drawFighter } from '@/render/player/FighterArt';
+import { drawDuelFighter } from '@/render/duel/DuelFighterSprites';
 
 type RGB = readonly [number, number, number];
 
@@ -62,6 +63,8 @@ export function drawPlayerSprite(out: PixelSurface, light: LightField, ctx: Ctx)
   // The game surface has half-cell pixels and uses the joint-driven art pass.
   // Classic cell surfaces retain the legacy sprite for Builder compatibility.
   // A fighter wears its own look on the same rig (render/player/FighterArt); no fighter, no change.
+  // In a stock match the fighter is drawn from its concept-art atlas instead (render/duel), when one is loaded.
+  if (ctx.fighters?.id && ctx.arena?.stockMatch && drawDuelFighter(out, light, ctx)) return;
   if (ctx.fighters?.id && drawFighter(out, light, ctx)) return;
   if (drawAlchemist(out, light, ctx)) return;
   if (!player.legClub && drawAlchemistSprite(out, light, ctx)) return;

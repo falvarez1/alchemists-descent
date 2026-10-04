@@ -96,8 +96,16 @@ try {
       assert.equal(state.kind, action); assert.equal(state.phase, phase);
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const clip = await page.evaluate(() => {
-        const c = window.__game.ctx, box = document.querySelector('#canvas-holder > canvas').getBoundingClientRect();
-        return { x: Math.round(box.x + (c.player.x - c.camera.renderX) / 640 * box.width - 70), y: Math.round(box.y + (c.player.y - c.camera.renderY) / 360 * box.height - 100), width: 180, height: 145 };
+        // World-to-screen through the stock camera's zoom (the same mapping verify-stock-camera.mjs checks against the pointer);
+        // the crop is a constant 90 x 72 cells of world, so a closer camera gives a larger, sharper crop of the same moment.
+        const c = window.__game.ctx, cam = c.camera, box = document.querySelector('#canvas-holder > canvas').getBoundingClientRect();
+        const scale = cam.viewScale ?? 1, z = cam.zoom * scale;
+        const ox = -(cam.presentationX - cam.renderX) * 2 / 640 / scale * z, oy = (cam.presentationY - cam.renderY) * 2 / 360 / scale * z;
+        const sx = wx => box.x + box.width * (.5 + ((wx - cam.renderX) / (640 * scale) - .5) * (1 + 4 / 640) * z + ox / 2);
+        const sy = wy => box.y + box.height * (.5 + ((wy - cam.renderY) / (360 * scale) - .5) * (1 + 4 / 360) * z - oy / 2);
+        const x0 = sx(c.player.x - 35), y0 = sy(c.player.y - 50), x1 = sx(c.player.x + 55), y1 = sy(c.player.y + 22);
+        const x = Math.max(box.x, Math.round(x0)), y = Math.max(box.y, Math.round(y0));
+        return { x, y, width: Math.round(Math.min(box.x + box.width, x1) - x), height: Math.round(Math.min(box.y + box.height, y1) - y) };
       });
       const file = `${fighter}-${action}-${phase}.png`;
       await page.screenshot({ path: `${out}/${file}`, clip }); gallery.push({ fighter, action, phase, file });

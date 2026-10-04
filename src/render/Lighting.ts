@@ -570,7 +570,7 @@ export class Lighting implements LightField {
         const spread = Math.max(0, wand.flicker);
         this.wandFlickerTarget = spread > 0 ? 1.04 - spread + Math.random() * spread * 2 : 1;
       }
-      const fill = 1 + (LANTERN.hoodFill - 1) * this.hoodK;
+      const fill = (1 + (LANTERN.hoodFill - 1) * this.hoodK) * stockWandLight(ctx);
       this.seedLight(ctx.player.x, ctx.player.y - 9, wand.fillR * fill, wand.fillG * fill, wand.fillB * fill);
       // Active flask siphon (hold E): pulse a cool light over the drained patch
       // at the cursor so the pull reads even against the bright wand light.
@@ -804,7 +804,7 @@ export class Lighting implements LightField {
     // carries further; hooded, the lantern is an ember and the beam is out.
     const hoodK = this.hoodK, darkK = this.playerDark;
     const spillRadius = (1 + (LANTERN.darkOmniRadius - 1) * darkK) * (1 + (LANTERN.hoodRadius - 1) * hoodK);
-    const spillIntensity = 1 + (LANTERN.hoodIntensity - 1) * hoodK;
+    const spillIntensity = (1 + (LANTERN.hoodIntensity - 1) * hoodK) * stockWandLight(ctx);
     this.wandWrite = ctx.state.lanternHooded === true ? 0 : 1;
     if (ctx.state.mode === 'play' && !ctx.player.dead && ctx.player.legClub) {
       // The stowed wand lights the belt; no detached muzzle or aiming beam.
@@ -832,7 +832,7 @@ export class Lighting implements LightField {
       const beamY = ctx.player.y - 9 + Math.sin(ctx.player.aimAngle) * BEAM_ORIGIN_DIST;
       if (hoodK < 0.999) {
         const beamK = (1 - hoodK) * (1 + (LANTERN.darkBeamIntensity - 1) * darkK);
-        this.raycastWandBeam(beamX, beamY, ctx.player.aimAngle, baseIntensity * beamK, baseRadius, darkK);
+        this.raycastWandBeam(beamX, beamY, ctx.player.aimAngle, baseIntensity * beamK * stockWandLight(ctx), baseRadius, darkK);
       }
       // Third light: non-occluded ambient glow over the same cone, on its OWN
       // faster flicker (candle-like life) instead of the steady wand flicker.
@@ -843,7 +843,7 @@ export class Lighting implements LightField {
         Math.sin(fc * 0.57 + 2.1) * 0.07 +
         (Math.random() - 0.5) * 0.05;
       if (hoodK < 0.999) {
-        this.raycastWandGlow(beamX, beamY, ctx.player.aimAngle, rawBase * glowFlick * (1 - hoodK),
+        this.raycastWandGlow(beamX, beamY, ctx.player.aimAngle, rawBase * glowFlick * (1 - hoodK) * stockWandLight(ctx),
           baseRadius * (1 + (LANTERN.darkGlowRadius - 1) * darkK));
       }
     } else if (ctx.state.mode === 'build' && ctx.state.builderWandLightPreview.enabled) {
@@ -1079,3 +1079,11 @@ export class Lighting implements LightField {
     }
   }
 }
+
+/**
+ * A stock stage is lit for play (ambient, its own lanterns, the furnace beyond): the wand and lantern that carve the
+ * campaign's designed darkness would wash the deck white around both fighters (measured 1.7x at the feet). In a stock
+ * match they keep only a faint presence; elsewhere they are unchanged.
+ */
+const STOCK_WAND_LIGHT = 0.3;
+function stockWandLight(ctx: Ctx): number { return ctx.arena?.stockMatch ? STOCK_WAND_LIGHT : 1; }

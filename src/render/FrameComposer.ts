@@ -1155,7 +1155,7 @@ export class FrameComposer implements PixelSurface {
   }
 
   private composeOverlays(ctx: Ctx): void {
-    drawStockStageArt(this, ctx);
+    drawStockStageArt(this, ctx, this.light);
     // Depth particles behind the play layer (over open air only), under every
     // sprite — unless the presentation draws them as GL points.
     const depthParticles = this.target.nativeDepthParticles !== true;
@@ -1331,6 +1331,16 @@ export class FrameComposer implements PixelSurface {
     // the darkening hugs the ground rather than floating in the air above it.
     const cy = groundY + ry * 0.35;
     const irx = Math.ceil(rx);
+    if (ctx.arena?.stockMatch && this.overlay !== null) {
+      // A stock stage draws its deck face over the cells at presentation resolution (render/StockStageArt): negative
+      // light added onto those opaque overlay pixels does not darken them, so the shadow is an alpha-over ellipse there.
+      const step = this.pixelStep, k = Math.min(0.55, opacity * 0.5);
+      for (let y = -ry; y <= ry; y += step) for (let x = -rx; x <= rx; x += step) {
+        const f = 1 - (x * x) / (rx * rx) - (y * y) / (ry * ry);
+        if (f > 0) this.blendFinePx(bcx + x, cy + y, 0.02 * f * k, 0.02 * f * k, 0.03 * f * k, f * k);
+      }
+      return;
+    }
     for (let dx = -irx; dx <= irx; dx++) {
       const nx = dx / rx;
       if (nx < -1 || nx > 1) continue;

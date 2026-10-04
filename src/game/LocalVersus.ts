@@ -1,7 +1,7 @@
 import type { Ctx } from '@/core/types';
 import type { VersusApi, VersusDevice, VersusPhase, VersusSeat } from '@/core/versus';
 import { FIGHTER_ORDER, type FighterId } from '@/content/fighters';
-import { STOCK_STAGE } from '@/config/stockStage';
+import { DEFAULT_STOCK_STAGE, STOCK_STAGES, isStockStageId, type StockStageId } from '@/config/stockStage';
 import { resetDuelStage } from '@/world/duelStage';
 import { botDriverFor, rivalDriverFor } from '@/arena/ai/driver';
 import { readVersusPad, VersusDevices } from '@/input/versusDevices';
@@ -12,6 +12,7 @@ import { setExternalControl } from '@/input/externalControl';
 export class LocalVersus implements VersusApi {
   phase: VersusPhase = 'idle';
   message = '';
+  stage: StockStageId = DEFAULT_STOCK_STAGE;
   readonly seats: [VersusSeat, VersusSeat] = [
     { fighter: 'ilyra-voss', device: 'keyboard', ready: false },
     { fighter: 'brann-rook', device: 'cpu', ready: true },
@@ -73,6 +74,10 @@ export class LocalVersus implements VersusApi {
     if (this.phase !== 'lobby' || !this.ownership.assign(slot, device)) return false;
     this.seats[slot].device = device; this.seats[slot].ready = device === 'cpu'; this.changed(); return true;
   }
+  chooseStage(stage: StockStageId): void {
+    if (this.phase !== 'lobby' || !isStockStageId(stage) || stage === this.stage) return;
+    this.stage = stage; this.changed();
+  }
   ready(slot: number): void {
     const seat = this.seats[slot];
     if (this.phase !== 'lobby' || !seat || this.disconnected.includes(slot) || seat.device === 'cpu') return;
@@ -82,7 +87,7 @@ export class LocalVersus implements VersusApi {
     const ctx = this.ctx, arena = ctx.arena;
     if (!this.canStart || !arena) return false;
     const revision = ++this.revision;
-    this.phase = 'loading'; this.message = 'Opening the Foundry…'; this.changed();
+    this.phase = 'loading'; this.message = `Opening ${STOCK_STAGES[this.stage].name}…`; this.changed();
     try {
       if (!(await this.playReady())) throw new Error('The game could not finish loading. Try again.');
       if (revision !== this.revision) return false;
@@ -91,8 +96,10 @@ export class LocalVersus implements VersusApi {
       if (!result.ok) throw new Error(result.message);
       await ctx.fighters?.whenReady();
       if (revision !== this.revision) return false;
-      arena.configureStocks(STOCK_STAGE.zone); resetDuelStage(ctx); arena.setSpawns(STOCK_STAGE.spawns);
-      const spawn = STOCK_STAGE.spawns[1];
+      const stage = STOCK_STAGES[this.stage];
+      arena.selectStockStage?.(stage.id);
+      arena.configureStocks(stage.zone); resetDuelStage(ctx); arena.setSpawns(stage.spawns);
+      const spawn = stage.spawns[1];
       const joined = await arena.addRival(this.seats[1].fighter, spawn.x, spawn.y);
       if (revision !== this.revision) return false;
       if (joined < 0) throw new Error('The rival could not join. Try the match again.');

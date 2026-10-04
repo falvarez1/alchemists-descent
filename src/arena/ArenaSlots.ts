@@ -17,6 +17,8 @@ import { StockLedge } from '@/arena/StockLedge';
 import { StockAttack, stockAttackOverlaps } from '@/arena/StockAttack';
 import { stockMoveset } from '@/config/stockAttacks';
 import type { StockAttackKind, StockAttackSpec } from '@/core/stockAttacks';
+import { DEFAULT_STOCK_STAGE, STOCK_STAGES, type StockStageDef, type StockStageId } from '@/config/stockStage';
+import { earthStockStage } from '@/arena/stockEarthing';
 
 /**
  * ARENA SLOTS (docs/arena/ARCHITECTURE.md, D-001): two fighters in one world.
@@ -72,6 +74,9 @@ export class ArenaSlots implements ArenaApi {
   private readonly attacks = [new StockAttack(), new StockAttack()];
   private readonly recovery = [{ used: false, held: false, ticks: 0 }, { used: false, held: false, ticks: 0 }];
   get stockMatch(): StockMatchView | null { return this.match; }
+  private stageId: StockStageId = DEFAULT_STOCK_STAGE;
+  get stockStage(): StockStageDef { return STOCK_STAGES[this.stageId]; }
+  selectStockStage(id: StockStageId): void { if (STOCK_STAGES[id]) this.stageId = id; }
 
   configureStocks(zone: BlastZone | null): void {
     this.match = zone ? new MatchDirector(STOCK_RULES, { ...zone }) : null;
@@ -623,6 +628,8 @@ export class ArenaSlots implements ArenaApi {
         if (this.runsBody(slot)) this.specials[slot].step();
       }
       this.resolveStockAttacks(); this.resolveStockGrabs(); this.tickStockMatch();
+      // The stage hull is earthed: no lightning cast electrifies the deck under both fighters.
+      earthStockStage(ctx.world, this.stockStage);
     }
     // Each fighter's slow and stun, set by the other's effects on its stand-in, apply to the NEXT tick.
     for (let victim = 0; victim < this.slots.length; victim++) {

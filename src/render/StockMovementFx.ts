@@ -3,6 +3,7 @@ import type { Ctx } from '@/core/types';
 import { makeSkeleton, poseAlchemist } from '@/entities/playerPose';
 import type { V } from '@/entities/playerPose';
 import type { PixelSurface } from '@/render/pixels';
+import { drawDuelGhost } from '@/render/duel/DuelFighterSprites';
 
 const pose = makeSkeleton();
 
@@ -80,7 +81,9 @@ export function drawStockMovementFx(out: PixelSurface, ctx: Ctx): void {
     for (let i = -2; i <= 2; i++) { dot(p.x + i, p.y - 24 + Math.abs(i), .8); dot(p.x + i, p.y - 20 - Math.abs(i), .8); }
   }
   if (dodge?.phase === 'evade') {
-    if (!quiet) {
+    // Echoes: two see-through copies of the fighter's own sprite trailing the dodge (the rig's silhouettes otherwise).
+    const ghosts = !quiet && [2, 4].map(n => drawDuelGhost(out, ctx, -dodge.vx * n, -dodge.vy * n, n === 2 ? .38 : .2, color as [number, number, number])).every(Boolean);
+    if (!quiet && !ghosts) {
       const s = poseAlchemist(ctx, p, pose);
       for (const n of [2, 4]) {
         const dx = -dodge.vx * n, dy = -dodge.vy * n;

@@ -21,7 +21,7 @@
 .versus-ready { width: 100%; }
 .versus-seat[data-ready="true"] .versus-ready { color: #a9e5cf !important; border-color: #65cac5 !important; opacity: 1 !important; }
 .versus-stage { display: flex; position: relative; align-items: center; justify-content: flex-end; min-height: 105px; border: 1px solid #ac744b; overflow: hidden; }
-.versus-stage-art { position: absolute; inset: 0; background: linear-gradient(to right, transparent, #142334 70%), url('/assets/arena/foundry-backdrop.png') center 55% / cover; opacity: .8; }
+.versus-stage-art { position: absolute; inset: 0; background: linear-gradient(to right, transparent, #142334 70%), url('/assets/arena/foundry/backdrop.png') center 55% / cover; opacity: .8; }
 .versus-stage > div:last-child { z-index: 1; width: 49%; padding: 12px 18px; }
 .versus-stage h2 { font: 29px/1.1 var(--m-serif, Georgia, serif); margin: 0; }
 .versus-stage p { font-size: 13px; margin: 9px 0 0; }.versus-stage p span { padding: 0 7px; color: #ac744b; }

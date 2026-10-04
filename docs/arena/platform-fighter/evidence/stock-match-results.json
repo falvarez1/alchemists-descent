@@ -18,8 +18,8 @@
     "healing": 50,
     "recovery": {
       "minimumY": 558,
-      "x": 645,
-      "y": 639,
+      "x": 638,
+      "y": 559,
       "stocks": 3,
       "grounded": true
     },
@@ -29,9 +29,11 @@
     "open": 0,
     "main": {
       "x0": 560,
-      "x1": 1040,
+      "x1": 1039,
       "y": 640,
-      "depth": 65
+      "depth": 87,
+      "art": "foundry/main",
+      "mirror": false
     }
   },
   "errors": []

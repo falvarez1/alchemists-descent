@@ -64,11 +64,13 @@ try {
     c.input.keys.right = true; c.input.queuedDodge = true; step(1);
     const airUsed = !a.stockDodge(0).airReady;
     // A real wall must stop the burst rather than tunneling through cells.
-    fresh(); Object.assign(p, { x: 750, y: 609, vx: 0, fx: 0 });
-    for (let y = 565; y < 610; y++) for (let x = 780; x < 785; x++) c.world.replaceCellAt(c.world.idx(x, y), 13, 0x665544);
+    // On the real deck (the stage's main top), so the burst cannot simply fall under the wall.
+    const deck = c.arena.stockStage.main.y;
+    fresh(); Object.assign(p, { x: 750, y: deck - 1, vx: 0, fx: 0, grounded: true });
+    for (let y = deck - 45; y < deck; y++) for (let x = 780; x < 785; x++) c.world.replaceCellAt(c.world.idx(x, y), 13, 0x665544);
     c.input.keys.right = true; c.input.queuedDodge = true; step(20);
     const wallX = p.x;
-    for (let y = 565; y < 610; y++) for (let x = 780; x < 785; x++) c.world.clearCellAt(c.world.idx(x, y));
+    for (let y = deck - 45; y < deck; y++) for (let x = 780; x < 785; x++) c.world.clearCellAt(c.world.idx(x, y));
     fresh(); c.input.keys.right = true; c.input.queuedDodge = true; step(6);
     return { startup, evadeDamage, distance, attackProjectiles, spentDuringDodge, lag, lagDamage, airUsed, wallX };
   });
@@ -97,8 +99,14 @@ try {
       }, action);
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const clip = await page.evaluate(() => {
-        const c = window.__game.ctx, box = document.querySelector('#canvas-holder > canvas').getBoundingClientRect();
-        return { x: Math.round(box.x + (c.player.x - c.camera.renderX) / 640 * box.width - 75), y: Math.round(box.y + (c.player.y - c.camera.renderY) / 360 * box.height - 85), width: 150, height: 120 };
+        // World-to-screen through the stock camera's zoom; a constant 75 x 60 cells of world around the fighter.
+        const c = window.__game.ctx, cam = c.camera, box = document.querySelector('#canvas-holder > canvas').getBoundingClientRect();
+        const scale = cam.viewScale ?? 1, z = cam.zoom * scale;
+        const ox = -(cam.presentationX - cam.renderX) * 2 / 640 / scale * z, oy = (cam.presentationY - cam.renderY) * 2 / 360 / scale * z;
+        const sx = wx => box.x + box.width * (.5 + ((wx - cam.renderX) / (640 * scale) - .5) * (1 + 4 / 640) * z + ox / 2);
+        const sy = wy => box.y + box.height * (.5 + ((wy - cam.renderY) / (360 * scale) - .5) * (1 + 4 / 360) * z - oy / 2);
+        const x = Math.max(box.x, Math.round(sx(c.player.x - 37))), y = Math.max(box.y, Math.round(sy(c.player.y - 42)));
+        return { x, y, width: Math.round(Math.min(box.x + box.width, sx(c.player.x + 38)) - x), height: Math.round(Math.min(box.y + box.height, sy(c.player.y + 18)) - y) };
       });
       const file = `${fighter}-${action}.png`;
       await page.screenshot({ path: `${out}/${file}`, clip });
