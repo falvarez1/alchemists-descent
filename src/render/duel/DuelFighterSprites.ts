@@ -198,7 +198,7 @@ function rimOf(fr: Frame): Int16Array {
 
 /** Per slot: whether its body is away (down, waiting to respawn) and when it last came back or its bout began. */
 const entrances = new Map<number, { away: boolean; at: number }>();
-let entranceMatch: unknown = null, entranceState = '';
+let entranceState = '';
 
 /**
  * Watch the bound body come and go (called every frame for every slot, down or not): a body back from a ring-out, or any
@@ -208,8 +208,10 @@ export function noteDuelPresence(ctx: Ctx): void {
   const m = ctx.arena?.stockMatch;
   if (!m) return;
   const frame = ctx.state.frameCount;
-  if (m !== entranceMatch || (m.state === 'countdown' && entranceState !== 'countdown')) entrances.clear();
-  entranceMatch = m; entranceState = m.state;
+  // Every bout (a rematch too) opens with its countdown. Keyed on the state, never the view's identity: a LAN replica
+  // rebuilds its match view from each snapshot.
+  if (m.state === 'countdown' && entranceState !== 'countdown') entrances.clear();
+  entranceState = m.state;
   const slot = ctx.arena!.bound;
   let e = entrances.get(slot);
   if (!e) { e = { away: false, at: frame }; entrances.set(slot, e); }
