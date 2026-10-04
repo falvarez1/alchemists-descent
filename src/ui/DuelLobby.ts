@@ -218,6 +218,8 @@ export class DuelLobby {
     const keys = getBindings();
     this.root.querySelector('.duel-help')!.innerHTML =
       `<span>${glyph(keyLabel(keys.left))}${glyph(keyLabel(keys.right))} move</span><span>${glyph(keyLabel(keys.jump))} jump</span><span>${glyph(keyLabel(keys.kick))} melee</span><span>${glyph(keyLabel(keys.carry))} grab</span><span>${glyph(keyLabel(keys.dodge))} shield</span><span>${glyph('Click')} special</span><span>${glyph('Esc')} pause</span>`
+      + (['brann-rook', 'ilyra-voss'].includes(room?.seats[duel.slot ?? 0]?.fighter ?? '')
+        ? `<span class="duel-note">Direction + melee selects aerials. ${keyLabel(keys.climb)} + ${keyLabel(keys.up)} / ${keyLabel(keys.down)} + ${keyLabel(keys.kick)} (or right stick up/down) selects ground heavies. Release jump and press again for a double jump.</span>` : '')
       + (!isSecureContext ? '<span class="duel-note">Pads need HTTPS in some browsers</span>' : '');
     for (const slot of [0, 1]) {
       const view = this.seats[slot],

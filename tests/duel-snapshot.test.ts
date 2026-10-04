@@ -2,8 +2,17 @@ import { snapshotFixture } from './fixtures/duelSnapshot';
 import { describe, expect, it } from 'vitest';
 import { createCellPatch } from '@/authoring/cellPatch';
 import { decodeDuelSnapshot, encodeDuelSnapshot, type DuelSnapshot } from '@/net/duel/snapshot';
+import { stockMoveset } from '@/config/stockAttacks';
 
 describe('atomic Duel snapshot codec', () => {
+  it.each(['neutral_air', 'back_air', 'up_air', 'down_air', 'up_smash', 'down_smash'] as const)('carries Brann %s and its signed volume to the replica', kind => {
+    const snapshot = snapshotFixture();
+    snapshot.arena.slots[0].attack = { kind, phase: 'active', busy: true, facing: -1, age: 20, id: 2, spec: stockMoveset('brann-rook')[kind] };
+    snapshot.fighters[0].player.stockAirJumpT = 8;
+    const result = decodeDuelSnapshot(encodeDuelSnapshot(snapshot, createCellPatch()));
+    expect(result?.snapshot.arena.slots[0].attack).toEqual(snapshot.arena.slots[0].attack);
+    expect(result?.snapshot.fighters[0].player.stockAirJumpT).toBe(8);
+  });
   it('round-trips authoritative presentation with its terrain in one packet', () => {
     const snapshot = snapshotFixture(), cells = { idxs: [2], types: [13], colors: [0xc0c0c0], life: [12], charge: [0] };
     expect(decodeDuelSnapshot(encodeDuelSnapshot(snapshot, cells))).toEqual({ snapshot: JSON.parse(JSON.stringify(snapshot)), cells });

@@ -15,7 +15,7 @@ import { StockGrab } from '@/arena/StockGrab';
 import { StockSpecial } from '@/arena/StockSpecial';
 import { StockLedge } from '@/arena/StockLedge';
 import { StockAttack, stockAttackOverlaps } from '@/arena/StockAttack';
-import { stockMoveset } from '@/config/stockAttacks';
+import { hasExpandedMoves, selectStockAttack, stockMoveset } from '@/config/stockAttacks';
 import { stockDealt, stockLaunchTaken } from '@/config/stockBalance';
 import type { StockAttackKind, StockAttackSpec, StockAttackView } from '@/core/stockAttacks';
 import { DEFAULT_STOCK_STAGE, STOCK_STAGES, type StockStageDef, type StockStageId } from '@/config/stockStage';
@@ -151,10 +151,9 @@ export class ArenaSlots implements ArenaApi {
     if (!b || !this.match || this.isActionLocked(slot) || b.player.dead || b.player.stunT > 0 || b.fighters.ownsMovement ||
       b.player.climbing || b.player.recharge > 0 || b.player.pullT > 0 || (b.player.chill?.shell ?? 0) > 0) return false;
     const keys = b.input.keys;
-    const kind: StockAttackKind = !b.player.grounded ? 'aerial' : requestedKind ?? (keys.up ? 'launcher' : keys.down ? 'finisher' : 'opener');
-    const facing = requestedFacing || (keys.left !== keys.right ? (keys.left ? -1 : 1) : b.player.facing);
+    const { kind, facing } = selectStockAttack(b.fighters.id, b.player.grounded, keys, b.player.facing, requestedKind, requestedFacing);
     const base = stockMoveset(b.fighters.id)[kind];
-    const spec = requestedKind === 'launcher' && b.player.grounded
+    const spec = (requestedKind === 'launcher' || requestedKind === 'up_smash') && b.player.grounded && !hasExpandedMoves(b.fighters.id)
       ? { ...base, name: 'Up smash', startup: Math.round(base.startup * 1.8), recovery: Math.round(base.recovery * 1.5), damage: base.damage * 1.4, growth: base.growth * 1.8 }
       : base;
     if (!this.attacks[slot].start(kind, spec, facing)) return false;
@@ -204,6 +203,7 @@ export class ArenaSlots implements ArenaApi {
     for (const grab of this.grabs) if (grab.victim === slot) grab.release();
     const p = rec.bundle.player;
     const blow = this.activeBlow;
+    rec.bundle.fighters.noteStockHurt?.(amount);
     this.ctx.events.emit('fighterHit', { by: blow?.by ?? slot, victim: slot, damage: amount, tick: this.ctx.state.frameCount, attack: blow?.tag ?? 'world' });
     if (p.status.stoneskin <= 0 && !rec.bundle.fighters.staggerResist) {
       // Melee and throws carry their own tuned knock; anything else (a projectile, a spell, the world) pushes in
@@ -548,9 +548,12 @@ export class ArenaSlots implements ArenaApi {
     this.blow = { by: attacker, tag: this.slots[attacker]?.bundle.fighters.attribute?.(source) ?? (source === 'direct' ? 'spell' : 'world') };
     try {
       const hpBefore = rec.bundle.player.hp;
+      const percentBefore = this.match?.fighters[victim].volatility ?? 0;
       this.with(victim, () => { rec.bundle.playerCtl.damage(dmg, kx, ky, tag); });
       const lost = hpBefore - rec.bundle.player.hp;
       if (lost > 0) this.ctx.events.emit('fighterHit', { by: attacker, victim, damage: lost, tick: this.ctx.state.frameCount, attack: this.blow.tag });
+      const accepted = this.match ? this.match.fighters[victim].volatility - percentBefore : lost;
+      if (accepted > 0) by?.noteEnemyHurt?.(stand, accepted, source, rec.bundle.player.dead);
     } finally {
       this.blow = was;
     }
@@ -725,10 +728,12 @@ export class ArenaSlots implements ArenaApi {
         const dx = direction === 'left' ? -1 : direction === 'right' ? 1 : grab.facing;
         const kx = direction === 'up' ? dx * .6 : direction === 'down' ? dx * 1.8 : dx * 5;
         const ky = direction === 'up' ? -5.8 : direction === 'down' ? -2.8 : -1.5;
-        grab.release(dx, direction === 'up' || direction === 'down' ? -1 : 0); this.shields[victim].drop(); target.invuln = 0;
+        grab.release(dx, direction === 'up' ? -1 : direction === 'down' ? 1 : 0); this.shields[victim].drop(); target.invuln = 0;
         const was = this.blow; this.blow = { by: slot, tag: `throw.${direction}`, growth: 1.2, stun: 1.1 };
         try {
+          const before = this.match.fighters[victim].volatility;
           this.with(victim, () => this.slots[victim]!.bundle.playerCtl.damage(18 * stockDealt(b.fighters.id), kx, ky, 'fighter'));
+          this.creditStockMelee(slot, this.match.fighters[victim].volatility - before);
           this.lastBlow[victim] = { by: slot, at: this.ctx.state.frameCount, landed: false }; this.ctx.audio.sfx('arena.throw');
         } finally { this.blow = was; }
       }
@@ -769,17 +774,30 @@ export class ArenaSlots implements ArenaApi {
       this.blow = { by: hit.attacker, tag: `melee.${hit.kind}`, growth: hit.spec.growth, stun: hit.spec.stun };
       try {
         const dealt = stockDealt(this.slots[hit.attacker]!.bundle.fighters.id);
-        this.with(hit.victim, () => b.playerCtl.damage(hit.spec.damage * dealt, hit.spec.knockX * hit.facing, hit.spec.knockY, 'fighter'));
+        const attacker = this.slots[hit.attacker]!.bundle.player;
+        const direction = (hit.spec.minReach ?? 1) < 0 && hit.spec.reach > 0 ? Math.sign(b.player.x - attacker.x) || hit.facing : hit.facing;
+        this.with(hit.victim, () => b.playerCtl.damage(hit.spec.damage * dealt, hit.spec.knockX * direction, hit.spec.knockY, 'fighter'));
         if (this.match.fighters[hit.victim].volatility > before) {
+          const damage = this.match.fighters[hit.victim].volatility - before;
+          this.creditStockMelee(hit.attacker, damage);
           this.specials[hit.attacker].rewardMelee();
           this.lastBlow[hit.victim] = { by: hit.attacker, at: this.ctx.state.frameCount, landed: false };
-          this.ctx.audio.sfx(hit.kind === 'finisher' || hit.spec.name === 'Up smash' ? 'arena.hit.heavy' : 'arena.hit.light');
+          this.ctx.audio.sfx(hit.kind === 'finisher' || hit.kind.endsWith('_smash') || hit.spec.name === 'Up smash' ? 'arena.hit.heavy' : 'arena.hit.light');
           // The blow lands: the game holds for a beat that grows with the damage (render shakes the struck fighter).
           const fx = this.ctx.fx as Ctx['fx'] | undefined; // (headless arenas have no presentation state)
           if (fx) fx.hitstop = Math.max(fx.hitstop ?? 0, stockHitstopTicks(hit.spec.damage));
         }
       } finally { this.blow = was; }
     }
+  }
+
+  private creditStockMelee(attacker: number, damage: number): void {
+    if (damage <= 0) return;
+    this.with(attacker, () => {
+      const fighters = this.slots[attacker]!.bundle.fighters;
+      fighters.noteMelee?.();
+      fighters.noteEnemyHurt?.(this.stand, damage, 'direct', false);
+    });
   }
 
   /** Who a knockout belongs to: the last hitter within the hazard window, or (stock) until the victim has landed since. */

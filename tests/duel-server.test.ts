@@ -3,7 +3,8 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { attachDuelServer } from '../servers/duel/server';
-import { DUEL_PROTOCOL, type DuelHello, type DuelServerMessage } from '@/net/duel/protocol';
+import type { DuelHello, DuelServerMessage } from '@/net/duel/protocol';
+import { DUEL_PROTOCOL } from '@/net/duel/protocol';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });

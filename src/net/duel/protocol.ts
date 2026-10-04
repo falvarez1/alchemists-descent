@@ -3,8 +3,9 @@ import type { FighterId } from '@/content/fighters';
 import { isFighterId } from '../../content/fighters.ts';
 import type { DuelInput } from './input.ts';
 
-/** Bump for incompatible wire or simulation presentation changes. 2: a snapshot every tick, carrying the input it acknowledges. */
-export const DUEL_PROTOCOL = 2;
+/** Bump for incompatible wire or simulation presentation changes. 2: Ilyra's and Brann's completed moves (442d426).
+ *  3: a snapshot every tick, carrying the input it acknowledges (both reached 2 separately; merged, they are 3). */
+export const DUEL_PROTOCOL = 3;
 export const DUEL_PATH = '/__duel';
 export const MAX_CONTROL_BYTES = 4096;
 export const MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024;

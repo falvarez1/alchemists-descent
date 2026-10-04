@@ -1,0 +1,20 @@
+[
+  {
+    "id": "ilyra-voss/armed/throw_forward",
+    "source": "sources/ilyra-voss/armed/throw_forward-complete.png",
+    "kind": "fighter",
+    "loop": false,
+    "reference": "sources/ilyra-voss/armed/throw_forward.png",
+    "prompt": "Create a corrected game sprite animation sheet based on the attached Ilyra identity reference. Grey braid, cream wide-brim hat, teal long coat with gold trim, exactly one compact brass pistol. Hard pixel art, exact same character and rendering. EXACTLY 12 complete isolated figures arranged in a FOUR COLUMN THREE ROW grid, equal spacious cells, chronological left-to-right then top-to-bottom. Right-facing side view, entire body at consistent scale, feet aligned within each cell. Each figure occupies at most 65% cell height and 65% width. All transparent empty gutters at least 60 px. Transparent RGBA background. No text, labels, shadows, floor, glow, extra characters, motion lines or detached decorations. Animate the BODY motion of a forward grapple THROW of an invisible opponent. The opponent is not drawn. Her LEFT hand holds her only brass pistol lowered beside her hip throughout ALL 12 frames; pistol NEVER thrown, never disappears, never duplicates. Her EMPTY RIGHT arm reaches forward to grip invisible opponent, pulls inward, torso twists, then she plants her boots and forcefully extends EMPTY right hand to the right to shove the invisible opponent away, then recovers to ready stance. First3 windup, middle4 push/release, last5 recover. Empty hand on every release frame; no projectile.",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-4466f9e5-92a7-47e5-8c20-bc5399843630.png"
+  },
+  {
+    "id": "ilyra-voss/armed/tactical",
+    "source": "sources/ilyra-voss/armed/tactical-complete.png",
+    "kind": "fighter",
+    "loop": false,
+    "reference": "sources/ilyra-voss/armed/tactical.png",
+    "prompt": "Create a corrected game sprite animation sheet based on the attached Ilyra identity reference. Grey braid, cream wide-brim hat, teal long coat with gold trim, exactly one compact brass pistol. Hard pixel art, exact same character and rendering. EXACTLY 12 complete isolated figures arranged in a FOUR COLUMN THREE ROW grid, equal spacious cells, chronological left-to-right then top-to-bottom. Right-facing side view, entire body at consistent scale, feet aligned within each cell. Each figure occupies at most 65% cell height and 65% width. All transparent empty gutters at least 60 px. Transparent RGBA background. No text, labels, shadows, floor, glow, extra characters, motion lines or detached decorations. Animate Flash Crucible vial-toss BODY sequence. Her LEFT hand holds the only brass pistol lowered beside her left hip throughout EVERY one of 12 frames; pistol remains in SAME hand, NEVER vanishes or flies away. RIGHT hand reaches for a vial on belt, raises a tiny amber vial behind shoulder in frames3-5, throws overhand frames6-8. Frames8-12 show EMPTY right hand following through and recovering. Do NOT draw the flying vial after release, since the engine renders that projectile separately. Return to ready stance by frame12.",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-2df8912d-2b8a-4da8-ad12-fa0b4a2394cc.png"
+  }
+]

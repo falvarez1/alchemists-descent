@@ -262,6 +262,13 @@ export class PauseOverlay {
           ['Melee', keyLabel(keys.kick)], ['Special', `Click · ${keyLabel(keys.tactical)} tactical`],
           ['Shield', `Hold ${keyLabel(keys.dodge)} · add a direction to dodge`], ['Grab', `${keyLabel(keys.carry)}, then a direction to throw`]);
       }
+      if ([0, 1].some(slot => ['brann-rook', 'ilyra-voss'].includes(arena.fighterId(slot) ?? ''))) {
+        rows.push('Ilyra / Brann moves',
+          ['Aerial attacks', 'Attack in air: neutral, forward, backward, up, or down. Down air spikes.'],
+          ['Heavy attacks', pads ? 'Right stick: side, up, or down smash' : `${keyLabel(keys.climb)} + ${keyLabel(keys.kick)} · add ${keyLabel(keys.up)} / ${keyLabel(keys.down)} for up / down smash`],
+          ['Double jump', 'Release jump, then press again in air. One extra jump before landing.'],
+          ['Wall cling', pads ? 'Hold LB / RB beside a wall; jump to push away' : `Hold ${keyLabel(keys.climb)} beside a wall; jump to push away`]);
+      }
       duelControls.replaceChildren(...rows.flatMap(row => {
         if (typeof row === 'string') { const h = document.createElement('h4'); h.textContent = row; return [h]; }
         const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = row[0]; dd.textContent = row[1]; return [dt, dd];

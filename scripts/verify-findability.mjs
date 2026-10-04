@@ -36,38 +36,56 @@ async function auditSeed(seed) {
           const ctx = window.__game.ctx;
           const { validateFindability } = await import('/src/world/validate.ts');
 
-          const waitForSettledFindability = async (rt) => {
-            let latest = null;
-            let consecutiveClean = 0;
-            // Wait for the actual final repair, whose callbacks can take longer
-            // than their nominal delays on a loaded machine. Do not run another
-            // full-grid BFS while that sequence is still working.
-            // The cascade waits on SIM steps (up to 720), and the sim only
-            // advances as fast as frames render: a GPU-less CI runner renders
-            // a few per second. Drive it with the game's manual time instead
-            // (one frame may run up to 60 queued ticks) — the same simulation,
-            // just not throttled by the renderer — then hand time back.
-            const settleDeadline = performance.now() + 180000;
-            const wasManual = ctx.time.manual;
-            if (!ctx.levels.findabilityReady) ctx.time.setManual(true);
-            while (!ctx.levels.findabilityReady && performance.now() < settleDeadline) {
-              if (ctx.time.queuedTicks < 120) ctx.time.queueTicks(240);
-              await new Promise((r) => setTimeout(r, 50));
+          // Everything here is measured in SIM STEPS, never the wall clock. The
+          // level keeps simulating while it is audited, and powder seams drain
+          // for minutes after entry (a falling curtain can cross a route for a
+          // second or two). The old wall-clock wait audited at whatever step
+          // the machine had reached: ~3,800 steps on a desktop, ~840 on a
+          // GPU-less CI runner, where d3b seed 5 was mid-pour (run 37224329533).
+          // The game's settled checks are step-scheduled too (Levels), so every
+          // machine now audits the same moments of the same settling.
+          //
+          // 40 s in: after the entry checks (12 s) AND the game's late checks at 18, 26 and 36 s. Before that a
+          // seam can still be pouring over a route the late checks keep reopening (seed 3 d4: two braziers
+          // buried from ~13 s to ~36 s in real time), which no single moment of the pour can judge.
+          const AUDIT_FROM_STEP = 2400;
+          const AUDIT_WINDOW_STEPS = 600; // 10 s of sim
+          const AUDIT_EVERY_STEPS = 60;
+          const stepOf = (rt) => rt.world.activity.stepSerial;
+          const driveTo = async (rt, target) => {
+            // Exact tick counts in manual time (a frame runs up to 60 queued ticks): the same simulation, just
+            // not throttled by the renderer, and stopped exactly where the audit wants it.
+            const deadline = performance.now() + 180000;
+            while (stepOf(rt) < target) {
+              if (performance.now() > deadline) throw new Error(`${rt.def.id}: sim stuck at step ${stepOf(rt)} (wanted ${target})`);
+              if (ctx.time.queuedTicks === 0) ctx.time.queueTicks(Math.min(60, target - stepOf(rt)));
+              await new Promise((r) => setTimeout(r, 5));
             }
-            if (ctx.time.manual !== wasManual) ctx.time.setManual(wasManual);
-            if (!ctx.levels.findabilityReady) throw new Error(`Route repair did not finish for ${rt.def.id}`);
-            const deadline = performance.now() + 2600;
-            while (performance.now() < deadline) {
-              latest = validateFindability(rt);
-              if (!latest.some((i) => i.severity === 'error')) {
-                consecutiveClean++;
-                if (consecutiveClean >= 3) return latest;
-              } else {
-                consecutiveClean = 0;
+          };
+          const errorsOf = (issues) => issues.filter((i) => i.severity === 'error').map((i) => `${i.what}@${i.x},${i.y}`);
+          const waitForSettledFindability = async (rt, startStep) => {
+            ctx.time.setManual(true);
+            try {
+              const deadline = performance.now() + 180000;
+              while (!ctx.levels.findabilityReady) {
+                if (performance.now() > deadline) throw new Error(`Route repair did not finish for ${rt.def.id}`);
+                await driveTo(rt, stepOf(rt) + 60);
               }
-              await new Promise((r) => setTimeout(r, 100));
+              // A route is unreachable when it stays shut for the whole window: a curtain of falling grains
+              // crosses and goes, a heap does not (and the game's late checks repair heaps inside it).
+              const from = Math.max(stepOf(rt), startStep + AUDIT_FROM_STEP);
+              let persistent = null;
+              let last = [];
+              for (let at = from; at <= from + AUDIT_WINDOW_STEPS; at += AUDIT_EVERY_STEPS) {
+                await driveTo(rt, at);
+                last = validateFindability(rt);
+                const now = new Set(errorsOf(last));
+                persistent = persistent === null ? now : new Set([...persistent].filter((e) => now.has(e)));
+              }
+              return last.filter((i) => i.severity !== 'error' || persistent.has(`${i.what}@${i.x},${i.y}`));
+            } finally {
+              ctx.time.setManual(false);
             }
-            return latest ?? validateFindability(rt);
           };
 
           const out = [];
@@ -78,7 +96,10 @@ async function auditSeed(seed) {
             }
             const rt = ctx.levels.current;
             if (rt?.def.id !== id) throw new Error(`Expected ${id}, received ${rt?.def.id}`);
-            const all = await waitForSettledFindability(rt);
+            // Each level is a fresh World whose step counter starts at 0 on entry (d1 was entered by the
+            // console run above, a few real-time ticks ago; its window is still counted from entry).
+            const entryStep = id === 'd1' ? 0 : stepOf(rt);
+            const all = await waitForSettledFindability(rt, entryStep);
             const issues = all
               .filter((i) => i.severity === 'error')
               .map((i) => `${i.what}@${i.x},${i.y}`);

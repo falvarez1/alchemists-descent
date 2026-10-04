@@ -10,6 +10,7 @@ import {
 import type { Vial, VialEnd } from '@/fighters/kits/ilyra-voss-logic';
 import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import { emberColor, fireColor, packRGB } from '@/sim/colors';
+import { drawDuelEffect, duelSocket } from '@/render/duel/DuelFighterSprites';
 
 /**
  * ILYRA VOSS, THE CINDER ALCHEMIST (docs/FIGHTERS.md "01", docs/fighters/ilyra-voss.md).
@@ -58,6 +59,12 @@ function create(sys: FighterSystem): KitInstance {
   // ---- the crucible ----
   let vial: Vial | null = null;
   const rings: Ring[] = [];
+  const spriteEffects: Array<Ring & { name: string }> = [];
+  const spriteEffect = (name: string, x: number, y: number): void => {
+    if (!ctx.arena?.stockMatch) return;
+    if (spriteEffects.length >= 8) spriteEffects.shift();
+    spriteEffects.push({ name, x, y, age: 0 }); ensureDrawable();
+  };
 
   // ---- the draught ----
   let phoenix = false;
@@ -73,7 +80,7 @@ function create(sys: FighterSystem): KitInstance {
   const drawable: FighterDrawable = { layer: 'over', draw: (out, _field, c) => drawFx(out, c) };
   const ensureDrawable = (): void => { if (!unregister) unregister = sys.addDrawable(drawable); };
   const releaseIfIdle = (now: number): void => {
-    if (unregister && !vial && rings.length === 0 && !phoenix && fade <= 0 && !mix.primed(now)) {
+    if (unregister && !vial && rings.length === 0 && spriteEffects.length === 0 && !phoenix && fade <= 0 && !mix.primed(now)) {
       unregister();
       unregister = null;
     }
@@ -110,6 +117,7 @@ function create(sys: FighterSystem): KitInstance {
   /** The tell for a pair that has just primed her: an amber flicker at the wand hand and a soft strike. */
   function primedFx(now: number): void {
     const tip = ctx.spells.wandTip();
+    spriteEffect('volatile_spark', tip.x, tip.y);
     ctx.particles.burst(tip.x, tip.y, 7, null, () => packRGB(255, 150 + ((fxRandom() * 70) | 0), 40), 1.3, { glow: 2.4, grav: -0.03 });
     ctx.audio.sfx('spell.flame.ignite', tip.x, tip.y, { gain: 0.55, pitch: 4 });
     ensureDrawable();
@@ -123,9 +131,18 @@ function create(sys: FighterSystem): KitInstance {
    */
   function scorch(e: Enemy): void {
     const { cx, cy, h, halfW } = bodyOf(e);
-    sys.hurt(e, TUNING.scorchFlare, (entityRandom() - 0.5) * 0.4, -0.5);
+    spriteEffect('scorch', cx, cy);
+    // Scorch belongs to the hit that just landed. Its new invulnerability must not swallow the bonus.
+    const stockVictim = e.fighter !== undefined && ctx.arena?.stockMatch ? ctx.arena.bundle(e.fighter)?.player : null;
+    const invuln = stockVictim?.invuln ?? 0;
+    if (stockVictim) stockVictim.invuln = 0;
+    try { sys.hurt(e, TUNING.scorchFlare, (entityRandom() - 0.5) * 0.4, -0.5); }
+    finally { if (stockVictim) stockVictim.invuln = Math.max(invuln, stockVictim.invuln); }
     let lit = false;
-    if (e.hp > 0 && ctx.enemies.includes(e)) {
+    if (stockVictim && !stockVictim.dead) {
+      stockVictim.status.burning = Math.max(stockVictim.status.burning, TUNING.scorchBurn);
+      lit = true;
+    } else if (e.hp > 0 && ctx.enemies.includes(e)) {
       const hp = e.hp;
       if (ctx.enemyCtl.splashHazard(cx, cy, Cell.Fire, 'direct') && e.hp < hp) {
         e.status.burning = Math.max(e.status.burning, TUNING.scorchBurn);
@@ -219,6 +236,7 @@ function create(sys: FighterSystem): KitInstance {
     const p = ctx.player;
     vial = null;
     const { x, y } = end;
+    spriteEffect('crucible_fragments', x, y);
     const now = ctx.state.frameCount;
     ctx.audio.sfx('flask.shatter', x, y, { gain: 1.0 });
     ctx.audio.sfx('boom.small', x, y, { gain: 0.8, pitch: 2 });
@@ -281,6 +299,7 @@ function create(sys: FighterSystem): KitInstance {
   /** Lay the trail: a flame behind her for every column she has covered since the last drop, a coal now and then. */
   function dropTrail(): void {
     const p = ctx.player;
+    spriteEffect('fire_trail', p.x - p.facing * 7, p.y - 2);
     const dir = Math.abs(p.vx) > 0.3 ? Math.sign(p.vx) : -p.facing;
     const cols = trailSpan(lastTrailX, p.x, dir);
     lastTrailX = cols[cols.length - 1];
@@ -305,6 +324,7 @@ function create(sys: FighterSystem): KitInstance {
   }
 
   function startPhoenix(): boolean {
+    spriteEffect('phoenix_charge', ctx.player.x, ctx.player.y - 9);
     const p = ctx.player;
     sys.setMod('phoenix', TUNING.phoenixTicks, { moveScale: TUNING.phoenixMove, immuneTo: FIRE_IMMUNE });
     phoenix = true;
@@ -343,11 +363,13 @@ function create(sys: FighterSystem): KitInstance {
     const calm = c.state.reduceFlashes === true;
     const add = out.addFinePx ?? out.addPx;
     const p = c.player;
+    for (const effect of spriteEffects) drawDuelEffect(out, c, effect.name, effect.age, effect.x, effect.y, false, .75);
 
     // The vial in flight: a glass body with a hot core, tumbling, in a halo, and a comet behind it.
     const v = vial;
     if (v) {
       const x = v.x - v.vx * 0.5, y = v.y - v.vy * 0.5;
+      if (!drawDuelEffect(out, c, 'crucible_spin', frame % 48, x, y)) {
       const spin = frame * 0.55;
       const sx = Math.round(Math.cos(spin) * 1.4), sy = Math.round(Math.sin(spin) * 1.4);
       const rx = Math.round(x), ry = Math.round(y);
@@ -364,6 +386,7 @@ function create(sys: FighterSystem): KitInstance {
       out.setPx(rx, ry, 1.0, 0.82, 0.4);
       out.setPx(rx, ry + 1, 1.0, 0.55, 0.15);
       out.addPx(rx, ry, 0.9, 0.45, 0.1);
+      }
       const sp = Math.hypot(v.vx, v.vy) || 1;
       for (let i = 1; i <= 10; i++) {
         const k = (1 - i / 11);
@@ -376,6 +399,7 @@ function create(sys: FighterSystem): KitInstance {
     // The shockwave rings: a white-hot flash that opens into a bright amber ring, fading as it goes.
     const step = out.pixelStep ?? 1;
     for (const r of rings) {
+      if (drawDuelEffect(out, c, 'crucible_burst', r.age / RING_TICKS * 35, r.x, r.y, false, .8)) continue;
       const t = r.age / RING_TICKS;
       const e = 1 - (1 - t) * (1 - t);
       const radius = 2 + e * (TUNING.burstRadius - 2);
@@ -411,6 +435,7 @@ function create(sys: FighterSystem): KitInstance {
     if ((phoenix || fade > 0) && !p.dead) {
       const x = p.x - p.vx * 0.5, y = p.y - p.vy * 0.5 - 8.5;
       const life = phoenix ? 1 : fade / 18;
+      if (!drawDuelEffect(out, c, 'phoenix_aura', 12 + frame % 12, x, y, false, life * .65)) {
       const pulse = calm ? 0.8 : 0.78 + 0.22 * Math.sin(frame * 0.28);
       // An inner ring a whole cell thick (so it reads at normal zoom) and a soft fine halo outside it.
       const cells = Math.ceil(54);
@@ -435,9 +460,10 @@ function create(sys: FighterSystem): KitInstance {
       }
     }
 
+    }
     // A primed mixture: a small amber star kindling at the wand hand, breathing.
     if (!p.dead && mix.primed(frame)) {
-      const tip = c.spells.wandTip();
+      const tip = duelSocket(c, 'muzzle') ?? c.spells.wandTip();
       const left = mix.primedLeft(frame);
       const lapsing = left < 60 && frame % 8 < 3; // flickers out as it goes cold
       const pulse = lapsing ? 0.25 : calm ? 0.7 : 0.7 + 0.3 * Math.sin(frame * 0.35);
@@ -455,6 +481,7 @@ function create(sys: FighterSystem): KitInstance {
   return {
     tick(): void {
       const now = ctx.state.frameCount;
+      for (let i = spriteEffects.length - 1; i >= 0; i--) if (++spriteEffects[i].age >= 36) spriteEffects.splice(i, 1);
       flyVial();
       for (let i = rings.length - 1; i >= 0; i--) {
         if (++rings[i].age > RING_TICKS) rings.splice(i, 1);
@@ -519,6 +546,7 @@ function create(sys: FighterSystem): KitInstance {
 
     reset(): void {
       vial = null;
+      spriteEffects.length = 0;
       rings.length = 0;
       phoenix = false;
       fade = 0;
@@ -530,6 +558,8 @@ function create(sys: FighterSystem): KitInstance {
     },
 
     dispose(): void {
+      spriteEffects.length = 0;
+      if (unregister) { unregister(); unregister = null; }
       for (const f of off.splice(0)) f();
     },
   };

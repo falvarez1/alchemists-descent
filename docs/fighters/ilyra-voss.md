@@ -1,5 +1,7 @@
 # 01 Ilyra Voss, the Cinder Alchemist (Duelist)
 
+Duel now includes ten melee attacks, a double jump, 63 armed animation clips and eight effect clips. Volatile Mixture and Scorch now receive accepted Stock hits, including melee and projectiles. See [Duel integration, controls and verification](../arena/platform-fighter/sprite-library/animation-v2/DUO-COMPLETION.md).
+
 Passive **Volatile Mixture**, tactical **Flash Crucible** (Z), ultimate **Phoenix Draft** (T). The contract is
 `docs/FIGHTERS.md` ("01"); this file is what was built, the numbers it ended on, how each ability lives in the
 grid, and what was measured in the real game.
@@ -7,7 +9,7 @@ grid, and what was measured in the real game.
 Files: `src/fighters/kits/ilyra-voss.ts` (the kit), `src/fighters/kits/ilyra-voss-logic.ts` (`TUNING` and every
 piece of arithmetic: the passive's state machine, what counts as a weapon, the vial's flight, the burst's push,
 the trail's geometry), `tests/fighters-ilyra.test.ts` (49 tests, node-only), `scripts/verify-fighter-ilyra.mjs`
-(76 live checks). **No engine file was edited**: everything goes through the `FighterSystem` machinery
+(76 live checks). The original kit uses the `FighterSystem` machinery
 (`setMod`, `startMove`, `addLight`, `addDrawable`, `enemiesNear`, `hurt`, `noteEnemyHurt`) and public fields.
 
 ## Numbers (`TUNING`, ticks at 60 Hz, cells, cells per tick)

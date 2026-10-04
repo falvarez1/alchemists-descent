@@ -1,0 +1,140 @@
+[
+  {
+    "id": "ilyra-voss/armed/run",
+    "source": "sources/ilyra-voss/armed/run-complete.png",
+    "kind": "fighter",
+    "loop": true,
+    "reference": "sources/ilyra-voss/armed/idle.png",
+    "prompt": "Use case: stylized-concept. Make ONE replacement pixel-art animation sheet for ilyra-voss, armed, run. Reference is character identity only. Preserve the exact costume, headgear, proportions, palette and pixel rendering. Exactly ONE short brass pistol in one hand, other hand empty; grey braid, pale wide-brim hat, teal coat, gold trim. Exactly 12 distinct successive frames, FOUR COLUMNS and THREE ROWS, chronological row order. Full running loop with SIX poses per half stride: right contact, right compression, right passing, right lift, flight, left contact; then mirrored leg sequence. Legs exchange foreground/background after six frames. No repeated half-cycles. Coat follows leg motion. Each figure no more than 65 percent of cell height, at consistent drawing scale. At least 60 transparent pixels separate ALL limbs, weapons and hats from neighboring cells. Consistent 2D right-facing side view except screen-plane tumble. Transparent RGBA, hard pixel clusters, no labels, floor, shadows, trails, background or detached decorations."
+  },
+  {
+    "id": "ilyra-voss/armed/walk",
+    "source": "sources/ilyra-voss/armed/walk-complete.png",
+    "kind": "fighter",
+    "loop": true,
+    "reference": "sources/ilyra-voss/armed/idle.png",
+    "prompt": "Use case: stylized-concept. Make ONE replacement pixel-art animation sheet for ilyra-voss, armed, walk. Reference is character identity only. Preserve the exact costume, headgear, proportions, palette and pixel rendering. Exactly ONE short brass pistol in one hand, other hand empty; grey braid, pale wide-brim hat, teal coat, gold trim. Exactly 12 distinct successive frames, FOUR COLUMNS and THREE ROWS, chronological row order. Complete smooth walking cycle: right heel contact, down, passing, up, left heel contact, down, passing, up, return. Both legs exchange roles over the 12 frames. Boots remain visibly separate. No forward slide. Each figure no more than 65 percent of cell height, at consistent drawing scale. At least 60 transparent pixels separate ALL limbs, weapons and hats from neighboring cells. Consistent 2D right-facing side view except screen-plane tumble. Transparent RGBA, hard pixel clusters, no labels, floor, shadows, trails, background or detached decorations."
+  },
+  {
+    "id": "ilyra-voss/armed/tumble",
+    "source": "sources/ilyra-voss/armed/tumble-complete.png",
+    "kind": "fighter",
+    "loop": true,
+    "reference": "sources/ilyra-voss/armed/idle.png",
+    "prompt": "Use case: stylized-concept. Make ONE replacement pixel-art animation sheet for ilyra-voss, armed, tumble. Reference is character identity only. Preserve the exact costume, headgear, proportions, palette and pixel rendering. Exactly ONE short brass pistol in one hand, other hand empty; grey braid, pale wide-brim hat, teal coat, gold trim. Exactly 12 distinct successive frames, FOUR COLUMNS and THREE ROWS, chronological row order. ONE smooth CLOCKWISE somersault in SCREEN PLANE around waist. Bent knees, airborne tuck EVERY frame. Head angles exactly 0,30,60,90,120,150,180,210,240,270,300,330 degrees clockwise from up. Frame7 head below feet, frame10 head points LEFT. NO yaw rotation or standing turntable. Side view stays fixed. Each figure no more than 65 percent of cell height, at consistent drawing scale. At least 60 transparent pixels separate ALL limbs, weapons and hats from neighboring cells. Consistent 2D right-facing side view except screen-plane tumble. Transparent RGBA, hard pixel clusters, no labels, floor, shadows, trails, background or detached decorations."
+  },
+  {
+    "id": "ilyra-voss/armed/ultimate",
+    "source": "sources/ilyra-voss/armed/ultimate-complete.png",
+    "kind": "fighter",
+    "loop": false,
+    "reference": "sources/ilyra-voss/armed/idle.png",
+    "prompt": "Use case: stylized-concept. Make ONE replacement pixel-art animation sheet for ilyra-voss, armed, ultimate. Reference is character identity only. Preserve the exact costume, headgear, proportions, palette and pixel rendering. Exactly ONE short brass pistol in one hand, other hand empty; grey braid, pale wide-brim hat, teal coat, gold trim. Exactly 12 distinct successive frames, FOUR COLUMNS and THREE ROWS, chronological row order. Grounded Phoenix Draft ability: crouch and gather power, open shoulders, lift free empty hand high, reach proud apex, lower arm into ready guard. Keep exactly ONE pistol held in other hand throughout. No fire, aura or effects on sheet. Each figure no more than 65 percent of cell height, at consistent drawing scale. At least 60 transparent pixels separate ALL limbs, weapons and hats from neighboring cells. Consistent 2D right-facing side view except screen-plane tumble. Transparent RGBA, hard pixel clusters, no labels, floor, shadows, trails, background or detached decorations."
+  },
+  {
+    "id": "ilyra-voss/armed/up_smash",
+    "source": "sources/ilyra-voss/armed/up_smash-complete.png",
+    "kind": "fighter",
+    "loop": false,
+    "reference": "sources/ilyra-voss/armed/idle.png",
+    "prompt": "Use case: stylized-concept. Make ONE replacement pixel-art animation sheet for ilyra-voss, armed, up_smash. Reference is character identity only. Preserve the exact costume, headgear, proportions, palette and pixel rendering. Exactly ONE short brass pistol in one hand, other hand empty; grey braid, pale wide-brim hat, teal coat, gold trim. Exactly 12 distinct successive frames, FOUR COLUMNS and THREE ROWS, chronological row order. Grounded heavy upward attack: 4 frames deep crouch anticipation; 4 frames explosive overhead uppercut with free fist; 4 frames recoil and return. Retain exactly ONE pistol in other hand; never duplicate it. Each full figure wholly inside own cell. Each figure no more than 65 percent of cell height, at consistent drawing scale. At least 60 transparent pixels separate ALL limbs, weapons and hats from neighboring cells. Consistent 2D right-facing side view except screen-plane tumble. Transparent RGBA, hard pixel clusters, no labels, floor, shadows, trails, background or detached decorations."
+  },
+  {
+    "id": "ilyra-voss/unarmed/run",
+    "source": "sources/ilyra-voss/unarmed/run-complete.png",
+    "kind": "fighter",
+    "loop": true,
+    "reference": "sources/ilyra-voss/armed/idle.png",
+    "prompt": "Use case: stylized-concept. Make ONE replacement pixel-art animation sheet for ilyra-voss, unarmed, run. Reference is character identity only. Preserve the exact costume, headgear, proportions, palette and pixel rendering. EMPTY HANDS: remove every held weapon and shield. Exactly 12 distinct successive frames, FOUR COLUMNS and THREE ROWS, chronological row order. Full running loop with SIX poses per half stride: right contact, right compression, right passing, right lift, flight, left contact; then mirrored leg sequence. Legs exchange foreground/background after six frames. No repeated half-cycles. Coat follows leg motion. Each figure no more than 65 percent of cell height, at consistent drawing scale. At least 60 transparent pixels separate ALL limbs, weapons and hats from neighboring cells. Consistent 2D right-facing side view except screen-plane tumble. Transparent RGBA, hard pixel clusters, no labels, floor, shadows, trails, background or detached decorations."
+  },
+  {
+    "id": "ilyra-voss/unarmed/walk",
+    "source": "sources/ilyra-voss/unarmed/walk-complete.png",
+    "kind": "fighter",
+    "loop": true,
+    "reference": "sources/ilyra-voss/armed/idle.png",
+    "prompt": "Use case: stylized-concept. Make ONE replacement pixel-art animation sheet for ilyra-voss, unarmed, walk. Reference is character identity only. Preserve the exact costume, headgear, proportions, palette and pixel rendering. EMPTY HANDS: remove every held weapon and shield. Exactly 12 distinct successive frames, FOUR COLUMNS and THREE ROWS, chronological row order. Complete smooth walking cycle: right heel contact, down, passing, up, left heel contact, down, passing, up, return. Both legs exchange roles over the 12 frames. Boots remain visibly separate. No forward slide. Each figure no more than 65 percent of cell height, at consistent drawing scale. At least 60 transparent pixels separate ALL limbs, weapons and hats from neighboring cells. Consistent 2D right-facing side view except screen-plane tumble. Transparent RGBA, hard pixel clusters, no labels, floor, shadows, trails, background or detached decorations."
+  },
+  {
+    "id": "ilyra-voss/unarmed/tumble",
+    "source": "sources/ilyra-voss/unarmed/tumble-complete.png",
+    "kind": "fighter",
+    "loop": true,
+    "reference": "sources/ilyra-voss/armed/idle.png",
+    "prompt": "Use case: stylized-concept. Make ONE replacement pixel-art animation sheet for ilyra-voss, unarmed, tumble. Reference is character identity only. Preserve the exact costume, headgear, proportions, palette and pixel rendering. EMPTY HANDS: remove every held weapon and shield. Exactly 12 distinct successive frames, FOUR COLUMNS and THREE ROWS, chronological row order. ONE smooth CLOCKWISE somersault in SCREEN PLANE around waist. Bent knees, airborne tuck EVERY frame. Head angles exactly 0,30,60,90,120,150,180,210,240,270,300,330 degrees clockwise from up. Frame7 head below feet, frame10 head points LEFT. NO yaw rotation or standing turntable. Side view stays fixed. Each figure no more than 65 percent of cell height, at consistent drawing scale. At least 60 transparent pixels separate ALL limbs, weapons and hats from neighboring cells. Consistent 2D right-facing side view except screen-plane tumble. Transparent RGBA, hard pixel clusters, no labels, floor, shadows, trails, background or detached decorations."
+  },
+  {
+    "id": "brann-rook/armed/tumble",
+    "source": "sources/brann-rook/armed/tumble-complete.png",
+    "kind": "fighter",
+    "loop": true,
+    "reference": "sources/brann-rook/armed/idle.png",
+    "prompt": "Use case: stylized-concept. Make ONE replacement pixel-art animation sheet for brann-rook, armed, tumble. Reference is character identity only. Preserve the exact costume, headgear, proportions, palette and pixel rendering. Exactly ONE tower shield and ONE short brass rod retained; black iron armor, brass rivets and amber helmet grille. Exactly 12 distinct successive frames, FOUR COLUMNS and THREE ROWS, chronological row order. ONE smooth CLOCKWISE somersault in SCREEN PLANE around waist. Bent knees, airborne tuck EVERY frame. Head angles exactly 0,30,60,90,120,150,180,210,240,270,300,330 degrees clockwise from up. Frame7 head below feet, frame10 head points LEFT. NO yaw rotation or standing turntable. Side view stays fixed. Each figure no more than 65 percent of cell height, at consistent drawing scale. At least 60 transparent pixels separate ALL limbs, weapons and hats from neighboring cells. Consistent 2D right-facing side view except screen-plane tumble. Transparent RGBA, hard pixel clusters, no labels, floor, shadows, trails, background or detached decorations."
+  },
+  {
+    "id": "brann-rook/unarmed/tumble",
+    "source": "sources/brann-rook/unarmed/tumble-complete.png",
+    "kind": "fighter",
+    "loop": true,
+    "reference": "sources/brann-rook/armed/idle.png",
+    "prompt": "Use case: stylized-concept. Make ONE replacement pixel-art animation sheet for brann-rook, unarmed, tumble. Reference is character identity only. Preserve the exact costume, headgear, proportions, palette and pixel rendering. EMPTY HANDS: remove every held weapon and shield. Exactly 12 distinct successive frames, FOUR COLUMNS and THREE ROWS, chronological row order. ONE smooth CLOCKWISE somersault in SCREEN PLANE around waist. Bent knees, airborne tuck EVERY frame. Head angles exactly 0,30,60,90,120,150,180,210,240,270,300,330 degrees clockwise from up. Frame7 head below feet, frame10 head points LEFT. NO yaw rotation or standing turntable. Side view stays fixed. Each figure no more than 65 percent of cell height, at consistent drawing scale. At least 60 transparent pixels separate ALL limbs, weapons and hats from neighboring cells. Consistent 2D right-facing side view except screen-plane tumble. Transparent RGBA, hard pixel clusters, no labels, floor, shadows, trails, background or detached decorations."
+  },
+  {
+    "id": "effects/ilyra-voss/crucible_spin",
+    "source": "sources/effects/ilyra-voss/crucible_spin-complete.png",
+    "kind": "effect",
+    "loop": true,
+    "reference": "sources/ilyra-voss/armed/idle.png",
+    "prompt": "Use case: stylized-concept. ONE pixel-art VFX sprite sheet for Ilyra Voss: crucible_spin. Reference supplies brass, amber and orange palette only; NO CHARACTER OR BODY. Exactly12 successive frames in4columns3rows. ONE small amber glass vial rotating clockwise in the IMAGE PLANE: cap angles up,30,60,90,120,150,down,210,240,left,300,330 degrees. Cap must turn with vial, not remain upright. Seamless full rotation loop. Effect centered same point each cell, same scale, 25percent empty gutters. Clean game pixel art on real transparent RGBA. No grid, labels, background or scenery."
+  },
+  {
+    "id": "effects/ilyra-voss/scorch",
+    "source": "sources/effects/ilyra-voss/scorch-complete.png",
+    "kind": "effect",
+    "loop": false,
+    "reference": "sources/ilyra-voss/armed/idle.png",
+    "prompt": "Use case: stylized-concept. ONE pixel-art VFX sprite sheet for Ilyra Voss: scorch. Reference supplies brass, amber and orange palette only; NO CHARACTER OR BODY. Exactly12 successive frames in4columns3rows. Small burning orange ember cluster flares, brightens, rises and dissipates. Effect centered same point each cell, same scale, 25percent empty gutters. Clean game pixel art on real transparent RGBA. No grid, labels, background or scenery."
+  },
+  {
+    "id": "effects/ilyra-voss/volatile_spark",
+    "source": "sources/effects/ilyra-voss/volatile_spark-complete.png",
+    "kind": "effect",
+    "loop": false,
+    "reference": "sources/ilyra-voss/armed/idle.png",
+    "prompt": "Use case: stylized-concept. ONE pixel-art VFX sprite sheet for Ilyra Voss: volatile_spark. Reference supplies brass, amber and orange palette only; NO CHARACTER OR BODY. Exactly12 successive frames in4columns3rows. Two small amber sparks orbit, converge into one warm star, hold a readable peak, fade. Effect centered same point each cell, same scale, 25percent empty gutters. Clean game pixel art on real transparent RGBA. No grid, labels, background or scenery."
+  },
+  {
+    "id": "effects/ilyra-voss/phoenix_charge",
+    "source": "sources/effects/ilyra-voss/phoenix_charge-complete.png",
+    "kind": "effect",
+    "loop": false,
+    "reference": "sources/ilyra-voss/armed/idle.png",
+    "prompt": "Use case: stylized-concept. ONE pixel-art VFX sprite sheet for Ilyra Voss: phoenix_charge. Reference supplies brass, amber and orange palette only; NO CHARACTER OR BODY. Exactly12 successive frames in4columns3rows. Small amber gathering plume at center rises into stylized phoenix feather sparks, dissipates. Effect centered same point each cell, same scale, 25percent empty gutters. Clean game pixel art on real transparent RGBA. No grid, labels, background or scenery."
+  },
+  {
+    "id": "effects/ilyra-voss/crucible_fragments",
+    "source": "sources/effects/ilyra-voss/crucible_fragments-complete.png",
+    "kind": "effect",
+    "loop": false,
+    "reference": "sources/ilyra-voss/armed/idle.png",
+    "prompt": "Use case: stylized-concept. ONE pixel-art VFX sprite sheet for Ilyra Voss: crucible_fragments. Reference supplies brass, amber and orange palette only; NO CHARACTER OR BODY. Exactly12 successive frames in4columns3rows. Small golden glass fragments burst radially, separate, fall and fade to tiny last remnants. Effect centered same point each cell, same scale, 25percent empty gutters. Clean game pixel art on real transparent RGBA. No grid, labels, background or scenery."
+  },
+  {
+    "id": "ilyra-voss/armed/throw_forward",
+    "source": "sources/ilyra-voss/armed/throw_forward-complete.png",
+    "kind": "fighter",
+    "loop": false,
+    "reference": "sources/ilyra-voss/armed/throw_forward.png",
+    "prompt": "Create a corrected game sprite animation sheet based on the attached Ilyra identity reference. Grey braid, cream wide-brim hat, teal long coat with gold trim, exactly one compact brass pistol. Hard pixel art, exact same character and rendering. EXACTLY 12 complete isolated figures arranged in a FOUR COLUMN THREE ROW grid, equal spacious cells, chronological left-to-right then top-to-bottom. Right-facing side view, entire body at consistent scale, feet aligned within each cell. Each figure occupies at most 65% cell height and 65% width. All transparent empty gutters at least 60 px. Transparent RGBA background. No text, labels, shadows, floor, glow, extra characters, motion lines or detached decorations. Animate the BODY motion of a forward grapple THROW of an invisible opponent. The opponent is not drawn. Her LEFT hand holds her only brass pistol lowered beside her hip throughout ALL 12 frames; pistol NEVER thrown, never disappears, never duplicates. Her EMPTY RIGHT arm reaches forward to grip invisible opponent, pulls inward, torso twists, then she plants her boots and forcefully extends EMPTY right hand to the right to shove the invisible opponent away, then recovers to ready stance. First3 windup, middle4 push/release, last5 recover. Empty hand on every release frame; no projectile.",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-4466f9e5-92a7-47e5-8c20-bc5399843630.png"
+  },
+  {
+    "id": "ilyra-voss/armed/tactical",
+    "source": "sources/ilyra-voss/armed/tactical-complete.png",
+    "kind": "fighter",
+    "loop": false,
+    "reference": "sources/ilyra-voss/armed/tactical.png",
+    "prompt": "Create a corrected game sprite animation sheet based on the attached Ilyra identity reference. Grey braid, cream wide-brim hat, teal long coat with gold trim, exactly one compact brass pistol. Hard pixel art, exact same character and rendering. EXACTLY 12 complete isolated figures arranged in a FOUR COLUMN THREE ROW grid, equal spacious cells, chronological left-to-right then top-to-bottom. Right-facing side view, entire body at consistent scale, feet aligned within each cell. Each figure occupies at most 65% cell height and 65% width. All transparent empty gutters at least 60 px. Transparent RGBA background. No text, labels, shadows, floor, glow, extra characters, motion lines or detached decorations. Animate Flash Crucible vial-toss BODY sequence. Her LEFT hand holds the only brass pistol lowered beside her left hip throughout EVERY one of 12 frames; pistol remains in SAME hand, NEVER vanishes or flies away. RIGHT hand reaches for a vial on belt, raises a tiny amber vial behind shoulder in frames3-5, throws overhand frames6-8. Frames8-12 show EMPTY right hand following through and recovering. Do NOT draw the flying vial after release, since the engine renders that projectile separately. Return to ready stance by frame12.",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-2df8912d-2b8a-4da8-ad12-fa0b4a2394cc.png"
+  }
+]

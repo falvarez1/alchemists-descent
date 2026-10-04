@@ -32,6 +32,18 @@ function run(t: StockTactics, make: (tick: number) => StockTacticsView, ticks: n
 }
 
 describe('stock tactics: reading the opponent', () => {
+  test('expanded airborne attacks keep the facing used to choose their contact volume', () => {
+    const found: string[] = [];
+    for (const id of ['ilyra-voss', 'brann-rook'] as const) for (let seed = 0; seed < 80; seed++) {
+      const t = new StockTactics();
+      const orders = run(t, () => view({ rng: new Rng(seed), me: { x: 820, y: 580, grounded: false, facing: 1, moves: stockMoveset(id) }, foe: { x: 802, y: 580, grounded: false, stunned: true } }, 'berserker', 5), 30);
+      for (const order of orders) if (order.strike && order.strike !== 'grab') {
+        found.push(order.strike);
+        expect(order.facing).toBe(1);
+      }
+    }
+    expect(found).toContain('back_air');
+  });
   test('leads a moving opponent by its (old) motion, keeps it on its surface, and stops it during a grounded swing', () => {
     const foe = opponent({ x: 900, vx: 2, age: 10 });
     expect(predictFoe(foe, 1).x).toBeCloseTo(920);

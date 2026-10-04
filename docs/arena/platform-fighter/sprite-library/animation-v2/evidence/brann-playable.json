@@ -1,0 +1,154 @@
+{
+  "attacks": [
+    {
+      "expected": "neutral_air",
+      "kind": "neutral_air",
+      "damage": 7.896,
+      "knock": {
+        "x": 3.9007973433604324,
+        "y": -2.7305581403523025
+      }
+    },
+    {
+      "expected": "back_air",
+      "kind": "back_air",
+      "damage": 12.783999999999999,
+      "knock": {
+        "x": -6.860495175981877,
+        "y": -1.6334512323766373
+      }
+    },
+    {
+      "expected": "up_air",
+      "kind": "up_air",
+      "damage": 10.152000000000001,
+      "knock": {
+        "x": 0.7682465973887603,
+        "y": -6.4532714180655875
+      }
+    },
+    {
+      "expected": "down_air",
+      "kind": "down_air",
+      "damage": 12.032,
+      "knock": {
+        "x": 0.49458553435619884,
+        "y": 7.772058397025981
+      }
+    },
+    {
+      "expected": "up_smash",
+      "kind": "up_smash",
+      "damage": 18.048,
+      "knock": {
+        "x": 0.7756058143747833,
+        "y": -9.307269772497401
+      }
+    },
+    {
+      "expected": "down_smash",
+      "kind": "down_smash",
+      "damage": 15.792,
+      "knock": {
+        "x": 8.333397250703488,
+        "y": -1.234577370474591
+      }
+    }
+  ],
+  "jump": {
+    "first": {
+      "y": 628,
+      "vy": -0.34096817592408396
+    },
+    "second": {
+      "y": 623,
+      "vy": -4.6,
+      "pose": "double_jump",
+      "t": 12
+    },
+    "third": {
+      "vy": -0.29612499999999986,
+      "t": 8
+    }
+  },
+  "keyboard": [
+    {
+      "expected": "up_smash",
+      "kind": "up_smash"
+    },
+    {
+      "expected": "down_smash",
+      "kind": "down_smash"
+    }
+  ],
+  "effects": {
+    "guard": 1,
+    "lowering": 1,
+    "expired": 0,
+    "ultimate": 3,
+    "reset": 0,
+    "effectPixels": [
+      {
+        "name": "boiler_vent",
+        "pixels": 121,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "redline_heat",
+        "pixels": 62,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "guard_impact",
+        "pixels": 66,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "guard_plate",
+        "pixels": 210,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "pressure",
+        "pixels": 88,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "redline_aura",
+        "pixels": 105,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "steam_jet",
+        "pixels": 76,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "vent_cloud",
+        "pixels": 91,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "armor_scraps",
+        "pixels": 62,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "boiler_flare",
+        "pixels": 156,
+        "visible": true,
+        "latePixels": 0
+      }
+    ]
+  },
+  "errors": []
+}

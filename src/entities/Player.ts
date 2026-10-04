@@ -5,6 +5,7 @@
 // DOM writes (game-over overlay) become 'playerDied' / 'playerRespawned' events.
 
 import { DEATH_SLOWMO_FRAMES, HEIGHT, WIDTH } from '@/config/constants';
+import { StockAirJump } from '@/arena/StockAirJump';
 import { gustHabitat } from '@/game/HabitatMotion';
 import { difficultyMods } from '@/config/difficulty';
 import { mutatorMods } from '@/content/mutators';
@@ -248,6 +249,7 @@ export class PlayerControl implements PlayerControlApi {
   private jumpNeedsRelease = false;
   /** Edge detector for the jump key. */
   private prevJumpHeld = false;
+  private readonly stockAirJump = new StockAirJump();
   /** Frames until the player can kick again. */
   private kickCooldownT = 0;
   get kickReady(): boolean { return this.kickCooldownT <= 0; }
@@ -919,6 +921,8 @@ export class PlayerControl implements PlayerControlApi {
     this.swinging = false;
     ctx.player.swinging = false;
     ctx.player.stockFastFall = false;
+    ctx.player.stockAirJumpT = 0;
+    this.stockAirJump.reset();
     this.swingJumpPrev = false;
     // `grounded` is frozen at its pre-swing value (the normal update — which
     // re-detects ground — was skipped every swinging frame). If it's stale-true,
@@ -1788,6 +1792,12 @@ export class PlayerControl implements PlayerControlApi {
     }
 
     const jumpPressed = keys.jump && !this.prevJumpHeld;
+    player.stockAirJumpT = Math.max(0, (player.stockAirJumpT ?? 0) - 1);
+    const airJump = this.stockAirJump.step(jumpPressed, player.grounded,
+      !!ctx.arena?.stockMatch && (ctx.fighters?.id === 'brann-rook' || ctx.fighters?.id === 'ilyra-voss') && this.framesSinceGrounded > 6 &&
+      !restrained && !stockAttack?.busy && !stockDodge?.busy && !stockShield?.busy && !stockGrab?.busy &&
+      !stockRecovering && !stockLaunching && !player.climbing && !player.crawling && !player.inLiquid);
+    if (airJump) player.stockFastFall = false;
     this.prevJumpHeld = keys.jump;
     if (!keys.jump) this.jumpNeedsRelease = false;
     const wallJumpPressed = keys.wallJump && !this.prevWallJumpHeld;
@@ -1983,6 +1993,11 @@ export class PlayerControl implements PlayerControlApi {
           this.jumpBufferFrames = 0;
           this.jumpRiseFrames = lp.jumpHoldWindow; // arm the cuttable ballistic rise
           this.jumpCutGraceFrames = supportedByRigidBody && !supportedByTerrain ? 4 : 0;
+          ctx.audio.jump();
+        } else if (airJump) {
+          player.vy = -4.6 * verticalPace * jumpK;
+          player.stockAirJumpT = 12; player.stretchT = 6; player.diveT = 0;
+          this.jumpBufferFrames = 0; this.jumpRiseFrames = lp.jumpHoldWindow;
           ctx.audio.jump();
         } else if (player.levit > 0 && player.diveT === 0 && this.jumpRiseFrames <= 0) {
           levitating = true;

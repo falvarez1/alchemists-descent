@@ -3,6 +3,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { launchBrowser } from './browser-launch.mjs';
 
 const url = process.argv[2] ?? 'http://127.0.0.1:5180/';
+const duo = process.argv.includes('--duo');
+const brann = duo || process.argv.includes('--brann');
 const out = 'verify-out/duel-lan'; mkdirSync(out, { recursive: true });
 const browsers = [await launchBrowser(), await launchBrowser()];
 const errors = [], results = {};
@@ -26,7 +28,8 @@ try {
   await guest.getByRole('button', { name: 'Join match', exact: true }).click();
   await guest.waitForFunction(() => window.__game.ctx.duel.slot === 1);
   assert.equal(await guest.getByRole('combobox', { name: 'LAN Player 1 fighter', exact: true }).isDisabled(), true);
-  await guest.getByRole('combobox', { name: 'LAN Player 2 fighter', exact: true }).selectOption('rusk-emberjaw');
+  await guest.getByRole('combobox', { name: 'LAN Player 2 fighter', exact: true }).selectOption(duo ? 'ilyra-voss' : brann ? 'brann-rook' : 'rusk-emberjaw');
+  if (brann) await host.getByRole('combobox', { name: 'LAN Player 1 fighter', exact: true }).selectOption('brann-rook');
   for (const page of pages) await page.locator('#duel-network [data-ready]').click();
   await host.locator('#duel-network [data-start]').click();
   console.log('match requested');
@@ -55,6 +58,37 @@ try {
   await guest.waitForFunction(() => window.__game.ctx.arena.stockMatch.fighters[0].volatility > 0);
   results.damage = await host.evaluate(() => window.__game.ctx.arena.stockMatch.fighters.map(f => f.volatility));
   console.log('melee damage passed');
+  if (brann) {
+    for (const page of pages) await page.evaluate(() => {
+      window.brannAttacks = [];
+      window.brannObserver = setInterval(() => {
+        const attack = window.__game.ctx.arena.stockAttack(1);
+        if (attack.busy) window.brannAttacks.push({ kind: attack.kind, minReach: attack.spec.minReach });
+      }, 10);
+    });
+    await host.waitForFunction(() => !window.__game.ctx.arena.stockAttack(1).busy);
+    await host.evaluate(() => {
+      const c = window.__game.ctx, s = c.arena.stockStage;
+      for (const slot of [0, 1]) Object.assign(c.arena.bundle(slot).player, { x: s.center.x + slot * 100, y: s.main.y - 1, vx: 0, vy: 0, fx: 0, fy: 0, invuln: 0, staggerT: 0, grounded: true });
+    });
+    await guest.waitForFunction(() => window.__game.ctx.arena.bundle(1).player.grounded);
+    await guest.keyboard.down('ShiftLeft'); await guest.keyboard.down('w'); await guest.keyboard.press('f');
+    await guest.keyboard.up('w'); await guest.keyboard.up('ShiftLeft');
+    for (const page of pages) await page.waitForFunction(() => window.brannAttacks.some(a => a.kind === 'up_smash' && a.minReach < 0));
+    await host.waitForFunction(() => !window.__game.ctx.arena.stockAttack(1).busy);
+    await host.evaluate(() => {
+      const c = window.__game.ctx, p = c.arena.bundle(1).player;
+      Object.assign(p, { y: c.arena.stockStage.main.y - 180, vy: 0, vx: 0, grounded: false, facing: 1 });
+    });
+    await guest.waitForFunction(() => !window.__game.ctx.arena.bundle(1).player.grounded);
+    await guest.keyboard.down('w'); await guest.keyboard.press('f'); await guest.keyboard.up('w');
+    for (const page of pages) await page.waitForFunction(() => window.brannAttacks.some(a => a.kind === 'up_air' && a.minReach < 0));
+    results.brann = await Promise.all(pages.map(page => page.evaluate(() => {
+      clearInterval(window.brannObserver);
+      return [...new Set(window.brannAttacks.map(a => a.kind))];
+    })));
+    console.log('Expanded guest heavy and aerial attacks replicated');
+  }
   // Test a host terrain mutation and its removal through the binary stream.
   await host.evaluate(() => { const w = window.__game.ctx.world; w.types[400 * w.width + 800] = 13; w.colors[400 * w.width + 800] = 0xc0c0c0; });
   await guest.waitForFunction(() => { const w = window.__game.ctx.world; return w.types[400 * w.width + 800] === 13; });
@@ -63,6 +97,7 @@ try {
   console.log('terrain delta passed');
   await guest.keyboard.press('Escape');
   await Promise.all(pages.map(p => p.waitForFunction(() => window.__game.ctx.duel.room.phase === 'paused')));
+  if (brann) for (const page of pages) assert.match(await page.locator('.duel-help').textContent(), /double jump/);
   const frozen = await host.evaluate(() => window.__game.ctx.state.frameCount);
   await host.waitForTimeout(300);
   assert.equal(await host.evaluate(() => window.__game.ctx.state.frameCount), frozen);

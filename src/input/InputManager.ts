@@ -852,6 +852,10 @@ export class InputManager {
     else if (code === 'KeyQ' && !ctx.player.climbing) ctx.input.pourHeld = true;
     else if (code === 'KeyX' && !ctx.player.climbing) ctx.input.drinkHeld = true;
     else if (code === 'KeyF' && !ctx.player.dead && !ctx.player.climbing) {
+      if (ctx.arena?.stockMatch && ctx.input.keys.grab && !repeat) {
+        ctx.arena.requestStockAttack(ctx.input.keys.up ? 'up_smash' : ctx.input.keys.down ? 'down_smash' : 'finisher');
+        return;
+      }
       // F hurls whatever the wand holds (a corpse at the cursor, a crate along
       // the aim); otherwise it's the kick gust (which punts corpses too).
       if (!telekinesisHurl(ctx)) ctx.playerCtl.kick(ctx);

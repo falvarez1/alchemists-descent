@@ -175,8 +175,11 @@ the Lab later. **Revisit** if the split stalls for long while new moves keep lan
 **Revised 2026-10-04, the same day: the split became two repositories** (`docs/split/SPLIT-PLAN.md` D1: CLASHFORGED gets
 a copy of this repository with the full history and deletes the campaign; Descent deletes the arena). The monorepo, its
 phase 6 and its packages no longer exist. The decision's reason holds, and is met sooner: the Lab's final home is the
-CLASHFORGED repository, which keeps this repository's layout, so the Lab starts there **the day the copy lands** (split
-phase 1). Its paths, also for D-016's sheets: `src/content/fighters/sheets/` (sheets and schema),
+CLASHFORGED repository, which keeps this repository's layout. The Lab is built there **by dependency** (split D16, the
+owner's choice): what needs no game loop (the knob registry, the analyser library, the sheets, the static checks, the
+screens over stored runs) starts **the day the copy lands** (split phase 1); the batch runner and anything that plays a
+match start on split phase 3's headless, deterministic root (D-024, D-023), so each part is built once on the
+foundation it needs. Its paths, also for D-016's sheets: `src/content/fighters/sheets/` (sheets and schema),
 `src/fighters/analysis/` (the analyser), `lab.html` and `src/lab/` (the page), `src/dev/` (the bridge's game side) and
 `tools/lab/` (server, runner, store, gates). The interim routine applies until then.
 
@@ -213,6 +216,73 @@ logic was written to be hosted that way).
 
 **Revisit** if CLASHFORGED needs a domain whose DNS cannot move to Cloudflare, or if Cloudflare closes the gap (Durable
 Objects defined inside Pages projects).
+
+## D-023 (2026-10-04): CLASHFORGED's match simulation is deterministic, and a replay test holds it
+
+**Decision.** The same inputs give a bit-identical match. Split phase 3 (`docs/split/SPLIT-PLAN.md` D9) removes every
+source of whole-tick drift from match code: unseeded random draws, clock reads, iteration over unordered collections, and
+work that depends on asynchronous start-up. A replay test plays the seeded oracle batch twice and requires identical
+records. Today 19 of the 20 oracle matches replay exactly. The determinism probe names the suspects: the flyers, and an
+async start-up race in the entity stream.
+
+**Why.** Rollback netcode, the standard for competitive fighters, needs it. So do input-only replays (small, and they
+outlive balance changes only when re-simulation is exact), server-verified results, and a Balance Lab whose deltas are not
+partly noise.
+
+**Accepted cost.** A permanent discipline in match code: every random draw from a seeded stream, no wall clock, a stable
+iteration order. The replay test enforces it.
+
+**Rejected:** best effort with host-authoritative netcode and state-snapshot replays (no rollback, larger replays, a noise
+floor in every measurement); deciding later (code written meanwhile adds drift that must be hunted down again).
+
+**Revisit** never for matches; extend it to anything new that feeds a match.
+
+## D-024 (2026-10-04): CLASHFORGED's composition root runs a whole match with no DOM, WebGL or audio
+
+**Decision.** Split phase 3 writes CLASHFORGED's own composition root as a pure simulation core, with rendering, audio and
+input as its clients. Phase 3's exit includes a Node test that plays a seeded match through the core alone and matches the
+browser's record (split D10).
+
+**Why.** Server-run matches (D-022's Containers), the Balance Lab's batch runner (an expected 5-10 times the throughput of
+headless pages, BL0.5) and fast headless tests all need it. Designing the seam in while the root is being written anyway
+costs far less than retrofitting it later.
+
+**Accepted cost.** A larger phase 3: every system the match needs must run without a browser, or sit behind an interface
+whose browser side is optional.
+
+**Rejected:** aiming for it without requiring it (server-run matches might need a later rework); keeping the browser in
+the loop.
+
+**Revisit** never; it is the foundation for online play.
+
+## D-025 (2026-10-04): Training's targets are the fighters themselves, as scripted dummies
+
+**Decision.** When the campaign's creatures leave CLASHFORGED, the Proving Yard's foes (`FOE_PRESETS`, which spawn roster
+creatures today) are replaced by fighter dummies. These are real fighters driven by scripted CPU behaviours: stand,
+shield, jump, DI, recover, attack on a loop. Kit abilities that act on foes reach them through the fighter proxy enemy
+(D-001), as they reach a Duel rival (split D11).
+
+**Why.** Training then teaches the actual game: real hurtboxes, knockback, percent, shields and ledge play. No creature
+framework has to survive in CLASHFORGED for it.
+
+**Rejected:** porting a few roster creatures as targets (they teach nothing about fighting a fighter and keep the creature
+framework alive); both.
+
+**Revisit** if a kit ability turns out to need a non-fighter target; give that ability a fighter-shaped answer first.
+
+## D-026 (2026-10-04): CLASHFORGED's AuthorLink relay is its own Worker, apart from the game's
+
+**Decision.** The dev-only AuthorLink relay (live tuning and Builder sync for hosted builds) deploys as its own small
+Cloudflare Worker, as Descent's does today. It is not a Durable Object inside the game's Worker (split D12).
+
+**Why.** Dev tooling stays out of the player-facing deployment: no dev endpoints or write tokens near the game, its own
+deploy cadence, and a relay bug or deploy cannot take the game down. D-022's case for one deployment is about the Duel
+room, whose protocol must ship in lockstep with the client; the relay serves dev builds and does not need that.
+
+**Rejected:** a Durable Object in the game's Worker (dev tooling inside the production attack surface); sharing Descent's
+relay (it couples the two repositories' protocols, which split D1 avoids).
+
+**Revisit** if the relay ever becomes player-facing (a hosted Lab for outside testers would be a new decision).
 
 ## D-027 (2026-10-04): a Duel replica plays the host's ticks back on the host's clock; the guest's round trip is removed in CLASHFORGED after the copy
 
