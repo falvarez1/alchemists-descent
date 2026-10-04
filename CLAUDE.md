@@ -213,6 +213,15 @@ dev server. `scripts/verify-*.mjs` show the pattern.
 7. Use `@/` path aliases; `import type` for interfaces; TS strict must pass with zero errors —
    no `any`/`@ts-ignore` suppressions.
 
+## Landing a change on main
+
+**`main` is protected, admins included: never push to it.** Land work with a PR and auto-merge:
+`gh pr create --base main ...` then `gh pr merge <n> --auto --merge`. It merges itself once the required CI jobs
+(`checks`, `browser-smoke`) pass. **Do not wait on CI.** Verify locally (the next section) and carry on working; a red
+check holds the merge, it does not hold the work. The full suite runs nightly (`.github/workflows/nightly.yml`: every
+findability seed, the encounter lairs, the split gate probes) and opens or comments on a `nightly-red` issue when it
+fails. Decision D15 in `docs/split/SPLIT-PLAN.md`.
+
 ## Verification workflow (before any commit)
 
 `npx tsc --noEmit` → `npx vitest run` → `npm run build`, then **runtime-verify in the real
