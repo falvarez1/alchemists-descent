@@ -1,13 +1,13 @@
 {
-  "_doc": "Per-fighter framing for make-bust.mjs, measured on each generated master (fractions of its size): ex/ey = the eye line (eyes, visor or the glints in a hood), s = zoom so the eye-to-chin height lands near 9.5% of the output, tx = where the eyes land horizontally. Every bust lands its eyes at 38% from the top.",
-  "ilyra-voss":    { "ex": 0.50, "ey": 0.32,  "s": 1.05, "tx": 0.49 },
-  "brann-rook":    { "ex": 0.49, "ey": 0.26,  "s": 0.88, "tx": 0.49 },
-  "mara-quell":    { "ex": 0.47, "ey": 0.28,  "s": 1.00, "tx": 0.47 },
-  "sable-fen":     { "ex": 0.49, "ey": 0.335, "s": 0.95, "tx": 0.49 },
-  "kest-rel":      { "ex": 0.56, "ey": 0.375, "s": 1.05, "tx": 0.52 },
-  "nox-calder":    { "ex": 0.50, "ey": 0.25,  "s": 1.00, "tx": 0.48 },
-  "edda-morrow":   { "ex": 0.50, "ey": 0.325, "s": 1.00, "tx": 0.49 },
-  "selene-wraith": { "ex": 0.55, "ey": 0.325, "s": 0.92, "tx": 0.50 },
-  "rusk-emberjaw": { "ex": 0.52, "ey": 0.285, "s": 0.86, "tx": 0.49 },
-  "father-thorne": { "ex": 0.50, "ey": 0.30,  "s": 0.86, "tx": 0.48 }
+  "_doc": "Per-fighter framing for make-bust.mjs, measured on each generated master (fractions of its size): ex/ey = the eye line (eyes, visor slit or the glints in a hood), cy = the chin (or the bottom of the mask or helmet). The zoom brings eye-to-chin near 10.5% of the output (clamped to 0.92..1.1 so the painted body still fills the frame); s overrides it.",
+  "ilyra-voss":    { "ex": 0.37, "ey": 0.375, "cy": 0.48 },
+  "brann-rook":    { "ex": 0.55, "ey": 0.30,  "cy": 0.42, "s": 0.92 },
+  "mara-quell":    { "ex": 0.54, "ey": 0.31,  "cy": 0.40 },
+  "sable-fen":     { "ex": 0.49, "ey": 0.29,  "cy": 0.38 },
+  "kest-rel":      { "ex": 0.59, "ey": 0.36,  "cy": 0.47 },
+  "nox-calder":    { "ex": 0.50, "ey": 0.31,  "cy": 0.40 },
+  "edda-morrow":   { "ex": 0.51, "ey": 0.325, "cy": 0.45 },
+  "selene-wraith": { "ex": 0.51, "ey": 0.365, "cy": 0.46 },
+  "rusk-emberjaw": { "ex": 0.55, "ey": 0.295, "cy": 0.42 },
+  "father-thorne": { "ex": 0.52, "ey": 0.37,  "cy": 0.46 }
 }

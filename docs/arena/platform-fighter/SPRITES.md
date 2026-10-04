@@ -20,6 +20,11 @@ Sheet A (locomotion, 6 x 3): `idle0 idle1 idle2 idle3 land recover / run0..run5 
 Sheet B (combat, 6 x 3): `idleB opener_windup opener_strike launcher_windup launcher_strike cast / aerial_windup
 aerial_strike finisher_windup finisher_strike grab throw / shield shield_broken dodge airdodge ledge_hang ledge_climb`.
 
+Sheet C (moves, one 6 x 3 sheet per fighter, cut with the patch method below): `tactical ultimate victory opener_recover
+finisher_recover`. `tactical` and `ultimate` are the Z and T poses (each fighter's from `docs/FIGHTERS.md`), `victory` the
+on-stage win pose after GAME!, the two recovers the follow-throughs between a strike and idle. The sheet holds three
+takes of each (four of victory and ultimate); the picked take ships under the bare name.
+
 `idleB` is only the scale anchor of sheet B (it normalises the sheet to the same 38 px standing height as sheet A).
 Missing names fall back through `FALLBACK` in the runtime, so a partial atlas still plays.
 
@@ -62,17 +67,23 @@ fighters); their prompts and which cells replaced which frames are in `SPRITE-PR
 ## Bust portraits
 
 The lobby, HUD and results show a painted bust per fighter: `public/assets/arena/fighters/<id>/bust.webp`, 768 x 768, no
-alpha. All ten share one framing so the UI crops them with one rule: three-quarter view facing RIGHT (P2 mirrors with
-CSS), the eye line (eyes, visor slit, or the glints in a hood) at 38% from the top, the face at 47 to 52% across, eye to
-chin about 9.5% of the height, the prop hand on the right (x 60 to 95%). The ground is the painted dark slate with faint
-smoke, lifted onto `#111a24`, and the outer 7% of every side fades to exactly `#111a24`: on a panel of that colour the
-edges vanish with no mask; on any other a CSS mask over the outer 10% does it.
+alpha. All ten share one framing: three-quarter view facing RIGHT (P2 mirrors with CSS), the eye line (eyes, visor slit,
+or the glints in a hood) at 38% from the top, eye to chin 10 to 11.5% of the height, the prop thrust out on the right.
+The face sits between 41% (Ilyra) and 57% (Kest) across, because the arcade poses lean into the frame; `bust.json` beside
+each bust gives where it landed (`{ eye: [x, y], face, size }`, fractions of the image), so a face crop (the HUD icon)
+centres on `eye` instead of a fixed point. The ground is the painted dark slate with faint smoke and embers, lifted onto
+`#111a24`, and the outer 7% of every side fades to exactly `#111a24`: on a panel of that colour the edges vanish with no
+mask; on any other a CSS mask over the outer 10% does it.
 
-1. Generate (gpt-image-2, 1:1, 1K, high) with the fighter's portrait and animation sheet as references. Ilyra's bust came
-   first from the two references alone; every other bust also takes her approved bust as the LAST reference with the
-   instruction to copy its framing, lighting and rendering but not its character. Prompts in `SPRITE-PROMPTS.md`.
-2. Keep the master as `sprite-sources/<id>-bust.webp`, measure its eye line and head size, and record them in
-   `scripts/arena-sprites/bust-framing.json` (`ex`/`ey` the eye line as fractions of the master, `s` the zoom, `tx` where
-   the eyes land across).
-3. Frame: `node scripts/arena-sprites/make-bust.mjs [id ...] [--size 768] [--sheet <contact.png>]` writes `bust.webp` (and
-   a contact sheet with the shared eye line drawn; the current one is `sprite-sources/busts-contact.webp`).
+1. Generate (gpt-image-2, 1:1, 1K, high) with the fighter's portrait and animation sheet as references. The first set was
+   calm: Ilyra's from the two references alone, every other one with her bust as a framing reference. Duel is an arcade
+   mode ("fast-paced, adrenaline-pumping"), so the shipped set is a repaint of each calm bust (the calm bust as the LAST
+   reference: same character, crop and eye height) with a fierce expression, a forward lean, the prop thrust at the
+   viewer, a saturated rim light in the fighter's accent colour and embers behind. Prompts in `SPRITE-PROMPTS.md`.
+2. Keep the master as `sprite-sources/<id>-bust.webp`, measure its eye line and chin, and record them in
+   `scripts/arena-sprites/bust-framing.json` (`ex`/`ey` the eye line and `cy` the chin, as fractions of the master; an
+   optional `s` overrides the zoom).
+3. Frame: `node scripts/arena-sprites/make-bust.mjs [id ...] [--size 768] [--sheet <contact.png>]` writes `bust.webp` and
+   `bust.json` (and a contact sheet with the shared eye line and each face anchor drawn; the current one is
+   `sprite-sources/busts-contact.webp`). The zoom aims at a common face size but stays within 0.92 to 1.1 and the frame may
+   only open a sliver (4%) inside a side, mirror-filled and feathered, because the arcade busts are painted to the edges.

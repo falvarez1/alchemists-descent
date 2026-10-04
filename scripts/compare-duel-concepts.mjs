@@ -20,7 +20,8 @@ if (!args.includes('--skip-capture')) {
 
 // The roster: every fighter's idle and its four attack roles, from the atlases the game draws.
 const ROSTER = ['ilyra-voss', 'brann-rook', 'mara-quell', 'sable-fen', 'kest-rel', 'nox-calder', 'edda-morrow', 'selene-wraith', 'rusk-emberjaw', 'father-thorne'];
-const POSES = ['idle0', 'opener_strike', 'launcher_strike', 'aerial_strike', 'finisher_strike', 'dodge', 'ledge_hang'];
+const POSES = ['idle0', 'opener_strike', 'opener_recover', 'launcher_strike', 'aerial_strike', 'finisher_strike', 'finisher_recover',
+  'dodge', 'ledge_hang', 'tactical', 'ultimate', 'victory'];
 {
   const Z = 3, cw = 56, ch = 54, comp = [];
   for (const [r, id] of ROSTER.entries()) {
