@@ -22,6 +22,8 @@ export interface DuelLine {
   /** The delivery sent to the voice (eleven_v3 audio tags, emphasis); defaults to `text`. */
   say?: string;
   group: DuelLineGroup;
+  /** eleven_v3 speed for this line when it differs from the generator's (1 = the voice's own pace). */
+  speed?: number;
   /** A call that must fit its beat (the countdown's 40 ticks): mastered no longer than this, sped up if it has to be. */
   maxSeconds?: number;
 }
@@ -93,10 +95,12 @@ const SEAT_WORDS = ['one', 'two'] as const;
  * 'Castrol') in every take: written in capitals the voice holds the E and it comes back as KEST.
  */
 const SAY: Readonly<Record<string, string>> = { 'fighter.kest-rel': 'KEST REL!', 'wins.kest-rel': 'KEST wins!', ko: 'K. O.!' };
+/** At the fast read (1.2) every delivery of 'Kest Rel' tried was spelled out (K-E-S-T) or heard as 'Castrol': it keeps the voice's own pace. */
+const SPEED: Readonly<Record<string, number>> = { 'fighter.kest-rel': 1 };
 
 export const DUEL_LINES: readonly DuelLine[] = [
   { id: 'choose', text: 'Choose your fighter!', group: 'select' },
-  ...(Object.entries(DUEL_FIGHTER_NAMES) as Array<[FighterId, string]>).map(([id, name]): DuelLine => ({ id: duelFighterLine(id), text: `${name}!`, say: SAY[duelFighterLine(id)], group: 'select' })),
+  ...(Object.entries(DUEL_FIGHTER_NAMES) as Array<[FighterId, string]>).map(([id, name]): DuelLine => ({ id: duelFighterLine(id), text: `${name}!`, say: SAY[duelFighterLine(id)], speed: SPEED[duelFighterLine(id)], group: 'select' })),
   ...(Object.entries(DUEL_STAGE_NAMES) as Array<[StockStageId, string]>).map(([id, name]): DuelLine => ({ id: duelStageLine(id), text: `${name}!`, group: 'select' })),
   ...SEAT_WORDS.map((word, slot): DuelLine => ({ id: duelReadyLine(slot), text: `Player ${word}, ready!`, group: 'select' })),
   { id: 'challenger', text: 'Here comes a new challenger!', group: 'select' },

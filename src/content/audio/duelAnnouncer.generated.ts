@@ -7,47 +7,47 @@ export const DUEL_ANNOUNCER_VOICE = {key:"david-shout",name:"David — sports ar
 export const DUEL_CLIPS: Readonly<Record<string, { readonly url: string; readonly seconds: number }>> = {
  choose: {
   url: "audio/duel/choose.mp3",
-  seconds: 1.63
+  seconds: 1.28
  },
  "fighter.ilyra-voss": {
   url: "audio/duel/fighter.ilyra-voss.mp3",
-  seconds: 1.77
+  seconds: 1.69
  },
  "fighter.brann-rook": {
   url: "audio/duel/fighter.brann-rook.mp3",
-  seconds: 1.58
+  seconds: 1.5
  },
  "fighter.sable-fen": {
   url: "audio/duel/fighter.sable-fen.mp3",
-  seconds: 1.65
+  seconds: 1.29
  },
  "fighter.mara-quell": {
   url: "audio/duel/fighter.mara-quell.mp3",
-  seconds: 1.38
+  seconds: 1.37
  },
  "fighter.kest-rel": {
   url: "audio/duel/fighter.kest-rel.mp3",
-  seconds: 2.14
+  seconds: 1.84
  },
  "fighter.nox-calder": {
   url: "audio/duel/fighter.nox-calder.mp3",
-  seconds: 1.53
+  seconds: 1.41
  },
  "fighter.edda-morrow": {
   url: "audio/duel/fighter.edda-morrow.mp3",
-  seconds: 1.75
+  seconds: 1.86
  },
  "fighter.selene-wraith": {
   url: "audio/duel/fighter.selene-wraith.mp3",
-  seconds: 1.27
+  seconds: 1.43
  },
  "fighter.rusk-emberjaw": {
   url: "audio/duel/fighter.rusk-emberjaw.mp3",
-  seconds: 1.68
+  seconds: 1.74
  },
  "fighter.father-thorne": {
   url: "audio/duel/fighter.father-thorne.mp3",
-  seconds: 1.2
+  seconds: 0.93
  },
  "stage.foundry": {
   url: "audio/duel/stage.foundry.mp3",
@@ -55,119 +55,163 @@ export const DUEL_CLIPS: Readonly<Record<string, { readonly url: string; readonl
  },
  "stage.kiln": {
   url: "audio/duel/stage.kiln.mp3",
-  seconds: 1.06
+  seconds: 1.15
  },
  "stage.cistern": {
   url: "audio/duel/stage.cistern.mp3",
-  seconds: 1.52
+  seconds: 1.01
  },
  "stage.gallery": {
   url: "audio/duel/stage.gallery.mp3",
-  seconds: 1.21
+  seconds: 1.12
  },
  "ready.1": {
   url: "audio/duel/ready.1.mp3",
-  seconds: 1.91
+  seconds: 1.61
  },
  "ready.2": {
   url: "audio/duel/ready.2.mp3",
-  seconds: 1.48
+  seconds: 1.65
  },
  challenger: {
   url: "audio/duel/challenger.mp3",
-  seconds: 2.17
+  seconds: 2.02
+ },
+ versus: {
+  url: "audio/duel/versus.mp3",
+  seconds: 1.12
  },
  "count.3": {
   url: "audio/duel/count.3.mp3",
-  seconds: 0.79
+  seconds: 0.61
  },
  "count.2": {
   url: "audio/duel/count.2.mp3",
-  seconds: 0.55
+  seconds: 0.49
  },
  "count.1": {
   url: "audio/duel/count.1.mp3",
-  seconds: 0.52
+  seconds: 0.57
  },
  fight: {
   url: "audio/duel/fight.mp3",
-  seconds: 0.61
+  seconds: 0.56
  },
  ko: {
   url: "audio/duel/ko.mp3",
-  seconds: 1.35
+  seconds: 0.76
  },
  "ring-out": {
   url: "audio/duel/ring-out.mp3",
-  seconds: 1.01
+  seconds: 1.19
  },
  "self-destruct": {
   url: "audio/duel/self-destruct.mp3",
-  seconds: 1.28
+  seconds: 1.11
  },
  "last-stock": {
   url: "audio/duel/last-stock.mp3",
-  seconds: 1.21
+  seconds: 1.07
  },
  "shield-break": {
   url: "audio/duel/shield-break.mp3",
-  seconds: 1.05
+  seconds: 1.01
+ },
+ "ultimate.ilyra-voss": {
+  url: "audio/duel/ultimate.ilyra-voss.mp3",
+  seconds: 1.42
+ },
+ "ultimate.brann-rook": {
+  url: "audio/duel/ultimate.brann-rook.mp3",
+  seconds: 0.95
+ },
+ "ultimate.sable-fen": {
+  url: "audio/duel/ultimate.sable-fen.mp3",
+  seconds: 1
+ },
+ "ultimate.mara-quell": {
+  url: "audio/duel/ultimate.mara-quell.mp3",
+  seconds: 1.15
+ },
+ "ultimate.kest-rel": {
+  url: "audio/duel/ultimate.kest-rel.mp3",
+  seconds: 1.2
+ },
+ "ultimate.nox-calder": {
+  url: "audio/duel/ultimate.nox-calder.mp3",
+  seconds: 1.34
+ },
+ "ultimate.edda-morrow": {
+  url: "audio/duel/ultimate.edda-morrow.mp3",
+  seconds: 2.04
+ },
+ "ultimate.selene-wraith": {
+  url: "audio/duel/ultimate.selene-wraith.mp3",
+  seconds: 1.32
+ },
+ "ultimate.rusk-emberjaw": {
+  url: "audio/duel/ultimate.rusk-emberjaw.mp3",
+  seconds: 1.49
+ },
+ "ultimate.father-thorne": {
+  url: "audio/duel/ultimate.father-thorne.mp3",
+  seconds: 1.23
  },
  time: {
   url: "audio/duel/time.mp3",
-  seconds: 0.95
+  seconds: 0.49
  },
  game: {
   url: "audio/duel/game.mp3",
-  seconds: 1
+  seconds: 0.84
  },
  "wins.ilyra-voss": {
   url: "audio/duel/wins.ilyra-voss.mp3",
-  seconds: 2.06
+  seconds: 1.72
  },
  "wins.brann-rook": {
   url: "audio/duel/wins.brann-rook.mp3",
-  seconds: 1.84
+  seconds: 1.13
  },
  "wins.sable-fen": {
   url: "audio/duel/wins.sable-fen.mp3",
-  seconds: 1.58
+  seconds: 1.55
  },
  "wins.mara-quell": {
   url: "audio/duel/wins.mara-quell.mp3",
-  seconds: 1.93
+  seconds: 1.19
  },
  "wins.kest-rel": {
   url: "audio/duel/wins.kest-rel.mp3",
-  seconds: 2.05
+  seconds: 2.33
  },
  "wins.nox-calder": {
   url: "audio/duel/wins.nox-calder.mp3",
-  seconds: 1.56
+  seconds: 1.25
  },
  "wins.edda-morrow": {
   url: "audio/duel/wins.edda-morrow.mp3",
-  seconds: 2.04
+  seconds: 1.28
  },
  "wins.selene-wraith": {
   url: "audio/duel/wins.selene-wraith.mp3",
-  seconds: 1.52
+  seconds: 1.57
  },
  "wins.rusk-emberjaw": {
   url: "audio/duel/wins.rusk-emberjaw.mp3",
-  seconds: 1.52
+  seconds: 1.3
  },
  "wins.father-thorne": {
   url: "audio/duel/wins.father-thorne.mp3",
-  seconds: 1.38
+  seconds: 1.68
  },
  draw: {
   url: "audio/duel/draw.mp3",
-  seconds: 1.06
+  seconds: 0.96
  },
  rematch: {
   url: "audio/duel/rematch.mp3",
-  seconds: 0.84
+  seconds: 0.69
  }
 };
 
@@ -184,14 +228,14 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   id: "fighter.ilyra-voss",
   text: "Ilyra Voss!",
   group: "select",
-  heard: "Illyra Voss",
+  heard: "Elira Voss",
   confirmed: true
  },
  {
   id: "fighter.brann-rook",
   text: "Brann Rook!",
   group: "select",
-  heard: "Brian Rook",
+  heard: "Bran Rook",
   confirmed: true
  },
  {
@@ -226,7 +270,7 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   id: "fighter.edda-morrow",
   text: "Edda Morrow!",
   group: "select",
-  heard: "Etta Morrow",
+  heard: "Edda Morrow",
   confirmed: true
  },
  {
@@ -247,7 +291,7 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   id: "fighter.father-thorne",
   text: "Father Thorne!",
   group: "select",
-  heard: "Father Thorne!",
+  heard: "Father Thorne",
   confirmed: true
  },
  {
@@ -268,7 +312,7 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   id: "stage.cistern",
   text: "The Cistern!",
   group: "select",
-  heard: "The cistern",
+  heard: "The Cistern",
   confirmed: true
  },
  {
@@ -297,6 +341,13 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   text: "Here comes a new challenger!",
   group: "select",
   heard: "Here comes a new challenger",
+  confirmed: true
+ },
+ {
+  id: "versus",
+  text: "Versus!",
+  group: "select",
+  heard: "Versus",
   confirmed: true
  },
  {
@@ -363,10 +414,80 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   confirmed: true
  },
  {
+  id: "ultimate.ilyra-voss",
+  text: "Phoenix Draft!",
+  group: "match",
+  heard: "Phoenix draft",
+  confirmed: true
+ },
+ {
+  id: "ultimate.brann-rook",
+  text: "Redline!",
+  group: "match",
+  heard: "Red line",
+  confirmed: true
+ },
+ {
+  id: "ultimate.sable-fen",
+  text: "Bloodsense!",
+  group: "match",
+  heard: "Blood sense",
+  confirmed: true
+ },
+ {
+  id: "ultimate.mara-quell",
+  text: "Dead Chime!",
+  group: "match",
+  heard: "Dead chime",
+  confirmed: true
+ },
+ {
+  id: "ultimate.kest-rel",
+  text: "Updraft!",
+  group: "match",
+  heard: "Updraft",
+  confirmed: true
+ },
+ {
+  id: "ultimate.nox-calder",
+  text: "Long Night!",
+  group: "match",
+  heard: "Long night",
+  confirmed: true
+ },
+ {
+  id: "ultimate.edda-morrow",
+  text: "Rose Window!",
+  group: "match",
+  heard: "Rose Window",
+  confirmed: true
+ },
+ {
+  id: "ultimate.selene-wraith",
+  text: "Mirror Hunt!",
+  group: "match",
+  heard: "Mirror hunt",
+  confirmed: true
+ },
+ {
+  id: "ultimate.rusk-emberjaw",
+  text: "Kiln Heart!",
+  group: "match",
+  heard: "Kilnhart",
+  confirmed: true
+ },
+ {
+  id: "ultimate.father-thorne",
+  text: "Overgrowth!",
+  group: "match",
+  heard: "Overgrowth",
+  confirmed: true
+ },
+ {
   id: "time",
   text: "Time!",
   group: "result",
-  heard: "Time!",
+  heard: "Time",
   confirmed: true
  },
  {
@@ -380,7 +501,7 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   id: "wins.ilyra-voss",
   text: "Ilyra wins!",
   group: "result",
-  heard: "Hilra wins",
+  heard: "Iliora wins",
   confirmed: true
  },
  {
@@ -422,7 +543,7 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   id: "wins.edda-morrow",
   text: "Edda wins!",
   group: "result",
-  heard: "Edda wins",
+  heard: "Etta wins",
   confirmed: true
  },
  {
@@ -436,7 +557,7 @@ export const DUEL_CLIP_LINES: ReadonlyArray<{ readonly id: string; readonly text
   id: "wins.rusk-emberjaw",
   text: "Rusk wins!",
   group: "result",
-  heard: "Rusk wins",
+  heard: "Russ wins",
   confirmed: true
  },
  {

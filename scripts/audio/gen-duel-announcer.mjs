@@ -100,24 +100,30 @@ function ffmpeg(argv) {
  * about Duel mode should scream fast-paced, adrenaline-pumping ARCADE"): the
  * tail is cut tighter, rumble under 70 Hz goes, a fast 4:1 compressor packs
  * the shout dense, and it lands at PUNCH_MOMENTARY. `maxSeconds`: a call that
- * must fit its beat is sped up (pitch kept, at most 1.35×) to fit.
+ * must fit its beat is sped up (pitch kept, at most 1.4×) to fit.
  */
 export function masterCall(input, output, { punch = false, maxSeconds } = {}) {
   mkdirSync(dirname(output), { recursive: true });
-  const tail = punch ? 'start_threshold=-42dB:start_silence=0.05' : 'start_threshold=-50dB:start_silence=0.08';
-  let chain = `silenceremove=start_periods=1:start_threshold=-50dB:start_silence=${punch ? 0.015 : 0.03},areverse,silenceremove=start_periods=1:${tail},areverse`;
+  // Punch trims relative to the take's own peak: a soft breath or a quiet lead-in before the shout goes too.
+  const peak = punch ? Number(ffmpeg(['-i', input, '-af', 'volumedetect', '-f', 'null', '-']).match(/max_volume: (-?[\d.]+) dB/)?.[1] ?? 0) : 0;
+  const head = punch ? `start_threshold=${(peak - 30).toFixed(1)}dB:start_silence=0.01` : 'start_threshold=-50dB:start_silence=0.03';
+  const tail = punch ? `start_threshold=${(peak - 36).toFixed(1)}dB:start_silence=0.04` : 'start_threshold=-50dB:start_silence=0.08';
+  let chain = `silenceremove=start_periods=1:${head},areverse,silenceremove=start_periods=1:${tail},areverse`;
   if (punch) chain += ',highpass=f=70,acompressor=threshold=0.1:ratio=4:attack=2:release=60:makeup=2';
+  // The chain rendered once to a scratch WAV: its exact length (the loudness log's 100 ms frames are too
+  // coarse to fit a 0.6 s beat) and its loudest momentary loudness.
+  const scratch = join(CACHE_DIR, 'duel-master-scratch.wav');
   const measureChain = (c) => {
-    const log = ffmpeg(['-i', input, '-af', `${c},ebur128=framelog=info`, '-f', 'null', '-']);
+    ffmpeg(['-y', '-v', 'error', '-i', input, '-af', c, '-ar', '44100', '-ac', '1', scratch]);
+    const log = ffmpeg(['-i', scratch, '-af', 'ebur128=framelog=info', '-f', 'null', '-']);
     const momentary = [...log.matchAll(/ M:\s*(-?[\d.]+)/g)].map((m) => Number(m[1])).filter(Number.isFinite);
-    const times = [...log.matchAll(/t:\s*([\d.]+)/g)].map((m) => Number(m[1]));
     if (momentary.length === 0) throw new Error(`no loudness frames measured for ${input}`);
-    return { loudest: Math.max(...momentary), seconds: times.at(-1) ?? 0 };
+    return { loudest: Math.max(...momentary), seconds: measure(scratch).duration };
   };
   let m = measureChain(chain);
   let tempo = 1;
   if (maxSeconds && m.seconds > maxSeconds) {
-    tempo = Math.min(1.35, m.seconds / maxSeconds);
+    tempo = Math.min(1.4, m.seconds / maxSeconds);
     chain += `,atempo=${tempo.toFixed(3)}`;
     m = measureChain(chain);
   }
@@ -238,7 +244,7 @@ async function record(budget) {
     const takes = [];
     // TAKES takes; a line no take of which speech-to-text confirms gets up to EXTRA_TAKES more.
     for (let take = 0; take < TAKES + EXTRA_TAKES && (take < TAKES || !takes.some((t) => t.ok)); take++) {
-      const res = await speech({ voiceId: voice.voiceId, text: say, modelId: MODEL, voiceSettings: { ...voice.settings, speed: SPEED }, variant: take }, budget);
+      const res = await speech({ voiceId: voice.voiceId, text: say, modelId: MODEL, voiceSettings: line.speed === 1 ? voice.settings : { ...voice.settings, speed: line.speed ?? SPEED }, variant: take }, budget);
       const file = join(OUT_DIR, take === 0 ? `${line.id}.mp3` : `${line.id}-${take + 1}.mp3`);
       const mastered = masterCall(res.file, file, { punch: true, maxSeconds: line.maxSeconds });
       const heard = await transcribe(file, {}, budget);

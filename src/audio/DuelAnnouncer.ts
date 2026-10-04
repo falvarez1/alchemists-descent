@@ -8,12 +8,12 @@ import { DUEL_CLIPS } from '@/content/audio/duelAnnouncer.generated';
 import { DUEL_LINES, duelFighterLine, duelStageLine, type DuelLineGroup } from '@/content/audio/duelLines';
 import { failSafe } from '@/audio/failSafe';
 import {
-  DUEL_PRIORITY, beatCall, downCall, lobbyCalls, lobbyView, shieldBreakCall,
+  DUEL_PRIORITY, beatCall, downCall, lobbyCalls, lobbyView, shieldBreakCall, ultimateCall, versusCall,
   type DuelCall, type LobbyView,
 } from '@/audio/duelCalls';
 
-/** Between the lines of one call ("Game!" … "Brann wins!"). */
-const LINE_GAP_MS = 220;
+/** Between the lines of one call ("Mara Quell!" … "Versus!"): arcade pace. */
+const LINE_GAP_MS = 60;
 /**
  * A clip still loading this long after its moment is not played. A newer call cancels an older one anyway
  * (a name the player cycled past is never said), and a select-screen call is dropped once the lobby has
@@ -25,39 +25,46 @@ const STALE_MS = 6000;
 const CUT_FADE_S = 0.05;
 /** After the last word, the score comes back up after this. */
 const DUCK_RELEASE_MS = 250;
-const LOG = 40;
+/** The same VS card asked for twice (the session, then a screen) within this is one call. */
+const VERSUS_REPEAT_MS = 3000;
+const LOG = 48;
 const LINE_GROUP: ReadonlyMap<string, DuelLineGroup> = new Map(DUEL_LINES.map((l) => [l.id, l.group]));
 const MENU: Readonly<Record<DuelMenuSound, SfxId>> = { move: 'duel.ui.move', confirm: 'duel.ui.confirm', back: 'duel.ui.back' };
+
+interface SaidLine { line: string; at: number; ended?: number; cut?: boolean }
+
+/** One line of a call, already on the audio clock. */
+interface Scheduled { node: AudioBufferSourceNode; gain: GainNode; entry: SaidLine; start: number; end: number }
 
 interface Speaking {
   call: DuelCall;
   cancelled: boolean;
-  node: AudioBufferSourceNode | null;
-  gain: GainNode | null;
-  /** The `said` entry of the line playing now (marked when it is cut). */
-  entry: SaidLine | null;
+  scheduled: Scheduled[];
 }
 
-interface SaidLine { line: string; at: number; ended?: number; cut?: boolean }
-
 /**
- * THE DUEL'S ANNOUNCER: an arcade cabinet's voice (a sports-arena announcer, every call shouted;
+ * THE DUEL'S ANNOUNCER: an arcade cabinet's voice (a sports-arena announcer, every call shouted fast;
  * scripts/audio/gen-duel-announcer.mjs) and its sounds, for the Duel only. The descent's narrator
  * keeps out of the arena (audio/arenaAudio inArena); this is the one that talks here.
  *
  * It listens, never polls: the select screen's session (`versusChanged`: Choose your fighter, a
- * fighter's or stage's name the moment it is chosen, a player locking in, a challenger's coin), the
- * stock match's beats (`stockMatchBeat`: Three, Two, One on the countdown's own beats, FIGHT,
- * GAME or TIME and the winner), a ring-out (`fighterDown`: the KO blast, Ring out / K.O. / Self-
- * destruct, Last stock) and a broken shield. audio/duelCalls decides; this plays.
+ * fighter's or stage's name the moment it is chosen, a player locking in, a challenger's coin, and the
+ * VS card as the match loads), the stock match's beats (`stockMatchBeat`: Three, Two, One on the
+ * countdown's own beats, FIGHT, GAME or TIME and the winner on the HUD's banner), a ring-out
+ * (`fighterDown`: the KO blast, Ring out / K.O. / Self-destruct, Last stock), an ultimate
+ * (`stockUltimate`: the super sting and its name) and a broken shield. audio/duelCalls decides.
  *
- * One call at a time on the engine's `voice` bus, ducking the score while it talks. A call cuts the
- * one in progress when it ranks as high (a new name cuts the last one: the player cycles fast);
- * a lower one is not made, but its sound still plays. The screens' own menu sounds come through
- * `menu()` (ctx.audio.duel).
+ * Every call is laid on the AudioContext's clock the moment it is made, all its lines at once: the VS
+ * card's names keep their timing while the stage build blocks the main thread, and the winner's name
+ * lands on the banner's beat. One call at a time on the engine's `voice` bus, ducking the score while
+ * it talks. A call cuts the one in progress when it ranks as high (a new name cuts the last one: the
+ * player cycles fast); a lower one is not made, but its sound still plays. The screens' own menu
+ * sounds come through `menu()` (ctx.audio.duel).
  */
 export class DuelAnnouncer implements DuelAudioApi {
   private readonly buffers = new Map<string, Promise<AudioBuffer | null>>();
+  /** Clips already decoded: a call made of these is scheduled synchronously, before anything can block. */
+  private readonly decoded = new Map<string, AudioBuffer>();
   private readonly offs: Array<() => void> = [];
   private readonly timers = new Set<number>();
   private readonly said: SaidLine[] = [];
@@ -68,6 +75,7 @@ export class DuelAnnouncer implements DuelAudioApi {
   /** A match ended since the last reset: the next countdown opens with "Rematch!". */
   private finished = false;
   private downs = 0;
+  private lastVersus = { key: '', at: -Infinity };
 
   constructor(private readonly ctx: Ctx, private readonly host: StreamHost, private readonly clips: Readonly<Record<string, { readonly url: string }>> = DUEL_CLIPS) {
     const on: typeof ctx.events.on = (event, handler) => ctx.events.on(event, failSafe(`DuelAnnouncer on ${String(event)}`, handler));
@@ -76,6 +84,7 @@ export class DuelAnnouncer implements DuelAudioApi {
       on('arenaReset', () => this.onReset()),
       on('stockMatchBeat', (beat) => this.onBeat(beat)),
       on('fighterDown', (ev) => this.onDown(ev)),
+      on('stockUltimate', ({ fighter }) => { if (this.ctx.arena?.stockMatch) this.call(ultimateCall(fighter)); }),
       on('stockShieldBreak', () => { if (this.ctx.arena?.stockMatch) this.call(shieldBreakCall()); }),
     );
   }
@@ -87,11 +96,18 @@ export class DuelAnnouncer implements DuelAudioApi {
   }
 
   announceFighter(id: FighterId): void {
-    this.call({ steps: [{ line: duelFighterLine(id) }], priority: DUEL_PRIORITY.select });
+    this.call({ steps: [{ line: duelFighterLine(id) }], priority: DUEL_PRIORITY.select, lobbyOnly: true });
   }
 
   announceStage(id: StockStageId): void {
-    this.call({ steps: [{ line: duelStageLine(id) }], priority: DUEL_PRIORITY.select });
+    this.call({ steps: [{ line: duelStageLine(id) }], priority: DUEL_PRIORITY.select, lobbyOnly: true });
+  }
+
+  announceVersus(p1: FighterId, p2: FighterId, stage?: StockStageId): void {
+    const key = `${p1}|${p2}|${stage ?? ''}`, now = performance.now();
+    if (key === this.lastVersus.key && now - this.lastVersus.at < VERSUS_REPEAT_MS) return;
+    this.lastVersus = { key, at: now };
+    this.call(versusCall(p1, p2, stage));
   }
 
   /* ---------------- the moments ---------------- */
@@ -103,7 +119,9 @@ export class DuelAnnouncer implements DuelAudioApi {
     if (next.phase === 'lobby' && this.lobby?.phase !== 'lobby') this.preload(['select']);
     if (next.phase === 'loading' || next.phase === 'playing') this.preload(['match', 'result']);
     const calls = lobbyCalls(this.lobby, next);
-    if (calls.length) this.call({ steps: calls.flatMap((c) => c.steps), priority: Math.max(...calls.map((c) => c.priority)) });
+    if (calls.length) this.call({ steps: calls.flatMap((c) => c.steps), priority: Math.max(...calls.map((c) => c.priority)), lobbyOnly: true });
+    // READY pressed: the VS card is up while the stage builds.
+    if (next.phase === 'loading' && this.lobby?.phase === 'lobby') this.announceVersus(next.seats[0].fighter, next.seats[1].fighter, next.stage);
     // Leaving the Duel: the cabinet goes quiet.
     if (next.phase === 'idle') this.stop();
     this.lobby = next.phase === 'idle' ? null : next;
@@ -120,8 +138,7 @@ export class DuelAnnouncer implements DuelAudioApi {
     if (!arena || !match) return;
     // The first countdown beat after a finished match opens the rematch.
     const rematch = beat.state === 'countdown' && this.finished;
-    if (beat.state !== 'finished') this.finished = false;
-    else this.finished = true;
+    this.finished = beat.state === 'finished';
     const winner = beat.winner !== null ? arena.fighterId(beat.winner) : null;
     const call = beatCall(beat, { winner, timeUp: match.remainingTicks <= 0, rematch });
     if (call) this.call(call);
@@ -140,7 +157,7 @@ export class DuelAnnouncer implements DuelAudioApi {
     // The moment's own sound always plays; the voice may not.
     const first = call.steps[0];
     if (first?.sfx) this.sfx(first.sfx);
-    if (!call.steps.some((s) => s.line) || document.hidden || !this.host.streamContext()) return;
+    if (!call.steps.some((s) => s.line) || document.hidden || !this.host.streamContext() || this.closedLobby(call)) return;
     const current = this.speaking;
     if (current) {
       if (call.priority < current.call.priority) return;
@@ -148,70 +165,98 @@ export class DuelAnnouncer implements DuelAudioApi {
       if (call.steps.length === 1 && current.call.steps.length === 1 && call.steps[0].line === current.call.steps[0].line && !call.steps[0].sfx) return;
       this.cut();
     }
-    const me: Speaking = { call, cancelled: false, node: null, gain: null, entry: null };
+    const me: Speaking = { call, cancelled: false, scheduled: [] };
     this.speaking = me;
-    void this.run(me);
-  }
-
-  private async run(me: Speaking): Promise<void> {
-    const steps = me.call.steps;
-    for (let i = 0; i < steps.length && !me.cancelled; i++) {
-      const step = steps[i];
-      if (i > 0) {
-        await this.wait(LINE_GAP_MS);
-        if (me.cancelled) break;
-        if (step.sfx) this.sfx(step.sfx);
-      }
-      if (step.line) await this.play(me, step.line);
-    }
-    if (this.speaking === me) {
-      this.speaking = null;
-      this.duck(false);
-    }
-  }
-
-  /** One line to its end (or its cut). False when it could not start in time. */
-  private async play(me: Speaking, line: string): Promise<boolean> {
-    const ac = this.host.streamContext(), bus = this.host.streamBus('voice');
-    if (!ac || !bus || !this.clips[line]) return false;
-    const asked = performance.now();
-    const buffer = await this.buffer(ac, line);
-    if (!buffer || me.cancelled || performance.now() - asked > STALE_MS) return false;
-    // The select screen's calls belong to the lobby: once the match is loading they are not said.
-    if (LINE_GROUP.get(line) === 'select' && this.ctx.versus && this.ctx.versus.phase !== 'lobby') return false;
-    const node = ac.createBufferSource();
-    node.buffer = buffer;
-    const gain = ac.createGain();
-    node.connect(gain);
-    gain.connect(bus);
-    const entry: SaidLine = { line, at: Math.round(performance.now()) };
-    me.node = node; me.gain = gain; me.entry = entry;
-    this.log(this.said, entry);
-    this.duck(true);
-    return new Promise<boolean>((resolve) => {
-      node.onended = () => {
-        node.disconnect(); gain.disconnect();
-        entry.ended ??= Math.round(performance.now());
-        if (me.node === node) { me.node = null; me.gain = null; }
-        resolve(true);
-      };
-      node.start();
+    const lines = call.steps.flatMap((s) => (s.line && this.clips[s.line] ? [s.line] : []));
+    if (lines.every((l) => this.decoded.has(l))) { this.schedule(me); return; }
+    // Still loading (a cold page): lay the call down once its clips are in, if its moment has not passed.
+    const ac = this.host.streamContext()!, asked = performance.now();
+    void Promise.all(lines.map((l) => this.buffer(ac, l))).then(() => {
+      if (me.cancelled || this.speaking !== me) return;
+      if (performance.now() - asked > STALE_MS || this.closedLobby(call)) { this.finish(me); return; }
+      this.schedule(me);
     });
   }
 
-  /** Stop the call in progress quickly (a newer call has the floor). */
+  /** A select-screen call whose lobby has closed (the match is loading): not made. */
+  private closedLobby(call: DuelCall): boolean {
+    return call.lobbyOnly === true && !!this.ctx.versus && this.ctx.versus.phase !== 'lobby';
+  }
+
+  /** Lay every line (and every later step's sound) of the call on the audio clock, now. */
+  private schedule(me: Speaking): void {
+    const ac = this.host.streamContext(), bus = this.host.streamBus('voice');
+    if (!ac || !bus) { this.finish(me); return; }
+    const t0 = ac.currentTime + 0.01, nowMs = performance.now();
+    const clockToMs = (t: number): number => Math.round(nowMs + (t - ac.currentTime) * 1000);
+    let prevEnd = t0;
+    me.call.steps.forEach((step, i) => {
+      const start = step.atMs !== undefined ? t0 + step.atMs / 1000 : i === 0 ? t0 : prevEnd + LINE_GAP_MS / 1000;
+      if (i > 0 && step.sfx) this.sfx(step.sfx, Math.max(0, start - ac.currentTime));
+      const buffer = step.line ? this.decoded.get(step.line) : undefined;
+      if (!step.line || !buffer) { prevEnd = Math.max(prevEnd, start); return; }
+      // A line with its own beat cuts the one before it short rather than waiting for it.
+      const last = me.scheduled.at(-1);
+      if (last && last.end > start) {
+        last.gain.gain.setValueAtTime(1, Math.max(last.start, start - CUT_FADE_S));
+        last.gain.gain.linearRampToValueAtTime(0, start);
+        last.node.stop(start + 0.01);
+        last.end = start;
+      }
+      const node = ac.createBufferSource();
+      node.buffer = buffer;
+      const gain = ac.createGain();
+      node.connect(gain);
+      gain.connect(bus);
+      const entry: SaidLine = { line: step.line, at: clockToMs(start) };
+      const s: Scheduled = { node, gain, entry, start, end: start + buffer.duration };
+      node.onended = () => { node.disconnect(); gain.disconnect(); entry.ended ??= Math.round(performance.now()); this.ended(me); };
+      node.start(start);
+      me.scheduled.push(s);
+      this.log(this.said, entry);
+      prevEnd = s.end;
+    });
+    if (me.scheduled.length === 0) { this.finish(me); return; }
+    this.duck(true);
+  }
+
+  /** A line of the call ended: the call is over once the last of its lines has. */
+  private ended(me: Speaking): void {
+    if (me.scheduled.every((s) => s.entry.ended !== undefined)) this.finish(me);
+  }
+
+  private finish(me: Speaking): void {
+    if (this.speaking !== me) return;
+    this.speaking = null;
+    this.duck(false);
+  }
+
+  /** Stop the call in progress quickly (a newer call has the floor); its lines not yet begun are never said. */
   private cut(): void {
     const s = this.speaking;
     if (!s) return;
     s.cancelled = true;
     this.speaking = null;
     const ac = this.host.streamContext();
-    if (s.entry && s.node) { s.entry.cut = true; s.entry.ended = Math.round(performance.now()); }
-    if (s.node && s.gain && ac) {
-      const t = ac.currentTime;
-      s.gain.gain.setValueAtTime(s.gain.gain.value, t);
-      s.gain.gain.linearRampToValueAtTime(0, t + CUT_FADE_S);
-      try { s.node.stop(t + CUT_FADE_S + 0.01); } catch { /* already stopped */ }
+    const t = ac?.currentTime ?? 0;
+    for (const line of s.scheduled) {
+      if (line.entry.ended !== undefined) continue;
+      if (line.start > t) {
+        // Never begun: it was not said.
+        const i = this.said.indexOf(line.entry);
+        if (i >= 0) this.said.splice(i, 1);
+        line.entry.ended = line.entry.at;
+        try { line.node.stop(); } catch { /* not started */ }
+        continue;
+      }
+      line.entry.cut = true;
+      line.entry.ended = Math.round(performance.now());
+      try {
+        line.gain.gain.cancelScheduledValues(t);
+        line.gain.gain.setValueAtTime(line.gain.gain.value, t);
+        line.gain.gain.linearRampToValueAtTime(0, t + CUT_FADE_S);
+        line.node.stop(t + CUT_FADE_S + 0.01);
+      } catch { /* already stopped */ }
     }
   }
 
@@ -220,9 +265,9 @@ export class DuelAnnouncer implements DuelAudioApi {
     this.duck(false);
   }
 
-  private sfx(id: SfxId): void {
-    this.ctx.audio.sfx(id);
-    this.log(this.sounds, { sfx: id, at: Math.round(performance.now()) });
+  private sfx(id: SfxId, delay = 0): void {
+    this.ctx.audio.sfx(id, undefined, undefined, delay > 0 ? { delay } : undefined);
+    this.log(this.sounds, { sfx: id, at: Math.round(performance.now() + delay * 1000) });
   }
 
   private preload(groups: readonly DuelLineGroup[]): void {
@@ -238,6 +283,7 @@ export class DuelAnnouncer implements DuelAudioApi {
       p = fetch(`${import.meta.env.BASE_URL}${clip.url}`)
         .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
         .then((bytes) => ac.decodeAudioData(bytes))
+        .then((decoded) => { this.decoded.set(line, decoded); return decoded; })
         .catch(() => { this.buffers.delete(line); return null; });
       this.buffers.set(line, p);
     }
@@ -249,10 +295,6 @@ export class DuelAnnouncer implements DuelAudioApi {
     this.talking = on;
     if (on) this.host.talkDuck(true);
     else this.later(DUCK_RELEASE_MS, () => { if (!this.speaking) this.host.talkDuck(false); else this.talking = true; });
-  }
-
-  private wait(ms: number): Promise<void> {
-    return new Promise((resolve) => this.later(ms, resolve));
   }
 
   private later(ms: number, fn: () => void): void {
@@ -275,14 +317,18 @@ export class DuelAnnouncer implements DuelAudioApi {
   /* ---------------- probing ---------------- */
 
   debugSnapshot(): Record<string, unknown> {
+    const ac = this.host.streamContext(), t = ac?.currentTime ?? 0;
+    const now = this.speaking?.scheduled.find((s) => s.entry.ended === undefined && s.start <= t && t < s.end);
     return {
-      speaking: this.speaking?.entry && !this.speaking.entry.ended ? this.speaking.entry.line : null,
-      said: this.said.map((s) => ({ ...s })),
+      speaking: now?.entry.line ?? null,
+      busy: this.speaking !== null,
+      said: this.said.map((s) => ({ ...s, line: s.line, group: LINE_GROUP.get(s.line) })),
       sounds: this.sounds.map((s) => ({ ...s })),
       talking: this.talking,
       lobby: this.lobby?.phase ?? null,
       clips: Object.keys(this.clips).length,
       buffers: this.buffers.size,
+      decoded: this.decoded.size,
     };
   }
 }

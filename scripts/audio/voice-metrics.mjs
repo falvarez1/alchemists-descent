@@ -112,6 +112,13 @@ export function similarity(a, b) {
 export function heardAsAsked(asked, heard, names = [], nameSimilarity = 0.6, homophones = {}) {
   const a = words(asked), h = words(heard);
   const nameSet = new Set(names.flatMap((n) => words(n)));
+  // A compound said as written but spelled apart or together ("Redline" heard as "Red line", "Kiln Heart"
+  // as "Kilnhart": heart and hart sound alike) is the same words: the letters joined, an invented name's
+  // within 85%. Never when the voice SPELLED it (single letters, "K-E-S-T"): that is not the word.
+  const joinedA = a.join(''), joinedH = h.join('');
+  if (!h.some((w) => w.length === 1) && (joinedA === joinedH || (a.every((w) => nameSet.has(w)) && similarity(joinedA, joinedH) >= 0.85))) {
+    return { wer: 0, ok: true, closeness: similarity(joinedA, joinedH), misses: [], heardWords: h };
+  }
   const cost = (x, y) => {
     if (x === y || homophones[x]?.includes(y)) return 0;
     if (nameSet.has(x) && similarity(x, y) >= nameSimilarity) return 0;

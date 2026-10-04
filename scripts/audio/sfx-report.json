@@ -14932,21 +14932,22 @@
  "duel.ui.pause": {
   "pack": "arena",
   "cat": "ui",
-  "prompt": "One arcade fighting game pause sound. A short bright synth chime with a quick downward pitch sweep, crisp and clean like a cabinet freezing the action. No voice, no music melody. One chime only.",
-  "dur": 0.6,
+  "prompt": "One arcade fighting game pause stab. Instant hard transient at full level from the very first millisecond, no fade-in, no build-up, no whoosh before it. A bright crunchy synth stab that snaps into a quick downward chirp, dry and short. No voice, no music melody, no reverb.",
+  "dur": 0.5,
   "takes": [
    {
     "take": 1,
     "variant": 0,
-    "rawSec": 0.6,
-    "peakDb": 3.2,
+    "rawSec": 0.48,
+    "peakDb": 3.1,
     "onsetSec": 0,
-    "pinnedPct": 2.86,
-    "gainDb": -12.7,
+    "pinnedPct": 0.45,
+    "attackMs": 20,
+    "gainDb": -5.8,
     "limitDb": 0,
-    "sec": 0.45,
+    "sec": 0.3,
     "truncated": false,
-    "bytes": 4223
+    "bytes": 2969
    }
   ]
  },
@@ -14963,6 +14964,7 @@
     "peakDb": 2.7,
     "onsetSec": 0,
     "pinnedPct": 0.07,
+    "attackMs": 0,
     "gainDb": -8.4,
     "limitDb": 0,
     "sec": 0.35,
@@ -14984,6 +14986,7 @@
     "peakDb": -4.9,
     "onsetSec": 0,
     "pinnedPct": 0,
+    "attackMs": 0,
     "gainDb": 1.7,
     "limitDb": 0,
     "sec": 0.28,
@@ -14995,84 +14998,88 @@
  "duel.stage": {
   "pack": "arena",
   "cat": "stinger",
-  "prompt": "One arcade fighting game stage select sound. A fast deep whoosh landing on a solid heavy impact with a short metallic ring, cinematic but short and dry. No voice, no music.",
-  "dur": 1,
+  "prompt": "One arcade fighting game stage-select slam. Instant hard transient at full level from the very first millisecond, no fade-in, no build-up, no whoosh before it. A heavy crunchy impact with a bright metallic ring and a short sizzling tail, dry. No voice, no music.",
+  "dur": 0.8,
   "takes": [
    {
     "take": 1,
-    "variant": 0,
-    "rawSec": 1,
-    "peakDb": 4.1,
+    "variant": 1,
+    "rawSec": 0.8,
+    "peakDb": 3.6,
     "onsetSec": 0,
-    "pinnedPct": 4.68,
-    "gainDb": -7.8,
+    "pinnedPct": 2.36,
+    "attackMs": 30,
+    "gainDb": -11,
     "limitDb": 0,
-    "sec": 0.69,
+    "sec": 0.55,
     "truncated": false,
-    "bytes": 6104
+    "bytes": 5059
    }
   ]
  },
  "duel.join": {
   "pack": "arena",
   "cat": "stinger",
-  "prompt": "One classic arcade coin insert sound. A metal coin dropping into a cabinet coin slot with a bright electronic credit chime, crisp, punchy and nostalgic. No voice, no music, no crowd.",
-  "dur": 1,
+  "prompt": "One arcade coin-in sound. Instant hard transient at full level from the very first millisecond, no fade-in, no build-up, no whoosh before it. A bright metallic coin clink straight into a punchy electronic credit blip, crisp, loud and immediate, short. No voice, no music, no crowd.",
+  "dur": 0.8,
   "takes": [
    {
     "take": 1,
     "variant": 0,
-    "rawSec": 1,
-    "peakDb": 3.4,
+    "rawSec": 0.8,
+    "peakDb": -7.8,
     "onsetSec": 0,
-    "pinnedPct": 0.1,
-    "gainDb": -6.3,
+    "pinnedPct": 0,
+    "attackMs": 0,
+    "gainDb": -0.9,
     "limitDb": 0,
-    "sec": 0.86,
+    "sec": 0.7,
     "truncated": false,
-    "bytes": 7358
+    "bytes": 6104
    }
   ]
  },
  "duel.ready": {
   "pack": "arena",
   "cat": "stinger",
-  "prompt": "One heavy arcade fighting game character lock-in sound, the moment a player confirms their fighter. A deep punchy metallic slam layered with a bright electric shimmer and a short whoosh, powerful and satisfying, dry with a short tail. No voice, no music.",
-  "dur": 1,
+  "prompt": "One crunchy arcade fighting game character lock-in hit. Instant hard transient at full level from the very first millisecond, no fade-in, no build-up, no whoosh before it. A heavy punchy metallic slam with a bright electric crack on top, tight, dry and short, plenty of headroom. No voice, no music.",
+  "dur": 0.8,
   "takes": [
    {
     "take": 1,
-    "variant": 1,
-    "rawSec": 1,
-    "peakDb": 3.1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": 3.8,
     "onsetSec": 0,
-    "pinnedPct": 1.55,
-    "gainDb": -7.3,
+    "pinnedPct": 1.35,
+    "attackMs": 30,
+    "gainDb": -9.9,
     "limitDb": 0,
-    "sec": 0.8,
+    "sec": 0.55,
     "truncated": false,
-    "bytes": 6940
+    "bytes": 5059
    }
   ]
  },
  "duel.ui.move": {
   "pack": "arena",
   "cat": "ui",
-  "prompt": "One very short bright arcade menu cursor blip for a fighting game character select screen. A clean synthetic square-wave tick with a tiny metallic sparkle on top, crisp and dry. No voice, no music, no reverb. A single blip only.",
+  "prompt": "One ultra-short bright arcade menu cursor tick. Instant hard transient at full level from the very first millisecond, no fade-in, no build-up, no whoosh before it. A crisp crunchy square-wave click with a tiny bright metallic sparkle, dry, about a tenth of a second. No voice, no music, no reverb.",
   "dur": 0.5,
   "takes": [
    {
     "take": 1,
-    "variant": 2,
+    "variant": 0,
     "rawSec": 0.48,
-    "peakDb": 2,
+    "peakDb": -3.5,
     "onsetSec": 0,
-    "pinnedPct": 0.34,
-    "gainDb": -12.8,
+    "pinnedPct": 0,
+    "attackMs": 0,
+    "gainDb": -3.1,
     "limitDb": 0,
-    "sec": 0.14,
-    "truncated": true,
-    "bytes": 1715
+    "sec": 0.1,
+    "truncated": false,
+    "bytes": 1297
    }
   ]
  },
@@ -15089,6 +15096,7 @@
     "peakDb": 2.6,
     "onsetSec": 0,
     "pinnedPct": 0.04,
+    "attackMs": 0,
     "gainDb": -5.6,
     "limitDb": 0,
     "sec": 0.41,
@@ -15100,17 +15108,18 @@
  "duel.fight": {
   "pack": "arena",
   "cat": "stinger",
-  "prompt": "One explosive fighting game round start sting for the moment the fight begins. A huge cinematic impact: deep boom, crashing cymbal and a bright electric burst, adrenaline pumping, short powerful decay. No voice, no melody, no crowd.",
-  "dur": 1.5,
+  "prompt": "One explosive arcade fighting game round start sting for the instant the fight begins. Instant hard transient at full level from the very first millisecond, no fade-in, no build-up, no whoosh before it. A crunchy full-force blast: bright electric crack, crashing cymbal and a deep punch, then a short sizzling tail. Adrenaline, plenty of headroom. No voice, no melody, no crowd.",
+  "dur": 1,
   "takes": [
    {
     "take": 1,
     "variant": 0,
-    "rawSec": 1.48,
-    "peakDb": 2.3,
+    "rawSec": 1,
+    "peakDb": 2.9,
     "onsetSec": 0,
-    "pinnedPct": 0.89,
-    "gainDb": -5.1,
+    "pinnedPct": 0.37,
+    "attackMs": 10,
+    "gainDb": -7.7,
     "limitDb": 0,
     "sec": 0.75,
     "truncated": false,
@@ -15131,6 +15140,7 @@
     "peakDb": 2.7,
     "onsetSec": 0,
     "pinnedPct": 0.48,
+    "attackMs": 30,
     "gainDb": -4.8,
     "limitDb": 0,
     "sec": 1.4,
@@ -15142,42 +15152,66 @@
  "duel.results": {
   "pack": "arena",
   "cat": "stinger",
-  "prompt": "One arcade results screen reveal sound as the winner card slams onto the screen. A quick rising whoosh into a crisp metallic stamp and a bright shimmering sparkle, celebratory and short. No voice, no music melody.",
-  "dur": 1.2,
+  "prompt": "One arcade winner stamp as the winner banner slams onto the screen. Instant hard transient at full level from the very first millisecond, no fade-in, no build-up, no whoosh before it. A crunchy metallic stamp with a bright sparkling shimmer after it, short. No voice, no music melody.",
+  "dur": 0.8,
   "takes": [
    {
     "take": 1,
-    "variant": 0,
-    "rawSec": 1.2,
-    "peakDb": 6.1,
-    "onsetSec": 0.251,
-    "pinnedPct": 1.59,
+    "variant": 1,
+    "rawSec": 0.8,
+    "peakDb": 3.1,
+    "onsetSec": 0.034,
+    "pinnedPct": 0.32,
+    "attackMs": 30,
     "gainDb": -7.4,
     "limitDb": 0,
-    "sec": 0.613,
+    "sec": 0.467,
     "truncated": false,
-    "bytes": 5477
+    "bytes": 4223
    }
   ]
  },
  "duel.ko": {
   "pack": "arena",
   "cat": "stinger",
-  "prompt": "One massive fighting game knockout blast for a fighter sent flying out of the arena. A clean enormous cinematic impact: a deep round boom, a bright electric crack and a short shower of scattering metal debris, punchy with plenty of headroom, dramatic decay. No voice, no music, no crowd.",
-  "dur": 2,
+  "prompt": "One massive crunchy arcade knockout blast for a fighter sent flying out of the arena. Instant hard transient at full level from the very first millisecond, no fade-in, no build-up, no whoosh before it. A bright shattering crack over a deep punchy boom with scattering metal debris, then a quick sizzling decay, plenty of headroom. No voice, no music, no crowd.",
+  "dur": 1.2,
   "takes": [
    {
     "take": 1,
     "variant": 0,
-    "rawSec": 2,
-    "peakDb": -0.8,
+    "rawSec": 1.2,
+    "peakDb": 2,
     "onsetSec": 0,
-    "pinnedPct": 0,
-    "gainDb": -1.6,
-    "limitDb": 0,
-    "sec": 1.11,
+    "pinnedPct": 0.02,
+    "attackMs": 10,
+    "gainDb": -1.2,
+    "limitDb": -1.8,
+    "sec": 0.57,
     "truncated": false,
-    "bytes": 9448
+    "bytes": 5059
+   }
+  ]
+ },
+ "duel.super": {
+  "pack": "arena",
+  "cat": "stinger",
+  "prompt": "One arcade fighting game super move sting as a fighter unleashes an ultimate. Instant hard transient at full level from the very first millisecond, no fade-in, no build-up, no whoosh before it. A crunchy whoosh-hit: a bright electric impact that is the loudest moment of the sound, then a quieter fast rising zap tail, short and explosive, plenty of headroom. No voice, no music, no crowd.",
+  "dur": 0.8,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.8,
+    "peakDb": 1.8,
+    "onsetSec": 0,
+    "pinnedPct": 0.03,
+    "attackMs": 0,
+    "gainDb": -4.9,
+    "limitDb": 0,
+    "sec": 0.57,
+    "truncated": false,
+    "bytes": 5059
    }
   ]
  }

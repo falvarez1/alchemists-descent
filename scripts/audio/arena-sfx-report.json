@@ -36,12 +36,13 @@
     "id": "arena.hit.heavy",
     "take": 1,
     "model": "eleven_text_to_sound_v2",
-    "cacheKey": "e12e05eee28c4f8d38f68da17c28f103f7c3a7ca",
+    "variant": 5,
+    "cacheKey": "a029bf319213f3f2cebf1b722cda54ac222e79e8",
     "duration": 0.42,
-    "lufs": -15,
-    "truePeak": -3.3,
+    "lufs": -19.5,
+    "truePeak": -3.5,
     "bytes": 9971,
-    "sha256": "bcda85761369a0074e78db6a15236f02abdb93ccf7bc52c86685872a10da9441"
+    "sha256": "67caa564128ec1822321eb59ac4813f763171201f673fddce5a44430b2b07252"
   },
   {
     "id": "arena.hit.heavy",
@@ -58,12 +59,13 @@
     "id": "arena.hit.heavy",
     "take": 3,
     "model": "eleven_text_to_sound_v2",
-    "cacheKey": "8524086c0d69288229de59a076bbba5a72ca354f",
+    "variant": 8,
+    "cacheKey": "b5a6917bbce17d45e6185f1620fe87667775ae74",
     "duration": 0.42,
-    "lufs": -17.5,
-    "truePeak": -3.7,
+    "lufs": -19.6,
+    "truePeak": -3.3,
     "bytes": 9971,
-    "sha256": "1ac39b7717868723af2aa5cb43ef303705173823ce0ee599e7e6152d1ad8ec63"
+    "sha256": "972ac3fbe60719180b4386404b8f5362554d980191c8e4ae1b4217c3157184f2"
   },
   {
     "id": "arena.shield.block",

@@ -118,6 +118,7 @@ export const SFX_CUES = {
   'duel.ko': c('arena', 'stinger', { gain: 1.7, cooldownMs: 300 }),
   'duel.game': c('arena', 'stinger', { gain: 1.6, cooldownMs: 800 }),
   'duel.results': c('arena', 'stinger', { gain: 1, cooldownMs: 800 }),
+  'duel.super': c('arena', 'stinger', { gain: 1.3, cooldownMs: 250 }),
   // ------------------------------------------------------------------ UI
   'ui.hover': ui({ gain: 0.31, cooldownMs: 60, voices: 1 }),
   'ui.click': ui({ gain: 0.7 }),

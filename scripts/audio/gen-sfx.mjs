@@ -82,7 +82,7 @@ const specOf = (id) => {
   return {
     id, pack: cue.pack, cat: cue.cat, loop, bed,
     prompt: p.p, dur: Math.max(0.5, Math.min(30, p.d)), takes: p.t ?? 2, influence: p.i ?? 0.55,
-    soft: p.soft === true, max: p.max, stereo: p.stereo === true,
+    soft: p.soft === true, fast: p.fast === true, max: p.max, stereo: p.stereo === true,
   };
 };
 const outDirOf = (spec) => join(ASSET_ROOT, spec.pack.startsWith('amb') ? 'ambience' : 'sfx', spec.pack);
@@ -292,6 +292,23 @@ function fadeOut(s, ch, frames) {
   }
 }
 
+/**
+ * A `fast` cue (the Duel's cabinet: it hits at once, it never swells) reaches its loudest 10 ms within
+ * this of its onset, or the take is refused.
+ */
+const FAST_ATTACK_MS = 40;
+
+/** Onset (the first 10 ms window over 3% of the loudest) to the loudest 10 ms window, in ms. */
+function attackMs(s, ch) {
+  const win = Math.round(SR * 0.01), rms = [];
+  for (let f = 0; (f + win) * ch <= s.length; f += win) {
+    let e = 0; for (let i = f * ch; i < (f + win) * ch; i++) e += s[i] * s[i];
+    rms.push(Math.sqrt(e / (win * ch)));
+  }
+  const peak = Math.max(...rms), at = rms.indexOf(peak), onset = rms.findIndex((v) => v > peak * 0.03);
+  return (at - Math.max(0, onset)) * 10;
+}
+
 const TARGET = {
   oneShot: -15, // K-weighted loudest 100 ms (≈ short-term "punch" LUFS)
   loop: -21, // integrated, whole loop
@@ -343,6 +360,10 @@ function master(spec, rawFile) {
     fadeOut(out, ch, truncated ? Math.min(Math.round(SR * 0.15), Math.round(frames * 0.2)) : Math.min(Math.round(SR * 0.025), Math.round(frames * 0.25)));
   }
   if (frames / SR < 0.025) return { ok: false, reason: `too short after trim (${(frames / SR).toFixed(3)}s)`, ch, stats };
+  if (spec.fast) {
+    stats.attackMs = attackMs(out, ch);
+    if (stats.attackMs > FAST_ATTACK_MS) return { ok: false, reason: `slow attack (${stats.attackMs} ms to its peak)`, ch, stats };
+  }
   const kw = kWeight(out, ch);
   const loud = maxWindowLoudness(kw, ch, 100);
   if (loud < -52) return { ok: false, reason: `near-silent (${loud.toFixed(1)} LUFS)`, ch, stats };

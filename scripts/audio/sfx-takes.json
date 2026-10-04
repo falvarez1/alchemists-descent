@@ -4175,15 +4175,12 @@
   "failed": []
  },
  "duel.ui.move": {
-  "hash": "7d68f8a7871c",
+  "hash": "413e020c3aa1",
   "variants": [
-   2
+   0
   ],
   "rejected": [],
-  "failed": [
-   0,
-   1
-  ]
+  "failed": []
  },
  "duel.ui.confirm": {
   "hash": "e04fceca7f0c",
@@ -4202,7 +4199,7 @@
   "failed": []
  },
  "duel.ui.pause": {
-  "hash": "196f55b92fbe",
+  "hash": "0ed48f313439",
   "variants": [
    0
   ],
@@ -4210,17 +4207,15 @@
   "failed": []
  },
  "duel.ready": {
-  "hash": "9ef18d01357c",
+  "hash": "52ccb8a7fccc",
   "variants": [
-   1
+   0
   ],
   "rejected": [],
-  "failed": [
-   0
-  ]
+  "failed": []
  },
  "duel.join": {
-  "hash": "bb7071a80ea7",
+  "hash": "c1bb3c54997c",
   "variants": [
    0
   ],
@@ -4228,12 +4223,14 @@
   "failed": []
  },
  "duel.stage": {
-  "hash": "fa7c4d8d96ab",
+  "hash": "1204a7f692c3",
   "variants": [
-   0
+   1
   ],
   "rejected": [],
-  "failed": []
+  "failed": [
+   0
+  ]
  },
  "duel.count": {
   "hash": "20d9e257d445",
@@ -4244,7 +4241,7 @@
   "failed": []
  },
  "duel.fight": {
-  "hash": "eb5cd765aa02",
+  "hash": "dae60a09abb4",
   "variants": [
    0
   ],
@@ -4252,7 +4249,7 @@
   "failed": []
  },
  "duel.ko": {
-  "hash": "11a87296a91f",
+  "hash": "f21e10ca276e",
   "variants": [
    0
   ],
@@ -4268,7 +4265,17 @@
   "failed": []
  },
  "duel.results": {
-  "hash": "bfce7556ce9b",
+  "hash": "187115ebee0a",
+  "variants": [
+   1
+  ],
+  "rejected": [],
+  "failed": [
+   0
+  ]
+ },
+ "duel.super": {
+  "hash": "50c3ae25b669",
   "variants": [
    0
   ],

@@ -11,10 +11,10 @@ import { installUiSounds } from '@/audio/UiSounds';
 import { installAudioDirector } from '@/audio/AudioDirector';
 import type { SfxAudioEngine } from '@/audio/SfxEngine';
 import { DuelAnnouncer } from '@/audio/DuelAnnouncer';
-import { beatCall, countCall, downCall, lobbyCalls, type LobbyView } from '@/audio/duelCalls';
+import { RESULT_NAME_MS, beatCall, countCall, downCall, lobbyCalls, ultimateCall, versusCall, type LobbyView } from '@/audio/duelCalls';
 import { arrivalLine, narrationKey } from '@/audio/narrationText';
 import { DUEL_CLIP_LINES, DUEL_CLIPS } from '@/content/audio/duelAnnouncer.generated';
-import { DUEL_FIGHTER_NAMES, DUEL_LINES, DUEL_SHORT_NAMES, DUEL_STAGE_NAMES } from '@/content/audio/duelLines';
+import { DUEL_FIGHTER_NAMES, DUEL_LINES, DUEL_SHORT_NAMES, DUEL_STAGE_NAMES, DUEL_ULTIMATE_NAMES } from '@/content/audio/duelLines';
 import { FIGHTER_DEFS, FIGHTER_ORDER, type FighterId } from '@/content/fighters';
 import { STOCK_STAGES, STOCK_STAGE_ORDER } from '@/config/stockStage';
 import { duelShortName } from '@/ui/duelCopy';
@@ -242,7 +242,7 @@ describe('what the cabinet calls', () => {
 
   it('ends with GAME (or TIME) and the winner, or a draw', () => {
     const won = beatCall({ state: 'finished', count: 0, winner: 1, reason: 'stocks' }, { winner: 'father-thorne', timeUp: false, rematch: false });
-    expect(won?.steps).toEqual([{ sfx: 'duel.game', line: 'game' }, { sfx: 'duel.results', line: 'wins.father-thorne' }]);
+    expect(won?.steps).toEqual([{ sfx: 'duel.game', line: 'game' }, { sfx: 'duel.results', line: 'wins.father-thorne', atMs: RESULT_NAME_MS }]);
     const time = beatCall({ state: 'finished', count: 0, winner: 0, reason: 'timeout' }, { winner: 'kest-rel', timeUp: true, rematch: false });
     expect(time?.steps[0].line).toBe('time');
     const draw = beatCall({ state: 'finished', count: 0, winner: null, reason: 'draw' }, { winner: null, timeUp: false, rematch: false });
@@ -272,6 +272,7 @@ describe('the announcer\'s recordings', () => {
     for (const id of FIGHTER_ORDER) {
       expect(DUEL_FIGHTER_NAMES[id]).toBe(FIGHTER_DEFS[id].name);
       expect(DUEL_SHORT_NAMES[id]).toBe(duelShortName(id));
+      expect(DUEL_ULTIMATE_NAMES[id]).toBe(FIGHTER_DEFS[id].ultimate.name);
     }
     for (const id of STOCK_STAGE_ORDER) expect(DUEL_STAGE_NAMES[id]).toBe(STOCK_STAGES[id].name);
   });
@@ -281,10 +282,12 @@ describe('the announcer at work', () => {
   beforeEach(() => { vi.useFakeTimers(); stubDom(); });
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
+  type Said = { line: string; at: number; cut?: boolean };
+
   function rig() {
     const events = new EventBus();
     const ac = new FakeAudioContext();
-    Object.assign(ac, { decodeAudioData: async () => ({ duration: 1 }) });
+    Object.assign(ac, { decodeAudioData: async () => ({ duration: 0.8 }) });
     vi.stubGlobal('fetch', async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }));
     const sfx: string[] = [];
     const match = { state: 'countdown', countdown: 120, remainingTicks: 21600, winner: null, reason: null, fighters: [{ stocks: 3 }, { stocks: 3 }] };
@@ -295,76 +298,109 @@ describe('the announcer at work', () => {
     });
     const h = host(ac);
     const announcer = new DuelAnnouncer(ctx, h);
-    const said = () => (announcer.debugSnapshot().said as Array<{ line: string; cut?: boolean }>);
-    /** Let a playing line end (the fake never ends a source by itself). */
-    const end = async () => { for (const s of ac.sources) s.onended?.(); await vi.advanceTimersByTimeAsync(1); };
-    return { events, ac, ctx, sfx, match, announcer, said, end, h };
+    const said = (): Said[] => announcer.debugSnapshot().said as Said[];
+    /** Time passes on both clocks (the fake audio clock never moves by itself). */
+    const wait = async (ms: number) => { await vi.advanceTimersByTimeAsync(ms); ac.currentTime += ms / 1000; };
+    /** Let every scheduled line end (the fake never ends a source by itself). */
+    const end = async () => { ac.currentTime += 3; for (const s of ac.sources) s.onended?.(); await vi.advanceTimersByTimeAsync(1); };
+    return { events, ac, ctx, sfx, match, announcer, said, wait, end, h };
   }
 
   it('says the select screen and cuts a name when the player cycles on', async () => {
-    const { events, ctx, said, announcer } = rig();
+    const { events, ctx, said, wait, announcer } = rig();
     ctx.versus.phase = 'lobby';
     events.emit('versusChanged');
-    await vi.advanceTimersByTimeAsync(10);
+    await wait(20);
     ctx.versus.seats[0].fighter = 'sable-fen';
     events.emit('versusChanged');
-    await vi.advanceTimersByTimeAsync(10);
+    await wait(20);
     ctx.versus.seats[0].fighter = 'mara-quell';
     events.emit('versusChanged');
-    await vi.advanceTimersByTimeAsync(10);
+    await wait(20);
     expect(said().map((s) => s.line)).toEqual(['choose', 'fighter.sable-fen', 'fighter.mara-quell']);
     expect(said().map((s) => !!s.cut)).toEqual([true, true, false]);
     announcer.dispose();
   });
 
-  it('calls the countdown, the fight, a ring-out on the last stock, and the result', async () => {
-    const { events, match, said, sfx, end, announcer, h } = rig();
+  it('lays the VS card on the audio clock at once as the match loads; the first count beat cuts the rest', async () => {
+    const { events, ctx, said, sfx, wait, announcer, match } = rig();
+    ctx.versus.phase = 'lobby';
+    ctx.versus.stage = 'kiln';
+    events.emit('versusChanged');
+    await wait(20); // the lobby's clips decode
+    ctx.versus.phase = 'loading';
+    events.emit('versusChanged');
+    // Scheduled synchronously, before the stage build can block the thread: every line already has its time.
+    const card = said().filter((s) => s.line !== 'choose');
+    expect(card.map((s) => s.line)).toEqual(['fighter.ilyra-voss', 'versus', 'fighter.brann-rook', 'stage.kiln']);
+    for (let i = 1; i < card.length; i++) expect(card[i].at).toBeGreaterThan(card[i - 1].at);
+    expect(sfx).toContain('duel.stage');
+    // The match starts while the card is still talking: "Three!" cuts it, and what had not begun was never said.
+    await wait(1500);
+    match.state = 'countdown';
+    events.emit('stockMatchBeat', { state: 'countdown', count: 3, winner: null, reason: null });
+    await wait(20);
+    const lines = said().map((s) => s.line);
+    expect(lines.at(-1)).toBe('count.3');
+    expect(lines).not.toContain('stage.kiln');
+    announcer.dispose();
+  });
+
+  it('calls the countdown, the fight, a ring-out on the last stock, an ultimate, and the result on the banner\'s beat', async () => {
+    const { events, match, said, sfx, wait, end, announcer, h } = rig();
     // A match start resets (twice: the rival joining, then the start); the countdown's first beat is the match's own.
     events.emit('arenaReset');
     events.emit('arenaReset');
-    await vi.advanceTimersByTimeAsync(10);
+    await wait(20);
     expect(said()).toEqual([]);
-    events.emit('stockMatchBeat', { state: 'countdown', count: 3, winner: null, reason: null });
-    await vi.advanceTimersByTimeAsync(10);
-    await end();
-    events.emit('stockMatchBeat', { state: 'countdown', count: 2, winner: null, reason: null });
-    await vi.advanceTimersByTimeAsync(10);
-    await end();
-    events.emit('stockMatchBeat', { state: 'countdown', count: 1, winner: null, reason: null });
-    await vi.advanceTimersByTimeAsync(10);
-    await end();
+    for (const count of [3, 2, 1]) {
+      events.emit('stockMatchBeat', { state: 'countdown', count, winner: null, reason: null });
+      await wait(20);
+      await end();
+    }
     match.state = 'fighting';
     events.emit('stockMatchBeat', { state: 'fighting', count: 0, winner: null, reason: null });
-    await vi.advanceTimersByTimeAsync(10);
+    await wait(20);
+    await end();
+    events.emit('stockUltimate', { slot: 0, fighter: 'ilyra-voss', name: 'Phoenix Draft' });
+    await wait(20);
     await end();
     match.fighters[1].stocks = 1;
     events.emit('fighterDown', { slot: 1, by: 0, source: 'ring-out', x: 0, y: 0 });
-    await vi.advanceTimersByTimeAsync(10);
-    await end();
-    await vi.advanceTimersByTimeAsync(300);
+    await wait(20);
     await end();
     match.state = 'finished';
     match.fighters[1].stocks = 0;
     events.emit('fighterDown', { slot: 1, by: 0, source: 'ring-out', x: 0, y: 0 });
     events.emit('stockMatchBeat', { state: 'finished', count: 0, winner: 0, reason: 'stocks' });
-    await vi.advanceTimersByTimeAsync(10);
-    await end();
-    await vi.advanceTimersByTimeAsync(300);
-    await end();
-    expect(said().map((s) => s.line)).toEqual(['count.3', 'count.2', 'count.1', 'fight', 'ring-out', 'last-stock', 'game', 'wins.ilyra-voss']);
-    expect(sfx).toEqual(['duel.count', 'duel.count', 'duel.count', 'duel.fight', 'duel.ko', 'duel.ko', 'duel.game', 'duel.results']);
+    await wait(20);
+    const lines = said().map((s) => s.line);
+    expect(lines).toEqual(['count.3', 'count.2', 'count.1', 'fight', 'ultimate.ilyra-voss', 'ring-out', 'last-stock', 'game', 'wins.ilyra-voss']);
+    expect(sfx).toEqual(['duel.count', 'duel.count', 'duel.count', 'duel.fight', 'duel.super', 'duel.ko', 'duel.ko', 'duel.game', 'duel.results']);
+    // The winner's name lands with the HUD's banner, RESULT_NAME_MS after GAME.
+    const game = said().find((s) => s.line === 'game')!, wins = said().find((s) => s.line === 'wins.ilyra-voss')!;
+    expect(wins.at - game.at).toBeGreaterThanOrEqual(RESULT_NAME_MS - 5);
+    expect(wins.at - game.at).toBeLessThanOrEqual(RESULT_NAME_MS + 5);
     // The score dips under the voice.
     expect(h.ducks[0]).toBe(true);
+    await end();
     // A rematch: its countdown's first beat is "Rematch!", then the numbers again.
     match.state = 'countdown';
     events.emit('arenaReset');
     events.emit('stockMatchBeat', { state: 'countdown', count: 3, winner: null, reason: null });
-    await vi.advanceTimersByTimeAsync(10);
+    await wait(20);
     expect(said().at(-1)?.line).toBe('rematch');
     await end();
     events.emit('stockMatchBeat', { state: 'countdown', count: 2, winner: null, reason: null });
-    await vi.advanceTimersByTimeAsync(10);
+    await wait(20);
     expect(said().at(-1)?.line).toBe('count.2');
     announcer.dispose();
+  });
+});
+
+describe('the cabinet\'s other calls', () => {
+  it('shouts an ultimate\'s own name on the super sting, and the VS card in one call', () => {
+    expect(ultimateCall('rusk-emberjaw').steps).toEqual([{ sfx: 'duel.super', line: 'ultimate.rusk-emberjaw' }]);
+    expect(versusCall('mara-quell', 'nox-calder', 'gallery').steps.map((s) => s.line)).toEqual(['fighter.mara-quell', 'versus', 'fighter.nox-calder', 'stage.gallery']);
   });
 });

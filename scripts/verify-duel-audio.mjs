@@ -7,7 +7,8 @@
 //   - "Choose your fighter!" opens the lobby; the name call follows the selection and a fast change cuts it;
 //   - the stage, a player's ready, each with its sound;
 //   - Three, Two, One and FIGHT on the countdown's real beats (the match's own ticks);
-//   - a ring-out's blast and call (Ring out / Self-destruct, Last stock), GAME and the winner's name, Rematch.
+//   - a ring-out's blast and call (Ring out / Self-destruct, Last stock), GAME and the winner's name on the HUD banner's
+//     beat, Rematch; the VS card's names as the match loads; an ultimate's name on the super sting.
 //
 // Usage (dev server running, HMR off for probes): node scripts/verify-duel-audio.mjs [http://127.0.0.1:5242/]
 import assert from 'node:assert/strict';
@@ -38,7 +39,10 @@ try {
     c.events.on('stockMatchBeat', (b) => p.beats.push({ ...b, at: performance.now(), frame: c.state.frameCount }));
     c.events.on('arenaReset', () => p.resets.push({ at: performance.now(), frame: c.state.frameCount }));
     // The Duel has the screen from the lobby's first frame (the title's own click on the Duel door is the title's sound).
-    c.events.on('versusChanged', () => { if (c.versus?.active && p.lobbyAt === undefined) p.lobbyAt = performance.now(); });
+    c.events.on('versusChanged', () => {
+      if (c.versus?.active && p.lobbyAt === undefined) p.lobbyAt = performance.now();
+      if (c.versus?.phase === 'loading' && p.loadingAt === undefined) p.loadingAt = performance.now();
+    });
     c.events.on('fighterDown', (d) => p.downs.push({ ...d, at: performance.now() }));
     setInterval(() => {
       const s = c.audio.debugSamples?.();
@@ -101,6 +105,17 @@ try {
   await page.locator('#versus-lobby').waitFor({ state: 'hidden', timeout: 30000 });
   await waitSaid('fight', 30000);
   await page.waitForTimeout(300);
+  // The VS card: both names and Versus laid on the audio clock the moment READY started the load.
+  const card = await page.evaluate(() => {
+    const s = window.__game.ctx.audio.duel.debugSnapshot().said, p = window.probe;
+    const from = s.findIndex((x) => x.line === 'fighter.mara-quell' && x.at >= p.loadingAt - 5);
+    const upTo = s.findIndex((x) => x.line === 'count.3');
+    const fight = p.beats.find((b) => b.state === 'countdown' && b.count === 3);
+    return { lines: s.slice(from, upTo).map((x) => x.line), firstLagMs: from >= 0 ? Math.round(s[from].at - p.loadingAt) : null, loadMs: fight ? Math.round(fight.at - p.loadingAt) : null };
+  });
+  // The card lasts as long as the stage takes to build; the first count beat cuts what is left (a fast load hears less).
+  const VS = ['fighter.mara-quell', 'versus', 'fighter.brann-rook', 'stage.kiln'];
+  check('the VS card calls "Mara Quell! Versus! Brann Rook!" in order as the match loads, until Three cuts it', card.lines.length >= 1 && card.lines.every((l, i) => l === VS[i]) && card.firstLagMs !== null && card.firstLagMs < 150, card);
   const count = await page.evaluate(() => {
     const p = window.probe, s = window.__game.ctx.audio.duel.debugSnapshot().said;
     const at = (line) => s.find((x) => x.line === line)?.at;
@@ -140,7 +155,17 @@ try {
     };
   });
   // FIGHT has the floor until it ends (a ring-out cannot outrank it; none could happen that fast in play).
-  await page.waitForFunction(() => window.__game.ctx.audio.duel.debugSnapshot().speaking === null);
+  await page.waitForFunction(() => !window.__game.ctx.audio.duel.debugSnapshot().busy);
+  // An ultimate (Mara's Dead Chime) fired through the fighter's own press: the super sting and its name.
+  await page.evaluate(() => {
+    const c = window.__game.ctx, f = c.arena.bundle(0).fighters;
+    c.arena.with(0, () => { f.addCharge(1); f.press('ultimate'); });
+    window.ring.step(3);
+  });
+  await waitSaid('ultimate.mara-quell', 4000).catch(() => {});
+  const ult = await duel();
+  check('an ultimate is called by its name on the super sting', ult.said.some((x) => x.line === 'ultimate.mara-quell') && ult.sounds.some((x) => x.sfx === 'duel.super'), ult.said.slice(-2).map((x) => x.line));
+  await page.waitForFunction(() => !window.__game.ctx.audio.duel.debugSnapshot().busy);
   await page.evaluate(() => window.ring.hitAndOut());
   const landed = await page.evaluate(() => window.ring.hit);
   await waitSaid('ring-out', 4000).catch(() => {});
@@ -157,11 +182,16 @@ try {
     state: window.__game.ctx.arena.stockMatch.state,
     winner: window.__game.ctx.arena.stockMatch.winner,
   }));
-  const after = end.lines.slice(end.lines.indexOf('fight') + 1);
+  const after = end.lines.slice(end.lines.indexOf('ultimate.mara-quell') + 1);
   check('three ring-outs end the match for player 1 (the first after a landed finisher)', end.downs.length === 3 && end.state === 'finished' && end.winner === 0 && landed > 0, { downs: end.downs, landed, lines: end.lines.slice(-8) });
   check('an attributed ring-out is called "Ring out!" with the KO blast', after[0] === 'ring-out' && end.sounds.filter((s) => s === 'duel.ko').length === 3, after);
   check('an unforced one is a self-destruct, and the last stock is called', after[1] === 'self-destruct' && after[2] === 'last-stock', after);
   check('the end calls GAME and the winner\'s name', after.slice(-2).join() === 'game,wins.mara-quell' && end.sounds.includes('duel.game') && end.sounds.includes('duel.results'), after);
+  const banner = await page.evaluate(() => {
+    const s = window.__game.ctx.audio.duel.debugSnapshot().said, g = s.findLast((x) => x.line === 'game'), w = s.findLast((x) => x.line === 'wins.mara-quell');
+    return g && w ? w.at - g.at : null;
+  });
+  check('the winner\'s name lands on the HUD banner\'s beat (950 ms after GAME)', banner !== null && Math.abs(banner - 950) <= 30, banner);
 
   // Rematch: the visible button, then a countdown that opens with "Rematch!".
   await page.evaluate(() => { window.__game.ctx.state.paused = false; });
