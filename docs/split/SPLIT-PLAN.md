@@ -20,7 +20,7 @@ Each one was chosen for the long-term architecture, not for the least work.
 | D2 | What CLASHFORGED keeps | Duel, LAN, lobby, **Training** (the Proving Yard, player-facing), the **Builder** (dev-only, stage authoring), **AuthorLink** (dev-only live tuning). Not the Sandbox. | |
 | D3 | Descent and the arena | **Descent drops the arena entirely**: no Duel/Arena doors, no fighter picker, no fighters in runs. It keeps only the engine's generic hooks. | |
 | D4 | Where the Builder and AuthorLink live | **Shared `packages/authoring`**. Each game supplies its content through provider interfaces. | One editor, no copies. An app importing from another app would be a structural mistake. |
-| D5 | CLASHFORGED hosting | **Its own Cloudflare Pages project** (`clashforged.pages.dev`, Ajar Red account). Descent keeps `alchemists-descent.pages.dev` and GitHub Pages. | Cloudflare Pages can send the COOP/COEP headers the threaded sim needs, and a future online-Duel server can run as a Durable Object beside the AuthorLink relay. GitHub Pages allows one site per repo and cannot send headers. |
+| D5 | CLASHFORGED hosting (revised 2026-10-04) | **Its own Cloudflare Worker with static assets** (Ajar Red account): one deployment holding the static game, the online Duel's room Durable Objects, and later the Containers for server-run matches. Its custom domain, if any, keeps its DNS on Cloudflare. Descent stays on Pages (`alchemists-descent.pages.dev`) and GitHub Pages. | Workers serve static assets and `_headers` (COOP/COEP) natively at the same price as Pages, and add what an online game needs: Durable Objects and Containers in the same deployment (with Pages the room server is a separately deployed Worker, so site and server versions can skew); the Cloudflare Vite plugin (dev runs the real room code); gradual deployments; rate limiting; Workers Logs, Logpush, Tail Workers and source maps; queue consumers. Descent is purely static, so Pages loses it nothing. The first choice (a Pages project) was revised before anything deployed. Detail: `docs/arena/DECISIONS.md` D-022. GitHub Pages allows one site per repo and cannot send headers. |
 | D6 | Repository name | **Rename to a studio name** (e.g. `purple-llama`) at the end of the split. | The repo will hold two games, so it should not be named after one. Descent's GitHub Pages URL changes and `alchemists-descent.pages.dev` becomes its main URL. |
 | D7 | Package manager | **pnpm workspaces**. Turborepo is deferred until CI time warrants it. | pnpm's strict resolution refuses undeclared imports, so the package boundaries are enforced when a module resolves, not only by our own test. |
 | D8 | Order of work | **Untangle in place first, move files last.** | Moving files while the graph is tangled breaks both games for weeks. Untangling first keeps every PR mergeable and both games green. |
@@ -216,8 +216,11 @@ feature rather than a side effect.
   a green baseline.
 - **Deploy.**
   - Descent keeps both deploys.
-  - CLASHFORGED gets its own Cloudflare Pages project with its own `_headers` (COOP/COEP) and a hosted-build probe
-    like `verify-hosted-game`.
+  - CLASHFORGED deploys as its own Worker with static assets (D5): `_headers` (COOP/COEP) served natively, the Duel
+    room Durable Object in the same deployment, and a hosted-build probe like `verify-hosted-game`.
+  - In dev, the Cloudflare Vite plugin runs the Duel room in Cloudflare's runtime inside the app's Vite server, so dev
+    and production run the same room code. It replaces the Node `ws` plugin (`servers/duel/server.ts`); the room logic
+    (`servers/duel/Room.ts`, already free of sockets and browser APIs) is hosted once.
   - No relay token ships in either public build.
   - The repo rename (D6) is the last step, with the GitHub Pages base path and the AuthorLink origin allowlist
     updated in the same change.
@@ -307,7 +310,8 @@ their checks green**. Phases 1–5 change no folder layout.
 - Its own title, options, controls, dialogs, toasts, loading and credits, all from the foundry kit (references in
   `alchemists-descent-worktrees/UI/V1`).
 - Training mode (the Proving Yard, player-facing).
-- Brand config, favicon, the Cloudflare Pages project and the hosted probe.
+- Brand config, favicon, the Worker deployment (static assets and the Duel room Durable Object, D5) and the hosted
+  probe.
 - **Exit:** CLASHFORGED deploys to its own site; no Descent screen or string is reachable from it.
 
 ### Phase 8: docs, cleanup, rename
@@ -331,7 +335,8 @@ their checks green**. Phases 1–5 change no folder layout.
 
 ## 8. Out of scope
 
-- Online (non-LAN) Duel hosting. D5 leaves room for it as a Durable Object; it is its own project.
+- Online (non-LAN) Duel play: rooms, authentication, rate limiting and latency handling. D5 hosts it in the same Worker
+  as the game (a Durable Object per room, Containers later for server-run matches); building it is its own project.
 - New arena features: match modes, more fighters, bots beyond today's.
 - Turborepo or other build caching (D7), until CI time asks for it.
 - Moving `noita-sandbox.html` and the other root reference files. They stay at the root as the port reference.
