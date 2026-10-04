@@ -12,7 +12,7 @@ import { botDriverFor, rivalDriverFor } from '@/arena/ai/driver';
 import { TerrainReplicator } from '@/net/duel/TerrainReplicator';
 import type { DuelRuntime as RuntimeContract } from '@/net/duel/DuelSession';
 import { DuelButtons as B, type DuelTickInput } from '@/net/duel/input';
-import type { ArenaPresentation, DuelSnapshot } from '@/net/duel/snapshot';
+import { DUEL_MOMENT_TYPES, MAX_DUEL_MOMENTS, type ArenaPresentation, type DuelMoment, type DuelSnapshot } from '@/net/duel/snapshot';
 import { captureDuelEffects, replicaDuelEffects } from '@/render/duelEffects';
 
 /** Adapts the existing game to host authority or a strictly render-only client.
@@ -25,6 +25,7 @@ export class DuelRuntime implements RuntimeContract {
   private receivedAt = 0;
   private presentationDirty = false;
   private readonly sounds: DuelSnapshot['sounds'] = [];
+  private readonly moments: DuelMoment[] = [];
   private restoreAudio: (() => void) | null = null;
   constructor(
     private readonly ctx: Ctx,
@@ -48,11 +49,23 @@ export class DuelRuntime implements RuntimeContract {
     if (!c.duel?.replica) {
       const original = c.audio.sfx;
       c.audio.sfx = (id, x, y, options) => {
-        if (this.sounds.length < 64) this.sounds.push({ id, x, y });
+        // The announcer's cabinet sounds (duel.*) are not replicated: the replica's own announcer makes them from the
+        // moments below, on time. Options that shape a sound (level, pitch, rate, a delay) travel with it.
+        if (!id.startsWith('duel.') && this.sounds.length < 64) {
+          const { gain, pitch, rate, delay } = options ?? {};
+          this.sounds.push({ id, x, y, ...(gain !== undefined && { gain }), ...(pitch !== undefined && { pitch }), ...(rate !== undefined && { rate }), ...(delay !== undefined && { delay }) });
+        }
         original.call(c.audio, id, x, y, options);
       };
+      // The match's moments a replica cannot raise itself (it never ticks the match): recorded in order, sent as data.
+      const offs = DUEL_MOMENT_TYPES.map((type) =>
+        c.events.on(type, (data: DuelMoment['data']) => {
+          if (this.moments.length < MAX_DUEL_MOMENTS) this.moments.push({ type, data: structuredClone(data) } as DuelMoment);
+        }),
+      );
       this.restoreAudio = () => {
         c.audio.sfx = original;
+        for (const off of offs) off();
       };
     }
     return true;
@@ -61,6 +74,7 @@ export class DuelRuntime implements RuntimeContract {
     this.restoreAudio?.();
     this.restoreAudio = null;
     this.sounds.length = 0;
+    this.moments.length = 0;
     this.controls.clear();
     this.latest = this.previous = null;
     const c = this.ctx;
@@ -244,6 +258,7 @@ export class DuelRuntime implements RuntimeContract {
       bloom: c.fx.bloomKick,
       shake: c.fx.screenShake,
       sounds: this.sounds.splice(0),
+      moments: this.moments.splice(0),
     };
     return { snapshot, cells: this.terrain.capture(c.world, meta.baseline) };
   }
@@ -272,7 +287,14 @@ export class DuelRuntime implements RuntimeContract {
     Object.assign(c.camera, snapshot.camera);
     c.fx.bloomKick = snapshot.bloom;
     c.fx.screenShake = snapshot.shake;
-    for (const sound of snapshot.sounds) if (isSfxId(sound.id)) c.audio.sfx(sound.id, sound.x, sound.y);
+    for (const sound of snapshot.sounds) {
+      if (!isSfxId(sound.id)) continue;
+      const { gain, pitch, rate, delay } = sound;
+      c.audio.sfx(sound.id, sound.x, sound.y, { gain, pitch, rate, delay });
+    }
+    // The host's moments, re-raised here after the state they belong to is in place: the replica's announcer, KO burst
+    // and super cut-in answer them exactly as they do on the host.
+    for (const m of snapshot.moments ?? []) c.events.emit(m.type, m.data as never);
     return true;
   }
   private replacePlayer(player: PlayerState, data: PlayerState): void {

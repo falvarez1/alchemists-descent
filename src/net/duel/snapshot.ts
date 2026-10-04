@@ -1,4 +1,5 @@
 import type { Bout } from '@/core/arena';
+import type { EventMap } from '@/core/events';
 import type {
   StockMatchView,
   StockDodgeView,
@@ -62,8 +63,20 @@ export interface DuelSnapshot {
   lights: AuthoredLight[];
   bloom: number;
   shake: number;
-  sounds: Array<{ id: string; x?: number; y?: number }>;
+  sounds: Array<{ id: string; x?: number; y?: number; gain?: number; pitch?: number; rate?: number; delay?: number }>;
+  /** The host's match moments since the last snapshot, in order; a replica re-emits them (announcer, KO burst, cut-in). */
+  moments: DuelMoment[];
 }
+
+/** The events a replica cannot raise itself (it never ticks the match), carried as data. */
+export type DuelMoment =
+  | { type: 'stockMatchBeat'; data: EventMap['stockMatchBeat'] }
+  | { type: 'fighterDown'; data: EventMap['fighterDown'] }
+  | { type: 'stockUltimate'; data: EventMap['stockUltimate'] }
+  | { type: 'stockShieldBreak'; data: EventMap['stockShieldBreak'] };
+export const DUEL_MOMENT_TYPES = ['stockMatchBeat', 'fighterDown', 'stockUltimate', 'stockShieldBreak'] as const;
+/** At most this many moments ride one snapshot (a burst beyond it is dropped, never the frame). */
+export const MAX_DUEL_MOMENTS = 32;
 const MAGIC = 0x41444431;
 const encoder = new TextEncoder(),
   decoder = new TextDecoder('utf-8', { fatal: true });
