@@ -32,3 +32,12 @@ export interface VersusApi {
   /** Returns true when this session owns gamepad polling. Menus still poll while paused. */
   poll(pads: readonly (Gamepad | null)[], blocked: boolean): boolean;
 }
+
+/**
+ * True from a match's loading until it returns to the lobby: the Duel's own flow, in which nothing of the descent (its
+ * curtain copy, test-arena hints, objectives) may show.
+ */
+export function versusMatchUnderway(versus: Pick<VersusApi, 'phase'> | null | undefined): boolean {
+  const phase = versus?.phase;
+  return phase === 'loading' || phase === 'playing' || phase === 'reconnect';
+}

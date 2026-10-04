@@ -1,3 +1,4 @@
+import { versusMatchUnderway } from '@/core/versus';
 import { BACKDROP_LAYER_SPECS, createDefaultBackdropSettings } from '@/config/backdrop';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import type { Ctx } from '@/core/types';
@@ -142,7 +143,8 @@ export function buildDuelStage(ctx: Ctx): void {
   ctx.flask.setSlot(1, Cell.Oil, 300);
   standAtSpawn(ctx, 0);
   ctx.arena?.setSpawns(DUEL.spawns);
-  ctx.events.emit('toast', { text: 'THE DUEL STAGE: add a rival from the panel; a brain for each fighter makes it a fight.' });
+  // The Proving Yard's hint; a lobby-started Duel already has both fighters and says nothing of panels.
+  if (!versusMatchUnderway(ctx.versus)) ctx.events.emit('toast', { text: 'THE DUEL STAGE: add a rival from the panel; a brain for each fighter makes it a fight.' });
 }
 
 /** Stand slot 0's body (the one on the Ctx) at a spawn, still, facing in. */

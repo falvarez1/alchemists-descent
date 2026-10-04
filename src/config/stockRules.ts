@@ -16,3 +16,11 @@ export const STOCK_LAUNCH = Object.freeze({
 export function stockHitstopTicks(damage: number): number {
   return Math.max(3, Math.min(7, Math.round(1 + damage / 11)));
 }
+
+/**
+ * The countdown's call (3, 2, 1) for the ticks left: the arcade "Three! Two! One!" in three equal beats over
+ * `countdownTicks`, so the HUD, the announcer and the match-beat event always agree. 0 once the countdown is spent.
+ */
+export function stockCountdownBeat(countdown: number): number {
+  return countdown > 0 ? Math.min(3, Math.ceil(countdown / (STOCK_RULES.countdownTicks / 3))) : 0;
+}
