@@ -100,8 +100,12 @@ export function duelPose(ctx: Ctx, a: PlayerState): { name: string; facing: numb
   if (arena.isGrabbed?.(slot)) return { name: 'hurt', facing };
   if (arena.isLaunching(slot)) return { name: 'tumble', facing: a.vx > 0.4 ? -1 : a.vx < -0.4 ? 1 : facing };
   const attack = arena.stockAttack(slot);
-  if (attack?.busy && attack.kind) {
-    return { name: `${attack.kind}_${attack.phase === 'startup' ? 'windup' : 'strike'}`, facing: attack.facing < 0 ? -1 : 1 };
+  if (attack?.busy && attack.kind && attack.spec) {
+    const f = attack.facing < 0 ? -1 : 1;
+    if (attack.phase === 'startup') return { name: `${attack.kind}_windup`, facing: f };
+    // Late in the end lag the weapon comes home: the follow-through frame.
+    const late = attack.phase === 'recovery' && attack.age - attack.spec.startup - attack.spec.active > attack.spec.recovery * .35;
+    return { name: `${attack.kind}_${late ? 'recover' : 'strike'}`, facing: f };
   }
   const grab = arena.stockGrab?.(slot);
   if (grab?.busy) {
@@ -113,7 +117,13 @@ export function duelPose(ctx: Ctx, a: PlayerState): { name: string; facing: numb
   if (shield?.busy) return { name: shield.phase === 'broken' ? 'shield_broken' : 'shield', facing };
   const dodge = arena.stockDodge(slot);
   if (dodge?.busy) return { name: dodge.inAir ? 'airdodge' : 'dodge', facing: dodge.vx > 0.1 ? 1 : dodge.vx < -0.1 ? -1 : facing };
+  // A kit's own moves hold their pose for a beat after the press (the ultimate longer); the winner strikes its pose.
+  const view = ctx.fighters?.view;
+  if (view && view.ultimate.usedAt > 0 && frame - view.ultimate.usedAt < 26) return { name: 'ultimate', facing };
+  if (view && view.tactical.usedAt > 0 && frame - view.tactical.usedAt < 18) return { name: 'tactical', facing };
   if (arena.stockSpecial(slot)?.busy || a.firing || a.recoilT > 0) return { name: 'cast', facing: Math.cos(a.aimAngle) < 0 ? -1 : 1 };
+  const match = arena.stockMatch;
+  if (match?.state === 'finished' && match.winner === slot && a.grounded) return { name: 'victory', facing };
   if (arena.isRecovering(slot)) return { name: 'recover', facing };
   if (a.staggerT > 0) return { name: 'hurt', facing };
   if (!a.grounded) {
@@ -139,6 +149,8 @@ const FALLBACK: Record<string, readonly string[]> = {
   recover: ['rise'], fastfall: ['fall'], apex: ['rise'], fall: ['apex'], land: ['idle0'],
   opener_windup: ['idle0'], opener_strike: ['cast'], launcher_windup: ['land'], launcher_strike: ['recover'],
   aerial_windup: ['apex'], aerial_strike: ['opener_strike'], finisher_windup: ['land'], finisher_strike: ['opener_strike'],
+  opener_recover: ['opener_strike'], launcher_recover: ['launcher_strike'], aerial_recover: ['aerial_strike'], finisher_recover: ['finisher_strike'],
+  tactical: ['cast'], ultimate: ['cast'], victory: ['launcher_strike', 'idle0'],
 };
 
 function frameFor(atlas: Atlas, name: string): Frame | null {
