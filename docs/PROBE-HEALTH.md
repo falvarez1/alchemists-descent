@@ -187,7 +187,8 @@ under them, and a long batch belongs on a frozen worktree server):
 - `verify-arena-duel.mjs` (15): two fighters in one world; every damage path lands on the right fighter, the caster never; removing the
   rival leaves nothing behind. Runs on the plain Spark loadout (`ArenaSlots.signatureLoadouts = false`).
 - `verify-duel-ui.mjs` (11): the title's Duel door, the roster, the Duel Stage, Add rival, a brain each, the fight in REAL time, Rematch, Remove,
-  with real clicks.
+  with real clicks. **STALE since dff9d1a** (the player lobby replaced that door): it still looks for "Duel Stage" on the title
+  door and a `#fighter-roster`. The lobby path is covered by `verify-local-versus`, `verify-stock-learning` and `verify-overlay-hit --only versus`.
 `verify-fighter-arena` (65) and `verify-fighter-framework` (28) were updated for the renamed Reset button and the Body-scaled health.
 `verify-title-menu` (237) allows seven rows in the authoring build (the Duel door). The measurement tools are not probes: `fight-batch`,
 `fight-analyse` (writes `report.md` and `report.html`), `fight-tune`, `fight-dps`, `loadout-lab`: see `docs/arena/TELEMETRY-AND-BALANCE.md` 9.
