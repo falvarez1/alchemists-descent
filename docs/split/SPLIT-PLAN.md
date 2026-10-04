@@ -262,6 +262,10 @@ their checks green**. Phases 1–5 change no folder layout.
   installs both, so it is still one app and one bundle.
 - A test pins the hook order.
 - **Exit:** `Game.ts` gone; no Duel system named outside the CLASHFORGED module; oracles identical.
+- **Worth aiming for, for the Balance Lab:** a kernel that can play a match with no DOM, WebGL or audio. The Lab's
+  first measurement (BL0.5 in `docs/arena/BALANCE-LAB-PLAN.md`) decides whether its batch runner uses Node worker
+  threads on the kernel (an expected 5-10 times the throughput of headless pages) or browser pages. A kernel that
+  needs the browser only for rendering and audio makes the faster path possible.
 
 ### Phase 3: registries and the `Ctx` split (4.4, 4.5)
 - Levels, render layers, camera rigs, audio banks, input devices, enemy kinds, pause sections and console packs
@@ -291,6 +295,13 @@ their checks green**. Phases 1–5 change no folder layout.
 - It runs in a short **freeze window** with no other open branches, because it touches every file.
 - History is kept (`git log --follow`).
 - **Exit:** both apps build, test and pass their gate probes from their own folders; CI runs per app.
+- **Downstream: the Balance Lab starts the day this phase lands** (`docs/arena/BALANCE-LAB.md`, decision D-021 in
+  `docs/arena/DECISIONS.md`). Until then balance tooling waits, and every fighter change follows the interim routine in
+  `docs/arena/BALANCE-LAB-PLAN.md`. The Lab needs this phase to deliver:
+  - `packages/fighters`, where the fighter sheets and the balance analyser will live;
+  - `apps/clashforged` with its own dev entry points (the Lab adds `lab.html`) and its `__AUTHORING__` gate;
+  - the boundary test and pnpm's strict resolution;
+  - the arena code (`ArenaSlots`, the stock rules, the CPU, the duel harness) inside `apps/clashforged`.
 
 ### Phase 7: the CLASHFORGED shell
 - Its own title, options, controls, dialogs, toasts, loading and credits, all from the foundry kit (references in
@@ -312,6 +323,7 @@ their checks green**. Phases 1–5 change no folder layout.
 | Phase 6 conflicts with every open branch | The move is a script, regenerated on the latest main; announce a freeze window; merge open work first |
 | HMR reloads probe pages while files move | Probe batches run against a frozen worktree server (PROBE-HEALTH) |
 | Descent players lose saves | Keys unchanged; fighter fields read and dropped; a test loads a recorded pre-split save |
+| The split slips, and balance tooling waits with it (the Balance Lab starts after phase 6, D-021) | Track phase 6 as the Lab's critical path; keep phases small and green; every fighter change meanwhile follows the interim balance routine in `docs/arena/BALANCE-LAB-PLAN.md` |
 | Both apps share `localStorage` in dev | App-scoped storage namespace (4.7) in Phase 5, before two entries exist |
 | Bundle layering regresses (world chunk, lazy Builder) | `bundle-layers.test.ts` and `verify:builder-bundle` carried over per app |
 | The repo rename breaks Descent's GitHub Pages links | Last step; `alchemists-descent.pages.dev` stays the main URL; README and links updated in the same change |
