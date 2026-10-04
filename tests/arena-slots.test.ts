@@ -625,6 +625,26 @@ describe('ArenaSlots', () => {
     void ctx;
   });
 
+  test('a stock ring-out credits the last hitter until the victim lands, however long the fall', async () => {
+    const run = async (landFirst: boolean) => {
+      const { arena, ctx } = setup();
+      await arena.addRival('brann-rook', 300, 100);
+      arena.configureStocks({ left: 0, right: 600, top: 0, bottom: 500 });
+      for (let i = 0; i < 121; i++) arena.endTick();
+      const victim = arena.bundle(1)!.player;
+      arena.hit(ctx.enemies[0], 5, 0, 0, 'direct'); // slot 0 lands a blow on slot 1
+      Object.assign(victim, { grounded: false, invuln: 0 });
+      for (let i = 0; i < 20; i++) { ctx.state.frameCount++; arena.endTick(); } // launched: airborne past the grace
+      if (landFirst) { victim.grounded = true; ctx.state.frameCount++; arena.endTick(); victim.grounded = false; }
+      // A long fall: well past the 90-tick hazard window before the blast line is crossed.
+      for (let i = 0; i < 150; i++) { ctx.state.frameCount++; arena.endTick(); }
+      victim.y = 600; ctx.state.frameCount++; arena.endTick();
+      return arena.bout.downs[0];
+    };
+    expect(await run(false)).toMatchObject({ slot: 1, by: 0, source: 'ring-out' });
+    expect(await run(true)).toMatchObject({ slot: 1, by: 1 });
+  });
+
   test('a knockout is recorded once, names the last blow\'s owner as the winner, and emits fighterDown', async () => {
     const { arena, ctx, calls } = setup();
     await arena.addRival('brann-rook', 300, 100);

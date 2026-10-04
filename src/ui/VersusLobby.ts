@@ -10,7 +10,10 @@ import '@/styles/versus.css';
 interface SeatView {
   card: HTMLElement; box: HTMLElement; image: HTMLImageElement; name: HTMLElement; title: HTMLElement;
   prev: HTMLButtonElement; next: HTMLButtonElement; icon: HTMLElement; device: HTMLSelectElement; ready: HTMLButtonElement;
+  cpu: HTMLElement; difficulty: HTMLSelectElement;
 }
+
+const CPU_LEVELS = ['1 · Gentle', '2 · Easy', '3 · Normal', '4 · Hard', '5 · Expert'];
 
 const deviceIcon = (device: VersusDevice): string => device === 'cpu' ? DUEL_ICON.cpu : device === 'keyboard' ? DUEL_ICON.keyboard : DUEL_ICON.controller;
 
@@ -108,8 +111,16 @@ export class VersusLobby {
       const ready = document.createElement('button'); ready.type = 'button'; ready.className = 'versus-ready';
       ready.setAttribute('aria-label', `Ready player ${slot + 1}`);
       ready.addEventListener('click', () => ctx.versus?.ready(slot));
-      box.append(label, row, ready); devices.append(box);
-      this.seats.push({ card, box, image, name, title, prev, next, icon, device, ready });
+      // A CPU seat is always ready: its strip chooses how hard it plays instead (arena/ai, LocalVersus.chooseDifficulty).
+      const cpu = document.createElement('label'); cpu.className = 'versus-cpu'; cpu.hidden = true;
+      const cpuLabel = document.createElement('span'); cpuLabel.textContent = 'Difficulty';
+      const difficulty = document.createElement('select'); difficulty.setAttribute('aria-label', `${player} CPU difficulty`);
+      CPU_LEVELS.forEach((level, i) => difficulty.add(new Option(level, String(i + 1))));
+      difficulty.title = 'Higher levels react faster and adapt more strongly to moves that work against you.';
+      difficulty.addEventListener('change', () => ctx.versus?.chooseDifficulty(slot, Number(difficulty.value)));
+      cpu.append(cpuLabel, difficulty);
+      box.append(label, row, cpu, ready); devices.append(box);
+      this.seats.push({ card, box, image, name, title, prev, next, icon, device, ready, cpu, difficulty });
     }
 
     this.start.type = 'button'; this.start.id = 'versus-start'; this.start.textContent = 'Fight';
@@ -215,8 +226,10 @@ export class VersusLobby {
         view.icon.innerHTML = deviceIcon(seat.device);
       }
       view.device.value = seat.device; view.device.disabled = loading;
-      view.ready.textContent = seat.device === 'cpu' ? 'CPU ready' : 'Ready';
-      view.ready.setAttribute('aria-pressed', String(seat.ready)); view.ready.disabled = seat.device === 'cpu' || loading || session.disconnected.includes(slot);
+      const isCpu = seat.device === 'cpu';
+      view.ready.textContent = isCpu ? 'CPU ready' : 'Ready'; view.ready.hidden = isCpu;
+      view.ready.setAttribute('aria-pressed', String(seat.ready)); view.ready.disabled = isCpu || loading || session.disconnected.includes(slot);
+      view.cpu.hidden = !isCpu; view.difficulty.value = String(seat.cpuLevel); view.difficulty.disabled = loading;
       view.card.dataset.ready = view.box.dataset.ready = String(seat.ready);
       view.box.dataset.device = seat.device === 'cpu' || seat.device === 'keyboard' ? seat.device : 'pad';
     }

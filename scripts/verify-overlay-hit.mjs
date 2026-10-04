@@ -174,12 +174,15 @@ try {
       await page.evaluate(() => {
         const g = window.__game, c = g.ctx; c.state.paused = true;
         // (a teleport during a respawn or a CPU recovery can be undone: try until the last stock is gone)
-        for (let tries = 0; tries < 12 && c.arena.stockMatch.state !== 'finished'; tries++) {
+        for (let tries = 0; tries < 40 && c.arena.stockMatch.state !== 'finished'; tries++) {
           Object.assign(c.arena.bundle(1).player, { x: c.arena.stockStage.zone.right - 140, vx: 0, grounded: false });
           for (let tick = 0; tick < 140; tick++) g.tick(false, { forcePaused: true });
         }
         c.state.paused = false;
       });
+      // A card that never came up is a failure, not "0 controls".
+      const shown = await page.locator('.stock-result').waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
+      if (!shown) { bad++; console.log(`  FAIL  ${w}x${h} duel-end  the results card never showed (match ${await page.evaluate(() => window.__game.ctx.arena?.stockMatch?.state)})`); }
       await probe('duel-end', '.stock-result', 600);
       await page.evaluate(() => window.__game.ctx.versus.close());
     }

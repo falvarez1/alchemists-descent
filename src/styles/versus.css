@@ -126,6 +126,20 @@
 #versus-lobby .versus-ready[aria-pressed="true"]::before { content: '✓'; margin-right: .6em; color: var(--seat); letter-spacing: 0; }
 #versus-lobby .versus-ready:disabled:not([aria-pressed="true"]) { opacity: .45; }
 .versus-device[data-ready="true"] { border-color: var(--seat); }
+/* a CPU seat's strip: always ready (the check), and how hard it plays */
+.versus-cpu {
+  display: flex; align-items: center; justify-content: center; gap: calc(var(--u) * .5); margin: 0 calc(var(--u) * .6) calc(var(--u) * .55); min-height: max(24px, calc(var(--u) * 2.1)); padding: 1px 8px;
+  border: 1px solid var(--seat); background: color-mix(in srgb, var(--seat) 22%, #0b151f); cursor: pointer;
+}
+.versus-cpu > span { font: 600 max(10px, calc(var(--u) * .82))/1 var(--d-sans); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; color: color-mix(in srgb, var(--seat) 70%, var(--d-ivory)); }
+.versus-cpu > span::before { content: '✓'; margin-right: .6em; letter-spacing: 0; color: var(--seat); }
+#versus-lobby .versus-cpu select {
+  min-width: 0; field-sizing: content; padding: 2px 1.3em 2px 4px; border: 0; appearance: none; -webkit-appearance: none;
+  font: 600 max(11px, calc(var(--u) * .95))/1.2 var(--d-sans); color: var(--d-ivory);
+  background: linear-gradient(45deg, transparent 50%, currentColor 50%) right .55em top 58% / .32em .32em no-repeat, linear-gradient(135deg, currentColor 50%, transparent 50%) right .23em top 58% / .32em .32em no-repeat;
+}
+#versus-lobby .versus-cpu select option { background: var(--d-slate); color: var(--d-ivory); }
+#versus-lobby .versus-cpu select:disabled { opacity: .55; cursor: default; }
 
 /* the copper call to action (and the results' Rematch, arena.css) */
 #versus-start, .stock-rematch {
@@ -219,6 +233,8 @@ body.versus-active #pause-overlay .pause-menu button[data-pause-open="KeyB"] { d
   .versus-duel { grid-template-columns: 1fr calc(var(--u) * 6.4) 1fr; }
   .versus-vs { width: calc(var(--u) * 6.4); }
   .versus-device-step, .versus-device-icon { display: none; }
+  .versus-cpu { flex-wrap: wrap; gap: 0 6px; }
+  .versus-cpu > span { letter-spacing: .06em; }
   .versus-seat h2 { font-size: max(18px, calc(var(--u) * 2.4)); }
 }
 

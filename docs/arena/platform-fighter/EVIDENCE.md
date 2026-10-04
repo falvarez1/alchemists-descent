@@ -3,6 +3,22 @@
 Baseline: c90e850. Branch: feature/arena-stock-matches.
 Local environment: isolated worktree, Vite 127.0.0.1:5217, headless Edge through the repository's Playwright launcher. No deployment.
 
+## Concept fidelity checkpoint
+
+Branch feature/arena-duel-visuals (main 76638da merged in). Local server 127.0.0.1:5241. No deployment.
+
+- Gap measured at the start: in-game fighters were 34-pixel procedural rigs at 0.4-1.65x zoom (about 20 px tall in wide shots, 60 px at the closest); the concept's in-match fighters are about 90 px at 720p. The Foundry's top was a flat orange band over an X-truss; the backdrop had no furnace, banners or waterfalls. One stage existed.
+- Fighters: 20 generated pose sheets (gpt-image-2, references: portraits, animation sheets, concept rows), 36 frames per fighter, 258 KB of atlases for all ten. The first sprite capture showed a dark vertical bar per fighter: the atlas loader read every frame from row 0 because a closed ImageBitmap reports width 0. Fixed by reading the width before closing; the next capture showed the sprites.
+- Stages: four backdrop plates edited from the concepts; nine baked platform slabs (main and raised platforms, the Gallery's third). The first Foundry bake made the lanterns solid (they hang directly under brackets); lanterns are now found by their glass and kept out of the hull. The baked colours first rendered as the generic tan plate texture; they are now colour overrides. A row of magenta fringe tinted the deck top red; the walking edge is now the concept copper and hull colours stay under the bloom threshold (the Gallery's pale stone under a lower ceiling). Collision for every stage is generated code; tone changes leave the masks byte-identical.
+- Light: during CPU bouts a lightning cast charged 250-290 cells per row of the Metal deck (measured), which both glowed white and counted as electrified contact for both fighters. The competitive hull is now earthed at the end of each tick; the same measurement reads 0 charged deck cells. The campaign wand light measured 1.7x at the deck around each fighter (1.37x even at 30%, because light adds over the 0.92 ambient); stock matches keep 10%, measured at most 0.97x.
+- Camera: close combat reaches 2.3x with the feet at 60-68% of the frame (new regression test); dead zones and HUD margins are screen space; the composition never pushes a fighter out of frame across the blast box (existing test).
+- Render cost after the pass (one headless Edge sample, fixed scene): median 3.8 ms per frame at 1.0-2.3x including the fine platform faces; 14.5 ms at 0.6x, the pre-existing CPU composition path for expanded wide shots.
+- Probes run on this build: verify-stock-match (mechanics, input recovery matrix, CPU bout), verify-stock-platforms, verify-stock-ledges, verify-stock-movement, verify-stock-attacks, verify-stock-shield, verify-stock-controls, verify-stock-recovery-ai (all ten fighters, both sides), verify-stock-camera on WebGL2 and WebGPU, verify-arena-duel (16/16). All passed. Corrected stale staging: the movement probe's dodge-into-wall test stood 31 cells above the deck (it failed identically on the baseline server), the platform probe spawned on a half cell, and three probes cropped evidence without the camera zoom.
+- Live CPU bouts on the Foundry, Kiln, Cistern and Gallery with eight different fighters: no page errors.
+- Whole suite: 3,290 tests in 269 files; typecheck; lint (src, tests, scripts); production build.
+- Remaining: single-frame poses; kit abilities use the cast pose; facial detail at 38 px; washed-out WebGPU presentation of expanded wide shots (pre-existing, WebGL2 is the default); stage hazards are art, not cells, in the competitive variants.
+- Side-by-side sheets: evidence/fidelity/compare-*.png (scripts/compare-duel-concepts.mjs).
+
 ## Special-charge checkpoint
 
 - Stock cast groups and fighter abilities now share a per-slot reserve of two charges. Cast group/tactical cost: one. Ultimate cost: two, alongside its existing ultimate meter. Passive recharge: 180 active simulation ticks per charge. Melee contact credit: 60 ticks. Accepted use commits to 24 ticks before another attack, grab, shield or dodge. Normal movement continues. Recovery burst is independent of the reserve, after that commitment ends.

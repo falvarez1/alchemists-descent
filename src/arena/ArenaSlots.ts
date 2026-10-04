@@ -50,6 +50,8 @@ interface Slot {
 }
 
 const OPPONENT_WINDOW = 90; // a fall or a hazard within this many ticks of a blow still counts as the blow's doing
+/** Stock: a victim standing when struck has this long to be launched before touching ground counts as landing. */
+const LAUNCH_GRACE = 10;
 
 function newStand(): Enemy {
   return {
@@ -224,7 +226,9 @@ export class ArenaSlots implements ArenaApi {
   private standFor = 1;
   private readonly sent = { x: 0, y: 0, vx: 0, vy: 0 };
   private spawns: Array<{ x: number; y: number }> = [{ x: 0, y: 0 }, { x: 0, y: 0 }];
-  private readonly lastBlow: Array<{ by: number; at: number }> = [{ by: -1, at: -1e9 }, { by: -1, at: -1e9 }];
+  /** The last blow on each slot, and whether the victim has landed (or caught a ledge) since: a stock ring-out credits the
+   *  hitter for as long as the victim has not, however long the fall (the platform-fighter convention). */
+  private readonly lastBlow: Array<{ by: number; at: number; landed: boolean }> = [{ by: -1, at: -1e9, landed: true }, { by: -1, at: -1e9, landed: true }];
   private readonly focus = { x: 0, y: 0 };
   private ownerBound = false;
   readonly bout: Bout = { state: 'idle', winner: null, startedAt: -1, endedAt: -1, downs: [] };
@@ -515,7 +519,7 @@ export class ArenaSlots implements ArenaApi {
     // The victim's controller applies ARENA_RULES.blowScale to everything it takes, including fire.
     const hpFactor = this.slots[victim]?.bundle.fighters.body.maxHp ?? 1;
     const dmg = amount * dealt * Math.pow(hpFactor || 1, ARENA_RULES.healthEquality);
-    if (dmg > 0 && !this.stockShield(victim)?.guarding) this.lastBlow[victim] = { by: attacker, at: this.ctx.state.frameCount };
+    if (dmg > 0 && !this.stockShield(victim)?.guarding) this.lastBlow[victim] = { by: attacker, at: this.ctx.state.frameCount, landed: false };
     const tag = source === 'direct' ? 'fighter' : String(source);
     // What the blow belongs to is the ATTACKER's to say (its kit knows which ability is acting): a fight recorder reads it inside the victim's damage().
     const was = this.blow;
@@ -555,8 +559,7 @@ export class ArenaSlots implements ArenaApi {
     if (!p || this.bout.state === 'won') return;
     // Resolve all stock losses together at endTick, including simultaneous final stocks.
     if (this.match) { p.dead = true; return; }
-    const blow = this.lastBlow[slot];
-    const by = this.ctx.state.frameCount - blow.at <= OPPONENT_WINDOW && blow.by >= 0 ? blow.by : slot;
+    const by = this.blame(slot);
     const ev = { slot, by, source, x: p.x, y: p.y };
     this.bout.downs.push(ev);
     this.bout.state = 'won';
@@ -704,7 +707,7 @@ export class ArenaSlots implements ArenaApi {
         const was = this.blow; this.blow = { by: slot, tag: `throw.${direction}`, growth: 1.2, stun: 1.1 };
         try {
           this.with(victim, () => this.slots[victim]!.bundle.playerCtl.damage(18 * (b.fighters.body.dealt ?? 1), kx, ky, 'fighter'));
-          this.lastBlow[victim] = { by: slot, at: this.ctx.state.frameCount }; this.ctx.audio.sfx('arena.throw');
+          this.lastBlow[victim] = { by: slot, at: this.ctx.state.frameCount, landed: false }; this.ctx.audio.sfx('arena.throw');
         } finally { this.blow = was; }
       }
     }
@@ -747,21 +750,34 @@ export class ArenaSlots implements ArenaApi {
         this.with(hit.victim, () => b.playerCtl.damage(hit.spec.damage * dealt, hit.spec.knockX * hit.facing, hit.spec.knockY, 'fighter'));
         if (this.match.fighters[hit.victim].volatility > before) {
           this.specials[hit.attacker].rewardMelee();
-          this.lastBlow[hit.victim] = { by: hit.attacker, at: this.ctx.state.frameCount };
+          this.lastBlow[hit.victim] = { by: hit.attacker, at: this.ctx.state.frameCount, landed: false };
           this.ctx.audio.sfx(hit.kind === 'finisher' || hit.spec.name === 'Up smash' ? 'arena.hit.heavy' : 'arena.hit.light');
         }
       } finally { this.blow = was; }
     }
   }
 
+  /** Who a knockout belongs to: the last hitter within the hazard window, or (stock) until the victim has landed since. */
+  private blame(slot: number): number {
+    const blow = this.lastBlow[slot];
+    if (blow.by < 0) return slot;
+    const recent = this.ctx.state.frameCount - blow.at <= OPPONENT_WINDOW;
+    return recent || (this.match !== null && !blow.landed) ? blow.by : slot;
+  }
+
   private tickStockMatch(): void {
     const match = this.match!;
+    // Touching ground (or a ledge) after the launch grace ends a blow's claim on a later fall.
+    for (let s = 0; s < this.slots.length; s++) {
+      const blow = this.lastBlow[s], p = this.slots[s]?.bundle.player;
+      if (!blow || blow.landed || !p) continue;
+      if ((p.grounded || this.ledges[s]?.busy) && this.ctx.state.frameCount - blow.at > LAUNCH_GRACE) blow.landed = true;
+    }
     const changes = match.step(this.slots.map(s => s!.bundle.player));
     for (let s = 0; s < this.launchTicks.length; s++) this.launchTicks[s] = Math.max(0, this.launchTicks[s] - 1);
     for (const slot of changes.downs) {
       const p = this.slots[slot]!.bundle.player;
-      const blow = this.lastBlow[slot];
-      const by = this.ctx.state.frameCount - blow.at <= OPPONENT_WINDOW && blow.by >= 0 ? blow.by : slot;
+      const by = this.blame(slot);
       const ev = { slot, by, source: 'ring-out', x: p.x, y: p.y };
       this.bout.downs.push(ev);
       p.dead = true; p.firing = false; p.vx = 0; p.vy = 0;
@@ -777,7 +793,7 @@ export class ArenaSlots implements ArenaApi {
         b.player.invuln = STOCK_RULES.protectionTicks;
         b.wands.clearTransientState?.();
       });
-      this.lastBlow[slot] = { by: -1, at: -1e9 };
+      this.lastBlow[slot] = { by: -1, at: -1e9, landed: true };
     }
     if (match.state !== 'fighting') for (const s of this.slots) if (s) s.bundle.player.firing = false;
     if (match.state === 'finished' && this.bout.state !== 'won') {
@@ -835,8 +851,8 @@ export class ArenaSlots implements ArenaApi {
         for (const w of rec.bundle.wands.wands) { w.mana = w.frame.manaMax; w.cooldown = 0; w.castIndex = 0; }
       });
     }
-    this.lastBlow[0] = { by: -1, at: -1e9 };
-    this.lastBlow[1] = { by: -1, at: -1e9 };
+    this.lastBlow[0] = { by: -1, at: -1e9, landed: true };
+    this.lastBlow[1] = { by: -1, at: -1e9, landed: true };
     this.bout.state = 'fighting';
     this.bout.winner = null;
     this.bout.startedAt = this.ctx.state.frameCount;
